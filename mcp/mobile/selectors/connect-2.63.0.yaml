@@ -74,6 +74,23 @@ selectors:
     value: "org.commcare.dalvik:id/str_setup_message"
     purpose: "CommCare splash 'Setting up...' message — first stable element after launch"
 
+  # Referenced by connect-claim-opp (#650) but NOT live-verified this
+  # session: app-first-start-main is the cold-launch nav-drawer surface
+  # (not reached on a warm post-login boot), and learn-home-screen is
+  # gated behind the #629 Learn Start-handoff wedge. Values are
+  # calibrated-by-prior-passing-run on 2.63.0, not by a fresh ui-dump —
+  # flagged `unverified: true` until a live dump confirms them.
+  app-first-start-main:
+    type: id
+    value: "org.commcare.dalvik:id/screen_first_start_main"
+    unverified: true
+    purpose: "CommCare 'Welcome' first-start screen with the nav drawer (cold-launch with a prior session). connect-claim-opp branch (a). #650."
+  learn-home-screen:
+    type: id
+    value: "org.commcare.dalvik:id/nsv_home_screen"
+    unverified: true
+    purpose: "Learn-app StandardHomeActivity ScrollView — the post-Start Learn home. connect-claim-opp waits on it after btn_start. Gated behind the #629 Start-handoff wedge; calibrate live once #629 clears. #650."
+
   nav-drawer-burger-point:
     type: point
     value: "73,209"
@@ -169,11 +186,37 @@ selectors:
     value: "Opportunities"
     purpose: "Bottom-nav 'Opportunities' tab"
 
+  # ── Connect home jobs list ──────────────────────────────────────
+  # LIVE-VERIFIED 2026-06-01 (jjackson/ace#650) against a fresh
+  # ACE_Pixel_API_34 / CommCare 2.63.0 cold-boot (emulator-5580):
+  # mobile_capture_ui_dump of the post-login jobs-list surface confirmed
+  # each resource-id below. Referenced from connect-claim-opp /
+  # connect-resume-opp via value-position `id: "${SELECTOR:...}"` so an
+  # APK bump re-calibrates them centrally instead of silently breaking
+  # the claim flow (the raw-id blind spot, #650).
+  home-jobs-list:
+    type: id
+    value: "org.commcare.dalvik:id/connect_fragment_jobs_list"
+    purpose: "Post-login Connect home jobs-list fragment container. Live-verified 2026-06-01 (2.63.0)."
+  home-jobs-recycler:
+    type: id
+    value: "org.commcare.dalvik:id/rvJobList"
+    purpose: "RecyclerView of opportunity cards inside home-jobs-list. Live-verified 2026-06-01 (2.63.0)."
+  home-toolbar-sync:
+    type: id
+    value: "org.commcare.dalvik:id/action_sync"
+    purpose: "Toolbar Sync action (content-desc 'Sync') on the jobs-list surface; pulls the current invite set. Used by connect-claim-opp's pre-search sync (#628). Live-verified 2026-06-01 (2.63.0)."
+
   # ── Opportunity list / detail ───────────────────────────────────
   opp-list-view-opportunity-button:
     type: id
     value: "org.commcare.dalvik:id/btn_view_opportunity"
     purpose: "View Opportunity button on each card in the unclaimed-opp list"
+
+  opp-list-resume-button:
+    type: id
+    value: "org.commcare.dalvik:id/btn_resume"
+    purpose: "Resume button on each In-Progress opportunity card (sibling of opp-list-view-opportunity-button on New Opportunities cards). Live-verified 2026-06-01 (2.63.0), #650."
 
   opp-detail-start:
     type: id

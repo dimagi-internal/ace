@@ -45,7 +45,7 @@ appId: org.commcare.dalvik
 ---
 # Confirm we are on the opp-list.
 - assertVisible:
-    id: "org.commcare.dalvik:id/connect_fragment_jobs_list"
+    id: "${SELECTOR:home-jobs-list}"
 
 # Scroll the target opp's In-Progress card into the viewport.
 # `visibilityPercentage: 60` tolerates multi-line title-wrap (same
@@ -70,13 +70,13 @@ appId: org.commcare.dalvik
 - runFlow:
     when:
       visible:
-        id: "org.commcare.dalvik:id/btn_resume"
+        id: "${SELECTOR:opp-list-resume-button}"
         childOf:
           containsChild:
             text: ${OPP_NAME}
     commands:
       - tapOn:
-          id: "org.commcare.dalvik:id/btn_resume"
+          id: "${SELECTOR:opp-list-resume-button}"
           childOf:
             containsChild:
               text: ${OPP_NAME}
@@ -111,7 +111,7 @@ appId: org.commcare.dalvik
 # into the wrong opp's app (the exact silent wrong-opp resume #591 reported).
 - extendedWaitUntil:
     notVisible:
-      id: "org.commcare.dalvik:id/connect_fragment_jobs_list"
+      id: "${SELECTOR:home-jobs-list}"
     timeout: 10000
 
 # Post-CTA: Connect surfaces either the certificate screen (atlas § 8)

@@ -48,7 +48,7 @@ appId: org.commcare.dalvik
 - runFlow:
     when:
       visible:
-        id: "org.commcare.dalvik:id/screen_first_start_main"
+        id: "${SELECTOR:app-first-start-main}"
     commands:
       - tapOn:
           text: "Opportunities"
@@ -66,12 +66,12 @@ appId: org.commcare.dalvik
 # post-connect-login.yaml lands directly on connect_fragment_jobs_list
 # without screen_first_start_main, so branch (a) above correctly skips.
 - assertVisible:
-    id: "org.commcare.dalvik:id/connect_fragment_jobs_list"
+    id: "${SELECTOR:home-jobs-list}"
 
 # Wait for the jobs list to populate any opp card (any of resume / view).
 - extendedWaitUntil:
     visible:
-      id: "org.commcare.dalvik:id/rvJobList"
+      id: "${SELECTOR:home-jobs-recycler}"
     timeout: 15000
 - takeScreenshot: "claim-opp-list"
 
@@ -94,7 +94,7 @@ appId: org.commcare.dalvik
 # land before we start scrolling; the existing 20s scroll timeout gives
 # additional buffer if the pull is still in flight.
 - tapOn:
-    id: "org.commcare.dalvik:id/action_sync"
+    id: "${SELECTOR:home-toolbar-sync}"
     optional: true
 - waitForAnimationToEnd:
     timeout: 8000
@@ -262,11 +262,11 @@ appId: org.commcare.dalvik
 - runFlow:
     when:
       visible:
-        id: "org.commcare.dalvik:id/btn_resume"
+        id: "${SELECTOR:opp-list-resume-button}"
     commands:
       - scrollUntilVisible:
           element:
-            id: "org.commcare.dalvik:id/btn_resume"
+            id: "${SELECTOR:opp-list-resume-button}"
             below:
               text: ${OPP_NAME}
           direction: DOWN
@@ -277,11 +277,11 @@ appId: org.commcare.dalvik
 - runFlow:
     when:
       visible:
-        id: "org.commcare.dalvik:id/btn_view_opportunity"
+        id: "${SELECTOR:opp-list-view-opportunity-button}"
     commands:
       - scrollUntilVisible:
           element:
-            id: "org.commcare.dalvik:id/btn_view_opportunity"
+            id: "${SELECTOR:opp-list-view-opportunity-button}"
             below:
               text: ${OPP_NAME}
           direction: DOWN
@@ -294,7 +294,7 @@ appId: org.commcare.dalvik
 - runFlow:
     when:
       visible:
-        id: "org.commcare.dalvik:id/btn_resume"
+        id: "${SELECTOR:opp-list-resume-button}"
         below:
           text: ${OPP_NAME}
     commands:
@@ -302,7 +302,7 @@ appId: org.commcare.dalvik
       # target ends up in the viewport, not just the title text.
       - scrollUntilVisible:
           element:
-            id: "org.commcare.dalvik:id/btn_resume"
+            id: "${SELECTOR:opp-list-resume-button}"
             below:
               text: ${OPP_NAME}
           direction: DOWN
@@ -311,7 +311,7 @@ appId: org.commcare.dalvik
           visibilityPercentage: 30
       - takeScreenshot: "claim-opp-resume-tile"
       - tapOn:
-          id: "org.commcare.dalvik:id/btn_resume"
+          id: "${SELECTOR:opp-list-resume-button}"
           below:
             text: ${OPP_NAME}
           retryTapIfNoChange: true
@@ -340,27 +340,27 @@ appId: org.commcare.dalvik
       - runFlow:
           when:
             visible:
-              id: "org.commcare.dalvik:id/connect_learning_button"
+              id: "${SELECTOR:deliver-opp-detail-view-button}"
           commands:
             - takeScreenshot: "claim-opp-resume-jobcard"
             - tapOn:
-                id: "org.commcare.dalvik:id/connect_learning_button"
+                id: "${SELECTOR:deliver-opp-detail-view-button}"
                 retryTapIfNoChange: true
       - runFlow:
           when:
             visible:
-              id: "org.commcare.dalvik:id/btn_start"
+              id: "${SELECTOR:opp-detail-start}"
           commands:
             - takeScreenshot: "claim-opp-resume-detail"
             - tapOn:
-                id: "org.commcare.dalvik:id/btn_start"
+                id: "${SELECTOR:opp-detail-start}"
                 retryTapIfNoChange: true
 
 # --- BRANCH B: new-opportunity (btn_view_opportunity present) ---
 - runFlow:
     when:
       visible:
-        id: "org.commcare.dalvik:id/btn_view_opportunity"
+        id: "${SELECTOR:opp-list-view-opportunity-button}"
         below:
           text: ${OPP_NAME}
     commands:
@@ -368,7 +368,7 @@ appId: org.commcare.dalvik
       # about title-only scrolling leaving the button clipped.
       - scrollUntilVisible:
           element:
-            id: "org.commcare.dalvik:id/btn_view_opportunity"
+            id: "${SELECTOR:opp-list-view-opportunity-button}"
             below:
               text: ${OPP_NAME}
           direction: DOWN
@@ -377,12 +377,12 @@ appId: org.commcare.dalvik
           visibilityPercentage: 30
       - takeScreenshot: "claim-opp-new-tile"
       - tapOn:
-          id: "org.commcare.dalvik:id/btn_view_opportunity"
+          id: "${SELECTOR:opp-list-view-opportunity-button}"
           below:
             text: ${OPP_NAME}
       - extendedWaitUntil:
           visible:
-            id: "org.commcare.dalvik:id/btn_start"
+            id: "${SELECTOR:opp-detail-start}"
           timeout: 10000
       - takeScreenshot: "claim-opp-detail"
       # `retryTapIfNoChange: true` defends against tap-loss on btn_start.
@@ -401,7 +401,7 @@ appId: org.commcare.dalvik
       # retries). Applied to btn_resume + connect_learning_button +
       # both btn_start sites for parity.
       - tapOn:
-          id: "org.commcare.dalvik:id/btn_start"
+          id: "${SELECTOR:opp-detail-start}"
           retryTapIfNoChange: true
 # After Start, Connect fires POST /users/start_learn_app/ and downloads
 # the Learn CCZ ("Downloading Learn App" progress, Step N of 14, atlas
@@ -451,7 +451,7 @@ appId: org.commcare.dalvik
 - runFlow:
     when:
       visible:
-        id: "org.commcare.dalvik:id/connect_delivery_button"
+        id: "${SELECTOR:deliver-download-button}"
     commands:
       - takeScreenshot: "claim-already-learn-complete-deliver-gate"
 #
@@ -480,11 +480,11 @@ appId: org.commcare.dalvik
 - runFlow:
     when:
       notVisible:
-        id: "org.commcare.dalvik:id/connect_delivery_button"
+        id: "${SELECTOR:deliver-download-button}"
     commands:
       - extendedWaitUntil:
           visible:
-            id: "org.commcare.dalvik:id/nsv_home_screen"
+            id: "${SELECTOR:learn-home-screen}"
           timeout: 180000
           optional: true
       # Wedge detector: still no Learn home (and not the deliver gate) →
@@ -493,12 +493,12 @@ appId: org.commcare.dalvik
       - runFlow:
           when:
             notVisible:
-              id: "org.commcare.dalvik:id/nsv_home_screen"
+              id: "${SELECTOR:learn-home-screen}"
           commands:
             - takeScreenshot: "claim-START-HANDOFF-WEDGED-issue629"
             # Fails loudly now that the diagnostic is captured — the
             # screenshot name + this assert pinpoint the inert btn_start
             # handoff (jjackson/ace#629), not a slow download.
             - assertVisible:
-                id: "org.commcare.dalvik:id/nsv_home_screen"
+                id: "${SELECTOR:learn-home-screen}"
 - takeScreenshot: "claim-opp-handoff-learn-home"

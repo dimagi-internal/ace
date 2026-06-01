@@ -56,6 +56,54 @@ describe('resolveSelectorsInYaml', () => {
       /selector map not found/,
     );
   });
+
+  // ── Value-position placeholders (#650) ────────────────────────────
+  // `"${SELECTOR:name}"` (inside quotes) resolves to just the bare value,
+  // leaving the author's `id:`/`text:` key intact — the form that is
+  // raw-YAML-valid beside `below:`/`childOf:` siblings.
+  it('resolves a VALUE-position placeholder to the bare quoted value', () => {
+    const yaml = `
+- tapOn:
+    id: "\${SELECTOR:form-nav-next}"
+`;
+    const r = resolveSelectorsInYaml(yaml, '2.62.0');
+    expect(r.unresolved).toEqual([]);
+    // bare value substituted inside the author's quotes — NOT a nested `id: "id: ..."`.
+    expect(r.yaml).toContain('id: "org.commcare.dalvik:id/nav_btn_next"');
+    expect(r.yaml).not.toContain('id: "id:');
+  });
+
+  it('keeps a VALUE-position placeholder valid + scoped beside below/childOf siblings', () => {
+    const yaml = `
+- tapOn:
+    id: "\${SELECTOR:form-nav-next}"
+    below:
+      text: \${OPP_NAME}
+    retryTapIfNoChange: true
+`;
+    const r = resolveSelectorsInYaml(yaml, '2.62.0');
+    expect(r.unresolved).toEqual([]);
+    expect(r.yaml).toContain('id: "org.commcare.dalvik:id/nav_btn_next"');
+    // siblings preserved verbatim (scoping intact after resolution)
+    expect(r.yaml).toContain('below:');
+    expect(r.yaml).toContain('text: ${OPP_NAME}');
+    expect(r.yaml).toContain('retryTapIfNoChange: true');
+  });
+
+  it('VALUE position carries the `unverified` flag like key position', () => {
+    const yaml = `- assertVisible:\n    text: "\${SELECTOR:form-submit}"\n`;
+    const r = resolveSelectorsInYaml(yaml, '2.62.0');
+    expect(r.unresolved).toEqual([]);
+    expect(r.unverified).toContain('form-submit');
+    expect(r.yaml).toContain('text: "Submit"');
+  });
+
+  it('VALUE position records unresolved + emits a quoted comment marker', () => {
+    const yaml = `- assertVisible:\n    id: "\${SELECTOR:does-not-exist}"\n`;
+    const r = resolveSelectorsInYaml(yaml, '2.62.0');
+    expect(r.unresolved).toEqual(['does-not-exist']);
+    expect(r.yaml).toContain('"# UNRESOLVED does-not-exist"');
+  });
 });
 
 describe('injectAceEnvVars', () => {
