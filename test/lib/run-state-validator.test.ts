@@ -23,6 +23,7 @@ import { describe, it, expect } from 'vitest';
 import {
   validateRunState,
   classifyPhaseWriteBack,
+  validateIterateState,
 } from '../../lib/run-state-validator.js';
 
 describe('validateRunState', () => {
@@ -321,5 +322,66 @@ describe('classifyPhaseWriteBack', () => {
     expect(
       classifyPhaseWriteBack({ phases: { p: { status: 'whatever' } } }, 'p'),
     ).toBe('malformed');
+  });
+});
+
+describe('validateIterateState', () => {
+  const minimal = {
+    opp: 'bednet-spot-check',
+    target_phases: [3, 6],
+    golden_run_id: '20260601-1252',
+    runner: 'web',
+    streak: 0,
+    required_streak: 5,
+    iterations: [],
+  };
+
+  it('accepts a minimal well-formed state', () => {
+    const r = validateIterateState(minimal);
+    expect(r.valid).toBe(true);
+    expect(r.errors).toEqual([]);
+  });
+
+  it('rejects a non-object', () => {
+    expect(validateIterateState('nope').valid).toBe(false);
+    expect(validateIterateState(42).valid).toBe(false);
+  });
+
+  it('requires opp, golden_run_id, runner', () => {
+    const r = validateIterateState({ ...minimal, opp: undefined });
+    expect(r.valid).toBe(false);
+    expect(r.errors.some((e) => e.path === 'opp')).toBe(true);
+  });
+
+  it('rejects an unknown runner', () => {
+    const r = validateIterateState({ ...minimal, runner: 'cloud' });
+    expect(r.valid).toBe(false);
+    expect(r.errors.some((e) => e.path === 'runner')).toBe(true);
+  });
+
+  it('rejects a negative or non-integer streak', () => {
+    expect(validateIterateState({ ...minimal, streak: -1 }).valid).toBe(false);
+    expect(validateIterateState({ ...minimal, streak: 2.5 }).valid).toBe(false);
+  });
+
+  it('requires target_phases to be a non-empty integer array', () => {
+    expect(validateIterateState({ ...minimal, target_phases: [] }).valid).toBe(false);
+    expect(validateIterateState({ ...minimal, target_phases: ['3'] }).valid).toBe(false);
+  });
+
+  it('validates each iteration entry shape', () => {
+    const r = validateIterateState({
+      ...minimal,
+      iterations: [
+        { run_id: '20260601-1300', verdict: 'clean', version_at_run: '0.13.502' },
+        { run_id: '20260601-1330', verdict: 'bogus' },
+      ],
+    });
+    expect(r.valid).toBe(false);
+    expect(r.errors.some((e) => e.path === 'iterations[1].verdict')).toBe(true);
+  });
+
+  it('treats null as valid (fresh, not-yet-written state)', () => {
+    expect(validateIterateState(null).valid).toBe(true);
   });
 });
