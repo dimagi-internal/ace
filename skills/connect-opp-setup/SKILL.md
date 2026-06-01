@@ -20,9 +20,19 @@ Create and fully configure a Connect managed opportunity in `ai-demo-space`
 | Phase 8 | current run's `phases.solicitation-management.products.selected_llo.org_slug` | awarded LLO (must have ACCEPTED ProgramApplication; see § Pre-flight) |
 | Phase 3 | `3-commcare/app-deploy_summary.md` | `hq_server`, `learn_app`/`deliver_app` IDs, HQ project space slug |
 
+## Phase folder anchor
+
+The connect-setup agent passes a `phaseFolderId` (the `4-connect` folder ID,
+anchored to the run folder per `agents/orchestrator-reference.md § Per-Phase
+Folder Lifecycle`). **Every `drive_create_file` write in this skill MUST set
+`parentFolderId = phaseFolderId`** — `drive_create_file`'s `parentFolderId` is
+required and must be a folder ID, never a path string. Writing by path-string
+alone makes the artifact land outside `4-connect` and fail
+`verify_phase_artifacts(phase='connect')` (jjackson/ace#635).
+
 ## Products
 
-- `4-connect/connect-opp-setup.md` — opp UUID, verification flags, payment units, ACE test-user invite URL, labs_int_id (when recoverable)
+- `4-connect/connect-opp-setup.md` (written with `parentFolderId = phaseFolderId`) — opp UUID, verification flags, payment units, ACE test-user invite URL, labs_int_id (when recoverable)
 - `run_state.yaml.phases.connect-setup.products.connect` — single atomic block with `program` (copied from `opp.yaml.connect.program` for run self-containment), `opportunity`, `ace_test_user` sub-keys. Read by `synthetic-data-generate` (`opportunity.labs_int_id`), Phase 6 mobile recipes, and other skills within the same run. Per-run only — no other run reads it.
 
 ## Process
@@ -486,7 +496,9 @@ Create and fully configure a Connect managed opportunity in `ai-demo-space`
    already catches the most common failure modes (rotated key,
    archived domain, CCHQ outage) at near-zero cost.
 
-8. **Write config summary** to `ACE/<opp-name>/runs/<run-id>/4-connect/connect-opp-setup.md`:
+8. **Write config summary** via `drive_create_file` with
+   `parentFolderId = phaseFolderId` (the `4-connect` folder; surfaced at
+   `ACE/<opp-name>/runs/<run-id>/4-connect/connect-opp-setup.md`):
    - Opportunity ID (UUID) and URL
      (`<CONNECT_BASE_URL>/a/<org>/opportunity/<uuid>/`)
    - All configuration details (dates, total_budget, target LLO org)
@@ -626,7 +638,7 @@ The PDD's `archetype:` field shapes verification + payment unit setup:
   on the same opportunity, depending on the PDD's stage-overlap pattern).
 
 ## MCP Tools Used
-- Google Drive: `drive_read_file`, `drive_create_file`, `update_yaml_file`
+- Google Drive: `drive_read_file`, `drive_create_file` (always with `parentFolderId = phaseFolderId` — the `4-connect` folder ID, never a path string), `update_yaml_file`
 - Connect-Labs (`ace-connect-labs`):
   - `labs_context` — Step 9 labs-int-id lookup (post-create, idempotent re-call ok)
 - Connect (`ace-connect` MCP, 0.10.47+):

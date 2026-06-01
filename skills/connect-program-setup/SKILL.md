@@ -17,9 +17,19 @@ Create or select a Connect program for this opportunity.
 | Phase 1 | `1-design/idea-to-pdd.md` | archetype-aware program naming + domain match |
 | Connect MCP | `connect_list_programs({organization_slug})` | reuse-vs-create decision |
 
+## Phase folder anchor
+
+The connect-setup agent passes a `phaseFolderId` (the `4-connect` folder ID,
+anchored to the run folder per `agents/orchestrator-reference.md § Per-Phase
+Folder Lifecycle`). **Every `drive_create_file` write in this skill MUST set
+`parentFolderId = phaseFolderId`** — `drive_create_file`'s `parentFolderId` is
+required and must be a folder ID, never a path string. Writing by path-string
+alone makes the artifact land outside `4-connect` and fail
+`verify_phase_artifacts(phase='connect')` (jjackson/ace#635).
+
 ## Products
 
-- `4-connect/connect-program-setup.md` — program-id, decision rationale (reuse / create), admin program URL
+- `4-connect/connect-program-setup.md` (written with `parentFolderId = phaseFolderId`) — program-id, decision rationale (reuse / create), admin program URL
 - `opp.yaml.connect.program.{id, url}` — written on first create (and refreshed on reuse with verified live values). This is the single durable cross-run reference for the Connect program; every subsequent run of this opp reads it to skip program-create.
 
 ## Process
@@ -93,7 +103,9 @@ Create or select a Connect program for this opportunity.
    only *active* managed opps (the real fix, jjackson/ace#588), this
    headroom step can be relaxed.
 
-5. **Write program details** to `ACE/<opp-name>/runs/<run-id>/4-connect/connect-program-setup.md`:
+5. **Write program details** via `drive_create_file` with
+   `parentFolderId = phaseFolderId` (the `4-connect` folder; surfaced at
+   `ACE/<opp-name>/runs/<run-id>/4-connect/connect-program-setup.md`):
    - Program ID (UUID)
    - Program name
    - Archetype declared at program creation (if new)
@@ -126,7 +138,7 @@ Create or select a Connect program for this opportunity.
    corrected).
 
 ## MCP Tools Used
-- Google Drive: `drive_read_file`, `drive_create_file`, `update_yaml_file` (write `opp.yaml.connect.program` block, `merge: 'shallow'`)
+- Google Drive: `drive_read_file`, `drive_create_file` (always with `parentFolderId = phaseFolderId` — the `4-connect` folder ID, never a path string), `update_yaml_file` (write `opp.yaml.connect.program` block, `merge: 'shallow'`)
 - Connect (`ace-connect` MCP, 0.10.47+):
   - `connect_list_programs` — discovery
   - `connect_list_delivery_types` — resolve human name → slug/int FK if needed
