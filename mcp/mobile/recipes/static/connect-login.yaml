@@ -1,12 +1,19 @@
 # Sign in an already-registered PersonalID user (CommCare 2.62.0+ integrated
-# Connect flow). Resilient to three starting states:
+# Connect flow). Resilient to four starting states:
 #
 #   1. First-start (fresh CommCare install, no CCZ chosen) — splash shows
 #      `str_setup_message` AND the `connect_login_button` ("GO TO CONNECT
 #      MENU"). Tap it directly; no nav drawer needed.
 #   2. Post-install signed-out — nav drawer with "Sign In / Register"
 #      button. Open drawer, tap sign-in.
-#   3. Already signed in — the Connect home is visible after either path
+#   3. Signed-out-but-registered re-login (`screen_login_main`) — a warm
+#      launch after the PersonalID session has dropped/locked: welcome_msg
+#      "Welcome <user>!", `connect_login_button` ("GO TO CONNECT MENU")
+#      and `login_button` ("LOGIN WITH PERSONALID"), but NO
+#      `str_setup_message`. Tap `connect_login_button` → OS PIN unlock →
+#      jobs list. Live-captured + verified 2026-06-01 (jjackson/ace#592
+#      item 3). The earlier hard wait on `str_setup_message` aborted here.
+#   4. Already signed in — the Connect home is visible after either path
 #      (anchored on `connect_fragment_jobs_list` id, which is present
 #      whether or not the user has fresh invites — "New Opportunities" is
 #      a section header that only renders pre-claim, so id is the
@@ -33,13 +40,41 @@ appId: org.commcare.dalvik
     appId: org.commcare.dalvik
     clearState: false
 
-- extendedWaitUntil:
-    visible:
-      id: "org.commcare.dalvik:id/str_setup_message"
-    timeout: 30000
+# Block until an actionable entry surface renders, WITHOUT hard-asserting
+# any single one. A warm launch lands on ONE of:
+#   - first-start splash         → str_setup_message + connect_login_button
+#   - signed-out-but-registered  → screen_login_main + welcome_msg
+#                                  ("Welcome <user>!") + connect_login_button
+#                                  ("GO TO CONNECT MENU") + login_button
+#                                  ("LOGIN WITH PERSONALID")
+#   - already signed in          → connect_fragment_jobs_list straight away
+#
+# The signed-out-but-registered surface (screen_login_main) is
+# jjackson/ace#592 item 3 — live-captured 2026-06-01. The prior hard
+# `extendedWaitUntil str_setup_message` aborted the whole recipe here
+# because that surface has NO str_setup_message. Fix: if not already on
+# the jobs list, wait for `connect_login_button` — which is present on
+# BOTH surfaces where we must tap it (first-start AND re-login) — with
+# `optional: true` so a slow/edge surface falls through to the
+# conditional branches instead of hard-failing. The post-install
+# signed-out (nav-drawer) surface has neither; it burns the optional
+# timeout then branch (b) handles it on str_setup_message.
+- runFlow:
+    when:
+      notVisible:
+        id: "org.commcare.dalvik:id/connect_fragment_jobs_list"
+    commands:
+      - extendedWaitUntil:
+          visible:
+            id: "org.commcare.dalvik:id/connect_login_button"
+          timeout: 30000
+          optional: true
 
-# Branch (a) first-start: tap "GO TO CONNECT MENU" directly. No nav drawer
-# present — that path doesn't exist on first-start.
+# Branch (a) first-start OR signed-out-but-registered re-login (#592 item
+# 3): both surfaces expose `connect_login_button` ("GO TO CONNECT MENU").
+# Tap it directly — no nav drawer on either. On re-login this routes
+# straight to the OS PIN unlock (lockPassword) handled below; verified
+# live 2026-06-01 (connect_login_button → lockPassword → jobs list).
 - runFlow:
     when:
       visible:

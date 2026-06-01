@@ -114,12 +114,19 @@ appId: org.commcare.dalvik
 # Both branches scope `below: text: ${OPP_NAME}` so we always act on
 # the target card, not a sibling.
 #
-# Substring-vs-exact: Maestro `text:` is substring by default. Run-id
-# suffixes ("(run 20260515-0536)") make each run's title unique; an
-# OPP_NAME that includes the run-id will only match that run's card.
-# Older title formats without run-ids (legacy fixture data) will
-# collide; the orchestrator MUST pass an OPP_NAME that includes the
-# unique run-id for this matcher to be safe. Phase 4
+# Whole-label match, NOT substring: Maestro's `text:` matches the
+# ENTIRE element label as an (unanchored-looking but) full-string regex
+# — a partial title does NOT match. Verified live 2026-06-01: passing
+# the bare program name "Malaria RDT Performance Sampling" matched
+# nothing and scrollUntilVisible timed out scrolling a list where the
+# tile was plainly visible; passing the FULL tile label
+# "Malaria RDT Performance Sampling — malaria-rdt (run 20260531-0739)"
+# matched on the first try. So OPP_NAME MUST be the exact, complete tile
+# title — read verbatim from
+# `run_state.yaml.phases.connect-setup.products.connect.opportunity.name`
+# (see the header note), never a truncation or a slug-reassembly. The
+# run-id suffix it carries also makes each run's title unique, so the
+# whole-label match lands on exactly this run's card. Phase 4
 # `connect-opp-setup` already produces names like
 # "Turmeric Market Survey — turmeric (run 20260515-0536)".
 
