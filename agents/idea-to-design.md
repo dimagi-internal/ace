@@ -46,6 +46,29 @@ this subagent's steps have these read-redundancy rules:
 
 ## Workflow
 
+### Step 0: Phase folder setup (do this FIRST)
+
+Resolve-or-create the Phase-1 artifact subfolder before any producer
+skill runs:
+`drive_create_folder({name: '1-design', parentFolderId: <run-folder id>, findOrCreate: true})`
+— idempotent, returns the existing `1-design/` id on re-runs. **Every
+Phase-1 artifact** — the PDD, the work order, their QA + eval verdicts,
+and the phase summary — writes into THIS `1-design/` folder id. Pass it
+to the producer skills as their artifact parent; never hand them the
+run-folder id as the write parent.
+
+The only Phase-1 writes that stay at the **run-folder root** (NOT in
+`1-design/`) are the run-level files `decisions.yaml` + its rendered
+`decisions.gdoc`. (`inputs-manifest.yaml`, `run_state.yaml`, and
+`README.md` are the orchestrator's, also at the root.)
+
+**Why:** a producer that passes the run-folder id straight to
+`drive_create_file` / `docs_copy_template` lands every artifact flat at
+the run root, which fails the Phase boundary's `verify_phase_artifacts`
+(it walks `1-design/`). On bednet-spot-check/20260601-0651 the
+orchestrator had to relocate all 7 Phase-1 artifacts post-hoc. See
+jjackson/ace#623.
+
 ### Step 1: Idea to PDD
 Invoke the `idea-to-pdd` skill.
 - Inputs (issue as ONE parallel `drive_read_file` block):
