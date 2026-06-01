@@ -1,9 +1,12 @@
 # Selector-map calibration report — connect-2.63.0 — 2026-06-01
 
-**Mode:** Snapshot (read-only) — the only live device available (`emulator-5580`)
-was a **shared, in-flight** device (signed-in test user, mid-Learn on another
-run's opp). Per `selector-map-calibrate`'s cardinal rule, the destructive full
-state-walk was NOT run here; only read-only captures + re-confirmation.
+**Mode:** Snapshot (read-only). `emulator-5580` was running warm (signed-in test
+user, mid-Learn) — a leftover/human session I chose not to cold-boot over
+without a heads-up. NOTE: the full walk is NOT blocked by this — the standard
+fix is `mobile_ensure_avd_running` (cold-boot wipes + re-registers a fresh user;
+states 1–5 follow) plus a Learn-incomplete opp for states 6–10. The device is
+always fresh; only the opp's server-side Learn-completion needs to be fresh
+(#568). I ran snapshot mode here purely as operator courtesy to the warm AVD.
 
 **Device:** `emulator-5580`, CommCare `org.commcare.dalvik` **2.63.0** (confirmed
 via `dumpsys package … versionName`).
@@ -71,13 +74,14 @@ states the 2-surface snapshot never visited. **None proposed for removal.**
 
 ## Residual — the immediate next action
 
-The convergent fix (clear the 10-row backlog, finish #650's recipe migration,
-calibrate #666's camera surface, confirm #618's Learn-home gesture) requires the
-**destructive full state-walk on a throwaway device** — a dedicated/secondary
-AVD (`ACE_Pixel_API_34_PS`) with a fresh user, or a throwaway `/ace:run` opp.
-It could not be run on the shared in-flight `emulator-5580` without consuming
-another run's one-way preconditions.
+The convergent fix (clear the 14-row backlog, calibrate #666's camera surface,
+confirm #618's Learn-home gesture) is the full state-walk: a standard
+`mobile_ensure_avd_running` cold-boot (fresh device + re-registered user → states
+1–5, including #666's registration photo surface) plus a **Learn-incomplete opp**
+for states 6–10 (a fresh `/ace:run`, since Learn-completion is one-way per
+(phone, opp) server-side and doesn't reset on device wipe — #568). No special
+"throwaway device" is needed; the device is always fresh by design.
 
-**Next action:** `/ace:step selector-map-calibrate` on a throwaway device (full
-walk). The framework, the doctor pointer, and this report now make that a
-single deterministic session instead of archaeology.
+**Next action:** `/ace:step selector-map-calibrate` — cold-boot a fresh AVD and
+walk it (point states 6–10 at a Learn-incomplete opp). The framework, the doctor
+pointer, and this report make that a single deterministic session.
