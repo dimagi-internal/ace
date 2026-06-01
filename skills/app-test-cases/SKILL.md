@@ -291,6 +291,8 @@ The static palette lives at `mcp/mobile/recipes/static/`:
 - `learn-tap-module.yaml` — MenuActivity row tap (generic — handles ANY level of the 3-level suite tree)
 - `form-advance.yaml` — `nav_btn_next` ImageButton tap (NOT text-match "Next" — see atlas §7)
 - `form-submit.yaml` — branched: explicit Submit button if visible, otherwise auto-finalize via `nav_btn_next`
+- `content-form-finish.yaml` — **the canonical Learn CONTENT-form finalize.** A bounded multi-screen advance loop that taps `nav_btn_next` until the form auto-finalizes back to StandardHomeActivity, exits on the `learn-home-start-tile` home anchor (NOT the suite menu), handles the score-gated two-screen FINISH, and asserts the home grid post-finalize. Use this for every label-only content/lesson form — NOT for required-input quizzes (those still need per-field answer-taps + `form-advance` + `form-submit`). Requires `SCREENSHOT_NAME`. See § Multi-screen content forms below.
+- `learn-suite-reentry.yaml` — **the between-modules suite re-entry.** Tap the home Start tile → wait `screen_suite_menu_list`. A Learn form finalizes to StandardHomeActivity (the home grid), NOT to the suite menu, so this MUST run after each module's form-finalize and before the next module's `learn-tap-module`. Same surface contract as `learn-launch.yaml` (the first, post-claim suite entry); split out under a distinct name to document the between-modules intent at the call site. See § Suite re-entry between modules below.
 - `connect-resume-opp.yaml` — opp-list → scroll to the target opp's In-Progress card → tap Resume → lands on the certificate/opp-detail surface (atlas § 8) that `deliver-launch.yaml` expects. Pre-state: Connect opp-list visible, opp already Learn-in-progress or complete. Warm-session only (journey-learn leg completed Learn in this dispatch). Requires `OPP_NAME` env var (same value as `connect-claim-opp.yaml`).
 - `deliver-launch.yaml` — post-Learn-complete certificate (atlas § 8) → tap VIEW OPPORTUNITY DETAILS → Download Delivery gate (§ 9) → tap DOWNLOAD → Deliver-mode StandardHomeActivity (§ 10) anchored on `id/viewJobCard`. All surfaces ID-anchored (verified 2026-05-26 against bednet J2 dumps; no coordinate fallbacks). Chain after `connect-resume-opp.yaml` in the Deliver smoke recipe.
 
@@ -330,19 +332,83 @@ For the canonical Learn-app smoke recipe template:
 
 Read live module + form names from Nova's `get_form` per the "Use live labels" section below — the pre-claim teaser at `tv_learn_modules_list` lists module names verbatim, but form names inside each module are only visible via Nova. `FORM_NAME` MUST be the form's live `label` from `get_form` (verbatim), not the PDD-brief name.
 
-**Single-screen content forms finalize with ONE step — do NOT chain
-`form-advance.yaml` + `form-submit.yaml`.** A Learn content/lesson form that
-is a single screen (e.g. an intro form with only a `label` field and no
-questions) finalizes with a single `form-submit.yaml` (which auto-finalizes
-via `nav_btn_next`). Chaining `form-advance` THEN `form-submit` over-steps a
-one-screen form — the advance consumes the only screen, then the submit has
-nothing left to finalize (or double-advances past the form). Reserve the
-`form-advance` → `form-submit` pair for genuinely multi-screen forms (one
-`form-advance` per intermediate screen, then `form-submit` on the last).
-Quiz forms are unaffected — they still need the per-question answer-tap +
-`form-advance` per the MANDATORY rule below. Surfaced live on
-bednet-spot-check run 20260528-0556 Phase 6, where `journey-learn`
-over-stepped the single-screen "Introduction" content form.
+##### Multi-screen content forms — use `content-form-finish.yaml`
+
+**Learn CONTENT forms are paginated, multi-screen, and label-only — walk
+each one with `content-form-finish.yaml`, NOT a single `form-submit.yaml`.**
+A Learn content/lesson form (e.g. "Program Orientation", "Identifying RDTs",
+"Photo Protocol") is a multi-screen form: the first screen shows BOTH
+`nav_btn_prev` and `nav_btn_next` and the progress bar is not full. A single
+`form-submit.yaml` (one `nav_btn_next` tap) advances exactly ONE page and
+then looks for FINISH — so it **stalls on page 2 of the first content form**,
+and the next `learn-tap-module` hard-fails asserting `screen_suite_menu_list`.
+This was the malaria-rdt/20260601-0929 Phase 6 Learn-walk blocker
+(jjackson/ace#646).
+
+`content-form-finish.yaml` is the class-level fix: a bounded multi-screen
+advance loop that taps `nav_btn_next` until the form auto-finalizes, then
+**exits on the StandardHomeActivity home anchor (`learn-home-start-tile`),
+NOT on the suite menu.** Learn forms finalize back to the home grid (Start /
+View Job Status / Sync / Log out, "1 form sent to server!"), not to
+`screen_suite_menu_list` — so an advance loop keyed on the suite menu as its
+exit never fires and spins past finalize into a maestro-process timeout
+(observed live). The recipe also handles the score-gated two-screen FINISH
+(#569) and asserts the home grid post-finalize so any miss fails loud with a
+named anchor.
+
+Call it once per content form (pass `SCREENSHOT_NAME`):
+
+```yaml
+- runFlow:
+    file: learn-tap-module.yaml
+    env:
+      MODULE_NAME: "1. Program Orientation"
+      FORM_NAME: "Program Orientation"
+- runFlow:
+    file: content-form-finish.yaml
+    env:
+      SCREENSHOT_NAME: "journey-learn-m0-orientation-finished"
+# device is now back on StandardHomeActivity home — re-enter the suite
+# before the next module (see § Suite re-entry between modules).
+- runFlow:
+    file: learn-suite-reentry.yaml
+```
+
+Do NOT hand-chain `form-advance.yaml` + `form-submit.yaml` for content
+forms — `content-form-finish.yaml` subsumes both the single-screen and the
+multi-screen cases (the bounded loop no-ops its remaining advances once the
+form auto-finalizes on its only/last screen). Reserve explicit
+`form-advance` → answer-tap → `form-submit` sequencing for QUIZ /
+assessment forms with required inputs (per the MANDATORY answer-tap rule
+below) — `content-form-finish.yaml` deliberately does NOT select answers and
+would stall on `warning_root` ("Sorry, this response is required!") if
+pointed at a required-input quiz. Historical context: the single-screen
+over-step on bednet-spot-check run 20260528-0556 Phase 6 (a `form-advance` +
+`form-submit` over a one-screen "Introduction" form) is also subsumed —
+`content-form-finish.yaml` handles one-screen and N-screen content forms
+under one contract.
+
+##### Suite re-entry between modules — use `learn-suite-reentry.yaml`
+
+**A Learn form finalizes to StandardHomeActivity (the home grid), NOT to the
+suite menu — so you MUST re-enter the suite between every module.** After a
+module's form finalizes, the device is on the home tiles (Start / View Job
+Status / Sync / Log out), not on `screen_suite_menu_list`. The next
+`learn-tap-module` asserts `screen_suite_menu_list` as its pre-state and
+hard-fails if called directly from the home grid (jjackson/ace#646 Gap 2).
+
+Run `learn-suite-reentry.yaml` (tap Start → wait `screen_suite_menu_list`)
+after each module's form-finalize and before the next module's
+`learn-tap-module`. The per-module loop is therefore:
+
+```
+learn-tap-module → content-form-finish (or quiz answer-taps + form-submit)
+                 → learn-suite-reentry → (next module's learn-tap-module)
+```
+
+The FIRST suite entry (post-claim) still uses `learn-launch.yaml`; every
+subsequent re-entry uses `learn-suite-reentry.yaml`. They share the same
+home-grid → suite-menu contract.
 
 **Use the atlas (`docs/mobile-atlas/connect-2.62.0.md`) to verify each
 transition you author.** Each section of the atlas documents one
@@ -732,3 +798,4 @@ already maps the producer to `3-commcare/` (see
 | 2026-05-31 | **`journey-` prefix on every journey id.** Amended the convention so the `id` now carries the literal `journey-` prefix (`journey-learn-pass`, `journey-learn-retry`, `journey-deliver-submit`, `journey-deliver-alt-answer`, `journey-deliver-multiple`, `journey-deliver-locked`) — `id = journey-<app>-<intent>`, always starting with `journey-` — so the id is self-describing wherever it is listed. Recipe *filenames* are unchanged (still `journey-<app>[-<slug>].yaml`; smokes still `journey-learn.yaml` / `journey-deliver.yaml`); the doc now states the filename-vs-id distinction explicitly. Producer + downstream readers (`app-screenshot-capture`, `app-ux-eval`, `app-test-cases-template.yaml`, `ACE-Test-001` fixture) updated. (follow-up to PR #597) | ACE team |
 | 2026-05-31 | **Intent-based journey-id slugs (replace answer-value names).** Renamed the canonical intent slugs from answer-value names to test-intent names — the learn smoke is now `journey-learn-pass`, learn retry `journey-learn-retry`, the deliver smoke `journey-deliver-submit`, the alternate-answer journey `journey-deliver-alt-answer`, the multi-visit journey `journey-deliver-multiple`, and the gate-locked journey `journey-deliver-locked`. The old slugs named a raw domain answer value (e.g. a literal `yes`/`no` response), which is meaningless unless you already know the question and doesn't generalize across opps; the intent names describe the behavior being verified, so they read clearly for any opportunity (bednet, vaccination, anything). The `journey-` prefix rule, the `journey-<app>-<intent>` shape, and the filename-vs-id nuance (PR #603) are all unchanged. Example/canonical slug rename only — no lazy-generation / deep-recipe-timing changes. Updated every example/snippet here plus downstream readers (`app-screenshot-capture`, `app-ux-eval`), `app-test-cases-template.yaml`, and the `ACE-Test-001` fixture. | ACE team |
 | 2026-05-31 | **Lazy deep-recipe generation (closes #605).** Phase 3 now authors Maestro recipe files ONLY for the two `is_smoke: true` journeys; every non-smoke (deep) journey stays in the `app-test-cases.yaml` catalog with `recipe: deferred` (the literal string, not a path). Phase 6 (shallow, in `/ace:run`) only ever walks the smokes, so pre-authoring deep recipes was wasted work + clutter when `/ace:qa-deep` isn't run. `/ace:qa-deep` now generates the deferred deep recipes on demand using the SAME composition rules here (static palette + live `get_form` labels + selector-resolution gate) — safe because Nova `app_id` + `get_form` still return the as-built structure within a run. Step 3 scoped to "smoke journeys"; Step 5 coverage invariant changed from "every journey has a recipe file" to "exactly the smoke recipes exist as files; deep journeys carry `recipe: deferred`" (two-app smoke invariant + selector-resolution gate for the smokes KEPT). Updated `commands/qa-deep.md`, `app-screenshot-capture`, `app-test-cases-template.yaml`, and the `ACE-Test-001` fixture. | ACE team |
+| 2026-06-01 | **Learn content forms are multi-screen + finalize to StandardHomeActivity (closes #646).** Two new static palette pieces: `content-form-finish.yaml` (bounded multi-screen advance loop that taps `nav_btn_next` until a Learn CONTENT form auto-finalizes, exits on the `learn-home-start-tile` home anchor — NOT the suite menu — handles the score-gated two-screen FINISH, and asserts the home grid post-finalize) and `learn-suite-reentry.yaml` (the explicit "tap Start → wait `screen_suite_menu_list`" re-entry that MUST run between every module, because a Learn form finalizes to the home grid not the suite menu). Added §§ "Multi-screen content forms" + "Suite re-entry between modules"; the prior single-screen-only content-form note is subsumed. Closes the malaria-rdt/20260601-0929 Phase 6 Learn-walk blocker (recipe walked each content form as single-screen and called the next `learn-tap-module` directly, stalling on page 2 then hard-failing the suite-menu assert). Validated structurally (`mobile_validate_recipe` + selector-resolution gate against connect-2.63.0); full live re-walk lands on the next fresh-run Phase 6 (this run consumed its one-way Learn state). | ACE team |

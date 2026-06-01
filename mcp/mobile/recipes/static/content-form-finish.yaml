@@ -1,0 +1,269 @@
+# Walk a Learn CONTENT form (a paginated, label-only multi-screen
+# lesson) from its first screen all the way to finalize, then confirm
+# the device has returned to the Learn-app StandardHomeActivity home.
+#
+# WHY THIS EXISTS (jjackson/ace#646)
+# ----------------------------------
+# Learn content forms are NOT single-screen. Each lesson form (e.g.
+# "Program Orientation", "Identifying RDTs", "Photo Protocol") is a
+# multi-screen, label-only form: the first screen shows BOTH
+# `nav_btn_prev` and `nav_btn_next`, and the progress bar is not yet
+# full. A single `nav_btn_next` tap (the old `form-submit.yaml` path)
+# advances exactly ONE page and then looks for FINISH — so it STALLS on
+# page 2 of the first content form. The next `learn-tap-module` then
+# asserts `screen_suite_menu_list` and hard-fails.
+#
+# Equally important: when a Learn form IS advanced to its last screen it
+# auto-finalizes (submits + syncs) and returns to **StandardHomeActivity**
+# (the CommCare app home: Start / View Job Status / Sync / Log out tiles,
+# "1 form sent to server!" subtext) — NOT to `screen_suite_menu_list`.
+# So a generic "advance until done" loop MUST exit on the home anchor
+# (`learn-home-start-tile`), not on the suite menu (an exit keyed on the
+# suite list never fires post-finalize → the loop spins past finalize and
+# times out the maestro process; observed live malaria-rdt/20260601-0929).
+#
+# CONTRACT
+# --------
+# Pre-state: FormEntryActivity, first screen of a Learn CONTENT form
+#   (label-only; no required inputs). `nav_btn_next` is visible.
+# Post-state: StandardHomeActivity home (`learn-home-start-tile` /
+#   text "Start" visible), form submitted + synced.
+#
+# SCOPE: content/lesson forms ONLY. QUIZ / assessment forms have
+#   required inputs and per-question answer-taps — those are walked
+#   explicitly by the journey recipe (per-field `tapOn` + `form-advance`
+#   + `form-submit`), NOT by this generic label-only advance loop. Using
+#   this recipe on a required-input quiz would stall on `warning_root`
+#   ("Sorry, this response is required!") because it never selects an
+#   answer.
+#
+# WHY UNROLLED, NOT `repeat:` — Maestro `repeat` is NOT in the ACE
+# recipe-validator step allowlist (`mcp/mobile/backends/maestro.ts
+# ALLOWED_STEP_KEYS`), and the pattern across this palette is a bounded,
+# unrolled sequence of guarded `runFlow.when` advance steps. Each advance
+# is doubly guarded: OUTER `notVisible: learn-home-start-tile` ("still
+# inside the form — home not reached yet") and INNER `visible:
+# form-nav-next` ("a Next button is actually present on this screen").
+# Once finalize lands us on home the outer guard is false and every
+# remaining unrolled advance no-ops; on the score-gated FINISH result
+# screen (which shows `nav_btn_finish`, NOT `nav_btn_next`) the inner
+# guard is false so the advance no-ops and the FINISH handler below fires.
+# 12 advance attempts is a generous bound for a content lesson (the live
+# malaria-rdt content forms were 2-4 screens; bednet content forms 1-3).
+# A content form with >12 screens would fall through to the final assert
+# and fail loud with a named anchor rather than spin to a process timeout.
+#
+# Parameters:
+#   ${SCREENSHOT_NAME} — base label for the post-finalize screenshot
+#                        (e.g. "journey-learn-m0-orientation-finished").
+appId: org.commcare.dalvik
+---
+# Bounded multi-screen advance. Each step taps `nav_btn_next` ONLY if we
+# are still inside the form (home Start tile NOT visible) AND a Next
+# button is present on this screen. The first tap that lands us on
+# StandardHomeActivity (last-screen auto-finalize) flips
+# `learn-home-start-tile` visible, and every subsequent guarded advance
+# no-ops.
+- runFlow:
+    when:
+      notVisible:
+        ${SELECTOR:learn-home-start-tile}
+    commands:
+      - runFlow:
+          when:
+            visible:
+              ${SELECTOR:form-nav-next}
+          commands:
+            - tapOn:
+                ${SELECTOR:form-nav-next}
+            - waitForAnimationToEnd:
+                timeout: 4000
+- runFlow:
+    when:
+      notVisible:
+        ${SELECTOR:learn-home-start-tile}
+    commands:
+      - runFlow:
+          when:
+            visible:
+              ${SELECTOR:form-nav-next}
+          commands:
+            - tapOn:
+                ${SELECTOR:form-nav-next}
+            - waitForAnimationToEnd:
+                timeout: 4000
+- runFlow:
+    when:
+      notVisible:
+        ${SELECTOR:learn-home-start-tile}
+    commands:
+      - runFlow:
+          when:
+            visible:
+              ${SELECTOR:form-nav-next}
+          commands:
+            - tapOn:
+                ${SELECTOR:form-nav-next}
+            - waitForAnimationToEnd:
+                timeout: 4000
+- runFlow:
+    when:
+      notVisible:
+        ${SELECTOR:learn-home-start-tile}
+    commands:
+      - runFlow:
+          when:
+            visible:
+              ${SELECTOR:form-nav-next}
+          commands:
+            - tapOn:
+                ${SELECTOR:form-nav-next}
+            - waitForAnimationToEnd:
+                timeout: 4000
+- runFlow:
+    when:
+      notVisible:
+        ${SELECTOR:learn-home-start-tile}
+    commands:
+      - runFlow:
+          when:
+            visible:
+              ${SELECTOR:form-nav-next}
+          commands:
+            - tapOn:
+                ${SELECTOR:form-nav-next}
+            - waitForAnimationToEnd:
+                timeout: 4000
+- runFlow:
+    when:
+      notVisible:
+        ${SELECTOR:learn-home-start-tile}
+    commands:
+      - runFlow:
+          when:
+            visible:
+              ${SELECTOR:form-nav-next}
+          commands:
+            - tapOn:
+                ${SELECTOR:form-nav-next}
+            - waitForAnimationToEnd:
+                timeout: 4000
+- runFlow:
+    when:
+      notVisible:
+        ${SELECTOR:learn-home-start-tile}
+    commands:
+      - runFlow:
+          when:
+            visible:
+              ${SELECTOR:form-nav-next}
+          commands:
+            - tapOn:
+                ${SELECTOR:form-nav-next}
+            - waitForAnimationToEnd:
+                timeout: 4000
+- runFlow:
+    when:
+      notVisible:
+        ${SELECTOR:learn-home-start-tile}
+    commands:
+      - runFlow:
+          when:
+            visible:
+              ${SELECTOR:form-nav-next}
+          commands:
+            - tapOn:
+                ${SELECTOR:form-nav-next}
+            - waitForAnimationToEnd:
+                timeout: 4000
+- runFlow:
+    when:
+      notVisible:
+        ${SELECTOR:learn-home-start-tile}
+    commands:
+      - runFlow:
+          when:
+            visible:
+              ${SELECTOR:form-nav-next}
+          commands:
+            - tapOn:
+                ${SELECTOR:form-nav-next}
+            - waitForAnimationToEnd:
+                timeout: 4000
+- runFlow:
+    when:
+      notVisible:
+        ${SELECTOR:learn-home-start-tile}
+    commands:
+      - runFlow:
+          when:
+            visible:
+              ${SELECTOR:form-nav-next}
+          commands:
+            - tapOn:
+                ${SELECTOR:form-nav-next}
+            - waitForAnimationToEnd:
+                timeout: 4000
+- runFlow:
+    when:
+      notVisible:
+        ${SELECTOR:learn-home-start-tile}
+    commands:
+      - runFlow:
+          when:
+            visible:
+              ${SELECTOR:form-nav-next}
+          commands:
+            - tapOn:
+                ${SELECTOR:form-nav-next}
+            - waitForAnimationToEnd:
+                timeout: 4000
+- runFlow:
+    when:
+      notVisible:
+        ${SELECTOR:learn-home-start-tile}
+    commands:
+      - runFlow:
+          when:
+            visible:
+              ${SELECTOR:form-nav-next}
+          commands:
+            - tapOn:
+                ${SELECTOR:form-nav-next}
+            - waitForAnimationToEnd:
+                timeout: 4000
+
+# Score-gated finalize (the two-screen FINISH path, #569). If the form
+# is a score-gated content form whose last screen is a result-label
+# screen (FINISH, not auto-finalize), the advance loop above advanced to
+# the result screen but did not submit — `nav_btn_finish` is now visible
+# and the home Start tile is NOT. Press FINISH to submit + sync, then
+# wait for the "form sent to server" toast. No-op for plain content
+# forms that already auto-finalized to home (the guard's `notVisible
+# learn-home-start-tile` is false once home is reached).
+- runFlow:
+    when:
+      visible:
+        ${SELECTOR:form-nav-finish}
+      notVisible:
+        ${SELECTOR:learn-home-start-tile}
+    commands:
+      - tapOn:
+          ${SELECTOR:form-nav-finish}
+      - extendedWaitUntil:
+          visible:
+            text: ".*form.*sent to server.*"
+          timeout: 15000
+
+- waitForAnimationToEnd:
+    timeout: 6000
+- takeScreenshot: "${SCREENSHOT_NAME}"
+
+# Verify the precondition for the NEXT module's suite re-entry: we are
+# back on StandardHomeActivity home. Fail LOUD with a named anchor if
+# the content form did not finalize within the bounded advance loop
+# (e.g. a required-input screen we mistook for a content form, or a
+# content form with more screens than the bound) — a precise miss beats
+# a silent maestro-process timeout (jjackson/ace#646).
+- assertVisible:
+    ${SELECTOR:learn-home-start-tile}

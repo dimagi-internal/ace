@@ -1,0 +1,52 @@
+# Re-enter the Learn-app suite menu from StandardHomeActivity between
+# modules. Tap the Start tile, wait for `screen_suite_menu_list`.
+#
+# WHY THIS EXISTS (jjackson/ace#646)
+# ----------------------------------
+# A Learn form (content OR quiz) finalizes back to **StandardHomeActivity**
+# (the CommCare app home: Start / View Job Status / Sync / Log out tiles,
+# "1 form sent to server!" subtext) — NOT to the suite menu list. So after
+# finishing one module's form, the device is on the home grid, NOT on
+# `screen_suite_menu_list`. The next `learn-tap-module` asserts
+# `screen_suite_menu_list is visible` as its pre-state and hard-fails if
+# called directly from the home grid.
+#
+# This recipe is the explicit "tap Start → wait suite menu" re-entry the
+# journey recipe MUST run between every module (after `content-form-finish`
+# / `form-submit` for module N, before `learn-tap-module` for module N+1).
+#
+# Identical surface contract to `learn-launch.yaml` (which is the FIRST
+# suite entry, post-claim). Split out as its own named primitive so the
+# journey template reads as a clean per-module loop:
+#   learn-tap-module → content-form-finish → learn-suite-reentry → (next)
+# rather than re-purposing the post-claim launch recipe mid-walk. Both
+# share the same pre/post state (home grid → suite menu), so either works;
+# the distinct name documents the between-modules intent at the call site.
+#
+# CONTRACT
+# --------
+# Pre-state: StandardHomeActivity home (`learn-home-start-tile` /
+#   text "Start" visible). This is the post-state of `content-form-finish`
+#   and of any Learn form finalize.
+# Post-state: MenuActivity showing `screen_suite_menu_list` (the suite
+#   root, with one tappable row per module).
+appId: org.commcare.dalvik
+---
+- extendedWaitUntil:
+    visible:
+      ${SELECTOR:learn-home-start-tile}
+    timeout: 30000
+- takeScreenshot: "learn-suite-reentry-home-tiles"
+
+# Tap the green Start tile. Maestro walks up from the `card_text`
+# TextView to the clickable `card` RelativeLayout.
+- tapOn:
+    ${SELECTOR:learn-home-start-tile}
+
+# Land back on the suite root menu so the next `learn-tap-module` can
+# drill the next module.
+- extendedWaitUntil:
+    visible:
+      id: "org.commcare.dalvik:id/screen_suite_menu_list"
+    timeout: 15000
+- takeScreenshot: "learn-suite-reentry-suite-root"

@@ -45,6 +45,8 @@ describe('static palette health — file inventory', () => {
       'learn-tap-module.yaml',
       'form-advance.yaml',
       'form-submit.yaml',
+      'content-form-finish.yaml',
+      'learn-suite-reentry.yaml',
       'deliver-launch.yaml',
       'connect-resume-opp.yaml',
     ];
