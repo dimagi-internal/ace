@@ -91,8 +91,11 @@ with the remote version from Step 1:
 ```bash
 NEW_VERSION=<version from step 1> && \
 cd ~/.claude/plugins/marketplaces/ace && \
+OLD_SHA="$(git rev-parse HEAD)" && \
 echo "PULLING: git pull origin main" && \
 git pull origin main 2>&1 && \
+if git diff --name-only "$OLD_SHA" HEAD | grep -qE '^mcp/'; then MCP_CHANGED=yes; else MCP_CHANGED=no; fi && \
+echo "MCP code changed in this update: $MCP_CHANGED" && \
 mkdir -p ~/.claude/plugins/cache/ace/ace/$NEW_VERSION && \
 rsync -a --delete \
   --exclude='node_modules' \
@@ -102,7 +105,7 @@ rsync -a --delete \
 cd ~/.claude/plugins/cache/ace/ace/$NEW_VERSION && \
 echo "INSTALLING: npm install (may take 30-60s)" && \
 npm install --silent 2>&1 | tail -10 && \
-cd ~/.claude/plugins/marketplaces/ace && python3 -c "
+cd ~/.claude/plugins/marketplaces/ace && MCP_CHANGED="$MCP_CHANGED" python3 -c "
 import json, subprocess, os
 from datetime import datetime, timezone
 
@@ -142,14 +145,16 @@ with open(f'{state_dir}/just-upgraded-from', 'w') as f:
 
 if cv == mv:
     print(f'VERIFIED: v{cv} installed and matches GitHub')
+    print(f'MCP_CHANGED: {os.environ.get(\"MCP_CHANGED\", \"unknown\")}')
 else:
     print(f'MISMATCH: installed v{cv} but GitHub has v{mv}')
 "
 ```
 
-**Read the output:**
-- `VERIFIED` → Tell the user exactly: "Updated ACE to **vX.Y.Z** (verified against GitHub). Run `/reload-plugins` to activate. Then `/ace:doctor` to confirm everything is healthy."
-- `MISMATCH` → Tell the user the update failed and show the mismatch.
+**Read BOTH the `VERIFIED`/`MISMATCH` line and the `MCP_CHANGED` line:**
+- `MISMATCH` → Tell the user the update failed and show the mismatch. **STOP.**
+- `VERIFIED` + `MCP_CHANGED: no` → Tell the user exactly: "Updated ACE to **vX.Y.Z** (verified against GitHub). Run `/reload-plugins` to activate. Then `/ace:doctor` to confirm everything is healthy."
+- `VERIFIED` + `MCP_CHANGED: yes` (or `unknown`) → Tell the user exactly: "Updated ACE to **vX.Y.Z** (verified against GitHub). ⚠️ This update changed MCP server code (`mcp/`). `/reload-plugins` reloads skills, commands, agents, and hooks but does **NOT** respawn the MCP subprocesses — you must **fully quit and reopen Claude Code** to pick up the new MCP behavior. Then `/ace:doctor` to confirm everything is healthy." (See CLAUDE.md § *MCP changes need a full Claude restart*. Upstream MCP schema changes — labs/OCS/Connect deploying a new `tools/list` mid-session — need the same full restart even when this check says `no`.)
 
 ## Step 3: Show what's new (optional, if CHANGELOG.md exists)
 
@@ -168,7 +173,11 @@ Summarize the top entry in 3-5 bullets.
 - Always pull from `~/.claude/plugins/marketplaces/ace` — NEVER from any
   `~/emdash-projects/ace` or dev worktree.
 - If Step 1 says `UP_TO_DATE`, STOP immediately. Do not run Step 2.
-- Always tell the user to run `/reload-plugins` after a successful update.
+- After a successful update, the activation step depends on `MCP_CHANGED`:
+  `/reload-plugins` is enough for skills/commands/agents/hooks, but when the
+  update touched `mcp/` (`MCP_CHANGED: yes`) only a full Claude Code restart
+  respawns the MCP subprocesses. `/reload-plugins` does NOT respawn them. See
+  CLAUDE.md § *MCP changes need a full Claude restart*.
 - `node_modules/` is deliberately excluded from the rsync so it's reinstalled
   fresh against the new `package.json`. The service-account key lives in
   `$CLAUDE_PLUGIN_DATA` (outside the versioned cache dir) so it automatically
