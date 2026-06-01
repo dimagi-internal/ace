@@ -5,6 +5,21 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.13.500 — 2026-05-31
+
+**Live-calibrate the connect-2.63.0 in-form camera selectors (closes jjackson/ace#593).**
+
+The `camera-shutter-button` / `camera-save-photo` logical selectors in `mcp/mobile/selectors/connect-2.63.0.yaml` were `unverified: true` best-guesses pointing at `org.commcare.dalvik:id/camera_shutter_button` / `save_photo_button` — wrong package *and* wrong id. Driven live on a booted AVD (malaria-rdt run 20260531-0739, ACE_Pixel_API_34, CommCare 2.63.0): walked the RDT Sample Deliver form fields 1–10, tapped the in-form **"TAKE PICTURE"** text button, and dumped each surface with `mobile_capture_ui_dump`. Corrected from the live dumps:
+
+- `camera-shutter-button` → `com.android.camera2:id/shutter_button` (content-desc "Shutter"). The CommCare photo question launches the **AOSP system camera** (separate package `com.android.camera2`) via `ACTION_IMAGE_CAPTURE`.
+- `camera-save-photo` → `com.android.camera2:id/done_button` (content-desc "Done", on the `bottombar_intent_review` tray shown after the shutter fires).
+- Added `camera-retake-photo` (`retake_button`) + `camera-cancel-photo` (`cancel_button`) — the two sibling controls on the same intent-review tray.
+- All four drop `unverified: true`; the full tap chain navigated end-to-end on-device.
+
+**Geopoint:** #593 anticipated an accuracy-gated native geopoint widget needing a mock-location fix. Live, the RDT Sample "GPS location" question is a plain `android.widget.EditText` (free text); the "25 m / 50 m max" wording is the question hint and the value is typed as a `lat lon alt accuracy` string gated by an XForm constraint — there is no geopoint widget/selector to calibrate for this form shape. Documented as a NOTE in the selector map.
+
+Note: the `org.commcare.dalvik:id/{take_photo_button,camera_shutter_button,save_photo_button}` ids in `connect-register-from-otp.yaml` / `baseline/04-personal-id.yaml` are a **different** surface — the PersonalID registration selfie (CommCare's in-app `ManualMode` camera) — and are correct there; left untouched. New `static-palette-health.test.ts` block locks the verified in-form camera matchers against regression.
+
 ## 0.13.445 — 2026-05-26
 
 **Flip `disable-model-invocation: false` on the 6 Phase 1 producer/QA/eval skills.**

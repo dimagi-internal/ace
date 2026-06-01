@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync, readdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { parseAllDocuments } from 'yaml';
+import { parseAllDocuments, parse as parseYaml } from 'yaml';
 
 import { lintRecipeText } from '../../../mcp/mobile/recipe-lint.js';
 import { resolveSelectorsInYaml } from '../../../mcp/mobile/recipe-resolver.js';
@@ -124,6 +124,55 @@ describe.each(paletteFiles)('static palette health — %s', (filename) => {
         DEFAULT_APK +
         '.yaml or rename the placeholder to match an existing logical name',
     ).toEqual([]);
+  });
+});
+
+describe('connect-2.63.0 camera selectors — live-calibrated (jjackson/ace#593)', () => {
+  // The camera-* logical selectors were live-calibrated on 2026-05-31
+  // against the malaria-rdt RDT Sample photo walk (ACE_Pixel_API_34,
+  // CommCare 2.63.0): "TAKE PICTURE" → AOSP camera → shutter →
+  // intent-review tray → "Done". The resource-ids below were transcribed
+  // from mobile_capture_ui_dump output at each surface, NOT guessed.
+  // This block locks that close-the-loop result so a future edit can't
+  // silently revert to the old wrong-package guesses
+  // (org.commcare.dalvik:id/camera_shutter_button / save_photo_button).
+  const MAP_PATH = fileURLToPath(
+    new URL('../../../mcp/mobile/selectors/connect-2.63.0.yaml', import.meta.url),
+  );
+  const map = parseYaml(readFileSync(MAP_PATH, 'utf8')) as {
+    selectors: Record<string, { type: string; value: string; unverified?: boolean }>;
+  };
+
+  const expected: Record<string, { type: string; value: string }> = {
+    'camera-take-photo': { type: 'text', value: 'TAKE PICTURE' },
+    'camera-shutter-button': { type: 'id', value: 'com.android.camera2:id/shutter_button' },
+    'camera-save-photo': { type: 'id', value: 'com.android.camera2:id/done_button' },
+    'camera-retake-photo': { type: 'id', value: 'com.android.camera2:id/retake_button' },
+    'camera-cancel-photo': { type: 'id', value: 'com.android.camera2:id/cancel_button' },
+  };
+
+  it.each(Object.entries(expected))(
+    '%s resolves to the live-dumped matcher and is not flagged unverified',
+    (name, want) => {
+      const entry = map.selectors[name];
+      expect(entry, `${name} missing from connect-2.63.0.yaml`).toBeDefined();
+      expect(entry.type).toBe(want.type);
+      expect(entry.value).toBe(want.value);
+      // These are live-verified — the unverified flag must be absent.
+      expect(entry.unverified ?? false, `${name} must not be unverified after live calibration`).toBe(
+        false,
+      );
+    },
+  );
+
+  it('the camera controls live in the com.android.camera2 package, not org.commcare.dalvik', () => {
+    // The titled #593 defect: the old guesses pointed the shutter/save
+    // controls at org.commcare.dalvik ids that do not exist. The camera
+    // app is a separate package; assert no camera control regresses to
+    // the in-app package id-namespace.
+    for (const name of ['camera-shutter-button', 'camera-save-photo', 'camera-retake-photo', 'camera-cancel-photo']) {
+      expect(map.selectors[name].value).toMatch(/^com\.android\.camera2:id\//);
+    }
   });
 });
 
