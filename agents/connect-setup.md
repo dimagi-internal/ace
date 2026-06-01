@@ -36,14 +36,34 @@ or by editing the produced state in Drive between steps.
 
 Execute these steps in order.
 
+### Step 0: Resolve the phase folder (anchor every write to the run folder)
+
+Phase-4 artifacts MUST land inside `<run_folder>/4-connect/`. `drive_create_file`
+requires a `parentFolderId` that is a **folder ID** (not a path string); without
+an anchored parent it resolves by an unanchored lookup and the artifacts land
+outside the run folder (jjackson/ace#635 — `verify_phase_artifacts(phase='connect')`
+returned 0/4).
+
+- If the orchestrator threaded a `phaseFolderId` into this agent's prompt
+  (per `agents/orchestrator-reference.md § Per-Phase Folder Lifecycle`), use it.
+- Otherwise, create-or-find the `4-connect` subfolder yourself:
+  `drive_create_folder(name='4-connect', parentFolderId=<run_folder_id>, findOrCreate=true)`
+  and capture the returned folder ID as `phaseFolderId`. `findOrCreate=true`
+  reuses an existing same-named folder, so this is safe to call on resumed runs.
+
+Pass `phaseFolderId` to **both** skills as the `parentFolderId` for every
+artifact write. Hold onto `runFolderId` for the Step 0 self-check at completion.
+
 ### Step 1: Program Setup
 Invoke the `connect-program-setup` skill.
 
 - **Input:** PDD and opportunity details from Drive; `organization_slug`
   defaults to `ai-demo-space` (or whichever PM-side org the opportunity
   is configured for).
-- **Output:** Connect program created or reused; details in
-  `ACE/<opp-name>/runs/<run-id>/4-connect/connect-program-setup.md` with the program UUID.
+- **Output:** Connect program created or reused; details written to
+  `connect-program-setup.md` (and the `-eval_verdict.yaml`) with
+  `parentFolderId = phaseFolderId` (the `4-connect` folder), surfaced under
+  `ACE/<opp-name>/runs/<run-id>/4-connect/` with the program UUID.
 - **Idempotent:** if a program with the same name already exists,
   `connect_list_programs` finds it and the skill reuses it.
 - **LLM-as-Judge:** unless `--no-evals` was passed, dispatch
@@ -57,9 +77,10 @@ Invoke the `connect-opp-setup` skill.
 - **Output:**
   - Opportunity created with `is_test=true`, verification flags +
     payment units configured, **activated**, and ACE test user
-    (`${ACE_E2E_PHONE}`) pre-invited. Details in
-    `ACE/<opp-name>/runs/<run-id>/4-connect/connect-opp-setup.md` with the
-    opportunity UUID.
+    (`${ACE_E2E_PHONE}`) pre-invited. Details written to
+    `connect-opp-setup.md` with `parentFolderId = phaseFolderId` (the
+    `4-connect` folder), surfaced under
+    `ACE/<opp-name>/runs/<run-id>/4-connect/` with the opportunity UUID.
   - Appended `verification-flags`, `payment-unit-shape`, `opportunity-end-date` rows in `decisions.yaml` (merge-only; bar criterion per `skills/idea-to-pdd/SKILL.md § Decisions Log Convention` — only rows that meet the bar are emitted).
 - **Depends on:** Step 1 (needs program UUID); Phase 3 outputs (needs
   CommCare app metadata).
@@ -74,13 +95,25 @@ Invoke the `connect-opp-setup` skill.
 
 ### Completion
 
-Write phase summary to
-`ACE/<opp-name>/runs/<run-id>/4-connect/connect-setup_summary.md` with:
+Write the phase summary to `connect-setup_summary.md` with
+`parentFolderId = phaseFolderId` (the `4-connect` folder, surfaced under
+`ACE/<opp-name>/runs/<run-id>/4-connect/`) with:
 - Program: name, UUID, reused-or-created flag
 - Opportunity: name, UUID, status (`draft`)
 - Verification flags as configured
 - Payment units created (count, total budget)
 - Connect deep-link: `<CONNECT_BASE_URL>/a/<org>/opportunity/<uuid>/`
+
+### Self-check (fail loud if artifacts didn't land in 4-connect)
+
+Before returning, call
+`verify_phase_artifacts(runFolderId, phase='connect')` and confirm it reports
+**4/4** required artifacts present (`connect-program-setup.md`,
+`connect-opp-setup.md`, `connect-program-setup-eval_verdict.yaml`,
+`connect-setup_summary.md`). If it returns anything less than 4/4, the writes
+landed outside the run folder (the `phaseFolderId` anchor was missed) — STOP and
+fail loud with the missing-artifact list; do NOT report the phase complete. This
+self-check is the structural preventer for jjackson/ace#635.
 
 ## Failure Modes
 
