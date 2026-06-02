@@ -6,10 +6,13 @@
 # `Live-verified …` note in `purpose:`): jobs-list / opp-detail cluster
 # (#663, 2026-06-01; re-confirmed via read-only snapshot the same day),
 # in-form camera (#593), deliver-side ids (#526), and the login/register/
-# learn ids promoted off raw literals by #650/#665. Rows still flagged
-# `unverified: true` (14 as of 2026-06-01: cold-start, learn-home, login,
-# registration, form-entry, quiz-result, start-delivering) are best-guesses
-# pending a live walk of those states. The static recipes are now migrated
+# learn ids promoted off raw literals by #650/#665, then 3 registration rows
+# (name-continue, message-button, backup-code-view) live-verified by the
+# 2026-06-01 cold-boot registration walk (selector-map-calibrate). Rows still
+# flagged `unverified: true` (11 as of 2026-06-01: cold-start, learn-home,
+# login button, OTP-confirm, form-entry, quiz-result, start-delivering) are
+# best-guesses pending a live walk of those states (states 6–10 need a
+# Learn-incomplete opp — a fresh /ace:run). The static recipes are now migrated
 # off raw ids (#665) EXCEPT connect-register-from-otp.yaml's 7 camera ids
 # (the #666 photo surface, deliberately raw pending live calibration).
 # Rows WITHOUT either an `unverified: true` flag OR a `Live-verified` note
@@ -187,23 +190,20 @@ selectors:
   personalid-name-continue:
     type: id
     value: "org.commcare.dalvik:id/personalid_name_continue_button"
-    unverified: true
-    purpose: "Continue button on the registration name-entry screen. connect-register-from-otp. #650."
+    purpose: "Continue button on the registration name-entry screen. connect-register-from-otp. #650. Live-verified 2026-06-01 (2.63.0) — tapped + navigated during a passing cold-boot registration run (selector-map-calibrate)."
   personalid-confirm-code-view:
     type: id
     value: "org.commcare.dalvik:id/confirm_code_view"
     unverified: true
-    purpose: "Confirm-code entry on the registration OTP/confirmation screen. connect-register-from-otp. #650."
+    purpose: "Confirm-code entry on the registration OTP/confirmation screen. connect-register-from-otp. #650. NOT confirmed live: the +7426 demo-bypass path skips OTP confirmation, so the 2026-06-01 cold-boot run only evaluated this as 'not visible' — a real OTP registration is needed to dump-confirm the id."
   personalid-backup-code-view:
     type: id
     value: "org.commcare.dalvik:id/backup_code_view"
-    unverified: true
-    purpose: "Backup-code display/entry view on the registration backup-code screen. connect-register-from-otp. #650."
+    purpose: "Backup-code display/entry view on the registration backup-code screen. connect-register-from-otp. #650. Live-verified 2026-06-01 (2.63.0) — present on-tree (\"is visible\" guard matched) during a passing cold-boot registration run (selector-map-calibrate)."
   personalid-message-button:
     type: id
     value: "org.commcare.dalvik:id/connect_message_button"
-    unverified: true
-    purpose: "Message/continue button on a registration prompt screen. connect-register-from-otp. #650."
+    purpose: "Message/continue button on a registration prompt screen. connect-register-from-otp. #650. Live-verified 2026-06-01 (2.63.0) — tapped during a passing cold-boot registration run (selector-map-calibrate)."
   learn-suite-menu:
     type: id
     value: "org.commcare.dalvik:id/screen_suite_menu_list"
