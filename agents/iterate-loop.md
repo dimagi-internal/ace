@@ -15,12 +15,17 @@ is unavailable to subagents (see `CLAUDE.md § Agent topology`).
 
 ## Invariant: server runs first-class, client observes
 
-The runner executes `/ace:run <opp> --seed-from <golden> --only 3,4,6` — an
-ordinary run that writes a normal `run_state.yaml`. This procedure reads that
+The runner executes a **plain resume** — `/ace:run <opp>/<new-run-id>` against a
+run that was already forked + shaped (`{3,4,6: pending, 5/7/8+: skipped}`)
+before dispatch. It's an ordinary resume that writes a normal `run_state.yaml`;
+run shape lives in that file, NOT in a `--seed-from`/`--only` flag (the headless
+runner ignored those — jjackson/ace#672). This procedure reads the
 `run_state.yaml` + the Claude session transcript and does ALL loop
 interpretation (judging, streak, autofix). Never push streak/judge/autofix
 logic into the run itself — that would leak loop-awareness into the
-first-class operation and break its run-anywhere property.
+first-class operation and break its run-anywhere property. The seeding
+(fork-then-shape) is loop-agnostic too — it's just "create a run that starts at
+phase 3" — so the run the runner sees is a normal mid-pipeline resume.
 
 ## State: `ACE/<opp>/iterate-state.yaml` (client-only)
 
@@ -63,19 +68,48 @@ run). The golden run must have `phases.idea-to-design` and
 1. **Kill check.** If `kill: true`, stop and report.
 2. **Cap check.** If `streak >= required_streak` → success, go to Exit. If
    `len(iterations) >= caps.max_iterations` → halt-and-surface.
-3. **Launch a seeded run** on the runner:
-   - **web**: POST the **workspace-scoped** `seeded-run` action. First resolve
-     the workspace slug: `GET <ACE_WEB_BASE_URL>/api/workspaces` (Bearer
-     `ACE_WEB_PAT_TOKEN`) → the workspace whose `drive_root_folder_id` matches
-     the ACE root (for labs/`dimagi-team` this is the only one). Then:
+3. **Launch a seeded run** on the runner. Run shape is created by
+   **fork-then-resume** (NOT a flag): fork the golden into a new run whose
+   `run_state.yaml` already encodes `{seed prefix 1,2: done/verdict:seeded;
+   targets 3,4,6: pending; gap+tail 5,7,8,9,10: skipped}`, then drive a plain
+   resume. The orchestrator's resume path runs the `pending` phases in order,
+   steps over `skipped`, and ends when no `pending` phase remains — so "run
+   only 3,4,6 then stop" is structural (§ ace-orchestrator.md § Run shape on
+   resume).
+   - **web**: POST the **workspace-scoped** `seeded-run` action — it forks +
+     shapes the new run + injects the plain resume command, all server-side,
+     and drives it headlessly. First resolve the workspace slug:
+     `GET <ACE_WEB_BASE_URL>/api/workspaces` (Bearer `ACE_WEB_PAT_TOKEN`) → the
+     workspace whose `drive_root_folder_id` matches the ACE root (for
+     labs/`dimagi-team` this is the only one). Then:
      `POST <ACE_WEB_BASE_URL>/api/w/<ws>/opps/<opp>/actions/seeded-run`
      with `{"golden_run_id": "<golden>", "only": "3,4,6"}`. Returns **202**
-     `{session_slug, assistant_message_id}` — the action seeds the command as a
-     user turn AND starts the run headlessly (no workbench needed; ace-web#585).
-     The endpoint is also an MCP tool (`x-mcp-expose`) if reaching it via MCP.
-   - **local**: spawn `/ace:run <opp> --seed-from <golden_run_id> --only 3,4,6`.
-   Capture the new run-id by listing `ACE/<opp>/runs/` for the folder that
-   appears after launch (the server-side run mints its own id at setup).
+     `{session_slug, assistant_message_id, run_id}` — `run_id` is the **new**
+     forked run the action minted (use it directly; do NOT list `runs/` to
+     guess it). The action seeds the resume command as a user turn AND starts
+     the run headlessly (no workbench needed; ace-web#585). The endpoint is
+     also an MCP tool (`x-mcp-expose`) if reaching it via MCP.
+   - **local**: do the fork + shape + resume yourself, since no ace-web run
+     subprocess is involved:
+     1. **Fork** the golden into a fresh run via the `fork-run` skill:
+        `fork-run --opp_slug <opp> --from_run_id <golden_run_id>
+         --from_skill pdd-to-learn-app --mode keep-all
+         --feedback "iterate seeded run (targets 3,4,6)"`. (`pdd-to-learn-app`
+        is the first skill of Phase 3 = `min(targets)`; this copies phases 1–2
+        in.) Capture the returned `new_run_id`.
+     2. **Shape** the new run's `run_state.yaml` via `update_yaml_file` so its
+        `phases.*.status` encodes the run: seed prefix (`idea-to-design`,
+        `scenarios-and-acceptance`) → `status: done, verdict: seeded,
+        completed_at: <now>`; targets (`commcare-setup`, `connect-setup`,
+        `qa-and-training`) → `status: pending`; gap+tail (`ocs-setup`,
+        `synthetic-data-and-workflows`, `solicitation-management`,
+        `execution-management`, `closeout`) → `status: skipped`. Also set
+        `seeded_from: <golden_run_id>` at the run-state root. (Pass the COMPLETE
+        `phases` block so the merge replaces the forked default cleanly.)
+     3. **Resume**: spawn a plain `/ace:run <opp>/<new_run_id>` (fresh local
+        `claude -p` / subagent). No flags. The resume path drives the shape.
+   Either way the loop's new run-id is known up-front (the action's `run_id`, or
+   the local `fork-run` result) — no post-launch folder-listing race.
 4. **Observe** until phases 3 + 6 reach a terminal state — the loop's only
    inputs, both produced by the run itself:
    - Poll `ACE/<opp>/runs/<new-run-id>/run_state.yaml` on Drive.
@@ -150,7 +184,15 @@ whether to escalate.
   API. A shipped fix to a *phase* skill/recipe/atom does not affect the
   control; a fix to a skill the control itself uses (`fork-run`, gdrive MCP)
   may — run `/ace:update` between fixes if the control's own surface changed.
-- `--runner local` does not require ace-web for execution, but the seed step
-  still calls the ace-web fork endpoint (the shipped fork path). A pure-local
-  fork (manual phase-folder copy per `orchestrator-reference.md § Fork at phase
+- `--runner local` does not require ace-web for *execution* (the resume runs in
+  a local process), but the **seed step still calls the ace-web fork endpoint**
+  (via the `fork-run` skill — the shipped fork path); the local control then
+  shapes `run_state.yaml` and spawns the plain resume. A pure-local fork
+  (manual phase-folder copy per `orchestrator-reference.md § Fork at phase
   boundary`) is a possible future fallback.
+- **Web vs local seeding parity.** On `web`, the `seeded-run` action does the
+  fork + shape + plain-resume server-side and returns the new `run_id`. On
+  `local`, this procedure does the same three steps client-side. Both end at an
+  identically-shaped `run_state.yaml` driven by the orchestrator's resume path —
+  the runner only ever sees a plain `/ace:run <opp>/<run-id>`. Neither passes a
+  `--seed-from`/`--only` flag (jjackson/ace#672).

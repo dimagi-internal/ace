@@ -1,8 +1,28 @@
 # ACE Iteration Loop — `/ace:iterate` design
 
 **Date:** 2026-06-01
-**Status:** Design — pending implementation plan
+**Status:** Implemented, then PIVOTED — see § Pivot below
 **Author:** ACE (with Jonathan Jackson)
+
+> **⚠ Pivot 2026-06-01 (issue #672) — seeding is fork-then-resume, not flags.**
+> The original design (component #1 below) made "start mid-pipeline with a
+> golden prefix" a pair of `/ace:run` flags (`--seed-from` + `--only`) that the
+> orchestrator *interprets at run-setup*. Live validation on the labs headless
+> runner (run `bednet-spot-check/20260601-2009`) showed the executing model
+> **silently ignored the flags** and ran a full fresh pipeline from Phase 1 —
+> behavior-via-markdown isn't honored reliably, especially when the command
+> arrives as an injected headless turn. **Fix:** make run shape STRUCTURAL.
+> The control (or the ace-web `seeded-run` action) **forks the golden first**
+> and writes a new `run_state.yaml` that already encodes the shape (seed prefix
+> `done`/`verdict: seeded`, target phases `pending`, gap+tail phases
+> `skipped`), then dispatches a **plain `/ace:run <opp>/<new-run-id>` resume**.
+> The orchestrator's well-exercised resume path runs `pending` phases in order,
+> steps over `skipped`, and ends when no `pending` remains — so both "seed 1–2"
+> and "only 3,4,6 then stop" are structural, with zero flag interpretation. The
+> `--seed-from`/`--only` flags are **removed**. Where this doc says "the runner
+> executes `/ace:run … --seed-from … --only …`", read "the runner executes a
+> plain resume of a pre-shaped run." See
+> `docs/learnings/2026-06-01-seeded-run-structural-not-flags.md`.
 
 ## Problem
 
@@ -96,28 +116,27 @@ CLIENT (/ace:iterate <opp> — LOCAL control, level-0): observer + loop brain
 
 ### Components
 
-#### 1. First-class "seeded run" capability (`/ace:run`, server-side, loop-blind)
-`/ace:run` gains two composable flags so "start mid-pipeline with a golden
-upstream prefix" is a **first-class run operation**, independently useful for
-manual re-runs — not loop plumbing:
+#### 1. First-class "seeded run" capability — fork-then-resume (PIVOTED, see § Pivot)
+~~`/ace:run` gains two flags `--seed-from` + `--only`.~~ **Superseded.** "Start
+mid-pipeline with a golden upstream prefix" is a **first-class run operation**,
+but it is created *structurally* — not by flags the orchestrator interprets:
 
-- `--seed-from <golden-run-id>` — at run-setup, substitute the phases *before*
-  the start phase by copying them from the golden run (the existing fork/copy
-  mechanic: copy `<N>-<phase>/` folders + the matching
-  `phases.<phase>.products.*` blocks into the new run's `run_state.yaml`, mark
-  them `done`). Reuses `fork-run`'s server-side Drive copy.
-- `--start-phase <N>` / `--only <phases>` — execute exactly the listed phase
-  ordinals (here `3,4,6`); skip the rest; never run anything outside the
-  allowlist. Phase-boundary fence + write-back contract still apply to the
-  phases that run, and the orchestrator **fails loud** if the allowlist leaves a
-  run-phase's required input unproduced.
-- Phase 6 runs in **app-QA-only mode** (mobile app QA; skip the OCS-dependent
-  training-doc skills) when OCS (Phase 5) is not in the allowlist.
+- **Seed:** fork the golden into a new run (the existing `fork-run` Drive-copy
+  mechanic: copy `<N>-<phase>/` folders + `phases.<phase>.products.*` blocks for
+  phases below the start phase), then write that new run's `run_state.yaml` so
+  `phases.*.status` encodes the shape: seed prefix `done`/`verdict: seeded`,
+  target phases `pending`, gap+tail phases `skipped`, `seeded_from` at the root.
+- **Run:** dispatch a plain `/ace:run <opp>/<new-run-id>` resume. The
+  orchestrator's resume path (`agents/ace-orchestrator.md § Run shape on
+  resume`) runs `pending` phases in order, steps over `skipped`, **fails loud**
+  if a `pending` phase's required input was produced by a `skipped` phase, and
+  **ends when no `pending` phase remains** (that's the "stop after 6").
+- Phase 6 runs in **app-QA-only mode** when `phases.ocs-setup.status ==
+  skipped` (structural signal — `agents/qa-and-training.md § Mode: app-QA-only`).
 
-Lives in `agents/ace-orchestrator.md` + `commands/run.md`. **Runner-agnostic and
-loop-blind**: the run writes only the normal `run_state.yaml`. This is the
-*entire* server-side surface — there is no iteration-specific skill on the
-runner.
+The orchestrator is **runner-agnostic and loop-blind**: it only ever sees a
+plain resume of a run whose shape is already on Drive; it writes the normal
+`run_state.yaml`. No iteration-specific skill on the runner, no flag parsing.
 
 #### 2. (removed)
 There is intentionally **no** `/ace:iterate-once` skill on the runner. Folding
@@ -260,15 +279,22 @@ the terminal condition a real stability proof: *five fresh, end-to-end Phase
 ## Build surface summary
 
 **ACE plugin (this repo):**
-1. First-class seeded run: `--seed-from <golden-run-id>` + `--start-phase`/`--only <phases>`
-   + Phase-6 app-QA-only mode (orchestrator + `commands/run.md`). **This is the
-   entire server-side surface** — loop-blind, writes only normal `run_state.yaml`.
-2. `commands/iterate.md` + `agents/iterate-loop.md` — CLIENT control: observe →
-   judge → streak → autofix (level-0). The only loop-aware code.
+1. Structural seeded run (PIVOTED — #672): orchestrator **resume path** honors
+   `run_state.yaml.phases.*.status` (run `pending`, step over `skipped`, end
+   when none `pending`) + structural precondition check + Phase-6 app-QA-only
+   keyed on `phases.ocs-setup.status == skipped`. `skipped` added to
+   `PHASE_STATUSES`. The `--seed-from`/`--only` flag-interpretation is
+   **removed** from `agents/ace-orchestrator.md` + `commands/run.md`. Loop-blind:
+   the runner only sees a plain `/ace:run <opp>/<run-id>` resume.
+2. `commands/iterate.md` + `agents/iterate-loop.md` — CLIENT control: **fork
+   (golden) → shape `run_state.yaml` → plain resume**, then observe → judge →
+   streak → autofix (level-0). The only loop-aware code.
 3. `iterate-state.yaml` (client-only) schema in `lib/run-state-validator.ts` + a test.
 4. Establish/curate the golden `bednet-spot-check` prefix.
 
 **ace-web (sibling repo, separate PR):**
 5. `POST /system/refresh-plugin` fan-out + version-live polling contract.
-6. (optional) `seeded-run` opp action that injects
-   `/ace:run <slug> --seed-from <golden> --only 3,4,6` into the working session.
+6. `seeded-run` opp action (PIVOTED — #672): **forks** the golden, writes the
+   shaped `run_state.yaml` (seed prefix `done`, targets `pending`, gap+tail
+   `skipped`, `seeded_from`), injects a plain `/ace:run <slug>/<new-run-id>`
+   resume, and returns the new `run_id`. No longer injects `--seed-from`/`--only`.
