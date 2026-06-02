@@ -6,11 +6,14 @@ allowed-tools: [Read, Write, Edit, Bash, Glob, Grep, Agent, AskUserQuestion]
 
 # /ace:iterate
 
-Client-side control loop. Launches first-class seeded runs
-(`/ace:run <opp> --seed-from <golden> --only 3,4,6`) on a runner, **observes**
-each run's `run_state.yaml` + Claude session, judges clean/dirty, owns the
-streak, and on dirty runs an autonomous fix→ship→refresh cycle. Stops at N
-clean runs in a row on one unchanged plugin version.
+Client-side control loop. Launches first-class seeded runs via
+**fork-then-resume** (fork the golden into a new run shaped `{3,4,6: pending,
+5/7/8+: skipped}`, then a plain `/ace:run <opp>/<new-run-id>` resume) on a
+runner, **observes** each run's `run_state.yaml` + Claude session, judges
+clean/dirty, owns the streak, and on dirty runs an autonomous
+fix→ship→refresh cycle. Stops at N clean runs in a row on one unchanged plugin
+version. (Run shape is structural in `run_state.yaml`, not a `--seed-from` /
+`--only` flag — jjackson/ace#672.)
 
 The loop logic lives entirely here — the server-side run is loop-blind. See
 `docs/superpowers/specs/2026-06-01-ace-iterate-loop-design.md`.

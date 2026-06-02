@@ -47,6 +47,10 @@ const PHASE_STATUSES = new Set([
   'done',
   'error',
   'blocked', // operator-actionable halt (recoverable); distinct from a hard `error`
+  'skipped', // run-shape decision: this phase is intentionally not run this run
+             // (a seeded mid-pipeline run marks gap/tail phases skipped so the
+             // orchestrator steps over them and the run ends when no `pending`
+             // phase remains). Set structurally at run-seed, never mid-phase.
 ]);
 
 const STEP_STATUSES = new Set([
@@ -305,11 +309,14 @@ export function validateRunState(parsed: unknown): ValidationResult {
  *   - 'in_progress'     — block exists but status is in_progress/pending
  *   - 'error'           — block exists with status: error
  *   - 'blocked'         — block exists with status: blocked (operator-actionable halt)
+ *   - 'skipped'         — block exists with status: skipped (run-shape decision —
+ *                          phase intentionally not run this run; terminal, never retried)
  *   - 'malformed'       — block exists but validateRunState found errors
  *
  * The orchestrator silent-retry triggers on 'missing', 'in_progress',
  * and 'malformed' (the agent claimed success but didn't write properly).
- * 'error' and 'blocked' are real phase halts that should surface, not retry —
+ * 'error', 'blocked', and 'skipped' are terminal and should surface/step-over,
+ * not retry —
  * 'blocked' specifically means the phase stopped on an operator-actionable
  * precondition (e.g. consumed one-way state) rather than a hard crash, so the
  * orchestrator should report it (and any remediation) instead of re-dispatching.
@@ -320,6 +327,7 @@ export type PhaseWriteBackStatus =
   | 'in_progress'
   | 'error'
   | 'blocked'
+  | 'skipped'
   | 'malformed';
 
 export function classifyPhaseWriteBack(
@@ -338,6 +346,7 @@ export function classifyPhaseWriteBack(
   if (status === 'done' || status === 'complete') return 'ok';
   if (status === 'error') return 'error';
   if (status === 'blocked') return 'blocked';
+  if (status === 'skipped') return 'skipped';
   return 'in_progress';
 }
 

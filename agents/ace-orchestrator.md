@@ -221,23 +221,20 @@ Mark Phase 1 `in_progress`; leave the rest `pending`. Sequential
 `TaskCreate → TaskCreate → ...` over 11 turns burns ~30s of
 unnecessary model-output time at run start.
 
-**Phase allowlist (`--only`).** When `--only <ordinals>` is set, still create
-the task list, but mark seeded phases (`seed_phases`, from Step 4b) `done`,
-mark `min(--only)` `in_progress`, and mark every phase NOT in `--only`
-`skipped` (not `pending`) so no pause ever fires for them. Then iterate the
-phase list and **execute ONLY the listed ordinals**. For each listed phase,
-before dispatch, confirm its required input artifacts (per
-`lib/artifact-manifest.ts` `artifactsConsumedBy`) are present — produced
-either by an earlier listed phase or by the seeded prefix. If a required input
-is missing AND its producer is neither listed nor seeded, halt loud:
-
-> `/ace:run --only <ordinals>`: phase <N> needs `<artifact>` produced by phase
-> <M>, which is neither in --only nor seeded via --seed-from. Add <M> to
-> --only or pass --seed-from <golden-run-id>.
-
-The phase-boundary fence + Phase Write-Back Contract still apply to listed
-phases; skipped phases are never dispatched and never pause. `--only` with no
-`--seed-from` is legal (e.g. `--only 1,2`) — it just runs a prefix and stops.
+**Run shape is structural, not flag-driven.** A fresh `/ace:run <opp>` always
+starts all 11 phases `pending` and runs them in order (above) — there is no
+`--only` / `--seed-from` flag. To start mid-pipeline with a frozen upstream
+prefix (the iteration-loop case), the run is **pre-seeded on Drive and then
+resumed**: a separate run-id whose `run_state.yaml` already encodes the shape
+(seed prefix `done`/`verdict: seeded`, target phases `pending`, gap+tail phases
+`skipped`). The orchestrator drives it via the resume path
+([§ Resuming after a halt → Run shape on resume](#resuming-after-a-halt)),
+which honors those phase statuses structurally — no flag interpretation. The
+control that forks-then-resumes is `agents/iterate-loop.md`; the copy mechanic
+is the `fork-run` skill. This replaced the `--seed-from`/`--only`
+flag-interpretation that the headless runner silently ignored
+(jjackson/ace#672) — behavior-via-markdown isn't honored reliably, so run shape
+now lives in `run_state.yaml` where the well-exercised resume path reads it.
 
 **Step 5 — Create the run folder FIRST, then batch the file writes.**
 This is two messages, not one — `drive_create_file` requires
@@ -519,10 +516,15 @@ If the harness DOES signal context exhaustion (or the operator
 explicitly halts the run), the resume mechanism is:
 
 - `/ace:run <opp>/<run-id>` — resume the same run; the orchestrator
-  reads `run_state.yaml`, identifies the next pending phase, and
-  picks up from there. The path form (`<opp>/<run-id>`, not bare
+  reads `run_state.yaml` and continues per the **structural run-shape
+  rule** (§ Resolve the run-id → Resume mode → *Run shape on resume*):
+  run the next `pending` phase, step over `skipped`, end when no
+  `pending` phase remains. The path form (`<opp>/<run-id>`, not bare
   `<opp>`) is what triggers resume — passing only `<opp>` would
-  create a fresh `runs/<new-id>/` folder.
+  create a fresh `runs/<new-id>/` folder. This same path is how a
+  **seeded** mid-pipeline run executes: the seeding (fork golden →
+  write the shaped `run_state.yaml`) happens outside `/ace:run`, then a
+  plain resume drives it (jjackson/ace#672).
 - `/ace:step <skill> <opp>/<run-id>` — re-dispatch a single phase or
   skill, useful for retrying a specific failure or backfilling a step
   that was previously inlined or skipped.
@@ -649,11 +651,43 @@ in `inputs/` (the manifest), not to pick one canonical PDD file.
 
    - **Resume mode** — `<opp>/<run-id>` was passed: load existing
      `run_state.yaml` from `<opp>/runs/<run-id>/run_state.yaml` and continue
-     from its `step:` field. No new folder is created. Skip steps 4–7.
-     run_state.yaml exists and is the source of truth for which run we're
-     resuming. ace-web doesn't read opp.yaml.last_run_id / opp.yaml.runs
+     per the structural run-shape rule below. No new folder is created. Skip
+     steps 4–7. run_state.yaml exists and is the source of truth for which run
+     we're resuming. ace-web doesn't read opp.yaml.last_run_id / opp.yaml.runs
      (it scans the runs/ folder directly), so we don't update them here
      either.
+
+     **Run shape on resume (the one rule that drives execution).** The phase
+     execution order is *derived from `run_state.yaml.phases.*.status`*, not
+     from any flag or the markdown phase list:
+
+     - `pending` → run it (in ordinal order).
+     - `skipped` → step over it; never dispatch, never pause, never fence.
+     - `done` / `complete` (incl. `verdict: seeded`) → already satisfied; skip.
+     - `error` / `blocked` → halt and surface (do not auto-advance past).
+
+     **The run is complete when no `pending` phase remains.** This is what
+     gives a seeded mid-pipeline run its stop-after behavior for free: a run
+     seeded as `{1,2: done, 3,4,6: pending, 5,7,8,9,10: skipped}` runs 3 → 4 →
+     (5 skipped) → 6, then finds no `pending` phase left and ends — no flag, no
+     special stop logic. The same rule is how a normal full run ends after
+     Phase 8 (the PAUSE) when 9–10 are not yet live.
+
+     **Rebuild the TaskList from the loaded statuses** (one parallel
+     `TaskCreate` block, as in Step 4): `done`/`skipped` → `completed`
+     (skipped phases carry a one-word "skipped" note), every `pending` phase →
+     `pending`, and the **first** `pending` phase → `in_progress`.
+
+     **Structural precondition check (before dispatching each `pending`
+     phase).** Confirm the phase's required input artifacts (per
+     `lib/artifact-manifest.ts` `artifactsConsumedBy`) are present — produced
+     by a `done`/`seeded` phase or an earlier `pending` phase in this run. If a
+     required input is missing AND its producer is `skipped` (or absent), halt
+     loud — a seeded run was shaped wrong:
+
+     > resume `<opp>/<run-id>`: phase <N> needs `<artifact>` produced by phase
+     > <M>, which is `skipped`/absent in this run's run_state. The run was
+     > seeded with the wrong shape — re-seed including phase <M>.
 
    - **Fresh mode** — `runId` is null: generate
      `runId = generateRunId(new Date())` (= `YYYYMMDD-HHMM` local time).
@@ -665,31 +699,17 @@ in `inputs/` (the manifest), not to pick one canonical PDD file.
    folder ID; this is the **run folder ID** that gets passed to every
    downstream skill in place of the previous "opp folder ID".
 
-   **Step 4b — Seed substitution (`--seed-from` only).**
-
-   When `--seed-from <golden-run-id>` was passed:
-
-   1. Validate `--only` is also present and non-empty. If not, halt:
-      `--seed-from requires --only (which phases to actually run).`
-   2. Compute `seed_phases` = every phase ordinal **below** `min(--only)`.
-      For `--only 3,4,6`, `seed_phases = [1, 2]`.
-   3. Invoke the `fork-run` skill against the golden run to copy the seed
-      prefix into THIS new run folder:
-      `fork-run --opp_slug <opp> --from_run_id <golden-run-id>
-       --from_skill <first-skill-of min(--only)> --mode keep-all
-       --feedback "seeded run for --only <ordinals>"`.
-      (`min(--only)=3` → `from_skill: pdd-to-learn-app`; `=4` →
-      `connect-program-setup`; `=5` → `ocs-agent-setup`; `=8` →
-      `solicitation-create`.) `fork-run` copies every skill upstream of the
-      fork boundary — i.e. exactly `seed_phases` — plus `decisions.yaml` and
-      the upstream `phases.*.products.*` blocks, into the new run.
-   4. In this run's `run_state.yaml`, mark every `seed_phases` block
-      `status: done`, `verdict: seeded`, and copy its `summary_artifact`
-      from the forked-in state. Record `seeded_from: <golden-run-id>` at the
-      run-state root (informational; not read by any skill).
-   5. Set the start pointer to `min(--only)` instead of Phase 1.
-
-   When `--seed-from` is absent, run-init is unchanged (start at Phase 1).
+   Fresh mode always initializes all 11 phases `pending` (Step 4) and runs
+   from Phase 1. **There is no in-orchestrator seed step.** A mid-pipeline
+   start with a frozen upstream prefix is created *outside* `/ace:run` — the
+   control (`agents/iterate-loop.md`) or the ace-web `seeded-run` action forks
+   the golden via `fork-run`, writes the pre-seeded `run_state.yaml` (seed
+   prefix `done`/`verdict: seeded`, target phases `pending`, gap+tail phases
+   `skipped`, plus `seeded_from: <golden-run-id>` at the root), and then
+   dispatches a plain **resume** `/ace:run <opp>/<new-run-id>`. The orchestrator
+   never interprets a `--seed-from`/`--only` flag (jjackson/ace#672); it just
+   resumes a run whose shape is already on Drive (§ Resolve the run-id →
+   Resume mode, and § Resuming after a halt → Run shape on resume).
 
 5. **Capture the inputs manifest.**
 
@@ -935,7 +955,7 @@ When invoked with an opportunity, execute these phases in order.
 
 **Products:** Phase-6 artifacts under `6-qa-and-training/` — screenshot bundles, 5 training docs (LLO guide, FLW guide, quick reference, FAQ, deck spec), optional training deck render, onboarding email.
 
-**Notes:** Phase 6→7 is no longer a mandatory pause (§ Modes — default, review, auto). All skills read upstream artifacts from Phases 1–4. No 1-1 LLO contact happens here — that begins in Phase 9. Phase 6 splits shallow (in `/ace:run`, ~5 LLM judges) vs deep (out-of-band via `/ace:qa-deep`); `llo-launch` (Phase 9) requires fresh deep verdicts.
+**Notes:** Phase 6→7 is no longer a mandatory pause (§ Modes — default, review, auto). All skills read upstream artifacts from Phases 1–4. No 1-1 LLO contact happens here — that begins in Phase 9. Phase 6 splits shallow (in `/ace:run`, ~5 LLM judges) vs deep (out-of-band via `/ace:qa-deep`); `llo-launch` (Phase 9) requires fresh deep verdicts. **App-QA-only mode:** when `phases.ocs-setup.status == skipped` in the loaded `run_state.yaml` (a seeded run that skipped Phase 5 — the iteration-loop case), add a context line to the dispatch — "Phase 5 (OCS) was skipped this run; run app-QA-only mode per your agent definition" — so the agent runs only the mobile app-QA walk and marks the OCS-dependent training skills `skipped` (`agents/qa-and-training.md § Mode: app-QA-only`). A normal full run always runs Phase 5 first, so this never fires there.
 
 ### Phase 7: Synthetic Data and Workflows
 

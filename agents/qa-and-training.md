@@ -224,10 +224,14 @@ and prevents a whole class of "guessed from indirect signals" mistakes.
 
 ## Mode: app-QA-only
 
-Active when the orchestrator runs this phase under `--only` **without** Phase 5
-(OCS) in the allowlist (e.g. `--only 3,4,6`). The iteration loop
-(`/ace:iterate`) is the primary caller; a normal full `/ace:run` always runs
-Phase 5 before Phase 6, so this mode never fires there.
+Active when **Phase 5 (OCS) was skipped this run** — i.e.
+`run_state.yaml.phases.ocs-setup.status == skipped`. This is the structural
+signal a seeded mid-pipeline run leaves (the iteration loop `/ace:iterate`
+seeds `{3,4,6: pending, 5: skipped}` and resumes); the orchestrator passes
+"Phase 5 was skipped; run app-QA-only" in the dispatch context. A normal full
+`/ace:run` always runs Phase 5 before Phase 6, so this mode never fires there.
+(There is no `--only` flag any more — run shape lives in `run_state.yaml`; see
+jjackson/ace#672.)
 
 In this mode:
 

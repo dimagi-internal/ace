@@ -1,6 +1,6 @@
 ---
 description: Run the full ACE lifecycle for an opportunity
-argument-hint: [<opp>[/<run-id>]] [--mode default|review|auto] [--ace-web-url URL] [--dry-run] [--sandbox] [--no-evals] [--seed-from <golden-run-id>] [--only <phase-ordinals>]
+argument-hint: [<opp>[/<run-id>]] [--mode default|review|auto] [--ace-web-url URL] [--dry-run] [--sandbox] [--no-evals]
 allowed-tools: [Read, Write, Edit, Bash, Glob, Grep, Agent, AskUserQuestion]
 ---
 
@@ -71,23 +71,18 @@ Run the full ACE lifecycle for a Connect opportunity.
   Use for fast smoke iterations; run `/ace:eval --all <opp>` afterward
   to backfill the verdicts. See `agents/ace-orchestrator.md §
   Per-Step Eval Hook` for what this opts out of.
-- `--seed-from <golden-run-id>` — start mid-pipeline with a golden upstream
-  prefix. At run-init, before executing any phase, substitute the phases
-  *below* the lowest `--only` ordinal by copying them from `<golden-run-id>`
-  (via the `fork-run` mechanic: copy `<N>-<phase>/` folders + the matching
-  `phases.<phase>.products.*` blocks into the new run, mark them `done`). The
-  new run still mints its own fresh run-id. **Requires `--only`.** Use for
-  "re-run from phase N with frozen upstream" — independently useful, and the
-  exact operation the iteration loop (`/ace:iterate`) dispatches. See
-  `agents/ace-orchestrator.md § Step 4b — Seed substitution`.
-- `--only <phase-ordinals>` — comma-separated phase ordinals to execute (e.g.
-  `3,4,6`). Phases not listed are neither run nor required, EXCEPT the
-  orchestrator fails loud if a listed phase's required input artifact was
-  produced by an un-listed, un-seeded phase (see `agents/ace-orchestrator.md §
-  Phase allowlist`). When `5` is absent and `6` is present, Phase 6 runs in
-  **app-QA-only mode** (`agents/qa-and-training.md § Mode: app-QA-only`).
-  Phases not in `--only` are skipped silently — no pending, no pause — so the
-  external-party pauses for Phases 8–10 never fire unless explicitly listed.
+**No `--seed-from` / `--only` flags.** Starting mid-pipeline with a frozen
+upstream prefix is not a flag — it's **fork-then-resume**: fork a golden run
+(the `fork-run` skill / ace-web fork endpoint), which writes a new run whose
+`run_state.yaml` already encodes the shape (seed prefix `done`/`verdict:
+seeded`, target phases `pending`, gap+tail phases `skipped`), then `/ace:run
+<opp>/<new-run-id>` to resume it. The orchestrator's resume path runs the
+`pending` phases in order, steps over `skipped`, and ends when no `pending`
+phase remains — so "run only 3,4,6 then stop" is structural, no flag
+interpretation. The iteration loop (`/ace:iterate`) does this automatically.
+The old flags were dropped because the headless runner ignored them
+(jjackson/ace#672); see `agents/ace-orchestrator.md § Run shape is structural`
+and the `fork-run` skill.
 
 ## Smart-default UX (zero-arg happy path)
 

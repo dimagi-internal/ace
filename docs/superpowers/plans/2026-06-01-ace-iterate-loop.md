@@ -1,5 +1,15 @@
 # ACE Iteration Loop Implementation Plan
 
+> **⚠ PIVOTED 2026-06-01 (issue #672).** Task 2 below builds the seeded run as
+> `/ace:run --seed-from … --only …` flags the orchestrator interprets. Live
+> validation showed the headless runner **ignores those flags**. The shipped
+> approach is **fork-then-resume**: seed `run_state.yaml.phases.*.status`
+> structurally (fork golden → `{1,2: done, 3,4,6: pending, 5/7/8+: skipped}`),
+> then a plain `/ace:run <opp>/<run-id>` resume. The flags are removed. Task 2
+> and its "Step 4b" / `--only` sub-steps are **superseded** — read them as
+> historical. Current design: spec § Pivot +
+> `docs/learnings/2026-06-01-seeded-run-structural-not-flags.md`.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Build a tight, mostly-autonomous loop that exercises only ACE phases 3+4+6 on `bednet-spot-check`, reusing a frozen golden upstream prefix, until 5 clean runs land in a row on one unchanged plugin version.
