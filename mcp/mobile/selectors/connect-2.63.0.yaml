@@ -8,11 +8,15 @@
 # in-form camera (#593), deliver-side ids (#526), and the login/register/
 # learn ids promoted off raw literals by #650/#665, then 3 registration rows
 # (name-continue, message-button, backup-code-view) live-verified by the
-# 2026-06-01 cold-boot registration walk (selector-map-calibrate). Rows still
-# flagged `unverified: true` (11 as of 2026-06-01: cold-start, learn-home,
-# login button, OTP-confirm, form-entry, quiz-result, start-delivering) are
-# best-guesses pending a live walk of those states (states 6–10 need a
-# Learn-incomplete opp — a fresh /ace:run). The static recipes are now migrated
+# 2026-06-01 cold-boot registration walk + the 2026-06-02 Learn walk on a
+# fresh bednet-spot-check opp (which live-verified learn-home-screen +
+# learn-suite-menu once the #629 wedge cleared on a fresh build). Rows still
+# flagged `unverified: true` (9 as of 2026-06-02: cold-start, login button,
+# OTP-confirm, form-entry text-input, quiz-result, and the two Deliver states
+# start-delivering / deliver-start-button) are best-guesses pending a live
+# walk of those states. The Deliver states need the journey-learn→deliver
+# inter-leg bridge (#618 / PR #667) to compose so a single Phase-6 walk reaches
+# them. The static recipes are now migrated
 # off raw ids (#665) EXCEPT connect-register-from-otp.yaml's 7 camera ids
 # (the #666 photo surface, deliberately raw pending live calibration).
 # Rows WITHOUT either an `unverified: true` flag OR a `Live-verified` note
@@ -108,8 +112,7 @@ selectors:
   learn-home-screen:
     type: id
     value: "org.commcare.dalvik:id/nsv_home_screen"
-    unverified: true
-    purpose: "Learn-app StandardHomeActivity ScrollView — the post-Start Learn home. connect-claim-opp waits on it after btn_start. Gated behind the #629 Start-handoff wedge; calibrate live once #629 clears. #650."
+    purpose: "Learn-app StandardHomeActivity ScrollView — the post-Start Learn home. connect-claim-opp waits on it after btn_start. Live-verified 2026-06-02 (2.63.0) — present on the post-Learn CommCare home in bednet-spot-check/20260601-2009 Phase 6 (journey-learn-final + journey-deliver-resume-precondition dumps); the #629 wedge did NOT occur on a freshly-built install-verified app + fresh opp. #650."
 
   nav-drawer-burger-point:
     type: point
@@ -207,8 +210,7 @@ selectors:
   learn-suite-menu:
     type: id
     value: "org.commcare.dalvik:id/screen_suite_menu_list"
-    unverified: true
-    purpose: "Learn-app MenuActivity suite-menu list (post-Start, behind the #629 wedge). learn-launch / learn-suite-reentry / learn-tap-module. #650."
+    purpose: "Learn-app MenuActivity suite-menu list (post-Start). learn-launch / learn-suite-reentry / learn-tap-module. Live-verified 2026-06-02 (2.63.0) — present in the Learn suite-root dump (journey-learn-suite-root) of bednet-spot-check/20260601-2009 Phase 6, once the #629 wedge cleared on a fresh build. #650."
 
   # ── Google Play Services phone-hint sheet ───────────────────────
   gms-phone-hint-cancel:
