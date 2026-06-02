@@ -1168,8 +1168,21 @@ export class MobileClient {
     const avd = await this.avd.requireRunningAvd(args.avdName);
     const adbPort = AvdBackend.adbPortFromSerial(avd.serial) ?? undefined;
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'ace-mobile-reg-'));
-    const toContinue = path.join(this.staticRecipesDir, 'connect-register-to-otp.yaml');
-    const fromContinue = path.join(this.staticRecipesDir, 'connect-register-from-otp.yaml');
+
+    // Resolve `${SELECTOR:...}` placeholders BEFORE handing the recipes to
+    // Maestro — the same prep `runRecipe` and `cloudRegisterTestUser` run.
+    // PR #650 migrated connect-register-{to,from}-otp.yaml off raw
+    // `org.commcare.dalvik:id/*` literals onto `${SELECTOR:...}` tokens; this
+    // bootstrap path was still passing the RAW recipe paths to Maestro, so
+    // the placeholders reached Maestro unsubstituted and it coerced them to
+    // `id: NaN` (failing the very first splash assertion — jjackson/ace#682).
+    // `prepareRecipeForMaestro` resolves EVERY file in the static palette
+    // into `prep.tempDir`, so both register recipes land there as resolved
+    // siblings (and any `runFlow: file:` refs resolve to the resolved copies).
+    const toContinueRaw = path.join(this.staticRecipesDir, 'connect-register-to-otp.yaml');
+    const prep = await prepareRecipeForMaestro(toContinueRaw, getConfiguredApkVersion());
+    const toContinue = path.join(prep.tempDir, 'connect-register-to-otp.yaml');
+    const fromContinue = path.join(prep.tempDir, 'connect-register-from-otp.yaml');
     let success = false;
     try {
       // Pre-grant runtime permissions BEFORE launching CommCare. Both
@@ -1276,6 +1289,14 @@ export class MobileClient {
       success = true;
       return { alreadyRegistered: false, phone: args.phone, backupCode: args.backupCode };
     } finally {
+      // The resolved-recipe temp dir is internal plumbing — always reap it,
+      // success or failure (it holds no post-mortem signal; the screenshot
+      // artifacts under `tmp` are what matters).
+      try {
+        fs.rmSync(prep.tempDir, { recursive: true, force: true });
+      } catch {
+        // Best-effort — OS temp dir is bounded.
+      }
       // Clean up on success; on failure, keep the screenshot artifacts
       // for post-mortem (the user is going to want to see "what did
       // Maestro actually do?" when registration broke). The path is
