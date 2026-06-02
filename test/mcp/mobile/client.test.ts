@@ -13,6 +13,12 @@ import {
 import { setSessionBackend, clearSessionBackend } from '../../../mcp/mobile/backend-toggle.js';
 import { TEST_PHONE, TEST_PHONE_LOCAL } from '../../fixtures/test-phone.js';
 
+// The real static-recipe palette dir. registerTestUser now resolves
+// `${SELECTOR:...}` placeholders via prepareRecipeForMaestro, which reads
+// this palette off disk — so the register tests must point at the real
+// recipes (a fake `/static` dir would make resolution throw on read).
+const REAL_STATIC_DIR = new URL('../../../mcp/mobile/recipes/static/', import.meta.url).pathname;
+
 function fakeMaestroAndAvd(opts: {
   registerToOtp: 'pass' | 'fail';
   registerFromOtp: 'pass' | 'fail' | 'already';
@@ -46,7 +52,7 @@ function fakeMaestroAndAvd(opts: {
 describe('MobileClient.registerTestUser', () => {
   it('runs to-otp then from-otp recipes and returns success', async () => {
     const { avd, maestro } = fakeMaestroAndAvd({ registerToOtp: 'pass', registerFromOtp: 'pass', otp: '123456' });
-    const client = new MobileClient({ avd, maestro, staticRecipesDir: '/static' });
+    const client = new MobileClient({ avd, maestro, staticRecipesDir: REAL_STATIC_DIR });
 
     const r = await client.registerTestUser({
       avdName: 'AVD', phone: '+74260000001', phoneLocal: '4260000001', countryCode: '+7',
@@ -58,9 +64,67 @@ describe('MobileClient.registerTestUser', () => {
     expect(avd.setGmsEnabled).toHaveBeenCalledWith('AVD', false);
   });
 
+  // Regression guard for jjackson/ace#682: the heal-funnel / auto-bootstrap
+  // register path MUST run the static recipes through the SAME
+  // `${SELECTOR:...}` substitution pass `mobile_run_recipe` uses. PR #650
+  // migrated connect-register-to-otp.yaml / connect-register-from-otp.yaml
+  // off raw `org.commcare.dalvik:id/*` literals onto `${SELECTOR:...}`
+  // tokens, but registerTestUser passed the RAW recipe paths straight to
+  // maestro.runRecipe — so Maestro received literal `${SELECTOR:...}` text
+  // and coerced it to `id: NaN`, failing the very first splash assertion.
+  // This test reads the exact files handed to maestro and asserts the
+  // placeholders are gone (substituted) and a real resolved resource-id is
+  // present. It fails before the fix (raw recipe → placeholder survives).
+  it('resolves ${SELECTOR:...} placeholders before handing recipes to maestro', async () => {
+    const capturedRecipePaths: string[] = [];
+    const avd = {
+      ensureAvdRunning: vi.fn().mockResolvedValue({ name: 'AVD', serial: 'emulator-5554', status: 'booted' }),
+      requireRunningAvd: vi.fn().mockResolvedValue({ name: 'AVD', serial: 'emulator-5554', status: 'booted' }),
+      findRunningAvd: vi.fn().mockResolvedValue({ name: 'AVD', serial: 'emulator-5554', status: 'booted' }),
+      setGmsEnabled: vi.fn().mockResolvedValue(undefined),
+      grantRuntimePermissions: vi.fn().mockResolvedValue(undefined),
+    } as any;
+    // Capture the recipe BODY at call time — registerTestUser cleans up the
+    // temp dir on success, so we must read the file synchronously inside the
+    // mock before the finally block deletes it.
+    const capturedBodies: Record<string, string> = {};
+    const maestro = {
+      runRecipe: vi.fn().mockImplementation(async (recipePath: string) => {
+        capturedRecipePaths.push(recipePath);
+        capturedBodies[path.basename(recipePath)] = fs.readFileSync(recipePath, 'utf8');
+        return { status: 'pass', exitCode: 0, screenshots: [], stdout: '', stderr: '', screenshotsDir: '/tmp' };
+      }),
+    } as any;
+    const client = new MobileClient({ avd, maestro, staticRecipesDir: REAL_STATIC_DIR });
+
+    await client.registerTestUser({
+      avdName: 'AVD', phone: '+74260000001', phoneLocal: '4260000001', countryCode: '+7',
+      pin: '111111', backupCode: '222222', name: 'ACE Test',
+    });
+
+    // Both register recipes were handed to maestro from a resolved temp dir,
+    // NOT the raw static palette.
+    const toBody = capturedBodies['connect-register-to-otp.yaml'];
+    const fromBody = capturedBodies['connect-register-from-otp.yaml'];
+    expect(toBody, 'to-otp recipe was handed to maestro').toBeTruthy();
+    expect(fromBody, 'from-otp recipe was handed to maestro').toBeTruthy();
+    // Placeholders must be GONE — substituted to real ids. A surviving
+    // `${SELECTOR:` is exactly the #682 bug (Maestro coerces it to id: NaN).
+    expect(toBody).not.toMatch(/\$\{SELECTOR:/);
+    expect(fromBody).not.toMatch(/\$\{SELECTOR:/);
+    // And the substitution actually injected the real resolved resource-id
+    // for the splash assertion that failed live (app-splash-message →
+    // org.commcare.dalvik:id/str_setup_message).
+    expect(toBody).toContain('org.commcare.dalvik:id/str_setup_message');
+    // The recipes maestro ran were the resolved copies, not the raw paths.
+    for (const p of capturedRecipePaths) {
+      expect(p.startsWith(REAL_STATIC_DIR), `maestro got a resolved (temp) path, not raw ${p}`).toBe(false);
+    }
+  });
+
   it('detects PHONE_ALREADY_REGISTERED and returns alreadyRegistered=true', async () => {
     const { avd, maestro } = fakeMaestroAndAvd({ registerToOtp: 'pass', registerFromOtp: 'already', otp: '123456' });
-    const client = new MobileClient({ avd, maestro, staticRecipesDir: '/static' });
+    const client = new MobileClient({ avd, maestro, staticRecipesDir: REAL_STATIC_DIR });
 
     const r = await client.registerTestUser({
       avdName: 'AVD', phone: '+74260000001', phoneLocal: '4260000001', countryCode: '+7',
@@ -1569,7 +1633,7 @@ describe('registerTestUser: tempdir lifecycle', () => {
       registerFromOtp: 'pass',
       otp: '123456',
     });
-    const client = new MobileClient({ avd, maestro, staticRecipesDir: '/static' });
+    const client = new MobileClient({ avd, maestro, staticRecipesDir: REAL_STATIC_DIR });
     await client.registerTestUser({
       avdName: 'AVD',
       phone: '+74260000001',
@@ -1593,7 +1657,7 @@ describe('registerTestUser: tempdir lifecycle', () => {
       registerFromOtp: 'pass',
       otp: '123456',
     });
-    const client = new MobileClient({ avd, maestro, staticRecipesDir: '/static' });
+    const client = new MobileClient({ avd, maestro, staticRecipesDir: REAL_STATIC_DIR });
     await expect(
       client.registerTestUser({
         avdName: 'AVD',
