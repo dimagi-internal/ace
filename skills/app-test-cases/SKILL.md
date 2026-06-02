@@ -135,12 +135,23 @@ two smoke recipes share device state within one Phase 6 dispatch:
   walk, not a land-at-M1 thin walk.
 - **`journey-deliver.yaml` resumes from the unlocked state.** It assumes
   the immediately-preceding `journey-learn` leg (same dispatch, warm
-  session) completed Learn. Steps: navigate to the opp list → Resume the
-  In-Progress card (`connect-resume-opp.yaml`) → `runFlow:
-  deliver-launch.yaml` (certificate/opp-detail → Download gate →
-  Deliver home, all ID-anchored in `connect-2.63.0.yaml`) → tap into
-  the first Deliver module → first Deliver form screenshot. ~12 steps,
-  NO Learn duplication.
+  session) completed Learn. Compose it from the static palette:
+  `runFlow: connect-resume-opp.yaml` (opp list → Resume the In-Progress
+  card; also backs out of the post-Learn CommCare home to the Connect
+  jobs list — #618) → `runFlow: deliver-launch.yaml` (certificate/
+  opp-detail → Download gate → Deliver home `viewJobCard`, ID-anchored in
+  `connect-2.63.0.yaml`) → `runFlow: deliver-form-walk.yaml` (3-level
+  Deliver menu: Start → module list → module row → form list → form row →
+  first form question) → answer the journey's question(s) → `runFlow:
+  form-submit.yaml`. ~12 steps, NO Learn duplication.
+
+  **Menu-row taps use `id: org.commcare.dalvik:id/row_txt`, NOT
+  `text: "<label>"`.** A `text:` match hits the non-clickable action-bar
+  title (same label) first in document order, so the tap is a silent
+  no-op (validated live, bednet-spot-check/20260602-1345 deliver-leg pass).
+  `deliver-form-walk.yaml` already encodes this; if you ever inline a
+  menu-row tap instead of composing the palette recipe, use `row_txt` —
+  same as the Learn side's `learn-tap-module.yaml`.
 
 State the warm-state dependency in `journey-deliver.yaml`'s header
 comment: it is NOT independently cold-runnable; runners execute

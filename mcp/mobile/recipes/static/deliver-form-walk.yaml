@@ -1,0 +1,58 @@
+# Walk the 3-level Deliver menu from the Deliver home to the service-delivery
+# form's first question. Warm session; `deliver-launch.yaml` must have just
+# landed us on the Deliver home (`viewJobCard` visible).
+#
+# Pre-state: Deliver home (deliver-home-job-card / viewJobCard visible).
+# Post-state: the first Deliver form question on screen (nav_btn_next visible);
+# the composing journey then answers the question(s) and runs form-submit.yaml.
+#
+# Nav: Deliver home -> Start -> module list (screen_suite_menu_list) -> tap
+# module row -> form list (screen_suite_menu_list) -> tap form row -> form.
+#
+# SELECTOR RULE (load-bearing — validated live, bednet-spot-check/20260602-1345
+# deliver leg PASS, ace 0.13.533): tap CommCare menu-list rows by
+# `id: org.commcare.dalvik:id/row_txt`, NOT `text: "<row label>"`. A `text:`
+# match hits the non-clickable action-bar title (which carries the same label)
+# FIRST in Maestro's document order, so the tap is a no-op. This mirrors the
+# Learn side's `learn-tap-module.yaml`, which taps rows the same way.
+#
+# SINGLE-MODULE SMOKE assumption: taps the FIRST `row_txt` row at each level
+# (the deliver smoke is one module / one form by construction). A multi-module
+# Deliver app would need per-row name scoping — see `learn-tap-module.yaml`'s
+# `${MODULE_NAME}`-scoped pattern.
+appId: org.commcare.dalvik
+---
+- takeScreenshot: "deliver-form-walk-home"
+
+# Enter the Deliver app's module suite.
+- tapOn:
+    text: "Start"
+- waitForAnimationToEnd:
+    timeout: 5000
+- extendedWaitUntil:
+    visible:
+      id: "org.commcare.dalvik:id/screen_suite_menu_list"
+    timeout: 15000
+- takeScreenshot: "deliver-form-walk-module-list"
+
+# Tap the module row by id (NOT text — see SELECTOR RULE above).
+- tapOn:
+    id: "org.commcare.dalvik:id/row_txt"
+- waitForAnimationToEnd:
+    timeout: 5000
+- extendedWaitUntil:
+    visible:
+      id: "org.commcare.dalvik:id/screen_suite_menu_list"
+    timeout: 10000
+- takeScreenshot: "deliver-form-walk-form-list"
+
+# Tap the form row by id (same rule).
+- tapOn:
+    id: "org.commcare.dalvik:id/row_txt"
+
+# Form's first question is on screen once the form-nav bar renders.
+- extendedWaitUntil:
+    visible:
+      id: "org.commcare.dalvik:id/nav_btn_next"
+    timeout: 15000
+- takeScreenshot: "deliver-form-walk-form-question"
