@@ -43,40 +43,21 @@
 # button siblings) and not the outer rootCardView/RecyclerView.
 appId: org.commcare.dalvik
 ---
-# --- #618: inter-leg handoff (Learn home -> Connect jobs list) ---------------
-# The journey-learn leg leaves the device on the CommCare Learn-app home
-# (nsv_home_screen / StandardHomeActivity), NOT on Connect's jobs list — and
-# nothing between the legs navigates back. So if we're on the Learn home,
-# back out to Connect before the opp-list assert below.
+# --- #618: inter-leg handoff (Learn home -> Connect jobs list) — UNCHARACTERIZED
+# The journey-learn leg can leave the device on the CommCare Learn-app home
+# (nsv_home_screen / StandardHomeActivity), NOT on Connect's jobs list. The
+# nav from there back to `connect_fragment_jobs_list` is NOT yet characterized
+# on a live device, so this recipe does NOT attempt it (jjackson/ace#618).
 #
-# Adaptive (not a guessed back-count): pressBack at most 4x, stopping the
-# instant the KNOWN jobs-list selector appears. If back-nav can't return to
-# Connect (e.g. it backgrounds the app), the assertVisible at the end of this
-# branch fails loud — the iteration-loop Phase-6 run is the live validation
-# (jjackson/ace#618). If pressBack proves to background the app, swap this for
-# an explicit Connect relaunch.
-- runFlow:
-    when:
-      visible:
-        id: "org.commcare.dalvik:id/nsv_home_screen"
-    commands:
-      - takeScreenshot: "connect-resume-opp-learnhome-before-backout"
-      - repeat:
-          times: 4
-          commands:
-            - runFlow:
-                when:
-                  notVisible:
-                    id: "${SELECTOR:home-jobs-list}"
-                commands:
-                  - pressBack
-                  - extendedWaitUntil:
-                      visible:
-                        id: "${SELECTOR:home-jobs-list}"
-                      timeout: 4000
-      - assertVisible:
-          id: "${SELECTOR:home-jobs-list}"
-      - takeScreenshot: "connect-resume-opp-backout-landed"
+# DO NOT GUESS the back-nav. A prior fix used `pressBack` (invalid Maestro —
+# it's `pressKey: back`) and, even corrected, `pressKey: back` EXITS CommCare
+# to the Android home screen (see baseline/00-connect-home.yaml:34) — it does
+# NOT return to the jobs list. The correct path (likely the Learn home's
+# "Log out of CommCare" tile, or an app re-entry) must be CAPTURED LIVE
+# (mobile_capture_ui_dump on the post-Learn screen → try a candidate tap →
+# re-dump → confirm it lands on connect_fragment_jobs_list) before encoding it
+# here. Until then, the assert below fails loud when on the Learn home — that
+# clean failure is the signal to characterize, not a cue to guess.
 
 # Confirm we are on the opp-list.
 - assertVisible:
