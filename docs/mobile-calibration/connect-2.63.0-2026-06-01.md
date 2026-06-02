@@ -1,6 +1,56 @@
 # Selector-map calibration report — connect-2.63.0 — 2026-06-01
 
-**Mode:** Snapshot (read-only). `emulator-5580` was running warm (signed-in test
+Two passes this date: **(A) a read-only snapshot** (before the framework was
+fixed) and **(B) a cold-boot walk** (the real first run of `selector-map-calibrate`).
+
+---
+
+## Pass B — cold-boot walk (states 1–5)
+
+`mobile_ensure_avd_running` cold-booted `ACE_Pixel_API_34` (`emulator-5580`):
+`-wipe-data` → reinstall 2.63.0 APK → re-register the demo user → baseline. The
+registration ran `connect-register-from-otp.yaml` to completion (`maestro.log`
+ends `Assert id: rvJobList visible COMPLETED`), so **states 1–3 were walked by
+the cold-boot's own registration** — a live on-device validation (framework
+Step 6) of every selector on the demo-bypass path.
+
+**Confirmed-live live: device fresh, opp state persists.** After the wipe +
+re-register, the jobs list showed the SAME in-progress opps (LEEP/Malaria/
+Turmeric, 14–42% Learn) — proving the corrected framing: the device is fresh but
+`(phone, opp)` Learn-completion is server-side and survives the wipe (#568).
+
+**Rows promoted `unverified: true` → live-verified** (exercised + COMPLETED in
+the passing registration run, per `~/.maestro/tests/.../maestro.log`):
+
+| Row | id | Evidence |
+|---|---|---|
+| `personalid-name-continue` | `personalid_name_continue_button` | tapped + navigated |
+| `personalid-message-button` | `connect_message_button` | tapped |
+| `personalid-backup-code-view` | `backup_code_view` | "is visible" guard matched |
+
+**Left `unverified`** (not confirmable from the demo-bypass path):
+- `personalid-confirm-code-view` (`confirm_code_view`) — +7426 skips OTP confirm;
+  only evaluated as "not visible". Needs a real OTP registration.
+- `personalid-login-button` (`connect_login_button`) — sign-in button; the
+  demo-bypass registration path didn't traverse it.
+
+**State 4 (jobs-list)** re-confirmed on the post-boot dump (`00-landed.xml`):
+`connect_fragment_jobs_list`, `rvJobList`, `btn_resume`, `btn_view_info`.
+**State 5 (opp-detail)** already covered by Pass A.
+
+**States 6–10 NOT walked.** They need a Learn-incomplete opp; the only available
+opps are stale prior-run opps (driving Learn on them would consume their state
+and risks the #629 Start-handoff wedge). The clean continuation is a fresh
+`/ace:run` opp — then states 6–10 (incl. #618's `learn-home-screen` gesture and
+the form/quiz/deliver rows) calibrate in one pass.
+
+**Net Pass B:** 3 rows promoted; backlog 14 → 11 unverified.
+
+---
+
+## Pass A — snapshot (read-only)
+
+`emulator-5580` was running warm (signed-in test
 user, mid-Learn) — a leftover/human session I chose not to cold-boot over
 without a heads-up. NOTE: the full walk is NOT blocked by this — the standard
 fix is `mobile_ensure_avd_running` (cold-boot wipes + re-registers a fresh user;
