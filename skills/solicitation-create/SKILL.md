@@ -179,7 +179,7 @@ contract.
    | `expected_start_date` | string `YYYY-MM-DD` | Phase 4 opp `start_date` if available, else PDD `## Timeline` → start. **NOT** `anticipated_start`. |
    | `expected_end_date` | string `YYYY-MM-DD` | Phase 4 opp `end_date` if available, else PDD `## Timeline` → end. **NOT** `anticipated_end`. |
    | `estimated_scale` | string | Human-readable summary of expected reach, e.g. "30–50 verified HH visits per LLO; 2–3 LLOs total (90–150 HH end-to-end)". Sourced from PDD `## Target Population` → `Expected reach`. **NOT** `sample_target`. |
-   | `contact_email` | string | Point-of-contact shown on the published solicitation (candidate questions + responses land here). Use `${ACE_SOLICITATION_CONTACT_EMAIL}` (set in `.env`, op-injected to the ACE gmail account by default). If unset, **fall back to `${ACE_GMAIL_ACCOUNT}` and emit a `[WARN]`** — do **NOT** hard-halt — noting that any production solicitation you intend to award from should set a human-monitored `ACE_SOLICITATION_CONTACT_EMAIL` rather than the shared bot inbox. (Hard-`[BLOCKER]`-on-unset was removed in jjackson/ace#636 — it broke clean-machine / `is_test` teardown publishes for a public-listing contact field.) |
+   | `contact_email` | string (**optional** — omit entirely when not derivable) | Point-of-contact shown on the published solicitation (candidate questions + responses land here). **Source it ONLY from the PDD** — set it when the PDD explicitly names a point-of-contact / program email (e.g. a `## Solicitation` contact line or a clearly-stated coordinating email). **If the PDD does not make the contact email obvious, OMIT the `contact_email` field entirely** — do not send it, do not fall back to any env var or the shared ACE bot inbox. `contact_email` is optional in the labs `create_solicitation` schema (verified via live `tools/list`: `required` is just `title`/`description`/`solicitation_type`), so a solicitation with no contact email publishes cleanly and simply renders without a contact line. Emit a one-line `[INFO]` when omitting (`no PDD-derived contact email; publishing without a contact line`) — NOT a `[WARN]`, since a missing contact on a public listing is expected, not a defect. **Never** invent an email or reuse a bot inbox as a stand-in: a wrong contact on a public listing routes real candidate questions to a mailbox nobody reads. (Supersedes the old `${ACE_SOLICITATION_CONTACT_EMAIL}` → `${ACE_GMAIL_ACCOUNT}` fallback; the env var was removed because the shared bot inbox was never a real point of contact. The hard-`[BLOCKER]`-on-unset was already removed in jjackson/ace#636.) |
    | `evaluation_criteria` | array of `{id, name, weight, description, scoring_guide, linked_questions}` | Composed locally — see Step 3. **NOT** `rubric`. **NOT** `[{dimension, criterion, weight}]`. The deployed schema requires `id`, `name`, `weight` (verified via live `tools/list`); the ACE convention adds `description`, `scoring_guide`, and `linked_questions` as content-quality requirements. `id` is kebab-case (e.g. `field-ops-realism`), unique within the rubric — derive `slugify(name)` if you're tempted to elide it; explicit ids are required because duplicate-named criteria would otherwise silently collide. Weights sum to 100 (integers). |
    | `questions` | array of `{id, text, type, framing, required, options}` | Composed locally — see Step 4. **NOT** `response_questions`. Field is `text`, not `question`. The deployed schema requires `id`, `text`, `type` (verified via live `tools/list`); `framing` is an optional structured key that ACE always populates because it's the rubric anchor `solicitation-review` consumes when scoring responses. `id` is kebab-case (e.g. `field-ops-realism`). `type` is one of `"textarea"` (default), `"multiple_choice"`, `"number"`. Empty `framing` is a `[BLOCKER]` — the review path can't score responses against a missing anchor. |
    | `status` | string | `'active'` (publishes immediately; `'draft'` for dry-run mode). |
@@ -554,7 +554,7 @@ contract.
      expected_start_date: 'YYYY-MM-DD',
      expected_end_date: 'YYYY-MM-DD',
      estimated_scale: 'human-readable string',
-     contact_email: ...,                        # operator-monitored, not the bot
+     contact_email: ...,                        # OPTIONAL — include ONLY if the PDD names a contact; else OMIT this line entirely (no env fallback, no bot inbox)
      evaluation_criteria: [
        {id, name, weight, description, scoring_guide, linked_questions: [qid, ...]},
        ...
@@ -631,7 +631,7 @@ contract.
    - `application_deadline` parses as `YYYY-MM-DD` AND matches the computed deadline.
    - `expected_start_date` + `expected_end_date` both parse and match.
    - `estimated_scale` is non-empty.
-   - `contact_email` matches.
+   - `contact_email`: assert only **if you sent one** — when sent, it matches; when omitted (no PDD-derived contact), assert it is absent/empty on the round-trip (an omitted optional field is correct, not a miss).
    - `len(questions)` matches sent; every question has `id`, `text`, `type`, `framing` (non-empty), plus `required` if sent.
    - `len(evaluation_criteria)` matches sent; every criterion has `id`, `name`, `weight`, `scoring_guide`, `linked_questions` (non-empty); `sum(weights) == 100`.
    - `is_public: true`; `status: 'active'`; `connect_opportunity_id` matches sent.
