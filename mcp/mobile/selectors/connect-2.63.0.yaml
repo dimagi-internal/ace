@@ -324,17 +324,31 @@ selectors:
     purpose: "Cancel button on the camera intent-review tray (content-desc='Cancel'). Aborts capture and returns to the CommCare form with no image set. Live-verified 2026-05-31 #593."
 
   # ── Geopoint (GPS) — NOTE, not a selector ──────────────────────
-  # jjackson/ace#593 anticipated an "accuracy-gated geopoint" native
-  # widget needing a Capture button + emulator mock-location fix. Live
-  # observation 2026-05-31 (malaria-rdt RDT Sample form): the "GPS
-  # location" question is a PLAIN android.widget.EditText (no resource-id,
-  # NAF) — a free-text field. The "reach 25 m / 50 m max" wording is the
-  # question HINT, and the value is typed as a "lat lon alt accuracy"
-  # string (e.g. "12.0022 8.5920 500 10"); the accuracy gate is an XForm
-  # constraint on the typed value, not a widget. There is therefore NO
-  # native-geopoint logical selector to calibrate for this form shape.
-  # If a future Nova form uses a real CommCare geopoint widget (with a
-  # Capture button), add its selector here and dump it live first.
+  # CORRECTED 2026-06-03 (jjackson/ace#686). The earlier note here (and
+  # the #593 CHANGELOG entry) claimed the RDT Sample "GPS location"
+  # question is "a plain EditText / free-text field by design — type a
+  # 'lat lon alt accuracy' string." THAT WAS WRONG. The field IS a real
+  # CommCare geopoint (`kind:geopoint` in Nova; the form carries the
+  # standard `selected-at(gps, 0|1|3)` lat/lon/accuracy calcs). The
+  # plain-text-box render the #593/#686 investigation saw came from a
+  # STALE / DOWNGRADED build whose XForm bind was `type="xsd:string"`
+  # instead of `type="geopoint"`. Nova compiles geopoint correctly today
+  # (verified 2026-06-03: a fresh compile of the same app yields
+  # `type="geopoint"`). Typing a string into the stale text-box widget is
+  # exactly what produced the runtime `Calculation Error … gps_lon … list
+  # with only 1 element` (spaces don't survive entry, so `selected-at(gps,
+  # 1)` sees 1 token).
+  #
+  # A CORRECT build renders the native geopoint Capture-button widget,
+  # which needs an emulator mock-location fix (`adb emu geo fix`) BEFORE
+  # the FLW taps Capture. There is NOT yet a calibrated capture-button
+  # selector row here because we have not had a correct on-device build to
+  # dump live — calibrate it against the next run's released build (do NOT
+  # transcribe from a sibling APK/build), and add `mobile_set_location`
+  # support first. `app-release-qa` now hard-gates the stale-build class
+  # (kind:geopoint MUST compile to bind `type="geopoint"`) so future runs
+  # render the real widget. See `skills/app-test-cases/SKILL.md` Step 3
+  # item 4.5 for the geopoint recipe-authoring rule.
 
   # ── Post-claim Learn-app surfaces (atlas-verified 2026-05-14) ──────
   # These selectors were calibrated against ACE_Pixel_API_34_PS on the

@@ -282,6 +282,26 @@ phases write back to Drive at completion. If a phase agent finds the
 inline content is stale (e.g. an operator edited the PDD mid-run),
 it MAY re-fetch — but the default is "trust the inline copy."
 
+**Write artifacts to Drive incrementally — do NOT batch all writes to
+phase end.** A phase agent should write each artifact (recipe,
+screenshot verdict, training doc, eval verdict, …) to Drive **the moment
+it is produced**, and do the Phase Write-Back Contract as its final
+step. The orchestrator dispatch prompt should say so explicitly. Bug
+class: an interrupted phase (API socket drop, context exhaustion,
+operator halt) that batched its Drive writes to the end persists
+**nothing** — a re-dispatch redoes the entire phase from scratch,
+including expensive AVD walkthroughs. Canonical incident:
+malaria-rdt/20260602-1409 Phase 6 dropped on `FailedToOpenSocket`
+3× ~13–77 min in; the first two dispatches batched writes and lost all
+work (0/13 artifacts), while the third — instructed to write each
+artifact as produced — left 11/13 on Drive when it dropped, so a tightly
+scoped re-dispatch finished in minutes. Incremental writes also let the
+boundary fence's `verify_phase_artifacts` show real partial progress so
+the orchestrator can heal only the missing artifacts (see § Auto-retry
+silent Agent dispatches). This composes with `verify_phase_artifacts`'
+`producedBy` per-artifact healing — both assume each artifact lands on
+Drive independently, not in an end-of-phase batch.
+
 When dispatching `Agent(<phase>)`, structure the prompt with sections:
 
 ```
