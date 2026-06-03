@@ -122,6 +122,33 @@ describe('CloudBackend.ensureAvdRunning', () => {
     expect(JSON.parse(init.body as string)).toEqual({});
   });
 
+  it('surfaces cold-boot timings + accel verdict when ace-web returns them', async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(
+      jsonResponse(200, envelope({
+        instance_id: 'i-abc', state: 'running', public_dns: null, started_at: 't',
+        timings: { ec2_start_s: 41, emulator_wait_s: 372, diagnostics_s: 3 },
+        diagnostics: { accel: 'tcg', kvm_nested: '0' },
+      })),
+    );
+    const cb = new CloudBackend({ baseUrl: BASE, token: TOKEN, fetchImpl });
+
+    const info = await cb.ensureAvdRunning('cloud');
+
+    expect(info.timings).toEqual({ ec2_start_s: 41, emulator_wait_s: 372, diagnostics_s: 3 });
+    expect(info.accel).toBe('tcg');
+  });
+
+  it('omits timings/accel when ace-web does not return them (older versions)', async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(
+      jsonResponse(200, envelope({ instance_id: 'i-1', state: 'running', public_dns: null, started_at: 't' })),
+    );
+    const cb = new CloudBackend({ baseUrl: BASE, token: TOKEN, fetchImpl });
+
+    const info = await cb.ensureAvdRunning('cloud');
+    expect(info.timings).toBeUndefined();
+    expect(info.accel).toBeUndefined();
+  });
+
   it('passes state when avdName looks like a baked state name', async () => {
     const fetchImpl = vi.fn().mockResolvedValue(
       jsonResponse(200, envelope({ instance_id: 'i-1', state: 'running', public_dns: null, started_at: 't' })),
