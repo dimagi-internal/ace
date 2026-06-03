@@ -330,6 +330,84 @@ describe('MobileClient.runRecipe (cloud-path palette parity)', () => {
   });
 });
 
+describe('MobileClient.runRecipe (screenshot-on-recipe-error forensics)', () => {
+  // jjackson/ace screenshot-on-error: a FAILED recipe leaves the device on
+  // the offending screen. `runRecipe` captures a ui-dump (element tree) + a
+  // screenshot of that screen automatically, surfacing them on
+  // `result.failureForensics` for the manual-debug fallback. Best-effort:
+  // forensic-capture errors never turn a fail into a throw, and `pass` runs
+  // capture nothing.
+  let savedBackend: string | undefined;
+  let tmpDir: string;
+  beforeEach(() => {
+    savedBackend = process.env.ACE_MOBILE_BACKEND;
+    process.env.ACE_MOBILE_BACKEND = 'cloud';
+    clearSessionBackend();
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'failshot-it-'));
+  });
+  afterEach(() => {
+    if (savedBackend === undefined) delete process.env.ACE_MOBILE_BACKEND;
+    else process.env.ACE_MOBILE_BACKEND = savedBackend;
+    clearSessionBackend();
+    try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch {}
+  });
+
+  it('captures ui-dump + screenshot of the failure screen on a failed recipe', async () => {
+    const recipePath = path.join(tmpDir, 'will-fail.yaml');
+    fs.writeFileSync(recipePath, 'appId: org.commcare.dalvik\n---\n- assertVisible:\n    id: "nope"\n', 'utf8');
+
+    const cloudRunRecipe = vi
+      .fn()
+      // 1st call: the real recipe — fails.
+      .mockResolvedValueOnce({
+        status: 'fail', exitCode: 1, stdout: '', stderr: 'assertion failed', screenshotsDir: tmpDir, screenshots: [],
+      })
+      // 2nd call: the throwaway 1-step screenshot recipe — writes the PNG
+      // the backend would have produced, then resolves pass.
+      .mockImplementationOnce(async () => {
+        fs.writeFileSync(path.join(tmpDir, 'will-fail-FAILURE.png'), 'PNGDATA');
+        return { status: 'pass', exitCode: 0, stdout: '', stderr: '', screenshotsDir: tmpDir, screenshots: [] };
+      });
+    const captureUiDump = vi.fn().mockResolvedValue({
+      xml: '<hierarchy><node resource-id="org.commcare.dalvik:id/nsv_home_screen"/></hierarchy>',
+      elements: [{ id: 'org.commcare.dalvik:id/nsv_home_screen', text: '', class: 'View', bounds: '[0,0][1,1]' }],
+    });
+    const cloud = { runRecipe: cloudRunRecipe, captureUiDump } as any;
+    const client = new MobileClient({ avd: {} as any, maestro: {} as any, cloud });
+
+    const result = await client.runRecipe(recipePath, {}, tmpDir, 'AVD');
+
+    expect(result.status).toBe('fail');
+    expect(result.failureForensics).toBeDefined();
+    // ui-dump is the high-signal artifact: written next to the run's screenshots.
+    expect(result.failureForensics?.uiDumpPath).toBe(path.join(tmpDir, 'will-fail-FAILURE.xml'));
+    expect(fs.existsSync(result.failureForensics!.uiDumpPath!)).toBe(true);
+    expect(result.failureForensics?.elements?.[0]?.id).toContain('nsv_home_screen');
+    // screenshot of the failure screen, resolved from the backend's PNG.
+    expect(result.failureForensics?.screenshotPath).toBe(path.join(tmpDir, 'will-fail-FAILURE.png'));
+    expect(captureUiDump).toHaveBeenCalledWith('AVD');
+  });
+
+  it('captures nothing on a passing recipe (no wasted round-trips)', async () => {
+    const recipePath = path.join(tmpDir, 'will-pass.yaml');
+    fs.writeFileSync(recipePath, 'appId: org.commcare.dalvik\n---\n- launchApp: org.commcare.dalvik\n', 'utf8');
+
+    const cloudRunRecipe = vi.fn().mockResolvedValue({
+      status: 'pass', exitCode: 0, stdout: '', stderr: '', screenshotsDir: tmpDir, screenshots: [],
+    });
+    const captureUiDump = vi.fn();
+    const cloud = { runRecipe: cloudRunRecipe, captureUiDump } as any;
+    const client = new MobileClient({ avd: {} as any, maestro: {} as any, cloud });
+
+    const result = await client.runRecipe(recipePath, {}, tmpDir, 'AVD');
+
+    expect(result.status).toBe('pass');
+    expect(result.failureForensics).toBeUndefined();
+    expect(captureUiDump).not.toHaveBeenCalled();
+    expect(cloudRunRecipe).toHaveBeenCalledTimes(1); // no throwaway screenshot recipe
+  });
+});
+
 describe('MobileClient.runRecipe (recipe freshness pre-flight gate)', () => {
   // Closes the stale-Drive-artifact class from
   // `docs/learnings/2026-05-14-phase6-validation-arc.md` class-level
