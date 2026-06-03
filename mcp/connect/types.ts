@@ -5,6 +5,10 @@
 
 export interface Program {
   id: string;                          // UUID (Connect's `program_id`)
+  int_id?: number;                     // ConnectProd legacy integer id (`id` in the API response), when
+                                       // the response carries it. Same Program row as the UUID — NOT a
+                                       // labs-minted id. Recorded as `connect_int_id`; the labs/solicitation
+                                       // surfaces key off this integer.
   name: string;
   slug?: string;
   description: string;
@@ -19,6 +23,11 @@ export interface Program {
 
 export interface Opportunity {
   id: string;                          // UUID (`opportunity_id`)
+  int_id?: number;                     // ConnectProd legacy integer id (`id` in the API response).
+                                       // Same Opportunity row as the UUID — ConnectProd predates UUIDs
+                                       // and still exposes both. This is the integer the labs/synthetic
+                                       // surfaces and the `/a/<org>/opportunity/<int>/` Playwright URLs use;
+                                       // it is NOT a labs-minted id. Recorded as `connect_int_id` in run_state.
   program_id?: string;
   name: string;
   short_description: string;

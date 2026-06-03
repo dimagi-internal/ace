@@ -282,7 +282,7 @@ Before Step 1, verify:
   the current run's `run_state.yaml` (Phase 4 ran in this same run).
   Without an opportunity in Connect, the labs MCP has no opp to scope
   `synthetic_generate_from_manifest` against.
-- [ ] **`phases.connect-setup.products.connect.opportunity.labs_int_id`
+- [ ] **`phases.connect-setup.products.connect.opportunity.connect_int_id`
   populated** (Stage 4.5 of Plan B; `connect-opp-setup` recovers it
   via `labs_context` post-create). When null, Phase 7 falls back to
   operator-typed `--opp-int-id`. Re-run `connect-opp-setup` if labs

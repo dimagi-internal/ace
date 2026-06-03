@@ -256,6 +256,7 @@ export class RestBackend implements ConnectClient {
       end_date: args.end_date,
     };
     const { status, data, raw } = await this.post<{
+      id?: number;
       program_id: string;
       name: string;
       slug?: string;
@@ -501,6 +502,7 @@ interface ApiProgramApplication {
 
 function programFromResponse(
   p: {
+    id?: number;
     program_id: string;
     name: string;
     slug?: string;
@@ -517,6 +519,7 @@ function programFromResponse(
 ): Program {
   return {
     id: p.program_id,
+    int_id: p.id,
     name: p.name,
     slug: p.slug,
     description: p.description,
@@ -537,6 +540,7 @@ function opportunityFromResponse(
   void pmOrgSlug;
   return {
     id: o.opportunity_id,
+    int_id: o.id,
     program_id: o.program_id,
     name: o.name,
     short_description: o.short_description,

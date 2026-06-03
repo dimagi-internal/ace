@@ -50,6 +50,7 @@ describe('RestBackend.createProgram', () => {
       [{
         status: 201,
         body: {
+          id: 156,
           program_id: 'prog-uuid',
           name: 'Test',
           slug: 'test',
@@ -78,6 +79,9 @@ describe('RestBackend.createProgram', () => {
       end_date: '2026-12-31',
     });
     expect(out.id).toBe('prog-uuid');
+    // ConnectProd integer program id surfaced as `int_id` (recorded as
+    // opp.yaml connect_int_id) when the response carries it.
+    expect(out.int_id).toBe(156);
     expect(out.organization_slug).toBe('pm-org');
     expect(captured).toHaveLength(1);
     expect(captured[0].url).toBe('/api/programs/');
@@ -223,6 +227,10 @@ describe('RestBackend.createOpportunity', () => {
       deliver_app: { hq_server_url: 'https://www.commcarehq.org', api_key: 'k', cc_domain: 'd', cc_app_id: 'da' },
     });
     expect(out.id).toBe('opp-uuid');
+    // ConnectProd's legacy integer id (`id` in the response) is surfaced as
+    // `int_id` alongside the UUID — recorded as run_state `connect_int_id`,
+    // so Phase 7 never has to re-derive it via Labs (jjackson/ace#686).
+    expect(out.int_id).toBe(1);
     expect(out.managed).toBe(true);
     expect(out.deliver_app?.deliver_units).toEqual([{ id: 5, slug: 'du-1', name: 'DU 1' }]);
     expect(captured[0].url).toBe('/api/programs/prog-uuid/opportunities/');

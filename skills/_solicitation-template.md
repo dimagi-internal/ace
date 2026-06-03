@@ -110,7 +110,7 @@ Labs and Connect use different identifiers for the same program:
   — the **labs** integer program ID (e.g. `138`). Resolved by
   `solicitation-create` via a one-time `labs_context()` name match
   against the Connect program name, then cached at the durable
-  `opp.yaml.connect.program.labs_int_id` location. Consumed by all
+  `opp.yaml.connect.program.connect_int_id` location. Consumed by all
   three Phase 8 skills (`solicitation-create`, `solicitation-monitor`,
   `solicitation-review`) whenever they call labs MCP atoms that need
   program scope.

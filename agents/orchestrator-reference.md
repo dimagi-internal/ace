@@ -124,7 +124,7 @@ run reads from or writes to another run's `run_state.yaml`. Each
 run's `products.*` is the complete record of that run.
 
 The only cross-run reuse surface is `opp.yaml`, which holds opp-level
-identifiers (Connect program UUID + URL + labs_int_id) that survive
+identifiers (Connect program UUID + URL + connect_int_id) that survive
 across runs. Each run's `connect-opp-setup` records a copy of the
 program identifiers into its own `products.connect.program` so the
 run state file is self-contained for forking / debugging.
@@ -380,7 +380,7 @@ implicitly via path lacking a `runs/` prefix):
 
 | Path | Role |
 |---|---|
-| `ACE/<opp>/opp.yaml` | Identity (`display_name`, `slug`, `tags`, `created_at`, `created_by`) plus `connect.program.{id, url, labs_int_id}` — the durable Connect program reference reused across every run of the opp. Written by `connect-program-setup` on first create; subsequent runs read this to skip program-create. Every other piece of evolving state (Connect opportunity, OCS chatbot, solicitation, selected_llo, synthetic) is per-run and lives only in the producing run's `run_state.yaml.phases.<phase>.products.*`. Older opps may still carry stale `solicitation`/`selected_llo`/`synthetic`/`connect.opportunity`/`ocs_chatbot` blocks here from earlier dual-write iterations — no longer read or written; operator-cleaned-up when picking a release-candidate run. |
+| `ACE/<opp>/opp.yaml` | Identity (`display_name`, `slug`, `tags`, `created_at`, `created_by`) plus `connect.program.{id, url, connect_int_id}` — the durable Connect program reference reused across every run of the opp. Written by `connect-program-setup` on first create; subsequent runs read this to skip program-create. Every other piece of evolving state (Connect opportunity, OCS chatbot, solicitation, selected_llo, synthetic) is per-run and lives only in the producing run's `run_state.yaml.phases.<phase>.products.*`. Older opps may still carry stale `solicitation`/`selected_llo`/`synthetic`/`connect.opportunity`/`ocs_chatbot` blocks here from earlier dual-write iterations — no longer read or written; operator-cleaned-up when picking a release-candidate run. |
 | `ACE/<opp>/inputs/` | Human-curated source pack. Read-only — every run's Phase 1 reads via the run-root inputs-manifest. |
 | `ACE/<opp>/eval-calibration/known-issues.md` | Ground-truth catalogue every `-eval` rubric reads. Calibration survives across runs. |
 | `ACE/<opp>/open-questions.md` | Deferred questions that accrete across runs until answered. |
@@ -1210,7 +1210,7 @@ it.
 Reuse-vs-rebuild is owned by each phase agent's skills, not by the
 orchestrator. Each run is independent — no run reads from or writes
 to another run's `run_state.yaml`. The only cross-run reuse surface
-is `opp.yaml.connect.program.{id, url, labs_int_id}`, the durable
+is `opp.yaml.connect.program.{id, url, connect_int_id}`, the durable
 Connect program reference reused across every run. Everything else
 (opportunity, OCS chatbot, solicitation) is per-run and recreated
 fresh.
