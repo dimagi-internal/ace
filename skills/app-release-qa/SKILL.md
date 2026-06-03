@@ -208,7 +208,14 @@ path does.
    ```
 
    For multi-module apps, invoke `play` once per module (`[0,0]`,
-   `[1,0]`, …) to cover every form's `initAllTriggerables`.
+   `[1,0]`, …) to cover every form's `initAllTriggerables`. **Fire all
+   per-module `play` calls in parallel** (one assistant turn, multiple
+   `commcare_validate_ccz` tool calls) — they read the same on-disk CCZ
+   read-only and differ only by `entry_path`, so there's no ordering
+   dependency. Likewise, run the Learn and Deliver `validate`/`play`
+   checks concurrently rather than one app fully before the other. Await
+   all results, then branch on the worst verdict. (Each call is its own
+   short-lived JVM; serial execution just adds ~8s/module of dead wall time.)
 
 3. **Response shape (both modes):**
 

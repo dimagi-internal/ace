@@ -5,6 +5,7 @@ import * as path from 'node:path';
 
 import {
   resolveJavaPath,
+  __resetJavaPathCache,
   javaProbeWorks,
   JAVA_CANDIDATE_PATHS,
 } from '../../lib/commcare-cli-validate';
@@ -122,5 +123,38 @@ describe('JAVA_CANDIDATE_PATHS', () => {
 
   it('is non-empty', () => {
     expect(JAVA_CANDIDATE_PATHS.length).toBeGreaterThan(0);
+  });
+});
+
+describe('resolveJavaPath caching + bypass', () => {
+  const ORIG = process.env.ACE_JAVA_BIN;
+  afterEach(() => {
+    if (ORIG === undefined) delete process.env.ACE_JAVA_BIN;
+    else process.env.ACE_JAVA_BIN = ORIG;
+    __resetJavaPathCache();
+  });
+
+  it('returns an explicit path verbatim without probing', () => {
+    expect(resolveJavaPath('/custom/java')).toBe('/custom/java');
+  });
+
+  it('honors ACE_JAVA_BIN over auto-discovery', () => {
+    process.env.ACE_JAVA_BIN = '/env/java';
+    expect(resolveJavaPath()).toBe('/env/java');
+  });
+
+  it('caches the auto-discovered result across calls (stable)', () => {
+    delete process.env.ACE_JAVA_BIN;
+    const first = resolveJavaPath();
+    const second = resolveJavaPath();
+    expect(second).toBe(first); // memoized — no re-probe divergence
+  });
+
+  it('re-discovers after the cache is reset', () => {
+    delete process.env.ACE_JAVA_BIN;
+    const a = resolveJavaPath();
+    __resetJavaPathCache();
+    const b = resolveJavaPath();
+    expect(b).toBe(a); // same machine → same answer, but path re-ran
   });
 });

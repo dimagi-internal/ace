@@ -813,6 +813,16 @@ server.tool('commcare_validate_ccz',
       if (args.ccz_path) {
         cczPath = args.ccz_path;
       } else {
+        // Reaching here means a (multi-MB) base64 CCZ blob round-tripped
+        // through the model context to get to this arg — the exact footgun
+        // `ccz_path` + `download_ccz(write_to_path=…)` exists to avoid. Warn
+        // so a regression in the app-release-qa chain is visible in MCP logs
+        // instead of silently bloating context + latency.
+        console.error(
+          `[commcare_validate_ccz] WARN: ccz_base64 supplied (${Math.round(
+            (args.ccz_base64!.length * 3) / 4 / 1024,
+          )} KB decoded) — prefer download_ccz(write_to_path=X) + validate_ccz(ccz_path=X) to keep the CCZ out of model context.`,
+        );
         tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ace-ccz-validate-'));
         cczPath = path.join(tmpDir, 'app.ccz');
         fs.writeFileSync(cczPath, Buffer.from(args.ccz_base64!, 'base64'));
