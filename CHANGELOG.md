@@ -5,6 +5,17 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## Unreleased — 2026-06-03
+
+**`mobile_set_location` atom + cold-boot mock-GPS baseline (geopoint capture support, jjackson/ace#686 follow-up).**
+
+A CommCare `geopoint` question is a Capture-button widget that reads the device GPS provider; on an emulator the provider never acquires a fix on its own, so Capture would hang. Two new mechanisms:
+
+- **Cold-boot baseline:** `AvdBackend.applyEnvironmentBaseline` now seeds `DEFAULT_MOCK_LOCATION` (`adb emu geo fix <lon> <lat> <alt> <sats>`, **longitude first**) on every cold-boot, so any geopoint Capture has a provider fix out of the box (live-verified `hAcc≈5m`). Added to the baseline fingerprint as `mock_location_fix`.
+- **`mobile_set_location` atom** (17th mobile atom): `{avdName, longitude, latitude, altitude?, satellites?}` — overrides with opp-specific coordinates. Local-AVD only; cloud throws `CLOUD_MOCK_LOCATION_UNSUPPORTED` (a `/api/mobile` route is a follow-up).
+
+Does NOT yet include the live-calibrated geopoint Capture-button *selector* (must be dumped against a correct on-device build — deferred to the next run's Phase 6, where Phase 3 produces a correct geopoint; also verify whether `auto_gps_capture` auto-fills). Recipe-authoring rule + the `inputtext-geopoint-as-string` probe shipped in the prior PR. Docs: `playbook/integrations/mobile-integration.md § Geopoint (GPS) capture`.
+
 ## 0.13.505 — 2026-06-01
 
 **`mobile_run_recipe`: bounded driver-death heal-and-retry envelope (closes jjackson/ace#592 item 5).**

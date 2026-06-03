@@ -1129,7 +1129,7 @@ Download a file from OCS by file ID.
 
 ## ace-mobile
 
-Source: `mcp/mobile-server.ts` — 14 atoms
+Source: `mcp/mobile-server.ts` — 15 atoms
 
 ### `mobile_ensure_avd_running`
 
@@ -1194,6 +1194,12 @@ _no parameters_
 ### `mobile_load_snapshot`
 
 text
+
+_no parameters_
+
+### `mobile_set_location`
+
+ACE_Pixel_API_34
 
 _no parameters_
 

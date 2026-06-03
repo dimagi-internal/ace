@@ -32,6 +32,36 @@ describe('AvdBackend.listAvds', () => {
   });
 });
 
+describe('AvdBackend.setLocation', () => {
+  it('runs `adb emu geo fix` with longitude FIRST and reports applied on OK', async () => {
+    const shell = fakeShell({
+      'adb -s emulator-5554 emu geo fix 8.5167 12.0022 480 12': { stdout: 'OK\n' },
+    });
+    const backend = new AvdBackend({ shell });
+    vi.spyOn(backend as any, 'requireRunningAvd').mockResolvedValue({ serial: 'emulator-5554' });
+    const r = await backend.setLocation('ACE_Pixel_API_34', 8.5167, 12.0022, 480, 12);
+    expect(r.applied).toBe(true);
+    expect(r.longitude).toBe(8.5167);
+    expect(r.latitude).toBe(12.0022);
+    // longitude is the FIRST wire arg (the transposition footgun guard).
+    expect(shell).toHaveBeenCalledWith('adb', [
+      '-s', 'emulator-5554', 'emu', 'geo', 'fix', '8.5167', '12.0022', '480', '12',
+    ]);
+  });
+
+  it('defaults altitude/satellites and reports not-applied when the console returns KO', async () => {
+    const shell = fakeShell({
+      'adb -s emulator-5554 emu geo fix 0 0 480 12': { stdout: 'KO: bad arguments\n' },
+    });
+    const backend = new AvdBackend({ shell });
+    vi.spyOn(backend as any, 'requireRunningAvd').mockResolvedValue({ serial: 'emulator-5554' });
+    const r = await backend.setLocation('ACE_Pixel_API_34', 0, 0);
+    expect(r.applied).toBe(false);
+    expect(r.altitude).toBe(480);
+    expect(r.satellites).toBe(12);
+  });
+});
+
 describe('AvdBackend.ensureAvdRunning', () => {
   it('kills any prior running emulator for the same AVD before re-booting (cold-boot model)', async () => {
     // The prior fast-path "return existing serial if already booted"

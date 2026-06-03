@@ -1,7 +1,7 @@
 /**
  * ACE Mobile MCP Server
  *
- * Exposes 16 atomic mobile capabilities backed by Maestro + adb +
+ * Exposes 17 atomic mobile capabilities backed by Maestro + adb +
  * Playwright + (when ACE_MOBILE_BACKEND=cloud) ace-web's cloud
  * emulator HTTP API. Routing → backend lives in
  * `mcp/mobile/capability-map.ts`; the registration-coverage test pins
@@ -319,6 +319,27 @@ server.tool(
   { avdName: z.string(), snapshotName: z.string() },
   async ({ avdName, snapshotName }) => ({
     content: [{ type: 'text', text: JSON.stringify(await client.loadSnapshot(avdName, snapshotName), null, 2) }],
+  }),
+);
+
+server.tool(
+  'mobile_set_location',
+  {
+    avdName: z.string().default(process.env.ACE_AVD_NAME ?? 'ACE_Pixel_API_34'),
+    longitude: z
+      .number()
+      .describe('Longitude (X). NOTE: longitude is the FIRST coordinate (emulator `geo fix` console convention) — pass it before latitude to avoid the classic transposition footgun.'),
+    latitude: z.number().describe('Latitude (Y).'),
+    altitude: z.number().optional().describe('Altitude in metres (default 480).'),
+    satellites: z
+      .number()
+      .int()
+      .positive()
+      .optional()
+      .describe('Number of satellites in the simulated fix (default 12). >= 4 yields a usable fix; more improves the reported accuracy shown in a CommCare geopoint accuracy readout.'),
+  },
+  async ({ avdName, longitude, latitude, altitude, satellites }) => ({
+    content: [{ type: 'text', text: JSON.stringify(await client.setLocation(avdName, longitude, latitude, altitude, satellites), null, 2) }],
   }),
 );
 

@@ -16,6 +16,7 @@ export type Capability =
   | 'capture_ui_dump'
   | 'save_snapshot'
   | 'load_snapshot'
+  | 'set_location'
   | 'probe_maestro_driver'
   | 'diagnose'
   | 'restart_runner'
@@ -39,6 +40,7 @@ export const CAPABILITY_MAP: Record<Capability, CapabilityRoute> = {
   capture_ui_dump: { backend: 'AVD', description: 'adb shell uiautomator dump' },
   save_snapshot: { backend: 'AVD', description: 'adb emu avd snapshot save <name>' },
   load_snapshot: { backend: 'AVD', description: 'adb emu avd snapshot load <name>' },
+  set_location: { backend: 'AVD', description: 'adb emu geo fix <lon> <lat> [alt] [sats] — seed a mock GPS fix so CommCare geopoint Capture works. Cold-boot baseline seeds a default; this overrides per-opp. Local-AVD only (cloud throws CLOUD_MOCK_LOCATION_UNSUPPORTED).' },
   probe_maestro_driver: { backend: 'MAESTRO', description: 'Read-only: does the on-device Maestro driver gRPC channel respond on the AVD? No recovery — use ensure_avd_running for the heal path.' },
   diagnose: { backend: 'CLOUD', description: 'Cloud-only: read the runner-VM diagnostics (SSM state, runner-ready marker, last recipe). Throws CLOUD_ONLY_OPERATION on local AVD.' },
   restart_runner: { backend: 'CLOUD', description: 'Cloud-only: restart the in-VM runner process. Throws CLOUD_ONLY_OPERATION on local AVD.' },
