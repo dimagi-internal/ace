@@ -451,7 +451,7 @@ per-leg classifier — apply it to whichever leg failed.
 sources, in priority order:
 
 1. **`result.failureForensics` (auto-captured, cross-backend — since
-   0.13.537).** On *every* recipe `status: 'fail'`, `mobile_run_recipe`
+   0.13.538).** On *every* recipe `status: 'fail'`, `mobile_run_recipe`
    captures the device state at the moment of failure — `uiDumpPath`
    (an `<recipe-id>-FAILURE.xml` element tree: resource-ids/text/bounds,
    the highest-signal artifact for selector + nav debugging) plus

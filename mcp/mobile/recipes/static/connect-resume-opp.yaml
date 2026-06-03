@@ -63,7 +63,7 @@ appId: org.commcare.dalvik
 # re-dump → confirm it lands on connect_fragment_jobs_list) before encoding it
 # here. Until then, the assert below fails loud when on the Learn home — that
 # clean failure is the signal to characterize, not a cue to guess. As of
-# 0.13.537, that failure now AUTO-captures `<recipe>-FAILURE.{xml,png}` of the
+# 0.13.538, that failure now AUTO-captures `<recipe>-FAILURE.{xml,png}` of the
 # Learn-home screen via `mobile_run_recipe`'s failureForensics — read that
 # element tree to pick + confirm the return route.
 
