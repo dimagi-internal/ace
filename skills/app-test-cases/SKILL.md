@@ -750,6 +750,13 @@ judging happens later in `app-ux-eval`).
 
 ## Failure modes
 
+- **Any `mobile_run_recipe` failure → read the forensics first.** On a recipe
+  `status: 'fail'` (or a thrown driver-death failure, where the artifacts ride
+  on `error.failureForensics`), Read `failureForensics.screenshotPath` (the
+  failure screen) + `failureForensics.uiDumpPath` (the element tree) before
+  writing a verdict or escalating — the screen usually names the failure mode
+  literally. Canonical contract: `playbook/integrations/mobile-integration.md
+  § Failure forensics`; full failure-mode table in `app-screenshot-capture`.
 - pdd-to-app-journeys.md missing or empty → Phase 1 hasn't completed; halt
 - Nova blueprint missing for one of the apps → Phase 3 build hasn't
   succeeded; halt with pointer to upstream skill

@@ -385,6 +385,11 @@ auto_surfaced:
 
 ## Failure modes
 
+- **Any `mobile_run_recipe` failure → read the forensics first.** On a recipe
+  `status: 'fail'` (or a thrown driver-death failure, where the artifacts ride
+  on `error.failureForensics`), Read `failureForensics.screenshotPath` + `.uiDumpPath`
+  before writing a verdict or escalating. Canonical contract:
+  `playbook/integrations/mobile-integration.md § Failure forensics`.
 - **AVD not running / test user not signed in.** Halt with a pointer at
   `/ace:mobile-bootstrap`.
 - **Step 0 fork fails (ACE_WEB_PAT_TOKEN invalid/missing).** Halt with

@@ -406,6 +406,49 @@ describe('MobileClient.runRecipe (screenshot-on-recipe-error forensics)', () => 
     expect(captureUiDump).not.toHaveBeenCalled();
     expect(cloudRunRecipe).toHaveBeenCalledTimes(1); // no throwaway screenshot recipe
   });
+
+  it('captures forensics on a THROWN failure (driver death) and attaches them to the error', async () => {
+    // The highest-signal failures — driver death that exhausts the heal-and-
+    // retry envelope, transport crashes — THROW rather than returning a
+    // {status:'fail'} result, so the status-gated capture can't fire. The
+    // throw arm must capture the failure screen too (the ui-dump is adb-based,
+    // so it usually still works on a dead gRPC driver), attach it to the
+    // error, and rethrow the ORIGINAL error untouched.
+    const recipePath = path.join(tmpDir, 'will-throw.yaml');
+    fs.writeFileSync(recipePath, 'appId: org.commcare.dalvik\n---\n- assertVisible:\n    id: "nope"\n', 'utf8');
+
+    const cloudRunRecipe = vi
+      .fn()
+      // 1st call: the real recipe — throws a transport/driver error.
+      .mockRejectedValueOnce(new Error('UNAVAILABLE: driver gRPC broken pipe'))
+      // 2nd call: the throwaway 1-step screenshot recipe fired from the catch
+      // arm — writes the failure-screen PNG, then resolves pass.
+      .mockImplementationOnce(async () => {
+        fs.writeFileSync(path.join(tmpDir, 'will-throw-FAILURE.png'), 'PNGDATA');
+        return { status: 'pass', exitCode: 0, stdout: '', stderr: '', screenshotsDir: tmpDir, screenshots: [] };
+      });
+    const captureUiDump = vi.fn().mockResolvedValue({
+      xml: '<hierarchy><node resource-id="org.commcare.dalvik:id/nsv_home_screen"/></hierarchy>',
+      elements: [{ id: 'org.commcare.dalvik:id/nsv_home_screen', text: '', class: 'View', bounds: '[0,0][1,1]' }],
+    });
+    const cloud = { runRecipe: cloudRunRecipe, captureUiDump } as any;
+    const client = new MobileClient({ avd: {} as any, maestro: {} as any, cloud });
+
+    // The ORIGINAL error must propagate — forensic capture never masks it.
+    const err: any = await client.runRecipe(recipePath, {}, tmpDir, 'AVD').then(
+      () => { throw new Error('expected runRecipe to reject'); },
+      (e) => e,
+    );
+    expect(err).toBeInstanceOf(Error);
+    expect(String(err.message)).toContain('UNAVAILABLE');
+    // ...with the failure-screen forensics attached to it.
+    expect(err.failureForensics).toBeDefined();
+    expect(err.failureForensics.uiDumpPath).toBe(path.join(tmpDir, 'will-throw-FAILURE.xml'));
+    expect(fs.existsSync(err.failureForensics.uiDumpPath)).toBe(true);
+    expect(err.failureForensics.elements?.[0]?.id).toContain('nsv_home_screen');
+    expect(err.failureForensics.screenshotPath).toBe(path.join(tmpDir, 'will-throw-FAILURE.png'));
+    expect(captureUiDump).toHaveBeenCalledWith('AVD');
+  });
 });
 
 describe('MobileClient.runRecipe (recipe freshness pre-flight gate)', () => {

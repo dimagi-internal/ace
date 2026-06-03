@@ -4,6 +4,8 @@ import {
   loadSelectorMapIds,
   diffResourceIds,
   renderReportMarkdown,
+  isFailureDumpFile,
+  failureScreenDriftSuspects,
 } from '../../lib/atlas-drift.js';
 
 // Pure helpers behind the atlas-drift harvester (scripts/probe-atlas-
@@ -99,7 +101,54 @@ describe('diffResourceIds', () => {
   });
 });
 
+describe('isFailureDumpFile', () => {
+  it('recognizes `*-FAILURE.xml` dumps (case-insensitive) and ignores normal dumps', () => {
+    expect(isFailureDumpFile('j1/connect-claim-opp-FAILURE.xml')).toBe(true);
+    expect(isFailureDumpFile('/abs/path/learn-walk-FAILURE.XML')).toBe(true);
+    expect(isFailureDumpFile('j1/step-3.xml')).toBe(false);
+    expect(isFailureDumpFile('j1/FAILURE-but-not-suffix.xml.bak')).toBe(false);
+  });
+});
+
+describe('failureScreenDriftSuspects', () => {
+  it('returns sorted ids seen on failure screens that are NOT in the map', () => {
+    const observedOnFailure = new Set(['x:id/c', 'x:id/a', 'x:id/mapped']);
+    const mapped = new Set(['x:id/mapped']);
+    expect(failureScreenDriftSuspects(observedOnFailure, mapped)).toEqual(['x:id/a', 'x:id/c']);
+  });
+
+  it('returns empty when every failure-screen id is already mapped', () => {
+    const observedOnFailure = new Set(['x:id/a']);
+    expect(failureScreenDriftSuspects(observedOnFailure, new Set(['x:id/a']))).toEqual([]);
+  });
+});
+
 describe('renderReportMarkdown', () => {
+  it('surfaces a priority FAILURE-screen section when failureScreenCandidates is non-empty', () => {
+    const md = renderReportMarkdown({
+      apkVersion: '2.63.0',
+      dumpFiles: ['j1/claim-FAILURE.xml'],
+      onlyInDumps: ['org.commcare.dalvik:id/btn_moved', 'org.commcare.dalvik:id/btn_other'],
+      onlyInMap: [],
+      inBoth: [],
+      failureScreenCandidates: ['org.commcare.dalvik:id/btn_moved'],
+    });
+    expect(md).toContain('Drift suspects on FAILURE screens');
+    expect(md).toMatch(/review FIRST/i);
+    expect(md).toContain('org.commcare.dalvik:id/btn_moved');
+  });
+
+  it('omits the FAILURE-screen section entirely when there are no failure candidates', () => {
+    const md = renderReportMarkdown({
+      apkVersion: '2.63.0',
+      dumpFiles: ['j1/step-1.xml'],
+      onlyInDumps: ['x:id/a'],
+      onlyInMap: [],
+      inBoth: [],
+    });
+    expect(md).not.toContain('Drift suspects on FAILURE screens');
+  });
+
   it('produces a markdown report with both sections + the active APK header', () => {
     const md = renderReportMarkdown({
       apkVersion: '2.62.0',

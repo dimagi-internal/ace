@@ -43,6 +43,8 @@ import {
   loadSelectorMapIds,
   diffResourceIds,
   renderReportMarkdown,
+  isFailureDumpFile,
+  failureScreenDriftSuspects,
 } from '../lib/atlas-drift.js';
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -125,15 +127,25 @@ function main(): void {
     process.exit(2);
   }
 
-  // Aggregate observed ids across every dump in the directory tree.
+  // Aggregate observed ids across every dump in the directory tree, tracking
+  // which ids appeared specifically on a `*-FAILURE.xml` screen — those are
+  // the priority drift suspects (a candidate root cause for a recipe failure
+  // in this run, not just untapped coverage).
   const observed = new Set<string>();
+  const observedOnFailure = new Set<string>();
   for (const f of dumpFiles) {
     const xml = fs.readFileSync(f, 'utf8');
-    for (const id of extractResourceIdsFromDump(xml)) observed.add(id);
+    const ids = extractResourceIdsFromDump(xml);
+    const fromFailureScreen = isFailureDumpFile(f);
+    for (const id of ids) {
+      observed.add(id);
+      if (fromFailureScreen) observedOnFailure.add(id);
+    }
   }
 
   const mapped = loadSelectorMapIds(fs.readFileSync(mapPath, 'utf8'));
   const diff = diffResourceIds(observed, mapped);
+  const failureScreenCandidates = failureScreenDriftSuspects(observedOnFailure, mapped);
 
   // Make dump-file paths relative to the dump dir so the report stays
   // readable when the absolute path is deep.
@@ -145,12 +157,13 @@ function main(): void {
     onlyInDumps: diff.onlyInDumps,
     onlyInMap: diff.onlyInMap,
     inBoth: diff.inBoth,
+    failureScreenCandidates,
   });
 
   if (args.outPath) {
     fs.writeFileSync(args.outPath, report);
     process.stderr.write(
-      `wrote report to ${args.outPath} (${diff.onlyInDumps.length} new, ${diff.onlyInMap.length} orphan, ${diff.inBoth.length} matched)\n`,
+      `wrote report to ${args.outPath} (${diff.onlyInDumps.length} new, ${diff.onlyInMap.length} orphan, ${diff.inBoth.length} matched, ${failureScreenCandidates.length} failure-screen suspect(s))\n`,
     );
   } else {
     process.stdout.write(report);

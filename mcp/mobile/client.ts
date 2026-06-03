@@ -1043,48 +1043,79 @@ export class MobileClient {
     const dispatchId = newDispatchId();
 
     let result: RecipeRunResult;
-    if (this.useCloud) {
-      const paletteTarB64 = tarDirAsBase64(prep.tempDir);
-      result = await this.requireCloud().runRecipe(
-        prep.resolvedPath,
-        enrichedEnv,
-        screenshotDir,
-        { state: avdName, paletteTarB64 },
-      );
-    } else {
-      // Bounded driver-death heal-and-retry envelope (jjackson/ace#592 item
-      // 5). A Maestro driver / gRPC transport crash ("Broken pipe",
-      // UNAVAILABLE) can take the AVD down mid-run, leaving the recipe
-      // classified `failureClass: 'driver'` (or throwing a transport error).
-      // On that — and ONLY that — cold-boot the AVD (restores the phase
-      // precondition deterministically) and retry once. Any other failure
-      // class is a real result and is returned untouched. Re-resolve avdInfo
-      // INSIDE runOnce: a cold-boot can change serial / adbPort.
-      // See `mcp/mobile/maestro-driver-retry.ts` for the safety rationale.
-      result = await runRecipeWithDriverHeal({
-        // No avdName → nothing to heal; disable retry (maxRetries 0).
-        maxRetries: avdName ? 1 : 0,
-        log: logInfo,
-        runOnce: async () => {
-          const avdInfo = avdName ? await this.resolveAvdInfo(avdName) : undefined;
-          // Pass `serial` through so MaestroBackend can capture per-screenshot
-          // UI hierarchy dumps in the quiet windows between sub-recipes. See
-          // `MaestroBackend.runRecipeWithDumps` for the split-and-capture
-          // contract and `docs/learnings/2026-05-14-atlas-side-channel-capture.md`
-          // for why a side-channel dump (running concurrent with Maestro)
-          // doesn't work. When `serial` is undefined the backend falls back
-          // to the pre-0.13.229 single-invocation path with no dumps.
-          return this.maestro.runRecipe(prep.resolvedPath, enrichedEnv, screenshotDir, {
-            adbPort: avdInfo?.adbPort,
-            serial: avdInfo?.serial,
-          });
-        },
-        heal: async () => {
-          // Full cold-boot funnel — restores AVD + driver + fresh demo user
-          // at the Connect home (the journey-recipe precondition).
-          if (avdName) await this.ensureAvdRunning(avdName);
-        },
-      });
+    try {
+      if (this.useCloud) {
+        const paletteTarB64 = tarDirAsBase64(prep.tempDir);
+        result = await this.requireCloud().runRecipe(
+          prep.resolvedPath,
+          enrichedEnv,
+          screenshotDir,
+          { state: avdName, paletteTarB64 },
+        );
+      } else {
+        // Bounded driver-death heal-and-retry envelope (jjackson/ace#592 item
+        // 5). A Maestro driver / gRPC transport crash ("Broken pipe",
+        // UNAVAILABLE) can take the AVD down mid-run, leaving the recipe
+        // classified `failureClass: 'driver'` (or throwing a transport error).
+        // On that — and ONLY that — cold-boot the AVD (restores the phase
+        // precondition deterministically) and retry once. Any other failure
+        // class is a real result and is returned untouched. Re-resolve avdInfo
+        // INSIDE runOnce: a cold-boot can change serial / adbPort.
+        // See `mcp/mobile/maestro-driver-retry.ts` for the safety rationale.
+        result = await runRecipeWithDriverHeal({
+          // No avdName → nothing to heal; disable retry (maxRetries 0).
+          maxRetries: avdName ? 1 : 0,
+          log: logInfo,
+          runOnce: async () => {
+            const avdInfo = avdName ? await this.resolveAvdInfo(avdName) : undefined;
+            // Pass `serial` through so MaestroBackend can capture per-screenshot
+            // UI hierarchy dumps in the quiet windows between sub-recipes. See
+            // `MaestroBackend.runRecipeWithDumps` for the split-and-capture
+            // contract and `docs/learnings/2026-05-14-atlas-side-channel-capture.md`
+            // for why a side-channel dump (running concurrent with Maestro)
+            // doesn't work. When `serial` is undefined the backend falls back
+            // to the pre-0.13.229 single-invocation path with no dumps.
+            return this.maestro.runRecipe(prep.resolvedPath, enrichedEnv, screenshotDir, {
+              adbPort: avdInfo?.adbPort,
+              serial: avdInfo?.serial,
+            });
+          },
+          heal: async () => {
+            // Full cold-boot funnel — restores AVD + driver + fresh demo user
+            // at the Connect home (the journey-recipe precondition).
+            if (avdName) await this.ensureAvdRunning(avdName);
+          },
+        });
+      }
+    } catch (e) {
+      // Thrown-failure forensics (screenshot-on-error, THROW arm). A driver
+      // death that exhausts the heal-and-retry envelope, a transport crash, or
+      // any other backend throw never produces a RecipeRunResult — so the
+      // `status === 'fail'` capture below can't fire. These are among the
+      // highest-signal failures (the device hung / the driver died), and a
+      // dead Maestro gRPC driver usually still leaves an adb-screenshottable
+      // screen (the ui-dump path is adb-based, not gRPC). Capture HERE too,
+      // best-effort, attach the paths to the thrown error so callers can
+      // surface them, then rethrow the ORIGINAL error untouched. The artifacts
+      // also land in `screenshotDir` alongside the run's other PNGs regardless
+      // of whether the caller reads `error.failureForensics`. Forensic capture
+      // must never mask the real failure: its own errors are swallowed.
+      try {
+        const forensics = await this.captureFailureForensics(avdName, screenshotDir, recipeId);
+        (e as { failureForensics?: RecipeRunResult['failureForensics'] }).failureForensics =
+          forensics;
+        if (forensics?.screenshotPath || forensics?.uiDumpPath) {
+          logInfo(
+            `runRecipe: thrown failure for ${recipeId} — captured forensics ` +
+              `(screenshot=${forensics.screenshotPath ?? 'none'}, uiDump=${forensics.uiDumpPath ?? 'none'})`,
+          );
+        }
+      } catch (fe) {
+        logInfo(
+          `runRecipe: thrown-failure forensics capture failed for ${recipeId}: ${String(fe)}`,
+        );
+      }
+      throw e;
     }
 
     // Screenshot-on-recipe-error (debug assist): a failed recipe leaves the

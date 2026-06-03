@@ -229,6 +229,12 @@ coverage + the backlog that still needs the full cold-boot walk.
 
 ## Failure modes
 
+- **Any `mobile_run_recipe` failure → read the forensics first.** On a recipe
+  `status: 'fail'` (or a thrown driver-death failure, where the artifacts ride
+  on `error.failureForensics`), Read `failureForensics.screenshotPath` + `.uiDumpPath`
+  before writing a verdict or escalating — for selector calibration the
+  `-FAILURE.xml` element tree is exactly the drift signal you're after.
+  Canonical contract: `playbook/integrations/mobile-integration.md § Failure forensics`.
 - **Reusing a Learn-complete opp for states 6–10.** The device cold-boots fresh
   every dispatch, but Learn-completion is server-side per (phone, opp) and does
   NOT reset on wipe (#568). Walking the Learn states needs a Learn-incomplete
