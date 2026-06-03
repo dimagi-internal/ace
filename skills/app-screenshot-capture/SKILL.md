@@ -447,13 +447,31 @@ per-leg classifier — apply it to whichever leg failed.
   underlying problem and `mcp/mobile/recipe-splitter.ts` for the
   splitting logic.
 
-**Before consulting this table, READ the failure screenshot.** Maestro
-writes one to its debug bundle on every recipe halt — path appears in
-the `maestro.log` `Failed:` line as `screenshot-❌-<timestamp>-(<recipe>.yaml).png`,
-under `~/.maestro/tests/<timestamp>/`. The image often names the
-failure mode literally — *"Logged out of PersonalID"*, *"Enter Code"*,
-*"Failed to start learning"*, *"App not found"* — making package /
-process / driver probing redundant. **Image-read first, infer second.**
+**Before consulting this table, READ the failure screenshot.** Two
+sources, in priority order:
+
+1. **`result.failureForensics` (auto-captured, cross-backend — since
+   0.13.537).** On *every* recipe `status: 'fail'`, `mobile_run_recipe`
+   captures the device state at the moment of failure — `uiDumpPath`
+   (an `<recipe-id>-FAILURE.xml` element tree: resource-ids/text/bounds,
+   the highest-signal artifact for selector + nav debugging) plus
+   `screenshotPath` (`<recipe-id>-FAILURE.png` of the offending screen)
+   — and returns them on the result. Both land in the run's
+   `screenshotDir`, so they get uploaded + provenance-stamped alongside
+   the smoke PNGs. This works on the cloud backend too (Maestro's own
+   debug-bundle screenshot is local-only). **Read `failureForensics`
+   first** — the ui-dump usually shows the exact screen + the
+   resource-ids present, which resolves "wrong selector" vs "wrong
+   screen" immediately.
+2. **Maestro's debug-bundle screenshot (local AVD only).** Written on
+   every halt; path appears in the `maestro.log` `Failed:` line as
+   `screenshot-❌-<timestamp>-(<recipe>.yaml).png`, under
+   `~/.maestro/tests/<timestamp>/`.
+
+The image/dump often names the failure mode literally — *"Logged out of
+PersonalID"*, *"Enter Code"*, *"Failed to start learning"*, *"App not
+found"* — making package / process / driver probing redundant.
+**Image-read first, infer second.**
 Skipping this step produced an inverted-conclusion bug live in
 2026-05-13 (turmeric run 20260513-0616): the agent saw `org.commcare.dalvik`
 absent of a `connect`-named sibling package and concluded "Connect not
@@ -475,6 +493,29 @@ naming the specific failure + remediation rather than a generic
 | `assertVisible(text: ${OPP_NAME})` failure AND focused activity is `CommCareSetupActivity` AND/OR failure screenshot shows "Logged out of PersonalID" / "Lost PersonalID configuration" / "Reconfigure" / "Enter Code" / "Welcome to CommCare" | **AVD's per-user state was wiped** — no `ApplicationDocument` configured (CCHQ app never pulled OR app db was wiped) and/or PersonalID account de-registered from the device. Important: `org.commcare.dalvik` IS the Connect-enabled CommCare client (no separate Connect package); presence of `org.commcare.dalvik` in `pm list packages` does **NOT** imply a usable Connect home. Should have been caught by Step 2.5; if it surfaces here, Step 2.5's probe missed a signal worth adding. Live in 2026-05-13 (turmeric run 20260513-0616) with both states stacked: setup activity foregrounded + PersonalID drawer banner. | `/ace:mobile-bootstrap` — re-installs APK if needed, registers the ACE test user (`${ACE_E2E_PHONE}`) via the Connect registration API, pulls the CCHQ app for this run's HQ ids, saves a clean snapshot. After bootstrap returns clean: `/ace:step app-screenshot-capture <opp>/<run-id>`. If this state recurs after a successful bootstrap, the issue is state-loss between sessions (snapshot revert, AVD cold-boot, server-side PersonalID de-registration); file a class-level issue on `mobile_ensure_avd_running`'s state-persistence contract rather than re-bootstrapping. |
 | `assertVisible(text: ${OPP_NAME})` failure AND failure screenshot shows the Connect "New Opportunities" / opp list home (the user IS logged in, app IS configured, just no matching tile) | Right opp card not on screen for the OPP_NAME being matched. Wrong `OPP_NAME` env var (typically slug-reassembled instead of read verbatim from `run_state.yaml`), OR opp not yet claimed by the test user, OR `${OPP_NAME}` collides ambiguously with another invite further up the test user's accumulated invite list (see Step 4 "OPP_NAME uniqueness assumption"). | Confirm `OPP_NAME` was read verbatim from `run_state.yaml.phases.connect-setup.products.connect.opportunity.name` (NOT composed from slug pieces — see Step 4 "OPP_NAME source" and [#115 finding 4](https://github.com/jjackson/ace/issues/115)). If the field is present and still mismatches the tile, scroll the invite list or use the `connect_get_opportunity` fallback. |
 | `assertVisible(nsv_home_screen)` failure AND a `claim-START-HANDOFF-WEDGED-issue629` screenshot is present (Start was tapped on the opp-detail Job Card; neither the Learn home nor the Deliver download gate ever rendered within 180s) | **Inert `btn_start` handoff** — Connect's `POST /users/start_learn_app/` never fired or 500-ed, so the Learn CCZ download never began and `nsv_home_screen` never appeared. This is the Connect-platform half of [#629](https://github.com/jjackson/ace/issues/629), downstream of ACE — the released CCZ already passed Phase 3's `commcare-cli play` install gate, so it is NOT a Nova/recipe/marker defect. `connect-claim-opp.yaml` now captures the labeled artifact + fails loud at this exact point instead of a generic 180s timeout. | Run `connect_preflight_learn_app_user({org_slug, opportunity_id})` to classify: an auth/domain/conflict failure there confirms the server-side `start_learn_app` block (fix Connect-side / re-invite the test user); a clean preflight points at a device-side wedge (re-run after `mobile_ensure_avd_running` cold-boot). Do NOT mark the Learn leg `pass` on placeholder screenshots; record the wedge verdict and surface #629. |
+
+**Manual-debug fallback — when the table doesn't resolve it.** If a
+recipe error matches NO row above (a novel nav defect, an
+uncharacterized inter-leg handoff like [#618](https://github.com/jjackson/ace/issues/618),
+a selector that resolved on a sibling APK but not this one), do NOT
+halt blind. **Open `failureForensics.screenshotPath` and read
+`failureForensics.uiDumpPath` before writing the verdict:**
+
+1. The `.png` tells you *which screen* the device died on (Learn home?
+   Connect job card? a dialog?).
+2. The `-FAILURE.xml` ui-dump lists the resource-ids/text actually
+   present on that screen — diff that against the selector the recipe
+   reached for. "Selector absent from the dump" → wrong screen or APK
+   selector drift; "selector present but tap was a no-op" → a
+   `childOf`/scoping or timing issue.
+3. If that names a concrete recipe/selector fix, **`gh issue create`
+   against `jjackson/ace`** with the dump excerpt + the screen it
+   characterizes (the "close the loop to the source of truth" rule —
+   one live dump beats another plausible guess), then encode the fix
+   only after a live `mobile_capture_ui_dump` → candidate-tap → re-dump
+   confirms it navigates. Until confirmed live, halt loud with the
+   characterization in the verdict — never ship an unvalidated nav
+   guess (the #618 / #591 selector-drift class).
 
 ### Step 6: Write `6-qa-and-training/app-screenshot-capture_manifest.yaml`
 

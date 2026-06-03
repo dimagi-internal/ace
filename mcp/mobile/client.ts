@@ -1087,6 +1087,23 @@ export class MobileClient {
       });
     }
 
+    // Screenshot-on-recipe-error (debug assist): a failed recipe leaves the
+    // device on the offending screen — capture a ui-dump + screenshot of it
+    // NOW, before anything else moves the device, so "why did this step fail"
+    // is debuggable from artifacts (and surfaced to the manual-debug fallback).
+    // Best-effort: never let forensic capture turn a fail into a throw.
+    if (result.status === 'fail') {
+      try {
+        result.failureForensics = await this.captureFailureForensics(
+          avdName,
+          screenshotDir,
+          recipeId,
+        );
+      } catch (e) {
+        logInfo(`runRecipe: failure-forensics capture failed for ${recipeId}: ${String(e)}`);
+      }
+    }
+
     // Stamp every PNG with a provenance sidecar before returning.
     // Best-effort: write failures don't fail the recipe (forensics-only
     // metadata, not a load-bearing invariant). Sidecars land at
@@ -1109,6 +1126,94 @@ export class MobileClient {
       }
     }
     return result;
+  }
+
+  /**
+   * Best-effort capture of the device state at a recipe FAILURE — a ui-dump
+   * (element tree: ids/text/bounds — the highest-signal artifact for selector
+   * and nav debugging) plus a screenshot of the screen the recipe died on.
+   * Written into `screenshotDir` as `<recipeId>-FAILURE.{xml,png}` so they
+   * ride along with the run's other screenshots (uploaded + provenance-stamped)
+   * and are available to the manual-debug fallback. Cross-backend.
+   *
+   * Bypasses `client.runRecipe` (calls the backend directly) so the throwaway
+   * 1-step screenshot recipe doesn't recurse or trip the freshness pre-flight.
+   * Every step is independently try/caught: forensic capture must never turn a
+   * recipe failure into a thrown error.
+   */
+  private async captureFailureForensics(
+    avdName: string | undefined,
+    screenshotDir: string,
+    recipeId: string,
+  ): Promise<RecipeRunResult['failureForensics']> {
+    const out: NonNullable<RecipeRunResult['failureForensics']> = {};
+    const base = `${recipeId}-FAILURE`;
+    try {
+      fs.mkdirSync(screenshotDir, { recursive: true });
+    } catch {
+      /* ignore */
+    }
+
+    // 1. UI dump — the element tree of the failure screen.
+    if (avdName) {
+      try {
+        const dump = await this.captureUiDump(avdName);
+        const xmlPath = path.join(screenshotDir, `${base}.xml`);
+        fs.writeFileSync(xmlPath, dump.xml, 'utf8');
+        out.uiDumpPath = xmlPath;
+        out.elements = dump.elements;
+      } catch (e) {
+        logInfo(`captureFailureForensics: ui-dump failed for ${recipeId}: ${String(e)}`);
+      }
+    }
+
+    // 2. Screenshot of the failure screen via a throwaway 1-step recipe.
+    try {
+      const tmpRecipe = path.join(os.tmpdir(), `ace-failshot-${base}-${process.pid}.yaml`);
+      fs.writeFileSync(
+        tmpRecipe,
+        `appId: org.commcare.dalvik\n---\n- takeScreenshot: "${base}"\n`,
+      );
+      try {
+        if (this.useCloud) {
+          await this.requireCloud().runRecipe(tmpRecipe, {}, screenshotDir, {
+            state: avdName,
+            screenshotPrefix: base,
+          });
+        } else if (avdName) {
+          const avd = await this.resolveAvdInfo(avdName);
+          if (avd) {
+            await this.maestro.runRecipe(tmpRecipe, {}, screenshotDir, {
+              adbPort: avd.adbPort,
+              serial: avd.serial,
+            });
+          }
+        }
+      } finally {
+        try {
+          fs.unlinkSync(tmpRecipe);
+        } catch {
+          /* ignore */
+        }
+      }
+      // Resolve the produced PNG (don't assume the backend's exact naming):
+      // prefer `<base>.png`, else the newest screenshotDir PNG mentioning base.
+      const exact = path.join(screenshotDir, `${base}.png`);
+      if (fs.existsSync(exact)) {
+        out.screenshotPath = exact;
+      } else {
+        const hit = fs
+          .readdirSync(screenshotDir)
+          .filter((f) => f.endsWith('.png') && f.includes(base))
+          .sort()
+          .pop();
+        if (hit) out.screenshotPath = path.join(screenshotDir, hit);
+      }
+    } catch (e) {
+      logInfo(`captureFailureForensics: screenshot failed for ${recipeId}: ${String(e)}`);
+    }
+
+    return out;
   }
 
   private async resolveAvdInfo(

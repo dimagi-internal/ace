@@ -49,15 +49,23 @@ appId: org.commcare.dalvik
 # nav from there back to `connect_fragment_jobs_list` is NOT yet characterized
 # on a live device, so this recipe does NOT attempt it (jjackson/ace#618).
 #
+# NOTE: the post-Learn end-state is NONDETERMINISTIC — sometimes Connect's
+# jobs list (the assert below passes), sometimes the CommCare Learn home
+# (it fails). So the eventual fix must BRANCH on the landed screen, not back
+# out unconditionally (jjackson/ace#618, update 2026-06-02).
+#
 # DO NOT GUESS the back-nav. A prior fix used `pressBack` (invalid Maestro —
 # it's `pressKey: back`) and, even corrected, `pressKey: back` EXITS CommCare
 # to the Android home screen (see baseline/00-connect-home.yaml:34) — it does
-# NOT return to the jobs list. The correct path (likely the Learn home's
+# NOT return to the jobs list. The correct path (candidate: the Learn home's
 # "Log out of CommCare" tile, or an app re-entry) must be CAPTURED LIVE
 # (mobile_capture_ui_dump on the post-Learn screen → try a candidate tap →
 # re-dump → confirm it lands on connect_fragment_jobs_list) before encoding it
 # here. Until then, the assert below fails loud when on the Learn home — that
-# clean failure is the signal to characterize, not a cue to guess.
+# clean failure is the signal to characterize, not a cue to guess. As of
+# 0.13.537, that failure now AUTO-captures `<recipe>-FAILURE.{xml,png}` of the
+# Learn-home screen via `mobile_run_recipe`'s failureForensics — read that
+# element tree to pick + confirm the return route.
 
 # Confirm we are on the opp-list.
 - assertVisible:

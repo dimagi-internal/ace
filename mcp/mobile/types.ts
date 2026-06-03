@@ -147,6 +147,21 @@ export interface RecipeRunResult {
   // Untyped here to avoid pulling CloudDiagnostics into the
   // backend-agnostic types module; the cloud backend casts on assign.
   diagnostics?: Record<string, unknown>;
+  /**
+   * Best-effort forensic capture of the device state at the moment a recipe
+   * FAILED — captured automatically by `client.runRecipe` whenever
+   * `status: 'fail'`, as a debug assist (jjackson/ace screenshot-on-error).
+   * A failure leaves the device on the offending screen, so a fresh ui-dump
+   * (element tree with ids/text/bounds — the highest-signal artifact for
+   * selector/nav debugging) plus a screenshot of that screen are the best
+   * evidence for "why did this step fail". Both are best-effort: capture
+   * errors are logged and never fail the recipe. Absent on `pass`.
+   */
+  failureForensics?: {
+    uiDumpPath?: string;
+    screenshotPath?: string;
+    elements?: Array<{ id?: string; text?: string; class?: string; bounds?: string }>;
+  };
 }
 
 export interface StepResult {
