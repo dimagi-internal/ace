@@ -32,8 +32,8 @@ alone makes the artifact land outside `4-connect` and fail
 
 ## Products
 
-- `4-connect/connect-opp-setup.md` (written with `parentFolderId = phaseFolderId`) — opp UUID, verification flags, payment units, ACE test-user invite URL, labs_int_id (when recoverable)
-- `run_state.yaml.phases.connect-setup.products.connect` — single atomic block with `program` (copied from `opp.yaml.connect.program` for run self-containment), `opportunity`, `ace_test_user` sub-keys. Read by `synthetic-data-generate` (`opportunity.labs_int_id`), Phase 6 mobile recipes, and other skills within the same run. Per-run only — no other run reads it.
+- `4-connect/connect-opp-setup.md` (written with `parentFolderId = phaseFolderId`) — opp UUID, verification flags, payment units, ACE test-user invite URL, connect_int_id (ConnectProd integer id, from the create response)
+- `run_state.yaml.phases.connect-setup.products.connect` — single atomic block with `program` (copied from `opp.yaml.connect.program` for run self-containment), `opportunity`, `ace_test_user` sub-keys. Read by `synthetic-data-generate` (`opportunity.connect_int_id`), Phase 6 mobile recipes, and other skills within the same run. Per-run only — no other run reads it.
 
 ## Process
 
@@ -515,57 +515,43 @@ alone makes the artifact land outside `4-connect` and fail
      from defaults vs. set explicitly)
    - Deliver units (from create response) and Payment units (from step 6)
    - Whether the FLW pre-invite landed or is deferred until activation
-   - **Labs int_id** (from step 9 below; may be `null` if labs lookup failed
-     or labs hadn't yet observed the new opp)
+   - **ConnectProd int_id** (`connect_int_id`, from the Step 4 create
+     response; see step 9)
 
-9. **Recover the labs-side integer opportunity ID** (Phase 8 prerequisite).
+9. **Capture the ConnectProd integer opportunity ID** (Phase 7 prerequisite).
 
-   Phase 8's `synthetic-data-generate` calls
-   `synthetic_generate_from_manifest(opportunity_id=<int>, ...)` against
-   the labs MCP, which addresses opps by labs's local integer primary
-   key — a different identifier from the Connect UUID this skill just
-   minted. Plan B Stage 1 deferred the lookup to operator-typed
-   `--opp-int-id`; Stage 4.5 automates it here so Phase 8 is invokable
-   end-to-end without the operator hunting through the labs UI.
+   Phase 7's `synthetic-data-generate` addresses opportunities by their
+   **ConnectProd integer id** (the labs/synthetic surfaces and the
+   `/a/<org>/opportunity/<int>/` URLs key off it) — a different
+   identifier from the UUID. ConnectProd exposes BOTH on the same
+   Opportunity row: it predates UUIDs and still returns the legacy
+   integer `id` alongside the `opportunity_id` UUID. It is **not** a
+   labs-minted value (labs only mints its own id for a purely-synthetic
+   opp with no Connect opp behind it).
 
-   **Important contract note:** the labs integer ID is NOT exposed by
-   `connect_list_opportunities` — Connect's REST API returns UUID-only
-   payloads (verified live 2026-05-06 against `ai-demo-space`). The
-   integer lives only in the labs DB. The lookup goes via the labs
-   MCP, not the Connect MCP. Plan B's option B was wrong on this
-   point; option A (this skill recovering the int) is the right path.
+   **The integer is already in the Step 4 create response.**
+   `connect_create_opportunity` returns `int_id` (ConnectProd's integer
+   `id`) next to `id` (the UUID) — it is a required field of
+   `ManagedOpportunityResponse`. Capture `int_id` from that response as
+   `connect_int_id`. No Labs call, no UUID→int mapping, no
+   subagent-reachability concern — the value ACE needs is in the response
+   it already received at create time. (`connect_activate_opportunity`
+   returns it too, so a re-read is the fallback.)
 
-   Call:
+   If `int_id` is somehow absent from the create response (it should not
+   be — the field is required upstream), log `[WARN]` to
+   `comms-log/observations.md` and continue with `connect_int_id: null`;
+   the Phase 7 operator can pass `--opp-int-id` manually.
 
-   ```
-   mcp__connect-labs__labs_context()
-   ```
-
-   The response is a tree:
-   `{ organizations: [{ slug, opportunities: [{ id, name, ... }, ...], programs: [{ id, opportunities: [...] }, ...] }, ...] }`.
-
-   Find the matching labs opp:
-   1. Filter `organizations[]` to `slug === <organization_slug>`.
-   2. Within that org, search both the org-level `opportunities[]` and
-      every program's nested `opportunities[]` for a row whose `name`
-      matches the opp name passed to `connect_create_opportunity` in
-      step 4. Names are unique per org (Connect-side enforcement +
-      observation).
-   3. If exactly one match, capture its integer `id` as `labs_int_id`.
-   4. If zero matches, log `[WARN]` to `comms-log/observations.md`:
-      "labs has not yet observed Connect opp `<uuid>` — labs_int_id
-      unrecoverable from this skill. Phase 8 operator must
-      pass `--opp-int-id` manually." Continue (don't halt — labs sync
-      can lag behind Connect by a few seconds; operator can re-run
-      this skill or look up manually).
-   5. If 2+ matches, log `[BLOCKER]` and halt — this is the
-      duplicate-name class that the single-active-opp invariant
-      should have prevented. Operator must rename the duplicate.
-
-   Don't halt the phase on labs unavailability — labs is a downstream
-   convenience, not a Phase 4 contract requirement. If `labs_context`
-   returns transport errors, treat as a `[WARN]` lookup failure
-   identical to the zero-match case.
+   **Historical note (jjackson/ace#686 follow-up):** earlier versions did
+   a `mcp__connect-labs__labs_context()` lookup here, on the mistaken
+   belief — from a 2026-05-06 observation of the UUID-only
+   `connect_list_opportunities` *scrape* path — that "the integer lives
+   only in the labs DB." That was wrong: the create/activate REST
+   responses carry it. The Labs lookup ALSO failed silently whenever
+   Phase 4 ran as a subagent (the connect-labs MCP atoms aren't bound in
+   subagent sessions), which is exactly how `connect_int_id` was left
+   `null` on malaria-rdt/20260602-1409.
 
 10. **Write the consolidated Connect outputs block** to
     `run_state.yaml.phases.connect-setup.products.connect` as one
@@ -587,7 +573,7 @@ alone makes the artifact land outside `4-connect` and fail
               id: <UUID>                       # from Step 4 create response
               name: <verbatim display name>    # from Step 4 create response — the exact tile text Connect renders (em-dash, NOT slug-reassembled). Phase 6 reads this as its OPP_NAME envVar; never recompose.
               url: <CONNECT_BASE_URL>/a/<org>/opportunity/<uuid>/
-              labs_int_id: <integer | null>    # from Step 9 lookup
+              connect_int_id: <integer | null>    # ConnectProd integer id = create-response int_id (Step 9)
             ace_test_user:
               invited_phone: ${ACE_E2E_PHONE}  # from Step 7
               invited_at: <ISO timestamp>
@@ -604,12 +590,12 @@ alone makes the artifact land outside `4-connect` and fail
     This skill is still the sole writer of `products.connect`.
 
     Phase 8's `synthetic-data-generate` reads
-    `phases.connect-setup.products.connect.opportunity.labs_int_id` from
+    `phases.connect-setup.products.connect.opportunity.connect_int_id` from
     the current run's `run_state.yaml` as the default for its
-    `--opp-int-id` flag. When `labs_int_id` is null, the skill
+    `--opp-int-id` flag. When `connect_int_id` is null, the skill
     surfaces a `[WARN]` and asks the operator to pass `--opp-int-id`
-    explicitly OR re-run `connect-opp-setup` to retry the labs
-    lookup.
+    explicitly OR re-run `connect-opp-setup` to re-read `int_id` from the
+    Connect create/activate response.
 
     **Do not write `opp.yaml.connect.opportunity` or
     `opp.yaml.connect.ace_test_user`.** Connect opportunities are
@@ -648,8 +634,6 @@ The PDD's `archetype:` field shapes verification + payment unit setup:
 
 ## MCP Tools Used
 - Google Drive: `drive_read_file`, `drive_create_file` (always with `parentFolderId = phaseFolderId` — the `4-connect` folder ID, never a path string), `update_yaml_file`
-- Connect-Labs (`ace-connect-labs`):
-  - `labs_context` — Step 9 labs-int-id lookup (post-create, idempotent re-call ok)
 - Connect (`ace-connect` MCP, 0.10.47+):
   - `connect_create_opportunity` — REST `POST /api/programs/<id>/opportunities/`
   - `connect_get_opportunity` — verify after create (HTML-driven read,
@@ -744,4 +728,4 @@ decisions_append_rows({
 | 2026-06-01 | **Step 6.5: verify activation via Step 7's invite, not the scraped `active` flag (closes jjackson/ace#617, and its #634 duplicate).** Dropped the post-activate `connect_get_opportunity` read-back check — that flag returns `true` on un-transitioned opps and can't distinguish a real `/activate/` from a no-op (the same create-side flag that motivated #624). The authoritative confirmation is `connect_send_flw_invite` in Step 7 succeeding: `invite_users/` hard-rejects a non-active opp, so a successful invite is the only proof the transition landed. | ACE team |
 | 2026-05-10 | State consolidation PR a: retire `connect-state.yaml`; emit a single `run_state.yaml.phases.connect-setup.products.connect` block at end of Step 10. Step 7 holds invite metadata in memory rather than writing immediately. (Initial implementation dual-wrote to `opp.yaml.connect`; corrected on 2026-05-11 — runs are now independent. `opp.yaml.connect.program` is durable cross-run state written by `connect-program-setup`; `opp.yaml.connect.opportunity` / `ace_test_user` are no longer written here.) See `docs/superpowers/specs/2026-05-10-state-consolidation.md`. | ACE team |
 
-<!-- Stage 4.5 of Plan B: post-create labs_context lookup for labs_int_id (0.13.59) -->
+<!-- connect_int_id is read directly from the connect_create_opportunity response (ConnectProd integer id); the old post-create labs_context lookup was removed in the jjackson/ace#686 follow-up (the int was always in the create response). -->

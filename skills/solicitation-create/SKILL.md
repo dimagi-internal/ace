@@ -71,11 +71,13 @@ contract.
   order-derived scope makes sense.
 - `ACE/<opp-name>/opp.yaml` — `connect.program.id` (Connect UUID),
   opp display name, organization_slug, optional cached
-  `connect.program.labs_int_id` (labs integer mirror of the Connect
-  program).
+  `connect.program.connect_int_id` (ConnectProd's **integer** program id —
+  ConnectProd predates UUIDs and exposes both; the labs/solicitation
+  surfaces key off this integer. NOT a labs-minted id).
 - `ACE/<opp-name>/runs/<run-id>/4-connect/connect-program-setup.md` —
-  the Connect program **name** (used to resolve the labs integer
-  program_id via `labs_context`; see Step 5).
+  the Connect program **name** (used to resolve the ConnectProd integer
+  program id via `labs_context` as a fallback, when `connect_int_id`
+  wasn't captured at program-create time; see Step 5).
 - `ACE/<opp-name>/runs/<run-id>/4-connect/connect-opp-setup.md` (optional but recommended) — the
   current run's Connect opportunity identifiers, payment unit, start/end
   dates as actually configured. When present these override PDD defaults
@@ -484,7 +486,7 @@ contract.
 
    Resolve in this order:
 
-   1. **Fast path:** if `opp.yaml.connect.program.labs_int_id` is set
+   1. **Fast path:** if `opp.yaml.connect.program.connect_int_id` is set
       (cached at program-create time by `connect-program-setup`, or
       backfilled by a prior `solicitation-create` run), use it
       directly. This is the durable opp-level cache.
@@ -496,13 +498,13 @@ contract.
       summary written by `connect-program-setup`). Capture the
       program's integer `id`.
    3. **Cache:** write the result to
-      `opp.yaml.connect.program.labs_int_id` via `update_yaml_file`
+      `opp.yaml.connect.program.connect_int_id` via `update_yaml_file`
       (`merge: 'deep'` — a partial patch of `connect.program`;
       `two-level` would replace the `program` sub-object wholesale and
       drop the existing `program.id`/`program.url`). This is opp-level
       state (the
-      program is reused across runs, so its labs int mirror is also
-      opp-level). Also carry the value into this run's
+      program is reused across runs, so its ConnectProd integer id is
+      also opp-level). Also carry the value into this run's
       `phases.solicitation-management.products.solicitation.labs_program_id`
       via Step 9's consolidated write so the run state is
       self-contained.
@@ -763,7 +765,7 @@ contract.
 - `ACE/<opp-name>/runs/<run-id>/8-solicitation-management/solicitation-create_draft.md` (audit)
 - `ACE/<opp-name>/runs/<run-id>/8-solicitation-management/solicitation-create_published.md` (live state)
 - `run_state.yaml.phases.solicitation-management.products.solicitation.{solicitation_id, public_url, deadline, status: open, labs_program_id, ...}` populated (per-run only).
-- `opp.yaml.connect.program.labs_int_id` cached on first resolution (durable opp-level — the labs program int matches the Connect program UUID; reused across runs).
+- `opp.yaml.connect.program.connect_int_id` cached on first resolution (durable opp-level — ConnectProd's integer id for the same program row as the UUID; reused across runs).
 - `selected_llo` is left untouched here (populated by `solicitation-review` on award at `products.selected_llo`).
 
 ## MCP Tools Used
@@ -774,7 +776,7 @@ contract.
 - `ace-gdrive`: `drive_create_file`, `drive_read_file`,
   `drive_update_file`, `update_yaml_file` (write
   `phases.solicitation-management.products.solicitation` to
-  `run_state.yaml`; cache `opp.yaml.connect.program.labs_int_id` on
+  `run_state.yaml`; cache `opp.yaml.connect.program.connect_int_id` on
   first resolution)
 
 ## Mode Behavior

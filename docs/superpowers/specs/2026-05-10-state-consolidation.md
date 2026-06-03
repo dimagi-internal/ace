@@ -30,7 +30,7 @@ The actual mental model (correction):
 
 - **`opp.yaml`** holds identity (display_name, slug, tags, created_at,
   created_by) **plus the durable Connect program reference** at
-  `connect.program.{id, url, labs_int_id}`. The Connect program is
+  `connect.program.{id, url, connect_int_id}`. The Connect program is
   the one cross-run-reused entity; `connect-program-setup` writes it
   on first create.
 - **Every other entity** (Connect opportunity, OCS chatbot,
@@ -136,7 +136,7 @@ phases:
         opportunity:
           id: <UUID>
           url: <CONNECT_BASE_URL>/a/<org>/opportunity/<uuid>/
-          labs_int_id: <integer | null>
+          connect_int_id: <integer | null>
         ace_test_user:
           invited_phone: ${ACE_E2E_PHONE}
           invited_at: 2026-05-08T14:02:11Z
@@ -310,7 +310,7 @@ in one PR.
 
 **Skills changed (read):**
 - `connect-opp-setup` reuse check (program/opp reuse decisions).
-- `synthetic-data-generate` (reads `labs_int_id`).
+- `synthetic-data-generate` (reads `connect_int_id`).
 - `llo-launch`, `llo-uat`, `app-screenshot-capture` (read test-user metadata).
 
 **Orchestrator changes:**

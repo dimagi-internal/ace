@@ -7,6 +7,14 @@ and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html
 
 ## Unreleased — 2026-06-03
 
+**Opportunity/program integer id: read it from ConnectProd, not Labs; rename `labs_int_id` → `connect_int_id` (jjackson/ace#686 follow-up).**
+
+The integer that Phase 7 (synthetic) and Phase 8 (solicitation) need is **ConnectProd's own legacy integer id** (ConnectProd predates UUIDs and exposes both on the same row) — NOT a Labs-minted id. It's already in the `connect_create_opportunity` response (`ManagedOpportunityResponse.id`), but `opportunityFromResponse` was dropping it. On `malaria-rdt/20260602-1409` that left `labs_int_id: null` because Phase 4's subagent couldn't reach the connect-labs MCP (native-http atoms aren't bound in subagent sessions), and the skill was doing a Labs `labs_context` lookup instead of just reading the create response.
+
+- `opportunityFromResponse` / `programFromResponse` now surface `int_id` (ConnectProd integer) alongside the UUID; `Opportunity`/`Program` types gain `int_id?: number`.
+- `connect-opp-setup` records `connect.opportunity.connect_int_id` straight from the create response (removed the post-create `labs_context` lookup). `connect-program-setup` captures `connect.program.connect_int_id` from the program create response; `solicitation-create` reads it as a fast-path (Labs lookup kept only as fallback).
+- Field rename `labs_int_id` → `connect_int_id` across run_state/opp.yaml + all skills/agents/specs (it was never a Labs id).
+
 **`mobile_set_location` atom + cold-boot mock-GPS baseline (geopoint capture support, jjackson/ace#686 follow-up).**
 
 A CommCare `geopoint` question is a Capture-button widget that reads the device GPS provider; on an emulator the provider never acquires a fix on its own, so Capture would hang. Two new mechanisms:

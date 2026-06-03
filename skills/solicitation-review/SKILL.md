@@ -27,7 +27,7 @@ Read from the current run's `run_state.yaml.phases.solicitation-management.produ
 - `public_url`
 - `labs_program_id` — labs **integer** program ID cached by
   `solicitation-create` (also available at
-  `opp.yaml.connect.program.labs_int_id` as the durable opp-level
+  `opp.yaml.connect.program.connect_int_id` as the durable opp-level
   cache). Required for any `get_solicitation` / `list_solicitations` /
   `update_solicitation` call. Labs's `LabsRecord` read path filters
   to `is_public=true` without scope, and `update_solicitation` runs an
@@ -135,7 +135,7 @@ Read from the current run's `run_state.yaml.phases.solicitation-management.produ
    underlying `get_record_by_id` returns no row and the merge fails.
    Pass the labs **integer** id (resolved from
    `phases.solicitation-management.products.solicitation.labs_program_id`
-   or `opp.yaml.connect.program.labs_int_id`), not the Connect UUID —
+   or `opp.yaml.connect.program.connect_int_id`), not the Connect UUID —
    labs `int()`-parses the field. Treat 4xx here as non-fatal:
    `award_response` already succeeded, so write a
    `status_update_failed` note into `award-record.md` and continue.

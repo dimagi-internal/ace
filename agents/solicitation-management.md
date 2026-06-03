@@ -49,7 +49,7 @@ Invoke the `solicitation-create` skill.
     labs_program_id, ...}`. `selected_llo` is populated by
     `solicitation-review` on award at `products.selected_llo`. The labs
     program int is cached durably at
-    `opp.yaml.connect.program.labs_int_id`.
+    `opp.yaml.connect.program.connect_int_id`.
   - Appended `solicitation-type`, `response-deadline`, `response-template-choice` rows in `decisions.yaml` (merge-only; bar criterion per `skills/idea-to-pdd/SKILL.md § Decisions Log Convention`).
 - **LLM-as-Judge:** unless `--no-evals` was passed, dispatch
   `solicitation-create-eval` after publish. Writes

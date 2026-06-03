@@ -30,7 +30,7 @@ alone makes the artifact land outside `4-connect` and fail
 ## Products
 
 - `4-connect/connect-program-setup.md` (written with `parentFolderId = phaseFolderId`) — program-id, decision rationale (reuse / create), admin program URL
-- `opp.yaml.connect.program.{id, url}` — written on first create (and refreshed on reuse with verified live values). This is the single durable cross-run reference for the Connect program; every subsequent run of this opp reads it to skip program-create.
+- `opp.yaml.connect.program.{id, url, connect_int_id}` — written on first create (and refreshed on reuse with verified live values). `connect_int_id` is ConnectProd's integer program id (from the create response's `int_id`), used by Phase 8 solicitation surfaces. This is the single durable cross-run reference for the Connect program; every subsequent run of this opp reads it to skip program-create.
 
 ## Process
 
@@ -122,7 +122,13 @@ alone makes the artifact land outside `4-connect` and fail
      program:
        id: <UUID from step 3 reuse or step 4 create>
        url: <CONNECT_BASE_URL>/a/<org>/program/<uuid>/
+       connect_int_id: <integer | omit>   # ConnectProd integer program id, from the create response's `int_id` when present. NOT a labs-minted id. Lets solicitation-create skip a Labs round-trip. Omit if the create response didn't carry it (older Connect builds) — solicitation-create resolves it as a fallback.
    ```
+
+   Capture `connect_int_id` from the `connect_create_program` response
+   (`int_id`) on the create path. On the reuse path, leave any existing
+   `connect_int_id` in `opp.yaml` as-is (don't clear it); if it's absent
+   and `connect_get_program` returns an `int_id`, write it.
 
    `opp.yaml` is the **only** cross-run identity surface for the
    Connect program — every subsequent run of this opp reads this

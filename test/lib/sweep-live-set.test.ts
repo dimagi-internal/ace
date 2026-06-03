@@ -8,7 +8,7 @@ connect:
   program:
     id: prog-abc-123
     url: https://connect.dimagi.com/programs/prog-abc-123
-    labs_int_id: 42
+    connect_int_id: 42
 `;
 
 const RUN_STATE_YAML = `

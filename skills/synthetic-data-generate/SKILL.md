@@ -26,7 +26,7 @@ deferred to later stages. This skill is the data plumbing only.
 | Source | Artifact | Used for |
 |---|---|---|
 | Operator (CLI) | `--opp <slug>` | opp folder under `ACE/` |
-| Operator (CLI, optional) | `--opp-int-id <integer>` | labs-side integer opportunity ID — **defaults to `phases.connect-setup.products.connect.opportunity.labs_int_id`** in the current run's `run_state.yaml` (auto-recovered by `connect-opp-setup` Stage 4.5). Pass explicitly to override. |
+| Operator (CLI, optional) | `--opp-int-id <integer>` | ConnectProd integer opportunity id — **defaults to `phases.connect-setup.products.connect.opportunity.connect_int_id`** in the current run's `run_state.yaml` (captured by `connect-opp-setup` from the Connect create response). Pass explicitly to override. |
 | Operator (CLI, optional) | `--manifest <drive-path>` | pre-authored manifest YAML; if omitted, the skill writes a default and pauses |
 | Operator (CLI, optional) | `--no-pause` | skip the manifest-review pause when accepting the default |
 | Phase 1 | `inputs/pdd.md` | (default-manifest mode) primary measurement field for the KPI |
@@ -67,18 +67,18 @@ deferred to later stages. This skill is the data plumbing only.
    the old `opp.yaml.last_run_id` read, which has been a dead field
    since 2026-05-10 — see `lib/artifact-manifest.ts`.)
 
-   **Resolve the labs int ID** (try in order; first non-null wins):
+   **Resolve the ConnectProd integer opportunity id** (try in order;
+   first non-null wins):
    1. `--opp-int-id <N>` operator override.
-   2. Current run's `run_state.yaml.phases.connect-setup.products.connect.opportunity.labs_int_id`
-      (auto-recovered by Stage 4.5's `connect-opp-setup` enhancement
-      in this same run). Read via `drive_read_file` on
+   2. Current run's `run_state.yaml.phases.connect-setup.products.connect.opportunity.connect_int_id`
+      (captured by `connect-opp-setup` from the `connect_create_opportunity`
+      response in this same run). Read via `drive_read_file` on
       `runs/<run_id>/run_state.yaml`.
-   3. If both are missing, halt with: "labs int_id not in run_state.yaml
+   3. If both are missing, halt with: "connect_int_id not in run_state.yaml
       and no `--opp-int-id` passed. Either re-run
-      `/ace:step connect-opp-setup` to retry the labs lookup (it
-      sometimes lags Connect by a few seconds on first creation), or
-      pass `--opp-int-id <N>` explicitly after looking up the int in
-      the labs UI synthetic dropdown."
+      `/ace:step connect-opp-setup` to re-read `int_id` from the Connect
+      create/activate response, or pass `--opp-int-id <N>` explicitly
+      (the integer in the `/a/<org>/opportunity/<int>/` Connect URL)."
 
    Construct the run folder path:
    `ACE/<opp>/runs/<run_id>/7-synthetic/`. Create it via
@@ -426,7 +426,7 @@ When `--dry-run` is active:
 
 | Failure | Detection | Recovery |
 |---|---|---|
-| `--opp-int-id` not provided AND `phases.connect-setup.products.connect.opportunity.labs_int_id` in current run's `run_state.yaml` missing | step 1 halt | Re-run `/ace:step connect-opp-setup` to retry the labs lookup (sometimes lags Connect by seconds), OR pass `--opp-int-id <N>` after looking up the int in the labs synthetic UI. |
+| `--opp-int-id` not provided AND `phases.connect-setup.products.connect.opportunity.connect_int_id` in current run's `run_state.yaml` missing | step 1 halt | Re-run `/ace:step connect-opp-setup` to re-read `int_id` from the Connect create/activate response, OR pass `--opp-int-id <N>` (the integer in the `/a/<org>/opportunity/<int>/` Connect URL). |
 | `<opp>/runs/` empty (no run folders) | step 1 halt | Run `/ace:run <opp>` first so the orchestrator bootstraps a run folder. (`resolve_current_run_id` returned `run_id: null`.) |
 | PDD missing primary measurement field | step 2 warn | Default manifest emits `kpi_config: []`; operator adds KPIs in the pause. |
 | `INVALID_SCHEMA` from labs | step 3 halt | Operator edits the manifest (error body written to `_error.md`) and re-invokes. |

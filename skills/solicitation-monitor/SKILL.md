@@ -51,7 +51,7 @@ descending lexically; run-ids are `YYYYMMDD-HHMM`). Read its
   filters to `is_public=true` only, so the parent record of a private
   solicitation is invisible). Note: this is **not** the Connect
   program UUID — labs `int()`-parses the field. Also available at
-  `opp.yaml.connect.program.labs_int_id` as the durable opp-level
+  `opp.yaml.connect.program.connect_int_id` as the durable opp-level
   cache.
 - `ACE/<opp-name>/runs/<run-id>/8-solicitation-management/llo-invite_invitations.md`
   (optional; for outstanding-invitee tracking)
@@ -70,7 +70,7 @@ descending lexically; run-ids are `YYYYMMDD-HHMM`). Read its
    the deadline or status from labs), the call **must** thread
    `program_id: <labs_program_id>` (read from
    `products.solicitation.labs_program_id` or
-   `opp.yaml.connect.program.labs_int_id`) or `organization_id` if
+   `opp.yaml.connect.program.connect_int_id`) or `organization_id` if
    program-less. Without scope, labs's prod-side filter strips
    non-public records and the parent appears missing — see the 0.13.4
    fix note in `CHANGELOG.md` and labs PR #156. Pass the labs
