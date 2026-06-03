@@ -183,9 +183,28 @@ When extending recipes or building atlas coverage for a new APK version:
 3. `mobile_capture_ui_dump` returns parsed elements + XML in one call. Prefer this over `adb shell uiautomator dump` + `adb pull` + `grep`.
 4. **Use `maestro studio` for new selector capture.** Interactive selector picker against the live AVD: tap an element in the browser, it shows the resource-id and a copy-pasteable Maestro snippet. Far faster than dump-and-grep.
 5. Add the next 5–10 steps to the recipe in one batch (not one-at-a-time), re-run, dump at the next checkpoint.
-6. After Phase 6 runs, `scripts/probe-atlas-drift.ts` harvests selector-drift signal from accumulated `runRecipeWithDumps` XMLs — read-only, surfaces candidate new logical-selector rows for the selector map.
+6. After Phase 6 runs, `scripts/probe-atlas-drift.ts` harvests selector-drift signal from accumulated `runRecipeWithDumps` XMLs — read-only, surfaces candidate new logical-selector rows for the selector map. It walks `*-FAILURE.xml` dumps too and surfaces ids seen on a failure screen but absent from the map as a **priority "Drift suspects on FAILURE screens"** section — each is a candidate root cause for a recipe failure in this run. `app-screenshot-capture` Step 6.5 runs this automatically at end of Phase 6.
 
 **Anti-pattern:** screencap + Read PNG + dump + grep after every single tap. PNG reads are expensive in tokens. Almost every CommCare/PersonalID selector is resource-id-driven; uiautomator XML has all the info. Reserve screenshots for genuinely visual states (camera UI, where AOSP elements lack resource-ids).
+
+## Failure forensics — read them on any recipe failure
+
+This is the canonical reference for the screenshot-on-error capture; the per-skill notes point here so the contract lives in one place.
+
+**What's captured (cross-backend, automatic).** On a recipe failure, `mobile_run_recipe` captures the device state at the moment it died and surfaces it as `failureForensics`:
+
+- `screenshotPath` → `<recipe-id>-FAILURE.png` — the offending screen.
+- `uiDumpPath` → `<recipe-id>-FAILURE.xml` — the element tree (resource-ids / text / bounds): the highest-signal artifact for "wrong selector vs wrong screen".
+- `elements` → the parsed ui-dump rows.
+
+Both files land in the run's `screenshotDir`, so they're uploaded + provenance-stamped alongside the smoke PNGs and Read-able from local disk on **both** the local-AVD and cloud backends (cloud pulls the S3 artifact down).
+
+**Two failure shapes — both capture now:**
+
+1. **Returned `status: 'fail'`** (clean recipe failure: assertion miss, selector not found). `failureForensics` is set on the result. *Since 0.13.538.*
+2. **Thrown failure** (driver death that exhausts the heal-and-retry envelope, gRPC transport crash). These never produce a result, so the status-gated capture can't fire — the throw arm captures the same forensics, attaches them to the thrown error as `error.failureForensics`, and rethrows the original error untouched. The ui-dump is adb-based, so it usually still works even when the Maestro gRPC driver is dead.
+
+**The rule: image/dump-read first, infer second.** The screen + the resource-ids present on it usually name the failure mode literally and resolve "wrong selector" vs "wrong screen" in one step — skipping it produced an inverted-conclusion bug live (turmeric 20260513-0616). On any recipe failure, **Read `failureForensics.screenshotPath` and `failureForensics.uiDumpPath` before writing a verdict or probing packages/processes.** The full recognized-failure-mode table + manual-debug fallback live in `skills/app-screenshot-capture/SKILL.md` (the Phase 6 smoke skill); every other recipe-running skill should at minimum read the two artifacts on failure before halting.
 
 ## Sibling docs
 

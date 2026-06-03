@@ -91,12 +91,43 @@ export function diffResourceIds(
   };
 }
 
+/** A `*-FAILURE.xml` dump is the ui-dump captured at a recipe failure
+ * (screenshot-on-error). A resource-id present on a FAILURE screen but
+ * absent from the selector map is the highest-priority drift suspect —
+ * it is literally a candidate for *why a recipe failed* (the recipe
+ * reached for a logical name whose mapped id no longer matches what the
+ * APK renders). This predicate identifies those dumps by filename so the
+ * harvester can partition observed ids by failure-vs-normal provenance. */
+export function isFailureDumpFile(filePath: string): boolean {
+  return /-FAILURE\.xml$/i.test(filePath);
+}
+
+/** The drift suspects worth looking at FIRST: resource-ids that showed up
+ * on a failure screen but the selector map does not anchor. Returns the
+ * sorted set-difference (observed-on-failure minus mapped). */
+export function failureScreenDriftSuspects(
+  observedOnFailure: Set<string>,
+  mapped: Set<string>,
+): string[] {
+  const out: string[] = [];
+  for (const id of observedOnFailure) {
+    if (!mapped.has(id)) out.push(id);
+  }
+  return out.sort();
+}
+
 export interface AtlasReportInput {
   apkVersion: string;
   dumpFiles: string[];
   onlyInDumps: string[];
   onlyInMap: string[];
   inBoth: string[];
+  /** Resource-ids observed specifically on `*-FAILURE.xml` screens that are
+   *  not in the selector map. A subset of `onlyInDumps`, surfaced as a
+   *  priority section because each one is a candidate root cause for a
+   *  recipe failure in this run. Omit/empty when no failure dumps were
+   *  present. */
+  failureScreenCandidates?: string[];
 }
 
 /** Render the diff as a human-readable markdown report. Stable output
@@ -111,6 +142,18 @@ export function renderReportMarkdown(input: AtlasReportInput): string {
   );
   lines.push(`Source: ${input.dumpFiles.length} dump file(s) from the supplied run.`);
   lines.push('');
+
+  const failureCandidates = input.failureScreenCandidates ?? [];
+  if (failureCandidates.length > 0) {
+    lines.push('## ⚠️ Drift suspects on FAILURE screens (review FIRST)');
+    lines.push('');
+    lines.push(
+      'These resource-ids were seen on a `*-FAILURE.xml` screen (captured at a recipe failure) and are NOT in the selector map. Each is a candidate root cause for a failure in this run — the recipe likely reached for a logical name whose mapped `id:` no longer matches what this APK renders. Confirm against the matching `<recipe-id>-FAILURE.png` before proposing a selector-map row (close the loop to the source of truth — validate live).',
+    );
+    lines.push('');
+    for (const id of failureCandidates) lines.push(`- \`${id}\``);
+    lines.push('');
+  }
 
   lines.push('## Resource-ids in dumps but NOT in selector map');
   if (input.onlyInDumps.length === 0) {

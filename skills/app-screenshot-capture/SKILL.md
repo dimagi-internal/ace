@@ -525,6 +525,32 @@ like `journey-learn-pass` / `journey-deliver-submit` from `app-test-cases.yaml`)
 shape the per-artifact training skills (`training-flw-guide`,
 `training-deck-generate`) consume.
 
+### Step 6.5: Harvest selector-drift signal (atlas-drift)
+
+Run the drift harvester over this run's screenshot dir (the same
+`screenshotDir` you passed to `mobile_run_recipe` in Step 5, where the
+`*-FAILURE.xml` / `*-FAILURE.png` forensics and the per-step `runRecipeWithDumps`
+XMLs accumulated). This closes the consume-loop on selector drift —
+otherwise the dumps just pile up unread.
+
+```bash
+npx tsx scripts/probe-atlas-drift.ts <screenshotDir> \
+  --apk "${ACE_CONNECT_APK_VERSION:-2.63.0}" \
+  --out <screenshotDir>/atlas-drift-report.md
+```
+
+Best-effort: a probe error never fails the phase — log it and continue.
+When the report has a **"⚠️ Drift suspects on FAILURE screens"** section,
+treat those resource-ids as the priority signal: each is a candidate
+root cause for a recipe failure *in this run* (the recipe reached for a
+logical name whose mapped `id:` no longer matches what this APK renders —
+the #591/#618 selector-drift class). Do NOT auto-edit the selector map —
+surface the candidates in the verdict and, when a candidate is
+confirmed live (`mobile_capture_ui_dump` → candidate-tap → re-dump
+navigates), `gh issue create` against `jjackson/ace` proposing the new
+`selectors.<logical-name>` row. This is the "close the loop to the
+source of truth" rule — one live dump beats another plausible guess.
+
 ### Step 7: Thin UX smoke judge
 
 For each smoke recipe (Learn + Deliver), assemble the captured
@@ -760,6 +786,7 @@ Notes:
 
 | Date | Change | Author |
 |---|---|---|
+| 2026-06-03 | **Step 6.5 auto-harvests selector drift.** End of Phase 6 now runs `scripts/probe-atlas-drift.ts` over the run's screenshot dir automatically (best-effort), closing the consume-loop on the `runRecipeWithDumps` + `*-FAILURE.xml` dumps that previously just accumulated. The harvester is now FAILURE-aware: resource-ids seen on a `*-FAILURE.xml` screen but absent from the selector map surface as a priority "Drift suspects on FAILURE screens" section (candidate root causes for a recipe failure in this run — the #591/#618 drift class). Pairs with thrown-failure forensics capture (`mobile_run_recipe` now captures the failure screen on a thrown driver-death too, not just on returned `status:'fail'`). Canonical contract: `playbook/integrations/mobile-integration.md § Failure forensics`. | ACE team |
 | 2026-05-05 | **Path-scheme migration.** Inputs repointed to `2-scenarios/pdd-to-app-journeys.md`, `3-commcare/app-test-cases.yaml`, `3-commcare/app-deploy_summary.md`, `3-commcare/recipes/`. Outputs repointed to `6-qa-and-training/screenshots/<recipe-base>/<step-name>.png`, `6-qa-and-training/app-screenshot-capture_manifest.yaml`, `6-qa-and-training/app-screenshot-capture_verdict.yaml`, `6-qa-and-training/app-screenshot-capture_verdict-shallow.yaml` (per manifest). Both verdict YAML examples' `capture_path` updated. No behavior change beyond paths. | ACE team |
 | 2026-05-27 | **Recipe naming convention.** Screenshot dirs updated from `<journey-id>/` to `<recipe-base>/` (`journey-learn/`, `journey-deliver/`). Recipe read references updated from `J*.yaml` to `journey-*.yaml`. Structural verdict `per_item` refs changed from `ref: "J1.yaml"` to `ref: learn` / `ref: deliver`. No runtime behavior change. See spec 2026-05-27-phase6-learn-deliver-decoupling. | ACE team |
 | 2026-05-31 | **Meaningful journey ids.** The manifest's journey-id reference is now a meaningful slug (`learn-happy-path` / `deliver-yes`) from `app-test-cases.yaml` instead of `J<n>`. Pairs with the descriptive recipe filenames / screenshot dirs already in place. See `skills/app-test-cases/SKILL.md § Journey id convention`. | ACE team |

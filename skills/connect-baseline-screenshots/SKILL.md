@@ -239,6 +239,11 @@ Notes:
 
 ## Failure modes
 
+- **Any `mobile_run_recipe` failure → read the forensics first.** On a recipe
+  `status: 'fail'` (or a thrown driver-death failure, where the artifacts ride
+  on `error.failureForensics`), Read `failureForensics.screenshotPath` + `.uiDumpPath`
+  before writing a verdict or escalating. Canonical contract:
+  `playbook/integrations/mobile-integration.md § Failure forensics`.
 - **AVD not running / test user not signed in.** Halt with a pointer at
   `/ace:mobile-bootstrap`.
 - **Recipe selector mismatch (Connect APK rebuilt with new resource-ids).**
