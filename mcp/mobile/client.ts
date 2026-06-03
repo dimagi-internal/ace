@@ -914,6 +914,31 @@ export class MobileClient {
     if (this.useCloud) return this.requireCloud().loadSnapshot(avdName, snapshotName);
     return this.avd.loadSnapshot(avdName, snapshotName);
   }
+  /**
+   * Set a mock GPS fix on the AVD (longitude-FIRST). Local-AVD only for
+   * now — the cloud emulator backend has no location-set endpoint yet, so
+   * a `cloud` session throws a clear `CLOUD_MOCK_LOCATION_UNSUPPORTED`
+   * rather than silently no-op'ing. The local cold-boot baseline already
+   * seeds DEFAULT_MOCK_LOCATION, so geopoint capture works without an
+   * explicit call; use this to override with opp-specific coordinates.
+   */
+  setLocation(
+    avdName: string,
+    longitude: number,
+    latitude: number,
+    altitude?: number,
+    satellites?: number,
+  ): ReturnType<AvdBackend['setLocation']> {
+    if (this.useCloud) {
+      throw new MobileError(
+        'CLOUD_MOCK_LOCATION_UNSUPPORTED',
+        'mobile_set_location is not yet supported on the cloud emulator backend ' +
+          '(no /api/mobile location-set endpoint). Run against the local AVD ' +
+          '(ACE_MOBILE_BACKEND unset / =local), or add a cloud location-set route.',
+      );
+    }
+    return this.avd.setLocation(avdName, longitude, latitude, altitude, satellites);
+  }
 
   // ── Cloud-only diagnostics + admin ─────────────────────────────────
   //

@@ -560,11 +560,11 @@ For each form-walk segment of a recipe:
    geopoint as a plain text box is a **stale / downgraded build**: bind
    `type="xsd:string"` instead of `type="geopoint"` — `app-release-qa`
    now hard-gates that class, so a correct build always renders the real
-   Capture widget.) The correct recipe sequence is: (a) set an emulator
-   mock location BEFORE the capture step (a *mobile_set_location*
-   mock-location atom — **planned, not yet built** — or the cold-boot
-   mock-loc baseline; see `playbook/integrations/mobile-integration.md`),
-   (b) tap the geopoint
+   Capture widget.) The correct recipe sequence is: (a) ensure the
+   emulator has a mock location — the cold-boot baseline already seeds a
+   default fix, and `mobile_set_location` overrides it with opp-specific
+   coordinates (**longitude first**); see
+   `playbook/integrations/mobile-integration.md`, (b) tap the geopoint
    Capture button, (c) wait for the accuracy readout. The geopoint
    Capture-button selector MUST be **calibrated live against this run's
    released build** (per "close the loop to the source of truth") — never

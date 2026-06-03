@@ -223,6 +223,27 @@ export interface AllocatedPorts {
   autoAllocated: boolean;
 }
 
+/**
+ * Default mock GPS fix applied to the AVD as part of the cold-boot
+ * environment baseline, so that any CommCare `geopoint` Capture widget
+ * always has a usable provider fix to read (otherwise the emulator's GPS
+ * never acquires and the Capture button spins forever). Kano, Nigeria —
+ * matches ACE's dominant malaria-opp field geography. Coordinates are
+ * functionally irrelevant to the form (the malaria-rdt GPS question has
+ * no hard accuracy/region constraint, verified live 2026-06-03); they
+ * only affect screenshot realism. A recipe that wants opp-specific coords
+ * overrides this per-run via the `mobile_set_location` atom.
+ *
+ * NOTE the argument order of `adb emu geo fix`: LONGITUDE first, then
+ * latitude (a classic footgun).
+ */
+export const DEFAULT_MOCK_LOCATION = {
+  longitude: 8.5167,
+  latitude: 12.0022,
+  altitude: 480,
+  satellites: 12,
+} as const;
+
 export class AvdBackend {
   /** The injected/wrapped shell used by all adb/emulator/aapt invocations. */
   private shell: ShellFn;
@@ -1194,6 +1215,47 @@ export class AvdBackend {
   }
 
   /**
+   * Set a mock GPS fix on the running AVD via the emulator console
+   * (`adb -s <serial> emu geo fix <lon> <lat> [<alt> [<satellites>]]`).
+   *
+   * This is what makes a CommCare `geopoint` Capture widget usable on an
+   * emulator: without a provider fix the in-app "Capture location" button
+   * never acquires. `satellites` ≥ 4 makes the emulator report a usable
+   * fix; more improves the reported accuracy shown in the in-form
+   * accuracy readout. The console replies `OK` on success / `KO` on a
+   * malformed request.
+   *
+   * **Argument order is longitude-FIRST** (emulator console convention) —
+   * the method takes (longitude, latitude) to mirror the wire order and
+   * avoid the classic lat/lon transposition footgun.
+   */
+  async setLocation(
+    avdName: string,
+    longitude: number,
+    latitude: number,
+    altitude: number = DEFAULT_MOCK_LOCATION.altitude,
+    satellites: number = DEFAULT_MOCK_LOCATION.satellites,
+  ): Promise<{
+    avdName: string;
+    longitude: number;
+    latitude: number;
+    altitude: number;
+    satellites: number;
+    applied: boolean;
+    output: string;
+  }> {
+    const avd = await this.requireRunningAvd(avdName);
+    const r = await this.shell('adb', [
+      '-s', avd.serial, 'emu', 'geo', 'fix',
+      String(longitude), String(latitude), String(altitude), String(satellites),
+    ]);
+    const output = (r.stdout + r.stderr).trim();
+    // emu console returns `OK` / `KO`; exit code is reliable too.
+    const applied = r.exitCode === 0 && !/\bKO\b|error/i.test(output);
+    return { avdName, longitude, latitude, altitude, satellites, applied, output };
+  }
+
+  /**
    * Wipe `org.commcare.dalvik`'s local data — caches, databases, shared
    * prefs, ContextID-issued tokens — without uninstalling the APK. Used
    * as the first step of every heal dispatch so the subsequent
@@ -1387,6 +1449,7 @@ export class AvdBackend {
       'heads_up_notifications_enabled',
       'notification_disallow_dnd_gms',
       'screen_off_timeout',
+      'mock_location_fix',
     ];
 
     // 1. Heads-up notifications off (PR #328 / 0.13.252).
@@ -1408,6 +1471,20 @@ export class AvdBackend {
     await this.shell('adb', [
       '-s', avd.serial, 'shell', 'settings', 'put', 'system',
       'screen_off_timeout', '1800000',
+    ]).catch(() => {});
+
+    // 4. Seed a default mock GPS fix so any CommCare `geopoint` Capture
+    // widget has a provider location to read out of the box (without it
+    // the emulator's GPS never acquires and the Capture button hangs).
+    // A recipe can override per-opp via the `mobile_set_location` atom.
+    // Longitude-FIRST (emulator console convention). See
+    // jjackson/ace#686 (geopoint capture) + DEFAULT_MOCK_LOCATION.
+    await this.shell('adb', [
+      '-s', avd.serial, 'emu', 'geo', 'fix',
+      String(DEFAULT_MOCK_LOCATION.longitude),
+      String(DEFAULT_MOCK_LOCATION.latitude),
+      String(DEFAULT_MOCK_LOCATION.altitude),
+      String(DEFAULT_MOCK_LOCATION.satellites),
     ]).catch(() => {});
 
     // Fingerprint = sha1(sorted-list-of-keys). Stable across runs;

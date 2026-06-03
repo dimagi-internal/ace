@@ -105,6 +105,17 @@ adb shell pm grant org.commcare.dalvik android.permission.CAMERA
 
 The CAMERA grant runs as part of `AvdBackend.runPostBootPrep`. The GMS toggle lives at the recipe-pair boundary in `MobileClient.registerTestUser`.
 
+### Geopoint (GPS) capture — mock-location + Capture flow
+
+A CommCare `geopoint` question is a **Capture-button widget** that reads the device GPS provider — NOT a free-text field. (The #593/#686 "GPS is a plain text box by design, type a `lat lon alt accuracy` string" conclusion was **wrong**: that render came from a stale build whose XForm bind compiled to `type="xsd:string"` instead of `type="geopoint"`. `app-release-qa` now hard-gates that class, so a correct build always renders the real Capture widget. See jjackson/ace#686.)
+
+On an emulator the GPS provider never acquires a fix on its own, so the Capture button would hang. Two mechanisms make it work:
+
+- **Cold-boot baseline mock fix (automatic).** `AvdBackend.applyEnvironmentBaseline` seeds `DEFAULT_MOCK_LOCATION` (Kano, Nigeria — `adb emu geo fix <lon> <lat> <alt> <sats>`, **longitude FIRST**) on every cold-boot, so any geopoint Capture has a provider fix to read out of the box. Live-verified the emulator GPS provider then reports `hAcc≈5m` (well under a typical 50 m gate). It's part of the baseline fingerprint (`mock_location_fix`).
+- **`mobile_set_location` atom (per-opp override).** Pass `{longitude, latitude, altitude?, satellites?}` to set opp-specific coordinates for realistic screenshots. **Longitude is the first coordinate** (emulator console convention — the classic transposition footgun). Local-AVD only today; the cloud backend throws `CLOUD_MOCK_LOCATION_UNSUPPORTED` (a `/api/mobile` location-set route is a follow-up).
+
+**Recipe authoring + the not-yet-calibrated selector (TODO).** The geopoint Capture-button *selector* is **not yet in the selector map** — it must be dumped live against a correct on-device build (we have not had one yet; this run's build was stale). When calibrating, also check whether `auto_gps_capture: true` (set at the app level) means CommCare auto-fills the fix in the background — if so the recipe may only need a `mobile_set_location` + a wait, with no explicit Capture tap. Until calibrated, `app-test-cases` Step 3 item 4.5 marks the geopoint step `deferred`; never `inputText` a coordinate string (the `recipe-sanity-probe` `inputtext-geopoint-as-string` rule flags that).
+
 ### Multi-user dadb landmine
 
 dadb-1.2.10 (bundled with Maestro 2.3.0+) does NOT wrap per-device `createDadb()` calls in a try/catch. The first device that the local adb-server flags as "unauthorized" throws an `IOException` that aborts the whole device enumeration. On a shared Mac where user A's emulator is up and user B's adbkey isn't authorized on it, user B's `maestro test` reports zero connected devices.

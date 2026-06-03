@@ -79,7 +79,7 @@ const SERVERS: Record<string, ServerSpec> = {
   },
   mobile: {
     file: 'mcp/mobile-server.ts',
-    expectedCount: 16,
+    expectedCount: 17,
     allowedPrefixes: ['mobile_'],
     // capabilityMap enabled in PR-R (2026-05-25) after aligning the map
     // with the server registrations. The previously-extra
