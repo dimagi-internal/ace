@@ -114,11 +114,32 @@ export function javaProbeWorks(binary: string): boolean {
  * the homebrew JDK regardless of PATH so Phase 3's structural-smoke
  * gate is actually wired on a stock dev machine.
  */
+// Cache for the auto-discovered JDK. Discovery is process-stable but does up
+// to ~10 `spawnSync` probes (4s timeout each on a miss); app-release-qa calls
+// commcare-cli several times per run (validate + one play per module), so
+// without this each call re-pays the full probe. Only the auto-discovery
+// branch is cached — an explicit arg / `ACE_JAVA_BIN` always wins and is cheap.
+let _discoveredJava: { resolved: boolean; value: string | undefined } = {
+  resolved: false,
+  value: undefined,
+};
+
+/** Test-only: clear the auto-discovery cache so a test can re-probe. */
+export function __resetJavaPathCache(): void {
+  _discoveredJava = { resolved: false, value: undefined };
+}
+
 export function resolveJavaPath(explicit?: string): string | undefined {
   if (explicit && explicit.length > 0) return explicit;
   const envBin = process.env.ACE_JAVA_BIN;
   if (envBin && envBin.length > 0) return envBin;
+  if (_discoveredJava.resolved) return _discoveredJava.value;
+  const value = _discoverJavaPath();
+  _discoveredJava = { resolved: true, value };
+  return value;
+}
 
+function _discoverJavaPath(): string | undefined {
   // macOS java_home — Apple's canonical "current JDK" pointer.
   if (process.platform === 'darwin') {
     try {
