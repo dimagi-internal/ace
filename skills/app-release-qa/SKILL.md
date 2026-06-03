@@ -165,6 +165,40 @@ If the canonical field-count comparison is over-conservative (false
 positives on auto-generated binds), the skill can WARN instead of
 halt — but the operator should see the count in the verdict.
 
+**Geopoint bind-type fidelity (cross-cutting — Learn + Deliver).**
+A `kind: geopoint` field MUST compile to an XForm bind of
+`type="geopoint"`. A `type="xsd:string"` bind for a geopoint field
+means the **released build is a stale / downgraded compilation**: on
+device CommCare renders it as a plain text box (no GPS Capture widget),
+the FLW can't capture a fix, and the standard hidden
+`selected-at(<gps>, 0|1|3)` lat/lon/accuracy calcs throw
+`Calculation Error … list with only 1 element` at runtime the moment
+the field is non-empty. This passes every other gate — `validate_app`,
+`make_build`, the structural counts above, AND `commcare-cli play`
+(the `selected-at` calcs are init-guarded `if(gps='','',…)`, so they
+don't fire at form-init; the fault only surfaces at answer-time). It is
+invisible without this explicit bind-type check. Canonical incident:
+malaria-rdt run 20260602-1409 (jjackson/ace#686) — released CCZ had
+`<bind nodeset=".../gps" type="xsd:string">` while a fresh Nova compile
+of the same app yielded `type="geopoint"`.
+
+Detect it two ways (run both; either firing is a `[BLOCKER]`):
+
+1. **Nova cross-reference (primary).** For each form, call
+   `get_form({app_id: <nova_id>, moduleIndex, formIndex})` and collect
+   every field whose `kind` is `geopoint`. Assert the released CCZ's
+   form XML has `<bind nodeset="…/<field-id>" type="geopoint">` for each.
+2. **CCZ-internal fingerprint (no Nova dependency).** In each form XML,
+   find every hidden `calculate` of the shape
+   `selected-at(<X>, 0|1|3)` (the lat/lon/accuracy split). The referenced
+   node `<X>` is a geopoint by construction; assert `<X>`'s own bind is
+   `type="geopoint"`, not `xsd:string`.
+
+Mismatch → halt with `[BLOCKER]` `geopoint-bind-downgrade`
+(naming the field path + the observed bind type + "re-build & re-release
+the app from the current Nova blueprint, which compiles geopoint
+correctly"). Record per-app under `geopoint_binds` in the verdict.
+
 ### Step 4.5: Runtime install validation via `commcare-cli.jar`
 
 Steps 3–4 are **structural** — they parse the CCZ + match counts
@@ -410,11 +444,21 @@ defects.
   PR #423) is stripping markers.
 - `field-count-mismatch` — silent field omission. Re-run the build
   (Nova partial-persistence is usually fixed on retry).
+- `geopoint-bind-downgrade` — a `kind:geopoint` field compiled to an
+  XForm bind `type="xsd:string"` instead of `type="geopoint"` in the
+  released CCZ (stale / downgraded build). On device it renders as a
+  plain text box with no GPS Capture widget; the FLW can't capture a
+  fix and `selected-at(<gps>, N)` throws `Calculation Error` at
+  answer-time. Invisible to every other gate (incl. `commcare-cli play`,
+  because the calcs are init-guarded). Operator fix: re-build &
+  re-release the app from the **current** Nova blueprint — Nova compiles
+  geopoint correctly today (jjackson/ace#686); the released build was
+  just stale. Then re-run `app-release-qa` to confirm `type="geopoint"`.
 
 ## MCP tools used
 
 - ace-connect: `commcare_download_ccz`, `commcare_validate_ccz`
-- nova: `get_app`
+- nova: `get_app` (form/marker counts), `get_form` (per-field `kind` for the geopoint bind-type check)
 - ace-gdrive: `drive_read_file`, `drive_create_file`
 
 ## Change log
@@ -422,4 +466,5 @@ defects.
 | Date | Change | Author |
 |------|--------|--------|
 | 2026-05-22 | Initial version. Replaces the prior (reverted) "move app-screenshot-capture to Phase 3" attempt. AVD-free structural verification on released CCZ — would have caught the malaria-rdt 20260522-1002 form-patch over-stripping at Phase 3 instead of Phase 6, and catches Nova partial-persistence silent field omissions. Full AVD smoke (`app-screenshot-capture`) stays in Phase 6 where Connect state is available. | ACE team |
+| 2026-06-03 | **Add geopoint bind-type fidelity check (Step 4).** A `kind:geopoint` field MUST compile to bind `type="geopoint"`; a `type="xsd:string"` bind is a stale/downgraded build that renders as a plain text box (no GPS Capture widget) and throws `Calculation Error … gps_lon … list with only 1 element` at answer-time via the `selected-at()` calcs. Invisible to `validate_app`, `make_build`, the structural counts, AND `commcare-cli play` (init-guarded calcs don't fire at form-init). Detected via Nova `get_form` kind cross-reference + a CCZ-internal `selected-at(<X>,0\|1\|3)` fingerprint. `[BLOCKER]` `geopoint-bind-downgrade`. Reproducer: malaria-rdt/20260602-1409 (jjackson/ace#686) — released CCZ bind `xsd:string` while a fresh Nova compile of the same app yields `type="geopoint"` (Nova not at fault; the build was stale). Corrected the wrong #593 "GPS is plain-text-by-design" note in the selector map + CHANGELOG. | ACE team |
 | 2026-05-25 | **Add Step 4.5 — runtime install validation via `commcare-cli.jar`.** Two-mode wrapper: `validate` (fast, ~2s, catches parser-class defects like malformed XForm XML) + `play` (slower, ~5-10s, catches form-init runtime XPath defects). Reproducer: `bednet-spot-check/20260525-1405` Phase 6 — Deliver app's `connect.deliver_unit.entity_id: #case/case_name` substitution (from since-reverted PR #445) passed every Phase 3 static gate AND `commcare-cli validate` but failed `commcare-cli play` with `XPathTypeMismatchException` from `FormDef.initAllTriggerables` — same XPath-binding failure CommCare's mobile runtime hits when it shows "A part of your application is invalid." Operator setup: `/ace:setup` auto-downloads the latest tagged `commcare-cli.jar` (picks up `commcare_2.63.0` today) via `gh release download`. `[BLOCKER]` on `cli-validate-parser-error` (structural defect) or `cli-form-init-error` (runtime-binding defect — IS the bednet class); `[WARN]` on `cli-validator-unavailable` (jar not downloaded — structural Steps 3–4 still authoritative). MCP atom `commcare_validate_ccz` accepts `ccz_path` (preferred, no base64 in context) or `ccz_base64` (legacy fallback). See `docs/learnings/2026-05-25-bednet-smoke-phase6-install-rejection.md` § Preventer 2. | ACE team |

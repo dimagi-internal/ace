@@ -451,3 +451,42 @@ describe('deliver-smoke-rewalks-learn', () => {
     expect(v.failures.map((f) => f.class)).not.toContain('deliver-smoke-rewalks-learn');
   });
 });
+
+describe('probeRecipeSanity — failure class: inputtext-geopoint-as-string', () => {
+  it('flags an inputText of a "lat lon alt accuracy" GPS string', () => {
+    // jjackson/ace#686: a native CommCare geopoint is a Capture-button
+    // widget; typing a coord string collapses to one token and makes
+    // selected-at(<gps>,1) throw at runtime.
+    const body = ['- tapOn:', '    text: "Public hospital"', '- inputText: "12.0022 8.5920 500 10"'].join('\n');
+    const verdict = probeRecipeSanity({
+      recipes: [recipeBody('journey-deliver.yaml', body)],
+      novaApps: [HEALTHY_DELIVER_APP],
+      connectOpp: LIVE_OPP,
+    });
+    const f = verdict.failures.find((x) => x.class === 'inputtext-geopoint-as-string');
+    expect(f).toBeDefined();
+    expect(f!.recipe).toBe('journey-deliver.yaml');
+    expect(f!.value).toBe('12.0022 8.5920 500 10');
+    expect(f!.remediation).toMatch(/Capture|mock location|mobile_set_location/i);
+  });
+
+  it('flags an adb-style %s-escaped GPS string', () => {
+    const body = ['- inputText: "12.0022%s8.5920%s500%s10"'].join('\n');
+    const verdict = probeRecipeSanity({
+      recipes: [recipeBody('journey-deliver.yaml', body)],
+      novaApps: [HEALTHY_DELIVER_APP],
+      connectOpp: LIVE_OPP,
+    });
+    expect(verdict.failures.find((x) => x.class === 'inputtext-geopoint-as-string')).toBeDefined();
+  });
+
+  it('does NOT flag a normal free-text inputText (e.g. an outlet name)', () => {
+    const body = ['- inputText: "Apcolite Stores"', '- inputText: "200"'].join('\n');
+    const verdict = probeRecipeSanity({
+      recipes: [recipeBody('journey-deliver.yaml', body)],
+      novaApps: [HEALTHY_DELIVER_APP],
+      connectOpp: LIVE_OPP,
+    });
+    expect(verdict.failures.find((x) => x.class === 'inputtext-geopoint-as-string')).toBeUndefined();
+  });
+});

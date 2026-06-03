@@ -549,6 +549,29 @@ For each form-walk segment of a recipe:
    before advance.
 4. For `kind: text` / `kind: decimal` required fields, emit `inputText`
    with a plausible sample value before advance.
+4.5. For `kind: geopoint` required fields, do **NOT** `inputText` a
+   `"lat lon alt accuracy"` string. A native CommCare geopoint is a
+   **Capture-button widget** that reads the device GPS — not a free-text
+   field — and the hidden `selected-at(<gps>, 0|1|3)` lat/lon/accuracy
+   calcs only resolve from a real captured fix. (Typing a string fails:
+   the value can't be entered as multiple space-separated tokens, so
+   `selected-at(<gps>, 1)` throws `Calculation Error … list with only 1
+   element` at runtime — jjackson/ace#686. A build that renders the
+   geopoint as a plain text box is a **stale / downgraded build**: bind
+   `type="xsd:string"` instead of `type="geopoint"` — `app-release-qa`
+   now hard-gates that class, so a correct build always renders the real
+   Capture widget.) The correct recipe sequence is: (a) set an emulator
+   mock location BEFORE the capture step (a *mobile_set_location*
+   mock-location atom — **planned, not yet built** — or the cold-boot
+   mock-loc baseline; see `playbook/integrations/mobile-integration.md`),
+   (b) tap the geopoint
+   Capture button, (c) wait for the accuracy readout. The geopoint
+   Capture-button selector MUST be **calibrated live against this run's
+   released build** (per "close the loop to the source of truth") — never
+   transcribe it from a sibling build (that's exactly how the #593/#686
+   "GPS is a plain text field" misdiagnosis propagated). Until the
+   selector is calibrated live, mark the geopoint step `recipe: deferred`
+   for live resolution rather than inlining a typed string.
 5. Hidden / `calculate`-only fields are auto-populated by the form
    runtime — they don't need a per-question answer step. Skip them when
    composing the answer sequence.

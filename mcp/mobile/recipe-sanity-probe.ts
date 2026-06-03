@@ -40,6 +40,7 @@ export type SanityFailureClass =
   | 'opp-name-mismatch'
   | 'form-advance-without-answer-tap'
   | 'brief-label-drift'
+  | 'inputtext-geopoint-as-string'
   | 'deliver-smoke-rewalks-learn';
 
 export interface SanityFailure {
@@ -169,6 +170,28 @@ export function probeRecipeSanity(inputs: ProbeInputs): SanityVerdict {
         recipe: recipe.name,
         parameter: 'tapOn:text',
         value: label,
+      });
+    }
+
+    // 7.5 inputtext-geopoint-as-string → the recipe types a GPS
+    // "lat lon alt accuracy" string into a question. A native CommCare
+    // geopoint is a Capture-button widget, NOT a free-text field: the
+    // string can't be entered as multiple space-separated tokens, so the
+    // form's `selected-at(<gps>, 1)` calc throws `Calculation Error …
+    // list with only 1 element` at runtime (jjackson/ace#686). The
+    // signature is unambiguous: an inputText value of two (or more)
+    // space/`%s`-separated signed decimals = a lat/lon pair. The correct
+    // capture path is a mock-location fix + Capture-button tap (see
+    // skills/app-test-cases/SKILL.md Step 3 item 4.5).
+    const geoInputs = findGeopointStringInputs(recipe.text);
+    for (const { value, line } of geoInputs) {
+      failures.push({
+        class: 'inputtext-geopoint-as-string',
+        detail: `recipe ${recipe.name} types a GPS coordinate string via inputText "${value}" (line ${line}) — a native CommCare geopoint is a Capture-button widget, not a free-text field; the typed value collapses to one token and selected-at(<gps>,1) throws "Calculation Error … list with only 1 element" at runtime`,
+        remediation: `drive the geopoint via its Capture flow instead: set an emulator mock location (mobile_set_location / cold-boot mock-loc baseline), then tap the live-calibrated geopoint Capture-button selector — never inputText a "lat lon alt accuracy" string (skills/app-test-cases/SKILL.md Step 3 item 4.5)`,
+        recipe: recipe.name,
+        parameter: 'inputText',
+        value,
       });
     }
 
@@ -489,6 +512,45 @@ function findBriefStyleTapOnLabels(
           out.push({ label, line: i + 1 });
         }
       }
+    }
+  }
+  return out;
+}
+
+/**
+ * Find inputText steps whose value is a GPS coordinate string — the
+ * broken "type a geopoint as text" pattern (jjackson/ace#686). A native
+ * CommCare geopoint is a Capture-button widget; typing a
+ * "lat lon [alt accuracy]" string collapses to one token (spaces don't
+ * survive entry into the field) and makes the form's
+ * `selected-at(<gps>, 1)` calc throw `Calculation Error … list with only
+ * 1 element` at runtime. The signature is unambiguous: a value that
+ * starts with two space- or `%s`-separated signed decimals (a lat/lon
+ * pair) — a real form option label or text answer never looks like that.
+ * Matches scalar `inputText: "..."` and a mapping-form `text: "..."`,
+ * including adb-style `%s`/`%20`-escaped spaces.
+ */
+function findGeopointStringInputs(
+  yaml: string,
+): { value: string; line: number }[] {
+  const out: { value: string; line: number }[] = [];
+  const lines = yaml.split('\n');
+  const geoSig = /^\s*-?\d{1,3}\.\d+(?:\s+|%s|%20)-?\d{1,3}\.\d+/;
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    if (/^\s*#/.test(line)) continue;
+    // scalar form: `- inputText: "12.0 8.5 500 10"` (quotes optional).
+    // Requires a non-empty value, so a bare `inputText:` mapping opener
+    // (no value on the line) is not matched here.
+    const scalar = line.match(/\binputText:\s*["']?([^"'\n]+?)["']?\s*$/);
+    if (scalar && geoSig.test(scalar[1])) {
+      out.push({ value: scalar[1].trim(), line: i + 1 });
+      continue;
+    }
+    // mapping form: a `text: "..."` value line (under an inputText block).
+    const textVal = line.match(/^\s*text:\s*["']?([^"'\n]+?)["']?\s*$/);
+    if (textVal && geoSig.test(textVal[1])) {
+      out.push({ value: textVal[1].trim(), line: i + 1 });
     }
   }
   return out;
