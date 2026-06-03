@@ -127,6 +127,10 @@ interface RunningState {
   state: string; // EC2 state, NOT mobile state — confusing but it's what the API returns
   public_dns: string | null;
   started_at: string;
+  // Per-phase cold-boot wall seconds (ec2_start_s / emulator_wait_s / …) — see
+  // ace-web RunningState.timings. Absent on older ace-web versions.
+  timings?: Record<string, number> | null;
+  diagnostics?: CloudDiagnostics | null;
 }
 
 /**
@@ -152,6 +156,11 @@ export interface CloudDiagnostics {
   marker_age_seconds: number | null;
   runner_log_tail: string;
   emulator_log_tail: string;
+  // Hardware-acceleration verdict for the emulator host: 'kvm' (fast),
+  // 'tcg' (software fallback, ~10x slower), or absent on older ace-web.
+  accel?: string | null;
+  kvm_nested?: string | null;
+  kvm_dev_present?: boolean | null;
 }
 
 export interface CloudPatchLaunchScriptResult {
@@ -207,7 +216,7 @@ export class CloudBackend {
     const body: Record<string, string> = {};
     if (stateName) body.state = stateName;
     const result = await this.post<RunningState>('/api/mobile/ensure-running', body);
-    return {
+    const info: AvdInfo = {
       name: stateName || name || 'cloud',
       // The cloud AVD is local to the EC2 instance; expose a synthetic
       // serial so callers that interpolate it into log lines get
@@ -215,6 +224,13 @@ export class CloudBackend {
       serial: `cloud:${result.instance_id}`,
       status: 'booted',
     };
+    // Surface cold-boot timing + hardware-accel verdict when ace-web returns
+    // them, so a slow boot is attributable (EC2 vs emulator) and a TCG
+    // fallback is visible — instead of an opaque "booted". Older ace-web
+    // versions omit these, leaving the fields undefined.
+    if (result.timings) info.timings = result.timings;
+    if (result.diagnostics?.accel) info.accel = result.diagnostics.accel;
+    return info;
   }
 
   /**

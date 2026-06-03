@@ -15,6 +15,18 @@ export interface AvdInfo {
     maestroDriver?: { healed: boolean; attempts?: string[] };
     deviceUserState?: DeviceStateHealLog;
   };
+  /**
+   * Cloud-backend cold-boot diagnostics, surfaced so a slow `ensure_avd_running`
+   * is attributable in the transcript instead of opaque. Populated only by the
+   * cloud backend (and only when ace-web returns them):
+   *  - `timings`: per-phase wall seconds (ec2_start_s / emulator_wait_s / …),
+   *    so an EC2-provisioning-bound boot is distinguishable from an in-VM
+   *    emulator-boot-bound one.
+   *  - `accel`: 'kvm' (hardware-accelerated) vs 'tcg' (software fallback, ~10x
+   *    slower) — the prime suspect for multi-minute boots.
+   */
+  timings?: Record<string, number> | null;
+  accel?: string | null;
 }
 
 /**
