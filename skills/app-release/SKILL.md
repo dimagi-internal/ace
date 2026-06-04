@@ -23,21 +23,10 @@ can read its form schema and surface deliver units to the opportunity.
 
 ## Why this skill exists
 
-Nova's `/nova:upload_to_hq` writes the app to CCHQ as a **draft** (the
-in-flight working copy). It does NOT make a versioned build, and does NOT
-release one. By design — Nova doesn't release apps directly.
-
-Connect, however, only sees apps that have at least one **released build**.
-Specifically:
-- Connect's `connect_create_opportunity` accepts the bare app id and the
-  ace-connect MCP wraps it in the form-value Connect requires (0.10.1+),
-  so opp creation works against unreleased apps.
-- BUT `Sync Deliver Units` (the wizard step that populates per-payment-unit
-  deliver-unit checkboxes) reads the *released* build's form schema. Without
-  a release, the deliver-units list is empty, no payment unit can be
-  created, and the opp is stuck in draft.
-
-This skill closes that gap.
+Nova uploads apps to CCHQ as a **draft** only; Connect surfaces deliver
+units only from a **released build**. This skill makes the versioned build
+and releases it. For the full rationale, see reference.md § Why this skill
+exists.
 
 ## Prerequisites
 
@@ -45,16 +34,15 @@ The CCHQ user backing `ACE_HQ_USERNAME` (`ace@dimagi-ai.com`) **must
 have a role with `edit_apps` permission** on the target project space.
 The standard `Admin` role on connect-ace-prod includes this. Verify
 once via the Web Users page (`/a/<domain>/settings/users/`) if you hit
-auth-shaped errors — the UI's `Sorry, you don't have permission to do
-this action!` banner is a generic fallback bound to `buildState() ==
-'error'` in Knockout, not a literal permission verdict, so its presence
-alone is not diagnostic.
+auth-shaped errors. Note the CCHQ `Sorry, you don't have permission to
+do this action!` banner is a generic Knockout error fallback, NOT a
+literal permission verdict — see § Failure Modes before treating it as
+diagnostic.
 
 ## Endpoints (verified 2026-04-29)
 
-CCHQ's URL patterns are internal UI routes, not public APIs. These were
-discovered by network-tracing the UI's `Make New Version` and `Released`
-toggle on `/a/<domain>/apps/view/<app_id>/releases/`:
+CCHQ's URL patterns are internal UI routes, not public APIs. For how they
+were discovered, see reference.md § How the endpoints were discovered.
 
 ```
 # Step 1 — Make a versioned build (creates a "build" doc; sets built_on)
@@ -116,11 +104,9 @@ procedure below to rediscover.
    leaving prior builds released. So safe to re-run.
 
 4a. **If `commcare_make_build` throws `BuildRejectedError` — auto-fix
-    loop with the Nova architect.** Added 0.13.141 after the leep run
-    20260509-2204 halt: CCHQ rejected a Learn build because Nova's
-    XForm emitter skipped entity-encoding `<` in an MCQ option label.
-    PR #206 (0.13.140) made that diagnostic legible; this loop fixes
-    the bad XForm at the source (the Nova app) and retries.
+    loop with the Nova architect.** This loop fixes the bad XForm at the
+    source (the Nova app) and retries. For origin, see reference.md
+    § BuildRejectedError auto-fix loop.
 
     The MCP atom now returns
     `{error: 'build_rejected', app_id, error_text, error_html, retryable: false}`
@@ -200,13 +186,8 @@ procedure below to rediscover.
        upstream fix). Phase 3 halts. Do not silently downgrade to
        success.
 
-    **Why bounded.** A perpetually-failing form is almost certainly a
-    Nova-emitter regression that the architect can't see (it lives
-    below `validate_app`'s scope). Three attempts gives the architect
-    a chance to fix the obvious case (literal angle-bracket in a
-    label) and one chance to fix a non-obvious case the first round
-    missed; beyond that we're burning cycles on a structural bug that
-    needs human eyes on the emitted XForm XML.
+    **Why bounded (3 attempts).** For the rationale, see reference.md
+    § Why the BuildRejectedError loop is bounded at 3.
 
     **Subagent dispatch note.** `/nova:edit` runs the Nova architect
     via `Agent`, which is only available at level 0. `app-release` is
@@ -353,11 +334,10 @@ post-release boundary check.
   OAuth-via-CCHQ flow leaves valid CCHQ cookies in
   `~/.ace/connect-session.json`, so a single login covers both services.
 
-  **Prefer these atoms over raw `Bash` + `curl`.** The orchestrator used
-  to regenerate `/tmp/ace-release.js` scripts on every Phase 3 run
-  (turmeric-20260429-2330 spent ~10 min on this); the atoms eliminate
-  that loop. The bash/curl path documented earlier in this file is the
-  fallback when the URL contract shifts and a re-probe is needed.
+  **Prefer these atoms over raw `Bash` + `curl`.** The bash/curl path
+  documented earlier in this file is the fallback when the URL contract
+  shifts and a re-probe is needed. For why, see reference.md § Why prefer
+  the MCP atoms over raw Bash + curl.
 
 ## Mode Behavior
 - **Auto:** Pre-flight, build, release, verify, update summary, proceed.
@@ -390,11 +370,3 @@ When `--dry-run` is active:
   warning about prior builds; new build creation should still work.
 - **`is_released` doesn't flip after release POST**: probe URL pattern;
   the release endpoint may have moved.
-
-## Change Log
-
-| Date | Change | Author |
-|------|--------|--------|
-| 2026-04-29 | Discovered + verified the actual endpoints on `/apps/view/<app_id>/releases/`: `POST /apps/save/<app_id>/` (empty body) returns the new build with `_id`; `POST /apps/view/<app_id>/releases/release/<build_id>/` with `ajax=true&is_released=true` flips the release flag. Tested live against `0c96435881b0...` (deliver) and `76fd5f0e2834...` (learn) on connect-ace-prod — both successfully released. Also documented the Connect-side sync endpoint: `POST /a/<org>/opportunity/<int_id>/sync_deliver_units/`. (0.10.4) | ACE team |
-| 2026-04-29 | Add Connect-coverage pre-flight (Step 3) and CCZ verification (Step 6) — checks Nova blueprints have `connect.deliver_unit` / `learn_module` / `assessment` set on every form, then verifies the released CCZ has `<learn:deliver>` / `<learn:module>` markers. Document two upstream Nova bugs that cause silent failures: (a) autobuild often skips Connect markers entirely; (b) `update_form deliver_unit` runtime auto-fills empty `entity_id`/`entity_name` that serialize as invalid XPath, breaking the build. Both need Nova upstream fixes; the skill surfaces clear pointers when either is detected. Learn-app pipeline currently works end-to-end; Deliver-app pipeline blocks on bug (b). (0.10.5) | ACE team |
-| 2026-04-29 | Move Connect-marker verify+fix into a dedicated Phase 3 Step 1.5 skill (`app-connect-coverage`) that runs after Nova builds and before deploy. This skill's pre-flight now just consumes that skill's `clean | blocked` verdict instead of duplicating the logic. Step 6 CCZ verification stays here as the post-release sanity check. (0.10.7) | ACE team |
