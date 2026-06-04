@@ -8,22 +8,44 @@ skill (to keep the per-run context small) is not lost.
 
 ## Marker mechanism
 
-The `connect.deliver_unit` marker is set at the MODULE level via
-`module_type` — not a nested `connect:{}` object and not a form field.
-Do NOT instruct the architect to pass a `connect: {deliver_unit: {...}}`
-object — `add_module` throws an opaque `"Unknown error"` and
-`update_form` type-rejects it, and an architect that takes that path
-ships a marker-less Deliver app (Connect surfaces no deliver unit →
-Phase 4 cannot create a payment unit).
+The `<learn:deliver>` marker compiles into the released CCZ only when the
+app is **scaffolded as a Connect deliver app**:
+`generate_scaffold(connect_type: "deliver")` at the APP level, plus a
+per-form `connect.deliver_unit` block on each paid form. The app-level
+`connect_type` is the lever; the per-form block alone is **not**
+sufficient — with `connect_type: ""` the compiler emits zero markers even
+though every form carries a `connect.deliver_unit` and `get_app` /
+`get_form` report `[Connect enabled]`. This mirrors the Learn app, which
+compiles `learn_module` / `assessment` markers because it is scaffolded
+`connect_type: "learn"`.
 
-This mirrors the Learn marker mechanism
-(`module_type: "connect.learn_module"` + `form_type:
-"connect.assessment"`): an architect that gets Learn right first-try
-gets Deliver right too once the brief names the mechanism. Verified live
-on bednet-spot-check 20260601-1252; see jjackson/ace#660.
+**Controlled disproof of the old "module-level via `module_type`"
+framing — `malaria-rdt/20260603-1600`:** in ONE run, same compiler, the
+Learn app (`connect_type: "learn"`) compiled all 7 markers, while the
+Deliver app (`connect_type: ""`, form-level `connect.deliver_unit` id
+`rdt_poc` present and `[Connect enabled]`) released a CCZ with
+`connect_markers.deliver = 0` — confirmed three ways (xmlns XML parse,
+`http://commcareconnect.com` grep, and the `download_ccz` projection) and
+again on a fresh re-upload + re-release (so not a stale compile). The live
+Nova API does not even expose the old mechanism: `update_module` accepts
+only `name` (no `module_type`), and there is no `add_module` tool (it is
+`create_module`, which has no `connect_type`). The prior claim that
+`module_type` was "verified live on bednet-spot-check 20260601-1252
+(jjackson/ace#660)" is superseded — that run most likely scaffolded
+`connect_type: "deliver"` correctly and the success was mis-attributed to
+`module_type`, or verified the `[Connect enabled]` false positive rather
+than the compiled CCZ. The fix is jjackson/ace#694.
 
-For the prompt-quality dependency that makes naming this load-bearing,
-see `docs/learnings/2026-04-29-nova-connect-marker-bugs.md` § Bug 1.
+**False positive to never trust:** the `[Connect enabled]` flag on
+`get_app` / `get_form` shows whenever a form has a `connect.deliver_unit`
+block, independent of whether `connect_type` will let it compile. Verify
+markers against the compiled/released CCZ (`connect_markers.deliver ≥ 1`)
+— SKILL.md Step 4e (cheap blueprint pre-check) + `app-release-qa` Step 2.8
+(authoritative CCZ check).
+
+For the prompt-quality dependency that makes naming the scaffold
+`connect_type` load-bearing, see
+`docs/learnings/2026-04-29-nova-connect-marker-bugs.md` § Bug 1.
 
 ## add_fields partial persistence
 

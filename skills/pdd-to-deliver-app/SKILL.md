@@ -48,26 +48,38 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
      more robust path is for this brief to be unambiguous up front.
      See `docs/learnings/2026-04-29-nova-connect-marker-bugs.md`
      § Bug 1 for the prompt-quality dependency.
-   - **State the marker MECHANISM, not just the requirement: the
-     `connect.deliver_unit` marker is set at the MODULE level via
-     `module_type` — NOT a nested `connect:{}` object and NOT a form
-     field.** Name this in the brief so the architect calls the right
-     tool: `add_module`/`update_module(module_type:
-     "connect.deliver_unit", id: "<slug>", entity_id: "/data/<key>",
-     entity_name: "/data/<label>")` (the module's `deliver_unit_slug`
-     auto-derives from its id). The form itself stays
-     `form_type: "basic"` — there is NO deliver `form_type`. Live Nova
-     enums: `module_type` ∈ {`basic`, `connect.learn_module`,
-     `connect.deliver_unit`}; `form_type` ∈ {`basic`,
-     `connect.assessment`}. Do NOT instruct the architect to pass a
-     `connect: {deliver_unit: {...}}` object — `add_module` throws an
-     opaque `"Unknown error"` and `update_form` type-rejects it, and an
-     architect that takes that path ships a marker-less Deliver app
-     (Connect surfaces no deliver unit → Phase 4 cannot create a payment
-     unit). This mirrors the Learn marker mechanism
-     (`module_type: "connect.learn_module"` +
-     `form_type: "connect.assessment"`).
-     > For the mechanism rationale + verification history, see reference.md § Marker mechanism.
+   - **State the marker MECHANISM: a Deliver app must be SCAFFOLDED as a
+     Connect deliver app — `generate_scaffold(connect_type: "deliver")`
+     at the APP level — AND every paid form must carry a
+     `connect.deliver_unit` block.** The app-level `connect_type:
+     "deliver"` is what makes Nova's compiler emit the `<learn:deliver>`
+     marker into the released CCZ. **Leaving `connect_type` empty (`""`)
+     ships a marker-less CCZ even when each form already has a
+     `connect.deliver_unit` block** — Connect surfaces zero deliver units
+     → Phase 4 cannot create a payment unit. Per form, set
+     `connect.deliver_unit: {name, id, entity_id, entity_name}` (in the
+     scaffold's form config, or via `update_form` after build); the form
+     stays `type: registration` — there is no special deliver form type.
+     This mirrors the Learn app, which compiles its `learn_module` /
+     `assessment` markers because it is scaffolded `connect_type:
+     "learn"`. Name `connect_type: "deliver"` explicitly in the brief so
+     the architect sets it at scaffold time.
+     - **Do NOT** tell the architect the marker is "module-level" via
+       `module_type` / `add_module`, and do NOT let `connect_type` default
+       to empty. Live Nova `update_module` accepts only `name` (no
+       `module_type`); there is no `add_module` tool (it is
+       `create_module`, which has no `connect_type`). A brief that frames
+       the marker as module-level leads the architect to leave
+       `connect_type` empty and ship a marker-less CCZ — the root cause of
+       the `malaria-rdt/20260603-1600` Phase 3 halt.
+     - **The `get_app` / `get_form` `[Connect enabled]` flag is a FALSE
+       POSITIVE for compile** — it shows whenever a form carries a
+       `connect.deliver_unit` block, even when `connect_type: ""` means the
+       marker will NOT compile. Never treat `[Connect enabled]` as evidence
+       the marker shipped; verify against the compiled CCZ
+       (`connect_markers.deliver ≥ 1`, see Step 4e + `app-release-qa`).
+     > For the mechanism rationale + the controlled malaria-rdt disproof,
+     > see reference.md § Marker mechanism.
    - **REQUIRED — every form that needs its own paid deliver_unit
      MUST live in its own module.** Nova's `compile_app` emits the
      module slug as the `<learn:deliver id="...">` attribute for
@@ -508,6 +520,35 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
     (Apps with no case-CREATE module, or whose case-create modules
     already carry a non-empty case list, validate clean at step 1 and
     skip cleanly.)
+
+4e. **Deliver-marker compile pre-check (catch `connect_type: ""` before
+    deploy).** The released-CCZ marker check is owned by `app-release-qa`
+    (Step 2.8), but that runs after deploy + release — catch the
+    scaffold-level miss here, cheaply, on the already-fetched blueprint.
+
+    1. Call `get_app({app_id})`. Its summary header prints the app's
+       Connect type (e.g. `Connect type: deliver` / `Connect type:
+       learn`); a standard app prints none.
+    2. **Assert the header reads `Connect type: deliver`.** If it is
+       absent / empty (the app was scaffolded `connect_type: ""`), the
+       per-form `connect.deliver_unit` blocks will NOT compile a
+       `<learn:deliver>` marker — the released CCZ would carry zero
+       deliver units and Phase 4 would fail at payment-unit creation.
+       Do NOT rely on the per-form `[Connect enabled]` flag — it is a
+       false positive for compile (see Step 3 marker-mechanism bullet).
+    3. On a miss, the app must be re-scaffolded with `connect_type:
+       "deliver"`. The autonomous architect cannot reliably flip this on
+       a completed app; re-dispatch `/nova:autobuild` with a brief that
+       explicitly sets `generate_scaffold(connect_type: "deliver")`, or
+       (if Nova `create_app` is unavailable) halt with a clear
+       `deliver-marker-wont-compile` failure and surface it. Do NOT write
+       the success summary with `connect_type: ""`.
+
+    Reproducer: `malaria-rdt/20260603-1600` — Deliver scaffolded
+    `connect_type: ""`; both the original and a fresh re-upload+re-release
+    produced `connect_markers.deliver = 0`; the only fix was a rebuild
+    with `connect_type: "deliver"` (blocked that session by a concurrent
+    Nova `create_app` outage). See jjackson/ace#694.
 
 5. **(Optional) Inspect the built app** via `/nova:show <app_id>` to
    cross-check structure against the PDD before writing the summary.
