@@ -28,27 +28,13 @@ Generate the Learn (training) app from the PDD using the Nova plugin
 1a. **Archetype check — focus-group uses the sentinel pattern.** If the
     PDD's `Archetype:` is `focus-group`, this skill still produces a
     Learn app, but a **minimal sentinel** — a single 1-form readiness
-    check, not a full training curriculum. The sentinel exists for two
-    reasons:
-
-    1. **Connect API requirement.** `connect_create_opportunity`
-       requires a non-null `learn_app` at the schema, REST request, and
-       cross-field-validator layers (verified `malaria-itn-fgd/20260514-2352`).
-       A no-Learn-app focus-group cannot be wired into a Connect opp.
-    2. **In-app readiness gate.** The sentinel form gates whether the
-       facilitator has completed the out-of-band training (OCS chatbot +
-       handbook gdoc + coordinator-graded practice-session audio review).
-       A facilitator must acknowledge readiness in CommCare before
-       Connect treats them as cleared to submit attestation forms.
-
-    The actual training content lives **out-of-band** (the sentinel
-    doesn't carry it). See `docs/superpowers/specs/2026-05-15-focus-group-archetype-redefinition.md`
-    for the operational model.
-
+    check, not a full training curriculum. It satisfies the
+    `connect_create_opportunity` non-null `learn_app` requirement AND
+    gates whether the facilitator has completed the out-of-band training.
     Proceed to step 2 with the focus-group sentinel brief described in
-    `## Archetypes § focus-group` below. The brief is short (one form,
-    ~7 fields, both Connect markers set); Nova autobuild typically
-    completes in 1-2 minutes.
+    `## Archetypes § focus-group` below. For the sentinel rationale + the
+    out-of-band training model, see reference.md § focus-group sentinel
+    rationale.
 
     For `multi-stage` PDDs, follow the multi-stage branch below — each
     stage's Learn app shape depends on the stage's declared archetype.
@@ -67,8 +53,8 @@ Generate the Learn (training) app from the PDD using the Nova plugin
      every content form needs `connect.learn_module` and every quiz
      form needs `connect.assessment` per CommCare Connect's rules.**
      Load-bearing language — without it, autobuild often skips the
-     per-form Connect blocks. See
-     `docs/learnings/2026-04-29-nova-connect-marker-bugs.md` § Bug 1.
+     per-form Connect blocks. For why, see reference.md § Connect-marker
+     language is load-bearing.
    - Describe each module / form, in order
    - List the required Connectify fields (Learn Module, Assessment Score)
    - Reference the relevant PDD section when it shapes Nova's choices
@@ -89,13 +75,8 @@ Generate the Learn (training) app from the PDD using the Nova plugin
      > to pattern-recognition / regex-style quiz options where it's
      > tempting to write `<country><number>.<number>` literally.
 
-     Filed upstream as voidcraft-labs/nova-plugin issue
-     "XForm emitter does not entity-encode `<`/`>` in label text"; this
-     skill-side constraint is the workaround. Phase 3's `app-release`
-     Step 2.7 surfaces a typed `BuildRejectedError` (with form
-     name + line/col) if the architect violates this constraint anyway,
-     so the operator gets a clear diagnostic instead of "Cannot make
-     new version" and a CCHQ UI peek.
+     For the upstream filing + the `app-release` Step 2.7 backstop, see
+     reference.md § Angle-bracket placeholder ban.
    - **REQUIRED — Set `connect.learn_module.id` AND `connect.assessment.id`
      explicitly to short stable identifiers, separately from the human-
      readable `name`.** This is the load-bearing constraint; the ≤40-char
@@ -151,19 +132,8 @@ Generate the Learn (training) app from the PDD using the Nova plugin
      > explicit-id rule above (cleaner; lets `name` be any length); this
      > clause exists only because architects sometimes skip the id field.
 
-     Reproducer: `leep-paint-collection` run 20260517-1515 Phase 4 hit
-     this on M6 (52-char slug derived from "Stage 2: Sample Preparation,
-     Drying, Bagging, Shipment"). The structural backstop is `app-release`
-     Step 6's `projected_connect_state.oversized_slugs` gate — even if
-     the architect ships an over-length slug, the release-time projection
-     halts before Phase 4 ever calls Connect. Removal criteria: (a) drop
-     the ≤40-char fallback when the upstream commcare-connect PR widens
-     `LearnModule.slug` / `DeliverUnit.slug` to `max_length=255` (PR
-     dimagi/commcare-connect#1195) and `SLUG_LENGTH_LIMIT` in
-     `mcp/connect/backends/commcare.ts` is bumped in lock-step. (b) KEEP
-     the explicit-id rule even after the column widens — it's a
-     cleanliness invariant matching Vellum's slug-vs-name separation,
-     not just a workaround for the column width.
+     For the reproducer, the `app-release` Step 6 backstop, and removal
+     criteria, see reference.md § ≤40-char name fallback.
    - **REQUIRED — Architect must verify-then-retry every `add_fields`
      call.** Nova's `add_fields` has a partial-persistence quirk: a
      single call with N items often persists only the first few.
@@ -180,8 +150,8 @@ Generate the Learn (training) app from the PDD using the Nova plugin
      > next form before counts match — silent partial persistence on
      > form N becomes invisible once you start working on form N+1.
 
-     See `docs/learnings/2026-04-29-nova-connect-marker-bugs.md`
-     § Bug 3 for the full failure analysis.
+     For the full failure analysis, see reference.md § add_fields
+     verify-then-retry.
    - **REQUIRED — `user_score` MUST be a PERCENTAGE (0-100), not a raw
      point sum.** Connect's `passing_score` field on each assessment is
      on a 0-100 scale — `passing_score: 80` means "pass at 80%."
@@ -204,11 +174,7 @@ Generate the Learn (training) app from the PDD using the Nova plugin
      > Do NOT emit `user_score` as a raw sum (e.g. 4 out of 5) — Connect
      > compares the raw number against 80 and the FLW always fails.
 
-     Reproducer: malaria-rdt run 20260523-1257 Phase 6 — J1 Deliver
-     smoke blocked at the Learn assessment screen with "Training Failed:
-     score 5, passing score 80". The architect summed raw points (max 5
-     for a 5-Q quiz) but Connect compared 5 < 80 and gated the FLW.
-     The FLW answered every question correctly but still "failed."
+     For the reproducer, see reference.md § user_score percentage scoring.
    - **REQUIRED — Learn forms must NOT carry `<case>` blocks.** Connect's
      Learn-app contract is form-only; case state is the Deliver app's
      domain. Insert this paragraph **verbatim** into the brief, in its
@@ -228,9 +194,8 @@ Generate the Learn (training) app from the PDD using the Nova plugin
 
    - **REQUIRED — Deployability (fitness) components.** A label-only
      curriculum + one trivial quiz is NOT a deployable training
-     instrument; `pdd-to-learn-app-eval` **hard-fails** it (the ITN
-     9.6-on-a-hollow-build root cause). The canonical, parameterized text
-     for each component lives in
+     instrument; `pdd-to-learn-app-eval` **hard-fails** it. The canonical,
+     parameterized text for each component lives in
      **[`skills/_app-component-library.md`](../_app-component-library.md)** —
      the single source of truth, paired 1:1 with the eval dimension that
      hard-fails a build omitting it. For each Learn component whose
@@ -240,19 +205,12 @@ Generate the Learn (training) app from the PDD using the Nova plugin
      placeholders from the PDD. Emit-checklist (see the library for full
      text + triggers):
 
-     - `assessment-gate` — PDD specifies a readiness / competency gate
-       before delivery. Builds a pre-test + post-test (distinct banks),
-       ≥1 scored item per module, percentage `user_score` wired to
-       `connect.assessment` at the PDD threshold, a score-conditional
-       pass/fail result screen (NOT an unconditional "Well done!"), and
-       retry guidance. Gate stays Connect-side (Learn forms carry no case
-       blocks — see the rule above); the in-app job is a genuine pre/post
-       assessment + an honest pass/fail experience.
-     - `localization-layer` (Learn variant) — PDD names a working
-       language other than English. **Hard-fail** dimension: English-only
-       when the PDD names a working language fails the gate. Author the
-       English core + ship the named-language translation set via itext;
-       do NOT defer localization "downstream."
+     - `assessment-gate` — trigger: PDD specifies a readiness /
+       competency gate before delivery. (Gate stays Connect-side — Learn
+       forms carry no case blocks per the rule above.)
+     - `localization-layer` (Learn variant) — trigger: PDD names a
+       working language other than English. **Hard-fail** dimension:
+       English-only when the PDD names a working language fails the gate.
 
      Do NOT inline-paraphrase these — reference the library so the build
      and `pdd-to-learn-app-eval` stay symmetric. Skip a component whose
@@ -269,12 +227,8 @@ Generate the Learn (training) app from the PDD using the Nova plugin
 
     The architect-brief language above puts retry-then-verify discipline
     on the architect agent. This step is the skill-side safety net for
-    cases where the architect finished short — including the case where
-    the architect ran out of budget mid-final-module and silently
-    persisted N-of-M expected fields with no error. (Seen on
-    `malaria-itn-fgd/20260514-2007`: cert assessment shipped 12/15
-    score fields + 0/1 user_score, caught downstream by `validate_app`
-    rather than here; see jjackson/ace#303.)
+    cases where the architect finished short. For the failure history
+    behind this step, see reference.md § Step 4a safety net.
 
     **Always run this recipe before writing the success summary.** Not
     a prose contract — a numbered tool-call sequence the L0 LLM
@@ -302,7 +256,8 @@ Generate the Learn (training) app from the PDD using the Nova plugin
     4. **Compute the diff per form.** `missing = expected[m][f] -
        persisted_ids`. **Also** compute `referenced_missing`: any field
        referenced in another field's `calculate` / `relevant` /
-       Connect-marker `user_score` that isn't in `persisted_ids`.
+       Connect-marker `user_score` (the sum the Connect `assessment`
+       block reads) that isn't in `persisted_ids`.
        (`validate_app` flags this class as "X references Y which
        doesn't exist in this form" — same shortfall, different
        detection path. Catching it here means we don't ship to
@@ -330,15 +285,8 @@ Generate the Learn (training) app from the PDD using the Nova plugin
        write the success summary. The operator decides whether to
        /nova:edit manually, re-dispatch autobuild, or escalate.
 
-    Why we run this even though `validate_app` will catch some
-    shortfalls downstream: `validate_app`'s reference-integrity check
-    only catches missing fields that ARE referenced elsewhere
-    (e.g., a `user_score` sum referenced by the Connect `assessment`
-    block). A form that's missing 3 of 5 quiz questions with no
-    cross-reference between them passes `validate_app` cleanly and
-    ships to the FLW broken at training time. Step 4a is the
-    coverage-on-the-brief safety net `validate_app` is structurally
-    unable to provide.
+    Why we run this even though `validate_app` will catch some shortfalls
+    downstream: see reference.md § Step 4a safety net.
 
     Same shape as `app-connect-coverage` — verify+fix in a bounded
     loop, post-Nova.
@@ -387,17 +335,10 @@ stock, hostile vendor, duplicate), submission and case closure.
 
 **Produce a minimal sentinel Learn app** — one module, one form, ~7
 fields, both Connect markers (`connect.learn_module` +
-`connect.assessment` with passing_score 1).
-
-The sentinel satisfies two constraints simultaneously:
-
-1. **Connect API needs a Learn app.** `connect_create_opportunity`
-   requires non-null `learn_app` (schema + REST + validator). One sentinel
-   per FGD opp is the working pattern (operator decision, 2026-05-15).
-2. **In-app readiness gate.** The sentinel's one form is a
-   coordinator-confirmed readiness check — the facilitator can't
-   acknowledge readiness in CommCare until they've completed the
-   out-of-band practice-session-pass.
+`connect.assessment` with passing_score 1). It satisfies the
+`connect_create_opportunity` non-null `learn_app` requirement AND is a
+coordinator-confirmed in-app readiness gate. For the rationale, see
+reference.md § focus-group sentinel rationale.
 
 **Sentinel app spec (the Nova brief):**
 
@@ -415,7 +356,9 @@ Fields (the complete sentinel form):
    the practice-session audio review the coordinator grades.
 2. `case_name` (hidden, calculate `concat(#user/username, ' - readiness')`).
 3. `acknowledge_readiness` (single_select yes/no, required, constraint
-   `. = 'yes'`). Saves to case property `readiness_acknowledged`.
+   `. = 'yes'` — the facilitator must answer `yes`, i.e. coordinator-
+   confirmed practice-session-pass). Saves to case property
+   `readiness_acknowledged`.
 4. `acknowledgement_date` (date, required, default `today()`). Saves
    to `readiness_date`.
 5. `q1_score` (hidden, `calculate: if(#form/acknowledge_readiness = 'yes', 1, 0)`).
@@ -423,38 +366,14 @@ Fields (the complete sentinel form):
    the `connect.assessment` block.
 7. `result_label` (label) — readiness-acknowledged closing message.
 
-**Real facilitator training lives out-of-band:**
-
-- **OCS chatbot** (Phase 5, per-opp) — primary reference surface for
-  facilitation craft (silence handling, neutral probing,
-  anti-anchoring, group dynamics) + post-session writing guidance
-  ("what should I put in section 3 of my gdoc?"). Loaded with the
-  PDD's Facilitation Protocol + Question Guide + Output Specification
-  + a handbook gdoc.
-- **Facilitator handbook gdoc** — the LLO's prep doc; distributed
-  out-of-band, referenced from the OCS chatbot's RAG content.
-- **Practice-session audio review** — the pre-fielding certification
-  gate. Facilitator records a practice FGD, uploads the audio,
-  coordinator reviews and either passes (cleared for live fielding,
-  $50 training stipend released, and the facilitator can answer
-  `yes` to the sentinel's `acknowledge_readiness`) or fails-with-notes.
-
 The sentinel **does not duplicate or replace** the out-of-band training.
 It's a thin in-app artifact whose only operational job is to gate
 attestation submissions on coordinator-confirmed practice-session-pass.
-
-**Why "sentinel" and not "real training":** the FGD content lives in a
-Google Doc out-of-band, not in a CommCare form (see
-`pdd-to-deliver-app/SKILL.md § Archetypes § focus-group`). The real
-training is correspondingly out-of-band — putting it into CommCare
-would mean re-authoring all the facilitation craft content as in-app
-quizzes, which is the old-shape pattern that the operator explicitly
-walked back ("not a 'thin focus group' — the only way we will do
-the focus group"). The sentinel is the minimum needed to satisfy
-Connect's API and add one operational gate.
-
-See `docs/superpowers/specs/2026-05-15-focus-group-archetype-redefinition.md`
-for the full archetype redefinition + the sentinel rationale.
+The real facilitator training (OCS chatbot + handbook gdoc + coordinator-
+graded practice-session audio review) lives out-of-band. For where that
+training lives, the "why sentinel and not real training" rationale, and
+the full archetype redefinition spec, see reference.md § focus-group
+sentinel rationale.
 
 ### `multi-stage`
 Generate one Learn app per stage that has its own delivery work,
@@ -491,14 +410,3 @@ When `--dry-run` is active:
 - Do not write `app-summaries/learn-app-summary.md` (no `nova_app_id`
   to record).
 - State tracks as `dry-run-success`.
-
-## Change Log
-
-| Date | Change | Author |
-|------|--------|--------|
-| 2026-05-29 | **Extracted the assessment-gate + localization `REQUIRED:` paragraphs into the shared [`_app-component-library.md`](../_app-component-library.md).** Step 3's "assessment must be a real competency gate" and "Localization" blocks are no longer inlined — they're an emit-checklist of **named components** (`assessment-gate`, `localization-layer`) the build inserts verbatim from the library by trigger. Single source of truth (localization dedups with `pdd-to-deliver-app`); the library pairs each component 1:1 with the `pdd-to-learn-app-eval` fitness dimension (`assessment_gating`, `localization_match`) that hard-fails a build omitting it. Platform-mechanics REQUIRED paragraphs (no-case-blocks, `user_score` percentage, Connect IDs) stay inline — they're Nova constraints, not reusable instrument-quality components. Closes the reusable-component-library item (PR-8 build track) in `docs/superpowers/specs/2026-05-29-eval-fitness-gap.md`. | ACE team |
-| 2026-05-15 | **focus-group archetype becomes a no-op for this skill.** The FGD operational model captures content in a gdoc (not a CommCare form) and trains facilitators out-of-band (OCS chatbot + handbook gdoc + coordinator-graded practice-session audio review), so no Learn app is produced. Step 1a short-circuits with a `skipped` summary; § Archetypes § focus-group rewritten to document the skip. Prompted by `malaria-itn-fgd/20260514-2007` post-run reframe; see `docs/superpowers/specs/2026-05-15-focus-group-archetype-redefinition.md`. | ACE team |
-| 2026-05-15 | **focus-group switches from no-op to minimal sentinel pattern.** Re-run `malaria-itn-fgd/20260514-2352` Phase 4 surfaced a hard blocker: `connect_create_opportunity` requires `learn_app` at the schema, REST, and validator layers. Operator chose per-opp sentinel (one minimal 1-form readiness check, ~7 fields, both Connect markers, ~1-2 min build) over a server-side fix. Step 1a no longer short-circuits — focus-group runs the full skill flow but with the sentinel-shaped brief documented in § Archetypes § focus-group. Sentinel doubles as in-app readiness gate: facilitator must `acknowledge_readiness = yes` (coordinator-confirmed practice-session-pass) before they're cleared to submit attestations. | ACE team |
-| 2026-05-23 | **`user_score` must be percentage (0-100), not raw sum.** Connect's `passing_score` is on a 0-100 scale (80 = 80%). Raw-sum scoring produces max 5 for a 5-Q quiz; Connect compares 5 < 80 and the FLW always fails even with perfect answers. New REQUIRED paragraph instructs the architect to compute `user_score = (sum of per-Q scores) * 100 div N`. Reproducer: malaria-rdt run 20260523-1257 Phase 6 — "Training Failed: score 5, passing score 80" with all answers correct. | ACE team |
-| 2026-05-29 | **Assessment-as-real-gate + localization brief requirements (ITN post-mortem).** Added a `REQUIRED — assessment must be a real competency gate` paragraph (pre-test + post-test with distinct banks; ≥1 item per module; percentage `user_score` wired to `connect.assessment` at threshold; a score-conditional pass/fail result label, NOT an unconditional "Well done!"; retry guidance) and a `REQUIRED — Localization` paragraph (English core + named-language translations; English-only hard-fails). Gating stays Connect-side (Learn forms carry no case blocks) — the in-app job is a genuine assessment + honest pass/fail experience. Mirrors the new `pdd-to-learn-app-eval § assessment_gating` + `instructional_depth` + `localization_match` fitness dims. Root cause of the ITN Learn 9.6: a label-only curriculum + single 5-Q quiz with an unconditional pass message. See `docs/superpowers/specs/2026-05-29-eval-fitness-gap.md`. | ACE team |
-| 2026-05-21 | **Forbid `<case>` blocks in Learn forms.** Added a new REQUIRED paragraph to Step 3 instructing the architect to NOT declare `case_type` on Learn modules, NOT create cases from Learn registration forms, and NOT bind any field to a case property via `case_property_on`. Calibration scores / pass flags / `user_score` MUST live as form-level hidden fields only. Reason: `commcare-form-patch` (Step 8 wrapper-strip) hits `cchq-vellum-cache-drift` whenever a patched form carries a `<case>` block — CCHQ's Vellum form-designer cache isn't refreshed by `edit_form_attr`, and `make_build` rejects with "Cannot use Case Management UI if you already have a case block in your form." Reproducer: `malaria-itn-app/20260521-1400` Phase 3 — architect bound `standardization_gate_cleared` + `*_passed` flags to case properties, all 6 Learn forms blocked at form-patch, Phase 6 then halted on Connect → Learn CCZ install with "Unknown failure during app install." Removal criteria: drop the rule when voidcraft-labs/nova-plugin#7 ships (no wrappers → no patcher → no drift class) OR when `commcare_patch_xform` gains Vellum-cache invalidation. | ACE team |
