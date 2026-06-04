@@ -66,10 +66,8 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
      (Connect surfaces no deliver unit → Phase 4 cannot create a payment
      unit). This mirrors the Learn marker mechanism
      (`module_type: "connect.learn_module"` +
-     `form_type: "connect.assessment"`): an architect that gets Learn
-     right first-try gets Deliver right too once the brief names the
-     mechanism. Verified live on bednet-spot-check 20260601-1252; see
-     jjackson/ace#660.
+     `form_type: "connect.assessment"`).
+     > For the mechanism rationale + verification history, see reference.md § Marker mechanism.
    - **REQUIRED — every form that needs its own paid deliver_unit
      MUST live in its own module.** Nova's `compile_app` emits the
      module slug as the `<learn:deliver id="...">` attribute for
@@ -207,15 +205,11 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
           entities → the PDD's duplicate-detection is defeated. The case
           id is the wrong *grain*, independent of the validator quirk.
 
-     Grounded in deployed practice: across 6 real human-built Connect
-     Deliver apps (KMC, MBW; both atomic-create-payment and multi-visit),
-     **0/6 use the case id for `entity_id`** — all build a `concat(...)`
-     business key from form fields and persist it to a case property for
-     downstream forms to reuse. A single `/data/...` field path as
-     `entity_id` is install-safe (form fields resolve at `xforms-ready`)
-     and `validate_app`-clean (it's a real form reference) — the same
-     shape the malaria-rdt run verified end-to-end through
-     `validate_app` + `make_build` + release + `commcare-cli play`.
+     A single `/data/...` field path as `entity_id` is install-safe
+     (form fields resolve at `xforms-ready`) and `validate_app`-clean
+     (it's a real form reference).
+
+     > For the 6-app deployed-practice audit that grounds this rule, see reference.md § entity_id business key.
 
      Insert the matching paragraph(s) **verbatim** into the brief, in
      their own paragraph, prefixed `REQUIRED:`.
@@ -260,31 +254,14 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
      > of the same type for the same entity dedup. This is the pattern
      > all 6 deployed apps use.
 
-     Upstream (secondary): Nova's `validate_app` reference oracle could
-     be taught to recognize `/data/case/@case_id` as a runtime-valid path
-     (tracked at
-     [voidcraft-labs/nova-plugin#20](https://github.com/voidcraft-labs/nova-plugin/issues/20)),
-     but that's no longer load-bearing for ACE — `entity_id` should be a
-     business key regardless of whether the validator accepts the case id.
-
-     History (why the case id was abandoned): the prior rule prescribed
-     `/data/case/@case_id` (case-create) / `#case/case_id` (case-update)
-     as a workaround for the Nova compiler shape — see the reproducers
-     `bednet-spot-check/20260525-1405` (`#case/case_name`, failed
-     on-device install) and `20260525-2022` (`#case/case_id`, failed
-     `commcare-cli.jar play`), and `docs/learnings/2026-05-25-entity-id-misdiagnosis.md`.
-     The 6-app audit (jjackson/ace#586) showed the case id was the wrong
-     target all along; the fix is a business key, not a different
-     case-id XPath.
+     > For the upstream-validator note + the history of why the case id was abandoned, see reference.md § entity_id business key.
 
    - **REQUIRED — Architect must verify-then-retry every `add_fields`
      call.** Nova's `add_fields` has a partial-persistence quirk: a
-     single call with N items often persists only the first few. The
-     19-field turmeric Deliver form needed 5 `add_fields` calls to
-     land all questions; mid-build sessions where the architect
-     skipped verification have shipped forms that look complete in the
-     build summary but render with missing questions in the actual
-     app. Insert this paragraph **verbatim** into the brief, in its
+     single call with N items often persists only the first few; a
+     skipped verification ships forms that look complete in the build
+     summary but render with missing questions in the actual app.
+     Insert this paragraph **verbatim** into the brief, in its
      own paragraph, prefixed `REQUIRED:`:
 
      > REQUIRED: Nova's `add_fields` has a partial-persistence quirk.
@@ -297,17 +274,14 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
      > on form N becomes invisible once you start working on form
      > N+1.
 
-     See `docs/learnings/2026-04-29-nova-connect-marker-bugs.md`
-     § Bug 3 for the full failure analysis.
+     > For the full failure analysis, see reference.md § add_fields partial persistence.
 
    - **REQUIRED — Deployability (fitness) components.** A faithful
      transcription of the PDD's field list is NOT a deployable
      instrument. `pdd-to-deliver-app-eval`'s fitness axis (55% weight)
      **hard-fails** the build on each gap below; the build must emit the
      applicable components so the instrument is field-reliable, not just
-     structurally complete. (Root cause of the ITN 9.6-on-a-hollow-build:
-     the brief never demanded them. See
-     `docs/superpowers/specs/2026-05-29-eval-fitness-gap.md`.)
+     structurally complete.
 
      The canonical, parameterized text for each component lives in
      **[`skills/_app-component-library.md`](../_app-component-library.md)** —
@@ -354,7 +328,7 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
     Deliver apps are the highest-risk surface: the per-section summary
     form for focus-group archetypes is ~45-70 fields with 7 section
     groups — exactly the kind of long form where partial persistence is
-    most likely. Seen on a sibling Learn-app build; see jjackson/ace#303.)
+    most likely.)
 
     **Always run this recipe before writing the success summary.** Not
     a prose contract — a numbered tool-call sequence the L0 LLM
@@ -410,14 +384,7 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
        write the success summary. The operator decides whether to
        /nova:edit manually, re-dispatch autobuild, or escalate.
 
-    Why we run this even though `validate_app` will catch some
-    shortfalls downstream: `validate_app`'s reference-integrity check
-    only catches missing fields that ARE referenced elsewhere. A
-    `Post-Session Summary` form that's missing 1 of 7 section groups
-    with no cross-reference between groups passes `validate_app`
-    cleanly and ships to the FLW silently incomplete. Step 4a is the
-    coverage-on-the-brief safety net `validate_app` is structurally
-    unable to provide.
+    > For why this runs even though `validate_app` catches some shortfalls downstream, see reference.md § Step 4a safety net.
 
     Same shape as `app-connect-coverage` — verify+fix in a bounded
     loop, post-Nova.
@@ -457,18 +424,14 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
     write the success summary.
 
     See `feedback_connect_deliver_unit_per_module` memory for the
-    upstream Nova bug that necessitates this — when Nova's
-    `compile_app` learns to slug `<learn:deliver id>` per-form, this
-    check becomes a one-form-per-module preference rather than a
-    correctness requirement and the brief language above can soften.
+    upstream Nova bug that necessitates this.
 
 4c. **Case write-back verification (follow-up forms must persist
-    observations).** The structural preventer for the ITN Visit-2 defect
-    — a case-update form that captured retention/change observations but
-    wrote zero case properties, so the change it observed was lost.
-    `pdd-to-deliver-app-eval § case_persistence` hard-gates this at ≤2;
-    this step catches it at build time. Cheap; runs on the already-
-    fetched blueprint. Same bounded-loop shape as 4a/4b.
+    observations).** The structural preventer for case-update forms that
+    capture observations but write zero case properties (losing what they
+    observed). `pdd-to-deliver-app-eval § case_persistence` hard-gates
+    this at ≤2; this step catches it at build time. Cheap; runs on the
+    already-fetched blueprint. Same bounded-loop shape as 4a/4b.
 
     1. From `get_app({app_id})`, identify each **case-UPDATE** form (a
        form that updates an existing case rather than creating one —
@@ -513,17 +476,12 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
     `case_name` to a visible field — none of which auto-seeds the
     default column — and report it cannot reach validate-clean.
 
-    **Why this step lives in the skill (at level 0) and not in the
-    architect brief:** these case-list-config atoms (`add_case_list_column`
-    et al.) ARE available to the level-0 Claude Code session that
-    executes this skill, even though they are absent from the autonomous
-    architect's allowlist. So the heal is a deterministic L0 operation:
-    run it here, after the autonomous build returns, rather than asking
-    the architect to do something its tools can't. (The upstream half —
-    adding the case-list-config family to the
-    `nova:nova-architect-autonomous` allowlist — is tracked separately
-    and lives in the **external nova plugin**, which is not editable from
-    this repo. jjackson/ace#632.)
+    These case-list-config atoms ARE available to the level-0 Claude
+    Code session that executes this skill, so the heal is a
+    deterministic L0 operation: run it here, after the autonomous build
+    returns, rather than asking the architect to do something its tools
+    can't.
+    > For why this step lives at level 0 (not the architect brief) + the upstream allowlist gap (jjackson/ace#632), see reference.md § Step 4d level-0 heal.
 
     Cheap; runs on the already-fetched blueprint. Same bounded-loop
     shape as 4a/4b/4c.
@@ -739,18 +697,3 @@ at end of every phase.
 
 Each row this skill writes uses `phase: 3-commcare` and
 `skill: pdd-to-deliver-app`.
-
-## Change Log
-
-| Date | Change | Author |
-|------|--------|--------|
-| 2026-06-01 | **Added Step 4d — L0 case-list column heal for case-CREATE Deliver builds (closes jjackson/ace#632).** A case-CREATE module with an empty `caseListConfig.columns` (`case_list_config: null`) fails `validate_app`, and the autonomous architect dispatched by Step 4 (`/nova:autobuild` → `Agent(nova:nova-architect-autonomous)`) **cannot clear it** — the case-list-config tool family (`add_case_list_column` / `set_case_list_filter` / `update_case_list_column` / `reorder_case_list_columns` / `set_case_search_*` / `add_search_input` / …) is absent from the autonomous architect's tool allowlist. New Step 4d runs the deterministic heal at LEVEL 0 (where those atoms ARE available): `validate_app` → for each offending case-create module `add_case_list_column` (one plain column over the case name) → re-`validate_app`, bounded max 3 iterations, halt-loud on residual. Mirrors the L0 heal that unblocked malaria-rdt/20260601-0929 Phase 3. The upstream half (adding the case-list-config family to the `nova:nova-architect-autonomous` allowlist) is tracked separately and lives in the external nova plugin, not editable from this repo. | ACE team |
-| 2026-06-01 | **`entity_id` rule reframed: prescribe a BUSINESS KEY from form fields, NOT the case id (supersedes the 2026-05-26 `/data/case/@case_id` rule).** Audited 6 real human-built Connect Deliver CCZs (3 KMC, 3 MBW; atomic-create-payment and multi-visit): **0/6 use the case id for `entity_id`** — all build a `concat(...)` business key from form fields (name+phone, outlet+brand+batch) and persist it to a case property so downstream visit forms reproduce the same grain via casedb. Reframes jjackson/ace#586: `/data/case/@case_id` isn't just `validate_app`-rejected (case block is build-time-emitted, not a blueprint field) — a per-registration case UUID is the wrong *dedup grain* (no cross-registration/cross-FLW dedup), so the case id is wrong independent of the validator quirk. The malaria-rdt heal to `/data/case_name` (=`concat(outlet,brand,batch)`) was correct-by-design, not luck. New REQUIRED rule: case-CREATE → hidden `concat(...)` field of the PDD `duplicate-detection-key` natural identifiers, `entity_id: '/data/…/entity_key'`; multi-form → persist the key to a case property + read it back on case-UPDATE forms (`#case/<key>`), never `#case/case_id`. Upstream voidcraft-labs/nova-plugin#20 demoted to secondary (not load-bearing — `entity_id` should be a business key regardless). Prior reproducers + 2026-05-25 misdiagnosis postmortem retained as history. Companion: `idea-to-pdd` `payment-unit-entity-id` row + focus-group override note aligned. Evidence: 6 CCZs read 2026-06-01. | ACE team |
-| 2026-05-29 | **Extracted the deployability/fitness `REQUIRED:` paragraphs into the shared [`_app-component-library.md`](../_app-component-library.md).** The Step-3 "Deployability (fitness) requirements" block (GPS accuracy-gating, init-safe calculates, data-quality constraints, case-write-back, structured-capture, section-timestamps, embedded-BC-script, localization) is no longer inlined — it's now an emit-checklist of **named components** the build inserts verbatim from the library by trigger. Single source of truth for the paragraph text (dedups localization, previously duplicated with `pdd-to-learn-app`); the library pairs each component 1:1 with the `pdd-to-deliver-app-eval` fitness dimension that hard-fails a build omitting it, so the eval is the backstop for the indirection. Closes the reusable-component-library item (PR-8 build track) in `docs/superpowers/specs/2026-05-29-eval-fitness-gap.md` / open decision #2. | ACE team |
-| 2026-05-15 | Tighten Step 4a (post-build field-count verification) from "the in-context LLM must..." prose into a numbered tool-call recipe. Mirrors the same change in `pdd-to-learn-app/SKILL.md`. Prompted by `malaria-itn-fgd/20260514-2007` Learn-app cert-assessment partial-persistence (FGD Deliver apps with the ~45-70-field per-section summary form are the highest-risk surface for the same class). See jjackson/ace#303. | ACE team |
-| 2026-05-15 | **focus-group archetype rewritten to attestation-form-only.** Previously: 3-module / 69-field per-section-summary Deliver app capturing all qualitative content in CommCare. New: one module, one ~14-field attestation form (date / venue / participants / audio / photo / gdoc link / consent / reflection). Content lives in a Google Doc out-of-band; the gdoc_link field is the bridge. One submission = one payment trigger. Prompted by post-run reframe from operator: "all the content collection... will happen manually and they will send us a gdoc". See `docs/superpowers/specs/2026-05-15-focus-group-archetype-redefinition.md`. | ACE team |
-| 2026-05-15 | **Pare focus-group attestation form to 5 fields:** `consent_all_participants` (single_select yes/no, validate=yes), `session_date`, `venue` (text), `gps` (geopoint), `photo` (image). Drop `audio_file` / `backup_audio_file` (audio capture is out-of-band; not in CommCare), `gdoc_link` (gdoc is written AFTER session end, no linkable URL exists at submission time), and the metadata fields (`llo_name`, `site_*`, `venue_type`, `planned_segment`, `actual_participant_count`, `start_time`, `end_time`, `audio_duration_minutes`, `facilitator_reflection`, `pre_checklist_complete`) — these go in the gdoc. Matching attestation → gdoc is coordinator-driven by `(FLW, session_date, venue)` tuple. Prompted by operator: "For the fields just have consent (this should confirm you have consent from all participants), date, venue, gps, photo. everything else is either wrong or goes into the gdoc. the gdoc will be created after the fact so no ability to enter it into commcare". | ACE team |
-| 2026-05-25 | **Revert PR #445; restore `#case/case_id` as the canonical create-form `entity_id`; add explicit REQUIRED rule against `#case/case_name` substitution.** PR #445 (commit `749888e`, 2026-05-24) had flipped the recommended override from `#case/case_id` to `#case/case_name` based on a `/canopy:select-session` rescan citing a Nova validator rejection in the `e2e-malaria-rdt` 2026-05-24 run — but no artifact was preserved and the change contradicted a verified learning from one day earlier (`docs/learnings/2026-04-29-nova-connect-marker-bugs.md:92-95`: 2026-05-23 round-trip verification that `#case/case_id` persists exactly as passed). The substitution passed every Phase 3 static gate (`validate_app`, `make_build`, release, `app-release-smoke` projection) then failed on-device install on `bednet-spot-check/20260525-1405` Phase 6 with "A part of your application is invalid" — CommCare's install-time resource graph reads `entity_id`'s XPath BEFORE the hidden `case_name` field's `calculate` fires, gets null, and rejects the CCZ. `#case/case_id` does NOT have this problem because JavaRosa allocates the case UUID synchronously at form-processing start. Per Vellum's source-of-truth help text (`src/commcareConnect.js:243`), `case_id` IS the canonical pattern. New REQUIRED rule inserted in Step 3 ("`entity_id` on a create-form MUST resolve at install/parse time"). Full postmortem: `docs/learnings/2026-05-25-entity-id-misdiagnosis.md`. Structural preventer (commcare-cli.jar install simulation) tracked at `docs/learnings/2026-05-25-bednet-smoke-phase6-install-rejection.md § Preventer 2`. | ACE team |
-| 2026-05-26 | **Both prior `entity_id` rules were operator-side workarounds for an unrecognized upstream Nova compiler bug — branch the REQUIRED rule on case action.** The `commcare-cli.jar play` install-time gate (shipped same day in PR #510's Java-resolver fix) caught `bednet-spot-check/20260525-2022`'s Deliver CCZ failing `FormDef.initAllTriggerables` with `XPathTypeMismatchException` on `/data/bednet_visit/deliver/entity_id`. The bind Nova emitted for the directive `entity_id: '#case/case_id'` was the **case-UPDATE** shape: `instance('casedb')/casedb/case[@case_id = instance('commcaresession')/session/data/case_id]/case_id`. On a case-CREATE form that XPath is broken on two grounds — Connect populates `case_id_new_visit_<n>` (not `case_id`) in session data, and the case isn't in `casedb` yet. The same exception class is what CommCare's mobile runtime surfaces as "A part of your application is invalid" on device — explaining why BOTH bednet runs (1405 with `case_name`, 2022 with `case_id`) hit install rejection for what looked like different reasons; same Nova compiler bug, two different operator workaround attempts. Tracked upstream as voidcraft-labs/nova-plugin#20. Skill rule split: case-create deliver_units now emit `entity_id: '/data/case/@case_id'` + `entity_name: '/data/case_name'` (literal XPaths against the form's own case block, which the form's `<setvalue>` chain populates at xforms-ready); case-update deliver_units keep `#case/case_id` + `#case/case_name` (where Nova's casedb-lookup compilation IS correct). The change-log entry above (2026-05-25) is preserved verbatim for the audit trail; its conclusion was empirically wrong but the postmortem on PR #445 stands. | ACE team |
-| 2026-05-29 | **Deployability brief requirements + case-write-back verification (ITN post-mortem).** Added a `REQUIRED — Deployability (fitness) requirements` block to Step 3 (GPS accuracy-gating when a radius is specified; default data-quality constraints — bounds, cross-field, phone regex, char limits; structured selects + other→specify over free text; section timestamps; verbatim in-form BC script) and a `REQUIRED — Localization` paragraph (English core + named-language translation set; English-only hard-fails). Added Step 4c (case write-back verification): case-update forms that capture observations must bind ≥1 `case_property_on`, with a bounded `/nova:edit` repair loop — the structural preventer for the ITN Visit-2 write-nothing defect. These mirror the new `pdd-to-deliver-app-eval` fitness hard-gates 1:1 so build and eval are symmetric. See `docs/superpowers/specs/2026-05-29-eval-fitness-gap.md`. | ACE team |
-| 2026-05-29 | **Init-safety on GPS lat/lon/accuracy calculates (and a general init-safe-calculate rule).** The GPS accuracy-gating REQUIRED paragraph added 2026-05-29 told the architect to emit normalized `lat`/`lon` outputs but didn't say to guard the `selected-at(<geopoint>, N)` extraction calculates against an empty geopoint — and CommCare evaluates ALL calculates eagerly at `FormDef.initAllTriggerables`, BEFORE any GPS is captured, so `selected-at()` on the empty geopoint threw a fatal `XPathException` and the whole form failed to install ("A part of your application is invalid"). It passed `validate_app` AND `make_build`; only `app-release-qa`'s `commcare-cli play` gate caught it. Folded the `if(<geopoint> = '', '', selected-at(...))` guard into the GPS paragraph and added a standalone `REQUIRED — Init-safe calculates (general rule)` covering any `selected-at`/`substr`/`regex`/`number` extraction over a capture-later source. Reproducer: malaria-itn-app/20260529-1124 Phase 3 (fixed in-phase via one `/nova:edit`). | ACE team |
