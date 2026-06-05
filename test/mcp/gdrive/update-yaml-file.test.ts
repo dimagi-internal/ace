@@ -253,3 +253,58 @@ describe('update_yaml_file: server-side patch+CAS', () => {
     expect(fake.files.update).toHaveBeenCalledTimes(2);
   });
 });
+
+describe('update_yaml_file: validateAs phase-products contract guard', () => {
+  it('rejects a drifted products write BEFORE any Drive read/write', async () => {
+    const fake = makeFakeDriveWithDoc(YAML.stringify({ phases: {} }), '1');
+
+    await expect(
+      handleUpdateYamlFile(
+        {
+          fileId: 'f1',
+          // the malaria-rdt drift: products.opportunity instead of products.connect.opportunity
+          patch: { phases: { 'connect-setup': { status: 'done', products: { opportunity: { url: 'https://connect.dimagi.com/a/x/opportunity/o1/' } } } } },
+          merge: 'deep',
+          validateAs: { kind: 'phase-products', phase: 'connect-setup' },
+        },
+        fake as any,
+      ),
+    ).rejects.toThrow(/INVALID_PHASE_PRODUCTS/);
+
+    // fail-fast: no Drive read and no write happened on the rejected payload
+    expect(fake.files.update).not.toHaveBeenCalled();
+    expect(fake.files.get).not.toHaveBeenCalled();
+  });
+
+  it('lets a contract-shaped products write through', async () => {
+    const fake = makeFakeDriveWithDoc(YAML.stringify({ phases: {} }), '1');
+
+    const r = await handleUpdateYamlFile(
+      {
+        fileId: 'f1',
+        patch: { phases: { 'connect-setup': { status: 'done', products: { connect: { domain: 'connect-ace-prod', opportunity: { url: 'https://connect.dimagi.com/a/x/opportunity/o1/' } } } } } },
+        merge: 'deep',
+        validateAs: { kind: 'phase-products', phase: 'connect-setup' },
+      },
+      fake as any,
+    );
+
+    expect(r.revisionVersion).toBe('2');
+    const written = YAML.parse(fake.state.content);
+    expect(written.phases['connect-setup'].products.connect.domain).toBe('connect-ace-prod');
+  });
+
+  it('is a no-op for a status-only patch (no products in the patch)', async () => {
+    const fake = makeFakeDriveWithDoc(YAML.stringify({ phases: {} }), '1');
+    const r = await handleUpdateYamlFile(
+      {
+        fileId: 'f1',
+        patch: { phases: { 'connect-setup': { status: 'done' } } },
+        merge: 'deep',
+        validateAs: { kind: 'phase-products', phase: 'connect-setup' },
+      },
+      fake as any,
+    );
+    expect(r.revisionVersion).toBe('2');
+  });
+});

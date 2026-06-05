@@ -589,6 +589,17 @@ alone makes the artifact land outside `4-connect` and fail
     `products.connect` while preserving every sibling at every depth.
     This skill is still the sole writer of `products.connect`.
 
+    **Pass `validateAs: { kind: 'phase-products', phase: 'connect-setup' }`
+    on this `update_yaml_file` call.** The server validates the
+    `products.connect` block against the single-source contract
+    (`lib/phase-products-schema.ts` — the same shape ace-web's summary
+    page reads) BEFORE the Drive write, and rejects with
+    `INVALID_PHASE_PRODUCTS` if the block drifted — e.g. writing the
+    opportunity at `products.opportunity` instead of nesting it under
+    `products.connect.opportunity` (the malaria-rdt/20260604-1604 blank-
+    summary drift, jjackson/ace#705). No Drive write happens on rejection;
+    fix the nesting and retry.
+
     Phase 8's `synthetic-data-generate` reads
     `phases.connect-setup.products.connect.opportunity.connect_int_id` from
     the current run's `run_state.yaml` as the default for its

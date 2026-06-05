@@ -34,6 +34,7 @@ import {
   withTransientRetry as withTransientRetryLib,
 } from '../lib/transient-retry.js';
 import { generateRunReadme, type PhaseStatus } from '../lib/run-readme.js';
+import { validatePhaseProductsFragment } from '../lib/phase-products-schema.js';
 import {
   runDecisionsRender,
   type DecisionsRenderDriveClient,
@@ -571,10 +572,14 @@ server.tool(
     fileId: z.string().describe('The Google Drive file ID of the YAML doc'),
     patch: z.record(z.unknown()).describe('Object whose top-level keys are merged into the existing YAML per `merge`. With `merge: "shallow"` (default) each top-level key fully replaces its base counterpart; with `merge: "two-level"` object-valued top-level keys merge one level deeper, preserving sibling child keys.'),
     merge: z.enum(['shallow', 'two-level', 'deep']).optional().describe('Merge strategy. Defaults to `shallow` (top-level replace) for back-compat. `two-level` merges ONE level deep (top-level-key children preserved, grandchildren replaced wholesale) — use it ONLY when you resend a phase\'s COMPLETE child block. `deep` recursively merges at every depth (preserves sibling keys at all levels) — use it when patching a nested path like `phases.<phase>.steps.<step>` or `phases.<phase>.products.<block>` without resending the whole phase block. Prefer `deep` for incremental run_state.yaml writes: it eliminates the lost-update footgun where a partial `two-level` phase-child patch silently dropped the rest of the block (jjackson/ace#572).'),
+    validateAs: z.object({
+      kind: z.literal('phase-products'),
+      phase: z.string().describe('The phase whose products block this patch writes (e.g. "connect-setup", "qa-and-training").'),
+    }).optional().describe('Opt-in contract guard for a phase-products write. When set, the server validates `patch.phases.<phase>.products` against the single-source schema (`lib/phase-products-schema.ts` — the same contract ace-web\'s summary page reads) BEFORE the Drive merge, and rejects the call with `INVALID_PHASE_PRODUCTS` + the offending field if the shape drifted (wrong nesting like `products.opportunity` vs `products.connect.opportunity`, a malformed URL, or an unrecognized product block). No Drive write happens on rejection. Phase agents SHOULD pass this on every `phases.<phase>.products` write-back so summary-page drift fails loud at the source (jjackson/ace#705).'),
   },
-  async ({ fileId, patch, merge }) => {
+  async ({ fileId, patch, merge, validateAs }) => {
     try {
-      const r = await handleUpdateYamlFile({ fileId, patch, merge }, drive);
+      const r = await handleUpdateYamlFile({ fileId, patch, merge, validateAs }, drive);
       return result(r);
     } catch (e: any) {
       return error(e.message);
@@ -976,10 +981,35 @@ function deepMerge(
 }
 
 export async function handleUpdateYamlFile(
-  args: { fileId: string; patch: Record<string, unknown>; merge?: 'shallow' | 'two-level' | 'deep' },
+  args: {
+    fileId: string;
+    patch: Record<string, unknown>;
+    merge?: 'shallow' | 'two-level' | 'deep';
+    validateAs?: { kind: 'phase-products'; phase: string };
+  },
   driveClient: typeof drive = drive,
 ): Promise<{ id: string; name: string; modifiedTime: string; revisionVersion: string | undefined }> {
-  const { fileId, patch, merge = 'shallow' } = args;
+  const { fileId, patch, merge = 'shallow', validateAs } = args;
+
+  // Pre-write contract guard: when the caller declares the patch is a
+  // phase-products write, validate the products fragment against the
+  // single-source schema BEFORE touching Drive. Drift (wrong nesting, bad URL,
+  // unrecognized product block) fails loud here with the offending field
+  // named — never silently shipping a blank ace-web summary section
+  // (jjackson/ace#705). No Drive read/write happens on a rejected payload.
+  if (validateAs?.kind === 'phase-products') {
+    const phase = validateAs.phase;
+    const products = (patch as any)?.phases?.[phase]?.products;
+    const v = validatePhaseProductsFragment(phase, products);
+    if (!v.valid) {
+      const detail = v.issues.map((i) => `${i.path}: ${i.message}`).join('; ');
+      throw new Error(
+        `INVALID_PHASE_PRODUCTS: phases.${phase}.products does not match the run_state contract — ${detail}. ` +
+        `Fix the write shape to match lib/phase-products-schema.ts (the same contract ace-web's summary reads).`,
+      );
+    }
+  }
+
   const maxAttempts = 2;
   let lastErr: any;
 
