@@ -53,7 +53,7 @@ export interface ConnectClient {
     name: string;
     short_description: string;          // ≤ 255 chars
     description: string;
-    target_organization_slug?: string;  // LLO org slug; optional for managed opps (organization=None allowed)
+    target_organization_slug?: string;  // LLO org slug; optional. When omitted the REST backend sends organization_slug (the PM org) as the holding org — the deployment rejects organization=None (jjackson/ace#700)
     start_date: string;                 // YYYY-MM-DD; must fit inside the program's window
     end_date: string;                   // YYYY-MM-DD
     total_budget: number;               // must fit inside program.budget − Σ(other managed opps)

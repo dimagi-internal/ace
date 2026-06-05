@@ -250,9 +250,12 @@ server.tool('connect_create_opportunity',
         'summary doc; the headline lives here.',
     ),
     target_organization_slug: z.string().optional().describe(
-      'LLO org slug. Optional — if omitted, the opp is created under the PM org (managed opps ' +
-      'allow organization=None per commcare-connect/opportunity/forms.py:582). Pass only when ' +
-      'an LLO has an ACCEPTED program application and you want to assign FLWs to that org.',
+      'LLO org slug. Optional — if omitted, the opp is created under the PM org: the REST ' +
+      'backend sends `organization_slug` (the program-running org) as the holding org. The ' +
+      'live deployment REJECTS organization=None with "organization: This field is required" ' +
+      '(HTTP 400, observed malaria-rdt/20260604-1604, jjackson/ace#700), so do NOT rely on a ' +
+      'null organization. Pass this only when an LLO has an ACCEPTED program application and you ' +
+      'want to assign FLWs to that org; Phase 9 reassigns the awarded LLO post-award.',
     ),
     start_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).describe('Must fit inside the program window.'),
     end_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
