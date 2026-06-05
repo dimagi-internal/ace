@@ -447,6 +447,41 @@ per-leg classifier — apply it to whichever leg failed.
   underlying problem and `mcp/mobile/recipe-splitter.ts` for the
   splitting logic.
 
+**#618 Path-A inter-leg probe (calibration — run BEFORE classifying a
+Deliver-leg handoff failure).** The Learn leg can leave the device on the
+CommCare Learn-mode home (`nsv_home_screen` / StandardHomeActivity) INSIDE
+CommCare, not on Connect's jobs list — the uncharacterized Path-A landing of
+[#618](https://github.com/jjackson/ace/issues/618). Deliver is only reachable
+through Connect's opp-detail → DOWNLOAD gate, so Path A must navigate back to
+Connect first, and that return-nav has never been captured live. When the
+Deliver leg's first recipe (`connect-resume-opp.yaml`) fails AND
+`failureForensics`/a fresh dump shows the device on `nsv_home_screen` (the
+CommCare home: Start / View Job Status / Sync / Log out of CommCare tiles),
+run this probe to capture the return-route from live truth instead of guessing:
+
+1. `mobile_capture_ui_dump` → upload to
+   `6-qa-and-training/screenshots/journey-deliver/618probe-00-commcare-learn-home.xml`
+   via `drive_upload_binary` (`mimeType: "application/xml"`). This is the
+   element tree of the Path-A landing (Start/Log-out tiles + their resource-ids).
+2. `mobile_run_recipe(connect-learn-home-deliver-probe.yaml)` — taps the
+   "Log out of CommCare" tile (the candidate return-to-Connect route).
+3. `mobile_capture_ui_dump` → upload to
+   `journey-deliver/618probe-01-after-logout-tile.xml`. This is the
+   measurement: did Logout land on Connect's jobs list
+   (`connect_fragment_jobs_list` — the desired Path-A entry to
+   `deliver-launch.yaml`) or fully de-register the worker?
+4. Upload both probe screenshots (`618probe-*.png`, `shareAnyoneWithLink:
+   true`).
+5. Record the Deliver leg `incomplete` with note `#618 Path-A probe captured
+   — see journey-deliver/618probe-*.xml`. Do NOT mark Deliver `pass`/`fail`
+   on the probe; it's a calibration capture, not the journey.
+
+This is the "close the loop to the source of truth — one live dump beats a
+guess" rule applied to the longest-standing Phase-6 gap. Once the dumps show
+the real return route, encode it in `connect-resume-opp.yaml` as the Path-A
+branch (detect `nsv_home_screen` → return-to-Connect → existing jobs-list CTA
+logic) and retire this probe.
+
 **Before consulting this table, READ the failure screenshot.** Two
 sources, in priority order:
 
