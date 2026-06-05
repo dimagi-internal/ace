@@ -1321,3 +1321,146 @@ but stuck."
 See also: `CLAUDE.md § Plugin updates — NEVER locally patch` for the
 end-to-end "bump → PR → poll → /ace:update" workflow this template
 slots into.
+
+## Pre-flight rationale
+
+Relocated rationale for `ace-orchestrator.md § Pre-flight Checklist`.
+
+**`nova_needs_auth_cache` halt class.** `nova_needs_auth_cache: {status:
+fail}` means `plugin:nova:nova` is stuck in Claude Code's needs-auth
+cache despite a valid `NOVA_API_KEY` — the architect would hallucinate
+fabricated `app_id`s at Phase 3, and the only fix is a full Claude Code
+restart. Catching it at pre-flight (second 0) instead of at Phase 3 Step 0
+(~25 min in) saves the operator from running Phases 1–2 only to halt. See
+jjackson/ace#582.
+
+**Don't probe `.env` before the doctor — anti-pattern.** Observed in real
+sessions (2026-05-24 e2e-malaria-rdt, 2026-05-26 bednet-spot-check): the
+orchestrator burns 2–3 turns probing `$CLAUDE_PLUGIN_DATA` (reliably empty
+inside Claude Code), running `find ~/.claude -name .env`, grepping the
+file, etc. — before running the doctor. Every one of those probes is
+wasted: the doctor publishes all of it in one call.
+
+**Why the explicit `$DATA` derivation.** The `e2e-malaria-rdt` 2026-05-24
+session showed the orchestrator probing `$CLAUDE_PLUGIN_DATA/.env` with an
+empty `$CLAUDE_PLUGIN_DATA`, resolving to `/.env`, failing, then fanning
+out across multiple recovery probes before locating the real env file.
+Defaulting to `$HOME/.claude/plugins/data/ace-ace` mirrors what
+`bin/ace-doctor --preflight` already does and what the MCP servers'
+`resolveKeyPath()` helper falls back to. The default is the canonical
+install location on Claude Code 2.1+.
+
+**Why fully-prefixed `ToolSearch`.** Empirically (2026-05-26
+bednet-spot-check + 0.13.213 e2e-malaria-rdt sessions) the bare-name
+`select:` shortcut resolves only built-in deferred tools (`TaskCreate`,
+`TaskUpdate`, `EnterPlanMode`, …) — every plugin-registered atom returns
+zero matches, costing a wasted ToolSearch turn every run. The
+fully-prefixed form is deterministic. Built-in deferred tools load
+alongside automatically via the same call.
+
+## Run shape rationale
+
+Relocated rationale for `ace-orchestrator.md § Pre-flight Step 4` ("Run
+shape is structural, not flag-driven").
+
+The pre-seeded run encodes its shape in a separate run-id's
+`run_state.yaml` (seed prefix `done`/`verdict: seeded`, target phases
+`pending`, gap+tail phases `skipped`). This replaced the
+`--seed-from`/`--only` flag-interpretation that the headless runner
+silently ignored (jjackson/ace#672) — behavior-via-markdown isn't honored
+reliably, so run shape now lives in `run_state.yaml` where the
+well-exercised resume path reads it.
+
+## Incremental writes rationale
+
+Relocated rationale for `ace-orchestrator.md § Per-phase conventions`
+("Write artifacts to Drive incrementally").
+
+Canonical incident: malaria-rdt/20260602-1409 Phase 6 dropped on
+`FailedToOpenSocket` 3× ~13–77 min in; the first two dispatches batched
+writes and lost all work (0/13 artifacts), while the third — instructed to
+write each artifact as produced — left 11/13 on Drive when it dropped, so
+a tightly scoped re-dispatch finished in minutes. This composes with
+`verify_phase_artifacts`' `producedBy` per-artifact healing — both assume
+each artifact lands on Drive independently, not in an end-of-phase batch.
+
+## Dispatch-scope rationale
+
+Relocated rationale for `ace-orchestrator.md § Per-phase conventions`
+("Scope rule: the dispatch prompt MUST NOT narrow the agent's workflow").
+
+`malaria-itn-app/20260523-0750` Phase 1 dispatch said "synthesize a PDD,
+run QA+eval, write back" — the agent returned after 3 of 6 steps, silently
+skipping the work order chain (Steps 2, 2.4, 2.5 in
+`agents/idea-to-design.md`). The work order, its QA, and its eval were all
+lost. Diagnosed as the same failure class in Phase 3 inline execution
+where step entries lacked `artifact` fields.
+
+## Silent-dispatch rationale
+
+Relocated rationale for `ace-orchestrator.md § Per-phase conventions`
+("Auto-retry silent Agent dispatches").
+
+**Why structural, not text-match.** A confidently-worded "Phase 1
+complete" return can be a lie; `classify_phase_writeback` reads the same
+`phases.<phase>` source of truth `/ace:status` and `opp-eval` use, so if
+the gate didn't flip the phase didn't ship regardless of the text. The
+text-match secondary signal only catches the easy case (an empty return).
+
+## Populated-opp contract
+
+Relocated worked examples for `ace-orchestrator.md § Modes — default,
+review, auto`.
+
+**Reuse-vs-rebuild worked examples.** `connect-program-setup` reuses the
+program; `connect-opp-setup`, `ocs-agent-setup`, and `solicitation-create`
+each mint a fresh per-run entity recorded under their phase's `products.*`,
+with stale prior-run entities operator-cleaned-up. Each new run still
+produces a clean per-phase summary in its own slot, even when the
+underlying live entity wasn't recreated. (See also § Fork Points.)
+
+**Solicitations are scoped to a labs `program_id`, not the Connect
+opportunity UUID.** Re-pointing a Connect opp at fresh HQ ids
+(delete-and-recreate of the Connect opportunity) does NOT invalidate the
+live solicitation. The public URL keeps working, the deadline keeps
+counting down. See commcare-setup § Step 2 for the recovery contract.
+
+## Why default mode looks like this
+
+Relocated rationale for `ace-orchestrator.md § Why default mode looks like
+this`.
+
+Phases 1–5 are entirely internal to Dimagi — Nova builds apps in private
+Firestore, `app-deploy` uploads CCZs to a Dimagi-controlled project space,
+OCS chatbots are configured but not yet linked to any opportunity FLWs are
+seeing. Operators historically rubber-stamped these gates 95%+ of the time
+when nothing was wrong, which is why a ~36-minute idle gap was observed on
+a recent e2e session waiting for an unattended `idea-to-pdd` approval.
+Default mode treats the eval verdict (`[BLOCKER]` or not) as the
+decision-maker and only stops the human for it when the model itself says
+something is wrong.
+
+Phase 9 onward involves real LLOs receiving real emails and real Connect
+production state changes. There is no automatic eval that validates "is
+this opp ready to send to outside parties?" — only human judgment can
+clear that bar, so default mode insists on human review at every
+external-comm point.
+
+## Cross-repo dev exception rationale
+
+Relocated rationale for `ace-orchestrator.md § Resuming after a halt`.
+
+**Why.** leep run `20260512-0418` accumulated 540k
+`cache_read_input_tokens`/turn while shipping 8 PRs (ace-web #312–#315,
+ACE #246–#248) to fix cloud-emulator infrastructure. The user pivoted to a
+second session at line 1215 — too late. Codifying this as policy, not
+folklore.
+
+**History note (do-not-reintroduce).** Earlier versions of the resume
+section instructed the orchestrator to recommend splitting runs across
+sessions on "populated opps" or "rich-PDD runs." That heuristic over-fit
+on a 200K-context era and produced unnecessary operator friction in the
+1M-context era — sessions self-halted at Phase 3 when they could have
+completed end-to-end. Removed 0.13.122. If a future failure class
+genuinely warrants proactive splitting, reintroduce the guidance with
+concrete evidence, not heuristic extrapolation from token-budget anxiety.
