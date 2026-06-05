@@ -2,7 +2,7 @@
 name: training-llo-guide
 description: >
   Generate the LLO-facing operations document for overseeing FLW
-  deployment. Owns one artifact: llo-manager-guide.md.
+  deployment. Owns one artifact: training-llo-guide.md.
 disable-model-invocation: true
 ---
 
@@ -17,7 +17,7 @@ watch, daily caps, escalation triggers, and Connect/payment mechanics.
 
 Phase 6 (`qa-and-training`), after `app-screenshot-capture`. Independent
 of `training-flw-guide`, `training-faq`, etc. — re-running this skill
-rebuilds only `llo-manager-guide.md`.
+rebuilds only `training-llo-guide.md`.
 
 ## Inputs (read from Drive)
 
@@ -174,4 +174,4 @@ This is the **third of the per-artifact training skills**, after
 
 ## Change Log
 
-- v1 (0.10.84): Initial skill. Owns `llo-manager-guide.md` only.
+- v1 (0.10.84): Initial skill. Owns `training-llo-guide.md` only.

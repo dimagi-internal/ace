@@ -2,7 +2,7 @@
 name: training-faq
 description: >
   Generate anticipated LLO + FLW questions with authoritative answers.
-  Owns one artifact: faq.md.
+  Owns one artifact: training-faq.md.
 disable-model-invocation: true
 ---
 
@@ -183,5 +183,5 @@ Fifth of the per-artifact training skills.
 
 ## Change Log
 
-- v1 (0.10.84): Initial skill. Owns `faq.md` only.
+- v1 (0.10.84): Initial skill. Owns `training-faq.md` only.
 - 2026-05-15: Replace the one-line "Participant Interaction" focus-group note in Step 5 with a full archetype-branched 4-category set: Facilitation & Consent / Attestation Form & Layer A / Gdoc Writing & Layer B / Payment & Logistics. Atomic-visit / multi-stage keep the default Vendor-Subject-Interaction / App-Device / Payment-Verification / Logistics categories. Prompted by `malaria-itn-fgd/20260514-2352` Phase 6 observation.

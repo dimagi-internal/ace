@@ -136,8 +136,8 @@ geographic coverage.
 3. Walk through the first training module with at least one FLW
 4. Run a dry-run visit and confirm data lands in the opportunity dashboard
 
-**Materials to foreground:** `flw-training-guide.md` and
-`quick-reference.md` (field-facing). `llo-manager-guide.md` is the
+**Materials to foreground:** `training-flw-guide.md` and
+`training-quick-reference.md` (field-facing). `training-llo-guide.md` is the
 overview; link it but don't lead with it.
 
 **Timeline language:** "Continuous fieldwork over the opportunity window.

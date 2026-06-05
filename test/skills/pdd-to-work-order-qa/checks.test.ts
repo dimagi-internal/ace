@@ -152,6 +152,21 @@ describe('checkSignatureBlocksPresent', () => {
     expect(r.pass).toBe(false);
     expect(r.detail).toMatch(/Dimagi/i);
   });
+
+  // Regression for jjackson/ace#706: the work-order template's Signatures
+  // section is a 2-col Google Docs table whose two column headers live in the
+  // SAME table row, so the gdoc plain-text export renders BOTH labels on ONE
+  // tab-separated line. The old `^\s*X\s*$` (alone-on-a-line) alternative failed
+  // on this shape and falsely reported both blocks missing.
+  test('passes when both labels share one tab-separated row (gdoc 2-col header export, ace#706)', () => {
+    const wo =
+      'IN WITNESS WHEREOF, the parties hereto have caused this Work Order to be executed.\n\n' +
+      'Subcontractor\tDimagi, Inc.\n' +
+      'By: __________________________\tBy: __________________________\n' +
+      'Name: [Partner Name]\tName: Lucina Tse\n';
+    const r = checkSignatureBlocksPresent(wo);
+    expect(r.pass).toBe(true);
+  });
 });
 
 describe('checkArchetypeAppropriateScope', () => {

@@ -98,10 +98,10 @@ favor of one skill per artifact. The decomposition gives:
 
 | Skill | Artifact | Audience | Sequencing |
 |---|---|---|---|
-| `training-llo-guide` | `llo-manager-guide.md` | LLOs running the deployment | Step 2 (parallel) |
-| `training-flw-guide` | `flw-training-guide.md` | FLWs in the field | Step 2 (parallel) |
-| `training-quick-reference` | `quick-reference.md` | FLWs (printed pocket card) | Step 2 (parallel) |
-| `training-faq` | `faq.md` | LLOs and FLWs | Step 2 (parallel) |
+| `training-llo-guide` | `training-llo-guide.md` | LLOs running the deployment | Step 2 (parallel) |
+| `training-flw-guide` | `training-flw-guide.md` | FLWs in the field | Step 2 (parallel) |
+| `training-quick-reference` | `training-quick-reference.md` | FLWs (printed pocket card) | Step 2 (parallel) |
+| `training-faq` | `training-faq.md` | LLOs and FLWs | Step 2 (parallel) |
 | `training-deck-generate` | `training-deck-spec.yaml` | Phase 6 internal (input to deck-render) | Step 2 (parallel) |
 | `training-onboarding-email` | `training-onboarding-email.md` | Phase 9 (consumed at LLO onboarding) | Step 3 (sequential, after siblings) |
 | `training-deck-render` | Google Slides URL | LLO (presents to FLWs / records) | Step 4 (sequential, after deck-generate) |

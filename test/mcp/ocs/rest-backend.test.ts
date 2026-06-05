@@ -160,6 +160,50 @@ describe('RestBackend chatbot atoms', () => {
     expect(res.response).toBe('hi there');
   });
 
+  // jjackson/ace#708: a failed LLM generation returns
+  // `{"error":"...","status":"error"}` on /poll/ — sometimes with a non-2xx
+  // HTTP status. sendTestMessage must FAIL FAST and surface the error content
+  // instead of spinning to the 120s timeout.
+  it('sendTestMessage fails fast and surfaces the error content on status:error (HTTP 200)', async () => {
+    const sessionId = 's-err-200';
+    const taskId = 't-err-200';
+    mockAgent.get(BASE)
+      .intercept({ path: '/api/chat/start/', method: 'POST' })
+      .reply(200, { session_id: sessionId });
+    mockAgent.get(BASE)
+      .intercept({ path: `/api/chat/${sessionId}/message/`, method: 'POST' })
+      .reply(200, { task_id: taskId });
+    mockAgent.get(BASE)
+      .intercept({ path: `/api/chat/${sessionId}/${taskId}/poll/`, method: 'GET' })
+      .reply(200, { status: 'error', error: 'Sorry something went wrong. Intermittent load error.' });
+
+    const b = new RestBackend({ baseUrl: BASE, token: 't' });
+    await expect(
+      b.sendTestMessage({ public_id: 'uuid-42', embed_key: 'k', message: 'hi' }),
+    ).rejects.toThrow(/OCS generation error.*Intermittent load error/);
+  });
+
+  it('sendTestMessage fails fast on an error payload delivered with a non-2xx status (the #708 mask)', async () => {
+    const sessionId = 's-err-500';
+    const taskId = 't-err-500';
+    mockAgent.get(BASE)
+      .intercept({ path: '/api/chat/start/', method: 'POST' })
+      .reply(200, { session_id: sessionId });
+    mockAgent.get(BASE)
+      .intercept({ path: `/api/chat/${sessionId}/message/`, method: 'POST' })
+      .reply(200, { task_id: taskId });
+    // The generation error arrives with HTTP 500 but a JSON error body — the
+    // old `if (!pollRes.ok) continue` swallowed this and spun to 120s.
+    mockAgent.get(BASE)
+      .intercept({ path: `/api/chat/${sessionId}/${taskId}/poll/`, method: 'GET' })
+      .reply(500, { status: 'error', error: 'upstream provider outage' });
+
+    const b = new RestBackend({ baseUrl: BASE, token: 't' });
+    await expect(
+      b.sendTestMessage({ public_id: 'uuid-42', embed_key: 'k', message: 'hi' }),
+    ).rejects.toThrow(/OCS generation error.*upstream provider outage/);
+  });
+
   it('triggerBotMessage posts to /api/trigger_bot', async () => {
     mockAgent.get(BASE)
       .intercept({ path: '/api/trigger_bot', method: 'POST' })

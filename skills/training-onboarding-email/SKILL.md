@@ -29,7 +29,7 @@ personalization tokens at send time.
 | Phase 4 | `ACE/<opp>/runs/<run-id>/4-connect/connect-opp-setup.md` | opportunity name + URL |
 | Phase 4 (`run_state.yaml`) | `connect.payment_units` | payment-summary line |
 | Phase 5 | `ACE/<opp>/runs/<run-id>/5-ocs/ocs-setup_widget-handoff.md` (`widget_url`) | widget link in the email |
-| Phase 6 (per-artifact training siblings) | `6-qa-and-training/llo-manager-guide.md`, `flw-training-guide.md`, `quick-reference.md` | links to the docs LLO will use |
+| Phase 6 (per-artifact training siblings) | `6-qa-and-training/training-llo-guide.md`, `training-flw-guide.md`, `training-quick-reference.md` | links to the docs LLO will use |
 
 ## Output
 
@@ -62,11 +62,11 @@ invites. Here's everything you need to start.
 1. **Accept the opportunity invite** in your Connect dashboard:
    <opportunity URL from connect-setup/opportunity.md>
 2. **Read the LLO Manager Guide** — your operations playbook:
-   <Drive URL of llo-manager-guide.md>
+   <Drive URL of training-llo-guide.md>
 3. **Print the FLW Quick Reference card** for each FLW:
-   <Drive URL of quick-reference.md>
+   <Drive URL of training-quick-reference.md>
 4. **Send the FLW Training Guide to your roster** before they start:
-   <Drive URL of flw-training-guide.md>
+   <Drive URL of training-flw-guide.md>
 
 ## What FLWs get paid
 
@@ -184,4 +184,4 @@ agent now dispatches each child directly.
 
 ## Change Log
 
-- v1 (0.10.84): Initial skill. Owns `onboarding-email-body.md` only.
+- v1 (0.10.84): Initial skill. Owns `training-onboarding-email.md` only.

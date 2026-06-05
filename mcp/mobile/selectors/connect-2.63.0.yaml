@@ -124,6 +124,11 @@ selectors:
     value: "org.commcare.dalvik:id/nav_drawer_sign_in_button"
     purpose: "Sign In / Register button in the nav drawer (visible when the user is signed out)"
 
+  nav-drawer-opportunities:
+    type: text
+    value: "Opportunities"
+    purpose: "Nav-drawer 'Opportunities' row (a list_title TextView inside nav_drawer_recycler). Live-characterized 2026-06-05 (2.63.0, jjackson/ace#711): from the CommCare Learn-app home (nsv_home_screen), opening the burger and tapping this row routes to Connect's jobs list (connect_fragment_jobs_list) — the #618 inter-leg handoff. Same text label as the bottom-nav home-opportunities-tab; distinct selector name documents the drawer-row intent."
+
   # ── PersonalID / phone entry ────────────────────────────────────
   personalid-country-code:
     type: id

@@ -2,7 +2,7 @@
 name: training-flw-guide
 description: >
   Generate the FLW-facing step-by-step guide for the Learn and Deliver
-  apps. Owns one artifact: flw-training-guide.md.
+  apps. Owns one artifact: training-flw-guide.md.
 disable-model-invocation: true
 ---
 
@@ -18,7 +18,7 @@ visit successfully.
 Phase 6 (`qa-and-training`), after `app-screenshot-capture` has uploaded
 the per-opp screenshots. Independent of `training-llo-guide`,
 `training-faq`, etc. — re-running this skill rebuilds only
-`flw-training-guide.md`.
+`training-flw-guide.md`.
 
 ## Inputs (read from Drive)
 
@@ -230,14 +230,14 @@ call. Splitting per artifact gives:
 
 This is the **second of the per-artifact training skills**, after
 `training-deck-generate`. Planned siblings (next migration cycles):
-- `training-llo-guide` — `llo-manager-guide.md`
-- `training-quick-reference` — `quick-reference.md`
-- `training-faq` — `faq.md`
-- `training-onboarding-email` — `onboarding-email-body.md`
+- `training-llo-guide` — `training-llo-guide.md`
+- `training-quick-reference` — `training-quick-reference.md`
+- `training-faq` — `training-faq.md`
+- `training-onboarding-email` — `training-onboarding-email.md`
 
 ## Change Log
 
-- v1 (0.10.83): Initial skill. Owns `flw-training-guide.md` only.
+- v1 (0.10.83): Initial skill. Owns `training-flw-guide.md` only.
   Common + per-opp screenshot layering. Archetype-aware structure.
 - 2026-05-07: Per-opp screenshot path corrected from `ACE/<opp>/screenshots/` to `ACE/<opp>/runs/<run-id>/6-qa-and-training/screenshots/` to match the runs/<run-id>/<phase>/ scheme producers actually use. Doc-only fix; matches what `app-screenshot-capture` writes.
 - 2026-05-15: Expand `focus-group` archetype branch (Step 4) from one-line "session-based" note to full shape spec: (1) acknowledge sentinel readiness form instead of full Learn-app walkthrough, (2) two-step session workflow (run FGD verbally → submit attestation within 24h → write gdoc within 72h), (3) add OCS chatbot subsection (primary writing-guidance surface), (4) drop form-fill pitfalls + add FGD-specific pitfalls (leading questions, premature Section 5 preview). Prompted by `malaria-itn-fgd/20260514-2352` Phase 6 observations.

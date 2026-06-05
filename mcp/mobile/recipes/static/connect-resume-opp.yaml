@@ -43,31 +43,44 @@
 # button siblings) and not the outer rootCardView/RecyclerView.
 appId: org.commcare.dalvik
 ---
-# --- #618: inter-leg handoff (Learn home -> Connect jobs list) — UNCHARACTERIZED
+# --- #618 inter-leg handoff (Learn home -> Connect jobs list) — CHARACTERIZED + HEALED (#711)
 # The journey-learn leg can leave the device on the CommCare Learn-app home
-# (nsv_home_screen / StandardHomeActivity), NOT on Connect's jobs list. The
-# nav from there back to `connect_fragment_jobs_list` is NOT yet characterized
-# on a live device, so this recipe does NOT attempt it (jjackson/ace#618).
+# (nsv_home_screen / StandardHomeActivity) instead of Connect's jobs list. The
+# post-Learn end-state is NONDETERMINISTIC — sometimes the jobs list (the assert
+# below passes directly), sometimes the Learn home.
 #
-# NOTE: the post-Learn end-state is NONDETERMINISTIC — sometimes Connect's
-# jobs list (the assert below passes), sometimes the CommCare Learn home
-# (it fails). So the eventual fix must BRANCH on the landed screen, not back
-# out unconditionally (jjackson/ace#618, update 2026-06-02).
+# The back-nav was CAPTURED LIVE on ACE_Pixel_API_34 / CommCare 2.63.0
+# (bednet-spot-check/20260605-0658, jjackson/ace#711) following the discipline:
+# capture → candidate tap → re-dump → confirm. The route: open the top-left
+# nav drawer (burger), tap the "Opportunities" row (a list_title TextView inside
+# nav_drawer_recycler) → lands on connect_fragment_jobs_list. The prior
+# `pressKey: back` dead-end (it exits CommCare to the Android launcher) is NOT
+# used.
 #
-# DO NOT GUESS the back-nav. A prior fix used `pressBack` (invalid Maestro —
-# it's `pressKey: back`) and, even corrected, `pressKey: back` EXITS CommCare
-# to the Android home screen (see baseline/00-connect-home.yaml:34) — it does
-# NOT return to the jobs list. The correct path (candidate: the Learn home's
-# "Log out of CommCare" tile, or an app re-entry) must be CAPTURED LIVE
-# (mobile_capture_ui_dump on the post-Learn screen → try a candidate tap →
-# re-dump → confirm it lands on connect_fragment_jobs_list) before encoding it
-# here. Until then, the assert below fails loud when on the Learn home — that
-# clean failure is the signal to characterize, not a cue to guess. As of
-# 0.13.538, that failure now AUTO-captures `<recipe>-FAILURE.{xml,png}` of the
-# Learn-home screen via `mobile_run_recipe`'s failureForensics — read that
-# element tree to pick + confirm the return route.
+# The heal below is GUARDED on `notVisible: home-jobs-list`, so it no-ops on the
+# runs that already landed on the jobs list (the nondeterministic case) and only
+# opens the drawer when we're on the Learn home. After it routes (or if already
+# landed), the assert confirms the pre-state connect-resume-opp consumes.
+- runFlow:
+    when:
+      notVisible:
+        id: "${SELECTOR:home-jobs-list}"
+    commands:
+      # Top-left nav-drawer toggle. Coordinate-based (the burger image has no
+      # resource-id) — same point as nav-drawer-burger-point / connect-login.
+      - tapOn:
+          point: "73,209"
+      - waitForAnimationToEnd:
+          timeout: 3000
+      - tapOn:
+          text: "${SELECTOR:nav-drawer-opportunities}"
+      - extendedWaitUntil:
+          visible:
+            id: "${SELECTOR:home-jobs-list}"
+          timeout: 15000
 
-# Confirm we are on the opp-list.
+# Confirm we are on the opp-list (passes directly when already there, or after
+# the #711 heal branch above routes here from the Learn home).
 - assertVisible:
     id: "${SELECTOR:home-jobs-list}"
 

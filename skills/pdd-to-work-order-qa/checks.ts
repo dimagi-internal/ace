@@ -219,12 +219,27 @@ export function checkTotalNtePresent(wo: string): QACheckResult {
  * `## Subcontractor` style headings as well.
  */
 export function checkSignatureBlocksPresent(wo: string): QACheckResult {
-  // Accept the bold form (`**Subcontractor**`), the markdown-heading form
-  // (`## Subcontractor`), AND the bare form (`Subcontractor` on its own line) —
-  // the last one is what shows up in gdoc plain-text export of the signature
-  // table's left cell.
-  const hasSub = /\*\*\s*Subcontractor\s*\*\*|^#{1,3}\s+Subcontractor\b|^\s*Subcontractor\s*$/im.test(wo);
-  const hasDimagi = /\*\*\s*Dimagi(?:,\s*Inc\.?)?\s*\*\*|^#{1,3}\s+Dimagi(?:,\s*Inc\.?)?\b|^\s*Dimagi(?:,\s*Inc\.?)?\s*$/im.test(wo);
+  // Accept four forms for each label:
+  //   - bold form           `**Subcontractor**`
+  //   - markdown heading     `## Subcontractor`
+  //   - bare, alone on line  `Subcontractor`
+  //   - TAB/CELL-DELIMITED   `Subcontractor\tDimagi, Inc.`
+  // The last is the load-bearing case: the work-order template's Signatures
+  // section is a 2-col Google Docs table whose two column headers live in the
+  // SAME table row, so the gdoc plain-text export (what drive_read_file returns
+  // and what this QA reads) renders both labels on ONE tab-separated line —
+  // `"Subcontractor\tDimagi, Inc."`. The bare `^\s*X\s*$` alternative fails on
+  // that line (the trailing tab + the other label aren't whitespace-then-EOL),
+  // so we match each label as a standalone token bounded by line-start-or-tab on
+  // the left and tab-or-line-end on the right. See jjackson/ace#706.
+  const hasSub =
+    /\*\*\s*Subcontractor\s*\*\*|^#{1,3}\s+Subcontractor\b|(?:^|\t)[ \t]*Subcontractor[ \t]*(?:\t|$)/im.test(
+      wo,
+    );
+  const hasDimagi =
+    /\*\*\s*Dimagi(?:,\s*Inc\.?)?\s*\*\*|^#{1,3}\s+Dimagi(?:,\s*Inc\.?)?\b|(?:^|\t)[ \t]*Dimagi(?:,\s*Inc\.?)?[ \t]*(?:\t|$)/im.test(
+      wo,
+    );
   const missing: string[] = [];
   if (!hasSub) missing.push('Subcontractor');
   if (!hasDimagi) missing.push('Dimagi, Inc.');
