@@ -99,25 +99,16 @@ auth failures at point-of-use.)
 
 **Two static blocks the preflight DOES emit — halt before Phase 1 if
 either is `fail`:** `selector_map_currency` and `nova_needs_auth_cache`.
-Both are no-network static checks for halt-classes that are
-*unrecoverable in-session*. `nova_needs_auth_cache: {status: fail}`
-means `plugin:nova:nova` is stuck in Claude Code's needs-auth cache
-despite a valid `NOVA_API_KEY` — the architect would hallucinate
-fabricated `app_id`s at Phase 3, and the only fix is a full Claude Code
-restart. Catching it here (second 0) instead of at Phase 3 Step 0
-(~25 min in) saves the operator from running Phases 1–2 only to halt.
-On `fail`: surface the block's `remediation`, run the cache-clear node
-one-liner the full `/ace:doctor` prints, and tell the operator to
-Cmd-Q + reopen, then resume. See jjackson/ace#582.
+Both are no-network static checks for halt-classes unrecoverable
+in-session. On `fail`: surface the block's `remediation`, run the
+cache-clear node one-liner the full `/ace:doctor` prints, and tell the
+operator to Cmd-Q + reopen, then resume. (Rationale + jjackson/ace#582:
+see orchestrator-reference.md § Pre-flight rationale.)
 
-**Anti-pattern observed in real sessions (2026-05-24 e2e-malaria-rdt,
-2026-05-26 bednet-spot-check):** orchestrator burns 2–3 turns probing
-`$CLAUDE_PLUGIN_DATA` (which is reliably empty inside Claude Code),
-running `find ~/.claude -name .env`, grepping the file, etc. — *before*
-running the doctor. Every one of those probes is wasted: the doctor
-publishes all of it in one call. If you find yourself about to type
-`echo $CLAUDE_PLUGIN_DATA`, `ls .../.env`, or `find ... -name .env`,
-STOP — run the doctor command above instead.
+**Do NOT probe `.env` before running the doctor** — no `echo
+$CLAUDE_PLUGIN_DATA`, no `ls .../.env`, no `find ... -name .env`. Every
+value those probes would surface is in the doctor's one-call output.
+(Anti-pattern incidents: see orchestrator-reference.md § Pre-flight rationale.)
 
 If `bin/ace-doctor --preflight` is unavailable (older install), fall
 back to a single inline Bash. **`$CLAUDE_PLUGIN_DATA` is NOT reliably
@@ -140,18 +131,8 @@ git config user.email
 ```
 
 Read the env file's relevant vars from the printed path. Do NOT fan
-out separate `ls`/`test -f` probes — that's the anti-pattern called
-out in "Resolve `.env` in one shot" below.
-
-**Why the explicit $DATA derivation.** The `e2e-malaria-rdt` 2026-05-24
-session showed the orchestrator probing `$CLAUDE_PLUGIN_DATA/.env`
-with an empty `$CLAUDE_PLUGIN_DATA`, resolving to `/.env`, failing,
-then having to fan out across multiple recovery probes before locating
-the real env file. Defaulting to
-`$HOME/.claude/plugins/data/ace-ace` mirrors what `bin/ace-doctor
---preflight` already does and what the MCP servers' `resolveKeyPath()`
-helper falls back to. The default is the canonical install location on
-Claude Code 2.1+.
+out separate `ls`/`test -f` probes. (Why the explicit `$DATA`
+derivation: see orchestrator-reference.md § Pre-flight rationale.)
 
 **Step 2 — Load deferred MCP atoms in ONE `ToolSearch` call.** L0-only
 atom set (phase subagents run their own `ToolSearch` for phase-specific
@@ -161,19 +142,14 @@ atoms). Issue this verbatim — **fully-prefixed names**, no bare aliases:
 ToolSearch select:mcp__plugin_ace_ace-gdrive__drive_read_file,mcp__plugin_ace_ace-gdrive__drive_list_folder,mcp__plugin_ace_ace-gdrive__drive_create_file,mcp__plugin_ace_ace-gdrive__drive_create_folder,mcp__plugin_ace_ace-gdrive__drive_update_file,mcp__plugin_ace_ace-gdrive__drive_move_file,mcp__plugin_ace_ace-gdrive__drive_rename_file,mcp__plugin_ace_ace-gdrive__docs_get,mcp__plugin_ace_ace-gdrive__sheets_read,mcp__plugin_ace_ace-gdrive__sheets_append,mcp__plugin_ace_ace-gdrive__classify_phase_writeback,mcp__plugin_ace_ace-gdrive__validate_run_state,mcp__plugin_ace_ace-gdrive__verify_phase_artifacts,mcp__plugin_ace_ace-gdrive__resolve_opp_path,mcp__plugin_ace_ace-gdrive__generate_inputs_manifest,mcp__plugin_ace_ace-gdrive__get_google_form_definition,mcp__plugin_ace_ace-gdrive__update_yaml_file,mcp__plugin_ace_ace-gdrive__render_run_readme,mcp__plugin_ace_ace-connect__commcare_make_build,mcp__plugin_ace_ace-connect__commcare_release_build,mcp__plugin_ace_ace-connect__commcare_download_ccz,mcp__plugin_ace_ace-connect__commcare_upload_multimedia
 ```
 
-**Why fully-prefixed.** Empirically (2026-05-26 bednet-spot-check
-session + 0.13.213 e2e-malaria-rdt session) the bare-name `select:`
-shortcut resolves only built-in deferred tools (`TaskCreate`,
-`TaskUpdate`, `EnterPlanMode`, …) — every plugin-registered atom
-returns zero matches. Bare names cost a wasted ToolSearch turn every
-run. The fully-prefixed form is deterministic. Built-in deferred tools
-(`TaskCreate`, `TaskUpdate`) load alongside automatically via the same
-call — bare names work for those.
-
-Do NOT fall back to keyword search (`ToolSearch query:"docs_get"`);
-fuzzy-match is unreliable and silently misses prefixed atoms. Do NOT
-issue additional `ToolSearch` calls mid-run as you encounter each atom
-— fold any miss into this literal next time you bump the doc.
+**Use the fully-prefixed form** — the bare-name `select:` shortcut
+resolves only built-in deferred tools (`TaskCreate`, `TaskUpdate`,
+…), not plugin-registered atoms. Do NOT fall back to keyword search
+(`ToolSearch query:"docs_get"`); fuzzy-match silently misses prefixed
+atoms. Do NOT issue additional `ToolSearch` calls mid-run as you
+encounter each atom — fold any miss into this literal next time you
+bump the doc. (Rationale + incidents: see orchestrator-reference.md
+§ Pre-flight rationale.)
 
 **Step 3 — Resolve real IDs, then read opp state.** The gdrive atoms
 are **ID-only** — `drive_read_file` takes `fileId`, `drive_list_folder`
@@ -197,9 +173,7 @@ not one:
 is "I have no value yet" — re-issue the call; do NOT fill the gap with
 a plausible-looking ID. A fabricated ID propagates silently into every
 downstream write (`parentFolderId`, `summary_artifact`, …) and the
-whole phase lands in a fictional folder tree. (Root cause of the
-bednet-spot-check 20260529-0651 Phase 3 derail: a guessed run-folder
-id seeded from an over-eager batch — see Step 5.)
+whole phase lands in a fictional folder tree.
 
 **Step 4 — Build the run-level task list in ONE parallel `TaskCreate`
 block.** The workflow is fixed and known up-front; splat all 11 in
@@ -225,16 +199,12 @@ unnecessary model-output time at run start.
 starts all 11 phases `pending` and runs them in order (above) — there is no
 `--only` / `--seed-from` flag. To start mid-pipeline with a frozen upstream
 prefix (the iteration-loop case), the run is **pre-seeded on Drive and then
-resumed**: a separate run-id whose `run_state.yaml` already encodes the shape
-(seed prefix `done`/`verdict: seeded`, target phases `pending`, gap+tail phases
-`skipped`). The orchestrator drives it via the resume path
+resumed** via the resume path
 ([§ Resuming after a halt → Run shape on resume](#resuming-after-a-halt)),
-which honors those phase statuses structurally — no flag interpretation. The
+which honors phase statuses structurally — no flag interpretation. The
 control that forks-then-resumes is `agents/iterate-loop.md`; the copy mechanic
-is the `fork-run` skill. This replaced the `--seed-from`/`--only`
-flag-interpretation that the headless runner silently ignored
-(jjackson/ace#672) — behavior-via-markdown isn't honored reliably, so run shape
-now lives in `run_state.yaml` where the well-exercised resume path reads it.
+is the `fork-run` skill. (Rationale + jjackson/ace#672: see
+orchestrator-reference.md § Run shape rationale.)
 
 **Step 5 — Create the run folder FIRST, then batch the file writes.**
 This is two messages, not one — `drive_create_file` requires
@@ -289,18 +259,13 @@ it is produced**, and do the Phase Write-Back Contract as its final
 step. The orchestrator dispatch prompt should say so explicitly. Bug
 class: an interrupted phase (API socket drop, context exhaustion,
 operator halt) that batched its Drive writes to the end persists
-**nothing** — a re-dispatch redoes the entire phase from scratch,
-including expensive AVD walkthroughs. Canonical incident:
-malaria-rdt/20260602-1409 Phase 6 dropped on `FailedToOpenSocket`
-3× ~13–77 min in; the first two dispatches batched writes and lost all
-work (0/13 artifacts), while the third — instructed to write each
-artifact as produced — left 11/13 on Drive when it dropped, so a tightly
-scoped re-dispatch finished in minutes. Incremental writes also let the
-boundary fence's `verify_phase_artifacts` show real partial progress so
-the orchestrator can heal only the missing artifacts (see § Auto-retry
-silent Agent dispatches). This composes with `verify_phase_artifacts`'
-`producedBy` per-artifact healing — both assume each artifact lands on
-Drive independently, not in an end-of-phase batch.
+**nothing** — a re-dispatch redoes the entire phase from scratch.
+Incremental writes also let the boundary fence's
+`verify_phase_artifacts` show real partial progress so the orchestrator
+can heal only the missing artifacts (see § Auto-retry silent Agent
+dispatches); both assume each artifact lands on Drive independently.
+(Canonical incident malaria-rdt/20260602-1409: see
+orchestrator-reference.md § Incremental writes rationale.)
 
 When dispatching `Agent(<phase>)`, structure the prompt with sections:
 
@@ -337,14 +302,9 @@ sequencing to the agent definition where it belongs.
 If you need to pass phase-specific constraints (e.g. "the opp already
 has a Connect program, reuse it"), add them as context under `## Your
 task` after the workflow-deferral line — they're inputs to the agent's
-decisions, not replacements for its step list.
-
-**Why:** `malaria-itn-app/20260523-0750` Phase 1 dispatch said "synthesize
-a PDD, run QA+eval, write back" — the agent returned after 3 of 6 steps,
-silently skipping the work order chain (Steps 2, 2.4, 2.5 in
-`agents/idea-to-design.md`). The work order, its QA, and its eval were
-all lost. Diagnosed as the same failure class in Phase 3 inline execution
-where step entries lacked `artifact` fields.
+decisions, not replacements for its step list. (Why, + the
+malaria-itn-app/20260523-0750 incident: see orchestrator-reference.md
+§ Dispatch-scope rationale.)
 
 **Auto-retry silent Agent dispatches before surfacing failure.** The
 gating signal is `classify_phase_writeback(fileId=<run_state.yaml>,
@@ -376,13 +336,8 @@ If the second dispatch also fails (classifier returns one of the
 silent-failure dispositions again), STOP and surface to the human —
 do not loop indefinitely. Cap at 2 attempts total per phase per
 orchestrator turn. A classifier result of `'error'` is a real phase
-failure and halts immediately — do not retry.
-
-**Why structural, not text-match.** A confidently-worded "Phase 1
-complete" return can be a lie; `classify_phase_writeback` reads the same
-`phases.<phase>` source of truth `/ace:status` and `opp-eval` use, so if
-the gate didn't flip the phase didn't ship regardless of the text. The
-text-match secondary signal only catches the easy case (an empty return).
+failure and halts immediately — do not retry. (Why structural, not
+text-match: see orchestrator-reference.md § Silent-dispatch rationale.)
 
 **Pre-load phase atoms in ONE `ToolSearch` per phase.** Many ACE atoms
 are deferred tools needing a `ToolSearch` lookup before first use. At
@@ -397,51 +352,31 @@ dispatch rules are catalogued in § Anti-patterns and discipline.
 
 ## Modes — default, review, auto
 
-ACE is built around running **many cycles per opp** — that's how both the
-opp's design and ACE itself improve. So most `/ace:run` invocations land
-on an opp that already has substantial prior-run state: a live Connect
-program/opportunity, a published OCS chatbot, an open solicitation, prior
-PDDs, prior CommCare apps. **This is the expected baseline, not an edge
-case.**
-
-The orchestrator's contract on a populated opp:
+ACE runs **many cycles per opp**, so most `/ace:run` invocations land on
+an opp that already has substantial prior-run state (live Connect
+program/opportunity, published OCS chatbot, open solicitation, prior
+PDDs/apps). **This is the expected baseline, not an edge case.** The
+orchestrator's contract on a populated opp:
 
 - **Do not pause to confirm "do you want to overwrite live state?"** —
   `--mode default` already encodes the answer. The named Pause Points
   (see § Pause Points) plus the Phase 8→9 boundary are the only
   sanctioned pause locations. A populated-opp confirmation prompt is
-  **off-spec** — if you find yourself wanting to add one, the right
-  fix is to push the reuse-vs-rebuild decision down into the affected
-  phase agent's skill logic instead.
+  **off-spec** — push the reuse-vs-rebuild decision down into the
+  affected phase agent's skill logic instead.
 - **Reuse-vs-rebuild is owned by each phase agent's skills**, not by
   the orchestrator. Each run is independent — no run reads from or
   writes to another run's `run_state.yaml`. The only cross-run reuse
-  surface is `opp.yaml`, which holds opp-level identifiers (Connect
-  program UUID) that survive across runs. Worked per-skill examples
-  (`connect-program-setup` reuses the program; `connect-opp-setup`,
-  `ocs-agent-setup`, and `solicitation-create` each mint a fresh per-run
-  entity recorded under their phase's `products.*`, with stale prior-run
-  entities operator-cleaned-up) live in reference § Fork Points and
-  § Don't add operator-confirmation.
-- **Each new run gets its own `runs/<run-id>/<N>-<phase>/` artifact
-  set** — prior-run artifacts stay frozen in their own run folders.
-  Reuse means "phase agent skipped the rebuild step and pointed at
-  the prior live entity"; it does NOT mean "wrote into the prior
-  run's folder." The new run still produces a clean per-phase
-  summary in its own slot, even when the underlying live entity
-  wasn't recreated.
-- **Solicitations are scoped to a labs `program_id`, not to the
-  Connect opportunity UUID.** Re-pointing a Connect opp at fresh HQ
-  ids (delete-and-recreate of the Connect opportunity) does NOT
-  invalidate the live solicitation. The public URL keeps working,
-  the deadline keeps counting down. See commcare-setup § Step 2 for
-  the recovery contract.
+  surface is `opp.yaml` (Connect program UUID). Each new run gets its
+  own `runs/<run-id>/<N>-<phase>/` artifact set; reuse means "phase
+  agent skipped the rebuild step and pointed at the prior live entity,"
+  NOT "wrote into the prior run's folder."
 
-If you (the orchestrator session) genuinely encounter prior state
-that you can't classify as "reuse vs rebuild" by inspecting
-`opp.yaml`, that is a **skill bug** — file an issue against the
-relevant phase agent's skills, don't add an orchestrator-level
-confirmation prompt.
+If you genuinely encounter prior state you can't classify as "reuse vs
+rebuild" by inspecting `opp.yaml`, that is a **skill bug** — file an
+issue, don't add an orchestrator-level confirmation prompt. (Worked
+per-skill examples + the solicitation-scoping note: see
+orchestrator-reference.md § Fork Points and § Populated-opp contract.)
 
 ACE has three modes. **`default` is the default** — pick another only
 if you have a specific reason.
@@ -458,19 +393,14 @@ stop, up until the point of external communication.*
   surfaces the summary for triage. A hard error halts immediately. A
   `[WARN]` is logged but does NOT halt.
 - **Phase 6→7 transition:** **no longer a mandatory pause.** Phase 8
-  publishes a public solicitation on labs.connect.dimagi.com — a passive
-  public listing, not active outreach to specific individuals.
+  publishes a passive public solicitation, not active outreach.
   **Phase 8 is publish-only by default: it does NOT email PDD-named
   candidate LLOs.** Candidate-invite email (`llo-invite`) is OFF unless
   the operator explicitly opts in (`/ace:run --invite-candidates`, or
-  `ACE_SOLICITATION_INVITE_CANDIDATES=1` in the env). On a dogfood /
-  `is_test` run a real email to a real org is rarely wanted, so the
-  orchestrator must NOT email candidates without that explicit signal —
-  and must NOT pause to ask, just proceed publish-only and note the skip.
-  The active-comms boundary is the Phase 8→9 boundary (where Phase 9
-  sends an inbound onboarding email to the awardee). (Standing operator
-  directive 2026-05-31; revisit only when the skills are explicitly
-  changed to enable candidate outreach by default.)
+  `ACE_SOLICITATION_INVITE_CANDIDATES=1`). Without that signal the
+  orchestrator must NOT email candidates and must NOT pause to ask —
+  proceed publish-only and note the skip. The active-comms boundary is
+  Phase 8→9 (standing operator directive 2026-05-31).
 - **Phase 8→9 boundary:** `/ace:run` terminates here today — Phase 9 is
   not yet live (§ Workflow). The run halts after Phase 8's write-back. The
   manual `/ace:step solicitation-review` (HITL-gated `award_response`) is
@@ -507,21 +437,7 @@ workspaces, and the like.
 
 ### Why default mode looks like this
 
-Phases 1–5 are entirely internal to Dimagi — Nova builds apps in
-private Firestore, `app-deploy` uploads CCZs to a Dimagi-controlled
-project space, OCS chatbots are configured but not yet linked to any
-opportunity FLWs are seeing. Operators historically rubber-stamped
-these gates 95%+ of the time when nothing was wrong, which is why a
-~36-minute idle gap was observed on a recent e2e session waiting for
-an unattended `idea-to-pdd` approval. Default mode treats the eval
-verdict (`[BLOCKER]` or not) as the decision-maker and only stops the
-human for it when the model itself says something is wrong.
-
-Phase 9 onward involves real LLOs receiving real emails and real
-Connect production state changes. There is no automatic eval that
-validates "is this opp ready to send to outside parties?" — only
-human judgment can clear that bar, so default mode insists on human
-review at every external-comm point.
+See orchestrator-reference.md § Why default mode looks like this.
 
 ## Resuming after a halt
 
@@ -561,23 +477,9 @@ context-cost-driven.
 in-phase work. When a phase block requires cross-repo development
 (ace-web, an MCP server) involving ≥2 PRs through GitHub, halt the
 run with `phase: failed/blocked-on-infra`, surface to the operator,
-and resume in a fresh session once the infra ships.
-**Why:** leep run `20260512-0418` accumulated 540k
-`cache_read_input_tokens`/turn while shipping 8 PRs (ace-web
-#312–#315, ACE #246–#248) to fix cloud-emulator infrastructure. The
-user pivoted to a second session at line 1215 — too late. Codifying
-this as policy, not folklore.
-
-**History note.** Earlier versions of this section instructed the
-orchestrator to recommend splitting runs across sessions on
-"populated opps" or "rich-PDD runs." That heuristic over-fit on a
-200K-context era and produced unnecessary operator friction in the
-1M-context era — sessions self-halted at Phase 3 when they could
-have completed end-to-end. Removed 0.13.122. If a future failure
-class genuinely warrants proactive splitting, reintroduce the
-guidance with concrete evidence (a class of runs that demonstrably
-cannot complete inline even with 1M context), not heuristic
-extrapolation from token-budget anxiety.
+and resume in a fresh session once the infra ships. (Why, + the leep
+20260512-0418 incident: see orchestrator-reference.md § Cross-repo dev
+exception rationale.)
 
 ## Starting a New Opportunity
 
@@ -720,28 +622,21 @@ in `inputs/` (the manifest), not to pick one canonical PDD file.
    downstream skill in place of the previous "opp folder ID".
 
    Fresh mode always initializes all 11 phases `pending` (Step 4) and runs
-   from Phase 1. **There is no in-orchestrator seed step.** A mid-pipeline
-   start with a frozen upstream prefix is created *outside* `/ace:run` — the
-   control (`agents/iterate-loop.md`) or the ace-web `seeded-run` action forks
-   the golden via `fork-run`, writes the pre-seeded `run_state.yaml` (seed
-   prefix `done`/`verdict: seeded`, target phases `pending`, gap+tail phases
-   `skipped`, plus `seeded_from: <golden-run-id>` at the root), and then
-   dispatches a plain **resume** `/ace:run <opp>/<new-run-id>`. The orchestrator
-   never interprets a `--seed-from`/`--only` flag (jjackson/ace#672); it just
-   resumes a run whose shape is already on Drive (§ Resolve the run-id →
-   Resume mode, and § Resuming after a halt → Run shape on resume).
+   from Phase 1. **There is no in-orchestrator seed step** — a mid-pipeline
+   start with a frozen upstream prefix is created *outside* `/ace:run`
+   (`agents/iterate-loop.md` or the ace-web `seeded-run` action forks the
+   golden via `fork-run`, writes the pre-seeded `run_state.yaml`, then
+   dispatches a plain **resume** `/ace:run <opp>/<new-run-id>`). The
+   orchestrator never interprets a `--seed-from`/`--only` flag
+   (jjackson/ace#672); it just resumes a run whose shape is already on Drive
+   (§ Resolve the run-id → Resume mode, and § Resuming after a halt → Run
+   shape on resume).
 
-5. **Capture the inputs manifest.**
-
-   The PDD is the formal output of Phase 1, not an input. The
-   orchestrator's job here is to record what was in `inputs/` at
-   run-start so `idea-to-pdd` can synthesize from a frozen pointer-set
+5. **Capture the inputs manifest.** Record what was in `inputs/` at
+   run-start so `idea-to-pdd` synthesizes from a frozen pointer-set
    (a human re-arranging `inputs/` mid-run won't shift ground beneath
-   the skill).
-
-   **Always** write the inputs manifest at the run-folder root,
-   alongside `run_state.yaml` — both are run-level metadata, scoped
-   beyond any single phase:
+   the skill). **Always** write the manifest at the run-folder root,
+   alongside `run_state.yaml`:
 
    - **5a. Ensure `<opp>/inputs/` exists** via
      `drive_create_folder({name: 'inputs', parentFolderId: <opp-folder-id>})`.
@@ -756,10 +651,10 @@ in `inputs/` (the manifest), not to pick one canonical PDD file.
      as a single line: `auto-migrated <name> from opp folder root to
      inputs/`.
 
-     This catches the "first-time operator drops the source doc next to
-     opp.yaml" case — see jjackson/ace#299. Operator-managed top-level
-     files that should NOT be migrated (currently just `opp.yaml`) are
-     skipped by name. Subfolders are never moved.
+     Operator-managed top-level files that should NOT be migrated
+     (currently just `opp.yaml`) are skipped by name. Subfolders are
+     never moved. (Catches the "operator drops the source doc next to
+     opp.yaml" case — jjackson/ace#299.)
    - **5c. Capture the manifest.** List `<opp>/inputs/` via
      `drive_list_folder`. For each direct child file (skip subfolders),
      capture `{file_id, name, mime_type}`. Write the result as
@@ -783,18 +678,12 @@ in `inputs/` (the manifest), not to pick one canonical PDD file.
      manifest is empty and the same fallback fires.
 
    Phase agents materialize their own `<N>-<phase>/` folders when
-   they run (see § Per-Phase Folder Lifecycle). The orchestrator does
-   NOT pre-create `1-design/` here.
-
-   The manifest is the sole seed for Phase 1 — `idea-to-pdd` reads
-   each file in the manifest as the evidence pack and synthesizes
-   the PDD from there.
-
-   Phase 1 reads each input file directly from `inputs/` via the
-   manifest's `file_id`s — no file is copied into the run folder; no
-   single `pdd.md` is picked. Free-text seed material goes into
-   `inputs/` as a regular file (the legacy `--idea FILE|-` flag was
-   retired 2026-05-22).
+   they run (see § Per-Phase Folder Lifecycle); the orchestrator does
+   NOT pre-create `1-design/` here. The manifest is the sole seed for
+   Phase 1 — `idea-to-pdd` reads each file via the manifest's
+   `file_id`s as the evidence pack (no file is copied into the run
+   folder; no single `pdd.md` is picked). Free-text seed material goes
+   into `inputs/` as a regular file.
 
 6. **Initialize `run_state.yaml`** at `<opp>/runs/<runId>/run_state.yaml` with:
    - `mode`, `created` (ISO timestamp), all steps as `pending`
@@ -836,9 +725,8 @@ in `inputs/` (the manifest), not to pick one canonical PDD file.
    boundary fence calls `render_run_readme` with the current phase
    status map) — see § Per-Phase Folder Lifecycle.
 
-   Do NOT shell out to `npx tsx -e "..."` against
-   `lib/run-readme.ts` — the atom exists specifically to remove that
-   dance. Source-of-truth helper: `lib/run-readme.ts::generateRunReadme`.
+   Do NOT shell out to `npx tsx -e "..."` against `lib/run-readme.ts`
+   — the `render_run_readme` atom exists specifically to remove that dance.
 
 8. **Log the run setup explicitly.** Emit a log line in this exact form
    so transcript readers and ace-web's ingest can pick it up:
@@ -949,7 +837,7 @@ When invoked with an opportunity, execute these phases in order.
 
 **Products:** Program configured; Opportunity configured with verification rules and delivery/payment units; opportunity **activated** (`is_test=true`); ACE test user (`${ACE_E2E_PHONE}`) pre-invited (`4-connect/connect-program-setup.md`, `4-connect/connect-opp-setup.md`).
 
-**Notes:** LLO invite-list preparation moved to Phase 9 on 2026-04-20 — we don't commit to a real-LLO invite roster until after the OCS chatbot has cleared its deep-eval gate. Phase 4 *does* activate the opp and invite the ACE test user (`${ACE_E2E_PHONE}`) on 2026-05-10 — this closes the chicken-and-egg gap where Phase 6 `app-screenshot-capture` could only produce placeholder screenshots because the test user wasn't on the new opp yet. The opp is created with `is_test=true` so prod LLO-facing analytics, payment exports, and partner dashboards exclude these dogfood runs; activation in this phase is therefore not a Phase 8→9 boundary violation. Phase 9's `llo-launch` becomes idempotent on already-active opps (skip-and-log) and still sends the real-LLO invite to the awarded LLO. After Phase 4 completes, the orchestrator refreshes `current/` shortcuts (see § Per-Phase Folder Lifecycle in reference).
+**Notes:** Phase 4 activates the opp and invites the ACE test user (`${ACE_E2E_PHONE}`) so Phase 6 `app-screenshot-capture` has a real signed-in user (not placeholder screenshots). The opp is created with `is_test=true` so prod LLO-facing analytics/payment exports/partner dashboards exclude these dogfood runs; activation here is therefore not a Phase 8→9 boundary violation. Phase 9's `llo-launch` is idempotent on already-active opps (skip-and-log) and still sends the real-LLO invite to the awarded LLO. LLO invite-list prep is deferred to Phase 9. After Phase 4 completes, the orchestrator refreshes `current/` shortcuts (see § Per-Phase Folder Lifecycle in reference).
 
 ### Phase 5: OCS Setup
 
@@ -975,7 +863,7 @@ When invoked with an opportunity, execute these phases in order.
 
 **Products:** Phase-6 artifacts under `6-qa-and-training/` — screenshot bundles, 5 training docs (LLO guide, FLW guide, quick reference, FAQ, deck spec), optional training deck render, onboarding email.
 
-**Notes:** Phase 6→7 is no longer a mandatory pause (§ Modes — default, review, auto). All skills read upstream artifacts from Phases 1–4. No 1-1 LLO contact happens here — that begins in Phase 9. Phase 6 splits shallow (in `/ace:run`, ~5 LLM judges) vs deep (out-of-band via `/ace:qa-deep`); `llo-launch` (Phase 9) requires fresh deep verdicts. **App-QA-only mode:** when `phases.ocs-setup.status == skipped` in the loaded `run_state.yaml` (a seeded run that skipped Phase 5 — the iteration-loop case), add a context line to the dispatch — "Phase 5 (OCS) was skipped this run; run app-QA-only mode per your agent definition" — so the agent runs only the mobile app-QA walk and marks the OCS-dependent training skills `skipped` (`agents/qa-and-training.md § Mode: app-QA-only`). A normal full run always runs Phase 5 first, so this never fires there.
+**Notes:** Phase 6→7 is no longer a mandatory pause (§ Modes). No 1-1 LLO contact happens here — that begins in Phase 9. Phase 6 splits shallow (in `/ace:run`, ~5 LLM judges) vs deep (out-of-band via `/ace:qa-deep`); `llo-launch` (Phase 9) requires fresh deep verdicts. **App-QA-only mode:** when `phases.ocs-setup.status == skipped` in the loaded `run_state.yaml` (a seeded run that skipped Phase 5 — the iteration-loop case), add a context line to the dispatch — "Phase 5 (OCS) was skipped this run; run app-QA-only mode per your agent definition" — so the agent runs only the mobile app-QA walk and marks the OCS-dependent training skills `skipped` (`agents/qa-and-training.md § Mode: app-QA-only`). A normal full run always runs Phase 5 first, so this never fires there.
 
 ### Phase 7: Synthetic Data and Workflows
 
@@ -1069,20 +957,11 @@ A one-line text summary ("Phase N complete: <verdict>") may accompany
 these tool calls in the same message. It must NOT precede them in a
 separate turn.
 
-**Anti-pattern.** Boundary observed in real transcripts (each line a
-separate assistant turn):
-
-```
-Turn N:    Agent(<phase>) tool_result
-Turn N+1:  text "Phase 1 complete: proceed verdict, no blockers"
-Turn N+2:  drive_read_file run_state.yaml
-Turn N+3:  TaskUpdate
-Turn N+4:  Skill(decisions-render)
-Turn N+5:  Agent(<next-phase>)
-```
-
-That's ~4 wasted turns × seconds each × 8 boundaries per run
-≈ 1–3 min of pure model-output latency per `/ace:run`.
+**Anti-pattern** (each a separate assistant turn — ~4 wasted turns ×
+8 boundaries ≈ 1–3 min latency per `/ace:run`): a solo "Phase N
+complete" text turn, then `drive_read_file`, then `TaskUpdate`, then
+`Skill(decisions-render)`, then `Agent(<next-phase>)` — all in separate
+turns instead of one batched message.
 
 **Right pattern.**
 
@@ -1147,17 +1026,15 @@ Turn N+3:  Agent(<next-phase>) with inline-artifact prompt.
 ```
 
 **Products-presence check (Turn N+2, alongside the classify/verify branch).**
-`classify_phase_writeback` only checks the run_state *shape* (status enum,
-verdict type, steps); `verify_phase_artifacts` only checks Drive *files*.
-Neither asserts that the phase wrote its typed `products.<block>` — the
-handoff the public summary page (ace-web `apps/opps/summary.py`) and
-downstream phases actually read. A phase can therefore return
-`classify='ok'` + `verify.ok=true` while having written its outputs only
-under `steps.*` or a lone `summary_artifact`, leaving the summary page's
-section blank. Caught on leep run 20260527-1528: the published EOI
-(`products.solicitation`) and the rendered walkthroughs
-(`products.synthetic`) never surfaced because Phase 8 and Phase 7 wrote
-no `products` block.
+`classify_phase_writeback` only checks the run_state *shape*;
+`verify_phase_artifacts` only checks Drive *files*. Neither asserts that
+the phase wrote its typed `products.<block>` — the handoff the public
+summary page (ace-web `apps/opps/summary.py`) and downstream phases
+actually read. A phase can return `classify='ok'` + `verify.ok=true`
+while having written outputs only under `steps.*` or a lone
+`summary_artifact`, leaving the summary section blank (leep run
+20260527-1528: Phase 8's EOI + Phase 7's walkthroughs never surfaced
+because no `products` block was written).
 
 So in Turn N+2, for the phase that just completed with `status: done`,
 also confirm `phases.<phase>.products.<expected-block>` exists and is
@@ -1194,15 +1071,14 @@ its owner + where it gets answered) and appended to as later phases
 surface new ones. Idempotent: `drive_create_doc_from_markdown` with
 `findOrCreate: true` overwrites in place, so re-running the fence
 refreshes it. Without this the summary's Open-Questions section renders
-empty even on a fully-populated run (observed: leep run 20260527-1528).
+empty even on a fully-populated run.
 
 **Manifest-key map** for the `phase` arg `verify_phase_artifacts` expects
 — the SHORT key from `lib/artifact-manifest.ts § PHASES`, NOT the
-agent-file name. The verifier rejects unknown values (zod enum), so
-passing the wrong key is loud and immediate. **Canonical source: the
-`PHASE_DEFS` table in `lib/artifact-manifest.ts` (`{key, agentName,
-ordinal, folder}`) — this table mirrors it for human reference; if they
-disagree, `PHASE_DEFS` wins.**
+agent-file name. The verifier rejects unknown values (zod enum).
+**Canonical source: the `PHASE_DEFS` table in `lib/artifact-manifest.ts`;
+this table mirrors it for human reference — if they disagree, `PHASE_DEFS`
+wins.**
 
 | Phase (agent file) | Manifest key |
 |---|---|
@@ -1221,13 +1097,11 @@ If the phase returned a `[BLOCKER]` or hard error, replace Turn N+3
 with a halt message — but Turn N+1 still happens (write-back is
 mandatory regardless of verdict).
 
-Both `verify_phase_artifacts` and `classify_phase_writeback` exist so the
-two boundary checks are single deterministic tool calls instead of a
-read→parse→judge model dance that drifts (the "why one tool" rationale +
-incidents — bednet-spot-check 20260525-2013's 13 silently-skipped evals,
-the PR-L run-state move — are in reference § Producer Artifact Verifier
-and § Phase Write-Back Contract). For the full issue list on a
-`'malformed'` result (which field is missing), call
+`verify_phase_artifacts` and `classify_phase_writeback` make the two
+boundary checks single deterministic tool calls instead of a
+read→parse→judge model dance that drifts (rationale + incidents: reference
+§ Producer Artifact Verifier and § Phase Write-Back Contract). For the
+full issue list on a `'malformed'` result, call
 `validate_run_state(fileId)` — returns `{valid, errors, warnings}` with
 `{path, message, severity}` per issue.
 
@@ -1245,10 +1119,6 @@ calls listed above are the COMPLETE set. Do NOT also:
 - Emit a "Phase N complete" status text in a solo turn before Turn
   N+1's batched tool calls. The text summary, if any, rides in the
   same message as the batched calls.
-
-Each of these improvisations was observed in real session transcripts
-(`e2e-malaria-rdt` 2026-05-24) and adds 1–3 wasted turns per boundary
-× 8 boundaries per run.
 
 ## Per-Step Eval Hook
 
@@ -1330,16 +1200,11 @@ retrospective, or on a schedule (`--monitor` mode) for drift
 detection. The orchestrator does not dispatch opp-eval automatically;
 operators invoke it via `/ace:eval`.
 
-As more per-skill `-eval` skills gain `## LLM-as-Judge Rubric`
-sections and start writing their verdict files (next to the producer
-artifact as `<N>-<phase>/<producer>-eval_verdict[-<mode>].yaml` — there
-is no top-level `verdicts/` directory), opp-eval automatically picks
-them up via directory discovery — no change to opp-eval itself is
-needed. Today some skills still self-evaluate inline (no separate
-`-eval` skill); opp-eval emits `[INFO]` notes for those gaps, which is
-the forcing function for future per-skill rubric work. When a rubric
-arrives and the skill starts writing its `-eval_verdict` file, opp-eval
-picks it up on the next run.
+opp-eval picks up verdict files via directory discovery (next to the
+producer artifact as `<N>-<phase>/<producer>-eval_verdict[-<mode>].yaml`
+— there is no top-level `verdicts/` directory), so new per-skill
+`-eval` rubrics need no change to opp-eval itself. Skills that still
+self-evaluate inline get `[INFO]` gap notes until a rubric arrives.
 
 ## Error Handling
 
