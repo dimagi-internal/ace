@@ -480,6 +480,23 @@ than pairing `present_count/expected_count` into a fraction, since
 `present_count` counts every file in the folder and `expected_count`
 counts only the required set, so the ratio routinely exceeds 1.
 
+**Products-level companion: `verify_phase_products(fileId, phase)`.**
+`verify_phase_artifacts` checks Drive *files*; `verify_phase_products`
+checks the run_state *typed handoffs* — the `phases.<phase>.products.<block>`
+blocks ace-web's summary (`apps/opps/summary.py`) and downstream phases
+read. Wraps `lib/phase-products-schema.ts::classifyPhaseProducts` against the
+single-source schema (generated to `docs/phase-products-schema.json`, which
+ace-web reads). Returns `{phase, status, ok, mode, issues[]}`: `mode:complete`
+on a `done` phase (shape + required-key completeness), `mode:fragment`
+in-flight (shape only), `mode:skipped` for phases with no products contract.
+The boundary fence runs it as the third parallel check (alongside
+`classify_phase_writeback` + `verify_phase_artifacts`) and branches on
+`products.ok=false`. It catches the blank-summary-section drift class
+(wrong nesting like `products.opportunity` vs `products.connect.opportunity`,
+or a required handoff key never written) that neither of the other two sees
+(jjackson/ace#705). Takes the run_state phase name (like
+`classify_phase_writeback`), NOT the manifest short key.
+
 **Why one tool, not a hand-rolled procedure.** A pre-PR-516 version
 of this section walked the manifest in prose: list folder → call
 `artifactsProducedBy(<skill>)` → diff. That's a 3-step model dance

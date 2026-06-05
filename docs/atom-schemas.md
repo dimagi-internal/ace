@@ -12,7 +12,7 @@ For the deterministic atom-rename / remove drift check, see `test/skill-atom-ref
 
 ## ace-gdrive
 
-Source: `mcp/google-drive-server.ts` — 41 atoms
+Source: `mcp/google-drive-server.ts` — 42 atoms
 
 ### `sheets_list_tabs`
 
@@ -359,6 +359,14 @@ Validate a run_state.yaml file's shape against the Phase Write-Back Contract. Re
 ### `classify_phase_writeback`
 
 Single-line answer to 'did `<phaseName>` write its run_state.yaml block correctly?' Reads run_state.yaml from Drive, parses it, and returns `{status: 'ok' | 'missing' | 'in_progress' | 'error' | 'malformed', phase: <name>}`. The orchestrator's silent-dispatch retry should treat 'missing', 'in_progress', and 'malformed' as retry triggers (agent claimed success but didn't write properly); 'error' is…
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `fileId` | `z.string` | **required** | The Google Drive fileId of run_state.yaml. |
+
+### `verify_phase_products`
+
+Boundary-fence check that a phase's `phases.<phase>.products` block matches the typed-handoff contract the ace-web summary page reads (`lib/phase-products-schema.ts`). Reads run_state.yaml from Drive, parses it, and returns `{phase, status, ok, mode, issues}`. `mode` is `complete` when the phase is `done`/`complete` (validates shape AND that every required handoff key is present — e.g. `connect.op…
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
