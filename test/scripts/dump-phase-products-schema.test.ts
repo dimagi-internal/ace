@@ -39,6 +39,7 @@ describe('dump-phase-products-schema', () => {
     }
     // the two boundary-critical required-key contracts are present
     expect(doc.phases['connect-setup'].requiredProductKeys).toContain('connect.opportunity.url');
+    expect(doc.phases['qa-and-training'].requiredProductKeys).toContain('training.deck');
     expect(doc.phases['qa-and-training'].requiredProductKeys).toContain('training.docs.onboarding_email');
   });
 });

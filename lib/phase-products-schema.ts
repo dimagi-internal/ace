@@ -283,7 +283,7 @@ export type PhaseName = keyof typeof PHASE_PRODUCTS_SCHEMAS;
 export const REQUIRED_PRODUCT_KEYS: Partial<Record<PhaseName, string[]>> = {
   'commcare-setup': ['apps.learn.hq_app_id', 'apps.deliver.hq_app_id'],
   'connect-setup': ['connect.opportunity.url', 'connect.domain'],
-  'qa-and-training': ['training.docs.onboarding_email'],
+  'qa-and-training': ['training.deck', 'training.docs.onboarding_email'],
   'solicitation-management': ['solicitation.url'],
 };
 
