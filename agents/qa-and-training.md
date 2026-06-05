@@ -280,10 +280,10 @@ phase dispatches them in dependency order:
 
 **2a. Parallel — five text artifacts (independent, run concurrently):**
 
-- `training-llo-guide` → `llo-manager-guide.md`
-- `training-flw-guide` → `flw-training-guide.md`
-- `training-quick-reference` → `quick-reference.md`
-- `training-faq` → `faq.md`
+- `training-llo-guide` → `training-llo-guide.md`
+- `training-flw-guide` → `training-flw-guide.md`
+- `training-quick-reference` → `training-quick-reference.md`
+- `training-faq` → `training-faq.md`
 - `training-deck-generate` → `training-deck-spec.yaml`
 
 Each skill reads PDD + app summaries + connect/OCS state + (where
@@ -315,13 +315,13 @@ Halt the phase on any non-pass eval verdict.
   Slides URL.
 - Skipped if `ACE_TRAINING_DECK_TEMPLATE_ID` is unset (with a clear
   pointer to `scripts/bootstrap-training-deck-template.ts`). Phase 9
-  doesn't depend on the Slides deck — `onboarding-email-body.md` is
+  doesn't depend on the Slides deck — `training-onboarding-email.md` is
   the load-bearing Phase 9 input — so a missing template doesn't
   block go-live.
 
 **2c. Sequential — onboarding email (after the other 5 text artifacts):**
 
-- `training-onboarding-email` → `onboarding-email-body.md`. Must run
+- `training-onboarding-email` → `training-onboarding-email.md`. Must run
   LAST because it links by Drive URL to the LLO guide, FLW guide, and
   quick-reference.
 - Immediately after, dispatch `training-onboarding-email-eval` →
@@ -372,7 +372,7 @@ training skills (or invoke `qa-and-training` for the full sequence).
 ## Products
 
 - `ACE/<opp>/runs/<run-id>/6-qa-and-training/screenshots/journey-<app>/<step>.png` + `ACE/<opp>/runs/<run-id>/6-qa-and-training/app-screenshot-capture_manifest.yaml`
-- `ACE/<opp>/runs/<run-id>/6-qa-and-training/{llo-manager-guide,quick-reference,faq,onboarding-email-body}.md` (training-materials)
+- `ACE/<opp>/runs/<run-id>/6-qa-and-training/{training-llo-guide,training-quick-reference,training-faq,training-onboarding-email}.md` (training-materials)
 - `ACE/<opp>/runs/<run-id>/6-qa-and-training/training-flw-guide.md` (training-flw-guide)
 - `ACE/<opp>/runs/<run-id>/6-qa-and-training/training-deck-spec.yaml` (training-deck-generate)
 - A Google Slides deck under the same folder (when template is configured)

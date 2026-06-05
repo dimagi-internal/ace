@@ -48,6 +48,10 @@ const REQUIRED_TOP_LEVEL_KEYS = [
 
 const VALID_ANOMALY_TYPES = ['field_outlier', 'missing_visits', 'duplicate_submission'] as const;
 const VALID_KPI_AGGREGATIONS = ['validated_rate', 'non_null_rate', 'mean', 'count'] as const;
+// Upstream `Progression = Literal['improvement_curve','flat','regression']`.
+const VALID_PROGRESSIONS = ['improvement_curve', 'flat', 'regression'] as const;
+// Upstream `FieldDistribution = Annotated[Normal|Uniform|Binary, Field(discriminator='distribution')]`.
+const VALID_DISTRIBUTIONS = ['normal', 'uniform', 'binary'] as const;
 
 // ── Zod schemas (used both by the schema-shape check and the cross-field checks) ──
 
@@ -87,6 +91,33 @@ const KpiZ = z.object({
   aggregation: z.enum(VALID_KPI_AGGREGATIONS),
 }).passthrough(); // threshold_underperform / threshold_target — upstream validates types
 
+// Discriminated union on the `distribution` tag — mirrors upstream
+// `FieldDistribution = Annotated[Normal|Uniform|Binary, Field(discriminator='distribution')]`.
+// Passthrough on each variant's params (mean/std, low/high, p_*) — upstream
+// validates the numeric ranges; QA only mirrors the closed tag set so a
+// non-member tag (e.g. `categorical`, or a `type:` key instead of
+// `distribution:`) fails ACE-side instead of burning a labs round-trip.
+const FieldDistributionZ = z.discriminatedUnion('distribution', [
+  z.object({ distribution: z.literal('normal') }).passthrough(),
+  z.object({ distribution: z.literal('uniform') }).passthrough(),
+  z.object({ distribution: z.literal('binary') }).passthrough(),
+]);
+
+// Beneficiary cohort skeleton — mirrors upstream `BeneficiaryCohort`.
+// `progression` (the closed enum) and `size` are validated WHEN PRESENT
+// (skeleton approach — a cohort may legally omit them and let upstream
+// defaults apply). The high-cost escapes this catches, both of which passed
+// the old `z.array(z.unknown())` cohort and were rejected at the labs boundary
+// (jjackson/ace#713): an invalid `progression` value (`rising_yes_share`) and a
+// `field_distributions` entry whose tag isn't in {normal,uniform,binary}.
+// field_distributions itself is validated in checkBeneficiaryCohortsWellFormed
+// (it tolerates either a record or a list shape).
+const BeneficiaryCohortZ = z.object({
+  id: z.string().min(1),
+  size: z.number().int().positive().optional(),
+  progression: z.enum(VALID_PROGRESSIONS).optional(),
+}).passthrough();
+
 /**
  * Top-level manifest shape — schema skeleton mirroring upstream's
  * `commcare_connect/labs/synthetic/generator/manifest.py § Manifest`.
@@ -101,7 +132,7 @@ const ManifestZ = z
     random_seed: z.number().int().min(0), // upstream: NonNegativeInt (0 OK, not PositiveInt)
     timeline: TimelineZ,
     flw_personas: z.array(FlwPersonaZ).min(1),
-    beneficiary_cohorts: z.array(z.unknown()).min(1),
+    beneficiary_cohorts: z.array(BeneficiaryCohortZ).min(1),
     kpi_config: z.array(KpiZ).min(1),
     anomalies: z.array(AnomalyZ).optional(),
     coaching_arcs: z.array(CoachingArcZ).optional(),
@@ -214,6 +245,77 @@ export function checkFlwPersonasWellFormed(text: string): QACheckResult {
     auto_fix_hint:
       `regenerate flw_personas with required fields: 'id' (or 'display_name') and 'archetype' in {${VALID_ARCHETYPES.join(', ')}}. ` +
       `Each persona must have an archetype value from the enum — generic strings like 'good' or 'bad' are not accepted by the labs MCP.`,
+  };
+}
+
+/**
+ * Check (beneficiary_cohorts_well_formed): each cohort is shape-valid against
+ * the upstream contract — id present, size a positive int (when present),
+ * progression in the closed enum (when present), and every field_distributions
+ * entry a discriminated union on `distribution` ∈ {normal,uniform,binary}.
+ *
+ * Closes jjackson/ace#713: the old `z.array(z.unknown())` cohort + a
+ * `passthrough()` subtree let two upstream-rejected shapes through ACE-side QA
+ * (`progression: rising_yes_share`; a `{type: categorical}` distribution),
+ * costing a full labs dispatch round-trip to discover.
+ */
+export function checkBeneficiaryCohortsWellFormed(text: string): QACheckResult {
+  const m = getParsed(text);
+  if (!m) return { pass: true, detail: 'manifest unparseable; check skipped' };
+  const cohorts = m.beneficiary_cohorts;
+  if (!Array.isArray(cohorts) || cohorts.length === 0) {
+    return {
+      pass: false,
+      detail: 'beneficiary_cohorts missing, empty, or not an array',
+      auto_fix_hint:
+        'populate beneficiary_cohorts with at least one cohort (id + size; progression in ' +
+        `{${VALID_PROGRESSIONS.join(', ')}} when specified)`,
+    };
+  }
+  const issues: string[] = [];
+  cohorts.forEach((c, idx) => {
+    const r = BeneficiaryCohortZ.safeParse(c);
+    if (!r.success) {
+      issues.push(
+        `#${idx}: ${r.error.issues.map((i) => `${i.path.join('.') || '(root)'}:${i.message}`).join('; ')}`,
+      );
+      return;
+    }
+    // field_distributions (when present): each entry must be a valid
+    // FieldDistribution discriminated union. Tolerate either a mapping
+    // (field-name → distribution) or a list of distribution objects.
+    const fd = (c as Record<string, unknown>).field_distributions;
+    if (fd === undefined || fd === null) return;
+    if (Array.isArray(fd)) {
+      fd.forEach((dist, di) => {
+        const dr = FieldDistributionZ.safeParse(dist);
+        if (!dr.success) {
+          issues.push(`#${idx}.field_distributions[${di}]: ${dr.error.issues.map((i) => i.message).join('; ')}`);
+        }
+      });
+    } else if (typeof fd === 'object') {
+      for (const [key, dist] of Object.entries(fd as Record<string, unknown>)) {
+        const dr = FieldDistributionZ.safeParse(dist);
+        if (!dr.success) {
+          issues.push(`#${idx}.field_distributions.${key}: ${dr.error.issues.map((i) => i.message).join('; ')}`);
+        }
+      }
+    } else {
+      issues.push(`#${idx}: field_distributions must be a mapping or a list`);
+    }
+  });
+  if (issues.length === 0) {
+    return { pass: true, detail: `${cohorts.length} cohort(s) well-formed` };
+  }
+  return {
+    pass: false,
+    detail: `beneficiary_cohorts malformed: ${issues.slice(0, 5).join(' | ')}${issues.length > 5 ? ` (+${issues.length - 5} more)` : ''}`,
+    auto_fix_hint:
+      `each beneficiary_cohorts[] needs an id; when present, size must be a positive int, ` +
+      `progression ∈ {${VALID_PROGRESSIONS.join(', ')}}, and every field_distributions entry must be ` +
+      `discriminated on distribution ∈ {${VALID_DISTRIBUTIONS.join(', ')}} (e.g. {distribution: binary, p_yes: 0.6}). ` +
+      `Generic tags like 'categorical' or progression values like 'rising_yes_share' are rejected at the labs boundary. ` +
+      `Upstream truth: commcare_connect/labs/synthetic/generator/manifest.py.`,
   };
 }
 
@@ -429,6 +531,13 @@ export const CHECKS: QACheck[] = [
     type: 'static',
     description: 'flw_personas non-empty; each item has id+archetype with valid archetype enum',
     run: checkFlwPersonasWellFormed,
+  },
+  {
+    id: 'beneficiary_cohorts_well_formed',
+    type: 'static',
+    description:
+      'beneficiary_cohorts non-empty; each has id, valid progression enum (when present), and field_distributions entries discriminated on distribution ∈ {normal,uniform,binary}',
+    run: checkBeneficiaryCohortsWellFormed,
   },
   {
     id: 'kpi_field_paths_resolvable',

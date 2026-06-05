@@ -10,6 +10,7 @@ import {
   checkManifestYamlParses,
   checkRequiredKeysPresent,
   checkFlwPersonasWellFormed,
+  checkBeneficiaryCohortsWellFormed,
   checkKpiFieldPathsResolvable,
   checkAnomaliesTraceable,
   checkCoachingArcsMatchPersonas,
@@ -298,13 +299,74 @@ describe('checkTimelineDatesConsistent', () => {
   });
 });
 
+describe('checkBeneficiaryCohortsWellFormed (jjackson/ace#713)', () => {
+  test('passes the valid manifest (cohort with id + size, no progression)', () => {
+    expect(checkBeneficiaryCohortsWellFormed(VALID_MANIFEST).pass).toBe(true);
+  });
+
+  test('passes a cohort with a valid progression enum + binary field_distribution', () => {
+    const m = VALID_MANIFEST.replace(
+      /beneficiary_cohorts:[\s\S]*?size: 50/m,
+      `beneficiary_cohorts:
+  - id: "primary"
+    size: 50
+    progression: "improvement_curve"
+    field_distributions:
+      slept_under_net:
+        distribution: "binary"
+        p_yes: 0.6`,
+    );
+    expect(checkBeneficiaryCohortsWellFormed(m).pass).toBe(true);
+  });
+
+  test('FAILS an invalid progression value (the rising_yes_share escape)', () => {
+    const m = VALID_MANIFEST.replace(
+      /beneficiary_cohorts:[\s\S]*?size: 50/m,
+      `beneficiary_cohorts:
+  - id: "primary"
+    size: 50
+    progression: "rising_yes_share"`,
+    );
+    const r = checkBeneficiaryCohortsWellFormed(m);
+    expect(r.pass).toBe(false);
+    expect(r.detail).toMatch(/progression/i);
+    expect(r.auto_fix_hint).toBeTruthy();
+  });
+
+  test('FAILS a field_distributions entry with a non-{normal,uniform,binary} tag (the categorical escape)', () => {
+    const m = VALID_MANIFEST.replace(
+      /beneficiary_cohorts:[\s\S]*?size: 50/m,
+      `beneficiary_cohorts:
+  - id: "primary"
+    size: 50
+    field_distributions:
+      slept_under_net:
+        type: "categorical"
+        values: ["yes", "no"]`,
+    );
+    const r = checkBeneficiaryCohortsWellFormed(m);
+    expect(r.pass).toBe(false);
+    expect(r.detail).toMatch(/field_distributions/i);
+  });
+
+  test('fails when beneficiary_cohorts is empty', () => {
+    const m = VALID_MANIFEST.replace(
+      /beneficiary_cohorts:[\s\S]*?size: 50/m,
+      `beneficiary_cohorts: []`,
+    );
+    const r = checkBeneficiaryCohortsWellFormed(m);
+    expect(r.pass).toBe(false);
+  });
+});
+
 describe('CHECKS array', () => {
-  test('exports eight checks in stable order', () => {
-    expect(CHECKS).toHaveLength(8);
+  test('exports nine checks in stable order', () => {
+    expect(CHECKS).toHaveLength(9);
     expect(CHECKS.map((c) => c.id)).toEqual([
       'manifest_yaml_parses',
       'required_keys_present',
       'flw_personas_well_formed',
+      'beneficiary_cohorts_well_formed',
       'kpi_field_paths_resolvable',
       'anomalies_traceable',
       'coaching_arcs_match_personas',

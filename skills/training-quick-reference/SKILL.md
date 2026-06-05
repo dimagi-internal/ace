@@ -2,7 +2,7 @@
 name: training-quick-reference
 description: >
   Generate the one-page printable pocket-card summary for FLWs in the
-  field. Owns one artifact: quick-reference.md.
+  field. Owns one artifact: training-quick-reference.md.
 disable-model-invocation: true
 ---
 
@@ -146,11 +146,11 @@ LLO contact: <name from connect-setup/opportunity.md>
 ## Why a separate skill
 
 Independent rerun: re-running this skill regenerates only
-`quick-reference.md` — re-tightening the word budget after a PDD edit
+`training-quick-reference.md` — re-tightening the word budget after a PDD edit
 doesn't re-emit the LLO guide or FAQ.
 
 Fourth of the per-artifact training skills.
 
 ## Change Log
 
-- v1 (0.10.84): Initial skill. Owns `quick-reference.md` only.
+- v1 (0.10.84): Initial skill. Owns `training-quick-reference.md` only.

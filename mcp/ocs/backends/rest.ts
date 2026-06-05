@@ -161,27 +161,48 @@ export class RestBackend {
     }
     const { task_id } = (await sendRes.json()) as { task_id: string };
 
-    // 3. Poll for response (up to 120s)
+    // 3. Poll for response (up to 120s). Fail FAST on a generation error
+    //    instead of spinning to the deadline. The poll payload on a failed
+    //    generation is `{"error": "...", "status": "error"}` and can arrive
+    //    with a NON-2xx HTTP status — so we must inspect the body even when
+    //    `pollRes.ok` is false rather than blindly `continue`-ing past it. The
+    //    old `if (!pollRes.ok) continue` swallowed exactly this shape and let
+    //    a ~6s-detectable error spin to the full 120s timeout, masking an
+    //    actionable diagnostic as a wall-clock stall (jjackson/ace#708).
     const deadline = Date.now() + 120_000;
+    let lastTransient = '';
     while (Date.now() < deadline) {
       await new Promise((r) => setTimeout(r, 2000));
       const pollRes = await fetch(
         `${this.opts.baseUrl}/api/chat/${session_id}/${task_id}/poll/`,
         { method: 'GET', headers: chatHeaders },
       );
-      if (!pollRes.ok) continue;
-      const pb = (await pollRes.json()) as {
-        status?: string;
-        message?: { content?: string };
-      };
+      // Parse the body regardless of HTTP status — an errored generation can
+      // be delivered with a non-2xx code while still carrying the payload.
+      let pb: { status?: string; error?: string; message?: { content?: string } };
+      try {
+        pb = (await pollRes.json()) as typeof pb;
+      } catch {
+        // Non-JSON body (e.g. an HTML 5xx page). Treat as transient and keep
+        // polling; remember it for the timeout message.
+        if (!pollRes.ok) lastTransient = `HTTP ${pollRes.status}`;
+        continue;
+      }
+      // Generation error — surface the error content and fail fast.
+      if (pb.status === 'error' || pb.status === 'failed' || (pb.error && pb.error.trim())) {
+        const detail = pb.error?.trim() || `task ${task_id} reported status '${pb.status}'`;
+        throw new Error(`sendTestMessage: OCS generation error — ${detail}`);
+      }
       if (pb.status === 'complete' && pb.message?.content) {
         return { response: pb.message.content };
       }
-      if (pb.status === 'error' || pb.status === 'failed') {
-        throw new Error(`sendTestMessage: task ${task_id} failed`);
-      }
+      // Still processing, or a transient non-ok with no error payload — keep polling.
+      if (!pollRes.ok) lastTransient = `HTTP ${pollRes.status}`;
     }
-    throw new Error(`sendTestMessage: timed out after 120s waiting for response`);
+    throw new Error(
+      `sendTestMessage: timed out after 120s waiting for response` +
+        (lastTransient ? ` (last transient poll: ${lastTransient})` : ''),
+    );
   }
 
   async triggerBotMessage(args: {

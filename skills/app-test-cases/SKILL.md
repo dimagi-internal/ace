@@ -535,10 +535,32 @@ recipe **MUST** be preceded by an explicit answer-selection step:
     file: form-advance.yaml      # required-input question is unanswered
 ```
 
+**Leading (and interior) display/label screens — MANDATORY (jjackson/ace#710).**
+A form does NOT always open on its first *question*. A `kind: label` /
+display node (an intro, instructions, or result screen with no input widget —
+only `nav_btn_next`) renders as its OWN screen. If the recipe taps an answer
+option while a leading display node is on screen, the option selector isn't
+present and the tap fails `selector-not-found` (caught in vivo:
+bednet-spot-check/20260605-0658 Phase 6 Learn leg — the "Connect Comprehension
+Check" form opened on a one-question intro label, and the answer tap landed on
+the intro screen). The rule: **walk the form's field list IN ORDER and emit one
+bare `form-advance.yaml` for every display/label node — both leading ones
+before the first input AND interior ones between inputs — with NO answer tap on
+those advances** (a display node has nothing to select; it's the input-node
+rule above, inverted). A form `[intro(label), q1(single_select, required)]`
+therefore composes as: `form-advance` (past intro) → `tapOn: <q1 option>` →
+`form-advance`/`form-submit`.
+
 For each form-walk segment of a recipe:
 
 1. Call `get_form({app_id, moduleIndex, formIndex})` and inspect each
-   field's `kind` + required-ness.
+   field's `kind` + required-ness, **in document order**.
+1.5. Walk the fields in order. For every leading or interior **display/label
+   node** (`kind: label` / a display-only node with no input widget), emit one
+   bare `runFlow: { file: form-advance.yaml }` with NO preceding answer tap —
+   it advances past the intro/instructions/result screen to the next node
+   (jjackson/ace#710). Do this BEFORE the first answer tap when the form's
+   first node(s) are display nodes.
 2. For every `kind: single_select` field that's required, emit a
    `tapOn: text: "<literal option label>"` BEFORE the
    `form-advance.yaml` step. The option label comes from the field's
