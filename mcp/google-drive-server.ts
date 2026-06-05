@@ -34,7 +34,7 @@ import {
   withTransientRetry as withTransientRetryLib,
 } from '../lib/transient-retry.js';
 import { generateRunReadme, type PhaseStatus } from '../lib/run-readme.js';
-import { validatePhaseProductsFragment } from '../lib/phase-products-schema.js';
+import { validatePhaseProductsFragment, classifyPhaseProducts } from '../lib/phase-products-schema.js';
 import {
   runDecisionsRender,
   type DecisionsRenderDriveClient,
@@ -2419,6 +2419,27 @@ server.tool(
       const parsed = text.trim() ? YAML.parse(text) : null;
       const status = classifyPhaseWriteBack(parsed, phaseName);
       return result({ phase: phaseName, status });
+    } catch (e: any) {
+      return error(e.message);
+    }
+  },
+);
+
+server.tool(
+  'verify_phase_products',
+  "Boundary-fence check that a phase's `phases.<phase>.products` block matches the typed-handoff contract the ace-web summary page reads (`lib/phase-products-schema.ts`). Reads run_state.yaml from Drive, parses it, and returns `{phase, status, ok, mode, issues}`. `mode` is `complete` when the phase is `done`/`complete` (validates shape AND that every required handoff key is present — e.g. `connect.opportunity.url`, `qa-and-training`'s `training.docs.onboarding_email`), `fragment` when the phase is still in-flight (shape-only, so incremental writes pass), or `skipped` when the phase has no products contract. `ok:false` on a `done` phase means a handoff the summary renders is missing or malformed — the orchestrator should treat it like a `verify_phase_artifacts` miss (heal the producing skill / re-dispatch) before advancing. This is the run_state-level companion to `verify_phase_artifacts` (which checks Drive files); run BOTH in the phase boundary fence. Implementation: `lib/phase-products-schema.ts::classifyPhaseProducts`.",
+  {
+    fileId: z.string().describe('The Google Drive fileId of run_state.yaml.'),
+    phase: z
+      .string()
+      .describe('The phase whose products block to verify (e.g. "connect-setup", "qa-and-training").'),
+  },
+  async ({ fileId, phase }) => {
+    try {
+      const read = await handleReadFile({ fileId }, drive);
+      const text = read.content ?? '';
+      const parsed = text.trim() ? YAML.parse(text) : null;
+      return result(classifyPhaseProducts(parsed, phase));
     } catch (e: any) {
       return error(e.message);
     }

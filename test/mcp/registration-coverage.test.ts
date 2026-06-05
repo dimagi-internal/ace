@@ -98,13 +98,13 @@ const SERVERS: Record<string, ServerSpec> = {
   },
   'google-drive': {
     file: 'mcp/google-drive-server.ts',
-    expectedCount: 41,
+    expectedCount: 42,
     // gdrive bridges five Google APIs — one prefix per surface plus a
     // small set of cross-surface helpers (manifest generator, forms
     // reader, OAuth-personal Drive read, YAML patch helper, opp-path
     // resolver, current-run discoverer, run_state.yaml validator +
-    // classifier, phase-artifact verifier, run-folder README renderer,
-    // decisions-log renderer).
+    // classifier, phase-artifact verifier, phase-products verifier,
+    // run-folder README renderer, decisions-log renderer).
     allowedPrefixes: [
       'drive_',
       'sheets_',
@@ -119,6 +119,7 @@ const SERVERS: Record<string, ServerSpec> = {
       'validate_run_state',
       'classify_phase_writeback',
       'verify_phase_artifacts',
+      'verify_phase_products',
       'render_run_readme',
       'render_decisions_log',
     ],

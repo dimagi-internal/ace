@@ -967,7 +967,7 @@ turns instead of one batched message.
 
 ```
 Turn N:    Agent(<phase>) tool_result
-Turn N+1:  ONE message — all 5 tool calls in parallel:
+Turn N+1:  ONE message — all 6 tool calls in parallel:
              1. classify_phase_writeback(fileId=<run_state.yaml>, phaseName=<phase>)
                 — returns 'ok' | 'missing' | 'in_progress' | 'error' | 'malformed'
              2. drive_list_folder on <runFolderId>/<N>-<phase>/ (artifact verifier)
@@ -982,11 +982,20 @@ Turn N+1:  ONE message — all 5 tool calls in parallel:
                   NOT pair present_count/expected_count into a fraction:
                   present counts every file in the folder, expected counts
                   only the required set, so "7/4" is meaningless.
-             4. TaskUpdate marking <phase> completed, next phase in_progress
-             5. Skill(decisions-render) — idempotent
+             4. verify_phase_products(fileId=<run_state.yaml>, phase=<phase>)
+                — returns {phase, status, ok, mode, issues[]}. Covers the
+                  THIRD half of the gate: the typed `products.<block>` handoff
+                  the ace-web summary + downstream phases read. `mode:complete`
+                  (phase done → shape + required-key completeness),
+                  `mode:fragment` (in-flight → shape only), `mode:skipped`
+                  (phase has no products contract). Takes the run_state phase
+                  name (like classify_phase_writeback), NOT the manifest key.
+             5. TaskUpdate marking <phase> completed, next phase in_progress
+             6. Skill(decisions-render) — idempotent
            Optional one-line text summary in the same message.
-Turn N+2:  Branch on classify_phase_writeback AND verify_phase_artifacts:
-             - classify='ok' AND verify.ok=true
+Turn N+2:  Branch on classify_phase_writeback AND verify_phase_artifacts
+           AND verify_phase_products:
+             - classify='ok' AND verify.ok=true AND products.ok=true
                  → proceed to Turn N+3
              - verify.ok=false (one or more required artifacts missing)
                  → for each entry in verify.missing, silent-dispatch its
@@ -996,6 +1005,16 @@ Turn N+2:  Branch on classify_phase_writeback AND verify_phase_artifacts:
                    the fence after each batch. If any item remains
                    missing after the cap, halt with a [BLOCKER] listing
                    the unhealed paths + producedBy values.
+             - products.ok=false (mode='complete' — the done phase's typed
+               `products.<block>` is missing a required handoff key or has a
+               drifted shape; `issues[]` names the path)
+                 → re-dispatch the producing phase/skill ONE more time with an
+                   explicit closing line naming the offending `products` path
+                   from `issues[]` (same cap-2 discipline). For the external-
+                   resource phases honor the override below (finish inline
+                   rather than re-mint). If still not ok after the cap, halt
+                   with a [BLOCKER] quoting `issues[]` — the summary page would
+                   render a blank section otherwise (jjackson/ace#705).
              - classify='in_progress' → silent-dispatch Agent(<phase>)
                                           retry (see § Auto-retry silent
                                           Agent dispatches above); cap 2
@@ -1025,41 +1044,45 @@ Turn N+2:  Branch on classify_phase_writeback AND verify_phase_artifacts:
 Turn N+3:  Agent(<next-phase>) with inline-artifact prompt.
 ```
 
-**Products-presence check (Turn N+2, alongside the classify/verify branch).**
+**Products-presence check (Turn N+2 — the `verify_phase_products` atom).**
 `classify_phase_writeback` only checks the run_state *shape*;
 `verify_phase_artifacts` only checks Drive *files*. Neither asserts that
-the phase wrote its typed `products.<block>` — the handoff the public
+the phase wrote its typed `products.<block>` in the shape the public
 summary page (ace-web `apps/opps/summary.py`) and downstream phases
 actually read. A phase can return `classify='ok'` + `verify.ok=true`
 while having written outputs only under `steps.*` or a lone
-`summary_artifact`, leaving the summary section blank (leep run
-20260527-1528: Phase 8's EOI + Phase 7's walkthroughs never surfaced
-because no `products` block was written).
+`summary_artifact` (leep run 20260527-1528: Phase 8's EOI + Phase 7's
+walkthroughs never surfaced because no `products` block was written), OR
+having written the block in a *drifted* shape — `products.opportunity`
+instead of `products.connect.opportunity`, the deck under
+`products.training_materials` instead of `products.training.deck` — which
+renders the summary section blank (malaria-rdt/20260604-1604,
+jjackson/ace#705).
 
-So in Turn N+2, for the phase that just completed with `status: done`,
-also confirm `phases.<phase>.products.<expected-block>` exists and is
-non-empty, per this map:
+`verify_phase_products(fileId, phase)` (call #4 in Turn N+1) is the
+single deterministic check for this, replacing the old hand-maintained
+"required `products.<block>`" map. It validates against
+`lib/phase-products-schema.ts` — the cross-repo single source of truth
+(generated to `docs/phase-products-schema.json`, which ace-web reads). On
+a `status: done` phase (`mode:complete`) it asserts BOTH the block's shape
+AND that every required handoff key is present
+(`REQUIRED_PRODUCT_KEYS` — e.g. `connect.opportunity.url` + `connect.domain`,
+`qa-and-training`'s `training.docs.onboarding_email`); on an in-flight
+phase (`mode:fragment`) it shape-checks only, so incremental writes pass;
+`mode:skipped` for phases with no products contract
+(`scenarios-and-acceptance`, `execution-management`, `closeout` end-state
+blocks are exempt). Branch on `products.ok` per the Turn N+2 list above.
 
-| Phase | Required `products.<block>` |
-|---|---|
-| idea-to-design | `pdd` |
-| scenarios-and-acceptance | `test_prompts` + `app_journeys` |
-| commcare-setup | `apps` |
-| connect-setup | `connect` |
-| ocs-setup | `ocs_chatbot` |
-| qa-and-training | `training` |
-| synthetic-data-and-workflows | `synthetic` |
-| solicitation-management | `solicitation` (NOT `selected_llo` — award-gated) |
-
-(execution-management `launch` + closeout `cycle_grade` are end-state /
-conditional — exempt.) If the required block is absent or empty on a
-`status: done` phase, treat it as a silent under-write: re-dispatch the
-phase ONE more time with an explicit closing line naming the missing
-`products.<block>` (same cap-2 discipline as the `classify='missing'`
-branch). The phase agents' own definitions carry the explicit
-`products.<block>` write step (see e.g. `agents/solicitation-management.md`
-§ After Step 2, `agents/synthetic-data-and-workflows.md` § Completion) —
-this fence check is the structural backstop for when a subagent skips it.
+The write-time guard (`update_yaml_file`'s `validateAs:{kind:'phase-products',
+phase}`) stops *shape* drift at the source for skills that write via
+`update_yaml_file`; this fence check is the backstop that also catches a
+required handoff key that was *never written at all* (e.g. a dropped
+subagent that never reached its deck/onboarding write) and the multi-writer
+`drive_update_file` paths the write-time guard doesn't sit on. The phase
+agents' own definitions carry the explicit `products.<block>` write step
+(see e.g. `agents/solicitation-management.md` § After Step 2,
+`agents/synthetic-data-and-workflows.md` § Completion) — this is the
+structural backstop for when a subagent skips it.
 
 **Open-questions doc (run-end, once).** The summary page reads
 `open-questions.md` from the run-folder root by name (it's the lone

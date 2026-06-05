@@ -371,3 +371,53 @@ function resolveDotPath(obj: unknown, dotted: string): unknown {
   if (cur === '' || cur === null) return undefined;
   return cur;
 }
+
+export interface PhaseProductsClassification {
+  phase: string;
+  /** The phase's `status` from run_state (undefined if the phase block is absent). */
+  status: string | undefined;
+  ok: boolean;
+  /**
+   * Which check ran:
+   * - `complete`  — phase is `done`/`complete`; both shape AND required-key
+   *   completeness were checked.
+   * - `fragment`  — phase not yet done; only shape was checked (incremental
+   *   writes are allowed to be partial).
+   * - `skipped`   — phase has no registered products schema.
+   */
+  mode: 'complete' | 'fragment' | 'skipped';
+  issues: ProductsValidationIssue[];
+}
+
+/**
+ * Boundary-fence classifier: given a PARSED `run_state.yaml` object and a phase
+ * name, validate that phase's `products` block. Runs the strict completeness
+ * check (`validatePhaseProductsComplete`) only when the phase is `done` /
+ * `complete` — so an in-flight phase's incremental fragment writes are not
+ * flagged as "incomplete"; before then it only shape-checks. This is the
+ * run_state-level companion to {@link verifyPhaseArtifacts} (which checks Drive
+ * files): wire both into the phase boundary fence so a phase can't ship `done`
+ * with a malformed or missing typed handoff the ace-web summary needs.
+ */
+export function classifyPhaseProducts(
+  parsed: unknown,
+  phase: string,
+): PhaseProductsClassification {
+  const phaseBlock =
+    (parsed as any)?.phases?.[phase] && typeof (parsed as any).phases[phase] === 'object'
+      ? (parsed as any).phases[phase]
+      : {};
+  const status: string | undefined = typeof phaseBlock.status === 'string' ? phaseBlock.status : undefined;
+  const products = phaseBlock.products;
+  const isDone = status === 'done' || status === 'complete';
+  const r = isDone
+    ? validatePhaseProductsComplete(phase, products)
+    : validatePhaseProductsFragment(phase, products);
+  return {
+    phase,
+    status,
+    ok: r.valid,
+    mode: r.skipped ? 'skipped' : isDone ? 'complete' : 'fragment',
+    issues: r.issues,
+  };
+}

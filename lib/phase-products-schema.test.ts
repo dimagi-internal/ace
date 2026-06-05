@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   validatePhaseProductsFragment,
   validatePhaseProductsComplete,
+  classifyPhaseProducts,
   PHASE_PRODUCTS_SCHEMAS,
   REQUIRED_PRODUCT_KEYS,
 } from './phase-products-schema.js';
@@ -122,6 +123,57 @@ describe('validatePhaseProductsComplete — boundary completeness', () => {
   it('a wrong-shape fragment fails the complete check too (shape is gated first)', () => {
     const r = validatePhaseProductsComplete('connect-setup', { opportunity: { url: 'https://x.dev/o' } });
     expect(r.valid).toBe(false);
+  });
+});
+
+describe('classifyPhaseProducts — boundary-fence classifier', () => {
+  it('a DONE phase missing a required handoff key is not ok (mode: complete)', () => {
+    const parsed = {
+      phases: { 'qa-and-training': { status: 'done', products: { training: { docs: { faq: { web_view_link: 'https://docs.google.com/document/d/f/edit' } } } } } },
+    };
+    const r = classifyPhaseProducts(parsed, 'qa-and-training');
+    expect(r.mode).toBe('complete');
+    expect(r.ok).toBe(false);
+    expect(r.issues.some((i) => /onboarding_email/.test(i.path))).toBe(true);
+  });
+
+  it('a DONE phase with all required keys is ok', () => {
+    const parsed = {
+      phases: { 'connect-setup': { status: 'done', products: { connect: { domain: 'connect-ace-prod', opportunity: { url: 'https://connect.dimagi.com/a/x/opportunity/o1/' } } } } },
+    };
+    const r = classifyPhaseProducts(parsed, 'connect-setup');
+    expect(r.mode).toBe('complete');
+    expect(r.ok).toBe(true);
+  });
+
+  it('an IN-FLIGHT phase (not done) only shape-checks — a partial fragment is ok', () => {
+    const parsed = {
+      phases: { 'connect-setup': { status: 'in_progress', products: { connect: { domain: 'connect-ace-prod' } } } },
+    };
+    const r = classifyPhaseProducts(parsed, 'connect-setup');
+    expect(r.mode).toBe('fragment');
+    expect(r.ok).toBe(true); // missing opportunity.url is fine pre-done
+  });
+
+  it('an IN-FLIGHT phase with a drifted shape still fails the shape check', () => {
+    const parsed = {
+      phases: { 'connect-setup': { status: 'in_progress', products: { opportunity: { url: 'https://x.dev/o' } } } },
+    };
+    const r = classifyPhaseProducts(parsed, 'connect-setup');
+    expect(r.mode).toBe('fragment');
+    expect(r.ok).toBe(false);
+  });
+
+  it('a phase with no registered schema is skipped', () => {
+    const parsed = { phases: { 'scenarios-and-acceptance': { status: 'done', products: { x: 1 } } } };
+    const r = classifyPhaseProducts(parsed, 'scenarios-and-acceptance');
+    expect(r.mode).toBe('skipped');
+    expect(r.ok).toBe(true);
+  });
+
+  it('an absent phase block is ok/skipped-safe (no crash on null run_state)', () => {
+    expect(classifyPhaseProducts(null, 'connect-setup').ok).toBe(true);
+    expect(classifyPhaseProducts({ phases: {} }, 'connect-setup').status).toBeUndefined();
   });
 });
 
