@@ -121,6 +121,8 @@ Patch a YAML-content Google Doc in one MCP call: the server reads the current co
 | `fileId` | `z.string` | **required** | The Google Drive file ID of the YAML doc |
 | `patch` | `z.record` | **required** | _—_ |
 | `merge` | `z.enum` | optional | _—_ |
+| `validateAs` | `z.object` | **required** | _—_ |
+| `phase` | `z.string` | **required** | _—_ |
 
 ### `drive_create_file`
 

@@ -392,6 +392,19 @@ training skills (or invoke `qa-and-training` for the full sequence).
 
   Read-modify-write recipe: `drive_read_file` → parse → merge in this skill's slot (sibling slots preserved) → `drive_update_file` with `ifMatchRevisionId`. See `skills/synthetic-data-generate/SKILL.md § Step 6` for the canonical implementation. ace-web's per-run summary page consumes this block to render the training pack section.
 
+  **Contract (single source: `lib/phase-products-schema.ts`).** The slots
+  above are the EXACT shape ace-web's summary reads — the deck goes to
+  `products.training.deck`, the onboarding email to
+  `products.training.docs.onboarding_email`. Do NOT write the deck under
+  `products.training_materials` or `products.training.docs.deck_spec`, and do
+  NOT put the onboarding email outside `products.training.docs` — those drifts
+  render a blank training section (malaria-rdt/20260604-1604, jjackson/ace#705).
+  Because these slots are written via `drive_update_file` (multi-writer CAS),
+  not `update_yaml_file`, the write-time `validateAs` guard does not sit on this
+  path; the orchestrator's Phase 6 boundary fence runs the products-completeness
+  check (`REQUIRED_PRODUCT_KEYS['qa-and-training']` ⇒ `training.docs.onboarding_email`)
+  to catch a slot that never landed.
+
 ## Completion
 
 After Step 2 finishes:
