@@ -1,0 +1,36 @@
+# #618 Path-A calibration probe.
+#
+# When the journey-learn leg finishes Learn, the device is left on the
+# CommCare Learn-mode home (StandardHomeActivity / nsv_home_screen) — INSIDE
+# the CommCare app, NOT on Connect's jobs list. Deliver is only reachable
+# through Connect's opp-detail -> DOWNLOAD gate (deliver-launch.yaml §8-§10),
+# so Path A must navigate back to Connect first. That return-nav has never
+# been characterized on a live device (#618); a prior `pressBack` guess was
+# wrong (it exits CommCare to the Android launcher) and was reverted.
+#
+# This probe captures the return-route from live truth instead of guessing:
+# the caller (app-screenshot-capture) brackets it with mobile_capture_ui_dump
+# so we get the element tree of (a) the CommCare Learn home and (b) wherever
+# the candidate "Log out of CommCare" tile lands. Screenshots are taken inline
+# as a visual cross-check.
+#
+# Pre-state: device on the CommCare Learn-mode home (nsv_home_screen), 4-tile
+# grid: Start / View Job Status / Sync with Server / Log out of CommCare.
+# Post-state: wherever "Log out of CommCare" leads (the thing we're measuring).
+#
+# This is a CALIBRATION recipe — it intentionally only fires on the Path-A
+# (CommCare-home) landing, where the Deliver leg would otherwise fail #618.
+appId: org.commcare.dalvik
+---
+# Confirm we are on the CommCare Learn-mode home (the Path-A landing).
+- assertVisible:
+    id: "${SELECTOR:learn-home-screen}"
+- takeScreenshot: "618probe-00-commcare-learn-home"
+
+# Candidate return-to-Connect route: the "Log out of CommCare" tile. We do
+# NOT yet know whether this returns to Connect's jobs list (the desired
+# Path-A entry to deliver-launch) or fully de-registers the worker — the
+# post-tap dump the caller captures next is exactly that measurement.
+- tapOn:
+    text: "Log out of CommCare"
+- takeScreenshot: "618probe-01-after-logout-tile"
