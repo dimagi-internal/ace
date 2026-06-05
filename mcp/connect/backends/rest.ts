@@ -281,7 +281,14 @@ export class RestBackend implements ConnectClient {
       name: args.name,
       description: args.description,
       short_description: args.short_description,
-      organization: args.target_organization_slug,
+      // The live deployment REJECTS organization=None with
+      // "organization: This field is required" (HTTP 400) — observed on
+      // malaria-rdt/20260604-1604 Phase 4 (jjackson/ace#700). Pre-award there
+      // is no LLO, so default the holding org to the PM org running the program
+      // (organization_slug) rather than sending null. Phase 9 reassigns to the
+      // awarded LLO. When target_organization_slug IS supplied (post-award),
+      // it wins.
+      organization: args.target_organization_slug ?? args.organization_slug,
       start_date: args.start_date,
       end_date: args.end_date,
       total_budget: args.total_budget,

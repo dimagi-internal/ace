@@ -240,6 +240,53 @@ describe('RestBackend.createOpportunity', () => {
     expect((body.learn_app as Record<string, unknown>).cc_app_id).toBe('la');
   });
 
+  it('defaults organization to the PM org (organization_slug) when target_organization_slug is omitted (jjackson/ace#700)', async () => {
+    const captured: CapturedRequest[] = [];
+    const request = makeRequestContext(
+      [{
+        status: 201,
+        body: {
+          id: 2,
+          opportunity_id: 'opp-uuid-2',
+          name: 'Pre-award Opp',
+          description: 'desc',
+          short_description: 'short',
+          organization: 'pm-org',
+          managed: true,
+          program_id: 'prog-uuid',
+          start_date: '2026-05-01',
+          end_date: '2026-12-31',
+          total_budget: 100000,
+          is_test: true,
+          learn_app: { cc_domain: 'd', cc_app_id: 'la', name: 'Learn App', learn_modules: [{ id: 1, slug: 'mod-1', name: 'M1', description: '', time_estimate: 10 }] },
+          deliver_app: { cc_domain: 'd', cc_app_id: 'da', name: 'Deliver App', deliver_units: [{ id: 5, slug: 'du-1', name: 'DU 1' }] },
+          currency: 'USD',
+          country: 'United States of America',
+          active: false,
+        },
+      }],
+      captured,
+    );
+    const backend = new RestBackend({ baseUrl, csrfToken, request });
+    await backend.createOpportunity({
+      organization_slug: 'pm-org',
+      program_id: 'prog-uuid',
+      name: 'Pre-award Opp',
+      short_description: 'short',
+      description: 'desc',
+      // target_organization_slug omitted — pre-award, no LLO selected yet
+      start_date: '2026-05-01',
+      end_date: '2026-12-31',
+      total_budget: 100000,
+      auto_activate: false,
+      learn_app: { hq_server_url: 'https://www.commcarehq.org', api_key: 'k', cc_domain: 'd', cc_app_id: 'la', description: 'Learn', passing_score: 80 },
+      deliver_app: { hq_server_url: 'https://www.commcarehq.org', api_key: 'k', cc_domain: 'd', cc_app_id: 'da' },
+    });
+    const body = captured[0].data as Record<string, unknown>;
+    // Must NOT be null/undefined — the deployment rejects organization=None.
+    expect(body.organization).toBe('pm-org');
+  });
+
   it('activates only when auto_activate:true is passed (POSTs to /activate/ after create)', async () => {
     const captured: CapturedRequest[] = [];
     const request = makeRequestContext(
