@@ -70,7 +70,7 @@ Fill the ace-web `partnership-pitch` video template with the run's produce-phase
    - **Narration variants:** embed ALL THREE angles. For each angle, map its seven grounded beat texts to the skeleton's `by_beat` keys (`hook`, `cycle`, `handoff`, `scene`, `problem`, `product`, `impact`). Respect per-beat word budgets from `prompt_md` (±2 words; going long causes mid-word synthesis cuts). Set `active_angle` to `selected_angle`.
    - **Problem block:** `big` = the cited problem stat from research (e.g. "60%"); `caption` = one sentence describing the problem; `source` = citation string. **Never invent a number** — cite directly from deep-research or mark `[TBD]`.
    - **Impact block:** two impact stats from deep-research, each with `big` + `caption`. Both must be cited; uncited stats get `[TBD] ` prefix.
-   - **Product beats:** populate from `micro-demo/provenance.yaml`. For each clip: `asset` = Drive `file_id`, `caption` = clip `caption`, `is_demo_clip: true`. If no clips exist, write one placeholder beat with `asset: "[TBD] clip file_id"`.
+   - **Product beats:** populate from `micro-demo/provenance.yaml`. For each clip: `asset` = Drive `file_id`, `caption` = clip `caption`, and carry `is_demo_clip` from that clip's provenance entry (do NOT hardcode — a reused library clip may be `false`). If no clips exist, write one placeholder beat with `asset: "[TBD] clip file_id"`.
    - **Scene lower third:** `"<region> · <prospect name>"` or just `"<region>"` if no prospect name.
    - **`[TBD]` discipline (non-negotiable):** any value that cannot be grounded from the available artifacts MUST be written as `[TBD] <what is missing>`. Never invent a stat, name, or fact. After filling, scan the completed spec and count `[TBD]` tokens — if any remain (permitted for unresolvable gaps), report them in the write-back and QA checks. **The skill must NOT proceed past inline QA if a `[TBD]` appears in a narration beat** — narration is the prospect-facing surface; unresolved narration text is a hard block.
 
@@ -134,7 +134,7 @@ Fill the ace-web `partnership-pitch` video template with the run's produce-phase
 
 10. **Save `video_spec.yaml` and `package.yaml` to Drive.**
 
-    Both are machine-parsed YAML files. Use `drive_create_file` with `mimeType: "text/plain"` (NOT `drive_create_doc_from_markdown` — these are not Google Docs). Parent folder = the run folder (`runs/<run-id>/`).
+    Both are machine-parsed YAML files. Use `drive_create_file` (it uploads body as `text/plain` — NOT `drive_create_doc_from_markdown`, which makes a Google Doc that mangles YAML on read-back). Parent folder = the run folder (`runs/<run-id>/`).
 
     `video_spec.yaml` — the filled spec as-POSTed:
     ```yaml
