@@ -53,6 +53,9 @@ const PRODUCER_EXEMPTIONS = new Set<string>([
   'solicitation-management',
   'execution-manager',
   'closeout',
+  // Partnership-video orchestrator: produces prospect.yaml (prospect-level
+  // identity file) but is the orchestrating agent, not a per-opp producer skill.
+  'partnership-video',
   // Placeholder
   'external',
 ]);

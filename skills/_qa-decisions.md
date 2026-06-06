@@ -146,6 +146,17 @@ The shape distinction:
 | `learnings-summary` | **NO QA** | LLM-authored synthesis document. Reads all opp artifacts, drafts a markdown summary, optionally seeds a new PDD for the next cycle. Consumed by humans (closeout review) and optionally by the next cycle's `idea-to-pdd` (which itself is LLM-driven and reads as prose context). Fake-QA heuristic applies. |
 | `cycle-grade` | **NO QA** | Final cycle grade and recommendations document. Consumed by humans for the closeout review. The grade itself is the artifact's quality signal — extracting structural QA over the grade's format adds nothing. The companion `cycle-grade-eval` does the soft-score calibration on the grading consistency. |
 
+### Partnership-video pipeline
+
+| Producer | QA status | QA skill / rationale |
+|---|---|---|
+| `partnership-research` | **has QA** | `partnership-research-qa`. 4 static checks: deep-research exists + non-empty (> 100 chars), fit-memo exists + non-empty, deep-research has a ## Citations section with ≥1 sourced URL, fit-memo names at least one concrete Connect capability. Structural gate: research output is consumed by `partnership-angles` which fills narration slots — a missing or empty file fails silently downstream. |
+| `partnership-angles` | **inline QA** | Angles QA is inline in `partnership-angles/SKILL.md § Process` step 4: the skill verifies all three angles have non-empty title, logline, primary_capability, and at least one grounded citation before writing `angles.yaml`. No structural format a separate `-qa` skill could enforce beyond what the inline loop already catches. |
+| `partnership-microdemo` | **inline QA** | Provenance-manifest check is inline: the skill verifies that `provenance.yaml` has at least one clip entry and that each entry has non-null `source` + `origin` before write-back to run_state.yaml. Tight iteration with the ace-web media library and Nova/canopy mock loop — same class as the Nova-builder inline-QA group. |
+| `partnership-video-build` | **inline QA** | POST-to-ace-web + render-poll loop inherently validates the spec: the ace-web endpoint rejects malformed specs, and the poll loop retries on non-200 responses. Structural spec completeness enforced by the ace-web schema at the boundary. Same pattern as `training-deck-render`. |
+| `partnership-deck-build` | **inline QA** | Slides API render validates the spec at the boundary (rejects bad template refs, missing required fields). Post-render `slides_get` verification of slide count is inline in the skill's SKILL.md § Process. |
+| `partnership-publish` | **NO QA** | Process skill — reads the package.yaml bundle (video.program_url + deck.slides_url must be present, enforced by the skill's precondition check which halts on null keys) and publishes to canopy-web. Binary success/fail; no structural artifact to QA beyond the precondition check already inline. |
+
 ### Eval-self-QA (cross-cutting)
 
 The cross-cutting `verdict-yaml-qa` skill structurally checks any `<producer>-eval_verdict.yaml` written by any `-eval` skill. 7 static checks: YAML parses, schema validates against `lib/verdict-schema.ts § VerdictSchema`, dimension weights sum to 1.0, `overall_score` ≈ weighted mean (with `overall_score_pre_cap` honored when an inflation cap was applied), verdict tier matches score range, `live_state_verified: false` caps at `partial` / 8.5, gate disposition consistent with score-vs-threshold.

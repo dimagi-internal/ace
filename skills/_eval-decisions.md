@@ -144,6 +144,17 @@ Most ACE evals are companion `-eval` skills today. `inline self-eval` is rare bu
 | `learnings-summary` | **has eval** | `learnings-summary-eval`. 5 dimensions: opp_lifecycle_coverage (0.30), recommendation_actionability (0.30), tone_calibration_vs_outcome (0.20 — out-of-chain inflation-detection axis: tone anchored to the observed opp outcome, not cycle-grade's own number), evidence_citation_discipline (0.10), forward_seeding_clarity (0.10). Provisional. |
 | `cycle-grade` | **has eval** | `cycle-grade-eval`. Grades the grade itself — calibration consistency across opps, evidence-grounding, archetype-appropriateness. Meta-eval. |
 
+### Partnership-video pipeline
+
+| Producer | Eval status | Eval skill / rationale |
+|---|---|---|
+| `partnership-research` | **has eval** | `partnership-research-eval`. 5 dimensions: grounding/0.25 (cited facts traceable to research), connect-fit specificity/0.25 (names concrete capability + evidence), factual-brand safety/0.20 (no fabricated stats or invented history), scope completeness/0.20 (covers key prospect dimensions), actionability/0.10 (slots fillable by angles without inference). Provisional — calibrate after Noora+Lafiya runs. |
+| `partnership-angles` | **has eval** | `partnership-angles-eval`. 5 dimensions: grounding/0.30 (each angle's facts traceable to research), narrative distinctness/0.25 (three angles tell meaningfully different stories), capability-tie/0.20 (each leans on a specific Connect capability), persuasiveness/0.15 (clear emotional beat + hero), factual-brand safety/0.10. Provisional. |
+| `partnership-microdemo` | **has eval** | `partnership-microdemo-eval`. 5 dimensions: clip-to-beat alignment/0.25, provenance honesty/0.25 (reuse vs mock declared accurately), mock fidelity/0.20, technical quality/0.15 (clips playable, resolution acceptable), connect-capability visibility/0.15. Provisional. |
+| `partnership-video-build` | **has eval** | `partnership-video-build-eval`. 5 dimensions: spec completeness/0.25, angle-fidelity/0.25 (active variant matches picked angle beats), clip-wiring/0.20, render success/0.20 (program URL + media URL non-null), brand hygiene/0.10. Provisional. |
+| `partnership-deck-build` | **has eval** | `partnership-deck-build-eval`. 5 dimensions: spec completeness/0.25, video-arc alignment/0.25, slide-count plausibility/0.20 (10-12 slides), render success/0.20, brand hygiene/0.10. Provisional. |
+| `partnership-publish` | **NO eval** | Process skill — assembles canopy-web package from already-graded artifacts (video + deck). Binary success/fail. No quality dimension to grade beyond what the upstream eval skills already cover. |
+
 ### Cross-cutting evals (not paired with a single producer)
 
 | Eval skill | Role |
