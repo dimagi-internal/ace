@@ -262,4 +262,4 @@ When `--dry-run` is active:
 
 | Date | Change | Author |
 |------|--------|--------|
-| 2026-06-06 | Initial version. Builds + renders connect-pitch-partnership deck spec. Mirrors training-deck-generate + training-deck-render render atom sequence. Inline QA: spec_parses, slides_created, url_captured, no_tbd_in_titles, slide_count_in_range, arc_mirrored. merge: deep write-back. Phase write-back: phases.deck-build.*. | ACE team |
+| 2026-06-06 | Initial version. Builds + renders connect-pitch-partnership deck spec. Mirrors training-deck-generate + training-deck-render render atom sequence. Inline QA: spec_parses, deck_rendered, url_captured, no_tbd_in_titles, slide_count_in_range, arc_mirrored. merge: deep write-back. Phase write-back: phases.deck-build.*. | ACE team |
