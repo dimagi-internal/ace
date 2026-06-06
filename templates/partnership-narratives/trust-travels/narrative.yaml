@@ -1,0 +1,30 @@
+id: trust-travels
+title: "Trust Travels"
+version: 1
+thesis: a proven model de-risked into a new geography
+emotional_beat: confidence
+hero: the expansion team and funders
+primary_capability: verification/quality + funder-grade reporting
+
+beats:
+  hook:
+    intent: "Open on a proven result in the home geography — earned trust"
+    words: 10
+  cycle:
+    intent: "Show how Learn→Deliver→Verify→Pay carries the same quality bar to a new place"
+    words: 20
+  handoff:
+    intent: "Hand the de-risked expansion to the prospect"
+    words: 8
+  scene:
+    intent: "Bridge two geographies — the proven place and the new one"
+    words: 20
+  problem:
+    intent: "Frame the headline stat as the risk expansion usually carries"
+    words: 25
+  product:
+    intent: "Walk the micro-demo as the verification that makes quality portable"
+    words: 30
+  impact:
+    intent: "Read impact stats as funder-grade proof the model travels"
+    words: 20

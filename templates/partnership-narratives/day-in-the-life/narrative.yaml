@@ -1,0 +1,30 @@
+id: day-in-the-life
+title: "A Day in the Life"
+version: 1
+thesis: the work made visible and easier through one health worker's day
+emotional_beat: intimacy
+hero: a single frontline worker
+primary_capability: the on-the-ground Learn → Deliver → Verify → Pay loop
+
+beats:
+  hook:
+    intent: "Open on one worker's morning — make the viewer care about her, not the platform"
+    words: 10
+  cycle:
+    intent: "Show how Learn→Deliver→Verify→Pay fits into her actual day"
+    words: 20
+  handoff:
+    intent: "Connect her day to the prospect org's mission"
+    words: 8
+  scene:
+    intent: "Her real work in her real place — concrete, not abstract"
+    words: 20
+  problem:
+    intent: "Frame the headline stat through her eyes — what the gap means for the people she serves"
+    words: 25
+  product:
+    intent: "Walk the micro-demo as the tool in HER hands during a visit"
+    words: 30
+  impact:
+    intent: "Her individual effort, multiplied — read the impact stats"
+    words: 20
