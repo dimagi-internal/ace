@@ -225,6 +225,11 @@ CONTENT_GENERATOR_API_KEY=op://AI-Agents/Content Generator API/credential
 # objectIds or placeholder tokens (they're wired to `lib/training-deck-spec.ts`).
 ACE_TRAINING_DECK_TEMPLATE_ID=op://AI-Agents/ACE - Drive Templates/training_deck_template_id
 
+# Partnership pitch-deck template (Google Slides). Optional — falls back
+# to ACE_TRAINING_DECK_TEMPLATE_ID when unset (Phase 1 reuses the same 14
+# stencils). Set to a dedicated deck id once pitch-specific stencils ship.
+ACE_PARTNERSHIP_DECK_TEMPLATE_ID=op://AI-Agents/ACE - Drive Templates/partnership_deck_template_id
+
 # Work-order template (Google Doc). Bootstrap: `npx tsx scripts/bootstrap-work-order-template.ts`.
 # See playbook/integrations/work-order-template.md for token contract.
 WORK_ORDER_TEMPLATE_ID=op://AI-Agents/ACE - Drive Templates/work_order_template_id

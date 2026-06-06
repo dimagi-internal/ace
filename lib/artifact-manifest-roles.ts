@@ -26,6 +26,7 @@
 
 /** Phase enum → folder slug used in Drive paths under runs/<run-id>/. */
 export const PHASE_FOLDERS = {
+  // ── ACE Connect-opp pipeline (Phases 1–10) ────────────────────────
   'design': '1-design',
   'scenarios-and-acceptance': '2-scenarios',
   'commcare': '3-commcare',
@@ -36,6 +37,18 @@ export const PHASE_FOLDERS = {
   'solicitation-management': '8-solicitation-management',
   'execution-management': '9-execution-manager',
   'closeout': '10-closeout',
+  // ── Partnership-video pipeline (separate root: ACE/partnerships/<slug>/) ─
+  // Folder numbers mirror the pipeline step order within the partnership run.
+  // partnership-research and partnership-angles share 2-research/ (angles eval
+  // lands there alongside the research QA + eval artifacts).
+  // partnership-publish has no phase-folder artifact (only run-root writes),
+  // so it is absent from this map — the lint's "phase tag matches folder" check
+  // skips phases whose folder is undefined.
+  'partnership-research': '2-research',
+  'partnership-angles': '2-research',
+  'partnership-microdemo': '7-microdemo',
+  'partnership-video-build': '8-video-build',
+  'partnership-deck-build': '8-deck-build',
 } as const;
 
 export type PhaseFolder = typeof PHASE_FOLDERS[keyof typeof PHASE_FOLDERS];

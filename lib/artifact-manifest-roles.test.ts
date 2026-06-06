@@ -2,8 +2,9 @@ import { describe, it, expect } from 'vitest';
 import { PHASE_FOLDERS, ROLE_VOCAB, baseRole } from './artifact-manifest-roles.js';
 
 describe('PHASE_FOLDERS', () => {
-  it('maps all 10 phase enum values to N-<phase> folder slugs', () => {
+  it('maps all phase enum values to N-<phase> folder slugs', () => {
     expect(PHASE_FOLDERS).toEqual({
+      // ACE Connect-opp pipeline (Phases 1–10)
       'design': '1-design',
       'scenarios-and-acceptance': '2-scenarios',
       'commcare': '3-commcare',
@@ -14,13 +15,30 @@ describe('PHASE_FOLDERS', () => {
       'solicitation-management': '8-solicitation-management',
       'execution-management': '9-execution-manager',
       'closeout': '10-closeout',
+      // Partnership-video pipeline (separate root; partnership-research and
+      // partnership-angles share 2-research/; partnership-publish is absent
+      // because it only writes to run-root paths)
+      'partnership-research': '2-research',
+      'partnership-angles': '2-research',
+      'partnership-microdemo': '7-microdemo',
+      'partnership-video-build': '8-video-build',
+      'partnership-deck-build': '8-deck-build',
     });
   });
 
-  it('folder slugs sort natural-ascending in phase order', () => {
+  it('ACE Connect-opp folder slugs sort natural-ascending in phase order', () => {
     // Natural sort: leading numeric prefix first, then the rest of the slug.
     // (Lex sort would put '10-closeout' between '1-design' and '2-scenarios'.)
-    const slugs = Object.values(PHASE_FOLDERS);
+    // Only asserts the 10 ACE Connect-opp pipeline entries: partnership-video
+    // phases are appended at the end of PHASE_FOLDERS with their own numbering
+    // convention (within that pipeline's step order, not the opp pipeline's),
+    // so they are excluded from this ordering check.
+    const ACE_OPP_PHASES = [
+      'design', 'scenarios-and-acceptance', 'commcare', 'connect', 'ocs',
+      'qa-and-training', 'synthetic-data-and-workflows', 'solicitation-management',
+      'execution-management', 'closeout',
+    ] as const;
+    const slugs = ACE_OPP_PHASES.map((p) => PHASE_FOLDERS[p]);
     const extract = (s: string) => {
       const m = s.match(/^(\d+)-(.*)$/);
       return m ? [parseInt(m[1], 10), m[2]] as const : [0, s] as const;

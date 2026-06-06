@@ -1,0 +1,17 @@
+id: connect-pitch-partnership
+name: "Connect Partnership Pitch"
+description: >
+  ~10-12 slide pitch deck for a prospect organization not yet on Connect.
+  Mirrors the partnership video's arc and adds the business case + the ask.
+archetype: partnership-pitch
+audience: prospect
+modules:
+  - opening
+  - their-world
+  - the-thesis
+  - how-connect-works
+  - proof
+  - business-case
+  - the-ask
+expected_slide_count: "10-12"
+expected_duration_minutes: "10-15"

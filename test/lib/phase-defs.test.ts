@@ -28,11 +28,19 @@ describe('PHASE_DEFS canonical phase identity (#637)', () => {
     );
   });
 
-  it('keys, agentNames, and folders are each unique', () => {
-    for (const field of ['key', 'agentName', 'folder'] as const) {
+  it('keys and agentNames are each unique; ACE-opp folders are unique (partnership phases may share)', () => {
+    // keys and agentNames must be globally unique — no two phases can have the
+    // same canonical identifier or agent-dispatch name.
+    for (const field of ['key', 'agentName'] as const) {
       const vals = PHASE_DEFS.map((p) => p[field]);
       expect(new Set(vals).size, `${field} must be unique`).toBe(vals.length);
     }
+    // Folders are unique within the ACE Connect-opp pipeline (ordinals 1–10).
+    // The partnership-video pipeline (ordinals 11+) intentionally shares
+    // '2-research/' between partnership-research and partnership-angles — both
+    // phases write QA/eval artifacts into the same research folder.
+    const oppPhaseFolders = PHASE_DEFS.filter((p) => p.ordinal <= 10).map((p) => p.folder);
+    expect(new Set(oppPhaseFolders).size, 'ACE-opp phase folders must be unique').toBe(oppPhaseFolders.length);
   });
 
   it('normalizePhaseKey resolves BOTH key-spaces and rejects unknowns', () => {

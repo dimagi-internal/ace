@@ -49,6 +49,15 @@ ${slidesYaml}
 }
 
 describe('parseTrainingSpec', () => {
+  it("accepts the partnership-pitch archetype and prospect audience", () => {
+    const yaml = minimalYaml()
+      .replace("archetype: atomic-visit", "archetype: partnership-pitch")
+      .replace("audience: flw", "audience: prospect");
+    const spec = parseTrainingSpec(yaml);
+    expect(spec.archetype).toBe("partnership-pitch");
+    expect(spec.voice.audience).toBe("prospect");
+  });
+
   it('parses a minimal valid YAML spec', () => {
     const spec = parseTrainingSpec(minimalYaml());
     expect(spec.slug).toBe('test-opp');

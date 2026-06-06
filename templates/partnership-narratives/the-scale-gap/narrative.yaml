@@ -1,0 +1,30 @@
+id: the-scale-gap
+title: "The Scale Gap"
+version: 1
+thesis: a proven model reaching ten times the people
+emotional_beat: ambition
+hero: the program's leadership
+primary_capability: rapid program stand-up + pay-for-verified-delivery at scale
+
+beats:
+  hook:
+    intent: "Name the gap between what the program proves today and the population still unreached"
+    words: 10
+  cycle:
+    intent: "Show how Learn→Deliver→Verify→Pay scales without scaling overhead"
+    words: 20
+  handoff:
+    intent: "Hand the scale ambition to the prospect's leadership"
+    words: 8
+  scene:
+    intent: "Show breadth — many workers, wide geography"
+    words: 20
+  problem:
+    intent: "Frame the headline reach stat — the size of the unmet need"
+    words: 25
+  product:
+    intent: "Walk the micro-demo as the engine that stands a program up fast"
+    words: 30
+  impact:
+    intent: "Read impact stats as proof the model holds at scale"
+    words: 20

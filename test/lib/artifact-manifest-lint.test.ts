@@ -22,20 +22,33 @@ import { PHASE_FOLDERS, ROLE_VOCAB, baseRole } from '../../lib/artifact-manifest
 const SKILLS_DIR = path.resolve(import.meta.dirname, '../../skills');
 const AGENTS_DIR = path.resolve(import.meta.dirname, '../../agents');
 
-// Opp-level paths: live at ACE/<opp>/, NOT under runs/<run-id>/.
+// Opp-level paths: live at ACE/<opp>/ (Connect-opp) or
+// ACE/partnerships/<slug>/ (partnership-video), NOT under runs/<run-id>/.
 const OPP_LEVEL_EXEMPT = new Set([
+  // Connect-opp pipeline
   'inputs/',
   'opp.yaml',
   'open-questions.md',
   'eval-calibration/known-issues.md',
+  // Partnership-video pipeline (prospect-level, live across runs)
+  'prospect.yaml',
+  'research/deep-research.md',
+  'research/connect-fit.md',
 ]);
 
 // Run-level paths: live at runs/<run-id>/, but NOT under any phase folder.
 const RUN_LEVEL_EXEMPT = new Set([
+  // Connect-opp pipeline
   'run_state.yaml',
   'inputs-manifest.yaml', // frozen pointer-set captured at run start (orchestrator-emitted)
   'decisions.yaml',       // per-run structured decisions log (rows accumulate across all phases)
   'decisions.gdoc',       // prose Google Doc rendering of decisions.yaml (one stable URL per run)
+  // Partnership-video pipeline (run-root artifacts, not under a phase folder)
+  'angles.yaml',          // three grounded narrative angles — propose-phase terminal artifact
+  'video_spec.yaml',      // filled ace-web spec as POSTed
+  'deck_spec.yaml',       // filled TrainingDeckSpec YAML
+  'package.yaml',         // final output URL bundle (video + deck + publish)
+  'micro-demo/',          // micro-demo clip bundle (directory; provenance.yaml + clip files)
 ]);
 
 // Structural sub-folders allowed as the SECOND segment under a phase folder
@@ -146,8 +159,11 @@ describe('artifact manifest lint', () => {
     const errors: string[] = [];
     for (const a of ARTIFACT_MANIFEST) {
       if (OPP_LEVEL_EXEMPT.has(a.path) || RUN_LEVEL_EXEMPT.has(a.path)) continue;
-      const expectedFolder = PHASE_FOLDERS[a.phase];
-      if (!expectedFolder) continue; // shouldn't happen; Phase enum is exhaustive
+      // PHASE_FOLDERS is a partial map over Phase: some phases (e.g.
+      // partnership-publish) write only run-root artifacts and have no phase
+      // folder, so the lookup can legitimately return undefined.
+      const expectedFolder = (PHASE_FOLDERS as Record<string, string | undefined>)[a.phase];
+      if (!expectedFolder) continue;
       if (!a.path.startsWith(expectedFolder + '/')) {
         errors.push(`${a.path} tagged ${a.phase} but path doesn't start with ${expectedFolder}/`);
       }
@@ -161,9 +177,10 @@ describe('artifact manifest lint', () => {
     expect(dupes).toEqual([]);
   });
 
-  it('all ten phases represented', () => {
+  it('all expected phases represented', () => {
     const phases = new Set(ARTIFACT_MANIFEST.map((a) => a.phase));
-    expect(phases).toEqual(new Set([
+    // The 10 ACE Connect-opp pipeline phases must all be present.
+    const corePhases = [
       'design',
       'scenarios-and-acceptance',
       'commcare',
@@ -174,7 +191,24 @@ describe('artifact manifest lint', () => {
       'solicitation-management',
       'execution-management',
       'closeout',
-    ]));
+    ];
+    for (const p of corePhases) {
+      expect(phases, `missing core phase '${p}'`).toContain(p);
+    }
+    // The partnership-video pipeline phases that produce registered artifacts
+    // must all be present. partnership-publish is intentionally absent: it only
+    // writes to existing run-root files (package.yaml) and run_state.yaml — no
+    // new artifact unique to that phase.
+    const partnershipPhases = [
+      'partnership-research',
+      'partnership-angles',
+      'partnership-microdemo',
+      'partnership-video-build',
+      'partnership-deck-build',
+    ];
+    for (const p of partnershipPhases) {
+      expect(phases, `missing partnership phase '${p}'`).toContain(p);
+    }
   });
 
   it('every artifact has at least a producedBy', () => {

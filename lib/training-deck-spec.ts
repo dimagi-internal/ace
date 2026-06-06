@@ -207,7 +207,7 @@ export const TrainingDeckSpecSchema = z.object({
   slug: z.string(),
   name: z.string(),
   program: z.string(),
-  archetype: z.enum(['atomic-visit', 'focus-group', 'multi-stage']),
+  archetype: z.enum(['atomic-visit', 'focus-group', 'multi-stage', 'partnership-pitch']),
   template_id: z.string(),
   generated_at: z.string(),
   source: z.object({
@@ -219,7 +219,7 @@ export const TrainingDeckSpecSchema = z.object({
     opp: z.record(z.string(), z.string()).optional(),
   }),
   voice: z.object({
-    audience: z.enum(['flw', 'llo', 'mixed']),
+    audience: z.enum(['flw', 'llo', 'mixed', 'prospect']),
     estimated_duration_minutes: z.number(),
     language: z.string(),
   }),

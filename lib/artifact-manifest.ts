@@ -43,6 +43,7 @@
 // ── Types ──────────────────────────────────────────────────────────
 
 export type Phase =
+  // ── ACE Connect-opp pipeline (Phases 1–10) ──────────────────────────────
   | 'design'
   | 'scenarios-and-acceptance'
   | 'commcare'
@@ -52,7 +53,14 @@ export type Phase =
   | 'synthetic-data-and-workflows'
   | 'solicitation-management'
   | 'execution-management'
-  | 'closeout';
+  | 'closeout'
+  // ── Partnership-video pipeline (separate root: ACE/partnerships/<slug>/) ─
+  | 'partnership-research'
+  | 'partnership-angles'
+  | 'partnership-microdemo'
+  | 'partnership-video-build'
+  | 'partnership-deck-build'
+  | 'partnership-publish';
 
 export interface ArtifactEntry {
   /** Relative path under ACE/<opp-name>/, e.g. "1-design/idea-to-pdd.md" */
@@ -110,6 +118,7 @@ export interface PhaseDef {
 }
 
 export const PHASE_DEFS: readonly PhaseDef[] = [
+  // ── ACE Connect-opp pipeline (Phases 1–10) ──────────────────────────────
   { key: 'design',                       agentName: 'idea-to-design',               ordinal: 1,  folder: '1-design' },
   { key: 'scenarios-and-acceptance',     agentName: 'scenarios-and-acceptance',     ordinal: 2,  folder: '2-scenarios' },
   { key: 'commcare',                     agentName: 'commcare-setup',               ordinal: 3,  folder: '3-commcare' },
@@ -120,6 +129,22 @@ export const PHASE_DEFS: readonly PhaseDef[] = [
   { key: 'solicitation-management',      agentName: 'solicitation-management',      ordinal: 8,  folder: '8-solicitation-management' },
   { key: 'execution-management',         agentName: 'execution-manager',            ordinal: 9,  folder: '9-execution-manager' },
   { key: 'closeout',                     agentName: 'closeout',                     ordinal: 10, folder: '10-closeout' },
+  // ── Partnership-video pipeline (separate root: ACE/partnerships/<slug>/) ─
+  // Ordinals 11–16 continue the contiguous sequence so the phase-defs test
+  // (ordinals are 1..N) still passes. The partnership-video.md agent has no
+  // phase_ordinal so it is never a PHASE_AGENT in the coherence tests (those
+  // check agent frontmatter, not PHASE_DEFS). agentName = key here (each phase
+  // is its own canonical identifier) so the uniqueness + normalizePhaseKey
+  // tests pass unchanged, and the "5 phases where agentName != key" set stays
+  // exactly the historical 5 ACE-opp phases.
+  // partnership-research and partnership-angles share folder '2-research/'.
+  // partnership-publish has only run-root writes so its folder is vestigial.
+  { key: 'partnership-research',    agentName: 'partnership-research',    ordinal: 11, folder: '2-research' },
+  { key: 'partnership-angles',      agentName: 'partnership-angles',      ordinal: 12, folder: '2-research' },
+  { key: 'partnership-microdemo',   agentName: 'partnership-microdemo',   ordinal: 13, folder: '7-microdemo' },
+  { key: 'partnership-video-build', agentName: 'partnership-video-build', ordinal: 14, folder: '8-video-build' },
+  { key: 'partnership-deck-build',  agentName: 'partnership-deck-build',  ordinal: 15, folder: '8-deck-build' },
+  { key: 'partnership-publish',     agentName: 'partnership-publish',     ordinal: 16, folder: '9-publish' },
 ] as const;
 
 // ── Phase ordering (derived — do not hand-edit; edit PHASE_DEFS) ─────
@@ -1290,6 +1315,146 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     phase: 'closeout',
     required: false,
     description: 'Machine-readable run-level verdict from opp-eval --monitor runs; latest-wins file (history lives in 10-closeout/opp-eval/trend.md)',
+  },
+
+  // ── Partnership-video pipeline ─────────────────────────────────
+  //
+  // Lives under a DIFFERENT Drive root: ACE/partnerships/<slug>/.
+  // Per-prospect (prospect-level) artifacts parallel opp-level ones.
+  // Per-run artifacts live under ACE/partnerships/<slug>/runs/<run-id>/.
+  //
+  // Prospect-level paths are added to OPP_LEVEL_EXEMPT in the lint test.
+  // Run-root paths (angles.yaml, video_spec.yaml, etc.) are added to
+  // RUN_LEVEL_EXEMPT in the lint test.  Phase-folder paths (2-research/,
+  // 7-microdemo/, 8-video-build/, 8-deck-build/) are registered in
+  // PHASE_FOLDERS in lib/artifact-manifest-roles.ts and pass the standard
+  // lint shape checks.
+
+  // ── Prospect-level (ACE/partnerships/<slug>/) ──────────────────
+
+  {
+    path: 'prospect.yaml',
+    producedBy: 'partnership-video',
+    consumedBy: ['partnership-research', 'partnership-angles', 'partnership-microdemo', 'partnership-publish'],
+    phase: 'partnership-research',
+    required: true,
+    description: 'Prospect identity: name, slug, current_program, target_geography, sector, contact, branding refs. Written once by the partnership-video orchestrator from the operator prompt; reused across every run of the same prospect. Lives at ACE/partnerships/<slug>/prospect.yaml (prospect-level, not per-run).',
+  },
+  {
+    path: 'research/deep-research.md',
+    producedBy: 'partnership-research',
+    consumedBy: ['partnership-research-qa', 'partnership-research-eval', 'partnership-angles'],
+    phase: 'partnership-research',
+    required: true,
+    description: 'Cited org profile from deep web research: what the prospect org does today, their scale, model, geography, and the expansion thesis. Includes a ## Citations section with sourced URLs. Lives at ACE/partnerships/<slug>/research/deep-research.md (prospect-level — survives across runs; re-runs overwrite).',
+  },
+  {
+    path: 'research/connect-fit.md',
+    producedBy: 'partnership-research',
+    consumedBy: ['partnership-research-qa', 'partnership-research-eval', 'partnership-angles'],
+    phase: 'partnership-research',
+    required: true,
+    description: 'Connect/Dimagi capability-fit memo: what Connect specifically unlocks for this org in the target geography, cross-referenced against ACE PDDs, case studies, and the existing Connect feature set. Names at least one concrete Connect capability (Learn, Deliver, payment, verified delivery, etc.). Lives at ACE/partnerships/<slug>/research/connect-fit.md (prospect-level).',
+  },
+
+  // ── Per-run root (ACE/partnerships/<slug>/runs/<run-id>/) ───────
+
+  {
+    path: 'angles.yaml',
+    producedBy: 'partnership-angles',
+    consumedBy: ['partnership-angles-eval', 'partnership-microdemo', 'partnership-video-build', 'partnership-deck-build', 'partnership-publish'],
+    phase: 'partnership-angles',
+    required: true,
+    description: 'Three grounded narrative angles: each entry has angle_id, title, logline, hero/POV, primary_capability, emotional_beat, and ordered beats with filled narration slots grounded in research facts. Terminal artifact of the propose phase — the human picks one angle before production begins. selected_angle is written to run_state.yaml phases.angles.products.selected_angle.',
+  },
+  {
+    path: 'video_spec.yaml',
+    producedBy: 'partnership-video-build',
+    consumedBy: ['partnership-video-build-eval', 'partnership-publish'],
+    phase: 'partnership-video-build',
+    required: true,
+    description: 'Filled ace-web partnership-pitch spec as POSTed: prospect branding block, all 3 narration variants (active = picked angle), product beats with clip references. Machine-parsed YAML written via drive_create_file.',
+  },
+  {
+    path: 'deck_spec.yaml',
+    producedBy: 'partnership-deck-build',
+    consumedBy: ['partnership-deck-build-eval', 'partnership-publish'],
+    phase: 'partnership-deck-build',
+    required: true,
+    description: 'Filled TrainingDeckSpec YAML for the pitch deck (10-12 slides mirroring the video arc: cover, their world, expansion thesis, how Connect works, micro-demo proof, business case, ask). Machine-parsed; rendered to Google Slides by partnership-deck-build.',
+  },
+  {
+    path: 'package.yaml',
+    producedBy: 'partnership-video-build',
+    consumedBy: ['partnership-deck-build', 'partnership-publish', 'partnership-video-build-eval', 'partnership-deck-build-eval'],
+    phase: 'partnership-video-build',
+    required: true,
+    description: 'Final output URL bundle, assembled incrementally: partnership-video-build writes video.program_url + video.media_url; partnership-deck-build merges deck.slides_url + deck.presentation_id + deck.slide_count; partnership-publish merges canopy_web.package_url + canopy_web.share_url + canopy_web.published_at. Human-review gate fires before any external send.',
+  },
+  {
+    path: 'micro-demo/',
+    producedBy: 'partnership-microdemo',
+    consumedBy: ['partnership-microdemo-eval', 'partnership-video-build'],
+    phase: 'partnership-microdemo',
+    required: true,
+    description: 'Micro-demo clip bundle: provenance.yaml (machine-parsed clip manifest, one entry per clip with source, origin, caption, is_demo_clip) plus the clip files. Reuse-first: each clip is either sourced from the ace-web media library (source: library) or mocked via Nova autobuild + canopy walkthrough (source: mock). provenance.yaml drives the ace-web spec video build in the next phase.',
+  },
+
+  // ── Phase-folder artifacts (2-research/, 7-microdemo/, 8-video-build/, 8-deck-build/) ─
+
+  {
+    path: '2-research/partnership-research-qa_result.yaml',
+    producedBy: 'partnership-research-qa',
+    role: 'qa-result',
+    consumedBy: ['partnership-research-eval'],
+    phase: 'partnership-research',
+    required: false,
+    description: 'Structural QA result for partnership-research: 4 checks (deep-research exists + non-empty, fit-memo exists + non-empty, deep-research has citations section, fit-memo names a concrete Connect capability). Binary pass/fail per skills/_qa-template.md schema. Gates partnership-research-eval — eval writes verdict: incomplete if QA fails irrecoverably.',
+  },
+  {
+    path: '2-research/partnership-research-eval_verdict.yaml',
+    producedBy: 'partnership-research-eval',
+    role: 'verdict',
+    consumedBy: [],
+    phase: 'partnership-research',
+    required: true,
+    description: 'LLM-as-Judge eval verdict for partnership-research: grounding (citations traceable), Connect-fit specificity (names concrete capability + evidence), factual/brand safety (no fabricated stats or invented history), scope completeness (covers all key prospect dimensions), and actionability (slots fillable by angles skill without inference). Shape matches skills/README.md § QA vs Eval.',
+  },
+  {
+    path: '2-research/partnership-angles-eval_verdict.yaml',
+    producedBy: 'partnership-angles-eval',
+    role: 'verdict',
+    consumedBy: [],
+    phase: 'partnership-angles',
+    required: true,
+    description: 'LLM-as-Judge eval verdict for partnership-angles: grounding (each angle\'s cited facts traceable to research), narrative distinctness (three angles tell meaningfully different stories), capability-tie (each angle leans on a specific Connect capability), persuasiveness (each angle has a clear emotional beat + hero), and factual/brand safety (no fabricated backstory). Shape matches skills/README.md § QA vs Eval.',
+  },
+  {
+    path: '7-microdemo/partnership-microdemo-eval_verdict.yaml',
+    producedBy: 'partnership-microdemo-eval',
+    role: 'verdict',
+    consumedBy: [],
+    phase: 'partnership-microdemo',
+    required: true,
+    description: 'LLM-as-Judge eval verdict for partnership-microdemo: clip-to-beat alignment (each clip matches its product beat intent), provenance honesty (reuse vs mock declared accurately), mock fidelity (mocked clips plausibly represent the capability), technical quality (clips playable, resolution acceptable), and connect-capability visibility (the primary capability is legible in the demo). Shape matches skills/README.md § QA vs Eval.',
+  },
+  {
+    path: '8-video-build/partnership-video-build-eval_verdict.yaml',
+    producedBy: 'partnership-video-build-eval',
+    role: 'verdict',
+    consumedBy: [],
+    phase: 'partnership-video-build',
+    required: true,
+    description: 'LLM-as-Judge eval verdict for partnership-video-build: spec completeness (all required ace-web fields populated), angle-fidelity (active variant matches picked angle beats), clip-wiring (every product beat has a resolved clip reference), render success (program URL and media URL non-null), and brand hygiene (prospect name/logo used, Dimagi chrome preserved). Shape matches skills/README.md § QA vs Eval.',
+  },
+  {
+    path: '8-deck-build/partnership-deck-build-eval_verdict.yaml',
+    producedBy: 'partnership-deck-build-eval',
+    role: 'verdict',
+    consumedBy: [],
+    phase: 'partnership-deck-build',
+    required: true,
+    description: 'LLM-as-Judge eval verdict for partnership-deck-build: spec completeness (all required TrainingDeckSpec fields populated), video-arc alignment (deck beats mirror the chosen video angle), slide-count plausibility (10-12 slides), render success (slides_url non-null), and brand hygiene. Shape matches skills/README.md § QA vs Eval.',
   },
 ] as const;
 
