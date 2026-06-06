@@ -372,6 +372,13 @@ server.tool('connect_create_payment_units',
   {
     organization_slug: z.string(),
     opportunity_id: z.string(),
+    total_budget: z.coerce.number().int().min(0).optional().describe(
+      "The opportunity's total_budget (whole-currency-unit integer — the SAME value " +
+      'passed to connect_create_opportunity, NOT cents). When supplied, the server enforces ' +
+      'total_budget >= Σ(max_total × (amount + org_amount)) (number_of_users >= 1) over this ' +
+      'request BEFORE creating any PU, rejecting with opportunity_underfunded otherwise. ' +
+      'ALWAYS pass it — this is the code-enforced funds-≥1-FLW guard (jjackson/ace#729).',
+    ),
     payment_units: z.array(PaymentUnitItemZ).min(1).describe(
       'Atomic batch — server validates DU assignments across the whole list ' +
       'and rejects the entire request if any unit is invalid.',
@@ -384,6 +391,10 @@ server.tool('connect_create_payment_unit',
   {
     organization_slug: z.string(),
     opportunity_id: z.string(),
+    total_budget: z.coerce.number().int().min(0).optional().describe(
+      "The opportunity's total_budget (whole-currency-unit integer, NOT cents). ALWAYS pass it: " +
+      'the server enforces number_of_users >= 1 and rejects an underfunded opp (jjackson/ace#729).',
+    ),
     name: z.string().max(255),
     description: z.string().optional(),
     amount: z.coerce.number().int().min(0),

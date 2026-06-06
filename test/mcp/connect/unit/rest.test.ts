@@ -456,6 +456,79 @@ describe('RestBackend.createPaymentUnits', () => {
     const body = captured[0].data as { payment_units: unknown[] };
     expect(body.payment_units).toHaveLength(1);
   });
+
+  it('rejects an underfunded opp BEFORE POSTing when total_budget is supplied (jjackson/ace#729)', async () => {
+    const captured: CapturedRequest[] = [];
+    // No response queued — if the guard fails to short-circuit, the POST would
+    // throw a different "no response" error, so reaching the network is itself a failure.
+    const request = makeRequestContext([], captured);
+    const backend = new RestBackend({ baseUrl, csrfToken, request });
+    // The exact bednet-spot-check/20260606-2013 misconfig: 50 / (10 × (50+50)) = 0.05.
+    await expect(
+      backend.createPaymentUnits({
+        organization_slug: 'pm-org',
+        opportunity_id: 'opp-uuid',
+        total_budget: 50,
+        payment_units: [{ name: 'Household Visit', amount: 50, org_amount: 50, max_total: 10, max_daily: 5 }],
+      }),
+    ).rejects.toMatchObject({ name: 'OpportunityUnderfundedError' });
+    expect(captured).toHaveLength(0); // never hit the network
+  });
+
+  it('proceeds to POST when total_budget funds ≥1 user', async () => {
+    const captured: CapturedRequest[] = [];
+    const request = makeRequestContext(
+      [{
+        status: 201,
+        body: {
+          payment_units: [{
+            id: 9, name: 'Visit', description: '', amount: 1, org_amount: 2,
+            max_total: 50, max_daily: 10, required_deliver_units: [], optional_deliver_units: [],
+            start_date: null, end_date: null,
+          }],
+        },
+      }],
+      captured,
+    );
+    const backend = new RestBackend({ baseUrl, csrfToken, request });
+    // 450 / (50 × (1+2)) = 3 users → fine.
+    const out = await backend.createPaymentUnits({
+      organization_slug: 'pm-org',
+      opportunity_id: 'opp-uuid',
+      total_budget: 450,
+      payment_units: [{ name: 'Visit', amount: 1, org_amount: 2, max_total: 50, max_daily: 10 }],
+    });
+    expect(out.payment_units[0].id).toBe(9);
+    expect(captured).toHaveLength(1);
+    // total_budget is a guard-only arg — it must NOT be forwarded in the POST body.
+    expect((captured[0].data as Record<string, unknown>).total_budget).toBeUndefined();
+  });
+
+  it('skips the guard when total_budget is omitted (back-compat)', async () => {
+    const captured: CapturedRequest[] = [];
+    const request = makeRequestContext(
+      [{
+        status: 201,
+        body: {
+          payment_units: [{
+            id: 11, name: 'Visit', description: '', amount: 50, org_amount: 50,
+            max_total: 10, max_daily: 5, required_deliver_units: [], optional_deliver_units: [],
+            start_date: null, end_date: null,
+          }],
+        },
+      }],
+      captured,
+    );
+    const backend = new RestBackend({ baseUrl, csrfToken, request });
+    // Same underfunded shape, but no total_budget → no guard → POST proceeds.
+    const out = await backend.createPaymentUnits({
+      organization_slug: 'pm-org',
+      opportunity_id: 'opp-uuid',
+      payment_units: [{ name: 'Visit', amount: 50, org_amount: 50, max_total: 10, max_daily: 5 }],
+    });
+    expect(out.payment_units[0].id).toBe(11);
+    expect(captured).toHaveLength(1);
+  });
 });
 
 describe('RestBackend.activateOpportunity', () => {

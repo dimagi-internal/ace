@@ -316,7 +316,20 @@ alone makes the artifact land outside `4-connect` and fail
 6. **Configure payment units** via `connect_create_payment_units` (plural,
    atomic batch — the new automation API takes a list). Build one entry
    per unit in the PDD's payment plan; the entire request is rejected if
-   any unit is invalid. Per-unit fields:
+   any unit is invalid.
+
+   **ALWAYS pass `total_budget`** (the same whole-unit integer you set on
+   the opportunity in Step 4) as a top-level arg to
+   `connect_create_payment_units` / `connect_create_payment_unit`. The MCP
+   uses it to enforce the funds-≥1-FLW guard **in code** — it computes
+   `number_of_users = total_budget / Σ(max_total × (amount + org_amount))`
+   over the integers in the request and **rejects with `opportunity_underfunded`
+   BEFORE creating any PU** when `< 1` (jjackson/ace#729). This is the
+   authoritative guard; it cannot be fooled by a dollars-vs-cents mix the way
+   the old hand-computed check could. If you get `opportunity_underfunded`,
+   the opp is genuinely unclaimable — raise `total_budget` (and the program
+   budget), lower `max_total`, or fix the `amount` unit; do NOT retry
+   unchanged. Per-unit fields:
    - `name`: descriptive (e.g. `"Per verified visit"`)
    - `description`: payment criteria
    - `amount`: per-unit FLW pay from PDD. **MUST be a non-negative
@@ -341,6 +354,15 @@ alone makes the artifact land outside `4-connect` and fail
        visit" and made a `$100` program budget fund 0.008 users.
      - Never silently truncate (`$1.50` → `1`) — that's where the
        prior `turmeric-20260503` run produced a malformed PU.
+     - **Sub-\$1 rates round UP to the \$1 minimum, never to cents.** A
+       PDD smoke rate like `$0.50` is NOT representable in whole USD —
+       use `1` (the minimum payable whole unit) and log an `[INFO]`. Do
+       NOT reach for cents (`50`) to preserve the half-dollar: Connect
+       reads `50` as **$50/visit**, which is the exact mix that shipped
+       an unclaimable opp on `bednet-spot-check/20260606-2013`
+       (`amount=50, total_budget=50` → `number_of_users=0.05`). If the
+       PDD genuinely needs sub-dollar economics, that's a PDD/program
+       issue to raise, not a cents workaround.
    - `org_amount`: per-unit LLO pay — **REQUIRED for managed opps**.
      Same WHOLE-currency-unit integer constraint as `amount` (NOT cents).
      (Note: commcare-connect commit
@@ -401,45 +423,31 @@ alone makes the artifact land outside `4-connect` and fail
    malformation at the source converts a multi-phase cascade into a
    single-skill halt.
 
-   **Budget-funds-≥1-FLW guard (mandatory, class-level preventer).**
-   After the opportunity (Step 4) AND its payment units (this step) are
-   created and read back, compute from the **created** payment units:
-
-   ```
-   min_budget_for_one_user = Σ over created PUs of (pu.max_total × (pu.amount + pu.org_amount))
-   number_of_users        = opp.total_budget / min_budget_for_one_user
-   ```
-
-   All four operands are integers in the same currency unit (no cents —
-   see `total_budget` in Step 4 and `commcare_connect/opportunity/models.py`),
-   so the comparison is unit-consistent. **Assert
-   `opp.total_budget ≥ min_budget_for_one_user`** (i.e. `number_of_users ≥ 1`).
-
-   If the assertion FAILS, write a `[BLOCKER]` to
-   `comms-log/observations.md`, set `phases.connect-setup.status: error` in
-   the current run's `run_state.yaml`, and **HALT** — do NOT proceed to
-   Step 6.5 or hand off to Phase 6 with an unclaimable opp. The remediation
-   message must read:
-
-   > opp `total_budget` $X funds <1 FLW at the configured payment units
-   > (need ≥ $Y = Σ max_total×(amount+org_amount)); raise `total_budget` /
-   > the program budget, or lower `max_total`.
-
-   …substituting the live `$X` (= `opp.total_budget`) and `$Y`
-   (= `min_budget_for_one_user`). Cite the commcare-connect formula
+   **Budget-funds-≥1-FLW guard — now enforced in MCP code (jjackson/ace#729).**
+   You do NOT hand-compute this guard. When you pass `total_budget` to
+   `connect_create_payment_units` (Step 6), the connect MCP computes
    `number_of_users = total_budget / Σ(max_total × (amount + org_amount))`
-   (`Opportunity.number_of_users`) and that a sub-1 value means
-   `create_claim_limits` allocates fewer than `max_total` visit slots, so the
-   FLW can't get a full claim allotment. **This is the silent root behind the
-   Phase-6 Deliver "Unable to claim" / no-claim class** (the
-   FLW-can't-claim symptom): the bednet smoke opp shipped with
-   `total_budget=100` and a PU `max_total=50, amount=1, org_amount=1.5`
-   (→ rounded `2`), giving `number_of_users = 100 / (50×(1+2)) = 0.67 < 1`.
-   This guard makes that misconfiguration structurally impossible to ship.
-   It is the verify-after-create complement to the Step 4 `total_budget`
-   floor — the floor sizes it right going in; this guard catches any drift
-   (rounding of `amount`, an operator override, a PU `max_total` change)
-   after the real values are stored.
+   over the request integers and **rejects with `opportunity_underfunded`
+   BEFORE creating any PU** when `< 1`. This supersedes the hand-computed
+   prose check that shipped in #722 — that check failed live on
+   `bednet-spot-check/20260606-2013` because the agent evaluated it in
+   dollars (`$0.50`) while storing cents (`50`), so `number_of_users` read
+   as 5 in-head but 0.05 in Connect. Code over the sent integers can't make
+   that mistake. **This is the silent root behind the Phase-6 Deliver
+   "Unable to claim" / no-`OpportunityClaim` class.**
+
+   On `opportunity_underfunded`: the create did NOT happen (no orphan PU).
+   Write a `[BLOCKER]` to `comms-log/observations.md`, set
+   `phases.connect-setup.status: error` in the current run's
+   `run_state.yaml`, and **HALT** — do NOT activate or hand off to Phase 6.
+   Remediate by raising `total_budget` (and the program budget — see the
+   Step 4 floor + `connect-program-setup`), lowering `max_total`, or fixing
+   the `amount` unit; then re-run. Do NOT retry unchanged. The error payload
+   carries `total_budget`, `min_budget_for_one_user`, `number_of_users`, and
+   a per-PU `breakdown` for the remediation message. The Step 4 `total_budget`
+   floor sizes it right going in; this code guard is the structural backstop
+   that makes an underfunded opp impossible to ship regardless of agent
+   unit-reasoning.
 
 6.5. **Activate the opportunity in Connect** (REQUIRED for ACE-driven runs;
    prerequisite for Step 7's test-user invite).

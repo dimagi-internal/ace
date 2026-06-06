@@ -2,6 +2,7 @@ import type { APIRequestContext, APIResponse } from 'playwright';
 import type { ConnectClient } from '../client.js';
 import type { Opportunity, PaymentUnit, Program, ProgramApplication } from '../types.js';
 import { HttpError, ConnectValidationError, ConnectError } from '../errors.js';
+import { assertFundsAtLeastOneUser } from '../opportunity-capacity.js';
 import type { PlaywrightSession } from '../auth/playwright-session.js';
 import {
   extractFormCsrfToken,
@@ -1119,10 +1120,18 @@ export class PlaywrightBackend implements ConnectClient {
    * the most recent matching by name.
    */
   createPaymentUnit: ConnectClient['createPaymentUnit'] = async (args) => {
+    if (args.total_budget !== undefined) {
+      assertFundsAtLeastOneUser(args.total_budget, [args]);
+    }
     return await this.postPaymentUnitForm(args);
   };
 
   createPaymentUnits: ConnectClient['createPaymentUnits'] = async (args) => {
+    // Funds-≥1-FLW guard (jjackson/ace#729) — backend-independent; mirrors the
+    // REST backend so the HTML fallback path enforces the same invariant.
+    if (args.total_budget !== undefined) {
+      assertFundsAtLeastOneUser(args.total_budget, args.payment_units);
+    }
     const out: PaymentUnit[] = [];
     for (const pu of args.payment_units) {
       const created = await this.postPaymentUnitForm({

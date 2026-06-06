@@ -117,6 +117,15 @@ export interface ConnectClient {
   createPaymentUnits(args: {
     organization_slug: string;
     opportunity_id: string;
+    /**
+     * The opportunity's `total_budget` (whole-currency-unit integer — the SAME
+     * value passed to `createOpportunity`). When supplied, the backend enforces
+     * `total_budget ≥ Σ(max_total × (amount + org_amount))` (i.e.
+     * `number_of_users ≥ 1`) over the integers in this request BEFORE POSTing,
+     * throwing `OpportunityUnderfundedError` otherwise. Guard-only — never sent
+     * to Connect. Omit to skip the guard (back-compat). See jjackson/ace#729.
+     */
+    total_budget?: number;
     payment_units: Array<{
       name: string;
       description?: string;
@@ -133,6 +142,8 @@ export interface ConnectClient {
   createPaymentUnit(args: {
     organization_slug: string;
     opportunity_id: string;
+    /** See `createPaymentUnits.total_budget` — enables the funds-≥1-FLW guard. */
+    total_budget?: number;
     name: string;
     description?: string;
     amount: number;

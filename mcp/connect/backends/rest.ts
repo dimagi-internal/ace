@@ -8,6 +8,7 @@ import type {
   PaymentUnit,
 } from '../types.js';
 import { HttpError, ConnectValidationError } from '../errors.js';
+import { assertFundsAtLeastOneUser } from '../opportunity-capacity.js';
 import type { PlaywrightSession } from '../auth/playwright-session.js';
 
 /**
@@ -333,6 +334,14 @@ export class RestBackend implements ConnectClient {
   // ── Payment units (atomic-list endpoint) ─────────────────────────
 
   createPaymentUnits: ConnectClient['createPaymentUnits'] = async (args) => {
+    // Code-enforced funds-≥1-FLW guard (jjackson/ace#729). When the caller
+    // passes the opp's total_budget, reject an underfunded config BEFORE POSTing
+    // (no orphan PU). Computed over the integers actually sent to Connect, so a
+    // dollars-vs-cents mix surfaces here as number_of_users < 1 — the prose
+    // guard in #722 missed exactly this on bednet-spot-check/20260606-2013.
+    if (args.total_budget !== undefined) {
+      assertFundsAtLeastOneUser(args.total_budget, args.payment_units);
+    }
     const path = `/api/opportunities/${encodeURIComponent(args.opportunity_id)}/payment_units/`;
     const body = {
       payment_units: args.payment_units.map((pu) => ({
@@ -357,6 +366,7 @@ export class RestBackend implements ConnectClient {
     const result = await this.createPaymentUnits({
       organization_slug: args.organization_slug,
       opportunity_id: args.opportunity_id,
+      total_budget: args.total_budget,
       payment_units: [
         {
           name: args.name,

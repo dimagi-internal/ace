@@ -474,13 +474,13 @@ List deliver units for an opportunity. Each entry has `id` (per-opp display inde
 
 ### `connect_create_payment_units`
 
-Atomic batch — server validates DU assignments across the whole list
+The opportunity's total_budget (whole-currency-unit integer — the SAME value
 
 _no parameters_
 
 ### `connect_create_payment_unit`
 
-Required for managed opportunities.
+The opportunity's total_budget (whole-currency-unit integer, NOT cents). ALWAYS pass it:
 
 _no parameters_
 
