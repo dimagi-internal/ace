@@ -13,10 +13,24 @@
 # handles both variants and drives forward from here.
 #
 # Required env vars (pass via mobile_run_recipe.envVars):
-#   OPP_NAME — display name of the opportunity (verbatim from
-#               run_state.yaml.phases.connect-setup.products.connect.opportunity.name).
-#               Must include the run-id suffix so the substring match is
-#               unique on the card list (same contract as connect-claim-opp.yaml).
+#   OPP_RUN_ID — the run-id (YYYYMMDD-HHMM) of the current run; the
+#                recipe anchors the target-tile match on this short,
+#                line-1, unique token (see
+#                skills/app-screenshot-capture/SKILL.md § OPP_RUN_ID
+#                matcher). Phase 4 `connect-opp-setup` front-prefixes the
+#                opp name with this run-id (`"<run_id> · <display>"`), so
+#                it lands on the tile's first line and never clips —
+#                making the resume deterministic among the test user's
+#                accumulated invites. The recipe matches it as
+#                `text: ".*${OPP_RUN_ID}.*"` (Maestro `text:` is a
+#                FULL-match regex; the `.*` wrappers substring-match the
+#                run-id within the longer tile label). Same contract as
+#                connect-claim-opp.yaml. Pass verbatim from
+#                `run_state.yaml.run_id`.
+#   OPP_NAME   — display name of the opportunity (verbatim from
+#                run_state.yaml.phases.connect-setup.products.connect.opportunity.name).
+#                Retained for screenshots / logging context ONLY — it is
+#                NOT the matcher anymore (the matcher is OPP_RUN_ID).
 #
 # SELECTOR STATUS — card list dump-confirmed live on ACE_Pixel_API_34,
 # CommCare 2.63.0, 2026-05-31 (jjackson/ace#591):
@@ -36,8 +50,8 @@
 # btn_resume in DOCUMENT ORDER below the title. On a Learn-complete target
 # (whose own CTA is "Proceed", not "Resume") this leaked to a LATER tile's
 # Resume button and resumed the WRONG opp. The fix scopes every CTA tap to
-# the card whose subtree directly contains ${OPP_NAME} via
-# `childOf: { containsChild: { text: ${OPP_NAME} } }`. Validated live: this
+# the card whose subtree directly contains the run-id token via
+# `childOf: { containsChild: { text: ".*${OPP_RUN_ID}.*" } }`. Validated live: this
 # selector resolves to exactly the target card's button. `containsChild` is
 # DIRECT-child only, which is why it pins to the inner ViewGroup (title +
 # button siblings) and not the outer rootCardView/RecyclerView.
@@ -89,17 +103,17 @@ appId: org.commcare.dalvik
 # reasoning as connect-claim-opp.yaml).
 - scrollUntilVisible:
     element:
-      text: ${OPP_NAME}
+      text: ".*${OPP_RUN_ID}.*"
     direction: DOWN
     timeout: 20000
     visibilityPercentage: 60
 - assertVisible:
-    text: ${OPP_NAME}
+    text: ".*${OPP_RUN_ID}.*"
 
 - takeScreenshot: "connect-resume-opp-tile"
 
 # Tap the target card's CTA, STRICTLY scoped to the card whose subtree
-# directly contains ${OPP_NAME}. Two label variants depending on Learn
+# directly contains the run-id token (`.*${OPP_RUN_ID}.*`). Two label variants depending on Learn
 # state; whichever is present in THIS card is tapped. Maestro auto-scrolls
 # the tap target into view, so no separate button-scroll step is needed.
 #
@@ -110,13 +124,13 @@ appId: org.commcare.dalvik
         id: "${SELECTOR:opp-list-resume-button}"
         childOf:
           containsChild:
-            text: ${OPP_NAME}
+            text: ".*${OPP_RUN_ID}.*"
     commands:
       - tapOn:
           id: "${SELECTOR:opp-list-resume-button}"
           childOf:
             containsChild:
-              text: ${OPP_NAME}
+              text: ".*${OPP_RUN_ID}.*"
           retryTapIfNoChange: true
 
 # Branch B — Learn complete: the card's CTA is the "Proceed" button
@@ -133,13 +147,13 @@ appId: org.commcare.dalvik
         text: "Proceed"
         childOf:
           containsChild:
-            text: ${OPP_NAME}
+            text: ".*${OPP_RUN_ID}.*"
     commands:
       - tapOn:
           text: "Proceed"
           childOf:
             containsChild:
-              text: ${OPP_NAME}
+              text: ".*${OPP_RUN_ID}.*"
           retryTapIfNoChange: true
 
 # FAIL LOUD (#591): a correct CTA tap leaves the jobs list. If we are still

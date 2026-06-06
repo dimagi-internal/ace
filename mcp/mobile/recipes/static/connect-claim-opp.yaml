@@ -16,27 +16,26 @@
 #   `rvJobList` RecyclerView. Empty-state shows `connect_no_jobs_text`.
 # - The toolbar exposes `action_sync` (top-right) and `action_bell`.
 # Required env vars (pass via `mobile_run_recipe.envVars`):
-#   PIN      — 4-digit device PIN for the ACE test user
-#              (from `${ACE_E2E_PIN}` in $CLAUDE_PLUGIN_DATA/.env)
-#   OPP_NAME — display name of the opportunity to claim. Must match the
-#              substring rendered on the opp card in
-#              `connect_fragment_jobs_list`. With multiple claimed opps
-#              (e.g. a real run alongside stale dogfood opps from prior
-#              runs), tapping the first card grabs whichever sorts
-#              first — silently the wrong one. Pinning to text avoids
-#              that. Tracking: jjackson/ace#115 finding 4.
-#
-#              **READ verbatim from
-#              `run_state.yaml.phases.connect-setup.products.connect.opportunity.name`**
-#              (written by Phase 4 `connect-opp-setup` at opp-create
-#              time). NEVER compose from slug pieces — the live tile
-#              text uses an em-dash (U+2014) like `"Malaria ITN FGD —
-#              malaria-itn-fgd (run 20260515-1645)"`, while
-#              slug-reassembly would produce `"ai-demo-space -
-#              malaria-itn-fgd (run 20260515-1645)"` (ASCII hyphen,
-#              wrong prefix). Fallback only if the field is missing
-#              (legacy runs): `connect_get_opportunity({org_slug,
-#              opportunity_id}).name`.
+#   PIN        — 4-digit device PIN for the ACE test user
+#                (from `${ACE_E2E_PIN}` in $CLAUDE_PLUGIN_DATA/.env)
+#   OPP_RUN_ID — the run-id (YYYYMMDD-HHMM) of the current run; the
+#                recipe anchors the target-tile match on this short,
+#                line-1, unique token (see
+#                skills/app-screenshot-capture/SKILL.md § OPP_RUN_ID
+#                matcher). Phase 4 `connect-opp-setup` front-prefixes
+#                the opp name with this run-id (`"<run_id> · <display>"`),
+#                so it lands on the tile's first line and never clips —
+#                making the claim deterministic among the test user's
+#                accumulated invites. The recipe matches it as
+#                `text: ".*${OPP_RUN_ID}.*"` (Maestro `text:` is a
+#                FULL-match regex; the `.*` wrappers substring-match the
+#                run-id within the longer tile label).
+#                Pass verbatim from `run_state.yaml.run_id`.
+#   OPP_NAME   — display name of the opportunity. Retained for
+#                screenshots / logging context ONLY — it is NOT the
+#                matcher anymore (the matcher is `OPP_RUN_ID`, above).
+#                Read verbatim from
+#                `run_state.yaml.phases.connect-setup.products.connect.opportunity.name`.
 appId: org.commcare.dalvik
 ---
 # Two valid starting surfaces after connect-login.yaml:
@@ -81,7 +80,7 @@ appId: org.commcare.dalvik
 # local snapshot-load) carries the Connect jobs list as of snapshot
 # time — which predates THIS run's Phase-4 invite. So the fresh-run opp
 # is genuinely ABSENT from the list (not merely below the fold), and the
-# `scrollUntilVisible text: ${OPP_NAME}` below would scroll to the bottom
+# `scrollUntilVisible text: ".*${OPP_RUN_ID}.*"` below would scroll to the bottom
 # and time out on a tile that was never pulled. An in-app sync (toolbar
 # `action_sync`, content-desc "Sync") pulls the current invite set so the
 # tile renders. Live reproducer: bednet-spot-check/20260601-0651 Phase 6
@@ -125,8 +124,8 @@ appId: org.commcare.dalvik
 #     directly to opp-detail or Learn home (Connect remembers state).
 #
 # Earlier versions assumed always-`btn_view_opportunity` and used
-# `below: text: ${OPP_NAME}` to scope to the target card. That broke
-# silently when the target card was in In-Progress: the title-text
+# `below: text: ".*${OPP_RUN_ID}.*"` to scope to the target card. That
+# broke silently when the target card was in In-Progress: the title-text
 # anchor matched the in-progress card (it has tvTitle), but the
 # nearest `btn_view_opportunity` BELOW that y-coord was on an
 # UNRELATED downstream card in New Opportunities — so we'd tap into
@@ -136,24 +135,25 @@ appId: org.commcare.dalvik
 # title-substring match + wrong button scoping.
 #
 # FIX: branch on which button is present below the matched title.
-# Both branches scope `below: text: ${OPP_NAME}` so we always act on
-# the target card, not a sibling.
+# Both branches scope `below: text: ".*${OPP_RUN_ID}.*"` so we always
+# act on the target card, not a sibling.
 #
-# Whole-label match, NOT substring: Maestro's `text:` matches the
-# ENTIRE element label as an (unanchored-looking but) full-string regex
-# — a partial title does NOT match. Verified live 2026-06-01: passing
-# the bare program name "Malaria RDT Performance Sampling" matched
-# nothing and scrollUntilVisible timed out scrolling a list where the
-# tile was plainly visible; passing the FULL tile label
-# "Malaria RDT Performance Sampling — malaria-rdt (run 20260531-0739)"
-# matched on the first try. So OPP_NAME MUST be the exact, complete tile
-# title — read verbatim from
-# `run_state.yaml.phases.connect-setup.products.connect.opportunity.name`
-# (see the header note), never a truncation or a slug-reassembly. The
-# run-id suffix it carries also makes each run's title unique, so the
-# whole-label match lands on exactly this run's card. Phase 4
-# `connect-opp-setup` already produces names like
-# "Turmeric Market Survey — turmeric (run 20260515-0536)".
+# Run-id-anchored regex match (the #618 deterministic-finding change):
+# Maestro's `text:` matches the ENTIRE element label as a full-string
+# regex — a partial title does NOT match. We therefore wrap the run-id
+# in `.*` … `.*` so the FULL tile label is matched while only the
+# embedded run-id token has to be supplied: `text: ".*${OPP_RUN_ID}.*"`.
+# The run-id (YYYYMMDD-HHMM) is unique per run and — since Phase 4
+# `connect-opp-setup` now front-prefixes the opp name with it
+# (`"<run_id> · <display>"`, e.g. "20260601-0739 · Malaria RDT
+# Performance Sampling") — lands on the tile's FIRST line, never clipped
+# by name-wrap. That makes the match land on exactly this run's card
+# even among the test user's dozens of accumulated invites. The old
+# whole-name matcher (`text: ${OPP_NAME}`, the full label including a
+# run-id SUFFIX) put the discriminator at the end of a 2-3-line wrapped
+# label — the most-clipped position — and required passing the exact
+# complete label verbatim. OPP_RUN_ID is read verbatim from
+# `run_state.yaml.run_id` (see the header note).
 
 # Bring the target tile into the rendered viewport BEFORE the
 # Branch A / Branch B `when:` guards evaluate. Maestro evaluates
@@ -162,7 +162,7 @@ appId: org.commcare.dalvik
 # target is the steady state on any dogfood machine), the target
 # title is frequently below the fold. Both branches' in-body
 # `scrollUntilVisible` steps would never fire because their parent
-# `when: visible: { id: btn_*, below: text: ${OPP_NAME} }` guards
+# `when: visible: { id: btn_*, below: text: ".*${OPP_RUN_ID}.*" } }` guards
 # require the title (and a button below it) to already be visible.
 # This unconditional title-scroll restores the precondition both
 # guards depend on. Live reproducer: malaria-itn-fgd run
@@ -173,7 +173,7 @@ appId: org.commcare.dalvik
 #
 # `visibilityPercentage: 30` (not Maestro's default 100) to tolerate
 # multi-line title-wrap on opp tiles. The card layout wraps long
-# `OPP_NAME` strings to 2-3 lines; at 100% the second line stays clipped
+# opp-name strings to 2-3 lines; at 100% the second line stays clipped
 # below the fold even after `scrollUntilVisible` reports success.
 # 30% is enough for the title-anchored Branch A/B `runFlow.when` guards
 # to evaluate true on the wrapped first line. Live reproducer: Phase 6
@@ -195,19 +195,19 @@ appId: org.commcare.dalvik
 # this file for parity.
 - scrollUntilVisible:
     element:
-      text: ${OPP_NAME}
+      text: ".*${OPP_RUN_ID}.*"
     direction: DOWN
     speed: 80
     timeout: 40000
     visibilityPercentage: 30
 - assertVisible:
-    text: ${OPP_NAME}
+    text: ".*${OPP_RUN_ID}.*"
 
 # Bring the per-branch BUTTON into the rendered viewport before the
 # Branch A / Branch B `when:` guards evaluate. Title-only scrolling
 # leaves the title at the viewport bottom on a list with several
 # prior-run tiles ahead — the button below the title is clipped, both
-# branches' `when: visible: { id: btn_*, below: text: ${OPP_NAME} }`
+# branches' `when: visible: { id: btn_*, below: text: ".*${OPP_RUN_ID}.*" } }`
 # guards evaluate to false, and the in-body `scrollUntilVisible` steps
 # (which would scroll the button into view) never fire. Catch-22.
 #
@@ -221,15 +221,15 @@ appId: org.commcare.dalvik
 #
 # `optional: true` ON EACH IN-BODY SCROLL — load-bearing. The `when:`
 # guard here is intentionally UNSCOPED (`visible: { id: btn_resume }`,
-# no `below: text: ${OPP_NAME}`): that is what lets the block fire
+# no `below: text: ".*${OPP_RUN_ID}.*"`): that is what lets the block fire
 # while the target's own button is still clipped below the fold and
 # scroll it into view (the below-fold catch-22 this block was added
-# to break — a `below: text: ${OPP_NAME}`-scoped guard would require
-# the target button to ALREADY be visible, defeating the purpose).
+# to break — a `below: text: ".*${OPP_RUN_ID}.*"`-scoped guard would
+# require the target button to ALREADY be visible, defeating the purpose).
 # But an unscoped guard also matches a STALE prior-run tile's button
 # higher in the list (e.g. a leftover Resume tile in "In Progress").
 # When that happens the guard fires but the title-scoped scroll
-# `btn_resume below: text: ${OPP_NAME}` finds nothing in that section
+# `btn_resume below: text: ".*${OPP_RUN_ID}.*"` finds nothing in that section
 # (this run's opp is a New Opportunity, not in-progress). WITHOUT
 # `optional: true` that mismatch is a HARD Maestro failure that
 # aborts the claim. WITH it, the scroll no-ops and control falls
@@ -268,7 +268,7 @@ appId: org.commcare.dalvik
           element:
             id: "${SELECTOR:opp-list-resume-button}"
             below:
-              text: ${OPP_NAME}
+              text: ".*${OPP_RUN_ID}.*"
           direction: DOWN
           speed: 80
           timeout: 40000
@@ -283,7 +283,7 @@ appId: org.commcare.dalvik
           element:
             id: "${SELECTOR:opp-list-view-opportunity-button}"
             below:
-              text: ${OPP_NAME}
+              text: ".*${OPP_RUN_ID}.*"
           direction: DOWN
           speed: 80
           timeout: 40000
@@ -296,7 +296,7 @@ appId: org.commcare.dalvik
       visible:
         id: "${SELECTOR:opp-list-resume-button}"
         below:
-          text: ${OPP_NAME}
+          text: ".*${OPP_RUN_ID}.*"
     commands:
       # Scroll on the BUTTON itself (anchored to our title) so the tap
       # target ends up in the viewport, not just the title text.
@@ -304,7 +304,7 @@ appId: org.commcare.dalvik
           element:
             id: "${SELECTOR:opp-list-resume-button}"
             below:
-              text: ${OPP_NAME}
+              text: ".*${OPP_RUN_ID}.*"
           direction: DOWN
           speed: 80
           timeout: 40000
@@ -313,7 +313,7 @@ appId: org.commcare.dalvik
       - tapOn:
           id: "${SELECTOR:opp-list-resume-button}"
           below:
-            text: ${OPP_NAME}
+            text: ".*${OPP_RUN_ID}.*"
           retryTapIfNoChange: true
       # Resume on an in-progress opp can land on one of THREE surfaces
       # depending on what's persisted on the device:
@@ -362,7 +362,7 @@ appId: org.commcare.dalvik
       visible:
         id: "${SELECTOR:opp-list-view-opportunity-button}"
         below:
-          text: ${OPP_NAME}
+          text: ".*${OPP_RUN_ID}.*"
     commands:
       # Scroll on the button anchored to the title — see comment above
       # about title-only scrolling leaving the button clipped.
@@ -370,7 +370,7 @@ appId: org.commcare.dalvik
           element:
             id: "${SELECTOR:opp-list-view-opportunity-button}"
             below:
-              text: ${OPP_NAME}
+              text: ".*${OPP_RUN_ID}.*"
           direction: DOWN
           speed: 80
           timeout: 40000
@@ -379,7 +379,7 @@ appId: org.commcare.dalvik
       - tapOn:
           id: "${SELECTOR:opp-list-view-opportunity-button}"
           below:
-            text: ${OPP_NAME}
+            text: ".*${OPP_RUN_ID}.*"
       - extendedWaitUntil:
           visible:
             id: "${SELECTOR:opp-detail-start}"
