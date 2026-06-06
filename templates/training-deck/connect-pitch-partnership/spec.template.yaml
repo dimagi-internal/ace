@@ -26,6 +26,7 @@ modules:
         title: "{{PROSPECT_NAME}}"
         subtitle: "{{PITCH_SUBTITLE}}"
         date: "{{DATE}}"
+        notes: "{{COVER_NOTES}}"
 
   - id: their-world
     title: "Their World"
