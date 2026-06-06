@@ -1,0 +1,120 @@
+slug: "{{PROSPECT_SLUG}}"
+name: "{{PROSPECT_NAME}} — Connect Partnership Pitch"
+program: "{{PROGRAM_NAME}}"
+archetype: partnership-pitch
+template_id: connect-pitch-partnership
+generated_at: "{{GENERATED_AT}}"
+source:
+  pdd_doc_id: "{{RESEARCH_DOC_ID}}"
+  run_id: "{{RUN_ID}}"
+
+manifest:
+  common: "{{COMMON_MANIFEST}}"
+  opp: "{{OPP_MANIFEST}}"
+
+voice:
+  audience: prospect
+  estimated_duration_minutes: "{{DURATION}}"
+  language: "{{LANGUAGE}}"
+
+modules:
+  - id: opening
+    title: "Opening"
+    slides:
+      - id: cover
+        layout: cover
+        title: "{{PROSPECT_NAME}}"
+        subtitle: "{{PITCH_SUBTITLE}}"
+        date: "{{DATE}}"
+
+  - id: their-world
+    title: "Their World"
+    slides:
+      - id: their-context
+        layout: content
+        title: "{{THEIR_CONTEXT_TITLE}}"
+        body: "{{THEIR_CONTEXT_BODY}}"
+        notes: "{{THEIR_CONTEXT_NOTES}}"
+      - id: their-reach
+        layout: stats
+        title: "{{THEIR_REACH_TITLE}}"
+        stats:
+          - big: "{{STAT1_BIG}}"
+            label: "{{STAT1_LABEL}}"
+          - big: "{{STAT2_BIG}}"
+            label: "{{STAT2_LABEL}}"
+        notes: "{{THEIR_REACH_NOTES}}"
+
+  - id: the-thesis
+    title: "The Thesis"
+    slides:
+      - id: thesis-divider
+        layout: section
+        title: "{{THESIS_SECTION_TITLE}}"
+        notes: "{{THESIS_DIVIDER_NOTES}}"
+      - id: thesis-content
+        layout: content
+        title: "{{THESIS_TITLE}}"
+        body: "{{THESIS_BODY}}"
+        notes: "{{THESIS_NOTES}}"
+
+  - id: how-connect-works
+    title: "How Connect Works"
+    slides:
+      - id: connect-lifecycle
+        layout: timeline
+        title: "{{LIFECYCLE_TITLE}}"
+        steps:
+          - label: "Learn"
+            detail: "{{LEARN_DETAIL}}"
+          - label: "Deliver"
+            detail: "{{DELIVER_DETAIL}}"
+          - label: "Verify"
+            detail: "{{VERIFY_DETAIL}}"
+          - label: "Pay"
+            detail: "{{PAY_DETAIL}}"
+        notes: "{{LIFECYCLE_NOTES}}"
+
+  - id: proof
+    title: "Proof"
+    slides:
+      - id: micro-demo
+        layout: walkthrough
+        title: "{{DEMO_TITLE}}"
+        image: "{{DEMO_IMAGE}}"
+        body: "{{DEMO_BODY}}"
+        notes: "{{DEMO_NOTES}}"
+
+  - id: business-case
+    title: "Business Case"
+    slides:
+      - id: outcomes
+        layout: stats
+        title: "{{OUTCOMES_TITLE}}"
+        stats:
+          - big: "{{OUTCOME1_BIG}}"
+            label: "{{OUTCOME1_LABEL}}"
+          - big: "{{OUTCOME2_BIG}}"
+            label: "{{OUTCOME2_LABEL}}"
+          - big: "{{OUTCOME3_BIG}}"
+            label: "{{OUTCOME3_LABEL}}"
+        notes: "{{OUTCOMES_NOTES}}"
+      - id: why-connect
+        layout: two_column
+        title: "{{WHY_CONNECT_TITLE}}"
+        left:
+          heading: "{{LEFT_HEADING}}"
+          body: "{{LEFT_BODY}}"
+        right:
+          heading: "{{RIGHT_HEADING}}"
+          body: "{{RIGHT_BODY}}"
+        notes: "{{WHY_CONNECT_NOTES}}"
+
+  - id: the-ask
+    title: "The Ask"
+    slides:
+      - id: closing
+        layout: closing
+        title: "{{CLOSING_TITLE}}"
+        body: "{{CLOSING_BODY}}"
+        notes: "{{CLOSING_NOTES}}"
