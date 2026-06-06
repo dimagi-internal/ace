@@ -26,17 +26,22 @@ function readRecipe(name: string): string {
 describe('connect-claim-opp.yaml', () => {
   const yaml = readRecipe('connect-claim-opp.yaml');
 
-  it('anchors every scrollUntilVisible on a button id below the OPP_NAME (not just the title text)', () => {
+  it('anchors every scrollUntilVisible on a button id below the run-id matcher (not just the title text)', () => {
     // Regression guard for the 2026-05-15 turmeric run halt: anchoring
-    // scrollUntilVisible on `text:${OPP_NAME}` alone left the button
+    // scrollUntilVisible on the title text alone left the button
     // beneath the title clipped off-screen, so the subsequent
-    // `tapOn(id:btn_view_opportunity, below:text:${OPP_NAME})` matched a
-    // node that wasn't actually rendered. Driving the scroll by the
-    // element we need to tap is the structural fix.
+    // `tapOn(id:btn_view_opportunity, below:text:".*${OPP_RUN_ID}.*")`
+    // matched a node that wasn't actually rendered. Driving the scroll by
+    // the element we need to tap is the structural fix.
+    //
+    // The tile discriminator is now the run-id (#618): Phase 4
+    // front-prefixes the opp name with the run-id, and the recipe matches
+    // `text: ".*${OPP_RUN_ID}.*"` (a substring-regex on the line-1 token)
+    // instead of the full `${OPP_NAME}` label.
     //
     // Both Resume and New-Opportunity branches each ship a
     // scrollUntilVisible — assert each one targets a button id and
-    // is scoped to the target card via `below: text: ${OPP_NAME}`.
+    // is scoped to the target card via `below: text: ".*${OPP_RUN_ID}.*"`.
     // The unconditional title-scroll added before the branches uses
     // `text:` (no button id) — exclude it here; it has its own
     // dedicated regression test below.
@@ -56,18 +61,19 @@ describe('connect-claim-opp.yaml', () => {
       expect(elementClause).toMatch(
         /id: "org\.commcare\.dalvik:id\/(btn_resume|btn_view_opportunity)"/,
       );
-      // Card-scoping must still pin to OPP_NAME so a stale prior-run invite
-      // higher in the list isn't matched first.
+      // Card-scoping must still pin to the run-id matcher so a stale
+      // prior-run invite higher in the list isn't matched first.
       expect(elementClause).toContain('below:');
-      expect(elementClause).toContain('text: ${OPP_NAME}');
+      expect(elementClause).toContain('text: ".*${OPP_RUN_ID}.*"');
     }
   });
 
-  it('still scopes the final tapOn to the OPP_NAME card', () => {
-    // The `below: text: ${OPP_NAME}` scoping on the tapOn is the original
-    // safeguard against tapping a stale prior-run invite. Keep it.
+  it('still scopes the final tapOn to the run-id-matched card', () => {
+    // The `below: text: ".*${OPP_RUN_ID}.*"` scoping on the tapOn is the
+    // original safeguard against tapping a stale prior-run invite, now
+    // anchored on the run-id token (#618). Keep it.
     expect(yaml).toMatch(
-      /- tapOn:\s*\n\s*id: "org\.commcare\.dalvik:id\/btn_view_opportunity"\s*\n\s*below:\s*\n\s*text: \$\{OPP_NAME\}/,
+      /- tapOn:\s*\n\s*id: "org\.commcare\.dalvik:id\/btn_view_opportunity"\s*\n\s*below:\s*\n\s*text: "\.\*\$\{OPP_RUN_ID\}\.\*"/,
     );
   });
 
@@ -75,16 +81,16 @@ describe('connect-claim-opp.yaml', () => {
     // Regression guard for the 2026-05-17 malaria-itn-fgd run halt
     // (run 20260515-1645 Phase 6 attempt 8): with 4+ prior-run invite
     // cards rendered ahead of the target tile, both Branch A
-    // (`btn_resume` + `below: text: ${OPP_NAME}`) and Branch B
-    // (`btn_view_opportunity` + `below: text: ${OPP_NAME}`)
+    // (`btn_resume` + `below: text: ".*${OPP_RUN_ID}.*"`) and Branch B
+    // (`btn_view_opportunity` + `below: text: ".*${OPP_RUN_ID}.*"`)
     // `when:` guards evaluate to false because the title is below the
     // fold. The in-body `scrollUntilVisible` lives INSIDE each guard,
     // so it never fires — recipe halts without claiming. Fix:
-    // unconditional `scrollUntilVisible` on `text: ${OPP_NAME}`
+    // unconditional `scrollUntilVisible` on `text: ".*${OPP_RUN_ID}.*"`
     // before either branch, restoring the visibility precondition
     // both guards depend on.
     const titleScrollIdx = yaml.search(
-      /- scrollUntilVisible:\s*\n\s*element:\s*\n\s*text: \$\{OPP_NAME\}\s*\n\s*direction: DOWN/,
+      /- scrollUntilVisible:\s*\n\s*element:\s*\n\s*text: "\.\*\$\{OPP_RUN_ID\}\.\*"\s*\n\s*direction: DOWN/,
     );
     expect(titleScrollIdx, 'expected an unconditional title scroll').toBeGreaterThan(-1);
     const branchAIdx = yaml.indexOf('# --- BRANCH A:');
@@ -116,18 +122,18 @@ describe('connect-claim-opp.yaml', () => {
     const preBranchYaml = yaml.slice(0, branchAIdx);
 
     // Both branch buttons must have a pre-branch scroll that brings
-    // them into view (each scoped `below: text: ${OPP_NAME}`).
+    // them into view (each scoped `below: text: ".*${OPP_RUN_ID}.*"`).
     expect(
       preBranchYaml,
       'expected pre-branch scroll for btn_resume below the target title',
     ).toMatch(
-      /- scrollUntilVisible:\s*\n\s*element:\s*\n\s*id: "org\.commcare\.dalvik:id\/btn_resume"\s*\n\s*below:\s*\n\s*text: \$\{OPP_NAME\}/,
+      /- scrollUntilVisible:\s*\n\s*element:\s*\n\s*id: "org\.commcare\.dalvik:id\/btn_resume"\s*\n\s*below:\s*\n\s*text: "\.\*\$\{OPP_RUN_ID\}\.\*"/,
     );
     expect(
       preBranchYaml,
       'expected pre-branch scroll for btn_view_opportunity below the target title',
     ).toMatch(
-      /- scrollUntilVisible:\s*\n\s*element:\s*\n\s*id: "org\.commcare\.dalvik:id\/btn_view_opportunity"\s*\n\s*below:\s*\n\s*text: \$\{OPP_NAME\}/,
+      /- scrollUntilVisible:\s*\n\s*element:\s*\n\s*id: "org\.commcare\.dalvik:id\/btn_view_opportunity"\s*\n\s*below:\s*\n\s*text: "\.\*\$\{OPP_RUN_ID\}\.\*"/,
     );
   });
 
@@ -138,13 +144,13 @@ describe('connect-claim-opp.yaml', () => {
     // recipe assumed always-`btn_view_opportunity` and the `below:`
     // anchor matched the next downstream "New Opportunities" card,
     // silently claiming the wrong opp. Both branches must exist and
-    // both must be scoped by `below: text: ${OPP_NAME}` so the runtime
-    // visibility probe acts on the target card, not a sibling.
+    // both must be scoped by `below: text: ".*${OPP_RUN_ID}.*"` so the
+    // runtime visibility probe acts on the target card, not a sibling.
     expect(yaml).toMatch(
-      /when:\s*\n\s*visible:\s*\n\s*id: "org\.commcare\.dalvik:id\/btn_resume"\s*\n\s*below:\s*\n\s*text: \$\{OPP_NAME\}/,
+      /when:\s*\n\s*visible:\s*\n\s*id: "org\.commcare\.dalvik:id\/btn_resume"\s*\n\s*below:\s*\n\s*text: "\.\*\$\{OPP_RUN_ID\}\.\*"/,
     );
     expect(yaml).toMatch(
-      /when:\s*\n\s*visible:\s*\n\s*id: "org\.commcare\.dalvik:id\/btn_view_opportunity"\s*\n\s*below:\s*\n\s*text: \$\{OPP_NAME\}/,
+      /when:\s*\n\s*visible:\s*\n\s*id: "org\.commcare\.dalvik:id\/btn_view_opportunity"\s*\n\s*below:\s*\n\s*text: "\.\*\$\{OPP_RUN_ID\}\.\*"/,
     );
   });
 
@@ -337,19 +343,21 @@ describe('connect-resume-opp.yaml', () => {
     // "Resume"). Live-confirmed fix (ACE_Pixel_API_34, 2.63.0): each tile
     // is a rootCardView whose inner ViewGroup holds tvTitle + the CTA as
     // sibling direct children, so `childOf: { containsChild: { text:
-    // ${OPP_NAME} } }` pins the tap to the target card.
+    // ".*${OPP_RUN_ID}.*" } }` pins the tap to the target card. The
+    // card-identity anchor is the run-id token (#618), not the full
+    // ${OPP_NAME} label.
     expect(
       yaml,
-      'expected card-scoped CTA tap via childOf/containsChild on ${OPP_NAME}',
+      'expected card-scoped CTA tap via childOf/containsChild on the run-id matcher',
     ).toMatch(
-      /childOf:\s*\n\s*containsChild:\s*\n\s*text:\s*\$\{OPP_NAME\}/,
+      /childOf:\s*\n\s*containsChild:\s*\n\s*text:\s*"\.\*\$\{OPP_RUN_ID\}\.\*"/,
     );
     // The old leaky tap (btn_resume directly below the title text) must be gone.
     expect(
       yaml,
-      'the leaky `id: btn_resume / below: text: ${OPP_NAME}` tap must not return',
+      'the leaky `id: btn_resume / below: text: ".*${OPP_RUN_ID}.*"` tap must not return',
     ).not.toMatch(
-      /id: "org\.commcare\.dalvik:id\/btn_resume"\s*\n\s*below:\s*\n\s*text:\s*\$\{OPP_NAME\}/,
+      /id: "org\.commcare\.dalvik:id\/btn_resume"\s*\n\s*below:\s*\n\s*text:\s*"\.\*\$\{OPP_RUN_ID\}\.\*"/,
     );
   });
 

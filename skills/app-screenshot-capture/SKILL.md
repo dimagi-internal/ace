@@ -22,7 +22,7 @@ built apps are usable end-to-end. Deep, per-journey UX grading lives in
 | Phase 3 (`app-test-cases`) | `ACE/<opp>/runs/<run-id>/3-commcare/app-test-cases.yaml` | smoke-recipe selection (`is_smoke: true`) + recipe paths |
 | Phase 1 | `ACE/<opp>/inputs/pdd.md` | persona-summary fallback if not embedded in pdd-to-app-journeys |
 | Phase 3 | `ACE/<opp>/runs/<run-id>/3-commcare/app-deploy_summary.md` | HQ domain for `${HQ_DOMAIN}` env var |
-| Phase 4 (run_state.yaml) | `phases.connect-setup.products.connect.opportunity.{id, name}` + ACE test user invite | `${OPP_NAME}` (verbatim from `opportunity.name`), `${ACE_E2E_PHONE_LOCAL}`, etc. |
+| Phase 4 (run_state.yaml) | `phases.connect-setup.products.connect.opportunity.{id, name}` + top-level `run_id` + ACE test user invite | `${OPP_RUN_ID}` (verbatim from `run_state.yaml.run_id`, the deterministic tile matcher), `${OPP_NAME}` (verbatim from `opportunity.name`, logging/screenshot context only), `${ACE_E2E_PHONE_LOCAL}`, etc. |
 
 Recipes are read by path from the entries in `app-test-cases.yaml`
 (`recipe_path` field). They were composed and validated by Phase 3's
@@ -287,17 +287,31 @@ valve hid real capability gaps behind a yellow verdict.
 These set up the AVD to the post-claim state the smoke recipes assume:
 
 - `connect-login.yaml` with `${ACE_E2E_PHONE_LOCAL}`, `${ACE_E2E_PIN}`.
-- `connect-claim-opp.yaml` with `${OPP_NAME}` read verbatim from
-  `run_state.yaml.phases.connect-setup.products.connect.opportunity.name`.
+- `connect-claim-opp.yaml` with **`${OPP_RUN_ID}`** (the deterministic
+  tile matcher) read verbatim from `run_state.yaml.run_id`, AND
+  `${OPP_NAME}` read verbatim from
+  `run_state.yaml.phases.connect-setup.products.connect.opportunity.name`
+  (logging / screenshot context only).
 
-**OPP_NAME source — authoritative read from `run_state.yaml`.** Phase 4
-(`connect-opp-setup`) writes the exact tile name Connect renders into
-`phases.connect-setup.products.connect.opportunity.name` at the moment
-the opportunity is created. Pass that string **verbatim** as the
-`OPP_NAME` envVar. Do NOT reassemble from slug pieces — the live tile
-text is `"<display_name> — <slug> (run <date>)"` with an em-dash
-(U+2014), not `"<org_slug> - <slug> (run <date>)"` with an ASCII hyphen,
-and any slug-based composition will silently mis-match the tile.
+**OPP_RUN_ID matcher — the deterministic tile finder (#618).** Phase 4
+(`connect-opp-setup`) front-prefixes every opp name with the run-id:
+`"<run_id> · <PDD display name>"` (e.g. `"20260601-0739 · Malaria RDT
+Performance Sampling"`). The run-id (format `YYYYMMDD-HHMM`, the
+top-level `run_state.yaml.run_id`) is unique per run and, as a FRONT
+prefix, lands on the tile's first line — short and never clipped by the
+tile's name-wrap. The claim/resume recipes anchor their tile match on it
+as `text: ".*${OPP_RUN_ID}.*"` (Maestro `text:` is a full-match regex;
+the `.*` wrappers substring-match the run-id within the longer tile
+label). Pass `${OPP_RUN_ID}` **verbatim** from `run_state.yaml.run_id`.
+This is what makes finding this run's opp among the test user's
+accumulated invites deterministic.
+
+**OPP_NAME — context only (no longer the matcher).** Phase 4 also writes
+the exact tile name Connect renders into
+`phases.connect-setup.products.connect.opportunity.name`. Pass that
+string **verbatim** as `${OPP_NAME}` for logging and screenshot context.
+Do NOT reassemble from slug pieces. It is **no longer the recipe
+matcher** — `${OPP_RUN_ID}` (above) is.
 
 **Fallback (legacy runs only).** If `opportunity.name` is missing from
 `run_state.yaml` (rare — only pre-0.13.x runs predating the name-field
@@ -315,46 +329,39 @@ tile text was `"Malaria ITN FGD — malaria-itn-fgd (run 20260515-1645)"`;
 the subagent self-corrected mid-dispatch by calling
 `connect_get_opportunity`, wasting a recipe cycle.
 
-**OPP_NAME uniqueness assumption (durable note).** Because every
-`/ace:run` Phase 3 invites the same ACE test user (`${ACE_E2E_PHONE}`)
-to a fresh Connect opp, the test user's in-app invite list grows
-unboundedly across runs. Every prior opp the test user was ever invited
-to is still listed, and there is no per-run cleanup atom yet (TBD). The
-`${OPP_NAME}` recipe matcher assumes:
+**OPP_NAME uniqueness assumption (durable note) — resolved by the
+run-id FRONT prefix (#618).** Because every `/ace:run` Phase 3 invites
+the same ACE test user (`${ACE_E2E_PHONE}`) to a fresh Connect opp, the
+test user's in-app invite list grows unboundedly across runs. Every
+prior opp the test user was ever invited to is still listed, and there
+is no per-run cleanup atom yet (TBD) — **the list still grows**.
 
-1. The opp name is **unique enough** to disambiguate this run's opp
-   from all prior invites. `connect-opp-setup` writes a name like
-   `"<display_name> — <slug> (run <YYYYMMDD-HHMM>)"` (e.g.
-   `"Malaria ITN FGD — malaria-itn-fgd (run 20260515-1645)"`) — the
-   run-id suffix gives it lexical uniqueness, the em-dash + slug
-   disambiguates within an opp's runs, and the display-name prefix
-   matches what the LLO will see when the opportunity is solicited.
-2. **The newest invite sits near the top of the list.** Today this is
-   implicitly the case (Connect orders by invited_at descending), so
-   `tapOn:text` on the unique full name lands the right tile.
+What changed (#618): `connect-opp-setup` now front-prefixes the opp name
+with the run-id — `"<run_id> · <display name>"` (e.g.
+`"20260601-0739 · Malaria RDT Performance Sampling"`) — and the
+claim/resume recipes anchor their match on the run-id token via
+`text: ".*${OPP_RUN_ID}.*"`. This resolves the two fragilities the old
+run-id-SUFFIX form carried:
 
-These assumptions break as the test user accumulates invites:
-- A `tapOn:text` matcher that uses just the title prefix (without the
-  run-id suffix) will collide across runs.
-- Even with a unique full name, on extremely long invite lists Maestro
-  may need to scroll to find it; recipes today don't.
+1. **Discriminator no longer clipped.** The old name put the run-id at
+   the END of a long name that wraps to 2-3 lines on the tile — the
+   most-clipped position, so the only disambiguating token was the one
+   most likely below the fold. The run-id is now a FRONT prefix on the
+   tile's first line, which is never clipped by name-wrap.
+2. **No reliance on "newest near top."** The old `tapOn:text` matcher
+   depended on Connect ordering by invited_at descending so the right
+   tile sorted near the top. The recipes now `scrollUntilVisible` on the
+   run-id regex and assert it, so the match is positional-order-
+   independent: it finds this run's tile wherever it sits in the list.
 
-**Future-proofing options** (none implemented yet):
-- Use `${OPP_UUID}` or `${OPP_LABS_INT_ID}` as the identifier — but
-  neither surfaces in the mobile UI today (Connect's tile shows the
-  display name).
-- Have `connect-opp-setup` emit a per-run unique short tag (e.g.
-  `RUN20260513-0616`) and append it to the opp name so the recipe
-  matcher is unambiguous regardless of invite-list length.
-- Add an explicit `scrollUntilVisible` wrapper to the claim recipe so
-  long invite lists don't fall off the visible region.
-- Add a periodic test-user invite-list-cleanup atom (Connect doesn't
-  expose this in the public API today; would need a `connect_*`
-  Playwright atom).
-
-Track as a class-level concern; revisit when the test user has
-accumulated enough invites to break the implicit ordering or when a
-recipe surfaces a false-positive `tapOn:text` hit on the wrong tile.
+**Remaining honest caveat.** The invite list itself is still unbounded —
+there is no per-run cleanup atom, so the test user accumulates dozens of
+tiles over time. The run-id match is what makes finding the right one
+*deterministic* despite that accumulation (a short, unique, line-1
+token), but the underlying list growth is unchanged. A periodic
+test-user invite-list-cleanup atom is still desirable (Connect doesn't
+expose this in the public API today; would need a `connect_*` Playwright
+atom).
 
 ### Step 5: Run the smoke recipes — two independent legs
 

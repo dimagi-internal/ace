@@ -140,15 +140,18 @@ silent-failure prevention learned from earlier real-world dogfood.
       `app-screenshot-capture` recipes that try to claim or interact
       with the app will fail. Note: the test user accumulates invites
       across every `/ace:run` — by run N the test user has N opp tiles
-      in their app, distinguished only by the run-id suffix in the
-      display name. The `${OPP_NAME}` matcher in `connect-claim-opp.yaml`
-      relies on (a) the name being unique enough and (b) the newest
-      invite sitting near the top of the list. **Read `OPP_NAME`
-      verbatim from `run_state.yaml.phases.connect-setup.products.connect.opportunity.name`**
-      — do NOT compose it from slug pieces. The live tile text uses an
-      em-dash (`—`, U+2014) and the display-name prefix, neither of
-      which a slug-based reassembly produces. See
-      `skills/app-screenshot-capture/SKILL.md § Step 4 "OPP_NAME source"`.
+      in their app. The deterministic discriminator is the **run-id**,
+      which Phase 4 `connect-opp-setup` now front-prefixes onto the opp
+      name (`"<run_id> · <display>"`) so it lands on the tile's first
+      line. **Pass `${OPP_RUN_ID}` to the claim/resume recipes as the
+      deterministic tile matcher — read verbatim from
+      `run_state.yaml.run_id`** (format `YYYYMMDD-HHMM`). The recipes
+      anchor their match on it as `text: ".*${OPP_RUN_ID}.*"`. Also pass
+      `${OPP_NAME}` (verbatim from
+      `run_state.yaml.phases.connect-setup.products.connect.opportunity.name`)
+      for logging / screenshot context only — it is no longer the
+      matcher. Do NOT compose either value from slug pieces. See
+      `skills/app-screenshot-capture/SKILL.md § Step 4 "OPP_RUN_ID matcher"`.
 - [ ] **`ACE_TRAINING_DECK_TEMPLATE_ID` is set** if you want a Slides
       deck. `bin/ace-doctor` reports it. If unset, `training-deck-render`
       skips silently — Phase 6 still completes, just without the

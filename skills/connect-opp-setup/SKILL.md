@@ -141,7 +141,23 @@ alone makes the artifact land outside `4-connect` and fail
 
    - `organization_slug`: PM-side org (e.g. `ai-demo-space`)
    - `program_id`: from step 1 (program.md)
-   - `name`: from PDD
+   - `name`: **construct as `"<run_id> · <PDD display name>"`** — the
+     `run_id` from run_state (format `YYYYMMDD-HHMM`) as a FRONT prefix,
+     separated by ` · ` (space-middot-space, U+00B7), then the PDD
+     display name. Example: `"20260601-0739 · Malaria RDT Performance
+     Sampling"`. **The run-id MUST lead.** Why front-prefix: the ACE
+     test user accumulates dozens of near-identical opp invites across
+     dogfood runs, and the run-id is the only token that disambiguates
+     THIS run's opp from all the others. As a front prefix it lands on
+     the tile's FIRST line — short and never clipped by the tile's
+     name-wrap — so Phase 6's mobile claim/resume recipes can anchor
+     their tile match on it (`text: ".*${OPP_RUN_ID}.*"`) and find this
+     run's opp deterministically. The old run-id-SUFFIX form
+     (`"<display> — <slug> (run <run-id>)"`) put the discriminator at
+     the END of a long name that wraps to 2-3 lines on the tile — the
+     most-clipped position — which is exactly the wrong place for the
+     matcher. (Applies to ACE-driven dogfood runs — same `is_test: true`
+     framing as below.)
    - `short_description`: **≤50 chars** (server-enforced; the Connect
      opportunity edit form rejects longer values with a generic
      `Ensure this field has no more than 50 characters` error).
