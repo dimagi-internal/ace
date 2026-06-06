@@ -159,8 +159,11 @@ describe('artifact manifest lint', () => {
     const errors: string[] = [];
     for (const a of ARTIFACT_MANIFEST) {
       if (OPP_LEVEL_EXEMPT.has(a.path) || RUN_LEVEL_EXEMPT.has(a.path)) continue;
-      const expectedFolder = PHASE_FOLDERS[a.phase];
-      if (!expectedFolder) continue; // shouldn't happen; Phase enum is exhaustive
+      // PHASE_FOLDERS is a partial map over Phase: some phases (e.g.
+      // partnership-publish) write only run-root artifacts and have no phase
+      // folder, so the lookup can legitimately return undefined.
+      const expectedFolder = (PHASE_FOLDERS as Record<string, string | undefined>)[a.phase];
+      if (!expectedFolder) continue;
       if (!a.path.startsWith(expectedFolder + '/')) {
         errors.push(`${a.path} tagged ${a.phase} but path doesn't start with ${expectedFolder}/`);
       }
