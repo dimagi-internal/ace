@@ -3,7 +3,7 @@ name: partnership-research
 description: >
   Research a non-Connect prospect org for a partnership video: deep web
   research (what they do, scale, model, geography, the expansion thesis)
-  plus a Connect/Dimagi capability-fit memo. Verified + cited.
+  plus a Connect/Dimagi capability-fit memo. Cited.
 disable-model-invocation: true
 ---
 
@@ -82,7 +82,7 @@ Research a non-Connect prospect organization in preparation for the partnership 
 
 5. **Write the Phase Write-Back to `run_state.yaml`.**
 
-   Write `phases.research.*` to `ACE/partnerships/<slug>/runs/<run-id>/run_state.yaml` via `update_yaml_file` with `merge: 'two-level'`:
+   Write `phases.research.*` to `ACE/partnerships/<slug>/runs/<run-id>/run_state.yaml` via `update_yaml_file` with `merge: 'deep'` (a partial nested patch of `phases.<phase>` requires `deep` — `two-level` would silently drop sibling keys; see CLAUDE.md § Gotchas):
 
    ```yaml
    phases:
