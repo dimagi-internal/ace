@@ -95,6 +95,13 @@ alone makes the artifact land outside `4-connect` and fail
       budget: Σ + EXPECTED_OPP_BUDGET × 10 })` — a generous buffer so this
       step rarely re-fires. Idempotent: a no-op when headroom is already
       ample. Log the before/after budget in the program notes (Step 5).
+      **Single-opp floor:** `EXPECTED_OPP_BUDGET` must itself be at least
+      `min_budget_for_one_user × FUND_USERS` (= `Σ(max_total × (amount +
+      org_amount))` over the planned payment units × ~3, the same floor
+      `connect-opp-setup` Step 4 enforces). If the PDD's per-opp budget is
+      below that floor, use the floor — the program ceiling must be able to
+      fund at least one opp that funds ≥1 FLW at its payment-unit max, or
+      Phase 4 will halt on the budget-funds-≥1-FLW guard.
 
    This makes the by-design per-run accumulation safe without a
    reclamation mechanism (none exists yet — a payment-unit-delete /

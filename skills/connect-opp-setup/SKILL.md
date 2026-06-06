@@ -173,7 +173,32 @@ alone makes the artifact land outside `4-connect` and fail
    - `target_organization_slug`: LLO org slug (must be ACCEPTED — see step 3)
    - `start_date` / `end_date`: opportunity dates (YYYY-MM-DD; must fit
      inside the program window)
-   - `total_budget`: must fit inside `program.budget − Σ(other managed opps)`
+   - `total_budget`: an integer in the opp currency's whole unit (Connect
+     stores `total_budget`, `amount`, `org_amount`, `max_total` as integers
+     in the SAME unit — `PositiveBigIntegerField` / `PositiveIntegerField` in
+     `commcare_connect/opportunity/models.py`; no cents). Two bounds, both
+     mandatory:
+     - **Upper bound (ceiling):** must fit inside
+       `program.budget − Σ(other managed opps)`.
+     - **Lower bound (floor — funds ≥1 FLW):** must be
+       `≥ min_budget_for_one_user × FUND_USERS`, where
+       `min_budget_for_one_user = Σ over the opp's planned payment units of
+       (max_total × (amount + org_amount))` and `FUND_USERS` is a small smoke
+       headroom (**default 3**) so a few claims are possible. This mirrors
+       Connect's managed-opp capacity formula
+       `number_of_users = total_budget / Σ(max_total × (amount + org_amount))`
+       (`Opportunity.number_of_users`, models.py): a `total_budget` below
+       `min_budget_for_one_user` yields `number_of_users < 1`, which
+       under-allocates `create_claim_limits` and leaves the FLW unable to
+       claim a full visit allotment.
+     - ACE computes `min_budget_for_one_user` from the **planned** payment
+       units — known from the PDD's deliver design BEFORE create — and sizes
+       `total_budget` to `≥ min_budget_for_one_user × FUND_USERS` clamped by
+       the ceiling. The PDD's program budget is a HINT/ceiling, NOT the opp
+       budget: if the PDD budget is too small to fund even one user at the
+       planned payment units, **the opp-budget floor WINS** and the program
+       budget must be raised to accommodate (see `connect-program-setup`
+       headroom, jjackson/ace#588). Archetype-agnostic — applies to every opp.
    - `is_test`: **set explicitly to `true`** for every ACE-driven run. The
      server defaults to `true` if omitted, but sending it explicitly makes
      the value visible in the create-response and auditable in the
@@ -295,19 +320,30 @@ alone makes the artifact land outside `4-connect` and fail
    - `name`: descriptive (e.g. `"Per verified visit"`)
    - `description`: payment criteria
    - `amount`: per-unit FLW pay from PDD. **MUST be a non-negative
-     integer** in the opp currency's smallest unit — Connect's serializer
+     integer in WHOLE currency units** (e.g. whole USD), NOT cents.
+     Connect stores `amount`, `org_amount`, and `total_budget` as plain
+     integers in the SAME whole-currency unit — verified against
+     commcare-connect `opportunity/models.py`: `PaymentUnit.amount` and
+     `org_amount` are `PositiveIntegerField`, `Opportunity.total_budget`
+     is `PositiveBigIntegerField`; no cents, no decimals. The serializer
      rejects floats. If the PDD specifies a fractional rate (e.g.
-     `$1.50`), pick a representation explicitly:
-     - **Option A (recommended):** round to the nearest integer
-       (`$1.50` → `2`) and log an `[INFO]` to
-       `comms-log/observations.md` noting the rounding.
-     - **Option B:** convert to a smaller unit (cents: `$1.50` → `150`)
-       — only do this if the rest of the opp's currency convention
-       agrees, otherwise the FLW dashboard renders the wrong number.
+     `$1.50`), **round to the nearest whole unit** (`$1.50` → `2`) and
+     log an `[INFO]` to `comms-log/observations.md` noting the rounding.
+     - **NEVER pass cents.** `$1.50` → `150` is a 100× overpay: Connect
+       reads `150` as **$150 per visit**, which (a) renders the wrong
+       number on the FLW Download gate ("Earn up to N USD for visit")
+       and (b) inflates `Σ(max_total × (amount + org_amount))` 100×, so
+       the budget guard below demands a 100×-too-large `total_budget`
+       and `number_of_users = total_budget / Σ(...)` collapses below 1
+       → the FLW physically cannot claim the opp (no `OpportunityClaim`
+       is created). Caught live on `bednet-spot-check/20260605-2303`: a
+       `$1.00` intent passed as `100` showed "Earn up to 100 USD for
+       visit" and made a `$100` program budget fund 0.008 users.
      - Never silently truncate (`$1.50` → `1`) — that's where the
        prior `turmeric-20260503` run produced a malformed PU.
    - `org_amount`: per-unit LLO pay — **REQUIRED for managed opps**.
-     Same integer constraint as `amount`. (Note: commcare-connect commit
+     Same WHOLE-currency-unit integer constraint as `amount` (NOT cents).
+     (Note: commcare-connect commit
      `4c430de3` loosened this validation on 2026-04-29 to accept `0` —
      before that fix, falsy values were rejected with
      `org_amount is required for managed opportunities.`)
@@ -364,6 +400,46 @@ alone makes the artifact land outside `4-connect` and fail
    handed off to Phase 5 with corrupted state. Catching the
    malformation at the source converts a multi-phase cascade into a
    single-skill halt.
+
+   **Budget-funds-≥1-FLW guard (mandatory, class-level preventer).**
+   After the opportunity (Step 4) AND its payment units (this step) are
+   created and read back, compute from the **created** payment units:
+
+   ```
+   min_budget_for_one_user = Σ over created PUs of (pu.max_total × (pu.amount + pu.org_amount))
+   number_of_users        = opp.total_budget / min_budget_for_one_user
+   ```
+
+   All four operands are integers in the same currency unit (no cents —
+   see `total_budget` in Step 4 and `commcare_connect/opportunity/models.py`),
+   so the comparison is unit-consistent. **Assert
+   `opp.total_budget ≥ min_budget_for_one_user`** (i.e. `number_of_users ≥ 1`).
+
+   If the assertion FAILS, write a `[BLOCKER]` to
+   `comms-log/observations.md`, set `phases.connect-setup.status: error` in
+   the current run's `run_state.yaml`, and **HALT** — do NOT proceed to
+   Step 6.5 or hand off to Phase 6 with an unclaimable opp. The remediation
+   message must read:
+
+   > opp `total_budget` $X funds <1 FLW at the configured payment units
+   > (need ≥ $Y = Σ max_total×(amount+org_amount)); raise `total_budget` /
+   > the program budget, or lower `max_total`.
+
+   …substituting the live `$X` (= `opp.total_budget`) and `$Y`
+   (= `min_budget_for_one_user`). Cite the commcare-connect formula
+   `number_of_users = total_budget / Σ(max_total × (amount + org_amount))`
+   (`Opportunity.number_of_users`) and that a sub-1 value means
+   `create_claim_limits` allocates fewer than `max_total` visit slots, so the
+   FLW can't get a full claim allotment. **This is the silent root behind the
+   Phase-6 Deliver "Unable to claim" / no-claim class** (the
+   FLW-can't-claim symptom): the bednet smoke opp shipped with
+   `total_budget=100` and a PU `max_total=50, amount=1, org_amount=1.5`
+   (→ rounded `2`), giving `number_of_users = 100 / (50×(1+2)) = 0.67 < 1`.
+   This guard makes that misconfiguration structurally impossible to ship.
+   It is the verify-after-create complement to the Step 4 `total_budget`
+   floor — the floor sizes it right going in; this guard catches any drift
+   (rounding of `amount`, an operator override, a PU `max_total` change)
+   after the real values are stored.
 
 6.5. **Activate the opportunity in Connect** (REQUIRED for ACE-driven runs;
    prerequisite for Step 7's test-user invite).
