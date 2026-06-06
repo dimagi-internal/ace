@@ -67,7 +67,7 @@ See `skills/_eval-template.md` for shared contracts (verdict YAML shape, severit
 
 5. **Write the verdict YAML** to `2-research/partnership-angles-eval_verdict.yaml`.
 
-   Resolve or create `runs/<run-id>/2-research/` via `drive_create_folder` with `findOrCreate: true`. Write via `drive_create_doc_from_markdown`.
+   Resolve or create `runs/<run-id>/2-research/` via `drive_create_folder` with `findOrCreate: true`. Write via `drive_create_file`.
 
    Dimensions must sum to 1.0:
 
@@ -170,7 +170,7 @@ Are the grounded angles compelling enough to anchor a 90-second partnership vide
 
 See `skills/_eval-template.md § MCP Tools Used (stock)`.
 
-- Google Drive: `drive_read_file`, `drive_create_folder`, `drive_create_doc_from_markdown`
+- Google Drive: `drive_read_file`, `drive_create_folder`, `drive_create_file`
 
 ## Mode Behavior
 

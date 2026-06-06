@@ -91,7 +91,7 @@ Ground every one of the three library narrative templates (`day-in-the-life`, `t
 
 4. **Write `angles.yaml` to the run folder.**
 
-   Resolve the run folder via `drive_create_folder` with `findOrCreate: true` (parent = the `runs/<run-id>/` folder for this partnership run). Write `angles.yaml` via `drive_create_doc_from_markdown`. Record the returned Drive `file_id`.
+   Resolve the run folder via `drive_create_folder` with `findOrCreate: true` (parent = the `runs/<run-id>/` folder for this partnership run). Write `angles.yaml` via `drive_create_file`. Record the returned Drive `file_id`.
 
    The YAML structure:
 
@@ -107,9 +107,9 @@ Ground every one of the three library narrative templates (`day-in-the-life`, `t
        ...
    ```
 
-5. **Inline QA (binary — run before declaring done).**
+5. **Inline QA (binary — run before writing the phase write-back).**
 
-   Before writing the phase write-back, verify all of the following. If any check fails, surface the failure and halt with `verdict: fail` (do not write a `complete` write-back):
+   Verify all of the following. Record which checks pass and which fail — the write-back in step 6 is ALWAYS written regardless of outcome (the eval gate reads `phases.angles.verdict` from `run_state.yaml`; skipping the write-back would make the eval gate invisible to the orchestrator):
 
    - **`angles_file_exists`**: `angles.yaml` was written and a `file_id` was returned.
    - **`exactly_three_angles`**: `angles.yaml` contains exactly 3 angle entries.
@@ -117,15 +117,16 @@ Ground every one of the three library narrative templates (`day-in-the-life`, `t
    - **`all_seven_beats_present`**: Each angle has all 7 beat keys (`hook`, `cycle`, `handoff`, `scene`, `problem`, `product`, `impact`).
    - **`grounded_or_flagged`**: For every beat in every angle, either the text is a grounded one-liner OR the text contains `[UNGROUNDED` — no silent blanks.
 
-6. **Write the Phase Write-Back to `run_state.yaml`.**
+6. **Write the Phase Write-Back to `run_state.yaml`** (always — both pass and fail paths).
 
    Write `phases.angles.*` to `ACE/partnerships/<slug>/runs/<run-id>/run_state.yaml` via `update_yaml_file` with `merge: 'deep'` (a partial nested patch of `phases.<phase>` requires `deep` — `two-level` silently drops sibling keys; see CLAUDE.md § Gotchas):
 
+   **QA pass path** (`verdict: pass`):
    ```yaml
    phases:
      angles:
-       status: complete
-       verdict: pass          # or: fail (if QA failed)
+       status: done
+       verdict: pass
        completed_at: <ISO timestamp>
        summary_artifact: angles.yaml
        steps:
@@ -139,11 +140,32 @@ Ground every one of the three library narrative templates (`day-in-the-life`, `t
          grounded_count: <0–3>    # number of angles where grounded: true
    ```
 
-   If inline QA failed, set `status: incomplete`, `verdict: fail`, surface the failed check name(s), and halt before writing `complete`.
+   **QA fail path** (`verdict: fail`): write the write-back first, then halt with the failed check names surfaced.
+   ```yaml
+   phases:
+     angles:
+       status: incomplete
+       verdict: fail
+       completed_at: <ISO timestamp>
+       summary_artifact: angles.yaml
+       steps:
+         research_read: done
+         narratives_loaded: done
+         angles_grounded: done
+         inline_qa: fail
+         write_back: done
+       products:
+         angles_file_id: <file_id from step 4>       # may be null if angles_file_exists check failed
+         grounded_count: <0–3>
+       qa_failures:
+         - <failed-check-id>                          # one entry per failed check
+   ```
+
+   After writing the write-back on the fail path, halt with an actionable operator error naming the failed checks.
 
 ## MCP Tools Used
 
-- Google Drive: `drive_read_file`, `drive_create_folder`, `drive_create_doc_from_markdown`, `update_yaml_file`
+- Google Drive: `drive_read_file`, `drive_create_folder`, `drive_create_file`, `update_yaml_file`
 
 Note: The narrative library is read from the ACE repo filesystem at skill runtime — it is not stored in Drive. The three `narrative.yaml` files under `templates/partnership-narratives/` are consumed as-is; no MCP call is needed to load them.
 

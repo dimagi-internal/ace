@@ -58,7 +58,7 @@ See `skills/_qa-template.md` for the shared QA contract (verdict YAML format, au
 
 4. **Write the QA result YAML** to the run's `2-research/` phase folder.
 
-   Resolve or create `runs/<run-id>/2-research/` via `drive_create_folder` with `findOrCreate: true`. Write `partnership-research-qa_result.yaml` via `drive_create_doc_from_markdown`.
+   Resolve or create `runs/<run-id>/2-research/` via `drive_create_folder` with `findOrCreate: true`. Write `partnership-research-qa_result.yaml` via `drive_create_file`.
 
    Result shape per `skills/_qa-template.md § QA result YAML contract`:
 
@@ -91,7 +91,7 @@ See `skills/_qa-template.md` for the shared QA contract (verdict YAML format, au
 
 ## MCP Tools Used
 
-- Google Drive: `drive_read_file`, `drive_create_folder`, `drive_create_doc_from_markdown`
+- Google Drive: `drive_read_file`, `drive_create_folder`, `drive_create_file`
 
 ## Mode Behavior
 
