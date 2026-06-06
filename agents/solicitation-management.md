@@ -36,6 +36,23 @@ lifecycle requires explicit human approval and is run manually via
 
 ## Workflow (default run)
 
+### Step 0: Resolve the phase folder (do this FIRST)
+
+Resolve (or create) the `8-solicitation-management/` subfolder under the
+current run folder via `drive_create_folder({name:
+'8-solicitation-management', parentFolderId: <run_folder_id>})` (the
+MCP's `findOrCreate: true` default returns the existing folder id if it's
+already there — idempotent, one call). **Capture the returned id and use
+it as the `parentFolderId` for EVERY artifact this phase writes**
+(`solicitation-create_{draft,published}.md`,
+`solicitation-create-eval_verdict.yaml`, `llo-invite_invitations.md`,
+`solicitation-management_summary.md`). Do NOT default to the run-folder
+root — artifacts at the run root are invisible to the boundary fence's
+`verify_phase_artifacts(phase='solicitation-management')` (which walks
+the `8-solicitation-management/` subfolder), to the ace-web summary, and
+to `opp-eval` discovery, all of which key off the per-phase subfolder.
+This mirrors `connect-setup`'s Step 0 phase-folder resolve. (jjackson/ace#727)
+
 ### Step 1: Solicitation Create
 
 Invoke the `solicitation-create` skill.

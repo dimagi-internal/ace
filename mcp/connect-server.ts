@@ -440,9 +440,31 @@ server.tool('connect_send_flw_invite',
   {
     organization_slug: z.string(),
     opportunity_id: z.string().describe('Opportunity must be active and not ended.'),
-    phone_numbers: z.array(z.string().regex(/^\+\d+$/, 'Phone must start with + and contain only digits')).min(1),
+    // Accept either a literal `+<digits>` phone OR a `${VAR}` env token
+    // (e.g. `${ACE_E2E_PHONE}`). The token is resolved against the MCP
+    // server's env in the handler below, BEFORE forwarding — same
+    // convention as `connect_create_opportunity`'s `api_key`. The regex
+    // validates the literal string at the Zod boundary (which runs
+    // before substitution), so it must permit the token form; the
+    // resolved value is re-validated server-side by Connect. (jjackson/ace#719)
+    phone_numbers: z.array(
+      z.string().regex(
+        /^(\+\d+|\$\{[A-Z_][A-Z0-9_]*\})$/,
+        'Phone must be `+<digits>` or a `${VAR}` env token (e.g. ${ACE_E2E_PHONE})',
+      ),
+    ).min(1),
   },
-  async (args) => runAtom(async () => (await client()).sendFlwInvite(args))
+  async (args) => runAtom(async () => {
+    // Resolve any `${VAR}` tokens in phone_numbers before forwarding —
+    // the skill docs assume the atom env-substitutes phones the way it
+    // does api_key, but historically only api_key was resolved, so a
+    // literal `${ACE_E2E_PHONE}` reached Connect and failed. (jjackson/ace#719)
+    const resolved = {
+      ...args,
+      phone_numbers: args.phone_numbers.map((p) => resolveEnvSubstitution(p)),
+    };
+    return (await client()).sendFlwInvite(resolved);
+  })
 );
 
 server.tool('connect_delete_unaccepted_flw_invites',

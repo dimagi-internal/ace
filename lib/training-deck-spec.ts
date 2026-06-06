@@ -426,6 +426,17 @@ export function resolveManifest(manifest: {
         return normalizeDriveImageUrl(ref);
       }
 
+      // Direct `drive:<fileId>` reference (a slide.image set straight to
+      // the alias VALUE, not via `@alias`). Without this, it falls to the
+      // bare-ref fallback below, where normalizeDriveImageUrl doesn't
+      // recognize the `drive:` scheme (no `drive.google.com` host) and
+      // returns it unchanged — so the literal `drive:<id>` reaches the
+      // Slides API `createImage`, which rejects it. (jjackson/ace#724)
+      if (ref.startsWith('drive:')) {
+        const fileId = ref.slice('drive:'.length);
+        return `https://drive.google.com/uc?export=view&id=${fileId}`;
+      }
+
       // @alias references: strip the prefix, look up, resolve.
       if (ref.startsWith('@')) {
         const alias = ref.slice(1);
