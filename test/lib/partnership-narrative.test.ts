@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { parseNarrative, NARRATIVE_BEATS } from "../../lib/partnership-narrative";
+import { parseNarrative, NARRATIVE_BEATS, NarrativeSchema } from "../../lib/partnership-narrative";
 
 const valid = `
 id: the-scale-gap
@@ -35,5 +35,11 @@ describe("parseNarrative", () => {
   it("rejects an unknown beat id", () => {
     const bad = valid + `  bonus: { intent: x, words: 5 }\n`;
     expect(() => parseNarrative(bad)).toThrow();
+  });
+
+  it("NARRATIVE_BEATS matches the schema's beat keys (drift guard)", () => {
+    expect(Object.keys(NarrativeSchema.shape.beats.shape).sort()).toEqual(
+      [...NARRATIVE_BEATS].sort(),
+    );
   });
 });
