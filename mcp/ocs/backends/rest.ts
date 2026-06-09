@@ -139,21 +139,44 @@ export class RestBackend {
       Referer: this.opts.baseUrl,
     };
 
-    // 1. Start anonymous session
+    // 1. Start anonymous session. As of OCS #3552 (deployed 2026-06-09) the
+    //    chat session API requires a per-session token: POST /api/chat/start/
+    //    issues a signed `session_token` that the message/poll/end session
+    //    endpoints enforce as the `X-Session-Token` header. A direct API
+    //    consumer that sends NO `x-ocs-widget-version` header is treated as
+    //    token-enforced (it is NOT opted out — see chat.py
+    //    `_issue_or_opt_out_session_token`), so we must capture the issued token
+    //    and thread it on every subsequent session call. Without it /message/
+    //    and /poll/ reject with 403 `session_token_required`, which the bot
+    //    surfaced as the generic "something went wrong" fallback and was
+    //    misread as an LLM outage (jjackson/ace#742). We pass
+    //    `use_session_token: true` to make token issuance explicit rather than
+    //    relying on the header-absence default.
     const startRes = await fetch(`${this.opts.baseUrl}/api/chat/start/`, {
       method: 'POST',
       headers: chatHeaders,
-      body: JSON.stringify({ chatbot_id: args.public_id }),
+      body: JSON.stringify({ chatbot_id: args.public_id, use_session_token: true }),
     });
     if (!startRes.ok) {
       throw new HttpError(startRes.status, '/api/chat/start/', await startRes.text());
     }
-    const { session_id } = (await startRes.json()) as { session_id: string };
+    const { session_id, session_token } = (await startRes.json()) as {
+      session_id: string;
+      session_token?: string | null;
+    };
+
+    // Session-scoped headers: thread the per-session token on every subsequent
+    // session endpoint. When OCS opted the session out (token null — e.g. a
+    // pre-token session backfilled to `session_token_required = false`), we omit
+    // the header and the legacy tokenless path still works.
+    const sessionHeaders = session_token
+      ? { ...chatHeaders, 'X-Session-Token': session_token }
+      : chatHeaders;
 
     // 2. Send message
     const sendRes = await fetch(`${this.opts.baseUrl}/api/chat/${session_id}/message/`, {
       method: 'POST',
-      headers: chatHeaders,
+      headers: sessionHeaders,
       body: JSON.stringify({ message: args.message }),
     });
     if (!sendRes.ok) {
@@ -175,7 +198,7 @@ export class RestBackend {
       await new Promise((r) => setTimeout(r, 2000));
       const pollRes = await fetch(
         `${this.opts.baseUrl}/api/chat/${session_id}/${task_id}/poll/`,
-        { method: 'GET', headers: chatHeaders },
+        { method: 'GET', headers: sessionHeaders },
       );
       // Parse the body regardless of HTTP status — an errored generation can
       // be delivered with a non-2xx code while still carrying the payload.
