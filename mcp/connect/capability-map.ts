@@ -27,6 +27,13 @@ export interface CapabilityRoute {
  *   total_budget upfront, so neither atom has a job. `accept_program_application`
  *   is added as the new automation shortcut for ACE-driven dogfood runs.
  *
+ * - 0.13.x added `add_org_member` — invite a human user to a Connect
+ *   workspace (organization) by email. Playwright HTML-form POST to
+ *   `/a/<org>/organization/member`; no REST equivalent. Requires the ACE
+ *   session user to be an org admin and the invitee to already have a
+ *   Connect account (Connect's `MembershipForm.clean_email` rejects
+ *   unknown emails). Verified by read-back of `/organization/member_table`.
+ *
  * `REST` = JSON to the new automation API endpoints, mediated by the
  * authenticated session cookie + CSRF token. There is no token auth path
  * yet; the session is still established via OAuth-with-CommCareHQ.
@@ -45,6 +52,7 @@ export type Capability =
   | 'accept_program_application'
   | 'send_flw_invite'
   | 'delete_unaccepted_flw_invites'
+  | 'add_org_member'
   // Observation (10)
   | 'list_programs'
   | 'get_program'
@@ -71,6 +79,7 @@ export const CAPABILITY_MAP: Record<Capability, CapabilityRoute> = {
   accept_program_application:   { backend: 'REST',       restTarget: 'POST /api/programs/{program_id}/applications/{application_id}/accept/' },
   send_flw_invite:              { backend: 'REST',       restTarget: 'POST /api/opportunities/{id}/invite_users/' },
   delete_unaccepted_flw_invites: { backend: 'PLAYWRIGHT', restTarget: 'DELETE /api/opportunities/{id}/invites/ (not yet shipped)' },
+  add_org_member:               { backend: 'PLAYWRIGHT', restTarget: 'POST /a/{org}/organization/member (HTML form; no REST equiv)' },
 
   // Observation — still HTML-scrape; PR #1135 didn't ship reads
   list_programs:                { backend: 'PLAYWRIGHT', restTarget: 'GET /api/programs/ (not yet shipped)' },

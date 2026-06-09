@@ -388,7 +388,7 @@ _no parameters_
 
 ## ace-connect
 
-Source: `mcp/connect-server.ts` — 46 atoms
+Source: `mcp/connect-server.ts` — 47 atoms
 
 ### `connect_list_programs`
 
@@ -534,6 +534,16 @@ Hard-delete unaccepted FLW invites by integer id. Invites with `status=accepted`
 | `organization_slug` | `z.string` | **required** | _—_ |
 | `opportunity_id` | `z.string` | **required** | _—_ |
 | `user_invite_ids` | `z.array` | **required** | _—_ |
+
+### `connect_add_org_member`
+
+Invite a human user to a Connect workspace (organization) by email. POSTs the HTML membership form at `/a/<org_slug>/organization/member` (no REST equivalent) and verifies by reading back the member table. TWO hard requirements enforced by Connect, not bypassable: (1) the authenticated ACE session user (ace@dimagi-ai.com) MUST be an admin of `organization_slug`, or the POST 403s; (2) the invitee M…
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `organization_slug` | `z.string` | **required** | _—_ |
+| `email` | `z.string` | **required** | _—_ |
+| `role` | `z.enum` | optional | Membership role. Default "member". |
 
 ### `connect_list_invoices`
 

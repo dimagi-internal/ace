@@ -490,6 +490,16 @@ server.tool('connect_delete_unaccepted_flw_invites',
   async (args) => runAtom(async () => (await client()).deleteUnacceptedFlwInvites(args))
 );
 
+server.tool('connect_add_org_member',
+  'Invite a human user to a Connect workspace (organization) by email. POSTs the HTML membership form at `/a/<org_slug>/organization/member` (no REST equivalent) and verifies by reading back the member table. TWO hard requirements enforced by Connect, not bypassable: (1) the authenticated ACE session user (ace@dimagi-ai.com) MUST be an admin of `organization_slug`, or the POST 403s; (2) the invitee MUST already have a Connect account (signed in once) and NOT already be a member — Connect rejects unknown/duplicate emails with a silent redirect, surfaced here as a typed validation error via member-table read-back. On success the user gets an accept-invite email and shows as pending in the member list. `role` defaults to `member`.',
+  {
+    organization_slug: z.string().describe('Workspace (organization) slug, e.g. "ai-demo-space".'),
+    email: z.string().email().describe('Email of an EXISTING Connect user to add. Must not already be a member.'),
+    role: z.enum(['admin', 'member', 'viewer']).optional().describe('Membership role. Default "member".'),
+  },
+  async (args) => runAtom(async () => (await client()).addOrgMember(args))
+);
+
 // ── Invoices ─────────────────────────────────────────────────────
 
 server.tool('connect_list_invoices',
