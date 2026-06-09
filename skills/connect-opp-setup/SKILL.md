@@ -666,6 +666,8 @@ alone makes the artifact land outside `4-connect` and fail
       connect-setup:
         products:
           connect:
+            domain: <ACE_HQ_DOMAIN, e.g. connect-ace-prod>   # REQUIRED handoff key — phase-products contract + ace-web summary read it; omitting it fails verify_phase_products at the Phase 4 boundary fence (jjackson/ace#734)
+            organization_slug: <Connect org slug, e.g. ai-demo-space>
             program:
               id: <UUID copied from opp.yaml.connect.program.id>
               url: <CONNECT_BASE_URL>/a/<org>/program/<uuid>/

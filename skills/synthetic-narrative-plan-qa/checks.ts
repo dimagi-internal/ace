@@ -93,14 +93,24 @@ const KpiZ = z.object({
 
 // Discriminated union on the `distribution` tag — mirrors upstream
 // `FieldDistribution = Annotated[Normal|Uniform|Binary, Field(discriminator='distribution')]`.
-// Passthrough on each variant's params (mean/std, low/high, p_*) — upstream
+// normal/uniform passthrough their params (mean/stddev, low/high) — upstream
 // validates the numeric ranges; QA only mirrors the closed tag set so a
 // non-member tag (e.g. `categorical`, or a `type:` key instead of
 // `distribution:`) fails ACE-side instead of burning a labs round-trip.
+// `binary` is the exception: it REQUIRES `rate` (0-1). Upstream's
+// `BinaryDistribution` param is `rate` (NOT `p_yes`) and `rate` is a required
+// field; a manifest that emits `p_yes` (or omits `rate`) silently draws the
+// default share with no labs error — the bednet-spot-check 20260608-0711
+// 45%-vs-requested-70% symptom. Requiring it here turns that silent miss into
+// a loud ACE-side QA failure (jjackson/ace#737). Per-week variation is
+// `period_rates: {<week_index>: <rate>}` (passed through; upstream validates).
 const FieldDistributionZ = z.discriminatedUnion('distribution', [
   z.object({ distribution: z.literal('normal') }).passthrough(),
   z.object({ distribution: z.literal('uniform') }).passthrough(),
-  z.object({ distribution: z.literal('binary') }).passthrough(),
+  z.object({
+    distribution: z.literal('binary'),
+    rate: z.number().min(0).max(1),
+  }).passthrough(),
 ]);
 
 // Beneficiary cohort skeleton — mirrors upstream `BeneficiaryCohort`.
@@ -313,7 +323,7 @@ export function checkBeneficiaryCohortsWellFormed(text: string): QACheckResult {
     auto_fix_hint:
       `each beneficiary_cohorts[] needs an id; when present, size must be a positive int, ` +
       `progression ∈ {${VALID_PROGRESSIONS.join(', ')}}, and every field_distributions entry must be ` +
-      `discriminated on distribution ∈ {${VALID_DISTRIBUTIONS.join(', ')}} (e.g. {distribution: binary, p_yes: 0.6}). ` +
+      `discriminated on distribution ∈ {${VALID_DISTRIBUTIONS.join(', ')}} (e.g. {distribution: binary, rate: 0.6} — the binary param is 'rate' (0-1), NOT 'p_yes'; vary it per week with period_rates: {<week_index>: <rate>}). ` +
       `Generic tags like 'categorical' or progression values like 'rising_yes_share' are rejected at the labs boundary. ` +
       `Upstream truth: commcare_connect/labs/synthetic/generator/manifest.py.`,
   };

@@ -176,11 +176,23 @@ retry tax.
 - **`field_distributions` entries need an explicit `distribution`
   discriminator.** Pydantic's tagged-union dispatch is keyed on a
   `distribution: <name>` field on each entry. Dropping it produces
-  the cryptic `unable to discriminate` error.
+  the cryptic `unable to discriminate` error. The union is exactly
+  three variants (source: `commcare_connect/labs/synthetic/generator/manifest.py`):
+  `normal` (`mean` + `stddev`), `uniform` (`low` + `high`), and
+  `binary` (`rate`). `categorical` / `uniform_int` are NOT valid and
+  are rejected at the labs boundary.
   Wrong: `{ field: "shop_count", min: 5, max: 12 }`.
-  Right: `{ field: "shop_count", distribution: "uniform_int", min: 5, max: 12 }`
-  (or `distribution: "normal"`, `distribution: "categorical"`, etc.,
-  per the union shape).
+  Right: `{ field: "shop_count", distribution: "uniform", low: 5, high: 12 }`.
+- **`binary` distribution: the param is `rate` (0-1), NOT `p_yes`.**
+  `{ field: "slept_under_net", distribution: "binary", rate: 0.7 }` draws
+  1 at 70%. To vary the rate per week — the week-scoped-anomaly
+  mechanism — add `period_rates: {<week_index>: <rate>}` (week_index is
+  an int), e.g. `period_rates: {2: 0.3}` drops week 2 to 30% while every
+  other week keeps `rate`. Emitting `p_yes` silently fails to set the
+  rate (`rate` is the required field; an unknown `p_yes` is ignored), so
+  the output reverts toward the default share — the bednet-spot-check
+  20260608-0711 45%-vs-requested-70% symptom (jjackson/ace#737). Source:
+  `BinaryDistribution` in `.../generator/manifest.py`.
 
 - **`aggregation` enum is `count | mean | validated_rate |
   non_null_rate`.** No `count_where_eq` (the natural author-side
