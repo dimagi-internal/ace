@@ -230,6 +230,47 @@ export interface ConnectClient {
     user_invite_ids: number[];          // integer ids from connect_list_invites
   }): Promise<{ requested: number }>;
 
+  /**
+   * Invite a human user to a Connect workspace (organization) by email.
+   * Connect calls this an "organization membership"; the user gets an
+   * email with an accept-invite link and appears in the member table
+   * immediately (pending until they accept).
+   *
+   * POST to the HTML form view `/a/<org_slug>/organization/member`
+   * (Django name `organization:add_members`); there is no REST API
+   * equivalent. The view is `@org_admin_required`, so the authenticated
+   * ACE session user MUST be an admin of the target org, or the POST
+   * 403s.
+   *
+   * Two Connect-side rules the caller can't bypass (enforced by
+   * `MembershipForm.clean_email`):
+   *   1. The email must belong to an EXISTING Connect user — Connect
+   *      does not provision accounts from an invite. Unknown emails are
+   *      rejected.
+   *   2. The user must NOT already be a member of this org.
+   * Both surface as the SAME server message ("User with this email does
+   * not exist or is already a member"), and — critically — the view
+   * still 302-redirects on validation failure (it does not re-render the
+   * error). So this method CANNOT read success off the POST status; it
+   * verifies by reading back `/a/<org_slug>/organization/member_table`
+   * (which renders `user__email`) and confirming the email is present.
+   * On absence it throws a typed ConnectValidationError with the
+   * documented reason.
+   *
+   * `role` is one of Connect's `UserOrganizationMembership.Role` values:
+   * `admin` | `member` | `viewer` (default `member`).
+   */
+  addOrgMember(args: {
+    organization_slug: string;
+    email: string;
+    role?: 'admin' | 'member' | 'viewer';
+  }): Promise<{
+    organization_slug: string;
+    email: string;
+    role: 'admin' | 'member' | 'viewer';
+    status: 'invited';
+  }>;
+
   // Invoices
   listInvoices(args: { organization_slug: string; opportunity_id: string }): Promise<{ invoices: Invoice[] }>;
   getInvoice(args: { organization_slug: string; invoice_id: string }): Promise<Invoice>;

@@ -583,6 +583,76 @@ export class PlaywrightBackend implements ConnectClient {
     return { invites: parseInvitesList(await listRes.text(), program_id) };
   };
 
+  // ── Organization membership ───────────────────────────────────────
+
+  /**
+   * Invite a human user to a Connect workspace (organization) by email.
+   * Full contract + the two clean_email rules are documented on
+   * `ConnectClient.addOrgMember`. Endpoint probed against commcare-connect
+   * `organization/views.py::add_members_form` + `forms.py::MembershipForm`
+   * (the source of truth — POST `/a/<org>/organization/member`, form
+   * fields `email` + `role`).
+   *
+   * The view is `@api_view(["POST"]) @org_admin_required` and ALWAYS
+   * 302-redirects to `?active_tab=members` — including on validation
+   * failure, which it does NOT echo. So the POST status can't distinguish
+   * success from rejection; we verify by reading back the member table
+   * (`org_member_table`, which renders the `user__email` column) and
+   * confirming the email landed.
+   */
+  addOrgMember: ConnectClient['addOrgMember'] = async ({ organization_slug, email, role }) => {
+    const wantRole = role ?? 'member';
+    // 1. GET the org home page — it renders the add-member modal whose
+    //    form carries the {% csrf_token %} we need.
+    const homePath = `/a/${organization_slug}/organization/`;
+    const homeRes = await this.request.get(homePath);
+    if (homeRes.status() !== 200) throw await httpErrorFor(homeRes, homePath);
+    const csrf = extractFormCsrfToken(await homeRes.text()) ?? this.opts.csrfToken;
+
+    // 2. POST the membership form.
+    const postPath = `/a/${organization_slug}/organization/member`;
+    const postRes = await this.request.post(postPath, {
+      form: { csrfmiddlewaretoken: csrf, email, role: wantRole },
+      maxRedirects: 0,
+      headers: {
+        Referer: `${this.opts.baseUrl}${homePath}`,
+        'X-CSRFToken': csrf,
+      },
+    });
+    // 302 (redirect to the members tab) is the normal outcome for BOTH
+    // success and validation failure; only a non-redirect/non-200 is a
+    // hard transport/permission error (e.g. 403 if the ACE session user
+    // isn't an org admin — @org_admin_required).
+    if (postRes.status() !== 302 && postRes.status() !== 200) {
+      throw await httpErrorFor(postRes, postPath, 'POST');
+    }
+
+    // 3. Verify by read-back. `page_size=100` is Connect's max page size
+    //    (PAGE_SIZE_OPTIONS = [20,30,50,100]); a fresh membership sorts to
+    //    the end of the queryset, so the large page keeps it on the single
+    //    page for any realistic workspace (<100 members). The table's
+    //    `user` column is `accessor="user__email"`, so the raw email is in
+    //    the rendered HTML.
+    const tablePath = `/a/${organization_slug}/organization/member_table?page_size=100`;
+    const tableRes = await this.request.get(tablePath);
+    if (tableRes.status() !== 200) throw await httpErrorFor(tableRes, tablePath);
+    const tableHtml = await tableRes.text();
+    if (!tableHtml.toLowerCase().includes(email.toLowerCase())) {
+      throw new ConnectValidationError(
+        [
+          `Connect did not add '${email}' to workspace '${organization_slug}'. ` +
+            `Connect's MembershipForm.clean_email rejects two cases with the same silent 302: ` +
+            `(1) no Connect account exists for that email yet — the person must sign in to Connect once before they can be invited; ` +
+            `(2) they are already a member of this workspace. ` +
+            `Neither reason is echoed in the response, so this is inferred from the member-table read-back.`,
+        ],
+        { email: ['User with this email does not exist or is already a member'] },
+      );
+    }
+
+    return { organization_slug, email, role: wantRole, status: 'invited' as const };
+  };
+
   // ── Invoices (stub — page shape not yet probed) ───────────────────
 
   listInvoices: ConnectClient['listInvoices'] = async ({ organization_slug, opportunity_id }) => {

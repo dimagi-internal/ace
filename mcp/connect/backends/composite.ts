@@ -51,6 +51,8 @@ export class CompositeBackend implements ConnectClient {
     this.tryRestThenPlaywright('sendFlwInvite', a);
   deleteUnacceptedFlwInvites = (a: Parameters<ConnectClient['deleteUnacceptedFlwInvites']>[0]) =>
     this.opts.playwright.deleteUnacceptedFlwInvites(a);
+  addOrgMember = (a: Parameters<ConnectClient['addOrgMember']>[0]) =>
+    this.opts.playwright.addOrgMember(a);
 
   // ── Playwright (HTML-driven — reads, edits, verification flags, invoices) ──
   listPrograms = (a: Parameters<ConnectClient['listPrograms']>[0]) => this.opts.playwright.listPrograms(a);
