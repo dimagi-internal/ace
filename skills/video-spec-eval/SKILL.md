@@ -211,6 +211,11 @@ named places (e.g. four districts) or scale figures the spec collapses
 to generic "the country" / "four districts", that is a real fidelity
 miss — cap at 8 even when every stated fact is correct. Reserve 9-10 for
 specs that mine the brief's distinctive detail, not merely avoid errors.
+**Graduated under-use threshold (for reproducibility):** count the
+distinct brief specifics that are available but unused — named places,
+co-equal scale figures, named partners/funders. **0 omitted → up to 9-10;
+1-2 omitted → cap 8; 3+ omitted → cap 7; collapsed to country-only with
+no named detail → 5-6.** Apply the count, don't eyeball it.
 
 **No-source branch** (`source_available = false`, no brief and no URL):
 grade on internal coherence only — does the spec hang together?
@@ -242,6 +247,16 @@ words to maximum effect? Or did it pad with filler to hit the target?
 | One or two beats use filler ("structured care that is delivered in their homes"). | 7-8 |
 | Multiple beats pad; a sharp editor could compress by 20% with no loss. | 4-6 |
 | Most beats are bloated. The 60s of audio carries 30s of content. | 0-3 |
+
+**Budget check (reproducible — REQUIRED):** fetch `skeleton_yaml` (and
+`programs/_defaults.yaml`) to read each beat's seconds, then derive the
+ceiling per beat as `max = round(beat_seconds × 2.5) + 2`. Recount each
+beat's actual words. **Any beat over `max` is a hard compression
+defect** (the audio gets cut mid-word) — knock at least one point and
+name the over-budget beat in the weakness. Do not grade this dimension
+by feel; the budget is arithmetic. The recurring offender is the short
+`problem` beat (~8s → max ~22 words); flag it when it carries both a
+stat and a stakes clause.
 
 ## Verdict YAML shape
 

@@ -208,6 +208,22 @@ the per-template signal (intent + example) to fill every placeholder:
   understand tone, specificity level, clip choices, and card language for this
   template. Match the register and specificity.
 
+**Specificity mining (do this BEFORE drafting beats):** the source's distinctive
+details are what separate "describes THIS program" from "generic Connect copy" —
+and they are easy to drop. Up front, extract and rank:
+- **Named places** — districts, regions, sites. Surface at least 2-3 of them in
+  narration (scene/handoff) — do NOT collapse a named list to a generic count
+  ("four districts"). Rotate named places through `scene.lower_third` where it fits.
+- **Scale/proof figures** — visits completed, workers trained, footprint (e.g.
+  "410,000 verified visits in 18 months", "1,200 CHWs"). These are often the single
+  most credibility-building "this is real, at scale" numbers. The two `impact[]`
+  cards usually hold *outcome* stats, so route the strongest **scale** figure into
+  the `status` field, the `handoff` narration, or the `scene` lower-third so it
+  isn't silently dropped.
+- **Named partners/funders** — fold into handoff/status if a slot fits.
+A spec that leaves named places or a headline scale figure unused is a fidelity
+miss even when every stated fact is correct.
+
 **Grounding rule (load-bearing):**
 - Never invent stats, organizational backstory, or claims not present in the
   source. If the skeleton has stat placeholders and the source lacks the number,
