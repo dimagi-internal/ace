@@ -160,6 +160,69 @@ describe('RestBackend chatbot atoms', () => {
     expect(res.response).toBe('hi there');
   });
 
+  // jjackson/ace#742: OCS #3552 (deployed 2026-06-09) requires a per-session
+  // token. POST /api/chat/start/ now returns `session_token`, which the
+  // message + poll session endpoints enforce as `X-Session-Token`. The backend
+  // must capture the token and thread it, or those calls 403 with
+  // `session_token_required` (the bot then surfaces a generic "something went
+  // wrong" fallback that reads like an LLM outage).
+  it('sendTestMessage threads the per-session token (X-Session-Token) on message + poll', async () => {
+    const sessionId = 'tok-session-1';
+    const taskId = 'tok-task-1';
+    const token = 'signed-session-token-abc';
+
+    // start issues the session token (and we ask for it via use_session_token)
+    mockAgent.get(BASE)
+      .intercept({ path: '/api/chat/start/', method: 'POST' })
+      .reply(200, { session_id: sessionId, session_token: token });
+
+    // message + poll MUST carry the token header — undici only matches the
+    // intercept (and thus 200s) when the header is present with the right value.
+    mockAgent.get(BASE)
+      .intercept({
+        path: `/api/chat/${sessionId}/message/`,
+        method: 'POST',
+        headers: { 'X-Session-Token': token },
+      })
+      .reply(200, { task_id: taskId });
+    mockAgent.get(BASE)
+      .intercept({
+        path: `/api/chat/${sessionId}/${taskId}/poll/`,
+        method: 'GET',
+        headers: { 'X-Session-Token': token },
+      })
+      .reply(200, { status: 'complete', message: { content: 'token threaded ok' } });
+
+    const b = new RestBackend({ baseUrl: BASE, token: 't' });
+    const res = await b.sendTestMessage({
+      public_id: 'uuid-42',
+      embed_key: 'embed-key-xyz',
+      message: 'hello',
+    });
+    expect(res.response).toBe('token threaded ok');
+  });
+
+  // A session OCS opted out of token enforcement returns session_token: null;
+  // the backend must then NOT send the header and the legacy path still works.
+  it('sendTestMessage omits X-Session-Token when OCS issues no token (opted-out session)', async () => {
+    const sessionId = 'notok-session-1';
+    const taskId = 'notok-task-1';
+
+    mockAgent.get(BASE)
+      .intercept({ path: '/api/chat/start/', method: 'POST' })
+      .reply(200, { session_id: sessionId, session_token: null });
+    mockAgent.get(BASE)
+      .intercept({ path: `/api/chat/${sessionId}/message/`, method: 'POST' })
+      .reply(200, { task_id: taskId });
+    mockAgent.get(BASE)
+      .intercept({ path: `/api/chat/${sessionId}/${taskId}/poll/`, method: 'GET' })
+      .reply(200, { status: 'complete', message: { content: 'legacy ok' } });
+
+    const b = new RestBackend({ baseUrl: BASE, token: 't' });
+    const res = await b.sendTestMessage({ public_id: 'uuid-42', embed_key: 'k', message: 'hi' });
+    expect(res.response).toBe('legacy ok');
+  });
+
   // jjackson/ace#708: a failed LLM generation returns
   // `{"error":"...","status":"error"}` on /poll/ — sometimes with a non-2xx
   // HTTP status. sendTestMessage must FAIL FAST and surface the error content
