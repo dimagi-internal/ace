@@ -1,10 +1,12 @@
 ---
 name: video-spec-eval
 description: >
-  LLM-as-judge eval of the spec.yaml produced by /ace:video-from-program-page
-  (or hand-authored) for an ace-web video program. Scores 6 quality
-  dimensions and emits a verdict YAML with concrete improvement
-  recommendations. Gated by video-spec-qa.
+  LLM-as-judge eval of the spec.yaml produced by /ace:video-spec-generate
+  (or /ace:video-from-program-page, or hand-authored) for an ace-web video
+  program. Scores 6 quality dimensions and emits a verdict YAML with concrete
+  improvement recommendations. Gated by video-spec-qa. Prompt-independent:
+  derives all anchors from the template bundle (intent + example) and the
+  universal rubric — no generate.prompt.md required.
 disable-model-invocation: true
 ---
 
@@ -14,12 +16,25 @@ Grade the *goodness* of a video program's `spec.yaml`. Where
 `video-spec-qa` checks structural correctness, this skill judges
 quality: does the narration sound like Connect, does the spec describe
 *this* program rather than generic Connect content, are the chosen
-stats the most compelling ones from the source page, does the 60s
-flow build a story?
+stats the most compelling ones from the source page, does the flow
+build a story?
 
 LLM-as-judge across 6 dimensions, each scored 0-10 with concrete
 strengths/weaknesses and a one-line improvement recommendation. The
 agent is the judge; this skill defines the rubric.
+
+**This eval is prompt-independent.** Voice anchors live in this rubric.
+Word budgets are derived from beat seconds (same formula as the generator).
+Per-template fitness is anchored by the template's `intent` field and its
+`example.spec.yaml` reference — both fetched from the template bundle, not
+from a prose prompt file.
+
+**Out-of-chain discipline:** the template's `intent` and `example_yaml` are
+thin same-chain anchors produced by the same authoring pipeline that generated
+the spec. **Source Fidelity — graded against the real source page, an
+out-of-chain anchor — therefore remains the dominant, un-inflatable dimension.**
+Do not award high Source Fidelity scores without cross-checking the spec against
+the actual source URL.
 
 See `skills/_eval-template.md` for the shared eval contract (verdict
 YAML format, severity rules, inflation guard).
@@ -29,8 +44,12 @@ YAML format, severity rules, inflation guard).
 | Source | Artifact | Used for |
 |---|---|---|
 | ace-web Drive | `videos/<slug>/runs/<run-id>/spec.yaml` | the spec under judgment |
-| Source URL (optional) | `provenance.generated_from` page content | cross-check that the spec describes the *actual* program |
-| Template prompt | `generate.prompt.md` for `provenance.template` | the rubric's voice + word-budget anchors live here |
+| Source URL (optional) | `provenance.generated_from` page content | cross-check that the spec describes the *actual* program (out-of-chain anchor — dominant dimension) |
+| Template bundle | `GET /api/w/<ws>/videos/templates/<id>` → `meta.intent` | per-template narrative thesis (thin same-chain anchor) |
+| Template bundle | `GET /api/w/<ws>/videos/templates/<id>` → `example_yaml` | few-shot exemplar of what good looks like for this template |
+
+No `generate.prompt.md` is required. If a template has one, it is ignored
+by this eval.
 
 ## Products
 
@@ -53,18 +72,44 @@ YAML format, severity rules, inflation guard).
    dimension to its no-source branch (score from internal coherence
    only).
 
-4. **Load the template prompt** at the canonical path
-   `video-production/connect-videos/templates/<provenance.template>/generate.prompt.md`
-   in ace-web. The prompt's voice rules + per-beat word budgets are
-   the anchors the judge applies.
+4. **Fetch the template bundle** for `provenance.template`:
 
-5. **Score each dimension below 0-10.** For each, capture:
+   ```bash
+   curl -sS -H "Authorization: Bearer $ACE_WEB_PAT_TOKEN" \
+     "$BASE_URL/api/w/$WORKSPACE_SLUG/videos/templates/$TEMPLATE_ID"
+   ```
+
+   Extract:
+   - `meta.intent` — the template's narrative thesis (1–3 sentences).
+     This is the per-template fitness anchor: does the spec fulfill the
+     intent? Compare the spec's story arc against the intent.
+   - `example_yaml` — the fully-filled reference spec. Study it as the
+     "what good looks like" benchmark for voice, specificity, beat
+     structure, and card language for this template.
+   - `skeleton_yaml` — read to derive beat seconds and confirm which beats
+     are present (incl. whether `problem`/`impact` stat beats exist).
+
+5. **Derive per-beat word budgets** from beat seconds (same formula
+   as the generator — non-negotiable, applies to all templates):
+
+   ```
+   target_words = round(beat_seconds × 2.5)
+   min_words    = target_words - 2
+   max_words    = target_words + 2
+   ```
+
+   Example: a `scene` beat of 8s → target 20w (range 18–22). A `hook` beat
+   of 4s → target 10w (range 8–12). A `cta` beat of 0s → empty, expected.
+   Use these derived budgets — not any per-template table in a prose prompt.
+   Penalize beats that exceed `max_words` under Story Compression (dim 6).
+
+6. **Score each dimension below 0-10.** For each, capture:
    - `score: <int 0-10>`
    - `strength: <one-liner>` — what's working
    - `weakness: <one-liner>` — what's the worst issue
    - `recommendation: <one-liner>` — one concrete edit
 
-6. **Produce overall verdict.**
+7. **Produce overall verdict.**
    - `pass` — every dimension ≥ 7
    - `revise` — any dimension 5-6 (operator should edit before render)
    - `fail` — any dimension ≤ 4 (regenerate the spec)
@@ -95,6 +140,13 @@ but this dimension catches the broader register.
 source for `problem.big` and the two `impact[]` entries? Or did it
 grab the first numbers it saw?
 
+**Applicability:** this dimension applies only when the skeleton has
+`problem` and/or `impact` stat beats (check `skeleton_yaml` or the
+spec's `problem:` block). For explainer-mode templates (no `problem:`
+beat, `impact` carries value-prop cards instead of outcome stats),
+score this dimension N/A and note it in the verdict; it does not
+factor into the overall score.
+
 | Anchor | Score |
 |---|---|
 | problem.big is the headline number a reader would remember from the source. Both impact entries are the highest-leverage ones. | 9-10 |
@@ -108,15 +160,18 @@ its own; using a vanity metric over an outcome metric.
 
 ### 3. Beat Coherence
 
-**Rubric:** Does the 60s flow as a story or read as eight disconnected
-sentences? The arc the 60s template implies:
-hook → cycle (the how) → handoff (this program) → scene (the field) →
-problem (the stakes) → product (the proof) → impact (the result) →
-cta (empty / outro). Does each beat hand off cleanly?
+**Rubric:** Does the spec's beat sequence flow as a story, or read as
+disconnected sentences? The arc this template implies is declared in
+`meta.intent` — compare the spec's actual narrative flow against it.
+The general Connect arc is: hook → cycle (the how) → handoff (this
+program) → scene (the field) → [problem (the stakes)] → product (the
+proof) → impact (the result) → cta (empty / outro). Stat beats may be
+absent for explainer-mode templates. Read the `example_yaml` to
+understand what "clean handoffs" look like for this specific template.
 
 | Anchor | Score |
 |---|---|
-| Each beat sets up the next. A listener with no Connect context follows the arc. | 9-10 |
+| Each beat sets up the next. A listener with no Connect context follows the arc declared in the template's intent. | 9-10 |
 | One beat feels bolted on or stylistically off-key; the rest land. | 7-8 |
 | Two or more transitions feel abrupt; the listener has to recover context. | 4-6 |
 | The arc is broken — beats appear in the wrong order or contradict each other. | 0-3 |
@@ -207,8 +262,9 @@ the rubric calibrated:
 
 ## MCP Tools Used
 
-- Google Drive: `drive_read_file` (spec + source page if reachable)
-- WebFetch: `provenance.generated_from` to re-fetch the source page
+- Google Drive: `drive_read_file` (spec.yaml)
+- WebFetch: `provenance.generated_from` to re-fetch the source page (out-of-chain anchor)
+- HTTP (`curl`): `GET /api/w/<ws>/videos/templates/<id>` to fetch template bundle (intent + example + skeleton)
 - Bash: writing the verdict YAML to a temp path
 
 ## Change Log
@@ -216,3 +272,4 @@ the rubric calibrated:
 | Date | Change | Author |
 |------|--------|--------|
 | 2026-05-15 | Initial skill paired with /ace:video-from-program-page. Six dimensions covering voice, stats, coherence, fidelity, tagline, and compression. | ACE team |
+| 2026-06-09 | Made prompt-independent: replaced "load generate.prompt.md" step with template bundle fetch (intent + example_yaml + skeleton); derived word budgets from beat seconds formula; updated step numbering; added stat-beat applicability guard; updated Beat Coherence to be template-agnostic; honored out-of-chain discipline principle. | ACE team |
