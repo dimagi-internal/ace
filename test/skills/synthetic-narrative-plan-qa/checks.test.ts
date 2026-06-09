@@ -314,9 +314,28 @@ describe('checkBeneficiaryCohortsWellFormed (jjackson/ace#713)', () => {
     field_distributions:
       slept_under_net:
         distribution: "binary"
-        p_yes: 0.6`,
+        rate: 0.6`,
     );
     expect(checkBeneficiaryCohortsWellFormed(m).pass).toBe(true);
+  });
+
+  test('FAILS a binary field_distribution that uses p_yes instead of rate (jjackson/ace#737)', () => {
+    // upstream BinaryDistribution param is `rate`; `p_yes` is silently ignored
+    // and `rate` is required — so a p_yes-only entry must fail ACE-side QA
+    // instead of slipping through to a wrong-share generation at labs.
+    const m = VALID_MANIFEST.replace(
+      /beneficiary_cohorts:[\s\S]*?size: 50/m,
+      `beneficiary_cohorts:
+  - id: "primary"
+    size: 50
+    field_distributions:
+      slept_under_net:
+        distribution: "binary"
+        p_yes: 0.6`,
+    );
+    const r = checkBeneficiaryCohortsWellFormed(m);
+    expect(r.pass).toBe(false);
+    expect(r.auto_fix_hint).toMatch(/rate/i);
   });
 
   test('FAILS an invalid progression value (the rising_yes_share escape)', () => {
