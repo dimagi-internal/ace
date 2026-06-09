@@ -158,6 +158,18 @@ factor into the overall score.
 is in the source; using a Connect-level stat where the program has
 its own; using a vanity metric over an outcome metric.
 
+**Audio/card stat parity (scored here, not elsewhere):** numbers spoken
+in `narration` (problem/impact) must also appear as on-screen stat
+**cards** — the cards are what the viewer remembers, and the template
+intent requires the load-bearing numbers to be *memorable*, not merely
+spoken. When the narration voices a stat that is not carded (e.g. an
+88% completion rate spoken with no `impact[]` card), apply a mild Stat
+Selection penalty (knock a point). Exception: acceptable when the two
+strongest stats ARE carded and the uncarded one is genuinely
+subordinate — but **flag (do not exempt) if the uncarded stat is
+co-equal** with a carded one. Score this once here; do not also
+penalize it under Story Compression.
+
 ### 3. Beat Coherence
 
 **Rubric:** Does the spec's beat sequence flow as a story, or read as
@@ -189,8 +201,19 @@ swapped in?
 | Half-specific: country + name are right but activities, partners, stats are generic. | 4-6 |
 | Could plausibly apply to a different Connect program with no edits. Hallucinated stats or activities. | 0-3 |
 
-**No-source branch** (`source_available = false`): grade on internal
-coherence only — does the spec hang together?
+**Brief-as-anchor branch** (the source is a structured brief, not a
+live URL — `provenance.generated_from` is a brief/handle, not a
+fetchable page): the anchor is the brief text. "Verbatim/near-verbatim"
+means the spec uses the brief's actual program name, country, FLW
+tasks, and numbers, inventing nothing beyond it. **Critically: under-use
+of available specificity caps the score below 9.** If the brief supplies
+named places (e.g. four districts) or scale figures the spec collapses
+to generic "the country" / "four districts", that is a real fidelity
+miss — cap at 8 even when every stated fact is correct. Reserve 9-10 for
+specs that mine the brief's distinctive detail, not merely avoid errors.
+
+**No-source branch** (`source_available = false`, no brief and no URL):
+grade on internal coherence only — does the spec hang together?
 
 ### 5. Tagline Mirror
 

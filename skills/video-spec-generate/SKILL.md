@@ -282,12 +282,40 @@ Next: open the detail URL above and click "Re-render" to produce
 the first MP4.
 ```
 
-## Word-budget self-check (apply before every narration field is finalized)
+## Word-budget enforcement pass (MANDATORY — run before emitting the spec)
 
-For every `narration.by_beat.*` value:
-1. Count words in the draft.
-2. If over `max_words`, trim. If under `min_words`, expand.
-3. Never pad to hit target — only expand if there is a real content reason.
+This is a hard gate, not a style note. Beats over budget get cut mid-word by the
+audio synthesizer, so an over-budget beat is a defect. After `narration.by_beat`
+is drafted and BEFORE you emit/POST the spec:
+
+1. For each beat compute `target = round(beat_seconds × 2.5)` and `max = target + 2`.
+2. **Recount the words** in that beat's narration.
+3. If any beat exceeds `max`, **re-tighten and re-count** — do not emit a spec with
+   any beat over `max`. Never pad an under-budget beat; only expand for real missing
+   content.
+4. **The `problem` beat is the chronic overrunner** (a short ~8s beat that tempts you
+   to carry both a number and the stakes). It must NOT carry *both* the headline
+   incidence stat AND the mortality/urgency-timing clause. Keep the single headline
+   stat in `problem`; push any timing/stakes clause into the `scene` or `product`
+   setup, or compress to one sentence.
+
+## Anti-redundancy: each beat owns a distinct job
+
+The `cycle` beat owns the four-step mechanism (Learn → Deliver → Verify → Pay). The
+`product` beat owns the **in-app field workflow** — walk the actual app screens/tasks
+the worker performs (e.g. weigh, check temperature, counsel, log the verified visit),
+NOT a re-narration of Learn/Verify already in `cycle`. Do not state "GPS + photo
+verified" in both beats. If the source names specific places (districts, regions),
+use at least one in `scene` or `scene.lower_third` (e.g. `"Kurigram, Bangladesh ·
+<Program>"`) — country-only granularity leaves earned specificity on the table.
+
+## Stat-card parity (when the skeleton has stat beats)
+
+Every outcome number you *voice* in `narration.by_beat` (problem/impact) must also
+appear on a `problem`/`impact` **card** (and vice versa) — the cards are what the
+viewer remembers; a stat spoken but never carded is wasted. If the source gives
+three strong numbers and only two card slots exist, card the two strongest and do
+NOT voice the third — keep the spoken track aligned to the cards.
 
 ## Edge cases
 
