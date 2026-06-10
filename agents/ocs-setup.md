@@ -139,6 +139,15 @@ When `--dry-run` is active:
 
 - **Step 2 qa structural fails** — bot is miswired (no response, error
   fallback). Re-run `ocs-agent-setup`, verify embed credentials.
+  **Exception — `OCS generation error` with a trace pointer:** when the
+  atom's error carries `[session …; underlying trace: …]`, the bot
+  config is reachable and the failure is server-side generation. Open
+  the trace (team login) and branch on the underlying error BEFORE
+  blocking the phase: `authentication_error: invalid x-api-key` means
+  the TEAM's LLM provider key is dead (golden template fails
+  identically — that does NOT prove a platform outage; jjackson/ace#743).
+  Repair = re-key the provider at `/a/<team>/service_providers/llm/<pk>/`
+  and re-run the quick gate; re-running `ocs-agent-setup` won't help.
 - **Step 2 eval fails repeatedly** — any per-prompt `overall_quality`
   < 2/3 after one `--prompt-patch` retry → escalate to admin; probable
   prompt-engineering issue in the golden template or opp-specific

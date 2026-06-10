@@ -241,7 +241,27 @@ Skills — No Fake Background Tasks`). Concrete budget:
      8. **Circuit breaker.** If the last 3 consecutive entries have
         `structural_pass: false` (timeout or error), stop the loop.
         OCS is unhealthy; burning the rest of the budget produces
-        noise.
+        noise. **Before reporting WHY, run the trace triage below** —
+        do NOT write "platform outage" into the blocker text on the
+        strength of the generic fallback alone.
+     9. **Trace triage (mandatory on circuit-break or all-fail).** When
+        `ocs_send_test_message` throws `OCS generation error`, the atom
+        appends `[session <id>; underlying trace: <url> …]` (fetched
+        from `/api/sessions/<id>/` → `messages[].metadata.trace_info`).
+        Open that trace URL (team login / Playwright cookies) — it
+        carries the REAL error OCS hides behind the "intermittent
+        error related to load" fallback (`task_utils.py`, debug_mode
+        off). Record the underlying error verbatim in
+        `structural_notes` and the blocker text. Known class:
+        `401 authentication_error: invalid x-api-key` = the TEAM's LLM
+        provider key is dead — every bot including the pristine golden
+        template fails identically, so "golden fails too" proves
+        key-scope, NOT platform-scope (jjackson/ace#743; the
+        2026-06-09 incident lost a session to that misread). Repair:
+        re-key the provider at
+        `/a/<team>/service_providers/llm/<pk>/` (key source of truth:
+        1P `ACE - Anthropic API Key (OCS connect-ace)`), then re-run
+        this skill — no chatbot config change needed.
    - At loop exit (clean finish, cap-hit, or circuit-break), proceed to
      Step 7 (which handles both write strategies — single create for
      `--quick`, metadata flush for `--deep`/`--monitor`).
@@ -250,7 +270,10 @@ Skills — No Fake Background Tasks`). Concrete budget:
    these are qa-side checks, not LLM judgment):
    - `response_received`: non-empty string within timeout
    - `no_error`: no error marker in the response (e.g., not a "sorry,
-     something went wrong" fallback)
+     something went wrong" fallback). On the generic fallback, include
+     the atom's `[session …; underlying trace: …]` pointer in
+     `structural_notes` (see Step 5.9 — the fallback text itself never
+     names the real failure)
    - `has_citations`: for prompts where the expected answer is KB-sourced,
      `cited_files` is non-empty
    - Set per-prompt `structural_pass: true | false` and a `structural_notes`
@@ -384,3 +407,4 @@ When `--dry-run` is active:
 | 2026-05-05 | **Path-scheme migration.** Transcripts now write to `runs/<run-id>/5-ocs/ocs-chatbot-qa_transcript-<mode>.md` (or `9-execution-manager/...` for `--monitor`), per the manifest. The opp-level `qa-captures/` directory is retired; the only surviving use of the dated `qa-captures/` form is the golden-template no-opp fallback (`ACE/golden-template/qa-captures/<dated>.md`). Resume-from-partial check (Step 3) re-pointed at the new path. No behavior change beyond paths. | ACE team |
 | 2026-05-05 | **`--quick` switched to single-shot write.** Buffer entries in memory and call `drive_create_file` once at suite end (Step 7). Reduces Drive RTTs on `--quick` from N+1 (read+write per prompt + metadata) to 1. The incremental CAS-write strategy still applies on `--deep`/`--monitor` where 15–30 min suite runtimes make resume-from-partial worth the cost. Step 3 resume-from-partial is a `--deep`/`--monitor`-only step now (`--quick`'s 270s cap is short enough that re-running is cheaper than the resume bookkeeping). | ACE team |
 | 2026-05-15 | Extend `--quick` suite with archetype-specific prompts for `focus-group` (1–2 from `pdd-to-test-prompts.md` `gdoc-writing-guidance` + `facilitation-technique` categories) since the 3 universal Connect-domain prompts primarily exercise shared-collection retrieval and would pass even if the opp-specific collection was mis-loaded. Wall-clock cap scales to 360s/450s for focus-group. Atomic-visit / multi-stage stay at the 3-prompt / 270s baseline. Prompted by `malaria-itn-fgd/20260514-2352` Phase 5 observation. | ACE team |
+| 2026-06-09 | **Trace triage on generation errors (Step 5.9).** On circuit-break / all-fail, the skill must open the session trace URL the atom now appends to `OCS generation error` failures and record the underlying provider error verbatim — never diagnose "platform outage" from the generic "intermittent load" fallback. Root incident: bednet-spot-check/20260609-0909 lost a session to a revoked team Anthropic key (`401 invalid x-api-key`) misread as a team-wide OCS outage because the golden-template control sat behind the same dead key (jjackson/ace#743). Atom-side enrichment: `mcp/ocs/backends/rest.ts::describeSessionTrace`. | ACE team |

@@ -211,10 +211,12 @@ export class RestBackend {
         if (!pollRes.ok) lastTransient = `HTTP ${pollRes.status}`;
         continue;
       }
-      // Generation error — surface the error content and fail fast.
+      // Generation error — surface the error content and fail fast, enriched
+      // with the session's trace pointer (see describeSessionTrace below).
       if (pb.status === 'error' || pb.status === 'failed' || (pb.error && pb.error.trim())) {
         const detail = pb.error?.trim() || `task ${task_id} reported status '${pb.status}'`;
-        throw new Error(`sendTestMessage: OCS generation error — ${detail}`);
+        const tracePointer = await this.describeSessionTrace(session_id);
+        throw new Error(`sendTestMessage: OCS generation error — ${detail}${tracePointer}`);
       }
       if (pb.status === 'complete' && pb.message?.content) {
         return { response: pb.message.content };
@@ -226,6 +228,40 @@ export class RestBackend {
       `sendTestMessage: timed out after 120s waiting for response` +
         (lastTransient ? ` (last transient poll: ${lastTransient})` : ''),
     );
+  }
+
+  /**
+   * Best-effort trace pointer for a failed generation. OCS hides the real
+   * provider error behind the generic "intermittent error related to load"
+   * fallback unless the experiment has debug_mode enabled (OCS
+   * apps/experiments/task_utils.py), which misled triage into calling a
+   * revoked team LLM-provider key a platform-wide outage (jjackson/ace#743 —
+   * the golden-template "control" sat behind the same dead key, so it failed
+   * identically and proved nothing). The session's trace page carries the
+   * underlying error (e.g. `401 invalid x-api-key`), so the thrown error
+   * carries its URL. Never throws — enrichment failure returns ''.
+   */
+  private async describeSessionTrace(sessionId: string): Promise<string> {
+    try {
+      const session = (await this.request('GET', `/api/sessions/${sessionId}/`)) as {
+        messages?: Array<{ metadata?: { trace_info?: Array<{ trace_url?: string }> } }>;
+      };
+      const traceUrls = (session.messages ?? [])
+        .flatMap((m) => m.metadata?.trace_info ?? [])
+        .map((t) => t.trace_url)
+        .filter((u): u is string => typeof u === 'string' && u.length > 0);
+      const last = traceUrls[traceUrls.length - 1];
+      if (!last) return '';
+      const abs = last.startsWith('http') ? last : `${this.opts.baseUrl}${last}`;
+      return (
+        ` [session ${sessionId}; underlying trace: ${abs} — OCS masks the real provider error` +
+        ` behind this generic fallback unless debug_mode is on. Open the trace (team login)` +
+        ` before diagnosing a platform outage; known class: revoked team LLM provider key` +
+        ` (jjackson/ace#743).]`
+      );
+    } catch {
+      return '';
+    }
   }
 
   async triggerBotMessage(args: {

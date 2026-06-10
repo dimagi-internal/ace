@@ -267,6 +267,76 @@ describe('RestBackend chatbot atoms', () => {
     ).rejects.toThrow(/OCS generation error.*upstream provider outage/);
   });
 
+  // jjackson/ace#743: the generic "intermittent error related to load" fallback
+  // masked a revoked team LLM provider key (Anthropic 401 invalid x-api-key) and
+  // was misdiagnosed as a platform outage. The real error lives in the session's
+  // trace. On a generation error, sendTestMessage must enrich the thrown error
+  // with the session's trace pointer so triage starts at the provider error,
+  // not at "OCS is down".
+  it('sendTestMessage enriches a generation error with the session trace pointer (#743)', async () => {
+    const sessionId = 's-err-trace';
+    const taskId = 't-err-trace';
+    mockAgent.get(BASE)
+      .intercept({ path: '/api/chat/start/', method: 'POST' })
+      .reply(200, { session_id: sessionId });
+    mockAgent.get(BASE)
+      .intercept({ path: `/api/chat/${sessionId}/message/`, method: 'POST' })
+      .reply(200, { task_id: taskId });
+    mockAgent.get(BASE)
+      .intercept({ path: `/api/chat/${sessionId}/${taskId}/poll/`, method: 'GET' })
+      .reply(500, { status: 'error', error: 'Sorry something went wrong. This was likely an intermittent error related to load.' });
+    mockAgent.get(BASE)
+      .intercept({ path: `/api/sessions/${sessionId}/`, method: 'GET' })
+      .reply(200, {
+        id: sessionId,
+        messages: [
+          {
+            role: 'user',
+            content: 'hi',
+            metadata: {
+              trace_info: [
+                { trace_id: 663105, trace_url: '/a/connect-ace/traces/663105/', trace_provider: 'ocs' },
+              ],
+            },
+          },
+          { role: 'assistant', content: 'Sorry, something went wrong...', metadata: {} },
+        ],
+      });
+
+    const b = new RestBackend({ baseUrl: BASE, token: 't' });
+    const err = await b
+      .sendTestMessage({ public_id: 'uuid-42', embed_key: 'k', message: 'hi' })
+      .then(() => null, (e: Error) => e);
+    expect(err).toBeInstanceOf(Error);
+    expect(err!.message).toMatch(/OCS generation error/);
+    expect(err!.message).toContain(`${BASE}/a/connect-ace/traces/663105/`);
+    expect(err!.message).toContain(sessionId);
+    // Must steer the reader away from the "outage" misdiagnosis class.
+    expect(err!.message).toMatch(/provider error/i);
+  });
+
+  it('sendTestMessage surfaces the original generation error when trace enrichment fails', async () => {
+    const sessionId = 's-err-noenrich';
+    const taskId = 't-err-noenrich';
+    mockAgent.get(BASE)
+      .intercept({ path: '/api/chat/start/', method: 'POST' })
+      .reply(200, { session_id: sessionId });
+    mockAgent.get(BASE)
+      .intercept({ path: `/api/chat/${sessionId}/message/`, method: 'POST' })
+      .reply(200, { task_id: taskId });
+    mockAgent.get(BASE)
+      .intercept({ path: `/api/chat/${sessionId}/${taskId}/poll/`, method: 'GET' })
+      .reply(200, { status: 'error', error: 'boom' });
+    mockAgent.get(BASE)
+      .intercept({ path: `/api/sessions/${sessionId}/`, method: 'GET' })
+      .reply(500, 'nope');
+
+    const b = new RestBackend({ baseUrl: BASE, token: 't' });
+    await expect(
+      b.sendTestMessage({ public_id: 'uuid-42', embed_key: 'k', message: 'hi' }),
+    ).rejects.toThrow(/OCS generation error — boom/);
+  });
+
   it('triggerBotMessage posts to /api/trigger_bot', async () => {
     mockAgent.get(BASE)
       .intercept({ path: '/api/trigger_bot', method: 'POST' })
