@@ -55,23 +55,61 @@ interface AtomEntry {
 }
 
 /**
- * Find each `server.tool(...)` invocation and return a slice containing
- * the FIRST 3 ARGUMENTS only (name, description, schema). The rest of
- * the call — the async handler body — can contain regex literals,
- * template-string interpolations, and other constructs that confuse a
- * naive paren-balance parser, so we deliberately stop before it.
+ * Given `src` and an index `i` that points at a `/` which is NOT inside a
+ * string, return the index of the FIRST character AFTER the construct it opens:
+ * a line comment (`// …`), a block comment (`/* … *\/`), or a regex literal
+ * (`/…/flags`). In the constrained context of a `server.tool(...)` first-3-args
+ * region (a Zod schema object literal + leading string args), a bare `/` is
+ * always one of these three — division never appears — so we always consume
+ * rather than risk a brace-depth desync from regex quantifier braces (`{4}`,
+ * `{2}`) or comment text. This is the root-cause fix for jjackson/ace#757: the
+ * naive walkers below tracked only string delimiters, so `.regex(/^\d{4}-\d{2}-\d{2}$/)`
+ * leaked its `{n}` quantifier braces into the depth counter and the schema's
+ * own closing `}` was consumed balancing a phantom brace — overrunning the slice
+ * into the handler and emitting `_no parameters_` for ~29 rich-schema atoms.
+ */
+function skipSlashConstruct(src: string, i: number): number {
+  const next = src[i + 1];
+  if (next === '/') {
+    let j = i + 2;
+    while (j < src.length && src[j] !== '\n') j++;
+    return j; // at the newline (or EOF); the caller's loop handles it normally
+  }
+  if (next === '*') {
+    let j = i + 2;
+    while (j < src.length && !(src[j] === '*' && src[j + 1] === '/')) j++;
+    return Math.min(j + 2, src.length); // past the closing */
+  }
+  // Regex literal: scan to the matching unescaped `/`, honoring `[...]` classes
+  // (a `/` inside a character class does not terminate the literal), then skip
+  // any trailing flags.
+  let j = i + 1;
+  let inClass = false;
+  while (j < src.length) {
+    const c = src[j];
+    if (c === '\\') { j += 2; continue; }
+    if (c === '[') inClass = true;
+    else if (c === ']') inClass = false;
+    else if (c === '/' && !inClass) { j++; break; }
+    else if (c === '\n') break; // unterminated — bail (shouldn't happen in practice)
+    j++;
+  }
+  while (j < src.length && /[a-z]/i.test(src[j])) j++; // flags (g, i, m, s, u, y)
+  return j;
+}
+
+/**
+ * Find each `server.tool(...)` invocation and return a slice spanning the atom
+ * NAME plus the Zod SCHEMA object — i.e. up to and including the FIRST top-level
+ * `{...}` block after `server.tool(`. That schema object is the 2nd arg in the
+ * `server.tool(name, schema, handler)` form and the 3rd in the
+ * `server.tool(name, description, schema, handler)` form; stopping at the first
+ * top-level `{}` handles BOTH without counting commas (the old comma-counting
+ * over-read on the no-description form, leaking the next atom's fields —
+ * jjackson/ace#757). The handler body that follows is never entered.
  *
- * Strategy:
- *   1. Locate `server.tool(` start.
- *   2. Walk forward across the first 3 top-level commas (skipping over
- *      balanced strings + braces / parens / brackets), then walk to the
- *      next top-level closing paren OR newline-followed-by-`async`,
- *      whichever comes first. The slice up to the 3rd argument's end is
- *      sufficient for parameter extraction.
- *   3. The cursor advances to the END of the 3rd-arg region (typically a
- *      `},` followed by the handler). For the next `findToolCall`, we
- *      just need to skip past the handler — using the next
- *      `server.tool(` regex match handles that without balance tracking.
+ * Slash/string/comment-aware so a regex literal's quantifier braces (`{4}`) or
+ * a comment's text inside the schema don't desync the brace-depth counter.
  */
 function findToolCall(
   src: string,
@@ -83,14 +121,11 @@ function findToolCall(
   if (!m) return null;
   const start = m.index + m[0].length;
 
-  // Walk forward, tracking top-level (depth==0) commas. The schema is the
-  // 3rd top-level arg, so we stop after seeing its closing brace land
-  // depth back to 0 + at least 2 commas observed at depth 0.
   let i = start;
-  let depth = 0;
+  let braceDepth = 0;
+  let braceStart = -1;
   let inString: string | null = null;
   let escape = false;
-  let topLevelCommas = 0;
   let schemaEnd = -1;
   while (i < src.length) {
     const c = src[i];
@@ -101,29 +136,27 @@ function findToolCall(
       else if (c === inString) inString = null;
     } else if (c === '"' || c === "'" || c === '`') {
       inString = c;
-    } else if (c === '(' || c === '{' || c === '[') {
-      depth++;
-    } else if (c === ')' || c === '}' || c === ']') {
-      depth--;
-      if (depth < 0) {
-        // Hit the outer `)` of `server.tool(...)` — we've consumed
-        // everything we need.
-        schemaEnd = i;
-        break;
-      }
-      // If we just closed the 3rd arg's brace block (depth back to 0,
-      // 2 commas already seen), we're done with the schema slice.
-      if (depth === 0 && topLevelCommas >= 2 && c === '}') {
+    } else if (c === '/') {
+      // Regex literal or comment — skip wholesale so quantifier braces ({4})
+      // and comment text don't desync the brace-depth tracker (#757).
+      i = skipSlashConstruct(src, i);
+      continue;
+    } else if (c === '{') {
+      if (braceStart < 0) braceStart = i;
+      braceDepth++;
+    } else if (c === '}') {
+      braceDepth--;
+      if (braceDepth === 0 && braceStart >= 0) {
+        // Closed the schema object — slice ends here.
         schemaEnd = i + 1;
         break;
       }
-    } else if (c === ',' && depth === 0) {
-      topLevelCommas++;
-      if (topLevelCommas >= 3) {
-        // Past the schema arg already — anything further is the handler.
-        schemaEnd = i;
-        break;
-      }
+    } else if (c === ')' && braceStart < 0) {
+      // Closed `server.tool(...)` before any `{` appeared — the atom has no
+      // inline object schema (handler-only, or a variable schema we can't
+      // statically read). Return the name region so the atom is still listed.
+      schemaEnd = i;
+      break;
     }
     i++;
   }
@@ -143,35 +176,65 @@ function extractAtomName(args: string): string | null {
 }
 
 /**
- * Extract the second-arg description string (any quote style, multi-line OK).
+ * Skip whitespace, commas, and comments starting at `i`; return the index of
+ * the next significant character (or args.length).
  */
-function extractDescription(args: string): string {
-  // Skip the atom name (first string), then capture the second string literal.
-  const lex = /(['"`])((?:\\.|(?!\1)[\s\S])*)\1/g;
-  const first = lex.exec(args);
-  if (!first) return '';
-  const second = lex.exec(args);
-  if (!second) return '';
-  return second[2].replace(/\\n/g, ' ').replace(/\s+/g, ' ').trim();
+function skipInsignificant(args: string, i: number): number {
+  while (i < args.length) {
+    const c = args[i];
+    if (c === ' ' || c === '\t' || c === '\n' || c === '\r' || c === ',') { i++; continue; }
+    if (c === '/' && (args[i + 1] === '/' || args[i + 1] === '*')) { i = skipSlashConstruct(args, i); continue; }
+    break;
+  }
+  return i;
 }
 
 /**
- * Extract `<field>: z.<type>().<modifier?>().describe('<text>')` lines
- * from the third argument's brace block.
+ * Extract the atom DESCRIPTION string — but only when the call uses the
+ * `server.tool(name, description, schema, handler)` form. Many atoms use the
+ * shorter `server.tool(name, schema, handler)` form (no description string,
+ * schema is the 2nd arg); for those the description is empty and the FIRST
+ * field's `.describe()` must NOT be mistaken for it (the connect_create_opportunity
+ * mis-read — jjackson/ace#757). We disambiguate by the first significant token
+ * after the atom name: a quote ⇒ description present; a `{` ⇒ schema-first, no
+ * description.
+ */
+function extractDescription(args: string): string {
+  const nameLex = /(['"`])((?:\\.|(?!\1)[\s\S])*)\1/g;
+  if (!nameLex.exec(args)) return '';
+  const i = skipInsignificant(args, nameLex.lastIndex);
+  if (i >= args.length) return '';
+  const q = args[i];
+  if (q !== '"' && q !== "'" && q !== '`') return ''; // schema-first form ⇒ no description
+  const descLex = /(['"`])((?:\\.|(?!\1)[\s\S])*)\1/g;
+  descLex.lastIndex = i;
+  const m = descLex.exec(args);
+  if (!m || m.index !== i) return '';
+  return m[2].replace(/\\n/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
+/**
+ * Extract `<field>: z.<type>().<modifier?>().describe('<text>')` lines from the
+ * schema brace block — the FIRST top-level `{...}` after the atom name. This
+ * works for BOTH `server.tool(name, schema, handler)` and
+ * `server.tool(name, description, schema, handler)`: a leading description
+ * string (when present) is skipped by the in-string handling before we reach
+ * the schema's `{`. Earlier code skipped exactly TWO string literals then
+ * looked for `{`, which mis-located the schema on the no-description form
+ * (the connect_create_opportunity `_no parameters_` mis-read — jjackson/ace#757).
  */
 function extractFields(args: string): AtomField[] {
-  // Find the third argument — the schema brace block. It comes after the
-  // second string literal.
-  const lex = /(['"`])((?:\\.|(?!\1)[\s\S])*)\1/g;
-  lex.exec(args); // atom name
-  lex.exec(args); // description
-  // Find the next `{` after the description.
+  const nameLex = /(['"`])((?:\\.|(?!\1)[\s\S])*)\1/g;
+  if (!nameLex.exec(args)) return []; // no atom name string
+  // Walk from just past the atom name to the first top-level `{...}` block,
+  // string/regex/comment-aware so quantifier braces and comment text don't
+  // desync depth.
   let depth = 0;
   let start = -1;
   let end = -1;
   let inString: string | null = null;
   let escape = false;
-  for (let i = lex.lastIndex; i < args.length; i++) {
+  for (let i = nameLex.lastIndex; i < args.length; i++) {
     const c = args[i];
     if (escape) { escape = false; continue; }
     if (inString) {
@@ -180,6 +243,12 @@ function extractFields(args: string): AtomField[] {
       continue;
     }
     if (c === '"' || c === "'" || c === '`') { inString = c; continue; }
+    if (c === '/') {
+      // Regex literal or comment — skip wholesale (#757). `-1` offsets the
+      // for-loop's own `i++` so we resume exactly at the construct's end.
+      i = skipSlashConstruct(args, i) - 1;
+      continue;
+    }
     if (c === '{') {
       if (depth === 0) start = i + 1;
       depth++;
@@ -192,16 +261,27 @@ function extractFields(args: string): AtomField[] {
   const block = args.slice(start, end);
 
   // Each field looks like:  fieldName: z.string().optional().describe('text'),
-  // We tolerate line breaks and whitespace between segments.
+  // We tolerate line breaks and whitespace between segments. The type capture
+  // allows a dotted prefix (`z.coerce.number`), and the modifier chain accepts
+  // the common Zod refinement methods so a trailing `.describe()` is still
+  // captured when it follows `.regex()` / `.int()` / `.min()` etc. (#757).
+  // `z\s*\.\s*` tolerates the multi-line fluent style (`z\n  .string()`); the
+  // type capture allows a dotted prefix (`coerce.number`); the modifier chain
+  // accepts the common Zod refinement methods so a trailing `.describe()` is
+  // still captured when it follows `.regex()` / `.record()` / `.int()` etc. (#757).
   const fieldRe =
-    /([a-zA-Z_][a-zA-Z0-9_]*)\s*:\s*z\.([a-zA-Z_]+)\s*\([^)]*\)((?:\s*\.(?:optional|nullable|default|describe)\s*\([\s\S]*?\))*)/g;
+    /([a-zA-Z_][a-zA-Z0-9_]*)\s*:\s*z\s*\.\s*([a-zA-Z_][a-zA-Z0-9_.]*)\s*\([^)]*\)((?:\s*\.\s*(?:optional|nullable|nullish|default|describe|regex|int|min|max|url|email|uuid|positive|nonnegative|nonempty|length|gte|lte|gt|lt|startsWith|endsWith|trim|toLowerCase|toUpperCase|array|catch|refine|transform|pipe|brand|record)\s*\([\s\S]*?\))*)/g;
   const out: AtomField[] = [];
   let m: RegExpExecArray | null;
   while ((m = fieldRe.exec(block)) !== null) {
     const name = m[1];
     const typeHint = m[2];
     const modifiers = m[3] ?? '';
-    const optional = /\.optional\s*\(/.test(modifiers) || /\.nullable\s*\(/.test(modifiers);
+    const optional =
+      /\.optional\s*\(/.test(modifiers) ||
+      /\.nullable\s*\(/.test(modifiers) ||
+      /\.nullish\s*\(/.test(modifiers) ||
+      /\.default\s*\(/.test(modifiers);
     const descMatch = modifiers.match(
       /\.describe\s*\(\s*(['"`])((?:\\.|(?!\1)[\s\S])*?)\1\s*\)/,
     );

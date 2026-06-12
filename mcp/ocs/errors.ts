@@ -55,3 +55,30 @@ export class HttpError extends OcsError {
     this.retryable = status >= 500 || status === 429;
   }
 }
+
+/**
+ * Thrown when a session endpoint returns 403 `session_token_required` EVEN
+ * THOUGH `/api/chat/start/` issued a non-empty `session_token` and we threaded
+ * it as `X-Session-Token`. The fixed `sendTestMessage` (jjackson/ace#742,
+ * commit c91f5b7) cannot produce this signature — so seeing it means the
+ * running ace-ocs MCP subprocess is executing PRE-#742 code that never sent
+ * the header. MCP subprocesses bind their module code at subprocess startup
+ * and are NOT respawned by `/reload-plugins` or `/ace:update`; only a full
+ * Claude Code restart picks up the on-disk fix. This is a self-diagnosis of
+ * that stale-subprocess class (jjackson/ace#761), distinguished from a genuine
+ * session/auth failure by the "token WAS issued yet still rejected" signature.
+ */
+export class StaleOcsSubprocessError extends OcsError {
+  constructor(public path: string) {
+    super(
+      `OCS /api/chat/${path} returned 403 session_token_required even though ` +
+        `/api/chat/start/ issued a per-session token AND it was threaded as ` +
+        `X-Session-Token. The fixed sendTestMessage (jjackson/ace#742, commit ` +
+        `c91f5b7) cannot produce this — the running ace-ocs MCP subprocess is ` +
+        `executing pre-#742 code. RESTART Claude Code (a full process restart; ` +
+        `/reload-plugins and /ace:update do NOT respawn MCP subprocesses). If a ` +
+        `restart does NOT clear it, the upstream OCS session-token contract ` +
+        `changed again — re-open jjackson/ace#742.`,
+    );
+  }
+}

@@ -979,6 +979,27 @@ if [ -n "$ENV_FILE" ]; then
     else
       pass "unused_env_keys: every .env.tpl key has at least one consumer"
     fi
+
+    # #753 config-correctness probe ("configured -> configured correctly").
+    # `op inject` is ALL-OR-NOTHING: one op:// ref whose 1Password field is
+    # missing makes the WHOLE render fail and writes an EMPTY .env for every
+    # consumer — a silent, catastrophic breakage (it burned a week of headless
+    # ace-web runs). env_drift above only diffs KEY sets; it cannot see a ref
+    # that breaks injection BEFORE any .env is written. Test-render to /dev/null
+    # and surface the failing ref by name. Gated on `op` being present; an
+    # auth/session/account error is skipped silently (CI / fresh machine), only
+    # a genuine ref-resolution failure FAILs.
+    if command -v op >/dev/null 2>&1; then
+      RENDER_ERR="$(op inject -i "$ROOT/.env.tpl" -o /dev/null --account dimagi.1password.com 2>&1)"
+      if [ $? -eq 0 ]; then
+        pass "env_tpl_render: .env.tpl renders cleanly (every op:// ref resolves)"
+      elif printf '%s' "$RENDER_ERR" | grep -qiE 'sign[- ]?in|session|authoriz|not currently|account .* (not found|isn.t)|no account|could not find account'; then
+        : # op not signed in / account not configured on this machine — informational skip, not a config defect
+      else
+        fail "env_tpl_render: op inject -i .env.tpl FAILS — one or more op:// refs are unresolvable, so a real op inject writes an EMPTY .env for every consumer (jjackson/ace#753)" "fix the field named below in 1Password (vault AI-Agents), or comment the ref out of .env.tpl until the field exists:
+$(printf '%s' "$RENDER_ERR" | sed 's/^/      /')"
+      fi
+    fi
   fi
 
   # OCS Playwright session — keyed by team slug. The Playwright backend

@@ -98,6 +98,23 @@ appId: org.commcare.dalvik
 - assertVisible:
     id: "${SELECTOR:home-jobs-list}"
 
+# Sync the jobs list before searching for the target tile (#618). After the
+# journey-learn leg completes, the opp's Learn->Deliver-eligible transition may
+# not have propagated to the rendered rvJobList, so the just-completed run's
+# In-Progress card can be ABSENT from a stale list (bednet-spot-check/20260612-0817
+# Deliver leg: scrollUntilVisible timed out — only prior-run opps rendered). An
+# in-app sync pulls current state. Same affordance + reasoning as
+# connect-claim-opp.yaml's pre-search sync (#628). `optional: true` so a warm
+# already-synced surface (or a momentarily re-rendering toolbar) does not abort.
+# NOTE: best-effort — authored from the #618 evidence, NOT yet live-validated.
+# The next fresh /ace:run Phase 6 Deliver leg is the live confirmation.
+- tapOn:
+    id: "${SELECTOR:home-toolbar-sync}"
+    optional: true
+- waitForAnimationToEnd:
+    timeout: 8000
+- takeScreenshot: "connect-resume-opp-list-synced"
+
 # Scroll the target opp's In-Progress card into the viewport.
 # `visibilityPercentage: 60` tolerates multi-line title-wrap (same
 # reasoning as connect-claim-opp.yaml).

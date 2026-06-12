@@ -61,4 +61,35 @@ describe('dump-atom-schemas', () => {
     const nonZero = counts.filter((n) => n > 0).length;
     expect(nonZero).toBeGreaterThanOrEqual(4);
   });
+
+  // Regression floor for jjackson/ace#757: before the parser fix, ~29 atoms
+  // rendered `_no parameters_` because the brace-walker mis-counted regex
+  // quantifier braces and mis-located the schema on the no-description
+  // server.tool form — defeating the grep-the-schema convention. The vast
+  // majority of atoms take parameters; only a couple (mobile_list_avds,
+  // mobile_diagnose) are genuinely arg-less. Assert the count stays low so the
+  // class can't silently regress.
+  it('almost no atoms render `_no parameters_` (regression floor for #757)', () => {
+    const md = fs.readFileSync(
+      path.join(REPO_ROOT, 'docs/atom-schemas.md'),
+      'utf-8',
+    );
+    const noParamCount = (md.match(/^_no parameters_$/gm) ?? []).length;
+    expect(noParamCount).toBeLessThanOrEqual(5);
+  });
+
+  // A rich-schema atom with regex-validated fields (the #757 reproducer) must
+  // list its fields, not collapse to `_no parameters_`.
+  it('connect_create_opportunity lists its regex/date fields (#757 reproducer)', () => {
+    const md = fs.readFileSync(
+      path.join(REPO_ROOT, 'docs/atom-schemas.md'),
+      'utf-8',
+    );
+    const start = md.indexOf('### `connect_create_opportunity`');
+    expect(start).toBeGreaterThanOrEqual(0);
+    const section = md.slice(start, md.indexOf('### `', start + 1));
+    expect(section).not.toMatch(/_no parameters_/);
+    expect(section).toMatch(/\|\s*`start_date`\s*\|/);
+    expect(section).toMatch(/\|\s*`total_budget`\s*\|/);
+  });
 });

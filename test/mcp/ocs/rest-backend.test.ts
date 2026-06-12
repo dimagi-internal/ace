@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { MockAgent, setGlobalDispatcher } from 'undici';
 import { RestBackend, extractExperimentId } from '../../../mcp/ocs/backends/rest.js';
-import { HttpError } from '../../../mcp/ocs/errors.js';
+import { HttpError, StaleOcsSubprocessError } from '../../../mcp/ocs/errors.js';
 
 const BASE = 'https://www.openchatstudio.com';
 
@@ -200,6 +200,47 @@ describe('RestBackend chatbot atoms', () => {
       message: 'hello',
     });
     expect(res.response).toBe('token threaded ok');
+  });
+
+  // jjackson/ace#761: when /start/ DID issue a token (and the fixed code
+  // threaded it) yet /message/ still 403s `session_token_required`, that's the
+  // stale-subprocess signature — the running ace-ocs MCP is executing pre-#742
+  // code. Self-diagnose with the typed StaleOcsSubprocessError ("restart Claude
+  // Code") instead of a generic HttpError that reads like an auth failure.
+  it('sendTestMessage throws StaleOcsSubprocessError on 403 session_token_required despite a threaded token (#761)', async () => {
+    const sessionId = 'stale-session-1';
+    const token = 'signed-session-token-xyz';
+    mockAgent.get(BASE)
+      .intercept({ path: '/api/chat/start/', method: 'POST' })
+      .reply(200, { session_id: sessionId, session_token: token });
+    // Token was issued + threaded, yet the endpoint still rejects it.
+    mockAgent.get(BASE)
+      .intercept({ path: `/api/chat/${sessionId}/message/`, method: 'POST' })
+      .reply(403, { detail: 'session_token_required' });
+
+    const b = new RestBackend({ baseUrl: BASE, token: 't' });
+    await expect(
+      b.sendTestMessage({ public_id: 'uuid-42', embed_key: 'k', message: 'hi' }),
+    ).rejects.toBeInstanceOf(StaleOcsSubprocessError);
+  });
+
+  // Control: a 403 session_token_required when NO token was issued is a genuine
+  // session/auth condition, NOT a stale subprocess — must stay a plain HttpError.
+  it('sendTestMessage throws a plain HttpError on a 403 with no token issued (#761 control)', async () => {
+    const sessionId = 'notoken-403';
+    mockAgent.get(BASE)
+      .intercept({ path: '/api/chat/start/', method: 'POST' })
+      .reply(200, { session_id: sessionId, session_token: null });
+    mockAgent.get(BASE)
+      .intercept({ path: `/api/chat/${sessionId}/message/`, method: 'POST' })
+      .reply(403, { detail: 'session_token_required' });
+
+    const b = new RestBackend({ baseUrl: BASE, token: 't' });
+    const err = await b
+      .sendTestMessage({ public_id: 'uuid-42', embed_key: 'k', message: 'hi' })
+      .catch((e) => e);
+    expect(err).toBeInstanceOf(HttpError);
+    expect(err).not.toBeInstanceOf(StaleOcsSubprocessError);
   });
 
   // A session OCS opted out of token enforcement returns session_token: null;
