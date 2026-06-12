@@ -1,5 +1,5 @@
 import { fetch } from 'undici';
-import { HttpError } from '../errors.js';
+import { HttpError, StaleOcsSubprocessError } from '../errors.js';
 import { isTransientNetworkError } from '../../../lib/transient-retry.js';
 
 /**
@@ -180,7 +180,16 @@ export class RestBackend {
       body: JSON.stringify({ message: args.message }),
     });
     if (!sendRes.ok) {
-      throw new HttpError(sendRes.status, `/api/chat/${session_id}/message/`, await sendRes.text());
+      const sendBody = await sendRes.text();
+      // Self-diagnosis (jjackson/ace#761): a 403 session_token_required AFTER
+      // /start/ issued a token that we threaded as X-Session-Token is the
+      // stale-subprocess signature — the fixed code (c91f5b7) can't produce it.
+      // Throw the typed error so the operator gets "restart Claude Code", not a
+      // generic 403 misread as an auth/session failure.
+      if (sendRes.status === 403 && session_token && sendBody.includes('session_token_required')) {
+        throw new StaleOcsSubprocessError(`${session_id}/message/`);
+      }
+      throw new HttpError(sendRes.status, `/api/chat/${session_id}/message/`, sendBody);
     }
     const { task_id } = (await sendRes.json()) as { task_id: string };
 

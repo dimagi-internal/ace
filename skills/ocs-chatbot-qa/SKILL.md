@@ -372,6 +372,18 @@ Skills — No Fake Background Tasks`). Concrete budget:
   `elapsed_ms` from its return shape, which makes the transcript
   structurally ungradable for the citation and tagging dimensions of
   `ocs-chatbot-eval`. The suite uses raw widget HTTP.
+  - **Stale-subprocess fallback (jjackson/ace#761).** If the Step 2
+    liveness probe fails with a typed `StaleOcsSubprocessError` (a 403
+    `session_token_required` even though `/api/chat/start/` issued a
+    per-session token), the running ace-ocs MCP subprocess predates the
+    #742 token-threading fix — `/reload-plugins` does NOT respawn it; a
+    full Claude Code restart does. The Step 5 raw-widget-HTTP path threads
+    `X-Session-Token` itself, so it is a faithful fallback for the quick
+    gate: **capture the quick suite out-of-band via Step 5's HTTP handshake
+    and proceed** rather than blocking the run; recommend a Claude restart
+    before the next session to restore the native atom. (If a restart does
+    NOT clear it, the OCS session-token contract drifted again — re-open
+    #742.)
 - Raw widget HTTP (Step 5 — the actual suite): `POST /api/chat/start/`
   → `POST /api/chat/{session_id}/message/` → `GET
   /api/chat/{session_id}/{task_id}/poll/`. This path returns the full

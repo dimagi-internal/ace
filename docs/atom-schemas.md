@@ -143,7 +143,7 @@ Create a new Google Doc by uploading markdown content and letting Drive natively
 |-------|------|----------|-------------|
 | `name` | `z.string` | **required** | Name for the new Google Doc |
 | `markdown` | `z.string` | **required** | _—_ |
-| `parentFolderId` | `z.string` | **required** | _—_ |
+| `parentFolderId` | `z.string` | **required** | Required. Parent folder ID — MUST be a folder on a Shared Drive. |
 | `findOrCreate` | `z.boolean` | optional | _—_ |
 
 ### `drive_copy_file`
@@ -183,7 +183,7 @@ Grant `role: reader, type: anyone` (anyone-with-link) on an existing Drive file.
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `fileId` | `z.string` | **required** | _—_ |
+| `fileId` | `z.string` | **required** | The Drive file ID to share. Must be a file the SA can access. |
 
 ### `drive_create_folder`
 
@@ -203,7 +203,7 @@ Create a Google Drive shortcut (mimeType application/vnd.google-apps.shortcut) u
 |-------|------|----------|-------------|
 | `name` | `z.string` | **required** | _—_ |
 | `parentFolderId` | `z.string` | **required** | _—_ |
-| `targetId` | `z.string` | **required** | _—_ |
+| `targetId` | `z.string` | **required** | The file or folder ID the shortcut should point at. |
 | `findOrReplace` | `z.boolean` | optional | When true, delete any prior same-name file/shortcut under `parentFolderId` before creating. Default: false. Use true to make `current/` pointers idempotent. |
 
 ### `drive_move_file`
@@ -222,7 +222,7 @@ Rename an existing file or folder in Google Drive. Only the display name changes
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `fileId` | `z.string` | **required** | The file or folder ID to rename |
-| `newName` | `z.string` | **required** | _—_ |
+| `newName` | `z.string` | **required** | The new file/folder name |
 
 ### `drive_trash_file`
 
@@ -271,7 +271,9 @@ Execute raw Google Docs API batchUpdate requests. Supports all 40 request types:
 
 Render a run's decisions.yaml into its decisions.gdoc at one stable URL — read + render + clear + batchUpdate done entirely server-side. Pass the run-folder file ID; the atom reads decisions.yaml from it, renders the prose log via lib/decisions-renderer, and find-or-updates decisions.gdoc in the same folder (idempotent). Use this instead of hand-relaying renderDecisionsLog output through docs_batc…
 
-_no parameters_
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `runFolderFileId` | `z.string` | **required** | _—_ |
 
 ### `docs_copy_template`
 
@@ -327,6 +329,7 @@ Resolve an ACE opportunity's Drive folder paths in one call. Given an opp slug (
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `slug` | `z.string` | **required** | _—_ |
+| `aceRootFolderId` | `z.string` | optional | Override $ACE_DRIVE_ROOT_FOLDER_ID for tests / multi-tenant. |
 
 ### `resolve_current_run_id`
 
@@ -335,18 +338,23 @@ Return the most-recent run-id for opp `<slug>` plus its run-folder ID. Lists `<o
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `slug` | `z.string` | **required** | _—_ |
+| `aceRootFolderId` | `z.string` | optional | Override $ACE_DRIVE_ROOT_FOLDER_ID for tests / multi-tenant. |
 
 ### `generate_inputs_manifest`
 
 Generate a structured inputs manifest for an ACE opportunity's `inputs/` Drive folder. Lists every file in the folder, resolves shortcut targetIds (so a shortcut to a PDD doc surfaces the real target), and assigns each file a kebab-cased `input_key` (e.g. \"sample-pdd.docx\" → \"sample-pdd\") that downstream skills can key off. Returns `{folder_id, generated_at, files: [{file_id, name, mime_type, …
 
-_no parameters_
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `folderId` | `z.string` | **required** | The Google Drive folder ID of the opp's inputs/ folder. |
 
 ### `get_google_form_definition`
 
 Read a Google Forms form definition via the Forms API (forms.googleapis.com/v1/forms/{formId}). Returns `{form_id, title, description?, items: [{item_id, title, description?, kind, required, options?}, ...]}` where `kind` is one of `radio | checkbox | dropdown | choice | short_answer | paragraph | scale | date | time | file_upload | grid | unknown`. Replaces the workaround of reading the linked Re…
 
-_no parameters_
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `formId` | `z.string` | **required** | _—_ |
 
 ### `validate_run_state`
 
@@ -363,6 +371,7 @@ Single-line answer to 'did `<phaseName>` write its run_state.yaml block correctl
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `fileId` | `z.string` | **required** | The Google Drive fileId of run_state.yaml. |
+| `phaseName` | `z.string` | **required** | _—_ |
 
 ### `verify_phase_products`
 
@@ -371,6 +380,7 @@ Boundary-fence check that a phase's `phases.<phase>.products` block matches the 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `fileId` | `z.string` | **required** | The Google Drive fileId of run_state.yaml. |
+| `phase` | `z.string` | **required** | _—_ |
 
 ### `verify_phase_artifacts`
 
@@ -379,16 +389,20 @@ Verify every artifact the manifest declares required for `phase` is present in t
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `runFolderId` | `z.string` | **required** | _—_ |
+| `phase` | `z.enum` | **required** | _—_ |
 
 ### `render_run_readme`
 
 Render the run-folder README markdown for `runId` with optional per-phase status overrides (keys: idea-to-design | scenarios-and-acceptance | commcare-setup | connect-setup | ocs-setup | qa-and-training | synthetic-data-and-workflows | solicitation-management | execution-management | closeout; values: pending | in-progress | done | skipped). Returns `{markdown}`. The orchestrator writes this direc…
 
-_no parameters_
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `runId` | `z.string` | **required** | The run-id folder name, e.g. "20260526-1334". |
+| `phaseStatus` | `z.record` | **required** | _—_ |
 
 ## ace-connect
 
-Source: `mcp/connect-server.ts` — 47 atoms
+Source: `mcp/connect-server.ts` — 51 atoms
 
 ### `connect_list_programs`
 
@@ -406,9 +420,17 @@ Source: `mcp/connect-server.ts` — 47 atoms
 
 ### `connect_create_program`
 
-PM-side org slug (must be a program-manager org).
-
-_no parameters_
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `organization_slug` | `z.string` | **required** | _—_ |
+| `name` | `z.string` | **required** | _—_ |
+| `description` | `z.string` | **required** | _—_ |
+| `delivery_type` | `z.union` | **required** | _—_ |
+| `budget` | `z.coerce.number` | **required** | _—_ |
+| `currency` | `z.string` | **required** | _—_ |
+| `country` | `z.string` | **required** | _—_ |
+| `start_date` | `z.string` | **required** | _—_ |
+| `end_date` | `z.string` | **required** | _—_ |
 
 ### `connect_update_program`
 
@@ -418,6 +440,7 @@ _no parameters_
 | `program_id` | `z.string` | **required** | _—_ |
 | `name` | `z.string` | optional | _—_ |
 | `description` | `z.string` | optional | _—_ |
+| `budget` | `z.coerce.number` | optional | _—_ |
 | `start_date` | `z.string` | optional | _—_ |
 | `end_date` | `z.string` | optional | _—_ |
 
@@ -444,15 +467,33 @@ _no parameters_
 
 ### `connect_create_opportunity`
 
-PM-side org running the program.
-
-_no parameters_
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `organization_slug` | `z.string` | **required** | PM-side org running the program. |
+| `program_id` | `z.string` | **required** | _—_ |
+| `name` | `z.string` | **required** | _—_ |
+| `short_description` | `z.string` | **required** | _—_ |
+| `description` | `z.string` | **required** | _—_ |
+| `target_organization_slug` | `z.string` | optional | _—_ |
+| `start_date` | `z.string` | **required** | Must fit inside the program window. |
+| `end_date` | `z.string` | **required** | _—_ |
+| `total_budget` | `z.coerce.number` | **required** | _—_ |
+| `is_test` | `z.boolean` | optional | Defaults true server-side. |
+| `auto_activate` | `z.boolean` | optional | _—_ |
+| `description` | `z.string` | **required** | Required — Connect form marks it *. |
+| `passing_score` | `z.coerce.number` | **required** | _—_ |
 
 ### `connect_update_opportunity`
 
-Max 50 chars — DB-enforced (see connect_create_opportunity for the full bisect note).
-
-_no parameters_
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `organization_slug` | `z.string` | **required** | _—_ |
+| `opportunity_id` | `z.string` | **required** | _—_ |
+| `name` | `z.string` | optional | _—_ |
+| `short_description` | `z.string` | optional | _—_ |
+| `description` | `z.string` | optional | _—_ |
+| `end_date` | `z.string` | optional | _—_ |
+| `is_test` | `z.boolean` | optional | _—_ |
 
 ### `connect_set_verification_flags`
 
@@ -474,15 +515,30 @@ List deliver units for an opportunity. Each entry has `id` (per-opp display inde
 
 ### `connect_create_payment_units`
 
-The opportunity's total_budget (whole-currency-unit integer — the SAME value
-
-_no parameters_
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `organization_slug` | `z.string` | **required** | _—_ |
+| `opportunity_id` | `z.string` | **required** | _—_ |
+| `total_budget` | `z.coerce.number` | optional | _—_ |
+| `payment_units` | `z.array` | **required** | _—_ |
 
 ### `connect_create_payment_unit`
 
-The opportunity's total_budget (whole-currency-unit integer, NOT cents). ALWAYS pass it:
-
-_no parameters_
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `organization_slug` | `z.string` | **required** | _—_ |
+| `opportunity_id` | `z.string` | **required** | _—_ |
+| `total_budget` | `z.coerce.number` | optional | _—_ |
+| `name` | `z.string` | **required** | _—_ |
+| `description` | `z.string` | optional | _—_ |
+| `amount` | `z.coerce.number` | **required** | _—_ |
+| `org_amount` | `z.coerce.number` | optional | Required for managed opportunities. |
+| `max_total` | `z.coerce.number` | **required** | _—_ |
+| `max_daily` | `z.coerce.number` | **required** | _—_ |
+| `start_date` | `z.string` | optional | _—_ |
+| `end_date` | `z.string` | optional | _—_ |
+| `required_deliver_units` | `z.array` | **required** | _—_ |
+| `optional_deliver_units` | `z.array` | **required** | _—_ |
 
 ### `connect_list_payment_units`
 
@@ -502,15 +558,19 @@ List payment units on an opportunity. **HTML-scraped read-back has known unrelia
 
 ### `connect_send_llo_invite`
 
-PM-side org running the program.
-
-_no parameters_
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `organization_slug` | `z.string` | **required** | PM-side org running the program. |
+| `program_id` | `z.string` | **required** | Program UUID — invite is program-level. |
+| `organization` | `z.string` | **required** | LLO org slug to invite. |
 
 ### `connect_accept_program_application`
 
-ProgramApplication UUID returned by `connect_send_llo_invite`.
-
-_no parameters_
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `organization_slug` | `z.string` | **required** | _—_ |
+| `program_id` | `z.string` | **required** | _—_ |
+| `application_id` | `z.string` | **required** | ProgramApplication UUID returned by `connect_send_llo_invite`. |
 
 ### `connect_list_invites`
 
@@ -521,9 +581,11 @@ _no parameters_
 
 ### `connect_send_flw_invite`
 
-Opportunity must be active and not ended.
-
-_no parameters_
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `organization_slug` | `z.string` | **required** | _—_ |
+| `opportunity_id` | `z.string` | **required** | Opportunity must be active and not ended. |
+| `phone_numbers` | `z.array` | **required** | _—_ |
 
 ### `connect_delete_unaccepted_flw_invites`
 
@@ -542,7 +604,7 @@ Invite a human user to a Connect workspace (organization) by email. POSTs the HT
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `organization_slug` | `z.string` | **required** | _—_ |
-| `email` | `z.string` | **required** | _—_ |
+| `email` | `z.string` | **required** | Email of an EXISTING Connect user to add. Must not already be a member. |
 | `role` | `z.enum` | optional | Membership role. Default "member". |
 
 ### `connect_list_invoices`
@@ -640,7 +702,7 @@ List named UCR expressions / filters on a CommCare HQ domain. POST /a/<domain>/d
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `domain` | `z.string` | **required** | _—_ |
-| `limit` | `z.number` | **required** | _—_ |
+| `limit` | `z.number` | optional | _—_ |
 
 ### `commcare_create_ucr_expression`
 
@@ -661,7 +723,7 @@ List Inbound API configurations on a CommCare HQ domain. POST /a/<domain>/motech
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `domain` | `z.string` | **required** | _—_ |
-| `limit` | `z.number` | **required** | _—_ |
+| `limit` | `z.number` | optional | _—_ |
 
 ### `commcare_create_inbound_api`
 
@@ -673,7 +735,7 @@ Create an Inbound API configuration. POST the ConfigurableAPICreateForm to /a/<d
 | `name` | `z.string` | **required** | _—_ |
 | `description` | `z.string` | optional | _—_ |
 | `filter_expression_id` | `z.number` | **required** | _—_ |
-| `transform_expression_id` | `z.number` | **required** | _—_ |
+| `transform_expression_id` | `z.number` | optional | _—_ |
 | `backend` | `z.enum` | optional | _—_ |
 
 ### `commcare_create_repeater`
@@ -699,7 +761,7 @@ List Connection settings (motech outbound connections) on a CommCare HQ domain. 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `domain` | `z.string` | **required** | _—_ |
-| `limit` | `z.number` | **required** | _—_ |
+| `limit` | `z.number` | optional | _—_ |
 
 ### `commcare_create_connection`
 
@@ -736,8 +798,8 @@ List mobile workers (CommCareUser) in a CommCare HQ domain. GET /a/<domain>/api/
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `domain` | `z.string` | **required** | _—_ |
-| `limit` | `z.number` | **required** | _—_ |
-| `offset` | `z.number` | **required** | _—_ |
+| `limit` | `z.number` | optional | _—_ |
+| `offset` | `z.number` | optional | _—_ |
 | `group` | `z.string` | optional | _—_ |
 
 ### `commcare_get_user`
@@ -807,9 +869,56 @@ Set up a linked-project-spaces relationship: upstream (master) → downstream. R
 
 ### `commcare_download_ccz`
 
-If true, request the full CCZ with multimedia binaries inlined under commcare/multimedia/...; default false returns the lite manifest-only response.
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `domain` | `z.string` | **required** | _—_ |
+| `app_id` | `z.string` | **required** | _—_ |
+| `build_id` | `z.string` | optional | _—_ |
+| `include_multimedia` | `z.boolean` | optional | If true, request the full CCZ with multimedia binaries inlined under commcare/multimedia/...; default false returns the lite manifest-only response. |
+| `write_to_path` | `z.string` | optional | _—_ |
 
-_no parameters_
+### `commcare_validate_ccz`
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `ccz_path` | `z.string` | optional | Local filesystem path to the CCZ. Preferred — avoids round-tripping ~10KB of base64 through the model context. Exactly one of `ccz_path` or `ccz_base64` must be supplied. |
+| `ccz_base64` | `z.string` | optional | Base64-encoded CCZ bytes. Use when chaining directly from `commcare_download_ccz` without writing to disk. Exactly one of `ccz_path` or `ccz_base64` must be supplied. |
+| `mode` | `z.enum` | optional | _—_ |
+| `entry_path` | `z.array` | **required** | _—_ |
+| `jar_path` | `z.string` | optional | _—_ |
+| `timeout_ms` | `z.number` | optional | Spawn timeout. validate default 60000ms; play default 30000ms. |
+
+### `commcare_patch_xform`
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `domain` | `z.string` | **required** | _—_ |
+| `app_id` | `z.string` | **required** | _—_ |
+| `form_unique_id` | `z.string` | **required** | _—_ |
+| `new_xform_xml` | `z.string` | optional | _—_ |
+| `new_xform_xml_path` | `z.string` | optional | _—_ |
+| `sha1` | `z.string` | optional | Optional concurrency token; CCHQ rejects with XformConflictError on mismatch. |
+
+### `commcare_upload_multimedia`
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `domain` | `z.string` | **required** | _—_ |
+| `app_id` | `z.string` | **required** | _—_ |
+| `media_path` | `z.string` | **required** | _—_ |
+| `file_bytes_base64` | `z.string` | optional | _—_ |
+| `file_bytes_path` | `z.string` | optional | _—_ |
+| `content_type` | `z.string` | **required** | _—_ |
+
+### `connect_preflight_learn_app_user`
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `hq_domain` | `z.string` | **required** | _—_ |
+| `connect_username` | `z.string` | optional | _—_ |
+| `api_key` | `z.string` | **required** | _—_ |
+| `hq_username` | `z.string` | **required** | _—_ |
+| `base_url` | `z.string` | optional | _—_ |
 
 ## ace-ocs
 
@@ -841,7 +950,7 @@ Link a Custom Action operation to a pipeline node. GET/POST /a/<team>/pipelines/
 |-------|------|----------|-------------|
 | `pipeline_id` | `z.number` | **required** | _—_ |
 | `node_id` | `z.string` | **required** | _—_ |
-| `custom_action_id` | `z.number` | **required** | _—_ |
+| `custom_action_id` | `z.number` | **required** | From `ocs_add_custom_action`. |
 | `operation_id` | `z.string` | **required** | _—_ |
 
 ### `ocs_add_custom_action`
@@ -864,8 +973,8 @@ Attach a timeout-trigger event to a chatbot. POST /a/<team>/chatbots/<experiment
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `experiment_id` | `z.number` | **required** | _—_ |
-| `delay_seconds` | `z.number` | **required** | _—_ |
-| `total_num_triggers` | `z.number` | **required** | _—_ |
+| `delay_seconds` | `z.number` | **required** | Wait time before triggering, in seconds. 86400 = 24 hours. |
+| `total_num_triggers` | `z.number` | optional | _—_ |
 | `trigger_from_first_message` | `z.boolean` | optional | _—_ |
 | `action_type` | `z.enum` | **required** | _—_ |
 | `action_params` | `z.record` | **required** | _—_ |
@@ -1149,97 +1258,125 @@ Download a file from OCS by file ID.
 
 ## ace-mobile
 
-Source: `mcp/mobile-server.ts` — 15 atoms
+Source: `mcp/mobile-server.ts` — 17 atoms
 
 ### `mobile_ensure_avd_running`
 
-ACE_Pixel_API_34
-
-_no parameters_
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `avdName` | `z.string` | optional | _—_ |
 
 ### `mobile_stop_avd`
 
-text
-
-_no parameters_
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `avdName` | `z.string` | **required** | _—_ |
 
 ### `mobile_list_avds`
-
-text
 
 _no parameters_
 
 ### `mobile_install_apk`
 
-text
-
-_no parameters_
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `avdName` | `z.string` | **required** | _—_ |
+| `apkPath` | `z.string` | **required** | _—_ |
 
 ### `mobile_uninstall_apk`
 
-text
-
-_no parameters_
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `avdName` | `z.string` | **required** | _—_ |
+| `packageId` | `z.string` | **required** | _—_ |
 
 ### `mobile_register_test_user`
 
-ACE_Pixel_API_34
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `avdName` | `z.string` | optional | _—_ |
+| `phone` | `z.string` | optional | _—_ |
+| `phoneLocal` | `z.string` | optional | _—_ |
+| `countryCode` | `z.string` | optional | _—_ |
+| `pin` | `z.string` | optional | _—_ |
+| `backupCode` | `z.string` | optional | _—_ |
+| `name` | `z.string` | optional | _—_ |
 
-_no parameters_
+### `mobile_run_recipe`
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `recipePath` | `z.string` | **required** | _—_ |
+| `envVars` | `z.record` | **required** | _—_ |
+| `screenshotDir` | `z.string` | **required** | _—_ |
+| `avdName` | `z.string` | optional | _—_ |
 
 ### `mobile_capture_ui_dump`
 
-text
-
-_no parameters_
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `avdName` | `z.string` | **required** | _—_ |
 
 ### `mobile_probe_maestro_driver`
 
-AVD name (e.g. ACE_Pixel_API_34). Must already be booted — this atom does not boot.
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `avdName` | `z.string` | **required** | _—_ |
+| `timeoutMs` | `z.number` | optional | _—_ |
 
-_no parameters_
+### `mobile_validate_recipe`
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `yaml` | `z.string` | **required** | _—_ |
 
 ### `mobile_resolve_selectors`
 
-Maestro YAML body containing `${SELECTOR:logical-name}` placeholders to resolve.
-
-_no parameters_
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `yaml` | `z.string` | **required** | Maestro YAML body containing `${SELECTOR:logical-name}` placeholders to resolve. |
+| `apkVersion` | `z.string` | optional | Connect APK version. Maps to mcp/mobile/selectors/connect-<apkVersion>.yaml. Defaults to 2.63.0; bump when re-baselining against a new APK. |
 
 ### `mobile_save_snapshot`
 
-text
-
-_no parameters_
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `avdName` | `z.string` | **required** | _—_ |
+| `snapshotName` | `z.string` | **required** | _—_ |
 
 ### `mobile_load_snapshot`
 
-text
-
-_no parameters_
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `avdName` | `z.string` | **required** | _—_ |
+| `snapshotName` | `z.string` | **required** | _—_ |
 
 ### `mobile_set_location`
 
-ACE_Pixel_API_34
-
-_no parameters_
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `avdName` | `z.string` | optional | _—_ |
+| `longitude` | `z.number` | **required** | _—_ |
+| `latitude` | `z.number` | **required** | _—_ |
+| `altitude` | `z.number` | optional | _—_ |
+| `satellites` | `z.number` | optional | _—_ |
 
 ### `mobile_diagnose`
-
-text
 
 _no parameters_
 
 ### `mobile_restart_runner`
 
-Block until the runner re-sets the ready marker (default true). False is fire-and-forget — returns a partial Diagnostics snapshot immediately.
-
-_no parameters_
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `waitForReady` | `z.boolean` | optional | _—_ |
 
 ### `mobile_patch_launch_script`
 
-Full new body of /usr/local/bin/ace-emulator-launch. Must start with '#!/bin/bash'. Server enforces a 64KB cap.
-
-_no parameters_
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `scriptBody` | `z.string` | **required** | _—_ |
+| `restartRunner` | `z.boolean` | optional | _—_ |
 
 ## ace-decisions
 
@@ -1249,4 +1386,9 @@ Source: `mcp/decisions-server.ts` — 1 atoms
 
 Append validated load-bearing default rows to a run\'s decisions.yaml. The MCP transport enforces `lib/decisions-schema.ts` v4 on every row, so malformed writes (wrong field names, missing required fields, non-ordinal phase tags) are rejected at the call boundary — they never reach Drive. The tool seeds a fresh v4-compliant log header when decisions.yaml doesn\'t exist yet (and keeps appending to …
 
-_no parameters_
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `runFolderId` | `z.string` | **required** | _—_ |
+| `opportunity` | `z.string` | **required** | _—_ |
+| `run_id` | `z.string` | **required** | _—_ |
+| `rows` | `z.array` | **required** | _—_ |

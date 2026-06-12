@@ -136,13 +136,20 @@ export function checkPeriodOfPerformanceComplete(wo: string): QACheckResult {
   }
   const value = m[1].trim();
   const explicitRange = /\d{4}-\d{2}-\d{2}\s+to\s+\d{4}-\d{2}-\d{2}/.test(value);
+  // Prose date ranges are house style for the work-order producer
+  // (e.g. "May 22, 2026 to July 31, 2026", "Jul 31 2026"). Accept a full or
+  // 3-letter month name (optional trailing period, optional comma) on BOTH
+  // sides of "to" — a faithful prose render must not trigger an auto-fix loop
+  // every run. (jjackson/ace#733)
+  const proseRange =
+    /[A-Z][a-z]+\.?\s+\d{1,2},?\s+\d{4}\s+to\s+[A-Z][a-z]+\.?\s+\d{1,2},?\s+\d{4}/.test(value);
   const explicitPlaceholder = /^\[[^\]]+\]$/.test(value);
-  if (explicitRange || explicitPlaceholder) return { pass: true, detail: value };
+  if (explicitRange || proseRange || explicitPlaceholder) return { pass: true, detail: value };
   return {
     pass: false,
-    detail: `Period of Performance value '${value}' is incomplete (need YYYY-MM-DD to YYYY-MM-DD or [TBD])`,
+    detail: `Period of Performance value '${value}' is incomplete (need a start and end date: 'YYYY-MM-DD to YYYY-MM-DD', 'Mon DD, YYYY to Mon DD, YYYY', or '[TBD]')`,
     auto_fix_hint:
-      'fill the Period of Performance cell with both start and end dates in `YYYY-MM-DD to YYYY-MM-DD` form, ' +
+      'fill the Period of Performance cell with both a start and end date — ISO `YYYY-MM-DD to YYYY-MM-DD` or prose `Mon DD, YYYY to Mon DD, YYYY` — ' +
       'or use an explicit `[TBD]` placeholder. Scaffolding `{{...}}` markers must not leak through.',
   };
 }

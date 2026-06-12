@@ -192,11 +192,28 @@ surfaces in the saved-run screenshot.
    from `kpi_config`:
 
    ```python
+   # Pipeline fields use {name, path, aggregation} per
+   # workflow_authoring_guide § Pipeline Schema — NOT {id, field_path}.
+   # An {id, field_path} field SAVES but pipeline_preview then dies
+   # server-side with KeyError 'name' (jjackson/ace#749).
+   #
+   # The manifest's KPI vocab (validated_rate / non_null_rate /
+   # distinct_count) is GENERATOR-side only and does NOT map 1:1 onto the
+   # pipeline's aggregation allow-list. Translate to the LIVE allow-list,
+   # which is exactly: avg, count, count_distinct, count_unique, first,
+   # last, list, max, min, sum. pipeline_update_schema rejects anything else
+   # ("Unknown aggregation 'non_null_rate'"; note the live token is
+   # count_distinct, NOT distinct_count). Typical translations:
+   #   non_null_rate on a required 0/1 field -> avg  (+ a count for the denominator)
+   #   validated_rate                        -> avg  (on the float-transformed field)
+   #   distinct_count                        -> count_distinct
+   # Disclose every translation in the run summary (the
+   # aggregation_mapping_honesty eval dimension expects it).
    fields = [
      {
-       "id": kpi.kpi,
-       "field_path": kpi.field_path,
-       "aggregation": kpi.aggregation,   // 'validated_rate', 'non_null_rate', 'distinct_count', etc.
+       "name": kpi.kpi,
+       "path": kpi.field_path,
+       "aggregation": translate_kpi_aggregation(kpi.aggregation),  # -> pipeline allow-list above
      }
      for kpi in manifest.kpi_config
    ]
@@ -369,6 +386,22 @@ surfaces in the saved-run screenshot.
 
    Capture both run IDs and snapshot timestamps for the run summary.
 
+   **⚠️ The two LLO-review snapshots currently render IDENTICAL (jjackson/ace#764).**
+   The `flw_kpis` rollup aggregates **all** of the opportunity's visits and is
+   NOT period-filtered by the run's `period_start`/`period_end` (the labs
+   pipeline groups by `completed_at`, and `save_run_snapshot` freezes a
+   non-period-scoped aggregate). So Week 1 and Week 2 snapshots show the same
+   numbers. This is a labs-side root cause (not local; the pipeline must thread
+   `period_start`/`period_end` into `flw_kpis` as a `visit_date` filter).
+   **Until it lands, do NOT market the two snapshots as week-distinct** in the
+   walkthrough or polish narrative. Either (a) present them as "the same review,
+   run on a recurring cadence" without asserting week-over-week deltas, or
+   (b) point the "recurring rhythm" scene at a page that IS genuinely distinct
+   per period (the program_admin_audit window aggregate) rather than the
+   identical LLO-review weekly snapshots. `synthetic-workflow-polish` must keep
+   any week-referencing narrative conditional on real per-period difference —
+   see its SKILL.md note.
+
    **Per-week try/except:** if Week 1 succeeds but Week 2's create or
    snapshot fails (e.g. transient labs error), surface the partial
    completion in the run summary and continue. Operator can re-run
@@ -388,14 +421,33 @@ surfaces in the saved-run screenshot.
 8b. **Snapshot the program admin audit run (REQUIRED — without this the
     audit renders "0 opportunities watched" + an empty WINDOW AGGREGATE).**
 
-    The audit's `watched_summary` is built by the `program_admin_report`
-    template's `build_snapshot` hook. That hook fires **only when an
-    *audit* run is snapshotted**, and it reads its inputs from the audit
-    run's **own `state`** (`run.data.state`) — NOT from the definition
-    config, and NOT "for free" from the LLO review snapshots. So after the
-    LLO-review weeks are seeded, create + snapshot exactly **one** audit run
-    whose `initial_state` carries the window + watched sources in the exact
-    shape the hook reads (verified live 2026-05-31, jjackson/ace#596):
+    **First probe whether the deployed template still has a build_snapshot
+    hook** — `workflow_get(<program_admin_audit_id>)` and read
+    `has_build_snapshot_hook`. The two template generations behave
+    differently, and the currently-deployed one ships WITHOUT the hook
+    (jjackson/ace#750):
+
+    - **`has_build_snapshot_hook: true`** — the `program_admin_report`
+      template's `build_snapshot` hook computes `watched_summary` server-side
+      when an *audit* run is snapshotted, reading its inputs from the audit
+      run's **own `state`** (`run.data.state`) — NOT from the definition
+      config, and NOT "for free" from the LLO review snapshots. Author the
+      window + watched sources into `initial_state` (below) and the hook
+      builds the rest.
+    - **`has_build_snapshot_hook: false`** (the currently-deployed template) —
+      NO hook runs, so `watched_summary` is never computed and the audit
+      renders "0 opportunities watched." `workflow_save_snapshot` freezes
+      `initial_state` **verbatim** (`save_run_snapshot` is a dumb freeze), so
+      you MUST author the fully-computed `watched_summary` directly into
+      `initial_state` alongside the window — see the `watched_summary` block
+      below. This is the live workaround used on bednet-spot-check runs until
+      the labs template regains the hook (labs-side root cause: jjackson/ace#750).
+
+    Either way, after the LLO-review weeks are seeded, create + snapshot
+    exactly **one** audit run whose `initial_state` carries the window +
+    watched sources (and, when the hook is absent, the computed
+    `watched_summary`) in the exact shape the render reads (verified live
+    2026-05-31 / 2026-06-12, jjackson/ace#596 + #750):
 
     ```
     # Mondays covered by the window, one ISO date each (drives the grid columns)
@@ -427,6 +479,24 @@ surfaces in the saved-run screenshot.
             workflow_definition_id: <llo_weekly_review_id>,
             opportunity_id: <synthetic.labs_opp_id> }
         ],
+        # REQUIRED when has_build_snapshot_hook == false (#750): author the
+        # COMPUTED rollup directly — the render reads state.watched_summary and
+        # (with no hook) nothing else builds it. One entry per watched
+        # opportunity; runs[] is one row per seeded LLO-review snapshot
+        # (Week 1, Week 2, ...). Compute flw_count / missed_week_idxs from the
+        # same data you seeded. Read the EXACT field names from the live render
+        # code (workflow_get -> render_code) before authoring — they must match
+        # what the template renders. OMIT this block when
+        # has_build_snapshot_hook == true (the hook computes it).
+        #   watched_summary: [
+        #     { opportunity_id: <synthetic.labs_opp_id>,
+        #       workflow_definition_id: <llo_weekly_review_id>,
+        #       label: "<llo review display name>",
+        #       network_manager: "<nm name or null>",
+        #       flw_count: <int>,
+        #       missed_week_idxs: [<int>, ...],
+        #       runs: [ { period_start, period_end, snapshot_name, captured_at, run_id }, ... ] },
+        #   ]
       },
     )
     mcp__connect-labs__workflow_save_snapshot(
