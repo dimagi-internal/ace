@@ -40,9 +40,53 @@
 # the assessment-pass syncs (atlas § 8 Open Questions). Calling this
 # palette before sync completes will time out on the
 # `Congratulations` anchor.
+#
+# RETRY-PROOFING (#747): when the Deliver CCZ was already downloaded by
+# a prior dispatch on the same (test user, opportunity) — the standard
+# state after ANY Phase 6 retry whose first attempt got past the
+# download — Connect routes Resume DIRECTLY into the Deliver-mode app:
+# either the StandardHomeActivity (job card visible) or the suite menu
+# (`screen_suite_menu_list`, observed live on
+# bednet-spot-check/20260609-0909 retry: ui dump
+# `6-qa-and-training/screenshots/journey-deliver/00-postlearn-landing.xml`,
+# Drive 1dX0qOlxzxVLyYWFrMMYO30U4gwDeKEqJ). The § 9 Download Delivery
+# gate never renders on that path, so the download sequence below is
+# guarded on `notVisible: deliver-home-job-card` instead of running
+# unconditionally — the Deliver-side sibling of connect-claim-opp's
+# already-Learn-complete branch (#568/#570).
+#
+# Live-validation status: the already-installed step shapes were walked
+# end-to-end live on the 20260609-0909 retry (continuation recipe with
+# identical anchors: suite menu → form walk → submit + sync confirmed);
+# the guarded-branch ORDERING in this file is statically validated
+# (palette health + sanity probe) but has not yet run on-device as a
+# single file — exercise on the next Phase 6 retry.
 
 appId: org.commcare.dalvik
 ---
+
+# --- Already-installed fast path (#747) ----------------------------
+# Resume landed in the Deliver suite menu (prior dispatch consumed the
+# download gate). One back-press returns to StandardHomeActivity, which
+# is this palette's contracted post-state; the converging job-card
+# assert at the bottom still verifies it. If this fires on a Learn-side
+# suite menu (precondition violation), back lands on the Learn home,
+# the job-card assert fails, and the recipe halts loud — same failure
+# the unconditional download wait produced, but for the right reason.
+- runFlow:
+    when:
+      visible:
+        ${SELECTOR:deliver-suite-menu}
+    commands:
+      - takeScreenshot: "deliver-launch-already-installed-suite"
+      - back
+# Resume landed directly on the Deliver home — nothing to do; record it.
+- runFlow:
+    when:
+      visible:
+        ${SELECTOR:deliver-home-job-card}
+    commands:
+      - takeScreenshot: "deliver-launch-already-installed-home"
 
 # Resume from Connect's opp-list post-Learn-pass can land us on EITHER
 # of two screens on Connect 2.62.0 depending on persisted state:
@@ -87,20 +131,38 @@ appId: org.commcare.dalvik
       - tapOn:
           ${SELECTOR:deliver-opp-detail-view-button}
 
-# § 9 Download Delivery gate — ID-anchored on the DOWNLOAD button
-# (bednet-spot-check J2 dumps 2026-05-26 verified
-# `connect_delivery_button` = "DOWNLOAD"). Either branch above lands
-# us here; if neither fired (precondition violation: Learn not yet
-# completed-and-synced), this wait times out and the recipe halts
-# loud.
+# Settle gate for the already-installed path: after the back-press (or
+# a direct home landing) the job card renders within a beat; bound the
+# transition so the `notVisible` guard below can't fire mid-animation
+# and re-create the 30s download-wait halt it exists to prevent (#747).
+# On the fresh-install path this costs one 5s timeout and falls through.
 - extendedWaitUntil:
     visible:
-      ${SELECTOR:deliver-download-button}
-    timeout: 30000
-- takeScreenshot: "deliver-launch-download-gate"
+      ${SELECTOR:deliver-home-job-card}
+    timeout: 5000
+    optional: true
 
-- tapOn:
-    ${SELECTOR:deliver-download-button}
+# § 9 Download Delivery gate — ID-anchored on the DOWNLOAD button
+# (bednet-spot-check J2 dumps 2026-05-26 verified
+# `connect_delivery_button` = "DOWNLOAD"). Guarded (#747): runs only
+# when we are NOT already in the Deliver-mode home — on the
+# already-installed retry path the gate never renders and an
+# unconditional wait halts the recipe. If neither the cert/opp-detail
+# branches nor the already-installed branches fired (precondition
+# violation: Learn not yet completed-and-synced), this guard enters,
+# the wait times out, and the recipe halts loud — unchanged behavior.
+- runFlow:
+    when:
+      notVisible:
+        ${SELECTOR:deliver-home-job-card}
+    commands:
+      - extendedWaitUntil:
+          visible:
+            ${SELECTOR:deliver-download-button}
+          timeout: 30000
+      - takeScreenshot: "deliver-launch-download-gate"
+      - tapOn:
+          ${SELECTOR:deliver-download-button}
 
 # Deliver CCZ install progress — typically the same `Step N of M`
 # progress UI as the Learn-side § 4 download (atlas § 9 notes this

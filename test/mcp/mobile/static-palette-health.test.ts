@@ -205,3 +205,31 @@ describe('static palette health — palette/lint round-trip on selector substitu
     }
   });
 });
+
+describe('static palette health — deliver-launch retry-proofing invariant (#747)', () => {
+  // A Phase 6 retry whose prior dispatch consumed the Download Delivery gate
+  // resumes directly inside the Deliver app — the gate never renders, and an
+  // UNCONDITIONAL wait on the download button halts the recipe at 30s
+  // (bednet-spot-check/20260609-0909 retry). These invariants pin the fix:
+  // the download-gate sequence must stay guarded on NOT-already-in-Deliver,
+  // and the already-installed surfaces must have entry branches.
+  const yaml = readFileSync(`${STATIC_DIR}deliver-launch.yaml`, 'utf8');
+
+  it('guards the download-gate tap behind notVisible: deliver-home-job-card', () => {
+    // The tap must appear only INSIDE a guarded runFlow body, after a
+    // structural `when: / notVisible: / ${SELECTOR:deliver-home-job-card}`
+    // guard (NOT a mention of the word in a comment).
+    const guardRe = /when:\s*\n\s+notVisible:\s*\n\s+\$\{SELECTOR:deliver-home-job-card\}/;
+    const m = guardRe.exec(yaml);
+    expect(m, 'deliver-launch must carry the structural notVisible guard').not.toBeNull();
+    const guardBlock = yaml.slice(m!.index, m!.index + 900);
+    expect(guardBlock).toContain('${SELECTOR:deliver-download-button}');
+    // No UNguarded tap on the download button anywhere before the guard.
+    const beforeGuard = yaml.slice(0, m!.index);
+    expect(beforeGuard).not.toMatch(/tapOn:\s*\n\s*\$\{SELECTOR:deliver-download-button\}/);
+  });
+
+  it('has an already-installed entry branch for the Deliver suite menu', () => {
+    expect(yaml).toContain('${SELECTOR:deliver-suite-menu}');
+  });
+});

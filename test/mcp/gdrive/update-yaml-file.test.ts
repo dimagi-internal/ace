@@ -308,3 +308,66 @@ describe('update_yaml_file: validateAs phase-products contract guard', () => {
     expect(r.revisionVersion).toBe('2');
   });
 });
+
+// jjackson/ace#751 — the Google Docs text/plain upload→export round-trip is
+// NOT identity: interior blank-line runs DOUBLE per cycle (measured live
+// 2026-06-12 on doc 1X2UFGsOz8NvfsNlmTwzJSl0X9LMXmR_EbPepnPcnOPs: upload
+// "A\n\nB\n" exports "A\r\n\r\n\r\nB"; "A\n\n\nB" exports 5 breaks). A folded
+// `notes:` scalar with one blank line therefore grows exponentially across
+// update_yaml_file cycles until the Docs API rejects the write with a bare
+// Bad Request (run_state.yaml hit 8.4MB on bednet-spot-check/20260609-0909).
+describe('update_yaml_file: Docs newline-amplification preventers (#751)', () => {
+  // Fake drive whose export applies the MEASURED Docs transform: every
+  // interior run of n>=2 line breaks comes back as 2n-1 breaks (one blank
+  // line -> two), single breaks stable, CRLF endings, trailing newline dropped.
+  function makeAmplifyingFakeDrive(initialContent: string, initialVersion = '1') {
+    const state = { content: initialContent, version: initialVersion };
+    const amplify = (s: string) =>
+      s
+        .replace(/\n{2,}/g, (m) => '\n'.repeat(2 * m.length - 1))
+        .replace(/\n$/, '')
+        .replace(/\n/g, '\r\n');
+    return {
+      state,
+      files: {
+        get: vi.fn(async (req: any) => {
+          if (req.alt === 'media') return { data: amplify(state.content) };
+          return { data: { mimeType: 'application/vnd.google-apps.document', name: 'state.yaml', version: state.version } };
+        }),
+        export: vi.fn(async () => ({ data: amplify(state.content) })),
+        update: vi.fn(async (req: any) => {
+          const body = req.media?.body;
+          state.content = typeof body === 'string' ? body : String(body);
+          state.version = String(Number(state.version) + 1);
+          return { data: { id: req.fileId, name: 'state.yaml', modifiedTime: '2026-06-12T00:00:00Z', version: state.version } };
+        }),
+      },
+    };
+  }
+
+  it('repeated patches reach a fixpoint instead of exponential blank-line growth', async () => {
+    const initial = 'notes: >\n  sentence one\n\n\n  sentence two\ntick: 0\n';
+    const fake = makeAmplifyingFakeDrive(initial);
+    for (let i = 1; i <= 8; i++) {
+      await handleUpdateYamlFile({ fileId: 'f1', patch: { tick: i } }, fake as any);
+    }
+    // Without read-normalization the blank-line run doubles each of the 8
+    // cycles (~2^8 newlines). With it, content stays the same order of
+    // magnitude as the original.
+    expect(fake.state.content.length).toBeLessThan(initial.length * 3);
+    const notes = YAML.parse(fake.state.content.replace(/\r\n/g, '\n')).notes as string;
+    expect(notes).toMatch(/sentence one/);
+    expect(notes).toMatch(/sentence two/);
+    expect(/\n{3,}/.test(notes)).toBe(false);
+  });
+
+  it('refuses an oversized serialized doc with YAML_BALLOON_DETECTED naming the largest scalar', async () => {
+    const fake = makeAmplifyingFakeDrive('phase: x\n');
+    const balloon = 'line\n\n'.repeat(50_000); // ~300KB string scalar
+    await expect(
+      handleUpdateYamlFile({ fileId: 'f1', patch: { notes: balloon } }, fake as any),
+    ).rejects.toThrow(/YAML_BALLOON_DETECTED[\s\S]*notes/);
+    // No write happened — the guard fires before the Drive update.
+    expect(fake.files.update).not.toHaveBeenCalled();
+  });
+});
