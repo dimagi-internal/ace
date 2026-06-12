@@ -33,6 +33,7 @@ import { CompositeBackend } from './connect/backends/composite.js';
 import { PlaywrightSession } from './connect/auth/playwright-session.js';
 import { createLoggingProxy, defaultFileLogger } from './connect/logging.js';
 import { ConnectValidationError, ConnectSilentRejectError } from './connect/errors.js';
+import { assertRunIdNamePrefix } from './connect/opportunity-name.js';
 import {
   resolvePatchXformXml,
   resolveUploadMultimediaBytes,
@@ -227,7 +228,15 @@ server.tool('connect_create_opportunity',
   {
     organization_slug: z.string().describe('PM-side org running the program.'),
     program_id: z.string().describe('Program UUID — required (managed opportunity).'),
-    name: z.string(),
+    name: z.string().describe(
+      'Opportunity display name. When `is_test: true` (every ACE-driven run), MUST be ' +
+        '`"<run_id> · <PDD display name>"` — run-id `YYYYMMDD-HHMM` as a FRONT prefix, then ' +
+        '` · ` (space U+00B7 space), then the display name, e.g. ' +
+        '`"20260609-0909 · Bednet Spot-Check"`. Code-enforced before the network call ' +
+        '(INVALID_OPP_NAME_PREFIX): Phase 6 mobile recipes anchor their opp-tile match on ' +
+        '`text: ".*${OPP_RUN_ID}.*"`, so a missing prefix deterministically breaks claim/resume. ' +
+        'See skills/connect-opp-setup/SKILL.md § name and jjackson/ace#755.',
+    ),
     short_description: z.string().max(50).describe(
       'Max 50 chars — DB-enforced. Connect\'s `Opportunity.short_description` ' +
         'is `CharField(max_length=50)` but the DRF serializer is wrongly typed as ' +
@@ -288,6 +297,10 @@ server.tool('connect_create_opportunity',
   },
   async (args) =>
     runAtom(async () => {
+      // Code-enforce the run-id front-prefix contract on is_test names
+      // BEFORE any network call — Phase 6 tile matchers anchor on the
+      // run-id prefix (jjackson/ace#755; precedent: #731 capacity guard).
+      assertRunIdNamePrefix(args.name, args.is_test);
       // Resolve `${VAR}` patterns in API keys before forwarding to
       // Connect — see jjackson/ace#106 finding 6. The atom historically
       // sent the literal `${ACE_HQ_API_KEY}` string verbatim, which

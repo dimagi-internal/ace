@@ -157,7 +157,10 @@ alone makes the artifact land outside `4-connect` and fail
      the END of a long name that wraps to 2-3 lines on the tile — the
      most-clipped position — which is exactly the wrong place for the
      matcher. (Applies to ACE-driven dogfood runs — same `is_test: true`
-     framing as below.)
+     framing as below.) **Code-enforced** since jjackson/ace#755: the
+     `connect_create_opportunity` atom rejects an `is_test: true` name
+     without the run-id front prefix (`INVALID_OPP_NAME_PREFIX`,
+     `mcp/connect/opportunity-name.ts`) before any network call.
    - `short_description`: **≤50 chars** (server-enforced; the Connect
      opportunity edit form rejects longer values with a generic
      `Ensure this field has no more than 50 characters` error).
