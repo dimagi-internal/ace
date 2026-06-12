@@ -149,6 +149,12 @@ const TrainingProducts = z
     training: z
       .object({
         deck: DocPointer.optional(),
+        // `docs` is .strict(), deviating from the inner-blocks-passthrough
+        // strategy: this map IS the consumer-read enumeration (summary.py
+        // renders exactly these five slots), so an unknown key here is the
+        // #705 blank-section drift class, not internal detail. Canonical
+        // instance: training-deck-generate writing `docs.deck_spec`, which
+        // nothing reads (jjackson/ace#748).
         docs: z
           .object({
             llo_guide: DocPointer.optional(),
@@ -157,7 +163,7 @@ const TrainingProducts = z
             faq: DocPointer.optional(),
             onboarding_email: DocPointer.optional(),
           })
-          .passthrough()
+          .strict()
           .optional(),
       })
       .passthrough()

@@ -980,6 +980,22 @@ function deepMerge(
   return out;
 }
 
+/** Walk a parsed YAML object and return the dot-path + size of its largest string scalar (jjackson/ace#751 guard). */
+function findLargestStringScalar(obj: unknown): { path: string; size: number } {
+  let best = { path: '(none)', size: 0 };
+  const walk = (node: unknown, path: string) => {
+    if (typeof node === 'string') {
+      if (node.length > best.size) best = { path: path || '(root)', size: node.length };
+    } else if (Array.isArray(node)) {
+      node.forEach((v, i) => walk(v, `${path}[${i}]`));
+    } else if (node && typeof node === 'object') {
+      for (const [k, v] of Object.entries(node)) walk(v, path ? `${path}.${k}` : k);
+    }
+  };
+  walk(obj, '');
+  return best;
+}
+
 export async function handleUpdateYamlFile(
   args: {
     fileId: string;
@@ -1015,7 +1031,19 @@ export async function handleUpdateYamlFile(
 
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     const current = await handleReadFile({ fileId }, driveClient);
-    const parsed = current.content && current.content.trim() ? YAML.parse(current.content) : {};
+    // Docs text/plain upload→export is NOT identity: interior blank-line runs
+    // DOUBLE per round-trip (measured live: "A\n\nB" exports as 3 breaks,
+    // "A\n\n\nB" as 5), so a folded scalar with one blank line grows
+    // exponentially across update cycles until the Docs API rejects the write
+    // (run_state.yaml hit 8.4MB on bednet-spot-check/20260609-0909,
+    // jjackson/ace#751). Collapse 3+ break runs to exactly 2 before parsing —
+    // this gives the cycle a fixpoint (1 blank line → Docs doubles to 2 →
+    // collapsed back to 1 blank-line-equivalent on the next read) and
+    // self-heals an already-ballooned doc on its next patch. Tradeoff: a
+    // string scalar legitimately containing 2+ consecutive newlines is
+    // clamped to 2 — acceptable for the YAML state docs this atom serves.
+    const normalized = (current.content ?? '').replace(/\r\n/g, '\n').replace(/\n{3,}/g, '\n\n');
+    const parsed = normalized.trim() ? YAML.parse(normalized) : {};
     const base: Record<string, unknown> = parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? (parsed as Record<string, unknown>) : {};
     let merged: Record<string, unknown>;
     if (merge === 'deep') {
@@ -1036,6 +1064,22 @@ export async function handleUpdateYamlFile(
       }
     }
     const newContent = YAML.stringify(merged);
+
+    // Size guard: a healthy ACE state doc is tens of KB; past ~1MB the Docs
+    // API rejects the write with an opaque "Bad Request" that bricks every
+    // subsequent phase write-back mid-run. Refuse loudly BEFORE the write,
+    // naming the largest string scalar so the operator can trim the offending
+    // key instead of bisecting the payload (jjackson/ace#751).
+    const YAML_SIZE_CAP = 256 * 1024;
+    if (newContent.length > YAML_SIZE_CAP) {
+      const offender = findLargestStringScalar(merged);
+      throw new Error(
+        `YAML_BALLOON_DETECTED: serialized YAML is ${newContent.length} chars (cap ${YAML_SIZE_CAP}). ` +
+          `Largest string scalar: ${offender.path} (${offender.size} chars). ` +
+          `This usually means runaway content in one key (the Docs newline-amplification class, jjackson/ace#751) — ` +
+          `trim or restructure that key (e.g. notes as a list of short strings) and retry. No write was performed.`,
+      );
+    }
 
     try {
       const resp = await withTransientRetry(() => driveClient.files.update({

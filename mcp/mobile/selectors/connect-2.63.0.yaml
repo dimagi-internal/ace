@@ -438,6 +438,11 @@ selectors:
     value: "org.commcare.dalvik:id/viewJobCard"
     purpose: "Project card widget on the Deliver-mode StandardHomeActivity (atlas § 10). Load-bearing differentiator vs Learn home (§ 5) — present in Deliver, absent in Learn."
 
+  deliver-suite-menu:
+    type: id
+    value: "org.commcare.dalvik:id/screen_suite_menu_list"
+    purpose: "Deliver-app MenuActivity suite-menu list — same generic MenuActivity id as learn-suite-menu, on the Deliver side. Used by deliver-launch's already-installed fast path (#747): a Phase 6 retry whose prior dispatch consumed the Download Delivery gate resumes DIRECTLY here. Live-verified 2026-06-11 (2.63.0) — present in the Deliver post-resume landing dump (journey-deliver/00-postlearn-landing.xml, Drive 1dX0qOlxzxVLyYWFrMMYO30U4gwDeKEqJ) of bednet-spot-check/20260609-0909 Phase 6 retry, module row 'Bednet Visit'."
+
   deliver-home-job-title:
     type: id
     value: "org.commcare.dalvik:id/tv_job_title"

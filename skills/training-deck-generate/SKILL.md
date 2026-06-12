@@ -254,7 +254,7 @@ Slides side is `training-deck-render`'s job.
 
 - `ACE/<opp>/runs/<run-id>/6-qa-and-training/training-deck-spec.yaml`
 - `ACE/<opp>/runs/<run-id>/6-qa-and-training/training-deck-generate_verdict.yaml`
-- `run_state.yaml.phases.qa-and-training.products.training.docs.deck_spec` — `{file_id, title: "Training deck spec", web_view_link}` typed handoff. Multi-writer block: apply via read-modify-write per `skills/synthetic-data-generate/SKILL.md § Step 6`. See `agents/qa-and-training.md § Products` for the full slot table.
+- `run_state.yaml.phases.qa-and-training.steps.training-deck-generate` — step record with `artifact: 6-qa-and-training/training-deck-spec.yaml` (+ file_id). **Do NOT write a `products.training.docs.deck_spec` slot** — `lib/phase-products-schema.ts` enumerates only `llo_guide/flw_guide/quick_reference/faq/onboarding_email` under `products.training.docs`, and the only deck product slot is `products.training.deck`, written by `training-deck-render` after the Slides render (jjackson/ace#748; drift class jjackson/ace#705). The spec is an intermediate artifact tracked via the step record, not a typed product handoff. See `agents/qa-and-training.md § Products` for the full slot table.
 
 ## Downstream
 
