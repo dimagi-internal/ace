@@ -19,6 +19,13 @@ rotated) had been **revoked at Anthropic's end**. Every generation failed
 cost of the misdiagnosis: one blocked run, one wasted resume session, and a
 platform escalation for a 5-minute credential fix.
 
+**Confirmed cause (2026-06-12):** Jon had deactivated the key in the
+Anthropic console himself, not realizing it backed the OCS connect-ace
+provider — console key names don't show what consumes them. He re-enabled
+it; ACE restored it on provider 377 (reverting the interim swap to the
+general ACE key) and re-verified live. The 1P item now carries an "update
+provider 377 first" warning for future deactivations.
+
 ## Why the misdiagnosis happened (two compounding masks)
 
 1. **OCS masks the real error.** `apps/experiments/task_utils.py` replaces
@@ -82,3 +89,10 @@ Gotcha discovered en route: `OCS_LLM_PROVIDER_ID` in `.env` (378) is the
   and worked the previous day. Deterministic, instant, scope-wide failure
   onset is the credential-death signature; genuine load problems are
   intermittent.
+- **A credential's consumers must be discoverable from where it gets
+  killed.** The deactivation happened in the Anthropic console, where the
+  key's name carried no hint that OCS connect-ace depended on it. Defense:
+  name console keys after their consumer (e.g. `ocs-connect-ace-provider`),
+  and keep the 1P item's notes pointing at the exact dependent config
+  (provider 377 URL) so either surface answers "what breaks if I kill
+  this?"
