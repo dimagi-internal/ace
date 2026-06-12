@@ -586,24 +586,28 @@ describe('MobileClient.runRecipe (provenance sidecars)', () => {
       'appId: org.commcare.dalvik\n---\n- takeScreenshot: "fake"\n',
       'utf8',
     );
-    // Simulate the backend writing a PNG to the screenshotDir, then
-    // returning a ScreenshotEntry pointing at it.
-    const pngPath = path.join(tmpDir, 'fake.png');
-    fs.writeFileSync(pngPath, Buffer.from([0x89, 0x50, 0x4e, 0x47]));
-    const cloudRunRecipe = vi.fn().mockResolvedValue({
-      status: 'pass',
-      exitCode: 0,
-      stdout: '',
-      stderr: '',
-      screenshotsDir: tmpDir,
-      screenshots: [
-        { stepName: 'fake', path: pngPath, takenAt: new Date().toISOString(), bytes: 4 },
-      ],
+    // Screenshots land in a dedicated subdir (the production shape) —
+    // runRecipe wipes it at execution start (#756), so the backend mock
+    // must write the PNG AT CALL TIME (post-wipe), as a real backend does.
+    const shotsDir = path.join(tmpDir, 'shots');
+    const pngPath = path.join(shotsDir, 'fake.png');
+    const cloudRunRecipe = vi.fn().mockImplementation(async () => {
+      fs.writeFileSync(pngPath, Buffer.from([0x89, 0x50, 0x4e, 0x47]));
+      return {
+        status: 'pass',
+        exitCode: 0,
+        stdout: '',
+        stderr: '',
+        screenshotsDir: shotsDir,
+        screenshots: [
+          { stepName: 'fake', path: pngPath, takenAt: new Date().toISOString(), bytes: 4 },
+        ],
+      };
     });
     const cloud = { runRecipe: cloudRunRecipe } as any;
     const client = new MobileClient({ avd: {} as any, maestro: {} as any, cloud });
 
-    const result = await client.runRecipe(recipePath, {}, tmpDir);
+    const result = await client.runRecipe(recipePath, {}, shotsDir);
 
     // Sidecar exists on disk.
     const sidecarPath = `${pngPath}.meta.json`;
@@ -623,77 +627,177 @@ describe('MobileClient.runRecipe (provenance sidecars)', () => {
   it('two consecutive runRecipe invocations produce distinct dispatch_ids', async () => {
     const recipePath = path.join(tmpDir, 'r.yaml');
     fs.writeFileSync(recipePath, 'appId: x\n---\n- launchApp: x\n', 'utf8');
+    const shotsDir = path.join(tmpDir, 'shots');
 
+    // PNGs are written at backend-call time (post-wipe, #756), like a
+    // real backend.
     const make = (pngName: string) => {
-      const p = path.join(tmpDir, pngName);
+      const p = path.join(shotsDir, pngName);
       fs.writeFileSync(p, Buffer.from([0x89]));
       return p;
     };
 
     const cloudRunRecipe = vi
       .fn()
-      .mockResolvedValueOnce({
+      .mockImplementationOnce(async () => ({
         status: 'pass', exitCode: 0, stdout: '', stderr: '',
-        screenshotsDir: tmpDir,
+        screenshotsDir: shotsDir,
         screenshots: [{ stepName: 'a', path: make('a.png'), takenAt: '', bytes: 1 }],
-      })
-      .mockResolvedValueOnce({
+      }))
+      .mockImplementationOnce(async () => ({
         status: 'pass', exitCode: 0, stdout: '', stderr: '',
-        screenshotsDir: tmpDir,
+        screenshotsDir: shotsDir,
         screenshots: [{ stepName: 'b', path: make('b.png'), takenAt: '', bytes: 1 }],
-      });
+      }));
     const cloud = { runRecipe: cloudRunRecipe } as any;
     const client = new MobileClient({ avd: {} as any, maestro: {} as any, cloud });
 
-    const r1 = await client.runRecipe(recipePath, {}, tmpDir);
-    const r2 = await client.runRecipe(recipePath, {}, tmpDir);
+    const r1 = await client.runRecipe(recipePath, {}, shotsDir);
+    const r2 = await client.runRecipe(recipePath, {}, shotsDir);
 
     expect(r1.screenshots[0].provenance!.dispatch_id).not.toBe(
       r2.screenshots[0].provenance!.dispatch_id,
     );
   });
 
-  it('a screenshot left over from a prior dispatch is detectable via dispatch_id mismatch', async () => {
-    // Simulate the actual leak: first run writes PNG + sidecar; second
-    // run never touches that PNG. The sidecar from run 1 carries run
-    // 1's dispatch_id; the current dispatch (run 2) has a different
-    // ID, so the consumer can reject the leftover deterministically.
+  it('a screenshot left over from a prior dispatch is REMOVED before the next dispatch runs (#756)', async () => {
+    // The structural fix for the stale-carryover class: the next
+    // dispatch wipes the screenshot dir at execution start, so a
+    // leftover PNG (and its sidecar) from a prior run cannot sit where
+    // fresh artifacts land. (Pre-#756 this test pinned the weaker
+    // detect-via-dispatch_id-mismatch contract; removal supersedes it.)
     const recipePath = path.join(tmpDir, 'r.yaml');
     fs.writeFileSync(recipePath, 'appId: x\n---\n- launchApp: x\n', 'utf8');
-    const staleObj = path.join(tmpDir, 'leftover.png');
-    fs.writeFileSync(staleObj, Buffer.from([0x89]));
+    const shotsDir = path.join(tmpDir, 'shots');
 
-    const cloudRunRecipe = vi.fn().mockResolvedValue({
-      status: 'pass', exitCode: 0, stdout: '', stderr: '',
-      screenshotsDir: tmpDir,
-      screenshots: [{ stepName: 'leftover', path: staleObj, takenAt: '', bytes: 1 }],
+    const cloudRunRecipe = vi.fn().mockImplementationOnce(async () => {
+      const p = path.join(shotsDir, 'leftover.png');
+      fs.writeFileSync(p, Buffer.from([0x89]));
+      return {
+        status: 'pass', exitCode: 0, stdout: '', stderr: '',
+        screenshotsDir: shotsDir,
+        screenshots: [{ stepName: 'leftover', path: p, takenAt: '', bytes: 1 }],
+      };
     });
     const cloud = { runRecipe: cloudRunRecipe } as any;
     const client = new MobileClient({ avd: {} as any, maestro: {} as any, cloud });
 
-    const run1 = await client.runRecipe(recipePath, {}, tmpDir);
-    const run1Dispatch = run1.screenshots[0].provenance!.dispatch_id;
+    await client.runRecipe(recipePath, {}, shotsDir);
+    // Run 1's artifacts are on disk — exactly where run 2's would land.
+    expect(fs.existsSync(path.join(shotsDir, 'leftover.png'))).toBe(true);
+    expect(fs.existsSync(path.join(shotsDir, 'leftover.png.meta.json'))).toBe(true);
 
-    // Force MobileClient to do a second run that doesn't reference the
-    // same PNG. The leftover PNG + its sidecar remain on disk untouched.
-    const otherPng = path.join(tmpDir, 'fresh.png');
-    fs.writeFileSync(otherPng, Buffer.from([0x89]));
-    cloudRunRecipe.mockResolvedValueOnce({
-      status: 'pass', exitCode: 0, stdout: '', stderr: '',
-      screenshotsDir: tmpDir,
-      screenshots: [{ stepName: 'fresh', path: otherPng, takenAt: '', bytes: 1 }],
+    // Run 2: the recipe FAILS at its first step and produces nothing —
+    // the bednet-spot-check 20260612-1220 shape. The dir must come out
+    // EMPTY of run 1's PNGs: a failed run must not leave prior
+    // artifacts masquerading as its output.
+    cloudRunRecipe.mockImplementationOnce(async () => ({
+      status: 'fail', exitCode: 1, stdout: '', stderr: 'tile matcher failed',
+      screenshotsDir: shotsDir,
+      screenshots: [],
+    }));
+    const run2 = await client.runRecipe(recipePath, {}, shotsDir);
+
+    expect(run2.status).toBe('fail');
+    expect(fs.existsSync(path.join(shotsDir, 'leftover.png'))).toBe(false);
+    expect(fs.existsSync(path.join(shotsDir, 'leftover.png.meta.json'))).toBe(false);
+  });
+});
+
+describe('MobileClient.runRecipe (screenshot-dir freshness, jjackson/ace#756)', () => {
+  let savedBackend: string | undefined;
+  let tmpDir: string;
+  beforeEach(() => {
+    savedBackend = process.env.ACE_MOBILE_BACKEND;
+    process.env.ACE_MOBILE_BACKEND = 'cloud';
+    clearSessionBackend();
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'freshdir-test-'));
+  });
+  afterEach(() => {
+    if (savedBackend === undefined) delete process.env.ACE_MOBILE_BACKEND;
+    else process.env.ACE_MOBILE_BACKEND = savedBackend;
+    clearSessionBackend();
+    try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch {}
+  });
+
+  it('wipes stale artifacts from screenshotDir before the backend runs; fresh artifacts survive', async () => {
+    const recipePath = path.join(tmpDir, 'journey.yaml');
+    fs.writeFileSync(recipePath, 'appId: x\n---\n- launchApp: x\n', 'utf8');
+    const shotsDir = path.join(tmpDir, 'shots');
+    fs.mkdirSync(shotsDir, { recursive: true });
+    // Stale artifacts from "a prior successful execution".
+    fs.writeFileSync(path.join(shotsDir, 'journey-deliver-final.png'), 'STALE');
+    fs.writeFileSync(path.join(shotsDir, 'journey-deliver-final.png.meta.json'), '{}');
+    fs.writeFileSync(path.join(shotsDir, 'old-dump.xml'), '<hierarchy/>');
+
+    const cloudRunRecipe = vi.fn().mockImplementation(async () => {
+      // At backend-call time the dir must ALREADY be empty — the wipe
+      // happens before the flow runs, not after.
+      expect(fs.readdirSync(shotsDir)).toEqual([]);
+      const fresh = path.join(shotsDir, 'fresh.png');
+      fs.writeFileSync(fresh, Buffer.from([0x89]));
+      return {
+        status: 'pass', exitCode: 0, stdout: '', stderr: '',
+        screenshotsDir: shotsDir,
+        screenshots: [{ stepName: 'fresh', path: fresh, takenAt: '', bytes: 1 }],
+      };
     });
-    const run2 = await client.runRecipe(recipePath, {}, tmpDir);
-    const run2Dispatch = run2.screenshots[0].provenance!.dispatch_id;
+    const cloud = { runRecipe: cloudRunRecipe } as any;
+    const client = new MobileClient({ avd: {} as any, maestro: {} as any, cloud });
 
-    // Read the leftover sidecar: dispatch_id is run 1's, which differs
-    // from the current run's dispatch_id (run 2's). This is exactly
-    // the signal a consumer needs to identify stale carryover.
-    const leftoverSidecar = JSON.parse(
-      fs.readFileSync(`${staleObj}.meta.json`, 'utf8'),
-    );
-    expect(leftoverSidecar.dispatch_id).toBe(run1Dispatch);
-    expect(leftoverSidecar.dispatch_id).not.toBe(run2Dispatch);
+    const result = await client.runRecipe(recipePath, {}, shotsDir);
+
+    expect(result.status).toBe('pass');
+    expect(cloudRunRecipe).toHaveBeenCalledTimes(1);
+    const remaining = fs.readdirSync(shotsDir).sort();
+    expect(remaining).toEqual(['fresh.png', 'fresh.png.meta.json']);
+  });
+
+  it('creates screenshotDir when it does not exist yet', async () => {
+    const recipePath = path.join(tmpDir, 'journey.yaml');
+    fs.writeFileSync(recipePath, 'appId: x\n---\n- launchApp: x\n', 'utf8');
+    const shotsDir = path.join(tmpDir, 'brand', 'new-shots');
+
+    const cloudRunRecipe = vi.fn().mockImplementation(async () => {
+      expect(fs.existsSync(shotsDir)).toBe(true);
+      return {
+        status: 'pass', exitCode: 0, stdout: '', stderr: '',
+        screenshotsDir: shotsDir, screenshots: [],
+      };
+    });
+    const cloud = { runRecipe: cloudRunRecipe } as any;
+    const client = new MobileClient({ avd: {} as any, maestro: {} as any, cloud });
+
+    await client.runRecipe(recipePath, {}, shotsDir);
+    expect(cloudRunRecipe).toHaveBeenCalledTimes(1);
+  });
+
+  it('a freshness-gate rejection (RECIPE_STALE) does NOT wipe prior artifacts', async () => {
+    // The wipe runs after the pre-flight gates: a rejected dispatch
+    // produced nothing, so destroying prior artifacts would only lose
+    // forensic evidence.
+    const recipePath = path.join(tmpDir, 'stale.yaml');
+    const header = [
+      '# ACE Recipe Provenance — do not edit by hand',
+      '# ace_version: 0.13.300',
+      '# selector_map_sha: STALESHAxxxx',
+      '# selector_map_apk_version: 2.63.0',
+      '# generated_at: 2026-05-25T00:00:00.000Z',
+      '',
+      '',
+    ].join('\n');
+    fs.writeFileSync(recipePath, header + 'appId: x\n---\n- launchApp: x\n', 'utf8');
+    const shotsDir = path.join(tmpDir, 'shots');
+    fs.mkdirSync(shotsDir, { recursive: true });
+    fs.writeFileSync(path.join(shotsDir, 'prior.png'), 'PRIOR');
+
+    const cloud = { runRecipe: vi.fn() } as any;
+    const client = new MobileClient({ avd: {} as any, maestro: {} as any, cloud });
+
+    await expect(client.runRecipe(recipePath, {}, shotsDir)).rejects.toMatchObject({
+      code: 'RECIPE_STALE',
+    });
+    expect(fs.existsSync(path.join(shotsDir, 'prior.png'))).toBe(true);
   });
 });
 

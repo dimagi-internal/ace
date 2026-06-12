@@ -33,6 +33,7 @@ import type {
   SnapshotResult, DeviceUserStateClass, DeviceStateHealLog, LocalBootstrapConfig,
 } from './types.js';
 import { logInfo } from './logging.js';
+import { resetScreenshotDir } from './screenshot-dir.js';
 import { runRecipeWithDriverHeal } from './maestro-driver-retry.js';
 import {
   buildProvenance,
@@ -1066,6 +1067,19 @@ export class MobileClient {
     // current dispatch's ID to detect leftover PNGs from prior runs.
     const recipeId = path.basename(recipePath).replace(/\.ya?ml$/, '');
     const dispatchId = newDispatchId();
+
+    // Structural freshness guarantee (jjackson/ace#756): the screenshot
+    // dir this dispatch reports must contain ONLY artifacts from THIS
+    // execution. Stale PNGs from a prior run (or a prior session on a
+    // shared runner) otherwise sit exactly where fresh ones land, and a
+    // failed recipe leaves them masquerading as its output. Wipe-and-
+    // recreate before the flow runs — covers BOTH backends from one
+    // choke point (local Maestro writes into the dir; cloud downloads
+    // into it). Runs AFTER prepareRecipeForMaestro so a recipe that
+    // happens to live inside the dir has already been copied out, and
+    // AFTER the freshness gate so a pre-flight rejection doesn't
+    // destroy prior artifacts without producing new ones.
+    resetScreenshotDir(screenshotDir);
 
     let result: RecipeRunResult;
     try {

@@ -399,6 +399,20 @@ atom).
    static-recipe-invariants assertion. Until then, a re-login drop
    between legs is a known cause of a Deliver-leg halt.
 
+**HARD RULE — screenshots come ONLY from a `status: pass` execution in
+THIS run (jjackson/ace#756).** If `mobile_run_recipe` returns
+`status != pass` for a required journey, that leg's screenshots DO NOT
+EXIST: record the leg `fail` with the recipe failure (failureClass,
+stderr, failed step) inline in the verdict, and NEVER source PNGs from
+the screenshot dir, a prior run, or any imagined "replay cache" — no
+such mechanism exists, and any file not in the returned `screenshots[]`
+of this dispatch is untraceable. The shallow verdict MUST NOT be `pass`
+if any required journey's recipe failed (per the Step 9 table). Halt
+loud per CLAUDE.md § Phase preconditions — don't ship placeholders.
+(Since #756 `mobile_run_recipe` also wipes the screenshot dir at
+execution start, so stale PNGs are structurally absent — but the rule
+stands regardless of what's on disk.)
+
 Capture is split into a **Learn leg** and a **Deliver leg**. The legs
 are graded independently; a Deliver failure never suppresses Learn
 capture.
@@ -848,6 +862,7 @@ Notes:
 
 | Date | Change | Author |
 |---|---|---|
+| 2026-06-12 | **Step 5 hard rule: screenshots only from a `status: pass` execution in THIS run (jjackson/ace#756).** A `status != pass` `mobile_run_recipe` result for a required journey means that leg has NO screenshots — record the leg `fail` with the recipe failure inline; never source leftover PNGs (no "replay cache" exists); the shallow verdict must not be `pass` if any required journey's recipe failed. Pairs with the MCP-side fix: `mobile_run_recipe` now wipes the screenshot dir at execution start so stale PNGs are structurally absent. Surfaced by bednet-spot-check run 20260612-1220, where a failed deliver leg shipped prior-run PNGs under a confabulated "runner replay cache" note. | ACE team |
 | 2026-06-03 | **Step 6.5 auto-harvests selector drift.** End of Phase 6 now runs `scripts/probe-atlas-drift.ts` over the run's screenshot dir automatically (best-effort), closing the consume-loop on the `runRecipeWithDumps` + `*-FAILURE.xml` dumps that previously just accumulated. The harvester is now FAILURE-aware: resource-ids seen on a `*-FAILURE.xml` screen but absent from the selector map surface as a priority "Drift suspects on FAILURE screens" section (candidate root causes for a recipe failure in this run — the #591/#618 drift class). Pairs with thrown-failure forensics capture (`mobile_run_recipe` now captures the failure screen on a thrown driver-death too, not just on returned `status:'fail'`). Canonical contract: `playbook/integrations/mobile-integration.md § Failure forensics`. | ACE team |
 | 2026-05-05 | **Path-scheme migration.** Inputs repointed to `2-scenarios/pdd-to-app-journeys.md`, `3-commcare/app-test-cases.yaml`, `3-commcare/app-deploy_summary.md`, `3-commcare/recipes/`. Outputs repointed to `6-qa-and-training/screenshots/<recipe-base>/<step-name>.png`, `6-qa-and-training/app-screenshot-capture_manifest.yaml`, `6-qa-and-training/app-screenshot-capture_verdict.yaml`, `6-qa-and-training/app-screenshot-capture_verdict-shallow.yaml` (per manifest). Both verdict YAML examples' `capture_path` updated. No behavior change beyond paths. | ACE team |
 | 2026-05-27 | **Recipe naming convention.** Screenshot dirs updated from `<journey-id>/` to `<recipe-base>/` (`journey-learn/`, `journey-deliver/`). Recipe read references updated from `J*.yaml` to `journey-*.yaml`. Structural verdict `per_item` refs changed from `ref: "J1.yaml"` to `ref: learn` / `ref: deliver`. No runtime behavior change. See spec 2026-05-27-phase6-learn-deliver-decoupling. | ACE team |
