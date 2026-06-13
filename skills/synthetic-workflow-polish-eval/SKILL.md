@@ -41,7 +41,7 @@ a `verdict: blocked` from the visual-judge now hard-caps the whole eval to
 
 - `ACE/<opp-name>/runs/<run-id>/7-synthetic/synthetic-workflow-polish.md`
 - `ACE/<opp-name>/runs/<run-id>/7-synthetic/synthetic-narrative-plan.{md,yaml}` — anchor for FLW names + anomaly descriptions that should appear in patches
-- `ACE/<opp-name>/runs/<run-id>/7-synthetic/synthetic-workflow-seed.md` — `scaffold_unsuitable` flag, baseline render-code version
+- `ACE/<opp-name>/runs/<run-id>/7-synthetic/synthetic-workflow-seed.md` — `scaffold_unsuitable` flag, baseline render-code version, **and the saved-run ids (`Week 1 run_id` / `Week 2 run_id`) — required for the render deep-link in step 6** (the polished completed-run view only mounts when a `run_id` is in the URL; see step 6)
 - `ACE/<opp-name>/opp.yaml` — `synthetic.workflows.llo_weekly_review_id` + `synthetic.labs_opp_id` (needed for the screenshot capture in step 6)
 - `inputs/pdd.md` — opp domain (used as the `domain` context for canopy:visual-judge's brand-fit anchoring)
 
@@ -132,7 +132,15 @@ conformance dimensions (narrative_data_coherence 0.30→0.20, patch_quality
   dimensions 6+7 fall back to `null` and the overall_score
   re-normalizes against the remaining 5 dimensions. Surface the
   capture failure so the operator can re-run `/ace:labs-login` and
-  retry.
+  retry. Two specific render-not-reached cases to name in the WARN:
+  (a) **no `run_id`** → step 6 hit the run picker, not the dashboard
+  (fix: ensure synthetic-workflow-seed saved a run and recorded its
+  `run_id`); (b) **labs landed on the context selector / "please select
+  an opportunity" banner** despite `?opportunity_id=` — the headless
+  labs session has empty `organization_data` (the Connect org-list API
+  flaked at OAuth login), so labs strips the context param. This is
+  fixed labs-side (connect-labs `559b…` / jjackson/connect-labs#541);
+  if it recurs, re-run `/ace:labs-login` to refresh org_data.
 
 ## Process — visual judging
 
@@ -152,7 +160,23 @@ if [ ! -f ~/.ace/labs-session.json ] || ! $B goto "${LABS_BASE_URL}/labs/overvie
   bash ~/.claude/plugins/cache/ace/ace/$(cat ~/.claude/plugins/marketplaces/ace/VERSION)/bin/ace-labs-walkthrough-login
 fi
 
-WORKFLOW_URL="${LABS_BASE_URL}/labs/workflow/${LLO_WEEKLY_REVIEW_ID}/?opportunity_id=${LABS_OPP_ID}"
+# Deep-link to a SAVED RUN so the polished completed-run view renders.
+# The bare /labs/workflow/<id>/?opportunity_id=<opp> URL renders the run
+# *picker* (select_run_mode), NOT the per-FLW dashboard — the polished render
+# only mounts when the URL carries a run_id (the workflow's render code gates
+# its completed view on the `view` prop, which is populated only for a saved
+# run). LLO_WEEKLY_REVIEW_RUN_ID = the latest saved run_id from
+# synthetic-workflow-seed.md (prefer "Week 2 run_id"; fall back to "Week 1
+# run_id"). Verified live against labs prod (jjackson/ace#769; recipe form
+# /labs/workflow/<id>/run/<run_id>/?opportunity_id=<opp>).
+if [ -n "${LLO_WEEKLY_REVIEW_RUN_ID}" ]; then
+  WORKFLOW_URL="${LABS_BASE_URL}/labs/workflow/${LLO_WEEKLY_REVIEW_ID}/run/${LLO_WEEKLY_REVIEW_RUN_ID}/?opportunity_id=${LABS_OPP_ID}"
+else
+  # Degraded: no saved run recorded (synthetic-workflow-seed didn't save a run).
+  # This lands on the run picker, not the polished render — emit a [WARN] so the
+  # operator knows the visual dims are scored against the picker, not the dashboard.
+  WORKFLOW_URL="${LABS_BASE_URL}/labs/workflow/${LLO_WEEKLY_REVIEW_ID}/?opportunity_id=${LABS_OPP_ID}"
+fi
 $B goto "$WORKFLOW_URL"
 $B wait --networkidle
 PAGE_TEXT=$($B text)
@@ -281,5 +305,6 @@ Dimensions 6+7 (visual judge) calibrate against
 | 2026-05-06 | Initial provisional rubric — Stage 4 of Plan B. Vision-model dimensions deferred. | ACE team |
 | 2026-05-07 | Add `visual_hierarchy` (0.10) + `brand_fit` (0.05) dimensions; weights re-normalize from the 5-dim original. New § Process steps 6+7: capture screenshot via gstack browse, dispatch `canopy:visual-judge` with polish-specific rubric. Removes the deferral. canopy v0.2.79 ships the underlying judge. | ACE team |
 | 2026-05-29 | Raise the canopy:visual-judge dimensions (visual_hierarchy + brand_fit) to a combined 0.40 (0.27 + 0.13, up from 0.15) — they are the only out-of-chain fitness anchor (graded against the actual rendered screenshot). Pulled the difference off the text-based conformance dims (narrative 0.30→0.20, patch 0.20→0.15, smoke 0.20→0.15, domain 0.10→0.05); weights still sum to 1.00. A `canopy:visual-judge verdict: blocked` now hard-caps the whole eval to `verdict: fail` (was previously only a trigger on visual hierarchy ≤ 2). Per `docs/superpowers/specs/2026-05-29-eval-fitness-gap.md`. | ACE team |
+| 2026-06-13 | **Step 6 capture targets the saved-run render deep-link** (`/labs/workflow/<id>/run/<run_id>/?opportunity_id=<opp>`), not the bare workflow URL — the bare URL renders the run picker, so the visual dims were scoring the picker, not the dashboard. `run_id` (Week 2, else Week 1) read from `synthetic-workflow-seed.md`; degraded fallback to the bare URL emits a `[WARN]` naming the no-run_id vs empty-org_data failure mode. Recipe verified live (jjackson/ace#769; labs-side empty-org_data fix jjackson/connect-labs#541). See `docs/learnings/2026-06-13-labs-workflow-run-deeplink.md`. | ACE team |
 
 <!-- 0.13.73 ships canopy:visual-judge wire-up. -->
