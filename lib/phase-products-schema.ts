@@ -68,6 +68,17 @@ const DesignProducts = z
       .passthrough()
       .optional(),
     work_order: DocPointer.optional(),
+    // Optional pointer to the run's decisions log (decisions.yaml + its rendered
+    // decisions.gdoc). The gdoc is also discovered by name at the run-folder root,
+    // so this block is supplementary telemetry — recognized here so a producer that
+    // records it does not trip the strict() products contract (jjackson/ace#766).
+    decisions_log: z
+      .object({
+        yaml_file_id: z.string().min(1).optional(),
+        gdoc_file_id: z.string().min(1).optional(),
+      })
+      .passthrough()
+      .optional(),
   })
   .strict();
 

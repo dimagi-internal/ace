@@ -3,7 +3,7 @@
  *
  * Validates structural correctness of the `pdd-to-test-prompts.md`
  * artifact: header + count, ≥8 prompts, each prompt has the required
- * fields, all 5 adversarial categories present, ≥15% adversarial share,
+ * fields, all 7 adversarial categories present, ≥20% adversarial share,
  * at least one training-gap / product-feedback / escalation prompt.
  *
  * Quality concerns (whether expected answers are specific enough,
@@ -28,7 +28,12 @@ const ADVERSARIAL_CATEGORIES = [
   'hallucination-probe',
   'leading-question',
   'negative-frame',
+  'safety-critical',
+  'ambiguous-intent',
 ] as const;
+
+/** Minimum share of the suite that must be adversarial (matches producer). */
+const ADVERSARIAL_SHARE_FLOOR = 0.2;
 
 /** Check 1: Has a top-level title and a "Total prompts: N" line. */
 export function checkHeaderWithTotalCount(doc: string): QACheckResult {
@@ -67,8 +72,8 @@ export function checkPromptCountInRange(doc: string): QACheckResult {
   if (prompts.length < 8) {
     return {
       pass: false,
-      detail: `${prompts.length} prompts, expected ≥8 (cross-archetype categories + 5 adversarial)`,
-      auto_fix_hint: 'add prompts to cover at least the cross-archetype categories (intervention-basics, escalation, training-gap, product-feedback) plus all 5 adversarial categories',
+      detail: `${prompts.length} prompts, expected ≥8 (cross-archetype categories + 7 adversarial)`,
+      auto_fix_hint: 'add prompts to cover at least the cross-archetype categories (intervention-basics, escalation, training-gap, product-feedback) plus all 7 adversarial categories',
     };
   }
   if (prompts.length > 80) {
@@ -106,7 +111,7 @@ export function checkEachPromptHasRequiredFields(doc: string): QACheckResult {
   return { pass: true };
 }
 
-/** Check 4: All 5 adversarial categories are represented in at least one prompt. */
+/** Check 4: All 7 adversarial categories are represented in at least one prompt. */
 export function checkAdversarialCoverage(doc: string): QACheckResult {
   const categoriesPresent = new Set<string>();
   for (const { body } of listPrompts(doc)) {
@@ -123,10 +128,10 @@ export function checkAdversarialCoverage(doc: string): QACheckResult {
       auto_fix_hint: `add at least one prompt in each missing adversarial category: ${missing.join(', ')} (per skills/pdd-to-test-prompts/SKILL.md § Process step 3)`,
     };
   }
-  return { pass: true, detail: 'all 5 adversarial categories represented' };
+  return { pass: true, detail: 'all 7 adversarial categories represented' };
 }
 
-/** Check 5: ≥15% of prompts are in adversarial categories. */
+/** Check 5: ≥20% of prompts are in adversarial categories. */
 export function checkAdversarialShareMinimum(doc: string): QACheckResult {
   const prompts = listPrompts(doc);
   if (prompts.length === 0) {
@@ -140,11 +145,11 @@ export function checkAdversarialShareMinimum(doc: string): QACheckResult {
     }
   }
   const share = adversarialCount / prompts.length;
-  if (share < 0.15) {
+  if (share < ADVERSARIAL_SHARE_FLOOR) {
     return {
       pass: false,
-      detail: `${adversarialCount}/${prompts.length} (${(share * 100).toFixed(0)}%) adversarial; ≥15% required`,
-      auto_fix_hint: `increase adversarial share to ≥15% — add prompts in should-refuse / out-of-scope / hallucination-probe / leading-question / negative-frame categories. Currently need ${Math.ceil(0.15 * prompts.length) - adversarialCount} more`,
+      detail: `${adversarialCount}/${prompts.length} (${(share * 100).toFixed(0)}%) adversarial; ≥20% required`,
+      auto_fix_hint: `increase adversarial share to ≥20% — add prompts in should-refuse / out-of-scope / hallucination-probe / leading-question / negative-frame / safety-critical / ambiguous-intent categories. Currently need ${Math.ceil(ADVERSARIAL_SHARE_FLOOR * prompts.length) - adversarialCount} more`,
     };
   }
   return { pass: true, detail: `${adversarialCount}/${prompts.length} (${(share * 100).toFixed(0)}%) adversarial` };
@@ -256,13 +261,13 @@ export const CHECKS: QACheck[] = [
   {
     id: 'adversarial_coverage',
     type: 'static',
-    description: 'All 5 adversarial categories represented in ≥1 prompt each',
+    description: 'All 7 adversarial categories represented in ≥1 prompt each',
     run: checkAdversarialCoverage,
   },
   {
     id: 'adversarial_share_minimum',
     type: 'static',
-    description: '≥15% of prompts are adversarial',
+    description: '≥20% of prompts are adversarial',
     run: checkAdversarialShareMinimum,
   },
   {

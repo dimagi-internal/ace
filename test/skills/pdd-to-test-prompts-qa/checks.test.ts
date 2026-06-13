@@ -32,10 +32,12 @@ const ALL_CATEGORIES = [
   'hallucination-probe',
   'leading-question',
   'negative-frame',
+  'safety-critical',
+  'ambiguous-intent',
 ];
 
 function buildValidDoc(): string {
-  // 12 prompts: 7 in cross-archetype categories + 5 adversarial = 41% adversarial.
+  // 14 prompts: 7 in cross-archetype categories + 7 adversarial = 50% adversarial.
   // training-gap + product-feedback + escalation prompts included.
   const prompts: string[] = [];
   prompts.push(makePrompt(1, 'intervention-basics'));
@@ -50,7 +52,9 @@ function buildValidDoc(): string {
   prompts.push(makePrompt(10, 'hallucination-probe'));
   prompts.push(makePrompt(11, 'leading-question'));
   prompts.push(makePrompt(12, 'negative-frame'));
-  return `# OCS Test Prompts — Test\nDerived from: pdd.md (rev 2026-01-01)\nTotal prompts: 12\n${prompts.join('')}`;
+  prompts.push(makePrompt(13, 'safety-critical'));
+  prompts.push(makePrompt(14, 'ambiguous-intent'));
+  return `# OCS Test Prompts — Test\nDerived from: pdd.md (rev 2026-01-01)\nTotal prompts: 14\n${prompts.join('')}`;
 }
 
 const VALID_DOC = buildValidDoc();
@@ -111,13 +115,13 @@ describe('checkEachPromptHasRequiredFields', () => {
 });
 
 describe('checkAdversarialCoverage', () => {
-  test('passes when all 5 adversarial categories present', () => {
+  test('passes when all 7 adversarial categories present', () => {
     expect(checkAdversarialCoverage(VALID_DOC).pass).toBe(true);
   });
 
   test('fails when one adversarial category missing', () => {
     // Drop the leading-question prompt
-    const doc = VALID_DOC.replace(makePrompt(11, 'leading-question'), '').replace('Total prompts: 12', 'Total prompts: 11');
+    const doc = VALID_DOC.replace(makePrompt(11, 'leading-question'), '').replace('Total prompts: 14', 'Total prompts: 13');
     const r = checkAdversarialCoverage(doc);
     expect(r.pass).toBe(false);
     expect(r.detail).toContain('leading-question');
@@ -125,11 +129,11 @@ describe('checkAdversarialCoverage', () => {
 });
 
 describe('checkAdversarialShareMinimum', () => {
-  test('passes at 41% adversarial (above 15% floor)', () => {
+  test('passes at 50% adversarial (above 20% floor)', () => {
     expect(checkAdversarialShareMinimum(VALID_DOC).pass).toBe(true);
   });
 
-  test('fails when share below 15%', () => {
+  test('fails when share below 20%', () => {
     // 20 prompts, 1 adversarial = 5%
     let doc = '# Test Prompts\nTotal prompts: 20\n';
     for (let i = 1; i <= 19; i++) doc += makePrompt(i, 'intervention-basics');
@@ -137,6 +141,18 @@ describe('checkAdversarialShareMinimum', () => {
     const r = checkAdversarialShareMinimum(doc);
     expect(r.pass).toBe(false);
     expect(r.detail).toContain('5%');
+  });
+
+  test('fails at 15% — below the raised 20% floor (guards jjackson/ace#767)', () => {
+    // 20 prompts, 3 adversarial = 15%: passed under the old 15% floor, must fail now.
+    let doc = '# Test Prompts\nTotal prompts: 20\n';
+    for (let i = 1; i <= 17; i++) doc += makePrompt(i, 'intervention-basics');
+    doc += makePrompt(18, 'should-refuse');
+    doc += makePrompt(19, 'out-of-scope');
+    doc += makePrompt(20, 'safety-critical');
+    const r = checkAdversarialShareMinimum(doc);
+    expect(r.pass).toBe(false);
+    expect(r.detail).toContain('15%');
   });
 });
 

@@ -352,7 +352,7 @@ smoke stays in Phase 6 where Connect state is available.
   - `3-commcare/app-deploy_summary.md` (HQ app ids + released build ids)
   - Nova `get_app({app_id})` blueprints for each app (for the structural cross-reference)
 - Outputs:
-  - `3-commcare/app-release-qa_verdict.yaml` — structural verdict
+  - `3-commcare/app-release-qa_result.yaml` — structural verdict
 - **Halts loud on structural mismatch.** Per
   `skills/app-release-qa/SKILL.md § Step 4`, any of:
   - Released CCZ download fails or yields non-zip bytes
