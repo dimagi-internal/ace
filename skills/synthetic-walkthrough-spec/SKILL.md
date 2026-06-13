@@ -20,6 +20,7 @@ the `synthetic-walkthrough-run` skill.
 | Phase 7 | `7-synthetic/synthetic-narrative-plan.md` | the data story — informs scene narration |
 | Phase 7 | `7-synthetic/synthetic-narrative-plan.yaml` | manifest — anomaly weeks, FLW names, KPI thresholds for "wow moment" assertions |
 | Phase 7 | `7-synthetic/synthetic-data-generate.md` | labs URL, fixture folder ID, record counts |
+| Phase 7 (optional) | `7-synthetic/synthetic-workflow-seed.md` | workflow IDs + saved-run **render deep-links** (`/run/<run_id>/?opportunity_id=`) — use these verbatim for any workflow-dashboard scene (see authoring rules) |
 | Plugin | `personas/<persona>.md` | canned persona catalog (currently `prospective-llo.md`, `funder.md`) |
 | Drive (optional) | `ACE/<opp>/personas/*.md` | per-opp persona overlays — override or supplement the canned set |
 | Drive | `ACE/<opp>/opp.yaml` | `display_name`, `slug`, `synthetic.labs_opp_id`, `synthetic.current_folder_id` |
@@ -129,6 +130,16 @@ the `synthetic-walkthrough-run` skill.
    - Order scenes by narrative arc, not by URL convenience: open with
      the headline, build via FLW roster, climax at the anomaly +
      coaching loop, close with cost / verification.
+   - **Workflow-dashboard scenes (LLO Weekly Review / Program Admin
+     Audit) MUST target the saved-run render deep-link**, not the bare
+     workflow URL. Use the `/labs/workflow/<id>/run/<run_id>/?opportunity_id=<opp>`
+     links recorded in `synthetic-workflow-seed.md` (Render deep-links).
+     The bare `/labs/workflow/<id>/?opportunity_id=<opp>` renders the run
+     *picker*, not the polished per-FLW dashboard — a scene pointed there
+     captures the picker and the AI judge sees no hero/FLW content. If
+     `synthetic-workflow-seed.md` is absent or recorded no saved run, omit
+     the workflow-dashboard scenes rather than linking the picker. (Recipe
+     verified live; jjackson/ace#769.)
 
 5. **Pick the labs base URL.** Default to `https://labs.connect.dimagi.com`.
    Read `LABS_BASE_URL` from `${CLAUDE_PLUGIN_DATA}/.env` if set; that
@@ -208,3 +219,4 @@ this skill); state tracks as `dry-run-success`.
 | Date | Change | Author |
 |---|---|---|
 | 2026-05-06 | Initial Stage 2 skill — per-persona spec authoring with canned + opp-overlay persona catalog | ACE team (Plan B Stage 2) |
+| 2026-06-13 | Workflow-dashboard scenes (LLO Weekly Review / Program Admin Audit) must target the saved-run render deep-link (`/labs/workflow/<id>/run/<run_id>/?opportunity_id=<opp>`) from `synthetic-workflow-seed.md`, not the bare workflow URL (which renders the run picker). Omit those scenes when no run was saved. Added `synthetic-workflow-seed.md` to Inputs. See `docs/learnings/2026-06-13-labs-workflow-run-deeplink.md` (jjackson/ace#769). | ACE team |
