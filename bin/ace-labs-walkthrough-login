@@ -10,7 +10,8 @@
 #      land a labs-side session.
 #   3. Persist Playwright storageState to ~/.ace/labs-session.json.
 #   4. Export labs cookies to a Netscape jar at
-#      /tmp/ace-labs-walkthrough/cookies.txt.
+#      ${TMPDIR:-/tmp}/ace-labs-walkthrough-$(id -u)/cookies.txt
+#      (per-OS-user dir — #774).
 #   5. Import labs cookies into the gstack `browse` persistent profile so
 #      canopy:walkthrough's headless browser is authenticated.
 #
@@ -25,7 +26,7 @@
 # Optional env:
 #   LABS_BASE_URL          default: https://labs.connect.dimagi.com
 #   CONNECT_BASE_URL       default: https://connect.dimagi.com
-#   ACE_LABS_COOKIE_JAR    default: /tmp/ace-labs-walkthrough/cookies.txt
+#   ACE_LABS_COOKIE_JAR    default: ${TMPDIR:-/tmp}/ace-labs-walkthrough-$(id -u)/cookies.txt
 #   BROWSE_BIN             default: ~/.claude/skills/gstack/browse/dist/browse
 #
 # Exit status:
@@ -48,7 +49,10 @@ fi
 
 LABS_BASE_URL="${LABS_BASE_URL:-https://labs.connect.dimagi.com}"
 CONNECT_BASE_URL="${CONNECT_BASE_URL:-https://connect.dimagi.com}"
-COOKIE_JAR="${ACE_LABS_COOKIE_JAR:-/tmp/ace-labs-walkthrough/cookies.txt}"
+# #774 — namespace the temp dir by OS user (`id -u`). A fixed world-located
+# /tmp/ace-labs-walkthrough/ created by one account is 0755-owned by that
+# account, so a second OS user's run dies with PermissionError on cookies.txt.
+COOKIE_JAR="${ACE_LABS_COOKIE_JAR:-${TMPDIR:-/tmp}/ace-labs-walkthrough-$(id -u)/cookies.txt}"
 BROWSE_BIN="${BROWSE_BIN:-$HOME/.claude/skills/gstack/browse/dist/browse}"
 
 log() { echo "[ace-labs-walkthrough-login] $*" >&2; }
@@ -59,7 +63,17 @@ if [ -z "${ACE_HQ_USERNAME:-}" ] || [ -z "${ACE_HQ_PASSWORD:-}" ]; then
   exit 2
 fi
 
-mkdir -p "$(dirname "$COOKIE_JAR")"
+# Ensure the cookie dir is writable by THIS uid. If the resolved dir exists
+# but isn't writable (e.g. an operator overrode ACE_LABS_COOKIE_JAR back to a
+# shared path another OS user owns — #774), fall back to a fresh private
+# mktemp dir rather than crashing on the cookies.txt write.
+COOKIE_DIR="$(dirname "$COOKIE_JAR")"
+if ! mkdir -p "$COOKIE_DIR" 2>/dev/null || [ ! -w "$COOKIE_DIR" ]; then
+  FALLBACK_DIR="$(mktemp -d "${TMPDIR:-/tmp}/ace-labs-walkthrough-XXXXXX")"
+  log "cookie dir $COOKIE_DIR not writable by uid $(id -u); falling back to $FALLBACK_DIR"
+  COOKIE_DIR="$FALLBACK_DIR"
+  COOKIE_JAR="$COOKIE_DIR/cookies.txt"
+fi
 
 log "labs OAuth click-through via hqOAuthLogin (Connect base: $CONNECT_BASE_URL)"
 log "  → labs base: $LABS_BASE_URL"
