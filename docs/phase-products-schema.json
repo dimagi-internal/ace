@@ -40,6 +40,20 @@
                   }
                 },
                 "additionalProperties": true
+              },
+              "decisions_log": {
+                "type": "object",
+                "properties": {
+                  "yaml_file_id": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "gdoc_file_id": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                },
+                "additionalProperties": true
               }
             },
             "additionalProperties": false
@@ -85,6 +99,20 @@
                   "web_view_link": {
                     "type": "string",
                     "format": "uri"
+                  }
+                },
+                "additionalProperties": true
+              },
+              "decisions_log": {
+                "type": "object",
+                "properties": {
+                  "yaml_file_id": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "gdoc_file_id": {
+                    "type": "string",
+                    "minLength": 1
                   }
                 },
                 "additionalProperties": true
