@@ -168,11 +168,38 @@ appId: org.commcare.dalvik
 # progress UI as the Learn-side § 4 download (atlas § 9 notes this
 # is unconfirmed; visually identical, selectors not yet dumped).
 # Allow a generous timeout for the CCZ download + install on
-# limited-bandwidth dev networks.
+# limited-bandwidth dev networks. `optional: true` (#772) so a download
+# FAILURE falls through to the transient-server-connectivity branch
+# below (and the converging job-card assert at the bottom) instead of a
+# bare, uncharacterized 180s halt.
 - extendedWaitUntil:
     visible:
       ${SELECTOR:deliver-home-job-card}
     timeout: 180000
+    optional: true
+
+# #772 — transient server-connectivity download failure. The async
+# Deliver-CCZ download can fail on a flaky backend ("Couldn't connect to
+# the server"), which de-auths the app to the PersonalID re-login screen
+# (`connect_login_button` = "LOGIN WITH PERSONALID"). If the job-card
+# wait above fell through to that surface, capture a CLASSIFIED forensic
+# screenshot so the leg reads as a transient download drop rather than an
+# uncharacterized 180s timeout. This is downstream of ACE — the released
+# CCZ already passed Phase 3's `commcare-cli play` install gate, so it is
+# NOT a recipe/selector/marker defect. Operator response (Step-5
+# failure-mode table): re-attempt via /ace:qa-deep once backend
+# connectivity is stable; do NOT cold-boot — the post-Learn state is
+# fragile (#618/#629) and a boot resets the device PIN.
+# STATICALLY VALIDATED ONLY: the transient error path is not reproducible
+# on demand; exercise live the next time a Deliver download fails on a
+# flaky backend.
+- runFlow:
+    when:
+      visible:
+        ${SELECTOR:personalid-login-button}
+    commands:
+      - takeScreenshot: "deliver-launch-download-server-error"
+
 - takeScreenshot: "deliver-launch-home"
 
 # Verify we landed in Deliver mode, not back in Learn. `viewJobCard`
