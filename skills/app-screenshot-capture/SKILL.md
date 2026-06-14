@@ -442,10 +442,17 @@ Record the Deliver leg outcome independently.
 runs (and BEFORE any failure remediation) precisely because the device's
 post-Learn state is fragile — see the next rule. The dump tells you which
 post-Learn pathway you're on: `nsv_home_screen` → **Path A** (device on the
-CommCare Learn home, inside CommCare — the uncharacterized
-[#618](https://github.com/jjackson/ace/issues/618) landing);
-`connect_fragment_jobs_list` → **Path B** (Connect jobs list — `deliver-launch`
-drives it). On Path A, run the #618 probe below.
+CommCare Learn home, inside CommCare — the
+[#618](https://github.com/jjackson/ace/issues/618) landing, now **HEALED in
+`connect-resume-opp.yaml`** via the #711 nav-drawer return branch);
+`connect_fragment_jobs_list` → **Path B** (Connect jobs list). **Both paths are
+handled by `connect-resume-opp.yaml`** — the first recipe in the Deliver leg:
+its `notVisible: home-jobs-list` guard opens the nav drawer → taps
+"Opportunities" to return from Path A to the jobs list, then proceeds to the
+target tile's CTA; on Path B the guard no-ops and it goes straight to the CTA.
+So just run the Deliver leg normally — do NOT special-case Path A or divert to
+a calibration probe. The dump above is still captured unconditionally as #618
+ground truth (and feeds atlas drift detection).
 
 **NEVER cold-boot / re-bootstrap to "recover" a Deliver-leg failure.** A
 Deliver landing on the CommCare home (`nsv_home_screen`) is the **#618 nav
@@ -456,10 +463,12 @@ recovery impossible and wedges the rest of the run on a system auth prompt
 (observed live, run `20260605-2138`: a cold-boot after the Deliver handoff
 failed reset the PIN → every subsequent recipe failed on `com.android.systemui`
 → the leg gave up after re-register attempts). On a Deliver-leg failure: do
-NOT escalate to a boot/bootstrap. Capture the dump (above) + the #618 probe
-(below), record the Deliver leg `incomplete`, and STOP. Re-bootstrap is ONLY
-for a Learn-leg `CommCareSetupActivity`/PersonalID-wipe failure (the table
-row that names it), never for a post-Learn Deliver landing.
+NOT escalate to a boot/bootstrap. Capture the dump (above), let
+`connect-resume-opp.yaml` run (it heals Path A via the nav-drawer return
+branch), and only if the recipe still genuinely fails, record the Deliver leg
+`incomplete` with the auto-captured `*-FAILURE.{png,xml}` forensics and STOP.
+Re-bootstrap is ONLY for a Learn-leg `CommCareSetupActivity`/PersonalID-wipe
+failure (the table row that names it), never for a post-Learn Deliver landing.
 
 **Do NOT halt the dispatch on a single leg failure.** Run both legs (or
 record why the Deliver leg couldn't run), then write the per-app
@@ -495,33 +504,25 @@ per-leg classifier — apply it to whichever leg failed.
   underlying problem and `mcp/mobile/recipe-splitter.ts` for the
   splitting logic.
 
-**#618 Path-A inter-leg probe (calibration).** When the unconditional
-post-Learn dump (`00-postlearn-landing.xml`, above) shows the device on
-`nsv_home_screen` — Path A, the CommCare Learn home (Start / View Job Status /
-Sync / Log out of CommCare tiles) — Deliver is unreachable from here (it's
-only reachable via Connect's opp-detail → DOWNLOAD gate), so Path A must
-return to Connect first, and that return-nav has never been captured live.
-Run this probe to capture the return-route from live truth instead of
-guessing (do NOT cold-boot — see the rule above):
+**#618 Path-A heal lives in the recipe — the calibration probe is retired.**
+The Path-A return-nav (CommCare Learn home → Connect jobs list) was captured
+live and encoded as the guarded `notVisible: home-jobs-list` branch in
+`connect-resume-opp.yaml` (#711: open the nav drawer → tap "Opportunities"),
+followed by a pre-scroll jobs-list sync (#765: the just-completed opp's card
+can be absent from a stale list). So Path A no longer needs a separate
+probe-and-mark-`incomplete` step — running the Deliver leg exercises the heal
+directly, and the unconditional `00-postlearn-landing.xml` dump above is the
+ground-truth capture. The old `connect-learn-home-deliver-probe.yaml`
+calibration recipe was removed (jjackson/ace#618).
 
-1. `mobile_run_recipe(connect-learn-home-deliver-probe.yaml)` — taps the
-   "Log out of CommCare" tile (the candidate return-to-Connect route).
-2. `mobile_capture_ui_dump` → upload to
-   `journey-deliver/618probe-01-after-logout-tile.xml` (`drive_upload_binary`,
-   `mimeType: "application/xml"`). This is the measurement: did Logout land on
-   Connect's jobs list (`connect_fragment_jobs_list` — the desired Path-A entry
-   to `deliver-launch.yaml`) or fully de-register the worker?
-3. Upload both probe screenshots (`618probe-*.png`, `shareAnyoneWithLink:
-   true`).
-4. Record the Deliver leg `incomplete` with note `#618 Path-A probe captured
-   — see journey-deliver/00-postlearn-landing.xml + 618probe-01-*.xml`. Do NOT
-   mark Deliver `pass`/`fail` on the probe; it's a calibration capture.
-
-This is the "close the loop to the source of truth — one live dump beats a
-guess" rule applied to the longest-standing Phase-6 gap. Once the dumps show
-the real return route, encode it in `connect-resume-opp.yaml` as the Path-A
-branch (detect `nsv_home_screen` → return-to-Connect → existing jobs-list CTA
-logic) and retire this probe.
+If the recipe's Path-A branch ever fails on a fresh run, the auto-captured
+`connect-resume-opp-FAILURE.{png,xml}` forensics (plus
+`00-postlearn-landing.xml`) are the characterization signal — re-calibrate the
+nav-drawer route against that live dump rather than re-introducing a probe
+(the "close the loop to the source of truth — one live dump beats a guess"
+rule). Because Learn completion is one-way per (test user, opp), the recipe's
+nav-drawer heal + #765 sync can only be validated end-to-end on a fresh
+`/ace:run` Phase 6 Deliver leg.
 
 **Before consulting this table, READ the failure screenshot.** Two
 sources, in priority order:
