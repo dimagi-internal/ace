@@ -2,7 +2,35 @@
 
 **Date:** 2026-06-13
 **Surfaced by:** bednet-spot-check/20260612-1443 Phase 7 (`synthetic-walkthrough-run` + `synthetic-workflow-polish-eval`) landing `partial` — couldn't headlessly capture the polished workflow dashboard.
-**Refs:** jjackson/ace#769, jjackson/connect-labs#541 (+ labs fix commit `559d6bf4`).
+**Refs:** jjackson/ace#769, jjackson/ace#788, jjackson/connect-labs#541 (+ labs fix commit `559d6bf4`).
+
+## 2026-06-15 correction (#788) — the recurrence was a malformed PATH, not org_data
+
+bednet-spot-check/20260615-1309 Phase 7 hit the same capture failure and it was
+*misattributed to empty `organization_data` again*. Reading the labs source
+(`commcare_connect/workflow/urls.py` + `workflow/views.py`) settles it:
+
+- **The only run routes are** `path("<int:definition_id>/run/", WorkflowRunView)`
+  and `path("run/<int:run_id>/", WorkflowRunDetailView)`. There is **no**
+  `<definition_id>/run/<run_id>/` route. The skills were emitting
+  `…/labs/workflow/<id>/run/<run_id>/?opportunity_id=<opp>` — `run_id` as a
+  **path segment** — which matches neither route → **Resolver404 / "Page not
+  found."** That 404 *is* the #788 symptom.
+- `WorkflowRunView.get_context_data` reads the run via
+  **`run_id = self.request.GET.get("run_id")`** (a query param) and
+  `opportunity_id` from `labs_context`. So the run-loading runner view wants
+  `…/<def_id>/run/?run_id=<M>&opportunity_id=<N>`.
+- **Empty `organization_data` is NOT a blocker.** `validate_context_access`
+  carries an explicit comment + per-field passthrough: it deliberately does
+  *not* bail out on empty org_data, forwarding `opportunity_id`/`program_id`
+  from the URL "(e.g. headless renders)." So the param is honored regardless —
+  the connect-labs#541 fix already covers this. Empty org_data was a red
+  herring both times.
+
+**Fix:** ACE skills now emit `…/run/?run_id=<run_id>&opportunity_id=<opp>` (the
+query-param form that was already labelled "equivalent" below — it's the ONLY
+working form; the path-segment "primary" was wrong). The bare picker fallback
+(`…/<id>/?opportunity_id=<opp>`, no `/run/`) is unchanged and still valid.
 
 ## The wrong mental model (what ACE used to do)
 
@@ -47,7 +75,7 @@ it's an Alpine.js header dropdown + a banner. The real ACE-side bug was the
 ## The correct recipe (verified live)
 
 ```
-${LABS_BASE_URL}/labs/workflow/<workflow_id>/run/<run_id>/?opportunity_id=<labs_opp_id>
+${LABS_BASE_URL}/labs/workflow/<workflow_id>/run/?run_id=<run_id>&opportunity_id=<labs_opp_id>
 ```
 
 - `<run_id>` = a **saved** run. For LLO Weekly Review prefer the latest
