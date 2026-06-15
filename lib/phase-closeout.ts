@@ -93,6 +93,30 @@ export function computeExpectedRequiredArtifacts(phase: Phase): ArtifactEntry[] 
 }
 
 /**
+ * Doc-export extensions ACE appends to a Google-Doc artifact's name by
+ * convention. Google Docs carry no real filename extension, so an agent
+ * that creates the artifact Doc without the manifest's trailing suffix
+ * (e.g. names it `pdd-to-test-prompts` instead of `pdd-to-test-prompts.md`)
+ * produces the right artifact under a name the exact-path match misses.
+ */
+const DOC_EXTENSION_RE = /\.(md|markdown|yaml|yml|json|gdoc)$/i;
+
+/**
+ * Does the present-set satisfy an expected manifest path? Accepts an
+ * exact match, OR — for a manifest path ending in a known doc-export
+ * extension — the same stem with that extension dropped (the Google-Doc-
+ * name-without-extension case; jjackson/ace#786). The tolerance is
+ * per-expected-entry and only strips the entry's OWN extension, so it
+ * can't collapse two distinct manifest entries into one match.
+ */
+function presentSatisfies(present: ReadonlySet<string>, expectedPath: string): boolean {
+  if (present.has(expectedPath)) return true;
+  const m = expectedPath.match(DOC_EXTENSION_RE);
+  if (m && present.has(expectedPath.slice(0, -m[0].length))) return true;
+  return false;
+}
+
+/**
  * Diff expected vs. present. Pure; takes the already-enumerated
  * present-paths so it's trivial to test without Drive mocking.
  *
@@ -106,7 +130,7 @@ export function diffArtifacts(
   const expected = computeExpectedRequiredArtifacts(phase);
   const present = new Set(presentPaths);
   const missing = expected
-    .filter((e) => !present.has(e.path))
+    .filter((e) => !presentSatisfies(present, e.path))
     .map(({ path, producedBy, description }) => ({ path, producedBy, description }));
   const requiredPresent = expected.length - missing.length;
   const optionalPresent = presentPaths.length - requiredPresent;

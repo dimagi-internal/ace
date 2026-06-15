@@ -79,6 +79,26 @@ describe('diffArtifacts (pure)', () => {
     expect(report.missing[0].description).toBe(expected[0].description);
   });
 
+  it('matches a Google Doc artifact whose name dropped the manifest extension (#786)', () => {
+    // An agent created the .md artifacts as Google Docs without the trailing
+    // ".md" suffix (e.g. "pdd-to-test-prompts" instead of "pdd-to-test-prompts.md").
+    // The verifier should still count them present — Docs have no real extension.
+    const expected = computeExpectedRequiredArtifacts('scenarios-and-acceptance');
+    const present = expected.map((e) => e.path.replace(/\.md$/, ''));
+    const report = diffArtifacts('scenarios-and-acceptance', present);
+    expect(report.ok).toBe(true);
+    expect(report.missing).toEqual([]);
+  });
+
+  it('does NOT match a different stem just because an extension was stripped (#786)', () => {
+    // Tolerance only strips the expected entry's OWN extension; an unrelated
+    // bare name must not satisfy a required artifact.
+    const expected = computeExpectedRequiredArtifacts('scenarios-and-acceptance');
+    const report = diffArtifacts('scenarios-and-acceptance', ['2-scenarios/totally-unrelated']);
+    expect(report.ok).toBe(false);
+    expect(report.missing).toHaveLength(expected.length);
+  });
+
   it('treats an empty Drive folder as every required artifact missing', () => {
     const expected = computeExpectedRequiredArtifacts('design');
     const report = diffArtifacts('design', []);
