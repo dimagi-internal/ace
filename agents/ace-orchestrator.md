@@ -110,6 +110,24 @@ $CLAUDE_PLUGIN_DATA`, no `ls .../.env`, no `find ... -name .env`. Every
 value those probes would surface is in the doctor's one-call output.
 (Anti-pattern incidents: see orchestrator-reference.md § Pre-flight rationale.)
 
+**In-session plugin-MCP binding is NOT something the doctor can probe.**
+Whether a given plugin MCP (`ace-mobile`, `ace-decisions`, Nova, …) bound
+in *this* Claude Code session is per-process state the doctor CLI
+subprocess cannot observe — it can only confirm the server *can* start.
+The preflight's `selector_map_currency` block is a STATIC file check; a
+green `selector_map_currency` says nothing about whether `ace-mobile`
+bound. MCP subprocesses bind at session start and are NOT respawned by
+`/reload-plugins`, so a binding miss is unrecoverable in-session (needs a
+full Claude Code restart). The structural guard is therefore an
+**in-session atom-resolvability check at the point of use**, not a
+preflight field: Nova has `commcare-setup` § Step 0 (`get_hq_connection`),
+and Phase 6 has `qa-and-training` § Pre-flight Step 0 (`ace-mobile`
+binding). The same class can silently force a decisions-log hand-write
+when `ace-decisions` is unbound (jjackson/ace#782) — if a `decisions_*`
+atom won't resolve, treat it as unbound and follow the hand-write
+fallback in `idea-to-pdd/SKILL.md § Schema and write semantics` rather
+than guessing the file shape. (jjackson/ace#784.)
+
 If `bin/ace-doctor --preflight` is unavailable (older install), fall
 back to a single inline Bash. **`$CLAUDE_PLUGIN_DATA` is NOT reliably
 set inside Claude Code sessions** (see anthropics/claude-code#9427) —

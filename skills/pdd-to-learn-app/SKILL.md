@@ -291,6 +291,44 @@ Generate the Learn (training) app from the PDD using the Nova plugin
     Same shape as `app-connect-coverage` — verify+fix in a bounded
     loop, post-Nova.
 
+4b. **Learn-marker compile pre-check (catch `connect_type: ""` before
+    deploy) — runs at LEVEL 0.** Mirror of `pdd-to-deliver-app` § 4e.
+    The autonomous architect (`Agent(nova:nova-architect-autonomous)`)
+    **cannot set the app-level Connect type** — `update_app` /
+    `generate_scaffold` are not in its tool allowlist — so a Learn app it
+    builds can land with `connect_type: ""` even though every form already
+    carries its `connect.learn_module` / `connect.assessment` block. The
+    per-form `[Connect enabled]` flag is a **FALSE POSITIVE for compile**:
+    with `connect_type: ""` the released CCZ ships with ZERO
+    `<learn:module>` / `<learn:assessment>` markers, and Connect's
+    HQ→Connect sync cannot register the learn module or the assessment
+    gate. `app-release-qa` (Phase 3 Step 2.8) catches it post-release, but
+    that is a full deploy→build→release cycle too late — assert it here,
+    cheaply, on the already-built app.
+
+    1. Call `get_app({app_id})`. Its summary header prints the app's
+       Connect type (e.g. `Connect type: learn`); a standard app prints
+       none.
+    2. **Assert the header reads `Connect type: learn`.** Do NOT rely on
+       the per-form `[Connect enabled]` flag — it is a false positive for
+       compile (see above).
+    3. On a miss, set it at LEVEL 0 — `update_app` is an architect
+       allowlist gap just like the case-list-config family, but it IS
+       available to the level-0 session that executes this skill. Call
+       `update_app({app_id, connect_type: "learn"})`, then re-run
+       `get_app` and re-assert. **Bounded loop, max 3 iterations.** If the
+       header still does not read `Connect type: learn` after the third
+       attempt (or `update_app` is itself unavailable), halt with a clear
+       `learn-marker-wont-compile` failure and do NOT write the success
+       summary.
+
+    Reproducer: bednet-spot-check/20260615-0702 — the Learn app scaffolded
+    `connect_type: ""`; the first released CCZ had `module=0`/
+    `assessment=0`; an L0 `update_app(connect_type="learn")` + re-deploy +
+    re-release healed it to `module=1`/`assessment=1`. The fix is this
+    pre-check, NOT a `mcp/connect/backends/commcare.ts` change — the
+    compile is correct given a correct `connect_type`. See jjackson/ace#783.
+
 5. **(Optional) Inspect the built app** via `/nova:show <app_id>` to
    cross-check the structure against the PDD before writing the summary.
 
