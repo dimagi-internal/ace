@@ -329,6 +329,59 @@ Generate the Learn (training) app from the PDD using the Nova plugin
     pre-check, NOT a `mcp/connect/backends/commcare.ts` change — the
     compile is correct given a correct `connect_type`. See jjackson/ace#783.
 
+4c. **Conditional-result-label pre-check (catch the unconditional pass
+    message before deploy) — runs at LEVEL 0.** This is the structural
+    preventer for the exact gap `pdd-to-learn-app-eval § assessment_gating`
+    hard-fails on: a quiz with an **unconditional** "Well done!" result
+    label that fires regardless of score. The brief above (the
+    `assessment-gate` component, § Step 3) REQUIRES conditional pass +
+    fail/retry labels — but when the brief is hand-composed (e.g. the
+    orchestrator executing this skill inline at L0) and the
+    `assessment-gate` component paragraph is skipped, the architect emits
+    one always-on congratulatory label. The eval catches it, but only
+    **after** a full deploy→build→release cycle. Assert it here, cheaply,
+    on the already-built blueprint.
+
+    **Trigger:** the PDD specifies a readiness / competency gate before
+    delivery (the same trigger that put the `assessment-gate` component in
+    scope in § Step 3). If the PDD specifies no gate, skip this step.
+
+    1. For each form carrying a `connect.assessment` block, call
+       `get_form({app_id, moduleIndex, formIndex})`.
+    2. **Assert the form has a genuine pass/fail result EXPERIENCE:** at
+       least one `label` field whose `relevant` references
+       `user_score >= <threshold>` (the PASS message) AND a separate
+       `label` field whose `relevant` references `user_score < <threshold>`
+       (the FAIL/retry message). A single result `label` with NO
+       `relevant` condition (fires unconditionally) FAILS this assertion —
+       that is the `assessment_gating` hard-gate trigger.
+    3. On a miss, heal at LEVEL 0 (`edit_field` / `add_fields` are
+       available to the level-0 session that executes this skill): add a
+       `relevant: '#form/user_score >= <threshold>'` condition to the
+       existing pass label, and `add_fields` a `result_fail` label with
+       `relevant: '#form/user_score < <threshold>'` carrying retry
+       guidance (review the content, answer again). Use `<threshold>` =
+       the PDD's passing score (default 80). Then re-fetch via `get_form`
+       and re-assert. **Bounded loop, max 3 iterations.** If the form
+       still lacks a conditional pass+fail pair after the third attempt,
+       halt with a clear `assessment-result-unconditional` failure and do
+       NOT write the success summary.
+
+    Note: the `relevant` XPath legitimately contains `<` / `>=`; that is
+    an attribute expression Nova entity-encodes at compile, NOT label text
+    — the angle-bracket ban (§ Step 3) applies only to label/option/hint
+    TEXT, so a `user_score < 80` relevance is fine.
+
+    Reproducer: bednet-spot-check/20260615-1309 — the inline Phase-3 Learn
+    brief omitted the `assessment-gate` component paragraph; the architect
+    built one unconditional result label; `pdd-to-learn-app-eval` hard-gated
+    it (`assessment_gating` 2.0 → overall 6.58 → fail). An L0
+    `edit_field`(relevant) + `add_fields`(result_fail) heal + re-deploy +
+    re-release + re-eval lifted it to `assessment_gating` 5.0 → 7.29 / warn.
+    Sibling run 20260615-0702 (conditional labels present) scored 7.10 / warn
+    — the single dimension is the whole swing on this minimal opp. See
+    jjackson/ace#787.
+
 5. **(Optional) Inspect the built app** via `/nova:show <app_id>` to
    cross-check the structure against the PDD before writing the summary.
 
