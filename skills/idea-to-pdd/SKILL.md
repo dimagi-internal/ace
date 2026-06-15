@@ -387,6 +387,46 @@ unknown / misspelled field names AND violations of the load-bearing
 invariants below are rejected at the call boundary before they touch
 Drive.
 
+**`rows:` is the ATOM ARGUMENT, not the file's top-level key.** The
+`decisions_append_rows` call takes `rows: [...]` (the array of new rows
+to append), but the persisted `decisions.yaml` is keyed `decisions:` at
+top level — `DecisionsLogSchema` in `lib/decisions-schema.ts` is
+`{ schema_version, decisions: [...] }`. `decisions-render` /
+`render_decisions_log` and ace-web's parser read `decisions:` and reject
+a file whose top-level key is `rows:`. Do not confuse the two: the atom
+example below shows `rows:` because that is the argument name; the file
+on Drive uses `decisions:`.
+
+**If `decisions_append_rows` is unavailable this session** — the
+`ace-decisions` MCP failed to bind at session start (the same
+session-binding class as the ace-mobile / Nova gotchas; confirm by
+checking whether any `decisions_*` atom resolves via `ToolSearch`) — then
+the atom path is closed and you must hand-write `decisions.yaml` in the
+**persisted** shape (top-level `decisions:`, NOT `rows:`):
+
+```yaml
+schema_version: 4
+decisions:
+  - id: archetype-selection
+    phase: 1-design
+    skill: idea-to-pdd
+    question: Which delivery archetype best fits the intervention?
+    ai-default: atomic-visit
+    options: [atomic-visit, focus-group, multi-stage]
+    source: idea.md §1
+    status: ai-default
+    evidence_basis: stated
+    reasoning: Single per-FLW visit producing one structured delivery.
+```
+
+Each row obeys the identical field contract documented below; only the
+container key differs from the atom argument (`decisions:` list in the
+file, `rows:` array in the atom call). Prefer the atom whenever it
+resolves — hand-writing skips the strict write-boundary validation, so
+re-validate against `DecisionsLogSchema` mentally before saving. (This
+exact `rows:`-vs-`decisions:` confusion bit a hand-written fallback when
+`ace-decisions` was unbound — jjackson/ace#782.)
+
 **The `evidence_basis` contract (load-bearing, v4).** Every row MUST
 declare `evidence_basis`: one of `stated`, `inferred`, or `conflicting`.
 This is the forcing function that stops Phase 1 from silently resolving a

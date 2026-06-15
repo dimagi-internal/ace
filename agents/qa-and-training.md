@@ -77,6 +77,28 @@ avoids burning AVD time on screenshots that don't change.
 Before dispatching Step 1, verify these. Each one is a class of
 silent-failure prevention learned from earlier real-world dogfood.
 
+- [ ] **The `ace-mobile` MCP is bound at level 0 this session — CHECK
+      THIS FIRST, before any AVD probe.** Every mobile step below calls an
+      `ace-mobile` atom (`mobile_ensure_avd_running`,
+      `mobile_capture_ui_dump`, `mobile_resolve_selectors`, …). If the MCP
+      did not bind at session start, those atoms aren't resolvable at all
+      and the heal funnel can't even run: a `ToolSearch` for a mobile atom
+      returns nothing, or the call errors as *tool-unavailable* — which is
+      NOT an `AvdBootError` / `MaestroDriverError` the funnel knows how to
+      heal, so the AVD checklist below would misread it. This is the same
+      session-binding class as `commcare-setup` § Step 0 (the Nova
+      `get_hq_connection` probe): **MCP subprocesses bind at session start
+      and are NOT respawned by `/reload-plugins`.** Verify by confirming a
+      mobile atom resolves (e.g. `ToolSearch` for `mobile_ensure_avd_running`,
+      or attempt the call and distinguish tool-unavailable from a typed
+      AVD error). If no `ace-mobile` atom resolves, **HALT IMMEDIATELY**
+      (before the AVD checks below) with: "the ace-mobile MCP did not bind
+      at level 0 this session — run `/ace:mobile-bootstrap` if mobile was
+      never set up on this machine, then quit and reopen Claude Code (a
+      full restart, not `/reload-plugins`), then resume `/ace:run
+      <opp>/<run-id>`." Catching it here costs one `ToolSearch`; missing it
+      burns Phases 1–5 first and only surfaces at Step 1
+      (bednet-spot-check/20260615-0702 — jjackson/ace#784).
 - [ ] **AVD is booted + Maestro driver healthy + per-user state
       restored** — all three are owned by a SINGLE call to
       `mobile_ensure_avd_running` (since 0.13.204). Do NOT pre-flight
