@@ -168,9 +168,9 @@ fi
 # run). LLO_WEEKLY_REVIEW_RUN_ID = the latest saved run_id from
 # synthetic-workflow-seed.md (prefer "Week 2 run_id"; fall back to "Week 1
 # run_id"). Verified live against labs prod (jjackson/ace#769; recipe form
-# /labs/workflow/<id>/run/<run_id>/?opportunity_id=<opp>).
+# /labs/workflow/<id>/run/?run_id=<run_id>&opportunity_id=<opp>).
 if [ -n "${LLO_WEEKLY_REVIEW_RUN_ID}" ]; then
-  WORKFLOW_URL="${LABS_BASE_URL}/labs/workflow/${LLO_WEEKLY_REVIEW_ID}/run/${LLO_WEEKLY_REVIEW_RUN_ID}/?opportunity_id=${LABS_OPP_ID}"
+  WORKFLOW_URL="${LABS_BASE_URL}/labs/workflow/${LLO_WEEKLY_REVIEW_ID}/run/?run_id=${LLO_WEEKLY_REVIEW_RUN_ID}&opportunity_id=${LABS_OPP_ID}"
 else
   # Degraded: no saved run recorded (synthetic-workflow-seed didn't save a run).
   # This lands on the run picker, not the polished render — emit a [WARN] so the
@@ -305,6 +305,6 @@ Dimensions 6+7 (visual judge) calibrate against
 | 2026-05-06 | Initial provisional rubric — Stage 4 of Plan B. Vision-model dimensions deferred. | ACE team |
 | 2026-05-07 | Add `visual_hierarchy` (0.10) + `brand_fit` (0.05) dimensions; weights re-normalize from the 5-dim original. New § Process steps 6+7: capture screenshot via gstack browse, dispatch `canopy:visual-judge` with polish-specific rubric. Removes the deferral. canopy v0.2.79 ships the underlying judge. | ACE team |
 | 2026-05-29 | Raise the canopy:visual-judge dimensions (visual_hierarchy + brand_fit) to a combined 0.40 (0.27 + 0.13, up from 0.15) — they are the only out-of-chain fitness anchor (graded against the actual rendered screenshot). Pulled the difference off the text-based conformance dims (narrative 0.30→0.20, patch 0.20→0.15, smoke 0.20→0.15, domain 0.10→0.05); weights still sum to 1.00. A `canopy:visual-judge verdict: blocked` now hard-caps the whole eval to `verdict: fail` (was previously only a trigger on visual hierarchy ≤ 2). Per `docs/superpowers/specs/2026-05-29-eval-fitness-gap.md`. | ACE team |
-| 2026-06-13 | **Step 6 capture targets the saved-run render deep-link** (`/labs/workflow/<id>/run/<run_id>/?opportunity_id=<opp>`), not the bare workflow URL — the bare URL renders the run picker, so the visual dims were scoring the picker, not the dashboard. `run_id` (Week 2, else Week 1) read from `synthetic-workflow-seed.md`; degraded fallback to the bare URL emits a `[WARN]` naming the no-run_id vs empty-org_data failure mode. Recipe verified live (jjackson/ace#769; labs-side empty-org_data fix jjackson/connect-labs#541). See `docs/learnings/2026-06-13-labs-workflow-run-deeplink.md`. | ACE team |
+| 2026-06-13 | **Step 6 capture targets the saved-run render deep-link** (`/labs/workflow/<id>/run/?run_id=<run_id>&opportunity_id=<opp>`), not the bare workflow URL — the bare URL renders the run picker, so the visual dims were scoring the picker, not the dashboard. `run_id` (Week 2, else Week 1) read from `synthetic-workflow-seed.md`; degraded fallback to the bare URL emits a `[WARN]` naming the no-run_id vs empty-org_data failure mode. Recipe verified live (jjackson/ace#769; labs-side empty-org_data fix jjackson/connect-labs#541). See `docs/learnings/2026-06-13-labs-workflow-run-deeplink.md`. | ACE team |
 
 <!-- 0.13.73 ships canopy:visual-judge wire-up. -->
