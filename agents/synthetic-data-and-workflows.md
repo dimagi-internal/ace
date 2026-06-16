@@ -108,6 +108,22 @@ Skills run sequentially. Each is independently re-runnable via
 `/ace:step <skill-name> --opp <slug>`. **Not dispatched for
 `focus-group` archetype** — see § Archetype: focus-group is a no-op above.
 
+### Step 0: Phase folder setup (do this FIRST)
+
+Resolve-or-create this phase's artifact subfolder before any producer
+skill runs (per `agents/orchestrator-reference.md` § Per-Phase Folder
+Lifecycle → Phase-agent defensive folder contract):
+`drive_create_folder({name: '7-synthetic', parentFolderId: <run-folder id>, findOrCreate: true})`
+— idempotent, returns the existing `7-synthetic/` id on re-runs. **Every
+artifact this phase produces** — the narrative plan + manifest, the
+data-generate summary, the workflow seed + polish summaries, the
+per-persona walkthrough specs + runs (`walkthroughs/`), the synthetic
+summary, and all their QA + eval verdicts — writes into THIS
+`7-synthetic/` folder id. Pass it to the producer skills as their artifact
+parent; never hand them the run-folder id as the write parent (that lands
+every file flat at the run root and fails the boundary's
+`verify_phase_artifacts`, which walks `7-synthetic/` — jjackson/ace#791).
+
 ### Step 1: Narrative Plan
 
 Invoke `synthetic-narrative-plan`.

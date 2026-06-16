@@ -279,6 +279,22 @@ only Step 2 is short-circuited.
 
 ## Workflow
 
+### Step 0: Phase folder setup (do this FIRST)
+
+Resolve-or-create this phase's artifact subfolder before any producer
+skill runs (per `agents/orchestrator-reference.md` § Per-Phase Folder
+Lifecycle → Phase-agent defensive folder contract):
+`drive_create_folder({name: '6-qa-and-training', parentFolderId: <run-folder id>, findOrCreate: true})`
+— idempotent, returns the existing `6-qa-and-training/` id on re-runs.
+**Every artifact this phase produces** — the screenshot manifest +
+capture verdicts + `screenshots/` bundle, the 5 training docs, the deck
+spec + render, the onboarding email, and all their `-eval` verdicts —
+writes into THIS `6-qa-and-training/` folder id. Pass it to the producer
+skills as their artifact parent; never hand them the run-folder id as the
+write parent (that lands every file flat at the run root and fails the
+boundary's `verify_phase_artifacts`, which walks `6-qa-and-training/` —
+jjackson/ace#791).
+
 ### Step 1: Capture smoke screenshots + thin UX judge
 
 Dispatch `app-screenshot-capture`:

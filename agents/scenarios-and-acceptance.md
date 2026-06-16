@@ -50,7 +50,24 @@ this subagent's steps have these read-redundancy rules:
 
 ## Workflow
 
-### Step 0: Read the approved PDD
+### Step 0: Phase folder setup (do this FIRST)
+
+Resolve-or-create this phase's artifact subfolder before any producer
+skill runs (per `agents/orchestrator-reference.md` § Per-Phase Folder
+Lifecycle → Phase-agent defensive folder contract):
+`drive_create_folder({name: '2-scenarios', parentFolderId: <run-folder id>, findOrCreate: true})`
+— idempotent, returns the existing `2-scenarios/` id on re-runs. **Every
+artifact this phase produces** — the test-prompts doc, the app-journeys
+doc, their QA + eval verdicts, and the phase summary — writes into THIS
+`2-scenarios/` folder id. Pass it to the producer skills as their artifact
+parent; never hand them the run-folder id as the write parent. A producer
+handed the run-folder id lands every file flat at the run root, which
+fails the Phase boundary's `verify_phase_artifacts` (it walks
+`2-scenarios/`) and forces the orchestrator to relocate the files
+post-hoc — the exact bednet-spot-check/20260616-0618 failure
+(jjackson/ace#791).
+
+### Step 0.5: Read the approved PDD
 
 The PDD is the only input shared by every step in this phase. Read it
 once at the start of the phase and reuse from context:
