@@ -33,6 +33,21 @@ refuses to proceed without a fresh, passing deep verdict.
 
 ## Workflow
 
+### Step 0: Phase folder setup (do this FIRST)
+
+Resolve-or-create this phase's artifact subfolder before any producer
+skill runs (per `agents/orchestrator-reference.md` § Per-Phase Folder
+Lifecycle → Phase-agent defensive folder contract):
+`drive_create_folder({name: '5-ocs', parentFolderId: <run-folder id>, findOrCreate: true})`
+— idempotent, returns the existing `5-ocs/` id on re-runs. **Every
+artifact this phase produces** — the `ocs-agent-setup` doc, the quick +
+deep QA transcripts, their eval verdicts, the widget-handoff doc and its
+eval, and the phase summary — writes into THIS `5-ocs/` folder id. Pass
+it to the producer skills as their artifact parent; never hand them the
+run-folder id as the write parent (that lands every file flat at the run
+root and fails the boundary's `verify_phase_artifacts`, which walks
+`5-ocs/` — jjackson/ace#791).
+
 ### Step 1: Configure the chatbot
 Invoke the `ocs-agent-setup` skill.
 - Input: `ACE/<opp-name>/` — PDD, training materials, app summaries, opportunity config

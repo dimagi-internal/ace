@@ -339,6 +339,44 @@ via `generateRunReadme(runId, phaseStatus)` and write back to
 `runs/<runId>/README.md` via `drive_update_file`. The README is the
 operator's single-glance view of run state; keep it fresh.
 
+### Phase-agent defensive folder contract (every phase agent's Step 0)
+
+The orchestrator-side materialization above is the primary path, but it
+is **not** the only writer of the `<N>-<phase>/` folder, and historically
+the orchestrator dispatch has not reliably pre-created the folder or
+threaded `phaseFolderId` into the prompt. So **every phase agent MUST
+defensively own its own artifact folder as the first step of its
+workflow** — never assume the orchestrator handed you a `phaseFolderId`.
+Each phase agent's workflow opens with:
+
+1. **`### Step 0: Phase folder setup (do this FIRST)`** — resolve-or-create
+   the phase's `<N>-<phase>/` subfolder before any producer skill runs:
+   `drive_create_folder({name: '<N>-<phase>', parentFolderId: <run-folder id>, findOrCreate: true})`
+   (idempotent; returns the existing folder id on re-runs and resumes).
+   Use the slug from the `PHASE_FOLDERS` table above.
+2. **Pass THAT folder id to every producer skill** as its artifact
+   `parentFolderId` — the producer outputs, QA + eval verdicts, and the
+   phase summary all write into the `<N>-<phase>/` folder. **Never hand a
+   producer the run-folder id as the write parent.** The only writes that
+   stay at the run-folder root are the run-level files the orchestrator
+   owns (`run_state.yaml`, `inputs-manifest.yaml`, `README.md`) plus
+   `decisions.yaml` / `decisions.gdoc`.
+
+**Why this is a per-agent requirement, not just orchestrator advice:** a
+producer handed the run-folder id lands every artifact flat at the run
+root, which fails the Phase boundary's `verify_phase_artifacts` (it walks
+`<N>-<phase>/`) and forces the orchestrator to relocate the files
+post-hoc. This class has now shipped on at least three phases — Phase 1
+(jjackson/ace#623, bednet-spot-check/20260601-0651), Phase 8
+(jjackson/ace#727), and Phase 2 (jjackson/ace#791,
+bednet-spot-check/20260616-0618) — each fixed one agent at a time. The
+durable fix is structural: **every** phase agent carries the Step 0 block,
+so a new phase or a refactor can't silently drop it. Agents that carry it:
+`idea-to-design`, `scenarios-and-acceptance`, `connect-setup`, `ocs-setup`,
+`qa-and-training`, `synthetic-data-and-workflows`, `solicitation-management`
+(and `commcare-setup`'s inline procedure writes into `3-commcare/`). If you
+add a phase agent, add its Step 0.
+
 ### Current/ shortcut refresh (Phase 4 + Phase 5 completion)
 
 **After Phase 4 completes** — refresh shortcuts pointing at this run's

@@ -536,19 +536,35 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
        deliver units and Phase 4 would fail at payment-unit creation.
        Do NOT rely on the per-form `[Connect enabled]` flag — it is a
        false positive for compile (see Step 3 marker-mechanism bullet).
-    3. On a miss, the app must be re-scaffolded with `connect_type:
-       "deliver"`. The autonomous architect cannot reliably flip this on
-       a completed app; re-dispatch `/nova:autobuild` with a brief that
-       explicitly sets `generate_scaffold(connect_type: "deliver")`, or
-       (if Nova `create_app` is unavailable) halt with a clear
-       `deliver-marker-wont-compile` failure and surface it. Do NOT write
-       the success summary with `connect_type: ""`.
+    3. On a miss, set it at LEVEL 0 — `update_app` is an architect
+       allowlist gap (the autonomous architect dispatched in Step 4
+       cannot flip the app-level `connect_type` on a completed app), but
+       it IS available to the level-0 session that executes this skill,
+       and it accepts `connect_type: "deliver"` (its enum is `learn |
+       deliver | null`). Call `update_app({app_id, connect_type:
+       "deliver"})`, then re-run `get_app` and re-assert the header reads
+       `Connect type: deliver`. **Bounded loop, max 3 iterations.** This
+       mirrors the Learn app's Step 4b heal exactly — the per-form
+       `connect.deliver_unit` blocks the architect already built stay
+       intact, so the marker compiles on the next deploy with **no
+       rebuild and no fresh app id**. Only if `update_app` is itself
+       unavailable, OR the header still does not read `Connect type:
+       deliver` after the third attempt, fall back to a rebuild:
+       re-dispatch `/nova:autobuild` with a brief that explicitly sets
+       `generate_scaffold(connect_type: "deliver")`, or (if Nova
+       `create_app` is also unavailable) halt with a clear
+       `deliver-marker-wont-compile` failure. Either way, do NOT write the
+       success summary with `connect_type: ""`.
 
     Reproducer: `malaria-rdt/20260603-1600` — Deliver scaffolded
     `connect_type: ""`; both the original and a fresh re-upload+re-release
-    produced `connect_markers.deliver = 0`; the only fix was a rebuild
-    with `connect_type: "deliver"` (blocked that session by a concurrent
-    Nova `create_app` outage). See jjackson/ace#694.
+    produced `connect_markers.deliver = 0` (that session predated the L0
+    `update_app` heal and fell back to a rebuild, blocked by a concurrent
+    Nova `create_app` outage). See jjackson/ace#694. The L0
+    `update_app({connect_type: "deliver"})` heal in step 3 above was
+    confirmed live on `bednet-spot-check/20260616-0618` — one call flipped
+    the header from absent to `Connect type: deliver` with the per-form
+    blocks intact, no rebuild. See jjackson/ace#792.
 
 5. **(Optional) Inspect the built app** via `/nova:show <app_id>` to
    cross-check structure against the PDD before writing the summary.
