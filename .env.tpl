@@ -195,6 +195,15 @@ ACE_CONNECT_APK_VERSION=2.63.0
 CONTENT_GENERATOR_URL=op://AI-Agents/Content Generator API/hostname
 CONTENT_GENERATOR_API_KEY=op://AI-Agents/Content Generator API/credential
 
+# ── Video rendering (connect-videos local renders) ──────────────────
+#
+# ElevenLabs API key for the connect-videos renderer's per-beat
+# voiceover. Read from process env by ace-web's `scripts/render_locally.py`
+# (and the `/ace:video-render-local` skill that wraps it) — the renderer
+# refuses to silently drop voice when a spec asks for elevenlabs. Same
+# 1Password item ace-web's own .env.tpl uses.
+ELEVENLABS_API_KEY=op://AI-Agents/ACE - ElevenLabs API Key/credential
+
 # ── ace-web Personal Access Token (per-human, per-machine) ─────────
 #
 # NOT 1Password-backed. Minted via /ace:ace-web-pat-mint (gh-style
