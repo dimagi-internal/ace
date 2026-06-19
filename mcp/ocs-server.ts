@@ -499,6 +499,19 @@ server.tool(
 );
 
 server.tool(
+  'ocs_inspect_chatbot',
+  'Return the chatbot\'s FULL denormalized config in one read-only call via OCS v2 `/api/v2/chatbots/{id}/inspect/?version=`: settings, channels, the pipeline graph + per-node inlined resources (LLM, source material, custom actions, indexed/media collections, assistant, voice), AND experiment-level `events.static_triggers` + `events.timeout_triggers` (the latter exposes the 24-hr inactivity heartbeat that node-resource walks miss). Use this for any structural verification — Connect Interviews `/ace:interview-opp-verify` reads it for router-node keywords, the 24-hr `TimeoutTrigger`, the "Session Completion" custom action, and attached collections. The OpenAPI schema at /api/schema/ (ChatbotInspect) is the field contract — grep there before paraphrasing fields. Read-only: works with a `read_only=true` `UserAPIKey`. `version` is optional: omit for the working/draft version, pass an int for a specific published version, or `"default"` for the live default-published version.',
+  {
+    public_id: z.string().describe('UUID public_id of the chatbot (from ocs_list_chatbots → id)'),
+    version: z
+      .union([z.string(), z.number()])
+      .optional()
+      .describe('Optional: integer version number, or "default" for the live default. Omit for working/draft.'),
+  },
+  async (args) => result(await composite.inspectChatbot(args)),
+);
+
+server.tool(
   'ocs_list_sessions',
   'List sessions, optionally filtered by experiment, tags, or since-date.',
   {
@@ -514,7 +527,7 @@ server.tool(
 
 server.tool(
   'ocs_get_session',
-  'Retrieve a session with its full message history.',
+  'Retrieve a session with its full message history AND the session `state` blob (added by OCS PR #3634, deployed 2026-06-15). The `state` field surfaces session-scoped memory the bot is holding for the participant (e.g. cohort_id, last_interview, next_interview) — useful for verifying mid-conversation state during the Connect Interviews E2E walkthrough. Read-only.',
   { session_id: z.string() },
   async (args) => result(await composite.getSession(args)),
 );
@@ -599,6 +612,13 @@ server.tool(
       content_base64: f.content.toString('base64'),
     });
   },
+);
+
+server.tool(
+  'ocs_get_me',
+  'Cheap "is my OCS API key live + which team is it scoped to" probe via OCS v2 `/api/v2/me/` (PR #3648). Returns `{ username, email, email_verified?, team: { name, slug }, ... }` for the user the configured API key belongs to. Pair with /ace:doctor and call this BEFORE attempting `ocs_inspect_chatbot` on a new machine — if `team.slug` doesn\'t match the team that owns the chatbot you\'re trying to inspect, the inspect call will 403 / 404. Read-only.',
+  {},
+  async () => result(await composite.getMe()),
 );
 
 // ── Startup ─────────────────────────────────────────────────────────

@@ -1,6 +1,7 @@
 import { fetch } from 'undici';
 import { HttpError, StaleOcsSubprocessError } from '../errors.js';
 import { isTransientNetworkError } from '../../../lib/transient-retry.js';
+import type { ChatbotInspect, Me } from '../types.js';
 
 /**
  * Extract the integer experiment_id from a chatbot's web URL.
@@ -317,12 +318,49 @@ export class RestBackend {
   }
 
   async getSession(args: { session_id: string }) {
+    // OCS PR #3634 (deployed 2026-06-15) added `state` to this payload. Surface
+    // it so the verifier can read session memory (cohort_id, last_interview).
     return (await this.request('GET', `/api/sessions/${args.session_id}/`)) as {
       id: string;
       tags: string[];
       created_at: string;
       messages: Array<{ id: string; created_at: string; message_type: 'human' | 'ai' | 'system'; content: string }>;
+      state?: Record<string, unknown>;
     };
+  }
+
+  /**
+   * GET /api/v2/chatbots/{public_id}/inspect/?version=
+   *
+   * Returns the full denormalized chatbot config in one read (OCS PR #3536,
+   * deployed 2026-06-09; refactored on FK relations in #3645 + #3652 on
+   * 2026-06-18). Read-only — works with a read_only UserAPIKey carrying just
+   * the experiment view permissions.
+   *
+   * The payload includes the pipeline graph + per-node inlined resources
+   * (LLM, collection, custom actions, ...) AND experiment-level
+   * `events.static_triggers` + `events.timeout_triggers` (the latter is the
+   * 24-hr inactivity heartbeat the Connect Interviews verifier checks).
+   */
+  async inspectChatbot(args: { public_id: string; version?: string | number }): Promise<ChatbotInspect> {
+    const qs = new URLSearchParams();
+    if (args.version !== undefined && args.version !== null && args.version !== '') {
+      qs.set('version', String(args.version));
+    }
+    const tail = qs.toString() ? `?${qs}` : '';
+    return (await this.request('GET', `/api/v2/chatbots/${args.public_id}/inspect/${tail}`)) as ChatbotInspect;
+  }
+
+  /**
+   * GET /api/v2/me/
+   *
+   * Cheap "is my API key live + which team is it scoped to" probe (OCS PR
+   * #3648 added `email_verified`). Returns the authenticated user + their
+   * team. Useful for /ace:doctor and for confirming the right team-scoped
+   * key was minted before running the verifier.
+   */
+  async getMe(): Promise<Me> {
+    return (await this.request('GET', '/api/v2/me/')) as Me;
   }
 
   async endSession(args: { session_id: string }) {

@@ -922,7 +922,7 @@ Set up a linked-project-spaces relationship: upstream (master) → downstream. R
 
 ## ace-ocs
 
-Source: `mcp/ocs-server.ts` — 32 atoms
+Source: `mcp/ocs-server.ts` — 34 atoms
 
 ### `ocs_clone_chatbot`
 
@@ -1157,6 +1157,15 @@ Retrieve a single chatbot by its public UUID (from ocs_list_chatbots). Returns b
 |-------|------|----------|-------------|
 | `public_id` | `z.string` | **required** | _—_ |
 
+### `ocs_inspect_chatbot`
+
+Return the chatbot\'s FULL denormalized config in one read-only call via OCS v2 `/api/v2/chatbots/{id}/inspect/?version=`: settings, channels, the pipeline graph + per-node inlined resources (LLM, source material, custom actions, indexed/media collections, assistant, voice), AND experiment-level `events.static_triggers` + `events.timeout_triggers` (the latter exposes the 24-hr inactivity heartbeat…
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `public_id` | `z.string` | **required** | _—_ |
+| `version` | `z.union` | **required** | _—_ |
+
 ### `ocs_list_sessions`
 
 List sessions, optionally filtered by experiment, tags, or since-date.
@@ -1172,7 +1181,7 @@ List sessions, optionally filtered by experiment, tags, or since-date.
 
 ### `ocs_get_session`
 
-Retrieve a session with its full message history.
+Retrieve a session with its full message history AND the session `state` blob (added by OCS PR #3634, deployed 2026-06-15). The `state` field surfaces session-scoped memory the bot is holding for the participant (e.g. cohort_id, last_interview, next_interview) — useful for verifying mid-conversation state during the Connect Interviews E2E walkthrough. Read-only.
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
@@ -1255,6 +1264,12 @@ Download a file from OCS by file ID.
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `file_id` | `z.number` | **required** | _—_ |
+
+### `ocs_get_me`
+
+Cheap "is my OCS API key live + which team is it scoped to" probe via OCS v2 `/api/v2/me/` (PR #3648). Returns `{ username, email, email_verified?, team: { name, slug }, ... }` for the user the configured API key belongs to. Pair with /ace:doctor and call this BEFORE attempting `ocs_inspect_chatbot` on a new machine — if `team.slug` doesn\'t match the team that owns the chatbot you\'re trying to i…
+
+_no parameters_
 
 ## ace-mobile
 

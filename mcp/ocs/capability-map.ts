@@ -27,9 +27,10 @@ export type Capability =
   | 'get_chatbot_pipeline_id'
   | 'delete_pipeline'
   | 'delete_collection'
-  // Observation (12)
+  // Observation (14)
   | 'list_chatbots'
   | 'get_chatbot'
+  | 'inspect_chatbot'
   | 'list_sessions'
   | 'get_session'
   | 'end_session'
@@ -39,7 +40,8 @@ export type Capability =
   | 'send_test_message'
   | 'trigger_bot_message'
   | 'update_participant_data'
-  | 'download_file';
+  | 'download_file'
+  | 'get_me';
 
 export const CAPABILITY_MAP: Record<Capability, CapabilityRoute> = {
   // Authoring
@@ -67,6 +69,7 @@ export const CAPABILITY_MAP: Record<Capability, CapabilityRoute> = {
   // Observation
   list_chatbots:            { backend: 'REST', restTarget: 'GET /api/experiments/' },
   get_chatbot:              { backend: 'REST', restTarget: 'GET /api/experiments/{id}/' },
+  inspect_chatbot:          { backend: 'REST', restTarget: 'GET /api/v2/chatbots/{id}/inspect/' },
   list_sessions:            { backend: 'REST', restTarget: 'GET /api/sessions/' },
   get_session:              { backend: 'REST', restTarget: 'GET /api/sessions/{id}/' },
   end_session:              { backend: 'REST', restTarget: 'POST /api/sessions/{id}/end_experiment_session/' },
@@ -77,4 +80,5 @@ export const CAPABILITY_MAP: Record<Capability, CapabilityRoute> = {
   trigger_bot_message:      { backend: 'REST', restTarget: 'POST /api/trigger_bot' },
   update_participant_data:  { backend: 'REST', restTarget: 'POST /api/participants' },
   download_file:            { backend: 'REST', restTarget: 'GET /api/files/{id}/content' },
+  get_me:                   { backend: 'REST', restTarget: 'GET /api/v2/me/' },
 };

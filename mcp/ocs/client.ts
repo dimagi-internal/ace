@@ -1,6 +1,8 @@
 import type {
-  Experiment,
+  ChatbotInspect,
   ClonedChatbot,
+  Experiment,
+  Me,
   Session,
   SessionWithMessages,
 } from './types.js';
@@ -250,6 +252,21 @@ export interface OcsClient {
 
   getChatbot(args: { public_id: string }): Promise<Experiment>;
 
+  /**
+   * Return the full denormalized chatbot config (pipeline graph + per-node
+   * inlined resources + experiment-level event triggers) for a chatbot's
+   * working version, or — when `version` is supplied — a specific published
+   * version (`'default'` resolves to the live default). Read-only; backed by
+   * OCS v2 inspect API (PR #3536; deployed 2026-06-09). Use this instead of
+   * the older pipeline-scrape path for any verifier that needs router-node
+   * keywords, custom actions, attached collections, or the 24-hr inactivity
+   * `TimeoutTrigger`.
+   */
+  inspectChatbot(args: {
+    public_id: string;
+    version?: string | number;
+  }): Promise<ChatbotInspect>;
+
   listSessions(args: {
     experiment_id?: string;
     since?: string;
@@ -312,4 +329,12 @@ export interface OcsClient {
   downloadFile(args: {
     file_id: number;
   }): Promise<{ content: Buffer; filename: string; mime_type: string }>;
+
+  /**
+   * Cheap auth-health probe: returns the authenticated user + team for the
+   * API key used by this client. Useful for /ace:doctor and for confirming
+   * the right team-scoped read-only `UserAPIKey` was minted before running
+   * the verifier. Backed by OCS v2 `/api/v2/me/` (PR #3648).
+   */
+  getMe(): Promise<Me>;
 }

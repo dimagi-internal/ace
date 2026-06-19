@@ -92,6 +92,7 @@ export class CompositeBackend implements OcsClient {
       return new Map();
     }
   }
+  inspectChatbot = (a: Parameters<OcsClient['inspectChatbot']>[0]) => this.opts.rest.inspectChatbot(a);
   listSessions = (a: Parameters<OcsClient['listSessions']>[0]) => this.opts.rest.listSessions(a);
   getSession = (a: Parameters<OcsClient['getSession']>[0]) => this.opts.rest.getSession(a);
   endSession = (a: Parameters<OcsClient['endSession']>[0]) => this.opts.rest.endSession(a);
@@ -102,4 +103,5 @@ export class CompositeBackend implements OcsClient {
   triggerBotMessage = (a: Parameters<OcsClient['triggerBotMessage']>[0]) => this.opts.rest.triggerBotMessage(a);
   updateParticipantData = (a: Parameters<OcsClient['updateParticipantData']>[0]) => this.opts.rest.updateParticipantData(a);
   downloadFile = (a: Parameters<OcsClient['downloadFile']>[0]) => this.opts.rest.downloadFile(a);
+  getMe = () => this.opts.rest.getMe();
 }

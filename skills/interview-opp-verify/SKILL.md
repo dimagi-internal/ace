@@ -62,6 +62,23 @@ Some rules check consistency across systems. The verifier resolves IDs cohesivel
 - `ocs-bot-has-completion-action.target_url_matches: "@inbound-api-session-completion.url"` — verifier reads the HQ Inbound API URL, then checks the OCS custom action's `server_url + api_schema operationId path` resolves to the same URL.
 - `opp-learn-app-linked.value: "@app-learn-copied.app_id"` — verifier reads the new linked-app id from the cohort spec, checks the opp's `learn_app.cc_app_id` matches.
 
+### OCS rules — all read from one `ocs_inspect_chatbot` call
+
+As of OCS PR #3536 (deployed 2026-06-09; refactored on FK relations in #3645 + #3652 on 2026-06-18), every OCS-side rule reads from a single `ocs_inspect_chatbot({ public_id })` call. The response shape is the OpenAPI `ChatbotInspect` schema served at `https://www.openchatstudio.com/api/schema/` — grep there for the field contract before paraphrasing. The mappings:
+
+| Rule | Inspect payload path |
+|---|---|
+| `ocs-bot-has-router-node` | `pipeline.nodes[].type === "StaticRouterNode"` |
+| `ocs-bot-has-llm-node` | `pipeline.nodes[].type === "LLMResponseWithPrompt"` (also `LLMResponse`) |
+| `ocs-bot-has-python-node-session-state` | `pipeline.nodes[].type === "CodeNode"` |
+| `ocs-bot-has-24hr-timeout-event` | `events.timeout_triggers[*].delay_seconds === 86400` ← **experiment-level, NOT a pipeline node** (this gap was the original driver for OCS #3458) |
+| `ocs-bot-has-completion-action` | `pipeline.nodes[].custom_actions[*].name` matches `"Session Completion"`; `server_url` cross-checked vs HQ Inbound API URL |
+| `ocs-bot-has-24hr-expiry-action` | `pipeline.nodes[].custom_actions[*].name` matches `"Expiry"` |
+| `ocs-interview-nodes-per-cohort` | router node `params.keywords[]` includes every interview_id in `cohort.schedule` |
+| `ocs-interview-source-material` | `pipeline.nodes[].source_material` + `indexed_collections[]` |
+
+Call `ocs_get_me` first when running on a new machine: if `team.slug` doesn't match the team that owns the bot, `inspect` will 404 (looks like "bot doesn't exist" but is really "wrong team key").
+
 ### Report format
 
 ```markdown
@@ -120,8 +137,8 @@ For each unverifiable:
 |---|---|
 | per_program | `connect_list_programs`, `connect_get_program` |
 | per_domain HQ | `commcare_list_apps`, `commcare_list_connections`, `commcare_list_inbound_apis`, `commcare_get_lookup_table`, `commcare_list_users` (for user fields presence) |
-| per_domain OCS | `ocs_list_chatbots`, `ocs_get_chatbot`, `ocs_get_chatbot_pipeline_id` |
-| per_cohort | `commcare_list_apps`, `commcare_get_lookup_table_rows`, `connect_get_opportunity`, `connect_list_payment_units`, `ocs_get_chatbot_pipeline_id`, `ocs_get_chatbot` |
+| per_domain OCS | `ocs_get_me`, `ocs_list_chatbots`, `ocs_inspect_chatbot` |
+| per_cohort | `commcare_list_apps`, `commcare_get_lookup_table_rows`, `connect_get_opportunity`, `connect_list_payment_units`, `ocs_inspect_chatbot` |
 | per_user | `commcare_list_users`, `commcare_get_user` |
 
 ## Unverifiable rules (gap-tagged)
@@ -132,7 +149,8 @@ Per `checklist-schema.yaml § atom_gaps`, these rules currently grade `unverifia
 - `repeater-*` rules — a commcare-list-form-repeaters atom (*not yet built*) is needed (only create exists)
 - `custom-user-data` rule (cohort_id field exists) — `commcare_list_user_fields` atom ships, but verifier rule logic not yet wired
 - `conditional-alert-payment` rule — a commcare-list-conditional-alerts atom (*atom code present in commcare.ts but registration deferred — see comment at line 510 of mcp/connect-server.ts*) is needed
-- `ocs-interview-nodes-per-cohort` rule — no atom to traverse router targets
+
+**Closed since V1:** `ocs-interview-nodes-per-cohort` is now verifiable via `ocs_inspect_chatbot` (router params.keywords[] are read directly).
 
 For V1 these grade `⚠️ unverifiable` with action-item prompts to operator. V1.5 ships the read atoms to fill these.
 
@@ -147,3 +165,4 @@ For V1 these grade `⚠️ unverifiable` with action-item prompts to operator. V
 | Date | Change | Author |
 |------|--------|--------|
 | 2026-05-21 | Initial V1 — read-only verifier; ~80% of rules implementable with current atoms | ACE team |
+| 2026-06-19 | Migrated every OCS rule (~8 rules) to a single `ocs_inspect_chatbot` call via OCS PR #3536. Closes the 24-hr `TimeoutTrigger` gap that drove our companion issue #3458. Adds `ocs_get_me` precheck for team scope. | ACE team |
