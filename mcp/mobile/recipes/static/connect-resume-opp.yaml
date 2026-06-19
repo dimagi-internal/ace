@@ -118,12 +118,17 @@ appId: org.commcare.dalvik
 # Scroll the target opp's In-Progress card into the viewport.
 # `visibilityPercentage: 60` tolerates multi-line title-wrap (same
 # reasoning as connect-claim-opp.yaml).
+# `centerElement: true` (jjackson/ace#800) — keep the whole card (title +
+# CTA button) in the viewport. The card-scoped `childOf containsChild`
+# tap guards below need the CTA rendered, not clipped at the viewport
+# bottom; centering matches the claim-recipe parity fix.
 - scrollUntilVisible:
     element:
       text: ".*${OPP_RUN_ID}.*"
     direction: DOWN
     timeout: 20000
     visibilityPercentage: 60
+    centerElement: true
 - assertVisible:
     text: ".*${OPP_RUN_ID}.*"
 

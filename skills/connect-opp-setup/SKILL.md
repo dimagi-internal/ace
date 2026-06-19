@@ -548,14 +548,42 @@ alone makes the artifact land outside `4-connect` and fail
    ```
    The atom returns `{ status: 'queued', invited_count: N }` because the
    server invokes `add_connect_users.delay(...)` async. The `UserInvite`
-   row + SMS go out within a few seconds. Treat `queued` as success.
+   row + SMS go out within a few seconds. Treat `queued` as success **for
+   sending the invite** — but see the queued ≠ accepted caveat below.
+
+   **`queued` means invite-sent, NOT invite-accepted (jjackson/ace#799).**
+   `invited_count: N` only confirms Connect enqueued the `UserInvite`; it
+   does **not** mean the test user has an `OpportunityAccess` row yet.
+   Acceptance happens on-device when Phase 6's `connect-claim-opp` recipe
+   claims the tile — so a re-invite of a not-yet-claimed opp legitimately
+   returns `invited_count: 1` again (it is NOT evidence the prior invite
+   failed to propagate). Therefore:
+
+   - Record `invited_at` as the **send** timestamp, not proof of
+     acceptance. Do NOT halt Phase 4 on the absence of an
+     `OpportunityAccess` read-back — there is no live-validated per-opp
+     FLW-invite read atom today (`connect_list_invites` is LLO/program-
+     application level, not phone-level), and gating Phase 4 on an
+     unvalidated worker-list scrape risks false halts on a working invite.
+   - The **authoritative** proof the invite landed is Phase 6 successfully
+     claiming the tile. If Phase 6's claim cannot find/claim the tile, THAT
+     is the loud failure (Phase 6 halts `[BLOCKER]`), and the first thing
+     to rule out is the claim-recipe centering bug fixed in
+     jjackson/ace#800 (`centerElement: true` on the OPP_RUN_ID title-scroll
+     in `connect-claim-opp.yaml` / `connect-resume-opp.yaml`) — a present,
+     asserted-visible tile that still won't claim is the #800 class, not a
+     Phase-4 invite-propagation failure.
+   - Durable Phase-4-side invite verification (a per-opp FLW-invite
+     worker-list read) remains a tracked enhancement — it needs a
+     live-calibrated Playwright scraper of the opp worker page and must be
+     validated against real HTML before it can gate Phase 4 (jjackson/ace#799).
 
    Hold the invite metadata in memory for Step 10's consolidated write:
 
    ```
    ace_test_user = {
      invited_phone: ${ACE_E2E_PHONE},
-     invited_at: <ISO timestamp>,
+     invited_at: <ISO timestamp>,   # send time, not acceptance (see above)
    }
    ```
 

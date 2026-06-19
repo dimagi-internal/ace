@@ -193,6 +193,18 @@ appId: org.commcare.dalvik
 # `timeout 40000`, `visibilityPercentage 30`) reached + asserted the
 # target on the first try. Applied to every `scrollUntilVisible` in
 # this file for parity.
+#
+# CENTER THE CARD (jjackson/ace#800) — `centerElement: true` is
+# load-bearing on connect-2.63.0. Without it the title-scroll leaves the
+# matched card at the viewport BOTTOM, so the card's `btn_view_opportunity`
+# / `btn_resume` (rendered below the title) is clipped off-screen and BOTH
+# Branch A/B `when: visible: { id: btn_*, below: text: ".*${OPP_RUN_ID}.*" }`
+# guards evaluate false → deterministic SKIP → the recipe falls through to
+# the #629 wedge detector even though the tile is present and asserted
+# visible. Probe-confirmed twice on bednet-spot-check/20260618-2112: the
+# below-scoped `tapOn` SKIPPED without centering and COMPLETED with it.
+# Centering puts the whole card (title + button) in the viewport so the
+# below-scoped guards resolve.
 - scrollUntilVisible:
     element:
       text: ".*${OPP_RUN_ID}.*"
@@ -200,6 +212,7 @@ appId: org.commcare.dalvik
     speed: 80
     timeout: 40000
     visibilityPercentage: 30
+    centerElement: true
 - assertVisible:
     text: ".*${OPP_RUN_ID}.*"
 
