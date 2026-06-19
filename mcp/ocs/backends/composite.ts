@@ -62,6 +62,11 @@ export class CompositeBackend implements OcsClient {
   listChatbots = async (a: Parameters<OcsClient['listChatbots']>[0] = {}) => {
     const out = await this.opts.rest.listChatbots(a);
     if (out.chatbots.every((c) => c.experiment_id != null)) return out;
+    // The Playwright session is bound to the default team only. When the
+    // caller targeted a non-default team via `team_slug`, skip enrichment —
+    // returning experiment_id: null is the documented degraded mode and
+    // matches the contract `experiment_id` carries (best-effort).
+    if (a.team_slug) return out;
     const idsByName = await this.fetchExperimentIdMapSilently();
     return {
       ...out,
@@ -103,5 +108,5 @@ export class CompositeBackend implements OcsClient {
   triggerBotMessage = (a: Parameters<OcsClient['triggerBotMessage']>[0]) => this.opts.rest.triggerBotMessage(a);
   updateParticipantData = (a: Parameters<OcsClient['updateParticipantData']>[0]) => this.opts.rest.updateParticipantData(a);
   downloadFile = (a: Parameters<OcsClient['downloadFile']>[0]) => this.opts.rest.downloadFile(a);
-  getMe = () => this.opts.rest.getMe();
+  getMe = (a: Parameters<OcsClient['getMe']>[0] = {}) => this.opts.rest.getMe(a);
 }

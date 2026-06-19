@@ -79,6 +79,21 @@ As of OCS PR #3536 (deployed 2026-06-09; refactored on FK relations in #3645 + #
 
 Call `ocs_get_me` first when running on a new machine: if `team.slug` doesn't match the team that owns the bot, `inspect` will 404 (looks like "bot doesn't exist" but is really "wrong team key").
 
+### Multi-team — target a team other than `OCS_TEAM_SLUG`
+
+The three observation atoms `ocs_get_me`, `ocs_list_chatbots`, and `ocs_inspect_chatbot` accept an optional `team_slug` argument. When supplied AND it differs from the configured default team (`OCS_TEAM_SLUG`), the MCP server looks up the matching token from `OCS_API_TOKEN_<SLUG>` env vars and uses it for that call only. Default-team calls (no `team_slug`) keep using `OCS_API_TOKEN` exactly as before — no behavior change for single-tenant workflows.
+
+To verify a bot on a non-default team:
+
+1. Mint a read-only `UserAPIKey` scoped to the target team via `/users/profile/` → API keys (uncheck "allow write").
+2. Store it in 1Password under `AI-Agents` as `ACE - OCS REST API Key (<slug>)`.
+3. Add to `.env.tpl`: `OCS_API_TOKEN_<SLUG_UPPER>=op://AI-Agents/<uuid>/credential` (slug uppercased, non-alphanumeric → `_`).
+4. Run `bash bin/ace-setup --force-env` to inject.
+5. Restart Claude Code so the MCP subprocess picks up the new env var.
+6. Pass `team_slug: "<slug>"` on every OCS call in the verifier run.
+
+A `team_slug` for which no token is registered surfaces a typed error naming the exact env var to add — so misconfigurations don't bleed into 401 mysteries.
+
 ### Report format
 
 ```markdown

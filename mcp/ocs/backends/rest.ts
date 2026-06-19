@@ -23,6 +23,21 @@ export function extractExperimentId(url: string | undefined): number | null {
 export interface RestBackendOptions {
   baseUrl: string;
   token: string;
+  /**
+   * Optional registry of extra team-scoped tokens, keyed by team slug. Lets
+   * observation atoms target teams other than `OCS_TEAM_SLUG` by passing a
+   * `team_slug` argument — the matching token is resolved here. Empty / unset
+   * is fine; calls without `team_slug` always use `opts.token`. Population
+   * happens at MCP startup from `OCS_API_TOKEN_<SLUG_UPPER>` env vars (see
+   * `mcp/ocs-server.ts § loadTokensByTeam`).
+   */
+  tokensByTeam?: Map<string, string>;
+  /**
+   * The team slug `opts.token` belongs to. Required when `tokensByTeam` is
+   * non-empty so `resolveToken(slug)` can recognise the default slug and short-
+   * circuit to `opts.token` rather than looking it up in the registry.
+   */
+  defaultTeamSlug?: string;
   maxRetries?: number;        // default 3
   retryBackoffMs?: number;    // default 500
 }
@@ -30,7 +45,32 @@ export interface RestBackendOptions {
 export class RestBackend {
   constructor(private opts: RestBackendOptions) {}
 
-  async request(method: string, path: string, body?: unknown): Promise<unknown> {
+  /**
+   * Resolve the bearer token for a request. Empty / undefined `team_slug`
+   * returns the default `opts.token`; a slug equal to `defaultTeamSlug` does
+   * the same; any other slug is looked up in `tokensByTeam` and throws a typed
+   * error if not configured (so the operator sees a clear "add
+   * `OCS_API_TOKEN_<SLUG>` to .env" prompt instead of a 401 mystery).
+   */
+  resolveToken(team_slug?: string): string {
+    if (!team_slug) return this.opts.token;
+    if (this.opts.defaultTeamSlug && team_slug === this.opts.defaultTeamSlug) {
+      return this.opts.token;
+    }
+    const t = this.opts.tokensByTeam?.get(team_slug);
+    if (!t) {
+      const envName = `OCS_API_TOKEN_${team_slug.replace(/[^A-Za-z0-9]/g, '_').toUpperCase()}`;
+      throw new Error(
+        `No OCS API token configured for team_slug=${team_slug}. ` +
+          `Add ${envName}=<token> to .env (point at the matching 1Password item) ` +
+          `then restart the MCP server.`,
+      );
+    }
+    return t;
+  }
+
+  async request(method: string, path: string, body?: unknown, tokenOverride?: string): Promise<unknown> {
+    const token = tokenOverride ?? this.opts.token;
     const maxRetries = this.opts.maxRetries ?? 3;
     const backoffMs = this.opts.retryBackoffMs ?? 500;
     const isIdempotent = method === 'GET';
@@ -46,7 +86,7 @@ export class RestBackend {
         res = await fetch(`${this.opts.baseUrl}${path}`, {
           method,
           headers: {
-            Authorization: `Bearer ${this.opts.token}`,
+            Authorization: `Bearer ${token}`,
             'Content-Type': 'application/json',
           },
           body: body ? JSON.stringify(body) : undefined,
@@ -89,10 +129,11 @@ export class RestBackend {
     await this.request('GET', '/api/experiments/?page_size=1');
   }
 
-  async listChatbots(args: { cursor?: string; page_size?: number } = {}) {
+  async listChatbots(args: { cursor?: string; page_size?: number; team_slug?: string } = {}) {
     const qs = new URLSearchParams();
     if (args.cursor) qs.set('cursor', args.cursor);
     qs.set('page_size', String(args.page_size ?? 50));
+    const token = this.resolveToken(args.team_slug);
     // NOTE: OCS's ExperimentSerializer returns `id` as the UUID public_id, not
     // the integer db id. See apps/api/views/experiments.py:36 (lookup_field = "public_id").
     // The integer `experiment_id` is needed by every authoring atom
@@ -102,7 +143,7 @@ export class RestBackend {
     // closes the idempotency gap: a skill that lists bots by name can then
     // reconfigure an existing bot directly, instead of cloning a duplicate
     // because the int id was unreachable.
-    const body = (await this.request('GET', `/api/experiments/?${qs}`)) as {
+    const body = (await this.request('GET', `/api/experiments/?${qs}`, undefined, token)) as {
       results: Array<{ id: string; name: string; url?: string; version_number?: number }>;
       next: string | null;
     };
@@ -342,13 +383,23 @@ export class RestBackend {
    * `events.static_triggers` + `events.timeout_triggers` (the latter is the
    * 24-hr inactivity heartbeat the Connect Interviews verifier checks).
    */
-  async inspectChatbot(args: { public_id: string; version?: string | number }): Promise<ChatbotInspect> {
+  async inspectChatbot(args: {
+    public_id: string;
+    version?: string | number;
+    team_slug?: string;
+  }): Promise<ChatbotInspect> {
     const qs = new URLSearchParams();
     if (args.version !== undefined && args.version !== null && args.version !== '') {
       qs.set('version', String(args.version));
     }
     const tail = qs.toString() ? `?${qs}` : '';
-    return (await this.request('GET', `/api/v2/chatbots/${args.public_id}/inspect/${tail}`)) as ChatbotInspect;
+    const token = this.resolveToken(args.team_slug);
+    return (await this.request(
+      'GET',
+      `/api/v2/chatbots/${args.public_id}/inspect/${tail}`,
+      undefined,
+      token,
+    )) as ChatbotInspect;
   }
 
   /**
@@ -357,10 +408,12 @@ export class RestBackend {
    * Cheap "is my API key live + which team is it scoped to" probe (OCS PR
    * #3648 added `email_verified`). Returns the authenticated user + their
    * team. Useful for /ace:doctor and for confirming the right team-scoped
-   * key was minted before running the verifier.
+   * key was minted before running the verifier. Optional `team_slug` picks
+   * a non-default registered token.
    */
-  async getMe(): Promise<Me> {
-    return (await this.request('GET', '/api/v2/me/')) as Me;
+  async getMe(args: { team_slug?: string } = {}): Promise<Me> {
+    const token = this.resolveToken(args.team_slug);
+    return (await this.request('GET', '/api/v2/me/', undefined, token)) as Me;
   }
 
   async endSession(args: { session_id: string }) {

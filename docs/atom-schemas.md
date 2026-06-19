@@ -1142,12 +1142,13 @@ Delete a collection (calls Collection.archive() server-side — sets is_archived
 
 ### `ocs_list_chatbots`
 
-List chatbots on the OCS team. Each entry includes both `id` (UUID public_id, used by ocs_get_chatbot/ocs_send_test_message) AND `experiment_id` (integer, used by every authoring atom: ocs_set_chatbot_system_prompt, ocs_attach_knowledge, ocs_publish_chatbot_version, etc.). Use this to find an existing bot by name and reconfigure it idempotently — no need to clone if it already exists.
+List chatbots on the OCS team. Each entry includes both `id` (UUID public_id, used by ocs_get_chatbot/ocs_send_test_message) AND `experiment_id` (integer, used by every authoring atom: ocs_set_chatbot_system_prompt, ocs_attach_knowledge, ocs_publish_chatbot_version, etc.). Use this to find an existing bot by name and reconfigure it idempotently — no need to clone if it already exists. Optional `te…
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `cursor` | `z.string` | optional | _—_ |
 | `page_size` | `z.number` | optional | _—_ |
+| `team_slug` | `z.string` | optional | _—_ |
 
 ### `ocs_get_chatbot`
 
@@ -1165,6 +1166,7 @@ Return the chatbot\'s FULL denormalized config in one read-only call via OCS v2 
 |-------|------|----------|-------------|
 | `public_id` | `z.string` | **required** | _—_ |
 | `version` | `z.union` | **required** | _—_ |
+| `team_slug` | `z.string` | optional | _—_ |
 
 ### `ocs_list_sessions`
 
@@ -1269,7 +1271,9 @@ Download a file from OCS by file ID.
 
 Cheap "is my OCS API key live + which team is it scoped to" probe via OCS v2 `/api/v2/me/` (PR #3648). Returns `{ username, email, email_verified?, team: { name, slug }, ... }` for the user the configured API key belongs to. Pair with /ace:doctor and call this BEFORE attempting `ocs_inspect_chatbot` on a new machine — if `team.slug` doesn\'t match the team that owns the chatbot you\'re trying to i…
 
-_no parameters_
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `team_slug` | `z.string` | optional | _—_ |
 
 ## ace-mobile
 

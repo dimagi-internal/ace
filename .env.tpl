@@ -36,6 +36,18 @@ OCS_PASSWORD=op://AI-Agents/ACE - Open Chat Studio/password
 # If the 1Password item is ever recreated, update this UUID.
 OCS_API_TOKEN=op://AI-Agents/ccfc36cyidvecda5tzhseuouie/credential
 
+# ── Multi-team REST tokens (optional) ────────────────────────────────
+# The REST observation atoms (`ocs_get_me`, `ocs_list_chatbots`,
+# `ocs_inspect_chatbot`) accept an optional `team_slug` argument. When supplied,
+# the MCP server resolves the token from a matching `OCS_API_TOKEN_<SLUG>` env
+# var (slug uppercased, non-alphanumeric → `_`). Omitting the arg falls back to
+# `OCS_API_TOKEN` + `OCS_TEAM_SLUG` above. Each team key still hangs off a
+# specific user account (via `UserAPIKey`) and the `read_only=true` flag is
+# enforced framework-side at the HTTP method layer.
+#
+# Add one line per team you also want read access to:
+OCS_API_TOKEN_VACCINE_COACH=op://AI-Agents/h6m2u53h364ifenhu2toe67ceu/credential
+
 # Golden template (created by `/ace:ocs-bootstrap-template`, stored in 1Password)
 OCS_GOLDEN_TEMPLATE_ID=op://AI-Agents/ACE - Open Chat Studio/Config/golden_template_id
 
