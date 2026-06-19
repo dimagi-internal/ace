@@ -496,10 +496,10 @@ per_domain:
     when: initial
     copy_mode: clone
     verify:
-      atom: ocs_get_chatbot_pipeline_id   # EXISTS — returns pipeline structure
+      atom: ocs_inspect_chatbot   # EXISTS — full denormalized payload via /api/v2/chatbots/{id}/inspect/
       rule:
         type: pipeline_has_node
-        node_type: router
+        node_type: router   # match any of: StaticRouterNode | RouterNode
         reads_participant_data: [cohort_id, interview_id]
     create:
       atom: null   # Created at clone time; not a separate atom
@@ -515,10 +515,10 @@ per_domain:
     when: initial
     copy_mode: clone
     verify:
-      atom: ocs_get_chatbot_pipeline_id
+      atom: ocs_inspect_chatbot
       rule:
         type: pipeline_has_node
-        node_type: llm
+        node_type: llm   # LLMResponseWithPrompt | LLMResponse
         prompt_contains: ["interview", "questions"]
     create:
       atom: null
@@ -534,10 +534,10 @@ per_domain:
     when: initial
     copy_mode: clone
     verify:
-      atom: ocs_get_chatbot_pipeline_id
+      atom: ocs_inspect_chatbot
       rule:
         type: pipeline_has_node
-        node_type: python
+        node_type: python   # CodeNode
         sets_session_state: [interview_status, payment_eligibility]
     create:
       atom: null
@@ -557,11 +557,11 @@ per_domain:
     when: initial
     copy_mode: clone
     verify:
-      atom: ocs_get_chatbot   # EXISTS — surfaces events on the chatbot
+      atom: ocs_inspect_chatbot   # surfaces experiment-level events.timeout_triggers[] (NOT a pipeline node — this gap was the original driver for OCS #3458)
       rule:
         type: chatbot_has_event
         event_type: inactivity_timeout
-        threshold_hours: 24
+        threshold_hours: 24            # → events.timeout_triggers[*].delay_seconds == 86400
     create:
       atom: null
       gap: false
@@ -576,7 +576,7 @@ per_domain:
     when: initial
     copy_mode: clone
     verify:
-      atom: ocs_get_chatbot
+      atom: ocs_inspect_chatbot   # custom_actions are inlined under each pipeline node in the inspect payload
       rule:
         type: chatbot_has_custom_action
         action_name_contains: "Session Completion"
@@ -600,7 +600,7 @@ per_domain:
     when: initial
     copy_mode: clone
     verify:
-      atom: ocs_get_chatbot
+      atom: ocs_inspect_chatbot
       rule:
         type: chatbot_has_custom_action
         action_name_contains: "Expiry"
@@ -1082,24 +1082,26 @@ per_cohort:
     when: per_cohort
     copy_mode: manual_or_clone
     verify:
-      atom: ocs_get_chatbot_pipeline_id
+      atom: ocs_inspect_chatbot   # router_targets readable from pipeline.nodes[router].params.keywords
       rule:
         type: pipeline_has_router_targets
         for_each_interview_id: "@cohort.schedule.interview_ids"
     create:
       atom: null   # Adding new interview nodes is currently manual in OCS;
                    # no OCS atom exists for editing pipeline structure.
-      gap: true   # NEW gap surfaced by the OCS-side rules: no OCS
-                  # pipeline-edit atom exists. V1: bot template includes a
-                  # generous set of pre-built interview-node slots and the
-                  # cohort-creator chooses which ones to route to.
+      gap: true   # The READ gap closed via OCS PR #3536 (inspect API).
+                  # The WRITE gap remains: V1 template includes a generous
+                  # set of pre-built interview-node slots and the cohort-
+                  # creator selects which ones to route to.
       inputs: []
     notes: |
       Editing OCS pipeline structure programmatically is not currently
       supported by any OCS atom. The V1 cohort-creator works around this
       by cloning a template bot that already has interview-node slots
       pre-built; the router config selects which slots to use based on the
-      cohort's interview_ids.
+      cohort's interview_ids. The verifier now READS the targets via the
+      v2 inspect API (PR #3536) — router params.keywords[] is one entry per
+      output_<n> handle.
 
   - id: ocs-interview-source-material
     name: Interview question content is set on the bot's source material / collections for each interview_id
@@ -1110,7 +1112,7 @@ per_cohort:
     when: per_cohort
     copy_mode: api
     verify:
-      atom: ocs_get_chatbot   # EXISTS — surfaces source_material
+      atom: ocs_inspect_chatbot   # source_material + indexed_collections inlined under nodes in the inspect payload
       rule:
         type: source_material_includes
         for_each_interview_id: "@cohort.schedule.interview_ids"

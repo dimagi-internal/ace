@@ -18,10 +18,10 @@ describe('capability map', () => {
 
   it('routes observation atoms through REST', () => {
     const observation: Capability[] = [
-      'list_chatbots', 'get_chatbot', 'list_sessions', 'get_session',
-      'end_session', 'add_session_tags', 'remove_session_tags',
+      'list_chatbots', 'get_chatbot', 'inspect_chatbot', 'list_sessions',
+      'get_session', 'end_session', 'add_session_tags', 'remove_session_tags',
       'update_session_state', 'send_test_message', 'trigger_bot_message',
-      'update_participant_data', 'download_file',
+      'update_participant_data', 'download_file', 'get_me',
     ];
     for (const cap of observation) {
       expect(CAPABILITY_MAP[cap].backend, cap).toBe('REST');

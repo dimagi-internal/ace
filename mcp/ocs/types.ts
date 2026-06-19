@@ -119,6 +119,114 @@ export interface PipelineDataSaveResponse {
   errors: string[];
 }
 
+// ── v2 inspect API (OCS PR #3536) ───────────────────────────────────────
+//
+// Shape mirrors `ChatbotInspect` in the OCS OpenAPI schema served at
+// /api/schema/ (live schema is the source of truth). The verifier reads:
+//   - pipeline.nodes[].type === "StaticRouterNode" + params.keywords
+//   - events.timeout_triggers[].delay_seconds === 86400  (24h inactivity)
+//   - pipeline.nodes[].custom_actions[].name === "Session Completion"
+//   - pipeline.nodes[].indexed_collections[]  (attached RAG)
+//
+// Types stay loose (Record<string, unknown> for params) so a server-side
+// schema add doesn't break us. Grep the live /api/schema/ before paraphrasing.
+
+export interface InspectCustomAction {
+  id: number;
+  name: string;
+  description?: string;
+  server_url?: string;
+  allowed_operations?: string[];
+}
+
+export interface InspectIndexedCollection {
+  id: number;
+  name: string;
+  is_index?: boolean;
+}
+
+export interface InspectNode {
+  node_id: string;
+  type: string; // e.g. "StaticRouterNode", "LLMResponseWithPrompt"
+  label: string;
+  params: Record<string, unknown>;
+  llm?: Record<string, unknown> | null;
+  voice?: Record<string, unknown> | null;
+  assistant?: Record<string, unknown> | null;
+  source_material?: Record<string, unknown> | null;
+  custom_actions?: InspectCustomAction[];
+  indexed_collections?: InspectIndexedCollection[];
+  media_collection?: Record<string, unknown> | null;
+}
+
+export interface InspectPipeline {
+  id: number;
+  name: string;
+  version_number?: number;
+  graph: {
+    nodes: Array<{ id: string; type?: string; label?: string }>;
+    edges: Array<{ id: string; source: string; target: string }>;
+  };
+  nodes: InspectNode[];
+}
+
+export interface InspectTriggerAction {
+  type: 'log' | 'end_conversation' | 'send_message_to_bot' | 'schedule_trigger' | 'pipeline_start' | string;
+  params: Record<string, unknown>;
+  pipeline?: InspectPipeline; // only on pipeline_start
+}
+
+export interface InspectStaticTrigger {
+  id: number;
+  type: string; // conversation_start, conversation_end, ...
+  is_active: boolean;
+  action: InspectTriggerAction;
+}
+
+export interface InspectTimeoutTrigger {
+  id: number;
+  delay_seconds: number;
+  total_num_triggers: number;
+  trigger_from_first_message: boolean;
+  is_active: boolean;
+  action: InspectTriggerAction;
+}
+
+export interface InspectEvents {
+  static_triggers: InspectStaticTrigger[];
+  timeout_triggers: InspectTimeoutTrigger[];
+}
+
+export interface ChatbotInspect {
+  id: string;
+  name: string;
+  description?: string | null;
+  version_number?: number;
+  is_unreleased: boolean;
+  is_published_version: boolean;
+  version_description: string;
+  team_slug: string;
+  settings: Record<string, unknown>;
+  consent_form?: Record<string, unknown> | null;
+  voice?: Record<string, unknown> | null;
+  trace_provider?: Record<string, unknown> | null;
+  channels: Array<Record<string, unknown>>;
+  pipeline: InspectPipeline | null;
+  events: InspectEvents;
+}
+
+// ── v2 /api/v2/me/ ───────────────────────────────────────────────────────
+// Useful as a cheap "is my API key valid + which team is it scoped to" probe.
+export interface Me {
+  id?: number;
+  username: string;
+  email: string;
+  first_name?: string;
+  last_name?: string;
+  email_verified?: boolean;
+  team?: { name: string; slug: string };
+}
+
 // The subset of LLMResponseWithPrompt params the integration layer patches.
 export interface LlmNodeParams {
   prompt?: string;

@@ -1,0 +1,131 @@
+{
+  "id": "5e946111-357e-4748-97b9-1fadacfa7122",
+  "name": "Connect Interviews — Vaccine Coach",
+  "description": "Interview bot for the vaccine-coach cohort",
+  "version_number": 0,
+  "is_unreleased": true,
+  "is_published_version": false,
+  "version_description": "working",
+  "team_slug": "vaccine-coach",
+  "settings": {
+    "seed_message": "",
+    "conversational_consent_enabled": false,
+    "voice_response_behaviour": "never",
+    "echo_transcript": false,
+    "debug_mode_enabled": false,
+    "file_uploads_enabled": false,
+    "participant_allowlist": []
+  },
+  "consent_form": null,
+  "voice": null,
+  "trace_provider": null,
+  "channels": [
+    {
+      "platform": "commcare_connect",
+      "name": "Connect channel",
+      "messaging_provider": null
+    }
+  ],
+  "pipeline": {
+    "id": 7421,
+    "name": "Interview Router",
+    "version_number": 0,
+    "graph": {
+      "nodes": [
+        { "id": "n-start", "type": "StartNode", "label": "Start" },
+        { "id": "n-route", "type": "StaticRouterNode", "label": "Route" },
+        { "id": "n-answer", "type": "LLMResponseWithPrompt", "label": "Answer" },
+        { "id": "n-end", "type": "EndNode", "label": "End" }
+      ],
+      "edges": [
+        { "id": "e1", "source": "n-start", "target": "n-route" },
+        { "id": "e2", "source": "n-route", "target": "n-answer" },
+        { "id": "e3", "source": "n-answer", "target": "n-end" }
+      ]
+    },
+    "nodes": [
+      {
+        "node_id": "n-start",
+        "type": "StartNode",
+        "label": "Start",
+        "params": {}
+      },
+      {
+        "node_id": "n-route",
+        "type": "StaticRouterNode",
+        "label": "Route",
+        "params": {
+          "keywords": ["te001", "te002", "te003"],
+          "data_source": "participant_data",
+          "route_key": "next_interview"
+        }
+      },
+      {
+        "node_id": "n-answer",
+        "type": "LLMResponseWithPrompt",
+        "label": "Answer",
+        "params": {
+          "prompt": "You are an interviewer.",
+          "history_type": "global",
+          "user_max_token_limit": 8000
+        },
+        "llm": {
+          "provider_id": 12,
+          "provider_name": "Anthropic Prod",
+          "type": "anthropic",
+          "model_name": "claude-sonnet-4-6",
+          "max_token_limit": 8192
+        },
+        "indexed_collections": [
+          {
+            "id": 901,
+            "name": "Vaccine Coach Knowledge",
+            "is_index": true,
+            "embedding_provider_model_id": 4,
+            "files": [
+              { "id": 1101, "name": "intro.md" },
+              { "id": 1102, "name": "schedule.md" }
+            ]
+          }
+        ],
+        "custom_actions": [
+          {
+            "id": 51,
+            "name": "Session Completion",
+            "description": "Mark the interview as complete",
+            "server_url": "https://www.commcarehq.org/...",
+            "allowed_operations": ["session_complete"],
+            "api_schema": { "paths": ["/session_complete"] },
+            "auth_provider": null
+          }
+        ]
+      },
+      {
+        "node_id": "n-end",
+        "type": "EndNode",
+        "label": "End",
+        "params": {}
+      }
+    ]
+  },
+  "events": {
+    "static_triggers": [
+      {
+        "id": 71,
+        "type": "conversation_start",
+        "is_active": true,
+        "action": { "type": "log", "params": {} }
+      }
+    ],
+    "timeout_triggers": [
+      {
+        "id": 72,
+        "delay_seconds": 86400,
+        "total_num_triggers": 1,
+        "trigger_from_first_message": false,
+        "is_active": true,
+        "action": { "type": "send_message_to_bot", "params": { "message_to_bot": "Still there?" } }
+      }
+    ]
+  }
+}

@@ -451,6 +451,35 @@ describe('RestBackend session atoms', () => {
     expect(sess.messages[0].content).toBe('hi');
   });
 
+  // OCS PR #3634 (deployed 2026-06-15) added `state` to the session retrieval
+  // payload. Surfacing it lets the verifier read mid-conversation session
+  // memory (cohort_id, last_interview, etc.) — strictly read-only.
+  it('getSession passes through the `state` field when present (OCS #3634)', async () => {
+    mockAgent.get(BASE)
+      .intercept({ path: '/api/sessions/s2/', method: 'GET' })
+      .reply(200, {
+        id: 's2',
+        tags: [],
+        created_at: 'ts',
+        messages: [],
+        state: { cohort_id: '08TRS', next_interview: 'te002' },
+      });
+
+    const b = new RestBackend({ baseUrl: BASE, token: 't' });
+    const sess = await b.getSession({ session_id: 's2' });
+    expect(sess.state).toEqual({ cohort_id: '08TRS', next_interview: 'te002' });
+  });
+
+  it('getSession omits `state` cleanly when OCS does not return it', async () => {
+    mockAgent.get(BASE)
+      .intercept({ path: '/api/sessions/s3/', method: 'GET' })
+      .reply(200, { id: 's3', tags: [], created_at: 'ts', messages: [] });
+
+    const b = new RestBackend({ baseUrl: BASE, token: 't' });
+    const sess = await b.getSession({ session_id: 's3' });
+    expect(sess.state).toBeUndefined();
+  });
+
   it('addSessionTags posts to /tags/', async () => {
     mockAgent.get(BASE)
       .intercept({ path: '/api/sessions/s1/tags/', method: 'POST' })
@@ -501,5 +530,91 @@ describe('RestBackend session atoms', () => {
       platform: 'api',
       data: [{ experiment: 'e1', data: { name: 'Jane' } }],
     })).resolves.toBeUndefined();
+  });
+});
+
+// ── v2 chatbots inspect + me (OCS PR #3536 + #3648, schema served at /api/schema/) ──────────────
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { dirname, join } from 'node:path';
+
+const FIXTURE_DIR = join(dirname(fileURLToPath(import.meta.url)), 'fixtures');
+const INSPECT_FIXTURE = JSON.parse(
+  readFileSync(join(FIXTURE_DIR, 'chatbot-inspect.json'), 'utf-8'),
+);
+
+describe('RestBackend v2 atoms', () => {
+  it('inspectChatbot GETs /api/v2/chatbots/{id}/inspect/ and returns the payload verbatim', async () => {
+    mockAgent.get(BASE)
+      .intercept({
+        path: `/api/v2/chatbots/${INSPECT_FIXTURE.id}/inspect/`,
+        method: 'GET',
+        headers: { Authorization: 'Bearer tok' },
+      })
+      .reply(200, INSPECT_FIXTURE);
+
+    const b = new RestBackend({ baseUrl: BASE, token: 'tok' });
+    const out = await b.inspectChatbot({ public_id: INSPECT_FIXTURE.id });
+    expect(out.name).toBe(INSPECT_FIXTURE.name);
+    // The verifier needs these three nested fields specifically:
+    // (1) a router node with keywords
+    const router = out.pipeline?.nodes?.find((n) => n.type === 'StaticRouterNode');
+    expect(router?.params?.keywords).toEqual(['te001', 'te002', 'te003']);
+    // (2) a 24-hour timeout trigger
+    const timeout = out.events.timeout_triggers.find((t) => t.delay_seconds === 86400);
+    expect(timeout?.is_active).toBe(true);
+    // (3) a "Session Completion" custom action on the LLM node
+    const llm = out.pipeline?.nodes?.find((n) => n.type === 'LLMResponseWithPrompt');
+    const action = llm?.custom_actions?.find((a) => a.name === 'Session Completion');
+    expect(action).toBeDefined();
+  });
+
+  it('inspectChatbot forwards the `version` query param when supplied', async () => {
+    mockAgent.get(BASE)
+      .intercept({
+        path: `/api/v2/chatbots/${INSPECT_FIXTURE.id}/inspect/?version=default`,
+        method: 'GET',
+      })
+      .reply(200, INSPECT_FIXTURE);
+
+    const b = new RestBackend({ baseUrl: BASE, token: 'tok' });
+    const out = await b.inspectChatbot({ public_id: INSPECT_FIXTURE.id, version: 'default' });
+    expect(out.id).toBe(INSPECT_FIXTURE.id);
+  });
+
+  it('inspectChatbot throws HttpError on 404 (e.g. wrong public_id / not on team)', async () => {
+    mockAgent.get(BASE)
+      .intercept({ path: '/api/v2/chatbots/nope/inspect/', method: 'GET' })
+      .reply(404, 'Not Found');
+
+    const b = new RestBackend({ baseUrl: BASE, token: 'tok' });
+    await expect(b.inspectChatbot({ public_id: 'nope' })).rejects.toBeInstanceOf(HttpError);
+  });
+
+  it('getMe GETs /api/v2/me/ and returns user identity for the scoped key', async () => {
+    mockAgent.get(BASE)
+      .intercept({ path: '/api/v2/me/', method: 'GET' })
+      .reply(200, {
+        id: 42,
+        username: 'ace@dimagi-ai.com',
+        email: 'ace@dimagi-ai.com',
+        first_name: 'Ace',
+        last_name: 'AI',
+        team: { name: 'Vaccine Coach', slug: 'vaccine-coach' },
+      });
+
+    const b = new RestBackend({ baseUrl: BASE, token: 'tok' });
+    const me = await b.getMe();
+    expect(me.email).toBe('ace@dimagi-ai.com');
+    expect(me.team?.slug).toBe('vaccine-coach');
+  });
+
+  it('getMe throws HttpError on 401 (invalid or expired key)', async () => {
+    mockAgent.get(BASE)
+      .intercept({ path: '/api/v2/me/', method: 'GET' })
+      .reply(401, 'Unauthorized');
+
+    const b = new RestBackend({ baseUrl: BASE, token: 'bad' });
+    await expect(b.getMe()).rejects.toBeInstanceOf(HttpError);
   });
 });
