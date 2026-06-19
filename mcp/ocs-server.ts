@@ -36,7 +36,7 @@ import { RestBackend } from './ocs/backends/rest.js';
 import { PlaywrightBackend } from './ocs/backends/playwright.js';
 import { CompositeBackend } from './ocs/backends/composite.js';
 import { PlaywrightSession } from './ocs/auth/playwright-session.js';
-import { loadBaseUrl, loadRestToken } from './ocs/auth/rest-token.js';
+import { loadBaseUrl, loadDefaultTeamSlug, loadRestToken, loadTokensByTeam } from './ocs/auth/rest-token.js';
 import type { RequestFn } from './ocs/backends/pipeline-patch.js';
 import { createLoggingProxy, defaultFileLogger } from './ocs/logging.js';
 import { CsrfTokenMissingError } from './ocs/errors.js';
@@ -44,8 +44,16 @@ import { CsrfTokenMissingError } from './ocs/errors.js';
 const baseUrl = loadBaseUrl();
 const teamSlug = process.env.OCS_TEAM_SLUG ?? 'dimagi';
 
-// REST backend (immediate, stateless)
-const rest = new RestBackend({ baseUrl, token: loadRestToken() });
+// REST backend (immediate, stateless). `tokensByTeam` registers extra
+// `OCS_API_TOKEN_<SLUG>` env tokens so the observation atoms can target
+// teams other than the default by passing `team_slug`. Empty when no
+// secondary keys are configured — back-compat single-tenant behavior.
+const rest = new RestBackend({
+  baseUrl,
+  token: loadRestToken(),
+  defaultTeamSlug: loadDefaultTeamSlug(),
+  tokensByTeam: loadTokensByTeam(),
+});
 
 // Playwright backend — lazily initialized on first authoring call
 let playwright: PlaywrightBackend | undefined;
@@ -486,8 +494,15 @@ server.tool(
 
 server.tool(
   'ocs_list_chatbots',
-  'List chatbots on the OCS team. Each entry includes both `id` (UUID public_id, used by ocs_get_chatbot/ocs_send_test_message) AND `experiment_id` (integer, used by every authoring atom: ocs_set_chatbot_system_prompt, ocs_attach_knowledge, ocs_publish_chatbot_version, etc.). Use this to find an existing bot by name and reconfigure it idempotently — no need to clone if it already exists.',
-  { cursor: z.string().optional(), page_size: z.number().optional() },
+  'List chatbots on the OCS team. Each entry includes both `id` (UUID public_id, used by ocs_get_chatbot/ocs_send_test_message) AND `experiment_id` (integer, used by every authoring atom: ocs_set_chatbot_system_prompt, ocs_attach_knowledge, ocs_publish_chatbot_version, etc.). Use this to find an existing bot by name and reconfigure it idempotently — no need to clone if it already exists. Optional `team_slug` targets a non-default team — when supplied the server resolves the matching `OCS_API_TOKEN_<SLUG>` env token; `experiment_id` enrichment via Playwright is skipped for non-default teams (the Playwright session is bound to the default team only).',
+  {
+    cursor: z.string().optional(),
+    page_size: z.number().optional(),
+    team_slug: z
+      .string()
+      .optional()
+      .describe('Optional team slug to read from (e.g. "Vaccine_Coach"). Omit to use OCS_TEAM_SLUG.'),
+  },
   async (args) => result(await composite.listChatbots(args)),
 );
 
@@ -500,13 +515,17 @@ server.tool(
 
 server.tool(
   'ocs_inspect_chatbot',
-  'Return the chatbot\'s FULL denormalized config in one read-only call via OCS v2 `/api/v2/chatbots/{id}/inspect/?version=`: settings, channels, the pipeline graph + per-node inlined resources (LLM, source material, custom actions, indexed/media collections, assistant, voice), AND experiment-level `events.static_triggers` + `events.timeout_triggers` (the latter exposes the 24-hr inactivity heartbeat that node-resource walks miss). Use this for any structural verification — Connect Interviews `/ace:interview-opp-verify` reads it for router-node keywords, the 24-hr `TimeoutTrigger`, the "Session Completion" custom action, and attached collections. The OpenAPI schema at /api/schema/ (ChatbotInspect) is the field contract — grep there before paraphrasing fields. Read-only: works with a `read_only=true` `UserAPIKey`. `version` is optional: omit for the working/draft version, pass an int for a specific published version, or `"default"` for the live default-published version.',
+  'Return the chatbot\'s FULL denormalized config in one read-only call via OCS v2 `/api/v2/chatbots/{id}/inspect/?version=`: settings, channels, the pipeline graph + per-node inlined resources (LLM, source material, custom actions, indexed/media collections, assistant, voice), AND experiment-level `events.static_triggers` + `events.timeout_triggers` (the latter exposes the 24-hr inactivity heartbeat that node-resource walks miss). Use this for any structural verification — Connect Interviews `/ace:interview-opp-verify` reads it for router-node keywords, the 24-hr `TimeoutTrigger`, the "Session Completion" custom action, and attached collections. The OpenAPI schema at /api/schema/ (ChatbotInspect) is the field contract — grep there before paraphrasing fields. Read-only: works with a `read_only=true` `UserAPIKey`. `version` is optional: omit for the working/draft version, pass an int for a specific published version, or `"default"` for the live default-published version. Optional `team_slug` targets a non-default team — when supplied the server resolves the matching `OCS_API_TOKEN_<SLUG>` env token; missing-team errors include the exact env-var name to add.',
   {
     public_id: z.string().describe('UUID public_id of the chatbot (from ocs_list_chatbots → id)'),
     version: z
       .union([z.string(), z.number()])
       .optional()
       .describe('Optional: integer version number, or "default" for the live default. Omit for working/draft.'),
+    team_slug: z
+      .string()
+      .optional()
+      .describe('Optional team slug to inspect (e.g. "Vaccine_Coach"). Omit to use OCS_TEAM_SLUG.'),
   },
   async (args) => result(await composite.inspectChatbot(args)),
 );
@@ -616,9 +635,14 @@ server.tool(
 
 server.tool(
   'ocs_get_me',
-  'Cheap "is my OCS API key live + which team is it scoped to" probe via OCS v2 `/api/v2/me/` (PR #3648). Returns `{ username, email, email_verified?, team: { name, slug }, ... }` for the user the configured API key belongs to. Pair with /ace:doctor and call this BEFORE attempting `ocs_inspect_chatbot` on a new machine — if `team.slug` doesn\'t match the team that owns the chatbot you\'re trying to inspect, the inspect call will 403 / 404. Read-only.',
-  {},
-  async () => result(await composite.getMe()),
+  'Cheap "is my OCS API key live + which team is it scoped to" probe via OCS v2 `/api/v2/me/` (PR #3648). Returns `{ username, email, email_verified?, team: { name, slug }, ... }` for the user the configured API key belongs to. Pair with /ace:doctor and call this BEFORE attempting `ocs_inspect_chatbot` on a new machine — if `team.slug` doesn\'t match the team that owns the chatbot you\'re trying to inspect, the inspect call will 403 / 404. Read-only. Optional `team_slug` picks a non-default registered token.',
+  {
+    team_slug: z
+      .string()
+      .optional()
+      .describe('Optional team slug to probe (e.g. "Vaccine_Coach"). Omit to use OCS_TEAM_SLUG.'),
+  },
+  async (args) => result(await composite.getMe(args)),
 );
 
 // ── Startup ─────────────────────────────────────────────────────────

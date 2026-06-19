@@ -248,6 +248,8 @@ export interface OcsClient {
   listChatbots(args?: {
     cursor?: string;
     page_size?: number;
+    /** Optional team_slug — see `inspectChatbot` for the multi-team contract. */
+    team_slug?: string;
   }): Promise<{ chatbots: Experiment[]; next_cursor?: string }>;
 
   getChatbot(args: { public_id: string }): Promise<Experiment>;
@@ -261,10 +263,17 @@ export interface OcsClient {
    * the older pipeline-scrape path for any verifier that needs router-node
    * keywords, custom actions, attached collections, or the 24-hr inactivity
    * `TimeoutTrigger`.
+   *
+   * Multi-team contract: when `team_slug` is supplied AND it differs from the
+   * MCP server's configured default team (`OCS_TEAM_SLUG`), the request uses
+   * the token registered in `OCS_API_TOKEN_<SLUG>` instead of the default
+   * `OCS_API_TOKEN`. Omit `team_slug` to use the default. A `team_slug` that
+   * has no registered token throws with the exact env-var name to add.
    */
   inspectChatbot(args: {
     public_id: string;
     version?: string | number;
+    team_slug?: string;
   }): Promise<ChatbotInspect>;
 
   listSessions(args: {
@@ -334,7 +343,9 @@ export interface OcsClient {
    * Cheap auth-health probe: returns the authenticated user + team for the
    * API key used by this client. Useful for /ace:doctor and for confirming
    * the right team-scoped read-only `UserAPIKey` was minted before running
-   * the verifier. Backed by OCS v2 `/api/v2/me/` (PR #3648).
+   * the verifier. Backed by OCS v2 `/api/v2/me/` (PR #3648). Optional
+   * `team_slug` picks a non-default registered token (see `inspectChatbot`
+   * for the multi-team contract).
    */
-  getMe(): Promise<Me>;
+  getMe(args?: { team_slug?: string }): Promise<Me>;
 }

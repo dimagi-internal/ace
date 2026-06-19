@@ -618,3 +618,161 @@ describe('RestBackend v2 atoms', () => {
     await expect(b.getMe()).rejects.toBeInstanceOf(HttpError);
   });
 });
+
+// ── Multi-team token registry: tokensByTeam + resolveToken (#802 follow-up) ──────────────────────
+describe('RestBackend multi-team token resolution', () => {
+  const tokensByTeam = new Map<string, string>([
+    ['Vaccine_Coach', 'tok_vc'],
+    ['VACCINE_COACH', 'tok_vc'],   // env-name form alias
+    ['other-team', 'tok_other'],
+  ]);
+
+  it('resolveToken returns opts.token when team_slug is omitted', () => {
+    const b = new RestBackend({ baseUrl: BASE, token: 'tok_default', tokensByTeam });
+    expect(b.resolveToken()).toBe('tok_default');
+    expect(b.resolveToken(undefined)).toBe('tok_default');
+  });
+
+  it('resolveToken short-circuits to opts.token when slug matches defaultTeamSlug', () => {
+    const b = new RestBackend({
+      baseUrl: BASE,
+      token: 'tok_default',
+      defaultTeamSlug: 'connect-ace',
+      tokensByTeam,
+    });
+    expect(b.resolveToken('connect-ace')).toBe('tok_default');
+  });
+
+  it('resolveToken looks up a registered non-default team', () => {
+    const b = new RestBackend({
+      baseUrl: BASE,
+      token: 'tok_default',
+      defaultTeamSlug: 'connect-ace',
+      tokensByTeam,
+    });
+    expect(b.resolveToken('Vaccine_Coach')).toBe('tok_vc');
+    expect(b.resolveToken('VACCINE_COACH')).toBe('tok_vc'); // alias resolves identically
+    expect(b.resolveToken('other-team')).toBe('tok_other');
+  });
+
+  it('resolveToken throws a typed error naming the env var to add when slug is not registered', () => {
+    const b = new RestBackend({ baseUrl: BASE, token: 'tok_default', tokensByTeam });
+    // Slug-to-env-name mapping uppercases + replaces non-alphanumerics with `_`.
+    expect(() => b.resolveToken('missing-team')).toThrow(/OCS_API_TOKEN_MISSING_TEAM/);
+    expect(() => b.resolveToken('Foo_Bar')).toThrow(/OCS_API_TOKEN_FOO_BAR/);
+  });
+
+  it('inspectChatbot uses the resolved team token instead of opts.token when team_slug is provided', async () => {
+    mockAgent.get(BASE)
+      .intercept({
+        path: `/api/v2/chatbots/${INSPECT_FIXTURE.id}/inspect/`,
+        method: 'GET',
+        headers: { Authorization: 'Bearer tok_vc' },   // <-- NOT tok_default
+      })
+      .reply(200, INSPECT_FIXTURE);
+
+    const b = new RestBackend({
+      baseUrl: BASE,
+      token: 'tok_default',
+      defaultTeamSlug: 'connect-ace',
+      tokensByTeam,
+    });
+    const out = await b.inspectChatbot({ public_id: INSPECT_FIXTURE.id, team_slug: 'Vaccine_Coach' });
+    expect(out.id).toBe(INSPECT_FIXTURE.id);
+  });
+
+  it('getMe uses the resolved team token when team_slug is provided', async () => {
+    mockAgent.get(BASE)
+      .intercept({
+        path: '/api/v2/me/',
+        method: 'GET',
+        headers: { Authorization: 'Bearer tok_vc' },
+      })
+      .reply(200, {
+        id: 17,
+        username: 'jjackson@dimagi.com',
+        email: 'jjackson@dimagi.com',
+        team: { name: 'CCC LDVP Bots', slug: 'Vaccine_Coach' },
+      });
+
+    const b = new RestBackend({
+      baseUrl: BASE,
+      token: 'tok_default',
+      defaultTeamSlug: 'connect-ace',
+      tokensByTeam,
+    });
+    const me = await b.getMe({ team_slug: 'Vaccine_Coach' });
+    expect(me.team?.slug).toBe('Vaccine_Coach');
+  });
+
+  it('listChatbots uses the resolved team token when team_slug is provided', async () => {
+    mockAgent.get(BASE)
+      .intercept({
+        path: '/api/experiments/?page_size=50',
+        method: 'GET',
+        headers: { Authorization: 'Bearer tok_vc' },
+      })
+      .reply(200, { results: [], next: null });
+
+    const b = new RestBackend({
+      baseUrl: BASE,
+      token: 'tok_default',
+      defaultTeamSlug: 'connect-ace',
+      tokensByTeam,
+    });
+    const out = await b.listChatbots({ team_slug: 'Vaccine_Coach' });
+    expect(out.chatbots).toEqual([]);
+  });
+
+  it('inspectChatbot still uses opts.token when team_slug is omitted (back-compat)', async () => {
+    mockAgent.get(BASE)
+      .intercept({
+        path: `/api/v2/chatbots/${INSPECT_FIXTURE.id}/inspect/`,
+        method: 'GET',
+        headers: { Authorization: 'Bearer tok_default' },
+      })
+      .reply(200, INSPECT_FIXTURE);
+
+    const b = new RestBackend({
+      baseUrl: BASE,
+      token: 'tok_default',
+      defaultTeamSlug: 'connect-ace',
+      tokensByTeam,
+    });
+    const out = await b.inspectChatbot({ public_id: INSPECT_FIXTURE.id });
+    expect(out.id).toBe(INSPECT_FIXTURE.id);
+  });
+});
+
+// ── Env loader: loadTokensByTeam ────────────────────────────────────────────────────────────────
+import { loadTokensByTeam } from '../../../mcp/ocs/auth/rest-token.js';
+
+describe('loadTokensByTeam', () => {
+  it('builds the registry from OCS_API_TOKEN_<SLUG> env vars only (OCS_API_TOKEN excluded)', () => {
+    const reg = loadTokensByTeam({
+      OCS_API_TOKEN: 'should_be_excluded',
+      OCS_API_TOKEN_VACCINE_COACH: 'tok_vc',
+      OCS_API_TOKEN_FOO: 'tok_foo',
+      UNRELATED: 'noise',
+    } as never);
+    // Each entry registers both the uppercase env-name form AND a title-cased
+    // alias so the live OCS slug ("Vaccine_Coach") resolves identically to
+    // the env-name form ("VACCINE_COACH").
+    expect(reg.get('VACCINE_COACH')).toBe('tok_vc');
+    expect(reg.get('Vaccine_Coach')).toBe('tok_vc');
+    expect(reg.get('FOO')).toBe('tok_foo');
+    expect(reg.has('OCS_API_TOKEN')).toBe(false);     // default excluded
+    expect(reg.has('should_be_excluded')).toBe(false);
+  });
+
+  it('returns an empty Map when no OCS_API_TOKEN_<SLUG> vars are set (back-compat)', () => {
+    const reg = loadTokensByTeam({ OCS_API_TOKEN: 'only_default', UNRELATED: 'noise' } as never);
+    expect(reg.size).toBe(0);
+  });
+
+  it('skips empty values to avoid registering blank tokens', () => {
+    const reg = loadTokensByTeam({ OCS_API_TOKEN_EMPTY: '', OCS_API_TOKEN_FOO: 'tok_foo' } as never);
+    expect(reg.has('EMPTY')).toBe(false);
+    expect(reg.get('FOO')).toBe('tok_foo');
+  });
+});
