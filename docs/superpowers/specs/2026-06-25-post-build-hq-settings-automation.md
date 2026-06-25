@@ -28,15 +28,25 @@ This backlog item covers building the post-build mechanism for the second group.
 | `deliver-app-naming` | Nova app name | ✅ applied & readable (`get_app`) |
 | `no-section-module-language` | Nova field/label text | ✅ applied & readable (`get_form`) |
 | `live-photo-capture` (`acquire` appearance) | HQ form-designer Appearance Attribute | ❌ not applied — `get_field` has no appearance key; Nova emitted only hint text |
-| `grid-menu-display` | HQ App Settings → Advanced → Menu Display | ❌ not applied — `get_app`/`get_module` have no menu-display key |
-| `assessment-display-lifecycle` (form Display Conditions) | HQ form Display Condition | ⚠️ untested, but `update_form` has no display-condition field — expected to behave like the ❌ rows |
-| `end-of-form-previous` (`post_submit`) | Nova `update_form.post_submit` | ⚠️ untested, but IS in the Nova schema — expected ✅; confirm with a Learn build |
+| `grid-menu-display` | HQ App Settings → Advanced → Menu Display | ❌ not applied — `get_app`/`get_module` have no menu-display key (confirmed on both Deliver and Learn builds) |
+| `assessment-display-lifecycle` (form Display Conditions) | HQ form Display Condition | ❌ confirmed (Learn build `dMtqjjKy8mGKTlkZgREH`): trigger fired (app has pre+post) but the form object has no display-condition key. **See realizability caveat in scope item 3.** |
+| `end-of-form-previous` (`post_submit`) | Nova `update_form.post_submit` | ✅ confirmed applied & readable (Learn build): `post_submit:"previous"` on all 10 forms. Enforceable from the blueprint — **NOT part of this backlog**. |
 
 ## Scope — the three HQ-layer settings to automate
 
 1. **`grid-menu-display`** — set Modules Menu Display + Forms Menu Display to "Grid" (app-level Advanced setting).
 2. **`live-photo-capture`** — set Appearance Attribute = `acquire` on every image/photo question.
 3. **`assessment-display-lifecycle`** — set the Display Condition on the pre/post assessment forms (shown-once / gated-on-pre / hidden-after-pass).
+   **Realizability caveat (raised by the 2026-06-25 Learn build):** Learn apps are
+   case-less by design (`assessment-gate` forbids case blocks; completion is tracked
+   Connect-side). A CommCare form Display Condition needs in-app state to evaluate —
+   and a case-less Learn app has none. So "shown only once" / "hidden after pass"
+   may **not be expressible as a pure HQ Display Condition at all**, even post-build.
+   Before building this, decide the mechanism: (i) Connect-side module-completion
+   gating (how `assessment-gate` already works — likely the real answer), vs
+   (ii) introducing some readable in-app state. This sub-item may resolve to "won't
+   do as a Display Condition" rather than "automate it." Owner decision pending
+   (user previously preferred Display Conditions specifically; this caveat reopens that).
 
 ## Candidate mechanisms (to investigate)
 

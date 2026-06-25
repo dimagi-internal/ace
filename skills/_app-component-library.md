@@ -357,11 +357,15 @@ authored from the PDD per run):
 - **Enforced by:** `pdd-to-learn-app-eval § assessment_gating` (extends the
   existing dimension) — *provisional for the Display Conditions; not yet
   enforceable.*
-- **Status (2026-06-25):** form Display Conditions are not in Nova's
-  `update_form` schema, so — like `grid-menu-display` and `live-photo-capture` —
-  this is expected to require the post-build HQ step in
-  `docs/superpowers/specs/2026-06-25-post-build-hq-settings-automation.md`
-  (not yet confirmed by a Learn build).
+- **Status (2026-06-25 Learn build `dMtqjjKy8mGKTlkZgREH`):** trigger fired (the
+  app has both a pre- and a post-assessment) but the form object carries no
+  display-condition key — NOT applied, NOT representable in the Nova blueprint.
+  Deferred to the post-build HQ step in
+  `docs/superpowers/specs/2026-06-25-post-build-hq-settings-automation.md`.
+  **Caveat:** Learn apps are case-less, so a form Display Condition may have no
+  in-app state to evaluate — this may not be realizable as a Display Condition
+  at all; Connect-side module-completion (per `assessment-gate`) is the likely
+  real mechanism. Owner decision pending — see the spec.
 - **Pairs with:** [`assessment-gate`](#assessment-gate) — `assessment-gate`
   builds the real pre/post test, scoring, and Connect wiring; THIS component
   governs the **form Display Conditions** that decide *when each assessment form
