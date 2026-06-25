@@ -211,6 +211,15 @@ Generate the Learn (training) app from the PDD using the Nova plugin
      - `localization-layer` (Learn variant) — trigger: PDD names a
        working language other than English. **Hard-fail** dimension:
        English-only when the PDD names a working language fails the gate.
+     - `learn-app-naming` — always. App name must contain "Learn app".
+     - `end-of-form-previous` — always, every form. End of Form Navigation
+       must be "Previous Screen".
+     - `assessment-display-lifecycle` — when the app has BOTH a pre- and a
+       post-assessment form. Form Display Conditions: pre shown once,
+       post gated on pre, post hidden after the passing score. Pairs with
+       `assessment-gate`.
+     - `grid-menu-display` — always (Learn + Deliver). Modules and Forms
+       Menu Display set to "Grid".
 
      Do NOT inline-paraphrase these — reference the library so the build
      and `pdd-to-learn-app-eval` stay symmetric. Skip a component whose
