@@ -355,8 +355,13 @@ authored from the PDD per run):
 - **Parameters:** `<THRESHOLD>` (passing percentage, e.g. `80` — the same value
   wired in [`assessment-gate`](#assessment-gate)).
 - **Enforced by:** `pdd-to-learn-app-eval § assessment_gating` (extends the
-  existing dimension) — a pre/post pair lacking the three Display Conditions
-  below is a hard-fail.
+  existing dimension) — *provisional for the Display Conditions; not yet
+  enforceable.*
+- **Status (2026-06-25):** form Display Conditions are not in Nova's
+  `update_form` schema, so — like `grid-menu-display` and `live-photo-capture` —
+  this is expected to require the post-build HQ step in
+  `docs/superpowers/specs/2026-06-25-post-build-hq-settings-automation.md`
+  (not yet confirmed by a Learn build).
 - **Pairs with:** [`assessment-gate`](#assessment-gate) — `assessment-gate`
   builds the real pre/post test, scoring, and Connect wiring; THIS component
   governs the **form Display Conditions** that decide *when each assessment form
@@ -384,10 +389,15 @@ authored from the PDD per run):
 
 - **App:** Learn + Deliver
 - **Trigger:** always (every app).
-- **Enforced by:** `pdd-to-{learn,deliver}-app-eval § menu_display` (NEW) — an
-  app left on list display is a hard-fail.
+- **Enforced by:** `pdd-to-{learn,deliver}-app-eval § menu_display` (NEW) —
+  *provisional, not yet enforceable.*
 - **HQ surface:** App Settings > Advanced Settings > set "Modules Menu Display"
   AND "Forms Menu Display" to "Grid", then save & publish.
+- **Status (2026-06-25 test):** NOT applied by Nova — `get_app`/`get_module`
+  have no menu-display field; not representable in the Nova blueprint. The brief
+  instruction is best-effort only. Application + enforcement are deferred to the
+  post-build HQ step in
+  `docs/superpowers/specs/2026-06-25-post-build-hq-settings-automation.md`.
 
 **Brief paragraph (verbatim):**
 
@@ -413,11 +423,15 @@ authored from the PDD per run):
 
 - **App:** Deliver
 - **Trigger:** any image / photo capture question.
-- **Enforced by:** `pdd-to-deliver-app-eval § Capture fitness` (extends) — a
-  photo question that permits gallery-browse (no `acquire` appearance) is a
-  hard-fail.
+- **Enforced by:** `pdd-to-deliver-app-eval § Capture fitness` (extends) —
+  *provisional for the appearance attribute; not yet enforceable.*
 - **HQ surface:** the image question's Advanced options > Appearance Attribute =
   `acquire`.
+- **Status (2026-06-25 test):** NOT applied by Nova — the image-field schema has
+  no appearance key (`get_field` exposes none); Nova emitted only an advisory
+  `hint`, which does not stop the gallery-browse picker. Application + enforcement
+  are deferred to the post-build HQ step in
+  `docs/superpowers/specs/2026-06-25-post-build-hq-settings-automation.md`.
 
 **Brief paragraph (verbatim):**
 
