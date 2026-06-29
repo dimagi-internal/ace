@@ -1,12 +1,12 @@
 {
   "name": "ace",
-  "version": "0.13.583",
+  "version": "0.13.584",
   "description": "AI Connect Engine — orchestrates the ACE lifecycle from idea through app building, Connect setup, LLO management, and closeout",
   "author": {
     "name": "Jonathan Jackson",
     "email": "jjackson@dimagi.com"
   },
-  "repository": "https://github.com/jjackson/ace",
+  "repository": "https://github.com/dimagi-internal/ace",
   "license": "MIT",
   "keywords": [
     "connect",

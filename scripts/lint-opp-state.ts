@@ -256,7 +256,7 @@ async function main() {
   for (const f of findings) {
     console.log(`WARN state-yaml-lint: ${f.phase}.${f.entry_id} — ${f.reason}`);
     console.log(`  detail: ${f.detail}`);
-    console.log(`  fix: move to a GitHub issue (jjackson/ace) or CHANGELOG entry; remove from this opp's run_state.yaml`);
+    console.log(`  fix: move to a GitHub issue on the ACE repo or CHANGELOG entry; remove from this opp's run_state.yaml`);
   }
   console.log(`\nFound ${findings.length} plugin-wide entr${findings.length === 1 ? 'y' : 'ies'} in per-opp run_state.yaml. See agents/ace-orchestrator.md § Scope boundaries.`);
   process.exit(1);

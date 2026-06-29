@@ -12,7 +12,7 @@ Before `/ace:setup` will succeed, you need:
 - **1Password CLI** (`op`). Mac: `brew install 1password-cli`. Other platforms: https://developer.1password.com/docs/cli/get-started/.
   - On Mac, also enable 1Password.app → Settings → Developer → "Connect with 1Password CLI" for biometric unlock — that's the smoothest auth path. Alternative: `op signin --account dimagi.1password.com` interactively when `/ace:setup` prompts.
 - **1Password account** at `dimagi.1password.com`, with **read access to the `AI-Agents` vault**. Ask Jon (or whoever owns the vault) to grant access — without it, `op inject` will fail with cryptic permission errors. The full set of items ACE reads from `AI-Agents`: `ACE - Google Service Account` (Document), `ACE - Open Chat Studio`, `ACE - CommCareHQ`, `ACE - Connect Labs`, `Content Generator API`, `connect-test-user`, plus two UUID-referenced API-key items (linked from `.env.tpl`).
-- **GitHub access to `jjackson/ace`** (currently public; no extra step needed). `gh auth login` is not required unless you plan to push.
+- **GitHub access to `dimagi-internal/ace`** (currently public; no extra step needed). `gh auth login` is not required unless you plan to push.
 - **Network reachability** to `openchatstudio.com`, `connect.dimagi.com`, `commcarehq.org`, `labs.connect.dimagi.com`, `googleapis.com`. Corp VPNs and proxies sometimes block these — `/ace:doctor` reports an explicit status per host.
 - **Playwright Chromium** browser binary. Auto-installed on first use; if you hit "browser doesn't open" errors, run `npx playwright install chromium`.
 
@@ -21,7 +21,7 @@ Before `/ace:setup` will succeed, you need:
 ## Quick Start
 
 ```
-/plugin marketplace add jjackson/ace     # Add the ACE marketplace
+/plugin marketplace add dimagi-internal/ace     # Add the ACE marketplace
 /plugin install ace@ace                  # Install the plugin
 /ace:setup                               # Install deps + verify the service-account key
 /ace:doctor                              # Sanity-check everything
@@ -43,7 +43,7 @@ The commands above are only the happy path once everything is configured. For a
 fresh install (or a new machine), run through this checklist top-to-bottom.
 Stop at any step that fails — the next step won't work.
 
-1. **Install the plugin** — `/plugin marketplace add jjackson/ace` then
+1. **Install the plugin** — `/plugin marketplace add dimagi-internal/ace` then
    `/plugin install ace@ace`.
 
 2. **Run `/ace:setup`** — does almost everything for you in one shot:
@@ -228,7 +228,7 @@ delegates app-build to `/nova:autobuild`. See
 
 ## Related projects
 
-- **[ace-web](https://github.com/jjackson/ace-web)** — the browser-based chat + transcript harness for ACE. Django + Channels + React on GCP Cloud Run, built against the design spec above. Implementation plans (1A, 1B, 1C, 1D) live inside that repo at `docs/plans/`. Work on ace-web implementation happens directly in the ace-web checkout, not from this repo.
+- **[ace-web](https://github.com/dimagi-internal/ace-web)** — the browser-based chat + transcript harness for ACE. Django + Channels + React on GCP Cloud Run, built against the design spec above. Implementation plans (1A, 1B, 1C, 1D) live inside that repo at `docs/plans/`. Work on ace-web implementation happens directly in the ace-web checkout, not from this repo.
 
 ## Planning Spreadsheet
 
