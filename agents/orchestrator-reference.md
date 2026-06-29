@@ -189,7 +189,7 @@ this opp's lifecycle and not let plugin-wide concerns leak in.
 
 **Out of scope** (do NOT write to `run_state.yaml` — they belong elsewhere):
 - Bug reports about MCP atoms, skills, or tooling (write to GitHub
-  issues on dimagi-internal/ace; mention them in the resolving PR's
+  issues on the ACE repo's `origin`; mention them in the resolving PR's
   CHANGELOG entry).
 - Upstream service bugs (Nova, Connect, OCS) — file as issues on the
   upstream repo (e.g. voidcraft-labs/nova-plugin#7), reference from
