@@ -36,7 +36,7 @@ fi
 if [ ! -d "$MARKETPLACE/.git" ]; then
   echo "STATUS: ERROR marketplace_missing"
   echo "  $MARKETPLACE is not a git checkout."
-  echo "  Re-add the marketplace: /plugin marketplace add jjackson/ace"
+  echo "  Re-add the marketplace: /plugin marketplace add dimagi-internal/ace"
   exit 0
 fi
 

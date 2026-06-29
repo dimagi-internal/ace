@@ -477,7 +477,7 @@ to the operator:
 - `/ace:partnership-video --produce <other-angle-id> <slug>` to produce a
   second angle variant from the same research.
 - File any defects found during review as `gh issue create` against
-  `jjackson/ace`.
+  `dimagi-internal/ace`.
 ```
 
 ---
@@ -529,7 +529,7 @@ All `update_yaml_file` calls use `merge: 'deep'` for nested patches.
 ### File issues mid-run
 
 The moment a defect is confirmed (root cause + how ACE should change),
-file it as `gh issue create` against `jjackson/ace` — one issue per
+file it as `gh issue create` against `dimagi-internal/ace` — one issue per
 finding — and keep going. Report every issue filed in the run summary.
 Don't defer to run-end (you'll lose the precise repro).
 

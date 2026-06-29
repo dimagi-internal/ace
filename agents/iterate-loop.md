@@ -150,7 +150,7 @@ The subagent:
    `bash scripts/version-bump.sh` → commit → push → `gh pr create` →
    `gh pr merge <pr> --auto --merge` → **poll until terminal state**
    (MERGED / DIRTY / CHECK-FAILED).
-4. `gh issue create` against `jjackson/ace` (one per distinct finding — the
+4. `gh issue create` against `dimagi-internal/ace` (one per distinct finding — the
    "file ACE issues mid-run" rule).
 5. Returns: PR URL, final state, merged VERSION (if MERGED), issue URL.
 

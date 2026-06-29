@@ -2,17 +2,17 @@
   "name": "ace",
   "description": "AI Connect Engine — orchestrates the ACE lifecycle for Connect opportunities",
   "owner": {
-    "name": "Jonathan Jackson",
-    "url": "https://github.com/jjackson"
+    "name": "Dimagi",
+    "url": "https://github.com/dimagi-internal"
   },
   "metadata": {
-    "version": "0.13.583"
+    "version": "0.13.584"
   },
   "plugins": [
     {
       "name": "ace",
       "source": "./",
-      "version": "0.13.583",
+      "version": "0.13.584",
       "description": "AI Connect Engine — orchestrates the ACE lifecycle from idea through app building, Connect setup, LLO management, and closeout"
     }
   ]

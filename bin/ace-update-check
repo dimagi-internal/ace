@@ -22,7 +22,7 @@ MARKER_FILE="$STATE_DIR/just-upgraded-from"
 SNOOZE_FILE="$STATE_DIR/update-snoozed"
 DISABLE_FILE="$STATE_DIR/update-check-disabled"
 VERSION_FILE="$ACE_DIR/VERSION"
-REMOTE_URL="${ACE_REMOTE_URL:-https://raw.githubusercontent.com/jjackson/ace/main/VERSION}"
+REMOTE_URL="${ACE_REMOTE_URL:-https://raw.githubusercontent.com/dimagi-internal/ace/main/VERSION}"
 
 # ─── Force flag (busts cache + snooze for standalone use) ─────
 if [ "${1:-}" = "--force" ]; then
