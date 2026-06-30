@@ -990,8 +990,22 @@ if [ -n "$ENV_FILE" ]; then
     # auth/session/account error is skipped silently (CI / fresh machine), only
     # a genuine ref-resolution failure FAILs.
     if command -v op >/dev/null 2>&1; then
-      RENDER_ERR="$(op inject -i "$ROOT/.env.tpl" -o /dev/null --account dimagi.1password.com 2>&1)"
-      if [ $? -eq 0 ]; then
+      # `op inject` scans the whole file, comments included, so a bare op-scheme
+      # token in a `#` line (e.g. an author-contract note) would FAIL this probe
+      # for a reason that has nothing to do with a real unresolvable field.
+      # Neutralize comment-line op-scheme tokens first so the probe tests only
+      # REAL refs on KEY= lines — matching what bin/ace-setup now injects.
+      RENDER_TPL="$(mktemp)"
+      RENDER_OUT="$(mktemp)"
+      awk '/^[[:space:]]*#/ { gsub(/op:\/\//, "op-SCHEME-//") } { print }' "$ROOT/.env.tpl" > "$RENDER_TPL"
+      # Inject to a throwaway temp file (NOT /dev/null — some `op` builds refuse
+      # to write a device file) with --force (skip the overwrite prompt, which
+      # aborts non-interactively). We only care whether every ref RESOLVES; the
+      # rendered secrets are discarded immediately.
+      RENDER_ERR="$(op inject -i "$RENDER_TPL" -o "$RENDER_OUT" --force --account dimagi.1password.com 2>&1)"
+      RENDER_RC=$?
+      rm -f "$RENDER_TPL" "$RENDER_OUT"
+      if [ "$RENDER_RC" -eq 0 ]; then
         pass "env_tpl_render: .env.tpl renders cleanly (every op:// ref resolves)"
       elif printf '%s' "$RENDER_ERR" | grep -qiE 'sign[- ]?in|session|authoriz|not currently|account .* (not found|isn.t)|no account|could not find account'; then
         : # op not signed in / account not configured on this machine — informational skip, not a config defect
