@@ -9,8 +9,10 @@
 # The MCP server loads from $CLAUDE_PLUGIN_DATA/.env (plugin) or ./.env (dev).
 # All secret references resolve from the AI-Agents vault in Dimagi's 1Password.
 #
-# ⚠️ AUTHOR CONTRACT (jjackson/ace#753): adding an op:// ref here REQUIRES the
-# 1Password field to ALREADY EXIST — `op read '<the ref>'` must succeed first.
+# ⚠️ AUTHOR CONTRACT (jjackson/ace#753): adding a 1Password secret reference here
+# REQUIRES the field to ALREADY EXIST — `op read '<the ref>'` must succeed first.
+# (Do NOT write a bare op-scheme reference in a comment: `op inject` scans the
+# whole file and aborts on it, even inside a `#` line.)
 # `op inject` is ALL-OR-NOTHING: ONE unresolvable ref makes the entire render
 # fail and writes an EMPTY .env for every consumer (a silent breakage that
 # burned a week of headless runs). If the field isn't ready yet, land the line

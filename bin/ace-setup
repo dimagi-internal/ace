@@ -146,6 +146,20 @@ if [ "$AUTH_OK" = "0" ]; then
     OP_ACCOUNT_FLAG="--account dimagi.1password.com"
   fi
 fi
+if [ "$AUTH_OK" = "0" ]; then
+  # 1Password's desktop-app CLI integration (biometric unlock) authenticates
+  # every `op` invocation via Touch ID and issues NO persistent session token,
+  # so `op whoami` reports "account is not signed in" even though `op read` /
+  # `op document get` / `op inject` all succeed. Don't trust whoami as the sole
+  # gate — fall back to a real READ probe (every setup step downstream is a
+  # read anyway). If a vault listing succeeds, auth is live. (Without this,
+  # biometric-integration users were hard-blocked by a false negative.)
+  if op vault list --account dimagi.1password.com >/dev/null 2>&1; then
+    AUTH_OK=1
+    AUTH_MODE="dimagi.1password.com (desktop/biometric integration)"
+    OP_ACCOUNT_FLAG="--account dimagi.1password.com"
+  fi
+fi
 
 if [ "$AUTH_OK" = "0" ]; then
   # On macOS, GUI apps inherit env from launchd — not from ~/.zshrc — so
@@ -353,8 +367,18 @@ $EXTRA_KEYS
 EOF_KEYS
     fi
 
-    INJECT_OUT="$(op inject -i "$ENV_TPL" -o "$ENV_OUT" --force $OP_ACCOUNT_FLAG 2>&1)"
+    # `op inject` scans the ENTIRE file for op-scheme tokens — it does NOT skip
+    # shell comments — so a bare reference inside a `#` line (e.g. an
+    # author-contract note) aborts the whole render and writes an empty .env.
+    # The lint above already skips comments; mirror that here by neutralizing
+    # comment-line op-scheme tokens before injecting, so a comment can never
+    # break a real render. Only `#`-prefixed lines are touched; real refs on
+    # KEY= lines are passed through verbatim.
+    INJECT_TPL="$(mktemp)"
+    awk '/^[[:space:]]*#/ { gsub(/op:\/\//, "op-SCHEME-//") } { print }' "$ENV_TPL" > "$INJECT_TPL"
+    INJECT_OUT="$(op inject -i "$INJECT_TPL" -o "$ENV_OUT" --force $OP_ACCOUNT_FLAG 2>&1)"
     INJECT_RC=$?
+    rm -f "$INJECT_TPL"
     if [ "$INJECT_RC" -ne 0 ]; then
       fail "env: op inject failed (exit $INJECT_RC)" "see error below — usually means your account/SA is missing read on one of the items in vault $OP_VAULT"
       printf '%s\n' "$INJECT_OUT" | sed 's/^/    /'
