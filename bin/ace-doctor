@@ -939,8 +939,11 @@ if [ -n "$ENV_FILE" ]; then
     fi
   fi
 
-  if [ -n "$GMAIL_ACCT" ]; then
-    pass "gmail_config: ACE_GMAIL_ACCOUNT=$GMAIL_ACCT"
+  GMAIL_CLIENT="$(get_env ACE_GMAIL_CLIENT)"
+  if [ -n "$GMAIL_ACCT" ] && [ -n "$GMAIL_CLIENT" ]; then
+    pass "gmail_config: ACE_GMAIL_ACCOUNT=$GMAIL_ACCT client=$GMAIL_CLIENT"
+  elif [ -n "$GMAIL_ACCT" ]; then
+    warn "gmail_config: ACE_GMAIL_CLIENT not set (ACE_GMAIL_ACCOUNT=$GMAIL_ACCT present)" "GOG needs BOTH account + client — re-inject .env via 1Password (/ace:setup --force-env)"
   else
     warn "gmail_config: ACE_GMAIL_ACCOUNT not set" "re-inject .env via 1Password"
   fi
@@ -1728,6 +1731,63 @@ if [ -n "$NOVA_KEY_VAL" ]; then
   esac
 else
   warn "nova_auth: skipped — NOVA_API_KEY not set" "see nova_env warning above; mint at https://commcare.app/settings"
+fi
+
+# 7a2. gog_auth — GOG CLI (Google services) for the ACE Gmail identity.
+# email-communicator (Phase 8 LLO invites + training emails) and any Google
+# user-identity ops run through `gog` authenticated as ACE_GMAIL_ACCOUNT. We
+# want the FULL set of services ACE can practically use authorized on the one
+# stored refresh token: gmail, calendar, drive, docs, slides, sheets, forms.
+#
+# GOG auth is PER-MACHINE (a stored OAuth refresh token, like the OCS/Connect
+# sessions), so a doctor-green machine can still have NO working email/Google
+# access — exactly the gap this probe closes. Scopes can't be read back:
+# `gog auth status` only reports credentials_exists, and `gog auth services` is
+# a STATIC capability map, not the granted scopes. The ground truth is a live
+# call per service — a 200 proves the scope is present, a 403
+# insufficientPermissions proves it's missing. We live-probe the services with a
+# cheap list endpoint (gmail, calendar, drive); docs/slides/sheets/forms ride
+# the same broad `--services` login (they share the drive scope) and have no
+# standalone list call, so they're covered by the login but not individually
+# probed here.
+GOG_SERVICES="gmail,calendar,drive,docs,slides,sheets,forms"
+GMAIL_CLIENT_VAL="$(get_env ACE_GMAIL_CLIENT)"
+GOG_LOGIN_HINT="brew install steipete/tap/gogcli && gog login ${GMAIL_ACCT:-<ACE_GMAIL_ACCOUNT>} --client ${GMAIL_CLIENT_VAL:-<ACE_GMAIL_CLIENT>} --services $GOG_SERVICES --force-consent"
+if ! command -v gog >/dev/null 2>&1; then
+  warn "gog_auth: GOG CLI not installed — email-communicator (Phase 8 invites, training emails) + Google user-identity ops unavailable" "$GOG_LOGIN_HINT"
+elif [ -z "$GMAIL_ACCT" ] || [ -z "$GMAIL_CLIENT_VAL" ]; then
+  warn "gog_auth: ACE_GMAIL_ACCOUNT or ACE_GMAIL_CLIENT not set — cannot select GOG credentials" "see gmail_config above; re-inject .env, then: $GOG_LOGIN_HINT"
+else
+  GOG_TO_BIN="$(command -v timeout 2>/dev/null || command -v gtimeout 2>/dev/null)"
+  _gog() { if [ -n "$GOG_TO_BIN" ]; then "$GOG_TO_BIN" 25 gog "$@" 2>&1; else gog "$@" 2>&1; fi; }
+  if ! _gog auth status --account "$GMAIL_ACCT" --client "$GMAIL_CLIENT_VAL" --json | grep -q '"credentials_exists": true'; then
+    warn "gog_auth: no stored GOG credentials for $GMAIL_ACCT (client=$GMAIL_CLIENT_VAL) — never authorized on this machine; email + Google ops will fail" "run once (interactive browser OAuth): $GOG_LOGIN_HINT"
+  else
+    # Live scope probes. A 403 insufficientPermissions means the scope was not
+    # granted at login time (e.g. a legacy `--services gmail`-only login).
+    GOG_MISSING=""; GOG_OK=""
+    _gog_probe() { # $1=label  $2..=gog args
+      _gl="$1"; shift
+      _go="$(_gog "$@")"
+      if printf '%s' "$_go" | grep -qiE 'insufficient(Permissions| authentication scopes)|ACCESS_TOKEN_SCOPE_INSUFFICIENT|invalid_grant|token (expired|revoked)|\bunauthorized\b'; then
+        GOG_MISSING="$GOG_MISSING $_gl"
+      else
+        GOG_OK="$GOG_OK $_gl"
+      fi
+    }
+    _gog_probe gmail    gmail labels list --account "$GMAIL_ACCT" --client "$GMAIL_CLIENT_VAL" --json
+    _gog_probe calendar calendar list      --account "$GMAIL_ACCT" --client "$GMAIL_CLIENT_VAL" --json
+    _gog_probe drive    drive ls           --account "$GMAIL_ACCT" --client "$GMAIL_CLIENT_VAL" --json
+    GOG_OK="$(printf '%s' "$GOG_OK" | sed 's/^ //')"
+    GOG_MISSING="$(printf '%s' "$GOG_MISSING" | sed 's/^ //')"
+    if [ -z "$GOG_MISSING" ]; then
+      pass "gog_auth: $GMAIL_ACCT (client=$GMAIL_CLIENT_VAL) — live scopes OK for gmail+calendar+drive; docs/slides/sheets/forms covered by the same --services login"
+    elif printf '%s' "$GOG_MISSING" | grep -qw gmail; then
+      warn "gog_auth: GOG token for $GMAIL_ACCT cannot call Gmail (scope missing/expired) — email send/read will fail" "re-authorize the full service set: $GOG_LOGIN_HINT"
+    else
+      warn "gog_auth: GOG token for $GMAIL_ACCT is too narrow — missing scopes: $GOG_MISSING (live OK: $GOG_OK). Drive/Calendar/Docs/Slides/Sheets/Forms ops will 403" "re-authorize for full access: $GOG_LOGIN_HINT"
+    fi
+  fi
 fi
 
 # 7b. nova_shell_env — verify NOVA_API_KEY is in the Claude Code parent

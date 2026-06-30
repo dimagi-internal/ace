@@ -597,6 +597,35 @@ else
   fi
 fi
 
+# ---- GOG CLI (Google services for the ACE Gmail identity)
+# email-communicator (Phase 8 LLO invites, training emails) and any Google
+# user-identity ops go through the `gog` CLI authenticated as ACE_GMAIL_ACCOUNT.
+# Authorize the FULL practical service set in ONE consent so a single stored
+# refresh token covers everything ACE might need. GOG auth is PER-MACHINE and
+# the login is an interactive browser OAuth flow, so we install the binary here
+# but PRINT the exact login command rather than block setup on it (same model
+# as /ace:ocs-login and /ace:connect-login). /ace:doctor's gog_auth probe then
+# live-checks scope coverage.
+GOG_SERVICES="gmail,calendar,drive,docs,slides,sheets,forms"
+GMAIL_ACCT_VAL="$(grep -E '^ACE_GMAIL_ACCOUNT=' "$ENV_OUT" 2>/dev/null | head -1 | cut -d= -f2- | sed -e 's/^[[:space:]"'\'']*//' -e 's/[[:space:]"'\'']*$//')"
+GMAIL_CLIENT_VAL="$(grep -E '^ACE_GMAIL_CLIENT=' "$ENV_OUT" 2>/dev/null | head -1 | cut -d= -f2- | sed -e 's/^[[:space:]"'\'']*//' -e 's/[[:space:]"'\'']*$//')"
+if ! command -v gog >/dev/null 2>&1 && command -v brew >/dev/null 2>&1; then
+  echo "INFO gog: installing GOG CLI (brew install steipete/tap/gogcli)..."
+  brew install steipete/tap/gogcli 2>&1 | tail -3
+fi
+if ! command -v gog >/dev/null 2>&1; then
+  warn "gog: GOG CLI not installed (brew unavailable or install failed)" "install manually: brew install steipete/tap/gogcli — then authorize: gog login ${GMAIL_ACCT_VAL:-<ACE_GMAIL_ACCOUNT>} --client ${GMAIL_CLIENT_VAL:-<ACE_GMAIL_CLIENT>} --services $GOG_SERVICES --force-consent"
+elif [ -z "$GMAIL_ACCT_VAL" ] || [ -z "$GMAIL_CLIENT_VAL" ]; then
+  warn "gog: ACE_GMAIL_ACCOUNT / ACE_GMAIL_CLIENT not found in $ENV_OUT" "re-run /ace:setup --force-env to inject them, then authorize gog"
+else
+  GOG_LOGIN_CMD="gog login $GMAIL_ACCT_VAL --client $GMAIL_CLIENT_VAL --services $GOG_SERVICES --force-consent"
+  if gog auth status --account "$GMAIL_ACCT_VAL" --client "$GMAIL_CLIENT_VAL" --json 2>/dev/null | grep -q '"credentials_exists": true'; then
+    pass "gog: CLI installed + credentials present for $GMAIL_ACCT_VAL (client=$GMAIL_CLIENT_VAL). If Google ops 403, re-authorize the full scope set: $GOG_LOGIN_CMD"
+  else
+    warn "gog: CLI installed but NOT authorized for $GMAIL_ACCT_VAL — email + Google ops will fail" "run once (interactive browser OAuth): $GOG_LOGIN_CMD"
+  fi
+fi
+
 # ---- Auto-update hook (opt-in)
 if [ "$AUTO_UPDATE" = "1" ]; then
   HOOK_SCRIPT="$ROOT/bin/ace-update-check"
