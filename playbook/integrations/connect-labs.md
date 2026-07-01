@@ -173,16 +173,24 @@ retry tax.
   When you need multiple phases, define multiple cohorts; one cohort
   has one progression value at a time.
 
-- **`field_distributions` entries need an explicit `distribution`
+- **`field_distributions` is a MAPPING keyed by field path, NOT a list.**
+  Upstream types it as `dict[str, FieldDistribution]`
+  (`commcare_connect/labs/synthetic/generator/fixtures/manifest.py §
+  BeneficiaryCohort`): the field path is the KEY, the distribution object
+  is the VALUE. A list shape is rejected by the live Pydantic with
+  `Input should be a valid dictionary` (jjackson/ace#806) — a full labs
+  round-trip wasted. `synthetic-narrative-plan-qa` check 4 fails a list
+  shape ACE-side.
+  Wrong (list): `field_distributions: [{ field: "shop_count", distribution: "uniform", low: 5, high: 12 }]`.
+  Right (mapping): `field_distributions: { shop_count: { distribution: "uniform", low: 5, high: 12 } }`.
+- **Each `field_distributions` value needs an explicit `distribution`
   discriminator.** Pydantic's tagged-union dispatch is keyed on a
-  `distribution: <name>` field on each entry. Dropping it produces
+  `distribution: <name>` field on each value. Dropping it produces
   the cryptic `unable to discriminate` error. The union is exactly
-  three variants (source: `commcare_connect/labs/synthetic/generator/manifest.py`):
+  three variants (source: `commcare_connect/labs/synthetic/generator/fixtures/manifest.py`):
   `normal` (`mean` + `stddev`), `uniform` (`low` + `high`), and
   `binary` (`rate`). `categorical` / `uniform_int` are NOT valid and
   are rejected at the labs boundary.
-  Wrong: `{ field: "shop_count", min: 5, max: 12 }`.
-  Right: `{ field: "shop_count", distribution: "uniform", low: 5, high: 12 }`.
 - **`binary` distribution: the param is `rate` (0-1), NOT `p_yes`.**
   `{ field: "slept_under_net", distribution: "binary", rate: 0.7 }` draws
   1 at 70%. To vary the rate per week — the week-scoped-anomaly

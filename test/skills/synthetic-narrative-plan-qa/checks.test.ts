@@ -368,6 +368,25 @@ describe('checkBeneficiaryCohortsWellFormed (jjackson/ace#713)', () => {
     expect(r.detail).toMatch(/field_distributions/i);
   });
 
+  test('FAILS a list-shape field_distributions (jjackson/ace#806)', () => {
+    // Upstream types field_distributions as `dict[str, FieldDistribution]`; the
+    // live labs Pydantic rejects a list with `Input should be a valid dictionary`.
+    // A list shape must fail ACE-side instead of burning a labs round-trip.
+    const m = VALID_MANIFEST.replace(
+      /beneficiary_cohorts:[\s\S]*?size: 50/m,
+      `beneficiary_cohorts:
+  - id: "primary"
+    size: 50
+    field_distributions:
+      - field: "slept_under_net"
+        distribution: "binary"
+        rate: 0.6`,
+    );
+    const r = checkBeneficiaryCohortsWellFormed(m);
+    expect(r.pass).toBe(false);
+    expect(r.detail).toMatch(/mapping/i);
+  });
+
   test('fails when beneficiary_cohorts is empty', () => {
     const m = VALID_MANIFEST.replace(
       /beneficiary_cohorts:[\s\S]*?size: 50/m,
