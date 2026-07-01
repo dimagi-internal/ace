@@ -772,6 +772,47 @@ if [ -n "$ENV_FILE" ]; then
     warn "training_deck_template: ACE_TRAINING_DECK_TEMPLATE_ID not set" "run 'npx tsx scripts/bootstrap-training-deck-template.ts' to create the template, then add the ID to 1Password and re-inject .env (training-deck-build skips silently without it)"
   fi
 
+  # Template SA-accessibility probes (jjackson/ace#804, #805).
+  # A configured template ID the SA cannot READ is worse than an unset one: the
+  # env check above is green, but the copy/render fails MID-RUN with a confusing
+  # "File not found" (pdd-to-work-order docs_copy_template; training-deck-render /
+  # partnership-deck-build slides_copy_template). The presence checks can't catch
+  # this — only a live files.get can. One probe per configured template turns the
+  # silent mid-run failure into a doctor-time WARN with the exact remediation.
+  # Both #804 (work-order, still failing) and #805 (training-deck, since resolved)
+  # are this class; the probe is the class-level preventer.
+  if [ -n "$KEY" ] && [ -d "$ROOT/node_modules/@googleapis/drive" ]; then
+    TPL_SA_EMAIL="$(node -e "try{console.log(JSON.parse(require('fs').readFileSync('$KEY','utf8')).client_email||'the ACE service account')}catch{console.log('the ACE service account')}" 2>/dev/null)"
+    for tpl in "WORK_ORDER_TEMPLATE_ID:work_order_template:pdd-to-work-order (docs_copy_template)" \
+               "ACE_TRAINING_DECK_TEMPLATE_ID:training_deck_template:training-deck-render (slides_copy_template)" \
+               "ACE_PARTNERSHIP_DECK_TEMPLATE_ID:partnership_deck_template:partnership-deck-build (slides_copy_template)"; do
+      TPL_VAR="${tpl%%:*}"; TPL_REST="${tpl#*:}"; TPL_LABEL="${TPL_REST%%:*}"; TPL_CONSUMER="${TPL_REST#*:}"
+      TPL_ID="$(get_env "$TPL_VAR")"
+      [ -z "$TPL_ID" ] && continue  # unset is a separate concern (skill skips / uses fallback)
+      # cd "$ROOT" — see DRIVE_ROOT_PROBE above for the module-resolution rationale.
+      TPL_PROBE="$(cd "$ROOT" && GOOGLE_APPLICATION_CREDENTIALS="$KEY" node --input-type=module -e "
+        import { drive as makeDrive } from '@googleapis/drive';
+        import { GoogleAuth } from 'google-auth-library';
+        const auth = new GoogleAuth({ keyFile: process.env.GOOGLE_APPLICATION_CREDENTIALS, scopes: ['https://www.googleapis.com/auth/drive'] });
+        const drive = makeDrive({ version: 'v3', auth });
+        try {
+          const r = await drive.files.get({ fileId: '$TPL_ID', fields: 'name, mimeType', supportsAllDrives: true });
+          console.log(JSON.stringify({ ok: true, name: r.data.name || '' }));
+        } catch (e) {
+          console.log(JSON.stringify({ ok: false, message: e.message }));
+        }
+      " 2>/dev/null)"
+      TPL_OK="$(printf '%s' "$TPL_PROBE" | node -e "try { const d=JSON.parse(require('fs').readFileSync(0,'utf8')); console.log(d.ok?'1':'0'); } catch { console.log('?'); }" 2>/dev/null)"
+      TPL_NAME="$(printf '%s' "$TPL_PROBE" | node -e "try { const d=JSON.parse(require('fs').readFileSync(0,'utf8')); console.log(d.name||''); } catch { console.log(''); }" 2>/dev/null)"
+      TPL_MSG="$(printf '%s' "$TPL_PROBE" | node -e "try { const d=JSON.parse(require('fs').readFileSync(0,'utf8')); console.log(d.message||''); } catch { console.log(''); }" 2>/dev/null)"
+      if [ "$TPL_OK" = "1" ]; then
+        pass "${TPL_LABEL}_access: SA can read $TPL_VAR (\"$TPL_NAME\")"
+      elif [ "$TPL_OK" = "0" ]; then
+        warn "${TPL_LABEL}_access: $TPL_VAR=$TPL_ID is set but the SA cannot read it ($TPL_MSG)" "share the template doc with $TPL_SA_EMAIL as Viewer, or re-point $TPL_VAR to an SA-accessible copy — otherwise $TPL_CONSUMER fails mid-run with 'File not found'"
+      fi
+    done
+  fi
+
   # Content Generator API — gates the multimedia-generation skill family.
   # Passive present/non-empty check only; no live HTTP ping (image generation
   # is too slow and costly to run on every doctor invocation, and the API

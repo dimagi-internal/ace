@@ -121,7 +121,8 @@ const FieldDistributionZ = z.discriminatedUnion('distribution', [
 // (jjackson/ace#713): an invalid `progression` value (`rising_yes_share`) and a
 // `field_distributions` entry whose tag isn't in {normal,uniform,binary}.
 // field_distributions itself is validated in checkBeneficiaryCohortsWellFormed
-// (it tolerates either a record or a list shape).
+// (it REQUIRES a mapping/record shape — upstream is `dict[str, FieldDistribution]`;
+// a list shape is rejected at the labs boundary, jjackson/ace#806).
 const BeneficiaryCohortZ = z.object({
   id: z.string().min(1),
   size: z.number().int().positive().optional(),
@@ -291,27 +292,27 @@ export function checkBeneficiaryCohortsWellFormed(text: string): QACheckResult {
       );
       return;
     }
-    // field_distributions (when present): each entry must be a valid
-    // FieldDistribution discriminated union. Tolerate either a mapping
-    // (field-name → distribution) or a list of distribution objects.
+    // field_distributions (when present): upstream types this as
+    // `dict[str, FieldDistribution]` (manifest.py § BeneficiaryCohort) — a
+    // MAPPING keyed by field path, NOT a list. The live labs Pydantic rejects
+    // a list shape with `Input should be a valid dictionary`
+    // (bednet-spot-check/20260628-1214, jjackson/ace#806), so a list must fail
+    // ACE-side instead of burning a labs round-trip. Each mapping value is a
+    // FieldDistribution discriminated union.
     const fd = (c as Record<string, unknown>).field_distributions;
     if (fd === undefined || fd === null) return;
-    if (Array.isArray(fd)) {
-      fd.forEach((dist, di) => {
-        const dr = FieldDistributionZ.safeParse(dist);
-        if (!dr.success) {
-          issues.push(`#${idx}.field_distributions[${di}]: ${dr.error.issues.map((i) => i.message).join('; ')}`);
-        }
-      });
-    } else if (typeof fd === 'object') {
+    if (Array.isArray(fd) || typeof fd !== 'object') {
+      const got = Array.isArray(fd) ? 'list' : typeof fd;
+      issues.push(
+        `#${idx}: field_distributions must be a mapping keyed by field path (dict[str, FieldDistribution]), not a ${got} — the labs generator rejects a list with "Input should be a valid dictionary"`,
+      );
+    } else {
       for (const [key, dist] of Object.entries(fd as Record<string, unknown>)) {
         const dr = FieldDistributionZ.safeParse(dist);
         if (!dr.success) {
           issues.push(`#${idx}.field_distributions.${key}: ${dr.error.issues.map((i) => i.message).join('; ')}`);
         }
       }
-    } else {
-      issues.push(`#${idx}: field_distributions must be a mapping or a list`);
     }
   });
   if (issues.length === 0) {
@@ -324,6 +325,7 @@ export function checkBeneficiaryCohortsWellFormed(text: string): QACheckResult {
       `each beneficiary_cohorts[] needs an id; when present, size must be a positive int, ` +
       `progression ∈ {${VALID_PROGRESSIONS.join(', ')}}, and every field_distributions entry must be ` +
       `discriminated on distribution ∈ {${VALID_DISTRIBUTIONS.join(', ')}} (e.g. {distribution: binary, rate: 0.6} — the binary param is 'rate' (0-1), NOT 'p_yes'; vary it per week with period_rates: {<week_index>: <rate>}). ` +
+      `field_distributions must be a MAPPING keyed by field path (dict[str, FieldDistribution]), NOT a list — the labs generator rejects a list with "Input should be a valid dictionary" (jjackson/ace#806). ` +
       `Generic tags like 'categorical' or progression values like 'rising_yes_share' are rejected at the labs boundary. ` +
       `Upstream truth: commcare_connect/labs/synthetic/generator/manifest.py.`,
   };
