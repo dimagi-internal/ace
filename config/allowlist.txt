@@ -1,0 +1,18 @@
+# ACE counterpart allowlist — read by skills/inbox-triage/SKILL.md.
+#
+# Two tiers (see docs/superpowers/specs/2026-07-01-agent-operating-model-adoption.md):
+#
+#   act:        senders listed HERE. May steer runs: resume paused runs, queue run
+#               actions, approve/reject pause points by reply. Internal staff only —
+#               run management is never external.
+#   correspond: NOT listed here — derived at triage time from the routed run's state
+#               (selected_llo.contact_email, solicitation invitees, onboarding
+#               recipients, scoped to that opp's threads). Replies are drafted and
+#               approval-gated; never run-state mutations.
+#
+# Anyone matching neither tier is triaged read-only and summarized to a human.
+#
+# Rule shapes: `@domain.com` (whole domain) or `user@domain.com` (one address).
+# Comments start with #.
+
+@dimagi.com
