@@ -319,6 +319,13 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
      - `localization-layer` — PDD names a working language other than
        English (Deliver variant). **Hard-fail** dimension: English-only
        when the PDD names a working language fails the gate.
+     - `deliver-app-naming` — always. App name must contain "Deliver app".
+     - `live-photo-capture` — any image/photo capture question. Appearance
+       Attribute set to `acquire` (live camera, never gallery-browse).
+     - `no-section-module-language` — always. No user-facing "section" or
+       "module" wording anywhere.
+     - `grid-menu-display` — always (Learn + Deliver). Modules and Forms
+       Menu Display set to "Grid".
 
      Do NOT inline-paraphrase these — reference the library so the build
      and `pdd-to-deliver-app-eval` stay symmetric. Skip a component whose

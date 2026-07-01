@@ -5,6 +5,14 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.13.588 — 2026-07-01
+
+**Standing app-build instructions for all Nova builds (dimagi-internal/ace#815).**
+
+Seven reusable components in `skills/_app-component-library.md` capture per-app build guidance that applies to every Nova-built CommCare app, wired into the `pdd-to-learn-app` / `pdd-to-deliver-app` emit-checklists: `learn-app-naming`, `end-of-form-previous`, `assessment-display-lifecycle` (Learn); `grid-menu-display` (both); `deliver-app-naming`, `live-photo-capture`, `no-section-module-language` (Deliver).
+
+Real Learn + Deliver builds (`malaria-rdt/20260611-1732`) established which instructions Nova applies: naming, terminology, and end-of-form navigation are applied and readable from the blueprint; grid menu display, photo `acquire` appearance, and assessment form Display Conditions are CommCare-HQ settings Nova cannot represent. The four blueprint-readable ones are enforced as binary `[BLOCKER]` hard-gates in `pdd-to-learn-app-eval` / `pdd-to-deliver-app-eval` (no rubric-weight rebalancing). The three HQ-layer settings are deferred to a post-build step in `docs/superpowers/specs/2026-06-25-post-build-hq-settings-automation.md`.
+
 ## Unreleased — 2026-06-03
 
 **Opportunity/program integer id: read it from ConnectProd, not Labs; rename `labs_int_id` → `connect_int_id` (jjackson/ace#686 follow-up).**

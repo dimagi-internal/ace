@@ -133,6 +133,26 @@ methodology, different dimensions tuned to Learn-app concerns. See
      protocol collapses to 0.00 post-cap and we lose visibility
      into the underlying judge discretion.
 
+5b. **Standing-instruction hard-gates (binary, non-weighted).** Pass/fail
+   conformance checks on the standing app-build instructions (see
+   `skills/_app-component-library.md`). These are NOT weighted dimensions —
+   they never enter the weighted mean — but a violation surfaces `[BLOCKER]`
+   and forces suite verdict `fail`, exactly like a dimension ≤3. Both are
+   readable straight from the Nova blueprint (confirmed applied by the
+   2026-06-25 builds).
+
+   - **`naming_convention`** — the app's display name MUST contain the words
+     "Learn app". Read the name via `get_app`. Absent → `[BLOCKER]` → `fail`.
+   - **`form_navigation`** — EVERY form's post-submit navigation MUST be
+     "Previous Screen" (`postSubmit: "previous"`). Read each form via
+     `get_form`. Any form not `previous` → `[BLOCKER]` → `fail`.
+
+   *Not enforced here (deferred to the post-build HQ step per
+   `docs/superpowers/specs/2026-06-25-post-build-hq-settings-automation.md`):*
+   `grid-menu-display` and the `assessment-display-lifecycle` Display
+   Conditions are not representable in the Nova blueprint, so this rubric
+   cannot read them yet.
+
 6. **Write the verdict YAML** to
    `3-commcare/pdd-to-learn-app-eval_verdict.yaml` using the shape from
    `skills/_eval-template.md § Verdict YAML contract`. Dimensions:
@@ -165,6 +185,9 @@ methodology, different dimensions tuned to Learn-app concerns. See
    - `[BLOCKER]` for each fitness hard-gate that fired (no enforcement
      machinery on a PDD-specified readiness gate; label-only modules;
      missing required-language translations).
+   - `[BLOCKER]` for each standing-instruction hard-gate that fired
+     (`naming_convention`: display name lacks "Learn app"; `form_navigation`:
+     a form's post-submit navigation is not "Previous Screen").
    - `[WARN]` for each module that names its topic without teaching it,
      and for an Assessment Score that Connect can read but the app never
      enforces internally.

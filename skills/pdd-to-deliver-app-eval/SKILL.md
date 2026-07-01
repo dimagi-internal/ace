@@ -127,6 +127,26 @@ and `skills/eval-calibration/SKILL.md` for calibration methodology.
    - 2+ dimensions in 4–6 range → suite verdict `warn`.
    - All scored dimensions ≥ 7 AND overall ≥ 7.5 → suite verdict `pass`.
 
+5b. **Standing-instruction hard-gates (binary, non-weighted).** Pass/fail
+   conformance checks on the standing app-build instructions (see
+   `skills/_app-component-library.md`). NOT weighted dimensions — they never
+   enter the weighted mean — but a violation surfaces `[BLOCKER]` and forces
+   suite verdict `fail`, exactly like a dimension ≤3. Both are readable
+   straight from the Nova blueprint (confirmed applied by the 2026-06-25 build).
+
+   - **`naming_convention`** — the app's display name MUST contain the words
+     "Deliver app". Read the name via `get_app`. Absent → `[BLOCKER]` → `fail`.
+   - **`terminology`** — the words "section" and "module" MUST NOT appear in
+     any USER-FACING string (form names, module/menu names, question labels,
+     hints, choice labels). Scan names + labels via `get_form`. API index keys
+     like `moduleIndex` / "Module 0" are structural metadata, never rendered —
+     ignore those. Any user-facing occurrence → `[BLOCKER]` → `fail`.
+
+   *Not enforced here (deferred to the post-build HQ step per
+   `docs/superpowers/specs/2026-06-25-post-build-hq-settings-automation.md`):*
+   `live-photo-capture` (`acquire` appearance) and `grid-menu-display` are not
+   representable in the Nova blueprint, so this rubric cannot read them yet.
+
 6. **Write the verdict YAML** to
    `3-commcare/pdd-to-deliver-app-eval_verdict.yaml` using the shape
    from `skills/_eval-template.md § Verdict YAML contract`. Dimensions:
@@ -160,6 +180,9 @@ and `skills/eval-calibration/SKILL.md` for calibration methodology.
    - `[BLOCKER]` for each fitness hard-gate that fired (plain geopoint
      vs stated radius; near-zero validation; write-nothing case-update
      form; missing required-language translations).
+   - `[BLOCKER]` for each standing-instruction hard-gate that fired
+     (`naming_convention`: display name lacks "Deliver app"; `terminology`:
+     "section"/"module" in a user-facing string).
    - `[WARN]` for each enumerable answer left as free-text, each whole
      class of missing data-quality constraint, and each "Other" option
      with no specify follow-up.
