@@ -1,0 +1,11 @@
+{
+  "_doc": "Deny-only rails for ACE, enforced by hooks/gating_guard.py (plugin-level PreToolUse — fires in every session with ACE installed, so rules stay NARROW). deny = hard block (exit 2) with a message naming the right path; the agent self-corrects and keeps going, so rails cost autonomy nothing. There are deliberately NO approve/ask rules: interactive permission prompts stall autonomous runs, and ACE governs its outbound moments procedurally instead (pause points + mode matrix in run_state.yaml; review-posture in turns; solicitation-review's HITL checkpoint before award_response). Decision: Jon, 2026-07-01 — hooks are rails, not approval gates. 'pattern' is regex on the Bash command / Edit-Write file_path / compact-JSON MCP input; 'tool_pattern' is regex on the tool name. Rationale: docs/superpowers/specs/2026-07-01-agent-operating-model-adoption.md.",
+  "deny": [
+    {
+      "tool": "Bash",
+      "pattern": "(?:^|[\\n;&|(])\\s*gog\\s+gmail\\s+(send|reply)\\b(?=[^\\n]*(--client[= ]+[\"']?ace\\b|ace@dimagi-ai\\.com))",
+      "message": "BLOCKED: raw `gog gmail send/reply` under the ACE identity. Sends go ONLY through `bin/ace-email` (HTML multipart + comms-log threadId capture; --dry-run to preview). See skills/email-communicator/SKILL.md."
+    }
+  ],
+  "approve": []
+}

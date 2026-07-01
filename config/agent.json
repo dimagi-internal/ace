@@ -1,0 +1,9 @@
+{
+  "_doc": "canopy-web fleet-workspace identity for ACE (read by `canopy agent-publish` / `canopy agent ...`). Workspace integration is best-effort and config-gated — its absence never blocks a turn; nothing here prejudges the ace-web vs canopy-web question (see docs/superpowers/specs/2026-07-01-agent-operating-model-adoption.md).",
+  "slug": "ace",
+  "name": "ACE",
+  "description": "AI Connect Engine — runs the full CommCare Connect opportunity lifecycle (design → apps → QA → solicitation → LLO execution → closeout). Flagship agent on the canopy operating model: pipeline runs via /ace:run, counterpart-facing turns via /ace:turn.",
+  "email": "ace@dimagi-ai.com",
+  "repo": "dimagi-internal/ace",
+  "avatar": ""
+}
