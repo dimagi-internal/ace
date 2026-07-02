@@ -10,6 +10,7 @@ import {
   parseFormErrors,
   parseFormErrorsByField,
   parsePaymentUnitTable,
+  PaymentUnitTableSchemaError,
   parseDeliverUnitTable,
   parseDeliverUnitFormCheckboxes,
 } from '../../../../mcp/connect/backends/html-scrape.js';
@@ -238,8 +239,23 @@ describe('parsePaymentUnitTable', () => {
     expect(out[0].max_total).toBe(100);
   });
 
-  it('handles synthetic 7-column rows (no <thead>)', () => {
-    const html = `<table><tbody>
+  // Minimal theads matching the two shipped layouts, for synthetic rows.
+  const thead7 = `<thead><tr>
+    <th><span>#</span></th><th><span>Payment Unit Name</span></th>
+    <th><span>Start date</span></th><th><span>End date</span></th>
+    <th><span>Total Deliveries</span></th><th><span>Max daily</span></th>
+    <th><span>Delivery Units</span></th>
+  </tr></thead>`;
+  const thead9 = `<thead><tr>
+    <th><span>#</span></th><th><span>Payment Unit Name</span></th>
+    <th><span>Start date</span></th><th><span>End date</span></th>
+    <th><span>Worker pay per delivery</span></th><th><span>Org pay per delivery</span></th>
+    <th><span>Total Deliveries</span></th><th><span>Max daily</span></th>
+    <th><span>Delivery Units</span></th>
+  </tr></thead>`;
+
+  it('handles synthetic 7-column rows', () => {
+    const html = `<table>${thead7}<tbody>
       <tr class="even"><td>3</td><td>Probe</td><td>2026-01-01</td><td>2026-12-31</td><td>500</td><td>50</td><td>2</td></tr>
     </tbody></table>`;
     const out = parsePaymentUnitTable(html);
@@ -253,29 +269,136 @@ describe('parsePaymentUnitTable', () => {
       max_daily: 50,
     });
     expect(out[0].amount).toBeUndefined();
+    expect(out[0].org_amount).toBeUndefined();
+  });
+
+  it('handles synthetic 9-column rows (dimagi-internal/ace#822 repro values)', () => {
+    // The exact PU from the issue: created with max_total=10, max_daily=10,
+    // amount=1, org_amount=0. The pre-fix fixed-index parser returned
+    // max_total=1 (worker pay) and max_daily=0 (org pay) — a false Phase 4
+    // verify-after-create BLOCKER on a healthy PU.
+    const html = `<table>${thead9}<tbody>
+      <tr class="even"><td>1</td><td>Net Distribution Visit</td><td>07/01/2026</td><td>12/31/2026</td><td>1.00</td><td>0.00</td><td>10</td><td>10</td><td>1</td></tr>
+    </tbody></table>`;
+    const out = parsePaymentUnitTable(html);
+    expect(out).toHaveLength(1);
+    expect(out[0]).toMatchObject({
+      id: 1,
+      name: 'Net Distribution Visit',
+      start_date: '07/01/2026',
+      end_date: '12/31/2026',
+      amount: 1,
+      org_amount: 0,
+      max_total: 10,
+      max_daily: 10,
+    });
   });
 
   it('skips rows without a numeric id', () => {
-    const html = `<table><tbody>
+    const html = `<table>${thead7}<tbody>
       <tr class="even"><td>—</td><td>Header</td><td></td><td></td><td>0</td><td>0</td><td>0</td></tr>
     </tbody></table>`;
     expect(parsePaymentUnitTable(html)).toEqual([]);
   });
 
+  it('returns [] for HTML with no payment-unit rows at all', () => {
+    expect(parsePaymentUnitTable('<div>no table here</div>')).toEqual([]);
+    // Empty table (thead but zero rows) — the zero-PU listing shape.
+    expect(parsePaymentUnitTable(`<table>${thead9}<tbody></tbody></table>`)).toEqual([]);
+  });
+
+  describe('loud failure on unmappable headers (never fixed-index fallback)', () => {
+    it('throws a typed error naming the missing column when a required header is absent', () => {
+      // 8-column variant: "Max daily" removed/renamed. Must throw, not guess.
+      const html = `<table><thead><tr>
+        <th><span>#</span></th><th><span>Payment Unit Name</span></th>
+        <th><span>Start date</span></th><th><span>End date</span></th>
+        <th><span>Worker pay per delivery</span></th><th><span>Org pay per delivery</span></th>
+        <th><span>Total Deliveries</span></th>
+        <th><span>Delivery Units</span></th>
+      </tr></thead><tbody>
+        <tr class="even"><td>1</td><td>X</td><td></td><td></td><td>1</td><td>0</td><td>10</td><td>0</td></tr>
+      </tbody></table>`;
+      let caught: unknown;
+      try {
+        parsePaymentUnitTable(html);
+      } catch (e) {
+        caught = e;
+      }
+      expect(caught).toBeInstanceOf(PaymentUnitTableSchemaError);
+      const err = caught as PaymentUnitTableSchemaError;
+      expect(err.missing_columns).toEqual(['Max daily']);
+      expect(err.message).toContain('Max daily');
+      expect(err.seen_headers).toContain('total deliveries');
+    });
+
+    it('throws when data rows exist but the page has no <thead> at all', () => {
+      const html = `<table><tbody>
+        <tr class="even"><td>1</td><td>X</td><td>a</td><td>b</td><td>10</td><td>5</td><td>1</td></tr>
+      </tbody></table>`;
+      expect(() => parsePaymentUnitTable(html)).toThrow(PaymentUnitTableSchemaError);
+    });
+
+    it('tolerates minor label drift (case, whitespace, "Max total" alias)', () => {
+      const html = `<table><thead><tr>
+        <th> # </th><th>PAYMENT UNIT NAME</th>
+        <th>Start   Date</th><th>End Date</th>
+        <th>Max total</th><th>MAX DAILY</th><th>Delivery Units</th>
+      </tr></thead><tbody>
+        <tr class="even"><td>2</td><td>Drifty</td><td>2026-01-01</td><td>2026-02-01</td><td>7</td><td>3</td><td>1</td></tr>
+      </tbody></table>`;
+      const out = parsePaymentUnitTable(html);
+      expect(out).toHaveLength(1);
+      expect(out[0]).toMatchObject({ id: 2, name: 'Drifty', max_total: 7, max_daily: 3 });
+    });
+  });
+
   // Live-captured 2026-05-06 from leep-paint-collection
   // (https://github.com/jjackson/ace/issues/106 finding 5). The opp had
-  // 3 payment units active at scrape time. The fixture exercises:
+  // 3 payment units active at scrape time. This fixture carries the NEW
+  // 9-column layout (Worker pay per delivery + Org pay per delivery
+  // between the date columns and the max columns — the layout confirmed
+  // live 2026-07-02 in dimagi-internal/ace#822). The fixture exercises:
+  //   - header-name column resolution on the 9-column layout
   //   - extracting payment_unit_uuid from the row's edit href
   //     (`/payment_unit/<UUID>/edit`)
-  //   - confirming `id` (cells[0]) is the display index 1/2/3, not a
-  //     server integer ID (which is not rendered in this listing)
-  describe('with payment_unit_uuid extraction (live 2026-05-06)', () => {
+  //   - confirming `id` is the display index 1/2/3, not a server
+  //     integer ID (which is not rendered in this listing)
+  describe('9-column live layout (payment_unit_table-live-2026-05-06)', () => {
     const live2 = fix('payment_unit_table-live-2026-05-06.html');
     const out = parsePaymentUnitTable(live2);
 
     it('parses three rows with display-index ids', () => {
       expect(out).toHaveLength(3);
       expect(out.map((pu) => pu.id)).toEqual([1, 2, 3]);
+    });
+
+    it('regression (dimagi-internal/ace#822): maps Total Deliveries → max_total and Max daily → max_daily by header name, not index', () => {
+      // Live cell values per row: worker pay 10/25/40, org pay 3/7/10,
+      // total deliveries 20/60/5, max daily 12/15/1. The pre-fix
+      // fixed-index parser read cells[4]/cells[5] and returned
+      // max_total=10/25/40 (the worker pay!) and max_daily=3/7/10 (the
+      // org pay!) for these rows.
+      expect(out.map((pu) => pu.max_total)).toEqual([20, 60, 5]);
+      expect(out.map((pu) => pu.max_daily)).toEqual([12, 15, 1]);
+    });
+
+    it('populates amount and org_amount from the new pay columns', () => {
+      expect(out.map((pu) => pu.amount)).toEqual([10, 25, 40]);
+      expect(out.map((pu) => pu.org_amount)).toEqual([3, 7, 10]);
+    });
+
+    it('normalizes the "—" unset-date placeholder to undefined', () => {
+      expect(out.map((pu) => pu.start_date)).toEqual([undefined, undefined, undefined]);
+      expect(out.map((pu) => pu.end_date)).toEqual([undefined, undefined, undefined]);
+    });
+
+    it('still cannot parse deliver-unit server IDs from the listing (names only)', () => {
+      // The Delivery Units cell renders a count + DU display names in an
+      // Alpine.js detail template — no server integer IDs — so these
+      // stay [] on the scraped path. See PaymentUnit jsdoc / #106 finding 5.
+      expect(out.map((pu) => pu.required_deliver_units)).toEqual([[], [], []]);
+      expect(out.map((pu) => pu.optional_deliver_units)).toEqual([[], [], []]);
     });
 
     it('extracts payment_unit_uuid from each row edit link', () => {
@@ -288,7 +411,7 @@ describe('parsePaymentUnitTable', () => {
     });
 
     it('synthetic row without an edit href yields undefined uuid', () => {
-      const html = `<table><tbody>
+      const html = `<table>${thead7}<tbody>
         <tr class="even"><td>1</td><td>NoLink</td><td>2026-01-01</td><td>2026-12-31</td><td>10</td><td>5</td><td>0</td></tr>
       </tbody></table>`;
       expect(parsePaymentUnitTable(html)[0].payment_unit_uuid).toBeUndefined();

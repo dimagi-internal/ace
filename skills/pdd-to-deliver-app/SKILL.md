@@ -505,28 +505,34 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
     Cheap; runs on the already-fetched blueprint. Same bounded-loop
     shape as 4a/4b/4c.
 
-    1. Call `validate_app({app_id})`. If it returns clean, skip the rest
-       of this step — there is nothing to heal.
-    2. If it reports an empty / missing `caseListConfig.columns` (or
-       `case_list_config: null`) on one or more modules, identify each
-       offending **case-CREATE** module from `get_app({app_id})` (use
-       `get_module({app_id, moduleIndex})` to confirm the module's case
-       type + that its case list is empty).
-    3. For each offending module, call
+    Note: Nova's `validate_app` is architect-side only — it is NOT
+    exposed at the L0/user tool surface (nova@nova-marketplace 1.1.0;
+    jjackson/ace#821), so this recipe inspects the blueprint directly
+    instead of asking the validator.
+
+    1. From the already-fetched `get_app({app_id})` blueprint, identify
+       every **case-CREATE** module, and for each one call
+       `get_module({app_id, moduleIndex})` to confirm its case type and
+       whether its case list is empty (`case_list_config: null` /
+       missing `caseListConfig.columns`). If every case-create module
+       already carries a non-empty case list — or the app has no
+       case-create modules — skip the rest of this step; there is
+       nothing to heal.
+    2. For each offending module, call
        `add_case_list_column({app_id, moduleIndex, ...})` to add ONE
        plain column over the case name field (the module's `case_name` /
        case-name field). A single default column is sufficient to clear
-       the validate error; this is the same one-column heal an operator
-       applies by hand.
-    4. Re-run `validate_app({app_id})`. **Bounded loop, max 3
-       iterations** over steps 2–4. If `validate_app` still reports an
-       empty `caseListConfig.columns` after the third iteration, surface
-       a clear failure naming each module still missing its case-list
-       column, and do NOT write the success summary.
+       the architect-side validate error; this is the same one-column
+       heal an operator applies by hand.
+    3. Re-fetch via `get_module({app_id, moduleIndex})` and re-assert
+       the case list is now non-empty. **Bounded loop, max 3
+       iterations** over steps 1–3. If any case-create module still has
+       an empty `caseListConfig.columns` after the third iteration,
+       surface a clear failure naming each module still missing its
+       case-list column, and do NOT write the success summary.
 
     (Apps with no case-CREATE module, or whose case-create modules
-    already carry a non-empty case list, validate clean at step 1 and
-    skip cleanly.)
+    already carry a non-empty case list, skip cleanly at step 1.)
 
 4e. **Deliver-marker compile pre-check (catch `connect_type: ""` before
     deploy).** The released-CCZ marker check is owned by `app-release-qa`
