@@ -32,6 +32,17 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const fix = (name: string) =>
   fs.readFileSync(path.join(__dirname, '../../../fixtures/connect-html', name), 'utf8');
 
+// Minimal 7-column payment_unit_table <thead> (pre-2026-07 live layout).
+// parsePaymentUnitTable resolves columns by header LABEL (dimagi-internal/
+// ace#822) and refuses to parse data rows without a header row, so every
+// mocked payment_unit_table body must carry one.
+const puTableThead = `<thead><tr>
+  <th><span>#</span></th><th><span>Payment Unit Name</span></th>
+  <th><span>Start date</span></th><th><span>End date</span></th>
+  <th><span>Total Deliveries</span></th><th><span>Max daily</span></th>
+  <th><span>Delivery Units</span></th>
+</tr></thead>`;
+
 interface CapturedRequest {
   method: 'GET' | 'POST';
   url: string;
@@ -662,10 +673,10 @@ describe('PlaywrightBackend.createPaymentUnit', () => {
     // 7-column payment_unit_table fixture (verified against live Connect HTML
     // 2026-05-05): id, name, start_date, end_date, max_total ("Total Deliveries"
     // column), max_daily ("Max daily" column), delivery_units count.
-    // Server does NOT render `amount` in this table — see
-    // `parsePaymentUnitTable` jsdoc.
+    // This layout does NOT render `amount` — see `parsePaymentUnitTable` jsdoc.
     const puTableHtml = `
       <table>
+        ${puTableThead}
         <tbody>
           <tr class="even"><td>42</td><td>Visit</td><td>2026-05-01</td><td>2026-12-31</td><td>50</td><td>10</td><td>2</td></tr>
         </tbody>
@@ -727,6 +738,7 @@ describe('PlaywrightBackend.createPaymentUnit', () => {
     const captured: CapturedRequest[] = [];
     const puTableHtml = `
       <table>
+        ${puTableThead}
         <tbody>
           <tr class="even"><td>42</td><td>VendorVisit</td><td>2026-05-01</td><td>2026-12-31</td><td>50</td><td>10</td><td>1</td></tr>
         </tbody>
@@ -818,7 +830,7 @@ describe('PlaywrightBackend.createPaymentUnit', () => {
     // POST runs before the form is scraped so DU checkboxes are populated. See
     // mcp/connect/backends/playwright.ts § Sync-deliver-units precondition.
     const captured: CapturedRequest[] = [];
-    const puTableHtml = `<table><tbody><tr class="even"><td>1</td><td>X</td><td></td><td></td><td>50</td><td>10</td><td>1</td></tr></tbody></table>`;
+    const puTableHtml = `<table>${puTableThead}<tbody><tr class="even"><td>1</td><td>X</td><td></td><td></td><td>50</td><td>10</td><td>1</td></tr></tbody></table>`;
     const request = makeRequestContext(
       [
         { status: 200, body: puCreateForm }, // GET form (initial)
@@ -860,7 +872,7 @@ describe('PlaywrightBackend.createPaymentUnit', () => {
     // are non-empty. PUs created without DU assignment skip the precondition
     // (one less HTTP call).
     const captured: CapturedRequest[] = [];
-    const puTableHtml = `<table><tbody><tr class="even"><td>1</td><td>NoDUs</td><td></td><td></td><td>1</td><td>1</td><td>0</td></tr></tbody></table>`;
+    const puTableHtml = `<table>${puTableThead}<tbody><tr class="even"><td>1</td><td>NoDUs</td><td></td><td></td><td>1</td><td>1</td><td>0</td></tr></tbody></table>`;
     const request = makeRequestContext(
       [
         { status: 200, body: puCreateForm }, // GET form
@@ -886,8 +898,8 @@ describe('PlaywrightBackend.createPaymentUnit', () => {
 
   it('createPaymentUnits loops over the input list', async () => {
     const captured: CapturedRequest[] = [];
-    const puTableHtml1 = `<table><tbody><tr class="even"><td>1</td><td>PU-1</td><td></td><td></td><td>1</td><td>1</td><td>0</td></tr></tbody></table>`;
-    const puTableHtml2 = `<table><tbody><tr class="even"><td>1</td><td>PU-1</td><td></td><td></td><td>1</td><td>1</td><td>0</td></tr><tr class="odd"><td>2</td><td>PU-2</td><td></td><td></td><td>1</td><td>1</td><td>0</td></tr></tbody></table>`;
+    const puTableHtml1 = `<table>${puTableThead}<tbody><tr class="even"><td>1</td><td>PU-1</td><td></td><td></td><td>1</td><td>1</td><td>0</td></tr></tbody></table>`;
+    const puTableHtml2 = `<table>${puTableThead}<tbody><tr class="even"><td>1</td><td>PU-1</td><td></td><td></td><td>1</td><td>1</td><td>0</td></tr><tr class="odd"><td>2</td><td>PU-2</td><td></td><td></td><td>1</td><td>1</td><td>0</td></tr></tbody></table>`;
     const request = makeRequestContext(
       [
         { status: 200, body: puCreateForm },

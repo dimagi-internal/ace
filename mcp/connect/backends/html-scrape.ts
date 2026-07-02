@@ -302,72 +302,185 @@ export function parseDeliverUnitFormCheckboxes(html: string): Map<string, string
 }
 
 /**
- * Parse Connect's payment_unit_table HTML. Column order verified live
- * 2026-05-05 against connect.dimagi.com against an active opp's
- * `payment_unit_table/` page (see
- * `test/fixtures/connect-html/payment_unit_table-live-2026-05-05.html`):
+ * Thrown when Connect's `payment_unit_table` HTML has data rows but its
+ * `<thead>` cannot be mapped to the columns `parsePaymentUnitTable` needs
+ * (or has no `<thead>` at all). Carries the exact missing column labels
+ * plus the header labels actually seen, so the failure names the drift
+ * instead of shipping silently mis-mapped fields.
  *
- *   #            (cells[0]) — display id
- *   Payment Unit Name (cells[1])
- *   Start date   (cells[2])
- *   End date     (cells[3])
- *   Total Deliveries  (cells[4]) — server field `max_total`
- *   Max daily    (cells[5])      — server field `max_daily`
- *   Delivery Units (cells[6])    — count + Alpine.js detail row
+ * Deliberately NOT a silent fixed-index fallback: fixed-index reads are
+ * the twice-shipped bug class (pre-0.13.2 `cells[4] → amount`; the
+ * 2026-07 recurrence, dimagi-internal/ace#822, where Connect inserted two
+ * pay columns and `cells[4]/cells[5]` started reading worker/org pay as
+ * max_total/max_daily).
+ */
+export class PaymentUnitTableSchemaError extends Error {
+  constructor(
+    public readonly missing_columns: string[],
+    public readonly seen_headers: string[],
+  ) {
+    super(
+      `payment_unit_table header row is missing expected column(s): ` +
+        `${missing_columns.map((c) => `"${c}"`).join(', ')}. ` +
+        `Headers seen: [${seen_headers.map((h) => `"${h}"`).join(', ')}]. ` +
+        `Refusing to parse by fixed cell index — that is the field-shift bug class ` +
+        `(pre-0.13.2 turmeric runs; dimagi-internal/ace#822). ` +
+        `Update the header map in parsePaymentUnitTable (mcp/connect/backends/html-scrape.ts) ` +
+        `against the live payment_unit_table HTML.`,
+    );
+    this.name = 'PaymentUnitTableSchemaError';
+  }
+}
+
+/** Normalize a header/table-cell label for matching: strip tags, collapse whitespace, lowercase. */
+function normalizeHeaderLabel(raw: string): string {
+  return raw.replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim().toLowerCase();
+}
+
+/**
+ * The columns `parsePaymentUnitTable` knows how to read, keyed by output
+ * field. `match` runs against normalized (lowercased, whitespace-collapsed)
+ * `<th>` text; matchers tolerate minor label drift (substring/equality on
+ * the load-bearing words) but never guess positions.
+ */
+const PAYMENT_UNIT_COLUMNS: Record<
+  'id' | 'name' | 'start_date' | 'end_date' | 'amount' | 'org_amount' | 'max_total' | 'max_daily',
+  { label: string; required: boolean; match: (h: string) => boolean }
+> = {
+  id: { label: '#', required: true, match: (h) => h === '#' || h === 'id' },
+  name: {
+    label: 'Payment Unit Name',
+    required: true,
+    match: (h) => h === 'payment unit name' || h === 'name' || h.includes('payment unit name'),
+  },
+  start_date: { label: 'Start date', required: true, match: (h) => h.includes('start date') },
+  end_date: { label: 'End date', required: true, match: (h) => h.includes('end date') },
+  // New columns shipped by Connect between 2026-05-05 and 2026-07-02
+  // (dimagi-internal/ace#822). Optional so the pre-existing 7-column
+  // layout keeps parsing exactly as before (amount/org_amount undefined).
+  amount: { label: 'Worker pay per delivery', required: false, match: (h) => h.includes('worker pay') },
+  org_amount: { label: 'Org pay per delivery', required: false, match: (h) => h.includes('org pay') },
+  max_total: {
+    label: 'Total Deliveries',
+    required: true,
+    match: (h) => h.includes('total deliveries') || h === 'max total' || h.includes('total delivery'),
+  },
+  max_daily: { label: 'Max daily', required: true, match: (h) => h.includes('max daily') },
+};
+
+/** Parse a numeric table cell, tolerating currency symbols / thousands separators. */
+function parseNumericCell(raw: string | undefined): number | undefined {
+  if (raw === undefined) return undefined;
+  const cleaned = raw.replace(/[$€£,]/g, '').trim();
+  if (cleaned === '') return undefined;
+  const n = Number(cleaned);
+  return Number.isFinite(n) ? n : undefined;
+}
+
+/** Parse a date table cell; Connect renders "—" (em-dash) for unset dates. */
+function parseDateCell(raw: string | undefined): string | undefined {
+  const v = raw?.trim();
+  if (!v || v === '—' || v === '-') return undefined;
+  return v;
+}
+
+/**
+ * Parse Connect's payment_unit_table HTML.
  *
- * The table does NOT display `amount`, `description`, `org_amount`, or
- * the per-PU `required_deliver_units` ids in a parseable form. They
- * remain `undefined`/`""`/`[]` here; callers that need them must read
- * the per-PU edit form (`/payment_unit/<uuid>/edit`) or — once shipped —
- * the REST `GET /api/opportunities/{id}/payment_units/` endpoint.
+ * **Columns are resolved by `<thead>` header LABEL, never by fixed cell
+ * index.** Connect has reshaped this table at least once (2026-07,
+ * dimagi-internal/ace#822: two new pay columns inserted mid-table), and a
+ * fixed-index read silently shifts every field to its right. Both shipped
+ * layouts are supported:
+ *
+ *   OLD (live 2026-05-05, `payment_unit_table-live-2026-05-05.html`):
+ *     # | Payment Unit Name | Start date | End date | Total Deliveries |
+ *     Max daily | Delivery Units
+ *
+ *   NEW (live, confirmed 2026-07-02, dimagi-internal/ace#822; fixture
+ *   `payment_unit_table-live-2026-05-06.html` already carries it):
+ *     # | Payment Unit Name | Start date | End date |
+ *     Worker pay per delivery | Org pay per delivery | Total Deliveries |
+ *     Max daily | Delivery Units
+ *
+ * On the NEW layout `amount` (worker pay) and `org_amount` are populated;
+ * on the OLD layout they stay `undefined` (the table didn't render them).
+ * `description` and the `required_deliver_units` / `optional_deliver_units`
+ * server IDs are still not parseable from this listing: the Delivery Units
+ * cell renders only a count plus DU display NAMES in an Alpine.js detail
+ * template — no server integer IDs — so those fields stay `''`/`[]` and
+ * callers needing them must read the per-PU edit form
+ * (`/payment_unit/<uuid>/edit`) or the REST endpoint once shipped.
+ *
+ * Failure mode: if the page has data rows but the header row is absent or
+ * missing a required column, throw {@link PaymentUnitTableSchemaError}
+ * naming the missing header(s). NEVER silently fall back to fixed indices.
  *
  * Bug history (the reason this comment is so explicit):
  *
- *   Pre-0.13.2 the comment claimed columns were `id, name, start, end,
- *   amount, max_total` and code read `cells[4] → amount`,
- *   `cells[5] → max_total`. That was WRONG — Connect renders no `amount`
- *   column. The off-by-one read produced a "field-shift defect" that
- *   blocked turmeric-20260429-2330, turmeric-20260503-0835, and
- *   turmeric-20260504-2304 at Phase 4 verify-after-create. Live HTML
- *   inspection on 2026-05-05 against `f116865a-…/payment_unit/.../edit`
- *   confirmed the server-side data was correct on all three runs; the
- *   "field-shift" was entirely in this parser.
+ *   Pre-0.13.2 the code read `cells[4] → amount`, `cells[5] → max_total`
+ *   by fixed index. That was WRONG for the then-live layout and blocked
+ *   turmeric-20260429-2330, turmeric-20260503-0835, and
+ *   turmeric-20260504-2304 at Phase 4 verify-after-create. The 0.13.2 fix
+ *   corrected the indices but kept them FIXED — so when Connect inserted
+ *   the two pay columns, `cells[4] → max_total` started reading worker
+ *   pay and `cells[5] → max_daily` read org pay (a PU with
+ *   max_total=10/max_daily=10/amount=1/org_amount=0 came back as
+ *   max_total=1/max_daily=0), re-breaking Phase 4 verify-after-create
+ *   with a false BLOCKER (dimagi-internal/ace#822). Header-name mapping
+ *   is the class-level preventer.
  */
 export function parsePaymentUnitTable(html: string): PaymentUnit[] {
-  const out: PaymentUnit[] = [];
   const rowRegex = /<tr class="(?:even|odd)"[^>]*>([\s\S]*?)<\/tr>/g;
-  for (const m of html.matchAll(rowRegex)) {
+  const rows = [...html.matchAll(rowRegex)];
+  if (rows.length === 0) return [];
+
+  // Resolve column positions from the <thead> header labels.
+  const theadMatch = html.match(/<thead[^>]*>([\s\S]*?)<\/thead>/);
+  const headers = theadMatch
+    ? [...theadMatch[1].matchAll(/<th[^>]*>([\s\S]*?)<\/th>/g)].map((h) => normalizeHeaderLabel(h[1]))
+    : [];
+  const col: Partial<Record<keyof typeof PAYMENT_UNIT_COLUMNS, number>> = {};
+  const missing: string[] = [];
+  for (const [field, spec] of Object.entries(PAYMENT_UNIT_COLUMNS) as Array<
+    [keyof typeof PAYMENT_UNIT_COLUMNS, (typeof PAYMENT_UNIT_COLUMNS)[keyof typeof PAYMENT_UNIT_COLUMNS]]
+  >) {
+    const idx = headers.findIndex(spec.match);
+    if (idx >= 0) col[field] = idx;
+    else if (spec.required) missing.push(spec.label);
+  }
+  if (missing.length > 0) {
+    throw new PaymentUnitTableSchemaError(missing, headers);
+  }
+
+  const out: PaymentUnit[] = [];
+  for (const m of rows) {
     const rowHtml = m[1];
     const cells = [...rowHtml.matchAll(/<td\s*[^>]*>([\s\S]*?)<\/td>/g)]
       .map((c) => c[1].replace(/<[^>]+>/g, '').trim());
-    if (cells.length >= 6) {
-      const id = Number(cells[0]);
-      const max_total = Number(cells[4]);
-      const max_daily = Number(cells[5]);
-      // Extract the payment-unit UUID from the edit link, when present.
-      // Live HTML on 2026-05-06 (leep-paint-collection) has each row
-      // containing `<a href="…/payment_unit/<UUID>/edit">…`. This is the
-      // only stable identifier scrapable from this listing — `id`
-      // (cells[0]) is the display index, not the server integer ID.
-      // Issue tracking: jjackson/ace#106 finding 5.
-      const editMatch = rowHtml.match(/payment_unit\/([0-9a-f-]{36})\/edit/);
-      const payment_unit_uuid = editMatch ? editMatch[1] : undefined;
-      if (Number.isFinite(id)) {
-        out.push({
-          id,
-          payment_unit_uuid,
-          name: cells[1],
-          description: '',                 // not rendered in this table
-          // amount intentionally omitted — see PaymentUnit.amount jsdoc
-          max_total: Number.isFinite(max_total) ? max_total : undefined,
-          max_daily: Number.isFinite(max_daily) ? max_daily : undefined,
-          start_date: cells[2] || undefined,
-          end_date: cells[3] || undefined,
-          required_deliver_units: [],      // not parseable from this table
-          optional_deliver_units: [],
-        });
-      }
-    }
+    const id = Number(cells[col.id!]);
+    if (!Number.isFinite(id)) continue;
+    // Extract the payment-unit UUID from the edit link, when present.
+    // Live HTML on 2026-05-06 (leep-paint-collection) has each row
+    // containing `<a href="…/payment_unit/<UUID>/edit">…`. This is the
+    // only stable identifier scrapable from this listing — the id column
+    // is the display index, not the server integer ID.
+    // Issue tracking: jjackson/ace#106 finding 5.
+    const editMatch = rowHtml.match(/payment_unit\/([0-9a-f-]{36})\/edit/);
+    out.push({
+      id,
+      payment_unit_uuid: editMatch ? editMatch[1] : undefined,
+      name: cells[col.name!] ?? '',
+      description: '',                 // not rendered in this table
+      amount: col.amount !== undefined ? parseNumericCell(cells[col.amount]) : undefined,
+      org_amount: col.org_amount !== undefined ? parseNumericCell(cells[col.org_amount]) : undefined,
+      max_total: parseNumericCell(cells[col.max_total!]),
+      max_daily: parseNumericCell(cells[col.max_daily!]),
+      start_date: parseDateCell(cells[col.start_date!]),
+      end_date: parseDateCell(cells[col.end_date!]),
+      required_deliver_units: [],      // DU cell renders names only, no server IDs
+      optional_deliver_units: [],
+    });
   }
   return out;
 }

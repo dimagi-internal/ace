@@ -150,17 +150,21 @@ coverage pass and avoids token churn from interleaved tool results.
 The mutations are independent (each targets a distinct moduleIndex/
 formIndex pair); Nova does not require ordering.
 
-### Step 5: Validate the app
+### Step 5: Confirm save-time validation raised no errors
 
-Call `validate_app({app_id})`. This is Nova's
-own platform-rule validator — it catches CommCare-side issues like
-broken XPath, schema mismatches, missing required references.
-Surface any errors directly.
+Nova's platform-rule validation (broken XPath, schema mismatches,
+missing required references) runs **server-side at save time on every
+mutation** — there is no callable `validate_app` tool at the L0/user
+surface (nova@nova-marketplace 1.1.0; jjackson/ace#821). Any Step 4
+mutation that violated a platform rule failed at the `update_form`
+call itself — surface those errors directly. The per-mutation
+`get_form` re-fetch (Step 4) remains the structural gate that the
+intended change actually persisted.
 
 ### Step 6: Loop or exit
 
-If Step 4 found nothing to fix AND Step 5 returned no errors, the app
-is clean. Exit with success.
+If Step 4 found nothing to fix AND no Step 4 mutation errored (Step
+5), the app is clean. Exit with success.
 
 If Step 4 fixed things, go back to Step 2 (re-derive expectations
 against the now-mutated app, in case our edits revealed new issues).
@@ -199,7 +203,8 @@ forms_blocked: <N>
 | ... |
 
 ## Validation result
-<output of validate_app>
+<save-time validation outcome: any mutation errors surfaced in Step 5,
+or "no mutations issued / all mutations accepted at save time">
 
 ## Known-issue blockers
 <if any forms remain blocked, list them with the upstream issue ref>
@@ -229,9 +234,10 @@ When `--dry-run` is active:
   (defensive).** Fixed upstream (nova-plugin#6). If Step 4's re-fetch
   ever shows empty entity fields after a mutation, exit `blocked`.
   Don't retry — treat it as a regression.
-- **`validate_app` misses malformed deliver_unit binds (defensive).**
-  Don't rely on `validate_app` alone to catch coverage failures —
-  Step 4's per-mutation re-fetch is the actual gate.
+- **Save-time validation misses malformed deliver_unit binds
+  (defensive).** Don't rely on Nova's save-time platform validation
+  alone to catch coverage failures — Step 4's per-mutation re-fetch is
+  the actual gate.
 - **Iteration budget exhausted (3+ rounds with no convergence).**
   Either the heuristic is wrong (we keep "fixing" something that
   Nova then resets) or there's an unknown Nova bug. Halt with the
