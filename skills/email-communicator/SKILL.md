@@ -66,6 +66,11 @@ ACE uses its OWN gog client — never another agent's identity (and vice versa: 
 6. **For read operations:**
    - Use: `gog gmail read --account $ACE_GMAIL_ACCOUNT --client $ACE_GMAIL_CLIENT <message_id> --json`
    - Returns full message content including headers and body.
+   - **Always read with `--json` (the structured reader), never a raw text view.** A raw
+     `gog gmail read` text dump hides `Cc:` — so a reply built from it silently drops the cc'd
+     recipients. Take the recipient set (To + Cc) from the JSON headers, and choose reply-all vs.
+     direct on purpose (`bin/ace-email --to <reply-all set>`). Per canopy
+     `docs/agent-operating-model.md § 1b` reply-quality rule 5 (adopted by reference, jjackson/ace#828).
 
 7. **Log the operation — the routing contract.** For every send/reply, the calling skill MUST record
    `thread_id` + `message_id` + recipients + date in the run's comms-log
