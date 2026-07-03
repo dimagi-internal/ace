@@ -55,8 +55,30 @@ export function extractUuidFromPath(loc: string, segment: string): string | unde
 }
 
 /**
+ * Django-style slugify: lowercase, non-alphanumerics → single hyphens,
+ * trimmed. Matches Connect's ProgramDeliveryType.slug convention (confirmed
+ * for "Nutrition" → "nutrition"; multi-word forms like "Infant Vaccine
+ * Promotion" → "infant-vaccine-promotion" follow Django's default and are
+ * ACE's best-effort derivation until a REST reads endpoint exposes the slug
+ * verbatim — see jjackson/ace#835).
+ */
+export function slugifyDeliveryType(name: string): string {
+  return name
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+}
+
+/**
  * Parse Connect's `<select name="delivery_type">` options into a typed list.
  * Skips the placeholder option (value="").
+ *
+ * The `<option>` exposes only the int FK (`value`) and the display name — no
+ * slug. But `connect_create_program` (REST) accepts the string SLUG, not the
+ * int FK, so each row carries a derived `slug` (`slugifyDeliveryType(name)`)
+ * that a caller can hand straight to `connect_create_program`. Closes the
+ * discovery gap in jjackson/ace#835 (previously the list returned no slug, so
+ * callers had to guess the accepted value).
  */
 export function parseDeliveryTypeOptions(html: string): DeliveryType[] {
   const selectMatch = html.match(/<select[^>]*name="delivery_type"[^>]*>([\s\S]*?)<\/select>/);
@@ -65,7 +87,9 @@ export function parseDeliveryTypeOptions(html: string): DeliveryType[] {
   for (const m of selectMatch[1].matchAll(/<option\s+value="(\d+)"[^>]*>\s*([^<]+?)\s*<\/option>/g)) {
     const id = Number(m[1]);
     const name = m[2].replace(/\s+/g, ' ').trim();
-    if (Number.isFinite(id) && name && name !== '---------') out.push({ id, name });
+    if (Number.isFinite(id) && name && name !== '---------') {
+      out.push({ id, name, slug: slugifyDeliveryType(name) });
+    }
   }
   return out;
 }

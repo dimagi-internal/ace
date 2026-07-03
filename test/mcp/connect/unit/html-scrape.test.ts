@@ -68,8 +68,14 @@ describe('parseDeliveryTypeOptions', () => {
   it('extracts the live delivery_type lookup', () => {
     const options = parseDeliveryTypeOptions(fix('a-ai-demo-space-program-init.html'));
     expect(options.length).toBeGreaterThanOrEqual(13);
-    expect(options.find((o) => o.name === 'Nutrition')).toBeDefined();
-    expect(options.find((o) => o.name === 'Infant Vaccine Promotion')).toEqual({ id: 1, name: 'Infant Vaccine Promotion' });
+    // Each row carries a derived slug — the value connect_create_program (REST)
+    // accepts — so callers don't have to guess it (jjackson/ace#835).
+    expect(options.find((o) => o.name === 'Nutrition')).toEqual({ id: 13, name: 'Nutrition', slug: 'nutrition' });
+    expect(options.find((o) => o.name === 'Infant Vaccine Promotion')).toEqual({
+      id: 1,
+      name: 'Infant Vaccine Promotion',
+      slug: 'infant-vaccine-promotion',
+    });
   });
 });
 
