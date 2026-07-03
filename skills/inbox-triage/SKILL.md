@@ -34,17 +34,23 @@ address on an unroutable thread is tier-none.
 
 ## Noise classification (standing table — apply BEFORE per-thread reasoning)
 
-Known machine-generated classes are auto-dismissed: mark read, count them in the close-out, spend
-zero per-thread reasoning. The first live turn triaged 170+ threads of which ~97% were these three
-classes — and the noise buried a real LLO counterpart for 23 days (jjackson/ace#817, #818).
+The governing line (Jon, 2026-07-03): **act on what a human or another AI is *directly telling* you; a
+system *notification* is auto-handled.** A notification is a machine-addressed alert about state
+(something was created, shared, is ending, someone signed in) — it carries no ask directed at ACE.
+Auto-dismiss it: mark read, count it in the close-out, spend zero per-thread reasoning. A message
+where a person (or agent) addresses ACE with words and an ask is direct communication — that always
+gets full treatment, even from an automated-looking address. The first live turn triaged 170+ threads
+of which ~97% were notifications — and the noise buried a real LLO counterpart for 23 days
+(jjackson/ace#817, #818).
 
 | Sender | Subject class | Disposition |
 |---|---|---|
 | `connect-devops@dimagi.com` | `New Opportunity Created: …`, `Reminder: … opportunities ending …`, `Invitation to Program: …` | Auto-dismiss — side effects of ACE's own runs. **Guard:** if the opportunity name is NOT recognizable from ACE's opps/runs, surface it — that's an orphan/drift signal (pairs with `/ace:sweep`), not noise |
+| Google Workspace share/comment bots — `*-noreply@google.com` (`drive-shares-dm-noreply@`, `comments-noreply@`, `docs`/`sheets`/`slides` notifications) | `… shared with you`, `… mentioned you`, `New comment on …` | Auto-dismiss — a bare share/comment alert is a notification, not an ask. **Guard:** attribute it to the human who triggered it; if that person *also* sent a direct message asking ACE to act on the file, that separate thread is direct communication and gets handled. The share alert itself never triggers action. |
 | `no-reply@accounts.google.com` | `Security alert` (new sign-in) | Auto-dismiss when the timestamp matches ACE's own gog/session activity; surface otherwise |
 | Vendor/broadcast (Anthropic notices & receipts, `info@dimagi.com` newsletter blasts, Gmail tips) | any | Auto-dismiss |
 
-Anything not in the table gets full per-thread treatment. **Drain ALL pages** — Gmail search
+Anything not in the table — i.e. anything that reads as direct communication — gets full per-thread treatment. **Drain ALL pages** — Gmail search
 paginates at 50; loop until zero unread, or old human threads hide behind the noise.
 
 ## Process
