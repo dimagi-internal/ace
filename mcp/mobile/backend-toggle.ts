@@ -75,6 +75,75 @@ export function setSessionBackend(backend: MobileBackend, ppid: number = process
   return file;
 }
 
+/**
+ * Result of the pre-boot backend preflight. `fatal` means the caller MUST
+ * throw before doing any work (booting an AVD / hitting the cloud); `note`
+ * is a non-fatal one-liner the caller should surface so a backend mismatch
+ * is visible before a boot attempt rather than only after one fails.
+ */
+export interface BackendPreflight {
+  backend: MobileBackend;
+  source: BackendSource;
+  cloudConfigured: boolean;
+  /** Non-fatal advisory to log before proceeding. */
+  note?: string;
+  /** When set, the ensure-running path must throw instead of booting. */
+  fatal?: { code: string; message: string; remediation: string };
+}
+
+/**
+ * Pure pre-boot check that turns two silent backend-config gaps
+ * (jjackson/ace#839) into a loud, actionable signal BEFORE any AVD boot:
+ *
+ *   (a) resolved backend is `cloud` but the cloud env is missing
+ *       (`ACE_WEB_BASE_URL` / `ACE_WEB_PAT_TOKEN`) — fail immediately with
+ *       CLOUD_NOT_CONFIGURED instead of doing anything. (The client never
+ *       falls through to local on a cloud toggle, but this makes the check
+ *       explicit + early, ahead of any per-call work.)
+ *   (b) resolved backend is `local` *by default* (no toggle) while the
+ *       cloud backend IS configured — a likely dispatch/session mismatch.
+ *       Surface a note naming `/ace:mobile-backend cloud` so the operator
+ *       sees it before a local AVD boots (which on a shared host can squat
+ *       a busy emulator port and waste a full boot attempt).
+ *
+ * Every other combination proceeds silently — notably `local` default with
+ * cloud NOT configured (the ordinary single-machine dev case) must NOT nag.
+ */
+export function preflightMobileBackend(args: {
+  resolved: ResolvedBackend;
+  cloudConfigured: boolean;
+}): BackendPreflight {
+  const { resolved, cloudConfigured } = args;
+  const base = { backend: resolved.backend, source: resolved.source, cloudConfigured };
+
+  if (resolved.backend === 'cloud' && !cloudConfigured) {
+    return {
+      ...base,
+      fatal: {
+        code: 'CLOUD_NOT_CONFIGURED',
+        message:
+          'mobile backend resolved to cloud but the cloud emulator is not configured ' +
+          '(ACE_WEB_BASE_URL / ACE_WEB_PAT_TOKEN missing) — refusing to fall through to a local AVD boot',
+        remediation:
+          'Set ACE_WEB_BASE_URL (e.g. https://labs.connect.dimagi.com/ace) via /ace:setup --force-env and mint ' +
+          'ACE_WEB_PAT_TOKEN via /ace:ace-web-pat-mint, or switch to the local AVD with /ace:mobile-backend local.',
+      },
+    };
+  }
+
+  if (resolved.backend === 'local' && resolved.source === 'default' && cloudConfigured) {
+    return {
+      ...base,
+      note:
+        'mobile backend defaulted to LOCAL (no /ace:mobile-backend toggle set) while the cloud emulator IS ' +
+        'configured — booting a local AVD. If you intended the cloud emulator, run /ace:mobile-backend cloud ' +
+        'before dispatching (a wrong local boot can squat a busy emulator port on a shared host).',
+    };
+  }
+
+  return base;
+}
+
 /** Remove the per-session toggle (resets to default). */
 export function clearSessionBackend(ppid: number = process.ppid): void {
   const file = path.join(STATE_DIR, `mobile-backend.${ppid}`);

@@ -6,6 +6,8 @@ import {
   resolveBackend,
   setSessionBackend,
   clearSessionBackend,
+  preflightMobileBackend,
+  type ResolvedBackend,
 } from '../../../mcp/mobile/backend-toggle.js';
 
 const STATE_DIR = path.join(os.homedir(), '.ace');
@@ -106,5 +108,65 @@ describe('backend-toggle: setSessionBackend', () => {
     expect(file).toBe(path.join(STATE_DIR, `mobile-backend.${customPpid}`));
     expect(fs.readFileSync(file, 'utf8')).toBe('local\n');
     fs.unlinkSync(file);
+  });
+});
+
+describe('backend-toggle: preflightMobileBackend (jjackson/ace#839)', () => {
+  const resolved = (
+    backend: ResolvedBackend['backend'],
+    source: ResolvedBackend['source'],
+  ): ResolvedBackend => ({
+    backend,
+    source,
+    sessionFile: '/tmp/unused',
+    ppid: 1,
+  });
+
+  it('fails loud when cloud is resolved but cloud is not configured', () => {
+    const pf = preflightMobileBackend({
+      resolved: resolved('cloud', 'session-file'),
+      cloudConfigured: false,
+    });
+    expect(pf.fatal).toBeDefined();
+    expect(pf.fatal?.code).toBe('CLOUD_NOT_CONFIGURED');
+    expect(pf.fatal?.remediation).toMatch(/ACE_WEB_BASE_URL/);
+    expect(pf.note).toBeUndefined();
+  });
+
+  it('proceeds silently when cloud is resolved AND configured (happy path)', () => {
+    const pf = preflightMobileBackend({
+      resolved: resolved('cloud', 'env'),
+      cloudConfigured: true,
+    });
+    expect(pf.fatal).toBeUndefined();
+    expect(pf.note).toBeUndefined();
+    expect(pf.backend).toBe('cloud');
+  });
+
+  it('notes the mismatch when local is a DEFAULT and cloud IS configured', () => {
+    const pf = preflightMobileBackend({
+      resolved: resolved('local', 'default'),
+      cloudConfigured: true,
+    });
+    expect(pf.fatal).toBeUndefined();
+    expect(pf.note).toMatch(/\/ace:mobile-backend cloud/);
+  });
+
+  it('does NOT nag when local is EXPLICITLY chosen even if cloud is configured', () => {
+    const pf = preflightMobileBackend({
+      resolved: resolved('local', 'session-file'),
+      cloudConfigured: true,
+    });
+    expect(pf.fatal).toBeUndefined();
+    expect(pf.note).toBeUndefined();
+  });
+
+  it('does NOT nag on the ordinary local-default, cloud-unconfigured dev case', () => {
+    const pf = preflightMobileBackend({
+      resolved: resolved('local', 'default'),
+      cloudConfigured: false,
+    });
+    expect(pf.fatal).toBeUndefined();
+    expect(pf.note).toBeUndefined();
   });
 });

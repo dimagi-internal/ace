@@ -100,14 +100,27 @@ deferred to later stages. This skill is the data plumbing only.
     )
     ```
 
-    Capture `payment_unit_count` for use in step 4. If the count is 0, the
-    synthetic engine will mint visits but `completed_works` and
-    `completed_module` will both be 0 — the engine has nothing to mint
-    payments against. This is a soft warning, not a halt: the demo still
-    works (the LLO-weekly-review and audit dashboards in later stages
-    render visit data, not payments), but a stakeholder demo that needs
-    payments visualized requires payment units first. Surface the warning
-    at the top of the run summary in step 4.
+    Capture `payment_unit_count` for use in step 4. **Also inspect each
+    payment unit's `required_deliver_units`.** Two distinct
+    zero-accrual conditions to warn on:
+    - `payment_unit_count == 0` — no payment units at all; the engine
+      has nothing to mint payments against.
+    - `payment_unit_count >= 1` but **any** unit has
+      `required_deliver_units == []` — the engine attributes
+      `completed_works`/`completed_module` to a unit's *required* deliver
+      units, so an empty list zeroes accrual even though a unit exists
+      (jjackson/ace#843, seen live on `hh-poverty-targeting/20260702-1456`:
+      1 unit, `required_deliver_units: []` → 498 visits, 0 completed
+      works). The fix is upstream in `connect-opp-setup` (wire the DU
+      `server_id` onto the unit at create time); re-run Phase 4 for that
+      opp if a demo needs pay accrual visualized.
+
+    Either condition means `completed_works` and `completed_module` will
+    both be 0. This is a soft warning, not a halt: the demo still works
+    (the LLO-weekly-review and audit dashboards in later stages render
+    visit data, not payments), but a stakeholder demo that needs payments
+    visualized requires a payment unit *with* required deliver units
+    first. Surface the warning at the top of the run summary in step 4.
 
     On any error from this call (timeout, 4xx, etc.) treat it as
     `payment_unit_count: unknown` and continue — never block synthetic
@@ -292,10 +305,14 @@ deferred to later stages. This skill is the data plumbing only.
    - Top-of-doc warning banner if any of the following fired:
      `[WARN] payment_unit_count = 0` (from step 1a) → "this opp has no
      payment units; `completed_works` and `completed_module` will be 0";
+     `[WARN] payment unit has empty required_deliver_units` (from step
+     1a) → "a payment unit exists but has no required deliver units;
+     `completed_works`/`completed_module` will be 0 — fix upstream in
+     connect-opp-setup, jjackson/ace#843";
      `[WARN] form_schema_questions = 0` (from step 3) → "deliver app
      empty or unreachable; visit `form_json` will be sparse";
      `[WARN] labs fixture folder not shared with ACE` (from step 3a).
-     Skip the banner entirely if all three are clean.
+     Skip the banner entirely if all are clean.
    - Manifest path: `ACE/<opp>/runs/<run-id>/7-synthetic/synthetic-data-generate_manifest.yaml`
    - GDrive fixture folder: `https://drive.google.com/drive/folders/<folder_id>`
    - Per-file fixture links table (from step 3a), if verification ran
@@ -433,6 +450,7 @@ When `--dry-run` is active:
 | `PERMISSION_DENIED` from labs | step 3 halt | Confirm `ace@dimagi-ai.com` membership in the opp's Connect organization, then retry. |
 | `form_schema_questions = 0` | step 4 warn | Visit data is generated with empty `form_json`; if the demo needs schema-coherent fields, debug the deliver app's HQ availability and re-run. |
 | `payment_unit_count = 0` | step 1a warn → step 4 banner | `completed_works`/`completed_module` will be 0. Add payment units via `connect-opp-setup` and re-run if a stakeholder demo needs payments visualized. Otherwise the demo still works for visit-based dashboards. |
+| payment unit has empty `required_deliver_units` (count ≥ 1) | step 1a warn → step 4 banner | `completed_works`/`completed_module` will be 0 even though a unit exists — the engine attributes completed work to a unit's required DUs (jjackson/ace#843). Fix upstream: `connect-opp-setup` must wire the DU `server_id` onto the unit at create time; re-run Phase 4 for the opp if the demo needs pay accrual. |
 | Labs fixture folder not shared with ACE SA | step 3a `[]` empty list | Per-file verification skipped; `record_counts` from the labs MCP is still authoritative. To enable verification, share `LABS_SYNTHETIC_GDRIVE_PARENT_FOLDER_ID` (or its parent Shared Drive) with `ace-service-account@connect-labs.iam.gserviceaccount.com`. |
 | Re-run on an opp that already has `synthetic.enabled = true` | step 5 overwrite | Old folder retained labs-side. The summary file overwrites in place (find-or-update). To fully tear down, call `synthetic_disable(opp_int_id)` directly; no skill yet. |
 
