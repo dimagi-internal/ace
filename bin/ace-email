@@ -1,184 +1,34 @@
 #!/usr/bin/env python3
-"""ACE's ONLY email send path. Sends HTML so it reflows; never plain-text.
+"""ACE's ONLY email send path — a thin shim over the shared canopy email engine.
 
-Adapted from echo's bin/echo_email.py (the canopy operating model's reference email
-wrapper). Why HTML: a plain-text email is display-wrapped by Gmail at a fixed ~72
-columns, which reads as ugly hard line breaks no matter how clean the content is. An
-HTML body reflows to the reader's width. So this wrapper builds an HTML body (flowing
-<p> paragraphs, <ul> bullets, linkified URLs) plus a plain-text alternative, and sends
-both. hooks/gating_guard.py denies raw `gog gmail send`/`reply` under the ACE identity
-and approval-gates every non-dry-run invocation of this wrapper, so email leaves ACE
-only through here and only with a human's yes.
+The HTML wrapper (Gmail display-wraps plain text at ~72 cols; HTML reflows), reply
+threading, --reply-all derivation (To = original sender, Cc = everyone else on the
+original To+Cc — raw reads hide Cc and drop cc'd people), send timeout, and identity
+resolution all live in canopy (`canopy email send`, engine ≥ 0.2.255), so fixes
+propagate fleet-wide. This shim only pins --repo so identity comes from THIS repo's
+config/agent.json (`email` + `gog_client`). The deny rail in config/gating.json blocks
+raw `gog gmail send/reply` as ACE, so email leaves ACE only through here.
+
+SEND-SIDE CONTRACT: every successful send prints JSON with message_id + thread_id —
+record thread_id into the run's comms-log so inbound triage can route the reply
+(see skills/email-communicator/SKILL.md step 7).
 
 Usage:
-  bin/ace-email --to "a@x,b@y" [--cc "c@z"] \
-      --subject "Re: ..." --body-file body.txt \
-      [--reply-to-message-id <id>] [--dry-run]
+  bin/ace-email --to "a@x,b@y" [--cc "c@z"] --subject "Re: ..." \\
+      --body-file body.txt [--reply-to-message-id <id>] [--reply-all] [--dry-run]
 
-Body authoring contract: single-line paragraphs separated by blank lines; bullet lines
-("- ", "* ", "1. ") one per line. normalize() collapses accidental hard-wrapped
-paragraphs before HTML-izing.
-
-The gog `--json` result (message_id + thread_id) passes through on stdout — the calling
-skill MUST record thread_id in the run's comms-log so inbound triage can route replies
-(see skills/email-communicator/SKILL.md).
-
-STDLIB ONLY: runs from the installed plugin cache under whatever python3 is on PATH.
-Env resolution mirrors scripts/labs-auth-headers.mjs / lib/plugin-data-dir.ts:
-process env -> $CLAUDE_PLUGIN_DATA/.env -> self-derived plugins/data dir -> dev-root
-.env -> ~/.claude/plugins/data/ace-ace/.env.
+Auth check: `canopy email preflight --repo <this repo>` (exact `gog login` fix on failure).
 """
-import argparse
-import html
 import os
-import re
-import subprocess
 import sys
-import tempfile
 
-LIST_RE = re.compile(r"^\s*([-*+]|\d+\.)\s+")
-URL_RE = re.compile(r"(https?://[^\s<>()]+)")
-
-
-def _parse_env_value(env_text, key):
-    for line in env_text.split("\n"):
-        if not line or line.startswith("#"):
-            continue
-        eq = line.find("=")
-        if eq <= 0:
-            continue
-        if line[:eq].strip() != key:
-            continue
-        return line[eq + 1:].strip().strip("'\"")
-    return None
-
-
-def _derive_plugin_data_dir(caller_path):
-    """plugins/cache/<mp>/<plugin>/<ver>/... -> plugins/data/<mp>-<plugin>."""
-    parts = caller_path.split(os.sep)
-    for i in range(len(parts) - 4):
-        if parts[i] == "plugins" and parts[i + 1] == "cache":
-            mp, plugin, ver = parts[i + 2], parts[i + 3], parts[i + 4]
-            if not (mp and plugin and ver):
-                continue
-            root = os.sep.join(parts[: i + 1])
-            return os.path.join(root, "data", f"{mp}-{plugin}")
-    return None
-
-
-def _env_get(key, default=None):
-    if os.environ.get(key):
-        return os.environ[key]
-    here = os.path.abspath(__file__)
-    candidates = []
-    cpd = os.environ.get("CLAUDE_PLUGIN_DATA")
-    if cpd and cpd != "${CLAUDE_PLUGIN_DATA}":
-        candidates.append(os.path.join(cpd, ".env"))
-    derived = _derive_plugin_data_dir(here)
-    if derived:
-        candidates.append(os.path.join(derived, ".env"))
-    candidates.append(os.path.join(os.path.dirname(here), "..", ".env"))
-    home = os.environ.get("HOME") or os.path.expanduser("~")
-    candidates.append(os.path.join(home, ".claude", "plugins", "data", "ace-ace", ".env"))
-    for c in candidates:
-        try:
-            with open(c) as f:
-                v = _parse_env_value(f.read(), key)
-            if v:
-                return v
-        except OSError:
-            continue
-    return default
-
-
-def normalize(text):
-    """Collapse hard-wrapped prose to one line per paragraph; keep bullets/blank lines."""
-    out, para = [], []
-
-    def flush():
-        if para:
-            out.append(" ".join(s.strip() for s in para))
-            para.clear()
-
-    for ln in text.split("\n"):
-        s = ln.rstrip()
-        if not s.strip():
-            flush()
-            out.append("")
-        elif LIST_RE.match(s):
-            flush()
-            out.append(s.strip())
-        else:
-            para.append(s)
-    flush()
-    collapsed = []
-    for l in out:
-        if l == "" and collapsed and collapsed[-1] == "":
-            continue
-        collapsed.append(l)
-    return "\n".join(collapsed).strip() + "\n"
-
-
-def _linkify(escaped):
-    return URL_RE.sub(lambda m: f'<a href="{m.group(1)}">{m.group(1)}</a>', escaped)
-
-
-def to_html(plain):
-    blocks = re.split(r"\n\s*\n", plain.strip())
-    parts = []
-    for b in blocks:
-        lines = [l for l in b.split("\n") if l.strip()]
-        if lines and all(LIST_RE.match(l) for l in lines):
-            lis = "".join(
-                f"<li>{_linkify(html.escape(LIST_RE.sub('', l).strip(), quote=False))}</li>"
-                for l in lines
-            )
-            parts.append(f"<ul>{lis}</ul>")
-        else:
-            text = " ".join(l.strip() for l in lines)
-            parts.append(f"<p>{_linkify(html.escape(text, quote=False))}</p>")
-    return ('<html><body style="font-family:Arial,Helvetica,sans-serif;'
-            'font-size:14px;line-height:1.5;color:#222">' + "".join(parts) + "</body></html>")
-
-
-def main():
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--to", required=True)
-    ap.add_argument("--cc")
-    ap.add_argument("--subject", required=True)
-    ap.add_argument("--body-file", required=True)
-    ap.add_argument("--reply-to-message-id")
-    ap.add_argument("--dry-run", action="store_true")
-    a = ap.parse_args()
-    acct = _env_get("ACE_GMAIL_ACCOUNT", "ace@dimagi-ai.com")
-    client = _env_get("ACE_GMAIL_CLIENT", "ace")
-    plain = normalize(open(a.body_file).read())
-    html_body = to_html(plain)
-    if a.dry_run:
-        print(f"----- DRY RUN (as {acct}, to {a.to}) -----")
-        print("----- PLAIN (alternative) -----")
-        sys.stdout.write(plain)
-        print("\n----- HTML (primary) -----")
-        print(html_body)
-        return
-    with tempfile.NamedTemporaryFile("w", suffix=".txt", delete=False) as tf:
-        tf.write(plain)
-        plain_path = tf.name
-    cmd = ["gog", "gmail", "send", "--account", acct, "--client", client,
-           "--to", a.to, "--subject", a.subject,
-           "--body-file", plain_path, "--body-html", html_body, "--json"]
-    if a.cc:
-        cmd += ["--cc", a.cc]
-    if a.reply_to_message_id:
-        cmd += ["--reply-to-message-id", a.reply_to_message_id]
-    try:
-        r = subprocess.run(cmd, capture_output=True, text=True)
-        sys.stdout.write(r.stdout)
-        sys.stderr.write(r.stderr)
-        sys.exit(r.returncode)
-    finally:
-        os.unlink(plain_path)
-
-
-if __name__ == "__main__":
-    main()
+REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+try:
+    os.execvp("canopy", ["canopy", "email", "send", "--repo", REPO, *sys.argv[1:]])
+except FileNotFoundError:
+    sys.exit(
+        "canopy CLI not on PATH — the shared email engine lives there (canopy ≥ 0.2.255).\n"
+        "Install it (`uv tool install canopy` from the canopy checkout) or run "
+        "`uv run canopy email send --repo <this repo> ...` from a canopy checkout.\n"
+        "See /canopy:setup."
+    )

@@ -20,6 +20,11 @@ comms-log threadId capture. The rail never prompts; *whether* a send is appropri
 the calling context's procedure (a run's pause-point mode, a turn's review posture) — see
 `docs/superpowers/specs/2026-07-01-agent-operating-model-adoption.md § Gating`.
 
+**`bin/ace-email` and `bin/ace-mark-read` are thin shims over the shared canopy email engine**
+(`canopy email send|mark-read|preflight`, canopy ≥ 0.2.255; identity from this repo's
+`config/agent.json`) — fixes propagate fleet-wide, same as hal's shims (ace#826). Requires the
+canopy CLI on PATH (`/canopy:setup`); the shims exit with the remediation when it's missing.
+
 ### Configuration (preamble)
 
 Requires these environment variables in `.env` (also resolved by `bin/ace-email` itself from the
@@ -54,7 +59,11 @@ ACE uses its OWN gog client — never another agent's identity (and vice versa: 
 
 4. **For reply operations:**
    - Read the original message first (step 6) to get the thread context and the message id.
-   - Use: `bin/ace-email --to <reply-all recipients> --subject "Re: <original>" --body-file <path> --reply-to-message-id <message_id>`
+   - **Prefer `--reply-all`:** `bin/ace-email --reply-all --reply-to-message-id <message_id> --subject "Re: <original>" --body-file <path>`
+     — the engine derives To (original sender) + Cc (everyone else on the original To+Cc) from the
+     message's structured headers, so cc'd people are never silently dropped (§1b rule 3, now
+     tool-backed). Explicit `--cc` merges in. Only pass `--to` yourself when deliberately narrowing
+     the recipient set — and say so in the approval step.
    - Replies maintain the Gmail thread via the message id.
 
 5. **For search operations:**

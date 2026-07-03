@@ -4,6 +4,8 @@
   "name": "ACE",
   "description": "AI Connect Engine — runs the full CommCare Connect opportunity lifecycle (design → apps → QA → solicitation → LLO execution → closeout). Flagship agent on the canopy operating model: pipeline runs via /ace:run, counterpart-facing turns via /ace:turn.",
   "email": "ace@dimagi-ai.com",
+  "gog_client": "ace",
+  "provisioning": ".env.tpl + op inject (1Password AI-Agents; see /ace:setup) — no canopy provision manifest",
   "repo": "dimagi-internal/ace",
   "avatar": ""
 }

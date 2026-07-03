@@ -1831,6 +1831,19 @@ else
   fi
 fi
 
+# 7a3. canopy_email_engine — bin/ace-email + bin/ace-mark-read are thin shims
+# over the shared canopy email engine (ace#826; canopy >= 0.2.255). Without the
+# canopy CLI on PATH, every send + mark-read in turns and Phase 8/9 fails at
+# invocation time (the shims exit with a remediation, but a run shouldn't be
+# the first place that's discovered).
+if ! command -v canopy >/dev/null 2>&1; then
+  warn "canopy_email_engine: canopy CLI not on PATH — bin/ace-email + bin/ace-mark-read (shims over the shared engine) will fail; email send + mark-read unavailable" "install it: uv tool install <canopy checkout> (see /canopy:setup)"
+elif ! canopy email --help >/dev/null 2>&1; then
+  warn "canopy_email_engine: canopy CLI present but has no \`email\` subcommand — engine predates 0.2.255" "upgrade: uv tool install --force <canopy checkout> (or /canopy:update then re-install the tool)"
+else
+  pass "canopy_email_engine: canopy CLI present with the email engine (send/mark-read/preflight); shims resolve identity from config/agent.json"
+fi
+
 # 7b. nova_shell_env — verify NOVA_API_KEY is in the Claude Code parent
 # shell's env. Nova plugin v1.1.0's .mcp.json uses a headersHelper that
 # reads NOVA_API_KEY from the process env; without it in the shell, the
