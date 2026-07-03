@@ -30,6 +30,11 @@ not what you remember being asked, and not a close-enough substitute.
 When a message contained MULTIPLE asks, enumerate them and say how each was handled, one line each
 (✓ done / link / status). The requester must be able to see their checklist reflected back.
 
+Reply mechanics follow canopy `docs/agent-operating-model.md § 1b` (adopted by reference,
+jjackson/ace#828): deliverables/attachments are **gdocs** with the draft shown **inline** — never a
+local file the human must open; **verify the recipient set from the structured thread read** (raw
+dumps hide `Cc:`) before rating faithfulness complete.
+
 ## When to run
 Before EVERY outbound reply or counterpart-facing deliverable — non-optional for any request with
 multiple parts or cited links/sources. Wired into `inbox-triage` step 2d and `turn` Step 3.
