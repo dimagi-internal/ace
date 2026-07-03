@@ -1,44 +1,27 @@
 #!/usr/bin/env python3
 """Mark Gmail threads read (remove the UNREAD label) as ace@.
 
-Adapted from echo's bin/echo_mark_read.py. gog has no mark-read command, so this
-uses the Gmail API directly with ACE's own OAuth (client creds from gogcli + refresh
-token from the macOS keychain, or the ACE_GOOGLE_REFRESH_TOKEN override). Reading a
-message via the API does NOT clear its unread flag — inbox-triage calls this after it
-has fully handled (or dismissed) a thread, so a turn only lights up on genuinely new
-mail. Read-only-adjacent (mutates only the UNREAD label on ACE's own mailbox); not
-approval-gated.
+Shells out to `gog gmail thread modify <id> --remove UNREAD` per thread — gog's
+own token bucket handles auth, same as every other gog call in a turn. (The
+previous implementation minted an access token itself via the macOS Keychain
+`security` call, which blocks forever on a GUI prompt in non-interactive agent
+shells — jjackson/ace#827. Reading a message via the API does NOT clear its
+unread flag, which is why this tool exists at all; inbox-triage calls it after
+a thread is fully handled or dismissed.)
 
-STDLIB ONLY (urllib, not requests) — runs from the installed plugin cache.
+Read-only-adjacent (mutates only the UNREAD label on ACE's own mailbox); not
+approval-gated. STDLIB ONLY — runs from the installed plugin cache.
 
 Usage: bin/ace-mark-read <threadId> [<threadId> ...]
+NOTE (zsh): unquoted `$IDS` does NOT word-split in zsh — pipe ids through
+xargs instead: `... | xargs bin/ace-mark-read`.
 """
-import json
 import os
 import subprocess
 import sys
-import urllib.parse
-import urllib.request
 
-GOGCLI = os.path.expanduser("~/Library/Application Support/gogcli")
-CLIENT = os.environ.get("ACE_GMAIL_CLIENT", "ace")
 ACCOUNT = os.environ.get("ACE_GMAIL_ACCOUNT", "ace@dimagi-ai.com")
-
-
-def access_token():
-    creds = json.load(open(os.path.join(GOGCLI, f"credentials-{CLIENT}.json")))
-    refresh = os.environ.get("ACE_GOOGLE_REFRESH_TOKEN")
-    if not refresh:
-        raw = subprocess.run(
-            ["security", "find-generic-password", "-s", "gogcli", "-a",
-             f"token:{CLIENT}:{ACCOUNT}", "-w"],
-            capture_output=True, text=True).stdout.strip()
-        refresh = json.loads(raw)["refresh_token"]
-    body = urllib.parse.urlencode({
-        "client_id": creds["client_id"], "client_secret": creds["client_secret"],
-        "refresh_token": refresh, "grant_type": "refresh_token"}).encode()
-    with urllib.request.urlopen("https://oauth2.googleapis.com/token", body) as r:
-        return json.load(r)["access_token"]
+CLIENT = os.environ.get("ACE_GMAIL_CLIENT", "ace")
 
 
 def main():
@@ -46,19 +29,26 @@ def main():
     if not ids:
         print("usage: ace-mark-read <threadId> [...]")
         sys.exit(1)
-    tok = access_token()
+    failures = 0
     for th in ids:
-        req = urllib.request.Request(
-            f"https://gmail.googleapis.com/gmail/v1/users/me/threads/{th}/modify",
-            data=json.dumps({"removeLabelIds": ["UNREAD"]}).encode(),
-            headers={"Authorization": f"Bearer {tok}",
-                     "Content-Type": "application/json"},
-            method="POST")
         try:
-            with urllib.request.urlopen(req):
+            r = subprocess.run(
+                ["gog", "gmail", "thread", "modify", th, "--remove", "UNREAD",
+                 "--account", ACCOUNT, "--client", CLIENT],
+                capture_output=True, text=True, timeout=30)
+            if r.returncode == 0:
                 print(th, "-> read")
-        except Exception as e:  # noqa: BLE001 — report per-thread, keep going
-            print(th, "-> ERROR", str(e)[:120])
+            else:
+                failures += 1
+                err = (r.stderr or r.stdout).strip().replace("\n", " ")
+                print(th, "-> ERROR", err[:120])
+        except subprocess.TimeoutExpired:
+            failures += 1
+            print(th, "-> ERROR timed out after 30s")
+        except FileNotFoundError:
+            print("ERROR: gog CLI not found on PATH (brew install steipete/tap/gogcli)")
+            sys.exit(1)
+    sys.exit(1 if failures else 0)
 
 
 if __name__ == "__main__":

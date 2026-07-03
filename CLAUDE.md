@@ -40,7 +40,8 @@ ACE is a fleet agent on canopy's agent operating model (spec: `docs/superpowers/
 - **Every send records `thread_id` in the run's comms-log** (`email-communicator` step 7). That's the routing key: `inbox-triage` resolves inbound threads to opp/run by comms-log match, then subject conventions, else unroutable → read-only escalate.
 - **Counterpart tiers:** **act** = `config/allowlist.txt` (internal staff; may steer runs), **correspond** = derived from the routed run's state (external LLO contacts; approval-gated replies only, never run mutations), unknown = read-only. One thread, one sender, one memory scope per triage step.
 - **Turn state lives in Drive** (comms-logs + `run_state.yaml`), never locally — skills stay stateless; a routed thread always resolves to the opp's current run (run independence holds inside turns).
-- `bin/ace-mark-read` clears UNREAD after a thread is fully handled (gog has no mark-read; reading via API doesn't clear the flag).
+- `bin/ace-mark-read` clears UNREAD after a thread is fully handled (reading via API doesn't clear the flag). It shells out to `gog gmail thread modify --remove UNREAD` — never mint Gmail tokens via the macOS Keychain `security` call, which hangs forever on a GUI prompt in non-interactive shells (jjackson/ace#827).
+- Reply quality follows canopy's operating-model **§1b checklist** by reference (deliverables are gdocs + draft inline; decide-then-show numbered; verify recipients from the structured read); inbox noise classes and open-thread aging (>5 days → escalate to the run's operator) are standing rules in `skills/inbox-triage`.
 
 ## Layout
 

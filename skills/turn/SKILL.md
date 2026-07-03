@@ -44,13 +44,17 @@ under normal guardrails; otherwise note "board: not configured" in the close-out
 
 ## Step 3 — Inbox triage
 
-Run `skills/inbox-triage/SKILL.md` in full. In brief: for **each** unread thread, in order — read it,
-resolve the sender's tier (**act** = `config/allowlist.txt`; **correspond** = derived from the routed
-run's state; neither = read-only), route the thread to its opp/run via the comms-log `thread_id`,
-decide ONE action, approval-gate anything outbound, write back to the run's comms-log. **One thread,
-one sender, one memory scope — never reason about two senders in one step.**
+Run `skills/inbox-triage/SKILL.md` in full. In brief: apply the standing noise table first (auto-
+dismiss known machine classes, drain ALL search pages); then for **each** remaining thread, in
+order — read it, resolve the sender's tier (**act** = `config/allowlist.txt`; **correspond** =
+derived from the routed run's state; neither = read-only), route the thread to its opp/run via the
+comms-log `thread_id`, decide ONE action, approval-gate anything outbound, write back to the run's
+comms-log. **One thread, one sender, one memory scope — never reason about two senders in one step.**
 
-Before every reply: run `skills/self-review/SKILL.md` against the sender's original asks.
+Reply quality follows canopy `docs/agent-operating-model.md § 1b` (deliverables are gdocs + draft
+shown inline; decide-then-show in one numbered, consistent order; verify recipients from the
+structured read). Before every reply: run `skills/self-review/SKILL.md` against the sender's
+original asks.
 
 ## Step 4 — Skill-development self-check (every turn, explicitly)
 
@@ -66,9 +70,12 @@ Report the answers to both, out loud, in the close-out:
   a human decision.
 - Best-effort workspace refresh if the canopy agent CLI is configured (never blocks the close).
 - Give ONE combined summary: **Board** (drained / not configured) · **Inbox** (per thread: sender,
-  tier, routed run, proposed action, what was approved & done, what's parked) · **Runs advanced**
-  (any pause points resumed or skills dispatched) · **Blocked/awaiting** (preflight failures, human
-  decisions needed) · **Issues filed / skills changed**.
+  tier, routed run, proposed action, what was approved & done, what's parked; noise counts by
+  class) · **Open threads by age** (ALL open correspond-tier threads with days-since-last-inbound;
+  >5 days = explicit escalation to the run's operator — standing state, repeated every turn until
+  resolved) · **Runs advanced** (any pause points resumed or skills dispatched) ·
+  **Blocked/awaiting** (preflight failures, human decisions needed) · **Issues filed / skills
+  changed**.
 
 ## Related
 

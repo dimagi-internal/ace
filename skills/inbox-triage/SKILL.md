@@ -32,11 +32,27 @@ A correspond-tier sender is *derived, not maintained*: verify their address agai
 `run_state.yaml` products / comms-log **for that opp** before treating them as a counterpart. The same
 address on an unroutable thread is tier-none.
 
+## Noise classification (standing table — apply BEFORE per-thread reasoning)
+
+Known machine-generated classes are auto-dismissed: mark read, count them in the close-out, spend
+zero per-thread reasoning. The first live turn triaged 170+ threads of which ~97% were these three
+classes — and the noise buried a real LLO counterpart for 23 days (jjackson/ace#817, #818).
+
+| Sender | Subject class | Disposition |
+|---|---|---|
+| `connect-devops@dimagi.com` | `New Opportunity Created: …`, `Reminder: … opportunities ending …`, `Invitation to Program: …` | Auto-dismiss — side effects of ACE's own runs. **Guard:** if the opportunity name is NOT recognizable from ACE's opps/runs, surface it — that's an orphan/drift signal (pairs with `/ace:sweep`), not noise |
+| `no-reply@accounts.google.com` | `Security alert` (new sign-in) | Auto-dismiss when the timestamp matches ACE's own gog/session activity; surface otherwise |
+| Vendor/broadcast (Anthropic notices & receipts, `info@dimagi.com` newsletter blasts, Gmail tips) | any | Auto-dismiss |
+
+Anything not in the table gets full per-thread treatment. **Drain ALL pages** — Gmail search
+paginates at 50; loop until zero unread, or old human threads hide behind the noise.
+
 ## Process
 
 ### 1. Pull the queue (read-only, safe)
 Via `email-communicator` (search): `in:inbox is:unread`. If none, report "inbox clear" and stop.
-Present the queue (sender, subject, date) so the human sees the shape of the turn.
+Apply the noise table, then present the remaining queue (sender, subject, date) so the human sees
+the shape of the turn.
 
 ### 2. For EACH thread, in order — handle fully before moving on
 
@@ -53,10 +69,14 @@ Present the queue (sender, subject, date) so the human sees the shape of the tur
      `*-noreply@google.com`) are attributed to the human who triggered them and take that
      person's tier.
 
-  d. **Decide the intent and propose exactly ONE action:**
+  d. **Decide the intent and propose exactly ONE action** (reply quality follows canopy
+     `docs/agent-operating-model.md § 1b` — the fleet checklist; adopted by reference, jjackson/ace#828):
      - **Reply** — draft in ACE's voice (see `persona.md`: warm and concrete to external LLO
        counterparts, no Dimagi-internal jargon, always self-identifying as ACE). Run `self-review`
-       against the sender's asks first.
+       against the sender's asks first. Per §1b: **deliverables/attachments are gdocs, the draft is
+       shown inline** (never a local .txt the human must open, never a wall of pasted text);
+       **verify recipients from the structured thread read** — a raw dump hides `Cc:` and silently
+       drops cc'd people; reply must cover the full recipient set.
      - **Advance the run** *(act tier only)* — e.g. "approved, go ahead" on a pause-point thread →
        execute the pause point's approve path; a UAT-feedback reply forwarded by staff → feed the
        relevant Phase 9 skill. Correspond-tier content that *should* advance a run (an LLO's UAT
@@ -68,6 +88,9 @@ Present the queue (sender, subject, date) so the human sees the shape of the tur
   e. **Approval step (procedural).** Present the proposed action — for a reply, the full draft
      (to/subject/body) — and get the human's yes before executing anything outbound. The deny rail
      guarantees sends flow through `bin/ace-email`; *this step* is what makes them approved.
+     Per §1b, **decide-then-show in one coherent order**: number the asks, keep the ask/show order
+     consistent, and never manufacture a decision out of a thread already classified read-only —
+     either you've decided and you show the result, or you have a real question and ask it cleanly.
 
   f. **Execute** the approved action.
 
@@ -76,11 +99,23 @@ Present the queue (sender, subject, date) so the human sees the shape of the tur
 
 ### 3. Mark handled threads read
 `bin/ace-mark-read <threadId> …` once fully handled or dismissed — NOT if still awaiting a human
-decision. (Reading via the API does not clear the unread flag.)
+decision. (Reading via the API does not clear the unread flag. In zsh, pipe ids through `xargs` —
+unquoted `$IDS` does not word-split.)
 
-### 4. Report
-Per thread: sender, tier, routed opp/run, proposed action, approved & done vs parked. Feed this into
-the turn's combined close-out (`skills/turn` Step 5).
+### 4. Open-thread aging (standing state, every turn — jjackson/ace#818)
+An unanswered external counterpart is **state, not an event** — a turn that only triages new mail
+lets an open thread age silently between turns (HENIKE waited 23 days). Every turn:
+- List ALL open correspond-tier threads (awaiting ACE or awaiting a decision) with **age in days**
+  since their last inbound message — search `in:inbox` for threads whose last message is inbound
+  and cross-check parked items from prior close-outs.
+- Any thread **older than 5 days** is escalated explicitly to the routed run's operator
+  (`initiated_by` / `last_actor` in `run_state.yaml`) in the close-out, every turn, until resolved —
+  not just listed.
+
+### 5. Report
+Per thread: sender, tier, routed opp/run, proposed action, approved & done vs parked. Plus: noise
+counts by class, and the open-thread age list. Feed this into the turn's combined close-out
+(`skills/turn` Step 5).
 
 ## Defaults & guardrails
 - **Default posture is Review:** ACE proposes, the human disposes. Autonomy changes are a spec-level
