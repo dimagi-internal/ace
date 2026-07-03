@@ -1,55 +1,25 @@
 #!/usr/bin/env python3
-"""Mark Gmail threads read (remove the UNREAD label) as ace@.
+"""Mark Gmail threads read (remove the UNREAD label) as ace@ — shim over the canopy engine.
 
-Shells out to `gog gmail thread modify <id> --remove UNREAD` per thread — gog's
-own token bucket handles auth, same as every other gog call in a turn. (The
-previous implementation minted an access token itself via the macOS Keychain
-`security` call, which blocks forever on a GUI prompt in non-interactive agent
-shells — jjackson/ace#827. Reading a message via the API does NOT clear its
-unread flag, which is why this tool exists at all; inbox-triage calls it after
-a thread is fully handled or dismissed.)
-
-Read-only-adjacent (mutates only the UNREAD label on ACE's own mailbox); not
-approval-gated. STDLIB ONLY — runs from the installed plugin cache.
+`canopy email mark-read` (engine ≥ 0.2.255) shells `gog gmail thread modify --remove
+UNREAD` per thread via gog's own token bucket — NEVER the macOS Keychain, which blocks
+forever on a GUI prompt in non-interactive agent shells (jjackson/ace#827). Reading a
+message via the API does not clear its unread flag, which is why this tool exists;
+inbox-triage calls it after a thread is fully handled or dismissed. Identity comes from
+THIS repo's config/agent.json via --repo.
 
 Usage: bin/ace-mark-read <threadId> [<threadId> ...]
 NOTE (zsh): unquoted `$IDS` does NOT word-split in zsh — pipe ids through
 xargs instead: `... | xargs bin/ace-mark-read`.
 """
 import os
-import subprocess
 import sys
 
-ACCOUNT = os.environ.get("ACE_GMAIL_ACCOUNT", "ace@dimagi-ai.com")
-CLIENT = os.environ.get("ACE_GMAIL_CLIENT", "ace")
-
-
-def main():
-    ids = sys.argv[1:]
-    if not ids:
-        print("usage: ace-mark-read <threadId> [...]")
-        sys.exit(1)
-    failures = 0
-    for th in ids:
-        try:
-            r = subprocess.run(
-                ["gog", "gmail", "thread", "modify", th, "--remove", "UNREAD",
-                 "--account", ACCOUNT, "--client", CLIENT],
-                capture_output=True, text=True, timeout=30)
-            if r.returncode == 0:
-                print(th, "-> read")
-            else:
-                failures += 1
-                err = (r.stderr or r.stdout).strip().replace("\n", " ")
-                print(th, "-> ERROR", err[:120])
-        except subprocess.TimeoutExpired:
-            failures += 1
-            print(th, "-> ERROR timed out after 30s")
-        except FileNotFoundError:
-            print("ERROR: gog CLI not found on PATH (brew install steipete/tap/gogcli)")
-            sys.exit(1)
-    sys.exit(1 if failures else 0)
-
-
-if __name__ == "__main__":
-    main()
+REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+try:
+    os.execvp("canopy", ["canopy", "email", "mark-read", "--repo", REPO, *sys.argv[1:]])
+except FileNotFoundError:
+    sys.exit(
+        "canopy CLI not on PATH — the shared email engine lives there (canopy ≥ 0.2.255).\n"
+        "Install it (`uv tool install canopy` from the canopy checkout). See /canopy:setup."
+    )
