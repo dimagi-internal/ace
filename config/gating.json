@@ -5,6 +5,11 @@
       "tool": "Bash",
       "pattern": "(?:^|[\\n;&|(])\\s*gog\\s+gmail\\s+(send|reply)\\b(?=[^\\n]*(--client[= ]+[\"']?ace\\b|ace@dimagi-ai\\.com))",
       "message": "BLOCKED: raw `gog gmail send/reply` under the ACE identity. Sends go ONLY through `bin/ace-email` (HTML multipart + comms-log threadId capture; --dry-run to preview). See skills/email-communicator/SKILL.md."
+    },
+    {
+      "tool": "Bash",
+      "pattern": "op\\s+inject\\b.*-o[=\\s]+\\S*(?:CLAUDE_PLUGIN_DATA|plugins/data/ace)\\S*\\.env",
+      "message": "BLOCKED: raw `op inject -o <plugin-data>/.env` overwrites the whole file and DROPS local-only secrets (ACE_WEB_PAT_TOKEN and any key not in .env.tpl). Use `/ace:setup --force-env` (= `bash \"$CLAUDE_PLUGIN_ROOT/bin/ace-setup\" --force-env`), which snapshots the `# --- ACE local-only secrets ---` block and re-appends it after the inject. (A raw inject to a NON-plugin-data path, e.g. a dev-worktree ./.env, is not blocked.)"
     }
   ],
   "approve": []

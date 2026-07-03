@@ -1,9 +1,18 @@
 # ── ACE Environment (generated from 1Password) ──────────────────────
 #
-# Generate .env for the installed plugin:
-#   op inject -i .env.tpl -o ~/.claude/plugins/data/ace-ace/.env --account dimagi.1password.com
+# Generate / refresh .env for the installed plugin — USE:
+#   /ace:setup --force-env        (or: bash bin/ace-setup --force-env)
 #
-# Or for local dev (repo worktree):
+# ⚠️ Do NOT run a raw `op inject -i .env.tpl -o <plugin-data>/.env` — it
+# overwrites the whole file and DROPS local-only secrets that aren't in this
+# template (ACE_WEB_PAT_TOKEN, minted per-machine via /ace:ace-web-pat-mint,
+# and anything else you added by hand). `/ace:setup --force-env` snapshots the
+# `# --- ACE local-only secrets ---` marker block and re-appends it after the
+# inject, so those survive. (A PreToolUse rail — config/gating.json — blocks the
+# raw form for Claude; it can't stop a human terminal — hence this warning.)
+#
+# For local dev in a repo worktree (no local-only secrets to lose), a raw
+# inject to ./.env is fine:
 #   op inject -i .env.tpl -o .env --account dimagi.1password.com
 #
 # The MCP server loads from $CLAUDE_PLUGIN_DATA/.env (plugin) or ./.env (dev).
