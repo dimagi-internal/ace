@@ -227,6 +227,18 @@ CONTENT_GENERATOR_API_KEY=op://AI-Agents/Content Generator API/credential
 # 1Password item ace-web's own .env.tpl uses.
 ELEVENLABS_API_KEY=op://AI-Agents/ACE - ElevenLabs API Key/credential
 
+# ── ace-web base URL (cloud mobile backend + ace-web automation) ────
+#
+# Non-secret literal (not 1Password-backed) — the public base URL of the
+# ace-web deployment. Required by the CLOUD mobile backend
+# (`mcp/mobile/backends/cloud.ts`): without it, a `cloud`-toggled session
+# throws CLOUD_NOT_CONFIGURED. Also the base for any `/ace:run --ace-web-url`
+# automation. A fresh machine that omits this hits CLOUD_NOT_CONFIGURED the
+# first time Phase 6 dispatches against the cloud emulator (jjackson/ace#839).
+# Local-AVD-only operators can leave the default; it's harmless when the
+# session backend is `local`.
+ACE_WEB_BASE_URL=https://labs.connect.dimagi.com/ace
+
 # ── ace-web Personal Access Token (per-human, per-machine) ─────────
 #
 # NOT 1Password-backed. Minted via /ace:ace-web-pat-mint (gh-style

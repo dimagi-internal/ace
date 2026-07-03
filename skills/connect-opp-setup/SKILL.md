@@ -384,11 +384,24 @@ alone makes the artifact land outside `4-connect` and fail
      display index (1, 2, 3…) and is rejected by the server as
      "Invalid Data". The MCP backend has a name-mapping fallback that
      accepts `du.id` and maps it for you, but passing `server_id`
-     directly is the documented happy path. **At least one required DU
-     is necessary** for the opp to pass `is_setup_complete`; an empty
-     `required_deliver_units` blocks Phase 8 `connect_send_flw_invite`
+     directly is the documented happy path. **Every payment unit MUST
+     carry at least one `required_deliver_units` id — this is a hard
+     pre-create gate, not a nicety.** Before calling
+     `connect_create_payment_units`, assert each unit's
+     `required_deliver_units` is non-empty (wire the just-synced DU
+     `server_id`(s) from Step 4's `connect_list_deliver_units` onto the
+     unit — for a single-DU app that's the one DU's `server_id`). An
+     empty `required_deliver_units`: (a) fails the opp's
+     `is_setup_complete`; (b) blocks Phase 8 `connect_send_flw_invite`
      and Phase 6 mobile screenshot capture (the FLW can't claim the
-     opp). Closes jjackson/ace#106 finding 5.
+     opp); and (c) makes Phase 7 synthetic accrual mint
+     `completed_works: 0` / `completed_module: 0` regardless of how many
+     visits are generated — the engine attributes completed work to a
+     unit's required DUs, so with none there is nothing to attribute
+     (jjackson/ace#843, confirmed live on
+     `hh-poverty-targeting/20260702-1456`: a PU existed but
+     `required_deliver_units: []` → 498 visits, 0 completed works).
+     Closes jjackson/ace#106 finding 5 + jjackson/ace#843.
    - `optional_deliver_units`: which DUs are bonus/optional. **No DU id
      may appear in `required` and `optional` of the same unit, AND no DU
      may appear in two payment units in the same request** — the server
@@ -404,8 +417,11 @@ alone makes the artifact land outside `4-connect` and fail
    Specifically check, per unit:
    - `name`, `amount`, `org_amount`, `max_total`, `max_daily` — exact
      match against the request payload.
-   - `required_deliver_units` — array length matches request and
-     contains the same DU ids (order may differ).
+   - `required_deliver_units` — **must be non-empty** AND array length
+     matches request AND contains the same DU ids (order may differ). A
+     stored empty `required_deliver_units` is a `[BLOCKER]` even if the
+     rest of the unit matches (it zeroes Phase 7 accrual — see the
+     create-time gate above, jjackson/ace#843).
    - `optional_deliver_units` — same.
 
    **Action on any mismatch:** halt with a `[BLOCKER]` in the gate

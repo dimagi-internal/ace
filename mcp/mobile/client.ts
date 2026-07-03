@@ -27,7 +27,7 @@ import {
   getActiveSelectorMapMetadata,
 } from './recipe-resolver.js';
 import { validateRecipeFreshness } from '../../lib/recipe-provenance.js';
-import { resolveBackend } from './backend-toggle.js';
+import { resolveBackend, preflightMobileBackend } from './backend-toggle.js';
 import type {
   AvdInfo, ApkInfo, RecipeRunResult, TestUserRegistrationResult, UiDumpResult,
   SnapshotResult, DeviceUserStateClass, DeviceStateHealLog, LocalBootstrapConfig,
@@ -379,6 +379,27 @@ export class MobileClient {
    * through ace-web has its own health semantics.
    */
   async ensureAvdRunning(name: string): Promise<AvdInfo> {
+    // Pre-boot backend preflight (jjackson/ace#839): fail loud on an
+    // unconfigured cloud toggle, or note a likely dispatch/session mismatch,
+    // BEFORE booting any local AVD. Purely a check over the resolved backend
+    // + cloud-config presence — no I/O, no state change. Runs first so a
+    // wrong local boot on a shared host can't squat a busy emulator port
+    // before the misconfiguration surfaces.
+    const preflight = preflightMobileBackend({
+      resolved: resolveBackend(),
+      cloudConfigured: this.cloud !== null,
+    });
+    if (preflight.fatal) {
+      throw new MobileError(
+        preflight.fatal.code,
+        preflight.fatal.message,
+        preflight.fatal.remediation,
+      );
+    }
+    if (preflight.note) {
+      logInfo(`ensure_avd_running: ${preflight.note}`);
+    }
+
     if (this.useCloud) {
       const info = await this.requireCloud().ensureAvdRunning(name);
       // Symmetric with the local branch — drive registration through

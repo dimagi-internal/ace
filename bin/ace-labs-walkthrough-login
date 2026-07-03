@@ -149,7 +149,18 @@ PY
 if [ -x "$BROWSE_BIN" ]; then
   # browse requires an origin-matching page open before accepting cookies.
   "$BROWSE_BIN" goto "$LABS_BASE_URL" >/dev/null 2>&1 || true
-  COOKIE_JSON="$(dirname "$COOKIE_JAR")/cookies.json"
+  # browse `cookie-import` only accepts a file under a browse-allowed dir
+  # (/private/tmp or the repo). A macOS $TMPDIR path (/var/folders/…) — which
+  # is where $COOKIE_JAR resolves by default — is REJECTED, and that was the
+  # silent "failed to import labs cookies" root cause (jjackson/ace#842). Write
+  # the browse cookies JSON to an allowed dir, namespaced per OS user (#774).
+  if [ -d /private/tmp ]; then
+    BROWSE_IMPORT_DIR="/private/tmp/ace-labs-walkthrough-$(id -u)"
+  else
+    BROWSE_IMPORT_DIR="/tmp/ace-labs-walkthrough-$(id -u)"
+  fi
+  mkdir -p "$BROWSE_IMPORT_DIR" 2>/dev/null || BROWSE_IMPORT_DIR="$SELF_DIR"
+  COOKIE_JSON="$BROWSE_IMPORT_DIR/browse-cookies.json"
   python3 - <<PY > "$COOKIE_JSON"
 import json
 state_path = "$STATE_PATH"
@@ -181,10 +192,15 @@ for c in state.get("cookies", []):
     })
 print(json.dumps(cookies))
 PY
-  if "$BROWSE_BIN" cookie-import "$COOKIE_JSON" >/dev/null 2>&1; then
-    log "imported labs cookies into browse profile"
+  # Capture the import output so a failure surfaces the actual reason
+  # (allowed-dir rejection, no open page, etc.) instead of a generic WARN.
+  if IMPORT_OUT="$("$BROWSE_BIN" cookie-import "$COOKIE_JSON" 2>&1)"; then
+    log "imported labs cookies into browse profile ($COOKIE_JSON)"
   else
-    log "WARN: failed to import labs cookies into browse — try cookie-import manually"
+    log "WARN: failed to import labs cookies into browse: ${IMPORT_OUT:-<no output>}"
+    log "  fix: $COOKIE_JSON must be under a browse-allowed dir (/private/tmp or the repo);"
+    log "       then re-run: '$BROWSE_BIN goto $LABS_BASE_URL' && '$BROWSE_BIN cookie-import $COOKIE_JSON'"
+    log "  note: a browse server restart drops imported cookies — re-run this login after one."
   fi
 fi
 
