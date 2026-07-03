@@ -67,7 +67,7 @@ ACE is a fleet agent on canopy's agent operating model (spec: `docs/superpowers/
 - `bin/ace-doctor` — diagnostic behind `/ace:doctor`. Includes `[Auth liveness]` block per MCP that names the exact remediation command per failure.
 - `bin/ace-update-check` — background update-check shim (borrowed from gstack).
 - `hooks/hooks.json` — runs `bin/ace-update-check` on `SessionStart`.
-- `.env.tpl` — 1Password-injectable template. Installed `.env` lives at `${CLAUDE_PLUGIN_DATA}/.env`. **1Password is source of truth** — never paste values into `.env` directly. Local-only keys preserved across `op inject`.
+- `.env.tpl` — 1Password-injectable template. Installed `.env` lives at `${CLAUDE_PLUGIN_DATA}/.env`. **1Password is source of truth** — never paste values into `.env` directly. **Refresh the installed `.env` with `/ace:setup --force-env` (= `bin/ace-setup --force-env`), NOT a raw `op inject -o <plugin-data>/.env`.** Raw `op inject` overwrites the whole file and drops local-only keys (`ACE_WEB_PAT_TOKEN` etc.); only `bin/ace-setup` snapshots the `# --- ACE local-only secrets ---` block and re-appends it. A `config/gating.json` deny rail blocks the raw form for Claude.
 - `migrations/` — version-to-version migration scripts. See `migrations/README.md`.
 
 **Sibling repo:** `ace-web` is a sibling repo, not a submodule. Browser-harness work happens in the `ace-web` checkout; its design spec lives there.
@@ -185,7 +185,7 @@ This repo is dogfooded by the `canopy` plugin. **Per-run evidence lives in Drive
 ACE has two classes of credential state — confusing them is the #1 source of friction across workstations. Session cookies are bound to TLS fingerprints + CSRF rotation; copying them between machines is *worse* than re-login (intermittent, hard to debug). **Don't sync `~/.ace/` via 1Password or git.**
 
 **1Password-backed (set up once per machine, then static):**
-- `${CLAUDE_PLUGIN_DATA}/.env` — every key in `.env.tpl` (most `ACE_*`, `OCS_*`, `CONNECT_*`, `LABS_MCP_TOKEN`, etc.). Source of truth: 1Password vault `AI-Agents`. Rotate there and re-run `op inject -i .env.tpl -o $CLAUDE_PLUGIN_DATA/.env --force` (or `/ace:setup --force-env`).
+- `${CLAUDE_PLUGIN_DATA}/.env` — every key in `.env.tpl` (most `ACE_*`, `OCS_*`, `CONNECT_*`, `LABS_MCP_TOKEN`, etc.). Source of truth: 1Password vault `AI-Agents`. Rotate there and re-run **`/ace:setup --force-env`** (NOT a raw `op inject -o <plugin-data>/.env` — that drops local-only keys like `ACE_WEB_PAT_TOKEN`; `bin/ace-setup` preserves them).
 - `${CLAUDE_PLUGIN_DATA}/gws-sa-key.json` — Google SA key. Static (SA keys don't expire).
 
 **Local-only secrets in `.env` (preserved across `op inject`):** `ACE_WEB_PAT_TOKEN` (per-human, minted via `/ace:ace-web-pat-mint`) and any other key not in `.env.tpl`. `bin/ace-setup` snapshots non-template keys before each `op inject` and re-appends them in a marker block (`# --- ACE local-only secrets ...`). Template keys always win — 1P is authoritative for declared keys.

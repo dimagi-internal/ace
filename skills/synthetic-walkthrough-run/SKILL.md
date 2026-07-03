@@ -79,9 +79,10 @@ Before dispatching anything:
    `${CLAUDE_PLUGIN_DATA}/.env`. If either is unset:
 
    "CommCareHQ creds are not configured. Inject from 1Password via
-   `op inject -i .env.tpl -o $CLAUDE_PLUGIN_DATA/.env --account dimagi.1password.com`
-   (or `/ace:setup --force-env`) and retry. The labs walkthrough login
-   uses these creds to drive the headless OAuth-via-CCHQ flow."
+   `/ace:setup --force-env` (preserves local-only secrets; do NOT raw
+   `op inject -o $CLAUDE_PLUGIN_DATA/.env`, which drops them) and retry.
+   The labs walkthrough login uses these creds to drive the headless
+   OAuth-via-CCHQ flow."
 
 4. **Verify `bin/ace-labs-walkthrough-login` is reachable.** Run:
 

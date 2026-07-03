@@ -59,7 +59,7 @@ log() { echo "[ace-labs-walkthrough-login] $*" >&2; }
 
 if [ -z "${ACE_HQ_USERNAME:-}" ] || [ -z "${ACE_HQ_PASSWORD:-}" ]; then
   log "ACE_HQ_USERNAME and/or ACE_HQ_PASSWORD not set."
-  log "Inject from 1Password: op inject -i .env.tpl -o \$CLAUDE_PLUGIN_DATA/.env"
+  log "Inject from 1Password: /ace:setup --force-env (preserves local-only secrets; not a raw op inject)"
   exit 2
 fi
 

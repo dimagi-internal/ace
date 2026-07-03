@@ -19,7 +19,9 @@ per-human Bearer PAT (`ACE_WEB_PAT_TOKEN`) minted via
 - `base_url` — deployed ace-web URL, e.g. `https://labs.connect.dimagi.com/ace`.
 - `ACE_WEB_PAT_TOKEN` — env var; per-human Personal Access Token minted
   via `/ace:ace-web-pat-mint`. Lives as a local-only secret in
-  `${CLAUDE_PLUGIN_DATA}/.env` (preserved across `op inject`). The
+  `${CLAUDE_PLUGIN_DATA}/.env` (preserved by `/ace:setup --force-env`,
+  which snapshots the local-only marker block; a raw `op inject` would
+  drop it). The
   resulting Session is attributed to whichever human signed in to
   ace-web at mint time.
 

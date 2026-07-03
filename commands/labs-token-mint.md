@@ -60,9 +60,9 @@ else
     "name[text]=ACE-plugin"
 fi
 
-# Re-inject .env from 1Password
-op inject -i .env.tpl -o "$CLAUDE_PLUGIN_DATA/.env" \
-  --account dimagi.1password.com --force
+# Re-inject .env from 1Password (preserves local-only secrets like
+# ACE_WEB_PAT_TOKEN — a raw `op inject -o $CLAUDE_PLUGIN_DATA/.env` would drop them)
+bash bin/ace-setup --force-env
 
 # Smoke
 bin/ace-doctor 2>&1 | grep "connect_labs_"

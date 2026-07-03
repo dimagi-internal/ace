@@ -143,7 +143,7 @@ true one-shot debugging artifacts go to `./tmp/ace-debug/`.
      SSO/MFA:** `/ace:connect-login` (headed Playwright).
 
 7. **Verify all `ACE_E2E_*` env vars are populated.**
-   - Read each from `process.env`. Any missing → tell the user to update 1Password and re-run `op inject -i .env.tpl -o .env`, then stop.
+   - Read each from `process.env`. Any missing → tell the user to update 1Password and re-run `/ace:setup --force-env` (preserves local-only secrets; not a raw `op inject`), then stop.
 
 8. **Verify `${ACE_E2E_PHONE}` is pre-invited to a Connect opportunity (CRITICAL).**
 

@@ -96,9 +96,8 @@ To make this the ACE golden template for your environment:
        "Config.golden_template_id[text]=<new_id>" \
        --vault AI-Agents --account dimagi.1password.com
 
-  2. Regenerate your local .env from the vault:
-     op inject -i .env.tpl -o ~/.claude/plugins/data/ace-ace/.env \
-       --account dimagi.1password.com
+  2. Regenerate your local .env from the vault (preserves local-only secrets):
+     /ace:setup --force-env    (or: bash bin/ace-setup --force-env)
 
   3. /reload-plugins (or restart Claude Code) so the MCP server picks up the new id.
 ```
