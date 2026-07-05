@@ -26,8 +26,10 @@ Two modes:
 **Preserve the pipeline alias when editing render_code (jjackson/ace#633).**
 Whatever the workflow's pipeline reads as — `view.pipelines.<alias>` —
 is fixed by the workflow definition's `pipeline_sources[].alias`, not by
-you. On an ADAPTed template the alias is the template's (for
-`llo_weekly_review` it is **`data`**, NOT `flw_kpis`). A surgical patch
+you. On an ADAPTed template the alias is the template's and drifts across
+revisions (observed as `data` in #633 and `flw_kpis` in #812) — never
+hardcode a literal; read it from the captured `render_code` /
+`get_workflow` for this run. A surgical patch
 must keep the existing `view.pipelines.<alias>` key verbatim; a full
 rewrite must read the alias from the captured `render_code` /
 `get_workflow` and use that exact key. Substituting a guessed alias

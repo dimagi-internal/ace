@@ -313,21 +313,27 @@ export function checkArchetypeAppropriateScope(
 }
 
 /**
- * Check 8: No `<<...>>` scaffolding markers leaked through from the template.
+ * Check 8: No leaked template markers in the final artifact.
  *
- * The template uses `{{...}}` for fill-in tokens; `<<...>>` is reserved for
- * intermediate scaffolding the producer must strip. Any `<<...>>` in the
- * final artifact is a regen-blocking bug.
+ * Two marker families must both be absent from a rendered work order:
+ *  - `<<...>>` — intermediate scaffolding / producer notes that must be
+ *    stripped before ship.
+ *  - `{{...}}` — the template's fill-in tokens (e.g. `{{scope_will_body}}`).
+ *    Every one is supposed to be substituted during render; a surviving
+ *    `{{...}}` means a fill-in was never populated. This is exactly as
+ *    regen-blocking as a leaked `<<...>>` and previously slipped through
+ *    because only `<<...>>` was matched (jjackson/ace#833).
  */
 export function checkNoScaffoldingMarkers(wo: string): QACheckResult {
-  const matches = wo.match(/<<[^>]*>>/g) || [];
+  const matches = [...(wo.match(/<<[^>]*>>/g) || []), ...(wo.match(/\{\{[^}]*\}\}/g) || [])];
   if (matches.length === 0) return { pass: true };
   const dedup = Array.from(new Set(matches));
   return {
     pass: false,
-    detail: `found ${matches.length} scaffolding marker(s): ${dedup.join(', ')}`,
+    detail: `found ${matches.length} leaked template marker(s): ${dedup.join(', ')}`,
     auto_fix_hint:
-      `strip all \`<<...>>\` scaffolding markers from the work order — they're producer notes, not final content. ` +
+      `strip all leaked \`<<...>>\` scaffolding markers and unfilled \`{{...}}\` template tokens from the work order — ` +
+      `they're producer scaffolding / un-substituted fill-ins, not final content. ` +
       `Replace each with the concrete value it represents, or remove the surrounding phrase if no longer applicable. ` +
       `Markers found: ${dedup.join(', ')}.`,
   };
@@ -443,7 +449,7 @@ export const CHECKS: QACheck[] = [
   {
     id: 'no_scaffolding_markers',
     type: 'static',
-    description: 'No `<<...>>` scaffolding markers leaked through from intermediate generation',
+    description: 'No leaked `<<...>>` scaffolding markers or unfilled `{{...}}` template tokens from intermediate generation',
     run: (wo: string) => checkNoScaffoldingMarkers(wo),
   },
 ];

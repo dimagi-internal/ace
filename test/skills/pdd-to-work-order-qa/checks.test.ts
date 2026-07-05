@@ -239,6 +239,22 @@ describe('checkNoScaffoldingMarkers', () => {
     // dedup: <<a>> appears once in detail
     expect((r.detail!.match(/<<a>>/g) || []).length).toBe(1);
   });
+
+  test('fails when an unfilled {{...}} template token leaked through (jjackson/ace#833)', () => {
+    const wo = GOOD_WO + '\n\nEthics: {{ethics_body}} to be observed.\n';
+    const r = checkNoScaffoldingMarkers(wo);
+    expect(r.pass).toBe(false);
+    expect(r.detail).toContain('{{ethics_body}}');
+    expect(r.auto_fix_hint).toBeTruthy();
+  });
+
+  test('flags both marker families together', () => {
+    const wo = GOOD_WO + '\n\n<<producer_note>> and {{scope_will_body}} both leaked.\n';
+    const r = checkNoScaffoldingMarkers(wo);
+    expect(r.pass).toBe(false);
+    expect(r.detail).toContain('<<producer_note>>');
+    expect(r.detail).toContain('{{scope_will_body}}');
+  });
 });
 
 describe('CHECKS array', () => {
