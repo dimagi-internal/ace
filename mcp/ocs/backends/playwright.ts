@@ -950,14 +950,25 @@ export class PlaywrightBackend {
     // renders version badges; we grab the highest number.
     const homePath = `/a/${this.opts.teamSlug}/chatbots/${args.experiment_id}/`;
     const homeRes = await this.opts.request('GET', homePath);
-    let versionNumber = 1;
-    if (homeRes.ok && homeRes.text) {
-      const html = await homeRes.text();
-      const versionMatches = [...html.matchAll(/Version\s+(\d+)/g)].map((m) => Number(m[1]));
-      if (versionMatches.length > 0) {
-        versionNumber = Math.max(...versionMatches);
-      }
+    const html = homeRes.ok && homeRes.text ? await homeRes.text() : '';
+    const versionMatches = [...html.matchAll(/Version\s+(\d+)/g)].map((m) => Number(m[1]));
+    if (versionMatches.length === 0) {
+      // The publish itself already succeeded (302 handled above), but we could
+      // not read back a version number from the home page — the `Version N`
+      // badge markup this scrape depends on was absent (page markup drift, or
+      // the home page failed to load). Do NOT silently fall back to `1`: a
+      // wrong version_number gets written into run_state and later breaks the
+      // llo-launch freshness equality check (skills/llo-launch) in a way that
+      // is very hard to trace back to here. Fail loud so the mismatch surfaces
+      // at publish time instead. (jjackson/ace#823)
+      throw new HttpError(
+        homeRes.status ?? 0,
+        homePath,
+        'Chatbot version published, but the version number could not be read back from the home page ' +
+          '(no `Version N` badge found). Confirm the publish on OCS and re-scrape — the page markup may have drifted.',
+      );
     }
+    const versionNumber = Math.max(...versionMatches);
 
     return { version_number: versionNumber, task_id: 'none' };
   }

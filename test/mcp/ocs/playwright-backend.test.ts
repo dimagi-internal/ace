@@ -876,6 +876,35 @@ describe('PlaywrightBackend publish + embed info', () => {
     expect(out.version_number).toBe(2);
   });
 
+  it('publishChatbotVersion throws (does NOT silently return 1) when the home page has no `Version N` badge (jjackson/ace#823)', async () => {
+    const request: RequestFn = withPreflight(async (method, url) => {
+      if (method === 'POST' && url === '/a/dimagi/chatbots/99/versions/create') {
+        return {
+          ok: false,
+          status: 302,
+          headers: { location: '/a/dimagi/chatbots/99/#versions' },
+          text: async () => '',
+          json: async () => ({}),
+        };
+      }
+      if (method === 'GET' && url === '/a/dimagi/chatbots/99/') {
+        // Publish succeeded (302 above) but the home page markup drifted — no
+        // `Version N` badge to scrape. Must fail loud, not return a bogus 1.
+        return {
+          ok: true,
+          status: 200,
+          text: async () => '<div>chatbot home, no version badges here</div>',
+          json: async () => ({}),
+        };
+      }
+      throw new Error(`unexpected ${method} ${url}`);
+    });
+    const backend = makeBackend(request, publishSeed);
+    await expect(
+      backend.publishChatbotVersion({ experiment_id: 99, description: 'initial' }),
+    ).rejects.toThrow(/version number could not be read back/);
+  });
+
   it('publishChatbotVersion throws when Django re-renders the form (HTTP 200 = validation failure)', async () => {
     const request: RequestFn = withPreflight(async (method, url) => {
       if (method === 'POST' && url === '/a/dimagi/chatbots/99/versions/create') {

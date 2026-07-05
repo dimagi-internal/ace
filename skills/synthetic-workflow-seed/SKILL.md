@@ -99,18 +99,18 @@ and an empty audit rollup.
 - **SCRATCH:** you own the alias — pick one string and use it in all
   three places.
 - **ADAPT:** the alias is **owned by the template**, not yours to
-  choose. For `llo_weekly_review` the live template alias is **`data`**.
-  READ the actual alias from the `workflow_create_from_template`
-  response's pipelines list (or `get_workflow`) — do NOT assume
-  `flw_kpis` or re-author the `render_code` against a guessed key. Any
-  render edit you make (the Polish step's `workflow_patch_render_code` /
-  `workflow_update_render_code`) **and** the saved-run
-  `snapshot_inputs.pipelines` MUST use that exact template alias.
+  choose, and it is **not stable across template revisions** — it has
+  been observed as `data` (jjackson/ace#633) and later as `flw_kpis`
+  (jjackson/ace#812). Never hardcode or assume a literal. READ the actual
+  alias from the `workflow_create_from_template` response's pipelines list
+  (or `get_workflow`) for THIS run, and use that exact string everywhere.
+  Any render edit you make (the Polish step's `workflow_patch_render_code`
+  / `workflow_update_render_code`) **and** the saved-run
+  `snapshot_inputs.pipelines` MUST use that read-live template alias.
   Re-authoring the render against a guessed alias is the
-  blank-KPI-in-saved-run failure: the `llo_weekly_review` template ships
-  alias `data`, ACE assumed `flw_kpis`, and every saved-run view
-  rendered all-zero (`bednet-spot-check/20260528-0556` and
-  /20260601-0651; jjackson/ace#633).
+  blank-KPI-in-saved-run failure: when the read-live alias and the
+  render/snapshot key diverge, every saved-run view renders all-zero
+  (`bednet-spot-check/20260528-0556` and /20260601-0651; jjackson/ace#633).
 
 Either way: confirm the three strings match before you ship the
 workflow — a blank-KPI render passes all create/run calls and only
@@ -649,7 +649,7 @@ tracks as `dry-run-success`.
 | `workflow_create_run` or `workflow_save_snapshot` returns transport error | step 8 partial | Capture the labs error in the run summary; re-run `/ace:step synthetic-workflow-seed` after the transient resolves. Idempotency caveat: re-runs create NEW workflow definitions; use `workflow_delete` to retire stale ones first OR open the just-failed workflow in labs UI and finish the snapshot manually. |
 | `workflow_save_snapshot` returns INVALID_SCHEMA cross-check error | step 8 halt | The run's `opportunity_id` doesn't match the param. Should never fire if step 8's loop is built correctly (uses the same `synthetic.labs_opp_id` for both create and snapshot). If it does, the run record was created against a different opp than the skill thinks — investigate via `workflow_get`. |
 | Re-run on existing workflows | step 2 idempotency | `workflow_create_from_template` always creates a NEW workflow (no find-or-create on labs side). Re-runs append to opp.yaml; old workflow_ids are orphaned in labs and need manual cleanup. Use `workflow_delete` directly if you need to retire a stale instance. |
-| Saved-run views render blank KPIs (`—` tiles) — either build path | post-build smoke (walkthrough screenshot) shows `—` for KPI tiles | The `pipeline_sources[].alias`, the render's `view.pipelines.<alias>` read, and `snapshot_inputs.pipelines` disagree. SCRATCH: pick one alias for all three. ADAPT: the alias is the template's (`llo_weekly_review` → `data`) — read it from the create-from-template response, don't assume `flw_kpis`. See the alias-consistency guardrail before step 2 (jjackson/ace#633). |
+| Saved-run views render blank KPIs (`—` tiles) — either build path | post-build smoke (walkthrough screenshot) shows `—` for KPI tiles | The `pipeline_sources[].alias`, the render's `view.pipelines.<alias>` read, and `snapshot_inputs.pipelines` disagree. SCRATCH: pick one alias for all three. ADAPT: the alias is the template's and drifts across revisions (observed `data` in #633, `flw_kpis` in #812) — read it live from the create-from-template response for this run; never hardcode a literal. See the alias-consistency guardrail before step 2 (jjackson/ace#633). |
 
 ## Related skills
 
