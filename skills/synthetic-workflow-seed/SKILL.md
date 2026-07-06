@@ -185,6 +185,38 @@ surfaces in the saved-run screenshot.
    `showFilters` from the template default. On `VERSION_CONFLICT`,
    re-fetch via `workflow_get` and retry once.
 
+   **⚠️ `kpi_config` thresholds must match the scale the saved-run snapshot
+   RENDERS, not blindly the manifest totals (jjackson/ace#813).** The render
+   highlights an underperformer via `row[k.kpi] < k.threshold_underperform`,
+   applied to whatever per-FLW numbers the deep-linked saved-run snapshot
+   shows. The manifest authors thresholds at **full-window** scale (e.g.
+   `total_visits` underperform `<12`, target `≥24` — sized for a 4-week
+   window). If the snapshot the deep-link renders is **period-scoped** (one
+   week ≈ `total/weeks` visits/FLW), every FLW falls below a full-window
+   threshold and the whole table highlights red as underperforming — including
+   the rockstar — so the "underperforming-only" filter becomes meaningless
+   (live on bednet-spot-check/20260630-1207: ~5 visits/FLW rendered against a
+   `<12` threshold). **Do not insert `<manifest.kpi_config verbatim>` without
+   first confirming the rendered scale:**
+
+   1. After the Week-N snapshot exists (step 6), read the per-FLW numbers the
+      saved-run deep-link actually renders — via `pipeline_preview` on the
+      snapshot's run, or by reading the saved-run rows the screenshot shows.
+   2. Compare them to the manifest's full-window per-FLW totals.
+      - **Rendered ≈ full-window totals** → the snapshot is NOT period-filtered
+        (the jjackson/ace#764 state, below in step 6); keep manifest-scale
+        thresholds as-is.
+      - **Rendered ≈ per-period (weekly) counts** → derive thresholds at that
+        scale (per-week ≈ full-window `threshold / manifest.timeline.weeks`),
+        so only genuinely-struggling FLWs flag.
+   3. Disclose the chosen scale + any derivation in the run summary.
+
+   Note the tension: this issue (#813) observed a period-scoped snapshot, while
+   the #764 note (step 6) records the rollup as full-window/not-period-filtered.
+   Which holds depends on live labs state, so **verify per run** rather than
+   hard-coding either assumption. The invariant is only: thresholds match the
+   number the screenshot shows.
+
 4. **Populate the pipeline schema.**
 
    The SEED template's pipeline schema ships with `fields: []` because
