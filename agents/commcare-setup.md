@@ -131,6 +131,49 @@ at second 0 instead of mid-phase (~25 min in, after both apps are built)
 is the whole point of Step 0. See jjackson/ace#659
 (bednet-spot-check 20260601-1252).
 
+#### Step 0c: Probe Nova build-tool liveness (form-creation path)
+
+`get_hq_connection` passing proves Nova is *authed and HQ-bound* — it does
+**not** prove the tools the architect will actually call to build an app are
+callable this session. The two gates above (`nova_auth`, `get_hq_connection`)
+both passed cleanly on `bednet-spot-check/20260613-2313` while **every**
+form-creation path was unusable, and the architect burned ~170K tokens across
+two dispatches before the blocker surfaced (jjackson/ace#779). Root cause: the
+running Nova MCP subprocess bound a **stale tool list at session start** —
+three-way drift between (a) the deferred-tool registry at L0, (b) the
+architect's bound toolset at L1, and (c) the live Nova server contract:
+
+- `create_form` hit **client/server schema drift** — the live server rejected
+  with `fields: expected array, received undefined`, but the bound `create_form`
+  schema had **no `fields` param at all**, so no payload could satisfy it.
+- `generate_scaffold` returned `MCP error -32602: Tool generate_scaffold not
+  found` on CALL, even though its full schema loaded at L0 via `ToolSearch` —
+  the deferred registry advertised it but the running subprocess didn't serve it.
+
+So probe **callability, not just loadability**. Before dispatching the
+architect, exercise the form-creation path once against the live subprocess:
+
+1. `ToolSearch select:...generate_scaffold` (or `create_form`) to confirm the
+   schema loads at L0, **then actually CALL a minimal form-creation op** — the
+   cheapest way is to let Step 1's first `pdd-to-learn-app` build be the probe,
+   but that reintroduces the 170K-token burn. Instead, assert callability
+   directly: attempt `generate_scaffold` (or `create_form` with the bound
+   schema's exact arg shape) against a throwaway/target app and confirm it
+   returns a real result, not `-32602 Tool … not found` and not a server
+   schema-mismatch error.
+2. Confirm the `create_form` bound schema's params match what the live server
+   expects (if the bound schema has no `fields` param but the server demands
+   one — or vice versa — that is the drift).
+
+On `-32602 … not found`, a server schema-mismatch, or any "tool advertised but
+uncallable" result, **HALT immediately** with the same remediation as the
+Step-0b binding failure: *"Nova build tools did not bind at level 0 this
+session (stale MCP subprocess — schema/tool drift). Quit and reopen Claude Code
+(a full restart, not just `/reload-plugins`, which does NOT respawn MCP
+subprocesses — see CLAUDE.md § MCP changes need a full Claude restart), then
+resume `/ace:run <opp>/<run-id>`."* This turns a 25-min-in, two-architect-dispatch
+failure into a second-0 halt — the same asymmetry Step 0b closes for HQ binding.
+
 #### Subagent inheritance
 
 Apply the same gate at the start of any later subagent dispatch in
