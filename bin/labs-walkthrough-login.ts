@@ -40,6 +40,40 @@ function log(msg: string): void {
   process.stderr.write(`[labs-walkthrough-login] ${msg}\n`);
 }
 
+/**
+ * A labs session can be cookie-fresh (sessionid valid → /labs/overview/ 200)
+ * yet have EMPTY organization_data: org_data is populated by the Connect
+ * org-list call that fires DURING the OAuth click-through, so a session that
+ * shortcut that click-through has `session["labs_oauth"]["organization_data"]`
+ * empty. Deep-links then land on the context selector ("No organizations
+ * found") with `?opportunity_id=` stripped (jjackson/ace#793).
+ *
+ * Signal — confirmed against the connect-labs source (dimagi-internal/connect-labs):
+ * the `labs_org_data_context` context processor (config/settings/base.py:250 →
+ * connect_labs/labs/context.py:358) injects `user_organizations` /
+ * `user_programs` / `user_opportunities` = `org_data.get(...)` into EVERY
+ * server-rendered template, and `templates/labs/overview.html` renders their
+ * counts server-side ("{{ user_organizations|length }} organizations" etc.).
+ * So an org_data-empty session serves `/labs/overview/` with a literal
+ * "0 organizations" in the HTML — that count is the authoritative in-body
+ * signal. (The "No organizations found" string I originally guessed lives in
+ * the context selector / picker templates, NOT on the overview page, so the
+ * overview body never contains it — the count is the correct marker.)
+ *
+ * FAIL-SAFE: returns true only when the organizations count is parsed AND is 0.
+ * If the count line can't be found (template drift), returns false and the
+ * caller keeps today's trust-the-200 behavior — never worse than the prior code.
+ */
+function overviewShowsEmptyOrgData(body: string): boolean {
+  // overview.html summary line, rendered server-side:
+  //   <span>...fa-building...</i> N organizations</span>
+  // Django may collapse whitespace; match a digit run immediately before the
+  // word. This label appears only on the overview summary line.
+  const orgs = body.match(/(\d+)\s+organizations\b/);
+  if (!orgs) return false; // count not present → don't second-guess the 200
+  return Number(orgs[1]) === 0;
+}
+
 async function main(): Promise<void> {
   const labsBaseUrl = arg('labs-base-url', 'https://labs.connect.dimagi.com');
   const connectBaseUrl = arg('connect-base-url', 'https://connect.dimagi.com');
@@ -64,14 +98,30 @@ async function main(): Promise<void> {
       storageState: resolveSavedStorageState(statePath),
     });
 
-    // Fast-path probe: if labs already considers us authed, skip OAuth.
+    // Fast-path probe: if labs already considers us authed AND org_data is
+    // populated, skip OAuth. A 200 alone is NOT sufficient — a cookie-fresh
+    // session can still have empty organization_data and land on the context
+    // selector (jjackson/ace#793); re-auth in that case to repopulate it.
     const probe = await context.request.get(`${labsBaseUrl}/labs/overview/`, {
       maxRedirects: 0,
     });
+    let orgDataEmpty = false;
     if (probe.status() === 200) {
-      log('existing labs session is fresh — skipping OAuth flow');
+      const body = await probe.text().catch(() => '');
+      orgDataEmpty = overviewShowsEmptyOrgData(body);
+    }
+    if (probe.status() === 200 && !orgDataEmpty) {
+      log('existing labs session is fresh (org_data populated) — skipping OAuth flow');
     } else {
-      log(`labs probe returned ${probe.status()} — running OAuth flow`);
+      if (probe.status() === 200 && orgDataEmpty) {
+        log(
+          'labs session is cookie-fresh but organization_data is empty ' +
+            '(overview shows "0 organizations") — forcing OAuth re-auth to ' +
+            'repopulate org_data (#793)',
+        );
+      } else {
+        log(`labs probe returned ${probe.status()} — running OAuth flow`);
+      }
 
       // hqOAuthLogin establishes Connect (connect.dimagi.com) session
       // cookies in this BrowserContext. labsOAuthLogin then drives the
