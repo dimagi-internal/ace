@@ -74,29 +74,42 @@ appId: org.commcare.dalvik
     timeout: 15000
 - takeScreenshot: "claim-opp-list"
 
-# Sync the jobs list BEFORE searching for the target tile (#628).
+# Refresh the jobs list BEFORE searching for the target tile (#628 → #811).
 #
 # A restored AVD snapshot (the cloud backend's AMI cold-boot, and any
 # local snapshot-load) carries the Connect jobs list as of snapshot
 # time — which predates THIS run's Phase-4 invite. So the fresh-run opp
 # is genuinely ABSENT from the list (not merely below the fold), and the
-# `scrollUntilVisible text: ".*${OPP_RUN_ID}.*"` below would scroll to the bottom
-# and time out on a tile that was never pulled. An in-app sync (toolbar
-# `action_sync`, content-desc "Sync") pulls the current invite set so the
-# tile renders. Live reproducer: bednet-spot-check/20260601-0651 Phase 6
-# claim — opp tile not on-device until a manual in-app sync.
+# `scrollUntilVisible text: ".*${OPP_RUN_ID}.*"` below would scroll to the
+# bottom and time out on a tile that was never pulled.
 #
-# `optional: true` on the tap: a warm post-login surface may land
-# already-synced, or the toolbar may momentarily re-render; a missing
-# `action_sync` must NOT abort the claim (the title-scroll below still
-# runs). The fixed settle lets the server pull + RecyclerView re-render
-# land before we start scrolling; the existing 20s scroll timeout gives
-# additional buffer if the pull is still in flight.
-- tapOn:
-    id: "${SELECTOR:home-toolbar-sync}"
-    optional: true
+# #628 tapped the toolbar `action_sync` (`home-toolbar-sync`) to pull the
+# current invite set. jjackson/ace#811 proved that is the WRONG affordance
+# AND actively destructive: `action_sync` is CommCare's form/data sync, not
+# the Connect invite-list refresh. The Connect home opportunity/invite list
+# refreshes ONLY via a swipe-to-refresh (pull-down) gesture on the
+# `rvJobList` RecyclerView. Worse, `action_sync` re-renders `rvJobList` from
+# a STALE cache, so when it runs it DROPS a freshly-pulled invite tile —
+# "whichever refresh happens LAST wins, and action_sync's last word is the
+# stale list." We therefore REPLACE the `action_sync` tap with the
+# pull-to-refresh gesture; the `action_sync` tap must NOT run at all.
+#
+# Live-calibrated gesture (jjackson/ace#811): the pull-down probe
+# `swipe 50%,40% → 50%,92%` pulled this run's fresh invite tile into
+# `rvJobList` immediately on bednet-spot-check/20260630-1207 Phase 6, where
+# the `action_sync` path left the tile absent. The 15s settle lets the
+# server pull + RecyclerView re-render land before we start scrolling.
+#
+# ⚠ LIVE-VALIDATION PENDING: this swipe replacement is transcribed from the
+# #811 live probe but has NOT yet been confirmed by a full in-tree Phase-6
+# claim-walk on-device. Ships as a DRAFT — hold for a confirmatory run
+# before merge (CLAUDE.md: validate recipe/selector changes live).
+- swipe:
+    start: "50%, 40%"
+    end: "50%, 92%"
+    duration: 600
 - waitForAnimationToEnd:
-    timeout: 8000
+    timeout: 15000
 - takeScreenshot: "claim-opp-list-synced"
 
 # THE CARD-IDENTITY PROBLEM (re-authored 2026-05-15, v0.13.237 candidate):
