@@ -46,6 +46,8 @@ import { spawn } from 'node:child_process';
 import { hostname, platform } from 'node:os';
 import { promises as fs } from 'node:fs';
 
+import { resolvePluginDataDir } from '../lib/plugin-data-dir.js';
+
 const ACE_WEB_BASE = (process.env.ACE_WEB_BASE || 'https://labs.connect.dimagi.com/ace').replace(/\/$/, '');
 const TIMEOUT_MS = 5 * 60 * 1000;
 const ENV_KEY = 'ACE_WEB_PAT_TOKEN';
@@ -177,11 +179,13 @@ export async function writeTokenToEnv(envPath: string, key: string, value: strin
 }
 
 async function main(): Promise<number> {
-  const claudePluginData = process.env.CLAUDE_PLUGIN_DATA;
-  if (!claudePluginData) {
-    console.error('error: CLAUDE_PLUGIN_DATA is unset; cannot locate .env');
-    return 3;
-  }
+  // Claude Code does NOT expand ${CLAUDE_PLUGIN_DATA} everywhere (anthropics/
+  // claude-code#9427), so never require the env var — resolve the data dir the
+  // same way the MCP servers do (env → derive from this file's install path →
+  // installed default). Surfaced by agent-review: a mint attempt exited 3 here.
+  const claudePluginData =
+    resolvePluginDataDir(import.meta.url) ??
+    `${process.env.HOME}/.claude/plugins/data/ace-ace`;
   const envPath = `${claudePluginData}/.env`;
   const label = process.argv[2] || defaultLabel();
   console.error(`[mint] label=${label} ace_web_base=${ACE_WEB_BASE}`);
