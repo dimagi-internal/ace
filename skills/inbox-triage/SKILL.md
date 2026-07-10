@@ -64,12 +64,26 @@ the shape of the turn.
 
   a. **Read** the full thread via `email-communicator` (read).
 
-  b. **Route the thread to an opp/run:**
+  b. **Route the thread to an opp/run — and cite the evidence.** Routing evidence comes from the
+     thread itself, in this order:
      1. Match the Gmail `thread_id` against the run comms-logs (`<skill>_comms-log.md` under
         `ACE/<opp>/runs/<run-id>/<N>-<phase>/`) — every send records it (see `email-communicator`).
      2. Else match opp-slug / opportunity-name conventions in the subject line.
-     3. Else the thread is **unroutable**: read-only, summarize to the human, move on.
-     A routed thread always resolves to the opp's **current** run — never reach across runs.
+     3. Else resolve identifiers quoted in the thread **body** (Connect opp/program URLs or UUIDs,
+        run-ids, chatbot links) against opp `run_state.yaml` files.
+     4. Else the thread is **unroutable**: read-only, summarize to the human, move on.
+     State which evidence class routed the thread before acting on it. **Ambient session context is
+     NEVER routing evidence** — the cwd/worktree/branch name, recently-triaged noise subjects, or
+     whichever opp this session happens to be working on say nothing about where a thread belongs
+     (jjackson/ace#854: a worktree named after one opp silently hijacked an act-tier instruction that
+     belonged to another; both opps were plausibly paused at the same phase, so nothing contradicted
+     the wrong guess). A routed thread always resolves to the opp's **current** run — never reach
+     across runs.
+
+     **Pre-mutation assert (act tier):** before executing any run mutation (resuming a phase,
+     dispatching a skill, writing run state), re-read the thread for opp identifiers and confirm
+     they resolve to the routed run. Any mismatch = halt and re-route; a misroute at act tier
+     executes real work against the wrong opp.
 
   c. **Resolve the sender's tier** (table above). Automated notifications (Drive shares,
      `*-noreply@google.com`) are attributed to the human who triggered them and take that
