@@ -390,7 +390,10 @@ async function main(): Promise<void> {
       // blue dot on every walkthrough-derived slide. Guard against ids
       // already queued by the checklist/stats dec-shape strip above so a
       // deleteObject is never issued twice for the same element.
-      if (el.objectId && !decShapeIds.includes(el.objectId) && isDecorativeLeftover(el)) {
+      // Pass slide siblings so connector-anchored dots (timeline nodes)
+      // are spared — a size-only rule would wrongly strip them.
+      if (el.objectId && !decShapeIds.includes(el.objectId)
+          && isDecorativeLeftover(el, s.pageElements ?? [])) {
         leftoverIds.push(el.objectId);
       }
     }

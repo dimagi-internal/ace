@@ -80,6 +80,20 @@ describe('isDecorativeLeftover', () => {
     expect(isDecorativeLeftover(el)).toBe(false);
   });
 
+  it('spares a small ellipse that shares its slide with a LINE (timeline node dot)', () => {
+    // The timeline stencil draws 7×7pt node dots on connector lines +
+    // segment bars — functional, not leftovers. A size-only rule ate them.
+    const dot = shapeEl('ELLIPSE', 7, 7);
+    const siblings: PageElementLike[] = [
+      dot,
+      { objectId: 'bar', shape: { shapeType: 'RECTANGLE' }, size: { width: { magnitude: 154 * PT }, height: { magnitude: 4 * PT } }, transform: { scaleX: 1, scaleY: 1 } },
+      { objectId: 'connector', line: {}, size: { width: { magnitude: 236 * PT }, height: { magnitude: 28 * PT } }, transform: { scaleX: 1, scaleY: 1 } },
+    ];
+    expect(isDecorativeLeftover(dot, siblings)).toBe(false);
+    // …but the same dot on a slide with NO connector IS a leftover.
+    expect(isDecorativeLeftover(dot, [dot])).toBe(true);
+  });
+
   it('exports the 12pt threshold in EMU', () => {
     expect(DECORATIVE_LEFTOVER_MAX_EMU).toBe(12 * PT);
   });

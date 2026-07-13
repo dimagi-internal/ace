@@ -137,7 +137,8 @@ function digestSlides(pres: any): SlideInfo[] {
     const textShapeIds: string[] = [];
     const images: SlideInfo['images'] = [];
     const decorativeLeftoverIds: string[] = [];
-    for (const el of s.pageElements ?? []) {
+    const els = s.pageElements ?? [];
+    for (const el of els) {
       if (el.shape?.text && el.objectId) textShapeIds.push(el.objectId);
       if (el.image && el.objectId) {
         const w = (el.size?.width?.magnitude ?? 0) * (el.transform?.scaleX ?? 1);
@@ -146,7 +147,9 @@ function digestSlides(pres: any): SlideInfo[] {
       }
       // Decorative clone-leftovers (6×6pt Dimagi ellipse etc). Guard on
       // !shape.text so an id never lands in BOTH lists (double-delete).
-      if (el.objectId && !el.shape?.text && isDecorativeLeftover(el)) {
+      // Pass slide siblings so connector-anchored dots (timeline nodes)
+      // are spared.
+      if (el.objectId && !el.shape?.text && isDecorativeLeftover(el, els)) {
         decorativeLeftoverIds.push(el.objectId);
       }
     }

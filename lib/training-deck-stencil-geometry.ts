@@ -386,6 +386,7 @@ export interface PageElementLike {
   transform?: { scaleX?: number | null; scaleY?: number | null } | null;
   shape?: { shapeType?: string | null; text?: unknown } | null;
   image?: unknown;
+  line?: unknown;
 }
 
 /**
@@ -399,13 +400,27 @@ export interface PageElementLike {
  * blue dot on every walkthrough-derived slide. Deliberately narrow:
  * never matches the accent-bar RECTANGLEs, the logo IMAGE (no `shape`),
  * or any TEXT_BOX.
+ *
+ * **Connector guard.** A small ellipse is NOT a leftover when its slide
+ * also contains a LINE element: that's a functional diagram node (the
+ * `timeline` stencil draws its 4 node dots on connector lines + segment
+ * bars — 7×7pt ellipses that a size-only rule would wrongly strip). Pass
+ * `slideElements` (the ellipse's sibling page elements) so the predicate
+ * can spare connector-anchored dots. Omitting it falls back to size-only
+ * — safe only when the caller already knows the slide has no diagram.
  */
-export function isDecorativeLeftover(el: PageElementLike): boolean {
+export function isDecorativeLeftover(
+  el: PageElementLike,
+  slideElements?: PageElementLike[],
+): boolean {
   if (!el.shape || el.shape.shapeType !== 'ELLIPSE') return false;
   const w = (el.size?.width?.magnitude ?? 0) * (el.transform?.scaleX ?? 1);
   const h = (el.size?.height?.magnitude ?? 0) * (el.transform?.scaleY ?? 1);
   if (w <= 0 || h <= 0) return false; // size unknown — can't confirm; leave it
-  return w <= DECORATIVE_LEFTOVER_MAX_EMU && h <= DECORATIVE_LEFTOVER_MAX_EMU;
+  if (w > DECORATIVE_LEFTOVER_MAX_EMU || h > DECORATIVE_LEFTOVER_MAX_EMU) return false;
+  // Connector-anchored dots (timeline nodes) are functional, not leftovers.
+  if (slideElements?.some((s) => s !== el && s.line)) return false;
+  return true;
 }
 
 export const STENCIL_TEXT_BUILDERS: Record<StencilKey, (pageId: string) => Array<Record<string, unknown>>> = {
