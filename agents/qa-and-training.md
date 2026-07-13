@@ -198,6 +198,21 @@ silent-failure prevention learned from earlier real-world dogfood.
         run the Learn leg and record the Deliver leg `incomplete`. The
         phase verdict will be non-pass (per the per-app failure policy),
         but Learn screenshots still ship.
+- [ ] **Read `phases.commcare-setup.residuals[]` from `run_state.yaml`
+      (dimagi-internal/ace#867).** Phase 3 records deferred manual steps
+      ("needs HQ app-builder flip", post-export toggles) as typed
+      `{what, where_to_apply, verifiable_by}` entries. Any OPEN residual
+      that changes user-visible app behavior MUST be surfaced in the
+      phase summary AND blocks every training-material claim that
+      depends on it — the deck/guides must not assert behavior the
+      un-applied residual contradicts. This is standing state, repeated
+      every run until cleared (same pattern as open-thread aging), not a
+      one-time note. An open residual does NOT halt the phase; it
+      constrains what the training materials may claim. Live instance:
+      hh-poverty-targeting/20260702-1456 — the camera-only photo flip
+      sat un-applied in the Phase 3 build memo while the training deck
+      asserted "there is no gallery option, on purpose" over a widget
+      showing CHOOSE IMAGE.
 
 If any check fails, halt before Step 1 with a `[BLOCKER]` and the
 named operator command (`/ace:mobile-bootstrap` for AVD/Maestro state;
@@ -450,7 +465,7 @@ training skills (or invoke `qa-and-training` for the full sequence).
 
 After Step 2 finishes:
 
-1. **Write the phase summary** to `ACE/<opp-name>/runs/<run-id>/6-qa-and-training/qa-and-training_summary.md`. The summary lists the screenshot bundle, the 5 training docs (with Drive URLs from `products.training.docs.*`), the optional deck render (when `ACE_TRAINING_DECK_TEMPLATE_ID` was set), and the onboarding email. This file is the operator-facing handoff for Phase 9.
+1. **Write the phase summary** to `ACE/<opp-name>/runs/<run-id>/6-qa-and-training/qa-and-training_summary.md`. The summary lists the screenshot bundle, the 5 training docs (with Drive URLs from `products.training.docs.*`), the optional deck render (when `ACE_TRAINING_DECK_TEMPLATE_ID` was set), the onboarding email, and any open `phases.commcare-setup.residuals[]` entries (per the pre-flight checklist — repeated until cleared). This file is the operator-facing handoff for Phase 9.
 
 2. **Write the `phases.qa-and-training` block** per [`agents/ace-orchestrator.md § Phase Write-Back Contract`](../agents/orchestrator-reference.md#phase-write-back-contract). Set `phases.qa-and-training.status: done` + a verdict like `proceed` or `proceed-with-warn`, populate `summary_artifact:` with the file ID from step 1, and include the per-skill `steps:` map. Required top-level keys on the patch: `phases`, `last_actor`, `last_actor_at`.
 

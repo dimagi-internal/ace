@@ -571,6 +571,7 @@ naming the specific failure + remediation rather than a generic
 | `assertVisible(text: ${OPP_NAME})` failure AND failure screenshot shows the Connect "New Opportunities" / opp list home (the user IS logged in, app IS configured, just no matching tile) | Right opp card not on screen for the OPP_NAME being matched. Wrong `OPP_NAME` env var (typically slug-reassembled instead of read verbatim from `run_state.yaml`), OR opp not yet claimed by the test user, OR `${OPP_NAME}` collides ambiguously with another invite further up the test user's accumulated invite list (see Step 4 "OPP_NAME uniqueness assumption"). | Confirm `OPP_NAME` was read verbatim from `run_state.yaml.phases.connect-setup.products.connect.opportunity.name` (NOT composed from slug pieces — see Step 4 "OPP_NAME source" and [#115 finding 4](https://github.com/jjackson/ace/issues/115)). If the field is present and still mismatches the tile, scroll the invite list or use the `connect_get_opportunity` fallback. |
 | `assertVisible(nsv_home_screen)` failure AND a `claim-START-HANDOFF-WEDGED-issue629` screenshot is present (Start was tapped on the opp-detail Job Card; neither the Learn home nor the Deliver download gate ever rendered within 180s) | **Inert `btn_start` handoff** — Connect's `POST /users/start_learn_app/` never fired or 500-ed, so the Learn CCZ download never began and `nsv_home_screen` never appeared. This is the Connect-platform half of [#629](https://github.com/jjackson/ace/issues/629), downstream of ACE — the released CCZ already passed Phase 3's `commcare-cli play` install gate, so it is NOT a Nova/recipe/marker defect. `connect-claim-opp.yaml` now captures the labeled artifact + fails loud at this exact point instead of a generic 180s timeout. | Run `connect_preflight_learn_app_user({org_slug, opportunity_id})` to classify: an auth/domain/conflict failure there confirms the server-side `start_learn_app` block (fix Connect-side / re-invite the test user); a clean preflight points at a device-side wedge (re-run after `mobile_ensure_avd_running` cold-boot). Do NOT mark the Learn leg `pass` on placeholder screenshots; record the wedge verdict and surface #629. |
 | Deliver leg: `deliver-home-job-card` wait/assert fails AND a `deliver-launch-download-server-error` screenshot is present (the recipe reached + tapped the Deliver **download gate**, then the failure surface is the PersonalID re-login screen — `connect_login_button` "LOGIN WITH PERSONALID" / "Couldn't connect to the server" / `welcome_msg` "Welcome \<user\>!") | **Transient server-connectivity Deliver-CCZ download failure** — the async CCZ download could not reach the server, so the app de-authed to PersonalID re-login. Downstream of ACE: the released CCZ already passed Phase 3's `commcare-cli play` install gate, so it is NOT a Nova/recipe/marker/selector defect — the recipe navigated correctly to the gate. `deliver-launch.yaml` now captures this labeled forensic (#772) instead of a bare 180s timeout. Surfaced live on bednet-spot-check run 20260612-2347. | **Transient — re-attempt, do NOT cold-boot.** Record the Deliver leg `incomplete` (transient), not `fail`. Re-run the Deliver smoke via `/ace:qa-deep <opp>` once backend connectivity is stable — that (`app-ux-eval`), not Phase 6, is the actual Phase-9 `llo-launch` quality gate. Do NOT `mobile_ensure_avd_running` cold-boot / `/ace:mobile-bootstrap` — the post-Learn state is fragile and a boot resets the device PIN (#618/#629). If the drop persists across retries, the backend (CommCare HQ / Connect CCZ-serve) is genuinely unreachable — escalate that, not the recipe. |
+| Two capture steps in one journey hash byte-identical (surfaced by the Step 5.5 distinctness check, not a recipe error string) | Recipe screenshots before/after a no-op transition, or the transition screen doesn't exist on this opp (e.g. Connect hands off directly into an installed app, so the intermediate screen never renders). Live instances: hh-poverty-targeting/20260702-1456 `connect-resume-opp-tile` ≡ `connect-resume-opp-list-synced`, `journey-deliver-submitted` ≡ `journey-deliver-final` (dimagi-internal/ace#866). | Adjust the recipe to capture a genuinely distinct surface (e.g. the job-detail/View-Info screen) or drop the step; downstream consumers must treat `duplicate_of` steps as one moment. |
 
 **Manual-debug fallback — when the table doesn't resolve it.** If a
 recipe error matches NO row above (a novel nav defect, an
@@ -595,13 +596,47 @@ halt blind. **Open `failureForensics.screenshotPath` and read
    characterization in the verdict — never ship an unvalidated nav
    guess (the #618 / #591 selector-drift class).
 
+### Step 5.5: Distinctness check — byte-identical frames are ONE moment (dimagi-internal/ace#866)
+
+After each journey's captures land (and BEFORE assembling the Step 6
+manifest), compute a content hash over every PNG in the journey:
+
+```bash
+md5 -q <screenshotDir>/<journey>/*.png    # or: shasum <...>/*.png
+```
+
+Any byte-identical pair within a journey means the two "steps" observed
+the SAME frame — the recipe screenshotted before/after a no-op
+transition, or the transition screen doesn't exist on this opp (e.g.
+Connect hands off directly into an installed app, so the intermediate
+Connect screen never renders). Handling:
+
+- Keep the FIRST step (recipe order) as the canonical capture.
+- Mark each later duplicate in the manifest with
+  `duplicate_of: <first-step-name>` instead of listing it as a distinct
+  capture.
+- Log every duplicate pair in the structural verdict's `auto_surfaced`
+  list (severity: WARN, naming both step names + the shared hash).
+
+**Never present two identical frames as different moments.** Downstream
+consumers (`training-deck-generate`, `training-flw-guide`) treat a
+`duplicate_of` step as the same moment as its canonical step — never as
+a distinct panel or slide. Surfaced live on
+hh-poverty-targeting/20260702-1456, where `connect-resume-opp-tile` ≡
+`connect-resume-opp-list-synced` and `journey-deliver-submitted` ≡
+`journey-deliver-final` shipped as distinct steps and the training deck
+then claimed distinct moments over duplicate frames
+(dimagi-internal/ace#866).
+
 ### Step 6: Write `6-qa-and-training/app-screenshot-capture_manifest.yaml`
 
 Link each captured PNG back to (a) its journey id (a meaningful slug
 like `journey-learn-pass` / `journey-deliver-submit` from `app-test-cases.yaml`), (b) its
 `takeScreenshot:` step label, (c) its Drive path. This is the input
 shape the per-artifact training skills (`training-flw-guide`,
-`training-deck-generate`) consume.
+`training-deck-generate`) consume. Steps flagged by the Step 5.5
+distinctness check carry `duplicate_of: <first-step-name>` instead of
+being listed as distinct captures.
 
 ### Step 6.5: Harvest selector-drift signal (atlas-drift)
 
@@ -864,6 +899,7 @@ Notes:
 
 | Date | Change | Author |
 |---|---|---|
+| 2026-07-13 | **Step 5.5 distinctness check (dimagi-internal/ace#866).** After each journey's captures land and before the manifest is assembled, hash every PNG in the journey (`md5 -q` / `shasum`); any byte-identical pair means two "steps" observed the same frame. The FIRST step stays canonical; later duplicates are marked `duplicate_of: <first-step>` in the manifest (not listed as distinct captures) and logged in the verdict's `auto_surfaced` list. Matching row added to the Step 5 recipe-error table. Surfaced by hh-poverty-targeting/20260702-1456, where two byte-identical pairs shipped as distinct steps and deck slides claimed distinct moments over duplicate frames. | ACE team |
 | 2026-06-12 | **Step 5 hard rule: screenshots only from a `status: pass` execution in THIS run (jjackson/ace#756).** A `status != pass` `mobile_run_recipe` result for a required journey means that leg has NO screenshots — record the leg `fail` with the recipe failure inline; never source leftover PNGs (no "replay cache" exists); the shallow verdict must not be `pass` if any required journey's recipe failed. Pairs with the MCP-side fix: `mobile_run_recipe` now wipes the screenshot dir at execution start so stale PNGs are structurally absent. Surfaced by bednet-spot-check run 20260612-1220, where a failed deliver leg shipped prior-run PNGs under a confabulated "runner replay cache" note. | ACE team |
 | 2026-06-03 | **Step 6.5 auto-harvests selector drift.** End of Phase 6 now runs `scripts/probe-atlas-drift.ts` over the run's screenshot dir automatically (best-effort), closing the consume-loop on the `runRecipeWithDumps` + `*-FAILURE.xml` dumps that previously just accumulated. The harvester is now FAILURE-aware: resource-ids seen on a `*-FAILURE.xml` screen but absent from the selector map surface as a priority "Drift suspects on FAILURE screens" section (candidate root causes for a recipe failure in this run — the #591/#618 drift class). Pairs with thrown-failure forensics capture (`mobile_run_recipe` now captures the failure screen on a thrown driver-death too, not just on returned `status:'fail'`). Canonical contract: `playbook/integrations/mobile-integration.md § Failure forensics`. | ACE team |
 | 2026-05-05 | **Path-scheme migration.** Inputs repointed to `2-scenarios/pdd-to-app-journeys.md`, `3-commcare/app-test-cases.yaml`, `3-commcare/app-deploy_summary.md`, `3-commcare/recipes/`. Outputs repointed to `6-qa-and-training/screenshots/<recipe-base>/<step-name>.png`, `6-qa-and-training/app-screenshot-capture_manifest.yaml`, `6-qa-and-training/app-screenshot-capture_verdict.yaml`, `6-qa-and-training/app-screenshot-capture_verdict-shallow.yaml` (per manifest). Both verdict YAML examples' `capture_path` updated. No behavior change beyond paths. | ACE team |

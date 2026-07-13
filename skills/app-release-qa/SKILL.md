@@ -31,6 +31,7 @@ this catches, see reference.md.
 |---|---|---|
 | Phase 3 § Step 2 | `3-commcare/app-deploy_summary.md` | HQ app ids (Learn + Deliver) |
 | Phase 3 § Step 2.7 | `3-commcare/app-release_summary.md` | Released build ids per app |
+| Phase 1 | `1-design/idea-to-pdd.md` | Payable-visit rules — whether the PDD demands camera-only photo capture (the `appearance="acquire"` check in Step 4) |
 | Nova MCP | `get_app({app_id})` for each Nova app id | Blueprint structure (modules, forms, fields per form, Connect marker presence) — the canonical structural truth for cross-reference |
 | HQ `ACE_HQ_DOMAIN` env | — | `connect-ace-prod` (the project space the apps released to) |
 
@@ -155,6 +156,29 @@ Mismatch → halt with `[BLOCKER]` `geopoint-bind-downgrade`
 (naming the field path + the observed bind type + "re-build & re-release
 the app from the current Nova blueprint, which compiles geopoint
 correctly"). Record per-app under `geopoint_binds` in the verdict.
+
+**Camera-only photo capture (`appearance="acquire"`) — PDD-conditional
+(dimagi-internal/ace#867).** When the PDD / payable-visit rules /
+journeys require live-camera-only photo capture, every image `<upload>`
+node in the Deliver form XML MUST carry an `appearance` attribute
+containing `acquire`. Contract truth (verified 2026-07-13 against
+commcare-android source: `QuestionWidget.ACQUIREFIELD = "acquire"`;
+`ImageWidget` hides the CHOOSE IMAGE gallery button when the appearance
+hint contains it — and verified live on connect-ace-prod app
+`d36493197a2749d49335e02678eed2ff` build v4, where the flip produced
+exactly `<upload ref="/data/dwelling_photo" mediatype="image/*"
+appearance="acquire">`). A missing attribute when the PDD demands
+camera-only means the released app permits gallery uploads — breaking
+the verification story and any training material asserting camera-only
+(hh-poverty-targeting/20260702-1456 shipped a deck claiming "no gallery
+option, on purpose" over a widget showing CHOOSE IMAGE).
+
+Mismatch → halt with `[BLOCKER]` `camera-only-appearance-missing`
+(naming the form path + the `<upload>` ref + "apply the camera-only
+appearance flip (HQ app builder or Nova) and re-release, then re-run
+app-release-qa"). Record per-app under `camera_only_uploads` in the
+verdict. When the PDD does NOT demand camera-only capture, skip the
+check and record `camera_only_uploads: not-required-by-pdd`.
 
 ### Step 4.5: Runtime install validation via `commcare-cli.jar`
 
@@ -385,6 +409,13 @@ defects.
   bind-type fidelity). Operator fix: re-build & re-release the app from
   the **current** Nova blueprint (Nova compiles geopoint correctly
   today), then re-run `app-release-qa` to confirm `type="geopoint"`.
+- `camera-only-appearance-missing` — the PDD demands live-camera-only
+  photo capture but an image `<upload>` node in the released Deliver
+  form XML has no `appearance` containing `acquire`, so the on-device
+  widget shows CHOOSE IMAGE (gallery uploads permitted; see Step 4
+  + dimagi-internal/ace#867). Operator fix: apply the camera-only
+  appearance flip (HQ app builder or Nova), re-release, then re-run
+  `app-release-qa` to confirm the attribute is in the released CCZ.
 
 ## MCP tools used
 
