@@ -366,6 +366,48 @@ export function buildClosingTextBoxes(pageId: string): Record<string, unknown>[]
   ];
 }
 
+// ---------------------------------------------------------------------------
+// Decorative clone-leftover detection
+// ---------------------------------------------------------------------------
+
+/**
+ * 12pt in EMU — an ELLIPSE rendered at-or-under this in BOTH dimensions
+ * is a decorative dot, never content.
+ */
+export const DECORATIVE_LEFTOVER_MAX_EMU = 152_400;
+
+/** Minimal Slides pageElement shape the predicate inspects. */
+export interface PageElementLike {
+  objectId?: string | null;
+  size?: {
+    width?: { magnitude?: number | null } | null;
+    height?: { magnitude?: number | null } | null;
+  } | null;
+  transform?: { scaleX?: number | null; scaleY?: number | null } | null;
+  shape?: { shapeType?: string | null; text?: unknown } | null;
+  image?: unknown;
+}
+
+/**
+ * True for shapes that are decorative clone-leftovers from a Dimagi
+ * source slide: shapeType ELLIPSE rendered ≤ 12pt in BOTH dimensions
+ * (rendered = declared size × transform scale). The motivating instance:
+ * a 6×6pt ellipse at ~(292pt, 110pt) cloned from the Dimagi walkthrough
+ * source page (shared by mobile_zoom) — it survived the bootstrap's
+ * text/image strips (too small for the image threshold, not a text
+ * shape) and self-propagated through in-place re-renders as a stray
+ * blue dot on every walkthrough-derived slide. Deliberately narrow:
+ * never matches the accent-bar RECTANGLEs, the logo IMAGE (no `shape`),
+ * or any TEXT_BOX.
+ */
+export function isDecorativeLeftover(el: PageElementLike): boolean {
+  if (!el.shape || el.shape.shapeType !== 'ELLIPSE') return false;
+  const w = (el.size?.width?.magnitude ?? 0) * (el.transform?.scaleX ?? 1);
+  const h = (el.size?.height?.magnitude ?? 0) * (el.transform?.scaleY ?? 1);
+  if (w <= 0 || h <= 0) return false; // size unknown — can't confirm; leave it
+  return w <= DECORATIVE_LEFTOVER_MAX_EMU && h <= DECORATIVE_LEFTOVER_MAX_EMU;
+}
+
 export const STENCIL_TEXT_BUILDERS: Record<StencilKey, (pageId: string) => Array<Record<string, unknown>>> = {
   cover: buildCoverTextBoxes,
   section: buildSectionTextBoxes,

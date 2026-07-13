@@ -48,7 +48,7 @@ import {
   type StencilKey,
   type TrainingDeckSpec,
 } from '../lib/training-deck-spec.js';
-import { STENCIL_TEXT_BUILDERS } from '../lib/training-deck-stencil-geometry.js';
+import { STENCIL_TEXT_BUILDERS, isDecorativeLeftover } from '../lib/training-deck-stencil-geometry.js';
 import { resolvePluginDataDir } from '../lib/plugin-data-dir.js';
 
 // ---------------------------------------------------------------------------
@@ -126,6 +126,9 @@ type SlideInfo = {
   notesHasText: boolean;
   textShapeIds: string[];
   images: { id: string; w: number; h: number; x: number; y: number }[];
+  /** Tiny decorative shapes cloned from the Dimagi source (e.g. the 6×6pt
+   * walkthrough ellipse) — see isDecorativeLeftover. */
+  decorativeLeftoverIds: string[];
 };
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -133,12 +136,18 @@ function digestSlides(pres: any): SlideInfo[] {
   return (pres.data.slides ?? []).map((s: any) => {
     const textShapeIds: string[] = [];
     const images: SlideInfo['images'] = [];
+    const decorativeLeftoverIds: string[] = [];
     for (const el of s.pageElements ?? []) {
       if (el.shape?.text && el.objectId) textShapeIds.push(el.objectId);
       if (el.image && el.objectId) {
         const w = (el.size?.width?.magnitude ?? 0) * (el.transform?.scaleX ?? 1);
         const h = (el.size?.height?.magnitude ?? 0) * (el.transform?.scaleY ?? 1);
         images.push({ id: el.objectId, w, h, x: el.transform?.translateX ?? 0, y: el.transform?.translateY ?? 0 });
+      }
+      // Decorative clone-leftovers (6×6pt Dimagi ellipse etc). Guard on
+      // !shape.text so an id never lands in BOTH lists (double-delete).
+      if (el.objectId && !el.shape?.text && isDecorativeLeftover(el)) {
+        decorativeLeftoverIds.push(el.objectId);
       }
     }
     const notesProps = s.slideProperties?.notesPage;
@@ -147,7 +156,7 @@ function digestSlides(pres: any): SlideInfo[] {
     for (const el of notesProps?.pageElements ?? []) {
       if (el.objectId === notesShapeId && el.shape?.text) notesHasText = true;
     }
-    return { objectId: s.objectId, notesShapeId, notesHasText, textShapeIds, images };
+    return { objectId: s.objectId, notesShapeId, notesHasText, textShapeIds, images, decorativeLeftoverIds };
   });
 }
 
@@ -296,6 +305,13 @@ async function main() {
       for (const im of info.images) {
         if (im.w * im.h >= STRIP_AREA) rebuild.push({ deleteObject: { objectId: im.id } });
       }
+    }
+    // Strip decorative clone-leftovers on EVERY stencil (the 6×6pt ellipse
+    // the Dimagi walkthrough source page leaked into every walkthrough-
+    // derived slide). Without this the dot self-propagates forever: the
+    // stencil is rebuilt FROM a live slide that already carries it.
+    for (const id of info.decorativeLeftoverIds) {
+      rebuild.push({ deleteObject: { objectId: id } });
     }
     rebuild.push(...STENCIL_TEXT_BUILDERS[key](pageId));
     if (info.notesShapeId) {
