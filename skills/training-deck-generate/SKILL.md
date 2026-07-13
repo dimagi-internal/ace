@@ -97,6 +97,27 @@ Single file: `ACE/<opp>/runs/<run-id>/6-qa-and-training/training-deck-spec.yaml`
    the whole bundle is absent. Never fail the deck over a missing app
    leg — the present leg's screenshots still go in.
 
+   **Screenshot-claim consistency (dimagi-internal/ace#866 + #867).**
+   Four hard rules when mapping manifest images onto slides:
+
+   - **Never place the same image `file_id` on two slides/panels whose
+     captions claim different moments.** If the manifest offers only
+     duplicates for two claimed moments, use the image ONCE and rewrite
+     the other panel/slide as `content` layout (no image) or drop it.
+   - **Steps marked `duplicate_of:` in the capture manifest are NOT
+     distinct panels.** A `duplicate_of` step is the same moment as its
+     canonical step — never give it its own slide/panel or caption it as
+     a separate moment.
+   - **Never caption a screenshot with an assertion the pixels visibly
+     contradict.** The shipped example: "there is no gallery option, on
+     purpose" over a widget showing CHOOSE IMAGE
+     (hh-poverty-targeting/20260702-1456 deck slide 27,
+     dimagi-internal/ace#867). If the app contradicts the PDD, surface it
+     as a defect in the verdict's `auto_surfaced` list instead of
+     asserting the design intent.
+   - **Captions must describe the surface actually shown** — a CommCare
+     screen must not be captioned as a Connect screen (or vice versa).
+
 6. **Read common modules.** Load shared module fragments from
    `templates/training-deck/_common/`:
    - `platform-setup.yaml` — Connect sign-in, claim, install slides
@@ -286,3 +307,8 @@ cross-contamination.
 - v1: Initial skill. Replaces `training-deck-outline`. Produces
   `training-deck-spec.yaml` via template bundle + generation prompt.
   Archetype-aware with `atomic-visit` as the only shipped template.
+- 2026-07-13: Screenshot-claim consistency rules in step 5
+  (dimagi-internal/ace#866 + #867) — no duplicate `file_id` across
+  slides claiming different moments, `duplicate_of` steps are not
+  distinct panels, captions must not assert what the pixels contradict,
+  captions must describe the surface actually shown.

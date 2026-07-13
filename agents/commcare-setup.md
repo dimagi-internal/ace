@@ -433,6 +433,31 @@ orchestrator owns this write. Required top-level keys on the patch:
 `phases`, `last_actor`, `last_actor_at`. (0.13.116: legacy `gates.app-deploy`
 flip dropped — derived from phases.commcare-setup.status + per-skill verdicts.)
 
+**Residuals are first-class state, not build-memo prose
+(dimagi-internal/ace#867).** Any deferred manual step this phase records
+in its summary / build memo — "needs HQ app-builder flip" (e.g. the
+camera-only photo `appearance="acquire"` toggle), post-export toggles —
+MUST also be written to `phases.commcare-setup.residuals[]` in the same
+write-back, one entry per deferred step:
+
+```yaml
+residuals:
+  - what: "camera-only photo capture — flip appearance to acquire on the Deliver photo upload question"
+    where_to_apply: "HQ app builder → <deliver app> → <form> → photo question → appearance"
+    verifiable_by: "app-release-qa camera-only check (image <upload> carries appearance containing 'acquire' in the released CCZ)"
+```
+
+A build-memo note alone is write-once and gets lost: on
+hh-poverty-targeting/20260702-1456 the camera-only flip sat in the
+build-memo prose ("camera-only photo + Grid menu-display need HQ
+app-builder flip"), was never performed, and Phase 6 shipped training
+materials contradicting the live app. Downstream phases read
+`residuals[]` as standing state (Phase 6's pre-flight surfaces open
+residuals and blocks dependent training-material claims — see
+`agents/qa-and-training.md § Pre-flight checklist`). Clear an entry only
+after the step has been performed AND re-verified via its
+`verifiable_by`.
+
 #### Verdict-gate rule for `-eval` skills (since 0.13.207)
 
 The skills frontmatter declares which producers have a paired `-eval`
