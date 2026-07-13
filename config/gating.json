@@ -8,6 +8,11 @@
     },
     {
       "tool": "Bash",
+      "pattern": "canopy\\s+email\\s+send\\b(?=[^\\n]*--account)",
+      "message": "BLOCKED: `canopy email send --account` overrides ACE's repo identity — one mailbox per agent, never shared (identity bleed is the fleet's one hard rule). Send via bin/ace-email, which pins this repo's identity. (This hook is plugin-level and fires machine-wide: for a non-ACE identity, use that agent's own bin/<slug>-email shim or `canopy email send --repo/--agent`, which pin identity from config — never a raw --account override.)"
+    },
+    {
+      "tool": "Bash",
       "pattern": "op\\s+inject\\b.*-o[=\\s]+\\S*(?:CLAUDE_PLUGIN_DATA|plugins/data/ace)\\S*\\.env",
       "message": "BLOCKED: raw `op inject -o <plugin-data>/.env` overwrites the whole file and DROPS local-only secrets (ACE_WEB_PAT_TOKEN and any key not in .env.tpl). Use `/ace:setup --force-env` (= `bash \"$CLAUDE_PLUGIN_ROOT/bin/ace-setup\" --force-env`), which snapshots the `# --- ACE local-only secrets ---` block and re-appends it after the inject. (A raw inject to a NON-plugin-data path, e.g. a dev-worktree ./.env, is not blocked.)"
     }
