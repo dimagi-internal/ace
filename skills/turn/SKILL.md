@@ -2,85 +2,70 @@
 name: turn
 description: >
   ACE's turn-of-work orchestrator. Use when a human says "do a turn", "check your inbox",
-  or otherwise triggers ACE to process what's come in. Sequences the whole turn: preflight →
-  drain the canopy-web board (iff configured) → inbox triage (one thread, one sender at a
-  time) → skill-development self-check → close-out. This is the counterpart-facing entry
-  point; /ace:run remains the pipeline entry point — a turn wraps around runs, it does not
-  replace them.
+  or otherwise triggers ACE to process what's come in. The canonical procedure is fleet-wide
+  and lives in the installed canopy plugin (agent-core/turn.md); this stub binds it to ACE's
+  identity. This is the counterpart-facing entry point; /ace:run remains the pipeline entry
+  point — a turn wraps around runs, it does not replace them.
 ---
 
-# Turn — ACE's turn of work
+# Turn — ACE (stub over the fleet-canonical core)
 
-A turn processes ACE's **inbound surfaces**: email to `ace@dimagi-ai.com` and (when configured) the
-canopy-web task board at `/agents/ace`. The pipeline (`/ace:run`) produces outbound artifacts and
-pause points; the turn is how replies, approvals, and requests flow back in without a human relaying
-them. Design + counterpart model: `docs/superpowers/specs/2026-07-01-agent-operating-model-adoption.md`.
+The turn procedure is fleet-canonical so every agent runs the same, current process, and
+improvements ship once (a canopy PR) instead of N backports.
 
-**Re-read this file at the start of every turn and follow it in order** — running a turn from memory
-is how steps get dropped under load.
+1. **Resolve the installed canopy plugin and check freshness:**
+   ```bash
+   CANOPY=$(python3 -c "import json,os; d=json.load(open(os.path.expanduser('~/.claude/plugins/installed_plugins.json'))); print(d['plugins']['canopy@canopy'][0]['installPath'])")
+   bash "$CANOPY/scripts/canopy-update-check.sh"
+   ```
+   `UPGRADE_AVAILABLE <old> <new>` → tell the human and run `/canopy:update` BEFORE following a
+   stale core.
+2. **Read `$CANOPY/agent-core/turn.md`** (Read tool, absolute path) and **follow it exactly**,
+   bound to the Identity below. Where it says `<slug>`, use this Identity.
 
-Guardrails: reads are free. `bin/ace-email` is the only send path (a deny rail blocks raw
-`gog gmail send` as ACE — see `config/gating.json`), and a turn runs in **review posture**: every
-outbound reply is presented in-conversation and gets the human's yes before it goes. Approval is
-procedural, not a hook prompt — rigorous steps, autonomous execution (the hal lesson; see the spec's
-§ Gating).
+## Identity
+- Name: **ACE** · slug: `ace` · mailbox: `ace@dimagi-ai.com`
+- Email shim: `bin/ace-email` · board: `/agents/ace`
 
-## Step 1 — Preflight
-
-- `bin/ace-doctor` — read the `[Auth liveness]` block; each failure names its remediation command.
-- Gmail as ACE: `gog gmail search "in:inbox is:unread" --account $ACE_GMAIL_ACCOUNT --client $ACE_GMAIL_CLIENT --json`
-  (also doubles as the queue pull for Step 3). If gog auth is dead:
-  `gog login ace@dimagi-ai.com --client ace --services gmail`.
-
-**Don't abort the whole turn for one blocker** — run the surfaces that passed and report the fix for
-what's blocked.
-
-## Step 2 — Drain the canopy-web board (iff configured)
-
-Config-gated and best-effort by design (the ace-web vs canopy-web question is deliberately open —
-never make a turn depend on canopy-web). If the canopy plugin's shared agent CLI is available
-(`canopy agent --help`) and a workbench token exists, list commands queued for `ace` and apply each
-under normal guardrails; otherwise note "board: not configured" in the close-out and move on.
-
-## Step 3 — Inbox triage
-
-Run `skills/inbox-triage/SKILL.md` in full. In brief: apply the standing noise table first (auto-
-dismiss known machine classes, drain ALL search pages); then for **each** remaining thread, in
-order — read it, resolve the sender's tier (**act** = `config/allowlist.txt`; **correspond** =
-derived from the routed run's state; neither = read-only), route the thread to its opp/run via the
-comms-log `thread_id`, decide ONE action, approval-gate anything outbound, write back to the run's
-comms-log. **One thread, one sender, one memory scope — never reason about two senders in one step.**
-
-Reply quality follows canopy `docs/agent-operating-model.md § 1b` (deliverables are gdocs + draft
-shown inline; decide-then-show in one numbered, consistent order; verify recipients from the
-structured read). Before every reply: run `skills/self-review/SKILL.md` against the sender's
-original asks.
-
-## Step 4 — Skill-development self-check (every turn, explicitly)
-
-Report the answers to both, out loud, in the close-out:
-1. **Did I create or improve a skill this turn?** Name + link it.
-2. **Did I repeat work by hand that SHOULD be a skill (or an issue)?** ACE's standing convention
-   applies inside turns too: a confirmed defect or improvement gets a GitHub issue filed the moment
-   it's confirmed (`gh issue create`, no `-R`) — don't defer to turn end, don't fix silently.
-
-## Step 5 — Close the turn
-
-- Mark fully-handled threads read: `bin/ace-mark-read <threadId> …` — but NOT threads still awaiting
-  a human decision.
-- Best-effort workspace refresh if the canopy agent CLI is configured (never blocks the close).
-- Give ONE combined summary: **Board** (drained / not configured) · **Inbox** (per thread: sender,
-  tier, routed run, proposed action, what was approved & done, what's parked; noise counts by
-  class) · **Open threads by age** (ALL open correspond-tier threads with days-since-last-inbound;
-  >5 days = explicit escalation to the run's operator — standing state, repeated every turn until
-  resolved) · **Runs advanced** (any pause points resumed or skills dispatched) ·
-  **Blocked/awaiting** (preflight failures, human decisions needed) · **Issues filed / skills
-  changed**.
-
-## Related
-
-- `inbox-triage` — Step 3 in full (tiering, routing, the cardinal isolation rule)
-- `email-communicator` — all Gmail I/O (search/read free; sends only via `bin/ace-email`, gated)
-- `self-review` — gate every reply against the original asks before sending
-- `/ace:run`, `/ace:status` — the pipeline the turn feeds into; a turn may resume a paused run at the
-  instruction of an **act**-tier sender, executing the same procedure the pause point defines
+## ACE-local notes (the ONLY hand-edited section — fleet-process changes go to canopy)
+- **Entry points:** the turn is the counterpart-facing entry point; **`/ace:run` remains the
+  pipeline entry point** — a turn wraps around runs, it does not replace them. A turn may resume a
+  paused run at the instruction of an **act**-tier sender, executing the same procedure the pause
+  point defines. Design + counterpart model:
+  `docs/superpowers/specs/2026-07-01-agent-operating-model-adoption.md`.
+- **Preflight (core Step 1) specifics:** `bin/ace-doctor` — read the `[Auth liveness]` block; each
+  failure names its remediation command. Gmail as ACE:
+  `gog gmail search "in:inbox is:unread" --account $ACE_GMAIL_ACCOUNT --client $ACE_GMAIL_CLIENT --json`
+  (doubles as the inbox queue pull). Dead gog auth:
+  `gog login ace@dimagi-ai.com --client ace --services gmail` (ACE's gog client is `ace`,
+  deliberately per-agent).
+- **Board drain is config-gated and best-effort by design** — its absence NEVER blocks a turn (the
+  ace-web vs canopy-web question is deliberately open; see `config/agent.json` `_doc`). If
+  `canopy agent --help` works and a workbench token exists, drain per `skills/task-tracker`;
+  otherwise note "board: not configured" in the close-out and move on. The core's close-out
+  workspace refresh (`canopy agent skills`, `canopy agent turn …`) is best-effort under the same
+  gate.
+- **Inbound processing (core Step 2) = `skills/inbox-triage` in full:** standing noise table first
+  (drain ALL search pages), then per thread — tier the sender (**act** = `config/allowlist.txt`;
+  **correspond** = derived from the routed run's state; neither = read-only), route to opp/run via
+  the comms-log `thread_id`, one action, approval-gated outbound. Per-sender isolation and tier
+  resolution live there.
+- **ACE's state layer is Drive, never local:** where the core says "record `thread_id` in your
+  state layer", that's the routed run's comms-log (`email-communicator` step 7) — the routing key
+  inbox-triage matches inbound threads against. Turn state = comms-logs + `run_state.yaml`.
+- **Pre-send review = `skills/agent-turn-review`** (supersedes the old `self-review`; ACE's
+  `-qa`/`-eval` skills grade artifacts — this is the brief-fidelity counterpart for
+  correspondence).
+- **Skill self-check (core Step 3), ACE addition:** ACE's standing issues-as-you-go convention
+  applies inside turns — a confirmed defect or improvement gets a GitHub issue filed the moment
+  it's confirmed (`gh issue create`, no `-R`); don't defer to turn end, don't fix silently. Also
+  ask: did I repeat work by hand that SHOULD be a skill (or an issue)?
+- **Close-out (core Step 4) ACE shape:** mark fully-handled threads read via
+  `bin/ace-mark-read <threadId> …` — NOT threads still awaiting a human decision. Summary covers:
+  **Board** (drained / not configured) · **Inbox** (per thread: sender, tier, routed run, proposed
+  action, approved & done, parked; noise counts by class) · **Open threads by age** (all open
+  correspond-tier threads, days-since-last-inbound; >5 days = explicit escalation to the run's
+  operator, repeated every turn until resolved) · **Runs advanced** · **Blocked/awaiting** ·
+  **Issues filed / skills changed**.
+- **Gating note:** ACE's hook is plugin-level (fires in every session with ACE installed), so
+  `config/gating.json` rails stay NARROW and identity-scoped — see its `_doc` before adding rails.
