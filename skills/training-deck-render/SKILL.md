@@ -114,6 +114,34 @@ in the standard shape (see `lib/verdict-schema.ts`).
   per standard verdict shape
 - Handoff written to `run_state.yaml`
 
+## Same-link re-render
+
+For a deck that has already been shared at a stable URL and needs
+regeneration (e.g. new screenshots after a capture unblock), do NOT
+copy the template again — that mints a new presentationId and breaks
+the shared link. Use the in-place re-render script instead
+(dimagi-internal/ace#864):
+
+```bash
+npx tsx scripts/rerender-training-deck-in-place.ts \
+  --deck <presentationId> \
+  --spec <new-spec.yaml> \
+  --old-spec <spec.yaml that produced the CURRENT slides> \
+  [--key <gws-sa-key.json>]
+```
+
+- `--old-spec` is required: it must be the spec that rendered the
+  deck's CURRENT slides — stored in the run's `6-qa-and-training/`
+  folder as the deck-spec doc. The script derives each live slide's
+  layout from it and HALTS if the live slide count differs (the deck
+  was hand-edited; reconcile first).
+- Safety property: the old slides are deleted ONLY after the new
+  render batch succeeds — a failed render leaves the shared deck
+  intact.
+- Stencil text-box geometry comes from
+  `lib/training-deck-stencil-geometry.ts` (single source, shared with
+  the bootstrap script), so re-rendered stencils match the template.
+
 ## Error handling
 
 - If `ACE_TRAINING_DECK_TEMPLATE_ID` not set: emit verdict `skipped`
