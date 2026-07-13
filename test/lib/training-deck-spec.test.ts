@@ -12,6 +12,11 @@ import {
   type BuildOptsV2,
   type StencilKey,
 } from '../../lib/training-deck-spec.js';
+import {
+  STENCIL_TEXT_BUILDERS,
+  COLOR_GRAY,
+  MARGIN,
+} from '../../lib/training-deck-stencil-geometry.js';
 
 // ============================================================================
 // YAML-based Training Deck Spec (v2) — parseTrainingSpec + Zod schemas
@@ -988,5 +993,128 @@ describe('speaker notes', () => {
     const spec2 = parseTrainingSpec(yamlStr2);
     const requests2 = buildSlidesRequestsV2(spec2, { stencils, manifest });
     expect(requests2.find((r: any) => r.replaceAllText?.containsText?.text === '{{NOTES}}')).toBeUndefined();
+  });
+});
+
+// ============================================================================
+// mobile_flow caption alignment — programmatic caption boxes centered under
+// each dynamically-centered phone (stencil's fixed boxes are blanked)
+// ============================================================================
+
+describe('mobile_flow caption alignment', () => {
+  const PHONE_W = 1828800; // builder's phoneWidth
+
+  /** Build requests for a mobile_flow slide with N steps. */
+  function buildMobileFlow(n: number): Array<Record<string, unknown>> {
+    const stepsYaml = Array.from({ length: n }, (_, i) => `
+          - image: "@screen${i + 1}"
+            caption: Step ${i + 1}`).join('');
+    const yamlStr = v2Yaml(`
+      - id: s1
+        layout: mobile_flow
+        title: App Flow
+        steps:${stepsYaml}
+    `);
+    const spec = parseTrainingSpec(yamlStr);
+    return buildSlidesRequestsV2(spec, v2Opts(yamlStr));
+  }
+
+  function captionShape(reqs: Array<Record<string, unknown>>, i: number): any {
+    return reqs.find((r: any) => r.createShape?.objectId === `ace_slide_1_cap_${i}`);
+  }
+
+  function imageReq(reqs: Array<Record<string, unknown>>, i: number): any {
+    return reqs.find((r: any) => r.createImage?.objectId === `ace_slide_1_img_${i}`);
+  }
+
+  function centerX(props: any): number {
+    return props.elementProperties.transform.translateX +
+      props.elementProperties.size.width.magnitude / 2;
+  }
+
+  for (const n of [2, 3, 4]) {
+    it(`centers one caption box under each of ${n} phones (within 1000 EMU)`, () => {
+      const reqs = buildMobileFlow(n);
+      for (let i = 0; i < n; i++) {
+        const cap = captionShape(reqs, i);
+        const img = imageReq(reqs, i);
+        expect(cap, `caption ${i}`).toBeTruthy();
+        expect(img, `image ${i}`).toBeTruthy();
+        const capCenter = centerX(cap.createShape);
+        const imgCenter =
+          img.createImage.elementProperties.transform.translateX + PHONE_W / 2;
+        expect(Math.abs(capCenter - imgCenter)).toBeLessThanOrEqual(1000);
+      }
+      // No caption boxes beyond the step count.
+      expect(captionShape(reqs, n)).toBeUndefined();
+    });
+
+    it(`blanks all four {{STEP_i_CAPTION}} stencil tokens at ${n} steps`, () => {
+      const reqs = buildMobileFlow(n);
+      for (let i = 0; i < 4; i++) {
+        const blank = reqs.find(
+          (r: any) =>
+            r.replaceAllText?.containsText?.text === `{{STEP_${i}_CAPTION}}` &&
+            r.replaceAllText?.pageObjectIds?.[0] === 'ace_slide_1',
+        );
+        expect(blank, `blank token ${i}`).toBeTruthy();
+        expect((blank as any).replaceAllText.replaceText).toBe('');
+      }
+    });
+  }
+
+  it('styles caption boxes Work Sans 11pt gray (matching the stencil boxes)', () => {
+    const reqs = buildMobileFlow(3);
+    for (let i = 0; i < 3; i++) {
+      const style = reqs.find(
+        (r: any) => r.updateTextStyle?.objectId === `ace_slide_1_cap_${i}`,
+      ) as any;
+      expect(style, `style ${i}`).toBeTruthy();
+      expect(style.updateTextStyle.style.fontFamily).toBe('Work Sans');
+      expect(style.updateTextStyle.style.fontSize).toEqual({ magnitude: 11, unit: 'PT' });
+      expect(style.updateTextStyle.style.foregroundColor.opaqueColor.rgbColor).toEqual(COLOR_GRAY);
+    }
+  });
+
+  it('4-step regression: caption centers stay within 30000 EMU of the stencil grid', () => {
+    // The stencil's fixed boxes sit at x = MARGIN + i*captionCol, width
+    // captionCol - 50000 (buildMobileFlowTextBoxes). The programmatic boxes
+    // center under each phone instead; at N=4 the two grids differ by a
+    // constant 25000 EMU (~2pt) — assert the 4-up look didn't shift
+    // materially (tolerance 30000 EMU ≈ 2.4pt).
+    const captionCol = Math.round((9144000 - MARGIN * 2) / 4); // 2057400
+    const reqs = buildMobileFlow(4);
+    for (let i = 0; i < 4; i++) {
+      const cap = captionShape(reqs, i);
+      const oldFixedCenter = MARGIN + i * captionCol + (captionCol - 50000) / 2;
+      expect(Math.abs(centerX(cap.createShape) - oldFixedCenter)).toBeLessThanOrEqual(30000);
+    }
+  });
+});
+
+// ============================================================================
+// STENCIL_TEXT_BUILDERS — the canonical per-stencil geometry map
+// ============================================================================
+
+describe('STENCIL_TEXT_BUILDERS', () => {
+  it('has exactly the 14 StencilKeys', () => {
+    expect(Object.keys(STENCIL_TEXT_BUILDERS).sort()).toEqual(
+      Object.keys(STENCILS).sort(),
+    );
+    expect(Object.keys(STENCIL_TEXT_BUILDERS)).toHaveLength(14);
+  });
+
+  it('each builder returns requests including a createShape whose objectId starts with the pageId', () => {
+    for (const [key, builder] of Object.entries(STENCIL_TEXT_BUILDERS)) {
+      const pageId = `test_page_${key}`;
+      const reqs = builder(pageId);
+      expect(reqs.length, key).toBeGreaterThan(0);
+      const shapes = reqs.filter((r: any) => r.createShape);
+      expect(shapes.length, key).toBeGreaterThan(0);
+      for (const s of shapes as any[]) {
+        expect(s.createShape.objectId.startsWith(pageId), `${key}: ${s.createShape.objectId}`).toBe(true);
+        expect(s.createShape.elementProperties.pageObjectId).toBe(pageId);
+      }
+    }
   });
 });

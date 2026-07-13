@@ -7,6 +7,19 @@
 
 import { z } from 'zod';
 import yaml from 'js-yaml';
+// Shared stencil geometry (lib/training-deck-stencil-geometry.ts — the
+// single source of stencil text-box geometry). The mobile_flow branch
+// derives its programmatic caption boxes from these so the N=4 output
+// matches the stencil grid. Safe to import VALUES here: geometry imports
+// only a TYPE (StencilKey) from this module, so `import type` erasure
+// means there is no runtime circular import.
+import {
+  FONT_FAMILY,
+  COLOR_GRAY,
+  SLIDE_W,
+  SLIDE_H,
+  MARGIN,
+} from './training-deck-stencil-geometry.js';
 
 // ---------------------------------------------------------------------------
 // Individual slide layout schemas
@@ -507,6 +520,66 @@ function replaceAllTextV2(
   };
 }
 
+// Caption styling mirrors the stencil's caption boxes
+// (lib/training-deck-stencil-geometry.ts § buildMobileFlowTextBoxes):
+// Work Sans 11pt, gray #5F6A7D, left-aligned. Font family + color come
+// straight from the geometry module; 11pt matches the stencil builder's
+// caption fontSize.
+const CAPTION_FONT_SIZE_PT = 11;
+
+/**
+ * Create a styled caption text box at an explicit position. Used by
+ * mobile_flow instead of the stencil's four FIXED caption boxes: the stencil
+ * grid was laid out for the 4-phone case, but the builder centers N phones
+ * dynamically — at N<4 the fixed boxes drift up to ~82pt left of their
+ * phones (at N=2 the second caption sat under the FIRST phone; caught by
+ * operator review of hh-poverty-targeting/20260702-1456 slides 26+28).
+ * The builder now blanks the stencil boxes and creates these instead,
+ * centered under each phone.
+ */
+function createCaptionBox(
+  objectId: string,
+  pageObjectId: string,
+  text: string,
+  pos: { x: number; y: number; w: number; h: number },
+): Array<Record<string, unknown>> {
+  return [
+    {
+      createShape: {
+        objectId,
+        shapeType: 'TEXT_BOX',
+        elementProperties: {
+          pageObjectId,
+          size: {
+            height: { magnitude: pos.h, unit: 'EMU' },
+            width: { magnitude: pos.w, unit: 'EMU' },
+          },
+          transform: {
+            scaleX: 1,
+            scaleY: 1,
+            translateX: pos.x,
+            translateY: pos.y,
+            unit: 'EMU',
+          },
+        },
+      },
+    },
+    { insertText: { objectId, text, insertionIndex: 0 } },
+    {
+      updateTextStyle: {
+        objectId,
+        textRange: { type: 'ALL' },
+        style: {
+          fontSize: { magnitude: CAPTION_FONT_SIZE_PT, unit: 'PT' },
+          fontFamily: FONT_FAMILY,
+          foregroundColor: { opaqueColor: { rgbColor: COLOR_GRAY } },
+        },
+        fields: 'fontSize,fontFamily,foregroundColor',
+      },
+    },
+  ];
+}
+
 function createImage(
   objectId: string,
   pageObjectId: string,
@@ -588,12 +661,20 @@ function buildLayoutRequests(
       const totalSteps = slide.steps.length;
       const groupWidth =
         totalSteps * phoneWidth + (totalSteps - 1) * phoneGap;
-      const slideWidth = 9144000;
-      const startX = (slideWidth - groupWidth) / 2;
+      const startX = (SLIDE_W - groupWidth) / 2;
+      // Captions are created programmatically, centered under each phone —
+      // the stencil's four fixed caption boxes only line up at N=4, so they
+      // are blanked below and never receive text. Same width/y as the
+      // stencil boxes (buildMobileFlowTextBoxes in the geometry module) so
+      // the N=4 output is visually unchanged.
+      const captionW =
+        Math.round((SLIDE_W - MARGIN * 2) / 4) - 50_000;
+      const captionY = SLIDE_H - 700_000;
 
       for (let i = 0; i < 4; i++) {
+        // Blank ALL stencil caption tokens regardless of step count.
+        r(`{{STEP_${i}_CAPTION}}`, '');
         if (i < totalSteps) {
-          r(`{{STEP_${i}_CAPTION}}`, slide.steps[i].caption);
           const x = startX + i * (phoneWidth + phoneGap);
           reqs.push(
             createImage(
@@ -603,8 +684,19 @@ function buildLayoutRequests(
               { x, y: phoneY, w: phoneWidth, h: phoneHeight },
             ),
           );
-        } else {
-          r(`{{STEP_${i}_CAPTION}}`, '');
+          reqs.push(
+            ...createCaptionBox(
+              `${pageId}_cap_${i}`,
+              pageId,
+              slide.steps[i].caption,
+              {
+                x: Math.round(x + (phoneWidth - captionW) / 2),
+                y: captionY,
+                w: captionW,
+                h: 500000,
+              },
+            ),
+          );
         }
       }
       break;
