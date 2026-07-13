@@ -107,6 +107,21 @@ Verdict to
 `ACE/<opp>/runs/<run-id>/6-qa-and-training/training-deck-render_verdict.yaml`
 in the standard shape (see `lib/verdict-schema.ts`).
 
+### Post-render sweep: leftover decorative ellipse (pre-fix template)
+
+The CURRENTLY-MINTED template still contains a 6×6pt decorative ELLIPSE
+on the `walkthrough` stencil (and `mobile_zoom` — same Dimagi source
+page), cloned from the source slide and missed by the original
+bootstrap strips. Fresh renders from that template inherit it as a
+stray blue dot on every walkthrough-derived slide until the template is
+re-minted via the (now-fixed) `scripts/bootstrap-training-deck-template.ts`.
+Until then, after rendering: `slides_get` the deck, filter pageElements
+with `isDecorativeLeftover` (`lib/training-deck-stencil-geometry.ts` —
+ELLIPSE rendered ≤ 12pt in both dimensions), and issue one
+`slides_batch_update` of `deleteObject` requests for the matches. The
+in-place re-render script (below) already runs this sweep automatically
+when it rebuilds stencils, so re-rendered decks self-clean.
+
 ## Output
 
 - Google Slides deck in the run's `6-qa-and-training/` folder

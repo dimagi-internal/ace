@@ -52,6 +52,7 @@ import {
   SLIDE_W,
   SLIDE_H,
   STENCIL_TEXT_BUILDERS,
+  isDecorativeLeftover,
 } from '../lib/training-deck-stencil-geometry.js';
 
 // ---------------------------------------------------------------------------
@@ -293,6 +294,7 @@ async function main(): Promise<void> {
   const imageIdsToStripByPageId = new Map<string, string[]>();
   const lineIdsToStripByPageId = new Map<string, string[]>();
   const decShapeIdsToStripByPageId = new Map<string, string[]>();
+  const leftoverIdsToStripByPageId = new Map<string, string[]>();
   const notesIdByPageId = new Map<string, string>();
 
   // v5.5: strip floating decoration on stencils where the Dimagi designer
@@ -343,6 +345,7 @@ async function main(): Promise<void> {
     const imageIds: string[] = [];
     const lineIds: string[] = [];
     const decShapeIds: string[] = [];
+    const leftoverIds: string[] = [];
     for (const el of s.pageElements ?? []) {
       // Text-bearing shapes: always delete (we re-create our own).
       if (el.shape?.text && el.objectId) {
@@ -379,11 +382,23 @@ async function main(): Promise<void> {
           decShapeIds.push(el.objectId);
         }
       }
+      // Generic sweep: tiny decorative clone-leftovers on EVERY stencil.
+      // The Dimagi walkthrough source page (shared by mobile_zoom) carries
+      // a 6×6pt ellipse at ~(292pt, 110pt) that survived every earlier
+      // strip — too small for the image threshold, not text-bearing, and
+      // walkthrough isn't in STRIP_DEC_SHAPES_ON. It rendered as a stray
+      // blue dot on every walkthrough-derived slide. Guard against ids
+      // already queued by the checklist/stats dec-shape strip above so a
+      // deleteObject is never issued twice for the same element.
+      if (el.objectId && !decShapeIds.includes(el.objectId) && isDecorativeLeftover(el)) {
+        leftoverIds.push(el.objectId);
+      }
     }
     textShapeIdsByPageId.set(id, textIds);
     imageIdsToStripByPageId.set(id, imageIds);
     lineIdsToStripByPageId.set(id, lineIds);
     decShapeIdsToStripByPageId.set(id, decShapeIds);
+    leftoverIdsToStripByPageId.set(id, leftoverIds);
   }
 
   // ---------------------------------------------------------------------------
@@ -417,6 +432,12 @@ async function main(): Promise<void> {
     // on checklist + stats stencils.
     const decShapesToStrip = decShapeIdsToStripByPageId.get(pageId) ?? [];
     for (const objectId of decShapesToStrip) {
+      layerRequests.push({ deleteObject: { objectId } });
+    }
+    // Delete tiny decorative clone-leftovers (isDecorativeLeftover sweep —
+    // the 6×6pt Dimagi walkthrough ellipse class).
+    const leftoversToStrip = leftoverIdsToStripByPageId.get(pageId) ?? [];
+    for (const objectId of leftoversToStrip) {
       layerRequests.push({ deleteObject: { objectId } });
     }
     void config.stripImageIds; // legacy field on config — discovery replaces it
