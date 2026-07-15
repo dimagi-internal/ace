@@ -1,9 +1,42 @@
 # Post-build CommCare-HQ settings automation
 
-**Status:** Backlog — deferred (design stub, not yet scheduled)
+**Status:** Backlog — scoped (2026-07-15 spike done; 2 items to build, gated on one live probe)
 **Filed:** 2026-06-25
 **Owner:** Sarvesh / ACE team
-**Related:** `skills/_app-component-library.md` (standing build-settings components, added 2026-06-25); `skills/app-deploy`; `skills/app-release`; `skills/app-release-qa`
+**Related:** `skills/_app-component-library.md`; `skills/app-deploy`; `skills/app-release`; `skills/app-release-qa`; `agents/commcare-setup.md` (residuals-as-first-class-state, dimagi-internal/ace#867)
+
+## Update 2026-07-15 — spike outcome & decisions
+
+A read-only spike + the earlier real builds resolved all three HQ-layer settings:
+
+1. **`assessment-display-lifecycle` — WON'T-DO (dropped).** A CommCare form
+   Display Condition (`form_filter`) can only test case/session state, and ACE
+   Learn apps are case-less by hard rule, so there is no app-readable "completed"
+   signal for it to read. The shown-once / gated / hidden-after-pass behavior is
+   already delivered **Connect-side** via `assessment-gate` + native
+   module-completion. Deprecated in the library and removed from the
+   `pdd-to-learn-app` emit-checklist. **Out of scope for this automation.**
+
+2. **`live-photo-capture` — build the auto-apply.** Verify side already landed on
+   `main` (`app-release-qa` camera-only `[BLOCKER]` check + `residuals[]`, #867).
+   Decision: **always-on for Deliver** (superset of #867's PDD-conditional verify;
+   no conflict). Apply mechanism: patch `appearance="acquire"` onto each image
+   `<upload>` via `commcare_patch_xform`, pre-release. **Open probe:** `patch_xform`
+   takes a full replacement XForm and no current tool fetches the draft XForm
+   source — the draft-read path must be resolved by a live probe (or a new atom)
+   before the procedure can be authored.
+
+3. **`grid-menu-display` — build the auto-apply.** Lives in the app doc; renders to
+   `suite.xml` (so verifiable from the released CCZ). No MCP tool reaches it.
+   **Open probe:** whether HQ exposes a clean `edit_module_attr`-style POST, else
+   Playwright against App Settings → Advanced.
+
+**Net:** two items to automate (photos, grid), both blocked on a live HQ probe
+before a reliable procedure can be written; one item formally dropped. The
+automation slots as a step between `app-deploy` and `app-release` and should
+resolve the matching `commcare-setup.residuals[]` entries so #867's checks pass
+without a manual flip. The per-setting mechanics below are retained as the spike's
+working notes.
 
 ## Why this exists
 

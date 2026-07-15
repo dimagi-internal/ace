@@ -354,25 +354,23 @@ authored from the PDD per run):
 - **Trigger:** the app has BOTH a pre-assessment and a post-assessment form.
 - **Parameters:** `<THRESHOLD>` (passing percentage, e.g. `80` — the same value
   wired in [`assessment-gate`](#assessment-gate)).
-- **Enforced by:** `pdd-to-learn-app-eval § assessment_gating` (extends the
-  existing dimension) — *provisional for the Display Conditions; not yet
-  enforceable.*
-- **Status (2026-06-25 Learn build `dMtqjjKy8mGKTlkZgREH`):** trigger fired (the
-  app has both a pre- and a post-assessment) but the form object carries no
-  display-condition key — NOT applied, NOT representable in the Nova blueprint.
-  Deferred to the post-build HQ step in
-  `docs/superpowers/specs/2026-06-25-post-build-hq-settings-automation.md`.
-  **Caveat:** Learn apps are case-less, so a form Display Condition may have no
-  in-app state to evaluate — this may not be realizable as a Display Condition
-  at all; Connect-side module-completion (per `assessment-gate`) is the likely
-  real mechanism. Owner decision pending — see the spec.
-- **Pairs with:** [`assessment-gate`](#assessment-gate) — `assessment-gate`
-  builds the real pre/post test, scoring, and Connect wiring; THIS component
-  governs the **form Display Conditions** that decide *when each assessment form
-  is shown*. Always emit both for a gated Learn app.
-- **Note:** realizing "shown only once" and "hidden after pass" as a Display
-  Condition requires a completion/score signal the form can read. Whether Nova
-  wires this is exactly what the first test build validates (see change log).
+- **Enforced by:** none — see status. The Connect-side gate is enforced by
+  [`assessment-gate`](#assessment-gate) (`pdd-to-learn-app-eval § assessment_gating`).
+- **Status — WON'T-DO as a Display Condition (decided 2026-07-15).** The
+  2026-06-25 Learn build (`dMtqjjKy8mGKTlkZgREH`) plus the 2026-07-15 spike
+  confirmed this is not expressible: a CommCare form Display Condition
+  (`form_filter`) can only test case/session state, and ACE Learn apps are
+  case-less by hard rule (`assessment-gate`; `pdd-to-learn-app` "no `<case>`
+  blocks"), so there is no app-readable "completed" signal for the condition to
+  read. The intended behavior (shown-once / gated / hidden-after-pass) is already
+  delivered **Connect-side** via `assessment-gate` + Connect's native
+  module-completion tracking. **This component is deprecated** and has been
+  removed from the `pdd-to-learn-app` emit-checklist; it is retained here for
+  provenance. See `docs/superpowers/specs/2026-06-25-post-build-hq-settings-automation.md`.
+- **Superseded by:** [`assessment-gate`](#assessment-gate) — it builds the real
+  pre/post test, scoring, and Connect wiring, and Connect enforces the gate. The
+  "shown-once / hidden-after-pass" experience is a Connect module-completion
+  behavior, not a CommCare Display Condition.
 
 **Brief paragraph (verbatim):**
 
@@ -397,11 +395,15 @@ authored from the PDD per run):
   *provisional, not yet enforceable.*
 - **HQ surface:** App Settings > Advanced Settings > set "Modules Menu Display"
   AND "Forms Menu Display" to "Grid", then save & publish.
-- **Status (2026-06-25 test):** NOT applied by Nova — `get_app`/`get_module`
-  have no menu-display field; not representable in the Nova blueprint. The brief
-  instruction is best-effort only. Application + enforcement are deferred to the
-  post-build HQ step in
-  `docs/superpowers/specs/2026-06-25-post-build-hq-settings-automation.md`.
+- **Status (updated 2026-07-15):** NOT applied by Nova — `get_app`/`get_module`
+  have no menu-display field; not representable in the Nova blueprint. It lives in
+  the app doc and renders to the `suite.xml` menu style — so it is **verifiable
+  from the released CCZ** (`suite.xml`) but must be **applied post-build**. Recorded
+  as a `phases.commcare-setup.residuals[]` item (dimagi-internal/ace#867). The
+  auto-apply is planned in the post-build HQ step
+  (`docs/superpowers/specs/2026-06-25-post-build-hq-settings-automation.md`); the
+  one open question is the write mechanism (HQ `edit_module_attr`-style endpoint vs
+  Playwright) — needs a live probe.
 
 **Brief paragraph (verbatim):**
 
@@ -427,15 +429,26 @@ authored from the PDD per run):
 
 - **App:** Deliver
 - **Trigger:** any image / photo capture question.
-- **Enforced by:** `pdd-to-deliver-app-eval § Capture fitness` (extends) —
-  *provisional for the appearance attribute; not yet enforceable.*
+- **Enforced by:** `app-release-qa` camera-only check (dimagi-internal/ace#867) —
+  a released Deliver image `<upload>` lacking `appearance` containing `acquire`
+  halts with `[BLOCKER] camera-only-appearance-missing`. (This verify side is
+  live on `main`; the auto-apply side is pending — see status.)
 - **HQ surface:** the image question's Advanced options > Appearance Attribute =
   `acquire`.
-- **Status (2026-06-25 test):** NOT applied by Nova — the image-field schema has
-  no appearance key (`get_field` exposes none); Nova emitted only an advisory
-  `hint`, which does not stop the gallery-browse picker. Application + enforcement
-  are deferred to the post-build HQ step in
-  `docs/superpowers/specs/2026-06-25-post-build-hq-settings-automation.md`.
+- **Decision (2026-07-15):** always-on for Deliver (matches the original "photos
+  always taken live" instruction). This is a superset of #867's PDD-conditional
+  verify — if `acquire` is always applied, that check always passes — so the two
+  do not conflict.
+- **Status (updated 2026-07-15):** NOT applied by Nova — the image-field schema
+  has no appearance key (`get_field` exposes none); Nova emits only an advisory
+  `hint`, which does not stop the gallery picker. The **verify** side now exists
+  (app-release-qa #867, tracked as a `commcare-setup.residuals[]` item). The
+  **auto-apply** is the pending post-build step
+  (`docs/superpowers/specs/2026-06-25-post-build-hq-settings-automation.md`):
+  patch `appearance="acquire"` onto each image `<upload>` via
+  `commcare_patch_xform` before release. Open probe: `patch_xform` takes a full
+  replacement XForm and there is no tool today to fetch the current draft XForm —
+  the draft-source read path needs a live probe before the procedure can be authored.
 
 **Brief paragraph (verbatim):**
 
@@ -468,3 +481,4 @@ authored from the PDD per run):
 | 2026-05-29 | **Created the library.** Extracted the deployability/fitness `REQUIRED:` brief paragraphs that previously lived inline in `pdd-to-deliver-app` and `pdd-to-learn-app` into named, parameterized components: `gps-accuracy-capture`, `init-safe-calculates`, `data-quality-constraints`, `case-write-back`, `structured-capture`, `section-timestamps`, `embedded-bc-script` (Deliver), `assessment-gate` (Learn), `localization-layer` (both — dedups the previously-duplicated localization paragraph). Each component pairs 1:1 with the `pdd-to-*-app-eval` fitness dimension that hard-fails a build omitting it. Closes the "reusable component library" item (PR-8 build track) from `docs/superpowers/specs/2026-05-29-eval-fitness-gap.md` / open decision #2. | ACE team |
 | 2026-06-25 | **Added standing app-build instructions** (per-app guidance applied to every Nova build). New components: `learn-app-naming`, `end-of-form-previous`, `assessment-display-lifecycle` (Learn); `grid-menu-display` (Learn + Deliver); `deliver-app-naming`, `live-photo-capture`, `no-section-module-language` (Deliver). Extends the library beyond field/calculate/constraint patterns to app- and form-level build settings (naming, menu display, end-of-form navigation, photo appearance, assessment form Display Conditions, terminology). The "Other → free-text follow-up" requirement was already covered by `structured-capture`, so no separate component was added. Several components are CommCare-HQ settings not surfaced by Nova's documented MCP tools; they are emitted as brief instructions and the first Learn + Deliver test build must confirm (a) Nova applies them and (b) they are readable by the eval. Eval dimensions marked (NEW) are pending addition to the eval skills. | Sarvesh |
 | 2026-07-01 | **Enforcement landed for the blueprint-readable components.** After the 2026-06-25 test builds confirmed which instructions Nova actually applies, added binary `[BLOCKER]` hard-gates (NOT weighted dimensions — no rubric-weight rebalancing) to the eval skills: `naming_convention` + `form_navigation` in `pdd-to-learn-app-eval`, `naming_convention` + `terminology` in `pdd-to-deliver-app-eval`. A violation forces suite verdict `fail`. The three HQ-layer components (`grid-menu-display`, `live-photo-capture`, `assessment-display-lifecycle`) remain provisional/unenforced pending the post-build step in `docs/superpowers/specs/2026-06-25-post-build-hq-settings-automation.md`. | Sarvesh |
+| 2026-07-15 | **Post-build spike resolved the three HQ-layer components.** (1) `assessment-display-lifecycle` → **WON'T-DO** as a Display Condition (case-less Learn apps have no app-readable state for a `form_filter`); deprecated + removed from the `pdd-to-learn-app` emit-checklist; the behavior is already delivered Connect-side by `assessment-gate`. (2) `live-photo-capture` → verify side is now live on `main` (`app-release-qa` camera-only check, dimagi-internal/ace#867); decided always-on for Deliver (superset of #867's PDD-conditional verify); auto-apply via `commcare_patch_xform` is pending one live probe (no tool fetches the draft XForm yet). (3) `grid-menu-display` → verifiable from `suite.xml`, auto-apply pending a write-mechanism probe (HQ endpoint vs Playwright). Both apply-automations are tracked as `commcare-setup.residuals[]` per #867. | Sarvesh |
