@@ -5,6 +5,17 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.13.609 — 2026-07-15
+
+**Post-build HQ-settings spike: resolved the three deferred standing-instruction components.**
+
+A read-only spike (plus the earlier real builds) settled how the three HQ-layer components from #815 get applied and verified:
+- `assessment-display-lifecycle` → **won't-do** as a CommCare form Display Condition (case-less Learn apps expose no state a `form_filter` can read); deprecated and removed from the `pdd-to-learn-app` emit-checklist. The behavior is already delivered Connect-side by `assessment-gate`.
+- `live-photo-capture` → verify side is already live on `main` (`app-release-qa` camera-only `[BLOCKER]`, dimagi-internal/ace#867); decided always-on for Deliver (a superset of #867's PDD-conditional check). Auto-apply via `commcare_patch_xform` is pending one live probe (no tool fetches the draft XForm today).
+- `grid-menu-display` → verifiable from `suite.xml`; auto-apply pending a write-mechanism probe (HQ endpoint vs Playwright).
+
+Updates `skills/_app-component-library.md` (component statuses + changelog) and `docs/superpowers/specs/2026-06-25-post-build-hq-settings-automation.md` (spike outcome + narrowed scope). No behavior change to builds beyond dropping an instruction Nova could not honor.
+
 ## 0.13.588 — 2026-07-01
 
 **Standing app-build instructions for all Nova builds (dimagi-internal/ace#815).**
