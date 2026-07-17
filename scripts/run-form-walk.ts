@@ -27,9 +27,10 @@
  *         "module": 0,
  *         "form": 0,
  *         "form_unique_id": "<32-hex>" | null,
+ *         "module_unique_id": "<32-hex>" | null,
  *         "form_path": "modules-0/forms-0.xml",
  *         "fields": [
- *           { "field_id": "...", "kind": "label|text|int|single_select|multi_select|date|geo|trigger|unknown", "label": "<text>", "options": ["..."] }
+ *           { "field_id": "...", "kind": "label|text|int|single_select|multi_select|date|geo|image|trigger|unknown", "label": "<text>", "options": ["..."] }
  *         ]
  *       }
  *     ]
@@ -58,6 +59,7 @@ export type FieldKind =
   | 'single_select'
   | 'multi_select'
   | 'geo'
+  | 'image'
   | 'trigger'
   | 'unknown';
 
@@ -72,6 +74,18 @@ export interface WalkedForm {
   module: number;
   form: number;
   form_unique_id: string | null;
+  /**
+   * 32-hex `unique_id` of the OWNING module (a.k.a. menu), from the
+   * draft-app API's `modules[N].unique_id`. This is the value the
+   * `commcare_set_menu_display` atom expects (per-module grid toggle).
+   *
+   * Null when the draft-app overlay didn't run (no API creds → suite.xml
+   * fallback; suite.xml has no draft module uid). Callers that need to
+   * set menu display MUST NOT proceed on a null value — the same
+   * suite.xml-vs-draft mismatch that makes `form_unique_id_source:
+   * 'suite_xml'` unsafe for `patch_xform` applies here (issue #108).
+   */
+  module_unique_id: string | null;
   form_path: string;
   fields: WalkedField[];
 }
@@ -107,6 +121,23 @@ export interface FormWalkOutput {
  * Exported for unit tests.
  */
 export type DraftFormUidMap = Map<string, string>;
+
+/**
+ * Per-module unique-id map derived from CCHQ's draft-app API
+ * (/a/<domain>/api/v0.5/application/<app_id>/). The key is the form path
+ * (`modules-N/forms-M.xml`) — same key space as `DraftFormUidMap` — so
+ * each form can be overlaid with its OWNING module's uid in a single
+ * pass over `walkCcz` output. The value is the 32-hex `modules[N].unique_id`.
+ *
+ * Every form under module N maps to the same module uid. Keying by form
+ * path (rather than module index) keeps the overlay symmetric with
+ * `mergeDraftFormUids`'s existing per-form loop and avoids a second index
+ * lookup that would drift if the CCZ and draft API disagreed on module
+ * ordering.
+ *
+ * Exported for unit tests.
+ */
+export type DraftModuleUidMap = Map<string, string>;
 
 // ── Pure helpers (testable without live CCHQ) ─────────────────────
 
@@ -291,6 +322,15 @@ function walkBody(
         kind = 'multi_select';
         options = readSelectOptions(el, itextMap);
         break;
+      case 'upload':
+        // <upload mediatype="image/*"> is a photo-capture control. Only
+        // image uploads are relevant to this walk's image-bearing-form
+        // consumers (app-hq-settings' camera-only appearance="acquire"
+        // pass); audio/video uploads fall through to their own kind.
+        kind = (el.getAttribute('mediatype') ?? '').startsWith('image/')
+          ? 'image'
+          : 'unknown';
+        break;
       case 'trigger':
         kind = 'trigger';
         break;
@@ -401,6 +441,9 @@ export function walkCcz(args: {
       module: Number(m[1]),
       form: Number(m[2]),
       form_unique_id: formUid.get(path) ?? null,
+      // suite.xml has no draft module uid; the CLI's mergeDraftFormUids
+      // overlay fills this from the draft-app API when creds are present.
+      module_unique_id: null,
       form_path: path,
       fields: walkFormFields(xml),
     });
@@ -447,30 +490,84 @@ export function parseDraftAppFormUids(draftJson: unknown): DraftFormUidMap {
 }
 
 /**
+ * Parse the draft-app API JSON response into a per-form map of the
+ * OWNING module's 32-hex `unique_id` (from `modules[N].unique_id`). The
+ * key is the form path (`modules-N/forms-M.xml`) so it overlays onto
+ * `walkCcz` output in the same pass as `parseDraftAppFormUids`.
+ *
+ * Every form under a module gets that module's uid. Modules without a
+ * valid 32-hex `unique_id` are skipped silently — their forms simply
+ * keep `module_unique_id: null`, and the caller (app-hq-settings) halts
+ * before setting menu display on a null uid.
+ *
+ * Exported for unit tests.
+ */
+export function parseDraftAppModuleUids(draftJson: unknown): DraftModuleUidMap {
+  const out: DraftModuleUidMap = new Map();
+  const modules = (draftJson as { modules?: unknown[] } | null)?.modules;
+  if (!Array.isArray(modules)) return out;
+  for (let mi = 0; mi < modules.length; mi++) {
+    const mod = modules[mi] as { unique_id?: unknown; forms?: unknown[] } | null;
+    if (!mod) continue;
+    const modUid = typeof mod.unique_id === 'string' ? mod.unique_id : null;
+    if (!modUid || !/^[0-9a-f]{32}$/.test(modUid)) continue;
+    const forms = Array.isArray(mod.forms) ? mod.forms : [];
+    // Map every form path under this module to the module uid. Fall back
+    // to at least forms-0 so a module with a broken/empty forms[] array
+    // still surfaces its uid on the module's first (index-0) form path,
+    // matching how walkCcz enumerates modules-N/forms-M.xml.
+    const formCount = Math.max(forms.length, 1);
+    for (let fi = 0; fi < formCount; fi++) {
+      out.set(`modules-${mi}/forms-${fi}.xml`, modUid);
+    }
+  }
+  return out;
+}
+
+/**
  * Overlay draft-API form_unique_ids onto a `walkCcz` output, replacing
  * each form's `form_unique_id` with the draft variant when present.
  * Forms whose path isn't in the draft map keep their suite.xml value
  * (and the source flag flips to 'suite_xml' if any form falls through).
  *
- * If `draftMap` is empty, the input is returned with no changes.
+ * If `draftMap` is empty, the input is returned with no changes to the
+ * form uids or the source flag. An optional `moduleMap` overlays each
+ * form's `module_unique_id` independently — it is applied whenever
+ * present regardless of `draftMap`'s emptiness, so a caller can fill
+ * module uids even if the form-uid overlay was skipped. The
+ * `form_unique_id_source` flag reflects the FORM uid coverage only; a
+ * form missing from `moduleMap` keeps `module_unique_id: null` without
+ * downgrading the source flag (menu-display callers check the null
+ * directly).
  *
  * Exported for unit tests.
  */
 export function mergeDraftFormUids(
   walked: FormWalkOutput,
   draftMap: DraftFormUidMap,
+  moduleMap?: DraftModuleUidMap,
 ): FormWalkOutput {
-  if (draftMap.size === 0) return walked;
+  if (draftMap.size === 0 && (!moduleMap || moduleMap.size === 0)) return walked;
   let allCovered = true;
   const forms = walked.forms.map((f) => {
+    let next = f;
     const draft = draftMap.get(f.form_path);
-    if (draft) return { ...f, form_unique_id: draft };
-    allCovered = false;
-    return f;
+    if (draft) {
+      next = { ...next, form_unique_id: draft };
+    } else if (draftMap.size > 0) {
+      allCovered = false;
+    }
+    const modUid = moduleMap?.get(f.form_path);
+    if (modUid) next = { ...next, module_unique_id: modUid };
+    return next;
   });
   return {
     ...walked,
-    form_unique_id_source: allCovered ? 'draft_api' : walked.form_unique_id_source,
+    // Only flip to draft_api when the form-uid overlay ran AND covered
+    // every form. An empty draftMap (module-only overlay) leaves the
+    // source flag untouched.
+    form_unique_id_source:
+      draftMap.size > 0 && allCovered ? 'draft_api' : walked.form_unique_id_source,
     forms,
   };
 }
@@ -487,19 +584,21 @@ export function mergeDraftFormUids(
  * bring-up — adding a backend method would force the cookie-auth path
  * for a read that has a perfectly good keyed alternative.
  */
-async function fetchDraftFormUidsViaApiKey(args: {
+async function fetchDraftUidsViaApiKey(args: {
   domain: string;
   app_id: string;
   baseUrl: string;
-}): Promise<DraftFormUidMap> {
+}): Promise<{ formMap: DraftFormUidMap; moduleMap: DraftModuleUidMap }> {
+  const empty = { formMap: new Map<string, string>(), moduleMap: new Map<string, string>() };
   const user = process.env.ACE_HQ_USERNAME;
   const key = process.env.ACE_HQ_API_KEY;
   if (!user || !key) {
     console.error(
-      '[run-form-walk] ACE_HQ_USERNAME / ACE_HQ_API_KEY not set; falling back to suite.xml form_unique_ids. ' +
-        'These will be REJECTED by commcare_patch_xform — see issue #108.',
+      '[run-form-walk] ACE_HQ_USERNAME / ACE_HQ_API_KEY not set; falling back to suite.xml form_unique_ids ' +
+        'and leaving module_unique_id null. These will be REJECTED by commcare_patch_xform / ' +
+        'commcare_set_menu_display — see issue #108.',
     );
-    return new Map();
+    return empty;
   }
   const url = `${args.baseUrl}/a/${args.domain}/api/v0.5/application/${args.app_id}/`;
   let res: Response;
@@ -507,20 +606,23 @@ async function fetchDraftFormUidsViaApiKey(args: {
     res = await fetch(url, { headers: { Authorization: `ApiKey ${user}:${key}` } });
   } catch (e) {
     console.error(`[run-form-walk] draft-app API fetch failed: ${(e as Error).message}`);
-    return new Map();
+    return empty;
   }
   if (!res.ok) {
     console.error(`[run-form-walk] draft-app API returned ${res.status}; falling back to suite.xml`);
-    return new Map();
+    return empty;
   }
   let body: unknown;
   try {
     body = await res.json();
   } catch (e) {
     console.error(`[run-form-walk] draft-app API JSON parse failed: ${(e as Error).message}`);
-    return new Map();
+    return empty;
   }
-  return parseDraftAppFormUids(body);
+  return {
+    formMap: parseDraftAppFormUids(body),
+    moduleMap: parseDraftAppModuleUids(body),
+  };
 }
 
 // ── CLI entrypoint ────────────────────────────────────────────────
@@ -603,12 +705,12 @@ async function main(): Promise<number> {
   // commcare_patch_xform endpoint rejects (see issue #108) — the draft
   // API has the canonical values. Falls back silently to suite.xml uids
   // when ACE_HQ_USERNAME/ACE_HQ_API_KEY are missing (with a warning).
-  const draftMap = await fetchDraftFormUidsViaApiKey({
+  const { formMap, moduleMap } = await fetchDraftUidsViaApiKey({
     domain: args.domain,
     app_id: args.app_id,
     baseUrl: cchqBaseUrl,
   });
-  const result = mergeDraftFormUids(walked, draftMap);
+  const result = mergeDraftFormUids(walked, formMap, moduleMap);
 
   const text = JSON.stringify(result, null, 2);
   if (args.out) {

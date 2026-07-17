@@ -13,6 +13,7 @@ skills:
   - { name: app-connect-coverage,    has_judge: false }
   - { name: app-deploy,              has_judge: false }
   - { name: app-test-cases,          has_judge: false }
+  - { name: app-hq-settings,         has_judge: false }
   - { name: app-release,             has_judge: true,  eval_skill: app-release-eval }
   - { name: app-release-qa,       has_judge: false }
 ---
@@ -343,6 +344,70 @@ later re-build). Nova builds are uploaded via `app-deploy`, so the
 blueprint IDs we read here are the same ones the released CCZ will
 carry; `app-release` is when we can no longer rebuild the apps cheaply,
 so it's the natural cutoff for "the apps are now what they are."
+
+### Step 2.65: Apply HQ-layer standing-instruction settings
+
+Invoke the `app-hq-settings` skill. This applies the two HQ-layer
+settings Nova cannot set at build time, directly on the deployed CCHQ
+**draft** apps:
+
+1. **Camera-only photo capture** (Deliver only, PDD-conditional) — adds
+   `appearance="acquire"` to every image `<upload>` control so the
+   on-device widget hides the CHOOSE IMAGE gallery button
+   (dimagi-internal/ace#867).
+2. **Grid menu display** (both apps) — sets every module's menu display
+   style to grid.
+
+- Inputs:
+  - `3-commcare/app-deploy_summary.md` (HQ app ids for Learn + Deliver)
+  - `1-design/idea-to-pdd.md` (whether the PDD demands camera-only capture)
+  - `phases.commcare-setup.residuals[]` (the camera-only + grid entries it resolves)
+  - `ACE_HQ_USERNAME` / `ACE_HQ_API_KEY` (so `run-form-walk` can overlay
+    draft `form_unique_id` + `module_unique_id` — issue #108)
+- Outputs:
+  - `3-commcare/app-hq-settings_summary.md` (forms patched, modules
+    gridded, residuals resolved, follow-ups)
+  - Cleared `phases.commcare-setup.residuals[]` entries for camera-only
+    + grid (removed once applied; audit trail in the summary)
+
+**Position rationale — AFTER `app-deploy`, BEFORE `app-release`.** The
+settings live on the CCHQ **draft** app document; both atoms
+(`commcare_patch_xform`, `commcare_set_menu_display`) mutate the draft
+only. `app-release` (Step 2.7) is what makes the versioned build and
+releases it, so the draft mutations MUST land before it — otherwise the
+released CCZ carries the pre-flip (gallery-permitting, list-menu) state.
+`app-release-qa` (Step 2.8) is the structural backstop that re-verifies
+`appearance="acquire"` (#867) and grid from the released suite.xml + form
+XML — it will BLOCK if these settings didn't take, so this step must run
+first. It also runs after `app-test-cases` (Step 2.6) because that step
+captures journey-to-form bindings against the apps as built, and this
+step's XForm patches don't change form structure (they add an appearance
+hint), so the bindings stay valid.
+
+- **Best-effort on this initial rollout — does NOT halt Phase 3.** This step
+  is newly added and not yet live-validated end to end. On ANY failure —
+  `run-form-walk` reports `form_unique_id_source: 'suite_xml'` (no HQ API creds
+  → draft uids unavailable, both atoms reject); any `commcare_patch_xform` /
+  `commcare_set_menu_display` error; or a conflicting non-`acquire` appearance
+  / unexpected `<case>` block on a form being patched (Vellum-cache guard) —
+  the skill records the failure in its summary, LEAVES the affected
+  `residuals[]` entry in place (un-cleared), and the agent CONTINUES to
+  `app-release` (Step 2.7). Do NOT halt Phase 3. Rationale: a failed auto-apply
+  degrades to exactly today's behavior — the manual-flip residual stays open and
+  `app-release-qa`'s #867 check surfaces it at Step 2.8 — so a bug here is a
+  no-op, never a regression. Once this step is live-validated across real runs,
+  tighten to halt-on-error.
+
+**Residual resolution.** On clean completion the skill CLEARS (removes) the
+camera-only + grid `phases.commcare-setup.residuals[]` entries. Phase 6
+(`qa-and-training`) treats a residual as open by its **presence** (no `status`
+field), so resolution means removal — the audit trail is preserved in
+`app-hq-settings_summary.md`, not in the array. Only entries whose toggle was
+actually applied this run are removed; `app-release-qa` (Step 2.8)
+independently re-verifies the released CCZ. If the app-root "Modules Menu
+Display" grid proves to need a separate app-level flag, the skill records it as
+a `follow-up` (NOT a cleared residual); the atom deliberately does not invent
+that endpoint.
 
 ### Step 2.7: Release Apps
 Invoke the `app-release` skill.

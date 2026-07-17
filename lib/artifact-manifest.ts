@@ -665,6 +665,23 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     description: 'Structural + install-time QA verdict from app-release-qa: download released Learn + Deliver CCZs, parse, verify form counts and Connect-marker presence match Nova blueprints, run commcare-cli validate + play install-time gates. Halts loud on mismatch. No AVD, no Connect dependency — purely CCHQ-side.',
   },
 
+  // ── Phase 3 HQ-layer standing-instruction apply-step ──────────
+  // Applies the two settings Nova can't set at build time — camera-only
+  // photo capture (appearance="acquire" on Deliver image uploads, #867)
+  // and grid menu display per module (both apps) — to the deployed CCHQ
+  // draft apps, BETWEEN app-deploy and app-release. Resolves the
+  // matching phases.commcare-setup.residuals[] entries. Draft mutations
+  // only; app-release ships them, app-release-qa backstops them.
+  {
+    path: '3-commcare/app-hq-settings_summary.md',
+    producedBy: 'app-hq-settings',
+    role: 'summary',
+    consumedBy: ['opp-eval'],
+    phase: 'commcare',
+    required: false,
+    description: 'Per-app record of the HQ-layer standing-instruction settings applied to the deployed draft apps by app-hq-settings: Deliver image <upload>s patched to appearance="acquire" (#867), modules set to grid menu display, and the camera-only + grid residuals resolved. Optional (not gate-required); app-release ships the settings and app-release-qa re-verifies them from the released CCZ.',
+  },
+
   // ── QA + Training phase (Phase 6) ──────────────────────────────
   {
     path: '6-qa-and-training/app-screenshot-capture_manifest.yaml',

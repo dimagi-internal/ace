@@ -1,4 +1,5 @@
 import * as fs from 'node:fs';
+import { createHash } from 'node:crypto';
 import type { APIRequestContext, APIResponse } from 'playwright';
 import { unzipSync, strFromU8 } from 'fflate';
 import { PlaywrightSession } from '../auth/playwright-session.js';
@@ -609,6 +610,60 @@ export interface PatchXformResult {
    * decide whether the corrections are acceptable or warrant a re-patch.
    */
   corrections?: Record<string, unknown>;
+}
+
+export interface GetFormSourceArgs {
+  domain: string;
+  app_id: string;
+  /** 32-char hex `unique_id` of the form (NOT the `m/f` index). */
+  form_unique_id: string;
+}
+
+export interface GetFormSourceResult {
+  /** The form's current XForm XML, verbatim, as returned by CCHQ. */
+  xform_xml: string;
+  /**
+   * Hex SHA-1 of the returned XForm source bytes. This is the SAME token
+   * `patchXform`'s optional `sha1` concurrency arg expects: CCHQ's
+   * `edit_form_attr` conflict check compares the caller's `sha1` against
+   * `hashlib.sha1(form.source.encode('utf-8')).hexdigest()` on the live
+   * form source (see `corehq/apps/app_manager/views/forms.py` — the
+   * `get_form_source` view returns exactly that `form.source`, and
+   * `edit_form_attr` hashes the same string). Hashing the bytes of THIS
+   * GET therefore yields the token to pass straight back into `patchXform`.
+   *
+   * CAVEAT (unverified live): the derivation is confirmed by reading CCHQ
+   * source, not by a round-trip probe. If a future patch is unexpectedly
+   * rejected with XformConflictError despite no concurrent edit, re-check
+   * whether CCHQ hashes the raw response bytes vs a re-serialized/normalized
+   * form source (encoding or trailing-whitespace differences would shift
+   * the digest).
+   */
+  sha1: string;
+}
+
+export interface SetMenuDisplayArgs {
+  domain: string;
+  app_id: string;
+  /** 32-char hex `unique_id` of the module (a.k.a. menu). */
+  module_unique_id: string;
+  /**
+   * Menu display style. CCHQ's `edit_module_attr` `display_style` attr
+   * accepts `list` (default CCHQ behavior) or `grid`. Defaults to `grid`.
+   */
+  display_style?: string;
+}
+
+export interface SetMenuDisplayResult {
+  /** HTTP status from `edit_module_attr/.../display_style/`. */
+  status: number;
+  /**
+   * CCHQ's app-version counter after the edit, when the response reports
+   * one. `edit_module_attr` mirrors `edit_form_attr`'s response shape
+   * (`{"..." , "update": {"app-version": N}}`); the bump confirms the
+   * save took. Omitted when the response body carries no app-version.
+   */
+  app_version?: number;
 }
 
 /**
@@ -2231,6 +2286,138 @@ export class CommCareBackend {
         ...(parsed.corrections && Object.keys(parsed.corrections).length > 0
           ? { corrections: parsed.corrections }
           : {}),
+      };
+    });
+  }
+
+  /**
+   * GET /a/<domain>/apps/browse/<app_id>/<form_unique_id>/source/
+   *
+   * Fetch a form's current XForm XML from CCHQ (handler:
+   * `corehq/apps/app_manager/views/forms.py::get_form_source`, reversed as
+   * `get_xform_source`). Returns the raw `form.source` string.
+   *
+   * Auth: web-session cookies (same `@login_or_digest` GET side as
+   * `patchXform`'s refresh GET). This is a plain read — no CSRF, no POST —
+   * so it does NOT go through `csrfFromCookies`.
+   *
+   * The returned `sha1` is the hex SHA-1 of the response bytes. This is the
+   * concurrency token `patchXform`'s optional `sha1` arg expects: CCHQ's
+   * `edit_form_attr` compares the caller's `sha1` to a fresh sha1 of the
+   * live `form.source`, and `get_form_source` returns exactly that source
+   * (see `GetFormSourceResult.sha1` for the derivation + caveat). So the
+   * canonical read-then-patch flow is:
+   *   1. getFormSource(...) → { xform_xml, sha1 }
+   *   2. mutate xform_xml
+   *   3. patchXform({ ..., new_xform_xml, sha1 })  // sha1 = the token from step 1
+   */
+  async getFormSource(args: GetFormSourceArgs): Promise<GetFormSourceResult> {
+    return this.runWithSessionRetry(async (request) => {
+      const path = `/a/${args.domain}/apps/browse/${args.app_id}/${args.form_unique_id}/source/`;
+      const res = await request.get(`${this.opts.baseUrl}${path}`, {
+        maxRedirects: 0,
+      });
+      if (res.status() === 302) {
+        CommCareBackend.assertNotLoginRedirect(res, `commcare_get_form_source GET ${path}`);
+      }
+      const status = res.status();
+      if (status !== 200) {
+        const body = await res.text();
+        throw new Error(
+          `commcare_get_form_source GET ${path} returned ${status}: ${body.slice(0, 300)}`,
+        );
+      }
+      // Hash the raw bytes (not a re-encoded string) so the digest matches
+      // CCHQ's own sha1 of the byte-identical form source.
+      const buf = await res.body();
+      const sha1 = createHash('sha1').update(buf).digest('hex');
+      return {
+        xform_xml: buf.toString('utf8'),
+        sha1,
+      };
+    });
+  }
+
+  /**
+   * POST /a/<domain>/apps/edit_module_attr/<app_id>/<module_unique_id>/display_style/
+   *
+   * Set a module's (menu's) list-vs-grid display style (handler:
+   * `corehq/apps/app_manager/views/modules.py::edit_module_attr`, mounted on
+   * `corehq/apps/app_manager/urls.py`). Form data:
+   *
+   *   `display_style` — `list` | `grid` (defaults to `grid` here).
+   *
+   * Auth + CSRF: identical to `patchXform`'s POST side — session cookies
+   * plus `X-CSRFToken` read from the `csrftoken` cookie after a refresh GET
+   * to `/apps/view/<app_id>/`.
+   *
+   * IMPORTANT CAVEAT (unresolved — flagged deliberately, NOT implemented):
+   * this sets ONE MODULE's display style. Whether the app-ROOT "Modules
+   * Menu Display" (grid vs list of the top-level menu of modules) requires
+   * a SEPARATE app-level flag (e.g. `use_grid_menus` on the app doc, edited
+   * via a different `edit_app_attr`-style endpoint) is NOT verified. Do not
+   * assume this call alone flips the app-root menu to grid. If a caller
+   * needs the app-root grid, that must be probed + implemented separately.
+   *
+   * Response: `edit_module_attr` returns JSON in the same family as
+   * `edit_form_attr` — an `update["app-version"]` bump on success. The
+   * exact body was not re-probed live for `display_style`; the handler is
+   * tolerant of missing app-version, so `app_version` is surfaced only when
+   * present.
+   */
+  async setMenuDisplay(args: SetMenuDisplayArgs): Promise<SetMenuDisplayResult> {
+    return this.runWithSessionRetry(async (request) => {
+      const path = `/a/${args.domain}/apps/edit_module_attr/${args.app_id}/${args.module_unique_id}/display_style/`;
+      // Refresh CSRF + cookie via the app view page (mirrors patchXform).
+      const refreshPath = `/a/${args.domain}/apps/view/${args.app_id}/`;
+      const refreshRes = await request.get(`${this.opts.baseUrl}${refreshPath}`, {
+        maxRedirects: 0,
+      });
+      if (refreshRes.status() === 302) {
+        CommCareBackend.assertNotLoginRedirect(refreshRes, `commcare_set_menu_display GET ${refreshPath}`);
+      }
+      const csrf = await this.csrfFromCookies(request);
+
+      const displayStyle = args.display_style ?? 'grid';
+      const form = new URLSearchParams();
+      form.set('display_style', displayStyle);
+
+      const res = await request.post(`${this.opts.baseUrl}${path}`, {
+        data: form.toString(),
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'X-CSRFToken': csrf ?? '',
+          Referer: `${this.opts.baseUrl}${refreshPath}`,
+        },
+        maxRedirects: 0,
+      });
+      if (res.status() === 302) {
+        CommCareBackend.assertNotLoginRedirect(res, `commcare_set_menu_display POST ${path}`);
+      }
+      const status = res.status();
+      const body = await res.text();
+
+      if (status !== 200) {
+        throw new Error(
+          `commcare_set_menu_display POST ${path} returned ${status}: ${body.slice(0, 300)}`,
+        );
+      }
+
+      // Best-effort app-version extraction — mirror patchXform's shape but
+      // tolerate a body that carries no update.app-version (display_style is
+      // a lightweight attr edit; not every CCHQ version echoes the bump).
+      let appVersion: number | undefined;
+      try {
+        const parsed = JSON.parse(body) as { update?: { 'app-version'?: number } };
+        if (typeof parsed.update?.['app-version'] === 'number') {
+          appVersion = parsed.update['app-version'];
+        }
+      } catch {
+        /* non-JSON body — leave app_version undefined */
+      }
+      return {
+        status,
+        ...(appVersion !== undefined ? { app_version: appVersion } : {}),
       };
     });
   }
