@@ -13,6 +13,7 @@ skills:
   - { name: app-connect-coverage,    has_judge: false }
   - { name: app-deploy,              has_judge: false }
   - { name: app-test-cases,          has_judge: false }
+  - { name: app-hq-settings,         has_judge: false }
   - { name: app-release,             has_judge: true,  eval_skill: app-release-eval }
   - { name: app-release-qa,       has_judge: false }
 ---
@@ -343,6 +344,66 @@ later re-build). Nova builds are uploaded via `app-deploy`, so the
 blueprint IDs we read here are the same ones the released CCZ will
 carry; `app-release` is when we can no longer rebuild the apps cheaply,
 so it's the natural cutoff for "the apps are now what they are."
+
+### Step 2.65: Apply HQ-layer standing-instruction settings
+
+Invoke the `app-hq-settings` skill. This applies the two HQ-layer
+settings Nova cannot set at build time, directly on the deployed CCHQ
+**draft** apps:
+
+1. **Camera-only photo capture** (Deliver only, PDD-conditional) — adds
+   `appearance="acquire"` to every image `<upload>` control so the
+   on-device widget hides the CHOOSE IMAGE gallery button
+   (dimagi-internal/ace#867).
+2. **Grid menu display** (both apps) — sets every module's menu display
+   style to grid.
+
+- Inputs:
+  - `3-commcare/app-deploy_summary.md` (HQ app ids for Learn + Deliver)
+  - `1-design/idea-to-pdd.md` (whether the PDD demands camera-only capture)
+  - `phases.commcare-setup.residuals[]` (the camera-only + grid entries it resolves)
+  - `ACE_HQ_USERNAME` / `ACE_HQ_API_KEY` (so `run-form-walk` can overlay
+    draft `form_unique_id` + `module_unique_id` — issue #108)
+- Outputs:
+  - `3-commcare/app-hq-settings_summary.md` (forms patched, modules
+    gridded, residuals resolved, follow-ups)
+  - Resolved `phases.commcare-setup.residuals[]` entries for camera-only
+    + grid, marked `applied` (with `verified_by_pending: app-release-qa`)
+
+**Position rationale — AFTER `app-deploy`, BEFORE `app-release`.** The
+settings live on the CCHQ **draft** app document; both atoms
+(`commcare_patch_xform`, `commcare_set_menu_display`) mutate the draft
+only. `app-release` (Step 2.7) is what makes the versioned build and
+releases it, so the draft mutations MUST land before it — otherwise the
+released CCZ carries the pre-flip (gallery-permitting, list-menu) state.
+`app-release-qa` (Step 2.8) is the structural backstop that re-verifies
+`appearance="acquire"` (#867) and grid from the released suite.xml + form
+XML — it will BLOCK if these settings didn't take, so this step must run
+first. It also runs after `app-test-cases` (Step 2.6) because that step
+captures journey-to-form bindings against the apps as built, and this
+step's XForm patches don't change form structure (they add an appearance
+hint), so the bindings stay valid.
+
+- **Halts:**
+  - `run-form-walk` reports `form_unique_id_source: 'suite_xml'` (no HQ
+    API creds → draft uids + module uids unavailable, both atoms reject).
+    Re-run with creds set.
+  - Any `commcare_patch_xform` / `commcare_set_menu_display` failure —
+    the skill halts loud with the form path / module uid + error and
+    does NOT resolve the affected residual.
+  - A conflicting non-`acquire` appearance or an unexpected `<case>`
+    block on a form being patched (Vellum-cache guard).
+
+**Residual resolution.** On clean completion the skill resolves the
+camera-only + grid `phases.commcare-setup.residuals[]` entries (marks
+them `applied`, annotates `verified_by_pending: app-release-qa`), closing
+#867's residual tracking for these two toggles. Per the
+residuals-as-first-class-state section below, an entry is cleared only
+after the step is performed AND re-verifiable via its `verifiable_by` —
+here, `app-release-qa`'s camera-only + grid checks at Step 2.8. If the
+app-root "Modules Menu Display" grid proves to need a separate app-level
+flag, the skill records it as a `follow-up` (NOT a resolved residual);
+the atom deliberately does not invent that endpoint.
 
 ### Step 2.7: Release Apps
 Invoke the `app-release` skill.

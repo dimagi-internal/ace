@@ -24,6 +24,7 @@ import {
   walkFormFields,
   walkCcz,
   parseDraftAppFormUids,
+  parseDraftAppModuleUids,
   mergeDraftFormUids,
 } from '../../scripts/run-form-walk.js';
 
@@ -149,6 +150,43 @@ describe('walkFormFields — real LEEP quiz form (single-select + trigger)', () 
   });
 });
 
+describe('walkFormFields — image <upload> controls', () => {
+  const uploadForm = `
+    <h:html xmlns:h="http://www.w3.org/1999/xhtml" xmlns="http://www.w3.org/2002/xforms" xmlns:jr="http://openrosa.org/javarosa">
+      <h:head>
+        <model>
+          <itext>
+            <translation lang="en" default="">
+              <text id="dwelling_photo-label"><value>Take a photo of the dwelling</value></text>
+              <text id="voice_note-label"><value>Record a voice note</value></text>
+            </translation>
+          </itext>
+        </model>
+      </h:head>
+      <h:body>
+        <upload ref="/data/dwelling_photo" mediatype="image/*">
+          <label ref="jr:itext('dwelling_photo-label')"/>
+        </upload>
+        <upload ref="/data/voice_note" mediatype="audio/*">
+          <label ref="jr:itext('voice_note-label')"/>
+        </upload>
+      </h:body>
+    </h:html>`;
+
+  it('emits kind: image for <upload mediatype="image/*">', () => {
+    const fields = walkFormFields(uploadForm);
+    const photo = fields.find((f) => f.field_id === 'dwelling_photo');
+    expect(photo?.kind).toBe('image');
+    expect(photo?.label).toBe('Take a photo of the dwelling');
+  });
+
+  it('does NOT emit kind: image for non-image uploads (audio/video)', () => {
+    const fields = walkFormFields(uploadForm);
+    const voice = fields.find((f) => f.field_id === 'voice_note');
+    expect(voice?.kind).toBe('unknown');
+  });
+});
+
 describe('walkCcz — end-to-end against an in-memory CCZ', () => {
   it('produces the expected output shape with form_unique_id mapping and per-form fields', () => {
     const suite = loadFixture('form-walk-sample-suite.xml');
@@ -184,6 +222,9 @@ describe('walkCcz — end-to-end against an in-memory CCZ', () => {
     expect(result.forms[0].form_path).toBe('modules-0/forms-0.xml');
     expect(result.forms[0].form_unique_id).toBe('a'.repeat(32));
     expect(result.forms[0].fields.length).toBeGreaterThan(0);
+
+    // No draft overlay ran, so module_unique_id defaults to null.
+    expect(result.forms[0].module_unique_id).toBeNull();
 
     expect(result.forms[1].form_path).toBe('modules-0/forms-1.xml');
     expect(result.forms[1].form_unique_id).toBe('b'.repeat(32));
@@ -286,6 +327,49 @@ describe('parseDraftAppFormUids — draft-app /api/v0.5/application/ JSON', () =
   });
 });
 
+describe('parseDraftAppModuleUids — draft-app modules[N].unique_id', () => {
+  it('maps every form path under a module to that module unique_id', () => {
+    const draft = {
+      modules: [
+        { unique_id: 'a'.repeat(32), forms: [{ unique_id: '1'.repeat(32) }, { unique_id: '2'.repeat(32) }] },
+        { unique_id: 'b'.repeat(32), forms: [{ unique_id: '3'.repeat(32) }] },
+      ],
+    };
+    const map = parseDraftAppModuleUids(draft);
+    expect(map.get('modules-0/forms-0.xml')).toBe('a'.repeat(32));
+    expect(map.get('modules-0/forms-1.xml')).toBe('a'.repeat(32));
+    expect(map.get('modules-1/forms-0.xml')).toBe('b'.repeat(32));
+    expect(map.size).toBe(3);
+  });
+
+  it('surfaces a module uid on forms-0 even when the module has no forms', () => {
+    const draft = { modules: [{ unique_id: 'a'.repeat(32), forms: [] }] };
+    const map = parseDraftAppModuleUids(draft);
+    expect(map.get('modules-0/forms-0.xml')).toBe('a'.repeat(32));
+    expect(map.size).toBe(1);
+  });
+
+  it('skips modules with missing or non-32-hex unique_id', () => {
+    const draft = {
+      modules: [
+        { unique_id: 'short', forms: [{ unique_id: '1'.repeat(32) }] },
+        {},
+        { unique_id: 'b'.repeat(32), forms: [{ unique_id: '3'.repeat(32) }] },
+      ],
+    };
+    const map = parseDraftAppModuleUids(draft);
+    expect(map.has('modules-0/forms-0.xml')).toBe(false);
+    expect(map.get('modules-2/forms-0.xml')).toBe('b'.repeat(32));
+    expect(map.size).toBe(1);
+  });
+
+  it('returns empty map for malformed input', () => {
+    expect(parseDraftAppModuleUids(null).size).toBe(0);
+    expect(parseDraftAppModuleUids({}).size).toBe(0);
+    expect(parseDraftAppModuleUids({ modules: 'nope' }).size).toBe(0);
+  });
+});
+
 describe('mergeDraftFormUids — overlay draft uids onto walkCcz output', () => {
   function makeWalked(): ReturnType<typeof walkCcz> {
     const suite = loadFixture('form-walk-sample-suite.xml');
@@ -330,5 +414,46 @@ describe('mergeDraftFormUids — overlay draft uids onto walkCcz output', () => 
     const walked = makeWalked();
     const merged = mergeDraftFormUids(walked, new Map());
     expect(merged).toEqual(walked);
+  });
+
+  it('overlays module_unique_id from the optional moduleMap', () => {
+    const walked = makeWalked();
+    expect(walked.forms[0].module_unique_id).toBeNull();
+    const formMap = new Map([
+      ['modules-0/forms-0.xml', '1'.repeat(32)],
+      ['modules-0/forms-1.xml', '2'.repeat(32)],
+    ]);
+    const moduleMap = new Map([
+      ['modules-0/forms-0.xml', 'a'.repeat(32)],
+      ['modules-0/forms-1.xml', 'a'.repeat(32)],
+    ]);
+    const merged = mergeDraftFormUids(walked, formMap, moduleMap);
+    expect(merged.forms[0].module_unique_id).toBe('a'.repeat(32));
+    expect(merged.forms[1].module_unique_id).toBe('a'.repeat(32));
+    expect(merged.form_unique_id_source).toBe('draft_api');
+  });
+
+  it('fills module_unique_id even when the form-uid map is empty (module-only overlay)', () => {
+    const walked = makeWalked();
+    const moduleMap = new Map([['modules-0/forms-0.xml', 'a'.repeat(32)]]);
+    const merged = mergeDraftFormUids(walked, new Map(), moduleMap);
+    expect(merged.forms[0].module_unique_id).toBe('a'.repeat(32));
+    expect(merged.forms[1].module_unique_id).toBeNull();
+    // Form-uid source flag untouched by a module-only overlay.
+    expect(merged.form_unique_id_source).toBe('suite_xml');
+    // Form uids themselves unchanged.
+    expect(merged.forms[0].form_unique_id).toBe('a'.repeat(32));
+  });
+
+  it('leaves module_unique_id null for forms missing from the moduleMap', () => {
+    const walked = makeWalked();
+    const formMap = new Map([
+      ['modules-0/forms-0.xml', '1'.repeat(32)],
+      ['modules-0/forms-1.xml', '2'.repeat(32)],
+    ]);
+    const moduleMap = new Map([['modules-0/forms-0.xml', 'a'.repeat(32)]]);
+    const merged = mergeDraftFormUids(walked, formMap, moduleMap);
+    expect(merged.forms[0].module_unique_id).toBe('a'.repeat(32));
+    expect(merged.forms[1].module_unique_id).toBeNull();
   });
 });
