@@ -367,8 +367,8 @@ settings Nova cannot set at build time, directly on the deployed CCHQ
 - Outputs:
   - `3-commcare/app-hq-settings_summary.md` (forms patched, modules
     gridded, residuals resolved, follow-ups)
-  - Resolved `phases.commcare-setup.residuals[]` entries for camera-only
-    + grid, marked `applied` (with `verified_by_pending: app-release-qa`)
+  - Cleared `phases.commcare-setup.residuals[]` entries for camera-only
+    + grid (removed once applied; audit trail in the summary)
 
 **Position rationale — AFTER `app-deploy`, BEFORE `app-release`.** The
 settings live on the CCHQ **draft** app document; both atoms
@@ -384,26 +384,30 @@ captures journey-to-form bindings against the apps as built, and this
 step's XForm patches don't change form structure (they add an appearance
 hint), so the bindings stay valid.
 
-- **Halts:**
-  - `run-form-walk` reports `form_unique_id_source: 'suite_xml'` (no HQ
-    API creds → draft uids + module uids unavailable, both atoms reject).
-    Re-run with creds set.
-  - Any `commcare_patch_xform` / `commcare_set_menu_display` failure —
-    the skill halts loud with the form path / module uid + error and
-    does NOT resolve the affected residual.
-  - A conflicting non-`acquire` appearance or an unexpected `<case>`
-    block on a form being patched (Vellum-cache guard).
+- **Best-effort on this initial rollout — does NOT halt Phase 3.** This step
+  is newly added and not yet live-validated end to end. On ANY failure —
+  `run-form-walk` reports `form_unique_id_source: 'suite_xml'` (no HQ API creds
+  → draft uids unavailable, both atoms reject); any `commcare_patch_xform` /
+  `commcare_set_menu_display` error; or a conflicting non-`acquire` appearance
+  / unexpected `<case>` block on a form being patched (Vellum-cache guard) —
+  the skill records the failure in its summary, LEAVES the affected
+  `residuals[]` entry in place (un-cleared), and the agent CONTINUES to
+  `app-release` (Step 2.7). Do NOT halt Phase 3. Rationale: a failed auto-apply
+  degrades to exactly today's behavior — the manual-flip residual stays open and
+  `app-release-qa`'s #867 check surfaces it at Step 2.8 — so a bug here is a
+  no-op, never a regression. Once this step is live-validated across real runs,
+  tighten to halt-on-error.
 
-**Residual resolution.** On clean completion the skill resolves the
-camera-only + grid `phases.commcare-setup.residuals[]` entries (marks
-them `applied`, annotates `verified_by_pending: app-release-qa`), closing
-#867's residual tracking for these two toggles. Per the
-residuals-as-first-class-state section below, an entry is cleared only
-after the step is performed AND re-verifiable via its `verifiable_by` —
-here, `app-release-qa`'s camera-only + grid checks at Step 2.8. If the
-app-root "Modules Menu Display" grid proves to need a separate app-level
-flag, the skill records it as a `follow-up` (NOT a resolved residual);
-the atom deliberately does not invent that endpoint.
+**Residual resolution.** On clean completion the skill CLEARS (removes) the
+camera-only + grid `phases.commcare-setup.residuals[]` entries. Phase 6
+(`qa-and-training`) treats a residual as open by its **presence** (no `status`
+field), so resolution means removal — the audit trail is preserved in
+`app-hq-settings_summary.md`, not in the array. Only entries whose toggle was
+actually applied this run are removed; `app-release-qa` (Step 2.8)
+independently re-verifies the released CCZ. If the app-root "Modules Menu
+Display" grid proves to need a separate app-level flag, the skill records it as
+a `follow-up` (NOT a cleared residual); the atom deliberately does not invent
+that endpoint.
 
 ### Step 2.7: Release Apps
 Invoke the `app-release` skill.
