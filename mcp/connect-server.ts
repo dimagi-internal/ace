@@ -1052,6 +1052,47 @@ server.tool('commcare_upload_multimedia',
     }),
 );
 
+// commcare_get_form_source — read a form's current XForm XML from CCHQ.
+//
+// Endpoint: GET /a/<domain>/apps/browse/<app_id>/<form_unique_id>/source/
+//   (Django view get_form_source, reversed as `get_xform_source`).
+// Auth: web-session cookies (same GET side as commcare_patch_xform);
+//   plain read, no CSRF.
+// Returns: { xform_xml, sha1 } where `sha1` is the hex SHA-1 of the
+//   returned source bytes — the SAME concurrency token that
+//   commcare_patch_xform's optional `sha1` arg expects. Canonical flow:
+//   get_form_source → mutate xform_xml → patch_xform(sha1=<token>).
+server.tool('commcare_get_form_source',
+  {
+    domain: z.string(),
+    app_id: z.string(),
+    form_unique_id: z.string().regex(/^[0-9a-f]{32}$/, 'unique_id is a 32-char hex string from suite.xml or the delete_form action URL'),
+  },
+  async (args) => runAtom(async () => (await commcareClient()).getFormSource(args))
+);
+
+// commcare_set_menu_display — set a MODULE's list-vs-grid menu display style.
+//
+// Endpoint: POST /a/<domain>/apps/edit_module_attr/<app_id>/<module_unique_id>/display_style/
+//   (Django view edit_module_attr). Form body: display_style=<value>.
+// Auth: session cookies + X-CSRFToken, identical to commcare_patch_xform's POST.
+// `display_style` defaults to 'grid'.
+//
+// CAVEAT: this sets ONE MODULE's display style. Whether the app-ROOT
+// "Modules Menu Display" needs a separate app-level flag (e.g.
+// `use_grid_menus`) is UNRESOLVED and deliberately NOT implemented here —
+// see backends/commcare.ts::setMenuDisplay. Patches the draft only; follow
+// with commcare_make_build + commcare_release_build to ship the change.
+server.tool('commcare_set_menu_display',
+  {
+    domain: z.string(),
+    app_id: z.string(),
+    module_unique_id: z.string().regex(/^[0-9a-f]{32}$/, 'unique_id is a 32-char hex string from suite.xml or the module edit URL'),
+    display_style: z.enum(['list', 'grid']).optional().describe('Menu display style; defaults to "grid".'),
+  },
+  async (args) => runAtom(async () => (await commcareClient()).setMenuDisplay(args))
+);
+
 // ── Learn-app CCHQ pre-flight ────────────────────────────────────
 //
 // `connect_preflight_learn_app_user` — defense-in-depth check before
