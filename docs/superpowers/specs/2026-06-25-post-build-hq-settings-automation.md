@@ -1,9 +1,20 @@
 # Post-build CommCare-HQ settings automation
 
-**Status:** Backlog — scoped (2026-07-15 spike done; 2 items to build, gated on one live probe)
+**Status:** BUILT 2026-07-17 (fail-soft initial rollout; end-to-end live validation pending first post-install runs)
 **Filed:** 2026-06-25
 **Owner:** Sarvesh / ACE team
-**Related:** `skills/_app-component-library.md`; `skills/app-deploy`; `skills/app-release`; `skills/app-release-qa`; `agents/commcare-setup.md` (residuals-as-first-class-state, dimagi-internal/ace#867)
+**Related:** `skills/app-hq-settings`; `skills/_app-component-library.md`; `skills/app-release`; `skills/app-release-qa`; `agents/commcare-setup.md` (residuals-as-first-class-state, dimagi-internal/ace#867)
+
+## Update 2026-07-17 — BUILT
+
+The two apply-automations are implemented and wired:
+- **Atoms:** `commcare_get_form_source` (GET `apps/browse/<app>/<form>/source/` → XForm + sha1) and `commcare_set_menu_display` (POST `apps/edit_module_attr/<app>/<module>/display_style/`, `display_style=grid`). Endpoints pinned from `dimagi/commcare-hq` app_manager source; auth/CSRF reused from `patch_xform`; unit-tested.
+- **Skill:** `skills/app-hq-settings` runs at Phase 3 **Step 2.65** (after `app-deploy`, before `app-release`): patches `appearance="acquire"` onto Deliver image `<upload>`s (`get_form_source` → inject → `patch_xform`) and sets `display_style=grid` per module on both apps (`set_menu_display`), then **clears** the matching `residuals[]`. Uses draft-api uids via an extended `run-form-walk` (#108).
+- **Verify:** `app-release-qa`'s #867 camera-only check + `suite.xml` grid check on the released CCZ.
+- **Rollout:** fail-soft — a failure leaves the residual open and is caught by `app-release-qa`, never halts Phase 3. Tighten to halt-on-error once live-validated.
+- **Open follow-ups:** (a) the app-root "Modules Menu Display" grid may need an app-level flag beyond per-module `display_style` — confirm from `suite.xml` on first runs; (b) `assessment-display-lifecycle` remains **won't-do** (Connect-side), out of scope.
+
+**Remaining:** end-to-end live validation — the new atoms aren't in the installed MCP server, so the first Phase-3 run after the plugin is updated is the live confirmation. `app-release-qa` gates it.
 
 ## Update 2026-07-15 — spike outcome & decisions
 

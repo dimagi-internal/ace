@@ -391,19 +391,19 @@ authored from the PDD per run):
 
 - **App:** Learn + Deliver
 - **Trigger:** always (every app).
-- **Enforced by:** `pdd-to-{learn,deliver}-app-eval § menu_display` (NEW) —
-  *provisional, not yet enforceable.*
+- **Enforced by:** applied post-build by the `app-hq-settings` skill
+  (`commcare_set_menu_display`); verified from the released `suite.xml` by
+  `app-release-qa`.
 - **HQ surface:** App Settings > Advanced Settings > set "Modules Menu Display"
   AND "Forms Menu Display" to "Grid", then save & publish.
-- **Status (updated 2026-07-15):** NOT applied by Nova — `get_app`/`get_module`
-  have no menu-display field; not representable in the Nova blueprint. It lives in
-  the app doc and renders to the `suite.xml` menu style — so it is **verifiable
-  from the released CCZ** (`suite.xml`) but must be **applied post-build**. Recorded
-  as a `phases.commcare-setup.residuals[]` item (dimagi-internal/ace#867). The
-  auto-apply is planned in the post-build HQ step
-  (`docs/superpowers/specs/2026-06-25-post-build-hq-settings-automation.md`); the
-  one open question is the write mechanism (HQ `edit_module_attr`-style endpoint vs
-  Playwright) — needs a live probe.
+- **Status (built 2026-07-17):** APPLIED post-build by `app-hq-settings` (Phase 3
+  Step 2.65) — `commcare_set_menu_display` sets each module's `display_style=grid`
+  on the draft before `app-release`, via `POST apps/edit_module_attr/…/display_style/`.
+  Clears the `phases.commcare-setup.residuals[]` grid entry (dimagi-internal/ace#867).
+  Best-effort on this initial rollout (a failure leaves the residual open and is
+  caught by `app-release-qa`, never halts Phase 3); end-to-end live validation lands
+  on the first post-install runs. The app-root "Modules Menu Display" grid (vs the
+  per-module form-menu grid) is a flagged follow-up pending `suite.xml` confirmation.
 
 **Brief paragraph (verbatim):**
 
@@ -429,26 +429,27 @@ authored from the PDD per run):
 
 - **App:** Deliver
 - **Trigger:** any image / photo capture question.
-- **Enforced by:** `app-release-qa` camera-only check (dimagi-internal/ace#867) —
-  a released Deliver image `<upload>` lacking `appearance` containing `acquire`
-  halts with `[BLOCKER] camera-only-appearance-missing`. (This verify side is
-  live on `main`; the auto-apply side is pending — see status.)
+- **Enforced by:** applied post-build by `app-hq-settings` (`commcare_get_form_source`
+  → inject `acquire` → `commcare_patch_xform`), then verified by the `app-release-qa`
+  camera-only check (dimagi-internal/ace#867) — a released Deliver image `<upload>`
+  lacking `appearance` containing `acquire` halts with `[BLOCKER]
+  camera-only-appearance-missing`.
 - **HQ surface:** the image question's Advanced options > Appearance Attribute =
   `acquire`.
 - **Decision (2026-07-15):** always-on for Deliver (matches the original "photos
   always taken live" instruction). This is a superset of #867's PDD-conditional
   verify — if `acquire` is always applied, that check always passes — so the two
   do not conflict.
-- **Status (updated 2026-07-15):** NOT applied by Nova — the image-field schema
-  has no appearance key (`get_field` exposes none); Nova emits only an advisory
-  `hint`, which does not stop the gallery picker. The **verify** side now exists
-  (app-release-qa #867, tracked as a `commcare-setup.residuals[]` item). The
-  **auto-apply** is the pending post-build step
-  (`docs/superpowers/specs/2026-06-25-post-build-hq-settings-automation.md`):
-  patch `appearance="acquire"` onto each image `<upload>` via
-  `commcare_patch_xform` before release. Open probe: `patch_xform` takes a full
-  replacement XForm and there is no tool today to fetch the current draft XForm —
-  the draft-source read path needs a live probe before the procedure can be authored.
+- **Status (built 2026-07-17):** APPLIED post-build by `app-hq-settings` (Phase 3
+  Step 2.65) — for each Deliver form with an image `<upload>` it fetches the draft
+  XForm (`commcare_get_form_source`), injects `appearance="acquire"` (idempotent),
+  and patches it back (`commcare_patch_xform` with sha1) before `app-release`.
+  Verified by `app-release-qa`'s #867 check on the released CCZ; clears the
+  camera-only residual. Best-effort on this initial rollout (a failure leaves the
+  residual open + is caught by `app-release-qa`, never halts Phase 3); end-to-end
+  live validation lands on the first post-install runs. Nova still can't set this at
+  build time (the image-field blueprint has no appearance key) — hence the post-build
+  patch.
 
 **Brief paragraph (verbatim):**
 
@@ -482,3 +483,4 @@ authored from the PDD per run):
 | 2026-06-25 | **Added standing app-build instructions** (per-app guidance applied to every Nova build). New components: `learn-app-naming`, `end-of-form-previous`, `assessment-display-lifecycle` (Learn); `grid-menu-display` (Learn + Deliver); `deliver-app-naming`, `live-photo-capture`, `no-section-module-language` (Deliver). Extends the library beyond field/calculate/constraint patterns to app- and form-level build settings (naming, menu display, end-of-form navigation, photo appearance, assessment form Display Conditions, terminology). The "Other → free-text follow-up" requirement was already covered by `structured-capture`, so no separate component was added. Several components are CommCare-HQ settings not surfaced by Nova's documented MCP tools; they are emitted as brief instructions and the first Learn + Deliver test build must confirm (a) Nova applies them and (b) they are readable by the eval. Eval dimensions marked (NEW) are pending addition to the eval skills. | Sarvesh |
 | 2026-07-01 | **Enforcement landed for the blueprint-readable components.** After the 2026-06-25 test builds confirmed which instructions Nova actually applies, added binary `[BLOCKER]` hard-gates (NOT weighted dimensions — no rubric-weight rebalancing) to the eval skills: `naming_convention` + `form_navigation` in `pdd-to-learn-app-eval`, `naming_convention` + `terminology` in `pdd-to-deliver-app-eval`. A violation forces suite verdict `fail`. The three HQ-layer components (`grid-menu-display`, `live-photo-capture`, `assessment-display-lifecycle`) remain provisional/unenforced pending the post-build step in `docs/superpowers/specs/2026-06-25-post-build-hq-settings-automation.md`. | Sarvesh |
 | 2026-07-15 | **Post-build spike resolved the three HQ-layer components.** (1) `assessment-display-lifecycle` → **WON'T-DO** as a Display Condition (case-less Learn apps have no app-readable state for a `form_filter`); deprecated + removed from the `pdd-to-learn-app` emit-checklist; the behavior is already delivered Connect-side by `assessment-gate`. (2) `live-photo-capture` → verify side is now live on `main` (`app-release-qa` camera-only check, dimagi-internal/ace#867); decided always-on for Deliver (superset of #867's PDD-conditional verify); auto-apply via `commcare_patch_xform` is pending one live probe (no tool fetches the draft XForm yet). (3) `grid-menu-display` → verifiable from `suite.xml`, auto-apply pending a write-mechanism probe (HQ endpoint vs Playwright). Both apply-automations are tracked as `commcare-setup.residuals[]` per #867. | Sarvesh |
+| 2026-07-17 | **Built the post-build auto-apply (`app-hq-settings`).** New atoms `commcare_get_form_source` + `commcare_set_menu_display`; new Phase-3 skill `app-hq-settings` (Step 2.65, between `app-deploy` and `app-release`) patches `appearance="acquire"` onto Deliver image uploads and sets `display_style=grid` per module on both apps, then clears the matching `residuals[]`. `live-photo-capture` and `grid-menu-display` flip from provisional to **applied** (verified by `app-release-qa`). Fail-soft on this initial rollout (errors leave the residual open + are caught by `app-release-qa`, never halt Phase 3); end-to-end live validation lands on the first post-install runs. | Sarvesh |

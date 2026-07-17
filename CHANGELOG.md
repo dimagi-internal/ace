@@ -5,6 +5,16 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.13.610 — 2026-07-17
+
+**Post-build auto-apply for the HQ-layer standing-instruction settings (`app-hq-settings`).**
+
+Nova can't set two of the standing-instruction settings at build time; this ships the post-build step that applies them:
+- New atoms `commcare_get_form_source` (GET the draft XForm + sha1) and `commcare_set_menu_display` (POST `display_style=grid` via `edit_module_attr`) — endpoints pinned from CommCare HQ source, auth/CSRF reused from `patch_xform`, unit-tested.
+- New skill `skills/app-hq-settings` at Phase 3 Step 2.65 (after `app-deploy`, before `app-release`): patches `appearance="acquire"` onto Deliver image uploads and sets grid menu display per module on both apps, then clears the matching `commcare-setup.residuals[]`. Uses draft-api uids via an extended `run-form-walk` (issue #108).
+- `live-photo-capture` + `grid-menu-display` components flip from provisional to applied; `app-release-qa` (#867) verifies from the released CCZ.
+- **Fail-soft rollout:** a failure leaves the residual open and is caught by `app-release-qa`, never halts Phase 3. End-to-end live validation lands on the first post-install runs; tighten to halt-on-error afterward.
+
 ## 0.13.609 — 2026-07-15
 
 **Post-build HQ-settings spike: resolved the three deferred standing-instruction components.**
