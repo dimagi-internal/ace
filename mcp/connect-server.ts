@@ -28,6 +28,8 @@ import { z } from 'zod';
 import { RestBackend } from './connect/backends/rest.js';
 import { PlaywrightBackend } from './connect/backends/playwright.js';
 import { CommCareBackend, BuildRejectedError } from './connect/backends/commcare.js';
+import { ApiKeyHqSession } from './connect/backends/apikey-hq-session.js';
+import { buildHqClusterRegistry, inferServerFromBaseUrl } from './connect/hq-clusters.js';
 import { preflightLearnAppUser } from './connect/backends/commcare-preflight.js';
 import { CompositeBackend } from './connect/backends/composite.js';
 import { PlaywrightSession } from './connect/auth/playwright-session.js';
@@ -50,9 +52,29 @@ import * as os from 'node:os';
 const baseUrl = process.env.CONNECT_BASE_URL ?? 'https://connect.dimagi.com';
 const cchqBaseUrl = process.env.ACE_HQ_BASE_URL ?? 'https://www.commcarehq.org';
 
+// Multi-cluster HQ registry: ACE can hold live connections to several CommCare
+// HQ servers (US www, EU eu, …) at once and route each commcare_* atom to a
+// chosen `server` (default = ACE_HQ_DEFAULT_SERVER). The CONNECT browser session
+// authenticates via ONE cluster's CCHQ (whatever `cchqBaseUrl` points at — US
+// today), so THAT cluster keeps the shared-session backend; every other cluster
+// gets a session-less API-key backend. See mcp/connect/hq-clusters.ts.
+const hqClusters = buildHqClusterRegistry(process.env);
+const sharedHqServer = inferServerFromBaseUrl(cchqBaseUrl);
+
+// Shared optional `server` field for every commcare_* atom: which HQ cluster to
+// target. Omit → the default server (ACE_HQ_DEFAULT_SERVER). All configured
+// clusters are connected simultaneously, so callers can interleave servers
+// across calls within one run.
+const HQ_SERVER_FIELD = z
+  .string()
+  .optional()
+  .describe('CommCare HQ cluster to target — e.g. "us" or "eu". Omit to use the default server ACE_HQ_DEFAULT_SERVER. All configured clusters are live at once.');
+
 let rest: RestBackend | undefined;
 let playwright: PlaywrightBackend | undefined;
 let commcare: CommCareBackend | undefined;
+let commcareRegistry: Map<string, CommCareBackend> | undefined;
+const apiKeyHqSessions: ApiKeyHqSession[] = [];
 let session: PlaywrightSession | undefined;
 let initPromise: Promise<{ rest: RestBackend; playwright: PlaywrightBackend }> | undefined;
 
@@ -63,7 +85,10 @@ function serialize<T>(fn: () => Promise<T>): Promise<T> {
   return next;
 }
 
-function cleanup() { if (session) session.close().catch(() => {}); }
+function cleanup() {
+  if (session) session.close().catch(() => {});
+  for (const s of apiKeyHqSessions) s.close().catch(() => {});
+}
 process.on('SIGTERM', () => { cleanup(); process.exit(0); });
 process.on('SIGINT', () => { cleanup(); process.exit(0); });
 process.on('exit', cleanup);
@@ -98,12 +123,33 @@ async function getBackends(): Promise<{ rest: RestBackend; playwright: Playwrigh
     // CommCareBackend takes the session itself (not a bare APIRequestContext)
     // so each atom can pull a fresh request and recover from CCHQ-side
     // session expiry that the boot-time probe missed (0.13.8).
+    //
+    // Build the per-cluster registry: the shared-session cluster (the one the
+    // Connect OAuth authenticates — US today) uses `session`; every other
+    // configured cluster gets a session-less API-key backend so ACE can talk
+    // to it concurrently without a second browser/OAuth flow.
+    const registry = new Map<string, CommCareBackend>();
+    const sharedCfg = hqClusters.clusters.get(sharedHqServer);
     commcare = new CommCareBackend({
-      baseUrl: cchqBaseUrl,
+      baseUrl: sharedCfg?.baseUrl ?? cchqBaseUrl,
       session,
-      hqUsername: process.env.ACE_HQ_USERNAME,
-      hqApiKey: process.env.ACE_HQ_API_KEY,
+      hqUsername: sharedCfg?.username ?? process.env.ACE_HQ_USERNAME,
+      hqApiKey: sharedCfg?.apiKey ?? process.env.ACE_HQ_API_KEY,
     });
+    registry.set(sharedHqServer, commcare);
+    for (const cfg of hqClusters.clusters.values()) {
+      if (cfg.server === sharedHqServer) continue;
+      if (!cfg.username || !cfg.apiKey) continue; // API-key backend needs both
+      const apiSession = new ApiKeyHqSession({ baseUrl: cfg.baseUrl, username: cfg.username, apiKey: cfg.apiKey });
+      apiKeyHqSessions.push(apiSession);
+      registry.set(cfg.server, new CommCareBackend({
+        baseUrl: cfg.baseUrl,
+        session: apiSession,
+        hqUsername: cfg.username,
+        hqApiKey: cfg.apiKey,
+      }));
+    }
+    commcareRegistry = registry;
     return { rest, playwright };
   })();
   try { return await initPromise; }
@@ -118,10 +164,20 @@ async function client() {
   );
 }
 
-async function commcareClient(): Promise<CommCareBackend> {
+async function commcareClient(server?: string): Promise<CommCareBackend> {
   await getBackends();
-  if (!commcare) throw new Error('CommCare backend not initialized — getBackends should have wired it');
-  return commcare;
+  if (!commcareRegistry) throw new Error('CommCare registry not initialized — getBackends should have wired it');
+  const key = (server ?? hqClusters.defaultServer).toLowerCase();
+  const backend = commcareRegistry.get(key);
+  if (!backend) {
+    throw new Error(
+      `No CommCare HQ backend configured for server="${key}". ` +
+        `Configured servers: [${[...commcareRegistry.keys()].join(', ')}]. ` +
+        `Add ACE_HQ_${key.toUpperCase()}_{BASE_URL,USERNAME,API_KEY} to the plugin .env ` +
+        `(1Password item "ACE - CommCareHQ ${key.toUpperCase()}").`,
+    );
+  }
+  return backend;
 }
 
 const json = (v: unknown) => ({ content: [{ type: 'text' as const, text: JSON.stringify(v, null, 2) }] });
@@ -533,40 +589,44 @@ server.tool('connect_get_invoice',
 
 server.tool('commcare_list_apps',
   'List CommCare HQ applications in a domain. Hits the REST API at GET /a/<domain>/api/v0.4/application/ (domain-scoped — the unscoped /api/v0.4/application/?domain= form returns 404 from Django routing) using the existing PlaywrightSession cookie jar (allow_session_auth=True on CCHQ\'s TaskPie resource — no separate API key needed). Returns id, name, and doc_type per app. Soft-deleted apps (doc_type ending in `-Deleted`) are filtered server-side; the field is preserved for callers that cross-check against `commcare_delete_app`. Used by `/ace:sweep hq` to enumerate the universe of apps in the ACE-owned domain.',
-  { domain: z.string() },
-  async (args) => runAtom(async () => (await commcareClient()).listApps(args))
+  { server: HQ_SERVER_FIELD, domain: z.string() },
+  async (args) => runAtom(async () => (await commcareClient(args.server)).listApps(args))
 );
 
 server.tool('commcare_delete_app',
   'Soft-delete a CommCare HQ application. POST /a/<domain>/apps/delete_app/<app_id>/ via the web view (no REST equivalent — the view soft-deletes by mutating doc_type to `<original>-Deleted` and creates a DeleteApplicationRecord for restore). Restore is possible via HQ admin UI\'s "deleted applications" list. Routes through the existing PlaywrightSession (session cookies + CSRF from cookie jar; API key auth is insufficient because this is a CSRF-protected Django web view). Used by `/ace:sweep hq` to clean up orphan apps in the ACE-owned domain.',
   {
+    server: HQ_SERVER_FIELD,
     domain: z.string(),
     app_id: z.string(),
   },
-  async (args) => runAtom(async () => (await commcareClient()).deleteApp(args))
+  async (args) => runAtom(async () => (await commcareClient(args.server)).deleteApp(args))
 );
 
 server.tool('commcare_create_domain',
   'Create a new CommCare HQ project space (domain). POST /register/domain/ via the DomainRegistrationForm CSRF-protected web view (no REST equivalent — corehq/apps/registration/views.py:RegisterDomainView). For an existing (non-new) user — which ACE\'s ace@dimagi-ai.com always is — success is a 302 to /a/<slug>/dashboard/; the returned `domain` is the slug HQ derived from `hr_name`. `hr_name` is capped at 25 chars (HQ\'s DomainRegistrationForm.max_name_length); pass an already-slug-shaped value (lowercase, hyphens) for predictable slug derivation. Daily-creation rate-limit and `RESTRICT_DOMAIN_CREATION` errors are surfaced explicitly.',
   {
+    server: HQ_SERVER_FIELD,
     hr_name: z.string().max(25).describe('Human-readable project name; HQ derives the URL slug from this. Max 25 chars. Pass a slug-shaped value (lowercase + hyphens) for predictable results.'),
     org: z.string().optional().describe('Optional organization id (hidden form field; usually empty).'),
   },
-  async (args) => runAtom(async () => (await commcareClient()).createDomain(args))
+  async (args) => runAtom(async () => (await commcareClient(args.server)).createDomain(args))
 );
 
 server.tool('commcare_get_lookup_table',
   'Fetch a CommCare HQ lookup table by tag (name). GET /a/<domain>/api/v0.5/lookup_table/ via Tastypie (session auth OK). Lists all tables in the domain and returns the one whose `tag` matches; returns `{table: null}` if not found. Use this to verify a lookup table exists before appending rows (see also commcare_lookup_table_append_rows, planned).',
   {
+    server: HQ_SERVER_FIELD,
     domain: z.string(),
     tag: z.string().describe('Lookup table name as the team uses it (e.g. "interview_schedule").'),
   },
-  async (args) => runAtom(async () => (await commcareClient()).getLookupTable(args))
+  async (args) => runAtom(async () => (await commcareClient(args.server)).getLookupTable(args))
 );
 
 server.tool('commcare_create_lookup_table',
   'Create a new CommCare HQ lookup table. POST /a/<domain>/api/v0.5/lookup_table/ via Tastypie. Body: {tag, is_global, fields: [{field_name, properties}], item_attributes}. Returns the new table\'s UUID hex id. Rejects with 400 if a table with the same tag already exists in the domain.',
   {
+    server: HQ_SERVER_FIELD,
     domain: z.string(),
     tag: z.string().describe('Name for the new table (e.g. "interview_schedule").'),
     fields: z.array(z.object({
@@ -576,7 +636,7 @@ server.tool('commcare_create_lookup_table',
     is_global: z.boolean().optional().describe('If true, table is shared across the domain (default false).'),
     item_attributes: z.array(z.string()).optional(),
   },
-  async (args) => runAtom(async () => (await commcareClient()).createLookupTable(args))
+  async (args) => runAtom(async () => (await commcareClient(args.server)).createLookupTable(args))
 );
 
 // commcare_list_conditional_alerts — DEFERRED (atom code in place but
@@ -591,13 +651,14 @@ server.tool('commcare_create_lookup_table',
 
 server.tool('commcare_list_user_fields',
   'Read the current custom-user-data field definition for a CommCare HQ domain. GET /a/<domain>/users/user_data/ and parse the <div data-name="custom_fields"> initial_page_data div (HQ\'s standard Django→JS bootstrap). Returns the list of fields (slug, label, is_required, choices, regex) + the list of profiles. Requires can_edit_commcare_users permission; 302s to settings/users/ surface as a typed error.',
-  { domain: z.string() },
-  async (args) => runAtom(async () => (await commcareClient()).listUserFields(args))
+  { server: HQ_SERVER_FIELD, domain: z.string() },
+  async (args) => runAtom(async () => (await commcareClient(args.server)).listUserFields(args))
 );
 
 server.tool('commcare_set_user_fields',
   'Write the full custom-user-data field definition for a domain (DESTRUCTIVE — replaces existing). POST CustomDataFieldsForm to /a/<domain>/users/user_data/ with `data_fields` JSON-encoded. Direct form POST bypasses the React/Knockout UI (verified against apps/custom_data_fields/edit_model.py:491). Callers SHOULD list_user_fields first, merge their additions, then call this. The atom doesn\'t do the merge — destructive semantics keep the contract clean.',
   {
+    server: HQ_SERVER_FIELD,
     domain: z.string(),
     fields: z.array(z.object({
       slug: z.string(),
@@ -612,36 +673,38 @@ server.tool('commcare_set_user_fields',
     profiles: z.array(z.record(z.any())).optional().describe('Profile definitions to preserve. Default: []. Get current via list_user_fields.'),
     purge_existing: z.boolean().optional().describe('If true, purge user_data on existing users for removed fields. Default false.'),
   },
-  async (args) => runAtom(async () => (await commcareClient()).setUserFields(args))
+  async (args) => runAtom(async () => (await commcareClient(args.server)).setUserFields(args))
 );
 
 server.tool('commcare_list_ucr_expressions',
   'List named UCR expressions / filters on a CommCare HQ domain. POST /a/<domain>/data/ucr_expressions/ with action=paginate via CRUDPaginatedView. Returns id, name, expression_type ("named_expression" | "named_filter"), description, parsed definition JSON. Auth: session (BaseProjectDataView).',
-  { domain: z.string(), limit: z.number().int().positive().optional() },
-  async (args) => runAtom(async () => (await commcareClient()).listUcrExpressions(args))
+  { server: HQ_SERVER_FIELD, domain: z.string(), limit: z.number().int().positive().optional() },
+  async (args) => runAtom(async () => (await commcareClient(args.server)).listUcrExpressions(args))
 );
 
 server.tool('commcare_create_ucr_expression',
   'Create a named UCR expression or filter on a domain. POST the UCRExpressionForm to /a/<domain>/data/ucr_expressions/ via action=create. Required fields: name, expression_type ("named_expression" | "named_filter"), definition (JSON spec). The Connect Interviews bootstrap creates 4: "Register User OCS" + "Trigger OCS Bot" (named_filter), "Session Completion API" + "24 hr Expiry API" (named_expression). Duplicate name in domain raises IntegrityError surfaced as explicit error.',
   {
+    server: HQ_SERVER_FIELD,
     domain: z.string(),
     name: z.string(),
     expression_type: z.enum(['named_expression', 'named_filter']),
     definition: z.record(z.any()).describe('The UCR spec JSON object (e.g. {"type": "boolean_expression", ...}).'),
     description: z.string().optional(),
   },
-  async (args) => runAtom(async () => (await commcareClient()).createUcrExpression(args))
+  async (args) => runAtom(async () => (await commcareClient(args.server)).createUcrExpression(args))
 );
 
 server.tool('commcare_list_inbound_apis',
   'List Inbound API configurations on a CommCare HQ domain. POST /a/<domain>/motech/inbound/ with action=paginate. Returns each API\'s id, name, description, api_url, edit_url. Pro Edition / DATA_FORWARDING required.',
-  { domain: z.string(), limit: z.number().int().positive().optional() },
-  async (args) => runAtom(async () => (await commcareClient()).listInboundApis(args))
+  { server: HQ_SERVER_FIELD, domain: z.string(), limit: z.number().int().positive().optional() },
+  async (args) => runAtom(async () => (await commcareClient(args.server)).listInboundApis(args))
 );
 
 server.tool('commcare_create_inbound_api',
   'Create an Inbound API configuration. POST the ConfigurableAPICreateForm to /a/<domain>/motech/inbound/ via CRUDPaginatedViewMixin\'s action=create. Requires filter_expression_id (UCR FK) and optionally transform_expression_id — these UCR expressions must exist on the domain first (typically pushed via linked_domain in the Connect Interviews flow). Returns new id and name. The Connect Interviews "Session Completion API" + "24 hr Expiry API" are created via this atom in the per-domain bootstrap.',
   {
+    server: HQ_SERVER_FIELD,
     domain: z.string(),
     name: z.string(),
     description: z.string().optional(),
@@ -649,12 +712,13 @@ server.tool('commcare_create_inbound_api',
     transform_expression_id: z.number().int().positive().optional(),
     backend: z.enum(['json', 'form_data']).optional(),
   },
-  async (args) => runAtom(async () => (await commcareClient()).createInboundApi(args))
+  async (args) => runAtom(async () => (await commcareClient(args.server)).createInboundApi(args))
 );
 
 server.tool('commcare_create_repeater',
   'Create a Data-Forwarding Repeater on a CommCare HQ domain. POST the GenericRepeaterForm (or BaseExpressionRepeaterForm for *ExpressionRepeater types) to /a/<domain>/motech/forwarding/new/<repeater_type>/. Plain FormRepeater forwards every submission; FormExpressionRepeater applies a UCR filter (configured_filter) and emits a UCR-derived payload (configured_expression) — the Connect Interviews "OCS User Registration" and "Trigger Bot" repeaters use this variant. Pro Edition required (DATA_FORWARDING privilege).',
   {
+    server: HQ_SERVER_FIELD,
     domain: z.string(),
     repeater_type: z.enum(['FormRepeater', 'CaseRepeater', 'FormExpressionRepeater', 'CaseExpressionRepeater', 'ConnectFormRepeater']),
     connection_settings_id: z.number().int().positive().describe('FK to a Connection (from commcare_list_connections).'),
@@ -665,18 +729,19 @@ server.tool('commcare_create_repeater',
     configured_expression: z.record(z.any()).optional().describe('UCR payload-expression spec as a JSON object. Required for POST/PUT *ExpressionRepeater.'),
     url_template: z.string().optional(),
   },
-  async (args) => runAtom(async () => (await commcareClient()).createRepeater(args))
+  async (args) => runAtom(async () => (await commcareClient(args.server)).createRepeater(args))
 );
 
 server.tool('commcare_list_connections',
   'List Connection settings (motech outbound connections) on a CommCare HQ domain. POST /a/<domain>/motech/conn/ with action=paginate via the CRUDPaginatedView. Returns each connection\'s id, name, url, notify_addresses, used_by. Gated by privileges.DATA_FORWARDING (Pro Edition) — 404s without it. Used by verifier to confirm "Connect Interviews" and "OCS Interviews Bot" connections exist.',
-  { domain: z.string(), limit: z.number().int().positive().optional() },
-  async (args) => runAtom(async () => (await commcareClient()).listConnections(args))
+  { server: HQ_SERVER_FIELD, domain: z.string(), limit: z.number().int().positive().optional() },
+  async (args) => runAtom(async () => (await commcareClient(args.server)).listConnections(args))
 );
 
 server.tool('commcare_create_connection',
   'Create a Connection (motech outbound connection settings). POST the ConnectionSettingsForm to /a/<domain>/motech/conn/add/ (form-encoded, CSRF-protected). Success redirects to the list view — atom re-lists by name to recover the new id. Auth types per corehq/motech/auth.py: none, basic, digest, bearer, oauth1, oauth2_pwd, oauth2_client, api_key. Pro Edition required (DATA_FORWARDING privilege).',
   {
+    server: HQ_SERVER_FIELD,
     domain: z.string(),
     name: z.string(),
     url: z.string().describe('Base URL of the target system (e.g. "https://connect.dimagi.com/").'),
@@ -690,99 +755,107 @@ server.tool('commcare_create_connection',
     skip_cert_verify: z.boolean().optional(),
     plaintext_custom_headers: z.string().optional().describe('JSON string of custom headers (e.g. \'{"Authorization": "Token xyz"}\').'),
   },
-  async (args) => runAtom(async () => (await commcareClient()).createConnection(args))
+  async (args) => runAtom(async () => (await commcareClient(args.server)).createConnection(args))
 );
 
 server.tool('commcare_get_case',
   'Fetch a single CommCare HQ case by case_id. GET /a/<domain>/api/v0.5/case/<id>/?format=json via Tastypie (API-key auth — CaseResource sets RequirePermissionAuthentication(edit_data) without allow_session_auth). Returns the case\'s dynamic property bag (commcare-user case has session_completion / last_bot_interaction_date / interaction_validation written by OCS-to-HQ custom action). 404 surfaces as an explicit error.',
-  { domain: z.string(), case_id: z.string() },
-  async (args) => runAtom(async () => (await commcareClient()).getCase(args))
+  { server: HQ_SERVER_FIELD, domain: z.string(), case_id: z.string() },
+  async (args) => runAtom(async () => (await commcareClient(args.server)).getCase(args))
 );
 
 server.tool('commcare_list_users',
   'List mobile workers (CommCareUser) in a CommCare HQ domain. GET /a/<domain>/api/v0.5/user/ via Tastypie (API key auth). Supports standard Tastypie pagination (limit/offset) and group filter. Returns each user\'s id, username, basic profile, and the full user_data dict (including custom fields like cohort_id). Used by verifier to confirm cohort_id is set on the right FLWs.',
   {
+    server: HQ_SERVER_FIELD,
     domain: z.string(),
     limit: z.number().int().positive().optional(),
     offset: z.number().int().nonnegative().optional(),
     group: z.string().optional(),
   },
-  async (args) => runAtom(async () => (await commcareClient()).listUsers(args))
+  async (args) => runAtom(async () => (await commcareClient(args.server)).listUsers(args))
 );
 
 server.tool('commcare_get_user',
   'Fetch a single CommCare HQ mobile worker by id. GET /a/<domain>/api/v0.5/user/<user_id>/. Returns the full record including user_data.',
-  { domain: z.string(), user_id: z.string() },
-  async (args) => runAtom(async () => (await commcareClient()).getUser(args))
+  { server: HQ_SERVER_FIELD, domain: z.string(), user_id: z.string() },
+  async (args) => runAtom(async () => (await commcareClient(args.server)).getUser(args))
 );
 
 server.tool('commcare_update_user_field',
   'Set a single custom-user-data field on a mobile worker. Implemented as GET → mutate user_data → PUT (v0_5 CommCareUserResource exposes PUT but not PATCH, so we PUT the merged user_data). Pass value=null to clear the field. Used by per-FLW cohort_id assignment after Learn completion.',
   {
+    server: HQ_SERVER_FIELD,
     domain: z.string(),
     user_id: z.string(),
     field_slug: z.string().describe('User-data field slug (e.g. "cohort_id").'),
     value: z.union([z.string(), z.null()]).describe('New value, or null to clear.'),
   },
-  async (args) => runAtom(async () => (await commcareClient()).updateUserField(args))
+  async (args) => runAtom(async () => (await commcareClient(args.server)).updateUserField(args))
 );
 
 server.tool('commcare_get_lookup_table_rows',
   'Get rows of a CommCare HQ lookup table. GET /a/<domain>/api/v0.5/lookup_table_item/ via Tastypie (API key auth). Tastypie returns ALL rows in the domain (no querystring filter); this atom client-side filters by data_type_id resolved from the supplied tag or UUID. Returns each row\'s fields as a flat map (column → first field_value).',
   {
+    server: HQ_SERVER_FIELD,
     domain: z.string(),
     table_id_or_tag: z.string().describe('Either a 32-hex table UUID or the human-readable tag (e.g. "interview_schedule").'),
   },
-  async (args) => runAtom(async () => (await commcareClient()).getLookupTableRows(args))
+  async (args) => runAtom(async () => (await commcareClient(args.server)).getLookupTableRows(args))
 );
 
 server.tool('commcare_lookup_table_append_rows',
   'Append rows to a CommCare HQ lookup table. POST /a/<domain>/api/v0.5/lookup_table_item/ once per row (Tastypie doesn\'t support list POST for this resource). Each row is a flat field_name→string-value map; HQ wraps it into its field_list shape internally. Used by the cohort-create skill to populate interview_schedule rows for a new cohort.',
   {
+    server: HQ_SERVER_FIELD,
     domain: z.string(),
     table_id_or_tag: z.string(),
     rows: z.array(z.record(z.string())).describe('List of flat row maps: each {field_name: value}.'),
     item_attributes: z.record(z.string()).optional(),
   },
-  async (args) => runAtom(async () => (await commcareClient()).appendLookupTableRows(args))
+  async (args) => runAtom(async () => (await commcareClient(args.server)).appendLookupTableRows(args))
 );
 
 server.tool('commcare_link_domains',
   'Set up a linked-project-spaces relationship: upstream (master) → downstream. Required before linked-app push / linked content sync. POST /a/<upstream>/linked_domain/service/ via the jQuery-RMI protocol (corehq/util/jqueryrmi.py + corehq/apps/linked_domain/views.py:DomainLinkRMIView.create_domain_link). Caller must have access in both domains. Pro Edition is required for the LITE_RELEASE_MANAGEMENT privilege that backs linked spaces — without it, the call may succeed structurally but content-push operations downstream will fail.',
   {
+    server: HQ_SERVER_FIELD,
     upstream_domain: z.string().describe('Master domain slug (must have access).'),
     downstream_domain: z.string().describe('Downstream domain slug to attach (must also have access).'),
   },
-  async (args) => runAtom(async () => (await commcareClient()).linkDomains(args))
+  async (args) => runAtom(async () => (await commcareClient(args.server)).linkDomains(args))
 );
 
 server.tool('commcare_make_build',
   {
+    server: HQ_SERVER_FIELD,
     domain: z.string(),
     app_id: z.string(),
     comment: z.string().optional(),
   },
-  async (args) => runAtom(async () => (await commcareClient()).makeBuild(args))
+  async (args) => runAtom(async () => (await commcareClient(args.server)).makeBuild(args))
 );
 
 server.tool('commcare_release_build',
   {
+    server: HQ_SERVER_FIELD,
     domain: z.string(),
     app_id: z.string(),
     build_id: z.string(),
   },
-  async (args) => runAtom(async () => (await commcareClient()).releaseBuild(args))
+  async (args) => runAtom(async () => (await commcareClient(args.server)).releaseBuild(args))
 );
 
 server.tool('commcare_download_ccz',
   {
+    server: HQ_SERVER_FIELD,
     domain: z.string(),
     app_id: z.string(),
     build_id: z.string().optional(),
     include_multimedia: z.boolean().optional().describe('If true, request the full CCZ with multimedia binaries inlined under commcare/multimedia/...; default false returns the lite manifest-only response.'),
     write_to_path: z.string().optional().describe('If set, write the CCZ bytes to this local path and return `ccz_written_to` INSTEAD of `ccz_base64` — keeps the (multi-MB) base64 blob out of the model context. The `connect_markers` + `projected_connect_state` projection is still returned. Mirrors `commcare_validate_ccz`\'s `ccz_path` so the download → install-sim chain (`app-release-qa`) never round-trips base64: `download_ccz(write_to_path=X)` then `validate_ccz(ccz_path=X)`. The 25 MB base64 cap does not apply when set.'),
   },
-  async (args) => runAtom(async () => (await commcareClient()).downloadCcz(args))
+  async (args) => runAtom(async () => (await commcareClient(args.server)).downloadCcz(args))
 );
 
 // commcare_validate_ccz — runtime-install simulation against a released CCZ.
@@ -829,6 +902,7 @@ server.tool('commcare_download_ccz',
 // `docs/learnings/2026-05-25-bednet-smoke-phase6-install-rejection.md`.
 server.tool('commcare_validate_ccz',
   {
+    server: HQ_SERVER_FIELD,
     ccz_path: z.string().optional().describe('Local filesystem path to the CCZ. Preferred — avoids round-tripping ~10KB of base64 through the model context. Exactly one of `ccz_path` or `ccz_base64` must be supplied.'),
     ccz_base64: z.string().optional().describe('Base64-encoded CCZ bytes. Use when chaining directly from `commcare_download_ccz` without writing to disk. Exactly one of `ccz_path` or `ccz_base64` must be supplied.'),
     mode: z.enum(['validate', 'play']).optional().describe('`validate` (default; fast, parser-class only) vs `play` (slow, catches runtime-binding defects like the bednet `entity_id` class). Use `play` as the authoritative Phase 3 install-time gate.'),
@@ -985,6 +1059,7 @@ function resolveCommCareCliJarPath(explicit?: string): string {
 //   usage error when both or neither are given.
 server.tool('commcare_patch_xform',
   {
+    server: HQ_SERVER_FIELD,
     domain: z.string(),
     app_id: z.string(),
     form_unique_id: z.string().regex(/^[0-9a-f]{32}$/, 'unique_id is a 32-char hex string from suite.xml or the delete_form action URL'),
@@ -996,7 +1071,7 @@ server.tool('commcare_patch_xform',
     runAtom(async () => {
       const { new_xform_xml, new_xform_xml_path, ...rest } = args;
       const xml = resolvePatchXformXml({ new_xform_xml, new_xform_xml_path });
-      return (await commcareClient()).patchXform({ ...rest, new_xform_xml: xml });
+      return (await commcareClient(args.server)).patchXform({ ...rest, new_xform_xml: xml });
     }),
 );
 
@@ -1031,6 +1106,7 @@ server.tool('commcare_patch_xform',
 //   Exactly one of the two must be supplied.
 server.tool('commcare_upload_multimedia',
   {
+    server: HQ_SERVER_FIELD,
     domain: z.string(),
     app_id: z.string().regex(/^[0-9a-f]{32}$/, '32-char hex'),
     media_path: z.string().regex(/^jr:\/\/file\/commcare\/(image|audio|video|text)\/[^\/]+$/),
@@ -1045,7 +1121,7 @@ server.tool('commcare_upload_multimedia',
         file_bytes_base64,
         file_bytes_path,
       });
-      return (await commcareClient()).uploadMultimedia({
+      return (await commcareClient(args.server)).uploadMultimedia({
         ...rest,
         file_bytes,
       });
@@ -1064,11 +1140,12 @@ server.tool('commcare_upload_multimedia',
 //   get_form_source → mutate xform_xml → patch_xform(sha1=<token>).
 server.tool('commcare_get_form_source',
   {
+    server: HQ_SERVER_FIELD,
     domain: z.string(),
     app_id: z.string(),
     form_unique_id: z.string().regex(/^[0-9a-f]{32}$/, 'unique_id is a 32-char hex string from suite.xml or the delete_form action URL'),
   },
-  async (args) => runAtom(async () => (await commcareClient()).getFormSource(args))
+  async (args) => runAtom(async () => (await commcareClient(args.server)).getFormSource(args))
 );
 
 // commcare_set_menu_display — set a MODULE's list-vs-grid menu display style.
@@ -1085,12 +1162,13 @@ server.tool('commcare_get_form_source',
 // with commcare_make_build + commcare_release_build to ship the change.
 server.tool('commcare_set_menu_display',
   {
+    server: HQ_SERVER_FIELD,
     domain: z.string(),
     app_id: z.string(),
     module_unique_id: z.string().regex(/^[0-9a-f]{32}$/, 'unique_id is a 32-char hex string from suite.xml or the module edit URL'),
     display_style: z.enum(['list', 'grid']).optional().describe('Menu display style; defaults to "grid".'),
   },
-  async (args) => runAtom(async () => (await commcareClient()).setMenuDisplay(args))
+  async (args) => runAtom(async () => (await commcareClient(args.server)).setMenuDisplay(args))
 );
 
 // ── Learn-app CCHQ pre-flight ────────────────────────────────────

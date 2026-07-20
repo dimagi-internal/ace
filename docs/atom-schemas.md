@@ -402,7 +402,7 @@ Render the run-folder README markdown for `runId` with optional per-phase status
 
 ## ace-connect
 
-Source: `mcp/connect-server.ts` — 51 atoms
+Source: `mcp/connect-server.ts` — 53 atoms
 
 ### `connect_list_programs`
 
@@ -627,6 +627,7 @@ List CommCare HQ applications in a domain. Hits the REST API at GET /a/<domain>/
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
+| `server` | `z.string` | optional | CommCare HQ cluster to target — e.g. "us" or "eu". Omit to use the default server ACE_HQ_DEFAULT_SERVER. All configured clusters are live at once. |
 | `domain` | `z.string` | **required** | _—_ |
 
 ### `commcare_delete_app`
@@ -635,6 +636,7 @@ Soft-delete a CommCare HQ application. POST /a/<domain>/apps/delete_app/<app_id>
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
+| `server` | `z.string` | optional | CommCare HQ cluster to target — e.g. "us" or "eu". Omit to use the default server ACE_HQ_DEFAULT_SERVER. All configured clusters are live at once. |
 | `domain` | `z.string` | **required** | _—_ |
 | `app_id` | `z.string` | **required** | _—_ |
 
@@ -644,6 +646,7 @@ Create a new CommCare HQ project space (domain). POST /register/domain/ via the 
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
+| `server` | `z.string` | optional | CommCare HQ cluster to target — e.g. "us" or "eu". Omit to use the default server ACE_HQ_DEFAULT_SERVER. All configured clusters are live at once. |
 | `hr_name` | `z.string` | **required** | _—_ |
 | `org` | `z.string` | optional | _—_ |
 
@@ -653,6 +656,7 @@ Fetch a CommCare HQ lookup table by tag (name). GET /a/<domain>/api/v0.5/lookup_
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
+| `server` | `z.string` | optional | CommCare HQ cluster to target — e.g. "us" or "eu". Omit to use the default server ACE_HQ_DEFAULT_SERVER. All configured clusters are live at once. |
 | `domain` | `z.string` | **required** | _—_ |
 | `tag` | `z.string` | **required** | _—_ |
 
@@ -662,6 +666,7 @@ Create a new CommCare HQ lookup table. POST /a/<domain>/api/v0.5/lookup_table/ v
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
+| `server` | `z.string` | optional | CommCare HQ cluster to target — e.g. "us" or "eu". Omit to use the default server ACE_HQ_DEFAULT_SERVER. All configured clusters are live at once. |
 | `domain` | `z.string` | **required** | _—_ |
 | `tag` | `z.string` | **required** | _—_ |
 | `fields` | `z.array` | **required** | _—_ |
@@ -675,6 +680,7 @@ Read the current custom-user-data field definition for a CommCare HQ domain. GET
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
+| `server` | `z.string` | optional | CommCare HQ cluster to target — e.g. "us" or "eu". Omit to use the default server ACE_HQ_DEFAULT_SERVER. All configured clusters are live at once. |
 | `domain` | `z.string` | **required** | _—_ |
 
 ### `commcare_set_user_fields`
@@ -683,6 +689,7 @@ Write the full custom-user-data field definition for a domain (DESTRUCTIVE — r
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
+| `server` | `z.string` | optional | CommCare HQ cluster to target — e.g. "us" or "eu". Omit to use the default server ACE_HQ_DEFAULT_SERVER. All configured clusters are live at once. |
 | `domain` | `z.string` | **required** | _—_ |
 | `fields` | `z.array` | **required** | _—_ |
 | `label` | `z.string` | optional | _—_ |
@@ -701,6 +708,7 @@ List named UCR expressions / filters on a CommCare HQ domain. POST /a/<domain>/d
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
+| `server` | `z.string` | optional | CommCare HQ cluster to target — e.g. "us" or "eu". Omit to use the default server ACE_HQ_DEFAULT_SERVER. All configured clusters are live at once. |
 | `domain` | `z.string` | **required** | _—_ |
 | `limit` | `z.number` | optional | _—_ |
 
@@ -710,6 +718,7 @@ Create a named UCR expression or filter on a domain. POST the UCRExpressionForm 
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
+| `server` | `z.string` | optional | CommCare HQ cluster to target — e.g. "us" or "eu". Omit to use the default server ACE_HQ_DEFAULT_SERVER. All configured clusters are live at once. |
 | `domain` | `z.string` | **required** | _—_ |
 | `name` | `z.string` | **required** | _—_ |
 | `expression_type` | `z.enum` | **required** | _—_ |
@@ -722,6 +731,7 @@ List Inbound API configurations on a CommCare HQ domain. POST /a/<domain>/motech
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
+| `server` | `z.string` | optional | CommCare HQ cluster to target — e.g. "us" or "eu". Omit to use the default server ACE_HQ_DEFAULT_SERVER. All configured clusters are live at once. |
 | `domain` | `z.string` | **required** | _—_ |
 | `limit` | `z.number` | optional | _—_ |
 
@@ -731,6 +741,7 @@ Create an Inbound API configuration. POST the ConfigurableAPICreateForm to /a/<d
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
+| `server` | `z.string` | optional | CommCare HQ cluster to target — e.g. "us" or "eu". Omit to use the default server ACE_HQ_DEFAULT_SERVER. All configured clusters are live at once. |
 | `domain` | `z.string` | **required** | _—_ |
 | `name` | `z.string` | **required** | _—_ |
 | `description` | `z.string` | optional | _—_ |
@@ -744,6 +755,7 @@ Create a Data-Forwarding Repeater on a CommCare HQ domain. POST the GenericRepea
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
+| `server` | `z.string` | optional | CommCare HQ cluster to target — e.g. "us" or "eu". Omit to use the default server ACE_HQ_DEFAULT_SERVER. All configured clusters are live at once. |
 | `domain` | `z.string` | **required** | _—_ |
 | `repeater_type` | `z.enum` | **required** | _—_ |
 | `connection_settings_id` | `z.number` | **required** | _—_ |
@@ -760,6 +772,7 @@ List Connection settings (motech outbound connections) on a CommCare HQ domain. 
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
+| `server` | `z.string` | optional | CommCare HQ cluster to target — e.g. "us" or "eu". Omit to use the default server ACE_HQ_DEFAULT_SERVER. All configured clusters are live at once. |
 | `domain` | `z.string` | **required** | _—_ |
 | `limit` | `z.number` | optional | _—_ |
 
@@ -769,6 +782,7 @@ Create a Connection (motech outbound connection settings). POST the ConnectionSe
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
+| `server` | `z.string` | optional | CommCare HQ cluster to target — e.g. "us" or "eu". Omit to use the default server ACE_HQ_DEFAULT_SERVER. All configured clusters are live at once. |
 | `domain` | `z.string` | **required** | _—_ |
 | `name` | `z.string` | **required** | _—_ |
 | `url` | `z.string` | **required** | _—_ |
@@ -788,6 +802,7 @@ Fetch a single CommCare HQ case by case_id. GET /a/<domain>/api/v0.5/case/<id>/?
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
+| `server` | `z.string` | optional | CommCare HQ cluster to target — e.g. "us" or "eu". Omit to use the default server ACE_HQ_DEFAULT_SERVER. All configured clusters are live at once. |
 | `domain` | `z.string` | **required** | _—_ |
 | `case_id` | `z.string` | **required** | _—_ |
 
@@ -797,6 +812,7 @@ List mobile workers (CommCareUser) in a CommCare HQ domain. GET /a/<domain>/api/
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
+| `server` | `z.string` | optional | CommCare HQ cluster to target — e.g. "us" or "eu". Omit to use the default server ACE_HQ_DEFAULT_SERVER. All configured clusters are live at once. |
 | `domain` | `z.string` | **required** | _—_ |
 | `limit` | `z.number` | optional | _—_ |
 | `offset` | `z.number` | optional | _—_ |
@@ -808,6 +824,7 @@ Fetch a single CommCare HQ mobile worker by id. GET /a/<domain>/api/v0.5/user/<u
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
+| `server` | `z.string` | optional | CommCare HQ cluster to target — e.g. "us" or "eu". Omit to use the default server ACE_HQ_DEFAULT_SERVER. All configured clusters are live at once. |
 | `domain` | `z.string` | **required** | _—_ |
 | `user_id` | `z.string` | **required** | _—_ |
 
@@ -817,6 +834,7 @@ Set a single custom-user-data field on a mobile worker. Implemented as GET → m
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
+| `server` | `z.string` | optional | CommCare HQ cluster to target — e.g. "us" or "eu". Omit to use the default server ACE_HQ_DEFAULT_SERVER. All configured clusters are live at once. |
 | `domain` | `z.string` | **required** | _—_ |
 | `user_id` | `z.string` | **required** | _—_ |
 | `field_slug` | `z.string` | **required** | _—_ |
@@ -828,6 +846,7 @@ Get rows of a CommCare HQ lookup table. GET /a/<domain>/api/v0.5/lookup_table_it
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
+| `server` | `z.string` | optional | CommCare HQ cluster to target — e.g. "us" or "eu". Omit to use the default server ACE_HQ_DEFAULT_SERVER. All configured clusters are live at once. |
 | `domain` | `z.string` | **required** | _—_ |
 | `table_id_or_tag` | `z.string` | **required** | _—_ |
 
@@ -837,6 +856,7 @@ Append rows to a CommCare HQ lookup table. POST /a/<domain>/api/v0.5/lookup_tabl
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
+| `server` | `z.string` | optional | CommCare HQ cluster to target — e.g. "us" or "eu". Omit to use the default server ACE_HQ_DEFAULT_SERVER. All configured clusters are live at once. |
 | `domain` | `z.string` | **required** | _—_ |
 | `table_id_or_tag` | `z.string` | **required** | _—_ |
 | `rows` | `z.array` | **required** | _—_ |
@@ -848,6 +868,7 @@ Set up a linked-project-spaces relationship: upstream (master) → downstream. R
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
+| `server` | `z.string` | optional | CommCare HQ cluster to target — e.g. "us" or "eu". Omit to use the default server ACE_HQ_DEFAULT_SERVER. All configured clusters are live at once. |
 | `upstream_domain` | `z.string` | **required** | _—_ |
 | `downstream_domain` | `z.string` | **required** | _—_ |
 
@@ -855,6 +876,7 @@ Set up a linked-project-spaces relationship: upstream (master) → downstream. R
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
+| `server` | `z.string` | optional | CommCare HQ cluster to target — e.g. "us" or "eu". Omit to use the default server ACE_HQ_DEFAULT_SERVER. All configured clusters are live at once. |
 | `domain` | `z.string` | **required** | _—_ |
 | `app_id` | `z.string` | **required** | _—_ |
 | `comment` | `z.string` | optional | _—_ |
@@ -863,6 +885,7 @@ Set up a linked-project-spaces relationship: upstream (master) → downstream. R
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
+| `server` | `z.string` | optional | CommCare HQ cluster to target — e.g. "us" or "eu". Omit to use the default server ACE_HQ_DEFAULT_SERVER. All configured clusters are live at once. |
 | `domain` | `z.string` | **required** | _—_ |
 | `app_id` | `z.string` | **required** | _—_ |
 | `build_id` | `z.string` | **required** | _—_ |
@@ -871,6 +894,7 @@ Set up a linked-project-spaces relationship: upstream (master) → downstream. R
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
+| `server` | `z.string` | optional | CommCare HQ cluster to target — e.g. "us" or "eu". Omit to use the default server ACE_HQ_DEFAULT_SERVER. All configured clusters are live at once. |
 | `domain` | `z.string` | **required** | _—_ |
 | `app_id` | `z.string` | **required** | _—_ |
 | `build_id` | `z.string` | optional | _—_ |
@@ -881,6 +905,7 @@ Set up a linked-project-spaces relationship: upstream (master) → downstream. R
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
+| `server` | `z.string` | optional | CommCare HQ cluster to target — e.g. "us" or "eu". Omit to use the default server ACE_HQ_DEFAULT_SERVER. All configured clusters are live at once. |
 | `ccz_path` | `z.string` | optional | Local filesystem path to the CCZ. Preferred — avoids round-tripping ~10KB of base64 through the model context. Exactly one of `ccz_path` or `ccz_base64` must be supplied. |
 | `ccz_base64` | `z.string` | optional | Base64-encoded CCZ bytes. Use when chaining directly from `commcare_download_ccz` without writing to disk. Exactly one of `ccz_path` or `ccz_base64` must be supplied. |
 | `mode` | `z.enum` | optional | _—_ |
@@ -892,6 +917,7 @@ Set up a linked-project-spaces relationship: upstream (master) → downstream. R
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
+| `server` | `z.string` | optional | CommCare HQ cluster to target — e.g. "us" or "eu". Omit to use the default server ACE_HQ_DEFAULT_SERVER. All configured clusters are live at once. |
 | `domain` | `z.string` | **required** | _—_ |
 | `app_id` | `z.string` | **required** | _—_ |
 | `form_unique_id` | `z.string` | **required** | _—_ |
@@ -903,12 +929,32 @@ Set up a linked-project-spaces relationship: upstream (master) → downstream. R
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
+| `server` | `z.string` | optional | CommCare HQ cluster to target — e.g. "us" or "eu". Omit to use the default server ACE_HQ_DEFAULT_SERVER. All configured clusters are live at once. |
 | `domain` | `z.string` | **required** | _—_ |
 | `app_id` | `z.string` | **required** | _—_ |
 | `media_path` | `z.string` | **required** | _—_ |
 | `file_bytes_base64` | `z.string` | optional | _—_ |
 | `file_bytes_path` | `z.string` | optional | _—_ |
 | `content_type` | `z.string` | **required** | _—_ |
+
+### `commcare_get_form_source`
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `server` | `z.string` | optional | CommCare HQ cluster to target — e.g. "us" or "eu". Omit to use the default server ACE_HQ_DEFAULT_SERVER. All configured clusters are live at once. |
+| `domain` | `z.string` | **required** | _—_ |
+| `app_id` | `z.string` | **required** | _—_ |
+| `form_unique_id` | `z.string` | **required** | _—_ |
+
+### `commcare_set_menu_display`
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `server` | `z.string` | optional | CommCare HQ cluster to target — e.g. "us" or "eu". Omit to use the default server ACE_HQ_DEFAULT_SERVER. All configured clusters are live at once. |
+| `domain` | `z.string` | **required** | _—_ |
+| `app_id` | `z.string` | **required** | _—_ |
+| `module_unique_id` | `z.string` | **required** | _—_ |
+| `display_style` | `z.enum` | optional | Menu display style; defaults to "grid". |
 
 ### `connect_preflight_learn_app_user`
 
