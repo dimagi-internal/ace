@@ -107,6 +107,32 @@ ACE_HQ_DOMAIN=op://AI-Agents/ACE - CommCareHQ/domain
 # If the 1Password item is ever recreated, update this UUID.
 ACE_HQ_API_KEY=op://AI-Agents/juii2ov6xju5s4n73qlz7jutli/credential
 
+# ── Multi-cluster HQ (talk to several CommCare servers at once) ───────
+#
+# The ace-connect MCP holds LIVE connections to every configured HQ cluster
+# simultaneously; each commcare_* atom can target one via a `server` arg
+# ("us", "eu", …). Config is per-cluster: ACE_HQ_<SERVER>_{BASE_URL,USERNAME,
+# PASSWORD,API_KEY,DOMAIN}. The legacy bare ACE_HQ_* keys above are folded
+# into the cluster inferred from ACE_HQ_BASE_URL (www → us), so US behaviour
+# is unchanged. See mcp/connect/hq-clusters.ts.
+#
+# The cluster whose CCHQ the Connect OAuth authenticates (US today) keeps the
+# shared browser session; every other cluster uses session-less API-key auth.
+#
+# Default cluster when an atom omits `server`. Intentionally left at US during
+# the migration — EU is additively reachable via server:"eu" without making it
+# the default (EU's home project is on a free plan → API 401 until upgraded,
+# and no apps have been migrated yet). Flip to `eu` once EU is provisioned.
+# ACE_HQ_DEFAULT_SERVER=eu
+
+# EU cluster (eu.commcarehq.org) — self-registered ace@dimagi-ai.com account.
+# Session-less API-key auth; api_key_all_domains is the ALL_DOMAINS-scoped key.
+ACE_HQ_EU_BASE_URL=https://eu.commcarehq.org
+ACE_HQ_EU_USERNAME=op://AI-Agents/ACE - CommCareHQ EU/username
+ACE_HQ_EU_PASSWORD=op://AI-Agents/ACE - CommCareHQ EU/password
+ACE_HQ_EU_API_KEY=op://AI-Agents/ACE - CommCareHQ EU/api_key_all_domains
+ACE_HQ_EU_DOMAIN=connect-ace-prod
+
 # ── Connect (ace-connect MCP) ────────────────────────────────────────
 #
 # ace-connect drives connect.dimagi.com through an authenticated browser

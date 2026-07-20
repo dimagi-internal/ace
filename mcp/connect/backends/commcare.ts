@@ -28,9 +28,21 @@ import { SessionExpiredError, summarizeServerErrorBody } from '../errors.js';
  * skills/app-release/SKILL.md § Endpoints).
  */
 
+/**
+ * The narrow session surface `CommCareBackend` actually needs — just enough to
+ * pull a request handle and force a re-auth on mid-session expiry. Both the
+ * Connect-shared `PlaywrightSession` (structurally) and the session-less
+ * `ApiKeyHqSession` (used for non-default HQ clusters — see `hq-clusters.ts`)
+ * satisfy this, so the same backend class drives every server.
+ */
+export interface CommCareSession {
+  getContext(): Promise<{ request: APIRequestContext }>;
+  invalidate(): Promise<void>;
+}
+
 export interface CommCareBackendOptions {
   baseUrl: string;
-  session: PlaywrightSession;
+  session: CommCareSession;
   /**
    * HQ username + API key for endpoints that require `Authorization: ApiKey`
    * auth (Tastypie resources without `allow_session_auth=True` — e.g.

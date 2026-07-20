@@ -33,6 +33,18 @@ import { fileURLToPath } from 'node:url';
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
+/**
+ * Shared field constants referenced by identifier in atom schemas (kept DRY in
+ * the server source, e.g. `{ server: HQ_SERVER_FIELD, domain: z.string() }`).
+ * The static parser can't resolve a variable to a `z.<type>()`, so expand each
+ * alias to its inline z-expression here. Keep in sync with the constant's
+ * definition; the description must contain NO parentheses (the field regex
+ * ends a `.describe(...)` capture at the first `)`).
+ */
+const FIELD_ALIASES: Record<string, string> = {
+  HQ_SERVER_FIELD: `z.string().optional().describe('CommCare HQ cluster to target — e.g. "us" or "eu". Omit to use the default server ACE_HQ_DEFAULT_SERVER. All configured clusters are live at once.')`,
+};
+
 const SERVERS: Array<{ file: string; label: string }> = [
   { file: 'mcp/google-drive-server.ts', label: 'ace-gdrive' },
   { file: 'mcp/connect-server.ts',      label: 'ace-connect' },
@@ -258,7 +270,17 @@ function extractFields(args: string): AtomField[] {
     }
   }
   if (start < 0 || end < 0) return [];
-  const block = args.slice(start, end);
+  let block = args.slice(start, end);
+
+  // Expand shared field-constant aliases (fields referenced by identifier
+  // rather than an inline `z.<type>()` expression, kept DRY in the server
+  // source) so the static field regex renders them like inline fields. Keep
+  // the expansion text in sync with the constant's `.describe()` in the
+  // server source; use no parentheses in the description (the field regex
+  // stops a `.describe(...)` capture at the first `)`).
+  for (const [alias, expr] of Object.entries(FIELD_ALIASES)) {
+    block = block.split(alias).join(expr);
+  }
 
   // Each field looks like:  fieldName: z.string().optional().describe('text'),
   // We tolerate line breaks and whitespace between segments. The type capture
