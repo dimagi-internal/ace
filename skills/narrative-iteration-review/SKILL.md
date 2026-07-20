@@ -81,7 +81,7 @@ fold in your feedback.
 doc (Google Docs "Suggesting" mode is ideal). Your eye on the *language* of the background and
 narrative is exactly what we want; the mechanics are ours to handle.
 
-**Links.** ▶ Video you reviewed: <walkthrough url> · 📝 Your feedback: <expert feedback doc url>
+**Links.** ▶ Video you reviewed: <walkthrough share url> · 📝 Your feedback: <expert feedback doc url> · 🔎 Full DDD narrative (web app, sign-in): https://labs.connect.dimagi.com/canopy/ddd/<slug>
 
 ## Narration — before & after  *(changed wording in bold)*
 
@@ -115,3 +115,8 @@ connect-labs build changes: <list of real product changes the new narration impl
   in the part the expert reads — those live in the internal footer.
 - **Beats are not 1:1.** Feedback legitimately adds/merges/splits beats; show `[NEW]` explicitly and
   never silently drop a current beat.
+- **Two different URLs — include both.** The video's `?t=<token>` walkthrough link is the anonymous
+  share link (works for anyone, e.g. an external reviewer). The DDD narrative page
+  `https://labs.connect.dimagi.com/canopy/ddd/<slug>` (versions + runs in the web app) **requires a
+  canopy sign-in** (an anonymous GET 302s to login), so it's for framework-familiar reviewers. Link
+  the video for everyone and the DDD page for the DDD-literate.
