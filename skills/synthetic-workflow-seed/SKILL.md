@@ -64,6 +64,20 @@ weekly review** and a meta-level **program admin audit**. The two roles
 and the count are fixed; the *build path* is decided per workflow, not
 hardcoded to a template:
 
+**Workflow ownership — opp-owned vs PROGRAM-owned (get this right).** An
+operational workflow scoped to ONE opportunity (the LLO weekly review) is
+**opp-owned**: create it with `opportunity_id: <labs_opp_id>` and view it via
+`&opportunity_id`. A **cross-opp rollup** — the program admin audit / program
+admin report watching MULTIPLE opps — is **PROGRAM-owned**: create it with
+`program_id: <program>` (NOT `opportunity_id`), which sets `definition.program_id`
+with no owning opp, so it lists in the program view and is viewed via
+`&program_id`. `workflow_create` / `workflow_create_from_template` both take a
+`program_id` for this; `opportunity_ids` on a multi_opp template is orthogonal —
+it's only the DATA field of which opps to roll up, not ownership. Creating a
+cross-opp rollup opp-owned (the pre-program-owned-workflows pattern) makes it
+404 from any other opp context and invisible in the program view. See
+`connect_labs/workflow/program_view.py`.
+
 1. **Examine the registry.** Call `mcp__connect-labs__list_templates` and
    read each entry (`key`, `name`, `description`, `supports_saved_runs`,
    `multi_opp`). Treat these as ideas / starting points, not a fixed menu.
