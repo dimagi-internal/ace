@@ -135,6 +135,12 @@ front half (how the labs-only opp + its data come to exist) differs.
      returns (`par_url`, `wk4_url`, `*_good_url`, `*_incomplete_url`) IS the
      handoff for those dashboards. **`generate_from_manifest` alone does NOT
      populate a rollup** (dry-run finding 2026-07-20).
+     **Program ownership:** the env's `kind: rollup` resource MUST set a
+     `program_id` (labs-only, ≥ 10000) so the cross-opp rollup is **program-owned**
+     — its realized `par_url` then comes back scoped with `&program_id` (the only
+     scope that renders a cross-opp rollup; `&opportunity_id` 404s it). See
+     connect-labs #946. Omitting `program_id` gives the legacy opp-owned rollup
+     that 404s from any other opp context.
    - **from-manifest** (FLW-level or per-child dashboards — `sam_followup`,
      `llo_weekly_review`): `mcp__connect-labs__synthetic_create_labs_only` then
      `mcp__connect-labs__synthetic_generate_from_manifest` with a manifest whose
@@ -164,17 +170,25 @@ front half (how the labs-only opp + its data come to exist) differs.
    `sam_followup` are checked-in templates — ADAPT via
    `workflow_create_from_template`, never build render_code from scratch.
 
-4. **Build a URL per dashboard — BOTH shapes use the SAME run deep-link**
-   `https://labs.connect.dimagi.com/labs/workflow/<def_id>/run/?run_id=<run_id>&opportunity_id=<opp_id>`
-   (verified live 2026-07-21). Name each `${key}_par_url`; set `primary_par_url` to
-   the `primary_dashboard`'s. Only the source of `run_id` differs:
+4. **Build a URL per dashboard — the run deep-link, scoped by OWNERSHIP.**
+   `https://labs.connect.dimagi.com/labs/workflow/<def_id>/run/?run_id=<run_id>&<scope>`
+   where `<scope>` is the dashboard's OWNING scope:
+   - **program-owned** cross-opp rollups (`program_admin_report`, `audit_par`) →
+     **`&program_id=<program_id>`**. A cross-opp rollup is a program-owned workflow
+     (`definition.program_id` set, no owning opp); `&opportunity_id=<any-opp>` 404s it
+     with "definition N not found" from any other opp context. The realize-env realized
+     map already emits `par_url` with `&program_id` (connect-labs #946) — use it as-is.
+   - **opp-owned** per-opp dashboards (`chc_nutrition_analysis`, `sam_followup`,
+     `llo_weekly_review`) → **`&opportunity_id=<opp_id>`**.
+   Name each `${key}_par_url`; set `primary_par_url` to the `primary_dashboard`'s.
+   The `run_id` source still depends on `shape`:
    - **run-shaped** → the saved run_id (env-ensure realized map or `workflow_save_snapshot`).
    - **action-shaped** → mint one with
      `mcp__connect-labs__workflow_create_run(definition_id, opportunity_id)` and use
      the returned `run_id`.
-   Two traps, both verified to BOUNCE: `/workflow/<def>/run/?opportunity_id=` with **no**
-   `run_id` → the workflow *list*; `/workflow/<def>/?opportunity_id=` (no `/run/`) → the
-   *definition* page. Only `/run/?run_id=<id>&opportunity_id=<id>` renders the dashboard
+   Two traps, both verified to BOUNCE: `/workflow/<def>/run/?<scope>` with **no**
+   `run_id` → the workflow *list*; `/workflow/<def>/?<scope>` (no `/run/`) → the
+   *definition* page. Only `/run/?run_id=<id>&<scope>` renders the dashboard
    (supersedes the earlier `docs/learnings/2026-06-13` picker note; the fix is a real
    run_id, minted if needed).
 
