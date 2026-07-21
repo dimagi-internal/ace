@@ -62,10 +62,12 @@ front half (how the labs-only opp + its data come to exist) differs.
       - key: program_admin             # → ${program_admin_par_url} in realized.json
         template: program_admin_report
         role: overview
+        shape: run                     # run-shaped → saved-run par_url deep-link
         par_url: <url>
       - key: child_recovery
         template: sam_followup
         role: recovery
+        shape: action                  # action-shaped → workflow view URL, no run_id
         par_url: <url>
     primary_dashboard: program_admin
     realized_vars_ref: 7-synthetic/realized.json
@@ -89,6 +91,13 @@ front half (how the labs-only opp + its data come to exist) differs.
      - per-child recovery over follow-up visits → `sam_followup` (MUAC + recovery-status timeline). **Not** `kmc_longitudinal` — it keys on weight, unusable when CHWs have no scales.
      Only `workflow_create` from SCRATCH when nothing in the palette fits, and say
      so explicitly in the summary.
+   - **Record each dashboard's `shape` from `list_templates.supports_saved_runs`.**
+     **run-shaped** (`true`, e.g. `program_admin_report`, `chc_nutrition_analysis`)
+     → has a saved-run `par_url` deep-link (`/run/?run_id=…`). **action-shaped**
+     (`false`, e.g. `sam_followup`, `kmc_longitudinal`) → value lives in
+     artifacts, **no saved-run URL**; its surface is the workflow view URL
+     (confirm the exact shape live — it has no `run_id`). This decides the URL
+     built in step 4 and which QA check applies.
    - **Derive the data story per dashboard** — personas, the anomaly/recovery
      arcs (MUAC recovery = children moving red[SAM]→yellow[MAM]→green across
      follow-up weeks), timeline. This becomes the manifest (step 1) and the
@@ -141,14 +150,16 @@ front half (how the labs-only opp + its data come to exist) differs.
    `sam_followup` are checked-in templates — ADAPT via
    `workflow_create_from_template`, never build render_code from scratch.
 
-4. **Build a `par_url` per dashboard.**
-
-   For each planned dashboard, assemble the deep-link from its saved run:
-   `https://labs.connect.dimagi.com/labs/workflow/<def_id>/run/?run_id=<run_id>&opportunity_id=<opp_id>`,
-   and name it `${key}_par_url`. Set `primary_par_url` to the
-   `primary_dashboard`'s. The **bare** workflow URL renders the run *picker*, not
-   the dashboard — a saved `run_id` in the query string is required
-   (`docs/learnings/2026-06-13-labs-workflow-run-deeplink.md`).
+4. **Build a URL per dashboard (shape-aware).** Name each `${key}_par_url`; set
+   `primary_par_url` to the `primary_dashboard`'s.
+   - **run-shaped** dashboard → the saved-run deep-link
+     `https://labs.connect.dimagi.com/labs/workflow/<def_id>/run/?run_id=<run_id>&opportunity_id=<opp_id>`.
+     The **bare** workflow URL renders the run *picker*, not the dashboard — a
+     saved `run_id` is required (`docs/learnings/2026-06-13-labs-workflow-run-deeplink.md`).
+   - **action-shaped** dashboard (no saved runs) → its workflow **view** URL
+     (`.../labs/workflow/<def_id>/?opportunity_id=<opp_id>` — confirm the exact
+     shape live; there is no `run_id`). Record `shape` alongside so the QA + the
+     narrative know which is which.
 
 5. **Emit the handoff + write back.**
 
