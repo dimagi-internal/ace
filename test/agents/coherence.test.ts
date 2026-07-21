@@ -182,6 +182,20 @@ const UNCLAIMED_BASELINE = new Set<string>([
   'eval-calibration',  // produces an opp-level artifact (eval-calibration/
                        // known-issues.md), not a per-run skill any phase
                        // agent dispatches.
+  // 2026-07-21 (Plan C convergence): Phase 7 was rewired onto the /ace:demo
+  // pipeline (demo-data-setup(ace-run) -> demo-narrative -> canopy DDD), so
+  // these former Phase-7 producers are no longer claimed by the phase agent.
+  // They stay on disk as a DEPRECATED fallback until the converged path is
+  // validated end-to-end in a real /ace:run; deletion + artifact-manifest
+  // cleanup is the staged follow-up. See agents/synthetic-data-and-workflows.md
+  // § Deprecated skills.
+  'synthetic-narrative-plan',
+  'synthetic-data-generate',
+  'synthetic-workflow-seed',
+  'synthetic-workflow-polish',
+  'synthetic-walkthrough-spec',
+  'synthetic-walkthrough-run',
+  'synthetic-summary',
 ]);
 
 function skillExists(name: string): boolean {

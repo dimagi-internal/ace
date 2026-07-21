@@ -229,6 +229,29 @@ Then run Step 0 (template selection, informed by the real opp) and steps 3–5 e
 as denovo. A clone whose real data has no live activity yet → there's nothing to
 profile; use `denovo` for that program until it has real delivery data.
 
+## Process (ace-run)
+
+The Phase 7 convergence provider — the data source is the **current `/ace:run`'s
+Phase-4 Connect opportunity** and its PDD/app structure, not a brief or a real
+external opp. Same spine as denovo; only the manifest's provenance changes.
+
+1a. **Resolve the run's opp + app structure.** Read the run's
+   `phases.connect-setup.products.connect.opportunity` (`connect_int_id`, apps) and
+   the PDD (`inputs/pdd.md`) / deploy summaries — the KPI fields, deliver units,
+   and personas come from the built apps, not invented.
+1b. **Author the manifest from the PDD/apps** (the story-coherent per-opp manifest
+   that today's `synthetic-narrative-plan` + `synthetic-data-generate` produce) —
+   keyed on the real deliver-app form paths so the dashboards read real fields.
+2a. **Generate into the run's labs SyntheticOpportunity** — `synthetic_create_labs_only`
+   (or reuse the run's existing labs opp) + `synthetic_generate_from_manifest`.
+
+Then Step 0 (template selection) and steps 3–5 (author dashboards, mint runs,
+build `/run/?run_id=` URLs, emit the realized map) are EXACTLY the denovo spine,
+and `demo-narrative` authors the DDD narrative — so Phase 7 becomes
+`demo-data-setup(ace-run)` → `demo-narrative` → DDD, the same pipeline as
+`/ace:demo`. Archetype branching (`atomic-visit` / `multi-stage`; `focus-group`
+is a hard skip) is preserved at the Phase-7 agent level.
+
 ## Gotchas (encode every one — they are the difference between a live demo and a dead scene)
 
 - [ ] **Labs-only opp ids ≥ 10,000 have no CommCare HQ app.** Anything needing a

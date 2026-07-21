@@ -1,7 +1,7 @@
 ---
 name: synthetic-summary
 description: >
-  Compose a one-page reviewer-facing summary of an opp's synthetic data
+  DEPRECATED (Plan C convergence, 2026-07-21) — superseded by the /ace:demo pipeline (demo-narrative + canopy DDD); Phase 7 no longer dispatches this. Kept as fallback until the converged path is validated; see agents/synthetic-data-and-workflows.md § Deprecated skills. Compose a one-page reviewer-facing summary of an opp's synthetic data
   demo — labs URL, fixture folder, narrative — for stakeholder forwarding.
 disable-model-invocation: true
 ---

@@ -1,7 +1,7 @@
 ---
 name: synthetic-narrative-plan
 description: >
-  LLM-author a richer synthetic-data manifest (named FLWs, deliberate
+  DEPRECATED (Plan C convergence, 2026-07-21) — superseded by the /ace:demo pipeline (demo-narrative + canopy DDD); Phase 7 no longer dispatches this. Kept as fallback until the converged path is validated; see agents/synthetic-data-and-workflows.md § Deprecated skills. LLM-author a richer synthetic-data manifest (named FLWs, deliberate
   anomalies, coaching arcs, week-over-week story) from upstream design docs.
 disable-model-invocation: true
 ---
