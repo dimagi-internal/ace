@@ -128,9 +128,9 @@ ACE_HQ_API_KEY=op://AI-Agents/juii2ov6xju5s4n73qlz7jutli/credential
 # EU cluster (eu.commcarehq.org) — self-registered ace@dimagi-ai.com account.
 # Session-less API-key auth; api_key_all_domains is the ALL_DOMAINS-scoped key.
 ACE_HQ_EU_BASE_URL=https://eu.commcarehq.org
-ACE_HQ_EU_USERNAME=op://AI-Agents/ACE - CommCareHQ EU/username
-ACE_HQ_EU_PASSWORD=op://AI-Agents/ACE - CommCareHQ EU/password
-ACE_HQ_EU_API_KEY=op://AI-Agents/ACE - CommCareHQ EU/api_key_all_domains
+ACE_HQ_EU_USERNAME="op://AI-Agents/ACE - CommCareHQ EU/username"
+ACE_HQ_EU_PASSWORD="op://AI-Agents/ACE - CommCareHQ EU/password"
+ACE_HQ_EU_API_KEY="op://AI-Agents/ACE - CommCareHQ EU/api_key_all_domains"
 ACE_HQ_EU_DOMAIN=connect-ace-prod
 
 # ── Connect (ace-connect MCP) ────────────────────────────────────────
