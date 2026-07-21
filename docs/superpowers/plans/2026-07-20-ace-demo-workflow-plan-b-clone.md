@@ -1,6 +1,6 @@
 # ACE Demo Workflow — Plan B (clone provider, EU-aware)
 
-> **Status: BLOCKED on dependency** — do not start until `26e0ace feat(connect): multi-cluster HQ registry` merges to `main`, then rebase this worktree onto it. Plan A (denovo) is the proven foundation this builds on.
+> **Status: IMPLEMENTED (skill-level), live-test pending.** Dependency `26e0ace` (multi-cluster HQ registry) is on main. The `clone` provider is built in `demo-data-setup` (profile-from-prod → shared authoring spine), `demo-fidelity-check` gates it, and `/ace:demo --source clone --opp <id>` is enabled. **Remaining:** (1) live end-to-end test against a real opp *that has delivery data* (RUTF may not yet — use denovo until it does); (2) the clone→env bridge for multi-LLO program-admin rollups over cloned opps (same env-ensure gap denovo has); (3) confirm profiling reaches the target opp with the labs caller's token.
 
 **Goal:** Add the `clone` provider to `/ace:demo` — clone a real Connect opportunity (incl. the **EU-only** RUTF app) into a labs-only synthetic env, then render dashboards + narrative through the *same* Plan A spine.
 

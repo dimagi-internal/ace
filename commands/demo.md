@@ -13,11 +13,15 @@ walkthrough. A demo is a standalone run with one live phase — it does **not** 
 the PDD → app → Connect lifecycle.
 
 ## Arguments
-- `--source {denovo|clone}` — the data-source provider. **`denovo`** (implemented):
-  author data + dashboard from `--brief`. **`clone`** (Plan B): clone a real op —
-  report "not yet implemented" for now.
+- `--source {denovo|clone}` — the data-source provider. **`denovo`**: author data +
+  dashboard from `--brief`. **`clone`**: profile a real Connect opp
+  (`synthetic_profile_from_prod`, mirror) into synthetic data, then author the same
+  dashboards + a fidelity gate.
+- `--opp <connect-opp-id>` — required for `--source clone`: the real Connect
+  opportunity whose live delivery data seeds the demo.
 - `--brief <text|drive-path>` — the demo story: program, KPI focus, named FLWs,
-  the anomaly to surface, the coaching beat. Required for `denovo`.
+  the anomaly to surface, the coaching beat. Required for `denovo`; for `clone` it
+  supplies the narrative framing over the profiled data.
 - `--name <demo-name>` — the demo folder `ACE/<demo-name>/`. Required.
 - `--pin-monday <YYYY-MM-DD>` — optional fixed timeline anchor (a Monday). If
   omitted, a recent Monday is computed and recorded. Never a sliding window.
@@ -26,8 +30,9 @@ the PDD → app → Connect lifecycle.
 
 ## Process
 
-1. **Parse arguments.** Default `--source denovo`. If `--source clone`, stop with
-   "clone provider is Plan B — not yet implemented; use `--source denovo`."
+1. **Parse arguments.** Default `--source denovo`. `--source clone` requires
+   `--opp <connect-opp-id>`; if the opp has no live delivery data to profile, stop
+   and tell the operator to use `--source denovo` for that program until it does.
 
 2. **Execute the demo procedure inline at top-level.** Read `agents/demo.md` and
    follow it as a procedure document from this (top-level) session. Do **NOT**
