@@ -123,13 +123,27 @@ front half (how the labs-only opp + its data come to exist) differs.
    - `timeline.start_date`: the pinned Monday (from `--pin-monday` or computed);
      it MUST equal the env timeline anchor.
 
-2. **Generate the synthetic data.**
+2. **Generate the synthetic data — pick the mode per dashboard `shape`/kind.**
 
-   Call `mcp__connect-labs__synthetic_create_labs_only` to mint the labs-only
-   opportunity, then `mcp__connect-labs__synthetic_generate_from_manifest` with
-   the manifest to write visits + user_data + completed_works. Mechanics +
-   payment-unit pre-flight: `skills/synthetic-data-generate/SKILL.md § Process`
-   steps 1a–3. Capture the returned `labs_opp_id` and `deliver_units`.
+   There are TWO generation paths; a demo may use both:
+   - **realize-env** (composite multi-opp rollups — `program_admin_report`,
+     `audit_par`, and their `chc_nutrition_analysis` weeklies): the data is
+     produced by the ensurer chain (weekly_runs→run_audits→rollup), which only
+     runs via `mcp__connect-labs__synthetic_env_ensure env=<name>`. Reuse the
+     checked-in `program-admin-report` env (already synthetic MUAC nutrition,
+     opps 10000/10001) or a new committed env. The realized `${var}` map it
+     returns (`par_url`, `wk4_url`, `*_good_url`, `*_incomplete_url`) IS the
+     handoff for those dashboards. **`generate_from_manifest` alone does NOT
+     populate a rollup** (dry-run finding 2026-07-20).
+   - **from-manifest** (FLW-level or per-child dashboards — `sam_followup`,
+     `llo_weekly_review`): `mcp__connect-labs__synthetic_create_labs_only` then
+     `mcp__connect-labs__synthetic_generate_from_manifest` with a manifest whose
+     `beneficiary_cohorts` (with `progression: improvement_curve` for recovery
+     arcs) + `field_distributions` (keyed by the template's exact form paths)
+     produce the records the template reads. Mechanics + payment-unit pre-flight:
+     `skills/synthetic-data-generate/SKILL.md § Process` steps 1a–3.
+
+   Capture `labs_opp_id` + `deliver_units`.
 
 3. **Author each planned dashboard dynamically.** Loop over the Step-0
    `dashboards[]`; for **each**, run the ADAPT-or-SCRATCH flow from
