@@ -1,5 +1,16 @@
 # Labs workflow render needs a `run_id` deep-link (not the bare workflow URL)
 
+> **2026-07-21 addendum — PROGRAM-owned workflows deep-link via `&program_id`, NOT `&opportunity_id`.**
+> The `&opportunity_id=<opp>` convention below is for **opp-owned** workflows. A
+> **program-owned** workflow (a cross-opp rollup — program admin report/audit —
+> whose `definition.program_id` is set and has no owning opp) resolves under its
+> PROGRAM: `…/labs/workflow/<def_id>/run/?run_id=<M>&program_id=<P>`. Passing
+> `&opportunity_id=<some other opp>` (e.g. the viewer's ambient opp) 404s with
+> "definition N not found", because the def belongs to the program, not that opp.
+> Emit the owning scope that matches the definition's ownership. (Seed/config that
+> predated program-owned workflows created these rollups opp-owned — fixed in
+> connect-labs #945; see `connect_labs/workflow/program_view.py`.)
+
 **Date:** 2026-06-13
 **Surfaced by:** bednet-spot-check/20260612-1443 Phase 7 (`synthetic-walkthrough-run` + `synthetic-workflow-polish-eval`) landing `partial` — couldn't headlessly capture the polished workflow dashboard.
 **Refs:** jjackson/ace#769, jjackson/ace#788, jjackson/connect-labs#541 (+ labs fix commit `559d6bf4`).
