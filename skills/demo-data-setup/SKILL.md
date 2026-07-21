@@ -62,12 +62,12 @@ front half (how the labs-only opp + its data come to exist) differs.
       - key: program_admin             # → ${program_admin_par_url} in realized.json
         template: program_admin_report
         role: overview
-        shape: run                     # run-shaped → saved-run par_url deep-link
+        shape: run                     # saved run_id (env-ensure / workflow_save_snapshot)
         par_url: <url>
       - key: child_recovery
         template: sam_followup
         role: recovery
-        shape: action                  # action-shaped → workflow view URL, no run_id
+        shape: action                  # no saved run → mint run_id via workflow_create_run; SAME /run/?run_id= URL
         par_url: <url>
     primary_dashboard: program_admin
     realized_vars_ref: 7-synthetic/realized.json
@@ -92,12 +92,12 @@ front half (how the labs-only opp + its data come to exist) differs.
      Only `workflow_create` from SCRATCH when nothing in the palette fits, and say
      so explicitly in the summary.
    - **Record each dashboard's `shape` from `list_templates.supports_saved_runs`.**
+     BOTH shapes render at `/labs/workflow/<def>/run/?run_id=<id>&opportunity_id=<opp>`
+     (verified live 2026-07-21). Shape only decides where `run_id` comes from:
      **run-shaped** (`true`, e.g. `program_admin_report`, `chc_nutrition_analysis`)
-     → has a saved-run `par_url` deep-link (`/run/?run_id=…`). **action-shaped**
-     (`false`, e.g. `sam_followup`, `kmc_longitudinal`) → value lives in
-     artifacts, **no saved-run URL**; its surface is the workflow view URL
-     (confirm the exact shape live — it has no `run_id`). This decides the URL
-     built in step 4 and which QA check applies.
+     reuses a saved run_id; **action-shaped** (`false`, e.g. `sam_followup`,
+     `kmc_longitudinal`) has no saved run, so step 3 **mints** one with
+     `mcp__connect-labs__workflow_create_run`. This decides step 4's URL build.
    - **Derive the data story per dashboard** — personas, the anomaly/recovery
      arcs (MUAC recovery = children moving red[SAM]→yellow[MAM]→green across
      follow-up weeks), timeline. This becomes the manifest (step 1) and the
@@ -164,16 +164,19 @@ front half (how the labs-only opp + its data come to exist) differs.
    `sam_followup` are checked-in templates — ADAPT via
    `workflow_create_from_template`, never build render_code from scratch.
 
-4. **Build a URL per dashboard (shape-aware).** Name each `${key}_par_url`; set
-   `primary_par_url` to the `primary_dashboard`'s.
-   - **run-shaped** dashboard → the saved-run deep-link
-     `https://labs.connect.dimagi.com/labs/workflow/<def_id>/run/?run_id=<run_id>&opportunity_id=<opp_id>`.
-     The **bare** workflow URL renders the run *picker*, not the dashboard — a
-     saved `run_id` is required (`docs/learnings/2026-06-13-labs-workflow-run-deeplink.md`).
-   - **action-shaped** dashboard (no saved runs) → its workflow **view** URL
-     (`.../labs/workflow/<def_id>/?opportunity_id=<opp_id>` — confirm the exact
-     shape live; there is no `run_id`). Record `shape` alongside so the QA + the
-     narrative know which is which.
+4. **Build a URL per dashboard — BOTH shapes use the SAME run deep-link**
+   `https://labs.connect.dimagi.com/labs/workflow/<def_id>/run/?run_id=<run_id>&opportunity_id=<opp_id>`
+   (verified live 2026-07-21). Name each `${key}_par_url`; set `primary_par_url` to
+   the `primary_dashboard`'s. Only the source of `run_id` differs:
+   - **run-shaped** → the saved run_id (env-ensure realized map or `workflow_save_snapshot`).
+   - **action-shaped** → mint one with
+     `mcp__connect-labs__workflow_create_run(definition_id, opportunity_id)` and use
+     the returned `run_id`.
+   Two traps, both verified to BOUNCE: `/workflow/<def>/run/?opportunity_id=` with **no**
+   `run_id` → the workflow *list*; `/workflow/<def>/?opportunity_id=` (no `/run/`) → the
+   *definition* page. Only `/run/?run_id=<id>&opportunity_id=<id>` renders the dashboard
+   (supersedes the earlier `docs/learnings/2026-06-13` picker note; the fix is a real
+   run_id, minted if needed).
 
 5. **Emit the handoff + write back.**
 
