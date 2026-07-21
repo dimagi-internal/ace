@@ -67,13 +67,32 @@ All three converge on the realized `${var}` map (`par_url`); everything from
    `why_brief.yaml` + `<demo-slug>.yaml` and **validates them via canopy's
    `scripts.ddd.validate`** — do not proceed until both validate.
 
-6. **Hand off to DDD.**
+6. **Render the walkthrough.** The `realized.json` the setup block points at must
+   already carry a real `run_id` in every dashboard URL (step 3 + the URL model
+   below), and the labs session must be fresh (preconditions). Then:
    - Default: invoke the `canopy:ddd-run` skill with `{run_id, unified_spec:
      <demo-slug>.yaml path, why_brief: why_brief.yaml path}` — one render+judge
-     pass; produces per-scene screenshots + verdicts and the live dashboard.
+     pass. It drives `record_video` against the LIVE app; the verified invocation:
+     ```bash
+     cd <canopy> && uv run python -m scripts.walkthrough.record_video \
+       --spec <demo-slug>.yaml --output <run>/walkthrough.mp4 \
+       --snapshots <run>/snapshots --report <run>/render-report.json \
+       --storage-state ~/.ace/labs-session.json --skip-same-url --no-prewarm
+     ```
    - `--render`: dispatch `Agent(canopy:ddd)` for the full converge → video →
-     upload loop (honors its two pause gates: `concept_change`,
-     `external_release`).
+     upload loop (pause gates `concept_change`, `external_release`).
+
+   **Verified dashboard-URL model (2026-07-21) — EVERY dashboard renders at**
+   `…/labs/workflow/<def>/run/?run_id=<id>&opportunity_id=<opp>`. Traps that BOUNCE:
+   no `run_id` → the workflow LIST; no `/run/` → the DEFINITION page. **Action-shaped**
+   dashboards (`supports_saved_runs:false`, e.g. `sam_followup`) have no saved run,
+   so `demo-data-setup` MUST mint one via `mcp__connect-labs__workflow_create_run`
+   and use that `run_id`. Scene targets are real on-screen text (`text:Latest MUAC`),
+   never guessed CSS.
+
+   **Known caveat:** per-scene screenshots capture reliably, but canopy's internal
+   `webm→mp4` ffmpeg conversion can exit 1 (render-infra bug, canopy-side) — the
+   screenshots are the fallback deliverable.
 
 7. **Write back + summarize.** Set `phases.synthetic-data-and-workflows.status:
    done` (with `verdict`, `completed_at`, `summary_artifact`) and
@@ -82,13 +101,26 @@ All three converge on the realized `${var}` map (`par_url`); everything from
    `par_url` and — if `--render` — the canopy-web `/ddd/<slug>/<run_id>` package
    URL.
 
-## Preconditions (restore, don't adapt)
+## Preconditions (restore, don't adapt — verified live 2026-07-21)
 
-- Labs session live for rendering (`hal:synthetic-walkthrough § auth`, or the
-  ACE labs login). If not restorable, fail loud — do not ship a placeholder.
-- Canopy checkout reachable for `uv run python -m scripts.ddd.validate` and the
-  DDD loop (default `/Users/jjackson/emdash-projects/canopy`; see the Task 1
-  findings note).
+- **Live labs browser session for rendering.** A stored session expires (~6 days),
+  so refresh it unconditionally at the start (restore, don't probe). ACE has full
+  labs-login capability — no human needed:
+  ```bash
+  npx --prefix . tsx bin/labs-walkthrough-login.ts \
+    --connect-base-url https://connect.dimagi.com \
+    --labs-base-url https://labs.connect.dimagi.com
+  # → writes ~/.ace/labs-session.json (a Playwright storage_state)
+  ```
+  Reads `ACE_HQ_USERNAME`/`ACE_HQ_PASSWORD` from the env. The wrapper
+  `bin/ace-labs-walkthrough-login` does `set -euo pipefail; set -a; source
+  <plugin-data>/.env`, so it needs every `.env` value SHELL-SAFE — a value with an
+  unquoted `!` exits 127 before login (the EU-cred class; fixed by quoting in
+  `.env.tpl` + `/ace:setup --force-env`). If the wrapper still fails on `.env`, run
+  the `tsx` above with the two creds exported by SAFE parse
+  (`sed -n 's/^ACE_HQ_USERNAME=//p' <plugin-data>/.env`), never `source`.
+- Canopy checkout reachable for `uv run python -m scripts.ddd.validate` and
+  `record_video` (default `/Users/jjackson/emdash-projects/canopy`; `uv` on PATH).
 
 ## Not in scope (Plan A)
 
