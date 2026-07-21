@@ -27,8 +27,8 @@ paraphrase the schema here — read the model / schema and validate.
 | Source | Artifact | Used for |
 |---|---|---|
 | Operator | `--brief <text or drive-path>` | the demo story (same brief `demo-data-setup` used) |
-| `demo-data-setup` | `<demo-run>/7-synthetic/realized.json` | `par_url` + drill vars the scenes render |
-| `demo-data-setup` | `run_state…products.synthetic.source` | provider, labs opp id, deliver units |
+| `demo-data-setup` | `<demo-run>/7-synthetic/realized.json` | the flat `${var}` map — `primary_par_url`, one `<key>_par_url` per dashboard, `<name>_url` drills — the scenes render |
+| `demo-data-setup` | `run_state…products.synthetic.source` | provider, labs opp id, deliver units, and `dashboards[]` (key/template/role) — one narrative arc per dashboard |
 | Discovery | canopy checkout path | `uv run python -m scripts.ddd.validate` (default `/Users/jjackson/emdash-projects/canopy`; see `docs/superpowers/plans/2026-07-20-plan-a-task1-findings.md`) |
 
 ## Products
@@ -59,7 +59,11 @@ paraphrase the schema here — read the model / schema and validate.
    - `base_url: https://labs.connect.dimagi.com`; no `auth` block (labs cookies
      seeded out-of-band, per `hal:synthetic-walkthrough`).
    - `personas[]` — first persona is the network manager; each `name, role,
-     color, intro, org`.
+     color, intro, org`. **One arc per dashboard in `source.dashboards[]`** — e.g.
+     a program manager on `program_admin` (multi-LLO oversight) and the same or a
+     second persona on `child_recovery` (a named child's MUAC recovering
+     red→yellow→green). The narrative moves from the overview dashboard to the
+     recovery dashboard, not one screen.
    - `why_brief` — embed / reference the Step 2 brief.
    - `setup: { command: <regenerate-realized.json command>, outputs: "realized.json", rerun: once }`.
      The `command` must (re)produce `realized.json` for the render session. For
@@ -71,10 +75,13 @@ paraphrase the schema here — read the model / schema and validate.
      `show`, `concept_claim` (≥5 words, falsifiable, NO banned marketing
      phrases), `provenance` (= a spine `id`), `role: demo`, ≥1 `feature` with
      non-empty `description` AND `verify`, `actions[]` (from the 17-verb
-     vocabulary), and `url: ${par_url}` (or a drill var). **Only the first scene
-     on a given surface carries `url`** — consecutive same-`url` scenes reload
-     the page (`hal:synthetic-walkthrough` anti-pattern); follow-on scenes on the
-     same surface omit `url` and just act/capture.
+     vocabulary), and `url: ${<key>_par_url}` — the realized var for **that
+     scene's dashboard** (`${program_admin_par_url}`, `${child_recovery_par_url}`,
+     or a drill var). **Only the first scene on a given surface carries `url`** —
+     consecutive same-`url` scenes reload the page (`hal:synthetic-walkthrough`
+     anti-pattern); follow-on scenes on the same dashboard omit `url` and just
+     act/capture. Crossing to a different dashboard = a new scene WITH its
+     `${<key>_par_url}`.
 
 4. **Validate — the gate.** From the canopy checkout:
    ```

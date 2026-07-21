@@ -49,8 +49,8 @@ front half (how the labs-only opp + its data come to exist) differs.
 ## Products
 
 - `<demo-run>/7-synthetic/demo-data-setup_manifest.yaml` — the per-opp generator manifest sent to labs
-- `<demo-run>/7-synthetic/realized.json` — **the handoff**: flat `${var}` map with `par_url` + drills
-- `<demo-run>/7-synthetic/demo-data-setup.md` — run summary (labs opp id, record counts, `par_url`, warnings)
+- `<demo-run>/7-synthetic/realized.json` — **the handoff**: a **FLAT** `${var}` map (DDD substitutes `${var}` verbatim — keep it flat, no nesting). One `<key>_par_url` per dashboard the demo builds, plus `primary_par_url` (the dashboard the walkthrough opens on) and any `<name>_url` drills. E.g. `{ "primary_par_url": ..., "program_admin_par_url": ..., "child_recovery_par_url": ..., "audit_good_url": ... }`
+- `<demo-run>/7-synthetic/demo-data-setup.md` — run summary (labs opp id, record counts, one par_url per dashboard, warnings)
 - `run_state.yaml.phases.synthetic-data-and-workflows.products.synthetic.source` — the seam contract, populated:
   ```yaml
   source:
@@ -58,11 +58,43 @@ front half (how the labs-only opp + its data come to exist) differs.
     labs_synthetic_opp_id: <int ≥ 10000>
     deliver_units: [{slug, name}]
     narrative_context_ref: <drive path to the manifest>
-    realized_vars: { par_url: <url>, ...drills }
+    dashboards:                        # one per dashboard the Step-0 plan selected
+      - key: program_admin             # → ${program_admin_par_url} in realized.json
+        template: program_admin_report
+        role: overview
+        par_url: <url>
+      - key: child_recovery
+        template: sam_followup
+        role: recovery
+        par_url: <url>
+    primary_dashboard: program_admin
+    realized_vars_ref: 7-synthetic/realized.json
   ```
 - `run_state.yaml.phases.synthetic-data-and-workflows.steps.demo-data-setup.status: done` (+ `artifact` path)
 
 ## Process (denovo)
+
+0. **Plan the demo from the ask (interpret + select templates).** Turn the raw
+   brief/ask (which may be a forwarded email) into a concrete plan BEFORE
+   generating anything:
+   - **Enumerate the dashboards the ask needs.** A narrative like "program
+     management across LLOs AND individual children getting better" is **two**
+     dashboards, not one. Give each a `key` (e.g. `program_admin`,
+     `child_recovery`) and a `role`.
+   - **Select a checked-in template per dashboard — reuse over scratch.** Survey
+     the palette with `mcp__connect-labs__list_templates` plus the labs
+     `connect_labs/workflow/templates/` library, and map each dashboard to the
+     best fit. Known fits (MUAC-only nutrition):
+     - multi-LLO / FLW oversight → `program_admin_report` (+ `chc_nutrition_analysis` for the FLW aggregate).
+     - per-child recovery over follow-up visits → `sam_followup` (MUAC + recovery-status timeline). **Not** `kmc_longitudinal` — it keys on weight, unusable when CHWs have no scales.
+     Only `workflow_create` from SCRATCH when nothing in the palette fits, and say
+     so explicitly in the summary.
+   - **Derive the data story per dashboard** — personas, the anomaly/recovery
+     arcs (MUAC recovery = children moving red[SAM]→yellow[MAM]→green across
+     follow-up weeks), timeline. This becomes the manifest (step 1) and the
+     narrative context `demo-narrative` reads.
+   Record the plan (`dashboards[]` with key/template/role) — it drives steps 1–5
+   and the `source.dashboards` write-back.
 
 1. **Author the per-opp generator manifest from the brief.**
 
@@ -90,37 +122,40 @@ front half (how the labs-only opp + its data come to exist) differs.
    payment-unit pre-flight: `skills/synthetic-data-generate/SKILL.md § Process`
    steps 1a–3. Capture the returned `labs_opp_id` and `deliver_units`.
 
-3. **Author the dashboard dynamically.**
-
-   Build the workflow (dashboard) with the ADAPT-or-SCRATCH flow from
+3. **Author each planned dashboard dynamically.** Loop over the Step-0
+   `dashboards[]`; for **each**, run the ADAPT-or-SCRATCH flow from
    `skills/synthetic-workflow-seed/SKILL.md § Process`:
-   `mcp__connect-labs__workflow_create` (or
-   `mcp__connect-labs__workflow_create_from_template` when the brief matches an
-   existing template such as the CHC-nutrition dashboard) →
+   `mcp__connect-labs__workflow_create_from_template` (ADAPT — the default; pass
+   the dashboard's selected template) *or* `mcp__connect-labs__workflow_create`
+   (SCRATCH — only when nothing fit) →
    `mcp__connect-labs__pipeline_update_schema` →
    `mcp__connect-labs__workflow_update_render_code` /
    `mcp__connect-labs__workflow_patch_render_code` →
    `mcp__connect-labs__workflow_create_run` →
    `mcp__connect-labs__workflow_save_snapshot`. Reuse that skill's
    alias-consistency, period-scoping, and snapshot-hook guidance by reference —
-   they are the difference between a populated dashboard and a blank one.
+   they are the difference between a populated dashboard and a blank one. Capture
+   each dashboard's `<def_id>` + saved `<run_id>`.
 
-   **Nutrition note:** the labs CHC-nutrition dashboard (MUAC / SAM-MAM /
-   gender) already exists as a template; a nutrition demo should ADAPT it via
-   `workflow_create_from_template` rather than build render_code from scratch.
+   **Nutrition note:** `program_admin_report` / `chc_nutrition_analysis` /
+   `sam_followup` are checked-in templates — ADAPT via
+   `workflow_create_from_template`, never build render_code from scratch.
 
-4. **Build `par_url`.**
+4. **Build a `par_url` per dashboard.**
 
-   Assemble the deep-link from the saved run: `https://labs.connect.dimagi.com/
-   labs/workflow/<def_id>/run/?run_id=<run_id>&opportunity_id=<opp_id>`. The
-   **bare** workflow URL renders the run *picker*, not the dashboard — a saved
-   `run_id` in the query string is required (`docs/learnings/
-   2026-06-13-labs-workflow-run-deeplink.md`).
+   For each planned dashboard, assemble the deep-link from its saved run:
+   `https://labs.connect.dimagi.com/labs/workflow/<def_id>/run/?run_id=<run_id>&opportunity_id=<opp_id>`,
+   and name it `${key}_par_url`. Set `primary_par_url` to the
+   `primary_dashboard`'s. The **bare** workflow URL renders the run *picker*, not
+   the dashboard — a saved `run_id` in the query string is required
+   (`docs/learnings/2026-06-13-labs-workflow-run-deeplink.md`).
 
 5. **Emit the handoff + write back.**
 
-   Write `realized.json` (`{ par_url, ...drill_urls }`), the summary `.md`, and
-   the `source` block above into the demo `run_state.yaml` via
+   Write `realized.json` — the **flat** multi-var map (`{ primary_par_url,
+   <key>_par_url per dashboard, <name>_url drills }`) — the summary `.md`, and
+   the `source` block above (including `dashboards[]` + `primary_dashboard`) into
+   the demo `run_state.yaml` via
    `mcp__plugin_ace_ace-gdrive__update_yaml_file` (`merge: 'deep'` — never
    `two-level`, which would drop sibling sub-keys; see CLAUDE.md gotcha). Set
    the `steps.demo-data-setup` block to `status: done` with the `realized.json`

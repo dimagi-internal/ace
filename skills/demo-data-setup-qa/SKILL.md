@@ -34,8 +34,9 @@ auto-fix protocol, static-vs-LLM rules).
 
 | # | id | type | description | auto-fix on fail |
 |---|---|---|---|---|
-| 1 | `realized_json_parses` | static | `realized.json` exists and parses as a JSON object | re-run `demo-data-setup` step 5 — the handoff was never written |
-| 2 | `par_url_is_run_deeplink` | static | `par_url` matches `^https://labs\.connect\.dimagi\.com/labs/workflow/\d+/run/\?run_id=[^&]+&opportunity_id=\d+$` (a saved-run deep-link, NOT the bare workflow URL) | rebuild `par_url` from the saved `run_id` — a bare workflow URL renders the picker (learning 2026-06-13) |
+| 1 | `realized_json_parses` | static | `realized.json` exists and parses as a **flat** JSON object (no nested values — DDD substitutes `${var}` verbatim) | re-run `demo-data-setup` step 5 — the handoff was never written / was nested |
+| 2 | `every_par_url_is_run_deeplink` | static | `primary_par_url` is present, and **every** `*_par_url` key matches `^https://labs\.connect\.dimagi\.com/labs/workflow/\d+/run/\?run_id=[^&]+&opportunity_id=\d+$` (a saved-run deep-link, NOT the bare workflow URL) | rebuild each `par_url` from its saved `run_id` — a bare workflow URL renders the picker (learning 2026-06-13) |
+| 2b | `dashboards_match_realized` | static | `source.dashboards[]` is non-empty; each has `key` + `template` + `role`; and every `<key>` has a matching `<key>_par_url` in `realized.json` (plan ↔ handoff agree) | ensure every planned dashboard was built and its `${key}_par_url` written; drop any dashboard that failed to seed |
 | 3 | `opp_is_labs_only` | static | `source.labs_synthetic_opp_id` is an integer **≥ 10000** | regenerate with a labs-only opp id ≥ 10000 — a real HQ-backed opp can't be driven by the generator |
 | 4 | `timeline_pinned` | static | the manifest `timeline.start_date` is a fixed ISO Monday (not a relative/sliding expression) and equals the `par_url` opportunity's env anchor | set `--pin-monday` to a fixed Monday; a sliding window breaks idempotency |
 | 5 | `flagged_worker_not_pre_seeded` | static | the current-week flagged worker has NO pre-seeded audit/task in the manifest (created on camera) | remove the flagged current-week worker's audit/task from the manifest |
