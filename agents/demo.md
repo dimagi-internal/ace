@@ -43,12 +43,15 @@ All three converge on the realized `${var}` map (`par_url`); everything from
    the Drive demo folder (`ACE/<name>/` + `runs/<runId>/7-synthetic/`) via the
    `ace-gdrive` atoms. Build the minimal structural `run_state.yaml` with the
    tested builder (DRY — do not hand-write the phase map):
+   Use the ABSOLUTE plugin path — `/ace:demo` runs from the user's session, so a
+   bare relative path to `lib/`/`scripts/` does NOT resolve (and `tsx -e` eval
+   can't resolve project imports at all):
    ```bash
-   npx tsx -e "import {buildDemoRunState} from './lib/demo-run-state.js'; \
-     import {stringify} from 'yaml'; \
-     process.stdout.write(stringify(buildDemoRunState({ \
-       demoName:'<name>', runId:'<runId>', source:'denovo', createdAt:new Date().toISOString()})))"
+   ACE_DIR="$HOME/.claude/plugins/cache/ace/ace/$(cat "$HOME/.claude/plugins/marketplaces/ace/VERSION")"
+   npx --prefix "$ACE_DIR" tsx "$ACE_DIR/scripts/emit-demo-run-state.ts" "<name>" "<runId>" "<denovo|clone|ace-run>"
    ```
+   (From the ace repo/worktree itself, `npx tsx scripts/emit-demo-run-state.ts
+   <name> <runId> <source>` also works.)
    Write the result to `ACE/<name>/runs/<runId>/run_state.yaml` (via
    `mcp__plugin_ace_ace-gdrive__drive_create_file`). Only
    `synthetic-data-and-workflows` is `in_progress`; all other pipeline phases are
