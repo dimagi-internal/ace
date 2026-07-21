@@ -31,7 +31,7 @@ section.
 | provider | source | status |
 |---|---|---|
 | `denovo` | a short demo brief (this skill) | **implemented (Plan A)** |
-| `clone` | a real Connect opportunity id | Plan B — `synthetic_clone_profile` → `_generate` → author dashboard over the cloned opp ids |
+| `clone` | a real Connect opportunity id | **implemented (Plan B)** — `synthetic_profile_from_prod`(mirror) → `synthetic_generate_from_manifest` → the SAME dashboard-authoring spine as denovo, + a fidelity gate |
 | `ace-run` | the Phase 4 opp of a full `/ace:run` | Phase 7 convergence (Plan C) — Phase 7 becomes this provider |
 
 All three converge on the **same handoff**: the realized `${var}` map. Only the
@@ -191,6 +191,44 @@ front half (how the labs-only opp + its data come to exist) differs.
 
 Then gate on `demo-data-setup-qa` before `demo-narrative` consumes the map.
 
+## Process (clone)
+
+Clone reuses the denovo spine — **only the data source changes** (steps 1–2);
+Step 0 (plan/template-select, now informed by the real opp's shape) and steps 3–5
+(author dashboards, mint runs via `workflow_create_run`, build `/run/?run_id=` URLs,
+emit the realized map) are IDENTICAL. Input: a real Connect `--opp <id>`.
+
+1c. **Profile the real opp → a PII-free manifest.**
+   `mcp__connect-labs__synthetic_profile_from_prod(opportunity_id, mirror=true)` —
+   reads the opp's export endpoints server-side and returns a manifest reproducing
+   the real statistical shape. **`mirror=true`** carries a de-identified per-entity
+   transplant pool so per-case *trajectories* are reproduced (its own example is an
+   infant growth curve — i.e. exactly a child's MUAC recovery arc), not just column
+   means. Pass `form_json_paths` to pin the fields the chosen template reads (e.g.
+   the `sam_followup` MUAC paths) when auto-discovery misses them.
+   - **Multi-LLO variant:** for a program-admin clone spanning several sites, use
+     the cohort path — `synthetic_clone_profile` (spec_yaml with all
+     `opportunity_ids`, `bundle_root: 'gdrive:'`) → `synthetic_clone_generate` —
+     which registers each as a labs-only opp; then author dashboards over them.
+   - **Access note:** profiling keys on the **Connect** `opportunity_id` (delivery
+     data is aggregated in Connect, independent of which HQ the deliver app lives
+     on). If the opp isn't reachable with the labs caller's token, that access gap
+     is the thing to close (multi-cluster / membership) — fail loud, don't fake it.
+
+2c. **Generate into a fresh labs-only opp** — `synthetic_create_labs_only` then
+   `synthetic_generate_from_manifest` with the profiled manifest (identical to
+   denovo step 2, from-manifest mode). Capture `labs_opp_id` + `deliver_units`.
+
+2c-fidelity. **Gate on `demo-fidelity-check`** (clone-only) — wraps
+   `mcp__connect-labs__synthetic_fidelity_report(bundle_dir)` to confirm the clone
+   reproduces the source's per-field distributions + correlations before it reaches
+   a funder. Fail → regenerate (or fall back to denovo authoring) — never show a
+   low-fidelity clone as if it were the real program.
+
+Then run Step 0 (template selection, informed by the real opp) and steps 3–5 exactly
+as denovo. A clone whose real data has no live activity yet → there's nothing to
+profile; use `denovo` for that program until it has real delivery data.
+
 ## Gotchas (encode every one — they are the difference between a live demo and a dead scene)
 
 - [ ] **Labs-only opp ids ≥ 10,000 have no CommCare HQ app.** Anything needing a
@@ -213,10 +251,8 @@ Then gate on `demo-data-setup-qa` before `demo-narrative` consumes the map.
 - [ ] **Anomaly weeks are 0-based (audits); coaching-arc weeks are 1-based
   (tasks).** Out-of-window anomalies are silently skipped.
 
-## Not in scope (Plan A)
+## Not in scope
 
-- `clone` / `ace-run` providers — see the providers table.
-- Fidelity checking (`synthetic_fidelity_report`) — a `clone`-only QA gate in
-  Plan B.
+- `ace-run` provider — Phase 7 convergence (Plan C); Phase 7 becomes this provider.
 - Rendering / judging / video — owned by canopy DDD, invoked after
   `demo-narrative` by `agents/demo.md`.

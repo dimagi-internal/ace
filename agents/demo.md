@@ -24,8 +24,8 @@ the PDD → app → Connect lifecycle. Three data-source providers feed one pipe
 
 | `--source` | front half | status |
 |---|---|---|
-| `denovo` | author data + dashboard from a brief | **Plan A (implemented)** |
-| `clone` | clone a real Connect opp → dashboard | Plan B |
+| `denovo` | author data + dashboard from a brief | **implemented (Plan A)** |
+| `clone` | profile a real Connect opp → synthetic data → dashboard | **implemented (Plan B)** |
 | `ace-run` | the Phase 4 opp of a `/ace:run` | Phase 7 convergence (Plan C) |
 
 All three converge on the realized `${var}` map (`par_url`); everything from
@@ -33,8 +33,8 @@ All three converge on the realized `${var}` map (`par_url`); everything from
 
 ## Process
 
-1. **Parse arguments.** `--source {denovo|clone}` (Plan A: `denovo`; `clone` →
-   report "not yet implemented — see Plan B"), `--brief <text|drive-path>`,
+1. **Parse arguments.** `--source {denovo|clone}` (`clone` requires `--opp
+   <connect-opp-id>`), `--brief <text|drive-path>`,
    `--name <demo-name>`, optional `--pin-monday <YYYY-MM-DD>`, optional
    `--render` (run the full `canopy:ddd` converge+video loop; default is a single
    render+judge via the `canopy:ddd-run` skill).
@@ -55,12 +55,14 @@ All three converge on the realized `${var}` map (`par_url`); everything from
    `skipped` — so `/ace:status <name>` and the eval rollups work unchanged.
 
 3. **Set up data + dashboard.** Invoke the `demo-data-setup` skill with
-   `{provider: denovo, brief, name, runId, pinMonday?}`. It returns the realized
-   `${var}` map (`par_url` + drills) and writes `7-synthetic/realized.json`.
+   `{provider: <source>, brief, name, runId, pinMonday?, opp?}` — `opp` is the real
+   Connect opportunity id when `source == clone`. It returns the realized `${var}`
+   map (`par_url` + drills) and writes `7-synthetic/realized.json`.
 
-4. **Gate.** Invoke `demo-data-setup-qa`. On `fail`, apply the auto-fix hints and
-   re-run step 3 (bounded retries) before proceeding — a dead dashboard must not
-   reach a funder.
+4. **Gate.** Invoke `demo-data-setup-qa`; **for `clone` also invoke
+   `demo-fidelity-check`** (confirms the clone reproduces the real source's shape).
+   On `fail`, apply the auto-fix hints and re-run step 3 (bounded retries) before
+   proceeding — a dead or low-fidelity dashboard must not reach a funder.
 
 5. **Author the narrative.** Invoke the `demo-narrative` skill with
    `{brief, realizedRef: 7-synthetic/realized.json, runId}`. It writes
@@ -122,8 +124,8 @@ All three converge on the realized `${var}` map (`par_url`); everything from
 - Canopy checkout reachable for `uv run python -m scripts.ddd.validate` and
   `record_video` (default `/Users/jjackson/emdash-projects/canopy`; `uv` on PATH).
 
-## Not in scope (Plan A)
+## Not in scope
 
-`clone` / `ace-run` providers; fidelity gating; retiring the Phase 7 bespoke
+`ace-run` provider; retiring the Phase 7 bespoke
 walkthrough/summary skills (that convergence is Plan C, which rewires
 `agents/synthetic-data-and-workflows.md` onto this same pipeline).
