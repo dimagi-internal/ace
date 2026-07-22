@@ -1165,7 +1165,7 @@ server.tool('commcare_set_menu_display',
     server: HQ_SERVER_FIELD,
     domain: z.string(),
     app_id: z.string(),
-    module_unique_id: z.string().regex(/^[0-9a-f]{32}$/, 'unique_id is a 32-char hex string from suite.xml or the module edit URL'),
+    module_unique_id: z.string().regex(/^[0-9a-f]{32}(?:[0-9a-f]{8})?$/, 'unique_id is a 32- or 40-hex string (CCHQ modules are 40-hex SHA-1; forms are 32-hex) from the module edit URL or the draft-app API'),
     display_style: z.enum(['list', 'grid']).optional().describe('Menu display style; defaults to "grid".'),
   },
   async (args) => runAtom(async () => (await commcareClient(args.server)).setMenuDisplay(args))

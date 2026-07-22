@@ -349,7 +349,27 @@ describe('parseDraftAppModuleUids — draft-app modules[N].unique_id', () => {
     expect(map.size).toBe(1);
   });
 
-  it('skips modules with missing or non-32-hex unique_id', () => {
+  it('captures 40-hex SHA-1 module unique_ids (CCHQ modules are 40-hex, not 32)', () => {
+    // Real values observed on malaria-rdt Deliver draft
+    // (connect-ace-prod, app cc9f6b08…): modules carry 40-hex SHA-1
+    // unique_ids while forms carry 32-hex. A 32-only gate silently drops
+    // every module uid and app-hq-settings halts on the resulting null.
+    const draft = {
+      modules: [
+        {
+          unique_id: '98005fe809c81640b8a5f84403b15ac851407160',
+          forms: [{ unique_id: '414ba8d7aa324edbb0ab6b1811ac9f5c' }],
+        },
+      ],
+    };
+    const map = parseDraftAppModuleUids(draft);
+    expect(map.get('modules-0/forms-0.xml')).toBe(
+      '98005fe809c81640b8a5f84403b15ac851407160',
+    );
+    expect(map.size).toBe(1);
+  });
+
+  it('skips modules with missing or non-hex / wrong-length unique_id', () => {
     const draft = {
       modules: [
         { unique_id: 'short', forms: [{ unique_id: '1'.repeat(32) }] },

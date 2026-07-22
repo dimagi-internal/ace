@@ -495,10 +495,11 @@ export function parseDraftAppFormUids(draftJson: unknown): DraftFormUidMap {
  * key is the form path (`modules-N/forms-M.xml`) so it overlays onto
  * `walkCcz` output in the same pass as `parseDraftAppFormUids`.
  *
- * Every form under a module gets that module's uid. Modules without a
- * valid 32-hex `unique_id` are skipped silently — their forms simply
- * keep `module_unique_id: null`, and the caller (app-hq-settings) halts
- * before setting menu display on a null uid.
+ * Every form under a module gets that module's uid. Modules whose
+ * `unique_id` is not 32- or 40-hex are skipped silently — their forms
+ * simply keep `module_unique_id: null`, and the caller (app-hq-settings)
+ * halts before setting menu display on a null uid. (CCHQ modules are
+ * 40-hex SHA-1; forms are 32-hex.)
  *
  * Exported for unit tests.
  */
@@ -510,7 +511,12 @@ export function parseDraftAppModuleUids(draftJson: unknown): DraftModuleUidMap {
     const mod = modules[mi] as { unique_id?: unknown; forms?: unknown[] } | null;
     if (!mod) continue;
     const modUid = typeof mod.unique_id === 'string' ? mod.unique_id : null;
-    if (!modUid || !/^[0-9a-f]{32}$/.test(modUid)) continue;
+    // CCHQ emits module `unique_id`s as 40-hex SHA-1 digests, while form
+    // `unique_id`s are 32-hex — accept either width. A 32-only gate here
+    // silently dropped every real module uid, leaving module_unique_id
+    // null and halting app-hq-settings (the RDT Deliver draft surfaced
+    // this: 40-hex modules, 32-hex forms).
+    if (!modUid || !/^[0-9a-f]{32}(?:[0-9a-f]{8})?$/.test(modUid)) continue;
     const forms = Array.isArray(mod.forms) ? mod.forms : [];
     // Map every form path under this module to the module uid. Fall back
     // to at least forms-0 so a module with a broken/empty forms[] array
