@@ -1,0 +1,239 @@
+# content-form-finish-to-suite.yaml  (proven live, jjackson/ace#894)
+# Finalize a Learn form in a SINGLE-MODULE Learn app (one CommCare module
+# containing ALL N forms) and return to the N-form suite list
+# (screen_suite_menu_list) -- NOT the StandardHomeActivity home grid that
+# content-form-finish.yaml asserts. In a single-module app, finishing a
+# form returns to the suite MENU LIST, so content-form-finish's terminal
+# `assertVisible learn-home-start-tile` fails and learn-suite-reentry
+# (home->suite) mis-navigates.
+#
+# PROVEN LIVE hh-poverty-targeting/20260722-1341 (connect-2.63.0): one
+# module "Poverty Targeting Enumerator Training" with 7 forms; each form,
+# incl. the score-gated post-assessment (result -> congratulations ->
+# FINISH), finalized to screen_suite_menu_list with this loop. Whole Learn
+# leg passed 100% and unlocked Deliver.
+#
+# Pre-state: FormEntryActivity mid-form (nav_btn_next visible).
+# Post-state: screen_suite_menu_list; the journey then taps the next form
+#   row directly (NO learn-suite-reentry / home-grid round-trip).
+# Param: ${SCREENSHOT_NAME}.
+appId: org.commcare.dalvik
+---
+- runFlow:
+    when:
+      notVisible:
+        id: "${SELECTOR:learn-suite-menu}"
+    commands:
+      - runFlow:
+          when:
+            visible:
+              id: "${SELECTOR:form-nav-next}"
+          commands:
+            - tapOn:
+                id: "${SELECTOR:form-nav-next}"
+            - waitForAnimationToEnd:
+                timeout: 3500
+- runFlow:
+    when:
+      notVisible:
+        id: "${SELECTOR:learn-suite-menu}"
+    commands:
+      - runFlow:
+          when:
+            visible:
+              id: "${SELECTOR:form-nav-next}"
+          commands:
+            - tapOn:
+                id: "${SELECTOR:form-nav-next}"
+            - waitForAnimationToEnd:
+                timeout: 3500
+- runFlow:
+    when:
+      notVisible:
+        id: "${SELECTOR:learn-suite-menu}"
+    commands:
+      - runFlow:
+          when:
+            visible:
+              id: "${SELECTOR:form-nav-next}"
+          commands:
+            - tapOn:
+                id: "${SELECTOR:form-nav-next}"
+            - waitForAnimationToEnd:
+                timeout: 3500
+- runFlow:
+    when:
+      notVisible:
+        id: "${SELECTOR:learn-suite-menu}"
+    commands:
+      - runFlow:
+          when:
+            visible:
+              id: "${SELECTOR:form-nav-next}"
+          commands:
+            - tapOn:
+                id: "${SELECTOR:form-nav-next}"
+            - waitForAnimationToEnd:
+                timeout: 3500
+- runFlow:
+    when:
+      notVisible:
+        id: "${SELECTOR:learn-suite-menu}"
+    commands:
+      - runFlow:
+          when:
+            visible:
+              id: "${SELECTOR:form-nav-next}"
+          commands:
+            - tapOn:
+                id: "${SELECTOR:form-nav-next}"
+            - waitForAnimationToEnd:
+                timeout: 3500
+- runFlow:
+    when:
+      notVisible:
+        id: "${SELECTOR:learn-suite-menu}"
+    commands:
+      - runFlow:
+          when:
+            visible:
+              id: "${SELECTOR:form-nav-next}"
+          commands:
+            - tapOn:
+                id: "${SELECTOR:form-nav-next}"
+            - waitForAnimationToEnd:
+                timeout: 3500
+- runFlow:
+    when:
+      notVisible:
+        id: "${SELECTOR:learn-suite-menu}"
+    commands:
+      - runFlow:
+          when:
+            visible:
+              id: "${SELECTOR:form-nav-next}"
+          commands:
+            - tapOn:
+                id: "${SELECTOR:form-nav-next}"
+            - waitForAnimationToEnd:
+                timeout: 3500
+- runFlow:
+    when:
+      notVisible:
+        id: "${SELECTOR:learn-suite-menu}"
+    commands:
+      - runFlow:
+          when:
+            visible:
+              id: "${SELECTOR:form-nav-next}"
+          commands:
+            - tapOn:
+                id: "${SELECTOR:form-nav-next}"
+            - waitForAnimationToEnd:
+                timeout: 3500
+- runFlow:
+    when:
+      notVisible:
+        id: "${SELECTOR:learn-suite-menu}"
+    commands:
+      - runFlow:
+          when:
+            visible:
+              id: "${SELECTOR:form-nav-next}"
+          commands:
+            - tapOn:
+                id: "${SELECTOR:form-nav-next}"
+            - waitForAnimationToEnd:
+                timeout: 3500
+- runFlow:
+    when:
+      notVisible:
+        id: "${SELECTOR:learn-suite-menu}"
+    commands:
+      - runFlow:
+          when:
+            visible:
+              id: "${SELECTOR:form-nav-next}"
+          commands:
+            - tapOn:
+                id: "${SELECTOR:form-nav-next}"
+            - waitForAnimationToEnd:
+                timeout: 3500
+- runFlow:
+    when:
+      notVisible:
+        id: "${SELECTOR:learn-suite-menu}"
+    commands:
+      - runFlow:
+          when:
+            visible:
+              id: "${SELECTOR:form-nav-next}"
+          commands:
+            - tapOn:
+                id: "${SELECTOR:form-nav-next}"
+            - waitForAnimationToEnd:
+                timeout: 3500
+- runFlow:
+    when:
+      notVisible:
+        id: "${SELECTOR:learn-suite-menu}"
+    commands:
+      - runFlow:
+          when:
+            visible:
+              id: "${SELECTOR:form-nav-next}"
+          commands:
+            - tapOn:
+                id: "${SELECTOR:form-nav-next}"
+            - waitForAnimationToEnd:
+                timeout: 3500
+- runFlow:
+    when:
+      notVisible:
+        id: "${SELECTOR:learn-suite-menu}"
+    commands:
+      - runFlow:
+          when:
+            visible:
+              id: "${SELECTOR:form-nav-next}"
+          commands:
+            - tapOn:
+                id: "${SELECTOR:form-nav-next}"
+            - waitForAnimationToEnd:
+                timeout: 3500
+- runFlow:
+    when:
+      notVisible:
+        id: "${SELECTOR:learn-suite-menu}"
+    commands:
+      - runFlow:
+          when:
+            visible:
+              id: "${SELECTOR:form-nav-next}"
+          commands:
+            - tapOn:
+                id: "${SELECTOR:form-nav-next}"
+            - waitForAnimationToEnd:
+                timeout: 3500
+# Score-gated two-screen FINISH (#569): result/congratulations screen
+# shows nav_btn_finish (not nav_btn_next). Press FINISH to submit + sync.
+- runFlow:
+    when:
+      visible:
+        id: "${SELECTOR:form-nav-finish}"
+      notVisible:
+        id: "${SELECTOR:learn-suite-menu}"
+    commands:
+      - tapOn:
+          id: "${SELECTOR:form-nav-finish}"
+      - extendedWaitUntil:
+          visible:
+            text: ".*form.*sent to server.*"
+          timeout: 15000
+      - waitForAnimationToEnd:
+          timeout: 3000
+- extendedWaitUntil:
+    visible:
+      id: "${SELECTOR:learn-suite-menu}"
+    timeout: 15000
+- takeScreenshot: "${SCREENSHOT_NAME}"

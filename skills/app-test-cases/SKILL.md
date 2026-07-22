@@ -303,7 +303,8 @@ The static palette lives at `mcp/mobile/recipes/static/`:
 - `form-advance.yaml` — `nav_btn_next` ImageButton tap (NOT text-match "Next" — see atlas §7)
 - `form-submit.yaml` — branched: explicit Submit button if visible, otherwise auto-finalize via `nav_btn_next`
 - `content-form-finish.yaml` — **the canonical Learn CONTENT-form finalize.** A bounded multi-screen advance loop that taps `nav_btn_next` until the form auto-finalizes back to StandardHomeActivity, exits on the `learn-home-start-tile` home anchor (NOT the suite menu), handles the score-gated two-screen FINISH, and asserts the home grid post-finalize. Use this for every label-only content/lesson form — NOT for required-input quizzes (those still need per-field answer-taps + `form-advance` + `form-submit`). Requires `SCREENSHOT_NAME`. See § Multi-screen content forms below.
-- `learn-suite-reentry.yaml` — **the between-modules suite re-entry.** Tap the home Start tile → wait `screen_suite_menu_list`. A Learn form finalizes to StandardHomeActivity (the home grid), NOT to the suite menu, so this MUST run after each module's form-finalize and before the next module's `learn-tap-module`. Same surface contract as `learn-launch.yaml` (the first, post-claim suite entry); split out under a distinct name to document the between-modules intent at the call site. See § Suite re-entry between modules below.
+- `learn-suite-reentry.yaml` — **the between-modules suite re-entry.** Tap the home Start tile → wait `screen_suite_menu_list`. A Learn form finalizes to StandardHomeActivity (the home grid), NOT to the suite menu, so this MUST run after each module's form-finalize and before the next module's `learn-tap-module`. Same surface contract as `learn-launch.yaml` (the first, post-claim suite entry); split out under a distinct name to document the between-modules intent at the call site. See § Suite re-entry between modules below. **NOTE:** this home-round-trip is for MULTI-module Learn apps. For a **single-module** Learn app (one CommCare module holding all forms), forms finalize back to the suite list, not the home grid — use `content-form-finish-to-suite.yaml` and OMIT `learn-suite-reentry`. See § SINGLE-MODULE Learn app below (jjackson/ace#894).
+- `content-form-finish-to-suite.yaml` — **single-module Learn form finalize.** `content-form-finish.yaml` re-keyed on `${SELECTOR:learn-suite-menu}` (the N-form suite list) instead of the home tile, for Learn apps built as one CommCare module holding all forms. Proven live hh-poverty-targeting/20260722-1341. See § SINGLE-MODULE Learn app (jjackson/ace#894).
 - `connect-resume-opp.yaml` — opp-list → scroll to the target opp's In-Progress card → tap Resume → lands on the certificate/opp-detail surface (atlas § 8) that `deliver-launch.yaml` expects. Pre-state: Connect opp-list visible, opp already Learn-in-progress or complete. Warm-session only (journey-learn leg completed Learn in this dispatch). Requires `OPP_NAME` env var (same value as `connect-claim-opp.yaml`).
 - `deliver-launch.yaml` — post-Learn-complete certificate (atlas § 8) → tap VIEW OPPORTUNITY DETAILS → Download Delivery gate (§ 9) → tap DOWNLOAD → Deliver-mode StandardHomeActivity (§ 10) anchored on `id/viewJobCard`. All surfaces ID-anchored (verified 2026-05-26 against bednet J2 dumps; no coordinate fallbacks). Chain after `connect-resume-opp.yaml` in the Deliver smoke recipe.
 
@@ -420,6 +421,36 @@ learn-tap-module → content-form-finish (or quiz answer-taps + form-submit)
 The FIRST suite entry (post-claim) still uses `learn-launch.yaml`; every
 subsequent re-entry uses `learn-suite-reentry.yaml`. They share the same
 home-grid → suite-menu contract.
+
+##### SINGLE-MODULE Learn app — use `content-form-finish-to-suite.yaml`, NOT the home round-trip (jjackson/ace#894)
+
+The home-grid contract above holds when each Learn module is its OWN CommCare
+module. But Nova frequently builds a Learn app as **one CommCare module holding
+ALL N forms** (proven live on hh-poverty-targeting/20260722-1341: one module
+"Poverty Targeting Enumerator Training" with 7 forms). In that shape, finishing
+a form returns to the **N-form suite list (`screen_suite_menu_list`)**, NOT to
+the StandardHomeActivity home grid — so `content-form-finish.yaml`'s terminal
+`assertVisible learn-home-start-tile` fails, and `learn-suite-reentry.yaml`
+(home→suite) mis-navigates. This was the ace#894 Deliver-blocked-Phase-6 class.
+
+Detect single-module by reading the Nova blueprint (`get_app`): if the Learn
+app has exactly ONE module containing every form, author `journey-learn.yaml`
+as **drill suite-root → the module → its form list ONCE**, then per form:
+
+```
+learn-tap-module (taps the FORM ROW directly from the suite list)
+  → answer any quiz inputs
+  → content-form-finish-to-suite   (finalizes back to screen_suite_menu_list)
+  → (next form's learn-tap-module — NO learn-suite-reentry)
+```
+
+`content-form-finish-to-suite.yaml` is `content-form-finish.yaml` re-keyed on
+`${SELECTOR:learn-suite-menu}` (the suite list) instead of the home tile: a
+bounded guarded advance loop (`tapOn form-nav-next` while the suite list is not
+visible), a `form-nav-finish` fallback for the score-gated two-screen FINISH
+(#569), then `assertVisible learn-suite-menu`. **Omit `learn-suite-reentry`
+entirely** — there is no home round-trip in a single-module app. Multi-module
+apps keep the `content-form-finish` + `learn-suite-reentry` loop above.
 
 **Use the atlas (`docs/mobile-atlas/connect-2.62.0.md`) to verify each
 transition you author.** Each section of the atlas documents one
