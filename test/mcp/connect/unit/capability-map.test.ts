@@ -23,7 +23,7 @@ describe('connect capability map', () => {
     for (const a of authoring) expect(CAPABILITY_MAP).toHaveProperty(a);
   });
 
-  it('has the ten observation atoms', () => {
+  it('has the eleven observation atoms', () => {
     const observation = [
       'list_programs', 'get_program',
       'list_delivery_types',
@@ -32,6 +32,7 @@ describe('connect capability map', () => {
       'list_payment_units',
       'list_invites',
       'list_invoices', 'get_invoice',
+      'get_learn_progress',
     ];
     for (const o of observation) expect(CAPABILITY_MAP).toHaveProperty(o);
   });

@@ -261,3 +261,34 @@ export interface DeliveryType {
   name: string;
   slug?: string;
 }
+
+/**
+ * A single accepted worker's authoritative Learn progression, scraped from
+ * Connect's `WorkerLearnView` fragment
+ * (`GET /a/<domain>/opportunity/<opportunity_id>/workers/learn/`).
+ *
+ * `modules_completed_pct` is Connect's `OpportunityAccess.learn_progress`
+ * (`unique_completed_modules / LearnModule.count × 100`) — the value that
+ * gates Deliver. Deliver unlocks ONLY at 100% (`completed_learn_date` is set
+ * only then); the assessment passing is orthogonal. So `learn_complete` is
+ * the field a Phase-6 QA check must assert, NOT `assessment_status`.
+ */
+export interface WorkerLearnRow {
+  name: string;
+  /** OpportunityAccess.learn_progress, 0–100 (e.g. 80.0 for 4/5 modules). */
+  modules_completed_pct: number;
+  /** True iff pct ≥ 100 OR Connect rendered a Completed-Learning date. */
+  learn_complete: boolean;
+  /** Connect's `completed_learn_date`; null when < 100% (rendered "—"). */
+  completed_learning_date: string | null;
+  /** Assessment outcome; null when Connect renders "—" (not yet taken). */
+  assessment_status: 'passed' | 'failed' | null;
+}
+
+export interface LearnProgress {
+  domain: string;
+  opportunity_id: string;
+  /** Total Learn modules, when observable; the fragment does not carry it. */
+  learn_modules_total?: number;
+  workers: WorkerLearnRow[];
+}

@@ -13,6 +13,8 @@ import {
   PaymentUnitTableSchemaError,
   parseDeliverUnitTable,
   parseDeliverUnitFormCheckboxes,
+  parseWorkerLearnTable,
+  WorkerLearnTableSchemaError,
 } from '../../../../mcp/connect/backends/html-scrape.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -523,5 +525,119 @@ describe('parseDeliverUnitFormCheckboxes', () => {
     const html = `<input type="checkbox" name="required_deliver_units" value="9001"> Bare DU Name`;
     const out = parseDeliverUnitFormCheckboxes(html);
     expect(out.get('Bare DU Name')).toBe('9001');
+  });
+});
+
+describe('parseWorkerLearnTable', () => {
+  it('parses the live WorkerLearnView fragment: 80% / not complete / passed', () => {
+    // Captured live 2026-07-22 from
+    // /a/ai-demo-space/opportunity/cb24ac17-…/workers/learn/ (HX-Request).
+    // The "ACE Test" worker walked 4/5 modules → 80.0%, Completed Learning
+    // "—" (Deliver still locked), Assessment "Passed". The atom MUST return
+    // learn_complete:false — asserting the assessment status alone would
+    // wrongly call the Deliver gate open.
+    const { workers } = parseWorkerLearnTable(fix('opportunity-cb24ac17-workers-learn.html'));
+    expect(workers).toHaveLength(1);
+    expect(workers[0]).toEqual({
+      name: 'ACE Test',
+      modules_completed_pct: 80.0,
+      learn_complete: false,
+      completed_learning_date: null,
+      assessment_status: 'passed',
+    });
+  });
+
+  it('marks a worker complete when Learn hit 100% (Completed-Learning date present)', () => {
+    // A synthesized second-worker table with the SAME column layout (note
+    // the leading Status column) but a 100% row carrying a real date.
+    const html = `
+      <table>
+        <thead><tr>
+          <th><span>#</span></th>
+          <th><span>Status</span></th>
+          <th><a>Name <i></i></a></th>
+          <th><a>Last active</a></th>
+          <th><a>Started Learning</a></th>
+          <th><a>Modules completed</a></th>
+          <th><a>Completed Learning</a></th>
+          <th><a>Assessment</a></th>
+          <th><a>Attempts</a></th>
+          <th><a>Learning hours</a></th>
+          <th><span></span></th>
+        </tr></thead>
+        <tbody>
+          <tr class="group even">
+            <td>1</td>
+            <td><i class="fa-circle-check"></i></td>
+            <td><a><p class="text-sm">Fully Done</p><p class="text-xs">abc123</p></a></td>
+            <td>22-Jul-2026 10:00</td>
+            <td>22-Jul-2026 09:00</td>
+            <td><div style="width: 100.0%"></div><span>100.0%</span></td>
+            <td>22-Jul-2026 11:00</td>
+            <td>Passed</td>
+            <td>1</td>
+            <td>5 min</td>
+            <td></td>
+          </tr>
+          <tr class="group odd">
+            <td>2</td>
+            <td><i class="fa-circle-check"></i></td>
+            <td><a><p class="text-sm">Half Way</p><p class="text-xs">def456</p></a></td>
+            <td>22-Jul-2026 10:00</td>
+            <td>22-Jul-2026 09:00</td>
+            <td><div style="width: 40.0%"></div><span>40.0%</span></td>
+            <td>—</td>
+            <td>Failed</td>
+            <td>3</td>
+            <td>2 min</td>
+            <td></td>
+          </tr>
+        </tbody>
+      </table>`;
+    const { workers } = parseWorkerLearnTable(html);
+    expect(workers).toHaveLength(2);
+    expect(workers[0]).toMatchObject({
+      name: 'Fully Done',
+      modules_completed_pct: 100.0,
+      learn_complete: true,
+      completed_learning_date: '22-Jul-2026 11:00',
+      assessment_status: 'passed',
+    });
+    expect(workers[1]).toMatchObject({
+      name: 'Half Way',
+      modules_completed_pct: 40.0,
+      learn_complete: false,
+      completed_learning_date: null,
+      assessment_status: 'failed',
+    });
+  });
+
+  it('returns an empty roster when there are no data rows', () => {
+    const html = `<table><thead><tr>
+      <th>#</th><th>Status</th><th>Name</th><th>Last active</th>
+      <th>Started Learning</th><th>Modules completed</th>
+      <th>Completed Learning</th><th>Assessment</th>
+      <th>Attempts</th><th>Learning hours</th><th></th>
+    </tr></thead><tbody></tbody></table>`;
+    expect(parseWorkerLearnTable(html).workers).toEqual([]);
+  });
+
+  it('throws WorkerLearnTableSchemaError when a required header is missing (fail loud, never fixed-index)', () => {
+    // Modules-completed header dropped — a fixed-index parser would silently
+    // read the wrong column. We refuse and name the drift.
+    const html = `<table><thead><tr>
+      <th>#</th><th>Status</th><th>Name</th><th>Last active</th>
+      <th>Started Learning</th>
+      <th>Completed Learning</th><th>Assessment</th>
+      <th>Attempts</th><th>Learning hours</th><th></th>
+    </tr></thead><tbody>
+      <tr class="group even"><td>1</td><td></td><td><p>X</p></td><td></td><td></td><td>—</td><td>Passed</td><td>1</td><td></td><td></td></tr>
+    </tbody></table>`;
+    expect(() => parseWorkerLearnTable(html)).toThrow(WorkerLearnTableSchemaError);
+    try {
+      parseWorkerLearnTable(html);
+    } catch (e) {
+      expect((e as WorkerLearnTableSchemaError).missing_columns).toContain('Modules completed');
+    }
   });
 });

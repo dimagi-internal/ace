@@ -8,6 +8,7 @@ import type {
   VerificationFlags,
   PaymentUnit,
   DeliverUnit,
+  LearnProgress,
 } from './types.js';
 
 export interface ConnectClient {
@@ -274,4 +275,20 @@ export interface ConnectClient {
   // Invoices
   listInvoices(args: { organization_slug: string; opportunity_id: string }): Promise<{ invoices: Invoice[] }>;
   getInvoice(args: { organization_slug: string; invoice_id: string }): Promise<Invoice>;
+
+  /**
+   * Read each accepted worker's authoritative Learn progression from
+   * Connect's `WorkerLearnView` fragment
+   * (`GET /a/<domain>/opportunity/<opportunity_id>/workers/learn/` with
+   * `HX-Request: true`). This is the "close the loop to the source of truth"
+   * read for Phase 6: Deliver unlocks only when Learn reaches 100% of modules
+   * (`OpportunityAccess.learn_progress == 100` / `completed_learn_date` set),
+   * NOT when the assessment passes. A partial walk (e.g. 4/5 modules → 80%)
+   * leaves `learn_complete: false` while the on-device assessment screen may
+   * already read "passed". Read-only, session-cookie authed (no CSRF for GET).
+   */
+  getLearnProgress(args: {
+    domain: string;                     // Connect org / project-space slug in the /a/<domain>/ path
+    opportunity_id: string;             // opportunity UUID
+  }): Promise<LearnProgress>;
 }
