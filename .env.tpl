@@ -265,6 +265,17 @@ ELEVENLABS_API_KEY=op://AI-Agents/ACE - ElevenLabs API Key/credential
 # session backend is `local`.
 ACE_WEB_BASE_URL=https://labs.connect.dimagi.com/ace
 
+# ── ace-web workspace slug ─────────────────────────────────────────
+# The ace-web Workspace ACE opps live under. Used to construct the
+# canonical run-summary share URL (ACE's shareable output):
+#   ${ACE_WEB_BASE_URL}/opps/${ACE_WEB_WORKSPACE}/<opp>/runs/<run-id>/summary
+# This is a deployment constant (the deployed ace-web has exactly one
+# ACE workspace); the video/partnership skills default WORKSPACE_SLUG to
+# the same value. Recorded here so the run-summary URL is derivable from
+# ACE's own config instead of being spelunked out of the ace-web DB
+# (jjackson/ace — run-summary-url-not-first-class gap).
+ACE_WEB_WORKSPACE=dimagi-team
+
 # ── ace-web Personal Access Token (per-human, per-machine) ─────────
 #
 # NOT 1Password-backed. Minted via /ace:ace-web-pat-mint (gh-style
