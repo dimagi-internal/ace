@@ -4,6 +4,7 @@ import type { Opportunity, PaymentUnit, Program, ProgramApplication } from '../t
 import { HttpError, ConnectValidationError, ConnectError } from '../errors.js';
 import { assertFundsAtLeastOneUser } from '../opportunity-capacity.js';
 import type { PlaywrightSession } from '../auth/playwright-session.js';
+import { parseOrgMemberTable, type OrgMemberRow } from '../../../lib/connect-member-table.js';
 import {
   extractFormCsrfToken,
   extractFormFieldValues,
@@ -603,6 +604,23 @@ export class PlaywrightBackend implements ConnectClient {
    */
   addOrgMember: ConnectClient['addOrgMember'] = async ({ organization_slug, email, role }) => {
     const wantRole = role ?? 'member';
+    const tablePath = `/a/${organization_slug}/organization/member_table?page_size=100`;
+
+    /** Read the member table as structured rows: one per membership. */
+    const readMembers = async (): Promise<OrgMemberRow[]> => {
+      const res = await this.request.get(tablePath);
+      if (res.status() !== 200) throw await httpErrorFor(res, tablePath);
+      return parseOrgMemberTable(await res.text());
+    };
+    const findRow = (rows: OrgMemberRow[]) =>
+      rows.find((r) => r.email.toLowerCase() === email.toLowerCase()) ?? null;
+
+    // 0. PRE-read. Connect's MembershipForm.clean_email EXCLUDES users already
+    //    in the org, so for an existing member the form never validates and the
+    //    POST is a silent no-op — same 302 as success. Without knowing the
+    //    before-state we cannot tell "added" from "was already there", and we
+    //    would report a role that was never applied. (dimagi-internal/ace#911)
+    const before = findRow(await readMembers());
     // 1. GET the org home page — it renders the add-member modal whose
     //    form carries the {% csrf_token %} we need.
     const homePath = `/a/${organization_slug}/organization/`;
@@ -628,30 +646,60 @@ export class PlaywrightBackend implements ConnectClient {
       throw await httpErrorFor(postRes, postPath, 'POST');
     }
 
-    // 3. Verify by read-back. `page_size=100` is Connect's max page size
+    // 3. POST-read. `page_size=100` is Connect's max page size
     //    (PAGE_SIZE_OPTIONS = [20,30,50,100]); a fresh membership sorts to
     //    the end of the queryset, so the large page keeps it on the single
-    //    page for any realistic workspace (<100 members). The table's
-    //    `user` column is `accessor="user__email"`, so the raw email is in
-    //    the rendered HTML.
-    const tablePath = `/a/${organization_slug}/organization/member_table?page_size=100`;
-    const tableRes = await this.request.get(tablePath);
-    if (tableRes.status() !== 200) throw await httpErrorFor(tableRes, tablePath);
-    const tableHtml = await tableRes.text();
-    if (!tableHtml.toLowerCase().includes(email.toLowerCase())) {
+    //    page for any realistic workspace (<100 members).
+    const after = findRow(await readMembers());
+
+    if (!after) {
+      // Absent before AND after → the POST genuinely did nothing. With the
+      // pre-read we can now name the ONE remaining cause precisely: the
+      // "already a member" branch is excluded by `before` being null.
       throw new ConnectValidationError(
         [
-          `Connect did not add '${email}' to workspace '${organization_slug}'. ` +
-            `Connect's MembershipForm.clean_email rejects two cases with the same silent 302: ` +
-            `(1) no Connect account exists for that email yet — the person must sign in to Connect once before they can be invited; ` +
-            `(2) they are already a member of this workspace. ` +
-            `Neither reason is echoed in the response, so this is inferred from the member-table read-back.`,
+          `Connect did not add '${email}' to workspace '${organization_slug}', and they were not a member beforehand. ` +
+            `Connect's MembershipForm.clean_email rejects with a silent 302; since the pre-read confirms they were NOT ` +
+            `already a member, the cause is that no Connect account exists for that email yet — the person must sign in ` +
+            `at https://connect.dimagi.com/ once before they can be added.`,
         ],
-        { email: ['User with this email does not exist or is already a member'] },
+        { email: ['No Connect account exists for this email'] },
       );
     }
 
-    return { organization_slug, email, role: wantRole, status: 'invited' as const };
+    if (before) {
+      // They were already a member: clean_email rejected the form, so NOTHING
+      // changed — least of all the role. Report the stored role, not the ask.
+      const result = {
+        organization_slug,
+        email,
+        role: after.role,
+        requested_role: wantRole,
+        status: 'already-member' as const,
+      };
+      if (after.role?.toLowerCase() !== wantRole.toLowerCase()) {
+        return {
+          ...result,
+          role_unchanged: {
+            requested: wantRole,
+            actual: after.role,
+            note:
+              `'${email}' was already a member with role '${after.role ?? 'unknown'}'. Connect's add-member form ` +
+              `excludes existing members (MembershipForm.clean_email), so the requested role '${wantRole}' was NOT ` +
+              `applied and no membership was modified. Change an existing member's role in the Connect UI.`,
+          },
+        };
+      }
+      return result;
+    }
+
+    return {
+      organization_slug,
+      email,
+      role: after.role,
+      requested_role: wantRole,
+      status: 'invited' as const,
+    };
   };
 
   // ── Learn progression (authoritative Deliver-gate read) ──────────

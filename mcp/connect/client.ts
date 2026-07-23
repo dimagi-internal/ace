@@ -268,8 +268,27 @@ export interface ConnectClient {
   }): Promise<{
     organization_slug: string;
     email: string;
-    role: 'admin' | 'member' | 'viewer';
-    status: 'invited';
+    /**
+     * The role READ BACK from the member table — the role Connect actually
+     * stored, never the one that was requested. `null` when the row renders a
+     * role we don't recognise.
+     */
+    role: string | null;
+    requested_role: 'admin' | 'member' | 'viewer';
+    /**
+     * `invited` — they were absent before and present after; this call added them.
+     * `already-member` — they were ALREADY a member, so Connect's
+     *   `MembershipForm.clean_email` rejected the POST and NOTHING changed
+     *   (it excludes users already in the org, so the form never validates and
+     *   no role update occurs). Do not read this as "the requested role applied".
+     */
+    status: 'invited' | 'already-member';
+    /**
+     * Set when status is `already-member` AND the stored role differs from the
+     * requested one — i.e. the caller asked for a role change that did NOT happen.
+     * Connect has no add-member path that updates an existing membership's role.
+     */
+    role_unchanged?: { requested: string; actual: string | null; note: string };
   }>;
 
   // Invoices

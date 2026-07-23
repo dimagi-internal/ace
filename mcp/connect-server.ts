@@ -560,11 +560,11 @@ server.tool('connect_delete_unaccepted_flw_invites',
 );
 
 server.tool('connect_add_org_member',
-  'Invite a human user to a Connect workspace (organization) by email. POSTs the HTML membership form at `/a/<org_slug>/organization/member` (no REST equivalent) and verifies by reading back the member table. TWO hard requirements enforced by Connect, not bypassable: (1) the authenticated ACE session user (ace@dimagi-ai.com) MUST be an admin of `organization_slug`, or the POST 403s; (2) the invitee MUST already have a Connect account (signed in once) and NOT already be a member — Connect rejects unknown/duplicate emails with a silent redirect, surfaced here as a typed validation error via member-table read-back. On success the user gets an accept-invite email and shows as pending in the member list. `role` defaults to `member`.',
+  'Invite a human user to a Connect workspace (organization) by email. POSTs the HTML membership form at `/a/<org_slug>/organization/member` (no REST equivalent), reading the member table BEFORE and AFTER so the outcome is observed rather than assumed. Returns `status: "invited"` (absent before, present after — this call added them) or `status: "already-member"`, plus `role` READ BACK from the table (the role Connect actually stored) alongside the `requested_role`. IMPORTANT: Connect\'s `MembershipForm.clean_email` EXCLUDES users already in the org, so for an existing member the form never validates — the POST is a silent no-op returning the same 302 as success, and the requested role is NOT applied. That case returns `role_unchanged: {requested, actual, note}`; there is no add-member path that updates an existing membership\'s role (do it in the Connect UI). Requirements enforced by Connect, not bypassable: (1) the authenticated ACE session user (ace@dimagi-ai.com) MUST be an admin of `organization_slug`, or the POST 403s; (2) the invitee MUST already have a Connect account (signed in once) — if they were not a member before and are still absent after, that is the cause, raised as a typed validation error. A newly added user gets an accept-invite email and shows in the member list. `role` defaults to `member`.',
   {
     organization_slug: z.string().describe('Workspace (organization) slug, e.g. "ai-demo-space".'),
-    email: z.string().email().describe('Email of an EXISTING Connect user to add. Must not already be a member.'),
-    role: z.enum(['admin', 'member', 'viewer']).optional().describe('Membership role. Default "member".'),
+    email: z.string().email().describe('Email of an EXISTING Connect user to add (they must have signed in to Connect at least once).'),
+    role: z.enum(['admin', 'member', 'viewer']).optional().describe('Membership role to request for a NEW member. Default "member". Ignored by Connect if the person is already a member — see `role_unchanged` in the result.'),
   },
   async (args) => runAtom(async () => (await client()).addOrgMember(args))
 );

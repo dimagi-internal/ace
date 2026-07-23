@@ -599,13 +599,13 @@ Hard-delete unaccepted FLW invites by integer id. Invites with `status=accepted`
 
 ### `connect_add_org_member`
 
-Invite a human user to a Connect workspace (organization) by email. POSTs the HTML membership form at `/a/<org_slug>/organization/member` (no REST equivalent) and verifies by reading back the member table. TWO hard requirements enforced by Connect, not bypassable: (1) the authenticated ACE session user (ace@dimagi-ai.com) MUST be an admin of `organization_slug`, or the POST 403s; (2) the invitee M…
+Invite a human user to a Connect workspace (organization) by email. POSTs the HTML membership form at `/a/<org_slug>/organization/member` (no REST equivalent), reading the member table BEFORE and AFTER so the outcome is observed rather than assumed. Returns `status: "invited"` (absent before, present after — this call added them) or `status: "already-member"`, plus `role` READ BACK from the table …
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `organization_slug` | `z.string` | **required** | _—_ |
-| `email` | `z.string` | **required** | Email of an EXISTING Connect user to add. Must not already be a member. |
-| `role` | `z.enum` | optional | Membership role. Default "member". |
+| `email` | `z.string` | **required** | _—_ |
+| `role` | `z.enum` | optional | Membership role to request for a NEW member. Default "member". Ignored by Connect if the person is already a member — see `role_unchanged` in the result. |
 
 ### `connect_list_invoices`
 
