@@ -6,7 +6,7 @@ export interface CapabilityRoute {
 }
 
 /**
- * The 20 atoms exposed by `ace-connect`.
+ * The 21 atoms exposed by `ace-connect`.
  *
  * History:
  * - 0.8.0 shipped 14 atoms (Programs CRUD, Opportunities CRUD, activate,
@@ -53,7 +53,7 @@ export type Capability =
   | 'send_flw_invite'
   | 'delete_unaccepted_flw_invites'
   | 'add_org_member'
-  // Observation (10)
+  // Observation (11)
   | 'list_programs'
   | 'get_program'
   | 'list_delivery_types'
@@ -63,7 +63,8 @@ export type Capability =
   | 'list_payment_units'
   | 'list_invites'
   | 'list_invoices'
-  | 'get_invoice';
+  | 'get_invoice'
+  | 'get_learn_progress';
 
 export const CAPABILITY_MAP: Record<Capability, CapabilityRoute> = {
   // Authoring — REST since 0.10.47 (PR #1135 automation API)
@@ -92,4 +93,5 @@ export const CAPABILITY_MAP: Record<Capability, CapabilityRoute> = {
   list_invites:                 { backend: 'PLAYWRIGHT', restTarget: 'GET /api/programs/{id}/applications/ (not yet shipped)' },
   list_invoices:                { backend: 'PLAYWRIGHT', restTarget: 'GET /api/opportunities/{id}/invoices/ (not yet shipped)' },
   get_invoice:                  { backend: 'PLAYWRIGHT', restTarget: 'GET /api/invoices/{id}/ (not yet shipped)' },
+  get_learn_progress:           { backend: 'PLAYWRIGHT', restTarget: 'GET /api/opportunities/{id}/learn-progress/ (not yet shipped)' },
 };

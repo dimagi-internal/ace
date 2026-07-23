@@ -402,7 +402,7 @@ Render the run-folder README markdown for `runId` with optional per-phase status
 
 ## ace-connect
 
-Source: `mcp/connect-server.ts` — 53 atoms
+Source: `mcp/connect-server.ts` — 54 atoms
 
 ### `connect_list_programs`
 
@@ -620,6 +620,15 @@ Invite a human user to a Connect workspace (organization) by email. POSTs the HT
 |-------|------|----------|-------------|
 | `organization_slug` | `z.string` | **required** | _—_ |
 | `invoice_id` | `z.string` | **required** | _—_ |
+
+### `connect_get_learn_progress`
+
+Read each accepted worker\'s AUTHORITATIVE Learn progression from Connect\'s WorkerLearnView (GET /a/<domain>/opportunity/<opportunity_id>/workers/learn/, htmx fragment; session-cookie authed, read-only). This is the "close the loop to the source of truth" check for Phase 6: Deliver unlocks ONLY when Learn reaches 100% of modules (Connect\'s OpportunityAccess.learn_progress == 100 / completed_lear…
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `domain` | `z.string` | **required** | Connect org / project-space slug in the /a/DOMAIN/ URL path, e.g. ai-demo-space. |
+| `opportunity_id` | `z.string` | **required** | Opportunity UUID. |
 
 ### `commcare_list_apps`
 

@@ -17,6 +17,7 @@ import {
   parseDeliverUnitTable,
   parseDeliverUnitFormCheckboxes,
   parsePaymentUnitTable,
+  parseWorkerLearnTable,
 } from './html-scrape.js';
 
 /**
@@ -651,6 +652,18 @@ export class PlaywrightBackend implements ConnectClient {
     }
 
     return { organization_slug, email, role: wantRole, status: 'invited' as const };
+  };
+
+  // ── Learn progression (authoritative Deliver-gate read) ──────────
+
+  getLearnProgress: ConnectClient['getLearnProgress'] = async ({ domain, opportunity_id }) => {
+    // WorkerLearnView renders an htmx fragment; the `HX-Request` header is
+    // what returns the table fragment rather than the full page chrome.
+    const path = `/a/${domain}/opportunity/${opportunity_id}/workers/learn/`;
+    const res = await this.request.get(path, { headers: { 'HX-Request': 'true' } });
+    if (res.status() !== 200) throw await httpErrorFor(res, path);
+    const { workers } = parseWorkerLearnTable(await res.text());
+    return { domain, opportunity_id, workers };
   };
 
   // ── Invoices (stub — page shape not yet probed) ───────────────────

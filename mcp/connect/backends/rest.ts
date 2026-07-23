@@ -456,6 +456,7 @@ export class RestBackend implements ConnectClient {
   listInvites = stub('listInvites') as ConnectClient['listInvites'];
   listInvoices = stub('listInvoices') as ConnectClient['listInvoices'];
   getInvoice = stub('getInvoice') as ConnectClient['getInvoice'];
+  getLearnProgress = stub('getLearnProgress') as ConnectClient['getLearnProgress'];
 }
 
 // ── Response shapers ───────────────────────────────────────────────

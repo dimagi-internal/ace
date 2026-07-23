@@ -9,7 +9,7 @@
  * from /a/ai-demo-space/program/ (and friends).
  */
 
-import type { DeliveryType, Program, Opportunity, Invite, DeliverUnit, PaymentUnit } from '../types.js';
+import type { DeliveryType, Program, Opportunity, Invite, DeliverUnit, PaymentUnit, WorkerLearnRow } from '../types.js';
 
 /**
  * Extract Connect's CSRF token from a rendered HTML page.
@@ -507,6 +507,161 @@ export function parsePaymentUnitTable(html: string): PaymentUnit[] {
     });
   }
   return out;
+}
+
+/**
+ * Thrown when Connect's `WorkerLearnView` fragment has data rows but its
+ * `<thead>` cannot be mapped to the columns `parseWorkerLearnTable` needs.
+ * Same class-level preventer as {@link PaymentUnitTableSchemaError}: this
+ * table has a leading "Status" column (the invite-accepted icon) that the
+ * per-worker learn API description omits, so a fixed-index read silently
+ * shifts every field one column right. We resolve columns by header LABEL
+ * and fail loud (naming the missing header) rather than guessing positions.
+ */
+export class WorkerLearnTableSchemaError extends Error {
+  constructor(
+    public readonly missing_columns: string[],
+    public readonly seen_headers: string[],
+  ) {
+    super(
+      `worker learn table header row is missing expected column(s): ` +
+        `${missing_columns.map((c) => `"${c}"`).join(', ')}. ` +
+        `Headers seen: [${seen_headers.map((h) => `"${h}"`).join(', ')}]. ` +
+        `Refusing to parse by fixed cell index — this table has a leading ` +
+        `Status column the API description omits, so fixed indices shift every ` +
+        `field. Update the header map in parseWorkerLearnTable ` +
+        `(mcp/connect/backends/html-scrape.ts) against the live WorkerLearnView HTML.`,
+    );
+    this.name = 'WorkerLearnTableSchemaError';
+  }
+}
+
+/**
+ * The columns `parseWorkerLearnTable` reads, keyed by output field. `match`
+ * runs against the normalized (lowercased, whitespace-collapsed) `<th>` text.
+ */
+const WORKER_LEARN_COLUMNS: Record<
+  'name' | 'modules_completed' | 'completed_learning' | 'assessment',
+  { label: string; match: (h: string) => boolean }
+> = {
+  name: { label: 'Name', match: (h) => h === 'name' },
+  // "modules completed" must NOT swallow "completed learning" — order the
+  // matchers so the more specific completed_learning wins, and exclude the
+  // learning-suffix here.
+  modules_completed: {
+    label: 'Modules completed',
+    match: (h) => h.includes('modules completed'),
+  },
+  completed_learning: {
+    label: 'Completed Learning',
+    match: (h) => h.includes('completed learning'),
+  },
+  assessment: { label: 'Assessment', match: (h) => h.includes('assessment') },
+};
+
+/**
+ * Parse Connect's `WorkerLearnView` HTML fragment
+ * (`GET /a/<domain>/opportunity/<opportunity_id>/workers/learn/`, sent with
+ * `HX-Request: true`) into one {@link WorkerLearnRow} per accepted worker.
+ *
+ * The fragment renders a `WorkerLearnTable`. Confirmed live 2026-07-22 against
+ * opp `cb24ac17-…` (domain `ai-demo-space`) — columns in order:
+ *
+ *   # | Status | Name | Last active | Started Learning | Modules completed |
+ *   Completed Learning | Assessment | Attempts | Learning hours | (action)
+ *
+ * Note the leading **Status** column (an invite-accepted icon) that the
+ * underlying `helpers.py::get_worker_learn_table_data` field list omits —
+ * which is exactly why columns are resolved by `<thead>` header LABEL, never
+ * by fixed index (the {@link PaymentUnitTableSchemaError} lesson).
+ *
+ * Per-field extraction:
+ *   - **name**: the first `<p>` inside the Name cell's link (the worker's
+ *     display name; the second `<p>` is an internal username id, ignored).
+ *   - **modules_completed_pct**: prefer the progress-fill `style="width: N%"`;
+ *     fall back to the trailing `N%` span text. This is Connect's
+ *     `OpportunityAccess.learn_progress`.
+ *   - **completed_learning_date** / **learn_complete**: the Completed-Learning
+ *     cell is a date when Learn hit 100% (`completed_learn_date` set) or `—`
+ *     otherwise. `learn_complete` is `pct ≥ 100 OR a date is present`.
+ *   - **assessment_status**: "Passed" → `passed`, "Failed" → `failed`,
+ *     `—`/blank → `null`.
+ *
+ * Returns `{ workers: [] }` for an empty roster (no data rows).
+ */
+export function parseWorkerLearnTable(html: string): { workers: WorkerLearnRow[] } {
+  // Data rows: <tr class="group even"...> / <tr ... odd ...>. The class attr
+  // is not a bare "even"/"odd" here (Connect renders `class="group even"`),
+  // so match any tr whose class list CONTAINS the even/odd word-boundary
+  // token — and skip header rows (which have no even/odd class).
+  const rowRegex = /<tr\b[^>]*class="[^"]*\b(?:even|odd)\b[^"]*"[^>]*>([\s\S]*?)<\/tr>/g;
+  const rows = [...html.matchAll(rowRegex)];
+  if (rows.length === 0) return { workers: [] };
+
+  // Resolve column positions from the <thead> header labels.
+  const theadMatch = html.match(/<thead[^>]*>([\s\S]*?)<\/thead>/);
+  const headers = theadMatch
+    ? [...theadMatch[1].matchAll(/<th[^>]*>([\s\S]*?)<\/th>/g)].map((h) => normalizeHeaderLabel(h[1]))
+    : [];
+  const col: Partial<Record<keyof typeof WORKER_LEARN_COLUMNS, number>> = {};
+  const missing: string[] = [];
+  for (const [field, spec] of Object.entries(WORKER_LEARN_COLUMNS) as Array<
+    [keyof typeof WORKER_LEARN_COLUMNS, (typeof WORKER_LEARN_COLUMNS)[keyof typeof WORKER_LEARN_COLUMNS]]
+  >) {
+    const idx = headers.findIndex(spec.match);
+    if (idx >= 0) col[field] = idx;
+    else missing.push(spec.label);
+  }
+  if (missing.length > 0) {
+    throw new WorkerLearnTableSchemaError(missing, headers);
+  }
+
+  const workers: WorkerLearnRow[] = [];
+  for (const m of rows) {
+    const rowHtml = m[1];
+    // Keep the RAW per-cell HTML — the modules cell needs the width/span
+    // markup — plus a tag-stripped variant for plain-text cells.
+    const rawCells = [...rowHtml.matchAll(/<td\b[^>]*>([\s\S]*?)<\/td>/g)].map((c) => c[1]);
+    const textCells = rawCells.map((c) => c.replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim());
+
+    // Name: first <p> inside the name cell's link.
+    const nameCellRaw = rawCells[col.name!] ?? '';
+    const firstP = nameCellRaw.match(/<p[^>]*>([\s\S]*?)<\/p>/);
+    const name = (firstP ? firstP[1] : nameCellRaw).replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim();
+
+    // Percentage: prefer the progress-fill width, else the trailing % span.
+    const modCellRaw = rawCells[col.modules_completed!] ?? '';
+    const widthMatch = modCellRaw.match(/width:\s*([\d.]+)%/);
+    const pctTextMatch = modCellRaw.replace(/<[^>]+>/g, ' ').match(/([\d.]+)\s*%/);
+    const pctStr = widthMatch?.[1] ?? pctTextMatch?.[1];
+    const modules_completed_pct = pctStr !== undefined && Number.isFinite(Number(pctStr))
+      ? Number(pctStr)
+      : 0;
+
+    // Completed-Learning cell: a date, or "—" when < 100%.
+    const completedRaw = textCells[col.completed_learning!] ?? '';
+    const completed_learning_date =
+      completedRaw && completedRaw !== '—' && completedRaw !== '-' ? completedRaw : null;
+
+    const learn_complete = modules_completed_pct >= 100 || completed_learning_date !== null;
+
+    // Assessment cell: Passed / Failed / —.
+    const assessmentRaw = (textCells[col.assessment!] ?? '').toLowerCase();
+    const assessment_status: WorkerLearnRow['assessment_status'] = assessmentRaw.includes('passed')
+      ? 'passed'
+      : assessmentRaw.includes('failed')
+        ? 'failed'
+        : null;
+
+    workers.push({
+      name,
+      modules_completed_pct,
+      learn_complete,
+      completed_learning_date,
+      assessment_status,
+    });
+  }
+  return { workers };
 }
 
 /**

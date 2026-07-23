@@ -581,6 +581,12 @@ server.tool('connect_get_invoice',
   async (args) => runAtom(async () => (await client()).getInvoice(args))
 );
 
+server.tool('connect_get_learn_progress',
+  'Read each accepted worker\'s AUTHORITATIVE Learn progression from Connect\'s WorkerLearnView (GET /a/<domain>/opportunity/<opportunity_id>/workers/learn/, htmx fragment; session-cookie authed, read-only). This is the "close the loop to the source of truth" check for Phase 6: Deliver unlocks ONLY when Learn reaches 100% of modules (Connect\'s OpportunityAccess.learn_progress == 100 / completed_learn_date set), NOT when the assessment passes. A partial walk (e.g. 4/5 modules → 80%) returns `learn_complete: false` even though the on-device assessment screen may already read "Passed", so assert `learn_complete` / `modules_completed_pct >= 100` — never the assessment status — to confirm the Deliver gate will open. Returns `{ domain, opportunity_id, workers: [{ name, modules_completed_pct, learn_complete, completed_learning_date, assessment_status }] }`. `domain` is the Connect org slug in the /a/<domain>/ path; `opportunity_id` is the opportunity UUID. Columns are resolved by header label (the table has a leading Status column the per-worker API omits), so a live template reshape fails loud rather than shifting fields.',
+  { domain: z.string().describe('Connect org / project-space slug in the /a/DOMAIN/ URL path, e.g. ai-demo-space.'), opportunity_id: z.string().describe('Opportunity UUID.') },
+  async (args) => runAtom(async () => (await client()).getLearnProgress(args))
+);
+
 // ── CommCare HQ (release pipeline) ───────────────────────────────
 //
 // These atoms talk to www.commcarehq.org, not connect.dimagi.com. They

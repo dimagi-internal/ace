@@ -428,8 +428,17 @@ sub-verdict and does NOT abort the dispatch — but the Deliver leg then
 cannot run (Connect gates Deliver behind Learn completion), so it is
 recorded `blocked-by-learn`.
 
+**Learn-completion GATE — verify against Connect (authoritative), not the device screen (jjackson/ace#897).**
+A green on-device recipe + a "Congratulations — you passed" assessment screen do **NOT** prove Learn is complete on Connect. Connect gates Deliver on `learn_progress == 100%` — i.e. a `CompletedModule` for **every** `connect.learn_module` marker — which is a **separate** signal from the assessment pass (`commcare_connect/opportunity/models.py::learn_progress`; `form_receiver/processor.py::update_completed_learn_date` sets the completion date only at 100.0%). A walk that finalizes the assessment but leaves one content form's module unregistered lands at e.g. **80% (4/5 modules), assessment Passed, Deliver locked** — and the on-device recipe still reads "pass." The canonical incident: hh-poverty-targeting/20260722-1341, where the device said "passed / ready to deliver" but Connect showed 80% modules, and the Deliver-leg block got mis-diagnosed as a Connect platform failure (#897) and a recipe differentiator bug (#893). Neither was the cause — the Learn walk simply never drove Learn to 100%.
+
+So **after the Learn recipe passes, and BEFORE attempting the Deliver leg**, call `connect_get_learn_progress({ domain, opportunity_id })` and find the ACE test user's row. Assert **`learn_complete == true`** (equivalently `modules_completed_pct >= 100` / `completed_learning_date` present). Branch on the result:
+
+- **`learn_complete == true`** → Learn genuinely completed on Connect; proceed to the Deliver leg (it is unlocked).
+- **`learn_complete == false`** → the Learn leg did NOT reach 100% on Connect regardless of the device screen. Record the Learn sub-verdict as **`incomplete-on-connect`** with the exact `modules_completed_pct` and `assessment_status` (e.g. "Connect: 80% modules (4/5), assessment Passed — the Learn walk did not finalize every module form"), and record the Deliver leg **`blocked-by-learn-incomplete`** (do NOT attempt it — Connect will keep the app on "Continue Learning" and the Deliver gate cannot open). Surface this as the precise, actionable failure (which specific module didn't register + re-run the walk to finalize it), NOT a Connect-platform or recipe-differentiator theory. This is the "close the loop to the source of truth" check — the device is not authoritative about learn completion; Connect is.
+- If `connect_get_learn_progress` is unavailable (older MCP not yet rebound) fall back to the PM UI (`/opportunity/<id>/workers/learn/` — the `Modules completed` column) and apply the same 100% assertion; do not silently skip the gate.
+
 **Deliver leg (runs second; depends on the Learn leg).** Only attempt
-if the Learn leg reached completion. `journey-deliver.yaml` resumes
+if the Learn leg reached completion **AND the Connect learn-completion gate above passed (`learn_complete == true`)**. `journey-deliver.yaml` resumes
 from the now-unlocked state in the same device session (no re-login).
 Upload to `6-qa-and-training/screenshots/journey-deliver/<step-name>.png`.
 Record the Deliver leg outcome independently.

@@ -1,0 +1,263 @@
+
+
+<ul id="tabs" class="tabs" hx-swap-oob="true">
+  
+    <li id="workers-tab"
+        hx-get="/a/ai-demo-space/opportunity/cb24ac17-646c-4366-ae1f-ce6ee7a5e718/workers/"
+        hx-indicator="#loadingIndicator"
+        hx-push-url="true"
+        class="tab-item ">
+      <span>Connect Workers (1)</span>
+      
+    </li>
+  
+    <li id="learn-tab"
+        hx-get="/a/ai-demo-space/opportunity/cb24ac17-646c-4366-ae1f-ce6ee7a5e718/workers/learn/"
+        hx-indicator="#loadingIndicator"
+        hx-push-url="true"
+        class="tab-item active">
+      <span>Learn</span>
+      <div></div>
+    </li>
+  
+    <li id="deliver-tab"
+        hx-get="/a/ai-demo-space/opportunity/cb24ac17-646c-4366-ae1f-ce6ee7a5e718/workers/deliver/"
+        hx-indicator="#loadingIndicator"
+        hx-push-url="true"
+        class="tab-item ">
+      <span>Deliver</span>
+      
+    </li>
+  
+    <li id="payments-tab"
+        hx-get="/a/ai-demo-space/opportunity/cb24ac17-646c-4366-ae1f-ce6ee7a5e718/workers/payments/"
+        hx-indicator="#loadingIndicator"
+        hx-push-url="true"
+        class="tab-item ">
+      <span>Payments</span>
+      
+    </li>
+  
+    <li id="tasks-tab"
+        hx-get="/a/ai-demo-space/opportunity/cb24ac17-646c-4366-ae1f-ce6ee7a5e718/workers/tasks/"
+        hx-indicator="#loadingIndicator"
+        hx-push-url="true"
+        class="tab-item ">
+      <span>Tasks</span>
+      
+    </li>
+  
+</ul>
+<div id="tab-options" hx-swap-oob="true" class="flex gap-x-4 items-center">
+  
+</div>
+<div id="table" class="w-full" hx-swap-oob="true">
+
+
+
+  
+  
+  
+  <div class="table-container flex flex-col gap-2 mb-1">
+    
+    
+      <div class="w-full overflow-x-auto overflow-y-auto block max-h-[70vh]">
+        <table class="base-table" class="table table-bordered mb-0">
+          
+            
+              <thead class="">
+                <tr>
+                  
+                    <th >
+                      
+                        <span>#</span>
+                      
+                    </th>
+                  
+                    <th >
+                      
+                        <span>Status</span>
+                      
+                    </th>
+                  
+                    <th class="orderable">
+                      
+                        <a href="/a/ai-demo-space/opportunity/cb24ac17-646c-4366-ae1f-ce6ee7a5e718/workers/learn/?sort=user" class="flex items-center text-sm font-medium text-brand-deep-purple">Name <i class="fa-solid ml-1 fa-sort text-gray-400"></i></a>
+                      
+                    </th>
+                  
+                    <th class="desc orderable">
+                      
+                        <a href="/a/ai-demo-space/opportunity/cb24ac17-646c-4366-ae1f-ce6ee7a5e718/workers/learn/?sort=last_active" class="flex items-center text-sm font-medium text-brand-deep-purple">Last active <i class="fa-solid ml-1 fa-sort text-gray-400"></i></a>
+                      
+                    </th>
+                  
+                    <th class="orderable">
+                      
+                        <a href="/a/ai-demo-space/opportunity/cb24ac17-646c-4366-ae1f-ce6ee7a5e718/workers/learn/?sort=started_learning" class="flex items-center text-sm font-medium text-brand-deep-purple">Started Learning <i class="fa-solid ml-1 fa-sort text-gray-400"></i></a>
+                      
+                    </th>
+                  
+                    <th class="orderable">
+                      
+                        <a href="/a/ai-demo-space/opportunity/cb24ac17-646c-4366-ae1f-ce6ee7a5e718/workers/learn/?sort=modules_completed" class="flex items-center text-sm font-medium text-brand-deep-purple">Modules completed <i class="fa-solid ml-1 fa-sort text-gray-400"></i></a>
+                      
+                    </th>
+                  
+                    <th class="orderable">
+                      
+                        <a href="/a/ai-demo-space/opportunity/cb24ac17-646c-4366-ae1f-ce6ee7a5e718/workers/learn/?sort=completed_learning" class="flex items-center text-sm font-medium text-brand-deep-purple">Completed Learning <i class="fa-solid ml-1 fa-sort text-gray-400"></i></a>
+                      
+                    </th>
+                  
+                    <th class="orderable">
+                      
+                        <a href="/a/ai-demo-space/opportunity/cb24ac17-646c-4366-ae1f-ce6ee7a5e718/workers/learn/?sort=assessment" class="flex items-center text-sm font-medium text-brand-deep-purple">Assessment <i class="fa-solid ml-1 fa-sort text-gray-400"></i></a>
+                      
+                    </th>
+                  
+                    <th class="orderable">
+                      
+                        <a href="/a/ai-demo-space/opportunity/cb24ac17-646c-4366-ae1f-ce6ee7a5e718/workers/learn/?sort=attempts" class="flex items-center text-sm font-medium text-brand-deep-purple">Attempts <i class="fa-solid ml-1 fa-sort text-gray-400"></i></a>
+                      
+                    </th>
+                  
+                    <th class="orderable">
+                      
+                        <a href="/a/ai-demo-space/opportunity/cb24ac17-646c-4366-ae1f-ce6ee7a5e718/workers/learn/?sort=learning_hours" class="flex items-center text-sm font-medium text-brand-deep-purple">Learning hours <i class="fa-solid ml-1 fa-sort text-gray-400"></i></a>
+                      
+                    </th>
+                  
+                    <th class="col-action">
+                      
+                        <span></span>
+                      
+                    </th>
+                  
+                </tr>
+              </thead>
+            
+          
+          
+            <tbody>
+              <div style="overflow:hidden; border-radius:8px;">
+                
+                  
+                    <tr class="group even" class="group">
+                      
+                        <td >
+                          
+                            1
+                          
+                        </td>
+                      
+                        <td >
+                          
+                            <span x-data x-tooltip.raw="Invite accepted"><i class="fa-solid fa-circle-check text-green-600"></i></span>
+                          
+                        </td>
+                      
+                        <td >
+                          
+                            
+            <a href="/a/ai-demo-space/opportunity/cb24ac17-646c-4366-ae1f-ce6ee7a5e718/worker_learn_progress/5d7a44f2-4595-42b7-bda0-dfa2a576c2a6" class="flex flex-col items-start w-40">
+                <p class="text-sm text-slate-900">ACE Test</p>
+                <p class="text-xs text-slate-400">1277adbd0ceea89e367d</p>
+            </div>
+            
+                          
+                        </td>
+                      
+                        <td >
+                          
+                            22-Jul-2026 22:59
+                          
+                        </td>
+                      
+                        <td >
+                          
+                            22-Jul-2026 22:50
+                          
+                        </td>
+                      
+                        <td >
+                          
+                            
+            <div class="flex items-center gap-2 w-full">
+  <!-- Percentage style -->
+  
+    <!-- Progress bar container -->
+    <div class="relative w-full h-2.5 bg-brand-indigo/10 rounded-full overflow-hidden">
+      <!-- Progress fill with percentage width -->
+      <div class="absolute top-0 left-0 h-full bg-brand-indigo max-w-full"
+           style="width: 80.0%"></div>
+    </div>
+    <!-- Percentage text -->
+    <span class="w-[74px] text-sm text-gray-700">80.0%</span>
+  
+</div>
+
+        
+                          
+                        </td>
+                      
+                        <td >
+                          
+                            —
+                          
+                        </td>
+                      
+                        <td >
+                          
+                            Passed
+                          
+                        </td>
+                      
+                        <td >
+                          
+                            2
+                          
+                        </td>
+                      
+                        <td >
+                          
+                            2 min
+                          
+                        </td>
+                      
+                        <td class="col-action">
+                          
+                             <div class="opacity-0 group-hover:opacity-100 transition-opacity duration-200 text-end">
+                <a href="/a/ai-demo-space/opportunity/cb24ac17-646c-4366-ae1f-ce6ee7a5e718/worker_learn_progress/5d7a44f2-4595-42b7-bda0-dfa2a576c2a6"><i class="fa-solid fa-chevron-right text-brand-deep-purple"></i></a>
+            </div>
+                          
+                        </td>
+                      
+                    </tr>
+                  
+                
+                
+                  
+                
+              </div>
+            </tbody>
+          
+        </table>
+      </div>
+    
+    
+      
+      
+    </div>
+  
+  
+    <script>
+    function goToPage(param, value) {
+        const url = new URL(window.location.href);
+        url.searchParams.set(param, value);
+        window.location.href = url.toString();
+    }
+    </script>
+  
+
+</div>

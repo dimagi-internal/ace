@@ -68,6 +68,7 @@ export class CompositeBackend implements ConnectClient {
   listInvites = (a: Parameters<ConnectClient['listInvites']>[0]) => this.opts.playwright.listInvites(a);
   listInvoices = (a: Parameters<ConnectClient['listInvoices']>[0]) => this.opts.playwright.listInvoices(a);
   getInvoice = (a: Parameters<ConnectClient['getInvoice']>[0]) => this.opts.playwright.getInvoice(a);
+  getLearnProgress = (a: Parameters<ConnectClient['getLearnProgress']>[0]) => this.opts.playwright.getLearnProgress(a);
 
   /**
    * Try REST; on `HttpError(status=404)` fall back to Playwright. Any
