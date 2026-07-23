@@ -104,6 +104,19 @@ the shape of the turn.
        act-tier operator on the run (`initiated_by` / `last_actor` in `run_state.yaml`).
      - **File** — save an attachment/asset to the run's Drive folder.
      - **Escalate** — hand to a human (ambiguous, sensitive, out of scope, or tier-none).
+     - **No-op (mark read)** — the thread was addressed to ACE but there is **no work for ACE
+       to do right now**: the ask directed at ACE is gated on another party delivering first
+       (e.g. "after Sarvesh shares the details, build the opp"), or it's an FYI / loop-in with no
+       action owned by ACE. **Do NOT send an acknowledgment reply just to be responsive** — a "got
+       it, standing by" email is noise, and it makes a post-send promise the turn can't keep
+       anyway (the turn ends when the send goes; nothing auto-resumes when the other party
+       replies). Mark it read and move on; assume the named party does their job — their reply
+       lands as a genuinely-new inbound that triggers the real work then. Only reply when ACE is
+       actually doing work in this turn or answering a real question the sender asked ACE *now*.
+       (Jon, 2026-07-22: "when you aren't doing any work and no one asked you for anything, you
+       shouldn't respond just for the sake of responding — mark it read and assume Sarvesh will do
+       his job." Fleet-general for every turn-based agent → candidate for promotion into
+       `canopy` `agent-core/turn.md` Step 2.)
 
   e. **Approval step (procedural).** Present the proposed action — for a reply, the full draft
      (to/subject/body) — and get the human's yes before executing anything outbound. The deny rail
