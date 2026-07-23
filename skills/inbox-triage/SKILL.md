@@ -117,6 +117,14 @@ the shape of the turn.
        shouldn't respond just for the sake of responding — mark it read and assume Sarvesh will do
        his job." Fleet-general for every turn-based agent → candidate for promotion into
        `canopy` `agent-core/turn.md` Step 2.)
+       - **A person merely being ADDED to the thread is not a trigger — and never warrants a
+         welcome/orientation reply.** A "thanks, adding <name>", "looping in <name>", or bare
+         new-`Cc` message is an FYI, not an ask. Do **not** reply to greet the new person, re-share
+         links they can already see, or orient them — the whole thread is right above them and they
+         can read it; if they have a question they'll ask it. Mark read and name it in the close-out.
+         (Jon, 2026-07-23: "when someone is simply being added to a thread, there is no need to
+         respond / do anything." Fleet-general → candidate for promotion into `canopy`
+         `agent-core/turn.md` Step 2.)
 
   e. **Approval step (procedural).** Present the proposed action — for a reply, the full draft
      (to/subject/body) — and get the human's yes before executing anything outbound. The deny rail
