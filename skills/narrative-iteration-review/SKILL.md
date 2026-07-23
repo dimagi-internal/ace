@@ -54,6 +54,34 @@ path — that is the DRY violation this skill exists to avoid.
 5. **Read submitted edits from canopy** — the review's `response_json` (via `GET /reviews/<id>/`),
    fold them into the proposed version, iterate. Do not parse a side-channel document.
 
+## Producing the video = fire the FULL `canopy:ddd` loop (it BUILDS the product)
+
+Once a new version is agreed, **making its video is the full `canopy:ddd` loop, not a render of the
+existing screens.** DDD is *demo-DRIVEN development*: the agreed narration drives you to **build the
+product changes it implies** (new UI, data, flows), validate them live, and only THEN record. The
+build phase is the whole point — the "D" in DDD.
+
+- **Unbuilt product is the loop's work, NOT a blocker.** If the new narration references affordances
+  that don't exist yet, that is the DDD build backlog to work through — fire the loop and build them.
+  Do **not** treat "product not built" as a terminal blocker, render over the old screens (that ships
+  claim-reality incoherence the dual-judge will fail), or bail with "blocked."
+- **Fire `canopy:ddd` — do NOT hand-assemble a `narrative-iteration-review` → `ddd-ace-render`
+  pipeline.** That bespoke path is only the *render tail* and has **no build phase**, so it silently
+  amputates the product iteration. `ddd-ace-render` alone is correct ONLY when the narration implies
+  zero product change (pure re-record over already-built screens).
+- **Gates when the story is already signed off:** `concept_change` is pre-approved (resolve
+  in-session; never block on a canopy-web UI poll — DDD HITL gates hang any non-interactive run);
+  `external_release` stays OFF until an act-tier operator approves.
+- **Build cleanly:** work in a fresh git worktree off `origin/main` (the shared checkout drifts +
+  goes dirty across parallel runs), **validate the affordances live before recording** (ACE's
+  close-the-loop-to-source-of-truth discipline), and ship the product changes as a **PR** — never
+  deploy live-uncommitted.
+
+(Origin: Jon, 2026-07-23, RF Surveys — three narratives were run through a bespoke author-version +
+render pipeline; the one narrative that needed new product read as "blocked" instead of "in
+development," because the pipeline had no build phase. "The whole point of doing the DDD loop is that
+you iterate on the product to improve it." Sharpens jjackson/ace#909.)
+
 ## Known canopy gaps (tracked — do NOT work around them in ACE)
 
 `canopy-web#290` tracks the two DDD-framework improvements that make this fully DRY:
