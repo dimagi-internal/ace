@@ -18,6 +18,21 @@ is fleet-wide and DRY — **invoke `canopy:agent-turn-review`** and apply it in 
   docs; verify recipients (reply-all hides `Cc:` in raw views).
 
 ## ACE-specifics
+- **Every claim about EXTERNAL SYSTEM STATE must be read back before the send — no exceptions.**
+  Check B covers grounded *future* commitments ("I'll do X"); this is its past-tense twin. Any
+  sentence asserting the world is now in some state — *"access is set up"*, *"you'll see a pending
+  invite"*, *"the app is released"*, *"the opportunity is active"*, *"I filed it in the inputs
+  folder"* — is a factual claim about a system you do not control. Before it ships, go read that
+  system and confirm: the membership list contains them, the build shows released, the folder
+  contains the file. **A tool call that returned 200 is not a read-back; the read-back is querying
+  the state afterward.** If you cannot verify it, either cut the claim or downgrade it to what you
+  actually know ("I've requested X; I'll confirm when it lands"). Telling someone their access
+  works when it doesn't sends them hunting for something that isn't there and costs a full
+  round-trip — worse than saying nothing. (Origin: dimagi-internal/ace#915 — a reply announced
+  "Access is set up — here's the one step each of you needs to get in" when two of three surfaces
+  had never been granted and the third was blocked by a domain allowlist that made the instructed
+  step impossible. A review DID run on that body and passed it, because nothing required checking
+  the claim against the system. See also `share-run-access`'s NOT DONE contract and #913.)
 - **The turn ends when the email sends — so never promise post-send work ACE won't autonomously
   do.** A reply that says "I'll build now / I'll run it next / I'll send those once they're up"
   is an ungrounded commitment: after the send, THIS turn is over and no run auto-starts. Any

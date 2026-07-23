@@ -13,6 +13,28 @@ disable-model-invocation: false
 
 # Share run access — one primitive for "let the thread review this run"
 
+> ## ⛔ Granting access is WORK TO DO NOW, not work to schedule
+>
+> When a human asks you to give named people access, the deliverable is **those people having
+> access** — not a plan, not a ticket, not a skill describing how it would be done.
+>
+> - **A missing atom changes the MECHANISM, never WHETHER it happens this turn.** If there's no
+>   atom for a surface, do it by hand *now* (UI, authenticated HTTP, a one-off script). Filing the
+>   atom issue is something you do *in addition to* granting access, never instead of it.
+> - **Do not decide the human's ask was unnecessary.** Default scope is every gated surface the
+>   run-summary links. "They probably don't need the app builder" is not your call; narrowing is
+>   the human's, made explicitly.
+> - **You may not report success while any requested surface is ungranted**, and no outbound
+>   message may say "access is set up" unless every surface is granted *and read back*. Say
+>   plainly which ones are NOT DONE and who owns the next step.
+>
+> Origin (dimagi-internal/ace#915): asked to grant a thread access, ACE filed two atom issues at
+> 16:36, merged a skill documenting them as "manual until the atom lands" at 16:47, and emailed
+> "Access is set up" at 18:34 — having performed neither manual step. The reviewer hit 404s and had
+> to write back. Three lines in this very skill authorized that: "atom pending → report the manual
+> step", "most reviewers don't need the raw app-builder", and a report contract where
+> `blocked: <precondition>` was an acceptable terminal state.
+
 As more people use ACE and ace-web, sharing access must be a repeatable step, not a bespoke
 scramble each time (Jon, 2026-07-23: access "should go to all individuals on a thread about a
 project we are working on"). This skill is that primitive: given an opp/run and a set of emails,
@@ -114,22 +136,33 @@ grants membership and tells the person the one sign-in they must do themselves.
      person can sign in to labs (CCHQ account) they reach the run's dashboards. Just include the
      dashboard URLs and "sign in with your CommCare account" in the report.
 
-   - **CommCare HQ apps** *(only if `surfaces` includes `hq`)*. HQ web-user invite atom is pending
-     (dimagi-internal/ace#905); until it lands, report the manual step: an HQ admin invites the email
-     as a web user (Viewer role) to the `<domain>` project via `commcarehq.org/a/<domain>/settings/users/`.
-     Most reviewers don't need the raw app-builder — flag it as optional.
+   - **CommCare HQ apps.** No atom yet (dimagi-internal/ace#905) — so **do it by hand this turn**:
+     invite the email as a web user (read-only role) to the `<domain>` project via
+     `commcarehq.org/a/<domain>/settings/users/`, or by authenticated HTTP against that form. Then
+     read the membership back. Do not defer to "an HQ admin will do it" unless ACE genuinely lacks
+     admin on the domain — and if so, that's a **NOT DONE** with a named owner, surfaced to the human.
 
-   - **OCS chatbot admin** *(only if `surfaces` includes `ocs`)*. OCS team-member atom is pending
-     (dimagi-internal/ace#906); until it lands, report the manual step: an OCS team admin invites the
-     email to the `<team_slug>` team. Internal-tool surface — usually skip for reviewers.
+   - **OCS chatbot admin.** No atom yet (dimagi-internal/ace#906) — same rule: **add the email to the
+     `<team_slug>` team by hand this turn** and read it back. It is an internal-tool surface, which
+     is a reason to ask the human whether to include it *before* they ask — never a reason to
+     silently drop it from a grant they requested.
 
 5. **Approval gate (procedural).** Sending invites is outbound. Present the full per-person /
    per-surface plan and get the human's yes before firing any invite or `connect_add_org_member`.
    Read-backs and doc-sharing (own artifacts) run freely.
 
-6. **Report** — per person: domain class, and per surface either `granted` (with the read-back),
-   `auto-join (sign in)`, `blocked: <precondition>` (no account / ACE not admin / atom pending), or
-   `n/a`. End with the exact links to hand each person + the one sign-in action they must do.
+6. **Report — binary per surface, no soft states.** Per person: domain class, then per surface
+   exactly one of:
+   - `granted` — **with the read-back that proves it** (a membership list showing them, not the
+     invite call's response code)
+   - `auto-join (sign in)` — nothing to grant; they land on first sign-in
+   - `n/a` — the run has no product on that surface
+   - **`NOT DONE — <reason> — owner: <who>`** — anything else. There is no `blocked:` status: an
+     ungranted surface is outstanding work, not a state to file.
+
+   **If any surface is NOT DONE, the skill's verdict is NOT DONE.** Say so first, before the
+   granted list, and carry that into any outbound message — "access is set up" is false while one
+   remains. End with the exact links to hand each person + the one sign-in action they must do.
 
 ## Guardrails
 
