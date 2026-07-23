@@ -46,9 +46,23 @@ It classifies each link and exits non-zero iff any link is **BROKEN**:
 | Class | Meaning | Verdict |
 |---|---|---|
 | ✅ `OK` | 2xx, resolves publicly (e.g. a Drive anyone-with-link video) | pass |
-| 🔒 `AUTH-GATED` | redirects to a sign-in page, or 401/403 | pass — the link is valid; a signed-in stakeholder reaches it (Connect, CommCare HQ, OCS are all login-gated by design) |
+| 🔒 `AUTH-GATED` | redirects to a sign-in page, or 401/403 | pass **iff it's a platform login gate** — a signed-in stakeholder reaches it (Connect, CommCare HQ, OCS are all login-gated by design). **NOT a pass for an ACE-authored deliverable doc** (see below). |
 | ➖ `REACHABLE` | other 3xx/4xx that isn't a hard failure | inspect |
 | ❌ `BROKEN` | 404 / 410 / 5xx / DNS failure / unreachable | **FAIL — fix before sharing** |
+
+**AUTH-GATED is NOT automatically a pass for an ACE-authored deliverable doc.** A
+`docs.google.com` / Google Slides / `drive.google.com` URL that we produced as a
+*deliverable* (training deck, LLO/FLW guides, FAQ, onboarding email, any doc under
+`products.*` meant for the recipient to open) returns **401/403 when it is private** —
+the checker labels that `AUTH-GATED`, but unlike a Connect/HQ/OCS platform login, a
+private Google Doc only opens for accounts explicitly shared on it. A recipient who
+opens the public summary link hits "You need access." So treat a private ACE-authored
+deliverable doc as a **must-fix**, even though its class is AUTH-GATED not BROKEN: run
+`drive_set_anyone_with_link` on its file_id (reader / anyone-with-link) and re-check
+until it reports `OK 200`. Only a *platform* login gate (Connect, CommCare HQ, OCS,
+labs) legitimately stays AUTH-GATED. The producer skills (`qa-and-training` /
+`training-*`) should set anyone-with-link at creation so this needs no manual step —
+see jjackson/ace#902.
 
 **On any BROKEN link, do NOT share the summary — fix the underlying cause first:**
 
@@ -59,8 +73,10 @@ It classifies each link and exits non-zero iff any link is **BROKEN**:
 - A **404 on a real entity** (e.g. a Connect `program` page that 404s while the
   `opportunity` correctly login-redirects) → the URL scheme is wrong or the entity has
   no stakeholder page; correct the product URL or stop surfacing it.
-- A **Drive artifact that isn't shared** (403/404 on a `drive.google.com` link) → set
-  it anyone-with-link (`drive_set_anyone_with_link`) so recipients can open it.
+- A **Drive artifact that isn't shared** (403/404 on a `drive.google.com` link, or a
+  private ACE-authored `docs.google.com`/Slides deliverable that came back **AUTH-GATED
+  401/403** per the note above) → set it anyone-with-link (`drive_set_anyone_with_link`)
+  so recipients can open it, then re-check for `OK 200`.
 
 Re-run until the checker reports **✅ No broken links**. Note: a summary change that
 lives in ace-web code only takes effect after that ace-web PR deploys (GitHub Actions
