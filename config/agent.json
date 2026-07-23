@@ -1,11 +1,21 @@
 {
-  "_doc": "canopy-web fleet-workspace identity for ACE (read by `canopy agent-publish` / `canopy agent ...`). Workspace integration is best-effort and config-gated — its absence never blocks a turn; nothing here prejudges the ace-web vs canopy-web question (see docs/superpowers/specs/2026-07-01-agent-operating-model-adoption.md).",
+  "_doc": "canopy-web fleet-workspace identity for ACE (read by `canopy agent-publish` / `canopy agent ...`). Workspace integration is best-effort and config-gated \u2014 its absence never blocks a turn; nothing here prejudges the ace-web vs canopy-web question (see docs/superpowers/specs/2026-07-01-agent-operating-model-adoption.md).",
   "slug": "ace",
   "name": "ACE",
-  "description": "AI Connect Engine — runs the full CommCare Connect opportunity lifecycle (design → apps → QA → solicitation → LLO execution → closeout). Flagship agent on the canopy operating model: pipeline runs via /ace:run, counterpart-facing turns via /ace:turn.",
+  "description": "AI Connect Engine \u2014 runs the full CommCare Connect opportunity lifecycle (design \u2192 apps \u2192 QA \u2192 solicitation \u2192 LLO execution \u2192 closeout). Flagship agent on the canopy operating model: pipeline runs via /ace:run, counterpart-facing turns via /ace:turn.",
   "email": "ace@dimagi-ai.com",
   "gog_client": "ace",
-  "provisioning": ".env.tpl + op inject (1Password AI-Agents; see /ace:setup) — no canopy provision manifest",
+  "_gog_services_doc": "Services ACE's mailbox must have consented to, checked by `canopy agent doctor`. Mirrors GOG_SERVICES in bin/ace-doctor (the ACE-side preflight) so both halves agree on one list. ACE needs `slides` (ace-gdrive slides_* tools) and `calendar`, neither of which is in canopy's fleet default.",
+  "gog_services": [
+    "gmail",
+    "calendar",
+    "drive",
+    "docs",
+    "slides",
+    "sheets",
+    "forms"
+  ],
+  "provisioning": ".env.tpl + op inject (1Password AI-Agents; see /ace:setup) \u2014 no canopy provision manifest",
   "repo": "dimagi-internal/ace",
   "avatar": ""
 }
