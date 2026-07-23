@@ -46,9 +46,30 @@ It classifies each link and exits non-zero iff any link is **BROKEN**:
 | Class | Meaning | Verdict |
 |---|---|---|
 | ✅ `OK` | 2xx, resolves publicly (e.g. a Drive anyone-with-link video) | pass |
-| 🔒 `AUTH-GATED` | redirects to a sign-in page, or 401/403 | pass **iff it's a platform login gate** — a signed-in stakeholder reaches it (Connect, CommCare HQ, OCS are all login-gated by design). **NOT a pass for an ACE-authored deliverable doc** (see below). |
+| 🔒 `AUTH-GATED` | redirects to a sign-in page, or 401/403, on a **login**-gated surface (e.g. labs dashboards — any CCHQ account reaches them) | pass. **NOT a pass for an ACE-authored deliverable doc** (see below). |
+| 👤 `MEMBER-GATED` | same anonymous signature, but on a **membership**-gated surface: HQ `/a/<domain>/`, OCS `/a/<team>/`, Connect `/a/<org>/` | **NOT a pass on its own** — see below. |
 | ➖ `REACHABLE` | other 3xx/4xx that isn't a hard failure | inspect |
 | ❌ `BROKEN` | 404 / 410 / 5xx / DNS failure / unreachable | **FAIL — fix before sharing** |
+
+**MEMBER-GATED is never a pass on its own — signing in is not enough.** The checker
+probes **anonymously**, so it can only prove a link is reachable to *somebody*. HQ, OCS
+and Connect org pages gate on **membership**: a visitor who is signed in but is not a web
+user on that HQ domain / not on that OCS team / not in that Connect org gets a hard
+**404** — those surfaces deliberately don't leak the existence of projects you can't see.
+Anonymously that is indistinguishable from a plain login gate, which is why the checker
+used to certify these green. Before sharing, for each MEMBER-GATED link either:
+
+1. confirm every named reviewer actually holds membership on that surface
+   (`share-run-access`, and read the membership back — don't assume an invite landed), or
+2. don't present the link to them as reviewer-facing. **Prefer this for HQ and OCS**: those
+   URLs are the *app builder* and the *chatbot admin console* — internal build tools, the
+   wrong artifact for a program reviewer even when access exists.
+
+Never report a run as "safe to share" while a MEMBER-GATED link is unresolved for the
+people you're about to send it to. (Origin: 2026-07-23, `hh-poverty-targeting/20260722-1341`
+— the checker reported `13 links · 0 BROKEN · ✅ safe to share`; the external reviewer we
+sent it to hit 404 on both app links and "Shucks. We couldn't find that." on the chatbot.
+dimagi-internal/ace#913.)
 
 **AUTH-GATED is NOT automatically a pass for an ACE-authored deliverable doc.** A
 `docs.google.com` / Google Slides / `drive.google.com` URL that we produced as a
@@ -86,8 +107,11 @@ on merge to `main`); a change that's pure `run_state` data is live on the next f
 ## Report
 
 State the summary URL, the count checked / broken, and — per broken link — the URL,
-its failure, and the fix applied. A clean run: "N links checked, 0 broken; K auth-gated
-(valid), M public-OK — safe to share: <url>."
+its failure, and the fix applied. **Name every MEMBER-GATED link and say who it was
+resolved for** (membership confirmed, or link withheld as internal); "safe to share" is
+only claimable once none are outstanding. A clean run: "N links checked, 0 broken;
+K auth-gated (valid), M public-OK, J member-gated resolved for <names> — safe to share:
+<url>."
 
 ## MCP tools used
 
