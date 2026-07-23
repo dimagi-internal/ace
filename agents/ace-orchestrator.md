@@ -613,6 +613,24 @@ in `inputs/` (the manifest), not to pick one canonical PDD file.
      special stop logic. The same rule is how a normal full run ends after
      Phase 8 (the PAUSE) when 9–10 are not yet live.
 
+     **Surface the run-summary URL as the run's first-class output (every
+     completion AND every pause).** ACE's canonical shareable deliverable is the
+     ace-web run-summary page — a clean per-run summary plus the live links (HQ
+     apps, Connect opportunity, chatbot, demo video + dashboards, training docs),
+     served from `run_state.yaml` products read live from Drive. It is
+     **derivable from ACE's own config** — do not spelunk the ace-web DB for it:
+     ```
+     ${ACE_WEB_BASE_URL}/opps/${ACE_WEB_WORKSPACE}/<opp>/runs/<run-id>/summary
+     ```
+     (`.env` defaults: `ACE_WEB_BASE_URL=https://labs.connect.dimagi.com/ace`,
+     `ACE_WEB_WORKSPACE=dimagi-team`.) At the end of the run and at every pause
+     point: (1) write it to `run_state.yaml` top-level as `ace_web_summary_url`;
+     (2) **QA it before presenting** — invoke `run-summary-qa` (runs
+     `scripts/check-summary-links.py <opp> <run-id>`) to confirm every link on
+     the summary resolves; fix any BROKEN link at its source before sharing; and
+     (3) lead the operator-facing close-out with that URL. This is the link an
+     operator shares; it should never be reconstructed by hand or left unverified.
+
      **Rebuild the TaskList from the loaded statuses** (one parallel
      `TaskCreate` block, as in Step 4): `done`/`skipped` → `completed`
      (skipped phases carry a one-word "skipped" note), every `pending` phase →
