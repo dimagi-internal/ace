@@ -29,7 +29,7 @@ So a reviewer can ALWAYS open the summary and its docs with no grant. What needs
 
 | Surface | Summary link(s) | Auth | Grant mechanism |
 |---|---|---|---|
-| **ace-web workbench** | `/ace/w/<workspace>/opps/<opp>/runs/<run>` (the "how we got there" view) | Connect/CCHQ OAuth + `WorkspaceMembership` | **@dimagi.com/@dimagi-ai.com auto-join** on first sign-in (no grant). Others → **workspace invite** (this skill). |
+| **ace-web workbench** | `/ace/w/<workspace>/opps/<opp>/runs/<run>` (the "how we got there" view) | Connect/CCHQ OAuth + `WorkspaceMembership` | **@dimagi.com/@dimagi-ai.com auto-join** on first sign-in (no grant). **Other domains cannot sign in at all** — see the allowlist box below; an invite to them is a no-op. |
 | **labs dashboards** | `/labs/workflow/<id>/run/?...` | labs (CCHQ OAuth) | Same CCHQ login; visibility follows the run's synthetic/opp. Sign-in via CCHQ. |
 | **Connect opportunity** | `connect.dimagi.com/a/<org>/opportunity/<id>/` | Connect org membership | `connect_add_org_member` (org from `run_state` → `connect.products.connect.organization_slug`). |
 | **CommCare HQ apps** | `commcarehq.org/a/<domain>/apps/view/<id>/` | HQ web-user on the domain | HQ web-user invite — **atom pending (dimagi-internal/ace#905)**; manual via HQ Users UI until then. |
@@ -40,6 +40,18 @@ CommCareHQ/Connect OAuth, so a person can only reach ANY of them once they have 
 account and have signed in once. `@dimagi.com` staff generally do; an **external collaborator**
 (e.g. `@dimagi-associate.com`) must create one first. This skill never provisions accounts — it
 grants membership and tells the person the one sign-in they must do themselves.
+
+> ⛔ **ace-web workbench is CLOSED to external domains in production — an invite to one is a
+> no-op.** ace-web's OAuth callback enforces an allowlist, `ACE_ALLOWED_EMAIL_DOMAINS=dimagi.com,
+> dimagi-ai.com` (`deploy/aws/task-definition.json`, registered on every deploy). A non-matching
+> address is rejected **before** a `User` row is created, with "Access is restricted to
+> @dimagi.com, @dimagi-ai.com accounts." You *can* create a `WorkspaceInvite` for any email — the
+> endpoint never touches the User table — but the recipient can never redeem it, because accepting
+> requires a signed-in session that the allowlist prevents them from ever having. **So for an
+> external collaborator, do NOT send a workspace invite and do NOT tell them to "accept a pending
+> invite."** Widening access is a deploy-config change plus a redeploy, and it's a human decision —
+> escalate it, don't work around it. (Origin: 2026-07-23 — an external reviewer was told to accept a
+> pending invite that both did not exist and could not have been redeemed; dimagi-internal/ace#913.)
 
 ## Inputs
 
@@ -66,14 +78,17 @@ grants membership and tells the person the one sign-in they must do themselves.
 3. **Classify each email once** (per-person isolation — one person, one decision, like inbox-triage):
    - `@dimagi.com` / `@dimagi-ai.com` → **internal**: ace-web auto-joins on sign-in (no invite needed);
      Connect/HQ/OCS grants apply normally.
-   - anything else → **external collaborator**: needs an explicit ace-web invite AND (for Connect)
-     a deliberate external add — `add-org-member`'s @dimagi.com guard is intentional, so external
-     Connect adds go through THIS skill's explicit external path (below), not that skill.
+   - anything else → **external collaborator**: **ace-web is blocked for them outright** (allowlist
+     box above — report it, don't invite); for Connect, a deliberate external add —
+     `add-org-member`'s @dimagi.com guard is intentional, so external Connect adds go through THIS
+     skill's explicit external path (below), not that skill.
 
 4. **Grant per surface** (idempotent — re-running skips people already granted):
 
    - **ace-web workbench.** Internal → nothing to grant; tell them to open the workbench URL and sign
-     in (they auto-join). External → send a workspace invite:
+     in (they auto-join). **External → STOP: report `blocked: ace-web domain allowlist` and escalate.**
+     Do not send the invite below (see the allowlist box above — they can't redeem it). The invite
+     endpoint is for internal addresses that somehow missed auto-join:
      ```bash
      curl -sS -X POST -H "Authorization: Bearer $ACE_WEB_PAT_TOKEN" \
        -H "Content-Type: application/json" \
@@ -120,6 +135,12 @@ grants membership and tells the person the one sign-in they must do themselves.
 
 - **Idempotent + isolated.** Re-runnable; process one person at a time; a read-back is the success
   signal (invite endpoints can redirect identically on success/failure).
+- **Never tell anyone their access is set up until you have read it back.** "You'll see a pending
+  invite — accept it" is a claim about system state; verify it (`GET .../members`, and for a
+  pending invite note there is **no** list endpoint, so you can only assert what you just created
+  and got a token back for). An unverified access claim sends the person hunting for something that
+  isn't there and costs a full round-trip. This is the `agent-turn-review` done-claim rule applied
+  to grants. (Origin: 2026-07-23, dimagi-internal/ace#913.)
 - **Never provision accounts.** Grant membership only; the person does their own first sign-in.
 - **External domains are deliberate, not default.** An external add is an explicit choice surfaced
   in the approval step, never silent — Connect/ace-web both treat non-Dimagi domains specially.
