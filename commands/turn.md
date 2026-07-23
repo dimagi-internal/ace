@@ -17,5 +17,11 @@ read-only; sends flow only through `bin/ace-email` (deny rail).
 
 ## Arguments
 
-None. The turn always reconciles both surfaces; a missing surface (board not configured, gog auth
-down) is reported in the close-out, never a hard abort.
+Optional scope (from the runner / scheduler / a human): **$ARGUMENTS**
+- `--thread <id>` → a specific email thread triggered this turn; make it the focus of inbound
+  processing (still close out both surfaces).
+- `--slack <ref>` → a specific Slack message is the trigger; focus there.
+- (none) → reconcile both surfaces (board + `ace@` inbox), the default.
+
+A missing surface (board not configured, gog auth down) is reported in the close-out, never a hard
+abort.
