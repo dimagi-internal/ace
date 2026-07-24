@@ -44,17 +44,26 @@ is fleet-wide and DRY — **invoke `canopy:agent-turn-review`** and apply it in 
   "next step is a clean build… I'll send those once up," which the turn model can't keep.
   Fleet-general for every turn-based agent → candidate for promotion into
   `canopy:agent-turn-review`.)
-- **Never put intent or a commitment in another person's mouth.** Check B guards ACE's OWN "I'll
-  do X"; this is its third-party twin. A reply must not assert that a NAMED human (or "the team")
-  WILL do something they haven't agreed to — *"Jon and Neal can set up the call"*, *"Sasha will
-  send that over"*, *"the team will schedule X"*. You cannot verify another person's intent, and
-  naming them commits them without consent (and ACE itself can't attend a call / take a meeting, so
-  it can't stand in for them either). Convert it to one of: (a) something ACE genuinely does async
-  itself; (b) an open, UN-named offer that commits no one — *"if you'd prefer a call, say the word
-  and we'll find a time"*; or (c) a request routed to that person FIRST for their own yes before it
-  goes to the counterpart. (Origin: Jon, 2026-07-24 — a Spark reply offered "Jon and Neal … can set
-  up a Wednesday/Thursday slot"; ACE can't attend a call and hadn't cleared it with either of them.
-  Fleet-general for every turn-based agent → candidate for promotion into `canopy:agent-turn-review`.)
+- **Never offer, accept, or schedule a synchronous call / meeting — as ACE OR by committing a
+  human.** ACE is an email agent; it cannot attend, hold, or schedule a live call, so an offer to
+  is a commitment ACE can't keep. This has TWO forms and BOTH are banned: (i) **ACE-self** —
+  *"we'll find a time"*, *"happy to jump on a call"*, *"send a slot and we'll join"* (ACE can't be
+  on the call); (ii) **named-human** — *"Jon and Neal can set up a slot"*, *"the team will schedule
+  X"* (you can't verify another person's intent, and naming them commits them without consent).
+  When a counterpart OFFERS a call: **answer the substance in writing**, and if a live conversation
+  is genuinely wanted, state plainly that arranging one is **for the human team to decide** —
+  without committing ACE, and without asserting that any named person will do it. Do NOT paper over
+  it with a vague first-person "we" ("we'll find a time") — that reads as ACE, and ACE isn't there.
+  (Origin: Jon, 2026-07-24 — a Spark draft first offered "Jon and Neal … can set up a Wed/Thurs
+  slot"; the fix reframed it to "just say the word and we'll find a time" — which is the SAME error
+  in first person, ACE offering a call it can't attend, and it shipped because a review receipt was
+  recorded instead of a genuine re-read. A receipt fingerprints the body; it is NOT the review.)
+- **Never put a non-call commitment in another person's mouth either.** The general twin of the
+  rule above: a reply must not assert that a NAMED human (or "the team") WILL do a NON-call thing
+  they haven't agreed to — *"Sasha will send that over"*, *"Matt will review it by Friday"*.
+  Convert it to (a) something ACE genuinely does async itself, or (b) a request routed to that
+  person FIRST for their own yes before it goes to the counterpart. (Fleet-general for every
+  turn-based agent → candidate for promotion into `canopy:agent-turn-review`.)
 - **Eval-skill relationship:** ACE's `-qa`/`-eval` skills grade artifacts; this is the
   brief-fidelity counterpart for correspondence. (Supersedes the old `skills/self-review`.)
 - **Send path:** outbound email goes ONLY via `bin/ace-email` (a `config/gating.json` deny rail
