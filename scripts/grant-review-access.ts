@@ -5,7 +5,7 @@
  *
  *   npx tsx scripts/grant-review-access.ts <email> \
  *     [--domain connect-ace-prod] [--team connect-ace] \
- *     [--hq-role "Read Only"] [--ocs-groups "Chat Viewer"] \
+ *     [--hq-role "App Editor"] [--ocs-groups "Chatbot Admin"] \
  *     [--only hq|ocs] [--dry-run]
  *
  * Auth is reused, never reimplemented: HQ goes through the Connect
@@ -30,6 +30,23 @@
  *   Success  302 → `/a/<domain>/settings/users/web/` (the view's
  *            HttpResponseRedirect to ListWebUsersView). A 200 means the form
  *            re-rendered with errors.
+ *   ⚠ DEFAULT ROLE = "App Editor", and that is load-bearing — the exact HQ-side
+ *     twin of the OCS "Chat Viewer" trap below. The pages ACE's run summary links
+ *     (App Summary, the app builder's form/module views) are gated by
+ *     `require_can_edit_or_view_apps` = `require_permission('edit_apps',
+ *     view_only_permission='view_apps')` (corehq/apps/app_manager/decorators.py:231,
+ *     applied at app_summary.py:37). The stock "Read Only" preset grants ONLY
+ *     `view_reports` + `download_reports` — no `view_apps`, no `edit_apps`
+ *     (corehq/apps/users/role_utils.py:14) — so a "Read Only" member lands on a
+ *     bare 403 on every app link, while the releases page still renders (it is
+ *     `require_deploy_apps` = `login_and_domain_required`, decorators.py:234).
+ *     That asymmetry is exactly what makes it look like access "mostly works".
+ *     Of the presets, only "App Editor" and "Admin" carry `view_apps`
+ *     (role_utils.py:15-18); "App Editor" is the narrower of the two. Do not
+ *     "tighten" this back to Read Only without re-reading those lines — it
+ *     silently reintroduces the 403. If a domain needs view-only app access,
+ *     create a custom role with `view_apps` and pass it via --hq-role.
+ *     Live-verified on connect-ace-prod, 2026-07-23.
  *   Conflict `AdminInvitesUserFormValidator.validate_email`
  *            (corehq/apps/registration/validation.py:28-38) rejects an email
  *            already a web user or already invited — that error IS the
@@ -147,6 +164,62 @@ function selectOptions(html: string, name: string): Array<{ value: string; label
   }));
 }
 
+/**
+ * The `<form>…</form>` slice that contains `marker`. Used to re-post a rendered
+ * Django form field-for-field instead of guessing its payload — the page also
+ * carries unrelated forms (the report-issue modal), so scraping the whole
+ * document would mix them.
+ */
+function formContaining(html: string, marker: string): string | undefined {
+  const at = html.indexOf(marker);
+  if (at === -1) return undefined;
+  const open = html.lastIndexOf('<form', at);
+  if (open === -1) return undefined;
+  const close = html.indexOf('</form>', at);
+  if (close === -1) return undefined;
+  return html.slice(open, close + '</form>'.length);
+}
+
+/**
+ * Every field a rendered form would submit, verbatim: text/hidden inputs,
+ * CHECKED checkboxes/radios, the SELECTED option of each `<select>`, and each
+ * `<textarea>`. Submit buttons and file inputs are excluded (a file input has
+ * no re-postable value).
+ */
+function formFields(formHtml: string): Array<[string, string]> {
+  const out: Array<[string, string]> = [];
+  for (const m of formHtml.matchAll(/<input\b[^>]*>/gi)) {
+    const tag = m[0];
+    const name = tag.match(/\bname="([^"]+)"/)?.[1];
+    if (!name) continue;
+    const type = (tag.match(/\btype="([^"]*)"/)?.[1] ?? 'text').toLowerCase();
+    if (['submit', 'button', 'reset', 'file', 'image'].includes(type)) continue;
+    if ((type === 'checkbox' || type === 'radio') && !/\bchecked\b/i.test(tag)) continue;
+    out.push([name, unescapeHtml(tag.match(/\bvalue="([^"]*)"/)?.[1] ?? '')]);
+  }
+  for (const m of formHtml.matchAll(/<select\b[^>]*name="([^"]+)"[^>]*>([\s\S]*?)<\/select>/gi)) {
+    const selected = [...m[2].matchAll(/<option\b([^>]*)>/gi)].find((o) =>
+      /\bselected\b/i.test(o[1]),
+    );
+    const value = selected?.[1].match(/\bvalue="([^"]*)"/)?.[1];
+    if (value !== undefined) out.push([m[1], unescapeHtml(value)]);
+  }
+  for (const m of formHtml.matchAll(/<textarea\b[^>]*name="([^"]+)"[^>]*>([\s\S]*?)<\/textarea>/gi)) {
+    out.push([m[1], unescapeHtml(m[2])]);
+  }
+  return out;
+}
+
+/** Label of the currently-`selected` option of a named `<select>`, or ''. */
+function selectedOptionLabel(html: string, name: string): string {
+  const sel = html.match(new RegExp(`<select[^>]*name="${name}"[\\s\\S]*?</select>`, 'i'))?.[0];
+  if (!sel) return '';
+  const chosen = [...sel.matchAll(/<option\b([^>]*)>([\s\S]*?)<\/option>/gi)].find((o) =>
+    /\bselected\b/i.test(o[1]),
+  );
+  return chosen ? unescapeHtml(chosen[2].replace(/<[^>]*>/g, '').trim()) : '';
+}
+
 /** All `<input type=checkbox name=X value=V>` + their `<label>` text. */
 function checkboxOptions(html: string, name: string): Array<{ value: string; label: string }> {
   const out: Array<{ value: string; label: string }> = [];
@@ -243,6 +316,144 @@ async function hqReadback(
   return { webUser, invitation, raw };
 }
 
+/**
+ * Bring an ALREADY-accepted web user's role up to `roleLabel`.
+ *
+ * Membership is not access: a member on a role without `view_apps` gets a bare
+ * 403 on every app page we link (see the ⚠ block in the header). The invite POST
+ * cannot fix that — HQ rejects it as a duplicate — so the role is changed
+ * through `EditWebUserView` instead.
+ *
+ * Contract (read off HQ source + the live page, 2026-07-23):
+ *   Route   `web/account/<couch_user_id>/` → `EditWebUserView`
+ *           (corehq/apps/users/urls.py:115). The exact path arrives as
+ *           `editUrl` on the `web/json/` row — never constructed here.
+ *   Form    `WebUserFormSet` (corehq/apps/users/forms.py:1493) = the
+ *           `UpdateUserRoleForm` (`role`, forms.py:247) plus the custom-data
+ *           form, dispatched on a hidden `form_type=update-user`
+ *           (views/__init__.py:354-365). Custom-data fields vary per project,
+ *           so the whole live form is re-posted field-for-field.
+ *   Success 302 → the same page (views/__init__.py:367-370). A 200 means the
+ *           form re-rendered with errors, i.e. NOT saved.
+ *   Proof   `web/json/` re-read: `role` is `u.role_label(domain)`
+ *           (views/__init__.py:722), so the label round-trips.
+ */
+async function hqSetRole(
+  request: APIRequestContext,
+  hqBase: string,
+  editUrl: string,
+  roleLabel: string,
+  dryRun: boolean,
+): Promise<{ ok: boolean; detail: string; raw: string[] }> {
+  const raw: string[] = [];
+  const url = editUrl.startsWith('http') ? editUrl : `${hqBase}${editUrl}`;
+
+  const gr = await request.get(url, { maxRedirects: 0 });
+  raw.push(`GET ${url} -> ${gr.status()}`);
+  if (gr.status() !== 200) {
+    return { ok: false, detail: `GET ${url} -> ${gr.status()} (expected 200)`, raw };
+  }
+  const html = await gr.text();
+
+  const form = formContaining(html, 'value="update-user"');
+  const csrf = csrfFromHtml(html);
+  const roles = selectOptions(html, 'role').filter((o) => o.value);
+  if (!form || !csrf || roles.length === 0) {
+    return {
+      ok: false,
+      detail:
+        'Could not parse the update-user form, its csrfmiddlewaretoken, and/or the role ' +
+        '<select> off the live edit page — HQ changed the template. Not guessing a payload.',
+      raw: [...raw, `role options parsed: ${JSON.stringify(roles)}`],
+    };
+  }
+
+  const chosen = roles.find((r) => r.label.toLowerCase() === roleLabel.toLowerCase());
+  if (!chosen) {
+    return {
+      ok: false,
+      detail:
+        `Requested role "${roleLabel}" is not offered on this page. ` +
+        `Pick one of the live options with --hq-role.`,
+      raw: [...raw, `live role options: ${roles.map((r) => `${r.label} = ${r.value}`).join(' | ')}`],
+    };
+  }
+
+  const fields = formFields(form).filter(([n]) => n !== 'role' && n !== 'csrfmiddlewaretoken');
+  const body = new URLSearchParams([
+    ['csrfmiddlewaretoken', csrf],
+    ...fields,
+    ['form_type', 'update-user'],
+    ['role', chosen.value],
+  ]);
+  // form_type is already a hidden input on the form; de-dup so HQ reads one value.
+  const seen = new Set<string>();
+  const deduped = new URLSearchParams();
+  for (const [k, v] of [...body.entries()].reverse()) {
+    if (k === 'form_type' || k === 'role' || k === 'csrfmiddlewaretoken') {
+      if (seen.has(k)) continue;
+      seen.add(k);
+    }
+    deduped.append(k, v);
+  }
+
+  raw.push(
+    `[hq] POST ${url} role="${chosen.label}" (${chosen.value}); ` +
+      `re-posting ${fields.length} other live field(s): ${fields.map(([n]) => n).join(', ') || '(none)'}`,
+  );
+  if (dryRun) return { ok: false, detail: '--dry-run: no POST issued', raw };
+
+  const pr = await request.post(url, {
+    data: deduped.toString(),
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded',
+      'X-CSRFToken': csrf,
+      Referer: url,
+    },
+    maxRedirects: 0,
+  });
+  raw.push(`POST ${url} -> ${pr.status()}`);
+  if (pr.status() === 302) {
+    // Prove it against the AUTHORITATIVE source, not the search index. This page
+    // renders the selected role from `editable_user.get_role(domain)` straight out
+    // of Couch (views/__init__.py:392-404), whereas `web/json/` is served from
+    // Elasticsearch (`_get_web_users` → `UserES`, views/__init__.py:759-793) and
+    // lags a save by seconds — a stale ES read here reports a landed change as
+    // NOT DONE.
+    const vr = await request.get(url, { maxRedirects: 0 });
+    raw.push(`GET ${url} (verify) -> ${vr.status()}`);
+    const nowLabel = vr.status() === 200 ? selectedOptionLabel(await vr.text(), 'role') : '';
+    raw.push(`  edit page (Couch) now shows role: "${nowLabel || '(unparsed)'}"`);
+    if (nowLabel.toLowerCase() !== roleLabel.toLowerCase()) {
+      return {
+        ok: false,
+        detail:
+          `HQ returned 302 but the edit page still shows role "${nowLabel || '?'}" — ` +
+          `a 302 is not proof; treat as not done.`,
+        raw,
+      };
+    }
+    return { ok: true, detail: `role set to "${chosen.label}"`, raw };
+  }
+  {
+    const text = await pr.text();
+    const errs = [
+      ...text.matchAll(
+        /<(?:ul|div|p|span)[^>]*class="[^"]*(?:errorlist|invalid-feedback|alert-danger|help-block)[^"]*"[^>]*>([\s\S]*?)<\/(?:ul|div|p|span)>/gi,
+      ),
+    ]
+      .map((m) => stripTags(m[1]))
+      .filter(Boolean);
+    return {
+      ok: false,
+      detail:
+        `HQ did not save the role change (expected 302, got ${pr.status()})` +
+        (errs.length ? `: ${errs.join(' | ')}` : ''),
+      raw,
+    };
+  }
+}
+
 async function grantHq(opts: {
   email: string;
   domain: string;
@@ -265,19 +476,65 @@ async function grantHq(opts: {
     // Pre-check (reporting only — the POST's conflict error is the real guard).
     const pre = await hqReadback(request, hqBase, opts.domain, opts.email);
     if (pre.webUser) {
+      const current = String(pre.webUser.role ?? '');
+      // Membership is not access. A member whose role lacks `view_apps` 403s on
+      // every app link we share, so a role mismatch is NOT "already present".
+      if (current.toLowerCase() === opts.roleLabel.toLowerCase()) {
+        record({
+          surface,
+          status: 'already-present',
+          detail: `already an accepted web user on the requested role "${current}"`,
+          readback: pre.raw,
+        });
+        return;
+      }
+      const editUrl = String(pre.webUser.editUrl ?? '');
+      if (!editUrl) {
+        record({
+          surface,
+          status: 'NOT DONE',
+          detail:
+            `accepted web user but on role "${current}", not the requested ` +
+            `"${opts.roleLabel}" — and the read-back carried no editUrl, so the role ` +
+            `cannot be reconciled here. Owner: a domain admin must change it in the UI.`,
+          readback: pre.raw,
+        });
+        return;
+      }
+      console.log(
+        `[hq] ${opts.email} is already a web user but on role "${current}" — ` +
+          `reconciling to "${opts.roleLabel}"`,
+      );
+      // hqSetRole proves the change against the edit page (Couch). The web/json
+      // read-back below is CORROBORATION ONLY — it is Elasticsearch-backed and
+      // lags a save by seconds, so it must never be able to veto the proof.
+      const set = await hqSetRole(request, hqBase, editUrl, opts.roleLabel, opts.dryRun);
+      const post = await hqReadback(request, hqBase, opts.domain, opts.email);
+      const esRole = String(post.webUser?.role ?? '?');
+      const esAgrees = esRole.toLowerCase() === opts.roleLabel.toLowerCase();
       record({
         surface,
-        status: 'already-present',
-        detail: `already an accepted web user (role: ${String(pre.webUser.role)})`,
-        readback: pre.raw,
+        status: set.ok ? 'granted' : 'NOT DONE',
+        detail: set.ok
+          ? `role changed "${current}" -> "${opts.roleLabel}" (was already a web user)` +
+            (esAgrees ? '' : `; the ES-backed user list still shows "${esRole}" — index lag, not a failure`)
+          : set.detail,
+        readback: [...pre.raw, ...set.raw, ...post.raw],
       });
       return;
     }
     if (pre.invitation) {
+      const current = String(pre.invitation.role_label ?? '');
+      const matches = current.toLowerCase() === opts.roleLabel.toLowerCase();
       record({
         surface,
-        status: 'already-present',
-        detail: `pending invitation already exists (role: ${String(pre.invitation.role_label)})`,
+        status: matches ? 'already-present' : 'NOT DONE',
+        detail: matches
+          ? `pending invitation already exists on the requested role "${current}"`
+          : `pending invitation exists but on role "${current}", not the requested ` +
+            `"${opts.roleLabel}". Accepting it would land them on a role that cannot open ` +
+            `the app links. Owner: edit or delete + re-issue the invite at ` +
+            `${hqBase}/a/${opts.domain}/settings/users/web/.`,
         readback: pre.raw,
       });
       return;
@@ -740,14 +997,16 @@ async function main(): Promise<void> {
   if (!email) {
     console.error(
       'usage: npx tsx scripts/grant-review-access.ts <email> ' +
-        '[--domain <hq-domain>] [--team <ocs-team>] [--hq-role "Read Only"] ' +
+        '[--domain <hq-domain>] [--team <ocs-team>] [--hq-role "App Editor"] ' +
         '[--ocs-groups "Chatbot Admin,..."] [--ocs-replace-invite] [--only hq|ocs] [--dry-run]',
     );
     process.exit(2);
   }
   const domain = arg('domain', process.env.ACE_HQ_DOMAIN || 'connect-ace-prod');
   const team = arg('team', process.env.OCS_TEAM_SLUG || 'connect-ace');
-  const hqRole = arg('hq-role', 'Read Only');
+  // Default "App Editor": the narrowest preset carrying `view_apps`, which every app
+  // link ACE shares requires. See the ⚠ block in the header comment for evidence.
+  const hqRole = arg('hq-role', 'App Editor');
   // Default "Chatbot Admin": the least-privilege OCS group that actually grants
   // `experiments.view_experiment`, which the linked chatbot page requires. See the
   // ⚠ block in the header comment for the file:line evidence.
