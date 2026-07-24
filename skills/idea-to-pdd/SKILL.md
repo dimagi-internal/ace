@@ -51,16 +51,38 @@ orchestrator from the per-skill QA + eval verdicts on the fly. -->
        mime_type: <mime>
    ```
 
-   For each entry, read the file's content via
-   `drive_read_file(file_id=<id>)` — Drive extracts text from Google
-   Docs, PDFs, plain text/markdown, and most Word formats. Track each
-   read's success/failure. For inherently non-text formats
-   (spreadsheets, images, audio), `drive_read_file` will return
-   limited or empty text; log the file by name in your synthesis as
-   "supporting file present in `inputs/` — reference by name in the
-   PDD where the content matters" and continue. **Do not halt on
-   non-text files** — the human dropped them in for downstream skills
-   (e.g. data spreadsheet templates for FLW reference).
+   For each entry, read its content **by type** — do not assume
+   `drive_read_file` handles everything (it REFUSES binary formats —
+   xlsx, zip/`.ccz`, images — with a typed `unsupported_binary_mimetype`
+   error, so a naive read silently drops the file's content, not just
+   its formatting). Dispatch on the entry's `mime_type` (and, for a
+   `.ccz`, the filename extension — its mime is often a generic
+   `application/zip` / `application/octet-stream`):
+
+   - **Text-extractable** — Google Docs
+     (`application/vnd.google-apps.document`), PDF (`application/pdf`),
+     `text/*` (markdown, plain text), CSV / JSON / YAML / XML, and most
+     Word (`.docx`) formats → `drive_read_file(file_id=<id>)`.
+   - **Google Forms** (`application/vnd.google-apps.form`) →
+     `get_google_form_definition(formId=<id>)` — `drive_read_file`
+     returns nothing for a Form.
+   - **Spreadsheets** — a Google Sheet
+     (`application/vnd.google-apps.spreadsheet`) → read its tabs via
+     `sheets_list_tabs` + `sheets_batch_read`. A native `.xlsx`
+     (`…spreadsheetml.sheet`) → `drive_read_file` refuses it, so either
+     read a sibling text/gdoc rendering of the same workbook if the
+     human dropped one in (that rendering is authoritative — skip the
+     raw file) or `drive_download_binary` the `.xlsx` and parse it
+     (unzip → `xl/sharedStrings.xml` + `xl/worksheets/*.xml`) with a
+     short Bash/python step.
+   - **An existing CommCare app (`.ccz`)** → parse it — see step 1b.
+     This is ground truth (a real built app), not a notes file.
+   - **Images / audio / other true binaries with no extractable text**
+     → log the file by name ("supporting file present in `inputs/` —
+     reference by name where it matters") and continue. **Do not halt**
+     on these — the human dropped them in for downstream skills.
+
+   Track each read's success/failure.
 
    If `inputs-manifest.yaml` is missing, **stop and return an
    actionable error**:
@@ -98,6 +120,46 @@ orchestrator from the per-skill QA + eval verdicts on the fly. -->
 
     Why: a recent design-review session was cancelled mid-run
     because the LEEP data sheet wasn't shared with the SA.
+
+1b. **Existing CommCare app (`.ccz`) inputs — parse the app, design around it.**
+
+    A `.ccz` in `inputs/` is an EXISTING CommCare application the partner
+    already runs (e.g. Spark's FCAP app). It is authoritative ground
+    truth about what forms exist and what each collects — so do NOT just
+    "reference it by name," parse it and let it shape the design. (ACE
+    has never had a `.ccz` input before this capability landed; the
+    partner's built app is the highest-signal input there is.)
+
+    Parse recipe — the download differs from `app-release-qa` (which
+    pulls the CCZ from HQ by `app_id`); a Drive-sourced CCZ is fetched
+    with `drive_download_binary`. The unzip + XForm parse is identical:
+
+    1. `drive_download_binary(file_id=<id>)` → decode the returned
+       `content_base64` to bytes. Verify the bytes start with the zip
+       magic `PK\x03\x04`; if not, log `ccz-download-failed` and fall
+       back to logging the file by name (do not halt the whole PDD).
+    2. Unzip (Bash/python `zipfile`). Read `suite.xml` at the zip root
+       and parse it for `<menu>` / `<entry>` → the per-form XForm paths
+       (`modules-N/forms-M.xml`) and their display names.
+    3. For each form XForm, extract: the form title, its question labels
+       + bind types (`<input>` / `<select1>` / `<select>` / `<upload>`
+       and `<bind type=…>`), and any CommCare Connect markers
+       (`deliver` / `module` / `task` / `assessment`, in either the
+       default `xmlns="http://commcareconnect.com/…"` form or the legacy
+       `learn:`-prefixed form).
+    4. Summarize into your synthesis: the menu/module map, the per-form
+       field inventory (labels + types), and where Connect markers
+       already exist.
+
+    Then **design AROUND it**: when an existing app is present, the PDD
+    is a Connect program that REUSES this app as the delivery substrate,
+    not a spec for a net-new build. Identify and state explicitly in the
+    PDD (a) which existing form(s) are the per-visit delivery record a
+    Connect deliver-unit verifies + pays on, (b) which forms map to Learn
+    modules / assessments, and (c) what (if anything) is genuinely
+    net-new. Make the reused-vs-new split explicit so downstream phases
+    build the delta, not a duplicate app. If NO `.ccz` is present, this
+    step is a **no-op** — design the app from the other inputs as usual.
 
 2. **Determine the delivery archetype** (see `## Archetypes` below). The archetype shapes the section list and the questions you ask in step 3. If the idea spans multiple delivery patterns (e.g., focus groups in Stage 1, atomic visits in Stage 2), pick `multi-stage` and assign an archetype to each stage.
 
@@ -581,7 +643,9 @@ The PDD has two or more sequenced stages with different archetypes. Treat the ba
 **Required for multi-stage PDDs:** an explicit **Stage Gate** subsection between every pair of stages, stating exactly what must be true at the end of stage N to proceed to stage N+1 (with go / no-go / iterate criteria).
 
 ## MCP Tools Used
-- Google Drive: `drive_read_file`, `drive_create_file`, `drive_update_file`
+- Google Drive: `drive_read_file`, `drive_create_file`, `drive_update_file`, `drive_download_binary` (binary/`.ccz`/`.xlsx` inputs)
+- Google Sheets: `sheets_list_tabs`, `sheets_batch_read` (Google-Sheet inputs)
+- Google Forms: `get_google_form_definition` (Google-Form inputs)
 
 ## Mode Behavior
 
