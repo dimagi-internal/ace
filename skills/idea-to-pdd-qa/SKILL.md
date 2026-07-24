@@ -49,7 +49,10 @@ The static check functions live at `skills/idea-to-pdd-qa/checks.ts` as importab
    `Bash: TMP=$(mktemp); drive content saved to $TMP`.
 
 3. **Run all checks** via the generic CLI runner:
-   `Bash: npx tsx scripts/qa-run.ts --skill idea-to-pdd-qa --artifact "$TMP" --target "<opp-name>" --capture-path "1-design/idea-to-pdd.md"`.
+   ```bash
+   ACE_ROOT="${CLAUDE_PLUGIN_ROOT:-$(python3 -c "import json,os; d=json.load(open(os.path.expanduser('~/.claude/plugins/installed_plugins.json'))); print(d['plugins']['ace@ace'][0]['installPath'])")}"
+   npx --prefix "$ACE_ROOT" tsx "$ACE_ROOT/scripts/qa-run.ts" --skill idea-to-pdd-qa --artifact "$TMP" --target "<opp-name>" --capture-path "1-design/idea-to-pdd.md"
+   ```
 
    The runner:
    - Imports `CHECKS` from `skills/idea-to-pdd-qa/checks.ts`
@@ -78,7 +81,7 @@ QA is **necessary but not sufficient**. A passing QA result means the PDD is gra
 ## MCP Tools Used
 
 - Google Drive: `drive_read_file`, `drive_create_file`
-- Bash: `npx tsx scripts/qa-run.ts ...` (runs static checks via `lib/qa-runner.ts`)
+- Bash: `npx --prefix "$ACE_ROOT" tsx "$ACE_ROOT/scripts/qa-run.ts" ...` (runs static checks via `lib/qa-runner.ts`)
 
 ## Mode Behavior
 

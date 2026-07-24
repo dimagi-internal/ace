@@ -133,8 +133,9 @@ true one-shot debugging artifacts go to `./tmp/ace-debug/`.
    - If missing or empty: run the headless seeder. It uses `ACE_HQ_USERNAME`
      and `ACE_HQ_PASSWORD` from `.env` to drive the Connect→CommCareHQ OAuth
      flow programmatically; no operator interaction needed:
-     ```
-     cd "$ACE_PLUGIN_ROOT" && npx tsx scripts/seed-connect-cookies.ts
+     ```bash
+     ACE_ROOT="${CLAUDE_PLUGIN_ROOT:-$(python3 -c "import json,os; d=json.load(open(os.path.expanduser('~/.claude/plugins/installed_plugins.json'))); print(d['plugins']['ace@ace'][0]['installPath'])")}"
+     npx --prefix "$ACE_ROOT" tsx "$ACE_ROOT/scripts/seed-connect-cookies.ts"
      ```
      Success line: `LOGIN_OK total_cookies=… dimagi=…`. Verify the dimagi
      count is ≥ 5 (covers `connect.dimagi.com`, `www.commcarehq.org`,
@@ -169,13 +170,14 @@ true one-shot debugging artifacts go to `./tmp/ace-debug/`.
    already has an invite somewhere in Connect.
 
    **Programmatic check (best-effort):** with cookies seeded in step 6,
-   `npx tsx scripts/probe-find-phone-invite.ts` will scan every org the
+   `npx --prefix "$ACE_ROOT" tsx "$ACE_ROOT/scripts/probe-find-phone-invite.ts"`
+   (define `ACE_ROOT` per the step 6 block) will scan every org the
    cached session can see for opportunities whose `/user_invite/` page
    contains the target phone. A match is conclusive proof; a miss is *not*
    — the Connect-id check is global, the probe is org-scoped. If the probe
    misses, either confirm via the UI or fall back to
-   `npx tsx scripts/probe-flw-invite.ts` to add an invite to a known
-   turmeric opp.
+   `npx --prefix "$ACE_ROOT" tsx "$ACE_ROOT/scripts/probe-flw-invite.ts"`
+   to add an invite to a known turmeric opp.
 
 9. **Register the ACE test user (if not already).**
    - Tool: `mcp__ace_mobile__mobile_register_test_user`

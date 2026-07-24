@@ -84,8 +84,25 @@ the `synthetic-walkthrough-run` skill.
      what's been delivered. Wow: a $-per-verified-visit number.
 
 4. **Assemble the YAML spec.** Use the `canopy:walkthrough` schema —
-   see `~/.claude/plugins/marketplaces/canopy/plugins/canopy/skills/walkthrough/SKILL.md`
-   for the canonical contract. Shape:
+   the canonical contract lives in the INSTALLED canopy plugin; resolve
+   it and read `skills/walkthrough/SKILL.md` there:
+
+   ```bash
+   CANOPY_ROOT="$(python3 -c "import json,os; d=json.load(open(os.path.expanduser('~/.claude/plugins/installed_plugins.json'))); print(d['plugins']['canopy@canopy'][0]['installPath'])")"
+   # canonical contract: "$CANOPY_ROOT/skills/walkthrough/SKILL.md"
+   ```
+
+   Resolve the ACE plugin root in the SAME generating block — the spec
+   must carry a literal absolute login path (canopy:walkthrough runs the
+   `auth` commands from an arbitrary cwd with no ACE variables in scope),
+   so interpolate the resolved `$ACE_ROOT` value into `auth.check` /
+   `auth.login` below:
+
+   ```bash
+   ACE_ROOT="${CLAUDE_PLUGIN_ROOT:-$(python3 -c "import json,os; d=json.load(open(os.path.expanduser('~/.claude/plugins/installed_plugins.json'))); print(d['plugins']['ace@ace'][0]['installPath'])")}"
+   ```
+
+   Shape:
 
    ```yaml
    name: "<opp-slug>-<persona>-walkthrough"
@@ -94,8 +111,11 @@ the `synthetic-walkthrough-run` skill.
 
    auth:
      type: command
-     check: "test -f ~/.ace/labs-session.json && bash ~/.claude/plugins/cache/ace/ace/$(cat ~/.claude/plugins/marketplaces/ace/VERSION)/bin/ace-labs-walkthrough-login"
-     login: "bash ~/.claude/plugins/cache/ace/ace/$(cat ~/.claude/plugins/marketplaces/ace/VERSION)/bin/ace-labs-walkthrough-login"
+     # <ACE_ROOT> below = the RESOLVED absolute value of $ACE_ROOT from the
+     # generating block above, interpolated at spec-generation time (emit the
+     # literal path, NOT a shell variable or $(cat ...) construction).
+     check: "test -f ~/.ace/labs-session.json && bash <ACE_ROOT>/bin/ace-labs-walkthrough-login"
+     login: "bash <ACE_ROOT>/bin/ace-labs-walkthrough-login"
      # NOTE: labs has no /auth/e2e-login/ shared-secret bypass (only ace-web does).
      # The login script drives the full Connect-OAuth + labs-OAuth click-through
      # via Playwright, reusing mcp/connect/auth/hq-oauth-login.ts. After login,

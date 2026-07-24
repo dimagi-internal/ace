@@ -29,7 +29,7 @@ paraphrase the schema here — read the model / schema and validate.
 | Operator | `--brief <text or drive-path>` | the demo story (same brief `demo-data-setup` used) |
 | `demo-data-setup` | `<demo-run>/7-synthetic/realized.json` | the flat `${var}` map — `primary_par_url`, one `<key>_par_url` per dashboard, `<name>_url` drills — the scenes render |
 | `demo-data-setup` | `run_state…products.synthetic.source` | provider, labs opp id, deliver units, and `dashboards[]` (key/template/role) — one narrative arc per dashboard |
-| Discovery | canopy checkout path | `uv run python -m scripts.ddd.validate` (default `/Users/jjackson/emdash-projects/canopy`; see `docs/superpowers/plans/2026-07-20-plan-a-task1-findings.md`) |
+| Discovery | canopy runtime (resolved from the installed canopy plugin via its `scripts/canopy-runtime.sh` — see Step 4) | `uv run python -m scripts.ddd.validate` (see `docs/superpowers/plans/2026-07-20-plan-a-task1-findings.md`) |
 
 ## Products
 
@@ -43,9 +43,11 @@ paraphrase the schema here — read the model / schema and validate.
 1. **Read the schema, not this doc.** Open canopy `scripts/narrative/models.py`
    (or the JSON Schemas) for the exact `WhyBrief`, `UnifiedSpec`, `Scene`,
    `Feature`, `Persona`, `SetupBlock` fields + required/optional split. Mirror
-   the working reference at `~/emdash/repositories/connect-labs/docs/walkthroughs/
-   program-admin-report.yaml` (a labs-dashboard walkthrough with a `setup` block
-   and `url: ${par_url}` scenes) — it is the closest template.
+   the working reference `docs/walkthroughs/program-admin-report.yaml` in a
+   local connect-labs checkout if present (e.g. `~/emdash-projects/connect-labs`
+   or `~/emdash/repositories/connect-labs`) — a labs-dashboard walkthrough with
+   a `setup` block and `url: ${par_url}` scenes, the closest template. Optional:
+   skip it if no checkout exists.
 
 2. **Author `why_brief.yaml`.** `narrative_slug`, `problem` (the funder's
    nutrition-program pain in one paragraph), `spine[]` (each `id`, `claim`,
@@ -83,10 +85,14 @@ paraphrase the schema here — read the model / schema and validate.
      act/capture. Crossing to a different dashboard = a new scene WITH its
      `${<key>_par_url}`.
 
-4. **Validate — the gate.** From the canopy checkout:
-   ```
-   cd <canopy> && uv run python -m scripts.ddd.validate why_brief   <demo-run>/7-synthetic/why_brief.yaml
-   cd <canopy> && uv run python -m scripts.ddd.validate unified_spec <demo-run>/7-synthetic/<demo-slug>.yaml
+4. **Validate — the gate.** Resolve canopy's runtime from its installed
+   plugin, then run the validator from there (pass the artifact paths as
+   absolute paths — the subshell's cwd is the runtime, not yours):
+   ```bash
+   _CANOPY_PLUGIN="$(python3 -c "import json,os; d=json.load(open(os.path.expanduser('~/.claude/plugins/installed_plugins.json'))); print(d['plugins']['canopy@canopy'][0]['installPath'])")"
+   CANOPY_RT="$(bash "$_CANOPY_PLUGIN/scripts/canopy-runtime.sh")" || { echo "ERROR: canopy runtime not found — run /canopy:update"; exit 1; }
+   (cd "$CANOPY_RT" && uv run python -m scripts.ddd.validate why_brief   <demo-run>/7-synthetic/why_brief.yaml)
+   (cd "$CANOPY_RT" && uv run python -m scripts.ddd.validate unified_spec <demo-run>/7-synthetic/<demo-slug>.yaml)
    ```
    (Confirm the exact `<kind>` tokens from `validate()`'s dispatch on first use.)
    Exit `0` = valid. Loop: fix reported problems, re-validate, until BOTH pass.

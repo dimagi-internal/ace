@@ -69,7 +69,7 @@ npx tsx /tmp/ocs-login.ts
 Sign in manually in the browser window.
 After you see the chatbots dashboard, return here and press Enter to save the session.
 [user signs in in the browser]
-Session saved to /Users/jon/.ace/ocs-session-dimagi.json
+Session saved to ~/.ace/ocs-session-dimagi.json
 ```
 
 ## Troubleshooting

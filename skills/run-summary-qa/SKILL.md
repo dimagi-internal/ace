@@ -37,7 +37,8 @@ Run the link checker — it fetches the summary payload, extracts every `http(s)
 and HTTP-checks each:
 
 ```bash
-python3 scripts/check-summary-links.py <opp-slug> <run-id> \
+ACE_ROOT="${CLAUDE_PLUGIN_ROOT:-$(python3 -c "import json,os; d=json.load(open(os.path.expanduser('~/.claude/plugins/installed_plugins.json'))); print(d['plugins']['ace@ace'][0]['installPath'])")}"
+python3 "$ACE_ROOT/scripts/check-summary-links.py" <opp-slug> <run-id> \
   [--workspace dimagi-team] [--base https://labs.connect.dimagi.com/ace] [--json]
 ```
 

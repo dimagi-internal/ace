@@ -152,12 +152,13 @@ dispatches `canopy:visual-judge` to score the visual dimensions.
 ### Step 6: Capture the workflow render
 
 ```bash
+ACE_ROOT="${CLAUDE_PLUGIN_ROOT:-$(python3 -c "import json,os; d=json.load(open(os.path.expanduser('~/.claude/plugins/installed_plugins.json'))); print(d['plugins']['ace@ace'][0]['installPath'])")}"
 B=~/.claude/skills/gstack/browse/dist/browse
 export BROWSE_STATE_FILE=/tmp/polish-eval-${OPP_SLUG}.json
 
 # Pre-flight: ensure labs session is fresh.
 if [ ! -f ~/.ace/labs-session.json ] || ! $B goto "${LABS_BASE_URL}/labs/overview/" >/dev/null 2>&1; then
-  bash ~/.claude/plugins/cache/ace/ace/$(cat ~/.claude/plugins/marketplaces/ace/VERSION)/bin/ace-labs-walkthrough-login
+  bash "$ACE_ROOT/bin/ace-labs-walkthrough-login"
 fi
 
 # Deep-link to a SAVED RUN so the polished completed-run view renders.

@@ -43,14 +43,18 @@ The static check functions live at `skills/pdd-to-test-prompts-qa/checks.ts` as 
 
 1. **Read the test-prompts artifact** from Drive.
 2. **Save to a local temp path**.
-3. **Run all checks** via `scripts/qa-run.ts --skill pdd-to-test-prompts-qa --artifact "$TMP" ...`.
+3. **Run all checks** via the generic CLI runner:
+   ```bash
+   ACE_ROOT="${CLAUDE_PLUGIN_ROOT:-$(python3 -c "import json,os; d=json.load(open(os.path.expanduser('~/.claude/plugins/installed_plugins.json'))); print(d['plugins']['ace@ace'][0]['installPath'])")}"
+   npx --prefix "$ACE_ROOT" tsx "$ACE_ROOT/scripts/qa-run.ts" --skill pdd-to-test-prompts-qa --artifact "$TMP" ...
+   ```
 4. **Write the QA result** to Drive at `2-scenarios/pdd-to-test-prompts-qa_result.yaml`.
 5. **Return the verdict** — pass | fail | incomplete. On fail, orchestrator attempts auto-fix and re-runs; halts after bounded retries.
 
 ## MCP Tools Used
 
 - Google Drive: `drive_read_file`, `drive_create_file`
-- Bash: `npx tsx scripts/qa-run.ts ...`
+- Bash: `npx --prefix "$ACE_ROOT" tsx "$ACE_ROOT/scripts/qa-run.ts" ...`
 
 ## Mode Behavior
 

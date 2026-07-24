@@ -12,13 +12,43 @@ Usage: bin/ace-mark-read <threadId> [<threadId> ...]
 NOTE (zsh): unquoted `$IDS` does NOT word-split in zsh — pipe ids through
 xargs instead: `... | xargs bin/ace-mark-read`.
 """
+import json
 import os
+import shutil
+import subprocess
 import sys
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+
+def _exec_via_canopy_runtime(args):
+    """Fallback when `canopy` isn't on PATH: run the engine via uv from canopy's
+    installed-plugin runtime (resolved by canopy's own scripts/canopy-runtime.sh).
+    Returns (falls through) on any failure so the caller can print the final error."""
+    try:
+        if shutil.which("uv") is None:
+            return
+        registry = os.path.expanduser("~/.claude/plugins/installed_plugins.json")
+        with open(registry) as f:
+            install_path = json.load(f)["plugins"]["canopy@canopy"][0]["installPath"]
+        resolver = os.path.join(install_path, "scripts", "canopy-runtime.sh")
+        if not os.path.isfile(resolver):
+            return
+        proc = subprocess.run(
+            ["bash", resolver], capture_output=True, text=True, timeout=60
+        )
+        runtime_root = proc.stdout.strip()
+        if proc.returncode != 0 or not runtime_root:
+            return
+        os.execvp("uv", ["uv", "run", "--project", runtime_root, "canopy", *args])
+    except Exception:
+        return
+
+
 try:
     os.execvp("canopy", ["canopy", "email", "mark-read", "--repo", REPO, *sys.argv[1:]])
 except FileNotFoundError:
+    _exec_via_canopy_runtime(["email", "mark-read", "--repo", REPO, *sys.argv[1:]])
     sys.exit(
         "canopy CLI not on PATH — the shared email engine lives there (canopy ≥ 0.2.255).\n"
         "Install it (`uv tool install canopy` from the canopy checkout). See /canopy:setup."
