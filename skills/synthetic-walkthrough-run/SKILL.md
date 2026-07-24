@@ -54,10 +54,13 @@ rubric — see `synthetic-workflow-polish-eval/SKILL.md` step 7.)
 
 Before dispatching anything:
 
-1. **Verify the canopy plugin is installed.** Run:
+1. **Verify the canopy plugin is installed.** Resolve the INSTALLED
+   canopy plugin path (not the marketplace clone) and check for the
+   walkthrough skill:
 
    ```bash
-   ls ~/.claude/plugins/marketplaces/canopy/plugins/canopy/skills/walkthrough/SKILL.md
+   CANOPY_ROOT="$(python3 -c "import json,os; d=json.load(open(os.path.expanduser('~/.claude/plugins/installed_plugins.json'))); print(d['plugins']['canopy@canopy'][0]['installPath'])")"
+   ls "$CANOPY_ROOT/skills/walkthrough/SKILL.md"
    ```
 
    If missing, halt with: "canopy plugin not installed. Run
@@ -87,7 +90,8 @@ Before dispatching anything:
 4. **Verify `bin/ace-labs-walkthrough-login` is reachable.** Run:
 
    ```bash
-   ls ~/.claude/plugins/cache/ace/ace/$(cat ~/.claude/plugins/marketplaces/ace/VERSION)/bin/ace-labs-walkthrough-login
+   ACE_ROOT="${CLAUDE_PLUGIN_ROOT:-$(python3 -c "import json,os; d=json.load(open(os.path.expanduser('~/.claude/plugins/installed_plugins.json'))); print(d['plugins']['ace@ace'][0]['installPath'])")}"
+   ls "$ACE_ROOT/bin/ace-labs-walkthrough-login"
    ```
 
    If missing, the installed plugin cache is stale. Run `/ace:update`

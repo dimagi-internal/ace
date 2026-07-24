@@ -47,11 +47,11 @@ All three converge on the realized `${var}` map (`par_url`); everything from
    bare relative path to `lib/`/`scripts/` does NOT resolve (and `tsx -e` eval
    can't resolve project imports at all):
    ```bash
-   ACE_DIR="$HOME/.claude/plugins/cache/ace/ace/$(cat "$HOME/.claude/plugins/marketplaces/ace/VERSION")"
-   npx --prefix "$ACE_DIR" tsx "$ACE_DIR/scripts/emit-demo-run-state.ts" "<name>" "<runId>" "<denovo|clone|ace-run>"
+   ACE_ROOT="${CLAUDE_PLUGIN_ROOT:-$(python3 -c "import json,os; d=json.load(open(os.path.expanduser('~/.claude/plugins/installed_plugins.json'))); print(d['plugins']['ace@ace'][0]['installPath'])")}"
+   npx --prefix "$ACE_ROOT" tsx "$ACE_ROOT/scripts/emit-demo-run-state.ts" "<name>" "<runId>" "<denovo|clone|ace-run>"
    ```
-   (From the ace repo/worktree itself, `npx tsx scripts/emit-demo-run-state.ts
-   <name> <runId> <source>` also works.)
+   (Developers iterating in an ace repo/worktree checkout can point `ACE_ROOT`
+   at the checkout instead to run their local copy of the script.)
    Write the result to `ACE/<name>/runs/<runId>/run_state.yaml` (via
    `mcp__plugin_ace_ace-gdrive__drive_create_file`). Only
    `synthetic-data-and-workflows` is `in_progress`; all other pipeline phases are
@@ -77,13 +77,18 @@ All three converge on the realized `${var}` map (`par_url`); everything from
    below), and the labs session must be fresh (preconditions). Then:
    - Default: invoke the `canopy:ddd-run` skill with `{run_id, unified_spec:
      <demo-slug>.yaml path, why_brief: why_brief.yaml path}` — one render+judge
-     pass. It drives `record_video` against the LIVE app; the verified invocation:
+     pass. It drives `record_video` against the LIVE app; the verified invocation
+     (canopy's runtime resolves from its installed plugin — no checkout needed):
      ```bash
-     cd <canopy> && uv run python -m scripts.walkthrough.record_video \
+     _CANOPY_PLUGIN="$(python3 -c "import json,os; d=json.load(open(os.path.expanduser('~/.claude/plugins/installed_plugins.json'))); print(d['plugins']['canopy@canopy'][0]['installPath'])")"
+     CANOPY_RT="$(bash "$_CANOPY_PLUGIN/scripts/canopy-runtime.sh")" || { echo "ERROR: canopy runtime not found — run /canopy:update"; exit 1; }
+     (cd "$CANOPY_RT" && uv run python -m scripts.walkthrough.record_video \
        --spec <demo-slug>.yaml --output <run>/walkthrough.mp4 \
        --snapshots <run>/snapshots --report <run>/render-report.json \
-       --storage-state ~/.ace/labs-session.json --skip-same-url --no-prewarm
+       --storage-state ~/.ace/labs-session.json --skip-same-url --no-prewarm)
      ```
+     (Use absolute paths for `--spec`/`--output`/`--snapshots`/`--report` — the
+     subshell runs from `$CANOPY_RT`, not your cwd.)
    - `--render`: dispatch `Agent(canopy:ddd)` for the full converge → video →
      upload loop (pause gates `concept_change`, `external_release`).
 
@@ -112,7 +117,8 @@ All three converge on the realized `${var}` map (`par_url`); everything from
   so refresh it unconditionally at the start (restore, don't probe). ACE has full
   labs-login capability — no human needed:
   ```bash
-  npx --prefix . tsx bin/labs-walkthrough-login.ts \
+  ACE_ROOT="${CLAUDE_PLUGIN_ROOT:-$(python3 -c "import json,os; d=json.load(open(os.path.expanduser('~/.claude/plugins/installed_plugins.json'))); print(d['plugins']['ace@ace'][0]['installPath'])")}"
+  npx --prefix "$ACE_ROOT" tsx "$ACE_ROOT/bin/labs-walkthrough-login.ts" \
     --connect-base-url https://connect.dimagi.com \
     --labs-base-url https://labs.connect.dimagi.com
   # → writes ~/.ace/labs-session.json (a Playwright storage_state)
@@ -124,8 +130,11 @@ All three converge on the realized `${var}` map (`par_url`); everything from
   `.env.tpl` + `/ace:setup --force-env`). If the wrapper still fails on `.env`, run
   the `tsx` above with the two creds exported by SAFE parse
   (`sed -n 's/^ACE_HQ_USERNAME=//p' <plugin-data>/.env`), never `source`.
-- Canopy checkout reachable for `uv run python -m scripts.ddd.validate` and
-  `record_video` (default `/Users/jjackson/emdash-projects/canopy`; `uv` on PATH).
+- Canopy runtime resolvable for `uv run python -m scripts.ddd.validate` and
+  `record_video` — resolved from the INSTALLED canopy plugin via its
+  `scripts/canopy-runtime.sh` (the `CANOPY_RT` two-liner in step 6; no local
+  checkout assumption). Requires `uv` on PATH; if resolution fails, run
+  `/canopy:update`.
 
 ## Not in scope
 

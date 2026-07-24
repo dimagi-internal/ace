@@ -113,7 +113,8 @@ For each app in scope, enumerate its forms and modules against the
 **draft** with `run-form-walk`:
 
 ```bash
-npx tsx scripts/run-form-walk.ts <hq_domain> <hq_app_id> --out /tmp/ace-hq-<app>.json
+ACE_ROOT="${CLAUDE_PLUGIN_ROOT:-$(python3 -c "import json,os; d=json.load(open(os.path.expanduser('~/.claude/plugins/installed_plugins.json'))); print(d['plugins']['ace@ace'][0]['installPath'])")}"
+npx --prefix "$ACE_ROOT" tsx "$ACE_ROOT/scripts/run-form-walk.ts" <hq_domain> <hq_app_id> --out /tmp/ace-hq-<app>.json
 ```
 
 (No `--build-id` — this skill targets the draft, so let the walk download

@@ -30,7 +30,8 @@ runs honor the human's edits.
 2. **Run the sync script:**
 
    ```bash
-   npx tsx scripts/decisions-sync.ts <run-folder-fileId>
+   ACE_ROOT="${CLAUDE_PLUGIN_ROOT:-$(python3 -c "import json,os; d=json.load(open(os.path.expanduser('~/.claude/plugins/installed_plugins.json'))); print(d['plugins']['ace@ace'][0]['installPath'])")}"
+   npx --prefix "$ACE_ROOT" tsx "$ACE_ROOT/scripts/decisions-sync.ts" <run-folder-fileId>
    ```
 
    The script:

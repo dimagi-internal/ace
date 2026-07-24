@@ -5,7 +5,8 @@ description: Establish a Connect-Labs UI session for walkthrough automation. Dri
 Run the labs walkthrough login script:
 
 ```bash
-bash ~/.claude/plugins/cache/ace/ace/$(cat ~/.claude/plugins/marketplaces/ace/VERSION)/bin/ace-labs-walkthrough-login
+ACE_ROOT="${CLAUDE_PLUGIN_ROOT:-$(python3 -c "import json,os; d=json.load(open(os.path.expanduser('~/.claude/plugins/installed_plugins.json'))); print(d['plugins']['ace@ace'][0]['installPath'])")}"
+bash "$ACE_ROOT/bin/ace-labs-walkthrough-login"
 ```
 
 This reuses `mcp/connect/auth/hq-oauth-login.ts` (the same headless Connect OAuth driver `ace-connect` uses) and adds a labs-side click-through (`mcp/connect-labs/auth/labs-oauth-login.ts`). No labs-side auth bypass is needed — labs has no `/auth/e2e-login/` shared-secret endpoint (only the ace-web mount does).

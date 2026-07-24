@@ -71,7 +71,7 @@ Sign in manually in the browser window.
 Click "Login with CommCareHQ" and complete the OAuth flow.
 After you see the Connect dashboard, return here and press Enter to save the session.
 [user signs in via HQ OAuth]
-Session saved to /Users/jon/.ace/connect-session.json
+Session saved to ~/.ace/connect-session.json
 ```
 
 ## Troubleshooting

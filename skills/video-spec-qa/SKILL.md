@@ -84,8 +84,9 @@ checks pick the new rules up automatically.
    `TMP=$(mktemp /tmp/video-spec-XXXX.yaml); cat > "$TMP"`.
 
 3. **Run all checks** via the generic CLI runner:
-   ```
-   npx tsx scripts/qa-run.ts \\
+   ```bash
+   ACE_ROOT="${CLAUDE_PLUGIN_ROOT:-$(python3 -c "import json,os; d=json.load(open(os.path.expanduser('~/.claude/plugins/installed_plugins.json'))); print(d['plugins']['ace@ace'][0]['installPath'])")}"
+   npx --prefix "$ACE_ROOT" tsx "$ACE_ROOT/scripts/qa-run.ts" \\
      --skill video-spec-qa \\
      --artifact "$TMP" \\
      --target "<workspace>/<slug>/<run-id>" \\
@@ -108,7 +109,7 @@ grades quality.
 ## MCP Tools Used
 
 - Google Drive: `drive_read_file` (to fetch spec.yaml)
-- Bash: `npx tsx scripts/qa-run.ts ...`
+- Bash: `npx --prefix "$ACE_ROOT" tsx "$ACE_ROOT/scripts/qa-run.ts" ...`
 
 ## Change Log
 

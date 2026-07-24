@@ -37,20 +37,22 @@ OCS chatbot that `ocs-agent-setup` clones for every new opportunity.
 ## Usage
 
 ```bash
+ACE_ROOT="${CLAUDE_PLUGIN_ROOT:-$(python3 -c "import json,os; d=json.load(open(os.path.expanduser('~/.claude/plugins/installed_plugins.json'))); print(d['plugins']['ace@ace'][0]['installPath'])")}"
+
 # Default run (clones the first chatbot found on the team)
 OCS_TEAM_SLUG=<your team> \
-  npx tsx scripts/bootstrap-ocs-golden-template.ts
+  npx --prefix "$ACE_ROOT" tsx "$ACE_ROOT/scripts/bootstrap-ocs-golden-template.ts"
 
 # With an explicit source chatbot
 OCS_TEAM_SLUG=<your team> \
 OCS_BOOTSTRAP_SOURCE_ID=7804 \
-  npx tsx scripts/bootstrap-ocs-golden-template.ts
+  npx --prefix "$ACE_ROOT" tsx "$ACE_ROOT/scripts/bootstrap-ocs-golden-template.ts"
 
 # Force a refresh (archives the existing template and recreates)
 OCS_TEAM_SLUG=<your team> \
 OCS_BOOTSTRAP_SOURCE_ID=7804 \
 OCS_BOOTSTRAP_FORCE=1 \
-  npx tsx scripts/bootstrap-ocs-golden-template.ts
+  npx --prefix "$ACE_ROOT" tsx "$ACE_ROOT/scripts/bootstrap-ocs-golden-template.ts"
 ```
 
 ## Expected output
@@ -61,7 +63,7 @@ ACE OCS golden template bootstrap
   team:          <your team>
   base URL:      https://www.openchatstudio.com
   template name: ACE Golden Template
-  state file:    /Users/you/.ace/ocs-session-<team>.json
+  state file:    ~/.ace/ocs-session-<team>.json
 
 [1/5] Checking for existing golden template...
       Found N chatbot(s) on team:

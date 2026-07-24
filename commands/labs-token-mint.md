@@ -43,8 +43,8 @@ Default — mint the canonical `ACE-plugin` token with no expiry, store
 in 1Password, and re-inject `.env`:
 
 ```bash
-# Run from the plugin root
-RAW=$(npx tsx scripts/labs-mint-token.ts ACE-plugin 0)
+ACE_ROOT="${CLAUDE_PLUGIN_ROOT:-$(python3 -c "import json,os; d=json.load(open(os.path.expanduser('~/.claude/plugins/installed_plugins.json'))); print(d['plugins']['ace@ace'][0]['installPath'])")}"
+RAW=$(npx --prefix "$ACE_ROOT" tsx "$ACE_ROOT/scripts/labs-mint-token.ts" ACE-plugin 0)
 
 # Update 1Password (creates item if missing, otherwise updates field)
 if op item get "ACE - Connect Labs" --vault AI-Agents \
@@ -62,17 +62,18 @@ fi
 
 # Re-inject .env from 1Password (preserves local-only secrets like
 # ACE_WEB_PAT_TOKEN — a raw `op inject -o $CLAUDE_PLUGIN_DATA/.env` would drop them)
-bash bin/ace-setup --force-env
+bash "$ACE_ROOT/bin/ace-setup" --force-env
 
 # Smoke
-bin/ace-doctor 2>&1 | grep "connect_labs_"
+"$ACE_ROOT/bin/ace-doctor" 2>&1 | grep "connect_labs_"
 ```
 
 Custom name + 30-day TTL (e.g. for a separate machine alongside the
 canonical one):
 
 ```bash
-npx tsx scripts/labs-mint-token.ts "ACE-plugin-laptop" 30
+ACE_ROOT="${CLAUDE_PLUGIN_ROOT:-$(python3 -c "import json,os; d=json.load(open(os.path.expanduser('~/.claude/plugins/installed_plugins.json'))); print(d['plugins']['ace@ace'][0]['installPath'])")}"
+npx --prefix "$ACE_ROOT" tsx "$ACE_ROOT/scripts/labs-mint-token.ts" "ACE-plugin-laptop" 30
 ```
 
 ## What it does

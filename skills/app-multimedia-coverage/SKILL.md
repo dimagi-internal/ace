@@ -117,8 +117,13 @@ of CCHQ's orphan-pruning behavior — see the WHY callout in step 7.
 
 3. **Judge each visible field.** Walk every form's fields; skip kinds
    `hidden` and `calculate`; skip kinds with no displayed label. The
-   canonical way to obtain the field inventory is
-   `npx tsx scripts/run-form-walk.ts <hq_domain> <app_id> [--build-id <hex>] --out <path>`
+   canonical way to obtain the field inventory is:
+
+   ```bash
+   ACE_ROOT="${CLAUDE_PLUGIN_ROOT:-$(python3 -c "import json,os; d=json.load(open(os.path.expanduser('~/.claude/plugins/installed_plugins.json'))); print(d['plugins']['ace@ace'][0]['installPath'])")}"
+   npx --prefix "$ACE_ROOT" tsx "$ACE_ROOT/scripts/run-form-walk.ts" <hq_domain> <app_id> [--build-id <hex>] --out <path>
+   ```
+
    — it downloads the released CCZ, walks the form XML, and overlays
    each form's `form_unique_id` from CCHQ's draft-app API (because the
    suite.xml-derived uid is a build-only variant that
@@ -226,7 +231,8 @@ of CCHQ's orphan-pruning behavior — see the WHY callout in step 7.
      Then call:
 
      ```bash
-     npx tsx scripts/run-content-generator.ts <input.json> <output.png>
+     ACE_ROOT="${CLAUDE_PLUGIN_ROOT:-$(python3 -c "import json,os; d=json.load(open(os.path.expanduser('~/.claude/plugins/installed_plugins.json'))); print(d['plugins']['ace@ace'][0]['installPath'])")}"
+     npx --prefix "$ACE_ROOT" tsx "$ACE_ROOT/scripts/run-content-generator.ts" <input.json> <output.png>
      ```
 
      The wrapper reads `CONTENT_GENERATOR_URL` and
@@ -265,7 +271,8 @@ of CCHQ's orphan-pruning behavior — see the WHY callout in step 7.
    - Run the patcher:
 
      ```bash
-     npx tsx scripts/run-xform-patch.ts /tmp/ace-mm-<form_unique_id>.xml /tmp/bindings-<form_unique_id>.json [--replace-existing] -o /tmp/patched-<form_unique_id>.xml
+     ACE_ROOT="${CLAUDE_PLUGIN_ROOT:-$(python3 -c "import json,os; d=json.load(open(os.path.expanduser('~/.claude/plugins/installed_plugins.json'))); print(d['plugins']['ace@ace'][0]['installPath'])")}"
+     npx --prefix "$ACE_ROOT" tsx "$ACE_ROOT/scripts/run-xform-patch.ts" /tmp/ace-mm-<form_unique_id>.xml /tmp/bindings-<form_unique_id>.json [--replace-existing] -o /tmp/patched-<form_unique_id>.xml
      ```
 
      Patched XML lands at the `-o` path; a JSON summary
