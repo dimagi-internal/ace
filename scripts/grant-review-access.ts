@@ -100,6 +100,11 @@
  *   broader. So Chatbot Admin is the least-privilege group that actually opens the
  *   linked page. Do not "tighten" this to Chat Viewer without re-reading those
  *   lines — it silently reintroduces the 403.
+ *
+ *   Membership is not access here either: an ALREADY-accepted member on the wrong
+ *   group 403s just the same. So "already a team member" is NOT the skip — the
+ *   member's groups are reconciled (additively) through the membership edit page
+ *   when they don't already include the requested set. See `ocsSetMemberGroups`.
  */
 import * as fs from 'node:fs';
 import * as path from 'node:path';
@@ -710,6 +715,8 @@ interface OcsPendingInvite {
 
 interface OcsReadback {
   isMember: boolean;
+  /** The matched accepted member's row, when `isMember` — id drives the edit URL. */
+  member?: { id: string; label: string };
   pending?: OcsPendingInvite;
   raw: string[];
 }
@@ -746,16 +753,171 @@ function parseOcsTeamPage(html: string, email: string): OcsReadback {
   }
   raw.push(`  Pending Invitations table: ${JSON.stringify(invites)}`);
 
+  const member = members.find((m) => m.label.toLowerCase().includes(lower));
   return {
-    isMember: members.some((m) => m.label.toLowerCase().includes(lower)),
+    isMember: Boolean(member),
+    member,
     pending: invites.find((i) => i.email.toLowerCase() === lower),
     raw,
   };
 }
 
+/** The `value`s of the CHECKED checkboxes of a named group (order-independent). */
+function checkedCheckboxValues(html: string, name: string): string[] {
+  const out: string[] = [];
+  for (const m of html.matchAll(new RegExp(`<input\\b[^>]*name="${name}"[^>]*>`, 'gi'))) {
+    if (/\bchecked\b/i.test(m[0])) {
+      const v = m[0].match(/\bvalue="([^"]*)"/)?.[1];
+      if (v !== undefined) out.push(v);
+    }
+  }
+  return out;
+}
+
 function sameGroups(a: string[], b: string[]): boolean {
   const norm = (xs: string[]) => [...new Set(xs.map((x) => x.toLowerCase()))].sort().join('|');
   return norm(a) === norm(b);
+}
+
+/**
+ * Bring an ALREADY-accepted team member's groups up to include `wantLabels`.
+ *
+ * Membership is not access — the OCS twin of the HQ role trap. The chatbot admin
+ * page ACE links (`/a/<team>/chatbots/<id>/`) needs `experiments.view_experiment`,
+ * carried only by "Chatbot Admin" (see the ⚠ block in the header); a member
+ * accepted onto some other group 403s there. The invite POST can't fix it (they
+ * are no longer invitable), so the groups are edited through the membership page.
+ *
+ * Additive by design: the POST is the UNION of the member's current groups and
+ * the requested ones, because `MembershipForm.save()` REPLACES the m2m set
+ * (apps/teams/forms.py:221-226 → `fields = ("groups",)`). Posting only the
+ * requested groups would strip whatever else they had — this is a grant, not a
+ * role-management tool, so it never removes access.
+ *
+ * Contract (read off OCS source + the live page, 2026-07-24):
+ *   Route   `members/<membership_id>/` → `team_membership_details`
+ *           (apps/teams/urls.py:18 → apps/teams/views/membership_views.py:19).
+ *           membership_id is the `id` already parsed off the Team Members anchor.
+ *   Guard   a non-admin GET on someone else's membership 302-redirects with
+ *           "you don't have permission" (membership_views.py:22-24), so a 200
+ *           here also proves ACE can edit.
+ *   Form    `MembershipForm` — `fields = ("groups",)`, `CheckboxSelectMultiple`
+ *           (apps/teams/forms.py:221-226). Plain form POST to the same URL with
+ *           `{% csrf_token %}` (templates/teams/team_membership_details.html);
+ *           NOT htmx. Live groups render as
+ *           `<label><input name="groups" value="<pk>" [checked]> Label</label>`.
+ *   Success re-renders the page 200 with the new set checked (the view returns
+ *           `render(...)`, not a redirect — membership_views.py:41-50).
+ *   Proof   re-GET the same page; every requested group's checkbox is `checked`.
+ */
+async function ocsSetMemberGroups(
+  request: APIRequestContext,
+  ocsBase: string,
+  team: string,
+  memberId: string,
+  wantLabels: string[],
+  dryRun: boolean,
+): Promise<{ ok: boolean; detail: string; raw: string[] }> {
+  const raw: string[] = [];
+  const url = `${ocsBase}/a/${team}/team/members/${memberId}/`;
+
+  const gr = await request.get(url, { maxRedirects: 0 });
+  raw.push(`GET ${url} -> ${gr.status()}`);
+  if (gr.status() !== 200) {
+    return {
+      ok: false,
+      detail:
+        `GET ${url} -> ${gr.status()} ${gr.headers()['location'] ?? ''} — ACE cannot open the ` +
+        `membership edit page (not a Team Admin on "${team}", or the session expired). ` +
+        `Owner: a Team Admin must set the member's groups.`,
+      raw,
+    };
+  }
+  const html = await gr.text();
+  const csrf = csrfFromHtml(html);
+  const groups = checkboxOptions(html, 'groups');
+  if (!csrf || groups.length === 0) {
+    return {
+      ok: false,
+      detail:
+        'Could not parse csrfmiddlewaretoken and/or the groups checkboxes off the live ' +
+        'membership page — OCS changed the template. Not guessing a payload.',
+      raw: [...raw, `groups parsed: ${JSON.stringify(groups)}`],
+    };
+  }
+
+  const byLabel = (label: string) => groups.find((g) => g.label.toLowerCase() === label.toLowerCase());
+  const wantValues: string[] = [];
+  for (const label of wantLabels) {
+    const g = byLabel(label);
+    if (!g) {
+      return {
+        ok: false,
+        detail: `Requested group "${label}" is not offered on team "${team}".`,
+        raw: [...raw, `live groups: ${groups.map((g2) => `${g2.label} = ${g2.value}`).join(' | ')}`],
+      };
+    }
+    wantValues.push(g.value);
+  }
+
+  const current = checkedCheckboxValues(html, 'groups');
+  const labelOf = (v: string) => groups.find((g) => g.value === v)?.label ?? v;
+  raw.push(`  member currently in group(s): ${current.map(labelOf).join(', ') || '(none)'}`);
+
+  const missing = wantValues.filter((v) => !current.includes(v));
+  if (missing.length === 0) {
+    return {
+      ok: true,
+      detail: `already carries the requested group(s) ${wantLabels.join(', ')}`,
+      raw,
+    };
+  }
+
+  // Additive union — never strip an existing group (MembershipForm REPLACES the set).
+  const union = [...new Set([...current, ...wantValues])];
+  raw.push(
+    `[ocs] POST ${url} adding [${missing.map(labelOf).join(', ')}]; ` +
+      `posting union [${union.map(labelOf).join(', ')}]`,
+  );
+  if (dryRun) return { ok: false, detail: '--dry-run: no POST issued', raw };
+
+  const body = new URLSearchParams();
+  body.set('csrfmiddlewaretoken', csrf);
+  for (const v of union) body.append('groups', v);
+  const pr = await request.post(url, {
+    data: body.toString(),
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded',
+      'X-CSRFToken': csrf,
+      Referer: url,
+    },
+    maxRedirects: 0,
+  });
+  raw.push(`POST ${url} -> ${pr.status()}`);
+  if (pr.status() >= 400) {
+    return {
+      ok: false,
+      detail: `POST ${url} -> ${pr.status()}: ${(await pr.text()).slice(0, 300)}`,
+      raw,
+    };
+  }
+
+  // Prove against a fresh read, not the POST response — every requested group checked.
+  const vr = await request.get(url, { maxRedirects: 0 });
+  raw.push(`GET ${url} (verify) -> ${vr.status()}`);
+  const nowChecked = vr.status() === 200 ? checkedCheckboxValues(await vr.text(), 'groups') : [];
+  raw.push(`  member now in group(s): ${nowChecked.map(labelOf).join(', ') || '(unparsed)'}`);
+  const stillMissing = wantValues.filter((v) => !nowChecked.includes(v));
+  if (stillMissing.length) {
+    return {
+      ok: false,
+      detail:
+        `POST returned ${pr.status()} but the member still lacks group(s) ` +
+        `[${stillMissing.map(labelOf).join(', ')}] on re-read — a 200 is not proof; treat as not done.`,
+      raw,
+    };
+  }
+  return { ok: true, detail: `added group(s) ${missing.map(labelOf).join(', ')}`, raw };
 }
 
 async function grantOcs(opts: {
@@ -797,11 +959,40 @@ async function grantOcs(opts: {
 
     const pre = parseOcsTeamPage(html, opts.email);
     if (pre.isMember) {
+      // Membership is not access. An accepted member on the wrong group 403s on
+      // the chatbot page ACE links, so "already a member" is NOT the skip — the
+      // member's GROUPS have to include the requested set. Reconcile if not.
+      if (!pre.member?.id) {
+        record({
+          surface,
+          status: 'NOT DONE',
+          detail:
+            `already an accepted team member, but the read-back carried no membership id, so the ` +
+            `groups cannot be verified or reconciled here. Owner: a Team Admin must confirm ` +
+            `${opts.email} has group(s) [${opts.groupLabels.join(', ')}].`,
+          readback: [`GET ${teamUrl} -> 200`, ...pre.raw],
+        });
+        return;
+      }
+      const set = await ocsSetMemberGroups(
+        request,
+        ocsBase,
+        opts.team,
+        pre.member.id,
+        opts.groupLabels,
+        opts.dryRun,
+      );
+      // ok+"already carries" => nothing to do; ok+"added" => reconciled.
+      const noop = set.ok && set.detail.startsWith('already carries');
       record({
         surface,
-        status: 'already-present',
-        detail: 'already an accepted team member',
-        readback: [`GET ${teamUrl} -> 200`, ...pre.raw],
+        status: set.ok ? (noop ? 'already-present' : 'granted') : 'NOT DONE',
+        detail: set.ok
+          ? noop
+            ? `already an accepted team member; ${set.detail}`
+            : `already a member but missing a group — ${set.detail}`
+          : set.detail,
+        readback: [`GET ${teamUrl} -> 200`, ...pre.raw, ...set.raw],
       });
       return;
     }
