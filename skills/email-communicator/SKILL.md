@@ -72,14 +72,18 @@ ACE uses its OWN gog client — never another agent's identity (and vice versa: 
      `newer_than:1d` — combined with spaces.
    - Returns thread list with IDs, dates, senders, subjects.
 
-6. **For read operations:**
-   - Use: `gog gmail read --account $ACE_GMAIL_ACCOUNT --client $ACE_GMAIL_CLIENT <message_id> --json`
-   - Returns full message content including headers and body.
-   - **Always read with `--json` (the structured reader), never a raw text view.** A raw
-     `gog gmail read` text dump hides `Cc:` — so a reply built from it silently drops the cc'd
-     recipients. Take the recipient set (To + Cc) from the JSON headers, and choose reply-all vs.
-     direct on purpose (`bin/ace-email --to <reply-all set>`). Per canopy
-     `docs/agent-operating-model.md § 1b` reply-quality rule 5 (adopted by reference, jjackson/ace#828).
+6. **For read operations** (use the shared canopy engine, not raw `gog` — canopy ≥ 0.2.346):
+   - Use: `canopy email read <threadId> --repo .`
+   - Returns normalized JSON: per message the headers + decoded `body_text` (quoted reply tail
+     trimmed) + each attachment's `attachment_id`, PLUS a thread-level `reply_all` recipient set
+     (`{to, cc, reply_to_message_id}`). Pass a **THREAD id** — gog reads threads and 404s on a
+     bare message id (the multi-message-thread trap).
+   - **Recipient safety is now the engine's job.** Take the reply-all set from `reply_all` (To/Cc)
+     and pass it to `bin/ace-email --to <set>`, choosing reply-all vs. direct on purpose. A raw
+     `gog gmail read` text dump hid `Cc:` and silently dropped cc'd recipients; the canopy reader
+     is structured, so that can't happen. Download any attachment with `canopy email
+     fetch-attachment <messageId> <attachmentId> --repo . --out <dir>` (see inbox-triage's File
+     action). Per canopy `docs/agent-operating-model.md § 1b` reply-quality rule 5 (jjackson/ace#828).
 
 7. **Log the operation — the routing contract.** For every send/reply, the calling skill MUST record
    `thread_id` + `message_id` + recipients + date in the run's comms-log
