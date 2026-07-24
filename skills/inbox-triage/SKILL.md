@@ -102,7 +102,14 @@ the shape of the turn.
        relevant Phase 9 skill. Correspond-tier content that *should* advance a run (an LLO's UAT
        feedback, a solicitation question) becomes a **drafted reply + an escalation note** to the
        act-tier operator on the run (`initiated_by` / `last_actor` in `run_state.yaml`).
-     - **File** — save an attachment/asset to the run's Drive folder.
+     - **File** — save an attachment/asset to the run's Drive folder. Intake recipe (use the
+       shared canopy engine, not raw `gog` — canopy ≥ 0.2.344): `canopy email read <threadId>
+       --repo .` returns each message's `attachments[]` with the `attachment_id`; then `canopy
+       email fetch-attachment <messageId> <attachmentId> --repo . --out <dir>` downloads it and
+       returns `.path`/`saved_to` (there is NO `-o` flag and no base64 `data` field — that's
+       what the engine handles). Parse xlsx/docx with Python **stdlib** (`zipfile` + `xml`) — the
+       runtime env is externally-managed, so don't `pip install`. Then upload the file to the
+       run's Drive folder.
      - **Escalate** — hand to a human (ambiguous, sensitive, out of scope, or tier-none).
      - **No-op (mark read)** — the thread was addressed to ACE but there is **no work for ACE
        to do right now**: the ask directed at ACE is gated on another party delivering first
