@@ -282,6 +282,11 @@ selectors:
     value: "org.commcare.dalvik:id/btn_resume"
     purpose: "Resume button on each In-Progress opportunity card (sibling of opp-list-view-opportunity-button on New Opportunities cards). Live-verified 2026-06-01 (2.63.0), #650."
 
+  opp-list-view-info:
+    type: id
+    value: "org.commcare.dalvik:id/btn_view_info"
+    purpose: "View Info button — the SECONDARY button on each In-Progress opportunity card (sibling of opp-list-resume-button; New Opportunities cards carry btn_view_opportunity instead — see the card-anatomy notes in connect-claim-opp.yaml/connect-resume-opp.yaml). Routes to the opp info/detail surface for an already-claimed opp. Live-confirmed on the 2.63.0 In-Progress card (docs/mobile-calibration/connect-2.63.0-2026-06-01.md; re-confirmed live hh-poverty-targeting/20260722, dimagi-internal/ace#870). Previously comment-only in the recipes, which forced per-run recipes to inline the raw id."
+
   opp-detail-start:
     type: id
     value: "org.commcare.dalvik:id/btn_start"
