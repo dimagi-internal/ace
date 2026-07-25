@@ -616,15 +616,20 @@ For each form-walk segment of a recipe:
    Capture widget.) The correct recipe sequence is: (a) ensure the
    emulator has a mock location — the cold-boot baseline already seeds a
    default fix, and `mobile_set_location` overrides it with opp-specific
-   coordinates (**longitude first**); see
-   `playbook/integrations/mobile-integration.md`, (b) tap the geopoint
-   Capture button, (c) wait for the accuracy readout. The geopoint
-   Capture-button selector MUST be **calibrated live against this run's
-   released build** (per "close the loop to the source of truth") — never
-   transcribe it from a sibling build (that's exactly how the #593/#686
-   "GPS is a plain text field" misdiagnosis propagated). Until the
-   selector is calibrated live, mark the geopoint step `recipe: deferred`
-   for live resolution rather than inlining a typed string.
+   coordinates (**longitude first**; AVD backend only — unsupported on
+   the cloud emulator backend); see
+   `playbook/integrations/mobile-integration.md`, (b) tap
+   `${SELECTOR:geopoint-record-location}` — the widget's button renders
+   text **"RECORD LOCATION"** (live-calibrated 2026-07-13 on
+   hh-poverty-targeting/20260702-1456, dimagi-internal/ace#861; the
+   Button carries no resource-id, and the earlier "Capture Location"
+   guess does not exist on-device), (c) the tap **auto-captures** when a
+   mock fix is pre-seeded — wait for the Latitude/Longitude/Altitude/
+   Accuracy readout to render under the button (no separate capture
+   dialog). If a FUTURE APK version changes the widget, re-calibrate
+   against a live dump of that build (per "close the loop to the source
+   of truth") — never transcribe from a sibling build (that's exactly how
+   the #593/#686 "GPS is a plain text field" misdiagnosis propagated).
 5. Hidden / `calculate`-only fields are auto-populated by the form
    runtime — they don't need a per-question answer step. Skip them when
    composing the answer sequence.
