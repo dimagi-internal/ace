@@ -365,6 +365,23 @@ describe('resolveManifest', () => {
     expect(resolved.resolveImageRef('@banner')).toBe('https://cdn.example.com/banner.png');
   });
 
+  it('resolveImageRef converts a bare Drive fileId manifest value to a uc?export=view URL (ace#853)', () => {
+    const resolved = resolveManifest({
+      common: { shot: '1Enhe4EwQ_Hexy1oGW3tsWFqNYYmy-qLrIq2sc1rtoF0' },
+    });
+    expect(resolved.resolveImageRef('@shot')).toBe(
+      'https://drive.google.com/uc?export=view&id=1Enhe4EwQ_Hexy1oGW3tsWFqNYYmy-qLrIq2sc1rtoF0',
+    );
+  });
+
+  it('resolveImageRef does NOT treat short tokens or paths as bare fileIds', () => {
+    const resolved = resolveManifest({
+      common: { rel: 'images/banner.png', short: 'abc123' },
+    });
+    expect(resolved.resolveImageRef('@rel')).toBe('images/banner.png');
+    expect(resolved.resolveImageRef('@short')).toBe('abc123');
+  });
+
   it('get returns undefined for missing alias', () => {
     const resolved = resolveManifest(manifest);
     expect(resolved.get('missing')).toBeUndefined();
