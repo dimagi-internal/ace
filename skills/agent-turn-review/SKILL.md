@@ -86,6 +86,20 @@ is fleet-wide and DRY — **invoke `canopy:agent-turn-review`** and apply it in 
   Grateful for the careful reviews throughout." Both attributed value/emotion ACE can't back; the
   fix in each was to cut to the plain thank-you. Fleet-general, now seen across sessions → PROMOTE
   into `canopy:agent-turn-review`.)
+- **Re-evaluate every substantive artifact the reply links or re-sends — the review covers the
+  ARTIFACT, not just the cover note.** §A's "read cited sources" covers what THEY cited; this is
+  the outbound twin: if the reply links or attaches a substantive artifact ACE authored (a brief,
+  plan, deck, run summary — this turn or a prior one), re-open and re-evaluate THAT artifact
+  against its own quality bar before the send. Do NOT trust a prior-turn summary of it — the doc
+  may have drifted, and the review that graded the cover note never graded the doc. Mechanism:
+  where a `-qa`/`-eval` partner exists for the artifact class, run it (or confirm its verdict is
+  current against the doc's present revision); otherwise read the artifact end-to-end and score it
+  explicitly in the review. Escalate scrutiny when the artifact reaches a NEW or EXTERNAL
+  audience — a doc that was fine for an internal thread is not automatically fine for a prospect's
+  decider. (Origin: dimagi-internal/ace#876 — a Spark reply re-sent a research brief to the
+  prospect's CEO/CIO; the review graded the reply body only, and the brief was scored only after
+  the operator prompted "did you score it?". It passed — but the gate must force that evaluation
+  unprompted. Fleet-general → candidate for promotion into `canopy:agent-turn-review` §A.)
 - **Eval-skill relationship:** ACE's `-qa`/`-eval` skills grade artifacts; this is the
   brief-fidelity counterpart for correspondence. (Supersedes the old `skills/self-review`.)
 - **Send path:** outbound email goes ONLY via `bin/ace-email` (a `config/gating.json` deny rail
