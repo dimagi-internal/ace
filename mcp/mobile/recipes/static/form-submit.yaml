@@ -28,10 +28,21 @@
 #   ${SCREENSHOT_NAME_POST_SUBMIT} — screenshot after submit confirmation
 #                                    (e.g. "deliver-submitted-confirmation")
 #
+# Callers SHOULD pass both names (per-journey names keep the pre/post
+# frames distinct in the capture manifest). The env block below provides
+# fallback defaults so an unbound call can no longer collapse both shots
+# into one literal-placeholder filename (both takeScreenshot steps used
+# to resolve to the SAME unset-var name, so post-submit silently
+# OVERWROTE pre-submit — dimagi-internal/ace#852). Maestro precedence:
+# caller-passed env (runFlow env / -e) overrides these defaults.
+#
 # When the atlas walks Deliver, this recipe should be replaced with a
 # concrete branch (either keep the auto-finalize path or use a real
 # Submit selector with known label).
 appId: org.commcare.dalvik
+env:
+  SCREENSHOT_NAME_PRE_SUBMIT: form-submit-pre
+  SCREENSHOT_NAME_POST_SUBMIT: form-submit-post
 ---
 - takeScreenshot: "${SCREENSHOT_NAME_PRE_SUBMIT}"
 
