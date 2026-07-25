@@ -463,6 +463,16 @@ export function resolveManifest(manifest: {
           const fileId = value.slice('drive:'.length);
           return `https://drive.google.com/uc?export=view&id=${fileId}`;
         }
+        // A manifest value may also be a BARE Drive fileId (a manifest
+        // author writing `file_id` straight from the capture manifest,
+        // with no `drive:` prefix and no host). normalizeDriveImageUrl
+        // would pass it through untouched (no drive.google.com host) and
+        // the literal id reaches Slides `createImage`, which rejects it —
+        // the #724 failure class, one hop earlier. Sibling of the
+        // `drive:` branch above. (dimagi-internal/ace#853)
+        if (/^[a-zA-Z0-9_-]{20,}$/.test(value)) {
+          return `https://drive.google.com/uc?export=view&id=${value}`;
+        }
         // A manifest value may itself be a raw Drive share/view URL —
         // normalize it the same way (#630).
         return normalizeDriveImageUrl(value);
