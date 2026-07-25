@@ -350,15 +350,28 @@ selectors:
   # 1)` sees 1 token).
   #
   # A CORRECT build renders the native geopoint Capture-button widget,
-  # which needs an emulator mock-location fix (`adb emu geo fix`) BEFORE
-  # the FLW taps Capture. There is NOT yet a calibrated capture-button
-  # selector row here because we have not had a correct on-device build to
-  # dump live — calibrate it against the next run's released build (do NOT
-  # transcribe from a sibling APK/build), and add `mobile_set_location`
-  # support first. `app-release-qa` now hard-gates the stale-build class
-  # (kind:geopoint MUST compile to bind `type="geopoint"`) so future runs
-  # render the real widget. See `skills/app-test-cases/SKILL.md` Step 3
-  # item 4.5 for the geopoint recipe-authoring rule.
+  # which needs an emulator mock-location fix BEFORE the FLW taps the
+  # button. LIVE-CALIBRATED 2026-07-13 (dimagi-internal/ace#861) against
+  # hh-poverty-targeting/20260702-1456 Phase 6, ACE_Pixel_API_34,
+  # connect-2.63.0: the widget's button renders text "RECORD LOCATION"
+  # (android.widget.Button, NO resource-id on the button itself — the
+  # earlier best-guess "Capture Location" is absent from the live dump).
+  # With a mock fix pre-seeded via `mobile_set_location` (LONGITUDE
+  # first), tapping RECORD LOCATION AUTO-CAPTURES — the lat/lon/alt/
+  # accuracy readout renders under the button with no separate capture
+  # dialog. The corrected recipe walked the full Deliver smoke to pass
+  # (evidence: 6-qa-and-training/screenshots/journey-deliver/
+  # journey-deliver-gps-captured.{png,xml} on that run). NOTE:
+  # `mobile_set_location` is AVD-backend-only (unsupported on the cloud
+  # emulator backend — mcp/mobile/client.ts). `app-release-qa` hard-gates
+  # the stale-build class (kind:geopoint MUST compile to bind
+  # type="geopoint") so runs render the real widget. See
+  # `skills/app-test-cases/SKILL.md` Step 3 item 4.5 for the
+  # recipe-authoring rule.
+  geopoint-record-location:
+    type: text
+    value: "RECORD LOCATION"
+    purpose: "Native CommCare geopoint widget's capture button ('RECORD LOCATION', android.widget.Button, no resource-id on the button). Precondition: mock fix seeded via mobile_set_location (longitude first; AVD-only) — then a single tap auto-captures and the Latitude/Longitude/Altitude/Accuracy readout renders below the button. Live-calibrated 2026-07-13, hh-poverty-targeting/20260702-1456 (#861)."
 
   # ── Post-claim Learn-app surfaces (atlas-verified 2026-05-14) ──────
   # These selectors were calibrated against ACE_Pixel_API_34_PS on the
