@@ -2162,11 +2162,11 @@ describe('ensureCommCareApkCached: integrity-checked cache', () => {
 
   // ── URL-template fallback ──────────────────────────────────────
   //
-  // Dimagi renamed the release asset between CommCare 2.62.0
-  // (`app-commcare-release.apk`) and 2.63.0 (`commcare-<v>-release.apk`).
-  // The downloader probes the new name first; on 404 it falls back to
-  // the old name so older pins keep working.
-  it('downloads from the new versioned filename on first attempt', async () => {
+  // Dimagi has renamed the release asset three times: 2.62.0
+  // (`app-commcare-release.apk`), 2.63.0/2.63.1 (`commcare-<v>-release.apk`),
+  // and 2.63.2+ (`commcare-<v>.apk`). The downloader probes
+  // newest-convention-first and falls back, so every pin keeps working.
+  it('downloads from the newest (2.63.2+) filename on first attempt', async () => {
     const version = `test-new-name-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     const apkPath = path.join(cacheDir, `commcare-${version}.apk`);
     const shaPath = `${apkPath}.sha256`;
@@ -2174,7 +2174,7 @@ describe('ensureCommCareApkCached: integrity-checked cache', () => {
     try { fs.unlinkSync(shaPath); } catch { /* fine */ }
     const bytes = fakeApkBuffer(version);
     const fetchImpl = vi.fn().mockImplementation(async (url: string) => {
-      if (url.endsWith(`/commcare-${version}-release.apk`)) {
+      if (url.endsWith(`/commcare-${version}.apk`)) {
         return {
           ok: true,
           status: 200,
@@ -2204,9 +2204,9 @@ describe('ensureCommCareApkCached: integrity-checked cache', () => {
     await expect(
       client.runLocalBootstrap({ name: 'AVD', serial: 'emulator-5554', status: 'booted' } as any),
     ).rejects.toThrow();
-    // One fetch — new filename succeeded, no fallback needed.
+    // One fetch — newest filename succeeded, no fallback needed.
     expect(fetchImpl).toHaveBeenCalledTimes(1);
-    expect(fetchImpl).toHaveBeenCalledWith(expect.stringMatching(new RegExp(`/commcare-${version}-release\\.apk$`)));
+    expect(fetchImpl).toHaveBeenCalledWith(expect.stringMatching(new RegExp(`/commcare-${version}\\.apk$`)));
     expect(fs.existsSync(apkPath)).toBe(true);
     try { fs.unlinkSync(apkPath); fs.unlinkSync(shaPath); } catch { /* leave */ }
   });
@@ -2250,14 +2250,17 @@ describe('ensureCommCareApkCached: integrity-checked cache', () => {
       client.runLocalBootstrap({ name: 'AVD', serial: 'emulator-5554', status: 'booted' } as any),
     ).rejects.toThrow();
     // Two fetches — new filename 404'd, then old filename succeeded.
-    expect(fetchImpl).toHaveBeenCalledTimes(2);
-    expect(fetchImpl).toHaveBeenNthCalledWith(1, expect.stringMatching(new RegExp(`/commcare-${version}-release\\.apk$`)));
-    expect(fetchImpl).toHaveBeenNthCalledWith(2, expect.stringMatching(/\/app-commcare-release\.apk$/));
+    // Three candidates now: newest (`commcare-<v>.apk`), then the
+    // `-release` form, then the 2.62.0 legacy name that finally answers.
+    expect(fetchImpl).toHaveBeenCalledTimes(3);
+    expect(fetchImpl).toHaveBeenNthCalledWith(1, expect.stringMatching(new RegExp(`/commcare-${version}\\.apk$`)));
+    expect(fetchImpl).toHaveBeenNthCalledWith(2, expect.stringMatching(new RegExp(`/commcare-${version}-release\\.apk$`)));
+    expect(fetchImpl).toHaveBeenNthCalledWith(3, expect.stringMatching(/\/app-commcare-release\.apk$/));
     expect(fs.existsSync(apkPath)).toBe(true);
     try { fs.unlinkSync(apkPath); fs.unlinkSync(shaPath); } catch { /* leave */ }
   });
 
-  it('throws when both filenames 404', async () => {
+  it('throws when all three filename conventions 404', async () => {
     const version = `test-both-404-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     const apkPath = path.join(cacheDir, `commcare-${version}.apk`);
     try { fs.unlinkSync(apkPath); } catch { /* fine */ }
@@ -2288,8 +2291,8 @@ describe('ensureCommCareApkCached: integrity-checked cache', () => {
     await expect(
       client.runLocalBootstrap({ name: 'AVD', serial: 'emulator-5554', status: 'booted' } as any),
     ).rejects.toThrow(/APK download failed/);
-    // Both URLs were tried before erroring.
-    expect(fetchImpl).toHaveBeenCalledTimes(2);
+    // All three URL conventions were tried before erroring.
+    expect(fetchImpl).toHaveBeenCalledTimes(3);
   });
 });
 
@@ -2304,9 +2307,9 @@ describe('getConfiguredApkVersion: env-var with default', () => {
     else process.env.ACE_CONNECT_APK_VERSION = prev;
   });
 
-  it("returns '2.63.0' when env var is unset (current default)", () => {
+  it("returns '2.63.2' when env var is unset (current default)", () => {
     delete process.env.ACE_CONNECT_APK_VERSION;
-    expect(getConfiguredApkVersion()).toBe('2.63.0');
+    expect(getConfiguredApkVersion()).toBe('2.63.2');
   });
 
   it('returns the env-var value when set', () => {
@@ -2316,7 +2319,7 @@ describe('getConfiguredApkVersion: env-var with default', () => {
 
   it('falls back to default when env var is empty string', () => {
     process.env.ACE_CONNECT_APK_VERSION = '';
-    expect(getConfiguredApkVersion()).toBe('2.63.0');
+    expect(getConfiguredApkVersion()).toBe('2.63.2');
   });
 });
 

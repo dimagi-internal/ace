@@ -277,7 +277,7 @@ server.tool(
   'mobile_resolve_selectors',
   {
     yaml: z.string().describe('Maestro YAML body containing `${SELECTOR:logical-name}` placeholders to resolve.'),
-    apkVersion: z.string().default('2.63.0').describe('Connect APK version. Maps to mcp/mobile/selectors/connect-<apkVersion>.yaml. Defaults to 2.63.0; bump when re-baselining against a new APK.'),
+    apkVersion: z.string().default('2.63.2').describe('Connect APK version. Maps to mcp/mobile/selectors/connect-<apkVersion>.yaml. Defaults to 2.63.2 (live drift-checked 2026-07-25); bump when re-baselining against a new APK. Pin PUBLISHED releases only — 2.63.3 is a GitHub draft with no assets.'),
   },
   async ({ yaml, apkVersion }) => {
     try {

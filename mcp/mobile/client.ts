@@ -121,12 +121,17 @@ export function bootstrapConfigFromEnv(): LocalBootstrapConfig | null {
  * The selector-map APK version that recipe resolution targets.
  *
  * Reads `ACE_CONNECT_APK_VERSION` (the same env var that pins the APK
- * download in `runLocalBootstrap`), falling back to `2.63.0` when unset
+ * download in `runLocalBootstrap`), falling back to `2.63.2` when unset
  * or empty so the default tracks the validated baseline. Bump the
  * default here in lockstep with the `.env.tpl` default when a new
  * selector baseline is verified and promoted.
+ *
+ * 2.63.2 promoted 2026-07-25 after a live drift check on ACE_Pixel_API_34
+ * (see the header of `selectors/connect-2.63.2.yaml`). NOTE: pin only
+ * PUBLISHED releases — at time of writing `commcare_2.63.3` exists as a
+ * GitHub DRAFT with no assets, so pinning it fails the download outright.
  */
-export const DEFAULT_APK_VERSION = '2.63.0';
+export const DEFAULT_APK_VERSION = '2.63.2';
 export function getConfiguredApkVersion(): string {
   const v = process.env.ACE_CONNECT_APK_VERSION;
   return v && v.length > 0 ? v : DEFAULT_APK_VERSION;
@@ -761,12 +766,17 @@ export class MobileClient {
       // Not cached — fall through to download.
     }
 
-    // Dimagi renamed the release asset between CommCare 2.62.0
-    // (`app-commcare-release.apk`) and 2.63.0 (`commcare-<v>-release.apk`).
-    // Probe the new filename first; on 404 fall back to the legacy
-    // name so older pins keep working without a code change.
+    // Dimagi has renamed the release asset at least three times:
+    //   2.62.0        → `app-commcare-release.apk`
+    //   2.63.0/2.63.1 → `commcare-<v>-release.apk`
+    //   2.63.2+       → `commcare-<v>.apk`        (the `-release` suffix dropped)
+    // Probe newest-convention-first and fall back, so both older pins and
+    // future re-renames keep working without a code change. The 2.63.2
+    // form was missing here until 2026-07-25, which made pinning 2.63.2
+    // fail with APK_DOWNLOAD_FAILED even though the release was published.
     const baseUrl = `https://github.com/dimagi/commcare-android/releases/download/commcare_${version}`;
     const candidateUrls = [
+      `${baseUrl}/commcare-${version}.apk`,
       `${baseUrl}/commcare-${version}-release.apk`,
       `${baseUrl}/app-commcare-release.apk`,
     ];
