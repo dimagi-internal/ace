@@ -1419,7 +1419,7 @@ _no parameters_
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `yaml` | `z.string` | **required** | Maestro YAML body containing `${SELECTOR:logical-name}` placeholders to resolve. |
-| `apkVersion` | `z.string` | optional | Connect APK version. Maps to mcp/mobile/selectors/connect-<apkVersion>.yaml. Defaults to 2.63.0; bump when re-baselining against a new APK. |
+| `apkVersion` | `z.string` | optional | _—_ |
 
 ### `mobile_save_snapshot`
 

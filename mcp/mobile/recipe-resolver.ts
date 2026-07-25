@@ -242,7 +242,7 @@ export function injectAceEnvVars(
  */
 export async function prepareRecipeForMaestro(
   recipePath: string,
-  apkVersion: string = '2.63.0',
+  apkVersion: string = '2.63.2',
 ): Promise<{
   resolvedPath: string;
   tempDir: string;

@@ -88,6 +88,10 @@ describe('ACE-Test-001 fixture', () => {
       '3-commcare/app-release-eval_verdict.yaml',
       '3-commcare/pdd-to-deliver-app-eval_verdict.yaml',
       '3-commcare/pdd-to-learn-app-eval_verdict.yaml',
+      // ace#892: the Learn smoke recipe is a required Phase-3 artifact
+      // (Phase 6 pre-flight hard-halts without it), so this partial
+      // fixture correctly reports it missing.
+      '3-commcare/recipes/journey-learn.yaml',
       // Phase 4 summary missing.
       '4-connect/connect-setup_summary.md',
       // PR-517: Phase 4 `-eval` verdict flipped to required:true.
