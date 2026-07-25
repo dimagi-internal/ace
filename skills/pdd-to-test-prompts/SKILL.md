@@ -131,7 +131,7 @@ right after `idea-to-pdd`.
    - At least one that should trigger `[training-gap]`
    - At least one escalation prompt
 
-   If any category is missing OR adversarial-share is below 15%, go
+   If any category is missing OR adversarial-share is below 20%, go
    back to step 3 and add.
 
 ## Archetypes

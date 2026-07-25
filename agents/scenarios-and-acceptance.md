@@ -85,7 +85,7 @@ Invoke the `pdd-to-test-prompts` skill.
 
 ### Step 1.4: PDD-to-test-prompts QA (structural pass/fail)
 
-Invoke the `pdd-to-test-prompts-qa` skill — runs 8 static checks (header + total count, ≥8 prompts, each prompt has all required fields, all 5 adversarial categories present, ≥15% adversarial share, training-gap / product-feedback / escalation prompts).
+Invoke the `pdd-to-test-prompts-qa` skill — runs the static checks defined in `skills/pdd-to-test-prompts-qa/checks.ts` (the authoritative contract: header + total count, prompt count in range, each prompt has all required fields, all 7 adversarial categories present, ≥20% adversarial share, training-gap / product-feedback / escalation prompts).
 
 - Input: `runs/<run-id>/2-scenarios/pdd-to-test-prompts.md`
 - Output: `runs/<run-id>/2-scenarios/pdd-to-test-prompts-qa_result.yaml`
