@@ -38,6 +38,18 @@ export async function detectDuplicateFolders(
 
 const OPP_ROOT_WHITELIST = new Set(['opp.yaml', 'inputs', 'runs', 'current']);
 
+/**
+ * Agent-operating-model correspondence logs (e.g. `inbox-triage_comms-log`)
+ * live at opp root by design — inbox-triage routes inbound threads by
+ * matching Gmail thread_id against them. They are ACE-owned, not stray
+ * cruft, and the orchestrator's Step 5b auto-migrate skips them for the
+ * same reason (dimagi-internal/ace#929). Keep in sync with
+ * `agents/ace-orchestrator.md § Step 5b`.
+ */
+export function isOppRootCommsLog(name: string): boolean {
+  return name.includes('_comms-log');
+}
+
 /** List opp-root entries (files or folders) that are NOT in the whitelist. */
 export async function detectStrayOppRootFiles(
   oppFolderId: string,
@@ -45,7 +57,7 @@ export async function detectStrayOppRootFiles(
 ): Promise<Array<{ id: string; name: string }>> {
   const children = await drive.list(oppFolderId);
   return children
-    .filter((c) => !OPP_ROOT_WHITELIST.has(c.name))
+    .filter((c) => !OPP_ROOT_WHITELIST.has(c.name) && !isOppRootCommsLog(c.name))
     .map((c) => ({ id: c.id, name: c.name }));
 }
 

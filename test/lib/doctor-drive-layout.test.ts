@@ -58,6 +58,20 @@ describe('detectStrayOppRootFiles', () => {
     ]);
   });
 
+  it('exempts agent-operating-model comms-log docs at opp root (ace#929)', async () => {
+    const drive = {
+      list: vi.fn().mockResolvedValue([
+        { id: 'a', name: 'opp.yaml', mimeType: DOC },
+        { id: 'b', name: 'inbox-triage_comms-log', mimeType: DOC },
+        { id: 'c', name: 'email-communicator_comms-log.md', mimeType: DOC },
+        { id: 'd', name: 'stray-notes.md', mimeType: DOC },
+      ]),
+    };
+    expect(await detectStrayOppRootFiles('opp-folder-id', drive as any)).toEqual([
+      { id: 'd', name: 'stray-notes.md' },
+    ]);
+  });
+
   it('passes when only whitelisted entries exist', async () => {
     const drive = {
       list: vi.fn().mockResolvedValue([

@@ -681,16 +681,23 @@ in `inputs/` (the manifest), not to pick one canonical PDD file.
    - **5b. Auto-migrate top-level docs into `inputs/`.** List `<opp>/`
      via `drive_list_folder`. For each direct child whose
      `mimeType` is NOT `application/vnd.google-apps.folder` AND whose
-     name is NOT one of the orchestrator-owned files (`opp.yaml`),
+     name is NOT ACE-owned (see skip-list below),
      call `drive_move_file({fileId, newParentFolderId: <inputs-folder-id>})`
      to move it into `inputs/`. Log every move in `run_state.yaml.notes`
      as a single line: `auto-migrated <name> from opp folder root to
      inputs/`.
 
-     Operator-managed top-level files that should NOT be migrated
-     (currently just `opp.yaml`) are skipped by name. Subfolders are
-     never moved. (Catches the "operator drops the source doc next to
-     opp.yaml" case — jjackson/ace#299.)
+     **Skip-list — ACE-owned / operator-managed root files that must
+     NOT be migrated:** `opp.yaml`, and any name containing
+     `_comms-log` (agent-operating-model correspondence logs, e.g.
+     `inbox-triage_comms-log` — inbox-triage routes inbound threads by
+     matching Gmail `thread_id` against these docs, so moving one into
+     the PDD evidence pack both poisons Phase 1 inputs and breaks
+     thread routing; dimagi-internal/ace#929). Subfolders are never
+     moved. (The migrate itself catches the "operator drops the source
+     doc next to opp.yaml" case — jjackson/ace#299.) The same exemption
+     lives in `lib/doctor-drive-layout.ts` so `/ace:doctor` doesn't
+     flag comms-logs as stray cruft — keep the two in sync.
    - **5c. Capture the manifest.** List `<opp>/inputs/` via
      `drive_list_folder`. For each direct child file (skip subfolders),
      capture `{file_id, name, mime_type}`. Write the result as
