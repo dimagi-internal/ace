@@ -5,6 +5,17 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.13.645 — 2026-07-25
+
+**Reviewer decision-overrides now bind to the next run (`inputs/decision-overrides.yaml`, ace#933).**
+
+ace-web's Phases tab → Decisions panel saves reviewer overrides to `ACE/<opp>/inputs/decision-overrides.yaml` without triggering a run (ace-web#673); until now that file was inert. The `decisions_append_rows` atom now consumes it at the write boundary, so an expert's saved review binds to whatever runs next for the opp:
+
+- New `lib/decision-overrides.ts`: v1 file schema (matching ace-web's writer), `parseDecisionOverridesYaml` (fail-loud on malformed/unsupported files — silently dropping a reviewer's saved intent is the failure mode this feature closes), and the pure `applyDecisionOverrides` transform.
+- `composeAppendedLog` accepts `overrides`: a raised row whose `id` matches gets `override` + `status: overridden` + `override_reasoning`, with the override value appended to `options` if missing (strict-write invariant `override ∈ options`, ace#526). Reaffirmed defaults (override == ai-default with reasoning) carry the reviewer's rationale; no-op rows are skipped.
+- `decisions_append_rows` auto-discovers the file by walking run folder → `runs/` → opp → `inputs/` (missing at any step = no overrides, the normal state), guards against an overrides file from the wrong opp (`IDENTITY_MISMATCH`), and reports bound ids in `overridesApplied`. Override ids the run never raises are ignored — the file is opp-level and cumulative across review sessions.
+- Phase skills need no changes: they keep emitting `status: ai-default` rows; the binding is a class-level property of the write choke point.
+
 ## 0.13.610 — 2026-07-17
 
 **Post-build auto-apply for the HQ-layer standing-instruction settings (`app-hq-settings`).**

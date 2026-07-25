@@ -4,6 +4,7 @@ import yaml from 'yaml';
 import {
   handleAppendRows,
   findDecisionsFile,
+  findDecisionOverridesFile,
   writeDecisionsFile,
 } from '../../../mcp/decisions-server.js';
 
@@ -55,6 +56,52 @@ function makeFakeDrive() {
 }
 
 const PINNED_NOW = () => '2026-05-25T20:13:04Z';
+
+/**
+ * Queue the overrides-lookup chain for a run folder that has NO
+ * inputs/decision-overrides.yaml: two files.get parent walks
+ * (run folder → runs/ → opp folder) then one files.list that finds no
+ * inputs folder.
+ */
+function queueNoOverrides(fake: ReturnType<typeof makeFakeDrive>) {
+  fake.queueGet(() => ({ data: { parents: ['runs-folder-id'] } }));
+  fake.queueGet(() => ({ data: { parents: ['opp-folder-id'] } }));
+  fake.queueList(() => ({ data: { files: [] } }));
+}
+
+const OVERRIDES_YAML = `
+schema_version: 1
+kind: decision-overrides
+opp: bednet-spot-check
+updated_at: 2026-07-24T15:02:11Z
+overrides:
+  - id: archetype-selection
+    phase: idea-to-design
+    question: Which delivery archetype best fits the intervention?
+    ai_default: atomic-visit
+    override: focus-group
+    override_reasoning: Village-level enrollment; atomic-visit triples FLW days.
+    decided_by: expert@partner.org
+    decided_at: 2026-07-24T14:58:02Z
+    source_run_id: 20260722-1341
+`;
+
+/**
+ * Queue the overrides-lookup chain that FINDS an x-yaml overrides file:
+ * parent walk (2 gets) → inputs folder list → overrides file list →
+ * alt=media content get.
+ */
+function queueOverridesFound(fake: ReturnType<typeof makeFakeDrive>, content: string) {
+  fake.queueGet(() => ({ data: { parents: ['runs-folder-id'] } }));
+  fake.queueGet(() => ({ data: { parents: ['opp-folder-id'] } }));
+  fake.queueList(() => ({ data: { files: [{ id: 'inputs-folder-id' }] } }));
+  fake.queueList(() => ({
+    data: {
+      files: [{ id: 'overrides-file-id', name: 'decision-overrides.yaml', mimeType: 'application/x-yaml' }],
+    },
+  }));
+  fake.queueGet(() => ({ data: content }));
+}
 
 const ROW_1 = {
   id: 'archetype-selection',
@@ -126,6 +173,7 @@ describe('handleAppendRows', () => {
   it('creates a new Google Doc when decisions.yaml is absent', async () => {
     const fake = makeFakeDrive();
     fake.queueList(() => ({ data: { files: [] } }));
+    queueNoOverrides(fake);
     fake.queueCreate((args: any) => {
       expect(args.requestBody.name).toBe('decisions.yaml');
       expect(args.requestBody.parents).toEqual(['run-folder-id']);
@@ -161,6 +209,7 @@ describe('handleAppendRows', () => {
       modifiedTime: 't',
       revisionVersion: '1',
       created: true,
+      overridesApplied: [],
     });
     expect(fake.files.create).toHaveBeenCalledTimes(1);
     expect(fake.files.update).not.toHaveBeenCalled();
@@ -185,6 +234,7 @@ describe('handleAppendRows', () => {
       },
     }));
     fake.queueExport(() => ({ data: existingContent }));
+    queueNoOverrides(fake);
     fake.queueUpdate((args: any) => {
       expect(args.fileId).toBe('dec-file-id');
       const body = args.media.body as string;
@@ -234,6 +284,7 @@ describe('handleAppendRows', () => {
       },
     }));
     fake.queueExport(() => ({ data: existingContent }));
+    queueNoOverrides(fake);
 
     const r = await handleAppendRows(
       {
@@ -251,9 +302,135 @@ describe('handleAppendRows', () => {
       skipped: ['archetype-selection', 'wo-period-of-performance'],
       total: 2,
       created: false,
+      overridesApplied: [],
     });
     expect(fake.files.update).not.toHaveBeenCalled();
     expect(fake.files.create).not.toHaveBeenCalled();
+  });
+});
+
+describe('findDecisionOverridesFile', () => {
+  it('returns null when the opp has no inputs folder', async () => {
+    const fake = makeFakeDrive();
+    queueNoOverrides(fake);
+    const r = await findDecisionOverridesFile(fake as any, 'run-folder-id');
+    expect(r).toBeNull();
+  });
+
+  it('returns null when inputs exists but has no decision-overrides.yaml', async () => {
+    const fake = makeFakeDrive();
+    fake.queueGet(() => ({ data: { parents: ['runs-folder-id'] } }));
+    fake.queueGet(() => ({ data: { parents: ['opp-folder-id'] } }));
+    fake.queueList(() => ({ data: { files: [{ id: 'inputs-folder-id' }] } }));
+    fake.queueList(() => ({ data: { files: [] } }));
+    const r = await findDecisionOverridesFile(fake as any, 'run-folder-id');
+    expect(r).toBeNull();
+  });
+
+  it('returns null when the run folder has no parents (defensive)', async () => {
+    const fake = makeFakeDrive();
+    fake.queueGet(() => ({ data: {} }));
+    const r = await findDecisionOverridesFile(fake as any, 'run-folder-id');
+    expect(r).toBeNull();
+  });
+
+  it('reads an application/x-yaml overrides file via files.get alt=media', async () => {
+    const fake = makeFakeDrive();
+    queueOverridesFound(fake, OVERRIDES_YAML);
+    const r = await findDecisionOverridesFile(fake as any, 'run-folder-id');
+    expect(r?.fileId).toBe('overrides-file-id');
+    expect(r?.content).toContain('kind: decision-overrides');
+  });
+
+  it('reads a Google-Doc-backed overrides file via files.export', async () => {
+    const fake = makeFakeDrive();
+    fake.queueGet(() => ({ data: { parents: ['runs-folder-id'] } }));
+    fake.queueGet(() => ({ data: { parents: ['opp-folder-id'] } }));
+    fake.queueList(() => ({ data: { files: [{ id: 'inputs-folder-id' }] } }));
+    fake.queueList(() => ({
+      data: {
+        files: [{
+          id: 'overrides-file-id',
+          name: 'decision-overrides.yaml',
+          mimeType: 'application/vnd.google-apps.document',
+        }],
+      },
+    }));
+    fake.queueExport(() => ({ data: OVERRIDES_YAML }));
+    const r = await findDecisionOverridesFile(fake as any, 'run-folder-id');
+    expect(r?.content).toContain('kind: decision-overrides');
+  });
+});
+
+describe('handleAppendRows — reviewer decision-overrides (ace#933)', () => {
+  it('binds a saved override onto a raised row and reports it', async () => {
+    const fake = makeFakeDrive();
+    fake.queueList(() => ({ data: { files: [] } }));
+    queueOverridesFound(fake, OVERRIDES_YAML);
+    fake.queueCreate((args: any) => {
+      const parsed = yaml.parse(args.media.body as string);
+      expect(parsed.decisions).toHaveLength(1);
+      expect(parsed.decisions[0]).toMatchObject({
+        id: 'archetype-selection',
+        status: 'overridden',
+        override: 'focus-group',
+        'ai-default': 'atomic-visit',
+      });
+      expect(parsed.decisions[0].override_reasoning).toContain('Village-level');
+      return { data: { id: 'new-file-id', modifiedTime: 't', version: '1' } };
+    });
+
+    const r = await handleAppendRows(
+      {
+        runFolderId: 'run-folder-id',
+        opportunity: 'bednet-spot-check',
+        run_id: '20260525-2013',
+        rows: [ROW_1],
+      },
+      fake as any,
+      { now: PINNED_NOW },
+    );
+    expect(r.overridesApplied).toEqual(['archetype-selection']);
+    expect(r.added).toBe(1);
+  });
+
+  it('rejects an overrides file whose opp does not match the call', async () => {
+    const fake = makeFakeDrive();
+    fake.queueList(() => ({ data: { files: [] } }));
+    queueOverridesFound(
+      fake,
+      OVERRIDES_YAML.replace('opp: bednet-spot-check', 'opp: some-other-opp'),
+    );
+    await expect(
+      handleAppendRows(
+        {
+          runFolderId: 'run-folder-id',
+          opportunity: 'bednet-spot-check',
+          run_id: '20260525-2013',
+          rows: [ROW_1],
+        },
+        fake as any,
+        { now: PINNED_NOW },
+      ),
+    ).rejects.toThrowError(/IDENTITY_MISMATCH|some-other-opp/);
+  });
+
+  it('fails loud on a malformed overrides file instead of silently dropping review intent', async () => {
+    const fake = makeFakeDrive();
+    fake.queueList(() => ({ data: { files: [] } }));
+    queueOverridesFound(fake, 'schema_version: 1\nkind: decision-overrides\n');
+    await expect(
+      handleAppendRows(
+        {
+          runFolderId: 'run-folder-id',
+          opportunity: 'bednet-spot-check',
+          run_id: '20260525-2013',
+          rows: [ROW_1],
+        },
+        fake as any,
+        { now: PINNED_NOW },
+      ),
+    ).rejects.toThrowError(/decision-overrides/);
   });
 });
 

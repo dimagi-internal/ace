@@ -741,6 +741,22 @@ writes. The orchestrator stub-fills + warns post-phase if a phase
 wrote zero rows AND the calibration set for that phase has any
 required rows. Schema and YAML helpers live in `lib/decisions-schema.ts`.
 
+**Reviewer decision-overrides bind automatically (added 2026-07-25,
+ace#933).** ace-web's Phases tab → Decisions panel lets a reviewer save
+overrides to `ACE/<opp>/inputs/decision-overrides.yaml` without
+triggering a run. The `decisions_append_rows` atom consumes that file at
+the write boundary: any row a run raises whose `id` matches a saved
+override is written with `override` + `status: overridden` +
+`override_reasoning` (override value appended to `options` if missing,
+preserving `override ∈ options`, ace#526). Phase skills keep emitting
+`status: ai-default` rows and need no changes; the atom reports bound ids
+in `overridesApplied`. Override ids the run never raises are ignored —
+the file is opp-level and cumulative across review sessions. A malformed
+overrides file fails the append LOUD (silently dropping an expert's
+saved review is the failure mode this closes). Contract:
+`lib/decision-overrides.ts`; writer spec: ace-web
+`docs/specs/2026-07-24-decision-review-save-design.md`.
+
 **The procedural authority for each phase is the per-step `Output`
 block in its `agents/<phase>.md` file**, not the catalog in the writing
 skill's `SKILL.md`. The catalog (the `## Decisions Log` section in each
