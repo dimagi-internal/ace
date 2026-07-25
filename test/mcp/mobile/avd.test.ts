@@ -259,7 +259,10 @@ describe('AvdBackend.ensureAvdRunning', () => {
     });
   });
 
-  it('cold-boot kills orphan qemu via `adb emu kill` when the wait throws', async () => {
+  // Spawns the real `emulator` binary, so it needs the Android SDK on PATH.
+  // GitHub runners have no SDK (ENOENT: spawn emulator), so skip under CI —
+  // it still runs on any workstation set up by /ace:mobile-bootstrap.
+  it.skipIf(process.env.CI)('cold-boot kills orphan qemu via `adb emu kill` when the wait throws', async () => {
     // The wait throws (adb never reports device); the catch handler MUST
     // fire `adb -s emulator-5554 emu kill` against the just-spawned
     // qemu so it doesn't keep running in the background.
