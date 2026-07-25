@@ -1,4 +1,10 @@
 import type { RequestFn, RequestResult } from './pipeline-patch.js';
+import {
+  parseOcsTeamPage,
+  checkboxOptions,
+  checkedCheckboxValues,
+  sameGroups,
+} from '../../../lib/ocs-team-page.js';
 import { patchLlmNodeParams, validatePipeline, getLlmNodeParams, addPipelineNode, linkActionToNode, type PipelinePatchContext } from './pipeline-patch.js';
 import { PipelineValidationError } from '../errors.js';
 import type { LlmNodeParams, ClonedChatbot } from '../types.js';
@@ -971,6 +977,222 @@ export class PlaywrightBackend {
     const versionNumber = Math.max(...versionMatches);
 
     return { version_number: versionNumber, task_id: 'none' };
+  }
+
+  /**
+   * Add a person to the OCS team (invite, or reconcile an existing member's
+   * groups) so a linked chatbot page actually opens for them. Lift of the
+   * proven mechanic in `scripts/grant-review-access.ts` (ace#906).
+   *
+   * MEMBERSHIP IS NOT ACCESS — the OCS twin of the HQ role trap: the chatbot
+   * admin page ACE links (`/a/<team>/chatbots/<id>/`) needs
+   * `experiments.view_experiment`, carried by the "Chatbot Admin" group (the
+   * default here). An accepted member on some other group 403s there, so
+   * "already a member" is NOT a skip: their groups are reconciled ADDITIVELY
+   * through the membership page (MembershipForm.save REPLACES the m2m set, so
+   * the POST is always the union of current + requested — this is a grant
+   * tool, it never removes access).
+   *
+   * Every mutation is proven against a FRESH page read, never the POST
+   * status (a 200/302 is not proof). Terminal states:
+   *  - `invited`            — fresh invitation created with the requested groups
+   *  - `already-member`     — accepted member already carrying the groups
+   *  - `groups-reconciled`  — accepted member; missing groups were added
+   *  - `invite-pending`     — a pending invite already carries the groups
+   * Everything else throws with the read-back evidence (including a pending
+   * invite with the WRONG groups unless `replace_invite` is set).
+   */
+  async addTeamMember(args: { email: string; group_labels?: string[]; replace_invite?: boolean }): Promise<{
+    status: 'invited' | 'already-member' | 'groups-reconciled' | 'invite-pending';
+    detail: string;
+    readback: string[];
+  }> {
+    const team = this.opts.teamSlug;
+    const wantLabels = args.group_labels?.length ? args.group_labels : ['Chatbot Admin'];
+    const teamPath = `/a/${team}/team/`;
+    const trail: string[] = [];
+
+    const getPage = async (path: string): Promise<string> => {
+      const res = await this.opts.request('GET', path, undefined, { followRedirects: false });
+      trail.push(`GET ${path} -> ${res.status}`);
+      if (res.status !== 200) {
+        throw new HttpError(
+          res.status ?? 0,
+          path,
+          `Cannot open ${path} — not a Team Admin on "${team}", or the session expired. ` +
+            `Read-back: ${trail.join(' | ')}`,
+        );
+      }
+      return res.text ? await res.text() : '';
+    };
+
+    let html = await getPage(teamPath);
+    const pre = parseOcsTeamPage(html, args.email);
+    trail.push(...pre.raw);
+
+    // ── Accepted member: reconcile groups additively via the membership page.
+    if (pre.isMember) {
+      if (!pre.member?.id) {
+        throw new Error(
+          `${args.email} is an accepted member of "${team}" but the read-back carried no ` +
+            `membership id, so groups cannot be verified or reconciled. A Team Admin must ` +
+            `confirm the member carries [${wantLabels.join(', ')}]. Read-back: ${trail.join(' | ')}`,
+        );
+      }
+      const memberPath = `/a/${team}/team/members/${pre.member.id}/`;
+      const memberHtml = await getPage(memberPath);
+      const offered = checkboxOptions(memberHtml, 'groups');
+      if (offered.length === 0) {
+        throw new Error(
+          `Could not parse the groups checkboxes off ${memberPath} — OCS changed the template. ` +
+            `Not guessing a payload. Read-back: ${trail.join(' | ')}`,
+        );
+      }
+      const wantValues = wantLabels.map((label) => {
+        const g = offered.find((o) => o.label.toLowerCase() === label.toLowerCase());
+        if (!g) {
+          throw new Error(
+            `Requested group "${label}" is not offered on team "${team}". Live groups: ` +
+              offered.map((o) => o.label).join(', '),
+          );
+        }
+        return g.value;
+      });
+      const current = checkedCheckboxValues(memberHtml, 'groups');
+      const missing = wantValues.filter((v) => !current.includes(v));
+      if (missing.length === 0) {
+        return {
+          status: 'already-member',
+          detail: `${args.email} is an accepted member already carrying [${wantLabels.join(', ')}]`,
+          readback: trail,
+        };
+      }
+      // Additive union — MembershipForm REPLACES the m2m set on save.
+      const union = [...new Set([...current, ...wantValues])];
+      const body = new URLSearchParams();
+      body.set('csrfmiddlewaretoken', this.opts.csrfToken);
+      for (const v of union) body.append('groups', v);
+      const post = await this.opts.request('POST', memberPath, body.toString(), {
+        rawFormBody: true,
+        followRedirects: false,
+        extraHeaders: { Referer: `${this.opts.baseUrl}${memberPath}` },
+      });
+      trail.push(`POST ${memberPath} -> ${post.status}`);
+      if ((post.status ?? 0) >= 400) throw await httpErrorFor(post, memberPath);
+      // Prove against a fresh read — every requested group checked.
+      const verifyHtml = await getPage(memberPath);
+      const nowChecked = checkedCheckboxValues(verifyHtml, 'groups');
+      const stillMissing = wantValues.filter((v) => !nowChecked.includes(v));
+      if (stillMissing.length) {
+        throw new Error(
+          `Group POST returned ${post.status} but the member still lacks ` +
+            `${stillMissing.length} requested group(s) on re-read — a 2xx is not proof; ` +
+            `treat as not done. Read-back: ${trail.join(' | ')}`,
+        );
+      }
+      const labelOf = (v: string) => offered.find((o) => o.value === v)?.label ?? v;
+      return {
+        status: 'groups-reconciled',
+        detail: `${args.email} was already a member; added group(s) [${missing.map(labelOf).join(', ')}]`,
+        readback: trail,
+      };
+    }
+
+    // ── Pending invite: right groups = idempotent skip; wrong groups = fail
+    //    loud unless replace_invite, then cancel + verify + fall through.
+    if (pre.pending) {
+      if (sameGroups(pre.pending.groups, wantLabels)) {
+        return {
+          status: 'invite-pending',
+          detail: `pending invitation already exists with group(s) [${pre.pending.groups.join(', ')}]`,
+          readback: trail,
+        };
+      }
+      if (!args.replace_invite) {
+        throw new Error(
+          `A pending invitation for ${args.email} carries group(s) [${pre.pending.groups.join(', ')}], ` +
+            `not the requested [${wantLabels.join(', ')}]. Re-run with replace_invite: true to cancel ` +
+            `and re-invite. Read-back: ${trail.join(' | ')}`,
+        );
+      }
+      if (!pre.pending.cancelUrl) {
+        throw new Error(
+          `The stale pending invitation must be replaced but no cancel control is rendered — ` +
+            `ACE is not a team admin on "${team}". Read-back: ${trail.join(' | ')}`,
+        );
+      }
+      const cancelPath = pre.pending.cancelUrl.startsWith('http')
+        ? pre.pending.cancelUrl.slice(this.opts.baseUrl.length)
+        : pre.pending.cancelUrl;
+      const cancelBody = new URLSearchParams({ csrfmiddlewaretoken: this.opts.csrfToken });
+      const cr = await this.opts.request('POST', cancelPath, cancelBody.toString(), {
+        rawFormBody: true,
+        followRedirects: false,
+        extraHeaders: { Referer: `${this.opts.baseUrl}${teamPath}`, 'HX-Request': 'true' },
+      });
+      trail.push(`POST ${cancelPath} (cancel stale invite) -> ${cr.status}`);
+      // Verify the cancel landed before inviting again — never assume.
+      html = await getPage(teamPath);
+      const check = parseOcsTeamPage(html, args.email);
+      trail.push(...check.raw);
+      if (check.pending) {
+        throw new Error(
+          `Cancel of the stale invitation returned ${cr.status} but the read-back still shows it ` +
+            `pending. Not re-inviting on top of an unverified cancel. Read-back: ${trail.join(' | ')}`,
+        );
+      }
+    }
+
+    // ── Fresh invite.
+    const offered = checkboxOptions(html, 'groups');
+    if (offered.length === 0) {
+      throw new Error(
+        `Could not parse the groups checkboxes off ${teamPath} — OCS changed the template. ` +
+          `Not guessing a payload. Read-back: ${trail.join(' | ')}`,
+      );
+    }
+    const chosen = wantLabels.map((label) => {
+      const g = offered.find((o) => o.label.toLowerCase() === label.toLowerCase());
+      if (!g) {
+        throw new Error(
+          `Requested group "${label}" is not offered on team "${team}". Live groups: ` +
+            offered.map((o) => o.label).join(', '),
+        );
+      }
+      return g;
+    });
+    const invitePath = `/a/${team}/team/invite/`;
+    const body = new URLSearchParams();
+    body.set('csrfmiddlewaretoken', this.opts.csrfToken);
+    body.set('email', args.email);
+    for (const g of chosen) body.append('groups', g.value);
+    const pr = await this.opts.request('POST', invitePath, body.toString(), {
+      rawFormBody: true,
+      followRedirects: false,
+      extraHeaders: { Referer: `${this.opts.baseUrl}${teamPath}`, 'HX-Request': 'true' },
+    });
+    trail.push(`POST ${invitePath} -> ${pr.status}`);
+    if ((pr.status ?? 0) >= 400) throw await httpErrorFor(pr, invitePath);
+
+    // Read back from a FRESH page load, not the htmx swap fragment. Proof
+    // requires the invite to exist AND carry the requested groups.
+    const postHtml = await getPage(teamPath);
+    const rb = parseOcsTeamPage(postHtml, args.email);
+    trail.push(...rb.raw);
+    const wanted = chosen.map((c) => c.label);
+    const proven = rb.isMember || (rb.pending !== undefined && sameGroups(rb.pending.groups, wanted));
+    if (!proven) {
+      throw new Error(
+        `OCS returned ${pr.status} but the read-back does NOT show ${args.email} pending with ` +
+          `group(s) [${wanted.join(', ')}]. A 2xx is not proof — treat as not done. ` +
+          `Read-back: ${trail.join(' | ')}`,
+      );
+    }
+    return {
+      status: 'invited',
+      detail: `invitation created for ${args.email} with group(s) [${wanted.join(', ')}]`,
+      readback: trail,
+    };
   }
 
   /**

@@ -72,7 +72,7 @@ const SERVERS: Record<string, ServerSpec> = {
   },
   ocs: {
     file: 'mcp/ocs-server.ts',
-    expectedCount: 34,
+    expectedCount: 35, // +1: ocs_add_team_member (ace#906)
     allowedPrefixes: ['ocs_'],
     capabilityMap: OCS_MAP,
     capabilityPrefix: 'ocs_',

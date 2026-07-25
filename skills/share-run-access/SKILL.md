@@ -55,7 +55,7 @@ So a reviewer can ALWAYS open the summary and its docs with no grant. What needs
 | **labs dashboards** | `/labs/workflow/<id>/run/?...` | labs (CCHQ OAuth) | Same CCHQ login; visibility follows the run's synthetic/opp. Sign-in via CCHQ. |
 | **Connect opportunity** | `connect.dimagi.com/a/<org>/opportunity/<id>/` | Connect org membership | `connect_add_org_member` (org from `run_state` → `connect.products.connect.organization_slug`). |
 | **CommCare HQ apps** | `commcarehq.org/a/<domain>/apps/view/<id>/` | HQ web-user on the domain | HQ web-user invite — **atom pending (dimagi-internal/ace#905)**; manual via HQ Users UI until then. |
-| **OCS chatbot admin** | `openchatstudio.com/a/<team>/chatbots/<id>/` | OCS team membership | OCS team invite — **atom pending (dimagi-internal/ace#906)**; manual via OCS team UI until then. Internal-tool surface; most reviewers don't need it. |
+| **OCS chatbot admin** | `openchatstudio.com/a/<team>/chatbots/<id>/` | OCS team membership | `ocs_add_team_member` (defaults to the "Chatbot Admin" group — the least-privilege group that opens the linked chatbot page; reconciles an existing member's groups additively). Internal-tool surface; most reviewers don't need it. |
 
 **The account precondition threads through all of them:** every gated surface authenticates via
 CommCareHQ/Connect OAuth, so a person can only reach ANY of them once they have a Connect/CommCare
@@ -142,10 +142,15 @@ grants membership and tells the person the one sign-in they must do themselves.
      read the membership back. Do not defer to "an HQ admin will do it" unless ACE genuinely lacks
      admin on the domain — and if so, that's a **NOT DONE** with a named owner, surfaced to the human.
 
-   - **OCS chatbot admin.** No atom yet (dimagi-internal/ace#906) — same rule: **add the email to the
-     `<team_slug>` team by hand this turn** and read it back. It is an internal-tool surface, which
-     is a reason to ask the human whether to include it *before* they ask — never a reason to
-     silently drop it from a grant they requested.
+   - **OCS chatbot admin.** Call `ocs_add_team_member({email})` (ships since ace#906; default group
+     "Chatbot Admin" is load-bearing — it carries `experiments.view_experiment`, the permission the
+     linked chatbot page needs; a member on any other group 403s there). The atom handles all three
+     states itself with fresh-read proof: fresh invite, pending-invite idempotent skip (or
+     `replace_invite: true` when the pending groups are wrong), and additive group reconciliation
+     for an already-accepted member. Statuses `invited` / `invite-pending` / `already-member` /
+     `groups-reconciled` are all grants; a throw is a **NOT DONE** with the read-back evidence.
+     It is an internal-tool surface, which is a reason to ask the human whether to include it
+     *before* they ask — never a reason to silently drop it from a grant they requested.
 
 5. **Approval gate (procedural).** Sending invites is outbound. Present the full per-person /
    per-surface plan and get the human's yes before firing any invite or `connect_add_org_member`.
