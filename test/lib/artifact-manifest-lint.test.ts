@@ -55,6 +55,7 @@ const RUN_LEVEL_EXEMPT = new Set([
 // (in addition to skill names). These group related artifacts that aren't
 // individual <skill>[_<role>].<ext> files.
 const STRUCTURAL_SUB_FOLDERS = new Set([
+  'recipes',          // 3-commcare/recipes/journey-{learn,deliver}.yaml (app-test-cases smoke recipes, ace#892)
   'mobile-recipes',   // 6-qa-and-training/mobile-recipes/{learn,deliver}/manifest.yaml
   'screenshots',      // 6-qa-and-training/screenshots/...
   'walkthroughs',     // 7-synthetic/walkthroughs/<persona>-<timestamp>/slideshow.html

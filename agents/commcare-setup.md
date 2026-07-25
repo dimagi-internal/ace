@@ -540,7 +540,20 @@ that's a structural assertion. The general principle holds:
 
 **Do NOT set `phases.commcare-setup.verdict: pass` when any
 `has_judge: true` skill has `steps.<skill>-eval.status: deferred`.**
-Either:
+
+**And the same for PRODUCERS: do NOT set `status: done` / `verdict:
+pass` when any declared producer step in this phase was skipped or
+parked** (e.g. `app-test-cases` deferred via a `remaining_steps` note —
+no `3-commcare/app-test-cases.yaml`, no `recipes/journey-learn.yaml`).
+A skipped producer is a bigger hole than a deferred eval: the eval
+grades quality, but the producer's artifacts are load-bearing inputs
+downstream (Phase 6's pre-flight hard-halts on a missing Learn smoke
+recipe). If a producer step did not ship its declared artifacts, the
+write-back is `status: partial` with a verdict naming the unshipped
+step (e.g. `partial-producer-deferred`), and the artifact fence
+(`verify_phase_artifacts`) will flag the missing required files —
+including `recipes/journey-learn.yaml`, registered required in
+`lib/artifact-manifest.ts` (ace#892). For the EVAL half, either:
 
 - **Run the eval inline** (preferred — write the verdict to
   `<phase>/<skill>-eval_verdict.yaml` and gate the phase on its
