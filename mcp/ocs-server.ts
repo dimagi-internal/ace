@@ -119,6 +119,8 @@ async function initPlaywright(): Promise<PlaywrightBackend> {
       followRedirects?: boolean;
       multipart?: Record<string, unknown>;
       formEncoded?: boolean;
+      rawFormBody?: boolean;
+      extraHeaders?: Record<string, string>;
     },
   ) {
     if (method === 'GET') {
@@ -127,7 +129,7 @@ async function initPlaywright(): Promise<PlaywrightBackend> {
       });
     }
     const maxRedirects = options?.followRedirects === false ? 0 : undefined;
-    const headers = { 'X-CSRFToken': csrfToken, Referer: baseUrl };
+    const headers = { 'X-CSRFToken': csrfToken, Referer: baseUrl, ...(options?.extraHeaders ?? {}) };
 
     if (method === 'DELETE') {
       // OCS soft-archive views (DeleteCollection, DeletePipeline, archive_chatbot
@@ -155,6 +157,18 @@ async function initPlaywright(): Promise<PlaywrightBackend> {
         }
       }
       return ctx.request.post(url, { headers, multipart: form, maxRedirects });
+    }
+
+    if (options?.rawFormBody) {
+      // Pre-encoded application/x-www-form-urlencoded string body — for Django
+      // forms with REPEATED field names (CheckboxSelectMultiple, e.g. the team
+      // invite form where groups appears once per selected group). The
+      // dict-based formEncoded path below cannot express duplicate keys. (ace#906)
+      return ctx.request.post(url, {
+        headers: { ...headers, 'Content-Type': 'application/x-www-form-urlencoded' },
+        data: String(body),
+        maxRedirects,
+      });
     }
 
     if (options?.formEncoded) {
@@ -643,6 +657,23 @@ server.tool(
       .describe('Optional team slug to probe (e.g. "Vaccine_Coach"). Omit to use OCS_TEAM_SLUG.'),
   },
   async (args) => result(await composite.getMe(args)),
+);
+
+server.tool(
+  'ocs_add_team_member',
+  'Add a person to the OCS team so a linked chatbot page actually opens for them (dimagi-internal/ace#906). Invites via the team invite form, OR — because membership is not access — additively reconciles an EXISTING accepted member\'s groups through the membership page (never removes groups; MembershipForm REPLACES the m2m set so the POST is always the union). Default group is "Chatbot Admin" (the least-privilege group carrying experiments.view_experiment — the permission the linked `/a/<team>/chatbots/<id>/` page needs; a member on the wrong group 403s there). Terminal statuses: invited | already-member | groups-reconciled | invite-pending. A pending invite with the WRONG groups fails loud unless replace_invite is set (then it is cancelled, the cancel is verified, and a fresh invite is sent). Every mutation is proven against a fresh page read — a 2xx POST is never treated as proof. Requires a live OCS Playwright session with Team Admin rights.',
+  {
+    email: z.string().describe('Email address to invite / reconcile.'),
+    group_labels: z
+      .array(z.string())
+      .optional()
+      .describe('Group labels exactly as OCS renders them. Default: ["Chatbot Admin"].'),
+    replace_invite: z
+      .boolean()
+      .optional()
+      .describe('Cancel a pending invite whose groups differ from the requested set, then re-invite.'),
+  },
+  async (args) => result(await composite.addTeamMember(args)),
 );
 
 // ── Startup ─────────────────────────────────────────────────────────

@@ -977,7 +977,7 @@ Set up a linked-project-spaces relationship: upstream (master) → downstream. R
 
 ## ace-ocs
 
-Source: `mcp/ocs-server.ts` — 34 atoms
+Source: `mcp/ocs-server.ts` — 35 atoms
 
 ### `ocs_clone_chatbot`
 
@@ -1329,6 +1329,16 @@ Cheap "is my OCS API key live + which team is it scoped to" probe via OCS v2 `/a
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `team_slug` | `z.string` | optional | _—_ |
+
+### `ocs_add_team_member`
+
+Add a person to the OCS team so a linked chatbot page actually opens for them (dimagi-internal/ace#906). Invites via the team invite form, OR — because membership is not access — additively reconciles an EXISTING accepted member\'s groups through the membership page (never removes groups; MembershipForm REPLACES the m2m set so the POST is always the union). Default group is "Chatbot Admin" (the le…
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `email` | `z.string` | **required** | Email address to invite / reconcile. |
+| `group_labels` | `z.array` | **required** | _—_ |
+| `replace_invite` | `z.boolean` | optional | Cancel a pending invite whose groups differ from the requested set, then re-invite. |
 
 ## ace-mobile
 

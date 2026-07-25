@@ -171,6 +171,22 @@ export interface OcsClient {
     description: string;
   }): Promise<{ version_number: number; task_id: string }>;
 
+  /**
+   * Invite a person to the OCS team, or reconcile an existing member's /
+   * pending invite's groups (additively) so linked chatbot pages open for
+   * them. Membership is not access — see the backend method for the full
+   * contract (ace#906). Every mutation is proven against a fresh page read.
+   */
+  addTeamMember(args: {
+    email: string;
+    group_labels?: string[];
+    replace_invite?: boolean;
+  }): Promise<{
+    status: 'invited' | 'already-member' | 'groups-reconciled' | 'invite-pending';
+    detail: string;
+    readback: string[];
+  }>;
+
   getChatbotEmbedInfo(args: {
     experiment_id: number;
   }): Promise<{ public_id: string; embed_key: string }>;

@@ -31,6 +31,16 @@ export interface RequestOptions {
   followRedirects?: boolean;
   multipart?: Record<string, string | { name: string; mimeType: string; buffer: Buffer }>;
   formEncoded?: boolean;
+  /**
+   * Send `body` (a pre-encoded application/x-www-form-urlencoded string) as
+   * the raw request data. Needed when a Django form field is a REPEATED key
+   * (e.g. `groups=7&groups=9` from a CheckboxSelectMultiple) — the dict-based
+   * `formEncoded` path cannot express duplicate keys. Caller builds the body
+   * with URLSearchParams. (ace#906)
+   */
+  rawFormBody?: boolean;
+  /** Extra headers merged over the default POST headers (e.g. HX-Request). */
+  extraHeaders?: Record<string, string>;
 }
 
 export type RequestFn = (
