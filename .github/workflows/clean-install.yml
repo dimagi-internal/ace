@@ -35,3 +35,13 @@ jobs:
       # package.json. tsc reports as "Cannot find module".
       - name: Type-check
         run: npx tsc --noEmit
+
+      # The unit suite. Added 2026-07-25 after this gap bit twice in one week:
+      # #917 (app-hq-settings registry rows) and the journey-learn.yaml
+      # manifest entry from #892 both landed RED on main, because the only
+      # gates were `npm ci` + `npm ls` + `tsc` — none of which run vitest.
+      # The suite is pure unit tests (no network, no device, no live OCS /
+      # Connect / labs; those are gated behind *_INTEGRATION env vars and
+      # stay excluded here), and completes in well under a minute.
+      - name: Unit tests
+        run: npx vitest run
