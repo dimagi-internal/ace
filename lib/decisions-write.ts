@@ -24,6 +24,10 @@ import {
   type DecisionRow,
   type DecisionsLog,
 } from "./decisions-schema.js";
+import {
+  applyDecisionOverrides,
+  type DecisionOverrideRow,
+} from "./decision-overrides.js";
 
 /** Canonical filename — single source of truth for the storage shim. */
 export const DECISIONS_FILENAME = "decisions.yaml" as const;
@@ -37,6 +41,12 @@ export interface ComposeResult {
   skipped: string[];
   /** Total rows in the resulting log. */
   total: number;
+  /**
+   * ids of appended rows that a reviewer override (from
+   * `inputs/decision-overrides.yaml`, ace#933) bound to. Rows skipped as
+   * already-present are never counted here.
+   */
+  overridesApplied: string[];
 }
 
 export type DecisionsWriteCode =
@@ -65,6 +75,15 @@ export interface ComposeArgs {
   run_id: string;
   /** Rows to append. Each is validated via `DecisionRowStrictSchema`. */
   rows: unknown[];
+  /**
+   * Reviewer overrides from the opp's `inputs/decision-overrides.yaml`
+   * (parsed via `parseDecisionOverridesYaml`). Applied to matching batch
+   * rows AFTER strict validation and BEFORE the append: matching rows get
+   * `override` + `status: overridden` + `override_reasoning`, with the
+   * override value appended to `options` if missing. Override ids the batch
+   * never raises are ignored. Omit / null when no overrides file exists.
+   */
+  overrides?: DecisionOverrideRow[] | null;
   /**
    * Override for `generated_at` when seeding a new log. Tests pin this so
    * fixtures are stable; production callers leave it unset.
@@ -122,6 +141,11 @@ export function composeAppendedLog(args: ComposeArgs): ComposeResult {
     batchSeen.add(row.id);
   }
 
+  // Bind reviewer overrides (ace-web's inputs/decision-overrides.yaml) onto
+  // the strictly-validated batch. Post-transform rows keep the strict
+  // invariant by construction (the override value is appended to `options`).
+  const overridden = applyDecisionOverrides(parsedRows, args.overrides ?? []);
+
   const log: DecisionsLog = loadOrSeedLog({
     existingYamlText,
     opportunity,
@@ -131,14 +155,17 @@ export function composeAppendedLog(args: ComposeArgs): ComposeResult {
 
   const existingIds = new Set(log.decisions.map((d) => d.id));
   const skipped: string[] = [];
+  const overridesApplied: string[] = [];
+  const appliedIds = new Set(overridden.applied);
   let added = 0;
-  for (const row of parsedRows) {
+  for (const row of overridden.rows) {
     if (existingIds.has(row.id)) {
       skipped.push(row.id);
       continue;
     }
     log.decisions.push(row);
     existingIds.add(row.id);
+    if (appliedIds.has(row.id)) overridesApplied.push(row.id);
     added++;
   }
 
@@ -151,7 +178,7 @@ export function composeAppendedLog(args: ComposeArgs): ComposeResult {
   }
 
   const content = yaml.stringify(log, { lineWidth: 0, aliasDuplicateObjects: false });
-  return { content, added, skipped, total: log.decisions.length };
+  return { content, added, skipped, total: log.decisions.length, overridesApplied };
 }
 
 interface LoadArgs {

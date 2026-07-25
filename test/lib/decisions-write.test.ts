@@ -245,6 +245,109 @@ describe("composeAppendedLog — row validation", () => {
   });
 });
 
+describe("composeAppendedLog — reviewer decision-overrides (ace#933)", () => {
+  const OVERRIDE = {
+    id: "archetype-selection",
+    override: "focus-group",
+    override_reasoning: "Village-level enrollment; atomic-visit triples FLW days.",
+  };
+
+  it("binds a matching override onto a raised row", () => {
+    const result = composeAppendedLog({
+      existingYamlText: null,
+      opportunity: "bednet-spot-check",
+      run_id: "20260525-2013",
+      rows: [VALID_ROW, WO_ROW],
+      overrides: [OVERRIDE],
+      now: NOW_PINNED,
+    });
+    expect(result.overridesApplied).toEqual(["archetype-selection"]);
+    const parsed = parseDecisionsYaml(result.content);
+    expect(parsed.decisions[0]).toMatchObject({
+      status: "overridden",
+      override: "focus-group",
+      override_reasoning: OVERRIDE.override_reasoning,
+      "ai-default": "atomic-visit",
+    });
+    expect(parsed.decisions[1].status).toBe("ai-default");
+  });
+
+  it("appends an out-of-set override value to options (strict invariant holds)", () => {
+    const result = composeAppendedLog({
+      existingYamlText: null,
+      opportunity: "bednet-spot-check",
+      run_id: "20260525-2013",
+      rows: [VALID_ROW],
+      overrides: [{ id: "archetype-selection", override: "door-to-door-census" }],
+      now: NOW_PINNED,
+    });
+    const parsed = parseDecisionsYaml(result.content);
+    expect(parsed.decisions[0].options).toContain("door-to-door-census");
+    expect(parsed.decisions[0].override).toBe("door-to-door-census");
+  });
+
+  it("still strict-validates the emitted row BEFORE the override binds", () => {
+    const bad = { ...VALID_ROW, "ai-default": "not-an-option" };
+    expect(() =>
+      composeAppendedLog({
+        existingYamlText: null,
+        opportunity: "bednet-spot-check",
+        run_id: "20260525-2013",
+        rows: [bad],
+        overrides: [OVERRIDE],
+        now: NOW_PINNED,
+      }),
+    ).toThrowError(DecisionsWriteError);
+  });
+
+  it("does not report overrides for rows skipped as already present", () => {
+    const seeded = composeAppendedLog({
+      existingYamlText: null,
+      opportunity: "bednet-spot-check",
+      run_id: "20260525-2013",
+      rows: [VALID_ROW],
+      now: NOW_PINNED,
+    }).content;
+    const result = composeAppendedLog({
+      existingYamlText: seeded,
+      opportunity: "bednet-spot-check",
+      run_id: "20260525-2013",
+      rows: [VALID_ROW, WO_ROW],
+      overrides: [OVERRIDE],
+      now: NOW_PINNED,
+    });
+    expect(result.skipped).toEqual(["archetype-selection"]);
+    expect(result.overridesApplied).toEqual([]);
+    // The already-present row keeps its original (non-overridden) shape.
+    const parsed = parseDecisionsYaml(result.content);
+    expect(parsed.decisions[0].status).toBe("ai-default");
+  });
+
+  it("ignores override ids the batch never raises and reports empty applied", () => {
+    const result = composeAppendedLog({
+      existingYamlText: null,
+      opportunity: "bednet-spot-check",
+      run_id: "20260525-2013",
+      rows: [WO_ROW],
+      overrides: [OVERRIDE],
+      now: NOW_PINNED,
+    });
+    expect(result.overridesApplied).toEqual([]);
+    expect(result.added).toBe(1);
+  });
+
+  it("omitting overrides keeps the legacy result shape working", () => {
+    const result = composeAppendedLog({
+      existingYamlText: null,
+      opportunity: "bednet-spot-check",
+      run_id: "20260525-2013",
+      rows: [VALID_ROW],
+      now: NOW_PINNED,
+    });
+    expect(result.overridesApplied).toEqual([]);
+  });
+});
+
 describe("DECISIONS_FILENAME", () => {
   it("is the canonical run-folder name", () => {
     expect(DECISIONS_FILENAME).toBe("decisions.yaml");
