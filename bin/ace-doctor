@@ -1854,7 +1854,28 @@ if ! command -v canopy >/dev/null 2>&1; then
 elif ! canopy email --help >/dev/null 2>&1; then
   warn "canopy_email_engine: canopy CLI present but has no \`email\` subcommand — engine predates 0.2.255" "upgrade: uv tool install --force <canopy checkout> (or /canopy:update then re-install the tool)"
 else
-  pass "canopy_email_engine: canopy CLI present with the email engine (send/mark-read/preflight); shims resolve identity from config/agent.json"
+  # Version-skew check (ace#888): the uv-tool engine binds its code at install
+  # time, while /canopy:update advances the marketplace clone — a lagging
+  # engine passes the presence checks above but REFUSES at send-time via
+  # canopy's engine_staleness_error guard. Compare the running engine's
+  # dist version (via the shim's own interpreter — authoritative regardless
+  # of uv being on PATH) against the clone's pyproject version, and surface
+  # the skew here instead of mid-turn. Best-effort: if either side can't
+  # resolve, fall through to plain pass (mirrors the engine guard's own
+  # never-brick semantics).
+  CANOPY_CLONE_DIR="$HOME/.claude/plugins/marketplaces/canopy"
+  CANOPY_CLONE_V="$(sed -n 's/^version *= *"\([^"]*\)".*/\1/p' "$CANOPY_CLONE_DIR/pyproject.toml" 2>/dev/null | head -1)"
+  CANOPY_PY="$(sed -n '1s/^#!//p' "$(command -v canopy)" 2>/dev/null)"
+  CANOPY_RUNNING_V=""
+  [ -n "$CANOPY_PY" ] && [ -x "$CANOPY_PY" ] && CANOPY_RUNNING_V="$("$CANOPY_PY" -c 'from importlib.metadata import version; print(version("canopy"))' 2>/dev/null)"
+  if [ -n "$CANOPY_CLONE_V" ] && [ -n "$CANOPY_RUNNING_V" ] && [ "$CANOPY_RUNNING_V" != "$CANOPY_CLONE_V" ] \
+     && [ "$(printf '%s\n%s\n' "$CANOPY_RUNNING_V" "$CANOPY_CLONE_V" | sort -V | head -1)" = "$CANOPY_RUNNING_V" ]; then
+    warn "canopy_email_engine: installed engine v$CANOPY_RUNNING_V lags the marketplace clone v$CANOPY_CLONE_V — canopy email send will refuse at send-time (engine staleness guard)" "(cd $CANOPY_CLONE_DIR && git pull) && uv tool install --reinstall $CANOPY_CLONE_DIR"
+  elif [ -n "$CANOPY_CLONE_V" ] && [ -n "$CANOPY_RUNNING_V" ]; then
+    pass "canopy_email_engine: canopy CLI + email engine present, engine v$CANOPY_RUNNING_V vs clone v$CANOPY_CLONE_V (no lag); shims resolve identity from config/agent.json"
+  else
+    pass "canopy_email_engine: canopy CLI present with the email engine (send/mark-read/preflight); version-skew check skipped (clone or dist version unresolvable)"
+  fi
 fi
 
 # 7b. nova_shell_env — verify NOVA_API_KEY is in the Claude Code parent
