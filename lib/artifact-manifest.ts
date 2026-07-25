@@ -470,6 +470,22 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     description: 'Bindings of pdd-to-app-journeys.md to Phase-3-built app structure: per-journey form/field IDs, Maestro recipe paths, smoke flags, structural pass criteria. Phase 6 shallow uses is_smoke: true entries; /ace:qa-deep uses all entries.',
   },
   {
+    path: '3-commcare/recipes/journey-learn.yaml',
+    producedBy: 'app-test-cases',
+    consumedBy: ['app-screenshot-capture'],
+    phase: 'commcare',
+    required: true,
+    description: "Learn-app smoke Maestro recipe (the is_smoke: true Learn journey). Phase 6's pre-flight hard-halts without it — Learn capture is the floor — so its absence must fail the Phase 3 fence, not surface first at Phase 6 (ace#892).",
+  },
+  {
+    path: '3-commcare/recipes/journey-deliver.yaml',
+    producedBy: 'app-test-cases',
+    consumedBy: ['app-screenshot-capture'],
+    phase: 'commcare',
+    required: false,
+    description: "Deliver-app smoke Maestro recipe (the is_smoke: true Deliver journey). Phase 6 degrades without it (Learn leg still captures; Deliver leg records incomplete), so optional at the fence — but expected on every two-app opp.",
+  },
+  {
     path: '3-commcare/pdd-to-learn-app-eval_verdict.yaml',
     producedBy: 'pdd-to-learn-app-eval',
     role: 'verdict',
