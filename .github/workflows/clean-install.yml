@@ -12,9 +12,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Node 22 LTS. Was '20' until 2026-07-25: undici@8 (a transitive dep of
+      # the OCS REST tests) calls webidl.util.markAsUncloneable, which does not
+      # exist on Node 20 — five suites died at import with a TypeError. It went
+      # unnoticed because CI only ran tsc, never the tests.
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
           cache: 'npm'
 
       # `npm ci` wipes node_modules and installs strictly from package-lock.json.
