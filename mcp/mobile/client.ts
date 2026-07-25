@@ -199,16 +199,30 @@ export function classifyDeviceUserState(
   if (/OpportunitiesActivity|VendorVisitActivity|DispatchActivity|HomeActivity/i.test(focusedActivity)) {
     return 'ready';
   }
-  // No positive registered signal + first-start markers = unregistered.
-  // Same recovery as wiped (run registerTestUser via tier-2 bootstrap).
+  // No positive registered signal + first-start markers = the app-install
+  // setup screen, which is `needs-app-config` — NOT `needs-personal-id`.
+  //
+  // These two were collapsed onto `needs-personal-id` because the recovery
+  // is the same (tier-2 bootstrap re-registers either way). That collapse
+  // cost real debugging time in dimagi-internal/ace#938/#950: CommCare was
+  // crash-looping back to the first-start splash, whose "Enter Code" tile is
+  // the APP-INSTALL-by-code control — nothing to do with the PersonalID
+  // enter-code screen. The funnel reported `needs-personal-id`, which sent
+  // the investigation at registration (registration was fine), while the
+  // real signal — a FATAL EXCEPTION in logcat — was never surfaced.
+  //
+  // Recovery routing is unchanged: `restoreDeviceUserState` only branches on
+  // `ready` / `unknown`, so both classes still throw DeviceUserStateError.
+  // What changes is that the error now names the right surface.
   if (/CommCareSetupActivity/i.test(focusedActivity)) {
-    return 'needs-personal-id';
+    return 'needs-app-config';
   }
   if (/Enter Code|Scan Application Barcode|Welcome to CommCare/i.test(uiDumpXml)) {
-    return 'needs-personal-id';
+    return 'needs-app-config';
   }
   return 'unknown';
 }
+
 
 /**
  * APKs are signed JAR files; signed JARs are ZIP files. Every valid APK
@@ -266,9 +280,13 @@ function pickStateSignal(focusedActivity: string, uiDumpXml: string): string | u
     [/Lost PersonalID configuration/i, 'drawer:lost-personal-id-config'],
     [/\bReconfigure\b/i, 'drawer:reconfigure-cta'],
     [/CommCareSetupActivity/, 'activity:CommCareSetupActivity'],
-    [/Enter Code/i, 'screen:enter-code'],
-    [/Scan Application Barcode/i, 'screen:scan-barcode'],
-    [/Welcome to CommCare/i, 'screen:welcome-to-commcare'],
+    // "Enter Code" here is `enter_app_location` — the INSTALL-APP-BY-CODE
+    // tile on the first-start splash, NOT the PersonalID enter-code screen.
+    // The old bare `screen:enter-code` label conflated the two and sent the
+    // #938 investigation at registration for far too long (ace#950).
+    [/Enter Code/i, 'screen:first-start-install-tile(Enter Code, NOT PersonalID)'],
+    [/Scan Application Barcode/i, 'screen:first-start-scan-barcode'],
+    [/Welcome to CommCare/i, 'screen:first-start-welcome'],
     [/OpportunitiesActivity/, 'activity:OpportunitiesActivity'],
     [/VendorVisitActivity/, 'activity:VendorVisitActivity'],
   ];

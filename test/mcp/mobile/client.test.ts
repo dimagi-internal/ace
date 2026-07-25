@@ -1209,20 +1209,20 @@ describe('classifyDeviceUserState', () => {
     ).toBe('needs-personal-id');
   });
 
-  it('returns needs-personal-id when CommCareSetupActivity foregrounded AND no Connect nav drawer (unregistered)', () => {
+  it('returns needs-app-config when CommCareSetupActivity foregrounded AND no Connect nav drawer (ace#950)', () => {
     expect(
       classifyDeviceUserState('mResumedActivity: ActivityRecord{... CommCareSetupActivity}', '<dump/>', [
         'org.commcare.dalvik',
       ]),
-    ).toBe('needs-personal-id');
+    ).toBe('needs-app-config');
   });
 
-  it('returns needs-personal-id when the dump shows the Enter Code screen AND no Connect nav', () => {
+  it('returns needs-app-config for the first-start "Enter Code" INSTALL tile (not PersonalID — ace#950)', () => {
     expect(
       classifyDeviceUserState('mResumedActivity: SomeUnknownActivity', '<node text="Enter Code"/>', [
         'org.commcare.dalvik',
       ]),
-    ).toBe('needs-personal-id');
+    ).toBe('needs-app-config');
   });
 
   it('returns ready for the post-register, pre-claim state (CommCareSetupActivity + Connect nav drawer items)', () => {
