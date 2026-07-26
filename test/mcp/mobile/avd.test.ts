@@ -43,6 +43,43 @@ describeDevice('AvdBackend.listAvds', () => {
   });
 });
 
+describeDevice('AvdBackend.readCrashLogcat', () => {
+  it('dumps-and-exits with a bounded tail AND a hard timeout (ace#950)', async () => {
+    const shell = fakeShell({
+      'adb -s emulator-5554 logcat -d -t 600': { stdout: 'E AndroidRuntime: FATAL EXCEPTION: main\n' },
+    });
+    const backend = new AvdBackend({ shell });
+    vi.spyOn(backend as any, 'requireRunningAvd').mockResolvedValue({ serial: 'emulator-5554' });
+    const out = await backend.readCrashLogcat('ACE_Pixel_API_34');
+    expect(out).toContain('FATAL EXCEPTION');
+    // `-d` (dump-and-exit, never stream) and `-t` (bounded tail) are both
+    // required, and so is the timeout: against a DEAD device `adb logcat -d`
+    // blocks indefinitely. Observed live 2026-07-26 — the emulator died
+    // mid-session and this exact command hung past 120s. Without the bound the
+    // crash probe would wedge the funnel on precisely the devices it exists to
+    // diagnose.
+    expect(shell).toHaveBeenCalledWith(
+      'adb',
+      ['-s', 'emulator-5554', 'logcat', '-d', '-t', '600'],
+      { timeoutMs: 15_000 },
+    );
+  });
+
+  it('honours a caller-supplied tail length', async () => {
+    const shell = fakeShell({
+      'adb -s emulator-5554 logcat -d -t 50': { stdout: '' },
+    });
+    const backend = new AvdBackend({ shell });
+    vi.spyOn(backend as any, 'requireRunningAvd').mockResolvedValue({ serial: 'emulator-5554' });
+    await backend.readCrashLogcat('ACE_Pixel_API_34', 50);
+    expect(shell).toHaveBeenCalledWith(
+      'adb',
+      ['-s', 'emulator-5554', 'logcat', '-d', '-t', '50'],
+      { timeoutMs: 15_000 },
+    );
+  });
+});
+
 describeDevice('AvdBackend.setLocation', () => {
   it('runs `adb emu geo fix` with longitude FIRST and reports applied on OK', async () => {
     const shell = fakeShell({

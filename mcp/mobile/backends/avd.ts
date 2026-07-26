@@ -1154,6 +1154,35 @@ export class AvdBackend {
       .filter(Boolean);
   }
 
+  /**
+   * Read the tail of logcat, for the crash probe in the device-user-state
+   * funnel (`classifyDeviceUserState`, ace#950).
+   *
+   * `-d` dumps and exits (never streams — a streaming read would hang the
+   * funnel forever). `-t N` bounds the read so a long-lived emulator's buffer
+   * can't blow up the probe. Errors are swallowed by the caller: a logcat we
+   * can't read must degrade to "no crash detected", never to a hard failure,
+   * because this probe is diagnostic and must not become a new way for the
+   * heal funnel to die.
+   *
+   * `timeoutMs` is NOT optional belt-and-braces — it is required. `-d` exits
+   * promptly against a HEALTHY device, but against a dead or wedged one adb
+   * blocks indefinitely waiting for it. Observed live on 2026-07-26: the
+   * emulator died mid-session and `adb -s emulator-5556 logcat -d -t 600`
+   * hung past 120s with no output. Without the bound, the crash probe — added
+   * to make a wedged device diagnosable — would itself wedge the funnel on
+   * exactly the devices it exists to diagnose.
+   */
+  async readCrashLogcat(avdName: string, lines = 600): Promise<string> {
+    const avd = await this.requireRunningAvd(avdName);
+    const r = await this.shell(
+      'adb',
+      ['-s', avd.serial, 'logcat', '-d', '-t', String(lines)],
+      { timeoutMs: 15_000 },
+    );
+    return r.stdout;
+  }
+
   async captureUiDump(avdName: string): Promise<UiDumpResult> {
     const avd = await this.requireRunningAvd(avdName);
     // Pass an explicit /data/local/tmp path. The default `uiautomator dump`
