@@ -163,13 +163,84 @@ export interface DriveAdapter {
  *
  * Order matters — first-match wins.
  */
+/**
+ * True when a logcat excerpt shows CommCare dying with an uncaught exception.
+ *
+ * Deliberately narrow, and the narrowness is load-bearing — the obvious
+ * implementation is wrong. Matching `FATAL EXCEPTION|AndroidRuntime` anywhere
+ * and `org.commcare.dalvik` anywhere in the same buffer FALSE-POSITIVES on a
+ * perfectly healthy device: `adb logcat -d` carries benign `D/I AndroidRuntime`
+ * startup lines from every `uiautomator dump` (uid 2000, "Calling main entry
+ * ... uiautomator.Launcher"), and the CommCare package name appears all over an
+ * ordinary buffer. Caught live on ACE_Pixel_API_34, 2026-07-26, against a device
+ * with no crash at all.
+ *
+ * So: require the real fatal marker (`FATAL EXCEPTION`, which Android only
+ * emits for an uncaught throwable), and require `org.commcare.dalvik` to appear
+ * in the crash block itself — the `Process: <pkg>` line Android prints
+ * immediately under the marker — not somewhere else in the buffer. An unrelated
+ * system-app crash on a busy emulator therefore can't halt a Phase 6 dispatch.
+ *
+ * Pure: the caller supplies the excerpt so this stays unit-testable.
+ */
+export function detectAppCrashLoop(logcat: string): boolean {
+  const lines = logcat.split('\n');
+  for (let i = 0; i < lines.length; i++) {
+    if (!/FATAL EXCEPTION/.test(lines[i])) continue;
+    // Android's crash block puts `Process: <pkg>, PID: <n>` within a line or
+    // two of the marker. Scan a small window rather than the whole buffer.
+    const block = lines.slice(i, i + 4).join('\n');
+    if (/org\.commcare\.dalvik/.test(block)) return true;
+  }
+  return false;
+}
+
+/**
+ * Pull the first exception line + a couple of stack frames out of a crash
+ * logcat excerpt, for the error message. Keeps the funnel's output actionable
+ * without dumping kilobytes of log into a subagent return.
+ */
+export function summarizeCrash(logcat: string): string | undefined {
+  const lines = logcat.split('\n');
+  const idx = lines.findIndex((l) => /FATAL EXCEPTION/.test(l));
+  if (idx === -1) return undefined;
+  return lines
+    .slice(idx, idx + 5)
+    .map((l) => l.trim())
+    .filter(Boolean)
+    .join(' | ')
+    .slice(0, 400);
+}
+
 export function classifyDeviceUserState(
   focusedActivity: string,
   uiDumpXml: string,
   installedPackages: string[],
+  crashLogcat?: string,
 ): DeviceUserStateClass {
   if (!installedPackages.some((p) => p === 'org.commcare.dalvik')) {
     return 'commcare-not-installed';
+  }
+  // A crash-loop outranks EVERY screen-based signal, because it destroys the
+  // premise those signals rest on: an app dying with an uncaught exception
+  // restarts back at the first-start splash, so the screen reports
+  // `needs-app-config` (and, before ace#950's disambiguation, reported
+  // `needs-personal-id`) no matter how healthy registration actually is.
+  //
+  // That's not a hypothetical ordering argument — it is exactly what ace#938
+  // cost: PersonalID registration had SUCCEEDED, CommCare 2.63.0 was
+  // crash-looping on an NPE in the jobs-list parser, and the funnel's verdict
+  // sent several recovery rounds at re-registration. Registration kept
+  // "succeeding" and kept getting wiped by the next crash. The one signal that
+  // would have named the real fault — FATAL EXCEPTION, twice, with a clean
+  // stack — was sitting in logcat the entire time and was never read.
+  //
+  // Recovery routing consequence: this class must NOT be treated as healable
+  // by re-running the bootstrap. The remediation is an APK/app-side fix (in
+  // #938's case, moving the baseline off 2.63.0), so the funnel throws with
+  // the stack rather than burning retries.
+  if (crashLogcat && detectAppCrashLoop(crashLogcat)) {
+    return 'app-crash-looping';
   }
   // PersonalID-wipe banner is the unambiguous wipe signal (Connect
   // server-side de-registration). Highest priority — fires even when a
@@ -692,7 +763,43 @@ export class MobileClient {
       steps.push(cleared ? 'app-data-cleared' : 'app-data-clear-failed');
     }
 
-    // Step 2: register the test user. Demo users (+7426 prefix) skip
+    // Step 2: apply the AVD environment baseline — BEFORE registration.
+    //
+    // Ordering is load-bearing and used to be wrong. The baseline ran at
+    // "step 2.5", i.e. AFTER registerTestUser, which meant the one recipe
+    // most exposed to a hostile environment ran in the un-baselined one.
+    // That is not theoretical: on 2026-07-26 a cold boot put PersonalID's
+    // "Enable Location Service" hard gate on screen (under a second,
+    // stacked CommCare "Location Data Disabled" alert, which is why every
+    // conditional in connect-register-from-otp reported SKIPPED and the
+    // flow died on `rvJobList is visible`). The baseline enables the
+    // location providers that clear that gate — but it ran too late to
+    // help, every dispatch, by construction.
+    //
+    // Bundles:
+    //   - location providers on (gps + network) — clears PersonalID's
+    //     registration gate on a bare AOSP AVD
+    //   - heads-up notifications off (PR #328 / 0.13.252) — AOSP AVDs
+    //     periodically fire a touch-receptive Messages-app banner that
+    //     steals the next Maestro tap mid-recipe
+    //   - GMS DND-disallow (PR #328 / 0.13.252)
+    //   - screen_off_timeout 30 min — prevents the AVD locking the
+    //     screen mid-recipe (Maestro tap-on-locked-screen surfaces as a
+    //     generic selector miss, costs ~10 min of recipe-debug time per
+    //     occurrence)
+    //   - default mock GPS fix for geopoint capture widgets
+    //
+    // Class-level fix — every smoke run on this AVD will hit one of
+    // these sooner or later. Best-effort; idempotent; re-applied every
+    // dispatch (the cold-boot wipes userdata.img, taking these settings
+    // with it). Captures a fingerprint so telemetry can detect when an
+    // AVD is running an older baseline.
+    this.lastBaselineFingerprint = await this.avd
+      .applyEnvironmentBaseline(avd.name)
+      .catch(() => undefined);
+    steps.push('environment-baseline-applied');
+
+    // Step 3: register the test user. Demo users (+7426 prefix) skip
     // OTP server-side — total walk-through cost is ~15-25s. See the
     // demo-user-no-OTP learning for the breakdown.
     logInfo(`local_bootstrap: registering test user ${testUser.phone} on ${avd.serial}`);
@@ -706,25 +813,6 @@ export class MobileClient {
       name: testUser.name,
     });
     steps.push(reg.alreadyRegistered ? 'register-already' : 'registered');
-
-    // Step 2.5: apply the AVD environment baseline. Bundles:
-    //   - heads-up notifications off (PR #328 / 0.13.252) — AOSP AVDs
-    //     periodically fire a touch-receptive Messages-app banner that
-    //     steals the next Maestro tap mid-recipe
-    //   - GMS DND-disallow (PR #328 / 0.13.252)
-    //   - screen_off_timeout 30 min — prevents the AVD locking the
-    //     screen mid-recipe (Maestro tap-on-locked-screen surfaces as a
-    //     generic selector miss, costs ~10 min of recipe-debug time per
-    //     occurrence)
-    // Class-level fix — every smoke run on this AVD will hit one of
-    // these sooner or later. Best-effort; idempotent; re-applied every
-    // dispatch (the cold-boot wipes userdata.img, taking these settings
-    // with it). Captures a fingerprint so telemetry can detect when an
-    // AVD is running an older baseline.
-    this.lastBaselineFingerprint = await this.avd
-      .applyEnvironmentBaseline(avd.name)
-      .catch(() => undefined);
-    steps.push('environment-baseline-applied');
 
     // No snapshot save. The next dispatch always cold-boots with
     // `-wipe-data`, so a saved snapshot would never be loaded.

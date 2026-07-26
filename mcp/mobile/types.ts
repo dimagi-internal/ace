@@ -41,6 +41,14 @@ export interface AvdInfo {
  *                              Code" screen. No `ApplicationDocument`.
  * - `needs-personal-id`      — "Logged out of PersonalID" drawer banner.
  *                              Connect identity layer is gone.
+ * - `app-crash-looping`      — CommCare is dying with an uncaught exception
+ *                              and restarting. Classified FIRST, because a
+ *                              crash-loop lands the device back on the
+ *                              first-start splash and therefore *looks* like
+ *                              `needs-app-config` (or, before ace#950, like
+ *                              `needs-personal-id`) to every screen-based
+ *                              signal. Re-registering cannot fix it: the fix
+ *                              is an APK/app change. See ace#938/#950.
  * - `unknown`                — none of the known markers; let downstream
  *                              recipes classify, don't halt up-front.
  */
@@ -49,6 +57,7 @@ export type DeviceUserStateClass =
   | 'commcare-not-installed'
   | 'needs-app-config'
   | 'needs-personal-id'
+  | 'app-crash-looping'
   | 'unknown';
 
 export interface DeviceStateHealLog {
