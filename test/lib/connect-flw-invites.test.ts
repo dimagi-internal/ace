@@ -12,18 +12,18 @@ const load = (n: string) => fs.readFileSync(path.join(FIXTURES, n), 'utf8');
 
 // Both fixtures are REAL markup captured 2026-07-25 from
 // GET /a/ai-demo-space/opportunity/<id>/workers/ during the #811 A/B:
-//   linked   → cb24ac17 (hh-poverty 20260722-1341), demo user accepted
-//   unlinked → d99e4422 (LEEP), fresh invite that never reached the device
+//   claimed → cb24ac17 (hh-poverty 20260722-1341), demo user has claimed it
+//   pending → d99e4422 (LEEP), invite that the device never surfaced
 const LINKED = 'workers-table-linked.html';
 const UNLINKED = 'workers-table-unlinked.html';
 const DEMO_PHONE = '+74260000101';
 
-describe('parseWorkersTable — linked (accepted) worker', () => {
-  it('reports linked:true with name + connect user id split out', () => {
+describe('parseWorkersTable — claimed (accepted) worker', () => {
+  it('reports claimed:true with name + connect user id split out', () => {
     const rows = parseWorkersTable(load(LINKED));
     const row = findInviteByPhone(rows, DEMO_PHONE);
     expect(row).not.toBeNull();
-    expect(row!.linked).toBe(true);
+    expect(row!.claimed).toBe(true);
     expect(row!.status).toBe('accepted');
     expect(row!.name).toBe('ACE Test');
     expect(row!.connect_user_id).toMatch(/^[0-9a-f]{16,}$/i);
@@ -35,24 +35,23 @@ describe('parseWorkersTable — linked (accepted) worker', () => {
   });
 });
 
-describe('parseWorkersTable — unlinked (pending) invite', () => {
-  it('reports linked:false — the #824/#855 failure mode', () => {
+describe('parseWorkersTable — pending (not yet claimed) invite', () => {
+  it('reports claimed:false — pending, i.e. not yet claimed on device', () => {
     const rows = parseWorkersTable(load(UNLINKED));
     const row = findInviteByPhone(rows, DEMO_PHONE);
     expect(row).not.toBeNull();
-    // This is the whole point: the send returned {status:"queued"} and the
-    // access row exists, but no ConnectID user is linked, so Connect's mobile
-    // API can never return this opportunity to the worker.
-    expect(row!.linked).toBe(false);
+    // pending is the normal pre-claim state — this asserts the parse, NOT a
+    // failure. The actionable #824 signal is a MISSING row (see below).
+    expect(row!.claimed).toBe(false);
     expect(row!.status).toBe('pending');
     expect(row!.name).toBeNull();
     expect(row!.connect_user_id).toBeNull();
   });
 
-  it('still finds the other, older worker on the same opp as linked', () => {
+  it('still finds the other, older worker on the same opp as claimed', () => {
     const rows = parseWorkersTable(load(UNLINKED));
     // The LEEP opp also carries the PREVIOUS demo phone, which is accepted.
-    const older = rows.find((r) => r.phone !== DEMO_PHONE.replace(/\D/g, '') && r.linked);
+    const older = rows.find((r) => r.phone !== DEMO_PHONE.replace(/\D/g, '') && r.claimed);
     expect(older).toBeDefined();
     expect(older!.status).toBe('accepted');
   });
@@ -94,7 +93,7 @@ describe('parseWorkersTable — fail loud, never guess', () => {
     expect(parseWorkersTable(html)).toEqual([]);
   });
 
-  it('an unrecognized status icon is never treated as linked', () => {
+  it('an unrecognized status icon is never treated as claimed', () => {
     const html = `
       <table>
         <tr><th></th><th>#</th><th>Status</th><th>Name</th><th>Phone Number</th></tr>
@@ -103,10 +102,10 @@ describe('parseWorkersTable — fail loud, never guess', () => {
       </table>`;
     const row = findInviteByPhone(parseWorkersTable(html), DEMO_PHONE)!;
     expect(row.status).toBe('unknown');
-    expect(row.linked).toBe(false);
+    expect(row.claimed).toBe(false);
   });
 
-  it('a name without the accepted icon is NOT linked (name alone is insufficient)', () => {
+  it('a name without the accepted icon is NOT claimed (name alone is insufficient)', () => {
     // #855 is explicit that a name-column read is not sufficient.
     const html = `
       <table>
@@ -116,7 +115,7 @@ describe('parseWorkersTable — fail loud, never guess', () => {
       </table>`;
     const row = findInviteByPhone(parseWorkersTable(html), DEMO_PHONE)!;
     expect(row.status).toBe('pending');
-    expect(row.linked).toBe(false);
+    expect(row.claimed).toBe(false);
   });
 
   it('skips totals/empty rows that carry no phone', () => {

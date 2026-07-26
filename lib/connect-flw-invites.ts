@@ -5,7 +5,7 @@
  * Why this exists (dimagi-internal/ace#824 / #855): `connect_send_flw_invite`
  * returns `{status: "queued", invited_count: N}` on success, and Phase 4 has
  * been treating that as done. It is not evidence. The invite creates an
- * `OpportunityAccess` row that may have **no linked ConnectID user**, and
+ * `OpportunityAccess`/`UserInvite` row that the device never surfaces, and
  * Connect's mobile API filters opportunities by `opportunityaccess__user`:
  *
  *     Opportunity.objects.filter(opportunityaccess__user=request.user, archived=False)
@@ -15,16 +15,20 @@
  * ever surface it, and per the ConnectID change noted in #855 it does not
  * self-heal. Proven live 2026-07-25: a fresh invite stayed invisible on
  * device through both an `action_sync` and a swipe-refresh, while five
- * previously-linked opportunities rendered fine.
+ * already-claimed opportunities rendered fine.
  *
- * The discriminator is the row's **status icon** plus the Name cell:
+ * The row's **status icon** plus the Name cell distinguish claimed from
+ * not-yet-claimed:
  *
- *   linked / accepted : `fa-solid fa-circle-check text-green-600`, Name =
- *                       "<display name> <connect user id>"
- *   pending / unlinked: `fa-regular fa-clock text-orange-600`,     Name = "-"
+ *   accepted / claimed : `fa-solid fa-circle-check text-green-600`, Name =
+ *                        "<display name> <connect user id>"
+ *   pending            : `fa-regular fa-clock text-orange-600`,     Name = "-"
  *
- * A name-column read alone is NOT sufficient (#855 says so explicitly) —
- * hence both signals are captured and `linked` requires the positive one.
+ * IMPORTANT: `pending` is the NORMAL state for a fresh invite — acceptance
+ * happens on-device when `connect-claim-opp` claims the tile, and until then
+ * the opportunity renders as a "New Opportunities" card. So `claimed: false`
+ * is NOT a failure signal. The actionable check is whether a row EXISTS for
+ * the phone at all; a missing row is the #824 silent failure.
  *
  * Contract source: live markup captured 2026-07-25 from
  * `GET /a/<org>/opportunity/<opp_id>/workers/` (htmx fragment, session-cookie
@@ -45,17 +49,25 @@ export interface FlwInviteRow {
   /** Phone number exactly as Connect renders it (E.164, e.g. `+74260000101`). */
   phone: string;
   /**
-   * Display name, or null when no ConnectID user is linked yet (Connect
-   * renders a bare `-`). Null is the unlinked signature.
+   * Display name, or null pre-claim (Connect renders a bare `-`). Null is
+   * expected for any invite the worker has not claimed yet.
    */
   name: string | null;
-  /** ConnectID user id shown beside the name, when linked. */
+  /** ConnectID user id shown beside the name, present once claimed. */
   connect_user_id: string | null;
   /**
-   * TRUE only when the row shows the positive accepted/linked signal. This
-   * is the value Phase 4 / Phase 6 must gate on — never the send response.
+   * TRUE when the worker has ACCEPTED/CLAIMED the opportunity (it has moved
+   * to "In Progress" on their device).
+   *
+   * This is deliberately NOT the Phase-4/Phase-6 pass condition. `pending`
+   * is the normal, healthy state for a fresh invite that the device has not
+   * claimed yet — `connect-claim-opp` is what performs the claim, so gating
+   * on `claimed` would halt every legitimate run. The actionable signal is
+   * whether a row EXISTS at all (see `match` on the atom result): no row
+   * means the send reported success but Connect has no invite, which is the
+   * dimagi-internal/ace#824 silent failure.
    */
-  linked: boolean;
+  claimed: boolean;
   /** `accepted` | `pending` | `unknown` (icon absent or unrecognized). */
   status: 'accepted' | 'pending' | 'unknown';
   /** Invited date as rendered, or null for `—`. */
@@ -113,7 +125,7 @@ const WORKER_COLUMNS: Record<
  * Returns `[]` for an empty table (no invites yet) — that is a legitimate
  * state, not a schema failure. Throws `WorkersTableSchemaError` when a
  * required column is absent, so a Connect template change surfaces
- * immediately rather than producing confidently-wrong `linked` values.
+ * immediately rather than producing confidently-wrong verdicts.
  */
 export function parseWorkersTable(html: string): FlwInviteRow[] {
   const headerCells = [...html.matchAll(/<th\b[^>]*>([\s\S]*?)<\/th>/gi)].map((m) =>
@@ -192,9 +204,9 @@ export function parseWorkersTable(html: string): FlwInviteRow[] {
       phone: phone.replace(/[\s-]/g, ''),
       name,
       connect_user_id: connectUserId,
-      // Require the POSITIVE signal. A name alone is explicitly not enough
-      // (#855), and `unknown` must never read as linked.
-      linked: status === 'accepted' && name !== null,
+      // Require the POSITIVE accepted signal; `unknown` must never read as
+      // claimed. NOTE: false here does NOT mean broken — see `claimed` docs.
+      claimed: status === 'accepted' && name !== null,
       status,
       invited_date: cellText(cellAt('invited_date') ?? ''),
       completed_learn: cellText(cellAt('completed_learn') ?? ''),

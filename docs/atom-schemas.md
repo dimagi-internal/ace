@@ -589,7 +589,7 @@ List payment units on an opportunity. **HTML-scraped read-back has known unrelia
 
 ### `connect_list_flw_invites`
 
-Read an opportunity\'s workers table and report, per phone, whether an FLW invite actually LANDED — i.e. whether the `OpportunityAccess` has a LINKED ConnectID user. This is the read-back that turns "queued" into "actually invited" (dimagi-internal/ace#824 / #855). WHY IT MATTERS: `connect_send_flw_invite` returns `{status:"queued", invited_count:N}` even when the resulting access has NO linked us…
+Read an opportunity\'s workers table and report, per phone, whether Connect actually has an FLW invite for that worker — the read-back that turns a "queued" send response into evidence (dimagi-internal/ace#824 / #855). WHY: `connect_send_flw_invite` returns `{status:"queued", invited_count:N}` even when Connect ends up with no invite for the phone, and Phase 6 then burns a full AVD session hunting…
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|

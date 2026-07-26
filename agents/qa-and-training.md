@@ -156,13 +156,10 @@ silent-failure prevention learned from earlier real-world dogfood.
       snapshot loaded but state is still wrong — snapshot corruption
       or post-snapshot APK upgrade drift; same remediation
       (`/ace:mobile-bootstrap` re-snapshots).
-- [ ] **The FLW invite is LINKED server-side — verify BEFORE booting the
-      AVD (hard gate, ace#824/#855).** Phase 4 `connect-opp-setup` pre-invites
-      `${ACE_E2E_PHONE}`, but a send that returned
-      `{status:'queued', invited_count:1}` can still leave an
-      `OpportunityAccess` with **no linked ConnectID user** — and Connect's
-      mobile API filters on `opportunityaccess__user`, so an unlinked access is
-      invisible to the device forever and does NOT self-heal. Run:
+- [ ] **The FLW invite EXISTS server-side — verify BEFORE booting the AVD
+      (hard gate, ace#824/#855).** Phase 4 pre-invites `${ACE_E2E_PHONE}`, but
+      `connect_send_flw_invite` returns `{status:'queued', invited_count:1}`
+      even when Connect ends up with no invite for that phone. Run:
 
       ```
       connect_list_flw_invites({
@@ -172,18 +169,28 @@ silent-failure prevention learned from earlier real-world dogfood.
       })
       ```
 
-      - `match.linked === true` → proceed.
-      - `match.linked === false` (`status:'pending'`, `name:null`) or
-        `match === null` → **HALT before `mobile_ensure_avd_running`** with a
-        `[BLOCKER]` naming the unlinked invite. Remediation (deterministic,
-        auto-runnable): re-register the test user, delete the stale invite,
-        re-invite via `connect_send_flw_invite`, then re-run this check until
-        `linked` is true. Do NOT boot the AVD hoping the tile shows up —
-        that is exactly the wasted device session this gate exists to prevent
-        (proven live 2026-07-25: neither an in-app sync nor a swipe-refresh
-        can surface an unlinked invite).
+      - **`match === null`** (no row for that phone) → **HALT before
+        `mobile_ensure_avd_running`** with a `[BLOCKER]`: the send reported
+        success but Connect has no invite, so no recipe can ever claim a tile.
+        Remediation: re-invite via `connect_send_flw_invite`, re-run this
+        check, and only proceed once a row exists.
+      - **`match.claimed === false`** (`status: 'pending'`) → **proceed. This
+        is NORMAL.** A fresh invite is pending until the device claims it —
+        `connect-claim-opp` is what performs the claim, and pre-claim the opp
+        renders as a "New Opportunities" card. Do NOT gate on `claimed`.
+      - **`match.claimed === true`** → the opp is already In Progress for this
+        user; `connect-claim-opp` takes its already-claimed branch.
 
-      This is a ~2-second authenticated GET; it replaces "let Phase 6 discover
+      **Known caveat (unresolved):** on 2026-07-25/26 two pending invites
+      (LEEP, Malaria ITN) did NOT surface on the device as claimable cards
+      even though rows existed server-side, and neither an in-app sync nor a
+      swipe-refresh produced them (#811). The workers table cannot distinguish
+      "pending and healthy" from "pending and never propagated", so this gate
+      catches only the missing-row case. If a tile fails to appear despite a
+      pending row, that is the open half of #824 — capture it there rather
+      than assuming a recipe fault.
+
+            This is a ~2-second authenticated GET; it replaces "let Phase 6 discover
       it" as the detection mechanism. Without an opp invite,
       `app-screenshot-capture` recipes that try to claim or interact
       with the app will fail. Note: the test user accumulates invites
