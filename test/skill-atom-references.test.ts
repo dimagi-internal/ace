@@ -81,6 +81,7 @@ const ATOM_PREFIXES = [
 const ALLOWLIST = new Set([
   // ---- Field names / payload keys (not atoms) ----
   'connect_opportunity_id',  // bookkeeping field in run_state.yaml + opp.yaml
+  'connect_user_id',         // response field on connect_list_flw_invites rows (ace#855)
   'connect_program_id',      // bookkeeping field
   'connect_type',            // schema field on Connect modules
   'connect_markers',         // schema field set on forms

@@ -567,32 +567,57 @@ alone makes the artifact land outside `4-connect` and fail
    row + SMS go out within a few seconds. Treat `queued` as success **for
    sending the invite** — but see the queued ≠ accepted caveat below.
 
-   **`queued` means invite-sent, NOT invite-accepted (jjackson/ace#799).**
-   `invited_count: N` only confirms Connect enqueued the `UserInvite`; it
-   does **not** mean the test user has an `OpportunityAccess` row yet.
-   Acceptance happens on-device when Phase 6's `connect-claim-opp` recipe
-   claims the tile — so a re-invite of a not-yet-claimed opp legitimately
-   returns `invited_count: 1` again (it is NOT evidence the prior invite
-   failed to propagate). Therefore:
+   **`queued` is NOT proof the invite landed — read it back (ace#824/#855).**
+   `invited_count: N` only confirms Connect enqueued the `UserInvite`. The
+   resulting `OpportunityAccess` may have **no linked ConnectID user**, and
+   Connect's mobile API filters opportunities by `opportunityaccess__user`:
 
-   - Record `invited_at` as the **send** timestamp, not proof of
-     acceptance. Do NOT halt Phase 4 on the absence of an
-     `OpportunityAccess` read-back — there is no live-validated per-opp
-     FLW-invite read atom today (`connect_list_invites` is LLO/program-
-     application level, not phone-level), and gating Phase 4 on an
-     unvalidated worker-list scrape risks false halts on a working invite.
-   - The **authoritative** proof the invite landed is Phase 6 successfully
-     claiming the tile. If Phase 6's claim cannot find/claim the tile, THAT
-     is the loud failure (Phase 6 halts `[BLOCKER]`), and the first thing
-     to rule out is the claim-recipe centering bug fixed in
-     jjackson/ace#800 (`centerElement: true` on the OPP_RUN_ID title-scroll
-     in `connect-claim-opp.yaml` / `connect-resume-opp.yaml`) — a present,
-     asserted-visible tile that still won't claim is the #800 class, not a
-     Phase-4 invite-propagation failure.
-   - Durable Phase-4-side invite verification (a per-opp FLW-invite
-     worker-list read) remains a tracked enhancement — it needs a
-     live-calibrated Playwright scraper of the opp worker page and must be
-     validated against real HTML before it can gate Phase 4 (jjackson/ace#799).
+   ```
+   Opportunity.objects.filter(opportunityaccess__user=request.user, archived=False)
+   ```
+
+   An access with a null user matches nothing, so the opportunity is invisible
+   to the device **forever** — and per the ConnectID change in `2bd03c4` it does
+   NOT self-heal. Proven live 2026-07-25: a fresh invite returning
+   `{status:'queued', invited_count:1}` never appeared on device through either
+   an in-app sync or a swipe-refresh, while five previously-linked
+   opportunities rendered fine.
+
+   **So read it back with `connect_list_flw_invites`** (ships since ace#855;
+   read-only, one authenticated GET):
+
+   ```
+   connect_list_flw_invites({
+     organization_slug: <PM-side org>,
+     opportunity_id: <UUID from step 4>,
+     phone: '${ACE_E2E_PHONE}'
+   })
+   ```
+
+   Branch on `match.linked`:
+
+   - **`linked: true`** (`status: 'accepted'`, a real `name` + `connect_user_id`)
+     → the invite landed. Record `invited_at` and proceed.
+   - **`linked: false`** (`status: 'pending'`, `name: null`) → **WARN, do not
+     halt.** A pending invite is legitimate immediately after sending — the
+     link forms when the worker's ConnectID resolves. Record
+     `invite_linked: false` in the products block so Phase 6's pre-flight
+     knows to re-check, and surface the WARN in the phase summary. Phase 6 is
+     where this becomes a hard gate, because that is where it costs AVD
+     wall-clock.
+   - **`match: null`** (no row at all for that phone) → WARN loudly: the send
+     reported success but Connect has no access row. That is the #824 silent
+     failure; name it in the summary rather than letting Phase 6 discover it.
+
+   Do NOT gate on `status` alone and do NOT infer from the Name column by
+   itself — `linked` requires the positive accepted signal, which is what the
+   atom computes. The atom throws `WorkersTableSchemaError` if Connect reshapes
+   the workers table, so a parsing failure is loud rather than a false verdict.
+
+   The claim-recipe centering bug (jjackson/ace#800 — `centerElement: true` on
+   the OPP_RUN_ID title-scroll) is still the thing to rule out when a tile IS
+   present and asserted-visible but won't claim; that is a recipe failure, not
+   an invite-propagation one.
 
    Hold the invite metadata in memory for Step 10's consolidated write:
 

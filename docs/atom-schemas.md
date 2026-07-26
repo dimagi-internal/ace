@@ -402,7 +402,7 @@ Render the run-folder README markdown for `runId` with optional per-phase status
 
 ## ace-connect
 
-Source: `mcp/connect-server.ts` — 54 atoms
+Source: `mcp/connect-server.ts` — 55 atoms
 
 ### `connect_list_programs`
 
@@ -586,6 +586,16 @@ List payment units on an opportunity. **HTML-scraped read-back has known unrelia
 | `organization_slug` | `z.string` | **required** | _—_ |
 | `opportunity_id` | `z.string` | **required** | Opportunity must be active and not ended. |
 | `phone_numbers` | `z.array` | **required** | _—_ |
+
+### `connect_list_flw_invites`
+
+Read an opportunity\'s workers table and report, per phone, whether an FLW invite actually LANDED — i.e. whether the `OpportunityAccess` has a LINKED ConnectID user. This is the read-back that turns "queued" into "actually invited" (dimagi-internal/ace#824 / #855). WHY IT MATTERS: `connect_send_flw_invite` returns `{status:"queued", invited_count:N}` even when the resulting access has NO linked us…
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `organization_slug` | `z.string` | **required** | _—_ |
+| `opportunity_id` | `z.string` | **required** | Opportunity UUID. |
+| `phone` | `z.string` | optional | _—_ |
 
 ### `connect_delete_unaccepted_flw_invites`
 

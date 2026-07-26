@@ -156,9 +156,35 @@ silent-failure prevention learned from earlier real-world dogfood.
       snapshot loaded but state is still wrong — snapshot corruption
       or post-snapshot APK upgrade drift; same remediation
       (`/ace:mobile-bootstrap` re-snapshots).
-- [ ] **The opp-specific Learn + Deliver apps are claimable on the
-      AVD via the test user.** Phase 4 `connect-opp-setup` should
-      have pre-invited `${ACE_E2E_PHONE}`. Without an opp invite,
+- [ ] **The FLW invite is LINKED server-side — verify BEFORE booting the
+      AVD (hard gate, ace#824/#855).** Phase 4 `connect-opp-setup` pre-invites
+      `${ACE_E2E_PHONE}`, but a send that returned
+      `{status:'queued', invited_count:1}` can still leave an
+      `OpportunityAccess` with **no linked ConnectID user** — and Connect's
+      mobile API filters on `opportunityaccess__user`, so an unlinked access is
+      invisible to the device forever and does NOT self-heal. Run:
+
+      ```
+      connect_list_flw_invites({
+        organization_slug: <run_state …connect.organization_slug>,
+        opportunity_id:    <run_state …connect.opportunity.id>,
+        phone: '${ACE_E2E_PHONE}'
+      })
+      ```
+
+      - `match.linked === true` → proceed.
+      - `match.linked === false` (`status:'pending'`, `name:null`) or
+        `match === null` → **HALT before `mobile_ensure_avd_running`** with a
+        `[BLOCKER]` naming the unlinked invite. Remediation (deterministic,
+        auto-runnable): re-register the test user, delete the stale invite,
+        re-invite via `connect_send_flw_invite`, then re-run this check until
+        `linked` is true. Do NOT boot the AVD hoping the tile shows up —
+        that is exactly the wasted device session this gate exists to prevent
+        (proven live 2026-07-25: neither an in-app sync nor a swipe-refresh
+        can surface an unlinked invite).
+
+      This is a ~2-second authenticated GET; it replaces "let Phase 6 discover
+      it" as the detection mechanism. Without an opp invite,
       `app-screenshot-capture` recipes that try to claim or interact
       with the app will fail. Note: the test user accumulates invites
       across every `/ace:run` — by run N the test user has N opp tiles

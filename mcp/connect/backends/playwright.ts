@@ -5,6 +5,7 @@ import { HttpError, ConnectValidationError, ConnectError } from '../errors.js';
 import { assertFundsAtLeastOneUser } from '../opportunity-capacity.js';
 import type { PlaywrightSession } from '../auth/playwright-session.js';
 import { parseOrgMemberTable, type OrgMemberRow } from '../../../lib/connect-member-table.js';
+import { parseWorkersTable, findInviteByPhone } from '../../../lib/connect-flw-invites.js';
 import {
   extractFormCsrfToken,
   extractFormFieldValues,
@@ -1707,5 +1708,32 @@ export class PlaywrightBackend implements ConnectClient {
       return { requested: args.user_invite_ids.length };
     }
     throw await httpErrorFor(res, path, 'POST');
+  };
+
+  /**
+   * Read-back of the opportunity's workers table — the authoritative answer to
+   * "did that invite actually land?" (dimagi-internal/ace#824 / #855).
+   *
+   * The workers table is an **htmx fragment**: without `HX-Request: true`
+   * Connect returns the page shell with no `<tr>` rows, which would read as
+   * "no invites" and be exactly the kind of confidently-wrong answer this
+   * atom exists to prevent. The header is therefore mandatory here.
+   *
+   * Parsing lives in `lib/connect-flw-invites.ts` and resolves columns by
+   * header label, so a Connect template reshape throws instead of silently
+   * shifting fields.
+   */
+  listFlwInvites: ConnectClient['listFlwInvites'] = async (args) => {
+    const path = `/a/${args.organization_slug}/opportunity/${args.opportunity_id}/workers/`;
+    const res = await this.request.get(path, {
+      headers: { 'HX-Request': 'true', Referer: `${this.opts.baseUrl}${path}` },
+    });
+    if (res.status() !== 200) throw await httpErrorFor(res, path, 'GET');
+    const invites = parseWorkersTable(await res.text());
+    return {
+      opportunity_id: args.opportunity_id,
+      invites,
+      ...(args.phone !== undefined ? { match: findInviteByPhone(invites, args.phone) } : {}),
+    };
   };
 }
