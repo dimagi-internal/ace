@@ -332,7 +332,20 @@ describe('classifyPhaseWriteBack', () => {
 });
 
 describe('validateIterateState', () => {
+  // Rolling-window shape: no stored streak. Health is derived from
+  // iterations[] by computeIterateHealth (lib/iterate-health.ts).
   const minimal = {
+    opp: 'bednet-spot-check',
+    target_phases: [3, 6],
+    golden_run_id: '20260601-1252',
+    runner: 'web',
+    window: 10,
+    pass_target: 0.8,
+    iterations: [],
+  };
+
+  /** The pre-rolling-window shape, which must still load. */
+  const legacy = {
     opp: 'bednet-spot-check',
     target_phases: [3, 6],
     golden_run_id: '20260601-1252',
@@ -346,6 +359,31 @@ describe('validateIterateState', () => {
     const r = validateIterateState(minimal);
     expect(r.valid).toBe(true);
     expect(r.errors).toEqual([]);
+  });
+
+  it('accepts a state with no streak fields at all (rolling window is the default)', () => {
+    const { window: _w, pass_target: _p, ...noTuning } = minimal;
+    const r = validateIterateState(noTuning);
+    expect(r.valid).toBe(true);
+    expect(r.errors).toEqual([]);
+  });
+
+  it('still loads a legacy streak-based state, but warns that streak is ignored', () => {
+    const r = validateIterateState(legacy);
+    expect(r.valid).toBe(true);
+    expect(r.warnings.some((w) => w.path === 'streak')).toBe(true);
+    expect(r.warnings.some((w) => w.path === 'required_streak')).toBe(true);
+  });
+
+  it('rejects a window below 2 or a non-integer window', () => {
+    expect(validateIterateState({ ...minimal, window: 1 }).valid).toBe(false);
+    expect(validateIterateState({ ...minimal, window: 4.5 }).valid).toBe(false);
+  });
+
+  it('rejects a pass_target outside (0, 1]', () => {
+    expect(validateIterateState({ ...minimal, pass_target: 0 }).valid).toBe(false);
+    expect(validateIterateState({ ...minimal, pass_target: 1.5 }).valid).toBe(false);
+    expect(validateIterateState({ ...minimal, pass_target: 1 }).valid).toBe(true);
   });
 
   it('rejects a non-object', () => {
@@ -365,9 +403,9 @@ describe('validateIterateState', () => {
     expect(r.errors.some((e) => e.path === 'runner')).toBe(true);
   });
 
-  it('rejects a negative or non-integer streak', () => {
-    expect(validateIterateState({ ...minimal, streak: -1 }).valid).toBe(false);
-    expect(validateIterateState({ ...minimal, streak: 2.5 }).valid).toBe(false);
+  it('rejects a negative or non-integer streak when a legacy file carries one', () => {
+    expect(validateIterateState({ ...legacy, streak: -1 }).valid).toBe(false);
+    expect(validateIterateState({ ...legacy, streak: 2.5 }).valid).toBe(false);
   });
 
   it('requires target_phases to be a non-empty integer array', () => {
