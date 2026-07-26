@@ -322,3 +322,11 @@ ACE_PARTNERSHIP_DECK_TEMPLATE_ID=op://AI-Agents/ACE - Drive Templates/partnershi
 # Work-order template (Google Doc). Bootstrap: `npx tsx scripts/bootstrap-work-order-template.ts`.
 # See playbook/integrations/work-order-template.md for token contract.
 WORK_ORDER_TEMPLATE_ID=op://AI-Agents/ACE - Drive Templates/work_order_template_id
+
+# ── canopy-web ──────────────────────────────────────────────────────
+# This agent's OWN canopy-web PAT, so its API/MCP calls are attributed to
+# ace@dimagi-ai.com and can be revoked independently of the rest of the
+# fleet. Resolved ahead of ~/.claude/canopy/workbench-token, which a headless
+# host (the EC2 cloud runner) can never produce — minting that file needs an
+# interactive browser login.
+CANOPY_WEB_PAT=op://Agent-Ace/canopy-pat/credential
