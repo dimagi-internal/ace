@@ -683,9 +683,18 @@ export class MobileClient {
     const dump = await this.avd
       .captureUiDump(avd.name)
       .catch(() => ({ xml: '', elements: [] } as UiDumpResult));
+    // Diagnostic-only: a logcat we can't read degrades to "no crash
+    // detected", never to a probe failure. See readCrashLogcat.
+    const crashLog = await this.avd.readCrashLogcat(avd.name).catch(() => '');
 
-    const cls = classifyDeviceUserState(focused, dump.xml, packages);
-    const signal = pickStateSignal(focused, dump.xml);
+    const cls = classifyDeviceUserState(focused, dump.xml, packages, crashLog);
+    // When the crash probe is what decided the class, the stack IS the
+    // signal — surfacing "screen:first-start-welcome" here instead would
+    // reproduce the exact ace#938 misdirection this probe exists to prevent.
+    const signal =
+      cls === 'app-crash-looping'
+        ? (summarizeCrash(crashLog) ?? 'crash:commcare-fatal-exception')
+        : pickStateSignal(focused, dump.xml);
     return { classified_as: cls, focused_activity: focused, ui_dump_signal: signal };
   }
 

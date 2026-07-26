@@ -1088,6 +1088,7 @@ describe('MobileClient.ensureAvdRunning', () => {
       clearConnectAppData: vi.fn().mockResolvedValue(true),
       getFocusedActivity: vi.fn().mockResolvedValue('mResumedActivity: ActivityRecord{... OpportunitiesActivity}'),
       captureUiDump: vi.fn().mockResolvedValue({ xml: '', elements: [] }),
+      readCrashLogcat: vi.fn().mockResolvedValue(''),
       saveSnapshot: vi.fn().mockResolvedValue({ avdName: 'AVD', snapshotName: 'registered-test-user', saved: true, output: 'OK' }),
       setGmsEnabled: vi.fn().mockResolvedValue(undefined),
     disableHeadsUpNotifications: vi.fn().mockResolvedValue(undefined),
@@ -1121,6 +1122,7 @@ describe('MobileClient.ensureAvdRunning', () => {
       listPackages: vi.fn().mockResolvedValue(['org.commcare.dalvik']),
       getFocusedActivity: vi.fn().mockResolvedValue('mResumedActivity: ActivityRecord{... OpportunitiesActivity}'),
       captureUiDump: vi.fn().mockResolvedValue({ xml: '', elements: [] }),
+      readCrashLogcat: vi.fn().mockResolvedValue(''),
       loadSnapshot: vi.fn(),
     } as any;
     const maestro = {
@@ -1402,6 +1404,7 @@ describe('MobileClient.restoreDeviceUserState (post-2026-05-14: always-bootstrap
           : 'mResumedActivity: CommCareSetupActivity',
       ),
       captureUiDump: vi.fn().mockResolvedValue({ xml: '', elements: [] }),
+      readCrashLogcat: vi.fn().mockResolvedValue(''),
       installApk: vi.fn().mockResolvedValue({
         packageId: 'org.commcare.dalvik', versionName: '2.62.0', versionCode: 1, path: '/tmp/apk',
       }),
@@ -1499,6 +1502,54 @@ describe('MobileClient.restoreDeviceUserState (post-2026-05-14: always-bootstrap
     await expect(client.ensureAvdRunning('AVD')).rejects.toThrow(
       /AVD per-user state is unhealthy.*needs-personal-id.*verify:needs-personal-id/,
     );
+  });
+
+  it('surfaces a crash-loop as app-crash-looping WITH the stack, not the splash screen (ace#938/#950)', async () => {
+    // The ace#938 shape end-to-end through the funnel: registration succeeded,
+    // CommCare then crash-looped back to the first-start splash. Before this
+    // wiring the probe reported the SCREEN (needs-app-config / first-start),
+    // which sent the investigation at registration for hours. The crash must
+    // win, and the signal must carry the stack.
+    const avd = makeBootstrapAvd({ postRegisterReady: false });
+    avd.captureUiDump = vi.fn().mockResolvedValue({
+      xml: '<node text="Enter Code"/><node text="Welcome to CommCare!"/>',
+      elements: [],
+    });
+    avd.readCrashLogcat = vi.fn().mockResolvedValue(
+      [
+        'E AndroidRuntime: FATAL EXCEPTION: main',
+        'E AndroidRuntime: Process: org.commcare.dalvik, PID: 4471',
+        'E AndroidRuntime: java.lang.NullPointerException: ExtUtil.writeDate(null)',
+      ].join('\n'),
+    );
+    const maestro = makeMaestro();
+    const client = new MobileClient({ avd, maestro, bootstrapConfig });
+    await expect(client.ensureAvdRunning('AVD')).rejects.toThrow(/app-crash-looping/);
+    // and the funnel actually READ logcat rather than the arg being dead code
+    expect(avd.readCrashLogcat).toHaveBeenCalled();
+  });
+
+  it('a healthy device is unaffected by the crash probe (no false halt)', async () => {
+    // Same benign uiautomator AndroidRuntime noise that broke the first
+    // detector implementation, now flowing through the real probe path.
+    const avd = makeBootstrapAvd({ postRegisterReady: true });
+    avd.readCrashLogcat = vi.fn().mockResolvedValue(
+      [
+        'D AndroidRuntime: >>>>>> START com.android.internal.os.RuntimeInit uid 2000 <<<<<<',
+        'I Maestro : packageName: org.commcare.dalvik; className: android.view.View',
+      ].join('\n'),
+    );
+    const maestro = makeMaestro();
+    const client = new MobileClient({ avd, maestro, bootstrapConfig });
+    await expect(client.ensureAvdRunning('AVD')).resolves.toBeTruthy();
+  });
+
+  it('an unreadable logcat degrades to no-crash rather than failing the probe', async () => {
+    const avd = makeBootstrapAvd({ postRegisterReady: true });
+    avd.readCrashLogcat = vi.fn().mockRejectedValue(new Error('adb: device offline'));
+    const maestro = makeMaestro();
+    const client = new MobileClient({ avd, maestro, bootstrapConfig });
+    await expect(client.ensureAvdRunning('AVD')).resolves.toBeTruthy();
   });
 
   it('cloud backend with LIVE_REGISTER unset returns the legacy stub', async () => {
@@ -1721,6 +1772,7 @@ describe('restoreDeviceUserState: bootstrapConfig-absent error names specific mi
       listPackages: vi.fn().mockResolvedValue(['org.commcare.dalvik']),
       getFocusedActivity: vi.fn(),
       captureUiDump: vi.fn(),
+      readCrashLogcat: vi.fn().mockResolvedValue(''),
       loadSnapshot: vi.fn().mockResolvedValue({
         avdName: 'AVD',
         snapshotName: 'registered-test-user',
@@ -1744,6 +1796,7 @@ describe('restoreDeviceUserState: bootstrapConfig-absent error names specific mi
       listPackages: vi.fn().mockResolvedValue(['org.commcare.dalvik']),
       getFocusedActivity: vi.fn(),
       captureUiDump: vi.fn(),
+      readCrashLogcat: vi.fn().mockResolvedValue(''),
       loadSnapshot: vi.fn().mockResolvedValue({
         avdName: 'AVD',
         snapshotName: 'registered-test-user',
@@ -2452,6 +2505,7 @@ describe('runLocalBootstrap: no snapshot save (cold-boot model)', () => {
       listPackages: vi.fn().mockResolvedValue([]),
       getFocusedActivity: vi.fn(),
       captureUiDump: vi.fn().mockResolvedValue({ xml: '', elements: [] }),
+      readCrashLogcat: vi.fn().mockResolvedValue(''),
       loadSnapshot: vi.fn(),
       installApk: vi.fn().mockResolvedValue({
         packageId: 'org.commcare.dalvik',
