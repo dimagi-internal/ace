@@ -5,6 +5,8 @@ import * as os from 'node:os';
 import * as crypto from 'node:crypto';
 import {
   classifyDeviceUserState,
+  detectAppCrashLoop,
+  summarizeCrash,
   MobileClient,
   bootstrapConfigFromEnv,
   missingBootstrapEnvVars,
@@ -1195,7 +1197,112 @@ describe('MobileClient.ensureAvdRunning', () => {
   });
 });
 
+describe('detectAppCrashLoop (ace#950)', () => {
+  // Verbatim shape of the benign lines every `uiautomator dump` writes. Captured
+  // live from ACE_Pixel_API_34 on 2026-07-26 against a device with NO crash —
+  // the first implementation of this detector (match FATAL EXCEPTION|AndroidRuntime
+  // anywhere AND org.commcare.dalvik anywhere) returned true on exactly this input.
+  const HEALTHY = [
+    '07-26 09:17:35.494  9097  9097 D AndroidRuntime: >>>>>> START com.android.internal.os.RuntimeInit uid 2000 <<<<<<',
+    '07-26 09:17:35.498  9097  9097 I AndroidRuntime: Using default boot image',
+    '07-26 09:17:35.580  9097  9097 D AndroidRuntime: Calling main entry com.android.commands.uiautomator.Launcher',
+    '07-26 09:17:33.758  8858  8887 I Maestro : Skipping invisible child: ... packageName: org.commcare.dalvik; className: android.view.View',
+    '07-26 09:17:36.600  9097  9097 D AndroidRuntime: Shutting down VM',
+  ].join('\n');
+
+  // The ace#938 crash: CommCare 2.63.0 NPE in the jobs-list parser.
+  const CRASH = [
+    '07-25 02:31:09.118  4471  4471 E AndroidRuntime: FATAL EXCEPTION: main',
+    '07-25 02:31:09.118  4471  4471 E AndroidRuntime: Process: org.commcare.dalvik, PID: 4471',
+    '07-25 02:31:09.118  4471  4471 E AndroidRuntime: java.lang.NullPointerException: Attempt to invoke ExtUtil.writeDate(null)',
+    '07-25 02:31:09.118  4471  4471 E AndroidRuntime: \tat org.commcare.android.database.connect.models.ConnectOpportunitiesParser.parse',
+  ].join('\n');
+
+  it('does NOT fire on a healthy device whose logcat carries uiautomator AndroidRuntime lines', () => {
+    expect(detectAppCrashLoop(HEALTHY)).toBe(false);
+  });
+
+  it('fires on a real CommCare fatal crash block', () => {
+    expect(detectAppCrashLoop(CRASH)).toBe(true);
+  });
+
+  it('does NOT fire when the fatal crash belongs to another package', () => {
+    const other = [
+      '07-25 02:31:09.118  4471  4471 E AndroidRuntime: FATAL EXCEPTION: main',
+      '07-25 02:31:09.118  4471  4471 E AndroidRuntime: Process: com.android.settings, PID: 4471',
+      '07-25 02:31:09.118  4471  4471 E AndroidRuntime: java.lang.IllegalStateException',
+    ].join('\n');
+    expect(detectAppCrashLoop(other)).toBe(false);
+  });
+
+  it('does NOT fire when a commcare mention is far from the fatal marker', () => {
+    // The false-positive shape: an unrelated crash, plus commcare noise many
+    // lines later. Proximity is what makes the signal trustworthy.
+    const mixed = [
+      '07-25 02:31:09.118  4471  4471 E AndroidRuntime: FATAL EXCEPTION: main',
+      '07-25 02:31:09.118  4471  4471 E AndroidRuntime: Process: com.android.settings, PID: 4471',
+      '07-25 02:31:09.118  4471  4471 E AndroidRuntime: java.lang.IllegalStateException',
+      '07-25 02:31:09.200  4471  4471 I ActivityManager: unrelated line',
+      '07-25 02:31:09.300  4471  4471 I Maestro : packageName: org.commcare.dalvik',
+    ].join('\n');
+    expect(detectAppCrashLoop(mixed)).toBe(false);
+  });
+
+  it('returns false on empty input', () => {
+    expect(detectAppCrashLoop('')).toBe(false);
+  });
+
+  it('summarizeCrash pulls the exception line and a few frames', () => {
+    const s = summarizeCrash(CRASH);
+    expect(s).toContain('FATAL EXCEPTION');
+    expect(s).toContain('NullPointerException');
+    expect(s!.length).toBeLessThanOrEqual(400);
+  });
+
+  it('summarizeCrash returns undefined when there is no crash', () => {
+    expect(summarizeCrash(HEALTHY)).toBeUndefined();
+  });
+});
+
 describe('classifyDeviceUserState', () => {
+  it('classifies app-crash-looping ahead of every screen-based signal (ace#938/#950)', () => {
+    // The exact ace#938 situation: registration HAD succeeded, but the crash
+    // bounced the device to the first-start splash. Screen signals say
+    // needs-app-config; the crash is the truth, and it outranks them.
+    const firstStartSplash = '<node text="Enter Code"/><node text="Welcome to CommCare!"/>';
+    const crash = [
+      'E AndroidRuntime: FATAL EXCEPTION: main',
+      'E AndroidRuntime: Process: org.commcare.dalvik, PID: 4471',
+    ].join('\n');
+    expect(
+      classifyDeviceUserState('mResumedActivity: CommCareSetupActivity', firstStartSplash, [
+        'org.commcare.dalvik',
+      ]),
+    ).toBe('needs-app-config');
+    expect(
+      classifyDeviceUserState(
+        'mResumedActivity: CommCareSetupActivity',
+        firstStartSplash,
+        ['org.commcare.dalvik'],
+        crash,
+      ),
+    ).toBe('app-crash-looping');
+  });
+
+  it('still reports commcare-not-installed ahead of a crash (nothing to crash)', () => {
+    const crash = 'E AndroidRuntime: FATAL EXCEPTION: main\nE AndroidRuntime: Process: org.commcare.dalvik';
+    expect(classifyDeviceUserState('', '<dump/>', [], crash)).toBe('commcare-not-installed');
+  });
+
+  it('is unchanged when no logcat is supplied (back-compat with existing callers)', () => {
+    const drawer = '<node text="Opportunities"/><node text="Work History"/>';
+    expect(
+      classifyDeviceUserState('mResumedActivity: CommCareSetupActivity', drawer, [
+        'org.commcare.dalvik',
+      ]),
+    ).toBe('ready');
+  });
+
   it('returns commcare-not-installed when org.commcare.dalvik is absent', () => {
     expect(classifyDeviceUserState('mResumedActivity: Launcher', '<dump/>', [])).toBe(
       'commcare-not-installed',

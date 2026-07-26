@@ -1,5 +1,15 @@
 # Existing entries
+# BOTH forms are required. `node_modules/` (trailing slash) matches a
+# DIRECTORY only — it does NOT match a symlink named `node_modules`, which is
+# what you get when a worktree links to a sibling checkout's install to skip
+# `npm ci`. That gap let a machine-specific absolute-path symlink
+# (`node_modules -> /Users/<someone>/emdash/repositories/ace/node_modules`)
+# get committed to main in PR #956. On the next worktree it resolved into a
+# `node_modules/node_modules` loop, and every vitest run in that tree died
+# with exit 194 and ZERO output — no error, no stack, nothing to grep. Cost
+# most of a live device session to find. Keep both lines.
 node_modules/
+node_modules
 .gws-sa-key.json
 
 # Environment secrets — only .env.tpl (1Password-injectable) is committed;

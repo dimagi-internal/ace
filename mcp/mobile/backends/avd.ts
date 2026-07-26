@@ -1450,6 +1450,7 @@ export class AvdBackend {
       'notification_disallow_dnd_gms',
       'screen_off_timeout',
       'mock_location_fix',
+      'location_providers_allowed',
     ];
 
     // 1. Heads-up notifications off (PR #328 / 0.13.252).
@@ -1473,7 +1474,38 @@ export class AvdBackend {
       'screen_off_timeout', '1800000',
     ]).catch(() => {});
 
-    // 4. Seed a default mock GPS fix so any CommCare `geopoint` Capture
+    // 4. Enable the location PROVIDERS, not just the master toggle.
+    //
+    // PersonalID hard-gates registration behind a bottom sheet — "Enable
+    // Location Service … PersonalID requires your device to have Location
+    // Services enabled" (`connect_message_title` / `connect_message_button`) —
+    // and a cold-booted `-wipe-data` AVD does not satisfy it out of the box.
+    // The subtle part, and the reason this took a live session to pin down
+    // (2026-07-26, ACE_Pixel_API_34): the master toggle ALREADY reads enabled
+    // on a fresh boot — `settings get secure location_mode` → 3 and
+    // `cmd location is-location-enabled` → true — while
+    // `location_providers_allowed` carries only `gps`. PersonalID still gated.
+    // Adding `network` cleared it and registration completed on the next try.
+    //
+    // A bare AOSP AVD has no Play Services, so the fused/network provider is
+    // not present unless explicitly allowed. Set the mode AND both providers.
+    //
+    // Honest scope note: in the session that found this, the two stacked
+    // location dialogs were also dismissed by hand, so this is not a clean
+    // single-variable A/B. The provider set is the persistent half (the
+    // dialogs are a per-launch symptom of it), which is why the fix lands
+    // here. If a cold boot still gates, the next thing to check is whether
+    // PersonalID wants a live fix from the network provider specifically.
+    await this.shell('adb', [
+      '-s', avd.serial, 'shell', 'settings', 'put', 'secure',
+      'location_mode', '3',
+    ]).catch(() => {});
+    await this.shell('adb', [
+      '-s', avd.serial, 'shell', 'settings', 'put', 'secure',
+      'location_providers_allowed', '+gps,+network',
+    ]).catch(() => {});
+
+    // 5. Seed a default mock GPS fix so any CommCare `geopoint` Capture
     // widget has a provider location to read out of the box (without it
     // the emulator's GPS never acquires and the Capture button hangs).
     // A recipe can override per-opp via the `mobile_set_location` atom.
