@@ -594,25 +594,21 @@ alone makes the artifact land outside `4-connect` and fail
    })
    ```
 
-   Branch on `match.linked`:
+   Branch on whether a row EXISTS — **not** on `claimed`:
 
-   - **`linked: true`** (`status: 'accepted'`, a real `name` + `connect_user_id`)
-     → the invite landed. Record `invited_at` and proceed.
-   - **`linked: false`** (`status: 'pending'`, `name: null`) → **WARN, do not
-     halt.** A pending invite is legitimate immediately after sending — the
-     link forms when the worker's ConnectID resolves. Record
-     `invite_linked: false` in the products block so Phase 6's pre-flight
-     knows to re-check, and surface the WARN in the phase summary. Phase 6 is
-     where this becomes a hard gate, because that is where it costs AVD
-     wall-clock.
-   - **`match: null`** (no row at all for that phone) → WARN loudly: the send
-     reported success but Connect has no access row. That is the #824 silent
-     failure; name it in the summary rather than letting Phase 6 discover it.
+   - **`match !== null`** → the invite is recorded. `status: 'pending'` with
+     `name: null` is the NORMAL pre-claim state (acceptance happens on-device
+     when Phase 6's `connect-claim-opp` claims the tile), so pending is a
+     pass here. Record `invited_at` and proceed.
+   - **`match === null`** (no row at all for that phone) → **WARN loudly**:
+     the send reported success but Connect has no invite. That is the #824
+     silent failure; name it in the phase summary rather than letting Phase 6
+     discover it on AVD wall-clock.
 
-   Do NOT gate on `status` alone and do NOT infer from the Name column by
-   itself — `linked` requires the positive accepted signal, which is what the
-   atom computes. The atom throws `WorkersTableSchemaError` if Connect reshapes
-   the workers table, so a parsing failure is loud rather than a false verdict.
+   Do NOT gate on `match.claimed` — it reports whether the worker has already
+   CLAIMED the opp, so requiring it would fail every legitimate fresh run.
+   The atom throws `WorkersTableSchemaError` if Connect reshapes the workers
+   table, so a parsing failure is loud rather than a false verdict.
 
    The claim-recipe centering bug (jjackson/ace#800 — `centerElement: true` on
    the OPP_RUN_ID title-scroll) is still the thing to rule out when a tile IS
