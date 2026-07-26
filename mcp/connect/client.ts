@@ -1,3 +1,4 @@
+import type { FlwInviteRow } from '../../lib/connect-flw-invites.js';
 import type {
   Program,
   Opportunity,
@@ -205,6 +206,29 @@ export interface ConnectClient {
     phone_numbers: string[];
     invited_count: number;
     status: 'queued';
+  }>;
+
+  /**
+   * Read the opportunity's workers table and report, per phone, whether the
+   * invite actually LANDED (an OpportunityAccess with a LINKED ConnectID
+   * user) — not merely that the send was accepted.
+   *
+   * `sendFlwInvite` returns `{status:'queued'}` even when the resulting access
+   * has no linked user, and Connect's mobile API filters on
+   * `opportunityaccess__user`, so an unlinked access is invisible to the
+   * device forever (it does not self-heal). This is the read-back that turns
+   * "queued" into "actually invited". See lib/connect-flw-invites.ts and
+   * dimagi-internal/ace#824 / #855.
+   */
+  listFlwInvites(args: {
+    organization_slug: string;
+    opportunity_id: string;
+    phone?: string;
+  }): Promise<{
+    opportunity_id: string;
+    invites: FlwInviteRow[];
+    /** Present only when `phone` was supplied. */
+    match?: FlwInviteRow | null;
   }>;
 
   /**

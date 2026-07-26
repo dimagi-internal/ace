@@ -547,6 +547,24 @@ server.tool('connect_send_flw_invite',
   })
 );
 
+server.tool('connect_list_flw_invites',
+  'Read an opportunity\'s workers table and report, per phone, whether an FLW invite actually LANDED — i.e. whether the `OpportunityAccess` has a LINKED ConnectID user. This is the read-back that turns "queued" into "actually invited" (dimagi-internal/ace#824 / #855). WHY IT MATTERS: `connect_send_flw_invite` returns `{status:"queued", invited_count:N}` even when the resulting access has NO linked user, and Connect\'s mobile API filters opportunities by `opportunityaccess__user` — so an unlinked access is invisible to the device forever and does NOT self-heal. Proven live 2026-07-25: a fresh invite never reached the device through either an in-app sync or a swipe-refresh, while previously-linked opportunities rendered fine. Gate Phase 4 read-back and Phase 6 pre-flight on `linked: true` (or `match.linked`), NEVER on the send response. Each row returns `{phone, name, connect_user_id, linked, status, invited_date, completed_learn}`; `status` is `accepted` | `pending` | `unknown` read off the row\'s status icon, and `linked` requires the POSITIVE accepted signal (a name alone is NOT sufficient). Pass `phone` to get a `match` field resolved by digits-only comparison (accepts `${VAR}` env tokens such as `${ACE_E2E_PHONE}`). Read-only. Routes through Playwright to the htmx workers fragment; no REST equivalent. Throws WorkersTableSchemaError if Connect reshapes the table rather than returning wrong answers.',
+  {
+    organization_slug: z.string(),
+    opportunity_id: z.string().describe('Opportunity UUID.'),
+    phone: z.string().optional().describe(
+      'Optional phone to resolve into a `match` field. Accepts `+<digits>` or a `${VAR}` env token (e.g. ${ACE_E2E_PHONE}).',
+    ),
+  },
+  async (args) => runAtom(async () => {
+    const resolved = {
+      ...args,
+      ...(args.phone !== undefined ? { phone: resolveEnvSubstitution(args.phone) } : {}),
+    };
+    return (await client()).listFlwInvites(resolved);
+  })
+);
+
 server.tool('connect_delete_unaccepted_flw_invites',
   'Hard-delete unaccepted FLW invites by integer id. Invites with `status=accepted` are silently skipped server-side (those represent real workers and cannot be deleted via this endpoint). Associated `OpportunityAccess` rows cascade-delete. Used by `/ace:sweep connect` to clean up orphan invites tied to deactivated opportunities. Routes through Playwright to the `@csrf_exempt` `/opportunity/<opp_id>/delete_invites/` HTML view; no REST equivalent. `opportunity_id` is the opportunity UUID slug; `user_invite_ids` are the integer ids returned by `connect_list_invites`.',
   {

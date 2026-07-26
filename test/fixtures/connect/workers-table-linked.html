@@ -1,0 +1,176 @@
+<table class="base-table" @change="updateSelectAll()">
+          
+            
+              <thead >
+                <tr>
+                  
+                    <th >
+                      
+                        <span><input type="checkbox" @click="toggleSelectAll()" x-model="selectAll" name="select_all" class="checkbox" /></span>
+                      
+                    </th>
+                  
+                    <th >
+                      
+                        <span>#</span>
+                      
+                    </th>
+                  
+                    <th >
+                      
+                        <span>Status</span>
+                      
+                    </th>
+                  
+                    <th class="orderable">
+                      
+                        <a href="/a/ai-demo-space/opportunity/cb24ac17-646c-4366-ae1f-ce6ee7a5e718/workers/?sort=user" class="flex items-center text-sm font-medium text-brand-deep-purple"><span x-data x-tooltip.raw="A blank value will be displayed if a worker does not have a PersonalID account">Name</span> <i class="fa-solid ml-1 fa-sort text-gray-400"></i></a>
+                      
+                    </th>
+                  
+                    <th class="orderable">
+                      
+                        <a href="/a/ai-demo-space/opportunity/cb24ac17-646c-4366-ae1f-ce6ee7a5e718/workers/?sort=phone_number" class="flex items-center text-sm font-medium text-brand-deep-purple">Phone Number <i class="fa-solid ml-1 fa-sort text-gray-400"></i></a>
+                      
+                    </th>
+                  
+                    <th class="orderable">
+                      
+                        <a href="/a/ai-demo-space/opportunity/cb24ac17-646c-4366-ae1f-ce6ee7a5e718/workers/?sort=invited_date" class="flex items-center text-sm font-medium text-brand-deep-purple">Invited Date <i class="fa-solid ml-1 fa-sort text-gray-400"></i></a>
+                      
+                    </th>
+                  
+                    <th class="desc orderable">
+                      
+                        <a href="/a/ai-demo-space/opportunity/cb24ac17-646c-4366-ae1f-ce6ee7a5e718/workers/?sort=last_active" class="flex items-center text-sm font-medium text-brand-deep-purple"><span x-data x-tooltip.raw="Submitted a Learn or Deliver form">Last Active</span> <i class="fa-solid ml-1 fa-sort text-gray-400"></i></a>
+                      
+                    </th>
+                  
+                    <th class="orderable">
+                      
+                        <a href="/a/ai-demo-space/opportunity/cb24ac17-646c-4366-ae1f-ce6ee7a5e718/workers/?sort=started_learn" class="flex items-center text-sm font-medium text-brand-deep-purple"><span x-data x-tooltip.raw="Started download of the Learn app">Started Learn</span> <i class="fa-solid ml-1 fa-sort text-gray-400"></i></a>
+                      
+                    </th>
+                  
+                    <th class="orderable">
+                      
+                        <a href="/a/ai-demo-space/opportunity/cb24ac17-646c-4366-ae1f-ce6ee7a5e718/workers/?sort=completed_learn" class="flex items-center text-sm font-medium text-brand-deep-purple"><span x-data x-tooltip.raw="Completed all Learn modules except assessment">Completed Learn</span> <i class="fa-solid ml-1 fa-sort text-gray-400"></i></a>
+                      
+                    </th>
+                  
+                    <th class="orderable">
+                      
+                        <a href="/a/ai-demo-space/opportunity/cb24ac17-646c-4366-ae1f-ce6ee7a5e718/workers/?sort=days_to_complete_learn" class="flex items-center text-sm font-medium text-brand-deep-purple"><span x-data x-tooltip.raw="Difference between Completed Learn and Started Learn">Time to Complete Learning</span> <i class="fa-solid ml-1 fa-sort text-gray-400"></i></a>
+                      
+                    </th>
+                  
+                    <th class="orderable">
+                      
+                        <a href="/a/ai-demo-space/opportunity/cb24ac17-646c-4366-ae1f-ce6ee7a5e718/workers/?sort=first_delivery" class="flex items-center text-sm font-medium text-brand-deep-purple"><span x-data x-tooltip.raw="Time stamp of when the first learn form was delivered">First Delivery</span> <i class="fa-solid ml-1 fa-sort text-gray-400"></i></a>
+                      
+                    </th>
+                  
+                    <th class="orderable">
+                      
+                        <a href="/a/ai-demo-space/opportunity/cb24ac17-646c-4366-ae1f-ce6ee7a5e718/workers/?sort=days_to_start_delivery" class="flex items-center text-sm font-medium text-brand-deep-purple"><span x-data x-tooltip.raw="Time it took to deliver the first deliver form after invitation">Time to Start Deliver</span> <i class="fa-solid ml-1 fa-sort text-gray-400"></i></a>
+                      
+                    </th>
+                  
+                </tr>
+              </thead>
+            
+          
+          
+            <tbody>
+              <div style="overflow:hidden; border-radius:8px;">
+                
+                  
+                    <tr class="even" class="group">
+                      
+                        <td >
+                          
+                            <input type="checkbox" name="row_select" value="16563" x-model="selected" @click.stop="" class="checkbox" id="row_checkbox_16563" />
+                          
+                        </td>
+                      
+                        <td >
+                          
+                            1
+                          
+                        </td>
+                      
+                        <td >
+                          
+                            <span x-data x-tooltip.raw="Invite accepted"><i class="fa-solid fa-circle-check text-green-600"></i></span>
+                          
+                        </td>
+                      
+                        <td >
+                          
+                            
+            <div class="flex flex-col items-start w-40">
+                <p class="text-sm text-slate-900">ACE Test</p>
+                <p class="text-xs text-slate-400">1277adbd0ceea89e367d</p>
+            </div>
+            
+                          
+                        </td>
+                      
+                        <td >
+                          
+                            +74260000101
+                          
+                        </td>
+                      
+                        <td >
+                          
+                            —
+                          
+                        </td>
+                      
+                        <td >
+                          
+                            23-Jul-2026 01:51
+                          
+                        </td>
+                      
+                        <td >
+                          
+                            22-Jul-2026 22:50
+                          
+                        </td>
+                      
+                        <td >
+                          
+                            23-Jul-2026 01:46
+                          
+                        </td>
+                      
+                        <td >
+                          
+                            2 hr
+                          
+                        </td>
+                      
+                        <td >
+                          
+                            23-Jul-2026 01:51
+                          
+                        </td>
+                      
+                        <td >
+                          
+                            3 hr
+                          
+                        </td>
+                      
+                    </tr>
+                  
+                
+                
+                  
+                
+              </div>
+            </tbody>
+          
+        </table>

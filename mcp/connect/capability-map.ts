@@ -52,6 +52,7 @@ export type Capability =
   | 'accept_program_application'
   | 'send_flw_invite'
   | 'delete_unaccepted_flw_invites'
+  | 'list_flw_invites'
   | 'add_org_member'
   // Observation (11)
   | 'list_programs'
@@ -80,6 +81,7 @@ export const CAPABILITY_MAP: Record<Capability, CapabilityRoute> = {
   accept_program_application:   { backend: 'REST',       restTarget: 'POST /api/programs/{program_id}/applications/{application_id}/accept/' },
   send_flw_invite:              { backend: 'REST',       restTarget: 'POST /api/opportunities/{id}/invite_users/' },
   delete_unaccepted_flw_invites: { backend: 'PLAYWRIGHT', restTarget: 'DELETE /api/opportunities/{id}/invites/ (not yet shipped)' },
+  list_flw_invites:             { backend: 'PLAYWRIGHT', restTarget: 'GET /api/opportunities/{id}/workers/ (not yet shipped — the workers table is an htmx HTML fragment; see lib/connect-flw-invites.ts)' },
   add_org_member:               { backend: 'PLAYWRIGHT', restTarget: 'POST /a/{org}/organization/member (HTML form; no REST equiv)' },
 
   // Observation — still HTML-scrape; PR #1135 didn't ship reads
