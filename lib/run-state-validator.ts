@@ -371,9 +371,26 @@ export interface IterateState {
   target_phases: number[];
   golden_run_id: string;
   runner: 'web' | 'local';
+  /**
+   * Informational only. Recorded so a run can be attributed to a version; it is
+   * NOT a gate. The old loop counted a streak "against" this field and zeroed
+   * the streak whenever it changed — see `lib/iterate-health.ts` for why that
+   * made the exit condition unreachable.
+   */
   plugin_version?: string;
-  streak: number;
-  required_streak: number;
+  /** Rolling window size (default 10). Health is read over the last N runs. */
+  window?: number;
+  /** Rolling pass-rate target in (0,1] (default 0.8). */
+  pass_target?: number;
+  /**
+   * LEGACY, optional. Streak is now DERIVED from `iterations[]` by
+   * `computeIterateHealth` and must not be trusted from the file — a stored
+   * counter is exactly what the merge path used to zero. Retained so existing
+   * state files still load.
+   */
+  streak?: number;
+  /** LEGACY, optional. Superseded by `window` + `pass_target`. */
+  required_streak?: number;
   caps?: { per_failure_class_fix?: number; max_iterations?: number };
   kill?: boolean;
   iterations: IterateIteration[];
@@ -427,16 +444,59 @@ export function validateIterateState(parsed: unknown): ValidationResult {
       parsed.runner,
     );
   }
-  if (!isInt(parsed.streak) || (parsed.streak as number) < 0) {
-    pushError(errors, 'streak', 'streak must be a non-negative integer', 'integer', parsed.streak);
+  // `streak` / `required_streak` are LEGACY and optional. Health is derived
+  // from `iterations[]` (lib/iterate-health.ts); a stored streak is the field
+  // the autofix path used to zero, which made the old exit condition
+  // unreachable. Still type-checked when present so a malformed legacy file is
+  // caught, and warned on so the loop knows to ignore it.
+  if (parsed.streak !== undefined) {
+    if (!isInt(parsed.streak) || (parsed.streak as number) < 0) {
+      pushError(errors, 'streak', 'streak must be a non-negative integer', 'integer', parsed.streak);
+    } else {
+      pushWarning(
+        warnings,
+        'streak',
+        'streak is legacy and ignored — health is derived from iterations[] by computeIterateHealth',
+        'absent',
+        parsed.streak,
+      );
+    }
   }
-  if (!isInt(parsed.required_streak) || (parsed.required_streak as number) < 1) {
+  if (parsed.required_streak !== undefined) {
+    if (!isInt(parsed.required_streak) || (parsed.required_streak as number) < 1) {
+      pushError(
+        errors,
+        'required_streak',
+        'required_streak must be a positive integer',
+        'integer',
+        parsed.required_streak,
+      );
+    } else {
+      pushWarning(
+        warnings,
+        'required_streak',
+        'required_streak is legacy — use window + pass_target (rolling window)',
+        'absent',
+        parsed.required_streak,
+      );
+    }
+  }
+  if (parsed.window !== undefined && (!isInt(parsed.window) || (parsed.window as number) < 2)) {
+    pushError(errors, 'window', 'window must be an integer >= 2', 'integer', parsed.window);
+  }
+  if (
+    parsed.pass_target !== undefined &&
+    (typeof parsed.pass_target !== 'number' ||
+      !Number.isFinite(parsed.pass_target) ||
+      parsed.pass_target <= 0 ||
+      parsed.pass_target > 1)
+  ) {
     pushError(
       errors,
-      'required_streak',
-      'required_streak must be a positive integer',
-      'integer',
-      parsed.required_streak,
+      'pass_target',
+      'pass_target must be a number in (0, 1]',
+      'number',
+      parsed.pass_target,
     );
   }
   if (

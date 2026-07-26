@@ -1,8 +1,24 @@
 # ACE Iteration Loop — `/ace:iterate` design
 
 **Date:** 2026-06-01
-**Status:** Implemented, then PIVOTED — see § Pivot below
+**Status:** Implemented, then PIVOTED twice — see § Pivot below, and the
+2026-07-26 note immediately following
 **Author:** ACE (with Jonathan Jackson)
+
+> **⚠ Superseded 2026-07-26 — the frozen-version streak is retired.**
+> Everything in this doc about `streak` / `required_streak` / "5 clean in a row
+> keyed to plugin VERSION" (§ Streak, the state schema at ~line 196, the loop
+> sketch at ~line 112) describes a **metric that could never produce a
+> reading**, and never did. It required five consecutive clean end-to-end runs
+> on one unchanged VERSION; ACE merges ~9 VERSION bumps/day across parallel
+> worktrees, so the improvement loop destroyed the measurement on every fix.
+>
+> Replaced by a **version-agnostic rolling window**: pass rate over the last
+> `window` iterations (default 10) against `pass_target` (default 0.8), with
+> streak **derived** from `iterations[]` rather than stored so no code path can
+> zero it. Implementation: `lib/iterate-health.ts` (+ `test/lib/iterate-health.test.ts`).
+> Authoritative procedure: `agents/iterate-loop.md § The metric`. The seeding
+> design (fork-then-resume) below is unaffected and still correct.
 
 > **⚠ Pivot 2026-06-01 (issue #672) — seeding is fork-then-resume, not flags.**
 > The original design (component #1 below) made "start mid-pipeline with a
