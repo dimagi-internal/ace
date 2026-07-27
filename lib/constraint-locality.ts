@@ -1,0 +1,273 @@
+//
+// Pure XForm analysis: find `constraint` expressions that a user CANNOT
+// satisfy on the screen where they fire.
+//
+// A constraint is LOCAL when every node it references is editable from the
+// question the constraint is bound to — i.e. `.` (the question itself), a
+// same-repeat sibling, or a node with no `<bind>` of its own (a hidden
+// calculate derived from this question). A constraint is NON-LOCAL when it
+// references some OTHER user-facing question: the form then blocks the user
+// on a screen where the fix lives somewhere else, forcing them to navigate
+// backward to a question that gave no indication of a problem.
+//
+// Why this exists: dimagi-internal/ace#980. Sophie Feintuch (domain expert)
+// found two instances in one hh-poverty-targeting Deliver form:
+//
+//   gps_onsite_confirm  constraint="number(selected-at(/data/gps, 3)) <= 50"
+//                       validate_msg="...recapture the location before continuing."
+//   i1_zone             constraint="count(/data/roster) >= 1"
+//                       validate_msg="Add at least one household member..."
+//
+// In the first, the FLW captures GPS (no complaint), answers "yes I was at
+// the dwelling", then is blocked over the accuracy of the PREVIOUS screen's
+// reading — and told to "recapture the location" on a screen with no
+// location widget. In the second, the FLW is blocked on a zone question
+// because of a roster several screens earlier.
+//
+// The class is 100% mechanically detectable, which is why it is a check and
+// not a rubric criterion: `pdd-to-deliver-app-eval` graded that build 8.5/10
+// and the LLM judge never walked the form as a user would.
+//
+
+import { DOMParser } from '@xmldom/xmldom';
+
+export interface ConstraintViolation {
+  /** The question the constraint is bound to (its nodeset). */
+  nodeset: string;
+  /** Short field id — the last path segment of `nodeset`. */
+  fieldId: string;
+  /** The raw constraint expression. */
+  constraint: string;
+  /** The foreign nodes the constraint reaches out to. */
+  foreignRefs: string[];
+  /** The constraint's message, when the form carries one. */
+  message?: string;
+}
+
+export interface ConstraintLocalityReport {
+  /** Total binds carrying a `constraint` attribute. */
+  constraintsChecked: number;
+  violations: ConstraintViolation[];
+}
+
+/** Absolute path refs: `/data/foo`, `/data/roster/member_name`. */
+const PATH_REF = /\/[A-Za-z_][\w.-]*(?:\/[A-Za-z_][\w.-]*)*/g;
+
+function lastSegment(path: string): string {
+  const parts = path.split('/').filter(Boolean);
+  return parts[parts.length - 1] ?? path;
+}
+
+/** `jr:itext('i1_zone-constraintMsg')` -> the itext id. */
+const ITEXT_REF = /^\s*jr:itext\(\s*'([^']+)'\s*\)\s*$/;
+
+/**
+ * Build id -> localized string from the form's `<itext>`, preferring the
+ * default translation. Real CommCare forms put constraint messages in itext,
+ * so an unresolved `jr:itext(...)` in a QA report hides the very text that
+ * makes the defect obvious ("recapture the location" on a screen with no
+ * location widget).
+ */
+function buildItextMap(doc: Document): Map<string, string> {
+  const map = new Map<string, string>();
+  const translations = Array.from(doc.getElementsByTagName('translation'));
+  // Default translation last so it wins on overwrite.
+  const ordered = [
+    ...translations.filter((t) => t.getAttribute('default') === null),
+    ...translations.filter((t) => t.getAttribute('default') !== null),
+  ];
+  for (const tr of ordered) {
+    for (const text of Array.from(tr.getElementsByTagName('text'))) {
+      const id = text.getAttribute('id');
+      if (!id) continue;
+      const values = Array.from(text.getElementsByTagName('value'));
+      // Skip form-specific variants (image/audio); take the plain value.
+      const plain = values.find((v) => !v.getAttribute('form')) ?? values[0];
+      const content = plain?.textContent?.trim();
+      if (content) map.set(id, content);
+    }
+  }
+  return map;
+}
+
+/** Drop the final segment: `/data/roster/member_name` -> `/data/roster`. */
+function parentPath(path: string): string {
+  const parts = path.split('/').filter(Boolean);
+  return parts.length <= 1 ? '' : '/' + parts.slice(0, -1).join('/');
+}
+
+/**
+ * Analyze every `<bind>` in a CommCare XForm and report constraints that
+ * reference a node the user cannot edit from that question's screen.
+ *
+ * A reference is **user-facing** when it names something the user answers on
+ * a screen: a `<bind>` WITHOUT a `calculate` (a real question), or a repeat
+ * group. A `calculate` is NOT user-facing — but it is transparent: the check
+ * resolves it to the refs inside its own expression, so wrapping a foreign
+ * question in a hidden calculate cannot evade the rule.
+ *
+ * Local (NOT reported):
+ *  - `.` / `selected-at(., 3)` — the question itself.
+ *  - the question's own descendants (a repeat constraining its children).
+ *  - a same-repeat sibling, or the enclosing repeat itself (the user is
+ *    inside that repeat and can add/edit rows from there).
+ *  - a calculate over constants, or over questions that are themselves local.
+ *
+ * Non-local (reported): any reference — direct or via a calculate — to a
+ * question or repeat outside the constraint's own editable scope.
+ */
+export function checkConstraintLocality(xml: string): ConstraintLocalityReport {
+  const doc = new DOMParser().parseFromString(xml, 'text/xml');
+  const binds = Array.from(doc.getElementsByTagName('bind'));
+  const itext = buildItextMap(doc as unknown as Document);
+
+  /** nodeset -> calculate expression, for transparent resolution. */
+  const calculates = new Map<string, string>();
+  /** Nodesets the user actually answers on a screen. */
+  const questionNodesets = new Set<string>();
+  /** Nodesets that are repeat groups, so we can scope "same-repeat". */
+  const repeatNodesets = new Set<string>();
+
+  for (const b of binds) {
+    const ns = b.getAttribute('nodeset');
+    if (!ns) continue;
+    const calc = b.getAttribute('calculate');
+    if (calc) calculates.set(ns, calc);
+    else questionNodesets.add(ns);
+  }
+  for (const r of Array.from(doc.getElementsByTagName('repeat'))) {
+    const ns = r.getAttribute('nodeset');
+    if (ns) repeatNodesets.add(ns);
+  }
+
+  /** The innermost repeat containing `path`, or '' when not in a repeat. */
+  const enclosingRepeat = (path: string): string => {
+    let best = '';
+    for (const r of repeatNodesets) {
+      if (path.startsWith(r + '/') && r.length > best.length) best = r;
+    }
+    return best;
+  };
+
+  // Document order of binds, to reason about screen adjacency.
+  const bindOrder = new Map<string, number>();
+  binds.forEach((b, i) => {
+    const ns = b.getAttribute('nodeset');
+    if (ns && !bindOrder.has(ns)) bindOrder.set(ns, i);
+  });
+
+  /** Last bind index belonging to `repeat` or any of its descendants. */
+  const repeatEndIndex = (repeat: string): number => {
+    let last = bindOrder.get(repeat) ?? -1;
+    for (const [ns, i] of bindOrder) {
+      if (ns.startsWith(repeat + '/') && i > last) last = i;
+    }
+    return last;
+  };
+
+  /**
+   * A "min-rows" gate placed IMMEDIATELY after a repeat is the sanctioned
+   * remediation for a repeat-cardinality rule: the message fires one screen
+   * on, and a single Back tap reaches the roster the user just filled. That
+   * is materially different from being blocked six screens later on an
+   * unrelated question (the ace#980 `i1_zone` defect), so adjacency — not
+   * mere reference — is the line.
+   */
+  const isAdjacentRepeatGate = (nodeset: string, repeat: string): boolean => {
+    const idx = bindOrder.get(nodeset);
+    if (idx === undefined) return false;
+    return idx === repeatEndIndex(repeat) + 1;
+  };
+
+  /**
+   * Expand an expression's path refs, replacing each calculate with the refs
+   * of its own expression (depth-limited, cycle-safe).
+   */
+  const resolveRefs = (expr: string): Set<string> => {
+    const out = new Set<string>();
+    const seen = new Set<string>();
+    const walk = (e: string, depth: number): void => {
+      if (depth > 8) return;
+      for (const ref of e.match(PATH_REF) ?? []) {
+        const calc = calculates.get(ref);
+        if (calc !== undefined) {
+          if (seen.has(ref)) continue;
+          seen.add(ref);
+          walk(calc, depth + 1);
+        } else {
+          out.add(ref);
+        }
+      }
+    };
+    walk(expr, 0);
+    return out;
+  };
+
+  const violations: ConstraintViolation[] = [];
+  let constraintsChecked = 0;
+
+  for (const b of binds) {
+    const nodeset = b.getAttribute('nodeset');
+    const constraint = b.getAttribute('constraint');
+    if (!nodeset || !constraint) continue;
+    constraintsChecked++;
+
+    const ownRepeat = enclosingRepeat(nodeset);
+    const foreign = new Set<string>();
+
+    for (const ref of resolveRefs(constraint)) {
+      if (ref === nodeset) continue; // itself, spelled absolutely
+      if (ref.startsWith(nodeset + '/')) continue; // own descendant
+      if (ownRepeat && ref === ownRepeat) continue; // our own repeat
+      if (ownRepeat && ref.startsWith(ownRepeat + '/')) continue; // sibling
+      // A cardinality gate sitting directly after the repeat it guards.
+      if (repeatNodesets.has(ref) && isAdjacentRepeatGate(nodeset, ref)) continue;
+      // A repeat group the user is NOT inside is a different screen; so is
+      // any other real question. Anything else (an unbound path, a constant
+      // path) is not something the user edits — ignore it.
+      const isUserFacing =
+        repeatNodesets.has(ref) ||
+        questionNodesets.has(ref) ||
+        repeatNodesets.has(parentPath(ref));
+      if (isUserFacing) foreign.add(ref);
+    }
+
+    if (foreign.size > 0) {
+      const raw =
+        b.getAttribute('jr:constraintMsg') ??
+        b.getAttribute('constraintMsg') ??
+        undefined;
+      // Resolve `jr:itext('...')` so the report quotes the real instruction.
+      let msg = raw ?? undefined;
+      const itextId = raw?.match(ITEXT_REF)?.[1];
+      if (itextId) msg = itext.get(itextId) ?? raw ?? undefined;
+      violations.push({
+        nodeset,
+        fieldId: lastSegment(nodeset),
+        constraint,
+        foreignRefs: Array.from(foreign),
+        message: msg,
+      });
+    }
+  }
+
+  return { constraintsChecked, violations };
+}
+
+/** One-line-per-violation human summary for a QA verdict. */
+export function formatConstraintLocalityReport(
+  report: ConstraintLocalityReport,
+): string {
+  if (report.violations.length === 0) {
+    return `constraint-locality: PASS (${report.constraintsChecked} constraint(s) checked, all local)`;
+  }
+  const lines = report.violations.map(
+    (v) =>
+      `  ${v.fieldId}: constraint references ${v.foreignRefs.join(', ')} — ` +
+      `not editable on this screen${v.message ? ` (msg: "${v.message}")` : ''}`,
+  );
+  return [
+    `constraint-locality: FAIL (${report.violations.length} of ${report.constraintsChecked} constraint(s) non-local)`,
+    ...lines,
+  ].join('\n');
+}

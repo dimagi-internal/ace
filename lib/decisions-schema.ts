@@ -118,6 +118,20 @@ export const DecisionRowSchema = z
           "(e.g. 'Exploration App § Visit structure: one instrument' / 'Exploration App § Open-Q4: households visited twice'). " +
           "Required (>= 2 entries) when `evidence_basis: conflicting`; omit otherwise. Put the resolution rationale in `reasoning`.",
       ),
+    feedback_ref: z
+      .string()
+      .regex(/^[a-z0-9]+(-[a-z0-9]+)*\/[a-z0-9]+(-[a-z0-9]+)*$/, {
+        message:
+          "feedback_ref must be `<record-slug>/<item-id>` (e.g. `20260727-sophie-feintuch/c`)",
+      })
+      .optional()
+      .describe(
+        "Provenance stamp: the external-review item that caused this row, as `<record-slug>/<item-id>`. " +
+          "Set ONLY when a reviewer's comment drove the decision. The feedback ledger joins on this field " +
+          "(see `lib/feedback-ledger.ts`) to answer 'where did my comment go?' — a decision made in response " +
+          "to review feedback and left unstamped renders as UNROUTED in the ledger, which is the intended " +
+          "loud failure. Note the ledger is a DERIVED view: this field is the only write-side obligation.",
+      ),
   })
   .superRefine((row, ctx) => {
     if (row.status === "overridden" && row.override === undefined) {

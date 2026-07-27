@@ -180,6 +180,38 @@ app-release-qa"). Record per-app under `camera_only_uploads` in the
 verdict. When the PDD does NOT demand camera-only capture, skip the
 check and record `camera_only_uploads: not-required-by-pdd`.
 
+**Constraint locality — always, every form with constraints
+(dimagi-internal/ace#980).** A `constraint` must be satisfiable on the
+screen where it fires. Run the pure helper over each form XML:
+
+```ts
+import { checkConstraintLocality, formatConstraintLocalityReport }
+  from '../../lib/constraint-locality';
+const report = checkConstraintLocality(formXml);
+```
+
+It flags any constraint referencing a question or repeat the user cannot
+edit from that screen, resolving hidden calculates transitively (so
+indirection can't launder a foreign reference) and allowing the two
+legitimate shapes: a self-reference (`.`) and a cardinality gate placed
+**immediately** after the repeat it guards.
+
+This check is **mechanical on purpose.** The class is 100% detectable
+from the binds, and the LLM rubric missed it twice in one form:
+`pdd-to-deliver-app-eval` scored `hh-poverty-targeting/20260722-1341`
+8.5/10 while it shipped a GPS-accuracy rule on a later yes/no question
+(message: "recapture the location", on a screen with no location widget)
+and a roster-minimum rule on an unrelated zone question. A domain expert
+found both on first read. Judgment is the wrong tool for a property this
+crisp — hence a parser, and `lib/constraint-locality.test.ts` pins the
+real defective binds as its negative control.
+
+Violations → halt with `[BLOCKER]` `non-local-constraint` (naming each
+field, the foreign node, and "move the constraint onto the node it is
+about"). Record per-app under `constraint_locality` in the verdict:
+`{ constraints_checked, violations: [...] }`. Zero violations records
+`constraint_locality: pass`.
+
 ### Step 4.5: Runtime install validation via `commcare-cli.jar`
 
 Steps 3–4 are **structural** and never bind any XPath expression,
@@ -416,6 +448,14 @@ defects.
   + dimagi-internal/ace#867). Operator fix: apply the camera-only
   appearance flip (HQ app builder or Nova), re-release, then re-run
   `app-release-qa` to confirm the attribute is in the released CCZ.
+- `non-local-constraint` — a `constraint` in the released form XML
+  references a question or repeat the user cannot edit from the screen
+  where it fires, so the error is unfixable in place and the FLW must
+  navigate backward to a question that gave no sign of a problem (see
+  Step 4 + dimagi-internal/ace#980). Operator fix: move the constraint
+  onto the node it is actually about — a GPS-accuracy rule onto the
+  geopoint itself, a repeat-cardinality rule onto the repeat or a gate
+  immediately after it — then re-release and re-run `app-release-qa`.
 
 ## MCP tools used
 

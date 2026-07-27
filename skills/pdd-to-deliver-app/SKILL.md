@@ -326,6 +326,19 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
        "module" wording anywhere.
      - `grid-menu-display` — always (Learn + Deliver). Modules and Forms
        Menu Display set to "Grid".
+     - `observable-before-derived` — any visit/encounter form with an
+       outcome / disposition / status field. Ask observations in
+       real-world order; COMPUTE the outcome. A user-facing outcome
+       question placed before its own inputs is a defect (ace#979).
+     - `constraint-locality` — always, for any form with constraints. A
+       constraint must be fixable on the screen where it fires; it may
+       reference only `.` or same-repeat siblings (ace#980).
+     - `consent-script-floor` — PDD requires recorded consent. All six
+       floor elements, including where the data goes and that
+       participation does not guarantee selection (ace#983).
+     - `threshold-coherence-flag` — PDD fixes ≥2 numbers constraining one
+       physical quantity. Check the pairs, surface conflicts in the build
+       memo (ace#984).
 
      Do NOT inline-paraphrase these — reference the library so the build
      and `pdd-to-deliver-app-eval` stay symmetric. Skip a component whose
