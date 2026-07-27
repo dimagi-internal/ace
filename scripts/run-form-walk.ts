@@ -638,6 +638,9 @@ interface CliArgs {
   app_id: string;
   build_id?: string;
   out?: string;
+  /** Resolve uids from the draft-app API ONLY — no CCZ, no Playwright.
+   * See `--draft-only` handling in `main()` for why this mode exists. */
+  draft_only?: boolean;
 }
 
 function parseCliArgs(argv: string[]): CliArgs | null {
@@ -647,6 +650,8 @@ function parseCliArgs(argv: string[]): CliArgs | null {
     const a = argv[i];
     if (a === '--build-id') {
       out.build_id = argv[++i];
+    } else if (a === '--draft-only') {
+      out.draft_only = true;
     } else if (a === '--out') {
       out.out = argv[++i];
     } else if (a.startsWith('--')) {
@@ -666,9 +671,68 @@ async function main(): Promise<number> {
   const args = parseCliArgs(process.argv.slice(2));
   if (!args) {
     console.error(
-      'Usage: npx tsx scripts/run-form-walk.ts <domain> <app_id> [--build-id <hex>] [--out <path>]',
+      'Usage: npx tsx scripts/run-form-walk.ts <domain> <app_id> [--build-id <hex>] [--draft-only] [--out <path>]',
     );
     return 1;
+  }
+
+  // `--draft-only`: resolve module/form uids from the draft-app API and
+  // skip BOTH the CCZ download and the Playwright bring-up (this path
+  // authenticates with ACE_HQ_API_KEY over plain fetch, no session).
+  //
+  // Why this mode exists (ace#971). `app-hq-settings` runs at Phase 3
+  // Step 2.65 — between `app-deploy` and `app-release` — because it
+  // mutates the CCHQ *draft*, so it MUST land before the build is cut.
+  // But on a fresh run the draft has never been built, so `download_ccz`
+  // 404s and the step can't resolve the uids it needs at the only
+  // position in the pipeline where it's allowed to run. The step is
+  // fail-soft, so it degraded silently to "camera-only and grid display
+  // never applied" on every first-time run rather than failing loudly.
+  //
+  // The uids never needed the CCZ: the draft-app API is the canonical
+  // source for them (it's already the overlay the full walk applies on
+  // top of suite.xml — see `fetchDraftUidsViaApiKey`). This mode just
+  // stops pretending a build has to exist first.
+  if (args.draft_only) {
+    const cchqBaseUrl = process.env.ACE_HQ_BASE_URL ?? 'https://www.commcarehq.org';
+    const { formMap, moduleMap } = await fetchDraftUidsViaApiKey({
+      domain: args.domain,
+      app_id: args.app_id,
+      baseUrl: cchqBaseUrl,
+    });
+    // No suite.xml fallback here by design: in draft-only mode the API IS
+    // the source, so an empty map is a hard failure, not a soft degrade.
+    // Silently emitting zero forms is exactly the failure #971 is about.
+    if (formMap.size === 0) {
+      console.error(
+        '[run-form-walk] --draft-only resolved 0 forms. The draft-app API is the only source in ' +
+          'this mode, so this is fatal rather than a fallback. Check ACE_HQ_USERNAME / ' +
+          'ACE_HQ_API_KEY are set and that the app_id is a DRAFT app in this domain.',
+      );
+      return 2;
+    }
+    const result = {
+      domain: args.domain,
+      app_id: args.app_id,
+      build_id: null,
+      form_unique_id_source: 'draft_api' as const,
+      modules: [...moduleMap].map(([module_key, module_unique_id]) => ({
+        module_key,
+        module_unique_id,
+      })),
+      forms: [...formMap].map(([form_key, form_unique_id]) => ({
+        form_key,
+        form_unique_id,
+      })),
+    };
+    const text = JSON.stringify(result, null, 2);
+    if (args.out) {
+      writeFileSync(args.out, text);
+      console.error(`Wrote ${result.forms.length} forms (draft_api) to ${args.out}`);
+    } else {
+      process.stdout.write(text + '\n');
+    }
+    return 0;
   }
 
   // Lazy-import Playwright + CommCare backend so the unit-test path
