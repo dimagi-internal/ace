@@ -93,6 +93,48 @@ describe('checkAllRequiredSectionsPresent', () => {
     const pdd = SECTIONS_FULL.replace('## Archetype', '## **Archetype**');
     expect(checkAllRequiredSectionsPresent(pdd).pass).toBe(true);
   });
+
+  // dimagi-internal/ace#991 — numbered H2s are the NORMAL shape when a producer
+  // synthesises from a numbered source PDD. Before ordinal tolerance, a
+  // structurally-complete PDD failed 5 of 6 checks from this one cause.
+  test('tolerates ordinal-numbered headings (`## 1. Problem Statement`)', () => {
+    const numbered = SECTIONS_FULL.replace(
+      /^## (?!$)/gm,
+      (() => {
+        let n = 0;
+        return () => `## ${++n}. `;
+      })(),
+    );
+    expect(checkAllRequiredSectionsPresent(numbered).pass).toBe(true);
+  });
+
+  test('tolerates multi-level ordinals (`## 4.2 Target Population`)', () => {
+    const pdd = SECTIONS_FULL.replace(
+      '## Target Population',
+      '## 4.2 Target Population',
+    );
+    expect(checkAllRequiredSectionsPresent(pdd).pass).toBe(true);
+  });
+
+  test('tolerates an ordinal with no trailing dot (`## 13 Timeline`)', () => {
+    const pdd = SECTIONS_FULL.replace('## Timeline', '## 13 Timeline');
+    expect(checkAllRequiredSectionsPresent(pdd).pass).toBe(true);
+  });
+
+  test('tolerates ordinal AND bold together (`## 1. **Archetype**`)', () => {
+    const pdd = SECTIONS_FULL.replace('## Archetype', '## 1. **Archetype**');
+    expect(checkAllRequiredSectionsPresent(pdd).pass).toBe(true);
+  });
+
+  test('still rejects a truncated section name even when numbered', () => {
+    const pdd = SECTIONS_FULL.replace(
+      '## Target Population',
+      '## 4. Target Pop',
+    );
+    const r = checkAllRequiredSectionsPresent(pdd);
+    expect(r.pass).toBe(false);
+    expect(r.detail).toContain('Target Population');
+  });
 });
 
 describe('checkArchetypeDeclared', () => {

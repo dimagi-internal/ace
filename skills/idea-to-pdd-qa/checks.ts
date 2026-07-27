@@ -63,6 +63,22 @@ function escapeRegExp(s: string): string {
 }
 
 /**
+ * Optional leading ordinal on an H2 — `1. `, `4.2 `, `13.`.
+ *
+ * Numbered headings are the NORMAL output here, not an anomaly: source PDDs
+ * carry numbered sections (Neal's `[FIXED]`/`[ACE]` doc is §1–§13 + annexes),
+ * so a producer synthesising from one mirrors that structure. Before this was
+ * tolerated, a structurally-complete PDD failed 5 of 6 checks from this single
+ * cause — and reported "missing required section(s)" for sections plainly
+ * present, sending the auto-fixer looking in the wrong place
+ * (dimagi-internal/ace#991, hh-poverty-targeting/20260727-1406 Phase 1).
+ *
+ * Shared by `checkAllRequiredSectionsPresent` and `extractSection` because
+ * they anchor the same way; fixing only one leaves the secondary failures.
+ */
+const ORDINAL_PREFIX = '(?:\\d+(?:\\.\\d+)*\\.?\\s+)?';
+
+/**
  * Check 1: All 11 required PDD sections are present (as `## Section Name` headings).
  *
  * Heading-match tolerance (intentional — real PDDs vary):
@@ -71,6 +87,7 @@ function escapeRegExp(s: string): string {
  *   ✓ bold-wrapped:     `## **Target Population**`                      (`(?:\\*\\*)?`)
  *   ✓ trailing notes:   `## Target Population (TBD)`                    (`\\b` ends after the section name)
  *   ✓ trailing context: `## Target Population — addressing comment [a]`
+ *   ✓ numbered:         `## 4. Target Population`, `## 4.2 Target Population`  (ORDINAL_PREFIX)
  *   ✗ truncated:        `## Target Pop`                                 (no word boundary at the right place)
  *   ✗ synonyms:         `## Target Audience`                            (different word entirely)
  *
@@ -81,8 +98,11 @@ export function checkAllRequiredSectionsPresent(pdd: string): QACheckResult {
   const body = stripFrontmatter(pdd);
   const missing: (typeof REQUIRED_SECTIONS)[number][] = [];
   for (const section of REQUIRED_SECTIONS) {
-    // Match `##\s+(optional **)<section>` at start of a line, case-insensitive.
-    const re = new RegExp(`^##\\s+(?:\\*\\*)?${escapeRegExp(section)}\\b`, 'mi');
+    // Match `##\s+(optional ordinal)(optional **)<section>` at line start, case-insensitive.
+    const re = new RegExp(
+      `^##\\s+${ORDINAL_PREFIX}(?:\\*\\*)?${escapeRegExp(section)}\\b`,
+      'mi',
+    );
     if (!re.test(body)) {
       missing.push(section);
     }
@@ -286,7 +306,10 @@ function stripFrontmatter(pdd: string): string {
  * fiddly across engines.
  */
 function extractSection(pdd: string, headingPattern: string): string | null {
-  const headingRe = new RegExp(`^##\\s+${headingPattern}[^\\n]*$`, 'im');
+  const headingRe = new RegExp(
+    `^##\\s+${ORDINAL_PREFIX}${headingPattern}[^\\n]*$`,
+    'im',
+  );
   const headingMatch = pdd.match(headingRe);
   if (!headingMatch || headingMatch.index === undefined) return null;
   const bodyStart = headingMatch.index + headingMatch[0].length;

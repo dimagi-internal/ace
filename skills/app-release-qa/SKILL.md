@@ -212,6 +212,31 @@ about"). Record per-app under `constraint_locality` in the verdict:
 `{ constraints_checked, violations: [...] }`. Zero violations records
 `constraint_locality: pass`.
 
+**Relevance reachability — always, every form with relevance conditions
+(dimagi-internal/ace#996).** The temporal sibling of the check above: a
+`relevant` clause must be *decidable by the time the form walks past the
+field it gates*. Same module:
+
+```ts
+import { checkRelevanceReachability, formatRelevanceReachabilityReport }
+  from '../../lib/constraint-locality';
+```
+
+It flags any `relevant` referencing a field answered LATER, resolving
+calculates transitively so a hidden calculate over a later answer inherits
+that answer's position and can't launder it. Two severities:
+
+- `whollyUnreachable: true` — every reference is later, so the field can
+  **never** display. `[BLOCKER]`.
+- `whollyUnreachable: false` — some clauses resolve in time, others never
+  contribute. `[WARN]` — the field shows on some paths and silently not on
+  others, which is how `outcome_note` submitted empty on exactly the two
+  outcomes it existed to capture.
+
+Record per-app under `relevance_reachability`. Same rationale as constraint
+locality: mechanically detectable from bind order, so it is a parser rather
+than a rubric line.
+
 ### Step 4.5: Runtime install validation via `commcare-cli.jar`
 
 Steps 3–4 are **structural** and never bind any XPath expression,
