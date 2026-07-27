@@ -13,11 +13,13 @@ The corollary: **when a SKILL.md tightening lands post-incident, ship the code-l
 
 ## Preventers shipped under this principle
 
-Three checks in `mcp/mobile/recipe-lint.ts` + `mcp/mobile/recipe-sanity-probe.ts`:
+Four checks in `mcp/mobile/recipe-lint.ts` + `mcp/mobile/recipe-sanity-probe.ts`:
 
 1. **`inputText-scalar-with-sibling-option`** (recipe-lint) — `- inputText: "x"\n  optional: true` shape, Maestro rejects with `expected <block end>`.
 2. **`form-advance-without-answer-tap`** (sanity-probe) — two or more consecutive `form-advance` invocations with no answer step between, stalls on "Sorry, this response is required."
-3. **`brief-label-drift`** (sanity-probe) — `tapOn:text:"X"` matching brief naming patterns (`^[LFM]\d+ — `, `^Stage \d+ — `) that Nova rewrites during autobuild.
+   - **Label-screen carve-out (ace#858, 2026-07-27).** The original rule was screen-blind and false-positived on any content-rich Learn app: `label` fields have no answer to tap and can ONLY be crossed by consecutive nav-next taps, so a *correct* walk over N consecutive labels reads as a chain of N+1. Because the SKILL.md remediation is a no-op for a label screen, the `incomplete` halt looped forever. The probe now takes optional per-form `fields` and raises the threshold to (longest run of consecutive `label` screens) + 2. Labels *inside* a group don't count — a field-list is one screen however many labels it holds. The carve-out deliberately trades recall for precision: a missed chain fails loud on-device with forensics, a false positive blocks the phase outright.
+3. **`group-field-list-per-question-walk`** (sanity-probe, ace#862, 2026-07-27) — a `form-advance` sitting strictly BETWEEN two children of the same Nova `group`. A group compiles to a CommCare field-list (all children on ONE screen), so there is nothing to advance to; the tap fires with required siblings unanswered. Detection is narrow on purpose — an advance between two matched same-group children is unambiguous, whereas the wider "count advances against a screen budget" alternative false-positives on multi-visit Deliver smokes, and #858 is exactly what a careless false positive costs.
+4. **`brief-label-drift`** (sanity-probe) — `tapOn:text:"X"` matching brief naming patterns (`^[LFM]\d+ — `, `^Stage \d+ — `) that Nova rewrites during autobuild.
 
 Plus a whole-palette CI gate (`test/mcp/mobile/static-palette-health.test.ts`) that asserts every file in `mcp/mobile/recipes/static/` parses, declares `appId:`, passes lint, and resolves every `${SELECTOR:...}` ref against the active selector map.
 
