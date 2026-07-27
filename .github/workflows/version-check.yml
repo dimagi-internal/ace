@@ -50,3 +50,36 @@ jobs:
 
           echo ""
           echo "✓ Version bump verified: $BASE_VERSION → $PR_VERSION"
+
+      - name: Check .claude-plugin/plugin.json agrees with VERSION
+        run: |
+          # VERSION and .claude-plugin/plugin.json are TWO sources of the same
+          # fact and must move together. They serve different readers:
+          #   VERSION            → this gate, /ace:update's upgrade check
+          #   plugin.json        → Claude Code's plugin registry (what actually
+          #                        gets INSTALLED) and /ace:update's verify step
+          #
+          # Nothing enforced the agreement, so four consecutive PRs bumped
+          # VERSION alone (0.13.666→670) while plugin.json sat at 0.13.667.
+          # Symptom: `/ace:update` reported an upgrade was available (VERSION),
+          # installed it, then failed its own verification with
+          # "MISMATCH: installed v0.13.670 but GitHub has v0.13.667"
+          # (plugin.json) — and the auto-updater had been silently installing
+          # the stale 0.13.667 the whole time, so merged fixes never went live.
+          PR_VERSION=$(cat VERSION | tr -d '[:space:]')
+          PLUGIN_VERSION=$(node -e "console.log(require('./.claude-plugin/plugin.json').version)")
+
+          echo "VERSION:             $PR_VERSION"
+          echo "plugin.json version: $PLUGIN_VERSION"
+
+          if [ "$PR_VERSION" != "$PLUGIN_VERSION" ]; then
+            echo ""
+            echo "::error::VERSION ($PR_VERSION) and .claude-plugin/plugin.json ($PLUGIN_VERSION) disagree."
+            echo ""
+            echo "Bump BOTH in the same commit. plugin.json is the one Claude Code"
+            echo "installs from — if it lags, merged code never reaches a session."
+            exit 1
+          fi
+
+          echo ""
+          echo "✓ VERSION and plugin.json agree: $PR_VERSION"
