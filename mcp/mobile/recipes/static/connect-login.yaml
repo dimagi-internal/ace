@@ -98,13 +98,30 @@ appId: org.commcare.dalvik
     when:
       visible:
         id: "${SELECTOR:app-splash-message}"
+#
+# Same cold-boot drawer race as connect-register-to-otp.yaml: the splash
+# being visible does not mean the DrawerLayout is operable yet, so the
+# point tap can be swallowed on a freshly booted device. Settle, tap,
+# settle, re-tap once if the drawer still isn't open. See the long note in
+# connect-register-to-otp.yaml for the captured timing evidence.
     commands:
+      - waitForAnimationToEnd:
+          timeout: 5000
       - tapOn:
           point: "73,209"
+      - waitForAnimationToEnd:
+          timeout: 3000
+      - runFlow:
+          when:
+            notVisible:
+              id: "${SELECTOR:nav-drawer-sign-in}"
+          commands:
+            - tapOn:
+                point: "73,209"
       - extendedWaitUntil:
           visible:
             id: "${SELECTOR:nav-drawer-sign-in}"
-          timeout: 5000
+          timeout: 15000
       - tapOn:
           id: "${SELECTOR:nav-drawer-sign-in}"
 

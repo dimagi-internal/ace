@@ -69,12 +69,44 @@ appId: org.commcare.dalvik
 
 # Open the navigation drawer (top-left burger icon at this resolution)
 # and tap Sign In / Register.
+#
+# The splash assert above is NOT a sufficient readiness signal for the
+# drawer. On a cold boot (`ensure_avd_running` boots with -wipe-data) it
+# completes in ~30ms while CommCareSetupActivity is still initialising and
+# the DrawerLayout is not yet operable, so a single fire-and-forget point
+# tap gets swallowed. Maestro does not notice: its hierarchy-based tap
+# logs "Something has changed in the UI judging by view hierarchy" off an
+# unrelated re-layout and proceeds.
+#
+# Observed 2026-07-26 on the first cold boot through the #957 MCP:
+# splash COMPLETED 22:58:59.198 → tap 22:58:59.199 → drawer still closed
+# at 22:59:06 when the 5s wait expired. The identical recipe passes on a
+# warm device (verified same session, registration completed to
+# ConnectActivity) — which is why this never showed up in warm re-runs and
+# why the timeout alone was never the problem.
+#
+# Settle, tap, settle, then re-tap ONCE if the drawer still isn't open.
+# The second settle is load-bearing: it lets an already-opening drawer
+# finish rendering so the `notVisible` gate reads false and we don't
+# toggle a successfully-opened drawer back shut. No `repeat` loop — the
+# ACE validator's step allowlist doesn't include it.
+- waitForAnimationToEnd:
+    timeout: 5000
 - tapOn:
     point: "73,209"
+- waitForAnimationToEnd:
+    timeout: 3000
+- runFlow:
+    when:
+      notVisible:
+        id: "${SELECTOR:nav-drawer-sign-in}"
+    commands:
+      - tapOn:
+          point: "73,209"
 - extendedWaitUntil:
     visible:
       id: "${SELECTOR:nav-drawer-sign-in}"
-    timeout: 5000
+    timeout: 15000
 - tapOn:
     id: "${SELECTOR:nav-drawer-sign-in}"
 
