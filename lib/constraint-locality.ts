@@ -271,3 +271,158 @@ export function formatConstraintLocalityReport(
     ...lines,
   ].join('\n');
 }
+
+//
+// ---------------------------------------------------------------------------
+// Relevance reachability — the TEMPORAL sibling of constraint locality.
+// ---------------------------------------------------------------------------
+//
+// Constraint locality asks "can the user fix this WHERE it fires?".
+// Relevance reachability asks "can the form KNOW this by the time it's passed?".
+//
+// A `relevant` clause that references a field ordered strictly LATER can never
+// be true at the moment the form walks past the gated field: CommCare only
+// advances to the next relevant question after the current index, so the field
+// is skipped and — if a later branch then ends the form — never revisited.
+//
+// Why this exists: dimagi-internal/ace#996. On hh-poverty-targeting/20260727-1406
+// the Deliver form's `outcome_note` sat on the dwelling-status screen with
+//
+//   relevant = dwelling_status != 'occupied_eligible'
+//           or respondent_eligible = 'neither'
+//           or consent = 'no'
+//
+// The first clause resolves on that screen and works. The other two are answered
+// a screen LATER, so refusals and no-eligible-respondent visits walked straight
+// past the note and submitted empty — exactly the two outcomes an operator most
+// wants a free-text explanation for.
+//
+// Same family as ace#979 (observable-before-derived) and ace#980 (constraint
+// locality): all three come from authoring a form as a data model rather than as
+// a walk. All three are mechanically detectable from field order plus expression
+// references, which is why they are parsers and not rubric prose.
+//
+
+export interface RelevanceViolation {
+  nodeset: string;
+  fieldId: string;
+  relevant: string;
+  /** Referenced nodes that are answered later than this field. */
+  laterRefs: string[];
+  /**
+   * True when EVERY reference is later — the field is unreachable outright.
+   * False when only some are (the clause is partially decidable, e.g. an `or`
+   * whose first term resolves in time), which is the subtler and more common
+   * shape.
+   */
+  whollyUnreachable: boolean;
+}
+
+export interface RelevanceReachabilityReport {
+  relevancesChecked: number;
+  violations: RelevanceViolation[];
+}
+
+/**
+ * Flag `relevant` expressions that reference a field the user has not reached
+ * yet. Resolves calculates transitively (same as the constraint check), so a
+ * hidden calculate over a later answer is still caught — it inherits the
+ * position of the latest real question it depends on.
+ */
+export function checkRelevanceReachability(
+  xml: string,
+): RelevanceReachabilityReport {
+  const doc = new DOMParser().parseFromString(xml, 'text/xml');
+  const binds = Array.from(doc.getElementsByTagName('bind'));
+
+  const calculates = new Map<string, string>();
+  const questionNodesets = new Set<string>();
+  const bindOrder = new Map<string, number>();
+
+  binds.forEach((b, i) => {
+    const ns = b.getAttribute('nodeset');
+    if (!ns) return;
+    if (!bindOrder.has(ns)) bindOrder.set(ns, i);
+    const calc = b.getAttribute('calculate');
+    if (calc) calculates.set(ns, calc);
+    else questionNodesets.add(ns);
+  });
+
+  /**
+   * Effective position of a reference. A calculate has no screen of its own, so
+   * it resolves to the LATEST question it transitively depends on — that is when
+   * its value actually becomes known.
+   */
+  const effectivePosition = (ref: string, depth = 0): number => {
+    if (depth > 8) return -1;
+    const calc = calculates.get(ref);
+    if (calc === undefined) return bindOrder.get(ref) ?? -1;
+    let latest = -1;
+    for (const inner of calc.match(PATH_REF) ?? []) {
+      if (inner === ref) continue;
+      latest = Math.max(latest, effectivePosition(inner, depth + 1));
+    }
+    return latest;
+  };
+
+  const violations: RelevanceViolation[] = [];
+  let relevancesChecked = 0;
+
+  for (const b of binds) {
+    const nodeset = b.getAttribute('nodeset');
+    const relevant = b.getAttribute('relevant');
+    if (!nodeset || !relevant) continue;
+    relevancesChecked++;
+
+    const ownIdx = bindOrder.get(nodeset);
+    if (ownIdx === undefined) continue;
+
+    const refs = new Set(relevant.match(PATH_REF) ?? []);
+    const later: string[] = [];
+    let resolvable = 0;
+
+    for (const ref of refs) {
+      if (ref === nodeset) continue;
+      // Only real questions establish a "when is this answered" position.
+      const pos = effectivePosition(ref);
+      if (pos < 0) continue;
+      const isQuestionish =
+        questionNodesets.has(ref) || calculates.has(ref);
+      if (!isQuestionish) continue;
+      if (pos > ownIdx) later.push(ref);
+      else resolvable++;
+    }
+
+    if (later.length > 0) {
+      violations.push({
+        nodeset,
+        fieldId: lastSegment(nodeset),
+        relevant,
+        laterRefs: later,
+        whollyUnreachable: resolvable === 0,
+      });
+    }
+  }
+
+  return { relevancesChecked, violations };
+}
+
+/** One-line-per-violation human summary for a QA verdict. */
+export function formatRelevanceReachabilityReport(
+  report: RelevanceReachabilityReport,
+): string {
+  if (report.violations.length === 0) {
+    return `relevance-reachability: PASS (${report.relevancesChecked} relevance expression(s) checked, all decidable in order)`;
+  }
+  const lines = report.violations.map(
+    (v) =>
+      `  ${v.fieldId}: relevance references ${v.laterRefs.join(', ')} — ` +
+      (v.whollyUnreachable
+        ? 'answered later, so this field can NEVER show'
+        : 'answered later, so those clauses can never contribute'),
+  );
+  return [
+    `relevance-reachability: FAIL (${report.violations.length} of ${report.relevancesChecked} relevance expression(s) reference later answers)`,
+    ...lines,
+  ].join('\n');
+}

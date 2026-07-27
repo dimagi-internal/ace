@@ -1,7 +1,9 @@
 import { describe, it, expect } from 'vitest';
 import {
   checkConstraintLocality,
+  checkRelevanceReachability,
   formatConstraintLocalityReport,
+  formatRelevanceReachabilityReport,
 } from './constraint-locality';
 
 //
@@ -253,5 +255,127 @@ describe('itext resolution', () => {
     const { violations } = checkConstraintLocality(DEFECTIVE_FORM);
     const zone = violations.find((v) => v.fieldId === 'i1_zone')!;
     expect(zone.message).toBe('Add at least one household member before continuing.');
+  });
+});
+
+describe('checkRelevanceReachability', () => {
+  // The REAL shape from hh-poverty-targeting/20260727-1406 (ace#996):
+  // outcome_note sits on the dwelling-status screen but its relevance also
+  // references respondent_eligible and consent, both answered a screen later.
+  const OUTCOME_NOTE_FORM = `<?xml version="1.0"?>
+<h:html xmlns:h="http://www.w3.org/1999/xhtml">
+  <h:head><model>
+    <bind nodeset="/data/dwelling_status" required="true()"/>
+    <bind nodeset="/data/outcome_note"
+          relevant="/data/dwelling_status != 'occupied_eligible' or /data/respondent_eligible = 'neither' or /data/consent = 'no'"/>
+    <bind nodeset="/data/respondent_eligible" required="true()"/>
+    <bind nodeset="/data/consent" required="true()"/>
+  </model></h:head>
+  <h:body/>
+</h:html>`;
+
+  it('flags a relevance that references later-answered fields', () => {
+    const { violations } = checkRelevanceReachability(OUTCOME_NOTE_FORM);
+    expect(violations.map((v) => v.fieldId)).toEqual(['outcome_note']);
+    expect(violations[0].laterRefs.sort()).toEqual([
+      '/data/consent',
+      '/data/respondent_eligible',
+    ]);
+  });
+
+  it('distinguishes partially-decidable from wholly-unreachable', () => {
+    // dwelling_status IS answered before outcome_note, so one clause resolves.
+    const { violations } = checkRelevanceReachability(OUTCOME_NOTE_FORM);
+    expect(violations[0].whollyUnreachable).toBe(false);
+  });
+
+  it('marks a field wholly unreachable when EVERY reference is later', () => {
+    const xml = `<?xml version="1.0"?>
+<h:html xmlns:h="http://www.w3.org/1999/xhtml">
+  <h:head><model>
+    <bind nodeset="/data/note" relevant="/data/consent = 'no'"/>
+    <bind nodeset="/data/consent" required="true()"/>
+  </model></h:head>
+  <h:body/>
+</h:html>`;
+    const { violations } = checkRelevanceReachability(xml);
+    expect(violations[0].whollyUnreachable).toBe(true);
+  });
+
+  it('passes when relevance references only earlier answers', () => {
+    const xml = `<?xml version="1.0"?>
+<h:html xmlns:h="http://www.w3.org/1999/xhtml">
+  <h:head><model>
+    <bind nodeset="/data/consent" required="true()"/>
+    <bind nodeset="/data/name" relevant="/data/consent = 'yes'"/>
+  </model></h:head>
+  <h:body/>
+</h:html>`;
+    const r = checkRelevanceReachability(xml);
+    expect(r.violations).toEqual([]);
+    expect(r.relevancesChecked).toBe(1);
+  });
+
+  it('sees THROUGH a calculate to the later question behind it', () => {
+    // A hidden calculate inherits the position of the latest real question it
+    // depends on — so wrapping a later answer in a calculate does not launder it.
+    const xml = `<?xml version="1.0"?>
+<h:html xmlns:h="http://www.w3.org/1999/xhtml">
+  <h:head><model>
+    <bind nodeset="/data/note" relevant="/data/outcome = 'refused'"/>
+    <bind nodeset="/data/consent" required="true()"/>
+    <bind nodeset="/data/outcome" calculate="if(/data/consent = 'no', 'refused', 'completed')"/>
+  </model></h:head>
+  <h:body/>
+</h:html>`;
+    const { violations } = checkRelevanceReachability(xml);
+    expect(violations.map((v) => v.fieldId)).toEqual(['note']);
+    expect(violations[0].laterRefs).toContain('/data/outcome');
+  });
+
+  it('does not flag a calculate over constants', () => {
+    const xml = `<?xml version="1.0"?>
+<h:html xmlns:h="http://www.w3.org/1999/xhtml">
+  <h:head><model>
+    <bind nodeset="/data/flag" relevant="/data/k = 1"/>
+    <bind nodeset="/data/k" calculate="1 + 2"/>
+  </model></h:head>
+  <h:body/>
+</h:html>`;
+    expect(checkRelevanceReachability(xml).violations).toEqual([]);
+  });
+
+  it('handles a form with no relevance expressions', () => {
+    const xml = `<?xml version="1.0"?>
+<h:html xmlns:h="http://www.w3.org/1999/xhtml">
+  <h:head><model><bind nodeset="/data/a" required="true()"/></model></h:head>
+  <h:body/>
+</h:html>`;
+    const r = checkRelevanceReachability(xml);
+    expect(r.relevancesChecked).toBe(0);
+    expect(r.violations).toEqual([]);
+  });
+
+  it('reports PASS text when nothing is flagged', () => {
+    const xml = `<?xml version="1.0"?>
+<h:html xmlns:h="http://www.w3.org/1999/xhtml">
+  <h:head><model>
+    <bind nodeset="/data/consent"/>
+    <bind nodeset="/data/name" relevant="/data/consent = 'yes'"/>
+  </model></h:head>
+  <h:body/>
+</h:html>`;
+    expect(
+      formatRelevanceReachabilityReport(checkRelevanceReachability(xml)),
+    ).toMatch(/^relevance-reachability: PASS/);
+  });
+
+  it('reports FAIL text naming the field and saying it can never show', () => {
+    const out = formatRelevanceReachabilityReport(
+      checkRelevanceReachability(OUTCOME_NOTE_FORM),
+    );
+    expect(out).toMatch(/^relevance-reachability: FAIL \(1 of 1/);
+    expect(out).toContain('outcome_note');
+    expect(out).toContain('never contribute');
   });
 });

@@ -76,6 +76,7 @@ authored from the PDD per run):
 | [`no-section-module-language`](#no-section-module-language) | Deliver | Always | `pdd-to-deliver-app-eval § terminology` (NEW) |
 | [`observable-before-derived`](#observable-before-derived) | Deliver | Always, for any visit/encounter form with an outcome or disposition field | `pdd-to-deliver-app-eval § field_answerability` |
 | [`constraint-locality`](#constraint-locality) | Deliver | Always, for any form carrying `constraint` / `validate` expressions | `pdd-to-deliver-app-eval § field_answerability`; `app-release-qa` (mechanical bind check) |
+| [`relevance-reachability`](#constraint-locality) | Deliver | Always, for any form carrying `relevant` expressions | `pdd-to-deliver-app-eval § field_answerability`; `app-release-qa` (mechanical bind check) |
 | [`consent-script-floor`](#consent-script-floor) | Deliver | PDD requires recorded consent | `pdd-to-deliver-app-eval § consent_floor` (hard-gate) |
 | [`threshold-coherence-flag`](#threshold-coherence-flag) | Deliver | PDD fixes ≥2 numeric thresholds constraining one physical quantity | `pdd-to-deliver-app-eval § threshold_coherence` (hard-gate) |
 | [`discriminating-assessment-items`](#discriminating-assessment-items) | Learn | Any scored assessment | `pdd-to-learn-app-eval § assessment_discrimination` |
@@ -223,13 +224,38 @@ authored from the PDD per run):
 - **Trigger:** the PDD's success metrics reference visit-time, a time/cost
   model, or per-section duration.
 - **Enforced by:** `pdd-to-deliver-app-eval § Capture fitness`.
+- **Origin of the dependency rule:** ace#995. A bare `now()` **references no
+  node**, and JavaRosa evaluates a calculate at form-init and thereafter only
+  when a node it references changes — so every bare `now()` in a form resolves
+  to the same instant. On `hh-poverty-targeting/20260727-1406` that made all
+  five timestamps identical, `form_duration_seconds` permanently ~0, and the
+  PDD's 6-minute duration floor **structurally unable to fire**. A fraud
+  control that reads as configured in the PDD, the Work Order, the training
+  deck and the Connect opportunity, and is inert in the built app.
 
 **Brief paragraph (verbatim):**
 
-> REQUIRED — Section timestamps: emit a hidden `now()` timestamp at the start
-> of each major section (and `today()` for visit_date) so the cost/time model
-> can reconstruct per-section visit-time distributions. (Only when the PDD's
+> REQUIRED — Section timestamps: emit a hidden timestamp at the start of each
+> major part of the encounter (and `today()` for visit_date) so the cost/time
+> model can reconstruct per-part duration distributions. (Only when the PDD's
 > success metrics reference visit-time or a cost model.)
+> LOAD-BEARING — a bare `now()` NEVER RECOMPUTES. A calculate is evaluated at
+> form-init and thereafter only when a node it references changes; `now()`
+> references nothing, so every bare `now()` in the form records form-init time
+> and they are all equal. Any duration derived from two of them is always zero,
+> which silently disables every control that reads it. So every timestamp after
+> the first MUST depend on the last answer of the part before it:
+> `<part>_start_time = if(<last answer of previous part> = '', '', now())`.
+> Only the very first timestamp (`visit_start_time`) may be a bare `now()` —
+> form-init IS its intended meaning. Before emitting a duration-derived
+> verification threshold (a duration floor, a per-part cap), trace it back to
+> its two timestamps and confirm both can actually vary; if they can't, the
+> threshold is decorative and belongs in the build memo as an open item, not
+> silently compiled.
+> BRANCH CAUTION: an end-of-encounter timestamp anchored to the last question
+> of the *payable* path is never reached on non-payable outcomes. If the PDD
+> has non-payable branches, either anchor per-branch or state in the build memo
+> that duration is measured on completed encounters only — do NOT pick silently.
 
 ### embedded-bc-script
 
@@ -556,6 +582,16 @@ verified against the *deployed* CCZ, not just the Nova blueprint.
 > screen is a build defect. Wrapping the foreign reference in a hidden calculate
 > does NOT make it local — the check resolves calculates transitively. The
 > `validate_msg` must name an action the user can take RIGHT NOW, on THIS screen.
+>
+> RELEVANCE REACHABILITY (the temporal sibling of the same rule): a `relevant`
+> expression MUST be decidable by the time the form walks past the field it
+> gates. Never gate a field on an answer the user gives LATER — CommCare only
+> advances to the next relevant question after the current index, so the field
+> is skipped, and if a later branch ends the form it is never revisited. If a
+> note or follow-up must capture something decided on a later screen, place a
+> SECOND field after that screen rather than back-referencing forward. Wrapping
+> the later answer in a hidden calculate does NOT help — the calculate inherits
+> the position of the latest question it depends on.
 
 ### consent-script-floor
 
