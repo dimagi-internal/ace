@@ -136,7 +136,15 @@ Symptom of skipping this: payloads that match the documented schema get `INVALID
 ps -eo ppid,command | awk -v c="$PPID" '$1==c' | grep -o "0\.13\.[0-9]*"
 ```
 
-`$PPID` inside a Bash tool call IS this session's `claude` pid, so this binds to this session's MCP children and ignores orphans from sibling sessions. Live case 2026-07-26 (ace#957 validation): both files read `0.13.665` while the running `mobile-server` was `0.13.661` — a whole session nearly went into validating code that was never loaded. Main bumps ~9×/day, so **a fresh session is necessary but not sufficient** — it must have started *after* the update landed. Worth running first in any session that will validate MCP-side behavior.
+`$PPID` inside a Bash tool call IS this session's `claude` pid, so this binds to this session's MCP children and ignores orphans from sibling sessions.
+
+**Caveat — that prints a DIRECTORY NAME, which can lie.** The cache dir is named from `.claude-plugin/plugin.json`, but it's filled from the marketplace clone's HEAD. When those drift the label is wrong: on 2026-07-27 `cache/ace/ace/0.13.667/` contained `0.13.670` code (its own `VERSION` file said so), so the check reported stale code that was actually current. The authoritative read is the version file INSIDE the directory the process is running from:
+
+```bash
+cat ~/.claude/plugins/cache/ace/ace/<dir-from-the-check-above>/VERSION
+```
+
+Use the `$PPID` check to find WHICH directory the live subprocess uses; use that directory's `VERSION` to learn what code is actually in it. The drift that caused this is now gated in CI (`version-check.yml`), so the label and the content should agree going forward — but read the content when it matters. Live case 2026-07-26 (ace#957 validation): both files read `0.13.665` while the running `mobile-server` was `0.13.661` — a whole session nearly went into validating code that was never loaded. Main bumps ~9×/day, so **a fresh session is necessary but not sufficient** — it must have started *after* the update landed. Worth running first in any session that will validate MCP-side behavior.
 
 Nuance worth knowing: **recipes/YAML under `mcp/mobile/recipes/` are re-read from disk per call**, so they can be hot-patched in the plugin cache and take effect immediately. Compiled MCP code cannot — that's what needs the restart.
 
