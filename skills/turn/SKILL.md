@@ -33,8 +33,16 @@ improvements ship once (a canopy PR) instead of N backports.
   paused run at the instruction of an **act**-tier sender, executing the same procedure the pause
   point defines. Design + counterpart model:
   `docs/superpowers/specs/2026-07-01-agent-operating-model-adoption.md`.
-- **Preflight (core Step 1) specifics:** `bin/ace-doctor` — read the `[Auth liveness]` block; each
-  failure names its remediation command. Gmail as ACE:
+- **Preflight (core Step 1) specifics:** `bin/ace-doctor --installed` — read the `[Auth liveness]`
+  block; each failure names its remediation command. **The `--installed` flag is load-bearing:**
+  `ace-doctor` defaults to `MODE=self` and audits whichever copy you invoke, so a bare
+  `bin/ace-doctor` run from an emdash worktree audits the *checkout* — which has no `node_modules`
+  until someone runs `npm ci` there, and which never executes anything. ACE runs from the installed
+  plugin (`~/.claude/plugins/cache/ace/ace/<version>/`), so the checkout's deps are irrelevant to
+  whether a turn can run. Auditing the wrong copy yields `FAIL deps` → `Verdict: BROKEN — ACE will
+  not function` on a machine that is in fact HEALTHY, every turn, which is how a preflight verdict
+  becomes noise people route around. (`agents/ace-orchestrator.md` § preflight already resolves the
+  install path for the same reason — this keeps turns consistent with runs.) Gmail as ACE:
   `gog gmail search "in:inbox is:unread" --account $ACE_GMAIL_ACCOUNT --client $ACE_GMAIL_CLIENT --json`
   (doubles as the inbox queue pull). Dead gog auth:
   `gog login ace@dimagi-ai.com --client ace --services gmail` (ACE's gog client is `ace`,
