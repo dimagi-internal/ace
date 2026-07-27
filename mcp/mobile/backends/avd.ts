@@ -1167,11 +1167,18 @@ export class AvdBackend {
    *
    * `timeoutMs` is NOT optional belt-and-braces — it is required. `-d` exits
    * promptly against a HEALTHY device, but against a dead or wedged one adb
-   * blocks indefinitely waiting for it. Observed live on 2026-07-26: the
-   * emulator died mid-session and `adb -s emulator-5556 logcat -d -t 600`
+   * blocks for an UNBOUNDED time waiting for it. Observed live on 2026-07-26:
+   * the emulator died mid-session and `adb -s emulator-5556 logcat -d -t 600`
    * hung past 120s with no output. Without the bound, the crash probe — added
    * to make a wedged device diagnosable — would itself wedge the funnel on
    * exactly the devices it exists to diagnose.
+   *
+   * Accuracy note (2026-07-27): #960's PR body and an earlier draft of this
+   * comment said "indefinitely." What was actually observed is a block well
+   * past the 120s tool timeout that EVENTUALLY returned 0 lines with exit 0 —
+   * so read it as "unboundedly long," not "forever." The bound is correct
+   * either way: a multi-minute stall inside the heal funnel is unacceptable
+   * regardless of whether it would have terminated on its own.
    */
   async readCrashLogcat(avdName: string, lines = 600): Promise<string> {
     const avd = await this.requireRunningAvd(avdName);
