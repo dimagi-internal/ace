@@ -188,6 +188,40 @@ entry's `recipe: deferred` instead (see § Products and Step 4). The
 composition rules below apply to the smoke recipes; `/ace:qa-deep` reuses
 these exact rules to generate the deferred deep recipes on demand.
 
+**Groups are field-lists — one screen, NOT one screen per question.**
+A Nova `kind: group` compiles to a CommCare **field-list**: every child
+(labels *and* questions) renders on ONE scrollable screen. Composing a
+per-child `tapOn option → nav_btn_next` walk inside a group is
+structurally wrong — the first advance fires while the screen's other
+required children are still unanswered, so the form stalls on
+`warning_root` ("Sorry, this response is required!"), and later options
+may sit above/below the fold. Read `nova_get_form` and check for
+`children[]` before composing. For each group emit a **single-screen
+walk**:
+
+1. `takeScreenshot` on entering the screen.
+2. Per select child: `scrollUntilVisible` the option, then `tapOn` it.
+3. Per label-less EditText child: focus it with a bare `below:`-scoped
+   tap anchored on the question text, then `inputText`. Live-validated:
+   `tapOn: {below: {text: "Number of household members.*"}}` focuses the
+   int EditText and the following `inputText` lands.
+4. Exactly **ONE** trailing form-advance, after every REQUIRED child is
+   answered.
+
+Two matcher traps on that screen:
+
+- **Regex metacharacters break Maestro's full-match `text:`.** Question
+  labels routinely contain parentheses. Compose the matcher as
+  `"<literal prefix>.*"` rather than the full label.
+- **N identical option labels are not text-matchable.** A field-list
+  carrying nine `"Option A"`s cannot be disambiguated by text. Leave
+  OPTIONAL children unanswered until the labels are distinct, and say so
+  in the recipe header.
+
+`recipe-sanity-probe` enforces this statically as
+`group-field-list-per-question-walk` when Step 2.6's caller supplies
+`fields` (ace#862).
+
 Compose each smoke recipe using the static palette pattern (one Maestro
 step per UI interaction, with `${SELECTOR:logical-name}`
 placeholders resolved at write time, and `takeScreenshot` calls

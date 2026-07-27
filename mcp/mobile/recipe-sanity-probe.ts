@@ -39,6 +39,7 @@ export type SanityFailureClass =
   | 'tile-name-collision'
   | 'opp-name-mismatch'
   | 'form-advance-without-answer-tap'
+  | 'group-field-list-per-question-walk'
   | 'brief-label-drift'
   | 'inputtext-geopoint-as-string'
   | 'deliver-smoke-rewalks-learn';
@@ -73,6 +74,35 @@ export interface SanityVerdict {
   };
 }
 
+/** Minimal Nova FIELD shape the probe consumes — the subset of
+ * `nova_get_form().form.fields[]` that determines SCREEN SHAPE.
+ *
+ * Only three kinds change how CommCare renders a form, and every
+ * field-aware check here turns on that distinction:
+ *
+ * - `hidden`   → renders NO screen at all (calculates only).
+ * - `label`    → renders a screen with NOTHING to answer. The only way
+ *                past it is a nav-next tap, so consecutive labels
+ *                legitimately produce consecutive form-advances.
+ * - `group`    → compiles to a CommCare **field-list**: ALL children
+ *                (labels + questions) render on ONE scrollable screen,
+ *                answered together, then ONE trailing form-advance.
+ *
+ * Everything else (`single_select`, `text`, `int`, `image`, `geopoint`,
+ * …) is one answerable screen each. */
+export interface NovaFieldSlice {
+  id: string;
+  /** Nova field kind verbatim — `label` / `group` / `hidden` /
+   * `single_select` / `text` / `int` / `image` / `geopoint` / … */
+  kind: string;
+  /** Question/label text as it renders on-screen. */
+  label?: string;
+  /** Select options, when the kind carries them. */
+  options?: { label?: string }[];
+  /** Present iff `kind === 'group'` — the field-list's children. */
+  children?: NovaFieldSlice[];
+}
+
 /** Minimal Nova app shape the probe consumes. Matches the relevant
  * subset of what `nova_get_app` returns. Keeping it minimal so the
  * probe doesn't get coupled to Nova's full app schema. */
@@ -80,7 +110,15 @@ export interface NovaAppSlice {
   app_id: string;
   modules: {
     module_name: string;
-    forms: { form_name: string }[];
+    forms: {
+      form_name: string;
+      /** Optional. When supplied (from `nova_get_form`), the
+       * form-advance-chain check becomes label-aware and the
+       * `group-field-list-per-question-walk` check switches on. When
+       * absent, both degrade to their prior field-blind behaviour —
+       * so existing callers keep working unchanged. */
+      fields?: NovaFieldSlice[];
+    }[];
   }[];
 }
 
@@ -126,6 +164,11 @@ export function probeRecipeSanity(inputs: ProbeInputs): SanityVerdict {
   const recipeModuleNames = new Set<string>();
   const recipeFormNames = new Set<string>();
 
+  // Screen-shape facts derived once from the Nova structures. Both are
+  // inert when callers don't supply `fields` (see NovaAppSlice).
+  const maxLabelRun = maxConsecutiveLabelScreens(inputs.novaApps);
+  const groupScreens = collectGroupScreens(inputs.novaApps);
+
   for (const recipe of inputs.recipes) {
     const params = extractRecipeParameters(recipe);
 
@@ -145,15 +188,58 @@ export function probeRecipeSanity(inputs: ProbeInputs): SanityVerdict {
     // Single form-advance with no preceding answer is legitimate (info
     // screens) — only flag chains of ≥ 2 where the antipattern is
     // unambiguous.
-    const advanceChain = findFormAdvanceChain(recipe.text);
+    //
+    // LABEL CARVE-OUT (#858). `label` screens have nothing to answer and
+    // can ONLY be crossed by consecutive nav-next taps, so a content-rich
+    // Learn app makes a correct recipe look like the antipattern. A walk
+    // over N consecutive label screens legitimately reads as a chain of
+    // N+1: the advance that LEAVES the last answered screen, then one per
+    // label. So the flag threshold is (longest label run) + 2.
+    //
+    // Deliberate bias: this trades a little recall for precision. A
+    // missed chain still fails loud on-device with forensics at the Learn
+    // leg; a false positive demands an `incomplete` halt + re-author
+    // (SKILL.md Step 2.6) whose remediation is a no-op for label screens,
+    // so it loops forever. Blocking beats leaky here.
+    //
+    // With no field data supplied, maxLabelRun is 0 → threshold 2 →
+    // byte-identical to the pre-#858 behaviour.
+    const advanceChain = findFormAdvanceChain(recipe.text, maxLabelRun + 2);
     if (advanceChain) {
       failures.push({
         class: 'form-advance-without-answer-tap',
-        detail: `recipe ${recipe.name} chains ${advanceChain.count} consecutive form-advance steps starting at line ${advanceChain.firstLine} with no answer-selection step (tapOn:text/index/id or inputText) between them — required-input questions will stall on warning_root`,
+        detail: `recipe ${recipe.name} chains ${advanceChain.count} consecutive form-advance steps starting at line ${advanceChain.firstLine} with no answer-selection step (tapOn:text/index/id or inputText) between them — required-input questions will stall on warning_root${maxLabelRun > 0 ? ` (longest label-screen run in the supplied Nova structure is ${maxLabelRun}, so chains up to ${maxLabelRun + 1} are treated as legitimate label traversal)` : ''}`,
         remediation: `for each required field between these advances, read its label/options via Nova get_form and emit a tapOn:text:"<literal option label>" (or inputText for kind:text/decimal, photo-capture sequence for kind:image) BEFORE the form-advance step`,
         recipe: recipe.name,
         parameter: 'form-advance-chain',
         value: String(advanceChain.count),
+      });
+    }
+
+    // 6.5 group-field-list-per-question-walk → a Nova `group` compiles
+    // to a CommCare field-list: every child renders on ONE scrollable
+    // screen. A recipe that advances the form BETWEEN two children of
+    // the same group is therefore structurally wrong — it taps nav-next
+    // on a screen whose other required children are still unanswered,
+    // tripping `warning_root` ("Sorry, this response is required!"), and
+    // reaches for options that may be above/below the fold (#862).
+    //
+    // The signal is deliberately narrow: an advance strictly BETWEEN two
+    // matched children of the SAME group. That cannot be legitimate —
+    // they are on one screen, so there is nothing to advance to. Counting
+    // advances against a screen budget was the wider alternative and was
+    // rejected: recipes that walk a form twice (multi-visit Deliver
+    // smokes) would false-positive, and #858 is precisely the cost of a
+    // careless false positive here.
+    const groupWalk = findGroupInternalAdvance(recipe.text, groupScreens);
+    if (groupWalk) {
+      failures.push({
+        class: 'group-field-list-per-question-walk',
+        detail: `recipe ${recipe.name} advances the form at line ${groupWalk.line} between two children of the Nova group "${groupWalk.groupId}" ("${groupWalk.firstMatch}" then "${groupWalk.secondMatch}") — a group compiles to a CommCare field-list, so both render on ONE screen and the advance fires with required children still unanswered (warning_root)`,
+        remediation: `re-author the group as a single-screen field-list walk via /ace:step app-test-cases: answer every REQUIRED child on the one screen (scrollUntilVisible + tap per select; for label-less EditTexts use a bare below:-scoped tap then inputText), then emit exactly ONE trailing form-advance — never a per-child advance`,
+        recipe: recipe.name,
+        parameter: 'group-field-list',
+        value: groupWalk.groupId,
       });
     }
 
@@ -397,15 +483,12 @@ function classifyStepBlock(stepText: string): StepKind {
   return 'other';
 }
 
-/** Walk a recipe's step list and return the first chain of ≥ 2
- * consecutive form-advance steps with no answer step between them.
- * Returns null when no such chain exists. */
-function findFormAdvanceChain(
+/** Split a recipe into top-level list items by scanning lines for `- `
+ * at the same indent as the first list-item dash. The static palette
+ * uses 0-indent dashes; recipes follow suit. */
+function splitTopLevelSteps(
   yaml: string,
-): { count: number; firstLine: number } | null {
-  // Split into top-level list items by scanning lines for `- ` at the
-  // same indent as the first list-item dash. The static palette uses
-  // 0-indent dashes; recipes follow suit.
+): { text: string; startLine: number }[] {
   const lines = yaml.split('\n');
   let dashIndent = -1;
   const items: { text: string; startLine: number }[] = [];
@@ -426,6 +509,152 @@ function findFormAdvanceChain(
     if (current) current.text += '\n' + line;
   }
   if (current) items.push(current);
+  return items;
+}
+
+/** Longest run of consecutive `label` SCREENS in any single form across
+ * the supplied apps.
+ *
+ * `hidden` fields render no screen, so they don't break a run. A `group`
+ * DOES break it: the whole field-list is one answerable screen no matter
+ * how many labels sit inside it, so group children are never counted
+ * here. Returns 0 when no caller supplied field data. */
+function maxConsecutiveLabelScreens(apps: NovaAppSlice[]): number {
+  let max = 0;
+  for (const app of apps) {
+    for (const mod of app.modules) {
+      for (const form of mod.forms) {
+        if (!form.fields) continue;
+        let run = 0;
+        for (const field of form.fields) {
+          if (field.kind === 'hidden') continue;
+          if (field.kind === 'label') {
+            run++;
+            if (run > max) max = run;
+          } else {
+            run = 0;
+          }
+        }
+      }
+    }
+  }
+  return max;
+}
+
+/** A Nova group flattened to the on-screen strings a recipe could match
+ * against — child question labels plus every select option label. */
+interface GroupScreen {
+  groupId: string;
+  matchers: string[];
+}
+
+/** Collect one GroupScreen per `kind: group` field across the supplied
+ * apps. Hidden children contribute nothing (they never render). */
+function collectGroupScreens(apps: NovaAppSlice[]): GroupScreen[] {
+  const out: GroupScreen[] = [];
+  for (const app of apps) {
+    for (const mod of app.modules) {
+      for (const form of mod.forms) {
+        for (const field of form.fields ?? []) {
+          if (field.kind !== 'group' || !field.children?.length) continue;
+          const matchers: string[] = [];
+          for (const child of field.children) {
+            if (child.kind === 'hidden') continue;
+            if (child.label) matchers.push(child.label);
+            for (const opt of child.options ?? []) {
+              if (opt.label) matchers.push(opt.label);
+            }
+          }
+          if (matchers.length) out.push({ groupId: field.id, matchers });
+        }
+      }
+    }
+  }
+  return out;
+}
+
+/** Extract the `text:` matchers a step selects on, normalised for
+ * comparison against live Nova labels. Recipes commonly use a literal
+ * PREFIX plus `.*` to dodge regex metacharacters in question labels
+ * (see #862), so a trailing `.*` is stripped and matching is
+ * prefix-based. */
+function stepTextMatchers(stepText: string): string[] {
+  const out: string[] = [];
+  const re = /text:\s*(?:"([^"]*)"|'([^']*)'|([^\s{}[\],]+))/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(stepText)) !== null) {
+    const raw = (m[1] ?? m[2] ?? m[3] ?? '').trim();
+    if (!raw) continue;
+    out.push(raw.replace(/\.\*$/, '').trim());
+  }
+  return out;
+}
+
+/** Which group (if any) a step's matchers point at. Returns the group id
+ * and the matched string, or null. */
+function matchGroupForStep(
+  stepText: string,
+  groups: GroupScreen[],
+): { groupId: string; matched: string } | null {
+  const matchers = stepTextMatchers(stepText);
+  if (!matchers.length) return null;
+  for (const matcher of matchers) {
+    for (const group of groups) {
+      for (const candidate of group.matchers) {
+        if (candidate === matcher || candidate.startsWith(matcher)) {
+          return { groupId: group.groupId, matched: matcher };
+        }
+      }
+    }
+  }
+  return null;
+}
+
+/** Find the first form-advance that sits strictly BETWEEN two matched
+ * children of the SAME Nova group — the #862 antipattern. Returns null
+ * when no group data was supplied or no such advance exists. */
+function findGroupInternalAdvance(
+  yaml: string,
+  groups: GroupScreen[],
+): { groupId: string; line: number; firstMatch: string; secondMatch: string } | null {
+  if (!groups.length) return null;
+  const items = splitTopLevelSteps(yaml);
+  let pendingGroup: string | null = null;
+  let pendingMatch = '';
+  let advanceLine = -1;
+  for (const item of items) {
+    const kind = classifyStepBlock(item.text);
+    if (kind === 'form-advance') {
+      // Only the FIRST advance after a group match matters; later ones
+      // in the same run would report the same defect twice.
+      if (pendingGroup && advanceLine === -1) advanceLine = item.startLine;
+      continue;
+    }
+    const hit = matchGroupForStep(item.text, groups);
+    if (!hit) continue;
+    if (pendingGroup === hit.groupId && advanceLine !== -1) {
+      return {
+        groupId: hit.groupId,
+        line: advanceLine,
+        firstMatch: pendingMatch,
+        secondMatch: hit.matched,
+      };
+    }
+    pendingGroup = hit.groupId;
+    pendingMatch = hit.matched;
+    advanceLine = -1;
+  }
+  return null;
+}
+
+/** Walk a recipe's step list and return the first chain of `minChain`+
+ * consecutive form-advance steps with no answer step between them.
+ * Returns null when no such chain exists. */
+function findFormAdvanceChain(
+  yaml: string,
+  minChain = 2,
+): { count: number; firstLine: number } | null {
+  const items = splitTopLevelSteps(yaml);
 
   // Walk items, tracking consecutive form-advance runs. Reset on any
   // 'answer' kind. 'other' kinds (launchApp, takeScreenshot,
@@ -440,7 +669,7 @@ function findFormAdvanceChain(
     if (kind === 'form-advance') {
       if (chainCount === 0) chainStartLine = item.startLine;
       chainCount++;
-      if (chainCount >= 2) {
+      if (chainCount >= minChain) {
         return { count: chainCount, firstLine: chainStartLine };
       }
     } else if (kind === 'answer') {

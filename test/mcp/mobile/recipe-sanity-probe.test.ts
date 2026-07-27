@@ -490,3 +490,213 @@ describe('probeRecipeSanity — failure class: inputtext-geopoint-as-string', ()
     expect(verdict.failures.find((x) => x.class === 'inputtext-geopoint-as-string')).toBeUndefined();
   });
 });
+
+// --- Field-aware checks (#858 label carve-out, #862 group field-lists) ---
+//
+// Fixtures mirror the real Nova structures named in both issues:
+//   learn   DZ290VfHrQJkeYgOdr1C — 4 consecutive top-level `label` fields
+//   deliver XPNGcJyT98JkcIKhkedZ — `poverty_scorecard` group (label +
+//                                  zone + hh_member_count + ppi_q1..q9)
+
+const LABEL_HEAVY_LEARN_APP: NovaAppSlice = {
+  app_id: 'app-learn-labels',
+  modules: [
+    {
+      module_name: 'Health Education',
+      forms: [
+        {
+          form_name: 'Introduction',
+          fields: [
+            { id: 'intro', kind: 'label', label: 'Welcome to the module' },
+            { id: 'read_exactly', kind: 'label', label: 'Read the script exactly' },
+            { id: 'leading_vs_neutral', kind: 'label', label: 'Leading vs neutral' },
+            { id: 'hidden_score', kind: 'label', label: 'How scoring works' },
+            { id: 'q1', kind: 'single_select', label: 'Check your understanding', options: [{ label: 'True' }, { label: 'False' }] },
+          ],
+        },
+      ],
+    },
+  ],
+};
+
+const GROUPED_DELIVER_APP: NovaAppSlice = {
+  app_id: 'app-deliver-groups',
+  modules: [
+    {
+      module_name: 'Household Survey',
+      forms: [
+        {
+          form_name: 'Household Poverty Survey Visit',
+          fields: [
+            { id: 'respondent_role', kind: 'single_select', label: 'Respondent role in household', options: [{ label: 'Household head' }, { label: 'Spouse of the head' }] },
+            {
+              id: 'poverty_scorecard',
+              kind: 'group',
+              label: 'Household poverty scorecard (PLACEHOLDER instrument)',
+              children: [
+                { id: 'scorecard_note', kind: 'label', label: '**PLACEHOLDER instrument.** Stubbed placeholders.' },
+                { id: 'zone', kind: 'single_select', label: 'Geopolitical zone (PLACEHOLDER for PPI zone question)', options: [{ label: 'North Central' }, { label: 'North East' }] },
+                { id: 'hh_member_count', kind: 'int', label: 'Number of household members (PLACEHOLDER — PPI roster count)' },
+                { id: 'ppi_q1', kind: 'single_select', label: 'PPI Indicator 1 (PLACEHOLDER)', options: [{ label: 'Option A' }, { label: 'Option B' }] },
+                { id: 'ppi_score', kind: 'hidden' },
+              ],
+            },
+            { id: 'respondent_name', kind: 'text', label: 'Respondent full name' },
+          ],
+        },
+      ],
+    },
+  ],
+};
+
+describe('probeRecipeSanity — #858 label-screen carve-out', () => {
+  it('does NOT flag a chain that a run of label screens fully explains', () => {
+    // 4 consecutive labels → the legitimate walk is the advance leaving
+    // the last answered screen, then one per label = a chain of 5.
+    const body = Array.from({ length: 5 }, () => '- runFlow:\n    file: form-advance.yaml').join('\n');
+    const verdict = probeRecipeSanity({
+      recipes: [recipeBody('journey-learn.yaml', body)],
+      novaApps: [LABEL_HEAVY_LEARN_APP],
+      connectOpp: LIVE_OPP,
+    });
+    expect(verdict.failures.find((x) => x.class === 'form-advance-without-answer-tap')).toBeUndefined();
+  });
+
+  it('STILL flags a chain longer than the label run can explain', () => {
+    const body = Array.from({ length: 6 }, () => '- runFlow:\n    file: form-advance.yaml').join('\n');
+    const verdict = probeRecipeSanity({
+      recipes: [recipeBody('journey-learn.yaml', body)],
+      novaApps: [LABEL_HEAVY_LEARN_APP],
+      connectOpp: LIVE_OPP,
+    });
+    const f = verdict.failures.find((x) => x.class === 'form-advance-without-answer-tap');
+    expect(f).toBeDefined();
+    expect(f!.detail).toMatch(/longest label-screen run/);
+  });
+
+  it('is byte-identical to the old behaviour when no field data is supplied', () => {
+    // Backward-compat guard: callers that still pass bare {form_name}
+    // must keep getting the field-blind threshold of 2.
+    const body = ['- runFlow:', '    file: form-advance.yaml', '- runFlow:', '    file: form-advance.yaml'].join('\n');
+    const verdict = probeRecipeSanity({
+      recipes: [recipeBody('J1.yaml', body)],
+      novaApps: [HEALTHY_LEARN_APP],
+      connectOpp: LIVE_OPP,
+    });
+    expect(verdict.failures.find((x) => x.class === 'form-advance-without-answer-tap')).toBeDefined();
+  });
+
+  it('does NOT let labels INSIDE a group raise the allowance', () => {
+    // A group is ONE field-list screen however many labels it holds, so
+    // scorecard_note must not buy the recipe an extra advance.
+    const body = ['- runFlow:', '    file: form-advance.yaml', '- runFlow:', '    file: form-advance.yaml'].join('\n');
+    const verdict = probeRecipeSanity({
+      recipes: [recipeBody('journey-deliver.yaml', body)],
+      novaApps: [GROUPED_DELIVER_APP],
+      connectOpp: LIVE_OPP,
+    });
+    expect(verdict.failures.find((x) => x.class === 'form-advance-without-answer-tap')).toBeDefined();
+  });
+});
+
+describe('probeRecipeSanity — failure class: group-field-list-per-question-walk', () => {
+  it('flags a form-advance between two children of the same group', () => {
+    // The #862 repro: journey-deliver.yaml walked poverty_scorecard
+    // per-question and failed at tapOn "North Central" on warning_root.
+    const body = [
+      '- tapOn:',
+      '    text: "North Central"',
+      '- runFlow:',
+      '    file: form-advance.yaml',
+      '- tapOn:',
+      '    text: "Option A"',
+    ].join('\n');
+    const verdict = probeRecipeSanity({
+      recipes: [recipeBody('journey-deliver.yaml', body)],
+      novaApps: [GROUPED_DELIVER_APP],
+      connectOpp: LIVE_OPP,
+    });
+    const f = verdict.failures.find((x) => x.class === 'group-field-list-per-question-walk');
+    expect(f).toBeDefined();
+    expect(f!.value).toBe('poverty_scorecard');
+    expect(f!.recipe).toBe('journey-deliver.yaml');
+    expect(f!.detail).toMatch(/field-list/);
+    expect(f!.remediation).toMatch(/ONE trailing form-advance/);
+  });
+
+  it('passes a correct single-screen field-list walk', () => {
+    // Answer every required child on the one screen, then ONE advance.
+    const body = [
+      '- tapOn:',
+      '    text: "North Central"',
+      '- tapOn:',
+      '    below:',
+      '      text: "Number of household members.*"',
+      '- inputText: "6"',
+      '- tapOn:',
+      '    text: "Option A"',
+      '- runFlow:',
+      '    file: form-advance.yaml',
+    ].join('\n');
+    const verdict = probeRecipeSanity({
+      recipes: [recipeBody('journey-deliver.yaml', body)],
+      novaApps: [GROUPED_DELIVER_APP],
+      connectOpp: LIVE_OPP,
+    });
+    expect(verdict.failures.find((x) => x.class === 'group-field-list-per-question-walk')).toBeUndefined();
+  });
+
+  it('does NOT flag an advance between a non-group field and a group child', () => {
+    // respondent_role is its own screen — advancing off it is correct.
+    const body = [
+      '- tapOn:',
+      '    text: "Household head"',
+      '- runFlow:',
+      '    file: form-advance.yaml',
+      '- tapOn:',
+      '    text: "North Central"',
+    ].join('\n');
+    const verdict = probeRecipeSanity({
+      recipes: [recipeBody('journey-deliver.yaml', body)],
+      novaApps: [GROUPED_DELIVER_APP],
+      connectOpp: LIVE_OPP,
+    });
+    expect(verdict.failures.find((x) => x.class === 'group-field-list-per-question-walk')).toBeUndefined();
+  });
+
+  it('matches a literal-prefix + .* matcher against the live label', () => {
+    // Recipes compose "<literal prefix>.*" to dodge regex metacharacters
+    // in question labels (parentheses) — the probe must still resolve it.
+    const body = [
+      '- tapOn:',
+      '    text: "Number of household members.*"',
+      '- runFlow:',
+      '    file: form-advance.yaml',
+      '- tapOn:',
+      '    text: "North Central"',
+    ].join('\n');
+    const verdict = probeRecipeSanity({
+      recipes: [recipeBody('journey-deliver.yaml', body)],
+      novaApps: [GROUPED_DELIVER_APP],
+      connectOpp: LIVE_OPP,
+    });
+    expect(verdict.failures.find((x) => x.class === 'group-field-list-per-question-walk')).toBeDefined();
+  });
+
+  it('is inert when no field data is supplied', () => {
+    const body = [
+      '- tapOn:',
+      '    text: "North Central"',
+      '- runFlow:',
+      '    file: form-advance.yaml',
+      '- tapOn:',
+      '    text: "Option A"',
+    ].join('\n');
+    const verdict = probeRecipeSanity({
+      recipes: [recipeBody('journey-deliver.yaml', body)],
+      novaApps: [HEALTHY_DELIVER_APP],
+      connectOpp: LIVE_OPP,
+    });
+    expect(verdict.failures.find((x) => x.class === 'group-field-list-per-question-walk')).toBeUndefined();
+  });
+});
