@@ -26,11 +26,21 @@ For "retry in place, overwrite history" (debug-loop-tightest, no fork history), 
 
 - `opp_slug` (required) — the ACE opp slug, e.g. `turmeric`.
 - `from_run_id` (required) — source run id, e.g. `20260513-2243`. Must exist on Drive under `ACE/<opp_slug>/runs/<from_run_id>/`.
-- `from_skill` (required) — the FIRST skill of the phase you want to re-run. Examples:
-  - `app-test-cases` → fork at Phase 6 boundary (re-run all of Phase 6 in the new run)
-  - `ocs-agent-setup` → fork at Phase 5 boundary
-  - `connect-program-setup` → fork at Phase 4 boundary
-  - `solicitation-create` → fork at Phase 8 boundary
+- `from_skill` (required) — a skill name from the owning phase agent's `skills:` list. Forking re-runs that skill and everything after it; everything before is copied frozen.
+
+  **Phase-boundary forks** (`from_skill` = the phase's FIRST skill — check the agent's frontmatter, don't guess):
+
+  | fork at | phase | agent |
+  |---|---|---|
+  | `pdd-to-learn-app` | 3 — commcare-setup | `agents/commcare-setup.md` |
+  | `connect-program-setup` | 4 — connect-setup | `agents/connect-setup.md` |
+  | `ocs-agent-setup` | 5 — ocs-setup | `agents/ocs-setup.md` |
+  | `app-screenshot-capture` | 6 — qa-and-training | `agents/qa-and-training.md` |
+  | `solicitation-create` | 8 — solicitation-management | `agents/solicitation-management.md` |
+
+  **Mid-phase forks are allowed and often what you want** — e.g. `app-hq-settings` re-runs Phase 3 from Step 2.65 while keeping the built + deployed apps.
+
+  `app-test-cases` is a **Phase 3** skill (Step 2.6), not the Phase 6 boundary. An earlier version of this table said otherwise; forking there re-runs Phase 3 from Step 2.6, not Phase 6.
 - `mode` (required) — one of:
   - `keep-overrides-only` — copies upstream-of-fork step folders + `run_state.yaml` + a FILTERED `decisions.yaml` containing only rows where `status == overridden` and `phase_ordinal < fork-phase`. AI defaults from upstream are dropped so downstream phases re-derive them. Use when you suspect upstream AI defaults shaped downstream phases in undesirable ways.
   - `keep-all` — same artifacts + a `decisions.yaml` carrying ALL upstream rows regardless of status (both AI defaults and overrides). Use when you want full continuity and are just iterating on one downstream phase.
