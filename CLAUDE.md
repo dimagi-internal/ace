@@ -130,6 +130,16 @@ Editing MCP code in `mcp/` (or a new schema deploying upstream — e.g. labs pub
 
 Symptom of skipping this: payloads that match the documented schema get `INVALID_SCHEMA` rejections; new atoms don't appear in `ToolSearch`; deprecated atoms still resolve. The on-disk code is right; the running subprocess is just stale. (Seen live on the `solicitation-create` schema-drift class, where ACE read a pre-PR-#211 `{data: {...}}` shape weeks after the live schema went flat.)
 
+**Check the running subprocess, not the version files — they cannot see it.** `VERSION` and `installed_plugins.json` are both *on-disk* facts; a session that auto-updated on startup can have rewritten them ~1s AFTER it already spawned its MCP children from the previous version. Both then read correctly while the live code is stale:
+
+```bash
+ps -eo ppid,command | awk -v c="$PPID" '$1==c' | grep -o "0\.13\.[0-9]*"
+```
+
+`$PPID` inside a Bash tool call IS this session's `claude` pid, so this binds to this session's MCP children and ignores orphans from sibling sessions. Live case 2026-07-26 (ace#957 validation): both files read `0.13.665` while the running `mobile-server` was `0.13.661` — a whole session nearly went into validating code that was never loaded. Main bumps ~9×/day, so **a fresh session is necessary but not sufficient** — it must have started *after* the update landed. Worth running first in any session that will validate MCP-side behavior.
+
+Nuance worth knowing: **recipes/YAML under `mcp/mobile/recipes/` are re-read from disk per call**, so they can be hot-patched in the plugin cache and take effect immediately. Compiled MCP code cannot — that's what needs the restart.
+
 When in doubt, validate by curling the live MCP's `tools/list` directly (e.g. `curl ... https://labs.connect.dimagi.com/mcp/ -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'`) — that response is the canonical contract. If it disagrees with what `ToolSearch` shows you in-session, restart Claude.
 
 ## Conventions
