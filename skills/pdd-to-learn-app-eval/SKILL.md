@@ -110,7 +110,8 @@ methodology, different dimensions tuned to Learn-app concerns. See
    | Dimension | Weight | Criteria |
    |---|---|---|
    | **Assessment gating (enforcement)** | 22% | Does the app **enforce** readiness, not just expose a trivial score? **Architecture note:** in ACE, the Deliver-unlock gate is enforced *Connect-side* — Connect reads the assessment completion; ACE Learn forms carry NO case blocks (see `pdd-to-learn-app § REQUIRED — Learn forms must NOT carry <case> blocks`). So do NOT require in-app case-property sequential unlock — that would contradict the build architecture. Enforcement fitness means, independent of the PDD: (a) **pre-test + post-test** structure with distinct item banks, not a single quiz; (b) **adequate assessment coverage** — enough scored items to actually test the curriculum (roughly ≥1 item per module/major topic; 5 items for a 5-module course is too thin); (c) the score is a **percentage correctly wired to `connect.assessment` at the PDD threshold** so Connect gates Deliver on it; (d) a **pass/fail result experience in-app** — a result label whose relevance is conditional on `user_score >= threshold` (vs a separate fail/retry label), NOT an unconditional "Well done!" that fires regardless of score; (e) retry guidance for a failing FLW. **Hard-gate:** the PDD specifies a readiness gate AND the build is a single quiz with no pre/post split, trivial item count, AND an unconditional pass message → dimension **≤3**. A score tag Connect can read but that sits behind a single trivial quiz with an unconditional "Well done!" is presence, not enforcement → caps this dimension at 5. |
-   | **Instructional depth** | 25% | Is each module actually *teachable*, at item granularity — not a label naming the topic? Check, independent of the PDD: (a) module bodies carry real instructional substance (steps, examples, do/don't, reference imagery placeholders correctly typed), not one-line labels; (b) assessment items are non-trivial and **anti-guess** (plausible distractors, not "pick the obviously-correct option"); (c) citations / source references where the domain calls for them (WHO, PMI, etc.). **Hard-gate:** modules are label-only with no teachable substance → dimension **≤3**. **Mid-tier cap (added 2026-05-29 from ITN validation):** decent expository prose is necessary but NOT sufficient for a deployable training instrument. When modules carry teaching prose but lack pedagogical scaffolding — specifically ALL THREE of: (i) no worked examples or do/don't pairs, (ii) no domain citations where the source material cites them (WHO/PMI/GiveWell), AND (iii) fewer than 2 assessment items per taught module (the ITN build has 1 quiz item per module vs the expert `[Final]`'s 10-item pre-test + 10-item post-test) — cap this dimension at **4.0**. Each module that merely *names* its topic without teaching it = 1.5-point deduction. (This is the item-granular replacement for the old "topic present = covered" reading.) |
+   | **Instructional depth** | 17% | Is each module actually *teachable*, at item granularity — not a label naming the topic? Check, independent of the PDD: (a) module bodies carry real instructional substance (steps, examples, do/don't, reference imagery placeholders correctly typed), not one-line labels; (b) *(moved 2026-07-27)* item quality is now scored by **`assessment_discrimination`** via an executed probe — do NOT also grade it here; this dimension keeps only the item-COUNT-per-module element in the mid-tier cap below; (c) citations / source references where the domain calls for them (WHO, PMI, etc.). **Hard-gate:** modules are label-only with no teachable substance → dimension **≤3**. **Mid-tier cap (added 2026-05-29 from ITN validation):** decent expository prose is necessary but NOT sufficient for a deployable training instrument. When modules carry teaching prose but lack pedagogical scaffolding — specifically ALL THREE of: (i) no worked examples or do/don't pairs, (ii) no domain citations where the source material cites them (WHO/PMI/GiveWell), AND (iii) fewer than 2 assessment items per taught module (the ITN build has 1 quiz item per module vs the expert `[Final]`'s 10-item pre-test + 10-item post-test) — cap this dimension at **4.0**. Each module that merely *names* its topic without teaching it = 1.5-point deduction. (This is the item-granular replacement for the old "topic present = covered" reading.) |
+   | **Assessment discrimination** | 8% | **Can the assessment tell a trained worker from an untrained one?** This dimension is scored from an **executed probe, not an impression** — see § The blind-guess probe below, which is MANDATORY and whose per-item table MUST appear in the verdict. Scored from the probe's `guessable_ratio` (items answerable cold ÷ items scored): **0–20% → 9–10 · 21–40% → 7–8 · 41–60% → 5–6 · 61–80% → 4 · >80% → ≤3**. Additional deductions, each 1 point: (a) any item whose distractors are all absurd (the "one virtuous option + N absurd options" shape); (b) a teaching example or practice item referencing a question **absent from the instrument** the Deliver app implements (`instrument-grounded-examples`); (c) items that test generic professional-ethics sentiment rather than program specifics. **Hard-gate:** `guessable_ratio > 80%` → dimension **≤3 → suite `fail`** — a gate a worker passes without studying is decorative, and shipping it is worse than shipping no gate, because it launders an unqualified worker into the field. **N/A rule:** app has no scored assessment (PDD specifies no gate) → score `null` and redistribute. |
    | **Localization match** | 8% | **HARD-FAIL dimension.** If the PDD names a working language other than English, the build must ship the **translation set** for it (labels, choices, hints, assessment items) on top of the English core. **Hard-gate:** PDD names a working language AND the build is English-only (or the translation set is materially incomplete) → dimension **≤3 → suite `fail`.** **N/A rule:** PDD names no working language → score `null` and redistribute weight. (Resolves the 2026-05-29 localization decision: English core, hard-fail if named-language translations weren't also built.) |
 
    **Deduction rules:**
@@ -153,6 +154,64 @@ methodology, different dimensions tuned to Learn-app concerns. See
    Conditions are not representable in the Nova blueprint, so this rubric
    cannot read them yet.
 
+5c. **The blind-guess probe (MANDATORY — scores `assessment_discrimination`).**
+
+   **Why this is a probe and not a criterion.** Before 2026-07-27 this rubric
+   already required assessment items to be "anti-guess (plausible distractors,
+   not 'pick the obviously-correct option')" as sub-criterion (b) of
+   `instructional_depth`. It scored `hh-poverty-targeting/20260722-1341` at
+   **9.4/10** on a 10-item bank where EVERY item was one virtuous answer plus
+   three absurd distractors, and a domain expert caught it on first read
+   (ace#981). The criterion was true, well-worded, and inert: judging "are these
+   anti-guess?" while looking at the answer key invites the judge to confirm the
+   key is defensible. So the rubric no longer asks for a judgment — it asks for a
+   **result you have to produce by doing the work**.
+
+   Run this BEFORE reading the answer key, and run it on the post-assessment
+   (the gating instrument) plus any pre-assessment:
+
+   1. **Extract the item bank.** For each scored item, pull the stem and the
+      option labels. Do NOT read the `*_score` calculates yet — those are the
+      answer key, and seeing them contaminates the probe.
+   2. **Answer each item cold, as an untrained worker would.** Adopt this
+      persona explicitly: *someone who never opened the modules, knows nothing
+      program-specific, and is simply a reasonable adult trying to look
+      responsible.* For each item, pick the option that persona would choose,
+      and record WHY in ≤10 words (e.g. "only non-abusive option", "others are
+      obviously wrong", "genuinely 50/50 without training").
+   3. **Now read the answer key** and mark each item `guessable: true` when the
+      cold pick matches the correct answer, `false` otherwise.
+   4. **Compute `guessable_ratio` = guessable items ÷ items scored.**
+   5. **Emit the per-item table into the verdict** (this is the auditable
+      artifact — a `assessment_discrimination` score with no table is an
+      incomplete eval, and a reviewer should reject it):
+
+   ```yaml
+   assessment_discrimination_probe:
+     instrument: post_assessment          # repeat the block per assessment form
+     items_scored: 10
+     guessable: 9
+     guessable_ratio: 0.90
+     verdict: fail                        # >80% guessable → dimension ≤3 → suite fail
+     items:
+       - id: q6
+         cold_pick: b
+         reason: only option that isn't coercive
+         correct: b
+         guessable: true
+       - id: q3
+         cold_pick: a
+         reason: sounds like how a survey works
+         correct: b
+         guessable: false
+   ```
+
+   **Calibration anchor (negative control).** The `hh-poverty-targeting`
+   `20260722-1341` post-assessment is the canonical FAIL: `guessable_ratio` ≈
+   0.9–1.0. Any rubric revision must still score that bank ≤3 on this dimension.
+   If a future judge scores it above 3, the probe has been weakened — treat that
+   as a rubric regression, not a judge disagreement.
+
 6. **Write the verdict YAML** to
    `3-commcare/pdd-to-learn-app-eval_verdict.yaml` using the shape from
    `skills/_eval-template.md § Verdict YAML contract`. Dimensions:
@@ -167,7 +226,8 @@ methodology, different dimensions tuned to Learn-app concerns. See
      archetype_coherence:       { weight: 0.08 }
      # Fitness axis (55%) — trains + gates competence, graded vs expert bar
      assessment_gating:         { weight: 0.22 }   # enforcement: pre/post, sequential unlock, pass/retry
-     instructional_depth:       { weight: 0.25 }   # item-granular teachable content + anti-guess items
+     instructional_depth:       { weight: 0.17 }   # item-granular teachable content (item QUALITY moved to assessment_discrimination 2026-07-27)
+     assessment_discrimination: { weight: 0.08 }   # MANDATORY blind-guess probe; null + redistribute when no scored assessment; HARD-FAIL >80% guessable
      localization_match:        { weight: 0.08 }   # null + redistribute when PDD names no working language; HARD-FAIL otherwise
    ```
 

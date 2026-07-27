@@ -216,6 +216,15 @@ Generate the Learn (training) app from the PDD using the Nova plugin
        must be "Previous Screen".
      - `grid-menu-display` — always (Learn + Deliver). Modules and Forms
        Menu Display set to "Grid".
+     - `discriminating-assessment-items` — any scored assessment. Every
+       distractor plausible to an untrained worker; the "one virtuous
+       option + N absurd options" shape is prohibited; items answerable
+       only from taught program content (ace#981).
+     - `instrument-grounded-examples` — the Learn app teaches
+       administration of a fixed instrument. Every worked example and
+       good/bad pair built from a REAL instrument item, preferring the
+       highest coaching-risk items (self-reported consumption over
+       observable assets) (ace#982).
 
      Do NOT inline-paraphrase these — reference the library so the build
      and `pdd-to-learn-app-eval` stay symmetric. Skip a component whose

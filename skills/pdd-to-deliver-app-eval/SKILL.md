@@ -107,9 +107,10 @@ and `skills/eval-calibration/SKILL.md` for calibration methodology.
 
    | Dimension | Weight | Criteria |
    |---|---|---|
-   | **Capture fitness** | 18% | Does the instrument capture *reliable, structured* data? Check, independent of the PDD: (a) **GPS** — where the PDD's evidence model specifies an arrival/location radius, GPS must be **accuracy-gated** (preferred/minimum accuracy thresholds, a capture-gate that rejects low-accuracy fixes, normalized lat/lon outputs) — a plain `geopoint` with only a text hint does **not** satisfy a stated radius; (b) **structured choices** — answers with an enumerable option set (who-sleeps-under-net, net-condition, risk groups) use single/multi-select, not free `text`; (c) **`other → specify`** — every "Other" option has a conditional free-text follow-up; (d) **bucketed numerics** where field-reliable (net age as `<1 / 1–2 / 3–4 / 5+ / don't know` rather than a raw int). **Hard-gate:** PDD specifies a GPS radius AND the build uses a plain geopoint with no accuracy enforcement → dimension **≤3**. ≥2 enumerable answers left as free-text → ≤4. |
-   | **Data-quality validation** | 15% | Does the instrument *enforce* data quality? Graded vs what a deployable form should constrain, NOT vs the PDD: numeric bounds on counts (`household_size 1–30`), cross-field checks (`under_5 ≤ household_size`), phone-format regex where a phone field exists, char limits on free text, required `validate` on every credit-bearing field. **Hard-gate:** a data-capture instrument with near-zero validation (only a consent check + one range) → dimension **≤3**. Each whole class of missing constraint that a deployable build needs (counts unbounded, phone unformatted, free-text uncapped) = 1.5-point deduction. |
-   | **Case persistence** | 14% | Do follow-up / case-update forms **write back the observations they capture**? A case-update form that captures new observations (retention, change, V2 readings) but writes **zero** case properties defeats its own purpose. **Hard-gate:** a case-update form that captures new user-facing observations and writes 0 case properties → dimension **≤2** (this is the exact ITN Visit-2 defect). **N/A rule:** single-form atomic-visit with no follow-up form has nothing to persist — score this dimension `null` and redistribute its weight proportionally across the other fitness dims (do NOT score it 10 — absence of the form isn't a win). |
+   | **Capture fitness** | 14% | Does the instrument capture *reliable, structured* data? Check, independent of the PDD: (a) **GPS** — where the PDD's evidence model specifies an arrival/location radius, GPS must be **accuracy-gated** (preferred/minimum accuracy thresholds, a capture-gate that rejects low-accuracy fixes, normalized lat/lon outputs) — a plain `geopoint` with only a text hint does **not** satisfy a stated radius; (b) **structured choices** — answers with an enumerable option set (who-sleeps-under-net, net-condition, risk groups) use single/multi-select, not free `text`; (c) **`other → specify`** — every "Other" option has a conditional free-text follow-up; (d) **bucketed numerics** where field-reliable (net age as `<1 / 1–2 / 3–4 / 5+ / don't know` rather than a raw int). **Hard-gate:** PDD specifies a GPS radius AND the build uses a plain geopoint with no accuracy enforcement → dimension **≤3**. ≥2 enumerable answers left as free-text → ≤4. |
+   | **Data-quality validation** | 13% | Does the instrument *enforce* data quality? Graded vs what a deployable form should constrain, NOT vs the PDD: numeric bounds on counts (`household_size 1–30`), cross-field checks (`under_5 ≤ household_size`), phone-format regex where a phone field exists, char limits on free text, required `validate` on every credit-bearing field. **Hard-gate:** a data-capture instrument with near-zero validation (only a consent check + one range) → dimension **≤3**. Each whole class of missing constraint that a deployable build needs (counts unbounded, phone unformatted, free-text uncapped) = 1.5-point deduction. |
+   | **Case persistence** | 12% | Do follow-up / case-update forms **write back the observations they capture**? A case-update form that captures new observations (retention, change, V2 readings) but writes **zero** case properties defeats its own purpose. **Hard-gate:** a case-update form that captures new user-facing observations and writes 0 case properties → dimension **≤2** (this is the exact ITN Visit-2 defect). **N/A rule:** single-form atomic-visit with no follow-up form has nothing to persist — score this dimension `null` and redistribute its weight proportionally across the other fitness dims (do NOT score it 10 — absence of the form isn't a win). |
+   | **Field answerability (walkability)** | 8% | **Can a real user walk this form front-to-back in the real-world sequence, answering each question at the moment it is asked and fixing every error where it appears?** Graded by mentally walking the form in order as the FLW lives it — NOT by checking it against the PDD (the PDD usually leaves flow to ACE, which is why this is a fitness dimension). Two independent checks, each with its own hard-gate: **(a) Observable-before-derived** — no required, user-facing question may ask for a value that is a function of answers ordered AFTER it. The tell is an outcome / disposition / status field near the top of the form with downstream questions relevance-gated on it. **Hard-gate:** a user-facing outcome question precedes its own inputs → dimension **≤3** (ace#979: `visit_outcome` was question 1, with 20+ fields gated on it). **(b) Constraint locality** — every `constraint` / `validate` must be satisfiable on the screen where it fires, referencing only `.` or same-repeat siblings, with a `validate_msg` naming an action available on THAT screen. **Hard-gate:** any constraint references a node the user cannot edit from that screen → dimension **≤3** (ace#980: a 50m GPS-accuracy rule whose message said "recapture the location" sat on a later yes/no confirmation; a roster-minimum rule sat on an unrelated zone question). Cross-check against `app-release-qa`'s mechanical bind report when a released CCZ exists — that check is authoritative for (b); disagreeing with it means re-reading, not overriding. |
    | **Localization match** | 8% | **HARD-FAIL dimension.** If the PDD names a working language other than English, the build must ship the **translation set** for it (labels, choices, hints, validation messages) on top of the English core. English authoring is fine; *missing or materially-incomplete translations are not.* **Hard-gate:** PDD names a working language AND the build is English-only (or the translation set is materially incomplete) → dimension **≤3 → suite `fail`.** **N/A rule:** PDD names no working language (English intervention) → score `null` and redistribute weight. (Resolves the open localization decision 2026-05-29: build the core in English, hard-fail if the named-language translations weren't also built.) |
 
    **Deduction rules:**
@@ -141,6 +142,25 @@ and `skills/eval-calibration/SKILL.md` for calibration methodology.
      hints, choice labels). Scan names + labels via `get_form`. API index keys
      like `moduleIndex` / "Module 0" are structural metadata, never rendered —
      ignore those. Any user-facing occurrence → `[BLOCKER]` → `fail`.
+   - **`consent_floor`** (added 2026-07-27, ace#983) — when the PDD requires
+     recorded consent, the consent script (the field's `hint` / read-aloud
+     label) MUST contain all six floor elements per
+     `_app-component-library.md § consent-script-floor`: purpose · voluntary ·
+     may stop · confidential · **where the data goes / who sees it** ·
+     **whether participation guarantees a benefit**. Read the consent field's
+     hint via `get_form` and check each element. Any missing element →
+     `[BLOCKER]` → `fail`. The last two are the ones builds omit; element (f)
+     is mandatory whenever the PDD says eligibility is determined downstream.
+   - **`threshold_coherence`** (added 2026-07-27, ace#984) — when the PDD fixes
+     ≥2 numbers constraining the same physical quantity, the pair MUST be
+     coherent OR the conflict MUST be surfaced in the build memo. Check at
+     minimum: dedup radius vs accepted GPS accuracy tolerance (read the
+     geopoint's accuracy `constraint`); duration floor vs realistic completion
+     time for the actual item count; any score threshold / lookup range vs the
+     instrument's attainable min–max computed from the point values. An
+     incoherent pair with NO build-memo entry → `[BLOCKER]` → `fail`. An
+     incoherent pair that IS surfaced → `[WARN]` (the value is a PM decision;
+     noticing it is ACE's job).
 
    *Not enforced here (deferred to the post-build HQ step per
    `docs/superpowers/specs/2026-06-25-post-build-hq-settings-automation.md`):*
@@ -160,9 +180,10 @@ and `skills/eval-calibration/SKILL.md` for calibration methodology.
      conditional_logic_match:  { weight: 0.08 }
      connectify_wiring:        { weight: 0.10 }
      # Fitness axis (55%) — deployable instrument, graded vs expert bar
-     capture_fitness:          { weight: 0.18 }
-     data_quality_validation:  { weight: 0.15 }
-     case_persistence:         { weight: 0.14 }   # null + redistribute when no follow-up form
+     capture_fitness:          { weight: 0.14 }
+     data_quality_validation:  { weight: 0.13 }
+     case_persistence:         { weight: 0.12 }   # null + redistribute when no follow-up form
+     field_answerability:      { weight: 0.08 }   # walkability: observable-before-derived + constraint locality
      localization_match:       { weight: 0.08 }   # null + redistribute when PDD names no working language; HARD-FAIL otherwise
    ```
 

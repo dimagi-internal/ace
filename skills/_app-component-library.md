@@ -74,6 +74,12 @@ authored from the PDD per run):
 | [`deliver-app-naming`](#deliver-app-naming) | Deliver | Always | `pdd-to-deliver-app-eval § naming_convention` (NEW) |
 | [`live-photo-capture`](#live-photo-capture) | Deliver | Any image / photo capture question | `pdd-to-deliver-app-eval § Capture fitness` (extends) |
 | [`no-section-module-language`](#no-section-module-language) | Deliver | Always | `pdd-to-deliver-app-eval § terminology` (NEW) |
+| [`observable-before-derived`](#observable-before-derived) | Deliver | Always, for any visit/encounter form with an outcome or disposition field | `pdd-to-deliver-app-eval § field_answerability` |
+| [`constraint-locality`](#constraint-locality) | Deliver | Always, for any form carrying `constraint` / `validate` expressions | `pdd-to-deliver-app-eval § field_answerability`; `app-release-qa` (mechanical bind check) |
+| [`consent-script-floor`](#consent-script-floor) | Deliver | PDD requires recorded consent | `pdd-to-deliver-app-eval § consent_floor` (hard-gate) |
+| [`threshold-coherence-flag`](#threshold-coherence-flag) | Deliver | PDD fixes ≥2 numeric thresholds constraining one physical quantity | `pdd-to-deliver-app-eval § threshold_coherence` (hard-gate) |
+| [`discriminating-assessment-items`](#discriminating-assessment-items) | Learn | Any scored assessment | `pdd-to-learn-app-eval § assessment_discrimination` |
+| [`instrument-grounded-examples`](#instrument-grounded-examples) | Learn | Learn app teaches administration of a fixed instrument | `pdd-to-learn-app-eval § assessment_discrimination` (examples criterion) |
 
 ---
 
@@ -475,6 +481,202 @@ authored from the PDD per run):
 
 ---
 
+## Walkability components (added 2026-07-27 — domain-expert review)
+
+The four Deliver components below and the two Learn components after them came
+from **Sophie Feintuch's expert review** of `hh-poverty-targeting/20260722-1341`
+(dimagi-internal/ace#979–#984) — the first time anyone outside the ACE authoring
+chain iterated on an ACE build. They share one root cause: **the build was graded
+against the PDD and against a structural bar, but never against the lived
+sequence of a real visit or the competence of a real worker.** Every finding was
+verified against the *deployed* CCZ, not just the Nova blueprint.
+
+### observable-before-derived
+
+- **App:** Deliver
+- **Trigger:** always, for any visit/encounter form that records an outcome,
+  disposition, or status that summarizes how the encounter went.
+- **Parameters:** `<OUTCOME_ID>` (the outcome field id), the PDD's enumerated
+  outcome values.
+- **Enforced by:** `pdd-to-deliver-app-eval § field_answerability` — a required
+  non-hidden field whose value is determined by fields ordered after it caps the
+  dimension at ≤3.
+- **Origin:** ace#979. The hh-poverty-targeting Deliver form asked "What was the
+  outcome of this visit?" as **question 1**, with 20+ fields relevance-gated on
+  the answer — so the FLW had to *declare* the outcome before the app would let
+  them collect the evidence for it.
+
+**Brief paragraph (verbatim):**
+
+> REQUIRED — Ask only what the user can observe; COMPUTE what is derived. Never
+> ask for a value that is a function of answers not yet given. An outcome /
+> disposition / status field (`<OUTCOME_ID>`) is almost always derived: it
+> summarizes the encounter, so it cannot be answered before the encounter has
+> happened. Order the form as the real-world sequence actually unfolds, asking at
+> each step ONLY what the user knows at that step, then compute the outcome as a
+> hidden calculate from those observations. For a household/doorstep visit the
+> canonical sequence is: (1) is the dwelling occupied? (observation) (2) if
+> occupied, is an eligible respondent available? (observation) (3) if yes, read
+> the consent script and record consent yes/no (4) if consent yes, the substantive
+> instrument (roster, indicators, photo, GPS). Then:
+> `<OUTCOME_ID> = if(occupied = 'no', 'vacant', if(eligible_respondent = 'no',
+> 'no_eligible_respondent', if(consent = 'no', 'refused', 'completed')))`.
+> Relevance-gate downstream questions on the OBSERVATIONS (e.g.
+> `consent = 'yes'`), never on the derived outcome. A user-facing outcome question
+> placed before its own inputs is a build defect, not a style choice.
+
+### constraint-locality
+
+- **App:** Deliver
+- **Trigger:** always, for any form carrying `constraint` / `validate`
+  expressions.
+- **Enforced by:** `pdd-to-deliver-app-eval § field_answerability`, plus the
+  **mechanical bind check** in `app-release-qa` (no LLM — parses each `<bind>` in
+  the released CCZ and flags any `constraint` referencing a node outside its own
+  nodeset).
+- **Origin:** ace#980 — two independent instances in one form. `gps_onsite_confirm`
+  carried `constraint="number(selected-at(/data/gps, 3)) <= 50"` with the message
+  "recapture the location", on a screen with no location widget; `i1_zone` ("In
+  which zone does the household live?") carried
+  `constraint="count(/data/roster) >= 1"`, blocking the FLW over a roster several
+  screens earlier.
+
+**Brief paragraph (verbatim):**
+
+> REQUIRED — Constraint locality: a `constraint` / `validate` MUST be enforceable
+> on the screen where it fires. If satisfying the message requires navigating to a
+> DIFFERENT question, the constraint is attached to the wrong question — move it
+> to the node it is actually about. Concretely: a GPS-accuracy rule belongs on the
+> geopoint question itself (`selected-at(., 3) <= <MINIMUM_M>`), NEVER on a later
+> confirmation question; a repeat-cardinality rule ("roster must have ≥1 row")
+> belongs on the repeat itself or on a gate **immediately** following it — never
+> on an unrelated later question. Every `constraint` expression should reference
+> only `.` (the question itself), same-repeat siblings, or the repeat it directly
+> guards; a constraint reaching out to a node the user cannot edit from this
+> screen is a build defect. Wrapping the foreign reference in a hidden calculate
+> does NOT make it local — the check resolves calculates transitively. The
+> `validate_msg` must name an action the user can take RIGHT NOW, on THIS screen.
+
+### consent-script-floor
+
+- **App:** Deliver
+- **Trigger:** the PDD requires recorded consent (any form with a consent gate).
+- **Enforced by:** `pdd-to-deliver-app-eval § consent_floor` — binary hard-gate,
+  surfaces `[BLOCKER]`.
+- **Origin:** ace#983. The built consent script covered purpose / voluntary /
+  may-stop / confidential, and omitted **where the data goes** and **that
+  participation does not guarantee selection** — on a survey whose entire purpose
+  is deciding who gets into a benefit program.
+
+**Brief paragraph (verbatim):**
+
+> REQUIRED — Consent-script floor: any recorded-consent script MUST contain ALL of
+> these elements, in plain read-aloud language: (a) the purpose of the survey;
+> (b) that participation is voluntary; (c) that the respondent may stop at any
+> time; (d) that responses are kept confidential; (e) **where the data goes / who
+> will see it** — name that it leaves the interviewer and reaches the implementing
+> organization and any downstream program owner who will act on it; (f) **whether
+> participation guarantees any benefit** — when the survey feeds an eligibility,
+> targeting, or enrollment decision made elsewhere, the script MUST state
+> explicitly that taking part does NOT guarantee selection or assistance.
+> Elements (e) and (f) are the ones builds omit, and they matter most on exactly
+> the programs where a household has the strongest incentive to misreport: a
+> script that says "to help target support to families who need it most" while
+> hiding that most respondents will not be enrolled both misleads the respondent
+> and manufactures the misreporting the verification rules exist to catch.
+
+### threshold-coherence-flag
+
+- **App:** Deliver (with `connect-opp-setup` for the Connect-side half).
+- **Trigger:** the PDD fixes ≥2 numeric thresholds that constrain the same
+  physical quantity.
+- **Enforced by:** `pdd-to-deliver-app-eval § threshold_coherence` — binary
+  hard-gate: an incoherent pair that was compiled *without* a build-memo entry
+  surfaces `[BLOCKER]`.
+- **Origin:** ace#984. The PDD dedups households at `< 15m` while the built form
+  accepts GPS readings with accuracy up to `50m` — so the discriminator carries no
+  signal (honest neighbours flag as duplicates; real duplicates read far apart).
+  ACE compiled both numbers without ever comparing them.
+
+**Brief paragraph (verbatim):**
+
+> REQUIRED — Threshold coherence: when two configured numbers constrain the same
+> physical quantity, CHECK them against each other and surface any conflict in the
+> build memo rather than silently compiling both. Pairs to check on every build:
+> GPS de-duplication radius vs accepted GPS accuracy tolerance (a dedup radius at
+> or below the worst accepted accuracy is meaningless); form duration floor vs a
+> realistic completion time for the actual item count; max payable visits/day vs
+> a realistic per-visit duration; any score threshold vs the instrument's
+> attainable score range (compute the true min/max from the point values — a
+> lookup table covering 0–100 for an instrument that can score 102 is a defect).
+> Picking the value may be a PM decision and not ACE's; NOTICING the incoherence
+> is always ACE's job. Record each checked pair and its verdict in the build memo.
+
+### discriminating-assessment-items
+
+- **App:** Learn
+- **Trigger:** any scored assessment (pre-test, post-test, knowledge check).
+- **Enforced by:** `pdd-to-learn-app-eval § assessment_discrimination` — a
+  dimension with a **mandatory blind-guess probe** (the judge must attempt each
+  item cold and report a per-item guessable/not-guessable table).
+- **Origin:** ace#981. All 10 post-assessment items in hh-poverty-targeting were
+  one virtuous answer + three absurd distractors ("Keep asking until they agree",
+  "Fill in the answers yourself", "You got tired and left"), so a worker who read
+  nothing scores 100% and the 80% Deliver-unlock gate is decorative.
+  **`pdd-to-learn-app-eval` scored that app 9.4/10** — and its `instructional_depth`
+  criterion already said items must be "anti-guess (plausible distractors)". The
+  prose criterion existed and did not bite, which is why the eval side of this
+  component is an executed probe rather than another adjective.
+
+**Brief paragraph (verbatim):**
+
+> REQUIRED — Assessment items MUST discriminate. An item earns its place only if a
+> worker who has NOT studied the modules would get it wrong. Therefore: (a) EVERY
+> distractor must be plausible to an untrained worker — a real misconception, a
+> defensible-sounding wrong practice, or a near-miss on a real rule (off-by-one
+> threshold, right action wrong trigger, correct-for-a-different-case); (b) the
+> "one obviously-virtuous option + N absurd options" shape is PROHIBITED — if the
+> correct answer is identifiable purely by picking the most responsible-sounding
+> option, the item tests nothing; (c) each item must be answerable ONLY from
+> program-specific content actually taught in a module — cite the module it tests;
+> (d) prefer items keyed to concrete program specifics (the actual threshold, the
+> actual required evidence, the actual instrument wording) over generic
+> professional-ethics sentiment; (e) test-yourself: for each item, ask "could
+> someone who read none of the modules pick this by elimination?" If yes, rewrite
+> the distractors. Do NOT pad the bank to hit an item count with items that fail
+> this test — a shorter discriminating bank beats a longer decorative one.
+
+### instrument-grounded-examples
+
+- **App:** Learn
+- **Trigger:** the Learn app teaches administration of a fixed instrument
+  (scorecard, questionnaire, protocol) that the Deliver app implements.
+- **Enforced by:** `pdd-to-learn-app-eval § assessment_discrimination` (examples
+  criterion) — a teaching example referencing a question absent from the
+  instrument is a deduction.
+- **Origin:** ace#982. Module 1 taught neutral-vs-leading administration using
+  *roof material* and *number of rooms* — neither is in the Nigeria PPI. The one
+  place training addressed the highest-risk FLW behavior did it on questions the
+  FLW will never ask.
+
+**Brief paragraph (verbatim):**
+
+> REQUIRED — Teaching examples MUST come from the real instrument. Every worked
+> example, good/bad pair, and practice item in the Learn app MUST be built from a
+> question that actually appears in the instrument the Deliver app implements —
+> never invented survey content. The Learn app is authored from the same PDD that
+> fixes the instrument, so there is no excuse for teaching against questions the
+> worker will never ask. Where a teaching point needs a good/bad pair, draw it
+> from the real item and prefer the items with the HIGHEST coaching risk:
+> self-reported consumption and recall questions (did your household eat X this
+> week) are far easier to lead than observable assets, so they are where a
+> leading-questions lesson earns its keep. Example of the right shape, for a
+> consumption indicator: bad/leading — "You haven't had eggs this week, have you?"
+> said with a tone that signals which answer helps the household qualify; good —
+> read the item verbatim, then wait quietly.
+
+---
+
 ## Change log
 
 | Date | Change | By |
@@ -483,4 +685,5 @@ authored from the PDD per run):
 | 2026-06-25 | **Added standing app-build instructions** (per-app guidance applied to every Nova build). New components: `learn-app-naming`, `end-of-form-previous`, `assessment-display-lifecycle` (Learn); `grid-menu-display` (Learn + Deliver); `deliver-app-naming`, `live-photo-capture`, `no-section-module-language` (Deliver). Extends the library beyond field/calculate/constraint patterns to app- and form-level build settings (naming, menu display, end-of-form navigation, photo appearance, assessment form Display Conditions, terminology). The "Other → free-text follow-up" requirement was already covered by `structured-capture`, so no separate component was added. Several components are CommCare-HQ settings not surfaced by Nova's documented MCP tools; they are emitted as brief instructions and the first Learn + Deliver test build must confirm (a) Nova applies them and (b) they are readable by the eval. Eval dimensions marked (NEW) are pending addition to the eval skills. | Sarvesh |
 | 2026-07-01 | **Enforcement landed for the blueprint-readable components.** After the 2026-06-25 test builds confirmed which instructions Nova actually applies, added binary `[BLOCKER]` hard-gates (NOT weighted dimensions — no rubric-weight rebalancing) to the eval skills: `naming_convention` + `form_navigation` in `pdd-to-learn-app-eval`, `naming_convention` + `terminology` in `pdd-to-deliver-app-eval`. A violation forces suite verdict `fail`. The three HQ-layer components (`grid-menu-display`, `live-photo-capture`, `assessment-display-lifecycle`) remain provisional/unenforced pending the post-build step in `docs/superpowers/specs/2026-06-25-post-build-hq-settings-automation.md`. | Sarvesh |
 | 2026-07-15 | **Post-build spike resolved the three HQ-layer components.** (1) `assessment-display-lifecycle` → **WON'T-DO** as a Display Condition (case-less Learn apps have no app-readable state for a `form_filter`); deprecated + removed from the `pdd-to-learn-app` emit-checklist; the behavior is already delivered Connect-side by `assessment-gate`. (2) `live-photo-capture` → verify side is now live on `main` (`app-release-qa` camera-only check, dimagi-internal/ace#867); decided always-on for Deliver (superset of #867's PDD-conditional verify); auto-apply via `commcare_patch_xform` is pending one live probe (no tool fetches the draft XForm yet). (3) `grid-menu-display` → verifiable from `suite.xml`, auto-apply pending a write-mechanism probe (HQ endpoint vs Playwright). Both apply-automations are tracked as `commcare-setup.residuals[]` per #867. | Sarvesh |
+| 2026-07-27 | **Walkability components (first external domain-expert iteration).** Sophie Feintuch reviewed `hh-poverty-targeting/20260722-1341` and found 6 defect classes ACE's own evals passed (ace#979–#984). New components: `observable-before-derived`, `constraint-locality`, `consent-script-floor`, `threshold-coherence-flag` (Deliver); `discriminating-assessment-items`, `instrument-grounded-examples` (Learn). Root cause shared across all six: the build was graded against the PDD and a structural bar, never against **the lived sequence of a real visit or the competence of a real worker**. Two enforcement lessons baked in: (1) `constraint-locality` is checked **mechanically** in `app-release-qa` (bind-level, no LLM) because the class is 100% detectable; (2) `assessment_discrimination` is an **executed blind-guess probe**, not a prose criterion — `instructional_depth` already required "anti-guess (plausible distractors)" and still scored the decorative bank 9.4/10, so the fix is forcing the judge to show per-item work. Every finding verified against the deployed CCZ, not the Nova blueprint. | ACE (Sophie Feintuch review) |
 | 2026-07-17 | **Built the post-build auto-apply (`app-hq-settings`).** New atoms `commcare_get_form_source` + `commcare_set_menu_display`; new Phase-3 skill `app-hq-settings` (Step 2.65, between `app-deploy` and `app-release`) patches `appearance="acquire"` onto Deliver image uploads and sets `display_style=grid` per module on both apps, then clears the matching `residuals[]`. `live-photo-capture` and `grid-menu-display` flip from provisional to **applied** (verified by `app-release-qa`). Fail-soft on this initial rollout (errors leave the residual open + are caught by `app-release-qa`, never halt Phase 3); end-to-end live validation lands on the first post-install runs. | Sarvesh |
