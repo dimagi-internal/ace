@@ -700,3 +700,40 @@ describe('probeRecipeSanity — failure class: group-field-list-per-question-wal
     expect(verdict.failures.find((x) => x.class === 'group-field-list-per-question-walk')).toBeUndefined();
   });
 });
+
+describe('probeRecipeSanity — observed records WHICH probe ran', () => {
+  it('reports field_data_supplied=false and inert counters without fields', () => {
+    const verdict = probeRecipeSanity({
+      recipes: [recipeBody('J1.yaml', '- launchApp')],
+      novaApps: [HEALTHY_LEARN_APP],
+      connectOpp: LIVE_OPP,
+    });
+    expect(verdict.observed.field_data_supplied).toBe(false);
+    expect(verdict.observed.max_label_screen_run).toBe(0);
+    expect(verdict.observed.nova_groups_seen).toBe(0);
+  });
+
+  it('reports the label run and group count when fields ARE supplied', () => {
+    const verdict = probeRecipeSanity({
+      recipes: [recipeBody('journey-learn.yaml', '- launchApp')],
+      novaApps: [LABEL_HEAVY_LEARN_APP, GROUPED_DELIVER_APP],
+      connectOpp: LIVE_OPP,
+    });
+    expect(verdict.observed.field_data_supplied).toBe(true);
+    expect(verdict.observed.max_label_screen_run).toBe(4);
+    expect(verdict.observed.nova_groups_seen).toBe(1);
+  });
+
+  it('reports field_data_supplied=true even when only ONE app carries fields', () => {
+    // Mixed input is the realistic Phase 6 case (learn fetched, deliver
+    // not). The flag says "some checks ran", the counters say how much.
+    const verdict = probeRecipeSanity({
+      recipes: [recipeBody('journey-learn.yaml', '- launchApp')],
+      novaApps: [HEALTHY_DELIVER_APP, LABEL_HEAVY_LEARN_APP],
+      connectOpp: LIVE_OPP,
+    });
+    expect(verdict.observed.field_data_supplied).toBe(true);
+    expect(verdict.observed.max_label_screen_run).toBe(4);
+    expect(verdict.observed.nova_groups_seen).toBe(0);
+  });
+});

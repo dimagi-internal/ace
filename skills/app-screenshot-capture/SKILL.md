@@ -218,6 +218,14 @@ remediation):
 | `brief-label-drift` | Recipe has a `tapOn:text:"X"` matcher where X matches a PDD-brief naming pattern (`^[LFM]\d+ — `, `^Stage \d+ — `). Nova rewrites these during autobuild and the matcher won't resolve live. Re-author via `/ace:step app-test-cases`: read the live label from Nova `get_form`/`get_module` and use it verbatim. |
 | `deliver-smoke-rewalks-learn` | Re-author the Deliver smoke as resume-only (`connect-resume-opp` → `deliver-launch.yaml`) via `/ace:step app-test-cases`. The Learn leg already completes Learn. |
 
+**Record which probe actually ran.** Copy `observed.field_data_supplied`,
+`observed.max_label_screen_run` and `observed.nova_groups_seen` into the
+verdict. A clean verdict with `field_data_supplied: false` is **weaker
+than it looks** — it means the screen-shape checks never ran, so the
+chain check was field-blind and `group-field-list-per-question-walk`
+could not fire at all. Treat that as a WARN and name the missing
+`nova_get_form` call, rather than reporting an unqualified pass.
+
 On any failure, halt with the **incomplete-mode verdict shape** (see
 Step 9), `verdict: incomplete`, and a per-class
 PLATFORM auto_surfaced entry naming the remediation. Do NOT proceed
