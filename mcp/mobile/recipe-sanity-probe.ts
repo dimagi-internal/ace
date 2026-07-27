@@ -71,6 +71,23 @@ export interface SanityVerdict {
     live_opp_name: string | null;
     /** OPP_NAME the recipe expects (from envVars / parameters). */
     recipe_opp_name: string | null;
+    /** Whether ANY supplied form carried `fields[]`.
+     *
+     * **Read this before trusting a clean verdict.** When false, the two
+     * screen-shape checks did NOT run: the form-advance chain check is
+     * field-blind (and false-positives on label-heavy Learn apps), and
+     * `group-field-list-per-question-walk` cannot fire at all. A verdict
+     * is otherwise byte-identical whether those checks ran or were inert,
+     * which is exactly the "configured vs configured *correctly*" gap
+     * CLAUDE.md names — so it gets recorded in the verdict YAML. */
+    field_data_supplied: boolean;
+    /** Longest run of consecutive `label` screens found (0 without field
+     * data). The form-advance chain threshold is this + 2. */
+    max_label_screen_run: number;
+    /** How many Nova `group` field-lists were seen (0 without field
+     * data). Zero on an app that HAS groups means the caller passed
+     * `fields` without `children[]`. */
+    nova_groups_seen: number;
   };
 }
 
@@ -168,6 +185,9 @@ export function probeRecipeSanity(inputs: ProbeInputs): SanityVerdict {
   // inert when callers don't supply `fields` (see NovaAppSlice).
   const maxLabelRun = maxConsecutiveLabelScreens(inputs.novaApps);
   const groupScreens = collectGroupScreens(inputs.novaApps);
+  const fieldDataSupplied = inputs.novaApps.some((app) =>
+    app.modules.some((mod) => mod.forms.some((form) => form.fields !== undefined)),
+  );
 
   for (const recipe of inputs.recipes) {
     const params = extractRecipeParameters(recipe);
@@ -419,6 +439,9 @@ export function probeRecipeSanity(inputs: ProbeInputs): SanityVerdict {
       recipe_form_names: [...recipeFormNames].sort(),
       live_opp_name: inputs.connectOpp.display_name,
       recipe_opp_name: recipeOppName,
+      field_data_supplied: fieldDataSupplied,
+      max_label_screen_run: maxLabelRun,
+      nova_groups_seen: groupScreens.length,
     },
   };
 }
