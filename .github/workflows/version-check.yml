@@ -51,35 +51,64 @@ jobs:
           echo ""
           echo "✓ Version bump verified: $BASE_VERSION → $PR_VERSION"
 
-      - name: Check .claude-plugin/plugin.json agrees with VERSION
+      - name: Check ALL version files agree with VERSION
         run: |
-          # VERSION and .claude-plugin/plugin.json are TWO sources of the same
-          # fact and must move together. They serve different readers:
-          #   VERSION            → this gate, /ace:update's upgrade check
-          #   plugin.json        → Claude Code's plugin registry (what actually
-          #                        gets INSTALLED) and /ace:update's verify step
+          # FOUR files carry the same version and must move together. They are
+          # the exact set `scripts/version-bump.sh` writes — that script is the
+          # sanctioned way to bump, and this gate is what catches a hand-edit
+          # that skipped it.
           #
-          # Nothing enforced the agreement, so four consecutive PRs bumped
-          # VERSION alone (0.13.666→670) while plugin.json sat at 0.13.667.
-          # Symptom: `/ace:update` reported an upgrade was available (VERSION),
-          # installed it, then failed its own verification with
-          # "MISMATCH: installed v0.13.670 but GitHub has v0.13.667"
-          # (plugin.json) — and the auto-updater had been silently installing
-          # the stale 0.13.667 the whole time, so merged fixes never went live.
+          #   VERSION            → this gate, /ace:update's upgrade check
+          #   plugin.json        → Claude Code's plugin registry: WHAT ACTUALLY
+          #                        GETS INSTALLED, and /ace:update's verify step
+          #   package.json       → npm tooling, `bin/ace-doctor` consistency check
+          #   marketplace.json   → what `/plugin marketplace` resolves
+          #
+          # History: four consecutive PRs hand-bumped VERSION alone
+          # (0.13.666→670) while the others sat at 0.13.667. `/ace:update` read
+          # VERSION, correctly reported an upgrade, installed it, then failed its
+          # own verification against plugin.json with
+          # "MISMATCH: installed v0.13.670 but GitHub has v0.13.667" — a message
+          # that reads like a corrupt install. Meanwhile the auto-updater had
+          # been resolving the stale 0.13.667 the whole time, so merged fixes
+          # never reached a running session (ace#987).
+          #
+          # The first version of this gate checked only VERSION vs plugin.json
+          # and would NOT have caught package.json or marketplace.json drifting
+          # — the same bug one file over. Checking all four closes that.
           PR_VERSION=$(cat VERSION | tr -d '[:space:]')
-          PLUGIN_VERSION=$(node -e "console.log(require('./.claude-plugin/plugin.json').version)")
+          echo "VERSION: $PR_VERSION"
 
-          echo "VERSION:             $PR_VERSION"
-          echo "plugin.json version: $PLUGIN_VERSION"
+          fail=0
+          check() {
+            local label="$1" actual="$2"
+            printf '  %-34s %s\n' "$label" "$actual"
+            if [ "$actual" != "$PR_VERSION" ]; then
+              echo "::error::$label ($actual) disagrees with VERSION ($PR_VERSION)."
+              fail=1
+            fi
+          }
 
-          if [ "$PR_VERSION" != "$PLUGIN_VERSION" ]; then
+          check ".claude-plugin/plugin.json" \
+            "$(node -e "console.log(require('./.claude-plugin/plugin.json').version)")"
+          check "package.json" \
+            "$(node -e "console.log(require('./package.json').version)")"
+          check ".claude-plugin/marketplace.json" \
+            "$(node -e "
+              const m = require('./.claude-plugin/marketplace.json');
+              const vs = m.version ? [m.version]
+                : (m.plugins || []).map(p => p.version).filter(Boolean);
+              const uniq = [...new Set(vs)];
+              console.log(uniq.length === 1 ? uniq[0] : JSON.stringify(vs));
+            ")"
+
+          if [ "$fail" -ne 0 ]; then
             echo ""
-            echo "::error::VERSION ($PR_VERSION) and .claude-plugin/plugin.json ($PLUGIN_VERSION) disagree."
-            echo ""
-            echo "Bump BOTH in the same commit. plugin.json is the one Claude Code"
-            echo "installs from — if it lags, merged code never reaches a session."
+            echo "Bump every version file in the same commit — use the sanctioned path:"
+            echo "    scripts/version-bump.sh"
+            echo "Hand-editing VERSION alone is what caused ace#987."
             exit 1
           fi
 
           echo ""
-          echo "✓ VERSION and plugin.json agree: $PR_VERSION"
+          echo "✓ All version files agree: $PR_VERSION"
