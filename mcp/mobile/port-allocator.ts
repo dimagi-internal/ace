@@ -191,6 +191,29 @@ export async function resolveEmulatorPair(): Promise<{ console: number; adbBridg
 }
 
 /**
+ * Decide whether an OCCUPIED emulator console port is a fatal boot error.
+ *
+ * Fatal **only** when the operator pinned the port via
+ * `ACE_MOBILE_EMULATOR_PORT`. A pinned port is a promise that this exact
+ * console port is ours; a squatter on it is unrecoverable and deserves the
+ * loud cross-user remediation message.
+ *
+ * In auto-allocation mode a busy console port is ROUTINE, not fatal:
+ * `resolveEmulatorPair` probes upward from 5554 in even steps and returns the
+ * first free pair. Treating a busy 5554 as fatal there defeats the very
+ * allocator that exists to survive this collision — most often a different
+ * macOS user account running its own ACE emulator on the default port, which
+ * the current user can neither see via `lsof` nor kill. Live repro:
+ * bednet-spot-check run 20260728-2222, Phase 6 — foreign user held 5554, the
+ * allocator would have picked the free 5556, but the pre-check threw first.
+ */
+export function occupiedConsolePortIsFatal(
+  consolePortEnv: string | undefined = process.env.ACE_MOBILE_EMULATOR_PORT,
+): boolean {
+  return !!consolePortEnv?.trim();
+}
+
+/**
  * Write this MCP session's lock file recording its allocated ports.
  * Called by the AVD backend after both `resolveAdbServerPort` and
  * `resolveEmulatorPair` succeed, when the spawn of adb/qemu is about

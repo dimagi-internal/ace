@@ -6,6 +6,7 @@ import {
   findFreeEmulatorPair,
   resolveAdbServerPort,
   resolveEmulatorPair,
+  occupiedConsolePortIsFatal,
   MIN_EMULATOR_CONSOLE_PORT,
   MAX_EMULATOR_CONSOLE_PORT,
 } from '../../../mcp/mobile/port-allocator.js';
@@ -139,6 +140,30 @@ describe('port-allocator: findFreeEmulatorPair', () => {
     const found = await findFreeEmulatorPair(MIN_EMULATOR_CONSOLE_PORT + 1);
     expect(found.console % 2).toBe(0);
     expect(found.console).toBeGreaterThanOrEqual(MIN_EMULATOR_CONSOLE_PORT);
+  });
+});
+
+/**
+ * Regression: a busy console port must NOT be fatal under auto-allocation.
+ *
+ * `avd.ts`'s cross-user pre-check used to hardcode 5554 and throw whenever it
+ * was occupied — which runs BEFORE `getAllocatedPorts()`, so the probe-and-pick
+ * allocator never got consulted. On a multi-user macOS host where another
+ * account holds 5554, that made every Phase 6 boot fail 100% of the time even
+ * though 5556 was free. Live repro: bednet-spot-check run 20260728-2222.
+ */
+describe('port-allocator: occupiedConsolePortIsFatal', () => {
+  it('is NOT fatal when auto-allocating (env unset) — allocator picks the next free pair', () => {
+    expect(occupiedConsolePortIsFatal(undefined)).toBe(false);
+  });
+
+  it('is NOT fatal when the env var is empty/whitespace (still auto-allocation)', () => {
+    expect(occupiedConsolePortIsFatal('')).toBe(false);
+    expect(occupiedConsolePortIsFatal('   ')).toBe(false);
+  });
+
+  it('IS fatal when the operator pinned the port — that promise cannot be kept', () => {
+    expect(occupiedConsolePortIsFatal('5580')).toBe(true);
   });
 });
 
