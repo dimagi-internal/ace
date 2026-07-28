@@ -18,7 +18,7 @@
 # The MCP server loads from $CLAUDE_PLUGIN_DATA/.env (plugin) or ./.env (dev).
 # All secret references resolve from the Agent-Ace vault in Dimagi's 1Password —
 # ACE's OWN vault, per the fleet per-agent vault split (each agent reads only its
-# own `op://Agent-<Name>` vault). The legacy shared AI-Agents vault still holds
+# own per-agent vault, named for the agent). The legacy shared AI-Agents vault holds
 # copies of these items and is intentionally left intact for now, but it is NO
 # LONGER the source for this template — add new ACE secrets to Agent-Ace.
 #
