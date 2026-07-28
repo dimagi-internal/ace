@@ -28,7 +28,7 @@
 # Env overrides:
 #   ACE_GWS_KEY_OP_DOC  1Password Document item name for the GWS service-account
 #                       key (default: "ACE - Google Service Account")
-#   ACE_OP_VAULT        1Password vault that holds ACE secrets (default: "AI-Agents")
+#   ACE_OP_VAULT        1Password vault that holds ACE secrets (default: "Agent-Ace")
 #   OP_SERVICE_ACCOUNT_TOKEN  if set, op uses this and skips --account flag
 #
 # Exit status: 0 on success, 1 on any FAIL the user must fix.
@@ -68,7 +68,7 @@ EXIT_CODE=0
 mark_fail() { EXIT_CODE=1; }
 
 # ---- defaults / config
-OP_VAULT="${ACE_OP_VAULT:-AI-Agents}"
+OP_VAULT="${ACE_OP_VAULT:-Agent-Ace}"
 GWS_DOC_NAME="${ACE_GWS_KEY_OP_DOC:-ACE - Google Service Account}"
 
 # ---- plugin root detection (matches bin/ace-doctor self-mode logic)
