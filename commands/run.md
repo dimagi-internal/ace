@@ -34,27 +34,46 @@ Run the full ACE lifecycle for a Connect opportunity.
     approval. Use for high-touch operations or training.
   - `auto` — never pause for any gate. For unattended batch runs
     (e.g. eval calibration). `[BLOCKER]` concerns still escalate.
-- `--ace-web-url URL` — after the orchestrator completes, invoke the
-  `upload-transcript` skill to POST the run's stream-json transcript to
-  `<URL>/api/ingest/upload`. **Smart default:** if this flag is omitted
-  *and* `ACE_WEB_PAT_TOKEN` is set in the environment, default to
-  `https://labs.connect.dimagi.com/ace`. If the env var is not set,
-  skip the upload silently. Explicit `--ace-web-url` always wins
-  (including `--ace-web-url ''` to force-disable).
+- `--ace-web-url URL` — on run exit, invoke the `upload-transcript`
+  skill to POST the run's stream-json transcript to
+  `<URL>/api/ingest/upload`.
 
-  **Pre-flight gate (when `--ace-web-url` is set explicitly).** Before
-  starting Phase 1, verify `ACE_WEB_PAT_TOKEN` is present and
-  non-empty in the resolved `.env`. If missing, stop the run with:
+  **Uploading is OFF by default and requires an explicit opt-in.** A
+  session transcript is the operator's whole working record — every
+  command, path, and reply — so shipping it to a shared server is a
+  decision the operator makes, never one ACE infers. There are exactly
+  two ways to turn it on:
 
-  > `--ace-web-url` was set but `ACE_WEB_PAT_TOKEN` is unset in
-  > `<resolved-env-path>`. The post-run upload would fail with an
-  > authentication error after the full lifecycle had already burned
-  > runtime. Mint a per-human PAT via `/ace:ace-web-pat-mint` (one-time
-  > per machine, ~30s gh-style browser flow) or drop `--ace-web-url`.
+  | Opt-in | Effect |
+  |---|---|
+  | `--ace-web-url URL` on the invocation | upload to `URL` for this run |
+  | `ACE_WEB_UPLOAD_SESSIONS=1` in the resolved `.env` | upload to `--ace-web-url` if given, else `$ACE_WEB_BASE_URL` |
 
-  This is the explicit-flag case only. The smart-default path silently
-  skips the upload when the token is missing — it's not user-asked,
-  so the run shouldn't error.
+  Neither present → **no upload**, silently. `--ace-web-url ''` forces
+  it off even when `ACE_WEB_UPLOAD_SESSIONS=1`.
+
+  **A present `ACE_WEB_PAT_TOKEN` is NOT an opt-in.** This used to be a
+  "smart default" — the upload switched itself on whenever the token was
+  set. Since `/ace:setup` provisions that token as a matter of course,
+  every operator who ran setup was uploading silently. Holding a
+  credential is not consent to use it; do not reintroduce this
+  (`test/session-upload-opt-in.test.ts` fails if you do).
+
+  **Pre-flight gate (when the upload is opted in).** Before starting
+  Phase 1, verify `ACE_WEB_PAT_TOKEN` is present and non-empty in the
+  resolved `.env`. If missing, stop the run with:
+
+  > The ace-web transcript upload is enabled (`<which opt-in>`) but
+  > `ACE_WEB_PAT_TOKEN` is unset in `<resolved-env-path>`. The upload
+  > would fail with an authentication error after the full lifecycle
+  > had already burned runtime. Mint a per-human PAT via
+  > `/ace:ace-web-pat-mint` (one-time per machine, ~30s gh-style
+  > browser flow), or turn the upload off (drop `--ace-web-url` /
+  > unset `ACE_WEB_UPLOAD_SESSIONS`).
+
+  Failing fast here is right *because* the upload was asked for. When
+  it wasn't opted in there is nothing to check and nothing to warn
+  about.
 - `--dry-run` — execute all skills but log effectful actions to
   `comms-log/dry-run-<step>.md` instead of performing them. Emails are
   not sent, apps are not published, tickets are not created. LLM-as-Judge
@@ -119,13 +138,16 @@ See `agents/ace-orchestrator.md` for full detail.
    generation and resume-detection — `commands/run.md` does NOT
    pre-generate a slug here.
 
-1a. Resolve `--ace-web-url` default:
-   - If the flag was explicitly passed (including an empty string),
-     use that value (empty string = disable upload).
-   - Otherwise, if `$ACE_WEB_PAT_TOKEN` is non-empty, set
-     `--ace-web-url=https://labs.connect.dimagi.com/ace` implicitly and
-     tell the operator "defaulting --ace-web-url to labs".
-   - Otherwise, leave unset (skip the post-run upload hook).
+1a. Resolve whether the transcript upload is enabled (default: **no**):
+   - If `--ace-web-url` was explicitly passed, use that value — an empty
+     string disables the upload and wins over everything below.
+   - Otherwise, if `$ACE_WEB_UPLOAD_SESSIONS` is `1`, enable the upload
+     against `$ACE_WEB_BASE_URL` and tell the operator: "session upload
+     ON via ACE_WEB_UPLOAD_SESSIONS → `<url>`" — so it is never a
+     surprise that it happened.
+   - Otherwise, **disabled**. Do not consult `ACE_WEB_PAT_TOKEN`; a
+     provisioned credential is not an opt-in (see the flag docs above).
+     Say nothing — a run that isn't uploading has nothing to report.
 
 2. **Execute the orchestration procedure inline at top-level.** Read
    `agents/ace-orchestrator.md` and follow it as a procedure document
@@ -144,9 +166,17 @@ See `agents/ace-orchestrator.md` for full detail.
    - Sandbox flag (if set)
    - Any existing state from GDrive (if resuming)
 
-3. After the orchestration procedure completes (all phases run or a
-   gate halts the run), if `--ace-web-url` is non-empty (explicit or
-   defaulted), dispatch the `upload-transcript` skill with:
+3. When the upload is enabled (step 1a), dispatch `upload-transcript`
+   on **every exit path** — not just a clean finish. Concretely: all
+   phases completed, a gate halted the run, a `[BLOCKER]` stopped it, an
+   upstream dependency died, an unrecoverable error was hit, *or* you
+   are ending the session early to hand off (context budget, a resume
+   boundary, the operator saying stop). The runs worth reviewing are
+   disproportionately the ones that did not finish; a rule that only
+   fires on success collects exactly the wrong sample. If a phase is
+   mid-flight, upload anyway and let the partial record stand.
+
+   Dispatch the `upload-transcript` skill with:
      - `base_url=<URL>`
      - `opp_slug=<opp>` so the uploaded Session is linked under the
        opp in the Workbench's linked-chats panel (strongly recommended

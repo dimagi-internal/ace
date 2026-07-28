@@ -282,6 +282,24 @@ ACE_WEB_BASE_URL=https://labs.connect.dimagi.com/ace
 # (jjackson/ace — run-summary-url-not-first-class gap).
 ACE_WEB_WORKSPACE=dimagi-team
 
+# ── ace-web session upload (OFF by default — opt in deliberately) ──
+#
+# When set to `1`, /ace:run uploads its Claude session transcript to
+# ace-web on exit (see commands/run.md). Unset or any other value = no
+# upload. `--ace-web-url ''` on an invocation overrides this to off.
+#
+# A transcript is the operator's entire working record — every command,
+# path, and reply — so publishing it to a shared server is an explicit
+# choice. Turn this on when you WANT your sessions reviewable (e.g. a
+# CLI operator who needs Jonathan's help debugging a run); leave it off
+# otherwise. Uploading also requires ACE_WEB_PAT_TOKEN below, but note
+# that holding that token is NOT itself an opt-in: it used to be treated
+# as one, which silently enrolled everyone who ran /ace:setup
+# (dimagi-internal/ace, 2026-07-28). Enforced by
+# test/session-upload-opt-in.test.ts.
+#
+# ACE_WEB_UPLOAD_SESSIONS=1   # uncomment to enable
+
 # ── ace-web Personal Access Token (per-human, per-machine) ─────────
 #
 # NOT 1Password-backed. Minted via /ace:ace-web-pat-mint (gh-style
