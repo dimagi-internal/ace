@@ -210,7 +210,7 @@ This repo is dogfooded by the `canopy` plugin. **Per-run evidence lives in Drive
 ACE has two classes of credential state — confusing them is the #1 source of friction across workstations. Session cookies are bound to TLS fingerprints + CSRF rotation; copying them between machines is *worse* than re-login (intermittent, hard to debug). **Don't sync `~/.ace/` via 1Password or git.**
 
 **1Password-backed (set up once per machine, then static):**
-- `${CLAUDE_PLUGIN_DATA}/.env` — every key in `.env.tpl` (most `ACE_*`, `OCS_*`, `CONNECT_*`, `LABS_MCP_TOKEN`, etc.). Source of truth: 1Password vault `AI-Agents`. Rotate there and re-run **`/ace:setup --force-env`** (NOT a raw `op inject -o <plugin-data>/.env` — that drops local-only keys like `ACE_WEB_PAT_TOKEN`; `bin/ace-setup` preserves them).
+- `${CLAUDE_PLUGIN_DATA}/.env` — every key in `.env.tpl` (most `ACE_*`, `OCS_*`, `CONNECT_*`, `LABS_MCP_TOKEN`, etc.). Source of truth: 1Password vault `Agent-Ace` (ACE's own vault, per the fleet per-agent vault split; the legacy shared `AI-Agents` vault still holds copies but is no longer read). Rotate there and re-run **`/ace:setup --force-env`** (NOT a raw `op inject -o <plugin-data>/.env` — that drops local-only keys like `ACE_WEB_PAT_TOKEN`; `bin/ace-setup` preserves them).
 - `${CLAUDE_PLUGIN_DATA}/gws-sa-key.json` — Google SA key. Static (SA keys don't expire).
 
 **Local-only secrets in `.env` (preserved across `op inject`):** `ACE_WEB_PAT_TOKEN` (per-human, minted via `/ace:ace-web-pat-mint`) and any other key not in `.env.tpl`. `bin/ace-setup` snapshots non-template keys before each `op inject` and re-appends them in a marker block (`# --- ACE local-only secrets ...`). Template keys always win — 1P is authoritative for declared keys.

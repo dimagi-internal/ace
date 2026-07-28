@@ -5,6 +5,18 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.13.679 — 2026-07-28
+
+**ACE now reads its secrets from its own `Agent-Ace` 1Password vault (fleet per-agent vault split).**
+
+`ada`/`echo`/`eva`/`hal` already resolved entirely from `op://Agent-<Name>`; ACE still had 31 of 32 refs on the shared `AI-Agents` vault (only `canopy-pat` had moved). All 32 `.env.tpl` refs now resolve from `op://Agent-Ace`, and `bin/ace-setup`'s `ACE_OP_VAULT` default flips `AI-Agents` → `Agent-Ace` (that default is what fetches the `ACE - Google Service Account` Document). `bin/ace-doctor`, `CLAUDE.md`, and the template header name `Agent-Ace` as the source of truth.
+
+The three UUID-based refs are remapped to Agent-Ace item IDs and stay UUID-based on purpose — item titles containing parentheses (`ACE - OCS REST API Key (connect-ace)`, `… (Vaccine_Coach)`, `ACE - CommCare HQ API Key (All Projects)`) do not resolve as name-based refs.
+
+All 21 ACE-owned items now exist in `Agent-Ace`; 14 were copied for this change. **`AI-Agents` is left intact** — nothing was moved or deleted, only copied. It is simply no longer read by ACE. Rotate ACE secrets in `Agent-Ace` from now on.
+
+Verified: all 32 refs resolve from `Agent-Ace` (32/32), every repointed ref returns a byte-identical value to its `AI-Agents` original (sha1 compare, 32/32), and the GWS service-account Document round-trips byte-identical — the guard that matters, since `op inject` is all-or-nothing and a silently-empty `.env` has burned us before (ace#753).
+
 ## 0.13.645 — 2026-07-25
 
 **Reviewer decision-overrides now bind to the next run (`inputs/decision-overrides.yaml`, ace#933).**

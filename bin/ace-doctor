@@ -1067,7 +1067,7 @@ if [ -n "$ENV_FILE" ]; then
       elif printf '%s' "$RENDER_ERR" | grep -qiE 'sign[- ]?in|session|authoriz|not currently|account .* (not found|isn.t)|no account|could not find account'; then
         : # op not signed in / account not configured on this machine — informational skip, not a config defect
       else
-        fail "env_tpl_render: op inject -i .env.tpl FAILS — one or more op:// refs are unresolvable, so a real op inject writes an EMPTY .env for every consumer (jjackson/ace#753)" "fix the field named below in 1Password (vault AI-Agents), or comment the ref out of .env.tpl until the field exists:
+        fail "env_tpl_render: op inject -i .env.tpl FAILS — one or more op:// refs are unresolvable, so a real op inject writes an EMPTY .env for every consumer (jjackson/ace#753)" "fix the field named below in 1Password (vault Agent-Ace), or comment the ref out of .env.tpl until the field exists:
 $(printf '%s' "$RENDER_ERR" | sed 's/^/      /')"
       fi
     fi

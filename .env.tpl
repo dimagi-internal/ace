@@ -16,7 +16,11 @@
 #   op inject -i .env.tpl -o .env --account dimagi.1password.com
 #
 # The MCP server loads from $CLAUDE_PLUGIN_DATA/.env (plugin) or ./.env (dev).
-# All secret references resolve from the AI-Agents vault in Dimagi's 1Password.
+# All secret references resolve from the Agent-Ace vault in Dimagi's 1Password —
+# ACE's OWN vault, per the fleet per-agent vault split (each agent reads only its
+# own `op://Agent-<Name>` vault). The legacy shared AI-Agents vault still holds
+# copies of these items and is intentionally left intact for now, but it is NO
+# LONGER the source for this template — add new ACE secrets to Agent-Ace.
 #
 # ⚠️ AUTHOR CONTRACT (jjackson/ace#753): adding a 1Password secret reference here
 # REQUIRES the field to ALREADY EXIST — `op read '<the ref>'` must succeed first.
@@ -33,11 +37,11 @@
 OCS_BASE_URL=https://www.openchatstudio.com
 
 # Team slug
-OCS_TEAM_SLUG=op://AI-Agents/ACE - Open Chat Studio/Teams/team_slug
+OCS_TEAM_SLUG=op://Agent-Ace/ACE - Open Chat Studio/Teams/team_slug
 
 # OCS login (Playwright backend)
-OCS_USERNAME=op://AI-Agents/ACE - Open Chat Studio/username
-OCS_PASSWORD=op://AI-Agents/ACE - Open Chat Studio/password
+OCS_USERNAME=op://Agent-Ace/ACE - Open Chat Studio/username
+OCS_PASSWORD=op://Agent-Ace/ACE - Open Chat Studio/password
 
 # REST backend API token (for observation tools: list/get chatbots, sessions).
 # Referenced by UUID because the 1Password item name contains parentheses
@@ -45,7 +49,7 @@ OCS_PASSWORD=op://AI-Agents/ACE - Open Chat Studio/password
 # handle in name-based references (even when percent-encoded). UUID refs
 # are slightly less self-documenting but op-inject resolves them cleanly.
 # If the 1Password item is ever recreated, update this UUID.
-OCS_API_TOKEN=op://AI-Agents/ccfc36cyidvecda5tzhseuouie/credential
+OCS_API_TOKEN=op://Agent-Ace/hxgm3tn37wwmr2vpneoffjem5i/credential
 
 # ── Multi-team REST tokens (optional) ────────────────────────────────
 # The REST observation atoms (`ocs_get_me`, `ocs_list_chatbots`,
@@ -57,22 +61,24 @@ OCS_API_TOKEN=op://AI-Agents/ccfc36cyidvecda5tzhseuouie/credential
 # enforced framework-side at the HTTP method layer.
 #
 # Add one line per team you also want read access to:
-OCS_API_TOKEN_VACCINE_COACH=op://AI-Agents/h6m2u53h364ifenhu2toe67ceu/credential
+# UUID reference for the same parentheses reason as OCS_API_TOKEN above
+# ("ACE - OCS REST API Key (Vaccine_Coach)").
+OCS_API_TOKEN_VACCINE_COACH=op://Agent-Ace/suwzmq2q2jzh5qjdibfngspmvi/credential
 
 # Golden template (created by `/ace:ocs-bootstrap-template`, stored in 1Password)
-OCS_GOLDEN_TEMPLATE_ID=op://AI-Agents/ACE - Open Chat Studio/Config/golden_template_id
+OCS_GOLDEN_TEMPLATE_ID=op://Agent-Ace/ACE - Open Chat Studio/Config/golden_template_id
 
 # LLM provider and embedding model for indexed collections (from OCS team config)
-OCS_LLM_PROVIDER_ID=op://AI-Agents/ACE - Open Chat Studio/Config/llm_provider_id
-OCS_EMBEDDING_MODEL_ID=op://AI-Agents/ACE - Open Chat Studio/Config/embedding_model_id
+OCS_LLM_PROVIDER_ID=op://Agent-Ace/ACE - Open Chat Studio/Config/llm_provider_id
+OCS_EMBEDDING_MODEL_ID=op://Agent-Ace/ACE - Open Chat Studio/Config/embedding_model_id
 
 # Shared Connect knowledge collection
-OCS_SHARED_COLLECTION_ID=op://AI-Agents/ACE - Open Chat Studio/Config/shared_collection_id
+OCS_SHARED_COLLECTION_ID=op://Agent-Ace/ACE - Open Chat Studio/Config/shared_collection_id
 
 # ── Gmail (GOG CLI) ─────────────────────────────────────────────────
 
-ACE_GMAIL_ACCOUNT=op://AI-Agents/ACE - Open Chat Studio/Config/gmail_account
-ACE_GMAIL_CLIENT=op://AI-Agents/ACE - Open Chat Studio/Config/gmail_client
+ACE_GMAIL_ACCOUNT=op://Agent-Ace/ACE - Open Chat Studio/Config/gmail_account
+ACE_GMAIL_CLIENT=op://Agent-Ace/ACE - Open Chat Studio/Config/gmail_client
 
 # ── Solicitations ───────────────────────────────────────────────────
 
@@ -90,7 +96,7 @@ ACE_DRIVE_ROOT_FOLDER_ID=1HThsA_0Lr5p1OdI5r-aQ446HlNBaySLz
 # expected domain before pushing apps.
 #
 # Sourced from 1Password — add a `domain` field to the
-# `ACE - CommCareHQ` item in the AI-Agents vault with the value for
+# `ACE - CommCareHQ` item in the Agent-Ace vault with the value for
 # your deployment (e.g. `connect-ace-prod` for production). For a
 # staging-domain dev workflow, point this at a different 1Password
 # field or override the resolved `.env` after `op inject`.
@@ -98,14 +104,14 @@ ACE_DRIVE_ROOT_FOLDER_ID=1HThsA_0Lr5p1OdI5r-aQ446HlNBaySLz
 # != connect-ace-prod after op inject.
 
 ACE_HQ_BASE_URL=https://www.commcarehq.org
-ACE_HQ_DOMAIN=op://AI-Agents/ACE - CommCareHQ/domain
+ACE_HQ_DOMAIN=op://Agent-Ace/ACE - CommCareHQ/domain
 
 # CommCare HQ API key for ace@dimagi-ai.com on connect-ace-prod.
 # Connect's `connect_create_opportunity` REST endpoint validates this
 # against CCHQ before it will create the opp. Item name contains
 # parentheses → use UUID reference (same pattern as OCS_API_TOKEN above).
 # If the 1Password item is ever recreated, update this UUID.
-ACE_HQ_API_KEY=op://AI-Agents/juii2ov6xju5s4n73qlz7jutli/credential
+ACE_HQ_API_KEY=op://Agent-Ace/t4k5nbc2iamjnnengs2lbgd5ey/credential
 
 # ── Multi-cluster HQ (talk to several CommCare servers at once) ───────
 #
@@ -128,9 +134,9 @@ ACE_HQ_API_KEY=op://AI-Agents/juii2ov6xju5s4n73qlz7jutli/credential
 # EU cluster (eu.commcarehq.org) — self-registered ace@dimagi-ai.com account.
 # Session-less API-key auth; api_key_all_domains is the ALL_DOMAINS-scoped key.
 ACE_HQ_EU_BASE_URL=https://eu.commcarehq.org
-ACE_HQ_EU_USERNAME="op://AI-Agents/ACE - CommCareHQ EU/username"
-ACE_HQ_EU_PASSWORD="op://AI-Agents/ACE - CommCareHQ EU/password"
-ACE_HQ_EU_API_KEY="op://AI-Agents/ACE - CommCareHQ EU/api_key_all_domains"
+ACE_HQ_EU_USERNAME="op://Agent-Ace/ACE - CommCareHQ EU/username"
+ACE_HQ_EU_PASSWORD="op://Agent-Ace/ACE - CommCareHQ EU/password"
+ACE_HQ_EU_API_KEY="op://Agent-Ace/ACE - CommCareHQ EU/api_key_all_domains"
 ACE_HQ_EU_DOMAIN=connect-ace-prod
 
 # ── Connect (ace-connect MCP) ────────────────────────────────────────
@@ -146,8 +152,8 @@ CONNECT_BASE_URL=https://connect.dimagi.com
 
 # CommCare HQ credentials for the ACE service account. ace-connect drives
 # the HQ OAuth flow with these to mint a Connect session cookie.
-ACE_HQ_USERNAME=op://AI-Agents/ACE - CommCareHQ/username
-ACE_HQ_PASSWORD=op://AI-Agents/ACE - CommCareHQ/password
+ACE_HQ_USERNAME=op://Agent-Ace/ACE - CommCareHQ/username
+ACE_HQ_PASSWORD=op://Agent-Ace/ACE - CommCareHQ/password
 
 # ── Nova (CommCare app builder MCP) ──────────────────────────────────
 #
@@ -171,7 +177,7 @@ ACE_HQ_PASSWORD=op://AI-Agents/ACE - CommCareHQ/password
 # headersHelper reads NOVA_API_KEY from the new shell env. Pass
 # /ace:setup --no-shell-edit to opt out of the rc edit. See
 # playbook/integrations/nova-integration.md.
-NOVA_API_KEY=op://AI-Agents/ACE - Nova/api_key
+NOVA_API_KEY=op://Agent-Ace/ACE - Nova/api_key
 
 # ── Connect Labs (solicitations / reviews / awards) ─────────────────
 #
@@ -181,15 +187,15 @@ NOVA_API_KEY=op://AI-Agents/ACE - Nova/api_key
 # To rotate: a labs admin runs:
 #   python manage.py mcp_create_token --user ace@dimagi-ai.com --name ACE-plugin --ttl-days 0
 # then drops the printed token into the 1Password item below.
-LABS_MCP_TOKEN=op://AI-Agents/ACE - Connect Labs/mcp_token
+LABS_MCP_TOKEN=op://Agent-Ace/ACE - Connect Labs/mcp_token
 
 # ─── ACE Mobile Emulation ──────────────────────────────────────────
 # Local-Mac-only. Populated once via /ace:mobile-bootstrap.
-ACE_E2E_PHONE=op://AI-Agents/connect-test-user/phone
-ACE_E2E_PHONE_LOCAL=op://AI-Agents/connect-test-user/phone-local
-ACE_E2E_COUNTRY_CODE=op://AI-Agents/connect-test-user/country-code
-ACE_E2E_PIN=op://AI-Agents/connect-test-user/pin
-ACE_E2E_BACKUP_CODE=op://AI-Agents/connect-test-user/backup-code
+ACE_E2E_PHONE=op://Agent-Ace/connect-test-user/phone
+ACE_E2E_PHONE_LOCAL=op://Agent-Ace/connect-test-user/phone-local
+ACE_E2E_COUNTRY_CODE=op://Agent-Ace/connect-test-user/country-code
+ACE_E2E_PIN=op://Agent-Ace/connect-test-user/pin
+ACE_E2E_BACKUP_CODE=op://Agent-Ace/connect-test-user/backup-code
 ACE_E2E_NAME="ACE Test"
 ACE_AVD_NAME=ACE_Pixel_API_34
 
@@ -237,12 +243,12 @@ ACE_CONNECT_APK_VERSION=2.63.2
 # Used by the app-multimedia-coverage skill to attach display-only images
 # to CommCare app questions.
 #
-# 1Password item: "Content Generator API" in AI-Agents vault.
+# 1Password item: "Content Generator API" in the Agent-Ace vault.
 #   - hostname  → CONTENT_GENERATOR_URL
 #   - credential → CONTENT_GENERATOR_API_KEY (Google Cloud API key)
 
-CONTENT_GENERATOR_URL=op://AI-Agents/Content Generator API/hostname
-CONTENT_GENERATOR_API_KEY=op://AI-Agents/Content Generator API/credential
+CONTENT_GENERATOR_URL=op://Agent-Ace/Content Generator API/hostname
+CONTENT_GENERATOR_API_KEY=op://Agent-Ace/Content Generator API/credential
 
 # ── Video rendering (connect-videos local renders) ──────────────────
 #
@@ -251,7 +257,7 @@ CONTENT_GENERATOR_API_KEY=op://AI-Agents/Content Generator API/credential
 # (and the `/ace:video-render-local` skill that wraps it) — the renderer
 # refuses to silently drop voice when a spec asks for elevenlabs. Same
 # 1Password item ace-web's own .env.tpl uses.
-ELEVENLABS_API_KEY=op://AI-Agents/ACE - ElevenLabs API Key/credential
+ELEVENLABS_API_KEY=op://Agent-Ace/ACE - ElevenLabs API Key/credential
 
 # ── ace-web base URL (cloud mobile backend + ace-web automation) ────
 #
@@ -301,7 +307,7 @@ ACE_WEB_WORKSPACE=dimagi-team
 # ─── ACE Drive Templates ───────────────────────────────────────────
 # File IDs of Google Drive templates ACE skills copy from at runtime.
 # Provisioned once per environment via per-template bootstrap scripts,
-# then stashed in the 1Password item `AI-Agents/ACE - Drive Templates`
+# then stashed in the 1Password item `Agent-Ace/ACE - Drive Templates`
 # and re-injected via `op inject`. Add new template IDs to that item
 # rather than scattering them across product-specific items (the OCS
 # golden template is OCS-specific and stays in `ACE - Open Chat Studio`).
@@ -312,16 +318,16 @@ ACE_WEB_WORKSPACE=dimagi-team
 # op inject parses double-curlies as ref delimiters even inside comments).
 # Iterate branding/layout in Slides directly; do NOT change stencil
 # objectIds or placeholder tokens (they're wired to `lib/training-deck-spec.ts`).
-ACE_TRAINING_DECK_TEMPLATE_ID=op://AI-Agents/ACE - Drive Templates/training_deck_template_id
+ACE_TRAINING_DECK_TEMPLATE_ID=op://Agent-Ace/ACE - Drive Templates/training_deck_template_id
 
 # Partnership pitch-deck template (Google Slides). Optional — falls back
 # to ACE_TRAINING_DECK_TEMPLATE_ID when unset (Phase 1 reuses the same 14
 # stencils). Set to a dedicated deck id once pitch-specific stencils ship.
-ACE_PARTNERSHIP_DECK_TEMPLATE_ID=op://AI-Agents/ACE - Drive Templates/partnership_deck_template_id
+ACE_PARTNERSHIP_DECK_TEMPLATE_ID=op://Agent-Ace/ACE - Drive Templates/partnership_deck_template_id
 
 # Work-order template (Google Doc). Bootstrap: `npx tsx scripts/bootstrap-work-order-template.ts`.
 # See playbook/integrations/work-order-template.md for token contract.
-WORK_ORDER_TEMPLATE_ID=op://AI-Agents/ACE - Drive Templates/work_order_template_id
+WORK_ORDER_TEMPLATE_ID=op://Agent-Ace/ACE - Drive Templates/work_order_template_id
 
 # ── canopy-web ──────────────────────────────────────────────────────
 # This agent's OWN canopy-web PAT, so its API/MCP calls are attributed to
