@@ -14,6 +14,16 @@ deployed ace-web can render it as a chat Session. Authenticates with a
 per-human Bearer PAT (`ACE_WEB_PAT_TOKEN`) minted via
 `/ace:ace-web-pat-mint`.
 
+**This skill is opt-in and is never invoked implicitly.** A transcript is
+the operator's full working record, so publishing it is always a
+deliberate act. `/ace:run` dispatches this skill only when the operator
+passed `--ace-web-url URL` or set `ACE_WEB_UPLOAD_SESSIONS=1`
+(`commands/run.md` step 1a); a human may also invoke it directly. The
+presence of `ACE_WEB_PAT_TOKEN` does **not** enable it — that credential
+is provisioned by `/ace:setup` for everyone, and treating it as consent
+silently enrolled every operator until 2026-07-28. Enforced by
+`test/session-upload-opt-in.test.ts`.
+
 ## Inputs
 
 - `base_url` — deployed ace-web URL, e.g. `https://labs.connect.dimagi.com/ace`.
