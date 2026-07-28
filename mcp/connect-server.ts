@@ -403,16 +403,18 @@ const VerificationFlagsZ = z.object({
     id: z.number().int().optional(),
   })).optional(),
   form_field_rules: z.array(z.object({
-    name: z.string(),
-    question_path: z.string(),
-    question_value: z.string(),
-    deliver_unit_id: z.number().int(),
-    id: z.number().int().optional(),
-  })).optional(),
+    name: z.string().max(25, 'form_field_rules[].name is capped at 25 characters by Connect')
+      .describe('Short rule label. MAX 25 CHARS — server-enforced and previously undocumented. Connect renders the overflow as a form-level "Ensure this value has at most 25 characters" message that is NOT inside a <ul class="errorlist">, so the POST comes back HTTP 200 with no success banner and the ENTIRE formset silently fails to save — including any other rules in the same request. Bisected live 2026-07-28 on opp 71c6401c: a 26-char name blocked the whole batch; 16 chars saved. Capped here so it fails loud in Zod before the round-trip, same rationale as short_description\'s 50-char trap.'),
+    question_path: z.string().describe('XForm question path, e.g. `/data/community_meeting/meeting_type`. Read it from the RELEASED CCZ, not from the PDD prose.'),
+    question_value: z.string().describe('The STORED option value that must match (e.g. `community_meeting`), never the display label (`Community meeting`).'),
+    deliver_unit_id: z.number().int().describe('Deliver-unit server PK — the `server_id` from `connect_list_deliver_units`, same value `required_deliver_units` takes.'),
+    id: z.number().int().optional().describe('Existing row PK; omit for new rows.'),
+  })).optional()
+    .describe('Per-deliver-unit form-field-value rules, written to Connect\'s `form_json` formset. Since ace#1013 established that `duplicate` / `gps` / `catchment_areas` / `location` / `check_attachments` no longer exist on the verification form, this is the ONLY surviving surface for enforcing a PDD Evidence-Model Layer A predicate server-side. Additive and idempotent: existing rows are preserved and a rule is appended only when no row already carries the same (question_path, question_value, deliver_unit) triple.'),
 });
 
 server.tool('connect_set_verification_flags',
-  'Set per-opportunity verification toggles via the `/opportunity/<id>/verification_flags_config/` HTML form (not yet on the public REST API; routes through Playwright). Supports the top-level booleans (`duplicate` / `gps` / `catchment_areas`), the numeric `gps_radius_meters` field (renamed from the historic `location: boolean` typo), submission-window times, and the per-deliver-unit attachment / duration checks. Re-posts every existing formset row verbatim so changes are additive.',
+  'Set per-opportunity verification config via the `/opportunity/<id>/verification_flags_config/` HTML form (not on the public REST API; routes through Playwright). Re-posts every existing formset row verbatim, so changes are additive. WHAT ACTUALLY WORKS TODAY (live-verified 2026-07-28, dimagi-internal/ace#1013): only `form_field_rules`, `form_submission_start` / `form_submission_end`, and the per-deliver-unit `duration` are backed by fields that still exist on the form. `duplicate`, `gps`, `catchment_areas`, `gps_radius_meters` and `deliver_unit_checks[].check_attachments` are accepted for back-compat but the corresponding inputs are ABSENT from the page — Django drops them and this atom still returns ok, so do NOT treat setting them as enforcement. `form_field_rules` is therefore the only surface on which a PDD Evidence-Model Layer A predicate can be enforced server-side; it is additive and idempotent, and its `name` is capped at 25 chars (a longer name silently fails the WHOLE formset). Two caveats on the remaining fields: `deliver_unit_checks[].duration_seconds` is really MINUTES (the form label says so), and the response carries `form_field_rules_saved` — the count Connect actually persisted — which is the only evidence the write landed.',
   { organization_slug: z.string(), opportunity_id: z.string(), flags: VerificationFlagsZ },
   async (args) => runAtom(async () => (await client()).setVerificationFlags(args))
 );

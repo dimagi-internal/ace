@@ -497,7 +497,7 @@ Source: `mcp/connect-server.ts` — 55 atoms
 
 ### `connect_set_verification_flags`
 
-Set per-opportunity verification toggles via the `/opportunity/<id>/verification_flags_config/` HTML form (not yet on the public REST API; routes through Playwright). Supports the top-level booleans (`duplicate` / `gps` / `catchment_areas`), the numeric `gps_radius_meters` field (renamed from the historic `location: boolean` typo), submission-window times, and the per-deliver-unit attachment / dur…
+Set per-opportunity verification config via the `/opportunity/<id>/verification_flags_config/` HTML form (not on the public REST API; routes through Playwright). Re-posts every existing formset row verbatim, so changes are additive. WHAT ACTUALLY WORKS TODAY (live-verified 2026-07-28, dimagi-internal/ace#1013): only `form_field_rules`, `form_submission_start` / `form_submission_end`, and the per-d…
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|

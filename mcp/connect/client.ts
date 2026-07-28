@@ -102,7 +102,17 @@ export interface ConnectClient {
     organization_slug: string;
     opportunity_id: string;
     flags: VerificationFlags;
-  }): Promise<{ ok: true }>;
+  }): Promise<{
+    ok: true;
+    /**
+     * Rows Connect actually persisted in the `form_json` formset, read back
+     * after the POST (`form_json-INITIAL_FORMS`). Undefined when the read-back
+     * could not run. Callers verifying a `form_field_rules` write should assert
+     * this is >= the number of rules they sent — a bare `ok:true` is not
+     * evidence the rules landed (dimagi-internal/ace#1011).
+     */
+    form_field_rules_saved?: number;
+  }>;
   listDeliverUnits(args: {
     organization_slug: string;
     opportunity_id: string;

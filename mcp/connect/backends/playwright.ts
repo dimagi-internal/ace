@@ -485,6 +485,78 @@ export class PlaywrightBackend implements ConnectClient {
       }
     }
 
+    // `form_json` formset — the per-deliver-unit form-field-value rules
+    // ("flag unless <question_path> == <question_value>"). Until 0.13.x this
+    // was accepted by the Zod schema, typed in VerificationFlags, and then
+    // silently dropped: nothing between here and the POST ever read
+    // `flags.form_field_rules`, so the atom returned `{ok:true}` having
+    // written nothing (dimagi-internal/ace#1011).
+    //
+    // This matters more than the other flags: per ace#1013, `duplicate` /
+    // `gps` / `catchment_areas` / `location` / `check_attachments` no longer
+    // exist on Connect's verification form at all, which leaves `form_json`
+    // as the ONLY surviving surface on which a PDD's Evidence-Model Layer A
+    // predicate can actually be enforced server-side.
+    //
+    // Semantics: additive and idempotent. Existing rows (replayed verbatim
+    // above) are preserved; each requested rule is appended only when no
+    // existing row already carries the same (question_path, question_value,
+    // deliver_unit) triple, so re-running Phase 4 on the same opportunity
+    // does not accumulate duplicates.
+    if (flags.form_field_rules?.length) {
+      const rowIndices = new Set<number>();
+      for (const k of Object.keys(current)) {
+        const m = k.match(/^form_json-(\d+)-/);
+        if (m) rowIndices.add(Number(m[1]));
+      }
+
+      type JsonRow = { name: string; question_path: string; question_value: string; deliver_unit: string; id: string };
+      const rows: JsonRow[] = [];
+      for (const i of [...rowIndices].sort((a, b) => a - b)) {
+        const row: JsonRow = {
+          name: current[`form_json-${i}-name`] ?? '',
+          question_path: current[`form_json-${i}-question_path`] ?? '',
+          question_value: current[`form_json-${i}-question_value`] ?? '',
+          deliver_unit: current[`form_json-${i}-deliver_unit`] ?? '',
+          id: current[`form_json-${i}-id`] ?? '',
+        };
+        // Skip blank template rows Django renders for the "add another" slot.
+        if (row.question_path || row.id) rows.push(row);
+      }
+
+      const keyOf = (r: { question_path: string; question_value: string; deliver_unit: string }) =>
+        `${r.question_path} ${r.question_value} ${r.deliver_unit}`;
+      const seen = new Set(rows.map(keyOf));
+      for (const r of flags.form_field_rules) {
+        const row: JsonRow = {
+          name: r.name,
+          question_path: r.question_path,
+          question_value: r.question_value,
+          deliver_unit: String(r.deliver_unit_id),
+          id: r.id != null ? String(r.id) : '',
+        };
+        if (seen.has(keyOf(row))) continue;
+        seen.add(keyOf(row));
+        rows.push(row);
+      }
+
+      // Rewrite the formset from `rows` (the replayed keys are a subset of it).
+      for (const k of Object.keys(form)) {
+        if (/^form_json-\d+-/.test(k)) delete form[k];
+      }
+      rows.forEach((row, i) => {
+        form[`form_json-${i}-name`] = row.name;
+        form[`form_json-${i}-question_path`] = row.question_path;
+        form[`form_json-${i}-question_value`] = row.question_value;
+        form[`form_json-${i}-deliver_unit`] = row.deliver_unit;
+        form[`form_json-${i}-id`] = row.id;
+      });
+      form['form_json-TOTAL_FORMS'] = String(rows.length);
+      form['form_json-INITIAL_FORMS'] = current['form_json-INITIAL_FORMS'] ?? '0';
+      if (form['form_json-MIN_NUM_FORMS'] == null) form['form_json-MIN_NUM_FORMS'] = '0';
+      if (form['form_json-MAX_NUM_FORMS'] == null) form['form_json-MAX_NUM_FORMS'] = '1000';
+    }
+
     const postRes = await this.request.post(path, {
       form,
       maxRedirects: 0,
@@ -500,7 +572,24 @@ export class PlaywrightBackend implements ConnectClient {
           throw validationErrorFromHtml(respHtml, 'verification flags rejected');
         }
       }
-      return { ok: true };
+      // Read-back so callers get evidence, not just an HTTP outcome. A bare
+      // `{ok:true}` is what let ace#1011/#1013 persist unnoticed across every
+      // ACE run: Phase 4 reported "verification flags configured" while
+      // `form_json-INITIAL_FORMS` stayed 0 on every opportunity ever created.
+      // INITIAL_FORMS counts rows Django loaded from the DB, so re-reading it
+      // after the POST is a direct measure of what was actually persisted.
+      let form_field_rules_saved: number | undefined;
+      try {
+        const afterRes = await this.request.get(path);
+        if (afterRes.status() === 200) {
+          const after = extractFormFieldValues(await afterRes.text());
+          const initial = Number(after['form_json-INITIAL_FORMS']);
+          if (Number.isFinite(initial)) form_field_rules_saved = initial;
+        }
+      } catch {
+        // Read-back is diagnostic only — never fail a successful write on it.
+      }
+      return { ok: true, form_field_rules_saved };
     }
     throw await httpErrorFor(postRes, path, 'POST');
   };
