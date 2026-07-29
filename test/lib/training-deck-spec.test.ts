@@ -1,4 +1,8 @@
 import { describe, it, expect } from 'vitest';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import YAML from 'yaml';
 import {
   parseTrainingSpec,
   parseUnexpandedTrainingSpec,
@@ -1132,6 +1136,49 @@ describe('STENCIL_TEXT_BUILDERS', () => {
         expect(s.createShape.objectId.startsWith(pageId), `${key}: ${s.createShape.objectId}`).toBe(true);
         expect(s.createShape.elementProperties.pageObjectId).toBe(pageId);
       }
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Regression: the shipped spec skeleton must itself be schema-shaped.
+//
+// dimagi-internal/ace#1049 — `spec.template.yaml` carried scalar, quoted
+// placeholders for three fields the schema requires to be non-strings
+// (`manifest.common`/`opp` maps, `estimated_duration_minutes` number, agenda
+// `items` objects). The skeleton is the generator's worked example, so it
+// actively taught the wrong shape; specs filled from it failed parse only at
+// RENDER time, leaving Phase 6 with no deck and a failing products fence.
+// ---------------------------------------------------------------------------
+describe('spec.template.yaml skeleton shape (ace#1049)', () => {
+  const here = path.dirname(fileURLToPath(import.meta.url));
+  const skeletonPath = path.join(
+    here,
+    '../../templates/training-deck/connect-training-atomic/spec.template.yaml',
+  );
+  const raw = fs.readFileSync(skeletonPath, 'utf8');
+  const doc = YAML.parse(raw) as any;
+
+  it('declares manifest.common and manifest.opp as maps, not scalars', () => {
+    expect(typeof doc.manifest.common).toBe('object');
+    expect(Array.isArray(doc.manifest.common)).toBe(false);
+    expect(typeof doc.manifest.opp).toBe('object');
+    expect(Array.isArray(doc.manifest.opp)).toBe(false);
+  });
+
+  it('declares estimated_duration_minutes as a number, not a quoted string', () => {
+    expect(typeof doc.voice.estimated_duration_minutes).toBe('number');
+  });
+
+  it('declares agenda items as {label, duration} objects, not bare strings', () => {
+    const welcome = doc.modules.find((m: any) => m.id === 'welcome');
+    const agenda = welcome.slides.find((s: any) => s.layout === 'agenda');
+    expect(Array.isArray(agenda.items)).toBe(true);
+    expect(agenda.items.length).toBeGreaterThan(0);
+    for (const item of agenda.items) {
+      expect(typeof item).toBe('object');
+      expect(typeof item.label).toBe('string');
+      expect(typeof item.duration).toBe('string');
     }
   });
 });
