@@ -5,7 +5,7 @@ Shared conventions for ACE's Phase 8 solicitation skills:
 plus their evals (`solicitation-create-eval`, `solicitation-review-eval`)
 and the `llo-invite` invitation-side companion. All consume the
 connect-labs MCP and share a contract around the `solicitation` and
-`selected_llo` blocks under `run_state.yaml.phases.solicitation-management.outputs`
+`selected_llo` blocks under `run_state.yaml.phases.solicitation-management.products`
 in the current run's state file. Per-run only — every `/ace:run`
 publishes a fresh solicitation; awarded LLO lives only in the
 producing run's state.
@@ -49,8 +49,11 @@ See `skills/_eval-template.md § Mode Behavior (stock)`.
 
 ## run_state.yaml contract
 
-Phase 8 owns two `outputs` blocks under
-`runs/<run-id>/run_state.yaml.phases.solicitation-management`:
+Phase 8 owns two `products` blocks under
+`runs/<run-id>/run_state.yaml.phases.solicitation-management`. `products`
+is the contract name — it is what `lib/phase-products-schema.ts` validates,
+what the `verify_phase_products` atom checks, and what ace-web's summary
+page reads. There is no `outputs` block:
 
 ```yaml
 phases:
@@ -59,9 +62,11 @@ phases:
       solicitation:
         # Audit trail — populated by solicitation-create, updated by
         # solicitation-monitor, finalized by solicitation-review.
-        id: <labs solicitation UUID>
+        solicitation_id: <labs record id — an INTEGER, e.g. 10687, not a UUID>
         labs_program_id: <integer — labs's program id, NOT the Connect UUID>
-        public_url: https://labs.connect.dimagi.com/grants/solicitation/<id>/
+        url: <same as public_url — ace-web reads `url` and falls back to `public_url`>
+        public_url: https://labs.connect.dimagi.com/solicitations/<id>/
+        manage_url: https://labs.connect.dimagi.com/solicitations/<id>/edit/
         deadline: <ISO date>
         status: open | closed | awarded
         # ACE-side bookkeeping — the Connect program / opp this solicitation
@@ -70,10 +75,12 @@ phases:
         connect_program_id: <Connect program UUID>
         connect_opportunity_id: <Connect opp UUID, may change pre-award if the opp is repointed>
         awarded:
-          response_id: <labs response UUID>
-          awardee_org_slug: <Connect workspace slug>
+          response_id: <labs response id>
           awarded_at: <ISO timestamp>
-          awarded_by: <human operator>
+          awarded_org_slug: <Connect workspace slug>
+          awarded_org_name: <LLO display name>
+          awarded_contact_email: <LLO contact>
+          award_amount: <number>
 
       selected_llo:
         # Narrow contract — the single block Phase 9 reads to know who
@@ -84,6 +91,12 @@ phases:
         source: solicitation
         response_id: <labs response UUID>
 ```
+
+**URL shape is `/solicitations/<id>/` — there is NO `/labs/` prefix and no
+`/grants/` segment.** `connect-labs/config/urls.py` mounts the solicitations
+app at `/solicitations/`; the `/labs/` prefix is reserved for the
+authenticated Labs UI (overview, login, explorer). See
+`skills/solicitation-create/SKILL.md § Step 6`.
 
 Every Phase 8 skill reads and writes only the current run's
 `run_state.yaml`. Each `/ace:run` publishes a fresh solicitation; no
@@ -180,12 +193,29 @@ All Phase 8 artifacts live under:
 
 Per-skill subpaths:
 
-| Skill | Artifact path |
-|---|---|
-| `solicitation-create` | `solicitation-create_summary.md` |
-| `solicitation-monitor` | `solicitation-monitor_responses/<response_id>.yaml` |
-| `solicitation-review` | `solicitation-review_award-record.md` + verdict |
-| `llo-invite` | `llo-invite_outbound-emails/<llo>.md` |
+**`lib/artifact-manifest.ts` is the authoritative registry.** If this table
+ever disagrees with it, the manifest wins and this table is the bug — the
+phase artifact fence (`verify_phase_artifacts`) validates against the
+manifest, not against this file.
+
+`required` below is the manifest's own flag — what `verify_phase_artifacts`
+halts on. Note that only the eval verdict and the phase summary are
+`required: true`; the draft/published pair is `required: false` because a
+`--no-evals` or dry-run pass can legitimately stop short.
+
+| Skill | Artifact path | `required` |
+|---|---|---|
+| `solicitation-create` | `solicitation-create_draft.md` | false |
+| `solicitation-create` | `solicitation-create_published.md` | false |
+| `solicitation-create-eval` | `solicitation-create-eval_verdict.yaml` | **true** |
+| `llo-invite` | `llo-invite_invitations.md` | false — a no-op when the PDD names no `Preferred LLOs`; still write the file recording the skip |
+| `solicitation-monitor` | `solicitation-monitor_responses/` (one file per response) | false |
+| `solicitation-review` | `solicitation-review_scoring-rubric.md` | false |
+| `solicitation-review` | `solicitation-review_recommendation.md` | false |
+| `solicitation-review` | `solicitation-review_award-record.md` | false |
+| `solicitation-review-qa` | `solicitation-review-qa_result.yaml` | false |
+| `solicitation-review-eval` | `solicitation-review-eval_verdict.yaml` | false |
+| (phase) | `solicitation-management_summary.md` | **true** |
 
 ## Phase 8 → Phase 9 boundary
 
