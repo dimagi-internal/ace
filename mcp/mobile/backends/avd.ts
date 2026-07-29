@@ -5,7 +5,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { AvdBootError, AvdBootTimeoutError, AdbError } from '../errors.js';
 import type { AvdInfo, ApkInfo, UiDumpResult, SnapshotResult } from '../types.js';
-import { resolveAdbServerPort, resolveEmulatorPair, recordSessionLock, isTcpPortFree } from '../port-allocator.js';
+import { resolveAdbServerPort, resolveEmulatorPair, recordSessionLock, isTcpPortFree, occupiedConsolePortIsFatal } from '../port-allocator.js';
 import { withAllocatorMutex } from '../session-lock.js';
 
 // Per-phase budgets for the post-spawn three-phase boot wait.
@@ -781,7 +781,28 @@ export class AvdBackend {
         }
 
         // Still occupied → really is a foreign-user squatter or an
-        // unrelated non-qemu service. Throw the original error.
+        // unrelated non-qemu service.
+        //
+        // In AUTO-allocation mode that is not fatal: `getAllocatedPorts()`
+        // runs `resolveEmulatorPair()`, which probes upward from 5554 and
+        // returns the first FREE console+bridge pair. Throwing here would
+        // defeat that allocator before it is ever consulted — this sweep
+        // runs earlier in `ensureAvdRunning` than the allocation does — and
+        // would hard-fail every boot on a multi-user host where another
+        // account holds the default port. Only a PINNED port is a promise
+        // we can't keep.
+        if (!occupiedConsolePortIsFatal(consolePortEnv)) {
+          // eslint-disable-next-line no-console
+          console.warn(
+            `[ace-mobile] sweepStaleEmulatorState: console port ${consolePort} is ` +
+              `held by a process this session cannot manage (likely another macOS ` +
+              `user's emulator). Auto-allocation is on, so the port allocator will ` +
+              `pick the next free pair instead of failing.`,
+          );
+          return;
+        }
+
+        // Pinned port + squatter → unrecoverable. Throw the original error.
         throw new AvdBootError(
           '<sweep-stale-emulator-state>',
           `Emulator console port ${consolePort} is in use by a process this ACE ` +

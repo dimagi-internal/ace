@@ -191,6 +191,34 @@ export async function resolveEmulatorPair(): Promise<{ console: number; adbBridg
 }
 
 /**
+ * Decide whether an OCCUPIED emulator console port is a fatal boot error.
+ *
+ * Fatal **only** when the operator pinned the port via
+ * `ACE_MOBILE_EMULATOR_PORT`. A pinned port is a promise that this exact
+ * console port is ours; a squatter on it is unrecoverable and deserves the
+ * loud cross-user remediation message.
+ *
+ * In auto-allocation mode a busy console port is ROUTINE, not fatal:
+ * `resolveEmulatorPair` probes upward from 5554 in even steps and returns the
+ * first free pair. Treating a busy 5554 as fatal there defeats the very
+ * allocator that exists to survive this collision — most often a different
+ * macOS user account running its own ACE emulator on the default port, which
+ * the current user can neither see via `lsof` nor kill. Live repro:
+ * bednet-spot-check run 20260728-2222, Phase 6 — foreign user held 5554, the
+ * allocator would have picked the free 5556, but the pre-check threw first.
+ *
+ * `consolePortEnv` is a REQUIRED argument and is deliberately NOT defaulted to
+ * `process.env.ACE_MOBILE_EMULATOR_PORT`. A default would make the predicate
+ * read ambient env whenever a caller passed `undefined` (JS applies defaults to
+ * explicit `undefined`), so "auto-allocation mode" would silently become
+ * "whatever this machine happens to have exported" — untestable, and green or
+ * red depending on the developer's shell. Callers pass the value explicitly.
+ */
+export function occupiedConsolePortIsFatal(consolePortEnv: string | undefined): boolean {
+  return !!consolePortEnv?.trim();
+}
+
+/**
  * Write this MCP session's lock file recording its allocated ports.
  * Called by the AVD backend after both `resolveAdbServerPort` and
  * `resolveEmulatorPair` succeed, when the spawn of adb/qemu is about

@@ -6,6 +6,7 @@ import {
   findFreeEmulatorPair,
   resolveAdbServerPort,
   resolveEmulatorPair,
+  occupiedConsolePortIsFatal,
   MIN_EMULATOR_CONSOLE_PORT,
   MAX_EMULATOR_CONSOLE_PORT,
 } from '../../../mcp/mobile/port-allocator.js';
@@ -139,6 +140,51 @@ describe('port-allocator: findFreeEmulatorPair', () => {
     const found = await findFreeEmulatorPair(MIN_EMULATOR_CONSOLE_PORT + 1);
     expect(found.console % 2).toBe(0);
     expect(found.console).toBeGreaterThanOrEqual(MIN_EMULATOR_CONSOLE_PORT);
+  });
+});
+
+/**
+ * Regression: a busy console port must NOT be fatal under auto-allocation.
+ *
+ * `avd.ts`'s cross-user pre-check used to hardcode 5554 and throw whenever it
+ * was occupied — which runs BEFORE `getAllocatedPorts()`, so the probe-and-pick
+ * allocator never got consulted. On a multi-user macOS host where another
+ * account holds 5554, that made every Phase 6 boot fail 100% of the time even
+ * though 5556 was free. Live repro: bednet-spot-check run 20260728-2222.
+ */
+describe('port-allocator: occupiedConsolePortIsFatal', () => {
+  const savedEmu = process.env.ACE_MOBILE_EMULATOR_PORT;
+  afterEach(() => {
+    if (savedEmu === undefined) delete process.env.ACE_MOBILE_EMULATOR_PORT;
+    else process.env.ACE_MOBILE_EMULATOR_PORT = savedEmu;
+  });
+
+  it('is NOT fatal when auto-allocating (env unset) — allocator picks the next free pair', () => {
+    expect(occupiedConsolePortIsFatal(undefined)).toBe(false);
+  });
+
+  it('is NOT fatal when the env var is empty/whitespace (still auto-allocation)', () => {
+    expect(occupiedConsolePortIsFatal('')).toBe(false);
+    expect(occupiedConsolePortIsFatal('   ')).toBe(false);
+  });
+
+  it('IS fatal when the operator pinned the port — that promise cannot be kept', () => {
+    expect(occupiedConsolePortIsFatal('5580')).toBe(true);
+  });
+
+  /**
+   * Hermeticity guard. An earlier version of this predicate defaulted its
+   * parameter to `process.env.ACE_MOBILE_EMULATOR_PORT`. Because JS applies
+   * default parameters to an explicitly-passed `undefined`, the auto-allocation
+   * case then read ambient env and returned `true` on any machine that happened
+   * to export the pin — passing in CI and failing on a developer's box that had
+   * applied the very workaround this fix removes. The argument is required now;
+   * this locks that in.
+   */
+  it('ignores ambient ACE_MOBILE_EMULATOR_PORT — the argument is the only input', () => {
+    process.env.ACE_MOBILE_EMULATOR_PORT = '5580';
+    expect(occupiedConsolePortIsFatal(undefined)).toBe(false);
+    expect(occupiedConsolePortIsFatal('')).toBe(false);
   });
 });
 
