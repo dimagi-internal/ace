@@ -849,9 +849,99 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
   },
 
   // ── Synthetic Data and Workflows phase (Phase 7) ───────────────
-  // New in 0.13.x via Plan B Stages 1–4. The connect-labs synthetic
-  // generator + SEED workflows + canopy:walkthrough decks light up an
-  // opp's data story between training and solicitation.
+  // CONVERGED (Plan C, 2026-07-21): Phase 7 is the `ace-run` provider of the
+  // same pipeline `/ace:demo` uses — `demo-data-setup` → `demo-narrative` →
+  // canopy DDD. The REQUIRED set below is that pipeline's output. The Plan B
+  // chain (synthetic-narrative-plan → … → synthetic-summary) remains declared
+  // beneath it as a deprecated fallback, all `required: false`, until those
+  // skills are deleted from disk.
+  //
+  // Only fixed-name paths may be `required: true` — `diffArtifacts` does exact
+  // matching (modulo the doc-extension tolerance), so any path carrying a
+  // `<placeholder>` segment can never satisfy a required entry.
+
+  {
+    path: '7-synthetic/realized.json',
+    producedBy: 'demo-data-setup',
+    role: 'manifest',
+    consumedBy: ['demo-narrative', 'demo-data-setup-qa'],
+    phase: 'synthetic-data-and-workflows',
+    required: true,
+    description:
+      'THE handoff between the two halves of the phase: a FLAT JSON map of `${var}` → live labs dashboard URL. Carries `primary_par_url` plus one `<key>_par_url` per dashboard, each a `/labs/workflow/<def>/run/?run_id=<id>&opportunity_id=<opp>` deep-link. DDD substitutes these verbatim into scene URLs, so it must stay flat — a nested value renders a literal `${…}` into the filmed page.',
+  },
+  {
+    path: '7-synthetic/demo-data-setup_manifest.yaml',
+    producedBy: 'demo-data-setup',
+    role: 'manifest',
+    consumedBy: ['demo-narrative', 'demo-data-setup-qa'],
+    phase: 'synthetic-data-and-workflows',
+    required: true,
+    description:
+      'The generation contract for the synthetic dataset: pinned timeline anchor, FLW personas, outcome/field model keyed on the real deliver-app form paths, and the realised totals. Under the `ace-run` provider this is derived from the run\'s own PDD + built apps, not from a free-text brief.',
+  },
+  {
+    path: '7-synthetic/demo-data-setup-qa_result.yaml',
+    producedBy: 'demo-data-setup-qa',
+    role: 'qa-result',
+    consumedBy: ['opp-eval'],
+    phase: 'synthetic-data-and-workflows',
+    required: true,
+    description:
+      'Structural gate on the handoff, run BEFORE `demo-narrative` authors scenes against it: realized.json parses and is flat, every `<key>_par_url` is a real run deep-link (not the run picker or the definition page), planned dashboards match the realized map, the opp is labs-only (id ≥ 10000), the timeline is a pinned Monday, and deliver units were captured. A dead dashboard must not reach a stakeholder.',
+  },
+  {
+    path: '7-synthetic/why_brief.yaml',
+    producedBy: 'demo-narrative',
+    consumedBy: ['synthetic-data-and-workflows'],
+    phase: 'synthetic-data-and-workflows',
+    required: true,
+    description:
+      'canopy DDD `WhyBrief`: the problem statement, a grounded `spine[]` (each claim carrying non-assumed evidence), and typed `gaps[]` (RESEARCH / CAPABILITY / DECISION) for everything the demo cannot honestly assert. Gated by canopy `scripts.ddd.validate why_brief`.',
+  },
+  {
+    path: '7-synthetic/<narrative-slug>.yaml',
+    producedBy: 'demo-narrative',
+    consumedBy: ['synthetic-data-and-workflows'],
+    phase: 'synthetic-data-and-workflows',
+    required: false,
+    description:
+      'canopy DDD `UnifiedSpec` — personas, scenes on `${…_par_url}`, per-scene `concept_claim` + `provenance` + `features[]` + scripted `actions[]`. Named for the narrative slug, so it cannot be a fixed-path required entry. Gated by canopy `scripts.ddd.validate unified_spec`, `spec_qa`, and `narrative_coherence`.',
+  },
+  {
+    path: '7-synthetic/walkthroughs/walkthrough.mp4',
+    producedBy: 'synthetic-data-and-workflows',
+    consumedBy: [],
+    phase: 'synthetic-data-and-workflows',
+    required: false,
+    description:
+      'The rendered walkthrough, filmed against the LIVE labs dashboards. Optional because canopy\'s webm→mp4 conversion is a known-flaky render-infra step — the per-scene frames under `walkthrough-frames/` are the documented fallback deliverable.',
+  },
+  {
+    path: '7-synthetic/walkthroughs/scene_<N>_<slug>.png',
+    producedBy: 'synthetic-data-and-workflows',
+    consumedBy: [],
+    phase: 'synthetic-data-and-workflows',
+    required: false,
+    description:
+      'One full-page frame per scene, captured from the live dashboard during the render. The fallback deliverable when mp4 conversion fails, and the input the DDD concept/visual judges score.',
+  },
+  {
+    path: '7-synthetic/synthetic-data-and-workflows_summary.md',
+    producedBy: 'synthetic-data-and-workflows',
+    role: 'summary',
+    consumedBy: [],
+    phase: 'synthetic-data-and-workflows',
+    required: true,
+    description:
+      'Phase summary a Dimagi staffer forwards to a stakeholder: the live dashboard URLs, what the dataset is, which controls the platform actually enforces versus what only export-side analysis can catch, the metrics computed live, every placeholder stated as a placeholder, and the phase\'s own known gaps.',
+  },
+
+  // ── DEPRECATED (Plan B chain, superseded by Plan C above) ──────
+  // Retained so the fallback path still resolves while the retired skills
+  // remain on disk. All `required: false` — a converged Phase 7 run produces
+  // none of them, and requiring them fails `verify_phase_artifacts` on an
+  // otherwise-complete phase.
 
   {
     path: '7-synthetic/synthetic-narrative-plan.md',
@@ -944,7 +1034,7 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     role: 'verdict',
     consumedBy: ['opp-eval'],
     phase: 'synthetic-data-and-workflows',
-    required: true,
+    required: false, // deprecated (Plan B) — the converged Phase 7 does not run this skill
     description: 'LLM-as-Judge verdict on the narrative plan: PDD anchoring, cast realism, anomaly+coaching coherence, manifest schema validity, stakeholder narrative quality.',
   },
   {
@@ -980,7 +1070,7 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     role: 'verdict',
     consumedBy: ['opp-eval'],
     phase: 'synthetic-data-and-workflows',
-    required: true,
+    required: false, // deprecated (Plan B) — the converged Phase 7 does not run this skill
     description: 'LLM-as-Judge verdict on the data-generate run: record-count health, form schema coverage, warning honesty, manifest provenance, operator next steps.',
   },
   {
@@ -989,7 +1079,7 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     role: 'verdict',
     consumedBy: ['opp-eval'],
     phase: 'synthetic-data-and-workflows',
-    required: true,
+    required: false, // deprecated (Plan B) — the converged Phase 7 does not run this skill
     description: 'LLM-as-Judge verdict on workflow seeding: workflow wiring, KPI population, coaching-task creation, aggregation-mapping honesty, saved-runs deferral honesty.',
   },
   {
@@ -998,7 +1088,7 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     role: 'verdict',
     consumedBy: ['opp-eval'],
     phase: 'synthetic-data-and-workflows',
-    required: true,
+    required: false, // deprecated (Plan B) — the converged Phase 7 does not run this skill
     description: 'LLM-as-Judge verdict on workflow polish: narrative-data coherence, patch quality, smoke-render success, domain-language fit, mode honesty. Strictest gate (threshold 7.5) — polish is the headline.',
   },
   {
