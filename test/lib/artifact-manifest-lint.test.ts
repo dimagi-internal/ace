@@ -218,3 +218,70 @@ describe('artifact manifest lint', () => {
     }
   });
 });
+
+/**
+ * Phase 7 converged onto the /ace:demo pipeline (Plan C, 2026-07-21):
+ * `demo-data-setup` → `demo-narrative` → canopy DDD. The manifest's REQUIRED
+ * set went on declaring the retired Plan B chain's eval verdicts, so
+ * `verify_phase_artifacts` reported `0/4 required artifacts found` against a
+ * Phase 7 that had produced everything the converged pipeline produces —
+ * live dashboards, a validated narrative, and a rendered walkthrough.
+ * (hh-poverty-targeting/20260728-0705.)
+ *
+ * The retired entries stay declared (the deprecated skills are still on disk
+ * as a fallback) but must never be REQUIRED again, or the gate goes back to
+ * failing every converged run.
+ */
+describe('phase 7 required set tracks the converged pipeline', () => {
+  const PHASE = 'synthetic-data-and-workflows';
+
+  // Skills the converged pipeline does NOT run. Anything they produce is, by
+  // definition, not required for a Phase 7 to be complete.
+  const RETIRED_PRODUCERS = new Set([
+    'synthetic-narrative-plan',
+    'synthetic-narrative-plan-qa',
+    'synthetic-narrative-plan-eval',
+    'synthetic-data-generate',
+    'synthetic-data-generate-eval',
+    'synthetic-workflow-seed',
+    'synthetic-workflow-seed-eval',
+    'synthetic-workflow-polish',
+    'synthetic-workflow-polish-eval',
+    'synthetic-walkthrough-spec',
+    'synthetic-walkthrough-spec-qa',
+    'synthetic-walkthrough-spec-eval',
+    'synthetic-walkthrough-run',
+    'synthetic-summary',
+    'synthetic-summary-eval',
+  ]);
+
+  const phase7 = ARTIFACT_MANIFEST.filter((a) => a.phase === PHASE);
+  const required = phase7.filter((a) => a.required);
+
+  it('requires nothing produced by a retired Plan B skill', () => {
+    const offenders = required
+      .filter((a) => RETIRED_PRODUCERS.has(a.producedBy))
+      .map((a) => `${a.path} (producedBy: ${a.producedBy})`);
+    expect(offenders).toEqual([]);
+  });
+
+  it('requires the converged pipeline handoff, gate, narrative and summary', () => {
+    const requiredPaths = new Set(required.map((a) => a.path));
+    for (const p of [
+      '7-synthetic/realized.json',
+      '7-synthetic/demo-data-setup_manifest.yaml',
+      '7-synthetic/demo-data-setup-qa_result.yaml',
+      '7-synthetic/why_brief.yaml',
+      '7-synthetic/synthetic-data-and-workflows_summary.md',
+    ]) {
+      expect(requiredPaths, `${p} must be required for phase 7`).toContain(p);
+    }
+  });
+
+  it('never marks a placeholder path required — diffArtifacts matches exactly', () => {
+    // A path carrying a `<placeholder>` segment can never satisfy an exact
+    // match, so requiring one guarantees a permanently-failing gate.
+    const offenders = required.filter((a) => a.path.includes('<')).map((a) => a.path);
+    expect(offenders).toEqual([]);
+  });
+});
