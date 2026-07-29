@@ -8,13 +8,18 @@ source:
   pdd_doc_id: "{{PDD_DOC_ID}}"
   run_id: "{{RUN_ID}}"
 
+# `common` and `opp` are MAPS of alias -> Drive image URL, not scalars.
+# Emit `{}` for a pool that resolved to nothing (e.g. no screenshots were
+# captured) — `resolveManifest` handles empty maps, and image-bearing layouts
+# degrade to `content` as documented. A scalar here fails TrainingDeckSpecSchema.
 manifest:
-  common: "{{COMMON_MANIFEST}}"
-  opp: "{{OPP_MANIFEST}}"
+  common: {}   # e.g. { connect-signin-splash: "https://drive.google.com/uc?export=view&id=..." }
+  opp: {}      # e.g. { journey-learn-m1-content: "https://drive.google.com/uc?export=view&id=..." }
 
 voice:
   audience: flw
-  estimated_duration_minutes: "{{DURATION}}"
+  # NUMBER, not a quoted string — the schema requires z.number().
+  estimated_duration_minutes: 180
   language: "{{LANGUAGE}}"
 
 modules:
@@ -27,9 +32,14 @@ modules:
         subtitle: "FLW Training — {{DATE}}"
         date: "{{DATE}}"
       - id: agenda
+        # `items` is a LIST OF OBJECTS, each with `label` AND `duration`.
+        # A list of bare strings fails TrainingDeckSpecSchema.
         layout: agenda
         title: "Today's Agenda"
-        items: "{{AGENDA_ITEMS}}"
+        items:
+          - { label: "{{AGENDA_ITEM_1_LABEL}}", duration: "{{AGENDA_ITEM_1_DURATION}}" }
+          - { label: "{{AGENDA_ITEM_2_LABEL}}", duration: "{{AGENDA_ITEM_2_DURATION}}" }
+          - { label: "{{AGENDA_ITEM_3_LABEL}}", duration: "{{AGENDA_ITEM_3_DURATION}}" }
       - id: icebreaker
         layout: exercise
         title: "{{ICEBREAKER_TITLE}}"

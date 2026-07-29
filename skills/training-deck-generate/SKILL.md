@@ -181,10 +181,32 @@ Single file: `ACE/<opp>/runs/<run-id>/6-qa-and-training/training-deck-spec.yaml`
    (the malaria-rdt run) lost their platform-setup slides for exactly
    this reason — fixed by always inlining refs at generate time.
 
-9. **Validate the expanded spec.** Check against
-   `TrainingDeckSpecSchema` (Zod). Every `@alias` image ref must
-   resolve against the merged manifest from step 5; flag any
-   unresolvable refs as a hard fail.
+9. **Validate the expanded spec — BEFORE writing it to Drive.** Run
+   `parseTrainingSpec(yamlStr)` (which applies `TrainingDeckSpecSchema`)
+   against the serialized spec. **This is a hard gate, not a review
+   step: if it throws, fix the spec and re-validate — do NOT write the
+   artifact.** Every `@alias` image ref must also resolve against the
+   merged manifest from step 5; flag any unresolvable refs as a hard
+   fail.
+
+   Validating here rather than at render time is the whole point. An
+   unvalidated spec still *writes* successfully and the step still marks
+   itself `done`, so the shape violation only surfaces later when
+   `training-deck-render` calls `parseTrainingSpec` and hard-fails —
+   at which point Phase 6 has no deck and `verify_phase_products` fails
+   the boundary fence, because `products.training.deck` is a REQUIRED
+   handoff key the ace-web summary renders.
+
+   **Three shapes that have actually shipped broken** (dimagi-internal/ace#1049,
+   spark-facilitator/20260728-1338) — the skeleton's placeholders sit in
+   scalar position, so filling them literally produces the wrong type:
+
+   - `manifest.common` / `manifest.opp` are **maps** (`alias -> URL`).
+     Emit `{}` when a pool resolved to nothing. A scalar fails.
+   - `voice.estimated_duration_minutes` is a **number**. A quoted value
+     fails.
+   - agenda `items` is a **list of `{label, duration}` objects**. A list
+     of bare strings fails.
 
 10. **Write** the fully-expanded `training-deck-spec.yaml` to
     `ACE/<opp>/runs/<run-id>/6-qa-and-training/training-deck-spec.yaml`
