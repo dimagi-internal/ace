@@ -206,10 +206,15 @@ export async function resolveEmulatorPair(): Promise<{ console: number; adbBridg
  * the current user can neither see via `lsof` nor kill. Live repro:
  * bednet-spot-check run 20260728-2222, Phase 6 — foreign user held 5554, the
  * allocator would have picked the free 5556, but the pre-check threw first.
+ *
+ * `consolePortEnv` is a REQUIRED argument and is deliberately NOT defaulted to
+ * `process.env.ACE_MOBILE_EMULATOR_PORT`. A default would make the predicate
+ * read ambient env whenever a caller passed `undefined` (JS applies defaults to
+ * explicit `undefined`), so "auto-allocation mode" would silently become
+ * "whatever this machine happens to have exported" — untestable, and green or
+ * red depending on the developer's shell. Callers pass the value explicitly.
  */
-export function occupiedConsolePortIsFatal(
-  consolePortEnv: string | undefined = process.env.ACE_MOBILE_EMULATOR_PORT,
-): boolean {
+export function occupiedConsolePortIsFatal(consolePortEnv: string | undefined): boolean {
   return !!consolePortEnv?.trim();
 }
 

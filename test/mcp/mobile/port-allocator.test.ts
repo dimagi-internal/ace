@@ -153,6 +153,12 @@ describe('port-allocator: findFreeEmulatorPair', () => {
  * though 5556 was free. Live repro: bednet-spot-check run 20260728-2222.
  */
 describe('port-allocator: occupiedConsolePortIsFatal', () => {
+  const savedEmu = process.env.ACE_MOBILE_EMULATOR_PORT;
+  afterEach(() => {
+    if (savedEmu === undefined) delete process.env.ACE_MOBILE_EMULATOR_PORT;
+    else process.env.ACE_MOBILE_EMULATOR_PORT = savedEmu;
+  });
+
   it('is NOT fatal when auto-allocating (env unset) — allocator picks the next free pair', () => {
     expect(occupiedConsolePortIsFatal(undefined)).toBe(false);
   });
@@ -164,6 +170,21 @@ describe('port-allocator: occupiedConsolePortIsFatal', () => {
 
   it('IS fatal when the operator pinned the port — that promise cannot be kept', () => {
     expect(occupiedConsolePortIsFatal('5580')).toBe(true);
+  });
+
+  /**
+   * Hermeticity guard. An earlier version of this predicate defaulted its
+   * parameter to `process.env.ACE_MOBILE_EMULATOR_PORT`. Because JS applies
+   * default parameters to an explicitly-passed `undefined`, the auto-allocation
+   * case then read ambient env and returned `true` on any machine that happened
+   * to export the pin — passing in CI and failing on a developer's box that had
+   * applied the very workaround this fix removes. The argument is required now;
+   * this locks that in.
+   */
+  it('ignores ambient ACE_MOBILE_EMULATOR_PORT — the argument is the only input', () => {
+    process.env.ACE_MOBILE_EMULATOR_PORT = '5580';
+    expect(occupiedConsolePortIsFatal(undefined)).toBe(false);
+    expect(occupiedConsolePortIsFatal('')).toBe(false);
   });
 });
 
