@@ -488,6 +488,25 @@ export class AvdBackend {
     // a headless (`-no-window`) cold-boot still opens a host audio output
     // stream and the boot/notification chimes play through the operator's
     // speakers. We never assert on audio, so there's nothing to lose.
+    // `-read-only` allows multiple emulator instances to run the SAME AVD
+    // concurrently. Ports are allocated per session (port-allocator.ts), but
+    // the AVD *name* is not — so two sessions on one workstation both resolve
+    // to the single provisioned AVD, and the second one dies with
+    // `FATAL | Running multiple emulators with the same AVD is an
+    // experimental feature.` (dimagi-internal/ace#1047).
+    //
+    // Its one documented cost is "cannot save snapshot" — which costs us
+    // NOTHING, because the two lines below already pass `-no-snapshot-save`
+    // and `-no-snapshot-load`: the heal funnel cold-boots every dispatch by
+    // design, so a snapshot would never be written or read anyway. NOTE the
+    // word "snapshot" here means a QEMU VM-state save, NOT the screenshots
+    // Phase 6 captures — those are Maestro `takeScreenshot` steps and
+    // `mobile_capture_ui_dump`, entirely unaffected. `saveSnapshot` /
+    // `loadSnapshot` survive as manual debugging atoms outside the heal path.
+    //
+    // Live-validated 2026-07-29: a `-read-only` instance cold-booted to
+    // `sys.boot_completed=1` on port 5580 alongside another session's
+    // instance of the SAME AVD on 5556, zero FATAL lines.
     const ports = await this.getAllocatedPorts();
     const args = [
       '-avd',
@@ -497,16 +516,42 @@ export class AvdBackend {
       '-wipe-data',
       '-no-snapshot-load',
       '-no-snapshot-save',
+      '-read-only',
       '-port',
       String(ports.emulatorConsolePort),
     ];
     const env = { ...shellEnv(), ANDROID_ADB_SERVER_PORT: String(ports.adbServerPort) };
+
+    // Capture the emulator's own stderr instead of discarding it. With
+    // `stdio: 'ignore'` a fatal launch error (AVD lock contention, corrupt
+    // image, missing system image) is thrown away, and the only symptom that
+    // reaches the operator is an opaque `adb-register` timeout 60s later —
+    // the emulator's one-line explanation of WHY is gone. Writing to a
+    // per-port log file preserves the detached/unref semantics the orphan-kill
+    // scope depends on, while giving the boot-failure path something real to
+    // quote (see the catch below). #1047.
+    const bootLogPath = path.join(os.tmpdir(), `ace-emulator-${ports.emulatorConsolePort}.log`);
+    let bootLogFd: number | undefined;
+    try {
+      bootLogFd = fs.openSync(bootLogPath, 'w');
+    } catch {
+      // Can't open the log (read-only tmpdir, fd exhaustion) — fall back to
+      // the old discard behavior rather than failing the boot over logging.
+      bootLogFd = undefined;
+    }
     const child = spawn('emulator', args, {
       detached: true,
-      stdio: 'ignore',
+      stdio: bootLogFd === undefined ? 'ignore' : ['ignore', bootLogFd, bootLogFd],
       env,
     });
     child.unref();
+    if (bootLogFd !== undefined) {
+      try {
+        fs.closeSync(bootLogFd);
+      } catch {
+        /* the child holds its own dup'd fd; ours is best-effort */
+      }
+    }
 
     const start = Date.now();
     const expectedSerial = `emulator-${ports.emulatorConsolePort}`;
@@ -553,6 +598,23 @@ export class AvdBackend {
       await this.shell('adb', ['-s', expectedSerial, 'emu', 'kill']).catch(() => {});
       if (typeof child.pid === 'number') {
         try { process.kill(child.pid, 'SIGKILL'); } catch { /* already gone */ }
+      }
+      // Attach the emulator's own last words. Without this the operator sees
+      // only "adb-register timed out" and has to re-run the spawn argv by
+      // hand to discover the actual cause — which is exactly what #1047 cost
+      // a Phase 6 dispatch. Best-effort and non-fatal: a missing or unreadable
+      // log must never mask the real boot error.
+      let emulatorStderr = '';
+      try {
+        emulatorStderr = fs.readFileSync(bootLogPath, 'utf8').trim();
+      } catch {
+        /* no log (openSync fell back to 'ignore', or tmpdir was swept) */
+      }
+      if (emulatorStderr.length > 0 && err instanceof Error) {
+        // Keep the tail — the fatal line is emitted last, and a full boot log
+        // can run to hundreds of lines of device/GL chatter.
+        const tail = emulatorStderr.split('\n').slice(-12).join('\n');
+        err.message = `${err.message}\n\nemulator stderr (${bootLogPath}):\n${tail}`;
       }
       throw err;
     }
