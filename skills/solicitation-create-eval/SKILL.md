@@ -49,9 +49,25 @@ floor) so a PDD-faithful but unanswerable solicitation cannot pass.
    capability requirements) is missing entirely.
 
 2. **Field completeness (weight 0.20).** All required fields present?
-   `evaluation_criteria` non-empty (or marked `needs-review`)?
-   `response_template` non-empty (default 6-question set or PDD-supplied)?
-   `program_id` and `budget` populated from `opp.yaml`/PDD?
+   `evaluation_criteria` non-empty (or marked `needs-review`), with weights
+   summing to 100? `questions` non-empty (the archetype default set merged
+   with any PDD-supplied additions), each carrying a non-empty `framing`?
+   `program_id` resolved to the labs **integer** id (not the Connect UUID)?
+   `estimated_scale` populated and commercially legible?
+   `contact_email` either sourced from the PDD or **deliberately omitted**
+   — omission is correct when the PDD names no point of contact, so do NOT
+   deduct for it (`solicitation-create` § Step 2 forbids an env-var or
+   bot-inbox fallback).
+
+   **There is deliberately no `budget` field to check.** The labs canonical
+   schema has none, `solicitation-create` § Step 6 lists `budget` among the
+   fields that must be removed from the payload, and the MCP rejects unknown
+   top-level fields with `INVALID_SCHEMA`. Per-unit payment is *negotiated
+   via the `questions` block, not declared on the record* — see
+   `solicitation-create` § "Design principle: per-unit payment is negotiated,
+   not declared". Do not deduct for a missing budget, and never reward a
+   populated one: for opps whose PDD deliberately states no rate, a number on
+   the record would be invented backstory.
 
 3. **Deadline sanity (weight 0.08).** Deadline is `now + 7..30 days`. Hard-
    deduct -5 if deadline is in the past or > 90 days out.
@@ -74,25 +90,41 @@ floor) so a PDD-faithful but unanswerable solicitation cannot pass.
      the solicitation text alone? Jargon or PDD-internal shorthand that
      leaks into the public listing (archetype names, internal metric IDs)
      is a real applicant blocker, not a style nit.
-   - **Answerability:** Do the `response_template` questions ask for things
-     a candidate LLO can actually supply (capacity, geographic reach,
-     relevant past work) rather than information only ACE/Dimagi holds?
-     Questions that can't be answered by an external org are dead weight.
+   - **Answerability:** Do the `questions` ask for things a candidate LLO can
+     actually supply (capacity, geographic reach, relevant past work) rather
+     than information only ACE/Dimagi holds? Questions that can't be answered
+     by an external org are dead weight.
    - **Attractiveness:** Is the scope scoped tightly enough that a
      qualified org would self-select in (or correctly self-select out)?
      A listing so generic that every org "qualifies" is as broken as one
      so narrow no real org fits.
-   - **Budget realism:** Is the stated budget plausible for the scope of
-     work described — enough to actually deliver the intervention at the
-     implied volume, neither a rounding error nor wildly over-spec? A
-     budget that no real LLO would accept (or that no funder would
-     believe) caps this dimension at ≤ 4 regardless of clarity.
+   - **Commercial legibility:** Can a respondent work out what they'd be
+     signing up for financially? Where the solicitation *states* a payment
+     band or scale, is it plausible for the scope described — enough to
+     deliver the intervention at the implied volume, neither a rounding
+     error nor wildly over-spec? A stated band that no real LLO would
+     accept (or that no funder would believe) caps this dimension at ≤ 4
+     regardless of clarity.
+
+     **Where the solicitation deliberately states no rate — the correct
+     shape when the PDD declines to assert one — the ≤ 4 cap does NOT
+     apply.** There is no stated number to be implausible. Judge instead
+     how well the absence is handled: does the listing say plainly that no
+     rate is stated and why, publish the justification structure the
+     respondent should argue against, and ask separately for the costs that
+     aren't per-unit so a cap can still be derived? Handled that way it is
+     real friction (a respondent prices with no anchor) and should cost
+     roughly a point — not a floor. Handled badly (silence that reads as an
+     oversight, or a justification structure the respondent has to invent)
+     it is a genuine blocker.
 
    Scoring: 9-10 = a domain-literate LLO could read this once and decide
    to respond with a credible proposal; 5-7 = respondable but with friction
-   (one or two questions unanswerable, budget vague-but-plausible); ≤ 3 =
-   an external org could not realistically respond (incomprehensible scope,
-   unanswerable questions, or implausible budget). **`respondability ≤ 3`
+   (one or two questions unanswerable, or commercial terms vague-but-
+   workable — including a well-handled deliberate no-rate); ≤ 3 = an
+   external org could not realistically respond (incomprehensible scope,
+   unanswerable questions, or an implausible stated band).
+   **`respondability ≤ 3`
    forces suite verdict `fail`** even if PDD-fidelity is perfect — a
    solicitation no one can answer is undeployable regardless of how
    faithfully it mirrors the PDD.
@@ -108,8 +140,11 @@ floor) so a PDD-faithful but unanswerable solicitation cannot pass.
 - `[WARN]` per generic criterion (lacks archetype-specific signal).
 - `[WARN]` if `evaluation_criteria` is marked `needs-review` (degenerate
   generate_criteria output that the operator should revisit).
-- `[WARN]` per unanswerable `response_template` question (asks for info
-  only ACE/Dimagi holds, not the candidate LLO).
+- `[WARN]` per unanswerable `questions` entry (asks for info only
+  ACE/Dimagi holds, not the candidate LLO).
+- `[WARN]` per question with an empty or missing `framing` (the review
+  path scores responses against it; `solicitation-create` treats an empty
+  `framing` as a `[BLOCKER]` at author time).
 
 ## Verdict shape
 
@@ -158,4 +193,5 @@ See `skills/eval-calibration/SKILL.md` for the methodology.
 
 | Date | Change | Author |
 |------|--------|--------|
+| 2026-07-29 | **Fixed rubric-vs-schema drift that silently biased every solicitation eval downward (dimagi-internal/ace#1043).** Dimension 2 asked whether `budget` was populated, but the labs canonical schema has no `budget` field and `solicitation-create` § Step 6 explicitly lists it among fields that must be REMOVED from the payload (the MCP rejects unknown top-level fields with `INVALID_SCHEMA`). A judge following the rubric literally deducted on `field_completeness` for every solicitation ACE will ever publish — and worse, nudged toward stating a rate on opps whose PDD deliberately declines to assert one, which is exactly the invented backstory the PDD forbids. Dimension 2 rewritten against the live schema: weights-sum-to-100, non-empty `framing` per question, integer `program_id`, `estimated_scale`, and `contact_email` omission recorded as CORRECT rather than a deduction. Also renamed the stale `response_template` → `questions` in dimension 2, dimension 5's answerability bullet, and the `[WARN]` triggers (the field was renamed in the 2026-05-21 canonical-schema migration, which fixed the producer skill but not this rubric). Renamed dimension 5's "Budget realism" → "Commercial legibility" and clarified that the `≤ 4` cap applies to an implausible STATED band, not to a deliberate no-rate solicitation — surfaced live on `spark-facilitator` run 20260728-1338 (labs solicitation 8696), where the PDD states no per-verified-meeting rate because facilitator compensation is undocumented in all six inputs. Added a `[WARN]` for empty `framing`, mirroring `solicitation-create`'s author-time `[BLOCKER]`. Class: `docs/learnings/2026-04-28-mcp-vs-skill-doc-drift.md` — `test/skill-atom-references.test.ts` catches atom renames but not stale payload field names restated in `-eval` prose. | ACE team |
 | 2026-05-29 | Added `respondability` (0.22) — the out-of-chain fitness dimension grading the published solicitation from a real candidate LLO's POV (clarity, answerability, attractiveness, budget realism), scored independent of the PDD with a `≤3 → fail` floor. Reweighted PDD-anchored dims down so they no longer carry a pass alone (pdd_fidelity 0.40→0.30, criteria_alignment 0.30→0.20, deadline_sanity 0.10→0.08; field_completeness held at 0.20). Per `docs/superpowers/specs/2026-05-29-eval-fitness-gap.md` — previously every dimension anchored to the PDD (the same AI chain being graded), so a faithful build of a thin PDD scored ~9.6 with no signal on whether anyone could actually respond. Weights sum to 1.00. | ACE team |
