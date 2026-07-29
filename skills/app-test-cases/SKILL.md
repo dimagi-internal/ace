@@ -235,6 +235,27 @@ between major form sections):
   fail-loud gate, not just a substitution pass)
 - Validate via `mobile_validate_recipe` before writing
 
+#### The accepted step-key dialect (ace#1008)
+
+`mobile_validate_recipe` rejects any step key outside
+`ALLOWED_STEP_KEYS` in `mcp/mobile/backends/maestro.ts`. **That list is
+the source of truth — grep it rather than guessing**, and note that
+**no step is deliberately banned for agent-authored recipes.** The
+allowlist exists to catch typos and Maestro-version drift, not to hold
+journey recipes to a narrower dialect than the shipped static palette.
+
+The invariant (pinned by
+`test/mcp/mobile/palette-step-allowlist.test.ts`): the allowlist is a
+superset of every step key used under `mcp/mobile/recipes/static/`.
+Palette files never pass through the validator, so before ace#1008 the
+two silently diverged — `scrollUntilVisible` (used by
+`connect-resume-opp.yaml` and `connect-claim-opp.yaml`) was rejected in
+agent-authored recipes, forcing authors to either drop legitimate
+scroll-into-view behaviour or ship an unvalidated recipe. If a
+validator rejection ever looks like that again — the palette uses the
+step, the validator refuses it — **that is an ACE defect: file it and
+add the key**, don't work around it.
+
 #### Maestro inputText: scalar vs mapping form
 
 `inputText` has two valid shapes — pick the right one based on

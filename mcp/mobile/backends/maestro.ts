@@ -11,7 +11,20 @@ import type { RecipeRunResult, ScreenshotEntry } from '../types.js';
 import { readProvenanceSidecar } from '../../../lib/screenshot-provenance.js';
 import { classifyMaestroFailure } from '../../../lib/maestro-failure-class.js';
 
-const ALLOWED_STEP_KEYS = new Set([
+/**
+ * Maestro step keys `mobile_validate_recipe` accepts in an agent-authored
+ * recipe.
+ *
+ * INVARIANT (dimagi-internal/ace#1008): this set must be a SUPERSET of every
+ * step key used by the shipped static palette under
+ * `mcp/mobile/recipes/static/*.yaml`. Palette files never pass through
+ * `validateRecipe`, so any key they use but this set omits silently holds
+ * agent-authored recipes to a narrower Maestro dialect than the palette they
+ * compose — which is exactly how `scrollUntilVisible` (used by
+ * `connect-resume-opp.yaml` + `connect-claim-opp.yaml`) came to be rejected.
+ * `test/mcp/mobile/palette-step-allowlist.test.ts` pins the invariant.
+ */
+export const ALLOWED_STEP_KEYS = new Set([
   'launchApp',
   'tapOn',
   'inputText',
@@ -25,6 +38,7 @@ const ALLOWED_STEP_KEYS = new Set([
   'pressKey',
   'back',
   'scroll',
+  'scrollUntilVisible',
   'hideKeyboard',
   'copyTextFrom',
   'pasteText',

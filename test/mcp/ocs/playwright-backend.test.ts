@@ -663,8 +663,13 @@ describe('PlaywrightBackend collection atoms', () => {
   });
 
   it('uploadCollectionFiles sends multipart with chunk_size + chunk_overlap and scrapes file IDs', async () => {
+    // Stateful on purpose (ace#1016): the backend snapshots the listing BEFORE
+    // the POST so it can diff the new rows, so the fake has to model an empty
+    // collection becoming a one-row collection.
+    let uploaded = false;
     const request: RequestFn = async (method, url, body, options) => {
       if (method === 'POST' && url === '/a/dimagi/documents/collections/501/add_files') {
+        uploaded = true;
         // The atom must route through the multipart channel, not the JSON body.
         expect(body).toBeUndefined();
         expect(options?.multipart).toBeDefined();
@@ -692,18 +697,25 @@ describe('PlaywrightBackend collection atoms', () => {
           json: async () => ({}),
         };
       }
-      if (method === 'GET' && url === '/a/dimagi/documents/collections/501/files/') {
+      if (method === 'GET' && url.startsWith('/a/dimagi/documents/collections/501/files/')) {
         // The files listing renders each upload as a wrapper div with
         // id="collection_file_<pk>" where pk is the CollectionFile PK (what
         // the status-polling endpoint requires). The anchor's File.id is
         // different and should NOT be used for status polling.
+        // One page's worth of rows here; page 2+ is empty (ace#1016 pagination).
+        if (url.includes('page=')) {
+          return { ok: true, text: async () => '', json: async () => ({}) };
+        }
         return {
           ok: true,
-          text: async () => `
+          text: async () =>
+            uploaded
+              ? `
             <div id="collection_file_34023">
               <a href="/a/dimagi/files/file/9001/">idd.pdf</a>
             </div>
-          `,
+          `
+              : '<div id="file-list"></div>',
           json: async () => ({}),
         };
       }
@@ -720,10 +732,12 @@ describe('PlaywrightBackend collection atoms', () => {
   });
 
   it('uploadCollectionFiles passes custom chunk_size and chunk_overlap through the multipart', async () => {
+    let uploaded = false;
     const request: RequestFn = async (method, url, body, options) => {
       if (method === 'POST' && url === '/a/dimagi/documents/collections/501/add_files') {
         expect(options!.multipart!.chunk_size).toBe('1200');
         expect(options!.multipart!.chunk_overlap).toBe('200');
+        uploaded = true;
         return {
           ok: false,
           status: 302,
@@ -732,10 +746,13 @@ describe('PlaywrightBackend collection atoms', () => {
           json: async () => ({}),
         };
       }
-      if (method === 'GET' && url === '/a/dimagi/documents/collections/501/files/') {
+      if (method === 'GET' && url.startsWith('/a/dimagi/documents/collections/501/files/')) {
+        if (url.includes('page=')) {
+          return { ok: true, text: async () => '', json: async () => ({}) };
+        }
         return {
           ok: true,
-          text: async () => '<div id="collection_file_1"></div>',
+          text: async () => (uploaded ? '<div id="collection_file_1"></div>' : ''),
           json: async () => ({}),
         };
       }
@@ -748,6 +765,124 @@ describe('PlaywrightBackend collection atoms', () => {
       chunk_size: 1200,
       chunk_overlap: 200,
     });
+  });
+
+  // ---------------------------------------------------------------------------
+  // ace#1016 — the files listing paginates at 10 rows. Reading page 1 only
+  // capped `file_ids` at 10 no matter how many files were uploaded, so
+  // `waitForCollectionIndexing` covered a prefix of the collection and Phase 5
+  // published a bot whose remaining files may still have been unindexed. The
+  // count assertion is the real preventer: it turns every future truncation
+  // class (pagination, rejected extension, size cap) into a loud failure.
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Build a fake OCS whose files listing paginates at `perPage` rows and 404s
+   * past the last page, the way Django's Paginator does.
+   */
+  function paginatedCollectionFake(opts: {
+    preExisting: number[];
+    idsAfterUpload: number[];
+    perPage?: number;
+  }) {
+    const perPage = opts.perPage ?? 10;
+    let uploaded = false;
+    const seenUrls: string[] = [];
+    const request: RequestFn = async (method, url) => {
+      if (method === 'POST' && url.endsWith('/add_files')) {
+        uploaded = true;
+        return {
+          ok: false,
+          status: 302,
+          headers: { location: '/a/dimagi/documents/collections/533' },
+          text: async () => '',
+          json: async () => ({}),
+        };
+      }
+      if (method === 'GET' && url.startsWith('/a/dimagi/documents/collections/533/files/')) {
+        seenUrls.push(url);
+        const all = uploaded ? opts.idsAfterUpload : opts.preExisting;
+        const pageMatch = url.match(/[?&]page=(\d+)/);
+        const page = pageMatch ? Number(pageMatch[1]) : 1;
+        const slice = all.slice((page - 1) * perPage, page * perPage);
+        if (slice.length === 0 && page > 1) {
+          // Django's Paginator raises Http404 for an out-of-range page.
+          return { ok: false, status: 404, text: async () => 'Not Found', json: async () => ({}) };
+        }
+        return {
+          ok: true,
+          status: 200,
+          text: async () => slice.map((id) => `<div id="collection_file_${id}"></div>`).join('\n'),
+          json: async () => ({}),
+        };
+      }
+      throw new Error(`unexpected ${method} ${url}`);
+    };
+    return { request, seenUrls };
+  }
+
+  function nFiles(n: number) {
+    return Array.from({ length: n }, (_, i) => ({
+      name: `doc-${i}.md`,
+      content: Buffer.from('x'),
+      mime_type: 'text/markdown',
+    }));
+  }
+
+  it('uploadCollectionFiles follows listing pagination and returns every file id (ace#1016)', async () => {
+    // The live repro: 12 files uploaded to collection 533, listing paginated
+    // at 10, page 1 returned 38571–38580 and the two on page 2 were dropped.
+    const ids = Array.from({ length: 12 }, (_, i) => 38571 + i);
+    const { request, seenUrls } = paginatedCollectionFake({
+      preExisting: [],
+      idsAfterUpload: ids,
+    });
+    const backend = makeBackend(request);
+    const out = await backend.uploadCollectionFiles({
+      collection_id: 533,
+      files: nFiles(12),
+    });
+    expect(out.file_ids).toEqual(ids);
+    expect(out.file_ids).toHaveLength(12);
+    // It actually asked for page 2 — the regression this pins.
+    expect(seenUrls.some((u) => u.includes('page=2'))).toBe(true);
+  });
+
+  it('uploadCollectionFiles throws a shortfall error when the listing shows fewer new rows than files uploaded', async () => {
+    // Truncation for any reason (rejected extension, size cap, a pagination
+    // shape this scrape stops following) must be LOUD. It used to be silent
+    // for any nonempty result.
+    const { request } = paginatedCollectionFake({
+      preExisting: [],
+      idsAfterUpload: [1, 2, 3],
+    });
+    const backend = makeBackend(request);
+    await expect(
+      backend.uploadCollectionFiles({ collection_id: 533, files: nFiles(5) }),
+    ).rejects.toThrow(/uploaded 5 file\(s\).*3 new/s);
+  });
+
+  it('uploadCollectionFiles counts only NEW rows, so a collection that already has files still passes', async () => {
+    // The count assertion diffs against a pre-upload snapshot rather than
+    // asserting on the absolute row count — otherwise a second upload into a
+    // populated collection would false-positive.
+    const preExisting = [101, 102, 103];
+    const { request } = paginatedCollectionFake({
+      preExisting,
+      idsAfterUpload: [...preExisting, 201, 202],
+      perPage: 2, // force multi-page on both the before and after snapshots
+    });
+    const backend = makeBackend(request);
+    const out = await backend.uploadCollectionFiles({ collection_id: 533, files: nFiles(2) });
+    expect(out.file_ids).toEqual([101, 102, 103, 201, 202]);
+  });
+
+  it('uploadCollectionFiles still throws the empty-listing error when nothing was scraped', async () => {
+    const { request } = paginatedCollectionFake({ preExisting: [], idsAfterUpload: [] });
+    const backend = makeBackend(request);
+    await expect(
+      backend.uploadCollectionFiles({ collection_id: 533, files: nFiles(1) }),
+    ).rejects.toThrow(/no CollectionFile IDs scraped/);
   });
 
   it('uploadCollectionFiles throws if chunk_overlap >= chunk_size (Django would reject anyway)', async () => {

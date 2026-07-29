@@ -432,6 +432,12 @@ export class PlaywrightBackend {
         `uploadCollectionFiles: chunk_overlap (${chunkOverlap}) must be < chunk_size (${chunkSize})`,
       );
     }
+    // Snapshot the collection's existing rows BEFORE the POST so the
+    // post-upload count assertion below can diff (jjackson/ace#1016). A
+    // collection that already holds files would otherwise make an absolute
+    // count check wrong.
+    const preExistingIds = new Set(await this.scrapeCollectionFileIds(args.collection_id));
+
     const addPath = `/a/${this.opts.teamSlug}/documents/collections/${args.collection_id}/add_files`;
     const multipart: Record<string, string | { name: string; mimeType: string; buffer: Buffer }> = {
       csrfmiddlewaretoken: this.opts.csrfToken,
@@ -462,19 +468,72 @@ export class PlaywrightBackend {
     // We keep the return-value field named `file_ids` for interface stability,
     // but the values are semantically CollectionFile IDs — they round-trip to
     // `waitForCollectionIndexing` which polls the status endpoint.
-    const listPath = `/a/${this.opts.teamSlug}/documents/collections/${args.collection_id}/files/`;
-    const listRes = await this.opts.request('GET', listPath);
-    if (!listRes.ok || !listRes.text) throw await httpErrorFor(listRes, listPath);
-    const html = await listRes.text();
-    const cfIdMatches = [...html.matchAll(/id="collection_file_(\d+)"/g)];
-    const fileIds = [...new Set(cfIdMatches.map((m) => Number(m[1])))];
+    const fileIds = await this.scrapeCollectionFileIds(args.collection_id);
     if (fileIds.length === 0) {
       throw new Error(
         `uploadCollectionFiles: no CollectionFile IDs scraped from files listing for collection ${args.collection_id}. ` +
           'The upload may have failed silently — check file extension (must be in SUPPORTED_FILE_TYPES).'
       );
     }
+
+    // Count assertion (jjackson/ace#1016). The scrape is the ONLY evidence we
+    // have that the upload landed, and a truncated-but-nonempty result used to
+    // be indistinguishable from success: the listing paginates at 10, so a
+    // 12-file upload returned 10 ids, `waitForCollectionIndexing` covered only
+    // those 10, and Phase 5 published a bot whose remaining files may still
+    // have been unindexed. Worse, the obvious recovery (re-upload the two
+    // "missing" files) creates DUPLICATE CollectionFile rows — there is no
+    // per-file delete atom, so cleanup is manual.
+    //
+    // Diffing against the pre-upload snapshot (rather than asserting on the
+    // absolute count) is what makes this correct for a collection that already
+    // had files in it.
+    const newIds = fileIds.filter((id) => !preExistingIds.has(id));
+    if (newIds.length !== args.files.length) {
+      throw new Error(
+        `uploadCollectionFiles: uploaded ${args.files.length} file(s) to collection ` +
+          `${args.collection_id} but the files listing shows ${newIds.length} new ` +
+          `CollectionFile row(s) (ids: ${newIds.join(', ') || 'none'}). ` +
+          'Do NOT re-upload the apparent shortfall — that creates duplicate rows rather ' +
+          'than filling a gap. Check the OCS collection page directly: the cause is ' +
+          'either a rejected file extension (must be in SUPPORTED_FILE_TYPES), a size cap, ' +
+          'or a change to the files-listing pagination this scrape follows.'
+      );
+    }
     return { file_ids: fileIds };
+  }
+
+  /**
+   * Scrape every CollectionFile PK from a collection's files listing,
+   * following pagination.
+   *
+   * The listing paginates at 10 rows (`?page=N`). Reading page 1 only —
+   * which this did until jjackson/ace#1016 — silently caps the result at 10
+   * regardless of how many files the collection holds.
+   *
+   * Django's Paginator 404s on an out-of-range page, so a 404 on page > 1 is
+   * the normal terminator; any other error still throws. The
+   * no-new-ids break also covers a deployment that ignores `?page` entirely
+   * (it would re-serve page 1 forever).
+   */
+  private async scrapeCollectionFileIds(collectionId: number): Promise<number[]> {
+    const basePath = `/a/${this.opts.teamSlug}/documents/collections/${collectionId}/files/`;
+    const seen = new Set<number>();
+    const MAX_PAGES = 200; // hard stop; 2000 files is far beyond any ACE collection
+    for (let page = 1; page <= MAX_PAGES; page++) {
+      const listPath = page === 1 ? basePath : `${basePath}?page=${page}`;
+      const listRes = await this.opts.request('GET', listPath);
+      if (!listRes.ok || !listRes.text) {
+        if (page > 1 && listRes.status === 404) break; // past the last page
+        throw await httpErrorFor(listRes, listPath);
+      }
+      const html = await listRes.text();
+      const ids = [...html.matchAll(/id="collection_file_(\d+)"/g)].map((m) => Number(m[1]));
+      const before = seen.size;
+      for (const id of ids) seen.add(id);
+      if (seen.size === before) break; // no new rows — end of listing
+    }
+    return [...seen];
   }
 
   // file_ids is now a required caller-supplied list (from uploadCollectionFiles).
