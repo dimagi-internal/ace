@@ -180,6 +180,52 @@ app-release-qa"). Record per-app under `camera_only_uploads` in the
 verdict. When the PDD does NOT demand camera-only capture, skip the
 check and record `camera_only_uploads: not-required-by-pdd`.
 
+**Grid menu display — always, both apps (dimagi-internal/ace#1009).**
+`app-hq-settings` sets `display_style = 'grid'` on every module of both
+apps and then declares this skill its downstream backstop. Until ace#1009
+that backstop did not exist, so the setting shipped with **zero**
+verification — the "applied but never verified" shape that #867 / #971 /
+#994 exist to prevent.
+
+**Read it from the raw app doc, NOT from the CCZ and NOT from the REST
+API.** Both intuitive surfaces silently lie:
+
+- `suite.xml` emits a bare `<menu id="m0">` with no style attribute.
+  Searching a *correctly gridded* released CCZ for the substring `grid`
+  (case-insensitive, across every zip entry) returns **nothing**. A
+  suite.xml-sourced grid check could never pass, no matter how right the
+  app is.
+- `GET /api/v0.5/application/<app_id>/` serializes only
+  `['case_properties','case_type','forms','name','unique_id']` per
+  module. `display_style` is absent, so this surface reads `None` for a
+  module that IS grid — a false negative waiting for whoever reaches for
+  the obvious API first.
+
+The authoritative surface is the raw app doc, which works against both
+the draft app id and a released build id:
+
+```
+GET /a/<ACE_HQ_DOMAIN>/apps/source/<released_build_id>/
+```
+
+(authenticated with the `~/.ace/connect-session.json` cookie jar, same as
+Step 2's download). For each app, assert **every** entry in
+`modules[]` has `display_style == 'grid'`.
+
+Mismatch → halt with `[BLOCKER]` `grid-menu-display-missing` (naming the
+app, the module index + `unique_id`, and the observed value, plus "re-run
+`app-hq-settings`, re-release, then re-run app-release-qa"). Record
+per-app under `grid_menu_display` in the verdict:
+`{ modules_checked, modules_gridded, non_grid: [...] }`.
+
+**Known caveat, NOT a failure:** the app-ROOT menu (the grid-vs-list of
+the module list itself) is a separate app-level flag, `use_grid_menus`,
+which `app-hq-settings` deliberately does not set. The same raw doc
+exposes it. Record its observed value as `[INFO] app_root_use_grid_menus:
+<value>` — do not halt on it. On
+`hh-poverty-targeting/20260728-0705` it read `False` on both apps while
+all 9 module menus were grid, which is the expected shape today.
+
 **Constraint locality — always, every form with constraints
 (dimagi-internal/ace#980).** A `constraint` must be satisfiable on the
 screen where it fires. Run the pure helper over each form XML:
@@ -395,6 +441,13 @@ per_app:
         failing_binding: <optional>
         unresolved_xpath: <optional>
         parser_message: <optional>
+# Per-app blocks additionally carry (both apps; see Step 4):
+#   camera_only_uploads:   pass | not-required-by-pdd | [<offending upload refs>]
+#   geopoint_binds:        pass | [<offending field paths>]
+#   constraint_locality:   pass | { constraints_checked, violations: [...] }
+#   relevance_reachability: pass | { checked, unreachable: [...], partial: [...] }
+#   grid_menu_display:     { modules_checked, modules_gridded, non_grid: [...] }
+#   app_root_use_grid_menus: true | false   # INFO only — never a halt
 auto_surfaced_concerns:
   - severity: BLOCKER | WARN | INFO
     message: "..."
@@ -473,6 +526,15 @@ defects.
   + dimagi-internal/ace#867). Operator fix: apply the camera-only
   appearance flip (HQ app builder or Nova), re-release, then re-run
   `app-release-qa` to confirm the attribute is in the released CCZ.
+- `grid-menu-display-missing` — a module in a released app has
+  `display_style != 'grid'` in the raw app doc
+  (`/a/<domain>/apps/source/<build_id>/`), so `app-hq-settings` either
+  didn't run, fail-softed, or was applied to a draft that was superseded
+  before the release (see Step 4 + dimagi-internal/ace#1009). Operator
+  fix: re-run `app-hq-settings`, re-release, then re-run
+  `app-release-qa`. Do **not** try to confirm this from `suite.xml` or
+  `GET /api/v0.5/application/` — neither carries `display_style`, and the
+  REST API reads a misleading `None` for a correctly-gridded module.
 - `non-local-constraint` — a `constraint` in the released form XML
   references a question or repeat the user cannot edit from the screen
   where it fires, so the error is unfixable in place and the FLW must
@@ -487,3 +549,9 @@ defects.
 - ace-connect: `commcare_download_ccz`, `commcare_validate_ccz`
 - nova: `get_app` (form/marker counts), `get_form` (per-field `kind` for the geopoint bind-type check)
 - ace-gdrive: `drive_read_file`, `drive_create_file`
+- CCHQ HTTP probe (no atom yet): authenticated
+  `GET /a/<domain>/apps/source/<build_id>/` for the grid menu-display
+  check — the only surface that exposes `modules[].display_style` (see
+  Step 4). A dedicated app-source atom on `ace-connect` would be the
+  natural home (ace#1009 names it as an optional follow-up); until one
+  exists this is a raw session-cookie GET.

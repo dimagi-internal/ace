@@ -30,7 +30,14 @@ no inline self-eval.
 
 ## Products
 
-- `5-ocs/ocs-agent-setup.md` — chatbot identifiers (`experiment_id`, `version_number`, embed `public_id` + `embed_key`)
+- `5-ocs/ocs-agent-setup.md` — chatbot identifiers (`experiment_id`, `version_number`, embed `public_id` + `embed_key`), plus `prior_run_bots:` (any same-opp bots from earlier runs, for `/ace:sweep ocs` disposal)
+
+**Naming contract (ace#1017).** The per-opp chatbot is named
+`ACE - <opp-name> (<run-id>)` — **run-scoped**, not opp-scoped. Every run
+of an opp gets its own bot, indexed off that run's PDD and app summaries,
+exactly as every run gets its own Connect opportunity and its own
+collection. A bare `ACE - <opp-name>` is a legacy pre-#1017 bot; treat it
+as a prior-run artifact, never as this run's.
 - `5-ocs/ocs-setup_widget-handoff.md` — widget URL + embed credentials staged for Connect HITL paste-in
 - `run_state.yaml.phases.ocs-setup.products.ocs_chatbot` — `{experiment_id, public_id, embed_key, admin_url, team_slug}` typed handoff. Sole writer.
 
@@ -103,12 +110,43 @@ round-trip gate in Step 11.5 below.
 
 2. **Check for existing chatbot via OCS list** (second-line idempotency
    — only reachable when Step 0 found no state file):
-   - Call `ocs_list_chatbots` and filter by `name == "ACE - <opp-name>"`
+
+   **The bot name is RUN-SCOPED: `ACE - <opp-name> (<run-id>)`**
+   (dimagi-internal/ace#1017). Filter by that **exact** string —
+   including the run-id — never by `ACE - <opp-name>` alone.
+
+   Why the run-id is load-bearing: a run-blind name match resumes the
+   *previous* run's chatbot, reusing that run's collection, that run's
+   uploaded files and that run's system prompt, then reporting Phase 5
+   as configured. Its collection is indexed off a **superseded PDD and
+   superseded app summaries**, which violates the phase-precondition
+   rule (CLAUDE.md § "Phase preconditions are restored, not adapted" —
+   Phase 5's precondition is "a chatbot whose knowledge base is *this
+   run's* artifacts"). The failure is silent and downstream-expensive:
+   Phase 6 training docs, `/ace:qa-deep`'s deep verdict, and the Phase 8
+   activation gate all then measure a bot built from the wrong run's
+   design. Live case: opp `hh-poverty-targeting` carried both
+   `ACE - hh-poverty-targeting` (12517, built from a PDD a domain expert
+   had already critiqued) and `ACE - hh-poverty-targeting (20260722-1341)`
+   — a literal reading of the old filter resumed 12517.
+
+   The check still earns its keep with the run-id in it: it stops a
+   mid-run crash from re-cloning and orphaning a bot (there is no
+   cleanup atom), while making a *different* run's bot correctly
+   not-a-match.
+
+   - Call `ocs_list_chatbots` and filter by `name == "ACE - <opp-name> (<run-id>)"`
    - If found, **read the integer `experiment_id` from the matched entry** (returned alongside the UUID `id` as of 0.5.19), reconstruct the state file from `ocs_get_chatbot` to populate `collection_id` / `pipeline_id`, and skip to step 11. Do NOT clone — re-cloning leaves the prior bot orphaned in OCS, which has no MCP-side cleanup atom. The previous (pre-0.5.19) skill version had to clone a `-resume` variant because the integer id wasn't reachable from list results; that footgun is closed.
+   - **Prior-run bots are NOT a match and MUST NOT be resumed.** If the
+     list contains other `ACE - <opp-name>…` entries (bare, or carrying a
+     different run-id), record them in the state file under
+     `prior_run_bots:` with their experiment ids so `/ace:sweep ocs` can
+     dispose of them, and continue to step 3.
    - Otherwise continue to step 3
 
 3. **Clone the golden template:**
-   - `ocs_clone_chatbot({ template_id: $OCS_GOLDEN_TEMPLATE_ID, new_name: "ACE - <opp-name>" })`
+   - `ocs_clone_chatbot({ template_id: $OCS_GOLDEN_TEMPLATE_ID, new_name: "ACE - <opp-name> (<run-id>)" })`
+     — run-scoped name, matching the Step 2 filter exactly (ace#1017).
    - Capture `{experiment_id, public_id, pipeline_id}`
 
 4. **Create a per-opp Collection:**
@@ -126,17 +164,33 @@ round-trip gate in Step 11.5 below.
    questions where the PDD summary may have lost detail. The pre-fix
    recipe was PDD-only; that lost the original SOP wording.
 
+   **NEVER INDEX THE DEEP-QA INSTRUMENT
+   (`2-scenarios/pdd-to-test-prompts.md`) — hard exclusion, no archetype
+   exemption (dimagi-internal/ace#1018).** That file is not neutral
+   background: every entry is a question plus an
+   `expected_answer_summary` that `ocs-chatbot-eval --deep` reads as
+   **ground truth**. Indexing it makes the pipeline "plant the answer key
+   in the bot's retrieval corpus → ask the bot those questions → grade it
+   against the key it can retrieve." The deep verdict is not advisory —
+   `agents/ocs-setup.md` states the Phase 9 `llo-launch` gate refuses to
+   proceed without a fresh passing one — so the gate would then pass on
+   evidence it should not. The contamination inflates exactly the
+   dimensions the rubric weights most (Correctness 30%, Source usage 20%
+   — the bot can cite the instrument itself) and is worst on adversarial
+   prompts, which is where the instrument has the most value: a bot that
+   can retrieve "expected: reports Q1 as open" is not being tested on
+   judgment. The pre-#1018 rule indexed it always, justified as
+   "simpler", trading a measurement guarantee for uniformity. Nothing
+   else in this recipe depends on the file.
+
+   The same rule generalizes: **do not index any artifact that a `-eval`
+   skill declares as a ground-truth input.** Check the eval skills'
+   `## Inputs` tables before adding a new file class here.
+   `test/skills/kb-instrument-contamination.test.ts` pins the specific
+   case.
+
    Files to gather:
    - `runs/<run-id>/1-design/idea-to-pdd.md` — synthesized PDD
-   - `runs/<run-id>/2-scenarios/pdd-to-test-prompts.md` — Phase 2's
-     32 derived Q&A pairs. Especially useful for **`focus-group`**
-     archetype where the chatbot is the **primary** facilitator
-     surface (training reference + post-session gdoc-writing
-     guidance); indexing the test prompts gives meaningfully better
-     facilitator-domain grounding than the PDD alone. Less load-bearing
-     for `atomic-visit` (where the Learn app carries the bulk of
-     training), but always-include is the simpler rule and the
-     marginal token cost is small.
    - `inputs/*` — every file in the opp's `inputs/` folder (SOPs,
      questionnaire templates, data spreadsheets, evidence packs).
      Use `drive_list_folder` + `drive_download_binary` for binary

@@ -212,11 +212,27 @@ orchestrator from the per-skill QA + eval verdicts on the fly. -->
     leave it for Nova to infer (it won't):
 
     - **Capture fidelity.** If the Evidence Model implies a GPS/location
-      radius, spec **accuracy-gated GPS** (preferred + minimum accuracy,
-      capture-gate), not a bare "capture GPS." If an answer is
-      enumerable, spec it as a **select with the option list** (+ "Other,
-      specify"), not free text. Prefer bucketed ranges over raw integers
-      where field-reliable.
+      radius, spec **accuracy-aware GPS** (a stated target accuracy, the
+      accuracy value submitted on every visit, an on-screen advisory),
+      not a bare "capture GPS."
+
+      **A stated GPS accuracy tolerance MUST NOT be written as an
+      enforced control** (dimagi-internal/ace#1006). It is unenforceable
+      on both surfaces: Nova rejects `validate` on `kind: geopoint`, and
+      Connect's verification-flags form no longer carries `gps` /
+      `gps_radius_meters` (ace#1013). So the Evidence Model must phrase
+      it as what it is — e.g. *"each fix's accuracy is captured and
+      submitted; readings worse than 50 m are flagged to the FLW and
+      down-weighted in dedup"* — and must NOT say "rejected", "must be
+      ≤ 50 m to submit", "the app enforces", or "Connect enforces". The
+      same sentence flows verbatim into the Work Order, so a PDD that
+      overstates the control puts a promise ACE cannot keep into a
+      contractual document. If the design genuinely needs a hard gate,
+      raise it as an **open question** rather than asserting it.
+
+      If an answer is enumerable, spec it as a **select with the option
+      list** (+ "Other, specify"), not free text. Prefer bucketed ranges
+      over raw integers where field-reliable.
     - **Data quality.** Spec the **constraints**: numeric bounds and
       cross-field checks on counts, phone-format expectations, free-text
       length caps, and which fields are required-for-credit.
@@ -675,3 +691,4 @@ When `--dry-run` is active:
 | 2026-05-15 | Recharacterize `payment-rate` and `per-session-rate` Decisions Log rows: PDD captures a **range** (not a fixed number), and the actual rate is **negotiated via the solicitation response** where the LLO proposes a number with rationale. The awarded LLO's proposed rate becomes the `connect.deliver_unit` payment_unit amount at Phase 4 setup. Pairs with `solicitation-create/SKILL.md § Process`'s "per-unit payment is negotiated, not declared" design principle. | ACE team |
 | 2026-05-22 | **Retire the optional `idea.md` operator-seed input.** The 2026-05-05 refactor reduced `idea.md` to an optional `--idea FILE\|-` seed alongside the `inputs/` evidence pack; the dual-path persisted but was rarely used in practice and added cognitive load (eval rubric branches, manifest-vs-idea precedence, permission-scan URL extraction). Operators now put any free-text seed directly into `inputs/` as a regular source file. Removed: optional table row, idea.md read paragraph, idea.md-URL permission scan, "or no idea.md" branch of the missing-source error. The `--idea` flag and run-root `idea.md` artifact are gone. | ACE team |
 | 2026-05-29 | **Spec-for-deployability guidance (ITN post-mortem, upstream half).** Added Step 4a: when the source/evidence model implies capture fidelity (GPS accuracy radius, enumerable answers, bucketed numerics), data-quality constraints, case write-back on follow-up visits, assessment enforcement (pre/post + threshold + item count + conditional result), or a non-English working language, the PDD MUST spec it explicitly rather than only naming the topic. A thin PDD produces a faithfully-thin app that the new app-eval fitness gates hard-fail. The cure is a deployable PDD. See `docs/superpowers/specs/2026-05-29-eval-fitness-gap.md`. | ACE team |
+| 2026-07-28 | **A stated GPS accuracy tolerance may no longer be asserted as enforced (ace#1006).** Step 4a's capture-fidelity bullet used to say "spec accuracy-gated GPS (preferred + minimum accuracy, capture-gate)". No such gate is buildable — Nova rejects `validate` on `kind: geopoint`, and Connect's verification-flags form no longer renders `gps` / `gps_radius_meters` (ace#1013). Since the PDD's Evidence Model sentence flows verbatim into the Work Order, an enforced-sounding tolerance puts a promise ACE cannot keep into a contractual document. The bullet now requires accuracy-AWARE phrasing (captured + submitted + advisory + down-weighted in dedup) and forbids "rejected" / "must be ≤ X to submit" / "the app enforces" / "Connect enforces"; a genuine need for a hard gate is raised as an open question instead. | ACE team |

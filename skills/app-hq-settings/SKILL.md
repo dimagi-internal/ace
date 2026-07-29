@@ -26,8 +26,25 @@ Both settings live on the **CCHQ draft** app document. This skill mutates
 the draft only; `app-release` (Phase 3 Step 2.7, which runs immediately
 after this skill) is what makes the versioned build and releases it so
 the settings reach FLW devices. `app-release-qa` (Step 2.8) is the
-downstream structural backstop that re-verifies both from the released
-suite.xml + form XML.
+downstream structural backstop that re-verifies both — but **each from a
+different surface**, because grid is not observable in the CCZ at all
+(dimagi-internal/ace#1009):
+
+| Setting | Backstop surface | Halt class |
+|---|---|---|
+| Camera-only (`appearance="acquire"`) | released CCZ form XML | `camera-only-appearance-missing` |
+| Grid menu display | `GET /a/<domain>/apps/source/<build_id>/` → `modules[].display_style` | `grid-menu-display-missing` |
+
+The grid row is worth stating explicitly because the intuitive surfaces
+both **lie**: `suite.xml` emits a bare `<menu id="mN">` with no style
+attribute (searching a correctly-gridded released CCZ for `grid`,
+case-insensitive, across every entry, returns nothing), and
+`GET /api/v0.5/application/<id>/` serializes only
+`['case_properties','case_type','forms','name','unique_id']` per module —
+so it reads a misleading `None` for a module that IS set to grid. Until
+ace#1009 this skill claimed `app-release-qa` re-verified grid "from the
+released suite.xml"; that was false on both halves — the check did not
+exist, and could not have passed if it had.
 
 ## Why this skill exists
 

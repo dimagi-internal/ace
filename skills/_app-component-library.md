@@ -58,7 +58,7 @@ authored from the PDD per run):
 
 | Component | App | Trigger | Enforced by (eval dimension) |
 |---|---|---|---|
-| [`gps-accuracy-capture`](#gps-accuracy-capture) | Deliver | PDD Evidence Model specifies a GPS arrival/location radius | `pdd-to-deliver-app-eval § Capture fitness` |
+| [`gps-accuracy-capture`](#gps-accuracy-capture) | Deliver | PDD Evidence Model specifies a GPS arrival/location radius or accuracy tolerance (observability only — a hard gate is unbuildable, ace#1006) | `pdd-to-deliver-app-eval § Capture fitness` |
 | [`init-safe-calculates`](#init-safe-calculates) | Deliver (cross-cutting) | Any hidden calc parses a capture-later value (`selected-at`/`substr`/`regex`/`number`) | `app-release-qa` (`commcare-cli play`) |
 | [`data-quality-constraints`](#data-quality-constraints) | Deliver | Always, for any data-capture instrument | `pdd-to-deliver-app-eval § Data-quality validation` |
 | [`case-write-back`](#case-write-back) | Deliver | A case-UPDATE / follow-up form captures new observations | `pdd-to-deliver-app-eval § Capture fitness`; `app-connect-coverage` |
@@ -90,28 +90,96 @@ authored from the PDD per run):
 
 - **App:** Deliver
 - **Trigger:** the PDD's Evidence Model specifies an arrival/location radius
-  (e.g. "GPS at arrival within 100 m").
+  or an accuracy tolerance (e.g. "GPS at arrival within 100 m", "fix accuracy
+  ≤ 50 m").
 - **Parameters:** `<PREFERRED_M>` (preferred accuracy, default `15`),
-  `<MINIMUM_M>` (minimum acceptable accuracy, default `25`), `<GEOPOINT_ID>`
-  (the geopoint question id).
+  `<MINIMUM_M>` (stated accuracy tolerance — **advisory**, default `25`),
+  `<GEOPOINT_ID>` (the geopoint question id).
 - **Enforced by:** `pdd-to-deliver-app-eval § Capture fitness` — a plain
-  `geopoint` with only a text hint when the PDD states a radius caps the
+  `geopoint` with only a text hint when the PDD states a tolerance caps the
   dimension at ≤3.
 - **Pairs with:** [`init-safe-calculates`](#init-safe-calculates) — always emit
   both; the normalized `lat`/`lon`/accuracy outputs here are exactly the
   capture-later calculates that rule guards.
 
+**A hard accuracy gate is NOT achievable — on either side
+(dimagi-internal/ace#1006).** Do not spec one, do not build one, and do not
+credit one. Both enforcement surfaces are closed:
+
+- **On-device (Nova).** Nova rejects `validate` on a `geopoint` at input
+  validation (`kind "geopoint" carries no validate slot`), so
+  `selected-at(., 3) <= <MINIMUM_M>` cannot live on the geopoint. It used to be
+  silently dropped (#695/#699); now it fails loudly. The old escape hatch — a
+  separate adjacent `gps_accuracy_gate` question — is closed twice over: as bad
+  FLW UX (#723), and by the mechanical constraint-locality parser
+  (`lib/constraint-locality.ts`, checked in `app-release-qa`), which sanctions
+  only a self-reference and a cardinality gate adjacent to its repeat. An
+  adjacent GPS gate is neither and now hard-fails QA.
+- **Server-side (Connect).** Connect's
+  `/opportunity/<id>/verification_flags_config/` form no longer renders `gps`,
+  `location`, `gps_radius_meters`, `catchment_areas`, `duplicate`, or
+  `check_attachments` — `connect_set_verification_flags` posts them as
+  unrecognized keys, Django drops them, and the atom still returns `ok: true`
+  (dimagi-internal/ace#1013). No ACE run has ever persisted one. And even when
+  `location` existed it was a *radius*, never an *accuracy* bound — so Connect
+  was never a complete answer to the accuracy ceiling anyway.
+
+**So the contract is observability, stated honestly — not enforcement.** Emit:
+
+1. The tolerance in the question **hint** (`"Capture GPS. Target accuracy
+   ≤ <MINIMUM_M> m — move to open sky and re-capture if the reading is
+   worse."`).
+2. `gps_accuracy_m` computed and **submitted on every visit**, so the
+   verification layer can weight dedup by each fix's own error.
+3. A live advisory label reading the captured accuracy back to the FLW, with
+   **conditional branches covering the WHOLE range on both sides of the
+   tolerance** — see the blind-spot rule below.
+4. Normalized `lat` / `lon` outputs.
+
+**FORBIDDEN — the advisory blind spot.** An advisory whose relevance conditions
+cover only a band *below* the tolerance (e.g. `20 <= gps_accuracy_m <= 50`)
+goes **silent on exactly the readings it exists to catch**: a 90 m fix shows no
+warning at all, which reads to the FLW as "fine." This shipped in
+`hh-poverty-targeting/20260728-0705` and had to be patched by hand. Every
+accuracy advisory MUST have a branch for `gps_accuracy_m > <MINIMUM_M>` — the
+loudest one — as well as the marginal band beneath it. Enumerate the branches
+and check they partition the range with no gap.
+
+**Build memo requirement (mandatory).** Whenever the PDD, Work Order, or
+Evidence Model states a GPS accuracy tolerance, the Phase 3 build memo MUST
+carry an explicit line recording that **the stated tolerance is advisory, not
+enforced** — naming both closed surfaces above. Shipping a build whose
+artifacts assert a control that cannot fire is the ace#995 / ace#981 family
+(dead `now()` duration floor; decorative assessment gate) and is what this
+requirement exists to stop.
+
+*(A banded gate — have the form emit a `gps_quality` band and add a Connect
+`form_json` field-value rule requiring it to equal `good` — is the one path
+that could convert this from advisory to enforced, since `form_field_rules` do
+still persist. It needs the band thresholds to be a deliberate design decision
+per opp, so it is NOT part of this component; noted here so the option isn't
+rediscovered from scratch.)*
+
 **Brief paragraph (verbatim):**
 
-> REQUIRED — GPS accuracy gating: if the PDD's Evidence Model specifies an
-> arrival/location radius (e.g. "within 100 m"), a plain `geopoint` question is
-> NOT sufficient. Emit an accuracy-gated capture block: a preferred-accuracy
-> threshold (<PREFERRED_M> m) and a minimum-accuracy threshold (<MINIMUM_M> m),
-> a capture-gate that re-prompts / refuses to accept a fix worse than the
-> minimum, a live accuracy-readout label guiding the FLW, and normalized `lat`
-> / `lon` outputs the verification layer can read. A plain geopoint with only a
-> text hint ("cross-check manually") does not let Connect enforce the stated
-> radius.
+> REQUIRED — GPS accuracy capture (observability, NOT a gate): if the PDD's
+> Evidence Model specifies an arrival/location radius or accuracy tolerance
+> (e.g. "within 100 m", "fix accuracy ≤ 50 m"), a bare `geopoint` with a
+> "cross-check manually" hint is NOT sufficient — but a hard capture-gate is
+> NOT buildable either (Nova rejects `validate` on `geopoint`; Connect's
+> verification flags no longer carry `gps` / `gps_radius_meters`). Emit
+> instead: the target accuracy stated in the question HINT (<MINIMUM_M> m); a
+> hidden `gps_accuracy_m` calculate SUBMITTED on every visit so the
+> verification layer can weight dedup by each fix's own error; normalized `lat`
+> / `lon` outputs; and a live accuracy-readout advisory label whose relevance
+> branches cover the WHOLE range — a marginal band (<PREFERRED_M>–<MINIMUM_M> m)
+> AND, mandatorily, an above-tolerance branch (> <MINIMUM_M> m). An advisory
+> that only fires inside a band goes silent on exactly the bad readings it
+> exists to catch. Do NOT emit a `constraint` / `validate` accuracy gate on the
+> geopoint, and do NOT emit a separate adjacent `gps_accuracy_gate` question —
+> the first is rejected by Nova, the second hard-fails `app-release-qa`'s
+> constraint-locality check. Record in the build memo that the stated tolerance
+> is ADVISORY, not enforced.
 > INIT-SAFETY (load-bearing — do NOT skip): the hidden `lat` / `lon` /
 > accuracy calculates that split the geopoint via
 > `selected-at(<GEOPOINT_ID>, N)` MUST be guarded against an empty geopoint.
@@ -125,10 +193,10 @@ authored from the PDD per run):
 > `lat  = if(<GEOPOINT_ID> = '', '', selected-at(<GEOPOINT_ID>, 0))`,
 > `lon  = if(<GEOPOINT_ID> = '', '', selected-at(<GEOPOINT_ID>, 1))`,
 > `accuracy = if(<GEOPOINT_ID> = '', -1, number(selected-at(<GEOPOINT_ID>, 3)))`.
-> The geopoint's OWN accuracy-gate `constraint` / `validate`
-> (e.g. `selected-at(., 3) <= <MINIMUM_M>`) is fine as-is — constraints only
-> evaluate on answer, not at init; ONLY the eager hidden calculates need
-> guarding.
+> The `-1` sentinel is what the advisory branches test against, so an
+> un-captured geopoint shows no warning rather than a spurious one. (An
+> accuracy `constraint` / `validate` on the geopoint itself is moot — Nova
+> rejects it; see the gate section above.)
 
 > Reproducer: malaria-itn-app/20260529-1124 Phase 3 — the baseline form's
 > unguarded `selected-at(gps_raw, 0)` on `lat` threw at init and blocked the
@@ -723,3 +791,4 @@ verified against the *deployed* CCZ, not just the Nova blueprint.
 | 2026-07-15 | **Post-build spike resolved the three HQ-layer components.** (1) `assessment-display-lifecycle` → **WON'T-DO** as a Display Condition (case-less Learn apps have no app-readable state for a `form_filter`); deprecated + removed from the `pdd-to-learn-app` emit-checklist; the behavior is already delivered Connect-side by `assessment-gate`. (2) `live-photo-capture` → verify side is now live on `main` (`app-release-qa` camera-only check, dimagi-internal/ace#867); decided always-on for Deliver (superset of #867's PDD-conditional verify); auto-apply via `commcare_patch_xform` is pending one live probe (no tool fetches the draft XForm yet). (3) `grid-menu-display` → verifiable from `suite.xml`, auto-apply pending a write-mechanism probe (HQ endpoint vs Playwright). Both apply-automations are tracked as `commcare-setup.residuals[]` per #867. | Sarvesh |
 | 2026-07-27 | **Walkability components (first external domain-expert iteration).** Sophie Feintuch reviewed `hh-poverty-targeting/20260722-1341` and found 6 defect classes ACE's own evals passed (ace#979–#984). New components: `observable-before-derived`, `constraint-locality`, `consent-script-floor`, `threshold-coherence-flag` (Deliver); `discriminating-assessment-items`, `instrument-grounded-examples` (Learn). Root cause shared across all six: the build was graded against the PDD and a structural bar, never against **the lived sequence of a real visit or the competence of a real worker**. Two enforcement lessons baked in: (1) `constraint-locality` is checked **mechanically** in `app-release-qa` (bind-level, no LLM) because the class is 100% detectable; (2) `assessment_discrimination` is an **executed blind-guess probe**, not a prose criterion — `instructional_depth` already required "anti-guess (plausible distractors)" and still scored the decorative bank 9.4/10, so the fix is forcing the judge to show per-item work. Every finding verified against the deployed CCZ, not the Nova blueprint. | ACE (Sophie Feintuch review) |
 | 2026-07-17 | **Built the post-build auto-apply (`app-hq-settings`).** New atoms `commcare_get_form_source` + `commcare_set_menu_display`; new Phase-3 skill `app-hq-settings` (Step 2.65, between `app-deploy` and `app-release`) patches `appearance="acquire"` onto Deliver image uploads and sets `display_style=grid` per module on both apps, then clears the matching `residuals[]`. `live-photo-capture` and `grid-menu-display` flip from provisional to **applied** (verified by `app-release-qa`). Fail-soft on this initial rollout (errors leave the residual open + are caught by `app-release-qa`, never halt Phase 3); end-to-end live validation lands on the first post-install runs. | Sarvesh |
+| 2026-07-28 | **`gps-accuracy-capture` stops requiring an unbuildable gate (ace#1006).** The component demanded "a capture-gate that re-prompts / refuses to accept a fix worse than the minimum." That is not expressible on EITHER enforcement surface: Nova rejects `validate` on `kind: geopoint` (#695/#699), the adjacent-gate workaround is closed by both #723 (FLW UX) and PR #988's constraint-locality parser, and Connect's verification-flags form no longer renders `gps` / `gps_radius_meters` at all (#1013 — posted as unrecognized keys, `ok: true`, never persisted on any run). Rewritten to the honest contract: tolerance in the hint, `gps_accuracy_m` submitted every visit, whole-range advisories, normalized lat/lon — plus a mandatory build-memo line recording that a stated tolerance is ADVISORY. New FORBIDDEN rule: an advisory whose branches cover only a band BELOW the tolerance (the >50 m blind spot that shipped in `hh-poverty-targeting/20260728-0705`) — every advisory must have an above-tolerance branch. Matching edits: `pdd-to-deliver-app-eval § Capture fitness` stops crediting the gate, `idea-to-pdd § Step 4a` stops letting a PDD assert an enforced tolerance. | ACE team |

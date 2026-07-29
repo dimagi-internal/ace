@@ -24,6 +24,33 @@ two-phase pattern` for the framework rationale and artifact-path contract.
 | Phase 5 (`ocs-chatbot-qa`) | `5-ocs/ocs-chatbot-qa_transcript-<mode>.md` | transcript under judgment |
 | Phase 1 (`--deep` only) | `2-scenarios/pdd-to-test-prompts.md` | per-prompt expected-answer summaries (ground truth) |
 
+### Instrument-independence invariant (dimagi-internal/ace#1018)
+
+`2-scenarios/pdd-to-test-prompts.md` is this skill's **answer key**, and
+it MUST NOT appear in the graded bot's RAG collection. `ocs-agent-setup`
+§ Step 5 carries the matching hard exclusion; the rule is stated on both
+sides because this is the skill whose measurement is invalidated when it
+is broken.
+
+If the instrument is in the collection, the deep verdict measures
+*retrieval of a planted answer key* rather than program knowledge —
+inflating exactly the dimensions weighted most (Correctness 30%, Source
+usage 20%, since the bot can cite the instrument itself) and worst on
+adversarial prompts, where a bot that can retrieve "expected: reports Q1
+as open" is not being tested on judgment at all. Because the Phase 9
+`llo-launch` gate refuses to proceed without a fresh passing deep
+verdict, a contaminated verdict lets that gate pass on evidence it should
+not.
+
+**On `--deep`, verify before grading.** Inspect the graded bot's attached
+collections (`ocs_inspect_chatbot` / `ocs_get_chatbot`, cross-referenced
+with `5-ocs/ocs-agent-setup.md`). If the instrument — or any artifact
+this skill declares as a ground-truth input above — is present, emit
+`[WARN] deep verdict measured against a contaminated collection: the
+test-prompts instrument is indexed in collection <id>` in
+`auto_surfaced`, and say so in the gate brief. Never let a contaminated
+deep verdict pass silently as clean evidence.
+
 ## Products
 
 - `5-ocs/ocs-chatbot-eval_verdict-<mode>.yaml` — verdict YAML per `_eval-template.md § Verdict YAML contract`
