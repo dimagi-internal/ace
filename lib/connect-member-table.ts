@@ -50,13 +50,19 @@ function cellText(html: string): string {
  */
 export function parseOrgMemberTable(html: string): OrgMemberRow[] {
   const rows: OrgMemberRow[] = [];
-  // Split on <tr>; each chunk is one row's cells (the first chunk is pre-table markup).
-  const chunks = html.split(/<tr[\s>]/i).slice(1);
+  // Split on the WHOLE opening tag, attributes and closing '>' included. A
+  // character-class delimiter (`/<tr[\s>]/`) consumes only ONE character after
+  // the tag name, so Connect's `<td >` (django-tables2 renders a space before
+  // the close when the column has no attrs) leaves a stray '>' at the head of
+  // every cell. The email cell survives that — EMAIL_RE is a substring test —
+  // but the role cell is matched by EXACT equality, so `"> member"` never
+  // equals `"member"` and EVERY row is silently skipped. See ace#1064.
+  const chunks = html.split(/<tr\b[^>]*>/i).slice(1);
 
   for (const chunk of chunks) {
     const rowHtml = chunk.split(/<\/tr>/i)[0] ?? '';
     const cells = rowHtml
-      .split(/<t[dh][\s>]/i)
+      .split(/<t[dh]\b[^>]*>/i)
       .slice(1)
       .map((c) => cellText(c.split(/<\/t[dh]>/i)[0] ?? ''));
     if (!cells.length) continue;
