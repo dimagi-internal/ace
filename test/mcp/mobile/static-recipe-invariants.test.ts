@@ -101,40 +101,84 @@ describe('connect-claim-opp.yaml', () => {
     ).toBeLessThan(branchAIdx);
   });
 
-  it('scrolls the per-branch button into the viewport BEFORE the branch `when:` guards evaluate', () => {
-    // Regression guard for malaria-itn-fgd run 20260515-1645 Phase 6
-    // attempt 11: with 5+ prior-run invite cards rendered ahead of
-    // the target, the title-only scroll-into-view leaves the title at
-    // the viewport BOTTOM. The button below the title is clipped
-    // off-screen, both Branch A (`btn_resume`) and Branch B
-    // (`btn_view_opportunity`) `when:` guards evaluate to false
-    // (the button isn't visible), and the in-body `scrollUntilVisible`
-    // never fires. Catch-22.
+  it('centers the target card on the title scroll, so the branch buttons land in the viewport', () => {
+    // `centerElement: true` (jjackson/ace#800) is the SOLE mechanism
+    // putting the card's button in the rendered viewport before the
+    // Branch A/B `when:` guards evaluate. Without it the title-scroll
+    // leaves the matched card at the viewport BOTTOM, the button below
+    // the title is clipped, both guards evaluate false, and the recipe
+    // falls through to the #629 wedge detector on a healthy tile.
+    // Probe-confirmed twice on bednet-spot-check/20260618-2112: the
+    // below-scoped tapOn SKIPPED without centering and COMPLETED with it.
     //
-    // Fix: after the unconditional title-scroll, add a button-scroll
-    // for each branch's possible button id. Each lives inside its own
-    // `runFlow when: visible: { id: btn_* }` so only the actually-
-    // present button is scrolled into view. By the time the Branch A
-    // / Branch B guards below evaluate, the per-branch button is in
-    // the rendered viewport.
+    // This was asserted by NO test until 2026-07-29, which is how the
+    // pre-branch button-scroll blocks (the older, redundant fix for the
+    // same failure — see the sibling test below) survived long enough to
+    // cause a regression of their own.
+    const titleScroll = yaml.match(
+      /- scrollUntilVisible:\s*\n\s*element:\s*\n\s*text: "\.\*\$\{OPP_RUN_ID\}\.\*"\s*\n([\s\S]*?)(?=\n- )/,
+    );
+    expect(titleScroll, 'expected the unconditional title scroll').not.toBeNull();
+    expect(
+      titleScroll![1],
+      'title scroll must set centerElement: true — it is the only thing bringing the branch button into view',
+    ).toMatch(/centerElement: true/);
+  });
+
+  it('lets nothing scroll the list between the title scroll and Branch A', () => {
+    // Regression guard for bednet-spot-check/20260729-1239 Phase 6.
+    //
+    // Two "pre-branch button-scroll" runFlow blocks used to sit here —
+    // the older fix for the below-fold catch-22 (malaria-itn-fgd
+    // 20260515-1645), superseded by `centerElement: true` above. Their
+    // `when:` guards were deliberately UNSCOPED (`visible: { id:
+    // btn_resume }`, no `below:`), so on the steady-state accumulated
+    // invite list the guard matched a STALE In-Progress tile's Resume
+    // button, entered the body, and the below-scoped `optional: true`
+    // scroll — hunting a btn_resume below a title that is a NEW
+    // opportunity, where none exists — ran its full 40s budget
+    // scrolling to the list BOTTOM.
+    //
+    // The trap: an `optional: true` scrollUntilVisible that never finds
+    // its target does NOT no-op. It still scrolls, and that side effect
+    // destroyed the centered viewport the title-scroll had just
+    // established — so both Branch A/B guards evaluated false and the
+    // recipe wedged on a claimable tile.
+    //
+    // The old test asserted only the BODY scoping of those blocks and
+    // never constrained their GUARD scoping; the defect lived exactly in
+    // that gap. So assert the postcondition instead of an
+    // implementation: between the centered title-scroll and Branch A,
+    // nothing may move the list.
     const branchAIdx = yaml.indexOf('# --- BRANCH A:');
     expect(branchAIdx, 'expected Branch A marker').toBeGreaterThan(-1);
-    const preBranchYaml = yaml.slice(0, branchAIdx);
 
-    // Both branch buttons must have a pre-branch scroll that brings
-    // them into view (each scoped `below: text: ".*${OPP_RUN_ID}.*"`).
-    expect(
-      preBranchYaml,
-      'expected pre-branch scroll for btn_resume below the target title',
-    ).toMatch(
-      /- scrollUntilVisible:\s*\n\s*element:\s*\n\s*id: "org\.commcare\.dalvik:id\/btn_resume"\s*\n\s*below:\s*\n\s*text: "\.\*\$\{OPP_RUN_ID\}\.\*"/,
+    const titleScrollIdx = yaml.search(
+      /- scrollUntilVisible:\s*\n\s*element:\s*\n\s*text: "\.\*\$\{OPP_RUN_ID\}\.\*"\s*\n\s*direction: DOWN/,
     );
+    expect(titleScrollIdx, 'expected an unconditional title scroll').toBeGreaterThan(-1);
+
+    // Strip comments — the rationale above legitimately names these steps.
+    const between = yaml
+      .slice(titleScrollIdx, branchAIdx)
+      .split('\n')
+      .filter((line) => !line.trimStart().startsWith('#'))
+      .join('\n')
+      // drop the title scroll itself; we are checking what FOLLOWS it
+      .replace(/^- scrollUntilVisible:[\s\S]*?(?=\n- |$)/, '');
+
     expect(
-      preBranchYaml,
-      'expected pre-branch scroll for btn_view_opportunity below the target title',
-    ).toMatch(
-      /- scrollUntilVisible:\s*\n\s*element:\s*\n\s*id: "org\.commcare\.dalvik:id\/btn_view_opportunity"\s*\n\s*below:\s*\n\s*text: "\.\*\$\{OPP_RUN_ID\}\.\*"/,
-    );
+      between,
+      'no second scrollUntilVisible may follow the centered title scroll — it destroys the centering',
+    ).not.toMatch(/- scrollUntilVisible:/);
+    expect(
+      between,
+      'no runFlow may sit between the title scroll and Branch A — an unscoped `when:` guard can match a stale tile',
+    ).not.toMatch(/- runFlow:/);
+    expect(
+      between,
+      'no swipe/scroll step may follow the centered title scroll',
+    ).not.toMatch(/- (swipe|scroll):/);
   });
 
   it('branches on btn_resume vs btn_view_opportunity, both card-scoped', () => {
