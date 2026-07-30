@@ -1,0 +1,46 @@
+# learn-suite-reentry-from-module.yaml
+#
+# Re-enter the Learn suite root from the MODULE's form list.
+#
+# Use this instead of `learn-suite-reentry.yaml` when the app's forms are
+# `post_submit: previous` (Nova's default). Finalizing such a form returns to
+# the module's own form list — one level INSIDE the suite — not to
+# StandardHomeActivity. `learn-suite-reentry.yaml` opens by waiting up to 30s
+# on the home "Start" tile, which never renders from there, so a multi-module
+# Learn walk hangs after the first form.
+#
+# Which one to compose is a property of the app, and `app-test-cases` reads it
+# straight off the Nova blueprint (`post_submit` per form):
+#
+#   post_submit: previous  -> this recipe          (form list -> back -> suite root)
+#   post_submit: module    -> learn-suite-reentry  (home grid -> tap Start -> suite root)
+#
+# Both converge on the same postcondition — `screen_suite_menu_list` visible at
+# the SUITE ROOT — which is exactly the precondition `learn-tap-module.yaml`
+# asserts, so callers are otherwise identical.
+#
+# CALIBRATED LIVE 2026-07-30 against spark-facilitator/20260728-1338 (9-module
+# Learn app, every form `post_submit: previous`). From the post-submit form
+# list — action bar "Baseline check", one row "Pre-test (baseline)" — a single
+# `back` landed on the suite root: action bar "Spark FCAP Facilitator Learn
+# app", all 9 module rows present. See dimagi-internal/ace#1071.
+#
+# NOTE ON THE `back`: the module form list and the suite root share the same
+# `screen_suite_menu_list` id, so there is no generic on-screen signal that
+# distinguishes them. That is precisely why this is a SEPARATE recipe selected
+# from app metadata rather than a guarded branch inside
+# `learn-suite-reentry.yaml` — a guard keyed on that shared id cannot tell
+# "one level in" from "already at the root", and would press back out of the
+# suite entirely on an app that lands at the root. Unifying the two needs a
+# live `post_submit: module` app to calibrate against; until someone has one on
+# a device, do NOT merge them (ace#1071).
+appId: org.commcare.dalvik
+---
+- back
+- waitForAnimationToEnd:
+    timeout: 4000
+- extendedWaitUntil:
+    visible:
+      id: "${SELECTOR:learn-suite-menu}"
+    timeout: 15000
+- takeScreenshot: "learn-suite-reentry-from-module-suite-root"

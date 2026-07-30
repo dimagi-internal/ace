@@ -34,6 +34,7 @@ import * as fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 import { MobileClient } from './mobile/client.js';
+import { ALLOWED_STEP_KEYS } from './mobile/backends/maestro.js';
 import { resolveSelectorsInYaml } from './mobile/recipe-resolver.js';
 import { logInfo, logError } from './mobile/logging.js';
 import { resolveBackend } from './mobile/backend-toggle.js';
@@ -237,7 +238,7 @@ server.tool(
 server.tool(
   'mobile_validate_recipe',
   {
-    yaml: z.string().describe('Maestro YAML body to validate. Standard ACE-recipe shape: appId frontmatter + `---` separator + step list. Validates step-key allowlist (launchApp, tapOn, inputText, takeScreenshot, assertVisible, assertNotVisible, extendedWaitUntil, waitForAnimationToEnd, eraseText, swipe, pressKey, back, scroll, hideKeyboard, runFlow, evalScript, stopApp) and structural integrity (`---` separator present, appId in frontmatter, every step is a single-key object). Use this AFTER an ACE skill (running as a Claude Code session) writes Maestro YAML inline using its own LLM context — the mobile MCP does not bundle an LLM client, so YAML generation is the calling agent\'s responsibility, not this server\'s.'),
+    yaml: z.string().describe(`Maestro YAML body to validate. Standard ACE-recipe shape: appId frontmatter + \`---\` separator + step list. Validates step-key allowlist (${[...ALLOWED_STEP_KEYS].join(', ')}) and structural integrity (\`---\` separator present, appId in frontmatter, every step is a single-key object). Use this AFTER an ACE skill (running as a Claude Code session) writes Maestro YAML inline using its own LLM context — the mobile MCP does not bundle an LLM client, so YAML generation is the calling agent's responsibility, not this server's.`),
   },
   async ({ yaml }) => {
     // Static lint pass FIRST. Catches known-broken structural shapes

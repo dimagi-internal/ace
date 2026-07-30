@@ -358,7 +358,9 @@ The static palette lives at `mcp/mobile/recipes/static/`:
 - `form-advance.yaml` — `nav_btn_next` ImageButton tap (NOT text-match "Next" — see atlas §7)
 - `form-submit.yaml` — branched: explicit Submit button if visible, otherwise auto-finalize via `nav_btn_next`. **Every `runFlow` of this palette MUST pass `SCREENSHOT_NAME_PRE_SUBMIT` + `SCREENSHOT_NAME_POST_SUBMIT` env params** with per-journey names (e.g. `deliver-final-review` / `deliver-submitted-confirmation`) — the palette has generic `form-submit-pre`/`-post` fallbacks so unbound calls no longer overwrite one shot with the other (ace#852), but generic names collide across multiple submits in one journey, so name them per call site.
 - `content-form-finish.yaml` — **the canonical Learn CONTENT-form finalize.** A bounded multi-screen advance loop that taps `nav_btn_next` until the form auto-finalizes back to StandardHomeActivity, exits on the `learn-home-start-tile` home anchor (NOT the suite menu), handles the score-gated two-screen FINISH, and asserts the home grid post-finalize. Use this for every label-only content/lesson form — NOT for required-input quizzes (those still need per-field answer-taps + `form-advance` + `form-submit`). Requires `SCREENSHOT_NAME`. See § Multi-screen content forms below.
-- `learn-suite-reentry.yaml` — **the between-modules suite re-entry.** Tap the home Start tile → wait `screen_suite_menu_list`. A Learn form finalizes to StandardHomeActivity (the home grid), NOT to the suite menu, so this MUST run after each module's form-finalize and before the next module's `learn-tap-module`. Same surface contract as `learn-launch.yaml` (the first, post-claim suite entry); split out under a distinct name to document the between-modules intent at the call site. See § Suite re-entry between modules below. **NOTE:** this home-round-trip is for MULTI-module Learn apps. For a **single-module** Learn app (one CommCare module holding all forms), forms finalize back to the suite list, not the home grid — use `content-form-finish-to-suite.yaml` and OMIT `learn-suite-reentry`. See § SINGLE-MODULE Learn app below (jjackson/ace#894).
+- `learn-suite-reentry.yaml` — **the between-modules suite re-entry, home-grid variant.** Tap the home Start tile → wait `screen_suite_menu_list`. Correct ONLY when the form is `post_submit: module`, which finalizes to StandardHomeActivity. Same surface contract as `learn-launch.yaml` (the first, post-claim suite entry); split out under a distinct name to document the between-modules intent at the call site.
+- `learn-suite-reentry-from-module.yaml` — **the between-modules suite re-entry, form-list variant.** `back` → wait `screen_suite_menu_list`. Correct when the form is `post_submit: previous` (**Nova's default**), which finalizes to the module's own form list rather than the home grid. Composing the home-grid variant here hangs the walk for 30s on a "Start" tile that never renders (dimagi-internal/ace#1071).
+- **Pick between those two from `get_form().post_submit`** — see § Suite re-entry between modules below for the table and the reason they cannot be merged into one guarded recipe. **NOTE:** both are for MULTI-module Learn apps. For a **single-module** Learn app (one CommCare module holding all forms), forms finalize back to the suite list — use `content-form-finish-to-suite.yaml` and OMIT the re-entry step entirely. See § SINGLE-MODULE Learn app below (jjackson/ace#894).
 - `content-form-finish-to-suite.yaml` — **single-module Learn form finalize.** `content-form-finish.yaml` re-keyed on `${SELECTOR:learn-suite-menu}` (the N-form suite list) instead of the home tile, for Learn apps built as one CommCare module holding all forms. Proven live hh-poverty-targeting/20260722-1341. See § SINGLE-MODULE Learn app (jjackson/ace#894).
 - `connect-resume-opp.yaml` — opp-list → scroll to the target opp's In-Progress card → tap Resume → lands on the certificate/opp-detail surface (atlas § 8) that `deliver-launch.yaml` expects. Pre-state: Connect opp-list visible, opp already Learn-in-progress or complete. Warm-session only (journey-learn leg completed Learn in this dispatch). Matches the tile on **`OPP_RUN_ID`** (`text: ".*${OPP_RUN_ID}.*"`), not `OPP_NAME` — the recipe header is the contract, don't restate its parameters here (ace#974).
 - `deliver-launch.yaml` — post-Learn-complete certificate (atlas § 8) → tap VIEW OPPORTUNITY DETAILS → Download Delivery gate (§ 9) → tap DOWNLOAD → Deliver-mode StandardHomeActivity (§ 10) anchored on `id/viewJobCard`. All surfaces ID-anchored (verified 2026-05-26 against bednet J2 dumps; no coordinate fallbacks). Chain after `connect-resume-opp.yaml` in the Deliver smoke recipe.
@@ -455,27 +457,47 @@ over-step on bednet-spot-check run 20260528-0556 Phase 6 (a `form-advance` +
 `content-form-finish.yaml` handles one-screen and N-screen content forms
 under one contract.
 
-##### Suite re-entry between modules — use `learn-suite-reentry.yaml`
+##### Suite re-entry between modules — pick the variant from `post_submit`
 
-**A Learn form finalizes to StandardHomeActivity (the home grid), NOT to the
-suite menu — so you MUST re-enter the suite between every module.** After a
-module's form finalizes, the device is on the home tiles (Start / View Job
-Status / Sync / Log out), not on `screen_suite_menu_list`. The next
-`learn-tap-module` asserts `screen_suite_menu_list` as its pre-state and
-hard-fails if called directly from the home grid (jjackson/ace#646 Gap 2).
+**You MUST re-enter the suite root between every module** — the next
+`learn-tap-module` asserts `screen_suite_menu_list` at the SUITE ROOT as its
+pre-state and hard-fails otherwise (jjackson/ace#646 Gap 2).
 
-Run `learn-suite-reentry.yaml` (tap Start → wait `screen_suite_menu_list`)
-after each module's form-finalize and before the next module's
-`learn-tap-module`. The per-module loop is therefore:
+**Where a finalize lands is NOT fixed — read it off the blueprint
+(dimagi-internal/ace#1071).** `get_form` reports `post_submit` per form, and
+it decides which re-entry recipe to compose:
+
+| `post_submit` | Where the finalize lands | Re-entry recipe |
+|---|---|---|
+| `module` | StandardHomeActivity — the home grid (Start / View Job Status / Sync / Log out) | `learn-suite-reentry.yaml` (tap Start → wait `screen_suite_menu_list`) |
+| `previous` (**Nova's default**) | the MODULE's own form list — one level INSIDE the suite | `learn-suite-reentry-from-module.yaml` (`back` → wait `screen_suite_menu_list`) |
+
+Composing the wrong one hangs the walk. `learn-suite-reentry.yaml` opens with
+a 30s `extendedWaitUntil` on the home "Start" tile; from a module form list
+that tile never renders, so a multi-module walk dies after form 1 with
+`Assertion is false: "Start" is visible`. Live repro:
+spark-facilitator/20260728-1338 (9 modules, all `post_submit: previous`) —
+the pre-test finalized and synced cleanly, then the walk hung, with the dump
+showing action bar "Baseline check" and a single row "Pre-test (baseline)".
+
+The per-module loop is therefore:
 
 ```
 learn-tap-module → content-form-finish (or quiz answer-taps + form-submit)
-                 → learn-suite-reentry → (next module's learn-tap-module)
+                 → <re-entry variant per the table>
+                 → (next module's learn-tap-module)
 ```
 
-The FIRST suite entry (post-claim) still uses `learn-launch.yaml`; every
-subsequent re-entry uses `learn-suite-reentry.yaml`. They share the same
-home-grid → suite-menu contract.
+The FIRST suite entry (post-claim) still uses `learn-launch.yaml` regardless
+of `post_submit` — it enters from the Connect handoff, not from a finalize.
+
+**Do not try to collapse the two variants into one guarded recipe.** The
+module form list and the suite root share the same `screen_suite_menu_list`
+id, so no on-screen signal distinguishes "one level in" from "already at the
+root"; a guard keyed on that id would press `back` out of the suite entirely
+on a `post_submit: module` app. The app-metadata branch above is the
+reliable discriminator. (See the header of
+`learn-suite-reentry-from-module.yaml`.)
 
 ##### SINGLE-MODULE Learn app — use `content-form-finish-to-suite.yaml`, NOT the home round-trip (jjackson/ace#894)
 
@@ -648,10 +670,47 @@ For each form-walk segment of a recipe:
    (jjackson/ace#710). Do this BEFORE the first answer tap when the form's
    first node(s) are display nodes.
 2. For every `kind: single_select` field that's required, emit a
-   `tapOn: text: "<literal option label>"` BEFORE the
-   `form-advance.yaml` step. The option label comes from the field's
-   `options[].label` in the Nova blueprint — verbatim, not paraphrased,
-   not derived from the PDD brief.
+   **guarded-scroll option tap** BEFORE the `form-advance.yaml` step. The
+   option label comes from the field's `options[].label` in the Nova
+   blueprint — verbatim, not paraphrased, not derived from the PDD brief.
+
+   ```yaml
+   - runFlow:
+       when:
+         notVisible:
+           text: "<literal option label>.*"
+       commands:
+         - scrollUntilVisible:
+             element:
+               text: "<literal option label>.*"
+             direction: DOWN
+             speed: 80
+             timeout: 20000
+             visibilityPercentage: 60
+             centerElement: true
+   - tapOn:
+       text: "<literal option label>.*"
+   ```
+
+   **Both halves are load-bearing, and they fail in opposite directions
+   (dimagi-internal/ace#1070).** A bare `tapOn` with no scroll misses any
+   option below the fold — with trilingual option labels (en/nya/tum) a
+   4-option question routinely renders ~3 options per screen, so this is the
+   COMMON case for a localized app, not an edge case. But an
+   *unconditional* `scrollUntilVisible` is equally wrong: on a question
+   whose options already fit, there is nothing to scroll, and CommCare's
+   form view reads the resulting no-op swipes as **backward form
+   navigation**, walking the flow out of the form to an "Exit Form?"
+   dialog. The `when: notVisible` guard is what makes one recipe correct
+   for both shapes.
+
+   Live repro of each half, same app, same walk
+   (spark-facilitator/20260728-1338, 2026-07-30): pre-test q4's correct
+   option sat below the fold and a bare tap could not reach it; post-test
+   q6's four options all fit, and an unconditional scroll exited the form.
+
+   Do NOT reach for `scroll` or a fixed swipe count instead — those are
+   unguarded by construction and reproduce the q6 failure.
 3. For `kind: image` required fields, emit the photo-capture sequence
    (`camera-take-photo` → `camera-shutter-button` → `camera-save-photo`)
    before advance.
