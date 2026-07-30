@@ -106,10 +106,12 @@ holds.
   dir), stop in a `finally` covering **both** the normal return and the
   throw path. The driver-death throw is the case the video is worth most.
 - `runRecipeWithDriverHeal` can cold-boot the AVD mid-run, killing the
-  recorder and rotating the serial. Handling: stop and **keep** the
-  pre-crash segment as `<recipeId>-attempt1.mp4`, then start a fresh
-  recording after the heal. Both are retained — the pre-crash footage is
-  the interesting one.
+  recorder and rotating the serial. Handling: start and stop the recorder
+  **inside the `runOnce` callback**, so each attempt produces its own
+  segment and the `finally` covers the throw path for free. Naming:
+  attempt 1 → `<recipeId>.mp4`, attempt N>1 → `<recipeId>-attempt<N>.mp4`.
+  A healed run therefore yields `<recipeId>.mp4` (pre-crash — the
+  interesting one) plus `<recipeId>-attempt2.mp4`. Both are retained.
 - Result shape gains `RecipeRunResult.videos?: VideoArtifact[]` — an array,
   because of the heal-retry case. Each entry:
   `{ path, bytes, recipeId, dispatchId, attempt }`.
@@ -209,5 +211,8 @@ property.
   Claude restart`).
 - `playbook/integrations/mobile-integration.md` gains a Recording section
   covering the mechanism, the console-auth rejection, and the off switch.
-- `RecipeRunResult` shape change means `docs/atom-schemas.md` regenerates
-  via `npx tsx scripts/dump-atom-schemas.ts`.
+- `docs/atom-schemas.md` catalogs atom *parameter* schemas, and
+  `mobile_run_recipe`'s parameters do not change — so no regeneration is
+  expected. Run `npx tsx scripts/dump-atom-schemas.ts` anyway and commit
+  only if it produces a diff (the staleness gate is
+  `test/scripts/dump-atom-schemas.test.ts`).
