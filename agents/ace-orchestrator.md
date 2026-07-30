@@ -119,10 +119,21 @@ green `selector_map_currency` says nothing about whether `ace-mobile`
 bound. MCP subprocesses bind at session start and are NOT respawned by
 `/reload-plugins`, so a binding miss is unrecoverable in-session (needs a
 full Claude Code restart). The structural guard is therefore an
-**in-session atom-resolvability check at the point of use**, not a
-preflight field: Nova has `commcare-setup` § Step 0 (`get_hq_connection`),
-and Phase 6 has `qa-and-training` § Pre-flight Step 0 (`ace-mobile`
-binding). The same class can silently force a decisions-log hand-write
+**in-session atom-resolvability check**, never a doctor field — and it
+lives in TWO places, both load-bearing:
+
+1. **At L0, as Step 2a below** — read Step 2's `ToolSearch` result and
+   halt before the first `Agent` dispatch if a `pending` phase's server
+   didn't bind. This is what stops a seeded run from spending its only
+   dispatch, and Phase 6 from burning the single-use Learn precondition,
+   to rediscover an unbound server.
+2. **At the point of use, in the phase agent** — Nova has
+   `commcare-setup` § Step 0 (`get_hq_connection`), and Phase 6 has
+   `qa-and-training` § Pre-flight Step 0 (`ace-mobile` binding). These
+   remain the backstop for `/ace:step`, for phases dispatched outside
+   `/ace:run`, and for a server that dies mid-session.
+
+The same class can silently force a decisions-log hand-write
 when `ace-decisions` is unbound (jjackson/ace#782) — if a `decisions_*`
 atom won't resolve, treat it as unbound and follow the hand-write
 fallback in `idea-to-pdd/SKILL.md § Schema and write semantics` rather
@@ -168,6 +179,49 @@ atoms. Do NOT issue additional `ToolSearch` calls mid-run as you
 encounter each atom — fold any miss into this literal next time you
 bump the doc. (Rationale + incidents: see orchestrator-reference.md
 § Pre-flight rationale.)
+
+**Step 2a — Assert the atoms actually resolved (MCP binding fence).**
+Step 2 is also the only place L0 can observe **which plugin MCPs bound
+in this session**. Read its result: every name in the literal that comes
+back is bound; any name that does NOT come back means its server did not
+attach. Do NOT treat a miss as "I'll search again later" — re-searching
+returns nothing, because MCP subprocesses bind at session start and are
+NOT respawned by `/reload-plugins`. A binding miss is **unrecoverable
+in-session**.
+
+Then assert, against the run's shape (fresh = all phases; resume = the
+`pending` phases from the loaded `run_state.yaml`), that the atoms those
+phases need are present:
+
+| A `pending` phase of… | requires resolvable |
+|---|---|
+| `commcare-setup` | `commcare_*` (`ace-connect`) + Nova (`get_hq_connection`) |
+| `connect-setup` | `connect_*` (`ace-connect`) |
+| `ocs-setup` | `ocs_*` (`ace-ocs`) |
+| `qa-and-training` | `mobile_ensure_avd_running` (`ace-mobile`) |
+
+On a miss, **halt before the first `Agent` dispatch** with a `[BLOCKER]`:
+
+> `<opp>/<run-id>`: `<server>` did not bind in this Claude Code session,
+> so `<atom>` is unresolvable and phase `<N>` cannot run. This is a
+> session-level bind miss, not a config or code defect — confirm with
+> `npx tsx mcp/<server>-server.ts` against the install path (it will
+> answer `initialize` + `tools/list` normally). MCP subprocesses bind at
+> session start and are not respawned by `/reload-plugins`: **quit and
+> reopen Claude Code**, then resume `/ace:run <opp>/<run-id>`.
+
+Halting *here* rather than at point-of-use is the whole value: the phase
+agents do carry their own binding guards (`commcare-setup` § Step 0,
+`qa-and-training` § Pre-flight Step 0), but reaching them costs a full
+`Agent` dispatch, and on a **seeded** run whose only `pending` phase is
+the unbound one that dispatch is the entire run. Worse, Phase 6's mobile
+walk consumes the single-use Learn-completion precondition (one-way per
+`(test user, opportunity)`), so dispatching into a half-bound MCP surface
+risks burning the opp — whose only restore is a fresh `/ace:run`. The
+doctor cannot cover this: it runs as a subprocess and structurally cannot
+see this session's bindings. (jjackson/ace#784; live recurrence
+bednet-spot-check/20260729-1239, where `ace-connect`/`ace-ocs`/`ace-mobile`
+all silently failed to attach while `ace-gdrive`/`ace-decisions` bound.)
 
 **Step 3 — Resolve real IDs, then read opp state.** The gdrive atoms
 are **ID-only** — `drive_read_file` takes `fileId`, `drive_list_folder`
