@@ -1,3 +1,41 @@
+/**
+ * Local-AVD counterpart to the cloud backend's `CloudDiagnostics`
+ * (dimagi-internal/ace#961). Returned by `AvdBackend.diagnose()` and, via
+ * `MobileClient.diagnose()`, by the `mobile_diagnose` atom when the active
+ * backend is local.
+ *
+ * `backend` is the discriminant that lets one atom serve both backends:
+ * `'local'` here, `'cloud'` on the cloud envelope.
+ *
+ * The reason this type exists at all is `adb_server_port`. The local
+ * backend probe-allocates its own adb server (5037 upward — typically 5039
+ * on a workstation where a sibling session already holds 5037), so a raw
+ * `adb devices` from a session shell talks to the DEFAULT 5037, prints an
+ * empty device list, and reads as a dead emulator while the emulator is
+ * running fine. `adb_env_hint` carries the copy-pasteable fix.
+ */
+export interface LocalDiagnostics {
+  backend: 'local';
+  /** The adb server port THIS backend booted the emulator against. */
+  adb_server_port: number;
+  emulator_console_port: number;
+  emulator_adb_bridge_port: number;
+  /** False when ANDROID_ADB_SERVER_PORT / ACE_MOBILE_EMULATOR_PORT pinned them. */
+  ports_auto_allocated: boolean;
+  /** e.g. `ANDROID_ADB_SERVER_PORT=5039` — prefix a raw adb call with this. */
+  adb_env_hint: string;
+  /** Devices visible on `adb_server_port` (NOT on the default 5037). */
+  adb_devices: Array<{ serial: string; state: string }>;
+  adb_visible_count: number;
+  /** AVD name behind the first emulator serial, when readable. */
+  avd_name: string | null;
+  avd_serial: string | null;
+  /** `emulator -list-avds` — what could be booted. */
+  known_avds: string[];
+  /** Set instead of throwing when the adb probe itself failed. */
+  adb_error: string | null;
+}
+
 export interface AvdInfo {
   name: string;
   serial: string;       // adb device serial, e.g. "emulator-5554"

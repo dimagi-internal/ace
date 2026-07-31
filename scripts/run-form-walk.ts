@@ -15,7 +15,15 @@
  * CommCare backend (same pattern as `scripts/probe-multimedia-upload.ts`).
  *
  * Usage:
- *   npx tsx scripts/run-form-walk.ts <domain> <app_id> [--build-id <hex>] [--out <path>]
+ *   npx tsx scripts/run-form-walk.ts <domain> <app_id> [--build-id <hex>] [--out <path> | --out-scratch]
+ *
+ * Output paths (ace#1046): prefer `--out-scratch`, which derives an
+ * unpredictable per-user path via `lib/scratch-file.ts` and prints only that
+ * path on stdout. NEVER pass a fixed literal like `/tmp/ace-hq-<app>.json` —
+ * that path is shared across macOS users, so the write can fail `EACCES`
+ * while the follow-up read silently returns another session's file. Every
+ * `--out` write is read back and asserted to carry this invocation's
+ * `domain` + `app_id` before the script exits 0.
  *
  * Output (JSON, to stdout or --out):
  *   {
@@ -42,9 +50,9 @@
  *
  * Shipped 0.13.29.
  */
-import { writeFileSync } from 'node:fs';
 import { unzipSync, strFromU8 } from 'fflate';
 import { DOMParser } from '@xmldom/xmldom';
+import { scratchPath, writeVerifiedJson } from '../lib/scratch-file.js';
 
 // ── Public types ─────────────────────────────────────────────────
 
@@ -638,6 +646,12 @@ interface CliArgs {
   app_id: string;
   build_id?: string;
   out?: string;
+  /**
+   * Derive the output path instead of taking one: an unpredictable
+   * per-user, per-process scratch file (ace#1046). Prints the resolved
+   * path — and nothing else — on stdout so the caller can `jq` it.
+   */
+  out_scratch?: boolean;
   /** Resolve uids from the draft-app API ONLY — no CCZ, no Playwright.
    * See `--draft-only` handling in `main()` for why this mode exists. */
   draft_only?: boolean;
@@ -654,6 +668,8 @@ function parseCliArgs(argv: string[]): CliArgs | null {
       out.draft_only = true;
     } else if (a === '--out') {
       out.out = argv[++i];
+    } else if (a === '--out-scratch') {
+      out.out_scratch = true;
     } else if (a.startsWith('--')) {
       console.error(`Unrecognized flag: ${a}`);
       return null;
@@ -667,11 +683,44 @@ function parseCliArgs(argv: string[]): CliArgs | null {
   return out as CliArgs;
 }
 
+/**
+ * Emit the walk result, identity-verified (ace#1046).
+ *
+ * Every file write goes through `writeVerifiedJson`, which reads the file
+ * back and asserts `{domain, app_id}` round-trip before returning. That is
+ * the half that closes the near-miss: a write that fails `EACCES` on a
+ * predictable shared `/tmp` path while a DIFFERENT session's stale file
+ * survives can no longer be handed to the caller as if it were ours. The
+ * payload already stamps `domain` + `app_id`, so the guard costs nothing.
+ *
+ * `--out-scratch` derives an unpredictable per-user path and prints ONLY
+ * that path on stdout; `--out <path>` honours an explicit path; neither
+ * flag keeps the original stdout-JSON behaviour.
+ */
+function emitResult(
+  args: CliArgs,
+  result: { domain: string; app_id: string; forms: unknown[] },
+  label: string,
+): void {
+  const text = JSON.stringify(result, null, 2);
+  const identity = { domain: args.domain, app_id: args.app_id };
+  const target = args.out ?? (args.out_scratch ? scratchPath(`run-form-walk-${args.app_id}.json`) : null);
+  if (!target) {
+    process.stdout.write(text + '\n');
+    return;
+  }
+  writeVerifiedJson({ filePath: target, payload: result, identity });
+  console.error(`Wrote ${result.forms.length} forms${label} to ${target}`);
+  // In `--out-scratch` mode stdout is the path channel, so the caller can
+  // do: OUT="$(... --out-scratch)" && jq . "$OUT"
+  if (!args.out) process.stdout.write(target + '\n');
+}
+
 async function main(): Promise<number> {
   const args = parseCliArgs(process.argv.slice(2));
   if (!args) {
     console.error(
-      'Usage: npx tsx scripts/run-form-walk.ts <domain> <app_id> [--build-id <hex>] [--draft-only] [--out <path>]',
+      'Usage: npx tsx scripts/run-form-walk.ts <domain> <app_id> [--build-id <hex>] [--draft-only] [--out <path> | --out-scratch]',
     );
     return 1;
   }
@@ -725,13 +774,7 @@ async function main(): Promise<number> {
         form_unique_id,
       })),
     };
-    const text = JSON.stringify(result, null, 2);
-    if (args.out) {
-      writeFileSync(args.out, text);
-      console.error(`Wrote ${result.forms.length} forms (draft_api) to ${args.out}`);
-    } else {
-      process.stdout.write(text + '\n');
-    }
+    emitResult(args, result, ' (draft_api)');
     return 0;
   }
 
@@ -782,13 +825,7 @@ async function main(): Promise<number> {
   });
   const result = mergeDraftFormUids(walked, formMap, moduleMap);
 
-  const text = JSON.stringify(result, null, 2);
-  if (args.out) {
-    writeFileSync(args.out, text);
-    console.error(`Wrote ${result.forms.length} forms to ${args.out}`);
-  } else {
-    process.stdout.write(text + '\n');
-  }
+  emitResult(args, result, '');
   await session.close().catch(() => {});
   return 0;
 }

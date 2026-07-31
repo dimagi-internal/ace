@@ -28,6 +28,18 @@ Auto-registers via `.claude-plugin/plugin.json` `mcpServers` when the plugin is 
 
 **Diagnostic / debug:** `mobile_probe_maestro_driver`, `mobile_diagnose`, `mobile_restart_runner`, `mobile_patch_launch_script`.
 
+`mobile_diagnose` is **dual-mode** (ace#961) — discriminate its result on the
+`backend` field. On **cloud** it returns the in-VM `CloudDiagnostics` (SSM
+state, runner-ready marker, adb devices). On **local** it returns
+`LocalDiagnostics`: `adb_server_port` (the port this session actually
+allocated — typically 5039), `adb_env_hint` (the copy-pasteable
+`ANDROID_ADB_SERVER_PORT=<n>` prefix), the devices visible on *that* port,
+and the running AVD's serial + name. **Run it first whenever a raw
+`adb devices` shows nothing** — the local backend never uses the default
+5037, so an empty list from a bare `adb` proves nothing about the emulator.
+Read-only: it never boots, kills, or wipes. `mobile_restart_runner` and
+`mobile_patch_launch_script` remain cloud-only.
+
 **Ad-hoc snapshot (debugging only):** `mobile_save_snapshot`, `mobile_load_snapshot` — NOT on the Phase 6 heal path; useful for operator-driven state captures during interactive debugging.
 
 ## Static recipes

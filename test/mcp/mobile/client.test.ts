@@ -890,18 +890,40 @@ describe('MobileClient cloud-only diagnostic atoms', () => {
     });
   });
 
-  it('throws CLOUD_ONLY_OPERATION when active backend is local', async () => {
+  it('throws CLOUD_ONLY_OPERATION for the admin atoms when active backend is local', async () => {
     // Default is local (no session file, no env).
     const client = new MobileClient({ avd: {} as any, maestro: {} as any, cloud: fakeCloud() });
     expect(client.useCloud).toBe(false);
 
     // requireCloudOnly throws synchronously before returning a Promise,
     // matching the pattern used by listAvds (see useCloud test above).
-    expect(() => client.diagnose()).toThrow(/only available on the cloud/);
+    // `diagnose` is deliberately NOT in this list any more — see below.
     expect(() => client.restartRunner()).toThrow(/only available on the cloud/);
     expect(() => client.patchLaunchScript({ scriptBody: '#!/bin/bash\n' })).toThrow(
       /only available on the cloud/,
     );
+  });
+
+  it('routes diagnose to the LOCAL backend when cloud is inactive (#961)', async () => {
+    // Was CLOUD_ONLY_OPERATION until ace#961: that left the local backend
+    // with no self-describing probe, so a raw `adb devices` on the default
+    // 5037 (the MCP allocates its own, typically 5039) read as a dead
+    // emulator with nothing in-session to contradict it.
+    const avd = { diagnose: vi.fn().mockResolvedValue({ backend: 'local', adb_server_port: 5039 }) };
+    const client = new MobileClient({ avd: avd as any, maestro: {} as any, cloud: fakeCloud() });
+    expect(client.useCloud).toBe(false);
+
+    const d = await client.diagnose();
+    expect(avd.diagnose).toHaveBeenCalledTimes(1);
+    expect(d).toEqual({ backend: 'local', adb_server_port: 5039 });
+  });
+
+  it('tags the cloud diagnose envelope with backend: cloud so callers can discriminate', async () => {
+    setSessionBackend('cloud');
+    const cloud = fakeCloud();
+    const client = new MobileClient({ avd: {} as any, maestro: {} as any, cloud });
+    const d = await client.diagnose();
+    expect(d.backend).toBe('cloud');
   });
 });
 

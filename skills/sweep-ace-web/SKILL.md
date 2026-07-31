@@ -139,21 +139,27 @@ but honor a subset if that's what was approved).
 BASE_URL="${ACE_WEB_URL:-https://labs.connect.dimagi.com/ace}"
 BASE_URL="${BASE_URL%/}"
 
+# Scratch response files: `mktemp`, never a fixed /tmp literal (ace#1046) —
+# /tmp is shared across macOS users, so `-o` can fail EACCES while the
+# follow-up `cat` silently returns another session's response body.
+LIST_JSON="$(mktemp "${TMPDIR:-/tmp}/ace-sweep-list-XXXXXX.json")"
+DEL_JSON="$(mktemp "${TMPDIR:-/tmp}/ace-sweep-del-XXXXXX.json")"
+
 # 1. List
-HTTP=$(curl -sS -o /tmp/sweep-list.json -w '%{http_code}' \
+HTTP=$(curl -sS -o "$LIST_JSON" -w '%{http_code}' \
   -X GET "$BASE_URL/api/sessions/sweep" \
   -H "Authorization: Bearer $ACE_WEB_PAT_TOKEN")
-[ "$HTTP" = "200" ] || { echo "list $HTTP"; cat /tmp/sweep-list.json; exit 3; }
+[ "$HTTP" = "200" ] || { echo "list $HTTP"; cat "$LIST_JSON"; exit 3; }
 
 # 2. (Render + approval handled by the agent calling drive_create_file)
 
 # 3. Delete — agent constructs IDS from approved list
-HTTP=$(curl -sS -o /tmp/sweep-del.json -w '%{http_code}' \
+HTTP=$(curl -sS -o "$DEL_JSON" -w '%{http_code}' \
   -X POST "$BASE_URL/api/sessions/sweep/delete" \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $ACE_WEB_PAT_TOKEN" \
   -d "{\"session_ids\": [$IDS]}")
-[ "$HTTP" = "200" ] || { echo "delete $HTTP"; cat /tmp/sweep-del.json; exit 4; }
+[ "$HTTP" = "200" ] || { echo "delete $HTTP"; cat "$DEL_JSON"; exit 4; }
 ```
 
 ## Failure modes

@@ -35,7 +35,7 @@ import { resolveBackend, preflightMobileBackend } from './backend-toggle.js';
 import type {
   AvdInfo, ApkInfo, RecipeRunResult, TestUserRegistrationResult, UiDumpResult,
   SnapshotResult, DeviceUserStateClass, DeviceStateHealLog, LocalBootstrapConfig,
-  VideoArtifact,
+  VideoArtifact, LocalDiagnostics,
 } from './types.js';
 import { logInfo } from './logging.js';
 import { resetScreenshotDir } from './screenshot-dir.js';
@@ -53,6 +53,21 @@ import {
   stopRecording,
 } from './screen-recorder.js';
 import { clearSpool, listSpooled, spoolDir, spoolVideo } from './video-spool.js';
+
+/**
+ * Return shape of the dual-mode `mobile_diagnose` atom
+ * (dimagi-internal/ace#961). Discriminate on `backend`:
+ *
+ *   const d = await client.diagnose();
+ *   if (d.backend === 'local') d.adb_server_port;      // 5039, typically
+ *   else                       d.runner_service_state; // cloud in-VM state
+ *
+ * The union lives here rather than in `types.ts` because `types.ts` is
+ * deliberately backend-agnostic and does not import `CloudDiagnostics`.
+ */
+export type MobileDiagnostics =
+  | LocalDiagnostics
+  | ({ backend: 'cloud' } & CloudDiagnostics);
 
 /**
  * Screen-recorder seam. Injected only by tests; production binds the real
@@ -1281,14 +1296,17 @@ export class MobileClient {
     return this.avd.setLocation(avdName, longitude, latitude, altitude, satellites);
   }
 
-  // ── Cloud-only diagnostics + admin ─────────────────────────────────
+  // ── Diagnostics + cloud-only admin ─────────────────────────────────
   //
-  // These three methods are only meaningful against the cloud backend
-  // (there is no `/api/mobile/diagnose` for a local AVD — `adb` is the
-  // local equivalent). When the active backend is local we throw a
-  // clear typed error rather than silently no-op'ing, so a skill that
-  // calls `mobile_diagnose` against a local backend sees a signal
-  // instead of a misleading empty result.
+  // `diagnose` is DUAL-MODE (dimagi-internal/ace#961): cloud returns the
+  // in-VM `CloudDiagnostics`, local returns `LocalDiagnostics` (adb server
+  // port + serial + device visibility on THAT port). Callers discriminate
+  // on the `backend` field.
+  //
+  // `restartRunner` / `patchLaunchScript` remain cloud-only — there is no
+  // local analogue of the runner unit or the launch script. When the active
+  // backend is local they throw a clear typed error rather than silently
+  // no-op'ing, so a skill sees a signal instead of an empty result.
 
   private requireCloudOnly(operation: string): CloudBackend {
     if (!this.useCloud) {
@@ -1301,9 +1319,27 @@ export class MobileClient {
     return this.requireCloud();
   }
 
-  /** Read-only in-VM diagnostic snapshot. Cloud only. */
-  diagnose(): Promise<CloudDiagnostics> {
-    return this.requireCloudOnly('mobile_diagnose').diagnose();
+  /**
+   * Read-only diagnostic snapshot of whichever backend is active
+   * (dimagi-internal/ace#961). Never boots, heals, or mutates.
+   *
+   *  - cloud → the in-VM `CloudDiagnostics` from `/api/mobile/diagnose`,
+   *    tagged `backend: 'cloud'`.
+   *  - local → `LocalDiagnostics`: the adb server port this session
+   *    ACTUALLY allocated, the devices visible on that port, and the AVD
+   *    behind them.
+   *
+   * Why local matters: the local backend probe-allocates its own adb server
+   * (typically 5039), so a raw `adb devices` hits the default 5037, shows
+   * nothing, and reads as a dead emulator. Before this the atom threw
+   * `CLOUD_ONLY_OPERATION` on local, leaving the process table as the only
+   * authoritative read.
+   */
+  async diagnose(): Promise<MobileDiagnostics> {
+    if (this.useCloud) {
+      return { backend: 'cloud', ...(await this.requireCloud().diagnose()) };
+    }
+    return this.avd.diagnose();
   }
 
   /** Cleanly restart the in-VM ace-mobile-runner unit. Cloud only. */
