@@ -111,8 +111,8 @@ methodology, different dimensions tuned to Learn-app concerns. See
    |---|---|---|
    | **Assessment gating (enforcement)** | 22% | Does the app **enforce** readiness, not just expose a trivial score? **Architecture note:** in ACE, the Deliver-unlock gate is enforced *Connect-side* — Connect reads the assessment completion; ACE Learn forms carry NO case blocks (see `pdd-to-learn-app § REQUIRED — Learn forms must NOT carry <case> blocks`). So do NOT require in-app case-property sequential unlock — that would contradict the build architecture. Enforcement fitness means, independent of the PDD: (a) **pre-test + post-test** structure with distinct item banks, not a single quiz; (b) **adequate assessment coverage** — enough scored items to actually test the curriculum (roughly ≥1 item per module/major topic; 5 items for a 5-module course is too thin); (c) the score is a **percentage correctly wired to `connect.assessment` at the PDD threshold** so Connect gates Deliver on it; (d) a **pass/fail result experience in-app** — a result label whose relevance is conditional on `user_score >= threshold` (vs a separate fail/retry label), NOT an unconditional "Well done!" that fires regardless of score; (e) retry guidance for a failing FLW. **Hard-gate:** the PDD specifies a readiness gate AND the build is a single quiz with no pre/post split, trivial item count, AND an unconditional pass message → dimension **≤3**. A score tag Connect can read but that sits behind a single trivial quiz with an unconditional "Well done!" is presence, not enforcement → caps this dimension at 5. |
    | **Instructional depth** | 17% | Is each module actually *teachable*, at item granularity — not a label naming the topic? Check, independent of the PDD: (a) module bodies carry real instructional substance (steps, examples, do/don't, reference imagery placeholders correctly typed), not one-line labels; (b) *(moved 2026-07-27)* item quality is now scored by **`assessment_discrimination`** via an executed probe — do NOT also grade it here; this dimension keeps only the item-COUNT-per-module element in the mid-tier cap below; (c) citations / source references where the domain calls for them (WHO, PMI, etc.). **Hard-gate:** modules are label-only with no teachable substance → dimension **≤3**. **Mid-tier cap (added 2026-05-29 from ITN validation):** decent expository prose is necessary but NOT sufficient for a deployable training instrument. When modules carry teaching prose but lack pedagogical scaffolding — specifically ALL THREE of: (i) no worked examples or do/don't pairs, (ii) no domain citations where the source material cites them (WHO/PMI/GiveWell), AND (iii) fewer than 2 assessment items per taught module (the ITN build has 1 quiz item per module vs the expert `[Final]`'s 10-item pre-test + 10-item post-test) — cap this dimension at **4.0**. Each module that merely *names* its topic without teaching it = 1.5-point deduction. (This is the item-granular replacement for the old "topic present = covered" reading.) |
-   | **Assessment discrimination** | 8% | **Can the assessment tell a trained worker from an untrained one?** This dimension is scored from an **executed probe, not an impression** — see § The blind-guess probe below, which is MANDATORY and whose per-item table MUST appear in the verdict. Scored from the probe's `guessable_ratio` (items answerable cold ÷ items scored): **0–20% → 9–10 · 21–40% → 7–8 · 41–60% → 5–6 · 61–80% → 4 · >80% → ≤3**. Additional deductions, each 1 point: (a) any item whose distractors are all absurd (the "one virtuous option + N absurd options" shape); (b) a teaching example or practice item referencing a question **absent from the instrument** the Deliver app implements (`instrument-grounded-examples`); (c) items that test generic professional-ethics sentiment rather than program specifics. **Hard-gate:** `guessable_ratio > 80%` → dimension **≤3 → suite `fail`** — a gate a worker passes without studying is decorative, and shipping it is worse than shipping no gate, because it launders an unqualified worker into the field. **N/A rule:** app has no scored assessment (PDD specifies no gate) → score `null` and redistribute. |
-   | **Localization match** | 8% | **HARD-FAIL dimension.** If the PDD names a working language other than English, the build must ship the **translation set** for it (labels, choices, hints, assessment items) on top of the English core. **Hard-gate:** PDD names a working language AND the build is English-only (or the translation set is materially incomplete) → dimension **≤3 → suite `fail`.** **N/A rule:** PDD names no working language → score `null` and redistribute weight. (Resolves the 2026-05-29 localization decision: English core, hard-fail if named-language translations weren't also built.) |
+   | **Assessment discrimination** | 8% | **Can the assessment tell a trained worker from an untrained one?** This dimension is scored from an **executed probe, not an impression** — see § The blind-guess probe below, which is MANDATORY and whose per-item table MUST appear in the verdict. Scored from the probe's `guessable_ratio` (items answerable cold ÷ items scored): **0–20% → 9–10 · 21–40% → 7–8 · 41–60% → 5–6 · 61–80% → 4 · >80% → ≤3**. Additional deductions, each 1 point: (a) any item whose distractors are all absurd (the "one virtuous option + N absurd options" shape); (b) a teaching example or practice item referencing a question **absent from the instrument** the Deliver app implements (`instrument-grounded-examples`); (c) items that test generic professional-ethics sentiment rather than program specifics. **Structural-tell deductions (added 2026-07-30, ace#1014), each 1 point, capped at 3 total** — check these on the option SET independent of the guess outcome, because a bank normalized to uniform option lengths still measured 0.833 guessable and typography is NOT the failure mode: (d) **self-justifying key** — the keyed option carries its own rationale clause while distractors merely assert; (e) **minimal-claim tell** — distractors each posit an extra behavior and the key claims the least, so options do not match in CLAIM-STRENGTH; (f) **odd-one-out on a binary** — the set splits 2-accept / 2-refuse and exactly one side carries a clean stateable rule. Each of these must be reported per-item in the probe table's `structural_tells` field, naming the item, even when the item was NOT guessed — an item that survived a guess on a tell it carries is luck, not discrimination. **Item independence:** if item N's answer is derivable from item N-1's, note it — a metric assuming N independent items overstates the bank's resolution. **Coverage:** run the probe on the pre-test bank as well as the post-test and report a block per instrument; a hardened post-test over an untouched pre-test makes the PDD's pre/post learning-gain metric overstate the gain, and both banks' ratios must be reported even though the post-test (the gating instrument) drives the score. **Hard-gate:** `guessable_ratio > 80%` → dimension **≤3 → suite `fail`** — a gate a worker passes without studying is decorative, and shipping it is worse than shipping no gate, because it launders an unqualified worker into the field. **Gate-margin hard-gate (added 2026-07-30, ace#1014):** `guessable_ratio × 100 >= the PDD's Deliver-unlock threshold` → dimension **≤3 → suite `fail`**, even when the band alone would score above 3. The `>80%` band was calibrated against an 80% unlock gate; a 75% gate has **zero margin** at the failure point (`9 * 100 div 12` = exactly 75.0, and `result_pass` fires at `>= 75`), so a bank measuring 0.75 against a 75% gate admits a cold guesser on the boundary and must fail. Compute against the *actual* threshold in the PDD, not the 80% default. **N/A rule:** app has no scored assessment (PDD specifies no gate) → score `null` and redistribute. |
+   | **Localization match** | 8% | **HARD-FAIL dimension.** If the PDD names a working language other than English, every user-facing string (module names, form names, labels, choices, hints, assessment items and their option labels) must carry its named-language counterpart. **Grade COVERAGE, not MECHANISM (revised 2026-07-30, ace#968).** Nova exposes **no per-language / locale / itext channel on any tool** (`update_app` carries only `name` and `connect_type`), so per-language itext is *unreachable* and its absence is NOT a defect. Three distinct states: (a) **complete coverage authored inline** (each string carries English + each named language in one label) → this is the **documented, sanctioned fallback** per `_app-component-library.md § localization-layer`; score it on coverage exactly as if it were itext, no mechanism deduction, and surface `[INFO]` recording that the inline mechanism was used; (b) **materially incomplete coverage** (some strings translated, others English-only) → **≤3 → suite `fail`**; (c) **English-only** → **≤3 → suite `fail`**. **Do not false-fail the two permitted degradations:** option labels identical across all named languages (district names, facility names, other proper nouns) correctly stay BARE, and short strings with no room for stacked paragraphs correctly use the compact `English / Lang2 / Lang3` slash form — neither counts as missing coverage. **`[WARN]` (not a deduction)** when the PDD carries a low-literacy / low-education design constraint AND the build stacks N languages inline: that multiplies every label's reading load for the cohort the PDD singles out, and it is a real product tension a human should see — but it is the sanctioned mechanism, so it does not reduce the score. **N/A rule:** PDD names no working language → score `null` and redistribute weight. (Resolves the 2026-05-29 localization decision: English core, hard-fail if named-language coverage wasn't also built. Supersedes the "via itext" mechanism wording, which instructed something unbuildable.) |
 
    **Deduction rules:**
    - Any single dimension ≤3 → suite verdict `fail`, regardless of
@@ -167,18 +167,46 @@ methodology, different dimensions tuned to Learn-app concerns. See
    key is defensible. So the rubric no longer asks for a judgment — it asks for a
    **result you have to produce by doing the work**.
 
+   **The harness note that makes this runnable (ace#1014).** `get_form` returns
+   stems, option labels **and** the `qN_score` calculates in ONE atomic payload —
+   there is no call that fetches items without the key. So a single-agent
+   self-probe is **contaminated by construction**: step 1's "do not read the
+   calculates yet" is not enforceable by the reader who already has them on
+   screen, and what gets measured is the author's intent rather than the item's
+   difficulty. The workable shape, and the one this rubric requires:
+
+   - **Dispatch SEPARATE agents** that receive ONLY the stems + option labels.
+     Never the calculates, never the module content, never the PDD.
+   - Give each agent an **independently permuted** option set under **neutral
+     labels** (`A/B/C/D` reassigned per agent), so a shared position bias cannot
+     masquerade as a shared read.
+   - Require every pick to be **committed in writing** before any mapping back
+     to the key. Two independent permutations producing *different* miss sets is
+     weak evidence against permutation leakage; identical miss sets across
+     permutations is the strong signal.
+   - Verify the key against the live `qN_score` calculates, **not** against a
+     stated correct-answer distribution in a build memo.
+
    Run this BEFORE reading the answer key, and run it on the post-assessment
-   (the gating instrument) plus any pre-assessment:
+   (the gating instrument) **and** on any pre-assessment — report a block per
+   instrument:
 
    1. **Extract the item bank.** For each scored item, pull the stem and the
       option labels. Do NOT read the `*_score` calculates yet — those are the
-      answer key, and seeing them contaminates the probe.
+      answer key, and seeing them contaminates the probe. If you cannot separate
+      them (see the harness note above), dispatch the blind agents rather than
+      probing in-context.
    2. **Answer each item cold, as an untrained worker would.** Adopt this
       persona explicitly: *someone who never opened the modules, knows nothing
       program-specific, and is simply a reasonable adult trying to look
       responsible.* For each item, pick the option that persona would choose,
       and record WHY in ≤10 words (e.g. "only non-abusive option", "others are
       obviously wrong", "genuinely 50/50 without training").
+   2b. **Audit the option SET for structural tells** — self-justifying key,
+      minimal-claim key, odd-one-out on a binary, any option rejectable on
+      sight. Record them per item. Do this from the same blind view, before the
+      key is revealed, and record tells even on items you did NOT guess: an item
+      that survived a guess on a tell it carries is luck, not discrimination.
    3. **Now read the answer key** and mark each item `guessable: true` when the
       cold pick matches the correct answer, `false` otherwise.
    4. **Compute `guessable_ratio` = guessable items ÷ items scored.**
@@ -189,6 +217,11 @@ methodology, different dimensions tuned to Learn-app concerns. See
    ```yaml
    assessment_discrimination_probe:
      instrument: post_assessment          # repeat the block per assessment form
+     harness:
+       blind_agents: 2                    # separate agents, stems + options only
+       options_permuted: true             # independently permuted neutral labels
+       picks_committed_before_reveal: true
+       key_source: qN_score_calculates    # never a stated distribution in a memo
      items_scored: 10
      guessable: 9
      guessable_ratio: 0.90
@@ -199,18 +232,48 @@ methodology, different dimensions tuned to Learn-app concerns. See
          reason: only option that isn't coercive
          correct: b
          guessable: true
+         structural_tells: [absurdity-elimination]
        - id: q3
          cold_pick: a
          reason: sounds like how a survey works
          correct: b
          guessable: false
+         structural_tells: []
+       - id: q7
+         cold_pick: c
+         reason: key claims least, others add behavior
+         correct: c
+         guessable: true
+         structural_tells: [minimal-claim, self-justifying-key]
    ```
+
+   Permitted `structural_tells` values: `self-justifying-key`,
+   `minimal-claim`, `odd-one-out-binary`, `absurdity-elimination`. Record
+   `derived_from: qN` on any item whose answer follows from an earlier item.
 
    **Calibration anchor (negative control).** The `hh-poverty-targeting`
    `20260722-1341` post-assessment is the canonical FAIL: `guessable_ratio` ≈
    0.9–1.0. Any rubric revision must still score that bank ≤3 on this dimension.
    If a future judge scores it above 3, the probe has been weakened — treat that
    as a rubric regression, not a judge disagreement.
+
+   **Second calibration anchor — the plateau (ace#1014,
+   `spark-facilitator/20260730-1718`, Learn app
+   `38836b2d-0405-4e99-879a-53cd2344eff9`).** The same 12-item bank was
+   re-authored twice and re-probed: as built 12/12 (1.00); after full typography
+   normalization (matched length, voice, sentence count) 10/12 (0.833); after
+   deliberate virtue-inversion 9/12 and 10/12 across two independent blind runs.
+   Two calibration facts follow. (1) **A judge that credits typography
+   normalization is miscalibrated** — q5's options were exactly uniform at
+   65/65/65/65 characters and were still guessed cold, and only 3 of 10 misses
+   traced to structural tells or a stem leak at all; the other 7 fell to general
+   professional competence. (2) **A judge that credits virtue-inversion as
+   sufficient is miscalibrated** — q1 and q4 were properly inverted and still fell
+   2/2 on structural tells alone. All three passes must fail the dimension: passes
+   1 and 2 by the `>80%` band, pass 3 (0.75–0.833) by the **gate-margin
+   hard-gate** in the dimension row — a 9/12 cold guesser clears a 75% Connect
+   threshold exactly on the boundary (`9 * 100 div 12` = 75.0), so a bank at
+   0.75 against a 75% gate is decorative even though its band alone scores 4.
 
 6. **Write the verdict YAML** to
    `3-commcare/pdd-to-learn-app-eval_verdict.yaml` using the shape from
@@ -227,8 +290,8 @@ methodology, different dimensions tuned to Learn-app concerns. See
      # Fitness axis (55%) — trains + gates competence, graded vs expert bar
      assessment_gating:         { weight: 0.22 }   # enforcement: pre/post, sequential unlock, pass/retry
      instructional_depth:       { weight: 0.17 }   # item-granular teachable content (item QUALITY moved to assessment_discrimination 2026-07-27)
-     assessment_discrimination: { weight: 0.08 }   # MANDATORY blind-guess probe; null + redistribute when no scored assessment; HARD-FAIL >80% guessable
-     localization_match:        { weight: 0.08 }   # null + redistribute when PDD names no working language; HARD-FAIL otherwise
+     assessment_discrimination: { weight: 0.08 }   # MANDATORY blind-guess probe; null + redistribute when no scored assessment; HARD-FAIL >80% guessable OR ratio >= the PDD unlock threshold
+     localization_match:        { weight: 0.08 }   # null + redistribute when PDD names no working language; HARD-FAIL on English-only or incomplete coverage (inline coverage = the sanctioned mechanism, full credit)
    ```
 
 7. **Auto-surfaced concerns** (per `_eval-template.md § Auto-surfaced
@@ -244,7 +307,27 @@ methodology, different dimensions tuned to Learn-app concerns. See
      bonus final-cert module split).
    - `[BLOCKER]` for each fitness hard-gate that fired (no enforcement
      machinery on a PDD-specified readiness gate; label-only modules;
-     missing required-language translations).
+     missing or materially-incomplete required-language coverage).
+   - `[BLOCKER]` when `guessable_ratio × 100 >= the PDD's Deliver-unlock
+     threshold` — a cold guesser clears the real gate, so the gate is
+     decorative regardless of which score band the ratio lands in
+     (gate-margin hard-gate, ace#1014).
+   - `[WARN]` for each structural tell recorded in the probe table
+     (`self-justifying-key`, `minimal-claim`, `odd-one-out-binary`,
+     `absurdity-elimination`) on an item that was NOT guessed — the item
+     survived on luck, and the tell will bite on the next cohort.
+   - `[WARN]` when the pre-test bank's `guessable_ratio` materially exceeds
+     the post-test's — the PDD's pre/post learning-gain metric will
+     overstate the gain.
+   - `[INFO]` recording the localization MECHANISM used (inline
+     multilingual labels — the sanctioned fallback, since Nova exposes no
+     per-language itext channel, ace#968). Mechanism is never a deduction;
+     coverage is.
+   - `[WARN]` when the PDD carries a low-literacy / low-education design
+     constraint AND the build stacks N languages inline — reading load is
+     multiplied for exactly that cohort, and assessment stems + option
+     labels are read repeatedly. Surfaced for a human decision, not scored
+     against the build.
    - `[BLOCKER]` for each standing-instruction hard-gate that fired
      (`naming_convention`: display name lacks "Learn app"; `form_navigation`:
      a form's post-submit navigation is not "Previous Screen").
@@ -310,3 +393,4 @@ See `skills/_eval-template.md § Dry-Run Behavior (stock)`.
 | 2026-04-28 | Initial version. 5 dimensions: module_count_match (0.15), module_order_match (0.10), assessment_score_wiring (0.30 — most load-bearing), content_topic_coverage (0.25), archetype_coherence (0.20). Mirror of pdd-to-deliver-app-eval. Inflation guard at 8.5 when ≥2 WARN auto_surfaced. | ACE team (eval system buildout — 0.9.2) |
 | 2026-04-29 | Added step-2 HITL-pending stub detection. If the learn app summary has no `nova_app_id`, has `TBD`/`null`, is explicitly marked HITL-pending, or lists only module titles without Connectify wiring or content-topic detail, emit `verdict: incomplete` immediately. Without this guard the rubric's most load-bearing dimension (assessment_score_wiring at 30%) graded a stub as "wiring entirely missing" → forced ≤3 → fail, on a build that wasn't actually a defect. Mirrors the deliver-app-eval HITL guard. | ACE team (0.10.8) |
 | 2026-05-29 | **Fitness axis added (ITN post-mortem).** Reweighted the 5 conformance dims 100%→45% and split conformance from fitness: `assessment_score_wiring` 30%→12% (presence of a Connect-readable score tag only), `content_topic_coverage` 25%→12% (topic presence only). Added 3 out-of-chain fitness dims (55%): `assessment_gating` (0.22 — enforcement: pre/post, sequential unlock via user properties, pass/retry), `instructional_depth` (0.25 — item-granular teachable content + anti-guess items), `localization_match` (0.08, hard-fail). All graded vs an expert deployability bar with hard-gates. Was: a label-only, ungated, English-only Learn app that named every PDD topic scored 9.6 (ITN run `20260528-1607`). Calibrated against the malaria-itn-app `[Final]` (deployable bar) + thin ACE build (negative control). Per `_eval-template.md § out-of-chain fitness requirement`. | ACE team |
+| 2026-07-30 | **`assessment_discrimination` gains structural-tell deductions, a gate-margin hard-gate, and a non-contaminated probe harness (ace#1014); `localization_match` grades coverage, not mechanism (ace#968).** (1) Three measured authoring passes on one 12-item bank (`spark-facilitator/20260730-1718`) plateaued at 9–10/12 cold-guessable: typography normalization moved it 12→10 and deliberate virtue-inversion moved it ~1 more, inside noise. Added per-item deductions for the four structural tells that actually carry the signal (`self-justifying-key`, `minimal-claim`, `odd-one-out-binary`, `absurdity-elimination`), recorded in the probe table even on items that were NOT guessed; a **gate-margin hard-gate** (`guessable_ratio × 100 >= the PDD's Deliver-unlock threshold` → ≤3 → `fail`) because the `>80%` band was calibrated for an 80% gate and a 75% gate has zero margin (`9 * 100 div 12` = exactly 75.0); mandatory pre-test coverage so a hardened post-test over an untouched pre-test can't inflate the pre/post learning-gain metric; and an explicit harness contract — `get_form` returns stems, options AND the `qN_score` calculates in one payload, so a self-probe is contaminated by construction and the probe must run on separate agents given only stems+options under independently permuted neutral labels, with picks committed before reveal. Second calibration anchor added. Paired 1:1 with the two-gate authoring procedure in `_app-component-library.md § discriminating-assessment-items`. (2) `localization_match` stops requiring per-language itext, which Nova exposes on no tool (`update_app` carries only `name` and `connect_type`) — complete coverage authored INLINE is the sanctioned fallback and takes full credit with an `[INFO]`; English-only and materially-incomplete coverage both still hard-fail; the two permitted degradations (bare proper nouns, compact slash form in short strings) must not false-fail; and the low-literacy reading-load tension surfaces as a `[WARN]` for a human rather than a deduction. | ACE team |

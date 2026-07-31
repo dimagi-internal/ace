@@ -318,7 +318,10 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
        segment.
      - `localization-layer` — PDD names a working language other than
        English (Deliver variant). **Hard-fail** dimension: English-only
-       when the PDD names a working language fails the gate.
+       when the PDD names a working language fails the gate. Nova exposes
+       **no per-language / itext channel** — the sanctioned mechanism is
+       complete coverage authored INLINE in one label; do not search for a
+       translations parameter or report its absence as a blocker (ace#968).
      - `deliver-app-naming` — always. App name must contain "Deliver app".
      - `live-photo-capture` — any image/photo capture question. Appearance
        Attribute set to `acquire` (live camera, never gallery-browse).

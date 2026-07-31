@@ -211,15 +211,26 @@ Generate the Learn (training) app from the PDD using the Nova plugin
      - `localization-layer` (Learn variant) — trigger: PDD names a
        working language other than English. **Hard-fail** dimension:
        English-only when the PDD names a working language fails the gate.
+       Nova exposes **no per-language / itext channel** — the sanctioned
+       mechanism is complete coverage authored INLINE in one label; do
+       not search for a translations parameter or report its absence as
+       a blocker (ace#968).
      - `learn-app-naming` — always. App name must contain "Learn app".
      - `end-of-form-previous` — always, every form. End of Form Navigation
        must be "Previous Screen".
      - `grid-menu-display` — always (Learn + Deliver). Modules and Forms
        Menu Display set to "Grid".
-     - `discriminating-assessment-items` — any scored assessment. Every
-       distractor plausible to an untrained worker; the "one virtuous
-       option + N absurd options" shape is prohibited; items answerable
-       only from taught program content (ace#981).
+     - `discriminating-assessment-items` — any scored assessment. A
+       **two-gate** authoring procedure, not an adjective: Gate 1
+       behavioural plausibility (every distractor an action a competent,
+       decent worker might actually take — nothing rejectable on sight);
+       Gate 2 no structural giveaway (no self-justifying key, no
+       minimal-claim key, no odd-one-out on a binary split; options match
+       in CLAIM-STRENGTH, not just length). Virtue-inversion is a third,
+       weaker heuristic — helpful, insufficient alone. Matching option
+       length is NOT the lever (ace#981, ace#1014). The component's
+       **pre-release self-check** is mandatory and its per-item result
+       belongs in the build memo.
      - `instrument-grounded-examples` — the Learn app teaches
        administration of a fixed instrument. Every worked example and
        good/bad pair built from a REAL instrument item, preferring the
