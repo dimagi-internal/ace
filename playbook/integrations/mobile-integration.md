@@ -114,6 +114,50 @@ Order matters: the PersonalID-wipe banner is checked **before** Connect-nav-posi
 
 ## Gotchas (durable knowledge)
 
+- **CommCare's form-submission-to-server behaviour is NOT deterministic across
+  dispatches — sometimes it auto-sends on finalize, sometimes it does not.**
+  Both were observed on the SAME opportunity within 24h
+  (`bednet-spot-check/20260729-1239`, CommCare 2.63.0):
+
+  | run | after `form-submit` | on tapping "Sync with Server" |
+  |---|---|---|
+  | Phase 6 | `Daily Visits 0/5`, `last synced: never` | manual sync produced the visit |
+  | validation | counter already advanced `1/5 -> 2/5` | toast: `No forms sent to server!` |
+
+  So **`No forms sent to server!` is a benign no-op, not a failure** — it means
+  the outbox was already empty because auto-send had beaten you to it. Do not
+  "fix" a recipe that reports it.
+
+  The practical consequence for any Deliver journey: a trailing sync tap is
+  belt-and-braces and cannot be the thing you assert on, because on an
+  auto-sent run it legitimately uploads nothing. Assert the SERVER-DERIVED
+  outcome instead — `Daily Visits` non-zero on-device (`deliver-sync.yaml`),
+  and authoritatively `connect_get_deliver_progress().approved >= 1`
+  (dimagi-internal/ace#1066). This is why the device-side gate and the
+  Connect-side read-back both exist and neither replaces the other.
+
+- **`verified_as: "unknown"` from the heal funnel is the ORDINARY
+  post-bootstrap state on a healthy device — not a fault.**
+  `classifyDeviceUserState`'s `ready` definition is deliberately broad, and the
+  legitimate post-register/pre-claim state falls outside it. Two runs that
+  returned `STATUS: pass exit 0` (the #1058 claim-leg validation and the #1074
+  deliver-sync validation) both logged `restored to unknown via
+  local-bootstrap` immediately beforehand. Treating `unknown` as fatal would
+  fail working runs — see ace#1067, where that was requested and deliberately
+  declined. What WAS wrong was the log claiming `bootstrap_steps: [...,
+  "registered"]` alongside it; that now reports `registered-unverified`.
+
+- **Connect's PM-side tables hide integers inside Alpine/htmx attributes — a
+  naive `/<[^>]+>/g` tag-strip reads numbers OUT OF THE JAVASCRIPT.**
+  The worker-deliver table wraps Delivered/Approved/Rejected in
+  `x-data="{ ... }"` containing both angle brackets
+  (`window.innerHeight - rect.bottom < rect.height`) and digits, plus an
+  `hx-get="...?status=approved&payment_unit_id=..."` URL. Measured on the live
+  fragment: naive yields Approved=1/Rejected=1 where the truth is 2/0. It does
+  not throw — it silently returns wrong counts. Use
+  `stripTagsAttributeAware` (`mcp/connect/backends/html-scrape.ts`); enforced
+  by `test/mcp/connect/worker-deliver-table.test.ts`.
+
 ### Pre-invite gating (CRITICAL)
 
 Connect-id's `/users/start_configuration` endpoint runs an `@app_integrity` decorator that synchronously calls `check_number_for_existing_invites(phone)` over HTTP. For phone numbers with no existing invite, this lookup hangs past the gunicorn worker timeout, the worker dies with `SystemExit`, and CommCare receives an empty body and force-stops.
