@@ -65,7 +65,8 @@ export type Capability =
   | 'list_invites'
   | 'list_invoices'
   | 'get_invoice'
-  | 'get_learn_progress';
+  | 'get_learn_progress'
+  | 'get_deliver_progress';
 
 export const CAPABILITY_MAP: Record<Capability, CapabilityRoute> = {
   // Authoring — REST since 0.10.47 (PR #1135 automation API)
@@ -96,4 +97,5 @@ export const CAPABILITY_MAP: Record<Capability, CapabilityRoute> = {
   list_invoices:                { backend: 'PLAYWRIGHT', restTarget: 'GET /api/opportunities/{id}/invoices/ (not yet shipped)' },
   get_invoice:                  { backend: 'PLAYWRIGHT', restTarget: 'GET /api/invoices/{id}/ (not yet shipped)' },
   get_learn_progress:           { backend: 'PLAYWRIGHT', restTarget: 'GET /api/opportunities/{id}/learn-progress/ (not yet shipped)' },
+  get_deliver_progress:         { backend: 'PLAYWRIGHT', restTarget: 'GET /api/opportunities/{id}/deliver-progress/ (not yet shipped)' },
 };

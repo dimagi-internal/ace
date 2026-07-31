@@ -9,7 +9,7 @@
  * from /a/ai-demo-space/program/ (and friends).
  */
 
-import type { DeliveryType, Program, Opportunity, Invite, DeliverUnit, PaymentUnit, WorkerLearnRow } from '../types.js';
+import type { DeliveryType, Program, Opportunity, Invite, DeliverUnit, PaymentUnit, WorkerLearnRow, WorkerDeliverRow } from '../types.js';
 
 /**
  * Extract Connect's CSRF token from a rendered HTML page.
@@ -759,4 +759,139 @@ export function parseFormErrorsByField(html: string): Record<string, string[]> {
   }
 
   return out;
+}
+
+
+/**
+ * Thrown when Connect's `WorkerDeliverView` `<thead>` cannot be mapped to the
+ * columns {@link parseWorkerDeliverTable} needs. Fail loud on a template
+ * reshape rather than silently shifting fields — the
+ * {@link PaymentUnitTableSchemaError} lesson.
+ */
+export class WorkerDeliverTableSchemaError extends Error {
+  constructor(missing: string[], seen: string[]) {
+    super(
+      `Connect's worker-deliver table is missing expected column(s): ${missing.join(', ')}. ` +
+        `Saw: ${seen.join(' | ')}. Update the header map in parseWorkerDeliverTable ` +
+        `(mcp/connect/backends/html-scrape.ts) to match the live template.`,
+    );
+    this.name = 'WorkerDeliverTableSchemaError';
+  }
+}
+
+/** The columns {@link parseWorkerDeliverTable} reads, keyed by output field. */
+const WORKER_DELIVER_COLUMNS = {
+  name: { label: 'Name', match: (h: string) => h.includes('name') },
+  last_active: { label: 'Last active', match: (h: string) => h.includes('last active') },
+  payment_unit: { label: 'Payment unit', match: (h: string) => h.includes('payment unit') },
+  progress: { label: 'Delivery progress', match: (h: string) => h.includes('delivery progress') },
+  delivered: { label: 'Delivered', match: (h: string) => h === 'delivered' || h.includes('delivered') },
+  approved: { label: 'Approved', match: (h: string) => h.includes('approved') },
+  rejected: { label: 'Rejected', match: (h: string) => h.includes('rejected') },
+} as const;
+
+/**
+ * Strip HTML tags in a way that survives ATTRIBUTES CONTAINING `<`, `>` and `"`.
+ *
+ * LOAD-BEARING — do not "simplify" this to `/<[^>]+>/g`. Connect renders the
+ * Delivered / Approved / Rejected cells inside an Alpine.js `x-data="{ ... }"`
+ * attribute whose JavaScript body contains BOTH angle brackets
+ * (`window.innerHeight - rect.bottom < rect.height + ...`) and integers, plus
+ * an `hx-get="...?status=approved&payment_unit_id=..."` URL. A naive
+ * tag-strip terminates the tag at the first `>` inside that attribute, leaks
+ * the remaining script text into the "visible" text, and a first-integer
+ * extraction then reads a number OUT OF THE JAVASCRIPT.
+ *
+ * Measured on the captured live fragment
+ * (`test/fixtures/connect-worker-deliver-table.html`): the naive strip yields
+ * Approved=1 / Rejected=1, where the true values are 2 and 0. It does not
+ * fail — it silently reports wrong counts, which for a #1066 gate means
+ * fabricating evidence that a delivery was approved.
+ */
+export function stripTagsAttributeAware(html: string): string {
+  const TAG =
+    /<\/?[A-Za-z][\w:-]*(?:\s+[\w:@.\[\]-]+(?:\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+))?)*\s*\/?>/g;
+  return html.replace(TAG, ' ').replace(/&nbsp;/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
+/** First standalone integer in a cell, after attribute-aware tag stripping. */
+function firstInt(cellHtml: string): number {
+  const m = stripTagsAttributeAware(cellHtml).match(/-?\d+/);
+  return m ? Number(m[0]) : 0;
+}
+
+/**
+ * Parse Connect's `WorkerDeliverView` HTML fragment
+ * (`GET /a/<domain>/opportunity/<opportunity_id>/workers/deliver/`, sent with
+ * `HX-Request: true`) into one {@link WorkerDeliverRow} per accepted worker.
+ *
+ * The Deliver counterpart to {@link parseWorkerLearnTable}. Confirmed live
+ * 2026-07-30 against opp `1a30f061-…` (domain `ai-demo-space`) — columns in
+ * order:
+ *
+ *   # | Status | Name | Last active | Payment unit | Delivery progress |
+ *   Delivered | Approved | Rejected | (action)
+ *
+ * Columns are resolved by `<thead>` header LABEL, never by fixed index, and a
+ * reshape throws {@link WorkerDeliverTableSchemaError} rather than returning
+ * wrong answers.
+ *
+ * Per-field extraction:
+ *   - **name**: first `<p>` inside the Name cell (the second is an internal
+ *     username id), same shape as the learn table.
+ *   - **delivered / approved / rejected**: the leading integer of each cell,
+ *     via {@link stripTagsAttributeAware} — see that function for why the
+ *     naive tag-strip reads numbers out of Alpine/htmx attributes.
+ *   - **progress_completed / progress_total**: the progress bar renders the
+ *     completed count in a centred `<div>` and the target in a trailing
+ *     `<span>`; both are read as the two integers in the cell, in order.
+ *
+ * Returns `{ workers: [] }` for an empty roster (no data rows).
+ */
+export function parseWorkerDeliverTable(html: string): { workers: WorkerDeliverRow[] } {
+  const rowRegex = /<tr\b[^>]*class="[^"]*\b(?:even|odd)\b[^"]*"[^>]*>([\s\S]*?)<\/tr>/g;
+  const rows = [...html.matchAll(rowRegex)];
+  if (rows.length === 0) return { workers: [] };
+
+  const theadMatch = html.match(/<thead[^>]*>([\s\S]*?)<\/thead>/);
+  const headers = theadMatch
+    ? [...theadMatch[1].matchAll(/<th[^>]*>([\s\S]*?)<\/th>/g)].map((h) => normalizeHeaderLabel(h[1]))
+    : [];
+  const col: Partial<Record<keyof typeof WORKER_DELIVER_COLUMNS, number>> = {};
+  const missing: string[] = [];
+  for (const [field, spec] of Object.entries(WORKER_DELIVER_COLUMNS) as Array<
+    [keyof typeof WORKER_DELIVER_COLUMNS, (typeof WORKER_DELIVER_COLUMNS)[keyof typeof WORKER_DELIVER_COLUMNS]]
+  >) {
+    const idx = headers.findIndex(spec.match);
+    if (idx >= 0) col[field] = idx;
+    else missing.push(spec.label);
+  }
+  if (missing.length > 0) throw new WorkerDeliverTableSchemaError(missing, headers);
+
+  const workers: WorkerDeliverRow[] = [];
+  for (const m of rows) {
+    const rawCells = [...m[1].matchAll(/<td\b[^>]*>([\s\S]*?)<\/td>/g)].map((c) => c[1]);
+
+    const nameCellRaw = rawCells[col.name!] ?? '';
+    const firstP = nameCellRaw.match(/<p[^>]*>([\s\S]*?)<\/p>/);
+    const name = stripTagsAttributeAware(firstP ? firstP[1] : nameCellRaw);
+
+    const progressRaw = rawCells[col.progress!] ?? '';
+    const progressInts = [...stripTagsAttributeAware(progressRaw).matchAll(/\d+/g)].map((x) => Number(x[0]));
+
+    const lastActive = stripTagsAttributeAware(rawCells[col.last_active!] ?? '');
+    const paymentUnit = stripTagsAttributeAware(rawCells[col.payment_unit!] ?? '');
+
+    workers.push({
+      name,
+      payment_unit: paymentUnit || null,
+      delivered: firstInt(rawCells[col.delivered!] ?? ''),
+      approved: firstInt(rawCells[col.approved!] ?? ''),
+      rejected: firstInt(rawCells[col.rejected!] ?? ''),
+      progress_completed: progressInts.length > 0 ? progressInts[0] : null,
+      progress_total: progressInts.length > 1 ? progressInts[1] : null,
+      last_active: lastActive || null,
+    });
+  }
+  return { workers };
 }

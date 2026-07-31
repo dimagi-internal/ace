@@ -607,6 +607,15 @@ server.tool('connect_get_learn_progress',
   async (args) => runAtom(async () => (await client()).getLearnProgress(args))
 );
 
+server.tool('connect_get_deliver_progress',
+  'Read each accepted worker\'s AUTHORITATIVE DELIVERY progression from Connect\'s WorkerDeliverView (GET /a/<domain>/opportunity/<opportunity_id>/workers/deliver/, htmx fragment; session-cookie authed, read-only). The Deliver counterpart to connect_get_learn_progress, and the server-side read dimagi-internal/ace#1066 is about: Phase 6\'s Deliver smoke can return pass while the visit sits UNSENT in the device\'s local outbox, because the device is not authoritative about whether a delivery reached Connect. Assert `delivered >= 1` for "the visit reached Connect"; assert `approved >= 1` for the stronger "one payment unit registers" criterion app-test-cases.yaml actually declares (a delivery can be submitted and then REJECTED by verification, so delivered alone does not prove payability). Returns `{ domain, opportunity_id, workers: [{ name, payment_unit, delivered, approved, rejected, progress_completed, progress_total, last_active }] }` — one row per worker+payment-unit. `domain` is the Connect org slug in the /a/<domain>/ path; `opportunity_id` is the opportunity UUID. Columns are resolved by header label, so a live template reshape throws WorkerDeliverTableSchemaError rather than returning shifted fields.',
+  {
+    domain: z.string().describe('Connect org / project-space slug in the /a/DOMAIN/ URL path, e.g. ai-demo-space.'),
+    opportunity_id: z.string().describe('Opportunity UUID.'),
+  },
+  async (args) => runAtom(async () => (await client()).getDeliverProgress(args))
+);
+
 // ── CommCare HQ (release pipeline) ───────────────────────────────
 //
 // These atoms talk to www.commcarehq.org, not connect.dimagi.com. They

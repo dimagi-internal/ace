@@ -454,6 +454,37 @@ So **after the Learn recipe passes, and BEFORE attempting the Deliver leg**, cal
 - **`learn_complete == false`** → the Learn leg did NOT reach 100% on Connect regardless of the device screen. Record the Learn sub-verdict as **`incomplete-on-connect`** with the exact `modules_completed_pct` and `assessment_status` (e.g. "Connect: 80% modules (4/5), assessment Passed — the Learn walk did not finalize every module form"), and record the Deliver leg **`blocked-by-learn-incomplete`** (do NOT attempt it — Connect will keep the app on "Continue Learning" and the Deliver gate cannot open). Surface this as the precise, actionable failure (which specific module didn't register + re-run the walk to finalize it), NOT a Connect-platform or recipe-differentiator theory. This is the "close the loop to the source of truth" check — the device is not authoritative about learn completion; Connect is.
 - If `connect_get_learn_progress` is unavailable (older MCP not yet rebound) fall back to the PM UI (`/opportunity/<id>/workers/learn/` — the `Modules completed` column) and apply the same 100% assertion; do not silently skip the gate.
 
+**The same gate applies to Deliver — and for the same reason (dimagi-internal/ace#1066).**
+`journey-deliver` returning `pass` proves only that the form walked and
+finalized **on the device**. A plain Deliver form finalizes through
+`form-submit.yaml`'s `nav_btn_next` auto-finalize branch, which writes to the
+**local outbox**; only the score-gated branch asserts anything about the
+server. Observed live on bednet-spot-check/20260729-1239: `status: pass`, then
+`Daily Visits 0/5` and `last synced: never` — the visit had not reached
+Connect at all. An opportunity whose Deliver→Connect path was completely
+broken would still have produced a green Deliver leg.
+
+So **after the Deliver recipe passes**, call
+`connect_get_deliver_progress({ domain, opportunity_id })` and find the ACE
+test user's row. Assert against what the journey actually claims:
+
+- **`delivered >= 1`** — the visit reached Connect. This is the minimum; a
+  Deliver leg that cannot clear it is `not-delivered-on-connect`, never `pass`.
+- **`approved >= 1`** — a payment unit actually registered. This is the
+  criterion `app-test-cases.yaml` declares (*"one payment unit registers"*),
+  and it is strictly stronger: a delivery can be submitted and then **rejected**
+  by verification, so `delivered` alone does not prove payability. When the
+  journey claims a payment unit, assert this one.
+- **`rejected > 0` with `approved == 0`** → record
+  `delivered-but-rejected` with the counts; the visit reached Connect but
+  failed verification. That is a real finding about the opportunity's
+  verification wiring, NOT a recipe defect — do not retry the walk to "fix" it.
+
+The device-side `deliver-sync.yaml` gate (the server-derived `Daily Visits`
+counter) stays as the cheap in-recipe check, but it is still the device
+reporting; **this atom is the authoritative read**. Same lesson as jjackson/ace#897
+on the Learn side: the device is not authoritative about completion — Connect is.
+
 **Deliver leg (runs second; depends on the Learn leg).** Only attempt
 if the Learn leg reached completion **AND the Connect learn-completion gate above passed (`learn_complete == true`)**. `journey-deliver.yaml` resumes
 from the now-unlocked state in the same device session (no re-login).
