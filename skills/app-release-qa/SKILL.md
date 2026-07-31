@@ -95,28 +95,57 @@ For each app, compute:
 `get_app` blueprint. Mismatch → halt with `form-count-mismatch`
 (`expected N, got M`).
 
+> **Match Connect markers by NAMESPACE, never by a `<learn:` prefix.**
+> Nova emits these markers as **default-namespace** elements — there is
+> no `xmlns:learn` declaration anywhere in the CCZ, so a literal
+> `grep '<learn:module'` returns **0 on a perfectly clean app** and
+> fires a spurious `learn-marker-missing` / `deliver-marker-missing`
+> [BLOCKER] on every release. The wire format is:
+>
+> ```xml
+> <module    xmlns="http://commcareconnect.com/data/v1/learn" id="m0_pretest">
+> <assessment xmlns="http://commcareconnect.com/data/v1/learn" id="m5_posttest">
+> <deliver   xmlns="http://commcareconnect.com/data/v1/learn" id="du_meeting">
+> ```
+>
+> Match on **local name + the `http://commcareconnect.com/data/v1/learn`
+> namespace URI**, which is exactly how Connect's own
+> `sync_learn_modules_and_deliver_units` matches them. **Preferred:** don't
+> re-grep at all — read `projected_connect_state` from
+> `commcare_download_ccz`, which already matches by namespace URI and is
+> the same projection Connect's sync consumes. See jjackson/ace#680.
+
 **Learn-specific (only for the Learn app):**
 
 - Each Nova form whose blueprint declares `connect.learn_module` MUST
-  have a `<learn:module>` (namespaced) element in its XForm XML.
+  have a `module` element in the `…/data/v1/learn` namespace in its
+  XForm XML (equivalently: a `learn_modules[]` entry in
+  `projected_connect_state`).
 - Each Nova form whose blueprint declares `connect.assessment` MUST
-  have a `<learn:assessment>` (namespaced) element in its XForm XML.
+  have an `assessment` element in that same namespace (equivalently: an
+  `assessments[]` entry).
 - Per nova-plugin#7 closure (2026-05-22): these wrappers are
   **required** for Connect's HQ→Connect sync to register learn
   modules. Their absence is a structural defect.
 
 Mismatch → halt with `learn-marker-missing` (with the form path +
-which marker is absent).
+which marker is absent). Before halting, re-check by namespace — a
+prefix-grep false negative is the single most likely cause of this
+halt firing on a clean build.
 
 **Deliver-specific (only for the Deliver app):**
 
 - Each Nova form whose blueprint declares `connect.deliver_unit` MUST
-  have a `<learn:deliver>` (namespaced) element in its XForm XML.
+  have a `deliver` element in the `…/data/v1/learn` namespace
+  (equivalently: a `deliver_units[]` entry in
+  `projected_connect_state`).
 - Each Nova form whose blueprint declares `connect.task` MUST have a
-  `<learn:task>` (namespaced) element.
+  `task` element in that same namespace (equivalently: a
+  `task_units[]` entry).
 
 Mismatch → halt with `deliver-marker-missing` (with the form path +
-which marker is absent).
+which marker is absent). The same namespace re-check applies before
+halting.
 
 **Field count per form.** For each form in the Nova blueprint, count
 the `<input>` / `<select1>` / `<select>` / `<upload>` / `<bind>`
