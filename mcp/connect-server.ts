@@ -210,7 +210,10 @@ const server = new McpServer({ name: 'ace-connect', version: '0.1.0' });
 // ── Programs ──────────────────────────────────────────────────────
 
 server.tool('connect_list_programs',
-  { organization_slug: z.string(), name: z.string().optional() },
+  {
+    organization_slug: z.string(),
+    name: z.string().optional().describe('Case-insensitive SUBSTRING filter on program name — a prefix of the full name matches. Name-filtered rows are hydrated to full program shape via a per-row get. Unfiltered rows carry null, never a typed zero, for delivery_type/budget/currency/country/start_date/end_date because the list page does not render them; hydrate via connect_get_program.'),
+  },
   async (args) => runAtom(async () => (await client()).listPrograms(args))
 );
 

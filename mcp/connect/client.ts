@@ -1,6 +1,7 @@
 import type { FlwInviteRow } from '../../lib/connect-flw-invites.js';
 import type {
   Program,
+  ProgramListRow,
   Opportunity,
   ProgramApplication,
   Invite,
@@ -15,7 +16,13 @@ import type {
 
 export interface ConnectClient {
   // Programs (CRUD)
-  listPrograms(args: { organization_slug: string; name?: string }): Promise<{ programs: Program[] }>;
+  /**
+   * `name` is a case-insensitive SUBSTRING filter (jjackson/ace#1089 —
+   * exact-match silently returned `[]` for real prefixes of real names).
+   * Name-filtered rows are hydrated to full Program shape; unfiltered
+   * rows carry `null` for the fields the list page does not render.
+   */
+  listPrograms(args: { organization_slug: string; name?: string }): Promise<{ programs: ProgramListRow[] }>;
   getProgram(args: { organization_slug: string; program_id: string }): Promise<Program>;
   createProgram(args: {
     organization_slug: string;

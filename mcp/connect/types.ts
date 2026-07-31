@@ -21,6 +21,27 @@ export interface Program {
   organization_slug?: string;
 }
 
+/**
+ * A row returned by `connect_list_programs`. Connect's program LIST page
+ * only renders name + description; the six config fields below do not
+ * appear in that HTML at all. Unhydrated rows therefore carry `null` —
+ * never a typed zero that a caller could mistake for a real value
+ * (jjackson/ace#1089: `budget: 0` read as "no headroom"). Rows that
+ * matched a `name` filter ARE hydrated via a per-row `getProgram` and
+ * carry real values.
+ */
+export interface ProgramListRow extends Omit<
+  Program,
+  'delivery_type' | 'budget' | 'currency' | 'country' | 'start_date' | 'end_date'
+> {
+  delivery_type: number | string | null;
+  budget: number | null;
+  currency: string | null;
+  country: string | null;
+  start_date: string | null;
+  end_date: string | null;
+}
+
 export interface Opportunity {
   id: string;                          // UUID (`opportunity_id`)
   int_id?: number;                     // ConnectProd legacy integer id (`id` in the API response).

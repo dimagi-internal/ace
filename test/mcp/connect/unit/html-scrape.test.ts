@@ -90,6 +90,17 @@ describe('parseProgramsList', () => {
     expect(probe!.id).toMatch(/^[a-f0-9-]{36}$/);
     expect(probe!.description).toBe('Created by ace-connect probe script');
   });
+  it('returns null (not typed zeros) for the fields the list page does not render (jjackson/ace#1089)', () => {
+    const programs = parseProgramsList(fix('programs-list-with-data.html'));
+    for (const p of programs) {
+      expect(p.delivery_type).toBeNull();
+      expect(p.budget).toBeNull();
+      expect(p.currency).toBeNull();
+      expect(p.country).toBeNull();
+      expect(p.start_date).toBeNull();
+      expect(p.end_date).toBeNull();
+    }
+  });
 });
 
 describe('parseFormErrors', () => {

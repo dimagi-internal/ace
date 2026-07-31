@@ -409,7 +409,7 @@ Source: `mcp/connect-server.ts` — 56 atoms
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `organization_slug` | `z.string` | **required** | _—_ |
-| `name` | `z.string` | optional | _—_ |
+| `name` | `z.string` | optional | Case-insensitive SUBSTRING filter on program name — a prefix of the full name matches. Name-filtered rows are hydrated to full program shape via a per-row get. Unfiltered rows carry null, never a type… |
 
 ### `connect_get_program`
 

@@ -9,7 +9,7 @@
  * from /a/ai-demo-space/program/ (and friends).
  */
 
-import type { DeliveryType, Program, Opportunity, Invite, DeliverUnit, PaymentUnit, WorkerLearnRow, WorkerDeliverRow } from '../types.js';
+import type { DeliveryType, ProgramListRow, Opportunity, Invite, DeliverUnit, PaymentUnit, WorkerLearnRow, WorkerDeliverRow } from '../types.js';
 
 /**
  * Extract Connect's CSRF token from a rendered HTML page.
@@ -106,8 +106,8 @@ export function parseDeliveryTypeOptions(html: string): DeliveryType[] {
  * container. The pure-string approach: scan card containers, then within
  * each one extract uuid + name + description.
  */
-export function parseProgramsList(html: string): Program[] {
-  const out: Program[] = [];
+export function parseProgramsList(html: string): ProgramListRow[] {
+  const out: ProgramListRow[] = [];
   // Match each program card. The row container has `x-data="{showOpp: ...}"`
   // and contains card_title, card_description, and an edit button URL.
   const cardRegex = /<div[^>]*x-data="{showOpp[^"]*"[^>]*>([\s\S]*?)(?=<div[^>]*x-data="{showOpp|<\/div>\s*<\/div>\s*<\/div>)/g;
@@ -121,14 +121,16 @@ export function parseProgramsList(html: string): Program[] {
         id: uuidMatch[1],
         name: titleMatch[1].replace(/<[^>]+>/g, '').trim(),
         description: descMatch?.[1].replace(/<[^>]+>/g, '').trim() ?? '',
-        // Fields not displayed on the list view default to empty/zero — the caller
-        // can hydrate via getProgram() if needed.
-        delivery_type: 0,
-        budget: 0,
-        currency: '',
-        country: '',
-        start_date: '',
-        end_date: '',
+        // Fields not displayed on the list view are `null`, NOT typed zeros:
+        // a caller cannot distinguish `budget: 0` from "unhydrated"
+        // (jjackson/ace#1089). Hydrate via getProgram() when real values
+        // are needed; listPrograms() does this for name-filtered rows.
+        delivery_type: null,
+        budget: null,
+        currency: null,
+        country: null,
+        start_date: null,
+        end_date: null,
       });
     }
   }
