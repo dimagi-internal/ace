@@ -35,23 +35,61 @@ import { fileURLToPath } from 'node:url';
 
 import { MobileClient } from './mobile/client.js';
 import { ALLOWED_STEP_KEYS } from './mobile/backends/maestro.js';
-import { resolveSelectorsInYaml } from './mobile/recipe-resolver.js';
+import {
+  resolveSelectorsInYaml,
+  isStaticRecipesDirOverride,
+  INSTALLED_STATIC_RECIPES_DIR,
+  STATIC_RECIPES_DIR_ENV,
+} from './mobile/recipe-resolver.js';
 import { logInfo, logError } from './mobile/logging.js';
 import { resolveBackend } from './mobile/backend-toggle.js';
 
-const client = new MobileClient();
+// A bare `new MobileClient()` resolves its palette dir via
+// `resolveStaticRecipesDir()`, so it honours `ACE_MOBILE_STATIC_RECIPES_DIR`
+// without the server having to read the env var itself — which keeps the
+// expansion + validation in one place (jjackson/ace#1062). A bad override
+// throws HERE, at MCP startup, which is the loudest available signal: the
+// server refuses to start rather than quietly serving the install palette.
+let client: MobileClient;
+try {
+  client = new MobileClient();
+} catch (e) {
+  process.stderr.write(
+    `[ace-mobile:error] startup FAILED constructing MobileClient: ${(e as Error).message}\n` +
+    `[ace-mobile:error] ${(e as { remediation?: string }).remediation ?? ''}\n`,
+  );
+  throw e;
+}
 
 // One-line startup banner so "which backend is this MCP routing to?" is
 // trivially answerable from the Claude Code MCP log. The resolver is
 // re-run on every call, so this is only a snapshot of the value AT
 // startup; a slash-command toggle mid-session won't re-emit this line.
+//
+// `palette_dir` is on the banner for the same reason it's on the
+// `mobile_run_recipe` result: an operator live-validating a staged palette
+// fix pre-merge must be able to SEE that the override took effect. Note
+// that MCP subprocesses bind env at spawn, so a mid-session export does
+// NOT reach this process — the banner is how you confirm the restart
+// actually picked it up.
 {
   const { backend, source, sessionFile, ppid } = resolveBackend();
   const cloudReady = client.cloud !== null;
+  const paletteSource = isStaticRecipesDirOverride(client.staticRecipesDir)
+    ? `override:${STATIC_RECIPES_DIR_ENV}`
+    : 'install';
   process.stderr.write(
     `[ace-mobile] startup backend=${backend} source=${source} ppid=${ppid} ` +
-    `cloud_ready=${cloudReady} session_file=${sessionFile}\n`,
+    `cloud_ready=${cloudReady} session_file=${sessionFile} ` +
+    `palette_dir=${client.staticRecipesDir} palette_source=${paletteSource}\n`,
   );
+  if (paletteSource !== 'install') {
+    process.stderr.write(
+      `[ace-mobile] palette OVERRIDE active — recipes resolve against ` +
+      `${client.staticRecipesDir}, NOT the plugin's own ` +
+      `${INSTALLED_STATIC_RECIPES_DIR}\n`,
+    );
+  }
 }
 
 const server = new McpServer({ name: 'ace-mobile', version: '0.9.0' });

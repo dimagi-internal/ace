@@ -45,6 +45,30 @@ Structural preventers run before AVD wall-clock burns:
 
 See `docs/learnings/2026-05-25-recipe-static-preventer-suite.md` for the shift-left principle behind these checks.
 
+## Validating a palette fix pre-merge (`ACE_MOBILE_STATIC_RECIPES_DIR`)
+
+CLAUDE.md's self-heal gate says a mobile recipe/selector fix must be proven on a live device **before** it merges, and separately forbids writing into `~/.claude/plugins/cache/`. Until dimagi-internal/ace#1062 those two rules had no satisfiable intersection: `prepareRecipeForMaestro` resolved every palette file — and therefore every `runFlow: file:` ref — from the plugin's own install dir, with no override. **A caller-staged palette was silently ignored, which produces a false negative, not an error.** On 2026-07-29 (#1058) a staged fix was ignored, the Maestro trace showed the OLD blocks executing, and the run read exactly like a failed fix.
+
+The recipe:
+
+1. Point the palette dir at your worktree. Either export it before launching Claude Code:
+   ```bash
+   export ACE_MOBILE_STATIC_RECIPES_DIR=/abs/path/to/ace/mcp/mobile/recipes/static
+   ```
+   …or (more reliable — doesn't depend on how Claude was launched) add the same line to the installed `${CLAUDE_PLUGIN_DATA}/.env`, which the MCP loads via dotenv at startup. Expand the path yourself: an unexpanded `${...}` is rejected, not guessed at.
+2. **Restart Claude Code (full process restart).** MCP subprocesses bind their env at spawn — `/ace:update` + `/reload-plugins` will NOT pick this up. See CLAUDE.md § MCP changes need a full Claude restart.
+3. Confirm the override actually took. Two independent signals, both added by #1062:
+   - the MCP startup banner: `[ace-mobile] startup … palette_dir=<your dir> palette_source=override:ACE_MOBILE_STATIC_RECIPES_DIR`
+   - every `mobile_run_recipe` result carries `paletteDir` + `paletteDirSource: 'override'`, and the run logs `recipe-resolver: palette dir OVERRIDE in force`.
+4. Run the blocked leg. A green result now means the *staged* palette is green — that's the live validation the self-heal gate wants.
+5. Merge, `/ace:update`, restart, unset the override.
+
+Fails closed on purpose: a path that doesn't exist, isn't a directory, holds no `.yaml`, or still contains a `${...}` reference throws `MobileError('STATIC_RECIPES_DIR_INVALID')` at client construction — the MCP refuses to start rather than quietly serving the install palette. An empty/whitespace value means "unset."
+
+Related hardening: if the top recipe's own directory holds sibling YAMLs that the palette dir shadows, the run logs `SHADOWED` and names them. Staging a palette *next to the recipe* never wins — the palette dir does. That was the #1058 misconception.
+
+**Alternative (the previously-undocumented workaround):** drive the repo's own `MobileClient` under `npx tsx` from the checkout, so `import.meta.url` resolves to the repo palette. Still valid, and useful when you want to bypass the MCP layer entirely — but it doesn't exercise the atom path, so prefer the env var when what you're validating is a Phase 6 leg.
+
 ## Recording
 
 Every local `mobile_run_recipe` call records an mp4 via on-device

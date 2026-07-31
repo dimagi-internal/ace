@@ -32,13 +32,97 @@ import * as path from 'node:path';
 import { parse as parseYaml } from 'yaml';
 
 import { logInfo } from './logging.js';
+import { MobileError } from './errors.js';
 import { computeSelectorMapSha } from '../../lib/recipe-provenance.js';
 
-/** Static palette dir relative to this file. */
-const STATIC_RECIPES_DIR = new URL('./recipes/static/', import.meta.url).pathname;
+/**
+ * Static palette dir shipped INSIDE this plugin install, relative to
+ * this file. The default; overridable via `ACE_MOBILE_STATIC_RECIPES_DIR`
+ * (see `resolveStaticRecipesDir`).
+ */
+export const INSTALLED_STATIC_RECIPES_DIR = new URL('./recipes/static/', import.meta.url).pathname;
+
+/** Env var that overrides the static palette dir. */
+export const STATIC_RECIPES_DIR_ENV = 'ACE_MOBILE_STATIC_RECIPES_DIR';
 
 /** Selector-map dir relative to this file. */
 const SELECTORS_DIR = new URL('./selectors/', import.meta.url).pathname;
+
+/**
+ * Resolve the static palette dir in force, honouring
+ * `ACE_MOBILE_STATIC_RECIPES_DIR`.
+ *
+ * **Why this exists (jjackson/ace#1062).** Three ACE rules used to be
+ * mutually unsatisfiable for a `recipes/static/*.yaml` fix: the self-heal
+ * gate demands a mobile recipe/selector fix be proven on a live device
+ * BEFORE it merges; CLAUDE.md forbids writing into
+ * `~/.claude/plugins/cache/`; and this module resolved every palette file
+ * from the plugin's own install dir with no override. A caller who staged
+ * a fixed palette elsewhere was SILENTLY ignored — on 2026-07-29 (#1058)
+ * the Maestro trace showed the OLD blocks executing and the run read as a
+ * failed fix. **A silently-ignored override is a false negative, not an
+ * error**, which is why this function fails LOUD rather than falling back.
+ *
+ * Contract:
+ *   - unset / empty → the install dir (production default, unchanged).
+ *   - set → expanded (`~`, relative-to-cwd), validated, returned. A path
+ *     that doesn't exist, isn't a directory, or holds no `.yaml` throws
+ *     `MobileError('STATIC_RECIPES_DIR_INVALID')`. A typo must never
+ *     degrade into "quietly used the install palette."
+ *   - an unexpanded `${...}` placeholder also throws — Claude Code does
+ *     not always expand env references (see `lib/plugin-data-dir.ts`),
+ *     and a literal `${REPO}/mcp/...` would otherwise mkdir-miss into
+ *     the same false negative.
+ */
+export function resolveStaticRecipesDir(env: NodeJS.ProcessEnv = process.env): string {
+  const raw = env[STATIC_RECIPES_DIR_ENV];
+  if (raw === undefined || raw.trim().length === 0) return INSTALLED_STATIC_RECIPES_DIR;
+
+  const value = raw.trim();
+  const fail = (reason: string): never => {
+    throw new MobileError(
+      'STATIC_RECIPES_DIR_INVALID',
+      `${STATIC_RECIPES_DIR_ENV}=${JSON.stringify(raw)} is not a usable palette dir: ${reason}.`,
+      `Point ${STATIC_RECIPES_DIR_ENV} at a directory containing the palette YAMLs ` +
+        `(e.g. <repo>/mcp/mobile/recipes/static), or unset it to use the plugin's own ` +
+        `palette at ${INSTALLED_STATIC_RECIPES_DIR}. This fails closed on purpose: a ` +
+        `silently-ignored override reads as a failed fix (jjackson/ace#1062).`,
+      { env_var: STATIC_RECIPES_DIR_ENV, value: raw, installed_dir: INSTALLED_STATIC_RECIPES_DIR },
+    );
+  };
+
+  if (/\$\{|\$[A-Za-z_]/.test(value)) {
+    fail('it still contains an unexpanded variable reference — expand it before exporting');
+  }
+
+  let expanded = value;
+  if (expanded === '~') expanded = os.homedir();
+  else if (expanded.startsWith('~/')) expanded = path.join(os.homedir(), expanded.slice(2));
+  const abs = path.resolve(expanded);
+
+  let stat: fs.Stats;
+  try {
+    stat = fs.statSync(abs);
+  } catch {
+    return fail(`${abs} does not exist`);
+  }
+  if (!stat.isDirectory()) fail(`${abs} is not a directory`);
+  if (!fs.readdirSync(abs).some((f) => f.endsWith('.yaml'))) {
+    fail(`${abs} contains no .yaml palette files`);
+  }
+  // Trailing separator matches the install dir's shape (URL keeps it), so
+  // callers that concatenate rather than `path.join` behave identically.
+  return abs.endsWith(path.sep) ? abs : abs + path.sep;
+}
+
+/**
+ * True when `dir` is NOT the palette shipped in this install — i.e. an
+ * override is in force. Drives the loud log + the atom-result field, so a
+ * validating operator can SEE that the staged palette won.
+ */
+export function isStaticRecipesDirOverride(dir: string): boolean {
+  return path.resolve(dir) !== path.resolve(INSTALLED_STATIC_RECIPES_DIR);
+}
 
 /** ACE_E2E_* → Maestro envVars key mapping. */
 const ACE_E2E_ENV_MAP: Record<string, string> = {
@@ -223,8 +307,13 @@ export function injectAceEnvVars(
 
 /**
  * Prepare a recipe for Maestro by resolving placeholders in BOTH the
- * top-level recipe AND every file under `mcp/mobile/recipes/static/`
+ * top-level recipe AND every file under the static palette dir
  * (which Maestro may `runFlow: file:` into).
+ *
+ * The palette dir is `staticRecipesDir` when the caller passes one —
+ * `MobileClient` always passes `this.staticRecipesDir`, so the client's
+ * dir and this resolver's dir CANNOT disagree (the #1062 bug was exactly
+ * that divergence) — otherwise `resolveStaticRecipesDir()`.
  *
  * Strategy: copy + resolve every static palette file to a temp dir,
  * resolve the top-level recipe in place if it's already a sibling
@@ -243,22 +332,40 @@ export function injectAceEnvVars(
 export async function prepareRecipeForMaestro(
   recipePath: string,
   apkVersion: string = '2.63.2',
+  staticRecipesDir?: string,
 ): Promise<{
   resolvedPath: string;
   tempDir: string;
   unverifiedSelectorsInTop: string[];
+  paletteDir: string;
+  paletteDirSource: 'install' | 'override';
 }> {
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ace-recipe-'));
+  const paletteDir = staticRecipesDir ?? resolveStaticRecipesDir();
+  const paletteDirSource = isStaticRecipesDirOverride(paletteDir) ? 'override' : 'install';
+
+  // LOUD signal when an override is in force. Silence is what made #1062
+  // a false negative: the operator staged a fixed palette, it was ignored,
+  // and the only evidence was buried in a Maestro trace. Now every run
+  // states which palette it actually used.
+  if (paletteDirSource === 'override') {
+    logInfo(
+      `recipe-resolver: palette dir OVERRIDE in force — using ${paletteDir} ` +
+        `(via ${STATIC_RECIPES_DIR_ENV}) INSTEAD OF the plugin's own ` +
+        `${INSTALLED_STATIC_RECIPES_DIR}. Every runFlow: file: ref resolves ` +
+        `to the override's copies.`,
+    );
+  }
 
   // Resolve every static palette file. Catch + log on individual
   // failures so a malformed entry in the palette doesn't break runs
   // for recipes that don't even use the broken file.
-  const paletteFiles = fs.existsSync(STATIC_RECIPES_DIR)
-    ? fs.readdirSync(STATIC_RECIPES_DIR).filter((f) => f.endsWith('.yaml'))
+  const paletteFiles = fs.existsSync(paletteDir)
+    ? fs.readdirSync(paletteDir).filter((f) => f.endsWith('.yaml'))
     : [];
   for (const f of paletteFiles) {
     try {
-      const body = fs.readFileSync(path.join(STATIC_RECIPES_DIR, f), 'utf8');
+      const body = fs.readFileSync(path.join(paletteDir, f), 'utf8');
       const resolved = resolveSelectorsInYaml(body, apkVersion);
       fs.writeFileSync(path.join(tempDir, f), resolved.yaml, 'utf8');
       if (resolved.unresolved.length > 0) {
@@ -269,6 +376,32 @@ export async function prepareRecipeForMaestro(
       }
     } catch (err) {
       logInfo(`recipe-resolver: skipping palette file ${f}: ${(err as Error).message}`);
+    }
+  }
+
+  // Cheap hardening, independent of the override (jjackson/ace#1062):
+  // if the top recipe has sibling palette YAMLs in its OWN directory that
+  // the palette dir is about to shadow, say so. That is precisely the
+  // #1058 shape — a caller stages a fixed palette next to its recipe and
+  // assumes it wins. It doesn't; the palette dir does.
+  const topDir = path.dirname(path.resolve(recipePath));
+  if (path.resolve(topDir) !== path.resolve(paletteDir)) {
+    let shadowed: string[] = [];
+    try {
+      shadowed = fs
+        .readdirSync(topDir)
+        .filter((f) => f.endsWith('.yaml') && f !== path.basename(recipePath) && paletteFiles.includes(f));
+    } catch {
+      /* unreadable sibling dir is not this function's problem */
+    }
+    if (shadowed.length > 0) {
+      logInfo(
+        `recipe-resolver: ${shadowed.length} sibling YAML(s) next to ${recipePath} ` +
+          `are SHADOWED by the palette dir ${paletteDir} and will NOT be used: ` +
+          `${JSON.stringify(shadowed)}. Staging a palette next to the recipe does not ` +
+          `override the palette — set ${STATIC_RECIPES_DIR_ENV} instead ` +
+          `(playbook/integrations/mobile-integration.md § Validating a palette fix pre-merge).`,
+      );
     }
   }
 
@@ -292,5 +425,7 @@ export async function prepareRecipeForMaestro(
     resolvedPath: path.join(tempDir, resolvedTopName),
     tempDir,
     unverifiedSelectorsInTop: resolvedTop.unverified,
+    paletteDir,
+    paletteDirSource,
   };
 }

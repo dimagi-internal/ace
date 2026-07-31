@@ -199,6 +199,20 @@ export interface RecipeRunResult {
     screenshotPath?: string;
     elements?: Array<{ id?: string; text?: string; class?: string; bounds?: string }>;
   };
+  /**
+   * The static palette dir this run actually resolved `runFlow: file:`
+   * refs against, and whether it came from the plugin install or from an
+   * `ACE_MOBILE_STATIC_RECIPES_DIR` override.
+   *
+   * Exists so an operator live-validating a staged palette fix pre-merge
+   * gets POSITIVE proof in the result that the staged copy won. Before
+   * jjackson/ace#1062 an override was silently ignored, producing a false
+   * negative (the run read as a failed fix) with no signal anywhere but a
+   * Maestro trace. Set by `MobileClient.runRecipe`; undefined on results
+   * built by paths that don't go through it.
+   */
+  paletteDir?: string;
+  paletteDirSource?: 'install' | 'override';
 }
 
 export interface StepResult {
