@@ -16,6 +16,7 @@ import {
   resolvePatchXformXml,
   resolveUploadMultimediaBytes,
   resolveEnvSubstitution,
+  ENV_ALLOW,
   AtomArgUsageError,
 } from '../../lib/atom-payload-resolver.js';
 
@@ -182,5 +183,63 @@ describe('resolveEnvSubstitution', () => {
     expect(resolveEnvSubstitution('${lower_case}', { lower_case: 'x' })).toBe(
       '${lower_case}',
     );
+  });
+});
+
+describe('resolveEnvSubstitution — allowlist (security audit 2026-07-31)', () => {
+  // The MCP process env holds every secret in .env. The `allow` param stops
+  // a tool argument from naming an arbitrary secret var (e.g. a prompt-
+  // injected `${ACE_HQ_PASSWORD}` in a phone-number field) and shipping the
+  // resolved value outbound. See the F1/preflight exfil finding.
+  const env = {
+    ACE_HQ_API_KEY: 'hq-key-40',
+    ACE_HQ_EU_API_KEY: 'hq-eu-key',
+    ACE_HQ_USERNAME: 'ace@dimagi-ai.com',
+    ACE_E2E_PHONE: '+74260000101',
+    ACE_E2E_PHONE_LOCAL: '0000101',
+    ACE_HQ_PASSWORD: 'super-secret',
+    LABS_MCP_TOKEN: 'labs-token',
+    OCS_API_TOKEN: 'ocs-token',
+    ACE_WEB_PAT_TOKEN: 'pat-token',
+  };
+
+  it('expands an allowlisted var', () => {
+    expect(resolveEnvSubstitution('${ACE_HQ_API_KEY}', env, ENV_ALLOW.hqApiKey)).toBe('hq-key-40');
+    expect(resolveEnvSubstitution('${ACE_HQ_EU_API_KEY}', env, ENV_ALLOW.hqApiKey)).toBe('hq-eu-key');
+    expect(resolveEnvSubstitution('${ACE_HQ_USERNAME}', env, ENV_ALLOW.hqUsername)).toBe('ace@dimagi-ai.com');
+    expect(resolveEnvSubstitution('${ACE_E2E_PHONE}', env, ENV_ALLOW.e2ePhone)).toBe('+74260000101');
+    expect(resolveEnvSubstitution('${ACE_E2E_PHONE_LOCAL}', env, ENV_ALLOW.e2ePhone)).toBe('0000101');
+  });
+
+  it.each([
+    ['password via api_key field', '${ACE_HQ_PASSWORD}', ENV_ALLOW.hqApiKey],
+    ['labs token via api_key field', '${LABS_MCP_TOKEN}', ENV_ALLOW.hqApiKey],
+    ['ocs token via phone field', '${OCS_API_TOKEN}', ENV_ALLOW.e2ePhone],
+    ['pat token via username field', '${ACE_WEB_PAT_TOKEN}', ENV_ALLOW.hqUsername],
+    ['api key via phone field', '${ACE_HQ_API_KEY}', ENV_ALLOW.e2ePhone],
+  ] as const)('rejects a non-allowlisted var (%s)', (_label, input, allow) => {
+    expect(() => resolveEnvSubstitution(input, env, allow)).toThrow(AtomArgUsageError);
+    expect(() => resolveEnvSubstitution(input, env, allow)).toThrow(/substitution rejected/);
+  });
+
+  it('the rejection message names the var but NOT its resolved value', () => {
+    try {
+      resolveEnvSubstitution('${ACE_HQ_PASSWORD}', env, ENV_ALLOW.hqApiKey);
+      throw new Error('expected a throw');
+    } catch (e) {
+      const msg = (e as Error).message;
+      expect(msg).toContain('ACE_HQ_PASSWORD');
+      expect(msg).not.toContain('super-secret');
+    }
+  });
+
+  it('rejects a denied var even when another allowed var is present', () => {
+    expect(() =>
+      resolveEnvSubstitution('${ACE_HQ_API_KEY}-${LABS_MCP_TOKEN}', env, ENV_ALLOW.hqApiKey),
+    ).toThrow(/LABS_MCP_TOKEN/);
+  });
+
+  it('omitting allow keeps back-compat (any UPPER_SNAKE var expands)', () => {
+    expect(resolveEnvSubstitution('${LABS_MCP_TOKEN}', env)).toBe('labs-token');
   });
 });

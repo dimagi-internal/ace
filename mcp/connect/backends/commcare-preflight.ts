@@ -62,6 +62,40 @@
  * `bin/ace-doctor:1420` uses the same header.
  */
 
+import { AtomArgUsageError } from '../../../lib/atom-payload-resolver.js';
+
+/**
+ * SSRF / credential-exfil guard (security audit 2026-07-31).
+ *
+ * `base_url` is an operator override that the probe interpolates directly
+ * into `fetch(\`${baseUrl}${path}\`, { headers: { Authorization: \`ApiKey
+ * ${hq_username}:${api_key}\` } })`. Without a host restriction, a single
+ * prompt-injected tool call could point `base_url` at `http://attacker.tld`
+ * (or `http://169.254.169.254/…`, `http://localhost:…`) and ship the CCHQ
+ * credential — plus, via the response body surfaced back in `cchq`, an
+ * SSRF read of the operator's local network. ACE only ever talks to
+ * Dimagi's CommCare HQ, so we pin the host to the `commcarehq.org` family
+ * (www / eu / india / staging subdomains) over https. Anything else is a
+ * loud usage error, never a live request.
+ */
+export function assertAllowedCchqBaseUrl(baseUrl: string): void {
+  let url: URL;
+  try {
+    url = new URL(baseUrl);
+  } catch {
+    throw new AtomArgUsageError(`base_url is not a valid URL: ${JSON.stringify(baseUrl)}`);
+  }
+  const host = url.hostname.toLowerCase();
+  const hostOk = host === 'commcarehq.org' || host.endsWith('.commcarehq.org');
+  if (url.protocol !== 'https:' || !hostOk) {
+    throw new AtomArgUsageError(
+      `base_url host "${url.host}" is not an allowed CommCare HQ endpoint. ` +
+        `Only https://*.commcarehq.org is permitted (omit base_url for the ` +
+        `default https://www.commcarehq.org).`,
+    );
+  }
+}
+
 /** Args accepted by the pre-flight atom. */
 export interface PreflightLearnAppUserArgs {
   /** HQ project space slug (e.g. `connect-ace-prod`). */
@@ -169,6 +203,7 @@ export async function preflightLearnAppUser(
   fetchImpl: typeof fetch = fetch,
 ): Promise<PreflightLearnAppUserResult> {
   const baseUrl = args.base_url ?? 'https://www.commcarehq.org';
+  assertAllowedCchqBaseUrl(baseUrl);
   const authHeader = `ApiKey ${args.hq_username}:${args.api_key}`;
 
   // Step 1: validate API key + domain reachability with a bounded GET.
