@@ -148,6 +148,16 @@ if [ -z "${TRANSCRIPT_PATH:-}" ]; then
 fi
 [ -s "$TRANSCRIPT_PATH" ] || { echo "transcript_path empty: $TRANSCRIPT_PATH"; exit 3; }
 
+# REDACT before upload (security audit 2026-07-31, D1). The raw session log
+# contains the stdout of every Bash call — and ACE routinely reads
+# $CLAUDE_PLUGIN_DATA/.env, ~/.ace/*-session.json, and curls with Bearer
+# headers, so uploading it verbatim publishes live credentials to ace-web.
+# Scrub secret-shaped strings into a temp copy and upload THAT, never the
+# original. lib/redact-secrets.ts is unit-tested; this is a thin wrapper.
+REDACTED_PATH="$(mktemp -t ace-transcript-redacted).jsonl"
+npx tsx "${CLAUDE_PLUGIN_ROOT:-.}/scripts/redact-transcript.ts" "$TRANSCRIPT_PATH" "$REDACTED_PATH" \
+  || { echo "redaction failed — refusing to upload un-redacted transcript"; exit 5; }
+
 # upload — optional opp/run/step linkage surfaces under that opp in
 # the Workbench's linked-chats panel. Omit any field you don't have.
 # IMPORTANT: build the form fields FIRST and append the file part LAST.
@@ -158,8 +168,8 @@ UPLOAD_ARGS=()
 [ -n "${OPP_RUN_ID:-}" ]     && UPLOAD_ARGS+=(-F "opp_run_id=$OPP_RUN_ID")
 [ -n "${OPP_STEP_SKILL:-}" ] && UPLOAD_ARGS+=(-F "opp_step_skill=$OPP_STEP_SKILL")
 [ -n "${ACE_DRIVE_ROOT_FOLDER_ID:-}" ] && UPLOAD_ARGS+=(-F "ace_root_folder_id=$ACE_DRIVE_ROOT_FOLDER_ID")
-# file part MUST be last
-UPLOAD_ARGS+=(-F "file=@$TRANSCRIPT_PATH;type=application/x-ndjson")
+# file part MUST be last — upload the REDACTED copy, not $TRANSCRIPT_PATH
+UPLOAD_ARGS+=(-F "file=@$REDACTED_PATH;type=application/x-ndjson")
 
 HTTP=$(curl -sS -o /tmp/upload-resp.json -w '%{http_code}' \
   -X POST "$BASE_URL/api/ingest/upload" \
