@@ -222,9 +222,27 @@ appId: org.commcare.dalvik
 
 - takeScreenshot: "deliver-launch-home"
 
-# Verify we landed in Deliver mode, not back in Learn. `viewJobCard`
-# is absent on the Learn home (§ 5) and present on the Deliver home
-# (§ 10) — this assertion is structural, not text-based, so it's the
-# most reliable "we're in Deliver" check.
+# NECESSARY BUT NOT SUFFICIENT — this does NOT prove we are in Deliver.
+#
+# This comment used to claim `viewJobCard` "is absent on the Learn home
+# (§ 5) and present on the Deliver home (§ 10)". That is FALSE on
+# connect-2.63.0: once the opp is claimed the LEARN home renders
+# viewJobCard too, with tv_job_title set, while the toolbar still reads
+# "... — Learn app" (#893, live-captured on
+# hh-poverty-targeting/20260722-1341). Trusting it as a differentiator
+# is what let the download gate be skipped in the first place.
+#
+# What this assert actually proves: we are on SOME StandardHomeActivity
+# rather than stranded mid-transition. That is still worth asserting —
+# it catches the download failing outright — but it CANNOT catch
+# "landed back in Learn", so a green deliver-launch is not by itself
+# evidence the Deliver app is loaded.
+#
+# The real differentiator (toolbar app-name, or the presence of a
+# deliver-unit form row) needs a live ui-dump of the Deliver home to
+# calibrate, and is deliberately NOT guessed here — an unvalidated
+# selector would recreate exactly the class #893 is about. Tracked in
+# #893; the downstream `deliver-form-walk` opening a Learn form remains
+# the backstop until then.
 - assertVisible:
     ${SELECTOR:deliver-home-job-card}
