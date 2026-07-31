@@ -232,8 +232,10 @@ server.tool(
     // Without this branch, the atom always returned `healthy: false`
     // on cloud (the local `findRunningAvd` never finds a `cloud:i-...`
     // serial), which made Phase 6 pre-flight spuriously fail.
-    if (client.useCloud) {
-      const diag = await client.diagnose();
+    const diag = client.useCloud ? await client.diagnose() : null;
+    // `diagnose()` is dual-mode since ace#961; narrow on the discriminant
+    // (inside `useCloud` it is always the cloud envelope).
+    if (diag && diag.backend === 'cloud') {
       const sawDevice = diag.adb_devices.some((d) => d.state === 'device');
       const runnerActive = diag.runner_service_state === 'active';
       const healthy = runnerActive && sawDevice;
@@ -417,15 +419,19 @@ server.tool(
   }),
 );
 
-// ── Cloud-only diagnostics + admin atoms ─────────────────────────────
+// ── Diagnostics + cloud-only admin atoms ─────────────────────────────
 //
-// These three atoms target the ace-web cloud backend specifically.
-// They throw `MobileError(CLOUD_ONLY_OPERATION)` against the local
-// AVD backend — skills that need them should gate on the cloud
+// `mobile_diagnose` works on BOTH backends (ace#961) — discriminate the
+// result on its `backend` field. `mobile_restart_runner` and
+// `mobile_patch_launch_script` target the ace-web cloud backend
+// specifically and throw `MobileError(CLOUD_ONLY_OPERATION)` against the
+// local AVD backend — skills that need them should gate on the cloud
 // toggle, OR catch the error and skip.
 
 server.tool(
   'mobile_diagnose',
+  // Deliberately arg-less on both backends, so `docs/atom-schemas.md`
+  // (and its staleness gate) is unaffected by the dual-mode change.
   {},
   async () => ({
     content: [

@@ -4,7 +4,7 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { AvdBootError, AvdBootTimeoutError, AdbError } from '../errors.js';
-import type { AvdInfo, ApkInfo, UiDumpResult, SnapshotResult } from '../types.js';
+import type { AvdInfo, ApkInfo, UiDumpResult, SnapshotResult, LocalDiagnostics } from '../types.js';
 import { resolveAdbServerPort, resolveEmulatorPair, recordSessionLock, isTcpPortFree, occupiedConsolePortIsFatal } from '../port-allocator.js';
 import { withAllocatorMutex } from '../session-lock.js';
 
@@ -414,6 +414,85 @@ export class AvdBackend {
   async listAvds(): Promise<string[]> {
     const r = await this.shell('emulator', ['-list-avds']);
     return r.stdout.split('\n').map((s) => s.trim()).filter((s) => s.length > 0);
+  }
+
+  /**
+   * Self-describing diagnostic snapshot of THIS backend's local emulator
+   * state (dimagi-internal/ace#961).
+   *
+   * The gap it closes: this backend boots the emulator against its OWN adb
+   * server (probe-allocated from 5037 upward — typically 5039 when a sibling
+   * session already holds 5037), so a raw `adb devices` in a session shell
+   * hits the DEFAULT 5037 and prints an empty device list while the emulator
+   * is running fine. That reads exactly like a dead emulator, and until now
+   * the only authoritative read was the process table — `mobile_diagnose`
+   * was cloud-only, so the local backend had no self-describing probe at
+   * all. It cost real time on 2026-07-26 validating #957, where
+   * `mobile_capture_ui_dump` returned a live hierarchy at the same moment
+   * `adb devices` showed nothing.
+   *
+   * So the load-bearing fields are `adb_server_port` and `adb_env_hint` —
+   * the copy-pasteable prefix that makes a raw `adb` call land on the right
+   * server. Everything else is cheap corroboration from the same allocation.
+   *
+   * Read-only and best-effort: it must never boot, heal, or mutate, and an
+   * `adb` that fails is reported in `adb_error` rather than thrown — a
+   * diagnostic that dies is worse than useless when the thing you are
+   * diagnosing is "why does adb see nothing".
+   */
+  async diagnose(): Promise<LocalDiagnostics> {
+    const ports = await this.getAllocatedPorts();
+    const diag: LocalDiagnostics = {
+      backend: 'local',
+      adb_server_port: ports.adbServerPort,
+      emulator_console_port: ports.emulatorConsolePort,
+      emulator_adb_bridge_port: ports.emulatorAdbBridgePort,
+      ports_auto_allocated: ports.autoAllocated,
+      adb_env_hint: `ANDROID_ADB_SERVER_PORT=${ports.adbServerPort}`,
+      adb_devices: [],
+      adb_visible_count: 0,
+      avd_name: null,
+      avd_serial: null,
+      known_avds: [],
+      adb_error: null,
+    };
+
+    // `this.shell` is the port-injecting wrapper, so this `adb devices` is
+    // issued against the SAME server the emulator was booted on — that is
+    // the whole point of the probe.
+    try {
+      const r = await this.shell('adb', ['devices']);
+      diag.adb_devices = r.stdout
+        .split('\n')
+        .slice(1)
+        .map((line) => line.split('\t'))
+        .filter((parts) => parts.length >= 2 && parts[0].trim().length > 0)
+        .map((parts) => ({ serial: parts[0].trim(), state: parts[1].trim() }));
+      diag.adb_visible_count = diag.adb_devices.length;
+    } catch (e) {
+      diag.adb_error = `adb devices failed: ${(e as Error).message}`;
+    }
+
+    // Resolve the AVD name behind the first emulator serial, so the caller
+    // learns WHICH avd is up without having to guess a name to probe.
+    const firstEmulator = diag.adb_devices.find((d) => d.serial.startsWith('emulator-'));
+    if (firstEmulator) {
+      diag.avd_serial = firstEmulator.serial;
+      try {
+        const r = await this.shell('adb', ['-s', firstEmulator.serial, 'emu', 'avd', 'name']);
+        diag.avd_name = r.stdout.split('\n')[0].trim() || null;
+      } catch {
+        /* best-effort — a serial with no readable name still reports above */
+      }
+    }
+
+    try {
+      diag.known_avds = await this.listAvds();
+    } catch {
+      /* best-effort — `emulator` missing from PATH is its own doctor check */
+    }
+
+    return diag;
   }
 
   /**

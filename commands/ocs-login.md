@@ -31,10 +31,16 @@ If you're hitting `SessionExpiredError` from a skill, first verify `OCS_USERNAME
 
 ## Implementation
 
-Write a one-shot TypeScript helper to a tmp file and run it via `tsx`:
+Write a one-shot TypeScript helper to a **scratch** file and run it via `tsx`.
+The path MUST come from `mktemp` — a fixed `/tmp/ocs-login.ts` is shared across
+macOS users, so if another account owns that file the `cat >` fails `EACCES`
+and the `npx tsx` below then executes **their** script under our identity,
+with our credentials in env (ace#1046, worst variant of the class:
+write-then-execute).
 
 ```bash
-cat > /tmp/ocs-login.ts <<'EOF'
+LOGIN_TS="$(mktemp "${TMPDIR:-/tmp}/ace-ocs-login-XXXXXX.ts")"
+cat > "$LOGIN_TS" <<'EOF'
 import { chromium } from 'playwright';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
@@ -60,7 +66,7 @@ process.stdin.once('data', async () => {
   process.exit(0);
 });
 EOF
-npx tsx /tmp/ocs-login.ts
+npx tsx "$LOGIN_TS"
 ```
 
 ## Expected output

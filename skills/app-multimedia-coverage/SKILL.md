@@ -257,7 +257,12 @@ of CCHQ's orphan-pruning behavior — see the WHY callout in step 7.
 
 7. **Patch form XML.** For each form with ≥1 image:
    - `commcare_download_ccz` to fetch the released form XML; save it
-     to a temp path like `/tmp/ace-mm-<form_unique_id>.xml`.
+     to a scratch path created with
+     `mktemp "${TMPDIR:-/tmp}/ace-mm-XXXXXX.xml"`. **Never a fixed
+     `/tmp/ace-mm-<form_unique_id>.xml` (ace#1046)** — `/tmp` is shared
+     across macOS users on the ACE workstation, so the write can fail
+     `EACCES` while the follow-up read silently returns another session's
+     file for a different form.
    - Build a bindings JSON file listing every field on this form that
      got an image:
 
@@ -272,7 +277,10 @@ of CCHQ's orphan-pruning behavior — see the WHY callout in step 7.
 
      ```bash
      ACE_ROOT="${CLAUDE_PLUGIN_ROOT:-$(python3 -c "import json,os; d=json.load(open(os.path.expanduser('~/.claude/plugins/installed_plugins.json'))); print(d['plugins']['ace@ace'][0]['installPath'])")}"
-     npx --prefix "$ACE_ROOT" tsx "$ACE_ROOT/scripts/run-xform-patch.ts" /tmp/ace-mm-<form_unique_id>.xml /tmp/bindings-<form_unique_id>.json [--replace-existing] -o /tmp/patched-<form_unique_id>.xml
+     MM_XML="$(mktemp "${TMPDIR:-/tmp}/ace-mm-XXXXXX.xml")"        # from the step above
+     MM_BINDINGS="$(mktemp "${TMPDIR:-/tmp}/ace-bindings-XXXXXX.json")"
+     MM_PATCHED="$(mktemp "${TMPDIR:-/tmp}/ace-patched-XXXXXX.xml")"
+     npx --prefix "$ACE_ROOT" tsx "$ACE_ROOT/scripts/run-xform-patch.ts" "$MM_XML" "$MM_BINDINGS" [--replace-existing] -o "$MM_PATCHED"
      ```
 
      Patched XML lands at the `-o` path; a JSON summary

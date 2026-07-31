@@ -171,8 +171,11 @@ async function main() {
   console.log('Capture adb logcat to disambiguate:');
   console.log('  adb logcat -c && \\');
   console.log('    # tap Start on the opp detail screen on the AVD, then within ~30s:');
-  console.log('  adb logcat -d > /tmp/connect-learn-handoff.log');
-  console.log('  grep -iE "exception|failed to start|ccapp|ccz|http/[12]" /tmp/connect-learn-handoff.log');
+  // Scratch path, not a fixed /tmp literal (ace#1046): /tmp is shared across
+  // macOS users, so a fixed name can leave us grepping another session's log.
+  console.log('  LOG="$(mktemp "${TMPDIR:-/tmp}/ace-learn-handoff-XXXXXX.log")"');
+  console.log('  adb logcat -d > "$LOG"');
+  console.log('  grep -iE "exception|failed to start|ccapp|ccz|http/[12]" "$LOG"');
   console.log();
 }
 

@@ -136,8 +136,22 @@ For each app in scope, enumerate its forms and modules against the
 
 ```bash
 ACE_ROOT="${CLAUDE_PLUGIN_ROOT:-$(python3 -c "import json,os; d=json.load(open(os.path.expanduser('~/.claude/plugins/installed_plugins.json'))); print(d['plugins']['ace@ace'][0]['installPath'])")}"
-npx --prefix "$ACE_ROOT" tsx "$ACE_ROOT/scripts/run-form-walk.ts" <hq_domain> <hq_app_id> --out /tmp/ace-hq-<app>.json
+WALK_OUT="$(npx --prefix "$ACE_ROOT" tsx "$ACE_ROOT/scripts/run-form-walk.ts" <hq_domain> <hq_app_id> --out-scratch)"
+jq . "$WALK_OUT"
 ```
+
+**Never pass a fixed `--out /tmp/ace-hq-<app>.json` (ace#1046).** That path
+is shared across macOS users on this workstation: the write fails `EACCES`
+when another account owns the existing file, and the follow-up read
+**succeeds anyway** — returning a different session's walk of *different
+apps*. That happened live on `bednet-spot-check/20260729-0002` at this exact
+step; feeding those module ids to `commcare_set_menu_display` would have
+gridded modules on two unrelated apps in prod HQ with a 200 and no error.
+`--out-scratch` derives an unpredictable per-user path and prints it on
+stdout, and every write is read back and asserted to carry the `domain` +
+`app_id` this invocation asked for (`lib/scratch-file.ts`). If the script
+throws `STALE_ARTIFACT`, **halt** — do not pass any id from that payload to a
+write-side atom.
 
 (No `--build-id` — this skill targets the draft, so let the walk download
 the current draft CCZ. The draft-app API overlay is what supplies the
@@ -184,7 +198,9 @@ For each Deliver form that the walk reports with ≥1 `kind: image` field:
 
    Mirror `scripts/run-xform-patch.ts`'s XML handling conventions
    (in-place attribute edit on the parsed body element; write the mutated
-   XML to a temp file such as `/tmp/ace-hq-acquire-<form_unique_id>.xml`).
+   XML to a scratch file created with
+   `mktemp "${TMPDIR:-/tmp}/ace-hq-acquire-XXXXXX.xml"` — never a fixed
+   `/tmp/ace-hq-acquire-<form_unique_id>.xml`, per ace#1046 above).
    The contract truth (verified 2026-07-13 against commcare-android:
    `QuestionWidget.ACQUIREFIELD = "acquire"`) is that the widget hides
    the gallery button when the appearance hint **contains** `acquire`;

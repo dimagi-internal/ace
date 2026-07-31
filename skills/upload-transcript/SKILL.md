@@ -171,15 +171,20 @@ UPLOAD_ARGS=()
 # file part MUST be last — upload the REDACTED copy, not $TRANSCRIPT_PATH
 UPLOAD_ARGS+=(-F "file=@$REDACTED_PATH;type=application/x-ndjson")
 
-HTTP=$(curl -sS -o /tmp/upload-resp.json -w '%{http_code}' \
+# Scratch response file: `mktemp`, never a fixed /tmp literal (ace#1046) —
+# /tmp is shared across macOS users, so `-o` can fail EACCES while the
+# follow-up read silently returns another session's response body (and here
+# that would mean publishing the WRONG session slug).
+RESP_JSON="$(mktemp "${TMPDIR:-/tmp}/ace-upload-resp-XXXXXX.json")"
+HTTP=$(curl -sS -o "$RESP_JSON" -w '%{http_code}' \
   -X POST "$BASE_URL/api/ingest/upload" \
   -H "Authorization: Bearer $ACE_WEB_PAT_TOKEN" \
   "${UPLOAD_ARGS[@]}")
 # 409 = identical content already uploaded; treat as idempotent success.
-[ "$HTTP" = "201" ] || [ "$HTTP" = "409" ] || { echo "upload $HTTP"; cat /tmp/upload-resp.json; exit 4; }
+[ "$HTTP" = "201" ] || [ "$HTTP" = "409" ] || { echo "upload $HTTP"; cat "$RESP_JSON"; exit 4; }
 
 # extract session slug — response is flat (no `{data: {...}}` envelope)
-SLUG=$(python3 -c "import json,sys; print(json.load(open('/tmp/upload-resp.json'))['session_slug'])")
+SLUG=$(python3 -c "import json,sys; print(json.load(open(sys.argv[1]))['session_slug'])" "$RESP_JSON")
 echo "Uploaded. View at $BASE_URL/chat/$SLUG"
 ```
 
