@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync, readdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import { parse as parseYaml } from 'yaml';
 import { resolveSelectorsInYaml } from '../../../mcp/mobile/recipe-resolver.js';
 import {
   lintRecipeText,
@@ -15,6 +16,29 @@ import {
 const STATIC_DIR = fileURLToPath(
   new URL('../../../mcp/mobile/recipes/static/', import.meta.url),
 );
+
+const SELECTORS_DIR = fileURLToPath(
+  new URL('../../../mcp/mobile/selectors/', import.meta.url),
+);
+
+/** Escape a literal string for embedding in a RegExp source. */
+function escapeRe(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function selectorMap(apk: string): {
+  selectors: Record<string, { type: string; value: string; unverified?: boolean; purpose?: string }>;
+} {
+  return parseYaml(readFileSync(`${SELECTORS_DIR}connect-${apk}.yaml`, 'utf8')) as ReturnType<
+    typeof selectorMap
+  >;
+}
+
+// The RESOLVED menu-container matcher, read from the map rather than
+// duplicated here — so an intentional widening of the anchor (a third
+// display mode) updates these structural regexes in one place instead of
+// silently failing five of them (dimagi-internal/ace#1127).
+const MENU_ID_RE = escapeRe(selectorMap('2.63.0').selectors['learn-suite-menu'].value);
 
 // Assert on the RESOLVED recipe (every `${SELECTOR:logical-name}` /
 // `"${SELECTOR:logical-name}"` replaced with its concrete matcher) so
@@ -262,7 +286,9 @@ describe('learn-tap-module.yaml', () => {
     // only row to enter the form.
     expect(yaml).toMatch(/- runFlow:\s*\n\s*when:/);
     expect(yaml).toMatch(
-      /when:\s*\n\s*visible:\s*\n\s*id: "org\.commcare\.dalvik:id\/screen_suite_menu_list"\s*\n\s*notVisible:\s*\n\s*id: "org\.commcare\.dalvik:id\/nav_btn_next"/,
+      new RegExp(
+        `when:\\s*\\n\\s*visible:\\s*\\n\\s*id: "${MENU_ID_RE}"\\s*\\n\\s*notVisible:\\s*\\n\\s*id: "org\\.commcare\\.dalvik:id/nav_btn_next"`,
+      ),
     );
   });
 
@@ -293,9 +319,11 @@ describe('learn-tap-module.yaml', () => {
     // Branch B's — this regex matches only Branch B.
     expect(
       yaml,
-      'expected Branch B to tapOn text:${MODULE_NAME} scoped to the menu-list body (below: screen_suite_menu_list)',
+      'expected Branch B to tapOn text:${MODULE_NAME} scoped to the menu body (below: the menu container)',
     ).toMatch(
-      /- tapOn:\s*\n\s*text: "\$\{MODULE_NAME\}"\s*\n\s*below:\s*\n\s*id: "org\.commcare\.dalvik:id\/screen_suite_menu_list"/,
+      new RegExp(
+        `- tapOn:\\s*\\n\\s*text: "\\$\\{MODULE_NAME\\}"\\s*\\n\\s*below:\\s*\\n\\s*id: "${MENU_ID_RE}"`,
+      ),
     );
   });
 
@@ -324,17 +352,21 @@ describe('learn-tap-module.yaml', () => {
     // ${FORM_NAME} matcher anywhere) and PASSES on the fixed one.
     expect(
       yaml,
-      'expected a Branch C guard matching text:${FORM_NAME} scoped to the menu-list body',
+      'expected a Branch C guard matching text:${FORM_NAME} scoped to the menu body',
     ).toMatch(
-      /visible:\s*\n\s*text: "\$\{FORM_NAME\}"\s*\n\s*below:\s*\n\s*id: "org\.commcare\.dalvik:id\/screen_suite_menu_list"/,
+      new RegExp(
+        `visible:\\s*\\n\\s*text: "\\$\\{FORM_NAME\\}"\\s*\\n\\s*below:\\s*\\n\\s*id: "${MENU_ID_RE}"`,
+      ),
     );
     // And the body must TAP that form row (scoped the same way) to open
     // the form — not merely probe for it.
     expect(
       yaml,
-      'expected Branch C to tapOn the ${FORM_NAME} form row scoped to the menu-list body',
+      'expected Branch C to tapOn the ${FORM_NAME} form row scoped to the menu body',
     ).toMatch(
-      /- tapOn:\s*\n\s*text: "\$\{FORM_NAME\}"\s*\n\s*below:\s*\n\s*id: "org\.commcare\.dalvik:id\/screen_suite_menu_list"/,
+      new RegExp(
+        `- tapOn:\\s*\\n\\s*text: "\\$\\{FORM_NAME\\}"\\s*\\n\\s*below:\\s*\\n\\s*id: "${MENU_ID_RE}"`,
+      ),
     );
   });
 
@@ -364,7 +396,7 @@ describe('learn-tap-module.yaml', () => {
     //
     // Structural fix: Branch B's effective trigger must additionally
     // require a `${MODULE_NAME}`-matching node SCOPED to the menu-list
-    // body (via `below: id: screen_suite_menu_list`). When form-name
+    // body (via `below: id: <the menu container>`). When form-name
     // != module-name, no such body node exists, so Branch B skips and
     // the caller's next learn-tap-module invocation (with FORM_NAME)
     // drills the form row by its own label.
@@ -374,7 +406,9 @@ describe('learn-tap-module.yaml', () => {
     // predicate semantics (outer: list-id visible; inner: text-in-
     // body visible) requires a nested flow.
     expect(yaml).toMatch(
-      /visible:\s*\n\s*text: "\$\{MODULE_NAME\}"\s*\n\s*below:\s*\n\s*id: "org\.commcare\.dalvik:id\/screen_suite_menu_list"/,
+      new RegExp(
+        `visible:\\s*\\n\\s*text: "\\$\\{MODULE_NAME\\}"\\s*\\n\\s*below:\\s*\\n\\s*id: "${MENU_ID_RE}"`,
+      ),
     );
   });
 });
@@ -677,5 +711,137 @@ describe('app-test-cases composition contract', () => {
     expect(skill, 'SKILL.md must state that it is mandatory').toMatch(
       /deliver-sync\.yaml` is MANDATORY/,
     );
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// CLASS-LEVEL PREVENTER — menu-container anchors must be display-mode-complete
+//
+// dimagi-internal/ace#1127. Two subsystems were each individually right and
+// jointly broken: #1082/PR #1100 taught Phase 3 `app-hq-settings` to apply
+// GRID menu display app-wide (correctly), while every Phase 6 menu anchor
+// resolved to the LIST container `screen_suite_menu_list` alone. CommCare
+// renders the SAME MenuActivity rows (`row_img` + `row_txt`) in either
+// container — only the container's resource-id changes with the display
+// setting — so the moment grid was applied, NO shipped palette recipe could
+// execute. bednet-spot-check/20260731-1353: Learn halted at learn-launch's
+// first menu assertion, Deliver walled the same way, Phase 6 wrote
+// `verdict: blocked`. Blast radius was every ACE opportunity.
+//
+// The per-file edit is the instance fix. THIS is the fix: a display-mode
+// change can no longer silently take out the palette, because any anchor
+// naming one known menu container must name them all.
+//
+// Two rules, closing both the direct and the indirect path:
+//
+//   1. No palette file may hardcode a menu-container resource-id. The
+//      indirection through the selector map is what makes "teach the palette
+//      a new display mode" a ONE-LINE change. (deliver-form-walk.yaml had two
+//      raw literals, which is precisely why the Deliver leg walled even
+//      though its selector-map siblings could have been fixed centrally.)
+//
+//   2. Every selector-map row whose value mentions a menu container must
+//      mention ALL of them. This is the rule the pre-fix map failed:
+//      `learn-suite-menu` / `deliver-suite-menu` named only the ListView.
+//
+// Adding a third display mode = add its container id to KNOWN_MENU_CONTAINERS
+// below; CI then goes red until every map row accepts it.
+const KNOWN_MENU_CONTAINERS = [
+  // ListView container — list menu display. Live-verified 2026-06-02
+  // (2.63.0), bednet-spot-check/20260601-2009 Phase 6 Learn suite-root dump.
+  'screen_suite_menu_list',
+  // GridView container — grid menu display (what #1082 now applies app-wide).
+  // Live-observed 2026-07-31 (2.63.0) in the FAILURE ui-dump of
+  // bednet-spot-check/20260731-1353 Phase 6, quoted verbatim in that run's
+  // app-screenshot-capture_verdict.yaml (Drive
+  // 12dooLEt1CYS5XaKI8Y6PmOwAfQmvrBXyURVJxAApDj4): "Failure dump: container
+  // is org.commcare.dalvik:id/grid_menu_grid (GridView)."
+  'grid_menu_grid',
+] as const;
+
+/** Strip whole-line YAML comments — prose may legitimately name one container. */
+function stripComments(yaml: string): string {
+  return yaml
+    .split('\n')
+    .filter((l) => !l.trim().startsWith('#'))
+    .join('\n');
+}
+
+describe('menu-container anchors are display-mode-complete (ace#1127)', () => {
+  const paletteFiles = readdirSync(STATIC_DIR).filter((n) => n.endsWith('.yaml'));
+  const selectorMapFiles = readdirSync(SELECTORS_DIR).filter((n) => n.endsWith('.yaml'));
+
+  it('the palette is non-empty and the selector maps were found (sanity)', () => {
+    expect(paletteFiles.length).toBeGreaterThan(0);
+    expect(selectorMapFiles.length).toBeGreaterThan(0);
+  });
+
+  it.each(paletteFiles)(
+    '%s hardcodes no menu-container resource-id (must go through the selector map)',
+    (filename) => {
+      const body = stripComments(readFileSync(`${STATIC_DIR}${filename}`, 'utf8'));
+      const hits = KNOWN_MENU_CONTAINERS.filter((id) => body.includes(id));
+      expect(
+        hits,
+        `${filename}: hardcodes menu container(s) ${hits.join(', ')}. Reference ` +
+          '`${SELECTOR:learn-suite-menu}` / `${SELECTOR:deliver-suite-menu}` instead so a ' +
+          'display-mode change is a one-line selector-map edit (ace#1127).',
+      ).toEqual([]);
+    },
+  );
+
+  it.each(selectorMapFiles)(
+    '%s: every menu-container selector row accepts EVERY known display mode',
+    (filename) => {
+      const map = parseYaml(readFileSync(`${SELECTORS_DIR}${filename}`, 'utf8')) as {
+        selectors?: Record<string, { value?: string }>;
+      };
+      const failures: string[] = [];
+      for (const [name, entry] of Object.entries(map.selectors ?? {})) {
+        const value = entry?.value ?? '';
+        const named = KNOWN_MENU_CONTAINERS.filter((id) => value.includes(id));
+        // A row that mentions no menu container is not a menu anchor.
+        if (named.length === 0) continue;
+        const missing = KNOWN_MENU_CONTAINERS.filter((id) => !value.includes(id));
+        if (missing.length > 0) {
+          failures.push(
+            `${name} = ${JSON.stringify(value)} accepts only [${named.join(', ')}] — ` +
+              `missing [${missing.join(', ')}]`,
+          );
+        }
+      }
+      expect(
+        failures,
+        `${filename}: menu-container anchors must be display-mode-agnostic. Maestro matches ` +
+          '`id:` as a regex (Filters.idMatches), so use an alternation covering every ' +
+          'container — e.g. "org.commcare.dalvik:id/(screen_suite_menu_list|grid_menu_grid)". ' +
+          'A single-container anchor silently kills the whole Phase 6 palette the moment the ' +
+          'app ships the other display mode (ace#1127).',
+      ).toEqual([]);
+    },
+  );
+
+  it('every palette menu anchor RESOLVES to a display-mode-complete matcher', () => {
+    // The end-to-end statement: whatever a palette file writes, what Maestro
+    // actually receives must accept both containers. Catches an anchor that
+    // routes through some third selector row nobody thought to audit.
+    const failures: string[] = [];
+    for (const filename of paletteFiles) {
+      const raw = readFileSync(`${STATIC_DIR}${filename}`, 'utf8');
+      if (!/\$\{SELECTOR:[a-z0-9-]+\}/.test(raw)) continue;
+      const resolved = stripComments(resolveSelectorsInYaml(raw, '2.63.0').yaml);
+      for (const line of resolved.split('\n')) {
+        const named = KNOWN_MENU_CONTAINERS.filter((id) => line.includes(id));
+        if (named.length === 0) continue;
+        const missing = KNOWN_MENU_CONTAINERS.filter((id) => !line.includes(id));
+        if (missing.length > 0) {
+          failures.push(`${filename}: ${line.trim()} — missing [${missing.join(', ')}]`);
+        }
+      }
+    }
+    expect(
+      failures,
+      'resolved palette menu anchors must accept every known menu container (ace#1127)',
+    ).toEqual([]);
   });
 });

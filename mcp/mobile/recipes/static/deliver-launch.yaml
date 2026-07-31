@@ -46,7 +46,10 @@
 # state after ANY Phase 6 retry whose first attempt got past the
 # download — Connect routes Resume DIRECTLY into the Deliver-mode app:
 # either the StandardHomeActivity (job card visible) or the suite menu
-# (`screen_suite_menu_list`, observed live on
+# (`${SELECTOR:deliver-suite-menu}` — display-mode-agnostic since
+# dimagi-internal/ace#1127: matches the list container
+# `screen_suite_menu_list` OR the grid container `grid_menu_grid`; the list
+# form was observed live on
 # bednet-spot-check/20260609-0909 retry: ui dump
 # `6-qa-and-training/screenshots/journey-deliver/00-postlearn-landing.xml`,
 # Drive 1dX0qOlxzxVLyYWFrMMYO30U4gwDeKEqJ). The § 9 Download Delivery

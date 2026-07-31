@@ -25,8 +25,14 @@
 # `back` landed on the suite root: action bar "Spark FCAP Facilitator Learn
 # app", all 9 module rows present. See dimagi-internal/ace#1071.
 #
+# MENU ANCHOR RULE (dimagi-internal/ace#1127): the post-state wait uses
+# `${SELECTOR:learn-suite-menu}`, which accepts the LIST container
+# (`screen_suite_menu_list`) OR the GRID container (`grid_menu_grid`) — the
+# same rows render in either, only the container id changes with the app's
+# menu display setting. Keep it agnostic.
+#
 # NOTE ON THE `back`: the module form list and the suite root share the same
-# `screen_suite_menu_list` id, so there is no generic on-screen signal that
+# menu-container id, so there is no generic on-screen signal that
 # distinguishes them. That is precisely why this is a SEPARATE recipe selected
 # from app metadata rather than a guarded branch inside
 # `learn-suite-reentry.yaml` — a guard keyed on that shared id cannot tell

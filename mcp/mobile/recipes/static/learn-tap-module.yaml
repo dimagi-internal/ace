@@ -1,9 +1,19 @@
 # Tap a specific module or form on the Learn-app's MenuActivity surface,
 # advancing one level deeper into the suite tree.
 #
-# Pre-state: MenuActivity showing `screen_suite_menu_list` (either the
-# suite root from learn-launch.yaml, OR a drilled-in form list inside
-# a module). Atlas §6.
+# Pre-state: MenuActivity showing the menu container (either the suite
+# root from learn-launch.yaml, OR a drilled-in form list inside a
+# module). Atlas §6.
+#
+# MENU ANCHOR RULE (dimagi-internal/ace#1127): every reference below goes
+# through `${SELECTOR:learn-suite-menu}`, which is DISPLAY-MODE-AGNOSTIC —
+# it accepts the LIST container (`screen_suite_menu_list`) OR the GRID
+# container (`grid_menu_grid`). The comments below still name
+# `screen_suite_menu_list` where they describe the ORIGINAL live incident;
+# read those as "the menu container", whichever one the app renders. Never
+# narrow the selector back to a single container: doing so is what took out
+# the whole Phase 6 palette when #1082/PR #1100 made Phase 3 apply grid
+# display app-wide.
 #
 # Post-state: depends on what was tapped:
 #   - Tapping a suite-root row → drills into a form-list MenuActivity.

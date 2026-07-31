@@ -240,8 +240,8 @@ selectors:
     purpose: "Message/continue button on a registration prompt screen. connect-register-from-otp. #650. Live-verified 2026-06-01 (2.63.0) — tapped during a passing cold-boot registration run (selector-map-calibrate)."
   learn-suite-menu:
     type: id
-    value: "org.commcare.dalvik:id/screen_suite_menu_list"
-    purpose: "Learn-app MenuActivity suite-menu list (post-Start). learn-launch / learn-suite-reentry / learn-tap-module. Live-verified 2026-06-02 (2.63.0) — present in the Learn suite-root dump (journey-learn-suite-root) of bednet-spot-check/20260601-2009 Phase 6, once the #629 wedge cleared on a fresh build. #650."
+    value: "org.commcare.dalvik:id/(screen_suite_menu_list|grid_menu_grid)"
+    purpose: "Learn-app MenuActivity suite-menu CONTAINER (post-Start), DISPLAY-MODE-AGNOSTIC. learn-launch / learn-suite-reentry / learn-suite-reentry-from-module / learn-tap-module / content-form-finish-to-suite. CommCare renders the same MenuActivity rows (`row_img` + `row_txt`) inside a DIFFERENT container depending on the app's menu display setting: `screen_suite_menu_list` (ListView, list mode) or `grid_menu_grid` (GridView, grid mode). Maestro matches `id:` as a REGEX (`Filters.idMatches`), so the alternation accepts either. DO NOT narrow this to one container — dimagi-internal/ace#1127: #1082/PR #1100 made Phase 3 `app-hq-settings` apply grid display app-wide, and because every anchor here resolved to the ListView id ALONE, the entire Phase 6 palette became unexecutable on every ACE opp. Provenance: `screen_suite_menu_list` live-verified 2026-06-02 (2.63.0) in the Learn suite-root dump of bednet-spot-check/20260601-2009 Phase 6 (#650). `grid_menu_grid` live-observed 2026-07-31 (2.63.0) in the FAILURE ui-dump of bednet-spot-check/20260731-1353 Phase 6, recorded verbatim in that run's `app-screenshot-capture_verdict.yaml` (Drive 12dooLEt1CYS5XaKI8Y6PmOwAfQmvrBXyURVJxAApDj4). NOT re-dumped on a 2.63.2 device — the container ids are CommCare-app-layer (identical layout resources across these patch releases) and the row this file inherited was itself copied from the 2.63.0 map, so the 2.63.2 provenance is unchanged-by-this-fix. Enforced display-mode-complete by test/mcp/mobile/static-recipe-invariants.test.ts § menu-container anchors."
 
   # ── Google Play Services phone-hint sheet ───────────────────────
   gms-phone-hint-cancel:
@@ -484,8 +484,8 @@ selectors:
 
   deliver-suite-menu:
     type: id
-    value: "org.commcare.dalvik:id/screen_suite_menu_list"
-    purpose: "Deliver-app MenuActivity suite-menu list — same generic MenuActivity id as learn-suite-menu, on the Deliver side. Used by deliver-launch's already-installed fast path (#747): a Phase 6 retry whose prior dispatch consumed the Download Delivery gate resumes DIRECTLY here. Live-verified 2026-06-11 (2.63.0) — present in the Deliver post-resume landing dump (journey-deliver/00-postlearn-landing.xml, Drive 1dX0qOlxzxVLyYWFrMMYO30U4gwDeKEqJ) of bednet-spot-check/20260609-0909 Phase 6 retry, module row 'Bednet Visit'."
+    value: "org.commcare.dalvik:id/(screen_suite_menu_list|grid_menu_grid)"
+    purpose: "Deliver-app MenuActivity suite-menu CONTAINER — same generic MenuActivity containers as learn-suite-menu, on the Deliver side, and DISPLAY-MODE-AGNOSTIC for the same reason (dimagi-internal/ace#1127). Used by deliver-launch's already-installed fast path (#747) and by deliver-form-walk's two module-list / form-list waits (raw `screen_suite_menu_list` literals until #1127 — the reason the Deliver leg walled on grid). Provenance: `screen_suite_menu_list` live-verified 2026-06-11 (2.63.0) in the Deliver post-resume landing dump (journey-deliver/00-postlearn-landing.xml, Drive 1dX0qOlxzxVLyYWFrMMYO30U4gwDeKEqJ) of bednet-spot-check/20260609-0909 Phase 6 retry. `grid_menu_grid` live-observed 2026-07-31 (2.63.0) — see learn-suite-menu for the dump citation. Not re-dumped on 2.63.2; same rationale as learn-suite-menu. Enforced display-mode-complete by test/mcp/mobile/static-recipe-invariants.test.ts § menu-container anchors."
 
   deliver-home-daily-visits:
     type: text
