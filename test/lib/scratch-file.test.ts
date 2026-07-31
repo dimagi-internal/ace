@@ -6,6 +6,7 @@ import {
   StaleArtifactError,
   identityMismatches,
   isPredictableSharedPath,
+  isSafeScratchTarget,
   readVerifiedJson,
   scratchDir,
   scratchPath,
@@ -35,7 +36,12 @@ describe('scratchPath is not the predictable shared /tmp form (#1046)', () => {
     cleanup.push(scratchDir());
 
     // The whole defect: a fixed literal a sibling session can name.
-    expect(isPredictableSharedPath(p)).toBe(false);
+    // NOTE this must hold on BOTH platforms. On macOS `os.tmpdir()` is the
+    // per-user `/var/folders/...` TMPDIR; on Linux CI it IS `/tmp`, so the
+    // only thing making the path unpredictable there is the mkdtemp'd parent
+    // segment. An earlier cut of this checked the path TEXT and passed
+    // locally while failing on CI for exactly that reason.
+    expect(isSafeScratchTarget(p)).toBe(true);
     expect(p).not.toBe('/tmp/ace-hq-learn.json');
     expect(p.startsWith(path.resolve(os.tmpdir()) + path.sep)).toBe(true);
 
@@ -70,12 +76,35 @@ describe('scratchPath is not the predictable shared /tmp form (#1046)', () => {
   });
 
   it('classifies the exact near-miss path as predictable-shared', () => {
+    // Syntactic lint predicate — operates on literals as written in source.
     expect(isPredictableSharedPath('/tmp/ace-hq-learn.json')).toBe(true);
     expect(isPredictableSharedPath('/private/tmp/ace-hq-learn.json')).toBe(true);
     // mktemp templates and uid-scoped paths are NOT the defect shape.
     expect(isPredictableSharedPath('/tmp/ace-hq-XXXXXX.json')).toBe(false);
     expect(isPredictableSharedPath('/tmp/ace-labs-walkthrough-$(id -u)')).toBe(false);
     expect(isPredictableSharedPath('/var/folders/xy/T/ace-scratch-abc/x.json')).toBe(false);
+    // mkdtemp output under a plain /tmp (the Linux/CI shape).
+    expect(isPredictableSharedPath('/tmp/ace-scratch-Ab3xY9/walk.json')).toBe(false);
+    expect(isPredictableSharedPath('/tmp/tmp.9Kd2pQaz/walk.json')).toBe(false);
+  });
+
+  it('the runtime check accepts our own scratch dir but rejects a shared literal', () => {
+    // The two predicates answer different questions and must not be swapped.
+    expect(isSafeScratchTarget(scratchPath('x.json'))).toBe(true);
+    cleanup.push(scratchDir());
+    expect(isSafeScratchTarget('/tmp/ace-hq-learn.json')).toBe(false);
+    // Anything outside /tmp is somebody's own space, not the shared class.
+    expect(isSafeScratchTarget(path.join(os.homedir(), '.ace', 'x.json'))).toBe(true);
+  });
+
+  it('the runtime check accepts a shell mktemp file (0600, ours)', () => {
+    // A caller doing `--out "$(mktemp ...)"` must not get a bogus warning.
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ace-mkt-'));
+    cleanup.push(dir);
+    const p = path.join(dir, 'from-mktemp.json');
+    fs.writeFileSync(p, '{}', { mode: 0o600 });
+    fs.chmodSync(p, 0o600);
+    expect(isSafeScratchTarget(p)).toBe(true);
   });
 });
 

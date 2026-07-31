@@ -78,6 +78,13 @@ export class StaleArtifactError extends Error {
 let cachedDir: string | null = null;
 
 /**
+ * Every scratch dir THIS process created via `mkdtempSync`. Membership is an
+ * exact answer to "is this path ours?", which beats guessing at randomness —
+ * see `isSafeScratchTarget`.
+ */
+const createdScratchDirs = new Set<string>();
+
+/**
  * The per-process scratch directory: `<os.tmpdir()>/ace-scratch-<random>/`,
  * created 0700 via `mkdtempSync`.
  *
@@ -88,7 +95,8 @@ let cachedDir: string | null = null;
  */
 export function scratchDir(): string {
   if (cachedDir && fs.existsSync(cachedDir)) return cachedDir;
-  cachedDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ace-scratch-'));
+  cachedDir = fs.mkdtempSync(path.join(os.tmpdir(), SCRATCH_PREFIX));
+  createdScratchDirs.add(cachedDir);
   return cachedDir;
 }
 
@@ -107,14 +115,25 @@ export function scratchPath(basename: string): string {
   return path.join(scratchDir(), safe);
 }
 
+/** Prefix `scratchDir()` hands to `mkdtempSync`. */
+const SCRATCH_PREFIX = 'ace-scratch-';
+
 /**
- * True for paths that reintroduce the #1046 shape: a fixed, world-readable,
- * cross-user-shared location with a name a sibling session can predict.
+ * SYNTACTIC lint predicate: does this path *as written in source* reintroduce
+ * the #1046 shape — a fixed, cross-user-shared `/tmp` location with a name a
+ * sibling session can predict?
  *
- * Used by the guard in `writeVerifiedJson` and by the mechanical lint in
- * `test/scripts/tmp-path-predictability.test.ts`. A path under the per-user
- * `TMPDIR` (macOS `/var/folders/...`) or one carrying mkdtemp/mktemp
- * randomness is NOT predictable-shared.
+ * Used by `test/scripts/tmp-path-predictability.test.ts`, which scans static
+ * command-line strings in `scripts/`, `skills/`, `commands/` etc. Those are
+ * literals no process created, so the answer has to come from the text:
+ * an `XXXXXX` template or `$(id -u)` scoping is unpredictable, a fixed name
+ * is not.
+ *
+ * Do NOT use this on a runtime path — see `isSafeScratchTarget`. Keeping the
+ * two apart is deliberate: conflating them shipped a bug where `scratchPath()`
+ * output was flagged as predictable on Linux (where `os.tmpdir()` IS `/tmp`,
+ * so the mkdtemp randomness sits in a parent segment this text-level check
+ * cannot see).
  */
 export function isPredictableSharedPath(p: string): boolean {
   if (!p) return false;
@@ -125,7 +144,50 @@ export function isPredictableSharedPath(p: string): boolean {
   // even under /tmp: an XXXXXX template, or a `$(id -u)` user scoping.
   if (/XXXXXX/.test(norm)) return false;
   if (/\$\(id -u\)|\$UID|\$\{UID\}/.test(norm)) return false;
+  // A path inside an `ace-scratch-<random>/` or `tmp.<random>/` directory is
+  // mkdtemp/mktemp output, not a predictable literal.
+  if (mkdtempSegment(norm)) return false;
   return true;
+}
+
+/** True if any segment looks like `mkdtemp`/`mktemp -d` output. */
+function mkdtempSegment(p: string): boolean {
+  return p
+    .split('/')
+    .some((seg) => new RegExp(`^(?:${SCRATCH_PREFIX}|tmp\\.)[A-Za-z0-9]{6,}$`).test(seg));
+}
+
+/**
+ * RUNTIME check: is this concrete path a safe place for us to write — i.e.
+ * ours, rather than a cross-user-shared name another account could own?
+ *
+ * Answers exactly rather than by guessing at entropy, in priority order:
+ *   1. Not under `/tmp` at all (e.g. macOS's per-user `/var/folders/...`
+ *      `TMPDIR`, or `~/.ace/`) — safe.
+ *   2. Inside a scratch dir THIS process created via `mkdtempSync` — safe by
+ *      construction. This is the case that `isPredictableSharedPath` got
+ *      wrong on Linux, where `os.tmpdir()` is `/tmp`.
+ *   3. Inside an `ace-scratch-<random>/` or `tmp.<random>/` dir — mkdtemp
+ *      output, possibly from a sibling ACE process or a shell `mktemp -d`.
+ *   4. An existing file owned by us with mode 0600 — `mktemp`'s signature,
+ *      so a shell-provided `--out "$(mktemp ...)"` doesn't get a bogus warning.
+ * Anything else under `/tmp` is the defect shape.
+ */
+export function isSafeScratchTarget(p: string): boolean {
+  if (!p) return false;
+  const resolved = path.resolve(p).replace(/^\/private\/tmp\//, '/tmp/');
+  if (!resolved.startsWith('/tmp/')) return true;
+  for (const dir of createdScratchDirs) {
+    if (resolved === dir || resolved.startsWith(dir + path.sep)) return true;
+  }
+  if (mkdtempSegment(resolved)) return true;
+  try {
+    const st = fs.statSync(resolved);
+    if (st.isFile() && (st.mode & 0o777) === 0o600 && st.uid === process.getuid?.()) return true;
+  } catch {
+    /* does not exist yet — fall through to "not proven safe" */
+  }
+  return false;
 }
 
 /** Identity keys a payload must round-trip, e.g. `{ domain, app_id }`. */
@@ -185,7 +247,7 @@ export function writeVerifiedJson(args: {
   if (preWrite.length > 0) {
     throw new StaleArtifactError(filePath, preWrite);
   }
-  if (isPredictableSharedPath(filePath)) {
+  if (!isSafeScratchTarget(filePath)) {
     // Not fatal — an operator may explicitly want a shared path — but say
     // so loudly, because this is the exact shape that produced the
     // near-miss. The read-back below still fails closed either way.
