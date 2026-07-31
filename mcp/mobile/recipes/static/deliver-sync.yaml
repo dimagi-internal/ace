@@ -1,0 +1,121 @@
+appId: org.commcare.dalvik
+---
+# deliver-sync.yaml — upload the finalized Deliver visit and PROVE it
+# reached the server (dimagi-internal/ace#1066).
+#
+# WHY THIS EXISTS. `form-submit.yaml` finalizes a plain Deliver form via
+# the `nav_btn_next` auto-finalize branch, which writes the form to the
+# LOCAL OUTBOX and returns to the form list. It does not sync. Only the
+# score-gated branch (`form-nav-finish`, the Learn quiz) asserts
+# ".*form.*sent to server.*"; the plain-form path Deliver takes asserts
+# nothing about the server at all.
+#
+# Observed live on bednet-spot-check/20260729-1239 immediately after
+# `journey-deliver` returned status:pass:
+#   Daily Visits                      0/5
+#   You last synced with the server:  never
+# A manual "Sync with Server" then produced:
+#   Sync Successful! Your information is up to date.
+#   Daily Visits                      1/5
+#
+# So a green Deliver leg proved only "the form walked and finalized
+# locally" — an opportunity whose Deliver->Connect path was COMPLETELY
+# broken (bad deliver-unit wiring, rejected submission, auth failure)
+# would still have passed. This is the same class jjackson/ace#897 closed
+# on the Learn side ("the device is not authoritative about completion;
+# Connect is"); Deliver still had the original hole.
+#
+# WHICH STEP IS LOAD-BEARING — read this before "simplifying" the recipe.
+# It is the ASSERTION, not the sync tap.
+#
+# CommCare sometimes auto-sends a finalized form when connectivity is
+# available, and sometimes does not. Both were observed live on this same
+# opportunity:
+#   - 20260729-1239 Phase 6 : NOT auto-sent -> 0/5, "last synced: never"
+#   - the validation run     : auto-sent    -> tapping Sync produced the
+#                              toast "No forms sent to server!" (outbox
+#                              already empty) while the counter still
+#                              advanced 1/5 -> 2/5
+# So the tap is a BELT-AND-BRACES upload that no-ops when auto-send
+# already delivered; "No forms sent to server!" is that benign no-op
+# signal, NOT a failure. What makes the leg honest either way is the
+# counter assertion below.
+#
+# `Daily Visits` is SERVER-DERIVED — it is 0/N until a visit actually
+# reaches Connect. Asserting it is non-zero therefore proves a round-trip
+# regardless of WHICH step performed the upload, and fails exactly the
+# reported scenario. The sync-success banner alone would not: it only
+# says the sync call returned, which it does even with an empty outbox.
+#
+# Not a substitute for a server-side read-back (see the note below) —
+# this is still the device reporting a server-derived number.
+#
+# NOT a full substitute for a Connect-side read-back. The remaining half
+# of #1066 — reading the delivery count back from Connect via an atom,
+# mirroring `connect_get_learn_progress` — still wants an atom that does
+# not exist yet. Until it does, this recipe is the gate.
+#
+# Composed as the LAST step of `journey-deliver.yaml`, after
+# `form-submit.yaml`. See `skills/app-test-cases/SKILL.md`.
+
+- takeScreenshot: "deliver-sync-pre"
+
+# form-submit returns to the form list (or the module list) rather than
+# the app home, and the "Sync with Server" tile lives on
+# StandardHomeActivity. Walk back until the home surface is showing.
+# `optional: true` on each BACK so an already-home device is a no-op
+# rather than a hard failure.
+- runFlow:
+    when:
+      notVisible:
+        ${SELECTOR:learn-home-sync-tile}
+    commands:
+      - back
+      - waitForAnimationToEnd:
+          timeout: 3000
+- runFlow:
+    when:
+      notVisible:
+        ${SELECTOR:learn-home-sync-tile}
+    commands:
+      - back
+      - waitForAnimationToEnd:
+          timeout: 3000
+
+- assertVisible:
+    ${SELECTOR:learn-home-sync-tile}
+
+- tapOn:
+    ${SELECTOR:learn-home-sync-tile}
+
+# The sync is a network round-trip against CCHQ; 60s is deliberately
+# generous because a cold emulator on a shared host is slow and a
+# premature timeout here would read as "Deliver never synced" — the
+# exact false negative this recipe exists to eliminate.
+- extendedWaitUntil:
+    visible:
+      text: ".*(Sync Successful|up to date).*"
+    timeout: 60000
+
+- waitForAnimationToEnd:
+    timeout: 5000
+- takeScreenshot: "deliver-sync-success"
+
+# THE LOAD-BEARING ASSERTION — three parts, all needed.
+#
+# A bare `text: ".*[1-9][0-9]*/[0-9]+.*"` would FALSE-PASS on any
+# unrelated "N/M" rendered anywhere on the surface, which is the very
+# class of defect this recipe exists to close. So:
+#   1. the counter row is actually rendered (label present), which stops
+#      part 2 from passing vacuously on a screen that failed to draw it;
+#   2. NO zero-valued counter is on screen — this is the assertion that
+#      fails the reported scenario (0/5, nothing reached Connect);
+#   3. a non-zero counter IS on screen.
+- assertVisible:
+    text: "Daily Visits"
+- assertNotVisible:
+    text: "0/[0-9]+"
+- assertVisible:
+    text: ".*[1-9][0-9]*/[0-9]+.*"
+
+- takeScreenshot: "deliver-sync-visit-registered"

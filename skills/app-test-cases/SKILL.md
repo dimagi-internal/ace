@@ -143,7 +143,30 @@ two smoke recipes share device state within one Phase 6 dispatch:
   `connect-2.63.0.yaml`) → `runFlow: deliver-form-walk.yaml` (3-level
   Deliver menu: Start → module list → module row → form list → form row →
   first form question) → answer the journey's question(s) → `runFlow:
-  form-submit.yaml`. ~12 steps, NO Learn duplication.
+  form-submit.yaml` → `runFlow: deliver-sync.yaml`. ~14 steps, NO Learn
+  duplication.
+
+  **`deliver-sync.yaml` is MANDATORY as the last step of every Deliver
+  journey (dimagi-internal/ace#1066) — a Deliver journey without it is
+  not a test.** `form-submit.yaml` finalizes a plain Deliver form via its
+  `nav_btn_next` auto-finalize branch, which writes to the LOCAL OUTBOX
+  and asserts nothing about the server; only its score-gated branch
+  (`form-nav-finish`, the Learn quiz) asserts `".*form.*sent to
+  server.*"`. So a Deliver leg ending at `form-submit` proves only "the
+  form walked and finalized locally" — an opp whose Deliver→Connect path
+  was completely broken would still pass. Observed live on
+  bednet-spot-check/20260729-1239: `status: pass`, then `Daily Visits
+  0/5` and `last synced: never`.
+
+  `deliver-sync.yaml` closes that by asserting the SERVER-DERIVED `Daily
+  Visits` counter is non-zero. Note the tap on "Sync with Server" is a
+  belt-and-braces upload, not the load-bearing step: CommCare sometimes
+  auto-sends on finalize (in which case the sync reports "No forms sent
+  to server!" — benign) and sometimes does not. The assertion is what
+  makes the leg honest either way. This mirrors what jjackson/ace#897
+  established for Learn: the device is not authoritative about
+  completion. A Connect-side read-back is still the stronger gate and
+  remains open on #1066 pending an atom.
 
   **Menu-row taps use `id: org.commcare.dalvik:id/row_txt`, NOT
   `text: "<label>"`.** A `text:` match hits the non-clickable action-bar

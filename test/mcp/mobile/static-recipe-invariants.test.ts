@@ -439,3 +439,73 @@ describe('connect-resume-opp.yaml', () => {
     );
   });
 });
+
+describe('deliver-sync.yaml', () => {
+  const yaml = readRecipe('deliver-sync.yaml');
+
+  // Regression guard for dimagi-internal/ace#1066. `form-submit.yaml`
+  // finalizes a plain Deliver form via its `nav_btn_next` auto-finalize
+  // branch, which writes to the LOCAL OUTBOX and asserts nothing about the
+  // server; only its score-gated branch (`form-nav-finish`, the Learn quiz)
+  // asserts ".*form.*sent to server.*". So a Deliver leg that ends at
+  // form-submit proves only "the form walked and finalized locally" — an
+  // opportunity whose Deliver->Connect path was completely broken would
+  // still pass. Observed live on bednet-spot-check/20260729-1239.
+
+  it('asserts the SERVER-DERIVED visit counter, not just the sync banner', () => {
+    // The banner only says the sync call returned — it returns even with an
+    // empty outbox (observed live: "Sync Successful" alongside the toast
+    // "No forms sent to server!"). `Daily Visits` is 0/N until a visit
+    // actually reaches Connect, so it is the only assertion here that can
+    // fail the reported scenario.
+    expect(yaml, 'expected the sync-result banner assertion').toMatch(
+      /Sync Successful\|up to date/,
+    );
+    expect(yaml, 'expected the counter row to be asserted present').toContain(
+      'text: "Daily Visits"',
+    );
+  });
+
+  it('fails a zero counter — the actual reported failure mode', () => {
+    // This is THE assertion. Without it the recipe passes on 0/5, which is
+    // exactly the state #1066 reported.
+    expect(yaml, 'expected assertNotVisible on a zero-valued counter').toMatch(
+      /- assertNotVisible:\s*\n\s*text: "0\/\[0-9\]\+"/,
+    );
+  });
+
+  it('does not rely on a bare N/M match that could false-pass', () => {
+    // A lone `.*[1-9][0-9]*/[0-9]+.*` would match ANY unrelated "N/M" on the
+    // surface — the same false-pass class this recipe exists to close. The
+    // positive match is only sound when paired with the label-present and
+    // no-zero-counter assertions above, so require all three to co-exist.
+    const hasPositive = /text: "\.\*\[1-9\]\[0-9\]\*\/\[0-9\]\+\.\*"/.test(yaml);
+    if (hasPositive) {
+      expect(yaml, 'a bare N/M match must be paired with the label assertion').toContain(
+        'text: "Daily Visits"',
+      );
+      expect(yaml, 'a bare N/M match must be paired with the zero-counter guard').toMatch(
+        /assertNotVisible/,
+      );
+    }
+  });
+});
+
+describe('app-test-cases composition contract', () => {
+  // The recipe above is dead code unless every Deliver journey actually
+  // composes it. `journey-deliver.yaml` is authored per-run by the
+  // app-test-cases skill, so the contract lives in that SKILL.md — pin it
+  // here so the requirement cannot quietly disappear from the prose.
+  it('requires deliver-sync.yaml as the last step of a Deliver journey', () => {
+    const skill = readFileSync(
+      fileURLToPath(new URL('../../../skills/app-test-cases/SKILL.md', import.meta.url)),
+      'utf8',
+    );
+    expect(skill, 'SKILL.md must compose deliver-sync.yaml').toContain(
+      'runFlow: deliver-sync.yaml',
+    );
+    expect(skill, 'SKILL.md must state that it is mandatory').toMatch(
+      /deliver-sync\.yaml` is MANDATORY/,
+    );
+  });
+});
