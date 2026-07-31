@@ -31,7 +31,7 @@ function fakeSpawn() {
   const spawned: Array<{ cmd: string; args: string[]; env: NodeJS.ProcessEnv }> = [];
   const fn = (cmd: string, args: string[], env: NodeJS.ProcessEnv) => {
     spawned.push({ cmd, args, env });
-    return { kill: (sig?: string) => killed.push(sig ?? 'SIGTERM'), unref: () => {} };
+    return { kill: (sig?: string) => { killed.push(sig ?? 'SIGTERM'); }, unref: () => {} };
   };
   return { fn, spawned, killed };
 }
@@ -131,7 +131,7 @@ describe('stopRecording', () => {
       attempt: 1,
       devicePath: '/sdcard/ace-rec-abc-1.mp4',
       outPath: path.join(dir, 'journey-learn.mp4'),
-      child: { kill: (s?: string) => killed.push(s ?? 'SIGTERM') },
+      child: { kill: (s?: string) => { killed.push(s ?? 'SIGTERM'); } },
     };
   }
 

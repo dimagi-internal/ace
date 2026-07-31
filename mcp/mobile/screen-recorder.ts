@@ -44,7 +44,7 @@ export function recorderConfigFromEnv(env: NodeJS.ProcessEnv = process.env): Rec
 
 /** Minimal surface of a spawned child the recorder needs (injectable for tests). */
 export interface SpawnedRecorder {
-  kill(signal?: string): void;
+  kill(signal?: string | number | NodeJS.Signals): boolean | void;
   unref?(): void;
 }
 export type SpawnFn = (cmd: string, args: string[], env: NodeJS.ProcessEnv) => SpawnedRecorder;
