@@ -361,6 +361,20 @@ Run your full Phase N workflow per your agent definition.
 <any phase-specific context the agent needs but that its definition doesn't contain>
 ```
 
+**Inline the artifact BODY, never a placeholder for it.** Before
+sending the dispatch, re-read the prompt's `## Inline artifacts`
+section and confirm each `<full … body>` slot holds the actual
+artifact text — not a template token (`PDD_BODY_PLACEHOLDER`,
+`<full PDD body>`, `{{PDD}}`) left unsubstituted. A stub that survives
+to dispatch silently inverts the contract: the prompt says "do not
+re-fetch" while carrying nothing to read, and large artifacts (a 68 KB
+PDD) exceed the MCP `drive_read_file` result cap, so the agent's
+fallback fetch is degraded too. Phase-agent side of the same guard: if
+an inline block is a bare placeholder token, treat the artifact as NOT
+inlined and read it from Drive (targeted reads under the result cap)
+before proceeding. (Live incident hh-poverty-targeting/20260730-2210
+Phase 2; jjackson/ace#1103.)
+
 **Scope rule: the dispatch prompt MUST NOT narrow the agent's workflow.**
 The `## Your task` section tells the agent which phase to run and passes
 context (opp name, mode, Drive IDs) — it does NOT re-list which skills
