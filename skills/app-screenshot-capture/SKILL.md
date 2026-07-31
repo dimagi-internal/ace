@@ -687,7 +687,7 @@ then claimed distinct moments over duplicate frames
 
 ### Step 5.7: Upload session videos + sweep the device-video spool
 
-Since 0.13.x every local `mobile_run_recipe` call records an mp4 of the
+Since 0.13.700 every local `mobile_run_recipe` call records an mp4 of the
 run (on-device `screenrecord`, see
 `playbook/integrations/mobile-integration.md § Recording`).
 
