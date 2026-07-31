@@ -487,6 +487,11 @@ selectors:
     value: "org.commcare.dalvik:id/screen_suite_menu_list"
     purpose: "Deliver-app MenuActivity suite-menu list — same generic MenuActivity id as learn-suite-menu, on the Deliver side. Used by deliver-launch's already-installed fast path (#747): a Phase 6 retry whose prior dispatch consumed the Download Delivery gate resumes DIRECTLY here. Live-verified 2026-06-11 (2.63.0) — present in the Deliver post-resume landing dump (journey-deliver/00-postlearn-landing.xml, Drive 1dX0qOlxzxVLyYWFrMMYO30U4gwDeKEqJ) of bednet-spot-check/20260609-0909 Phase 6 retry, module row 'Bednet Visit'."
 
+  deliver-home-daily-visits:
+    type: text
+    value: "Daily Visits"
+    purpose: "THE Learn-vs-Deliver differentiator on the StandardHomeActivity job card (#893). The delivery-quota progress row ('Daily Visits  0/25' + progress bar) renders on the DELIVER home and NOT on the Learn home. Live-verified 2026-07-30 by diffing two captures from the SAME run, hh-poverty-targeting/20260722-1341 (connect-2.63.0): journey-learn/03-learn-home.png has title + description + 'Complete Project by ...' and NO visits row; journey-deliver/02-deliver-home.png has the same card PLUS 'Daily Visits 0/25'. Everything else on the two screens is identical — same truncated toolbar ('Household Poverty Targeting...'), same viewJobCard, same 4-tile grid — which is why viewJobCard and the toolbar both FAIL as differentiators. NOTE the toolbar suffix '... - Learn app' cited in #893 is NOT usable: it is truncated behind the ellipsis on both screens at 1080x2400. CAVEATS: (a) text anchor, English locale — no resource-id was captured for this row (no ui-dump XML exists for either home; both artifacts are PNGs); (b) presence depends on the opp declaring a daily max visit count, which every ACE-built deliver opp does today via connect_create_payment_unit. If an opp without a daily cap ever appears, this anchor needs revisiting rather than silently failing."
+
   deliver-home-job-title:
     type: id
     value: "org.commcare.dalvik:id/tv_job_title"
