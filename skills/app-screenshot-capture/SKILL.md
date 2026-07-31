@@ -470,6 +470,35 @@ loud per CLAUDE.md § Phase preconditions — don't ship placeholders.
 execution start, so stale PNGs are structurally absent — but the rule
 stands regardless of what's on disk.)
 
+**Output dirs — pass ONE run-scoped ROOT; the MCP namespaces per
+dispatch (dimagi-internal/ace#1130).** Pass the same
+`screenshotDir: "/tmp/ace-screenshots/<opp>/<run-id>"` to every
+`mobile_run_recipe` call in the phase — both legs, every recipe.
+`mobile_run_recipe` writes each dispatch's artifacts into
+`<root>/<recipeId>/` and the start-of-run wipe (#756) targets ONLY that
+subdirectory, so one leg can no longer destroy another leg's finished
+captures. It used to: on bednet-spot-check/20260731-1353 the Learn leg
+passed and produced a full screenshot set + video, then the Deliver
+dispatch — handed the same dir — wiped them
+(`journey_learn: {count: 1, status: lost-not-recapturable}`, UX judge
+`verdict: incomplete`). That loss is unrecoverable: Learn completion is
+one-way per (test user, opportunity) (#568/#570), so re-capture costs a
+whole fresh `/ace:run`. Two rules follow:
+
+- **Read every artifact back from `result.screenshotsDir` /
+  `result.screenshots[].path` — never by globbing the root you passed.**
+  The root now holds one subdirectory per recipe (`journey-learn/`,
+  `connect-resume-opp/`, `journey-deliver/`, …), so a glob over the root
+  spans journeys and re-opens exactly the confusion #756 closed.
+- **Upload each dispatch's artifacts to Drive right after that dispatch
+  returns**, from its own returned paths, into the leg's Drive folder
+  (`6-qa-and-training/screenshots/<recipe-base>/`). Don't batch uploads
+  to the end of the phase off a directory listing.
+
+Do NOT hand-roll per-leg roots to work around the old collision — the
+namespacing is structural now, and a per-leg root would only bury the
+per-recipe subdirs one level deeper.
+
 Capture is split into a **Learn leg** and a **Deliver leg**. The legs
 are graded independently; a Deliver failure never suppresses Learn
 capture.
@@ -549,9 +578,14 @@ its `notVisible: home-jobs-list` guard opens the nav drawer → taps
 target tile's CTA; on Path B the guard no-ops and it goes straight to the CTA.
 So just run the Deliver leg normally — do NOT special-case Path A or divert to
 a calibration probe. The dump above is still captured unconditionally as #618
-ground truth (and feeds atlas drift detection). The start-of-run screenshot-dir
-wipe (#756) is **selective** ([#1034](https://github.com/dimagi-internal/ace/issues/1034)):
-`00-*` and `*-FAILURE.*` files survive Deliver-leg retries, so this dump and
+ground truth (and feeds atlas drift detection). Write the local copy into the
+run ROOT you pass as `screenshotDir` (see the output-dirs rule in Step 5) —
+the root itself is never wiped, and the wipe that does run is confined to the
+dispatching recipe's own `<root>/<recipeId>/`
+([#1130](https://github.com/dimagi-internal/ace/issues/1130)). Belt and braces:
+that wipe is also **selective**
+([#1034](https://github.com/dimagi-internal/ace/issues/1034)) — `00-*` and
+`*-FAILURE.*` files survive Deliver-leg retries, so this dump and
 prior-attempt forensics are NOT destroyed when the Deliver recipe re-runs.
 
 **NEVER cold-boot / re-bootstrap to "recover" a Deliver-leg failure.** A
@@ -633,9 +667,9 @@ sources, in priority order:
    (an `<recipe-id>-FAILURE.xml` element tree: resource-ids/text/bounds,
    the highest-signal artifact for selector + nav debugging) plus
    `screenshotPath` (`<recipe-id>-FAILURE.png` of the offending screen)
-   — and returns them on the result. Both land in the run's
-   `screenshotDir`, so they get uploaded + provenance-stamped alongside
-   the smoke PNGs. This works on the cloud backend too (Maestro's own
+   — and returns them on the result. Both land in that dispatch's own
+   output dir (`<screenshotDir>/<recipeId>/`, #1130), so they get
+   uploaded + provenance-stamped alongside the smoke PNGs. This works on the cloud backend too (Maestro's own
    debug-bundle screenshot is local-only). **Read `failureForensics`
    first** — the ui-dump usually shows the exact screen + the
    resource-ids present, which resolves "wrong selector" vs "wrong
@@ -702,7 +736,9 @@ After each journey's captures land (and BEFORE assembling the Step 6
 manifest), compute a content hash over every PNG in the journey:
 
 ```bash
-md5 -q <screenshotDir>/<journey>/*.png    # or: shasum <...>/*.png
+# One dir per dispatch (#1130) — hash the dispatch's own output dir,
+# i.e. the `screenshotsDir` it returned.
+md5 -q <screenshotDir>/<recipe-base>/*.png    # or: shasum <...>/*.png
 ```
 
 Any byte-identical pair within a journey means the two "steps" observed
@@ -815,11 +851,13 @@ Omit the block entirely when no videos were captured.
 
 ### Step 6.5: Harvest selector-drift signal (atlas-drift)
 
-Run the drift harvester over this run's screenshot dir (the same
-`screenshotDir` you passed to `mobile_run_recipe` in Step 5, where the
-`*-FAILURE.xml` / `*-FAILURE.png` forensics and the per-step `runRecipeWithDumps`
-XMLs accumulated). This closes the consume-loop on selector drift —
-otherwise the dumps just pile up unread.
+Run the drift harvester over this run's screenshot ROOT (the same
+`screenshotDir` you passed to `mobile_run_recipe` in Step 5). The
+`*-FAILURE.xml` / `*-FAILURE.png` forensics and the per-step
+`runRecipeWithDumps` XMLs now sit in per-recipe subdirectories under it
+(#1130) — the harvester walks recursively, so pointing it at the root
+picks up every leg in one pass. This closes the consume-loop on selector
+drift — otherwise the dumps just pile up unread.
 
 ```bash
 ACE_ROOT="${CLAUDE_PLUGIN_ROOT:-$(python3 -c "import json,os; d=json.load(open(os.path.expanduser('~/.claude/plugins/installed_plugins.json'))); print(d['plugins']['ace@ace'][0]['installPath'])")}"
@@ -1075,6 +1113,7 @@ Notes:
 
 | Date | Change | Author |
 |---|---|---|
+| 2026-07-31 | **Step 5 output-dir contract: one run-scoped ROOT, MCP-namespaced per dispatch (dimagi-internal/ace#1130).** Pass the SAME `screenshotDir` root to every `mobile_run_recipe` call in the phase; the MCP writes each dispatch into `<root>/<recipeId>/` and confines #756's start-of-run wipe to that subdir, so the Deliver leg can no longer destroy the Learn leg's finished captures. Read artifacts back from `result.screenshotsDir` / `result.screenshots[].path` (never a glob over the root) and upload per dispatch as it returns. Step 5.5's hash command, Step 6.5's atlas-drift invocation (recursive — point it at the root), and the `00-postlearn-landing.xml` local-copy location updated to match. Surfaced by bednet-spot-check/20260731-1353, where a PASSING Learn leg's screenshots + video were wiped by the Deliver dispatch and could not be re-captured (Learn completion is one-way per test user + opportunity, #568/#570). | ACE team |
 | 2026-07-13 | **Step 5.5 distinctness check (dimagi-internal/ace#866).** After each journey's captures land and before the manifest is assembled, hash every PNG in the journey (`md5 -q` / `shasum`); any byte-identical pair means two "steps" observed the same frame. The FIRST step stays canonical; later duplicates are marked `duplicate_of: <first-step>` in the manifest (not listed as distinct captures) and logged in the verdict's `auto_surfaced` list. Matching row added to the Step 5 recipe-error table. Surfaced by hh-poverty-targeting/20260702-1456, where two byte-identical pairs shipped as distinct steps and deck slides claimed distinct moments over duplicate frames. | ACE team |
 | 2026-06-12 | **Step 5 hard rule: screenshots only from a `status: pass` execution in THIS run (jjackson/ace#756).** A `status != pass` `mobile_run_recipe` result for a required journey means that leg has NO screenshots — record the leg `fail` with the recipe failure inline; never source leftover PNGs (no "replay cache" exists); the shallow verdict must not be `pass` if any required journey's recipe failed. Pairs with the MCP-side fix: `mobile_run_recipe` now wipes the screenshot dir at execution start so stale PNGs are structurally absent. Surfaced by bednet-spot-check run 20260612-1220, where a failed deliver leg shipped prior-run PNGs under a confabulated "runner replay cache" note. | ACE team |
 | 2026-06-03 | **Step 6.5 auto-harvests selector drift.** End of Phase 6 now runs `scripts/probe-atlas-drift.ts` over the run's screenshot dir automatically (best-effort), closing the consume-loop on the `runRecipeWithDumps` + `*-FAILURE.xml` dumps that previously just accumulated. The harvester is now FAILURE-aware: resource-ids seen on a `*-FAILURE.xml` screen but absent from the selector map surface as a priority "Drift suspects on FAILURE screens" section (candidate root causes for a recipe failure in this run — the #591/#618 drift class). Pairs with thrown-failure forensics capture (`mobile_run_recipe` now captures the failure screen on a thrown driver-death too, not just on returned `status:'fail'`). Canonical contract: `playbook/integrations/mobile-integration.md § Failure forensics`. | ACE team |

@@ -129,6 +129,15 @@ quota is 0 in My Drive — `assertParentOnSharedDrive` guards this).
 All 5 shipped recipes live at `mcp/mobile/recipes/baseline/`. Run in
 order — each leaves the AVD in a state the next can build on.
 
+**Pass the same `screenshotDir` root to all of them.** Since
+[#1130](https://github.com/dimagi-internal/ace/issues/1130) the MCP
+namespaces each dispatch's output as `<screenshotDir>/<recipeId>/`, and
+confines the start-of-run wipe (#756) to that subdir — so one recipe can
+no longer wipe an earlier recipe's captures, and the PNGs listed under
+each step below land in that recipe's own subdirectory. Read them back
+from the returned `screenshotsDir` / `screenshots[].path`, not by
+globbing the root.
+
 #### 4a. `04-personal-id.yaml` (FIRST — requires wiped CommCare)
 
 Prep before invoking:
@@ -151,7 +160,7 @@ Then:
 ```ts
 mobile_run_recipe({
   recipePath: 'mcp/mobile/recipes/baseline/04-personal-id.yaml',
-  screenshotDir: '/tmp/ace-baseline-capture/04-personal-id/',
+  screenshotDir: '/tmp/ace-baseline-capture/',
   envVars: {
     COUNTRY_CODE: env.ACE_E2E_COUNTRY_CODE.replace(/^\+/, ''), // "7"
     PHONE_LOCAL: env.ACE_E2E_PHONE_LOCAL,                       // "4260000100"
@@ -175,7 +184,7 @@ Leaves AVD on the recovery-completed Connect home.
 ```ts
 mobile_run_recipe({
   recipePath: 'mcp/mobile/recipes/baseline/00-connect-home.yaml',
-  screenshotDir: '/tmp/ace-baseline-capture/00-connect-home/',
+  screenshotDir: '/tmp/ace-baseline-capture/',
   envVars: { PIN: env.ACE_E2E_PIN },
 });
 ```
@@ -190,7 +199,7 @@ Leaves AVD on the Connect opp list.
 ```ts
 mobile_run_recipe({
   recipePath: 'mcp/mobile/recipes/baseline/03-sync-button.yaml',
-  screenshotDir: '/tmp/ace-baseline-capture/03-sync-button/',
+  screenshotDir: '/tmp/ace-baseline-capture/',
 });
 ```
 
@@ -203,7 +212,7 @@ before Step 4d.
 ```ts
 mobile_run_recipe({
   recipePath: 'mcp/mobile/recipes/baseline/01-claim-opp.yaml',
-  screenshotDir: '/tmp/ace-baseline-capture/01-claim-opp/',
+  screenshotDir: '/tmp/ace-baseline-capture/',
   envVars: { OPP_NAME: forkedOppName }, // verbatim from Step 0
 });
 ```
@@ -216,7 +225,7 @@ Produces: `claim-opp.png` (opp-detail with Start button), bonus
 ```ts
 mobile_run_recipe({
   recipePath: 'mcp/mobile/recipes/baseline/02-learn-install.yaml',
-  screenshotDir: '/tmp/ace-baseline-capture/02-learn-install/',
+  screenshotDir: '/tmp/ace-baseline-capture/',
 });
 ```
 

@@ -2,7 +2,12 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { resetScreenshotDir, isPreservedArtifact } from '../../../mcp/mobile/screenshot-dir.js';
+import {
+  resetScreenshotDir,
+  isPreservedArtifact,
+  dispatchOutputDir,
+  recipeNamespace,
+} from '../../../mcp/mobile/screenshot-dir.js';
 
 // Per-execution screenshot-dir freshness (jjackson/ace#756): the dir a
 // `mobile_run_recipe` dispatch reports must contain ONLY artifacts from
@@ -87,4 +92,58 @@ describe('resetScreenshotDir', () => {
       expect(() => resetScreenshotDir(dangerous)).toThrow(/refusing to wipe/);
     },
   );
+});
+
+// dimagi-internal/ace#1130 — the wipe's blast radius must EQUAL the
+// dispatch. Two journeys handed one root must not be able to land in one
+// directory, because the second one's legitimate #756 wipe then destroys
+// the first one's finished evidence (and a Learn leg's evidence costs a
+// whole fresh /ace:run to regenerate — Learn completion is one-way per
+// (test user, opportunity), #568/#570).
+describe('dispatchOutputDir', () => {
+  it('gives two different recipes different dirs under one shared root', () => {
+    const root = '/tmp/ace-screenshots/run-42';
+    const learn = dispatchOutputDir(root, 'journey-learn');
+    const deliver = dispatchOutputDir(root, 'journey-deliver');
+
+    expect(learn).toBe(path.join(root, 'journey-learn'));
+    expect(deliver).toBe(path.join(root, 'journey-deliver'));
+    expect(learn).not.toBe(deliver);
+    // Neither is an ancestor of the other — a wipe of one cannot reach
+    // into the other.
+    expect(deliver.startsWith(learn + path.sep)).toBe(false);
+    expect(learn.startsWith(deliver + path.sep)).toBe(false);
+  });
+
+  it('is stable for the same recipe, so a re-dispatch still supersedes its own prior output (#756)', () => {
+    const root = '/tmp/ace-screenshots/run-42';
+    expect(dispatchOutputDir(root, 'journey-deliver')).toBe(
+      dispatchOutputDir(root, 'journey-deliver'),
+    );
+  });
+
+  it('applies the protected/shallow guard to the caller-supplied ROOT', () => {
+    // Namespacing adds a segment, so without this the old guard would
+    // have let `/tmp` through as `/tmp/<recipe>` (ace#1111 hygiene).
+    for (const dangerous of ['/', '/tmp', os.homedir(), process.cwd()]) {
+      expect(() => dispatchOutputDir(dangerous, 'journey-learn')).toThrow(/refusing to wipe/);
+    }
+  });
+
+  it('cannot escape the root via a traversing or separator-bearing recipe id', () => {
+    const root = '/tmp/ace-screenshots/run-42';
+    for (const evil of ['../../etc', 'a/../../b', '/etc/passwd']) {
+      const out = dispatchOutputDir(root, evil);
+      expect(out.startsWith(path.resolve(root) + path.sep)).toBe(true);
+      expect(out.split(path.sep)).not.toContain('..');
+    }
+  });
+
+  it('recipeNamespace reduces a recipe id to one safe segment, and rejects an empty one', () => {
+    expect(recipeNamespace('journey-learn')).toBe('journey-learn');
+    expect(recipeNamespace('connect_resume opp')).toBe('connect_resume-opp');
+    expect(recipeNamespace('../evil')).toBe('evil');
+    expect(() => recipeNamespace('..')).toThrow(/cannot derive an output namespace/);
+    expect(() => recipeNamespace('')).toThrow(/cannot derive an output namespace/);
+  });
 });

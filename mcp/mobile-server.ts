@@ -187,7 +187,18 @@ server.tool(
   {
     recipePath: z.string(),
     envVars: z.record(z.string()).default({}),
-    screenshotDir: z.string(),
+    // Run-scoped output ROOT, not the literal output dir. Each dispatch
+    // writes into `<screenshotDir>/<recipeId>/` and the start-of-run wipe
+    // (#756) targets only that subdir, so two journeys handed the same
+    // root can never destroy each other's captures
+    // (dimagi-internal/ace#1130). Read artifacts back from the returned
+    // `screenshotsDir` / `screenshots[].path`, never by globbing the root.
+    screenshotDir: z
+      .string()
+      .describe(
+        'Run-scoped output ROOT. Artifacts land in <screenshotDir>/<recipeId>/ ' +
+          '(dispatch-scoped, ace#1130); read them back from the returned screenshotsDir.',
+      ),
     // Optional override. Default = `process.env.ACE_AVD_NAME`. When set,
     // ACE looks up the running AVD's adb port and runs maestro with
     // `--host=localhost --port=<X>` so dadb talks to the emulator

@@ -81,13 +81,26 @@ Related hardening: if the top recipe's own directory holds sibling YAMLs that th
 
 **Alternative (the previously-undocumented workaround):** drive the repo's own `MobileClient` under `npx tsx` from the checkout, so `import.meta.url` resolves to the repo palette. Still valid, and useful when you want to bypass the MCP layer entirely — but it doesn't exercise the atom path, so prefer the env var when what you're validating is a Phase 6 leg.
 
+## Dispatch-scoped output dirs
+
+`screenshotDir` is a run-scoped **root**, not the literal output directory. Each `mobile_run_recipe` dispatch owns `<screenshotDir>/<recipeId>/` — PNGs, ui-dump XMLs, `*-FAILURE.*` forensics, provenance sidecars, mp4s — and the start-of-run wipe ([#756](https://github.com/jjackson/ace/issues/756)) targets **only** that subdirectory. Read artifacts back from the returned `screenshotsDir` / `screenshots[].path`; a glob over the root spans every recipe the phase ran.
+
+Why it's built this way ([dimagi-internal/ace#1130](https://github.com/dimagi-internal/ace/issues/1130)): two journeys used to be handed one directory, so the Deliver leg's legitimate wipe deleted the Learn leg's finished, PASSING screenshots + video (bednet-spot-check/20260731-1353). That evidence is not re-capturable — Learn completion is one-way per (test user, opportunity) (#568/#570), so the only remediation is a fresh `/ace:run`. Namespacing makes the wipe's blast radius equal the dispatch **by construction**; the alternative fix — sparing journey PNGs from the wipe — would have re-opened #756's stale-capture class.
+
+Namespacing is by **recipe id**, not by the unique-per-invocation `dispatch_id`: a unique-per-invocation directory would make the wipe vacuous and strand every superseded attempt's ordinary PNGs in sibling directories, which is the same stale-carryover class one level up. `dispatch_id` remains the per-invocation identity, carried in each artifact's provenance sidecar. Re-running the SAME recipe still clears that recipe's prior ordinary output (#756 intact), while `00-*` ground truth and `*-FAILURE.*` forensics inside it still survive ([#1034](https://github.com/dimagi-internal/ace/issues/1034)).
+
+The caller-supplied root is guarded exactly as the wipe target always was — filesystem root, single-segment paths (`/tmp`), `$HOME` and the cwd are refused — so the extra path segment cannot be used to smuggle a shallow path past the check. (Constraining the wipe to an allow-listed base is [#1111](https://github.com/dimagi-internal/ace/issues/1111), still open.)
+
+Implementation: `mcp/mobile/screenshot-dir.ts` (`dispatchOutputDir`, `resetScreenshotDir`), called from `MobileClient.runRecipe`. Tests: `test/mcp/mobile/screenshot-dir.test.ts` + the `dispatch-scoped output` block in `test/mcp/mobile/client.test.ts`.
+
 ## Recording
 
 Every local `mobile_run_recipe` call records an mp4 via on-device
 `adb shell screenrecord --time-limit 0`, started and stopped by
 `mcp/mobile/screen-recorder.ts` around each attempt. Videos land in the
-run's `screenshotDir` (`<recipeId>.mp4`, plus `<recipeId>-attempt<N>.mp4`
-when a driver heal forced a retry) and are copied into a per-session spool
+dispatch's own output dir — `<screenshotDir>/<recipeId>/<recipeId>.mp4`,
+plus `<recipeId>-attempt<N>.mp4` when a driver heal forced a retry (see
+§ Dispatch-scoped output dirs) — and are copied into a per-session spool
 at `~/.ace/mobile-videos/<ppid>/` for skill-side upload.
 
 Skills reach the spool through `mobile_list_session_videos` /
@@ -386,7 +399,7 @@ This is the canonical reference for the screenshot-on-error capture; the per-ski
 - `uiDumpPath` → `<recipe-id>-FAILURE.xml` — the element tree (resource-ids / text / bounds): the highest-signal artifact for "wrong selector vs wrong screen".
 - `elements` → the parsed ui-dump rows.
 
-Both files land in the run's `screenshotDir`, so they're uploaded + provenance-stamped alongside the smoke PNGs and Read-able from local disk on **both** the local-AVD and cloud backends (cloud pulls the S3 artifact down).
+Both files land in the failing dispatch's own output dir (`<screenshotDir>/<recipeId>/` — see § Dispatch-scoped output dirs), so they're uploaded + provenance-stamped alongside the smoke PNGs and Read-able from local disk on **both** the local-AVD and cloud backends (cloud pulls the S3 artifact down).
 
 **Two failure shapes — both capture now:**
 

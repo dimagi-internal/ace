@@ -85,9 +85,16 @@ For each baseline recipe in `mcp/mobile/recipes/baseline/`:
 mobile_run_recipe({
   recipePath: 'mcp/mobile/recipes/baseline/<recipe>.yaml',
   envVars: { /* the standard ACE_E2E_* values from .env */ },
-  screenshotDir: '/tmp/ace-connect-baseline/<connect-version>/<recipe>/'
+  screenshotDir: '/tmp/ace-connect-baseline/<connect-version>/'
 })
 ```
+
+The dir above is a run-scoped **root**: since
+[#1130](https://github.com/dimagi-internal/ace/issues/1130) each dispatch
+writes into `<root>/<recipeId>/` and the start-of-run wipe (#756) is
+confined to that subdir, so recipes run in sequence against one root
+cannot wipe each other's captures. Read artifacts back from the returned
+`screenshotsDir` / `screenshots[].path`.
 
 The baseline recipes are:
 

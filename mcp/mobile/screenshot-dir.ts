@@ -22,6 +22,21 @@
 // wipe; every ordinary capture output (other *.png / *.xml / *.mp4 /
 // sidecars / nested dirs) is still removed — #756's intent holds: no
 // stale ordinary capture may masquerade as a fresh one.
+//
+// The wipe is also DISPATCH-SCOPED (dimagi-internal/ace#1130). Two
+// different journeys used to be able to share one `screenshotDir`, so the
+// legitimate start-of-run wipe for journey B landed on journey A's
+// finished, PASSING evidence. Observed live on
+// bednet-spot-check/20260731-1353: the Learn leg passed, produced a full
+// screenshot set + video, and the Deliver leg's wipe deleted it —
+// unrecoverable, because Learn completion is one-way per (test user,
+// opportunity) (#568/#570), so the only remediation is a fresh
+// `/ace:run`. The fix is NOT a wider preserve-list (that would re-open
+// #756's class): `mobile_run_recipe` now writes into a per-recipe
+// namespace UNDER the caller's dir (`dispatchOutputDir`), and the wipe
+// targets only that namespace. A dispatch can therefore only ever clear
+// its OWN prior output, by construction — a caller cannot express
+// "two recipes, one output dir" at all.
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
@@ -35,6 +50,89 @@ import * as path from 'node:path';
  */
 export function isPreservedArtifact(name: string): boolean {
   return name.startsWith('00-') || /-FAILURE\./.test(name);
+}
+
+/**
+ * Shared guard rail for anything this module is about to recursively
+ * delete under (or hand to a backend as a writable output root): refuse
+ * the filesystem root, single-segment paths like `/tmp`, the home
+ * directory and the cwd with a typed-message throw instead of an rm -rf.
+ *
+ * Applied to the caller-supplied ROOT as well as the derived per-recipe
+ * namespace, so namespacing (which adds a path segment) can never be a
+ * way to smuggle a shallow path past the check — e.g. `screenshotDir:
+ * '/tmp'` is still rejected outright rather than becoming a wipe of
+ * `/tmp/<recipe>/`. Narrowing the wipe root further (an allow-listed
+ * base such as `/tmp/ace-screenshots/`) is dimagi-internal/ace#1111's
+ * job, not this module's.
+ */
+function assertSafeWipeTarget(resolved: string, fnName: string): void {
+  const { root } = path.parse(resolved);
+  const segments = resolved.slice(root.length).split(path.sep).filter(Boolean);
+  if (
+    resolved === root ||
+    segments.length < 2 ||
+    resolved === os.homedir() ||
+    resolved === process.cwd()
+  ) {
+    throw new Error(
+      `${fnName}: refusing to wipe "${resolved}" — too shallow or a ` +
+        `protected location (root / single-segment path / home / cwd). Pass a ` +
+        `dedicated per-execution subdirectory, e.g. /tmp/ace-screenshots/<recipe>.`,
+    );
+  }
+}
+
+/**
+ * Derive the dispatch-scoped output directory for one `mobile_run_recipe`
+ * execution (dimagi-internal/ace#1130).
+ *
+ * The caller passes a run-scoped ROOT (e.g.
+ * `/tmp/ace-screenshots/<run-id>`); every dispatch writes into
+ * `<root>/<recipeId>/` and the start-of-run wipe targets ONLY that
+ * subdirectory. Consequences, all structural rather than advisory:
+ *
+ * - Two different recipes (the Learn leg's `journey-learn`, the Deliver
+ *   leg's `connect-resume-opp` / `journey-deliver`) CANNOT share an
+ *   output directory even if the caller passes the same root, so a wipe
+ *   can never destroy another journey's finished evidence.
+ * - Re-dispatching the SAME recipe still clears that recipe's own prior
+ *   ordinary output, which is exactly #756's guarantee (no stale capture
+ *   may masquerade as a fresh one) — and #1034's preserve-list still
+ *   spares `00-*` ground truth + `*-FAILURE.*` forensics inside it.
+ * - The blast radius of the wipe equals the dispatch, by construction.
+ *
+ * Namespacing by recipe id rather than by the (unique-per-invocation)
+ * dispatch id is deliberate: a unique-per-invocation directory would make
+ * the wipe vacuous and leave every superseded attempt's ordinary PNGs on
+ * disk in sibling directories, which is #756's stale-carryover class
+ * again one level up. Provenance (which DOES carry `dispatch_id`) stays
+ * the per-invocation identity; the directory is the per-recipe namespace.
+ */
+export function dispatchOutputDir(root: string, recipeId: string): string {
+  const resolvedRoot = path.resolve(root);
+  assertSafeWipeTarget(resolvedRoot, 'dispatchOutputDir');
+  return path.join(resolvedRoot, recipeNamespace(recipeId));
+}
+
+/**
+ * Reduce a recipe id to a single safe path segment. `recipeId` is derived
+ * from a recipe filename, so it is already a basename in practice — this
+ * is defence in depth so no `../` or separator can escape the root.
+ */
+export function recipeNamespace(recipeId: string): string {
+  const slug = path
+    .basename(String(recipeId ?? ''))
+    .replace(/[^A-Za-z0-9._-]+/g, '-')
+    .replace(/^[.-]+/, '')
+    .replace(/[.-]+$/, '');
+  if (!slug) {
+    throw new Error(
+      `dispatchOutputDir: cannot derive an output namespace from recipe id ` +
+        `"${recipeId}" — expected a recipe filename like "journey-learn".`,
+    );
+  }
+  return slug;
 }
 
 /**
@@ -55,20 +153,7 @@ export function isPreservedArtifact(name: string): boolean {
  */
 export function resetScreenshotDir(dir: string): void {
   const resolved = path.resolve(dir);
-  const { root } = path.parse(resolved);
-  const segments = resolved.slice(root.length).split(path.sep).filter(Boolean);
-  if (
-    resolved === root ||
-    segments.length < 2 ||
-    resolved === os.homedir() ||
-    resolved === process.cwd()
-  ) {
-    throw new Error(
-      `resetScreenshotDir: refusing to wipe "${resolved}" — too shallow or a ` +
-        `protected location (root / single-segment path / home / cwd). Pass a ` +
-        `dedicated per-execution subdirectory, e.g. /tmp/ace-screenshots/<recipe>.`,
-    );
-  }
+  assertSafeWipeTarget(resolved, 'resetScreenshotDir');
   fs.mkdirSync(resolved, { recursive: true });
   for (const entry of fs.readdirSync(resolved, { withFileTypes: true })) {
     if (entry.isFile() && isPreservedArtifact(entry.name)) continue;

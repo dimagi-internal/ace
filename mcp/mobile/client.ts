@@ -38,7 +38,7 @@ import type {
   VideoArtifact, LocalDiagnostics,
 } from './types.js';
 import { logInfo } from './logging.js';
-import { resetScreenshotDir } from './screenshot-dir.js';
+import { dispatchOutputDir, resetScreenshotDir } from './screenshot-dir.js';
 import { runRecipeWithDriverHeal } from './maestro-driver-retry.js';
 import {
   buildProvenance,
@@ -1365,7 +1365,15 @@ export class MobileClient {
    *
    * On the cloud backend `avdName` is the desired baked state (e.g.
    * `cc-2.62.0`). The recipe is shipped as a YAML string in the request
-   * body and screenshots are downloaded into `screenshotDir`.
+   * body and screenshots are downloaded into this dispatch's output dir.
+   *
+   * `screenshotDir` is a run-scoped ROOT, not the literal output dir
+   * (dimagi-internal/ace#1130). Artifacts land in
+   * `<screenshotDir>/<recipeId>/` — always read them back from the
+   * returned `screenshotsDir` / `screenshots[].path`. Callers MAY pass one
+   * root for a whole phase: per-recipe namespacing is what makes it
+   * impossible for one journey's start-of-run wipe (#756) to destroy
+   * another journey's finished captures.
    */
   async runRecipe(
     recipePath: string,
@@ -1449,6 +1457,17 @@ export class MobileClient {
     const recipeId = path.basename(recipePath).replace(/\.ya?ml$/, '');
     const dispatchId = newDispatchId();
 
+    // Dispatch-scoped output namespace (dimagi-internal/ace#1130). The
+    // caller passes a run-scoped ROOT; this dispatch owns
+    // `<root>/<recipeId>/` and nothing else. Two different journeys
+    // therefore cannot share an output dir even when handed the same
+    // root, so the wipe below can only ever clear THIS recipe's own
+    // prior output — the cross-journey destruction that lost a passing
+    // Learn leg's screenshots + video on bednet-spot-check/20260731-1353
+    // is unrepresentable now, without widening #1034's preserve-list
+    // (which would re-open #756's stale-carryover class).
+    const runDir = dispatchOutputDir(screenshotDir, recipeId);
+
     // Structural freshness guarantee (jjackson/ace#756): the screenshot
     // dir this dispatch reports must contain ONLY artifacts from THIS
     // execution. Stale PNGs from a prior run (or a prior session on a
@@ -1460,7 +1479,7 @@ export class MobileClient {
     // happens to live inside the dir has already been copied out, and
     // AFTER the freshness gate so a pre-flight rejection doesn't
     // destroy prior artifacts without producing new ones.
-    resetScreenshotDir(screenshotDir);
+    resetScreenshotDir(runDir);
 
     // Screen recording (local backend only — cloud is Phase 2). Best-effort
     // throughout: a recording failure must never change the recipe verdict.
@@ -1475,7 +1494,7 @@ export class MobileClient {
         result = await this.requireCloud().runRecipe(
           prep.resolvedPath,
           enrichedEnv,
-          screenshotDir,
+          runDir,
           { state: avdName, paletteTarB64 },
         );
       } else {
@@ -1509,7 +1528,7 @@ export class MobileClient {
                   recipeId,
                   dispatchId,
                   attempt: recordAttempt,
-                  outDir: screenshotDir,
+                  outDir: runDir,
                   config: recorderConfig,
                   adbServerPort: ports.adbServerPort,
                 });
@@ -1525,7 +1544,7 @@ export class MobileClient {
               // for why a side-channel dump (running concurrent with Maestro)
               // doesn't work. When `serial` is undefined the backend falls back
               // to the pre-0.13.229 single-invocation path with no dumps.
-              return await this.maestro.runRecipe(prep.resolvedPath, enrichedEnv, screenshotDir, {
+              return await this.maestro.runRecipe(prep.resolvedPath, enrichedEnv, runDir, {
                 adbPort: avdInfo?.adbPort,
                 serial: avdInfo?.serial,
               });
@@ -1557,11 +1576,11 @@ export class MobileClient {
       // screen (the ui-dump path is adb-based, not gRPC). Capture HERE too,
       // best-effort, attach the paths to the thrown error so callers can
       // surface them, then rethrow the ORIGINAL error untouched. The artifacts
-      // also land in `screenshotDir` alongside the run's other PNGs regardless
+      // also land in this dispatch's `runDir` alongside its other PNGs regardless
       // of whether the caller reads `error.failureForensics`. Forensic capture
       // must never mask the real failure: its own errors are swallowed.
       try {
-        const forensics = await this.captureFailureForensics(avdName, screenshotDir, recipeId);
+        const forensics = await this.captureFailureForensics(avdName, runDir, recipeId);
         (e as { failureForensics?: RecipeRunResult['failureForensics'] }).failureForensics =
           forensics;
         if (forensics?.screenshotPath || forensics?.uiDumpPath) {
@@ -1625,7 +1644,7 @@ export class MobileClient {
       try {
         result.failureForensics = await this.captureFailureForensics(
           avdName,
-          screenshotDir,
+          runDir,
           recipeId,
         );
       } catch (e) {
@@ -1674,6 +1693,12 @@ export class MobileClient {
     // result that the override won (jjackson/ace#1062).
     result.paletteDir = prep.paletteDir;
     result.paletteDirSource = prep.paletteDirSource;
+    // Restate the dir THIS dispatch owns (dimagi-internal/ace#1130). Both
+    // backends already report the dir they were handed, but the contract
+    // "read your artifacts from `screenshotsDir`, never from the root you
+    // passed" is the client's to guarantee — a caller that globs the root
+    // would see sibling journeys' artifacts.
+    result.screenshotsDir = runDir;
     return result;
   }
 
