@@ -53,9 +53,15 @@
 # A content form with >12 screens would fall through to the final assert
 # and fail loud with a named anchor rather than spin to a process timeout.
 #
-# Parameters:
+# Parameters — REQUIRED AT EVERY CALL SITE:
 #   ${SCREENSHOT_NAME} — base label for the post-finalize screenshot
 #                        (e.g. "journey-learn-m0-orientation-finished").
+#
+# No `env:` default is provided, deliberately: a subflow's own `env:` block
+# OVERRIDES caller-passed `runFlow: env:` in Maestro 2.5.1 rather than
+# defaulting under it, so a default here would silently replace every
+# per-call-site name (dimagi-internal/ace#1033). Unbound call sites are
+# caught by the `runFlow-unbound-screenshot-name` lint rule instead.
 appId: org.commcare.dalvik
 ---
 # Bounded multi-screen advance. Each step taps `nav_btn_next` ONLY if we
