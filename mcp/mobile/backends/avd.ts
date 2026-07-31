@@ -285,6 +285,16 @@ export class AvdBackend {
   }
 
   /**
+   * The port-injecting adb shell used by this backend. Exposed so
+   * sibling modules (e.g. `screen-recorder.ts`) issue adb calls against
+   * the SAME allocated adb server rather than the default 5037 — a bare
+   * `adb` reports an empty device list while the emulator is running fine.
+   */
+  getAdbShell(): ShellFn {
+    return this.shell;
+  }
+
+  /**
    * Wrap a ShellFn so `adb` invocations spawn with `ANDROID_ADB_SERVER_PORT`
    * pinned to whatever this backend has allocated. Only `adb` is wrapped —
    * `emulator -port <N>` already gets the explicit port arg, and other

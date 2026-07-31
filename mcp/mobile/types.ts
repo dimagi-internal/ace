@@ -127,6 +127,13 @@ export interface RecipeRunResult {
   screenshotsDir: string;
   screenshots: ScreenshotEntry[];
   /**
+   * Screen recordings of this run, one per attempt. Local backend only —
+   * the cloud backend leaves this undefined until Phase 2 (see
+   * `docs/superpowers/specs/2026-07-30-avd-session-recording-design.md`).
+   * Always best-effort: a recording failure never changes `status`.
+   */
+  videos?: VideoArtifact[];
+  /**
    * Structured failure classification from `lib/maestro-failure-class.ts`.
    * Populated on every recipe run (both pass and fail). Consumers can
    * switch on `failure.failureClass` to act on a finite enum rather
@@ -218,6 +225,34 @@ export interface ScreenshotEntry {
    * Absent on backends/callers that pre-date the sidecar contract.
    * Shape: `lib/screenshot-provenance.ts § ScreenshotProvenance`.
    */
+  provenance?: {
+    recipe_id: string;
+    dispatch_id: string;
+    ace_version: string;
+    git_sha?: string;
+    written_at_epoch_ms: number;
+  };
+}
+
+/**
+ * A screen recording of one recipe-run attempt, captured by
+ * `mcp/mobile/screen-recorder.ts` via on-device `adb shell screenrecord`.
+ *
+ * One per ATTEMPT, not per recipe: `runRecipeWithDriverHeal` can cold-boot
+ * the AVD mid-run, which kills the recorder and rotates the serial. The
+ * pre-crash segment is the forensically interesting one, so both are kept.
+ * Naming: attempt 1 is `<recipeId>.mp4`, later attempts are
+ * `<recipeId>-attempt<N>.mp4`.
+ */
+export interface VideoArtifact {
+  /** Absolute host path to the mp4 (inside the run's screenshotDir). */
+  path: string;
+  bytes: number;
+  recipeId: string;
+  dispatchId: string;
+  /** 1-based attempt index within a single `runRecipe` call. */
+  attempt: number;
+  /** Same shape/semantics as `ScreenshotEntry.provenance`. */
   provenance?: {
     recipe_id: string;
     dispatch_id: string;
