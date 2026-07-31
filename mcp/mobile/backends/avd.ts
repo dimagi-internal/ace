@@ -22,8 +22,24 @@ import { withAllocatorMutex } from '../session-lock.js';
 //
 // Phase C — storage-mount: `/storage/emulated/0` is mounted.
 //   Usually a couple of seconds after boot_completed; 30s is plenty.
-const AVD_PHASE_ADB_REGISTER_MS = 60_000;
-const AVD_PHASE_BOOT_COMPLETED_MS = 120_000;
+//
+// `AVD_BOOT_TIMEOUT_MS` scales phases A and B (dimagi-internal/ace#1063).
+// The AVD_BOOT_TIMEOUT error's own remediation text has always told
+// operators to "bump AVD_BOOT_TIMEOUT_MS" — but nothing read it, so the
+// advice could not be followed and the only escape was the `bootWait`
+// constructor option, which the MCP server does not expose
+// (`new MobileClient()` takes no opts). Rather than delete the advice,
+// honour it. A cold full startup on a contended host genuinely overruns
+// 60s — measured 60,876ms on a two-macOS-user machine, and the emulator's
+// own log says "performing a full startup. This may take upto two minutes."
+function envBootTimeoutMs(): number | undefined {
+  const raw = process.env.AVD_BOOT_TIMEOUT_MS;
+  if (!raw) return undefined;
+  const n = Number.parseInt(raw, 10);
+  return Number.isFinite(n) && n > 0 ? n : undefined;
+}
+const AVD_PHASE_ADB_REGISTER_MS = envBootTimeoutMs() ?? 60_000;
+const AVD_PHASE_BOOT_COMPLETED_MS = envBootTimeoutMs() ?? 120_000;
 const AVD_PHASE_STORAGE_MOUNT_MS = 30_000;
 const AVD_PHASE_POLL_MS = 1_000;
 
@@ -686,7 +702,24 @@ export class AvdBackend {
     let orphansKilled = 0;
     if (process.platform !== 'win32') {
       try {
-        const pgrep = await this.shell('pgrep', ['-f', 'qemu-system']).catch(() => null);
+        // OWNERSHIP-SCOPED (dimagi-internal/ace#1063). A bare
+        // `pgrep -f qemu-system` lists EVERY macOS user's emulators. On a
+        // shared host that breaks the sweep in two ways at once:
+        //   1. the foreign PID is counted in `qemuPids` but can never
+        //      appear in *our* `adb devices`, so `qemuPids.length >
+        //      liveCount` is permanently true and the sweep believes an
+        //      orphan exists on every single boot; and
+        //   2. the kill it then attempts always fails with EPERM, so the
+        //      condition never clears — while the log claims we "killed"
+        //      it.
+        // Observed repeatedly on 2026-07-30 against another user's pid
+        // 62329. Scope to our own uid: another user's emulator is not
+        // ours to reap, and not ours to count.
+        const uid = typeof process.getuid === 'function' ? process.getuid() : undefined;
+        const pgrepArgs = uid === undefined
+          ? ['-f', 'qemu-system']
+          : ['-u', String(uid), '-f', 'qemu-system'];
+        const pgrep = await this.shell('pgrep', pgrepArgs).catch(() => null);
         const qemuPids = pgrep && pgrep.exitCode === 0
           ? pgrep.stdout
               .split('\n')
