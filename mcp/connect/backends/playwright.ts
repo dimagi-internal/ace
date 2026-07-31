@@ -219,7 +219,24 @@ export class PlaywrightBackend implements ConnectClient {
     const res = await this.request.get(path);
     if (res.status() !== 200) throw await httpErrorFor(res, path);
     let programs = parseProgramsList(await res.text()).map((p) => ({ ...p, organization_slug }));
-    if (name) programs = programs.filter((p) => p.name === name);
+    if (name) {
+      // Case-insensitive SUBSTRING match, applied client-side — the list
+      // page has no server-side filter at all. Exact-match here returned a
+      // silent [] for a real prefix of a real program name, which callers
+      // (connect-program-setup reuse-vs-create) read as "no program
+      // exists" and minted duplicates (jjackson/ace#1089).
+      const needle = name.trim().toLowerCase();
+      programs = programs.filter((p) => p.name.toLowerCase().includes(needle));
+      // The list page does not render delivery_type / budget / currency /
+      // country / dates. Hydrate the (few) filtered matches via getProgram
+      // so reuse decisions see real values instead of nulls.
+      programs = await Promise.all(
+        programs.map(async (row) => ({
+          ...row,
+          ...(await this.getProgram({ organization_slug, program_id: row.id })),
+        })),
+      );
+    }
     return { programs };
   };
 
@@ -1002,10 +1019,10 @@ export class PlaywrightBackend implements ConnectClient {
   private async findProgramByName(orgSlug: string, name: string): Promise<Program | undefined> {
     const { programs } = await this.listPrograms({ organization_slug: orgSlug, name });
     if (!programs.length) return undefined;
-    // listPrograms doesn't expose timestamps, so we hydrate the first match
-    // for full Program shape parity with REST.
-    const stub = programs[0];
-    return await this.getProgram({ organization_slug: orgSlug, program_id: stub.id });
+    // Name-filtered rows come back hydrated to full Program shape —
+    // listPrograms runs getProgram per match (jjackson/ace#1089) — so no
+    // second hydration fetch is needed here.
+    return programs[0] as Program;
   }
 
   // ── Opportunities (HTMX init-form fallback, rewired 0.10.82) ──

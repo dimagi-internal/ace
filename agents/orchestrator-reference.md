@@ -424,6 +424,15 @@ implicitly via path lacking a `runs/` prefix):
 | `ACE/<opp>/open-questions.md` | Deferred questions that accrete across runs until answered. |
 | `ACE/<opp>/current/` | Shortcut folder pointing at the latest run's Phase 4/4 outputs (refreshed at phase completion — see § Current/ shortcut refresh). |
 
+**Durable vs refreshed fields WITHIN the reused Connect program**
+(jjackson/ace#1078). "Durable" applies to the program's *identity*, not
+its *content*:
+
+| Program field | Scope | Why |
+|---|---|---|
+| UUID (`id`), `organization_slug`, `delivery_type`, `currency`, `country`, `name` | **Durable per-opp** — never touched on reuse | Identity + reuse-lookup key; `connect_update_program` does not even accept delivery_type/currency/country |
+| `description`, `budget`, `start_date`, `end_date` | **Refreshed per-run** — re-derived from the current run's PDD | Authored from the *creating* run's PDD; a later run's PDD can contradict the live, LLO-facing text (e.g. an enforced GPS gate the current PDD forbids). `connect-program-setup` § Step 3a reconciles via `lib/program-reconcile.ts` and updates (or `[WARN]`s per diverging field). Budget is a ceiling: Step 4a headroom keeps it *above* the PDD figure by design, so only live < PDD counts as divergence |
+
 **Per-run — under `ACE/<opp>/runs/<run-id>/`; copy or re-derive when
 forking:**
 

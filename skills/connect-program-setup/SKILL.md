@@ -43,17 +43,53 @@ alone makes the artifact land outside `4-connect` and fail
 2. **Check for existing programs** that match this opportunity's domain/scope.
    Call `connect_list_programs` (with `organization_slug` from the
    opportunity context — typically `ai-demo-space` for ACE-managed
-   programs). Prefer archetype-matched programs when reusing — running
+   programs). The `name` filter is a case-insensitive **substring** match
+   and name-filtered rows come back fully hydrated (jjackson/ace#1089);
+   unfiltered rows carry `null` for delivery_type/budget/currency/country/
+   dates — hydrate via `connect_get_program` before judging fit on those.
+   Prefer archetype-matched programs when reusing — running
    an FGD opp under a program whose other opps are all atomic-visit
    creates a mixed-method reporting headache downstream.
 
 3. **Decide: reuse or create**
    - If an existing program fits AND shares the archetype, note the
-     program ID; skip step 4.
+     program ID; run step 3a, then skip step 4.
    - If an existing program matches the domain but not the archetype,
      flag the mismatch in the gate brief / program notes; default to
      creating a new one unless the admin explicitly opts in.
    - If no match: proceed to step 4.
+
+3a. **Reconcile reused program content against THIS run's PDD
+   (jjackson/ace#1078).** Only the program's *identity* is durable
+   (UUID, org, delivery type, currency, country, name — see
+   `agents/orchestrator-reference.md § Fork Points`). Its *content*
+   (description, budget, dates) was authored from the PDD of whichever
+   run created it, and a later run's PDD can contradict it — the live,
+   LLO-facing program once advertised an enforced 500m GPS payment gate
+   the current PDD deliberately made non-enforcing. On every reuse:
+
+   1. `connect_get_program({ organization_slug, program_id })` → live
+      refreshable fields.
+   2. Compare against this run's PDD-derived values with
+      `reconcileProgramWithPdd` (`lib/program-reconcile.ts` — pure
+      helper; run it via `npx tsx -e` or replicate its semantics
+      exactly: description/dates compare whitespace-normalized; budget
+      diverges only when the live ceiling is *below* the PDD budget,
+      since Step 4a deliberately raises it above for headroom).
+   3. If `inSync`: note "program content verified against this run's
+      PDD" in the program notes and continue.
+   4. If diverging AND updating is safe (the normal case at Phase 4 —
+      this run has not published a solicitation yet): apply the
+      helper's `updateArgs` via `connect_update_program({
+      organization_slug, program_id, ...updateArgs })` (it accepts
+      exactly `name/description/budget/start_date/end_date`; never
+      send delivery_type/currency/country — durable). Log each
+      refreshed field (old → new) in the program notes.
+   5. If updating is unsafe (a live solicitation or external artifact
+      already references the current text, or review mode withheld
+      approval): emit the helper's `[WARN]` lines verbatim into the
+      program notes and the run summary — one per diverging field —
+      so the divergence lands somewhere visible instead of nowhere.
 
 4. **Create the program** via `connect_create_program`:
    - `organization_slug`: `ai-demo-space` (or whichever PM-side org the
@@ -153,12 +189,12 @@ alone makes the artifact land outside `4-connect` and fail
 ## MCP Tools Used
 - Google Drive: `drive_read_file`, `drive_create_file` (always with `parentFolderId = phaseFolderId` — the `4-connect` folder ID, never a path string), `update_yaml_file` (write `opp.yaml.connect.program` block, `merge: 'shallow'`)
 - Connect (`ace-connect` MCP, 0.10.47+):
-  - `connect_list_programs` — discovery
+  - `connect_list_programs` — discovery (`name` = case-insensitive substring; filtered rows hydrated)
   - `connect_list_delivery_types` — resolve human name → slug/int FK if needed
   - `connect_create_program` — create (REST `POST /api/programs/`)
-  - `connect_get_program` — verify after create; read `budget` for the headroom check (Step 4a)
+  - `connect_get_program` — verify after create; read live fields for reconcile (Step 3a) and `budget` for the headroom check (Step 4a)
   - `connect_list_opportunities` — sum managed-opp budgets for the headroom check (Step 4a)
-  - `connect_update_program` — raise the program budget ceiling idempotently (Step 4a)
+  - `connect_update_program` — refresh stale description/dates on reuse (Step 3a); raise the program budget ceiling idempotently (Step 4a)
 
 ## Mode Behavior
 - **Auto:** Create program (or reuse), proceed
@@ -190,3 +226,4 @@ downstream coherence:
 |------|--------|--------|
 | 2026-04-28 | Replace HITL workaround with `connect_*_program` atoms (ace-connect 0.8.1) | ACE team |
 | 2026-04-30 | Switch `connect_create_program` to `POST /api/programs/` (commcare-connect PR #1135). `delivery_type` now accepts the slug; `country` is the human country name. (0.10.47) | ACE team |
+| 2026-07-30 | Step 3a: reconcile reused program content (description/budget/dates) against the current run's PDD via `lib/program-reconcile.ts` — update or `[WARN]` per diverging field (jjackson/ace#1078). Note substring-match + hydration semantics of `connect_list_programs` (jjackson/ace#1089). | ACE team |
