@@ -676,8 +676,50 @@ export class MaestroBackend {
    * device to be present and booted (`waitForDeviceBooted`). This budget
    * covers the post-boot service race ONLY — do not let it absorb a cold
    * boot, which is the bug this note exists to prevent recurring.
+   *
+   * RETRIED, bounded (#1067 ask 4). A single lost race used to surface as a
+   * hard typed throw on the first expired budget, and an immediate unchanged
+   * retry then succeeded — observed 3× across 2026-07-29/30, always with
+   * `adb: device '<serial>' not found` as the last error, i.e. the device
+   * momentarily dropped off the adb server rather than the package service
+   * being genuinely wedged. A bare throw there reads to callers as a hard
+   * capability gap ("the emulator is broken, cold-restart it") for what is a
+   * blip, so we spend a second budget before believing it. Between attempts
+   * we re-confirm the device is present and booted, which is the condition
+   * that actually went missing; its own failure is swallowed so the
+   * caller-facing error stays the pm-service class it started as.
    */
-  private async waitForPackageManager(serial: string, timeoutMs: number): Promise<void> {
+  private async waitForPackageManager(
+    serial: string,
+    timeoutMs: number,
+    attempts = 2,
+  ): Promise<void> {
+    let lastErr = '';
+    for (let attempt = 1; attempt <= attempts; attempt++) {
+      lastErr = await this.pollPackageManager(serial, timeoutMs);
+      if (lastErr === '') return;
+      if (attempt < attempts) {
+        logInfo(
+          `maestro_driver: \`package\` service not bound on ${serial} after ` +
+            `${Math.round(timeoutMs / 1000)}s (attempt ${attempt}/${attempts}, last: ${lastErr}); ` +
+            `re-confirming the device is present, then retrying the bind`,
+        );
+        await this.waitForDeviceBooted(serial, 30_000).catch(() => {});
+      }
+    }
+    throw new MobileError(
+      'AVD_PM_SERVICE_TIMEOUT',
+      `AVD ${serial} did not finish binding the \`package\` service within ${Math.round(timeoutMs / 1000)}s × ${attempts} attempts (last: ${lastErr || 'unknown'}).`,
+      'The emulator may be stuck mid-boot. Try `mobile_stop_avd` then `mobile_ensure_avd_running` to cold-restart; if it persists, wipe the AVD user data via Android Studio.',
+    );
+  }
+
+  /**
+   * One `waitForPackageManager` budget. Returns `''` when the package
+   * service answered, otherwise the last error seen (truncated) so the
+   * caller can decide whether to spend another budget or throw.
+   */
+  private async pollPackageManager(serial: string, timeoutMs: number): Promise<string> {
     const deadline = Date.now() + timeoutMs;
     let lastErr = '';
     while (Date.now() < deadline) {
@@ -686,15 +728,11 @@ export class MaestroBackend {
         ['-s', serial, 'shell', 'cmd', 'package', 'list', 'packages'],
         { timeoutMs: 5_000 },
       ).catch((e: any) => ({ stdout: '', stderr: String(e?.message ?? e), exitCode: 1 }));
-      if (r.exitCode === 0 && /package:/.test(r.stdout)) return;
+      if (r.exitCode === 0 && /package:/.test(r.stdout)) return '';
       lastErr = (r.stderr || r.stdout || '').slice(0, 160);
       await new Promise((res) => setTimeout(res, 1_000));
     }
-    throw new MobileError(
-      'AVD_PM_SERVICE_TIMEOUT',
-      `AVD ${serial} did not finish binding the \`package\` service within ${Math.round(timeoutMs / 1000)}s (last: ${lastErr || 'unknown'}).`,
-      'The emulator may be stuck mid-boot. Try `mobile_stop_avd` then `mobile_ensure_avd_running` to cold-restart; if it persists, wipe the AVD user data via Android Studio.',
-    );
+    return lastErr || 'unknown';
   }
 
   /**
