@@ -225,6 +225,15 @@ dialog — often <100KB because the screen is mostly solid blue;
 threshold rule should not flag this), `learn-install-home.png` (the
 post-install Learn StandardHomeActivity).
 
+### Step 4.5: Sweep the device-video spool
+
+**Sweep the device-video spool.** Local `mobile_run_recipe` calls record
+an mp4 per run into `~/.ace/mobile-videos/<ppid>/`. Upload each file to
+`ACE/_common/connect-screenshots/<version>/videos/_device/` via
+`drive_upload_binary` (`mimeType: "video/mp4"`), then delete the spool
+directory. Empty spool is normal — recording is best-effort and
+`ACE_MOBILE_RECORD=off` disables it.
+
 ### Step 5: Upload to Drive
 
 For each captured PNG mapped to a deck alias (see Coverage table

@@ -685,6 +685,34 @@ hh-poverty-targeting/20260702-1456, where `connect-resume-opp-tile` ≡
 then claimed distinct moments over duplicate frames
 (dimagi-internal/ace#866).
 
+### Step 5.7: Upload session videos + sweep the device-video spool
+
+Since 0.13.x every local `mobile_run_recipe` call records an mp4 of the
+run (on-device `screenrecord`, see
+`playbook/integrations/mobile-integration.md § Recording`). Two sources,
+both uploaded:
+
+1. **This dispatch's journey videos** — `RecipeRunResult.videos[]` from
+   each Step 5 leg. Upload each to
+   `ACE/<opp>/runs/<run-id>/6-qa-and-training/videos/<recipe-base>.mp4`
+   via `drive_upload_binary` with `mimeType: "video/mp4"` and
+   `shareAnyoneWithLink: true` (so the run-summary page can embed it
+   without an auth round-trip). A recipe that needed a driver heal
+   contributes two entries — `<recipe-base>.mp4` (pre-crash) and
+   `<recipe-base>-attempt2.mp4`; upload both.
+2. **The spool** — `~/.ace/mobile-videos/<ppid>/*.mp4`, which collects
+   videos from recipes whose callers aren't uploading skills (the
+   registration and heal recipes inside `mobile_ensure_avd_running`, the
+   static prerequisite recipes from Step 4). Upload each to
+   `6-qa-and-training/videos/_device/<filename>` (same mimeType; no
+   `shareAnyoneWithLink` needed — these are forensic, not presentational),
+   then delete the spool directory.
+
+`videos[]` absent or the spool empty is **not** a failure: recording is
+best-effort by contract, and `ACE_MOBILE_RECORD=off` disables it
+entirely. Log the count and continue — never halt a dispatch over a
+missing video.
+
 ### Step 6: Write `6-qa-and-training/app-screenshot-capture_manifest.yaml`
 
 Link each captured PNG back to (a) its journey id (a meaningful slug
@@ -694,6 +722,25 @@ shape the per-artifact training skills (`training-flw-guide`,
 `training-deck-generate`) consume. Steps flagged by the Step 5.5
 distinctness check carry `duplicate_of: <first-step-name>` instead of
 being listed as distinct captures.
+
+The manifest also carries a `videos:` block so the training skills and the
+run-summary page can find the recordings without re-listing Drive:
+
+```yaml
+videos:
+  - journey_id: journey-learn-pass
+    recipe_base: journey-learn
+    attempt: 1
+    drive_path: 6-qa-and-training/videos/journey-learn.mp4
+    file_id: <drive fileId>
+  - journey_id: journey-deliver-submit
+    recipe_base: journey-deliver
+    attempt: 1
+    drive_path: 6-qa-and-training/videos/journey-deliver.mp4
+    file_id: <drive fileId>
+```
+
+Omit the block entirely when no videos were captured.
 
 ### Step 6.5: Harvest selector-drift signal (atlas-drift)
 
