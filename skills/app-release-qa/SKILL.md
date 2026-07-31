@@ -31,7 +31,7 @@ this catches, see reference.md.
 |---|---|---|
 | Phase 3 § Step 2 | `3-commcare/app-deploy_summary.md` | HQ app ids (Learn + Deliver) |
 | Phase 3 § Step 2.7 | `3-commcare/app-release_summary.md` | Released build ids per app |
-| Phase 1 | `1-design/idea-to-pdd.md` | Payable-visit rules — whether the PDD demands camera-only photo capture (the `appearance="acquire"` check in Step 4) |
+| Phase 1 | `1-design/idea-to-pdd.md` | Payable-visit rules — whether the PDD demands camera-only photo capture (the `appearance="acquire"` check in Step 4) — and the stated per-module training durations (the `time_estimate` plausibility check in Step 4) |
 | Nova MCP | `get_app({app_id})` for each Nova app id | Blueprint structure (modules, forms, fields per form, Connect marker presence) — the canonical structural truth for cross-reference |
 | HQ `ACE_HQ_DOMAIN` env | — | `connect-ace-prod` (the project space the apps released to) |
 
@@ -132,6 +132,57 @@ Mismatch → halt with `learn-marker-missing` (with the form path +
 which marker is absent). Before halting, re-check by namespace — a
 prefix-grep false negative is the single most likely cause of this
 halt firing on a clean build.
+
+**`time_estimate` plausibility-as-hours (dimagi-internal/ace#1077).**
+The unit of `connect.learn_module.time_estimate` is **HOURS** — resolved
+against Connect source 2026-07-30: the model help_text says "Estimated
+hours" (`commcare_connect/opportunity/models.py:297`), the PM dashboard
+renders the raw value as `f"{value}hr"`
+(`commcare_connect/opportunity/tables.py:1677-1678`), ingest is a
+straight `int()` passthrough with no conversion
+(`commcare_connect/opportunity/app_xml.py:107-108`), and the FLW-facing
+mobile app sums the raw values into "Estimated time: %d hours"
+(commcare-android `ConnectJobIntroFragment.kt:64-77`). Nova's tool-schema
+description says "Estimated minutes" — stale, filed as
+voidcraft-labs/nova-plugin#36 — so an architect that obeyed the schema
+description ships a 20-minute module that renders as **"20 hours"** on
+every FLW's onboarding screen. Marker *presence* checks cannot see this;
+the VALUE must be read.
+
+Run the pure helper over the Learn app:
+
+```ts
+import { checkLearnModuleTimeEstimates, formatTimeEstimateReport }
+  from '../../lib/time-estimate-check';
+const report = checkLearnModuleTimeEstimates(
+  projected.learn_modules.map((m) => ({
+    moduleId: m.slug,
+    timeEstimate: m.time_estimate,
+    budgetedMinutes: pddBudgets[m.slug],  // minutes; omit when the PDD is silent
+  })),
+);
+```
+
+`projected` is `projected_connect_state` from `commcare_download_ccz`
+(its `learn_modules[].time_estimate` carries the CCZ marker value —
+exactly what Connect's sync will store). `pddBudgets` comes from the
+PDD: read each module's stated duration in MINUTES from the training
+design (e.g. "Modules budgeted 10–20 minutes each"); when the PDD states
+no duration for a module, omit the key and the helper falls back to
+absolute plausibility bounds. The helper flags, per module:
+
+- `missing` / `non-positive` / `non-integer` — `[BLOCKER]`.
+- `minutes-not-hours` — the value tracks the module's MINUTE budget (or
+  is an unbudgeted two-digit count): the ace#1077 signature. `[BLOCKER]`.
+- `out-of-range` — wrong vs. the budget's hour conversion
+  (`max(1, ceil(minutes/60))`): `[BLOCKER]` when >2x expected,
+  `[WARN]` otherwise.
+
+`severity: 'blocker'` → halt with `[BLOCKER]`
+`learn-module-time-estimate-implausible` (include
+`formatTimeEstimateReport(report)`). `[WARN]`-only → record and
+continue. Record per-app (Learn only) under `time_estimates` in the
+verdict: `pass | { modules_checked, violations: [...] }`.
 
 **Deliver-specific (only for the Deliver app):**
 
@@ -521,6 +572,7 @@ per_app:
         unresolved_xpath: <optional>
         parser_message: <optional>
 # Per-app blocks additionally carry (both apps; see Step 4):
+#   time_estimates:        pass | { modules_checked, violations: [...] }   # Learn app only
 #   camera_only_uploads:   pass | not-required-by-pdd | [<offending upload refs>]
 #   geopoint_binds:        pass | [<offending field paths>]
 #   constraint_locality:   pass | { constraints_checked, violations: [...] }
@@ -585,6 +637,15 @@ defects.
   this just means the install-time gate is off. Operator fix: run
   `/ace:setup` (auto-downloads the latest jar from
   `dimagi/commcare-core` releases).
+- `learn-module-time-estimate-implausible` — a
+  `connect.learn_module.time_estimate` in the released Learn CCZ is not
+  plausible **as hours** against the PDD's stated module duration (the
+  unit is hours end-to-end in Connect; a raw minute count renders as
+  "N hours" on every FLW's onboarding screen — see Step 4 +
+  dimagi-internal/ace#1077 + voidcraft-labs/nova-plugin#36). Operator
+  fix: re-run `pdd-to-learn-app` (its brief carries the resolved hours
+  instruction with source citations), re-release, then re-run
+  `app-release-qa`.
 - `learn-marker-missing` / `deliver-marker-missing` — released CCZ
   doesn't carry the Connect-marker wrappers Connect's sync requires.
   Halt; investigate Nova-side OR check if any post-build patcher

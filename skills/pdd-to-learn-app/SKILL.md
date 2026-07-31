@@ -108,14 +108,31 @@ Generate the Learn (training) app from the PDD using the Nova plugin
 
      > REQUIRED: The `connect.learn_module.time_estimate` field is the
      > estimated time to complete the module in **HOURS**, not minutes.
-     > Vellum's plugin help text says verbatim "Estimated time to complete
-     > the module in hours" (`src/commcareConnect.js:158`) and Connect's
-     > `LearnModule.time_estimate` model field docstring says "Estimated
-     > hours to complete the module". For typical Learn modules this is
+     > Nova's tool-schema description for this field says "Estimated
+     > minutes" — that description is WRONG (stale; filed upstream as
+     > voidcraft-labs/nova-plugin#36). Do not follow it and do not flag
+     > the conflict — this instruction is the resolved answer, confirmed
+     > against Connect's rendering source end-to-end (2026-07-30,
+     > dimagi-internal/ace#1077): Connect's model help_text says
+     > "Estimated hours to complete the module"
+     > (`commcare_connect/opportunity/models.py:297`); the PM dashboard
+     > renders the raw value as `f"{value}hr"`
+     > (`commcare_connect/opportunity/tables.py:1677-1678`); ingest is a
+     > straight `int()` passthrough from the CCZ's `<time_estimate>`
+     > element with no unit conversion
+     > (`commcare_connect/opportunity/app_xml.py:107-108`, `tasks.py:95`);
+     > and the FLW-facing Connect mobile app sums the raw values and
+     > renders "Estimated time: %d hours" (commcare-android
+     > `ConnectJobIntroFragment.kt:64-77`, plural resource
+     > `connect_opportunity_estimated_hours`). Vellum's plugin help text
+     > agrees ("Estimated time to complete the module in hours",
+     > `src/commcareConnect.js:158`). For typical Learn modules this is
      > 1 (one hour) or 2; never a two-digit minute count. If a module
-     > genuinely takes less than an hour, round up to 1 — Connect displays
-     > the value in dashboards as hours-to-complete and FLW-onboarding
-     > timing calculations downstream assume the unit.
+     > genuinely takes less than an hour, round up to 1. `app-release-qa`
+     > structurally asserts every released value is plausible as hours
+     > against the PDD's stated module durations
+     > (`lib/time-estimate-check.ts`), so a raw minute count halts the
+     > release.
 
    - **REQUIRED — Keep module/assessment names short enough that the
      derived slug fits Connect's 50-char column (FALLBACK).** This is the
