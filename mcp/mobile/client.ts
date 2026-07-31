@@ -25,6 +25,10 @@ import {
   prepareRecipeForMaestro,
   injectAceEnvVars,
   getActiveSelectorMapMetadata,
+  resolveStaticRecipesDir,
+  isStaticRecipesDirOverride,
+  INSTALLED_STATIC_RECIPES_DIR,
+  STATIC_RECIPES_DIR_ENV,
 } from './recipe-resolver.js';
 import { validateRecipeFreshness } from '../../lib/recipe-provenance.js';
 import { resolveBackend, preflightMobileBackend } from './backend-toggle.js';
@@ -81,6 +85,14 @@ export interface MobileClientOpts {
   avd?: AvdBackend;
   maestro?: MaestroBackend;
   cloud?: CloudBackend;
+  /**
+   * Static palette dir. When omitted, resolved via
+   * `resolveStaticRecipesDir()` — which honours
+   * `ACE_MOBILE_STATIC_RECIPES_DIR` and otherwise returns the palette
+   * shipped in this install. Whatever this resolves to is ALSO what
+   * `prepareRecipeForMaestro` uses (the client passes it through), so
+   * the two resolution paths cannot diverge (jjackson/ace#1062).
+   */
   staticRecipesDir?: string;
   /**
    * Optional override for the tier-2 (auto-bootstrap) recovery in
@@ -183,7 +195,16 @@ export function getConfiguredApkVersion(): string {
   return v && v.length > 0 ? v : DEFAULT_APK_VERSION;
 }
 
-const DEFAULT_STATIC_DIR = new URL('./recipes/static/', import.meta.url).pathname;
+/**
+ * Palette dir this client resolves to when `opts.staticRecipesDir` is
+ * omitted. Deliberately a FUNCTION call rather than a module-level const:
+ * `resolveStaticRecipesDir` reads `ACE_MOBILE_STATIC_RECIPES_DIR` (and
+ * validates it), so evaluating it per-construction is what makes a bare
+ * `new MobileClient()` — including `mcp/mobile-server.ts`'s — honour the
+ * override. See `recipe-resolver.ts § resolveStaticRecipesDir`
+ * (jjackson/ace#1062).
+ */
+export { INSTALLED_STATIC_RECIPES_DIR, STATIC_RECIPES_DIR_ENV };
 
 export interface DriveAdapter {
   readFile(driveId: string, filePath: string): Promise<string>;
@@ -471,7 +492,7 @@ export class MobileClient {
   constructor(opts: MobileClientOpts = {}) {
     this.avd = opts.avd ?? new AvdBackend();
     this.maestro = opts.maestro ?? new MaestroBackend();
-    this.staticRecipesDir = opts.staticRecipesDir ?? DEFAULT_STATIC_DIR;
+    this.staticRecipesDir = opts.staticRecipesDir ?? resolveStaticRecipesDir();
     // `bootstrapConfig: null` (explicit) disables auto-bootstrap;
     // `undefined` (omitted) reads from env; non-null override wins.
     this.bootstrapConfig =
@@ -1369,7 +1390,12 @@ export class MobileClient {
     // Sources from `ACE_CONNECT_APK_VERSION` so opt-in QA against a new
     // baseline (e.g. 2.63.0) routes here without a code change. See
     // `getConfiguredApkVersion`.
-    const prep = await prepareRecipeForMaestro(recipePath, apkVersion);
+    // `this.staticRecipesDir` is passed EXPLICITLY so the client's palette
+    // dir and the resolver's are the same value by construction. Before
+    // #1062 the resolver re-derived its own install-bound dir and silently
+    // ignored the client's — the divergence that made a staged palette fix
+    // read as a failed fix.
+    const prep = await prepareRecipeForMaestro(recipePath, apkVersion, this.staticRecipesDir);
     if (prep.unverifiedSelectorsInTop.length > 0) {
       logInfo(
         `runRecipe: ${recipePath} uses unverified selectors ` +
@@ -1606,6 +1632,12 @@ export class MobileClient {
       this.spool.video(v);
     }
     if (videos.length) result.videos = videos;
+    // Surface WHICH palette this run actually used, in the atom result the
+    // operator reads. The log line alone isn't enough — an operator
+    // validating a staged palette fix pre-merge needs positive proof in the
+    // result that the override won (jjackson/ace#1062).
+    result.paletteDir = prep.paletteDir;
+    result.paletteDirSource = prep.paletteDirSource;
     return result;
   }
 
@@ -1799,7 +1831,11 @@ export class MobileClient {
     // into `prep.tempDir`, so both register recipes land there as resolved
     // siblings (and any `runFlow: file:` refs resolve to the resolved copies).
     const toContinueRaw = path.join(this.staticRecipesDir, 'connect-register-to-otp.yaml');
-    const prep = await prepareRecipeForMaestro(toContinueRaw, getConfiguredApkVersion());
+    const prep = await prepareRecipeForMaestro(
+      toContinueRaw,
+      getConfiguredApkVersion(),
+      this.staticRecipesDir,
+    );
     const toContinue = path.join(prep.tempDir, 'connect-register-to-otp.yaml');
     const fromContinue = path.join(prep.tempDir, 'connect-register-from-otp.yaml');
     let success = false;
@@ -1967,7 +2003,11 @@ export class MobileClient {
     // `prepareRecipeForMaestro` as the "top" recipe; the palette
     // includes both register recipes (the function resolves *every*
     // file in STATIC_RECIPES_DIR), so `from_otp` lands alongside.
-    const prep = await prepareRecipeForMaestro(toPath, getConfiguredApkVersion());
+    const prep = await prepareRecipeForMaestro(
+      toPath,
+      getConfiguredApkVersion(),
+      this.staticRecipesDir,
+    );
     try {
       const paletteTarB64 = tarDirAsBase64(prep.tempDir);
       logInfo(
