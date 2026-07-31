@@ -366,9 +366,11 @@ describe('MobileClient.runRecipe (screenshot-on-recipe-error forensics)', () => 
       })
       // 2nd call: the throwaway 1-step screenshot recipe — writes the PNG
       // the backend would have produced, then resolves pass.
-      .mockImplementationOnce(async () => {
-        fs.writeFileSync(path.join(tmpDir, 'will-fail-FAILURE.png'), 'PNGDATA');
-        return { status: 'pass', exitCode: 0, stdout: '', stderr: '', screenshotsDir: tmpDir, screenshots: [] };
+      // (writes into the dir it is HANDED — this dispatch's own output
+      // dir since #1130, not the root the caller passed.)
+      .mockImplementationOnce(async (_r: string, _e: unknown, dir: string) => {
+        fs.writeFileSync(path.join(dir, 'will-fail-FAILURE.png'), 'PNGDATA');
+        return { status: 'pass', exitCode: 0, stdout: '', stderr: '', screenshotsDir: dir, screenshots: [] };
       });
     const captureUiDump = vi.fn().mockResolvedValue({
       xml: '<hierarchy><node resource-id="org.commcare.dalvik:id/nsv_home_screen"/></hierarchy>',
@@ -381,12 +383,17 @@ describe('MobileClient.runRecipe (screenshot-on-recipe-error forensics)', () => 
 
     expect(result.status).toBe('fail');
     expect(result.failureForensics).toBeDefined();
-    // ui-dump is the high-signal artifact: written next to the run's screenshots.
-    expect(result.failureForensics?.uiDumpPath).toBe(path.join(tmpDir, 'will-fail-FAILURE.xml'));
+    // ui-dump is the high-signal artifact: written next to the run's
+    // screenshots — i.e. inside THIS dispatch's own output dir (#1130).
+    expect(result.failureForensics?.uiDumpPath).toBe(
+      path.join(tmpDir, 'will-fail', 'will-fail-FAILURE.xml'),
+    );
     expect(fs.existsSync(result.failureForensics!.uiDumpPath!)).toBe(true);
     expect(result.failureForensics?.elements?.[0]?.id).toContain('nsv_home_screen');
     // screenshot of the failure screen, resolved from the backend's PNG.
-    expect(result.failureForensics?.screenshotPath).toBe(path.join(tmpDir, 'will-fail-FAILURE.png'));
+    expect(result.failureForensics?.screenshotPath).toBe(
+      path.join(tmpDir, 'will-fail', 'will-fail-FAILURE.png'),
+    );
     expect(captureUiDump).toHaveBeenCalledWith('AVD');
   });
 
@@ -425,9 +432,9 @@ describe('MobileClient.runRecipe (screenshot-on-recipe-error forensics)', () => 
       .mockRejectedValueOnce(new Error('UNAVAILABLE: driver gRPC broken pipe'))
       // 2nd call: the throwaway 1-step screenshot recipe fired from the catch
       // arm — writes the failure-screen PNG, then resolves pass.
-      .mockImplementationOnce(async () => {
-        fs.writeFileSync(path.join(tmpDir, 'will-throw-FAILURE.png'), 'PNGDATA');
-        return { status: 'pass', exitCode: 0, stdout: '', stderr: '', screenshotsDir: tmpDir, screenshots: [] };
+      .mockImplementationOnce(async (_r: string, _e: unknown, dir: string) => {
+        fs.writeFileSync(path.join(dir, 'will-throw-FAILURE.png'), 'PNGDATA');
+        return { status: 'pass', exitCode: 0, stdout: '', stderr: '', screenshotsDir: dir, screenshots: [] };
       });
     const captureUiDump = vi.fn().mockResolvedValue({
       xml: '<hierarchy><node resource-id="org.commcare.dalvik:id/nsv_home_screen"/></hierarchy>',
@@ -445,10 +452,14 @@ describe('MobileClient.runRecipe (screenshot-on-recipe-error forensics)', () => 
     expect(String(err.message)).toContain('UNAVAILABLE');
     // ...with the failure-screen forensics attached to it.
     expect(err.failureForensics).toBeDefined();
-    expect(err.failureForensics.uiDumpPath).toBe(path.join(tmpDir, 'will-throw-FAILURE.xml'));
+    expect(err.failureForensics.uiDumpPath).toBe(
+      path.join(tmpDir, 'will-throw', 'will-throw-FAILURE.xml'),
+    );
     expect(fs.existsSync(err.failureForensics.uiDumpPath)).toBe(true);
     expect(err.failureForensics.elements?.[0]?.id).toContain('nsv_home_screen');
-    expect(err.failureForensics.screenshotPath).toBe(path.join(tmpDir, 'will-throw-FAILURE.png'));
+    expect(err.failureForensics.screenshotPath).toBe(
+      path.join(tmpDir, 'will-throw', 'will-throw-FAILURE.png'),
+    );
     expect(captureUiDump).toHaveBeenCalledWith('AVD');
   });
 });
@@ -664,45 +675,50 @@ describe('MobileClient.runRecipe (provenance sidecars)', () => {
 
   it('a screenshot left over from a prior dispatch is REMOVED before the next dispatch runs (#756)', async () => {
     // The structural fix for the stale-carryover class: the next
-    // dispatch wipes the screenshot dir at execution start, so a
-    // leftover PNG (and its sidecar) from a prior run cannot sit where
-    // fresh artifacts land. (Pre-#756 this test pinned the weaker
-    // detect-via-dispatch_id-mismatch contract; removal supersedes it.)
+    // dispatch wipes its own output dir at execution start, so a
+    // leftover PNG (and its sidecar) from a prior run of THAT recipe
+    // cannot sit where fresh artifacts land. (Pre-#756 this test pinned
+    // the weaker detect-via-dispatch_id-mismatch contract; removal
+    // supersedes it.) Since #1130 the output dir is the dispatch-scoped
+    // `<root>/<recipeId>/`, so the mock writes into the dir it is HANDED
+    // — exactly what a real backend does.
     const recipePath = path.join(tmpDir, 'r.yaml');
     fs.writeFileSync(recipePath, 'appId: x\n---\n- launchApp: x\n', 'utf8');
-    const shotsDir = path.join(tmpDir, 'shots');
+    const shotsRoot = path.join(tmpDir, 'shots');
+    const runDir = path.join(shotsRoot, 'r');
 
-    const cloudRunRecipe = vi.fn().mockImplementationOnce(async () => {
-      const p = path.join(shotsDir, 'leftover.png');
+    const cloudRunRecipe = vi.fn().mockImplementationOnce(async (_r: string, _e: unknown, dir: string) => {
+      const p = path.join(dir, 'leftover.png');
       fs.writeFileSync(p, Buffer.from([0x89]));
       return {
         status: 'pass', exitCode: 0, stdout: '', stderr: '',
-        screenshotsDir: shotsDir,
+        screenshotsDir: dir,
         screenshots: [{ stepName: 'leftover', path: p, takenAt: '', bytes: 1 }],
       };
     });
     const cloud = { runRecipe: cloudRunRecipe } as any;
     const client = new MobileClient({ avd: {} as any, maestro: {} as any, cloud });
 
-    await client.runRecipe(recipePath, {}, shotsDir);
+    const run1 = await client.runRecipe(recipePath, {}, shotsRoot);
     // Run 1's artifacts are on disk — exactly where run 2's would land.
-    expect(fs.existsSync(path.join(shotsDir, 'leftover.png'))).toBe(true);
-    expect(fs.existsSync(path.join(shotsDir, 'leftover.png.meta.json'))).toBe(true);
+    expect(run1.screenshotsDir).toBe(runDir);
+    expect(fs.existsSync(path.join(runDir, 'leftover.png'))).toBe(true);
+    expect(fs.existsSync(path.join(runDir, 'leftover.png.meta.json'))).toBe(true);
 
     // Run 2: the recipe FAILS at its first step and produces nothing —
     // the bednet-spot-check 20260612-1220 shape. The dir must come out
     // EMPTY of run 1's PNGs: a failed run must not leave prior
     // artifacts masquerading as its output.
-    cloudRunRecipe.mockImplementationOnce(async () => ({
+    cloudRunRecipe.mockImplementationOnce(async (_r: string, _e: unknown, dir: string) => ({
       status: 'fail', exitCode: 1, stdout: '', stderr: 'tile matcher failed',
-      screenshotsDir: shotsDir,
+      screenshotsDir: dir,
       screenshots: [],
     }));
-    const run2 = await client.runRecipe(recipePath, {}, shotsDir);
+    const run2 = await client.runRecipe(recipePath, {}, shotsRoot);
 
     expect(run2.status).toBe('fail');
-    expect(fs.existsSync(path.join(shotsDir, 'leftover.png'))).toBe(false);
-    expect(fs.existsSync(path.join(shotsDir, 'leftover.png.meta.json'))).toBe(false);
+    expect(fs.existsSync(path.join(runDir, 'leftover.png'))).toBe(false);
+    expect(fs.existsSync(path.join(runDir, 'leftover.png.meta.json'))).toBe(false);
   });
 });
 
@@ -722,55 +738,59 @@ describe('MobileClient.runRecipe (screenshot-dir freshness, jjackson/ace#756)', 
     try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch {}
   });
 
-  it('wipes stale artifacts from screenshotDir before the backend runs; fresh artifacts survive', async () => {
+  it('wipes stale artifacts from its own output dir before the backend runs; fresh artifacts survive', async () => {
     const recipePath = path.join(tmpDir, 'journey.yaml');
     fs.writeFileSync(recipePath, 'appId: x\n---\n- launchApp: x\n', 'utf8');
-    const shotsDir = path.join(tmpDir, 'shots');
-    fs.mkdirSync(shotsDir, { recursive: true });
-    // Stale artifacts from "a prior successful execution".
-    fs.writeFileSync(path.join(shotsDir, 'journey-deliver-final.png'), 'STALE');
-    fs.writeFileSync(path.join(shotsDir, 'journey-deliver-final.png.meta.json'), '{}');
-    fs.writeFileSync(path.join(shotsDir, 'old-dump.xml'), '<hierarchy/>');
+    const shotsRoot = path.join(tmpDir, 'shots');
+    // Since #1130 the dispatch's output dir is `<root>/<recipeId>/`.
+    const runDir = path.join(shotsRoot, 'journey');
+    fs.mkdirSync(runDir, { recursive: true });
+    // Stale artifacts from "a prior execution of THIS recipe".
+    fs.writeFileSync(path.join(runDir, 'journey-deliver-final.png'), 'STALE');
+    fs.writeFileSync(path.join(runDir, 'journey-deliver-final.png.meta.json'), '{}');
+    fs.writeFileSync(path.join(runDir, 'old-dump.xml'), '<hierarchy/>');
 
-    const cloudRunRecipe = vi.fn().mockImplementation(async () => {
+    const cloudRunRecipe = vi.fn().mockImplementation(async (_r: string, _e: unknown, dir: string) => {
       // At backend-call time the dir must ALREADY be empty — the wipe
       // happens before the flow runs, not after.
-      expect(fs.readdirSync(shotsDir)).toEqual([]);
-      const fresh = path.join(shotsDir, 'fresh.png');
+      expect(dir).toBe(runDir);
+      expect(fs.readdirSync(dir)).toEqual([]);
+      const fresh = path.join(dir, 'fresh.png');
       fs.writeFileSync(fresh, Buffer.from([0x89]));
       return {
         status: 'pass', exitCode: 0, stdout: '', stderr: '',
-        screenshotsDir: shotsDir,
+        screenshotsDir: dir,
         screenshots: [{ stepName: 'fresh', path: fresh, takenAt: '', bytes: 1 }],
       };
     });
     const cloud = { runRecipe: cloudRunRecipe } as any;
     const client = new MobileClient({ avd: {} as any, maestro: {} as any, cloud });
 
-    const result = await client.runRecipe(recipePath, {}, shotsDir);
+    const result = await client.runRecipe(recipePath, {}, shotsRoot);
 
     expect(result.status).toBe('pass');
     expect(cloudRunRecipe).toHaveBeenCalledTimes(1);
-    const remaining = fs.readdirSync(shotsDir).sort();
+    const remaining = fs.readdirSync(runDir).sort();
     expect(remaining).toEqual(['fresh.png', 'fresh.png.meta.json']);
   });
 
-  it('creates screenshotDir when it does not exist yet', async () => {
+  it('creates the dispatch output dir (under the root) when it does not exist yet', async () => {
     const recipePath = path.join(tmpDir, 'journey.yaml');
     fs.writeFileSync(recipePath, 'appId: x\n---\n- launchApp: x\n', 'utf8');
-    const shotsDir = path.join(tmpDir, 'brand', 'new-shots');
+    const shotsRoot = path.join(tmpDir, 'brand', 'new-shots');
 
-    const cloudRunRecipe = vi.fn().mockImplementation(async () => {
-      expect(fs.existsSync(shotsDir)).toBe(true);
+    const cloudRunRecipe = vi.fn().mockImplementation(async (_r: string, _e: unknown, dir: string) => {
+      expect(dir).toBe(path.join(shotsRoot, 'journey'));
+      expect(fs.existsSync(dir)).toBe(true);
       return {
         status: 'pass', exitCode: 0, stdout: '', stderr: '',
-        screenshotsDir: shotsDir, screenshots: [],
+        screenshotsDir: dir, screenshots: [],
       };
     });
     const cloud = { runRecipe: cloudRunRecipe } as any;
     const client = new MobileClient({ avd: {} as any, maestro: {} as any, cloud });
 
-    await client.runRecipe(recipePath, {}, shotsDir);
+    await client.runRecipe(recipePath, {}, shotsRoot);
     expect(cloudRunRecipe).toHaveBeenCalledTimes(1);
   });
 
@@ -789,17 +809,142 @@ describe('MobileClient.runRecipe (screenshot-dir freshness, jjackson/ace#756)', 
       '',
     ].join('\n');
     fs.writeFileSync(recipePath, header + 'appId: x\n---\n- launchApp: x\n', 'utf8');
-    const shotsDir = path.join(tmpDir, 'shots');
-    fs.mkdirSync(shotsDir, { recursive: true });
-    fs.writeFileSync(path.join(shotsDir, 'prior.png'), 'PRIOR');
+    const shotsRoot = path.join(tmpDir, 'shots');
+    // Prior artifacts of the SAME recipe — i.e. inside the very dir this
+    // dispatch would wipe if it got past the gate (#1130 namespace).
+    const runDir = path.join(shotsRoot, 'stale');
+    fs.mkdirSync(runDir, { recursive: true });
+    fs.writeFileSync(path.join(runDir, 'prior.png'), 'PRIOR');
 
     const cloud = { runRecipe: vi.fn() } as any;
     const client = new MobileClient({ avd: {} as any, maestro: {} as any, cloud });
 
-    await expect(client.runRecipe(recipePath, {}, shotsDir)).rejects.toMatchObject({
+    await expect(client.runRecipe(recipePath, {}, shotsRoot)).rejects.toMatchObject({
       code: 'RECIPE_STALE',
     });
-    expect(fs.existsSync(path.join(shotsDir, 'prior.png'))).toBe(true);
+    expect(fs.existsSync(path.join(runDir, 'prior.png'))).toBe(true);
+  });
+});
+
+// dimagi-internal/ace#1130 — the class-level preventer for
+// "one screenshotDir across two journeys destroys the first one's
+// evidence". Phase 6 runs the Learn leg, then the Deliver leg, and the
+// Deliver dispatch's legitimate start-of-run wipe (#756) used to land on
+// the Learn leg's finished, PASSING screenshots + video. That loss is
+// unrecoverable: Learn completion is one-way per (test user, opportunity)
+// (#568/#570), so re-capture costs a whole fresh `/ace:run`.
+//
+// The fix must hold BOTH ways, which is why both directions are pinned
+// here: journey A's captures survive journey B's dispatch, AND a
+// dispatch still clears its OWN prior output (otherwise #756's
+// stale-carryover class re-opens, which is what widening #1034's
+// preserve-list would have done).
+describe('MobileClient.runRecipe (dispatch-scoped output, dimagi-internal/ace#1130)', () => {
+  let savedBackend: string | undefined;
+  let tmpDir: string;
+  beforeEach(() => {
+    savedBackend = process.env.ACE_MOBILE_BACKEND;
+    process.env.ACE_MOBILE_BACKEND = 'cloud';
+    clearSessionBackend();
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'dispatch-scope-'));
+  });
+  afterEach(() => {
+    if (savedBackend === undefined) delete process.env.ACE_MOBILE_BACKEND;
+    else process.env.ACE_MOBILE_BACKEND = savedBackend;
+    clearSessionBackend();
+    try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch {}
+  });
+
+  /** A backend that writes one PNG + one mp4 into whatever dir it's handed. */
+  const capturingBackend = () =>
+    vi.fn().mockImplementation(async (recipe: string, _e: unknown, dir: string) => {
+      const base = path.basename(recipe).replace(/\.ya?ml$/, '');
+      const png = path.join(dir, `${base}-final.png`);
+      fs.writeFileSync(png, Buffer.from([0x89]));
+      fs.writeFileSync(path.join(dir, `${base}.mp4`), 'VIDEO');
+      return {
+        status: 'pass', exitCode: 0, stdout: '', stderr: '',
+        screenshotsDir: dir,
+        screenshots: [{ stepName: `${base}-final`, path: png, takenAt: '', bytes: 1 }],
+      };
+    });
+
+  it("journey A's completed captures SURVIVE a later dispatch for journey B sharing one root", async () => {
+    const learn = path.join(tmpDir, 'journey-learn.yaml');
+    const deliver = path.join(tmpDir, 'journey-deliver.yaml');
+    fs.writeFileSync(learn, 'appId: x\n---\n- launchApp: x\n', 'utf8');
+    fs.writeFileSync(deliver, 'appId: x\n---\n- launchApp: x\n', 'utf8');
+    // The bug shape: ONE root handed to both legs.
+    const shotsRoot = path.join(tmpDir, 'shots');
+
+    const cloud = { runRecipe: capturingBackend() } as any;
+    const client = new MobileClient({ avd: {} as any, maestro: {} as any, cloud });
+
+    const learnRun = await client.runRecipe(learn, {}, shotsRoot);
+    expect(learnRun.status).toBe('pass');
+    const learnPng = learnRun.screenshots[0].path;
+    const learnMp4 = path.join(learnRun.screenshotsDir, 'journey-learn.mp4');
+    expect(fs.existsSync(learnPng)).toBe(true);
+    expect(fs.existsSync(learnMp4)).toBe(true);
+
+    // Deliver leg, same root. Pre-#1130 this wiped the Learn leg's
+    // screenshot set and video — the 20260731-1353 `journey_learn:
+    // {count: 1, status: lost-not-recapturable}` outcome.
+    const deliverRun = await client.runRecipe(deliver, {}, shotsRoot);
+    expect(deliverRun.status).toBe('pass');
+
+    expect(fs.existsSync(learnPng)).toBe(true);
+    expect(fs.existsSync(`${learnPng}.meta.json`)).toBe(true);
+    expect(fs.existsSync(learnMp4)).toBe(true);
+    // ...and the two legs did not share a directory in the first place.
+    expect(deliverRun.screenshotsDir).not.toBe(learnRun.screenshotsDir);
+    expect(learnRun.screenshotsDir).toBe(path.join(shotsRoot, 'journey-learn'));
+    expect(deliverRun.screenshotsDir).toBe(path.join(shotsRoot, 'journey-deliver'));
+  });
+
+  it("a dispatch still clears its OWN prior ordinary output, keeping #756's guarantee", async () => {
+    const deliver = path.join(tmpDir, 'journey-deliver.yaml');
+    fs.writeFileSync(deliver, 'appId: x\n---\n- launchApp: x\n', 'utf8');
+    const shotsRoot = path.join(tmpDir, 'shots');
+
+    const cloud = { runRecipe: capturingBackend() } as any;
+    const client = new MobileClient({ avd: {} as any, maestro: {} as any, cloud });
+
+    const first = await client.runRecipe(deliver, {}, shotsRoot);
+    const stalePng = first.screenshots[0].path;
+    const staleMp4 = path.join(first.screenshotsDir, 'journey-deliver.mp4');
+    // #1034 artifacts written into the dispatch dir between attempts.
+    fs.writeFileSync(path.join(first.screenshotsDir, '00-postlearn-landing.xml'), '<hierarchy/>');
+    fs.writeFileSync(path.join(first.screenshotsDir, 'journey-deliver-FAILURE.png'), 'FORENSIC');
+
+    // Attempt 2 of the SAME recipe: produces nothing (fails at step 1).
+    (cloud.runRecipe as any).mockImplementationOnce(async (_r: string, _e: unknown, dir: string) => ({
+      status: 'fail', exitCode: 1, stdout: '', stderr: 'tile matcher failed',
+      screenshotsDir: dir, screenshots: [],
+    }));
+    const second = await client.runRecipe(deliver, {}, shotsRoot);
+
+    expect(second.status).toBe('fail');
+    expect(second.screenshotsDir).toBe(first.screenshotsDir);
+    // Ordinary captures from attempt 1 are gone — no stale PNG/mp4 may
+    // masquerade as this failed attempt's output (#756).
+    expect(fs.existsSync(stalePng)).toBe(false);
+    expect(fs.existsSync(`${stalePng}.meta.json`)).toBe(false);
+    expect(fs.existsSync(staleMp4)).toBe(false);
+    // ...while #1034's preserved classes still survive the wipe.
+    expect(fs.existsSync(path.join(first.screenshotsDir, '00-postlearn-landing.xml'))).toBe(true);
+    expect(fs.existsSync(path.join(first.screenshotsDir, 'journey-deliver-FAILURE.png'))).toBe(true);
+  });
+
+  it('a shallow/protected root is still refused — namespacing cannot smuggle one past the guard (#1111 hygiene)', async () => {
+    const recipePath = path.join(tmpDir, 'journey-learn.yaml');
+    fs.writeFileSync(recipePath, 'appId: x\n---\n- launchApp: x\n', 'utf8');
+    const cloudRunRecipe = vi.fn();
+    const cloud = { runRecipe: cloudRunRecipe } as any;
+    const client = new MobileClient({ avd: {} as any, maestro: {} as any, cloud });
+
+    await expect(client.runRecipe(recipePath, {}, '/tmp')).rejects.toThrow(/refusing to wipe/);
+    expect(cloudRunRecipe).not.toHaveBeenCalled();
   });
 });
 
