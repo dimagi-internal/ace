@@ -109,7 +109,52 @@ describe('MobileClient.runRecipe recording', () => {
     expect(rec.events.filter((e) => e.startsWith('stop:')).length).toBeGreaterThanOrEqual(1);
   });
 
-  it('a recorder failure never changes the recipe verdict', async () => {
+  // Frozen thrown error: recording SUCCEEDS (start + stop both complete, so
+  // `videos.length > 0`), which means `runRecipe`'s catch block actually
+  // attempts `(e as {...}).videos = videos` on the caught error. A frozen
+  // object rejects new-property assignment in strict mode (ESM is always
+  // strict), so this is the direct regression test for "mutating the caught
+  // error must never replace the original error" — without the try/catch
+  // around that assignment, this test fails with the TypeError from the
+  // failed assignment instead of the original 'driver died (frozen)' error.
+  it('propagates the ORIGINAL error unchanged even when attaching videos to it would throw', async () => {
+    const rec = fakeRecorder();
+    const dir = tmpShots();
+    const recipePath = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'rp-')), 'journey-learn.yaml');
+    fs.writeFileSync(recipePath, 'appId: org.commcare.dalvik\n---\n- launchApp\n');
+
+    const frozenErr = Object.freeze(new Error('driver died (frozen)'));
+    const maestro = {
+      runRecipe: vi.fn(async () => { throw frozenErr; }),
+    };
+    const client = new MobileClient({
+      maestro: maestro as never,
+      avd: fakeAvd() as never,
+      cloud: null as never, bootstrapConfig: null, recorder: rec.hooks as never,
+    });
+
+    const caught: unknown = await client.runRecipe(recipePath, {}, dir, 'ace-avd').then(
+      () => { throw new Error('expected runRecipe to reject'); },
+      (e) => e,
+    );
+    // Same reference, completely unmodified — proves the failed `videos`
+    // assignment was swallowed rather than replacing/mutating the error.
+    expect(caught).toBe(frozenErr);
+    expect((caught as Error).message).toBe('driver died (frozen)');
+    expect(Object.isFrozen(caught)).toBe(true);
+    // Recording itself did succeed up to the point of the throw (stop ran
+    // in the `finally`) — confirms this test actually reaches the
+    // `videos.length > 0` branch rather than vacuously passing.
+    expect(rec.events.filter((e) => e.startsWith('stop:')).length).toBeGreaterThanOrEqual(1);
+  });
+
+  // `start` throws SYNCHRONOUSLY here, so `handle` is never assigned inside
+  // `runOnce` and the `finally` block's `if (handle)` guard skips calling
+  // `stop` entirely — `exploding.stop` is wired to throw too but is never
+  // actually reached by this scenario. This test proves only the START-side
+  // catch. The STOP-side catch (start succeeds, stop throws) is proven
+  // independently by the next test.
+  it('a recorder failure at start never changes the recipe verdict', async () => {
     const dir = tmpShots();
     const recipePath = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'rp-')), 'journey-learn.yaml');
     fs.writeFileSync(recipePath, 'appId: org.commcare.dalvik\n---\n- launchApp\n');
@@ -131,6 +176,46 @@ describe('MobileClient.runRecipe recording', () => {
     });
 
     const result = await client.runRecipe(recipePath, {}, dir, 'ace-avd');
+    expect(result.status).toBe('pass');
+    expect(result.videos ?? []).toEqual([]);
+  });
+
+  // The independent STOP-side proof: `start` SUCCEEDS (returns a real
+  // handle, so the `finally` block's `if (handle)` guard is true and
+  // `stop` actually gets called), then `stop` throws. Exercises the
+  // `this.recorder.stop(...)` try/catch directly — the branch the
+  // start-throw test above structurally cannot reach.
+  it('a recorder failure at stop (start succeeds) never changes the recipe verdict', async () => {
+    const dir = tmpShots();
+    const recipePath = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'rp-')), 'journey-learn.yaml');
+    fs.writeFileSync(recipePath, 'appId: org.commcare.dalvik\n---\n- launchApp\n');
+
+    const maestro = {
+      runRecipe: vi.fn(async () => ({
+        status: 'pass' as const, exitCode: 0, stdout: '', stderr: '',
+        screenshotsDir: dir, screenshots: [],
+      })),
+    };
+    const start = vi.fn((args: { recipeId: string; attempt: number; outDir: string }) => ({
+      serial: 'emulator-5554',
+      recipeId: args.recipeId,
+      dispatchId: 'abc',
+      attempt: args.attempt,
+      devicePath: `/sdcard/ace-rec-abc-${args.attempt}.mp4`,
+      outPath: path.join(args.outDir, `${args.recipeId}.mp4`),
+      child: { kill: () => {} },
+    }));
+    const stop = vi.fn(async () => { throw new Error('pull failed'); });
+    const client = new MobileClient({
+      maestro: maestro as never,
+      avd: fakeAvd() as never,
+      cloud: null as never, bootstrapConfig: null, recorder: { start, stop } as never,
+    });
+
+    const result = await client.runRecipe(recipePath, {}, dir, 'ace-avd');
+    // Prove the stop-throw branch was actually reached, not skipped.
+    expect(start).toHaveBeenCalledTimes(1);
+    expect(stop).toHaveBeenCalledTimes(1);
     expect(result.status).toBe('pass');
     expect(result.videos ?? []).toEqual([]);
   });

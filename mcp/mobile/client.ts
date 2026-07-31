@@ -1364,10 +1364,17 @@ export class MobileClient {
         );
       }
       // Attach whatever we recorded before the throw — same pattern as
-      // `failureForensics`. The pre-crash footage is the point.
-      if (videos.length) {
-        (e as { videos?: VideoArtifact[] }).videos = videos;
-        for (const v of videos) spoolVideo(v);
+      // `failureForensics`. The pre-crash footage is the point. Guarded:
+      // mutating the caught error (or spooling) must never itself throw and
+      // replace the ORIGINAL error — same invariant as every other
+      // recorder call site in this method.
+      try {
+        if (videos.length) {
+          (e as { videos?: VideoArtifact[] }).videos = videos;
+          for (const v of videos) spoolVideo(v);
+        }
+      } catch (ve) {
+        logInfo(`runRecipe: failed to attach/spool videos on thrown failure for ${recipeId}: ${String(ve)}`);
       }
       throw e;
     }
