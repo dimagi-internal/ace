@@ -509,7 +509,10 @@ its `notVisible: home-jobs-list` guard opens the nav drawer → taps
 target tile's CTA; on Path B the guard no-ops and it goes straight to the CTA.
 So just run the Deliver leg normally — do NOT special-case Path A or divert to
 a calibration probe. The dump above is still captured unconditionally as #618
-ground truth (and feeds atlas drift detection).
+ground truth (and feeds atlas drift detection). The start-of-run screenshot-dir
+wipe (#756) is **selective** ([#1034](https://github.com/dimagi-internal/ace/issues/1034)):
+`00-*` and `*-FAILURE.*` files survive Deliver-leg retries, so this dump and
+prior-attempt forensics are NOT destroyed when the Deliver recipe re-runs.
 
 **NEVER cold-boot / re-bootstrap to "recover" a Deliver-leg failure.** A
 Deliver landing on the CommCare home (`nsv_home_screen`) is the **#618 nav
