@@ -371,8 +371,9 @@ settings Nova cannot set at build time, directly on the deployed CCHQ
     + grid (removed once applied; audit trail in the summary)
 
 **Position rationale — AFTER `app-deploy`, BEFORE `app-release`.** The
-settings live on the CCHQ **draft** app document; both atoms
-(`commcare_patch_xform`, `commcare_set_menu_display`) mutate the draft
+settings live on the CCHQ **draft** app document; all three atoms
+(`commcare_patch_xform`, `commcare_set_menu_display`,
+`commcare_set_app_menu_display`) mutate the draft
 only. `app-release` (Step 2.7) is what makes the versioned build and
 releases it, so the draft mutations MUST land before it — otherwise the
 released CCZ carries the pre-flip (gallery-permitting, list-menu) state.
@@ -387,8 +388,9 @@ hint), so the bindings stay valid.
 - **Best-effort on this initial rollout — does NOT halt Phase 3.** This step
   is newly added and not yet live-validated end to end. On ANY failure —
   `run-form-walk` reports `form_unique_id_source: 'suite_xml'` (no HQ API creds
-  → draft uids unavailable, both atoms reject); any `commcare_patch_xform` /
-  `commcare_set_menu_display` error; or a conflicting non-`acquire` appearance
+  → draft uids unavailable, both per-form/per-module atoms reject); any
+  `commcare_patch_xform` / `commcare_set_menu_display` /
+  `commcare_set_app_menu_display` error; or a conflicting non-`acquire` appearance
   / unexpected `<case>` block on a form being patched (Vellum-cache guard) —
   the skill records the failure in its summary, LEAVES the affected
   `residuals[]` entry in place (un-cleared), and the agent CONTINUES to

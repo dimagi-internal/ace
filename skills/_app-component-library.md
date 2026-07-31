@@ -554,18 +554,25 @@ rediscovered from scratch.)*
 - **App:** Learn + Deliver
 - **Trigger:** always (every app).
 - **Enforced by:** applied post-build by the `app-hq-settings` skill
-  (`commcare_set_menu_display`); verified from the released `suite.xml` by
-  `app-release-qa`.
+  (`commcare_set_menu_display` per module + `commcare_set_app_menu_display`
+  per app); verified from the raw app doc (`GET /apps/source/<build_id>/`,
+  session-cookie auth) by `app-release-qa` — NOT from `suite.xml`, which
+  carries no style attribute (ace#1009).
 - **HQ surface:** App Settings > Advanced Settings > set "Modules Menu Display"
   AND "Forms Menu Display" to "Grid", then save & publish.
-- **Status (built 2026-07-17):** APPLIED post-build by `app-hq-settings` (Phase 3
-  Step 2.65) — `commcare_set_menu_display` sets each module's `display_style=grid`
-  on the draft before `app-release`, via `POST apps/edit_module_attr/…/display_style/`.
-  Clears the `phases.commcare-setup.residuals[]` grid entry (dimagi-internal/ace#867).
-  Best-effort on this initial rollout (a failure leaves the residual open and is
-  caught by `app-release-qa`, never halts Phase 3); end-to-end live validation lands
-  on the first post-install runs. The app-root "Modules Menu Display" grid (vs the
-  per-module form-menu grid) is a flagged follow-up pending `suite.xml` confirmation.
+- **Status (completed 2026-07-30, dimagi-internal/ace#1082):** the component is
+  THREE fields, all now applied by `app-hq-settings` (Phase 3 Step 2.65):
+  app-level `use_grid_menus: true` (the root module menu) + app-level
+  `grid_form_menus: 'some'` (without which the suite generator IGNORES
+  per-module styles — HQ `suite_xml/sections/menus.py:86-92`) via the
+  `commcare_set_app_menu_display` atom (`edit_app_attr/<app_id>/all/` +
+  JSON `{"hq": {...}}`), plus per-module `display_style: 'grid'` via
+  `commcare_set_menu_display`. History: 2026-07-17 shipped only the
+  per-module half; spark-facilitator/20260730-1718 observed
+  `use_grid_menus: false` + `grid_form_menus: 'none'` on both live apps —
+  confirmed-separate fields, and the shipped per-module grids were inert.
+  App-level atom live-validated 2026-07-30 against those apps.
+  `app-release-qa` BLOCKER-gates all three fields.
 
 **Brief paragraph (verbatim):**
 

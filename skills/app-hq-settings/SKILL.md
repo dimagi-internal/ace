@@ -19,8 +19,11 @@ cannot set when it builds an app:
    Deliver app carries `appearance="acquire"` so the on-device widget
    hides the CHOOSE IMAGE gallery button (verification-story requirement,
    dimagi-internal/ace#867).
-2. **Grid menu display** — every module (menu) in both the Learn and
-   Deliver apps renders as a grid rather than a list.
+2. **Grid menu display** — both apps render as grids at BOTH levels: the
+   app-root module menu (`use_grid_menus` app flag) and every module's
+   form list (per-module `display_style: 'grid'`, which the suite
+   generator only honors when the app-level `grid_form_menus == 'some'`).
+   Three fields, two atoms — see Step 4 (dimagi-internal/ace#1082).
 
 Both settings live on the **CCHQ draft** app document. This skill mutates
 the draft only; `app-release` (Phase 3 Step 2.7, which runs immediately
@@ -33,7 +36,7 @@ different surface**, because grid is not observable in the CCZ at all
 | Setting | Backstop surface | Halt class |
 |---|---|---|
 | Camera-only (`appearance="acquire"`) | released CCZ form XML | `camera-only-appearance-missing` |
-| Grid menu display | `GET /a/<domain>/apps/source/<build_id>/` → `modules[].display_style` | `grid-menu-display-missing` |
+| Grid menu display (all three fields) | `GET /a/<domain>/apps/source/<build_id>/` → `use_grid_menus` + `grid_form_menus` + `modules[].display_style` | `grid-menu-display-missing` |
 
 The grid row is worth stating explicitly because the intuitive surfaces
 both **lie**: `suite.xml` emits a bare `<menu id="mN">` with no style
@@ -79,7 +82,7 @@ Flags:
   targets Deliver only regardless; grid targets whatever `--app` selects.)
 - `--dry-run` — compute what WOULD be patched/gridded and write a dry-run
   summary; make NO `get_form_source` / `patch_xform` / `set_menu_display`
-  mutations. See § Dry-Run Behavior.
+  / `set_app_menu_display` mutations. See § Dry-Run Behavior.
 
 ## Products
 
@@ -95,8 +98,10 @@ Flags:
 - The CCHQ user backing `ACE_HQ_USERNAME` needs a role with `edit_apps`
   on the target project space (same requirement as `app-release` and
   `app-multimedia-coverage`; standard `Admin` includes it). The
-  `commcare_patch_xform` and `commcare_set_menu_display` atoms both POST
-  through the session-cookie + `X-CSRFToken` path.
+  `commcare_patch_xform`, `commcare_set_menu_display`, and
+  `commcare_set_app_menu_display` atoms all POST through the
+  session-cookie + `X-CSRFToken` path (as does Step 4c's
+  `GET /apps/source/` read-back, which 401s on ApiKey auth).
 - `ACE_HQ_USERNAME` + `ACE_HQ_API_KEY` must be set so `run-form-walk`
   can reach the draft-app API and overlay draft uids. Without them the
   walk falls back to suite.xml uids (`form_unique_id_source: 'suite_xml'`)
@@ -212,10 +217,21 @@ For each Deliver form that the walk reports with ≥1 `kind: image` field:
    re-fetches and retries. On any other patch failure, **halt loud** with
    the form path + the error (see § Failure modes).
 
-### Step 4: Grid menu display (both Learn + Deliver, per module)
+### Step 4: Grid menu display (both Learn + Deliver — BOTH halves)
 
-For every module in scope (dedupe on `module_unique_id` — the walk emits
-one row per form, so multiple forms share a module uid):
+Grid display is three fields across two levels, and every one of them is
+load-bearing (dimagi-internal/ace#1082; HQ contract:
+`corehq/apps/app_manager/suite_xml/sections/menus.py:86-92`):
+
+- `use_grid_menus` (app-level bool) — the app-ROOT menu of modules.
+- `grid_form_menus` (app-level, `none|all|some`) — must be `'some'` for
+  per-module `display_style` to have ANY effect in the generated suite;
+  at the HQ default `'none'` the per-module writes are silently inert.
+- `modules[].display_style` (per module) — each module's form list.
+
+**4a. Per-module half.** For every module in scope (dedupe on
+`module_unique_id` — the walk emits one row per form, so multiple forms
+share a module uid):
 
 ```
 commcare_set_menu_display({ domain, app_id, module_unique_id, display_style: 'grid' })
@@ -226,18 +242,38 @@ Idempotent: re-setting a module that is already grid is a harmless no-op
 POST. A `200` (optionally with an `app_version` bump) confirms the edit;
 on non-200 the atom throws — **halt loud** with the module uid + error.
 
-**App-root "Modules Menu Display" caveat (flagged in the atom).**
-`commcare_set_menu_display` sets ONE module's display style. Whether the
-app-ROOT top-level menu (the grid-vs-list of the list of modules) needs a
-SEPARATE app-level flag (e.g. `use_grid_menus` on the app doc via a
-different `edit_app_attr`-style endpoint) is UNVERIFIED and deliberately
-not implemented. **Do NOT invent an endpoint.** After this skill applies
-per-module grid and `app-release` ships the build, `app-release-qa` /
-suite.xml is the check that confirms whether the root menu also gridded.
-If the root menu proves to still be a list and the PDD/journeys require a
-root grid, record it in the summary as an explicit `follow-up:
-app-root-menu-grid-unverified` line (NOT a resolved residual) so a human
-can probe + implement the app-level flag separately.
+**4b. App-level half.** Once per app:
+
+```
+commcare_set_app_menu_display({ domain, app_id })
+```
+
+Defaults (`use_grid_menus: true`, `grid_form_menus: 'some'`) are the
+component's required values — pass no overrides. Idempotent for the same
+reason as 4a. On non-200 the atom throws — **halt loud** with the app id +
+error. (Under the hood this POSTs
+`{"hq": {"use_grid_menus": true, "grid_form_menus": "some"}}` to
+`edit_app_attr/<app_id>/all/` — the only route HQ exposes for these
+flags; they are not in the per-attr allowlist.)
+
+**4c. Verify BOTH halves from `/apps/source/`.** The POST status is not
+proof (per "prove every write against a fresh authoritative read"). For
+each app, GET the raw draft doc:
+
+```
+GET /a/<domain>/apps/source/<app_id>/
+```
+
+**Session-cookie auth required** — this endpoint 401s on
+`Authorization: ApiKey` (ace#1082); use the `~/.ace/connect-session.json`
+cookie jar like the atoms do. Assert all three: `use_grid_menus === true`,
+`grid_form_menus === 'some'`, and every `modules[].display_style ===
+'grid'`. Any miss → **halt loud** naming the app, the field, and the
+observed value; do NOT resolve the grid residual. (Live-validated
+2026-07-30 on connect-ace-prod Learn `7a512291fb5545a3812ab429e306dbea` +
+Deliver `fc14076ff22d4b199451ea2cba4cd48f`: both read
+`use_grid_menus: false, grid_form_menus: "none"` before and
+`true / "some"` after, with all module `display_style` values untouched.)
 
 ### Step 5: Write summary + resolve residuals
 
@@ -249,7 +285,8 @@ hq_domain: <domain>
 learn_app_id: <hq-app-id>
 deliver_app_id: <hq-app-id>
 camera_only: applied | already-acquire | not-required-by-pdd
-grid_menu: applied
+grid_menu: applied                # per-module display_style (Step 4a)
+app_menu_flags: applied           # use_grid_menus + grid_form_menus (Step 4b, verified 4c)
 learn_forms_patched: <N>          # always 0 (Learn has no image uploads)
 deliver_forms_patched: <N>
 learn_modules_gridded: <N>
@@ -257,7 +294,7 @@ deliver_modules_gridded: <N>
 residuals_resolved:
   - camera-only-appearance-acquire
   - grid-menu-display
-follow_ups: []                    # e.g. [app-root-menu-grid-unverified]
+follow_ups: []
 status: clean | partial | blocked
 ran_at: <ISO-8601>
 dry_run: false
@@ -315,7 +352,7 @@ the camera-only residual if one exists, annotating
 
 `--dry-run` executes Steps 1–2 (read ids, run the walk) and then
 **computes** what Steps 3–4 WOULD do, making **no** `get_form_source`,
-`patch_xform`, or `set_menu_display` calls:
+`patch_xform`, `set_menu_display`, or `set_app_menu_display` calls:
 
 - Enumerate the Deliver forms with `kind: image` fields and list the
   image `<upload>` refs it would ensure carry `acquire` (read from the
@@ -344,7 +381,8 @@ the camera-only residual if one exists, annotating
 | `XformConflictError` on `patch_xform` | Live form sha1 disagrees with the Step-1 token (concurrent edit) | Halt the form, surface the live sha1; operator re-fetches + retries. |
 | `commcare_patch_xform` non-conflict failure | CCHQ rejected the patch | Halt loud, form path + response slice, `status: blocked`. |
 | `commcare_set_menu_display` non-200 | CCHQ rejected the display-style edit | Halt loud, module uid + error, `status: blocked`. |
-| App-root menu still a list after release | `set_menu_display` covers modules, not the app-root flag (unresolved caveat) | Record `follow-up: app-root-menu-grid-unverified` in the summary; do NOT invent an endpoint. `app-release-qa`/suite.xml is the check. |
+| `commcare_set_app_menu_display` non-200 | CCHQ rejected the app-attr edit | Halt loud, app id + error, `status: blocked`. |
+| Step 4c read-back disagrees with a 200 POST | Write didn't take (or hit a superseded draft) | Halt loud naming app + field + observed value; leave the grid residual open. |
 
 ## MCP tools used
 
@@ -362,7 +400,12 @@ the camera-only residual if one exists, annotating
   - `commcare_set_menu_display({domain, app_id, module_unique_id,
     display_style?}) → {status, app_version?}` — set a module's menu to
     grid (`display_style` defaults to `'grid'`). Draft-only; app-release
-    ships it. App-root caveat above.
+    ships it. Only takes suite effect once `grid_form_menus == 'some'`
+    (the atom below sets that).
+  - `commcare_set_app_menu_display({domain, app_id, use_grid_menus?,
+    grid_form_menus?}) → {status, use_grid_menus, grid_form_menus,
+    app_version?}` — set the app-level flags (defaults `true` / `'some'`
+    are the component values). Draft-only; app-release ships it.
 - **CLI wrappers (Bash):**
   - `scripts/run-form-walk.ts <domain> <app_id> [--out <path>]` —
     read-only draft/CCZ walk. Emits per-form `form_unique_id` +
@@ -376,3 +419,4 @@ the camera-only residual if one exists, annotating
 | Date | Change | Author |
 |------|--------|--------|
 | 2026-07-17 | Initial version. Post-build/post-deploy apply-step for the two HQ-layer standing-instruction settings Nova can't set: camera-only `appearance="acquire"` on Deliver image uploads (#867) and grid menu display per module (both apps). Runs between `app-deploy` and `app-release`; mutates the draft only (app-release ships it, app-release-qa backstops it). Resolves the camera-only + grid `phases.commcare-setup.residuals[]` entries. Backed by the new `commcare_get_form_source` + `commcare_set_menu_display` atoms and a `run-form-walk` extension that emits draft `module_unique_id` + `kind: image`. Halts on `suite_xml` uid source (#108). App-root menu-display grid remains an unimplemented, deliberately-not-invented caveat surfaced as a follow-up. | ACE team |
+| 2026-07-30 | **Grid Step 4 now sets BOTH halves (closes the apply side of dimagi-internal/ace#1082).** spark-facilitator/20260730-1718 proved the app-root flag was never set (`use_grid_menus: false` on both apps while all 8 modules read `display_style: grid`) — and HQ source proved worse: per-module `display_style` is INERT in the suite until app-level `grid_form_menus == 'some'` (`suite_xml/sections/menus.py:86-92`), so the "applied" per-module grids were doing nothing. New Step 4b calls the new `commcare_set_app_menu_display` atom (`edit_app_attr/<app_id>/all/` + JSON `{"hq": {...}}` — the only route; the flags are not in the per-attr allowlist, `views/apps.py:762,810-811`); new Step 4c verifies all three fields from `GET /apps/source/<app_id>/` (session-cookie auth — ApiKey 401s). Live-validated 2026-07-30 on the spark-facilitator apps. The `app-root-menu-grid-unverified` follow-up class is retired. | ACE team |
