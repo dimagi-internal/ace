@@ -383,25 +383,87 @@ rediscovered from scratch.)*
 - **Decision:** resolves the 2026-05-29 localization decision — author the core
   in English, ship the named-language translation set; do **not** defer
   localization "downstream."
+- **Tool-surface reality (ace#968) — there is NO itext channel.** Nova's MCP
+  surface exposes **no per-language / locale / translations parameter on any
+  tool**; `update_app` offers only `name` and `connect_type`. Four independent
+  architect instances across two opps each searched the deferred tool set for one,
+  found nothing, and each independently reached the same workaround. The component
+  text used to say "via itext", which instructs something **unbuildable** — so
+  architects fell back to stacking languages inline and reported it as a
+  deviation. Until Nova ships a per-language channel, **inline multilingual
+  authoring in a single label is the documented, sanctioned mechanism**, not a
+  workaround to apologize for. The requirement is COMPLETE TRANSLATION COVERAGE;
+  per-language itext is a capability-gated preference that is currently
+  unreachable. **English-only remains a hard fail** — the fallback exists so that
+  coverage is achievable, not so that it is optional.
+- **Known cost, and why the brief caps string length.** The inline form puts
+  N× string length on every label, with languages the reader cannot read stacked
+  around the one they can, and no language selector. On
+  `spark-facilitator/20260730-1718` the PDD carried an explicit low-literacy
+  design constraint (the registration form's education field admits `None`) and
+  required three languages, producing a genuine lose-lose: English-only hard-fails
+  the eval, stacked-inline triples every label for exactly the cohort the PDD
+  singles out. The brief therefore requires SHORT source sentences and permits the
+  two degradations below; where the PDD carries a literacy constraint, record the
+  tension in the build memo rather than silently picking a side.
+- **Two permitted degradations** (both correct, both must NOT be graded as
+  incomplete coverage):
+  1. **Bare proper nouns.** Option labels that are identical across all named
+     languages — district names, facility names, personal names — stay bare. A
+     tri-lingual block of the same proper noun repeated N times is pure noise.
+  2. **Compact slash form in short strings.** Case-list column headers and other
+     strings with no room for N labelled paragraphs use
+     `English / <LANGUAGE-2> / <LANGUAGE-3>` instead of the block form.
 
 **Brief paragraph (verbatim) — Deliver:**
 
-> REQUIRED: Author all form strings (labels, choices, hints,
-> constraint/validation messages) in English as the primary language, AND ship
-> a complete translation set in the PDD's named working language (here:
-> <LANGUAGE>) via the form's itext — every English string must have its
-> <LANGUAGE> counterpart. English-only is a hard-fail at the eval gate when the
-> PDD names a working language. Do NOT defer localization "downstream"; the
-> translation set is part of this build.
+> REQUIRED: Every user-facing form string (labels, choices, hints,
+> constraint/validation messages) must carry its <LANGUAGE> counterpart —
+> complete coverage, no English-only string anywhere. English-only is a hard-fail
+> at the eval gate when the PDD names a working language, and localization is NOT
+> deferrable "downstream"; it is part of this build.
+> **Mechanism — read this before you look for a translations parameter.** Nova
+> exposes NO per-language / locale / itext channel on any tool (`update_app`
+> carries only `name` and `connect_type`). Do not search for one and do not report
+> its absence as a blocker. Author every string INLINE in one label: English
+> first, then each named language in turn, each prefixed with its language name
+> (e.g. `<English text> / <LANGUAGE>: <translated text>`), using one consistent
+> separator across the whole app. Two exceptions, both correct: option labels that
+> are identical across languages (district names, facility names, other proper
+> nouns) stay BARE, and short strings with no room for stacked paragraphs (case-list
+> column headers) use the compact `English / <LANGUAGE>` slash form.
+> Because inline stacking multiplies every label's length, keep the ENGLISH source
+> sentences short and plain — this matters most where the PDD names a low-literacy
+> or low-education cohort. State in the build memo which mechanism you used, which
+> strings took a permitted exception, and — if the PDD carries a literacy
+> constraint — that inline stacking increases reading load, so a human can decide
+> whether to trim scope.
 
 **Brief paragraph (verbatim) — Learn:**
 
-> REQUIRED: Author all module/quiz strings (labels, choices, hints, assessment
-> items) in English as the primary language, AND ship a complete translation
-> set in the PDD's named working language (here: <LANGUAGE>) via itext — every
-> English string must have its <LANGUAGE> counterpart. English-only is a
-> hard-fail at the eval gate when the PDD names a working language; do NOT defer
-> localization "downstream."
+> REQUIRED: Every user-facing module/quiz string (module names, form names,
+> labels, choices, hints, assessment items and their option labels) must carry its
+> <LANGUAGE> counterpart — complete coverage, no English-only string anywhere.
+> English-only is a hard-fail at the eval gate when the PDD names a working
+> language, and localization is NOT deferrable "downstream"; it is part of this
+> build.
+> **Mechanism — read this before you look for a translations parameter.** Nova
+> exposes NO per-language / locale / itext channel on any tool (`update_app`
+> carries only `name` and `connect_type`). Do not search for one and do not report
+> its absence as a blocker. Author every string INLINE in one label: English
+> first, then each named language in turn, each prefixed with its language name
+> (e.g. `<English text> / <LANGUAGE>: <translated text>`), using one consistent
+> separator across the whole app. Two exceptions, both correct: option labels that
+> are identical across languages (district names, facility names, other proper
+> nouns) stay BARE, and short strings with no room for stacked paragraphs use the
+> compact `English / <LANGUAGE>` slash form.
+> Because inline stacking multiplies every label's length, keep the ENGLISH source
+> sentences short and plain — this matters most where the PDD names a low-literacy
+> or low-education cohort, and it matters doubly for assessment stems and option
+> labels, where a tripled option set is read four times per item. State in the
+> build memo which mechanism you used, which strings took a permitted exception,
+> and — if the PDD carries a literacy constraint — that inline stacking increases
+> reading load, so a human can decide whether to trim scope.
 
 ---
 
@@ -731,24 +793,112 @@ verified against the *deployed* CCZ, not just the Nova blueprint.
   criterion already said items must be "anti-guess (plausible distractors)". The
   prose criterion existed and did not bite, which is why the eval side of this
   component is an executed probe rather than another adjective.
+- **Measured trajectory (ace#1014, `spark-facilitator/20260730-1718`, Learn app
+  `38836b2d-0405-4e99-879a-53cd2344eff9`).** Three authoring passes on the same
+  12-item bank, each re-probed blind:
+
+  | Pass | Cold-guessable |
+  |---|---|
+  | As built | 12/12 (1.00) |
+  | Rewrite 1 — typography normalization (matched length, voice, sentence count) | 10/12 (0.833) |
+  | Rewrite 2 — deliberate virtue-inversion | 9/12 and 10/12, two independent blind runs |
+
+  **Two negative results drive the procedure below.** (1) *Typography is not the
+  lever* — q5's four options were exactly uniform at 65/65/65/65 characters and
+  was still guessed cold; of the 10 misses only 2 traced to structural tells and
+  1 to a stem leak, while **7 fell to general professional competence alone**.
+  (2) *Virtue-inversion alone is not the lever either* — q1 and q4 were properly
+  inverted and still fell 2/2, because the option SET gave them away
+  structurally before virtue was ever consulted. Author self-prediction on this
+  dimension is worthless: rewrite 2's author self-predicted 5–7/12 and measured
+  9–10/12, because the author knows which option they intended to be hard, which
+  is exactly the knowledge a cold reader lacks.
+- **Zero margin at the failure point.** `9 * 100 div 12` is **exactly 75.0** and
+  a `result_pass` firing at `>= 75` therefore admits a 9/12 cold guesser on the
+  boundary. The gate only fails a guesser at ≤8/12, so the bank must defeat a
+  careful reader on **five** items to hold — it currently defeats them on one to
+  three. There is no slack to trade away.
+- **Ceiling, not field, measurement.** The blind guessers are LLMs, not field
+  workers: they read dense English fast and are unusually good at eliminating
+  internally-inconsistent options — exactly the skill the structural tells
+  reward. Read 9–10/12 as "trivially defeatable by a careful reader", not as a
+  field prediction.
 
 **Brief paragraph (verbatim):**
 
 > REQUIRED — Assessment items MUST discriminate. An item earns its place only if a
-> worker who has NOT studied the modules would get it wrong. Therefore: (a) EVERY
-> distractor must be plausible to an untrained worker — a real misconception, a
+> worker who has NOT studied the modules would get it wrong. Matching option
+> LENGTH, voice and sentence count does NOT achieve this — a bank normalized to
+> exactly uniform option lengths still measured 10/12 cold-guessable (ace#1014).
+> Author every item through TWO GATES, in order, and reject the item if either
+> fails:
+>
+> **Gate 1 — behavioural plausibility.** Every distractor must be an action a
+> competent, decent worker might ACTUALLY take: a real misconception, a
 > defensible-sounding wrong practice, or a near-miss on a real rule (off-by-one
-> threshold, right action wrong trigger, correct-for-a-different-case); (b) the
-> "one obviously-virtuous option + N absurd options" shape is PROHIBITED — if the
-> correct answer is identifiable purely by picking the most responsible-sounding
-> option, the item tests nothing; (c) each item must be answerable ONLY from
-> program-specific content actually taught in a module — cite the module it tests;
-> (d) prefer items keyed to concrete program specifics (the actual threshold, the
-> actual required evidence, the actual instrument wording) over generic
-> professional-ethics sentiment; (e) test-yourself: for each item, ask "could
-> someone who read none of the modules pick this by elimination?" If yes, rewrite
-> the distractors. Do NOT pad the bank to hit an item count with items that fail
-> this test — a shorter discriminating bank beats a longer decorative one.
+> threshold, right action wrong trigger, correct-for-a-different-case). Nothing
+> may be rejectable on sight. Any option a sensible person dismisses without
+> reasoning (fake a photo, withhold your next report, fudge the figures to
+> reconcile) collapses 4 options to 2 BEFORE any reasoning starts and turns the
+> item into a coinflip. Plausible-to-you-the-author is not plausible-to-a-stranger:
+> the test is whether a stranger would have to think about it.
+>
+> **Gate 2 — no structural giveaway.** Independent of what each option SAYS, the
+> option SET must not point at the key. Four tells, each individually sufficient
+> to lose an item, all observed live in ace#1014:
+> (i) **self-justifying key** — the keyed option carries its own rationale
+> ("…because payment follows a check that has not happened") while the distractors
+> merely assert; readers pick the reasoned option. Either give every option its own
+> rationale clause or give none of them one.
+> (ii) **minimal-claim tell** — three options each posit some extra system
+> behavior and the key claims the least ("…and nothing more"); under uncertainty a
+> guesser takes the minimal claim, reliably. Options must match in CLAIM-STRENGTH,
+> not just in length.
+> (iii) **odd-one-out on a binary** — the set splits 2-accept / 2-refuse and
+> exactly one side carries a clean, stateable rule; that side wins by construction.
+> (iv) **absurdity elimination** — see Gate 1; it is restated here because it is
+> a property of the SET, and it survives "all distractors plausible" being
+> nominally satisfied.
+>
+> **Third, weaker heuristic — virtue-inversion.** Prefer items where the keyed
+> answer is NOT the most responsible-sounding option, so the standard
+> pick-the-decent-instinct meta-heuristic misfires. This helps and is NOT
+> sufficient on its own: items that were properly inverted still fell to Gate 2
+> tells. Never treat it as a substitute for the two gates.
+>
+> **Working template.** The one item that defeated two independent blind runs had
+> exactly three properties, and it is the shape to copy: the key requires a
+> program-specific taxonomy taught in a module and nothing else; the STRONGEST
+> distractor is the maximally-virtuous option (a committee meeting, well run,
+> carefully written, sent same-day); and all four options are actions a competent,
+> decent worker might actually take, so nothing is eliminable on sight.
+>
+> Also: (a) each item must be answerable ONLY from program-specific content
+> actually taught in a module — cite the module it tests; (b) prefer items keyed to
+> concrete program specifics (the actual threshold, the actual required evidence,
+> the actual instrument wording) over generic professional-ethics sentiment;
+> (c) items must be INDEPENDENT — if item N's answer can be derived from item
+> N-1's, the bank's effective item count is lower than its nominal one; (d) apply
+> all of this to the PRE-test bank as well as the post-test — hardening only the
+> post-test makes the PDD's pre/post learning-gain metric OVERSTATE the gain.
+> Do NOT pad the bank to hit an item count with items that fail these gates — a
+> shorter discriminating bank beats a longer decorative one.
+>
+> **PRE-RELEASE SELF-CHECK (run this during the build, before you ship the
+> bank).** For each item, in writing, in the build memo:
+> 1. Cover the answer key. Read only the stem and the options.
+> 2. Ask: *"could someone who read none of the modules pick this by
+>    elimination?"* Name the option that persona would pick and WHY in ≤10 words.
+> 3. Ask the four Gate-2 questions explicitly: is the key self-justifying? does
+>    the key claim the least? is the key the odd one out on a binary split? is any
+>    option rejectable on sight?
+> 4. Only then uncover the key. If your cold pick was the key, or any Gate-2
+>    answer was yes, REWRITE the item — do not argue that it is fine.
+>
+> Record the per-item result and the resulting count as a line in the build memo.
+> Do not self-assess this as "the options are already good" — that assessment has
+> been made and measured wrong three times on the same bank. Your own prediction
+> is not evidence; the cold pick you wrote down before uncovering the key is.
 
 ### instrument-grounded-examples
 
@@ -791,4 +941,5 @@ verified against the *deployed* CCZ, not just the Nova blueprint.
 | 2026-07-15 | **Post-build spike resolved the three HQ-layer components.** (1) `assessment-display-lifecycle` → **WON'T-DO** as a Display Condition (case-less Learn apps have no app-readable state for a `form_filter`); deprecated + removed from the `pdd-to-learn-app` emit-checklist; the behavior is already delivered Connect-side by `assessment-gate`. (2) `live-photo-capture` → verify side is now live on `main` (`app-release-qa` camera-only check, dimagi-internal/ace#867); decided always-on for Deliver (superset of #867's PDD-conditional verify); auto-apply via `commcare_patch_xform` is pending one live probe (no tool fetches the draft XForm yet). (3) `grid-menu-display` → verifiable from `suite.xml`, auto-apply pending a write-mechanism probe (HQ endpoint vs Playwright). Both apply-automations are tracked as `commcare-setup.residuals[]` per #867. | Sarvesh |
 | 2026-07-27 | **Walkability components (first external domain-expert iteration).** Sophie Feintuch reviewed `hh-poverty-targeting/20260722-1341` and found 6 defect classes ACE's own evals passed (ace#979–#984). New components: `observable-before-derived`, `constraint-locality`, `consent-script-floor`, `threshold-coherence-flag` (Deliver); `discriminating-assessment-items`, `instrument-grounded-examples` (Learn). Root cause shared across all six: the build was graded against the PDD and a structural bar, never against **the lived sequence of a real visit or the competence of a real worker**. Two enforcement lessons baked in: (1) `constraint-locality` is checked **mechanically** in `app-release-qa` (bind-level, no LLM) because the class is 100% detectable; (2) `assessment_discrimination` is an **executed blind-guess probe**, not a prose criterion — `instructional_depth` already required "anti-guess (plausible distractors)" and still scored the decorative bank 9.4/10, so the fix is forcing the judge to show per-item work. Every finding verified against the deployed CCZ, not the Nova blueprint. | ACE (Sophie Feintuch review) |
 | 2026-07-17 | **Built the post-build auto-apply (`app-hq-settings`).** New atoms `commcare_get_form_source` + `commcare_set_menu_display`; new Phase-3 skill `app-hq-settings` (Step 2.65, between `app-deploy` and `app-release`) patches `appearance="acquire"` onto Deliver image uploads and sets `display_style=grid` per module on both apps, then clears the matching `residuals[]`. `live-photo-capture` and `grid-menu-display` flip from provisional to **applied** (verified by `app-release-qa`). Fail-soft on this initial rollout (errors leave the residual open + are caught by `app-release-qa`, never halt Phase 3); end-to-end live validation lands on the first post-install runs. | Sarvesh |
+| 2026-07-30 | **`discriminating-assessment-items` gets an authoring PROCEDURE, and `localization-layer` stops instructing an unbuildable mechanism.** (1) **ace#1014** — three measured authoring passes on the same 12-item bank (`spark-facilitator/20260730-1718`) showed the component's adjectives don't bite: 12/12 cold-guessable as built, 10/12 after full typography normalization, 9–10/12 after deliberate virtue-inversion. Typography is not the lever (q5 was exactly uniform at 65/65/65/65 chars and still fell; 7 of 10 misses were general competence alone) and virtue-inversion is not sufficient either (q1/q4 were properly inverted and still fell on structural tells). Rewrote the brief as **two gates** — Gate 1 behavioural plausibility, Gate 2 no structural giveaway (self-justifying key, minimal-claim tell, odd-one-out on a binary, absurdity elimination) — with virtue-inversion demoted to a third, weaker heuristic, plus a **mandatory pre-release self-check** cheap enough to run inside the build brief. Eval side: `assessment_discrimination` gains per-item structural-tell deductions, a **gate-margin hard-gate** (`ratio × 100 >= the PDD's unlock threshold` → fail; a 75% gate has zero margin, `9 * 100 div 12` = exactly 75.0), pre-test coverage, and the blind-probe harness contract — `get_form` returns stems, options AND the `qN_score` calculates atomically, so a self-probe is contaminated by construction and the probe must be run by separate agents on independently permuted neutral labels with picks committed before reveal. (2) **ace#968** — the component said to ship translations "via itext", but Nova exposes **no per-language / locale / itext channel on any tool** (`update_app` carries only `name` and `connect_type`), so it instructed something unbuildable; four architect instances across two opps each independently fell back to inline stacking and reported it as a deviation. Rewrote both brief paragraphs to name **inline multilingual authoring as the sanctioned mechanism**, require COMPLETE COVERAGE (English-only stays a hard fail), permit two degradations (bare proper nouns; compact slash form in short strings), and require short English source sentences plus a build-memo note where the PDD carries a literacy constraint. Eval side: `localization_match` in **both** `pdd-to-{learn,deliver}-app-eval` now grades coverage rather than mechanism — inline coverage takes full credit with an `[INFO]`, incomplete coverage and English-only both hard-fail, and the literacy/reading-load tension surfaces as a `[WARN]` for a human rather than a deduction against the build. | ACE team |
 | 2026-07-28 | **`gps-accuracy-capture` stops requiring an unbuildable gate (ace#1006).** The component demanded "a capture-gate that re-prompts / refuses to accept a fix worse than the minimum." That is not expressible on EITHER enforcement surface: Nova rejects `validate` on `kind: geopoint` (#695/#699), the adjacent-gate workaround is closed by both #723 (FLW UX) and PR #988's constraint-locality parser, and Connect's verification-flags form no longer renders `gps` / `gps_radius_meters` at all (#1013 — posted as unrecognized keys, `ok: true`, never persisted on any run). Rewritten to the honest contract: tolerance in the hint, `gps_accuracy_m` submitted every visit, whole-range advisories, normalized lat/lon — plus a mandatory build-memo line recording that a stated tolerance is ADVISORY. New FORBIDDEN rule: an advisory whose branches cover only a band BELOW the tolerance (the >50 m blind spot that shipped in `hh-poverty-targeting/20260728-0705`) — every advisory must have an above-tolerance branch. Matching edits: `pdd-to-deliver-app-eval § Capture fitness` stops crediting the gate, `idea-to-pdd § Step 4a` stops letting a PDD assert an enforced tolerance. | ACE team |
