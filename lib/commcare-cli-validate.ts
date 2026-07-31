@@ -32,6 +32,7 @@ import { spawn, spawnSync } from 'node:child_process';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
+import { unzipSync, strFromU8 } from 'fflate';
 
 /**
  * Candidate Java paths probed by `resolveJavaPath()` when nothing more
@@ -396,10 +397,30 @@ export interface CommCareCliPlayOptions {
   javaPath?: string;
   /** Default 30000. CCZ load + form-init is ~3-8s; 30s budget covers JVM cold-start. */
   timeoutMs?: number;
+  /**
+   * Case types to seed into the restore. Defaults to every case type the
+   * CCZ's `suite.xml` selects on (see `extractCaseTypesFromSuite`). Pass
+   * `[]` to force the legacy zero-case sandbox. Ignored when `restorePath`
+   * is supplied — a caller-provided restore is used verbatim.
+   */
+  seedCaseTypes?: string[];
 }
 
+/**
+ * `skipped` — play could not reach the form, for a reason that is a property
+ * of the harness rather than of the CCZ. Callers must NOT treat it as a
+ * defect (see `app-release-qa` Step 4.5).
+ */
+export type CommCareCliPlayVerdict = 'pass' | 'fail' | 'skipped';
+
+export type CommCareCliPlaySkipReason = 'empty-case-list';
+
 export interface CommCareCliPlayResult {
-  verdict: CommCareCliValidateVerdict;
+  verdict: CommCareCliPlayVerdict;
+  /** Set iff `verdict === 'skipped'`. */
+  skip_reason?: CommCareCliPlaySkipReason;
+  /** Case types seeded into the restore for this run (echo, for the verdict). */
+  seeded_case_types?: string[];
   exit_code: number;
   /** Form path navigated to (echo of entryPath). */
   entry_path: number[];
@@ -421,23 +442,170 @@ export interface CommCareCliPlayResult {
   timed_out: boolean;
 }
 
-/** Minimal OpenRosa restore — empty sandbox + one demo user. Embedded so
- *  callers don't need to ship a fixture file. */
-export const DEFAULT_PLAY_RESTORE_XML = `<?xml version="1.0" encoding="UTF-8"?>
+/** Fixed identity of the synthetic restore user. Seeded cases are owned by
+ *  this uuid so ownership-scoped case lists actually render them. */
+const PLAY_USER_UUID = 'demo-user-uuid';
+const PLAY_RESTORE_DATE = '2026-05-25T00:00:00.000-00:00';
+
+export interface BuildPlayRestoreOptions {
+  /**
+   * Case types to seed, one open case each. Derived from the CCZ's
+   * `suite.xml` by `commcareCliPlayCcz`; pass explicitly to override.
+   */
+  caseTypes?: string[];
+  /** Override the restore user's uuid (also the seeded cases' owner). */
+  userId?: string;
+}
+
+/**
+ * Build the synthetic OpenRosa restore `play` boots against.
+ *
+ * **Why case seeding exists (dimagi-internal/ace#1088).** The restore used
+ * to be user-only, with zero `<case>` blocks. Every ACE Deliver app's payable
+ * form is a `followup` on a case type, so its entry declares a case datum;
+ * with an empty casedb the entity list renders no rows and the CLI dies in
+ * `EntityListSubscreen.handleInputAndUpdateHost` with an
+ * `ArrayIndexOutOfBoundsException` — **before the form is ever opened**.
+ * `app-release-qa` then reported `cli-form-init-error` and halted Phase 3 on
+ * a clean build, while `initAllTriggerables` (the thing the gate exists to
+ * exercise) had never actually run on an ACE Deliver followup form.
+ *
+ * Verified live against the released `spark-facilitator/20260730-1718`
+ * Deliver CCZ (app `fc14076ff22d4b199451ea2cba4cd48f`, build
+ * `704c99901e104ee29129469de5739750`) with
+ * `commcare-cli-commcare_2.63.0.jar`: with the zero-case restore, module 0
+ * (`followup` on `fcap_community`) dies at the case list; with one seeded
+ * `fcap_community` case it reaches `Form Start: Press Return to proceed`,
+ * which the CLI emits only after form-init completes.
+ *
+ * The seeded case carries the case-2.0 minimum only — `case_type`,
+ * `case_name`, `owner_id`. We deliberately do not invent case *properties*:
+ * a case list whose detail columns reference missing properties renders them
+ * blank, which is harmless, whereas fabricating property values would be
+ * guessing at data the app owns.
+ */
+export function buildPlayRestoreXml(opts: BuildPlayRestoreOptions = {}): string {
+  const userId = opts.userId ?? PLAY_USER_UUID;
+  const caseTypes = opts.caseTypes ?? [];
+  const cases = caseTypes
+    .map(
+      (caseType, i) => `  <case case_id="ace-play-seed-${i}" user_id="${userId}" date_modified="${PLAY_RESTORE_DATE}" xmlns="http://commcarehq.org/case/transaction/v2">
+    <create>
+      <case_type>${caseType}</case_type>
+      <case_name>ACE play seed ${i}</case_name>
+      <owner_id>${userId}</owner_id>
+    </create>
+  </case>
+`,
+    )
+    .join('');
+  return `<?xml version="1.0" encoding="UTF-8"?>
 <OpenRosaResponse xmlns="http://openrosa.org/http/response">
   <message nature="ota_restore_success">Successful</message>
   <Registration xmlns="http://openrosa.org/user/registration">
     <username>demo</username>
     <password>demo</password>
-    <uuid>demo-user-uuid</uuid>
-    <date>2026-05-25T00:00:00.000-00:00</date>
+    <uuid>${userId}</uuid>
+    <date>${PLAY_RESTORE_DATE}</date>
     <user_data>
       <data key="commcare_first_name">Demo</data>
       <data key="commcare_last_name">User</data>
     </user_data>
   </Registration>
-</OpenRosaResponse>
+${cases}</OpenRosaResponse>
 `;
+}
+
+/** Minimal OpenRosa restore — empty sandbox + one demo user. Embedded so
+ *  callers don't need to ship a fixture file. Retained for back-compat;
+ *  `commcareCliPlayCcz` now seeds cases via `buildPlayRestoreXml`. */
+export const DEFAULT_PLAY_RESTORE_XML = buildPlayRestoreXml();
+
+/**
+ * Every distinct case type the app's entries select on, read from
+ * `suite.xml`. Case datums spell the type in an XPath predicate:
+ *
+ *   nodeset="instance('casedb')/casedb/case[@case_type='fcap_community'][@status='open']"
+ *
+ * suite.xml is the authoritative statement of what the app asks the user to
+ * pick, so it — not the form XML, not a hardcoded name — is what the seed is
+ * derived from. Returns `[]` for a registration-only app (its datum is a
+ * `function="uuid()"`, which needs no screen and no case).
+ */
+export function extractCaseTypesFromSuite(suiteXml: string): string[] {
+  if (!suiteXml) return [];
+  const out = new Set<string>();
+  for (const m of suiteXml.matchAll(/@case_type\s*=\s*(?:'([^']*)'|"([^"]*)")/g)) {
+    const t = m[1] ?? m[2];
+    if (t) out.add(t);
+  }
+  return Array.from(out);
+}
+
+/** Read `suite.xml` out of a CCZ. Returns '' when absent/unreadable. */
+export function readCczSuiteXml(cczPath: string): string {
+  try {
+    const files = unzipSync(new Uint8Array(fs.readFileSync(cczPath)));
+    const key = Object.keys(files).find((k) => k.replace(/^\.\//, '') === 'suite.xml');
+    return key ? strFromU8(files[key]) : '';
+  } catch {
+    return '';
+  }
+}
+
+/**
+ * Build the stdin sequence that walks `play` to a form's entry screen.
+ *
+ * The menu walk is *not* simply one input per `entryPath` element. When the
+ * target entry declares a case datum, CommCare inserts screens **between**
+ * the module choice and the form choice:
+ *
+ *   module menu → [case list] → [case detail confirm] → form menu → form
+ *
+ * Both extra screens are declared in suite.xml (`<datum nodeset=...>` for
+ * the list, `detail-confirm=...` for the confirmation), so the sequence is
+ * derived rather than guessed. Confirmed live on the spark-facilitator
+ * Deliver CCZ: module 0 (`m0-f0`, case datum + `detail-confirm`) needs
+ * `0 / 0 / <enter> / 0`; module 1 (`m1-f0`, `function="uuid()"` datum) needs
+ * `1 / 0`. Both then reach `Form Start`.
+ *
+ * Nothing is sent after form entry — `:quit` follows immediately. Form-init
+ * has already run by then, and stray keystrokes get typed as *answers*: a
+ * trailing `0` on a date question raises
+ * `IllegalArgumentException: Invalid cast of data [0] to type Date`, which
+ * would read as a CCZ defect. (Observed live while calibrating this.)
+ */
+export function deriveNavInput(entryPath: number[], suiteXml?: string): string {
+  const steps: string[] = [];
+  const [moduleIdx, ...rest] = entryPath;
+  if (moduleIdx !== undefined) steps.push(String(moduleIdx));
+  const formIdx = rest.length > 0 ? rest[rest.length - 1] : undefined;
+
+  if (suiteXml && moduleIdx !== undefined && formIdx !== undefined) {
+    const commandId = `m${moduleIdx}-f${formIdx}`;
+    const entry = findEntryForCommand(suiteXml, commandId);
+    if (entry) {
+      for (const datum of entry.matchAll(/<datum\b[^>]*>/g)) {
+        const tag = datum[0];
+        // Only a datum backed by a `nodeset` puts an entity list on screen.
+        // `value=` / `function=` datums are computed silently.
+        if (!/\bnodeset\s*=/.test(tag)) continue;
+        steps.push('0'); // pick the first (seeded) row
+        if (/\bdetail-confirm\s*=/.test(tag)) steps.push(''); // Enter to confirm
+      }
+    }
+  }
+
+  for (const idx of rest) steps.push(String(idx));
+  return steps.join('\n') + '\n:quit\n';
+}
+
+function findEntryForCommand(suiteXml: string, commandId: string): string | undefined {
+  for (const m of suiteXml.matchAll(/<entry\b[\s\S]*?<\/entry>/g)) {
+    if (new RegExp(`<command\\s+id="${commandId}"`).test(m[0])) return m[0];
+  }
+  return undefined;
+}
 
 /**
  * Run `commcare-cli.jar play` against a CCZ, navigating to a form, and
@@ -480,19 +648,23 @@ export async function commcareCliPlayCcz(
     throw new CommCareCliInputError('jar_not_found', opts.jarPath);
   }
 
-  // Resolve restore: caller path > built-in temp.
+  // suite.xml drives BOTH the case seed and the menu walk (ace#1088).
+  const suiteXml = readCczSuiteXml(opts.cczPath);
+  const seededCaseTypes = opts.seedCaseTypes ?? extractCaseTypesFromSuite(suiteXml);
+
+  // Resolve restore: caller path > seeded temp.
   let restorePath = opts.restorePath;
   let restoreTempDir: string | undefined;
   if (!restorePath) {
     restoreTempDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'ace-ccz-play-restore-'));
     restorePath = path.join(restoreTempDir, 'restore.xml');
-    await fs.promises.writeFile(restorePath, DEFAULT_PLAY_RESTORE_XML);
+    await fs.promises.writeFile(
+      restorePath,
+      buildPlayRestoreXml({ caseTypes: seededCaseTypes }),
+    );
   }
 
-  // Two-level menu walk = first form. Final `0\n` lands inside form entry;
-  // some forms display label screens that need an additional Enter to
-  // advance — we fire one extra `0\n` for safety. `:quit\n` exits.
-  const navInput = entryPath.map(String).join('\n') + '\n0\n:quit\n';
+  const navInput = deriveNavInput(entryPath, suiteXml);
 
   try {
     return await new Promise<CommCareCliPlayResult>((resolve, reject) => {
@@ -528,8 +700,8 @@ export async function commcareCliPlayCcz(
         settled = true;
         clearTimeout(timer);
         const exitCode = code === null ? -1 : code;
-        resolve(
-          parsePlayOutput({
+        resolve({
+          ...parsePlayOutput({
             exitCode,
             stdout,
             stderr,
@@ -537,7 +709,8 @@ export async function commcareCliPlayCcz(
             timeoutMs,
             entryPath,
           }),
-        );
+          seeded_case_types: seededCaseTypes,
+        });
       });
     });
   } finally {
@@ -569,6 +742,10 @@ export interface ParsePlayOutputInput {
  *     at `ApplicationHost.loopSession`), which fires when stdin closes
  *     mid-menu-prompt → pass. This is an artifact of piping `:quit` after
  *     a single form open; the form-init already completed cleanly.
+ *   - Stdout/stderr shows the empty-casedb entity-list crash → `skipped`
+ *     with `skip_reason: 'empty-case-list'` (ace#1088) — a harness gap, not
+ *     a CCZ defect. Normally unreachable now that the restore seeds cases;
+ *     it still fires when a case-list *filter* excludes the generic seed.
  *   - Otherwise → pass.
  */
 export function parsePlayOutput(input: ParsePlayOutputInput): CommCareCliPlayResult {
@@ -580,11 +757,18 @@ export function parsePlayOutput(input: ParsePlayOutputInput): CommCareCliPlayRes
   const unresolvedXpath = extractUnresolvedXpath(combined);
   const parserMessage = extractPlayParserMessage(combined);
 
-  const realError = playStreamIndicatesRealFailure(combined);
-  const passed = !input.timedOut && !realError;
+  const outcome = classifyPlayStream(combined);
+  const verdict: CommCareCliPlayVerdict = input.timedOut
+    ? 'fail'
+    : outcome === 'ok'
+      ? 'pass'
+      : outcome === 'empty-case-list'
+        ? 'skipped'
+        : 'fail';
 
   return {
-    verdict: passed ? 'pass' : 'fail',
+    verdict,
+    skip_reason: verdict === 'skipped' ? 'empty-case-list' : undefined,
     exit_code: input.exitCode,
     entry_path: input.entryPath,
     failing_binding: failingBinding,
@@ -597,10 +781,27 @@ export function parsePlayOutput(input: ParsePlayOutputInput): CommCareCliPlayRes
   };
 }
 
-/** Distinguish real form-init failures from the benign EOF NPE. */
-function playStreamIndicatesRealFailure(s: string): boolean {
-  if (!s) return false;
-  // Real form-init defects we care about. XPathTypeMismatchException is
+type PlayStreamOutcome = 'ok' | 'form-init-error' | 'empty-case-list';
+
+/**
+ * Classify a play stream. Precedence matters:
+ *
+ *   1. A **known form-init defect class** always wins. This is the thing the
+ *      gate exists to catch, so no later rule may mask it.
+ *   2. The **empty-casedb entity-list crash** (ace#1088) — a harness gap.
+ *   3. The generic "fatal marker + some other exception" catch-all.
+ *
+ * The ace#1088 signature is deliberately NARROW: `EntityListSubscreen` *and*
+ * an index-out-of-bounds. Note what it does not use — `ApplicationHost
+ * .loopSession`. ace#1025 proposes widening the benign-EOF test to match that
+ * frame anywhere in the stream; every crash unwinds through `loopSession`, so
+ * that would silently reclassify real crashes as benign. This fix is
+ * independent of that regex: it keys on the frame that is actually specific
+ * to case-list rendering.
+ */
+function classifyPlayStream(s: string): PlayStreamOutcome {
+  if (!s) return 'ok';
+  // (1) Real form-init defects we care about. XPathTypeMismatchException is
   // the bednet class; XPathException is any other XPath-eval failure;
   // XFormParseException is a structural defect we'd catch in `validate`
   // too but is also visible here; "Calculation Error" / "Logic references"
@@ -610,9 +811,17 @@ function playStreamIndicatesRealFailure(s: string): boolean {
       s,
     )
   ) {
-    return true;
+    return 'form-init-error';
   }
-  // `Unhandled Fatal Error executing CommCare app` followed by ANY other
+  // (2) The case list rendered zero rows and the CLI indexed [0] of it. The
+  // form was never opened, so this cannot be a form-init defect.
+  if (
+    /EntityListSubscreen/.test(s) &&
+    /(?:ArrayIndex)?IndexOutOfBoundsException/.test(s)
+  ) {
+    return 'empty-case-list';
+  }
+  // (3) `Unhandled Fatal Error executing CommCare app` followed by ANY other
   // exception class (not the benign `String.startsWith` NPE). The CLI
   // closes the input stream when stdin EOFs at a menu prompt, and the
   // loopSession reader returns null, throwing NPE on
@@ -624,9 +833,9 @@ function playStreamIndicatesRealFailure(s: string): boolean {
     const benignEof =
       /String\.startsWith\(String\).*because "input" is null/.test(afterFatal) ||
       /ApplicationHost\.loopSession\(ApplicationHost\.java:\d+\)/.test(afterFatal);
-    if (!benignEof) return true;
+    if (!benignEof) return 'form-init-error';
   }
-  return false;
+  return 'ok';
 }
 
 function extractFailingBinding(s: string): string | undefined {

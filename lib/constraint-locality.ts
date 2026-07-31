@@ -31,6 +31,17 @@
 
 import { DOMParser } from '@xmldom/xmldom';
 
+/**
+ * `blocker` — nothing the user can type on the firing screen satisfies the
+ * rule, so they are stuck (the ace#980 class: "recapture the location" on a
+ * screen with no location widget).
+ *
+ * `warn`  — the reference crosses a screen boundary, but the constraint also
+ * references the node it is bound to, so changing the answer in front of the
+ * user clears it. Annoying, not a dead end (ace#1019).
+ */
+export type ConstraintSeverity = 'blocker' | 'warn';
+
 export interface ConstraintViolation {
   /** The question the constraint is bound to (its nodeset). */
   nodeset: string;
@@ -42,6 +53,8 @@ export interface ConstraintViolation {
   foreignRefs: string[];
   /** The constraint's message, when the form carries one. */
   message?: string;
+  /** How badly this traps the user. See `ConstraintSeverity`. */
+  severity: ConstraintSeverity;
 }
 
 export interface ConstraintLocalityReport {
@@ -96,6 +109,111 @@ function parentPath(path: string): string {
   return parts.length <= 1 ? '' : '/' + parts.slice(0, -1).join('/');
 }
 
+/** Body elements that put a question in front of the user. */
+const QUESTION_TAGS = new Set([
+  'input',
+  'select',
+  'select1',
+  'upload',
+  'trigger',
+  'range',
+  'secret',
+  'odkx:intent',
+]);
+
+/**
+ * Map every body question to the id of the SCREEN it renders on.
+ *
+ * CommCare renders one question per screen — **except** inside a group
+ * carrying `appearance="field-list"`, which renders all of its questions on
+ * one scrollable screen. That is the standard idiom for "these belong
+ * together", and it is what `skills/_app-component-library.md
+ * § data-quality-constraints` implicitly assumes when it *mandates*
+ * cross-field rules like `under_5 <= household_size`.
+ *
+ * Modelling screens from bind adjacency alone (which this checker used to do)
+ * makes every such mandated constraint look non-local, so a correctly-authored
+ * app could not clear `app-release-qa` Step 2.8 — dimagi-internal/ace#1019.
+ *
+ * Only questions inside a field-list group get an entry; everything else is
+ * its own screen and is left unmapped.
+ *
+ * A nested `<repeat>` is NOT merged into its parent's screen: a repeat drives
+ * its own screens regardless of the enclosing group's appearance. Nested
+ * plain `<group>`s ARE merged — inside a field-list they render as labelled
+ * sections of the same screen.
+ */
+function buildScreenMap(doc: Document): Map<string, string> {
+  const screens = new Map<string, string>();
+  const body =
+    doc.getElementsByTagName('h:body')[0] ?? doc.getElementsByTagName('body')[0];
+  if (!body) return screens;
+
+  let screenSeq = 0;
+
+  const collect = (el: Element, screenId: string): void => {
+    for (const child of Array.from(el.childNodes)) {
+      if (child.nodeType !== 1) continue;
+      const e = child as Element;
+      const tag = (e.tagName || '').toLowerCase();
+      // A repeat renders its own screens even inside a field-list parent.
+      if (tag === 'repeat') continue;
+      if (QUESTION_TAGS.has(tag)) {
+        const ref = e.getAttribute('ref') ?? e.getAttribute('nodeset');
+        if (ref) screens.set(ref, screenId);
+        continue;
+      }
+      // group / label / anything else: keep descending on the same screen.
+      collect(e, screenId);
+    }
+  };
+
+  const walk = (el: Element): void => {
+    for (const child of Array.from(el.childNodes)) {
+      if (child.nodeType !== 1) continue;
+      const e = child as Element;
+      const tag = (e.tagName || '').toLowerCase();
+      if (tag === 'group' && isFieldList(e)) {
+        collect(e, `screen-${screenSeq++}`);
+        // Descend anyway so repeats nested inside keep their own screens.
+        for (const r of Array.from(e.getElementsByTagName('repeat'))) walk(r);
+        continue;
+      }
+      walk(e);
+    }
+  };
+
+  walk(body as unknown as Element);
+  return screens;
+}
+
+function isFieldList(el: Element): boolean {
+  const appearance = el.getAttribute('appearance') ?? '';
+  return appearance.split(/\s+/).includes('field-list');
+}
+
+/**
+ * True when the constraint expression references the node it is bound to —
+ * as `.`, as its absolute path, or as one of its descendants.
+ *
+ * This is what separates "annoying" from "trapped". `male_leader_attendence`
+ * with `. <= /data/attendance/male_attendance` fires on the number the FLW
+ * just typed and is cleared by lowering it. `gps_onsite_confirm` with
+ * `number(selected-at(/data/gps, 3)) <= 50` never mentions its own node, so
+ * no answer to that question can ever clear it — the user is stuck.
+ *
+ * Structural on purpose: the alternative is scanning `validate_msg` for
+ * phrases like "Lower this number", which is English-only and would silently
+ * mis-grade every localized form. (The real spark-facilitator messages are
+ * trilingual.)
+ */
+function referencesOwnNode(constraint: string, nodeset: string): boolean {
+  // A bare `.` step: not part of a decimal (`0.5`), not part of `..`.
+  if (/(?<![\w.])\.(?![\w.])/.test(constraint)) return true;
+  if (constraint.includes(nodeset)) return true;
+  return false;
+}
+
 /**
  * Analyze every `<bind>` in a CommCare XForm and report constraints that
  * reference a node the user cannot edit from that question's screen.
@@ -120,6 +238,8 @@ export function checkConstraintLocality(xml: string): ConstraintLocalityReport {
   const doc = new DOMParser().parseFromString(xml, 'text/xml');
   const binds = Array.from(doc.getElementsByTagName('bind'));
   const itext = buildItextMap(doc as unknown as Document);
+  // Which questions share a rendered screen (`appearance="field-list"`).
+  const screens = buildScreenMap(doc as unknown as Document);
 
   /** nodeset -> calculate expression, for transparent resolution. */
   const calculates = new Map<string, string>();
@@ -213,6 +333,7 @@ export function checkConstraintLocality(xml: string): ConstraintLocalityReport {
     constraintsChecked++;
 
     const ownRepeat = enclosingRepeat(nodeset);
+    const ownScreen = screens.get(nodeset);
     const foreign = new Set<string>();
 
     for (const ref of resolveRefs(constraint)) {
@@ -220,6 +341,9 @@ export function checkConstraintLocality(xml: string): ConstraintLocalityReport {
       if (ref.startsWith(nodeset + '/')) continue; // own descendant
       if (ownRepeat && ref === ownRepeat) continue; // our own repeat
       if (ownRepeat && ref.startsWith(ownRepeat + '/')) continue; // sibling
+      // Same rendered screen — a `field-list` group. The user scrolls up and
+      // fixes it in place, so this is local (ace#1019).
+      if (ownScreen !== undefined && screens.get(ref) === ownScreen) continue;
       // A cardinality gate sitting directly after the repeat it guards.
       if (repeatNodesets.has(ref) && isAdjacentRepeatGate(nodeset, ref)) continue;
       // A repeat group the user is NOT inside is a different screen; so is
@@ -247,6 +371,7 @@ export function checkConstraintLocality(xml: string): ConstraintLocalityReport {
         constraint,
         foreignRefs: Array.from(foreign),
         message: msg,
+        severity: referencesOwnNode(constraint, nodeset) ? 'warn' : 'blocker',
       });
     }
   }
@@ -261,15 +386,24 @@ export function formatConstraintLocalityReport(
   if (report.violations.length === 0) {
     return `constraint-locality: PASS (${report.constraintsChecked} constraint(s) checked, all local)`;
   }
+  const blockers = report.violations.filter((v) => v.severity === 'blocker');
+  const warnings = report.violations.filter((v) => v.severity === 'warn');
   const lines = report.violations.map(
     (v) =>
-      `  ${v.fieldId}: constraint references ${v.foreignRefs.join(', ')} — ` +
-      `not editable on this screen${v.message ? ` (msg: "${v.message}")` : ''}`,
+      `  [${v.severity.toUpperCase()}] ${v.fieldId}: constraint references ` +
+      `${v.foreignRefs.join(', ')} — ` +
+      (v.severity === 'blocker'
+        ? 'not editable on this screen'
+        : 'on another screen, but satisfiable by changing this answer') +
+      `${v.message ? ` (msg: "${v.message}")` : ''}`,
   );
-  return [
-    `constraint-locality: FAIL (${report.violations.length} of ${report.constraintsChecked} constraint(s) non-local)`,
-    ...lines,
-  ].join('\n');
+  const header =
+    blockers.length > 0
+      ? `constraint-locality: FAIL (${blockers.length} of ${report.constraintsChecked} constraint(s) non-local` +
+        (warnings.length > 0 ? `; ${warnings.length} cross-screen warning(s)` : '') +
+        ')'
+      : `constraint-locality: WARN (${warnings.length} of ${report.constraintsChecked} constraint(s) cross a screen boundary but are fixable in place)`;
+  return [header, ...lines].join('\n');
 }
 
 //
