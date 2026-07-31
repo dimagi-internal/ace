@@ -54,6 +54,15 @@ run's `screenshotDir` (`<recipeId>.mp4`, plus `<recipeId>-attempt<N>.mp4`
 when a driver heal forced a retry) and are copied into a per-session spool
 at `~/.ace/mobile-videos/<ppid>/` for skill-side upload.
 
+Skills reach the spool through `mobile_list_session_videos` /
+`mobile_clear_session_videos`, never by hand-resolving the path — the
+ppid keys the spool and belongs to the MCP process, so a skill that
+globs `mobile-videos/*/` reads (and then deletes) a CONCURRENT session's
+recordings. Note the spool holds EVERY recorded video, including the ones
+`mobile_run_recipe` also returns in `result.videos[]`; an uploading skill
+must de-duplicate on `recipeId` + `attempt` or it uploads each journey
+twice.
+
 **Why on-device and not the emulator console.** `adb emu screenrecord`
 authenticates against `~/.emulator_console_auth_token`, which is
 per-macOS-user. ACE workstations run emulators under more than one account

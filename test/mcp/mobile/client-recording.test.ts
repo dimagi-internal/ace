@@ -356,3 +356,28 @@ describe('MobileClient.runRecipe recording', () => {
   });
 });
 
+describe('MobileClient session-video spool atoms', () => {
+  it('list/clear are scoped to this session and report a real count', () => {
+    const spool = fakeSpool();
+    const client = new MobileClient({
+      avd: fakeAvd() as never, cloud: null as never,
+      bootstrapConfig: null, spool: spool.hooks,
+    });
+
+    expect(client.listSessionVideos()).toEqual({ spoolDir: '/fake-spool', videos: [] });
+
+    spool.hooks.video({
+      path: '/run/journey-learn.mp4', bytes: 5,
+      recipeId: 'journey-learn', dispatchId: 'abc', attempt: 1,
+    });
+    expect(client.listSessionVideos()).toEqual({
+      spoolDir: '/fake-spool',
+      videos: ['/fake-spool/journey-learn.mp4'],
+    });
+
+    // `cleared` must be the count BEFORE the wipe — a skill logs it.
+    expect(client.clearSessionVideos()).toEqual({ spoolDir: '/fake-spool', cleared: 1 });
+    expect(spool.clearCount).toBe(1);
+    expect(client.listSessionVideos().videos).toEqual([]);
+  });
+});

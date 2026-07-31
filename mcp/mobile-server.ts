@@ -1,7 +1,7 @@
 /**
  * ACE Mobile MCP Server
  *
- * Exposes 17 atomic mobile capabilities backed by Maestro + adb +
+ * Exposes 19 atomic mobile capabilities backed by Maestro + adb +
  * Playwright + (when ACE_MOBILE_BACKEND=cloud) ace-web's cloud
  * emulator HTTP API. Routing → backend lives in
  * `mcp/mobile/capability-map.ts`; the registration-coverage test pins
@@ -341,6 +341,41 @@ server.tool(
   },
   async ({ avdName, longitude, latitude, altitude, satellites }) => ({
     content: [{ type: 'text', text: JSON.stringify(await client.setLocation(avdName, longitude, latitude, altitude, satellites), null, 2) }],
+  }),
+);
+
+// ── Session video spool ──────────────────────────────────────────────
+//
+// Every LOCAL `mobile_run_recipe` call records an mp4 and drops a copy
+// in a spool keyed by THIS MCP's ppid (`mcp/mobile/video-spool.ts`).
+// Skills sweep the spool at the end of a phase and upload what they
+// find.
+//
+// These two atoms exist because the spool key is the one thing a skill
+// cannot resolve: the ppid belongs to the MCP process, not the skill.
+// The previous contract had both screenshot-capture SKILL.md files
+// telling a runtime LLM to hand-resolve `~/.ace/mobile-videos/<ppid>/`
+// and `rm -rf` it — which invites globbing `mobile-videos/*/` and
+// deleting a CONCURRENT session's spool, or skipping the sweep because
+// the path couldn't be resolved (leaving per-ppid dirs with no GC).
+
+server.tool(
+  'mobile_list_session_videos',
+  {},
+  async () => ({
+    content: [
+      { type: 'text', text: JSON.stringify(client.listSessionVideos(), null, 2) },
+    ],
+  }),
+);
+
+server.tool(
+  'mobile_clear_session_videos',
+  {},
+  async () => ({
+    content: [
+      { type: 'text', text: JSON.stringify(client.clearSessionVideos(), null, 2) },
+    ],
   }),
 );
 

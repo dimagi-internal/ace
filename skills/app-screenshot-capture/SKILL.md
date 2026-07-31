@@ -689,24 +689,52 @@ then claimed distinct moments over duplicate frames
 
 Since 0.13.x every local `mobile_run_recipe` call records an mp4 of the
 run (on-device `screenrecord`, see
-`playbook/integrations/mobile-integration.md § Recording`). Two sources,
-both uploaded:
+`playbook/integrations/mobile-integration.md § Recording`).
 
-1. **This dispatch's journey videos** — `RecipeRunResult.videos[]` from
-   each Step 5 leg. Upload each to
-   `ACE/<opp>/runs/<run-id>/6-qa-and-training/videos/<recipe-base>.mp4`
-   via `drive_upload_binary` with `mimeType: "video/mp4"` and
-   `shareAnyoneWithLink: true` (so the run-summary page can embed it
-   without an auth round-trip). A recipe that needed a driver heal
-   contributes two entries — `<recipe-base>.mp4` (pre-crash) and
-   `<recipe-base>-attempt2.mp4`; upload both.
-2. **The spool** — `~/.ace/mobile-videos/<ppid>/*.mp4`, which collects
-   videos from recipes whose callers aren't uploading skills (the
-   registration and heal recipes inside `mobile_ensure_avd_running`, the
-   static prerequisite recipes from Step 4). Upload each to
-   `6-qa-and-training/videos/_device/<filename>` (same mimeType; no
-   `shareAnyoneWithLink` needed — these are forensic, not presentational),
-   then delete the spool directory.
+**The client spools EVERY video it records — including the ones it also
+returns in `result.videos[]`.** So the spool and `result.videos[]`
+OVERLAP. Upload each video exactly once, in this order:
+
+**5.7a — This dispatch's journey videos.** Take `RecipeRunResult.videos[]`
+from each Step 5 leg. Upload each to
+`ACE/<opp>/runs/<run-id>/6-qa-and-training/videos/<recipe-base>.mp4` via
+`drive_upload_binary` with `mimeType: "video/mp4"` and
+`shareAnyoneWithLink: true` (so the run-summary page can embed it without
+an auth round-trip). A recipe that needed a driver heal contributes two
+entries — `<recipe-base>.mp4` (pre-crash) and `<recipe-base>-attempt2.mp4`;
+upload both.
+
+While uploading, build a set of the `recipeId` + `attempt` pairs you
+uploaded. You need it for 5.7b.
+
+**5.7b — The REMAINING spool entries only.** Call
+`mobile_list_session_videos` (no arguments — the atom resolves this
+session's spool itself; never hand-resolve `~/.ace/mobile-videos/<ppid>/`,
+and never glob `mobile-videos/*/`, which would read a CONCURRENT
+session's spool). It returns `{ spoolDir, videos: [<absolute path>, …] }`.
+
+Spool filenames are `<epoch-ms>-<recipeId>[-attemptN].mp4`. For each
+returned path:
+
+- Parse `recipeId` (everything after the first `-`, minus any
+  `-attemptN` suffix and the `.mp4`) and `attempt` (`N` from
+  `-attemptN`, else `1`).
+- **SKIP it if that `recipeId` + `attempt` pair is already in the set you
+  built in 5.7a.** It is the same recording; uploading it again doubles
+  the run's video footprint in Drive for zero information.
+- Otherwise upload it to
+  `6-qa-and-training/videos/_device/<filename>` (same mimeType; no
+  `shareAnyoneWithLink` needed — these are forensic, not presentational).
+
+What legitimately survives that filter is exactly what 5.7a can't see:
+the heal and registration recipes that run inside
+`mobile_ensure_avd_running`, and the static prerequisite recipes from
+Step 4 — recipes whose callers are atoms, not uploading skills.
+
+**5.7c — Clear the spool.** Call `mobile_clear_session_videos` (again no
+arguments; it is scoped to this session's ppid by construction and cannot
+touch another session's spool). It returns `{ spoolDir, cleared }` — log
+`cleared`.
 
 `videos[]` absent or the spool empty is **not** a failure: recording is
 best-effort by contract, and `ACE_MOBILE_RECORD=off` disables it

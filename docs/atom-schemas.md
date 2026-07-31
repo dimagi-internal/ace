@@ -1361,7 +1361,7 @@ Add a person to the OCS team so a linked chatbot page actually opens for them (d
 
 ## ace-mobile
 
-Source: `mcp/mobile-server.ts` — 17 atoms
+Source: `mcp/mobile-server.ts` — 19 atoms
 
 ### `mobile_ensure_avd_running`
 
@@ -1463,6 +1463,14 @@ _no parameters_
 | `latitude` | `z.number` | **required** | _—_ |
 | `altitude` | `z.number` | optional | _—_ |
 | `satellites` | `z.number` | optional | _—_ |
+
+### `mobile_list_session_videos`
+
+_no parameters_
+
+### `mobile_clear_session_videos`
+
+_no parameters_
 
 ### `mobile_diagnose`
 

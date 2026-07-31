@@ -1487,6 +1487,39 @@ export class MobileClient {
   }
 
   /**
+   * List the mp4s this SESSION's local recipe runs spooled, plus the spool
+   * directory itself.
+   *
+   * The spool is keyed by the MCP's own ppid (see `video-spool.ts`), and
+   * that key is exactly what a skill cannot obtain — so before this atom
+   * existed, both screenshot-capture skills instructed a runtime LLM to
+   * hand-resolve `~/.ace/mobile-videos/<ppid>/` and `rm -rf` it. The two
+   * failure modes that invites are both bad: glob every child of
+   * `mobile-videos` and you delete a CONCURRENT session's spool; fail to
+   * resolve the path and the sweep is skipped, leaving per-ppid directories
+   * with no GC. The MCP knows its own ppid, so the atom answers the
+   * question the skill cannot.
+   */
+  listSessionVideos(): { spoolDir: string; videos: string[] } {
+    const videos = this.spool.list();
+    return { spoolDir: this.spool.dir(), videos };
+  }
+
+  /**
+   * Clear THIS session's video spool. Returns how many files were removed
+   * so the caller can log a real count rather than assuming.
+   *
+   * Scoped to this session's ppid by construction — it cannot touch a
+   * concurrent session's spool.
+   */
+  clearSessionVideos(): { spoolDir: string; cleared: number } {
+    const dir = this.spool.dir();
+    const cleared = this.spool.list().length;
+    this.spool.clear();
+    return { spoolDir: dir, cleared };
+  }
+
+  /**
    * Best-effort capture of the device state at a recipe FAILURE — a ui-dump
    * (element tree: ids/text/bounds — the highest-signal artifact for selector
    * and nav debugging) plus a screenshot of the screen the recipe died on.
