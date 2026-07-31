@@ -19,7 +19,11 @@
  * configures the queue of responses the stub returns in order.
  */
 import { describe, it, expect, vi } from 'vitest';
-import { preflightLearnAppUser } from '../../../../mcp/connect/backends/commcare-preflight.js';
+import {
+  preflightLearnAppUser,
+  assertAllowedCchqBaseUrl,
+} from '../../../../mcp/connect/backends/commcare-preflight.js';
+import { AtomArgUsageError } from '../../../../lib/atom-payload-resolver.js';
 
 /** Build a stub `fetch` whose responses come from a queue. */
 function fakeFetch(
@@ -287,5 +291,41 @@ describe('preflightLearnAppUser — request shape', () => {
     );
     const calls = fetchSpy.mock.calls as unknown as Array<[string, RequestInit]>;
     expect(String(calls[0][0])).toMatch(/^https:\/\/staging\.commcarehq\.org/);
+  });
+});
+
+describe('assertAllowedCchqBaseUrl — SSRF / exfil guard (security audit 2026-07-31)', () => {
+  it.each([
+    'https://www.commcarehq.org',
+    'https://eu.commcarehq.org',
+    'https://india.commcarehq.org',
+    'https://staging.commcarehq.org',
+    'https://commcarehq.org',
+  ])('allows the CommCare HQ host %s', (url) => {
+    expect(() => assertAllowedCchqBaseUrl(url)).not.toThrow();
+  });
+
+  it.each([
+    ['attacker host', 'https://attacker.tld'],
+    ['SSRF metadata IP', 'http://169.254.169.254/latest/meta-data/'],
+    ['localhost SSRF', 'http://localhost:8080'],
+    ['http downgrade of a real HQ host', 'http://www.commcarehq.org'],
+    ['look-alike suffix trick', 'https://www.commcarehq.org.attacker.tld'],
+    ['embedded-credential/host confusion', 'https://www.commcarehq.org@attacker.tld'],
+    ['non-http scheme', 'file:///etc/passwd'],
+    ['garbage', 'not-a-url'],
+  ])('rejects %s', (_label, url) => {
+    expect(() => assertAllowedCchqBaseUrl(url)).toThrow(AtomArgUsageError);
+  });
+
+  it('preflightLearnAppUser refuses a malicious base_url before any fetch', async () => {
+    const fetchSpy = vi.fn();
+    await expect(
+      preflightLearnAppUser(
+        { ...baseArgs, base_url: 'https://attacker.tld' },
+        fetchSpy as unknown as typeof fetch,
+      ),
+    ).rejects.toBeInstanceOf(AtomArgUsageError);
+    expect(fetchSpy).not.toHaveBeenCalled();
   });
 });

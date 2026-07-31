@@ -40,6 +40,7 @@ import {
   resolvePatchXformXml,
   resolveUploadMultimediaBytes,
   resolveEnvSubstitution,
+  ENV_ALLOW,
 } from '../lib/atom-payload-resolver.js';
 import {
   commcareCliValidateCcz,
@@ -367,8 +368,8 @@ server.tool('connect_create_opportunity',
       // CommCare HQ" validation error.
       const resolved = {
         ...args,
-        learn_app: { ...args.learn_app, api_key: resolveEnvSubstitution(args.learn_app.api_key) },
-        deliver_app: { ...args.deliver_app, api_key: resolveEnvSubstitution(args.deliver_app.api_key) },
+        learn_app: { ...args.learn_app, api_key: resolveEnvSubstitution(args.learn_app.api_key, process.env, ENV_ALLOW.hqApiKey) },
+        deliver_app: { ...args.deliver_app, api_key: resolveEnvSubstitution(args.deliver_app.api_key, process.env, ENV_ALLOW.hqApiKey) },
       };
       return (await client()).createOpportunity(resolved);
     })
@@ -546,7 +547,7 @@ server.tool('connect_send_flw_invite',
     // literal `${ACE_E2E_PHONE}` reached Connect and failed. (jjackson/ace#719)
     const resolved = {
       ...args,
-      phone_numbers: args.phone_numbers.map((p) => resolveEnvSubstitution(p)),
+      phone_numbers: args.phone_numbers.map((p) => resolveEnvSubstitution(p, process.env, ENV_ALLOW.e2ePhone)),
     };
     return (await client()).sendFlwInvite(resolved);
   })
@@ -564,7 +565,7 @@ server.tool('connect_list_flw_invites',
   async (args) => runAtom(async () => {
     const resolved = {
       ...args,
-      ...(args.phone !== undefined ? { phone: resolveEnvSubstitution(args.phone) } : {}),
+      ...(args.phone !== undefined ? { phone: resolveEnvSubstitution(args.phone, process.env, ENV_ALLOW.e2ePhone) } : {}),
     };
     return (await client()).listFlwInvites(resolved);
   })
@@ -1299,8 +1300,8 @@ server.tool('connect_preflight_learn_app_user',
       // Same env-substitution helper, same `.env` rules.
       const resolved = {
         ...args,
-        api_key: resolveEnvSubstitution(args.api_key),
-        hq_username: resolveEnvSubstitution(args.hq_username),
+        api_key: resolveEnvSubstitution(args.api_key, process.env, ENV_ALLOW.hqApiKey),
+        hq_username: resolveEnvSubstitution(args.hq_username, process.env, ENV_ALLOW.hqUsername),
       };
       return preflightLearnAppUser(resolved);
     }),
