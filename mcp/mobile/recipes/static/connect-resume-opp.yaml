@@ -75,23 +75,70 @@ appId: org.commcare.dalvik
 # runs that already landed on the jobs list (the nondeterministic case) and only
 # opens the drawer when we're on the Learn home. After it routes (or if already
 # landed), the assert confirms the pre-state connect-resume-opp consumes.
+# --- #1032 CORRECTION to the #711 heal above -----------------------------
+# The #711 route (tap point "73,209" = nav-drawer burger, then the
+# "Opportunities" row) is WRONG on the Learn SUITE surface, and the Learn
+# suite is a real post-Learn landing. Live-captured 2026-07-28
+# (bednet-spot-check/20260728-2222, APK 2.63.2): at "73,209" the Learn
+# suite renders the ActionBar "Navigate up" ImageButton, bounds
+# [0,63][147,210] — y=209 is ONE PIXEL inside it. So the tap navigates UP
+# one suite level instead of opening a drawer, and the follow-up
+# `tapOn: "Opportunities"` can never resolve (no such element on either
+# the module list or the app root). Confirmed by the title changing
+# between the pre-tap and failure dumps: "Connect Basics" -> "Bednet
+# Spot-Check Learn app". Result: `selector-not-found`, Deliver leg dead
+# 100% of the time on that path.
+#
+# The correct route, validated live on-device in the same dispatch:
+#   BACK #1 -> org.commcare.activities.MenuActivity     (nsv_home_screen)
+#   BACK #2 -> org.commcare.activities.DispatchActivity (connect_fragment_jobs_list)
+# Dumps: ACE/bednet-spot-check/runs/20260728-2222/6-qa-and-training/
+#        screenshots/journey-deliver/pathA-nav-probe-{1,2}-*.xml
+#
+# Unrolled + guarded rather than `repeat:` — Maestro `repeat` is not in
+# ALLOWED_STEP_KEYS (see content-form-finish.yaml). EVERY back is guarded
+# on `notVisible: home-jobs-list`, so the sequence self-terminates the
+# instant the jobs list appears and cannot overshoot into the "BACK #3
+# exits CommCare" state that #1032 warns about. Bound of 3 covers the
+# two known landings (Learn suite = 2 backs, Learn home = 1) with one
+# spare; anything deeper falls through to the assert below and fails
+# loud with a named anchor.
+#
+# NOTE on the #711 comment above: it claims a bare `pressKey: back` exits
+# CommCare to the Android launcher. That is the behaviour from the jobs
+# list itself, which the guard now prevents us ever pressing from — it is
+# NOT the behaviour from the Learn suite or Learn home, per the #1032
+# capture. If a future landing surface does exit early, the final assert
+# names it rather than silently walking into the launcher.
 - runFlow:
     when:
       notVisible:
         id: "${SELECTOR:home-jobs-list}"
     commands:
-      # Top-left nav-drawer toggle. Coordinate-based (the burger image has no
-      # resource-id) — same point as nav-drawer-burger-point / connect-login.
-      - tapOn:
-          point: "73,209"
+      - pressKey: back
       - waitForAnimationToEnd:
           timeout: 3000
-      - tapOn:
-          text: "${SELECTOR:nav-drawer-opportunities}"
-      - extendedWaitUntil:
-          visible:
-            id: "${SELECTOR:home-jobs-list}"
-          timeout: 15000
+- runFlow:
+    when:
+      notVisible:
+        id: "${SELECTOR:home-jobs-list}"
+    commands:
+      - pressKey: back
+      - waitForAnimationToEnd:
+          timeout: 3000
+- runFlow:
+    when:
+      notVisible:
+        id: "${SELECTOR:home-jobs-list}"
+    commands:
+      - pressKey: back
+      - waitForAnimationToEnd:
+          timeout: 3000
+- extendedWaitUntil:
+    visible:
+      id: "${SELECTOR:home-jobs-list}"
+    timeout: 15000
+    optional: true
 
 # Confirm we are on the opp-list (passes directly when already there, or after
 # the #711 heal branch above routes here from the Learn home).

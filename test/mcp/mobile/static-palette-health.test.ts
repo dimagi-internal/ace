@@ -215,18 +215,51 @@ describe('static palette health — deliver-launch retry-proofing invariant (#74
   // and the already-installed surfaces must have entry branches.
   const yaml = readFileSync(`${STATIC_DIR}deliver-launch.yaml`, 'utf8');
 
-  it('guards the download-gate tap behind notVisible: deliver-home-job-card', () => {
-    // The tap must appear only INSIDE a guarded runFlow body, after a
-    // structural `when: / notVisible: / ${SELECTOR:deliver-home-job-card}`
-    // guard (NOT a mention of the word in a comment).
-    const guardRe = /when:\s*\n\s+notVisible:\s*\n\s+\$\{SELECTOR:deliver-home-job-card\}/;
+  it('guards the download-gate tap on the GATE ITSELF, not on viewJobCard (#893)', () => {
+    // This invariant was INVERTED until #893. The old rule required the
+    // tap to sit behind `notVisible: ${SELECTOR:deliver-home-job-card}`,
+    // on the belief that viewJobCard is absent on the Learn home. It is
+    // not: on connect-2.63.0 the Learn home renders viewJobCard once the
+    // opp is claimed, so that guard read "already in Deliver" while we
+    // were still in Learn, skipped the § 9 Download Delivery gate, never
+    // installed the Deliver CCZ, and walked the Learn Pre-assessment
+    // instead of the household survey. The test passed the whole time,
+    // because it pinned the defect.
+    //
+    // Correct rule (ACE's "attempt the transition, treat the conflict as
+    // the skip"): decide on the GATE element. Tap DOWNLOAD iff DOWNLOAD
+    // is actually on screen.
+    const guardRe = /when:\s*\n\s+visible:\s*\n\s+\$\{SELECTOR:deliver-download-button\}/;
     const m = guardRe.exec(yaml);
-    expect(m, 'deliver-launch must carry the structural notVisible guard').not.toBeNull();
+    expect(m, 'deliver-launch must guard the download tap on the DOWNLOAD button itself').not.toBeNull();
     const guardBlock = yaml.slice(m!.index, m!.index + 900);
-    expect(guardBlock).toContain('${SELECTOR:deliver-download-button}');
-    // No UNguarded tap on the download button anywhere before the guard.
+    expect(guardBlock).toMatch(/tapOn:\s*\n\s*\$\{SELECTOR:deliver-download-button\}/);
+
+    // No UNguarded tap on the download button before that guard.
     const beforeGuard = yaml.slice(0, m!.index);
     expect(beforeGuard).not.toMatch(/tapOn:\s*\n\s*\$\{SELECTOR:deliver-download-button\}/);
+  });
+
+  it('never re-introduces the viewJobCard guard around the download gate (#893)', () => {
+    // Direct regression guard: viewJobCard must not gate the download
+    // sequence again, under any phrasing.
+    const stripped = yaml
+      .split('\n')
+      .filter((l) => !l.trim().startsWith('#'))
+      .join('\n');
+    expect(
+      stripped,
+      'viewJobCard is not a Learn-vs-Deliver differentiator — see #893 and the selector-map note',
+    ).not.toMatch(/when:\s*\n\s+notVisible:\s*\n\s+\$\{SELECTOR:deliver-home-job-card\}/);
+  });
+
+  it('keeps the download wait non-halting on the already-downloaded path (#747)', () => {
+    // #747's protection must survive the #893 restructure: on a retry
+    // whose prior dispatch consumed the gate, DOWNLOAD never renders, so
+    // the wait has to fall through instead of halting at 30s.
+    const waitRe =
+      /extendedWaitUntil:\s*\n\s+visible:\s*\n\s+\$\{SELECTOR:deliver-download-button\}\s*\n\s+timeout:\s*\d+\s*\n\s+optional:\s*true/;
+    expect(waitRe.test(yaml), 'the DOWNLOAD wait must be optional: true').toBe(true);
   });
 
   it('has an already-installed entry branch for the Deliver suite menu', () => {

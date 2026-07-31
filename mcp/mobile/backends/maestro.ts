@@ -492,9 +492,29 @@ export class MaestroBackend {
    */
   private async installDriverApks(serial: string): Promise<string[]> {
     const actions: string[] = [];
+    // Step 0: wait for the device to actually EXIST and finish booting
+    // before asking anything of it (#1072). This step used to be absent,
+    // and `waitForPackageManager`'s 30s budget — scoped in its own
+    // docstring to the "~5-15s past sys.boot_completed=1" pm race — was
+    // left absorbing an entire cold boot. `ensureAvdRunning` spawns the
+    // emulator with `-wipe-data -no-snapshot-load`, which CLAUDE.md puts
+    // at 60-90s steady-state and longer on a host running more than one
+    // emulator, so the gate lost the race routinely. It then failed with
+    // `adb: device '<serial>' not found` reported as a PACKAGE-SERVICE
+    // timeout — a device-not-present condition wearing the wrong label,
+    // whose remediation string sent operators to cold-restart a device
+    // that was booting perfectly well. Observed live 2026-07-30: two
+    // consecutive failures, each leaving a fully-booted AVD with the
+    // package service bound and ZERO CommCare packages, because the
+    // funnel threw before reaching install.
+    await this.waitForDeviceBooted(serial, 180_000);
+    actions.push('device-booted');
+
     // Step 1: wait for the AVD's `pm` package service. Fresh boot races
     // here — `pm list packages` returns "Can't find service: package"
     // until the package manager binds. Cheap probe; ~150ms when ready.
+    // Now genuinely scoped to that race, because Step 0 guarantees the
+    // device is present and `sys.boot_completed=1` before we get here.
     await this.waitForPackageManager(serial, 30_000);
     actions.push('pm-ready');
 
@@ -591,11 +611,71 @@ export class MaestroBackend {
   }
 
   /**
+   * Wait until `serial` is (a) present on the adb server at all and
+   * (b) reports `sys.boot_completed=1` (#1072).
+   *
+   * These are TWO distinct failure classes and they are deliberately
+   * reported as such — "the device never appeared" and "the device
+   * appeared but never finished booting" have different causes and
+   * different fixes, and collapsing them into the `pm`-service message
+   * is what made this bug read as a stuck emulator for two sessions.
+   *
+   * Budget is sized for a real cold boot (`-wipe-data
+   * -no-snapshot-load`, 60-90s steady-state per CLAUDE.md, longer under
+   * contention), NOT for the short post-boot service race that
+   * `waitForPackageManager` covers.
+   */
+  private async waitForDeviceBooted(serial: string, timeoutMs: number): Promise<void> {
+    const deadline = Date.now() + timeoutMs;
+    let sawDevice = false;
+    let lastErr = '';
+
+    while (Date.now() < deadline) {
+      // `get-state` prints "device" once adbd on the guest is up. While
+      // qemu is still coming up it exits non-zero with
+      // "device '<serial>' not found" — the exact string that used to
+      // surface as a package-service timeout.
+      const st = await this.shell('adb', ['-s', serial, 'get-state'], { timeoutMs: 5_000 }).catch(
+        (e: any) => ({ stdout: '', stderr: String(e?.message ?? e), exitCode: 1 }),
+      );
+      if (st.exitCode === 0 && /device/.test(st.stdout)) {
+        sawDevice = true;
+        const bc = await this.shell(
+          'adb',
+          ['-s', serial, 'shell', 'getprop', 'sys.boot_completed'],
+          { timeoutMs: 5_000 },
+        ).catch((e: any) => ({ stdout: '', stderr: String(e?.message ?? e), exitCode: 1 }));
+        if (bc.exitCode === 0 && bc.stdout.trim() === '1') return;
+        lastErr = `boot_completed='${(bc.stdout || '').trim()}'`;
+      } else {
+        lastErr = (st.stderr || st.stdout || '').slice(0, 160);
+      }
+      await new Promise((res) => setTimeout(res, 2_000));
+    }
+
+    const secs = Math.round(timeoutMs / 1000);
+    throw new MobileError(
+      'AVD_BOOT_TIMEOUT',
+      sawDevice
+        ? `AVD ${serial} appeared on the adb server but never reported sys.boot_completed=1 within ${secs}s (last: ${lastErr || 'unknown'}).`
+        : `AVD ${serial} never appeared on the adb server within ${secs}s (last: ${lastErr || 'unknown'}).`,
+      sawDevice
+        ? 'The emulator is running but wedged mid-boot. `mobile_stop_avd` then `mobile_ensure_avd_running` to cold-restart.'
+        : 'The emulator process may have died on launch, or it registered with a DIFFERENT adb server than this session allocated. Check `~/.ace/sessions/<mcp_pid>.lock.json` for this session\'s adb_port, then `ANDROID_ADB_SERVER_PORT=<that> adb devices`.',
+    );
+  }
+
+  /**
    * Poll `cmd package list packages` until it returns successfully (the
    * package manager service is bound) or `timeoutMs` elapses. On fresh
    * AVDs `pm` can race ~5-15s past `sys.boot_completed=1`. Without this
    * wait, the first `adb install` hits "Install failed: cmd: Can't find
    * service: package" and aborts.
+   *
+   * PRECONDITION (#1072): the caller must already have waited for the
+   * device to be present and booted (`waitForDeviceBooted`). This budget
+   * covers the post-boot service race ONLY — do not let it absorb a cold
+   * boot, which is the bug this note exists to prevent recurring.
    */
   private async waitForPackageManager(serial: string, timeoutMs: number): Promise<void> {
     const deadline = Date.now() + timeoutMs;

@@ -6,11 +6,31 @@ import { MaestroBackend } from '../../../mcp/mobile/backends/maestro.js';
 
 function fakeShell(scripted: Record<string, { stdout: string; stderr?: string; code?: number }>) {
   return vi.fn(async (cmd: string, args: string[]) => {
+      const __p = bootedProbe(cmd, args);
+      if (__p) return __p;
+    const probe = bootedProbe(cmd, args);
+    if (probe) return probe;
     const key = `${cmd} ${args.join(' ')}`;
     const r = scripted[key];
     if (!r) throw new Error(`Unscripted shell call: ${key}`);
     return { stdout: r.stdout, stderr: r.stderr ?? '', exitCode: r.code ?? 0 };
   });
+}
+
+/**
+ * #1072 — `installDriverApks` now waits for the device to be present and
+ * `sys.boot_completed=1` before touching `pm`. Every suite in this file
+ * simulates an ALREADY-BOOTED AVD (that is the documented precondition
+ * of the code under test), so the stubs answer those two probes
+ * truthfully rather than falling through to a generic "OK".
+ */
+function bootedProbe(cmd: string, args: string[]) {
+  if (cmd !== 'adb') return null;
+  if (args.includes('get-state')) return { stdout: 'device\n', stderr: '', exitCode: 0 };
+  if (args.includes('getprop') && args.includes('sys.boot_completed')) {
+    return { stdout: '1\n', stderr: '', exitCode: 0 };
+  }
+  return null;
 }
 
 describe('MaestroBackend.runRecipe', () => {
@@ -74,6 +94,8 @@ describe('MaestroBackend.runRecipe — split-and-dump path (when `serial` is pro
   function makeRoutingShell(routes: Array<{ match: (cmd: string, args: string[]) => boolean; reply: { stdout?: string; stderr?: string; code?: number } }>) {
     const calls: { cmd: string; args: string[] }[] = [];
     const shell = vi.fn(async (cmd: string, args: string[]) => {
+      const __p = bootedProbe(cmd, args);
+      if (__p) return __p;
       calls.push({ cmd, args });
       for (const r of routes) {
         if (r.match(cmd, args)) {
@@ -120,6 +142,8 @@ describe('MaestroBackend.runRecipe — split-and-dump path (when `serial` is pro
     // sees a sibling .xml.
     const originalShellFn = shell;
     const wrappedShell = vi.fn(async (cmd: string, args: string[]) => {
+      const __p = bootedProbe(cmd, args);
+      if (__p) return __p;
       const result = await originalShellFn(cmd, args);
       if (cmd === 'adb' && args.includes('pull')) {
         const hostPath = args[args.length - 1];
@@ -168,6 +192,8 @@ describe('MaestroBackend.runRecipe — split-and-dump path (when `serial` is pro
     let maestroCallNum = 0;
     const calls: { cmd: string; args: string[] }[] = [];
     const shell = vi.fn(async (cmd: string, args: string[]) => {
+      const __p = bootedProbe(cmd, args);
+      if (__p) return __p;
       calls.push({ cmd, args });
       if (cmd === 'maestro' && args.includes('test')) {
         maestroCallNum++;
@@ -204,6 +230,8 @@ describe('MaestroBackend.runRecipe — split-and-dump path (when `serial` is pro
 
     const observedChunkDirs = new Set<string>();
     const shell = vi.fn(async (cmd: string, args: string[]) => {
+      const __p = bootedProbe(cmd, args);
+      if (__p) return __p;
       if (cmd === 'maestro' && args.includes('test')) {
         const chunkPath = args[args.length - 1];
         const dir = path.dirname(chunkPath);
@@ -242,6 +270,8 @@ describe('MaestroBackend.runRecipe — split-and-dump path (when `serial` is pro
     // the palette is co-located with the chunk file at maestro-call time.
     let paletteSeenNextToChunk = false;
     const assertingShell = vi.fn(async (cmd: string, args: string[]) => {
+      const __p = bootedProbe(cmd, args);
+      if (__p) return __p;
       if (cmd === 'maestro' && args.includes('test')) {
         const chunkPath = args[args.length - 1];
         const dir = path.dirname(chunkPath);
@@ -270,6 +300,8 @@ describe('MaestroBackend.runRecipe — split-and-dump path (when `serial` is pro
 
     const calls: { cmd: string; args: string[] }[] = [];
     const shell = vi.fn(async (cmd: string, args: string[]) => {
+      const __p = bootedProbe(cmd, args);
+      if (__p) return __p;
       calls.push({ cmd, args });
       return { stdout: 'OK\n', stderr: '', exitCode: 0 };
     });
@@ -370,6 +402,8 @@ describe('MaestroBackend.repairDriver', () => {
     try {
       const calls: string[] = [];
       const shell = vi.fn(async (cmd: string, args: string[]) => {
+      const __p = bootedProbe(cmd, args);
+      if (__p) return __p;
         calls.push(`${cmd} ${args.join(' ')}`);
         const argStr = args.join(' ');
         // waitForPackageManager probe
@@ -425,6 +459,8 @@ describe('MaestroBackend.repairDriver', () => {
     process.env.HOME = home;
     try {
       const shell = vi.fn(async (cmd: string, args: string[]) => {
+      const __p = bootedProbe(cmd, args);
+      if (__p) return __p;
         const argStr = args.join(' ');
         // waitForPackageManager probe succeeds.
         if (argStr.endsWith('cmd package list packages')) {
@@ -466,6 +502,8 @@ describe('MaestroBackend.ensureDriverInstalled', () => {
   it('short-circuits when both driver packages are already present', async () => {
     const calls: string[] = [];
     const shell = vi.fn(async (cmd: string, args: string[]) => {
+      const __p = bootedProbe(cmd, args);
+      if (__p) return __p;
       calls.push(`${cmd} ${args.join(' ')}`);
       const argStr = args.join(' ');
       // Per-package exact-name probes. Each call's filter is the exact
@@ -500,6 +538,8 @@ describe('MaestroBackend.ensureDriverInstalled', () => {
     process.env.HOME = tmpHome;
     try {
       const shell = vi.fn(async (cmd: string, args: string[]) => {
+      const __p = bootedProbe(cmd, args);
+      if (__p) return __p;
         const argStr = args.join(' ');
         // Half-installed state: app present, test absent.
         if (argStr.endsWith('pm list packages dev.mobile.maestro')) {
@@ -538,6 +578,8 @@ describe('MaestroBackend.ensureDriverInstalled', () => {
     process.env.HOME = tmpHome;
     try {
       const shell = vi.fn(async (cmd: string, args: string[]) => {
+      const __p = bootedProbe(cmd, args);
+      if (__p) return __p;
         const argStr = args.join(' ');
         if (argStr.endsWith('pm list packages dev.mobile.maestro')) {
           return { stdout: 'package:dev.mobile.maestro\n', stderr: '', exitCode: 0 };
@@ -570,6 +612,8 @@ describe('MaestroBackend.ensureDriverInstalled', () => {
     process.env.HOME = tmpHome;
     try {
       const shell = vi.fn(async (cmd: string, args: string[]) => {
+      const __p = bootedProbe(cmd, args);
+      if (__p) return __p;
         const argStr = args.join(' ');
         // Per-package probes: neither package installed.
         if (argStr.endsWith('pm list packages dev.mobile.maestro')) {
