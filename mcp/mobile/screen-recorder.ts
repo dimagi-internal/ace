@@ -146,6 +146,35 @@ async function waitForStableSize(
   }
 }
 
+/**
+ * Rewrite the mp4 container in place with `-c copy` (no re-encode) so it
+ * carries proper duration metadata and a front-loaded moov atom. A pulled
+ * screenrecord file can otherwise report `duration=N/A`, which makes it
+ * seek badly in Drive preview.
+ *
+ * Best-effort and optional: ffmpeg missing or failing leaves the original
+ * file untouched and returns false.
+ */
+export async function normalizeContainer(mp4Path: string, shell: ShellFn = defaultShell): Promise<boolean> {
+  const tmpOut = `${mp4Path}.remux.mp4`;
+  try {
+    const r = await shell('ffmpeg', [
+      '-v', 'error', '-y', '-i', mp4Path, '-c', 'copy', '-movflags', '+faststart', tmpOut,
+    ]);
+    if (r.exitCode !== 0 || !fs.existsSync(tmpOut) || fs.statSync(tmpOut).size === 0) {
+      try { fs.rmSync(tmpOut, { force: true }); } catch { /* ignore */ }
+      logInfo(`normalizeContainer: ffmpeg exit ${r.exitCode} for ${mp4Path} — keeping raw pull`);
+      return false;
+    }
+    fs.renameSync(tmpOut, mp4Path);
+    return true;
+  } catch (e) {
+    try { fs.rmSync(tmpOut, { force: true }); } catch { /* ignore */ }
+    logInfo(`normalizeContainer: unavailable for ${mp4Path} (${String(e)}) — keeping raw pull`);
+    return false;
+  }
+}
+
 export async function stopRecording(
   handle: RecordingHandle,
   opts: { shell?: ShellFn; pollMs?: number; stableTimeoutMs?: number } = {},
@@ -173,6 +202,8 @@ export async function stopRecording(
     } catch (e) {
       logInfo(`stopRecording: cleanup child.kill() failed: ${String(e)}`);
     }
+    // Normalize the container BEFORE stat — the remux changes the byte size.
+    await normalizeContainer(handle.outPath, shell);
     const bytes = fs.statSync(handle.outPath).size;
     return {
       path: handle.outPath,

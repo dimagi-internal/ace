@@ -7,6 +7,7 @@ import {
   buildScreenrecordArgs,
   startRecording,
   stopRecording,
+  normalizeContainer,
 } from '../../../mcp/mobile/screen-recorder.js';
 
 function tmpdir(): string {
@@ -194,5 +195,49 @@ describe('stopRecording', () => {
     });
     const art = await stopRecording(h, { shell: shellFn, pollMs: 1, stableTimeoutMs: 20 });
     expect(art).toBeUndefined();
+  });
+});
+
+describe('normalizeContainer', () => {
+  it('remuxes with -c copy and +faststart, replacing the original', async () => {
+    const dir = tmpdir();
+    const mp4 = path.join(dir, 'journey-learn.mp4');
+    fs.writeFileSync(mp4, 'ORIGINAL');
+    const sh = recordingShell();
+    const shellFn = vi.fn(async (cmd: string, args: string[]) => {
+      const r = await sh.fn(cmd, args);
+      // Emulate ffmpeg writing its output file.
+      const out = args[args.length - 1];
+      fs.writeFileSync(out, 'REMUXED');
+      return r;
+    });
+
+    const changed = await normalizeContainer(mp4, shellFn);
+
+    expect(changed).toBe(true);
+    expect(sh.calls[0]).toContain('ffmpeg');
+    expect(sh.calls[0]).toContain('-c copy');
+    expect(sh.calls[0]).toContain('-movflags +faststart');
+    expect(fs.readFileSync(mp4, 'utf8')).toBe('REMUXED');
+  });
+
+  it('keeps the original and returns false when ffmpeg is missing', async () => {
+    const dir = tmpdir();
+    const mp4 = path.join(dir, 'journey-learn.mp4');
+    fs.writeFileSync(mp4, 'ORIGINAL');
+    const shellFn = vi.fn(async () => { throw new Error('ffmpeg: not found'); });
+
+    await expect(normalizeContainer(mp4, shellFn)).resolves.toBe(false);
+    expect(fs.readFileSync(mp4, 'utf8')).toBe('ORIGINAL');
+  });
+
+  it('keeps the original when ffmpeg exits non-zero', async () => {
+    const dir = tmpdir();
+    const mp4 = path.join(dir, 'journey-learn.mp4');
+    fs.writeFileSync(mp4, 'ORIGINAL');
+    const shellFn = vi.fn(async () => ({ stdout: '', stderr: 'invalid data', exitCode: 1 }));
+
+    await expect(normalizeContainer(mp4, shellFn)).resolves.toBe(false);
+    expect(fs.readFileSync(mp4, 'utf8')).toBe('ORIGINAL');
   });
 });
