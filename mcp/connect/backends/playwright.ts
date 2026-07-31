@@ -543,7 +543,7 @@ export class PlaywrightBackend implements ConnectClient {
       }
 
       const keyOf = (r: { question_path: string; question_value: string; deliver_unit: string }) =>
-        `${r.question_path} ${r.question_value} ${r.deliver_unit}`;
+        `${r.question_path}\u0000${r.question_value}\u0000${r.deliver_unit}`;
       const seen = new Set(rows.map(keyOf));
       for (const r of flags.form_field_rules) {
         const row: JsonRow = {

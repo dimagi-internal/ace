@@ -96,7 +96,7 @@ export function resolveEnvSubstitution(value: string, env: NodeJS.ProcessEnv = p
   if (typeof value !== 'string' || !value.includes('$')) return value;
   // Replace escape sequences first with a sentinel so the next regex
   // doesn't see them.
-  const ESCAPE_SENTINEL = '';
+  const ESCAPE_SENTINEL = '\u0001\u0002';
   const escaped = value.replace(/\\\$\{([A-Z_][A-Z0-9_]*)\}/g, (_m, name) => `${ESCAPE_SENTINEL}${name}}`);
   const missing: string[] = [];
   const resolved = escaped.replace(/\$\{([A-Z_][A-Z0-9_]*)\}/g, (_m, name) => {
