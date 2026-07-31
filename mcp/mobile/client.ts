@@ -31,6 +31,7 @@ import { resolveBackend, preflightMobileBackend } from './backend-toggle.js';
 import type {
   AvdInfo, ApkInfo, RecipeRunResult, TestUserRegistrationResult, UiDumpResult,
   SnapshotResult, DeviceUserStateClass, DeviceStateHealLog, LocalBootstrapConfig,
+  VideoArtifact,
 } from './types.js';
 import { logInfo } from './logging.js';
 import { resetScreenshotDir } from './screenshot-dir.js';
@@ -42,6 +43,21 @@ import {
   newDispatchId,
   writeProvenanceSidecar,
 } from '../../lib/screenshot-provenance.js';
+import {
+  recorderConfigFromEnv,
+  startRecording,
+  stopRecording,
+} from './screen-recorder.js';
+import { spoolVideo } from './video-spool.js';
+
+/**
+ * Screen-recorder seam. Injected only by tests; production binds the real
+ * `screen-recorder.ts` functions.
+ */
+export interface RecorderHooks {
+  start: typeof startRecording;
+  stop: typeof stopRecording;
+}
 
 export interface MobileClientOpts {
   avd?: AvdBackend;
@@ -63,6 +79,11 @@ export interface MobileClientOpts {
    * native `fetch`. Tests inject a mock to avoid network round-trips.
    */
   fetchImpl?: typeof fetch;
+  /**
+   * Optional override for the on-device screen recorder (testing only).
+   * Default binds the real `screen-recorder.ts` start/stop functions.
+   */
+  recorder?: RecorderHooks;
 }
 
 /**
@@ -386,6 +407,7 @@ export class MobileClient {
    */
   readonly bootstrapConfig: LocalBootstrapConfig | null;
   private readonly fetchImpl: typeof fetch;
+  private readonly recorder: RecorderHooks;
   /**
    * Fingerprint of the AVD environment baseline applied during the most
    * recent `runLocalBootstrap`. Surfaced via the heal log so telemetry
@@ -404,6 +426,7 @@ export class MobileClient {
     this.bootstrapConfig =
       opts.bootstrapConfig === undefined ? bootstrapConfigFromEnv() : opts.bootstrapConfig;
     this.fetchImpl = opts.fetchImpl ?? fetch;
+    this.recorder = opts.recorder ?? { start: startRecording, stop: stopRecording };
     // Eagerly try to construct CloudBackend so /ace:mobile-backend can
     // flip the toggle mid-session without an MCP restart. We catch the
     // typed env-missing error so envs without ACE_WEB still start up.
@@ -1227,6 +1250,12 @@ export class MobileClient {
     // destroy prior artifacts without producing new ones.
     resetScreenshotDir(screenshotDir);
 
+    // Screen recording (local backend only — cloud is Phase 2). Best-effort
+    // throughout: a recording failure must never change the recipe verdict.
+    const recorderConfig = recorderConfigFromEnv();
+    const videos: VideoArtifact[] = [];
+    let recordAttempt = 0;
+
     let result: RecipeRunResult;
     try {
       if (this.useCloud) {
@@ -1253,17 +1282,51 @@ export class MobileClient {
           log: logInfo,
           runOnce: async () => {
             const avdInfo = avdName ? await this.resolveAvdInfo(avdName) : undefined;
-            // Pass `serial` through so MaestroBackend can capture per-screenshot
-            // UI hierarchy dumps in the quiet windows between sub-recipes. See
-            // `MaestroBackend.runRecipeWithDumps` for the split-and-capture
-            // contract and `docs/learnings/2026-05-14-atlas-side-channel-capture.md`
-            // for why a side-channel dump (running concurrent with Maestro)
-            // doesn't work. When `serial` is undefined the backend falls back
-            // to the pre-0.13.229 single-invocation path with no dumps.
-            return this.maestro.runRecipe(prep.resolvedPath, enrichedEnv, screenshotDir, {
-              adbPort: avdInfo?.adbPort,
-              serial: avdInfo?.serial,
-            });
+            // Start/stop INSIDE runOnce, not around the whole try: a driver
+            // heal cold-boots the AVD and rotates the serial, so each attempt
+            // needs its own recorder. The `finally` also covers the throw
+            // path for free — a driver death is the case the video is worth
+            // most.
+            recordAttempt += 1;
+            let handle: ReturnType<typeof startRecording>;
+            if (recorderConfig.enabled && avdInfo?.serial) {
+              try {
+                const ports = await this.avd.getAllocatedPorts();
+                handle = this.recorder.start({
+                  serial: avdInfo.serial,
+                  recipeId,
+                  dispatchId,
+                  attempt: recordAttempt,
+                  outDir: screenshotDir,
+                  config: recorderConfig,
+                  adbServerPort: ports.adbServerPort,
+                });
+              } catch (e) {
+                logInfo(`runRecipe: could not start recording for ${recipeId}: ${String(e)}`);
+              }
+            }
+            try {
+              // Pass `serial` through so MaestroBackend can capture per-screenshot
+              // UI hierarchy dumps in the quiet windows between sub-recipes. See
+              // `MaestroBackend.runRecipeWithDumps` for the split-and-capture
+              // contract and `docs/learnings/2026-05-14-atlas-side-channel-capture.md`
+              // for why a side-channel dump (running concurrent with Maestro)
+              // doesn't work. When `serial` is undefined the backend falls back
+              // to the pre-0.13.229 single-invocation path with no dumps.
+              return await this.maestro.runRecipe(prep.resolvedPath, enrichedEnv, screenshotDir, {
+                adbPort: avdInfo?.adbPort,
+                serial: avdInfo?.serial,
+              });
+            } finally {
+              if (handle) {
+                try {
+                  const video = await this.recorder.stop(handle, { shell: this.avd.getAdbShell() });
+                  if (video) videos.push(video);
+                } catch (e) {
+                  logInfo(`runRecipe: could not stop recording for ${recipeId}: ${String(e)}`);
+                }
+              }
+            }
           },
           heal: async () => {
             // Full cold-boot funnel — restores AVD + driver + fresh demo user
@@ -1299,6 +1362,12 @@ export class MobileClient {
         logInfo(
           `runRecipe: thrown-failure forensics capture failed for ${recipeId}: ${String(fe)}`,
         );
+      }
+      // Attach whatever we recorded before the throw — same pattern as
+      // `failureForensics`. The pre-crash footage is the point.
+      if (videos.length) {
+        (e as { videos?: VideoArtifact[] }).videos = videos;
+        for (const v of videos) spoolVideo(v);
       }
       throw e;
     }
@@ -1341,6 +1410,20 @@ export class MobileClient {
         logInfo(`runRecipe: failed to write provenance sidecar for ${s.path}: ${String(e)}`);
       }
     }
+    // Stamp + spool the recordings. Sidecars land at `<video>.meta.json`,
+    // same convention as PNGs. The spool is how videos from recipes whose
+    // callers aren't uploading skills (heal, registration, baseline) still
+    // reach Drive — see `mcp/mobile/video-spool.ts`.
+    for (const v of videos) {
+      try {
+        writeProvenanceSidecar(v.path, provenance);
+        v.provenance = provenance;
+      } catch (e) {
+        logInfo(`runRecipe: failed to write provenance sidecar for ${v.path}: ${String(e)}`);
+      }
+      spoolVideo(v);
+    }
+    if (videos.length) result.videos = videos;
     return result;
   }
 
