@@ -65,6 +65,95 @@ describe('extractRecipeParameters', () => {
     expect(params.moduleNames.size).toBe(0);
     expect(params.formNames.size).toBe(0);
   });
+
+  // --- ace#1068: nested runFlow.env is the shape Phase 3 emits ---
+
+  it('reads MODULE_NAME/FORM_NAME from a NESTED runFlow.env block', () => {
+    // The shape Phase 3 actually emits. Reading only the top-level env
+    // returned EMPTY sets, so expected-module-not-in-app and
+    // expected-form-not-in-module could never fire (ace#1068).
+    const r = {
+      name: 'journey-learn.yaml',
+      text: [
+        'appId: org.commcare.dalvik',
+        '---',
+        '- runFlow:',
+        '    file: learn-tap-module.yaml',
+        '    env:',
+        '      MODULE_NAME: "Connect Basics"',
+        '      FORM_NAME: "Connect Basics Quiz"',
+        '',
+      ].join('\n'),
+    };
+    const params = extractRecipeParameters(r);
+    expect([...params.moduleNames]).toEqual(['Connect Basics']);
+    expect([...params.formNames]).toEqual(['Connect Basics Quiz']);
+  });
+
+  it('reads env maps nested several levels deep (runFlow inside runFlow.commands)', () => {
+    const r = {
+      name: 'journey-learn.yaml',
+      text: [
+        'appId: org.commcare.dalvik',
+        '---',
+        '- runFlow:',
+        '    when:',
+        '      visible:',
+        '        text: "Continue Learning"',
+        '    commands:',
+        '      - runFlow:',
+        '          file: learn-tap-module.yaml',
+        '          env:',
+        '            MODULE_NAME: "Deep Module"',
+        '            FORM_NAME: "Deep Form"',
+        '',
+      ].join('\n'),
+    };
+    const params = extractRecipeParameters(r);
+    expect(params.moduleNames.has('Deep Module')).toBe(true);
+    expect(params.formNames.has('Deep Form')).toBe(true);
+  });
+
+  it('collects module/form names from BOTH top-level env and nested runFlow.env', () => {
+    const r = {
+      name: 'journey-learn.yaml',
+      text: [
+        'appId: org.commcare.dalvik',
+        'env:',
+        '  MODULE_NAME: "Top Module"',
+        '---',
+        '- runFlow:',
+        '    file: learn-tap-module.yaml',
+        '    env:',
+        '      MODULE_NAME: "Nested Module"',
+        '',
+      ].join('\n'),
+    };
+    const params = extractRecipeParameters(r);
+    expect([...params.moduleNames].sort()).toEqual(['Nested Module', 'Top Module']);
+  });
+
+  it('ignores unresolved ${...} placeholder bindings', () => {
+    // A template passing its own env through must not read as a live
+    // module name — that would make expected-module-not-in-app fire on
+    // every composed palette step.
+    const r = {
+      name: 'journey-learn.yaml',
+      text: [
+        'appId: org.commcare.dalvik',
+        '---',
+        '- runFlow:',
+        '    file: learn-tap-module.yaml',
+        '    env:',
+        '      MODULE_NAME: "${MODULE_NAME}"',
+        '      FORM_NAME: "${FORM_NAME}"',
+        '',
+      ].join('\n'),
+    };
+    const params = extractRecipeParameters(r);
+    expect(params.moduleNames.size).toBe(0);
+    expect(params.formNames.size).toBe(0);
+  });
 });
 
 describe('probeRecipeSanity — healthy inputs pass', () => {
@@ -724,6 +813,32 @@ describe('probeRecipeSanity — observed records WHICH probe ran', () => {
     expect(verdict.observed.nova_groups_seen).toBe(1);
   });
 
+  it('reports module_form_checks_ran=false when no recipe binds a MODULE_NAME', () => {
+    const verdict = probeRecipeSanity({
+      recipes: [recipeBody('J1.yaml', '- launchApp')],
+      novaApps: [HEALTHY_LEARN_APP],
+      connectOpp: LIVE_OPP,
+    });
+    expect(verdict.observed.module_form_checks_ran).toBe(false);
+  });
+
+  it('reports module_form_checks_ran=true when a nested runFlow.env binds one', () => {
+    const body = [
+      '- runFlow:',
+      '    file: learn-tap-module.yaml',
+      '    env:',
+      '      MODULE_NAME: "Health Education"',
+      '      FORM_NAME: "Module Quiz"',
+    ].join('\n');
+    const verdict = probeRecipeSanity({
+      recipes: [recipeBody('journey-learn.yaml', body)],
+      novaApps: [HEALTHY_LEARN_APP],
+      connectOpp: LIVE_OPP,
+    });
+    expect(verdict.observed.module_form_checks_ran).toBe(true);
+    expect(verdict.ok).toBe(true);
+  });
+
   it('reports field_data_supplied=true even when only ONE app carries fields', () => {
     // Mixed input is the realistic Phase 6 case (learn fetched, deliver
     // not). The flag says "some checks ran", the counters say how much.
@@ -735,5 +850,388 @@ describe('probeRecipeSanity — observed records WHICH probe ran', () => {
     expect(verdict.observed.field_data_supplied).toBe(true);
     expect(verdict.observed.max_label_screen_run).toBe(4);
     expect(verdict.observed.nova_groups_seen).toBe(0);
+  });
+});
+
+// --- ace#1045: the INVERSE leading-label check ---------------------------
+//
+// The live repro: Nova Learn app 8c758d89-3a20-4b72-bec1-713c3129a904,
+// form `connect_basics_quiz`, field order
+//   intro (label) -> q1 (single_select, required) -> q1_score (hidden)
+//   -> user_score (hidden) -> pass_msg (label) -> fail_msg (label)
+// The golden journey-learn.yaml ran learn-tap-module -> takeScreenshot ->
+// tapOn the q1 option with NO intervening advance, so the answer tap
+// landed on the `intro` screen (selector-not-found), the Learn leg died,
+// learn_progress never hit 100%, Deliver stayed locked, and Phase 6 could
+// not complete. #710/#684 fixed this class in PROSE only.
+
+const Q1_OPTION = 'earn payments for verified service deliveries';
+
+const LEADING_LABEL_QUIZ_APP: NovaAppSlice = {
+  app_id: '8c758d89-3a20-4b72-bec1-713c3129a904',
+  modules: [
+    {
+      module_name: 'Connect Basics',
+      forms: [
+        {
+          form_name: 'Connect Basics Quiz',
+          fields: [
+            { id: 'intro', kind: 'label', label: 'Welcome to Connect Basics' },
+            {
+              id: 'q1',
+              kind: 'single_select',
+              label: 'What does Connect pay you for?',
+              options: [{ label: Q1_OPTION }, { label: 'attending meetings' }],
+            },
+            { id: 'q1_score', kind: 'hidden' },
+            { id: 'user_score', kind: 'hidden' },
+            { id: 'pass_msg', kind: 'label', label: 'You passed' },
+            { id: 'fail_msg', kind: 'label', label: 'Please retry' },
+          ],
+        },
+      ],
+    },
+  ],
+};
+
+/** The golden recipe verbatim, parameterised on how many bare advances
+ * sit between the menu-walk entry step and the answer tap. */
+function learnQuizRecipe(
+  advances: number,
+  formName = 'Connect Basics Quiz',
+  moduleName = 'Connect Basics',
+): { name: string; text: string } {
+  const body = [
+    '- runFlow:',
+    '    file: learn-tap-module.yaml',
+    '    env:',
+    `      MODULE_NAME: "${moduleName}"`,
+    `      FORM_NAME: "${formName}"`,
+    '- takeScreenshot: "journey-learn-quiz-question"',
+    ...Array.from({ length: advances }, () => '- runFlow:\n    file: form-advance.yaml'),
+    '- tapOn:',
+    `    text: "${Q1_OPTION}"`,
+  ].join('\n');
+  return recipeBody('journey-learn.yaml', body);
+}
+
+describe('probeRecipeSanity — failure class: answer-tap-before-leading-label-advance', () => {
+  it('flags the live ace#1045 repro (answer tap with ZERO advances past a leading label)', () => {
+    const verdict = probeRecipeSanity({
+      recipes: [learnQuizRecipe(0)],
+      novaApps: [LEADING_LABEL_QUIZ_APP],
+      connectOpp: LIVE_OPP,
+    });
+    expect(verdict.ok).toBe(false);
+    const f = verdict.failures.find((x) => x.class === 'answer-tap-before-leading-label-advance');
+    expect(f).toBeDefined();
+    expect(f!.recipe).toBe('journey-learn.yaml');
+    expect(f!.value).toBe('expected=1,found=0');
+    expect(f!.detail).toContain('Connect Basics Quiz');
+    expect(f!.detail).toContain('intro');
+    expect(f!.remediation).toMatch(/form-advance|app-test-cases/);
+  });
+
+  it('passes the SAME recipe once the leading-label advance is emitted', () => {
+    const verdict = probeRecipeSanity({
+      recipes: [learnQuizRecipe(1)],
+      novaApps: [LEADING_LABEL_QUIZ_APP],
+      connectOpp: LIVE_OPP,
+    });
+    expect(verdict.failures.map((x) => x.class)).not.toContain(
+      'answer-tap-before-leading-label-advance',
+    );
+    expect(verdict.ok).toBe(true);
+  });
+
+  it('counts leading labels past `hidden` fields (hidden renders no screen)', () => {
+    const app: NovaAppSlice = {
+      app_id: 'app-hidden-first',
+      modules: [
+        {
+          module_name: 'Connect Basics',
+          forms: [
+            {
+              form_name: 'Connect Basics Quiz',
+              fields: [
+                { id: 'calc_setup', kind: 'hidden' },
+                { id: 'intro', kind: 'label', label: 'Welcome' },
+                { id: 'also_intro', kind: 'label', label: 'How scoring works' },
+                {
+                  id: 'q1',
+                  kind: 'single_select',
+                  label: 'What does Connect pay you for?',
+                  options: [{ label: Q1_OPTION }],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    };
+    const verdict = probeRecipeSanity({
+      recipes: [learnQuizRecipe(1)],
+      novaApps: [app],
+      connectOpp: LIVE_OPP,
+    });
+    const f = verdict.failures.find((x) => x.class === 'answer-tap-before-leading-label-advance');
+    expect(f).toBeDefined();
+    expect(f!.value).toBe('expected=2,found=1');
+  });
+
+  it('does NOT count INTERIOR labels toward the leading budget', () => {
+    // pass_msg/fail_msg sit AFTER q1 — they are the score-gated result
+    // screens, not a leading intro, so they must not raise the budget.
+    const app: NovaAppSlice = {
+      app_id: 'app-no-leading-label',
+      modules: [
+        {
+          module_name: 'Connect Basics',
+          forms: [
+            {
+              form_name: 'Connect Basics Quiz',
+              fields: [
+                {
+                  id: 'q1',
+                  kind: 'single_select',
+                  label: 'What does Connect pay you for?',
+                  options: [{ label: Q1_OPTION }],
+                },
+                { id: 'pass_msg', kind: 'label', label: 'You passed' },
+                { id: 'fail_msg', kind: 'label', label: 'Please retry' },
+              ],
+            },
+          ],
+        },
+      ],
+    };
+    const verdict = probeRecipeSanity({
+      recipes: [learnQuizRecipe(0)],
+      novaApps: [app],
+      connectOpp: LIVE_OPP,
+    });
+    expect(verdict.failures.map((x) => x.class)).not.toContain(
+      'answer-tap-before-leading-label-advance',
+    );
+  });
+
+  it('is inert when the caller supplies no field data', () => {
+    const verdict = probeRecipeSanity({
+      recipes: [learnQuizRecipe(0, 'Module Quiz', 'Health Education')],
+      novaApps: [HEALTHY_LEARN_APP], // module/form names resolve, no fields
+      connectOpp: LIVE_OPP,
+    });
+    expect(verdict.failures.map((x) => x.class)).not.toContain(
+      'answer-tap-before-leading-label-advance',
+    );
+    expect(verdict.ok).toBe(true);
+  });
+
+  it('does NOT fire on a navigation tap that is not one of the form`s answer matchers', () => {
+    // Precision guard — the #858/#860 false-positive tax is why the
+    // trigger must resolve to a real question/option label.
+    const body = [
+      '- runFlow:',
+      '    file: learn-tap-module.yaml',
+      '    env:',
+      '      MODULE_NAME: "Connect Basics"',
+      '      FORM_NAME: "Connect Basics Quiz"',
+      '- tapOn:',
+      '    text: "VIEW OPPORTUNITY DETAILS"',
+    ].join('\n');
+    const verdict = probeRecipeSanity({
+      recipes: [recipeBody('journey-learn.yaml', body)],
+      novaApps: [LEADING_LABEL_QUIZ_APP],
+      connectOpp: LIVE_OPP,
+    });
+    expect(verdict.failures.map((x) => x.class)).not.toContain(
+      'answer-tap-before-leading-label-advance',
+    );
+  });
+
+  it('is inert without a menu-walk entry step (nothing anchors the budget)', () => {
+    const body = ['- tapOn:', `    text: "${Q1_OPTION}"`].join('\n');
+    const verdict = probeRecipeSanity({
+      recipes: [recipeBody('journey-learn.yaml', body)],
+      novaApps: [LEADING_LABEL_QUIZ_APP],
+      connectOpp: LIVE_OPP,
+    });
+    expect(verdict.failures.map((x) => x.class)).not.toContain(
+      'answer-tap-before-leading-label-advance',
+    );
+  });
+
+  it('resolves the form via deliver-form-walk, which binds no env', () => {
+    const deliverApp: NovaAppSlice = {
+      app_id: 'app-deliver-leading-label',
+      modules: [
+        {
+          module_name: 'Bednet Visit',
+          forms: [
+            {
+              form_name: 'Bednet Visit',
+              fields: [
+                { id: 'visit_intro', kind: 'label', label: 'Confirm you are at the household' },
+                {
+                  id: 'nets_hung',
+                  kind: 'single_select',
+                  label: 'Were the nets hung correctly?',
+                  options: [{ label: 'Yes, all nets hung' }, { label: 'No' }],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    };
+    const body = [
+      '- runFlow:',
+      '    file: deliver-form-walk.yaml',
+      '- tapOn:',
+      '    text: "Yes, all nets hung"',
+    ].join('\n');
+    const verdict = probeRecipeSanity({
+      recipes: [recipeBody('journey-deliver.yaml', body)],
+      novaApps: [deliverApp],
+      connectOpp: LIVE_OPP,
+    });
+    const f = verdict.failures.find((x) => x.class === 'answer-tap-before-leading-label-advance');
+    expect(f).toBeDefined();
+    expect(f!.value).toBe('expected=1,found=0');
+  });
+});
+
+describe('probeRecipeSanity — #858 permissive carve-out and the #1045 inverse both hold', () => {
+  // LABEL_HEAVY_LEARN_APP: 4 leading `label` screens then a single_select
+  // ("True"/"False"). The two checks bound the SAME recipe from opposite
+  // sides: fewer than 4 advances is #1045, more than 5 is #858.
+  const walk = (advances: number) =>
+    recipeBody(
+      'journey-learn.yaml',
+      [
+        '- runFlow:',
+        '    file: learn-tap-module.yaml',
+        '    env:',
+        '      MODULE_NAME: "Health Education"',
+        '      FORM_NAME: "Introduction"',
+        ...Array.from({ length: advances }, () => '- runFlow:\n    file: form-advance.yaml'),
+        '- tapOn:',
+        '    text: "True"',
+      ].join('\n'),
+    );
+
+  it('a label-traversing recipe with ENOUGH advances stays clean in both directions', () => {
+    const verdict = probeRecipeSanity({
+      recipes: [walk(4)],
+      novaApps: [LABEL_HEAVY_LEARN_APP],
+      connectOpp: LIVE_OPP,
+    });
+    expect(verdict.failures).toHaveLength(0);
+    expect(verdict.ok).toBe(true);
+  });
+
+  it('the same recipe with TOO FEW advances now fails — and only on the new class', () => {
+    const verdict = probeRecipeSanity({
+      recipes: [walk(2)],
+      novaApps: [LABEL_HEAVY_LEARN_APP],
+      connectOpp: LIVE_OPP,
+    });
+    const classes = verdict.failures.map((x) => x.class);
+    expect(classes).toContain('answer-tap-before-leading-label-advance');
+    // The permissive #858 threshold (maxLabelRun + 2 = 6) must stay put.
+    expect(classes).not.toContain('form-advance-without-answer-tap');
+    const f = verdict.failures.find((x) => x.class === 'answer-tap-before-leading-label-advance');
+    expect(f!.value).toBe('expected=4,found=2');
+  });
+});
+
+// --- ace#1068: module/form checks can now fire, and say when they didn't ---
+
+describe('probeRecipeSanity — nested runFlow.env drives the module/form checks', () => {
+  it('fires expected-module-not-in-app for a module named in a NESTED runFlow.env', () => {
+    const body = [
+      '- runFlow:',
+      '    file: learn-tap-module.yaml',
+      '    env:',
+      '      MODULE_NAME: "GhostModule"',
+      '      FORM_NAME: "Module Quiz"',
+    ].join('\n');
+    const verdict = probeRecipeSanity({
+      recipes: [recipeBody('journey-learn.yaml', body)],
+      novaApps: [HEALTHY_LEARN_APP],
+      connectOpp: LIVE_OPP,
+    });
+    expect(verdict.ok).toBe(false);
+    const f = verdict.failures.find((x) => x.class === 'expected-module-not-in-app');
+    expect(f).toBeDefined();
+    expect(f!.value).toBe('GhostModule');
+    expect(verdict.observed.recipe_module_names).toEqual(['GhostModule']);
+    expect(verdict.observed.recipe_form_names).toEqual(['Module Quiz']);
+  });
+
+  it('fires expected-form-not-in-module for a form named in a NESTED runFlow.env', () => {
+    const body = [
+      '- runFlow:',
+      '    file: learn-tap-module.yaml',
+      '    env:',
+      '      MODULE_NAME: "Health Education"',
+      '      FORM_NAME: "Register Visit"',
+    ].join('\n');
+    const verdict = probeRecipeSanity({
+      recipes: [recipeBody('journey-learn.yaml', body)],
+      novaApps: [HEALTHY_LEARN_APP, HEALTHY_DELIVER_APP],
+      connectOpp: LIVE_OPP,
+    });
+    expect(verdict.failures.find((x) => x.class === 'expected-form-not-in-module')).toBeDefined();
+  });
+});
+
+describe('probeRecipeSanity — warning class: module-form-checks-not-run', () => {
+  it('warns (without failing) when a runFlow recipe binds no MODULE_NAME', () => {
+    const body = [
+      '- runFlow:',
+      '    file: connect-resume-opp.yaml',
+      '- runFlow:',
+      '    file: deliver-form-walk.yaml',
+    ].join('\n');
+    const verdict = probeRecipeSanity({
+      recipes: [recipeBody('journey-deliver.yaml', body)],
+      novaApps: [HEALTHY_DELIVER_APP],
+      connectOpp: LIVE_OPP,
+    });
+    expect(verdict.ok).toBe(true); // a caveat qualifies a pass, never denies it
+    const w = verdict.warnings.find((x) => x.class === 'module-form-checks-not-run');
+    expect(w).toBeDefined();
+    expect(w!.recipe).toBe('journey-deliver.yaml');
+    expect(w!.detail).toContain('expected-module-not-in-app');
+    expect(w!.detail).toContain('expected-form-not-in-module');
+    expect(w!.remediation).toMatch(/MODULE_NAME|nova_get_app/);
+    expect(verdict.observed.module_form_checks_ran).toBe(false);
+  });
+
+  it('does NOT warn once the nested runFlow.env binds MODULE_NAME', () => {
+    const body = [
+      '- runFlow:',
+      '    file: learn-tap-module.yaml',
+      '    env:',
+      '      MODULE_NAME: "Health Education"',
+      '      FORM_NAME: "Module Quiz"',
+    ].join('\n');
+    const verdict = probeRecipeSanity({
+      recipes: [recipeBody('journey-learn.yaml', body)],
+      novaApps: [HEALTHY_LEARN_APP],
+      connectOpp: LIVE_OPP,
+    });
+    expect(verdict.warnings).toHaveLength(0);
+    expect(verdict.observed.module_form_checks_ran).toBe(true);
+  });
+
+  it('does not warn on a recipe with no runFlow steps at all', () => {
+    const verdict = probeRecipeSanity({
+      recipes: [recipeBody('J1.yaml', '- launchApp')],
+      novaApps: [HEALTHY_LEARN_APP],
+      connectOpp: LIVE_OPP,
+    });
+    expect(verdict.warnings).toHaveLength(0);
   });
 });

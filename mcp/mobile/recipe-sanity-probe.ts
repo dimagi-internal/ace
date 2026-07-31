@@ -39,10 +39,17 @@ export type SanityFailureClass =
   | 'tile-name-collision'
   | 'opp-name-mismatch'
   | 'form-advance-without-answer-tap'
+  | 'answer-tap-before-leading-label-advance'
   | 'group-field-list-per-question-walk'
   | 'brief-label-drift'
   | 'inputtext-geopoint-as-string'
   | 'deliver-smoke-rewalks-learn';
+
+/** Non-blocking caveat classes. A warning NEVER flips `ok` — it names a
+ * check that could not RUN, so a clean verdict isn't read as a clean
+ * app. Same "configured vs configured *correctly*" gap the
+ * `field_data_supplied` flag closes for the screen-shape checks. */
+export type SanityWarningClass = 'module-form-checks-not-run';
 
 export interface SanityFailure {
   class: SanityFailureClass;
@@ -56,11 +63,25 @@ export interface SanityFailure {
   value?: string;
 }
 
+export interface SanityWarning {
+  class: SanityWarningClass;
+  /** Human-readable detail naming the checks that did NOT run. */
+  detail: string;
+  /** How to make the un-run check actually run. */
+  remediation: string;
+  /** Which recipe the caveat applies to (when applicable). */
+  recipe?: string;
+}
+
 export interface SanityVerdict {
-  /** Overall pass/fail. Pass iff `failures` is empty. */
+  /** Overall pass/fail. Pass iff `failures` is empty. Warnings do NOT
+   * flip it — they qualify a pass, they don't deny one. */
   ok: boolean;
   /** Each failure carries its class + canonical remediation. */
   failures: SanityFailure[];
+  /** Non-blocking caveats: checks that were INERT for these inputs.
+   * Read them before reporting an unqualified pass (ace#1068). */
+  warnings: SanityWarning[];
   /** Echo of what the probe found, for the verdict YAML. */
   observed: {
     /** Distinct module names referenced across all parsed recipes. */
@@ -88,6 +109,15 @@ export interface SanityVerdict {
      * data). Zero on an app that HAS groups means the caller passed
      * `fields` without `children[]`. */
     nova_groups_seen: number;
+    /** Whether ANY recipe bound a MODULE_NAME the probe could read.
+     *
+     * **Read this before trusting a clean verdict** — same contract as
+     * `field_data_supplied`. When false, `expected-module-not-in-app`
+     * and `expected-form-not-in-module` did NOT run for any recipe, and
+     * the verdict is byte-identical to one where they ran and passed
+     * (ace#1068). The matching `module-form-checks-not-run` warning
+     * names the recipe(s). */
+    module_form_checks_ran: boolean;
   };
 }
 
@@ -178,13 +208,15 @@ export interface ProbeInputs {
  */
 export function probeRecipeSanity(inputs: ProbeInputs): SanityVerdict {
   const failures: SanityFailure[] = [];
+  const warnings: SanityWarning[] = [];
   const recipeModuleNames = new Set<string>();
   const recipeFormNames = new Set<string>();
 
-  // Screen-shape facts derived once from the Nova structures. Both are
+  // Screen-shape facts derived once from the Nova structures. All are
   // inert when callers don't supply `fields` (see NovaAppSlice).
   const maxLabelRun = maxConsecutiveLabelScreens(inputs.novaApps);
   const groupScreens = collectGroupScreens(inputs.novaApps);
+  const formShapes = collectFormShapes(inputs.novaApps);
   const fieldDataSupplied = inputs.novaApps.some((app) =>
     app.modules.some((mod) => mod.forms.some((form) => form.fields !== undefined)),
   );
@@ -260,6 +292,52 @@ export function probeRecipeSanity(inputs: ProbeInputs): SanityVerdict {
         recipe: recipe.name,
         parameter: 'group-field-list',
         value: groupWalk.groupId,
+      });
+    }
+
+    // 6.6 answer-tap-before-leading-label-advance → the INVERSE of the
+    // #858 carve-out above, and the static enforcement of the #710/#684
+    // prose rule (skills/app-test-cases/SKILL.md § Quiz / required-input
+    // answer-tap rule → "Leading (and interior) display/label screens").
+    //
+    // A `kind: label` node renders as its OWN screen with nothing to
+    // answer. So a form whose field list OPENS with N label nodes
+    // (`hidden` nodes render nothing and don't count) needs N bare
+    // form-advance steps between the menu-walk entry step
+    // (learn-tap-module / deliver-form-walk) and the first answer tap.
+    // Emit fewer and the answer tap fires while the intro screen is
+    // still up: `selector-not-found`, the Learn leg dies, learn_progress
+    // never reaches 100%, Deliver stays locked, Phase 6 cannot complete
+    // (ace#1045, live on bednet-spot-check/20260729-0002).
+    //
+    // #858's threshold made the probe label-aware in the PERMISSIVE
+    // direction only (don't flag a legitimate label traversal). This is
+    // the restrictive direction — and the two cannot conflict, because
+    // this one only fires on an advance count BELOW what the form's own
+    // leading labels require, while #858's only fires ABOVE.
+    //
+    // Precision guards (the #858/#860 false-positive tax is the reason):
+    //   * the answer step must resolve to a REAL answerable matcher of
+    //     the walked form (question label or option label) — a
+    //     navigation tap can't trigger it;
+    //   * when the entry step doesn't name a FORM_NAME (deliver-form-walk
+    //     takes none), every supplied form is a candidate and the
+    //     requirement is the MINIMUM across the ones the tap matched;
+    //   * inert when the caller supplies no `fields` (same contract as
+    //     group-field-list-per-question-walk).
+    const labelMiss = findAnswerTapBeforeLeadingLabelAdvance(
+      recipe.text,
+      formShapes,
+      params.formNames,
+    );
+    if (labelMiss) {
+      failures.push({
+        class: 'answer-tap-before-leading-label-advance',
+        detail: `recipe ${recipe.name} taps an answer ("${labelMiss.matched}", line ${labelMiss.line}) after only ${labelMiss.found} bare form-advance step(s), but form "${labelMiss.formName}" opens with ${labelMiss.expected} leading kind:label screen(s) (${labelMiss.leadingLabels.join(', ')}) — each renders as its own screen, so the answer selector is not present yet and the tap fails selector-not-found`,
+        remediation: `emit ${labelMiss.expected} bare form-advance step(s) (no answer tap) between the menu-walk entry step and the first answer tap, one per leading label node, per skills/app-test-cases/SKILL.md § Quiz / required-input answer-tap rule → Leading (and interior) display/label screens (ace#710); re-author via /ace:step app-test-cases`,
+        recipe: recipe.name,
+        parameter: 'leading-label-advances',
+        value: `expected=${labelMiss.expected},found=${labelMiss.found}`,
       });
     }
 
@@ -368,6 +446,24 @@ export function probeRecipeSanity(inputs: ProbeInputs): SanityVerdict {
       }
     }
 
+    // 3.5 module-form-checks-not-run (WARN, never a failure) → checks 2
+    // and 3 are driven entirely by the MODULE_NAME/FORM_NAME the recipe
+    // binds. A recipe that composes palette steps but binds neither
+    // silently skips both, and the verdict is byte-identical to one where
+    // they ran and passed. Name the inert checks instead (ace#1068) —
+    // same caveat contract as `field_data_supplied` for the screen-shape
+    // checks. Deliver smokes legitimately land here: `deliver-form-walk`
+    // taps the first row at each menu level and takes no env, so the WARN
+    // is the honest answer, not a defect to suppress.
+    if (params.moduleNames.size === 0 && /^\s*-?\s*runFlow:/m.test(recipe.text)) {
+      warnings.push({
+        class: 'module-form-checks-not-run',
+        detail: `recipe ${recipe.name} composes runFlow steps but binds no MODULE_NAME in any env block (top-level or nested runFlow.env), so expected-module-not-in-app and expected-form-not-in-module did NOT run for it — a clean verdict here does not mean the recipe's module/form names exist in the live app`,
+        remediation: `pass MODULE_NAME (and FORM_NAME) in the entry step's runFlow env — e.g. runFlow: {file: learn-tap-module.yaml, env: {MODULE_NAME: "<live module>", FORM_NAME: "<live form>"}} — or, for a palette step that takes no env (deliver-form-walk), verify the module/form names by hand against nova_get_app and record that in the verdict`,
+        recipe: recipe.name,
+      });
+    }
+
     // 8. deliver-smoke-rewalks-learn → a journey-deliver recipe that
     // re-walks Learn. Post-decoupling the journey-learn leg walks Learn
     // to completion and unlocks Deliver; the Deliver leg must only
@@ -434,6 +530,7 @@ export function probeRecipeSanity(inputs: ProbeInputs): SanityVerdict {
   return {
     ok: failures.length === 0,
     failures,
+    warnings,
     observed: {
       recipe_module_names: [...recipeModuleNames].sort(),
       recipe_form_names: [...recipeFormNames].sort(),
@@ -442,14 +539,30 @@ export function probeRecipeSanity(inputs: ProbeInputs): SanityVerdict {
       field_data_supplied: fieldDataSupplied,
       max_label_screen_run: maxLabelRun,
       nova_groups_seen: groupScreens.length,
+      module_form_checks_ran: recipeModuleNames.size > 0,
     },
   };
 }
 
-/** Extract the MODULE_NAME / FORM_NAME values a recipe binds. Looks at
- * the recipe's `env:` block (`appId.env`) and `${MODULE_NAME}` /
- * `${FORM_NAME}` substring references. Returns sets — a single recipe
- * may bind multiple module/form names across its steps. */
+/** Extract the MODULE_NAME / FORM_NAME values a recipe binds — from the
+ * recipe's top-level `env:`/`params:` block AND from every NESTED
+ * `runFlow.env` map, at any depth. Returns sets — a single recipe may
+ * bind multiple module/form names across its steps.
+ *
+ * The nested form is the one Phase 3 actually emits:
+ *
+ * ```yaml
+ * - runFlow:
+ *     file: learn-tap-module.yaml
+ *     env:
+ *       MODULE_NAME: "Connect Basics"
+ *       FORM_NAME: "Connect Basics"
+ * ```
+ *
+ * Reading only the top-level block returned EMPTY sets for that shape,
+ * which made `expected-module-not-in-app` and `expected-form-not-in-module`
+ * structurally unable to fire while the verdict still read `ok: true`
+ * (ace#1068). */
 export function extractRecipeParameters(recipe: RecipeText): {
   moduleNames: Set<string>;
   formNames: Set<string>;
@@ -459,9 +572,9 @@ export function extractRecipeParameters(recipe: RecipeText): {
 
   // Parse the YAML. Maestro recipes ALMOST ALWAYS use multi-document
   // form (`appId + env` as doc 1, step list as doc 2 after `---`), so
-  // we must use `parseAllDocuments`. The env block lives in the first
-  // document; later docs are step lists we ignore for parameter
-  // extraction.
+  // we must use `parseAllDocuments`. The top-level env block lives in
+  // the first document; the step lists in later docs carry the nested
+  // `runFlow.env` maps, so BOTH are walked.
   let docs: ReturnType<typeof parseAllDocuments>;
   try {
     docs = parseAllDocuments(recipe.text);
@@ -469,16 +582,36 @@ export function extractRecipeParameters(recipe: RecipeText): {
     return { moduleNames, formNames };
   }
 
-  for (const doc of docs) {
-    const parsed = doc.toJS();
-    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
-      const env = (parsed as Record<string, unknown>).env;
-      if (env && typeof env === 'object') {
-        const envMap = env as Record<string, unknown>;
-        if (typeof envMap.MODULE_NAME === 'string') moduleNames.add(envMap.MODULE_NAME);
-        if (typeof envMap.FORM_NAME === 'string') formNames.add(envMap.FORM_NAME);
-      }
+  /** Read one env/params map. Unresolved `${...}` placeholders are NOT
+   * names — recording them would make `expected-module-not-in-app` fire
+   * on a template. */
+  const readEnvMap = (candidate: unknown): void => {
+    if (!candidate || typeof candidate !== 'object' || Array.isArray(candidate)) return;
+    const envMap = candidate as Record<string, unknown>;
+    const module = envMap.MODULE_NAME;
+    const form = envMap.FORM_NAME;
+    if (typeof module === 'string' && module.trim() && !module.includes('${')) {
+      moduleNames.add(module);
     }
+    if (typeof form === 'string' && form.trim() && !form.includes('${')) {
+      formNames.add(form);
+    }
+  };
+
+  const walk = (node: unknown, depth: number): void => {
+    if (depth > 24 || node === null || typeof node !== 'object') return;
+    if (Array.isArray(node)) {
+      for (const item of node) walk(item, depth + 1);
+      return;
+    }
+    const map = node as Record<string, unknown>;
+    readEnvMap(map.env);
+    readEnvMap(map.params);
+    for (const value of Object.values(map)) walk(value, depth + 1);
+  };
+
+  for (const doc of docs) {
+    walk(doc.toJS(), 0);
   }
 
   return { moduleNames, formNames };
@@ -562,6 +695,167 @@ function maxConsecutiveLabelScreens(apps: NovaAppSlice[]): number {
     }
   }
   return max;
+}
+
+/** One supplied form reduced to the two facts the leading-label check
+ * needs: how many `label` screens it OPENS with, and which on-screen
+ * strings count as ANSWERING it. */
+interface FormShape {
+  formName: string;
+  /** Count of leading `kind: label` fields, skipping `hidden` (which
+   * render no screen). Stops at the first answerable field. */
+  leadingLabelCount: number;
+  /** Ids of those leading label fields, for the failure detail. */
+  leadingLabels: string[];
+  /** Question labels + select-option labels of every ANSWERABLE field
+   * (group children included). Excludes `label`/`hidden` fields — their
+   * text is display-only, so tapping it is never an answer. */
+  answerMatchers: string[];
+}
+
+/** One FormShape per supplied form. Empty when no caller passed
+ * `fields`, which is what makes the leading-label check inert by
+ * default (same contract as `group-field-list-per-question-walk`). */
+function collectFormShapes(apps: NovaAppSlice[]): FormShape[] {
+  const out: FormShape[] = [];
+  for (const app of apps) {
+    for (const mod of app.modules) {
+      for (const form of mod.forms) {
+        if (!form.fields) continue;
+        let leadingLabelCount = 0;
+        const leadingLabels: string[] = [];
+        let stillLeading = true;
+        const answerMatchers: string[] = [];
+        for (const field of form.fields) {
+          if (field.kind === 'hidden') continue;
+          if (field.kind === 'label') {
+            if (stillLeading) {
+              leadingLabelCount++;
+              leadingLabels.push(field.id);
+            }
+            continue;
+          }
+          stillLeading = false;
+          if (field.kind === 'group') {
+            for (const child of field.children ?? []) {
+              if (child.kind === 'hidden' || child.kind === 'label') continue;
+              if (child.label) answerMatchers.push(child.label);
+              for (const opt of child.options ?? []) {
+                if (opt.label) answerMatchers.push(opt.label);
+              }
+            }
+            continue;
+          }
+          if (field.label) answerMatchers.push(field.label);
+          for (const opt of field.options ?? []) {
+            if (opt.label) answerMatchers.push(opt.label);
+          }
+        }
+        out.push({ formName: form.form_name, leadingLabelCount, leadingLabels, answerMatchers });
+      }
+    }
+  }
+  return out;
+}
+
+/** Menu-walk entry steps — the palette recipes that land the device on a
+ * form's FIRST screen. Everything between one of these and the first
+ * answer tap is the leading-label budget. */
+const ENTRY_STEP_RE = /file:\s*(?:learn-tap-module|deliver-form-walk)\.yaml/;
+
+/** Find the first answer tap that fires with fewer bare form-advance
+ * steps behind it than the walked form's leading `label` screens require
+ * — the #710/#684 class, statically (ace#1045). Returns null when no
+ * field data was supplied, no entry step is present, or every segment
+ * clears its budget. */
+function findAnswerTapBeforeLeadingLabelAdvance(
+  yaml: string,
+  shapes: FormShape[],
+  recipeFormNames: Set<string>,
+): {
+  formName: string;
+  expected: number;
+  found: number;
+  line: number;
+  matched: string;
+  leadingLabels: string[];
+} | null {
+  if (!shapes.length) return null;
+  if (!ENTRY_STEP_RE.test(yaml)) return null;
+
+  const items = splitTopLevelSteps(yaml);
+  let candidates: FormShape[] | null = null;
+  let advances = 0;
+
+  for (const item of items) {
+    if (ENTRY_STEP_RE.test(item.text)) {
+      // A new form walk starts here. Prefer the FORM_NAME the entry step
+      // itself binds; fall back to the recipe's single bound form name;
+      // otherwise every supplied form is a candidate (deliver-form-walk
+      // takes no env at all).
+      const named = readStepFormName(item.text);
+      const fallback =
+        named === null && recipeFormNames.size === 1 ? [...recipeFormNames][0] : named;
+      const resolved = fallback === null ? shapes : shapes.filter((s) => s.formName === fallback);
+      candidates = resolved.length ? resolved : null;
+      advances = 0;
+      continue;
+    }
+    if (!candidates) continue;
+
+    const kind = classifyStepBlock(item.text);
+    if (kind === 'form-advance') {
+      advances++;
+      continue;
+    }
+    if (kind !== 'answer') continue;
+
+    // Only a tap/inputText that resolves to a REAL answerable matcher of
+    // a candidate form counts — navigation taps must not trigger this.
+    const matchers = stepTextMatchers(item.text);
+    if (!matchers.length) continue;
+    const matchedShapes: FormShape[] = [];
+    let matchedText = '';
+    for (const shape of candidates) {
+      for (const matcher of matchers) {
+        if (shape.answerMatchers.some((c) => c === matcher || c.startsWith(matcher))) {
+          matchedShapes.push(shape);
+          if (!matchedText) matchedText = matcher;
+          break;
+        }
+      }
+    }
+    if (!matchedShapes.length) continue;
+
+    // Ambiguous match (shared option labels across forms) → require the
+    // MINIMUM, i.e. flag only when every candidate would still be short.
+    const worstCase = matchedShapes.reduce((min, s) =>
+      s.leadingLabelCount < min.leadingLabelCount ? s : min,
+    );
+    if (advances < worstCase.leadingLabelCount) {
+      return {
+        formName: worstCase.formName,
+        expected: worstCase.leadingLabelCount,
+        found: advances,
+        line: item.startLine,
+        matched: matchedText,
+        leadingLabels: worstCase.leadingLabels,
+      };
+    }
+    // Budget cleared — this segment is done.
+    candidates = null;
+  }
+  return null;
+}
+
+/** Read a `FORM_NAME:` binding out of one step block (the nested
+ * `runFlow.env` shape). Returns null when the step binds none. */
+function readStepFormName(stepText: string): string | null {
+  const m = stepText.match(/^\s*FORM_NAME:\s*(?:"([^"]*)"|'([^']*)'|([^\s#][^#\n]*?))\s*$/m);
+  if (!m) return null;
+  const raw = (m[1] ?? m[2] ?? m[3] ?? '').trim();
+  if (!raw || raw.includes('${')) return null;
+  return raw;
 }
 
 /** A Nova group flattened to the on-screen strings a recipe could match

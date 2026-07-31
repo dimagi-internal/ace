@@ -213,18 +213,37 @@ remediation):
 | `expected-form-not-in-module` | Same as above — module/form structure has drifted. |
 | `opp-name-mismatch` | Pass `OPP_NAME` verbatim from `run_state.yaml.phases.connect-setup.products.connect.opportunity.name` (NOT slug-reassembled). Fallback only if missing: `connect_get_opportunity({org_slug, opportunity_id}).name`. |
 | `tile-name-collision` | Clean up prior-run invites OR use Resume-branch (exact-match claim). |
+| `answer-tap-before-leading-label-advance` | Recipe taps an answer with FEWER bare form-advance steps behind it than the walked form's **leading `kind: label` screens** require. Each label node renders as its own screen with nothing to answer, so the answer selector isn't on screen yet and the tap fails `selector-not-found` — the Learn leg dies, `learn_progress` never reaches 100%, Deliver stays locked. Emit one bare `form-advance` per leading label between the menu-walk entry step (`learn-tap-module` / `deliver-form-walk`) and the first answer tap; re-author via `/ace:step app-test-cases`. This is the **inverse** of the `form-advance-without-answer-tap` carve-out below — that one bounds the count from ABOVE, this one from BELOW — and it is the static enforcement of the previously prose-only #710/#684 rule (ace#1045). Field-gated: inert without `fields`. |
 | `form-advance-without-answer-tap` | Recipe chains consecutive form-advance steps with no answer step between them — required-input questions will stall on `warning_root`. Re-author via `/ace:step app-test-cases`: for each required field, read its label/options via Nova `get_form` and emit a `tapOn:text:"<literal>"` (or `inputText` / photo-capture sequence) BEFORE the form-advance. **Label-aware when `fields` is supplied:** `label` screens have nothing to answer and can only be crossed by nav-next, so the threshold is (longest run of consecutive `label` screens) + 2. Without `fields` it stays at 2 and false-positives on label-heavy apps (#858). |
 | `group-field-list-per-question-walk` | Recipe advances the form BETWEEN two children of the same Nova `group`. A group compiles to a CommCare **field-list** — all children render on ONE scrollable screen — so the advance fires with required siblings still unanswered (`warning_root`) and reaches for options that may be off-screen. Re-author via `/ace:step app-test-cases` as a single-screen walk: answer every required child on the one screen, then exactly ONE trailing form-advance (#862). |
 | `brief-label-drift` | Recipe has a `tapOn:text:"X"` matcher where X matches a PDD-brief naming pattern (`^[LFM]\d+ — `, `^Stage \d+ — `). Nova rewrites these during autobuild and the matcher won't resolve live. Re-author via `/ace:step app-test-cases`: read the live label from Nova `get_form`/`get_module` and use it verbatim. |
 | `deliver-smoke-rewalks-learn` | Re-author the Deliver smoke as resume-only (`connect-resume-opp` → `deliver-launch.yaml`) via `/ace:step app-test-cases`. The Learn leg already completes Learn. |
 
 **Record which probe actually ran.** Copy `observed.field_data_supplied`,
-`observed.max_label_screen_run` and `observed.nova_groups_seen` into the
-verdict. A clean verdict with `field_data_supplied: false` is **weaker
-than it looks** — it means the screen-shape checks never ran, so the
-chain check was field-blind and `group-field-list-per-question-walk`
-could not fire at all. Treat that as a WARN and name the missing
-`nova_get_form` call, rather than reporting an unqualified pass.
+`observed.max_label_screen_run`, `observed.nova_groups_seen` and
+`observed.module_form_checks_ran` into the verdict. Two caveats make a
+clean verdict **weaker than it looks**, and both must be reported as a
+WARN rather than an unqualified pass:
+
+- `field_data_supplied: false` — the screen-shape checks never ran, so
+  the chain check was field-blind and both
+  `group-field-list-per-question-walk` and
+  `answer-tap-before-leading-label-advance` could not fire at all. Name
+  the missing `nova_get_form` call.
+- `module_form_checks_ran: false` — no recipe bound a readable
+  `MODULE_NAME`, so `expected-module-not-in-app` and
+  `expected-form-not-in-module` never ran (ace#1068). The probe now emits
+  this itself as a `module-form-checks-not-run` entry in
+  `verdict.warnings[]`, naming the recipe.
+
+**Copy `verdict.warnings[]` into the verdict YAML verbatim.** Warnings
+never flip `ok` — they qualify a pass. A pass reported without them is
+the "configured vs configured *correctly*" gap: the probe returned
+`ok: true` having never performed the check you were relying on. The
+canonical Phase-3 fix for `module-form-checks-not-run` is to pass
+`MODULE_NAME`/`FORM_NAME` in the entry step's `runFlow.env`; for palette
+steps that take no env (`deliver-form-walk`), verify the names by hand
+against `nova_get_app` and record that in the verdict.
 
 On any failure, halt with the **incomplete-mode verdict shape** (see
 Step 9), `verdict: incomplete`, and a per-class
