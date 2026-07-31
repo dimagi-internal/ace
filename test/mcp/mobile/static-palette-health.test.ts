@@ -253,6 +253,15 @@ describe('static palette health — deliver-launch retry-proofing invariant (#74
     ).not.toMatch(/when:\s*\n\s+notVisible:\s*\n\s+\$\{SELECTOR:deliver-home-job-card\}/);
   });
 
+  it('asserts a REAL Deliver differentiator, not just viewJobCard (#893)', () => {
+    // viewJobCard renders on the Learn home too once the opp is claimed,
+    // so asserting it alone lets deliver-launch go green while sitting in
+    // Learn. The delivery-quota row is the differentiator that actually
+    // separates the two surfaces (live-diffed from
+    // hh-poverty-targeting/20260722-1341's learn vs deliver home captures).
+    expect(yaml).toMatch(/assertVisible:\s*\n\s*\$\{SELECTOR:deliver-home-daily-visits\}/);
+  });
+
   it('keeps the download wait non-halting on the already-downloaded path (#747)', () => {
     // #747's protection must survive the #893 restructure: on a retry
     // whose prior dispatch consumed the gate, DOWNLOAD never renders, so
