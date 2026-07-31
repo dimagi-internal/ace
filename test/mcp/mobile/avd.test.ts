@@ -346,7 +346,7 @@ describeDevice('AvdBackend.ensureAvdRunning', () => {
     const shell = vi.fn(async (cmd: string, args: string[]) => {
       const key = `${cmd} ${args.join(' ')}`;
       calls.push(key);
-      if (key === 'pgrep -f qemu-system') {
+      if (key.startsWith('pgrep') && key.includes('qemu-system')) {
         // No qemu PIDs — skip the orphan-kill branch and just exercise
         // the always-restart adb-server step.
         return { stdout: '', stderr: '', exitCode: 1 };
@@ -392,7 +392,7 @@ describeDevice('AvdBackend.ensureAvdRunning', () => {
     try {
       const shell = vi.fn(async (cmd: string, args: string[]) => {
         const key = `${cmd} ${args.join(' ')}`;
-        if (key === 'pgrep -f qemu-system') {
+        if (key.startsWith('pgrep') && key.includes('qemu-system')) {
           // Two orphan qemu PIDs (the attempt-10 reproducer signature).
           return { stdout: '90001\n90002\n', stderr: '', exitCode: 0 };
         }
@@ -442,7 +442,7 @@ describeDevice('AvdBackend.ensureAvdRunning', () => {
       const shell = vi.fn(async (cmd: string, args: string[]) => {
         const key = `${cmd} ${args.join(' ')}`;
         events.push({ name: key, t: Date.now() - start });
-        if (key === 'pgrep -f qemu-system') {
+        if (key.startsWith('pgrep') && key.includes('qemu-system')) {
           // Two orphan qemu PIDs (matches attempt-12 signature).
           return { stdout: '90011\n90012\n', stderr: '', exitCode: 0 };
         }
@@ -504,7 +504,7 @@ describeDevice('AvdBackend.ensureAvdRunning', () => {
     try {
       const shell = vi.fn(async (cmd: string, args: string[]) => {
         const key = `${cmd} ${args.join(' ')}`;
-        if (key === 'pgrep -f qemu-system') {
+        if (key.startsWith('pgrep') && key.includes('qemu-system')) {
           return { stdout: '90021\n90022\n', stderr: '', exitCode: 0 };
         }
         if (key === 'adb devices') {
@@ -543,7 +543,7 @@ describeDevice('AvdBackend.ensureAvdRunning', () => {
     try {
       const shell = vi.fn(async (cmd: string, args: string[]) => {
         const key = `${cmd} ${args.join(' ')}`;
-        if (key === 'pgrep -f qemu-system') {
+        if (key.startsWith('pgrep') && key.includes('qemu-system')) {
           return { stdout: '90003\n', stderr: '', exitCode: 0 };
         }
         if (key === 'adb devices') {
