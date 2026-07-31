@@ -49,6 +49,52 @@ export interface SpawnedRecorder {
 }
 export type SpawnFn = (cmd: string, args: string[], env: NodeJS.ProcessEnv) => SpawnedRecorder;
 
+/**
+ * A spawned child that can report an ASYNCHRONOUS spawn failure. Narrower
+ * than `ChildProcess` so `createDefaultSpawnFn` is unit-testable with a
+ * plain `EventEmitter`.
+ */
+export interface ErrorEmittingChild extends SpawnedRecorder {
+  on(event: 'error', listener: (err: Error) => void): unknown;
+}
+export type NodeSpawnLike = (
+  cmd: string,
+  args: string[],
+  opts: { stdio: 'ignore'; detached: boolean; env: NodeJS.ProcessEnv },
+) => ErrorEmittingChild;
+
+/**
+ * Build the production spawn function, with the `'error'` listener that
+ * keeps a spawn failure from killing the whole MCP subprocess.
+ *
+ * **The listener is load-bearing, not defensive politeness.** Node reports
+ * spawn failures ASYNCHRONOUSLY as an `'error'` event on the returned
+ * `ChildProcess` — `ENOENT` when `adb` isn't on PATH, `EAGAIN`/`EMFILE`
+ * under fork pressure. An `'error'` event with NO listener is re-thrown by
+ * EventEmitter as an uncaught exception, and nothing in `mcp/` or `lib/`
+ * installs a `process.on('uncaughtException')` handler. So without this,
+ * a best-effort recording failure would take down the entire ace-mobile
+ * MCP server mid-recipe — the exact opposite of the "recording never
+ * changes a recipe's verdict" contract this file is built around.
+ *
+ * `startRecording`'s try/catch cannot cover this: it only catches a
+ * SYNCHRONOUS throw from `spawnFn`, which is why an injected fake that
+ * throws (as `screen-recorder.test.ts` uses) proves nothing about this
+ * path. See the `createDefaultSpawnFn` tests for the real proof.
+ */
+export function createDefaultSpawnFn(
+  label: string,
+  spawnImpl: NodeSpawnLike = nodeSpawn as unknown as NodeSpawnLike,
+): SpawnFn {
+  return (cmd, argv, env) => {
+    const child = spawnImpl(cmd, argv, { stdio: 'ignore', detached: false, env });
+    child.on('error', (err) => {
+      logInfo(`startRecording: adb screenrecord spawn failed for ${label}: ${String(err)}`);
+    });
+    return child;
+  };
+}
+
 export interface RecordingHandle {
   serial: string;
   recipeId: string;
@@ -94,13 +140,20 @@ export function startRecording(args: {
   config: RecorderConfig;
   adbServerPort?: number;
   spawnFn?: SpawnFn;
+  /**
+   * Test-only seam. Replaces `node:child_process.spawn` INSIDE the default
+   * `spawnFn`, so a test can exercise the real `createDefaultSpawnFn`
+   * wrapper (and its `'error'` listener) end-to-end through this function
+   * rather than bypassing it via `spawnFn`. Ignored when `spawnFn` is given.
+   */
+  spawnImpl?: NodeSpawnLike;
 }): RecordingHandle | undefined {
   if (!args.config.enabled) return undefined;
   const devicePath = `/sdcard/ace-rec-${args.dispatchId}-${args.attempt}.mp4`;
   const outPath = path.join(args.outDir, outFileName(args.recipeId, args.attempt));
   const spawnFn: SpawnFn =
     args.spawnFn ??
-    ((cmd, argv, env) => nodeSpawn(cmd, argv, { stdio: 'ignore', detached: false, env }));
+    createDefaultSpawnFn(`${args.recipeId} attempt ${args.attempt}`, args.spawnImpl);
   try {
     const env: NodeJS.ProcessEnv = { ...process.env };
     if (typeof args.adbServerPort === 'number') {
@@ -123,6 +176,27 @@ export function startRecording(args: {
   }
 }
 
+/**
+ * Timeouts for the stop path. `defaultShell` only arms a timer when
+ * `timeoutMs` is passed, so an un-timed call waits FOREVER — and every
+ * call below runs inside `runRecipe`'s `runOnce` `finally`, on the
+ * critical path of every recipe. That includes the driver-death path,
+ * where the device is already known-sick and an `adb` that never returns
+ * is the likely case, not the exotic one. Best-effort has to be honoured
+ * in the time dimension too, not just the error dimension.
+ */
+/** Single-round-trip device commands (`pkill`, `stat`, `rm`). */
+const ADB_SHORT_TIMEOUT_MS = 5_000;
+/**
+ * `adb pull` of the recording. A 10-minute journey at the default
+ * 1M/540x1140 is roughly 40-80 MB, and the emulator loopback moves tens
+ * of MB/s — 120s is far past the worst realistic transfer while still
+ * finite.
+ */
+const ADB_PULL_TIMEOUT_MS = 120_000;
+/** ffmpeg `-c copy` remux — no re-encode, so it is I/O-bound, not CPU-bound. */
+const FFMPEG_TIMEOUT_MS = 60_000;
+
 /** Poll the on-device file size until two consecutive reads agree (or we time out). */
 async function waitForStableSize(
   handle: RecordingHandle,
@@ -135,7 +209,11 @@ async function waitForStableSize(
   while (Date.now() < deadline) {
     let current = -1;
     try {
-      const r = await shell('adb', ['-s', handle.serial, 'shell', 'stat', '-c', '%s', handle.devicePath]);
+      const r = await shell(
+        'adb',
+        ['-s', handle.serial, 'shell', 'stat', '-c', '%s', handle.devicePath],
+        { timeoutMs: ADB_SHORT_TIMEOUT_MS },
+      );
       current = Number.parseInt(r.stdout.trim(), 10);
     } catch {
       return; // Device unreachable — let the pull surface the real problem.
@@ -158,12 +236,28 @@ async function waitForStableSize(
 export async function normalizeContainer(mp4Path: string, shell: ShellFn = defaultShell): Promise<boolean> {
   const tmpOut = `${mp4Path}.remux.mp4`;
   try {
-    const r = await shell('ffmpeg', [
-      '-v', 'error', '-y', '-i', mp4Path, '-c', 'copy', '-movflags', '+faststart', tmpOut,
-    ]);
-    if (r.exitCode !== 0 || !fs.existsSync(tmpOut) || fs.statSync(tmpOut).size === 0) {
+    const r = await shell(
+      'ffmpeg',
+      ['-v', 'error', '-y', '-i', mp4Path, '-c', 'copy', '-movflags', '+faststart', tmpOut],
+      { timeoutMs: FFMPEG_TIMEOUT_MS },
+    );
+    // Three independent reasons to discard the remux. Name WHICH one
+    // tripped: the guard is an OR, so a missing or empty output used to log
+    // `ffmpeg exit 0`, which reads as "ffmpeg succeeded and we threw the
+    // result away anyway" and sends the reader at the wrong question.
+    const missing = !fs.existsSync(tmpOut);
+    const empty = !missing && fs.statSync(tmpOut).size === 0;
+    if (r.exitCode !== 0 || missing || empty) {
       try { fs.rmSync(tmpOut, { force: true }); } catch { /* ignore */ }
-      logInfo(`normalizeContainer: ffmpeg exit ${r.exitCode} for ${mp4Path} — keeping raw pull`);
+      const why = r.exitCode !== 0
+        ? `ffmpeg exit ${r.exitCode}`
+        : missing
+          ? 'ffmpeg exit 0 but produced no output file'
+          : 'ffmpeg exit 0 but produced a 0-byte output file';
+      logInfo(
+        `normalizeContainer: ${why} for ${mp4Path} — keeping raw pull` +
+          (r.stderr?.trim() ? ` (stderr: ${r.stderr.trim().slice(0, 300)})` : ''),
+      );
       return false;
     }
     fs.renameSync(tmpOut, mp4Path);
@@ -185,22 +279,20 @@ export async function stopRecording(
   try {
     // SIGINT, NOT SIGKILL. screenrecord writes the mp4 moov atom on a clean
     // interrupt; SIGKILL leaves an unplayable file.
-    await shell('adb', ['-s', handle.serial, 'shell', 'pkill', '-INT', 'screenrecord']);
+    await shell(
+      'adb',
+      ['-s', handle.serial, 'shell', 'pkill', '-INT', 'screenrecord'],
+      { timeoutMs: ADB_SHORT_TIMEOUT_MS },
+    );
     await waitForStableSize(handle, shell, pollMs, stableTimeoutMs);
-    const pullResult = await shell('adb', ['-s', handle.serial, 'pull', handle.devicePath, handle.outPath]);
+    const pullResult = await shell(
+      'adb',
+      ['-s', handle.serial, 'pull', handle.devicePath, handle.outPath],
+      { timeoutMs: ADB_PULL_TIMEOUT_MS },
+    );
     if (pullResult.exitCode !== 0) {
       logInfo(`stopRecording: adb pull failed with exit code ${pullResult.exitCode}: ${pullResult.stderr}`);
       return undefined;
-    }
-    try {
-      await shell('adb', ['-s', handle.serial, 'shell', 'rm', '-f', handle.devicePath]);
-    } catch (e) {
-      logInfo(`stopRecording: cleanup rm -f failed: ${String(e)}`);
-    }
-    try {
-      handle.child.kill();
-    } catch (e) {
-      logInfo(`stopRecording: cleanup child.kill() failed: ${String(e)}`);
     }
     // Normalize the container BEFORE stat — the remux changes the byte size.
     await normalizeContainer(handle.outPath, shell);
@@ -215,5 +307,34 @@ export async function stopRecording(
   } catch (e) {
     logInfo(`stopRecording: failed for ${handle.recipeId} attempt ${handle.attempt}: ${String(e)}`);
     return undefined;
+  } finally {
+    // Cleanup on EVERY exit path — success, early `return undefined` on a
+    // failed pull, and the outer catch alike. These used to sit on the
+    // success path only, and the leak that caused is not cosmetic:
+    //
+    //   - If `pkill` never landed, the DEVICE-SIDE screenrecord is still
+    //     running, with `--time-limit 0`, writing into
+    //     `/sdcard/ace-rec-<dispatch>-<attempt>.mp4` at ~5-8 MB/min on an
+    //     emulator whose default sdcard is 512 MB. Nothing else in ACE
+    //     sweeps that prefix, so every failed stop left one abandoned mp4
+    //     on the device forever.
+    //   - The host-side `adb` child we spawned is orphaned the same way.
+    //
+    // Both are independently guarded: a failure of one must not skip the
+    // other, and neither may turn a best-effort recorder into a throw.
+    try {
+      await shell(
+        'adb',
+        ['-s', handle.serial, 'shell', 'rm', '-f', handle.devicePath],
+        { timeoutMs: ADB_SHORT_TIMEOUT_MS },
+      );
+    } catch (e) {
+      logInfo(`stopRecording: cleanup rm -f failed: ${String(e)}`);
+    }
+    try {
+      handle.child.kill();
+    } catch (e) {
+      logInfo(`stopRecording: cleanup child.kill() failed: ${String(e)}`);
+    }
   }
 }
