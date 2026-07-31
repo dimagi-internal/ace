@@ -48,7 +48,7 @@ import {
   startRecording,
   stopRecording,
 } from './screen-recorder.js';
-import { spoolVideo } from './video-spool.js';
+import { clearSpool, listSpooled, spoolDir, spoolVideo } from './video-spool.js';
 
 /**
  * Screen-recorder seam. Injected only by tests; production binds the real
@@ -57,6 +57,24 @@ import { spoolVideo } from './video-spool.js';
 export interface RecorderHooks {
   start: typeof startRecording;
   stop: typeof stopRecording;
+}
+
+/**
+ * Video-spool seam. Injected only by tests; production binds the real
+ * `video-spool.ts` functions.
+ *
+ * This exists for the same reason `recorder` does, and its absence had a
+ * concrete cost: `spoolVideo(v)` with no options resolves the REAL
+ * `os.homedir()` and the REAL `process.ppid`, so the unit suite wrote
+ * 5-byte "VIDEO" files into the developer's own `~/.ace/mobile-videos/`,
+ * one ppid directory per `npm test`. `video-spool.test.ts` already avoids
+ * that via its `homeDir` override; the client had no equivalent.
+ */
+export interface SpoolHooks {
+  video: typeof spoolVideo;
+  list: typeof listSpooled;
+  clear: typeof clearSpool;
+  dir: typeof spoolDir;
 }
 
 export interface MobileClientOpts {
@@ -84,6 +102,13 @@ export interface MobileClientOpts {
    * Default binds the real `screen-recorder.ts` start/stop functions.
    */
   recorder?: RecorderHooks;
+  /**
+   * Optional override for the per-session video spool (testing only).
+   * Default binds the real `video-spool.ts` functions, which resolve the
+   * real home dir + ppid — inject a fake in tests so the suite never
+   * writes into `~/.ace/mobile-videos/`.
+   */
+  spool?: SpoolHooks;
 }
 
 /**
@@ -408,6 +433,7 @@ export class MobileClient {
   readonly bootstrapConfig: LocalBootstrapConfig | null;
   private readonly fetchImpl: typeof fetch;
   private readonly recorder: RecorderHooks;
+  private readonly spool: SpoolHooks;
   /**
    * Fingerprint of the AVD environment baseline applied during the most
    * recent `runLocalBootstrap`. Surfaced via the heal log so telemetry
@@ -427,6 +453,7 @@ export class MobileClient {
       opts.bootstrapConfig === undefined ? bootstrapConfigFromEnv() : opts.bootstrapConfig;
     this.fetchImpl = opts.fetchImpl ?? fetch;
     this.recorder = opts.recorder ?? { start: startRecording, stop: stopRecording };
+    this.spool = opts.spool ?? { video: spoolVideo, list: listSpooled, clear: clearSpool, dir: spoolDir };
     // Eagerly try to construct CloudBackend so /ace:mobile-backend can
     // flip the toggle mid-session without an MCP restart. We catch the
     // typed env-missing error so envs without ACE_WEB still start up.
@@ -1363,18 +1390,43 @@ export class MobileClient {
           `runRecipe: thrown-failure forensics capture failed for ${recipeId}: ${String(fe)}`,
         );
       }
-      // Attach whatever we recorded before the throw — same pattern as
-      // `failureForensics`. The pre-crash footage is the point. Guarded:
-      // mutating the caught error (or spooling) must never itself throw and
-      // replace the ORIGINAL error — same invariant as every other
-      // recorder call site in this method.
+      // Stamp + spool whatever we recorded before the throw. The pre-crash
+      // footage is the forensically interesting case, so it must carry the
+      // same `<video>.meta.json` provenance sidecar the success path writes
+      // — otherwise the ONE recording most worth reading lands unstamped.
+      //
+      // The spool (not the thrown error) is the delivery mechanism here: a
+      // throw surfaces as an MCP error, so nothing downstream can read a
+      // property hung off it. An earlier version also did
+      // `(e as {videos}).videos = videos`; that write had no consumer
+      // anywhere in mcp/, lib/, skills/, or test/ and has been removed.
+      //
+      // Guarded end to end: neither stamping nor spooling may throw and
+      // replace the ORIGINAL error — same invariant as every other recorder
+      // call site in this method.
       try {
         if (videos.length) {
-          (e as { videos?: VideoArtifact[] }).videos = videos;
-          for (const v of videos) spoolVideo(v);
+          const throwProvenance = buildProvenance({
+            recipeId,
+            dispatchId,
+            aceVersion: getAceVersion(),
+            gitSha: getGitSha(),
+            writtenAtEpochMs: Date.now(),
+          });
+          for (const v of videos) {
+            try {
+              writeProvenanceSidecar(v.path, throwProvenance);
+              v.provenance = throwProvenance;
+            } catch (pe) {
+              logInfo(
+                `runRecipe: failed to write provenance sidecar for ${v.path} on thrown failure: ${String(pe)}`,
+              );
+            }
+            this.spool.video(v);
+          }
         }
       } catch (ve) {
-        logInfo(`runRecipe: failed to attach/spool videos on thrown failure for ${recipeId}: ${String(ve)}`);
+        logInfo(`runRecipe: failed to stamp/spool videos on thrown failure for ${recipeId}: ${String(ve)}`);
       }
       throw e;
     }
@@ -1428,7 +1480,7 @@ export class MobileClient {
       } catch (e) {
         logInfo(`runRecipe: failed to write provenance sidecar for ${v.path}: ${String(e)}`);
       }
-      spoolVideo(v);
+      this.spool.video(v);
     }
     if (videos.length) result.videos = videos;
     return result;
