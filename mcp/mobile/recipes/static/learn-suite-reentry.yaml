@@ -28,8 +28,14 @@
 # Pre-state: StandardHomeActivity home (`learn-home-start-tile` /
 #   text "Start" visible). This is the post-state of `content-form-finish`
 #   and of any Learn form finalize.
-# Post-state: MenuActivity showing `screen_suite_menu_list` (the suite
-#   root, with one tappable row per module).
+# Post-state: MenuActivity showing the menu container (the suite root,
+#   with one tappable row per module).
+#
+# MENU ANCHOR RULE (dimagi-internal/ace#1127): the post-state wait uses
+# `${SELECTOR:learn-suite-menu}`, which accepts the LIST container
+# (`screen_suite_menu_list`) OR the GRID container (`grid_menu_grid`).
+# Prose below that names `screen_suite_menu_list` describes the original
+# list-mode incident; the anchor itself must stay display-mode-agnostic.
 appId: org.commcare.dalvik
 ---
 - extendedWaitUntil:

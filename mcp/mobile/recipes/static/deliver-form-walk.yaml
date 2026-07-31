@@ -6,8 +6,17 @@
 # Post-state: the first Deliver form question on screen (nav_btn_next visible);
 # the composing journey then answers the question(s) and runs form-submit.yaml.
 #
-# Nav: Deliver home -> Start -> module list (screen_suite_menu_list) -> tap
-# module row -> form list (screen_suite_menu_list) -> tap form row -> form.
+# Nav: Deliver home -> Start -> module list -> tap module row -> form list ->
+# tap form row -> form.
+#
+# MENU ANCHOR RULE (dimagi-internal/ace#1127): both menu waits go through
+# `${SELECTOR:deliver-suite-menu}`, which is DISPLAY-MODE-AGNOSTIC (it accepts
+# the list container `screen_suite_menu_list` OR the grid container
+# `grid_menu_grid`). These two waits were raw `screen_suite_menu_list`
+# literals until #1127, which is exactly why the Deliver leg walled the moment
+# Phase 3 started applying grid menu display app-wide (#1082/PR #1100). Never
+# re-hardcode a single container id here — see the selector-map row and the
+# `menu-container anchors` invariant in static-recipe-invariants.test.ts.
 #
 # SELECTOR RULE (load-bearing — validated live, bednet-spot-check/20260602-1345
 # deliver leg PASS, ace 0.13.533): tap CommCare menu-list rows by
@@ -31,7 +40,7 @@ appId: org.commcare.dalvik
     timeout: 5000
 - extendedWaitUntil:
     visible:
-      id: "org.commcare.dalvik:id/screen_suite_menu_list"
+      id: "${SELECTOR:deliver-suite-menu}"
     timeout: 15000
 - takeScreenshot: "deliver-form-walk-module-list"
 
@@ -42,7 +51,7 @@ appId: org.commcare.dalvik
     timeout: 5000
 - extendedWaitUntil:
     visible:
-      id: "org.commcare.dalvik:id/screen_suite_menu_list"
+      id: "${SELECTOR:deliver-suite-menu}"
     timeout: 10000
 - takeScreenshot: "deliver-form-walk-form-list"
 

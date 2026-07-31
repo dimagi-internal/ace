@@ -13,9 +13,16 @@
 # FINISH), finalized to screen_suite_menu_list with this loop. Whole Learn
 # leg passed 100% and unlocked Deliver.
 #
+# MENU ANCHOR RULE (dimagi-internal/ace#1127): every `notVisible:` loop
+# guard below uses `${SELECTOR:learn-suite-menu}`, which is DISPLAY-MODE-
+# AGNOSTIC — it accepts the LIST container (`screen_suite_menu_list`) OR the
+# GRID container (`grid_menu_grid`). With a list-only anchor this loop never
+# sees the menu on a grid-display app, taps nav_btn_next its full bounded
+# count, and the journey desynchronises. Keep it agnostic.
+#
 # Pre-state: FormEntryActivity mid-form (nav_btn_next visible).
-# Post-state: screen_suite_menu_list; the journey then taps the next form
-#   row directly (NO learn-suite-reentry / home-grid round-trip).
+# Post-state: the Learn suite menu container; the journey then taps the next
+#   form row directly (NO learn-suite-reentry / home-grid round-trip).
 # Param — REQUIRED AT EVERY CALL SITE: ${SCREENSHOT_NAME}.
 #   No `env:` default, deliberately: a subflow's own `env:` block OVERRIDES
 #   caller-passed `runFlow: env:` in Maestro 2.5.1 rather than defaulting

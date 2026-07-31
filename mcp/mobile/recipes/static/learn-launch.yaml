@@ -9,9 +9,18 @@
 # `btn_start`, and the Learn CCZ download completed (`Downloading
 # Learn App` progress screen auto-advanced).
 #
-# Post-state: MenuActivity showing the Learn-app's suite root (1+ rows
-# in `screen_suite_menu_list`, each a tappable LinearLayout containing
-# `row_img` + `row_txt`).
+# Post-state: MenuActivity showing the Learn-app's suite root (1+ rows,
+# each a tappable LinearLayout containing `row_img` + `row_txt`, inside
+# the app's menu container).
+#
+# MENU ANCHOR RULE (dimagi-internal/ace#1127): the landing wait uses
+# `${SELECTOR:learn-suite-menu}`, which is DISPLAY-MODE-AGNOSTIC — it
+# accepts the LIST container (`screen_suite_menu_list`) OR the GRID
+# container (`grid_menu_grid`). CommCare renders the SAME rows in either;
+# only the container id changes with the app's menu display setting. This
+# recipe hard-halted every ACE Phase 6 the moment #1082/PR #1100 made
+# Phase 3 apply grid display app-wide, because the anchor resolved to the
+# list container alone. Never narrow it back to one container.
 #
 # Atlas reference: docs/mobile-atlas/connect-2.62.0.md §§ 5-6.
 appId: org.commcare.dalvik
@@ -42,8 +51,9 @@ appId: org.commcare.dalvik
 
 # Landing surface: MenuActivity (suite root). Anchor is a single row
 # containing the app's display name (e.g. "Turmeric Market Survey — Learn").
-# The exact text varies per opp; using the structural anchor (the
-# ListView itself) keeps the recipe opp-agnostic.
+# The exact text varies per opp; using the structural anchor (the menu
+# container, list OR grid — see MENU ANCHOR RULE above) keeps the recipe
+# both opp-agnostic and display-mode-agnostic.
 - extendedWaitUntil:
     visible:
       id: "${SELECTOR:learn-suite-menu}"
