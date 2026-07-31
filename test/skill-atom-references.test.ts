@@ -94,6 +94,7 @@ const ALLOWLIST = new Set([
   'connect_fragment_jobs_list',  // org.commcare.dalvik:id/connect_fragment_jobs_list
   'connect_learning_button',     // org.commcare.dalvik:id/connect_learning_button (opp-detail; selector-map-calibrate)
   'connect_login_button',        // org.commcare.dalvik:id/connect_login_button (PersonalID re-login surface; app-screenshot-capture failure table, #772)
+  'connect_opportunity_estimated_hours',  // commcare-android plurals resource ("Estimated time: %d hours") cited by pdd-to-learn-app's time_estimate-is-hours contract (#1077)
 
   // ---- Training-deck template kinds (recipe types, not atoms) ----
   'mobile_flow',  // template_kind for training-deck-render
