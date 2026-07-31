@@ -158,16 +158,20 @@ export async function stopRecording(
     // interrupt; SIGKILL leaves an unplayable file.
     await shell('adb', ['-s', handle.serial, 'shell', 'pkill', '-INT', 'screenrecord']);
     await waitForStableSize(handle, shell, pollMs, stableTimeoutMs);
-    await shell('adb', ['-s', handle.serial, 'pull', handle.devicePath, handle.outPath]);
+    const pullResult = await shell('adb', ['-s', handle.serial, 'pull', handle.devicePath, handle.outPath]);
+    if (pullResult.exitCode !== 0) {
+      logInfo(`stopRecording: adb pull failed with exit code ${pullResult.exitCode}: ${pullResult.stderr}`);
+      return undefined;
+    }
     try {
       await shell('adb', ['-s', handle.serial, 'shell', 'rm', '-f', handle.devicePath]);
-    } catch {
-      /* leaving a file on /sdcard is not worth failing over */
+    } catch (e) {
+      logInfo(`stopRecording: cleanup rm -f failed: ${String(e)}`);
     }
     try {
       handle.child.kill();
-    } catch {
-      /* the local adb client usually exits on its own */
+    } catch (e) {
+      logInfo(`stopRecording: cleanup child.kill() failed: ${String(e)}`);
     }
     const bytes = fs.statSync(handle.outPath).size;
     return {

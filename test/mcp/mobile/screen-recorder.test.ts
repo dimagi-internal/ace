@@ -180,4 +180,19 @@ describe('stopRecording', () => {
       stopRecording(h, { shell: shellFn, pollMs: 1, stableTimeoutMs: 20 }),
     ).resolves.toBeUndefined();
   });
+
+  it('returns undefined when pull exits nonzero (even with file on disk)', async () => {
+    const dir = tmpdir();
+    const h = handleFor(dir, []);
+    // Pre-create a file at outPath to simulate a partial transfer
+    fs.writeFileSync(h.outPath, Buffer.alloc(1024));
+    const shellFn = vi.fn(async (_cmd: string, args: string[]) => {
+      if (args.includes('pull')) {
+        return { stdout: '', stderr: 'adb: error: cannot stat remote object', exitCode: 1 };
+      }
+      return { stdout: '10\n', stderr: '', exitCode: 0 };
+    });
+    const art = await stopRecording(h, { shell: shellFn, pollMs: 1, stableTimeoutMs: 20 });
+    expect(art).toBeUndefined();
+  });
 });
