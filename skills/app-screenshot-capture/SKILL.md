@@ -142,9 +142,30 @@ unconditionally:
 
 After `mobile_ensure_avd_running` returns, `AvdInfo.heal.deviceUserState`
 carries the outcome: `{ classified_as, attempted, healed_via,
-verified_as, ui_dump_signal }`. Local always shows `attempted: true,
-healed_via: 'snapshot-load'`. Cloud shows `attempted: false` (cold-boot
-already handled it).
+verified_as, ui_dump_signal, bootstrap_steps }`. Local shows
+`attempted: true, healed_via: 'local-bootstrap'`; cloud shows
+`healed_via: 'cloud-bootstrap'` (or `attempted: false` on the legacy
+pre-Phase-D stub).
+
+**A successful return means the restore sequence ran, NOT that every step
+was independently confirmed** (ace#1067). Read the heal block, not
+`status`, for confidence — and do not halt on either of these:
+
+- `verified_as: "unknown"` is the ORDINARY post-bootstrap verdict on a
+  healthy device (the `ready` definition is deliberately narrow). Not a
+  fault, not a reason to stop.
+- A `-unverified` suffix on a registration step
+  (`registered-unverified`, `register-already-unverified`) means the
+  registration call returned but no probe confirmed the resulting device
+  state. Also normal. The suffix exists so the log can't claim
+  `registered` next to `verified_as: "unknown"` — the exact overclaim
+  that made a caller trust a device that wasn't registered and burn a
+  full recipe cycle.
+- On the **cloud** backend `verified_as` is absent by contract (it runs
+  no verification probe) and `classified_as` is `unknown`. Absence is
+  the contract, not a defect.
+
+What SHOULD stop you is a thrown typed error — see below.
 
 **Recovery escalation.** If `mobile_ensure_avd_running` threw
 `DeviceUserStateError`, two recoverable error codes:

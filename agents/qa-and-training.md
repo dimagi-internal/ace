@@ -106,10 +106,18 @@ silent-failure prevention learned from earlier real-world dogfood.
       `mobile_capture_ui_dump`) and halt on them. Read-only probes
       cannot heal; halting on them means the heal funnel never runs.
       The contract:
-        - `mobile_ensure_avd_running` returns → AVD is fully ready
-          (booted, Maestro driver responsive, snapshot or bootstrap
-          restored). Trust the return. Surface
-          `AvdInfo.heal.deviceUserState` to the caller for telemetry.
+        - `mobile_ensure_avd_running` returns → the restore sequence
+          completed without a typed error (booted, Maestro driver
+          responsive, bootstrap run). Proceed on the return — but read
+          it as "restore ran", NOT "every step was independently
+          confirmed" (ace#1067). Surface
+          `AvdInfo.heal.deviceUserState` to the caller: that block, not
+          `status`, carries the confidence. `verified_as: "unknown"` is
+          the ORDINARY post-bootstrap verdict on a healthy device and is
+          not a fault; a `-unverified` suffix on a registration step
+          (`registered-unverified`) means the call returned but nothing
+          confirmed the device state. On the CLOUD backend `verified_as`
+          is absent by contract — it runs no probe at all.
         - `mobile_ensure_avd_running` throws (`AvdBootError`,
           `MaestroDriverError`, `DeviceUserStateError`) → halt with
           the typed error class + heal-attempt log in the halt return.

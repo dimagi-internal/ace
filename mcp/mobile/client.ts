@@ -342,6 +342,31 @@ export function classifyDeviceUserState(
 
 
 /**
+ * Rewrite the registration steps in a bootstrap-step list to their
+ * `-unverified` form (dimagi-internal/ace#1067).
+ *
+ * A heal log's `bootstrap_steps` is read by operators and skills as a record
+ * of what the funnel ACHIEVED. `registered` / `register-already` are emitted
+ * purely because `registerTestUser` returned — that is a record of a CALL, not
+ * of a confirmed device state. When nothing subsequently confirmed the device
+ * is registered, the honest step name says so, so a caller can't read
+ * `bootstrap_steps: [..., "registered"]` alongside `verified_as: "unknown"`
+ * and conclude the device is ready. (It did exactly that, and burned a full
+ * recipe cycle discovering otherwise.)
+ *
+ * This is the single source of truth for that vocabulary — both the local
+ * funnel (which downgrades only when its post-bootstrap probe couldn't
+ * confirm) and the cloud funnel (which never verifies at all) route through
+ * it, so the two backends can't drift into describing the same uncertainty
+ * with different words.
+ */
+export function markRegistrationUnverified(steps: string[]): string[] {
+  return steps.map((st) =>
+    st === 'registered' || st === 'register-already' ? `${st}-unverified` : st,
+  );
+}
+
+/**
  * APKs are signed JAR files; signed JARs are ZIP files. Every valid APK
  * therefore starts with the local-file-header magic `PK\x03\x04` (50 4b
  * 03 04). Truncated downloads, GitHub HTML error pages, and corrupted
@@ -709,7 +734,7 @@ export class MobileClient {
       const confirmed = verifyAfterBootstrap.classified_as === 'ready';
       const reportedSteps = confirmed
         ? bootstrapSteps
-        : bootstrapSteps.map((st) => (st === 'registered' ? 'registered-unverified' : st));
+        : markRegistrationUnverified(bootstrapSteps);
       if (!confirmed) {
         logInfo(
           `device_user_state: post-bootstrap probe could not confirm readiness on ${avd.serial} ` +
@@ -1983,14 +2008,18 @@ export class MobileClient {
    * branch does: env vars (``ACE_E2E_*``) must be present, otherwise
    * we have no credentials to register with and the heal can't proceed.
    *
-   * Verification step (``probeDeviceUserState``) is intentionally NOT
-   * called here. Unlike the local backend, the cloud backend has no
-   * lightweight UI dump probe that doesn't go through a full Maestro
-   * round-trip — and a successful ``cloudRegisterTestUser`` already
-   * implies the device reached a registered state (the second register
-   * recipe asserts on the post-registered drawer). If the registration
-   * succeeds the device IS ``ready``; if it fails we surface the
-   * underlying ``MobileError`` from the cloud call.
+   * Verification step (``probeDeviceUserState``) is NOT called here:
+   * unlike the local backend, the cloud backend has no lightweight UI dump
+   * probe that doesn't go through a full Maestro round-trip.
+   *
+   * Because of that, this path does not claim a verified state
+   * (dimagi-internal/ace#1067). It returns ``classified_as: 'unknown'``, omits
+   * ``verified_as`` entirely, and suffixes its registration step
+   * ``-unverified``. The previous docstring reasoned that "if the
+   * registration succeeds the device IS ready" — true of the happy path, but
+   * it made the return a claim about the DEVICE when the only evidence held
+   * was a claim about the CALL, and the whole point of #1067 is that callers
+   * act on the difference.
    */
   private async cloudBootstrapHeal(avd: AvdInfo): Promise<DeviceStateHealLog> {
     if (!this.bootstrapConfig) {
@@ -2028,12 +2057,34 @@ export class MobileClient {
     });
     steps.push(reg.alreadyRegistered ? 'register-already' : 'registered');
 
+    // Report what we actually know, which on this path is "the cloud
+    // endpoints returned without error" — nothing more
+    // (dimagi-internal/ace#1067, the cloud twin of the local overclaim).
+    //
+    // This used to return `classified_as: 'ready'` AND `verified_as: 'ready'`
+    // with `bootstrap_steps: [..., 'registered']`, having probed nothing at
+    // all — strictly a bigger claim than the local funnel's, which at least
+    // reported whatever its own probe said. `verified_as` is now OMITTED
+    // because no verification ran (the field is optional precisely so an
+    // unverified path can decline to answer), `classified_as` is `unknown`
+    // because that is the truth, and the registration step carries the
+    // `-unverified` suffix from the shared vocabulary.
+    //
+    // Still a SUCCESS, deliberately. `unknown` is not a fault — see the
+    // local path's note on #1067's ask 2, declined with evidence from two
+    // passing runs. The fix for an overclaim is to stop overclaiming, not to
+    // start failing runs that work.
+    //
+    // The honest ceiling here is a *reporting* fix: a real cloud
+    // verification needs a probe the cloud backend does not have (its only
+    // UI-dump route is a full Maestro round-trip). If one is added, feed its
+    // verdict into `classified_as`/`verified_as` and drop the suffix on
+    // confirmation, exactly as the local path does.
     return {
-      classified_as: 'ready',
+      classified_as: 'unknown',
       attempted: true,
       healed_via: 'cloud-bootstrap',
-      verified_as: 'ready',
-      bootstrap_steps: steps,
+      bootstrap_steps: markRegistrationUnverified(steps),
     };
   }
 

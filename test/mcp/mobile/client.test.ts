@@ -1641,12 +1641,14 @@ describe('MobileClient.restoreDeviceUserState (post-2026-05-14: always-bootstrap
       expect(regArgs.phone).toBe(TEST_PHONE);
       expect(regArgs.phoneLocal).toBe(TEST_PHONE_LOCAL);
       expect(regArgs.pin).toBe('0000');
-      // The post-heal log reflects an actual attempt — not the stub.
+      // The post-heal log reflects an actual attempt — not the stub. It
+      // does NOT claim a verified state: nothing on this path probes the
+      // device, so `verified_as` is absent (ace#1067's cloud twin).
       expect(r.heal?.deviceUserState).toMatchObject({
         attempted: true,
         healed_via: 'cloud-bootstrap',
-        verified_as: 'ready',
       });
+      expect(r.heal?.deviceUserState?.verified_as).toBeUndefined();
     } finally {
       for (const k of ENV_KEYS) {
         if (saved[k] === undefined) delete process.env[k];
@@ -1907,13 +1909,17 @@ describe('MobileClient.restoreDeviceUserState — cloud branch', () => {
     const heal = await client.restoreDeviceUserState(cloudAvd);
     expect(cloud.clearAppData).toHaveBeenCalledWith('org.commcare.dalvik');
     expect(cloud.registerTestUser).toHaveBeenCalledTimes(1);
+    // `classified_as: 'unknown'` and no `verified_as` — the cloud path runs
+    // no verification probe, so it reports the call it made, not a device
+    // state it never observed (ace#1067). Detailed coverage of the honesty
+    // contract lives in test/mcp/mobile/bootstrap-honesty.test.ts.
     expect(heal).toMatchObject({
-      classified_as: 'ready',
+      classified_as: 'unknown',
       attempted: true,
       healed_via: 'cloud-bootstrap',
-      verified_as: 'ready',
     });
-    expect(heal.bootstrap_steps).toEqual(['app-data-cleared', 'registered']);
+    expect(heal.verified_as).toBeUndefined();
+    expect(heal.bootstrap_steps).toEqual(['app-data-cleared', 'registered-unverified']);
   });
 
   it('emits app-data-clear-noop step when pm clear surfaces cleared=false (APK not installed)', async () => {
@@ -1937,7 +1943,10 @@ describe('MobileClient.restoreDeviceUserState — cloud branch', () => {
       staticRecipesDir: new URL('../../../mcp/mobile/recipes/static/', import.meta.url).pathname,
     });
     const heal = await client.restoreDeviceUserState(cloudAvd);
-    expect(heal.bootstrap_steps).toEqual(['app-data-clear-noop', 'register-already']);
+    expect(heal.bootstrap_steps).toEqual([
+      'app-data-clear-noop',
+      'register-already-unverified',
+    ]);
   });
 
   it('throws DeviceUserStateError naming the missing env var when bootstrapConfig is absent', async () => {

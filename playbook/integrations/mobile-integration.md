@@ -89,11 +89,15 @@ on a clean interrupt; SIGKILL leaves an unplayable file.
 
 `mobile_ensure_avd_running` is the single funnel for landing the AVD on a Phase-6-ready state. Callers make ONE call and trust the return. Read-only probes (`mobile_probe_maestro_driver`) cannot heal — halting on them defeats the auto-heal.
 
+**What the return does and does not assert (ace#1067).** A successful return means *the restore sequence ran to completion without a typed error* — it is NOT a guarantee that every step was independently confirmed. The `heal.deviceUserState` block is what carries the confidence, and it is honest about its own limits: `verified_as` reports the post-restore probe's actual verdict (`unknown` included, and `unknown` is ordinary), and unconfirmed registration steps carry an explicit `-unverified` suffix. So don't read `status: "booted"` as "everything downstream is guaranteed" — read the heal block. The atom's job is to make the *uncertainty* legible, not to hide it; the funnel previously reported `bootstrap_steps: [..., "registered"]` next to `verified_as: "unknown"`, and a caller that trusted the step name over the verdict burned a full recipe cycle finding out.
+
 **The contract is "always restore the precondition, never adapt to whatever state is in front of us"** (per `CLAUDE.md § Phase preconditions are restored, not adapted`).
 
 Local AVD: kill emulator → cold-boot AVD with `-wipe-data -no-snapshot-load -no-snapshot-save` → install APK from host-side SHA256-validated cache → register demo-prefix test user via the two registration recipes → apply environment baseline (front camera, CAMERA permission, GMS toggle around the registration boundary) → reinstall Maestro driver → verify. Steady-state cost ~60–90s per dispatch. See `mcp/mobile/client.ts:restoreDeviceUserState` and `mcp/mobile/backends/avd.ts:ensureAvdRunning`.
 
 Cloud: `/api/mobile/ensure-running` cold-boots from AMI on every call. Same contract, different mechanism — the AMI's baked registration scripts produce a fresh demo user on every cold-boot.
+
+**Boot gates are two-stage and the pm stage retries (#1072, #1067).** Before touching `pm`, `installDriverApks` waits up to 180s for the device to be *present on the adb server* and report `sys.boot_completed=1` (`AVD_BOOT_TIMEOUT` on failure — sized for a real `-wipe-data` cold boot). Only then does it spend the short `package`-service budget (`AVD_PM_SERVICE_TIMEOUT`), which is scoped to the ~5–15s post-boot service race and now gets **two** 30s attempts, re-confirming device presence between them. Both classes exist separately on purpose: "never appeared", "appeared but never booted", and "booted but pm never bound" have different causes and different fixes, and collapsing them into the pm message is what made this read as a stuck emulator for two sessions.
 
 **Why no snapshot fast-path:** the snapshot-load path silently aged (device wall-clock froze at capture; Connect token's expiration was real-time; 401s ensued). Cold-boot is deterministic. See `docs/learnings/2026-05-14-demo-user-no-otp.md` for the cost analysis (~20s fresh registration, not the often-quoted 3–5 min).
 
@@ -146,6 +150,24 @@ Order matters: the PersonalID-wipe banner is checked **before** Connect-nav-posi
   fail working runs — see ace#1067, where that was requested and deliberately
   declined. What WAS wrong was the log claiming `bootstrap_steps: [...,
   "registered"]` alongside it; that now reports `registered-unverified`.
+
+  **Read the step suffix, not the step name, to know what was confirmed.**
+  `registered` / `register-already` mean a post-bootstrap probe classified the
+  device `ready`. The `-unverified` forms mean the registration call returned
+  but nothing confirmed the resulting device state — an ordinary outcome, not a
+  failure. One vocabulary, one implementation
+  (`markRegistrationUnverified` in `mcp/mobile/client.ts`), both backends.
+
+- **The CLOUD heal never verifies anything, and now says so.** `cloudBootstrapHeal`
+  has no lightweight probe (its only UI-dump route is a full Maestro
+  round-trip), so it returns `classified_as: 'unknown'`, **omits `verified_as`
+  entirely**, and always suffixes its registration step `-unverified`. It used
+  to hardcode `classified_as: 'ready'` + `verified_as: 'ready'` while probing
+  nothing — a strictly larger claim than the local defect above, since local at
+  least reported what its probe said. So: **on cloud, absence of `verified_as`
+  is the contract, not a bug**, and it is NOT evidence the device is unhealthy.
+  If a real cloud probe is ever added, feed its verdict in and drop the suffix
+  on confirmation, exactly as the local path does.
 
 - **Connect's PM-side tables hide integers inside Alpine/htmx attributes — a
   naive `/<[^>]+>/g` tag-strip reads numbers OUT OF THE JAVASCRIPT.**

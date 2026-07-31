@@ -68,10 +68,19 @@ export interface DeviceStateHealLog {
   focused_activity?: string;
   ui_dump_signal?: string;
   /**
-   * Populated only when `healed_via: 'local-bootstrap'` — itemized
-   * record of the tier-2 actions taken (apk_installed, registered,
-   * snapshot_saved). Surfaces what the auto-bootstrap actually did so
-   * the operator can verify against expectations.
+   * Itemized record of the bootstrap actions taken (`apk-installed`,
+   * `environment-baseline-applied`, `registered`, ...) — populated on both
+   * `healed_via: 'local-bootstrap'` and `'cloud-bootstrap'`. Surfaces what
+   * the auto-bootstrap actually did so the operator can check it against
+   * expectations.
+   *
+   * A step name is a claim, so unconfirmed claims are marked as such
+   * (dimagi-internal/ace#1067): registration steps carry an `-unverified`
+   * suffix (`registered-unverified`, `register-already-unverified`) whenever
+   * no probe confirmed the resulting device state — always on cloud, and on
+   * local whenever the post-bootstrap probe didn't return `ready`. Callers
+   * must not treat the unsuffixed and suffixed forms as equivalent; see
+   * `markRegistrationUnverified` in `client.ts`.
    */
   bootstrap_steps?: string[];
   /**

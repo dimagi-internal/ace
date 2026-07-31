@@ -640,3 +640,54 @@ describe('MaestroBackend.ensureDriverInstalled', () => {
     }
   });
 });
+
+// dimagi-internal/ace#1067 ask 4 — the boot gate threw
+// `AVD_PM_SERVICE_TIMEOUT` on its FIRST 30s package-service budget, and an
+// immediate unchanged retry succeeded (observed 3× across 2026-07-29/30).
+// #1072 fixed the mislabelling half by waiting for device presence +
+// `sys.boot_completed=1` first; what remained is that a single lost race still
+// surfaces as a hard typed throw, which reads to callers as a capability gap
+// rather than a blip.
+describe('MaestroBackend.waitForPackageManager — bounded retry (#1067)', () => {
+  it('recovers when the pm service binds only after the first budget expires', async () => {
+    let calls = 0;
+    const shell = vi.fn(async (cmd: string, args: string[]) => {
+      const probe = bootedProbe(cmd, args);
+      if (probe) return probe;
+      if (args.join(' ').endsWith('cmd package list packages')) {
+        calls++;
+        // The budget is tiny, so it fits exactly one probe: probe 1 fails
+        // with the exact string #1067 reported and burns the first budget;
+        // probe 2 — which only happens if a SECOND budget is spent —
+        // succeeds.
+        if (calls <= 1) {
+          return { stdout: '', stderr: "adb: device 'emulator-5554' not found", exitCode: 1 };
+        }
+        return { stdout: 'package:android\n', stderr: '', exitCode: 0 };
+      }
+      throw new Error(`Unscripted shell call: ${cmd} ${args.join(' ')}`);
+    });
+    const backend = new MaestroBackend({ shell });
+    // Tiny budget keeps the test fast; the retry is what's under test.
+    await expect(
+      (backend as any).waitForPackageManager('emulator-5554', 30, 2),
+    ).resolves.toBeUndefined();
+    expect(calls).toBeGreaterThanOrEqual(2);
+  });
+
+  it('still throws AVD_PM_SERVICE_TIMEOUT once every attempt is exhausted', async () => {
+    const shell = vi.fn(async (cmd: string, args: string[]) => {
+      const probe = bootedProbe(cmd, args);
+      if (probe) return probe;
+      return { stdout: '', stderr: "Can't find service: package", exitCode: 1 };
+    });
+    const backend = new MaestroBackend({ shell });
+    const err = await (backend as any)
+      .waitForPackageManager('emulator-5554', 20, 2)
+      .catch((e: any) => e);
+    expect(err).toMatchObject({ code: 'AVD_PM_SERVICE_TIMEOUT' });
+    // The message must say it retried, so an operator reading the failure
+    // doesn't re-diagnose a race the gate already ruled out.
+    expect(err.message).toMatch(/2 attempts/);
+  });
+});
