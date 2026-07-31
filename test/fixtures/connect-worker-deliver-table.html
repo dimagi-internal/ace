@@ -1,0 +1,595 @@
+
+
+<ul id="tabs" class="tabs" hx-swap-oob="true">
+  
+    <li id="workers-tab"
+        hx-get="/a/ai-demo-space/opportunity/1a30f061-4df4-45c6-9511-dc6582114e9b/workers/"
+        hx-indicator="#loadingIndicator"
+        hx-push-url="true"
+        class="tab-item ">
+      <span>Connect Workers (1)</span>
+      
+    </li>
+  
+    <li id="learn-tab"
+        hx-get="/a/ai-demo-space/opportunity/1a30f061-4df4-45c6-9511-dc6582114e9b/workers/learn/"
+        hx-indicator="#loadingIndicator"
+        hx-push-url="true"
+        class="tab-item ">
+      <span>Learn</span>
+      
+    </li>
+  
+    <li id="deliver-tab"
+        hx-get="/a/ai-demo-space/opportunity/1a30f061-4df4-45c6-9511-dc6582114e9b/workers/deliver/"
+        hx-indicator="#loadingIndicator"
+        hx-push-url="true"
+        class="tab-item active">
+      <span>Deliver</span>
+      <div></div>
+    </li>
+  
+    <li id="payments-tab"
+        hx-get="/a/ai-demo-space/opportunity/1a30f061-4df4-45c6-9511-dc6582114e9b/workers/payments/"
+        hx-indicator="#loadingIndicator"
+        hx-push-url="true"
+        class="tab-item ">
+      <span>Payments</span>
+      
+    </li>
+  
+    <li id="tasks-tab"
+        hx-get="/a/ai-demo-space/opportunity/1a30f061-4df4-45c6-9511-dc6582114e9b/workers/tasks/"
+        hx-indicator="#loadingIndicator"
+        hx-push-url="true"
+        class="tab-item ">
+      <span>Tasks</span>
+      
+    </li>
+  
+    <li id="work_areas-tab"
+        hx-get="/a/ai-demo-space/opportunity/1a30f061-4df4-45c6-9511-dc6582114e9b/workers/work-areas/"
+        hx-indicator="#loadingIndicator"
+        hx-push-url="true"
+        class="tab-item ">
+      <span>Work Area Assignments</span>
+      
+    </li>
+  
+</ul>
+<div id="tab-options" hx-swap-oob="true" class="flex gap-x-4 items-center">
+  
+  
+
+<div x-cloak
+     x-data="resetFilterModalState('filterForm')"
+     >
+  <button type="button"
+          @click="showFilterModal = true"
+          class="relative button-icon shadow-sm">
+    <i class="fa-solid fa-sliders text-brand-deep-purple"></i>
+    
+  </button>
+  <div x-show="showFilterModal" class="modal-backdrop">
+    <div class="modal">
+      <div class="header text-lg font-semibold text-brand-deep-purple">
+        <h1>Filters</h1>
+        <button @click="closeFilter()">
+          <i class="fa-solid fa-xmark text-xl"></i>
+        </button>
+      </div>
+      <form id="filterForm"
+            hx-get="."
+            
+            
+            hx-push-url="true"
+            hx-trigger="submit"
+            hx-indicator="#loadingIndicator"
+            class="content">
+        <div class="modal-body">
+
+<form  method="post" > <div id="div_id_last_active" class="mb-3"> <label for="id_last_active" class="block text-gray-700 text-sm font-bold mb-2">
+            Last Active
+        </label> <div class="mb-3"> <div class="relative"> <select class="bg-white focus:outline-none border border-gray-300 rounded-lg py-2 px-4 block w-full appearance-none leading-normal text-gray-700" name="last_active"  id="id_last_active"> <option value=""  selected
+ >Any time</option> <option value="1" 
+ >1 day ago</option> <option value="3" 
+ >3 days ago</option> <option value="7" 
+ >7 days ago</option> </select> <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-gray-700"> <svg class="fill-current h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><path d="M9.293 12.95l.707.707L15.657 8l-1.414-1.414L10 10.828 5.757 6.586 4.343 8z"/> </svg> </div> </div> </div> </div> <div id="div_id_has_flags" class="mb-3"> <label for="id_has_flags" class="block text-gray-700 text-sm font-bold mb-2">
+            Deliveries with flags
+        </label> <div class="mb-3"> <div class="relative"> <select class="bg-white focus:outline-none border border-gray-300 rounded-lg py-2 px-4 block w-full appearance-none leading-normal text-gray-700" name="has_flags"  id="id_has_flags"> <option value=""  selected
+ >---------</option> <option value="True" 
+ >Yes</option> <option value="False" 
+ >No</option> </select> <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-gray-700"> <svg class="fill-current h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><path d="M9.293 12.95l.707.707L15.657 8l-1.414-1.414L10 10.828 5.757 6.586 4.343 8z"/> </svg> </div> </div> </div> </div> <div id="div_id_has_overlimit" class="mb-3"> <label for="id_has_overlimit" class="block text-gray-700 text-sm font-bold mb-2">
+            Has Overlimit Deliveries
+        </label> <div class="mb-3"> <div class="relative"> <select class="bg-white focus:outline-none border border-gray-300 rounded-lg py-2 px-4 block w-full appearance-none leading-normal text-gray-700" name="has_overlimit"  id="id_has_overlimit"> <option value=""  selected
+ >---------</option> <option value="True" 
+ >Yes</option> <option value="False" 
+ >No</option> </select> <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-gray-700"> <svg class="fill-current h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><path d="M9.293 12.95l.707.707L15.657 8l-1.414-1.414L10 10.828 5.757 6.586 4.343 8z"/> </svg> </div> </div> </div> </div> </form>
+</div>
+        <div class="footer">
+          <button type="button"
+                  @click="closeFilter()"
+                  class="button button-md outline-style">Close</button>
+          <button form="filterForm"
+                  type="submit"
+                  @click="showFilterModal = false"
+                  class="button button-md primary-dark">Apply</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+  <div x-cloak
+       x-data="{showVisitImportModal: false, showVisitExportModal: false}">
+    
+    <button type="button"
+            class="button-icon shadow-sm"
+            @click="showVisitExportModal = true"
+            >
+      <i class="fa-solid fa-download text-brand-deep-purple"></i>
+    </button>
+    
+      
+      <!--User visit export modal-->
+      <div x-show="showVisitExportModal" class="modal-backdrop">
+        <div x-clock x-data="{ selectedForm: 'nm_review' }"  class="modal">
+          <div class="header text-lg font-semibold text-brand-deep-purple">
+            <h1>Export</h1>
+            <button @click="showVisitExportModal = false">
+              <i class="fa-solid fa-xmark text-xl"></i>
+            </button>
+          </div>
+          <form class="content"
+                method="post"
+                :action="selectedForm === 'nm_review' ? '/a/ai-demo-space/opportunity/1a30f061-4df4-45c6-9511-dc6582114e9b/visit_export/' : '/a/ai-demo-space/opportunity/1a30f061-4df4-45c6-9511-dc6582114e9b/review_visit_export/'">
+            <input type="hidden" name="csrfmiddlewaretoken" value="ioqlogt4mlBA4Z33QMXG2XG8URkVDEWf0rDI5vRDKXgxpLPQtcbOnPnZQiCOzGF9">
+            <div class="modal-body">
+              <div class="mb-4">
+                <label class="inline-flex items-center">
+                  <input type="radio"
+                         name="form_type"
+                         value="nm_review"
+                         x-model="selectedForm"
+                         @change="htmx.process($root)"
+                         class="text-primary">
+                  <span class="ml-2">User Visits Sheet</span>
+                </label>
+                
+              </div>
+              <!-- VisitExportForm -->
+              <template x-if="selectedForm === 'nm_review'">
+                <div>
+
+<input type="hidden" name="csrfmiddlewaretoken" value="ioqlogt4mlBA4Z33QMXG2XG8URkVDEWf0rDI5vRDKXgxpLPQtcbOnPnZQiCOzGF9"> <div  class="flex flex-col" > <div id="div_id_format" class="mb-3"> <label for="id_format" class="block text-gray-700 text-sm font-bold mb-2">
+            Format<span class="asteriskField">*</span> </label> <div class="mb-3"> <div class="relative"> <select class="bg-white focus:outline-none border border-gray-300 rounded-lg py-2 px-4 block w-full appearance-none leading-normal text-gray-700" name="format"  hx-get="/a/ai-demo-space/opportunity/1a30f061-4df4-45c6-9511-dc6582114e9b/visit_export_count/" hx-include="closest form" hx-target="#visit-count-warning" hx-trigger="change" id="id_format"> <option value="csv"  selected
+ >CSV</option> <option value="xlsx" 
+ >Excel</option> </select> <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-gray-700"> <svg class="fill-current h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><path d="M9.293 12.95l.707.707L15.657 8l-1.414-1.414L10 10.828 5.757 6.586 4.343 8z"/> </svg> </div> </div> </div> </div> <div  class="grid grid-cols-2 gap-6" > <div id="div_id_from_date" class="mb-3"> <label for="id_from_date" class="block text-gray-700 text-sm font-bold mb-2">
+            From date<span class="asteriskField">*</span> </label> <input type="date" name="from_date" max="2026-07-31" hx-get="/a/ai-demo-space/opportunity/1a30f061-4df4-45c6-9511-dc6582114e9b/visit_export_count/" hx-trigger="change" hx-target="#visit-count-warning" hx-include="closest form" class="dateinput focus:outline-none border text-gray-700 w-full leading-normal border-gray-300 py-2 px-4 appearance-none bg-white rounded-lg block" required id="id_from_date"> </div> <div id="div_id_to_date" class="mb-3"> <label for="id_to_date" class="block text-gray-700 text-sm font-bold mb-2">
+            To date<span class="asteriskField">*</span> </label> <input type="date" name="to_date" max="2026-07-31" hx-get="/a/ai-demo-space/opportunity/1a30f061-4df4-45c6-9511-dc6582114e9b/visit_export_count/" hx-trigger="change" hx-target="#visit-count-warning" hx-include="closest form" class="dateinput focus:outline-none border text-gray-700 w-full leading-normal border-gray-300 py-2 px-4 appearance-none bg-white rounded-lg block" required id="id_to_date"> </div> </div> <div id="div_id_status" class="mb-3"> <label for="id_status" class="block text-gray-700 text-sm font-bold mb-2">
+            Status<span class="asteriskField">*</span> </label> <div class="mb-3"> <div class="relative"> <select class="bg-white focus:outline-none border border-gray-300 rounded-lg py-2 px-4 block w-full appearance-none leading-normal text-gray-700" name="status"  hx-get="/a/ai-demo-space/opportunity/1a30f061-4df4-45c6-9511-dc6582114e9b/visit_export_count/" hx-include="closest form" hx-target="#visit-count-warning" hx-trigger="change" id="id_status" multiple required> <option value="all" 
+ >All</option> <option value="approved" 
+ >Approved</option> <option value="rejected" 
+ >Rejected</option> <option value="over_limit" 
+ >Over Limit</option> <option value="duplicate" 
+ >Duplicate</option> <option value="trial" 
+ >Trial</option> </select> </div> </div> </div> <div id="div_id_flatten_form_data" class="flex p-4 justify-between rounded-lg bg-gray-100 mb-3"> <label for="id_flatten_form_data" class="block text-gray-700 text-sm font-bold mb-2">
+            Flatten form data
+        </label> <input type="checkbox" name="flatten_form_data" class="simple-toggle checkboxinput " id="id_flatten_form_data" checked> </div> <div id="visit-count-warning"
+    class="text-sm text-center" > </div>
+
+</div>
+</div>
+              </template>
+              <!-- ReviewVisitExportForm -->
+              <template x-if="selectedForm === 'pm_review'">
+                <div>
+
+<input type="hidden" name="csrfmiddlewaretoken" value="ioqlogt4mlBA4Z33QMXG2XG8URkVDEWf0rDI5vRDKXgxpLPQtcbOnPnZQiCOzGF9"> <div  class="flex flex-col" > <div id="div_id_format" class="mb-3"> <label for="id_format" class="block text-gray-700 text-sm font-bold mb-2">
+            Format<span class="asteriskField">*</span> </label> <div class="mb-3"> <div class="relative"> <select class="bg-white focus:outline-none border border-gray-300 rounded-lg py-2 px-4 block w-full appearance-none leading-normal text-gray-700" name="format"  hx-get="/a/ai-demo-space/opportunity/1a30f061-4df4-45c6-9511-dc6582114e9b/visit_export_count/?review_export=true" hx-include="closest form" hx-target="#visit-count-warning" hx-trigger="change" id="id_format"> <option value="csv"  selected
+ >CSV</option> <option value="xlsx" 
+ >Excel</option> </select> <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-gray-700"> <svg class="fill-current h-4 w-4" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><path d="M9.293 12.95l.707.707L15.657 8l-1.414-1.414L10 10.828 5.757 6.586 4.343 8z"/> </svg> </div> </div> </div> </div> <div  class="grid grid-cols-2 gap-6" > <div id="div_id_from_date" class="mb-3"> <label for="id_from_date" class="block text-gray-700 text-sm font-bold mb-2">
+            From date<span class="asteriskField">*</span> </label> <input type="date" name="from_date" max="2026-07-31" hx-get="/a/ai-demo-space/opportunity/1a30f061-4df4-45c6-9511-dc6582114e9b/visit_export_count/?review_export=true" hx-trigger="change" hx-target="#visit-count-warning" hx-include="closest form" class="dateinput focus:outline-none border text-gray-700 w-full leading-normal border-gray-300 py-2 px-4 appearance-none bg-white rounded-lg block" required id="id_from_date"> </div> <div id="div_id_to_date" class="mb-3"> <label for="id_to_date" class="block text-gray-700 text-sm font-bold mb-2">
+            To date<span class="asteriskField">*</span> </label> <input type="date" name="to_date" max="2026-07-31" hx-get="/a/ai-demo-space/opportunity/1a30f061-4df4-45c6-9511-dc6582114e9b/visit_export_count/?review_export=true" hx-trigger="change" hx-target="#visit-count-warning" hx-include="closest form" class="dateinput focus:outline-none border text-gray-700 w-full leading-normal border-gray-300 py-2 px-4 appearance-none bg-white rounded-lg block" required id="id_to_date"> </div> </div> <div id="div_id_status" class="mb-3"> <label for="id_status" class="block text-gray-700 text-sm font-bold mb-2">
+            Status<span class="asteriskField">*</span> </label> <div class="mb-3"> <div class="relative"> <select class="bg-white focus:outline-none border border-gray-300 rounded-lg py-2 px-4 block w-full appearance-none leading-normal text-gray-700" name="status"  hx-get="/a/ai-demo-space/opportunity/1a30f061-4df4-45c6-9511-dc6582114e9b/visit_export_count/?review_export=true" hx-include="closest form" hx-target="#visit-count-warning" hx-trigger="change" id="id_status" multiple required> <option value="all" 
+ >All</option> <option value="pending" 
+ >Pending Review</option> <option value="agree" 
+ >Agree</option> <option value="disagree" 
+ >Disagree</option> </select> </div> </div> </div> <div id="div_id_flatten_form_data" class="flex p-4 justify-between rounded-lg bg-gray-100 mb-3"> <label for="id_flatten_form_data" class="block text-gray-700 text-sm font-bold mb-2">
+            Flatten form data
+        </label> <input type="checkbox" name="flatten_form_data" class="simple-toggle checkboxinput " id="id_flatten_form_data" checked> </div> <div id="visit-count-warning"
+    class="text-sm text-center" > </div>
+
+</div>
+</div>
+              </template>
+            </div>
+            <div class="footer">
+              <button type="button"
+                      @click="showVisitExportModal = false"
+                      class="button button-md outline-style">Close</button>
+              <button type="submit"
+                      disabled
+                      id="export-submit-btn"
+                      class="button button-md primary-dark">Export</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    
+  </div>
+
+</div>
+<div id="table" class="w-full" hx-swap-oob="true">
+
+
+
+  
+  
+  
+  <div class="table-container flex flex-col gap-2 mb-1">
+    
+    
+      <div class="w-full overflow-x-auto overflow-y-auto block max-h-[70vh]">
+        <table class="base-table" class="table table-bordered mb-0">
+          
+            
+              <thead class="">
+                <tr>
+                  
+                    <th >
+                      
+                        <span>#</span>
+                      
+                    </th>
+                  
+                    <th >
+                      
+                        <span>Status</span>
+                      
+                    </th>
+                  
+                    <th >
+                      
+                        <span>Name</span>
+                      
+                    </th>
+                  
+                    <th class="desc orderable">
+                      
+                        <a href="/a/ai-demo-space/opportunity/1a30f061-4df4-45c6-9511-dc6582114e9b/workers/deliver/?sort=last_active" class="flex items-center text-sm font-medium text-brand-deep-purple">Last active <i class="fa-solid ml-1 fa-sort text-gray-400"></i></a>
+                      
+                    </th>
+                  
+                    <th >
+                      
+                        <span>Payment unit</span>
+                      
+                    </th>
+                  
+                    <th >
+                      
+                        <span>Delivery progress</span>
+                      
+                    </th>
+                  
+                    <th class="orderable">
+                      
+                        <a href="/a/ai-demo-space/opportunity/1a30f061-4df4-45c6-9511-dc6582114e9b/workers/deliver/?sort=delivered" class="flex items-center text-sm font-medium text-brand-deep-purple"><span x-data x-tooltip.raw="Delivered number of payment units">Delivered</span> <i class="fa-solid ml-1 fa-sort text-gray-400"></i></a>
+                      
+                    </th>
+                  
+                    <th class="orderable">
+                      
+                        <a href="/a/ai-demo-space/opportunity/1a30f061-4df4-45c6-9511-dc6582114e9b/workers/deliver/?sort=approved" class="flex items-center text-sm font-medium text-brand-deep-purple"><span x-data x-tooltip.raw="Payment units that are fully approved automatically or manually by NM and PM">Approved</span> <i class="fa-solid ml-1 fa-sort text-gray-400"></i></a>
+                      
+                    </th>
+                  
+                    <th class="orderable">
+                      
+                        <a href="/a/ai-demo-space/opportunity/1a30f061-4df4-45c6-9511-dc6582114e9b/workers/deliver/?sort=rejected" class="flex items-center text-sm font-medium text-brand-deep-purple"><span x-data x-tooltip.raw="Payment units that are rejected">Rejected</span> <i class="fa-solid ml-1 fa-sort text-gray-400"></i></a>
+                      
+                    </th>
+                  
+                    <th class="col-action">
+                      
+                        <span></span>
+                      
+                    </th>
+                  
+                </tr>
+              </thead>
+            
+          
+          
+            <tbody>
+              <div style="overflow:hidden; border-radius:8px;">
+                
+                  
+                    <tr class="group even" class="group">
+                      
+                        <td >
+                          
+                            1
+                          
+                        </td>
+                      
+                        <td >
+                          
+                            <span x-data x-tooltip.raw="Invite accepted"><i class="fa-solid fa-circle-check text-green-600"></i></span>
+                          
+                        </td>
+                      
+                        <td >
+                          
+                            <a href="/a/ai-demo-space/opportunity/1a30f061-4df4-45c6-9511-dc6582114e9b/user_visits/?user=8c5c926b-19d0-44f1-9eaf-269ac9440ddd" class="w-40"><p class="text-sm text-slate-900">ACE Test</p><p class="text-xs text-slate-400">1277adbd0ceea89e367d</p></a>
+                          
+                        </td>
+                      
+                        <td >
+                          
+                            30-Jul-2026 16:03
+                          
+                        </td>
+                      
+                        <td >
+                          
+                            Per verified bednet visit
+                          
+                        </td>
+                      
+                        <td >
+                          
+                            <div class="flex items-center gap-2 w-full">
+  <!-- Percentage style -->
+  
+    <div class="relative w-full h-2.5 bg-brand-indigo/10 rounded-full overflow-hidden">
+      <div class="absolute top-0 left-0 h-full bg-brand-indigo max-w-full"
+           style="width: 40.0%"></div>
+      <div class="absolute top-0 left-1/2 -translate-x-1/2 h-full flex items-center justify-center text-xs font-medium text-gray-600">
+        2
+      </div>
+    </div>
+    <span class="w-[40px] text-sm text-gray-700">5</span>
+  
+</div>
+
+                          
+                        </td>
+                      
+                        <td >
+                          
+                            
+
+
+<div class="relative underline"
+     x-data="{ isOpen: false, positionMenu() { const rect = this.$el.getBoundingClientRect(); const menu = this.$refs.menu;  const left = rect.left + rect.width/2 - menu.offsetWidth/2; menu.style.left = left + 'px'; let top = rect.bottom + 5; if (window.innerHeight - rect.bottom < rect.height + menu.clientHeight) { top = rect.bottom - rect.height - menu.clientHeight; } menu.style.top = top + 'px'; } }"
+     x-on:click="isOpen = true; $nextTick(() => { if(isOpen) positionMenu() })">
+  <span class="rounded-lg cursor-pointer hover:bg-slate-200 underline">2</span>
+  <div x-ref="menu"
+       x-show="isOpen"
+       x-on:click.outside="isOpen = false"
+       x-transition
+       class="fixed z-40 p-5 text-sm bg-white rounded-lg shadow-md text-brand-deep-purple text-nowrap whitespace-nowrap"
+       style="display: none">
+    
+      <div class="flex justify-between py-1 my-1 items-center w-32 font-normal">
+        <p class="text-xs text-brand-deep-purple">Completed</p>
+        <p class="text-sm text-slate-900">2</p>
+      </div>
+    
+      <div class="flex justify-between py-1 my-1 items-center w-32 font-normal">
+        <p class="text-xs text-brand-deep-purple">Incomplete</p>
+        <p class="text-sm text-slate-900">0</p>
+      </div>
+    
+      <div class="flex justify-between py-1 my-1 items-center w-32 font-normal">
+        <p class="text-xs text-brand-deep-purple">Over limit</p>
+        <p class="text-sm text-slate-900">0</p>
+      </div>
+    
+  </div>
+</div>
+
+                          
+                        </td>
+                      
+                        <td >
+                          
+                            
+
+
+<div class="relative underline"
+     x-data="{ isOpen: false, positionMenu() { const rect = this.$el.getBoundingClientRect(); const menu = this.$refs.menu;  const left = rect.left + rect.width/2 - menu.offsetWidth/2; menu.style.left = left + 'px'; let top = rect.bottom + 5; if (window.innerHeight - rect.bottom < rect.height + menu.clientHeight) { top = rect.bottom - rect.height - menu.clientHeight; } menu.style.top = top + 'px'; } }"
+     x-on:click="isOpen = true; $nextTick(() => { if(isOpen) positionMenu() })"
+     hx-get="/a/ai-demo-space/opportunity/1a30f061-4df4-45c6-9511-dc6582114e9b/worker_flag_counts/?status=approved&amp;payment_unit_id=53b3bf3b-bc92-49d0-a06f-aae6e6ca0ce9&amp;access_id=25670d0c-516d-47f5-97a4-be88dd0a03cc"
+     hx-trigger="click"
+     hx-target="find .flags_counter">
+  <span class="rounded-lg cursor-pointer hover:bg-slate-200">2</span>
+  <div x-ref="menu"
+       x-show="isOpen"
+       x-on:click.outside="isOpen = false"
+       x-transition
+       x-cloak
+       class="fixed z-40 p-5 text-sm bg-white rounded-lg shadow-md text-brand-deep-purple text-wrap font-normal">
+    <div class="flags_counter">
+      <p class="text-slate-500">Loading..</p>
+    </div>
+  </div>
+</div>
+
+                          
+                        </td>
+                      
+                        <td >
+                          
+                            
+
+
+<div class="relative underline"
+     x-data="{ isOpen: false, positionMenu() { const rect = this.$el.getBoundingClientRect(); const menu = this.$refs.menu;  const left = rect.left + rect.width/2 - menu.offsetWidth/2; menu.style.left = left + 'px'; let top = rect.bottom + 5; if (window.innerHeight - rect.bottom < rect.height + menu.clientHeight) { top = rect.bottom - rect.height - menu.clientHeight; } menu.style.top = top + 'px'; } }"
+     x-on:click="isOpen = true; $nextTick(() => { if(isOpen) positionMenu() })"
+     hx-get="/a/ai-demo-space/opportunity/1a30f061-4df4-45c6-9511-dc6582114e9b/worker_flag_counts/?status=rejected&amp;payment_unit_id=53b3bf3b-bc92-49d0-a06f-aae6e6ca0ce9&amp;access_id=25670d0c-516d-47f5-97a4-be88dd0a03cc"
+     hx-trigger="click"
+     hx-target="find .flags_counter">
+  <span class="rounded-lg cursor-pointer hover:bg-slate-200">0</span>
+  <div x-ref="menu"
+       x-show="isOpen"
+       x-on:click.outside="isOpen = false"
+       x-transition
+       x-cloak
+       class="fixed z-40 p-5 text-sm bg-white rounded-lg shadow-md text-brand-deep-purple text-wrap font-normal">
+    <div class="flags_counter">
+      <p class="text-slate-500">Loading..</p>
+    </div>
+  </div>
+</div>
+
+                          
+                        </td>
+                      
+                        <td class="col-action">
+                          
+                            
+            <div class="opacity-0 group-hover:opacity-100 transition-opacity duration-200 text-end">
+                <a href="/a/ai-demo-space/opportunity/1a30f061-4df4-45c6-9511-dc6582114e9b/user_visits/?user=8c5c926b-19d0-44f1-9eaf-269ac9440ddd"><i class="fa-solid fa-chevron-right text-brand-deep-purple"></i></a>
+            </div>
+        
+                          
+                        </td>
+                      
+                    </tr>
+                  
+                
+                
+                  
+                    <tr class="border-2 border-gray-100 font-bold">
+                      
+                        <td >
+                        </td>
+                      
+                        <td >
+                        </td>
+                      
+                        <td >Total
+                        </td>
+                      
+                        <td >
+                        </td>
+                      
+                        <td >
+                        </td>
+                      
+                        <td >
+                        </td>
+                      
+                        <td >
+
+
+<div class="relative underline"
+     x-data="{ isOpen: false, positionMenu() { const rect = this.$el.getBoundingClientRect(); const menu = this.$refs.menu;  const left = rect.left + rect.width/2 - menu.offsetWidth/2; menu.style.left = left + 'px'; let top = rect.bottom + 5; if (window.innerHeight - rect.bottom < rect.height + menu.clientHeight) { top = rect.bottom - rect.height - menu.clientHeight; } menu.style.top = top + 'px'; } }"
+     x-on:click="isOpen = true; $nextTick(() => { if(isOpen) positionMenu() })">
+  <span class="rounded-lg cursor-pointer hover:bg-slate-200 underline">2</span>
+  <div x-ref="menu"
+       x-show="isOpen"
+       x-on:click.outside="isOpen = false"
+       x-transition
+       class="fixed z-40 p-5 text-sm bg-white rounded-lg shadow-md text-brand-deep-purple text-nowrap whitespace-nowrap"
+       style="display: none">
+    
+      <div class="flex justify-between py-1 my-1 items-center w-32 font-normal">
+        <p class="text-xs text-brand-deep-purple">Completed</p>
+        <p class="text-sm text-slate-900">2</p>
+      </div>
+    
+      <div class="flex justify-between py-1 my-1 items-center w-32 font-normal">
+        <p class="text-xs text-brand-deep-purple">Incomplete</p>
+        <p class="text-sm text-slate-900">0</p>
+      </div>
+    
+      <div class="flex justify-between py-1 my-1 items-center w-32 font-normal">
+        <p class="text-xs text-brand-deep-purple">Over limit</p>
+        <p class="text-sm text-slate-900">0</p>
+      </div>
+    
+  </div>
+</div>
+
+                        </td>
+                      
+                        <td >
+
+
+<div class="relative underline"
+     x-data="{ isOpen: false, positionMenu() { const rect = this.$el.getBoundingClientRect(); const menu = this.$refs.menu;  const left = rect.left + rect.width/2 - menu.offsetWidth/2; menu.style.left = left + 'px'; let top = rect.bottom + 5; if (window.innerHeight - rect.bottom < rect.height + menu.clientHeight) { top = rect.bottom - rect.height - menu.clientHeight; } menu.style.top = top + 'px'; } }"
+     x-on:click="isOpen = true; $nextTick(() => { if(isOpen) positionMenu() })"
+     hx-get="/a/ai-demo-space/opportunity/1a30f061-4df4-45c6-9511-dc6582114e9b/worker_flag_counts/?status=approved"
+     hx-trigger="click"
+     hx-target="find .flags_counter">
+  <span class="rounded-lg cursor-pointer hover:bg-slate-200">2</span>
+  <div x-ref="menu"
+       x-show="isOpen"
+       x-on:click.outside="isOpen = false"
+       x-transition
+       x-cloak
+       class="fixed z-40 p-5 text-sm bg-white rounded-lg shadow-md text-brand-deep-purple text-wrap font-normal">
+    <div class="flags_counter">
+      <p class="text-slate-500">Loading..</p>
+    </div>
+  </div>
+</div>
+
+                        </td>
+                      
+                        <td >
+
+
+<div class="relative underline"
+     x-data="{ isOpen: false, positionMenu() { const rect = this.$el.getBoundingClientRect(); const menu = this.$refs.menu;  const left = rect.left + rect.width/2 - menu.offsetWidth/2; menu.style.left = left + 'px'; let top = rect.bottom + 5; if (window.innerHeight - rect.bottom < rect.height + menu.clientHeight) { top = rect.bottom - rect.height - menu.clientHeight; } menu.style.top = top + 'px'; } }"
+     x-on:click="isOpen = true; $nextTick(() => { if(isOpen) positionMenu() })"
+     hx-get="/a/ai-demo-space/opportunity/1a30f061-4df4-45c6-9511-dc6582114e9b/worker_flag_counts/?status=rejected"
+     hx-trigger="click"
+     hx-target="find .flags_counter">
+  <span class="rounded-lg cursor-pointer hover:bg-slate-200">0</span>
+  <div x-ref="menu"
+       x-show="isOpen"
+       x-on:click.outside="isOpen = false"
+       x-transition
+       x-cloak
+       class="fixed z-40 p-5 text-sm bg-white rounded-lg shadow-md text-brand-deep-purple text-wrap font-normal">
+    <div class="flags_counter">
+      <p class="text-slate-500">Loading..</p>
+    </div>
+  </div>
+</div>
+
+                        </td>
+                      
+                        <td >
+                        </td>
+                      
+                    </tr>
+                  
+                
+              </div>
+            </tbody>
+          
+        </table>
+      </div>
+    
+    
+      
+      
+    </div>
+  
+  
+    <script>
+    function goToPage(param, value) {
+        const url = new URL(window.location.href);
+        url.searchParams.set(param, value);
+        window.location.href = url.toString();
+    }
+    </script>
+  
+
+</div>

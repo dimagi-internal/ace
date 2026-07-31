@@ -402,7 +402,7 @@ Render the run-folder README markdown for `runId` with optional per-phase status
 
 ## ace-connect
 
-Source: `mcp/connect-server.ts` — 55 atoms
+Source: `mcp/connect-server.ts` — 56 atoms
 
 ### `connect_list_programs`
 
@@ -634,6 +634,15 @@ Invite a human user to a Connect workspace (organization) by email. POSTs the HT
 ### `connect_get_learn_progress`
 
 Read each accepted worker\'s AUTHORITATIVE Learn progression from Connect\'s WorkerLearnView (GET /a/<domain>/opportunity/<opportunity_id>/workers/learn/, htmx fragment; session-cookie authed, read-only). This is the "close the loop to the source of truth" check for Phase 6: Deliver unlocks ONLY when Learn reaches 100% of modules (Connect\'s OpportunityAccess.learn_progress == 100 / completed_lear…
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `domain` | `z.string` | **required** | Connect org / project-space slug in the /a/DOMAIN/ URL path, e.g. ai-demo-space. |
+| `opportunity_id` | `z.string` | **required** | Opportunity UUID. |
+
+### `connect_get_deliver_progress`
+
+Read each accepted worker\'s AUTHORITATIVE DELIVERY progression from Connect\'s WorkerDeliverView (GET /a/<domain>/opportunity/<opportunity_id>/workers/deliver/, htmx fragment; session-cookie authed, read-only). The Deliver counterpart to connect_get_learn_progress, and the server-side read dimagi-internal/ace#1066 is about: Phase 6\'s Deliver smoke can return pass while the visit sits UNSENT in t…
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|

@@ -172,7 +172,33 @@ run). The golden run must have `phases.idea-to-design` and
      AND `classifyPhaseWriteBack(run_state, 'qa-and-training') == 'ok'` AND the
      Phase 3 verdicts (`app-release-qa`, `app-connect-coverage`,
      `pdd-to-learn-app-eval`, `pdd-to-deliver-app-eval`) and the Phase 6
-     `app-screenshot-capture_verdict-shallow.yaml` are all `pass`.
+     `app-screenshot-capture_verdict-shallow.yaml` are all `pass`
+     **AND the outcome is confirmed SERVER-SIDE, not from the device** —
+     `connect_get_deliver_progress({ domain, opportunity_id })` shows the ACE
+     test user with **`approved >= 1`**.
+
+     **Why the server-side term is not optional (dimagi-internal/ace#1066).**
+     Every other clause above is satisfiable by a run in which the delivery
+     never left the handset. `journey-deliver` returning `pass` proves only
+     that the form walked and finalized locally; the plain-form
+     `nav_btn_next` branch writes to the local outbox and asserts nothing
+     about Connect. Observed live on bednet-spot-check/20260729-1239: the
+     Phase 6 shallow verdict was `pass` while the device read `Daily Visits
+     0/5` / `last synced: never`. Without this term the loop's headline
+     number can climb while the thing the opportunity exists to prove — a
+     worker submitted a visit and a payment unit registered — is never
+     verified even once. That is exactly the eval-inflation failure this
+     loop was built to detect, so it must not live inside the loop's own
+     pass criteria.
+
+     Use `approved`, not `delivered`: a delivery can be submitted and then
+     **rejected** by verification, so `delivered >= 1` proves transmission
+     but not payability, and `app-test-cases.yaml` declares the criterion as
+     *"one payment unit registers"*. Record `delivered` / `approved` /
+     `rejected` in the iteration entry either way — a run that is
+     `delivered >= 1, approved == 0` is **dirty**, with `failure_class`
+     naming verification rejection rather than a recipe defect, because the
+     walk did its job and the opportunity's wiring did not.
    - **dirty** otherwise. Derive `failure_class` =
      `<failing-skill>: <first failing check + first 200 chars of the
      verdict/transcript>`.

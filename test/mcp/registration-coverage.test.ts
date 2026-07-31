@@ -61,7 +61,7 @@ interface ServerSpec {
 const SERVERS: Record<string, ServerSpec> = {
   connect: {
     file: 'mcp/connect-server.ts',
-    expectedCount: 55, // +1: connect_list_flw_invites (ace#824/#855)
+    expectedCount: 56, // +1: connect_get_deliver_progress (ace#1066 server-side delivery read-back)
     // `connect_*` are Connect atoms; `commcare_*` are CommCare HQ atoms
     // (build/release/upload-multimedia) registered alongside because they
     // close the LLO-deploy loop through the same MCP.

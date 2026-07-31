@@ -10,6 +10,7 @@ import type {
   PaymentUnit,
   DeliverUnit,
   LearnProgress,
+  DeliverProgress,
 } from './types.js';
 
 export interface ConnectClient {
@@ -344,4 +345,23 @@ export interface ConnectClient {
     domain: string;                     // Connect org / project-space slug in the /a/<domain>/ path
     opportunity_id: string;             // opportunity UUID
   }): Promise<LearnProgress>;
+
+  /**
+   * Read each accepted worker's authoritative DELIVERY progression from
+   * Connect's `WorkerDeliverView` fragment
+   * (`GET /a/<domain>/opportunity/<opportunity_id>/workers/deliver/` with
+   * `HX-Request: true`). The Deliver counterpart to {@link getLearnProgress},
+   * and the server-side read dimagi-internal/ace#1066 is about: Phase 6's
+   * Deliver smoke could return `pass` while the visit sat unsent in the
+   * device's local outbox, because nothing ever asked Connect.
+   *
+   * Assert `delivered >= 1` for "the visit reached Connect"; assert
+   * `approved >= 1` for the stronger "one payment unit registered" criterion
+   * `app-test-cases.yaml` actually declares (a delivery can be submitted and
+   * then rejected by verification). Read-only, session-cookie authed.
+   */
+  getDeliverProgress(args: {
+    domain: string;                     // Connect org / project-space slug in the /a/<domain>/ path
+    opportunity_id: string;             // opportunity UUID
+  }): Promise<DeliverProgress>;
 }

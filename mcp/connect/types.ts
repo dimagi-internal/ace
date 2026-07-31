@@ -292,3 +292,48 @@ export interface LearnProgress {
   learn_modules_total?: number;
   workers: WorkerLearnRow[];
 }
+
+/**
+ * A single accepted worker's authoritative DELIVERY progression, scraped from
+ * Connect's `WorkerDeliverView` fragment
+ * (`GET /a/<domain>/opportunity/<opportunity_id>/workers/deliver/`).
+ *
+ * The Deliver counterpart to {@link WorkerLearnRow}, and the answer to
+ * dimagi-internal/ace#1066: Phase 6's Deliver smoke could return `pass` while
+ * the visit sat unsent in the device's local outbox, because nothing read the
+ * server back. `delivered` is that read — it is Connect's count of submitted
+ * deliveries for this worker + payment unit, so `delivered >= 1` is the
+ * assertion that a delivery actually EXISTS server-side.
+ *
+ * `approved` is stronger still: a delivery can be submitted and then rejected
+ * by verification, which is precisely the "one payment unit registers"
+ * criterion `app-test-cases.yaml` declares. Assert `approved >= 1` when the
+ * journey claims a payment unit registered; assert `delivered >= 1` when it
+ * only claims the visit reached Connect.
+ *
+ * Mirrors jjackson/ace#897's lesson on the Learn side: the device is not
+ * authoritative about completion — Connect is.
+ */
+export interface WorkerDeliverRow {
+  name: string;
+  /** Payment-unit label this row is scoped to (one row per worker+unit). */
+  payment_unit: string | null;
+  /** Deliveries submitted to Connect. The `>= 1` gate for "it left the device". */
+  delivered: number;
+  /** Deliveries that passed verification. The `>= 1` gate for "a unit registered". */
+  approved: number;
+  /** Deliveries rejected by verification. */
+  rejected: number;
+  /** Completed count from the progress bar (e.g. 2 of 5). */
+  progress_completed: number | null;
+  /** Max/target count from the progress bar (e.g. 2 of 5). */
+  progress_total: number | null;
+  /** Connect's "Last active" cell, verbatim; null when rendered blank. */
+  last_active: string | null;
+}
+
+export interface DeliverProgress {
+  domain: string;
+  opportunity_id: string;
+  workers: WorkerDeliverRow[];
+}

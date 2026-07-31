@@ -20,6 +20,7 @@ import {
   parseDeliverUnitFormCheckboxes,
   parsePaymentUnitTable,
   parseWorkerLearnTable,
+  parseWorkerDeliverTable,
 } from './html-scrape.js';
 
 /**
@@ -801,6 +802,17 @@ export class PlaywrightBackend implements ConnectClient {
     const res = await this.request.get(path, { headers: { 'HX-Request': 'true' } });
     if (res.status() !== 200) throw await httpErrorFor(res, path);
     const { workers } = parseWorkerLearnTable(await res.text());
+    return { domain, opportunity_id, workers };
+  };
+
+  getDeliverProgress: ConnectClient['getDeliverProgress'] = async ({ domain, opportunity_id }) => {
+    // WorkerDeliverView is the Deliver sibling of WorkerLearnView; same
+    // htmx contract — `HX-Request` returns the table fragment, not the
+    // full page chrome. Probed live 2026-07-30 (dimagi-internal/ace#1066).
+    const path = `/a/${domain}/opportunity/${opportunity_id}/workers/deliver/`;
+    const res = await this.request.get(path, { headers: { 'HX-Request': 'true' } });
+    if (res.status() !== 200) throw await httpErrorFor(res, path);
+    const { workers } = parseWorkerDeliverTable(await res.text());
     return { domain, opportunity_id, workers };
   };
 
