@@ -40,7 +40,7 @@ Selector substitution: every static recipe uses `${SELECTOR:logical-name}` place
 
 Structural preventers run before AVD wall-clock burns:
 - `mobile_validate_recipe` → `lintRecipeText` catches `inputtext-scalar-with-sibling-option`.
-- `mcp/mobile/recipe-sanity-probe.ts` catches `form-advance-without-answer-tap` and `brief-label-drift`.
+- `mcp/mobile/recipe-sanity-probe.ts` catches `form-advance-without-answer-tap`, `answer-tap-before-leading-label-advance` (its inverse — too FEW advances past a form's leading `label` screens, ace#1045) and `brief-label-drift`. It also reports `verdict.warnings[]` for checks that were inert on these inputs (`module-form-checks-not-run`, ace#1068) — read those before treating `ok: true` as a clean pass.
 - `test/mcp/mobile/static-palette-health.test.ts` asserts every static recipe parses, declares `appId:`, passes lint, and resolves every selector ref against the active map.
 
 See `docs/learnings/2026-05-25-recipe-static-preventer-suite.md` for the shift-left principle behind these checks.
