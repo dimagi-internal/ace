@@ -35,6 +35,7 @@ import {
 } from '../lib/transient-retry.js';
 import { generateRunReadme, type PhaseStatus } from '../lib/run-readme.js';
 import { validatePhaseProductsFragment, classifyPhaseProducts } from '../lib/phase-products-schema.js';
+import { assertDimagiOwnerRecipient } from '../lib/destructive-guards.js';
 import {
   runDecisionsRender,
   type DecisionsRenderDriveClient,
@@ -1495,6 +1496,8 @@ server.tool(
   },
   async ({ fileId, email }) => {
     try {
+      // Rail (audit F5): ownership transfer is irreversible from ACE's side.
+      assertDimagiOwnerRecipient(email);
       const resp = await drive.permissions.create({
         fileId,
         transferOwnership: true,
