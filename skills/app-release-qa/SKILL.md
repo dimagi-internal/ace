@@ -281,11 +281,35 @@ found both on first read. Judgment is the wrong tool for a property this
 crisp — hence a parser, and `lib/constraint-locality.test.ts` pins the
 real defective binds as its negative control.
 
-Violations → halt with `[BLOCKER]` `non-local-constraint` (naming each
-field, the foreign node, and "move the constraint onto the node it is
-about"). Record per-app under `constraint_locality` in the verdict:
-`{ constraints_checked, violations: [...] }`. Zero violations records
-`constraint_locality: pass`.
+The checker is **screen-aware**, not question-aware: a group carrying
+`appearance="field-list"` renders all its questions on ONE scrollable
+screen, so a constraint referencing a sibling inside the same field-list
+is **local** — the FLW scrolls up and fixes it in place. That is the
+shape `skills/_app-component-library.md § data-quality-constraints`
+*mandates* (`under_5 <= household_size`), and treating it as a violation
+meant a correctly-authored app could not clear this step
+(dimagi-internal/ace#1019).
+
+Each violation carries a `severity`:
+
+- `blocker` — the constraint never references the node it is bound to, so
+  **no answer the user can give on that screen clears it**. The ace#980
+  class: "recapture the location" on a screen with no location widget.
+- `warn` — the reference crosses a screen boundary, but the constraint
+  also references its own node, so lowering/changing the answer in front
+  of the user satisfies it. Annoying, not a dead end.
+
+Severity is decided structurally (does the expression mention its own
+nodeset?), never by scanning the message text — ACE forms are routinely
+multilingual, and a phrase list would mis-grade every localized form.
+
+`severity: 'blocker'` → halt with `[BLOCKER]` `non-local-constraint`
+(naming each field, the foreign node, and "move the constraint onto the
+node it is about"). `severity: 'warn'` → emit `[WARN]`
+`cross-screen-constraint` and continue. Record per-app under
+`constraint_locality` in the verdict:
+`{ constraints_checked, violations: [...] }` (each violation carrying its
+`severity`). Zero violations records `constraint_locality: pass`.
 
 **Relevance reachability — always, every form with relevance conditions
 (dimagi-internal/ace#996).** The temporal sibling of the check above: a
@@ -382,6 +406,32 @@ reproducer, see reference.md § Runtime install validation.
    - **`input_error: 'jar_not_found'`** (either mode) → emit `[WARN]` `cli-validator-unavailable` with the setup remediation below; continue. Structural Steps 3–4 still authoritative.
    - **`validate verdict: 'fail'`** → halt with `[BLOCKER]` `cli-validate-parser-error` naming `parser_message` + `failed_resource`. Don't bother running `play` — `validate` already proved the CCZ is structurally broken.
    - **`validate: pass` + `play: fail`** → halt with `[BLOCKER]` `cli-form-init-error` naming `failing_binding` + `unresolved_xpath` + `parser_message` (see § Failure modes for the bednet class + fix).
+   - **`play verdict: 'skipped'`** → emit `[INFO]` naming `skip_reason`; **do NOT halt**. The form was never opened, so nothing about form-init was observed either way. Today the only reason is `empty-case-list`: the module's case list rendered zero rows, so the walk died in case-list rendering before form entry. `play` seeds one open case per case type declared in the CCZ's `suite.xml`, so this now only fires when a case-list **filter** excludes the generic seed (it carries `case_type` / `case_name` / `owner_id` and no other properties). Record `cli_validate.play: {verdict: skipped, skip_reason, seeded_case_types}` so the coverage gap is legible rather than silently reported as a pass.
+
+   **Case seeding (dimagi-internal/ace#1088).** Every ACE Deliver app's
+   payable form is a `followup` on a case type, and the restore used to
+   seed zero cases — so `play` could not reach any of them and this gate
+   had **never once** exercised `initAllTriggerables` on an ACE Deliver
+   followup form, while reporting `fail` on clean builds. `play` now
+   derives the case types from `suite.xml` and seeds one open case each,
+   and derives the menu walk from the same file (a case datum inserts a
+   case-list screen, and `detail-confirm` a confirmation screen, between
+   the module and form choices). Nothing is sent after form entry —
+   stray keystrokes are typed as *answers*, and a `0` on a date question
+   raises `IllegalArgumentException: Invalid cast of data [0] to type
+   Date`, which reads as a CCZ defect.
+
+   **What seeding does not cover** — say so rather than implying the gate
+   is now complete:
+   - Case lists whose `<filter>` keys on a case **property**. The seed
+     carries no properties, so such a list is still empty → `skipped`.
+   - Case **search** / registry entries (`<query>` screens) and any datum
+     screen other than a plain entity list.
+   - `entry_path` where the form index is non-zero on a case-managed
+     module: the walk assumes the caller's second index is the form, and
+     a module with 2+ forms behind a case list has not been exercised.
+     ACE calls this as `[0,0]`, `[1,0]`, … (one per module, form 0), which
+     is the calibrated path.
 
 **Operator one-time setup (only when `input_error: 'jar_not_found'` fires):**
 
@@ -572,6 +622,14 @@ defects.
   onto the node it is actually about — a GPS-accuracy rule onto the
   geopoint itself, a repeat-cardinality rule onto the repeat or a gate
   immediately after it — then re-release and re-run `app-release-qa`.
+  Only `severity: 'blocker'` violations halt; questions sharing an
+  `appearance="field-list"` group are one screen and are not violations
+  at all (ace#1019).
+- `cross-screen-constraint` — `[WARN]`, not a halt. A `constraint` reaches
+  into another screen, but it also references its own node, so the FLW
+  clears it by changing the answer in front of them. Worth tightening
+  (move the rule onto the screen that owns both numbers) but it does not
+  trap anyone, so it never blocks a release.
 
 ## MCP tools used
 

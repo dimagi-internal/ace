@@ -226,6 +226,188 @@ describe('checkConstraintLocality', () => {
   });
 });
 
+//
+// dimagi-internal/ace#1019 — `appearance="field-list"` means ONE screen.
+//
+// Shape taken from the released spark-facilitator Deliver form
+// (`spark-facilitator/20260730-1718`, app fc14076ff22d4b199451ea2cba4cd48f,
+// build 704c99901e104ee29129469de5739750, `modules-0/forms-0.xml`). Two
+// field-list groups, and constraints of BOTH kinds across them:
+//
+//   /data/attendance        male_attendance, female_attendance,
+//                           members_with_disability, male_participants,
+//                           female_participants
+//   /data/meeting_conduct   male_leader_attendence, female_leader_attendence
+//
+// The three `/data/attendance` constraints reference siblings inside their
+// own field-list — one screen, so the FLW scrolls up and fixes it in place.
+// The two `/data/meeting_conduct` ones genuinely cross a screen boundary,
+// but each is satisfiable by lowering the number the FLW just typed, which
+// is the WARN class rather than the ace#980 BLOCKER class.
+//
+const FIELD_LIST_FORM = `<?xml version="1.0"?>
+<h:html xmlns:h="http://www.w3.org/1999/xhtml" xmlns:jr="http://openrosa.org/javarosa">
+  <h:head>
+    <model>
+      <instance>
+        <data>
+          <attendance>
+            <hh_represented_at_the_meeting/>
+            <male_attendance/>
+            <female_attendance/>
+            <members_with_disability/>
+            <male_participants/>
+            <female_participants/>
+          </attendance>
+          <meeting_conduct>
+            <male_leader_attendence/>
+            <female_leader_attendence/>
+          </meeting_conduct>
+        </data>
+      </instance>
+      <bind nodeset="/data/attendance/hh_represented_at_the_meeting" required="true()"/>
+      <bind nodeset="/data/attendance/male_attendance" required="true()"/>
+      <bind nodeset="/data/attendance/female_attendance" required="true()"/>
+      <bind nodeset="/data/attendance/members_with_disability"
+            constraint=". &lt;= (/data/attendance/male_attendance + /data/attendance/female_attendance)"
+            jr:constraintMsg="This cannot be more than total attendance."/>
+      <bind nodeset="/data/attendance/male_participants"
+            constraint=". &lt;= /data/attendance/male_attendance"
+            jr:constraintMsg="This cannot be more than the number of men who attended."/>
+      <bind nodeset="/data/attendance/female_participants"
+            constraint=". &lt;= /data/attendance/female_attendance"
+            jr:constraintMsg="This cannot be more than the number of women who attended."/>
+      <bind nodeset="/data/meeting_conduct/male_leader_attendence"
+            constraint=". &lt;= /data/attendance/male_attendance"
+            jr:constraintMsg="This cannot be more than the number of men and boys who attended. Lower this number."/>
+      <bind nodeset="/data/meeting_conduct/female_leader_attendence"
+            constraint=". &lt;= /data/attendance/female_attendance"
+            jr:constraintMsg="This cannot be more than the number of women and girls who attended. Lower this number."/>
+    </model>
+  </h:head>
+  <h:body>
+    <group ref="/data/attendance" appearance="field-list">
+      <input ref="/data/attendance/hh_represented_at_the_meeting"/>
+      <input ref="/data/attendance/male_attendance"/>
+      <input ref="/data/attendance/female_attendance"/>
+      <input ref="/data/attendance/members_with_disability"/>
+      <input ref="/data/attendance/male_participants"/>
+      <input ref="/data/attendance/female_participants"/>
+    </group>
+    <group ref="/data/meeting_conduct" appearance="field-list">
+      <input ref="/data/meeting_conduct/male_leader_attendence"/>
+      <input ref="/data/meeting_conduct/female_leader_attendence"/>
+    </group>
+  </h:body>
+</h:html>`;
+
+describe('field-list screen model (ace#1019)', () => {
+  it('does NOT flag a cross-field constraint whose refs share its field-list group', () => {
+    // The exact false positive that hard-halted Phase 3: three constraints
+    // mandated by skills/_app-component-library.md § data-quality-constraints,
+    // all inside one `appearance="field-list"` group.
+    const { violations } = checkConstraintLocality(FIELD_LIST_FORM);
+    const ids = violations.map((v) => v.fieldId);
+    expect(ids).not.toContain('members_with_disability');
+    expect(ids).not.toContain('male_participants');
+    expect(ids).not.toContain('female_participants');
+  });
+
+  it('still flags a constraint that reaches into a DIFFERENT field-list group', () => {
+    const { violations } = checkConstraintLocality(FIELD_LIST_FORM);
+    expect(violations.map((v) => v.fieldId).sort()).toEqual([
+      'female_leader_attendence',
+      'male_leader_attendence',
+    ]);
+  });
+
+  it('grades a cross-screen constraint the user can satisfy in place as WARN', () => {
+    // `male_leader_attendence <= male_attendance` fires on the leader-count
+    // question itself, and lowering that number satisfies it — no backward
+    // navigation needed. Distinct from ace#980, where nothing the user could
+    // type on the firing screen would ever clear the rule.
+    const { violations } = checkConstraintLocality(FIELD_LIST_FORM);
+    expect(violations.every((v) => v.severity === 'warn')).toBe(true);
+  });
+
+  it('keeps the ace#980 defects at BLOCKER — the bound node cannot satisfy them', () => {
+    const { violations } = checkConstraintLocality(DEFECTIVE_FORM);
+    expect(violations.map((v) => v.severity)).toEqual(['blocker', 'blocker']);
+  });
+
+  it('reports WARN text (not FAIL) when every violation is fixable in place', () => {
+    const out = formatConstraintLocalityReport(
+      checkConstraintLocality(FIELD_LIST_FORM),
+    );
+    expect(out).toMatch(/^constraint-locality: WARN \(2 of 5/);
+    expect(out).toContain('male_leader_attendence');
+  });
+
+  it('treats a plain group (no appearance) as one question per screen', () => {
+    // Only `field-list` collapses a group to one screen. A bare <group> is a
+    // navigational grouping — each child still gets its own screen.
+    const xml = `<?xml version="1.0"?>
+<h:html xmlns:h="http://www.w3.org/1999/xhtml">
+  <h:head><model>
+    <bind nodeset="/data/g/a"/>
+    <bind nodeset="/data/g/b" constraint="/data/g/a &gt; 0"/>
+  </model></h:head>
+  <h:body>
+    <group ref="/data/g">
+      <input ref="/data/g/a"/>
+      <input ref="/data/g/b"/>
+    </group>
+  </h:body>
+</h:html>`;
+    expect(checkConstraintLocality(xml).violations.map((v) => v.fieldId)).toEqual(['b']);
+  });
+
+  it('does not merge a repeat nested inside a field-list into that screen', () => {
+    // A repeat renders its own screens even inside a field-list parent, so a
+    // constraint reaching from outside the repeat into it still crosses.
+    // `other` sits between the repeat and the gate so the pre-existing
+    // "cardinality gate immediately after its repeat" allowance does NOT
+    // apply — this isolates the field-list question.
+    const xml = `<?xml version="1.0"?>
+<h:html xmlns:h="http://www.w3.org/1999/xhtml">
+  <h:head><model>
+    <bind nodeset="/data/g/roster/member_name"/>
+    <bind nodeset="/data/g/other"/>
+    <bind nodeset="/data/g/zone" constraint="count(/data/g/roster) &gt;= 1"/>
+  </model></h:head>
+  <h:body>
+    <group ref="/data/g" appearance="field-list">
+      <repeat nodeset="/data/g/roster"><input ref="/data/g/roster/member_name"/></repeat>
+      <input ref="/data/g/other"/>
+      <input ref="/data/g/zone"/>
+    </group>
+  </h:body>
+</h:html>`;
+    const { violations } = checkConstraintLocality(xml);
+    expect(violations.map((v) => v.fieldId)).toEqual(['zone']);
+    expect(violations[0].severity).toBe('blocker');
+  });
+
+  it('honours field-list on a nested inner group as one screen with its parent', () => {
+    const xml = `<?xml version="1.0"?>
+<h:html xmlns:h="http://www.w3.org/1999/xhtml">
+  <h:head><model>
+    <bind nodeset="/data/g/inner/a"/>
+    <bind nodeset="/data/g/b" constraint=". &lt;= /data/g/inner/a"/>
+  </model></h:head>
+  <h:body>
+    <group ref="/data/g" appearance="field-list">
+      <group ref="/data/g/inner">
+        <input ref="/data/g/inner/a"/>
+      </group>
+      <input ref="/data/g/b"/>
+    </group>
+  </h:body>
+</h:html>`;
+    expect(checkConstraintLocality(xml).violations).toEqual([]);
+  });
+});
+
 describe('itext resolution', () => {
   it('resolves a jr:itext() constraint message to its real text', () => {
     // Real CommCare forms store constraint messages in itext; an unresolved
