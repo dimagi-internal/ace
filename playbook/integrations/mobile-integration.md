@@ -45,6 +45,46 @@ Structural preventers run before AVD wall-clock burns:
 
 See `docs/learnings/2026-05-25-recipe-static-preventer-suite.md` for the shift-left principle behind these checks.
 
+## Recording
+
+Every local `mobile_run_recipe` call records an mp4 via on-device
+`adb shell screenrecord --time-limit 0`, started and stopped by
+`mcp/mobile/screen-recorder.ts` around each attempt. Videos land in the
+run's `screenshotDir` (`<recipeId>.mp4`, plus `<recipeId>-attempt<N>.mp4`
+when a driver heal forced a retry) and are copied into a per-session spool
+at `~/.ace/mobile-videos/<ppid>/` for skill-side upload.
+
+Skills reach the spool through `mobile_list_session_videos` /
+`mobile_clear_session_videos`, never by hand-resolving the path — the
+ppid keys the spool and belongs to the MCP process, so a skill that
+globs `mobile-videos/*/` reads (and then deletes) a CONCURRENT session's
+recordings. Note the spool holds EVERY recorded video, including the ones
+`mobile_run_recipe` also returns in `result.videos[]`; an uploading skill
+must de-duplicate on `recipeId` + `attempt` or it uploads each journey
+twice.
+
+**Why on-device and not the emulator console.** `adb emu screenrecord`
+authenticates against `~/.emulator_console_auth_token`, which is
+per-macOS-user. ACE workstations run emulators under more than one account
+— probed live 2026-07-30, an `adb emu screenrecord` against a sibling
+account's emulator returns `KO: authentication token does not match`. The
+console recorder would work for emulators we spawned and fail on any we
+merely attach to. On-device `screenrecord` is owner-agnostic.
+
+**`--time-limit 0` is load-bearing.** screenrecord's default limit is 180
+seconds; Maestro runs are allowed up to 10 minutes. Without the flag a long
+journey silently records only its first three minutes.
+
+**Stop with SIGINT, never SIGKILL.** screenrecord writes the mp4 moov atom
+on a clean interrupt; SIGKILL leaves an unplayable file.
+
+**Off switch:** `ACE_MOBILE_RECORD=off`. Tuning: `ACE_MOBILE_RECORD_BITRATE`
+(default `1M`), `ACE_MOBILE_RECORD_SIZE` (default `540x1140`) — roughly
+5–8 MB per journey-minute at the defaults.
+
+**Cloud backend does not record yet** (Phase 2 — see
+`docs/superpowers/specs/2026-07-30-avd-session-recording-design.md`).
+
 ## Device-state heal: always cold-boot per dispatch
 
 `mobile_ensure_avd_running` is the single funnel for landing the AVD on a Phase-6-ready state. Callers make ONE call and trust the return. Read-only probes (`mobile_probe_maestro_driver`) cannot heal — halting on them defeats the auto-heal.

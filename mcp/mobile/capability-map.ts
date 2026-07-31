@@ -18,6 +18,8 @@ export type Capability =
   | 'load_snapshot'
   | 'set_location'
   | 'probe_maestro_driver'
+  | 'list_session_videos'
+  | 'clear_session_videos'
   | 'diagnose'
   | 'restart_runner'
   | 'patch_launch_script';
@@ -42,6 +44,8 @@ export const CAPABILITY_MAP: Record<Capability, CapabilityRoute> = {
   load_snapshot: { backend: 'AVD', description: 'adb emu avd snapshot load <name>' },
   set_location: { backend: 'AVD', description: 'adb emu geo fix <lon> <lat> [alt] [sats] — seed a mock GPS fix so CommCare geopoint Capture works. Cold-boot baseline seeds a default; this overrides per-opp. Local-AVD only (cloud throws CLOUD_MOCK_LOCATION_UNSUPPORTED).' },
   probe_maestro_driver: { backend: 'MAESTRO', description: 'Read-only: does the on-device Maestro driver gRPC channel respond on the AVD? No recovery — use ensure_avd_running for the heal path.' },
+  list_session_videos: { backend: 'AVD', description: "Host-side: list the mp4s this session's local recipe runs spooled to ~/.ace/mobile-videos/<ppid>/, plus the spool dir. The ppid keys the spool and belongs to the MCP process, so skills cannot resolve it themselves." },
+  clear_session_videos: { backend: 'AVD', description: "Host-side: clear THIS session's video spool (scoped to the MCP's own ppid, so it cannot touch a concurrent session's spool). Returns the number of files removed." },
   diagnose: { backend: 'CLOUD', description: 'Cloud-only: read the runner-VM diagnostics (SSM state, runner-ready marker, last recipe). Throws CLOUD_ONLY_OPERATION on local AVD.' },
   restart_runner: { backend: 'CLOUD', description: 'Cloud-only: restart the in-VM runner process. Throws CLOUD_ONLY_OPERATION on local AVD.' },
   patch_launch_script: { backend: 'CLOUD', description: 'Cloud-only: overwrite /usr/local/bin/ace-emulator-launch on the runner VM (server enforces a 64KB cap). Throws CLOUD_ONLY_OPERATION on local AVD.' },

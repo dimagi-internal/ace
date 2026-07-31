@@ -79,7 +79,7 @@ const SERVERS: Record<string, ServerSpec> = {
   },
   mobile: {
     file: 'mcp/mobile-server.ts',
-    expectedCount: 17,
+    expectedCount: 19, // +2: mobile_list_session_videos / mobile_clear_session_videos
     allowedPrefixes: ['mobile_'],
     // capabilityMap enabled in PR-R (2026-05-25) after aligning the map
     // with the server registrations. The previously-extra

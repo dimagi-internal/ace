@@ -225,6 +225,27 @@ dialog — often <100KB because the screen is mostly solid blue;
 threshold rule should not flag this), `learn-install-home.png` (the
 post-install Learn StandardHomeActivity).
 
+### Step 4.5: Sweep the device-video spool
+
+**Sweep the device-video spool.** Local `mobile_run_recipe` calls record
+an mp4 per run and spool a copy for this session.
+
+1. Call `mobile_list_session_videos` (no arguments). It returns
+   `{ spoolDir, videos: [<absolute path>, …] }`. Use the atom — do NOT
+   hand-resolve `~/.ace/mobile-videos/<ppid>/` (the ppid belongs to the
+   MCP process, not to you) and do NOT glob `mobile-videos/*/`, which
+   would read and then destroy a CONCURRENT session's spool.
+2. Upload each returned file to
+   `ACE/_common/connect-screenshots/<version>/videos/_device/<filename>`
+   via `drive_upload_binary` (`mimeType: "video/mp4"`). This skill
+   uploads no videos from `result.videos[]`, so there is nothing to
+   de-duplicate against here — upload everything the atom returns.
+3. Call `mobile_clear_session_videos` (no arguments) to clear the spool.
+   It returns `{ spoolDir, cleared }` — log `cleared`.
+
+Empty spool is normal — recording is best-effort and
+`ACE_MOBILE_RECORD=off` disables it.
+
 ### Step 5: Upload to Drive
 
 For each captured PNG mapped to a deck alias (see Coverage table
