@@ -767,6 +767,26 @@ For each form-walk segment of a recipe:
    against a live dump of that build (per "close the loop to the source
    of truth") — never transcribe from a sibling build (that's exactly how
    the #593/#686 "GPS is a plain text field" misdiagnosis propagated).
+4.7. For `kind: date` fields, the CommCare date widget **defaults to
+   today**, so a date question whose `validate` accepts today needs NO
+   interaction at all — emit the plain `form-advance.yaml` and the
+   pre-filled default carries the screen (`. <= today()` and
+   `. >= today()` constraints both fall in this class). A
+   **strictly-future or strictly-past** constraint (e.g.
+   `. > today() and . <= date(today() + 30)`) is different: today
+   violates it, and there is currently **NO calibrated date-widget
+   selector** in the APK selector map (no picker / spinner / calendar
+   row — dimagi-internal/ace#1081), so the recipe **cannot** drive the
+   widget to any other date. Do NOT guess a selector (banned by "close
+   the loop to the source of truth") and do NOT chain `form-advance`
+   into the constraint error. Instead the journey must **flag it**: the
+   Step 5 date-default static gate (below) fails loud naming the field;
+   route the smoke through a branch that avoids the field when the form
+   has one, and otherwise halt with a `[BLOCKER]` referencing ace#1081
+   (the selector row needs live-device calibration before such a field
+   is walkable). Statically verify with
+   `lib/date-default-validate.ts` rather than eyeballing the
+   expression.
 5. Hidden / `calculate`-only fields are auto-populated by the form
    runtime — they don't need a per-question answer step. Skip them when
    composing the answer sequence.
@@ -939,6 +959,34 @@ and the orchestrator had to `drive_move_file` it into `3-commcare/`.
   ([#106 finding 3](https://github.com/jjackson/ace/issues/106) — the
   leep-paint-collection run hit this exact gap and required two
   manual `/ace:step` retries to recover).
+- **Date-default static gate — every smoke-walked form
+  (dimagi-internal/ace#1081).** The date widget defaults to today and no
+  calibrated date-widget selector exists, so a required `kind: date`
+  field whose `validate` rejects today is un-walkable — and without this
+  gate that is discovered on the emulator in Phase 6, not here. For each
+  form a smoke recipe walks (`forms_exercised`), feed the form's fields
+  (from `get_form`: `id`, `kind`, `required`, `validate`) through the
+  pure helper:
+
+  ```ts
+  import { checkDateDefaultValidate, formatDateDefaultValidateReport }
+    from '../../lib/date-default-validate';
+  const report = checkDateDefaultValidate(fields);
+  ```
+
+  - A `verdict: 'violated'` row → **`[BLOCKER]` naming the field** (its
+    `fieldId` + the `validate` expression, via
+    `formatDateDefaultValidateReport`): the recipe cannot advance past
+    that screen. Remediation options, in order: rebind the journey to a
+    branch that avoids the field (record which branch and why — the
+    payable-path coverage loss must be explicit, per ace#1081's
+    spark-facilitator repro); otherwise halt — the field needs the
+    ace#1081 selector-map calibration (live-device work) before it is
+    walkable. Never ship a recipe that `form-advance`s into the
+    constraint error.
+  - A `verdict: 'unverifiable'` row → `[WARN]` naming the field and the
+    reason; confirm by hand that today satisfies the expression before
+    shipping the recipe. Never treat unverifiable as a pass.
 - Every authored (smoke) recipe passes `mobile_validate_recipe`
 - Every authored (smoke) recipe's `mobile_resolve_selectors` pass returned
   `unresolved: []` (Step 3.4 gate; non-empty means the APK selector
@@ -1036,4 +1084,5 @@ already maps the producer to `3-commcare/` (see
 | 2026-05-31 | **`journey-` prefix on every journey id.** Amended the convention so the `id` now carries the literal `journey-` prefix (`journey-learn-pass`, `journey-learn-retry`, `journey-deliver-submit`, `journey-deliver-alt-answer`, `journey-deliver-multiple`, `journey-deliver-locked`) — `id = journey-<app>-<intent>`, always starting with `journey-` — so the id is self-describing wherever it is listed. Recipe *filenames* are unchanged (still `journey-<app>[-<slug>].yaml`; smokes still `journey-learn.yaml` / `journey-deliver.yaml`); the doc now states the filename-vs-id distinction explicitly. Producer + downstream readers (`app-screenshot-capture`, `app-ux-eval`, `app-test-cases-template.yaml`, `ACE-Test-001` fixture) updated. (follow-up to PR #597) | ACE team |
 | 2026-05-31 | **Intent-based journey-id slugs (replace answer-value names).** Renamed the canonical intent slugs from answer-value names to test-intent names — the learn smoke is now `journey-learn-pass`, learn retry `journey-learn-retry`, the deliver smoke `journey-deliver-submit`, the alternate-answer journey `journey-deliver-alt-answer`, the multi-visit journey `journey-deliver-multiple`, and the gate-locked journey `journey-deliver-locked`. The old slugs named a raw domain answer value (e.g. a literal `yes`/`no` response), which is meaningless unless you already know the question and doesn't generalize across opps; the intent names describe the behavior being verified, so they read clearly for any opportunity (bednet, vaccination, anything). The `journey-` prefix rule, the `journey-<app>-<intent>` shape, and the filename-vs-id nuance (PR #603) are all unchanged. Example/canonical slug rename only — no lazy-generation / deep-recipe-timing changes. Updated every example/snippet here plus downstream readers (`app-screenshot-capture`, `app-ux-eval`), `app-test-cases-template.yaml`, and the `ACE-Test-001` fixture. | ACE team |
 | 2026-05-31 | **Lazy deep-recipe generation (closes #605).** Phase 3 now authors Maestro recipe files ONLY for the two `is_smoke: true` journeys; every non-smoke (deep) journey stays in the `app-test-cases.yaml` catalog with `recipe: deferred` (the literal string, not a path). Phase 6 (shallow, in `/ace:run`) only ever walks the smokes, so pre-authoring deep recipes was wasted work + clutter when `/ace:qa-deep` isn't run. `/ace:qa-deep` now generates the deferred deep recipes on demand using the SAME composition rules here (static palette + live `get_form` labels + selector-resolution gate) — safe because Nova `app_id` + `get_form` still return the as-built structure within a run. Step 3 scoped to "smoke journeys"; Step 5 coverage invariant changed from "every journey has a recipe file" to "exactly the smoke recipes exist as files; deep journeys carry `recipe: deferred`" (two-app smoke invariant + selector-resolution gate for the smokes KEPT). Updated `commands/qa-deep.md`, `app-screenshot-capture`, `app-test-cases-template.yaml`, and the `ACE-Test-001` fixture. | ACE team |
+| 2026-07-30 | **Add § answer-tap rule step 4.7 (`kind: date`) + the Step 5 date-default static gate (the static half of dimagi-internal/ace#1081).** The date widget defaults to today, so `<= today()` / `>= today()` constraints need no interaction — but a strictly-future/past constraint has NO calibrated selector (the connect-2.63.2 map carries no date-widget row), so today violating the constraint makes the screen un-walkable. New pure helper `lib/date-default-validate.ts` (`checkDateDefaultValidate`) statically evaluates each required date field's `validate` with `.` = today; Step 5 now BLOCKER-gates a violation naming the field (and WARNs on unverifiable expressions) at Phase 3 instead of burning Phase 6 wall-clock (spark-facilitator/20260730-1718 repro: `next_meeting_date` with `. > today() and . <= date(today() + 30)` silently rerouted the Deliver smoke to the non-payable branch). The selector-map date-widget row itself stays open on ace#1081 pending live-device calibration. | ACE team |
 | 2026-06-01 | **Learn content forms are multi-screen + finalize to StandardHomeActivity (closes #646).** Two new static palette pieces: `content-form-finish.yaml` (bounded multi-screen advance loop that taps `nav_btn_next` until a Learn CONTENT form auto-finalizes, exits on the `learn-home-start-tile` home anchor — NOT the suite menu — handles the score-gated two-screen FINISH, and asserts the home grid post-finalize) and `learn-suite-reentry.yaml` (the explicit "tap Start → wait `screen_suite_menu_list`" re-entry that MUST run between every module, because a Learn form finalizes to the home grid not the suite menu). Added §§ "Multi-screen content forms" + "Suite re-entry between modules"; the prior single-screen-only content-form note is subsumed. Closes the malaria-rdt/20260601-0929 Phase 6 Learn-walk blocker (recipe walked each content form as single-screen and called the next `learn-tap-module` directly, stalling on page 2 then hard-failing the suite-menu assert). Validated structurally (`mobile_validate_recipe` + selector-resolution gate against connect-2.63.0); full live re-walk lands on the next fresh-run Phase 6 (this run consumed its one-way Learn state). | ACE team |

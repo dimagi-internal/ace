@@ -289,22 +289,30 @@ GET /a/<ACE_HQ_DOMAIN>/apps/source/<released_build_id>/
 ```
 
 (authenticated with the `~/.ace/connect-session.json` cookie jar, same as
-Step 2's download). For each app, assert **every** entry in
-`modules[]` has `display_style == 'grid'`.
+Step 2's download — the endpoint 401s on `ApiKey` auth). For each app,
+assert **all three** grid fields (dimagi-internal/ace#1082):
 
-Mismatch → halt with `[BLOCKER]` `grid-menu-display-missing` (naming the
-app, the module index + `unique_id`, and the observed value, plus "re-run
-`app-hq-settings`, re-release, then re-run app-release-qa"). Record
-per-app under `grid_menu_display` in the verdict:
-`{ modules_checked, modules_gridded, non_grid: [...] }`.
+- `use_grid_menus === true` — the app-ROOT menu of modules;
+- `grid_form_menus === 'some'` — without it the suite generator ignores
+  every per-module `display_style` (HQ
+  `suite_xml/sections/menus.py:86-92`), so asserting only the per-module
+  half is what let ace#1082 sit unnoticed;
+- **every** entry in `modules[]` has `display_style == 'grid'`.
 
-**Known caveat, NOT a failure:** the app-ROOT menu (the grid-vs-list of
-the module list itself) is a separate app-level flag, `use_grid_menus`,
-which `app-hq-settings` deliberately does not set. The same raw doc
-exposes it. Record its observed value as `[INFO] app_root_use_grid_menus:
-<value>` — do not halt on it. On
-`hh-poverty-targeting/20260728-0705` it read `False` on both apps while
-all 9 module menus were grid, which is the expected shape today.
+Any miss → halt with `[BLOCKER]` `grid-menu-display-missing` (naming the
+app, the field — and for a module miss, the module index + `unique_id` —
+plus the observed value and "re-run `app-hq-settings`, re-release, then
+re-run app-release-qa"). Record per-app under `grid_menu_display` in the
+verdict: `{ use_grid_menus, grid_form_menus, modules_checked,
+modules_gridded, non_grid: [...] }`.
+
+(Until ace#1082 the app-level flags were carried here as an INFO-only
+caveat — `hh-poverty-targeting/20260728-0705` read `use_grid_menus:
+False` on both apps while all 9 module menus were "grid", and
+spark-facilitator/20260730-1718 additionally proved `grid_form_menus:
+'none'` was rendering those module grids inert. `app-hq-settings` Step 4b
+now sets both app-level flags via `commcare_set_app_menu_display`, so all
+three fields are asserted as blockers.)
 
 **Constraint locality — always, every form with constraints
 (dimagi-internal/ace#980).** A `constraint` must be satisfiable on the
@@ -577,8 +585,9 @@ per_app:
 #   geopoint_binds:        pass | [<offending field paths>]
 #   constraint_locality:   pass | { constraints_checked, violations: [...] }
 #   relevance_reachability: pass | { checked, unreachable: [...], partial: [...] }
-#   grid_menu_display:     { modules_checked, modules_gridded, non_grid: [...] }
-#   app_root_use_grid_menus: true | false   # INFO only — never a halt
+#   grid_menu_display:     { use_grid_menus, grid_form_menus,
+#                            modules_checked, modules_gridded, non_grid: [...] }
+#                          # all three fields are BLOCKER-gated (ace#1082)
 auto_surfaced_concerns:
   - severity: BLOCKER | WARN | INFO
     message: "..."
@@ -666,11 +675,13 @@ defects.
   + dimagi-internal/ace#867). Operator fix: apply the camera-only
   appearance flip (HQ app builder or Nova), re-release, then re-run
   `app-release-qa` to confirm the attribute is in the released CCZ.
-- `grid-menu-display-missing` — a module in a released app has
-  `display_style != 'grid'` in the raw app doc
-  (`/a/<domain>/apps/source/<build_id>/`), so `app-hq-settings` either
-  didn't run, fail-softed, or was applied to a draft that was superseded
-  before the release (see Step 4 + dimagi-internal/ace#1009). Operator
+- `grid-menu-display-missing` — the released app's raw doc
+  (`/a/<domain>/apps/source/<build_id>/`) fails any of the three grid
+  fields: `use_grid_menus != true`, `grid_form_menus != 'some'`, or a
+  module with `display_style != 'grid'` — so `app-hq-settings` either
+  didn't run, fail-softed, ran a pre-ace#1082 version that only set the
+  per-module half, or was applied to a draft that was superseded before
+  the release (see Step 4 + dimagi-internal/ace#1009 + #1082). Operator
   fix: re-run `app-hq-settings`, re-release, then re-run
   `app-release-qa`. Do **not** try to confirm this from `suite.xml` or
   `GET /api/v0.5/application/` — neither carries `display_style`, and the

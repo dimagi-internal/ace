@@ -678,6 +678,37 @@ export interface SetMenuDisplayResult {
   app_version?: number;
 }
 
+export interface SetAppMenuDisplayArgs {
+  domain: string;
+  app_id: string;
+  /**
+   * App-root "Modules Menu Display": `true` renders the top-level menu of
+   * modules as a grid. Maps to `Application.use_grid_menus`
+   * (BooleanProperty, default false). Defaults to `true` here.
+   */
+  use_grid_menus?: boolean;
+  /**
+   * App-level "Forms Menu Display": `Application.grid_form_menus`
+   * (StringProperty, default 'none', choices none|all|some). Load-bearing:
+   * the suite generator only honors a module's `display_style: 'grid'`
+   * when this is `'some'` (or overrides every module when `'all'`) — at
+   * the default `'none'`, per-module grid settings are INERT. Defaults to
+   * `'some'` here, which is what makes `setMenuDisplay`'s per-module
+   * writes actually take effect.
+   */
+  grid_form_menus?: 'none' | 'all' | 'some';
+}
+
+export interface SetAppMenuDisplayResult {
+  /** HTTP status from `edit_app_attr/<app_id>/all/`. */
+  status: number;
+  /** Echo of the flags that were posted. */
+  use_grid_menus: boolean;
+  grid_form_menus: 'none' | 'all' | 'some';
+  /** CCHQ's app-version counter after the edit, when the response reports one. */
+  app_version?: number;
+}
+
 /**
  * CCHQ rejected an `edit_form_attr/.../xform/` POST because the caller's
  * `sha1` arg disagreed with the live form sha1 (concurrent edit, or stale
@@ -2363,13 +2394,12 @@ export class CommCareBackend {
    * plus `X-CSRFToken` read from the `csrftoken` cookie after a refresh GET
    * to `/apps/view/<app_id>/`.
    *
-   * IMPORTANT CAVEAT (unresolved — flagged deliberately, NOT implemented):
-   * this sets ONE MODULE's display style. Whether the app-ROOT "Modules
-   * Menu Display" (grid vs list of the top-level menu of modules) requires
-   * a SEPARATE app-level flag (e.g. `use_grid_menus` on the app doc, edited
-   * via a different `edit_app_attr`-style endpoint) is NOT verified. Do not
-   * assume this call alone flips the app-root menu to grid. If a caller
-   * needs the app-root grid, that must be probed + implemented separately.
+   * SCOPE (resolved by dimagi-internal/ace#1082): this sets ONE MODULE's
+   * `display_style`, which the suite generator only honors when the
+   * app-level `grid_form_menus == 'some'` — and the app-ROOT menu is a
+   * separate `use_grid_menus` boolean. Both app-level flags are set by
+   * `setAppMenuDisplay` (below); callers wanting the full
+   * grid-menu-display component must call BOTH atoms.
    *
    * Response: `edit_module_attr` returns JSON in the same family as
    * `edit_form_attr` — an `update["app-version"]` bump on success. The
@@ -2429,6 +2459,112 @@ export class CommCareBackend {
       }
       return {
         status,
+        ...(appVersion !== undefined ? { app_version: appVersion } : {}),
+      };
+    });
+  }
+
+  /**
+   * POST /a/<domain>/apps/edit_app_attr/<app_id>/all/
+   *
+   * Set the APP-level grid-menu flags (`use_grid_menus` +
+   * `grid_form_menus`) that `setMenuDisplay` (a per-MODULE edit)
+   * structurally cannot reach — the half of the `grid-menu-display`
+   * component that was missing until dimagi-internal/ace#1082.
+   *
+   * Contract truth (dimagi/commcare-hq @ master, 2026-07-30):
+   *
+   * - Handler: `corehq/apps/app_manager/views/apps.py::edit_app_attr`
+   *   (def at line 747), mounted at
+   *   `edit_app_attr/(?P<app_id>[\w-]+)/(?P<attr>[\w-]+)/`
+   *   (`corehq/apps/app_manager/urls.py` lines 238–239).
+   * - `use_grid_menus` is NOT in the view's `attributes` allowlist (line
+   *   762), so `edit_app_attr/<app_id>/use_grid_menus/` returns 400. It IS
+   *   in `easy_attrs` (line 810; `grid_form_menus` at 811), and
+   *   `should_edit()` (line 783) admits an easy_attr when `attr == 'all'`
+   *   AND the attribute is a key of the posted `hq` settings. So the ONLY
+   *   route is `attr='all'` with the flags in the payload.
+   * - Payload: the view tries `json.loads(request.body)['hq']` first
+   *   (line 756), falling back to `request.POST`. We send the JSON form —
+   *   `{"hq": {"use_grid_menus": true, "grid_form_menus": "some"}}` — so
+   *   the values arrive as native JSON types (the app doc's
+   *   `use_grid_menus` is a BooleanProperty; a form-encoded "true" string
+   *   would be stored as a string). Only the keys present in `hq` are
+   *   edited; every other app setting is untouched.
+   * - Suite semantics (`corehq/apps/app_manager/suite_xml/sections/
+   *   menus.py` lines 86–92): the ROOT menu gets `style="grid"` iff
+   *   `app.use_grid_menus`; non-root menus get it when
+   *   `grid_form_menus == 'all'`, or when `'some'` AND the module's
+   *   `display_style == 'grid'`. At the default `grid_form_menus='none'`
+   *   the per-module `display_style` is INERT — which is why this method
+   *   defaults `grid_form_menus` to `'some'` rather than only setting
+   *   `use_grid_menus`.
+   *
+   * Auth + CSRF: identical to `setMenuDisplay` — session cookies plus
+   * `X-CSRFToken` from the `csrftoken` cookie after a refresh GET to
+   * `/apps/view/<app_id>/`. (`GET /apps/source/<app_id>/`, the read-back
+   * surface, likewise needs the session cookie jar — ApiKey auth 401s.)
+   *
+   * Mutates the DRAFT app doc only; `make_build` + `release_build` ship it.
+   */
+  async setAppMenuDisplay(args: SetAppMenuDisplayArgs): Promise<SetAppMenuDisplayResult> {
+    return this.runWithSessionRetry(async (request) => {
+      const path = `/a/${args.domain}/apps/edit_app_attr/${args.app_id}/all/`;
+      const refreshPath = `/a/${args.domain}/apps/view/${args.app_id}/`;
+      const refreshRes = await request.get(`${this.opts.baseUrl}${refreshPath}`, {
+        maxRedirects: 0,
+      });
+      if (refreshRes.status() === 302) {
+        CommCareBackend.assertNotLoginRedirect(refreshRes, `commcare_set_app_menu_display GET ${refreshPath}`);
+      }
+      const csrf = await this.csrfFromCookies(request);
+
+      const useGridMenus = args.use_grid_menus ?? true;
+      const gridFormMenus = args.grid_form_menus ?? 'some';
+      const payload = {
+        hq: {
+          use_grid_menus: useGridMenus,
+          grid_form_menus: gridFormMenus,
+        },
+      };
+
+      const res = await request.post(`${this.opts.baseUrl}${path}`, {
+        data: JSON.stringify(payload),
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRFToken': csrf ?? '',
+          Referer: `${this.opts.baseUrl}${refreshPath}`,
+        },
+        maxRedirects: 0,
+      });
+      if (res.status() === 302) {
+        CommCareBackend.assertNotLoginRedirect(res, `commcare_set_app_menu_display POST ${path}`);
+      }
+      const status = res.status();
+      const body = await res.text();
+
+      if (status !== 200) {
+        throw new Error(
+          `commcare_set_app_menu_display POST ${path} returned ${status}: ${body.slice(0, 300)}`,
+        );
+      }
+
+      // Best-effort app-version extraction — same tolerant parse as
+      // setMenuDisplay (`edit_app_attr` responds `{"update": {...}}` and
+      // `app.save(resp)` stamps `update["app-version"]` on success).
+      let appVersion: number | undefined;
+      try {
+        const parsed = JSON.parse(body) as { update?: { 'app-version'?: number } };
+        if (typeof parsed.update?.['app-version'] === 'number') {
+          appVersion = parsed.update['app-version'];
+        }
+      } catch {
+        /* non-JSON body — leave app_version undefined */
+      }
+      return {
+        status,
+        use_grid_menus: useGridMenus,
+        grid_form_menus: gridFormMenus,
         ...(appVersion !== undefined ? { app_version: appVersion } : {}),
       };
     });

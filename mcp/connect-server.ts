@@ -1193,10 +1193,12 @@ server.tool('commcare_get_form_source',
 // Auth: session cookies + X-CSRFToken, identical to commcare_patch_xform's POST.
 // `display_style` defaults to 'grid'.
 //
-// CAVEAT: this sets ONE MODULE's display style. Whether the app-ROOT
-// "Modules Menu Display" needs a separate app-level flag (e.g.
-// `use_grid_menus`) is UNRESOLVED and deliberately NOT implemented here —
-// see backends/commcare.ts::setMenuDisplay. Patches the draft only; follow
+// SCOPE (ace#1082): this sets ONE MODULE's display style, which the suite
+// generator only honors when the app-level `grid_form_menus == 'some'`.
+// The app-ROOT "Modules Menu Display" is a separate app-level flag
+// (`use_grid_menus`). Both app-level flags are set by
+// commcare_set_app_menu_display (below) — call BOTH atoms for the full
+// grid-menu-display component. Patches the draft only; follow
 // with commcare_make_build + commcare_release_build to ship the change.
 server.tool('commcare_set_menu_display',
   {
@@ -1207,6 +1209,44 @@ server.tool('commcare_set_menu_display',
     display_style: z.enum(['list', 'grid']).optional().describe('Menu display style; defaults to "grid".'),
   },
   async (args) => runAtom(async () => (await commcareClient(args.server)).setMenuDisplay(args))
+);
+
+// commcare_set_app_menu_display — set the APP-level grid-menu flags
+// (`use_grid_menus` + `grid_form_menus`) that the per-module atom above
+// structurally cannot reach (dimagi-internal/ace#1082).
+//
+// Endpoint: POST /a/<domain>/apps/edit_app_attr/<app_id>/all/
+//   (Django view edit_app_attr, corehq/apps/app_manager/views/apps.py:747).
+//   `use_grid_menus` is NOT in the view's per-attr allowlist (line 762) —
+//   it is only editable via attr='all' with a JSON body
+//   {"hq": {"use_grid_menus": ..., "grid_form_menus": ...}} (easy_attrs,
+//   lines 810–811). Only the posted keys are edited.
+// Auth: session cookies + X-CSRFToken, identical to commcare_set_menu_display.
+//
+// Suite semantics (suite_xml/sections/menus.py:86–92): the ROOT menu is
+// grid iff `use_grid_menus`; per-module `display_style: 'grid'` is only
+// honored when `grid_form_menus == 'some'` (or 'all' overrides every
+// module). Defaults here — use_grid_menus=true, grid_form_menus='some' —
+// complete the grid-menu-display component alongside per-module
+// commcare_set_menu_display calls. Patches the draft only; follow with
+// commcare_make_build + commcare_release_build. Read back from
+// GET /a/<domain>/apps/source/<app_id>/ (session-cookie auth — ApiKey
+// 401s on that endpoint).
+server.tool('commcare_set_app_menu_display',
+  {
+    server: HQ_SERVER_FIELD,
+    domain: z.string(),
+    app_id: z.string(),
+    use_grid_menus: z.boolean().optional().describe(
+      'App-root "Modules Menu Display": true = grid, false = list. Defaults to true.',
+    ),
+    grid_form_menus: z.enum(['none', 'all', 'some']).optional().describe(
+      'App-level "Forms Menu Display". Defaults to "some", which is what makes ' +
+      'per-module display_style="grid" (commcare_set_menu_display) take effect ' +
+      'in the generated suite; at "none" per-module grid settings are inert.',
+    ),
+  },
+  async (args) => runAtom(async () => (await commcareClient(args.server)).setAppMenuDisplay(args))
 );
 
 // ── Learn-app CCHQ pre-flight ────────────────────────────────────

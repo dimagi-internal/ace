@@ -402,7 +402,7 @@ Render the run-folder README markdown for `runId` with optional per-phase status
 
 ## ace-connect
 
-Source: `mcp/connect-server.ts` — 56 atoms
+Source: `mcp/connect-server.ts` — 57 atoms
 
 ### `connect_list_programs`
 
@@ -983,6 +983,16 @@ Set up a linked-project-spaces relationship: upstream (master) → downstream. R
 | `app_id` | `z.string` | **required** | _—_ |
 | `module_unique_id` | `z.string` | **required** | _—_ |
 | `display_style` | `z.enum` | optional | Menu display style; defaults to "grid". |
+
+### `commcare_set_app_menu_display`
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `server` | `z.string` | optional | CommCare HQ cluster to target — e.g. "us" or "eu". Omit to use the default server ACE_HQ_DEFAULT_SERVER. All configured clusters are live at once. |
+| `domain` | `z.string` | **required** | _—_ |
+| `app_id` | `z.string` | **required** | _—_ |
+| `use_grid_menus` | `z.boolean` | optional | _—_ |
+| `grid_form_menus` | `z.enum` | optional | _—_ |
 
 ### `connect_preflight_learn_app_user`
 
