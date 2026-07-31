@@ -12,10 +12,26 @@
 # the finalize action. For Deliver-app forms, behavior is TBD until the
 # atlas walks Deliver.
 #
-# Parameters:
+# Parameters — REQUIRED AT EVERY CALL SITE:
 #   ${SCREENSHOT_NAME} — name for the screenshot taken after advancing.
 #                        Composer fills with e.g. "form-q3-photo-rendered"
 #                        or "form-q11-yes-conditional-q12-shown".
+#
+# Every `runFlow` of this palette MUST bind ${SCREENSHOT_NAME} in its own
+# `env:` block — and because form-advance is called once per form screen,
+# each call site needs its OWN name (a shared one overwrites earlier frames).
+# A bare `runFlow: { file: form-advance.yaml }` emitted a literal
+# `undefined.png` on bednet-spot-check/20260728-2222 (dimagi-internal/ace#1033,
+# the recurrence of #852 through this file).
+#
+# There is deliberately NO `env:` fallback block here. A Maestro flow's own
+# top-level `env:` does NOT act as a default — it OVERRIDES caller-passed
+# `runFlow: env:` (Maestro 2.5.1: the subflow's DefineVariablesCommand is
+# executed AFTER the caller's, and `putEnv` assigns unconditionally). Adding
+# a default here would silently defeat per-call-site naming, which is exactly
+# what the #852 fix did to form-submit.yaml. Unbound call sites are caught at
+# authoring time instead, by the `runFlow-unbound-screenshot-name` rule in
+# `mcp/mobile/recipe-lint.ts` (run by `mobile_validate_recipe`).
 #
 # Failure modes:
 #   - Required-input violation: the `nav_btn_next` tap fires but the

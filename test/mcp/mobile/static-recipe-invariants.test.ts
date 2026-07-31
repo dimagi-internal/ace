@@ -1,7 +1,11 @@
 import { describe, it, expect } from 'vitest';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { resolveSelectorsInYaml } from '../../../mcp/mobile/recipe-resolver.js';
+import {
+  lintRecipeText,
+  PALETTE_REQUIRED_SCREENSHOT_ENV,
+} from '../../../mcp/mobile/recipe-lint.js';
 
 // Static-recipe content invariants. These guard against regressions in the
 // hand-tuned palette recipes under `mcp/mobile/recipes/static/` — the kind
@@ -488,6 +492,172 @@ describe('deliver-sync.yaml', () => {
         /assertNotVisible/,
       );
     }
+  });
+});
+
+describe('screenshot-name binding contract (dimagi-internal/ace#1033)', () => {
+  // MEASURED MAESTRO PRECEDENCE (2.5.1, the pinned version): a flow's own
+  // top-level `env:` block does NOT default under caller-passed env — it
+  // OVERRIDES it. `MaestroFlowParser.parseFlow` prepends the subflow's
+  // `env:` as a DefineVariablesCommand inside the subflow body;
+  // `YamlFluentCommand.runFlow` prepends the CALLER's env in front of that;
+  // `Orchestra.runSubFlow` runs both in list order and
+  // `GraalJsEngine.putEnv` assigns unconditionally — so the subflow's block
+  // writes LAST and wins. Live-corroborated on
+  // bednet-spot-check/20260728-2222, where a caller passing
+  // "journey-learn-result"/"journey-learn-submitted" got
+  // `form-submit-pre.png`/`form-submit-post.png` on disk.
+  //
+  // Therefore the contract is: palette subflows carry NO screenshot-name
+  // `env:` defaults, and EVERY call site binds every name it needs. These
+  // invariants pin both halves so #852 cannot recur through a third file.
+
+  const paletteFiles = readdirSync(STATIC_DIR).filter((n) => n.endsWith('.yaml'));
+
+  /** `${SCREENSHOT_NAME}` / `${SCREENSHOT_NAME_PRE_SUBMIT}` / ... refs in a body. */
+  function screenshotNameRefs(yaml: string): string[] {
+    return [
+      ...new Set(
+        [...yaml.matchAll(/\$\{(SCREENSHOT_NAME[A-Z0-9_]*)\}/g)].map((m) => m[1]),
+      ),
+    ].sort();
+  }
+
+  it('the lint contract matches the palette — no drift in either direction', () => {
+    // The lint rule (and therefore the authoring-time gate) is driven by a
+    // hardcoded map. If a new palette file starts naming a screenshot from
+    // env, or an existing one stops, the map must move with it — otherwise
+    // the gate silently stops covering a file, which is exactly how #852
+    // recurred through form-advance.yaml.
+    const derived: Record<string, string[]> = {};
+    for (const filename of paletteFiles) {
+      const refs = screenshotNameRefs(readFileSync(`${STATIC_DIR}${filename}`, 'utf8'));
+      if (refs.length > 0) derived[filename] = refs;
+    }
+    const declared = Object.fromEntries(
+      Object.entries(PALETTE_REQUIRED_SCREENSHOT_ENV).map(([k, v]) => [k, [...v].sort()]),
+    );
+    expect(
+      declared,
+      'PALETTE_REQUIRED_SCREENSHOT_ENV in mcp/mobile/recipe-lint.ts must list exactly the palette files that reference ${SCREENSHOT_NAME*}, with exactly those keys',
+    ).toEqual(derived);
+  });
+
+  it('no palette file declares an `env:` default for a screenshot name', () => {
+    // A subflow `env:` default SHADOWS the caller (see the block comment
+    // above), so a default here does not merely add a fallback — it
+    // silently overrides every per-journey name the caller passed. This is
+    // the defect the #852 fix introduced into form-submit.yaml.
+    for (const filename of paletteFiles) {
+      const yaml = readFileSync(`${STATIC_DIR}${filename}`, 'utf8');
+      // Front-matter is everything before the first `---` separator line.
+      const sepIdx = yaml.search(/^---\s*$/m);
+      const frontMatter = sepIdx === -1 ? yaml : yaml.slice(0, sepIdx);
+      const uncommented = frontMatter
+        .split('\n')
+        .filter((line) => !line.trimStart().startsWith('#'))
+        .join('\n');
+      expect(
+        uncommented,
+        `${filename}: front-matter must not set a SCREENSHOT_NAME* env default — a subflow env: block OVERRIDES caller-passed runFlow env in Maestro 2.5.1, so this silently defeats per-call-site naming (ace#1033)`,
+      ).not.toMatch(/^\s*SCREENSHOT_NAME[A-Z0-9_]*\s*:/m);
+    }
+  });
+
+  it('every screenshot-naming palette documents its names as caller-bound', () => {
+    // The header comment is the contract surface a recipe author reads.
+    // If it does not say the name is required at the call site, the next
+    // author writes a bare `runFlow: { file: form-advance.yaml }` — which
+    // is literally what produced `undefined.png` on 20260728-2222.
+    for (const [filename, keys] of Object.entries(PALETTE_REQUIRED_SCREENSHOT_ENV)) {
+      const yaml = readFileSync(`${STATIC_DIR}${filename}`, 'utf8');
+      expect(
+        yaml,
+        `${filename}: header must state that the screenshot name(s) are REQUIRED AT EVERY CALL SITE`,
+      ).toMatch(/REQUIRED AT EVERY CALL SITE/);
+      for (const key of keys) {
+        expect(yaml, `${filename}: header must name \${${key}}`).toContain(`\${${key}}`);
+      }
+    }
+  });
+
+  it('every palette-internal runFlow into a screenshot-naming palette binds its names', () => {
+    // Today no palette file composes another screenshot-naming palette, so
+    // this is a forward guard: the moment one does, the lint rule that
+    // gates generated recipes must also hold for the palette itself.
+    for (const filename of paletteFiles) {
+      const yaml = readFileSync(`${STATIC_DIR}${filename}`, 'utf8');
+      const unbound = lintRecipeText(yaml).violations.filter(
+        (v) => v.rule === 'runFlow-unbound-screenshot-name',
+      );
+      expect(
+        unbound.map((v) => `${filename}:${v.line} ${v.detail}`),
+        `${filename}: unbound screenshot-name runFlow call site(s)`,
+      ).toEqual([]);
+    }
+  });
+
+  it('every documented call site in app-test-cases/SKILL.md binds its names', () => {
+    // SKILL.md is the authoring template — the generated journey recipes
+    // are copied from these examples. `journey-learn.yaml` emitted a bare
+    // `runFlow: { file: form-advance.yaml }` on 20260728-2222 because
+    // SKILL.md showed exactly that. Pin the examples so the prose cannot
+    // teach the defect back in (same precedent as the deliver-sync
+    // composition contract below).
+    const md = readFileSync(
+      fileURLToPath(new URL('../../../skills/app-test-cases/SKILL.md', import.meta.url)),
+      'utf8',
+    );
+    const lines = md.split('\n');
+    const failures: string[] = [];
+
+    for (let i = 0; i < lines.length; i++) {
+      // Shape (b): scalar shorthand `- runFlow: form-advance.yaml` — there
+      // is nowhere to bind env at all, so it is always a violation.
+      const scalar = lines[i].match(/^\s*-\s+runFlow:\s+([\w./-]+\.yaml)\s*(?:#.*)?$/);
+      if (scalar) {
+        const name = scalar[1].replace(/^.*\//, '');
+        if (PALETTE_REQUIRED_SCREENSHOT_ENV[name]) {
+          failures.push(
+            `SKILL.md:${i + 1} scalar \`runFlow: ${name}\` cannot bind ${PALETTE_REQUIRED_SCREENSHOT_ENV[
+              name
+            ].join('/')} — use the mapping form with an \`env:\` block`,
+          );
+        }
+        continue;
+      }
+      // Shape (a): `- runFlow:` / `    file: X.yaml` / `    env:` / keys.
+      const fileLine = lines[i].match(/^(\s*)file:\s*([\w./-]+\.yaml)\s*(?:#.*)?$/);
+      if (!fileLine) continue;
+      const indent = fileLine[1].length;
+      const name = fileLine[2].replace(/^.*\//, '');
+      const required = PALETTE_REQUIRED_SCREENSHOT_ENV[name];
+      if (!required) continue;
+
+      // Collect the rest of this runFlow block: following lines that stay
+      // at least as indented as the `file:` key. A shallower line (the next
+      // list item, prose, or the closing fence) ends the block.
+      const block: string[] = [];
+      for (let j = i + 1; j < lines.length; j++) {
+        const line = lines[j];
+        if (line.trim() === '') break;
+        const lineIndent = line.length - line.trimStart().length;
+        if (lineIndent < indent) break;
+        block.push(line);
+      }
+      const body = block.join('\n');
+      const missing = required.filter((key) => !new RegExp(`^\\s*${key}\\s*:\\s*\\S`, 'm').test(body));
+      if (missing.length > 0) {
+        failures.push(
+          `SKILL.md:${i + 1} runFlow into ${name} does not bind ${missing.join(' + ')}`,
+        );
+      }
+    }
+
+    expect(
+      failures,
+      'every SKILL.md runFlow example targeting a screenshot-naming palette must bind its ${SCREENSHOT_NAME*} keys with a per-call-site name (ace#1033)',
+    ).toEqual([]);
   });
 });
 

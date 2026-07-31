@@ -269,6 +269,42 @@ If the resolver fails, `export JAVA_HOME=/path/to/jdk17` before launching Claude
 
 probe1 timeout budget is 20s in `mcp/mobile/client.ts` to accommodate Maestro v2's slower JVM cold-start. Don't tighten it — v1's faster startup is no longer the reference. See `docs/learnings/2026-05-19-maestro-v2-probe-timeout.md`.
 
+### A subflow's own `env:` block OVERRIDES caller-passed `runFlow: env:` (Maestro 2.5.1)
+
+Maestro's `env:` block reads like "defaults you can override." It is the
+opposite: **a flow's own top-level `env:` wins over anything the caller
+passed** — both `runFlow: env:` from a parent flow and `-e KEY=VALUE` on the
+CLI. Traced through the pinned 2.5.1 source:
+
+1. `MaestroFlowParser.parseFlow` turns the flow's own `env:` into a
+   `DefineVariablesCommand` and prepends it *inside* the flow body:
+   `[ApplyConfiguration, DefineVariables(ownEnv), ...body]`.
+2. `YamlFluentCommand.runFlow` (and `TestRunner`, for CLI `-e`) wraps that list
+   with `Env.withEnv`, which prepends **another** `DefineVariablesCommand` in
+   front: `[DefineVariables(callerEnv), ApplyConfiguration,
+   DefineVariables(ownEnv), ...body]`.
+3. `Orchestra.runSubFlow` / `Orchestra.runFlow` execute every
+   `DefineVariablesCommand` **in list order**, and `GraalJsEngine.putEnv`
+   assigns unconditionally.
+
+Last write wins → the flow's own block clobbers the caller's value.
+
+Consequence for the ACE palette: **palette subflows must never declare `env:`
+defaults for caller-supplied parameters.** A "fallback" there is not a
+backstop — it is a silent override of every call site. This is exactly how
+dimagi-internal/ace#852's fix (screenshot-name defaults in `form-submit.yaml`)
+went on to defeat the per-journey naming it was added to enable, observed live
+on bednet-spot-check/20260728-2222 and refiled as ace#1033. Screenshot names
+are now caller-bound only, gated at authoring time by the
+`runFlow-unbound-screenshot-name` rule in `mcp/mobile/recipe-lint.ts` (run by
+`mobile_validate_recipe`) plus the palette/SKILL.md invariants in
+`test/mcp/mobile/static-recipe-invariants.test.ts`.
+
+Corollary: an **unset** placeholder is not empty — Maestro renders `${FOO}`
+with `FOO` undefined as the literal string `undefined`, so
+`takeScreenshot: "${SCREENSHOT_NAME}"` writes `undefined.png` rather than
+failing.
+
 ## Selector discovery loop
 
 When extending recipes or building atlas coverage for a new APK version:

@@ -25,7 +25,8 @@ export interface LintViolation {
   rule:
     | 'inputText-scalar-with-sibling-option'
     | 'unknown-property-textRegex'
-    | 'runFlow-guard-scope-mismatch';
+    | 'runFlow-guard-scope-mismatch'
+    | 'runFlow-unbound-screenshot-name';
   /** 1-based line number of the offending list-item start. */
   line: number;
   /** Human-readable detail. Stable enough to grep for. */
@@ -38,6 +39,54 @@ export interface LintResult {
   ok: boolean;
   violations: LintViolation[];
 }
+
+/**
+ * Palette subflows that name a screenshot from a caller-supplied env var,
+ * and the env keys every call site MUST bind.
+ *
+ * WHY A CALL SITE, NOT A DEFAULT (dimagi-internal/ace#1033).
+ *
+ * A Maestro flow's own top-level `env:` block does NOT behave like a
+ * default — it OVERRIDES whatever the caller passed. Measured against the
+ * pinned Maestro 2.5.1 source:
+ *
+ *   - `MaestroFlowParser.parseFlow` emits the subflow's own `env:` as a
+ *     `DefineVariablesCommand` PREPENDED to the subflow body:
+ *     `[ApplyConfiguration, DefineVariables(subflowEnv), ...body]`.
+ *   - `YamlFluentCommand.runFlow` then wraps the caller's env AROUND that
+ *     list via `Env.withEnv`, which PREPENDS another one:
+ *     `[DefineVariables(callerEnv), ApplyConfiguration,
+ *       DefineVariables(subflowEnv), ...body]`.
+ *   - `Orchestra.runSubFlow` runs every `DefineVariablesCommand` in LIST
+ *     ORDER, and `GraalJsEngine.putEnv` assigns unconditionally. Last
+ *     write wins → the SUBFLOW's `env:` clobbers the caller's.
+ *
+ * (Identical shape for the root flow + CLI `-e`: `TestRunner` prepends the
+ * CLI env, so a root flow's own `env:` also wins over `-e`.)
+ *
+ * Live corroboration: bednet-spot-check/20260728-2222 Phase 6 —
+ * `journey-learn.yaml` passed `SCREENSHOT_NAME_PRE_SUBMIT:
+ * "journey-learn-result"` / `..._POST_SUBMIT: "journey-learn-submitted"`,
+ * and the files that landed on disk were `form-submit-pre.png` /
+ * `form-submit-post.png`: the subflow's defaults.
+ *
+ * So palette subflows carry NO screenshot-name `env:` defaults (they would
+ * silently defeat per-journey naming — the #852 fix did exactly that), and
+ * the caller is the ONLY source of the name. That makes an unbound call
+ * site the remaining failure mode (Maestro renders the unset placeholder
+ * as the literal string `undefined`, so the frame lands as
+ * `undefined.png`) — which is what this rule catches at authoring time.
+ *
+ * Keep in sync with the palette: `test/mcp/mobile/static-recipe-invariants.test.ts`
+ * derives the required keys from the actual `${SCREENSHOT_NAME*}`
+ * references under `mcp/mobile/recipes/static/` and fails on drift.
+ */
+export const PALETTE_REQUIRED_SCREENSHOT_ENV: Record<string, readonly string[]> = {
+  'form-advance.yaml': ['SCREENSHOT_NAME'],
+  'form-submit.yaml': ['SCREENSHOT_NAME_PRE_SUBMIT', 'SCREENSHOT_NAME_POST_SUBMIT'],
+  'content-form-finish.yaml': ['SCREENSHOT_NAME'],
+  'content-form-finish-to-suite.yaml': ['SCREENSHOT_NAME'],
+};
 
 /**
  * Lint a Maestro recipe YAML body for known-broken structural shapes.
@@ -178,6 +227,22 @@ export function lintRecipeText(yaml: string): LintResult {
     violations.push(v);
   }
 
+  // Rule: runFlow-unbound-screenshot-name.
+  //
+  // A `runFlow` into a palette subflow that names its screenshot from
+  // `${SCREENSHOT_NAME...}` MUST bind every such key in that runFlow's own
+  // `env:` block. See PALETTE_REQUIRED_SCREENSHOT_ENV above for the measured
+  // Maestro precedence rule this enforces (dimagi-internal/ace#1033, the
+  // recurrence of #852 through form-advance.yaml).
+  //
+  // Unbound, Maestro substitutes the literal string `undefined`, so the
+  // frame lands on disk as `undefined.png` — and a second unbound
+  // takeScreenshot in the same subflow OVERWRITES the first, silently
+  // collapsing a pre/post pair into one image. Both were observed live.
+  for (const v of findUnboundScreenshotNames(yaml)) {
+    violations.push(v);
+  }
+
   return { ok: violations.length === 0, violations };
 }
 
@@ -267,6 +332,97 @@ function findGuardScopeMismatches(yaml: string): LintViolation[] {
           return;
         }
       }
+    }
+  };
+
+  for (const doc of docs) {
+    if (doc.contents) visit(doc.contents as Node);
+  }
+  return out;
+}
+
+/** Basename of a `runFlow: file:` reference — tolerates `./x.yaml` and
+ * any directory prefix a generated recipe might carry. */
+function flowBasename(ref: string): string {
+  return ref.trim().replace(/^.*\//, '');
+}
+
+/**
+ * Walk every `runFlow` in the recipe and flag calls into a screenshot-naming
+ * palette subflow that do not bind the subflow's required `SCREENSHOT_NAME*`
+ * env keys. One violation per missing key, reported at the runFlow's line.
+ */
+function findUnboundScreenshotNames(yaml: string): LintViolation[] {
+  const out: LintViolation[] = [];
+  let docs: ReturnType<typeof parseAllDocuments>;
+  try {
+    docs = parseAllDocuments(yaml);
+  } catch {
+    return out;
+  }
+
+  const lineOf = (node: Node): number => {
+    const start = (node.range && node.range[0]) ?? 0;
+    return yaml.slice(0, start).split('\n').length;
+  };
+
+  const report = (host: Node, filename: string, missing: string[]): void => {
+    const line = lineOf(host);
+    const required = PALETTE_REQUIRED_SCREENSHOT_ENV[filename].join(' + ');
+    out.push({
+      rule: 'runFlow-unbound-screenshot-name',
+      line,
+      detail:
+        `runFlow into \`${filename}\` at line ${line} does not bind ${missing
+          .map((k) => `\`${k}\``)
+          .join(' + ')} — that palette names its screenshot from those env vars and carries NO defaults (a subflow \`env:\` block OVERRIDES caller-passed \`runFlow: env:\` in Maestro 2.5.1, so defaults there silently defeat per-journey naming — dimagi-internal/ace#1033). Unbound, Maestro writes the frame as the literal \`undefined.png\`, and two unbound shots in one subflow overwrite each other.`,
+      remediation:
+        `bind every required key in this runFlow's own \`env:\` block with a per-call-site name, e.g.\n- runFlow:\n    file: ${filename}\n    env:\n${PALETTE_REQUIRED_SCREENSHOT_ENV[
+          filename
+        ]
+          .map((k) => `      ${k}: "journey-<leg>-<step>"`)
+          .join('\n')}\n(required: ${required})`,
+    });
+  };
+
+  const checkRunFlow = (host: Node, runFlow: unknown): void => {
+    // Scalar shorthand `- runFlow: form-advance.yaml` has nowhere to put
+    // `env:` at all, so it is always unbound for these palettes.
+    if (typeof runFlow === 'string') {
+      const filename = flowBasename(runFlow);
+      const required = PALETTE_REQUIRED_SCREENSHOT_ENV[filename];
+      if (required) report(host, filename, [...required]);
+      return;
+    }
+    if (!isMap(runFlow)) return;
+    const file = runFlow.get('file');
+    if (typeof file !== 'string') return;
+    const filename = flowBasename(file);
+    const required = PALETTE_REQUIRED_SCREENSHOT_ENV[filename];
+    if (!required) return;
+    const env = runFlow.get('env', true);
+    const missing = required.filter((key) => {
+      if (!isMap(env)) return true;
+      const value = env.get(key);
+      return typeof value !== 'string' || value.trim() === '';
+    });
+    if (missing.length > 0) report(host, filename, missing);
+  };
+
+  const visit = (node: Node | null): void => {
+    if (node == null) return;
+    if (isSeq(node)) {
+      for (const item of node.items) visit(item as Node);
+      return;
+    }
+    if (!isMap(node)) return;
+    if (node.has('runFlow')) {
+      // `get` without keepScalar returns the JS value for a scalar and the
+      // node itself for a collection — exactly the two shapes handled below.
+      checkRunFlow(node, node.get('runFlow') as unknown);
+    }
+    for (const pair of node.items) {
+      visit(pair.value as Node);
     }
   };
 

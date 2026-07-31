@@ -378,8 +378,8 @@ The static palette lives at `mcp/mobile/recipes/static/`:
 - `connect-claim-opp.yaml` — opp-list → tap opp's View Opportunity button (scoped by `below: text`) → Start → handoff to StandardHomeActivity
 - `learn-launch.yaml` — post-claim StandardHomeActivity (Start tile) → MenuActivity suite root
 - `learn-tap-module.yaml` — MenuActivity row tap (generic — handles ANY level of the 3-level suite tree)
-- `form-advance.yaml` — `nav_btn_next` ImageButton tap (NOT text-match "Next" — see atlas §7)
-- `form-submit.yaml` — branched: explicit Submit button if visible, otherwise auto-finalize via `nav_btn_next`. **Every `runFlow` of this palette MUST pass `SCREENSHOT_NAME_PRE_SUBMIT` + `SCREENSHOT_NAME_POST_SUBMIT` env params** with per-journey names (e.g. `deliver-final-review` / `deliver-submitted-confirmation`) — the palette has generic `form-submit-pre`/`-post` fallbacks so unbound calls no longer overwrite one shot with the other (ace#852), but generic names collide across multiple submits in one journey, so name them per call site.
+- `form-advance.yaml` — `nav_btn_next` ImageButton tap (NOT text-match "Next" — see atlas §7). **Every `runFlow` of this palette MUST pass `SCREENSHOT_NAME`** — see § Screenshot names are caller-bound.
+- `form-submit.yaml` — branched: explicit Submit button if visible, otherwise auto-finalize via `nav_btn_next`. **Every `runFlow` of this palette MUST pass `SCREENSHOT_NAME_PRE_SUBMIT` + `SCREENSHOT_NAME_POST_SUBMIT` env params** with per-journey names (e.g. `deliver-final-review` / `deliver-submitted-confirmation`) — see § Screenshot names are caller-bound. There are NO palette-side fallbacks: the `env:` defaults added for ace#852 turned out to SHADOW the caller's names and were removed in ace#1033.
 - `content-form-finish.yaml` — **the canonical Learn CONTENT-form finalize.** A bounded multi-screen advance loop that taps `nav_btn_next` until the form auto-finalizes back to StandardHomeActivity, exits on the `learn-home-start-tile` home anchor (NOT the suite menu), handles the score-gated two-screen FINISH, and asserts the home grid post-finalize. Use this for every label-only content/lesson form — NOT for required-input quizzes (those still need per-field answer-taps + `form-advance` + `form-submit`). Requires `SCREENSHOT_NAME`. See § Multi-screen content forms below.
 - `learn-suite-reentry.yaml` — **the between-modules suite re-entry, home-grid variant.** Tap the home Start tile → wait `screen_suite_menu_list`. Correct ONLY when the form is `post_submit: module`, which finalizes to StandardHomeActivity. Same surface contract as `learn-launch.yaml` (the first, post-claim suite entry); split out under a distinct name to document the between-modules intent at the call site.
 - `learn-suite-reentry-from-module.yaml` — **the between-modules suite re-entry, form-list variant.** `back` → wait `screen_suite_menu_list`. Correct when the form is `post_submit: previous` (**Nova's default**), which finalizes to the module's own form list rather than the home grid. Composing the home-grid variant here hangs the walk for 30s on a "Start" tile that never renders (dimagi-internal/ace#1071).
@@ -474,7 +474,37 @@ form auto-finalizes on its only/last screen). Reserve explicit
 assessment forms with required inputs (per the MANDATORY answer-tap rule
 below) — `content-form-finish.yaml` deliberately does NOT select answers and
 would stall on `warning_root` ("Sorry, this response is required!") if
-pointed at a required-input quiz. Historical context: the single-screen
+pointed at a required-input quiz.
+
+##### Screenshot names are caller-bound — never rely on a palette default (dimagi-internal/ace#1033)
+
+Four palette pieces name their screenshot from a caller-supplied env var:
+`form-advance.yaml` (`SCREENSHOT_NAME`), `content-form-finish.yaml`
+(`SCREENSHOT_NAME`), `content-form-finish-to-suite.yaml` (`SCREENSHOT_NAME`),
+and `form-submit.yaml` (`SCREENSHOT_NAME_PRE_SUBMIT` +
+`SCREENSHOT_NAME_POST_SUBMIT`). **Every single `runFlow` into one of them MUST
+bind every one of those keys in its own `env:` block, with a name unique to
+that call site.** An unbound call now FAILS `mobile_validate_recipe` with the
+`runFlow-unbound-screenshot-name` lint rule.
+
+**Why there are no palette-side defaults.** A Maestro flow's own top-level
+`env:` block does not default *under* caller-passed env — it **overrides** it.
+Measured against the pinned Maestro 2.5.1 source: the subflow's `env:` becomes
+a `DefineVariablesCommand` prepended inside the subflow body, the caller's env
+becomes another one prepended in front of that, and `Orchestra.runSubFlow`
+executes both in list order with an unconditional `putEnv` — so the subflow's
+block writes last and wins. Live-confirmed on
+bednet-spot-check/20260728-2222: the journey passed `journey-learn-result` /
+`journey-learn-submitted` and the files that landed on disk were
+`form-submit-pre.png` / `form-submit-post.png` (the palette defaults). The
+ace#852 `env:` fallbacks therefore *defeated* per-journey naming rather than
+backstopping it, and were removed.
+
+Unbound, Maestro renders the unset placeholder as the literal string
+`undefined`, so the frame lands as `undefined.png` — and two unbound shots in
+the same subflow overwrite each other. Both symptoms were observed live.
+
+Historical context: the single-screen
 over-step on bednet-spot-check run 20260528-0556 Phase 6 (a `form-advance` +
 `form-submit` over a one-screen "Introduction" form) is also subsumed —
 `content-form-finish.yaml` handles one-screen and N-screen content forms
@@ -655,15 +685,19 @@ stalling the recipe. Every required-input question in a Maestro
 recipe **MUST** be preceded by an explicit answer-selection step:
 
 ```yaml
-# CORRECT — answer is tapped before advancing
+# CORRECT — answer is tapped before advancing, and the advance names its frame
 - tapOn:
     text: "Public hospital"      # literal option text from Nova get_form
 - runFlow:
     file: form-advance.yaml
+    env:
+      SCREENSHOT_NAME: "journey-learn-m1q2-facility-answered"
 
 # WRONG — no answer tap; nav_btn_next stalls on warning_root
 - runFlow:
     file: form-advance.yaml      # required-input question is unanswered
+    env:
+      SCREENSHOT_NAME: "journey-learn-m1q2-facility-answered"
 ```
 
 **Leading (and interior) display/label screens — MANDATORY (jjackson/ace#710).**
@@ -675,7 +709,7 @@ present and the tap fails `selector-not-found` (caught in vivo:
 bednet-spot-check/20260605-0658 Phase 6 Learn leg — the "Connect Comprehension
 Check" form opened on a one-question intro label, and the answer tap landed on
 the intro screen). The rule: **walk the form's field list IN ORDER and emit one
-bare `form-advance.yaml` for every display/label node — both leading ones
+`form-advance.yaml` step for every display/label node — both leading ones
 before the first input AND interior ones between inputs — with NO answer tap on
 those advances** (a display node has nothing to select; it's the input-node
 rule above, inverted). A form `[intro(label), q1(single_select, required)]`
@@ -688,10 +722,11 @@ For each form-walk segment of a recipe:
    field's `kind` + required-ness, **in document order**.
 1.5. Walk the fields in order. For every leading or interior **display/label
    node** (`kind: label` / a display-only node with no input widget), emit one
-   bare `runFlow: { file: form-advance.yaml }` with NO preceding answer tap —
-   it advances past the intro/instructions/result screen to the next node
-   (jjackson/ace#710). Do this BEFORE the first answer tap when the form's
-   first node(s) are display nodes.
+   `runFlow` into `form-advance.yaml` with NO preceding answer tap (but still
+   with its own `env: { SCREENSHOT_NAME: ... }` — see § Screenshot names are
+   caller-bound) — it advances past the intro/instructions/result screen to the
+   next node (jjackson/ace#710). Do this BEFORE the first answer tap when the
+   form's first node(s) are display nodes.
 2. For every `kind: single_select` field that's required, emit a
    **guarded-scroll option tap** BEFORE the `form-advance.yaml` step. The
    option label comes from the field's `options[].label` in the Nova

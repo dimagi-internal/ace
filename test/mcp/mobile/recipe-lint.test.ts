@@ -307,3 +307,98 @@ describe('lintRecipeText — runFlow-guard-scope-mismatch', () => {
     ).toHaveLength(0);
   });
 });
+
+describe('lintRecipeText — runFlow-unbound-screenshot-name', () => {
+  // dimagi-internal/ace#1033. A palette subflow that names its screenshot
+  // from `${SCREENSHOT_NAME*}` carries NO env default (a subflow `env:` block
+  // OVERRIDES caller-passed `runFlow: env:` in Maestro 2.5.1, so a default
+  // there silently defeats per-journey naming). The caller is the only source
+  // of the name, so an unbound call site must fail at authoring time instead
+  // of writing a literal `undefined.png` mid-run.
+
+  const head = ['appId: org.commcare.dalvik', '---'];
+
+  it('flags a bare `runFlow: { file: form-advance.yaml }` with no env block', () => {
+    const yaml = [...head, '- runFlow:', '    file: form-advance.yaml', ''].join('\n');
+    const { ok, violations } = lintRecipeText(yaml);
+    expect(ok).toBe(false);
+    const v = violations.find((x) => x.rule === 'runFlow-unbound-screenshot-name');
+    expect(v).toBeDefined();
+    expect(v!.detail).toContain('SCREENSHOT_NAME');
+    expect(v!.detail).toContain('form-advance.yaml');
+    expect(v!.line).toBe(3);
+  });
+
+  it('flags the scalar shorthand, which cannot carry env at all', () => {
+    const yaml = [...head, '- runFlow: content-form-finish.yaml', ''].join('\n');
+    const { ok, violations } = lintRecipeText(yaml);
+    expect(ok).toBe(false);
+    expect(violations.some((v) => v.rule === 'runFlow-unbound-screenshot-name')).toBe(true);
+  });
+
+  it('flags a PARTIALLY bound form-submit call (pre bound, post missing)', () => {
+    // The original #852 symptom: two takeScreenshot steps resolving to the
+    // same unset name, so post-submit silently overwrites pre-submit.
+    const yaml = [
+      ...head,
+      '- runFlow:',
+      '    file: form-submit.yaml',
+      '    env:',
+      '      SCREENSHOT_NAME_PRE_SUBMIT: "journey-learn-result"',
+      '',
+    ].join('\n');
+    const { ok, violations } = lintRecipeText(yaml);
+    expect(ok).toBe(false);
+    const v = violations.find((x) => x.rule === 'runFlow-unbound-screenshot-name');
+    expect(v!.detail).toContain('SCREENSHOT_NAME_POST_SUBMIT');
+    expect(v!.detail).not.toContain('`SCREENSHOT_NAME_PRE_SUBMIT`');
+  });
+
+  it('does NOT flag a fully bound call site', () => {
+    const yaml = [
+      ...head,
+      '- runFlow:',
+      '    file: form-submit.yaml',
+      '    env:',
+      '      SCREENSHOT_NAME_PRE_SUBMIT: "journey-learn-result"',
+      '      SCREENSHOT_NAME_POST_SUBMIT: "journey-learn-submitted"',
+      '- runFlow:',
+      '    file: ./form-advance.yaml',
+      '    env:',
+      '      SCREENSHOT_NAME: "journey-learn-q1-answered"',
+      '',
+    ].join('\n');
+    expect(lintRecipeText(yaml).ok).toBe(true);
+  });
+
+  it('flags an unbound call site nested inside a guarded runFlow body', () => {
+    const yaml = [
+      ...head,
+      '- runFlow:',
+      '    when:',
+      '      visible:',
+      '        id: "org.commcare.dalvik:id/nav_btn_next"',
+      '    commands:',
+      '      - runFlow:',
+      '          file: form-advance.yaml',
+      '',
+    ].join('\n');
+    expect(
+      lintRecipeText(yaml).violations.some(
+        (v) => v.rule === 'runFlow-unbound-screenshot-name',
+      ),
+    ).toBe(true);
+  });
+
+  it('ignores palettes that do not name a screenshot from env', () => {
+    const yaml = [
+      ...head,
+      '- runFlow:',
+      '    file: learn-suite-reentry.yaml',
+      '- runFlow:',
+      '    file: deliver-sync.yaml',
+      '',
+    ].join('\n');
+    expect(lintRecipeText(yaml).ok).toBe(true);
+  });
+});

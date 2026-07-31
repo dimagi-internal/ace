@@ -16,7 +16,12 @@
 # Pre-state: FormEntryActivity mid-form (nav_btn_next visible).
 # Post-state: screen_suite_menu_list; the journey then taps the next form
 #   row directly (NO learn-suite-reentry / home-grid round-trip).
-# Param: ${SCREENSHOT_NAME}.
+# Param — REQUIRED AT EVERY CALL SITE: ${SCREENSHOT_NAME}.
+#   No `env:` default, deliberately: a subflow's own `env:` block OVERRIDES
+#   caller-passed `runFlow: env:` in Maestro 2.5.1 rather than defaulting
+#   under it, so a default here would silently replace every per-call-site
+#   name (dimagi-internal/ace#1033). Unbound call sites are caught by the
+#   `runFlow-unbound-screenshot-name` lint rule instead.
 appId: org.commcare.dalvik
 ---
 - runFlow:

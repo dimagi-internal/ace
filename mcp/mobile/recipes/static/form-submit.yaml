@@ -22,27 +22,40 @@
 # `card_subtext` update. Deliver forms (TBD) likely have an explicit
 # confirmation surface.
 #
-# Parameters:
+# Parameters — BOTH ARE REQUIRED AT EVERY CALL SITE:
 #   ${SCREENSHOT_NAME_PRE_SUBMIT} — screenshot before tapping Submit
 #                                   (e.g. "deliver-final-review")
 #   ${SCREENSHOT_NAME_POST_SUBMIT} — screenshot after submit confirmation
 #                                    (e.g. "deliver-submitted-confirmation")
 #
-# Callers SHOULD pass both names (per-journey names keep the pre/post
-# frames distinct in the capture manifest). The env block below provides
-# fallback defaults so an unbound call can no longer collapse both shots
-# into one literal-placeholder filename (both takeScreenshot steps used
-# to resolve to the SAME unset-var name, so post-submit silently
-# OVERWROTE pre-submit — dimagi-internal/ace#852). Maestro precedence:
-# caller-passed env (runFlow env / -e) overrides these defaults.
+# There is deliberately NO `env:` default block here. A Maestro flow's own
+# top-level `env:` does NOT act as a default — it OVERRIDES whatever the
+# caller passed. Measured against the pinned Maestro 2.5.1 source:
+# `MaestroFlowParser.parseFlow` prepends the subflow's `env:` as a
+# DefineVariablesCommand INSIDE the subflow body, `YamlFluentCommand.runFlow`
+# then prepends the CALLER's env in front of that, and
+# `Orchestra.runSubFlow` executes both in list order with an unconditional
+# `putEnv` — so the subflow's block writes LAST and wins.
+#
+# Live corroboration (bednet-spot-check/20260728-2222 Phase 6): the caller
+# passed "journey-learn-result" / "journey-learn-submitted" and the files
+# that landed were `form-submit-pre.png` / `form-submit-post.png` — the
+# defaults this block used to carry. So the ace#852 fix did not merely fail
+# to generalize; it silently DEFEATED the per-journey naming it was added to
+# enable. Removed in dimagi-internal/ace#1033; the caller is now the only
+# source of both names.
+#
+# Unbound is now caught at authoring time by the
+# `runFlow-unbound-screenshot-name` rule in `mcp/mobile/recipe-lint.ts`
+# (`mobile_validate_recipe` runs it before Maestro's own parser), because an
+# unset placeholder renders as the literal string `undefined` — both shots
+# would land on the SAME `undefined.png` and post-submit would overwrite
+# pre-submit (the original #852 symptom).
 #
 # When the atlas walks Deliver, this recipe should be replaced with a
 # concrete branch (either keep the auto-finalize path or use a real
 # Submit selector with known label).
 appId: org.commcare.dalvik
-env:
-  SCREENSHOT_NAME_PRE_SUBMIT: form-submit-pre
-  SCREENSHOT_NAME_POST_SUBMIT: form-submit-post
 ---
 - takeScreenshot: "${SCREENSHOT_NAME_PRE_SUBMIT}"
 
