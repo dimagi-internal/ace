@@ -690,6 +690,33 @@ export class MobileClient {
       logInfo(
         `device_user_state: restored to ${verifyAfterBootstrap.classified_as} via local-bootstrap on ${avd.serial}`,
       );
+      // Never report a step we did not CONFIRM (dimagi-internal/ace#1067).
+      // `registered` was previously emitted purely because
+      // `registerTestUser` returned, so a heal log could read
+      // `bootstrap_steps: [... "registered"]` alongside
+      // `verified_as: "unknown"` — asserting the very thing it failed to
+      // verify. Callers read that as "device is fully ready" and burn a
+      // whole recipe cycle discovering otherwise.
+      //
+      // NOTE ON THE ISSUE'S ASK #2. #1067 also asks that
+      // `verified_as: "unknown"` stop returning success at all. It must
+      // NOT: `unknown` is the ORDINARY post-bootstrap classification on a
+      // healthy device — the run that live-validated #1058 (claim leg,
+      // `STATUS: pass exit 0`) logged `restored to unknown via
+      // local-bootstrap` immediately before passing. Throwing there would
+      // fail working runs, so the honest fix is to stop OVERCLAIMING in
+      // the log rather than to start rejecting a legitimate state.
+      const confirmed = verifyAfterBootstrap.classified_as === 'ready';
+      const reportedSteps = confirmed
+        ? bootstrapSteps
+        : bootstrapSteps.map((st) => (st === 'registered' ? 'registered-unverified' : st));
+      if (!confirmed) {
+        logInfo(
+          `device_user_state: post-bootstrap probe could not confirm readiness on ${avd.serial} ` +
+            `(classified_as=unknown, signal=${verifyAfterBootstrap.ui_dump_signal ?? 'none'}) — ` +
+            `reporting 'registered-unverified'. This is normal on a healthy device; it is NOT a claim that registration succeeded.`,
+        );
+      }
       return {
         classified_as: verifyAfterBootstrap.classified_as,
         attempted: true,
@@ -697,7 +724,7 @@ export class MobileClient {
         verified_as: verifyAfterBootstrap.classified_as,
         focused_activity: verifyAfterBootstrap.focused_activity,
         ui_dump_signal: verifyAfterBootstrap.ui_dump_signal,
-        bootstrap_steps: bootstrapSteps,
+        bootstrap_steps: reportedSteps,
         environment_baseline_applied: this.lastBaselineFingerprint !== undefined,
         environment_baseline_fingerprint: this.lastBaselineFingerprint,
       };
@@ -778,6 +805,55 @@ export class MobileClient {
    * skipped idempotent steps are omitted so the heal log shows what
    * changed.
    */
+  /**
+   * Assert the device has VALIDATED internet, or throw a typed
+   * `network-unreachable` error naming it (dimagi-internal/ace#1067).
+   *
+   * Reads Android's own ConnectivityService verdict rather than probing
+   * ourselves. A network is marked `VALIDATED` only after the platform's
+   * captive-portal HTTP probe succeeds, so this is TCP/HTTP-grounded.
+   *
+   * Deliberately NOT ping — see the caller for why ICMP is unusable on
+   * QEMU user-mode networking.
+   *
+   * Fail-open on an unreadable dumpsys: this is a precondition CHECK, not
+   * a capability we own. If `dumpsys connectivity` changes shape or the
+   * shell errors we must not start blocking otherwise-healthy bootstraps
+   * on our inability to parse it — the whole point is to convert a
+   * confusing downstream failure into a clear one, never to invent a new
+   * failure mode of its own.
+   */
+  private async assertDeviceNetworkValidated(avd: AvdInfo): Promise<void> {
+    let out = '';
+    try {
+      const shell = this.avd.getAdbShell();
+      const r = await shell('adb', ['-s', avd.serial, 'shell', 'dumpsys', 'connectivity'], {
+        timeoutMs: 20_000,
+      });
+      out = `${r.stdout ?? ''}`;
+    } catch {
+      return; // unreadable → fail open, see doc comment
+    }
+    if (out.trim().length === 0) return; // fail open
+
+    // ConnectivityService prints capabilities per network; a usable one
+    // carries both INTERNET and VALIDATED.
+    const hasValidated = /VALIDATED/.test(out);
+    const hasInternet = /INTERNET/.test(out);
+    if (hasValidated && hasInternet) return;
+
+    throw new MobileError(
+      'DEVICE_NETWORK_UNREACHABLE',
+      `AVD ${avd.serial} has no VALIDATED internet connection (INTERNET=${hasInternet}, VALIDATED=${hasValidated}). ` +
+        `Test-user registration walks the PersonalID phone-number screen, which fails with ` +
+        `"No network connection. Please check your internet and try again." — surfacing later as a ` +
+        `selector-not-found deep inside connect-register-from-otp rather than as a network fault.`,
+      `Check the emulator's network: 'adb -s ${avd.serial} shell dumpsys connectivity'. ` +
+        `A cold restart (mobile_stop_avd then mobile_ensure_avd_running) usually restores QEMU user-mode networking. ` +
+        `Do NOT diagnose with ping — ICMP is unreliable on this NAT even when TCP/HTTPS work.`,
+    );
+  }
+
   async runLocalBootstrap(avd: AvdInfo): Promise<string[]> {
     if (!this.bootstrapConfig) {
       throw new MobileError(
@@ -857,6 +933,28 @@ export class MobileClient {
       .applyEnvironmentBaseline(avd.name)
       .catch(() => undefined);
     steps.push('environment-baseline-applied');
+
+    // Step 2.5: assert the device actually has VALIDATED internet before
+    // spending a registration walk on it (dimagi-internal/ace#1067).
+    //
+    // Registration cannot succeed without connectivity, and the failure
+    // currently surfaces as a confusing selector-not-found deep inside
+    // `connect-register-from-otp` — the Maestro screenshot named the real
+    // cause ("No network connection. Please check your internet and try
+    // again.") while the thrown error pointed at the `rvJobList` assert.
+    // One typed error at the funnel boundary beats three steps of
+    // misdirection.
+    //
+    // DELIBERATELY NOT PING. The emulator's QEMU user-mode network can
+    // return 83-100% ICMP loss with duplicate replies, corrupt data bytes
+    // and nonsense RTTs (`3955527499347845 ms`) while DNS and TCP/HTTPS
+    // work perfectly — the Connect jobs list rendered five server-provided
+    // tiles on exactly such a device. ICMP health is a red herring here.
+    //
+    // Android's ConnectivityService marks a network `VALIDATED` only after
+    // its own captive-portal HTTP probe succeeds, so reading that flag is a
+    // TCP/HTTP-grounded check with no extra round-trip of our own.
+    await this.assertDeviceNetworkValidated(avd);
 
     // Step 3: register the test user. Demo users (+7426 prefix) skip
     // OTP server-side — total walk-through cost is ~15-25s. See the
