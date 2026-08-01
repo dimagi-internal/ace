@@ -1,0 +1,136 @@
+# Select a case from CommCare's EntitySelectActivity case list and enter the
+# followup form for it.
+#
+# Pre-state: the case list is on screen (`${SELECTOR:case-list-container}`
+# visible). `deliver-form-walk.yaml` lands here right after tapping a module
+# whose forms are followups on a case type.
+# Post-state: the case is SELECTED and the case list is gone. That is
+# deliberately all this recipe promises — see § WHERE THIS LANDS below; it does
+# NOT promise a form. `deliver-form-walk.yaml`'s Level-2 form-row branches run
+# straight after it and take the walk the rest of the way.
+#
+# ── WHERE THIS LANDS (live-observed, and NOT what it looks like) ────────────
+#
+# CommCare collects the case BEFORE the form, not after. The real order on
+# 2.63.2 is:
+#
+#   module row -> CASE LIST -> case detail -> CONTINUE -> FORM LIST -> form
+#
+# So after CONTINUE the device sits on the module's one-row form-list
+# MenuActivity, NOT on the first question. This recipe therefore asserts only
+# that the case list is BEHIND us. An earlier draft asserted
+# `${SELECTOR:form-nav-next}` here and failed live on 2026-08-01 with the dump
+# showing `grid_menu_grid` + a `row_txt` reading "Village Monitoring Record" —
+# the form list. Do not "fix" that by re-adding a form assertion here; the form
+# assertion belongs to deliver-form-walk's terminal wait, after Level 2.
+#
+# Parameters:
+#   ${CASE_NAME} — REQUIRED AT EVERY CALL SITE. The visible label of the case
+#                  row to tap, i.e. the value rendered in the case list's FIRST
+#                  configured column (`case_name` on every ACE-built Deliver
+#                  app). Maestro `text:` is a FULL-match regex, so pass a
+#                  literal prefix plus `.*` — e.g. "Thandiwe Banda.*" — rather
+#                  than the whole cell text; case-list columns routinely carry
+#                  trilingual or truncated values.
+#
+# ── WHY THIS EXISTS (dimagi-internal/ace#1138 Gap 2) ────────────────────────
+#
+# A `followup` form renders its case list BETWEEN the form row and the first
+# question. Until this recipe existed there was no calibrated case-list
+# selector and no palette entry that could cross that screen, so the payable
+# leg of every register-then-visit Deliver app was unauthorable and
+# `deliver-form-walk.yaml` halted loud at its terminal `form-nav-next` wait.
+# That shape is not opp-specific: it is EVERY atomic-visit Deliver app that
+# registers an entity and then files repeat visits against it.
+#
+# ── THE SCOPING RULE (load-bearing — do NOT relax) ──────────────────────────
+#
+# The row tap is scoped `childOf: ${SELECTOR:case-list-container}`. On this
+# surface an unscoped match has TWO ways to land on something that is not a
+# tappable row:
+#
+#   1. The TOOLBAR TITLE carries the MODULE name (the ace#590 class — the same
+#      trap that made every menu-row tap a silent no-op until the menu recipes
+#      were body-scoped).
+#   2. The COLUMN-HEADER strip (`${SELECTOR:case-list-header}`) renders one
+#      `${SELECTOR:case-list-row-cell}` per column — the SAME resource-id the
+#      data rows use. A header cell therefore satisfies any unscoped
+#      `entity_view_text` match, and it is not clickable.
+#
+# `childOf` (descendant-of) is used rather than the menu recipes' `below:`
+# because the header is a SIBLING of the list container, not a child — so
+# descendant-scoping excludes it structurally, whereas a geometric `below:`
+# anchored on the container would depend on where the matched row happens to
+# sit relative to the container's centre. Live-verified 2026-08-01 on
+# ACE_Pixel_API_34 / CommCare 2.63.2: this recipe run against a real case list
+# tapped "Thandiwe Banda" and landed on the Village Monitoring Record's first
+# question.
+#
+# ── MATCH BY NAME, NEVER POSITIONALLY ──────────────────────────────────────
+#
+# There is deliberately NO tap-first-row fallback, and one must never be added.
+# Two independent reasons, both live-observed in the 2026-08-01 dump:
+#   - The container also holds a trailing `action_card` ("SEARCH") AFTER the
+#     case rows, so "the first clickable child" is not reliably a case.
+#   - Selecting the WRONG case is silent: the form opens and submits happily
+#     against the wrong entity, which for a payable deliver unit means a
+#     payment keyed to the wrong `entity_id`. A wrong-row menu tap fails loud
+#     one screen later; a wrong-row CASE tap does not fail at all.
+# This is also why `static-recipe-invariants.test.ts` forbids a positional
+# `entity_view_text` tap outright, rather than merely requiring it be guarded
+# the way the `row_txt` fallback is.
+appId: org.commcare.dalvik
+---
+- extendedWaitUntil:
+    visible:
+      id: "${SELECTOR:case-list-container}"
+    timeout: 20000
+- takeScreenshot: "deliver-case-select-list"
+
+# Tap the case row by name, scoped to the list body so neither the toolbar
+# title (module name) nor a column-header cell can satisfy the match.
+- tapOn:
+    text: "${CASE_NAME}"
+    childOf:
+      id: "${SELECTOR:case-list-container}"
+- waitForAnimationToEnd:
+    timeout: 5000
+
+# ── The DETAIL confirmation screen (do not delete this branch) ──────────────
+#
+# Tapping a case row does NOT go straight to the form when the module declares
+# a case-list `details` block — and every ACE-built Deliver module does, because
+# Nova emits `details` alongside `results`. CommCare instead shows a per-case
+# detail screen whose CONTINUE button is what actually enters the form.
+#
+# This was found the only way it can be found: by running the two-step version
+# of this recipe against a live 2.63.2 device on 2026-08-01. The row tap
+# reported COMPLETED and the terminal `form-nav-next` assert then failed, with
+# the dump showing `entity_detail` + a CONTINUE button. Guarded rather than
+# unconditional so a module WITHOUT a `details` block (which lands straight on
+# the form) still passes — there the guard is false and this is a no-op.
+- runFlow:
+    when:
+      visible:
+        id: "${SELECTOR:case-list-detail-continue}"
+    commands:
+      - takeScreenshot: "deliver-case-select-detail"
+      - tapOn:
+          id: "${SELECTOR:case-list-detail-continue}"
+      - waitForAnimationToEnd:
+          timeout: 5000
+
+# Fail loud if the case was never actually selected. A no-op tap (wrong scope,
+# case absent, list still loading) leaves the case list on screen; without this
+# the walk would continue and eventually answer questions against no entity.
+#
+# Asserting the ABSENCE of the case list — rather than the presence of any one
+# next screen — is what makes this correct for both module shapes: with a
+# `details` block the next screen is the form list, without one it can be the
+# form itself. Same pattern as connect-resume-opp.yaml's "fails loud if the CTA
+# tap did not leave the jobs list".
+- extendedWaitUntil:
+    notVisible:
+      id: "${SELECTOR:case-list-container}"
+    timeout: 20000
+- takeScreenshot: "deliver-case-select-selected"

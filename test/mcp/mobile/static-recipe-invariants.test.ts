@@ -944,6 +944,68 @@ describe('positional row taps are name-scoped fallbacks only (ace#1138)', () => 
     },
   );
 
+  it('a positional row tap is guarded POSITIVELY on the menu still being on screen', () => {
+    // Regression guard for the live failure on 2026-08-01
+    // (spark-facilitator/20260731-0656, ace#1138 Gap 2 validation).
+    //
+    // deliver-form-walk's two Level-1 branches were a bare `visible` /
+    // `notVisible` pair on the SAME predicate, evaluated in sequence. The
+    // named branch TAPS AND NAVIGATES AWAY — at which point the module row is
+    // no longer below the menu, so the fallback's `notVisible` guard flips
+    // TRUE and it fires on whatever screen the tap just opened. On a followup
+    // module that screen is the case list, which has no `row_txt` at all, so
+    // the walk died on `Element not found: row_txt` one step after a
+    // successful module tap.
+    //
+    // It survived PR #1154's tests because a REGISTRATION module happens to
+    // hold the guard false by luck: its form list still renders a row carrying
+    // the module's own name (form name == module name).
+    //
+    // The fix is the same one connect-resume-opp.yaml already encodes in
+    // "Branch B guards POSITIVELY, not on btn_resume absence": require a
+    // positive `visible:` precondition that a successful prior tap destroys.
+    // Here that is the menu container itself.
+    // `hasPositive` accumulates down the tree: a positive precondition on ANY
+    // enclosing runFlow is enough, because Maestro evaluates the outer guard
+    // first and skips the whole subtree when it is false. (deliver-form-walk's
+    // Level-2 fallback relies on exactly that — its innermost guard is
+    // notVisible-only, but the outer branch already requires the menu.)
+    const failures: string[] = [];
+    for (const filename of paletteFiles) {
+      const steps = parseSteps(readRecipe(filename));
+      const walk = (list: PaletteStep[] | undefined, hasPositive: boolean): void => {
+        for (const step of list ?? []) {
+          if (!step || typeof step !== 'object') continue;
+          for (const [key, value] of Object.entries(step)) {
+            if (key === 'tapOn') {
+              const sel = value as Record<string, unknown> | string | undefined;
+              const positional =
+                sel &&
+                typeof sel === 'object' &&
+                typeof sel.id === 'string' &&
+                ROW_TXT_RE.test(sel.id) &&
+                sel.text === undefined;
+              if (positional && !hasPositive) {
+                failures.push(
+                  `${filename}: positional row_txt tap has no positive \`visible:\` ` +
+                    'precondition anywhere in its guard chain — a `notVisible`-only guard flips ' +
+                    'TRUE the moment the branch above it taps and navigates away (ace#1138)',
+                );
+              }
+            } else if (key === 'runFlow') {
+              const rf = value as { when?: unknown; commands?: PaletteStep[] } | undefined;
+              if (!rf || typeof rf !== 'object') continue;
+              const when = rf.when as { visible?: unknown } | undefined | null;
+              walk(rf.commands, hasPositive || (when != null && when.visible !== undefined));
+            }
+          }
+        }
+      };
+      walk(steps, false);
+    }
+    expect(failures, 'ace#1138 — positional fallbacks need a positive guard').toEqual([]);
+  });
+
   it('a palette that keeps a positional fallback also offers a name-scoped path', () => {
     // The guard above is satisfiable by burying the positional tap under an
     // unrelated guard. This is the other half: if a file taps rows at all, it
@@ -963,5 +1025,240 @@ describe('positional row taps are name-scoped fallbacks only (ace#1138)', () => 
       }
     }
     expect(failures, 'ace#1138').toEqual([]);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// CLASS-LEVEL PREVENTER — a case-list row tap must be NAME-MATCHED and
+// CONTAINER-SCOPED, never positional and never unscoped
+//
+// dimagi-internal/ace#1138 Gap 2. `deliver-case-select.yaml` crosses
+// CommCare's EntitySelectActivity, which a `followup` form renders between
+// the module row and the form. Two traps live on that surface, both read
+// straight off the live 2.63.2 ui-dump captured 2026-08-01:
+//
+//   1. The COLUMN-HEADER strip (`entity_select_header`) renders one
+//      `entity_view_text` per column — the SAME resource-id the data rows
+//      use — so an unscoped match can resolve to a non-clickable header cell.
+//   2. The TOOLBAR carries the MODULE name (the ace#590 anti-toolbar class).
+//
+// And unlike a menu row, a WRONG case tap does not fail one screen later: the
+// form opens and submits happily against the wrong entity, which for a payable
+// deliver unit means a payment keyed to the wrong `entity_id`. Hence the rule
+// here is strictly stronger than the `row_txt` one above — a positional tap is
+// BANNED outright rather than merely required to be guarded.
+//
+// The case-list rows exist only from connect-2.63.2.yaml onward (that is the
+// map that was calibrated live), so this block resolves against 2.63.2 rather
+// than the 2.63.0 the older blocks use.
+const CASE_LIST_APK = '2.63.2';
+
+function readRecipeAt(name: string, apk: string): string {
+  return resolveSelectorsInYaml(readFileSync(`${STATIC_DIR}${name}`, 'utf8'), apk).yaml;
+}
+
+/**
+ * True when `yaml` contains a `tapOn` that matches the case-list cell id
+ * WITHOUT scoping it to the case-list container — i.e. a tap that a column
+ * header could satisfy. This is the predicate the invariant is built on; it is
+ * exercised against a synthetic pre-fix recipe below so the assertion is
+ * demonstrably non-vacuous.
+ */
+function hasUnscopedCaseCellTap(yaml: string, cellId: string, containerId: string): boolean {
+  const steps = parseSteps(yaml);
+  let found = false;
+  const walk = (list: PaletteStep[] | undefined): void => {
+    for (const step of list ?? []) {
+      if (!step || typeof step !== 'object') continue;
+      for (const [key, value] of Object.entries(step)) {
+        if (key === 'tapOn') {
+          const sel = value as Record<string, unknown> | string | undefined;
+          if (!sel || typeof sel !== 'object') continue;
+          const touchesCell =
+            (typeof sel.id === 'string' && sel.id.includes(cellId)) ||
+            typeof sel.text === 'string';
+          if (!touchesCell) continue;
+          const scope = JSON.stringify(sel.childOf ?? sel.below ?? null);
+          if (!scope.includes(containerId)) found = true;
+        } else if (key === 'runFlow') {
+          const rf = value as { commands?: PaletteStep[] } | undefined;
+          if (rf && typeof rf === 'object') walk(rf.commands);
+        }
+      }
+    }
+  };
+  walk(steps);
+  return found;
+}
+
+describe('deliver-case-select.yaml (ace#1138 Gap 2)', () => {
+  const map = selectorMap(CASE_LIST_APK).selectors;
+  const yaml = readRecipeAt('deliver-case-select.yaml', CASE_LIST_APK);
+
+  it('the 2.63.2 map carries every live-calibrated case-list row', () => {
+    // These four rows ARE the calibration. If one goes missing the recipe
+    // silently stops resolving and the followup leg is unauthorable again.
+    for (const name of [
+      'case-list-container',
+      'case-list-header',
+      'case-list-row-cell',
+      'case-list-detail-continue',
+    ]) {
+      expect(map[name], `connect-${CASE_LIST_APK}.yaml must define ${name}`).toBeDefined();
+      expect(
+        map[name].unverified,
+        `${name} was captured from a live device dump — it must not be flagged unverified`,
+      ).toBeUndefined();
+    }
+    // The header and the row cell genuinely share an id on this surface. That
+    // collision is the whole reason the scoping rule exists, so pin it: if a
+    // future APK separates them, this test should force a re-read of the rule
+    // rather than let it quietly become cargo-cult.
+    expect(map['case-list-row-cell'].value).toBe('org.commcare.dalvik:id/entity_view_text');
+  });
+
+  it('taps the case row BY NAME and scoped to the case-list container', () => {
+    const containerId = map['case-list-container'].value;
+    expect(yaml, 'expected a ${CASE_NAME}-matched tap scoped childOf the case-list body').toMatch(
+      new RegExp(
+        `- tapOn:\\s*\\n\\s*text: "\\$\\{CASE_NAME\\}"\\s*\\n\\s*childOf:\\s*\\n\\s*id: "${escapeRe(
+          containerId,
+        )}"`,
+      ),
+    );
+  });
+
+  it('never taps a case row positionally', () => {
+    // Stronger than the row_txt rule: no guarded-fallback escape hatch. A
+    // wrong-case tap is SILENT (the form opens against the wrong entity), and
+    // the container also holds a trailing "SEARCH" action_card, so "the first
+    // clickable child" is not even reliably a case.
+    const steps = parseSteps(yaml);
+    const positional: string[] = [];
+    const walk = (list: PaletteStep[] | undefined): void => {
+      for (const step of list ?? []) {
+        if (!step || typeof step !== 'object') continue;
+        for (const [key, value] of Object.entries(step)) {
+          if (key === 'tapOn') {
+            const sel = value as Record<string, unknown> | string | undefined;
+            if (
+              sel &&
+              typeof sel === 'object' &&
+              typeof sel.id === 'string' &&
+              sel.id.includes(map['case-list-row-cell'].value) &&
+              sel.text === undefined
+            ) {
+              positional.push(JSON.stringify(sel));
+            }
+          } else if (key === 'runFlow') {
+            const rf = value as { commands?: PaletteStep[] } | undefined;
+            if (rf && typeof rf === 'object') walk(rf.commands);
+          }
+        }
+      }
+    };
+    walk(steps);
+    expect(positional, 'a case row must never be tapped positionally (ace#1138)').toEqual([]);
+  });
+
+  it('crosses the case-DETAIL confirmation screen under a guard', () => {
+    // Live-discovered 2026-08-01: tapping a case row does NOT open the form
+    // when the module declares a case-list `details` block (every ACE-built
+    // Deliver module does). CommCare shows a per-case detail screen whose
+    // CONTINUE button is what proceeds. A recipe transcribed from a sibling
+    // APK, or guessed, would stop dead here — which is exactly what ace#1138
+    // meant by "needs live-device calibration".
+    const continueId = map['case-list-detail-continue'].value;
+    expect(yaml, 'expected a guarded tap on the detail CONTINUE button').toMatch(
+      new RegExp(
+        `when:\\s*\\n\\s*visible:\\s*\\n\\s*id: "${escapeRe(continueId)}"[\\s\\S]*?` +
+          `- tapOn:\\s*\\n\\s*id: "${escapeRe(continueId)}"`,
+      ),
+    );
+  });
+
+  it('fails loud on a no-op tap by asserting the case list is GONE', () => {
+    // And deliberately NOT by asserting any particular next screen: with a
+    // `details` block the next screen is the module's form list, without one it
+    // can be the form itself. An earlier draft asserted `nav_btn_next` here and
+    // failed live against the form list.
+    const containerId = map['case-list-container'].value;
+    expect(yaml, 'expected a fail-loud notVisible assertion on the case list').toMatch(
+      new RegExp(
+        `- extendedWaitUntil:\\s*\\n\\s*notVisible:\\s*\\n\\s*id: "${escapeRe(containerId)}"`,
+      ),
+    );
+    // Strip comments: the header legitimately NAMES nav_btn_next to explain
+    // why asserting it here was wrong. It is the executable steps that must
+    // not contain it.
+    expect(
+      stripComments(yaml),
+      'the form assertion belongs to deliver-form-walk (after Level 2), not here — ' +
+        'after CONTINUE the device is on the FORM LIST, not the form',
+    ).not.toContain('nav_btn_next');
+  });
+
+  it('the scoping assertion is NON-VACUOUS — an unscoped tap is detected', () => {
+    // Proves the rule has teeth rather than passing because nothing matches.
+    // The shipped recipe is clean; the synthetic pre-fix shape is not.
+    const containerId = map['case-list-container'].value;
+    const cellId = map['case-list-row-cell'].value;
+
+    expect(
+      hasUnscopedCaseCellTap(yaml, cellId, containerId),
+      'the shipped recipe must scope its case tap',
+    ).toBe(false);
+
+    const unscoped = [
+      'appId: org.commcare.dalvik',
+      '---',
+      '- tapOn:',
+      '    text: "${CASE_NAME}"',
+      '',
+    ].join('\n');
+    expect(
+      hasUnscopedCaseCellTap(unscoped, cellId, containerId),
+      'a bare `tapOn: text: ${CASE_NAME}` must be REJECTED — it can resolve to a ' +
+        'column-header cell or the toolbar title',
+    ).toBe(true);
+  });
+});
+
+describe('deliver-form-walk.yaml composes the case list in the right ORDER (ace#1138)', () => {
+  const yaml = readRecipeAt('deliver-form-walk.yaml', CASE_LIST_APK);
+
+  it('hands off to deliver-case-select BEFORE the Level-2 form-row branches', () => {
+    // CommCare collects the CASE BEFORE THE FORM:
+    //   module row -> case list -> detail -> CONTINUE -> form list -> form
+    // so the case handoff must sit between Level 1 and Level 2. Live-proven
+    // 2026-08-01: with the handoff placed AFTER Level 2 the walk selected the
+    // case correctly and then stalled on the untapped form list, because
+    // Level 2 had already run and skipped (its `visible: <menu>` guard is
+    // false while the case list is up).
+    const handoffIdx = yaml.indexOf('file: deliver-case-select.yaml');
+    expect(handoffIdx, 'expected deliver-form-walk to compose deliver-case-select').toBeGreaterThan(
+      -1,
+    );
+
+    // Anchor on content rather than a comment: this screenshot is taken inside
+    // Level-2 branch 2a, so it marks where the form-row handling begins.
+    const level2Idx = yaml.indexOf('takeScreenshot: "deliver-form-walk-form-list"');
+    expect(level2Idx, 'expected the Level-2 form-list screenshot').toBeGreaterThan(-1);
+
+    expect(
+      handoffIdx,
+      'the case-select handoff must precede the Level-2 form-row branches — CommCare ' +
+        'shows the case list BEFORE the form list (ace#1138)',
+    ).toBeLessThan(level2Idx);
+  });
+
+  it('guards the handoff so non-case (registration) modules are unaffected', () => {
+    const containerId = selectorMap(CASE_LIST_APK).selectors['case-list-container'].value;
+    expect(yaml).toMatch(
+      new RegExp(
+        `when:\\s*\\n\\s*visible:\\s*\\n\\s*id: "${escapeRe(containerId)}"[\\s\\S]*?` +
+          'file: deliver-case-select\\.yaml',
+      ),
+    );
   });
 });

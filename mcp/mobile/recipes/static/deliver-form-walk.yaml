@@ -66,16 +66,22 @@
 # Deliver app ever grows a scrolling module list, add a scroll-into-view step
 # ahead of the Level-1 branch rather than widening the fallback.
 #
-# FOLLOWUP FORMS ARE NOT YET WALKABLE (ace#1138 Gap 2 — still OPEN). A form
-# registered as a `followup` on a case type renders CommCare's
-# EntitySelectActivity case list BETWEEN the form row and the first question.
-# There is no calibrated case-list selector and no `deliver-case-select.yaml`
-# in the palette yet, so this recipe HALTS LOUD at the terminal
-# `${SELECTOR:form-nav-next}` wait when it opens a followup form. That halt is
-# correct and named — do NOT relax the assertion to paper over it. Reaching a
-# followup form additionally requires a case to EXIST, which means walking the
-# registration module's form first (see skills/app-test-cases/SKILL.md
-# § Registration-then-followup Deliver apps).
+# FOLLOWUP FORMS (ace#1138 Gap 2 — CLOSED 2026-08-01). A form registered as a
+# `followup` on a case type renders CommCare's EntitySelectActivity case list
+# BETWEEN the form row and the first question. This recipe now hands that
+# screen to `deliver-case-select.yaml` (Level 3 below), so a followup walks
+# through to its first question like any other form.
+#
+# Two things the caller still owns:
+#   ${CASE_NAME} — REQUIRED when the target form is a followup. It is read by
+#                  deliver-case-select.yaml via variable inheritance, NOT
+#                  re-declared here. Omit it on a followup and the case tap
+#                  matches nothing, and the terminal `form-nav-next` wait
+#                  fails loud on the case list.
+#   Ordering    — the case must already EXIST, which means walking the
+#                 registration module's form first. See
+#                 skills/app-test-cases/SKILL.md
+#                 § Registration-then-followup Deliver apps.
 appId: org.commcare.dalvik
 ---
 - takeScreenshot: "deliver-form-walk-home"
@@ -109,8 +115,27 @@ appId: org.commcare.dalvik
 
 # Positional fallback — fires only when ${MODULE_NAME} named nothing in the
 # list body (unbound, i.e. the legacy single-module call). See BACK-COMPAT.
+#
+# The `visible: deliver-suite-menu` half of this guard is LOAD-BEARING and was
+# added after a live failure on 2026-08-01 (ace#1138 Gap 2 validation,
+# spark-facilitator/20260731-0656). Without it the two Level-1 branches are a
+# bare `visible` / `notVisible` pair on the SAME predicate, evaluated in
+# sequence — so the moment the named branch above TAPS AND NAVIGATES AWAY, the
+# module row is no longer below the menu and this guard flips TRUE. The
+# fallback then fired on the case list and died on `Element not found:
+# row_txt`. It went unnoticed on a registration module only because there the
+# form list still rendered a row carrying the module's own name (form name ==
+# module name), holding the guard false by luck.
+#
+# Requiring the menu container to still be on screen is what makes the two
+# branches mutually exclusive in practice: a successful named tap leaves the
+# MenuActivity entirely (for a followup, to EntitySelectActivity), so this
+# cannot fire after it. Same lesson `connect-resume-opp.yaml` already encodes
+# — see its "guards POSITIVELY, not on btn_resume absence" invariant.
 - runFlow:
     when:
+      visible:
+        id: "${SELECTOR:deliver-suite-menu}"
       notVisible:
         text: "${MODULE_NAME}"
         below:
@@ -121,6 +146,33 @@ appId: org.commcare.dalvik
 
 - waitForAnimationToEnd:
     timeout: 5000
+
+# ── LEVEL 1.5 (followup modules only): the case list ───────────────────────
+# CommCare collects the CASE BEFORE THE FORM. A module whose forms are
+# followups on a case type goes straight from the module row to
+# EntitySelectActivity — the form list comes AFTER the case is chosen:
+#
+#   module row -> case list -> case detail -> CONTINUE -> form list -> form
+#
+# So this handoff MUST sit between Level 1 and Level 2, not after them.
+# Live-established 2026-08-01 (ace#1138 Gap 2 validation): with it placed after
+# Level 2 the walk selected the case correctly and then stalled on the
+# untapped form list, because Level 2 had already run and skipped (the menu
+# container is not on screen while the case list is).
+#
+# ${CASE_NAME} is inherited from this recipe's own caller (Maestro subflows see
+# the parent's variables). Guarded on the case list actually being present, so
+# a registration / non-case module is unaffected: the guard is false and this
+# is a no-op — live-confirmed on the CBF Registration walk the same day.
+- runFlow:
+    when:
+      visible:
+        id: "${SELECTOR:case-list-container}"
+    commands:
+      - runFlow:
+          file: deliver-case-select.yaml
+      - waitForAnimationToEnd:
+          timeout: 5000
 
 # ── LEVEL 2: form row ──────────────────────────────────────────────────────
 # Each branch re-guards on "still on the menu AND not already in a form", so
@@ -208,8 +260,6 @@ appId: org.commcare.dalvik
                       timeout: 5000
 
 # Form's first question is on screen once the form-nav bar renders.
-# NOTE: a `followup` form stops on the EntitySelectActivity case list instead
-# and this wait fails loud — ace#1138 Gap 2, see the header.
 - extendedWaitUntil:
     visible:
       id: "${SELECTOR:form-nav-next}"

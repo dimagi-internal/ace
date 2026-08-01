@@ -502,6 +502,49 @@ selectors:
     value: "org.commcare.dalvik:id/tv_job_description"
     purpose: "Project description text on the Deliver-mode home project card. Verified 2026-05-26."
 
+  # ── Case list (EntitySelectActivity) — dimagi-internal/ace#1138 Gap 2 ──────
+  # ALL THREE rows below were live-captured together on 2026-08-01 from ONE
+  # ui-dump of a real followup case list: ACE_Pixel_API_34 running CommCare
+  # 2.63.2 (device-confirmed `versionName=2.63.2`), Deliver app
+  # d571d16dc311492e9abc453196824c39, opp
+  # de796bc9-3df7-42dd-be6f-4ebab68b7f42 (spark-facilitator/20260731-0656),
+  # module "Community Meeting Record" -> form "Village Monitoring Record"
+  # (followup on case type `cbf`), with one registered case
+  # "Thandiwe Banda" / "Kanyika". Nothing here is transcribed from a sibling
+  # APK — the 2.62.0 map has no case-list rows at all.
+  #
+  # THE TRAP THESE ROWS EXIST TO ENCODE: the column-header strip
+  # (`entity_select_header`) and the data rows use the SAME per-cell id
+  # `entity_view_text`, and the toolbar title carries the MODULE name. So a
+  # case-list tap has TWO ways to land on something that is not a row —
+  # the ace#590 anti-toolbar class, plus a header variant unique to this
+  # surface. Always scope a row match to `case-list-container`.
+
+  case-list-container:
+    type: id
+    value: "org.commcare.dalvik:id/screen_entity_select_list"
+    purpose: "The case-list ListView on CommCare's EntitySelectActivity — the surface a `followup` form renders BETWEEN the form row and its first question. Live-captured 2026-08-01 (2.63.2): `android.widget.ListView`, bounds [0,705][1080,1367], holding one clickable `LinearLayout` per case plus a trailing `action_card` (\"SEARCH\"). This is the ONLY sound scope for a row tap: the header strip above it reuses the row cell id, and the toolbar title carries the module name. Used by deliver-case-select.yaml. NOTE the trailing SEARCH `action_card` is INSIDE this container, so scoping alone does not make a positional tap safe — match the row by case name."
+
+  case-list-header:
+    type: id
+    value: "org.commcare.dalvik:id/entity_select_header"
+    purpose: "The COLUMN-HEADER strip above the case rows (bounds [0,283][1080,705] in the 2026-08-01 dump), holding one `entity_view_text` per configured case-list column — on this app: 'Name / Dzina / Zina', 'Village / Mudzi / Muzi', 'Last meeting / Womaliza / Wakumaliza', 'Next meeting / Wotsatira / Wakulondezga'. It is a SIBLING of `case-list-container`, not a child, which is what makes `childOf: case-list-container` a sound exclusion. Recorded so the header is nameable as an anti-target — a header cell carries the same resource-id as a data cell and would satisfy any unscoped `entity_view_text` match."
+
+  case-list-detail-container:
+    type: id
+    value: "org.commcare.dalvik:id/entity_detail"
+    purpose: "The per-case DETAIL confirmation screen CommCare interposes between the case-list row tap and the form, when the module declares a case-list `details` block (every ACE-built Deliver module does — Nova emits `details` alongside `results`). Live-captured 2026-08-01 (2.63.2) by tapping a real case row: the row tap did NOT open the form, it opened this screen (`entity_detail` > `screen_entity_detail_list`, one `detail_type_text` / `detail_value_text` pair per configured column). Holds `case-list-detail-continue`. Discovering this is the whole reason ace#1138 Gap 2 forbade transcribing a case-list recipe from a sibling APK: a guessed two-step (tap row -> form) walk would halt here."
+
+  case-list-detail-continue:
+    type: id
+    value: "org.commcare.dalvik:id/entity_select_button"
+    purpose: "The CONTINUE button on the case DETAIL confirmation screen — the step that actually enters the followup form. Live-captured 2026-08-01 (2.63.2): `android.widget.Button`, text \"CONTINUE\", bounds [0,283][1080,409] (full-width, pinned directly under the toolbar — NOT at the bottom of the screen where a confirm button is usually looked for). Matched by id rather than by its text because the label is localizable, and `case-list-detail-container` is the surface anchor. Absent when the module declares no `details` block, which is why deliver-case-select.yaml taps it under a `when: visible` guard rather than unconditionally."
+
+  case-list-row-cell:
+    type: id
+    value: "org.commcare.dalvik:id/entity_view_text"
+    purpose: "Per-column cell TextView inside a case-list row. Live-captured 2026-08-01 (2.63.2). **Present in BOTH the header strip and every data row** — never match it unscoped; scope to `case-list-container`. The cell itself is NOT clickable: the clickable node is the row `LinearLayout` two levels up (LinearLayout > RelativeLayout > TextView), so Maestro walks up from a matched cell to the row, exactly as it does for `row_txt` on the menu surfaces. Empty-valued cells are present in the tree (a case with no `date_of_meeting` yet renders an empty cell), so cell PRESENCE says nothing about the value."
+
   # ── To calibrate (transitions not yet captured live) ────────────────
   # The values below are placeholders for surfaces the atlas walk hasn't
   # reached yet (atlas "Open questions" list). Each entry is marked
