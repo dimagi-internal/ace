@@ -81,9 +81,30 @@ prevent infinite Nova loops.
 ### Step 1: Read the blueprint
 
 Call `get_app({app_id})`. Extract:
-- `connect_type` ("learn", "deliver", or "none" — abort with a clear
-  error if "none" but the PDD/skill caller expected a Connect app)
-- Module list with form indices
+- `Connect type` ("learn", "deliver", or absent — abort with a clear
+  error if absent but the PDD/skill caller expected a Connect app)
+- The **complete** module + form list, **with their uuids**
+
+**Nova is uuid-addressed.** Since the 2026-07-31 migration (ace#1132)
+no Nova tool accepts `moduleIndex` / `formIndex` / `fieldId`; every
+addressed call takes `moduleUuid` / `formUuid` / `fieldUuid`, regex-checked
+as canonical lowercase RFC UUIDs. `get_app` is the resolver — its
+blueprint prints `[uuid <rfc-uuid>]` on every module, form, and field:
+
+```
+- Module "CBF Registration" [uuid b60055c1-…] (case_type: cbf)
+  - Form "CBF Registration" [uuid c3deb000-…] (registration, 12 fields)
+    [Connect enabled]
+```
+
+Build the `(module, form) -> {moduleUuid, formUuid}` map from this ONE
+response and carry it through Steps 3 and 4. If `pdd-to-*-app_summary.md`
+already carries a `nova_uuids:` block, prefer it and use `get_app` to
+confirm it is still current. `search_blueprint({query, app_id})` resolves
+a single semantic name if you're missing one.
+
+**Capturing the COMPLETE form list here is load-bearing for Step 4** —
+`configure_connect` clears the Connect block off any form you omit.
 
 ### Step 2: Per-form expectation
 
@@ -117,14 +138,14 @@ ambiguous:
 ### Step 3: Per-form verification
 
 **Issue all per-form `get_form` reads in ONE parallel message** — they
-target distinct moduleIndex/formIndex pairs, share no state, and a
+target distinct `(moduleUuid, formUuid)` pairs, share no state, and a
 typical Connect app has 4–12 forms across Learn + Deliver. Batched,
 the reads complete in ~one round-trip; sequentially, ~7s × N forms
-adds 30–80s per coverage pass with no benefit. Same shape as Step 4's
-batched mutations.
+adds 30–80s per coverage pass with no benefit.
 
 For each form:
-- Call `get_form({app_id, moduleIndex, formIndex})` (in the parallel block above)
+- Call `get_form({app_id, moduleUuid, formUuid})` using the Step 1 map
+  (in the parallel block above)
 - Compare actual `form.connect` to expected
 - Classify:
   - `match` — actual matches expected
@@ -133,33 +154,97 @@ For each form:
   - `wrong` — has `connect` but with different sub-block (e.g.
     `task` where we expected `deliver_unit`)
 
-### Step 4: Auto-fix (parallel dispatch)
+### Step 4: Auto-fix
 
-For each `missing` / `partial` / `wrong` form, call
-`update_form` with the expected `connect`
-object. After EVERY mutation, re-fetch via `nova_get_form` to confirm
-the change took effect (catches the "validator silently strips
-fields" failure mode — see § Known Nova bugs below).
+Two tools, **opposite semantics**. Picking the wrong one is the single
+most damaging mistake this skill can make, so branch explicitly:
 
-**Batch the mutations.** A typical Connect app has 5–12 forms across
-both Learn and Deliver. Dispatch all `update_form` calls for a single
-iteration in **one assistant message** (multiple tool-use blocks side
-by side), then dispatch all the `get_form` re-fetches in one message.
-Two batched roundtrips beat 24 sequential ones — saves 20–40 sec per
-coverage pass and avoids token churn from interleaved tool results.
-The mutations are independent (each targets a distinct moduleIndex/
-formIndex pair); Nova does not require ordering.
+| Situation | Tool |
+|---|---|
+| App-level Connect mode is absent/wrong, OR any form is `missing` (not currently participating), OR a form must stop participating | **`configure_connect`** — one atomic call carrying the COMPLETE participant set |
+| A form that ALREADY participates has a `partial` / `wrong` sub-config (e.g. right `deliver_unit`, bad `entity_id`) | **`update_form({connect})`** — per-form, additive |
+
+#### 4a. `configure_connect` — the whole-app path
+
+> **⚠ REPLACE-ALL, not a patch.** Upstream's own words: *"learn/deliver
+> requires the complete nonempty UUID-addressed participant set, and every
+> unlisted form becomes auxiliary."* **Every form absent from
+> `participants[]` has its existing Connect block CLEARED.** Calling this
+> with only the forms you wanted to *fix* deletes the markers off all the
+> forms that were already correct — turning a marker-repair into a
+> marker-deletion, which is strictly worse than the gap you came to close.
+> This is the exact inverse of `update_form({connect})`.
+
+So the participant list must be **every form that should carry a Connect
+block after this call** — the `match` forms included, not just the broken
+ones. Build it from the Step 1 complete form list unioned with the Step 2
+expectations:
+
+```
+configure_connect({
+  app_id,
+  mode: "learn" | "deliver",
+  participants: [
+    { formUuid: "<uuid>", connect: { learn_module: { name, description, time_estimate } } },
+    { formUuid: "<uuid>", connect: { assessment: { user_score: { parts: [
+        { kind: "field-ref", uuid: "<user_score field uuid>" } ] } } } },
+    { formUuid: "<uuid>", connect: { deliver_unit: { name } } },
+    …every other participating form…
+  ]
+})
+```
+
+Sub-config values that are expressions (`assessment.user_score`,
+`deliver_unit.entity_id` / `entity_name`) take the **structured**
+`{parts: [...]}` shape — a plain XPath string is rejected. Part kinds:
+`text` · `field-ref` · `path-ref` · `case-ref` · `user-ref` ·
+`user-property-ref`. Omit each block's `id` and let Nova derive it.
+`learn_module.time_estimate` is in **hours** despite upstream's schema
+saying minutes (nova-plugin#36).
+
+`mode: null` turns Connect off and clears every form block — never call
+that as a "reset" mid-repair.
+
+#### 4b. `update_form` — the single-form refinement path
+
+`update_form({app_id, moduleUuid, formUuid, connect})` refines a form
+that already participates: omitted sub-configs keep their current value,
+a stated one replaces it. It **cannot** enable Connect, switch mode, add
+a participant, or clear the whole slot (a whole-slot null is refused).
+Use it only for a genuine one-form additive tweak.
+
+**Batch these when there are several.** Dispatch all `update_form` calls
+for a single iteration in **one assistant message** (multiple tool-use
+blocks side by side). They are independent — each targets a distinct
+`(moduleUuid, formUuid)` pair — and Nova does not require ordering.
+
+#### 4c. Re-fetch gate (both paths)
+
+After EVERY mutation, re-fetch via `get_form({app_id, moduleUuid,
+formUuid})` to confirm the change took effect. Batch the re-fetches in
+one message.
+
+**After a `configure_connect` call, re-fetch EVERY form, not just the
+ones you changed** — that is the only way to catch an accidentally-cleared
+participant. Any form that carried a Connect block before the call and
+does not after it is a replace-all mistake: rebuild the full participant
+list and re-issue.
+
+Nova validates on write and **applies nothing on rejection** ("Nothing
+was changed"), naming the exact problem — so a rejected call is safe to
+read and retry against; there is no partial-apply state to defend
+against.
 
 ### Step 5: Confirm save-time validation raised no errors
 
 Nova's platform-rule validation (broken XPath, schema mismatches,
 missing required references) runs **server-side at save time on every
 mutation** — there is no callable `validate_app` tool at the L0/user
-surface (nova@nova-marketplace 1.1.0; jjackson/ace#821). Any Step 4
-mutation that violated a platform rule failed at the `update_form`
-call itself — surface those errors directly. The per-mutation
-`get_form` re-fetch (Step 4) remains the structural gate that the
-intended change actually persisted.
+surface (jjackson/ace#821; still absent from the live 63-tool surface as
+of 2026-07-31). Any Step 4 mutation that violated a platform rule failed
+at the `configure_connect` / `update_form` call itself — surface those
+errors directly. The per-mutation `get_form` re-fetch (Step 4c) remains
+the structural gate that the intended change actually persisted.
 
 ### Step 6: Loop or exit
 
@@ -197,9 +282,10 @@ forms_blocked: <N>
 
 ## Per-form coverage
 
-| m/f | Form name | Expected | Before | After | Action |
+| formUuid | Form name | Expected | Before | After | Action |
 |---|---|---|---|---|---|
-| 0/0 | New vendor visit | deliver_unit | missing | match | Fixed via update_form |
+| c3deb000-… | New vendor visit | deliver_unit | missing | match | Fixed via configure_connect (full participant set) |
+| 4452f12b-… | Follow-up | deliver_unit | partial | match | Fixed via update_form (entity_id only) |
 | ... |
 
 ## Validation result
@@ -226,10 +312,19 @@ When `--dry-run` is active:
 
 ## Failure modes
 
-- **`connect_type === "none"` but PDD specified a Connect app.** Nova's
-  autobuild fundamentally misclassified the app. This skill can't
-  recover — re-run `pdd-to-{learn,deliver}-app` with a stronger
-  Connect-type signal in the spec. Halt with clear error.
+- **No app-level `Connect type` but the PDD specified a Connect app.**
+  Recoverable in-place since 2026-07-31: `configure_connect({app_id,
+  mode, participants})` sets the app-level mode and every form block
+  atomically (Step 4a). Only halt and re-run
+  `pdd-to-{learn,deliver}-app` if that call fails after 3 iterations, or
+  if the app's module/form structure is itself wrong (a misclassified
+  build, not a missing marker).
+- **Partial `participants[]` cleared correct forms.** The
+  `configure_connect` replace-all footgun (Step 4a). Symptom: the
+  Step 4c re-fetch shows forms that were `match` before the call now
+  `missing`. Recovery is another `configure_connect` with the COMPLETE
+  set — the state is fully recoverable, but it costs an iteration, so
+  build the full list before the first call.
 - **`update_form` delivers empty `entity_id`/`entity_name` on re-fetch
   (defensive).** Fixed upstream (nova-plugin#6). If Step 4's re-fetch
   ever shows empty entity fields after a mutation, exit `blocked`.
@@ -276,8 +371,13 @@ verify+fix discipline is reliable across concerns.
 ## MCP tools used
 
 - Google Drive: `drive_read_file`, `drive_create_file`
-- Nova: `get_app`, `get_form`, `update_form`,
-  `validate_app`
+- Nova: `get_app` (blueprint + uuid map), `search_blueprint` (single-name
+  uuid resolver), `get_form`, `configure_connect` (app mode + complete
+  participant set), `update_form` (single-form additive refinement)
+
+Signatures live in `docs/atom-schemas.md` and Nova's own `tools/list`;
+`playbook/integrations/nova-integration.md § The 2026-07-31 uuid-addressing
+migration` carries the division of labour and the replace-all warning.
 
 ## Change log
 
@@ -285,3 +385,4 @@ verify+fix discipline is reliable across concerns.
 |------|--------|--------|
 | 2026-04-29 | Initial version. First in the post-Nova verify+fix family. Detection of Connect markers per form, auto-fix via `nova_update_form`, loop until clean or until a known Nova-side blocker is hit. Documents the pattern for future `app-<concern>-coverage` siblings. (0.10.7) | ACE team |
 | 2026-04-29 | Smoke-tested live against `turmeric-market-survey-2026-04-29-coverage`. Skill exited `clean` in one iteration on the Learn side, `blocked` in one iteration on the Deliver side. Updates from the run: (a) bug description was inverted — Nova INJECTS empty `entity_id`/`entity_name`, doesn't strip them; (b) `nova_validate_app` returns `success: true` despite the malformed deliver_unit, so the per-mutation re-fetch in Step 4 is the actual gate (validate_app is necessary but not sufficient). Both findings folded back into Failure Modes. (0.10.12) | ACE team |
+| 2026-07-31 | **Migrated to uuid addressing and split the fix path in two (ace#1132, ace#1133).** Nova's 2026-07-31 redeploy moved its whole surface from `moduleIndex`/`formIndex`/`fieldId` to `moduleUuid`/`formUuid`/`fieldUuid` — this skill's read/fix loop named uncallable operations. Step 1 now builds the `(module, form) -> uuid` map from the single `get_app` blueprint (which prints `[uuid …]` on every module/form/field) and captures the COMPLETE form list; Step 3's batched reads pass `{moduleUuid, formUuid}`. Step 4 is split because the two Connect tools have **inverted** semantics: `configure_connect` (new, replaces the removed `update_app({connect_type})`) sets app mode + every form block atomically but is **REPLACE-ALL** — any form omitted from `participants[]` has its Connect block CLEARED, so a partial list turns a marker-repair into a marker-deletion — while `update_form({connect})` stays per-form and additive and cannot enable Connect or add a participant. Added the matching re-fetch rule (after `configure_connect`, re-fetch EVERY form, not just the changed ones) and a `Partial participants[] cleared correct forms` failure mode. Expression sub-configs now take the structured `{parts: […]}` shape, not XPath strings. Contract pinned by `scripts/probe-nova-contract.ts`. | ACE team |
