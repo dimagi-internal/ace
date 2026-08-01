@@ -48,6 +48,55 @@ export function extractFormCsrfToken(html: string): string | undefined {
   return formMatch?.[1];
 }
 
+/**
+ * The entity set Django's `escape()` emits, mapped back to the character it
+ * escaped. Deliberately EXACTLY that set (plus `&#39;`, the apostrophe form
+ * Django emitted before 3.0) — decoding anything wider would start rewriting
+ * text a user genuinely stored, since Django renders every other character
+ * literally.
+ */
+const DJANGO_ESCAPE_ENTITIES: Record<string, string> = {
+  '&lt;': '<',
+  '&gt;': '>',
+  '&quot;': '"',
+  '&#x27;': "'",
+  '&#39;': "'",
+  '&amp;': '&',
+};
+
+/** One alternation over every entity above; see {@link decodeHtmlEntities}. */
+const DJANGO_ESCAPE_ENTITY_RE = /&(?:lt|gt|quot|amp|#x27|#39);/g;
+
+/**
+ * Reverse Django's autoescape by EXACTLY ONE LEVEL.
+ *
+ * Connect renders every form field through Django's autoescape, so a stored
+ * `Spark's M&E` comes back down the wire as `Spark&#x27;s M&amp;E`. Any
+ * scraper that reads those fields without decoding returns the escaped text
+ * verbatim (a lossy read) — and, worse, the read-modify-write update paths in
+ * `playwright.ts` re-POST the un-changed fields straight from that read, so
+ * Django stores the escaped form and escapes it AGAIN on the next render.
+ * Each update then adds a level: `&#x27;` → `&amp;#x27;` → `&amp;amp;#x27;`.
+ * Confirmed live on three `ai-demo-space` programs (dimagi-internal/ace#1140).
+ *
+ * **Single-pass, never fixed-point — this is load-bearing.** Decoding to a
+ * fixed point would turn a legitimately-stored `&#x27;` (rendered
+ * `&amp;#x27;`) into an apostrophe, silently corrupting data in the other
+ * direction. One pass is the exact inverse of one `escape()`.
+ *
+ * The single-alternation regex is what makes that structural rather than
+ * order-dependent: `String.prototype.replace` scans left-to-right and never
+ * re-scans what it substituted, so `&amp;#x27;` matches `&amp;` at index 0,
+ * emits `&`, and resumes at `#x27;` — which has no leading `&` to match.
+ * Result: `&#x27;`, one level decoded. (The sequential-`.replace()` form this
+ * grew out of got the same answer only because `&amp;` was applied LAST;
+ * hoisting it first would have decoded two levels in one pass. The
+ * alternation removes that footgun entirely.)
+ */
+export function decodeHtmlEntities(s: string): string {
+  return s.replace(DJANGO_ESCAPE_ENTITY_RE, (m) => DJANGO_ESCAPE_ENTITIES[m]);
+}
+
 /** Extract a UUID from a redirect Location like `/a/<org>/program/<uuid>/...`. */
 export function extractUuidFromPath(loc: string, segment: string): string | undefined {
   const m = loc.match(new RegExp(`/${segment}/([a-f0-9-]{36})(?:/|$)`));
@@ -119,8 +168,14 @@ export function parseProgramsList(html: string): ProgramListRow[] {
     if (titleMatch && uuidMatch) {
       out.push({
         id: uuidMatch[1],
-        name: titleMatch[1].replace(/<[^>]+>/g, '').trim(),
-        description: descMatch?.[1].replace(/<[^>]+>/g, '').trim() ?? '',
+        // Entity-decoded for the same reason the edit-form scrape is
+        // (dimagi-internal/ace#1140): the card body is autoescaped, so a
+        // program literally named `Spark's …` renders as `Spark&#x27;s …`.
+        // `listPrograms(name)` substring-matches against THIS value, and
+        // connect-program-setup reads a miss as "no program exists" and mints
+        // a duplicate — the read-side sibling of the update-path ratchet.
+        name: decodeHtmlEntities(titleMatch[1].replace(/<[^>]+>/g, '').trim()),
+        description: decodeHtmlEntities(descMatch?.[1].replace(/<[^>]+>/g, '').trim() ?? ''),
         // Fields not displayed on the list view are `null`, NOT typed zeros:
         // a caller cannot distinguish `budget: 0` from "unhydrated"
         // (jjackson/ace#1089). Hydrate via getProgram() when real values
@@ -209,6 +264,15 @@ export function parseInvitesList(html: string, programId: string): Invite[] {
  * Returns a flat name→value map. For multi-value fields (checkboxes, multi-
  * select) the last value wins; we don't have any of those today so it doesn't
  * matter.
+ *
+ * **Every value is passed through {@link decodeHtmlEntities}** (all three
+ * branches — input `value`, textarea body, selected option `value`). Django
+ * autoescapes on render, so without this the caller gets `Spark&#x27;s` for a
+ * stored `Spark's`. The write-side consequence is the serious one: the
+ * read-modify-write update paths (`updateProgram`, `postEditForm`) re-POST
+ * every field they weren't asked to change straight out of this map, so an
+ * un-decoded read gets STORED and re-escaped on the next render — one extra
+ * level of escaping per update, forever (dimagi-internal/ace#1140).
  */
 export function extractFormFieldValues(html: string): Record<string, string> {
   const out: Record<string, string> = {};
@@ -218,13 +282,13 @@ export function extractFormFieldValues(html: string): Record<string, string> {
     const attrs = m[1];
     const name = attrs.match(/\bname="([^"]+)"/)?.[1];
     const value = attrs.match(/\bvalue="([^"]*)"/)?.[1] ?? '';
-    if (name) out[name] = value;
+    if (name) out[name] = decodeHtmlEntities(value);
   }
 
   // <textarea>...content...</textarea>
   for (const m of html.matchAll(/<textarea\b([^>]*)>([\s\S]*?)<\/textarea>/g)) {
     const name = m[1].match(/\bname="([^"]+)"/)?.[1];
-    if (name) out[name] = m[2].trim();
+    if (name) out[name] = decodeHtmlEntities(m[2].trim());
   }
 
   // <select>: find its name and the value of its `selected` <option>
@@ -232,7 +296,7 @@ export function extractFormFieldValues(html: string): Record<string, string> {
     const name = m[1].match(/\bname="([^"]+)"/)?.[1];
     if (!name) continue;
     const sel = m[2].match(/<option\s+value="([^"]*)"[^>]*\sselected\b/);
-    out[name] = sel?.[1] ?? '';
+    out[name] = decodeHtmlEntities(sel?.[1] ?? '');
   }
 
   return out;

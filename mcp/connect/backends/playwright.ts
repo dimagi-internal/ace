@@ -7,6 +7,7 @@ import type { PlaywrightSession } from '../auth/playwright-session.js';
 import { parseOrgMemberTable, type OrgMemberRow } from '../../../lib/connect-member-table.js';
 import { parseWorkersTable, findInviteByPhone } from '../../../lib/connect-flw-invites.js';
 import {
+  decodeHtmlEntities,
   extractFormCsrfToken,
   extractFormFieldValues,
   extractUuidFromPath,
@@ -75,14 +76,6 @@ function parseSelectOptions(html: string): Array<{ value: string; text: string }
     opts.push({ value: m[1], text: m[2].trim() });
   }
   return opts;
-}
-
-/**
- * Decode HTML entities in form-value attributes (Connect's apps endpoint
- * embeds JSON in option `value`s and HTML-encodes the quotes).
- */
-function htmlDecodeAttr(s: string): string {
-  return s.replace(/&quot;/g, '"').replace(/&#x27;/g, "'").replace(/&amp;/g, '&');
 }
 
 /**
@@ -1334,7 +1327,10 @@ export class PlaywrightBackend implements ConnectClient {
     for (const o of opts) {
       if (!o.value || o.value === 'None' || o.value === '') continue;
       try {
-        const decoded = htmlDecodeAttr(o.value);
+        // Connect's apps endpoint embeds JSON in option `value`s and
+        // HTML-encodes the quotes; decodeHtmlEntities is the shared inverse
+        // of Django's escape() (was a local htmlDecodeAttr copy pre-#1140).
+        const decoded = decodeHtmlEntities(o.value);
         const parsed = JSON.parse(decoded);
         if (parsed?.id) real.push({ value: decoded, text: o.text, id: parsed.id });
       } catch {
