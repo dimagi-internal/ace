@@ -174,11 +174,13 @@ describe('validateRunState', () => {
     });
 
     it('rejects an invalid step status', () => {
+      // NB: `partial` used to be the fixture here — it is now a legal step
+      // status (ace#1139), so this asserts on a value that is still bogus.
       const r = validateRunState({
         phases: {
           p: {
             status: 'done',
-            steps: { s1: { status: 'partial' } },
+            steps: { s1: { status: 'partially-done' } },
           },
         },
       });
@@ -211,7 +213,19 @@ describe('validateRunState', () => {
         },
       });
       expect(r.valid).toBe(true);
-      expect(r.warnings).toEqual([]);
+      // Accepted, but no longer silently: since ace#992 a legacy synonym earns
+      // a warning naming the canonical value, so runs converge on one
+      // vocabulary instead of accumulating spellings.
+      expect(r.warnings).toEqual([
+        {
+          path: 'phases.p.steps.s1.status',
+          message:
+            '`complete` is a legacy synonym — write `done` (accepted so an older run does not classify as malformed)',
+          severity: 'warning',
+          expected: 'done',
+          actual: 'complete',
+        },
+      ]);
     });
 
     it('rejects non-string artifact / file_id', () => {
@@ -303,6 +317,30 @@ describe('classifyPhaseWriteBack', () => {
         },
         'p',
       ),
+    ).toBe('ok');
+  });
+
+  it('returns ok when status is partial — terminal, never a retry trigger (ace#1139)', () => {
+    // Full cross-fence lock in test/lib/phase-status-vocabulary.test.ts.
+    expect(
+      classifyPhaseWriteBack(
+        {
+          phases: {
+            p: {
+              status: 'partial',
+              completed_at: '2026-07-31T09:12:00Z',
+              verdict: 'partial-producer-deferred',
+            },
+          },
+        },
+        'p',
+      ),
+    ).toBe('ok');
+  });
+
+  it('returns ok when status is the legacy synonym complete (ace#992)', () => {
+    expect(
+      classifyPhaseWriteBack({ phases: { p: { status: 'complete' } } }, 'p'),
     ).toBe('ok');
   });
 
