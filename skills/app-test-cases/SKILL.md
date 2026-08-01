@@ -215,31 +215,68 @@ Read the deliver units (`connect_list_deliver_units` /
 `connect_list_payment_units`) or the Nova blueprint to pick it — do not
 assume ordering.
 
-##### Ordering: a followup form needs its case to already exist — STILL BLOCKED (#1138 Gap 2)
+##### Ordering: a followup form needs its case to already exist (#1138 Gap 2 — CLOSED)
 
 When the payable form is a `followup` on a case type (the normal shape
 for register-then-visit apps), reaching it forces a three-step order:
 
 1. walk the **registration** module's form first, so a case of that type
    exists on the device;
-2. **select that case** from CommCare's `EntitySelectActivity` case list,
-   which renders BETWEEN the form row and the first question;
+2. **select that case** from CommCare's `EntitySelectActivity` case list;
 3. only then answer the payable form.
 
-**Step 2 is not yet authorable.** There is no calibrated case-list
-selector in `mcp/mobile/selectors/connect-*.yaml` and no
-`deliver-case-select.yaml` in the static palette, because the map has
-never been calibrated against a live case-list ui-dump — and inventing a
-selector (or copying one from a sibling APK) is banned by
-§ *close the loop to the source of truth*. `deliver-form-walk.yaml`
-therefore HALTS LOUD at its terminal `form-nav-next` wait when it opens a
-followup form.
+**All three are authorable.** Step 2 is
+`mcp/mobile/recipes/static/deliver-case-select.yaml`, and
+`deliver-form-walk.yaml` composes it for you — you never call it
+directly. Bind **`CASE_NAME`** alongside `MODULE_NAME` / `FORM_NAME` and
+the walk crosses the case list on its own:
 
-Until #1138 Gap 2 lands: if the only payable form is a `followup`, halt
-with a **`[BLOCKER]`** naming ace#1138 rather than emitting a recipe that
-cannot run. Do NOT substitute the registration form for the payable one
-and call the journey a Deliver smoke — that produces a green journey that
-never exercises the payable unit.
+```yaml
+# 1. Registration module — creates the case. No CASE_NAME (no case list).
+- runFlow:
+    file: deliver-form-walk.yaml
+    env:
+      MODULE_NAME: "CBF Registration"
+      FORM_NAME: "CBF Registration"
+# ...answer the registration fields, then:
+- runFlow:
+    file: form-submit.yaml
+    env:
+      SCREENSHOT_NAME_PRE_SUBMIT: "journey-deliver-reg-pre"
+      SCREENSHOT_NAME_POST_SUBMIT: "journey-deliver-reg-post"
+
+# 2. Payable followup — CASE_NAME selects the case just registered.
+- runFlow:
+    file: deliver-form-walk.yaml
+    env:
+      MODULE_NAME: "Community Meeting Record"      # the PAYABLE module
+      FORM_NAME: "Village Monitoring Record"
+      CASE_NAME: "Thandiwe Banda.*"                # the case_name you entered
+```
+
+**`CASE_NAME` must be the value you actually typed into the registration
+form's `case_name` field** — it is what renders in the case list's first
+column. Pass it as a literal prefix plus `.*` (Maestro `text:` is a
+FULL-match regex and case-list cells are routinely trilingual or
+truncated). Omit it on a followup and the walk fails loud on the case
+list rather than silently picking a row.
+
+Two things worth knowing, both live-established on 2.63.2 and both
+already handled inside the palette — do not re-derive them:
+
+- CommCare collects the **case before the form**: module row → case list
+  → case detail → CONTINUE → form list → form. The detail screen is a
+  real screen with its own CONTINUE button, not a dialog.
+- The case list's **column headers reuse the row cells' resource-id**,
+  and the toolbar carries the module name, so a case tap is scoped to the
+  list container. Never hand-roll a case tap; compose the palette.
+
+**Do NOT substitute the registration form for the payable one** and call
+the journey a Deliver smoke — that produces a green journey that never
+exercises the payable unit, which is the entire thing Phase 6's Deliver
+leg exists to prove. If the payable form genuinely cannot be reached,
+halt with a `[BLOCKER]` naming what stopped the walk; do not downgrade
+the target.
 
 State the warm-state dependency in `journey-deliver.yaml`'s header
 comment: it is NOT independently cold-runnable; runners execute
@@ -1215,6 +1252,7 @@ already maps the producer to `3-commcare/` (see
 | 2026-05-31 | **Intent-based journey-id slugs (replace answer-value names).** Renamed the canonical intent slugs from answer-value names to test-intent names — the learn smoke is now `journey-learn-pass`, learn retry `journey-learn-retry`, the deliver smoke `journey-deliver-submit`, the alternate-answer journey `journey-deliver-alt-answer`, the multi-visit journey `journey-deliver-multiple`, and the gate-locked journey `journey-deliver-locked`. The old slugs named a raw domain answer value (e.g. a literal `yes`/`no` response), which is meaningless unless you already know the question and doesn't generalize across opps; the intent names describe the behavior being verified, so they read clearly for any opportunity (bednet, vaccination, anything). The `journey-` prefix rule, the `journey-<app>-<intent>` shape, and the filename-vs-id nuance (PR #603) are all unchanged. Example/canonical slug rename only — no lazy-generation / deep-recipe-timing changes. Updated every example/snippet here plus downstream readers (`app-screenshot-capture`, `app-ux-eval`), `app-test-cases-template.yaml`, and the `ACE-Test-001` fixture. | ACE team |
 | 2026-05-31 | **Lazy deep-recipe generation (closes #605).** Phase 3 now authors Maestro recipe files ONLY for the two `is_smoke: true` journeys; every non-smoke (deep) journey stays in the `app-test-cases.yaml` catalog with `recipe: deferred` (the literal string, not a path). Phase 6 (shallow, in `/ace:run`) only ever walks the smokes, so pre-authoring deep recipes was wasted work + clutter when `/ace:qa-deep` isn't run. `/ace:qa-deep` now generates the deferred deep recipes on demand using the SAME composition rules here (static palette + live `get_form` labels + selector-resolution gate) — safe because Nova `app_id` + `get_form` still return the as-built structure within a run. Step 3 scoped to "smoke journeys"; Step 5 coverage invariant changed from "every journey has a recipe file" to "exactly the smoke recipes exist as files; deep journeys carry `recipe: deferred`" (two-app smoke invariant + selector-resolution gate for the smokes KEPT). Updated `commands/qa-deep.md`, `app-screenshot-capture`, `app-test-cases-template.yaml`, and the `ACE-Test-001` fixture. | ACE team |
 | 2026-07-30 | **Add § answer-tap rule step 4.7 (`kind: date`) + the Step 5 date-default static gate (the static half of dimagi-internal/ace#1081).** The date widget defaults to today, so `<= today()` / `>= today()` constraints need no interaction — but a strictly-future/past constraint has NO calibrated selector (the connect-2.63.2 map carries no date-widget row), so today violating the constraint makes the screen un-walkable. New pure helper `lib/date-default-validate.ts` (`checkDateDefaultValidate`) statically evaluates each required date field's `validate` with `.` = today; Step 5 now BLOCKER-gates a violation naming the field (and WARNs on unverifiable expressions) at Phase 3 instead of burning Phase 6 wall-clock (spark-facilitator/20260730-1718 repro: `next_meeting_date` with `. > today() and . <= date(today() + 30)` silently rerouted the Deliver smoke to the non-payable branch). The selector-map date-widget row itself stays open on ace#1081 pending live-device calibration. | ACE team |
+| 2026-08-01 | **Close dimagi-internal/ace#1138 Gap 2 — the followup/case-select leg.** New `mcp/mobile/recipes/static/deliver-case-select.yaml` + four live-calibrated case-list rows in `connect-2.63.2.yaml` (`case-list-container`, `case-list-header`, `case-list-row-cell`, `case-list-detail-continue`), captured from a real `EntitySelectActivity` ui-dump on ACE_Pixel_API_34 / CommCare 2.63.2 (spark-facilitator/20260731-0656). `deliver-form-walk.yaml` now composes the case handoff BETWEEN Level 1 and Level 2 — CommCare collects the case BEFORE the form (module -> case list -> detail CONTINUE -> form list -> form), and the detail screen is a real screen the walk must cross. Authors bind `CASE_NAME`; the `[BLOCKER]` halt for followup-only payable forms is retired. Also fixes a latent defect in Gap 1's shipped recipe: the Level-1 positional fallback guarded only on `notVisible: ${MODULE_NAME}`, which flips TRUE once the named branch navigates away, so it fired on the case list and died on `row_txt` not found. Enforced by four new invariant blocks in `test/mcp/mobile/static-recipe-invariants.test.ts` (positive-guard rule, container-scoped case tap, detail-CONTINUE crossing, handoff ordering), each proven non-vacuous. | ACE team |
 | 2026-07-31 | **The leading-label rule is now STATICALLY ENFORCED (closes dimagi-internal/ace#1045); nested `runFlow.env` finally feeds the module/form checks (closes #1068).** § Quiz / required-input answer-tap rule → "Leading (and interior) display/label screens" had been prose-only since #710/#684, and recurred in that window (bednet-spot-check/20260729-0002: a golden `journey-learn.yaml` tapped a q1 option with no advance past the `intro` label, killing the Learn leg and locking Deliver). `recipe-sanity-probe` gained `answer-tap-before-leading-label-advance` — counts the walked form's leading `kind: label` nodes (skipping `hidden`) and fails when fewer bare advances sit between the menu-walk entry step and the first answer tap, naming expected vs found. It's the inverse of the #858 permissive carve-out and is field-gated like `group-field-list-per-question-walk`. Same PR taught `extractRecipeParameters` to walk NESTED `runFlow.env` maps (the shape Phase 3 emits), so `expected-module-not-in-app` / `expected-form-not-in-module` can fire at all — they had been silently inert — plus a `module-form-checks-not-run` WARN + `observed.module_form_checks_ran` so an inert check never reads as a clean pass. Still prose-only: the score-gated over-advance class (#569). | ACE team |
 | 2026-07-31 | **Menu anchors are display-mode-agnostic; a single-container anchor is now a CI failure (closes dimagi-internal/ace#1127).** #1082/PR #1100 correctly made Phase 3 `app-hq-settings` apply GRID menu display app-wide — and because every Phase 6 menu anchor resolved to the LIST container `screen_suite_menu_list` ALONE, no shipped palette recipe could execute on any ACE opp (bednet-spot-check/20260731-1353: Learn halted at `learn-launch.yaml`, Deliver walled identically, Phase 6 `verdict: blocked`, apps confirmed healthy server-side). CommCare renders the SAME `row_img`/`row_txt` rows in either container; only the container id changes. Fix: `learn-suite-menu` / `deliver-suite-menu` are now regex alternations (`org.commcare.dalvik:id/(screen_suite_menu_list|grid_menu_grid)`) in connect-2.63.0 + 2.63.2, `deliver-form-walk.yaml`'s two RAW container literals now route through the map, and a new `menu-container anchors are display-mode-complete` invariant suite fails on (a) any palette file hardcoding a container id, (b) any selector-map row naming one container but not all, (c) any RESOLVED palette anchor that isn't complete. Adding a future display mode = one id in `KNOWN_MENU_CONTAINERS` + one map edit. | ACE team |
 | 2026-06-01 | **Learn content forms are multi-screen + finalize to StandardHomeActivity (closes #646).** Two new static palette pieces: `content-form-finish.yaml` (bounded multi-screen advance loop that taps `nav_btn_next` until a Learn CONTENT form auto-finalizes, exits on the `learn-home-start-tile` home anchor — NOT the suite menu — handles the score-gated two-screen FINISH, and asserts the home grid post-finalize) and `learn-suite-reentry.yaml` (the explicit "tap Start → wait `screen_suite_menu_list`" re-entry that MUST run between every module, because a Learn form finalizes to the home grid not the suite menu). Added §§ "Multi-screen content forms" + "Suite re-entry between modules"; the prior single-screen-only content-form note is subsumed. Closes the malaria-rdt/20260601-0929 Phase 6 Learn-walk blocker (recipe walked each content form as single-screen and called the next `learn-tap-module` directly, stalling on page 2 then hard-failing the suite-menu assert). Validated structurally (`mobile_validate_recipe` + selector-resolution gate against connect-2.63.0); full live re-walk lands on the next fresh-run Phase 6 (this run consumed its one-way Learn state). | ACE team |
