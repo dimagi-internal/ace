@@ -45,8 +45,11 @@ improvements ship once (a canopy PR) instead of N backports.
   install path for the same reason — this keeps turns consistent with runs.) Gmail as ACE:
   `gog gmail search "in:inbox is:unread" --account $ACE_GMAIL_ACCOUNT --client $ACE_GMAIL_CLIENT --json`
   (doubles as the inbox queue pull). Dead gog auth:
-  `gog login ace@dimagi-ai.com --client ace --services gmail` (ACE's gog client is `ace`,
-  deliberately per-agent).
+  `gog login ace@dimagi-ai.com --client canopy --services gmail`. **The gog client is the SHARED
+  fleet client (`canopy`), not per-agent** — same as eva/hal/ada; what's per-agent is the mailbox
+  (`--account`). `config/agent.json`'s `gog_client` is authoritative for the email engine; setting
+  it to `ace` kills every read/send, because no `credentials-ace.json` exists and the remedy it
+  prints is an interactive browser OAuth a headless turn can't run (jjackson/ace#1147).
 - **Board drain is config-gated and best-effort by design** — its absence NEVER blocks a turn (the
   ace-web vs canopy-web question is deliberately open; see `config/agent.json` `_doc`). If
   `canopy agent --help` works and a workbench token exists, drain per `skills/task-tracker`;

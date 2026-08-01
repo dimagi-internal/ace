@@ -33,11 +33,18 @@ plugin data dir when not exported):
 | Variable | Description |
 |----------|-------------|
 | `ACE_GMAIL_ACCOUNT` | The Gmail account to send/receive from (default `ace@dimagi-ai.com`) |
-| `ACE_GMAIL_CLIENT` | The GOG OAuth client name for this account (default `ace`) |
+| `ACE_GMAIL_CLIENT` | The GOG OAuth client name for this account (the SHARED fleet client, `canopy`) |
 
 The GOG CLI must be installed (`brew install steipete/tap/gogcli`) and authenticated for the
 configured account: `gog login $ACE_GMAIL_ACCOUNT --client $ACE_GMAIL_CLIENT --services gmail`.
-ACE uses its OWN gog client — never another agent's identity (and vice versa: echo never uses `ace`).
+
+**The gog client is SHARED across the fleet; the mailbox is what's per-agent.** Every agent
+(ace/eva/hal/ada) authorizes its own address under the one `canopy` OAuth client — identity bleed
+means acting as another agent's *mailbox*, and that is governed by `--account`, never by the
+client. `config/agent.json`'s `gog_client` is authoritative for the email engine
+(`canopy email`, `bin/ace-email`). Do **not** set it to `ace`: no `credentials-ace.json` is
+provisioned, so every read/send fails and the printed remedy (`gog login --client ace`) is an
+interactive browser OAuth that a headless turn cannot run (jjackson/ace#1147).
 
 ## Process
 
