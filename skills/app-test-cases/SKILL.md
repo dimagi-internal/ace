@@ -176,6 +176,71 @@ two smoke recipes share device state within one Phase 6 dispatch:
   menu-row tap instead of composing the palette recipe, use `row_txt` —
   same as the Learn side's `learn-tap-module.yaml`.
 
+#### Registration-then-followup Deliver apps — bind `MODULE_NAME` / `FORM_NAME` (dimagi-internal/ace#1138)
+
+**Most ACE Deliver apps are MULTI-MODULE, and that is by construction —
+not an accident to design around.** One form per module is a deliberate,
+load-bearing ACE pattern: Connect dedups deliver units by module slug
+(`get_or_create(DeliverApp, slug)`), so two forms in one module collapse
+into a SINGLE `DeliverUnit` and only one of them can ever be payable. Any
+Deliver app that registers an entity and then files repeat visits against
+it therefore has **at least two modules** — e.g. `CBF Registration` and
+`Community Meeting Record` on Deliver app
+`657a4bb7-fb2f-4a10-af43-8414707b2c43`
+(spark-facilitator/20260731-0656).
+
+`deliver-form-walk.yaml` used to tap the FIRST menu row at each level. On
+a multi-module app that walks into the registration module and never
+reaches the payable form — which is why that run could not author
+`journey-deliver.yaml` at all and Phase 6 got zero Deliver screenshots.
+**Always bind the target module (and the form, when its label differs)**,
+exactly as you already do for `learn-tap-module.yaml`:
+
+```yaml
+- runFlow:
+    file: deliver-form-walk.yaml
+    env:
+      MODULE_NAME: "Community Meeting Record"   # the PAYABLE module
+      FORM_NAME: "Community Meeting Record"     # omit when it equals MODULE_NAME
+```
+
+Both are optional and default to the legacy tap-first-row behavior when
+unbound, so single-module callers are unchanged — but a Deliver app with
+more than one module MUST bind `MODULE_NAME`, or the walk is silently
+wrong rather than loudly broken. Enforced structurally by
+`test/mcp/mobile/static-recipe-invariants.test.ts § positional row taps`.
+
+**The payable module is the one Connect pays for, not the first one.**
+Read the deliver units (`connect_list_deliver_units` /
+`connect_list_payment_units`) or the Nova blueprint to pick it — do not
+assume ordering.
+
+##### Ordering: a followup form needs its case to already exist — STILL BLOCKED (#1138 Gap 2)
+
+When the payable form is a `followup` on a case type (the normal shape
+for register-then-visit apps), reaching it forces a three-step order:
+
+1. walk the **registration** module's form first, so a case of that type
+   exists on the device;
+2. **select that case** from CommCare's `EntitySelectActivity` case list,
+   which renders BETWEEN the form row and the first question;
+3. only then answer the payable form.
+
+**Step 2 is not yet authorable.** There is no calibrated case-list
+selector in `mcp/mobile/selectors/connect-*.yaml` and no
+`deliver-case-select.yaml` in the static palette, because the map has
+never been calibrated against a live case-list ui-dump — and inventing a
+selector (or copying one from a sibling APK) is banned by
+§ *close the loop to the source of truth*. `deliver-form-walk.yaml`
+therefore HALTS LOUD at its terminal `form-nav-next` wait when it opens a
+followup form.
+
+Until #1138 Gap 2 lands: if the only payable form is a `followup`, halt
+with a **`[BLOCKER]`** naming ace#1138 rather than emitting a recipe that
+cannot run. Do NOT substitute the registration form for the payable one
+and call the journey a Deliver smoke — that produces a green journey that
+never exercises the payable unit.
+
 State the warm-state dependency in `journey-deliver.yaml`'s header
 comment: it is NOT independently cold-runnable; runners execute
 journey-learn → journey-deliver in order.

@@ -845,3 +845,123 @@ describe('menu-container anchors are display-mode-complete (ace#1127)', () => {
     ).toEqual([]);
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────
+// CLASS-LEVEL PREVENTER — a positional `row_txt` tap must be a GUARDED
+// FALLBACK, never the unconditional path
+//
+// dimagi-internal/ace#1138. `deliver-form-walk.yaml` tapped the FIRST
+// `row_txt` row at each of its two menu levels and documented the choice as
+// a "SINGLE-MODULE SMOKE assumption". That assumption is false for every ACE
+// Deliver app that registers an entity and then files repeat visits against
+// it, because ONE FORM PER MODULE IS A LOAD-BEARING ACE PATTERN: Connect
+// dedups deliver units by module slug, so a registration form plus a payable
+// followup is multi-module BY CONSTRUCTION. On
+// spark-facilitator/20260731-0656 the walk entered `CBF Registration` and
+// never reached `Community Meeting Record`, so `app-test-cases` could not
+// author `journey-deliver.yaml` at all — Phase 6 got zero Deliver
+// screenshots.
+//
+// The per-file edit is the instance fix. THIS is the fix: a positional row
+// tap can no longer be the thing a recipe does by default. It has to sit
+// inside a `runFlow` whose `when:` guard references a row-name variable —
+// i.e. it may only run as the "no name was bound" fallback. A future palette
+// recipe that reaches for "just tap row 1" goes red here instead of shipping
+// another silent wrong-row walk.
+//
+// Deliberately NOT a ban on positional taps: the legacy single-module
+// callers still need one, and removing it would be a breaking change to
+// every shipped Deliver journey. The invariant is about REACHABILITY, not
+// existence.
+const ROW_TXT_RE = /row_txt/;
+const ROW_NAME_VAR_RE = /\$\{(MODULE_NAME|FORM_NAME)\}/;
+
+type PaletteStep = Record<string, unknown>;
+
+/** Parse a recipe's step list (everything after the `---` front-matter separator). */
+function parseSteps(yamlText: string): PaletteStep[] {
+  const sepIdx = yamlText.search(/^---\s*$/m);
+  if (sepIdx === -1) return [];
+  const body = yamlText.slice(yamlText.indexOf('\n', sepIdx) + 1);
+  const parsed = parseYaml(body);
+  return Array.isArray(parsed) ? (parsed as PaletteStep[]) : [];
+}
+
+/**
+ * Walk the step tree collecting every POSITIONAL `row_txt` tap — a `tapOn`
+ * matching the row TextView by resource-id with no `text:` scoping, i.e. "tap
+ * whichever row Maestro finds first". `guarded` records whether the tap sits
+ * inside a `runFlow` whose `when:` clause references ${MODULE_NAME} /
+ * ${FORM_NAME}.
+ */
+function collectPositionalRowTaps(
+  steps: PaletteStep[] | undefined,
+  guarded: boolean,
+  out: { guarded: boolean }[],
+): void {
+  for (const step of steps ?? []) {
+    if (!step || typeof step !== 'object') continue;
+    for (const [key, value] of Object.entries(step)) {
+      if (key === 'tapOn') {
+        const sel = value as Record<string, unknown> | string | undefined;
+        if (
+          sel &&
+          typeof sel === 'object' &&
+          typeof sel.id === 'string' &&
+          ROW_TXT_RE.test(sel.id) &&
+          sel.text === undefined
+        ) {
+          out.push({ guarded });
+        }
+      } else if (key === 'runFlow') {
+        const rf = value as { when?: unknown; commands?: PaletteStep[] } | undefined;
+        if (!rf || typeof rf !== 'object') continue;
+        const nameGuarded =
+          guarded || ROW_NAME_VAR_RE.test(JSON.stringify(rf.when ?? null));
+        collectPositionalRowTaps(rf.commands, nameGuarded, out);
+      }
+    }
+  }
+}
+
+describe('positional row taps are name-scoped fallbacks only (ace#1138)', () => {
+  const paletteFiles = readdirSync(STATIC_DIR).filter((n) => n.endsWith('.yaml'));
+
+  it.each(paletteFiles)(
+    '%s never taps a menu row positionally outside a ${MODULE_NAME}/${FORM_NAME} guard',
+    (filename) => {
+      const taps: { guarded: boolean }[] = [];
+      collectPositionalRowTaps(parseSteps(readRecipe(filename)), false, taps);
+      const unguarded = taps.filter((t) => !t.guarded).length;
+      expect(
+        unguarded,
+        `${filename}: ${unguarded} positional \`row_txt\` tap(s) run unconditionally. ` +
+          'Tapping "whichever row is first" walks into the WRONG module the moment the ' +
+          'app has more than one — which every registration+followup Deliver app does by ' +
+          'construction (ace#1138). Wrap it in a `runFlow` whose `when:` guard references ' +
+          '${MODULE_NAME} or ${FORM_NAME}, so it can only fire as the no-name-bound fallback.',
+      ).toBe(0);
+    },
+  );
+
+  it('a palette that keeps a positional fallback also offers a name-scoped path', () => {
+    // The guard above is satisfiable by burying the positional tap under an
+    // unrelated guard. This is the other half: if a file taps rows at all, it
+    // must actually be able to tap them BY NAME — otherwise the multi-module
+    // case is still unauthorable, which was the substance of #1138.
+    const failures: string[] = [];
+    for (const filename of paletteFiles) {
+      const resolved = readRecipe(filename);
+      const taps: { guarded: boolean }[] = [];
+      collectPositionalRowTaps(parseSteps(resolved), false, taps);
+      if (taps.length === 0) continue;
+      if (!ROW_NAME_VAR_RE.test(stripComments(resolved))) {
+        failures.push(
+          `${filename}: has a positional row tap but no ${'${MODULE_NAME}'}/${'${FORM_NAME}'} ` +
+            'scoped tap — a multi-module app cannot be walked at all',
+        );
+      }
+    }
+    expect(failures, 'ace#1138').toEqual([]);
+  });
+});

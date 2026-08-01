@@ -9,26 +9,73 @@
 # Nav: Deliver home -> Start -> module list -> tap module row -> form list ->
 # tap form row -> form.
 #
-# MENU ANCHOR RULE (dimagi-internal/ace#1127): both menu waits go through
-# `${SELECTOR:deliver-suite-menu}`, which is DISPLAY-MODE-AGNOSTIC (it accepts
-# the list container `screen_suite_menu_list` OR the grid container
-# `grid_menu_grid`). These two waits were raw `screen_suite_menu_list`
-# literals until #1127, which is exactly why the Deliver leg walled the moment
-# Phase 3 started applying grid menu display app-wide (#1082/PR #1100). Never
+# MENU ANCHOR RULE (dimagi-internal/ace#1127): every menu wait/scope below goes
+# through `${SELECTOR:deliver-suite-menu}`, which is DISPLAY-MODE-AGNOSTIC (it
+# accepts the list container `screen_suite_menu_list` OR the grid container
+# `grid_menu_grid`). These waits were raw `screen_suite_menu_list` literals
+# until #1127, which is exactly why the Deliver leg walled the moment Phase 3
+# started applying grid menu display app-wide (#1082/PR #1100). Never
 # re-hardcode a single container id here — see the selector-map row and the
 # `menu-container anchors` invariant in static-recipe-invariants.test.ts.
 #
 # SELECTOR RULE (load-bearing — validated live, bednet-spot-check/20260602-1345
 # deliver leg PASS, ace 0.13.533): tap CommCare menu-list rows by
-# `id: org.commcare.dalvik:id/row_txt`, NOT `text: "<row label>"`. A `text:`
-# match hits the non-clickable action-bar title (which carries the same label)
-# FIRST in Maestro's document order, so the tap is a no-op. This mirrors the
-# Learn side's `learn-tap-module.yaml`, which taps rows the same way.
+# `id: org.commcare.dalvik:id/row_txt`, NOT `text: "<row label>"`. A bare
+# `text:` match hits the non-clickable action-bar title (which carries the same
+# label) FIRST in Maestro's document order, so the tap is a no-op. The
+# name-scoped branches below therefore ALWAYS scope their text match with
+# `below: id: ${SELECTOR:deliver-suite-menu}` (the list body), which is the
+# same body-scoping learn-tap-module.yaml Branches B/C made load-bearing after
+# jjackson/ace#590 — an unscoped `text:` match resolves to the toolbar title
+# and the row never opens.
 #
-# SINGLE-MODULE SMOKE assumption: taps the FIRST `row_txt` row at each level
-# (the deliver smoke is one module / one form by construction). A multi-module
-# Deliver app would need per-row name scoping — see `learn-tap-module.yaml`'s
-# `${MODULE_NAME}`-scoped pattern.
+# ── MODULE_NAME / FORM_NAME SCOPING (dimagi-internal/ace#1138) ──────────────
+#
+# Parameters (BOTH OPTIONAL — omit both for the legacy single-module behavior):
+#   ${MODULE_NAME} — visible label of the MODULE row to tap in the module list
+#                    (e.g. "Community Meeting Record").
+#   ${FORM_NAME}   — visible label of the FORM row inside that module, when it
+#                    DIFFERS from ${MODULE_NAME}.
+#
+# WHY THIS EXISTS. This recipe used to tap the FIRST `row_txt` row at each of
+# the two menu levels, on the stated assumption that "the deliver smoke is one
+# module / one form by construction". That assumption is FALSE for every ACE
+# Deliver app that registers an entity and then files repeat visits against it,
+# because ONE FORM PER MODULE IS A DELIBERATE, LOAD-BEARING ACE PATTERN:
+# Connect dedups deliver units by module slug (`get_or_create(DeliverApp,
+# slug)`), so two forms in one module collapse into a single DeliverUnit. A
+# registration form plus a payable followup is therefore multi-module BY
+# CONSTRUCTION. Live case: Deliver app 657a4bb7-fb2f-4a10-af43-8414707b2c43
+# (spark-facilitator/20260731-0656) has modules `CBF Registration` and
+# `Community Meeting Record`; the positional walk entered CBF Registration and
+# never reached the payable form, so `app-test-cases` could not author
+# `journey-deliver.yaml` at all.
+#
+# BACK-COMPAT. When neither name is bound, Maestro substitutes the empty
+# string; `text: ""` matches NO node (the same semantics learn-tap-module.yaml
+# Branch C already relies on), so every name-scoped guard below evaluates
+# false and the positional fallback fires — byte-for-byte the legacy behavior
+# for existing single-module callers.
+#
+# KNOWN CAVEAT (deliberate, matches the Learn side's risk profile): if
+# ${MODULE_NAME} IS bound but its row is scrolled out of the viewport, the
+# name guard is false and the positional fallback taps row 1 — i.e. the wrong
+# module, silently. ACE Deliver apps have 2-3 modules, all on one screen, so
+# this is not reachable today; the terminal `${SELECTOR:form-nav-next}` wait
+# still fails loud if the walk lands somewhere that is not a form. If a
+# Deliver app ever grows a scrolling module list, add a scroll-into-view step
+# ahead of the Level-1 branch rather than widening the fallback.
+#
+# FOLLOWUP FORMS ARE NOT YET WALKABLE (ace#1138 Gap 2 — still OPEN). A form
+# registered as a `followup` on a case type renders CommCare's
+# EntitySelectActivity case list BETWEEN the form row and the first question.
+# There is no calibrated case-list selector and no `deliver-case-select.yaml`
+# in the palette yet, so this recipe HALTS LOUD at the terminal
+# `${SELECTOR:form-nav-next}` wait when it opens a followup form. That halt is
+# correct and named — do NOT relax the assertion to paper over it. Reaching a
+# followup form additionally requires a case to EXIST, which means walking the
+# registration module's form first (see skills/app-test-cases/SKILL.md
+# § Registration-then-followup Deliver apps).
 appId: org.commcare.dalvik
 ---
 - takeScreenshot: "deliver-form-walk-home"
@@ -44,24 +91,127 @@ appId: org.commcare.dalvik
     timeout: 15000
 - takeScreenshot: "deliver-form-walk-module-list"
 
-# Tap the module row by id (NOT text — see SELECTOR RULE above).
-- tapOn:
-    id: "org.commcare.dalvik:id/row_txt"
+# ── LEVEL 1: module row ────────────────────────────────────────────────────
+# Named branch. Body-scoped so the tap lands on the tappable row, not the
+# toolbar title that carries the same label (ace#590).
+- runFlow:
+    when:
+      visible:
+        text: "${MODULE_NAME}"
+        below:
+          id: "${SELECTOR:deliver-suite-menu}"
+    commands:
+      - takeScreenshot: "deliver-form-walk-module-row-${MODULE_NAME}"
+      - tapOn:
+          text: "${MODULE_NAME}"
+          below:
+            id: "${SELECTOR:deliver-suite-menu}"
+
+# Positional fallback — fires only when ${MODULE_NAME} named nothing in the
+# list body (unbound, i.e. the legacy single-module call). See BACK-COMPAT.
+- runFlow:
+    when:
+      notVisible:
+        text: "${MODULE_NAME}"
+        below:
+          id: "${SELECTOR:deliver-suite-menu}"
+    commands:
+      - tapOn:
+          id: "org.commcare.dalvik:id/row_txt"
+
 - waitForAnimationToEnd:
     timeout: 5000
-- extendedWaitUntil:
-    visible:
-      id: "${SELECTOR:deliver-suite-menu}"
-    timeout: 10000
-- takeScreenshot: "deliver-form-walk-form-list"
 
-# Tap the form row by id (same rule).
-- tapOn:
-    id: "org.commcare.dalvik:id/row_txt"
+# ── LEVEL 2: form row ──────────────────────────────────────────────────────
+# Each branch re-guards on "still on the menu AND not already in a form", so
+# whichever branch fires first navigates away and the rest are skipped.
+#
+# CommCare's auto-skip: when a module holds exactly ONE form whose display name
+# DIFFERS from the module name, CommCare suppresses the intermediate one-row
+# form list and launches the form directly — so after Level 1 we may ALREADY
+# be on FormEntryActivity. The `notVisible: form-nav-next` guard makes every
+# Level-2 branch a no-op in that case (same contract as learn-tap-module.yaml).
+
+# 2a — named form row (form name differs from module name).
+- runFlow:
+    when:
+      visible:
+        id: "${SELECTOR:deliver-suite-menu}"
+      notVisible:
+        id: "${SELECTOR:form-nav-next}"
+    commands:
+      - takeScreenshot: "deliver-form-walk-form-list"
+      - runFlow:
+          when:
+            visible:
+              text: "${FORM_NAME}"
+              below:
+                id: "${SELECTOR:deliver-suite-menu}"
+          commands:
+            - tapOn:
+                text: "${FORM_NAME}"
+                below:
+                  id: "${SELECTOR:deliver-suite-menu}"
+            - waitForAnimationToEnd:
+                timeout: 5000
+
+# 2b — same-name case: the module's single form shares the module's label, so
+# CommCare did NOT auto-skip and the one-row form list shows ${MODULE_NAME}.
+- runFlow:
+    when:
+      visible:
+        id: "${SELECTOR:deliver-suite-menu}"
+      notVisible:
+        id: "${SELECTOR:form-nav-next}"
+    commands:
+      - runFlow:
+          when:
+            visible:
+              text: "${MODULE_NAME}"
+              below:
+                id: "${SELECTOR:deliver-suite-menu}"
+          commands:
+            - tapOn:
+                text: "${MODULE_NAME}"
+                below:
+                  id: "${SELECTOR:deliver-suite-menu}"
+            - waitForAnimationToEnd:
+                timeout: 5000
+
+# 2c — positional fallback. Nested notVisible guards so this fires ONLY when
+# NEITHER name is present in the list body (Maestro's `when:` takes at most one
+# `visible:` and one `notVisible:`, so "neither" has to nest).
+- runFlow:
+    when:
+      visible:
+        id: "${SELECTOR:deliver-suite-menu}"
+      notVisible:
+        id: "${SELECTOR:form-nav-next}"
+    commands:
+      - runFlow:
+          when:
+            notVisible:
+              text: "${FORM_NAME}"
+              below:
+                id: "${SELECTOR:deliver-suite-menu}"
+          commands:
+            - runFlow:
+                when:
+                  notVisible:
+                    text: "${MODULE_NAME}"
+                    below:
+                      id: "${SELECTOR:deliver-suite-menu}"
+                commands:
+                  - tapOn:
+                      id: "org.commcare.dalvik:id/row_txt"
+                  - waitForAnimationToEnd:
+                      timeout: 5000
 
 # Form's first question is on screen once the form-nav bar renders.
+# NOTE: a `followup` form stops on the EntitySelectActivity case list instead
+# and this wait fails loud — ace#1138 Gap 2, see the header.
 - extendedWaitUntil:
     visible:
-      id: "org.commcare.dalvik:id/nav_btn_next"
+      id: "${SELECTOR:form-nav-next}"
     timeout: 15000
 - takeScreenshot: "deliver-form-walk-form-question"
