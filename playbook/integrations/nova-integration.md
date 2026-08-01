@@ -284,25 +284,13 @@ to the ACE Gmail identity (`ACE_GMAIL_ACCOUNT`) at mint time.
   remediation: `claude mcp remove nova --scope user`, then restart
   Claude Code. `/ace:setup` removes it idempotently on every run.
 
-- **No known upstream bugs.** 16 of 18 filed issues are closed;
-  remaining two (#8 field-level multimedia, #12 multi-project-space
-  picker) are feature requests. Notable capabilities:
-  - The `connect.deliver_unit` marker is **module-level**: set it via
-    `add_module`/`update_module(module_type: "connect.deliver_unit",
-    entity_id, entity_name)` (the module's `deliver_unit_slug`
-    auto-derives from its id). There is no deliver `form_type` — the
-    deliver form stays `form_type: "basic"`. Do NOT pass a nested
-    `connect: {deliver_unit: {...}}` object: `add_module` throws an
-    opaque `"Unknown error"` and `update_form` type-rejects it. Live
-    enums: `module_type` ∈ {basic, connect.learn_module,
-    connect.deliver_unit}; `form_type` ∈ {basic, connect.assessment}.
-    (Corrected 2026-06-01 — the prior note here wrongly placed deliver
-    `entity_id`/`entity_name` on `update_form`; verified live on
-    bednet-spot-check 20260601-1252, jjackson/ace#660.)
+- **Notable capabilities (no open upstream bugs blocking ACE).** 16 of
+  18 filed issues are closed; remaining two (#8 field-level multimedia,
+  #12 multi-project-space picker) are feature requests.
   - `update_form` with nullable properties (e.g. `connect: null`)
     correctly clears on disk.
   - Autonomous architect has all case-list-config tools
-    (`add_case_list_column`, etc.) — multi-module builds self-resolve
+    (`add_case_list_columns`, etc.) — multi-module builds self-resolve
     validation errors without ACE-side patching.
   - XForm entity-encoding handles `<`/`>`/`&` in labels.
   - Connect block IDs enforced to 50-char limit at save time.
@@ -311,6 +299,169 @@ to the ACE Gmail identity (`ACE_GMAIL_ACCOUNT`) at mint time.
   ACE-side defensive checks (`app-connect-coverage`, `app-release` CCZ
   verification, `commcare-setup` turn-0 retry) remain as safety nets
   but should not fire in normal operation.
+
+- **`learn_module.time_estimate` is HOURS, not minutes — upstream's own
+  description is wrong.** The live schema still reads *"Estimated
+  minutes to complete the module's content"* on both `configure_connect`
+  and `update_form` (re-confirmed 2026-07-31), but the value renders in
+  Connect as hours. Author it as hours. Upstream:
+  voidcraft-labs/nova-plugin#36. Do not "correct" ACE's skill text to
+  match the upstream string — the string is the bug.
+
+## The 2026-07-31 uuid-addressing migration (read this before writing a Nova call)
+
+Nova redeployed mid-run at ~15:45Z on 2026-07-31 and moved its **entire**
+surface from index-based to uuid-based addressing in one shot. A call
+that returned real data at 14:55Z was rejected at 15:50Z:
+
+```
+MCP error -32602: Invalid arguments for tool get_field:
+  path: ["moduleUuid"]  expected string, received undefined
+  code: "unrecognized_keys"  keys: ["moduleIndex","formIndex","fieldId"]
+```
+
+Discovered two Nova builds deep in Phase 3 of
+`spark-facilitator/20260731-0656` (jjackson/ace#1132, #1133). Verified
+against `POST https://mcp.commcare.app/mcp` `tools/list` — **63 tools,
+and zero of them accept any `*Index` parameter.** The migration is
+total; there is no partial-rollout tool still taking indices.
+
+| tool | live `required` |
+|---|---|
+| `get_module` | `[moduleUuid, app_id]` |
+| `get_form` | `[moduleUuid, formUuid, app_id]` |
+| `get_field` | `[moduleUuid, formUuid, fieldUuid, app_id]` |
+| `add_fields` | `[moduleUuid, formUuid, fields, app_id]` (+ `parentUuid` / `afterFieldUuid` / `beforeFieldUuid`) |
+| `edit_field` | `[moduleUuid, formUuid, fieldUuid, updates, app_id]` |
+| `update_form` | `[moduleUuid, formUuid, app_id]` (+ `connect`, new `displayCondition`) |
+| `update_module` | `[moduleUuid, app_id]` — **no `module_type`** |
+| `update_app` | `[name, app_id]` — **`connect_type` REMOVED** |
+| `get_app`, `list_apps`, `search_apps`, `search_blueprint`, `upload_app_to_hq`, `compile_app` | unchanged |
+
+`moduleUuid` / `formUuid` / `fieldUuid` are regex-checked as canonical
+**lowercase RFC UUIDs**, so a semantic field id (`community_id`) is
+rejected outright — this is not a rename you can paper over.
+
+### Where uuids come from — capture them, don't re-derive them
+
+**`get_app({app_id})` is the one-call resolver.** Its markdown blueprint
+carries a `[uuid …]` on every module, every form, and every field, plus
+case-list column and search-input uuids — the whole addressing map in a
+single read. Confirmed live 2026-07-31:
+
+```
+- Module "CBF Registration" [uuid b60055c1-ad1c-4542-895e-1ce42a8596de] (case_type: cbf)
+  - Form "CBF Registration" [uuid c3deb000-1903-46cd-91cf-e7771ddd070e] (registration, 12 fields)
+    [Connect enabled]
+    - community_id [uuid c3df54f7-ba50-4639-a1a6-804dfa30b2bf] (text): "Community number" → cbf.community_id
+```
+
+Two sanctioned resolvers, for different jobs:
+
+- **`get_app({app_id})`** — whole-app enumeration. Use this when a skill
+  walks every form (coverage loops, field-count recipes, eval reads).
+  One call, then read uuids off the map.
+- **`search_blueprint({query, app_id})`** — targeted lookup when you hold
+  a *semantic* name (a field id, case property, label fragment, or
+  module/form name) and need its uuids. Returns
+  `{results: [{type, moduleUuid, formUuid, fieldUuid, columnUuid?, field, value, context}]}`.
+
+**Rule: persist uuids at build time.** `pdd-to-*-app` writes the module /
+form / field uuids into its `*_app_summary.md` frontmatter so downstream
+steps address by uuid without a re-lookup. One `get_app` at the end of
+the build beats N resolutions later. `create_module` and `create_form`
+also accept a **caller-supplied** `moduleUuid` / `formUuid`, so a build
+can mint uuids up front and never look them up at all.
+
+### `configure_connect` replaced `update_app({connect_type})` — and it is REPLACE-ALL
+
+`update_app` now sets the display name only. The app-level Connect type
+moved to a new tool:
+
+```
+configure_connect({ app_id, mode, participants })
+  mode: "learn" | "deliver" | null
+  participants: [{ formUuid, connect: { learn_module?, assessment?, deliver_unit?, task? } }]
+```
+
+It sets the app-level mode **and** every form's Connect block atomically,
+which is strictly better than the hand-enforced set-then-re-read retry
+loop it replaced — the `connect_type: ""`-with-populated-form-blocks
+state that ace#783 healed is unreachable through this API.
+
+> **⚠ It is REPLACE-ALL, not a patch.** Upstream's own words: *"learn/deliver
+> requires the complete nonempty UUID-addressed participant set, and every
+> unlisted form becomes auxiliary."* A partial `participants[]` **silently
+> clears the Connect block off every form you omitted** — turning a
+> marker-repair into a marker-deletion. Always enumerate the COMPLETE
+> participating set (read it from `get_app` first) before calling.
+> `mode: null` turns Connect off and clears every form block.
+
+`update_form({moduleUuid, formUuid, connect})` still exists and has the
+**opposite** semantics — per-form and additive. Upstream: *"Refine this
+already-participating form after the app has a Connect mode: omitted
+sub-configs keep their current value … Use configure_connect for enable,
+mode switch, participant-set changes, or disable; whole-slot null is
+refused here."*
+
+| Job | Tool |
+|---|---|
+| Enable Connect / set app mode / add or remove a participating form / disable | `configure_connect` (complete participant set) |
+| Tweak one sub-config on a form that ALREADY participates | `update_form({connect})` |
+
+Connect blocks are **form-level**, addressed by `formUuid`. (The prior
+note here said `deliver_unit` was module-level via
+`add_module`/`update_module(module_type: …)` — that is dead: there is no
+`add_module` tool, and live `update_module` has no `module_type`
+property.)
+
+### Field and expression shapes changed in the same redeploy
+
+- **`case_property_on: "cbf"` → `caseWrite: {caseType, property}`.**
+  Upstream: *"Complete case destination for this answer … The module's
+  own type writes its primary case; a different type creates a child case
+  (that child needs a writer whose `property` is `case_name`). Never set
+  this on media kinds."*
+- **`caseWrite` is WRITE-ONLY — it does not preload.** A *visible*
+  case-bound field on a followup form preloads implicitly, with no
+  expression needed. Don't author a preload expression to "fix" a field
+  that already reads its case value.
+- **Expressions are STRUCTURED, not strings.** `label`, `hint`,
+  `required`, `relevant`, `validate`, `calculate`, `default_value`,
+  `deliver_unit.entity_id` / `entity_name`, and `assessment.user_score`
+  all take `{parts: [...]}`, where a part is one of:
+  `{kind:'text', text}` · `{kind:'field-ref', uuid}` ·
+  `{kind:'path-ref', uuid}` · `{kind:'case-ref', caseType, property}` ·
+  `{kind:'user-ref', property}` ·
+  `{kind:'user-property-ref', userPropertyUuid}`.
+  **A plain string is rejected.**
+- **A `hidden` field is rejected unless it carries `calculate` or
+  `default_value`.** `calculate` recomputes when a referenced field
+  changes; `default_value` is fixed at load.
+- **Nova validates on write and applies NOTHING on rejection.** A failed
+  call returns "Nothing was changed" and names the exact problem — so a
+  rejection is safe to read and retry against, and a partial-apply state
+  is not a thing to defend against.
+
+### Four tools ACE did not previously know
+
+`configure_connect` (above), `get_lookup_tables` (project data tables +
+column uuids for lookup-backed fields), `rename_case_properties`
+(whole-app simultaneous rename; chains/swaps/cycles allowed, merges
+rejected), `set_field_options_source` (atomically replace a choice
+field's complete option source — inline choices or a data table).
+
+### The preventer
+
+`scripts/probe-nova-contract.ts` pins the live `tools/list` to what ACE
+actually sends — required params per tool, the removed-`connect_type`
+assertion, the uuid regex, and a global "no tool anywhere accepts an
+index-addressing param" rule. `test/scripts/nova-contract.test.ts` runs
+the pure checker offline against a captured fixture on every `npm test`,
+and hits the live server under `NOVA_INTEGRATION=1`. ACE had no probe
+pinning Nova's contract before this; that absence is precisely why the
+migration cost two Nova builds. Run it manually with
+`npx tsx scripts/probe-nova-contract.ts`.
 
 ## What is NOT here
 

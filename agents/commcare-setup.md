@@ -152,19 +152,59 @@ architect's bound toolset at L1, and (c) the live Nova server contract:
   the deferred registry advertised it but the running subprocess didn't serve it.
 
 So probe **callability, not just loadability**. Before dispatching the
-architect, exercise the form-creation path once against the live subprocess:
+architect, exercise the live subprocess twice — once for the addressing model,
+once for the build path. Both are mandatory; neither takes more than ~1s.
 
-1. `ToolSearch select:...generate_scaffold` (or `create_form`) to confirm the
-   schema loads at L0, **then actually CALL a minimal form-creation op** — the
-   cheapest way is to let Step 1's first `pdd-to-learn-app` build be the probe,
-   but that reintroduces the 170K-token burn. Instead, assert callability
-   directly: attempt `generate_scaffold` (or `create_form` with the bound
-   schema's exact arg shape) against a throwaway/target app and confirm it
-   returns a real result, not `-32602 Tool … not found` and not a server
-   schema-mismatch error.
-2. Confirm the `create_form` bound schema's params match what the live server
-   expects (if the bound schema has no `fields` param but the server demands
-   one — or vice versa — that is the drift).
+**1. Addressing-model round-trip (MANDATORY — the `*Uuid` probe).**
+
+This probe exists because the two gates above CANNOT see an addressing-model
+change. `get_hq_connection` and `list_apps` take no positional addressing at
+all, so a session can satisfy Step 0a + 0b + a "does a Nova tool answer?"
+check and still be holding a tool surface that rejects every read the phase is
+about to issue. That is exactly what happened on
+`spark-facilitator/20260731-0656` (jjackson/ace#1132): Nova migrated its whole
+surface from `moduleIndex`/`formIndex`/`fieldId` to
+`moduleUuid`/`formUuid`/`fieldUuid` mid-run, and the failure surfaced two Nova
+builds deep.
+
+Run an **addressed read round-trip against a real owned app**:
+
+1. `list_apps({limit: 1})` → take any `app_id` the ACE identity owns (a prior
+   run's app is fine; this is read-only).
+2. `get_app({app_id})` → **assert the blueprint carries `[uuid <rfc-uuid>]`
+   markers** on its modules and forms. `get_app` is ACE's index→uuid resolver;
+   if the uuids are gone, every downstream addressed call is unsatisfiable.
+3. Take the FIRST module uuid off that blueprint and call
+   `get_module({app_id, moduleUuid})`. **Assert it returns a real module
+   payload.**
+
+**HALT** on any of: no `[uuid …]` markers in `get_app`; a
+`code: "unrecognized_keys"` naming `moduleUuid`; an
+`expected string, received undefined` on a `*Uuid` path; or `-32602 … not
+found`. Halt message: *"Nova's addressing model does not match what ACE sends
+(uuid-addressed reads rejected at level 0). This is an upstream contract
+change, not a stale subprocess — run the Nova contract probe to get the exact
+drift, then migrate the affected skills before resuming."*
+
+Do NOT work around a failure here by guessing a different parameter name. The
+authoritative answer is one command away — it diffs the live `tools/list`
+against what ACE actually sends and names every parameter that moved:
+
+```bash
+ACE_ROOT="${CLAUDE_PLUGIN_ROOT:-$(python3 -c "import json,os; d=json.load(open(os.path.expanduser('~/.claude/plugins/installed_plugins.json'))); print(d['plugins']['ace@ace'][0]['installPath'])")}"
+npx --prefix "$ACE_ROOT" tsx "$ACE_ROOT/scripts/probe-nova-contract.ts"
+```
+
+**2. Build-path callability.**
+
+`ToolSearch select:create_form` to confirm the schema loads at L0, then confirm
+the bound `create_form` schema's params match what the live server expects (if
+the bound schema has no `fields` param but the server demands one — or vice
+versa — that is the drift). The `-32602`-on-call class is real: on
+`bednet-spot-check/20260613-2313` a tool whose full schema loaded at L0 was not
+served by the running subprocess at all. (Note: `generate_scaffold` does **not**
+exist on the live surface — the schema-generation tool is `generate_schema`. An
+older revision of this step named `generate_scaffold`; don't probe with it.)
 
 On `-32602 … not found`, a server schema-mismatch, or any "tool advertised but
 uncallable" result, **HALT immediately** with the same remediation as the
@@ -174,6 +214,13 @@ session (stale MCP subprocess — schema/tool drift). Quit and reopen Claude Cod
 subprocesses — see CLAUDE.md § MCP changes need a full Claude restart), then
 resume `/ace:run <opp>/<run-id>`."* This turns a 25-min-in, two-architect-dispatch
 failure into a second-0 halt — the same asymmetry Step 0b closes for HQ binding.
+
+**Telling the two failure classes apart matters.** A *stale subprocess*
+(tool advertised but uncallable, or bound schema disagreeing with the server)
+is fixed by restarting Claude Code. A *contract change* (the live server
+rejects the parameter names ACE sends, and the probe script agrees) is NOT
+fixed by restarting — it needs a skill migration. Restarting into the same
+rejection twice is the tell.
 
 #### Subagent inheritance
 

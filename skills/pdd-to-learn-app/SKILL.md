@@ -288,9 +288,29 @@ Generate the Learn (training) app from the PDD using the Nova plugin
        expected `(module, form)` is missing — that's a structural gap
        the field-count recipe can't fix.
 
+       **This same call is the addressing map.** Nova is uuid-addressed
+       (2026-07-31 migration — see
+       `playbook/integrations/nova-integration.md § The 2026-07-31
+       uuid-addressing migration`); there are no `moduleIndex` /
+       `formIndex` parameters on any tool. `get_app`'s blueprint prints
+       `[uuid <rfc-uuid>]` on every module, form, and field:
+
+       ```
+       - Module "Bednet Basics" [uuid b60055c1-…] (case_type: cbf)
+         - Form "Lesson 1" [uuid c3deb000-…] (survey, 9 fields)
+           - user_score [uuid c3df54f7-…] (hidden)
+       ```
+
+       Build `uuids[module][form] -> {moduleUuid, formUuid}` (and the
+       per-field uuids) from this ONE response and carry it through the
+       rest of the recipe. One lookup beats N. If you only hold a
+       semantic name later, `search_blueprint({query, app_id})` resolves
+       it — but prefer the map you already have.
+
     3. **For every form in the expected map**, call
-       `get_form({app_id, moduleIndex, formIndex})` (one call per form,
-       batchable in parallel across forms). Collect:
+       `get_form({app_id, moduleUuid, formUuid})` using the uuids from
+       step 2 (one call per form, batchable in parallel across forms).
+       Collect:
        - `persisted_ids`: the set of `field.id` values present in the
          response. Hidden / label / group / repeat fields all count.
        - `persisted_count`: `len(persisted_ids)`.
@@ -333,43 +353,93 @@ Generate the Learn (training) app from the PDD using the Nova plugin
     Same shape as `app-connect-coverage` — verify+fix in a bounded
     loop, post-Nova.
 
-4b. **Learn-marker compile pre-check (catch `connect_type: ""` before
-    deploy) — runs at LEVEL 0.** Mirror of `pdd-to-deliver-app` § 4e.
-    The autonomous architect (`Agent(nova:nova-architect-autonomous)`)
-    **cannot set the app-level Connect type** — `update_app` /
-    `generate_scaffold` are not in its tool allowlist — so a Learn app it
-    builds can land with `connect_type: ""` even though every form already
-    carries its `connect.learn_module` / `connect.assessment` block. The
-    per-form `[Connect enabled]` flag is a **FALSE POSITIVE for compile**:
-    with `connect_type: ""` the released CCZ ships with ZERO
-    `<learn:module>` / `<learn:assessment>` markers, and Connect's
-    HQ→Connect sync cannot register the learn module or the assessment
-    gate. `app-release-qa` (Phase 3 Step 2.8) catches it post-release, but
-    that is a full deploy→build→release cycle too late — assert it here,
-    cheaply, on the already-built app.
+4b. **Learn-marker compile pre-check (catch a missing app-level Connect
+    type before deploy) — runs at LEVEL 0.** Mirror of
+    `pdd-to-deliver-app` § 4e. The autonomous architect
+    (`Agent(nova:nova-architect-autonomous)`) can land a Learn app with
+    **no app-level Connect mode** even though every form already carries
+    its `connect.learn_module` / `connect.assessment` block. The per-form
+    `[Connect enabled]` flag is a **FALSE POSITIVE for compile**: with no
+    app-level mode the released CCZ ships with ZERO `<learn:module>` /
+    `<learn:assessment>` markers, and Connect's HQ→Connect sync cannot
+    register the learn module or the assessment gate. `app-release-qa`
+    (Phase 3 Step 2.8) catches it post-release, but that is a full
+    deploy→build→release cycle too late — assert it here, cheaply, on the
+    already-built app.
 
     1. Call `get_app({app_id})`. Its summary header prints the app's
        Connect type (e.g. `Connect type: learn`); a standard app prints
-       none.
+       none. **Keep this response** — you need its complete form list and
+       `[uuid …]` markers for step 3.
     2. **Assert the header reads `Connect type: learn`.** Do NOT rely on
        the per-form `[Connect enabled]` flag — it is a false positive for
        compile (see above).
-    3. On a miss, set it at LEVEL 0 — `update_app` is an architect
-       allowlist gap just like the case-list-config family, but it IS
-       available to the level-0 session that executes this skill. Call
-       `update_app({app_id, connect_type: "learn"})`, then re-run
-       `get_app` and re-assert. **Bounded loop, max 3 iterations.** If the
-       header still does not read `Connect type: learn` after the third
-       attempt (or `update_app` is itself unavailable), halt with a clear
+    3. On a miss, heal at LEVEL 0 with **`configure_connect`**, which is
+       available to the level-0 session that executes this skill.
+       `update_app` no longer carries `connect_type` — it was removed in
+       Nova's 2026-07-31 redeploy (jjackson/ace#1133); `configure_connect`
+       replaced it and sets the app-level mode AND every form's Connect
+       block in one atomic call.
+
+       > **⚠ `configure_connect` is REPLACE-ALL, not a patch.** Upstream:
+       > *"learn/deliver requires the complete nonempty UUID-addressed
+       > participant set, and every unlisted form becomes auxiliary."*
+       > **Every form you omit from `participants[]` has its existing
+       > Connect block CLEARED.** A partial participant list turns this
+       > marker-repair into a marker-deletion — strictly worse than the
+       > problem you came to fix. This is the OPPOSITE of
+       > `update_form({connect})`, which is per-form and additive.
+
+       So: **enumerate the COMPLETE participating set from the step-1
+       `get_app` response first**, then call once:
+
+       ```
+       configure_connect({
+         app_id,
+         mode: "learn",
+         participants: [
+           // EVERY content/quiz form in the app, addressed by formUuid.
+           { formUuid: "<content form uuid>",
+             connect: { learn_module: { name, description, time_estimate } } },
+           { formUuid: "<quiz form uuid>",
+             connect: { assessment: { user_score: { parts: [
+               { kind: "field-ref", uuid: "<user_score field uuid>" } ] } } } },
+           …
+         ]
+       })
+       ```
+
+       Note the **structured expression shape** — `user_score` (like
+       `label`, `relevant`, `calculate`, `default_value`) takes
+       `{parts: [...]}`, not a plain XPath string; a bare string is
+       rejected. Omit each block's `id` and let Nova derive it.
+       `time_estimate` is in **hours** despite upstream's schema
+       description saying minutes (nova-plugin#36).
+
+       Then re-run `get_app` and re-assert BOTH the header and that every
+       form that carried a Connect block before still carries one.
+       **Bounded loop, max 3 iterations.** If the header still does not
+       read `Connect type: learn` after the third attempt (or
+       `configure_connect` is itself unavailable), halt with a clear
        `learn-marker-wont-compile` failure and do NOT write the success
        summary.
 
+    Use `update_form({moduleUuid, formUuid, connect})` **only** to refine
+    one sub-config on a form that ALREADY participates — it cannot enable
+    Connect, switch mode, or add a participant, and it refuses a
+    whole-slot null. Full division of labour:
+    `playbook/integrations/nova-integration.md § configure_connect
+    replaced update_app({connect_type})`.
+
     Reproducer: bednet-spot-check/20260615-0702 — the Learn app scaffolded
-    `connect_type: ""`; the first released CCZ had `module=0`/
-    `assessment=0`; an L0 `update_app(connect_type="learn")` + re-deploy +
-    re-release healed it to `module=1`/`assessment=1`. The fix is this
-    pre-check, NOT a `mcp/connect/backends/commcare.ts` change — the
-    compile is correct given a correct `connect_type`. See jjackson/ace#783.
+    with no app-level Connect type; the first released CCZ had `module=0`/
+    `assessment=0`; an L0 heal + re-deploy + re-release fixed it to
+    `module=1`/`assessment=1`. The fix is this pre-check, NOT a
+    `mcp/connect/backends/commcare.ts` change — the compile is correct
+    given a correct app-level mode. See jjackson/ace#783. (That heal was
+    `update_app({connect_type: "learn"})` at the time; the parameter was
+    removed 2026-07-31 and `configure_connect` is now the only path —
+    jjackson/ace#1133.)
 
 4c. **Conditional-result-label pre-check (catch the unconditional pass
     message before deploy) — runs at LEVEL 0.** This is the structural
@@ -389,7 +459,9 @@ Generate the Learn (training) app from the PDD using the Nova plugin
     scope in § Step 3). If the PDD specifies no gate, skip this step.
 
     1. For each form carrying a `connect.assessment` block, call
-       `get_form({app_id, moduleIndex, formIndex})`.
+       `get_form({app_id, moduleUuid, formUuid})` (uuids from the § 4a
+       step-2 map, or `search_blueprint({query, app_id})` if you don't
+       have them).
     2. **Assert the form has a genuine pass/fail result EXPERIENCE:** at
        least one `label` field whose `relevant` references
        `user_score >= <threshold>` (the PASS message) AND a separate
@@ -398,21 +470,43 @@ Generate the Learn (training) app from the PDD using the Nova plugin
        `relevant` condition (fires unconditionally) FAILS this assertion —
        that is the `assessment_gating` hard-gate trigger.
     3. On a miss, heal at LEVEL 0 (`edit_field` / `add_fields` are
-       available to the level-0 session that executes this skill): add a
-       `relevant: '#form/user_score >= <threshold>'` condition to the
-       existing pass label, and `add_fields` a `result_fail` label with
-       `relevant: '#form/user_score < <threshold>'` carrying retry
-       guidance (review the content, answer again). Use `<threshold>` =
-       the PDD's passing score (default 80). Then re-fetch via `get_form`
-       and re-assert. **Bounded loop, max 3 iterations.** If the form
-       still lacks a conditional pass+fail pair after the third attempt,
-       halt with a clear `assessment-result-unconditional` failure and do
-       NOT write the success summary.
+       available to the level-0 session that executes this skill):
+       `edit_field({app_id, moduleUuid, formUuid, fieldUuid, updates})`
+       to add a pass condition to the existing pass label, and
+       `add_fields({app_id, moduleUuid, formUuid, fields})` to append a
+       `result_fail` label carrying retry guidance (review the content,
+       answer again). Use `<threshold>` = the PDD's passing score
+       (default 80). Then re-fetch via
+       `get_form({app_id, moduleUuid, formUuid})` and re-assert.
+       **Bounded loop, max 3 iterations.** If the form still lacks a
+       conditional pass+fail pair after the third attempt, halt with a
+       clear `assessment-result-unconditional` failure and do NOT write
+       the success summary.
 
-    Note: the `relevant` XPath legitimately contains `<` / `>=`; that is
-    an attribute expression Nova entity-encodes at compile, NOT label text
-    — the angle-bracket ban (§ Step 3) applies only to label/option/hint
-    TEXT, so a `user_score < 80` relevance is fine.
+       **`relevant` is a STRUCTURED expression, not a string** (Nova's
+       2026-07-31 redeploy — a bare string is rejected). Reference the
+       score field by uuid rather than by `#form/` path:
+
+       ```
+       relevant: { parts: [
+         { kind: "field-ref", uuid: "<user_score field uuid>" },
+         { kind: "text", text: " >= 80" }
+       ] }
+       ```
+
+       The same `{parts: [...]}` shape applies to `label`, `hint`,
+       `required`, `validate`, `calculate`, and `default_value`. Part
+       kinds: `text` · `field-ref` · `path-ref` · `case-ref` ·
+       `user-ref` · `user-property-ref`. Two rules that bite here:
+       a **`hidden` field is rejected unless it has `calculate` or
+       `default_value`**, and Nova **applies nothing on rejection**
+       ("Nothing was changed") while naming the exact problem — so read
+       the error and re-call rather than assuming a partial apply.
+
+    Note: the `relevant` expression legitimately contains `<` / `>=`;
+    that is an attribute expression Nova entity-encodes at compile, NOT
+    label text — the angle-bracket ban (§ Step 3) applies only to
+    label/option/hint TEXT, so a `user_score < 80` relevance is fine.
 
     Reproducer: bednet-spot-check/20260615-1309 — the inline Phase-3 Learn
     brief omitted the `assessment-gate` component paragraph; the architect
@@ -443,11 +537,30 @@ Generate the Learn (training) app from the PDD using the Nova plugin
    nova_app_id: <id-returned-by-autobuild>
    nova_app_url: https://commcare.app/apps/<id-returned-by-autobuild>
    archetype: <atomic-visit | focus-group | multi-stage>
+   # Addressing map — Nova is uuid-addressed (2026-07-31, ace#1132).
+   # Persist what § 4a step 2 already read so downstream steps and the
+   # -eval rubrics address by uuid without re-resolving. One lookup at
+   # build time beats N lookups later.
+   nova_uuids:
+     modules:
+       - name: <module name>
+         uuid: <moduleUuid>
+         forms:
+           - name: <form name>
+             uuid: <formUuid>
+             # Only the fields later steps address directly (the
+             # assessment score field, result labels). Not every field.
+             fields:
+               user_score: <fieldUuid>
    ---
    ```
 
    Body content stays the same as before: module list, Connect
    configuration, decisions made, Nova warnings.
+
+   Anything downstream that lost this map can re-derive it with one
+   `get_app({app_id})` (whole-app) or `search_blueprint({query, app_id})`
+   (one semantic name) — but persist it here so they don't have to.
 
 8. **Notify admin group** that Learn app generation is complete, with the
    Nova app URL and a link to the summary in GDrive.

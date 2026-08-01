@@ -1,0 +1,1356 @@
+[
+ {
+  "name": "add_case_list_columns",
+  "properties": {
+   "app_id": {
+    "type": "string"
+   },
+   "columns": {
+    "type": "array"
+   },
+   "moduleUuid": {
+    "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+    "type": "string"
+   }
+  },
+  "required": [
+   "moduleUuid",
+   "columns",
+   "app_id"
+  ]
+ },
+ {
+  "name": "add_case_operations",
+  "properties": {
+   "afterOperationUuid": {
+    "union": true
+   },
+   "app_id": {
+    "type": "string"
+   },
+   "formUuid": {
+    "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+    "type": "string"
+   },
+   "moduleUuid": {
+    "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+    "type": "string"
+   },
+   "operations": {
+    "type": "array"
+   }
+  },
+  "required": [
+   "moduleUuid",
+   "formUuid",
+   "operations",
+   "app_id"
+  ]
+ },
+ {
+  "name": "add_fields",
+  "properties": {
+   "afterFieldUuid": {
+    "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+    "type": "string"
+   },
+   "app_id": {
+    "type": "string"
+   },
+   "beforeFieldUuid": {
+    "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+    "type": "string"
+   },
+   "fields": {
+    "type": "array"
+   },
+   "formUuid": {
+    "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+    "type": "string"
+   },
+   "moduleUuid": {
+    "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+    "type": "string"
+   },
+   "parentUuid": {
+    "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+    "type": "string"
+   }
+  },
+  "required": [
+   "moduleUuid",
+   "formUuid",
+   "fields",
+   "app_id"
+  ]
+ },
+ {
+  "name": "add_personas",
+  "properties": {
+   "app_id": {
+    "type": "string"
+   },
+   "personas": {
+    "type": "array"
+   }
+  },
+  "required": [
+   "personas",
+   "app_id"
+  ]
+ },
+ {
+  "name": "add_search_inputs",
+  "properties": {
+   "app_id": {
+    "type": "string"
+   },
+   "moduleUuid": {
+    "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+    "type": "string"
+   },
+   "searchInputs": {
+    "type": "array"
+   }
+  },
+  "required": [
+   "moduleUuid",
+   "searchInputs",
+   "app_id"
+  ]
+ },
+ {
+  "name": "add_user_properties",
+  "properties": {
+   "app_id": {
+    "type": "string"
+   },
+   "properties": {
+    "type": "array"
+   }
+  },
+  "required": [
+   "properties",
+   "app_id"
+  ]
+ },
+ {
+  "name": "add_user_types",
+  "properties": {
+   "app_id": {
+    "type": "string"
+   },
+   "userTypes": {
+    "type": "array"
+   }
+  },
+  "required": [
+   "userTypes",
+   "app_id"
+  ]
+ },
+ {
+  "name": "attach_field_media",
+  "properties": {
+   "app_id": {
+    "type": "string"
+   },
+   "attachments": {
+    "type": "array"
+   }
+  },
+  "required": [
+   "attachments",
+   "app_id"
+  ]
+ },
+ {
+  "name": "attach_option_media",
+  "properties": {
+   "app_id": {
+    "type": "string"
+   },
+   "attachments": {
+    "type": "array"
+   }
+  },
+  "required": [
+   "attachments",
+   "app_id"
+  ]
+ },
+ {
+  "name": "compile_app",
+  "properties": {
+   "app_id": {
+    "type": "string"
+   },
+   "format": {
+    "enum": [
+     "json",
+     "ccz"
+    ],
+    "type": "string"
+   }
+  },
+  "required": [
+   "app_id",
+   "format"
+  ]
+ },
+ {
+  "name": "configure_connect",
+  "properties": {
+   "app_id": {
+    "type": "string"
+   },
+   "mode": {
+    "union": true
+   },
+   "participants": {
+    "type": "array"
+   }
+  },
+  "required": [
+   "mode",
+   "app_id"
+  ]
+ },
+ {
+  "name": "create_app",
+  "properties": {
+   "app_name": {
+    "type": "string"
+   }
+  },
+  "required": []
+ },
+ {
+  "name": "create_form",
+  "properties": {
+   "app_id": {
+    "type": "string"
+   },
+   "close_condition": {
+    "union": true
+   },
+   "fields": {
+    "type": "array"
+   },
+   "formUuid": {
+    "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+    "type": "string"
+   },
+   "moduleUuid": {
+    "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+    "type": "string"
+   },
+   "name": {
+    "type": "string"
+   },
+   "post_submit": {
+    "union": true
+   },
+   "purpose": {
+    "union": true
+   },
+   "type": {
+    "enum": [
+     "registration",
+     "followup",
+     "close",
+     "survey"
+    ],
+    "type": "string"
+   }
+  },
+  "required": [
+   "moduleUuid",
+   "name",
+   "type",
+   "fields",
+   "app_id"
+  ]
+ },
+ {
+  "name": "create_module",
+  "properties": {
+   "app_id": {
+    "type": "string"
+   },
+   "case_list_columns": {
+    "union": true
+   },
+   "case_list_only": {
+    "union": true
+   },
+   "case_type": {
+    "union": true
+   },
+   "forms": {
+    "union": true
+   },
+   "moduleUuid": {
+    "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+    "type": "string"
+   },
+   "name": {
+    "type": "string"
+   },
+   "purpose": {
+    "union": true
+   }
+  },
+  "required": [
+   "name",
+   "app_id"
+  ]
+ },
+ {
+  "name": "delete_app",
+  "properties": {
+   "app_id": {
+    "type": "string"
+   }
+  },
+  "required": [
+   "app_id"
+  ]
+ },
+ {
+  "name": "edit_field",
+  "properties": {
+   "app_id": {
+    "type": "string"
+   },
+   "confirmConversion": {
+    "type": "boolean"
+   },
+   "fieldUuid": {
+    "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+    "type": "string"
+   },
+   "formUuid": {
+    "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+    "type": "string"
+   },
+   "moduleUuid": {
+    "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+    "type": "string"
+   },
+   "updates": {
+    "type": "object"
+   }
+  },
+  "required": [
+   "moduleUuid",
+   "formUuid",
+   "fieldUuid",
+   "updates",
+   "app_id"
+  ]
+ },
+ {
+  "name": "generate_schema",
+  "properties": {
+   "app_id": {
+    "type": "string"
+   },
+   "caseTypes": {
+    "type": "array"
+   }
+  },
+  "required": [
+   "caseTypes",
+   "app_id"
+  ]
+ },
+ {
+  "name": "get_agent_prompt",
+  "properties": {
+   "app_id": {
+    "type": "string"
+   },
+   "mode": {
+    "enum": [
+     "build",
+     "autonomous_build",
+     "edit"
+    ],
+    "type": "string"
+   }
+  },
+  "required": [
+   "mode"
+  ]
+ },
+ {
+  "name": "get_app",
+  "properties": {
+   "app_id": {
+    "type": "string"
+   }
+  },
+  "required": [
+   "app_id"
+  ]
+ },
+ {
+  "name": "get_case_operations",
+  "properties": {
+   "app_id": {
+    "type": "string"
+   },
+   "formUuid": {
+    "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+    "type": "string"
+   },
+   "moduleUuid": {
+    "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+    "type": "string"
+   }
+  },
+  "required": [
+   "moduleUuid",
+   "formUuid",
+   "app_id"
+  ]
+ },
+ {
+  "name": "get_field",
+  "properties": {
+   "app_id": {
+    "type": "string"
+   },
+   "fieldUuid": {
+    "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+    "type": "string"
+   },
+   "formUuid": {
+    "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+    "type": "string"
+   },
+   "moduleUuid": {
+    "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+    "type": "string"
+   }
+  },
+  "required": [
+   "moduleUuid",
+   "formUuid",
+   "fieldUuid",
+   "app_id"
+  ]
+ },
+ {
+  "name": "get_form",
+  "properties": {
+   "app_id": {
+    "type": "string"
+   },
+   "formUuid": {
+    "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+    "type": "string"
+   },
+   "moduleUuid": {
+    "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+    "type": "string"
+   }
+  },
+  "required": [
+   "moduleUuid",
+   "formUuid",
+   "app_id"
+  ]
+ },
+ {
+  "name": "get_hq_connection",
+  "properties": {},
+  "required": []
+ },
+ {
+  "name": "get_lookup_tables",
+  "properties": {
+   "app_id": {
+    "type": "string"
+   }
+  },
+  "required": [
+   "app_id"
+  ]
+ },
+ {
+  "name": "get_module",
+  "properties": {
+   "app_id": {
+    "type": "string"
+   },
+   "moduleUuid": {
+    "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+    "type": "string"
+   }
+  },
+  "required": [
+   "moduleUuid",
+   "app_id"
+  ]
+ },
+ {
+  "name": "get_users",
+  "properties": {
+   "app_id": {
+    "type": "string"
+   }
+  },
+  "required": [
+   "app_id"
+  ]
+ },
+ {
+  "name": "list_apps",
+  "properties": {
+   "cursor": {
+    "type": "string"
+   },
+   "limit": {
+    "type": "integer"
+   },
+   "sort": {
+    "enum": [
+     "updated_desc",
+     "updated_asc",
+     "name_asc",
+     "name_desc"
+    ],
+    "type": "string"
+   },
+   "status": {
+    "enum": [
+     "generating",
+     "complete",
+     "error"
+    ],
+    "type": "string"
+   }
+  },
+  "required": []
+ },
+ {
+  "name": "list_media_assets",
+  "properties": {
+   "app_id": {
+    "type": "string"
+   },
+   "cursor": {
+    "type": "string"
+   },
+   "kind": {
+    "enum": [
+     "image",
+     "audio",
+     "video"
+    ],
+    "type": "string"
+   }
+  },
+  "required": [
+   "app_id"
+  ]
+ },
+ {
+  "name": "move_case_operation",
+  "properties": {
+   "afterOperationUuid": {
+    "union": true
+   },
+   "app_id": {
+    "type": "string"
+   },
+   "formUuid": {
+    "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+    "type": "string"
+   },
+   "moduleUuid": {
+    "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+    "type": "string"
+   },
+   "operationUuid": {
+    "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+    "type": "string"
+   }
+  },
+  "required": [
+   "moduleUuid",
+   "formUuid",
+   "operationUuid",
+   "afterOperationUuid",
+   "app_id"
+  ]
+ },
+ {
+  "name": "move_field",
+  "properties": {
+   "afterFieldUuid": {
+    "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+    "type": "string"
+   },
+   "app_id": {
+    "type": "string"
+   },
+   "beforeFieldUuid": {
+    "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+    "type": "string"
+   },
+   "fieldUuid": {
+    "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+    "type": "string"
+   },
+   "formUuid": {
+    "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+    "type": "string"
+   },
+   "moduleUuid": {
+    "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+    "type": "string"
+   },
+   "parentUuid": {
+    "union": true
+   }
+  },
+  "required": [
+   "moduleUuid",
+   "formUuid",
+   "fieldUuid",
+   "app_id"
+  ]
+ },
+ {
+  "name": "remove_case_list_column",
+  "properties": {
+   "app_id": {
+    "type": "string"
+   },
+   "columnUuid": {
+    "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+    "type": "string"
+   },
+   "moduleUuid": {
+    "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+    "type": "string"
+   }
+  },
+  "required": [
+   "moduleUuid",
+   "columnUuid",
+   "app_id"
+  ]
+ },
+ {
+  "name": "remove_case_operation",
+  "properties": {
+   "app_id": {
+    "type": "string"
+   },
+   "formUuid": {
+    "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+    "type": "string"
+   },
+   "moduleUuid": {
+    "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+    "type": "string"
+   },
+   "operationUuid": {
+    "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+    "type": "string"
+   }
+  },
+  "required": [
+   "moduleUuid",
+   "formUuid",
+   "operationUuid",
+   "app_id"
+  ]
+ },
+ {
+  "name": "remove_field",
+  "properties": {
+   "app_id": {
+    "type": "string"
+   },
+   "fieldUuid": {
+    "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+    "type": "string"
+   },
+   "formUuid": {
+    "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+    "type": "string"
+   },
+   "moduleUuid": {
+    "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+    "type": "string"
+   }
+  },
+  "required": [
+   "moduleUuid",
+   "formUuid",
+   "fieldUuid",
+   "app_id"
+  ]
+ },
+ {
+  "name": "remove_form",
+  "properties": {
+   "app_id": {
+    "type": "string"
+   },
+   "formUuid": {
+    "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+    "type": "string"
+   },
+   "moduleUuid": {
+    "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+    "type": "string"
+   }
+  },
+  "required": [
+   "moduleUuid",
+   "formUuid",
+   "app_id"
+  ]
+ },
+ {
+  "name": "remove_media_asset",
+  "properties": {
+   "app_id": {
+    "type": "string"
+   },
+   "assetId": {
+    "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+    "type": "string"
+   }
+  },
+  "required": [
+   "assetId",
+   "app_id"
+  ]
+ },
+ {
+  "name": "remove_module",
+  "properties": {
+   "app_id": {
+    "type": "string"
+   },
+   "moduleUuid": {
+    "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+    "type": "string"
+   }
+  },
+  "required": [
+   "moduleUuid",
+   "app_id"
+  ]
+ },
+ {
+  "name": "remove_persona",
+  "properties": {
+   "app_id": {
+    "type": "string"
+   },
+   "uuid": {
+    "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+    "type": "string"
+   }
+  },
+  "required": [
+   "uuid",
+   "app_id"
+  ]
+ },
+ {
+  "name": "remove_search_input",
+  "properties": {
+   "app_id": {
+    "type": "string"
+   },
+   "moduleUuid": {
+    "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+    "type": "string"
+   },
+   "searchInputUuid": {
+    "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+    "type": "string"
+   }
+  },
+  "required": [
+   "moduleUuid",
+   "searchInputUuid",
+   "app_id"
+  ]
+ },
+ {
+  "name": "remove_user_property",
+  "properties": {
+   "app_id": {
+    "type": "string"
+   },
+   "uuid": {
+    "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+    "type": "string"
+   }
+  },
+  "required": [
+   "uuid",
+   "app_id"
+  ]
+ },
+ {
+  "name": "remove_user_type",
+  "properties": {
+   "app_id": {
+    "type": "string"
+   },
+   "uuid": {
+    "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+    "type": "string"
+   }
+  },
+  "required": [
+   "uuid",
+   "app_id"
+  ]
+ },
+ {
+  "name": "rename_case_properties",
+  "properties": {
+   "app_id": {
+    "type": "string"
+   },
+   "renames": {
+    "type": "array"
+   }
+  },
+  "required": [
+   "renames",
+   "app_id"
+  ]
+ },
+ {
+  "name": "reorder_case_list_columns",
+  "properties": {
+   "app_id": {
+    "type": "string"
+   },
+   "columnUuids": {
+    "type": "array"
+   },
+   "moduleUuid": {
+    "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+    "type": "string"
+   },
+   "surface": {
+    "enum": [
+     "results",
+     "details"
+    ],
+    "type": "string"
+   }
+  },
+  "required": [
+   "moduleUuid",
+   "surface",
+   "columnUuids",
+   "app_id"
+  ]
+ },
+ {
+  "name": "reorder_search_inputs",
+  "properties": {
+   "app_id": {
+    "type": "string"
+   },
+   "moduleUuid": {
+    "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+    "type": "string"
+   },
+   "searchInputUuids": {
+    "type": "array"
+   }
+  },
+  "required": [
+   "moduleUuid",
+   "searchInputUuids",
+   "app_id"
+  ]
+ },
+ {
+  "name": "search_apps",
+  "properties": {
+   "cursor": {
+    "type": "string"
+   },
+   "limit": {
+    "type": "integer"
+   },
+   "query": {
+    "type": "string"
+   },
+   "status": {
+    "enum": [
+     "generating",
+     "complete",
+     "error"
+    ],
+    "type": "string"
+   }
+  },
+  "required": [
+   "query"
+  ]
+ },
+ {
+  "name": "search_blueprint",
+  "properties": {
+   "app_id": {
+    "type": "string"
+   },
+   "query": {
+    "type": "string"
+   }
+  },
+  "required": [
+   "query",
+   "app_id"
+  ]
+ },
+ {
+  "name": "set_app_logo",
+  "properties": {
+   "app_id": {
+    "type": "string"
+   },
+   "logo": {
+    "union": true
+   }
+  },
+  "required": [
+   "logo",
+   "app_id"
+  ]
+ },
+ {
+  "name": "set_case_list_filter",
+  "properties": {
+   "app_id": {
+    "type": "string"
+   },
+   "filter": {
+    "union": true
+   },
+   "moduleUuid": {
+    "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+    "type": "string"
+   }
+  },
+  "required": [
+   "moduleUuid",
+   "filter",
+   "app_id"
+  ]
+ },
+ {
+  "name": "set_case_list_tile",
+  "properties": {
+   "app_id": {
+    "type": "string"
+   },
+   "moduleUuid": {
+    "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+    "type": "string"
+   },
+   "placements": {
+    "type": "array"
+   },
+   "tile": {
+    "union": true
+   }
+  },
+  "required": [
+   "moduleUuid",
+   "app_id"
+  ]
+ },
+ {
+  "name": "set_case_search_advanced",
+  "properties": {
+   "app_id": {
+    "type": "string"
+   },
+   "excludedOwnerIds": {
+    "union": true
+   },
+   "moduleUuid": {
+    "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+    "type": "string"
+   }
+  },
+  "required": [
+   "moduleUuid",
+   "excludedOwnerIds",
+   "app_id"
+  ]
+ },
+ {
+  "name": "set_case_search_display",
+  "properties": {
+   "app_id": {
+    "type": "string"
+   },
+   "moduleUuid": {
+    "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+    "type": "string"
+   },
+   "searchButtonDisplayCondition": {
+    "union": true
+   },
+   "searchButtonLabel": {
+    "union": true
+   },
+   "searchScreenSubtitle": {
+    "union": true
+   },
+   "searchScreenTitle": {
+    "union": true
+   }
+  },
+  "required": [
+   "moduleUuid",
+   "searchScreenTitle",
+   "searchScreenSubtitle",
+   "searchButtonLabel",
+   "searchButtonDisplayCondition",
+   "app_id"
+  ]
+ },
+ {
+  "name": "set_field_options_source",
+  "properties": {
+   "app_id": {
+    "type": "string"
+   },
+   "fieldUuid": {
+    "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+    "type": "string"
+   },
+   "formUuid": {
+    "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+    "type": "string"
+   },
+   "moduleUuid": {
+    "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+    "type": "string"
+   },
+   "source": {
+    "union": true
+   }
+  },
+  "required": [
+   "moduleUuid",
+   "formUuid",
+   "fieldUuid",
+   "source",
+   "app_id"
+  ]
+ },
+ {
+  "name": "set_menu_media",
+  "properties": {
+   "app_id": {
+    "type": "string"
+   },
+   "items": {
+    "type": "array"
+   }
+  },
+  "required": [
+   "items",
+   "app_id"
+  ]
+ },
+ {
+  "name": "update_app",
+  "properties": {
+   "app_id": {
+    "type": "string"
+   },
+   "name": {
+    "type": "string"
+   }
+  },
+  "required": [
+   "name",
+   "app_id"
+  ]
+ },
+ {
+  "name": "update_case_list_column",
+  "properties": {
+   "app_id": {
+    "type": "string"
+   },
+   "column": {
+    "union": true
+   },
+   "columnUuid": {
+    "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+    "type": "string"
+   },
+   "moduleUuid": {
+    "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+    "type": "string"
+   }
+  },
+  "required": [
+   "moduleUuid",
+   "columnUuid",
+   "column",
+   "app_id"
+  ]
+ },
+ {
+  "name": "update_case_operation",
+  "properties": {
+   "app_id": {
+    "type": "string"
+   },
+   "formUuid": {
+    "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+    "type": "string"
+   },
+   "moduleUuid": {
+    "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+    "type": "string"
+   },
+   "operation": {
+    "union": true
+   },
+   "operationUuid": {
+    "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+    "type": "string"
+   }
+  },
+  "required": [
+   "moduleUuid",
+   "formUuid",
+   "operationUuid",
+   "operation",
+   "app_id"
+  ]
+ },
+ {
+  "name": "update_form",
+  "properties": {
+   "app_id": {
+    "type": "string"
+   },
+   "close_condition": {
+    "union": true
+   },
+   "connect": {
+    "union": true
+   },
+   "displayCondition": {
+    "union": true
+   },
+   "formUuid": {
+    "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+    "type": "string"
+   },
+   "moduleUuid": {
+    "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+    "type": "string"
+   },
+   "name": {
+    "type": "string"
+   },
+   "post_submit": {
+    "union": true
+   }
+  },
+  "required": [
+   "moduleUuid",
+   "formUuid",
+   "app_id"
+  ]
+ },
+ {
+  "name": "update_module",
+  "properties": {
+   "app_id": {
+    "type": "string"
+   },
+   "case_list_columns": {
+    "type": "array"
+   },
+   "case_type": {
+    "type": "string"
+   },
+   "displayCondition": {
+    "union": true
+   },
+   "moduleUuid": {
+    "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+    "type": "string"
+   },
+   "name": {
+    "type": "string"
+   }
+  },
+  "required": [
+   "moduleUuid",
+   "app_id"
+  ]
+ },
+ {
+  "name": "update_persona",
+  "properties": {
+   "app_id": {
+    "type": "string"
+   },
+   "description": {
+    "union": true
+   },
+   "name": {
+    "type": "string"
+   },
+   "userTypeUuid": {
+    "union": true
+   },
+   "uuid": {
+    "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+    "type": "string"
+   },
+   "valuePatch": {
+    "type": "object"
+   }
+  },
+  "required": [
+   "uuid",
+   "app_id"
+  ]
+ },
+ {
+  "name": "update_search_input",
+  "properties": {
+   "app_id": {
+    "type": "string"
+   },
+   "moduleUuid": {
+    "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+    "type": "string"
+   },
+   "searchInput": {
+    "union": true
+   },
+   "searchInputUuid": {
+    "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+    "type": "string"
+   }
+  },
+  "required": [
+   "moduleUuid",
+   "searchInputUuid",
+   "searchInput",
+   "app_id"
+  ]
+ },
+ {
+  "name": "update_user_property",
+  "properties": {
+   "app_id": {
+    "type": "string"
+   },
+   "choices": {
+    "union": true
+   },
+   "label": {
+    "type": "string"
+   },
+   "required": {
+    "union": true
+   },
+   "slug": {
+    "pattern": "^[a-zA-Z_][-a-zA-Z0-9_]*$",
+    "type": "string"
+   },
+   "uuid": {
+    "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+    "type": "string"
+   }
+  },
+  "required": [
+   "uuid",
+   "app_id"
+  ]
+ },
+ {
+  "name": "update_user_type",
+  "properties": {
+   "app_id": {
+    "type": "string"
+   },
+   "description": {
+    "union": true
+   },
+   "name": {
+    "type": "string"
+   },
+   "uuid": {
+    "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+    "type": "string"
+   },
+   "valuePatch": {
+    "type": "object"
+   }
+  },
+  "required": [
+   "uuid",
+   "app_id"
+  ]
+ },
+ {
+  "name": "upload_app_to_hq",
+  "properties": {
+   "app_id": {
+    "type": "string"
+   },
+   "app_name": {
+    "type": "string"
+   },
+   "domain": {
+    "type": "string"
+   }
+  },
+  "required": [
+   "app_id"
+  ]
+ },
+ {
+  "name": "upload_media_asset",
+  "properties": {
+   "data_base64": {
+    "type": "string"
+   },
+   "filename": {
+    "type": "string"
+   },
+   "mime_type": {
+    "type": "string"
+   }
+  },
+  "required": [
+   "filename",
+   "mime_type",
+   "data_base64"
+  ]
+ }
+]
