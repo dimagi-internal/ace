@@ -221,6 +221,22 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
      (form fields resolve at `xforms-ready`) and `validate_app`-clean
      (it's a real form reference).
 
+     **No component of `entity_id` may be free `text` where the option set is
+     enumerable.** The business key is only as good as the fields it
+     concatenates: an editable free-text component means one typo mints a
+     SECOND payable delivery for the same real-world event, and two distinct
+     entities that share a name collapse into one. Every key component that
+     names a place, facility, community, or roster member MUST be a
+     lookup- or inline-backed select — see
+     `_app-component-library.md § structured-capture` § option sources for the
+     `get_lookup_tables` + `set_field_options_source` recipe. If a key
+     component genuinely cannot be made a select this run, say so in the build
+     memo next to the `entity_id` you shipped; do not ship it silently.
+     (Reproducer: `spark-facilitator/20260731-0656` — free-text `village`
+     forced a mid-run repoint of the key from `village + date_of_meeting` to
+     `community_id`, which was ALSO free text, so only the name-collision mode
+     closed. ace#1136.)
+
      > For the 6-app deployed-practice audit that grounds this rule, see reference.md § entity_id business key.
 
      Insert the matching paragraph(s) **verbatim** into the brief, in
@@ -311,7 +327,15 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
      - `data-quality-constraints` — always, for any data-capture form.
      - `case-write-back` — any case-UPDATE / follow-up form that captures
        new observations.
-     - `structured-capture` — any answer with an enumerable option set.
+     - `structured-capture` — any answer with an enumerable option set, **any
+       field the PDD spells `select` / `lookup` / "choose from" / "from the
+       registered X", and any field that feeds a Connect `entity_id`.** A
+       PDD-declared select that ships as free `text` is a DEFECT, not a
+       degradation: the architect must call `get_lookup_tables` and bind the
+       option set with `set_field_options_source` (lookup- or inline-backed)
+       rather than falling through to `kind: text`, and any degradation that
+       does happen must be named in the build memo. Verified at level 0 by
+       Step 4f (ace#1136).
      - `section-timestamps` — PDD success metrics reference visit-time / a
        cost model.
      - `embedded-bc-script` — PDD specifies a verbatim behavior-change
@@ -336,9 +360,19 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
      - `constraint-locality` — always, for any form with constraints. A
        constraint must be fixable on the screen where it fires; it may
        reference only `.` or same-repeat siblings (ace#980).
-     - `consent-script-floor` — PDD requires recorded consent. All six
-       floor elements, including where the data goes and that
-       participation does not guarantee selection (ace#983).
+     - `consent-script-floor` — **the PDD describes consent being sought from
+       the people whose data, photos, or recordings are captured, WHETHER OR
+       NOT it declares a consent field.** A read-aloud announcement to an
+       assembled group, a verbal consent taught in the Learn app, or a
+       photo-consent line inside a behavior-change script all fire this
+       trigger. All six floor elements — and check `confidential`, where the
+       data goes (name any AI verification layer and human audit sample), and
+       that participation does not guarantee selection **by name**, because
+       those three are the ones builds actually omit (ace#983, ace#1137).
+       This is a build-time authoring rule; `pdd-to-deliver-app-eval §
+       consent_floor` is the backstop, not the place to discover it. When this
+       fires alongside `embedded-bc-script` on the same read-aloud passage,
+       BOTH are emitted and this one governs the content.
      - `threshold-coherence-flag` — PDD fixes ≥2 numbers constraining one
        physical quantity. Check the pairs, surface conflicts in the build
        memo (ace#984).
@@ -595,6 +629,65 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
     the header from absent to `Connect type: deliver` with the per-form
     blocks intact, no rebuild. See jjackson/ace#792.
 
+4f. **Option-source pre-check (PDD-declared selects must not ship as free
+    text).** The structural preventer for ace#1136. `structured-capture` puts
+    the rule in the architect brief; this step is the level-0 safety net for
+    when the architect had no option list in front of it and fell through to
+    `kind: text` anyway — the exact failure mode of
+    `spark-facilitator/20260731-0656`, where four of five PDD-declared
+    select/lookup fields shipped as free text and only the one with an
+    inline-enumerable option set survived. Cheap; runs on the already-fetched
+    blueprint. Same bounded-loop shape as 4a–4e.
+
+    1. **Build the declared-select list from the PDD** (not from the brief and
+       not from the architect's return string). Every field in the Deliver App
+       Specification whose spec text contains `select`, `lookup`,
+       `choose from`, `pick from`, or `from the registered …` goes on the list,
+       plus every field named as a component of a `connect.deliver_unit`
+       `entity_id`.
+    2. **Resolve each one in the built app.** Nova is uuid-addressed — one
+       `search_blueprint({query: '<field id>', app_id})` per field returns
+       `{moduleUuid, formUuid, fieldUuid}` and the field's context; or read
+       them off the `get_form` responses already fetched in Step 4a.
+    3. **Assert** each declared-select field's `kind` is `single_select` or
+       `multi_select`. Collect the offenders as
+       `degraded[] = {field_id, declared_as, shipped_kind, feeds_entity_id}`.
+    4. **If `degraded` is empty, proceed to Step 5.** Nothing to do.
+    5. **For each offender, try to bind a real option source before accepting
+       the degradation.** Call `get_lookup_tables({app_id})` ONCE — it lists
+       this app Project's data tables and their columns with the stable ids
+       `set_field_options_source` needs — then, per offender:
+       - **A table holds the option set** → convert the field and bind it:
+         `set_field_options_source({app_id, moduleUuid, formUuid, fieldUuid,
+         source: {kind: 'lookup', tableId, valueColumnId, labelColumnId}})`.
+         The call is an atomic REPLACE of the field's complete choice source
+         (there is no retained inactive source), so send the whole thing.
+         Convert a `text` field to a select first via
+         `edit_field({app_id, moduleUuid, formUuid, fieldUuid, updates:
+         {kind: 'single_select', optionsSource: {...}}})` — a kind conversion
+         that would set saved case values aside returns `needsConfirmation`;
+         on a fresh build there is nothing to set aside, so re-call with
+         `confirmConversion: true`.
+       - **No table, but the set is knowable** from the PDD / inputs / a source
+         `.ccz` → bind it inline:
+         `source: {kind: 'inline', options: [{value, label: {parts: [{kind:
+         'text', text}]}}, …]}` (≥2 options).
+       - **Neither** → ship a select over the values you DO have plus an
+         explicit "Other" with a relevance-gated `_other` free-text follow-up.
+    6. **Re-run steps 2–3. Bounded loop, max 3 iterations.**
+    7. **Whatever survives is a NAMED gap, never a silent one.** Any field
+       still on `degraded` after the third iteration MUST appear in the build
+       memo and in the Step 7 summary's `option_source_gaps` list, with the
+       field id, what the PDD declared, what shipped, and the exact table +
+       value column + label column that needs to exist before go-live.
+       **Halt** — do not write the success summary — if any still-degraded
+       field `feeds_entity_id`: a free-text component of Connect's dedup /
+       payment grain is a payment-correctness defect, not a data-quality one
+       (one typo mints a second payable delivery; two same-named entities
+       collapse into one). Everything else records and proceeds.
+
+    (Apps whose PDD declares no select/lookup fields skip cleanly at step 1.)
+
 5. **(Optional) Inspect the built app** via `/nova:show <app_id>` to
    cross-check structure against the PDD before writing the summary.
 
@@ -603,6 +696,12 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
    - Is the delivery unit framed correctly for the archetype?
    - Are all Connectify fields configured (Deliver Unit, Entity ID)?
    - Are verification criteria encoded in form questions?
+   - Did every field the PDD spelled `select` / `lookup` ship as a select
+     with a real option source, and is every remaining gap named (Step 4f)?
+   - If any consent is sought from the people whose data or images are
+     captured — spoken or field-gated — does that script carry all six
+     `consent-script-floor` elements, `confidential` and where-the-data-goes
+     included?
 
 7. **Write the summary** to
    `ACE/<opp-name>/runs/<run-id>/3-commcare/pdd-to-deliver-app_summary.md` with required
@@ -614,6 +713,10 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
    nova_app_url: https://commcare.app/apps/<id-returned-by-autobuild>
    archetype: <atomic-visit | focus-group | multi-stage>
    delivery_unit: <one-line description matching the PDD>
+   option_source_gaps: []   # Step 4f — one entry per PDD-declared select
+                            # that still shipped as free text, with the
+                            # table + value column + label column it needs.
+                            # Empty list is the expected value.
    ---
    ```
 
@@ -740,6 +843,24 @@ form, Stage 2 = atomic household-visit form).
 - **Google Drive MCP:** `drive_read_file`, `drive_create_file`
 - **Nova plugin slash commands:** `/nova:autobuild`, `/nova:show`,
   `/nova:list`, `/nova:edit`
+- **Nova MCP tools called directly at level 0** (Steps 4a–4f): `get_app`,
+  `get_module`, `get_form`, `search_blueprint` (semantic id → uuids in one
+  call), `add_case_list_column`, `edit_field`, `get_lookup_tables`,
+  `set_field_options_source`. Nova is **uuid-addressed** — `moduleUuid` /
+  `formUuid` / `fieldUuid`, never indexes.
+  > **Known stale text (dimagi-internal/ace#1132).** Steps 4a and 4d above
+  > still spell their reads `get_form({app_id, moduleIndex, formIndex})` /
+  > `get_module({app_id, moduleIndex})`. Zero of Nova's live tools accept an
+  > `*Index` parameter since the 2026-07-31 redeploy — those calls are rejected
+  > server-side with `unrecognized_keys`. Step 4f is written against the live
+  > uuid contract; 4a/4b/4c/4d/4e are pending the #1132 migration. Until it
+  > lands, resolve uuids with `search_blueprint({query, app_id})` (semantic id
+  > → `{moduleUuid, formUuid, fieldUuid}` in one call) or off `get_app` /
+  > `get_module`, and read every index in those steps as "the corresponding
+  > uuid". Step 4e's `update_app({connect_type})` heal is likewise superseded
+  > by `configure_connect({app_id, mode, participants})` (ace#1133) — note its
+  > REPLACE-ALL semantics: a partial `participants[]` clears the Connect block
+  > off every form it omits.
 
 See `playbook/integrations/nova-integration.md` for plugin status.
 
@@ -775,6 +896,7 @@ rows meet it; the catalog is a teaching device that improves over time.
 | `deliver-unit-count` | How many distinct deliver units (modules × forms) does the Deliver app expose? | PDD `Deliver App Specification` numeric |
 | `one-form-per-module-workaround` | Are we one-form-per-module to dodge Nova's CCZ marker bug? | `pdd-to-deliver-app-eval` connect-marker-coverage dimension; CLAUDE.md gotcha |
 | `multimedia-coverage-strategy` | What multimedia (text vs voice prompts vs both) does the Deliver app surface? | `app-multimedia-coverage` skill output; PDD multimedia note |
+| `option-source-binding` | For each PDD-declared select/lookup field, where did its options come from — a Project data table, an inline enumeration, or a named gap? | Step 4f `option_source_gaps`; `pdd-to-deliver-app-eval § Capture fitness` |
 
 The orchestrator's Phase Write-Back Verifier (`agents/ace-orchestrator.md`
 § Phase Write-Back Contract § Decisions log clause) enforces the

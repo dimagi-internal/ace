@@ -62,7 +62,7 @@ authored from the PDD per run):
 | [`init-safe-calculates`](#init-safe-calculates) | Deliver (cross-cutting) | Any hidden calc parses a capture-later value (`selected-at`/`substr`/`regex`/`number`) | `app-release-qa` (`commcare-cli play`) |
 | [`data-quality-constraints`](#data-quality-constraints) | Deliver | Always, for any data-capture instrument | `pdd-to-deliver-app-eval § Data-quality validation` |
 | [`case-write-back`](#case-write-back) | Deliver | A case-UPDATE / follow-up form captures new observations | `pdd-to-deliver-app-eval § Capture fitness`; `app-connect-coverage` |
-| [`structured-capture`](#structured-capture) | Deliver | An answer has an enumerable option set | `pdd-to-deliver-app-eval § Capture fitness` |
+| [`structured-capture`](#structured-capture) | Deliver | An answer has an enumerable option set, OR the PDD spells the field `select` / `lookup` / "choose from", OR the field feeds a Connect `entity_id` | `pdd-to-deliver-app-eval § Capture fitness` |
 | [`section-timestamps`](#section-timestamps) | Deliver | PDD success metrics reference visit-time / a cost model | `pdd-to-deliver-app-eval § Capture fitness` |
 | [`embedded-bc-script`](#embedded-bc-script) | Deliver | PDD specifies a behavior-change segment delivered verbatim | `pdd-to-deliver-app-eval` |
 | [`assessment-gate`](#assessment-gate) | Learn | PDD specifies a readiness / competency gate before delivery | `pdd-to-learn-app-eval § assessment_gating` |
@@ -77,7 +77,7 @@ authored from the PDD per run):
 | [`observable-before-derived`](#observable-before-derived) | Deliver | Always, for any visit/encounter form with an outcome or disposition field | `pdd-to-deliver-app-eval § field_answerability` |
 | [`constraint-locality`](#constraint-locality) | Deliver | Always, for any form carrying `constraint` / `validate` expressions | `pdd-to-deliver-app-eval § field_answerability`; `app-release-qa` (mechanical bind check) |
 | [`relevance-reachability`](#constraint-locality) | Deliver | Always, for any form carrying `relevant` expressions | `pdd-to-deliver-app-eval § field_answerability`; `app-release-qa` (mechanical bind check) |
-| [`consent-script-floor`](#consent-script-floor) | Deliver | PDD requires recorded consent | `pdd-to-deliver-app-eval § consent_floor` (hard-gate) |
+| [`consent-script-floor`](#consent-script-floor) | Deliver | The PDD describes consent being sought from the people whose data/images are captured — **whether or not it declares a consent FIELD** (a read-aloud announcement counts) | `pdd-to-deliver-app-eval § consent_floor` (hard-gate — backstop only; this is a BUILD-TIME component) |
 | [`threshold-coherence-flag`](#threshold-coherence-flag) | Deliver | PDD fixes ≥2 numeric thresholds constraining one physical quantity | `pdd-to-deliver-app-eval § threshold_coherence` (hard-gate) |
 | [`discriminating-assessment-items`](#discriminating-assessment-items) | Learn | Any scored assessment | `pdd-to-learn-app-eval § assessment_discrimination` |
 | [`instrument-grounded-examples`](#instrument-grounded-examples) | Learn | Learn app teaches administration of a fixed instrument | `pdd-to-learn-app-eval § assessment_discrimination` (examples criterion) |
@@ -273,9 +273,80 @@ rediscovered from scratch.)*
 
 - **App:** Deliver
 - **Trigger:** an answer has an enumerable option set, or a numeric whose field
-  reliability improves when bucketed.
+  reliability improves when bucketed, **or** the PDD spells the field as
+  `select` / `lookup` / "choose from" / "from the registered <X>", **or** the
+  field is a component of a Connect `entity_id`.
 - **Enforced by:** `pdd-to-deliver-app-eval § Capture fitness` — ≥2 enumerable
   answers left as free `text` caps the dimension at ≤4.
+- **Origin of the option-source rule:** dimagi-internal/ace#1136.
+  `spark-facilitator/20260731-0656` (Deliver app
+  `657a4bb7-fb2f-4a10-af43-8414707b2c43`) shipped **all four** PDD-declared
+  select/lookup fields — `traditional_authority`, `group_village`, `village`
+  ("select, from registered communities; required"), `community_id`
+  ("select/lookup") — as free `text`. Only `district` survived as a real
+  `single_select`, because its option set happened to be inline-enumerable from
+  the source `.ccz`. Nothing in this library or in `pdd-to-deliver-app` said
+  anything about **where options come from**, so an architect facing "select
+  from registered communities" with no list in front of it degraded silently to
+  `kind: text` and reported the form complete. `capture_fitness` scored 4.0.
+
+**A PDD-declared select that ships as `text` is a DEFECT, not a degradation.**
+The architect has a lookup-backed option source available today; there is no
+"couldn't enumerate it" excuse. Two Nova tools do the whole job, and this
+library is the only place ACE names them:
+
+- **`get_lookup_tables({app_id})`** — lists the app Project's data tables and
+  their columns, with the stable `tableId` / column ids you need. Call it
+  **once per build, before authoring any select whose options are not in the
+  PDD**, and read the result before deciding a field's kind.
+- **`set_field_options_source({app_id, moduleUuid, formUuid, fieldUuid,
+  source})`** — atomically replaces a single/multi-select field's COMPLETE
+  choice source. `source` is either
+  `{kind: 'inline', options: [{value, label: {parts: [{kind: 'text', text}]}}, …]}`
+  (≥2 options) or
+  `{kind: 'lookup', tableId, valueColumnId, labelColumnId, filter?}`.
+  It is a REPLACE, not a patch — there is no retained inactive source, so send
+  the complete set. (`edit_field`'s `updates.optionsSource` takes the same
+  `LookupOptionsSource` shape if you are already editing the field.)
+
+Nova is **uuid-addressed** — `moduleUuid` / `formUuid` / `fieldUuid`, not
+indexes. Resolve them from `get_app` / `get_module` / `get_form`, or in one
+call from a semantic id with
+`search_blueprint({query: '<field id>', app_id})`.
+
+**When no suitable lookup table exists.** Do NOT fall through to `kind: text` —
+that is the exact failure this rule exists to stop. In priority order:
+
+1. **Enumerate inline** if the option set is knowable and bounded from the
+   source material (the PDD, the inputs pack, a source `.ccz`), via
+   `set_field_options_source` with `kind: 'inline'`. This is how `district`
+   came through correctly on the run above.
+2. **If the set is real but not in hand** (a roster of registered communities
+   that lives with the LLO), still ship a `single_select` over the values you
+   DO have plus an explicit "Other" with a relevance-gated `_other` free-text
+   follow-up — and name the field in the build memo as an open item with the
+   exact table + value column + label column that needs to exist before
+   go-live. A partially-enumerated select degrades gracefully; free text does
+   not degrade, it just loses the constraint.
+3. **Never** ship free `text` for a PDD-declared select without a build-memo
+   line saying so. An unrecorded degradation is what made #1136 invisible until
+   the eval caught it.
+
+*(ACE's own `commcare_create_lookup_table` / `commcare_lookup_table_append_rows`
+atoms create fixtures on a CommCare HQ project space. Whether a table created
+that way surfaces in Nova's `get_lookup_tables` for an app that has not yet
+been uploaded to HQ is **UNVERIFIED** — do not assume it. If you try it,
+confirm with `get_lookup_tables` before binding, and record the result here.)*
+
+**Free text must never feed a Connect `entity_id`.** `entity_id` is Connect's
+dedup and payment grain (see `pdd-to-deliver-app § entity_id`), so an editable
+free-text component of the key opens two failure modes at once: a typo mints a
+SECOND payable delivery for the same real-world event, and two distinct
+entities that share a name collapse into one. On the run above the operator had
+to repoint the key mid-run from `village + date_of_meeting` to `community_id`
+— which closed the name-collision mode only, because `community_id` was free
+text too. A lookup-backed select closes both. If a key component cannot be made
+a select, say so in the build memo next to the `entity_id` you shipped.
 
 **Brief paragraph (verbatim):**
 
@@ -285,6 +356,27 @@ rediscovered from scratch.)*
 > MUST have a conditional `_other` free-text follow-up (relevance-gated on the
 > Other selection); prefer bucketed selects over raw integers where field
 > reliability matters (net age as `<1 / 1–2 / 3–4 / 5+ / don't know`).
+> OPTION SOURCES — read this before you type `kind: text`. When the PDD spells a
+> field `select` / `lookup` / "choose from" / "from the registered <X>" and you
+> do NOT have the option list in front of you, that is NOT permission to ship
+> free text. Call `get_lookup_tables({app_id})` FIRST — it lists this app
+> Project's data tables and columns with their stable ids — and if a table
+> holds the option set, bind it with
+> `set_field_options_source({app_id, moduleUuid, formUuid, fieldUuid, source:
+> {kind: 'lookup', tableId, valueColumnId, labelColumnId}})`. That call is an
+> atomic REPLACE of the field's complete choice source (there is no retained
+> inactive source), and Nova is uuid-addressed — resolve moduleUuid / formUuid /
+> fieldUuid from `get_app` / `get_form`, or in one call from a semantic id via
+> `search_blueprint({query, app_id})`. If NO table holds the set: enumerate the
+> options inline with `set_field_options_source({… source: {kind: 'inline',
+> options: [...]}})` when the set is knowable from the PDD or the source
+> material; otherwise ship a select over the values you DO have plus an "Other"
+> + relevance-gated `_other` follow-up, and record in the build memo the exact
+> table + value column + label column that still needs to exist. Degrading a
+> PDD-declared select to `kind: text` SILENTLY is a build defect — if you must
+> degrade, name the field and the reason in the build memo. And never let free
+> text feed a Connect `entity_id`: an editable key component means one typo
+> mints a second payable delivery and two same-named entities collapse into one.
 
 ### section-timestamps
 
@@ -733,30 +825,118 @@ verified against the *deployed* CCZ, not just the Nova blueprint.
 ### consent-script-floor
 
 - **App:** Deliver
-- **Trigger:** the PDD requires recorded consent (any form with a consent gate).
+- **This is a BUILD-TIME component, not only an eval criterion.** The floor is
+  an authoring requirement on the `/nova:autobuild` brief; the eval gate is the
+  BACKSTOP. Discovering the floor at eval time is a bad place to discover it —
+  it lands after the app is built, after `app-connect-coverage`, one step before
+  deploy, and remediating means re-authoring consent language (often in several
+  languages), redeploying and re-releasing.
+- **Trigger (deliberately wide — see the miss below):** the PDD describes
+  consent being sought from the people whose data, photographs, or recordings
+  are captured — **whether or not the PDD declares a consent FIELD.** It fires
+  on ANY of:
+  - a consent gate / consent field in the Deliver App Specification;
+  - a **read-aloud, verbatim, spoken, or announced** consent of any kind, even
+    when the only place it lives is a `label` or a Learn-app lesson;
+  - a photograph, audio, or video capture of identifiable people;
+  - a survey that feeds an eligibility, targeting, or enrolment decision.
+
+  When the trigger fires but the PDD declares no consent field, the build MUST
+  still (a) put the full-floor script in the form as a read-aloud `label` at the
+  point the worker speaks it, and (b) record the attestation in a field — an
+  unrecorded consent is unauditable, and the payment record is the only place it
+  can be evidenced.
 - **Enforced by:** `pdd-to-deliver-app-eval § consent_floor` — binary hard-gate,
   surfaces `[BLOCKER]`.
+- **Overlaps with [`embedded-bc-script`](#embedded-bc-script) — both fire; this
+  one wins.** A verbatim read-aloud passage that seeks consent is a consent
+  script first and a read-aloud script second. Emitting only `embedded-bc-script`
+  for it satisfies "the exact text goes in the form" while saying nothing about
+  what the text must CONTAIN, which is precisely how the miss below happened.
 - **Origin:** ace#983. The built consent script covered purpose / voluntary /
   may-stop / confidential, and omitted **where the data goes** and **that
   participation does not guarantee selection** — on a survey whose entire purpose
   is deciding who gets into a benefit program.
+- **The trigger miss (dimagi-internal/ace#1137).**
+  `spark-facilitator/20260731-0656` (Deliver app
+  `657a4bb7-fb2f-4a10-af43-8414707b2c43`, field `photo_consent_script`) shipped
+  a read-aloud-verbatim script the CBF speaks to an assembled village meeting
+  before photographing them — the only consent language in the programme — and
+  it scored **4/6**: `confidential` and `where the data goes / who sees it` both
+  absent, on a programme where the photo goes to an **AI verification layer plus
+  a 10% human audit sample**. That is exactly the fact a consenting participant
+  would want. The PDD declared no consent-gate *field* (consent was a verbal
+  announcement taught in the Learn app), so the orchestrator composing the brief
+  read the old trigger — *"the PDD requires recorded consent (any form with a
+  consent gate)"* — as not firing, and emitted `embedded-bc-script` instead.
+  Hence the widened trigger above: **spoken consent with no consent field is
+  still consent.**
+- **Elements (d), (e) and (f) are the ones builds omit** — (e)/(f) in ace#983,
+  (d)/(e) in ace#1137. Check those three explicitly and by name; do not assume a
+  fluent-sounding paragraph covers them.
+- **Eval-side note (routed to the owner of `pdd-to-deliver-app-eval`).** That
+  skill's `§ 5b consent_floor` still says *"when the PDD requires recorded
+  consent"* and *"read the consent field's hint"* — narrower than this
+  component's trigger on both counts, so a spoken-consent build with the script
+  in a `label` and no consent field can pass the gate by not being checked.
+  Build-emit and eval-grade are deliberately symmetric in this library; the eval
+  wording needs the same widening (any read-aloud consent text, wherever it
+  lives).
+
+**Worked example — a script that satisfies all six.** Substitute every
+angle-bracket parameter with the PDD's real value and keep the sentences short
+(see [`localization-layer`](#localization-layer) — this text gets stacked per
+language). Element letters are annotations, not part of the read-aloud text.
+**No angle bracket may survive into the shipped label** — a literal `<`/`>` in
+label text is invalid XML at `make_build` (see `pdd-to-deliver-app § REQUIRED —
+Forbid angle-bracket placeholder notation`).
+
+> Before we begin, I want to explain what I am doing and ask your permission.
+> **(a)** I am recording that this meeting took place, for
+> `<PROGRAM_NAME>`'s report on `<WHAT_THE_PROGRAM_DOES>`. I will take one photo
+> of the group.
+> **(e)** The photo and my notes go to `<IMPLEMENTING_ORG>`. They are checked
+> automatically by a computer system, and a small number are reviewed by a
+> person at `<ORG_OR_FUNDER>` to confirm the meeting happened.
+> **(d)** Your name is not attached to the photo, and it is not shared publicly
+> or with anyone outside that work.
+> **(b)** Taking part is your choice.
+> **(c)** If you do not want to be in the photo, move and sit to one side, and
+> you can tell me at any time — before or after — and I will not include you.
+> **(f)** Being in the photo does not give you any payment and does not place
+> you in `<PROGRAM_NAME>`. Staying out of it takes nothing away from you — you
+> are still counted as attending this meeting, and as taking part if you spoke.
+> Does anyone want to sit out of the photo?
 
 **Brief paragraph (verbatim):**
 
-> REQUIRED — Consent-script floor: any recorded-consent script MUST contain ALL of
-> these elements, in plain read-aloud language: (a) the purpose of the survey;
-> (b) that participation is voluntary; (c) that the respondent may stop at any
-> time; (d) that responses are kept confidential; (e) **where the data goes / who
-> will see it** — name that it leaves the interviewer and reaches the implementing
-> organization and any downstream program owner who will act on it; (f) **whether
-> participation guarantees any benefit** — when the survey feeds an eligibility,
-> targeting, or enrollment decision made elsewhere, the script MUST state
-> explicitly that taking part does NOT guarantee selection or assistance.
-> Elements (e) and (f) are the ones builds omit, and they matter most on exactly
-> the programs where a household has the strongest incentive to misreport: a
-> script that says "to help target support to families who need it most" while
-> hiding that most respondents will not be enrolled both misleads the respondent
-> and manufactures the misreporting the verification rules exist to catch.
+> REQUIRED — Consent-script floor (BUILD-TIME): any consent language the worker
+> obtains from the people whose data, photographs, or recordings are captured
+> MUST contain ALL of these elements, in plain read-aloud language: (a) the
+> purpose of the survey / recording; (b) that participation is voluntary; (c)
+> that the respondent may stop or opt out at any time — including AFTER the
+> moment they are asked; (d) that responses are kept confidential — say what is
+> and is not attached to their name; (e) **where the data goes / who will see
+> it** — name that it leaves the worker and reaches the implementing
+> organization and any downstream program owner who will act on it, INCLUDING
+> any automated / AI verification layer and any human audit sample; (f)
+> **whether participation guarantees any benefit** — when the activity feeds an
+> eligibility, targeting, or enrolment decision made elsewhere, the script MUST
+> state explicitly that taking part does NOT guarantee selection, payment, or
+> assistance, and that opting out costs them nothing they would otherwise get.
+> THIS APPLIES WHETHER OR NOT THE PDD DECLARES A CONSENT FIELD. A read-aloud
+> announcement to an assembled group, a verbal consent taught in the Learn app,
+> or a photo-consent line inside a behavior-change script are all consent
+> scripts and all carry the full floor. Where the PDD names spoken consent with
+> no consent field, put the full-floor script in the form as a read-aloud
+> `label` at the point the worker speaks it AND record the attestation in a
+> field — an unrecorded consent cannot be evidenced against a payment. Elements
+> (d), (e) and (f) are the ones builds actually omit; check those three by name
+> before you ship. They matter most on exactly the programs where a participant
+> has the strongest incentive to misreport: a script that says "to help target
+> support to families who need it most" while hiding that most respondents will
+> not be enrolled both misleads the respondent and manufactures the misreporting
+> the verification rules exist to catch.
 
 ### threshold-coherence-flag
 
@@ -949,4 +1129,5 @@ verified against the *deployed* CCZ, not just the Nova blueprint.
 | 2026-07-27 | **Walkability components (first external domain-expert iteration).** Sophie Feintuch reviewed `hh-poverty-targeting/20260722-1341` and found 6 defect classes ACE's own evals passed (ace#979–#984). New components: `observable-before-derived`, `constraint-locality`, `consent-script-floor`, `threshold-coherence-flag` (Deliver); `discriminating-assessment-items`, `instrument-grounded-examples` (Learn). Root cause shared across all six: the build was graded against the PDD and a structural bar, never against **the lived sequence of a real visit or the competence of a real worker**. Two enforcement lessons baked in: (1) `constraint-locality` is checked **mechanically** in `app-release-qa` (bind-level, no LLM) because the class is 100% detectable; (2) `assessment_discrimination` is an **executed blind-guess probe**, not a prose criterion — `instructional_depth` already required "anti-guess (plausible distractors)" and still scored the decorative bank 9.4/10, so the fix is forcing the judge to show per-item work. Every finding verified against the deployed CCZ, not the Nova blueprint. | ACE (Sophie Feintuch review) |
 | 2026-07-17 | **Built the post-build auto-apply (`app-hq-settings`).** New atoms `commcare_get_form_source` + `commcare_set_menu_display`; new Phase-3 skill `app-hq-settings` (Step 2.65, between `app-deploy` and `app-release`) patches `appearance="acquire"` onto Deliver image uploads and sets `display_style=grid` per module on both apps, then clears the matching `residuals[]`. `live-photo-capture` and `grid-menu-display` flip from provisional to **applied** (verified by `app-release-qa`). Fail-soft on this initial rollout (errors leave the residual open + are caught by `app-release-qa`, never halt Phase 3); end-to-end live validation lands on the first post-install runs. | Sarvesh |
 | 2026-07-30 | **`discriminating-assessment-items` gets an authoring PROCEDURE, and `localization-layer` stops instructing an unbuildable mechanism.** (1) **ace#1014** — three measured authoring passes on the same 12-item bank (`spark-facilitator/20260730-1718`) showed the component's adjectives don't bite: 12/12 cold-guessable as built, 10/12 after full typography normalization, 9–10/12 after deliberate virtue-inversion. Typography is not the lever (q5 was exactly uniform at 65/65/65/65 chars and still fell; 7 of 10 misses were general competence alone) and virtue-inversion is not sufficient either (q1/q4 were properly inverted and still fell on structural tells). Rewrote the brief as **two gates** — Gate 1 behavioural plausibility, Gate 2 no structural giveaway (self-justifying key, minimal-claim tell, odd-one-out on a binary, absurdity elimination) — with virtue-inversion demoted to a third, weaker heuristic, plus a **mandatory pre-release self-check** cheap enough to run inside the build brief. Eval side: `assessment_discrimination` gains per-item structural-tell deductions, a **gate-margin hard-gate** (`ratio × 100 >= the PDD's unlock threshold` → fail; a 75% gate has zero margin, `9 * 100 div 12` = exactly 75.0), pre-test coverage, and the blind-probe harness contract — `get_form` returns stems, options AND the `qN_score` calculates atomically, so a self-probe is contaminated by construction and the probe must be run by separate agents on independently permuted neutral labels with picks committed before reveal. (2) **ace#968** — the component said to ship translations "via itext", but Nova exposes **no per-language / locale / itext channel on any tool** (`update_app` carries only `name` and `connect_type`), so it instructed something unbuildable; four architect instances across two opps each independently fell back to inline stacking and reported it as a deviation. Rewrote both brief paragraphs to name **inline multilingual authoring as the sanctioned mechanism**, require COMPLETE COVERAGE (English-only stays a hard fail), permit two degradations (bare proper nouns; compact slash form in short strings), and require short English source sentences plus a build-memo note where the PDD carries a literacy constraint. Eval side: `localization_match` in **both** `pdd-to-{learn,deliver}-app-eval` now grades coverage rather than mechanism — inline coverage takes full credit with an `[INFO]`, incomplete coverage and English-only both hard-fail, and the literacy/reading-load tension surfaces as a `[WARN]` for a human rather than a deduction against the build. | ACE team |
+| 2026-07-31 | **`structured-capture` learns where options COME FROM (ace#1136), and `consent-script-floor` becomes a build-time component with a trigger that fires on spoken consent (ace#1137).** Both from `spark-facilitator/20260731-0656`, Deliver app `657a4bb7-fb2f-4a10-af43-8414707b2c43`. (1) **ace#1136** — the PDD spelled four fields `select`/`lookup` (`traditional_authority`, `group_village`, `village` "from registered communities", `community_id`) and the build shipped all four as free `text`; only `district`, whose option set was inline-enumerable from the source `.ccz`, came through as a real `single_select`. Root cause: neither this library nor `pdd-to-deliver-app` said anything about option SOURCES, so an architect with no list in hand degraded silently to `kind: text`. Nova's post-2026-07-31 surface makes a lookup-backed source buildable — `get_lookup_tables({app_id})` lists the app Project's data tables + column ids, `set_field_options_source({app_id, moduleUuid, formUuid, fieldUuid, source})` atomically replaces a select's complete choice source with `{kind:'lookup', tableId, valueColumnId, labelColumnId}` or `{kind:'inline', options}` — and this component is the only place ACE names them. Widened the trigger to include "the PDD spells it select/lookup" and "the field feeds a Connect `entity_id`"; added the no-table-exists ladder (inline-enumerate → partial select + Other + build-memo entry → never a silent `text`); made a silent degradation an explicit defect; and stated that free text must never feed an `entity_id` (it forced a mid-run dedup-key change on this very run, and the replacement key `community_id` was free text too, so only the name-collision mode closed). (2) **ace#1137** — `photo_consent_script`, read aloud verbatim to an assembled village meeting before photographing them and the programme's only consent language, scored 4/6: `confidential` and `where the data goes / who sees it` both missing, on a programme whose photos go to an AI verification layer plus a 10% human audit sample. The PDD declared no consent *field*, so the old trigger ("the PDD requires recorded consent (any form with a consent gate)") read as not firing and the orchestrator emitted `embedded-bc-script` instead. Widened the trigger to any consent sought from the people whose data/images are captured — spoken, read-aloud, announced, Learn-taught, or field-gated; marked the component BUILD-TIME (the eval gate is the backstop, and discovering the floor one step before deploy means re-authoring consent language in N languages); noted the `embedded-bc-script` overlap explicitly (both fire; this one wins); added a worked six-element script; and named (d)/(e)/(f) as the elements builds actually omit. Eval-side wording still says "when the PDD requires recorded consent" / "read the consent field's hint" — flagged in the component for the owner of `pdd-to-deliver-app-eval` rather than edited here. | ACE team |
 | 2026-07-28 | **`gps-accuracy-capture` stops requiring an unbuildable gate (ace#1006).** The component demanded "a capture-gate that re-prompts / refuses to accept a fix worse than the minimum." That is not expressible on EITHER enforcement surface: Nova rejects `validate` on `kind: geopoint` (#695/#699), the adjacent-gate workaround is closed by both #723 (FLW UX) and PR #988's constraint-locality parser, and Connect's verification-flags form no longer renders `gps` / `gps_radius_meters` at all (#1013 — posted as unrecognized keys, `ok: true`, never persisted on any run). Rewritten to the honest contract: tolerance in the hint, `gps_accuracy_m` submitted every visit, whole-range advisories, normalized lat/lon — plus a mandatory build-memo line recording that a stated tolerance is ADVISORY. New FORBIDDEN rule: an advisory whose branches cover only a band BELOW the tolerance (the >50 m blind spot that shipped in `hh-poverty-targeting/20260728-0705`) — every advisory must have an above-tolerance branch. Matching edits: `pdd-to-deliver-app-eval § Capture fitness` stops crediting the gate, `idea-to-pdd § Step 4a` stops letting a PDD assert an enforced tolerance. | ACE team |
