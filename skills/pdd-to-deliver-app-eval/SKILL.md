@@ -152,15 +152,62 @@ and `skills/eval-calibration/SKILL.md` for calibration methodology.
    every module, form, and field); `search_blueprint({query, app_id})`
    resolves a single semantic name. Resolve once at the top of the run and
    reuse the map for every `get_form` read below.
-   - **`consent_floor`** (added 2026-07-27, ace#983) — when the PDD requires
-     recorded consent, the consent script (the field's `hint` / read-aloud
-     label) MUST contain all six floor elements per
-     `_app-component-library.md § consent-script-floor`: purpose · voluntary ·
-     may stop · confidential · **where the data goes / who sees it** ·
-     **whether participation guarantees a benefit**. Read the consent field's
-     hint via `get_form` and check each element. Any missing element →
-     `[BLOCKER]` → `fail`. The last two are the ones builds omit; element (f)
-     is mandatory whenever the PDD says eligibility is determined downstream.
+   - **`consent_floor`** (added 2026-07-27, ace#983; trigger + search widened
+     2026-07-31, ace#1137) — **grade this whenever the PDD describes consent
+     being sought from the people whose data, photographs, or recordings are
+     captured — WHETHER OR NOT the PDD declares a consent FIELD.** The trigger
+     is the build-side one in `_app-component-library.md §
+     consent-script-floor`, verbatim, and it fires on ANY of: a consent gate /
+     consent field in the Deliver App Specification; a **read-aloud, verbatim,
+     spoken, or announced** consent of any kind, even when the only place it
+     lives is a `label` or a Learn-app lesson; a photograph, audio, or video
+     capture of identifiable people; a survey that feeds an eligibility,
+     targeting, or enrolment decision. Build-emit and eval-grade are
+     deliberately symmetric in that library — if the component fires on the
+     build side, this dimension MUST fire here.
+
+     **Find the script wherever it lives — do not look only at a consent
+     field's hint.** Scan every form's fields via `get_form` and take the
+     consent script to be whichever of these carries the consent language:
+     a consent field's `hint`, a consent field's `label`, a read-aloud
+     `label` node (the `photo_consent_script` shape), an
+     `embedded-bc-script` passage that contains a consent ask, or a
+     consent passage in the Learn app. A verbatim read-aloud passage that
+     seeks consent is a consent script first and a read-aloud script
+     second — grade it here even when the build emitted it as
+     `embedded-bc-script`.
+
+     The script MUST contain all six floor elements per
+     `_app-component-library.md § consent-script-floor`: (a) purpose ·
+     (b) voluntary · (c) may stop · (d) **confidential** ·
+     (e) **where the data goes / who sees it** · (f) **whether
+     participation guarantees a benefit**. Check each element by name. Any
+     missing element → `[BLOCKER]` → `fail`.
+
+     **Elements (d), (e) and (f) are the ones builds actually omit** —
+     (e)/(f) in ace#983, (d)/(e) in ace#1137. Do not assume a
+     fluent-sounding paragraph covers them. Element (e) must name any
+     automated / AI verification layer and any human audit sample, not just
+     the implementing organization; element (f) is mandatory whenever the
+     PDD says eligibility, targeting, or enrolment is determined
+     downstream.
+
+     **When the trigger fires but the PDD declares no consent field,
+     ALSO assert the attestation is recorded in a field** — an unrecorded
+     consent is unauditable, and the payment record is the only place it
+     can be evidenced. Script present at full floor but no attestation
+     field → `[BLOCKER]` → `fail`.
+
+     Reproducer for the narrow-trigger miss this widening closes:
+     `spark-facilitator/20260731-0656` (Deliver app
+     `657a4bb7-fb2f-4a10-af43-8414707b2c43`, field `photo_consent_script`)
+     shipped the programme's only consent language as a read-aloud script
+     scoring **4/6** — `confidential` and `where the data goes / who sees
+     it` both absent, on a programme whose photos go to an AI verification
+     layer plus a 10% human audit sample. The PDD declared no consent-gate
+     *field*, so the old wording (*"when the PDD requires recorded
+     consent"* / *"read the consent field's hint"*) did not fire and the
+     build passed the gate **by not being checked**.
    - **`threshold_coherence`** (added 2026-07-27, ace#984) — when the PDD fixes
      ≥2 numbers constraining the same physical quantity, the pair MUST be
      coherent OR the conflict MUST be surfaced in the build memo. Check at
@@ -296,3 +343,4 @@ See `skills/_eval-template.md § Dry-Run Behavior (stock)`.
 | 2026-07-28 | **`capture_fitness` stops crediting a GPS capture-gate that cannot exist (ace#1006).** Criterion (a) required "a capture-gate that rejects low-accuracy fixes." That is unbuildable on both surfaces (Nova rejects `validate` on `kind: geopoint`; Connect's verification-flags form no longer carries `gps` / `gps_radius_meters` — ace#1013), so the judge was rewarding a claim and penalising its honest absence. Re-pointed at the `gps-accuracy-capture` observability contract (tolerance in hint + `gps_accuracy_m` submitted every visit + normalized lat/lon + whole-range advisory), with an explicit do-not-credit/do-not-deduct instruction on enforcement and a new 2-point deduction for a band-only advisory that goes silent above the tolerance. `threshold_coherence` now reads the tolerance from the hint + advisory branches rather than from a geopoint `constraint`. | ACE team |
 | 2026-07-30 | **`localization_match` grades coverage, not mechanism (ace#968).** The dimension required a translation set "via itext", but Nova exposes **no per-language / locale / itext channel on any tool** (`update_app` carries only `name` and `connect_type`), so it graded against an unreachable mechanism and architects who took the only available path (inline multilingual labels) reported it as a deviation. Now: complete coverage authored INLINE is the **sanctioned fallback** and takes full credit with an `[INFO]` recording the mechanism; materially-incomplete coverage and English-only both still hard-fail ≤3; the two permitted degradations (option labels identical across languages stay bare; short strings such as case-list headers use the compact slash form) must not false-fail; and where the PDD carries a low-literacy design constraint, the multiplied reading load surfaces as a `[WARN]` for a human decision rather than a deduction against the build. Paired 1:1 with `_app-component-library.md § localization-layer`. | ACE team |
 | 2026-07-31 | **Migrated every `get_form` read to uuid addressing (ace#1132).** Nova's 2026-07-31 redeploy moved its whole surface from `moduleIndex`/`formIndex`/`fieldId` to `moduleUuid`/`formUuid`/`fieldUuid`, so the `terminology` and `consent_floor` scans named uncallable operations. Added an addressing note at § 5b: resolve uuids ONCE per run — from the build summary's `nova_uuids:` frontmatter if present, else one `get_app({app_id})` (its blueprint prints `[uuid …]` on every module/form/field), with `search_blueprint({query, app_id})` for a single semantic name — and reuse the map for every `get_form` read. `terminology`'s "ignore API index keys" carve-out now names uuids as the structural metadata to ignore. Also corrected `localization_match`'s parenthetical (`update_app` now carries only `name`); the no-itext-channel claim itself was re-verified across all 63 live tools. | ACE team |
+| 2026-08-01 | **Widened `consent_floor`'s trigger and its search surface to match the build side (ace#1137).** The dimension gated on *"when the PDD requires recorded consent"* and read *"the consent field's hint"* — narrower on BOTH counts than `_app-component-library.md § consent-script-floor`, whose trigger fires on read-aloud/spoken/announced consent **even with no consent FIELD declared**, and on photo/audio/video capture of identifiable people. Build-emit and eval-grade are deliberately symmetric in that library; they had drifted apart, so a spoken-consent build whose script lives in a `label` passed the gate **by not being checked** — exactly what shipped on `spark-facilitator/20260731-0656` (`photo_consent_script`, 4 of 6 elements, missing `confidential` and `where the data goes / who sees it`, on a programme whose photos reach an AI verification layer plus a 10% human audit sample). § 5b now carries the component's trigger verbatim, tells the grader to find the script wherever it lives (consent-field `hint` OR `label`, a read-aloud `label` node, an `embedded-bc-script` passage containing a consent ask, or a Learn-app consent passage), names (d)/(e)/(f) as the elements builds actually omit, and adds the missing-attestation-field blocker for the no-consent-field case. | ACE team |

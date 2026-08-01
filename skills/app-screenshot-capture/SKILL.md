@@ -209,7 +209,11 @@ Inputs the caller assembles:
 - Nova app structures — one `nova_get_app({app_id})` per app in
   `app-test-cases.yaml` (typically learn + deliver)
 - **Form fields, per walked form** — `nova_get_form({app_id,
-  moduleIndex, formIndex})`, mapped onto `forms[].fields[]` as
+  moduleUuid, formUuid})` (Nova is uuid-addressed since 2026-07-31; the
+  uuids come off the `nova_get_app({app_id})` responses above, whose
+  blueprint prints `[uuid …]` on every module, form, and field — see
+  `playbook/integrations/nova-integration.md § The 2026-07-31
+  uuid-addressing migration`), mapped onto `forms[].fields[]` as
   `{id, kind, label, options, children}`. Optional, but supplying it
   is what makes the probe **screen-shape aware**: it turns on the
   `label`-screen carve-out (#858) and the
@@ -1125,3 +1129,4 @@ Notes:
 | 2026-05-27 | **Two-leg capture split.** Step 5 rewritten as independent Learn leg + Deliver leg. Learn always runs first; a Deliver failure (or missing recipe) no longer suppresses Learn screenshots. Per-app `per_item` verdict mapping table added (pass/fail/incomplete/blocked-by-learn outcomes). Coverage rubric updated: "both legs attempted; Learn always; Deliver iff Learn completed." See spec 2026-05-27-phase6-learn-deliver-decoupling. | ACE team |
 | 2026-05-06 | **Step 2 input-completeness pre-flight** — restructured the post-Step-1 logic into an explicit failure-mode table that distinguishes upstream Phase 3 incomplete output (master yaml without recipes) from smoke-flag malformation. Each failure halts with a named PLATFORM auto_surfaced message + the exact `/ace:step` remediation command, and writes `verdict: incomplete` (not `fail` — upstream gaps aren't smoke failures). Surfaced by leep-paint-collection run 20260506-1440 where a Phase 3 dispatch paraphrased the `app-test-cases` SKILL contract and elided the per-journey recipe outputs; `app-screenshot-capture` halted correctly but the operator-facing message conflated the failure mode with general "missing input" diagnostics. See jjackson/ace#106 finding #3 + #16. | ACE team |
 | 2026-05-07 | **Step 5 anyone-with-link via `drive_upload_binary({shareAnyoneWithLink: true})`** — replaces the previous unfulfillable contract (the SKILL named `drive.permissions.create` but no MCP atom implemented it). The new flag sets `role: reader, type: anyone` atomically at upload time, eliminating the "deck builds without errors but slides are empty" failure mode. Standalone `drive_set_anyone_with_link({fileId})` atom also added for retroactive sharing. See jjackson/ace#115 finding #3. | ACE team |
+| 2026-08-01 | **Migrated the recipe-sanity-probe's per-form field read to uuid addressing (ace#1132).** The probe's optional `fields` input was spelled as a `nova_get_form` read taking the module/form index pair; Nova has accepted no index param since its 2026-07-31 redeploy, so the call would have been rejected and the probe silently degraded to its field-blind behaviour — re-introducing the #858 false positives on label-heavy Learn apps. Now `nova_get_form({app_id, moduleUuid, formUuid})`, uuids off the `nova_get_app({app_id})` responses the probe already collects. Enforced by `test/skills/nova-uuid-addressing.test.ts`. | ACE team |

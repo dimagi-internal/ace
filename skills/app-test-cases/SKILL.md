@@ -732,9 +732,16 @@ visits & interviews`, etc.). `tapOn:text` matchers calibrated against
 the brief never hit live screens.
 
 For every `tapOn:text` matcher in a recipe:
-- Read the label from `get_form({app_id, form_id})`'s
+- Read the label from `get_form({app_id, moduleUuid, formUuid})`'s
   response — Nova returns each form's `label` and each field's `label`
   exactly as CommCare will render them after autobuild's scaffold pass.
+  Nova is **uuid-addressed** (2026-07-31; see
+  `playbook/integrations/nova-integration.md § The 2026-07-31
+  uuid-addressing migration`) — no tool accepts `moduleIndex` /
+  `formIndex` / a bare `form_id`. Resolve the whole map with ONE
+  `get_app({app_id})` (its blueprint prints `[uuid …]` on every module,
+  form, and field) and reuse it for every read below; for a single
+  semantic name, `search_blueprint({query, app_id})`.
 - Use that string verbatim in the recipe's `tapOn:text` matcher.
 - For module-list / form-list screens, read the parent module's `label`
   from `get_module` and apply the same rule.
@@ -805,7 +812,8 @@ before it.
 
 For each form-walk segment of a recipe:
 
-1. Call `get_form({app_id, moduleIndex, formIndex})` and inspect each
+1. Call `get_form({app_id, moduleUuid, formUuid})` — uuids off the
+   `get_app({app_id})` map per § Use live labels — and inspect each
    field's `kind` + required-ness, **in document order**.
 1.5. Walk the fields in order. For every leading or interior **display/label
    node** (`kind: label` / a display-only node with no input widget), emit one
@@ -1210,3 +1218,4 @@ already maps the producer to `3-commcare/` (see
 | 2026-07-31 | **The leading-label rule is now STATICALLY ENFORCED (closes dimagi-internal/ace#1045); nested `runFlow.env` finally feeds the module/form checks (closes #1068).** § Quiz / required-input answer-tap rule → "Leading (and interior) display/label screens" had been prose-only since #710/#684, and recurred in that window (bednet-spot-check/20260729-0002: a golden `journey-learn.yaml` tapped a q1 option with no advance past the `intro` label, killing the Learn leg and locking Deliver). `recipe-sanity-probe` gained `answer-tap-before-leading-label-advance` — counts the walked form's leading `kind: label` nodes (skipping `hidden`) and fails when fewer bare advances sit between the menu-walk entry step and the first answer tap, naming expected vs found. It's the inverse of the #858 permissive carve-out and is field-gated like `group-field-list-per-question-walk`. Same PR taught `extractRecipeParameters` to walk NESTED `runFlow.env` maps (the shape Phase 3 emits), so `expected-module-not-in-app` / `expected-form-not-in-module` can fire at all — they had been silently inert — plus a `module-form-checks-not-run` WARN + `observed.module_form_checks_ran` so an inert check never reads as a clean pass. Still prose-only: the score-gated over-advance class (#569). | ACE team |
 | 2026-07-31 | **Menu anchors are display-mode-agnostic; a single-container anchor is now a CI failure (closes dimagi-internal/ace#1127).** #1082/PR #1100 correctly made Phase 3 `app-hq-settings` apply GRID menu display app-wide — and because every Phase 6 menu anchor resolved to the LIST container `screen_suite_menu_list` ALONE, no shipped palette recipe could execute on any ACE opp (bednet-spot-check/20260731-1353: Learn halted at `learn-launch.yaml`, Deliver walled identically, Phase 6 `verdict: blocked`, apps confirmed healthy server-side). CommCare renders the SAME `row_img`/`row_txt` rows in either container; only the container id changes. Fix: `learn-suite-menu` / `deliver-suite-menu` are now regex alternations (`org.commcare.dalvik:id/(screen_suite_menu_list|grid_menu_grid)`) in connect-2.63.0 + 2.63.2, `deliver-form-walk.yaml`'s two RAW container literals now route through the map, and a new `menu-container anchors are display-mode-complete` invariant suite fails on (a) any palette file hardcoding a container id, (b) any selector-map row naming one container but not all, (c) any RESOLVED palette anchor that isn't complete. Adding a future display mode = one id in `KNOWN_MENU_CONTAINERS` + one map edit. | ACE team |
 | 2026-06-01 | **Learn content forms are multi-screen + finalize to StandardHomeActivity (closes #646).** Two new static palette pieces: `content-form-finish.yaml` (bounded multi-screen advance loop that taps `nav_btn_next` until a Learn CONTENT form auto-finalizes, exits on the `learn-home-start-tile` home anchor — NOT the suite menu — handles the score-gated two-screen FINISH, and asserts the home grid post-finalize) and `learn-suite-reentry.yaml` (the explicit "tap Start → wait `screen_suite_menu_list`" re-entry that MUST run between every module, because a Learn form finalizes to the home grid not the suite menu). Added §§ "Multi-screen content forms" + "Suite re-entry between modules"; the prior single-screen-only content-form note is subsumed. Closes the malaria-rdt/20260601-0929 Phase 6 Learn-walk blocker (recipe walked each content form as single-screen and called the next `learn-tap-module` directly, stalling on page 2 then hard-failing the suite-menu assert). Validated structurally (`mobile_validate_recipe` + selector-resolution gate against connect-2.63.0); full live re-walk lands on the next fresh-run Phase 6 (this run consumed its one-way Learn state). | ACE team |
+| 2026-08-01 | **Migrated Nova reads to uuid addressing (ace#1132).** Nova's 2026-07-31 redeploy moved its whole surface from `moduleIndex`/`formIndex`/`fieldId` to `moduleUuid`/`formUuid`/`fieldUuid`. Two `get_form` reads here named uncallable operations — § Use live labels passed a bare `form_id`, and the per-form-walk field read in § Emitting a form-walk segment passed the index pair — both rejected server-side with `unrecognized_keys`. Both now pass `{app_id, moduleUuid, formUuid}`, resolved ONCE from `get_app({app_id})` (its blueprint prints `[uuid …]` on every module, form, and field), with `search_blueprint({query, app_id})` for a single semantic name. Enforced by `test/skills/nova-uuid-addressing.test.ts`. | ACE team |

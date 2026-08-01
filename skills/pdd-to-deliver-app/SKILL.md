@@ -48,30 +48,37 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
      more robust path is for this brief to be unambiguous up front.
      See `docs/learnings/2026-04-29-nova-connect-marker-bugs.md`
      § Bug 1 for the prompt-quality dependency.
-   - **State the marker MECHANISM: a Deliver app must be SCAFFOLDED as a
-     Connect deliver app — `generate_scaffold(connect_type: "deliver")`
-     at the APP level — AND every paid form must carry a
-     `connect.deliver_unit` block.** The app-level `connect_type:
-     "deliver"` is what makes Nova's compiler emit the `<learn:deliver>`
-     marker into the released CCZ. **Leaving `connect_type` empty (`""`)
-     ships a marker-less CCZ even when each form already has a
-     `connect.deliver_unit` block** — Connect surfaces zero deliver units
-     → Phase 4 cannot create a payment unit. Per form, set
-     `connect.deliver_unit: {name, id, entity_id, entity_name}` (in the
-     scaffold's form config, or via `update_form` after build); the form
+   - **State the marker MECHANISM: a Deliver app must carry an APP-LEVEL
+     Connect mode of `deliver` — set via
+     `configure_connect({app_id, mode: "deliver", participants})` — AND
+     every paid form must carry a `connect.deliver_unit` block.** The
+     app-level mode is what makes Nova's compiler emit the
+     `<learn:deliver>` marker into the released CCZ. **Leaving the app
+     with no Connect mode ships a marker-less CCZ even when each form
+     already has a `connect.deliver_unit` block** — Connect surfaces zero
+     deliver units → Phase 4 cannot create a payment unit. Per form, set
+     `connect.deliver_unit: {name, id, entity_id, entity_name}` — via the
+     `participants[]` entry on `configure_connect`, or via
+     `update_form({moduleUuid, formUuid, connect})` after build; the form
      stays `type: registration` — there is no special deliver form type.
      This mirrors the Learn app, which compiles its `learn_module` /
-     `assessment` markers because it is scaffolded `connect_type:
-     "learn"`. Name `connect_type: "deliver"` explicitly in the brief so
-     the architect sets it at scaffold time.
+     `assessment` markers because its app-level mode is `learn`. Name
+     `mode: "deliver"` explicitly in the brief so the architect sets it as
+     part of the build, not as an afterthought.
      - **Do NOT** tell the architect the marker is "module-level" via
-       `module_type` / `add_module`, and do NOT let `connect_type` default
-       to empty. Live Nova `update_module` accepts only `name` (no
+       `module_type` / `add_module`, and do NOT let the app land with no
+       Connect mode. Live Nova `update_module` accepts only `name` (no
        `module_type`); there is no `add_module` tool (it is
-       `create_module`, which has no `connect_type`). A brief that frames
-       the marker as module-level leads the architect to leave
-       `connect_type` empty and ship a marker-less CCZ — the root cause of
+       `create_module`, which has no Connect parameter). A brief that
+       frames the marker as module-level leads the architect to leave the
+       app-level mode unset and ship a marker-less CCZ — the root cause of
        the `malaria-rdt/20260603-1600` Phase 3 halt.
+     - **`update_app` no longer carries `connect_type`** — it was removed
+       in Nova's 2026-07-31 redeploy (dimagi-internal/ace#1133) and
+       `update_app({name, app_id})` now sets the display name only.
+       `configure_connect` is the ONLY path to the app-level mode, and it
+       is **REPLACE-ALL**: every form omitted from `participants[]` has
+       its Connect block CLEARED. See Step 4e.
      - **The `get_app` / `get_form` `[Connect enabled]` flag is a FALSE
        POSITIVE for compile** — it shows whenever a form carries a
        `connect.deliver_unit` block, even when `connect_type: ""` means the
@@ -415,9 +422,30 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
        expected `(module, form)` is missing — that's a structural gap
        the field-count recipe can't fix.
 
+       **This same call is the addressing map.** Nova is uuid-addressed
+       (2026-07-31 migration — see
+       `playbook/integrations/nova-integration.md § The 2026-07-31
+       uuid-addressing migration`); there are no `moduleIndex` /
+       `formIndex` parameters on any tool. `get_app`'s blueprint prints
+       `[uuid <rfc-uuid>]` on every module, form, and field:
+
+       ```
+       - Module "CBF Registration" [uuid b60055c1-…] (case_type: cbf)
+         - Form "CBF Registration" [uuid c3deb000-…] (registration, 12 fields)
+           - community_id [uuid c3df54f7-…] (text)
+       ```
+
+       Build `uuids[module][form] -> {moduleUuid, formUuid}` (and the
+       per-field uuids) from this ONE response and carry it through the
+       rest of the recipe — Steps 4b–4f all address off this map. One
+       lookup beats N. If you only hold a semantic name later,
+       `search_blueprint({query, app_id})` resolves it — but prefer the
+       map you already have.
+
     3. **For every form in the expected map**, call
-       `get_form({app_id, moduleIndex, formIndex})` (one call per form,
-       batchable in parallel across forms). Collect:
+       `get_form({app_id, moduleUuid, formUuid})` using the uuids from
+       step 2 (one call per form, batchable in parallel across forms).
+       Collect:
        - `persisted_ids`: the set of `field.id` values present in the
          response. Hidden / label / group / repeat fields all count.
        - `persisted_count`: `len(persisted_ids)`.
@@ -536,12 +564,12 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
     The autonomous architect dispatched in Step 4 (`/nova:autobuild` →
     `Agent(nova:nova-architect-autonomous)`) **cannot clear this error
     on its own**: the case-list-config tool family
-    (`add_case_list_column`, `set_case_list_filter`,
+    (`add_case_list_columns`, `set_case_list_filter`,
     `update_case_list_column`, `remove_case_list_column`,
     `reorder_case_list_columns`, `set_case_search_display`,
-    `set_case_search_advanced`, `add_search_input`, …) is **not present
+    `set_case_search_advanced`, `add_search_inputs`, …) is **not present
     in the autonomous architect's tool allowlist**. It will try
-    `generate_scaffold`, a fresh `create_module`, and promoting
+    `generate_schema`, a fresh `create_module`, and promoting
     `case_name` to a visible field — none of which auto-seeds the
     default column — and report it cannot reach validate-clean.
 
@@ -562,19 +590,20 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
 
     1. From the already-fetched `get_app({app_id})` blueprint, identify
        every **case-CREATE** module, and for each one call
-       `get_module({app_id, moduleIndex})` to confirm its case type and
+       `get_module({app_id, moduleUuid})` — the `moduleUuid` comes from
+       the Step 4a step-2 addressing map — to confirm its case type and
        whether its case list is empty (`case_list_config: null` /
        missing `caseListConfig.columns`). If every case-create module
        already carries a non-empty case list — or the app has no
        case-create modules — skip the rest of this step; there is
        nothing to heal.
     2. For each offending module, call
-       `add_case_list_column({app_id, moduleIndex, ...})` to add ONE
+       `add_case_list_columns({app_id, moduleUuid, ...})` to add ONE
        plain column over the case name field (the module's `case_name` /
        case-name field). A single default column is sufficient to clear
        the architect-side validate error; this is the same one-column
        heal an operator applies by hand.
-    3. Re-fetch via `get_module({app_id, moduleIndex})` and re-assert
+    3. Re-fetch via `get_module({app_id, moduleUuid})` and re-assert
        the case list is now non-empty. **Bounded loop, max 3
        iterations** over steps 1–3. If any case-create module still has
        an empty `caseListConfig.columns` after the third iteration,
@@ -584,50 +613,94 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
     (Apps with no case-CREATE module, or whose case-create modules
     already carry a non-empty case list, skip cleanly at step 1.)
 
-4e. **Deliver-marker compile pre-check (catch `connect_type: ""` before
-    deploy).** The released-CCZ marker check is owned by `app-release-qa`
-    (Step 2.8), but that runs after deploy + release — catch the
-    scaffold-level miss here, cheaply, on the already-fetched blueprint.
+4e. **Deliver-marker compile pre-check (catch a missing app-level Connect
+    type before deploy) — runs at LEVEL 0.** Mirror of
+    `pdd-to-learn-app` § 4b. The autonomous architect
+    (`Agent(nova:nova-architect-autonomous)`) can land a Deliver app with
+    **no app-level Connect mode** even though every form already carries
+    its `connect.deliver_unit` block. The per-form `[Connect enabled]`
+    flag is a **FALSE POSITIVE for compile**: with no app-level mode the
+    released CCZ ships with ZERO `<learn:deliver>` markers, Connect
+    surfaces zero deliver units, and Phase 4 fails at payment-unit
+    creation. `app-release-qa` (Phase 3 Step 2.8) catches it
+    post-release, but that is a full deploy→build→release cycle too late
+    — assert it here, cheaply, on the already-built app.
 
     1. Call `get_app({app_id})`. Its summary header prints the app's
        Connect type (e.g. `Connect type: deliver` / `Connect type:
-       learn`); a standard app prints none.
-    2. **Assert the header reads `Connect type: deliver`.** If it is
-       absent / empty (the app was scaffolded `connect_type: ""`), the
-       per-form `connect.deliver_unit` blocks will NOT compile a
-       `<learn:deliver>` marker — the released CCZ would carry zero
-       deliver units and Phase 4 would fail at payment-unit creation.
-       Do NOT rely on the per-form `[Connect enabled]` flag — it is a
-       false positive for compile (see Step 3 marker-mechanism bullet).
-    3. On a miss, set it at LEVEL 0 — `update_app` is an architect
-       allowlist gap (the autonomous architect dispatched in Step 4
-       cannot flip the app-level `connect_type` on a completed app), but
-       it IS available to the level-0 session that executes this skill,
-       and it accepts `connect_type: "deliver"` (its enum is `learn |
-       deliver | null`). Call `update_app({app_id, connect_type:
-       "deliver"})`, then re-run `get_app` and re-assert the header reads
-       `Connect type: deliver`. **Bounded loop, max 3 iterations.** This
-       mirrors the Learn app's Step 4b heal exactly — the per-form
+       learn`); a standard app prints none. **Keep this response** — you
+       need its complete form list and `[uuid …]` markers for step 3.
+    2. **Assert the header reads `Connect type: deliver`.** Do NOT rely
+       on the per-form `[Connect enabled]` flag — it is a false positive
+       for compile (see above, and Step 3's marker-mechanism bullet).
+    3. On a miss, heal at LEVEL 0 with **`configure_connect`**, which is
+       available to the level-0 session that executes this skill.
+       `update_app` no longer carries `connect_type` — it was removed in
+       Nova's 2026-07-31 redeploy (dimagi-internal/ace#1133);
+       `configure_connect` replaced it and sets the app-level mode AND
+       every form's Connect block in one atomic call.
+
+       > **⚠ `configure_connect` is REPLACE-ALL, not a patch.** Upstream:
+       > *"learn/deliver requires the complete nonempty UUID-addressed
+       > participant set, and every unlisted form becomes auxiliary."*
+       > **Every form you omit from `participants[]` has its existing
+       > Connect block CLEARED.** A partial participant list turns this
+       > marker-repair into a marker-deletion — strictly worse than the
+       > problem you came to fix. This is the OPPOSITE of
+       > `update_form({connect})`, which is per-form and additive.
+
+       So: **enumerate the COMPLETE participating set from the step-1
+       `get_app` response first**, then call once:
+
+       ```
+       configure_connect({
+         app_id,
+         mode: "deliver",
+         participants: [
+           // EVERY paid form in the app, addressed by formUuid.
+           { formUuid: "<paid form uuid>",
+             connect: { deliver_unit: { name, entity_id, entity_name } } },
+           …
+         ]
+       })
+       ```
+
+       Note the **structured expression shape** — `entity_id` /
+       `entity_name` (like `label`, `relevant`, `calculate`,
+       `default_value`) take `{parts: [...]}`, not a plain XPath string;
+       a bare string is rejected. Omit each block's `id` and let Nova
+       derive it.
+
+       Then re-run `get_app` and re-assert BOTH the header and that every
+       form that carried a Connect block before still carries one.
+       **Bounded loop, max 3 iterations.** The per-form
        `connect.deliver_unit` blocks the architect already built stay
        intact, so the marker compiles on the next deploy with **no
-       rebuild and no fresh app id**. Only if `update_app` is itself
-       unavailable, OR the header still does not read `Connect type:
-       deliver` after the third attempt, fall back to a rebuild:
-       re-dispatch `/nova:autobuild` with a brief that explicitly sets
-       `generate_scaffold(connect_type: "deliver")`, or (if Nova
-       `create_app` is also unavailable) halt with a clear
-       `deliver-marker-wont-compile` failure. Either way, do NOT write the
-       success summary with `connect_type: ""`.
+       rebuild and no fresh app id**. If the header still does not read
+       `Connect type: deliver` after the third attempt (or
+       `configure_connect` is itself unavailable), halt with a clear
+       `deliver-marker-wont-compile` failure and do NOT write the success
+       summary.
 
-    Reproducer: `malaria-rdt/20260603-1600` — Deliver scaffolded
-    `connect_type: ""`; both the original and a fresh re-upload+re-release
-    produced `connect_markers.deliver = 0` (that session predated the L0
-    `update_app` heal and fell back to a rebuild, blocked by a concurrent
-    Nova `create_app` outage). See jjackson/ace#694. The L0
-    `update_app({connect_type: "deliver"})` heal in step 3 above was
-    confirmed live on `bednet-spot-check/20260616-0618` — one call flipped
-    the header from absent to `Connect type: deliver` with the per-form
-    blocks intact, no rebuild. See jjackson/ace#792.
+    Use `update_form({moduleUuid, formUuid, connect})` **only** to refine
+    one sub-config on a form that ALREADY participates — it cannot enable
+    Connect, switch mode, or add a participant, and it refuses a
+    whole-slot null. Full division of labour:
+    `playbook/integrations/nova-integration.md § configure_connect
+    replaced update_app({connect_type})`.
+
+    Reproducer: `malaria-rdt/20260603-1600` — the Deliver app landed with
+    no app-level Connect mode; both the original and a fresh
+    re-upload+re-release produced `connect_markers.deliver = 0` (that
+    session predated the L0 heal and fell back to a rebuild, blocked by a
+    concurrent Nova `create_app` outage). See jjackson/ace#694. The L0
+    heal in step 3 above was confirmed live on
+    `bednet-spot-check/20260616-0618` — one call flipped the header from
+    absent to `Connect type: deliver` with the per-form blocks intact, no
+    rebuild. See jjackson/ace#792. (That heal was
+    `update_app({connect_type: "deliver"})` at the time; the parameter was
+    removed 2026-07-31 and `configure_connect` is now the only path —
+    dimagi-internal/ace#1133.)
 
 4f. **Option-source pre-check (PDD-declared selects must not ship as free
     text).** The structural preventer for ace#1136. `structured-capture` puts
@@ -845,22 +918,14 @@ form, Stage 2 = atomic household-visit form).
   `/nova:list`, `/nova:edit`
 - **Nova MCP tools called directly at level 0** (Steps 4a–4f): `get_app`,
   `get_module`, `get_form`, `search_blueprint` (semantic id → uuids in one
-  call), `add_case_list_column`, `edit_field`, `get_lookup_tables`,
-  `set_field_options_source`. Nova is **uuid-addressed** — `moduleUuid` /
-  `formUuid` / `fieldUuid`, never indexes.
-  > **Known stale text (dimagi-internal/ace#1132).** Steps 4a and 4d above
-  > still spell their reads `get_form({app_id, moduleIndex, formIndex})` /
-  > `get_module({app_id, moduleIndex})`. Zero of Nova's live tools accept an
-  > `*Index` parameter since the 2026-07-31 redeploy — those calls are rejected
-  > server-side with `unrecognized_keys`. Step 4f is written against the live
-  > uuid contract; 4a/4b/4c/4d/4e are pending the #1132 migration. Until it
-  > lands, resolve uuids with `search_blueprint({query, app_id})` (semantic id
-  > → `{moduleUuid, formUuid, fieldUuid}` in one call) or off `get_app` /
-  > `get_module`, and read every index in those steps as "the corresponding
-  > uuid". Step 4e's `update_app({connect_type})` heal is likewise superseded
-  > by `configure_connect({app_id, mode, participants})` (ace#1133) — note its
-  > REPLACE-ALL semantics: a partial `participants[]` clears the Connect block
-  > off every form it omits.
+  call), `add_case_list_columns`, `edit_field`, `configure_connect`,
+  `update_form`, `get_lookup_tables`, `set_field_options_source`. Nova is
+  **uuid-addressed** since 2026-07-31 (dimagi-internal/ace#1132) —
+  `moduleUuid` / `formUuid` / `fieldUuid`, never indexes; resolve the whole
+  map with ONE `get_app({app_id})` at Step 4a and reuse it. The app-level
+  Connect mode is set by `configure_connect({app_id, mode, participants})`,
+  which is **REPLACE-ALL** (ace#1133) — `update_app` no longer carries
+  `connect_type`. Enforced by `test/skills/nova-uuid-addressing.test.ts`.
 
 See `playbook/integrations/nova-integration.md` for plugin status.
 
