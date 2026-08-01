@@ -591,12 +591,35 @@ which phases already shipped.
 **Source-of-truth implementation:** `lib/run-state-validator.ts` exports
 `validateRunState(parsed)` (returns structured `{valid, errors, warnings}`)
 and `classifyPhaseWriteBack(parsed, phaseName)` (returns one of
-`'ok' | 'missing' | 'in_progress' | 'error' | 'malformed'`). Tests pin
+`'ok' | 'missing' | 'in_progress' | 'error' | 'blocked' | 'skipped' |
+'malformed'`). Tests pin
 every shape invariant the prose below describes — if you change either,
 update the other. The orchestrator's silent-dispatch retry (§ Auto-retry
 silent Agent dispatches in `ace-orchestrator.md`) treats `'missing'`,
 `'in_progress'`, and `'malformed'` as retry triggers; `'error'` is a
 real phase failure that halts.
+
+**The status enums, stated inline (do not guess).** Writing a
+plausible-but-unlisted word is not a typo class — it is a *re-dispatch* class:
+`classify_phase_writeback` returns `malformed` for anything off these lists,
+and the orchestrator reads `malformed` as "the agent claimed success but did
+not write properly" and re-runs the whole phase. Two live examples cost a full
+Phase-1 re-run each (`complete` instead of `done`, ace#992) and a Phase-3
+misreport (`partial`, ace#1139).
+
+| Level | Legal values |
+|---|---|
+| `phases.<phase>.status` | `pending` · `in_progress` · `done` · `complete`¹ · `partial`² · `error` · `blocked` · `skipped` |
+| `phases.<phase>.steps.<step>.status` | `pending` · `in_progress` · `done` · `complete`¹ · `incomplete` · `partial`² · `error` · `skipped` · `deferred` |
+
+¹ `complete` is an accepted **legacy synonym** for `done` at both levels —
+accepted so an older run does not classify as `malformed`, but it emits a
+validator warning. Write `done`. (Before ace#992 it was accepted at step level
+and by `verify_phase_products`, and rejected at phase level: the same literal
+string returned `ok: true` from two boundary fences and `malformed` from the
+third on one run.)
+
+² `partial` — see § `partial`: a phase that shipped but parked something, below.
 
 **Required shape.** Each phase writes its own top-level
 `phases.<phase-name>` block:
@@ -604,13 +627,15 @@ real phase failure that halts.
 ```yaml
 phases:
   <phase-name>:
-    status: in_progress | done | error
+    status: in_progress | done | partial | error   # full enum in the table above
     started_at: <ISO timestamp>            # when the dispatch fired
-    completed_at: <ISO timestamp>          # required when status: done
+    completed_at: <ISO timestamp>          # required when status: done | partial
     verdict: pass | proceed | proceed-with-warn | reject | halt-at-… | closed
                                             # phase-specific terminal disposition
                                             # `closed` is reserved for Phase 10 (closeout) —
                                             # terminal-phase synonym for `pass`
+                                            # a `partial` phase names the gap here,
+                                            # e.g. partial-producer-deferred
     summary_artifact: <Drive fileId>        # required if the phase produces a summary doc
     steps:
       <skill-name>:
@@ -623,6 +648,58 @@ phases:
         artifacts:                          # additional Drive fileIds if the skill produces multiple
           <name>: <fileId>
 ```
+
+### `partial` — a phase that shipped but parked something
+
+`partial` is a **terminal** phase status: *the phase is finished and its
+downstream-facing handoff is final, but at least one declared producer or
+`-eval` step did not ship.* It is what the verdict-gate rule in every phase
+agent's § Completion mandates (`agents/commcare-setup.md` is the canonical
+prose) — `done` overstates it, and `blocked`/`error` would wrongly halt
+downstream phases that don't depend on the parked artifact.
+
+Canonical shape:
+
+```yaml
+phases:
+  commcare-setup:
+    status: partial
+    completed_at: <ISO>
+    verdict: partial-producer-deferred      # or partial-evals-skipped,
+                                            # passed-with-deferred-evals, …
+                                            # the verdict NAMES the unshipped step
+    status_note: >-
+      app-test-cases shipped recipes/journey-learn.yaml; the Deliver smoke
+      recipe is parked on ace#1081 + ace#1138.
+    steps:
+      app-test-cases:
+        status: incomplete                  # or partial (synonym at step level)
+```
+
+How it classifies at all three boundary fences — they agree by construction:
+
+| Fence | Result on a `partial` phase | Why |
+|---|---|---|
+| `validate_run_state` | **valid** | `partial` is in both enums |
+| `classify_phase_writeback` | **`ok`** — terminal, NOT a retry trigger | the write-back is correct and the phase is finished; re-running would not un-park the producer |
+| `verify_phase_products` | `{status: 'partial', mode: 'complete'}` — the **strict** required-key check runs | `partial` may park ARTIFACTS; it may never park the typed `products` handoff |
+| `verify_phase_artifacts` | reports the parked files in `missing[]` | this is the loud channel for the gap — the artifact fence, not the status |
+
+Read `classify='ok'` as "nothing to re-dispatch", not "the phase was good":
+a `done` phase with `verdict: fail` has always returned `ok` too. Quality is
+carried by `verdict`; the hole is carried by `verify_phase_artifacts.missing[]`
+and the `status_note`. `partial` was deliberately NOT given its own
+classifier return value — the return set is enumerated in the
+`classify_phase_writeback` atom description, in `ace-orchestrator.md`'s
+boundary-fence branch table, and in `agents/iterate-loop.md`'s clean gate, so a
+new member would immediately become the next contract that disagrees with
+itself. `partial` at step level is a synonym of `incomplete`.
+
+**When NOT to use `partial`:** if the parked producer owns a *required*
+`products` key (see `REQUIRED_PRODUCT_KEYS` in `lib/phase-products-schema.ts` —
+e.g. `connect.opportunity.url`), `verify_phase_products` fails and the fence
+heals or halts, exactly as it would on a `done` phase. That is intended: a gap
+downstream cannot proceed past is `blocked`, not `partial`.
 
 **`artifact` is required on every `status: done` step.** A step entry
 with `status: done` but no `artifact` field renders as an unfilled circle
@@ -812,9 +889,13 @@ After each `Agent(<phase>)` dispatch (subagent) or each
 inline procedure-doc completion (commcare-setup):
 
 1. `drive_read_file(<run_state.yaml fileId>)`.
-2. Check `phases.<phase>.status`. Expected: `done` (or `error` on
-   failure paths). If absent or stuck at `pending` / `in_progress`:
-   the agent forgot to write back. Fall through to step 3.
+2. Check `phases.<phase>.status`. Expected: `done` (or `partial` when a
+   declared producer/eval was parked, or `error` on failure paths — see
+   § Phase Write-Back Contract for the full enum). If absent or stuck at
+   `pending` / `in_progress`: the agent forgot to write back. Fall through
+   to step 3. Do NOT "fix" a `partial` to `done` — it is a terminal status
+   carrying real signal, and overwriting it is how a parked producer
+   becomes invisible.
 3. Write a fallback stub via `update_yaml_file`:
 
    ```yaml

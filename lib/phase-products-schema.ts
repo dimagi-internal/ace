@@ -358,7 +358,8 @@ export function validatePhaseProductsFragment(
 /**
  * Boundary completeness check: every {@link REQUIRED_PRODUCT_KEYS} dot-path for
  * `phase` must resolve to a non-empty value in `products`. Use when a phase
- * reports `done`. Runs the fragment (shape) check first.
+ * reports a terminal status (`done` / `complete` / `partial`). Runs the
+ * fragment (shape) check first.
  */
 export function validatePhaseProductsComplete(
   phase: string,
@@ -396,11 +397,19 @@ export interface PhaseProductsClassification {
   ok: boolean;
   /**
    * Which check ran:
-   * - `complete`  — phase is `done`/`complete`; both shape AND required-key
-   *   completeness were checked.
-   * - `fragment`  — phase not yet done; only shape was checked (incremental
+   * - `complete`  — the phase reached a TERMINAL status (`done` / `complete` /
+   *   `partial`); both shape AND required-key completeness were checked.
+   * - `fragment`  — phase still in flight; only shape was checked (incremental
    *   writes are allowed to be partial).
    * - `skipped`   — phase has no registered products schema.
+   *
+   * A `partial` phase reports `{status: 'partial', mode: 'complete'}` — read
+   * that as "the phase ended with a declared gap, and its typed handoff was
+   * nonetheless held to the full standard." `partial` may park ARTIFACTS; it
+   * may never park the `products` keys downstream phases and the ace-web
+   * summary read. Deliberately not a fourth `mode` value: `mode` is enumerated
+   * in the `verify_phase_products` atom description, and the whole point of
+   * ace#992 is that this vocabulary stops disagreeing across surfaces.
    */
   mode: 'complete' | 'fragment' | 'skipped';
   issues: ProductsValidationIssue[];
@@ -409,9 +418,12 @@ export interface PhaseProductsClassification {
 /**
  * Boundary-fence classifier: given a PARSED `run_state.yaml` object and a phase
  * name, validate that phase's `products` block. Runs the strict completeness
- * check (`validatePhaseProductsComplete`) only when the phase is `done` /
- * `complete` — so an in-flight phase's incremental fragment writes are not
- * flagged as "incomplete"; before then it only shape-checks. This is the
+ * check (`validatePhaseProductsComplete`) only when the phase reached a
+ * TERMINAL status (`done` / `complete` / `partial`) — so an in-flight phase's
+ * incremental fragment writes are not flagged as "incomplete"; before then it
+ * only shape-checks. `partial` is deliberately on the strict side of that
+ * line: a phase that parked a producer still owes the typed handoff its
+ * downstream phases read (ace#1139). This is the
  * run_state-level companion to {@link verifyPhaseArtifacts} (which checks Drive
  * files): wire both into the phase boundary fence so a phase can't ship `done`
  * with a malformed or missing typed handoff the ace-web summary needs.
@@ -426,15 +438,19 @@ export function classifyPhaseProducts(
       : {};
   const status: string | undefined = typeof phaseBlock.status === 'string' ? phaseBlock.status : undefined;
   const products = phaseBlock.products;
-  const isDone = status === 'done' || status === 'complete';
-  const r = isDone
+  // Keep in lock-step with `TERMINAL_OK_STATUSES` in lib/run-state-validator.ts —
+  // the two fences must agree on which statuses mean "this phase is finished"
+  // (ace#992: they didn't, and one run got ok:true from two fences and
+  // `malformed` from the third on the same literal string).
+  const isTerminal = status === 'done' || status === 'complete' || status === 'partial';
+  const r = isTerminal
     ? validatePhaseProductsComplete(phase, products)
     : validatePhaseProductsFragment(phase, products);
   return {
     phase,
     status,
     ok: r.valid,
-    mode: r.skipped ? 'skipped' : isDone ? 'complete' : 'fragment',
+    mode: r.skipped ? 'skipped' : isTerminal ? 'complete' : 'fragment',
     issues: r.issues,
   };
 }

@@ -45,6 +45,19 @@ const PHASE_STATUSES = new Set([
   'pending',
   'in_progress',
   'done',
+  'complete', // legacy synonym for `done` — accepted at BOTH levels since 0.13.7xx
+              // (ace#992). Was step-only, which made the same literal string
+              // simultaneously accepted (verify_phase_products), accepted
+              // (step level) and rejected (phase level) — one run got
+              // `ok: true` from two fences and `malformed` from the third.
+              // Canonical remains `done`; writing `complete` emits a warning.
+  'partial',  // TERMINAL: the phase finished and its downstream-facing typed
+              // handoff (`products`) is final, but at least one declared
+              // producer or `-eval` step did not ship. The gap is named in
+              // `verdict` (e.g. `partial-producer-deferred`) and the parked
+              // step carries `incomplete` / `partial` / `deferred`. This is the
+              // value the phase docs' verdict-gate rule mandates (ace#1139);
+              // it is NOT a retry trigger — see `classifyPhaseWriteBack`.
   'error',
   'blocked', // operator-actionable halt (recoverable); distinct from a hard `error`
   'skipped', // run-shape decision: this phase is intentionally not run this run
@@ -60,9 +73,36 @@ const STEP_STATUSES = new Set([
   'complete', // legacy synonym for `done` — observed in older runs
   'error',
   'incomplete',
+  'partial',  // synonym of `incomplete` at step level. A phase agent told to
+              // write `status: partial` on the phase reaches for the same word
+              // on the parked step; both mean "shipped some of its declared
+              // artifacts, not all". Canonical at step level is `incomplete`.
   'skipped',
   'deferred',
 ]);
+
+/**
+ * Statuses that mean "this phase is finished — do not re-dispatch it".
+ * `done` is canonical; `complete` is the accepted legacy synonym; `partial`
+ * is finished-with-a-declared-gap. `error` / `blocked` / `skipped` are also
+ * terminal but carry their own classifications (halt / surface / step over).
+ */
+const TERMINAL_OK_STATUSES = new Set(['done', 'complete', 'partial']);
+
+/**
+ * Non-canonical status spellings that are accepted for compatibility. Writing
+ * one is valid but earns a warning naming the canonical value, so runs
+ * converge on one vocabulary instead of accumulating synonyms silently.
+ */
+const LEGACY_STATUS_SYNONYMS: Record<string, string> = {
+  complete: 'done',
+};
+
+/** The legal `phases.<phase>.status` values, in declaration order. */
+export const PHASE_STATUS_VALUES: readonly string[] = Array.from(PHASE_STATUSES);
+
+/** The legal `phases.<phase>.steps.<step>.status` values, in declaration order. */
+export const STEP_STATUS_VALUES: readonly string[] = Array.from(STEP_STATUSES);
 
 function isObject(v: unknown): v is Record<string, unknown> {
   return v !== null && typeof v === 'object' && !Array.isArray(v);
@@ -117,11 +157,24 @@ function validatePhaseBlock(
       status,
     );
   }
-  if (status === 'done' && block.completed_at === undefined) {
+  if (typeof status === 'string' && LEGACY_STATUS_SYNONYMS[status]) {
+    pushWarning(
+      warnings,
+      `${path}.status`,
+      `\`${status}\` is a legacy synonym — write \`${LEGACY_STATUS_SYNONYMS[status]}\` (accepted so an older run does not classify as malformed)`,
+      LEGACY_STATUS_SYNONYMS[status],
+      status,
+    );
+  }
+  if (
+    typeof status === 'string' &&
+    TERMINAL_OK_STATUSES.has(status) &&
+    block.completed_at === undefined
+  ) {
     pushWarning(
       warnings,
       `${path}.completed_at`,
-      '`status: done` phase has no `completed_at` timestamp',
+      `\`status: ${status}\` phase has no \`completed_at\` timestamp`,
       'ISO timestamp string',
     );
   }
@@ -199,6 +252,18 @@ function validateStepBlock(
       );
     }
   }
+  if (typeof status === 'string' && LEGACY_STATUS_SYNONYMS[status]) {
+    pushWarning(
+      warnings,
+      `${path}.status`,
+      `\`${status}\` is a legacy synonym — write \`${LEGACY_STATUS_SYNONYMS[status]}\` (accepted so an older run does not classify as malformed)`,
+      LEGACY_STATUS_SYNONYMS[status],
+      status,
+    );
+  }
+  // `partial` / `incomplete` steps shipped only some of their declared
+  // artifacts, so the `artifact`/`file_id` requirement does not apply to them —
+  // the phase's `verdict` names the gap instead.
   const isDone = status === 'done' || status === 'complete';
   if (isDone && block.artifact === undefined) {
     // Per § Phase Write-Back Contract — "artifact is required on every
@@ -304,7 +369,10 @@ export function validateRunState(parsed: unknown): ValidationResult {
  * decide whether to re-dispatch.
  *
  * Returns one of:
- *   - 'ok'              — block exists, status is `done`, no errors
+ *   - 'ok'              — block exists, well-formed, and TERMINAL-COMPLETE:
+ *                          status is `done`, the legacy synonym `complete`, or
+ *                          `partial` (finished with a declared, named gap).
+ *                          Nothing to re-dispatch.
  *   - 'missing'         — no `phases.<name>` block at all
  *   - 'in_progress'     — block exists but status is in_progress/pending
  *   - 'error'           — block exists with status: error
@@ -312,6 +380,21 @@ export function validateRunState(parsed: unknown): ValidationResult {
  *   - 'skipped'         — block exists with status: skipped (run-shape decision —
  *                          phase intentionally not run this run; terminal, never retried)
  *   - 'malformed'       — block exists but validateRunState found errors
+ *
+ * This classifier answers "did the phase write its block correctly, or do I
+ * re-dispatch it?" — NOT "was the phase any good". A `done` phase with
+ * `verdict: fail` has always returned 'ok'; a `partial` phase (ace#1139)
+ * returns 'ok' for the same reason: the write-back is correct and the phase
+ * is finished, and re-running it would not un-park the parked producer.
+ * Quality lives in `verdict`; the parked ARTIFACTS surface through
+ * `verify_phase_artifacts`, and the typed handoff through
+ * `verify_phase_products` (which still runs its STRICT completeness check on a
+ * `partial` phase — `partial` may park artifacts, never the `products` handoff).
+ * Deliberately NOT a new return value: the atom description in
+ * `mcp/google-drive-server.ts`, `agents/ace-orchestrator.md`'s boundary-fence
+ * branch table, and `agents/iterate-loop.md` all enumerate this return set, so
+ * a new member would silently become the next contract that disagrees with
+ * itself — the exact class ace#1139/#992 are about.
  *
  * The orchestrator silent-retry triggers on 'missing', 'in_progress',
  * and 'malformed' (the agent claimed success but didn't write properly).
@@ -343,7 +426,7 @@ export function classifyPhaseWriteBack(
   if (!result.valid) return 'malformed';
   if (!isObject(block)) return 'malformed';
   const status = block.status;
-  if (status === 'done' || status === 'complete') return 'ok';
+  if (typeof status === 'string' && TERMINAL_OK_STATUSES.has(status)) return 'ok';
   if (status === 'error') return 'error';
   if (status === 'blocked') return 'blocked';
   if (status === 'skipped') return 'skipped';

@@ -555,7 +555,31 @@ write-back is `status: partial` with a verdict naming the unshipped
 step (e.g. `partial-producer-deferred`), and the artifact fence
 (`verify_phase_artifacts`) will flag the missing required files —
 including `recipes/journey-learn.yaml`, registered required in
-`lib/artifact-manifest.ts` (ace#892). For the EVAL half, either:
+`lib/artifact-manifest.ts` (ace#892).
+
+`partial` is a **legal, terminal** phase status — `validate_run_state`
+accepts it and `classify_phase_writeback` returns `ok` (terminal, not a
+retry trigger), so writing it does NOT cost a phase re-dispatch. Full
+enum + the three-fence table:
+`agents/orchestrator-reference.md § Phase Write-Back Contract §
+`partial`: a phase that shipped but parked something`. Three things a
+`partial` write-back owes:
+
+- **Name the gap in `verdict`** (`partial-producer-deferred`,
+  `partial-evals-skipped`, …) and, ideally, in a `status_note`.
+- **Mark the parked step** `status: incomplete` (or `partial` — a
+  synonym at step level). Do not leave it `done`.
+- **Still write the complete `products` block.** `partial` may park
+  ARTIFACTS; it may never park the typed handoff downstream phases read
+  (`apps.learn.hq_app_id`, `apps.deliver.hq_app_id` for this phase).
+  `verify_phase_products` runs its STRICT check on a `partial` phase. If
+  the parked producer owns one of those keys, the honest status is
+  `blocked`, not `partial` — downstream genuinely cannot proceed.
+
+(Do not write `status: complete` — it is accepted as a legacy synonym
+for `done` but warns, and it is the wrong word here regardless.)
+
+For the EVAL half, either:
 
 - **Run the eval inline** (preferred — write the verdict to
   `<phase>/<skill>-eval_verdict.yaml` and gate the phase on its
