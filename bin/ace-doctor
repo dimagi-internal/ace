@@ -1804,8 +1804,17 @@ fi
 # the same broad `--services` login (they share the drive scope) and have no
 # standalone list call, so they're covered by the login but not individually
 # probed here.
+#
+# WHICH client to probe: config/agent.json's `gog_client` is what the email engine
+# (`canopy email`, bin/ace-email) actually resolves, so it is authoritative here —
+# $ACE_GMAIL_CLIENT is only consulted as a fallback. Probing the env var alone let
+# the two drift and produced the worst possible verdict: a WARN naming an
+# interactive `gog login --client ace` on a machine whose mail worked fine under
+# the shared `canopy` client, while a genuinely broken email path went unprobed.
+# See jjackson/ace#1147.
 GOG_SERVICES="gmail,calendar,drive,docs,slides,sheets,forms"
-GMAIL_CLIENT_VAL="$(get_env ACE_GMAIL_CLIENT)"
+GMAIL_CLIENT_VAL="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("gog_client",""))' "$ROOT/config/agent.json" 2>/dev/null)"
+[ -n "$GMAIL_CLIENT_VAL" ] || GMAIL_CLIENT_VAL="$(get_env ACE_GMAIL_CLIENT)"
 GOG_LOGIN_HINT="brew install steipete/tap/gogcli && gog login ${GMAIL_ACCT:-<ACE_GMAIL_ACCOUNT>} --client ${GMAIL_CLIENT_VAL:-<ACE_GMAIL_CLIENT>} --services $GOG_SERVICES --force-consent"
 if ! command -v gog >/dev/null 2>&1; then
   warn "gog_auth: GOG CLI not installed — email-communicator (Phase 8 invites, training emails) + Google user-identity ops unavailable" "$GOG_LOGIN_HINT"
