@@ -223,8 +223,13 @@ mechanism + reproducer, see reference.md § Geopoint bind-type fidelity.
 Detect it two ways (run both; either firing is a `[BLOCKER]`):
 
 1. **Nova cross-reference (primary).** For each form, call
-   `get_form({app_id: <nova_id>, moduleIndex, formIndex})` and collect
-   every field whose `kind` is `geopoint`. Assert the released CCZ's
+   `get_form({app_id: <nova_id>, moduleUuid, formUuid})` and collect
+   every field whose `kind` is `geopoint`. Nova is **uuid-addressed**
+   since 2026-07-31 — no tool accepts `moduleIndex` / `formIndex` (see
+   `playbook/integrations/nova-integration.md § The 2026-07-31
+   uuid-addressing migration`); read `moduleUuid` / `formUuid` off the
+   `get_app({app_id})` blueprint already fetched in Step 1, which prints
+   `[uuid …]` on every module, form, and field. Assert the released CCZ's
    form XML has `<bind nodeset="…/<field-id>" type="geopoint">` for each.
 2. **CCZ-internal fingerprint (no Nova dependency).** In each form XML,
    find every hidden `calculate` of the shape

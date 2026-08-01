@@ -9,27 +9,36 @@ skill (to keep the per-run context small) is not lost.
 ## Marker mechanism
 
 The `<learn:deliver>` marker compiles into the released CCZ only when the
-app is **scaffolded as a Connect deliver app**:
-`generate_scaffold(connect_type: "deliver")` at the APP level, plus a
+app carries an **app-level Connect mode of `deliver`** — set by
+`configure_connect({app_id, mode: "deliver", participants})` — plus a
 per-form `connect.deliver_unit` block on each paid form. The app-level
-`connect_type` is the lever; the per-form block alone is **not**
-sufficient — with `connect_type: ""` the compiler emits zero markers even
-though every form carries a `connect.deliver_unit` and `get_app` /
-`get_form` report `[Connect enabled]`. This mirrors the Learn app, which
-compiles `learn_module` / `assessment` markers because it is scaffolded
-`connect_type: "learn"`.
+mode is the lever; the per-form block alone is **not** sufficient — with
+no app-level mode the compiler emits zero markers even though every form
+carries a `connect.deliver_unit` and `get_app` / `get_form` report
+`[Connect enabled]`. This mirrors the Learn app, which compiles
+`learn_module` / `assessment` markers because its app-level mode is
+`learn`.
+
+(Before Nova's 2026-07-31 redeploy the app-level mode was a
+`connect_type` property set at scaffold time and healable via
+`update_app({connect_type})`. Both are gone: `update_app` now takes
+`{name, app_id}` only, and `configure_connect` is the sole path —
+dimagi-internal/ace#1133. It is **REPLACE-ALL**: a form omitted from
+`participants[]` has its Connect block cleared. Historical run notes
+below that speak of `connect_type: ""` describe the same defect —
+"the app has no Connect mode".)
 
 **Controlled disproof of the old "module-level via `module_type`"
 framing — `malaria-rdt/20260603-1600`:** in ONE run, same compiler, the
-Learn app (`connect_type: "learn"`) compiled all 7 markers, while the
-Deliver app (`connect_type: ""`, form-level `connect.deliver_unit` id
+Learn app (mode `learn`) compiled all 7 markers, while the
+Deliver app (no app-level mode, form-level `connect.deliver_unit` id
 `rdt_poc` present and `[Connect enabled]`) released a CCZ with
 `connect_markers.deliver = 0` — confirmed three ways (xmlns XML parse,
 `http://commcareconnect.com` grep, and the `download_ccz` projection) and
 again on a fresh re-upload + re-release (so not a stale compile). The live
 Nova API does not even expose the old mechanism: `update_module` accepts
 only `name` (no `module_type`), and there is no `add_module` tool (it is
-`create_module`, which has no `connect_type`). The prior claim that
+`create_module`, which has no Connect parameter). The prior claim that
 `module_type` was "verified live on bednet-spot-check 20260601-1252
 (jjackson/ace#660)" is superseded — that run most likely scaffolded
 `connect_type: "deliver"` correctly and the success was mis-attributed to
@@ -38,13 +47,13 @@ than the compiled CCZ. The fix is jjackson/ace#694.
 
 **False positive to never trust:** the `[Connect enabled]` flag on
 `get_app` / `get_form` shows whenever a form has a `connect.deliver_unit`
-block, independent of whether `connect_type` will let it compile. Verify
+block, independent of whether the app-level Connect mode will let it compile. Verify
 markers against the compiled/released CCZ (`connect_markers.deliver ≥ 1`)
 — SKILL.md Step 4e (cheap blueprint pre-check) + `app-release-qa` Step 2.8
 (authoritative CCZ check).
 
-For the prompt-quality dependency that makes naming the scaffold
-`connect_type` load-bearing, see
+For the prompt-quality dependency that makes naming the app-level Connect
+mode load-bearing in the brief, see
 `docs/learnings/2026-04-29-nova-connect-marker-bugs.md` § Bug 1.
 
 ## add_fields partial persistence
@@ -110,7 +119,7 @@ on a sibling Learn-app build (jjackson/ace#303).
 ## Step 4d level-0 heal
 
 Why this step lives in the skill (at level 0) and not in the architect
-brief: these case-list-config atoms (`add_case_list_column` et al.) ARE
+brief: these case-list-config atoms (`add_case_list_columns` et al.) ARE
 available to the level-0 Claude Code session that executes this skill,
 even though they are absent from the autonomous architect's allowlist.
 So the heal is a deterministic L0 operation: run it here, after the

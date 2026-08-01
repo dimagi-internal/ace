@@ -71,8 +71,14 @@ orchestrator from per-skill QA + eval verdicts. -->
    Procedure:
 
    1. Load every form in both apps with
-      `get_form` (one call per `(moduleIndex,
-      formIndex)`).
+      `get_form({app_id, moduleUuid, formUuid})` — one call per
+      `(moduleUuid, formUuid)`. Nova is **uuid-addressed** since
+      2026-07-31 and no tool accepts an index param (see
+      `playbook/integrations/nova-integration.md § The 2026-07-31
+      uuid-addressing migration`); resolve the whole map with ONE
+      `get_app({app_id})` per app — its blueprint prints `[uuid …]` on
+      every module, form, and field — or read the uuids off the build
+      summary's `nova_uuids:` frontmatter if `pdd-to-*-app` wrote one.
    2. For each field, scan `label`, `hint`, and option `label`s with the
       regex:
       ```
@@ -226,3 +232,4 @@ When `--dry-run` is active:
 | 2026-04-27 | Switch from manual HQ-UI upload to `/nova:upload_to_hq` via the Nova plugin. Inputs are now `nova_app_id` values read from the app summaries. New pre-flight check compares Nova's bound HQ project space against `ACE_HQ_DOMAIN`. Gate brief drops the workaround-path WARN and adds a domain-mismatch BLOCKER. | ACE team |
 | 2026-04-29 | Carve out app release into the new `app-release` skill (Step 2.5 of Phase 3). This skill now ends at "draft uploaded" — release is a separate, permission-sensitive step. Reason: Connect's `Sync Deliver Units` only enumerates units from released builds, so unreleased apps silently break Phase 4's payment-unit config. (0.10.1) | ACE team |
 | 2026-05-29 | Pass the target project space explicitly: `/nova:upload_to_hq <app_id> <ACE_HQ_DOMAIN>` (Nova plugin voidcraft-labs/nova-plugin#12). Naming the space skips Nova's interactive confirmation, so hands-off runs go straight to upload. Pre-flight no longer watches the confirmation line; the domain-mismatch BLOCKER is now driven by Nova's `domain_not_authorized` error at upload time (which enumerates the reachable spaces). | ACE team |
+| 2026-08-01 | **Migrated the Step 2.5 XML-escape lint's form load to uuid addressing (ace#1132).** It read "one call per `(moduleIndex, formIndex)`"; Nova's 2026-07-31 redeploy accepts no index param on any of its 63 tools, so the lint named an uncallable operation and would have skipped silently. Now `get_form({app_id, moduleUuid, formUuid})`, with the uuid map resolved from ONE `get_app({app_id})` per app (or off the build summary's `nova_uuids:` frontmatter). Enforced by `test/skills/nova-uuid-addressing.test.ts`. | ACE team |
