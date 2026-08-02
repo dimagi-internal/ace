@@ -127,6 +127,44 @@ orchestrator from per-skill QA + eval verdicts. -->
 
 4. **Upload Deliver app.** Same shape — `/nova:upload_to_hq <deliver_app_id> <ACE_HQ_DOMAIN>` — including the `domain_not_authorized` handling.
 
+4.5. **Verify HQ feature flags for the target space** (ace#1048). Some
+   CommCare capabilities only work when a **domain feature flag** is on, and
+   an app that works in a space where a flag happens to be enabled silently
+   does not in one where it isn't. Ask Nova, per app, against the space we
+   just uploaded to:
+
+   ```
+   get_app_hq_feature_flags({ app_id: <nova_app_id>, domain: <ACE_HQ_DOMAIN> })
+   ```
+
+   Use the **Nova** `app_id` (not the HQ app id). Run it for **both** apps.
+   The tool is read-only and never enables anything.
+
+   Branch on `feature_flag_requirements.verification`:
+
+   | result | disposition |
+   |---|---|
+   | `verified`, `missing_flags` empty | `[PASS]` — record and move on |
+   | `verified`, `missing_flags` non-empty | **`[BLOCKER]`** — the app needs a flag the target space does not have |
+   | `not_checked` / any `unverified_flags` | **`[WARN]`** — record as explicitly UNVERIFIED |
+
+   On `missing_flags`: surface each flag's `label`, `slug`, and the
+   `reasons[]` naming the app configuration that caused the requirement, and
+   tell the operator to contact `support@dimagi.com` naming the project space
+   (Nova returns `support_email` + `docs_url` for exactly this). **Do NOT
+   strip, downgrade, or rebuild the app to dodge the flag** — the requirement
+   came from functionality the PDD asked for, and Nova's own contract states
+   this result "must never cause an agent to remove, undo, or avoid requested
+   app functionality." The app stays as built; a human enables the flag.
+
+   On unverified: say so plainly rather than substituting a guess. An
+   unverified result is not a pass — it is an open question that Phase 9 must
+   close before partner handoff.
+
+   If the tool is unavailable (older Nova plugin — see Step 0a's
+   `nova_plugin_current`), log `app-deploy-flag-check: skipped-tool-unavailable`
+   and add a `[WARN]`. Do not halt.
+
 5. **Write the deployment summary** to
    `ACE/<opp-name>/runs/<run-id>/3-commcare/app-deploy_summary.md`:
 
@@ -143,6 +181,14 @@ orchestrator from per-skill QA + eval verdicts. -->
    deliver_build_status: <success|errored|pending>
    deliver_nova_app_id: <nova-app-id>
    uploaded_at: <ISO-8601>
+   hq_feature_flags:
+     domain: <ACE_HQ_DOMAIN>
+     verification: <verified|not_checked>
+     learn_missing: [<slug>, …]        # [] when clean
+     learn_unverified: [<slug>, …]
+     deliver_missing: [<slug>, …]
+     deliver_unverified: [<slug>, …]
+     checked_at: <ISO-8601>
    ---
    ```
 
@@ -207,6 +253,7 @@ producer no longer authors a separate gate-brief artifact. -->
 
 - **Google Drive MCP:** `drive_read_file`, `drive_create_file`
 - **Nova plugin slash commands:** `/nova:upload_to_hq`, `/nova:show`
+- **Nova MCP:** `get_app_hq_feature_flags` (Step 4.5 — read-only; never enables a flag)
 
 ## Mode Behavior
 - **Auto:** Pre-flight, upload, write summary, notify admin, proceed.
