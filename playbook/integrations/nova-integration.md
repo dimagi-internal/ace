@@ -287,16 +287,36 @@ bin/ace-nova-check   # UP_TO_DATE <v> | UPGRADE_AVAILABLE <old> <new> | NOT_INST
 ```
 
 **Do not "improve" this into a commit-SHA comparison.** That was the first
-implementation and it is wrong here. `installed_plugins.json` records a
-`gitCommitSha`, but it is **not refreshed on plugin update**: measured
-2026-08-02, the plugin moved 1.13.0 → 1.14.0 — `version`, `installPath` and
-`lastUpdated` all changed — while `gitCommitSha` still named 1.13.0's commit
-(`5d1842bd`) and the cache dir held genuine 1.14.0 code. A SHA compare reports
-"stale" on a current install, permanently, with no operator action able to clear
-it; a gate that cries wolf gets ignored. The probe therefore compares versions,
-and reads the local one from the **installed cache dir's own
-`.claude-plugin/plugin.json`** rather than the registry's metadata. Locked by
-`test/scripts/ace-nova-check.test.ts`.
+implementation, and it is wrong here for two independent reasons.
+
+**It solves a problem Nova doesn't have.** canopy's checker compares SHAs
+because `canopy version bump` picks `max(local, origin/main)+1`, so two PRs off
+the same base can both merge claiming the same number (`0.2.369` shipped twice,
+40 seconds apart) — a reusable label can't be a freshness key. Nova is
+hand-released by its maintainer, one commit per version, monotonic. The version
+IS the correct key here; reaching for a SHA was importing canopy's fix for
+canopy's pathology.
+
+**And the SHA is unusable for this plugin anyway.** `nova@nova-marketplace` is
+installed from a **`source.url` repo** (`voidcraft-labs/nova-plugin`) named in
+the marketplace manifest, rather than living inside the marketplace repo — and
+for that install shape the recorded `gitCommitSha` is **frozen at first install
+and never rewritten.** Measured 2026-08-02: the entry read `version: 1.14.0`,
+`installPath: …/1.14.0` and a fresh `lastUpdated`, while `gitCommitSha` was
+still `5d1842bd` — whose own `plugin.json` says **1.0.0**, 22 commits and 14
+releases back, matching `installedAt: 2026-05-01`.
+
+**This is not general Claude Code behaviour**, and the distinction matters if
+you ever write this check for another plugin: canopy, ace, hal, eva and ada are
+all marketplace-hosted, and all five record a `gitCommitSha` matching their
+repo's `origin/main` exactly, updated on every update. Only the `source.url`
+shape drifts. So a SHA compare here reports "stale" on a current install,
+permanently, with no operator action able to clear it — and a gate that cries
+wolf gets ignored.
+
+The probe therefore compares versions, reading the local one from the
+**installed cache dir's own `.claude-plugin/plugin.json`** rather than the
+registry's metadata. Locked by `test/scripts/ace-nova-check.test.ts`.
 
 ## Operating notes
 

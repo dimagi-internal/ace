@@ -15,18 +15,34 @@
 # probe that can itself halt Phase 3 would be worse than the drift it detects.
 #
 # ─── Why the VERSION and not the commit SHA ─────────────────────────────
-# The obvious design is canopy-update-check.sh's: compare the `gitCommitSha`
-# recorded in installed_plugins.json against the plugin repo's `main`, because a
-# SHA advances on every merge and a version label can be reused.
+# canopy-update-check.sh compares `gitCommitSha` against the plugin repo's
+# `main`, and that is right FOR CANOPY: `canopy version bump` picks
+# max(local, origin/main)+1, so two PRs off the same base can both merge
+# claiming the same number (0.2.369 shipped twice, 40s apart). A version label
+# that can be reused cannot be the key; a SHA can.
 #
-# That is wrong HERE, and it fails in the noisiest possible direction. Measured
-# 2026-08-02: the plugin auto-updated 1.13.0 → 1.14.0 mid-session — `version`
-# and `installPath` both moved, `lastUpdated` was rewritten, and
-# `gitCommitSha` was left pointing at 1.13.0's commit (`5d1842bd`) while the
-# cache dir held genuine 1.14.0 code (its own `.claude-plugin/plugin.json` says
-# `1.14.0`). A SHA comparison would therefore have reported UPGRADE_AVAILABLE on
-# an install that was already current — permanently, with no user action able to
-# clear it. A gate that cries wolf gets ignored, which costs more than the drift.
+# That pathology does not exist here. Nova is hand-released by its maintainer,
+# one commit per version, monotonic — so the version IS the correct key, and
+# copying canopy's rule across was importing a fix for a problem Nova doesn't
+# have.
+#
+# It is also broken here, which settles it. Measured 2026-08-02:
+# `nova@nova-marketplace` is installed from a `source.url` repo
+# (voidcraft-labs/nova-plugin) declared in the marketplace manifest, rather than
+# living inside the marketplace repo — and for that install shape the recorded
+# `gitCommitSha` is frozen at FIRST INSTALL and never rewritten. The entry read
+# `version: 1.14.0`, `installPath: …/1.14.0`, `lastUpdated:` today — while
+# `gitCommitSha` was still `5d1842bd`, whose own plugin.json says `1.0.0`,
+# 22 commits and 14 releases behind, matching `installedAt: 2026-05-01`.
+#
+# This is NOT general Claude Code behaviour — the control group is unambiguous:
+# canopy, ace, hal, eva and ada are all marketplace-hosted and all five record a
+# `gitCommitSha` that matches their repo's `origin/main` exactly and moves on
+# every update. Only the `source.url` shape drifts.
+#
+# So a SHA comparison would report UPGRADE_AVAILABLE on an install that is
+# already current — permanently, with no user action able to clear it. A gate
+# that cries wolf gets ignored, which costs more than the drift it detects.
 #
 # So: compare versions, and read the LOCAL version from the installed cache
 # dir's own `.claude-plugin/plugin.json` (the code that will actually run)
