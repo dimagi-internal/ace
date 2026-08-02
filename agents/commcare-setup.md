@@ -50,13 +50,46 @@ The architect-vs-user auth split is silent — no symptom appears until
 upload_to_hq, by which point the architect has already burned its
 budget. Catch it here.
 
-#### Step 0a: Verify Nova auth liveness
+#### Step 0a: Verify Nova auth liveness + plugin freshness
 
 Run `/ace:doctor` and confirm the `nova_auth` line passes:
 
     PASS nova_auth: ace-nova authed (POST initialize → HTTP 200)
 
-If it fails:
+**In the same output, check `nova_plugin_current`** (ace#1165). Being *installed*
+is not the same as being *current*, and the two fail differently:
+
+    PASS nova_plugin_current: 1.14.0 is the current release
+    WARN nova_plugin_current: installed 1.13.0 but 1.14.0 is released …
+
+The Nova plugin declares an **HTTP** MCP server, so the *tool surface* is served
+live and never goes stale with the package — a new Nova tool is callable from an
+old plugin. What goes stale is everything the package ships: `/nova:autobuild`,
+`/nova:upload_to_hq`, `nova-architect-autonomous`, and their prompt guidance. So
+a stale plugin does not hide tools; it **silently runs an older Nova workflow**
+and carries prose describing retired tools and argument shapes into the architect
+dispatch. Nova validates every mutation before saving, so this fails closed rather
+than corrupting an app — but the resulting error looks arbitrary, especially when
+the same ACE workflow worked in an earlier run. That is Step 0c's symptom with a
+nameable cause.
+
+On WARN, refresh before dispatching the architect — Nova's maintainer asks that
+**every** Nova release be treated as a compatibility update rather than judged
+optional from the version number:
+
+    /plugin marketplace update
+    /plugin update nova
+    # then RESTART Claude Code (Cmd-Q + reopen) — a changed MCP tool surface only
+    # rebinds on a fresh session; /reload-plugins does NOT respawn it.
+
+This is a **WARN, not a halt**: ACE runs fine on a slightly old plugin, and a
+network blip must never block Phase 3. Refresh it unless you have a reason not to,
+and say in the run notes that you proceeded stale. To check outside a doctor run —
+before any other large batch of Nova work — call the probe directly:
+
+    bin/ace-nova-check     # → UP_TO_DATE <v> | UPGRADE_AVAILABLE <old> <new> | NOT_INSTALLED | ERROR <why>
+
+If `nova_auth` fails:
 
 - `nova_env: NOVA_API_KEY missing or unresolved` → operator hasn't
   minted a key yet. Mint at `https://commcare.app/settings` as the ACE

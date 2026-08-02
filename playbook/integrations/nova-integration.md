@@ -250,6 +250,54 @@ place, then re-paste into Nova settings.
 There's no ACE-side service account on Nova — the API key is bound
 to the ACE Gmail identity (`ACE_GMAIL_ACCOUNT`) at mint time.
 
+## Plugin freshness — treat every Nova release as a compatibility update
+
+Braxton's standing ask (2026-08-02, ace#1165): **do not judge a Nova plugin
+release optional from its version number.** Refresh, then restart.
+
+```
+/plugin marketplace update
+/plugin update nova
+# RESTART Claude Code (Cmd-Q + reopen) whenever the MCP tool surface changed —
+# /reload-plugins does NOT respawn MCP connections.
+```
+
+**What actually goes stale — the distinction that decides how you debug this.**
+The plugin declares an **HTTP** MCP server (`https://mcp.commcare.app/mcp`), so
+the **tool surface is served live and does not ship in the package**. Verified
+2026-08-02: `get_app_hq_feature_flags`, released in plugin 1.14.0, both loaded
+*and* returned a real result from a 1.13.0 install. A new Nova tool is callable
+from an old plugin.
+
+What *does* ship in the package is the command/skill/agent layer —
+`/nova:autobuild`, `/nova:upload_to_hq`, `nova-architect-autonomous`, and their
+prompt guidance. So a stale plugin does not hide tools; it **silently runs an
+older Nova workflow** (1.14.0's automatic HQ feature-flag check at final handoff,
+for instance, simply does not happen) and carries prose describing retired tools
+and argument shapes into an architect dispatch. Nova validates every mutation
+before saving, so this fails closed rather than corrupting an app — but the
+error looks arbitrary, especially when the same ACE workflow worked last run.
+That is `commcare-setup` Step 0c's symptom with a nameable cause.
+
+**Checked automatically:** `/ace:doctor` emits `nova_plugin_current` (WARN when
+stale), and Phase 3 Step 0a reads it before dispatching the architect. Standalone:
+
+```
+bin/ace-nova-check   # UP_TO_DATE <v> | UPGRADE_AVAILABLE <old> <new> | NOT_INSTALLED | ERROR <why>
+```
+
+**Do not "improve" this into a commit-SHA comparison.** That was the first
+implementation and it is wrong here. `installed_plugins.json` records a
+`gitCommitSha`, but it is **not refreshed on plugin update**: measured
+2026-08-02, the plugin moved 1.13.0 → 1.14.0 — `version`, `installPath` and
+`lastUpdated` all changed — while `gitCommitSha` still named 1.13.0's commit
+(`5d1842bd`) and the cache dir held genuine 1.14.0 code. A SHA compare reports
+"stale" on a current install, permanently, with no operator action able to clear
+it; a gate that cries wolf gets ignored. The probe therefore compares versions,
+and reads the local one from the **installed cache dir's own
+`.claude-plugin/plugin.json`** rather than the registry's metadata. Locked by
+`test/scripts/ace-nova-check.test.ts`.
+
 ## Operating notes
 
 - **No API costs from Nova.** The build runs through the user's local
