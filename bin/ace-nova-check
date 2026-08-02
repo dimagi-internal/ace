@@ -1,0 +1,147 @@
+#!/usr/bin/env bash
+# ace-nova-check — is the installed Nova Claude Code plugin CURRENT?
+#
+# ACE drives Nova through the `nova@nova-marketplace` plugin. `/ace:doctor` has
+# always checked that the plugin is *installed*; this checks that it is *current*.
+# See ace#1165.
+#
+# Output: exactly one line, one of:
+#   UP_TO_DATE <version>
+#   UPGRADE_AVAILABLE <local_version> <remote_version>
+#   NOT_INSTALLED
+#   ERROR <reason>
+#
+# Always exits 0 — callers branch on the line, never on the status. A freshness
+# probe that can itself halt Phase 3 would be worse than the drift it detects.
+#
+# ─── Why the VERSION and not the commit SHA ─────────────────────────────
+# The obvious design is canopy-update-check.sh's: compare the `gitCommitSha`
+# recorded in installed_plugins.json against the plugin repo's `main`, because a
+# SHA advances on every merge and a version label can be reused.
+#
+# That is wrong HERE, and it fails in the noisiest possible direction. Measured
+# 2026-08-02: the plugin auto-updated 1.13.0 → 1.14.0 mid-session — `version`
+# and `installPath` both moved, `lastUpdated` was rewritten, and
+# `gitCommitSha` was left pointing at 1.13.0's commit (`5d1842bd`) while the
+# cache dir held genuine 1.14.0 code (its own `.claude-plugin/plugin.json` says
+# `1.14.0`). A SHA comparison would therefore have reported UPGRADE_AVAILABLE on
+# an install that was already current — permanently, with no user action able to
+# clear it. A gate that cries wolf gets ignored, which costs more than the drift.
+#
+# So: compare versions, and read the LOCAL version from the installed cache
+# dir's own `.claude-plugin/plugin.json` (the code that will actually run)
+# rather than from the registry's `version` field (metadata about it).
+#
+# Nova tags releases sparsely (only `nova--v1.1.0` / `nova--v1.9.0` exist as of
+# 2026-08-02), so `main` — not the newest tag — is the release ref.
+#
+# Env overrides (for testing):
+#   ACE_NOVA_PLUGIN_REG    — override ~/.claude/plugins/installed_plugins.json
+#   ACE_NOVA_REMOTE_VER    — inject the remote version (skips the network)
+#   ACE_NOVA_SKIP_REMOTE   — set to 1 to skip the network probe (prints ERROR)
+set -u
+
+PLUGIN_REG="${ACE_NOVA_PLUGIN_REG:-$HOME/.claude/plugins/installed_plugins.json}"
+RAW_PLUGIN_JSON="https://raw.githubusercontent.com/voidcraft-labs/nova-plugin/main/.claude-plugin/plugin.json"
+GH_API_PATH="repos/voidcraft-labs/nova-plugin/contents/.claude-plugin/plugin.json"
+
+# read_version <path-to-plugin.json> — print the `version` field, or nothing.
+read_version() {
+  [ -f "$1" ] || return 0
+  node -e "
+    try { console.log(JSON.parse(require('fs').readFileSync(process.argv[1],'utf8')).version || ''); }
+    catch (_) {}
+  " "$1" 2>/dev/null | tr -d '[:space:]'
+}
+
+# ─── 1. Installed version ────────────────────────────────────
+if [ ! -f "$PLUGIN_REG" ]; then
+  echo "ERROR registry_missing"
+  exit 0
+fi
+
+# Match the nova entry by key substring rather than the exact id, so a
+# re-published marketplace ("nova@nova", a fork) still resolves. Handles both
+# the v2 `{version,plugins:{<id>:[…]}}` schema and the older flat `{<id>:{…}}`
+# — the same dual-shape parse bin/ace-doctor's launcher needs.
+read -r REG_VER INSTALL_PATH <<EOF
+$(node -e "
+  try {
+    const d = JSON.parse(require('fs').readFileSync(process.argv[1], 'utf8'));
+    const plugins = d.plugins || d;
+    for (const k of Object.keys(plugins)) {
+      if (k.indexOf('nova') === -1) continue;
+      const e = plugins[k];
+      const entry = Array.isArray(e) ? e[0] : e;
+      if (!entry) continue;
+      console.log([entry.version || '', entry.installPath || ''].join(' '));
+      break;
+    }
+  } catch (_) {}
+" "$PLUGIN_REG" 2>/dev/null)
+EOF
+
+# Ground truth is the installed code's own manifest; the registry's `version`
+# is the fallback for a hand-rolled or relocated install.
+LOCAL_VER="$(read_version "${INSTALL_PATH:-}/.claude-plugin/plugin.json")"
+[ -n "$LOCAL_VER" ] || LOCAL_VER="${REG_VER:-}"
+
+if [ -z "$LOCAL_VER" ]; then
+  echo "NOT_INSTALLED"
+  exit 0
+fi
+
+if [ "${ACE_NOVA_SKIP_REMOTE:-}" = "1" ]; then
+  echo "ERROR remote_skipped"
+  exit 0
+fi
+
+# ─── 2. Remote version ───────────────────────────────────────
+# `gh api` first: authenticated, and it answers from the API rather than the
+# raw CDN. Fall back to raw.githubusercontent (CDN-cached ~1–5 min, so it can
+# lag a release by a few minutes — acceptable for a check whose remediation is
+# "run /plugin update", and it only ever under-reports staleness).
+REMOTE_VER="${ACE_NOVA_REMOTE_VER:-}"
+
+if [ -z "$REMOTE_VER" ] && command -v gh >/dev/null 2>&1; then
+  REMOTE_VER="$(gh api "$GH_API_PATH" --jq '.content' 2>/dev/null \
+    | tr -d '\n' | base64 --decode 2>/dev/null \
+    | node -e "
+      let s=''; process.stdin.on('data', d => s += d);
+      process.stdin.on('end', () => {
+        try { console.log(JSON.parse(s).version || ''); } catch (_) {}
+      });
+    " 2>/dev/null | tr -d '[:space:]')"
+fi
+
+if [ -z "$REMOTE_VER" ]; then
+  REMOTE_VER="$(curl -sf --max-time 5 "$RAW_PLUGIN_JSON" 2>/dev/null \
+    | node -e "
+      let s=''; process.stdin.on('data', d => s += d);
+      process.stdin.on('end', () => {
+        try { console.log(JSON.parse(s).version || ''); } catch (_) {}
+      });
+    " 2>/dev/null | tr -d '[:space:]')"
+fi
+
+# Reject anything that isn't a version (an HTML error page, a rate-limit body).
+if ! echo "$REMOTE_VER" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+  echo "ERROR fetch_failed"
+  exit 0
+fi
+
+# ─── 3. Compare ──────────────────────────────────────────────
+if [ "$LOCAL_VER" = "$REMOTE_VER" ]; then
+  echo "UP_TO_DATE $LOCAL_VER"
+  exit 0
+fi
+
+# Semver-ordered, so a local build AHEAD of main (Braxton testing a release, or
+# a machine mid-publish) reads as current instead of nagging to "upgrade"
+# backwards. `sort -V` puts the lower version first.
+OLDEST="$(printf '%s\n%s\n' "$LOCAL_VER" "$REMOTE_VER" | sort -V | head -1)"
+if [ "$OLDEST" = "$LOCAL_VER" ]; then
+  echo "UPGRADE_AVAILABLE $LOCAL_VER $REMOTE_VER"
+else
+  echo "UP_TO_DATE $LOCAL_VER"
+fi

@@ -671,6 +671,41 @@ probe_plugin() {
 NOVA_KEY="$(probe_plugin nova)"
 if [ -n "$NOVA_KEY" ]; then
   pass "nova_plugin: $NOVA_KEY installed"
+
+  # nova_plugin_current — installed is not the same as CURRENT (ace#1165).
+  # The plugin's MCP server is `type: http`, so the TOOL surface is served live
+  # and never goes stale with the package. What does go stale is everything the
+  # package ships: /nova:autobuild, /nova:upload_to_hq, nova-architect-autonomous
+  # and their prompt guidance — so a stale plugin silently runs an OLDER Nova
+  # workflow and carries prose describing retired tools and argument shapes.
+  # Nova validates every mutation before saving, so this fails closed rather
+  # than corrupting an app; the cost is an arbitrary-looking mid-build error on
+  # a workflow that worked last run. WARN, never FAIL: ACE still functions on a
+  # slightly old plugin, and a hard failure here would block every run on a
+  # transient network blip.
+  if [ -x "$ROOT/bin/ace-nova-check" ]; then
+    NOVA_FRESH="$("$ROOT/bin/ace-nova-check" 2>/dev/null)"
+    case "$NOVA_FRESH" in
+      UP_TO_DATE*)
+        pass "nova_plugin_current: $(echo "$NOVA_FRESH" | awk '{print $2}') is the current release"
+        ;;
+      UPGRADE_AVAILABLE*)
+        NOVA_OLD="$(echo "$NOVA_FRESH" | awk '{print $2}')"
+        NOVA_NEW="$(echo "$NOVA_FRESH" | awk '{print $3}')"
+        warn "nova_plugin_current: installed $NOVA_OLD but $NOVA_NEW is released (stale plugin ships older /nova:* skills + prose describing retired tools/arg shapes; Nova fails closed, but the error looks arbitrary)" "/plugin marketplace update, then /plugin update nova, then RESTART Claude Code (Cmd-Q + reopen) so the MCP tool surface rebinds"
+        ;;
+      NOT_INSTALLED)
+        # Unreachable in this branch (probe_plugin matched), but keep the arm so
+        # a registry-shape change surfaces as a real line instead of silence.
+        warn "nova_plugin_current: registry matched '$NOVA_KEY' but ace-nova-check could not read a version" "inspect ~/.claude/plugins/installed_plugins.json; re-run /plugin update nova"
+        ;;
+      *)
+        # ERROR fetch_failed / registry_missing — the network or the registry,
+        # not Nova. Informational: never let a version probe gate the doctor.
+        info "nova_plugin_current: freshness check inconclusive ($NOVA_FRESH) — verify manually with /plugin update nova"
+        ;;
+    esac
+  fi
 else
   warn "nova_plugin: not installed (Phase 2 commcare-setup degrades to HITL stubs — pdd-to-learn-app, pdd-to-deliver-app, app-deploy will not produce real apps)" "/plugin install nova@nova-marketplace, then sign in via OAuth on first /nova:autobuild"
 fi
