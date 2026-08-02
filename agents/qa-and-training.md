@@ -194,9 +194,44 @@ silent-failure prevention learned from earlier real-world dogfood.
       even though rows existed server-side, and neither an in-app sync nor a
       swipe-refresh produced them (#811). The workers table cannot distinguish
       "pending and healthy" from "pending and never propagated", so this gate
-      catches only the missing-row case. If a tile fails to appear despite a
-      pending row, that is the open half of #824 — capture it there rather
-      than assuming a recipe fault.
+      catches only the missing-row case.
+
+      **If a tile fails to appear despite a pending row, do NOT conclude
+      #824.** This block previously said a missing tile "is the open half of
+      #824 — rather than assuming a recipe fault", and that instruction is
+      what produced a wrong diagnosis on
+      `hh-poverty-targeting/20260730-2210`: two Phase 6 dispatches and the
+      orchestrator all attributed a missing tile to a Connect
+      invite-propagation regression, and it was not one. Invite propagation
+      was demonstrably healthy the whole time. Run this discriminator FIRST —
+      it is two read-only calls and it decides the question:
+
+      1. **Is propagation actually broken, or just this opp?** Pick 2-3 other
+         opportunities in the same org and call
+         `connect_get_learn_progress({domain, opportunity_id})` on each. If
+         `${ACE_E2E_PHONE}` appears as an accepted worker on any of them with
+         a RECENT `completed_learning_date`, then invite → OpportunityAccess →
+         tile → claim is working for this user, and the cause is NOT
+         propagation. (On 20260730-2210 the test user had claimed and
+         completed Learn on another opp ~8 hours before this run's invite was
+         sent — which falsified the propagation theory outright.)
+      2. **Compare like-for-like, not pending-vs-claimed.** Call
+         `connect_list_flw_invites` on an opp where this user DID claim
+         successfully. Its row will show `connect_user_id` populated,
+         `claimed: true`, `status: accepted` — those are **consequences of
+         acceptance**, not causes of failure, so their absence on a pending
+         row proves nothing. Note `invited_date` reads `null` on WORKING
+         invites too; it is not populated by this view and is never a signal.
+
+      Only if (1) shows no recent successful claim by this user anywhere does
+      a propagation fault become the leading hypothesis. Otherwise treat a
+      missing tile as **cause-unknown** and capture evidence rather than
+      naming an issue: a `mobile_capture_ui_dump` of the job list with the
+      invite still pending is the ground truth that distinguishes "tile absent"
+      from "tile present but unmatched by the recipe". Candidate causes that
+      remain open until that dump exists include recipe/selector drift, job-list
+      pagination or truncation (the device has been observed rendering fewer
+      cards than the user has claimed opps), and app-side sync state.
 
             This is a ~2-second authenticated GET; it replaces "let Phase 6 discover
       it" as the detection mechanism. Without an opp invite,
