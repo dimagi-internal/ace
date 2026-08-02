@@ -91,10 +91,15 @@ describe('bin/ace-nova-check', () => {
    *
    * The obvious implementation compares the `gitCommitSha` recorded in
    * installed_plugins.json against nova-plugin's `main`. Measured 2026-08-02:
-   * the plugin auto-updated 1.13.0 → 1.14.0 and `gitCommitSha` was NOT
-   * refreshed — it still named 1.13.0's commit while the cache dir held real
-   * 1.14.0 code. A SHA compare therefore reports "stale" on a current install,
-   * permanently, with nothing the operator can do to clear it.
+   * for a plugin installed from a `source.url` repo (which nova is), that field
+   * is frozen at FIRST INSTALL and never rewritten. The entry read
+   * `version: 1.14.0` with a fresh `lastUpdated`, while `gitCommitSha` was
+   * still `5d1842bd` — whose own plugin.json says 1.0.0, 22 commits back,
+   * matching `installedAt: 2026-05-01`. Marketplace-hosted plugins (canopy,
+   * ace, hal, eva, ada) all track `origin/main` correctly, so this is specific
+   * to the `source.url` shape rather than general Claude Code behaviour.
+   * A SHA compare therefore reports "stale" on a current install, permanently,
+   * with nothing the operator can do to clear it.
    *
    * So the probe must read the version from the INSTALLED CACHE DIR's own
    * plugin.json, and a stale/desynced registry `version` must not win.
