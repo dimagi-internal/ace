@@ -159,11 +159,12 @@ describe('bin/ace-nova-check', () => {
    */
   it('always exits 0, including on the error paths', async () => {
     const reg = await fakeRegistry({ regVersion: '1.13.0', installedVersion: '1.13.0' });
-    for (const env of [
+    const cases: Record<string, string>[] = [
       { ACE_NOVA_PLUGIN_REG: reg, ACE_NOVA_REMOTE_VER: '1.14.0' },
       { ACE_NOVA_PLUGIN_REG: reg, ACE_NOVA_SKIP_REMOTE: '1' },
       { ACE_NOVA_PLUGIN_REG: join(dir, 'nope.json') },
-    ]) {
+    ];
+    for (const env of cases) {
       // execFile rejects on a non-zero exit, so completing without a throw
       // IS the assertion.
       await expect(run(env)).resolves.toBeTruthy();
