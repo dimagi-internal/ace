@@ -270,6 +270,23 @@ orchestrator from the per-skill QA + eval verdicts on the fly. -->
       spec a **pre-test + post-test**, the threshold, the item count
       (enough to test the curriculum), and that the result experience is
       pass/fail-conditional — not "a quiz exists."
+
+      **Any worked assessment item the PDD emits MUST be labelled
+      ILLUSTRATIVE** (dimagi-internal/ace#1120). A PDD specifies the
+      assessment *blueprint* — bank size, items served per attempt, stem
+      format, distractor rules, the discrimination target. A specific
+      quiz item is build content, not design. So if you include a worked
+      example at all, mark it in the PDD text as *"illustrative of the
+      required shape — Phase 3 authors the bank and may harden or
+      discard this item"*, and never as mandated content. Two reasons,
+      both measured: an item authored here is never cold-read-tested
+      (all three of `hh-poverty-targeting` v2.1's worked items were
+      guessed cold by both independent blind probes), and worked items
+      **anchor the tone** of the other ~21 items Phase 3 authors, so a
+      guessable model teaches the builder to write guessable items.
+      Asserting *why* an item discriminates does not make it so — v2.1's
+      stated rationale for its compound item was rejected on sight by
+      both probes.
     - **Working language.** If the program runs in a non-English
       language, state it as a **Working language** line in the Learn and
       Deliver App Specifications. The build authors English + ships that
@@ -720,3 +737,4 @@ When `--dry-run` is active:
 | 2026-05-29 | **Spec-for-deployability guidance (ITN post-mortem, upstream half).** Added Step 4a: when the source/evidence model implies capture fidelity (GPS accuracy radius, enumerable answers, bucketed numerics), data-quality constraints, case write-back on follow-up visits, assessment enforcement (pre/post + threshold + item count + conditional result), or a non-English working language, the PDD MUST spec it explicitly rather than only naming the topic. A thin PDD produces a faithfully-thin app that the new app-eval fitness gates hard-fail. The cure is a deployable PDD. See `docs/superpowers/specs/2026-05-29-eval-fitness-gap.md`. | ACE team |
 | 2026-07-28 | **A stated GPS accuracy tolerance may no longer be asserted as enforced (ace#1006).** Step 4a's capture-fidelity bullet used to say "spec accuracy-gated GPS (preferred + minimum accuracy, capture-gate)". No such gate is buildable — Nova rejects `validate` on `kind: geopoint`, and Connect's verification-flags form no longer renders `gps` / `gps_radius_meters` (ace#1013). Since the PDD's Evidence Model sentence flows verbatim into the Work Order, an enforced-sounding tolerance puts a promise ACE cannot keep into a contractual document. The bullet now requires accuracy-AWARE phrasing (captured + submitted + advisory + down-weighted in dedup) and forbids "rejected" / "must be ≤ X to submit" / "the app enforces" / "Connect enforces"; a genuine need for a hard gate is raised as an open question instead. | ACE team |
 | 2026-08-02 | **A per-row qualifier and an aggregate over the same repeat must agree (ace#1123).** Step 4a's data-quality bullet now forbids pairing a per-row confirmation/eligibility question with an unfiltered `count()`/`sum()` over the same nodeset — the aggregate MUST carry the qualifier in its predicate. `hh-poverty-targeting` v2.1 specified a roster membership confirmation on screen 5 AND `count(/data/roster)` in the data-quality table; the build followed the table, asked the required question on every row, and ignored the answer. Household size is 31 of 102 attainable PPI points across a sharp band boundary, so one wrongly-retained member moved the score 21 points. Same family as ace#995 (dead `now()`) and ace#1006 (unenforceable GPS gate): a control that reads as configured everywhere and does nothing in the built app. | ACE team |
+| 2026-08-02 | **Worked assessment items emitted by the PDD must be labelled ILLUSTRATIVE (ace#1120).** Step 4a's assessment-enforcement bullet now requires any worked example to be marked as illustrative of the required shape, never as mandated bank content — a PDD specifies the assessment blueprint; a specific quiz item is build content. All three of `hh-poverty-targeting` v2.1's worked items were guessed cold by both independent blind probes, and worked items anchor the tone of the ~21 items Phase 3 authors. Paired with the matching builder-side rule in `skills/pdd-to-learn-app/SKILL.md` (hardening or discarding a PDD example is PDD-compliant, not a deviation). | ACE team |
