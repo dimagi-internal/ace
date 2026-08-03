@@ -594,16 +594,44 @@ alone makes the artifact land outside `4-connect` and fail
    })
    ```
 
-   Branch on whether a row EXISTS — **not** on `claimed`:
+   Branch on row existence AND on **linkage** — but **not** on `claimed`:
 
-   - **`match !== null`** → the invite is recorded. `status: 'pending'` with
-     `name: null` is the NORMAL pre-claim state (acceptance happens on-device
-     when Phase 6's `connect-claim-opp` claims the tile), so pending is a
-     pass here. Record `invited_at` and proceed.
    - **`match === null`** (no row at all for that phone) → **WARN loudly**:
-     the send reported success but Connect has no invite. That is the #824
-     silent failure; name it in the phase summary rather than letting Phase 6
-     discover it on AVD wall-clock.
+     the send reported success but Connect has no invite. Name it in the
+     phase summary rather than letting Phase 6 discover it on AVD wall-clock.
+   - **`match !== null` and `match.connect_user_id` populated** → the invite
+     is recorded **and linked**. `claimed: false` / `status: 'pending'` is the
+     normal pre-claim state (acceptance happens on-device when Phase 6's
+     `connect-claim-opp` claims the tile). Record `invited_at` and proceed.
+   - **`match !== null` but `match.connect_user_id === null`** → **WARN
+     loudly and record it as a named risk in the phase summary and in
+     `run_state.yaml`.** This is the signature of the #824 silent failure
+     described immediately above: an `OpportunityAccess` with no linked
+     ConnectID user matches nothing in `opportunityaccess__user`, so the opp
+     is invisible to the device **forever** and does not self-heal. Re-sending
+     is a **no-op** — `resend_connect_invite` has no production caller — so do
+     not "fix" it by calling `connect_send_flw_invite` again and treating
+     `{status: 'queued'}` as recovery.
+
+   **Do not silently pass a null `connect_user_id`.** An earlier version of
+   this step read *"`status: 'pending'` with `name: null` is the NORMAL
+   pre-claim state … so pending is a pass here"* — i.e. it greenlit exactly
+   the state this section documents as permanently broken. On
+   `hh-poverty-targeting/20260730-2210` that passed a dead invite through
+   Phase 4, and Phase 6 then burned two AVD cycles rediscovering it; a
+   sibling opp (`20260730-1718`) was stuck the same way at the same time
+   while other invites for the same phone linked normally, so the failure is
+   intermittent and per-invite.
+
+   **Why WARN and not `[BLOCKER]` (for now).** No healthy *pending* invite has
+   yet been observed with `connect_user_id` populated — every linked row on
+   record is already `accepted`. The mechanism implies linkage happens at send
+   time and so should be visible pre-claim, but until an instance is observed
+   a hard gate risks failing every legitimate fresh run. Record the value on
+   every run; once a pending-and-linked row is seen, promote this to a
+   `[BLOCKER]` and the check becomes a ~2s Phase 4 gate instead of a
+   two-AVD-cycle Phase 6 discovery. That promotion is the open half of #824's
+   "Class-level preventers" item 1.
 
    Do NOT gate on `match.claimed` — it reports whether the worker has already
    CLAIMED the opp, so requiring it would fail every legitimate fresh run.

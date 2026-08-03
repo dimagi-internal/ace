@@ -196,32 +196,43 @@ silent-failure prevention learned from earlier real-world dogfood.
       "pending and healthy" from "pending and never propagated", so this gate
       catches only the missing-row case.
 
-      **If a tile fails to appear despite a pending row, do NOT conclude
-      #824.** This block previously said a missing tile "is the open half of
-      #824 — rather than assuming a recipe fault", and that instruction is
-      what produced a wrong diagnosis on
-      `hh-poverty-targeting/20260730-2210`: two Phase 6 dispatches and the
-      orchestrator all attributed a missing tile to a Connect
-      invite-propagation regression, and it was not one. Invite propagation
-      was demonstrably healthy the whole time. Run this discriminator FIRST —
-      it is two read-only calls and it decides the question:
+      **If a tile fails to appear despite a pending row, read the LINKAGE
+      field before naming a cause.** The discriminator is `connect_user_id`
+      on the invite row, not `claimed` and not what other opportunities did:
 
-      1. **Is propagation actually broken, or just this opp?** Pick 2-3 other
-         opportunities in the same org and call
-         `connect_get_learn_progress({domain, opportunity_id})` on each. If
-         `${ACE_E2E_PHONE}` appears as an accepted worker on any of them with
-         a RECENT `completed_learning_date`, then invite → OpportunityAccess →
-         tile → claim is working for this user, and the cause is NOT
-         propagation. (On 20260730-2210 the test user had claimed and
-         completed Learn on another opp ~8 hours before this run's invite was
-         sent — which falsified the propagation theory outright.)
-      2. **Compare like-for-like, not pending-vs-claimed.** Call
-         `connect_list_flw_invites` on an opp where this user DID claim
-         successfully. Its row will show `connect_user_id` populated,
-         `claimed: true`, `status: accepted` — those are **consequences of
-         acceptance**, not causes of failure, so their absence on a pending
-         row proves nothing. Note `invited_date` reads `null` on WORKING
-         invites too; it is not populated by this view and is never a signal.
+      - **`match.connect_user_id === null`** → the invite is very likely
+        **unlinked**, which is #824's documented signature. Per that issue's
+        root cause, `add_connect_users` calls ConnectID `fetch_users(phones)`;
+        an empty result yields `UserInvite(status=not_found)` with **no
+        `OpportunityAccess`**, and Connect's mobile list filters on
+        `opportunityaccess__user`, so the tile can never render. It does
+        **not** self-heal — `resend_connect_invite` has no production caller,
+        so re-sending is a no-op. Capture it on #824 with the row contents.
+      - **`match.connect_user_id` populated but no tile** → linkage is fine;
+        look at recipe/selector drift, job-list pagination or truncation (a
+        device has been observed rendering fewer cards than the user has
+        claimed opps), and app-side sync state. Get a
+        `mobile_capture_ui_dump` of the job list before naming anything.
+
+      **Two reasoning traps, both of which produced wrong diagnoses on
+      `hh-poverty-targeting/20260730-2210`:**
+
+      1. **Do not infer from other opportunities.** Linkage is decided
+         **per-invite at send time**, so another opp claiming successfully —
+         even hours earlier, even by the same user — says nothing about this
+         invite. A run was mis-cleared on exactly that reasoning.
+      2. **Do not compare a pending row against claimed ones.** `claimed`
+         and `status` are consequences of acceptance. `connect_user_id` is
+         not — it is set at link time, before any claim, which is why it is
+         the field to read. Also note `invited_date` reads `null` on WORKING
+         invites; it is not populated by this view and is never a signal.
+
+      **Open question, deliberately not asserted:** no healthy *pending*
+      invite has been observed with `connect_user_id` populated (every linked
+      row on record is already `accepted`). The mechanism implies it should
+      be, but until an instance is observed, treat a null value as
+      *high-probability* unlinked rather than proof, and capture evidence
+      instead of halting the phase on it.
 
       Only if (1) shows no recent successful claim by this user anywhere does
       a propagation fault become the leading hypothesis. Otherwise treat a
