@@ -307,12 +307,24 @@ still `5d1842bd` — whose own `plugin.json` says **1.0.0**, 22 commits and 14
 releases back, matching `installedAt: 2026-05-01`.
 
 **This is not general Claude Code behaviour**, and the distinction matters if
-you ever write this check for another plugin: canopy, ace, hal, eva and ada are
-all marketplace-hosted, and all five record a `gitCommitSha` matching their
-repo's `origin/main` exactly, updated on every update. Only the `source.url`
-shape drifts. So a SHA compare here reports "stale" on a current install,
-permanently, with no operator action able to clear it — and a gate that cries
-wolf gets ignored.
+you ever write this check for another plugin. Measured across every plugin
+installed on this machine, 2026-08-02:
+
+| install shape | plugins | recorded `gitCommitSha` |
+|---|---|---|
+| marketplace-hosted (`source` is the marketplace repo) | canopy, ace, hal, eva, ada | matches `origin/main` **exactly**, 5/5, moves on every update |
+| `source.url` (a separate repo named in the manifest) | nova, superpowers | **frozen near first install**, 2/2 |
+
+`superpowers` is the confirming second case, and it is worth reading because it
+shows the same defect on a plugin nobody here maintains: its registry entry
+records `e7a2d16` (committed 2026-04-30) with `lastUpdated: 2026-07-24`, while
+the marketplace manifest pins `source.sha: 44c9b2d…` — which IS current `main`.
+So the registry's SHA disagrees with the SHA the plugin was actually installed
+at. **Where a `source.url` entry carries a `source.sha`, that manifest pin is
+the truthful pointer; the registry's `gitCommitSha` is not.**
+
+So a SHA compare here reports "stale" on a current install, permanently, with no
+operator action able to clear it — and a gate that cries wolf gets ignored.
 
 The probe therefore compares versions, reading the local one from the
 **installed cache dir's own `.claude-plugin/plugin.json`** rather than the
