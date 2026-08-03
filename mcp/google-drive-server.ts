@@ -20,6 +20,7 @@ import { Readable } from 'stream';
 import { fileURLToPath } from 'url';
 import YAML from 'yaml';
 import { resolvePluginDataDir, logPluginDataDirDiag } from '../lib/plugin-data-dir.js';
+import { resolveGogIdentity } from '../lib/gog-identity.js';
 import {
   validateRunState,
   classifyPhaseWriteBack,
@@ -472,16 +473,18 @@ server.tool(
 // 9b. Read a Drive file via personal OAuth (gog CLI fallback)
 server.tool(
   'read_personal_drive_doc',
-  'Read a Google Drive document via personal OAuth (gog CLI) — fallback for files shared with the human user account but not the ACE service account. Requires gog to be installed and authorized for Drive on $ACE_GMAIL_ACCOUNT/$ACE_GMAIL_CLIENT. If the user has not yet granted Drive scope, re-run: `gog login $ACE_GMAIL_ACCOUNT --client $ACE_GMAIL_CLIENT --services gmail,drive`. Use only when drive_read_file fails with a permission error.',
+  'Read a Google Drive document via personal OAuth (gog CLI) — fallback for files shared with the human user account but not the ACE service account. The gog identity is resolved from config/agent.json (`email` + `gog_client`, the SHARED fleet client — normally `canopy`), falling back to $ACE_GMAIL_ACCOUNT/$ACE_GMAIL_CLIENT. If the account has not yet granted Drive scope, re-run: `gog login <email> --client <gog_client> --services gmail,drive`. Use only when drive_read_file fails with a permission error.',
   {
     file_id: z.string().describe('The Google Drive file ID'),
     format: z.enum(['txt', 'md', 'csv']).optional().describe('Export format for Google Docs/Sheets (default: txt for Docs, csv for Sheets)'),
   },
   async ({ file_id, format }) => {
-    const account = process.env.ACE_GMAIL_ACCOUNT;
-    const client = process.env.ACE_GMAIL_CLIENT;
-    if (!account || !client) {
-      return error('ACE_GMAIL_ACCOUNT and ACE_GMAIL_CLIENT must be set in .env (these select the gog OAuth identity).');
+    let account: string;
+    let client: string;
+    try {
+      ({ account, client } = resolveGogIdentity({ repoRoot: PROJECT_ROOT }));
+    } catch (e: any) {
+      return error(e.message);
     }
     const fmt = format ?? 'txt';
     const tmpFile = path.join(os.tmpdir(), `ace-personal-drive-${process.pid}-${Date.now()}.${fmt}`);
