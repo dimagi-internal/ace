@@ -95,7 +95,7 @@ Read the text content of a file in Google Drive. Works with Google Docs (exporte
 
 ### `read_personal_drive_doc`
 
-Read a Google Drive document via personal OAuth (gog CLI) — fallback for files shared with the human user account but not the ACE service account. Requires gog to be installed and authorized for Drive on $ACE_GMAIL_ACCOUNT/$ACE_GMAIL_CLIENT. If the user has not yet granted Drive scope, re-run: `gog login $ACE_GMAIL_ACCOUNT --client $ACE_GMAIL_CLIENT --services gmail,drive`. Use only when drive_rea…
+Read a Google Drive document via personal OAuth (gog CLI) — fallback for files shared with the human user account but not the ACE service account. The gog identity is resolved from config/agent.json (`email` + `gog_client`, the SHARED fleet client — normally `canopy`), falling back to $ACE_GMAIL_ACCOUNT/$ACE_GMAIL_CLIENT. If the account has not yet granted Drive scope, re-run: `gog login <email> -…
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
