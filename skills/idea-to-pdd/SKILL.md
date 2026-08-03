@@ -236,6 +236,33 @@ orchestrator from the per-skill QA + eval verdicts on the fly. -->
     - **Data quality.** Spec the **constraints**: numeric bounds and
       cross-field checks on counts, phone-format expectations, free-text
       length caps, and which fields are required-for-credit.
+
+      **A per-row qualifier and an aggregate over the same repeat MUST
+      agree** (dimagi-internal/ace#1123). If the PDD asks a
+      confirmation / eligibility / membership question on each row of a
+      repeat, then every aggregate the PDD derives from that repeat —
+      `count()`, `sum()`, a band, a score — MUST reference the
+      qualifier in its predicate: write
+      `count(/data/<repeat>[<qualifier> = 'yes'])`, never a bare
+      `count(/data/<repeat>)`. A PDD that names a per-row confirmation
+      **and** an unfiltered aggregate over the same nodeset is
+      self-contradictory on its face, and the contradiction is
+      detectable without any domain knowledge — so check it before the
+      PDD ships. The build follows the data-quality table, so the
+      unfiltered version wins: the app asks the FLW a required question
+      and then throws the answer away. On `hh-poverty-targeting` v2.1
+      that field was the roster's membership confirmation and the
+      aggregate was household size — **31 of 102 attainable PPI points
+      across a sharp band boundary**, so one wrongly-retained member
+      moved the score 21 points, and the FLW's honest answer changed
+      nothing. If the intended reading really is "non-members are never
+      entered", then **drop the per-row confirmation** — do not leave
+      both in the document.
+
+      Same failure family as the dead-`now()` (ace#995) and the
+      unenforceable GPS gate (ace#1006): a control that reads as
+      configured in the PDD, the Work Order and the training materials,
+      and does nothing in the built app.
     - **Case persistence.** For multi-visit / follow-up designs, spec
       **which observations each follow-up visit writes back to the
       case** (the whole point of a follow-up is to record change).
@@ -692,3 +719,4 @@ When `--dry-run` is active:
 | 2026-05-22 | **Retire the optional `idea.md` operator-seed input.** The 2026-05-05 refactor reduced `idea.md` to an optional `--idea FILE\|-` seed alongside the `inputs/` evidence pack; the dual-path persisted but was rarely used in practice and added cognitive load (eval rubric branches, manifest-vs-idea precedence, permission-scan URL extraction). Operators now put any free-text seed directly into `inputs/` as a regular source file. Removed: optional table row, idea.md read paragraph, idea.md-URL permission scan, "or no idea.md" branch of the missing-source error. The `--idea` flag and run-root `idea.md` artifact are gone. | ACE team |
 | 2026-05-29 | **Spec-for-deployability guidance (ITN post-mortem, upstream half).** Added Step 4a: when the source/evidence model implies capture fidelity (GPS accuracy radius, enumerable answers, bucketed numerics), data-quality constraints, case write-back on follow-up visits, assessment enforcement (pre/post + threshold + item count + conditional result), or a non-English working language, the PDD MUST spec it explicitly rather than only naming the topic. A thin PDD produces a faithfully-thin app that the new app-eval fitness gates hard-fail. The cure is a deployable PDD. See `docs/superpowers/specs/2026-05-29-eval-fitness-gap.md`. | ACE team |
 | 2026-07-28 | **A stated GPS accuracy tolerance may no longer be asserted as enforced (ace#1006).** Step 4a's capture-fidelity bullet used to say "spec accuracy-gated GPS (preferred + minimum accuracy, capture-gate)". No such gate is buildable — Nova rejects `validate` on `kind: geopoint`, and Connect's verification-flags form no longer renders `gps` / `gps_radius_meters` (ace#1013). Since the PDD's Evidence Model sentence flows verbatim into the Work Order, an enforced-sounding tolerance puts a promise ACE cannot keep into a contractual document. The bullet now requires accuracy-AWARE phrasing (captured + submitted + advisory + down-weighted in dedup) and forbids "rejected" / "must be ≤ X to submit" / "the app enforces" / "Connect enforces"; a genuine need for a hard gate is raised as an open question instead. | ACE team |
+| 2026-08-02 | **A per-row qualifier and an aggregate over the same repeat must agree (ace#1123).** Step 4a's data-quality bullet now forbids pairing a per-row confirmation/eligibility question with an unfiltered `count()`/`sum()` over the same nodeset — the aggregate MUST carry the qualifier in its predicate. `hh-poverty-targeting` v2.1 specified a roster membership confirmation on screen 5 AND `count(/data/roster)` in the data-quality table; the build followed the table, asked the required question on every row, and ignored the answer. Household size is 31 of 102 attainable PPI points across a sharp band boundary, so one wrongly-retained member moved the score 21 points. Same family as ace#995 (dead `now()`) and ace#1006 (unenforceable GPS gate): a control that reads as configured everywhere and does nothing in the built app. | ACE team |
