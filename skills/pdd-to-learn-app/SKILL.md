@@ -237,6 +237,22 @@ Generate the Learn (training) app from the PDD using the Nova plugin
        must be "Previous Screen".
      - `grid-menu-display` — always (Learn + Deliver). Modules and Forms
        Menu Display set to "Grid".
+     - **PDD worked examples are ILLUSTRATIVE — never bank content**
+       (dimagi-internal/ace#1120). When the PDD supplies worked
+       assessment items, they model the *required shape*; they are not a
+       bank to ship as-is, and the brief MUST NOT tell the architect to
+       "ship these verbatim". Author the bank to the
+       `discriminating-assessment-items` standard below and treat every
+       PDD example as a candidate that must clear the same two gates —
+       **hardening or discarding a PDD example is PDD-COMPLIANT, not a
+       deviation**, and does not belong in the build memo's deviations
+       list. Say so explicitly in the brief when the PDD carries worked
+       examples. Live case: `hh-poverty-targeting/20260730-2210` promoted
+       the PDD's three worked items into the brief as verbatim
+       post-assessment items; all three were then guessed cold by both
+       independent blind probes, and the builder had no discretion to
+       fix them. If a PDD example survives the gates, keeping it is fine
+       — the point is that the decision is the builder's.
      - `discriminating-assessment-items` — any scored assessment. A
        **two-gate** authoring procedure, not an adjective: Gate 1
        behavioural plausibility (every distractor an action a competent,
