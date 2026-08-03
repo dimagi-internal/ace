@@ -194,9 +194,55 @@ silent-failure prevention learned from earlier real-world dogfood.
       even though rows existed server-side, and neither an in-app sync nor a
       swipe-refresh produced them (#811). The workers table cannot distinguish
       "pending and healthy" from "pending and never propagated", so this gate
-      catches only the missing-row case. If a tile fails to appear despite a
-      pending row, that is the open half of #824 — capture it there rather
-      than assuming a recipe fault.
+      catches only the missing-row case.
+
+      **If a tile fails to appear despite a pending row, read the LINKAGE
+      field before naming a cause.** The discriminator is `connect_user_id`
+      on the invite row, not `claimed` and not what other opportunities did:
+
+      - **`match.connect_user_id === null`** → the invite is very likely
+        **unlinked**, which is #824's documented signature. Per that issue's
+        root cause, `add_connect_users` calls ConnectID `fetch_users(phones)`;
+        an empty result yields `UserInvite(status=not_found)` with **no
+        `OpportunityAccess`**, and Connect's mobile list filters on
+        `opportunityaccess__user`, so the tile can never render. It does
+        **not** self-heal — `resend_connect_invite` has no production caller,
+        so re-sending is a no-op. Capture it on #824 with the row contents.
+      - **`match.connect_user_id` populated but no tile** → linkage is fine;
+        look at recipe/selector drift, job-list pagination or truncation (a
+        device has been observed rendering fewer cards than the user has
+        claimed opps), and app-side sync state. Get a
+        `mobile_capture_ui_dump` of the job list before naming anything.
+
+      **Two reasoning traps, both of which produced wrong diagnoses on
+      `hh-poverty-targeting/20260730-2210`:**
+
+      1. **Do not infer from other opportunities.** Linkage is decided
+         **per-invite at send time**, so another opp claiming successfully —
+         even hours earlier, even by the same user — says nothing about this
+         invite. A run was mis-cleared on exactly that reasoning.
+      2. **Do not compare a pending row against claimed ones.** `claimed`
+         and `status` are consequences of acceptance. `connect_user_id` is
+         not — it is set at link time, before any claim, which is why it is
+         the field to read. Also note `invited_date` reads `null` on WORKING
+         invites; it is not populated by this view and is never a signal.
+
+      **Open question, deliberately not asserted:** no healthy *pending*
+      invite has been observed with `connect_user_id` populated (every linked
+      row on record is already `accepted`). The mechanism implies it should
+      be, but until an instance is observed, treat a null value as
+      *high-probability* unlinked rather than proof, and capture evidence
+      instead of halting the phase on it.
+
+      Only if (1) shows no recent successful claim by this user anywhere does
+      a propagation fault become the leading hypothesis. Otherwise treat a
+      missing tile as **cause-unknown** and capture evidence rather than
+      naming an issue: a `mobile_capture_ui_dump` of the job list with the
+      invite still pending is the ground truth that distinguishes "tile absent"
+      from "tile present but unmatched by the recipe". Candidate causes that
+      remain open until that dump exists include recipe/selector drift, job-list
+      pagination or truncation (the device has been observed rendering fewer
+      cards than the user has claimed opps), and app-side sync state.
 
             This is a ~2-second authenticated GET; it replaces "let Phase 6 discover
       it" as the detection mechanism. Without an opp invite,
