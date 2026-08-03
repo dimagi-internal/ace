@@ -17,6 +17,14 @@
 # wants a hard reset before /ace:mobile-bootstrap. See
 # docs/learnings/2026-05-21-parallel-session-adb-leak.md.
 #
+# Both reap modes ALSO run the reverse pass (dimagi-internal/ace#1158):
+# scan the allocator's own port ranges (adb 5037-5047, emulator
+# 5554-5681) for adb/qemu listeners owned by the invoking user, and kill
+# any whose port no live lock claims. The lock-driven walk alone is
+# structurally blind to a daemon with no lock file — the kind the retry
+# path produces — and those are what break Android's per-device
+# UiAutomation singleton. `--list` reports them without killing.
+#
 # This script is a thin wrapper around `reapStaleSessions` in
 # mcp/mobile/session-lock.ts; the heavy lifting (lock-file parsing,
 # PID-liveness probing, lsof port lookup, SIGKILL) lives there so the
@@ -76,34 +84,50 @@ LOCK_MOD_URL="file://$PLUGIN_ROOT/mcp/mobile/session-lock.ts"
 exec npx --yes tsx -e "
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { reapStaleSessions, SESSION_LOCK_DIR, isPidAlive } from '$LOCK_MOD_URL';
+import { reapStaleSessions, inspectLocklessOrphans, describeLocklessSweep, SESSION_LOCK_DIR, isPidAlive } from '$LOCK_MOD_URL';
 
 const mode = '${mode}';
 
 if (mode === 'list') {
-  if (!fs.existsSync(SESSION_LOCK_DIR)) {
-    console.log('(no session locks under ' + SESSION_LOCK_DIR + ')');
-    process.exit(0);
-  }
-  const entries = fs.readdirSync(SESSION_LOCK_DIR).filter(f => f.endsWith('.lock.json'));
+  const entries = fs.existsSync(SESSION_LOCK_DIR)
+    ? fs.readdirSync(SESSION_LOCK_DIR).filter(f => f.endsWith('.lock.json'))
+    : [];
   if (entries.length === 0) {
-    console.log('(no session locks)');
-    process.exit(0);
-  }
-  console.log('Session locks under ' + SESSION_LOCK_DIR + ':');
-  for (const e of entries) {
-    try {
-      const lock = JSON.parse(fs.readFileSync(path.join(SESSION_LOCK_DIR, e), 'utf8'));
-      const status = isPidAlive(lock.mcp_pid) ? 'ALIVE' : 'STALE';
-      console.log(\`  \${e}  [\${status}]  mcp_pid=\${lock.mcp_pid}  adb=\${lock.adb_port}  emu=\${lock.emulator_port}  avd=\${lock.avd_name ?? '?'}  started=\${lock.started_at}\`);
-    } catch (err: any) {
-      console.log(\`  \${e}  [CORRUPT]  \${err?.message ?? err}\`);
+    console.log('(no session locks under ' + SESSION_LOCK_DIR + ')');
+  } else {
+    console.log('Session locks under ' + SESSION_LOCK_DIR + ':');
+    for (const e of entries) {
+      try {
+        const lock = JSON.parse(fs.readFileSync(path.join(SESSION_LOCK_DIR, e), 'utf8'));
+        const status = isPidAlive(lock.mcp_pid) ? 'ALIVE' : 'STALE';
+        console.log(\`  \${e}  [\${status}]  mcp_pid=\${lock.mcp_pid}  adb=\${lock.adb_port}  emu=\${lock.emulator_port}  avd=\${lock.avd_name ?? '?'}  started=\${lock.started_at}\`);
+      } catch (err: any) {
+        console.log(\`  \${e}  [CORRUPT]  \${err?.message ?? err}\`);
+      }
     }
   }
+  // --list must ALSO surface lockless daemons: a lock listing that says
+  // 'one ALIVE session' while four unowned adb daemons fight over the
+  // same emulator is the exact blind spot ace#1158 is about. Report
+  // only — --list never kills.
+  const preview = inspectLocklessOrphans();
+  console.log('');
+  console.log('adb/qemu listeners in the allocator ranges (adb 5037-5047, emulator 5554-5681):');
+  for (const v of preview.verdicts) {
+    const tag = v.action === 'kill'
+      ? 'REAPABLE — no owning lock; run \`ace-mobile-reap\` to kill'
+      : 'kept — ' + v.reason;
+    console.log(\`  pid \${v.pid} (\${v.command}) on :\${v.port}  [\${tag}]\`);
+  }
+  if (preview.verdicts.length === 0) console.log('  (none)');
+  for (const e of preview.errors) console.log('  ! ' + e);
   process.exit(0);
 }
 
-const result = reapStaleSessions({ all: mode === 'all' });
+const result = reapStaleSessions({ all: mode === 'all', lockless: true });
 console.log(JSON.stringify(result, null, 2));
+console.log('');
+console.log('Lockless sweep (port -> lock -> kill if unowned):');
+for (const line of describeLocklessSweep(result.lockless)) console.log('  ' + line);
 if (result.errors.length > 0) process.exit(1);
 "

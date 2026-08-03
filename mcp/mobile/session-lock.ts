@@ -196,6 +196,333 @@ export interface ReapResult {
    * scaffold sweep found nothing (the steady-state case).
    */
   killed_scaffold_pids: number[];
+  /**
+   * The reverse pass (`port -> find lock -> kill if there is no lock`).
+   * Only populated when the caller opts in with `{ lockless: true }` —
+   * see `reapLocklessOrphans` for why it is not on by default.
+   *
+   * `killed` is what we SIGKILLed; `skipped` is every other adb/qemu
+   * listener the scan saw in the allocator's ranges, with the reason we
+   * left it alone. `skipped` is load-bearing output, not debug noise:
+   * ace#1158's whole symptom was a reassuring `{killed_pids: []}` while
+   * four reapable daemons were listening, so a sweep that finds
+   * listeners and declines to kill them MUST say so.
+   */
+  lockless: {
+    killed: LocklessVerdict[];
+    skipped: LocklessVerdict[];
+    errors: string[];
+  };
+}
+
+/** A TCP listener as seen by `lsof`. */
+export interface TcpListener {
+  pid: number;
+  /** Process name from lsof's `c` field (full, via `+c 0`). */
+  command: string;
+  port: number;
+}
+
+/** One decision the lockless sweep made about one listener. */
+export interface LocklessVerdict {
+  pid: number;
+  port: number;
+  command: string;
+  action: 'kill' | 'skip';
+  /** Operator-readable justification — always populated. */
+  reason: string;
+}
+
+/**
+ * The allocator's own port ranges, mirrored from `port-allocator.ts`.
+ *
+ * Declared here rather than imported because `port-allocator.ts` already
+ * imports this module (`getReservedPorts`) — importing back would be a
+ * cycle. `test/mcp/mobile/lockless-orphan-reap.test.ts` asserts these
+ * agree with the allocator's exported constants, so the duplication
+ * cannot drift silently.
+ */
+export const ADB_SCAN_PORT_MIN = 5037;
+/**
+ * `findFreeTcpPort` probes upward from 5037 with no hard ceiling; in
+ * practice a workstation never walks past ~5047 (that would mean 10
+ * live sessions). We bound the scan so a stray listener on some
+ * unrelated high port is never in scope.
+ */
+export const ADB_SCAN_PORT_MAX = 5047;
+export const EMULATOR_SCAN_PORT_MIN = 5554;
+/** 5680 is the emulator binary's console-port cap; +1 is its adb bridge. */
+export const EMULATOR_SCAN_PORT_MAX = 5681;
+
+/**
+ * Process names the lockless sweep is willing to SIGKILL. Deliberately
+ * narrow: the sweep runs against ports we did not necessarily allocate,
+ * so "anything listening here" is NOT an acceptable target (unlike
+ * `findPidsOnPort`, which is only ever called for a port a lock file
+ * says we own). `qemu-system-aarch64`, `qemu-system-x86_64` and
+ * `emulator` are the emulator's process names across architectures.
+ */
+export const REAPABLE_LISTENER_PATTERN = /^(adb|qemu|emulator)/i;
+
+/** Which allocator range a port falls in, or `null` if neither. */
+export function allocatorRangeForPort(port: number): 'adb' | 'emulator' | null {
+  if (port >= ADB_SCAN_PORT_MIN && port <= ADB_SCAN_PORT_MAX) return 'adb';
+  if (port >= EMULATOR_SCAN_PORT_MIN && port <= EMULATOR_SCAN_PORT_MAX) return 'emulator';
+  return null;
+}
+
+/**
+ * Parse `lsof -F pcn` field output into listeners.
+ *
+ * lsof's field mode emits a process set (`p<pid>`, `c<command>`)
+ * followed by one or more file sets (`f<fd>`, `n<addr>`), so the
+ * current pid/command carry forward until the next `p` line. Address
+ * forms we handle: `127.0.0.1:5040`, `*:5040`, `[::1]:5040`.
+ *
+ * Pure — exported so the sweep's parsing is unit-testable without
+ * shelling out to lsof (whose output no CI runner can be relied on to
+ * produce).
+ */
+export function parseLsofListeners(raw: string): TcpListener[] {
+  const out: TcpListener[] = [];
+  let pid = NaN;
+  let command = '';
+  for (const line of raw.split('\n')) {
+    if (line.length < 2) continue;
+    const tag = line[0];
+    const value = line.slice(1);
+    if (tag === 'p') {
+      pid = Number.parseInt(value, 10);
+      command = '';
+    } else if (tag === 'c') {
+      command = value;
+    } else if (tag === 'n') {
+      // Take the port after the LAST colon so `[::1]:5040` parses.
+      const idx = value.lastIndexOf(':');
+      if (idx === -1) continue;
+      const port = Number.parseInt(value.slice(idx + 1), 10);
+      if (!Number.isFinite(pid) || pid <= 0) continue;
+      if (!Number.isFinite(port) || port <= 0) continue;
+      out.push({ pid, command, port });
+    }
+  }
+  return out;
+}
+
+/**
+ * Decide what to do with each listener the scan found. **Pure** — the
+ * whole point of ace#1158's fix lives here, so it can be tested against
+ * the exact live state that broke (`hh-poverty-targeting/20260730-2210`:
+ * one live lock on adb 5038, four lockless adb daemons on 5040..5043)
+ * without spawning or killing anything.
+ *
+ * A listener is killed only when ALL of:
+ *   - its port is inside an allocator range (`allocatorRangeForPort`),
+ *   - its process name matches `REAPABLE_LISTENER_PATTERN`,
+ *   - it is not this process,
+ *   - **no live session lock claims that port**.
+ *
+ * That last clause is the reverse of the existing pass. The lock-driven
+ * pass asks "which locks are stale?" and is structurally blind to a
+ * daemon with no lock at all — which is exactly what the retry path
+ * produces. An unowned daemon is by definition unreferenced by any
+ * session, so killing it is the SAFE case, not the risky one.
+ *
+ * Ownership: the caller scopes the lsof scan to the invoking user
+ * (`lsof -u <uid>`), so cross-account daemons never reach this function
+ * — another account's daemons are not ours to kill and generally cannot
+ * be killed anyway (ace#1063 is the same lesson on the qemu sweep).
+ */
+export function classifyLocklessListeners(
+  listeners: TcpListener[],
+  reserved: { adb: Set<number>; emulator: Set<number> },
+  opts: { selfPid: number },
+): LocklessVerdict[] {
+  const verdicts: LocklessVerdict[] = [];
+  for (const l of listeners) {
+    const base = { pid: l.pid, port: l.port, command: l.command };
+    const range = allocatorRangeForPort(l.port);
+    if (range === null) continue; // not our business; not even reported
+    if (l.pid === opts.selfPid) {
+      verdicts.push({ ...base, action: 'skip', reason: 'this process' });
+      continue;
+    }
+    if (!REAPABLE_LISTENER_PATTERN.test(l.command)) {
+      verdicts.push({
+        ...base,
+        action: 'skip',
+        reason: `not an adb/qemu listener (command '${l.command}')`,
+      });
+      continue;
+    }
+    const claimed = range === 'adb' ? reserved.adb.has(l.port) : reserved.emulator.has(l.port);
+    if (claimed) {
+      verdicts.push({
+        ...base,
+        action: 'skip',
+        reason: 'claimed by a live session lock (owner pid alive)',
+      });
+      continue;
+    }
+    verdicts.push({ ...base, action: 'kill', reason: 'no owning lock' });
+  }
+  return verdicts;
+}
+
+/**
+ * Read the ports claimed by locks whose `mcp_pid` is STILL ALIVE.
+ *
+ * Deliberately does NOT call `getReservedPorts` — that reaps first,
+ * which would recurse into `reapStaleSessions`. The lockless sweep runs
+ * after the stale-lock pass has already removed dead locks, so a plain
+ * read of what remains is the correct view.
+ */
+function liveLockedPorts(): { adb: Set<number>; emulator: Set<number> } {
+  const adb = new Set<number>();
+  const emulator = new Set<number>();
+  if (!fs.existsSync(SESSION_LOCK_DIR)) return { adb, emulator };
+  let entries: string[];
+  try {
+    entries = fs.readdirSync(SESSION_LOCK_DIR).filter((f) => f.endsWith('.lock.json'));
+  } catch {
+    return { adb, emulator };
+  }
+  for (const entry of entries) {
+    try {
+      const lock = JSON.parse(
+        fs.readFileSync(path.join(SESSION_LOCK_DIR, entry), 'utf8'),
+      ) as SessionLock;
+      if (!isPidAlive(lock.mcp_pid)) continue;
+      if (Number.isFinite(lock.adb_port)) adb.add(lock.adb_port);
+      if (Number.isFinite(lock.emulator_port)) {
+        emulator.add(lock.emulator_port);
+        emulator.add(lock.emulator_port + 1); // the adb bridge
+      }
+    } catch {
+      /* corrupt lock — the stale-lock pass removes it */
+    }
+  }
+  return { adb, emulator };
+}
+
+/**
+ * Scan the allocator's port ranges for TCP listeners owned by the
+ * invoking user. Scoped to our own uid at the lsof level so another
+ * macOS account's emulator never even enters the decision (ace#1063).
+ *
+ * `+c 0` disables lsof's default 9-character COMMAND truncation, which
+ * would otherwise render `qemu-system-aarch64` as `qemu-syst` — still
+ * matched by `REAPABLE_LISTENER_PATTERN`, but the operator-facing
+ * `reason` string should name the real process.
+ */
+function scanAllocatorRangeListeners(): { listeners: TcpListener[]; errors: string[] } {
+  if (process.platform === 'win32') return { listeners: [], errors: [] };
+  const uid = typeof process.getuid === 'function' ? process.getuid() : undefined;
+  const userScope = uid === undefined ? '' : `-u ${uid} `;
+  try {
+    const raw = execSync(
+      `lsof -nP +c 0 ${userScope}-iTCP -sTCP:LISTEN -F pcn 2>/dev/null || true`,
+      { encoding: 'utf8', timeout: 10_000, stdio: ['ignore', 'pipe', 'ignore'], maxBuffer: 8 << 20 },
+    );
+    return { listeners: parseLsofListeners(raw), errors: [] };
+  } catch (e: any) {
+    return { listeners: [], errors: [`lsof scan failed: ${e?.message ?? e}`] };
+  }
+}
+
+/**
+ * The reverse pass ace#1158 asked for: **port -> find lock -> kill if
+ * there is no lock.**
+ *
+ * The existing `reapStaleSessions` walk is lock-driven (`lock -> find
+ * port -> kill if owner dead`), so a daemon with NO lock file is
+ * invisible to it. Observed live on `hh-poverty-targeting/20260730-2210`:
+ * four orphan adb daemons on 5040..5043 (all `ppid=1`, owner = the
+ * current user, no lock) attached to the same `emulator-5554` as the one
+ * locked daemon on 5038. Five adb servers contending for one emulator's
+ * adbd broke Android's per-device UiAutomation singleton —
+ * `uiautomator dump` died with `RuntimeException: Bad file descriptor`,
+ * Maestro got no view hierarchy, and `mobile_register_test_user` failed
+ * three times with `SocketException: Broken pipe`. `ace-mobile-reap`
+ * reported `{"reaped_locks": [], "killed_pids": []}`. Killing the four by
+ * hand immediately fixed the device (`uiautomator dump` went straight to
+ * writing a 24 KB hierarchy).
+ *
+ * **Why this is opt-in rather than on by default.** `reapStaleSessions`
+ * runs on the allocator hot path (`getReservedPorts`), which the unit
+ * suite exercises for real. An unconditional destructive scan of
+ * 5037..5047 would mean `npm test` SIGKILLs a developer's own
+ * Android-Studio `adb` on 5037. So the caller opts in: the operator CLI
+ * (`bin/ace-mobile-reap`) does, the allocator does not.
+ *
+ * `scan` / `kill` are injectable so the decision logic can be tested
+ * without lsof and without killing anything.
+ */
+export interface LocklessDeps {
+  scan?: () => { listeners: TcpListener[]; errors: string[] };
+  kill?: (pid: number) => boolean;
+  reserved?: () => { adb: Set<number>; emulator: Set<number> };
+  selfPid?: number;
+}
+
+/**
+ * Report-only half of the lockless sweep: scan + classify, kill nothing.
+ * Backs `ace-mobile-reap --list`, whose whole job is to tell the
+ * operator what is there without touching it.
+ */
+export function inspectLocklessOrphans(deps: LocklessDeps = {}): {
+  verdicts: LocklessVerdict[];
+  errors: string[];
+} {
+  const scan = deps.scan ?? scanAllocatorRangeListeners;
+  const reservedFn = deps.reserved ?? liveLockedPorts;
+  const selfPid = deps.selfPid ?? process.pid;
+  const { listeners, errors } = scan();
+  return {
+    verdicts: classifyLocklessListeners(listeners, reservedFn(), { selfPid }),
+    errors,
+  };
+}
+
+export function reapLocklessOrphans(
+  deps: LocklessDeps = {},
+): { killed: LocklessVerdict[]; skipped: LocklessVerdict[]; errors: string[] } {
+  const kill = deps.kill ?? killPid;
+  const { verdicts, errors } = inspectLocklessOrphans(deps);
+
+  const killed: LocklessVerdict[] = [];
+  const skipped: LocklessVerdict[] = [];
+  for (const v of verdicts) {
+    if (v.action !== 'kill') {
+      skipped.push(v);
+      continue;
+    }
+    if (kill(v.pid)) {
+      killed.push(v);
+    } else {
+      skipped.push({ ...v, action: 'skip', reason: `${v.reason} — SIGKILL did not take` });
+    }
+  }
+  return { killed, skipped, errors };
+}
+
+/**
+ * Human-readable summary of a lockless sweep, for the operator CLI.
+ * Pure + exported so the "never return a reassuring empty result"
+ * property is testable.
+ */
+export function describeLocklessSweep(sweep: ReapResult['lockless']): string[] {
+  const lines: string[] = [];
+  for (const v of sweep.killed) {
+    lines.push(`killed pid ${v.pid} (${v.command}) on :${v.port} — ${v.reason}`);
+  }
+  for (const v of sweep.skipped) {
+    lines.push(`kept   pid ${v.pid} (${v.command}) on :${v.port} — ${v.reason}`);
+  }
+  if (lines.length === 0) {
+    lines.push('no adb/qemu listeners in the allocator port ranges');
+  }
+  return lines;
 }
 
 /**
@@ -556,13 +883,14 @@ export async function withAllocatorMutex<T>(fn: () => Promise<T>): Promise<T> {
  * captured in `errors` and the sweep continues; a single corrupt lock
  * file shouldn't block port allocation.
  */
-export function reapStaleSessions(opts: { all?: boolean } = {}): ReapResult {
+export function reapStaleSessions(opts: { all?: boolean; lockless?: boolean } = {}): ReapResult {
   const result: ReapResult = {
     reaped_locks: [],
     killed_pids: [],
     surviving_locks: [],
     errors: [],
     killed_scaffold_pids: [],
+    lockless: { killed: [], skipped: [], errors: [] },
   };
 
   // Defense-in-depth: orphan-scaffold sweep runs FIRST so it can clear
@@ -577,14 +905,29 @@ export function reapStaleSessions(opts: { all?: boolean } = {}): ReapResult {
     result.errors.push({ lock: '<scaffold-sweep>', error: err });
   }
 
-  if (!fs.existsSync(SESSION_LOCK_DIR)) return result;
+  // The lockless sweep must still run when there is no lock dir at all —
+  // "no locks, four live orphan daemons" is precisely the state ace#1158
+  // describes, so an early return here would reproduce the bug.
+  const finish = (): ReapResult => {
+    if (opts.lockless) {
+      const sweep = reapLocklessOrphans();
+      result.lockless = sweep;
+      for (const v of sweep.killed) result.killed_pids.push(v.pid);
+      for (const err of sweep.errors) {
+        result.errors.push({ lock: '<lockless-sweep>', error: err });
+      }
+    }
+    return result;
+  };
+
+  if (!fs.existsSync(SESSION_LOCK_DIR)) return finish();
 
   let entries: string[];
   try {
     entries = fs.readdirSync(SESSION_LOCK_DIR).filter((f) => f.endsWith('.lock.json'));
   } catch (e: any) {
     result.errors.push({ lock: SESSION_LOCK_DIR, error: `readdir failed: ${e?.message ?? e}` });
-    return result;
+    return finish();
   }
 
   for (const entry of entries) {
@@ -629,5 +972,5 @@ export function reapStaleSessions(opts: { all?: boolean } = {}): ReapResult {
     }
   }
 
-  return result;
+  return finish();
 }
