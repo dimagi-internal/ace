@@ -58,9 +58,9 @@ Per-form Connect-block coverage:
 | App `Connect type` | Form pattern | Expected `connect` block |
 |---|---|---|
 | `learn` | content-only (labels, no inputs) | `learn_module: { name, description, time_estimate }` |
-| `learn` | quiz-only (single/multi_select questions + `user_score` hidden) | `assessment: { user_score: "#form/user_score" }` |
+| `learn` | quiz-only (single/multi_select questions + `user_score` hidden) | `assessment: { user_score: { parts: [{ kind: "field-ref", uuid: <user_score field uuid> }] } }` |
 | `learn` | content + quiz mixed | both `learn_module` and `assessment` |
-| `deliver` | registration form | `deliver_unit: { name, entity_id?, entity_name? }` |
+| `deliver` | registration form | `deliver_unit: { name, entity_id?, entity_name? }` — both expressions take the `{ parts: […] }` shape, never an XPath string |
 | `deliver` | label-only delivery / no case action | `task: { name, description }` |
 
 Out of scope (separate sibling skills): multimedia attachments,
@@ -126,7 +126,13 @@ ambiguous:
 - Form has zero `single_select` / `multi_select` / `text` inputs (only
   `label` and `hidden` kinds) → `learn_module` only.
 - Form has a `user_score` hidden field AND select inputs → at minimum
-  `assessment: { user_score: "#form/user_score" }`. If the form ALSO
+  `assessment: { user_score: { parts: [{ kind: "field-ref", uuid:
+  <the user_score field's uuid from the Step 1 map> }] } }`. Expression
+  sub-configs are structured since 2026-07-31 — an XPath string here is
+  rejected, and comparing a string expectation against the structured
+  value Nova returns misclassifies a correct form as `wrong`, which
+  triggers a needless `configure_connect` and its replace-all footgun
+  (Step 4a). If the form ALSO
   has substantial label content explaining concepts (ratio of label
   fields to question fields ≥ 1), include `learn_module` too. ACE's
   default PDD pattern uses Form 0 = content, Form 1 = quiz, so this
@@ -383,6 +389,7 @@ migration` carries the division of labour and the replace-all warning.
 
 | Date | Change | Author |
 |------|--------|--------|
+| 2026-08-11 | **Finished the 2026-07-31 expression migration in Step 2 (residual of ace#1132/#1133).** Step 4a's `configure_connect` example already emitted the structured `{parts: […]}` shape, but the Step 2 decision table and the Learn per-form rule still specified the `assessment` slot's `user_score` as the bare XPath string `#form/user_score`. The skill therefore computed a string *expectation*, compared it against the structured value Nova returns, and classified correct forms as `wrong`; the "fix" is then a `configure_connect` call, which is replace-all and can clear markers off every form omitted from `participants[]`. Same residual fixed in `pdd-to-deliver-app` for `entity_id`/`entity_name` (case-CREATE now shows `field-ref` parts, case-UPDATE `case-ref` parts, the optional per-form suffix a `text` part). Preventer added: `test/skills/nova-uuid-addressing.test.ts` now fails on any skill documenting `user_score`/`entity_id`/`entity_name` as a string — the pre-existing uuid lint only inspected spelled-out tool-call argument lists, so a shape stated in prose or a table was invisible to it. | ACE team |
 | 2026-04-29 | Initial version. First in the post-Nova verify+fix family. Detection of Connect markers per form, auto-fix via `nova_update_form`, loop until clean or until a known Nova-side blocker is hit. Documents the pattern for future `app-<concern>-coverage` siblings. (0.10.7) | ACE team |
 | 2026-04-29 | Smoke-tested live against `turmeric-market-survey-2026-04-29-coverage`. Skill exited `clean` in one iteration on the Learn side, `blocked` in one iteration on the Deliver side. Updates from the run: (a) bug description was inverted — Nova INJECTS empty `entity_id`/`entity_name`, doesn't strip them; (b) `nova_validate_app` returns `success: true` despite the malformed deliver_unit, so the per-mutation re-fetch in Step 4 is the actual gate (validate_app is necessary but not sufficient). Both findings folded back into Failure Modes. (0.10.12) | ACE team |
 | 2026-07-31 | **Migrated to uuid addressing and split the fix path in two (ace#1132, ace#1133).** Nova's 2026-07-31 redeploy moved its whole surface from `moduleIndex`/`formIndex`/`fieldId` to `moduleUuid`/`formUuid`/`fieldUuid` — this skill's read/fix loop named uncallable operations. Step 1 now builds the `(module, form) -> uuid` map from the single `get_app` blueprint (which prints `[uuid …]` on every module/form/field) and captures the COMPLETE form list; Step 3's batched reads pass `{moduleUuid, formUuid}`. Step 4 is split because the two Connect tools have **inverted** semantics: `configure_connect` (new, replaces the removed `update_app({connect_type})`) sets app mode + every form block atomically but is **REPLACE-ALL** — any form omitted from `participants[]` has its Connect block CLEARED, so a partial list turns a marker-repair into a marker-deletion — while `update_form({connect})` stays per-form and additive and cannot enable Connect or add a participant. Added the matching re-fetch rule (after `configure_connect`, re-fetch EVERY form, not just the changed ones) and a `Partial participants[] cleared correct forms` failure mode. Expression sub-configs now take the structured `{parts: […]}` shape, not XPath strings. Contract pinned by `scripts/probe-nova-contract.ts`. | ACE team |

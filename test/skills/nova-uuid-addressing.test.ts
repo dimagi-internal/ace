@@ -183,4 +183,38 @@ describe('Nova uuid addressing (ace#1132)', () => {
             `\`generate_schema\`. Offending files:\n  ${offenders.join('\n  ')}`,
     ).toEqual([]);
   });
+
+  // The uuid lint above only inspects argument lists of spelled-out tool
+  // CALLS, so it cannot see a shape documented in prose or in a decision
+  // table. That blind spot let `user_score: "#form/user_score"` survive the
+  // 2026-07-31 migration in app-connect-coverage Step 2 while Step 4a's
+  // example already used the structured form — a self-inconsistent skill.
+  it('no skill documents a Connect expression sub-config as a bare string', () => {
+    // user_score / entity_id / entity_name are Expression slots: each takes
+    // `{ parts: [...] }`. A quote straight after the colon is a string.
+    const bareStringRe = /\b(user_score|entity_id|entity_name)\s*:\s*["']/g;
+    const offenders = SKILL_MD.flatMap((f) => {
+      const hits: string[] = [];
+      let m: RegExpExecArray | null;
+      // Fresh regex per file — /g lastIndex is stateful across .exec calls.
+      const re = new RegExp(bareStringRe.source, 'g');
+      while ((m = re.exec(f.body)) !== null) {
+        const line = f.body.slice(0, m.index).split('\n').length;
+        hits.push(`  ${f.rel}:${line} — \`${m[1]}\` given a string`);
+      }
+      return hits;
+    });
+    expect(
+      offenders,
+      offenders.length === 0
+        ? ''
+        : `Connect expression sub-configs are structured since 2026-07-31 ` +
+            `(ace#1132/#1133): \`user_score\`, \`entity_id\` and \`entity_name\` each ` +
+            `take \`{ parts: [...] }\` with \`field-ref\` / \`case-ref\` / \`path-ref\` / ` +
+            `\`text\` parts — an XPath string is rejected by Nova.\n` +
+            `Note Nova's own field description still calls user_score "an XPath", ` +
+            `which is a doc bug on its side; the schema is authoritative.\n` +
+            `${offenders.join('\n')}`,
+    ).toEqual([]);
+  });
 });

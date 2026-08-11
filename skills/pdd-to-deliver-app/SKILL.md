@@ -258,12 +258,25 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
      > `entity_key`) whose `calculate` is a `concat(...)` of the
      > natural-identifier fields that define a unique entity per the
      > PDD's duplicate-detection key, then set
-     > `entity_id: '/data/<group>/entity_key'` and `entity_name` to the
-     > human-readable label field (e.g. `entity_id: '/data/entity_key'`,
-     > `entity_name: '/data/beneficiary_name'`). Example for a malaria
-     > RDT outlet visit whose dedup key is (outlet, brand, batch):
-     > `entity_key` = `concat(/data/outlet_name, ' - ', /data/rdt_brand,
-     > ' - ', /data/batch_number)`. Do NOT use `/data/case/@case_id`
+     > `entity_id` to reference that field and `entity_name` to the
+     > human-readable label field. Both are structured expressions, NOT
+     > XPath strings — each takes `{ parts: [...] }`, where a part is
+     > `{ kind: "field-ref", uuid: <field uuid> }`,
+     > `{ kind: "case-ref", caseType, property }`, or
+     > `{ kind: "text", text }`. So
+     > `entity_id: { parts: [{ kind: "field-ref", uuid: <entity_key uuid> }] }`
+     > and
+     > `entity_name: { parts: [{ kind: "field-ref", uuid: <beneficiary_name uuid> }] }`.
+     > Example for a malaria RDT outlet visit whose dedup key is
+     > (outlet, brand, batch): `entity_key` =
+     > `concat(/data/outlet_name, ' - ', /data/rdt_brand,
+     > ' - ', /data/batch_number)`. Note that `parts` concatenates
+     > natively, so the composite key can also be expressed directly as
+     > `parts: [{field-ref outlet}, {text " - "}, {field-ref brand},
+     > {text " - "}, {field-ref batch}]` — the hidden `entity_key`
+     > calculate field is still preferred, because persisting the key as
+     > form data is what lets case-UPDATE forms read the same grain back
+     > (see below). Do NOT use `/data/case/@case_id`
      > (rejected by `validate_app` — the case block is not a blueprint
      > field) or `#case/case_id` (compiles to a casedb lookup that breaks
      > create-form install, and is the wrong dedup grain anyway: a
@@ -282,9 +295,11 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
      > (`case_property_on` the relevant case type, e.g. write
      > `/data/entity_key` to a case property `entity_key`). (b) On each
      > CASE-UPDATE form, set `entity_id` to read that stored property
-     > back off the case (`#case/entity_key`, or a casedb lookup of the
-     > parent's stored key for child-case forms) — NOT `#case/case_id`.
-     > Optionally suffix ` - <form_name>` (a per-form constant) so each
+     > back off the case — `{ parts: [{ kind: "case-ref", caseType:
+     > "<the case type>", property: "entity_key" }] }` (or a casedb
+     > lookup of the parent's stored key for child-case forms) — NOT the
+     > case id. Optionally append a per-form constant part
+     > `{ kind: "text", text: " - <form_name>" }` so each
      > visit type is a distinct deliver entity while repeat submissions
      > of the same type for the same entity dedup. This is the pattern
      > all 6 deployed apps use.
@@ -532,7 +547,8 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
 
     1. From `get_app({app_id})`, identify each **case-UPDATE** form (a
        form that updates an existing case rather than creating one —
-       `entity_id: '#case/case_id'` per the case-action rule above, or a
+       its `entity_id` reads the stored key back off the case via a
+       `case-ref` part per the case-action rule above, or a
        form Nova tagged as updating the case type).
     2. For each case-update form, list its **user-facing observation
        fields** (non-hidden, non-label questions the FLW answers).
