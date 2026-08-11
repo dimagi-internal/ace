@@ -150,6 +150,70 @@ function resolveMaestroBinDir(): string | null {
 }
 
 /**
+ * Extract adb fork-server listening ports from a `ps -eo command=` dump.
+ *
+ * An adb daemon's command line carries `-L tcp:<port>` when it was started on
+ * a non-default port, and a bare `adb ... fork-server server` when it is on
+ * the 5037 default. Both forms count — the whole point is to see EVERY server
+ * on the host, including sibling macOS accounts' when they are visible.
+ *
+ * Pure + deduped + sorted, so it is unit-testable without a process table.
+ */
+export function parseAdbServerPorts(psOutput: string): number[] {
+  const ports = new Set<number>();
+  for (const line of psOutput.split('\n')) {
+    if (!/\badb\b/.test(line) || !/fork-server|start-server/.test(line)) continue;
+    const m = /-L\s+tcp:(\d+)/.exec(line);
+    if (m) {
+      const p = Number.parseInt(m[1], 10);
+      if (Number.isFinite(p) && p > 0) ports.add(p);
+    } else {
+      ports.add(5037);
+    }
+  }
+  return [...ports].sort((a, b) => a - b);
+}
+
+/**
+ * Did the UI dump FAIL, as opposed to landing on a screen with no hierarchy?
+ *
+ * Both produce `xml: ''`. Only one of them is a fact about the screen, and
+ * conflating them is half of dimagi-internal/ace#1155 — an unwritten
+ * `window_dump.xml` was read as "nothing on screen", which then collapsed
+ * into an `unknown` classification that told the operator nothing about the
+ * actual fault (Android's single UiAutomation slot was held by a concurrent
+ * automation client).
+ *
+ * Three independent failure tells, any one of which is sufficient:
+ *   1. `uiautomator dump` exited non-zero.
+ *   2. Its own output carries the UiAutomation-acquisition stack.
+ *   3. The read-back `cat` failed / reported the file missing.
+ *
+ * An EMPTY `cat` with a clean exit is deliberately NOT a failure — that is
+ * the genuine "no hierarchy" case and must stay distinguishable.
+ *
+ * Pure: all inputs are supplied, so this is unit-testable without a device.
+ */
+export function detectUiDumpFailure(
+  dumpExitCode: number,
+  dumpOutput: string,
+  catOutput: string,
+  catExitCode: number,
+): boolean {
+  if (dumpExitCode !== 0) return true;
+  if (catExitCode !== 0) return true;
+  if (/No such file or directory/i.test(catOutput)) return true;
+  if (
+    /UiAutomation\.connectWithTimeout|registerUiTestAutomationServiceLocked|ERROR:\s*could not get idle state/i.test(
+      dumpOutput,
+    )
+  ) {
+    return true;
+  }
+  return false;
+}
+
+/**
  * Build a child-process env that includes a resolved JAVA_HOME and a PATH
  * that contains its bin/. Used by every shell call so maestro/avdmanager
  * Just Work even from a fresh non-login shell.
@@ -1353,10 +1417,59 @@ export class AvdBackend {
     const args = ['-s', avd.serial, 'shell', 'pm', 'list', 'packages'];
     if (filter) args.push(filter);
     const r = await this.shell('adb', args);
+    // A FAILED query is not a negative answer (dimagi-internal/ace#1155).
+    // `this.shell` resolves — it does not reject — on a non-zero exit, so
+    // `adb: device offline` / `error: no devices/emulators found` used to
+    // come back as an empty stdout that every caller read as "CommCare is
+    // not installed". Throw instead, so the caller has to decide what an
+    // unanswerable question means rather than being handed a wrong answer.
+    if (r.exitCode !== 0) {
+      throw new AdbError(
+        `-s ${avd.serial} shell pm list packages`,
+        r.exitCode,
+        (r.stderr || r.stdout).trim(),
+      );
+    }
     return r.stdout
       .split('\n')
       .map((l) => l.trim().replace(/^package:/, ''))
       .filter(Boolean);
+  }
+
+  /**
+   * Which adb servers on this host can see `serial`?
+   * (dimagi-internal/ace#1155.)
+   *
+   * Cross-session device contention is invisible from inside one session:
+   * every ACE session boots against its OWN probe-allocated adb server, so a
+   * sibling session driving the same emulator never appears in this session's
+   * `adb devices`. The `hh-poverty-targeting/20260730-2210` host had FOUR adb
+   * servers (5038, 5040, 5041, 5042) all attached to a single
+   * `emulator-5556` — the exact condition that starves Android's
+   * one-client-at-a-time UiAutomation slot — and nothing in the failure text
+   * said so.
+   *
+   * Enumerates listening adb fork-servers from the process table, then asks
+   * each one whether it lists `serial`. Best-effort and read-only: any step
+   * that fails is simply omitted, and the caller treats a short list as "no
+   * contention to report" rather than as a fact.
+   */
+  async listAdbServerPortsSeeing(serial: string): Promise<number[]> {
+    const ps = await this.rawShellFn('ps', ['-eo', 'command=']).catch(() => null);
+    if (!ps || ps.exitCode !== 0) return [];
+    const ports = parseAdbServerPorts(ps.stdout);
+    const seeing: number[] = [];
+    for (const port of ports) {
+      const devices = await this.rawShellFn(
+        'adb',
+        ['-P', String(port), 'devices'],
+        { timeoutMs: 5_000 },
+      ).catch(() => null);
+      if (devices && devices.exitCode === 0 && devices.stdout.includes(serial)) {
+        seeing.push(port);
+      }
+    }
+    return seeing;
   }
 
   /**
@@ -1406,9 +1519,23 @@ export class AvdBackend {
     // /sdcard/ → "No such file or directory" on read,
     // /data/local/tmp/ → file readable, dump valid.
     const dumpPath = '/data/local/tmp/window_dump.xml';
-    await this.shell('adb', ['-s', avd.serial, 'shell', 'uiautomator', 'dump', dumpPath]);
+    const dumpR = await this.shell('adb', [
+      '-s', avd.serial, 'shell', 'uiautomator', 'dump', dumpPath,
+    ]);
     const xmlR = await this.shell('adb', ['-s', avd.serial, 'exec-out', 'cat', dumpPath]);
-    return { xml: xmlR.stdout, elements: this.parseHierarchy(xmlR.stdout) };
+    // Distinguish "the screen has no hierarchy" from "the dump never
+    // happened" (dimagi-internal/ace#1155). When Android's single
+    // UiAutomation slot is held by another client, `uiautomator dump`
+    // crashes and `cat` reports `No such file or directory` — an empty
+    // `xml` either way, but only one of them is a fact about the SCREEN.
+    // `failed` lets the device-state classifier refuse to guess.
+    const failed = detectUiDumpFailure(
+      dumpR.exitCode,
+      `${dumpR.stdout}\n${dumpR.stderr}`,
+      `${xmlR.stdout}\n${xmlR.stderr}`,
+      xmlR.exitCode,
+    );
+    return { xml: xmlR.stdout, elements: this.parseHierarchy(xmlR.stdout), failed };
   }
 
   /**

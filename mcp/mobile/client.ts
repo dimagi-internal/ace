@@ -12,6 +12,7 @@ import {
 } from './backends/cloud.js';
 import { MaestroBackend } from './backends/maestro.js';
 import {
+  AvdBootError,
   DeviceUserStateError,
   isTransientBootRaceError,
   MaestroDriverError,
@@ -35,7 +36,7 @@ import { resolveBackend, preflightMobileBackend } from './backend-toggle.js';
 import type {
   AvdInfo, ApkInfo, RecipeRunResult, TestUserRegistrationResult, UiDumpResult,
   SnapshotResult, DeviceUserStateClass, DeviceStateHealLog, LocalBootstrapConfig,
-  VideoArtifact, LocalDiagnostics,
+  VideoArtifact, LocalDiagnostics, DeviceProbeFailures,
 } from './types.js';
 import { logInfo } from './logging.js';
 import { dispatchOutputDir, resetScreenshotDir } from './screenshot-dir.js';
@@ -294,12 +295,155 @@ export function summarizeCrash(logcat: string): string | undefined {
     .slice(0, 400);
 }
 
+/**
+ * Detect the "another automation client holds the device" failure.
+ *
+ * Android permits exactly ONE `UiAutomation` client per device. When a second
+ * one attaches — a concurrent Maestro run, a sibling ACE session's
+ * `uiautomator dump`, an IDE inspector — the loser fails to acquire the
+ * singleton and `uiautomator dump` never writes `window_dump.xml`. The
+ * stack is unmistakable and lands in `logcat -b crash`:
+ *
+ *   com.android.commands.uiautomator.DumpCommand.run(DumpCommand.java:78)
+ *     at android.app.UiAutomation.connectWithTimeout(UiAutomation.java:381)
+ *     at UiAutomationConnection.registerUiTestAutomationServiceLocked(:576)
+ *   java.lang.RuntimeException: Bad file descriptor
+ *
+ * Narrow on purpose, same discipline as `detectAppCrashLoop`: match the two
+ * frames that only appear when the singleton acquisition itself failed, not
+ * the bare string "UiAutomation" (which shows up in ordinary uiautomator
+ * startup chatter on a perfectly healthy device).
+ *
+ * Pure: caller supplies the excerpt so this stays unit-testable. ace#1155.
+ */
+export function detectUiAutomationFailure(logcat: string | undefined): boolean {
+  if (!logcat) return false;
+  return (
+    /UiAutomation\.connectWithTimeout|UiAutomation\.connect\b/.test(logcat) ||
+    /registerUiTestAutomationServiceLocked/.test(logcat)
+  );
+}
+
+/**
+ * Render the adb-server contention hint (ace#1155, the "optional but
+ * valuable" half).
+ *
+ * Cross-session contention on a shared device is structurally invisible from
+ * inside one session: each session talks to its OWN adb server, so a sibling
+ * session's uiautomator client simply does not appear anywhere in this
+ * session's view. Naming it in the failure text is the only way the operator
+ * learns the device is shared.
+ *
+ * Pure: takes the already-gathered `{port, sees}` observations. Returns
+ * undefined when there is nothing worth saying (0 or 1 attached server).
+ */
+export function describeAdbServerContention(
+  serial: string,
+  serversSeeingSerial: number[],
+): string | undefined {
+  if (serversSeeingSerial.length < 2) return undefined;
+  const ports = [...serversSeeingSerial].sort((a, b) => a - b).join(', ');
+  return (
+    `${serversSeeingSerial.length} adb servers (ports ${ports}) are attached to ${serial} — ` +
+    `another session is very likely driving this device. Android allows ONE UiAutomation ` +
+    `client at a time; kill the competing client rather than re-bootstrapping this one.`
+  );
+}
+
+/**
+ * One-line rendering of what the probe could NOT observe, for the
+ * `ui_dump_signal` field on a probe-failure classification.
+ *
+ * The point is that the signal on a failure class must describe the FAILURE,
+ * never a screen reading — `pickStateSignal` on an empty dump happily returns
+ * something screen-shaped, which is exactly the confident-and-wrong output
+ * ace#1155 is about.
+ */
+export function describeProbeFailures(failures: DeviceProbeFailures): string {
+  const parts: string[] = [];
+  if (failures.deviceUnreachable) parts.push('no-device-on-probe-adb-server');
+  if (failures.packageQueryFailed) parts.push('pm-list-packages-errored');
+  if (failures.uiDumpFailed) parts.push('uiautomator-dump-produced-no-xml');
+  return parts.length ? parts.join(',') : 'none';
+}
+
+/**
+ * Render the parenthetical that `registerTestUser` appends to a part-B
+ * failure, given what the post-failure probe managed to observe.
+ *
+ * The old text was a single fixed string ending *"— not 'ready', so this is a
+ * real registration failure not recipe flakiness"*, appended regardless of
+ * class. On `hh-poverty-targeting/20260730-2210` that shipped a certainty the
+ * probe had not earned: the probe had observed nothing at all, and the
+ * sentence sent two investigations at re-bootstrapping and reinstalling a
+ * healthy device. A probe that failed must say it failed; only a probe that
+ * SAW the device may draw a conclusion from what it saw.
+ *
+ * ace#1155. Pure so the wording is pinned by a test.
+ */
+export function postFailureProbeVerdict(
+  cls: DeviceUserStateClass,
+  signal: string | undefined,
+): string {
+  const head = `(post-failure device probe: classified_as=${cls}, signal=${signal ?? 'none'}`;
+  if (cls === 'device-unreachable' || cls === 'probe-failed') {
+    return (
+      `${head} — the probe itself did NOT complete, so this says NOTHING about ` +
+      `whether registration failed or what state the device is in. Do not treat it ` +
+      `as evidence for reinstalling or re-registering anything; fix the probe path first.)`
+    );
+  }
+  if (cls === 'uiautomation-unavailable') {
+    return (
+      `${head} — Android's single UiAutomation slot could not be acquired, so the ` +
+      `screen was never read. The likely cause is ANOTHER automation client holding ` +
+      `the device (a concurrent Maestro/uiautomator run, typically a sibling session ` +
+      `on this host). Remediation is to kill the competing client — NOT to reinstall ` +
+      `CommCare or re-run the bootstrap.)`
+    );
+  }
+  if (cls === 'unknown') {
+    return (
+      `${head} — no known marker matched. The probe ran but could not classify the ` +
+      `device, so this is inconclusive rather than a confirmed registration failure.)`
+    );
+  }
+  return `${head} — not 'ready', so this is a real registration failure not recipe flakiness)`;
+}
+
+/**
+ * Classify the device's user-facing state from the probe's observations.
+ *
+ * **`installedPackages: null` means the query FAILED, not "no packages".**
+ * That distinction is the whole point of ace#1155: `pm list packages` erroring
+ * used to degrade to `[]`, which the first line of this function read as a
+ * confident "CommCare is absent". On hh-poverty-targeting/20260730-2210 that
+ * produced `classified_as=commcare-not-installed` — twice, reproducibly — on a
+ * device where CommCare was installed, booted, and sitting on
+ * `PersonalIdActivity`, and the label sent the investigation at reinstalling
+ * the app while the real fault was UiAutomation contention. A class that names
+ * a concrete checkable thing is the one most likely to be believed, so it must
+ * never be reachable without a successful query behind it.
+ */
 export function classifyDeviceUserState(
   focusedActivity: string,
   uiDumpXml: string,
-  installedPackages: string[],
+  installedPackages: string[] | null,
   crashLogcat?: string,
+  probeFailures: DeviceProbeFailures = {},
 ): DeviceUserStateClass {
+  // Nothing was observed at all — every downstream signal is vacuous.
+  if (probeFailures.deviceUnreachable) return 'device-unreachable';
+
+  // Package state UNKNOWN. Report what we don't know; never a package claim.
+  if (installedPackages === null || probeFailures.packageQueryFailed) {
+    // When the automation layer is what broke, say so — `uiautomation-
+    // unavailable` is strictly more actionable than `probe-failed` (kill the
+    // competing client vs. "something went wrong").
+    if (detectUiAutomationFailure(crashLogcat)) return 'uiautomation-unavailable';
+    return 'probe-failed';
+  }
+
   if (!installedPackages.some((p) => p === 'org.commcare.dalvik')) {
     return 'commcare-not-installed';
   }
@@ -372,6 +516,16 @@ export function classifyDeviceUserState(
   }
   if (/Enter Code|Scan Application Barcode|Welcome to CommCare/i.test(uiDumpXml)) {
     return 'needs-app-config';
+  }
+  // Deliberately LAST, after every dumpsys-derived signal. `focusedActivity`
+  // comes from `dumpsys`, which is independent of UiAutomation — so a device
+  // whose uiautomator is contended can still legitimately classify `ready` or
+  // `needs-app-config` above, and that answer is better than a contention
+  // report. What this replaces is the useless `unknown`: when the ONLY reason
+  // we have no screen signal is that the dump never happened, say that
+  // instead of shrugging. ace#1155.
+  if (probeFailures.uiDumpFailed || detectUiAutomationFailure(crashLogcat)) {
+    return 'uiautomation-unavailable';
   }
   return 'unknown';
 }
@@ -812,28 +966,84 @@ export class MobileClient {
     focused_activity?: string;
     ui_dump_signal?: string;
   }> {
+    const failures: DeviceProbeFailures = {};
+    // `null`, NOT `[]` (dimagi-internal/ace#1155). `[]` is a legitimate
+    // answer meaning "queried fine, CommCare absent"; a thrown query means
+    // we do not know. Collapsing the two produced two consecutive
+    // `commcare-not-installed` verdicts against a device with CommCare
+    // installed, booted, and foregrounded.
     const packages = await this.avd
       .listPackages(avd.name, 'org.commcare.dalvik')
-      .catch(() => [] as string[]);
+      .catch((e: unknown) => {
+        // `requireRunningAvd` throws AvdBootError when this probe's OWN adb
+        // server sees no device — that is `device-unreachable`, a strictly
+        // stronger statement than "the query failed".
+        if (e instanceof AvdBootError) failures.deviceUnreachable = true;
+        else failures.packageQueryFailed = true;
+        return null;
+      });
     const focused = await this.avd
       .getFocusedActivity(avd.name)
       .catch(() => '');
     const dump = await this.avd
       .captureUiDump(avd.name)
-      .catch(() => ({ xml: '', elements: [] } as UiDumpResult));
+      .catch(() => ({ xml: '', elements: [], failed: true } as UiDumpResult));
+    if (dump.failed) failures.uiDumpFailed = true;
     // Diagnostic-only: a logcat we can't read degrades to "no crash
     // detected", never to a probe failure. See readCrashLogcat.
     const crashLog = await this.avd.readCrashLogcat(avd.name).catch(() => '');
 
-    const cls = classifyDeviceUserState(focused, dump.xml, packages, crashLog);
+    const cls = classifyDeviceUserState(focused, dump.xml, packages, crashLog, failures);
     // When the crash probe is what decided the class, the stack IS the
     // signal — surfacing "screen:first-start-welcome" here instead would
     // reproduce the exact ace#938 misdirection this probe exists to prevent.
-    const signal =
-      cls === 'app-crash-looping'
-        ? (summarizeCrash(crashLog) ?? 'crash:commcare-fatal-exception')
-        : pickStateSignal(focused, dump.xml);
+    let signal: string | undefined;
+    if (cls === 'app-crash-looping') {
+      signal = summarizeCrash(crashLog) ?? 'crash:commcare-fatal-exception';
+    } else if (
+      cls === 'uiautomation-unavailable' ||
+      cls === 'probe-failed' ||
+      cls === 'device-unreachable'
+    ) {
+      // Same discipline for the probe-failure classes: the signal must name
+      // WHAT WE COULD NOT DO, not a screen reading derived from a dump that
+      // never happened. Append the cross-session contention hint when the
+      // host actually has more than one adb server on this serial — that
+      // condition is invisible from inside a single session and it is the
+      // one that produces `uiautomation-unavailable`.
+      const parts = [`probe:${describeProbeFailures(failures)}`];
+      if (cls === 'uiautomation-unavailable') {
+        const contention = await this.describeDeviceContention(avd.serial);
+        if (contention) parts.push(contention);
+      }
+      signal = parts.join(' | ');
+    } else {
+      signal = pickStateSignal(focused, dump.xml);
+    }
     return { classified_as: cls, focused_activity: focused, ui_dump_signal: signal };
+  }
+
+  /**
+   * Best-effort cross-session contention report for a device serial
+   * (dimagi-internal/ace#1155, the "optional but valuable" half).
+   *
+   * Each ACE session talks to its OWN adb server, so a sibling session's
+   * uiautomator client is structurally invisible from inside this one. This
+   * enumerates the adb servers listening on the host and asks each whether it
+   * can see `serial`; two or more means the device is shared and the
+   * remediation is to kill the competitor, not to re-bootstrap.
+   *
+   * Runs ONLY on the failure path and never throws — a diagnostic that can
+   * die is worse than no diagnostic.
+   */
+  private async describeDeviceContention(serial: string): Promise<string | undefined> {
+    if (process.platform === 'win32') return undefined;
+    try {
+      const ports = await this.avd.listAdbServerPortsSeeing(serial);
+      return describeAdbServerContention(serial, ports);
+    } catch {
+      return undefined;
+    }
   }
 
   /**
@@ -1998,7 +2208,7 @@ export class MobileClient {
         }
         throw new Error(
           `register_test_user part B failed: ${partB.stderr || partB.stdout}\n` +
-            `(post-failure device probe: classified_as=${verify.classified_as}, signal=${verify.ui_dump_signal ?? 'none'} — not 'ready', so this is a real registration failure not recipe flakiness)`,
+            postFailureProbeVerdict(verify.classified_as, verify.ui_dump_signal),
         );
       }
 

@@ -87,6 +87,26 @@ export interface AvdInfo {
  *                              `needs-personal-id`) to every screen-based
  *                              signal. Re-registering cannot fix it: the fix
  *                              is an APK/app change. See ace#938/#950.
+ * - `uiautomation-unavailable` — Android's per-device UiAutomation singleton
+ *                              could not be acquired, so `uiautomator dump`
+ *                              wrote no `window_dump.xml`. Another automation
+ *                              client (a concurrent Maestro/uiautomator run,
+ *                              typically a sibling ACE session on the same
+ *                              host) holds the device. The remediation is to
+ *                              kill the competing client — NOT to reinstall
+ *                              or re-register anything. See ace#1155.
+ * - `device-unreachable`     — the probe's own adb server had no device
+ *                              attached, so NOTHING about the device was
+ *                              observed. Never a claim about package state.
+ * - `probe-failed`           — a device was reachable but the package query
+ *                              itself errored, so package state is UNKNOWN.
+ *                              Distinct from `commcare-not-installed`, which
+ *                              requires a SUCCESSFUL query that came back
+ *                              without `org.commcare.dalvik`. Conflating the
+ *                              two is what ace#1155 cost: a failed query read
+ *                              as a confident negative answer and sent two
+ *                              investigations at reinstalling a package that
+ *                              was installed the whole time.
  * - `unknown`                — none of the known markers; let downstream
  *                              recipes classify, don't halt up-front.
  */
@@ -96,7 +116,27 @@ export type DeviceUserStateClass =
   | 'needs-app-config'
   | 'needs-personal-id'
   | 'app-crash-looping'
+  | 'uiautomation-unavailable'
+  | 'device-unreachable'
+  | 'probe-failed'
   | 'unknown';
+
+/**
+ * What the probe FAILED to observe, as distinct from what it observed.
+ *
+ * The load-bearing distinction (ace#1155): an empty result from a query that
+ * ERRORED is not a negative answer. `classifyDeviceUserState` may only report
+ * a package-state class when it was handed a package list that actually came
+ * back from a device.
+ */
+export interface DeviceProbeFailures {
+  /** The probe's adb server had no device attached at all. */
+  deviceUnreachable?: boolean;
+  /** `pm list packages` errored / could not be run. */
+  packageQueryFailed?: boolean;
+  /** `uiautomator dump` produced no readable `window_dump.xml`. */
+  uiDumpFailed?: boolean;
+}
 
 export interface DeviceStateHealLog {
   classified_as: DeviceUserStateClass;
@@ -332,6 +372,13 @@ export interface TestUserRegistrationResult {
 export interface UiDumpResult {
   xml: string;
   elements: Array<{ id?: string; text?: string; class?: string; bounds?: string }>;
+  /**
+   * True when the dump COULD NOT BE TAKEN — `uiautomator dump` errored or
+   * `window_dump.xml` was never written — as opposed to a screen that
+   * genuinely produced no hierarchy. Both yield `xml: ''`; only one of them
+   * says anything about the screen. See ace#1155.
+   */
+  failed?: boolean;
 }
 
 export interface SnapshotResult {
