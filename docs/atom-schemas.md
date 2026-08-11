@@ -92,7 +92,7 @@ Read the text content of a file in Google Drive. Works with Google Docs (exporte
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `fileId` | `z.string` | **required** | The Google Drive file ID |
-| `destPath` | `z.string` | optional | Optional. Absolute local path to write the full document text to. When set, no content is returned inline (costs zero context regardless of file size) — the response is a {path, total_length} handle y… |
+| `writeToPath` | `z.string` | optional | Optional. Absolute local path to write the full document text to. When set, no content is returned inline (costs zero context regardless of file size) — the response is a {path, total_length} handle y… |
 | `offset` | `z.number` | optional | Optional. Zero-based CHARACTER index of the first character to return (default 0). Use with limit to page a large document; advance by the returned `returned_length`. An offset past the end returns em… |
 | `limit` | `z.number` | optional | Optional. Max CHARACTERS to return inline (default: to the end of the document). Must be 40,000 or less — a larger slice is refused with oversized_document, so limit cannot be used to bypass the inlin… |
 

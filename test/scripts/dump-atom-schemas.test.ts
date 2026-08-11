@@ -116,7 +116,7 @@ describe('dump-atom-schemas', () => {
     expect(offsetRow).not.toMatch(/\|\s*_—_\s*\|/);
     expect(offsetRow).toMatch(/default 0/);
 
-    const destRow = section.split('\n').find((l) => l.startsWith('| `destPath`'));
+    const destRow = section.split('\n').find((l) => l.startsWith('| `writeToPath`'));
     expect(destRow).not.toMatch(/\|\s*_—_\s*\|/);
   });
 
