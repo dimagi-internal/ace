@@ -159,11 +159,41 @@ Cloud: `/api/mobile/ensure-running` cold-boots from AMI on every call. Same cont
 | `DeviceUserStateClass` | Recovery | When you'll see it |
 |---|---|---|
 | `ready` | none | Connect nav-drawer items present OR opp/visit activity foregrounded |
-| `commcare-not-installed` | cold-boot funnel (installs APK) | `org.commcare.dalvik` absent from `pm list packages` |
+| `commcare-not-installed` | cold-boot funnel (installs APK) | `org.commcare.dalvik` absent from a **successful** `pm list packages` |
 | `needs-personal-id` | cold-boot funnel (re-registers) | "Logged out of PersonalID" banner, OR no positive Connect-nav signal + first-start markers |
+| `app-crash-looping` | none — APK/app-side fix | `FATAL EXCEPTION` with `org.commcare.dalvik` in the crash block |
+| `uiautomation-unavailable` | **kill the competing automation client** | `uiautomator dump` wrote no `window_dump.xml`, and/or `logcat -b crash` carries `UiAutomation.connectWithTimeout` / `registerUiTestAutomationServiceLocked` |
+| `device-unreachable` | fix the probe path first | the probe's own adb server had no device attached — nothing was observed |
+| `probe-failed` | fix the probe path first | a device was reachable but `pm list packages` errored — package state UNKNOWN |
 | `unknown` | treated as ready | classifier couldn't read the dump — accept rather than reject |
 
 Order matters: the PersonalID-wipe banner is checked **before** Connect-nav-positive signals (stacked-state precedence — a freshly logged-out user may still have nav-drawer items cached on screen). First-match wins.
+
+**A failed query is not a negative answer** (ace#1155). The probe's package
+list is `string[] | null`; `null` means the query threw, and the classifier is
+structurally forbidden from returning `commcare-not-installed` from it. Before
+this, `listPackages` degraded an errored `adb` call to `[]` and the first line
+of the classifier read that as a confident "CommCare is absent" — which is
+exactly what shipped on `hh-poverty-targeting/20260730-2210`, twice, against a
+device with CommCare installed, booted, and foregrounded on
+`PersonalIdActivity`. It is the most believable wrong answer available, because
+it names a concrete checkable thing, and it sent two investigations at
+reinstall/re-bootstrap dead ends.
+
+**Android allows ONE `UiAutomation` client per device.** A second one (a
+sibling ACE session's Maestro/uiautomator, an IDE inspector) starves the
+first, and the loser's `uiautomator dump` dies with `RuntimeException: Bad
+file descriptor`. That is `uiautomation-unavailable`, and its remediation is
+the *opposite* of `commcare-not-installed`'s. Because each session talks to
+its OWN adb server, the competing client is invisible from inside one session
+— so on this class the funnel enumerates the host's adb fork-servers
+(`AvdBackend.listAdbServerPortsSeeing`) and names every port attached to the
+same serial in the failure text. The incident host had **four** (5038, 5040,
+5041, 5042) on a single `emulator-5556`.
+
+Related: `mobile_capture_ui_dump` returning `elements: []` is ambiguous on its
+own — `UiDumpResult.failed` is the field that distinguishes "the screen has no
+hierarchy" from "the dump never happened."
 
 ## Gotchas (durable knowledge)
 

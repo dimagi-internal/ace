@@ -179,6 +179,15 @@ What SHOULD stop you is a thrown typed error — see below.
   loaded but post-restore probe still showed a wiped state. This is
   snapshot corruption or post-snapshot APK upgrade drift. Same
   remediation: `/ace:mobile-bootstrap` re-snapshots.
+- `uiautomation-unavailable` / `device-unreachable` / `probe-failed`
+  — **the probe did not observe the device**, so the class says nothing
+  about registration or app state (ace#1155). Do NOT run
+  `/ace:mobile-bootstrap` on these; it resets a working device's PIN for
+  nothing. `uiautomation-unavailable` specifically means another
+  automation client (usually a sibling ACE session on this host) holds
+  Android's single UiAutomation slot — the `ui_dump_signal` names every
+  adb server attached to the serial. Kill the competing client, then
+  retry the same dispatch.
 
 **This step is now ~zero code in the skill.** The state-classifier
 lives in `mcp/mobile/client.ts` (post-restore verification only); no
