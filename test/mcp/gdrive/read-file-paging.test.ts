@@ -167,7 +167,7 @@ describe('drive_read_file: oversized-inline refusal', () => {
 
     expect(err).toBeInstanceOf(Error);
     const msg = (err as Error).message;
-    expect(msg).toMatch(/destPath/);
+    expect(msg).toMatch(/writeToPath/);
     expect(msg).toMatch(/offset/);
     expect(msg).toMatch(/limit/);
     expect(msg).toMatch(/68470|68,470/);
@@ -228,7 +228,7 @@ describe('drive_read_file: oversized-inline refusal', () => {
   });
 });
 
-describe('drive_read_file: destPath (read to disk, not to context)', () => {
+describe('drive_read_file: writeToPath (read to disk, not to context)', () => {
   let fake: ReturnType<typeof makeFakeDrive>;
   let tmpDir: string;
 
@@ -244,12 +244,12 @@ describe('drive_read_file: destPath (read to disk, not to context)', () => {
   it('writes the full document to disk and returns a handle, not content', async () => {
     const body = 'y'.repeat(68_470);
     queueTextFile(fake, body);
-    const destPath = path.join(tmpDir, 'out.txt');
+    const writeToPath = path.join(tmpDir, 'out.txt');
 
-    const r = await handleReadFileToDisk({ fileId: 'f1', destPath }, fake as any, { sleep });
+    const r = await handleReadFileToDisk({ fileId: 'f1', writeToPath }, fake as any, { sleep });
 
-    expect(fs.readFileSync(destPath, 'utf8')).toBe(body);
-    expect(r.path).toBe(destPath);
+    expect(fs.readFileSync(writeToPath, 'utf8')).toBe(body);
+    expect(r.path).toBe(writeToPath);
     expect(r.total_length).toBe(68_470);
     expect(r.name).toBe('a.txt');
     expect(r.mimeType).toBe('text/plain');
@@ -260,36 +260,36 @@ describe('drive_read_file: destPath (read to disk, not to context)', () => {
 
   it('creates missing parent directories', async () => {
     queueTextFile(fake, 'body');
-    const destPath = path.join(tmpDir, 'nested', 'deeper', 'out.txt');
+    const writeToPath = path.join(tmpDir, 'nested', 'deeper', 'out.txt');
 
-    await handleReadFileToDisk({ fileId: 'f1', destPath }, fake as any, { sleep });
+    await handleReadFileToDisk({ fileId: 'f1', writeToPath }, fake as any, { sleep });
 
-    expect(fs.readFileSync(destPath, 'utf8')).toBe('body');
+    expect(fs.readFileSync(writeToPath, 'utf8')).toBe('body');
   });
 
   it('writes the Google Doc export branch too', async () => {
     queueGoogleDoc(fake, 'exported doc body');
-    const destPath = path.join(tmpDir, 'doc.txt');
+    const writeToPath = path.join(tmpDir, 'doc.txt');
 
-    const r = await handleReadFileToDisk({ fileId: 'doc1', destPath }, fake as any, { sleep });
+    const r = await handleReadFileToDisk({ fileId: 'doc1', writeToPath }, fake as any, { sleep });
 
-    expect(fs.readFileSync(destPath, 'utf8')).toBe('exported doc body');
+    expect(fs.readFileSync(writeToPath, 'utf8')).toBe('exported doc body');
     expect(r.total_length).toBe(17);
   });
 
   // The MCP subprocess's cwd is the plugin cache dir, not the user's project,
-  // so a relative destPath would silently land somewhere surprising.
-  it('refuses a relative destPath', async () => {
+  // so a relative writeToPath would silently land somewhere surprising.
+  it('refuses a relative writeToPath', async () => {
     queueTextFile(fake, 'body');
     await expect(
-      handleReadFileToDisk({ fileId: 'f1', destPath: 'out.txt' }, fake as any, { sleep }),
-    ).rejects.toThrow(/destPath_not_absolute/);
+      handleReadFileToDisk({ fileId: 'f1', writeToPath: 'out.txt' }, fake as any, { sleep }),
+    ).rejects.toThrow(/writeToPath_not_absolute/);
   });
 
   it('still refuses binary mimetypes on the disk path', async () => {
     fake.queueGet(() => ({ data: { mimeType: 'application/pdf', name: 'a.pdf', version: '1' } }));
     await expect(
-      handleReadFileToDisk({ fileId: 'f1', destPath: path.join(tmpDir, 'a.txt') }, fake as any, { sleep }),
+      handleReadFileToDisk({ fileId: 'f1', writeToPath: path.join(tmpDir, 'a.txt') }, fake as any, { sleep }),
     ).rejects.toThrow(/unsupported_binary_mimetype/);
   });
 });

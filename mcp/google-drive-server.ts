@@ -476,10 +476,10 @@ server.tool(
 // 9. Read a Drive file
 server.tool(
   'drive_read_file',
-  'Read the text content of a file in Google Drive. Works with Google Docs (exported as plain text), text/* files (markdown, plain text, etc.), and JSON/YAML/XML/CSV variants. Refuses non-text mimetypes (PDF, docx/xlsx/pptx, images, audio, zip) with a typed `unsupported_binary_mimetype` error pointing at `drive_download_binary` — pre-#106-finding-4 the read returned raw binary as a JSON-corrupted string and silently fed garbage into callers. Returns revisionVersion so callers can pair the read with an optimistic-concurrency `ifMatchRevisionId` on `drive_update_file` (read-modify-write without lost updates). Transient 5xx responses are retried internally (3 attempts, 1s/2s/4s backoff).\n\nThree delivery modes — pick by how much of the document you actually need in context:\n\n- Default (no extra args): returns the whole document inline. Refused with a typed `oversized_document` error above 40,000 characters, since a larger result blows the tool-result token budget.\n- `destPath` (preferred for large or whole-document reads): writes the full text to that absolute local path and returns `{path, name, mimeType, total_length, revisionVersion}` with NO content — costs zero context regardless of file size. Then grep or read that file, ideally inside a subagent so the content never enters your context at all. Use this whenever you need the whole document, and especially when you only need a fact out of it.\n- `offset`/`limit` (in characters): returns one slice inline plus `{total_length, offset, returned_length, has_more}`. Walk with `offset += returned_length` until `has_more` is false. Note that paging a large document to completion still spends its full size in context — `destPath` is cheaper for that; paging is for a bounded peek, e.g. identifying a doc or reading one section.\n\n`destPath` cannot be combined with `offset`/`limit` — it always writes the complete document.',
+  'Read the text content of a file in Google Drive. Works with Google Docs (exported as plain text), text/* files (markdown, plain text, etc.), and JSON/YAML/XML/CSV variants. Refuses non-text mimetypes (PDF, docx/xlsx/pptx, images, audio, zip) with a typed `unsupported_binary_mimetype` error pointing at `drive_download_binary` — pre-#106-finding-4 the read returned raw binary as a JSON-corrupted string and silently fed garbage into callers. Returns revisionVersion so callers can pair the read with an optimistic-concurrency `ifMatchRevisionId` on `drive_update_file` (read-modify-write without lost updates). Transient 5xx responses are retried internally (3 attempts, 1s/2s/4s backoff).\n\nThree delivery modes — pick by how much of the document you actually need in context:\n\n- Default (no extra args): returns the whole document inline. Refused with a typed `oversized_document` error above 40,000 characters, since a larger result blows the tool-result token budget.\n- `writeToPath` (preferred for large or whole-document reads): writes the full text to that absolute local path and returns `{path, name, mimeType, total_length, revisionVersion}` with NO content — costs zero context regardless of file size. Then grep or read that file, ideally inside a subagent so the content never enters your context at all. Use this whenever you need the whole document, and especially when you only need a fact out of it.\n- `offset`/`limit` (in characters): returns one slice inline plus `{total_length, offset, returned_length, has_more}`. Walk with `offset += returned_length` until `has_more` is false. Note that paging a large document to completion still spends its full size in context — `writeToPath` is cheaper for that; paging is for a bounded peek, e.g. identifying a doc or reading one section.\n\n`writeToPath` cannot be combined with `offset`/`limit` — it always writes the complete document.',
   {
     fileId: z.string().describe('The Google Drive file ID'),
-    destPath: z
+    writeToPath: z
       .string()
       .optional()
       .describe(
@@ -498,16 +498,16 @@ server.tool(
       .optional()
       .describe('Optional. Max CHARACTERS to return inline (default: to the end of the document). Must be 40,000 or less — a larger slice is refused with oversized_document, so limit cannot be used to bypass the inline budget.'),
   },
-  async ({ fileId, destPath, offset, limit }) => {
+  async ({ fileId, writeToPath, offset, limit }) => {
     try {
-      if (destPath !== undefined && (offset !== undefined || limit !== undefined)) {
+      if (writeToPath !== undefined && (offset !== undefined || limit !== undefined)) {
         return error(
-          'conflicting_args: destPath writes the complete document to disk, so it cannot be combined with ' +
-            'offset/limit. Either drop offset/limit to write the whole file, or drop destPath to page it inline.',
+          'conflicting_args: writeToPath writes the complete document to disk, so it cannot be combined with ' +
+            'offset/limit. Either drop offset/limit to write the whole file, or drop writeToPath to page it inline.',
         );
       }
-      if (destPath !== undefined) {
-        return result(await handleReadFileToDisk({ fileId, destPath }, drive));
+      if (writeToPath !== undefined) {
+        return result(await handleReadFileToDisk({ fileId, writeToPath }, drive));
       }
       const r = await handleReadFile(
         { fileId, offset, limit, maxChars: DEFAULT_INLINE_MAX_CHARS },
@@ -917,7 +917,7 @@ async function fetchDriveText(
  *
  * Returns the document's text inline, optionally a character range of it.
  * Callers that want the WHOLE of a large document should prefer
- * `handleReadFileToDisk` (the `destPath` mode of `drive_read_file`) — paging a
+ * `handleReadFileToDisk` (the `writeToPath` mode of `drive_read_file`) — paging a
  * 68k-char doc into context in 40k-char slices still spends 68k chars of
  * context, whereas writing it to disk spends none and lets the reader grep it
  * or hand it to a subagent.
@@ -975,13 +975,13 @@ export async function handleReadFile(
       `oversized_document: drive_read_file cannot return ${returned_length} characters inline ` +
         `(max ${maxChars}; document is ${total_length} characters). ` +
         (whole
-          ? `Two ways to read it, cheapest first: (1) pass destPath="/absolute/path.txt" to write the ` +
+          ? `Two ways to read it, cheapest first: (1) pass writeToPath="/absolute/path.txt" to write the ` +
             `full document to disk and get back {path, total_length} with no content — then grep or read ` +
             `that file locally, ideally inside a subagent so the content never enters this context; ` +
             `(2) pass limit=${maxChars} (and offset=0, ${maxChars}, ...) to page it inline, using has_more ` +
-            `to know when to stop. Prefer destPath whenever you need the whole document, and especially ` +
+            `to know when to stop. Prefer writeToPath whenever you need the whole document, and especially ` +
             `when you only need a fact out of it.`
-          : `Lower limit to ${maxChars} or less, or pass destPath="/absolute/path.txt" to write the full ` +
+          : `Lower limit to ${maxChars} or less, or pass writeToPath="/absolute/path.txt" to write the full ` +
             `document to disk instead of returning it inline.`),
     );
   }
@@ -1009,12 +1009,18 @@ export async function handleReadFile(
  * grep it, read a section, or delegate it to a subagent, all of which need a
  * path rather than a payload.
  *
- * `destPath` must be absolute: the MCP subprocess's cwd is the plugin cache
+ * `writeToPath` must be absolute: the MCP subprocess's cwd is the plugin cache
  * directory, not the caller's project, so a relative path would silently
  * write somewhere surprising. Missing parent directories are created.
+ *
+ * Named to match `commcare_download_ccz`'s `write_to_path`, which established
+ * this pattern for the same reason ("keeps the (multi-MB) base64 blob out of
+ * the model context") — camelCased here because this server's params are
+ * camelCase. An agent that learned the escape hatch on one atom should be able
+ * to guess it on the other; that guessability is most of the value.
  */
 export async function handleReadFileToDisk(
-  args: { fileId: string; destPath: string },
+  args: { fileId: string; writeToPath: string },
   driveClient: typeof drive = drive,
   opts: { sleep?: (ms: number) => Promise<void> } = {},
 ): Promise<{
@@ -1024,24 +1030,24 @@ export async function handleReadFileToDisk(
   total_length: number;
   revisionVersion: string | undefined;
 }> {
-  const { fileId, destPath } = args;
+  const { fileId, writeToPath } = args;
 
-  if (!path.isAbsolute(destPath)) {
+  if (!path.isAbsolute(writeToPath)) {
     throw new Error(
-      `destPath_not_absolute: destPath must be an absolute path (got "${destPath}"). ` +
+      `writeToPath_not_absolute: writeToPath must be an absolute path (got "${writeToPath}"). ` +
         `This server's working directory is the plugin cache, not your project, so a relative ` +
         `path would write somewhere unexpected.`,
     );
   }
 
   const file = await fetchDriveText(fileId, driveClient, opts);
-  fs.mkdirSync(path.dirname(destPath), { recursive: true });
-  fs.writeFileSync(destPath, file.content, 'utf8');
+  fs.mkdirSync(path.dirname(writeToPath), { recursive: true });
+  fs.writeFileSync(writeToPath, file.content, 'utf8');
 
   return {
     name: file.name,
     mimeType: file.mimeType,
-    path: destPath,
+    path: writeToPath,
     total_length: file.content.length,
     revisionVersion: file.revisionVersion,
   };
