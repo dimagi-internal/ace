@@ -784,13 +784,25 @@ server.tool(
 // 11c. Download a binary file (PDF, DOCX, XLSX, image, etc.) from Drive
 server.tool(
   'drive_download_binary',
-  'Download a binary or non-Google-Doc file from Google Drive and return its bytes base64-encoded. The companion atom to `drive_upload_binary`. Use for PDFs, docx/xlsx/pptx, images, audio, zip (CCZ), etc. — any mimeType that `drive_read_file` rejects with `unsupported_binary_mimetype`. Returns `{ id, name, mimeType, size, content_base64 }`. Caller is responsible for decoding (e.g. `Buffer.from(content_base64, "base64")` in JS or `base64.b64decode` in Python). Skills that need extracted text from PDF/DOCX/XLSX should pair this with their own extractor — server-side text extraction is intentionally NOT done here so this stays a pure transport atom. Transient 5xx responses retried internally (3 attempts, 1s/2s/4s backoff). Tracking: jjackson/ace#106 finding 4.',
+  'Download a binary or non-Google-Doc file from Google Drive. The companion atom to `drive_upload_binary`. Use for PDFs, docx/xlsx/pptx, images, audio, zip (CCZ), etc. — any mimeType that `drive_read_file` rejects with `unsupported_binary_mimetype`. Transient 5xx responses retried internally (3 attempts, 1s/2s/4s backoff). Tracking: jjackson/ace#106 finding 4.\n\nTwo delivery modes:\n\n- `writeToPath` (STRONGLY preferred): writes the bytes to that absolute local path and returns `{id, name, mimeType, size, path}` with NO base64 — costs zero context regardless of file size. This is the mode to pair with anything that takes a local path: `ocs_upload_collection_files`\' `file_path`, `commcare_validate_ccz`\' `ccz_path`, or your own PDF/DOCX extractor. Mirrors `commcare_download_ccz`\' `write_to_path`.\n- Default (no `writeToPath`): returns `content_base64`, which costs ~1.33x the file size in context and is refused above 40,000 base64 characters (~30 KB of file) with a typed `oversized_binary` error. Only use this for genuinely tiny files, or when you cannot write to disk. Caller decodes (`Buffer.from(content_base64, "base64")`, `base64.b64decode`).\n\nServer-side text extraction is intentionally NOT done here so this stays a pure transport atom — skills that need text from a PDF/DOCX should `writeToPath` and run their own extractor over the file.',
   {
     fileId: z.string().describe('The Google Drive file ID. Resolves Drive shortcuts transparently.'),
+    writeToPath: z
+      .string()
+      .optional()
+      .describe(
+        'Optional but strongly preferred. Absolute local path to write the bytes to. Returns a {path, size} handle instead of content_base64, so a large download costs zero context. Missing parent directories are created. This is what makes the documented "download to a tmp path, then pass it as file_path" recipe expressible.',
+      ),
   },
-  async ({ fileId }) => {
+  async ({ fileId, writeToPath }) => {
     try {
-      const r = await handleDownloadBinary({ fileId }, drive);
+      if (writeToPath !== undefined) {
+        return result(await handleDownloadBinaryToDisk({ fileId, writeToPath }, drive));
+      }
+      const r = await handleDownloadBinary(
+        { fileId, maxBase64Chars: DEFAULT_INLINE_MAX_CHARS },
+        drive,
+      );
       return result(r);
     } catch (e: any) {
       return error(e.message);
@@ -1059,12 +1071,11 @@ export async function handleReadFileToDisk(
  * Drive shortcuts transparently to the same target the read path follows.
  * Each underlying Drive API call is wrapped in `withTransientRetry`.
  */
-export async function handleDownloadBinary(
-  args: { fileId: string },
-  driveClient: typeof drive = drive,
-  opts: { sleep?: (ms: number) => Promise<void> } = {},
-): Promise<{ id: string; name: string; mimeType: string; size: number; content_base64: string }> {
-  const { fileId } = args;
+async function fetchDriveBinary(
+  fileId: string,
+  driveClient: typeof drive,
+  opts: { sleep?: (ms: number) => Promise<void> },
+): Promise<{ id: string; name: string; mimeType: string; buf: Buffer }> {
   const retry = <T>(op: () => Promise<T>) => withTransientRetry(op, opts);
 
   const meta = await retry(() =>
@@ -1108,13 +1119,75 @@ export async function handleDownloadBinary(
     ),
   );
   const buf = Buffer.from(resp.data as ArrayBuffer);
-  return {
-    id: resolvedId,
-    name,
-    mimeType,
-    size: buf.length,
-    content_base64: buf.toString('base64'),
-  };
+  return { id: resolvedId, name, mimeType, buf };
+}
+
+/**
+ * Download-binary handler, exported for unit testing with a mocked Drive
+ * client. Returns `{ id, name, mimeType, size, content_base64 }`.
+ *
+ * `maxBase64Chars` is the opt-in budget guard, mirroring `handleReadFile`'s
+ * `maxChars`: when set and the base64 payload exceeds it, refuse with a typed
+ * `oversized_binary` error naming `writeToPath`. Without it an oversized
+ * download just blows the tool-result budget, and the agent never learns the
+ * cheap path exists — which is how the recipe in `ocs_upload_collection_files`
+ * ("`drive_download_binary` to a tmp path first") stayed unexpressible for
+ * months while the docs kept recommending it (dimagi-internal/ace#1027).
+ */
+export async function handleDownloadBinary(
+  args: { fileId: string; maxBase64Chars?: number },
+  driveClient: typeof drive = drive,
+  opts: { sleep?: (ms: number) => Promise<void> } = {},
+): Promise<{ id: string; name: string; mimeType: string; size: number; content_base64: string }> {
+  const { fileId, maxBase64Chars } = args;
+  const { id, name, mimeType, buf } = await fetchDriveBinary(fileId, driveClient, opts);
+  const content_base64 = buf.toString('base64');
+
+  if (maxBase64Chars !== undefined && content_base64.length > maxBase64Chars) {
+    throw new Error(
+      `oversized_binary: drive_download_binary cannot return ${content_base64.length} base64 characters ` +
+        `inline (max ${maxBase64Chars}; the file is ${buf.length} bytes). Pass ` +
+        `writeToPath="/absolute/path${path.extname(name) || '.bin'}" to write the bytes straight to disk ` +
+        `and get back {path, size} with no base64 — then hand that path to whatever consumes it ` +
+        `(e.g. ocs_upload_collection_files' file_path, commcare_validate_ccz' ccz_path, or your own ` +
+        `extractor). Base64 through the model context costs ~1.33x the bytes and buys nothing.`,
+    );
+  }
+
+  return { id, name, mimeType, size: buf.length, content_base64 };
+}
+
+/**
+ * Download a Drive binary straight to a local file, returning a handle instead
+ * of base64 — the context-cheap counterpart to `handleDownloadBinary`, and the
+ * mode `skills/ocs-agent-setup` § Step 5 and `ocs_upload_collection_files`
+ * have both documented as the right recipe since before it existed
+ * (dimagi-internal/ace#1027).
+ *
+ * Same contract as `handleReadFileToDisk`: absolute path required (this
+ * server's cwd is the plugin cache, not the caller's project), missing parents
+ * created. Named `writeToPath` to match `commcare_download_ccz.write_to_path`.
+ */
+export async function handleDownloadBinaryToDisk(
+  args: { fileId: string; writeToPath: string },
+  driveClient: typeof drive = drive,
+  opts: { sleep?: (ms: number) => Promise<void> } = {},
+): Promise<{ id: string; name: string; mimeType: string; size: number; path: string }> {
+  const { fileId, writeToPath } = args;
+
+  if (!path.isAbsolute(writeToPath)) {
+    throw new Error(
+      `writeToPath_not_absolute: writeToPath must be an absolute path (got "${writeToPath}"). ` +
+        `This server's working directory is the plugin cache, not your project, so a relative ` +
+        `path would write somewhere unexpected.`,
+    );
+  }
+
+  const { id, name, mimeType, buf } = await fetchDriveBinary(fileId, driveClient, opts);
+  fs.mkdirSync(path.dirname(writeToPath), { recursive: true });
+  fs.writeFileSync(writeToPath, buf);
+
+  return { id, name, mimeType, size: buf.length, path: writeToPath };
 }
 
 /**
