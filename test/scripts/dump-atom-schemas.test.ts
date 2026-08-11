@@ -92,4 +92,44 @@ describe('dump-atom-schemas', () => {
     expect(section).toMatch(/\|\s*`start_date`\s*\|/);
     expect(section).toMatch(/\|\s*`total_budget`\s*\|/);
   });
+
+  // A field whose `.describe()` text contains a PARENTHETICAL, or whose
+  // `.describe(...)` call carries a trailing comma from the multi-line fluent
+  // style, used to render an empty description: the modifier-chain regex ended
+  // the capture at the first `)` inside the string. That silently blanked 85
+  // field descriptions across the catalog — in a doc CLAUDE.md tells skills to
+  // grep INSTEAD of paraphrasing atom signatures, so the blanks pushed authors
+  // back toward paraphrasing.
+  it('renders descriptions that contain parentheses and trailing commas', () => {
+    const md = fs.readFileSync(
+      path.join(REPO_ROOT, 'docs/atom-schemas.md'),
+      'utf-8',
+    );
+    const start = md.indexOf('### `drive_read_file`');
+    expect(start).toBeGreaterThanOrEqual(0);
+    const section = md.slice(start, md.indexOf('### `', start + 1));
+
+    // `offset` is declared multi-line with a trailing comma AND its prose
+    // opens a parenthetical ("(default 0)") before any other punctuation.
+    const offsetRow = section.split('\n').find((l) => l.startsWith('| `offset`'));
+    expect(offsetRow, 'drive_read_file should document an `offset` field').toBeDefined();
+    expect(offsetRow).not.toMatch(/\|\s*_—_\s*\|/);
+    expect(offsetRow).toMatch(/default 0/);
+
+    const destRow = section.split('\n').find((l) => l.startsWith('| `destPath`'));
+    expect(destRow).not.toMatch(/\|\s*_—_\s*\|/);
+  });
+
+  // Regression floor on the same class, catalog-wide: the parser fix took
+  // undescribed fields from 375 to 290 (the remainder genuinely have no
+  // `.describe()` in source). If a parser change pushes this back up, it is
+  // re-blanking real prose.
+  it('keeps undescribed-field count at or below the post-fix floor', () => {
+    const md = fs.readFileSync(
+      path.join(REPO_ROOT, 'docs/atom-schemas.md'),
+      'utf-8',
+    );
+    const blanks = (md.match(/^\| `[^`]+` \| `[^`]+` \| [^|]+ \| _—_ \|$/gm) ?? []).length;
+    expect(blanks).toBeLessThanOrEqual(290);
+  });
 });

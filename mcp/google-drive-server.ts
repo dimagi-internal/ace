@@ -191,6 +191,26 @@ function error(msg: string) {
  * one-shot failure that halts the run anyway).
  */
 type ProbeResult = { ok: true } | { ok: false; message: string };
+/**
+ * Default ceiling on how many characters `drive_read_file` will hand back
+ * inline, i.e. into the calling model's context.
+ *
+ * Deliberately conservative. The failure that motivated the cap returned
+ * 68,470 characters across only 6 lines — content that tokenizes far worse
+ * than prose (~2.7 chars/token rather than ~4), so a char budget that looks
+ * safe for prose can still blow a token budget. 40,000 chars is ~16k tokens
+ * even at that bad ratio, and every routine ACE read (run_state.yaml, a PDD,
+ * a verdict file) sits well under it, so the cap effectively only fires where
+ * the read was already broken.
+ *
+ * NOT enforced inside `handleReadFile` unless the caller passes `maxChars` —
+ * the in-process callers (validate_run_state, classify_phase_writeback,
+ * verify_phase_products, update_yaml_file, render_decisions_log) parse content
+ * server-side and never spend model context on it, so capping them would be
+ * a pure regression.
+ */
+export const DEFAULT_INLINE_MAX_CHARS = 40_000;
+
 const sharedDriveProbeCache = new Map<string, { result: ProbeResult; expires: number }>();
 const sharedDriveProbeInflight = new Map<string, Promise<ProbeResult>>();
 const SHARED_DRIVE_PROBE_TTL_MS = 30_000;
@@ -456,13 +476,43 @@ server.tool(
 // 9. Read a Drive file
 server.tool(
   'drive_read_file',
-  'Read the text content of a file in Google Drive. Works with Google Docs (exported as plain text), text/* files (markdown, plain text, etc.), and JSON/YAML/XML/CSV variants. Refuses non-text mimetypes (PDF, docx/xlsx/pptx, images, audio, zip) with a typed `unsupported_binary_mimetype` error pointing at `drive_download_binary` — pre-#106-finding-4 the read returned raw binary as a JSON-corrupted string and silently fed garbage into callers. Returns revisionVersion so callers can pair the read with an optimistic-concurrency `ifMatchRevisionId` on `drive_update_file` (read-modify-write without lost updates). Transient 5xx responses are retried internally (3 attempts, 1s/2s/4s backoff).',
+  'Read the text content of a file in Google Drive. Works with Google Docs (exported as plain text), text/* files (markdown, plain text, etc.), and JSON/YAML/XML/CSV variants. Refuses non-text mimetypes (PDF, docx/xlsx/pptx, images, audio, zip) with a typed `unsupported_binary_mimetype` error pointing at `drive_download_binary` — pre-#106-finding-4 the read returned raw binary as a JSON-corrupted string and silently fed garbage into callers. Returns revisionVersion so callers can pair the read with an optimistic-concurrency `ifMatchRevisionId` on `drive_update_file` (read-modify-write without lost updates). Transient 5xx responses are retried internally (3 attempts, 1s/2s/4s backoff).\n\nThree delivery modes — pick by how much of the document you actually need in context:\n\n- Default (no extra args): returns the whole document inline. Refused with a typed `oversized_document` error above 40,000 characters, since a larger result blows the tool-result token budget.\n- `destPath` (preferred for large or whole-document reads): writes the full text to that absolute local path and returns `{path, name, mimeType, total_length, revisionVersion}` with NO content — costs zero context regardless of file size. Then grep or read that file, ideally inside a subagent so the content never enters your context at all. Use this whenever you need the whole document, and especially when you only need a fact out of it.\n- `offset`/`limit` (in characters): returns one slice inline plus `{total_length, offset, returned_length, has_more}`. Walk with `offset += returned_length` until `has_more` is false. Note that paging a large document to completion still spends its full size in context — `destPath` is cheaper for that; paging is for a bounded peek, e.g. identifying a doc or reading one section.\n\n`destPath` cannot be combined with `offset`/`limit` — it always writes the complete document.',
   {
     fileId: z.string().describe('The Google Drive file ID'),
+    destPath: z
+      .string()
+      .optional()
+      .describe(
+        'Optional. Absolute local path to write the full document text to. When set, no content is returned inline (costs zero context regardless of file size) — the response is a {path, total_length} handle you then read or grep locally. Preferred for large files and for whole-document reads. Missing parent directories are created. Mutually exclusive with offset/limit.',
+      ),
+    offset: z
+      .number()
+      .int()
+      .min(0)
+      .optional()
+      .describe('Optional. Zero-based CHARACTER index of the first character to return (default 0). Use with limit to page a large document; advance by the returned `returned_length`. An offset past the end returns empty content with has_more=false rather than erroring.'),
+    limit: z
+      .number()
+      .int()
+      .min(1)
+      .optional()
+      .describe('Optional. Max CHARACTERS to return inline (default: to the end of the document). Must be 40,000 or less — a larger slice is refused with oversized_document, so limit cannot be used to bypass the inline budget.'),
   },
-  async ({ fileId }) => {
+  async ({ fileId, destPath, offset, limit }) => {
     try {
-      const r = await handleReadFile({ fileId }, drive);
+      if (destPath !== undefined && (offset !== undefined || limit !== undefined)) {
+        return error(
+          'conflicting_args: destPath writes the complete document to disk, so it cannot be combined with ' +
+            'offset/limit. Either drop offset/limit to write the whole file, or drop destPath to page it inline.',
+        );
+      }
+      if (destPath !== undefined) {
+        return result(await handleReadFileToDisk({ fileId, destPath }, drive));
+      }
+      const r = await handleReadFile(
+        { fileId, offset, limit, maxChars: DEFAULT_INLINE_MAX_CHARS },
+        drive,
+      );
       return result(r);
     } catch (e: any) {
       return error(e.message);
@@ -785,19 +835,23 @@ export const isTransientDriveError = isTransientNetworkErrorLib;
 export const withTransientRetry = withTransientRetryLib;
 
 /**
- * Read-file handler, exported for unit testing with a mocked Drive client.
+ * Fetch a Drive file's full text, resolving shortcuts and refusing binaries.
+ *
+ * The shared core of `handleReadFile` (inline delivery, optionally a slice)
+ * and `handleReadFileToDisk` (delivery to a local file). Both need identical
+ * metadata resolution, shortcut following, export-vs-alt:media routing, and
+ * binary refusal; they differ only in where the bytes go.
  *
  * Each underlying Drive API call is wrapped in `withTransientRetry` so that a
  * single 503 / 500 / "Backend Error" doesn't force the caller to handle a
  * retry by hand. 4xx responses (404, 403, etc.) are not retried — those
  * indicate caller bugs, not transient infrastructure flakes.
  */
-export async function handleReadFile(
-  args: { fileId: string },
-  driveClient: typeof drive = drive,
-  opts: { sleep?: (ms: number) => Promise<void> } = {},
+async function fetchDriveText(
+  fileId: string,
+  driveClient: typeof drive,
+  opts: { sleep?: (ms: number) => Promise<void> },
 ): Promise<{ name: string | undefined; mimeType: string; content: string; revisionVersion: string | undefined }> {
-  const { fileId } = args;
   const retry = <T>(op: () => Promise<T>) => withTransientRetry(op, opts);
 
   // Drive API exposes the monotonic revision counter as `version` (a string in
@@ -856,6 +910,141 @@ export async function handleReadFile(
   }
 
   return { name: (meta.data as any).name, mimeType, content, revisionVersion };
+}
+
+/**
+ * Read-file handler, exported for unit testing with a mocked Drive client.
+ *
+ * Returns the document's text inline, optionally a character range of it.
+ * Callers that want the WHOLE of a large document should prefer
+ * `handleReadFileToDisk` (the `destPath` mode of `drive_read_file`) — paging a
+ * 68k-char doc into context in 40k-char slices still spends 68k chars of
+ * context, whereas writing it to disk spends none and lets the reader grep it
+ * or hand it to a subagent.
+ *
+ * Range semantics are characters, not lines or bytes:
+ *   - `offset` (default 0) — index of the first character to return.
+ *   - `limit` — max characters to return; omitted means "to the end".
+ *   - `has_more` — true iff `offset + returned_length < total_length`, so a
+ *     caller can walk the document with `offset += returned_length` until it
+ *     goes false. `total_length` is always the FULL document length, never
+ *     the slice's.
+ *
+ * An offset past the end is not an error — it returns empty content with
+ * `has_more: false`, which terminates a walk cleanly rather than making the
+ * caller special-case the boundary.
+ *
+ * `maxChars` is the opt-in budget guard. When set and the slice we're about
+ * to return exceeds it, we refuse with a typed `oversized_document` error
+ * naming both escape hatches — the same fail-closed-at-the-boundary shape as
+ * the `unsupported_binary_mimetype` refusal in `fetchDriveText`. The cap is
+ * applied to the SLICE rather than the document so that a large `limit`
+ * can't smuggle an oversized payload past the boundary.
+ */
+export async function handleReadFile(
+  args: { fileId: string; offset?: number; limit?: number; maxChars?: number },
+  driveClient: typeof drive = drive,
+  opts: { sleep?: (ms: number) => Promise<void> } = {},
+): Promise<{
+  name: string | undefined;
+  mimeType: string;
+  content: string;
+  revisionVersion: string | undefined;
+  total_length: number;
+  offset: number;
+  returned_length: number;
+  has_more: boolean;
+}> {
+  const { fileId, offset = 0, limit, maxChars } = args;
+
+  if (!Number.isInteger(offset) || offset < 0) {
+    throw new Error(`invalid_range: offset must be a non-negative integer (got ${offset}).`);
+  }
+  if (limit !== undefined && (!Number.isInteger(limit) || limit < 1)) {
+    throw new Error(`invalid_range: limit must be a positive integer when supplied (got ${limit}).`);
+  }
+
+  const file = await fetchDriveText(fileId, driveClient, opts);
+  const total_length = file.content.length;
+  const slice = file.content.slice(offset, limit === undefined ? undefined : offset + limit);
+  const returned_length = slice.length;
+
+  if (maxChars !== undefined && returned_length > maxChars) {
+    const whole = limit === undefined;
+    throw new Error(
+      `oversized_document: drive_read_file cannot return ${returned_length} characters inline ` +
+        `(max ${maxChars}; document is ${total_length} characters). ` +
+        (whole
+          ? `Two ways to read it, cheapest first: (1) pass destPath="/absolute/path.txt" to write the ` +
+            `full document to disk and get back {path, total_length} with no content — then grep or read ` +
+            `that file locally, ideally inside a subagent so the content never enters this context; ` +
+            `(2) pass limit=${maxChars} (and offset=0, ${maxChars}, ...) to page it inline, using has_more ` +
+            `to know when to stop. Prefer destPath whenever you need the whole document, and especially ` +
+            `when you only need a fact out of it.`
+          : `Lower limit to ${maxChars} or less, or pass destPath="/absolute/path.txt" to write the full ` +
+            `document to disk instead of returning it inline.`),
+    );
+  }
+
+  return {
+    name: file.name,
+    mimeType: file.mimeType,
+    content: slice,
+    revisionVersion: file.revisionVersion,
+    total_length,
+    offset,
+    returned_length,
+    has_more: offset + returned_length < total_length,
+  };
+}
+
+/**
+ * Read a Drive file's full text straight to a local file, returning a handle
+ * instead of the content — the context-cheap counterpart to `handleReadFile`.
+ *
+ * This exists because every other read path in this server spends model
+ * context proportional to the file: `drive_read_file` returns text inline and
+ * `drive_download_binary` returns base64 (at ~1.33x the bytes). For "I need
+ * the whole document" that's the wrong trade — the reader can almost always
+ * grep it, read a section, or delegate it to a subagent, all of which need a
+ * path rather than a payload.
+ *
+ * `destPath` must be absolute: the MCP subprocess's cwd is the plugin cache
+ * directory, not the caller's project, so a relative path would silently
+ * write somewhere surprising. Missing parent directories are created.
+ */
+export async function handleReadFileToDisk(
+  args: { fileId: string; destPath: string },
+  driveClient: typeof drive = drive,
+  opts: { sleep?: (ms: number) => Promise<void> } = {},
+): Promise<{
+  name: string | undefined;
+  mimeType: string;
+  path: string;
+  total_length: number;
+  revisionVersion: string | undefined;
+}> {
+  const { fileId, destPath } = args;
+
+  if (!path.isAbsolute(destPath)) {
+    throw new Error(
+      `destPath_not_absolute: destPath must be an absolute path (got "${destPath}"). ` +
+        `This server's working directory is the plugin cache, not your project, so a relative ` +
+        `path would write somewhere unexpected.`,
+    );
+  }
+
+  const file = await fetchDriveText(fileId, driveClient, opts);
+  fs.mkdirSync(path.dirname(destPath), { recursive: true });
+  fs.writeFileSync(destPath, file.content, 'utf8');
+
+  return {
+    name: file.name,
+    mimeType: file.mimeType,
+    path: destPath,
+    total_length: file.content.length,
+    revisionVersion: file.revisionVersion,
+  };
 }
 
 /**
