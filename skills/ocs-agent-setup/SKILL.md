@@ -196,6 +196,14 @@ round-trip gate in Step 11.5 below.
      Use `drive_list_folder` + `drive_download_binary` for binary
      types (PDF, docx, xlsx — see also [#106 finding 4](https://github.com/jjackson/ace/issues/106));
      use `drive_read_file` for text files (markdown, plain text).
+
+     **Always pass `writeToPath` (an absolute tmp path) on both**, then hand
+     that path to `ocs_upload_collection_files`' `file_path` — the bytes never
+     enter your context, and for a large text file `drive_read_file` refuses
+     the inline read outright. `drive_download_binary` without `writeToPath`
+     returns base64 at ~1.33x the file size and is refused above ~30 KB.
+     (Both params landed in dimagi-internal/ace#1027 / #1177; before that this
+     step named a recipe the atoms could not express.)
    - `runs/<run-id>/6-qa-and-training/*` — per-artifact training docs
      (LLO/FLW guides, FAQ, quick-reference). Phase 6 may not have run
      yet when this skill runs in `/ace:run` flow — skip missing files

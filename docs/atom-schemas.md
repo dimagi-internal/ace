@@ -174,11 +174,12 @@ Upload a binary file (PNG, JPG, PDF, audio, video, etc.) to Google Drive inside 
 
 ### `drive_download_binary`
 
-Download a binary or non-Google-Doc file from Google Drive and return its bytes base64-encoded. The companion atom to `drive_upload_binary`. Use for PDFs, docx/xlsx/pptx, images, audio, zip (CCZ), etc. — any mimeType that `drive_read_file` rejects with `unsupported_binary_mimetype`. Returns `{ id, name, mimeType, size, content_base64 }`. Caller is responsible for decoding (e.g. `Buffer.from(conten…
+Download a binary or non-Google-Doc file from Google Drive. The companion atom to `drive_upload_binary`. Use for PDFs, docx/xlsx/pptx, images, audio, zip (CCZ), etc. — any mimeType that `drive_read_file` rejects with `unsupported_binary_mimetype`. Transient 5xx responses retried internally (3 attempts, 1s/2s/4s backoff). Tracking: jjackson/ace#106 finding 4. Two delivery modes: - `writeToPath` (ST…
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `fileId` | `z.string` | **required** | The Google Drive file ID. Resolves Drive shortcuts transparently. |
+| `writeToPath` | `z.string` | optional | Optional but strongly preferred. Absolute local path to write the bytes to. Returns a {path, size} handle instead of content_base64, so a large download costs zero context. Missing parent directories … |
 
 ### `drive_set_anyone_with_link`
 

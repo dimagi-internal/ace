@@ -54,8 +54,12 @@ Phase 5 `ocs-content-pack` + any future skill that calls `ocs_upload_collection_
 ```ts
 // Write the content to a tmp file via Bash. Never Read it back.
 await Bash(`echo "$content" > /tmp/leep-rag/pdd-summary.md`);
-// Or: drive_download_binary into a tmp path for files already on Drive.
-await Bash(`drive_download_binary ... | base64 -d > /tmp/leep-rag/pdd.md`);
+// Or, for files already on Drive, let the atom write it — no base64 at all.
+// (`writeToPath` landed in dimagi-internal/ace#1027; until then this line
+// described a recipe drive_download_binary could not actually perform, and
+// the `| base64 -d` shell form still round-tripped the b64 through context.)
+await drive_download_binary({ fileId, writeToPath: '/tmp/leep-rag/pdd.pdf' });
+// Text files: drive_read_file({ fileId, writeToPath: '/tmp/leep-rag/pdd.md' }).
 
 // Then upload by reference:
 await ocs_upload_collection_files({
