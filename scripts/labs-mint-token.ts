@@ -48,7 +48,10 @@ if (!HQ_USERNAME || !HQ_PASSWORD) {
 }
 
 const TOKEN_NAME = process.argv[2] || 'ACE-plugin';
-const TTL_DAYS = process.argv[3] || '0'; // 0 = no expiry
+// Labs constrains ttl_days to 1..365 (`min="1" max="365"` on the form input).
+// 0 ("no expiry") used to be accepted and is now rejected client-side, which
+// manifests as a silent no-op POST — so 365 is the longest available default.
+const TTL_DAYS = process.argv[3] || '365';
 const LABS_BASE = 'https://labs.connect.dimagi.com';
 const TOKENS_URL = `${LABS_BASE}/labs/mcp/tokens/`;
 const INITIATE_URL = `${LABS_BASE}/labs/initiate/?next=/labs/mcp/tokens/`;
@@ -132,8 +135,28 @@ async function main() {
 
   console.error(`[4/5] on tokens page, filling form: name="${TOKEN_NAME}" ttl_days=${TTL_DAYS}`);
   await page.fill('input[name="name"]', TOKEN_NAME);
-  // ttl_days field may be a number input; clear and set
-  await page.fill('input[name="ttl_days"]', TTL_DAYS);
+
+  // Validate ttl_days against the form's OWN bounds before submitting.
+  // An out-of-range value is rejected by HTML5 constraint validation, which
+  // blocks the POST silently — the click resolves, no token is created, and the
+  // failure only surfaces 15s later as a confusing '#raw-token' timeout. Read
+  // min/max off the live input so this keeps working if labs changes them.
+  const ttlInput = page.locator('input[name="ttl_days"]');
+  const bounds = await ttlInput.evaluate((el) => ({
+    min: (el as HTMLInputElement).min,
+    max: (el as HTMLInputElement).max,
+  }));
+  const ttlNum = Number(TTL_DAYS);
+  const min = bounds.min === '' ? -Infinity : Number(bounds.min);
+  const max = bounds.max === '' ? Infinity : Number(bounds.max);
+  if (!Number.isFinite(ttlNum) || ttlNum < min || ttlNum > max) {
+    throw new Error(
+      `ttl_days=${TTL_DAYS} is outside the range labs accepts (min=${bounds.min || 'none'}, ` +
+        `max=${bounds.max || 'none'}). Note that 0 ("no expiry") is no longer accepted — ` +
+        `pass ${bounds.max || 365} for the longest-lived token.`,
+    );
+  }
+  await ttlInput.fill(TTL_DAYS);
   // Submit the create form
   await Promise.all([
     page.waitForLoadState('load'),
@@ -143,7 +166,20 @@ async function main() {
   console.error(`[5/5] submitted; reading raw token from DOM`);
   // The created token is rendered as <code id="raw-token">...</code>
   const rawTokenLocator = page.locator('#raw-token');
-  await rawTokenLocator.waitFor({ state: 'visible', timeout: 15_000 });
+  try {
+    await rawTokenLocator.waitFor({ state: 'visible', timeout: 15_000 });
+  } catch {
+    // Still sitting on the form means the POST never landed. Surface any
+    // server-side form errors instead of a bare locator timeout.
+    const formErrors = (await page.locator('.errorlist, [role="alert"], .text-red-600').allTextContents())
+      .map((t) => t.trim())
+      .filter(Boolean);
+    throw new Error(
+      `#raw-token never rendered — the create POST did not complete.` +
+        (formErrors.length ? ` Form errors: ${formErrors.join('; ')}.` : '') +
+        ` Check that ttl_days is in range and that no token row was created before retrying.`,
+    );
+  }
   const rawToken = (await rawTokenLocator.textContent())?.trim();
   if (!rawToken) {
     throw new Error('raw-token element empty');
