@@ -276,8 +276,8 @@ function extractFields(args: string): AtomField[] {
   // rather than an inline `z.<type>()` expression, kept DRY in the server
   // source) so the static field regex renders them like inline fields. Keep
   // the expansion text in sync with the constant's `.describe()` in the
-  // server source; use no parentheses in the description (the field regex
-  // stops a `.describe(...)` capture at the first `)`).
+  // server source. (Parentheses in the description text used to truncate the
+  // capture; the string-aware ARG_LIST below now handles them.)
   for (const [alias, expr] of Object.entries(FIELD_ALIASES)) {
     block = block.split(alias).join(expr);
   }
@@ -291,8 +291,23 @@ function extractFields(args: string): AtomField[] {
   // type capture allows a dotted prefix (`coerce.number`); the modifier chain
   // accepts the common Zod refinement methods so a trailing `.describe()` is
   // still captured when it follows `.regex()` / `.record()` / `.int()` etc. (#757).
-  const fieldRe =
-    /([a-zA-Z_][a-zA-Z0-9_]*)\s*:\s*z\s*\.\s*([a-zA-Z_][a-zA-Z0-9_.]*)\s*\([^)]*\)((?:\s*\.\s*(?:optional|nullable|nullish|default|describe|regex|int|min|max|url|email|uuid|positive|nonnegative|nonempty|length|gte|lte|gt|lt|startsWith|endsWith|trim|toLowerCase|toUpperCase|array|catch|refine|transform|pipe|brand|record)\s*\([\s\S]*?\))*)/g;
+  // A modifier's argument list, string-aware: any run of non-paren, non-quote
+  // characters interleaved with COMPLETE quoted strings, which may themselves
+  // contain parentheses. Previously this was a lazy `[\s\S]*?\)`, which stopped
+  // at the first `)` — so a describe text with a parenthetical ("(default 0)")
+  // truncated the chain mid-string and the field rendered with an empty
+  // description. That silently under-documented every atom whose prose used
+  // parens, which is most of the good prose.
+  const ARG_LIST = String.raw`\((?:[^)'"\`]|'(?:\\.|[^'\\])*'|"(?:\\.|[^"\\])*"|\`(?:\\.|[^\`\\])*\`)*\)`;
+  const MODIFIERS =
+    'optional|nullable|nullish|default|describe|regex|int|min|max|url|email|uuid|positive|' +
+    'nonnegative|nonempty|length|gte|lte|gt|lt|startsWith|endsWith|trim|toLowerCase|' +
+    'toUpperCase|array|catch|refine|transform|pipe|brand|record';
+  const fieldRe = new RegExp(
+    String.raw`([a-zA-Z_][a-zA-Z0-9_]*)\s*:\s*z\s*\.\s*([a-zA-Z_][a-zA-Z0-9_.]*)\s*\([^)]*\)` +
+      String.raw`((?:\s*\.\s*(?:${MODIFIERS})\s*${ARG_LIST})*)`,
+    'g',
+  );
   const out: AtomField[] = [];
   let m: RegExpExecArray | null;
   while ((m = fieldRe.exec(block)) !== null) {
@@ -304,8 +319,11 @@ function extractFields(args: string): AtomField[] {
       /\.nullable\s*\(/.test(modifiers) ||
       /\.nullish\s*\(/.test(modifiers) ||
       /\.default\s*\(/.test(modifiers);
+    // `\1\s*,?\s*\)` — the trailing comma is what the multi-line fluent style
+    // produces (`.describe(\n  'text',\n)`), and without it the whole match
+    // failed and the field rendered undescribed.
     const descMatch = modifiers.match(
-      /\.describe\s*\(\s*(['"`])((?:\\.|(?!\1)[\s\S])*?)\1\s*\)/,
+      /\.describe\s*\(\s*(['"`])((?:\\.|(?!\1)[\s\S])*?)\1\s*,?\s*\)/,
     );
     const description = descMatch
       ? descMatch[2].replace(/\\n/g, ' ').replace(/\s+/g, ' ').trim()

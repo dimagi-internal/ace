@@ -92,6 +92,9 @@ Read the text content of a file in Google Drive. Works with Google Docs (exporte
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `fileId` | `z.string` | **required** | The Google Drive file ID |
+| `destPath` | `z.string` | optional | Optional. Absolute local path to write the full document text to. When set, no content is returned inline (costs zero context regardless of file size) — the response is a {path, total_length} handle y… |
+| `offset` | `z.number` | optional | Optional. Zero-based CHARACTER index of the first character to return (default 0). Use with limit to page a large document; advance by the returned `returned_length`. An offset past the end returns em… |
+| `limit` | `z.number` | optional | Optional. Max CHARACTERS to return inline (default: to the end of the document). Must be 40,000 or less — a larger slice is refused with oversized_document, so limit cannot be used to bypass the inlin… |
 
 ### `read_personal_drive_doc`
 
@@ -100,7 +103,7 @@ Read a Google Drive document via personal OAuth (gog CLI) — fallback for files
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `file_id` | `z.string` | **required** | The Google Drive file ID |
-| `format` | `z.enum` | optional | _—_ |
+| `format` | `z.enum` | optional | Export format for Google Docs/Sheets (default: txt for Docs, csv for Sheets) |
 
 ### `drive_update_file`
 
@@ -120,9 +123,9 @@ Patch a YAML-content Google Doc in one MCP call: the server reads the current co
 |-------|------|----------|-------------|
 | `fileId` | `z.string` | **required** | The Google Drive file ID of the YAML doc |
 | `patch` | `z.record` | **required** | _—_ |
-| `merge` | `z.enum` | optional | _—_ |
+| `merge` | `z.enum` | optional | Merge strategy. Defaults to `shallow` (top-level replace) for back-compat. `two-level` merges ONE level deep (top-level-key children preserved, grandchildren replaced wholesale) — use it ONLY when you… |
 | `validateAs` | `z.object` | **required** | _—_ |
-| `phase` | `z.string` | **required** | _—_ |
+| `phase` | `z.string` | **required** | The phase whose products block this patch writes (e.g. "connect-setup", "qa-and-training"). |
 
 ### `drive_create_file`
 
@@ -132,8 +135,8 @@ Create a new Google Doc in Drive with the given name and content, inside the giv
 |-------|------|----------|-------------|
 | `name` | `z.string` | **required** | Name for the new file |
 | `content` | `z.string` | **required** | Text content for the file |
-| `parentFolderId` | `z.string` | **required** | _—_ |
-| `findOrCreate` | `z.boolean` | optional | _—_ |
+| `parentFolderId` | `z.string` | **required** | Required. Parent folder ID — MUST be a folder on a Shared Drive (the MCP verifies this before writing). |
+| `findOrCreate` | `z.boolean` | optional | When true (default), reuse an existing same-name file under the parent and overwrite its content; otherwise always create a new sibling. Default: true. Set to false only when you specifically want a s… |
 
 ### `drive_create_doc_from_markdown`
 
@@ -142,9 +145,9 @@ Create a new Google Doc by uploading markdown content and letting Drive natively
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `name` | `z.string` | **required** | Name for the new Google Doc |
-| `markdown` | `z.string` | **required** | _—_ |
+| `markdown` | `z.string` | **required** | Markdown body. Drive converts: # → H1, ## → H2, ### → H3, **bold**, *italic*, [text](url), -/* lists, ```code```, | tables |. Smart quotes / em-dashes / accents round-trip cleanly via UTF-8. |
 | `parentFolderId` | `z.string` | **required** | Required. Parent folder ID — MUST be a folder on a Shared Drive. |
-| `findOrCreate` | `z.boolean` | optional | _—_ |
+| `findOrCreate` | `z.boolean` | optional | When true (default), reuse an existing same-name file under the parent and overwrite its content; otherwise always create a new sibling. Default: true. |
 
 ### `drive_copy_file`
 
@@ -153,8 +156,8 @@ Copy an existing Google Drive file server-side into a parent folder, optionally 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `sourceFileId` | `z.string` | **required** | The Drive file ID to copy from |
-| `parentFolderId` | `z.string` | **required** | _—_ |
-| `name` | `z.string` | optional | _—_ |
+| `parentFolderId` | `z.string` | **required** | Required. Destination folder ID — MUST be a folder on a Shared Drive (the MCP verifies this before writing). |
+| `name` | `z.string` | optional | Optional name for the copy (defaults to the source file\'s name). |
 
 ### `drive_upload_binary`
 
@@ -162,12 +165,12 @@ Upload a binary file (PNG, JPG, PDF, audio, video, etc.) to Google Drive inside 
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `name` | `z.string` | **required** | _—_ |
+| `name` | `z.string` | **required** | Name for the new file (include the extension — e.g., "screen-01.png", not "screen-01") |
 | `contentBase64` | `z.string` | optional | File content, base64-encoded. Provide either this OR localFilePath, not both. |
 | `localFilePath` | `z.string` | optional | Absolute path to a local file to upload. Reads directly from disk — avoids passing large binaries through the context window. Provide either this OR contentBase64, not both. |
-| `mimeType` | `z.string` | **required** | _—_ |
-| `parentFolderId` | `z.string` | **required** | _—_ |
-| `shareAnyoneWithLink` | `z.boolean` | optional | _—_ |
+| `mimeType` | `z.string` | **required** | MIME type of the binary content. Common ACE values: "image/png", "image/jpeg", "application/pdf", "audio/mpeg", "video/mp4", "application/zip" (CCZ). |
+| `parentFolderId` | `z.string` | **required** | Required. Parent folder ID — MUST be a folder on a Shared Drive (the MCP verifies this before writing). |
+| `shareAnyoneWithLink` | `z.boolean` | optional | When true, after a successful upload set sharing to `role: reader, type: anyone` (anyone-with-link). Required for any PNG that downstream Slides `createImage` will fetch — Slides\' image-import servic… |
 
 ### `drive_download_binary`
 
@@ -192,8 +195,8 @@ Create a new folder in Google Drive, inside the given parent folder. By default,
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `name` | `z.string` | **required** | Name for the new folder |
-| `parentFolderId` | `z.string` | **required** | _—_ |
-| `findOrCreate` | `z.boolean` | optional | _—_ |
+| `parentFolderId` | `z.string` | **required** | Required. Parent folder ID — MUST be a folder on a Shared Drive (the MCP verifies this before writing). |
+| `findOrCreate` | `z.boolean` | optional | When true (default), reuse an existing same-named folder under the parent if one exists; otherwise always create. Default: true. Set to false only when you specifically want a separate sibling. |
 
 ### `drive_create_shortcut`
 
@@ -201,8 +204,8 @@ Create a Google Drive shortcut (mimeType application/vnd.google-apps.shortcut) u
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `name` | `z.string` | **required** | _—_ |
-| `parentFolderId` | `z.string` | **required** | _—_ |
+| `name` | `z.string` | **required** | Display name for the shortcut (include the extension to mirror the target — e.g., "connect-opp-summary.md"). |
+| `parentFolderId` | `z.string` | **required** | Required. Parent folder ID — MUST be a folder on a Shared Drive (the MCP verifies this before writing). |
 | `targetId` | `z.string` | **required** | The file or folder ID the shortcut should point at. |
 | `findOrReplace` | `z.boolean` | optional | When true, delete any prior same-name file/shortcut under `parentFolderId` before creating. Default: false. Use true to make `current/` pointers idempotent. |
 
@@ -256,7 +259,7 @@ Read the full structured JSON of a Google Doc — paragraphs, tables, smart chip
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `documentId` | `z.string` | **required** | The Google Doc ID from the URL |
-| `tabId` | `z.string` | optional | _—_ |
+| `tabId` | `z.string` | optional | Specific tab ID (omit for first tab) |
 
 ### `docs_batch_update`
 
@@ -273,7 +276,7 @@ Render a run's decisions.yaml into its decisions.gdoc at one stable URL — read
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `runFolderFileId` | `z.string` | **required** | _—_ |
+| `runFolderFileId` | `z.string` | **required** | Drive file ID of the run folder (ACE/<opp>/runs/<run-id>/) containing decisions.yaml |
 
 ### `docs_copy_template`
 
@@ -284,7 +287,7 @@ Copy a Google Doc template and optionally replace placeholder text. Smart chips 
 | `templateDocId` | `z.string` | **required** | The template Google Doc ID to copy |
 | `title` | `z.string` | **required** | Title for the new document |
 | `replacements` | `z.record` | **required** | _—_ |
-| `parentFolderId` | `z.string` | optional | _—_ |
+| `parentFolderId` | `z.string` | optional | Destination folder ID (omit to create in same location as template) |
 
 ### `docs_finalize_bullets`
 
@@ -328,7 +331,7 @@ Resolve an ACE opportunity's Drive folder paths in one call. Given an opp slug (
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `slug` | `z.string` | **required** | _—_ |
+| `slug` | `z.string` | **required** | The opportunity slug (folder name under ACE root). |
 | `aceRootFolderId` | `z.string` | optional | Override $ACE_DRIVE_ROOT_FOLDER_ID for tests / multi-tenant. |
 
 ### `resolve_current_run_id`
@@ -337,7 +340,7 @@ Return the most-recent run-id for opp `<slug>` plus its run-folder ID. Lists `<o
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `slug` | `z.string` | **required** | _—_ |
+| `slug` | `z.string` | **required** | The opportunity slug (folder name under ACE root). |
 | `aceRootFolderId` | `z.string` | optional | Override $ACE_DRIVE_ROOT_FOLDER_ID for tests / multi-tenant. |
 
 ### `generate_inputs_manifest`
@@ -354,7 +357,7 @@ Read a Google Forms form definition via the Forms API (forms.googleapis.com/v1/f
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `formId` | `z.string` | **required** | _—_ |
+| `formId` | `z.string` | **required** | The Google Forms form ID (from the form URL or generate_inputs_manifest output). |
 
 ### `validate_run_state`
 
@@ -371,7 +374,7 @@ Single-line answer to 'did `<phaseName>` write its run_state.yaml block correctl
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `fileId` | `z.string` | **required** | The Google Drive fileId of run_state.yaml. |
-| `phaseName` | `z.string` | **required** | _—_ |
+| `phaseName` | `z.string` | **required** | The phase whose write-back block to classify (e.g. "idea-to-design", "commcare-setup"). |
 
 ### `verify_phase_products`
 
@@ -380,7 +383,7 @@ Boundary-fence check that a phase's `phases.<phase>.products` block matches the 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `fileId` | `z.string` | **required** | The Google Drive fileId of run_state.yaml. |
-| `phase` | `z.string` | **required** | _—_ |
+| `phase` | `z.string` | **required** | The phase whose products block to verify (e.g. "connect-setup", "qa-and-training"). |
 
 ### `verify_phase_artifacts`
 
@@ -388,8 +391,8 @@ Verify every artifact the manifest declares required for `phase` is present in t
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `runFolderId` | `z.string` | **required** | _—_ |
-| `phase` | `z.enum` | **required** | _—_ |
+| `runFolderId` | `z.string` | **required** | The Google Drive folder ID of the run (e.g. <opp>/runs/<run-id>/). |
+| `phase` | `z.enum` | **required** | The phase whose declared required artifacts to verify (e.g. "design", "commcare", "synthetic-data-and-workflows"). |
 
 ### `render_run_readme`
 
@@ -422,13 +425,13 @@ Source: `mcp/connect-server.ts` — 57 atoms
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `organization_slug` | `z.string` | **required** | _—_ |
+| `organization_slug` | `z.string` | **required** | PM-side org slug (must be a program-manager org). |
 | `name` | `z.string` | **required** | _—_ |
 | `description` | `z.string` | **required** | _—_ |
 | `delivery_type` | `z.union` | **required** | _—_ |
 | `budget` | `z.coerce.number` | **required** | _—_ |
-| `currency` | `z.string` | **required** | _—_ |
-| `country` | `z.string` | **required** | _—_ |
+| `currency` | `z.string` | **required** | ISO 4217 code (e.g. "USD"). |
+| `country` | `z.string` | **required** | Human country name as Connect renders it (e.g. "United States of America"). |
 | `start_date` | `z.string` | **required** | _—_ |
 | `end_date` | `z.string` | **required** | _—_ |
 
@@ -470,14 +473,14 @@ Source: `mcp/connect-server.ts` — 57 atoms
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `organization_slug` | `z.string` | **required** | PM-side org running the program. |
-| `program_id` | `z.string` | **required** | _—_ |
+| `program_id` | `z.string` | **required** | Program UUID — required (managed opportunity). |
 | `name` | `z.string` | **required** | _—_ |
 | `short_description` | `z.string` | **required** | _—_ |
 | `description` | `z.string` | **required** | _—_ |
 | `target_organization_slug` | `z.string` | optional | _—_ |
 | `start_date` | `z.string` | **required** | Must fit inside the program window. |
 | `end_date` | `z.string` | **required** | _—_ |
-| `total_budget` | `z.coerce.number` | **required** | _—_ |
+| `total_budget` | `z.coerce.number` | **required** | Must fit inside `program.budget − Σ(other managed opps)`. |
 | `is_test` | `z.boolean` | optional | Defaults true server-side. |
 | `auto_activate` | `z.boolean` | optional | _—_ |
 | `description` | `z.string` | **required** | Required — Connect form marks it *. |
@@ -490,7 +493,7 @@ Source: `mcp/connect-server.ts` — 57 atoms
 | `organization_slug` | `z.string` | **required** | _—_ |
 | `opportunity_id` | `z.string` | **required** | _—_ |
 | `name` | `z.string` | optional | _—_ |
-| `short_description` | `z.string` | optional | _—_ |
+| `short_description` | `z.string` | optional | Max 50 chars — DB-enforced (see connect_create_opportunity for the full bisect note). |
 | `description` | `z.string` | optional | _—_ |
 | `end_date` | `z.string` | optional | _—_ |
 | `is_test` | `z.boolean` | optional | _—_ |
@@ -595,7 +598,7 @@ Read an opportunity\'s workers table and report, per phone, whether Connect actu
 |-------|------|----------|-------------|
 | `organization_slug` | `z.string` | **required** | _—_ |
 | `opportunity_id` | `z.string` | **required** | Opportunity UUID. |
-| `phone` | `z.string` | optional | _—_ |
+| `phone` | `z.string` | optional | Optional phone to resolve into a `match` field. Accepts `+<digits>` or a `${VAR}` env token (e.g. ${ACE_E2E_PHONE}). |
 
 ### `connect_delete_unaccepted_flw_invites`
 
@@ -604,7 +607,7 @@ Hard-delete unaccepted FLW invites by integer id. Invites with `status=accepted`
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `organization_slug` | `z.string` | **required** | _—_ |
-| `opportunity_id` | `z.string` | **required** | _—_ |
+| `opportunity_id` | `z.string` | **required** | Opportunity UUID slug (same shape used by connect_list_invites). |
 | `user_invite_ids` | `z.array` | **required** | _—_ |
 
 ### `connect_add_org_member`
@@ -613,8 +616,8 @@ Invite a human user to a Connect workspace (organization) by email. POSTs the HT
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `organization_slug` | `z.string` | **required** | _—_ |
-| `email` | `z.string` | **required** | _—_ |
+| `organization_slug` | `z.string` | **required** | Workspace (organization) slug, e.g. "ai-demo-space". |
+| `email` | `z.string` | **required** | Email of an EXISTING Connect user to add (they must have signed in to Connect at least once). |
 | `role` | `z.enum` | optional | Membership role to request for a NEW member. Default "member". Ignored by Connect if the person is already a member — see `role_unchanged` in the result. |
 
 ### `connect_list_invoices`
@@ -675,8 +678,8 @@ Create a new CommCare HQ project space (domain). POST /register/domain/ via the 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `server` | `z.string` | optional | CommCare HQ cluster to target — e.g. "us" or "eu". Omit to use the default server ACE_HQ_DEFAULT_SERVER. All configured clusters are live at once. |
-| `hr_name` | `z.string` | **required** | _—_ |
-| `org` | `z.string` | optional | _—_ |
+| `hr_name` | `z.string` | **required** | Human-readable project name; HQ derives the URL slug from this. Max 25 chars. Pass a slug-shaped value (lowercase + hyphens) for predictable results. |
+| `org` | `z.string` | optional | Optional organization id (hidden form field; usually empty). |
 
 ### `commcare_get_lookup_table`
 
@@ -686,7 +689,7 @@ Fetch a CommCare HQ lookup table by tag (name). GET /a/<domain>/api/v0.5/lookup_
 |-------|------|----------|-------------|
 | `server` | `z.string` | optional | CommCare HQ cluster to target — e.g. "us" or "eu". Omit to use the default server ACE_HQ_DEFAULT_SERVER. All configured clusters are live at once. |
 | `domain` | `z.string` | **required** | _—_ |
-| `tag` | `z.string` | **required** | _—_ |
+| `tag` | `z.string` | **required** | Lookup table name as the team uses it (e.g. "interview_schedule"). |
 
 ### `commcare_create_lookup_table`
 
@@ -696,10 +699,10 @@ Create a new CommCare HQ lookup table. POST /a/<domain>/api/v0.5/lookup_table/ v
 |-------|------|----------|-------------|
 | `server` | `z.string` | optional | CommCare HQ cluster to target — e.g. "us" or "eu". Omit to use the default server ACE_HQ_DEFAULT_SERVER. All configured clusters are live at once. |
 | `domain` | `z.string` | **required** | _—_ |
-| `tag` | `z.string` | **required** | _—_ |
+| `tag` | `z.string` | **required** | Name for the new table (e.g. "interview_schedule"). |
 | `fields` | `z.array` | **required** | _—_ |
 | `properties` | `z.array` | **required** | _—_ |
-| `is_global` | `z.boolean` | optional | _—_ |
+| `is_global` | `z.boolean` | optional | If true, table is shared across the domain (default false). |
 | `item_attributes` | `z.array` | **required** | _—_ |
 
 ### `commcare_list_user_fields`
@@ -786,10 +789,10 @@ Create a Data-Forwarding Repeater on a CommCare HQ domain. POST the GenericRepea
 | `server` | `z.string` | optional | CommCare HQ cluster to target — e.g. "us" or "eu". Omit to use the default server ACE_HQ_DEFAULT_SERVER. All configured clusters are live at once. |
 | `domain` | `z.string` | **required** | _—_ |
 | `repeater_type` | `z.enum` | **required** | _—_ |
-| `connection_settings_id` | `z.number` | **required** | _—_ |
+| `connection_settings_id` | `z.number` | **required** | FK to a Connection (from commcare_list_connections). |
 | `name` | `z.string` | optional | _—_ |
 | `request_method` | `z.enum` | optional | _—_ |
-| `format` | `z.string` | optional | _—_ |
+| `format` | `z.string` | optional | Payload format slug (e.g. "form_json", "form_xml"). |
 | `configured_filter` | `z.record` | **required** | _—_ |
 | `configured_expression` | `z.record` | **required** | _—_ |
 | `url_template` | `z.string` | optional | _—_ |
@@ -813,7 +816,7 @@ Create a Connection (motech outbound connection settings). POST the ConnectionSe
 | `server` | `z.string` | optional | CommCare HQ cluster to target — e.g. "us" or "eu". Omit to use the default server ACE_HQ_DEFAULT_SERVER. All configured clusters are live at once. |
 | `domain` | `z.string` | **required** | _—_ |
 | `name` | `z.string` | **required** | _—_ |
-| `url` | `z.string` | **required** | _—_ |
+| `url` | `z.string` | **required** | Base URL of the target system (e.g. "https://connect.dimagi.com/"). |
 | `auth_type` | `z.enum` | optional | _—_ |
 | `username` | `z.string` | optional | _—_ |
 | `plaintext_password` | `z.string` | optional | _—_ |
@@ -822,7 +825,7 @@ Create a Connection (motech outbound connection settings). POST the ConnectionSe
 | `token_url` | `z.string` | optional | _—_ |
 | `notify_addresses_str` | `z.string` | optional | Comma-separated emails for failure notifications. |
 | `skip_cert_verify` | `z.boolean` | optional | _—_ |
-| `plaintext_custom_headers` | `z.string` | optional | JSON string of custom headers (e.g. \'{"Authorization": "Token xyz"}\ |
+| `plaintext_custom_headers` | `z.string` | optional | JSON string of custom headers (e.g. \'{"Authorization": "Token xyz"}\'). |
 
 ### `commcare_get_case`
 
@@ -865,7 +868,7 @@ Set a single custom-user-data field on a mobile worker. Implemented as GET → m
 | `server` | `z.string` | optional | CommCare HQ cluster to target — e.g. "us" or "eu". Omit to use the default server ACE_HQ_DEFAULT_SERVER. All configured clusters are live at once. |
 | `domain` | `z.string` | **required** | _—_ |
 | `user_id` | `z.string` | **required** | _—_ |
-| `field_slug` | `z.string` | **required** | _—_ |
+| `field_slug` | `z.string` | **required** | User-data field slug (e.g. "cohort_id"). |
 | `value` | `z.union` | **required** | _—_ |
 
 ### `commcare_get_lookup_table_rows`
@@ -876,7 +879,7 @@ Get rows of a CommCare HQ lookup table. GET /a/<domain>/api/v0.5/lookup_table_it
 |-------|------|----------|-------------|
 | `server` | `z.string` | optional | CommCare HQ cluster to target — e.g. "us" or "eu". Omit to use the default server ACE_HQ_DEFAULT_SERVER. All configured clusters are live at once. |
 | `domain` | `z.string` | **required** | _—_ |
-| `table_id_or_tag` | `z.string` | **required** | _—_ |
+| `table_id_or_tag` | `z.string` | **required** | Either a 32-hex table UUID or the human-readable tag (e.g. "interview_schedule"). |
 
 ### `commcare_lookup_table_append_rows`
 
@@ -897,8 +900,8 @@ Set up a linked-project-spaces relationship: upstream (master) → downstream. R
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `server` | `z.string` | optional | CommCare HQ cluster to target — e.g. "us" or "eu". Omit to use the default server ACE_HQ_DEFAULT_SERVER. All configured clusters are live at once. |
-| `upstream_domain` | `z.string` | **required** | _—_ |
-| `downstream_domain` | `z.string` | **required** | _—_ |
+| `upstream_domain` | `z.string` | **required** | Master domain slug (must have access). |
+| `downstream_domain` | `z.string` | **required** | Downstream domain slug to attach (must also have access). |
 
 ### `commcare_make_build`
 
@@ -927,7 +930,7 @@ Set up a linked-project-spaces relationship: upstream (master) → downstream. R
 | `app_id` | `z.string` | **required** | _—_ |
 | `build_id` | `z.string` | optional | _—_ |
 | `include_multimedia` | `z.boolean` | optional | If true, request the full CCZ with multimedia binaries inlined under commcare/multimedia/...; default false returns the lite manifest-only response. |
-| `write_to_path` | `z.string` | optional | _—_ |
+| `write_to_path` | `z.string` | optional | If set, write the CCZ bytes to this local path and return `ccz_written_to` INSTEAD of `ccz_base64` — keeps the (multi-MB) base64 blob out of the model context. The `connect_markers` + `projected_conne… |
 
 ### `commcare_validate_ccz`
 
@@ -936,9 +939,9 @@ Set up a linked-project-spaces relationship: upstream (master) → downstream. R
 | `server` | `z.string` | optional | CommCare HQ cluster to target — e.g. "us" or "eu". Omit to use the default server ACE_HQ_DEFAULT_SERVER. All configured clusters are live at once. |
 | `ccz_path` | `z.string` | optional | Local filesystem path to the CCZ. Preferred — avoids round-tripping ~10KB of base64 through the model context. Exactly one of `ccz_path` or `ccz_base64` must be supplied. |
 | `ccz_base64` | `z.string` | optional | Base64-encoded CCZ bytes. Use when chaining directly from `commcare_download_ccz` without writing to disk. Exactly one of `ccz_path` or `ccz_base64` must be supplied. |
-| `mode` | `z.enum` | optional | _—_ |
+| `mode` | `z.enum` | optional | `validate` (default; fast, parser-class only) vs `play` (slow, catches runtime-binding defects like the bednet `entity_id` class). Use `play` as the authoritative Phase 3 install-time gate. |
 | `entry_path` | `z.array` | **required** | _—_ |
-| `jar_path` | `z.string` | optional | _—_ |
+| `jar_path` | `z.string` | optional | Override the resolved commcare-cli.jar path (default: $ACE_COMMCARE_CLI_JAR or $CLAUDE_PLUGIN_DATA/commcare-cli.jar). |
 | `timeout_ms` | `z.number` | optional | Spawn timeout. validate default 60000ms; play default 30000ms. |
 
 ### `commcare_patch_xform`
@@ -949,8 +952,8 @@ Set up a linked-project-spaces relationship: upstream (master) → downstream. R
 | `domain` | `z.string` | **required** | _—_ |
 | `app_id` | `z.string` | **required** | _—_ |
 | `form_unique_id` | `z.string` | **required** | _—_ |
-| `new_xform_xml` | `z.string` | optional | _—_ |
-| `new_xform_xml_path` | `z.string` | optional | _—_ |
+| `new_xform_xml` | `z.string` | optional | Inline XForm XML (mutually exclusive with new_xform_xml_path). |
+| `new_xform_xml_path` | `z.string` | optional | Local path to the XForm XML file (mutually exclusive with new_xform_xml). Use this for large patched XML that blows past tool-call arg-size limits. |
 | `sha1` | `z.string` | optional | Optional concurrency token; CCHQ rejects with XformConflictError on mismatch. |
 
 ### `commcare_upload_multimedia`
@@ -961,8 +964,8 @@ Set up a linked-project-spaces relationship: upstream (master) → downstream. R
 | `domain` | `z.string` | **required** | _—_ |
 | `app_id` | `z.string` | **required** | _—_ |
 | `media_path` | `z.string` | **required** | _—_ |
-| `file_bytes_base64` | `z.string` | optional | _—_ |
-| `file_bytes_path` | `z.string` | optional | _—_ |
+| `file_bytes_base64` | `z.string` | optional | Asset bytes, base64-encoded (mutually exclusive with file_bytes_path). |
+| `file_bytes_path` | `z.string` | optional | Local path to the binary payload (mutually exclusive with file_bytes_base64). Use this for typical-sized PNGs that blow past tool-call arg-size limits. |
 | `content_type` | `z.string` | **required** | _—_ |
 
 ### `commcare_get_form_source`
@@ -991,7 +994,7 @@ Set up a linked-project-spaces relationship: upstream (master) → downstream. R
 | `server` | `z.string` | optional | CommCare HQ cluster to target — e.g. "us" or "eu". Omit to use the default server ACE_HQ_DEFAULT_SERVER. All configured clusters are live at once. |
 | `domain` | `z.string` | **required** | _—_ |
 | `app_id` | `z.string` | **required** | _—_ |
-| `use_grid_menus` | `z.boolean` | optional | _—_ |
+| `use_grid_menus` | `z.boolean` | optional | App-root "Modules Menu Display": true = grid, false = list. Defaults to true. |
 | `grid_form_menus` | `z.enum` | optional | _—_ |
 
 ### `connect_preflight_learn_app_user`
@@ -1001,8 +1004,8 @@ Set up a linked-project-spaces relationship: upstream (master) → downstream. R
 | `hq_domain` | `z.string` | **required** | _—_ |
 | `connect_username` | `z.string` | optional | _—_ |
 | `api_key` | `z.string` | **required** | _—_ |
-| `hq_username` | `z.string` | **required** | _—_ |
-| `base_url` | `z.string` | optional | _—_ |
+| `hq_username` | `z.string` | **required** | CCHQ username the API key belongs to. Typically `${ACE_HQ_USERNAME}`. |
+| `base_url` | `z.string` | optional | Override CCHQ base URL. Defaults to https://www.commcarehq.org. |
 
 ## ace-ocs
 
@@ -1035,7 +1038,7 @@ Link a Custom Action operation to a pipeline node. GET/POST /a/<team>/pipelines/
 | `pipeline_id` | `z.number` | **required** | _—_ |
 | `node_id` | `z.string` | **required** | _—_ |
 | `custom_action_id` | `z.number` | **required** | From `ocs_add_custom_action`. |
-| `operation_id` | `z.string` | **required** | _—_ |
+| `operation_id` | `z.string` | **required** | The operationId within the custom action\'s api_schema (e.g. "postSessionCompletion"). |
 
 ### `ocs_add_custom_action`
 
@@ -1044,7 +1047,7 @@ Create an OCS Custom Action (an OpenAPI-driven external tool the LLM can call). 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `name` | `z.string` | **required** | _—_ |
-| `server_url` | `z.string` | **required** | _—_ |
+| `server_url` | `z.string` | **required** | Base URL of the target API (e.g. https://www.commcarehq.org). |
 | `api_schema` | `z.string` | **required** | OpenAPI 3.x schema as JSON or YAML string. operationIds become the action\'s allowed_operations. |
 | `description` | `z.string` | optional | _—_ |
 | `prompt` | `z.string` | optional | Additional instructions to the LLM about how to use this action. |
@@ -1058,8 +1061,8 @@ Attach a timeout-trigger event to a chatbot. POST /a/<team>/chatbots/<experiment
 |-------|------|----------|-------------|
 | `experiment_id` | `z.number` | **required** | _—_ |
 | `delay_seconds` | `z.number` | **required** | Wait time before triggering, in seconds. 86400 = 24 hours. |
-| `total_num_triggers` | `z.number` | optional | _—_ |
-| `trigger_from_first_message` | `z.boolean` | optional | _—_ |
+| `total_num_triggers` | `z.number` | optional | Number of times to fire (default 1). |
+| `trigger_from_first_message` | `z.boolean` | optional | Trigger relative to the first message vs. last interaction (default false = last). |
 | `action_type` | `z.enum` | **required** | _—_ |
 | `action_params` | `z.record` | **required** | _—_ |
 
@@ -1127,8 +1130,8 @@ Upload files to an existing Collection. Each file MUST supply EXACTLY ONE source
 |-------|------|----------|-------------|
 | `collection_id` | `z.number` | **required** | _—_ |
 | `files` | `z.array` | **required** | _—_ |
-| `content` | `z.string` | optional | _—_ |
-| `file_path` | `z.string` | optional | _—_ |
+| `content` | `z.string` | optional | Base64-encoded file content. Legacy inline mode — use file_path for anything > ~1KB to avoid stalling model generation on large b64 tool_use inputs. |
+| `file_path` | `z.string` | optional | Local filesystem path. MCP reads the bytes + base64-encodes server-side, so the agent never holds the b64 in context. Pass an absolute path; relative paths resolve against the MCP subprocess CWD which… |
 | `mime_type` | `z.string` | **required** | _—_ |
 | `chunk_size` | `z.number` | optional | Chunk size in tokens. Default 800. |
 | `chunk_overlap` | `z.number` | optional | Chunk overlap in tokens. Must be < chunk_size. Default 400. |
@@ -1232,7 +1235,7 @@ List chatbots on the OCS team. Each entry includes both `id` (UUID public_id, us
 |-------|------|----------|-------------|
 | `cursor` | `z.string` | optional | _—_ |
 | `page_size` | `z.number` | optional | _—_ |
-| `team_slug` | `z.string` | optional | _—_ |
+| `team_slug` | `z.string` | optional | Optional team slug to read from (e.g. "Vaccine_Coach"). Omit to use OCS_TEAM_SLUG. |
 
 ### `ocs_get_chatbot`
 
@@ -1248,9 +1251,9 @@ Return the chatbot\'s FULL denormalized config in one read-only call via OCS v2 
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `public_id` | `z.string` | **required** | _—_ |
+| `public_id` | `z.string` | **required** | UUID public_id of the chatbot (from ocs_list_chatbots → id) |
 | `version` | `z.union` | **required** | _—_ |
-| `team_slug` | `z.string` | optional | _—_ |
+| `team_slug` | `z.string` | optional | Optional team slug to inspect (e.g. "Vaccine_Coach"). Omit to use OCS_TEAM_SLUG. |
 
 ### `ocs_list_sessions`
 
@@ -1315,7 +1318,7 @@ Send a test message to a chatbot via the anonymous widget chat API. Requires the
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `public_id` | `z.string` | **required** | UUID public_id of the chatbot |
-| `embed_key` | `z.string` | **required** | _—_ |
+| `embed_key` | `z.string` | **required** | Embed key (widget_token) from ocs_get_chatbot_embed_info |
 | `message` | `z.string` | **required** | The message to send |
 
 ### `ocs_trigger_bot_message`
@@ -1357,7 +1360,7 @@ Cheap "is my OCS API key live + which team is it scoped to" probe via OCS v2 `/a
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `team_slug` | `z.string` | optional | _—_ |
+| `team_slug` | `z.string` | optional | Optional team slug to probe (e.g. "Vaccine_Coach"). Omit to use OCS_TEAM_SLUG. |
 
 ### `ocs_add_team_member`
 
@@ -1434,21 +1437,21 @@ _no parameters_
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `avdName` | `z.string` | **required** | _—_ |
-| `timeoutMs` | `z.number` | optional | _—_ |
+| `avdName` | `z.string` | **required** | AVD name (e.g. ACE_Pixel_API_34). Must already be booted — this atom does not boot. |
+| `timeoutMs` | `z.number` | optional | Probe timeout in ms (default 8000). On a healthy AVD `maestro hierarchy` returns ~2s; raise only if you suspect a slow first-time install of the driver app. |
 
 ### `mobile_validate_recipe`
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `yaml` | `z.string` | **required** | _—_ |
+| `yaml` | `z.string` | **required** | Maestro YAML body to validate. Standard ACE-recipe shape: appId frontmatter + \`---\` separator + step list. Validates step-key allowlist (${[...ALLOWED_STEP_KEYS].join(', ')}) and structural integrit… |
 
 ### `mobile_resolve_selectors`
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `yaml` | `z.string` | **required** | Maestro YAML body containing `${SELECTOR:logical-name}` placeholders to resolve. |
-| `apkVersion` | `z.string` | optional | _—_ |
+| `apkVersion` | `z.string` | optional | Connect APK version. Maps to mcp/mobile/selectors/connect-<apkVersion>.yaml. Defaults to 2.63.2 (live drift-checked 2026-07-25); bump when re-baselining against a new APK. Pin PUBLISHED releases only … |
 
 ### `mobile_save_snapshot`
 
@@ -1469,10 +1472,10 @@ _no parameters_
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `avdName` | `z.string` | optional | _—_ |
-| `longitude` | `z.number` | **required** | _—_ |
-| `latitude` | `z.number` | **required** | _—_ |
-| `altitude` | `z.number` | optional | _—_ |
-| `satellites` | `z.number` | optional | _—_ |
+| `longitude` | `z.number` | **required** | Longitude (X). NOTE: longitude is the FIRST coordinate (emulator `geo fix` console convention) — pass it before latitude to avoid the classic transposition footgun. |
+| `latitude` | `z.number` | **required** | Latitude (Y). |
+| `altitude` | `z.number` | optional | Altitude in metres (default 480). |
+| `satellites` | `z.number` | optional | Number of satellites in the simulated fix (default 12). >= 4 yields a usable fix; more improves the reported accuracy shown in a CommCare geopoint accuracy readout. |
 
 ### `mobile_list_session_videos`
 
@@ -1490,14 +1493,14 @@ _no parameters_
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `waitForReady` | `z.boolean` | optional | _—_ |
+| `waitForReady` | `z.boolean` | optional | Block until the runner re-sets the ready marker (default true). False is fire-and-forget — returns a partial Diagnostics snapshot immediately. |
 
 ### `mobile_patch_launch_script`
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `scriptBody` | `z.string` | **required** | _—_ |
-| `restartRunner` | `z.boolean` | optional | _—_ |
+| `scriptBody` | `z.string` | **required** | Full new body of /usr/local/bin/ace-emulator-launch. Must start with '#!/bin/bash'. Server enforces a 64KB cap. |
+| `restartRunner` | `z.boolean` | optional | After writing the new script, restart ace-mobile-runner.service so the next cold-boot exercises it (default true). |
 
 ## ace-decisions
 
@@ -1509,7 +1512,7 @@ Append validated load-bearing default rows to a run\'s decisions.yaml. The MCP t
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `runFolderId` | `z.string` | **required** | _—_ |
-| `opportunity` | `z.string` | **required** | _—_ |
-| `run_id` | `z.string` | **required** | _—_ |
-| `rows` | `z.array` | **required** | _—_ |
+| `runFolderId` | `z.string` | **required** | Drive file ID of the run folder (e.g. resolved via resolve_opp_path → runs/<run-id>). decisions.yaml lives at the root of this folder. |
+| `opportunity` | `z.string` | **required** | Opportunity slug (e.g. `bednet-spot-check`). Must match an existing log\'s `opportunity` if one is already in place. |
+| `run_id` | `z.string` | **required** | Run id (e.g. `20260525-2013`). Must match an existing log\'s `run_id` if one is already in place. |
+| `rows` | `z.array` | **required** | Array of validated decision rows to append. Each row\'s `ai-default` (and `override` if set) MUST be one of the strings in its `options` array, exact-match — put rationale in `reasoning`, never in `ai… |
