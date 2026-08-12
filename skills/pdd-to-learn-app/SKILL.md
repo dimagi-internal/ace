@@ -547,6 +547,90 @@ Generate the Learn (training) app from the PDD using the Nova plugin
     — the single dimension is the whole swing on this minimal opp. See
     jjackson/ace#787.
 
+4d. **Cold-read probe on the gating bank (measured, not self-assessed) —
+    runs at LEVEL 0.** `_app-component-library.md §
+    discriminating-assessment-items` ships a mandatory **pre-release
+    self-check**, and that check is graded by the same agent that wrote the
+    bank. The library itself records why that cannot work: rewrite 2 of the
+    ace#1014 trajectory self-predicted 5–7/12 and measured 9–10/12, because
+    the author knows which option they *intended* to be hard, which is
+    exactly the knowledge a cold reader lacks. Author self-prediction on this
+    dimension is worthless. This step replaces the prediction with a
+    measurement, at build time, while rewriting an item is still cheap
+    (dimagi-internal/ace#1119).
+
+    **Trigger:** the PDD specifies a readiness gate AND the gating bank has
+    **≥5 scored items**. Below 5 the statistic is degenerate (at n=1 it can
+    only be 0 or 1) and no authoring choice can change a PDD-mandated item
+    count — skip the step and note it in the build memo (ace#1042).
+
+    **This is a catastrophe filter, NOT the eval's statistic.** The real
+    measurement is the trained-minus-untrained **contrast** in
+    `pdd-to-learn-app-eval § assessment_discrimination`, and it stays there.
+    This step gates only on the one condition that is unambiguous and
+    unaffordable to discover after release: *the population the gate exists
+    to protect passes it cold.* Do not tune the bank against this number
+    beyond clearing it — chasing an absolute cold score is what produced
+    ace#1187, and driving it down past the bar means writing items that are
+    arbitrary rather than sensible.
+
+    1. **Extract the bank.** For the form carrying `connect.assessment` (post
+       ace#1131 there is exactly one), pull each scored item's stem and
+       option labels via `get_form`. Hold the `qN_score` calculates back —
+       they are the key.
+    2. **Derive the FLW persona from the PDD**, in writing: formal schooling,
+       the working language and whether it is the cohort's first, prior
+       data-collection / M&E experience, smartphone familiarity. Use the
+       PDD's own words. Do **not** brief a generic "capable adult with good
+       exam technique" — that reader measures an LLM domain-expert ceiling
+       roughly 15pp above the real cohort, which is the defect ace#1187 was
+       filed for.
+    3. **Dispatch TWO separate agents** (`Agent`, level 0 — see the topology
+       note below). Each receives ONLY the persona + stems + option labels,
+       under **independently permuted** neutral labels (`A/B/C/D` reassigned
+       per agent), with picks **committed in writing before any reveal**.
+       Never the calculates, never the module content, never the PDD body —
+       a single-agent self-probe is contaminated by construction, because
+       `get_form` returns stems, options and the key in one payload.
+    4. **Score** each run against the live `qN_score` calculates and take
+       `untrained_max = max(run1, run2) ÷ items_scored`. Max, not mean: this
+       is a safety gate, so the conservative draw is the right one, and the
+       untrained reader carries ±12pp run-to-run noise.
+    5. **Gate:** `untrained_max × 100 >= the PDD's unlock threshold` → the
+       bank is **not shippable**. Rewrite the items the probe answered
+       correctly — those carry no training signal — per the component's Step
+       1 (name the taught rule, the module that teaches it, the operation it
+       protects; discard any item with no module). Then re-probe.
+    6. **Bounded — at most TWO rewrite cycles.** If it still clears the
+       threshold after two, **stop**. Record the measurement in the build
+       memo, add a `commcare-setup.residuals[]` entry naming the items, and
+       proceed to Step 5. Do NOT iterate further: an unbounded chase against
+       a cold-guess number is precisely how ace#1187 burned two authoring
+       cycles (~500K subagent tokens) on a bank that was already fine.
+
+    **Calibration (measured 2026-08-12, three real banks).** The bar has
+    large margins on every bank we have; it fires only on the genuinely
+    decorative one:
+
+    | Bank | gate | untrained runs | `untrained_max` | verdict |
+    |---|---|---|---|---|
+    | `hh-poverty-targeting/20260722-1341` (10 items, one virtuous option + 3 absurd) | 80 | 9, 10 | **1.00** | **FIRES** |
+    | `spark-facilitator/20260810-0737` (20 items) | 80 | 11, 10 | 0.55 | clear |
+    | `hh-poverty-targeting/20260730-2210` (12 items) | 80 | 2, 1 | 0.17 | clear |
+
+    A bank that clears this bar can still fail the eval's contrast, and that
+    is correct — this step is a floor, not a substitute.
+
+    **Topology note.** This step calls `Agent`, so it MUST run at level 0.
+    That holds today because `commcare-setup` is a procedure doc the
+    orchestrator executes **inline** (see `CLAUDE.md § Agent topology` and
+    `agents/commcare-setup.md` — the same constraint that makes
+    `/nova:autobuild` work). If this skill is ever dispatched *as* a
+    subagent, `Agent` is unavailable and this step will fail: in that case
+    skip it, record a residual, and let `pdd-to-learn-app-eval` carry the
+    measurement. Never restructure the phase to make it fit — the
+    no-two-levels-of-Agent invariant wins.
+
 5. **(Optional) Inspect the built app** via `/nova:show <app_id>` to
    cross-check the structure against the PDD before writing the summary.
 
