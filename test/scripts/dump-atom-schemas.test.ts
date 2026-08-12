@@ -120,6 +120,21 @@ describe('dump-atom-schemas', () => {
     expect(destRow).not.toMatch(/\|\s*_—_\s*\|/);
   });
 
+  // The extractors capture RAW source text between quotes, so a JS string
+  // written `'drive\'s'` used to render a catalog cell containing the
+  // backslash — 55 cells across the catalog, in the doc CLAUDE.md tells skills
+  // to grep INSTEAD of paraphrasing atom signatures.
+  it('renders apostrophes and quotes without their source-level backslashes', () => {
+    const md = fs.readFileSync(
+      path.join(REPO_ROOT, 'docs/atom-schemas.md'),
+      'utf-8',
+    );
+    const leaked = md.match(/\\['"`]/g) ?? [];
+    expect(leaked, `leaked source escapes: ${leaked.slice(0, 5).join(' ')}`).toHaveLength(0);
+    // ...and the real apostrophes survived rather than being stripped.
+    expect(md).toMatch(/Drive's/);
+  });
+
   // Regression floor on the same class, catalog-wide: the parser fix took
   // undescribed fields from 375 to 290 (the remainder genuinely have no
   // `.describe()` in source). If a parser change pushes this back up, it is
