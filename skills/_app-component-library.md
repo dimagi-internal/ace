@@ -996,8 +996,19 @@ Forbid angle-bracket placeholder notation`).
 - **App:** Learn
 - **Trigger:** any scored assessment (pre-test, post-test, knowledge check).
 - **Enforced by:** `pdd-to-learn-app-eval § assessment_discrimination` — a
-  dimension with a **mandatory blind-guess probe** (the judge must attempt each
-  item cold and report a per-item guessable/not-guessable table).
+  dimension with a **mandatory two-reader contrast probe**. The judge runs a
+  trained reader and an untrained reader, both on the PDD's own FLW persona,
+  differing only in whether they got the module teaching text, and scores the
+  **delta** (`(trained − untrained) ÷ items_scored`). The eval also scores
+  `assessment_operation_coverage` off the same probe — every item mapped to the
+  instrument field it governs and the failure it prevents.
+- **What you are actually optimizing (read this first).** You are NOT trying to
+  make items hard for a clever stranger. You are trying to make each item's
+  answer **come from a module** — so that teaching the curriculum moves the
+  score and not teaching it does not. Those are different targets, and only the
+  second one is measurable or desirable. An item nobody can answer without the
+  training is perfect even if it looks easy; an item that is hard because it is
+  arbitrary is a worse instrument, not a better one.
 - **Origin:** ace#981. All 10 post-assessment items in hh-poverty-targeting were
   one virtuous answer + three absurd distractors ("Keep asking until they agree",
   "Fill in the answers yourself", "You got tired and left"), so a worker who read
@@ -1026,25 +1037,89 @@ Forbid angle-bracket placeholder notation`).
   dimension is worthless: rewrite 2's author self-predicted 5–7/12 and measured
   9–10/12, because the author knows which option they intended to be hard, which
   is exactly the knowledge a cold reader lacks.
-- **Zero margin at the failure point.** `9 * 100 div 12` is **exactly 75.0** and
-  a `result_pass` firing at `>= 75` therefore admits a 9/12 cold guesser on the
-  boundary. The gate only fails a guesser at ≤8/12, so the bank must defeat a
-  careful reader on **five** items to hold — it currently defeats them on one to
-  three. There is no slack to trade away.
-- **Ceiling, not field, measurement.** The blind guessers are LLMs, not field
-  workers: they read dense English fast and are unusually good at eliminating
-  internally-inconsistent options — exactly the skill the structural tells
-  reward. Read 9–10/12 as "trivially defeatable by a careful reader", not as a
-  field prediction.
+- **The reader was the confound (ace#1187, 2026-08-12 — this supersedes the
+  reading of the trajectory above).** The three passes above were all measured
+  against a single blind reader briefed as a capable adult with strong exam
+  technique, which in practice meant an LLM carrying deep CommCare / M&E /
+  programme-design background. Re-measured on `spark-facilitator/20260810-0737`
+  (Learn app `34a66bf7-9b48-40ef-aa56-31ac357e8a72`), same 20-item bank, keys
+  withheld, picks committed before reveal, untrained readers run twice with
+  per-question shuffled option order:
+
+  | Reader | Brief | Correct/20 | Ratio |
+  |---|---|---|---|
+  | **A — trained, field persona** | given the five modules' teaching text; CBF persona | **19.0** | 0.95 |
+  | **B — untrained, field persona** | no teaching content; same CBF persona | **8.0** (6 and 10) | 0.40 |
+  | **C — untrained, M&E domain expert** | the retired reader | 11 | 0.55 |
+
+  **A − B = +11.0 = 2.38x.** The expert proxy sat **15pp above** the population
+  the 80% Deliver gate protects — an elected community member with limited
+  formal schooling, working in a second or third language, on a first
+  smartphone — and made the bank read **27% less discriminating** than it is.
+  Its edge over the field reader was **stability of exam technique, not
+  knowledge**: it reliably nailed q2/q3/q11/q14, which the field reader got
+  right about half the time, and *lost* q5 and q20 to it. So the ceiling caveat
+  below is now **resolved on the eval side** rather than merely noted — the
+  metric is a contrast, and the untrained reader is calibrated to the PDD's own
+  FLW persona. Two prior authoring cycles (~500K subagent tokens) were spent
+  moving a number that item craft cannot move, because the reader already knew
+  the domain the items were about. **Do not read the plateau above as evidence
+  those rewrites failed.**
+- **Ceiling, not field, measurement (why the contrast is required).** Blind
+  readers are LLMs, not field workers: they read dense English fast and are
+  unusually good at eliminating internally-inconsistent options. An absolute
+  cold score from one is a **ceiling**, not a field prediction — which is
+  exactly why it cannot be the statistic, and why both readers must run the
+  PDD's stated persona.
+- **Some items are free, and that changes where the gate sits.** Five of the 20
+  items were answered correctly by **both** readers in every run — arithmetic,
+  or answerable from the stem's own framing. Those five marks carry no training
+  signal, so a nominal 16/20 = 80% gate is an effective bar of **11 of the 15
+  signal-carrying items = 73%** on taught content. Padding a bank with free
+  items lowers the real bar. This is visible only in a contrast design, and the
+  eval now reports it.
 
 **Brief paragraph (verbatim):**
 
-> REQUIRED — Assessment items MUST discriminate. An item earns its place only if a
-> worker who has NOT studied the modules would get it wrong. Matching option
-> LENGTH, voice and sentence count does NOT achieve this — a bank normalized to
-> exactly uniform option lengths still measured 10/12 cold-guessable (ace#1014).
-> Author every item through TWO GATES, in order, and reject the item if either
-> fails:
+> REQUIRED — Assessment items MUST discriminate, and discrimination is a
+> CONTRAST: teaching the modules must move the score, and not teaching them must
+> not. The eval measures exactly that — a trained reader minus an untrained
+> reader, both running the PDD's own field-worker persona. It does NOT measure
+> how hard the bank is for a clever stranger, and you must not author for that
+> target: items that are hard because they are arbitrary make the instrument
+> worse. Work in this order — **Step 1 is the lever, Step 3 is hygiene.**
+>
+> **Step 1 — choose the item's TOPIC before you write a single option.** For
+> every item, write down three things first: (i) the **taught rule** it tests,
+> stated in one sentence; (ii) the **module** that teaches that rule, by name;
+> (iii) the **operation it protects** — the instrument field or step whose
+> mishandling causes an unpaid visit, a blocked form, or corrupted data (wrong
+> `meeting_type` → unpaid meeting; participants > attendees → blocked form;
+> blank-vs-zero on savings → corrupted data). If you cannot name the module,
+> **discard the item** — it is testing general competence, and general
+> competence is precisely what an untrained worker already has, so the item
+> contributes nothing to the delta no matter how its options are written. If you
+> cannot name the operation, the item is conceptual: a few earn their place
+> (consent, safety), but a bank that is mostly conceptual is not protecting the
+> work. Prefer program specifics — the actual threshold, the actual required
+> evidence, the actual instrument wording — over professional-ethics sentiment,
+> which every decent adult already holds.
+>
+> **Step 2 — keep the bank INDEPENDENT: at most ~1 item per underlying rule.**
+> Two items keyed to the same rule are one item's worth of resolution reported as
+> two, and they move together — a worker who missed the module misses both, a
+> worker who caught it gets both. That inflates the nominal item count while the
+> effective count stays flat, and it is how a bank ends up with free marks. Cover
+> more taught rules rather than the same rule from more angles. Related: if item
+> N's answer can be derived from item N−1's, they are the same item.
+>
+> **Step 3 — option hygiene. NECESSARY, NOT SUFFICIENT — and it cannot rescue a
+> Step-1 failure.** Matching option LENGTH, voice and sentence count achieves
+> nothing on its own: a bank normalized to exactly uniform option lengths still
+> measured 10/12 cold (ace#1014), and re-measurement showed the reader, not the
+> options, was carrying that number (ace#1187). Do this work to stop an item
+> leaking its answer structurally — not in the belief that it creates
+> discrimination. Two gates; reject the item if either fails:
 >
 > **Gate 1 — behavioural plausibility.** Every distractor must be an action a
 > competent, decent worker might ACTUALLY take: a real misconception, a
@@ -1073,45 +1148,53 @@ Forbid angle-bracket placeholder notation`).
 > a property of the SET, and it survives "all distractors plausible" being
 > nominally satisfied.
 >
-> **Third, weaker heuristic — virtue-inversion.** Prefer items where the keyed
-> answer is NOT the most responsible-sounding option, so the standard
-> pick-the-decent-instinct meta-heuristic misfires. This helps and is NOT
-> sufficient on its own: items that were properly inverted still fell to Gate 2
-> tells. Never treat it as a substitute for the two gates.
+> **A weaker heuristic — virtue-inversion.** Prefer items where the keyed answer
+> is NOT the most responsible-sounding option, so the standard
+> pick-the-decent-instinct meta-heuristic misfires. This helps a little and is
+> NOT sufficient: items that were properly inverted still fell to Gate 2 tells.
+> Never treat it as a substitute for Step 1.
 >
 > **Working template.** The one item that defeated two independent blind runs had
 > exactly three properties, and it is the shape to copy: the key requires a
-> program-specific taxonomy taught in a module and nothing else; the STRONGEST
-> distractor is the maximally-virtuous option (a committee meeting, well run,
-> carefully written, sent same-day); and all four options are actions a competent,
-> decent worker might actually take, so nothing is eliminable on sight.
+> **program-specific taxonomy taught in a module and nothing else** (Step 1); the
+> STRONGEST distractor is the maximally-virtuous option (a committee meeting,
+> well run, carefully written, sent same-day); and all four options are actions a
+> competent, decent worker might actually take, so nothing is eliminable on
+> sight. Note which property is doing the work — the first.
 >
-> Also: (a) each item must be answerable ONLY from program-specific content
-> actually taught in a module — cite the module it tests; (b) prefer items keyed to
-> concrete program specifics (the actual threshold, the actual required evidence,
-> the actual instrument wording) over generic professional-ethics sentiment;
-> (c) items must be INDEPENDENT — if item N's answer can be derived from item
-> N-1's, the bank's effective item count is lower than its nominal one; (d) apply
-> all of this to the PRE-test bank as well as the post-test — hardening only the
-> post-test makes the PDD's pre/post learning-gain metric OVERSTATE the gain.
-> Do NOT pad the bank to hit an item count with items that fail these gates — a
-> shorter discriminating bank beats a longer decorative one.
+> Also: (a) apply all of this to the PRE-test bank as well as the post-test —
+> hardening only the post-test makes the PDD's pre/post learning-gain metric
+> OVERSTATE the gain; (b) do NOT pad the bank to hit an item count. A padded item
+> is usually one that fails Step 1, which makes it a **free mark** both readers
+> get right, which lowers the effective bar the gate actually applies (a 16/20
+> gate over 5 free items is really 11/15 = 73%). A shorter bank of items keyed to
+> taught rules beats a longer one every time.
 >
 > **PRE-RELEASE SELF-CHECK (run this during the build, before you ship the
 > bank).** For each item, in writing, in the build memo:
-> 1. Cover the answer key. Read only the stem and the options.
-> 2. Ask: *"could someone who read none of the modules pick this by
->    elimination?"* Name the option that persona would pick and WHY in ≤10 words.
-> 3. Ask the four Gate-2 questions explicitly: is the key self-justifying? does
->    the key claim the least? is the key the odd one out on a binary split? is any
->    option rejectable on sight?
-> 4. Only then uncover the key. If your cold pick was the key, or any Gate-2
->    answer was yes, REWRITE the item — do not argue that it is fine.
+> 1. **Name the taught rule, the module that teaches it, and the operation it
+>    protects.** If you cannot fill all three, discard the item. This is the
+>    check that matters — an item failing here cannot be fixed by rewriting its
+>    options.
+> 2. **Check independence:** does any other item in the bank test the same
+>    underlying rule, or can this one be derived from another? If so, cut one.
+> 3. Cover the answer key. Read only the stem and the options. Ask: *"could a
+>    worker who read none of the modules pick this by elimination?"* Name the
+>    option that persona would pick and WHY in ≤10 words. Then ask the four
+>    Gate-2 questions explicitly: is the key self-justifying? does the key claim
+>    the least? is the key the odd one out on a binary split? is any option
+>    rejectable on sight?
+> 4. Only then uncover the key. A yes on any Gate-2 question means rewrite the
+>    OPTIONS. Your own cold pick landing on the key is **weak evidence** — you
+>    know which option you meant to be hard, and author self-prediction on this
+>    has been measured wrong repeatedly (rewrite 2 above self-predicted 5–7/12
+>    and measured 9–10/12). Treat it as a prompt to re-check Step 1, not as proof
+>    the item is bad: the eval's contrast, not your guess, is the measurement.
 >
-> Record the per-item result and the resulting count as a line in the build memo.
-> Do not self-assess this as "the options are already good" — that assessment has
-> been made and measured wrong three times on the same bank. Your own prediction
-> is not evidence; the cold pick you wrote down before uncovering the key is.
+> Record the per-item result in the build memo: rule, module, operation,
+> independence check, Gate-2 answers. That table is what a reviewer reads — a
+> bank whose every item names a taught rule and a protected operation is doing
+> its job whether or not any particular reader could pass it cold.
 
 ### instrument-grounded-examples
 
@@ -1158,3 +1241,4 @@ Forbid angle-bracket placeholder notation`).
 | 2026-07-31 | **`structured-capture` learns where options COME FROM (ace#1136), and `consent-script-floor` becomes a build-time component with a trigger that fires on spoken consent (ace#1137).** Both from `spark-facilitator/20260731-0656`, Deliver app `657a4bb7-fb2f-4a10-af43-8414707b2c43`. (1) **ace#1136** — the PDD spelled four fields `select`/`lookup` (`traditional_authority`, `group_village`, `village` "from registered communities", `community_id`) and the build shipped all four as free `text`; only `district`, whose option set was inline-enumerable from the source `.ccz`, came through as a real `single_select`. Root cause: neither this library nor `pdd-to-deliver-app` said anything about option SOURCES, so an architect with no list in hand degraded silently to `kind: text`. Nova's post-2026-07-31 surface makes a lookup-backed source buildable — `get_lookup_tables({app_id})` lists the app Project's data tables + column ids, `set_field_options_source({app_id, moduleUuid, formUuid, fieldUuid, source})` atomically replaces a select's complete choice source with `{kind:'lookup', tableId, valueColumnId, labelColumnId}` or `{kind:'inline', options}` — and this component is the only place ACE names them. Widened the trigger to include "the PDD spells it select/lookup" and "the field feeds a Connect `entity_id`"; added the no-table-exists ladder (inline-enumerate → partial select + Other + build-memo entry → never a silent `text`); made a silent degradation an explicit defect; and stated that free text must never feed an `entity_id` (it forced a mid-run dedup-key change on this very run, and the replacement key `community_id` was free text too, so only the name-collision mode closed). (2) **ace#1137** — `photo_consent_script`, read aloud verbatim to an assembled village meeting before photographing them and the programme's only consent language, scored 4/6: `confidential` and `where the data goes / who sees it` both missing, on a programme whose photos go to an AI verification layer plus a 10% human audit sample. The PDD declared no consent *field*, so the old trigger ("the PDD requires recorded consent (any form with a consent gate)") read as not firing and the orchestrator emitted `embedded-bc-script` instead. Widened the trigger to any consent sought from the people whose data/images are captured — spoken, read-aloud, announced, Learn-taught, or field-gated; marked the component BUILD-TIME (the eval gate is the backstop, and discovering the floor one step before deploy means re-authoring consent language in N languages); noted the `embedded-bc-script` overlap explicitly (both fire; this one wins); added a worked six-element script; and named (d)/(e)/(f) as the elements builds actually omit. Eval-side wording still says "when the PDD requires recorded consent" / "read the consent field's hint" — flagged in the component for the owner of `pdd-to-deliver-app-eval` rather than edited here. | ACE team |
 | 2026-07-28 | **`gps-accuracy-capture` stops requiring an unbuildable gate (ace#1006).** The component demanded "a capture-gate that re-prompts / refuses to accept a fix worse than the minimum." That is not expressible on EITHER enforcement surface: Nova rejects `validate` on `kind: geopoint` (#695/#699), the adjacent-gate workaround is closed by both #723 (FLW UX) and PR #988's constraint-locality parser, and Connect's verification-flags form no longer renders `gps` / `gps_radius_meters` at all (#1013 — posted as unrecognized keys, `ok: true`, never persisted on any run). Rewritten to the honest contract: tolerance in the hint, `gps_accuracy_m` submitted every visit, whole-range advisories, normalized lat/lon — plus a mandatory build-memo line recording that a stated tolerance is ADVISORY. New FORBIDDEN rule: an advisory whose branches cover only a band BELOW the tolerance (the >50 m blind spot that shipped in `hh-poverty-targeting/20260728-0705`) — every advisory must have an above-tolerance branch. Matching edits: `pdd-to-deliver-app-eval § Capture fitness` stops crediting the gate, `idea-to-pdd § Step 4a` stops letting a PDD assert an enforced tolerance. | ACE team |
 | 2026-08-02 | **`assessment-gate` gains the bare-id calculate rule + a read-back check (ace#1119, partial).** `edit_field` with `calculate: "if(q1 = 'c', 1, 0)"` persists `q1` as a raw TEXT part — Nova does not resolve a bare id into a `field-ref` and emits no error, so `if(#form/q1 = 'c', 1, 0)` is the only form that resolves. Since every `qN_score` is `if(qN = '<key>', 1, 0)` and `user_score` sums those refs, one re-authoring pass using bare ids silently zeroes the scoring chain while the app still looks structurally correct. The component now mandates `#form/<id>` for every cross-field reference and requires a two-call read-back (`get_field` on one `qN_score` and on `user_score`; assert `calculate.parts` contains a `field-ref`) after any pass that rewrites scoring calculates. Cross-referenced from `init-safe-calculates` so Deliver authors hit it too. Does NOT close #1119 — its main finding (the authoring procedure doesn't produce discriminating items) is untouched. | ACE team |
+| 2026-08-12 | **`discriminating-assessment-items` is re-pointed at item TOPIC selection and bank INDEPENDENCE; option-craft demoted to hygiene (ace#1187).** Re-measurement of the same 20-item bank (`spark-facilitator/20260810-0737`, Learn app `34a66bf7-9b48-40ef-aa56-31ac357e8a72`) with three readers — trained field persona **19.0/20**, untrained field persona **8.0/20**, untrained M&E domain expert **11/20** — showed the *reader*, not the options, was carrying the ace#1014 plateau. The expert proxy the eval had been briefing sat 15pp above the population the Deliver gate protects and understated true discrimination by 27% (A−C = 8.0 vs A−B = 11.0), and its edge was stability of exam technique rather than knowledge the training supplies. The component's own **"Ceiling, not field, measurement"** caveat had documented exactly this since 2026-07-30 while the eval hard-gated on the number anyway; that is now resolved rather than merely noted. Build-side rewrite: **Step 1 (the lever)** — before writing any option, name the taught rule, the module that teaches it, and the operation it protects (unpaid visit / blocked form / corrupted data); an item with no module is testing general competence, which an untrained worker already has, so it cannot move the contrast however its options are written. **Step 2** — at most ~1 item per underlying rule; duplicated rules inflate the nominal item count while effective resolution stays flat. **Step 3** — Gates 1 and 2 retained verbatim but explicitly reframed as *necessary, not sufficient*, and unable to rescue a Step-1 failure; the brief no longer implies option-craft can move the number. Padding is now named as what it is — a free mark that lowers the effective bar (5 free items turned a nominal 16/20 = 80% gate into 11/15 = 73%). The pre-release self-check leads with rule/module/operation + independence, and demotes the author's own cold pick to weak evidence (rewrite 2 self-predicted 5–7/12 and measured 9–10/12). Paired 1:1 with the contrast statistic in `pdd-to-learn-app-eval § assessment_discrimination` and the new `assessment_operation_coverage` dimension. | ACE team |
