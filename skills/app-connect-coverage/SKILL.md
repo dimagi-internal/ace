@@ -58,7 +58,8 @@ Per-form Connect-block coverage:
 | App `Connect type` | Form pattern | Expected `connect` block |
 |---|---|---|
 | `learn` | content-only (labels, no inputs) | `learn_module: { name, description, time_estimate }` |
-| `learn` | quiz-only (single/multi_select questions + `user_score` hidden) | `assessment: { user_score: { parts: [{ kind: "field-ref", uuid: <user_score field uuid> }] } }` |
+| `learn` | quiz-only, **the gating post-test** (single/multi_select questions + `user_score` hidden) | `assessment: { user_score: { parts: [{ kind: "field-ref", uuid: <user_score field uuid> }] } }` |
+| `learn` | quiz-only, **a baseline pre-test** (same shape, but NOT the gate) | `learn_module` only — **never `assessment`** (ace#1131) |
 | `learn` | content + quiz mixed | both `learn_module` and `assessment` |
 | `deliver` | registration form | `deliver_unit: { name, entity_id?, entity_name? }` — both expressions take the `{ parts: […] }` shape, never an XPath string |
 | `deliver` | label-only delivery / no case action | `task: { name, description }` |
@@ -127,7 +128,20 @@ ambiguous:
   `label` and `hidden` kinds) → `learn_module` only.
 - Form has a `user_score` hidden field AND select inputs → at minimum
   `assessment: { user_score: { parts: [{ kind: "field-ref", uuid:
-  <the user_score field's uuid from the Step 1 map> }] } }`. Expression
+  <the user_score field's uuid from the Step 1 map> }] } }` — **but ONLY if
+  this form is the gating post-test.** A `user_score` + selects shape does NOT
+  by itself mean the form is the gate: a **baseline pre-test has exactly the
+  same shape** and must carry `learn_module` only. Decide by role, not by
+  shape — the gate is the form the PDD's Deliver-unlock threshold refers to,
+  normally the last assessment in module order. **EXACTLY ONE form per Learn
+  app may carry `connect.assessment`** (`_app-component-library.md §
+  assessment-gate`): Connect stores one `passing_score` per app and uses
+  any-passed semantics, so a second marked form lets a worker be recorded
+  `passed=True` off the ungated baseline bank (ace#1131). If you find a
+  pre-test carrying `assessment`, that is a defect to **remove**, not coverage
+  to preserve — this rule previously said "quiz-only → assessment" with no
+  pre/post distinction, so a coverage pass would add it straight back.
+  Expression
   sub-configs are structured since 2026-07-31 — an XPath string here is
   rejected, and comparing a string expectation against the structured
   value Nova returns misclassifies a correct form as `wrong`, which
