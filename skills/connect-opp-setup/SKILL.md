@@ -594,84 +594,16 @@ alone makes the artifact land outside `4-connect` and fail
    })
    ```
 
-   Branch on row existence AND on **linkage** — but **not** on `claimed`:
+   Branch on whether a row EXISTS — **not** on `claimed`:
 
-   - **`match === null`** (no row at all for that phone) → **`[BLOCKER]`.**
-     Set `phases.connect-setup.status` to `error` (or `partial` if everything
-     else landed) with a `blocker` naming this, and do NOT report the phase
-     `done`. The send reported success and Connect has no invite, so Phase 6
-     **cannot** run: with no row there is no opp tile, and
-     `app-screenshot-capture` would burn the single-use Learn-completion
-     precondition discovering that on AVD wall-clock.
-     Do not re-send and treat a second `{status: 'queued'}` as recovery — that
-     is the same non-evidence as the first.
-   - **`match !== null` and `match.connect_user_id` populated** → the invite
-     is recorded **and linked**. `claimed: false` / `status: 'pending'` is the
-     normal pre-claim state (acceptance happens on-device when Phase 6's
-     `connect-claim-opp` claims the tile). Record `invited_at` and proceed.
-   - **`match !== null` but `match.connect_user_id === null`** → **WARN
-     loudly and record it as a named risk in the phase summary and in
-     `run_state.yaml`.** This is the signature of the #824 silent failure
-     described immediately above: an `OpportunityAccess` with no linked
-     ConnectID user matches nothing in `opportunityaccess__user`, so the opp
-     is invisible to the device **forever** and does not self-heal. Re-sending
-     is a **no-op** — `resend_connect_invite` has no production caller — so do
-     not "fix" it by calling `connect_send_flw_invite` again and treating
-     `{status: 'queued'}` as recovery.
-
-   **Do not silently pass a null `connect_user_id`.** An earlier version of
-   this step read *"`status: 'pending'` with `name: null` is the NORMAL
-   pre-claim state … so pending is a pass here"* — i.e. it greenlit exactly
-   the state this section documents as permanently broken. On
-   `hh-poverty-targeting/20260730-2210` that passed a dead invite through
-   Phase 4, and Phase 6 then burned two AVD cycles rediscovering it; a
-   sibling opp (`20260730-1718`) was stuck the same way at the same time
-   while other invites for the same phone linked normally, so the failure is
-   intermittent and per-invite.
-
-   **Why the null-linkage branch is still WARN and not `[BLOCKER]`.** This
-   applies to `connect_user_id === null` ONLY — the missing-row branch above is
-   now a hard `[BLOCKER]` (see below). No healthy *pending* invite has yet been
-   observed with `connect_user_id` populated; every linked row on record is
-   already `accepted`. The mechanism implies linkage happens at send time and so
-   should be visible pre-claim, but until an instance is observed a hard gate
-   risks failing every legitimate fresh run. Record the value on every run; once
-   a pending-and-linked row is seen, promote this branch too. That promotion is
-   the open half of #824's "Class-level preventers" item 1.
-
-   **Why the missing-row branch WAS promoted (ace#1184 / CI-892).** It used to
-   be a WARN on the same caution as above. That caution does not apply: a
-   missing row is unambiguous — there is nothing to misread and no legitimate
-   run it could fail. On `turmeric-market-study/20260807-1903` (2026-08-12) the
-   invite returned `202 / invited_count: 1`, Connect created no row, Phase 4
-   marked itself `done`, and Phase 6 halted at its own pre-flight one dispatch
-   later. Reproduced manually in the Connect UI and in a second organization on
-   an opportunity ACE did not create, so it is a Connect-side defect (CI-892) —
-   but ACE shipping `done` over it was ACE's defect.
-
-   **Record the read-back in `products` — this is now contract-enforced.** Write
-   what `connect_list_flw_invites` returned, NOT what the send returned:
-
-   ```yaml
-   phases:
-     connect-setup:
-       products:
-         connect:
-           ace_test_user:
-             phone: "+7426..."
-             invite_row_present: true      # match !== null
-             connect_user_id: "1277ab..."  # null = the #824 signature
-             status: pending               # healthy pre-claim
-             checked_at: "2026-08-12T07:27:00Z"
-   ```
-
-   `connect.ace_test_user.invite_row_present` is in `REQUIRED_PRODUCT_KEYS`
-   (`lib/phase-products-schema.ts`), so a phase that skips the read-back **cannot
-   reach a terminal status** — `verify_phase_products` fails the boundary fence.
-   `false` is a legal value and satisfies the contract: it records a verified
-   absent row, and the `[BLOCKER]` branch above is what acts on it. Do not paste
-   the send response (`status: 'queued'`) into this block — `invite_row_present`
-   is typed `boolean` and a string fails `validateAs` at the write.
+   - **`match !== null`** → the invite is recorded. `status: 'pending'` with
+     `name: null` is the NORMAL pre-claim state (acceptance happens on-device
+     when Phase 6's `connect-claim-opp` claims the tile), so pending is a
+     pass here. Record `invited_at` and proceed.
+   - **`match === null`** (no row at all for that phone) → **WARN loudly**:
+     the send reported success but Connect has no invite. That is the #824
+     silent failure; name it in the phase summary rather than letting Phase 6
+     discover it on AVD wall-clock.
 
    Do NOT gate on `match.claimed` — it reports whether the worker has already
    CLAIMED the opp, so requiring it would fail every legitimate fresh run.
