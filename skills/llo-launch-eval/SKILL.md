@@ -3,7 +3,7 @@ name: llo-launch-eval
 description: >
   Grade an llo-launch activation against PDD launch preconditions —
   UAT sign-off, Connect activation, app-publish, go-live notify.
-disable-model-invocation: true
+disable-model-invocation: false
 ---
 
 # LLO Launch Eval

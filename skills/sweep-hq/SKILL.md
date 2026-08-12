@@ -4,7 +4,7 @@ description: >
   Diff CommCare HQ applications in the ACE-owned domain against the
   live-set, score orphans, auto-soft-delete approved orphans via the
   HQ delete_app web view. Builds and multimedia remain upstream gaps.
-disable-model-invocation: true
+disable-model-invocation: false
 ---
 
 # sweep-hq

@@ -4,7 +4,7 @@ description: >
   LLM-as-judge quality eval for the partnership-microdemo artifact. Grades
   clip fidelity, angle relevance, and provenance honesty. Writes a verdict
   YAML. Gated by partnership-microdemo inline QA.
-disable-model-invocation: true
+disable-model-invocation: false
 ---
 
 # Partnership Micro-Demo Eval

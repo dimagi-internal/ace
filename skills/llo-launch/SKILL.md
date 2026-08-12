@@ -3,7 +3,7 @@ name: llo-launch
 description: >
   Activate the opportunity for live use. Verifies UAT sign-offs and
   deep-QA verdicts, activates in Connect, notifies LLOs of go-live.
-disable-model-invocation: true
+disable-model-invocation: false
 ---
 
 # LLO Launch (Go-Live)

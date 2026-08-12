@@ -3,7 +3,7 @@ name: training-onboarding-email
 description: >
   Generate the LLO onboarding email body, consumed by llo-onboarding
   and personalized per LLO at send time. Owns one artifact.
-disable-model-invocation: true
+disable-model-invocation: false
 ---
 
 # Training Onboarding Email

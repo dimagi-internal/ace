@@ -4,7 +4,7 @@ description: >
   Grade the Phase 6 FLW guide for step-by-step concreteness (a worker
   with no prior context can follow), screenshot completeness, and
   language accessibility.
-disable-model-invocation: true
+disable-model-invocation: false
 ---
 
 # Training FLW Guide — Eval

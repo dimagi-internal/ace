@@ -3,7 +3,7 @@ name: solicitation-create-eval
 description: >
   Grade a published solicitation against its source PDD — scope
   fidelity, field completeness, deadline sensibility.
-disable-model-invocation: true
+disable-model-invocation: false
 ---
 
 # Solicitation Create — Eval

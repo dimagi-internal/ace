@@ -3,7 +3,7 @@ name: partnership-publish
 description: >
   Assemble and publish the partnership package (video + deck + narrative + research
   appendix) to canopy-web. Requires explicit operator approval before any external send.
-disable-model-invocation: true
+disable-model-invocation: false
 ---
 
 # Partnership Publish

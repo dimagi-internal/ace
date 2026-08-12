@@ -3,7 +3,7 @@ name: llo-feedback
 description: >
   Prompt LLOs for feedback on application, process, and next-step
   suggestions. Collect and document responses for closeout.
-disable-model-invocation: true
+disable-model-invocation: false
 ---
 
 # LLO Feedback

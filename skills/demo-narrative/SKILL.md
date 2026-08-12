@@ -5,7 +5,7 @@ description: >
   a demo-data-setup realized map, with scenes that render the live labs
   dashboard (par_url). Validated by canopy's own scripts.ddd.validate — the
   authoritative gate. Hands off to the DDD loop.
-disable-model-invocation: true
+disable-model-invocation: false
 ---
 
 # Demo Narrative

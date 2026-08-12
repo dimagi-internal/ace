@@ -3,7 +3,7 @@ name: training-quick-reference
 description: >
   Generate the one-page printable pocket-card summary for FLWs in the
   field. Owns one artifact: training-quick-reference.md.
-disable-model-invocation: true
+disable-model-invocation: false
 ---
 
 # Training Quick Reference

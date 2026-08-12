@@ -3,7 +3,7 @@ name: ocs-chatbot-eval
 description: >
   LLM-as-Judge grader for OCS chatbot transcripts. Modes: --quick (1-dim
   smoke), --deep / --monitor (5-dim calibrated; emits gate brief).
-disable-model-invocation: true
+disable-model-invocation: false
 ---
 
 # OCS Chatbot Eval

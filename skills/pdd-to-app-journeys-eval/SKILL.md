@@ -6,7 +6,7 @@ description: >
   coverage completeness, happy-path voice, edge-case recoverability,
   pass-criteria measurability, and an out-of-chain deployability-fitness
   axis (would a CommCare expert ship an app built from these journeys?).
-disable-model-invocation: true
+disable-model-invocation: false
 ---
 
 # PDD-to-App-Journeys Eval

@@ -5,7 +5,7 @@ description: >
   live-set, score orphans, surface a triage report. Soft-deactivate
   orphan opportunities; auto-delete orphan unaccepted FLW invites;
   report-only for programs and payment units.
-disable-model-invocation: true
+disable-model-invocation: false
 ---
 
 # sweep-connect

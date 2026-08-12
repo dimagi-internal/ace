@@ -3,7 +3,7 @@ name: llo-uat
 description: >
   Coordinate User Acceptance Testing with onboarded LLOs. Send UAT
   instructions, monitor feedback, compile results with sign-off status.
-disable-model-invocation: true
+disable-model-invocation: false
 ---
 
 # LLO User Acceptance Testing

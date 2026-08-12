@@ -3,7 +3,7 @@ name: training-flw-guide
 description: >
   Generate the FLW-facing step-by-step guide for the Learn and Deliver
   apps. Owns one artifact: training-flw-guide.md.
-disable-model-invocation: true
+disable-model-invocation: false
 ---
 
 # Training FLW Guide

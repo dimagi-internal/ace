@@ -3,7 +3,7 @@ name: connect-opp-setup
 description: >
   Create and fully configure a Connect Opportunity — opp shell, verification
   flags, payment units, ACE test-user pre-invite for emulator testing.
-disable-model-invocation: true
+disable-model-invocation: false
 ---
 
 # Connect Opportunity Setup

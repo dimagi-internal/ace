@@ -4,7 +4,7 @@ description: >
   Research a non-Connect prospect org for a partnership video: deep web
   research (what they do, scale, model, geography, the expansion thesis)
   plus a Connect/Dimagi capability-fit memo. Cited.
-disable-model-invocation: true
+disable-model-invocation: false
 ---
 
 # Partnership Research

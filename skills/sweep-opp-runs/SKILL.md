@@ -4,7 +4,7 @@ description: >
   Retention prune for per-opp `runs/<run-id>/` folders in Drive. Walks every
   opp under `ACE/`, keeps the newest N runs per opp (by createdTime desc), and
   trashes the rest after human approval. Use to keep Drive load times sane.
-disable-model-invocation: true
+disable-model-invocation: false
 ---
 
 # sweep-opp-runs

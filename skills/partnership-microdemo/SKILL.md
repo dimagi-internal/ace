@@ -4,7 +4,7 @@ description: >
   Source the micro-demo proof clip(s) for the picked partnership angle —
   reuse existing Connect/ace-web media where it matches, else build a
   lightweight tailored mock — with provenance.
-disable-model-invocation: true
+disable-model-invocation: false
 ---
 
 # Partnership Micro-Demo

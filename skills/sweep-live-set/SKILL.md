@@ -3,7 +3,7 @@ name: sweep-live-set
 description: >
   Walk Drive ACE/ and build a live-set of identifiers still referenced by
   visible opps. Use before any per-system sweep.
-disable-model-invocation: true
+disable-model-invocation: false
 ---
 
 # sweep-live-set

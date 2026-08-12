@@ -4,7 +4,7 @@ description: >
   Fill the connect-pitch-partnership deck spec from prospect research + picked
   angle, render to Google Slides via the 14-stencil machinery. Use in the
   produce phase after partnership-video-build.
-disable-model-invocation: true
+disable-model-invocation: false
 ---
 
 # Partnership Deck Build

@@ -3,7 +3,7 @@ name: synthetic-data-generate
 description: >
   Generate a synthetic FLW + visit + payment dataset against an ACE-built opp
   via the connect-labs synthetic_generate_from_manifest atom.
-disable-model-invocation: true
+disable-model-invocation: false
 ---
 
 # Synthetic Data Generate

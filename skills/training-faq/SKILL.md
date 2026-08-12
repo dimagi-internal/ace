@@ -3,7 +3,7 @@ name: training-faq
 description: >
   Generate anticipated LLO + FLW questions with authoritative answers.
   Owns one artifact: training-faq.md.
-disable-model-invocation: true
+disable-model-invocation: false
 ---
 
 # Training FAQ

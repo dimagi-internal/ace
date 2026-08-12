@@ -5,7 +5,7 @@ description: >
   examine the labs template registry and adapt the best-fit template, or
   build from scratch via workflow_create (following the live authoring
   guide) — then wire them to the manifest's KPIs + coaching arcs.
-disable-model-invocation: true
+disable-model-invocation: false
 ---
 
 # Synthetic Workflow Seed

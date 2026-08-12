@@ -4,7 +4,7 @@ description: >
   Generate a training deck spec.yaml from PDD, app summaries, screenshot
   manifests, and a template bundle. The spec is the source of truth for the
   training deck — training-deck-render produces Google Slides from it.
-disable-model-invocation: true
+disable-model-invocation: false
 ---
 
 # Training Deck Generate

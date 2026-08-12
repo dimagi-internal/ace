@@ -3,7 +3,7 @@ name: solicitation-monitor
 description: >
   Recurring poll for solicitation responses. Modes: --quick (count
   only) / --monitor (full pull, default) / --close (final pull).
-disable-model-invocation: true
+disable-model-invocation: false
 ---
 
 # Solicitation Monitor

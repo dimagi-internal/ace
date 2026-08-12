@@ -3,7 +3,7 @@ name: synthetic-workflow-polish
 description: >
   DEPRECATED (Plan C convergence, 2026-07-21) — superseded by the /ace:demo pipeline (demo-narrative + canopy DDD); Phase 7 no longer dispatches this. Kept as fallback until the converged path is validated; see agents/synthetic-data-and-workflows.md § Deprecated skills. Layer per-opp visuals on top of the seeded workflows — hero panel,
   named FLW story cards, anomaly callouts, opp-domain branding cues.
-disable-model-invocation: true
+disable-model-invocation: false
 ---
 
 # Synthetic Workflow Polish

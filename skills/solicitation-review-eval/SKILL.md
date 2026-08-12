@@ -3,7 +3,7 @@ name: solicitation-review-eval
 description: >
   Compare ACE's top-ranked solicitation recommendation against the
   human's actual award. Detection-rate metric.
-disable-model-invocation: true
+disable-model-invocation: false
 ---
 
 # Solicitation Review — Eval

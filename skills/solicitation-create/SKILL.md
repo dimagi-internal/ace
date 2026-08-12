@@ -3,7 +3,7 @@ name: solicitation-create
 description: >
   Translate the PDD into a solicitation payload, derive evaluation
   criteria, and publish via connect-labs MCP. Captures solicitation_id.
-disable-model-invocation: true
+disable-model-invocation: false
 ---
 
 # Solicitation Create

@@ -3,7 +3,7 @@ name: app-screenshot-capture
 description: >
   Run app smoke recipes against a local AVD and capture per-step
   screenshots for the training deck. Per-opp content only.
-disable-model-invocation: true
+disable-model-invocation: false
 ---
 
 # App Screenshot Capture

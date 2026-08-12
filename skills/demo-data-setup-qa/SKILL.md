@@ -4,7 +4,7 @@ description: >
   Structural QA on the demo-data-setup handoff (realized.json + the source
   block). Binary pass/fail. Catches a dead/blank dashboard BEFORE demo-narrative
   authors scenes against it. Static-only, no LLM.
-disable-model-invocation: true
+disable-model-invocation: false
 ---
 
 # Demo Data Setup QA

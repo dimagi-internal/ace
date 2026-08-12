@@ -4,7 +4,7 @@ description: >
   Grade the Phase 6 FAQ artifact for comprehensiveness against anticipated
   FLW/LLO questions, accuracy against the PDD + deployed apps, and
   scannability for a worker thumbing through it mid-visit.
-disable-model-invocation: true
+disable-model-invocation: false
 ---
 
 # Training FAQ — Eval

@@ -3,7 +3,7 @@ name: synthetic-walkthrough-run
 description: >
   DEPRECATED (Plan C convergence, 2026-07-21) — superseded by the /ace:demo pipeline (demo-narrative + canopy DDD); Phase 7 no longer dispatches this. Kept as fallback until the converged path is validated; see agents/synthetic-data-and-workflows.md § Deprecated skills. Dispatch canopy:walkthrough for each persona spec, copy the resulting
   HTML slideshow + scored screenshots into the run folder.
-disable-model-invocation: true
+disable-model-invocation: false
 ---
 
 # Synthetic Walkthrough Run

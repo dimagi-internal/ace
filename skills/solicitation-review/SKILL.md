@@ -3,7 +3,7 @@ name: solicitation-review
 description: >
   Score solicitation responses, recommend an awardee, and (after HITL
   approval) call award_response and populate selected_llo.
-disable-model-invocation: true
+disable-model-invocation: false
 ---
 
 # Solicitation Review
