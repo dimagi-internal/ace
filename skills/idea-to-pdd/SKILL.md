@@ -72,9 +72,13 @@ orchestrator from the per-skill QA + eval verdicts on the fly. -->
      (`…spreadsheetml.sheet`) → `drive_read_file` refuses it, so either
      read a sibling text/gdoc rendering of the same workbook if the
      human dropped one in (that rendering is authoritative — skip the
-     raw file) or `drive_download_binary` the `.xlsx` and parse it
-     (unzip → `xl/sharedStrings.xml` + `xl/worksheets/*.xml`) with a
-     short Bash/python step.
+     raw file) or `drive_download_binary(file_id=<id>,
+     writeToPath="/tmp/ace-pdd-inputs/<name>.xlsx")` and parse the file
+     on disk (unzip → `xl/sharedStrings.xml` + `xl/worksheets/*.xml`)
+     with a short Bash/python step. **Always pass `writeToPath`** — an
+     `.xlsx` over ~30 KB is refused inline with `oversized_binary`, and
+     base64 through context costs ~1.33x the file for no benefit when a
+     Bash step is going to read the file anyway.
    - **An existing CommCare app (`.ccz`)** → parse it — see step 1b.
      This is ground truth (a real built app), not a notes file.
    - **Images / audio / other true binaries with no extractable text**
@@ -134,11 +138,16 @@ orchestrator from the per-skill QA + eval verdicts on the fly. -->
     pulls the CCZ from HQ by `app_id`); a Drive-sourced CCZ is fetched
     with `drive_download_binary`. The unzip + XForm parse is identical:
 
-    1. `drive_download_binary(file_id=<id>)` → decode the returned
-       `content_base64` to bytes. Verify the bytes start with the zip
-       magic `PK\x03\x04`; if not, log `ccz-download-failed` and fall
-       back to logging the file by name (do not halt the whole PDD).
-    2. Unzip (Bash/python `zipfile`). Read `suite.xml` at the zip root
+    1. `drive_download_binary(file_id=<id>,
+       writeToPath="/tmp/ace-pdd-ccz/<name>.ccz")` → the atom writes the
+       bytes to disk and returns `{path, size}`, no base64. **`writeToPath`
+       is required in practice**: a CCZ is a zipped CommCare app, so it is
+       essentially always over the ~30 KB inline ceiling and an omitted
+       `writeToPath` fails with `oversized_binary`. Verify the file starts
+       with the zip magic `PK\x03\x04` (`head -c4`); if not, log
+       `ccz-download-failed` and fall back to logging the file by name (do
+       not halt the whole PDD).
+    2. Unzip the file at `path` (Bash/python `zipfile`). Read `suite.xml` at the zip root
        and parse it for `<menu>` / `<entry>` → the per-form XForm paths
        (`modules-N/forms-M.xml`) and their display names.
     3. For each form XForm, extract: the form title, its question labels
