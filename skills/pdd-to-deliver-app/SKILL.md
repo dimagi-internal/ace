@@ -373,6 +373,14 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
        Attribute set to `acquire` (live camera, never gallery-browse).
      - `no-section-module-language` — always. No user-facing "section" or
        "module" wording anywhere.
+     - `connect-supported-capabilities-only` — always. Use only capabilities
+       that work WITHOUT an HQ feature flag; `commcare_connect` is the sole
+       exception. **Most concretely: do NOT add case-search inputs** — a case
+       LIST needs no flag, while a case SEARCH requires `search_claim` and
+       fuzzy/advanced matching additionally requires `case_search_advanced`,
+       and BOTH are `TAG_FROZEN` in HQ ("do not add new projects to this
+       list"), so the build cannot ship as designed rather than merely waiting
+       on provisioning (ace#1195).
      - `grid-menu-display` — always (Learn + Deliver). Modules and Forms
        Menu Display set to "Grid".
      - `observable-before-derived` — any visit/encounter form with an

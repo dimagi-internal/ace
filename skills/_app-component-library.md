@@ -74,6 +74,7 @@ authored from the PDD per run):
 | [`deliver-app-naming`](#deliver-app-naming) | Deliver | Always | `pdd-to-deliver-app-eval § naming_convention` (NEW) |
 | [`live-photo-capture`](#live-photo-capture) | Deliver | Any image / photo capture question | `pdd-to-deliver-app-eval § Capture fitness` (extends) |
 | [`no-section-module-language`](#no-section-module-language) | Deliver | Always | `pdd-to-deliver-app-eval § terminology` (NEW) |
+| [`connect-supported-capabilities-only`](#connect-supported-capabilities-only) | Learn + Deliver | Always | `app-deploy` feature-flag verification (a required flag other than `commcare_connect` is a build defect) |
 | [`observable-before-derived`](#observable-before-derived) | Deliver | Always, for any visit/encounter form with an outcome or disposition field | `pdd-to-deliver-app-eval § field_answerability` |
 | [`constraint-locality`](#constraint-locality) | Deliver | Always, for any form carrying `constraint` / `validate` expressions | `pdd-to-deliver-app-eval § field_answerability`; `app-release-qa` (mechanical bind check) |
 | [`relevance-reachability`](#constraint-locality) | Deliver | Always, for any form carrying `relevant` expressions | `pdd-to-deliver-app-eval § field_answerability`; `app-release-qa` (mechanical bind check) |
@@ -760,6 +761,60 @@ time; do not skip it because the app "looks right" structurally.
 > not in question labels, hints, help text, or choice labels. Use plain
 > task-oriented names instead.
 
+### connect-supported-capabilities-only
+
+- **App:** Learn **and** Deliver
+- **Trigger:** always.
+- **Enforced by:** `app-deploy`'s feature-flag verification
+  (`get_app_hq_feature_flags`) — a required flag other than `commcare_connect`
+  is a BUILD DEFECT to fix in the app, not an operator email to send.
+- **Origin:** dimagi-internal/ace#1195. `spark-facilitator/20260810-0737` built
+  the first ACE Deliver app to use **case-search inputs** — two per module,
+  across all three modules. Nothing in the PDD asked for them; they came out of
+  the architect's default module authoring. They pulled in two HQ flags that
+  are **`TAG_FROZEN`** in `dimagi/commcare-hq:corehq/toggles/__init__.py`:
+  `search_claim` (Simple Case Search) and `case_search_advanced` (Advanced Case
+  Search, itself described as *"complex, fragile case search configuration for
+  USS projects"*). `TAG_FROZEN` reads: *"This feature flag will be removed with
+  an alternative solution in future. **Do not add new projects to this list.**"*
+  The deploy step correctly detected the gap but emitted the wrong remedy —
+  "email support@dimagi.com" — which asks Dimagi staff to override a stated
+  internal policy for a capability the app never needed.
+
+**The distinction that matters: a case LIST is free; a case SEARCH is
+flag-gated.** The local case list is served from the device casedb and needs no
+flag at all — which is why the Deliver smoke walked fine on a project space
+where both search flags were absent. Search inputs are the only thing that
+pulls the flags in, and on a 20-community pilot they buy nothing over scrolling
+a list.
+
+**Why this is a standing component rather than a one-line ban on case search.**
+Nova exposes flag-gated capabilities through the same tool surface as
+everything else, with nothing marking them. Banning the one feature that burned
+us leaves the next one (related lookups, split-screen case search, USH
+case-claim updates) to sail through. The rule is therefore stated as a
+capability budget, not a blocklist.
+
+**Brief paragraph (verbatim):**
+
+> REQUIRED — Use only CommCare capabilities that work WITHOUT a feature flag.
+> The single exception is **CommCare Connect** (`commcare_connect`), which is
+> the flag this whole app exists to use and is already enabled on the ACE
+> project space. Any OTHER capability that requires a CommCare HQ feature flag
+> is out of scope for this build — do not use it, and do not assume a flag can
+> be switched on later. Many HQ flags are frozen or deprecated, meaning HQ's own
+> source instructs staff not to enable them for new projects, so a build that
+> depends on one is not merely waiting on provisioning; it cannot ship as
+> designed. Concretely, and most importantly: **do NOT add case-search inputs to
+> any menu.** A case LIST needs no flag and is what the worker actually uses;
+> a case SEARCH requires `search_claim`, and any fuzzy or advanced matching
+> additionally requires `case_search_advanced` — and BOTH of those are frozen.
+> Give each menu a plain case list with useful columns instead. If you believe a
+> capability genuinely requires a feature flag and the app cannot meet its
+> requirement without it, do NOT quietly use it: name the capability, the flag
+> it needs, and the requirement it serves in the build memo, and build the
+> closest flag-free alternative.
+
 ---
 
 ## Walkability components (added 2026-07-27 — domain-expert review)
@@ -1242,3 +1297,4 @@ Forbid angle-bracket placeholder notation`).
 | 2026-07-28 | **`gps-accuracy-capture` stops requiring an unbuildable gate (ace#1006).** The component demanded "a capture-gate that re-prompts / refuses to accept a fix worse than the minimum." That is not expressible on EITHER enforcement surface: Nova rejects `validate` on `kind: geopoint` (#695/#699), the adjacent-gate workaround is closed by both #723 (FLW UX) and PR #988's constraint-locality parser, and Connect's verification-flags form no longer renders `gps` / `gps_radius_meters` at all (#1013 — posted as unrecognized keys, `ok: true`, never persisted on any run). Rewritten to the honest contract: tolerance in the hint, `gps_accuracy_m` submitted every visit, whole-range advisories, normalized lat/lon — plus a mandatory build-memo line recording that a stated tolerance is ADVISORY. New FORBIDDEN rule: an advisory whose branches cover only a band BELOW the tolerance (the >50 m blind spot that shipped in `hh-poverty-targeting/20260728-0705`) — every advisory must have an above-tolerance branch. Matching edits: `pdd-to-deliver-app-eval § Capture fitness` stops crediting the gate, `idea-to-pdd § Step 4a` stops letting a PDD assert an enforced tolerance. | ACE team |
 | 2026-08-02 | **`assessment-gate` gains the bare-id calculate rule + a read-back check (ace#1119, partial).** `edit_field` with `calculate: "if(q1 = 'c', 1, 0)"` persists `q1` as a raw TEXT part — Nova does not resolve a bare id into a `field-ref` and emits no error, so `if(#form/q1 = 'c', 1, 0)` is the only form that resolves. Since every `qN_score` is `if(qN = '<key>', 1, 0)` and `user_score` sums those refs, one re-authoring pass using bare ids silently zeroes the scoring chain while the app still looks structurally correct. The component now mandates `#form/<id>` for every cross-field reference and requires a two-call read-back (`get_field` on one `qN_score` and on `user_score`; assert `calculate.parts` contains a `field-ref`) after any pass that rewrites scoring calculates. Cross-referenced from `init-safe-calculates` so Deliver authors hit it too. Does NOT close #1119 — its main finding (the authoring procedure doesn't produce discriminating items) is untouched. | ACE team |
 | 2026-08-12 | **`discriminating-assessment-items` is re-pointed at item TOPIC selection and bank INDEPENDENCE; option-craft demoted to hygiene (ace#1187).** Re-measurement of the same 20-item bank (`spark-facilitator/20260810-0737`, Learn app `34a66bf7-9b48-40ef-aa56-31ac357e8a72`) with three readers — trained field persona **19.0/20**, untrained field persona **8.0/20**, untrained M&E domain expert **11/20** — showed the *reader*, not the options, was carrying the ace#1014 plateau. The expert proxy the eval had been briefing sat 15pp above the population the Deliver gate protects and understated true discrimination by 27% (A−C = 8.0 vs A−B = 11.0), and its edge was stability of exam technique rather than knowledge the training supplies. The component's own **"Ceiling, not field, measurement"** caveat had documented exactly this since 2026-07-30 while the eval hard-gated on the number anyway; that is now resolved rather than merely noted. Build-side rewrite: **Step 1 (the lever)** — before writing any option, name the taught rule, the module that teaches it, and the operation it protects (unpaid visit / blocked form / corrupted data); an item with no module is testing general competence, which an untrained worker already has, so it cannot move the contrast however its options are written. **Step 2** — at most ~1 item per underlying rule; duplicated rules inflate the nominal item count while effective resolution stays flat. **Step 3** — Gates 1 and 2 retained verbatim but explicitly reframed as *necessary, not sufficient*, and unable to rescue a Step-1 failure; the brief no longer implies option-craft can move the number. Padding is now named as what it is — a free mark that lowers the effective bar (5 free items turned a nominal 16/20 = 80% gate into 11/15 = 73%). The pre-release self-check leads with rule/module/operation + independence, and demotes the author's own cold pick to weak evidence (rewrite 2 self-predicted 5–7/12 and measured 9–10/12). Paired 1:1 with the contrast statistic in `pdd-to-learn-app-eval § assessment_discrimination` and the new `assessment_operation_coverage` dimension. | ACE team |
+| 2026-08-12 | **New component `connect-supported-capabilities-only` — ACE apps may depend on no HQ feature flag but `commcare_connect` (ace#1195).** `spark-facilitator/20260810-0737` built the first ACE Deliver app to use **case-search inputs** (two per menu, all three menus). Nothing in the PDD asked for them; they came from the architect's default module authoring. They pulled in `search_claim` and `case_search_advanced`, **both `TAG_FROZEN`** in `dimagi/commcare-hq:corehq/toggles/__init__.py` — whose tag description reads *"This feature flag will be removed with an alternative solution in future. Do not add new projects to this list."* — with the advanced one further scoped to USS projects. `app-deploy`'s flag verification correctly detected the gap but emitted the wrong remedy ("email support@dimagi.com"), which asks Dimagi staff to override a stated internal policy for a capability the app never needed. The component states the rule as a **capability budget rather than a blocklist**, because Nova exposes flag-gated capabilities through the same tool surface as everything else with nothing marking them — banning only case search leaves related lookups, split-screen search and USH case-claim updates to sail through. The load-bearing distinction: **a case LIST is free, a case SEARCH is flag-gated**; the local list is served from the device casedb, which is why the Deliver smoke walked fine on a space where both flags were absent. Matching edit to `app-deploy` Step 4.5: it now branches on WHERE the requirement came from — traces to the PDD → operator email as before; does NOT trace to the PDD → `[BLOCKER]` build defect naming the capability to remove. Deliberately scoped: no slug→tag map was vendored (operator decision, 2026-08-12) — the instruction is "nothing but `commcare_connect`", which needs no lookup. | ACE team |
