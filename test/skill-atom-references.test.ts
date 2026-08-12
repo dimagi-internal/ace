@@ -85,7 +85,6 @@ const ALLOWLIST = new Set([
   'connect_type',            // schema field on Connect modules
   'connect_markers',         // schema field set on forms
   'connect_username',        // env var (CONNECT_USERNAME)
-  'connect_user_id',         // column on the Connect workers table returned by connect_list_flw_invites; null when the invite never linked to a ConnectID user (ace#824)
 
   // ---- Env vars (atom-shaped only by coincidence) ----
   'connect_apk_version',     // ACE_CONNECT_APK_VERSION (lowercased in skill prose)
