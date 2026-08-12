@@ -109,6 +109,7 @@ const ALLOWLIST = new Set([
   'connect_int_id',                // run_state/opp.yaml field key: ConnectProd's integer opportunity/program id (the `int_id` on the create response). NOT an atom. (Renamed from labs_int_id — jjackson/ace#686.)
   'slides_create_presentation',    // playbook/integrations/slides-integration.md: documented as "does not exist as an MCP atom"
   'docs_url',                      // response FIELD on Nova's get_app_hq_feature_flags (alongside support_email), cited by app-deploy Step 4.5. Not an atom.
+  'commcare_connect',              // CommCare HQ FEATURE-FLAG SLUG (StaticToggle in corehq/toggles/__init__.py, TAG_CONNECT_DIVISION) — the one flag an ACE app may depend on. Cited by _app-component-library § connect-supported-capabilities-only and both build skills. Not an atom. (dimagi-internal/ace#1195.)
 
   // ---- Known drift candidates (resolved as of 2026-05-25) ----
   //
