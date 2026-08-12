@@ -102,14 +102,28 @@ describe('validatePhaseProductsComplete — boundary completeness', () => {
     expect(r.issues.some((i) => /opportunity\.url/.test(i.path))).toBe(true);
   });
 
-  it('connect-setup with both required keys present is complete', () => {
+  it('connect-setup with all required keys present is complete', () => {
+    const r = validatePhaseProductsComplete('connect-setup', {
+      connect: {
+        domain: 'connect-ace-prod',
+        opportunity: { url: 'https://connect.dimagi.com/a/x/opportunity/o1/' },
+        // Third required key since ace#1184 — proof Step 7's invite read-back
+        // actually ran. See the CI-892 incident note in phase-products-schema.ts.
+        ace_test_user: { invite_row_present: true },
+      },
+    });
+    expect(r.valid).toBe(true);
+  });
+
+  it('connect-setup missing the invite read-back is INCOMPLETE at boundary (ace#1184)', () => {
     const r = validatePhaseProductsComplete('connect-setup', {
       connect: {
         domain: 'connect-ace-prod',
         opportunity: { url: 'https://connect.dimagi.com/a/x/opportunity/o1/' },
       },
     });
-    expect(r.valid).toBe(true);
+    expect(r.valid).toBe(false);
+    expect(r.issues.some((i) => /ace_test_user\.invite_row_present/.test(i.path))).toBe(true);
   });
 
   it('qa-and-training without onboarding_email is INCOMPLETE', () => {
@@ -139,11 +153,25 @@ describe('classifyPhaseProducts — boundary-fence classifier', () => {
 
   it('a DONE phase with all required keys is ok', () => {
     const parsed = {
-      phases: { 'connect-setup': { status: 'done', products: { connect: { domain: 'connect-ace-prod', opportunity: { url: 'https://connect.dimagi.com/a/x/opportunity/o1/' } } } } },
+      phases: { 'connect-setup': { status: 'done', products: { connect: { domain: 'connect-ace-prod', opportunity: { url: 'https://connect.dimagi.com/a/x/opportunity/o1/' }, ace_test_user: { invite_row_present: true } } } } },
     };
     const r = classifyPhaseProducts(parsed, 'connect-setup');
     expect(r.mode).toBe('complete');
     expect(r.ok).toBe(true);
+  });
+
+  it('a DONE connect-setup that never read back the invite is NOT ok (ace#1184 / CI-892)', () => {
+    // The exact shape Phase 4 shipped on turmeric-market-study/20260807-1903:
+    // opportunity created and activated, invite "sent", read-back never run.
+    // The boundary fence must refuse this rather than let Phase 6 discover the
+    // dead invite a dispatch later.
+    const parsed = {
+      phases: { 'connect-setup': { status: 'done', products: { connect: { domain: 'connect-ace-prod', opportunity: { url: 'https://connect.dimagi.com/a/x/opportunity/o1/' } } } } },
+    };
+    const r = classifyPhaseProducts(parsed, 'connect-setup');
+    expect(r.mode).toBe('complete');
+    expect(r.ok).toBe(false);
+    expect(r.issues.some((i) => /ace_test_user\.invite_row_present/.test(i.path))).toBe(true);
   });
 
   it('an IN-FLIGHT phase (not done) only shape-checks — a partial fragment is ok', () => {
