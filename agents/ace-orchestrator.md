@@ -1177,7 +1177,8 @@ single deterministic check for this, replacing the old hand-maintained
 (generated to `docs/phase-products-schema.json`, which ace-web reads). On
 a `status: done` phase (`mode:complete`) it asserts BOTH the block's shape
 AND that every required handoff key is present
-(`REQUIRED_PRODUCT_KEYS` — e.g. `connect.opportunity.url` + `connect.domain`,
+(`REQUIRED_PRODUCT_KEYS` — e.g. `connect.opportunity.url` + `connect.domain` +
+`connect.ace_test_user.invite_row_present`,
 `qa-and-training`'s `training.docs.onboarding_email`); on an in-flight
 phase (`mode:fragment`) it shape-checks only, so incremental writes pass;
 `mode:skipped` for phases with no products contract

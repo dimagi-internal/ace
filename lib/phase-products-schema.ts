@@ -131,7 +131,42 @@ const ConnectProducts = z
           })
           .passthrough()
           .optional(),
-        ace_test_user: z.unknown().optional(),
+        /**
+         * Result of READING BACK the ACE test-user invite via
+         * `connect_list_flw_invites` — NOT the `connect_send_flw_invite`
+         * response (dimagi-internal/ace#1184).
+         *
+         * `invite_users/` returns HTTP 202 with `invited_count` echoing the
+         * submitted phone list, and writes the `UserInvite` row asynchronously
+         * via `add_connect_users.delay(...)`. The send response therefore
+         * cannot witness the write, so `{status: 'queued'}` is not evidence.
+         * `invite_row_present` is the boolean the read-back actually produced
+         * (`match !== null`), and it is a REQUIRED handoff key — see
+         * REQUIRED_PRODUCT_KEYS below — so a phase that skipped the read-back
+         * cannot reach a terminal status.
+         *
+         * `false` is a legal, contract-satisfying value: it records a verified
+         * absent row. Acting on it is `connect-opp-setup` Step 7's job (that is
+         * a `[BLOCKER]`; the phase must land `error`/`partial`, never `done`).
+         */
+        ace_test_user: z
+          .object({
+            phone: z.string().optional(),
+            /** `match !== null` from connect_list_flw_invites. */
+            invite_row_present: z.boolean().optional(),
+            /**
+             * Null means the row exists but has no linked ConnectID user — the
+             * ace#824 signature. Such an access matches nothing in
+             * `opportunityaccess__user`, so the opp is invisible on device
+             * forever and does not self-heal.
+             */
+            connect_user_id: z.string().nullable().optional(),
+            /** `accepted` | `pending` | `unknown`. `pending` is healthy pre-claim. */
+            status: z.string().optional(),
+            checked_at: z.string().optional(),
+          })
+          .passthrough()
+          .optional(),
       })
       .passthrough()
       .optional(),
@@ -299,7 +334,19 @@ export type PhaseName = keyof typeof PHASE_PRODUCTS_SCHEMAS;
  */
 export const REQUIRED_PRODUCT_KEYS: Partial<Record<PhaseName, string[]>> = {
   'commcare-setup': ['apps.learn.hq_app_id', 'apps.deliver.hq_app_id'],
-  'connect-setup': ['connect.opportunity.url', 'connect.domain'],
+  // `ace_test_user.invite_row_present` is required for a different reason than
+  // its neighbours: the summary page does not render it. It is here because it
+  // is the only structural way to prove Step 7's read-back actually ran
+  // (ace#1184 / CI-892). Prose in SKILL.md already instructed the read-back and
+  // was silently skipped — Phase 4 shipped `done` on a bare HTTP 202, and Phase
+  // 6 rediscovered the dead invite a whole dispatch later. A boolean `false`
+  // satisfies this key; `resolveDotPath` only treats undefined/null/'' as
+  // missing, so an honest "no row" is distinguishable from a skipped check.
+  'connect-setup': [
+    'connect.opportunity.url',
+    'connect.domain',
+    'connect.ace_test_user.invite_row_present',
+  ],
   'qa-and-training': ['training.deck', 'training.docs.onboarding_email'],
   'solicitation-management': ['solicitation.url'],
 };

@@ -278,7 +278,30 @@
                     },
                     "additionalProperties": true
                   },
-                  "ace_test_user": {}
+                  "ace_test_user": {
+                    "type": "object",
+                    "properties": {
+                      "phone": {
+                        "type": "string"
+                      },
+                      "invite_row_present": {
+                        "type": "boolean"
+                      },
+                      "connect_user_id": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      },
+                      "status": {
+                        "type": "string"
+                      },
+                      "checked_at": {
+                        "type": "string"
+                      }
+                    },
+                    "additionalProperties": true
+                  }
                 },
                 "additionalProperties": true
               }
@@ -290,7 +313,8 @@
       },
       "requiredProductKeys": [
         "connect.opportunity.url",
-        "connect.domain"
+        "connect.domain",
+        "connect.ace_test_user.invite_row_present"
       ]
     },
     "ocs-setup": {
