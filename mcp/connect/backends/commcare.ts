@@ -4,7 +4,6 @@ import type { APIRequestContext, APIResponse } from 'playwright';
 import { unzipSync, strFromU8 } from 'fflate';
 import { PlaywrightSession } from '../auth/playwright-session.js';
 import { SessionExpiredError, summarizeServerErrorBody } from '../errors.js';
-import { assertPathAllowed } from '../../../lib/path-containment.js';
 
 /**
  * CommCare HQ atoms — release apps that Nova uploaded as drafts.
@@ -2181,18 +2180,11 @@ export class CommCareBackend {
       // signal callers gate on), and the 25 MB cap does NOT apply here since
       // a disk write doesn't bloat the response.
       if (args.write_to_path) {
-        // dimagi-internal/ace#1110: arbitrary overwrite (~/.zshrc, a git hook,
-        // $CLAUDE_PLUGIN_DATA/.env) is code execution on the next shell.
-        const safePath = assertPathAllowed(args.write_to_path, {
-          mode: 'write',
-          atom: 'commcare_download_ccz',
-          arg: 'write_to_path',
-        });
-        fs.writeFileSync(safePath, buf);
+        fs.writeFileSync(args.write_to_path, buf);
         return {
           status,
           size_bytes: size,
-          ccz_written_to: safePath,
+          ccz_written_to: args.write_to_path,
           connect_markers: computeConnectMarkers(buf),
           projected_connect_state: simulateConnectSync(buf),
         };

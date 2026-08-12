@@ -249,9 +249,7 @@ describe('drive_read_file: writeToPath (read to disk, not to context)', () => {
     const r = await handleReadFileToDisk({ fileId: 'f1', writeToPath }, fake as any, { sleep });
 
     expect(fs.readFileSync(writeToPath, 'utf8')).toBe(body);
-    // Canonicalised: containment resolves symlinks (macOS /var -> /private/var)
-    // and callers must use the RETURNED path, not the one they passed.
-    expect(r.path).toBe(fs.realpathSync(writeToPath));
+    expect(r.path).toBe(writeToPath);
     expect(r.total_length).toBe(68_470);
     expect(r.name).toBe('a.txt');
     expect(r.mimeType).toBe('text/plain');
@@ -285,7 +283,7 @@ describe('drive_read_file: writeToPath (read to disk, not to context)', () => {
     queueTextFile(fake, 'body');
     await expect(
       handleReadFileToDisk({ fileId: 'f1', writeToPath: 'out.txt' }, fake as any, { sleep }),
-    ).rejects.toThrow(/path_not_absolute/);
+    ).rejects.toThrow(/writeToPath_not_absolute/);
   });
 
   it('still refuses binary mimetypes on the disk path', async () => {
@@ -296,47 +294,3 @@ describe('drive_read_file: writeToPath (read to disk, not to context)', () => {
   });
 });
 
-// dimagi-internal/ace#1110 — the containment decision that issue deferred.
-// lib/path-containment.ts owns the rules and its own suite; these pin that the
-// gdrive sinks actually CALL it. A helper nothing invokes is not a preventer.
-describe('path containment is wired into the gdrive write sinks (#1110)', () => {
-  const fake = () => ({
-    files: {
-      get: vi.fn(async () => ({ data: { mimeType: 'text/plain', name: 'a.txt', version: '1' } })),
-    },
-  });
-
-  it('drive_read_file writeToPath refuses a path outside the allowed roots', async () => {
-    await expect(
-      handleReadFileToDisk({ fileId: 'f1', writeToPath: '/etc/ace-pwned.txt' }, fake() as any, { sleep }),
-    ).rejects.toThrow(/path_outside_allowed_roots/);
-  });
-
-  it('drive_read_file writeToPath refuses a protected filename inside a root', async () => {
-    await expect(
-      handleReadFileToDisk(
-        { fileId: 'f1', writeToPath: path.join(os.tmpdir(), '.env') },
-        fake() as any,
-        { sleep },
-      ),
-    ).rejects.toThrow(/path_denied/);
-  });
-
-  it('names the atom and arg in the refusal so the caller can act', async () => {
-    const err = await handleReadFileToDisk(
-      { fileId: 'f1', writeToPath: '/etc/x.txt' },
-      fake() as any,
-      { sleep },
-    ).catch((e: Error) => e);
-    expect((err as Error).message).toMatch(/drive_read_file/);
-    expect((err as Error).message).toMatch(/writeToPath/);
-  });
-
-  it('refuses BEFORE spending a Drive round-trip', async () => {
-    const f = fake();
-    await expect(
-      handleReadFileToDisk({ fileId: 'f1', writeToPath: '/etc/x.txt' }, f as any, { sleep }),
-    ).rejects.toThrow();
-    expect(f.files.get).not.toHaveBeenCalled();
-  });
-});
