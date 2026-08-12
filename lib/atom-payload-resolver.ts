@@ -13,6 +13,7 @@
  * Shipped 0.13.29 alongside the atom signatures.
  */
 import { readFileSync } from 'node:fs';
+import { assertPathAllowed } from './path-containment.js';
 
 export class AtomArgUsageError extends Error {
   constructor(message: string) {
@@ -44,7 +45,16 @@ export function resolvePatchXformXml(args: {
     );
   }
   if (new_xform_xml) return new_xform_xml;
-  return readFileSync(new_xform_xml_path!, 'utf-8');
+  // dimagi-internal/ace#1110 finding F9 — arbitrary read → app XForm source
+  // on prod HQ.
+  return readFileSync(
+    assertPathAllowed(new_xform_xml_path!, {
+      mode: 'read',
+      atom: 'commcare_patch_xform',
+      arg: 'new_xform_xml_path',
+    }),
+    'utf-8',
+  );
 }
 
 /**
@@ -69,7 +79,16 @@ export function resolveUploadMultimediaBytes(args: {
       'commcare_upload_multimedia: must supply one of file_bytes_base64 or file_bytes_path',
     );
   }
-  if (file_bytes_path) return readFileSync(file_bytes_path);
+  // dimagi-internal/ace#1110 finding F7 — arbitrary read → HQ multimedia,
+  // re-downloadable via download_ccz(include_multimedia).
+  if (file_bytes_path)
+    return readFileSync(
+      assertPathAllowed(file_bytes_path, {
+        mode: 'read',
+        atom: 'commcare_upload_multimedia',
+        arg: 'file_bytes_path',
+      }),
+    );
   return Buffer.from(file_bytes_base64!, 'base64');
 }
 

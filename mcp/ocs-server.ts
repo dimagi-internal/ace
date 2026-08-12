@@ -40,6 +40,16 @@ import { loadBaseUrl, loadDefaultTeamSlug, loadRestToken, loadTokensByTeam } fro
 import type { RequestFn } from './ocs/backends/pipeline-patch.js';
 import { createLoggingProxy, defaultFileLogger } from './ocs/logging.js';
 import { CsrfTokenMissingError } from './ocs/errors.js';
+import { assertPathAllowed } from '../lib/path-containment.js';
+import fsSync from 'node:fs';
+import nodePath from 'node:path';
+
+/**
+ * Ceiling on base64 characters `ocs_download_file` will return inline.
+ * Matches gdrive's DEFAULT_INLINE_MAX_CHARS — the same tool-result token
+ * budget applies regardless of which MCP produced the payload.
+ */
+const OCS_INLINE_MAX_BASE64_CHARS = 40_000;
 import {
   assertNotGoldenTemplateChatbot,
   assertNotGoldenTemplateCollection,
@@ -418,7 +428,17 @@ export async function decodeUploadCollectionFileSource(f: {
     );
   }
   const bytes = hasPath
-    ? await readFile(f.file_path!)
+    ? await readFile(
+        // dimagi-internal/ace#1110 finding F6 — the laundered-exfil sink: an
+        // arbitrary read here lands in a vector store and is retrievable later
+        // by a normal chat turn, never appearing in the stealing call's
+        // transcript.
+        assertPathAllowed(f.file_path!, {
+          mode: 'read',
+          atom: 'ocs_upload_collection_files',
+          arg: 'file_path',
+        }),
+      )
     : Buffer.from(f.content!, 'base64');
   return { name: f.name, content: bytes, mime_type: f.mime_type };
 }
@@ -647,14 +667,55 @@ server.tool(
 
 server.tool(
   'ocs_download_file',
-  'Download a file from OCS by file ID.',
-  { file_id: z.number() },
-  async (args) => {
-    const f = await composite.downloadFile(args);
+  'Download a file from OCS by file ID.\n\nTwo delivery modes:\n\n- `writeToPath` (STRONGLY preferred): writes the bytes to that absolute local path and returns `{filename, mime_type, size, path}` with NO base64 — costs zero context regardless of file size. Pair it with `ocs_upload_collection_files`\' `file_path` to move a file inside OCS without the bytes ever entering model context. Mirrors `drive_download_binary`\' and `commcare_download_ccz`\' write-to-path modes.\n- Default (no `writeToPath`): returns `content_base64` at ~1.33x the file size in context, refused above 40,000 base64 characters (~30 KB of file) with a typed `oversized_binary` error. Only for genuinely tiny files.\n\nTracking: dimagi-internal/ace#1182.',
+  {
+    file_id: z.number(),
+    writeToPath: z
+      .string()
+      .optional()
+      .describe(
+        'Optional but strongly preferred. Absolute local path to write the bytes to. Returns a {path, size} handle instead of content_base64, so a large download costs zero context. Missing parent directories are created. Must resolve inside ACE working roots - see dimagi-internal/ace#1110.',
+      ),
+  },
+  async ({ file_id, writeToPath }) => {
+    const f = await composite.downloadFile({ file_id });
+
+    if (writeToPath !== undefined) {
+      const safePath = assertPathAllowed(writeToPath, {
+        mode: 'write',
+        atom: 'ocs_download_file',
+        arg: 'writeToPath',
+      });
+      fsSync.mkdirSync(nodePath.dirname(safePath), { recursive: true });
+      fsSync.writeFileSync(safePath, f.content);
+      return result({
+        filename: f.filename,
+        mime_type: f.mime_type,
+        size: f.content.length,
+        path: safePath,
+      });
+    }
+
+    const content_base64 = f.content.toString('base64');
+    if (content_base64.length > OCS_INLINE_MAX_BASE64_CHARS) {
+      // Without this the caller just gets an opaque harness truncation and
+      // never learns writeToPath exists — exactly how the equivalent gap on
+      // drive_download_binary survived from 2026-07-28 to 2026-08-11 while two
+      // docs recommended a recipe the atom could not perform (#1027).
+      throw new Error(
+        `oversized_binary: ocs_download_file cannot return ${content_base64.length} base64 characters ` +
+          `inline (max ${OCS_INLINE_MAX_BASE64_CHARS}; the file is ${f.content.length} bytes). Pass ` +
+          `writeToPath="/absolute/path" to write the bytes straight to disk and get back {path, size} ` +
+          `with no base64 — then hand that path to whatever consumes it (e.g. ` +
+          `ocs_upload_collection_files' file_path, or your own extractor).`,
+      );
+    }
+
     return result({
       filename: f.filename,
       mime_type: f.mime_type,
-      content_base64: f.content.toString('base64'),
+      size: f.content.length,
+      content_base64,
     });
   },
 );

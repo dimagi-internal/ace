@@ -1349,11 +1349,12 @@ Create or update participant data across one or more experiments.
 
 ### `ocs_download_file`
 
-Download a file from OCS by file ID.
+Download a file from OCS by file ID. Two delivery modes: - `writeToPath` (STRONGLY preferred): writes the bytes to that absolute local path and returns `{filename, mime_type, size, path}` with NO base64 — costs zero context regardless of file size. Pair it with `ocs_upload_collection_files`\' `file_path` to move a file inside OCS without the bytes ever entering model context. Mirrors `drive_downlo…
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `file_id` | `z.number` | **required** | _—_ |
+| `writeToPath` | `z.string` | optional | Optional but strongly preferred. Absolute local path to write the bytes to. Returns a {path, size} handle instead of content_base64, so a large download costs zero context. Missing parent directories … |
 
 ### `ocs_get_me`
 
