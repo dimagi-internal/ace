@@ -149,13 +149,33 @@ orchestrator from per-skill QA + eval verdicts. -->
    | `not_checked` / any `unverified_flags` | **`[WARN]`** — record as explicitly UNVERIFIED |
 
    On `missing_flags`: surface each flag's `label`, `slug`, and the
-   `reasons[]` naming the app configuration that caused the requirement, and
-   tell the operator to contact `support@dimagi.com` naming the project space
-   (Nova returns `support_email` + `docs_url` for exactly this). **Do NOT
-   strip, downgrade, or rebuild the app to dodge the flag** — the requirement
-   came from functionality the PDD asked for, and Nova's own contract states
-   this result "must never cause an agent to remove, undo, or avoid requested
-   app functionality." The app stays as built; a human enables the flag.
+   `reasons[]` naming the app configuration that caused the requirement. Then
+   **branch on WHERE the requirement came from** — the two cases have opposite
+   remedies, and emitting the wrong one costs a redeploy (ace#1195):
+
+   - **The capability traces to something the PDD asked for** → operator
+     action. Tell the operator to contact `support@dimagi.com` naming the
+     project space (Nova returns `support_email` + `docs_url` for exactly
+     this). **Do NOT strip, downgrade, or rebuild the app to dodge the flag** —
+     Nova's contract states this result "must never cause an agent to remove,
+     undo, or avoid requested app functionality." The app stays as built; a
+     human enables the flag.
+   - **The capability does NOT trace to the PDD** — it came from default
+     module authoring rather than a stated requirement → **`[BLOCKER]` BUILD
+     DEFECT.** Do not send the operator to support. Name the capability to
+     remove and halt for remediation. Per
+     `_app-component-library.md § connect-supported-capabilities-only`, the
+     only flag an ACE app may depend on is `commcare_connect`; anything else is
+     outside the capability budget. **Many HQ flags are frozen or deprecated,
+     meaning HQ's own source instructs staff not to enable them for new
+     projects** — so "email support" is not merely slower, it asks a human to
+     override a stated policy for a capability the app never needed.
+
+   The canonical instance: case-search inputs on a Deliver menu require
+   `search_claim` (+ `case_search_advanced` for fuzzy matching), both frozen.
+   A case LIST needs no flag and is what the worker actually uses. If no PDD
+   line asked for case search, the fix is `remove_search_input`, not a support
+   ticket.
 
    On unverified: say so plainly rather than substituting a guess. An
    unverified result is not a pass — it is an open question that Phase 9 must

@@ -237,6 +237,10 @@ Generate the Learn (training) app from the PDD using the Nova plugin
        must be "Previous Screen".
      - `grid-menu-display` — always (Learn + Deliver). Modules and Forms
        Menu Display set to "Grid".
+     - `connect-supported-capabilities-only` — always (Learn + Deliver). Use
+       only capabilities that work WITHOUT an HQ feature flag; `commcare_connect`
+       is the sole exception. Learn apps are case-less so the case-search trap
+       is a Deliver concern, but the budget applies to every build (ace#1195).
      - **PDD worked examples are ILLUSTRATIVE — never bank content**
        (dimagi-internal/ace#1120). When the PDD supplies worked
        assessment items, they model the *required shape*; they are not a
