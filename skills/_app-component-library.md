@@ -1126,13 +1126,24 @@ Forbid angle-bracket placeholder notation`).
   cold score from one is a **ceiling**, not a field prediction — which is
   exactly why it cannot be the statistic, and why both readers must run the
   PDD's stated persona.
-- **Some items are free, and that changes where the gate sits.** Five of the 20
-  items were answered correctly by **both** readers in every run — arithmetic,
-  or answerable from the stem's own framing. Those five marks carry no training
-  signal, so a nominal 16/20 = 80% gate is an effective bar of **11 of the 15
-  signal-carrying items = 73%** on taught content. Padding a bank with free
-  items lowers the real bar. This is visible only in a contrast design, and the
-  eval now reports it.
+- **Some items are free, and that changes where the gate sits.** Items answered
+  correctly by **both** readers in every run — arithmetic, or answerable from
+  the stem's own framing — carry no training signal, so the nominal gate
+  overstates the real bar. On this bank ace#1187 counted 5 such items (16/20 =
+  80% nominal → 11/15 = **73%** effective); the 2026-08-12 re-validation, whose
+  untrained reader ran hotter, counted 10 (→ 6/10 = **60%** effective). Both
+  readings agree on the direction and neither is the "true" number: **the
+  free-item count is downstream of how well the untrained persona holds**, so
+  report it with the untrained runs it was derived from, and read it as "the
+  gate is looser than it looks", not as a precise figure. Padding a bank with
+  free items is what creates the gap. Visible only in a contrast design.
+- **Every item should be answerable from the modules — check that directly.**
+  The 2026-08-12 re-validation ran a TRAINED reader over the same 20-item bank
+  and it scored **20/20**: the taught content fully determines the key. That is
+  the Step-1 property below, measured rather than asserted, and it is what makes
+  the delta large. If a trained reader misses items, the bank is testing
+  something the modules do not teach — fix the item or teach the rule, because
+  the delta will understate the instrument either way.
 
 **Brief paragraph (verbatim):**
 
