@@ -127,6 +127,21 @@ For each app, compute:
 - Per nova-plugin#7 closure (2026-05-22): these wrappers are
   **required** for Connect's HQ→Connect sync to register learn
   modules. Their absence is a structural defect.
+- **CARDINALITY, not just presence (dimagi-internal/ace#1131).** Count the
+  forms whose blueprint declares `connect.assessment`. **There must be
+  exactly one.** Two or more → halt with `learn-assessment-cardinality`,
+  naming every form that carries the marker. Connect stores a single
+  `passing_score` per `CommCareApp` and `process_assessments` sets
+  `passed = score >= passing_score` for **every** submitted form block
+  carrying `user_score`, with any-passed semantics on every downstream
+  surface — so a second marked form (in practice the baseline pre-test,
+  which has the same `user_score` + selects shape as the post-test) lets a
+  worker who opened no module be recorded `passed=True`. Zero → halt too:
+  a PDD-specified readiness gate with no gating instrument is not
+  releasable. This check exists here because it is the only place it can
+  live: `app_xml.py` does not extract assessments from the CCZ, so the
+  behaviour is submission-time and marker-presence QA is blind to it —
+  the blueprint is the only pre-release surface that sees the count.
 
 Mismatch → halt with `learn-marker-missing` (with the form path +
 which marker is absent). Before halting, re-check by namespace — a
