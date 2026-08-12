@@ -3,7 +3,7 @@ name: flw-data-review-eval
 description: >
   Grade an flw-data-review report — signal coverage, outlier rigor,
   recommendation actionability, evidence citation, trajectory awareness.
-disable-model-invocation: true
+disable-model-invocation: false
 ---
 
 # FLW Data Review Eval

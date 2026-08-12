@@ -4,7 +4,7 @@ description: >
   Grade the Phase 6 LLO onboarding email draft for warmth, clarity, and
   call-to-action effectiveness — the email Phase 9 sends to kick off
   LLO onboarding.
-disable-model-invocation: true
+disable-model-invocation: false
 ---
 
 # Training Onboarding Email — Eval

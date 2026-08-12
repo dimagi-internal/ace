@@ -3,7 +3,7 @@ name: eval-calibration
 description: >
   Methodology reference for calibrating ACE's per-skill -eval rubrics —
   ground-truth catalogues, variance protocol, detection-rate metric.
-disable-model-invocation: true
+disable-model-invocation: false
 ---
 
 # Eval Calibration

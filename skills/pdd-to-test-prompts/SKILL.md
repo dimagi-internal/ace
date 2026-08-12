@@ -3,7 +3,7 @@ name: pdd-to-test-prompts
 description: >
   Derive opp-specific Q&A test prompts from an approved PDD. Produces the
   ground-truth suite for the Phase 5 OCS chatbot deep gate.
-disable-model-invocation: true
+disable-model-invocation: false
 ---
 
 # PDD to Test Prompts

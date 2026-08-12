@@ -3,7 +3,7 @@ name: ocs-widget-handoff-eval
 description: >
   Grade the OCS widget-handoff staging artifact for HITL paste-in —
   widget URL, embed key, opportunity-binding instructions.
-disable-model-invocation: true
+disable-model-invocation: false
 ---
 
 # OCS Widget Handoff Eval

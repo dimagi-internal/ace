@@ -4,7 +4,7 @@ description: >
   Diff OCS chatbots/pipelines/collections/sessions against the live-set,
   score orphans, auto-delete per-opp clones and their pipelines and
   per-opp collections. Golden template + shared collection are safe-listed.
-disable-model-invocation: true
+disable-model-invocation: false
 ---
 
 # sweep-ocs

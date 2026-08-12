@@ -3,7 +3,7 @@ name: app-ux-eval
 description: >
   Grade the FLW experience of the built apps via LLM-as-Judge over
   captured screenshots. Deep-only — runs from /ace:qa-deep.
-disable-model-invocation: true
+disable-model-invocation: false
 ---
 
 # App UX Eval

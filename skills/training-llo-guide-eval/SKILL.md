@@ -4,7 +4,7 @@ description: >
   Grade the Phase 6 LLO guide for operational completeness (morning
   check-ins, daily caps, escalation triggers), action-orientation (the
   LLO knows what to do next), and screenshot grounding.
-disable-model-invocation: true
+disable-model-invocation: false
 ---
 
 # Training LLO Guide — Eval

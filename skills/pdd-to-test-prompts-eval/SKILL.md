@@ -7,7 +7,7 @@ description: >
   prompt quality, and an out-of-chain failure-mode-coverage axis (does the
   suite stress the safety-critical and out-of-KB scenarios a real LLO
   supervisor in this domain would hit?).
-disable-model-invocation: true
+disable-model-invocation: false
 ---
 
 # PDD-to-Test-Prompts Eval

@@ -3,7 +3,7 @@ name: ocs-chatbot-qa
 description: >
   Exercise the per-opp OCS chatbot via its anonymous widget and capture
   a transcript with structural checks. Modes: --quick / --deep / --monitor.
-disable-model-invocation: true
+disable-model-invocation: false
 ---
 
 # OCS Chatbot QA

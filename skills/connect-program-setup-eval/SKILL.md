@@ -3,7 +3,7 @@ name: connect-program-setup-eval
 description: >
   Grade Connect Program + Opportunity configuration against the PDD —
   reuse-vs-create, verification rules, delivery units, payment units.
-disable-model-invocation: true
+disable-model-invocation: false
 ---
 
 # Connect Program Setup Eval

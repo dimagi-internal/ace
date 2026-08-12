@@ -3,7 +3,7 @@ name: cycle-grade
 description: >
   Grade the closed ACE cycle end-to-end with concrete
   improvement recommendations for the next cycle.
-disable-model-invocation: true
+disable-model-invocation: false
 ---
 
 # Cycle Grade

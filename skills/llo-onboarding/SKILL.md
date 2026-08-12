@@ -3,7 +3,7 @@ name: llo-onboarding
 description: >
   Issue the Connect program invite and send the awarded LLO the ACE
   onboarding email with training materials and OCS widget link.
-disable-model-invocation: true
+disable-model-invocation: false
 ---
 
 # LLO Onboarding

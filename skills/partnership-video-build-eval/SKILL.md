@@ -4,7 +4,7 @@ description: >
   LLM-as-judge quality eval for the partnership-video-build artifact. Grades
   spec validity, grounding, render success, and brand safety. Writes a
   verdict YAML. Gated by partnership-video-build inline QA.
-disable-model-invocation: true
+disable-model-invocation: false
 ---
 
 # Partnership Video Build Eval

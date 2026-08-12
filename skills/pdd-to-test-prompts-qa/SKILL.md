@@ -5,7 +5,7 @@ description: >
   ≥8 prompts each with required fields, all 7 adversarial categories,
   ≥20% adversarial share, plus training-gap / product-feedback / escalation
   prompts. Binary pass/fail; gates pdd-to-test-prompts-eval.
-disable-model-invocation: true
+disable-model-invocation: false
 ---
 
 # PDD-to-Test-Prompts QA

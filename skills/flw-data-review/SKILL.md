@@ -3,7 +3,7 @@ name: flw-data-review
 description: >
   Analyze FLW submissions to identify quality issues, trends, and
   improvement opportunities. Recurring during active opp.
-disable-model-invocation: true
+disable-model-invocation: false
 ---
 
 # FLW Data Review

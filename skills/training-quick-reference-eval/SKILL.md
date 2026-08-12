@@ -4,7 +4,7 @@ description: >
   Grade the Phase 6 quick-reference card for mid-visit scannability,
   coverage of key numbers (daily caps, payment per visit, support
   contact), and printability.
-disable-model-invocation: true
+disable-model-invocation: false
 ---
 
 # Training Quick Reference — Eval

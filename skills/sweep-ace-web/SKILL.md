@@ -5,7 +5,7 @@ description: >
   Session in workspaces the caller's PAT can write to, prints a report,
   prompts for approval, then issues a single bulk-delete call. No live-set
   dependency. Use when sweeping ace-web.
-disable-model-invocation: true
+disable-model-invocation: false
 ---
 
 # sweep-ace-web

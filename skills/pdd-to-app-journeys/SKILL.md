@@ -3,7 +3,7 @@ name: pdd-to-app-journeys
 description: >
   Derive opp-specific expected user journeys from an approved PDD.
   Produces the UX-intent ground truth consumed by app-test-cases and app-ux-eval.
-disable-model-invocation: true
+disable-model-invocation: false
 ---
 
 # PDD to App Journeys

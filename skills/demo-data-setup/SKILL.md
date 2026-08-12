@@ -6,7 +6,7 @@ description: >
   a DDD narrative's setup block consumes. Plan A implements the `denovo`
   provider; `clone` and `ace-run` are documented but land in Plan B / Phase 7
   convergence.
-disable-model-invocation: true
+disable-model-invocation: false
 ---
 
 # Demo Data Setup

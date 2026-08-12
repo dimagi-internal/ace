@@ -3,7 +3,7 @@ name: connect-program-setup
 description: >
   Create or reuse a Connect Program for the opportunity, archetype-matched
   to the PDD. Captures program_id for downstream skills.
-disable-model-invocation: true
+disable-model-invocation: false
 ---
 
 # Connect Program Setup

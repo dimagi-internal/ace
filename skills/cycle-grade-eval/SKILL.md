@@ -3,7 +3,7 @@ name: cycle-grade-eval
 description: >
   Independently re-grade a closed cycle's cycle-grade output. Detects
   self-eval inflation, missing learnings, vague recommendations.
-disable-model-invocation: true
+disable-model-invocation: false
 ---
 
 # Cycle-Grade Eval

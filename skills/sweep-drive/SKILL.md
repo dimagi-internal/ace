@@ -3,7 +3,7 @@ name: sweep-drive
 description: >
   Diff Drive ACE/ against the live-set, score orphan candidates, render a
   triage report, and trash approved items. Use when sweeping Drive.
-disable-model-invocation: true
+disable-model-invocation: false
 ---
 
 # sweep-drive

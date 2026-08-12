@@ -3,7 +3,7 @@ name: connect-baseline-screenshots
 description: >
   Capture the per-Connect-version baseline of "how Connect works"
   screenshots reused across every training deck. Manual, cross-opp.
-disable-model-invocation: true
+disable-model-invocation: false
 ---
 
 # Connect Baseline Screenshots

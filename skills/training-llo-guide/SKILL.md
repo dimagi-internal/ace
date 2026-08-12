@@ -3,7 +3,7 @@ name: training-llo-guide
 description: >
   Generate the LLO-facing operations document for overseeing FLW
   deployment. Owns one artifact: training-llo-guide.md.
-disable-model-invocation: true
+disable-model-invocation: false
 ---
 
 # Training LLO Guide

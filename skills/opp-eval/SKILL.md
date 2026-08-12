@@ -3,7 +3,7 @@ name: opp-eval
 description: >
   Umbrella aggregator that rolls every per-skill -eval verdict into a
   run-level scorecard. Modes: --quick / --deep / --monitor.
-disable-model-invocation: true
+disable-model-invocation: false
 ---
 
 # Opportunity Eval

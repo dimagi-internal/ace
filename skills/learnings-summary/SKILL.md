@@ -3,7 +3,7 @@ name: learnings-summary
 description: >
   Synthesize learnings from a completed opportunity. Drafts a new PDD
   to seed the next cycle when iteration is warranted.
-disable-model-invocation: true
+disable-model-invocation: false
 ---
 
 # Learnings Summary

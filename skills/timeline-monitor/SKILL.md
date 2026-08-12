@@ -3,7 +3,7 @@ name: timeline-monitor
 description: >
   Watch whether LLOs are hitting expected milestones on schedule.
   Email prompts when behind. Recurring during active opp.
-disable-model-invocation: true
+disable-model-invocation: false
 ---
 
 # Timeline Monitor

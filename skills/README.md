@@ -62,18 +62,36 @@ The generated playbook (`docs/generated/playbook.md`) renders the
 description verbatim, so a tight description doubles as a tight
 playbook entry.
 
-### `disable-model-invocation` (recommended)
+### `disable-model-invocation`
 
-Default for ACE skills is `disable-model-invocation: true`. ACE skills
-are dispatched by the orchestrator and phase agents by exact name —
-they do not need to compete for the routing-index budget. Setting this
-flag removes the skill from the harness catalog entirely without
-affecting `Skill(name)` invocation by name.
+**`true` makes a skill undispatchable — including by exact name.** The harness
+refuses `Skill(<name>)` on a flagged skill with:
 
-Carve out an exception (omit the flag, default `false`) only if a
-human user is plausibly going to free-text invoke the skill rather
-than going through `/ace:run` or `/ace:step`. As of 2026-05, no ACE
-skill currently meets that bar.
+> `Skill ace:<name> cannot be used with Skill tool due to disable-model-invocation.`
+> `Do not replicate this skill's workflow by other means — it is reserved for`
+> `explicit user invocation.`
+
+**Any skill a phase agent or the orchestrator dispatches MUST be
+`disable-model-invocation: false`.** The flag is only for skills reserved for
+explicit human `/ace:<name>` invocation.
+
+This section previously claimed the flag was catalog-only — that it dropped the
+skill from the routing index while leaving by-name dispatch working. That is
+false, and acting on it broke `/ace:run`: 80 of the skills phase agents dispatch
+were flagged, so agents either halted or — worse — replicated the skill's workflow
+inline against the harness's explicit instruction. Replication silently collapses
+the producer and its `-eval` judge into ONE context, which turns every affected
+verdict into a self-grade; this repo's own eval-fitness work predicts those run
+optimistic. Caught on `hh-poverty-targeting/20260812-1613` Phase 2
+(dimagi-internal/ace#1203).
+
+The routing-index budget is a real constraint, but correctness wins: an
+undispatchable producer is worse than a crowded catalog. If budget pressure
+returns, solve it by trimming skill `description:` fields (what the index actually
+holds), not by flagging skills the pipeline needs to call.
+
+*Enforced:* `test/skill-dispatchability.test.ts` fails if any skill referenced in
+`agents/*.md` carries `disable-model-invocation: true`.
 
 ### Other fields
 

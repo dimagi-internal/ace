@@ -5,7 +5,7 @@ description: >
   PUBLISH-ONLY BY DEFAULT: a no-op unless the operator explicitly opts in
   (--invite-candidates / ACE_SOLICITATION_INVITE_CANDIDATES). Also a no-op
   when the PDD names no candidates.
-disable-model-invocation: true
+disable-model-invocation: false
 ---
 
 # LLO Invite

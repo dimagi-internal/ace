@@ -3,7 +3,7 @@ name: partnership-video-build
 description: >
   Fill the ace-web partnership-pitch video template, POST the spec, trigger
   render, and poll until done. Writes video_spec.yaml + package.yaml.
-disable-model-invocation: true
+disable-model-invocation: false
 ---
 
 # Partnership Video Build

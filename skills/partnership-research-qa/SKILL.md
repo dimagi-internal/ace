@@ -4,7 +4,7 @@ description: >
   Structural QA on the two research artifacts from partnership-research.
   Binary pass/fail. Gates partnership-research-eval — eval is skipped if
   QA fails irrecoverably.
-disable-model-invocation: true
+disable-model-invocation: false
 ---
 
 # Partnership Research QA

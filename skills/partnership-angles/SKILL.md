@@ -4,7 +4,7 @@ description: >
   Ground the three reusable narrative templates against prospect research into
   three pitch-able, distinct, capability-tied narrative angles. Use when
   research artifacts are ready and the propose-phase needs the angles.yaml.
-disable-model-invocation: true
+disable-model-invocation: false
 ---
 
 # Partnership Angles
