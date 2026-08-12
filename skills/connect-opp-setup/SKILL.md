@@ -295,26 +295,57 @@ alone makes the artifact land outside `4-connect` and fail
    Mutations — Verify After Create`).
 
 5. **Configure verification flags** via `connect_set_verification_flags`,
-   mapping the PDD's Evidence Model Layer A to Connect toggles. *(This atom
-   still goes through the legacy HTML form — the verification config page
-   isn't part of PR #1135's automation API.)*
-   - `gps`: true if Layer A requires GPS fence — **almost always true**
-     for atomic-visit, **optional** for focus-group (venue GPS is less
-     meaningful)
-   - `duplicate`: true (always — duplicate-form-submission flagging is
-     defensive default)
-   - `catchment_areas`: true if the PDD names per-FLW catchment areas
-   - `location`: boolean toggle — enables location-distance verification.
-     Threshold (default 10m) is NOT settable via the MCP today; the atom
-     preserves whatever value is on the form. Log a follow-up in
-     `comms-log/observations.md` if a tighter threshold is required.
+   mapping the PDD's Evidence Model Layer A to the surfaces Connect
+   *actually has*. *(This atom still goes through the legacy HTML form —
+   the verification config page isn't part of PR #1135's automation API.)*
+
+   **Read this before writing anything: five of the eight documented
+   flags no longer exist on Connect's form (dimagi-internal/ace#1013).**
+   `duplicate`, `gps`, `gps_radius_meters`, `catchment_areas` and
+   `deliver_unit_checks[].check_attachments` are still *accepted* by the
+   atom for back-compat, but the corresponding inputs are ABSENT from the
+   page — Django drops them and the atom **still returns `ok: true`**.
+   Setting them does not enforce anything; it only writes an artifact that
+   claims enforcement which does not exist. **Do not send them.** Record
+   the affected Layer A rules as `[PLATFORM]` gaps in the phase summary
+   and name where they are enforced instead (usually the CCZ).
+
+   What works today:
+
+   - `form_field_rules` — **the only surface on which a PDD Layer A
+     predicate can be enforced server-side.** One entry per
+     `(question_path, question_value, deliver_unit_id)` the predicate
+     requires. Additive and idempotent.
+     - **Read `question_path` and `question_value` out of the RELEASED
+       CCZ, never from the PDD's prose.** The PDD quotes the partner's
+       original app; Nova rebuilds the form and routinely flattens or
+       renames groups, so the PDD path can name a node that does not
+       exist — and a rule matching no node enforces nothing while
+       reporting success. Download the released CCZ
+       (`commcare_download_ccz` with `write_to_path`), read the payable
+       form's `<bind nodeset=...>` list and its `<select1>` `<value>`
+       options, and use those. (Live example: PDD said
+       `/data/community_meeting/meeting_type`; the released CCZ bound it
+       at `/data/meeting_type`.)
+     - `question_value` is the **stored** option value, never the display
+       label.
+     - `deliver_unit_id` is the DU `server_id` — same value
+       `required_deliver_units` takes, not the per-opp display index.
+     - `name` is capped at **25 chars**; a longer name silently fails the
+       WHOLE formset.
+     - **Verify via `form_field_rules_saved` in the response** — the count
+       Connect actually persisted. It is the only evidence the write
+       landed; compare it against the number of rules you sent.
    - `form_submission_start` / `form_submission_end`: HH:MM:SS — set
-     only if the PDD has time-of-day plausibility constraints
-   - `deliver_unit_checks`: per-deliver-unit attachment requirements
-     (e.g. for a "household visit" deliver unit, set `check_attachments=true`
-     so submissions without photos get flagged). Match each
-     `deliver_unit_id` (from step 4's create response) against the PDD's
-     per-unit Layer A requirements.
+     only if the PDD has time-of-day plausibility constraints.
+   - `deliver_unit_checks[].duration_seconds` — despite the name this is
+     **MINUTES** (the form label says so). Set only if the PDD states a
+     minimum delivery duration.
+
+   Layer A rules that none of these can carry (photo-present, date sanity,
+   cross-field consistency, dedup) are normally already enforced *in the
+   CCZ* — cite that in the summary rather than leaving the rule looking
+   dropped.
 
 6. **Configure payment units** via `connect_create_payment_units` (plural,
    atomic batch — the new automation API takes a list). Build one entry
@@ -790,10 +821,13 @@ alone makes the artifact land outside `4-connect` and fail
 The PDD's `archetype:` field shapes verification + payment unit setup:
 
 ### `atomic-visit`
-- **Verification:** `gps=true`, `duplicate=true`, `catchment_areas=true`
-  if PDD specifies per-FLW areas. `deliver_unit_checks` should set
-  `check_attachments=true` on deliver units that require photos
-  (Layer A "Photo present").
+- **Verification:** one `form_field_rules` entry per clause of the PDD's
+  payment predicate, keyed to the released CCZ's paths and stored values.
+  GPS-fence / duplicate / catchment / photo-attachment enforcement is
+  **not available** (ace#1013 — see Step 5); a required photo is normally
+  enforced in the form itself (`required="true()"` +
+  `appearance="acquire"`), so record it as CCZ-enforced rather than
+  missing.
 - **Payment:** typically one main payment unit per verified visit,
   optional bonus tier when Layer B passes (e.g. AI photo-quality check).
 - **Soft flags** (Layer B/C from PDD): logged in
@@ -801,9 +835,10 @@ The PDD's `archetype:` field shapes verification + payment unit setup:
   `flw-data-review` skill in Phase 6.
 
 ### `focus-group`
-- **Verification:** `gps=false` typically (venue GPS less meaningful).
-  `duplicate=true`. `deliver_unit_checks` set `check_attachments=true`
-  on the session-recording deliver unit (audio file required).
+- **Verification:** same `form_field_rules`-only surface as above (venue
+  GPS was never meaningful here, and is unavailable regardless). Enforce
+  the attestation form's consent / session-held clauses as field rules;
+  the required audio attachment is CCZ-enforced.
 - **Payment:** one payment unit per **completed group session** — set
   `max_total` to the PDD's planned session count. Do NOT model per-
   participant payment; the unit is the session.
@@ -907,6 +942,7 @@ decisions_append_rows({
 | 2026-05-10 | Move opp activation + ACE test-user invite from Phase 9 into Phase 4 (new Step 6.5 + rewritten Step 7). Closes the chicken-and-egg gap where Phase 6 `app-screenshot-capture` produced placeholder screenshots because the test user wasn't on the new opp yet — the opp couldn't be activated until Phase 9, but the test user couldn't be invited until activation. Phase 9 `llo-launch` now hits its idempotent skip-if-active path on every ACE-driven run; it still sends the real-LLO invite to the awarded LLO. Also: tighten Step 4 `is_test` from "defaults true server-side" to "set explicitly to true" — ACE is in dogfood mode and every opp it creates must be test-flagged so prod analytics, payment exports, and partner dashboards exclude these runs. | ACE team |
 | 2026-06-01 | **Step 6.5: always attempt `/activate/`; treat only the "already active" error as the skip signal (jjackson/ace#624).** The managed-opp create endpoint returns a create-side `active: true` flag that is NOT the `/activate/` state transition `invite_users/` requires — so the old "read `active`, skip if true" pre-check skipped the only call that enables invites, and Step 7 failed. Calling `/activate/` on such an opp succeeds; it rejects only an opp that already completed the transition. Removed the pre-check; now call unconditionally and branch on the result, not the read-back flag. | ACE team |
 | 2026-06-01 | **Step 6.5: verify activation via Step 7's invite, not the scraped `active` flag (closes jjackson/ace#617, and its #634 duplicate).** Dropped the post-activate `connect_get_opportunity` read-back check — that flag returns `true` on un-transitioned opps and can't distinguish a real `/activate/` from a no-op (the same create-side flag that motivated #624). The authoritative confirmation is `connect_send_flw_invite` in Step 7 succeeding: `invite_users/` hard-rejects a non-active opp, so a successful invite is the only proof the transition landed. | ACE team |
+| 2026-08-12 | **Step 5 rewritten around what Connect's verification form actually has (dimagi-internal/ace#1013).** The step prescribed `gps` / `duplicate` / `catchment_areas` / `location` / `check_attachments`, all five of which were removed from the form — the atom accepts them, Django drops them, and it still returns `ok: true`, so a compliant agent produced an artifact claiming enforcement that never existed. Step 5 now leads with `form_field_rules` (the only server-side Layer A surface), requires reading `question_path` / `question_value` from the RELEASED CCZ rather than the PDD's prose (Nova flattens groups — a rule on a non-existent node enforces nothing and reports success), documents the 25-char `name` cap and the `duration_seconds`-is-really-minutes trap, and requires verifying via `form_field_rules_saved`. Archetype verification lines updated to match. Found live on spark-facilitator/20260810-0737. | ACE team |
 | 2026-05-10 | State consolidation PR a: retire `connect-state.yaml`; emit a single `run_state.yaml.phases.connect-setup.products.connect` block at end of Step 10. Step 7 holds invite metadata in memory rather than writing immediately. (Initial implementation dual-wrote to `opp.yaml.connect`; corrected on 2026-05-11 — runs are now independent. `opp.yaml.connect.program` is durable cross-run state written by `connect-program-setup`; `opp.yaml.connect.opportunity` / `ace_test_user` are no longer written here.) See `docs/superpowers/specs/2026-05-10-state-consolidation.md`. | ACE team |
 
 <!-- connect_int_id is read directly from the connect_create_opportunity response (ConnectProd integer id); the old post-create labs_context lookup was removed in the jjackson/ace#686 follow-up (the int was always in the create response). -->
