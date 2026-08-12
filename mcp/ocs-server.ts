@@ -40,7 +40,6 @@ import { loadBaseUrl, loadDefaultTeamSlug, loadRestToken, loadTokensByTeam } fro
 import type { RequestFn } from './ocs/backends/pipeline-patch.js';
 import { createLoggingProxy, defaultFileLogger } from './ocs/logging.js';
 import { CsrfTokenMissingError } from './ocs/errors.js';
-import { assertPathAllowed } from '../lib/path-containment.js';
 import fsSync from 'node:fs';
 import nodePath from 'node:path';
 
@@ -428,17 +427,7 @@ export async function decodeUploadCollectionFileSource(f: {
     );
   }
   const bytes = hasPath
-    ? await readFile(
-        // dimagi-internal/ace#1110 finding F6 — the laundered-exfil sink: an
-        // arbitrary read here lands in a vector store and is retrievable later
-        // by a normal chat turn, never appearing in the stealing call's
-        // transcript.
-        assertPathAllowed(f.file_path!, {
-          mode: 'read',
-          atom: 'ocs_upload_collection_files',
-          arg: 'file_path',
-        }),
-      )
+    ? await readFile(f.file_path!)
     : Buffer.from(f.content!, 'base64');
   return { name: f.name, content: bytes, mime_type: f.mime_type };
 }
@@ -674,18 +663,21 @@ server.tool(
       .string()
       .optional()
       .describe(
-        'Optional but strongly preferred. Absolute local path to write the bytes to. Returns a {path, size} handle instead of content_base64, so a large download costs zero context. Missing parent directories are created. Must resolve inside ACE working roots - see dimagi-internal/ace#1110.',
+        'Optional but strongly preferred. Absolute local path to write the bytes to. Returns a {path, size} handle instead of content_base64, so a large download costs zero context. Missing parent directories are created.',
       ),
   },
   async ({ file_id, writeToPath }) => {
     const f = await composite.downloadFile({ file_id });
 
     if (writeToPath !== undefined) {
-      const safePath = assertPathAllowed(writeToPath, {
-        mode: 'write',
-        atom: 'ocs_download_file',
-        arg: 'writeToPath',
-      });
+      if (!nodePath.isAbsolute(writeToPath)) {
+        throw new Error(
+          `writeToPath_not_absolute: writeToPath must be an absolute path (got "${writeToPath}"). ` +
+            `This server's working directory is the plugin cache, not your project, so a relative ` +
+            `path would write somewhere unexpected.`,
+        );
+      }
+      const safePath = writeToPath;
       fsSync.mkdirSync(nodePath.dirname(safePath), { recursive: true });
       fsSync.writeFileSync(safePath, f.content);
       return result({

@@ -155,7 +155,7 @@ describe('handleDownloadBinaryToDisk (#1027)', () => {
 
     // Byte-for-byte, not utf8-mangled — the whole point of the binary path.
     expect(fsNode.readFileSync(writeToPath).equals(bytes)).toBe(true);
-    expect(r.path).toBe(fsNode.realpathSync(writeToPath));
+    expect(r.path).toBe(writeToPath);
     expect(r.size).toBe(bytes.length);
     expect((r as any).content_base64).toBeUndefined();
   });
@@ -175,7 +175,7 @@ describe('handleDownloadBinaryToDisk (#1027)', () => {
         { fileId: 'f1', writeToPath: 'out.bin' },
         fakeBinaryDrive(Buffer.from([1])) as any,
       ),
-    ).rejects.toThrow(/path_not_absolute/);
+    ).rejects.toThrow(/writeToPath_not_absolute/);
   });
 
   it('refuses an oversized base64 payload and names writeToPath', async () => {
@@ -200,28 +200,3 @@ describe('handleDownloadBinaryToDisk (#1027)', () => {
   });
 });
 
-// dimagi-internal/ace#1110 — pin that the binary write sink calls the guard.
-describe('path containment is wired into drive_download_binary (#1110)', () => {
-  it('refuses a writeToPath outside the allowed roots', async () => {
-    await expect(
-      handleDownloadBinaryToDisk({ fileId: 'f1', writeToPath: '/etc/ace-pwned.bin' }, fakeDrive as any),
-    ).rejects.toThrow(/path_outside_allowed_roots/);
-  });
-
-  it('refuses a protected filename inside an allowed root', async () => {
-    await expect(
-      handleDownloadBinaryToDisk(
-        { fileId: 'f1', writeToPath: pathNode.join(osNode.tmpdir(), 'gws-sa-key.json') },
-        fakeDrive as any,
-      ),
-    ).rejects.toThrow(/path_denied/);
-  });
-
-  it('refuses before spending a Drive round-trip', async () => {
-    fakeDrive.files.get.mockReset();
-    await expect(
-      handleDownloadBinaryToDisk({ fileId: 'f1', writeToPath: '/etc/x.bin' }, fakeDrive as any),
-    ).rejects.toThrow();
-    expect(fakeDrive.files.get).not.toHaveBeenCalled();
-  });
-});

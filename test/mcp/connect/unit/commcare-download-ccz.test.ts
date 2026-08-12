@@ -164,7 +164,7 @@ describe('CommCareBackend.downloadCcz — write_to_path', () => {
     try {
       const res = await backend.downloadCcz({ ...args, write_to_path: outPath });
       // path returned, base64 omitted
-      expect(res.ccz_written_to).toBe(fs.realpathSync(outPath));
+      expect(res.ccz_written_to).toBe(outPath);
       expect(res.ccz_base64).toBeUndefined();
       // bytes actually landed on disk, byte-identical to the response body
       expect(fs.existsSync(outPath)).toBe(true);

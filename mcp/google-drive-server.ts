@@ -37,7 +37,6 @@ import {
 import { generateRunReadme, type PhaseStatus } from '../lib/run-readme.js';
 import { validatePhaseProductsFragment, classifyPhaseProducts } from '../lib/phase-products-schema.js';
 import { assertDimagiOwnerRecipient } from '../lib/destructive-guards.js';
-import { assertPathAllowed } from '../lib/path-containment.js';
 import {
   runDecisionsRender,
   type DecisionsRenderDriveClient,
@@ -734,19 +733,10 @@ server.tool(
       let buf: Buffer;
       if (localFilePath) {
         const fs = await import('fs');
-        // Containment BEFORE the existsSync probe: an uncontained existsSync is
-        // itself a filesystem oracle, and this atom can attach
-        // shareAnyoneWithLink in the SAME call, so an arbitrary read is one hop
-        // from a public link (dimagi-internal/ace#1110 finding F2).
-        const safePath = assertPathAllowed(localFilePath, {
-          mode: 'read',
-          atom: 'drive_upload_binary',
-          arg: 'localFilePath',
-        });
-        if (!fs.existsSync(safePath)) {
+        if (!fs.existsSync(localFilePath)) {
           return error(`localFilePath not found: ${localFilePath}`);
         }
-        buf = fs.readFileSync(safePath);
+        buf = fs.readFileSync(localFilePath);
       } else if (contentBase64) {
         buf = Buffer.from(contentBase64, 'base64');
       } else {
@@ -1054,20 +1044,22 @@ export async function handleReadFileToDisk(
 }> {
   const { fileId, writeToPath } = args;
 
-  const safePath = assertPathAllowed(writeToPath, {
-    mode: 'write',
-    atom: 'drive_read_file',
-    arg: 'writeToPath',
-  });
+  if (!path.isAbsolute(writeToPath)) {
+    throw new Error(
+      `writeToPath_not_absolute: writeToPath must be an absolute path (got "${writeToPath}"). ` +
+        `This server's working directory is the plugin cache, not your project, so a relative ` +
+        `path would write somewhere unexpected.`,
+    );
+  }
 
   const file = await fetchDriveText(fileId, driveClient, opts);
-  fs.mkdirSync(path.dirname(safePath), { recursive: true });
-  fs.writeFileSync(safePath, file.content, 'utf8');
+  fs.mkdirSync(path.dirname(writeToPath), { recursive: true });
+  fs.writeFileSync(writeToPath, file.content, 'utf8');
 
   return {
     name: file.name,
     mimeType: file.mimeType,
-    path: safePath,
+    path: writeToPath,
     total_length: file.content.length,
     revisionVersion: file.revisionVersion,
   };
@@ -1183,17 +1175,19 @@ export async function handleDownloadBinaryToDisk(
 ): Promise<{ id: string; name: string; mimeType: string; size: number; path: string }> {
   const { fileId, writeToPath } = args;
 
-  const safePath = assertPathAllowed(writeToPath, {
-    mode: 'write',
-    atom: 'drive_download_binary',
-    arg: 'writeToPath',
-  });
+  if (!path.isAbsolute(writeToPath)) {
+    throw new Error(
+      `writeToPath_not_absolute: writeToPath must be an absolute path (got "${writeToPath}"). ` +
+        `This server's working directory is the plugin cache, not your project, so a relative ` +
+        `path would write somewhere unexpected.`,
+    );
+  }
 
   const { id, name, mimeType, buf } = await fetchDriveBinary(fileId, driveClient, opts);
-  fs.mkdirSync(path.dirname(safePath), { recursive: true });
-  fs.writeFileSync(safePath, buf);
+  fs.mkdirSync(path.dirname(writeToPath), { recursive: true });
+  fs.writeFileSync(writeToPath, buf);
 
-  return { id, name, mimeType, size: buf.length, path: safePath };
+  return { id, name, mimeType, size: buf.length, path: writeToPath };
 }
 
 /**

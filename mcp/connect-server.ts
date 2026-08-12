@@ -49,7 +49,6 @@ import {
 } from '../lib/commcare-cli-validate.js';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
-import { assertPathAllowed } from '../lib/path-containment.js';
 
 const baseUrl = process.env.CONNECT_BASE_URL ?? 'https://connect.dimagi.com';
 const cchqBaseUrl = process.env.ACE_HQ_BASE_URL ?? 'https://www.commcarehq.org';
@@ -984,14 +983,7 @@ server.tool('commcare_validate_ccz',
       let cczPath: string;
       let tmpDir: string | undefined;
       if (args.ccz_path) {
-        // Same class as #1110's read sinks: the CCZ is unzipped and its
-        // contents surfaced back to the caller, so an arbitrary path here is a
-        // read oracle.
-        cczPath = assertPathAllowed(args.ccz_path, {
-          mode: 'read',
-          atom: 'commcare_validate_ccz',
-          arg: 'ccz_path',
-        });
+        cczPath = args.ccz_path;
       } else {
         // Reaching here means a (multi-MB) base64 CCZ blob round-tripped
         // through the model context to get to this arg — the exact footgun
