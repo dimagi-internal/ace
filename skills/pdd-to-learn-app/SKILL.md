@@ -254,16 +254,25 @@ Generate the Learn (training) app from the PDD using the Nova plugin
        fix them. If a PDD example survives the gates, keeping it is fine
        — the point is that the decision is the builder's.
      - `discriminating-assessment-items` — any scored assessment. A
-       **two-gate** authoring procedure, not an adjective: Gate 1
-       behavioural plausibility (every distractor an action a competent,
-       decent worker might actually take — nothing rejectable on sight);
-       Gate 2 no structural giveaway (no self-justifying key, no
-       minimal-claim key, no odd-one-out on a binary split; options match
-       in CLAIM-STRENGTH, not just length). Virtue-inversion is a third,
-       weaker heuristic — helpful, insufficient alone. Matching option
-       length is NOT the lever (ace#981, ace#1014). The component's
-       **pre-release self-check** is mandatory and its per-item result
-       belongs in the build memo.
+       **three-step** authoring procedure, not an adjective, and the
+       steps are not equal: **Step 1 is the lever** — before writing any
+       option, name the taught RULE the item tests, the MODULE that
+       teaches it, and the OPERATION it protects (unpaid visit / blocked
+       form / corrupted data); no module named → discard the item, it is
+       testing general competence an untrained worker already has.
+       **Step 2** — bank independence, at most ~1 item per underlying
+       rule. **Step 3** — option hygiene (Gate 1 behavioural
+       plausibility, Gate 2 no structural giveaway), which is
+       **necessary but not sufficient** and cannot rescue a Step-1
+       failure. Matching option length is NOT the lever (ace#981,
+       ace#1014), and the eval scores a **contrast** (trained reader
+       minus untrained reader, both on the PDD's FLW persona), not any
+       reader's absolute cold score (ace#1187) — so do not author items
+       to be hard for a clever stranger. Do not pad: a padded item is a
+       free mark that lowers the gate's effective bar. The component's
+       **pre-release self-check** is mandatory and its per-item table
+       (rule, module, operation, independence, Gate-2 answers) belongs
+       in the build memo.
      - `instrument-grounded-examples` — the Learn app teaches
        administration of a fixed instrument. Every worked example and
        good/bad pair built from a REAL instrument item, preferring the
