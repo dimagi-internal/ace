@@ -113,7 +113,7 @@ Update the text content of an existing Google Doc in Drive. Use for updating PDD
 |-------|------|----------|-------------|
 | `fileId` | `z.string` | **required** | The Google Drive file ID |
 | `content` | `z.string` | **required** | The new text content to write |
-| `ifMatchRevisionId` | `z.string` | optional | Optional. The revisionVersion returned by the prior drive_read_file. If supplied and the file\'s current revisionVersion no longer matches, the update is rejected with a revision_conflict error instea… |
+| `ifMatchRevisionId` | `z.string` | optional | Optional. The revisionVersion returned by the prior drive_read_file. If supplied and the file's current revisionVersion no longer matches, the update is rejected with a revision_conflict error instead… |
 
 ### `update_yaml_file`
 
@@ -151,17 +151,17 @@ Create a new Google Doc by uploading markdown content and letting Drive natively
 
 ### `drive_copy_file`
 
-Copy an existing Google Drive file server-side into a parent folder, optionally with a new name. Wraps Drive\'s native files.copy(), so a Google Doc copy stays a Google Doc, a markdown copy stays markdown, etc. — preserves mimeType and content without ferrying bytes through the model. Use this instead of drive_read_file + drive_create_file whenever the goal is "copy file X to folder Y" — it saves …
+Copy an existing Google Drive file server-side into a parent folder, optionally with a new name. Wraps Drive's native files.copy(), so a Google Doc copy stays a Google Doc, a markdown copy stays markdown, etc. — preserves mimeType and content without ferrying bytes through the model. Use this instead of drive_read_file + drive_create_file whenever the goal is "copy file X to folder Y" — it saves a…
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `sourceFileId` | `z.string` | **required** | The Drive file ID to copy from |
 | `parentFolderId` | `z.string` | **required** | Required. Destination folder ID — MUST be a folder on a Shared Drive (the MCP verifies this before writing). |
-| `name` | `z.string` | optional | Optional name for the copy (defaults to the source file\'s name). |
+| `name` | `z.string` | optional | Optional name for the copy (defaults to the source file's name). |
 
 ### `drive_upload_binary`
 
-Upload a binary file (PNG, JPG, PDF, audio, video, etc.) to Google Drive inside the given parent folder. Accepts content via base64 string (contentBase64) OR a local file path (localFilePath) — use localFilePath for large files like videos to avoid passing megabytes through the context window. The MCP uses Drive\'s media-upload path with the supplied mime type, so the file lands as its native type…
+Upload a binary file (PNG, JPG, PDF, audio, video, etc.) to Google Drive inside the given parent folder. Accepts content via base64 string (contentBase64) OR a local file path (localFilePath) — use localFilePath for large files like videos to avoid passing megabytes through the context window. The MCP uses Drive's media-upload path with the supplied mime type, so the file lands as its native type …
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
@@ -170,7 +170,7 @@ Upload a binary file (PNG, JPG, PDF, audio, video, etc.) to Google Drive inside 
 | `localFilePath` | `z.string` | optional | Absolute path to a local file to upload. Reads directly from disk — avoids passing large binaries through the context window. Provide either this OR contentBase64, not both. |
 | `mimeType` | `z.string` | **required** | MIME type of the binary content. Common ACE values: "image/png", "image/jpeg", "application/pdf", "audio/mpeg", "video/mp4", "application/zip" (CCZ). |
 | `parentFolderId` | `z.string` | **required** | Required. Parent folder ID — MUST be a folder on a Shared Drive (the MCP verifies this before writing). |
-| `shareAnyoneWithLink` | `z.boolean` | optional | When true, after a successful upload set sharing to `role: reader, type: anyone` (anyone-with-link). Required for any PNG that downstream Slides `createImage` will fetch — Slides\' image-import servic… |
+| `shareAnyoneWithLink` | `z.boolean` | optional | When true, after a successful upload set sharing to `role: reader, type: anyone` (anyone-with-link). Required for any PNG that downstream Slides `createImage` will fetch — Slides' image-import service… |
 
 ### `drive_download_binary`
 
@@ -183,7 +183,7 @@ Download a binary or non-Google-Doc file from Google Drive. The companion atom t
 
 ### `drive_set_anyone_with_link`
 
-Grant `role: reader, type: anyone` (anyone-with-link) on an existing Drive file. Required for any PNG that downstream Slides `createImage` will fetch — Slides\' image-import service does NOT carry the SA\'s auth, so an SA-only file renders as a blank image in the deck. `drive_upload_binary` accepts a `shareAnyoneWithLink` flag that does this inline at upload time; use this atom when the file alrea…
+Grant `role: reader, type: anyone` (anyone-with-link) on an existing Drive file. Required for any PNG that downstream Slides `createImage` will fetch — Slides' image-import service does NOT carry the SA's auth, so an SA-only file renders as a blank image in the deck. `drive_upload_binary` accepts a `shareAnyoneWithLink` flag that does this inline at upload time; use this atom when the file already…
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
@@ -292,7 +292,7 @@ Copy a Google Doc template and optionally replace placeholder text. Smart chips 
 
 ### `docs_finalize_bullets`
 
-Finalize an ACE-template-rendered Google Doc by applying real Google Docs bullet styling to paragraphs enclosed in `<<<BULLETS_<NAME>_START>>>` / `<<<BULLETS_<NAME>_END>>>` anchor pairs, then deleting the two anchor paragraphs. Call AFTER `docs_copy_template` when the template wraps variable-length bulleted regions in anchor pairs (so the skill\'s cell-level token replacement can emit `\ `-separat…
+Finalize an ACE-template-rendered Google Doc by applying real Google Docs bullet styling to paragraphs enclosed in `<<<BULLETS_<NAME>_START>>>` / `<<<BULLETS_<NAME>_END>>>` anchor pairs, then deleting the two anchor paragraphs. Call AFTER `docs_copy_template` when the template wraps variable-length bulleted regions in anchor pairs (so the skill's cell-level token replacement can emit `\ `-separate…
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
@@ -346,7 +346,7 @@ Return the most-recent run-id for opp `<slug>` plus its run-folder ID. Lists `<o
 
 ### `generate_inputs_manifest`
 
-Generate a structured inputs manifest for an ACE opportunity's `inputs/` Drive folder. Lists every file in the folder, resolves shortcut targetIds (so a shortcut to a PDD doc surfaces the real target), and assigns each file a kebab-cased `input_key` (e.g. \"sample-pdd.docx\" → \"sample-pdd\") that downstream skills can key off. Returns `{folder_id, generated_at, files: [{file_id, name, mime_type, …
+Generate a structured inputs manifest for an ACE opportunity's `inputs/` Drive folder. Lists every file in the folder, resolves shortcut targetIds (so a shortcut to a PDD doc surfaces the real target), and assigns each file a kebab-cased `input_key` (e.g. "sample-pdd.docx" → "sample-pdd") that downstream skills can key off. Returns `{folder_id, generated_at, files: [{file_id, name, mime_type, inpu…
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
@@ -510,7 +510,7 @@ Set per-opportunity verification config via the `/opportunity/<id>/verification_
 
 ### `connect_list_deliver_units`
 
-List deliver units for an opportunity. Each entry has `id` (per-opp display index 1/2/3…), `name`, `slug`, plus `server_id` — the server-side primary key suitable for `connect_create_payment_unit.required_deliver_units` / `optional_deliver_units`. `server_id` is populated by reading the create-payment-unit form\'s checkbox values; absent only on the rare degraded path where that secondary fetch fa…
+List deliver units for an opportunity. Each entry has `id` (per-opp display index 1/2/3…), `name`, `slug`, plus `server_id` — the server-side primary key suitable for `connect_create_payment_unit.required_deliver_units` / `optional_deliver_units`. `server_id` is populated by reading the create-payment-unit form's checkbox values; absent only on the rare degraded path where that secondary fetch fai…
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
@@ -546,7 +546,7 @@ List deliver units for an opportunity. Each entry has `id` (per-opp display inde
 
 ### `connect_list_payment_units`
 
-List payment units on an opportunity. **HTML-scraped read-back has known unreliable fields:** `amount` returns undefined (the table doesn\'t render it); `max_total` and `max_daily` are mislabeled / swapped on some pages (verified live on `malaria-itn-fgd/20260514-2352` Phase 4); `required_deliver_units` returns `[]` regardless of actual config. **Use `createPaymentUnit`\'s response object for roun…
+List payment units on an opportunity. **HTML-scraped read-back has known unreliable fields:** `amount` returns undefined (the table doesn't render it); `max_total` and `max_daily` are mislabeled / swapped on some pages (verified live on `malaria-itn-fgd/20260514-2352` Phase 4); `required_deliver_units` returns `[]` regardless of actual config. **Use `createPaymentUnit`'s response object for round-…
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
@@ -593,7 +593,7 @@ List payment units on an opportunity. **HTML-scraped read-back has known unrelia
 
 ### `connect_list_flw_invites`
 
-Read an opportunity\'s workers table and report, per phone, whether Connect actually has an FLW invite for that worker — the read-back that turns a "queued" send response into evidence (dimagi-internal/ace#824 / #855). WHY: `connect_send_flw_invite` returns `{status:"queued", invited_count:N}` even when Connect ends up with no invite for the phone, and Phase 6 then burns a full AVD session hunting…
+Read an opportunity's workers table and report, per phone, whether Connect actually has an FLW invite for that worker — the read-back that turns a "queued" send response into evidence (dimagi-internal/ace#824 / #855). WHY: `connect_send_flw_invite` returns `{status:"queued", invited_count:N}` even when Connect ends up with no invite for the phone, and Phase 6 then burns a full AVD session hunting …
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
@@ -637,7 +637,7 @@ Invite a human user to a Connect workspace (organization) by email. POSTs the HT
 
 ### `connect_get_learn_progress`
 
-Read each accepted worker\'s AUTHORITATIVE Learn progression from Connect\'s WorkerLearnView (GET /a/<domain>/opportunity/<opportunity_id>/workers/learn/, htmx fragment; session-cookie authed, read-only). This is the "close the loop to the source of truth" check for Phase 6: Deliver unlocks ONLY when Learn reaches 100% of modules (Connect\'s OpportunityAccess.learn_progress == 100 / completed_lear…
+Read each accepted worker's AUTHORITATIVE Learn progression from Connect's WorkerLearnView (GET /a/<domain>/opportunity/<opportunity_id>/workers/learn/, htmx fragment; session-cookie authed, read-only). This is the "close the loop to the source of truth" check for Phase 6: Deliver unlocks ONLY when Learn reaches 100% of modules (Connect's OpportunityAccess.learn_progress == 100 / completed_learn_d…
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
@@ -646,7 +646,7 @@ Read each accepted worker\'s AUTHORITATIVE Learn progression from Connect\'s Wor
 
 ### `connect_get_deliver_progress`
 
-Read each accepted worker\'s AUTHORITATIVE DELIVERY progression from Connect\'s WorkerDeliverView (GET /a/<domain>/opportunity/<opportunity_id>/workers/deliver/, htmx fragment; session-cookie authed, read-only). The Deliver counterpart to connect_get_learn_progress, and the server-side read dimagi-internal/ace#1066 is about: Phase 6\'s Deliver smoke can return pass while the visit sits UNSENT in t…
+Read each accepted worker's AUTHORITATIVE DELIVERY progression from Connect's WorkerDeliverView (GET /a/<domain>/opportunity/<opportunity_id>/workers/deliver/, htmx fragment; session-cookie authed, read-only). The Deliver counterpart to connect_get_learn_progress, and the server-side read dimagi-internal/ace#1066 is about: Phase 6's Deliver smoke can return pass while the visit sits UNSENT in the …
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
@@ -655,7 +655,7 @@ Read each accepted worker\'s AUTHORITATIVE DELIVERY progression from Connect\'s 
 
 ### `commcare_list_apps`
 
-List CommCare HQ applications in a domain. Hits the REST API at GET /a/<domain>/api/v0.4/application/ (domain-scoped — the unscoped /api/v0.4/application/?domain= form returns 404 from Django routing) using the existing PlaywrightSession cookie jar (allow_session_auth=True on CCHQ\'s TaskPie resource — no separate API key needed). Returns id, name, and doc_type per app. Soft-deleted apps (doc_type…
+List CommCare HQ applications in a domain. Hits the REST API at GET /a/<domain>/api/v0.4/application/ (domain-scoped — the unscoped /api/v0.4/application/?domain= form returns 404 from Django routing) using the existing PlaywrightSession cookie jar (allow_session_auth=True on CCHQ's TaskPie resource — no separate API key needed). Returns id, name, and doc_type per app. Soft-deleted apps (doc_type …
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
@@ -664,7 +664,7 @@ List CommCare HQ applications in a domain. Hits the REST API at GET /a/<domain>/
 
 ### `commcare_delete_app`
 
-Soft-delete a CommCare HQ application. POST /a/<domain>/apps/delete_app/<app_id>/ via the web view (no REST equivalent — the view soft-deletes by mutating doc_type to `<original>-Deleted` and creates a DeleteApplicationRecord for restore). Restore is possible via HQ admin UI\'s "deleted applications" list. Routes through the existing PlaywrightSession (session cookies + CSRF from cookie jar; API k…
+Soft-delete a CommCare HQ application. POST /a/<domain>/apps/delete_app/<app_id>/ via the web view (no REST equivalent — the view soft-deletes by mutating doc_type to `<original>-Deleted` and creates a DeleteApplicationRecord for restore). Restore is possible via HQ admin UI's "deleted applications" list. Routes through the existing PlaywrightSession (session cookies + CSRF from cookie jar; API ke…
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
@@ -674,7 +674,7 @@ Soft-delete a CommCare HQ application. POST /a/<domain>/apps/delete_app/<app_id>
 
 ### `commcare_create_domain`
 
-Create a new CommCare HQ project space (domain). POST /register/domain/ via the DomainRegistrationForm CSRF-protected web view (no REST equivalent — corehq/apps/registration/views.py:RegisterDomainView). For an existing (non-new) user — which ACE\'s ace@dimagi-ai.com always is — success is a 302 to /a/<slug>/dashboard/; the returned `domain` is the slug HQ derived from `hr_name`. `hr_name` is capp…
+Create a new CommCare HQ project space (domain). POST /register/domain/ via the DomainRegistrationForm CSRF-protected web view (no REST equivalent — corehq/apps/registration/views.py:RegisterDomainView). For an existing (non-new) user — which ACE's ace@dimagi-ai.com always is — success is a 302 to /a/<slug>/dashboard/; the returned `domain` is the slug HQ derived from `hr_name`. `hr_name` is cappe…
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
@@ -694,7 +694,7 @@ Fetch a CommCare HQ lookup table by tag (name). GET /a/<domain>/api/v0.5/lookup_
 
 ### `commcare_create_lookup_table`
 
-Create a new CommCare HQ lookup table. POST /a/<domain>/api/v0.5/lookup_table/ via Tastypie. Body: {tag, is_global, fields: [{field_name, properties}], item_attributes}. Returns the new table\'s UUID hex id. Rejects with 400 if a table with the same tag already exists in the domain.
+Create a new CommCare HQ lookup table. POST /a/<domain>/api/v0.5/lookup_table/ via Tastypie. Body: {tag, is_global, fields: [{field_name, properties}], item_attributes}. Returns the new table's UUID hex id. Rejects with 400 if a table with the same tag already exists in the domain.
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
@@ -708,7 +708,7 @@ Create a new CommCare HQ lookup table. POST /a/<domain>/api/v0.5/lookup_table/ v
 
 ### `commcare_list_user_fields`
 
-Read the current custom-user-data field definition for a CommCare HQ domain. GET /a/<domain>/users/user_data/ and parse the <div data-name="custom_fields"> initial_page_data div (HQ\'s standard Django→JS bootstrap). Returns the list of fields (slug, label, is_required, choices, regex) + the list of profiles. Requires can_edit_commcare_users permission; 302s to settings/users/ surface as a typed er…
+Read the current custom-user-data field definition for a CommCare HQ domain. GET /a/<domain>/users/user_data/ and parse the <div data-name="custom_fields"> initial_page_data div (HQ's standard Django→JS bootstrap). Returns the list of fields (slug, label, is_required, choices, regex) + the list of profiles. Requires can_edit_commcare_users permission; 302s to settings/users/ surface as a typed err…
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
@@ -717,7 +717,7 @@ Read the current custom-user-data field definition for a CommCare HQ domain. GET
 
 ### `commcare_set_user_fields`
 
-Write the full custom-user-data field definition for a domain (DESTRUCTIVE — replaces existing). POST CustomDataFieldsForm to /a/<domain>/users/user_data/ with `data_fields` JSON-encoded. Direct form POST bypasses the React/Knockout UI (verified against apps/custom_data_fields/edit_model.py:491). Callers SHOULD list_user_fields first, merge their additions, then call this. The atom doesn\'t do the…
+Write the full custom-user-data field definition for a domain (DESTRUCTIVE — replaces existing). POST CustomDataFieldsForm to /a/<domain>/users/user_data/ with `data_fields` JSON-encoded. Direct form POST bypasses the React/Knockout UI (verified against apps/custom_data_fields/edit_model.py:491). Callers SHOULD list_user_fields first, merge their additions, then call this. The atom doesn't do the …
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
@@ -759,7 +759,7 @@ Create a named UCR expression or filter on a domain. POST the UCRExpressionForm 
 
 ### `commcare_list_inbound_apis`
 
-List Inbound API configurations on a CommCare HQ domain. POST /a/<domain>/motech/inbound/ with action=paginate. Returns each API\'s id, name, description, api_url, edit_url. Pro Edition / DATA_FORWARDING required.
+List Inbound API configurations on a CommCare HQ domain. POST /a/<domain>/motech/inbound/ with action=paginate. Returns each API's id, name, description, api_url, edit_url. Pro Edition / DATA_FORWARDING required.
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
@@ -769,7 +769,7 @@ List Inbound API configurations on a CommCare HQ domain. POST /a/<domain>/motech
 
 ### `commcare_create_inbound_api`
 
-Create an Inbound API configuration. POST the ConfigurableAPICreateForm to /a/<domain>/motech/inbound/ via CRUDPaginatedViewMixin\'s action=create. Requires filter_expression_id (UCR FK) and optionally transform_expression_id — these UCR expressions must exist on the domain first (typically pushed via linked_domain in the Connect Interviews flow). Returns new id and name. The Connect Interviews "S…
+Create an Inbound API configuration. POST the ConfigurableAPICreateForm to /a/<domain>/motech/inbound/ via CRUDPaginatedViewMixin's action=create. Requires filter_expression_id (UCR FK) and optionally transform_expression_id — these UCR expressions must exist on the domain first (typically pushed via linked_domain in the Connect Interviews flow). Returns new id and name. The Connect Interviews "Se…
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
@@ -800,7 +800,7 @@ Create a Data-Forwarding Repeater on a CommCare HQ domain. POST the GenericRepea
 
 ### `commcare_list_connections`
 
-List Connection settings (motech outbound connections) on a CommCare HQ domain. POST /a/<domain>/motech/conn/ with action=paginate via the CRUDPaginatedView. Returns each connection\'s id, name, url, notify_addresses, used_by. Gated by privileges.DATA_FORWARDING (Pro Edition) — 404s without it. Used by verifier to confirm "Connect Interviews" and "OCS Interviews Bot" connections exist.
+List Connection settings (motech outbound connections) on a CommCare HQ domain. POST /a/<domain>/motech/conn/ with action=paginate via the CRUDPaginatedView. Returns each connection's id, name, url, notify_addresses, used_by. Gated by privileges.DATA_FORWARDING (Pro Edition) — 404s without it. Used by verifier to confirm "Connect Interviews" and "OCS Interviews Bot" connections exist.
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
@@ -826,11 +826,11 @@ Create a Connection (motech outbound connection settings). POST the ConnectionSe
 | `token_url` | `z.string` | optional | _—_ |
 | `notify_addresses_str` | `z.string` | optional | Comma-separated emails for failure notifications. |
 | `skip_cert_verify` | `z.boolean` | optional | _—_ |
-| `plaintext_custom_headers` | `z.string` | optional | JSON string of custom headers (e.g. \'{"Authorization": "Token xyz"}\'). |
+| `plaintext_custom_headers` | `z.string` | optional | JSON string of custom headers (e.g. '{"Authorization": "Token xyz"}'). |
 
 ### `commcare_get_case`
 
-Fetch a single CommCare HQ case by case_id. GET /a/<domain>/api/v0.5/case/<id>/?format=json via Tastypie (API-key auth — CaseResource sets RequirePermissionAuthentication(edit_data) without allow_session_auth). Returns the case\'s dynamic property bag (commcare-user case has session_completion / last_bot_interaction_date / interaction_validation written by OCS-to-HQ custom action). 404 surfaces as…
+Fetch a single CommCare HQ case by case_id. GET /a/<domain>/api/v0.5/case/<id>/?format=json via Tastypie (API-key auth — CaseResource sets RequirePermissionAuthentication(edit_data) without allow_session_auth). Returns the case's dynamic property bag (commcare-user case has session_completion / last_bot_interaction_date / interaction_validation written by OCS-to-HQ custom action). 404 surfaces as …
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
@@ -840,7 +840,7 @@ Fetch a single CommCare HQ case by case_id. GET /a/<domain>/api/v0.5/case/<id>/?
 
 ### `commcare_list_users`
 
-List mobile workers (CommCareUser) in a CommCare HQ domain. GET /a/<domain>/api/v0.5/user/ via Tastypie (API key auth). Supports standard Tastypie pagination (limit/offset) and group filter. Returns each user\'s id, username, basic profile, and the full user_data dict (including custom fields like cohort_id). Used by verifier to confirm cohort_id is set on the right FLWs.
+List mobile workers (CommCareUser) in a CommCare HQ domain. GET /a/<domain>/api/v0.5/user/ via Tastypie (API key auth). Supports standard Tastypie pagination (limit/offset) and group filter. Returns each user's id, username, basic profile, and the full user_data dict (including custom fields like cohort_id). Used by verifier to confirm cohort_id is set on the right FLWs.
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
@@ -874,7 +874,7 @@ Set a single custom-user-data field on a mobile worker. Implemented as GET → m
 
 ### `commcare_get_lookup_table_rows`
 
-Get rows of a CommCare HQ lookup table. GET /a/<domain>/api/v0.5/lookup_table_item/ via Tastypie (API key auth). Tastypie returns ALL rows in the domain (no querystring filter); this atom client-side filters by data_type_id resolved from the supplied tag or UUID. Returns each row\'s fields as a flat map (column → first field_value).
+Get rows of a CommCare HQ lookup table. GET /a/<domain>/api/v0.5/lookup_table_item/ via Tastypie (API key auth). Tastypie returns ALL rows in the domain (no querystring filter); this atom client-side filters by data_type_id resolved from the supplied tag or UUID. Returns each row's fields as a flat map (column → first field_value).
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
@@ -884,7 +884,7 @@ Get rows of a CommCare HQ lookup table. GET /a/<domain>/api/v0.5/lookup_table_it
 
 ### `commcare_lookup_table_append_rows`
 
-Append rows to a CommCare HQ lookup table. POST /a/<domain>/api/v0.5/lookup_table_item/ once per row (Tastypie doesn\'t support list POST for this resource). Each row is a flat field_name→string-value map; HQ wraps it into its field_list shape internally. Used by the cohort-create skill to populate interview_schedule rows for a new cohort.
+Append rows to a CommCare HQ lookup table. POST /a/<domain>/api/v0.5/lookup_table_item/ once per row (Tastypie doesn't support list POST for this resource). Each row is a flat field_name→string-value map; HQ wraps it into its field_list shape internally. Used by the cohort-create skill to populate interview_schedule rows for a new cohort.
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
@@ -1023,7 +1023,7 @@ Clone an OCS chatbot from a template. Returns the new experiment_id, public_id, 
 
 ### `ocs_create_chatbot`
 
-Create a brand-new OCS chatbot from scratch (not by cloning). POST /a/<team>/chatbots/new/ via the CSRF-protected ChatbotForm (apps/chatbots/views.py:CreateChatbot, apps/chatbots/forms.py:ChatbotForm — fields: name + optional description). On success, OCS auto-creates a default Pipeline with the team\'s first LLM provider and 302-redirects to /edit/. Returns { experiment_id, pipeline_id }. Does NO…
+Create a brand-new OCS chatbot from scratch (not by cloning). POST /a/<team>/chatbots/new/ via the CSRF-protected ChatbotForm (apps/chatbots/views.py:CreateChatbot, apps/chatbots/forms.py:ChatbotForm — fields: name + optional description). On success, OCS auto-creates a default Pipeline with the team's first LLM provider and 302-redirects to /edit/. Returns { experiment_id, pipeline_id }. Does NOT…
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
@@ -1032,24 +1032,24 @@ Create a brand-new OCS chatbot from scratch (not by cloning). POST /a/<team>/cha
 
 ### `ocs_link_action_to_node`
 
-Link a Custom Action operation to a pipeline node. GET/POST /a/<team>/pipelines/data/<pipeline_id>/ — appends "<custom_action_id>:<operation_id>" to the target node\'s data.params.custom_actions array. String format verified against apps/custom_actions/form_utils.py:make_model_id. Idempotent: skips if the model_id is already present. Typically the target node is an LLMResponseWithPrompt.
+Link a Custom Action operation to a pipeline node. GET/POST /a/<team>/pipelines/data/<pipeline_id>/ — appends "<custom_action_id>:<operation_id>" to the target node's data.params.custom_actions array. String format verified against apps/custom_actions/form_utils.py:make_model_id. Idempotent: skips if the model_id is already present. Typically the target node is an LLMResponseWithPrompt.
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `pipeline_id` | `z.number` | **required** | _—_ |
 | `node_id` | `z.string` | **required** | _—_ |
 | `custom_action_id` | `z.number` | **required** | From `ocs_add_custom_action`. |
-| `operation_id` | `z.string` | **required** | The operationId within the custom action\'s api_schema (e.g. "postSessionCompletion"). |
+| `operation_id` | `z.string` | **required** | The operationId within the custom action's api_schema (e.g. "postSessionCompletion"). |
 
 ### `ocs_add_custom_action`
 
-Create an OCS Custom Action (an OpenAPI-driven external tool the LLM can call). POST /a/<team>/actions/new/ via the CSRF-protected CustomActionForm (apps/custom_actions/forms.py + views.py:CreateCustomAction). The api_schema field takes an OpenAPI 3.x schema as a JSON or YAML string — operationIds within the schema become the action\'s allowed_operations. Returns action_id, found by scraping /a/<t…
+Create an OCS Custom Action (an OpenAPI-driven external tool the LLM can call). POST /a/<team>/actions/new/ via the CSRF-protected CustomActionForm (apps/custom_actions/forms.py + views.py:CreateCustomAction). The api_schema field takes an OpenAPI 3.x schema as a JSON or YAML string — operationIds within the schema become the action's allowed_operations. Returns action_id, found by scraping /a/<te…
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `name` | `z.string` | **required** | _—_ |
 | `server_url` | `z.string` | **required** | Base URL of the target API (e.g. https://www.commcarehq.org). |
-| `api_schema` | `z.string` | **required** | OpenAPI 3.x schema as JSON or YAML string. operationIds become the action\'s allowed_operations. |
+| `api_schema` | `z.string` | **required** | OpenAPI 3.x schema as JSON or YAML string. operationIds become the action's allowed_operations. |
 | `description` | `z.string` | optional | _—_ |
 | `prompt` | `z.string` | optional | Additional instructions to the LLM about how to use this action. |
 | `healthcheck_path` | `z.string` | optional | Optional health endpoint path; auto-detected from schema if omitted. |
@@ -1069,7 +1069,7 @@ Attach a timeout-trigger event to a chatbot. POST /a/<team>/chatbots/<experiment
 
 ### `ocs_add_pipeline_node`
 
-Add a node to a chatbot\'s pipeline graph. GET-mutate-POST the pipeline JSON at /a/<team>/pipelines/data/<pipeline_id>/ — same shape as the existing LLM-patch atoms. Supports splice-into-existing-edge: pass `disconnect_edge: {source:A, target:B}` + `connect_from: A` + `connect_to: B` to turn A→B into A→new→B (the typical pattern for inserting Router or Python nodes between Start and the default LL…
+Add a node to a chatbot's pipeline graph. GET-mutate-POST the pipeline JSON at /a/<team>/pipelines/data/<pipeline_id>/ — same shape as the existing LLM-patch atoms. Supports splice-into-existing-edge: pass `disconnect_edge: {source:A, target:B}` + `connect_from: A` + `connect_to: B` to turn A→B into A→new→B (the typical pattern for inserting Router or Python nodes between Start and the default LLM…
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
@@ -1248,7 +1248,7 @@ Retrieve a single chatbot by its public UUID (from ocs_list_chatbots). Returns b
 
 ### `ocs_inspect_chatbot`
 
-Return the chatbot\'s FULL denormalized config in one read-only call via OCS v2 `/api/v2/chatbots/{id}/inspect/?version=`: settings, channels, the pipeline graph + per-node inlined resources (LLM, source material, custom actions, indexed/media collections, assistant, voice), AND experiment-level `events.static_triggers` + `events.timeout_triggers` (the latter exposes the 24-hr inactivity heartbeat…
+Return the chatbot's FULL denormalized config in one read-only call via OCS v2 `/api/v2/chatbots/{id}/inspect/?version=`: settings, channels, the pipeline graph + per-node inlined resources (LLM, source material, custom actions, indexed/media collections, assistant, voice), AND experiment-level `events.static_triggers` + `events.timeout_triggers` (the latter exposes the 24-hr inactivity heartbeat …
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
@@ -1349,7 +1349,7 @@ Create or update participant data across one or more experiments.
 
 ### `ocs_download_file`
 
-Download a file from OCS by file ID. Two delivery modes: - `writeToPath` (STRONGLY preferred): writes the bytes to that absolute local path and returns `{filename, mime_type, size, path}` with NO base64 — costs zero context regardless of file size. Pair it with `ocs_upload_collection_files`\' `file_path` to move a file inside OCS without the bytes ever entering model context. Mirrors `drive_downlo…
+Download a file from OCS by file ID. Two delivery modes: - `writeToPath` (STRONGLY preferred): writes the bytes to that absolute local path and returns `{filename, mime_type, size, path}` with NO base64 — costs zero context regardless of file size. Pair it with `ocs_upload_collection_files`' `file_path` to move a file inside OCS without the bytes ever entering model context. Mirrors `drive_downloa…
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
@@ -1358,7 +1358,7 @@ Download a file from OCS by file ID. Two delivery modes: - `writeToPath` (STRONG
 
 ### `ocs_get_me`
 
-Cheap "is my OCS API key live + which team is it scoped to" probe via OCS v2 `/api/v2/me/` (PR #3648). Returns `{ username, email, email_verified?, team: { name, slug }, ... }` for the user the configured API key belongs to. Pair with /ace:doctor and call this BEFORE attempting `ocs_inspect_chatbot` on a new machine — if `team.slug` doesn\'t match the team that owns the chatbot you\'re trying to i…
+Cheap "is my OCS API key live + which team is it scoped to" probe via OCS v2 `/api/v2/me/` (PR #3648). Returns `{ username, email, email_verified?, team: { name, slug }, ... }` for the user the configured API key belongs to. Pair with /ace:doctor and call this BEFORE attempting `ocs_inspect_chatbot` on a new machine — if `team.slug` doesn't match the team that owns the chatbot you're trying to ins…
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
@@ -1366,7 +1366,7 @@ Cheap "is my OCS API key live + which team is it scoped to" probe via OCS v2 `/a
 
 ### `ocs_add_team_member`
 
-Add a person to the OCS team so a linked chatbot page actually opens for them (dimagi-internal/ace#906). Invites via the team invite form, OR — because membership is not access — additively reconciles an EXISTING accepted member\'s groups through the membership page (never removes groups; MembershipForm REPLACES the m2m set so the POST is always the union). Default group is "Chatbot Admin" (the le…
+Add a person to the OCS team so a linked chatbot page actually opens for them (dimagi-internal/ace#906). Invites via the team invite form, OR — because membership is not access — additively reconciles an EXISTING accepted member's groups through the membership page (never removes groups; MembershipForm REPLACES the m2m set so the POST is always the union). Default group is "Chatbot Admin" (the lea…
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
@@ -1446,7 +1446,7 @@ _no parameters_
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `yaml` | `z.string` | **required** | Maestro YAML body to validate. Standard ACE-recipe shape: appId frontmatter + \`---\` separator + step list. Validates step-key allowlist (${[...ALLOWED_STEP_KEYS].join(', ')}) and structural integrit… |
+| `yaml` | `z.string` | **required** | Maestro YAML body to validate. Standard ACE-recipe shape: appId frontmatter + `---` separator + step list. Validates step-key allowlist (${[...ALLOWED_STEP_KEYS].join(', ')}) and structural integrity … |
 
 ### `mobile_resolve_selectors`
 
@@ -1510,11 +1510,11 @@ Source: `mcp/decisions-server.ts` — 1 atoms
 
 ### `decisions_append_rows`
 
-Append validated load-bearing default rows to a run\'s decisions.yaml. The MCP transport enforces `lib/decisions-schema.ts` v4 on every row, so malformed writes (wrong field names, missing required fields, non-ordinal phase tags) are rejected at the call boundary — they never reach Drive. The tool seeds a fresh v4-compliant log header when decisions.yaml doesn\'t exist yet (and keeps appending to …
+Append validated load-bearing default rows to a run's decisions.yaml. The MCP transport enforces `lib/decisions-schema.ts` v4 on every row, so malformed writes (wrong field names, missing required fields, non-ordinal phase tags) are rejected at the call boundary — they never reach Drive. The tool seeds a fresh v4-compliant log header when decisions.yaml doesn't exist yet (and keeps appending to pr…
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `runFolderId` | `z.string` | **required** | Drive file ID of the run folder (e.g. resolved via resolve_opp_path → runs/<run-id>). decisions.yaml lives at the root of this folder. |
-| `opportunity` | `z.string` | **required** | Opportunity slug (e.g. `bednet-spot-check`). Must match an existing log\'s `opportunity` if one is already in place. |
-| `run_id` | `z.string` | **required** | Run id (e.g. `20260525-2013`). Must match an existing log\'s `run_id` if one is already in place. |
-| `rows` | `z.array` | **required** | Array of validated decision rows to append. Each row\'s `ai-default` (and `override` if set) MUST be one of the strings in its `options` array, exact-match — put rationale in `reasoning`, never in `ai… |
+| `opportunity` | `z.string` | **required** | Opportunity slug (e.g. `bednet-spot-check`). Must match an existing log's `opportunity` if one is already in place. |
+| `run_id` | `z.string` | **required** | Run id (e.g. `20260525-2013`). Must match an existing log's `run_id` if one is already in place. |
+| `rows` | `z.array` | **required** | Array of validated decision rows to append. Each row's `ai-default` (and `override` if set) MUST be one of the strings in its `options` array, exact-match — put rationale in `reasoning`, never in `ai-… |

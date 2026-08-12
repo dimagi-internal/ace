@@ -180,6 +180,22 @@ function findToolCall(
 }
 
 /**
+ * Un-escape the source-level escapes inside a captured string literal.
+ *
+ * The extractors capture the RAW source text between the quotes, so a JS
+ * string written `'drive\'s'` or a template literal written with \` yields a
+ * catalog cell containing the backslash. 55 cells across the catalog read as
+ * typos because of it — in the very doc CLAUDE.md tells skills to grep INSTEAD
+ * of paraphrasing atom signatures, where a mangled quote undermines the point.
+ *
+ * `\n` is handled by the caller (collapsed to a space along with other
+ * whitespace) before this runs.
+ */
+function unescapeStringLiteral(text: string): string {
+  return text.replace(/\\(['"`\\])/g, '$1');
+}
+
+/**
  * Extract the leading atom name from the args text (first quoted string).
  */
 function extractAtomName(args: string): string | null {
@@ -222,7 +238,7 @@ function extractDescription(args: string): string {
   descLex.lastIndex = i;
   const m = descLex.exec(args);
   if (!m || m.index !== i) return '';
-  return m[2].replace(/\\n/g, ' ').replace(/\s+/g, ' ').trim();
+  return unescapeStringLiteral(m[2].replace(/\\n/g, ' ').replace(/\s+/g, ' ').trim());
 }
 
 /**
@@ -326,7 +342,7 @@ function extractFields(args: string): AtomField[] {
       /\.describe\s*\(\s*(['"`])((?:\\.|(?!\1)[\s\S])*?)\1\s*,?\s*\)/,
     );
     const description = descMatch
-      ? descMatch[2].replace(/\\n/g, ' ').replace(/\s+/g, ' ').trim()
+      ? unescapeStringLiteral(descMatch[2].replace(/\\n/g, ' ').replace(/\s+/g, ' ').trim())
       : '';
     out.push({ name, typeHint, optional, description });
   }
