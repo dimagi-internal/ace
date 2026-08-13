@@ -85,6 +85,63 @@ authored from the PDD per run):
 
 ---
 
+## Known-unbuildable mechanisms
+
+**Read this before specifying any enforcement or verification mechanism**
+(`idea-to-pdd § Step 4a`), and before building one.
+
+Each row is a mechanism ACE has specified, shipped downstream, and only then
+discovered cannot be built. The cost is never just a missing feature: the
+PDD's sentence flows verbatim into the **Work Order** and the **training
+materials**, so a control that cannot fire still reads as real in a
+contractual document and in what the LLO is taught. Three instances have
+now shipped that way (ace#995, ace#1006, ace#1121).
+
+This list exists because the knowledge kept living as prose inside whichever
+component happened to be adjacent — discoverable only by someone who already
+knew to look. Phase 1 needs something it can *check against*.
+
+| Mechanism | Why it is closed | Sanctioned alternative | Origin |
+|---|---|---|---|
+| **A hard GPS accuracy / location-radius gate** — the app or Connect refuses a fix worse than a stated tolerance | Closed on **both** enforcement surfaces: Nova rejects `validate` on `kind: geopoint` (#695/#699); the adjacent-question workaround is closed by #723 (FLW UX) and PR #988's constraint-locality parser; and Connect's verification-flags form no longer renders `gps` / `gps_radius_meters` (#1013 — posted as unrecognized keys, returns `ok: true`, never persisted on any run) | **Observability, stated honestly.** Tolerance in the question hint, `gps_accuracy_m` submitted every visit, a whole-range on-screen advisory, normalized lat/lon, down-weighting in dedup. See [`gps-accuracy-capture`](#gps-accuracy-capture) | ace#1006, ace#1013 |
+| **An elapsed-time floor or cap derived from bare `now()` calculates** — "the form cannot be submitted in under N minutes" | JavaRosa evaluates a calculate at form-init and thereafter **only when a node it references changes**. A bare `now()` references no node, so every bare `now()` in a form resolves to form-init time and any duration between two of them is permanently 0 — the threshold is structurally unable to fire | **Conditional — the mechanism IS buildable, the bare-`now()` implementation is not.** Chain each timestamp to the previous part's last answer: `<part>_start = if(<last answer of previous part> = '', '', now())`. See [`section-timestamps`](#section-timestamps) | ace#995 |
+| **A randomized / per-attempt item draw from an assessment bank** — "12 items served per attempt, drawn from a bank of 30, fresh draw each retake" | Two independent closures. (a) No per-attempt item-selection primitive is exposed on **Nova's authoring surface** — assessment items are authored as fixed fields on a form. (b) Decisively and independently of Nova: **Connect scores against a single absolute `passing_score` per `CommCareApp`** (`opportunity/models.py`, set once via `learn_app_passing_score`; `process_assessments` sets `passed = score >= app.passing_score`), so a variable-membership draw makes `user_score` incommensurable with the gate — 8-of-12 and 8-of-10 both submit as `8` | **One fixed bank sized for the gate**, plus a distinct pre-test bank where a baseline is wanted (see [`assessment-gate`](#assessment-gate)). If retake-resistance is a genuine requirement, raise it as an **open question** — do not assert rotation | ace#1121, ace#1213 |
+
+**Evidence discipline for row (a) above.** "Not exposed on Nova's authoring
+surface" is a statement about **ACE's builder**, not a proof about what
+XForms can express. Do not restate it as "CommCare cannot randomize" — that
+is the unverified-assertion habit this whole list exists to break. The
+durable half of that row is the Connect scoring constraint (b), which holds
+whatever the form layer can do.
+
+**How Phase 1 uses this.** `idea-to-pdd` checks every enforcement or
+verification mechanism it is about to specify against this table. A listed
+mechanism **must not be asserted as enforced**. Where the design intent is
+still wanted, the PDD states the **buildable approximation and names the
+residual** — the shape `gps-accuracy-capture` already models ("observability,
+stated honestly — not enforcement") — or raises an open question.
+`idea-to-pdd-eval` treats a listed mechanism asserted as enforced as a
+finding.
+
+**How to add a row.** Only when the closure is **verified at the surface**,
+not inferred from one failed build attempt — name each enforcement surface
+and how it is closed (a rejected call, a source citation, a field that no
+longer renders). A mechanism that merely proved awkward once does not belong
+here; put that in the relevant component. Rows are cheap to read and
+expensive to get wrong, so an unverified row is worse than no row.
+
+**Related but NOT Phase-1 assertable** (build-surface constraints the PDD
+never speaks to — listed so this reference is complete, detail in their own
+components): per-language **itext / locale channels** are absent from every
+Nova tool, so translations are authored inline
+([`localization-layer`](#localization-layer), ace#968); and any capability
+requiring a **CommCare HQ feature flag** other than `commcare_connect` is
+out of scope, several being `TAG_FROZEN` upstream
+([`connect-supported-capabilities-only`](#connect-supported-capabilities-only),
+ace#1195).
+
+---
+
 ## Components
 
 ### gps-accuracy-capture
@@ -1229,6 +1286,7 @@ the effective bar. One repair round, then re-grade.
 
 | Date | Change | By |
 |---|---|---|
+| 2026-08-13 | **New reference section: `Known-unbuildable mechanisms` (ace#1213).** Three mechanisms have now been specified by Phase 1, shipped into the PDD, the Work Order AND the Phase-6 training materials, and only then found to be unbuildable — a hard GPS accuracy gate (ace#1006), an elapsed-time floor derived from bare `now()` (ace#995), and a randomized per-attempt assessment item draw (ace#1121). Each was already documented, but as **prose inside whichever component happened to be adjacent**, discoverable only by someone who already knew to look; Phase 1 had nothing enumerable to check a specified mechanism against. The new section is that list: per row, the mechanism, WHY it is closed (naming each enforcement surface and how), the sanctioned alternative, and the origin issue. `idea-to-pdd § Step 4a` now checks every enforcement/verification mechanism against it before specifying one, and `idea-to-pdd-eval § feasibility_headline_metrics` treats a listed mechanism asserted as enforced as a 2-point deduction + `[BLOCKER]`, hard-gating at >=2. Two deliberate design choices: (1) an **evidence-discipline caveat** — 'no per-attempt item draw is exposed on Nova's authoring surface' is a fact about ACE's BUILDER, not a proof about XForms, and must not be laundered into 'CommCare cannot randomize'; the durable half of that row is the Connect constraint (one absolute `passing_score` per `CommCareApp`, so a variable-membership draw makes `user_score` incommensurable with the gate). (2) A **bar for adding rows** — closure must be verified at the surface, not inferred from one failed build attempt, because an unverified row is worse than no row. Build-surface constraints Phase 1 never speaks to (itext ace#968, feature flags ace#1195) are cross-referenced rather than duplicated. *Enforced:* `test/skills/known-unbuildable-mechanisms.test.ts`. | ACE team |
 | 2026-05-29 | **Created the library.** Extracted the deployability/fitness `REQUIRED:` brief paragraphs that previously lived inline in `pdd-to-deliver-app` and `pdd-to-learn-app` into named, parameterized components: `gps-accuracy-capture`, `init-safe-calculates`, `data-quality-constraints`, `case-write-back`, `structured-capture`, `section-timestamps`, `embedded-bc-script` (Deliver), `assessment-gate` (Learn), `localization-layer` (both — dedups the previously-duplicated localization paragraph). Each component pairs 1:1 with the `pdd-to-*-app-eval` fitness dimension that hard-fails a build omitting it. Closes the "reusable component library" item (PR-8 build track) from `docs/superpowers/specs/2026-05-29-eval-fitness-gap.md` / open decision #2. | ACE team |
 | 2026-06-25 | **Added standing app-build instructions** (per-app guidance applied to every Nova build). New components: `learn-app-naming`, `end-of-form-previous`, `assessment-display-lifecycle` (Learn); `grid-menu-display` (Learn + Deliver); `deliver-app-naming`, `live-photo-capture`, `no-section-module-language` (Deliver). Extends the library beyond field/calculate/constraint patterns to app- and form-level build settings (naming, menu display, end-of-form navigation, photo appearance, assessment form Display Conditions, terminology). The "Other → free-text follow-up" requirement was already covered by `structured-capture`, so no separate component was added. Several components are CommCare-HQ settings not surfaced by Nova's documented MCP tools; they are emitted as brief instructions and the first Learn + Deliver test build must confirm (a) Nova applies them and (b) they are readable by the eval. Eval dimensions marked (NEW) are pending addition to the eval skills. | Sarvesh |
 | 2026-07-01 | **Enforcement landed for the blueprint-readable components.** After the 2026-06-25 test builds confirmed which instructions Nova actually applies, added binary `[BLOCKER]` hard-gates (NOT weighted dimensions — no rubric-weight rebalancing) to the eval skills: `naming_convention` + `form_navigation` in `pdd-to-learn-app-eval`, `naming_convention` + `terminology` in `pdd-to-deliver-app-eval`. A violation forces suite verdict `fail`. The three HQ-layer components (`grid-menu-display`, `live-photo-capture`, `assessment-display-lifecycle`) remain provisional/unenforced pending the post-build step in `docs/superpowers/specs/2026-06-25-post-build-hq-settings-automation.md`. | Sarvesh |
