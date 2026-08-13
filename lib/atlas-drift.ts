@@ -337,12 +337,23 @@ export function extractWantedMatchers(stderrExcerpt: string): string[] {
   return [...out].sort();
 }
 
-/** ACE reports the fork point; it never forks itself. Forking copies
- *  artifacts into a new run, which is the operator's call. */
-export function renderForkPointCommand(input: {
-  runId: string;
-  phase: string;
-  skill: string;
+/** ACE reports the fork invocation; it never forks itself. Forking copies
+ *  artifacts into a new run, which is the operator's decision.
+ *
+ *  Uses fork_at_skill (not fork_at_phase) because a heal is always resuming
+ *  from a specific blocked skill — re-running that skill + everything after it
+ *  validates the healed selector. Choosing fork_at_phase would re-run a whole
+ *  phase unnecessarily. */
+export function renderForkInvocation(input: {
+  oppSlug: string;
+  sourceRunId: string;
+  forkAtSkill: string;
 }): string {
-  return `/ace:fork-run ${input.runId} --at ${input.phase}/${input.skill} --reason "selector map healed; re-walk from the last good boundary"`;
+  const feedback = `Selector map healed; re-walk from ${input.forkAtSkill} to verify the fix`;
+  return [
+    `/ace:step fork-run ${input.oppSlug} \\`,
+    `  --fork-at-skill ${input.forkAtSkill} \\`,
+    `  --source-run-id ${input.sourceRunId} \\`,
+    `  --feedback "${feedback}"`,
+  ].join('\n');
 }

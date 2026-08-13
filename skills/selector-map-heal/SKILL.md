@@ -128,21 +128,23 @@ the loop closes here and nowhere else.
 
 ## Resume
 
-After a successful heal (green re-run + merged PR), report the fork point:
+After a successful heal (green re-run + merged PR), report the fork invocation:
 
 ```
-render_fork_point_command({
-  runId: <current-run-id>,
-  phase: "qa-and-training",
-  skill: <blocking-skill-name>
+renderForkInvocation({
+  oppSlug: <opp-slug>,
+  sourceRunId: <current-run-id>,
+  forkAtSkill: <blocking-skill-name>
 })
 ```
 
-This prints a command the operator can run to fork the current run at the last
-good boundary (the step before the failure). The fork copies upstream artifacts,
-re-runs from the healed skill onward, and creates a fresh run for side-by-side
-diff. ACE never forks itself — forking is the operator's call.
+This prints the `/ace:step fork-run` invocation the operator can run to fork
+the current run at the healed skill boundary. The fork uses `fork_at_skill` 
+(not `fork_at_phase`) so it resumes from the healed skill onward, validating 
+the fix without re-running the entire phase unnecessarily.
 
-**Do NOT fork.** Print the command and stop. The operator decides whether to fork
-based on the risk/cost trade-off of re-walking the rest of the phase vs
-proceeding with the current run.
+The operator's decision: fork to validate on a fresh run (with upstream artifacts
+copied), or proceed with the current run. ACE never forks itself — forking is the
+operator's call based on the risk/cost trade-off.
+
+**Do NOT fork.** Print the invocation and stop.

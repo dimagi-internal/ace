@@ -12,7 +12,7 @@ import {
   classifyScreenCoverage,
   extractWantedMatchers,
   renderReportYaml,
-  renderForkPointCommand,
+  renderForkInvocation,
 } from '../../lib/atlas-drift.js';
 
 // Pure helpers behind the atlas-drift harvester (scripts/probe-atlas-
@@ -421,15 +421,36 @@ selectors:
   });
 });
 
-describe('renderForkPointCommand', () => {
-  it('prints a runnable fork invocation naming run, phase and skill', () => {
-    const cmd = renderForkPointCommand({
-      runId: '20260812-1030',
-      phase: 'qa-and-training',
-      skill: 'app-screenshot-capture',
+describe('renderForkInvocation', () => {
+  it('emits the /ace:step fork-run invocation with fork_at_skill (not phase)', () => {
+    const invocation = renderForkInvocation({
+      oppSlug: 'bednet-spot-check',
+      sourceRunId: '20260812-1030',
+      forkAtSkill: 'app-screenshot-capture',
     });
-    expect(cmd).toContain('/ace:fork-run');
-    expect(cmd).toContain('20260812-1030');
-    expect(cmd).toContain('app-screenshot-capture');
+
+    // Must invoke fork-run skill via /ace:step
+    expect(invocation).toContain('/ace:step fork-run bednet-spot-check');
+
+    // Must name the run to fork from
+    expect(invocation).toContain('--source-run-id 20260812-1030');
+
+    // Must use fork_at_skill, not fork_at_phase — a heal resumes from the
+    // blocked skill to validate it, not re-running the whole phase
+    expect(invocation).toContain('--fork-at-skill app-screenshot-capture');
+
+    // Must seed feedback so the new run carries context
+    expect(invocation).toContain('--feedback');
+    expect(invocation).toContain('Selector map healed');
+    expect(invocation).toContain('app-screenshot-capture');
+  });
+
+  it('surfaces the skill name in the feedback', () => {
+    const invocation = renderForkInvocation({
+      oppSlug: 'malaria-itn-app',
+      sourceRunId: '20260810-0900',
+      forkAtSkill: 'connect-claim-opp',
+    });
+    expect(invocation).toContain('re-walk from connect-claim-opp');
   });
 });
