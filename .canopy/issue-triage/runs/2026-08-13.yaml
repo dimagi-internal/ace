@@ -116,8 +116,8 @@ verdicts:
       makes it unnecessary for the common path. File separately if wanted.
     duplicate_of: null
     source: fresh
-    action: null
-    outcome: null
+    action: 'implemented + shipped'
+    outcome: 'CLOSED 2026-08-13 via PR #1222, merged. lib/opp-consumption.ts + Step 2.8; labels corrected blocks-e2e->harness and blocked-on-validation removed.'
 
   - number: 856
     title: "screenshot-blocked runs ship a hollow training deck as 'proceed-with-warn'"
@@ -178,8 +178,8 @@ verdicts:
     unblocked_by: null
     duplicate_of: null
     source: fresh
-    action: null
-    outcome: null
+    action: 'implemented + shipped'
+    outcome: 'CLOSED 2026-08-13 via PR #1229 (with #873). computeVisualCoverage + gate + render/eval criteria.'
 
   - number: 869
     title: "Static palettes capture up to 3 byte-identical Deliver-home frames"
@@ -242,8 +242,8 @@ verdicts:
       count and the dedup story are untouched; its only contact is the toBe(9).
     duplicate_of: null
     source: fresh
-    action: null
-    outcome: null
+    action: 'implemented + shipped'
+    outcome: 'CLOSED 2026-08-13 via PR #1221, merged. Branch shot dropped; exactly-one-Deliver-home invariant added; blocked-on-validation justification retired.'
 
   - number: 873
     title: "Common screenshot pool: PersonalID sign-up completion half is uncapturable with the demo test user"
@@ -320,8 +320,8 @@ verdicts:
       caption or drop.
     duplicate_of: null
     source: fresh
-    action: null
-    outcome: null
+    action: 'implemented + shipped'
+    outcome: 'CLOSED 2026-08-13 via PR #1229 (with #856). Operator decided template assets over capture; personal-id-id removed as non-existent; artwork itself declared status:needed.'
 
   - number: 880
     title: "/ace:setup env changes need restart AFTER setup; emdash keeps worktree MCP alive"
@@ -386,8 +386,8 @@ verdicts:
       to #880, which is honest and is made self-correcting by (b) anyway.
     duplicate_of: null
     source: fresh
-    action: null
-    outcome: null
+    action: 'implemented + shipped'
+    outcome: 'CLOSED 2026-08-13 via PR #1226, merged. lib/env-freshness.ts + doctor probe + setup banner + CLAUDE.md trigger.'
 
 # ---------------------------------------------------------------------------
 # Appended after the operator redirected mid-run: "make sure you scan all new
@@ -646,3 +646,89 @@ backlog_sweep:
     - "#1201 surfaced a contradiction no issue owns: artifact-manifest.ts:216 says open-questions.md is opp-level and durable across runs; ace-orchestrator.md:1201-1206 writes it run-scoped and reseeds it from the PDD each run. If the orchestrator's version is what runs, the file cannot accumulate at all, and #1201's read-half fix is insufficient alone."
     - "#953's blocker note is stale — it names #824/#855, which shipped (connect_list_flw_invites, b23303ff). The real blocker is now #1159 (no row id), so the delete path is still unreachable."
     - "#1013 is half-closed and its title is actively misleading: 'no ACE run has ever persisted a verification flag' is FALSE as of the form_field_rules fix (b5adf9da, live 2/2 on 2026-08-12). Retitle + scope-narrow, don't re-investigate."
+
+# ---------------------------------------------------------------------------
+# Phase 6 — what actually shipped.
+# ---------------------------------------------------------------------------
+shipped:
+  scope_contract_final: >-
+    Operator chose "oldest 5 + the free wins", after first redirecting the run
+    to sweep the whole backlog for validity. Nova thread: "doc + upstream +
+    queue the re-verify".
+  prs:
+    - number: 1220
+      title: "docs: correct the false 'No known Nova upstream bugs' claim"
+      state: merged
+      closes: []
+    - number: 1221
+      title: "fix(mobile): record the Deliver home once per path, not three times"
+      state: merged
+      closes: [869]
+    - number: 1222
+      title: "feat(phase6): pre-AVD consumed-precondition probe"
+      state: merged
+      closes: [796]
+    - number: 1226
+      title: "feat(doctor): env-freshness probe + setup restart banner"
+      state: merged
+      closes: [880]
+    - number: 1229
+      title: "feat(deck): visual-coverage gate + PersonalID screens as template assets"
+      state: auto-merge armed
+      closes: [856, 873]
+  issues_closed_without_code:
+    - { number: 989,  reason: completed,     why: "fixed upstream, commcare-nova#363" }
+    - { number: 1054, reason: not planned,   why: "misdiagnosis; real defect shipped as #1046" }
+    - { number: 1012, reason: not planned,   why: "obsolete — acting on it would break form_field_rules enforcement" }
+    - { number: 1145, reason: not planned,   why: "duplicate of #1036; premise false (lo/hi bounds already exist)" }
+  upstream_filed:
+    - { repo: voidcraft-labs/commcare-nova, number: 458, from: 1180 }
+    - { repo: voidcraft-labs/commcare-nova, number: 459, from: 1181 }
+  labels_corrected: 12
+  comments_posted: [977, 969, 972, 1114, 953, 1013, 1036, 1146, 1201, 1180, 1181]
+
+  reversal_recorded: >-
+    Yesterday's run concluded "#856 must NOT be implemented standalone; #873 is
+    the blocking constraint". This run overturned that and shipped both. The
+    reason is a design change, not new information: yesterday assumed the gate
+    must read `placeholder: true` out of the Drive-side pool manifest, and
+    lib/training-deck-spec.ts already partitioned manifest.common from
+    manifest.opp. Scoping coverage to the opp side excludes every
+    uncapturable alias by construction. Worth remembering as a pattern — the
+    blocker was in the proposed MECHANISM, not in the problem.
+
+  asset_gap_left_open: >-
+    #1229 ships the template-asset MECHANISM but not the four PNGs; they are
+    declared `status: needed` in
+    templates/training-deck/_common/assets/assets.yaml. Producing designed
+    placeholder screens is an asset task and there is no image library in the
+    tree. Until authored, generate emits [TEMPLATE-ASSET-MISSING] and the step
+    renders caption-only — a named template-bundle condition, not a silent
+    capture miss, and excluded from the coverage gate. Also flagged there:
+    personal-id-done's existing caption "Profile complete!" is itself
+    unverified (live walks end at CommCareSetupActivity / "GO TO CONNECT
+    MENU"), so the caption should be confirmed before the art is drawn.
+
+  ci_gotcha_worth_knowing: >-
+    GitHub does not run required status checks on a CONFLICTING PR, and
+    `gh pr checks` reports "no checks reported on the '<branch>' branch" —
+    which reads exactly like a CI misconfiguration and cost several minutes of
+    misdiagnosis here. If a PR shows mergeStateStatus DIRTY, rebase first; the
+    checks appear on the next push. Separately, one PR needed a close/reopen to
+    fire its first run. Both are on top of the known version-collision churn:
+    main bumped 5 times during this run (0.13.768 -> 0.13.774), so every PR
+    after the first needed `scripts/version-bump.sh --rebase-first`.
+
+  next_run:
+    batch: "the next 5 oldest — #890, #891, #905, #953, #969"
+    note: >-
+      #969 is the standout: the only issue in the backlog with real-world money
+      attached (an FLW structurally blocked from being paid for work they did),
+      and its dedup half is fixable ACE-side today. It was downgraded to
+      `harness` this run strictly by the letter of the taxonomy, with a comment
+      saying so — do not read that as de-prioritisation.
+    cheap_and_unblocked: >-
+      #1022 + #1023 + #1026 as ONE change (the confident-falsy-value class),
+      and #1110 + #1111 as one denylist-shaped path-containment guard — but
+      read PR #1194's revert first, that allowlist was validated only against
+      ACE-emitted paths and broke Phase 7.
