@@ -94,7 +94,7 @@ Before rendering:
 
 ## Self-eval
 
-Three criteria:
+Four criteria:
 
 1. **Slide count**: Rendered deck slide count matches total slides in
    spec. FAIL if mismatch.
@@ -102,6 +102,25 @@ Three criteria:
    (no `createImage` errors). FAIL if any failed.
 3. **API success**: `slides_batch_update` completed without error.
    FAIL if error.
+4. **Visual coverage** (dimagi-internal/ace#856): re-read
+   `visual_coverage` from the generate verdict, or recompute it via
+   `computeVisualCoverage` (`lib/training-deck-spec.ts`). Record the ratio in
+   this verdict. FAIL if `ratio < 0.5` with zero per-opp captures.
+
+**Criteria 2 and 4 are not the same check, and conflating them is what let
+this skill score 9.5 on a hollow deck.** Criterion 2 asks "did every image the
+spec referenced resolve?" — which is *vacuously satisfied* when the spec
+referenced almost no images, because generate had already downgraded the
+unbacked slides to `content` layout. On
+hh-poverty-targeting/20260702-1456 the 4 pool images resolved cleanly, so
+criterion 2 passed, while 39 of 43 slides carried no substantive image.
+
+**Never record "visually spot-checked" as evidence for a passing score
+unless the sample was stratified.** That verdict's spot-check looked at the
+cover plus the 4 image-bearing slides and never sampled the 39 empty ones —
+it sampled exactly the population that could not fail. If you sample, sample
+by stencil type and mandatorily include slides that *should* carry
+screenshots.
 
 Verdict to
 `ACE/<opp>/runs/<run-id>/6-qa-and-training/training-deck-render_verdict.yaml`

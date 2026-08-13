@@ -51,11 +51,42 @@ The check-in cadence is operator-judgment, not automated.
 | `personal-id-start` | Live | `04-personal-id.yaml` (nav-drawer Sign In/Register) | ✓ 2026-05-24 |
 | `personal-id-phone` | Live | `04-personal-id.yaml` | ✓ 2026-05-24 |
 | `personal-id-name` | Live | `04-personal-id.yaml` | ✓ 2026-05-24 |
-| `personal-id-verify` | **Fixture** | n/a (demo-bypass — +7426 prefix skips OTP server-side) | placeholder PNG |
-| `personal-id-photo` | **Fixture** | n/a (recovery returns existing server photo, never re-prompts) | placeholder PNG |
-| `personal-id-id` | **Fixture** | n/a (may not exist in current APK; deck content was AI-imagined) | placeholder PNG |
-| `personal-id-location` | **Fixture** | n/a (cached on recovery path) | placeholder PNG |
-| `personal-id-done` | **Fixture** | n/a (recovery shows "Account Recovered", not "Profile complete!") | placeholder PNG |
+| `personal-id-verify` | **Template asset** | n/a — not this skill's job (ace#873) | n/a |
+| `personal-id-photo` | **Template asset** | n/a — not this skill's job (ace#873) | n/a |
+| `personal-id-location` | **Template asset** | n/a — not this skill's job (ace#873) | n/a |
+| `personal-id-done` | **Template asset** | n/a — not this skill's job (ace#873) | n/a |
+
+**The PersonalID completion half left this roster (ace#873, operator decision
+2026-08-13).** It is no longer a capture target of any kind — not live, not a
+fixture-fallback. Those four screens are now **committed deck-template
+artwork**, declared in
+`templates/training-deck/_common/assets/assets.yaml` and loaded by
+`training-deck-generate` into `manifest.template`.
+
+The reason is that they are uncapturable as a property of ACE's identity, not
+of the harness: `+7426` demo phones bypass SMS OTP server-side, and the test
+user already exists, so "sign up" is an account **recovery** flow that returns
+the stored photo, skips the cached permissions dialog, and ends on "Account
+Recovered". Capturing that and captioning it as first-time sign-up would state
+something false to every trainee.
+
+Carrying them as fixtures-awaiting-capture meant every run tried, failed, and
+recorded a miss against coverage that could never be closed — which is what
+made a coverage gate impossible to write (ace#856). As template content they
+are excluded from the coverage ratio by construction, and a missing one is a
+template-bundle defect rather than a run defect.
+
+**`personal-id-id` was removed outright, not converted.** No such surface
+exists in the 2.63.x PersonalID flow: no row in `connect-2.62.0`,
+`connect-2.63.0` or `connect-2.63.2`, no recipe step drives it, and both
+live-verified registration walks in `connect-register-from-otp.yaml` enumerate
+the full screen sequence with no ID scan. `fixtures/README.md` already
+prescribed exactly this remedy for a surface that turns out not to exist.
+
+**Still fixtures:** the three install-flow aliases below. Those ARE capturable
+by anyone with a Google-signed-in device — they are simply out of scope for
+our AVD, which is a different situation and keeps a different label.
+
 | `play-store-search` | **Fixture** | n/a (Play Store requires Google sign-in; out of scope for automation) | placeholder PNG |
 | `commcare-install` | **Fixture** | n/a (same) | placeholder PNG |
 | `commcare-open` | **Fixture** | n/a (same) | placeholder PNG |

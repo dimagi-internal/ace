@@ -10,6 +10,7 @@ import {
   SlideSpecSchema,
   resolveManifest,
   normalizeDriveImageUrl,
+  computeVisualCoverage,
   resolveModuleRefs,
   STENCILS,
   buildSlidesRequestsV2,
@@ -1180,5 +1181,204 @@ describe('spec.template.yaml skeleton shape (ace#1049)', () => {
       expect(typeof item.label).toBe('string');
       expect(typeof item.duration).toBe('string');
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Visual coverage — dimagi-internal/ace#856 / #873
+// ---------------------------------------------------------------------------
+
+describe('computeVisualCoverage', () => {
+  const mod = (slides: any[]) => ({ id: 'm', title: 'M', slides });
+
+  it('THE REGRESSION: a hollow deck reads 0, not 100%', () => {
+    // hh-poverty-targeting/20260702-1456, reconstructed. The invite was wedged
+    // server-side (#855) so ZERO per-opp screenshots were capturable. Generate
+    // downgraded all 6 Deliver walkthrough slides to `content` layout and
+    // shipped the 4 pool-backed platform-setup images.
+    //
+    // Emitted-slot arithmetic on that deck: 4 images in 4 image slots = 1.0.
+    // It scored 9.5 "visually spot-checked" and was emailed to the operator,
+    // who opened it and said "almost nothing in it". True opp coverage: 0/6.
+    //
+    // This assertion is the whole point of taking the denominator from the app
+    // summaries instead of from what the deck emitted.
+    const spec = {
+      manifest: {
+        common: {
+          'play-store-search': 'f1',
+          'commcare-install': 'f2',
+          'commcare-open': 'f3',
+          'commcare-welcome': 'f4',
+        },
+        opp: {},
+      },
+      modules: [
+        mod([
+          {
+            id: 'install',
+            layout: 'mobile_flow',
+            title: 'Download CommCare',
+            steps: [
+              { image: '@play-store-search', caption: 'a' },
+              { image: '@commcare-install', caption: 'b' },
+              { image: '@commcare-open', caption: 'c' },
+              { image: '@commcare-welcome', caption: 'd' },
+            ],
+          },
+          // The six downgraded slides. Schematically indistinguishable from
+          // slides that were always meant to be text-only — which is exactly
+          // why they cannot be the denominator.
+          ...Array.from({ length: 6 }, (_, i) => ({
+            id: `deliver-${i}`,
+            layout: 'content',
+            title: `Deliver step ${i + 1}`,
+            body: 'Text stood in for the screen.',
+          })),
+        ]),
+      ],
+    } as any;
+
+    const cov = computeVisualCoverage(spec, { expectedOppVisualSlides: 6 });
+    expect(cov.ratio).toBe(0);
+    expect(cov.filled).toBe(0);
+    expect(cov.expected).toBe(6);
+    // The pool images ARE there — reported, never gated on.
+    expect(cov.pool_filled).toBe(4);
+  });
+
+  it('counts only per-opp captures in the numerator', () => {
+    const spec = {
+      manifest: { common: { 'connect-home': 'c1' }, opp: { 'journey-deliver-1': 'o1' } },
+      modules: [
+        mod([
+          { id: 'a', layout: 'walkthrough', title: 'A', image: '@journey-deliver-1', body: 'b' },
+          { id: 'b', layout: 'walkthrough', title: 'B', image: '@connect-home', body: 'b' },
+        ]),
+      ],
+    } as any;
+    const cov = computeVisualCoverage(spec, { expectedOppVisualSlides: 2 });
+    expect(cov.filled).toBe(1);
+    expect(cov.pool_filled).toBe(1);
+    expect(cov.ratio).toBe(0.5);
+  });
+
+  it('template artwork never enters the ratio (#873)', () => {
+    // The PersonalID completion half is committed deck-template art, not a
+    // capture. A gate that counted it would fire on 100% of runs forever,
+    // because those surfaces are structurally uncapturable with the demo user.
+    const spec = {
+      manifest: {
+        template: { 'personal-id-photo': 't1', 'personal-id-done': 't2' },
+        opp: { 'journey-deliver-1': 'o1' },
+      },
+      modules: [
+        mod([
+          {
+            id: 'pid',
+            layout: 'mobile_flow',
+            title: 'Complete Your Profile',
+            steps: [
+              { image: '@personal-id-photo', caption: 'a' },
+              { image: '@personal-id-done', caption: 'b' },
+            ],
+          },
+          { id: 'd', layout: 'walkthrough', title: 'D', image: '@journey-deliver-1', body: 'b' },
+        ]),
+      ],
+    } as any;
+    const cov = computeVisualCoverage(spec, { expectedOppVisualSlides: 1 });
+    expect(cov.template_filled).toBe(2);
+    expect(cov.filled).toBe(1);
+    expect(cov.ratio).toBe(1);
+  });
+
+  it('counts every image-bearing layout, including both two_column halves', () => {
+    const spec = {
+      manifest: { opp: { a: '1', b: '2', c: '3', d: '4', e: '5' } },
+      modules: [
+        mod([
+          { id: '1', layout: 'walkthrough', title: 'T', image: '@a', body: 'x' },
+          { id: '2', layout: 'web_screen', title: 'T', image: '@b' },
+          { id: '3', layout: 'mobile_zoom', title: 'T', image: '@c' },
+          {
+            id: '4',
+            layout: 'two_column',
+            title: 'T',
+            left: { heading: 'L', body: 'x', image: '@d' },
+            right: { heading: 'R', body: 'y', image: '@e' },
+          },
+        ]),
+      ],
+    } as any;
+    const cov = computeVisualCoverage(spec, { expectedOppVisualSlides: 5 });
+    expect(cov.filled).toBe(5);
+    expect(cov.ratio).toBe(1);
+  });
+
+  it('a two_column half with no image contributes nothing', () => {
+    const spec = {
+      manifest: { opp: { a: '1' } },
+      modules: [
+        mod([
+          {
+            id: '1',
+            layout: 'two_column',
+            title: 'T',
+            left: { heading: 'L', body: 'x', image: '@a' },
+            right: { heading: 'R', body: 'y' },
+          },
+        ]),
+      ],
+    } as any;
+    const cov = computeVisualCoverage(spec, { expectedOppVisualSlides: 2 });
+    expect(cov.filled).toBe(1);
+    expect(cov.ratio).toBe(0.5);
+  });
+
+  it('an unresolvable alias counts in no bucket', () => {
+    const spec = {
+      manifest: { opp: {} },
+      modules: [mod([{ id: '1', layout: 'walkthrough', title: 'T', image: '@ghost', body: 'x' }])],
+    } as any;
+    const cov = computeVisualCoverage(spec, { expectedOppVisualSlides: 1 });
+    expect(cov.filled).toBe(0);
+    expect(cov.pool_filled).toBe(0);
+    expect(cov.template_filled).toBe(0);
+  });
+
+  it('expecting nothing is vacuously complete, not a divide-by-zero', () => {
+    const spec = { manifest: { opp: {} }, modules: [mod([])] } as any;
+    expect(computeVisualCoverage(spec, { expectedOppVisualSlides: 0 }).ratio).toBe(1);
+  });
+
+  it('reusing one capture twice cannot push coverage above 1', () => {
+    const spec = {
+      manifest: { opp: { a: '1' } },
+      modules: [
+        mod([
+          { id: '1', layout: 'walkthrough', title: 'T', image: '@a', body: 'x' },
+          { id: '2', layout: 'walkthrough', title: 'T', image: '@a', body: 'x' },
+        ]),
+      ],
+    } as any;
+    const cov = computeVisualCoverage(spec, { expectedOppVisualSlides: 1 });
+    expect(cov.ratio).toBe(1);
+    expect(cov.filled).toBe(1);
+  });
+});
+
+describe('resolveManifest — template precedence (#873)', () => {
+  it('opp beats common beats template', () => {
+    const m = resolveManifest({
+      template: { x: 'template' },
+      common: { x: 'common' },
+      opp: { x: 'opp' },
+    });
+    expect(m.get('x')).toBe('opp');
+    expect(resolveManifest({ template: { x: 'template' }, common: { x: 'common' } }).get('x')).toBe(
+      'common',
+    );
+    expect(resolveManifest({ template: { x: 'template' } }).get('x')).toBe('template');
   });
 });

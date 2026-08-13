@@ -21,6 +21,11 @@ slides:
       - { image: "@commcare-open", caption: "Tap 'Open'" }
       - { image: "@commcare-welcome", caption: "CommCare is ready" }
 
+  # Every image on this slide IS live-captured from a device by
+  # `common-screenshot-capture` (04-personal-id.yaml). `@personal-id-verify`
+  # moved to the next slide in ace#873 so the two slides split cleanly along
+  # the capturable boundary: this one is what the harness can reach, the next
+  # one is what it structurally cannot.
   - id: personal-id-start
     layout: mobile_flow
     title: "Step 2: Create Your PersonalID"
@@ -28,14 +33,36 @@ slides:
       - { image: "@personal-id-start", caption: "Tap 'Sign Up'" }
       - { image: "@personal-id-name", caption: "Enter your name" }
       - { image: "@personal-id-phone", caption: "Enter your phone number" }
-      - { image: "@personal-id-verify", caption: "Enter the code you received" }
 
+  # TEMPLATE ASSETS, not per-run captures (ace#873, operator decision
+  # 2026-08-13). Every image on this slide resolves from `manifest.template`
+  # — committed deck artwork shipped with the template bundle. ACE does not
+  # try to capture these per run, and they are excluded from visual coverage
+  # on both sides of the ratio (see lib/training-deck-spec.ts
+  # computeVisualCoverage).
+  #
+  # Why they are uncapturable, verified rather than assumed:
+  #   - the demo test user's `+7426` phone bypasses SMS OTP SERVER-SIDE, so
+  #     the verify screen never renders at all;
+  #   - the test user already exists, so "sign up" is actually an account
+  #     RECOVERY flow — it returns the stored photo without re-prompting,
+  #     skips the permissions dialog because grants are cached, and ends on
+  #     "Account Recovered" rather than "Profile complete!".
+  # Capturing that flow would MISREPRESENT the first-time experience a
+  # trainee is about to have, which is worse than not capturing it.
+  #
+  # `@personal-id-id` ("Scan your ID") was REMOVED, not converted: no such
+  # surface exists in the 2.63.x PersonalID flow. No row in any of the three
+  # selector maps, no recipe step drives it, and both live-verified
+  # registration walks in connect-register-from-otp.yaml enumerate the whole
+  # screen sequence with no ID scan. It appears to have been AI-imagined into
+  # this template and carried since 2026-05-23.
   - id: personal-id-details
     layout: mobile_flow
     title: "Step 2 (continued): Complete Your Profile"
     steps:
+      - { image: "@personal-id-verify", caption: "Enter the code sent to your phone" }
       - { image: "@personal-id-photo", caption: "Take your photo" }
-      - { image: "@personal-id-id", caption: "Scan your ID" }
       - { image: "@personal-id-location", caption: "Allow location access" }
       - { image: "@personal-id-done", caption: "Profile complete!" }
 
