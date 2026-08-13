@@ -199,9 +199,16 @@ describe('recipe-splitter — captureAllBoundaries', () => {
     // connect-claim-opp.yaml: 5 top-level runFlows, 2 adjacent pairs (2
     // seams collapse) + 1 suppressed leading `-pre` → 3 existing
     // takeScreenshot windows + 7 runFlow windows = 10.
-    // deliver-launch.yaml: 6 top-level runFlows, one run of 4
-    // back-to-back (3 internal seams collapse) + 1 suppressed leading
-    // `-pre` → 1 existing takeScreenshot window + 8 runFlow windows = 9.
+    // deliver-launch.yaml: 5 top-level runFlows, one run of 3
+    // back-to-back (2 internal seams collapse) + 1 suppressed leading
+    // `-pre` → 1 existing takeScreenshot window + 7 runFlow windows = 8.
+    //
+    // deliver-launch dropped from 9 → 8 in ace#869, which removed the
+    // already-installed-home branch runFlow (one fewer top-level runFlow,
+    // and its removal SHORTENS the back-to-back run from 4 to 3, so one
+    // collapsed seam disappears with it). The default-path count is
+    // unchanged at 1 — the removed shot was nested inside a runFlow and
+    // was never its own window.
     //
     // Verified by running, not by re-deriving the arithmetic — a prior
     // round of this task asserted 13/13, then a corrected 11/10, both of
@@ -215,7 +222,7 @@ describe('recipe-splitter — captureAllBoundaries', () => {
     expect(windows(readFileSync(new URL('connect-claim-opp.yaml', STATIC), 'utf8'), opts)).toBe(
       10,
     );
-    expect(windows(readFileSync(new URL('deliver-launch.yaml', STATIC), 'utf8'), opts)).toBe(9);
+    expect(windows(readFileSync(new URL('deliver-launch.yaml', STATIC), 'utf8'), opts)).toBe(8);
   });
 
   it('never emits a chunk with an empty flow section', () => {

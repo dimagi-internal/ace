@@ -283,6 +283,52 @@ describe('static palette health — deliver-launch retry-proofing invariant (#74
   it('has an already-installed entry branch for the Deliver suite menu', () => {
     expect(yaml).toContain('${SELECTOR:deliver-suite-menu}');
   });
+
+  it('records the Deliver home EXACTLY ONCE, unconditionally (#869)', () => {
+    // Both halves of this assertion are load-bearing, and the issue's own
+    // proposed fix would have broken one of them.
+    //
+    //   >= 1  — on the FRESH-INSTALL path the already-installed branch never
+    //           fires, so the end-of-palette shot is the only Deliver-home
+    //           frame in the entire run. #869 offered "drop the unconditional
+    //           end-of-palette shot" as an option; taking it would have traded
+    //           duplicate frames on one path for ZERO frames on the other.
+    //   <= 1  — on the ALREADY-INSTALLED path a nested branch shot fires in
+    //           addition to the end-of-palette one, producing two
+    //           byte-identical captures. That is the defect #869 reports.
+    //
+    // Enforcing both at once pins the only shape that satisfies both paths:
+    // one Deliver-home shot, at column 0 (outside any runFlow.commands), so
+    // it fires unconditionally. As a bonus that keeps it a top-level step,
+    // which is what makes it this palette's UI-dump window in default mode
+    // (see recipe-splitter.test.ts's `toBe(1)`).
+    const lines = yaml.split('\n').filter((l) => !l.trim().startsWith('#'));
+
+    const homeShots = lines.filter((l) => /takeScreenshot:\s*"[^"]*home"/.test(l));
+    expect(
+      homeShots,
+      `deliver-launch must record the Deliver home exactly once; found: ${JSON.stringify(homeShots)}`,
+    ).toHaveLength(1);
+
+    // Column 0 — a top-level list item, not indented into a runFlow's
+    // `commands:` block. A nested shot is by definition conditional.
+    expect(
+      homeShots[0].startsWith('- takeScreenshot:'),
+      'the Deliver-home shot must be top-level (unconditional), not nested inside a runFlow branch',
+    ).toBe(true);
+  });
+});
+
+describe('static palette health — no palette re-shoots a home its caller already recorded (#869)', () => {
+  // deliver-form-walk is entered ONLY from a Deliver home that the caller has
+  // already captured — deliver-launch's `deliver-launch-home` on the
+  // registration leg, form-submit's post-submit shot on the followup leg. An
+  // opening home shot here is therefore always a duplicate of the frame
+  // immediately preceding it.
+  it('deliver-form-walk does not open with its own home shot', () => {
+    const walk = readFileSync(`${STATIC_DIR}deliver-form-walk.yaml`, 'utf8');
+    expect(walk).not.toMatch(/takeScreenshot:\s*"deliver-form-walk-home"/);
+  });
 });
 
 describe('static palette health — connect-claim-opp landing classification (#863)', () => {

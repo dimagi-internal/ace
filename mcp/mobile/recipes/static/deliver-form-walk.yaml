@@ -84,7 +84,12 @@
 #                 § Registration-then-followup Deliver apps.
 appId: org.commcare.dalvik
 ---
-- takeScreenshot: "deliver-form-walk-home"
+# NO opening home shot (ace#869). The Deliver home this palette starts on has
+# ALWAYS already been captured by whoever handed control here:
+#   - call 1 (registration leg) — `deliver-launch.yaml`'s `deliver-launch-home`
+#   - call 2 (followup leg)     — `form-submit.yaml`'s SCREENSHOT_NAME_POST_SUBMIT
+# The old `deliver-form-walk-home` step therefore produced a third
+# byte-identical Deliver-home frame on the already-installed path.
 
 # Enter the Deliver app's module suite.
 - tapOn:
