@@ -36,7 +36,7 @@ import { resolveBackend, preflightMobileBackend } from './backend-toggle.js';
 import type {
   AvdInfo, ApkInfo, RecipeRunResult, TestUserRegistrationResult, UiDumpResult,
   SnapshotResult, DeviceUserStateClass, DeviceStateHealLog, LocalBootstrapConfig,
-  VideoArtifact, LocalDiagnostics, DeviceProbeFailures,
+  VideoArtifact, LocalDiagnostics, DeviceProbeFailures, RunRecipeOptions,
 } from './types.js';
 import { logInfo } from './logging.js';
 import { dispatchOutputDir, resetScreenshotDir } from './screenshot-dir.js';
@@ -1590,6 +1590,7 @@ export class MobileClient {
     env: Record<string, string>,
     screenshotDir: string,
     avdName?: string,
+    opts?: RunRecipeOptions,
   ): Promise<RecipeRunResult> {
     // Pre-flight: refuse to run if the recipe carries a provenance
     // header that doesn't match the current selector map. Closes the
@@ -1757,6 +1758,7 @@ export class MobileClient {
               return await this.maestro.runRecipe(prep.resolvedPath, enrichedEnv, runDir, {
                 adbPort: avdInfo?.adbPort,
                 serial: avdInfo?.serial,
+                captureAllBoundaries: opts?.captureAllBoundaries,
               });
             } finally {
               if (handle) {

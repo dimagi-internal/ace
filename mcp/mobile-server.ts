@@ -211,11 +211,19 @@ server.tool(
     // it. Set explicitly to a different name only if running against
     // multiple concurrent AVDs.
     avdName: z.string().optional(),
+    captureAllBoundaries: z.boolean().optional().describe('Tier 2 of the mapping ladder. EXPENSIVE — opens an extra ui-dump window at every top-level `runFlow` boundary, not just at `takeScreenshot` (one extra `maestro test` invocation per window; measured 3→10 and 1→9 on the two calibration recipes). Default false. Only turn this on for a targeted re-walk after an atlas-report.yaml reports `classification: unmapped-surface`.'),
   },
-  async ({ recipePath, envVars, screenshotDir, avdName }) => {
+  async ({ recipePath, envVars, screenshotDir, avdName, captureAllBoundaries }) => {
     const resolvedAvd = avdName ?? process.env.ACE_AVD_NAME;
     return {
-      content: [{ type: 'text', text: JSON.stringify(await client.runRecipe(recipePath, envVars, screenshotDir, resolvedAvd), null, 2) }],
+      content: [{
+        type: 'text',
+        text: JSON.stringify(
+          await client.runRecipe(recipePath, envVars, screenshotDir, resolvedAvd, { captureAllBoundaries }),
+          null,
+          2,
+        ),
+      }],
     };
   },
 );

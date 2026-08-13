@@ -206,6 +206,22 @@ export interface ApkInfo {
   path: string;
 }
 
+/**
+ * Options for `MobileClient.runRecipe` (and, one layer down,
+ * `MaestroBackend.runRecipe`) — the `mobile_run_recipe` atom's tunables
+ * that aren't already positional args (recipePath, env, screenshotDir,
+ * avdName).
+ */
+export interface RunRecipeOptions {
+  /**
+   * Tier 2 of the mapping ladder: open a dump window at every top-level
+   * `runFlow` boundary. Costs one extra `maestro test` invocation per
+   * window. Default false. Turn on only after an atlas-report.yaml says
+   * `classification: unmapped-surface`.
+   */
+  captureAllBoundaries?: boolean;
+}
+
 export interface RecipeRunResult {
   status: 'pass' | 'fail';
   exitCode: number;

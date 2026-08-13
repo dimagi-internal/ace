@@ -293,6 +293,73 @@ describe('MaestroBackend.runRecipe — split-and-dump path (when `serial` is pro
     expect(paletteSeenNextToChunk).toBe(true);
   });
 
+  it('captureAllBoundaries defaults OFF: a recipe with a runFlow boundary chunks identically to takeScreenshot-only splitting when the option is omitted', async () => {
+    // Regression guard for the mapping-completeness Task 5 wiring: the new
+    // `captureAllBoundaries` opt threads MaestroBackend.runRecipe →
+    // runRecipeWithDumps → splitRecipeAtScreenshots. If any hop in that
+    // chain ever forwarded `undefined` (or anything short of the literal
+    // `true`) as truthy, this recipe — which has a top-level `runFlow`
+    // boundary in addition to its `takeScreenshot` — would silently pick
+    // up an extra `-branch0-post` dump window and cost an extra
+    // `maestro test` invocation on every existing mobile walk, which is
+    // exactly the "expensive mode becomes the default by accident"
+    // failure the `=== true` comparison exists to prevent.
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'mob-split-default-off-'));
+    const recipePath = path.join(tmp, 'flow.yaml');
+    fs.writeFileSync(
+      recipePath,
+      [
+        'appId: org.commcare.dalvik',
+        '---',
+        '- runFlow:',
+        '    commands:',
+        '      - tapOn: SignIn',
+        '- tapOn: Home',
+        '- takeScreenshot: "after-login"',
+        '- tapOn: Next',
+        '',
+      ].join('\n'),
+    );
+
+    const { shell, calls } = makeRoutingShell([
+      { match: (cmd, args) => cmd === 'maestro' && args.includes('test'), reply: { stdout: 'OK\n', code: 0 } },
+      { match: (cmd, args) => cmd === 'adb' && args.includes('uiautomator') && args.includes('dump'), reply: { stdout: '', code: 0 } },
+      { match: (cmd, args) => cmd === 'adb' && args.includes('pull'), reply: { stdout: '', code: 0 } },
+    ]);
+
+    // Default: no `captureAllBoundaries` in opts at all.
+    const backend = new MaestroBackend({ shell });
+    const r = await backend.runRecipe(recipePath, {}, tmp, { serial: 'emulator-5554' });
+    expect(r.status).toBe('pass');
+
+    // takeScreenshot-only splitting of this recipe produces exactly 2
+    // chunks: [runFlow, tapOn Home, takeScreenshot] + [tapOn Next]. If the
+    // runFlow boundary had leaked in, this would be 3.
+    const maestroCalls = calls.filter((c) => c.cmd === 'maestro' && c.args.includes('test'));
+    expect(maestroCalls).toHaveLength(2);
+    // Exactly one dump window (after the takeScreenshot chunk) — a second
+    // window at the runFlow boundary would double this.
+    const adbDumpCalls = calls.filter((c) => c.cmd === 'adb' && c.args.includes('uiautomator'));
+    expect(adbDumpCalls).toHaveLength(1);
+
+    // Contrast case, same recipe: explicitly opting in produces MORE
+    // chunks, proving the flag genuinely reaches the splitter rather than
+    // being a dead parameter that happens to always read as off.
+    const { shell: shellOn, calls: callsOn } = makeRoutingShell([
+      { match: (cmd, args) => cmd === 'maestro' && args.includes('test'), reply: { stdout: 'OK\n', code: 0 } },
+      { match: (cmd, args) => cmd === 'adb' && args.includes('uiautomator') && args.includes('dump'), reply: { stdout: '', code: 0 } },
+      { match: (cmd, args) => cmd === 'adb' && args.includes('pull'), reply: { stdout: '', code: 0 } },
+    ]);
+    const backendOn = new MaestroBackend({ shell: shellOn });
+    const rOn = await backendOn.runRecipe(recipePath, {}, tmp, {
+      serial: 'emulator-5554',
+      captureAllBoundaries: true,
+    });
+    expect(rOn.status).toBe('pass');
+    const maestroCallsOn = callsOn.filter((c) => c.cmd === 'maestro' && c.args.includes('test'));
+    expect(maestroCallsOn.length).toBeGreaterThan(maestroCalls.length);
+  });
+
   it('falls back to single-invocation when the recipe has no takeScreenshot steps', async () => {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'mob-split-empty-'));
     const recipePath = path.join(tmp, 'flow.yaml');

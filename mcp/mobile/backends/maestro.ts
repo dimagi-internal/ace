@@ -61,7 +61,7 @@ export class MaestroBackend {
     recipePath: string,
     envVars: Record<string, string>,
     screenshotDir: string,
-    opts: { adbPort?: number; serial?: string } = {},
+    opts: { adbPort?: number; serial?: string; captureAllBoundaries?: boolean } = {},
   ): Promise<RecipeRunResult> {
     fs.mkdirSync(screenshotDir, { recursive: true });
     // Maestro's `takeScreenshot: "name"` writes to `./name.png` in the
@@ -90,7 +90,11 @@ export class MaestroBackend {
     // `MaestroBackend.runRecipe` unit tests assert against (one
     // `maestro test` shell call per `runRecipe`).
     if (opts.serial) {
-      return this.runRecipeWithDumps(recipePath, envVars, screenshotDir, opts as { adbPort?: number; serial: string });
+      return this.runRecipeWithDumps(recipePath, envVars, screenshotDir, opts as {
+        adbPort?: number;
+        serial: string;
+        captureAllBoundaries?: boolean;
+      });
     }
 
     const args = this.buildMaestroArgs(opts.adbPort, envVars, screenshotDir, recipePath);
@@ -175,11 +179,16 @@ export class MaestroBackend {
     recipePath: string,
     envVars: Record<string, string>,
     screenshotDir: string,
-    opts: { adbPort?: number; serial: string },
+    opts: { adbPort?: number; serial: string; captureAllBoundaries?: boolean },
   ): Promise<RecipeRunResult> {
     const absoluteRecipePath = path.isAbsolute(recipePath) ? recipePath : path.resolve(recipePath);
     const body = fs.readFileSync(absoluteRecipePath, 'utf8');
-    const chunks = splitRecipeAtScreenshots(body);
+    // `=== true` is deliberate: undefined or a truthy-but-not-true value
+    // must never turn the expensive tier-2 capture mode on. See
+    // `SplitOptions.captureAllBoundaries` in `../recipe-splitter.ts`.
+    const chunks = splitRecipeAtScreenshots(body, {
+      captureAllBoundaries: opts.captureAllBoundaries === true,
+    });
 
     // Zero-screenshot recipes (e.g. probe recipes, or a recipe where
     // every `takeScreenshot:` is nested inside a `runFlow.commands`
