@@ -122,6 +122,34 @@ So: **status/verdict is a necessary check, never a sufficient one.**
    dimension failed — a golden that cannot pass today's evals will fail every
    iteration seeded from it, and locking it anyway just relocates the failure
    to somewhere more expensive.
+
+2b. **Probe the DOWNSTREAM gate too — phase-1/2 evals cannot see the eval that
+   actually kills goldens.** The failure that pinned `bednet-spot-check` at 0
+   was `pdd-to-learn-app-eval`'s `assessment_discrimination` hard-gate — a
+   **Phase 3** eval. It grades the app built FROM the seeded PDD, but what it
+   is really judging is the *PDD's own quiz items*, which are frozen in the
+   golden. So a golden can pass every phase-1/2 eval and still hard-fail every
+   iteration seeded from it. Checking only steps 1–2 reproduces the exact bug
+   this command exists to prevent.
+
+   Run a **blind-guess probe** on the golden PDD's Learn assessment before
+   locking: give a fresh context ONLY the item stem and its options — no
+   teaching content, no answer key — and record what it picks. Repeat a few
+   times per item. `guessable_ratio` = (items answered correctly cold) /
+   (total items); the hard gate fires at **>= 0.80**.
+
+   Measured on `bednet-check-2-visit/20260813-1639` (3 trials/item): item 1
+   ("How do you earn money on Connect?") was picked correctly **3/3 cold** —
+   as guessable as the single item that killed the old golden. Item 2 ("which
+   visit earns the payment?") drew the **wrong** answer 3/3, because the
+   payable visit is a program-specific fact stated only in the teaching
+   content. Ratio 0.50 → passes.
+
+   The structural lesson: **a one-item Learn quiz cannot pass this gate.** At
+   n=1 the ratio is 1.00 or 0.00 with nothing in between (ace#1042), so a
+   single guessable item is fatal while a second, genuinely program-specific
+   item halves the ratio. If a golden's PDD carries only one assessment item,
+   treat that as a lock failure and fix the PDD, not the rubric.
 3. **Archive, don't delete.** If an `iterate-state.yaml` exists, rename it to
    `iterate-state-legacy-<YYYYMMDD>.yaml` beside it. History is append-only;
    dropping dirty runs to flatter the number is the failure this loop exists to
