@@ -243,6 +243,20 @@ export class MaestroBackend {
     const stdoutParts: string[] = [];
     const stderrParts: string[] = [];
     let lastExitCode = 0;
+    // The failing chunk's OWN marker-prefixed block — captured separately
+    // from stdoutParts/stderrParts (the full run history) because
+    // classifyMaestroFailure excerpts only the first EXCERPT_LIMIT chars
+    // of whatever it's given. Phase 6 recipes routinely split into 9-10
+    // chunks; by the time the failing one runs, `stderrParts.join('\n')`
+    // has already spent the 240-char budget on preceding chunks' marker
+    // lines and stderr, so the actual "Element not found: ..." text the
+    // atlas-drift classifier needs (lib/atlas-drift.ts's
+    // extractWantedMatchers) never survives into the slice. Threading
+    // just this chunk's block through keeps the marker (for readability)
+    // but drops the noise from every OTHER chunk, so the real failure
+    // text lands well inside the excerpt window.
+    let failingChunkStdout = '';
+    let failingChunkStderr = '';
 
     try {
       for (const chunk of chunks) {
@@ -251,10 +265,15 @@ export class MaestroBackend {
 
         const args = this.buildMaestroArgs(opts.adbPort, envVars, screenshotDir, chunkPath);
         const r = await this.shell('maestro', args, { timeoutMs: 10 * 60 * 1000, cwd: screenshotDir });
-        stdoutParts.push(`# --- chunk ${chunk.index} (screenshot=${chunk.screenshotName ?? 'none'}) ---\n${r.stdout}`);
-        stderrParts.push(`# --- chunk ${chunk.index} (screenshot=${chunk.screenshotName ?? 'none'}) ---\n${r.stderr}`);
+        const chunkLabel = `# --- chunk ${chunk.index} (screenshot=${chunk.screenshotName ?? 'none'}) ---`;
+        stdoutParts.push(`${chunkLabel}\n${r.stdout}`);
+        stderrParts.push(`${chunkLabel}\n${r.stderr}`);
         lastExitCode = r.exitCode;
-        if (r.exitCode !== 0) break;
+        if (r.exitCode !== 0) {
+          failingChunkStdout = `${chunkLabel}\n${r.stdout}`;
+          failingChunkStderr = `${chunkLabel}\n${r.stderr}`;
+          break;
+        }
 
         // Chunk passed and ended on a screenshot — quick window to
         // grab the UI hierarchy XML before the next chunk relaunches
@@ -277,9 +296,15 @@ export class MaestroBackend {
     const screenshots = this.collectScreenshots(screenshotDir);
     const aggregatedStderr = stderrParts.join('\n');
     const aggregatedStdout = stdoutParts.join('\n');
+    // Classify from the FAILING CHUNK's own block, not the head of the
+    // full joined aggregate (see the comment on failingChunkStderr
+    // above). On success there is no failing chunk, so fall back to the
+    // aggregate — classifyMaestroFailure returns 'pass' for exitCode 0
+    // regardless of excerpt content, so this only affects the (unused,
+    // on success) stderrExcerpt field.
     const failure = classifyMaestroFailure({
-      stderr: aggregatedStderr,
-      stdout: aggregatedStdout,
+      stderr: lastExitCode === 0 ? aggregatedStderr : failingChunkStderr,
+      stdout: lastExitCode === 0 ? aggregatedStdout : failingChunkStdout,
       exitCode: lastExitCode,
     });
     return {

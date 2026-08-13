@@ -14,6 +14,7 @@ import {
   renderReportYaml,
   renderForkInvocation,
 } from '../../lib/atlas-drift.js';
+import { classifyMaestroFailure } from '../../lib/maestro-failure-class.js';
 
 // Pure helpers behind the atlas-drift harvester (scripts/probe-atlas-
 // drift.ts). The harvester walks a Phase 6 run's ui-dump XMLs and
@@ -345,6 +346,114 @@ describe('extractWantedMatchers', () => {
       'Id matching regex: org.commcare.dalvik:id/a\nId matching regex: org.commcare.dalvik:id/a',
     );
     expect(dup).toEqual(['org.commcare.dalvik:id/a']);
+  });
+
+  // These are the ACTUAL strings this repo's own Maestro runs produce —
+  // not a paraphrase. Neither the "matching regex:" pattern nor the bare
+  // `pkg:id/name` pattern above matches either shape, so before this
+  // pattern was added, extractWantedMatchers returned [] for both —
+  // which made `matcher-miss` structurally unreachable for every
+  // text-matcher failure (classifyScreenCoverage requires
+  // `wantedPresent.length > 0`, and an empty `wanted` can never satisfy
+  // that). See test/lib/maestro-failure-class.test.ts and
+  // test/lib/no-invite-detector.test.ts for the source captures.
+  it('parses `Element not found: text "..."` (test/lib/maestro-failure-class.test.ts\'s real capture)', () => {
+    expect(extractWantedMatchers('Element not found: text "Start Learning"')).toEqual([
+      'Start Learning',
+    ]);
+  });
+
+  it('parses `Element not found: id "..."` (test/lib/no-invite-detector.test.ts\'s real capture)', () => {
+    expect(extractWantedMatchers('Element not found: id "btn_continue"')).toEqual([
+      'btn_continue',
+    ]);
+  });
+});
+
+describe('the full production round-trip: aggregated marker-prefixed stderr -> classifyMaestroFailure -> extractWantedMatchers -> classifyScreenCoverage', () => {
+  // Mirrors what mcp/mobile/backends/maestro.ts's runRecipeWithDumps
+  // actually builds: one `# --- chunk N (screenshot=X) ---` block per
+  // sub-recipe, joined with '\n'. Phase 6 recipes with captureAllBoundaries
+  // on routinely split into 9-10 chunks (deliver-launch: 9; see the
+  // measured window-count table in
+  // docs/superpowers/specs/2026-08-12-mobile-mapping-completeness-design.md)
+  // — this reproduces that shape with 8 short, successful preceding
+  // chunks ahead of a failing 9th.
+  const precedingChunks = Array.from(
+    { length: 8 },
+    (_, i) => `# --- chunk ${i} (screenshot=branch${i}-post) ---\n[OK] launchApp\n[OK] tapOn id=action_sync\n`,
+  );
+  const failingChunkBlock =
+    '# --- chunk 8 (screenshot=none) ---\n[FAIL] Element not found: text "Start Learning"\n';
+  const fullAggregate = [...precedingChunks, failingChunkBlock].join('\n');
+
+  const dumpXml = `<?xml version='1.0'?><hierarchy>
+    <node resource-id="org.commcare.dalvik:id/actionBarTitle" text="Learn" />
+    <node resource-id="org.commcare.dalvik:id/startLearningButton" text="Start Learning" />
+  </hierarchy>`;
+  const selectorMapYaml = `
+apk_version: "2.63.2"
+selectors:
+  learn-home-start-button:
+    type: text
+    value: "Start Learning"
+`;
+
+  it('documents the pre-threading trap: the head of the FULL joined aggregate never reaches the failing chunk\'s own text — this is why maestro.ts must thread the failing chunk alone, not classify from stderrParts.join(\'\\n\')', () => {
+    // The realistic multi-chunk aggregate already exceeds the 240-char
+    // excerpt window before the failing chunk's own content begins.
+    expect(fullAggregate.length).toBeGreaterThan(240);
+    const failure = classifyMaestroFailure({ stderr: fullAggregate, stdout: '', exitCode: 1 });
+    expect(failure.stderrExcerpt).not.toContain('Start Learning');
+    const wanted = extractWantedMatchers(failure.stderrExcerpt);
+    const result = classifyScreenCoverage({ dumpXml, selectorMapYaml, wanted });
+    expect(result.classification).not.toBe('matcher-miss');
+  });
+
+  it('classifies matcher-miss when the FAILING CHUNK alone (correctly threaded — the maestro.ts fix) is fed through the pipeline, for the real "Element not found: text ..." shape', () => {
+    // What mcp/mobile/backends/maestro.ts now threads into forensics on a
+    // multi-chunk failure: just the failing chunk's own marker-prefixed
+    // block, not the full run history. Well within the excerpt window.
+    const failure = classifyMaestroFailure({
+      stderr: failingChunkBlock,
+      stdout: '',
+      exitCode: 1,
+    });
+    expect(failure.stderrExcerpt).toContain('Element not found: text "Start Learning"');
+
+    const wanted = extractWantedMatchers(failure.stderrExcerpt);
+    expect(wanted).toEqual(['Start Learning']);
+
+    const result = classifyScreenCoverage({ dumpXml, selectorMapYaml, wanted });
+    expect(result.classification).toBe('matcher-miss');
+    expect(result.wantedPresent).toEqual(['Start Learning']);
+  });
+
+  it('same round-trip for the `Element not found: id "..."` shape (no-invite-detector.test.ts\'s real capture) — the #893 differentiator is type: text, but ids hit the same bug', () => {
+    const idFailingChunkBlock =
+      '# --- chunk 3 (screenshot=none) ---\n[FAIL] Element not found: id "btn_continue"\n';
+    const idDumpXml = `<?xml version='1.0'?><hierarchy>
+      <node resource-id="btn_continue" text="Continue" />
+    </hierarchy>`;
+    const idSelectorMapYaml = `
+apk_version: "2.63.2"
+selectors:
+  connect-continue-button:
+    type: id
+    value: "btn_continue"
+`;
+    const failure = classifyMaestroFailure({
+      stderr: idFailingChunkBlock,
+      stdout: '',
+      exitCode: 1,
+    });
+    const wanted = extractWantedMatchers(failure.stderrExcerpt);
+    const result = classifyScreenCoverage({
+      dumpXml: idDumpXml,
+      selectorMapYaml: idSelectorMapYaml,
+      wanted,
+    });
+    expect(result.classification).toBe('matcher-miss');
   });
 });
 

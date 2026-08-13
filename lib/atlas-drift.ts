@@ -322,8 +322,21 @@ export function renderReportYaml(input: AtlasYamlInput): string {
 }
 
 /** Recover the matcher values a Maestro run reached for, from its stderr.
- *  Two shapes: Maestro's own `... matching regex: <value>` lines, and any
- *  bare `pkg:id/name` token appearing anywhere in the excerpt. */
+ *  Three shapes:
+ *   1. Maestro's own `... matching regex: <value>` lines.
+ *   2. Any bare `pkg:id/name` token appearing anywhere in the excerpt.
+ *   3. `Element not found: id "<value>"` / `Element not found: text
+ *      "<value>"` — the shape Maestro ACTUALLY emits for a failed
+ *      `assertVisible`/`tapOn` on this repo's own APK (see
+ *      test/lib/maestro-failure-class.test.ts and
+ *      test/lib/no-invite-detector.test.ts for real captured strings).
+ *      Neither of the first two patterns matches this shape: there is no
+ *      "matching regex:" line, and a quoted text value like `"Start
+ *      Learning"` is not a `pkg:id/name` token. Missing this pattern
+ *      meant a text-matcher failure (e.g. the #893 differentiator
+ *      `deliver-home-daily-visits`, a `type: text` row) always yielded
+ *      `wanted: []`, making `matcher-miss` structurally unreachable for
+ *      it and misrouting straight to `unmapped-surface`. */
 export function extractWantedMatchers(stderrExcerpt: string): string[] {
   const out = new Set<string>();
   const regexLine = /matching regex:\s*(.+?)\s*$/gm;
@@ -334,6 +347,11 @@ export function extractWantedMatchers(stderrExcerpt: string): string[] {
   }
   const bareId = /[\w.]+:id\/\w+/g;
   while ((m = bareId.exec(stderrExcerpt)) !== null) out.add(m[0]);
+  const quotedIdOrText = /\b(?:id|text)\s+"([^"]+)"/gi;
+  while ((m = quotedIdOrText.exec(stderrExcerpt)) !== null) {
+    const v = (m[1] ?? '').trim();
+    if (v) out.add(v);
+  }
   return [...out].sort();
 }
 

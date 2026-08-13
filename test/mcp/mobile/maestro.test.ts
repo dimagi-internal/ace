@@ -212,6 +212,62 @@ describe('MaestroBackend.runRecipe — split-and-dump path (when `serial` is pro
     expect(calls.filter((c) => c.cmd === 'adb')).toHaveLength(0);
   });
 
+  it('classifies from the FAILING CHUNK\'s own stderr, not the head of the full joined aggregate (matcher-miss reachability fix)', async () => {
+    // Reproduces the real bug shape: several successful chunks run before
+    // the failing one, so `stderrParts.join('\n')` (the old input to
+    // classifyMaestroFailure) has already spent its 240-char excerpt
+    // budget on marker lines + earlier chunks' stderr by the time the
+    // failing chunk's own "Element not found: ..." text would begin.
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'mob-split-fail-late-'));
+    const recipePath = path.join(tmp, 'flow.yaml');
+    const precedingSteps = Array.from(
+      { length: 6 },
+      (_, i) => `- tapOn: A${i}\n- takeScreenshot: "screen-${i}"\n`,
+    ).join('');
+    fs.writeFileSync(
+      recipePath,
+      `appId: org.commcare.dalvik\n---\n${precedingSteps}- tapOn: Final\n- takeScreenshot: "screen-final"\n`,
+    );
+
+    let maestroCallNum = 0;
+    const shell = vi.fn(async (cmd: string, args: string[]) => {
+      const __p = bootedProbe(cmd, args);
+      if (__p) return __p;
+      if (cmd === 'maestro' && args.includes('test')) {
+        maestroCallNum++;
+        if (maestroCallNum <= 6) {
+          // 6 preceding chunks all succeed — this is what pads the
+          // aggregate past the 240-char excerpt window.
+          return { stdout: 'OK\n', stderr: '', exitCode: 0 };
+        }
+        // The 7th (final) chunk fails with the REAL Maestro shape captured
+        // in test/lib/maestro-failure-class.test.ts — not a paraphrase.
+        return {
+          stdout: '',
+          stderr: '[FAIL] Element not found: text "Start Learning"',
+          exitCode: 1,
+        };
+      }
+      if (cmd === 'adb' && (args.includes('uiautomator') || args.includes('pull'))) {
+        return { stdout: '', stderr: '', exitCode: 0 };
+      }
+      throw new Error(`Unscripted shell call: ${cmd} ${args.join(' ')}`);
+    });
+
+    const backend = new MaestroBackend({ shell });
+    const r = await backend.runRecipe(recipePath, {}, tmp, { serial: 'emulator-5554' });
+
+    expect(r.status).toBe('fail');
+    expect(maestroCallNum).toBe(7);
+    // Confirms this reproduces the real bug shape: the full joined
+    // aggregate genuinely exceeds the 240-char excerpt window.
+    expect(r.stderr.length).toBeGreaterThan(240);
+    // The classified excerpt must still carry the failing chunk's own
+    // text — proving forensics was threaded from that chunk alone, not
+    // sliced from the head of stderrParts.join('\n').
+    expect(r.failure?.stderrExcerpt).toContain('Element not found: text "Start Learning"');
+  });
+
   it('copies sibling palette YAMLs into the chunk dir so runFlow.file refs resolve', async () => {
     // Reproducer for the Phase 6 "Flow file does not exist:
     // .../ace-recipe-chunks-XXX/connect-login.yaml" failure: the splitter
@@ -300,7 +356,7 @@ describe('MaestroBackend.runRecipe — split-and-dump path (when `serial` is pro
     // chain ever forwarded `undefined` (or anything short of the literal
     // `true`) as truthy, this recipe — which has a top-level `runFlow`
     // boundary in addition to its `takeScreenshot` — would silently pick
-    // up an extra `-branch0-post` dump window and cost an extra
+    // up an extra `branch0-post` dump window and cost an extra
     // `maestro test` invocation on every existing mobile walk, which is
     // exactly the "expensive mode becomes the default by accident"
     // failure the `=== true` comparison exists to prevent.
