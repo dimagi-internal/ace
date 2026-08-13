@@ -196,6 +196,21 @@ silent-failure prevention learned from earlier real-world dogfood.
       "pending and healthy" from "pending and never propagated", so this gate
       catches only the missing-row case.
 
+      **The opp still has something to walk — probe BEFORE booting the AVD
+      (cost gate, ace#796).** Learn completion and the Deliver visit quota are
+      both one-way per `(test user, opportunity)`, and a Phase-6 retry reuses
+      the same opp — so once both are spent, the walk cannot succeed and the
+      ~10-minute AVD boot is pure waste. `app-screenshot-capture` **Step 2.8**
+      reads `connect_get_learn_progress` + `connect_get_deliver_progress` and
+      classifies via `lib/opp-consumption.ts`.
+
+      **Only `fully-consumed` halts** (`verdict: incomplete`, reason
+      `precondition-consumed`, remediation: a fresh `/ace:run` — never an opp
+      re-mint, per #573). `fresh`, `learn-consumed` and `worker-not-found` all
+      proceed, and an atom error proceeds too. Unlike the invite gate above
+      this is a **cost-skip, not a correctness-skip**: the on-device landing
+      branches remain authoritative about what the walk does.
+
       **If a tile fails to appear despite a pending row, the cause is
       UNKNOWN — capture evidence, do not name a cause.** Do not attribute it
       to invite propagation, and do not attribute it to a recipe fault; both

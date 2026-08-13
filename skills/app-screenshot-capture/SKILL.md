@@ -348,16 +348,40 @@ This branch is the structural fix, and the claim-prefix landing screen IS
 the signal — the walk cannot mis-enter once all three surfaces above are
 recognized.
 
-A pre-AVD probe is nonetheless now *possible* and would be strictly
-cheaper: `connect_get_learn_progress` (#897) and
-`connect_get_deliver_progress` (#1066) both expose per-worker completion
-headlessly, so a consumed opp can be detected before ~10 min of AVD
-wall-clock is spent reaching it. This doc previously asserted that
-"Connect exposes no clean per-user Learn-completion atom today"; that has
-been false since #897 shipped. Wiring that probe in ahead of
-`mobile_ensure_avd_running` is tracked as **#796** — it is a cost and
-idempotency fix, not a correctness one, because the landing-screen
-branches above are what keep the walk correct.
+The landing-screen branches above are what keep the walk CORRECT. Step 2.8
+below makes it CHEAP — it catches the unwalkable case before the AVD boots
+rather than ~10 minutes in.
+
+### Step 2.8: Pre-AVD consumed-precondition probe (#796)
+
+**Runs before `mobile_ensure_avd_running`. Read-only, headless, ~1s.**
+
+Both preconditions Phase 6 needs are one-way per `(test user, opportunity)`,
+and a retry on this run reuses the same opp — so when both are spent there is
+nothing left to walk and the AVD boot is pure waste. Connect can answer that
+server-side:
+
+1. Read `domain` and `opportunity_id` from
+   `phases.connect-setup.products.connect.opportunity` in `run_state.yaml`.
+2. Call `connect_get_learn_progress` and `connect_get_deliver_progress` with
+   them (grep `docs/atom-schemas.md` for the exact signatures).
+3. Classify with `classifyOppConsumption` from `lib/opp-consumption.ts`,
+   passing the two `workers` arrays and the test user's display name.
+
+Branch on the returned `verdict`:
+
+| verdict | action |
+|---|---|
+| `fresh` | proceed — both legs walkable |
+| `learn-consumed` | proceed — Deliver leg only; Step 2.7 will record `satisfied-by-prior-completion` |
+| `fully-consumed` | **halt before booting the AVD.** `verdict: incomplete`, reason `precondition-consumed`, remediation = the classifier's `reason` string (which names the fresh-`/ace:run` restore and warns off an opp re-mint per #573) |
+| `worker-not-found` | proceed — the roster could not answer; the on-device branches stay authoritative |
+
+**If either atom errors, proceed.** This is a **cost-skip, not a
+correctness-skip** (CLAUDE.md § *attempt the transition, treat the conflict as
+the skip*). It exists only to avoid a doomed boot; it must never be the thing
+that decides a walk doesn't happen. Every ambiguous read fails open by
+construction — see the fail-open cases in `test/lib/opp-consumption.test.ts`.
 
 ### Step 3: Boot AVD + ensure apps installed
 
