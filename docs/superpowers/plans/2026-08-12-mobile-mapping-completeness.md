@@ -662,7 +662,7 @@ describe('recipe-splitter — captureAllBoundaries', () => {
   const opts = { captureAllBoundaries: true };
 
   it('opens a window at every top-level runFlow boundary', () => {
-    expect(windows(readFileSync(`${STATIC}connect-claim-opp.yaml`, 'utf8'), opts)).toBe(9);
+    expect(windows(readFileSync(`${STATIC}connect-claim-opp.yaml`, 'utf8'), opts)).toBe(10);
     expect(windows(readFileSync(`${STATIC}deliver-launch.yaml`, 'utf8'), opts)).toBe(9);
   });
 
