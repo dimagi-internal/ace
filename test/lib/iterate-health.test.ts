@@ -194,6 +194,95 @@ describe('computeIterateHealth', () => {
     });
   });
 
+  describe('stale-golden visibility', () => {
+    // The bug: `iterate-state.yaml` carried a hand-written `seeded_prefix_defect`
+    // flag that this function ignored entirely, so a window pinned at 0% by a
+    // decayed FIXTURE was indistinguishable from a genuinely regressing SYSTEM.
+    // The state file's own notes had to beg a human to read the two together.
+    it('counts dirty iterations blocked by the frozen seeded prefix', () => {
+      const history: IterateIteration[] = [
+        { run_id: 'a', verdict: 'dirty', failure_class: 'learn-eval', seeded_prefix_defect: true },
+        { run_id: 'b', verdict: 'dirty', failure_class: 'learn-eval', seeded_prefix_defect: true },
+        { run_id: 'c', verdict: 'clean' },
+      ];
+      const h = computeIterateHealth(history, { window: 3, pass_target: 1 });
+      expect(h.blocked_by_golden).toBe(2);
+      expect(h.summary).toContain('blocked by a stale golden');
+    });
+
+    it('does NOT soften pass_rate — a golden-blocked run is still dirty', () => {
+      const history: IterateIteration[] = [
+        { run_id: 'a', verdict: 'dirty', seeded_prefix_defect: true },
+        { run_id: 'b', verdict: 'dirty', seeded_prefix_defect: true },
+        { run_id: 'c', verdict: 'clean' },
+      ];
+      const h = computeIterateHealth(history, { window: 3, pass_target: 1 });
+      expect(h.pass_rate).toBeCloseTo(1 / 3);
+      expect(h.converged).toBe(false);
+    });
+
+    it('halts with stale-golden once the cap is reached, naming the re-mint path', () => {
+      const history: IterateIteration[] = [
+        { run_id: 'a', verdict: 'dirty', seeded_prefix_defect: true },
+        { run_id: 'b', verdict: 'dirty', seeded_prefix_defect: true },
+      ];
+      const h = computeIterateHealth(history, { window: 5, unfixable_class_cap: 2 });
+      expect(h.halt?.reason).toBe('stale-golden');
+      expect(h.halt?.detail).toContain('--new-golden');
+    });
+
+    it('does not halt on a single golden-blocked run', () => {
+      const history: IterateIteration[] = [
+        { run_id: 'a', verdict: 'dirty', seeded_prefix_defect: true },
+        { run_id: 'b', verdict: 'clean' },
+      ];
+      expect(computeIterateHealth(history, { unfixable_class_cap: 2 }).halt).toBeNull();
+    });
+  });
+
+  describe('unfixable failure classes', () => {
+    // The bug: the procedure's per-failure-class cap counts only iterations
+    // "with a non-null fix_pr". A class the autofix subagent can never fix
+    // leaves fix_pr null forever, so it never trips the cap and the loop burns
+    // its whole iteration budget on something iterating cannot clear.
+    it('flags a class that recurs with no fix ever landing', () => {
+      const history: IterateIteration[] = [
+        { run_id: 'a', verdict: 'dirty', failure_class: 'case-select: no selector', fix_pr: null },
+        { run_id: 'b', verdict: 'dirty', failure_class: 'case-select: no selector', fix_pr: null },
+      ];
+      const h = computeIterateHealth(history, { window: 5, unfixable_class_cap: 2 });
+      expect(h.unfixable_classes).toEqual([
+        { failure_class: 'case-select: no selector', count: 2 },
+      ]);
+      expect(h.halt?.reason).toBe('unfixable-class');
+    });
+
+    it('does not flag a class the loop actually shipped a fix for', () => {
+      const history: IterateIteration[] = [
+        { run_id: 'a', verdict: 'dirty', failure_class: 'flaky', fix_pr: null },
+        { run_id: 'b', verdict: 'dirty', failure_class: 'flaky', fix_pr: 'https://gh/pr/1' },
+      ];
+      const h = computeIterateHealth(history, { window: 5, unfixable_class_cap: 2 });
+      expect(h.unfixable_classes).toEqual([]);
+      expect(h.halt).toBeNull();
+    });
+
+    it('prefers the stale-golden reason when both conditions are live', () => {
+      const history: IterateIteration[] = [
+        { run_id: 'a', verdict: 'dirty', failure_class: 'x', seeded_prefix_defect: true },
+        { run_id: 'b', verdict: 'dirty', failure_class: 'x', seeded_prefix_defect: true },
+        { run_id: 'c', verdict: 'dirty', failure_class: 'y', fix_pr: null },
+        { run_id: 'd', verdict: 'dirty', failure_class: 'y', fix_pr: null },
+      ];
+      const h = computeIterateHealth(history, { window: 5, unfixable_class_cap: 2 });
+      expect(h.halt?.reason).toBe('stale-golden');
+    });
+
+    it('leaves halt null on a healthy window', () => {
+      expect(computeIterateHealth(iters('ccccc'), { window: 5 }).halt).toBeNull();
+    });
+  });
+
   describe('summary line', () => {
     it('renders a one-line human summary the loop can print each iteration', () => {
       const h = computeIterateHealth(iters('dccccc'), { window: 5, pass_target: 0.8 });
