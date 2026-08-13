@@ -477,6 +477,14 @@ shipped all 5 training docs + onboarding email but skipped all 6
 paired eval dispatches, leaving `verify_phase_artifacts` flagging
 10 missing required verdict files at the boundary fence.
 
+**When `app-screenshot-capture` fails a leg and its `atlas-report.yaml`
+reports `classification: unmapped-surface`**, the phase summary must
+name the surface (the failing screen/step) and link the `atlas-report.yaml`
++ `*-FAILURE.png`/`*-FAILURE.xml` dump, rather than writing a generic
+"selector failure" line — an unmapped surface is a coverage gap, not a
+broken selector, and the summary should say so plainly so the operator
+doesn't chase the wrong fix.
+
 ### Why six text skills instead of one
 
 Each skill has its own audience, its own four-criterion self-eval,

@@ -16,7 +16,7 @@
 // matching by text instead. The harvester surfaces candidates; a
 // human decides.
 
-import { parse as parseYaml } from 'yaml';
+import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
 
 /** Extract every non-empty `resource-id="..."` value from an Android
  * uiautomator dump XML. The dump format is well-defined enough that a
@@ -294,6 +294,31 @@ export function classifyScreenCoverage(input: ClassifyScreenInput): ScreenCovera
   else classification = 'mapped';
 
   return { classification, mappedOnScreen, wantedPresent, wantedAbsent, candidates };
+}
+
+export interface AtlasYamlInput {
+  apkVersion: string;
+  dumpFile: string;
+  result: ScreenCoverageResult;
+}
+
+/** Machine-readable sibling of `renderReportMarkdown`. `needs_tier2` is the
+ *  gate on the expensive instrumented re-walk: ONLY an unmapped surface
+ *  earns it. A matcher-miss is fixed by correcting the recipe, and drift by
+ *  updating a row — neither justifies re-walking a leg with full
+ *  boundary dumps. */
+export function renderReportYaml(input: AtlasYamlInput): string {
+  const r = input.result;
+  return stringifyYaml({
+    apk_version: input.apkVersion,
+    dump_file: input.dumpFile,
+    classification: r.classification,
+    needs_tier2: r.classification === 'unmapped-surface',
+    mapped_on_screen: r.mappedOnScreen,
+    wanted_present: r.wantedPresent,
+    wanted_absent: r.wantedAbsent,
+    candidates: r.candidates,
+  });
 }
 
 /** Recover the matcher values a Maestro run reached for, from its stderr.

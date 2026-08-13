@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import { parse as parseYaml } from 'yaml';
 import {
   extractResourceIdsFromDump,
   loadSelectorMapIds,
@@ -10,6 +11,7 @@ import {
   loadSelectorMapMatchers,
   classifyScreenCoverage,
   extractWantedMatchers,
+  renderReportYaml,
 } from '../../lib/atlas-drift.js';
 
 // Pure helpers behind the atlas-drift harvester (scripts/probe-atlas-
@@ -342,5 +344,46 @@ describe('extractWantedMatchers', () => {
       'Id matching regex: org.commcare.dalvik:id/a\nId matching regex: org.commcare.dalvik:id/a',
     );
     expect(dup).toEqual(['org.commcare.dalvik:id/a']);
+  });
+});
+
+describe('renderReportYaml', () => {
+  it('emits parseable yaml carrying the classification and candidates', () => {
+    const text = renderReportYaml({
+      apkVersion: '2.63.2',
+      dumpFile: 'connect-claim-opp-FAILURE.xml',
+      result: {
+        classification: 'unmapped-surface',
+        mappedOnScreen: [],
+        wantedPresent: [],
+        wantedAbsent: ['org.commcare.dalvik:id/viewJobCard'],
+        candidates: ['org.commcare.dalvik:id/repeat_juncture_add', 'Add another'],
+      },
+    });
+    const parsed = parseYaml(text) as {
+      apk_version: string;
+      classification: string;
+      candidates: string[];
+      needs_tier2: boolean;
+    };
+    expect(parsed.apk_version).toBe('2.63.2');
+    expect(parsed.classification).toBe('unmapped-surface');
+    expect(parsed.candidates).toContain('Add another');
+    expect(parsed.needs_tier2).toBe(true);
+  });
+
+  it('does not request tier 2 for a matcher-miss', () => {
+    const text = renderReportYaml({
+      apkVersion: '2.63.2',
+      dumpFile: 'x-FAILURE.xml',
+      result: {
+        classification: 'matcher-miss',
+        mappedOnScreen: ['org.commcare.dalvik:id/viewJobCard'],
+        wantedPresent: ['org.commcare.dalvik:id/viewJobCard'],
+        wantedAbsent: [],
+        candidates: [],
+      },
+    });
+    expect((parseYaml(text) as { needs_tier2: boolean }).needs_tier2).toBe(false);
   });
 });

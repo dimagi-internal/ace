@@ -903,7 +903,7 @@ drift — otherwise the dumps just pile up unread.
 ```bash
 ACE_ROOT="${CLAUDE_PLUGIN_ROOT:-$(python3 -c "import json,os; d=json.load(open(os.path.expanduser('~/.claude/plugins/installed_plugins.json'))); print(d['plugins']['ace@ace'][0]['installPath'])")}"
 npx --prefix "$ACE_ROOT" tsx "$ACE_ROOT/scripts/probe-atlas-drift.ts" <screenshotDir> \
-  --apk "${ACE_CONNECT_APK_VERSION:-2.63.0}" \
+  --apk "${ACE_CONNECT_APK_VERSION:-2.63.2}" \
   --out <screenshotDir>/atlas-drift-report.md
 ```
 
@@ -918,6 +918,24 @@ confirmed live (`mobile_capture_ui_dump` → candidate-tap → re-dump
 navigates), `gh issue create` against `jjackson/ace` proposing the new
 `selectors.<logical-name>` row. This is the "close the loop to the
 source of truth" rule — one live dump beats another plausible guess.
+
+**After any leg fails**, also re-run the probe with `--yaml-out
+<screenshotDir>/atlas-report.yaml`. This classifies the newest
+`*-FAILURE.xml` three ways (`mapped` / `drift` / `unmapped-surface` /
+`matcher-miss`) and is the machine-readable sibling of the markdown
+report above — copy its `classification` value verbatim into the
+failing step's entry in `per_item[].note` on the Step 9 verdict, so the
+classification survives past this run instead of sitting unread in a
+report file (the #811/#893 fate — 4 of the 24 known issues cited a
+FAILURE dump nobody opened). **A `matcher-miss` means the recipe
+reached for an anchor that IS on screen — the selector map is not the
+problem, and a new selector row must NOT be authored for it; the fix is
+correcting the recipe.** Only `unmapped-surface` (`needs_tier2: true`
+in the yaml) means the surface itself has no map coverage and is a
+real candidate for a new logical-selector row. Getting this backwards —
+authoring a selector for a matcher-miss, or shrugging off a genuinely
+unmapped surface as "just a bad selector" — is exactly the #811/#893
+failure this file exists to prevent.
 
 ### Step 7: Thin UX smoke judge
 
