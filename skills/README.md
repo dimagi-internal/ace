@@ -75,23 +75,104 @@ refuses `Skill(<name>)` on a flagged skill with:
 `disable-model-invocation: false`.** The flag is only for skills reserved for
 explicit human `/ace:<name>` invocation.
 
-This section previously claimed the flag was catalog-only — that it dropped the
-skill from the routing index while leaving by-name dispatch working. That is
-false, and acting on it broke `/ace:run`: 80 of the skills phase agents dispatch
-were flagged, so agents either halted or — worse — replicated the skill's workflow
-inline against the harness's explicit instruction. Replication silently collapses
-the producer and its `-eval` judge into ONE context, which turns every affected
-verdict into a self-grade; this repo's own eval-fitness work predicts those run
-optimistic. Caught on `hh-poverty-targeting/20260812-1613` Phase 2
-(dimagi-internal/ace#1203).
+### Confirmed against the official docs (2026-08-12)
 
-The routing-index budget is a real constraint, but correctness wins: an
-undispatchable producer is worse than a crowded catalog. If budget pressure
-returns, solve it by trimming skill `description:` fields (what the index actually
-holds), not by flagging skills the pipeline needs to call.
+Not inferred from our own commits — verified at
+<https://code.claude.com/docs/en/skills>:
 
-*Enforced:* `test/skill-dispatchability.test.ts` fails if any skill referenced in
-`agents/*.md` carries `disable-model-invocation: true`.
+- **Frontmatter reference:** *"Set to `true` to prevent Claude from automatically loading this
+  skill. Use for workflows you want to trigger manually with `/name`. **Also prevents the skill
+  from being preloaded into subagents.**"*
+- **Skill visibility section:** *"This removes the skill from Claude's context entirely."*
+- **The load-bearing line:** *"The `user-invocable` field only controls menu visibility, not Skill
+  tool access. **Use `disable-model-invocation: true` to block programmatic invocation.**"*
+- **Changelog v2.1.222 (2026-08-04):** *"Improved the refusal when Claude tries to invoke a skill
+  with `disable-model-invocation`: Claude is now told to ask you to run the skill instead of
+  replicating its workflow."* That is why the refusal text gained its "do not replicate" sentence
+  in early August — the enforcement was being tightened in exactly the window our runs started
+  failing.
+
+So the flag blocking by-name dispatch is **documented, intended behavior** — not a regression and
+not a misuse on our part. `disable-model-invocation` is the documented way to say "a human types
+this; the model never calls it." A pipeline step an orchestrator dispatches is the opposite of
+that, so the flag was simply the wrong field for these skills.
+
+**There is no supported "dispatchable but hidden" state for plugin skills.** Settings offer a
+`skillOverrides` four-state control (`on` / `name-only` / `user-invocable-only` / `off`), and
+`"name-only"` is exactly the shape ACE wants — listed by name, no description in context, still
+invocable. But the same doc ends that section with: *"**Plugin skills are not affected by
+`skillOverrides`. Manage those through `/plugin` instead.**"* ACE is a plugin, so that escape
+hatch is unavailable to us today. Full listing is the only way to keep a plugin skill
+dispatchable. (If that restriction is ever lifted, `name-only` becomes the correct answer for
+every ACE pipeline skill and this whole section should be revisited.)
+
+**The listing budget degrades gracefully, and always keeps names:** *"The listing always contains
+every skill name, but if you have many skills, Claude Code shortens descriptions to fit the
+listing's character budget... The budget scales at 1% of the model's context window. When the
+listing overflows, Claude Code drops descriptions starting with the skills you invoke least."*
+Levers: `skillListingBudgetFraction` (e.g. `0.02`), `SLASH_COMMAND_TOOL_CHAR_BUDGET`, and a
+per-entry cap `skillListingMaxDescChars` (default 1,536). **`/doctor` estimates the listing's cost
+and names its biggest contributors** — measure there before arguing about it.
+
+Because names always survive the squeeze, an over-budget catalog does not break ACE's by-name
+dispatch; it degrades *auto-routing*, which ACE does not rely on. The real cost of ACE's footprint
+is therefore borne by OTHER plugins' skills, whose descriptions get dropped to make room. That is
+the externality to keep honest, and the reason the ratchet test below exists.
+
+### Subagents are NOT exempt
+
+The 2026-05-25 carve-out (0.13.423) recorded the
+opposite — that "subagent-dispatched phases (1, 2, 4-10) work fine under the flag
+because the parent Agent dispatch satisfies the platform's invocation chain," and
+that only level-0 `Skill()` was blocked. That is why Phase 3 (an L0 procedure doc)
+and later Phase 1 were carved out surgically while Phases 2 and 4-10 were left
+flagged as safe.
+
+**Measured 2026-08-12 (v0.13.761): a subagent gets the identical refusal.** Probe:
+dispatch any subagent and have it call `Skill()` on a flagged skill — same error,
+verbatim, as at L0. Whether the platform tightened after May or the model was
+always incomplete, the exemption does not hold now. Re-run that probe before
+trusting any future claim that some dispatch path is exempt.
+
+### The cost, stated honestly
+
+Unflagging is not free, and the flag was not cargo-culted. The 2026-05-06 skill
+audit (PRs 1-6, ending 0.13.40) drove ACE's description budget 15,834 → 6,877
+chars and flagged all 54 skills, so that **"ACE's contribution to the global
+skill-catalog budget is effectively zero."** That was a deliberate, achieved goal.
+Every unflagged skill puts its `description:` back into the routing index of every
+session in every repo with ACE installed.
+
+So the policy is a **carve-out, not a blanket** — which is what the 2026-05-25
+commit already planned but never landed:
+
+> keep the flag on the small subset of skills with generic-verb descriptions that
+> match casual user sentences, drop it on the niche ones
+
+1. **Dispatched by an agent doc → must be `false`.** Non-negotiable; it otherwise
+   halts the phase.
+2. **Everything else → keep `true`.** Human-invoked `/ace:<name>` entry points,
+   and anything whose description is generic enough to hijack routing on a casual
+   sentence.
+3. **Keep descriptions tight regardless.** The index holds `description:`, so that
+   field IS the budget. The audit's discipline was ≤140 chars; drift since has
+   pushed the average well past it.
+
+**What inline replication actually costs — it is NOT loss of eval independence.**
+`Skill()` injects the skill body into the *calling* context; it does not spawn a
+fresh one. So `Skill(producer)` then `Skill(producer-eval)` share a context exactly
+as reading both files inline would. Producer/judge context-sharing is a property of
+the per-step eval hook (`agents/ace-orchestrator.md § Per-Step Eval Hook`, which
+tells each phase agent to run the eval in its own context), and unflagging does not
+change it. What inline replication really costs is **fidelity**: an agent
+paraphrasing a procedure instead of executing the current file, which is the drift
+`CLAUDE.md § Skill Invocation Discipline` already has an incident for. Do not
+justify this flag policy with an eval-independence argument — it is not one.
+
+Caught on `hh-poverty-targeting/20260812-1613` Phase 2 (dimagi-internal/ace#1203).
+
+*Enforced:* `test/skill-dispatchability.test.ts` — fails if any skill referenced in
+`agents/*.md` carries the flag, and fails if descriptions blow the catalog budget.
 
 ### Other fields
 
