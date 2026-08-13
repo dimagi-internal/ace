@@ -364,9 +364,38 @@ registry's metadata. Locked by `test/scripts/ace-nova-check.test.ts`.
   remediation: `claude mcp remove nova --scope user`, then restart
   Claude Code. `/ace:setup` removes it idempotently on every run.
 
-- **Notable capabilities (no open upstream bugs blocking ACE).** 16 of
-  18 filed issues are closed; remaining two (#8 field-level multimedia,
-  #12 multi-project-space picker) are feature requests.
+- **Open upstream bugs (2, both filed 2026-08-13).** Neither halts a run;
+  both silently degrade what Phase 3 can express.
+  - `voidcraft-labs/commcare-nova#458` — on a **followup form**, a
+    `case-ref` part addressing a property of that form's OWN case type is
+    rejected with *"This expression does not survive Nova's canonical
+    identity parse and print round trip"*. Observed across four expression
+    shapes, two properties and three slot kinds (`validate`, `hint`, and
+    the Connect `deliver_unit` `entity_id`/`entity_name`); `field-ref`
+    parts round-trip fine in the same slots. This makes
+    `pdd-to-deliver-app` § `entity_id`'s mandated case-UPDATE pattern
+    (`#case/entity_key`) unexecutable as written. **Workaround:** add
+    always-relevant hidden fields bound to the case properties you need
+    (each needs `default_value: ''` or it is rejected — the preload then
+    wins over the seed), and read them with ordinary `field-ref` parts.
+    ACE-side tracking: ace#1180.
+  - `voidcraft-labs/commcare-nova#459` — tool payloads are truncated
+    before the tool sees them and surface as
+    `InputValidationError: could not be parsed as JSON`, pointing the
+    caller at a quoting bug that isn't there. Threshold is NOT clean —
+    the same failure reproduced at 1.9 KB after first appearing near
+    5 KB, so do not build against a number. Bites ACE disproportionately
+    because trilingual labels (no per-language channel, ace#968) roughly
+    triple every `add_fields` payload; one 51-field form needed ~20
+    batches. ACE-side tracking: ace#1181.
+
+- **Notable capabilities (nothing upstream currently BLOCKS a run).** The
+  two bugs above degrade expressiveness rather than halting. Counts of
+  "N of M filed issues closed" are deliberately not kept here — they go
+  stale silently and did (this line previously claimed 16 of 18 closed
+  with the remainder being feature requests, while
+  `voidcraft-labs/nova-plugin#25` — `create_app` failing 100% — was open
+  and is not a feature request). Check the tracker.
   - `update_form` with nullable properties (e.g. `connect: null`)
     correctly clears on disk.
   - Autonomous architect has all case-list-config tools
