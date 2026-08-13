@@ -138,6 +138,91 @@ Detection rate alone is therefore *insufficient*. Add a coverage check:
    `fail` overall. If a rubric scores its negative control above `warn`,
    it is not calibrated regardless of detection rate.
 
+### Step 3c — Anchors must be re-derivable without the live artifact (added 2026-08-13)
+
+A calibration anchor — the positive control, the negative control, the
+expert reference — is the **regression test for a rubric revision**. Most
+`-eval` rubrics say so in their own text ("any revision of this dimension
+must still score that bank ≤3"). So the anchor has to still mean, next
+month, what it meant when it was recorded.
+
+**It won't, if it is recorded as a pointer.** An anchor written as *"opp X
+/ run Y, Nova app Z scored N"* names three mutable things:
+
+- **Nova apps are mutable.** A repair pass, a `/ace:step` re-run, or a
+  later phase editing the same app changes the artifact under the anchor
+  with nothing to detect it.
+- **Runs get repaired.** `repairs[]` is a designed part of the loop —
+  `pdd-to-learn-app-eval` hands a typed work order back to the producer,
+  which changes the very bank the anchor cites.
+- **The enumeration is not a property of the artifact.** Where a score is
+  a ratio over a judge-built denominator (rules covered, operations
+  covered, axes present), two honest graders re-derive different
+  denominators from the same app. The anchor's number moves without
+  anything at all changing.
+
+All three have already fired on `pdd-to-learn-app-eval`'s positive
+control. Measured 2026-08-13, the same app + run cited by the rubric has
+**three different recorded ratios** — `0.78` in the rubric (denominator
+32), `0.767` in that run's own prior verdict, and `0.904` in the live
+verdict (denominator **52**, after a repair round). A revision checking
+itself against "0.78" is checking against a number no live re-derivation
+reproduces.
+
+**The rule.** An anchor MUST record enough evidence to re-derive its score
+**without reading the live artifact**. Concretely, every anchor block
+carries:
+
+1. **`measured_on: YYYY-MM-DD`** — the date the number was measured. Not
+   the date the rubric was edited.
+2. **The evidence the score was computed from**, inline — the per-item /
+   per-dimension table, the numerator and denominator *as enumerated*, the
+   item stems or rule names as they read at measurement time. Enough that
+   a reader can recompute the number from this page alone.
+3. **A mutability notice** — an explicit statement that the cited artifact
+   is live and mutable, and MUST be re-measured rather than assumed before
+   it is used as a regression gate.
+4. **Both readings where the artifact has since changed.** Do not
+   silently re-point the anchor at the new number. The delta is itself
+   information — it is how this whole failure mode was found — and a
+   revision needs to know which reading its predecessor was calibrated
+   against.
+
+**Where the score is a ratio over a judge-built denominator, the
+enumeration is part of the evidence, not part of the artifact.** Record
+the denominator's entries, not just its size. An anchor that records
+`25/32` without naming the 32 cannot be re-derived by anyone, including
+its author.
+
+**Scope — this applies to ANCHORS, not to every run citation.** The
+distinction is whether anything *checks itself against* the artifact:
+
+- **An anchor** is load-bearing for a future decision — "any revision must
+  still score this bank ≤3", "the negative control MUST score
+  `capture_fitness ≤3`", "detection rate ≥80% against this catalogue". It
+  is a regression gate, so it has to stay re-derivable. Step 3c applies.
+- **Provenance** is a citation explaining where a rule came from — "this
+  component was added after `hh-poverty-targeting/20260722-1341` shipped
+  a hollow bank". The rule stands on its own stated reasoning whether or
+  not that app still looks that way, and nothing re-measures it. Step 3c
+  does **not** apply; adding dates and evidence tables to provenance is
+  noise that buries the anchors that do matter.
+
+Change-log entries are provenance by construction. When in doubt: if
+someone would ever re-run the measurement to decide something, it is an
+anchor.
+
+**Prefer an anchor that cannot drift.** In descending order of
+durability: a frozen copy of the artifact (a CCZ, an exported blueprint, a
+transcript) > the full evidence table recorded inline > a pointer to a
+live app id. The first two are re-derivable by construction; the third is
+a bookmark, and bookmarks are what this step exists to stop.
+
+*Enforced (partly):* `test/skills/eval-calibration-anchors.test.ts` fails
+any `## …control` section in a `skills/*-eval/SKILL.md` that omits
+`measured_on:`. That is a date check, not a semantics check — it cannot
+tell you the anchor is still valid, only that you can see how old it is.
+
 ### Step 4 — Run the rubric N times for variance
 
 Sequentially invoke the same rubric against the same input ≥3 times
@@ -202,6 +287,9 @@ A rubric is calibrated when:
 - Detection rate ≥ 80% on the ground-truth set.
 - **Dimension coverage (Step 3b): every applicable fitness axis has a
   dimension, and the thin negative control scores below `pass`.**
+- **Anchor durability (Step 3c): every control carries `measured_on`, its
+  evidence table, and a mutability notice — so the next revision can
+  re-derive the number instead of trusting it.**
 - Variance ≤ 0.5 across ≥3 consecutive runs.
 - The score on a known-flawed artifact is below 8 (i.e., the rubric
   is willing to deduct meaningfully).
@@ -265,4 +353,5 @@ ground-truth set, captured in an auditable run-record.
 |------|--------|--------|
 | 2026-04-28 | Initial version. Defines the ground-truth catalogue, multi-run variance protocol, detection-rate metric, and iteration loop. Companion to `pdd-to-deliver-app-eval` and the tightened `ocs-chatbot-eval` rubric, both of which cite this skill as their calibration source. | ACE team (eval system buildout) |
 | 2026-05-05 | Refresh the OCS-transcript example header in the known-issues template to match the new run-scoped path scheme (`5-ocs/ocs-chatbot-qa_transcript-deep.md` instead of the dated `qa-captures/...`). Cosmetic; no methodology change. | ACE team |
+| 2026-08-13 | **Added Step 3c — anchors must be re-derivable without the live artifact (ace#1212).** Anchors were recorded as pointers (*"opp X / run Y, Nova app Z scored N"*), and all three of those are mutable: Nova apps get edited, runs get repaired by the `repairs[]` loop the rubrics themselves drive, and a ratio over a judge-built denominator moves when the next grader enumerates differently. Since an anchor IS the regression test for a rubric revision ("any revision must still score that bank ≤3"), a drifted anchor lets a rubric pass its own gate while having quietly broken. Measured on `pdd-to-learn-app-eval`'s positive control 2026-08-13: **three different recorded readings of the same app** — 0.78 (denominator 32) in the rubric, 0.767 in that run's own prior verdict, and 0.904 (denominator **52**) live post-repair. The app changed; the *enumeration* changed far more (10 counter-intuitive rules + 12 operations → 19 + 14 in two days), so the dominant error bar was never the artifact. New rule: every anchor carries `measured_on`, the evidence table the score was computed from (the denominator's ENTRIES, not just its size), an explicit mutability notice, and BOTH readings where the artifact has since moved — the delta is information, not noise to be tidied away. Added a durability ordering (frozen artifact copy > inline evidence table > live pointer) and a scope note separating **anchors** (load-bearing, dated) from **provenance** (change-log citations explaining where a rule came from — explicitly exempt, since dating those buries the anchors that matter). Added to the Step-6 stop conditions. *Enforced:* `test/skills/eval-calibration-anchors.test.ts` fails any anchor section in a `skills/*-eval/SKILL.md` that cites a run id or app UUID without `measured_on` — a visibility gate, not a semantics gate. | ACE team |
 | 2026-05-29 | **Added Step 3b (dimension coverage) — the ITN post-mortem fix.** Detection rate can't surface a *missing* dimension (a blind spot is never a known issue), which is how the app evals scored 9.6 on a hollow build. New step: enumerate the fitness axes separating conformant from deployable, confirm a dimension touches each, and calibrate against an expert reference (ITN `[Final]`) + a thin negative control (ITN ACE build `20260528-1607`) that MUST score below `pass`. Added to the Step-6 stop conditions. Per `docs/superpowers/specs/2026-05-29-eval-fitness-gap.md`. | ACE team |
