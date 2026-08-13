@@ -78,6 +78,7 @@ authored from the PDD per run):
 | [`observable-before-derived`](#observable-before-derived) | Deliver | Always, for any visit/encounter form with an outcome or disposition field | `pdd-to-deliver-app-eval § field_answerability` |
 | [`constraint-locality`](#constraint-locality) | Deliver | Always, for any form carrying `constraint` / `validate` expressions | `pdd-to-deliver-app-eval § field_answerability`; `app-release-qa` (mechanical bind check) |
 | [`relevance-reachability`](#constraint-locality) | Deliver | Always, for any form carrying `relevant` expressions | `pdd-to-deliver-app-eval § field_answerability`; `app-release-qa` (mechanical bind check) |
+| [`screen-grouping`](#screen-grouping) | Deliver (+ Learn) | Always, for any form that puts more than one question in a `group` | `pdd-to-deliver-app-eval § field_answerability`; `pdd-to-deliver-app § Step 4g` (mechanical, `lib/screen-shape.ts`) |
 | [`consent-script-floor`](#consent-script-floor) | Deliver | The PDD describes consent being sought from the people whose data/images are captured — **whether or not it declares a consent FIELD** (a read-aloud announcement counts) | `pdd-to-deliver-app-eval § consent_floor` (hard-gate — backstop only; this is a BUILD-TIME component) |
 | [`threshold-coherence-flag`](#threshold-coherence-flag) | Deliver | PDD fixes ≥2 numeric thresholds constraining one physical quantity | `pdd-to-deliver-app-eval § threshold_coherence` (hard-gate) |
 | [`discriminating-assessment-items`](#discriminating-assessment-items) | Learn | Any scored assessment | `pdd-to-learn-app-eval § assessment_rule_coverage` |
@@ -581,7 +582,16 @@ time; do not skip it because the app "looks right" structurally.
 > post-test** with distinct item banks (pre-test surfaces baseline; post-test
 > is the gate); (b) include enough scored items to actually test the curriculum
 > — roughly **≥1 item per module/major topic**, not 5 items for a 5-module
-> course; (c) compute `user_score` as a percentage (per the rule above) and
+> course — and **when the PDD names the required topics, the GATING bank must
+> cover THOSE topics, at whatever per-topic minimum the PDD states.** Write the
+> PDD's topic list down, map every gating item to one of them, and check the
+> counts before you ship. A topic taught in the curriculum but tested only in
+> the non-gating pre-test is NOT covered by the gate: the worker can certify
+> without ever being examined on it. If you deliberately re-allocate the gate
+> toward harder-to-guess topics (a legitimate trade — it raises discrimination),
+> the topics you moved OUT must be named in the build memo as a reduction in
+> what the certificate certifies, never left implicit; (c) compute `user_score`
+> as a percentage (per the rule above) and
 > wire it to `connect.assessment` at the PDD's threshold (<THRESHOLD>) so
 > Connect enforces the Deliver-unlock gate — **on the POST-TEST ONLY. The
 > pre-test MUST NOT carry a `connect.assessment` block** (see the
@@ -966,6 +976,92 @@ verified against the *deployed* CCZ, not just the Nova blueprint.
 > `consent = 'yes'`), never on the derived outcome. A user-facing outcome question
 > placed before its own inputs is a build defect, not a style choice.
 
+### screen-grouping
+
+- **App:** Deliver (the same reasoning applies to Learn content forms).
+- **Trigger:** always, for any form that puts more than one question in a
+  `group`.
+- **Parameters:** none — the thresholds live in `lib/screen-shape.ts`
+  (`SCREEN_INPUT_WARN` = 6, `SCREEN_INPUT_MAX` = 8) so the brief, the build
+  check and the eval cannot drift apart.
+- **Enforced by:** `pdd-to-deliver-app § Step 4g` (mechanical, level-0, runs
+  on the already-fetched blueprint BEFORE deploy) and
+  `pdd-to-deliver-app-eval § field_answerability`.
+- **Origin:** dimagi-internal/ace — hh-poverty-targeting/20260812-2034.
+
+**This is NOT a one-question-per-screen rule, and must never become one.**
+Operator ruling (Jon, 2026-08-13): *"It's actually fine app design practice to
+have multiple questions on a screen if that makes sense for the flow, not
+strictly requiring one question per screen, so it's fine that it is built that
+way and shouldn't be viewed as a problem. It shouldn't be a super long
+scroll."* Grouping questions that belong together is GOOD design and the
+default; the defect is only a group that has quietly become a wall.
+
+**Why this component exists at all.** A Nova `kind: group` compiles to a
+CommCare **field-list** — every child, labels and questions alike, renders on
+ONE scrollable screen. Until this component landed, nothing in ACE said so at
+build time: `observable-before-derived` governs question ORDER,
+`constraint-locality` governs CONSTRAINTS, and no component governed screen
+COMPOSITION. `pdd-to-deliver-app`'s Steps 4a–4f checked field counts,
+one-form-per-module, case write-back, case-list columns, the deliver marker and
+option sources — none checked screen shape. And `pdd-to-deliver-app-eval`'s ten
+dimensions included nothing that looks at how many questions share a screen.
+
+The result on hh-poverty-targeting/20260812-2034: the architect grouped by
+relevance condition — defensible on its own terms, one authored condition per
+block — which put **all ten PPI indicators plus the household roster repeat on
+a single screen**. It cleared every Phase 3 gate and `field_answerability`
+scored **9.5**. The shape surfaced two steps later while authoring the Phase 6
+smoke recipe, by which time the app was already on CommCare HQ, so the fix cost
+a re-upload, a fresh HQ app id and an orphan app to soft-delete. Had Phase 4
+run first it would have cost a delete-and-recreate of the Connect opportunity,
+because `connect_create_opportunity` writes HQ app ids at create time and
+Connect's edit form does not expose them.
+
+**The rule is coherence first, count second.** Group questions that share
+something the worker can feel: one recall period, one answer source, one
+instruction, one physical object. Split when the shared thing changes — and
+give a question its own screen precisely when its rule DIFFERS from its
+neighbours', because the separation is what makes the difference visible at the
+point of use. The canonical example is the Nigeria PPI: the four consumption
+items share a 7-day recall and one help text, so they belong together; the
+electricity item uses a **30-day** recall, and the Learn curriculum explicitly
+teaches workers not to carry the seven days across to it — so it earns its own
+screen, and that screen is itself a teaching aid.
+
+**A repeat never belongs inside a field-list.** A repeat nested in a group does
+not render as its own repeat flow. Put it at the form root or in a group of its
+own.
+
+**A long read-aloud passage belongs with the answer it governs.** A consent
+script or verbatim behaviour-change segment sharing a screen with unrelated
+earlier questions scrolls out of view before the worker reaches the answer —
+which for a consent script means the attestation is recorded against text the
+respondent may never have heard read out.
+
+**Brief paragraph (verbatim):**
+
+> REQUIRED — Screen grouping: a `group` renders as a CommCare field-list, so
+> every question inside it shares ONE scrollable screen. Multiple questions per
+> screen is GOOD design when they belong together — do NOT put one question per
+> screen. Group by something the worker can feel: one recall period, one answer
+> source, one instruction, one physical object. Split when that shared thing
+> changes, and deliberately give a question its own screen when its rule DIFFERS
+> from its neighbours' (e.g. an item with a 30-day recall sitting among items
+> with a 7-day recall gets its own screen, so the difference is visible where it
+> matters). Keep a screen to a set the worker can hold in view: more than 6
+> answerable questions on one screen needs a justification, and more than 8 is a
+> defect — split it. Never nest a `repeat` inside a group; it will not render as
+> its own repeat flow, so put it at the form root or in a group of its own. Put
+> a long read-aloud passage (a consent script, a verbatim script segment) on the
+> screen that carries the answer it governs, not above unrelated earlier
+> questions, or it scrolls out of view before the worker answers.
+
+> Mechanically enforced by `lib/screen-shape.ts` (`checkScreenShape`), which the
+> build calls at Step 4g and the eval reuses — see
+> `test/lib/screen-shape.test.ts`, whose regression anchor is the exact
+> ten-indicators-plus-repeat group that shipped.
+
 ### constraint-locality
 
 - **App:** Deliver
@@ -1322,3 +1418,4 @@ the effective bar. One repair round, then re-grade.
 | 2026-08-12 | **`assessment-gate` gets the exactly-one-gating-instrument rule; `app-connect-coverage` stops mandating the defect (closes ace#1131).** The component said to wire `user_score` to `connect.assessment` at the PDD threshold but never said WHICH form, while clause (a) told the architect to build a pre-test AND a post-test — so architects wired both. `app-connect-coverage § Scope` then made it structural: its Learn row read "quiz-only (select inputs + `user_score` hidden) → `assessment`", and a **baseline pre-test has exactly that shape**, so a coverage pass would add the marker back even if a build removed it. Connect has no per-form distinction anywhere: one `passing_score` per `CommCareApp`, `process_assessments` sets `passed = score >= passing_score` for every submitted block carrying `user_score`, and every "has this worker passed?" surface uses any-passed semantics (`assessment_exists_subquery(passed=True)`, credentialing, the `passed` count). So a pre-test carrying the marker IS a gating instrument whatever its intro copy claims — measured live at 0.85 cold against an 80 gate, i.e. a worker who opened no module is recorded `passed=True`. Fixes: (1) the brief now says the marker goes on the **post-test only**, with the pre-test carrying `connect.learn_module` and computing its score internally for its own baseline labels; (2) a new mechanism block states the exactly-one rule with the Connect source citations; (3) `app-connect-coverage` splits its Learn quiz row into gating-post-test vs baseline-pre-test, says to decide **by role, not by shape**, and says a pre-test carrying `assessment` is a defect to REMOVE rather than coverage to preserve; (4) `app-release-qa` gains a **cardinality** halt (`learn-assessment-cardinality`) — exactly one form may declare `connect.assessment`, zero or ≥2 halts the release. The cardinality check has to live in release QA because `app_xml.py` never extracts assessments from the CCZ, so the behaviour is submission-time and marker-PRESENCE QA is structurally blind to it; the blueprint is the only pre-release surface that can see the count. | ACE team |
 | 2026-08-12 | **`discriminating-assessment-items` enforcement moves off the author onto a measured build-time probe (closes ace#1119).** The component shipped a mandatory PRE-RELEASE SELF-CHECK graded by the same agent that wrote the bank — while the component's own text records that author self-prediction here is worthless (ace#1014's rewrite 2 self-predicted 5–7/12 and measured 9–10/12). New `pdd-to-learn-app § 4d` replaces the prediction with a measurement at build time, alongside the existing 4a/4b/4c post-build pre-checks: two separate agents, PDD-derived FLW persona, stems and options only, independently permuted neutral labels, picks committed before reveal, scored against the live `qN_score` calculates. Gate is `untrained_max × 100 >= the PDD's unlock threshold` → rewrite the items the probe got right, **bounded at two cycles**, then record a residual and proceed. Deliberately a FLOOR, not the eval's contrast: it catches only 'the protected population passes cold', and the brief says explicitly not to tune against it beyond clearing it — chasing an absolute cold score is what ace#1187 cost two authoring cycles. Calibrated on three real banks with large margins (decorative hh-poverty 20260722 fires at 1.00; spark-facilitator 20260810 clears at 0.55; hh-poverty 20260730 clears at 0.17). Skips below 5 scored items (degenerate, ace#1042). Carries a topology note: the step calls `Agent` so it must run at level 0, which holds because `commcare-setup` is executed inline — if the skill is ever dispatched as a subagent, skip and let the eval carry it rather than restructuring the phase. The self-check paragraph stays as authoring hygiene, now labelled as such. | ACE team |
 | 2026-08-13 | **Retired the cold-read probe on BOTH sides; `discriminating-assessment-items` is now enforced by a structural audit (ace#1206).** The 2026-08-12 entries above hardened a persona-based blind-reader measurement in two places — a blocking build-time floor in `pdd-to-learn-app § 4d` and a trained-minus-untrained contrast in `pdd-to-learn-app-eval § assessment_discrimination`. Both are removed. **(1)** The eval's gate was arithmetically the statistic the same revision had just declared too noisy to gate on: `delta <= 1 - untrained_ratio`, tight whenever the trained reader scores 100%. **(2)** More fundamentally, the untrained reader is an LLM told to role-play a low-literacy CHW, and an LLM's floor is its own competence — it still reads English fluently, does the arithmetic, and eliminates options. For a CHW curriculum whose taught rules are largely "record what happened, honestly", the proxy passing cold is the EXPECTED result for a GOOD bank, so it cannot be a failure signal; the only way to drive it down is arbitrary trivia, which is harder to learn and less useful in the field. The metric's gradient pointed away from good material for the cohort it protected. No ACE bank has ever been put in front of a real CHW, so the LLM->CHW inference was never validated while being load-bearing for a gate. Trigger: `spark-facilitator/20260812-1635` — untrained persona 11/12 twice with identical miss sets, trained 12/12, on a build scoring 8.45 with complete trilingual coverage, worked examples from the real instrument and correct conditional gating. **The replacement asks the same question structurally**: enumerate the taught rules where common sense gives the WRONG answer (a convention that reads backwards, a deliberate non-payment, an inclusion rule, a named window or threshold) plus the high-consequence operations, map each scored item to the rule it keys on, and score coverage with counter-intuitive rules weighted double — from the artifact, with no persona, no dispatched agents and no run-to-run noise. An item whose distractors are all rejectable on sight is EXCLUDED from coverage rather than deducted for, so the penalty scales with how hollow the bank is — a capped deduction let nine hollow items cost the same as two and failed the negative control on measurement. Uncovered rules return as `repairs[]`, a work order the orchestrator hands to `pdd-to-learn-app` (never applied by the judge, which would converge on passing itself), capped at one round. Component text went 216 -> ~120 lines; the authoring guidance now leads with TOPIC selection and counter-intuitive coverage, and option craft is explicitly hygiene. Kept from the retired pass: the framing that an item nobody can answer without the training is perfect even if it looks easy. Negative control unchanged — `hh-poverty-targeting/20260722-1341` covers ~0 counter-intuitive rules and takes the absurd-distractor deduction on every item. | ACE team |
+| 2026-08-13 | **New `screen-grouping` component — nothing governed screen composition (hh-poverty-targeting/20260812-2034).** A Nova `kind: group` compiles to a CommCare field-list, so every child shares ONE scrollable screen — and no component said so at build time: `observable-before-derived` governs question ORDER, `constraint-locality` governs CONSTRAINTS, and that was the whole surface. `pdd-to-deliver-app`'s Steps 4a-4f checked field counts, one-form-per-module, case write-back, case-list columns, the deliver marker and option sources; `pdd-to-deliver-app-eval` had ten dimensions. None looked at how many questions share a screen. So an architect grouping by relevance-condition (defensible on its own terms) put **all ten PPI indicators plus the household roster repeat on one screen**, cleared every Phase 3 gate, and scored `field_answerability` **9.5**. It surfaced two steps later while authoring the Phase 6 smoke recipe — after upload — costing a re-upload, a fresh HQ app id and an orphan to soft-delete; after Phase 4 it would have cost a delete-and-recreate of the Connect opportunity. **This is explicitly NOT a one-question-per-screen rule** (operator ruling, Jon 2026-08-13: multiple questions per screen is good design when they belong together; it just "shouldn't be a super long scroll") and must never be graded as one. The component states the coherence rule — group by a shared recall period / answer source / instruction, split when that changes, and give a question its own screen precisely when its rule DIFFERS (the 30-day electricity item among 7-day consumption items earns its own screen, and that separation is itself a teaching aid). Thresholds live in `lib/screen-shape.ts` so the brief, the build check and the eval cannot drift. Also extends `assessment-gate` (b): when the PDD names required topics and a per-topic minimum, the GATING bank must cover THOSE topics — a topic tested only in the non-gating pre-test is not covered by the gate, and a deliberate re-allocation must be named in the build memo. *Enforced:* `pdd-to-deliver-app § Step 4g` + `test/lib/screen-shape.test.ts` (regression anchor is the exact shipped group). | ACE team |
