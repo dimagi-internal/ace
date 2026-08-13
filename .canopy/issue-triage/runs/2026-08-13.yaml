@@ -1,0 +1,648 @@
+run_date: 2026-08-13
+repo: dimagi-internal/ace
+scope_contract: triage-plus-quick-wins
+batch: 5-oldest-open-issues
+operator_directive: >-
+  "read the last session where did a triage as well for context and then crank
+  on the oldest 5". Yesterday's 2026-08-12 run log + sidecar were read first;
+  its skepticism directive was carried forward into every subagent prompt.
+code_ref: 3012cc6b
+open_total: 75
+triaged: 5
+carried_forward: 0
+carry_forward_note: >-
+  A sidecar existed (2026-08-12) and two of this batch (#796, #856) had prior
+  verdicts — but 128 paths moved on main in the 24h since, including
+  connect-claim-opp.yaml, app-screenshot-capture/SKILL.md, agents/qa-and-training.md,
+  connect-2.63.2.yaml and all three training-deck skills. Every evidence path
+  that mattered was in the touched set, so nothing was eligible to carry.
+truncated: true
+truncation_note: "triaged 5 of 75 open issues (the 5 oldest, per operator); 0 of 0 open PRs"
+prs: []
+pr_note: >-
+  Zero open PRs. The repo's only open PR (#850) was closed by yesterday's run,
+  and #1207 merged. Nothing to reconcile against the issue verdicts.
+tier_counts: { blocks-e2e: 0, harness: 4, polish: 1 }
+tier_note: >-
+  First run in this series with no blocks-e2e item in the batch. Yesterday
+  shipped the blocks-e2e one (#863) and closed the other (#735); #796's own
+  blocks-e2e justification retired with it (see its label_disagreement).
+
+clusters:
+  - name: visual-coverage-honesty
+    members: [856, 873]
+    also_relates: [1094, 1069]
+    one_fix: >-
+      A deck-level visual-coverage predicate that can tell a PERMANENT,
+      by-design pool gap from an opp-specific capture failure. #856 is the gate;
+      #873's DF-2 is the enrichment that makes pool gaps legible as INFO.
+    reconciliation: >-
+      The two subagents converged on the same contract by different mechanisms
+      and the difference decides whether #856 is blocked. #873's agent argued the
+      gate needs `placeholder: true` carried through training-deck-generate's
+      merged manifest map — a field that lives ONLY in the Drive-side pool
+      manifest and is read by no code. #856's agent found that
+      lib/training-deck-spec.ts:230-233 ALREADY partitions
+      `manifest.common` from `manifest.opp`, and all five of #873's uncapturable
+      aliases sit on the `common` side. Scoping the coverage metric to
+      `manifest.opp` therefore excludes them by construction. Adopted: #856's
+      partition is the gate (no #873 dependency); #873's placeholder
+      carry-through is a separate INFO-surfacing improvement, not a precondition.
+    reverses: >-
+      Yesterday's holistic scan concluded "#856 must NOT be implemented
+      standalone; #873 is the blocking constraint". That is overturned on a
+      design change, not new information — the constraint was real for a
+      slot-ratio metric and dissolves for an opp-partitioned one.
+  - name: phase6-precondition-and-frames
+    members: [796, 869]
+    one_fix: null
+    note: >-
+      Both are Phase 6 mobile-layer cleanups and both shed `blocked-on-validation`
+      this run, but they share no implementation. #796 is a pre-AVD headless
+      probe; #869 is a static palette edit. Grouped only for the label sweep.
+
+verdicts:
+  - number: 796
+    title: "Phase 6 retry on an already-walked run is non-idempotent"
+    disposition: implement
+    blocking: harness
+    confidence: high
+    effort: S
+    cluster: phase6-precondition-and-frames
+    scope_remaining: >-
+      Fix #2 ONLY (pre-AVD consumed-precondition probe). Fix #1 (recipe branch)
+      shipped 2026-08-12 via PR #1207 / commit 6ccd4839 — verified at
+      connect-claim-opp.yaml:497-502, which now guards on
+      `deliver-home-daily-visits`. Fix #3 (orchestrator assertion) shipped
+      earlier; the issue's quoted dispatch string has zero hits in the tree.
+    evidence_paths:
+      - skills/app-screenshot-capture/SKILL.md
+      - mcp/mobile/recipes/static/connect-claim-opp.yaml
+      - mcp/mobile/recipes/static/deliver-launch.yaml
+      - agents/ace-orchestrator.md
+      - agents/qa-and-training.md
+      - mcp/connect-server.ts
+      - mcp/connect/backends/html-scrape.ts
+      - test/mcp/connect/worker-deliver-table.test.ts
+    key_evidence: >-
+      skills/app-screenshot-capture/SKILL.md:350-359 — main ITSELF names the
+      residual ("Wiring that probe in ahead of mobile_ensure_avd_running is
+      tracked as #796") and retracts the issue's premise ("This doc previously
+      asserted that 'Connect exposes no clean per-user Learn-completion atom
+      today'; that has been false since #897 shipped"). :561/:578 call both
+      atoms, but only AFTER each recipe passes, as completion gates — no
+      pre-AVD caller exists.
+    proposed_change: >-
+      New pure lib/opp-consumption.ts: classifyOppConsumption(...) ->
+      fresh | learn-consumed | fully-consumed | worker-not-found, with the
+      exhaustion rule derived from the live-captured fixture shape
+      (progress_completed >= progress_total, html-scrape.ts:911-913) rather than
+      guessed. Failing test/lib/opp-consumption.test.ts first — including the
+      fail-open case (row missing / progress_total null -> never fully-consumed),
+      which is what keeps this a cost-skip and not a correctness-skip per
+      CLAUDE.md. Then a Step 2.8 in app-screenshot-capture between Step 2.7 and
+      the AVD boot: only `fully-consumed` halts, with remediation "fresh /ace:run".
+      Delete the now-obsolete ":350-359 tracked as #796" paragraph.
+    label_disagreement: >-
+      BOTH labels now wrong. blocks-e2e -> harness: a fresh-opp /ace:run is
+      unaffected and the consumed landing no longer sends the Learn walk into the
+      Deliver suite (PR #1207); what remains is ~10min wasted AVD wall-clock on a
+      RETRY. blocked-on-validation -> remove: both atoms shipped, Phase 6 already
+      holds a live Connect session, and the classifier is unit-testable against a
+      fixture already in the repo.
+    out_of_scope: >-
+      A deliver-launch.yaml quota-exhaustion recipe branch (Daily Visits 1/1
+      renders identically to 0/25). Needs a live 1/1 ui-dump; the pre-AVD probe
+      makes it unnecessary for the common path. File separately if wanted.
+    duplicate_of: null
+    source: fresh
+    action: null
+    outcome: null
+
+  - number: 856
+    title: "screenshot-blocked runs ship a hollow training deck as 'proceed-with-warn'"
+    disposition: implement
+    blocking: harness
+    confidence: high
+    effort: M
+    cluster: visual-coverage-honesty
+    evidence_paths:
+      - skills/training-deck-generate/SKILL.md
+      - skills/training-deck-render/SKILL.md
+      - skills/training-deck-generate-eval/SKILL.md
+      - skills/app-screenshot-capture/SKILL.md
+      - skills/connect-baseline-screenshots/SKILL.md
+      - lib/training-deck-spec.ts
+      - lib/verdict-schema.ts
+      - lib/run-state-validator.ts
+      - lib/phase-products-schema.ts
+      - test/lib/training-deck-spec.test.ts
+      - agents/qa-and-training.md
+    key_evidence: >-
+      Both halves still unimplemented after the 24h skill sweep. The degradation
+      license survives verbatim at training-deck-generate/SKILL.md:82-89 ("The
+      deck still ships") and :97-98 ("Never fail the deck over a missing app
+      leg"). Render self-eval is still 3 criteria with no coverage dimension
+      (training-deck-render/SKILL.md:95-104). generate-eval's
+      screenshot_integration (:72) is an LLM impression with no structural
+      computation, no stratified sampling, no near-zero cap.
+    the_trap: >-
+      A coverage number computed off the FINAL spec's emitted image slots reads
+      100% on the exact hollow deck this issue is about. Generate DOWNGRADES
+      unbacked walkthrough slides to `content` layout (:85, :145-148), and a
+      downgraded slide is schematically indistinguishable from a legitimately
+      text-only one — so it leaves both numerator and denominator. hh-poverty:
+      4 pool images / 4 emitted slots = 1.0, while true opp coverage was 0/6.
+      The denominator must be the EXPECTED opp-visual slide count (already
+      derived in generate step 11's C2 check from the app summaries), not the
+      emitted slot count.
+    schema_facts_verified:
+      - "lib/run-state-validator.ts:62 — `blocked` IS a legal phase status."
+      - "lib/run-state-validator.ts:54-60 — `partial` is NOW in PHASE_STATUSES; #1069 has since been fixed and no longer constrains this."
+      - "lib/verdict-schema.ts:47 — skill verdicts may NOT use `blocked`; the issue's 'blocked-upstream' step verdict must land as fail + severity BLOCKER."
+      - "lib/phase-products-schema.ts:411-428 — `blocked` is non-terminal -> mode: fragment, so a blocked phase omitting the REQUIRED training.deck key does not trip the boundary fence."
+    proposed_change: >-
+      (1) pure computeVisualCoverage(spec, {expectedOppVisualSlides}) in
+      lib/training-deck-spec.ts, numerator = image-bearing slides whose @alias
+      resolves into manifest.opp, pool_filled reported INFO-only.
+      (2) failing test reconstructing the hh-poverty shape (4 pool-image slides,
+      6 content-downgraded Deliver slides, manifest.opp {}) asserting ratio === 0
+      — the assertion a naive slot-ratio scores 1.0 on.
+      (3) replace the :82-98 degradation license with the gate (coverage < 0.5 or
+      empty manifest.opp -> fail + BLOCKER, don't render).
+      (4) 4th render self-eval criterion; forbid unstratified "visually spot-checked".
+      (5) generate-eval: seed screenshot_integration structurally, mandate
+      stratified sampling, hard-deduct opp coverage < 0.2 -> cap <= 4.0.
+      (6) qa-and-training writes status: blocked, omits the deck from shareables.
+      (7) app-screenshot-capture step 9 emits per_opp_screenshot_count.
+    unblocked_by: null
+    duplicate_of: null
+    source: fresh
+    action: null
+    outcome: null
+
+  - number: 869
+    title: "Static palettes capture up to 3 byte-identical Deliver-home frames"
+    disposition: implement
+    blocking: polish
+    confidence: high
+    effort: S
+    cluster: phase6-precondition-and-frames
+    evidence_paths:
+      - mcp/mobile/recipes/static/deliver-launch.yaml
+      - mcp/mobile/recipes/static/deliver-form-walk.yaml
+      - mcp/mobile/recipes/static/connect-resume-opp.yaml
+      - mcp/mobile/backends/maestro.ts
+      - test/mcp/mobile/recipe-splitter.test.ts
+      - test/mcp/mobile/static-palette-health.test.ts
+      - skills/app-test-cases/SKILL.md
+    key_evidence: >-
+      Nothing fixed; all four shots intact, but every line number in the issue's
+      scoping comment has drifted (branch shot :89->:87-92, end-of-palette
+      :203->:226, form-walk :25->:87 after the ace#1138 header expansion).
+      Cross-reference claim re-verified: the three deliver-* step names each
+      appear at exactly one line in the whole repo — their own palette.
+    the_third_door: >-
+      The 2026-07-27 comment's trap analysis is correct but INCOMPLETE. It treats
+      `deliver-launch-home` (:226) as the only removable shot and therefore
+      concludes a device-validated guard is required. Dropping the NESTED BRANCH
+      shot (:87-92) instead eliminates the duplicate with zero behavioral change:
+      fresh-install output is byte-for-byte unchanged (the branch never fired
+      there), already-installed goes 2 identical frames -> 1, and no guard,
+      predicate, tap or wait is modified. The surviving frame is also the better
+      one — it is top-level, so it is the palette's only UI-dump window in
+      default mode; dropping :226 instead would take deliver-launch to zero
+      windows and break recipe-splitter.test.ts:174.
+    why_a_guard_was_never_viable: >-
+      deliver-launch.yaml:253-256 asserts BOTH deliver-home-job-card and
+      deliver-home-daily-visits visible at end-of-palette, so no element
+      predicate distinguishes the paths there. An evalScript/${output} flag is
+      dialect-legal (maestro.ts:27-48) but unsafe: each chunk is a separate
+      `maestro test` process (:182-296) and output vars don't cross chunks — with
+      captureAllBoundaries the file splits into 9 windows and the flag silently
+      evaporates. A latent, mode-dependent bug.
+    proposed_change: >-
+      Delete deliver-launch.yaml:86-92 (the comment + the whole 6-line runFlow
+      block); do NOT touch :226. Delete deliver-form-walk.yaml:87 (a home shot
+      always precedes it on both paths). connect-resume-opp.yaml gets a header
+      NOTE only, no step change — both shots are top-level dump windows and the
+      pair is not fixable in Maestro; the manifest duplicate_of dedup stays the
+      permanent handling. Update recipe-splitter.test.ts:206 9 -> 8. New
+      static-palette-health invariant: deliver-launch.yaml contains EXACTLY ONE
+      Deliver-home takeScreenshot and it sits at column 0 — the static form of
+      both halves of the trap (>=1 frame on every path AND <=1).
+    label_disagreement: >-
+      Remove blocked-on-validation. The 2026-07-27 comment blocked because "the
+      guarded variant changes which frames appear on each path" — the recommended
+      variant adds no guard, so there is nothing device-observable to validate.
+      `polish` stays and is correct.
+    captureallboundaries_check: >-
+      No interaction. captureAllBoundaries is opt-in, default-off, and
+      captureUiDump (maestro.ts:329-341) writes only <name>.xml — no PNG. Frame
+      count and the dedup story are untouched; its only contact is the toBe(9).
+    duplicate_of: null
+    source: fresh
+    action: null
+    outcome: null
+
+  - number: 873
+    title: "Common screenshot pool: PersonalID sign-up completion half is uncapturable with the demo test user"
+    disposition: implement
+    blocking: harness
+    confidence: high
+    effort: M
+    cluster: visual-coverage-honesty
+    decision_still_open: true
+    evidence_paths:
+      - templates/training-deck/_common/platform-setup.yaml
+      - templates/training-deck/_common/fixtures/README.md
+      - skills/common-screenshot-capture/SKILL.md
+      - skills/training-deck-generate/SKILL.md
+      - mcp/mobile/recipes/static/connect-register-from-otp.yaml
+      - mcp/mobile/selectors/connect-2.63.0.yaml
+      - mcp/mobile/selectors/connect-2.63.2.yaml
+      - mcp/mobile/backends/avd.ts
+    key_evidence: >-
+      Nothing was chosen. platform-setup.yaml:33-40 still declares all four
+      completion aliases, last touched 2026-05-23 (so not option 3);
+      templates/training-deck/_common/fixtures/ contains only README.md, zero
+      PNGs (option 2 scaffolded, never filled); common-screenshot-capture
+      SKILL.md:54-64 coverage table unchanged at 8 live / 8 fixture-placeholder.
+      The pool manifest itself is Drive-only — nothing in-repo.
+    decision_free_subset:
+      - id: DF-1
+        effort: S
+        summary: >-
+          `personal-id-id` ("Scan your ID") appears not to exist in the product.
+          No such row in connect-2.62.0 / 2.63.0 / 2.63.2 selector maps; no recipe
+          step drives it; two live-verified end-to-end registration walks in
+          connect-register-from-otp.yaml enumerate the full screen sequence with
+          no ID scan. fixtures/README.md already prescribes exactly this remedy.
+          Removing a slot the harness never captured cannot break a live capture.
+        confidence: medium-high
+        confidence_note: "absence of evidence across three selector maps + two live-verified walks + no recipe step — not a positive proof of non-existence"
+      - id: DF-2
+        effort: M
+        summary: >-
+          Carry `source` and `placeholder` through training-deck-generate step 5's
+          merged manifest map. Today generate (SKILL.md:67-80) flattens the pool
+          manifest to {alias -> {file_id, drive_url}} and DROPS both fields, so no
+          consumer can tell a sanctioned permanent gap from a failed capture.
+        superseded_as_a_blocker: >-
+          The #873 agent argued this is required for #856's gate. It is not — see
+          clusters.visual-coverage-honesty.reconciliation. Keep it as INFO
+          enrichment; it is genuinely needed for the three install-flow aliases
+          (play-store-search, commcare-install, commcare-open) which are permanent
+          placeholders for an unrelated reason (Play Store needs Google sign-in)
+          and which nobody proposes to drop.
+      - id: DF-3
+        effort: S-M
+        needs_live_device: true
+        summary: >-
+          The issue's root cause is WRONG for personal-id-location: the Android
+          permission dialog is real and demo-user-independent — it is suppressed
+          by ACE's OWN harness, which pre-grants ACCESS_FINE/COARSE_LOCATION at
+          mcp/mobile/backends/avd.ts:1278-1291 (added after the stall in
+          docs/learnings/2026-05-27-bednet-permission-dialog-misdiagnosis.md).
+          A `pm revoke` before the one baseline capture run should render it.
+          Also OVERSTATED for personal-id-photo: the face-capture screen was
+          live-walked on a +7426 demo phone 2026-05-27/28; the blocker is
+          one-time-per-number and rotation is an established operator procedure.
+    decision_dependent_remainder: >-
+      Only TWO aliases are real product calls, down from five.
+      personal-id-verify — structurally impossible on +7426 (server-side OTP
+      bypass; no personalid-otp-input selector in any map). Needs a non-demo
+      real-OTP capture identity (option 1) or a drop (option 3).
+      personal-id-done — its deck caption "Profile complete!" is ITSELF
+      unverified: the recipes show fresh registration terminating at
+      CommCareSetupActivity / "GO TO CONNECT MENU", and the only message dialog
+      in the flow is "Account Recovered". Confirm the real terminal screen, then
+      caption or drop.
+    duplicate_of: null
+    source: fresh
+    action: null
+    outcome: null
+
+  - number: 880
+    title: "/ace:setup env changes need restart AFTER setup; emdash keeps worktree MCP alive"
+    disposition: implement
+    blocking: harness
+    confidence: high
+    effort: M
+    cluster: null
+    evidence_paths:
+      - bin/ace-setup
+      - bin/ace-doctor
+      - CLAUDE.md
+      - commands/setup.md
+      - mcp/connect-server.ts
+      - lib/doctor-drive-layout.ts
+      - scripts/doctor-drive-layout.ts
+      - test/scripts/ace-nova-check.test.ts
+    key_evidence: >-
+      All three parts absent. (a) bin/ace-setup:398,400 — the only inject-success
+      output is `pass "env: op inject wrote $ENV_OUT"`; grep -i restart finds 3
+      hits, all about ~/.ace/env.sh, never about .env -> MCP subprocesses.
+      (b) bin/ace-doctor:431-433 session_freshness is on-disk vs on-disk only;
+      grep for PPID|ps -eo|lstart|etime returns ZERO hits — no pid machinery to
+      extend. (c) CLAUDE.md:126-128 trigger list is code-only; an .env rewrite is
+      not listed, and emdash appears only at :100. Mechanism is current, not
+      stale: all five MCP servers call dotenvConfig() at module top-level
+      (connect-server.ts:13,18) and buildHqClusterRegistry at import (:62).
+    ordering_claim_is_stale: >-
+      Item 5 of the issue has no live doc defect. Every doc that sequences it
+      already says setup -> restart (nova-integration.md:89-93,
+      labs-token-mint.md:87,93, CHANGELOG:268,285). The wrong order came from a
+      chat close-out, not a file. The real gap is that commands/setup.md:87-102
+      never mentions restart at all.
+    live_verified_on_this_machine:
+      - "ps -eo pid=,ppid=,lstart=,command= | awk '$2==<claude-pid>' lists this session's five ACE MCP children with parseable start times"
+      - "ps -o etimes= FAILS on BSD ps ('keyword not found') — do not use it; ps -o lstart= works"
+      - "node parses lstart directly (new Date('Thu Aug 13 14:35:15 2026').getTime()), so no date -j / date -d branching is needed"
+      - "stat -f %m on .env, or fs.statSync().mtimeMs in TS — again no branching"
+    correction_to_claude_md: >-
+      CLAUDE.md:137-140's `awk -v c=\"$PPID\"` recipe only works when typed
+      DIRECTLY in a Bash tool call. Verified: inside a script $PPID is the
+      invoking /bin/zsh, whose parent is claude — and doctor gains a third level
+      when invoked from bin/ace-setup:676. The probe must walk ancestors until
+      comm basename is `claude` (bounded depth), not assume $PPID.
+    proposed_change: >-
+      Ship (b) first as the pure helper, then reuse it in (a) and (c) — one
+      mechanism, three surfaces, rather than a blind banner plus an independent
+      probe. lib/env-freshness.ts: classifyEnvFreshness({envMtimeMs, procs}) ->
+      {verdict: pass|warn|skip, stale[]}, with `skip` when no claude ancestor or
+      no ACE MCP children (running from a plain terminal must not WARN).
+      scripts/doctor-env-freshness.ts does the impure collection; 4 lines wire it
+      into bin/ace-doctor right after session_freshness (:435). Tests:
+      test/lib/env-freshness.test.ts (pure — before/after/mixed/empty/no-ancestor/
+      tie-does-not-warn) plus a script test driven by a canned ps fixture so CI
+      never depends on a live process tree. Then the ace-setup banner in the
+      INJECT_RC -eq 0 branch, calling the same script so it names actual stale
+      pids; and a fourth .env trigger bullet in CLAUDE.md:128.
+    do_not_ship: >-
+      The emdash worktree-survival claim as a general rule — could not reproduce
+      it; every live MCP child on this machine runs from the plugin cache, not a
+      worktree's node_modules. Write it as a one-line observed-once note credited
+      to #880, which is honest and is made self-correcting by (b) anyway.
+    duplicate_of: null
+    source: fresh
+    action: null
+    outcome: null
+
+# ---------------------------------------------------------------------------
+# Appended after the operator redirected mid-run: "make sure you scan all new
+# issues to confirm they all still look correct and real issues." Read-only
+# validity sweep over ALL 70 remaining open issues, batched by subsystem into
+# 8 scanners so each shared code context. Verdict per issue: still-real /
+# already-fixed / obsolete / duplicate-of / cant-tell.
+# ---------------------------------------------------------------------------
+backlog_sweep:
+  scanned: 70
+  method: >-
+    8 subsystem-batched read-only scanners, each carrying the operator's
+    standing skepticism directive (default-hypothesise the code has moved on;
+    never trust an issue's quoted line numbers). Batches: mobile-recipes(8),
+    connect-atoms(8), nova-ccz(8), hq-settings-ocs(8), phase7-labs(10),
+    security-audit(6), pdd-evals(9), infra-comms(13).
+  headline: >-
+    65 of 70 are still real. The backlog is NOT rotten — but line numbers have
+    drifted almost universally, and comment threads are the stale part: three
+    separate issues (#1031, #993, #1029) carry comments arguing about premises
+    that have since been resolved or deleted. Any triage that reads comments as
+    current state will act on dead premises.
+  closeable_now:
+    - number: 989
+      verdict: already-fixed
+      evidence: >-
+        Upstream voidcraft-labs/commcare-nova#363 CLOSED/COMPLETED. Both halves
+        shipped: get_agent_prompt now declares _meta anthropic/maxResultSizeChars
+        100000 (real threshold was 50,000; the prompt was 7,272 over), and the
+        NOVA-PROMPT-END sentinel + refuse-to-build landed in nova-plugin v1.11.0.
+        Verified live in the installed 1.17.0 at
+        agents/nova-architect-autonomous.md:29-51.
+      close_reason: completed
+    - number: 1054
+      verdict: already-fixed, duplicate-of 1046
+      evidence: >-
+        The premise is a misdiagnosis. run-form-walk.ts does no name lookup
+        anywhere (only zip-entry .name compares at :437) and stamps
+        app_id: args.app_id on every payload (:462, :765) — it cannot resolve to
+        a different same-named app. The observed wrong payload was a stale
+        shared-/tmp read, fixed under #1046 (ad62a6f6, lib/scratch-file.ts +
+        StaleArtifactError + --out-scratch + CI detector
+        test/scripts/tmp-path-predictability.test.ts). ad62a6f6's commit body
+        names this exact repro and module counts.
+      close_reason: not planned
+      note: "residual it hints at (Step 2 404s on a never-built draft) is #994, not this"
+    - number: 1012
+      verdict: obsolete
+      evidence: >-
+        The issue named its own deciding check ("whether the downstream consumer
+        that applies the under-six-minutes flag can actually read form meta").
+        It cannot: connect-opp-setup/SKILL.md:315-321 (rewritten 2026-08-12 for
+        #1013) establishes form_field_rules as the ONLY surface on which a PDD
+        Layer A predicate is server-side enforceable, keyed on question_path —
+        and <meta><timeStart> is not a question node. So the in-form stopwatch is
+        load-bearing, not redundant. Separately #995 made it MANDATORY
+        (_app-component-library.md:465-501 § section-timestamps prescribes
+        visit_start_time as the one legitimate bare now() anchor).
+        ACTING ON THIS ISSUE WOULD BREAK ENFORCEMENT.
+      close_reason: not planned
+  duplicates:
+    - pair: [1145, 1036]
+      canonical: 1036
+      note: >-
+        #1145 is #1036's items 2+3 measured on a different run. Both share a
+        factual correction that CHANGES THE FIX OWNER: NormalDistribution DOES
+        support bounds — as lo/hi (fixtures/manifest.py:31-42, applied via
+        _clamp_normal at fields.py:53, shipped 2026-07-01, i.e. BEFORE the run).
+        The real defect is no extra="forbid" on the model, so the min:/max: ACE
+        wrote were silently swallowed. So the actionable half is ACE-side
+        (emit lo/hi, stop emitting min/max), NOT a labs generator gap. A triage
+        that routes both upstream stalls on a fix that already shipped.
+  cant_tell:
+    - number: 986
+      missing: "one `op vault list` from a human dev account, or an authed read of labs /ace/api/system/version — whether the runner SA still lacks read on the Agent-Ace vault"
+    - number: 1003
+      missing: "lands in the ace-web sibling repo, not in this checkout"
+    - number: 1061
+      missing: >-
+        producer half does not reproduce — handleCreateFile
+        (google-drive-server.ts:1487-1490) creates with mimeType
+        application/vnd.google-apps.document and has since ~0.13.45. No current
+        path produces text/markdown for the PDD. The PREVENTER half is
+        definitively missing (idea-to-pdd-qa/checks.ts has 6 checks, none asserts
+        mimeType; ArtifactEntry has no mimeType field).
+
+  # The single most expensive finding in the sweep.
+  claude_md_is_wrong:
+    line: "CLAUDE.md:255 — 'No known Nova upstream bugs.'"
+    status: FALSE
+    contradicted_by:
+      - "#1180 — Nova's canonical identity round-trip parser rejects case-ref parts that Nova's OWN agent instructions say are valid. Open, never filed upstream."
+      - "#1181 — Nova tool-input truncation surfacing as a mis-attributed JSON parse error. Open, never filed upstream."
+      - "#977 — possibly Nova-side (case-block emission), unattributed."
+    why_it_matters: >-
+      That line is read at the start of every session in every repo with ACE
+      installed. The companion line hedges correctly
+      (playbook/integrations/nova-integration.md:367 says "no open upstream bugs
+      BLOCKING ACE") but cites a count that is now provably stale
+      (voidcraft-labs/nova-plugin#25, create_app fails 100%, is open and is not a
+      feature request). CLAUDE.md dropped the qualifier.
+    also: >-
+      #1180 and #1181 were both filed with "fix lands upstream" and then never
+      actually filed upstream. #989 shows the counterfactual: filed upstream
+      2026-07-27, fixed and deployed with a rigorous diagnosis returned.
+
+  hypothesis_disconfirmed:
+    what: >-
+      I asked the pdd-evals scanner to check whether commit fcf07a6d
+      ("closes #1213, closes #1121") had closed only #1213, since GitHub honours
+      a closing keyword only before the FIRST issue number.
+    result: >-
+      Disconfirmed by the timeline. #1121 was closed 2026-08-13T16:07:38Z and
+      deliberately REOPENED by jjackson 14 minutes later at 16:21:37Z, per the
+      reopen comment. Everything the reopen said should land HAS landed
+      (_app-component-library.md:124 Table B row; idea-to-pdd/SKILL.md:315-335;
+      the guard at test/skills/pdd-must-not-assert-mechanisms.test.ts:122).
+      What remains is only what the reopen framed as open: whether Nova should
+      gain the authoring primitive, and whether unlimited re-attempts is right
+      policy. Both are product/capability decisions, not checkable state.
+
+  root_cause_clusters:
+    - name: connect-scrapers-fabricate-confident-falsy-values
+      members: [1022, 1023, 1026]
+      one_fix: >-
+        All three are the SAME class: an HTML-scrape read-back returns a
+        confident falsy value (active: false, undefined, [], '') where it should
+        return "unreadable", and a skill gates a mandatory check on it. Each
+        issue independently proposes the same preventer. Make the Connect
+        scrapers OMIT OR THROW rather than fabricate, plus a shared
+        "authoritative source per field is the create response" rule in
+        connect-opp-setup. Fixing them separately will produce three
+        inconsistent absence conventions.
+      note: "#1022 + #1023 both starve the same arithmetic — total_budget is on NEITHER atom, so connect-program-setup § Step 4a is dead prose today."
+    - name: path-containment
+      members: [1110, 1111]
+      also: [1112]
+      one_fix: >-
+        Both are "a caller-supplied path reaches a filesystem sink with no
+        containment". #1111's assertSafeWipeTarget is a hand-rolled weaker
+        instance of the helper #1110 asks for, and screenshot-dir.ts:65-67
+        already points at #1111 for the narrowing. One lib/path-containment.ts
+        (DENYLIST-shaped) plus a wipe-root rule closes both.
+      hard_won_constraint: >-
+        lib/path-containment.ts shipped in PR #1186 and was REVERTED in PR #1194
+        on 2026-08-12 — the allowlist was validated only against ACE-emitted
+        paths and broke Phase 7, because canopy writes scene PNGs into a sibling
+        ~/emdash checkout. Attempt 2 must be denylist-only and must NOT
+        reintroduce roots. This is the "validate against producers, not your own
+        outputs" lesson, already paid for once.
+      de_fanged: >-
+        #1111's filed repro no longer reproduces. PR #1135 (#1130) inserted
+        dispatchOutputDir at client.ts:1679, so resetScreenshotDir receives
+        <screenshotDir>/<recipe-slug>. screenshotDir:"~/Documents" now wipes
+        ~/Documents/journey-learn, not ~/Documents. The containment gap stands;
+        the "high" severity does not.
+    - name: unmapped-commcare-form-surface
+      members: [972, 1007, 1081]
+      one_fix: >-
+        Three instances of one class: a CommCare form-entry surface with no
+        selector row, no atlas section, no palette recipe. The 2026-08-12/13
+        push shipped the MACHINERY to close them — skills/selector-map-heal plus
+        the atlas unmapped-surface classification and atlas-report.yaml — but
+        none of the three is closed by it. Whether that pipeline works end-to-end
+        is untested against these three, which is the highest-value single
+        experiment across the mobile set.
+      device_free_subset: >-
+        Roughly half needs no device: #1084 (all), #1118 (all), #1164 (all),
+        #1081 items 2-3 (lib/date-default-validate.ts:120 requiredness filter and
+        :239-241 token throw), #1156 items 1/4/5. #1081's device-free half is
+        currently trapped behind a blocked-on-validation-shaped issue that also
+        carries a device-dependent half.
+    - name: proceed-with-warn-is-load-bearing
+      members: [856, 1094]
+      formerly_included: [1069]
+      note: >-
+        Re-confirmed independently by the infra scanner: #856 gates deck
+        PRODUCTION on visual coverage, #1094 gates the external OFFER. Fixing
+        #856 alone still lets a warn-carrying run be offered for review; the
+        class only closes with both. #1069 partially detached — its ask #3
+        (`partial` in PHASE_STATUSES) shipped under #1139/da7f2894, but
+        run-state-validator.ts:392 now EXPLICITLY documents that a `partial`
+        phase still gets a STRICT products check, so the new status does not
+        relieve the products fence. Asks #1/#2 remain.
+    - name: run-loses-its-originating-thread
+      members: [1057, 1093]
+      one_fix: "a triggered_by block plus a board-task-per-thread covers both the outbound (run -> thread) and intra-ACE (session -> session) edges"
+    - name: restated-contract-with-nothing-binding-it-to-source
+      members: [1144, 1037, 1036]
+      note: >-
+        The labs MCP hand-duplicates an aggregation allow-list that
+        config.AggregationType ALREADY derives (engine implements median/mode/
+        mode_share/dup_share; pipelines.py:185-197 _VALID_AGGREGATIONS omits
+        them, under a comment claiming lockstep). The QA regex restates a URL
+        rule the skill prose owns. The manifest model accepts undeclared keys
+        because nothing forbids extras. Three of ten Phase-7 issues are the same
+        class, each found by a run paying for the drift rather than by a test.
+
+  phase7_prior_inverted:
+    expected: "many obsolete-by-Plan-C-convergence"
+    actual: "ZERO of ten. Not one is filed against a deprecated skill."
+    detail: >-
+      Every Phase-7 issue targets the live converged path (demo-data-setup,
+      demo-data-setup-qa) or upstream labs. git log --since=2026-07-28 over all
+      Phase 7 skills returns exactly ONE commit (6f5e70ee, a dispatchability fix
+      touching none of it) — the ACE-side code demonstrably has not moved.
+    convergence_created_an_issue: >-
+      #1146 is the real convergence casualty, in reverse. The labs
+      llo_weekly_review template ships a deliberate scaffold render and its own
+      comments (:59, :67-69) name ACE's synthetic-workflow-polish as the thing
+      that will replace it. Plan C deprecated that skill WITHOUT replacing the
+      affordance, so the scaffold now ships straight to stakeholders.
+
+  label_corrections_proposed:
+    downgrade_blocks_e2e:
+      - number: 972
+        why: "its blocking half shipped 12 days ago under #1138 (four live-calibrated case-list rows at connect-2.63.2.yaml:523-546, plus deliver-case-select.yaml). Residual is case-SEARCH only. The fix landed under another number and the issue never got the credit."
+      - number: 977
+        why: "runs complete today; this is silent-correctness, not a halt"
+      - number: 969
+        why: "an /ace:run completes; nothing halts"
+        but: >-
+          #969 is the only issue in the entire backlog with real-world money
+          attached — ACE ships an app that structurally blocks an FLW from being
+          paid for work they did, with in-app text that steers them into it. If
+          the taxonomy forces it to `harness`, the taxonomy is missing a
+          "ships a wrong artifact to a partner" tier. Downgrade only WITH a
+          comment saying why, or the tracker buries it.
+      - number: 1156
+        why: "a run completes; this is a false-green preflight (harness), though the failure mode it enables is severe"
+    remove_blocked_on_validation:
+      - number: 905
+        why: "grant-review-access.ts already validated the mechanism live (2026-07-23, the Sophie case). The atom is just unbuilt."
+    add_blocked_on_validation:
+      - 1007
+      - 1191
+    missing_blast_radius_label:
+      - 1113
+      - 1115
+      - 1035
+      - 992
+    underlabelled:
+      - number: 1114
+        why: "`polish` covers the whole cluster, but A4 (untrusted inbound subject -> Bash command line) and C1 (live tokens in curl argv) carry real risk. Split them out as harness — a cheap-tier label on a real-risk item is exactly the churn signature CLAUDE.md warns about."
+      - number: 1004
+        why: "`harness` understates shipping wrong content into a CONTRACTUAL artifact"
+    wrong_kind_not_wrong_tier:
+      - number: 1002
+        why: "not a code defect at all — a tracking/measurement task ('go run the loop 9 more times'). It will keep sorting alongside real defects. .claude/pm/runs/2026-07-31 records the first clean iteration and says filling the window was deliberately deferred."
+
+  cheapest_next_actions_surfaced:
+    - "Correct CLAUDE.md:255 + nova-integration.md:367. One-line doc fix to the most-read line in the repo, provably false, zero risk."
+    - "File #1180 and #1181 upstream. Both were filed here with 'fix lands upstream' and never actually filed there."
+    - "One fresh post-#989 Nova Deliver build re-verifies BOTH #977 and #969 — every observation on both predates the prompt-truncation fix (upstream fences the bug's start at 2026-07-16, and #977's apps were built 07-26/27, squarely inside the window)."
+    - "#992's residual is partly a broken cross-reference: agents/idea-to-design.md:133-135 and agents/ocs-setup.md:120-121 both cite 'agents/ace-orchestrator.md § Phase Write-Back Contract' — that section does not exist in that file; the enum table is at agents/orchestrator-reference.md:612."
+    - "#1201 surfaced a contradiction no issue owns: artifact-manifest.ts:216 says open-questions.md is opp-level and durable across runs; ace-orchestrator.md:1201-1206 writes it run-scoped and reseeds it from the PDD each run. If the orchestrator's version is what runs, the file cannot accumulate at all, and #1201's read-half fix is insufficient alone."
+    - "#953's blocker note is stale — it names #824/#855, which shipped (connect_list_flw_invites, b23303ff). The real blocker is now #1159 (no row id), so the delete path is still unreachable."
+    - "#1013 is half-closed and its title is actively misleading: 'no ACE run has ever persisted a verification flag' is FALSE as of the form_field_rules fix (b5adf9da, live 2/2 on 2026-08-12). Retitle + scope-narrow, don't re-investigate."
