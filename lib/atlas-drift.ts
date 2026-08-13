@@ -236,3 +236,78 @@ export function renderReportMarkdown(input: AtlasReportInput): string {
   lines.push('');
   return lines.join('\n');
 }
+
+/** How a captured screen relates to the active selector map.
+ *
+ *  The distinction that matters operationally is `unmapped-surface` vs
+ *  `matcher-miss`: they have OPPOSITE fixes. Unmapped means author a new
+ *  anchor and probably a new palette step. Matcher-miss means the anchor
+ *  exists and the recipe reached for it wrongly. jjackson/ace#811 and #893
+ *  were each a confident hand-guess between these two, and each was wrong. */
+export type ScreenCoverage = 'mapped' | 'drift' | 'unmapped-surface' | 'matcher-miss';
+
+export interface ClassifyScreenInput {
+  /** A uiautomator dump — normally `<recipe-id>-FAILURE.xml`. */
+  dumpXml: string;
+  /** Raw text of `mcp/mobile/selectors/connect-<apk>.yaml`. */
+  selectorMapYaml: string;
+  /** Matcher VALUES the recipe reached for. Use `extractWantedMatchers`
+   *  on the Maestro stderr excerpt. Empty is legal (a non-selector
+   *  failure); classification then reports coverage only. */
+  wanted: string[];
+}
+
+export interface ScreenCoverageResult {
+  classification: ScreenCoverage;
+  /** Map values (id or text) actually rendered on this screen. Empty is
+   *  what makes a surface `unmapped-surface`. */
+  mappedOnScreen: string[];
+  /** Of `wanted`, those genuinely on screen. Non-empty ⇒ `matcher-miss`. */
+  wantedPresent: string[];
+  /** Of `wanted`, those absent. */
+  wantedAbsent: string[];
+  /** Observed values not in the map — the candidate rows a heal would add. */
+  candidates: string[];
+}
+
+export function classifyScreenCoverage(input: ClassifyScreenInput): ScreenCoverageResult {
+  const observed = new Set<string>([
+    ...extractResourceIdsFromDump(input.dumpXml),
+    ...extractTextValuesFromDump(input.dumpXml),
+  ]);
+  const { ids, texts } = loadSelectorMapMatchers(input.selectorMapYaml);
+  const mapped = new Set<string>([...ids, ...texts]);
+
+  const mappedOnScreen = [...observed].filter((v) => mapped.has(v)).sort();
+  const candidates = [...observed].filter((v) => !mapped.has(v)).sort();
+  const wantedPresent = input.wanted.filter((w) => observed.has(w)).sort();
+  const wantedAbsent = input.wanted.filter((w) => !observed.has(w)).sort();
+
+  // Order is the contract. `matcher-miss` outranks everything: if what we
+  // reached for is demonstrably on screen, the map is not the problem and
+  // no amount of new anchors will help. Only once that is ruled out does
+  // total absence of map coverage mean "we have never built this shape".
+  let classification: ScreenCoverage;
+  if (wantedPresent.length > 0) classification = 'matcher-miss';
+  else if (mappedOnScreen.length === 0) classification = 'unmapped-surface';
+  else if (wantedAbsent.length > 0) classification = 'drift';
+  else classification = 'mapped';
+
+  return { classification, mappedOnScreen, wantedPresent, wantedAbsent, candidates };
+}
+
+/** Recover the matcher values a Maestro run reached for, from its stderr.
+ *  Two shapes: Maestro's own `... matching regex: <value>` lines, and any
+ *  bare `pkg:id/name` token appearing anywhere in the excerpt. */
+export function extractWantedMatchers(stderrExcerpt: string): string[] {
+  const out = new Set<string>();
+  const regexLine = /matching regex:\s*(.+?)\s*$/gm;
+  let m: RegExpExecArray | null;
+  while ((m = regexLine.exec(stderrExcerpt)) !== null) {
+    const v = (m[1] ?? '').trim();
+    if (v) out.add(v);
+  }
+  const bareId = /[\w.]+:id\/\w+/g;
+  while ((m = bareId.exec(stderrExcerpt)) !== null) out.add(m[0]);
+  return [...out].sort();
+}

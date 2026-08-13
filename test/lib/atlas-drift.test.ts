@@ -8,6 +8,8 @@ import {
   failureScreenDriftSuspects,
   extractTextValuesFromDump,
   loadSelectorMapMatchers,
+  classifyScreenCoverage,
+  extractWantedMatchers,
 } from '../../lib/atlas-drift.js';
 
 // Pure helpers behind the atlas-drift harvester (scripts/probe-atlas-
@@ -223,5 +225,91 @@ selectors:
     const m = loadSelectorMapMatchers(':::not yaml:::');
     expect(m.ids.size).toBe(0);
     expect(m.texts.size).toBe(0);
+  });
+});
+
+describe('classifyScreenCoverage — the three-way split', () => {
+  const MAP = `
+apk_version: "2.63.2"
+selectors:
+  deliver-home-job-card:
+    type: id
+    value: "org.commcare.dalvik:id/viewJobCard"
+  deliver-home-daily-visits:
+    type: text
+    value: "Daily Visits"
+  learn-home-screen:
+    type: id
+    value: "org.commcare.dalvik:id/nsv_home_screen"
+`;
+  const dump = (nodes: string) => `<?xml version='1.0'?><hierarchy>${nodes}</hierarchy>`;
+
+  it('matcher-miss: the wanted element IS on screen', () => {
+    const r = classifyScreenCoverage({
+      dumpXml: dump('<node resource-id="org.commcare.dalvik:id/viewJobCard" text="Daily Visits" />'),
+      selectorMapYaml: MAP,
+      wanted: ['org.commcare.dalvik:id/viewJobCard'],
+    });
+    expect(r.classification).toBe('matcher-miss');
+    expect(r.wantedPresent).toEqual(['org.commcare.dalvik:id/viewJobCard']);
+  });
+
+  it('unmapped-surface: nothing in the map is on this screen', () => {
+    const r = classifyScreenCoverage({
+      dumpXml: dump('<node resource-id="org.commcare.dalvik:id/repeat_juncture_add" text="Add another" />'),
+      selectorMapYaml: MAP,
+      wanted: ['org.commcare.dalvik:id/viewJobCard'],
+    });
+    expect(r.classification).toBe('unmapped-surface');
+    expect(r.mappedOnScreen).toEqual([]);
+  });
+
+  it('drift: map anchors are present but the wanted one is gone', () => {
+    const r = classifyScreenCoverage({
+      dumpXml: dump('<node resource-id="org.commcare.dalvik:id/nsv_home_screen" text="x" />'),
+      selectorMapYaml: MAP,
+      wanted: ['org.commcare.dalvik:id/viewJobCard'],
+    });
+    expect(r.classification).toBe('drift');
+    expect(r.wantedAbsent).toEqual(['org.commcare.dalvik:id/viewJobCard']);
+  });
+
+  it('a text anchor counts as coverage — the #893 case', () => {
+    const r = classifyScreenCoverage({
+      dumpXml: dump('<node resource-id="" text="Daily Visits" />'),
+      selectorMapYaml: MAP,
+      wanted: ['org.commcare.dalvik:id/viewJobCard'],
+    });
+    expect(r.classification).toBe('drift');
+    expect(r.mappedOnScreen).toEqual(['Daily Visits']);
+  });
+
+  it('mapped: everything wanted is present and nothing is missing', () => {
+    const r = classifyScreenCoverage({
+      dumpXml: dump('<node resource-id="org.commcare.dalvik:id/nsv_home_screen" text="x" />'),
+      selectorMapYaml: MAP,
+      wanted: [],
+    });
+    expect(r.classification).toBe('mapped');
+  });
+});
+
+describe('extractWantedMatchers', () => {
+  it('pulls Maestro regex matchers and bare resource-ids out of stderr', () => {
+    const stderr = [
+      'Element not found: Id matching regex: org.commcare.dalvik:id/viewJobCard',
+      'Assertion is false: Text matching regex: Daily Visits',
+    ].join('\n');
+    const w = extractWantedMatchers(stderr);
+    expect(w).toContain('org.commcare.dalvik:id/viewJobCard');
+    expect(w).toContain('Daily Visits');
+  });
+
+  it('returns an empty array when nothing matches, and never duplicates', () => {
+    expect(extractWantedMatchers('some unrelated failure')).toEqual([]);
+    const dup = extractWantedMatchers(
+      'Id matching regex: org.commcare.dalvik:id/a\nId matching regex: org.commcare.dalvik:id/a',
+    );
+    expect(dup).toEqual(['org.commcare.dalvik:id/a']);
   });
 });
