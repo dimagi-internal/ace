@@ -20,7 +20,7 @@
  * to harvest selector-drift signal from them.
  *
  * Usage:
- *   npx tsx scripts/probe-atlas-drift.ts <dump-dir> [--apk 2.62.0] [--out report.md]
+ *   npx tsx scripts/probe-atlas-drift.ts <dump-dir> [--apk 2.63.2] [--out report.md] [--yaml-out atlas-report.yaml]
  *
  *   <dump-dir>         Directory containing .xml ui-dump files (and
  *                      optionally subdirectories — the script walks
@@ -29,9 +29,15 @@
  *                      <step-name>.xml` so pointing at any ancestor
  *                      of those XMLs works.
  *   --apk <version>    Connect APK version to compare against. Defaults
- *                      to 2.62.0 (the current default). Loads
- *                      `mcp/mobile/selectors/connect-<version>.yaml`.
- *   --out <path>       Write report to this file. Defaults to stdout.
+ *                      to `$ACE_CONNECT_APK_VERSION` (the pin in
+ *                      `.env.tpl`), falling back to 2.63.2 if unset.
+ *                      Loads `mcp/mobile/selectors/connect-<version>.yaml`.
+ *   --out <path>       Write the markdown report to this file. Defaults
+ *                      to stdout.
+ *   --yaml-out <path>  Also classify the newest `*-FAILURE.xml` dump
+ *                      (via `classifyScreenCoverage`) and write the
+ *                      machine-readable verdict to this path. No-op
+ *                      when no failure dump is present.
  */
 
 import * as fs from 'node:fs';
@@ -45,22 +51,27 @@ import {
   renderReportMarkdown,
   isFailureDumpFile,
   failureScreenDriftSuspects,
+  classifyScreenCoverage,
+  extractWantedMatchers,
+  renderReportYaml,
 } from '../lib/atlas-drift.js';
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const SELECTORS_DIR = path.join(REPO_ROOT, 'mcp/mobile/selectors');
-const DEFAULT_APK = '2.63.0';
+const DEFAULT_APK = process.env.ACE_CONNECT_APK_VERSION || '2.63.2';
 
 interface CliArgs {
   dumpDir: string;
   apkVersion: string;
   outPath: string | null;
+  yamlOutPath: string | null;
 }
 
 function parseArgs(argv: string[]): CliArgs {
   const positional: string[] = [];
   let apkVersion = DEFAULT_APK;
   let outPath: string | null = null;
+  let yamlOutPath: string | null = null;
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === '--apk') {
@@ -69,6 +80,9 @@ function parseArgs(argv: string[]): CliArgs {
     } else if (a === '--out') {
       outPath = argv[++i] ?? null;
       if (!outPath) throw new Error('--out requires a file path');
+    } else if (a === '--yaml-out') {
+      yamlOutPath = argv[++i] ?? null;
+      if (!yamlOutPath) throw new Error('--yaml-out requires a path');
     } else if (a === '--help' || a === '-h') {
       printUsage();
       process.exit(0);
@@ -82,12 +96,12 @@ function parseArgs(argv: string[]): CliArgs {
     printUsage();
     process.exit(2);
   }
-  return { dumpDir: positional[0], apkVersion, outPath };
+  return { dumpDir: positional[0], apkVersion, outPath, yamlOutPath };
 }
 
 function printUsage(): void {
   process.stderr.write(
-    'Usage: npx tsx scripts/probe-atlas-drift.ts <dump-dir> [--apk 2.62.0] [--out report.md]\n',
+    'Usage: npx tsx scripts/probe-atlas-drift.ts <dump-dir> [--apk 2.63.2] [--out report.md] [--yaml-out atlas-report.yaml]\n',
   );
 }
 
@@ -167,6 +181,58 @@ function main(): void {
     );
   } else {
     process.stdout.write(report);
+  }
+
+  if (args.yamlOutPath) {
+    const failureDumps = dumpFiles.filter((f) => isFailureDumpFile(f));
+    if (failureDumps.length === 0) {
+      process.stderr.write('no *-FAILURE.xml under the dump dir; skipping yaml report\n');
+    } else {
+      // The newest failure dump is the one that stopped the walk. Sort by
+      // mtime, not path string — several stale FAILURE dumps can sit under
+      // one root (e.g. from an earlier run reusing the same screenshot dir),
+      // and alphabetical order has no relation to recency. Read each mtime
+      // ONCE into a map (not inside the comparator — a naive `sort((a, b) =>
+      // statSync(a)... - statSync(b)...)` re-stats on every comparison, and
+      // this dir is a live TOCTOU target: another process can delete a dump
+      // between `findDumpFiles()`'s readdir and this stat, so an unguarded
+      // statSync can throw ENOENT and crash the whole probe run). A file
+      // that vanished falls back to mtime 0 rather than aborting.
+      const mtimes = new Map<string, number>();
+      for (const f of failureDumps) {
+        try {
+          mtimes.set(f, fs.statSync(f).mtimeMs);
+        } catch {
+          mtimes.set(f, 0);
+        }
+      }
+      const dumpPath = [...failureDumps].sort(
+        (a, b) => (mtimes.get(a) ?? 0) - (mtimes.get(b) ?? 0),
+      )[failureDumps.length - 1];
+      const stderrPath = dumpPath.replace(/\.xml$/, '.txt');
+      const stderrExcerpt = fs.existsSync(stderrPath)
+        ? fs.readFileSync(stderrPath, 'utf8')
+        : '';
+      const result = classifyScreenCoverage({
+        dumpXml: fs.readFileSync(dumpPath, 'utf8'),
+        selectorMapYaml: fs.readFileSync(mapPath, 'utf8'),
+        wanted: extractWantedMatchers(stderrExcerpt),
+      });
+      fs.writeFileSync(
+        args.yamlOutPath,
+        renderReportYaml({
+          apkVersion: args.apkVersion,
+          dumpFile: path.basename(dumpPath),
+          result,
+        }),
+        'utf8',
+      );
+      // Print it too: a caller that never opens the file still sees the verdict.
+      process.stdout.write(
+        `atlas: ${result.classification} on ${path.basename(dumpPath)}` +
+          (result.classification === 'unmapped-surface' ? ' — tier 2 warranted\n' : '\n'),
+      );
+    }
   }
 }
 

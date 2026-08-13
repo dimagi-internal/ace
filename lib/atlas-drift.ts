@@ -16,7 +16,7 @@
 // matching by text instead. The harvester surfaces candidates; a
 // human decides.
 
-import { parse as parseYaml } from 'yaml';
+import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
 
 /** Extract every non-empty `resource-id="..."` value from an Android
  * uiautomator dump XML. The dump format is well-defined enough that a
@@ -29,6 +29,21 @@ export function extractResourceIdsFromDump(xml: string): Set<string> {
   let m: RegExpExecArray | null;
   while ((m = re.exec(xml)) !== null) {
     const value = m[1] ?? m[2] ?? '';
+    if (value) out.add(value);
+  }
+  return out;
+}
+
+/** Extract every non-empty `text="..."` value from a uiautomator dump.
+ *  The leading `\s` is load-bearing: without it `hint-text="..."` and any
+ *  other hyphenated attribute ending in `text` would match, since `-` is a
+ *  non-word character and `\b` would happily anchor mid-attribute. */
+export function extractTextValuesFromDump(xml: string): Set<string> {
+  const out = new Set<string>();
+  const re = /\stext\s*=\s*(?:"([^"]*)"|'([^']*)')/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(xml)) !== null) {
+    const value = (m[1] ?? m[2] ?? '').trim();
     if (value) out.add(value);
   }
   return out;
@@ -62,6 +77,36 @@ export function loadSelectorMapIds(yamlText: string): Set<string> {
     }
   }
   return out;
+}
+
+/** The selector map's matchers, partitioned by how they match on-device.
+ *  `point` rows are deliberately excluded: a coordinate proves nothing
+ *  about which screen is rendered, so it cannot contribute to coverage. */
+export interface SelectorMatchers {
+  ids: Set<string>;
+  texts: Set<string>;
+}
+
+/** Like `loadSelectorMapIds`, but keeps `type: text` rows too. Required
+ *  because the live-verified Learn-vs-Deliver differentiator
+ *  (`deliver-home-daily-visits`, #893) is a text anchor — an id-only view
+ *  of the map is blind to it. */
+export function loadSelectorMapMatchers(yamlText: string): SelectorMatchers {
+  const ids = new Set<string>();
+  const texts = new Set<string>();
+  let parsed: SelectorMap;
+  try {
+    parsed = parseYaml(yamlText) as SelectorMap;
+  } catch {
+    return { ids, texts };
+  }
+  if (!parsed || !parsed.selectors) return { ids, texts };
+  for (const entry of Object.values(parsed.selectors)) {
+    if (!entry || typeof entry.value !== 'string' || !entry.value) continue;
+    if (entry.type === 'id') ids.add(entry.value);
+    else if (entry.type === 'text') texts.add(entry.value);
+  }
+  return { ids, texts };
 }
 
 /** Set-diff the observed dumps against the mapped ids. Each partition
@@ -190,4 +235,150 @@ export function renderReportMarkdown(input: AtlasReportInput): string {
   lines.push(`- intersection:         ${input.inBoth.length}`);
   lines.push('');
   return lines.join('\n');
+}
+
+/** How a captured screen relates to the active selector map.
+ *
+ *  The distinction that matters operationally is `unmapped-surface` vs
+ *  `matcher-miss`: they have OPPOSITE fixes. Unmapped means author a new
+ *  anchor and probably a new palette step. Matcher-miss means the anchor
+ *  exists and the recipe reached for it wrongly. jjackson/ace#811 and #893
+ *  were each a confident hand-guess between these two, and each was wrong. */
+export type ScreenCoverage = 'mapped' | 'drift' | 'unmapped-surface' | 'matcher-miss';
+
+export interface ClassifyScreenInput {
+  /** A uiautomator dump — normally `<recipe-id>-FAILURE.xml`. */
+  dumpXml: string;
+  /** Raw text of `mcp/mobile/selectors/connect-<apk>.yaml`. */
+  selectorMapYaml: string;
+  /** Matcher VALUES the recipe reached for. Use `extractWantedMatchers`
+   *  on the Maestro stderr excerpt. Empty is legal (a non-selector
+   *  failure); classification then reports coverage only. */
+  wanted: string[];
+}
+
+export interface ScreenCoverageResult {
+  classification: ScreenCoverage;
+  /** Map values (id or text) actually rendered on this screen. Empty is
+   *  what makes a surface `unmapped-surface`. */
+  mappedOnScreen: string[];
+  /** Of `wanted`, those genuinely on screen. Non-empty ⇒ `matcher-miss`. */
+  wantedPresent: string[];
+  /** Of `wanted`, those absent. */
+  wantedAbsent: string[];
+  /** Observed values not in the map — the candidate rows a heal would add. */
+  candidates: string[];
+}
+
+export function classifyScreenCoverage(input: ClassifyScreenInput): ScreenCoverageResult {
+  const observed = new Set<string>([
+    ...extractResourceIdsFromDump(input.dumpXml),
+    ...extractTextValuesFromDump(input.dumpXml),
+  ]);
+  const { ids, texts } = loadSelectorMapMatchers(input.selectorMapYaml);
+  const mapped = new Set<string>([...ids, ...texts]);
+
+  const mappedOnScreen = [...observed].filter((v) => mapped.has(v)).sort();
+  const candidates = [...observed].filter((v) => !mapped.has(v)).sort();
+  const wantedPresent = input.wanted.filter((w) => observed.has(w)).sort();
+  const wantedAbsent = input.wanted.filter((w) => !observed.has(w)).sort();
+
+  // Order is the contract. `matcher-miss` outranks everything: if what we
+  // reached for is demonstrably on screen, the map is not the problem and
+  // no amount of new anchors will help. Only once that is ruled out does
+  // total absence of map coverage mean "we have never built this shape".
+  let classification: ScreenCoverage;
+  if (wantedPresent.length > 0) classification = 'matcher-miss';
+  else if (mappedOnScreen.length === 0) classification = 'unmapped-surface';
+  else if (wantedAbsent.length > 0) classification = 'drift';
+  else classification = 'mapped';
+
+  return { classification, mappedOnScreen, wantedPresent, wantedAbsent, candidates };
+}
+
+export interface AtlasYamlInput {
+  apkVersion: string;
+  dumpFile: string;
+  result: ScreenCoverageResult;
+}
+
+/** Machine-readable sibling of `renderReportMarkdown`. `needs_tier2` is the
+ *  gate on the expensive instrumented re-walk: ONLY an unmapped surface
+ *  earns it. A matcher-miss is fixed by correcting the recipe, and drift by
+ *  updating a row — neither justifies re-walking a leg with full
+ *  boundary dumps. */
+export function renderReportYaml(input: AtlasYamlInput): string {
+  const r = input.result;
+  return stringifyYaml({
+    apk_version: input.apkVersion,
+    dump_file: input.dumpFile,
+    classification: r.classification,
+    needs_tier2: r.classification === 'unmapped-surface',
+    mapped_on_screen: r.mappedOnScreen,
+    wanted_present: r.wantedPresent,
+    wanted_absent: r.wantedAbsent,
+    candidates: r.candidates,
+  });
+}
+
+/** Recover the matcher values a Maestro run reached for, from its stderr.
+ *  Three shapes:
+ *   1. Maestro's own `... matching regex: <value>` lines.
+ *   2. Any bare `pkg:id/name` token appearing anywhere in the excerpt.
+ *   3. `Element not found: id "<value>"` / `Element not found: text
+ *      "<value>"` — the shape Maestro ACTUALLY emits for a failed
+ *      `assertVisible`/`tapOn` on this repo's own APK (see
+ *      test/lib/maestro-failure-class.test.ts and
+ *      test/lib/no-invite-detector.test.ts for real captured strings).
+ *      Neither of the first two patterns matches this shape: there is no
+ *      "matching regex:" line, and a quoted text value like `"Start
+ *      Learning"` is not a `pkg:id/name` token. Missing this pattern
+ *      meant a text-matcher failure (e.g. the #893 differentiator
+ *      `deliver-home-daily-visits`, a `type: text` row) always yielded
+ *      `wanted: []`, making `matcher-miss` structurally unreachable for
+ *      it and misrouting straight to `unmapped-surface`. */
+export function extractWantedMatchers(stderrExcerpt: string): string[] {
+  const out = new Set<string>();
+  const regexLine = /matching regex:\s*(.+?)\s*$/gm;
+  let m: RegExpExecArray | null;
+  while ((m = regexLine.exec(stderrExcerpt)) !== null) {
+    const v = (m[1] ?? '').trim();
+    if (v) out.add(v);
+  }
+  const bareId = /[\w.]+:id\/\w+/g;
+  while ((m = bareId.exec(stderrExcerpt)) !== null) out.add(m[0]);
+  const quotedIdOrText = /\b(?:id|text)\s+"([^"]+)"/gi;
+  while ((m = quotedIdOrText.exec(stderrExcerpt)) !== null) {
+    const v = (m[1] ?? '').trim();
+    if (v) out.add(v);
+  }
+  return [...out].sort();
+}
+
+/** ACE reports fork parameters; it never forks itself. Forking copies
+ *  artifacts into a new run, which is the operator's decision.
+ *
+ *  Emits parameter labels and values (not a command line) because the
+ *  operator-facing invocation syntax is undocumented. The skill's body
+ *  fields are specified in skills/fork-run/SKILL.md; this function names
+ *  those fields exactly so the operator can dispatch fork-run with known
+ *  correctness.
+ *
+ *  Uses fork_at_skill (not fork_at_phase) because a heal is always resuming
+ *  from a specific blocked skill — re-running that skill + everything after it
+ *  validates the healed selector. Choosing fork_at_phase would re-run a whole
+ *  phase unnecessarily. */
+export function renderForkInvocation(input: {
+  oppSlug: string;
+  sourceRunId: string;
+  forkAtSkill: string;
+}): string {
+  const feedback = `Selector map healed; re-walk from ${input.forkAtSkill} to verify the fix`;
+  return [
+    `Fork from here — skill \`fork-run\` (see skills/fork-run/SKILL.md):`,
+    `  opp_slug:      ${input.oppSlug}`,
+    `  source_run_id: ${input.sourceRunId}`,
+    `  fork_at_skill: ${input.forkAtSkill}`,
+    `  feedback:      "${feedback}"`,
+  ].join('\n');
 }

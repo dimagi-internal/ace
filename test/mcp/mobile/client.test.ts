@@ -332,6 +332,65 @@ describe('MobileClient.runRecipe (cloud-path palette parity)', () => {
   });
 });
 
+// Mapping-completeness Task 5 — `captureAllBoundaries` threads from
+// `MobileClient.runRecipe`'s new 5th `opts` param down to
+// `MaestroBackend.runRecipe`'s opts object. `MaestroBackend.runRecipe`
+// itself is mocked here (its own chunk-count behavior is covered in
+// test/mcp/mobile/maestro.test.ts); these tests pin the ONE hop this file
+// can cheaply observe that maestro.test.ts cannot: that the client
+// forwards exactly what the caller passed — nothing coerced to `true`
+// when omitted, and the caller's `true` not dropped on the way through.
+describe('MobileClient.runRecipe (captureAllBoundaries passthrough — local backend, Task 5)', () => {
+  function fakeLocalBackends() {
+    const avd = {
+      ensureAvdRunning: vi.fn(),
+      requireRunningAvd: vi.fn(),
+      findRunningAvd: vi.fn().mockResolvedValue(null),
+      getAllocatedPorts: vi.fn().mockResolvedValue({ adbServerPort: 5039 }),
+      getAdbShell: vi.fn(),
+    } as any;
+    const maestro = {
+      runRecipe: vi.fn().mockResolvedValue({
+        status: 'pass', exitCode: 0, stdout: '', stderr: '', screenshotsDir: '/tmp', screenshots: [],
+      }),
+    } as any;
+    return { avd, maestro };
+  }
+
+  let tmpDir: string;
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'cab-passthrough-'));
+  });
+  afterEach(() => {
+    try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch {}
+  });
+
+  it('does not set captureAllBoundaries on the backend call when the caller omits opts entirely (default stays off)', async () => {
+    const recipePath = path.join(tmpDir, 'r.yaml');
+    fs.writeFileSync(recipePath, 'appId: x\n---\n- launchApp: x\n', 'utf8');
+    const { avd, maestro } = fakeLocalBackends();
+    const client = new MobileClient({ avd, maestro, cloud: null as any, bootstrapConfig: null });
+
+    await client.runRecipe(recipePath, {}, tmpDir);
+
+    expect(maestro.runRecipe).toHaveBeenCalledTimes(1);
+    const backendOpts = maestro.runRecipe.mock.calls[0][3];
+    expect(backendOpts.captureAllBoundaries).toBeUndefined();
+  });
+
+  it('forwards captureAllBoundaries: true through to the backend when the caller opts in explicitly', async () => {
+    const recipePath = path.join(tmpDir, 'r.yaml');
+    fs.writeFileSync(recipePath, 'appId: x\n---\n- launchApp: x\n', 'utf8');
+    const { avd, maestro } = fakeLocalBackends();
+    const client = new MobileClient({ avd, maestro, cloud: null as any, bootstrapConfig: null });
+
+    await client.runRecipe(recipePath, {}, tmpDir, undefined, { captureAllBoundaries: true });
+
+    const backendOpts = maestro.runRecipe.mock.calls[0][3];
+    expect(backendOpts.captureAllBoundaries).toBe(true);
+  });
+});
+
 describe('MobileClient.runRecipe (screenshot-on-recipe-error forensics)', () => {
   // jjackson/ace screenshot-on-error: a FAILED recipe leaves the device on
   // the offending screen. `runRecipe` captures a ui-dump (element tree) + a

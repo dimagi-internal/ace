@@ -1428,6 +1428,7 @@ _no parameters_
 | `envVars` | `z.record` | **required** | _—_ |
 | `screenshotDir` | `z.string` | **required** | _—_ |
 | `avdName` | `z.string` | optional | _—_ |
+| `captureAllBoundaries` | `z.boolean` | optional | Tier 2 of the mapping ladder. EXPENSIVE — opens an extra ui-dump window at every top-level `runFlow` boundary, not just at `takeScreenshot` (one extra `maestro test` invocation per window; measured 3→… |
 
 ### `mobile_capture_ui_dump`
 

@@ -206,6 +206,22 @@ export interface ApkInfo {
   path: string;
 }
 
+/**
+ * Options for `MobileClient.runRecipe` (and, one layer down,
+ * `MaestroBackend.runRecipe`) — the `mobile_run_recipe` atom's tunables
+ * that aren't already positional args (recipePath, env, screenshotDir,
+ * avdName).
+ */
+export interface RunRecipeOptions {
+  /**
+   * Tier 2 of the mapping ladder: open a dump window at every top-level
+   * `runFlow` boundary. Costs one extra `maestro test` invocation per
+   * window. Default false. Turn on only after an atlas-report.yaml says
+   * `classification: unmapped-surface`.
+   */
+  captureAllBoundaries?: boolean;
+}
+
 export interface RecipeRunResult {
   status: 'pass' | 'fail';
   exitCode: number;
@@ -276,6 +292,18 @@ export interface RecipeRunResult {
     uiDumpPath?: string;
     screenshotPath?: string;
     elements?: Array<{ id?: string; text?: string; class?: string; bounds?: string }>;
+    /**
+     * Sibling `<recipeId>-FAILURE.txt` containing the Maestro stderr excerpt
+     * (when one was available at capture time). This is what lets the atlas
+     * drift classifier (`lib/atlas-drift.ts` `classifyScreenCoverage`) tell
+     * `matcher-miss` (the recipe reached for an id/text that IS on screen —
+     * fix the recipe) from `unmapped-surface` (nothing wanted is on screen —
+     * a real coverage gap) — those have opposite fixes, and without the
+     * stderr excerpt the classifier can never see what the recipe wanted.
+     * Absent when no excerpt was available (e.g. a thrown transport error
+     * with no Maestro-classified failure attached) or the write failed.
+     */
+    stderrPath?: string;
   };
   /**
    * The static palette dir this run actually resolved `runFlow: file:`
