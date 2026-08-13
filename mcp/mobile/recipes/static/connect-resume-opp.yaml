@@ -12,6 +12,16 @@
 # screen — whichever Connect renders after the CTA tap. deliver-launch.yaml
 # handles both variants and drives forward from here.
 #
+# EXPECTED DUPLICATE (ace#869): `connect-resume-opp-list-synced` and
+# `connect-resume-opp-tile` observe the SAME frame whenever the target tile
+# is already in the viewport, because the scrollUntilVisible between them is
+# then a no-op. This is not fixable in Maestro — there is no way to branch on
+# "did the scroll actually move". Both shots are kept deliberately: each is a
+# top-level step, so each is its own UI-dump window, and dropping either
+# loses a window. The manifest `duplicate_of` dedup (app-screenshot-capture
+# SKILL Step 5.5) is the permanent handling — downstream consumers already
+# treat a duplicate_of pair as one moment.
+#
 # Required env vars (pass via mobile_run_recipe.envVars):
 #   OPP_RUN_ID — the run-id (YYYYMMDD-HHMM) of the current run; the
 #                recipe anchors the target-tile match on this short,

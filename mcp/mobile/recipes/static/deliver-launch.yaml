@@ -83,13 +83,16 @@ appId: org.commcare.dalvik
     commands:
       - takeScreenshot: "deliver-launch-already-installed-suite"
       - back
-# Resume landed directly on the Deliver home — nothing to do; record it.
-- runFlow:
-    when:
-      visible:
-        ${SELECTOR:deliver-home-job-card}
-    commands:
-      - takeScreenshot: "deliver-launch-already-installed-home"
+# Resume landed directly on the Deliver home — nothing to do. Deliberately
+# NOT shot here (ace#869): the unconditional `deliver-launch-home` at the end
+# of this palette records the same frame on this path, so a branch shot here
+# produced two byte-identical Deliver-home captures on every already-installed
+# run. The end-of-palette shot is the one kept because it fires on BOTH paths
+# and is top-level (so it is this palette's UI-dump window in default mode);
+# dropping it instead would leave the fresh-install path with no Deliver-home
+# frame at all. Path classification is unaffected — the suite-menu branch
+# above and the presence/absence of `deliver-launch-download-gate` already
+# discriminate already-installed from fresh-install.
 
 # Resume from Connect's opp-list post-Learn-pass can land us on EITHER
 # of two screens on Connect 2.62.0 depending on persisted state:
