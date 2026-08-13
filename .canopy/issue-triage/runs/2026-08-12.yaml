@@ -37,8 +37,8 @@ prs:
     mechanical: false
     mergeable_cleanly: true
     refs_issues: [811]
-    action: null
-    outcome: null
+    action: "closed with evidence comment"
+    outcome: "closed 2026-08-13; swipe gesture disproven by the in-tree A/B record"
 verdicts:
   - number: 735
     title: "Phase 6 AVD boot blocked on multi-user host: port 5554 squatted, no port-pin in .env"
@@ -64,8 +64,8 @@ verdicts:
       counter-recommended by .env.tpl:225-238 and re-enables the only fatal path left.
     duplicate_of: null
     source: fresh
-    action: null
-    outcome: null
+    action: "gh issue close --reason completed"
+    outcome: "CLOSED 2026-08-13 (completed) — fixed by #1030; reason upgraded from the triage-proposed not-planned, see note"
   - number: 796
     title: "Phase 6 retry on an already-walked run is non-idempotent"
     disposition: implement
@@ -90,8 +90,8 @@ verdicts:
       shipped. The probe half needs no device.
     duplicate_of: null
     source: fresh
-    action: null
-    outcome: null
+    action: "held — awaiting holistic-scan decision"
+    outcome: "open; cluster membership revised (see clusters_revised)"
   - number: 811
     title: "connect-claim-opp.yaml: action_sync does not refresh the Connect invite list"
     disposition: close
@@ -120,8 +120,8 @@ verdicts:
       not still-pending.
     duplicate_of: null
     source: fresh
-    action: null
-    outcome: null
+    action: "gh issue close --reason not planned"
+    outcome: "CLOSED 2026-08-13 (not planned) — hypothesis live-tested and disproven"
   - number: 856
     title: "qa-and-training: screenshot-blocked runs ship a hollow training deck as 'proceed-with-warn'"
     disposition: implement
@@ -154,8 +154,8 @@ verdicts:
       rubric; make a coverage FAIL yield phase verdict `blocked`, not `proceed-with-warn`.
     duplicate_of: null
     source: fresh
-    action: null
-    outcome: null
+    action: "held — awaiting holistic-scan decision"
+    outcome: "open; reclassified as one instance of a class, see clusters_revised"
   - number: 863
     title: "connect-claim-opp: already-Learn-complete branch misses the installed-Deliver-app landing"
     disposition: implement
@@ -192,5 +192,60 @@ verdicts:
       static-palette-health assertion — but this is a judgment call, not a rubber stamp.
     duplicate_of: null
     source: fresh
-    action: null
-    outcome: null
+    action: "implemented + shipped"
+    outcome: "CLOSED 2026-08-13 (completed) via PR #1207, merged; ACE 0.13.762"
+
+# ---------------------------------------------------------------------------
+# Appended after the operator asked for a full open-backlog scan before
+# implementing #796 and #856. Read-only pass over all 75 remaining open
+# issues (titles + labels), then targeted reads of the ones that bear on
+# either. It materially changed both.
+# ---------------------------------------------------------------------------
+holistic_scan:
+  scanned: 75
+  read_in_full: [1094, 873, 1069, 869, 1191]
+  finding: >-
+    Neither #796 nor #856 is a standalone item. Each is one member of a class,
+    and #856 in particular would have shipped a gate that hard-fails every run
+    if implemented in isolation.
+clusters_revised:
+  - name: which-home-am-i-on
+    members: [796, 869, 1191]
+    shipped: [863]
+    closed_members: [893]
+    one_fix: >-
+      Make `deliver-home-daily-visits` the canonical Deliver-home signal
+      everywhere, and add a static invariant that no recipe uses
+      `deliver-home-job-card`/viewJobCard alone to discriminate Learn from
+      Deliver. #863 (shipped in PR #1207) is the first adopter.
+    note: >-
+      #1191's PROPOSED fix (deliver-home-reentry.yaml, a guarded back-loop
+      between two deliver-form-walk legs) keys its home anchor on
+      `deliver-home-job-card` — the selector #893 disproved. If it ships as
+      written it inherits exactly the bug #863 just fixed: it would treat the
+      Learn home as the Deliver home and stop backing out one screen early.
+      Flagged on PR #1207.
+  - name: proceed-with-warn-is-load-bearing
+    members: [856, 1094, 1069]
+    constraint_member: 873
+    one_fix: >-
+      A single coverage/readiness predicate with a legal way to say
+      "complete for the shape actually executed". #856 is the deck-level
+      instance, #1094 the review-offering-level instance (a run reached
+      "ready for Sophie" with the Deliver app never device-walked), #1069 the
+      status-vocabulary blocker (`partial` is not in PHASE_STATUSES, so a
+      supported mode cannot close cleanly and the orchestrator retry-loops).
+    blocking_constraint: >-
+      #873 is why #856 must NOT be implemented standalone. The PersonalID
+      sign-up completion half (OTP -> photo -> permissions -> done) is
+      UNCAPTURABLE with the demo test user: +7426 phones bypass SMS OTP
+      server-side, and the pre-existing account makes registration an
+      account-recovery flow that returns the stored photo, skips the
+      permissions dialog, and shows "Account Recovered" instead of "Profile
+      complete!". All 5 aliases are marked `placeholder: true` in the SHARED
+      common pool, so the entire second half of the sign-up walkthrough is
+      text-only in EVERY opp deck, permanently and by design. A naive
+      visual-coverage floor fires on that in 100% of runs. The gate must
+      whitelist pool-level placeholders and measure only OPP-SPECIFIC
+      capture — which is a decision #873 explicitly says is unmade
+      ("Fix options (pick one; needs a decision)").
