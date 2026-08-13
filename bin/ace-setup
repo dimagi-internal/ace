@@ -399,6 +399,27 @@ EOF_KEYS
       else
         pass "env: op inject wrote $ENV_OUT"
       fi
+
+      # ace#880 — .env was just rewritten, so ANY MCP subprocess already
+      # running is now holding the previous values. They call dotenvConfig()
+      # at import and never re-read the file. Unconditional because the write
+      # unconditionally happened; the doctor probe below narrows it to the
+      # actual stale pids when it can see them.
+      printf '\n'
+      printf '  !! RESTART REQUIRED — .env was just rewritten.\n'
+      printf '     MCP subprocesses read .env ONLY at startup, and /reload-plugins\n'
+      printf '     does NOT respawn them. Quit and reopen Claude Code (Cmd-Q), then\n'
+      printf '     re-run /ace:doctor.\n'
+      printf '     Order matters: run setup FIRST, restart AFTER — the reverse\n'
+      printf '     silently leaves every MCP server on the old values.\n'
+      if [ -f "$ROOT/scripts/doctor-env-freshness.ts" ]; then
+        ENV_FRESH_NOW="$(cd "$ROOT" && npx tsx scripts/doctor-env-freshness.ts 2>/dev/null || true)"
+        case "$ENV_FRESH_NOW" in
+          WARN*) printf '     %s\n' "$(printf '%s' "$ENV_FRESH_NOW" | head -1)" ;;
+          *) : ;;
+        esac
+      fi
+      printf '\n'
     fi
   else
     pass "env: $ENV_OUT already has every .env.tpl key (use --force-env to refresh)"
