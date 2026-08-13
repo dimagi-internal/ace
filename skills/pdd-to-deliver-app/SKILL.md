@@ -294,15 +294,34 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
      > business key, persist that key to a case property
      > (`case_property_on` the relevant case type, e.g. write
      > `/data/entity_key` to a case property `entity_key`). (b) On each
-     > CASE-UPDATE form, set `entity_id` to read that stored property
-     > back off the case — `{ parts: [{ kind: "case-ref", caseType:
-     > "<the case type>", property: "entity_key" }] }` (or a casedb
-     > lookup of the parent's stored key for child-case forms) — NOT the
-     > case id. Optionally append a per-form constant part
-     > `{ kind: "text", text: " - <form_name>" }` so each
-     > visit type is a distinct deliver entity while repeat submissions
-     > of the same type for the same entity dedup. This is the pattern
-     > all 6 deployed apps use.
+     > CASE-UPDATE form, read that stored property back — but **NOT via
+     > a `case-ref` part.** Nova rejects a followup form's `case-ref` to
+     > its OWN case type ("This expression does not survive Nova's
+     > canonical identity parse and print round trip") across every
+     > expression shape and slot, so a brief mandating it is
+     > **unbuildable** — see dimagi-internal/ace#1180 /
+     > `commcare-nova#458`. Use Nova's **preload** mechanic instead:
+     > add an always-relevant **hidden** field bound to the stored case
+     > property (`entity_key`) — case-bound fields open pre-filled with
+     > the case's current value — and reference it with an ordinary
+     > `field-ref` part:
+     > `{ parts: [{ kind: "field-ref", uuid: <hidden entity_key field uuid> }] }`.
+     > Writing the unchanged value back is a no-op. NOT the case id.
+     >
+     > Two caveats found live, both of which cost a run to rediscover:
+     > **(i)** a hidden field is rejected without a seed, so each needs
+     > `default_value: ''` — the preload then wins over the seed.
+     > **(ii)** a per-form suffix must go **inside** `concat(...)`, not
+     > as a bare `{ kind: "text", text: " - <form_name>" }` part between
+     > two references — a bare `-` between two references parses as
+     > XPath **subtraction**, not concatenation.
+     >
+     > This grain is identical to the `case-ref` version it replaces,
+     > and strictly safer: because the components are hidden preload
+     > fields rather than worker-editable inputs, a typo cannot mint a
+     > second payable delivery — the exact risk this section guards.
+     > Revert to `case-ref` only once `commcare-nova#458` is fixed and
+     > re-verified against a live build.
 
      > For the upstream-validator note + the history of why the case id was abandoned, see reference.md § entity_id business key.
 

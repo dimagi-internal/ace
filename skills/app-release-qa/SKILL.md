@@ -213,6 +213,26 @@ Mismatch → halt with `deliver-marker-missing` (with the form path +
 which marker is absent). The same namespace re-check applies before
 halting.
 
+**An EMPTY `<entity_id/>` / `<entity_name/>` element is NOT a defect —
+read the bind** (dimagi-internal/ace#1192). In a correct released CCZ
+these render as empty elements, with the value carried by a `calculate`
+bind that targets them:
+
+```xml
+<deliver xmlns="http://commcareconnect.com/data/v1/learn" id="meeting_record">
+  <name>Community meeting record</name>
+  <entity_id/>
+  <entity_name/>
+</deliver>
+```
+
+Judging "empty" from element text therefore fires a false `[BLOCKER]`
+on every standard ACE Deliver app. The real defect is a marker whose
+`calculate` bind is **absent or empty**. Check the bind; never the
+element text. This is load-bearing on the case-UPDATE path, where
+`pdd-to-deliver-app`'s preload-hidden-field pattern (ace#1180) produces
+precisely this shape.
+
 **Field count per form.** For each form in the Nova blueprint, count
 the `<input>` / `<select1>` / `<select>` / `<upload>` / `<bind>`
 elements in the XForm and compare against the Nova blueprint's field
