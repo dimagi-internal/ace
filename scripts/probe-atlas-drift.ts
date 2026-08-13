@@ -191,9 +191,23 @@ function main(): void {
       // The newest failure dump is the one that stopped the walk. Sort by
       // mtime, not path string — several stale FAILURE dumps can sit under
       // one root (e.g. from an earlier run reusing the same screenshot dir),
-      // and alphabetical order has no relation to recency.
+      // and alphabetical order has no relation to recency. Read each mtime
+      // ONCE into a map (not inside the comparator — a naive `sort((a, b) =>
+      // statSync(a)... - statSync(b)...)` re-stats on every comparison, and
+      // this dir is a live TOCTOU target: another process can delete a dump
+      // between `findDumpFiles()`'s readdir and this stat, so an unguarded
+      // statSync can throw ENOENT and crash the whole probe run). A file
+      // that vanished falls back to mtime 0 rather than aborting.
+      const mtimes = new Map<string, number>();
+      for (const f of failureDumps) {
+        try {
+          mtimes.set(f, fs.statSync(f).mtimeMs);
+        } catch {
+          mtimes.set(f, 0);
+        }
+      }
       const dumpPath = [...failureDumps].sort(
-        (a, b) => fs.statSync(a).mtimeMs - fs.statSync(b).mtimeMs,
+        (a, b) => (mtimes.get(a) ?? 0) - (mtimes.get(b) ?? 0),
       )[failureDumps.length - 1];
       const stderrPath = dumpPath.replace(/\.xml$/, '.txt');
       const stderrExcerpt = fs.existsSync(stderrPath)

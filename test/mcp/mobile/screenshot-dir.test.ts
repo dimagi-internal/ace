@@ -74,6 +74,17 @@ describe('resetScreenshotDir', () => {
     expect(isPreservedArtifact('00-postlearn-landing.xml')).toBe(true);
     expect(isPreservedArtifact('journey-deliver-FAILURE.xml')).toBe(true);
     expect(isPreservedArtifact('connect-resume-opp-FAILURE.png')).toBe(true);
+    // The `.txt` sidecar (the Maestro stderr excerpt `captureFailureForensics`
+    // writes alongside the .xml/.png) must survive the wipe too — it's what
+    // lets the atlas drift classifier (`lib/atlas-drift.ts`
+    // `classifyScreenCoverage`) tell `matcher-miss` (the recipe's wanted
+    // element IS on screen — fix the recipe) from `unmapped-surface` (nothing
+    // wanted is on screen — a real coverage gap) apart. It survives today only
+    // because the predicate is extension-agnostic (`/-FAILURE\./`, not an
+    // explicit .png/.xml allowlist); a well-meaning tightening of that regex
+    // would silently wipe it and make `matcher-miss` unreachable again with
+    // no test failing — this assertion is the guard against that.
+    expect(isPreservedArtifact('connect-claim-opp-FAILURE.txt')).toBe(true);
     expect(isPreservedArtifact('01-foo.png')).toBe(false);
     expect(isPreservedArtifact('journey-deliver-final.png')).toBe(false);
     expect(isPreservedArtifact('dump.xml')).toBe(false);
