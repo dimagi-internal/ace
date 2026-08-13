@@ -315,9 +315,26 @@ Two hard rules:
      sub-verdict as **`satisfied-by-prior-completion`** (NOT `fail`, NOT
      `incomplete` — Learn genuinely completed, just on a prior pass) and
      proceed directly to the **Deliver leg**, which is unlocked.
+   - If the device is on the **Deliver home** — Learn complete *and* the
+     Deliver CCZ already installed, so there is no download gate left to
+     land on (#863; the #747 already-installed fast path, or any resumed
+     run that previously reached the Deliver leg) — record the same
+     **`satisfied-by-prior-completion`** sub-verdict and proceed to the
+     Deliver leg. `connect-claim-opp.yaml` surfaces this as the
+     screenshot **`claim-already-learn-complete-deliver-app-installed`**,
+     branched on `deliver-home-daily-visits`.
+
+     This is a **third** recognized surface, not a variant of the second.
+     It cannot be detected with `nsv_home_screen`/`learn-home-screen`,
+     which is the generic StandardHomeActivity ScrollView and renders
+     identically on both homes — that is exactly why this landing used to
+     fall through the fresh-Learn branch and send the Learn walk into the
+     Deliver suite, failing selector-not-found on a healthy opp. Do NOT
+     use `deliver-home-job-card`/viewJobCard to tell the two homes apart:
+     #893 disproved it (it renders on both once the opp is claimed).
    - Only attempt the actual Learn screenshot walk when the device lands
-     on the **Learn home** (`nsv_home_screen`) — i.e. Learn is genuinely
-     not yet complete.
+     on the **Learn home** (`nsv_home_screen`) **and** the Deliver-home
+     anchor is absent — i.e. Learn is genuinely not yet complete.
 
 If a *fresh* Learn-walk screenshot set is specifically required (e.g. the
 prior completion produced no usable captures), that needs a **fresh
@@ -327,9 +344,20 @@ Deliver app* to get there: Connect shares one `DeliverUnit` across opps
 on the same `cc_app_id`, so the fresh opp can't get a payment unit
 (#573) — a fresh run (new apps → new `cc_app_id`) is the clean path.
 
-This branch is the structural fix; it does not require a live pre-AVD
-probe (Connect exposes no clean per-user Learn-completion atom today) —
-the claim-prefix landing screen IS the signal.
+This branch is the structural fix, and the claim-prefix landing screen IS
+the signal — the walk cannot mis-enter once all three surfaces above are
+recognized.
+
+A pre-AVD probe is nonetheless now *possible* and would be strictly
+cheaper: `connect_get_learn_progress` (#897) and
+`connect_get_deliver_progress` (#1066) both expose per-worker completion
+headlessly, so a consumed opp can be detected before ~10 min of AVD
+wall-clock is spent reaching it. This doc previously asserted that
+"Connect exposes no clean per-user Learn-completion atom today"; that has
+been false since #897 shipped. Wiring that probe in ahead of
+`mobile_ensure_avd_running` is tracked as **#796** — it is a cost and
+idempotency fix, not a correctness one, because the landing-screen
+branches above are what keep the walk correct.
 
 ### Step 3: Boot AVD + ensure apps installed
 

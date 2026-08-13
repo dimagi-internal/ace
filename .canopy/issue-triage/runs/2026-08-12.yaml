@@ -1,0 +1,196 @@
+run_date: 2026-08-12
+repo: dimagi-internal/ace
+scope_contract: triage-plus-quick-wins
+batch: 5-oldest-open-issues
+code_ref: 8cfb1d69
+open_total: 77
+triaged: 5
+carried_forward: 0
+truncated: true
+truncation_note: "triaged 5 of 77 open issues (the 5 oldest, per operator request: oldest-to-newest, 5 at a time); 1 of 1 open PRs"
+operator_directive: "be skeptical that these issues are still valid — every subagent was instructed to default-hypothesise that the code has moved on, and to diff post-filing commits rather than trust the issue's quoted snippets"
+clusters:
+  - name: consumed-learn-deliver-state
+    members: [863, 796, 869]
+    closed_members: [893]
+    one_fix: >-
+      Adopt the now-live-verified `deliver-home-daily-visits` anchor (shipped
+      2026-07-30 in dcd45450 closing #893, present in both selector maps and
+      already asserted in deliver-launch.yaml:256) as the Learn-vs-Deliver home
+      signal in connect-claim-opp.yaml, plus a pre-AVD consumption probe via the
+      shipped `connect_get_learn_progress` (#897) / `connect_get_deliver_progress`
+      (#1066) atoms. One anchor + one probe serves all three members.
+    note: >-
+      #863 owns the recipe-branch half; #796's recipe half duplicates it and
+      should be deduped into #863, leaving #796 scoped to the pre-AVD probe.
+tier_counts: { blocks-e2e: 2, harness: 2, polish: 0, closed-out: 1 }
+prs:
+  - number: 850
+    title: "fix(mobile): swipe-to-refresh in connect-claim-opp (#811) [DRAFT — needs live validation]"
+    disposition: close
+    checks: { check-version: fail, clean-install: pass }
+    blocker: >-
+      check-version is red (mechanical — VERSION never bumped on the branch), but
+      that is not the operative blocker. The gesture the PR ships was live-tested
+      2026-07-25/26 and FAILED: main's own agents/qa-and-training.md:192-197
+      records "neither an in-app sync nor a swipe-refresh produced them (#811)".
+    mechanical: false
+    mergeable_cleanly: true
+    refs_issues: [811]
+    action: null
+    outcome: null
+verdicts:
+  - number: 735
+    title: "Phase 6 AVD boot blocked on multi-user host: port 5554 squatted, no port-pin in .env"
+    disposition: close
+    close_reason: not planned
+    blocking: blocks-e2e
+    confidence: high
+    effort: n/a
+    cluster: null
+    evidence_paths:
+      - mcp/mobile/port-allocator.ts
+      - mcp/mobile/backends/avd.ts
+      - mcp/mobile/client.ts
+      - bin/ace-doctor
+      - .env.tpl
+    staleness: >-
+      Fixed by #1030 (ed609dec, 2026-07-28) — occupiedConsolePortIsFatal now only
+      fires when the operator explicitly pinned ACE_MOBILE_EMULATOR_PORT, so a busy
+      5554 is routine and the allocator probes upward. Every escalating class in the
+      comment thread was split off and closed: #1047 (AVD-name contention, -read-only),
+      #1155 (cross-user adb-server naming, 9bd611c5), #1158 (lockless orphan reaping,
+      1782ef60). The .env port-pin remedy in the title is now actively
+      counter-recommended by .env.tpl:225-238 and re-enables the only fatal path left.
+    duplicate_of: null
+    source: fresh
+    action: null
+    outcome: null
+  - number: 796
+    title: "Phase 6 retry on an already-walked run is non-idempotent"
+    disposition: implement
+    blocking: blocks-e2e
+    confidence: high
+    effort: M
+    cluster: consumed-learn-deliver-state
+    scope_after_dedupe: "pre-AVD consumed-precondition probe only; recipe-branch half deduped into #863"
+    evidence_paths:
+      - mcp/mobile/recipes/static/connect-claim-opp.yaml
+      - skills/app-screenshot-capture/SKILL.md
+      - agents/qa-and-training.md
+      - mcp/connect-server.ts
+      - mcp/mobile/selectors/connect-2.63.0.yaml
+      - mcp/mobile/selectors/connect-2.63.2.yaml
+      - mcp/mobile/recipes/static/deliver-launch.yaml
+    label_disagreement: >-
+      `blocked-on-validation` (applied 2026-07-26) is now wrong. The premise
+      "Connect exposes no clean per-user Learn-completion atom" — still asserted
+      stale at skills/app-screenshot-capture/SKILL.md:330-332 — died when
+      connect_get_learn_progress (#897) and connect_get_deliver_progress (#1066)
+      shipped. The probe half needs no device.
+    duplicate_of: null
+    source: fresh
+    action: null
+    outcome: null
+  - number: 811
+    title: "connect-claim-opp.yaml: action_sync does not refresh the Connect invite list"
+    disposition: close
+    close_reason: not planned
+    blocking: harness
+    confidence: medium
+    effort: n/a
+    cluster: null
+    evidence_paths:
+      - mcp/mobile/recipes/static/connect-claim-opp.yaml
+      - agents/qa-and-training.md
+      - test/mcp/mobile/static-recipe-invariants.test.ts
+    staleness: >-
+      The recipe line is unchanged, but the diagnosis attached to it was overtaken.
+      (1) The swipe-refresh hypothesis was live-A/B'd 2026-07-25/26 and BOTH arms
+      failed — recorded in main at agents/qa-and-training.md:192-197. (2) Main now
+      carries explicit counter-guidance at :199-226: "do not attribute it to a recipe
+      fault; both attributions have been made confidently and wrongly on this symptom."
+      (3) The #824 unlinked-invite fallback this was parked on was itself reverted as
+      an unvalidated premise (3001679c / 535cb39b, 2026-08-12). (4) The claim leg
+      live-passed on the untouched action_sync path via the fresh-tile Branch B
+      (26b8235a, 2026-07-29), which also retires the blocks-e2e justification.
+    label_disagreement: >-
+      `blocked-on-validation` was correct on 2026-07-26; the validation has since been
+      ATTEMPTED and returned a negative result, so the issue is resolved-as-disproven,
+      not still-pending.
+    duplicate_of: null
+    source: fresh
+    action: null
+    outcome: null
+  - number: 856
+    title: "qa-and-training: screenshot-blocked runs ship a hollow training deck as 'proceed-with-warn'"
+    disposition: implement
+    blocking: harness
+    confidence: high
+    effort: M
+    cluster: null
+    evidence_paths:
+      - skills/training-deck-generate/SKILL.md
+      - skills/training-deck-render/SKILL.md
+      - skills/training-deck-generate-eval/SKILL.md
+      - skills/app-screenshot-capture/SKILL.md
+      - agents/qa-and-training.md
+      - lib/training-deck-spec.ts
+      - lib/artifact-manifest.ts
+      - test/lib/training-deck-spec.test.ts
+    staleness: >-
+      Six commits touched the area since filing (screenshot-CLAIM guards #866/#867,
+      stencil geometry, spec-schema shape, path resolution) but none add a coverage
+      gate. The one real mitigation — the hard FLW-invite pre-flight at
+      agents/qa-and-training.md:167-197 — closes the specific #855 trigger, not the
+      class. Both halves of the ask remain unimplemented; the degraded
+      "the deck still ships" path survives verbatim at training-deck-generate/SKILL.md:82-98.
+    proposed_change: >-
+      Add pure computeVisualCoverage() to lib/training-deck-spec.ts (counting
+      DOWNGRADED walkthrough slides in the denominator — that invisibility is what
+      made 9% coverage read clean) + failing vitest; replace the "don't halt" prose
+      with a coverage floor; add a structural visual_coverage criterion to the render
+      self-eval and a hard-deduct rule + stratified sampling to the generate-eval
+      rubric; make a coverage FAIL yield phase verdict `blocked`, not `proceed-with-warn`.
+    duplicate_of: null
+    source: fresh
+    action: null
+    outcome: null
+  - number: 863
+    title: "connect-claim-opp: already-Learn-complete branch misses the installed-Deliver-app landing"
+    disposition: implement
+    blocking: blocks-e2e
+    confidence: high
+    effort: S
+    cluster: consumed-learn-deliver-state
+    evidence_paths:
+      - mcp/mobile/recipes/static/connect-claim-opp.yaml
+      - mcp/mobile/recipes/static/deliver-launch.yaml
+      - mcp/mobile/selectors/connect-2.63.0.yaml
+      - mcp/mobile/selectors/connect-2.63.2.yaml
+      - skills/app-screenshot-capture/SKILL.md
+      - test/mcp/mobile/static-palette-health.test.ts
+      - test/mcp/mobile/static-recipe-invariants.test.ts
+    verified_by_orchestrator: >-
+      Confirmed directly: connect-claim-opp.yaml:407-412 still guards the
+      already-Learn-complete branch on deliver-download-button alone; the fresh-Learn
+      branch waits on learn-home-screen (= nsv_home_screen, mode-agnostic); and
+      `grep daily-visits connect-claim-opp.yaml` returns nothing — the anchor exists
+      but is not adopted here.
+    label_disagreement: >-
+      `blocked-on-validation` (2026-07-26) was correct at the time — the consolidation
+      comment blocked this on "no live-calibrated Learn-vs-Deliver differentiator".
+      dcd45450 (2026-07-30) supplied exactly that calibration four days later and
+      disproved BOTH anchors the comment had contemplated (viewJobCard renders on the
+      Learn home once claimed; the "— Learn app" toolbar suffix is truncated behind the
+      ellipsis on both homes at 1080x2400). The observation has been made.
+    residual: >-
+      ACE's "live-validate recipe changes before merge" rule is not fully satisfiable
+      here, because reaching the trigger state (Learn complete AND Deliver CCZ
+      installed) is itself the one-way condition #796 is about. The branch is additive
+      and fail-safe (absent the anchor, behavior is unchanged) and lockable by a
+      static-palette-health assertion — but this is a judgment call, not a rubber stamp.
+    duplicate_of: null
+    source: fresh
+    action: null
+    outcome: null

@@ -284,3 +284,70 @@ describe('static palette health — deliver-launch retry-proofing invariant (#74
     expect(yaml).toContain('${SELECTOR:deliver-suite-menu}');
   });
 });
+
+describe('static palette health — connect-claim-opp landing classification (#863)', () => {
+  // #570 taught the claim recipe exactly one already-Learn-complete surface:
+  // the Deliver DOWNLOAD gate. Once the Deliver CCZ is installed there is no
+  // download button left to land on, so that branch is not taken and the run
+  // lands on the DELIVER home instead. `learn-home-screen` cannot catch it —
+  // it resolves to `nsv_home_screen`, the generic StandardHomeActivity
+  // ScrollView, which renders identically on both homes. The fresh-Learn
+  // branch therefore accepted the Deliver home as "Learn is ready", and the
+  // caller's Learn leg walked into the Deliver suite and died on
+  // selector-not-found on a perfectly healthy opp.
+  const yaml = readFileSync(`${STATIC_DIR}connect-claim-opp.yaml`, 'utf8');
+  const stripped = yaml
+    .split('\n')
+    .filter((l) => !l.trim().startsWith('#'))
+    .join('\n');
+
+  it('classifies the already-installed Deliver-home landing (#863)', () => {
+    // The distinctly-named artifact is the contract: app-screenshot-capture
+    // Step 2.7 reads it to record `satisfied-by-prior-completion` rather than
+    // halting. Renaming it silently re-breaks that handoff.
+    expect(
+      stripped,
+      'connect-claim-opp must capture a distinctly-named artifact for the ' +
+        'Learn-complete + Deliver-installed landing (#863)',
+    ).toMatch(/takeScreenshot:\s*"claim-already-learn-complete-deliver-app-installed"/);
+  });
+
+  it('branches that landing on the REAL differentiator, not viewJobCard (#863/#893)', () => {
+    // The delivery-quota row is the only live-verified Learn-vs-Deliver
+    // signal (#893, dcd45450). viewJobCard renders on BOTH homes once the
+    // opp is claimed, and the "... - Learn app" toolbar suffix is truncated
+    // behind the ellipsis on both at 1080x2400 — so neither can stand in.
+    expect(stripped).toMatch(
+      /when:\s*\n\s+visible:\s*\n\s+\$\{SELECTOR:deliver-home-daily-visits\}/,
+    );
+    expect(
+      stripped,
+      'viewJobCard is not a Learn-vs-Deliver differentiator — see #893',
+    ).not.toMatch(/\$\{SELECTOR:deliver-home-job-card\}/);
+  });
+
+  it('classifies AFTER the home wait, not before it (#863)', () => {
+    // Timing-robustness, and the reason this is not a pre-wait guard: at
+    // branch time the target home may not have rendered yet (the 180s wait
+    // is what waits for it), so a pre-wait test would fall through to the
+    // fresh-Learn path on exactly the slow case it exists to catch.
+    const waitIdx = stripped.search(
+      /extendedWaitUntil:\s*\n\s+visible:\s*\n\s+id:\s*"\$\{SELECTOR:learn-home-screen\}"/,
+    );
+    const classifyIdx = stripped.search(
+      /when:\s*\n\s+visible:\s*\n\s+\$\{SELECTOR:deliver-home-daily-visits\}/,
+    );
+    expect(waitIdx, 'the fresh-Learn home wait must still exist').toBeGreaterThan(-1);
+    expect(classifyIdx, 'the #863 classification branch must exist').toBeGreaterThan(-1);
+    expect(
+      classifyIdx,
+      'the Deliver-home classification must run AFTER the home wait',
+    ).toBeGreaterThan(waitIdx);
+  });
+
+  it('keeps the #570 Deliver-gate surface intact', () => {
+    // The new branch is additive — it must not displace the download-gate
+    // landing #570 already handles.
+    expect(stripped).toMatch(/takeScreenshot:\s*"claim-already-learn-complete-deliver-gate"/);
+  });
+});

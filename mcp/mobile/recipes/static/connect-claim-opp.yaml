@@ -457,4 +457,47 @@ appId: org.commcare.dalvik
             # handoff (jjackson/ace#629), not a slow download.
             - assertVisible:
                 id: "${SELECTOR:learn-home-screen}"
+      #
+      # Already-Learn-complete, Deliver-app-INSTALLED branch (#863).
+      #
+      # #570 gave the already-Learn-complete case exactly one recognized
+      # surface: the Deliver DOWNLOAD gate. But once the Deliver CCZ has
+      # been installed on this device (the #747 already-installed fast
+      # path, or any resumed run that got as far as the Deliver leg),
+      # there is no download button to key on — so the branch above is
+      # not taken and we land here, on the DELIVER home.
+      #
+      # `learn-home-screen` cannot catch that: it resolves to
+      # `nsv_home_screen`, the generic StandardHomeActivity ScrollView,
+      # which renders identically for Learn and Deliver. So the wait
+      # above is satisfied by the Deliver home, the wedge detector stays
+      # quiet, and the caller's Learn leg walks into the Deliver suite
+      # and dies on selector-not-found — a hard failure on a perfectly
+      # healthy opp.
+      #
+      # Classify AFTER the wait rather than branching before it: at
+      # branch time the target home may not have rendered yet (the
+      # 180s wait is what waits for it), so a pre-wait test would fall
+      # through to the fresh-Learn path on exactly the slow case this
+      # is meant to catch. Wait for *a* home, then ask which one.
+      #
+      # The differentiator is `deliver-home-daily-visits` (#893,
+      # dcd45450, live-verified 2026-07-30): the delivery-quota row
+      # renders on the Deliver home and NOT on the Learn home. Do NOT
+      # use `deliver-home-job-card`/viewJobCard here — #893 disproved it
+      # (it renders on BOTH once the opp is claimed), and the toolbar
+      # "... - Learn app" suffix is truncated behind the ellipsis on
+      # both homes at 1080x2400.
+      #
+      # Additive and fail-safe: if the anchor is absent for any reason,
+      # behavior is exactly what it was before this branch existed.
+      # The distinctly-named artifact is what lets app-screenshot-capture
+      # Step 2.7 record `satisfied-by-prior-completion` instead of
+      # halting — same contract as the deliver-gate surface above.
+      - runFlow:
+          when:
+            visible:
+              ${SELECTOR:deliver-home-daily-visits}
+          commands:
+            - takeScreenshot: "claim-already-learn-complete-deliver-app-installed"
 - takeScreenshot: "claim-opp-handoff-learn-home"
