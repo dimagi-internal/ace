@@ -97,7 +97,8 @@ Read the script output and tell the user:
 4. **Special-case the most common first-run FAILs** with explicit hand-holding:
    - `FAIL op: not authenticated to 1Password` → tell the user verbatim: "Type `! op signin --account dimagi.1password.com` now (the `!` prefix runs it in this session). After it succeeds, re-run `/ace:setup`."
    - `FAIL gws_key: missing and could not auto-fetch from 1Password` → if the script printed candidate Document items, tell the user: "Pick the right item from the candidate list above and re-run with `ACE_GWS_KEY_OP_DOC='<exact name>' /ace:setup` — or if no candidate looks right, ask Jon for the SA key JSON and drop it at the path the script printed."
-5. If everything passes:
+5. **If the output contains `env: op inject wrote` — say the restart out loud, first, before anything else** (ace#880). `.env` was rewritten, and every MCP subprocess already running is now holding the previous values; they call `dotenvConfig()` at import and never re-read the file. Tell the user verbatim: *"`.env` was rewritten — fully quit and reopen Claude Code (Cmd-Q) before running anything else. `/reload-plugins` does NOT respawn MCP subprocesses."* Do not bury this under the PASS list: the failure mode is silent (an MCP that answers normally with stale values), and the operator has no other signal. If the script also printed a `WARN env_freshness` line, quote it — it names the exact stale pids.
+6. If everything passes:
    - **If mobile is needed (Phase 6 `qa-and-training`):** suggest `/ace:mobile-bootstrap` next.
    - **Otherwise:** suggest `/ace:status` to view opportunities, or `/ace:run --dry-run` for a safe end-to-end smoke.
 

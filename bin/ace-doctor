@@ -434,6 +434,31 @@ if [ -n "$REG_VER" ] && [ "$VER_FILE" != "missing" ]; then
   fi
 fi
 
+# --- Running session vs current .env (ace#880) ---
+# session_freshness above compares two ON-DISK facts and therefore cannot see
+# the case this catches: a subprocess that is running fine, on the right
+# version, holding a .env that has since been rewritten. Every MCP server
+# calls dotenvConfig() at import, so `/ace:setup --force-env` does not reach a
+# process that started before it. Measured: connect MCP up 21:17:09, .env
+# written 21:17:54 -> HQ registry read [us] while the file said [eu, us].
+#
+# Decision logic is pure in lib/env-freshness.ts (unit-tested); the collector
+# handles the ps/stat side. Emits SKIP (not WARN) whenever it cannot bind the
+# process list to this session — e.g. run from a plain terminal.
+if [ -f "$ROOT/scripts/doctor-env-freshness.ts" ]; then
+  ENV_FRESH_OUT="$(cd "$ROOT" && npx tsx scripts/doctor-env-freshness.ts 2>/dev/null || true)"
+  case "$ENV_FRESH_OUT" in
+    WARN*)
+      warn "$(printf '%s' "$ENV_FRESH_OUT" | head -1 | sed 's/^WARN //')" \
+           "quit and reopen Claude Code (Cmd-Q) — MCP servers read .env only at subprocess startup, and /reload-plugins does NOT respawn them. Order matters: run /ace:setup FIRST, restart AFTER."
+      ;;
+    PASS*)
+      pass "$(printf '%s' "$ENV_FRESH_OUT" | head -1 | sed 's/^PASS //')"
+      ;;
+    *) : ;;  # SKIP / empty — nothing useful to report, stay quiet
+  esac
+fi
+
 # --- Node / npm ---
 if command -v node >/dev/null 2>&1; then
   pass "node: $(node --version)"
