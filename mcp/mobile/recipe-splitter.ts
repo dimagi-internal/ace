@@ -85,12 +85,15 @@ export interface SplitOptions {
    * have an empty flow section — that's the invariant a dedicated test
    * enforces, not just these two documented cases.
    *
-   * Boundary chunks set
-   * `screenshotName` to `-branch<N>-pre` / `-branch<N>-post` (leading
-   * hyphen is part of the name — see the test asserting
-   * `/-branch\d+-pre$/` in test/mcp/mobile/recipe-splitter.test.ts; no
-   * live caller consumes this yet, so there's no established
-   * concatenation convention to match beyond that test contract).
+   * Boundary chunks set `screenshotName` to `branch<N>-pre` /
+   * `branch<N>-post` — NO leading hyphen. `screenshotName` becomes a
+   * bare filename (`<screenshotName>.xml` / `.png`, see
+   * `captureUiDump` in `backends/maestro.ts`), and a leading `-` there
+   * produces files that read as CLI flags to every shell tool
+   * (`-branch0-pre.xml`). See the test asserting `/^branch\d+-pre$/`
+   * in test/mcp/mobile/recipe-splitter.test.ts; no live caller
+   * consumes this yet, so there's no established concatenation
+   * convention to match beyond that test contract.
    */
   captureAllBoundaries?: boolean;
 }
@@ -213,8 +216,8 @@ export function splitRecipeAtScreenshots(body: string, opts: SplitOptions = {}):
         // file never opens a `-pre` window against bare preamble (see
         // the flag's declaration above).
         pendingScreenshotName = pendingRunFlowClose
-          ? `-branch${runFlowIndex - 1}-post`
-          : `-branch${runFlowIndex}-pre`;
+          ? `branch${runFlowIndex - 1}-post`
+          : `branch${runFlowIndex}-pre`;
         finalize();
       }
       pendingRunFlowClose = startsRunFlow;

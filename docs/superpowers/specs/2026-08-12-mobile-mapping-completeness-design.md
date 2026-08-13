@@ -142,18 +142,31 @@ unsafe. Real limit worth stating — `connect-claim-opp` has 5 nested blocks (th
 branch inside this block fired" rather than answering it. Hoisting them to top
 level is an authoring follow-on, not a splitter change.
 
-Measured window counts when the mode is **on** (computed against the current
-palette; the point of the table is what tier 2 costs when we choose to pay it):
+Window counts when the mode is **on** (the point of the table is what tier 2
+costs when we choose to pay it). Only `connect-claim-opp.yaml` and
+`deliver-launch.yaml` are measured — asserted directly by
+`test/mcp/mobile/recipe-splitter.test.ts` against the shipped splitter, not
+re-derived by hand. That distinction matters: naive "2 windows per `runFlow`"
+arithmetic was tried twice for these two recipes (13/13, then a corrected
+11/10) and both were wrong — the actual behavior only came out of running the
+splitter (adjacent top-level `runFlow`s collapse to one shared window at their
+seam, and each recipe's very first top-level step is itself a `runFlow`
+preceded only by comments, so its would-be leading `-pre` window is
+suppressed as an empty-flow chunk). **10** and **9** are what actually ships.
+The remaining rows were never run through the splitter or covered by a test
+fixture — they're pre-implementation estimates using the same arithmetic that
+was twice wrong for the two measured recipes, so treat them as directional
+only, not verified counts.
 
-| recipe | default | top-level `runFlow` | nested | tier-2 |
-|---|---|---|---|---|
-| `connect-claim-opp.yaml` | 3 | 5 | 5 | 13 |
-| `deliver-launch.yaml` | 1 | 6 | 0 | 13 |
-| `deliver-form-walk.yaml` | 3 | 6 | 5 | 15 |
-| `connect-resume-opp.yaml` | 3 | 5 | 0 | 13 |
-| `form-submit.yaml` | 2 | 3 | 0 | 8 |
-| `deliver-case-select.yaml` | 2 | 1 | 0 | 4 |
-| `learn-launch.yaml` | 2 | 0 | 0 | 2 |
+| recipe | default | tier-2 (`captureAllBoundaries`) | measured? |
+|---|---|---|---|
+| `connect-claim-opp.yaml` | 3 | **10** | yes — test-asserted |
+| `deliver-launch.yaml` | 1 | **9** | yes — test-asserted |
+| `deliver-form-walk.yaml` | 3 | ~15 (unverified estimate) | no |
+| `connect-resume-opp.yaml` | 3 | ~13 (unverified estimate) | no |
+| `form-submit.yaml` | 2 | ~8 (unverified estimate) | no |
+| `deliver-case-select.yaml` | 2 | ~4 (unverified estimate) | no |
+| `learn-launch.yaml` | 2 | ~2 (unverified estimate) | no |
 
 Scoped to one leg rather than the whole palette, this is seconds to tens of
 seconds — paid once, on a run that has already failed and is going to be
@@ -206,9 +219,11 @@ copies artifacts into a new run, and that is the operator's call.
 - **Tier 2 splitter** — unit tests over fixtures from `connect-claim-opp.yaml`
   and `deliver-launch.yaml`: with the mode **off**, window counts are unchanged
   at 3 and 1 (this is the regression guard on the default path); with it on,
-  13 and 13; no chunk boundary ever falls inside a `runFlow.commands` block;
-  nested `runFlow`s produce no windows; boundary-dump names are deterministic
-  and collision-free.
+  10 and 9 (see the measured-window table above); no chunk boundary ever falls
+  inside a `runFlow.commands` block; nested `runFlow`s produce no windows;
+  boundary-dump names are deterministic, collision-free, and never start with
+  a `-` (a leading hyphen turns `<screenshotName>.xml` into something every
+  shell tool reads as a flag).
 - **Tier 3 guards** — a static test that the heal path cannot emit a diff
   mutating a `Live-verified` row.
 - **Tier 3 correctness** — the on-device green re-run is the test. There is no

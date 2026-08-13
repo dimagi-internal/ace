@@ -2,7 +2,12 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync, existsSync } from 'fs';
 
 describe('selector-map-heal — the three guards are stated in the skill', () => {
-  const P = 'skills/selector-map-heal/SKILL.md';
+  // cwd-relative was fragile — the sibling recipe-splitter.test.ts
+  // deliberately switched to an import.meta.url-relative path in this
+  // same branch for exactly that reason (a test runner invoked from a
+  // different working directory would otherwise silently skip the
+  // file-existence assertions). Mirror that fix here.
+  const P = new URL('../../skills/selector-map-heal/SKILL.md', import.meta.url);
 
   it('exists and declares its name', () => {
     expect(existsSync(P)).toBe(true);

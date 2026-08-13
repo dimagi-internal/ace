@@ -286,6 +286,10 @@ describe('recipe-splitter — captureAllBoundaries', () => {
       .map((c) => c.screenshotName)
       .filter(Boolean) as string[];
     expect(new Set(names).size).toBe(names.length);
-    expect(names.some((n) => /-branch\d+-pre$/.test(n))).toBe(true);
+    expect(names.some((n) => /^branch\d+-pre$/.test(n))).toBe(true);
+    // No name may start with a hyphen — `<screenshotName>.xml` becomes a
+    // literal filename (captureUiDump in backends/maestro.ts), and a
+    // leading `-` there reads as a CLI flag to every shell tool.
+    for (const n of names) expect(n.startsWith('-')).toBe(false);
   });
 });
