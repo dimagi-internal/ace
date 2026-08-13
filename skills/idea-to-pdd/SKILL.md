@@ -38,6 +38,14 @@ orchestrator from the per-skill QA + eval verdicts on the fly. -->
    required filename inside `inputs/` — anything goes (PDFs, docx,
    sheets, markdown notes, prior-pass drafts).
 
+   **This skill never fetches source material itself.** Inputs are
+   human-curated into Drive, and sourcing is an operator act upstream of
+   the pipeline. If the official instrument is behind a login (a PPI/PMT
+   portal, a Box-hosted resource page), the operator sources it once per
+   `playbook/integrations/external-sourcing.md` — which records the Box
+   failure ladder so it isn't re-derived — and drops the file in
+   `inputs/`. See dimagi-internal/ace#890.
+
    Read `ACE/<opp-name>/runs/<run-id>/inputs-manifest.yaml`
    first via `drive_read_file`. The manifest shape is:
 
