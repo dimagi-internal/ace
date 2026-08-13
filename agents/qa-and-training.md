@@ -560,6 +560,16 @@ After Step 2 finishes:
 
 2. **Write the `phases.qa-and-training` block** per [`agents/ace-orchestrator.md § Phase Write-Back Contract`](../agents/orchestrator-reference.md#phase-write-back-contract). Set `phases.qa-and-training.status: done` + a verdict like `proceed` or `proceed-with-warn`, populate `summary_artifact:` with the file ID from step 1, and include the per-skill `steps:` map. Required top-level keys on the patch: `phases`, `last_actor`, `last_actor_at`.
 
+   **Exception — a hollow deck is not a `proceed-with-warn` (dimagi-internal/ace#856).** If `training-deck-generate` returned `severity: BLOCKER` on its visual-coverage gate (step 5b — no per-opp captures at all, or both app legs missing), then:
+
+   - write `status: blocked`, **not** `done / proceed-with-warn`
+   - **omit the deck from the summary's deliverables list** and state the blocker instead. The failure mode this closes is a 43-slide deck with 39 empty slides being emailed to the operator as a finished artifact.
+   - carry `visual_coverage` into the phase block so the run reports a number rather than an adjective
+
+   `blocked` is a legal phase status (`lib/run-state-validator.ts`) and is *non-terminal*, so `lib/phase-products-schema.ts` treats the block as `mode: fragment` — omitting the REQUIRED `training.deck` key does **not** trip the boundary fence. At skill level the verdict stays `fail` + `severity: BLOCKER`, because `blocked` is not legal in `lib/verdict-schema.ts`.
+
+   Note the scope: this gates the deck on *this run's own* captures. Pool images and committed template artwork (ace#873) are excluded from the coverage ratio by construction, so the gate cannot fire on a permanently-uncapturable surface.
+
 Phase 6 has no named gate (`/ace:qa-deep` is the actual quality gate, run separately before Phase 9 `llo-launch`).
 
 ## Topology note

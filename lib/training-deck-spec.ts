@@ -228,8 +228,36 @@ export const TrainingDeckSpecSchema = z.object({
     run_id: z.string(),
   }),
   manifest: z.object({
+    /**
+     * Shared Connect-platform pool, captured once per APK version and reused
+     * by every opp. NOT this run's work product — excluded from visual
+     * coverage (ace#856).
+     */
     common: z.record(z.string(), z.string()).optional(),
+    /**
+     * This run's own captures. The ONLY bucket visual coverage measures,
+     * because it is the only one a screenshot-blocked run can lose.
+     */
     opp: z.record(z.string(), z.string()).optional(),
+    /**
+     * Committed deck-template artwork — part of the template, never captured
+     * from a device (ace#873).
+     *
+     * Some surfaces cannot be captured by ACE at all. The PersonalID sign-up
+     * completion half is the canonical set: `+7426` demo phones bypass SMS OTP
+     * server-side, and the test user already exists, so registration is an
+     * account-RECOVERY flow that returns the stored photo, skips the
+     * permissions dialog, and renders "Account Recovered" instead of "Profile
+     * complete!". Capturing that would actively MISREPRESENT the first-time
+     * flow a trainee will see.
+     *
+     * Operator decision (2026-08-13): make them template content rather than
+     * perpetually-failing capture targets. They are therefore excluded from
+     * visual coverage on BOTH sides of the ratio — a missing one is a
+     * template-bundle defect, not an opp capture failure, and the two must
+     * never be reported as the same thing.
+     */
+    template: z.record(z.string(), z.string()).optional(),
   }),
   voice: z.object({
     audience: z.enum(['flw', 'llo', 'mixed', 'prospect']),
@@ -406,16 +434,25 @@ export function normalizeDriveImageUrl(url: string): string {
 }
 
 /**
- * Merge `manifest.common` and `manifest.opp` into a single `ResolvedManifest`.
- * Opp entries win on key collision.
+ * Merge `manifest.template`, `manifest.common` and `manifest.opp` into a
+ * single `ResolvedManifest`. Precedence: opp > common > template — most
+ * specific wins.
  */
 export function resolveManifest(manifest: {
   common?: Record<string, string>;
   opp?: Record<string, string>;
+  template?: Record<string, string>;
 }): ResolvedManifest {
   const merged = new Map<string, string>();
 
-  // Common entries first — opp entries overwrite on collision.
+  // Template artwork first — the least specific, always overridable if a real
+  // capture ever becomes possible for that surface.
+  if (manifest.template) {
+    for (const [key, value] of Object.entries(manifest.template)) {
+      merged.set(key, value);
+    }
+  }
+  // Common entries next — opp entries overwrite on collision.
   if (manifest.common) {
     for (const [key, value] of Object.entries(manifest.common)) {
       merged.set(key, value);
@@ -878,4 +915,106 @@ export function buildSlidesRequestsV2(
   }
 
   return requests;
+}
+
+// ---------------------------------------------------------------------------
+// Visual coverage (dimagi-internal/ace#856)
+// ---------------------------------------------------------------------------
+
+/**
+ * Every image reference a slide carries, across the five image-bearing
+ * layouts. `two_column` halves are optional, so a slide may contribute 0–2.
+ */
+export function imageRefsOnSlide(slide: SlideSpec_v2): string[] {
+  switch (slide.layout) {
+    case 'walkthrough':
+    case 'web_screen':
+    case 'mobile_zoom':
+      return [slide.image];
+    case 'mobile_flow':
+      return slide.steps.map((s) => s.image);
+    case 'two_column':
+      return [slide.left.image, slide.right.image].filter((x): x is string => Boolean(x));
+    default:
+      return [];
+  }
+}
+
+export interface VisualCoverage {
+  /** Opp-specific visual slides the deck was SUPPOSED to carry. */
+  expected: number;
+  /** Of those, how many resolve to a real per-opp capture. */
+  filled: number;
+  /** filled / expected. 1 when nothing was expected (vacuously complete). */
+  ratio: number;
+  /** Pool images present — reported for context, never gated on. */
+  pool_filled: number;
+  /** Committed template artwork present — reported, never gated on. */
+  template_filled: number;
+}
+
+/**
+ * Fraction of the deck's OPP-SPECIFIC visual slots that a real capture filled.
+ *
+ * ## Why the denominator is passed in
+ *
+ * The obvious implementation — count emitted image slots, count how many
+ * resolve — is not merely optimistic. On the exact deck this issue was filed
+ * about it reads **100%**.
+ *
+ * `training-deck-generate` DOWNGRADES an unbacked walkthrough slide to a
+ * `content` layout. A downgraded slide is then schematically indistinguishable
+ * from a slide that was always meant to be text-only, so it leaves the
+ * numerator AND the denominator together. hh-poverty-targeting/20260702-1456
+ * shipped 4 pool images in 4 emitted slots — a perfect 1.0 — while its true
+ * opp coverage was 0 of 6, and the render self-eval scored it 9.5 "visually
+ * spot-checked". 39 of 43 slides had no substantive image.
+ *
+ * So the denominator must be what the deck SHOULD have had, computed upstream
+ * from the app summaries (Deliver form count + Learn module count — the number
+ * generate step 11's C2 check already derives), never from what it emitted.
+ *
+ * ## Why only `manifest.opp` counts
+ *
+ * A gate that also counted the shared pool would be unfixable. Several pool
+ * aliases are permanently uncapturable by design — the PersonalID completion
+ * half (ace#873) and the three Play-Store install screens (which need a
+ * Google-signed-in AVD). A naive floor fires on those in 100% of runs, on
+ * every opp, forever.
+ *
+ * Restricting the metric to `manifest.opp` excludes them by construction, with
+ * no allowlist to maintain and no dependency on the pool manifest's internal
+ * flags. It also measures the right thing: the pool is not this run's work
+ * product, and a screenshot-blocked run cannot lose it.
+ */
+export function computeVisualCoverage(
+  spec: Pick<TrainingDeckSpec, 'modules' | 'manifest'>,
+  opts: { expectedOppVisualSlides: number },
+): VisualCoverage {
+  const oppKeys = new Set(Object.keys(spec.manifest.opp ?? {}));
+  const commonKeys = new Set(Object.keys(spec.manifest.common ?? {}));
+  const templateKeys = new Set(Object.keys(spec.manifest.template ?? {}));
+
+  let filled = 0;
+  let pool_filled = 0;
+  let template_filled = 0;
+
+  for (const mod of spec.modules) {
+    for (const slide of mod.slides) {
+      for (const ref of imageRefsOnSlide(slide)) {
+        const alias = ref.startsWith('@') ? ref.slice(1) : ref;
+        if (oppKeys.has(alias)) filled++;
+        else if (commonKeys.has(alias)) pool_filled++;
+        else if (templateKeys.has(alias)) template_filled++;
+      }
+    }
+  }
+
+  const expected = Math.max(0, opts.expectedOppVisualSlides);
+  // Cap at the denominator: a deck may reference the same opp capture twice,
+  // and coverage is "how much of what we owed did we deliver", not a tally.
+  const effectiveFilled = Math.min(filled, expected);
+  const ratio = expected === 0 ? 1 : effectiveFilled / expected;
+
+  return { expected, filled: effectiveFilled, ratio, pool_filled, template_filled };
 }

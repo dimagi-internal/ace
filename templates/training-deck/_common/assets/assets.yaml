@@ -1,0 +1,100 @@
+# Deck-template artwork (dimagi-internal/ace#873)
+#
+# These are NOT screenshots ACE captures. They are committed template content,
+# shipped with the deck template and rendered into every opp deck as-is.
+# `training-deck-generate` loads them into `manifest.template`, which
+# `computeVisualCoverage` excludes from BOTH sides of the coverage ratio
+# (lib/training-deck-spec.ts).
+#
+# ## Why these four are template assets
+#
+# Operator decision, 2026-08-13: "add placeholder screens to the deck and then
+# make those screens actually part of the deck template, not ones we capture
+# per run."
+#
+# The PersonalID sign-up completion half cannot be captured with ACE's demo
+# test user, and this is a property of the identity, not of the harness:
+#
+#   - `+7426` demo phones bypass SMS OTP SERVER-SIDE, so the verify screen
+#     never renders at all.
+#   - The test user already exists, so "sign up" is an account RECOVERY flow.
+#     It returns the stored server photo without re-prompting, skips the
+#     permissions dialog because grants are cached, and terminates on
+#     "Account Recovered" instead of "Profile complete!".
+#
+# Capturing the recovery flow and captioning it as first-time sign-up would
+# MISREPRESENT the experience a trainee is about to have — worse than shipping
+# no capture. Rotating to a fresh phone would make photo capturable once, but
+# not OTP, and it would decay to the same state on the next run.
+#
+# So: stop treating them as perpetually-failing capture targets. They are
+# template content, authored once, and a missing one is a TEMPLATE-BUNDLE
+# defect — never an opp capture failure. The two must not be reported as the
+# same thing, which is exactly the conflation ace#856's gate exists to end.
+#
+# ## Contract
+#
+#   alias   — matches the `@alias` used in platform-setup.yaml
+#   file    — PNG in this directory, ~1080x2400 to match recipe captures
+#   shows   — what the artwork must depict, for whoever authors it
+#   why     — why it is not captured (kept per-asset so the reason travels)
+#   status  — `authored` once the PNG is committed; `needed` until then
+#
+# `status: needed` is a real, visible state: generate emits a
+# [TEMPLATE-ASSET-MISSING] line naming the alias, and the slide degrades to a
+# caption-only step. It does NOT count against opp visual coverage and it does
+# NOT block the deck — the deck's opp-specific spine is unaffected by it.
+
+assets:
+  - alias: personal-id-verify
+    file: personal-id-verify.png
+    status: needed
+    shows: >-
+      The PersonalID SMS verification screen as a first-time user meets it:
+      the 6-digit code entry with the phone number echoed above it.
+    why: >-
+      +7426 demo phones bypass SMS OTP server-side; the screen never renders
+      for ACE's identity. docs/learnings/2026-05-14-demo-user-no-otp.md.
+
+  - alias: personal-id-photo
+    file: personal-id-photo.png
+    status: needed
+    shows: >-
+      The profile-photo capture screen with the camera preview and the capture
+      control, before a photo has been taken.
+    why: >-
+      The test user already exists, so registration is account recovery, which
+      returns the stored server photo and never re-prompts. Capturable exactly
+      once per fresh phone number — so it decays back to this state on the run
+      after any rotation.
+
+  - alias: personal-id-location
+    file: personal-id-location.png
+    status: needed
+    shows: >-
+      The Android location-permission dialog over the PersonalID screen.
+    why: >-
+      Suppressed by ACE's OWN harness, not by the demo user — the AVD
+      pre-grants ACCESS_FINE/COARSE_LOCATION (mcp/mobile/backends/avd.ts),
+      added deliberately after the stall recorded in
+      docs/learnings/2026-05-27-bednet-permission-dialog-misdiagnosis.md.
+      A `pm revoke` before one baseline capture would render it, at the cost
+      of re-introducing that stall into the capture run. Template art is the
+      cheaper answer, but this one is the most reasonably promotable to live
+      if someone wants it.
+
+  - alias: personal-id-done
+    file: personal-id-done.png
+    status: needed
+    shows: >-
+      The first-time completion screen. NOTE: the exact terminal screen is
+      itself unverified — the live-verified walks in
+      connect-register-from-otp.yaml show fresh registration ending at
+      CommCareSetupActivity ("GO TO CONNECT MENU"), and the only message
+      dialog observed in the flow is "Account Recovered". Confirm what a real
+      first-time sign-up actually ends on BEFORE authoring this one, and
+      correct the caption in platform-setup.yaml to match.
+    why: >-
+      Account recovery renders "Account Recovered" instead. Capturing that and
+      captioning it "Profile complete!" would state something false to every
+      trainee who reads the deck.

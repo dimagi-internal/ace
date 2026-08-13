@@ -77,16 +77,25 @@ Single file: `ACE/<opp>/runs/<run-id>/6-qa-and-training/training-deck-spec.yaml`
      `drive_path:`, `file_id:`. Alias convention: `<recipe-base>-<step-name>`
      e.g. `journey-learn-mod-1-step-3`, `journey-deliver-form-photo-step-1`.
 
-   Cross-pool alias collisions: per-opp wins (more specific).
+   - **Template assets** from `templates/training-deck/_common/assets/assets.yaml`
+     into `manifest.template` (ace#873). These are committed deck artwork, NOT
+     captures — see that file for the per-asset contract and the verified
+     reason each one is uncapturable. An asset still marked `status: needed`
+     has no PNG yet: emit the step caption-only and surface
+     `[TEMPLATE-ASSET-MISSING] <alias>`. That is a **template-bundle** defect,
+     never an opp capture failure, and it does **not** feed the coverage gate
+     below.
+
+   Cross-pool alias collisions: `opp` > `common` > `template` — most specific
+   wins (`resolveManifest`, `lib/training-deck-spec.ts`).
 
    **If the per-opp manifest is missing or empty:** the upstream
    `app-screenshot-capture` skill in Phase 6 step 1 didn't produce
-   screenshots (likely due to a smoke-recipe failure). Don't halt the
-   deck generation — emit walkthrough slides using `content` layout
-   (no image) and surface `[WARN] no per-opp screenshots — `your-opportunity`
-   walkthroughs degraded to content-only slides` in the verdict's
-   `auto_surfaced` list. The deck still ships; the operator can
-   replace screenshots manually post-launch.
+   screenshots (likely due to a smoke-recipe failure). Emit the affected
+   walkthrough slides using `content` layout (no image), surface
+   `[WARN] no per-opp screenshots — `your-opportunity` walkthroughs degraded
+   to content-only slides` in the verdict's `auto_surfaced` list, **and then
+   apply the visual-coverage gate in step 5b — which this case will fail.**
 
    **Partial per-app screenshots.** The screenshot manifest may contain
    `journey-learn/` screenshots but no `journey-deliver/` (or vice versa)
@@ -94,8 +103,55 @@ Single file: `ACE/<opp>/runs/<run-id>/6-qa-and-training/training-deck-spec.yaml`
    `app-screenshot-capture` per-app legs). Use whichever app's screenshots
    are present; for the missing app, emit the same "screenshot placeholder
    — capture in a future AVD-enabled QA run" treatment already used when
-   the whole bundle is absent. Never fail the deck over a missing app
-   leg — the present leg's screenshots still go in.
+   the whole bundle is absent. One missing leg is a WARN that carries its
+   coverage number; **both** legs missing is a gate failure.
+
+### Step 5b: Visual-coverage gate (dimagi-internal/ace#856)
+
+**A training deck whose walkthrough spine has no screens IS the placeholder.**
+CLAUDE.md's "fail loud — don't ship placeholders, don't soft-fail" applies at
+the *deliverable* level, not just the screenshot step. Text-only prose
+artifacts (FAQ, quick-reference) degrade honestly; a deck cannot, because
+showing the screens is the entire reason it exists.
+
+1. Compute `expectedOppVisualSlides` — the number of opp-specific visual
+   slides this deck *should* carry. It is the Deliver form count + Learn module
+   count from the app summaries, i.e. the same number step 11's C2 check
+   already derives. **Do NOT count emitted image slots.**
+2. Call `computeVisualCoverage(spec, { expectedOppVisualSlides })` from
+   `lib/training-deck-spec.ts`.
+3. Record `visual_coverage: { expected, filled, ratio, pool_filled,
+   template_filled }` in the verdict.
+
+| Condition | Outcome |
+|---|---|
+| `ratio >= 0.5` | proceed |
+| `ratio < 0.5`, one app leg present | `[WARN]` quoting the ratio; proceed |
+| `ratio < 0.5` with **no** per-opp captures at all, or both legs missing | **`verdict: fail`, `severity: BLOCKER`. Do not proceed to render.** |
+
+On a BLOCKER the phase writes `status: blocked` (see `agents/qa-and-training.md`)
+and the run reports the blocker instead of offering the deck as a deliverable.
+
+**Why the denominator is not the emitted slot count.** This step downgrades an
+unbacked walkthrough slide to `content` layout — and a downgraded slide is
+schematically indistinguishable from one that was always meant to be text-only,
+so it silently leaves the numerator *and* the denominator. On
+hh-poverty-targeting/20260702-1456 that arithmetic gave **4 images / 4 slots =
+100%** while true opp coverage was **0 of 6**; the deck shipped 39 empty slides
+of 43 and the render self-eval scored it 9.5. Pinned by the regression test in
+`test/lib/training-deck-spec.test.ts` ("a hollow deck reads 0, not 100%").
+
+**Why only `manifest.opp` counts.** Several pool aliases are permanently
+uncapturable — the PersonalID completion half (now template assets, ace#873)
+and the three Play-Store install screens, which need a Google-signed-in AVD. A
+gate that counted them would fire on 100% of runs, on every opp, forever.
+Scoping to `manifest.opp` excludes them by construction, needs no allowlist,
+and measures the right thing: the pool is not this run's work product, and a
+screenshot-blocked run cannot lose it.
+
+**Note on verdict vocabulary.** `blocked` is a legal *phase* status
+(`lib/run-state-validator.ts`) but NOT a legal *skill* verdict
+(`lib/verdict-schema.ts`). At skill level use `fail` + `severity: BLOCKER`.
 
    **Screenshot-claim consistency (dimagi-internal/ace#866 + #867).**
    Four hard rules when mapping manifest images onto slides:
