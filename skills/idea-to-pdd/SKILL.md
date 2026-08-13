@@ -220,6 +220,29 @@ orchestrator from the per-skill QA + eval verdicts on the fly. -->
     Specification and Evidence Model MUST spec it explicitly** — don't
     leave it for Nova to infer (it won't):
 
+    **FIRST — check every mechanism against the known-unbuildable list.**
+    Before specifying any **enforcement or verification** mechanism (a gate,
+    a threshold that refuses something, a control that "the app enforces"),
+    check it against `skills/_app-component-library.md § Known-unbuildable
+    mechanisms`. A mechanism on that list **MUST NOT be asserted as
+    enforced.** Where the design intent is still wanted, either:
+
+    - state the **buildable approximation and name the residual** — the
+      shape `gps-accuracy-capture` models ("each fix's accuracy is captured
+      and submitted; readings worse than 50 m are flagged and down-weighted
+      in dedup" — observability, stated honestly, not enforcement); or
+    - raise it as an **open question** for a human, rather than asserting a
+      control ACE cannot deliver.
+
+    This is a hard check, not a style note, because the PDD's sentence flows
+    **verbatim into the Work Order** and into the Phase-6 training
+    materials. Three mechanisms have now shipped into all three documents
+    while being structurally inert in the built app (ace#995, ace#1006,
+    ace#1121) — and Phase 3 discovering it at build time does not
+    retro-correct the documents that already went out. The bullets below are
+    the per-topic instances of this rule; the list is the enumerable version,
+    and it is the list that gets checked.
+
     - **Capture fidelity.** If the Evidence Model implies a GPS/location
       radius, spec **accuracy-aware GPS** (a stated target accuracy, the
       accuracy value submitted on every visit, an on-screen advisory),
@@ -279,6 +302,20 @@ orchestrator from the per-skill QA + eval verdicts on the fly. -->
       spec a **pre-test + post-test**, the threshold, the item count
       (enough to test the curriculum), and that the result experience is
       pass/fail-conditional — not "a quiz exists."
+
+      **Do NOT spec a randomized or per-attempt item draw**
+      (dimagi-internal/ace#1121, ace#1213). "12 items served per attempt
+      from a bank of 30, fresh draw each retake" is on the
+      known-unbuildable list: Connect scores against a single absolute
+      `passing_score` per app, so a variable-membership draw makes
+      `user_score` incommensurable with the gate. Spec **one fixed bank
+      sized for the gate** (plus a distinct pre-test bank where a baseline
+      is wanted). If retake-resistance genuinely matters — and note that
+      unlimited re-attempts against a fixed bank means a worker can pass by
+      memorising the answers, which softens the Deliver-unlock gate on every
+      retry — raise it as an **open question**, and consider whether
+      unlimited re-attempts is the right policy rather than promising
+      rotation that cannot be built.
 
       **Any worked assessment item the PDD emits MUST be labelled
       ILLUSTRATIVE** (dimagi-internal/ace#1120). A PDD specifies the
@@ -740,6 +777,7 @@ When `--dry-run` is active:
 
 | Date | Change | Author |
 |------|--------|--------|
+| 2026-08-13 | **Step 4a checks every enforcement mechanism against the known-unbuildable list before specifying it (ace#1213, closes ace#1121).** Phase 1 could spec a mechanism the platform cannot build and nothing caught it until Phase 3 — `idea-to-pdd-qa` passed 6/6 and `idea-to-pdd-eval` scored the PDD 7.97 `pass`. By then the PDD, the **Work Order** and the Phase-6 **training materials** all described a control that does not exist, and a build-time deviation memo does not retro-correct three shipped documents. Step 4a gains a leading hard check against `_app-component-library.md § Known-unbuildable mechanisms`: a listed mechanism MUST NOT be asserted as enforced; state the buildable approximation and name the residual (the shape `gps-accuracy-capture` already models), or raise an open question. The per-topic bullets are now explicitly the instances, and the list is the enumerable version that gets checked. Also adds the specific rule that closes **ace#1121**'s open capability question in the direction it anticipated: **do not spec a randomized or per-attempt item draw** — Connect scores against a single absolute `passing_score` per app, so a variable-membership draw makes `user_score` incommensurable with the gate. Spec one fixed bank sized for the gate, and where retake-resistance genuinely matters raise it as an open question, noting that unlimited re-attempts against a fixed bank lets a worker pass by memorising the answers. *Enforced (structurally):* `test/skills/known-unbuildable-mechanisms.test.ts`. | ACE team |
 | 2026-05-15 | Pare attestation-form-fields question + Decisions Log to match the 5-field form: consent / date / venue / GPS / photo. Audio is out-of-band; gdoc_link is removed (gdoc is written after submission). Add `gps-verification-radius` and `gdoc-submission-window` decisions; recharacterize `audio-min-duration` and `audio-consent-fallback` as facilitator-protocol concerns (out-of-band, not in the form). | ACE team |
 | 2026-05-15 | Recharacterize `payment-rate` and `per-session-rate` Decisions Log rows: PDD captures a **range** (not a fixed number), and the actual rate is **negotiated via the solicitation response** where the LLO proposes a number with rationale. The awarded LLO's proposed rate becomes the `connect.deliver_unit` payment_unit amount at Phase 4 setup. Pairs with `solicitation-create/SKILL.md § Process`'s "per-unit payment is negotiated, not declared" design principle. | ACE team |
 | 2026-05-22 | **Retire the optional `idea.md` operator-seed input.** The 2026-05-05 refactor reduced `idea.md` to an optional `--idea FILE\|-` seed alongside the `inputs/` evidence pack; the dual-path persisted but was rarely used in practice and added cognitive load (eval rubric branches, manifest-vs-idea precedence, permission-scan URL extraction). Operators now put any free-text seed directly into `inputs/` as a regular source file. Removed: optional table row, idea.md read paragraph, idea.md-URL permission scan, "or no idea.md" branch of the missing-source error. The `--idea` flag and run-root `idea.md` artifact are gone. | ACE team |
