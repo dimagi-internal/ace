@@ -5,3 +5,7 @@ set -euo pipefail
 if git diff --cached --name-only | grep -q '^VERSION$'; then
   "$(git rev-parse --show-toplevel)/scripts/sync-version.sh"
 fi
+
+if git diff --cached --name-only | grep -qE '^mcp/mobile/selectors/.*\.yaml$'; then
+  npx tsx "$(git rev-parse --show-toplevel)/scripts/check-selector-map-diff.ts" --staged
+fi
