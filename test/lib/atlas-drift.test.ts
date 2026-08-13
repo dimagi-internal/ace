@@ -6,6 +6,8 @@ import {
   renderReportMarkdown,
   isFailureDumpFile,
   failureScreenDriftSuspects,
+  extractTextValuesFromDump,
+  loadSelectorMapMatchers,
 } from '../../lib/atlas-drift.js';
 
 // Pure helpers behind the atlas-drift harvester (scripts/probe-atlas-
@@ -176,5 +178,50 @@ describe('renderReportMarkdown', () => {
     });
     expect(md).toMatch(/no new resource-ids/i);
     expect(md).toMatch(/no orphan/i);
+  });
+});
+
+describe('text-matcher awareness (#893 differentiator is type: text)', () => {
+  const DUMP = `<?xml version='1.0'?>
+<hierarchy>
+  <node resource-id="org.commcare.dalvik:id/viewJobCard" text="Household Poverty Targeting" />
+  <node resource-id="" text="Daily Visits" />
+  <node resource-id="" hint-text="should not be captured" />
+  <node resource-id="" text="   " />
+</hierarchy>`;
+
+  it('extracts text values, ignoring blanks and hyphenated look-alike attributes', () => {
+    const texts = extractTextValuesFromDump(DUMP);
+    expect(texts.has('Daily Visits')).toBe(true);
+    expect(texts.has('Household Poverty Targeting')).toBe(true);
+    expect(texts.has('should not be captured')).toBe(false);
+    expect([...texts].some((t) => t.trim() === '')).toBe(false);
+  });
+
+  it('loads id and text rows into separate sets', () => {
+    const mapYaml = `
+apk_version: "2.63.2"
+selectors:
+  deliver-home-job-card:
+    type: id
+    value: "org.commcare.dalvik:id/viewJobCard"
+  deliver-home-daily-visits:
+    type: text
+    value: "Daily Visits"
+  some-point:
+    type: point
+    value: "254,1410"
+`;
+    const m = loadSelectorMapMatchers(mapYaml);
+    expect(m.ids.has('org.commcare.dalvik:id/viewJobCard')).toBe(true);
+    expect(m.texts.has('Daily Visits')).toBe(true);
+    expect(m.ids.has('254,1410')).toBe(false);
+    expect(m.texts.has('254,1410')).toBe(false);
+  });
+
+  it('returns empty sets on unparseable yaml rather than throwing', () => {
+    const m = loadSelectorMapMatchers(':::not yaml:::');
+    expect(m.ids.size).toBe(0);
+    expect(m.texts.size).toBe(0);
   });
 });

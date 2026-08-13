@@ -34,6 +34,21 @@ export function extractResourceIdsFromDump(xml: string): Set<string> {
   return out;
 }
 
+/** Extract every non-empty `text="..."` value from a uiautomator dump.
+ *  The leading `\s` is load-bearing: without it `hint-text="..."` and any
+ *  other hyphenated attribute ending in `text` would match, since `-` is a
+ *  non-word character and `\b` would happily anchor mid-attribute. */
+export function extractTextValuesFromDump(xml: string): Set<string> {
+  const out = new Set<string>();
+  const re = /\stext\s*=\s*(?:"([^"]*)"|'([^']*)')/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(xml)) !== null) {
+    const value = (m[1] ?? m[2] ?? '').trim();
+    if (value) out.add(value);
+  }
+  return out;
+}
+
 interface SelectorMapEntry {
   type: 'id' | 'text' | 'point';
   value: string;
@@ -62,6 +77,36 @@ export function loadSelectorMapIds(yamlText: string): Set<string> {
     }
   }
   return out;
+}
+
+/** The selector map's matchers, partitioned by how they match on-device.
+ *  `point` rows are deliberately excluded: a coordinate proves nothing
+ *  about which screen is rendered, so it cannot contribute to coverage. */
+export interface SelectorMatchers {
+  ids: Set<string>;
+  texts: Set<string>;
+}
+
+/** Like `loadSelectorMapIds`, but keeps `type: text` rows too. Required
+ *  because the live-verified Learn-vs-Deliver differentiator
+ *  (`deliver-home-daily-visits`, #893) is a text anchor — an id-only view
+ *  of the map is blind to it. */
+export function loadSelectorMapMatchers(yamlText: string): SelectorMatchers {
+  const ids = new Set<string>();
+  const texts = new Set<string>();
+  let parsed: SelectorMap;
+  try {
+    parsed = parseYaml(yamlText) as SelectorMap;
+  } catch {
+    return { ids, texts };
+  }
+  if (!parsed || !parsed.selectors) return { ids, texts };
+  for (const entry of Object.values(parsed.selectors)) {
+    if (!entry || typeof entry.value !== 'string' || !entry.value) continue;
+    if (entry.type === 'id') ids.add(entry.value);
+    else if (entry.type === 'text') texts.add(entry.value);
+  }
+  return { ids, texts };
 }
 
 /** Set-diff the observed dumps against the mapped ids. Each partition
