@@ -292,6 +292,37 @@ selectors:
     });
     expect(r.classification).toBe('mapped');
   });
+
+  it('matcher-miss outranks unmapped-surface when both conditions hold', () => {
+    // The wanted element IS on screen but NOT in the selector map.
+    // This yields wantedPresent: [thatId] AND mappedOnScreen: [] simultaneously.
+    // matcher-miss must win because the map is not the problem — the recipe reached
+    // for an unmapped element that actually exists.
+    const r = classifyScreenCoverage({
+      dumpXml: dump('<node resource-id="org.commcare.dalvik:id/unmapped_element" text="x" />'),
+      selectorMapYaml: MAP,
+      wanted: ['org.commcare.dalvik:id/unmapped_element'],
+    });
+    expect(r.classification).toBe('matcher-miss');
+    expect(r.wantedPresent).toEqual(['org.commcare.dalvik:id/unmapped_element']);
+    expect(r.mappedOnScreen).toEqual([]);
+  });
+
+  it('matcher-miss outranks drift when both conditions hold', () => {
+    // The dump contains a mapped anchor plus one wanted matcher, with a SECOND
+    // wanted matcher absent. This yields wantedPresent: [present], wantedAbsent: [absent],
+    // and non-empty mappedOnScreen. matcher-miss must win.
+    const r = classifyScreenCoverage({
+      dumpXml: dump(
+        '<node resource-id="org.commcare.dalvik:id/viewJobCard" text="x" />' +
+          '<node resource-id="org.commcare.dalvik:id/nsv_home_screen" text="y" />',
+      ),
+      selectorMapYaml: MAP,
+      wanted: ['org.commcare.dalvik:id/viewJobCard', 'org.commcare.dalvik:id/other_missing'],
+    });
+    expect(r.classification).toBe('matcher-miss');
+    expect(r.wantedPresent).toEqual(['org.commcare.dalvik:id/viewJobCard']);
+  });
 });
 
 describe('extractWantedMatchers', () => {
