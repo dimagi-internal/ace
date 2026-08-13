@@ -1,4 +1,6 @@
 import { describe, it, expect } from 'vitest';
+import { readFileSync } from 'fs';
+import { parseAllDocuments } from 'yaml';
 import { splitRecipeAtScreenshots } from '../../../mcp/mobile/recipe-splitter.js';
 
 describe('splitRecipeAtScreenshots', () => {
@@ -154,5 +156,76 @@ tags:
     // is empty and gets filtered.
     expect(chunks).toHaveLength(1);
     expect(chunks[0].screenshotName).toBe('s1');
+  });
+});
+
+// Static-palette paths resolved relative to this test file (not process
+// cwd) to match the convention already used by sibling suites in this
+// directory (client.test.ts, static-palette-health.test.ts, etc.) — a
+// bare 'mcp/mobile/recipes/static/' string only works when vitest's cwd
+// is the repo root, which isn't guaranteed.
+const STATIC = new URL('../../../mcp/mobile/recipes/static/', import.meta.url);
+const windows = (body: string, opts?: { captureAllBoundaries?: boolean }) =>
+  splitRecipeAtScreenshots(body, opts).filter((c) => c.screenshotName).length;
+
+describe('recipe-splitter — default path is unchanged (regression guard)', () => {
+  it('keeps today window counts when the mode is off', () => {
+    expect(windows(readFileSync(new URL('connect-claim-opp.yaml', STATIC), 'utf8'))).toBe(3);
+    expect(windows(readFileSync(new URL('deliver-launch.yaml', STATIC), 'utf8'))).toBe(1);
+  });
+});
+
+describe('recipe-splitter — captureAllBoundaries', () => {
+  const opts = { captureAllBoundaries: true };
+
+  it('opens a window at every top-level runFlow boundary', () => {
+    expect(windows(readFileSync(new URL('connect-claim-opp.yaml', STATIC), 'utf8'), opts)).toBe(
+      13,
+    );
+    expect(windows(readFileSync(new URL('deliver-launch.yaml', STATIC), 'utf8'), opts)).toBe(13);
+  });
+
+  it('never splits inside a runFlow.commands block', () => {
+    // The brief's sketch checked this via a regex head-count (`^- runFlow:`
+    // opens vs `^\s+commands:` closes, asserting closes <= opens + 1).
+    // That heuristic assumes each top-level runFlow has exactly one
+    // `commands:` block, which is false for this real palette: several
+    // top-level runFlows here contain their OWN nested `runFlow.commands`
+    // sub-blocks for multi-branch resume logic (e.g.
+    // connect-claim-opp.yaml's "BRANCH A" resume handler at line ~250,
+    // which nests two further runFlow/commands pairs for its own
+    // sub-branches). That's legitimate content, not a mid-block split —
+    // the regex-count heuristic false-positives on it.
+    //
+    // The property we actually care about — "a chunk boundary never
+    // lands inside an indented block" — is verified directly and more
+    // rigorously here: every chunk must parse as valid YAML. Splitting
+    // mid-`commands:` block would truncate a nested sequence/mapping and
+    // produce a parse error; splitting only between top-level `-`
+    // entries (which is all `splitRecipeAtScreenshots` ever does) always
+    // yields a structurally complete document.
+    const chunks = splitRecipeAtScreenshots(
+      readFileSync(new URL('connect-claim-opp.yaml', STATIC), 'utf8'),
+      opts,
+    );
+    for (const c of chunks) {
+      const docs = parseAllDocuments(c.yaml);
+      for (const doc of docs) {
+        expect(doc.errors, `chunk ${c.index} (${c.screenshotName ?? 'unnamed'}) parse errors`).toEqual(
+          [],
+        );
+      }
+    }
+  });
+
+  it('produces deterministic, collision-free boundary names', () => {
+    const names = splitRecipeAtScreenshots(
+      readFileSync(new URL('deliver-launch.yaml', STATIC), 'utf8'),
+      opts,
+    )
+      .map((c) => c.screenshotName)
+      .filter(Boolean) as string[];
+    expect(new Set(names).size).toBe(names.length);
+    expect(names.some((n) => /-branch\d+-pre$/.test(n))).toBe(true);
   });
 });

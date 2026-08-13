@@ -52,8 +52,34 @@ export interface RecipeChunk {
   index: number;
 }
 
+/** Options for {@link splitRecipeAtScreenshots}. */
+export interface SplitOptions {
+  /**
+   * Open a dump window at every top-level `runFlow` boundary, not just
+   * at top-level `takeScreenshot`. Branch screens — the ones inside
+   * `runFlow.commands` — are exactly the "which screen am I on"
+   * decision points, and today they're captured as pixels with no
+   * element tree because a dump only happens at `takeScreenshot`
+   * boundaries. EXPENSIVE — one extra `maestro test` invocation per
+   * window. Default false; only a tier-1 `unmapped-surface`
+   * classification justifies turning it on.
+   *
+   * Every top-level `runFlow` gets its OWN `-pre` and `-post` window,
+   * unconditionally — even a `runFlow` immediately adjacent to another
+   * top-level `runFlow` (no other step between them) still yields both
+   * boundary windows, one of them a zero-step chunk. Boundary chunks
+   * set `screenshotName` to `-branch<N>-pre` / `-branch<N>-post` (note
+   * the leading hyphen: the caller concatenates `<recipe-id>` directly
+   * with `screenshotName`, so the hyphen is the separator, producing
+   * `<recipe-id>-branch<N>-pre.xml` on disk).
+   */
+  captureAllBoundaries?: boolean;
+}
+
 /**
- * Split a recipe at top-level `takeScreenshot:` boundaries.
+ * Split a recipe at top-level `takeScreenshot:` boundaries (always),
+ * plus — when `opts.captureAllBoundaries` is set — at every top-level
+ * `runFlow:` boundary too.
  *
  * Returns the chunks in order. The final chunk's `screenshotName`
  * MAY be undefined when the recipe doesn't end with a screenshot —
@@ -64,7 +90,7 @@ export interface RecipeChunk {
  * body directly. (Callers wrap with `fs.readFileSync` separately so the
  * splitter is trivially testable.)
  */
-export function splitRecipeAtScreenshots(body: string): RecipeChunk[] {
+export function splitRecipeAtScreenshots(body: string, opts: SplitOptions = {}): RecipeChunk[] {
   // Recipe shape: header (metadata) `\n---\n` body (flow steps).
   // Maestro allows multiple `---` blocks but our recipes only use one
   // separator. Reject anything else — we'd otherwise silently
@@ -103,6 +129,13 @@ export function splitRecipeAtScreenshots(body: string): RecipeChunk[] {
   // top-level steps.
   let inTopLevelStep = false;
   let pendingScreenshotName: string | undefined;
+  // Only used when opts.captureAllBoundaries is set. pendingRunFlowClose
+  // tracks whether the top-level step we just finished was a `runFlow`
+  // (so the NEXT top-level step boundary is that runFlow's "-post"
+  // window). runFlowIndex numbers top-level runFlows in document order
+  // for deterministic, collision-free boundary names.
+  let pendingRunFlowClose = false;
+  let runFlowIndex = 0;
 
   const finalize = () => {
     if (pendingScreenshotName !== undefined) {
@@ -123,6 +156,7 @@ export function splitRecipeAtScreenshots(body: string): RecipeChunk[] {
   // single quotes around the name.
   const takeScreenshotRe = /^-\s+takeScreenshot:\s*(?:"([^"]*)"|'([^']*)'|([^\s#]+))\s*(?:#.*)?$/;
   const topLevelStepRe = /^-\s+/;
+  const topLevelRunFlowRe = /^-\s+runFlow:/;
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
@@ -132,8 +166,32 @@ export function splitRecipeAtScreenshots(body: string): RecipeChunk[] {
       // We're starting a new top-level step. If the previous one was a
       // `takeScreenshot` (recorded in pendingScreenshotName), this is
       // the moment to split — finalize current chunk, start a new one.
+      const startsRunFlow = topLevelRunFlowRe.test(line);
       if (pendingScreenshotName !== undefined) {
         finalize();
+      } else if (opts.captureAllBoundaries && pendingRunFlowClose) {
+        // The step we just finished was a top-level runFlow — close its
+        // `-post` window before deciding whether the step we're about to
+        // start needs its own `-pre` window (below). Deliberately NOT
+        // merged with the `-pre` check below: two top-level `runFlow`s
+        // back-to-back (no other step between them) still get BOTH the
+        // first one's `-post` and the second one's `-pre` as independent
+        // windows, even though that means finalizing an empty chunk here
+        // — every runFlow boundary gets its own window, unconditionally.
+        // Leading hyphen is deliberate: the caller concatenates
+        // `<recipe-id>` directly with `screenshotName`, so this string
+        // supplies its own separator (`<recipe-id>-branch0-post.xml`).
+        pendingScreenshotName = `-branch${runFlowIndex - 1}-post`;
+        finalize();
+      }
+      if (opts.captureAllBoundaries && startsRunFlow) {
+        // `-pre` window immediately before this runFlow starts.
+        pendingScreenshotName = `-branch${runFlowIndex}-pre`;
+        finalize();
+      }
+      pendingRunFlowClose = startsRunFlow;
+      if (startsRunFlow) {
+        runFlowIndex++;
       }
       inTopLevelStep = true;
 
@@ -148,7 +206,14 @@ export function splitRecipeAtScreenshots(body: string): RecipeChunk[] {
   finalize();
 
   return chunks
-    .filter((c) => c.lines.some((l) => l.trim() !== ''))
+    // Drop chunks that are BOTH empty and unnamed — the ordinary "tail
+    // chunk when the recipe ends exactly on a takeScreenshot" case.
+    // A chunk WITH a screenshotName is kept even when empty: back-to-back
+    // top-level `runFlow`s under captureAllBoundaries legitimately
+    // produce a zero-line `-post`/`-pre` pair at their shared boundary,
+    // and each one still needs to run (as a no-op `maestro test`) so the
+    // caller gets its dump window.
+    .filter((c) => c.screenshotName !== undefined || c.lines.some((l) => l.trim() !== ''))
     .map((c, index) => ({
       yaml: header + '---\n' + c.lines.join('\n'),
       screenshotName: c.screenshotName,
@@ -158,8 +223,17 @@ export function splitRecipeAtScreenshots(body: string): RecipeChunk[] {
 
 /**
  * Convenience wrapper that reads `recipePath` from disk and delegates.
+ * Forwards `opts` to `splitRecipeAtScreenshots` (both optional) so this
+ * wrapper carries the same opt-in `captureAllBoundaries` capability as
+ * its underlying implementation — a caller reading a recipe off disk
+ * shouldn't have a narrower contract than one that already has the body
+ * in memory. Backward-compatible: existing zero-arg-`opts` callers are
+ * unaffected.
  */
-export function splitRecipeFileAtScreenshots(recipePath: string): RecipeChunk[] {
+export function splitRecipeFileAtScreenshots(
+  recipePath: string,
+  opts: SplitOptions = {},
+): RecipeChunk[] {
   const body = fs.readFileSync(recipePath, 'utf8');
-  return splitRecipeAtScreenshots(body);
+  return splitRecipeAtScreenshots(body, opts);
 }
