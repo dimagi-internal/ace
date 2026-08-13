@@ -390,6 +390,14 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
      - `constraint-locality` — always, for any form with constraints. A
        constraint must be fixable on the screen where it fires; it may
        reference only `.` or same-repeat siblings (ace#980).
+     - `screen-grouping` — always, for any form that puts more than one
+       question in a `group`. A group is a CommCare field-list, so its children
+       share ONE scrollable screen. Multiple questions per screen is GOOD
+       design — this is **not** a one-question-per-screen rule — but group by a
+       shared rule (one recall period, one answer source), split when that rule
+       changes, never nest a `repeat` inside a group, and keep a long read-aloud
+       passage on the screen carrying the answer it governs. Verified at level 0
+       by Step 4g.
      - `consent-script-floor` — **the PDD describes consent being sought from
        the people whose data, photos, or recordings are captured, WHETHER OR
        NOT it declares a consent field.** A read-aloud announcement to an
@@ -785,6 +793,56 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
 
     (Apps whose PDD declares no select/lookup fields skip cleanly at step 1.)
 
+4g. **Screen-shape check (a group is a field-list — catch the wall BEFORE
+    deploy).** The structural preventer for the `screen-grouping` component.
+    A Nova `kind: group` compiles to a CommCare **field-list**, so every child
+    renders on ONE scrollable screen. Grouping questions that belong together
+    is correct and expected; the defect is a group that has become a wall, and
+    until this step existed nothing in Phase 3 looked at screen composition at
+    all. Cheap; runs on the already-fetched blueprint. Same bounded-loop shape
+    as 4a–4f.
+
+    **Position rationale — this MUST run before `app-deploy`.** On
+    hh-poverty-targeting/20260812-2034 the shape (all ten PPI indicators plus
+    the roster repeat on one screen) was not noticed until `app-test-cases`
+    tried to author the smoke recipe against it — two steps later, with the app
+    already uploaded. Fixing it there cost a re-upload, a fresh HQ app id and an
+    orphan app to soft-delete. Had Phase 4 already run it would have cost a
+    delete-and-recreate of the Connect opportunity
+    (`connect_create_opportunity` writes HQ app ids at create time and
+    Connect's edit form does not expose them). Here the same fix is free.
+
+    1. From the `get_app` / `get_form` responses already fetched in Step 4a,
+       build the form's field tree with each field's `id`, `kind`, flattened
+       `label` text, and `children` for groups/repeats.
+    2. Feed it to the pure helper — do NOT eyeball the counts:
+
+       ```ts
+       import { checkScreenShape, formatScreenShapeReport }
+         from '../../lib/screen-shape';
+       const report = checkScreenShape(fields);
+       ```
+
+    3. Branch on the findings:
+       - `severity: 'violation'` on `oversized-screen` → **split that group**
+         into sets that share a rule, via `add_fields` (new group containers)
+         + `move_field`. **Create each new container carrying the SAME
+         `relevant` the original group had, BEFORE moving any field into it** —
+         a field moved out of a gated group to an ungated one silently loses
+         its gating, which is a correctness defect far worse than the scroll
+         length you came to fix.
+       - `severity: 'violation'` on `repeat-in-field-list` → `move_field` the
+         repeat to the form root, or into a group of its own.
+       - `severity: 'warn'` → keep the grouping only if the questions are one
+         coherent set, and say so in the build memo; otherwise split.
+    4. Re-fetch and re-run. **Bounded loop, max 3 iterations.** If a violation
+       remains after the third, surface a clear failure naming each offending
+       group and do NOT write the success summary.
+    5. Record the final `formatScreenShapeReport(...)` line in the build memo,
+       plus one sentence per surviving `warn` justifying the grouping.
+
+    (Forms with no multi-question group skip cleanly — `screensChecked: 0`.)
+
 5. **(Optional) Inspect the built app** via `/nova:show <app_id>` to
    cross-check structure against the PDD before writing the summary.
 
@@ -795,6 +853,9 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
    - Are verification criteria encoded in form questions?
    - Did every field the PDD spelled `select` / `lookup` ship as a select
      with a real option source, and is every remaining gap named (Step 4f)?
+   - Does every screen hold a set the worker can hold in view, with no group
+     over the ceiling and no `repeat` nested in a field-list (Step 4g), and is
+     each surviving `warn` justified in the build memo?
    - If any consent is sought from the people whose data or images are
      captured — spoken or field-gated — does that script carry all six
      `consent-script-floor` elements, `confidential` and where-the-data-goes

@@ -233,6 +233,38 @@ Generate the Learn (training) app from the PDD using the Nova plugin
      > comes from Connect's per-FLW assessment-completion API, NOT from
      > a CommCare case property written by the Learn app.
 
+   - **FIRST — check the PDD's assessment spec against the
+     known-unbuildable list, and NAME any substitution you make.**
+     `idea-to-pdd § Step 4a` gates Phase 1 against
+     `_app-component-library.md § Known-unbuildable mechanisms`, so a PDD
+     authored on a current plugin should never reach you specifying one. That
+     gate landed on **2026-08-13 (0.13.766, ace#1213)** — every PDD authored
+     before it, and every PDD carried forward from an older run, predates it.
+     This step is the belt-and-braces for exactly those.
+
+     Read the PDD's assessment blueprint against the list before composing the
+     brief. The one that actually recurs: **a randomized / per-attempt item
+     draw** ("a bank of 24, 12 served per attempt, retakes drawn from unseen
+     items"). It is closed twice over — Nova exposes no per-attempt
+     item-selection primitive, and decisively, Connect scores against a single
+     absolute `passing_score` per app, so a variable-membership draw makes
+     `user_score` incommensurable with the gate. Build the sanctioned
+     alternative — **one fixed bank sized for the gate**, plus a distinct
+     pre-test bank where a baseline is wanted — exactly as you would anyway.
+
+     **The build is not the defect; the silence is.** On
+     hh-poverty-targeting/20260812-2034 the PDD specified the 24-item draw, the
+     build correctly shipped one fixed 12-item bank, and **nothing recorded
+     that a substitution had happened** — so the PDD, and anything generated
+     from it, still told a reader that retakes were draw-resistant. Whenever
+     you substitute, write it into the build memo and the summary as a named
+     deviation: what the PDD asked for, what you built, why the ask is closed,
+     and the residual the operator now owns (for the fixed-bank case: unlimited
+     re-attempts against a fixed bank let a worker pass by memorising the
+     answers, which is a real retake-resistance loss the PDD assumed away).
+     Never resolve it silently, and never build the unbuildable thing to be
+     faithful to the PDD.
+
    - **REQUIRED — Deployability (fitness) components.** A label-only
      curriculum + one trivial quiz is NOT a deployable training
      instrument; `pdd-to-learn-app-eval` **hard-fails** it. The canonical,

@@ -185,6 +185,47 @@ orchestrator from per-skill QA + eval verdicts. -->
    `nova_plugin_current`), log `app-deploy-flag-check: skipped-tool-unavailable`
    and add a `[WARN]`. Do not halt.
 
+4.6. **Clean up superseded HQ apps (`deployment.left_behind`).** CommCare HQ
+   has no atomic app-update API, so **every** `upload_app_to_hq` creates a fresh
+   HQ application document. When an app is uploaded more than once in a run —
+   an XForm escape fix, a Connect-marker patch, a Step 4g screen split, any
+   build-rejection iteration — Nova returns the previous HQ app id(s) in
+   `deployment.left_behind`, and they keep sitting on the project space.
+
+   Nova's own `upload_to_hq` guidance stops at *naming* them, which is the right
+   boundary for Nova (it will not delete a user's app). It is the wrong boundary
+   for ACE: the superseded draft is ours, it was created seconds ago, nothing
+   references it, and leaving it behind means every re-upload silently adds an
+   orphan for `/ace:sweep hq` to reconcile later. Observed live on
+   hh-poverty-targeting/20260812-2034, where a Step 4g split re-uploaded the
+   Deliver app and left `07f9b7c8…` stranded.
+
+   So: for each id in `deployment.left_behind`, call
+
+   ```
+   commcare_delete_app({ domain: <ACE_HQ_DOMAIN>, app_id: <left-behind id> })
+   ```
+
+   This is HQ's own **soft** delete (it flips `doc_type` to `<original>-Deleted`
+   and writes a `DeleteApplicationRecord`), so the app stays restorable from
+   HQ's deleted-applications list — the operation is reversible, which is why it
+   is safe to do automatically. Record every deleted id in the Step 5 summary
+   under `<app>_superseded_hq_app_id`.
+
+   **Guard rails.** Only delete ids that came back in THIS call's
+   `left_behind` — never an id read from an artifact, and never the id you just
+   uploaded to. If a delete fails, log `[WARN] orphan-cleanup-failed: <id>`,
+   name it in the summary so `/ace:sweep hq` can finish the job, and **continue**
+   — a failed cleanup must never halt a successful deploy.
+
+   **The re-upload itself still needs surfacing, loudly.** The new HQ app id is
+   what Phase 4 wires into the Connect opportunity at create time
+   (`connect_create_opportunity`), and Connect's edit form does not expose those
+   fields — so an opportunity created against a stale id needs
+   delete-and-recreate to repoint. Whenever `left_behind` is non-empty, the
+   Step 5 summary MUST carry an explicit "this app was re-uploaded — use the id
+   above" callout, not just the changed frontmatter value.
+
 5. **Write the deployment summary** to
    `ACE/<opp-name>/runs/<run-id>/3-commcare/app-deploy_summary.md`:
 
@@ -201,6 +242,11 @@ orchestrator from per-skill QA + eval verdicts. -->
    deliver_build_status: <success|errored|pending>
    deliver_nova_app_id: <nova-app-id>
    uploaded_at: <ISO-8601>
+   # Present only when this app was uploaded more than once in the run.
+   # One entry per id returned in `deployment.left_behind` and soft-deleted
+   # in Step 4.6 — see the re-upload callout that step requires.
+   learn_superseded_hq_app_id: [<hq-app-id>, …]
+   deliver_superseded_hq_app_id: [<hq-app-id>, …]
    hq_feature_flags:
      domain: <ACE_HQ_DOMAIN>
      verification: <verified|not_checked>
@@ -274,6 +320,9 @@ producer no longer authors a separate gate-brief artifact. -->
 - **Google Drive MCP:** `drive_read_file`, `drive_create_file`
 - **Nova plugin slash commands:** `/nova:upload_to_hq`, `/nova:show`
 - **Nova MCP:** `get_app_hq_feature_flags` (Step 4.5 — read-only; never enables a flag)
+- **ace-connect MCP:** `commcare_delete_app` (Step 4.6 — soft-deletes a
+  superseded HQ app returned in `deployment.left_behind`; reversible from HQ's
+  deleted-applications list)
 
 ## Mode Behavior
 - **Auto:** Pre-flight, upload, write summary, notify admin, proceed.
@@ -300,3 +349,4 @@ When `--dry-run` is active:
 | 2026-04-29 | Carve out app release into the new `app-release` skill (Step 2.5 of Phase 3). This skill now ends at "draft uploaded" — release is a separate, permission-sensitive step. Reason: Connect's `Sync Deliver Units` only enumerates units from released builds, so unreleased apps silently break Phase 4's payment-unit config. (0.10.1) | ACE team |
 | 2026-05-29 | Pass the target project space explicitly: `/nova:upload_to_hq <app_id> <ACE_HQ_DOMAIN>` (Nova plugin voidcraft-labs/nova-plugin#12). Naming the space skips Nova's interactive confirmation, so hands-off runs go straight to upload. Pre-flight no longer watches the confirmation line; the domain-mismatch BLOCKER is now driven by Nova's `domain_not_authorized` error at upload time (which enumerates the reachable spaces). | ACE team |
 | 2026-08-01 | **Migrated the Step 2.5 XML-escape lint's form load to uuid addressing (ace#1132).** It read "one call per `(moduleIndex, formIndex)`"; Nova's 2026-07-31 redeploy accepts no index param on any of its 63 tools, so the lint named an uncallable operation and would have skipped silently. Now `get_form({app_id, moduleUuid, formUuid})`, with the uuid map resolved from ONE `get_app({app_id})` per app (or off the build summary's `nova_uuids:` frontmatter). Enforced by `test/skills/nova-uuid-addressing.test.ts`. | ACE team |
+| 2026-08-13 | **Step 4.6 — clean up `deployment.left_behind` instead of only naming it.** HQ has no atomic app-update API, so every `upload_app_to_hq` mints a fresh application document; Nova returns the superseded id(s) in `deployment.left_behind`. Nova's own guidance stops at naming them, which is the right boundary for Nova (it will not delete a user's app) and the wrong one for ACE — the superseded draft is ours, seconds old, unreferenced, and leaving it behind means every re-upload silently adds an orphan for `/ace:sweep hq`. Observed on hh-poverty-targeting/20260812-2034, where a screen-split re-upload stranded `07f9b7c8…`. Now soft-deleted via `commcare_delete_app` (HQ's own reversible delete — restorable from the deleted-applications list, which is why it is safe automatically), with guard rails: only ids from THIS call's `left_behind`, never one read from an artifact, never the id just uploaded to; a failed delete is a `[WARN]` named in the summary for sweep to finish, never a halt. Adds `{learn,deliver}_superseded_hq_app_id` to the summary frontmatter and REQUIRES an explicit re-upload callout in the summary body whenever `left_behind` is non-empty — the new HQ id is what Phase 4 wires into the Connect opportunity at create time, and Connect's edit form does not expose those fields, so a stale id costs a delete-and-recreate. | ACE team |
