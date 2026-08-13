@@ -80,8 +80,8 @@ authored from the PDD per run):
 | [`relevance-reachability`](#constraint-locality) | Deliver | Always, for any form carrying `relevant` expressions | `pdd-to-deliver-app-eval § field_answerability`; `app-release-qa` (mechanical bind check) |
 | [`consent-script-floor`](#consent-script-floor) | Deliver | The PDD describes consent being sought from the people whose data/images are captured — **whether or not it declares a consent FIELD** (a read-aloud announcement counts) | `pdd-to-deliver-app-eval § consent_floor` (hard-gate — backstop only; this is a BUILD-TIME component) |
 | [`threshold-coherence-flag`](#threshold-coherence-flag) | Deliver | PDD fixes ≥2 numeric thresholds constraining one physical quantity | `pdd-to-deliver-app-eval § threshold_coherence` (hard-gate) |
-| [`discriminating-assessment-items`](#discriminating-assessment-items) | Learn | Any scored assessment | `pdd-to-learn-app-eval § assessment_discrimination` |
-| [`instrument-grounded-examples`](#instrument-grounded-examples) | Learn | Learn app teaches administration of a fixed instrument | `pdd-to-learn-app-eval § assessment_discrimination` (examples criterion) |
+| [`discriminating-assessment-items`](#discriminating-assessment-items) | Learn | Any scored assessment | `pdd-to-learn-app-eval § assessment_rule_coverage` |
+| [`instrument-grounded-examples`](#instrument-grounded-examples) | Learn | Learn app teaches administration of a fixed instrument | `pdd-to-learn-app-eval § assessment_rule_coverage` (examples criterion) |
 
 ---
 
@@ -1079,244 +1079,127 @@ Forbid angle-bracket placeholder notation`).
 
 - **App:** Learn
 - **Trigger:** any scored assessment (pre-test, post-test, knowledge check).
-- **Enforced by, in two places:**
-  1. **Build time — `pdd-to-learn-app § 4d` (the floor).** A measured
-     **cold-read probe**: two separate agents, PDD-derived FLW persona, stems
-     and options only, permuted labels, picks committed before reveal. If the
-     untrained reader clears the PDD's own unlock threshold, the bank is not
-     shippable and the items it got right are rewritten — bounded at two
-     cycles. This exists because the pre-release self-check below is graded by
-     the bank's own author, and author self-prediction here is measurably
-     worthless (ace#1119).
-  2. **Eval time — `pdd-to-learn-app-eval § assessment_discrimination` (the
-     real measurement).** A **two-reader contrast**: a trained reader and an
-     untrained reader, both on the PDD's own FLW persona, differing only in
-     whether they got the module teaching text, scored on the **delta**
-     (`(trained − untrained) ÷ items_scored`). The eval also scores
-     `assessment_operation_coverage` off the same probe — every item mapped to
-     the instrument field it governs and the failure it prevents.
-
-  The build-time floor is deliberately weaker than the eval's contrast: it
-  catches only "the protected population passes cold", which is unambiguous
-  and unaffordable to discover after release. A bank can clear the floor and
-  still fail the contrast, and that is correct. Do not tune against the floor
-  beyond clearing it.
-- **What you are actually optimizing (read this first).** You are NOT trying to
-  make items hard for a clever stranger. You are trying to make each item's
-  answer **come from a module** — so that teaching the curriculum moves the
-  score and not teaching it does not. Those are different targets, and only the
-  second one is measurable or desirable. An item nobody can answer without the
+- **Enforced by:** `pdd-to-learn-app-eval § assessment_rule_coverage` — a
+  structural audit of which taught rules the bank actually keys on. Uncovered
+  rules come back as a `repairs[]` work order addressed to THIS skill.
+- **What you are optimizing.** Every item should key on a rule the worker can
+  only know because a module taught it. **An item nobody can answer without the
   training is perfect even if it looks easy; an item that is hard because it is
-  arbitrary is a worse instrument, not a better one.
-- **Origin:** ace#981. All 10 post-assessment items in hh-poverty-targeting were
-  one virtuous answer + three absurd distractors ("Keep asking until they agree",
-  "Fill in the answers yourself", "You got tired and left"), so a worker who read
-  nothing scores 100% and the 80% Deliver-unlock gate is decorative.
-  **`pdd-to-learn-app-eval` scored that app 9.4/10** — and its `instructional_depth`
-  criterion already said items must be "anti-guess (plausible distractors)". The
-  prose criterion existed and did not bite, which is why the eval side of this
-  component is an executed probe rather than another adjective.
-- **Measured trajectory (ace#1014, `spark-facilitator/20260730-1718`, Learn app
-  `38836b2d-0405-4e99-879a-53cd2344eff9`).** Three authoring passes on the same
-  12-item bank, each re-probed blind:
+  arbitrary is a worse instrument, not a better one.** You are NOT trying to
+  make items hard for a clever guesser — see the warning below, which is the
+  single most expensive lesson in this file.
 
-  | Pass | Cold-guessable |
-  |---|---|
-  | As built | 12/12 (1.00) |
-  | Rewrite 1 — typography normalization (matched length, voice, sentence count) | 10/12 (0.833) |
-  | Rewrite 2 — deliberate virtue-inversion | 9/12 and 10/12, two independent blind runs |
+**Author each item in this order.**
 
-  **Two negative results drive the procedure below.** (1) *Typography is not the
-  lever* — q5's four options were exactly uniform at 65/65/65/65 characters and
-  was still guessed cold; of the 10 misses only 2 traced to structural tells and
-  1 to a stem leak, while **7 fell to general professional competence alone**.
-  (2) *Virtue-inversion alone is not the lever either* — q1 and q4 were properly
-  inverted and still fell 2/2, because the option SET gave them away
-  structurally before virtue was ever consulted. Author self-prediction on this
-  dimension is worthless: rewrite 2's author self-predicted 5–7/12 and measured
-  9–10/12, because the author knows which option they intended to be hard, which
-  is exactly the knowledge a cold reader lacks.
-- **The reader was the confound (ace#1187, 2026-08-12 — this supersedes the
-  reading of the trajectory above).** The three passes above were all measured
-  against a single blind reader briefed as a capable adult with strong exam
-  technique, which in practice meant an LLM carrying deep CommCare / M&E /
-  programme-design background. Re-measured on `spark-facilitator/20260810-0737`
-  (Learn app `34a66bf7-9b48-40ef-aa56-31ac357e8a72`), same 20-item bank, keys
-  withheld, picks committed before reveal, untrained readers run twice with
-  per-question shuffled option order:
+**Step 1 — pick the RULE before you write a single option.** Write down three
+things: (i) the taught rule, in one sentence; (ii) the module that teaches it,
+by name; (iii) the operation it protects — the instrument field or step whose
+mishandling causes an **unpaid visit**, a **blocked form**, or **corrupted
+data**. If you cannot name the module, discard the item.
 
-  | Reader | Brief | Correct/20 | Ratio |
-  |---|---|---|---|
-  | **A — trained, field persona** | given the five modules' teaching text; CBF persona | **19.0** | 0.95 |
-  | **B — untrained, field persona** | no teaching content; same CBF persona | **8.0** (6 and 10) | 0.40 |
-  | **C — untrained, M&E domain expert** | the retired reader | 11 | 0.55 |
+**Step 2 — prefer COUNTER-INTUITIVE rules.** Among the taught rules, the ones
+that carry training signal are those where ordinary common sense gives the
+WRONG answer. Four recurring shapes, and they are where your items should
+concentrate:
 
-  **A − B = +11.0 = 2.38x.** The expert proxy sat **15pp above** the population
-  the 80% Deliver gate protects — an elected community member with limited
-  formal schooling, working in a second or third language, on a first
-  smartphone — and made the bank read **27% less discriminating** than it is.
-  Its edge over the field reader was **stability of exam technique, not
-  knowledge**: it reliably nailed q2/q3/q11/q14, which the field reader got
-  right about half the time, and *lost* q5 and q20 to it. So the ceiling caveat
-  below is now **resolved on the eval side** rather than merely noted — the
-  metric is a contrast, and the untrained reader is calibrated to the PDD's own
-  FLW persona. Two prior authoring cycles (~500K subagent tokens) were spent
-  moving a number that item craft cannot move, because the reader already knew
-  the domain the items were about. **Do not read the plateau above as evidence
-  those rewrites failed.**
-- **Ceiling, not field, measurement (why the contrast is required).** Blind
-  readers are LLMs, not field workers: they read dense English fast and are
-  unusually good at eliminating internally-inconsistent options. An absolute
-  cold score from one is a **ceiling**, not a field prediction — which is
-  exactly why it cannot be the statistic, and why both readers must run the
-  PDD's stated persona.
-- **Some items are free, and that changes where the gate sits.** Items answered
-  correctly by **both** readers in every run — arithmetic, or answerable from
-  the stem's own framing — carry no training signal, so the nominal gate
-  overstates the real bar. On this bank ace#1187 counted 5 such items (16/20 =
-  80% nominal → 11/15 = **73%** effective); the 2026-08-12 re-validation, whose
-  untrained reader ran hotter, counted 10 (→ 6/10 = **60%** effective). Both
-  readings agree on the direction and neither is the "true" number: **the
-  free-item count is downstream of how well the untrained persona holds**, so
-  report it with the untrained runs it was derived from, and read it as "the
-  gate is looser than it looks", not as a precise figure. Padding a bank with
-  free items is what creates the gap. Visible only in a contrast design.
-- **Every item should be answerable from the modules — check that directly.**
-  The 2026-08-12 re-validation ran a TRAINED reader over the same 20-item bank
-  and it scored **20/20**: the taught content fully determines the key. That is
-  the Step-1 property below, measured rather than asserted, and it is what makes
-  the delta large. If a trained reader misses items, the bank is testing
-  something the modules do not teach — fix the item or teach the rule, because
-  the delta will understate the instrument either way.
+| Shape | Example |
+|---|---|
+| A convention that reads backwards | leave `amount_saved` BLANK when not saving — never `0`, because `0` means "tried and saved nothing" |
+| A deliberate non-payment | a committee meeting is recorded and correctly NOT paid |
+| An inclusion/exclusion rule | `members_with_disability` sit INSIDE `total_attendance`, not added to it |
+| A named number the worker cannot derive | the appeal window, a minimum subject count in a photo, a recency limit on a date |
+
+A scenario item ("heavy rain stopped the meeting — what do you do?") is answered
+by ordinary decency and carries little signal, however carefully its options are
+written. It is still worth having a few — they build confidence and confirm the
+obvious rule — but a bank made only of them is a comprehension check, not a
+readiness gate. **Aim for roughly half the items keyed on counter-intuitive
+rules**, and make sure every counter-intuitive rule the curriculum teaches is
+covered at least once. That coverage is what the eval scores.
+
+**Step 3 — keep the bank INDEPENDENT.** At most ~1 item per underlying rule. Two
+items on one rule are one item's worth of resolution reported as two. If item N's
+answer follows from item N−1's, they are the same item.
+
+**Step 4 — option hygiene. Necessary, not sufficient.** Every distractor must be
+an action a competent, decent worker might ACTUALLY take: a real misconception, a
+defensible-sounding wrong practice, or a near-miss on a real rule (off-by-one
+threshold, right action wrong trigger). **No option may be rejectable on sight** —
+"fake a photo", "fudge the figures" collapse four options to two before any
+reasoning starts, and that is the one option-craft defect the eval still deducts
+for. Beyond that, do not spend effort normalizing option length or inverting which
+option sounds most virtuous: both were measured and neither moves the outcome
+(ace#1014).
+
+**Apply all of this to the PRE-test as well.** Hardening only the post-test makes
+the PDD's pre/post learning-gain metric overstate the gain.
+
+**Do NOT pad the bank to hit an item count.** A padded item is usually one that
+fails Step 1, and it lowers the effective bar the gate applies.
+
+> **⚠ Do NOT author items to defeat a smart reader — this is the expensive
+> lesson.** Between 2026-07-27 and 2026-08-13 this component and its eval were
+> built around an LLM "blind reader" probe: items were scored on how well an
+> untrained model could guess them, and a bank the model could answer was failed.
+> That was retired on 2026-08-13 (ace#1206) for two reasons. **(a)** An LLM told
+> to role-play a low-literacy CHW still reads English fluently, does the
+> arithmetic, and eliminates options — its floor is its own competence, not the
+> persona's, and no ACE bank has ever been put in front of a real CHW to validate
+> the inference. **(b)** For a CHW curriculum, where most taught rules amount to
+> "record what happened, honestly", a bank an intelligent reader CAN mostly answer
+> is the expected and correct result. The only way to drive that number down is to
+> write arbitrary trivia — which is harder to learn, less useful in the field, and
+> a worse instrument for exactly the cohort the gate protects. Roughly 500K
+> subagent tokens went into two authoring cycles chasing that number
+> (ace#1014, ace#1187). Author for **taught-rule dependence**, not for difficulty.
+
+**Pre-release self-check (do this during the build, record it in the build
+memo).** One table, one row per item: the taught rule · the module that teaches
+it · the operation it protects · counter-intuitive yes/no · whether any other
+item tests the same rule · whether any option is rejectable on sight. An item
+that cannot fill the first three columns gets discarded, not rewritten.
+
+**Consuming a `repairs[]` work order.** When `pdd-to-learn-app-eval` returns
+`repairs[]`, each entry names an uncovered rule, the module that teaches it, and
+a `suggested_target` item to re-key. Re-key the named item — keep its stem and
+its subject where you can, and change what the options *differ on* so the answer
+turns on the uncovered rule rather than on judgment. Do not add items to cover a
+rule when an existing free item can be re-pointed at it; growing the bank lowers
+the effective bar. One repair round, then re-grade.
 
 **Brief paragraph (verbatim):**
 
-> REQUIRED — Assessment items MUST discriminate, and discrimination is a
-> CONTRAST: teaching the modules must move the score, and not teaching them must
-> not. The eval measures exactly that — a trained reader minus an untrained
-> reader, both running the PDD's own field-worker persona. It does NOT measure
-> how hard the bank is for a clever stranger, and you must not author for that
-> target: items that are hard because they are arbitrary make the instrument
-> worse. Work in this order — **Step 1 is the lever, Step 3 is hygiene.**
->
-> **Step 1 — choose the item's TOPIC before you write a single option.** For
-> every item, write down three things first: (i) the **taught rule** it tests,
-> stated in one sentence; (ii) the **module** that teaches that rule, by name;
-> (iii) the **operation it protects** — the instrument field or step whose
-> mishandling causes an unpaid visit, a blocked form, or corrupted data (wrong
-> `meeting_type` → unpaid meeting; participants > attendees → blocked form;
-> blank-vs-zero on savings → corrupted data). If you cannot name the module,
-> **discard the item** — it is testing general competence, and general
-> competence is precisely what an untrained worker already has, so the item
-> contributes nothing to the delta no matter how its options are written. If you
-> cannot name the operation, the item is conceptual: a few earn their place
-> (consent, safety), but a bank that is mostly conceptual is not protecting the
-> work. Prefer program specifics — the actual threshold, the actual required
-> evidence, the actual instrument wording — over professional-ethics sentiment,
-> which every decent adult already holds.
->
-> **Step 2 — keep the bank INDEPENDENT: at most ~1 item per underlying rule.**
-> Two items keyed to the same rule are one item's worth of resolution reported as
-> two, and they move together — a worker who missed the module misses both, a
-> worker who caught it gets both. That inflates the nominal item count while the
-> effective count stays flat, and it is how a bank ends up with free marks. Cover
-> more taught rules rather than the same rule from more angles. Related: if item
-> N's answer can be derived from item N−1's, they are the same item.
->
-> **Step 3 — option hygiene. NECESSARY, NOT SUFFICIENT — and it cannot rescue a
-> Step-1 failure.** Matching option LENGTH, voice and sentence count achieves
-> nothing on its own: a bank normalized to exactly uniform option lengths still
-> measured 10/12 cold (ace#1014), and re-measurement showed the reader, not the
-> options, was carrying that number (ace#1187). Do this work to stop an item
-> leaking its answer structurally — not in the belief that it creates
-> discrimination. Two gates; reject the item if either fails:
->
-> **Gate 1 — behavioural plausibility.** Every distractor must be an action a
-> competent, decent worker might ACTUALLY take: a real misconception, a
-> defensible-sounding wrong practice, or a near-miss on a real rule (off-by-one
-> threshold, right action wrong trigger, correct-for-a-different-case). Nothing
-> may be rejectable on sight. Any option a sensible person dismisses without
-> reasoning (fake a photo, withhold your next report, fudge the figures to
-> reconcile) collapses 4 options to 2 BEFORE any reasoning starts and turns the
-> item into a coinflip. Plausible-to-you-the-author is not plausible-to-a-stranger:
-> the test is whether a stranger would have to think about it.
->
-> **Gate 2 — no structural giveaway.** Independent of what each option SAYS, the
-> option SET must not point at the key. Four tells, each individually sufficient
-> to lose an item, all observed live in ace#1014:
-> (i) **self-justifying key** — the keyed option carries its own rationale
-> ("…because payment follows a check that has not happened") while the distractors
-> merely assert; readers pick the reasoned option. Either give every option its own
-> rationale clause or give none of them one.
-> (ii) **minimal-claim tell** — three options each posit some extra system
-> behavior and the key claims the least ("…and nothing more"); under uncertainty a
-> guesser takes the minimal claim, reliably. Options must match in CLAIM-STRENGTH,
-> not just in length.
-> (iii) **odd-one-out on a binary** — the set splits 2-accept / 2-refuse and
-> exactly one side carries a clean, stateable rule; that side wins by construction.
-> (iv) **absurdity elimination** — see Gate 1; it is restated here because it is
-> a property of the SET, and it survives "all distractors plausible" being
-> nominally satisfied.
->
-> **A weaker heuristic — virtue-inversion.** Prefer items where the keyed answer
-> is NOT the most responsible-sounding option, so the standard
-> pick-the-decent-instinct meta-heuristic misfires. This helps a little and is
-> NOT sufficient: items that were properly inverted still fell to Gate 2 tells.
-> Never treat it as a substitute for Step 1.
->
-> **Working template.** The one item that defeated two independent blind runs had
-> exactly three properties, and it is the shape to copy: the key requires a
-> **program-specific taxonomy taught in a module and nothing else** (Step 1); the
-> STRONGEST distractor is the maximally-virtuous option (a committee meeting,
-> well run, carefully written, sent same-day); and all four options are actions a
-> competent, decent worker might actually take, so nothing is eliminable on
-> sight. Note which property is doing the work — the first.
->
-> Also: (a) apply all of this to the PRE-test bank as well as the post-test —
-> hardening only the post-test makes the PDD's pre/post learning-gain metric
-> OVERSTATE the gain; (b) do NOT pad the bank to hit an item count. A padded item
-> is usually one that fails Step 1, which makes it a **free mark** both readers
-> get right, which lowers the effective bar the gate actually applies (a 16/20
-> gate over 5 free items is really 11/15 = 73%). A shorter bank of items keyed to
-> taught rules beats a longer one every time.
->
-> **PRE-RELEASE SELF-CHECK (run this during the build, before you ship the
-> bank).** For each item, in writing, in the build memo:
-> 1. **Name the taught rule, the module that teaches it, and the operation it
->    protects.** If you cannot fill all three, discard the item. This is the
->    check that matters — an item failing here cannot be fixed by rewriting its
->    options.
-> 2. **Check independence:** does any other item in the bank test the same
->    underlying rule, or can this one be derived from another? If so, cut one.
-> 3. Cover the answer key. Read only the stem and the options. Ask: *"could a
->    worker who read none of the modules pick this by elimination?"* Name the
->    option that persona would pick and WHY in ≤10 words. Then ask the four
->    Gate-2 questions explicitly: is the key self-justifying? does the key claim
->    the least? is the key the odd one out on a binary split? is any option
->    rejectable on sight?
-> 4. Only then uncover the key. A yes on any Gate-2 question means rewrite the
->    OPTIONS. Your own cold pick landing on the key is **weak evidence** — you
->    know which option you meant to be hard, and author self-prediction on this
->    has been measured wrong repeatedly (rewrite 2 above self-predicted 5–7/12
->    and measured 9–10/12). Treat it as a prompt to re-check Step 1, not as proof
->    the item is bad: the eval's contrast, not your guess, is the measurement.
->
-> Record the per-item result in the build memo: rule, module, operation,
-> independence check, Gate-2 answers. That table is what a reviewer reads — a
-> bank whose every item names a taught rule and a protected operation is doing
-> its job whether or not any particular reader could pass it cold.
->
-> **This self-check is authoring hygiene, not the enforcement.** Your own cold
-> pick is a prompt to re-examine Step 1, never proof the bank is fine — the
-> enforcement is the measured probe in `pdd-to-learn-app § 4d`, run by separate
-> agents that have never seen your key.
-
+> REQUIRED — Every assessment item must key on a rule a module TEACHES, and the
+> bank must cover the counter-intuitive ones. For each item, before writing any
+> option, name three things: the taught rule in one sentence, the module that
+> teaches it, and the operation it protects (the field or step whose mishandling
+> causes an unpaid visit, a blocked form, or corrupted data). If you cannot name
+> the module, discard the item. Then concentrate the bank on the taught rules
+> where ordinary common sense gives the WRONG answer — a convention that reads
+> backwards (leave the amount blank, never zero), a deliberate non-payment (a
+> committee meeting is recorded and correctly not paid), an inclusion rule (people
+> with a disability are already inside total attendance, not added to it), or a
+> named number the worker cannot derive (an appeal window, a minimum count, a
+> recency limit). Aim for roughly half the items on those, and make sure EVERY
+> counter-intuitive rule the curriculum teaches is tested at least once. Scenario
+> items answered by ordinary decency are fine in moderation but carry little
+> signal. Keep the bank independent — at most about one item per rule; if item N
+> follows from item N-1 they are the same item. Every distractor must be something
+> a competent, decent worker might actually do: no option may be rejectable on
+> sight, because that collapses four options to two before any reasoning starts.
+> Do NOT spend effort making items hard for a clever reader — for this curriculum
+> most correct answers are sensible, and a bank engineered to defeat a smart
+> guesser is a bank of arbitrary trivia, which is worse training for a
+> low-literacy cohort, not better. Apply all of this to the pre-test as well as
+> the post-test, and do not pad the bank to hit a count. Record a per-item table
+> in the build memo: rule, module, operation, counter-intuitive yes/no,
+> independence, and whether any option is rejectable on sight.
 ### instrument-grounded-examples
 
 - **App:** Learn
 - **Trigger:** the Learn app teaches administration of a fixed instrument
   (scorecard, questionnaire, protocol) that the Deliver app implements.
-- **Enforced by:** `pdd-to-learn-app-eval § assessment_discrimination` (examples
+- **Enforced by:** `pdd-to-learn-app-eval § assessment_rule_coverage` (examples
   criterion) — a teaching example referencing a question absent from the
   instrument is a deduction.
 - **Origin:** ace#982. Module 1 taught neutral-vs-leading administration using
@@ -1360,3 +1243,4 @@ Forbid angle-bracket placeholder notation`).
 | 2026-08-12 | **New component `connect-supported-capabilities-only` — ACE apps may depend on no HQ feature flag but `commcare_connect` (ace#1195).** `spark-facilitator/20260810-0737` built the first ACE Deliver app to use **case-search inputs** (two per menu, all three menus). Nothing in the PDD asked for them; they came from the architect's default module authoring. They pulled in `search_claim` and `case_search_advanced`, **both `TAG_FROZEN`** in `dimagi/commcare-hq:corehq/toggles/__init__.py` — whose tag description reads *"This feature flag will be removed with an alternative solution in future. Do not add new projects to this list."* — with the advanced one further scoped to USS projects. `app-deploy`'s flag verification correctly detected the gap but emitted the wrong remedy ("email support@dimagi.com"), which asks Dimagi staff to override a stated internal policy for a capability the app never needed. The component states the rule as a **capability budget rather than a blocklist**, because Nova exposes flag-gated capabilities through the same tool surface as everything else with nothing marking them — banning only case search leaves related lookups, split-screen search and USH case-claim updates to sail through. The load-bearing distinction: **a case LIST is free, a case SEARCH is flag-gated**; the local list is served from the device casedb, which is why the Deliver smoke walked fine on a space where both flags were absent. Matching edit to `app-deploy` Step 4.5: it now branches on WHERE the requirement came from — traces to the PDD → operator email as before; does NOT trace to the PDD → `[BLOCKER]` build defect naming the capability to remove. Deliberately scoped: no slug→tag map was vendored (operator decision, 2026-08-12) — the instruction is "nothing but `commcare_connect`", which needs no lookup. | ACE team |
 | 2026-08-12 | **`assessment-gate` gets the exactly-one-gating-instrument rule; `app-connect-coverage` stops mandating the defect (closes ace#1131).** The component said to wire `user_score` to `connect.assessment` at the PDD threshold but never said WHICH form, while clause (a) told the architect to build a pre-test AND a post-test — so architects wired both. `app-connect-coverage § Scope` then made it structural: its Learn row read "quiz-only (select inputs + `user_score` hidden) → `assessment`", and a **baseline pre-test has exactly that shape**, so a coverage pass would add the marker back even if a build removed it. Connect has no per-form distinction anywhere: one `passing_score` per `CommCareApp`, `process_assessments` sets `passed = score >= passing_score` for every submitted block carrying `user_score`, and every "has this worker passed?" surface uses any-passed semantics (`assessment_exists_subquery(passed=True)`, credentialing, the `passed` count). So a pre-test carrying the marker IS a gating instrument whatever its intro copy claims — measured live at 0.85 cold against an 80 gate, i.e. a worker who opened no module is recorded `passed=True`. Fixes: (1) the brief now says the marker goes on the **post-test only**, with the pre-test carrying `connect.learn_module` and computing its score internally for its own baseline labels; (2) a new mechanism block states the exactly-one rule with the Connect source citations; (3) `app-connect-coverage` splits its Learn quiz row into gating-post-test vs baseline-pre-test, says to decide **by role, not by shape**, and says a pre-test carrying `assessment` is a defect to REMOVE rather than coverage to preserve; (4) `app-release-qa` gains a **cardinality** halt (`learn-assessment-cardinality`) — exactly one form may declare `connect.assessment`, zero or ≥2 halts the release. The cardinality check has to live in release QA because `app_xml.py` never extracts assessments from the CCZ, so the behaviour is submission-time and marker-PRESENCE QA is structurally blind to it; the blueprint is the only pre-release surface that can see the count. | ACE team |
 | 2026-08-12 | **`discriminating-assessment-items` enforcement moves off the author onto a measured build-time probe (closes ace#1119).** The component shipped a mandatory PRE-RELEASE SELF-CHECK graded by the same agent that wrote the bank — while the component's own text records that author self-prediction here is worthless (ace#1014's rewrite 2 self-predicted 5–7/12 and measured 9–10/12). New `pdd-to-learn-app § 4d` replaces the prediction with a measurement at build time, alongside the existing 4a/4b/4c post-build pre-checks: two separate agents, PDD-derived FLW persona, stems and options only, independently permuted neutral labels, picks committed before reveal, scored against the live `qN_score` calculates. Gate is `untrained_max × 100 >= the PDD's unlock threshold` → rewrite the items the probe got right, **bounded at two cycles**, then record a residual and proceed. Deliberately a FLOOR, not the eval's contrast: it catches only 'the protected population passes cold', and the brief says explicitly not to tune against it beyond clearing it — chasing an absolute cold score is what ace#1187 cost two authoring cycles. Calibrated on three real banks with large margins (decorative hh-poverty 20260722 fires at 1.00; spark-facilitator 20260810 clears at 0.55; hh-poverty 20260730 clears at 0.17). Skips below 5 scored items (degenerate, ace#1042). Carries a topology note: the step calls `Agent` so it must run at level 0, which holds because `commcare-setup` is executed inline — if the skill is ever dispatched as a subagent, skip and let the eval carry it rather than restructuring the phase. The self-check paragraph stays as authoring hygiene, now labelled as such. | ACE team |
+| 2026-08-13 | **Retired the cold-read probe on BOTH sides; `discriminating-assessment-items` is now enforced by a structural audit (ace#1206).** The 2026-08-12 entries above hardened a persona-based blind-reader measurement in two places — a blocking build-time floor in `pdd-to-learn-app § 4d` and a trained-minus-untrained contrast in `pdd-to-learn-app-eval § assessment_discrimination`. Both are removed. **(1)** The eval's gate was arithmetically the statistic the same revision had just declared too noisy to gate on: `delta <= 1 - untrained_ratio`, tight whenever the trained reader scores 100%. **(2)** More fundamentally, the untrained reader is an LLM told to role-play a low-literacy CHW, and an LLM's floor is its own competence — it still reads English fluently, does the arithmetic, and eliminates options. For a CHW curriculum whose taught rules are largely "record what happened, honestly", the proxy passing cold is the EXPECTED result for a GOOD bank, so it cannot be a failure signal; the only way to drive it down is arbitrary trivia, which is harder to learn and less useful in the field. The metric's gradient pointed away from good material for the cohort it protected. No ACE bank has ever been put in front of a real CHW, so the LLM->CHW inference was never validated while being load-bearing for a gate. Trigger: `spark-facilitator/20260812-1635` — untrained persona 11/12 twice with identical miss sets, trained 12/12, on a build scoring 8.45 with complete trilingual coverage, worked examples from the real instrument and correct conditional gating. **The replacement asks the same question structurally**: enumerate the taught rules where common sense gives the WRONG answer (a convention that reads backwards, a deliberate non-payment, an inclusion rule, a named window or threshold) plus the high-consequence operations, map each scored item to the rule it keys on, and score coverage with counter-intuitive rules weighted double — from the artifact, with no persona, no dispatched agents and no run-to-run noise. Uncovered rules return as `repairs[]`, a work order the orchestrator hands to `pdd-to-learn-app` (never applied by the judge, which would converge on passing itself), capped at one round. Component text went 216 -> ~120 lines; the authoring guidance now leads with TOPIC selection and counter-intuitive coverage, and option craft is explicitly hygiene. Kept from the retired pass: the framing that an item nobody can answer without the training is perfect even if it looks easy. Negative control unchanged — `hh-poverty-targeting/20260722-1341` covers ~0 counter-intuitive rules and takes the absurd-distractor deduction on every item. | ACE team |

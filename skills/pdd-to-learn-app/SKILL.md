@@ -50,11 +50,35 @@ Generate the Learn (training) app from the PDD using the Nova plugin
    - State the archetype framing explicitly (e.g. "this is a facilitation
      training app, not a form-walkthrough app")
    - **Explicitly state this is a CommCare Connect Learn app and that
-     every content form needs `connect.learn_module` and every quiz
-     form needs `connect.assessment` per CommCare Connect's rules.**
+     every content form needs `connect.learn_module`, and the GATING
+     quiz form needs `connect.assessment`, per CommCare Connect's rules.**
      Load-bearing language — without it, autobuild often skips the
      per-form Connect blocks. For why, see reference.md § Connect-marker
      language is load-bearing.
+   - **REQUIRED — exactly ONE form carries `connect.assessment` when the
+     PDD declares one gate. A diagnostic pre-test must NOT carry it**
+     (ace#1205). Connect stores a single `passing_score` per learn app and
+     every "has this worker passed?" surface uses **any-passed** semantics
+     (ace#1131), so a second scored form does not become a second gate —
+     it becomes an ALTERNATIVE gate, and since a pre-test is by
+     construction the easiest instrument in the app, it becomes the one
+     that unlocks Deliver. Insert this paragraph **verbatim** into the
+     brief, in its own paragraph, prefixed `REQUIRED:`:
+
+     > REQUIRED: Only the FINAL gating assessment may carry a
+     > `connect.assessment` block. If you build a diagnostic pre-test, it
+     > MUST NOT carry `connect.assessment` — score it with an ordinary
+     > hidden `user_score` field and conditional result labels, but leave
+     > the Connect marker off. Connect stores one passing score per learn
+     > app and treats a pass on ANY marked form as satisfying the gate, so
+     > a marked pre-test silently becomes the easiest path to unlocking
+     > Deliver, whatever the pre-test's own on-screen text says about not
+     > counting.
+
+     `pdd-to-learn-app-eval § 5b single_gating_assessment` is the
+     structural backstop; it reads the blueprint and `[BLOCKER]`s a second
+     marked form. Healable at L0 with one `configure_connect` call —
+     **REPLACE-ALL, so resend the complete participant set**.
    - Describe each module / form, in order
    - List the required Connectify fields (Learn Module, Assessment Score)
    - Reference the relevant PDD section when it shapes Nova's choices
@@ -257,26 +281,28 @@ Generate the Learn (training) app from the PDD using the Nova plugin
        independent blind probes, and the builder had no discretion to
        fix them. If a PDD example survives the gates, keeping it is fine
        — the point is that the decision is the builder's.
-     - `discriminating-assessment-items` — any scored assessment. A
-       **three-step** authoring procedure, not an adjective, and the
-       steps are not equal: **Step 1 is the lever** — before writing any
-       option, name the taught RULE the item tests, the MODULE that
-       teaches it, and the OPERATION it protects (unpaid visit / blocked
-       form / corrupted data); no module named → discard the item, it is
-       testing general competence an untrained worker already has.
-       **Step 2** — bank independence, at most ~1 item per underlying
-       rule. **Step 3** — option hygiene (Gate 1 behavioural
-       plausibility, Gate 2 no structural giveaway), which is
-       **necessary but not sufficient** and cannot rescue a Step-1
-       failure. Matching option length is NOT the lever (ace#981,
-       ace#1014), and the eval scores a **contrast** (trained reader
-       minus untrained reader, both on the PDD's FLW persona), not any
-       reader's absolute cold score (ace#1187) — so do not author items
-       to be hard for a clever stranger. Do not pad: a padded item is a
-       free mark that lowers the gate's effective bar. The component's
+     - `discriminating-assessment-items` — any scored assessment.
+       **Step 1 is the lever** — before writing any option, name the
+       taught RULE the item tests, the MODULE that teaches it, and the
+       OPERATION it protects (unpaid visit / blocked form / corrupted
+       data); no module named → discard the item. **Step 2 — concentrate
+       the bank on COUNTER-INTUITIVE rules**, the taught rules where
+       ordinary common sense gives the WRONG answer (a convention that
+       reads backwards, a deliberate non-payment, an inclusion rule, a
+       named window or threshold). Aim for roughly half the items on
+       those and cover every counter-intuitive rule the curriculum
+       teaches at least once — that coverage is exactly what
+       `pdd-to-learn-app-eval § assessment_rule_coverage` scores.
+       **Step 3** — bank independence, ~1 item per rule. **Step 4** —
+       option hygiene: no option rejectable on sight. **Do NOT author
+       items to be hard for a clever reader** — the eval no longer
+       measures that, and for a CHW curriculum most correct answers are
+       sensible, so chasing difficulty produces arbitrary trivia that is
+       worse training for the cohort (ace#1206; ~500K tokens were spent
+       learning this across ace#1014 / ace#1187). The component's
        **pre-release self-check** is mandatory and its per-item table
-       (rule, module, operation, independence, Gate-2 answers) belongs
-       in the build memo.
+       (rule, module, operation, counter-intuitive?, independence,
+       any-option-rejectable-on-sight) belongs in the build memo.
      - `instrument-grounded-examples` — the Learn app teaches
        administration of a fixed instrument. Every worked example and
        good/bad pair built from a REAL instrument item, preferring the
@@ -547,90 +573,36 @@ Generate the Learn (training) app from the PDD using the Nova plugin
     — the single dimension is the whole swing on this minimal opp. See
     jjackson/ace#787.
 
-4d. **Cold-read probe on the gating bank (measured, not self-assessed) —
-    runs at LEVEL 0.** `_app-component-library.md §
-    discriminating-assessment-items` ships a mandatory **pre-release
-    self-check**, and that check is graded by the same agent that wrote the
-    bank. The library itself records why that cannot work: rewrite 2 of the
-    ace#1014 trajectory self-predicted 5–7/12 and measured 9–10/12, because
-    the author knows which option they *intended* to be hard, which is
-    exactly the knowledge a cold reader lacks. Author self-prediction on this
-    dimension is worthless. This step replaces the prediction with a
-    measurement, at build time, while rewriting an item is still cheap
-    (dimagi-internal/ace#1119).
+4d. **(Retired 2026-08-13 — no build-time cold-read probe.)** A measured
+    cold-read probe briefly lived here: two dispatched agents on a PDD-derived
+    FLW persona, stems and options only, blocking the build when the untrained
+    reader cleared the PDD's unlock threshold. It was removed the day after it
+    landed, together with the eval-side contrast it fed
+    (`pdd-to-learn-app-eval § assessment_discrimination` → now
+    `§ assessment_rule_coverage`).
 
-    **Trigger:** the PDD specifies a readiness gate AND the gating bank has
-    **≥5 scored items**. Below 5 the statistic is degenerate (at n=1 it can
-    only be 0 or 1) and no authoring choice can change a PDD-mandated item
-    count — skip the step and note it in the build memo (ace#1042).
+    **Why:** the probe's untrained reader is an LLM told to role-play a
+    low-literacy CHW, and an LLM's floor is its own competence, not the
+    persona's — it still reads English fluently, does the arithmetic, and
+    eliminates options. For a CHW curriculum, whose taught rules are largely
+    "record what happened, honestly", the protected population's proxy passing
+    cold is the EXPECTED result for a well-built bank, not a catastrophe. The
+    filter fired on `spark-facilitator/20260812-1635` — a build with complete
+    trilingual coverage, worked examples from the real instrument and correct
+    conditional gating — and the only way to clear it would have been to
+    author arbitrary trivia, which is harder to learn and less useful in the
+    field. No ACE bank has ever been put in front of a real CHW, so the
+    LLM→CHW inference was never validated. See ace#1206.
 
-    **This is a catastrophe filter, NOT the eval's statistic.** The real
-    measurement is the trained-minus-untrained **contrast** in
-    `pdd-to-learn-app-eval § assessment_discrimination`, and it stays there.
-    This step gates only on the one condition that is unambiguous and
-    unaffordable to discover after release: *the population the gate exists
-    to protect passes it cold.* Do not tune the bank against this number
-    beyond clearing it — chasing an absolute cold score is what produced
-    ace#1187, and driving it down past the bar means writing items that are
-    arbitrary rather than sensible.
-
-    1. **Extract the bank.** For the form carrying `connect.assessment` (post
-       ace#1131 there is exactly one), pull each scored item's stem and
-       option labels via `get_form`. Hold the `qN_score` calculates back —
-       they are the key.
-    2. **Derive the FLW persona from the PDD**, in writing: formal schooling,
-       the working language and whether it is the cohort's first, prior
-       data-collection / M&E experience, smartphone familiarity. Use the
-       PDD's own words. Do **not** brief a generic "capable adult with good
-       exam technique" — that reader measures an LLM domain-expert ceiling
-       roughly 15pp above the real cohort, which is the defect ace#1187 was
-       filed for.
-    3. **Dispatch TWO separate agents** (`Agent`, level 0 — see the topology
-       note below). Each receives ONLY the persona + stems + option labels,
-       under **independently permuted** neutral labels (`A/B/C/D` reassigned
-       per agent), with picks **committed in writing before any reveal**.
-       Never the calculates, never the module content, never the PDD body —
-       a single-agent self-probe is contaminated by construction, because
-       `get_form` returns stems, options and the key in one payload.
-    4. **Score** each run against the live `qN_score` calculates and take
-       `untrained_max = max(run1, run2) ÷ items_scored`. Max, not mean: this
-       is a safety gate, so the conservative draw is the right one, and the
-       untrained reader carries ±12pp run-to-run noise.
-    5. **Gate:** `untrained_max × 100 >= the PDD's unlock threshold` → the
-       bank is **not shippable**. Rewrite the items the probe answered
-       correctly — those carry no training signal — per the component's Step
-       1 (name the taught rule, the module that teaches it, the operation it
-       protects; discard any item with no module). Then re-probe.
-    6. **Bounded — at most TWO rewrite cycles.** If it still clears the
-       threshold after two, **stop**. Record the measurement in the build
-       memo, add a `commcare-setup.residuals[]` entry naming the items, and
-       proceed to Step 5. Do NOT iterate further: an unbounded chase against
-       a cold-guess number is precisely how ace#1187 burned two authoring
-       cycles (~500K subagent tokens) on a bank that was already fine.
-
-    **Calibration (measured 2026-08-12, three real banks).** The bar has
-    large margins on every bank we have; it fires only on the genuinely
-    decorative one:
-
-    | Bank | gate | untrained runs | `untrained_max` | verdict |
-    |---|---|---|---|---|
-    | `hh-poverty-targeting/20260722-1341` (10 items, one virtuous option + 3 absurd) | 80 | 9, 10 | **1.00** | **FIRES** |
-    | `spark-facilitator/20260810-0737` (20 items) | 80 | 11, 10 | 0.55 | clear |
-    | `hh-poverty-targeting/20260730-2210` (12 items) | 80 | 2, 1 | 0.17 | clear |
-
-    A bank that clears this bar can still fail the eval's contrast, and that
-    is correct — this step is a floor, not a substitute.
-
-    **Topology note.** This step calls `Agent`, so it MUST run at level 0.
-    That holds today because `commcare-setup` is a procedure doc the
-    orchestrator executes **inline** (see `CLAUDE.md § Agent topology` and
-    `agents/commcare-setup.md` — the same constraint that makes
-    `/nova:autobuild` work). If this skill is ever dispatched *as* a
-    subagent, `Agent` is unavailable and this step will fail: in that case
-    skip it, record a residual, and let `pdd-to-learn-app-eval` carry the
-    measurement. Never restructure the phase to make it fit — the
-    no-two-levels-of-Agent invariant wins.
-
+    **What replaced it:** the same question, asked structurally. Rather than
+    simulating a reader, `pdd-to-learn-app-eval § assessment_rule_coverage`
+    audits which taught rules the bank keys on and whether the
+    **counter-intuitive** ones — where common sense gives the WRONG answer —
+    are covered. That answers "is this bank mostly common sense?" from the
+    artifact, with no persona, no dispatched agents and no run-to-run noise,
+    and it returns `repairs[]` naming the specific items to re-key (see
+    § Repair mode below). Do not reinstate a persona probe here without
+    reading ace#1206 first.
 5. **(Optional) Inspect the built app** via `/nova:show <app_id>` to
    cross-check the structure against the PDD before writing the summary.
 
@@ -677,6 +649,44 @@ Generate the Learn (training) app from the PDD using the Nova plugin
 
 8. **Notify admin group** that Learn app generation is complete, with the
    Nova app URL and a link to the summary in GDrive.
+
+## Repair mode — consuming a `repairs[]` work order
+
+`pdd-to-learn-app-eval § assessment_rule_coverage` does not just score the
+assessment; when the bank leaves a taught rule untested it returns a typed
+`repairs[]` list naming the uncovered rule, the module that teaches it, and a
+`suggested_target` item to re-key. The orchestrator dispatches THIS skill to
+apply them — the judge never repairs the bank it grades, because a grader that
+authors its own fix and re-scores it converges on passing itself.
+
+When invoked with a `repairs[]` list:
+
+1. **Re-key, don't grow.** For each entry, edit the `suggested_target` item in
+   place via `edit_field` (and `set_field_options_source` when the options
+   change). Keep the stem's subject where you can; change what the options
+   *differ on*, so the answer turns on the uncovered rule rather than on general
+   judgment. Adding items instead of re-keying inflates the bank and lowers the
+   effective bar the gate applies.
+2. **Preserve the invariants.** Every edited item keeps: complete
+   language coverage on stem AND options (`localization-layer`), no option
+   rejectable on sight, no literal `<` / `>` in label text, and a `qN_score`
+   whose calculate references the question as `#form/<id>` — a bare id persists
+   as raw text with no error and silently breaks the scoring chain (ace#1119).
+3. **Read back the scoring chain.** After any pass that rewrites options or
+   keys, `get_field` on the edited `qN_score` and on `user_score` and assert
+   each `calculate.parts` still contains a `field-ref` part, not only text.
+4. **Update the build memo's per-item table** for every item you touched, and
+   record which `repairs[]` entries you applied.
+5. **One round.** Return after applying the list; the orchestrator re-runs the
+   eval once. Do not iterate against the score — roughly 500K subagent tokens
+   were spent across two prior authoring cycles looping against a number that
+   could not move (ace#1014, ace#1206).
+
+If a `repairs[]` entry cannot be satisfied — the rule genuinely has no
+non-guessable formulation, or re-keying would break a load-bearing teaching
+example — say so explicitly in the build memo with the reason, and leave the
+item alone. An unfixable entry is a finding for a human, not a licence to
+fabricate an arbitrary item.
 
 ## Archetypes
 
