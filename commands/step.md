@@ -59,8 +59,9 @@ Run a single skill for an opportunity without running the full lifecycle.
    /ace:step <skill> <opp>/<run-id>: run not found at ACE/<opp>/runs/<run-id>/.
 
    Pinned-run-id targets only work against existing runs. Either drop
-   the run-id to start a fresh run via /ace:run, or use /ace:fork-run
-   to create a new run forked from an existing one.
+   the run-id to start a fresh run via /ace:run, or use the fork-run
+   skill to create a new run forked from an existing one (see
+   skills/fork-run/SKILL.md).
    ```
 
    See `agents/ace-orchestrator.md` § Touching State — Operator Capture

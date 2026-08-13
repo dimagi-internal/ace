@@ -337,8 +337,14 @@ export function extractWantedMatchers(stderrExcerpt: string): string[] {
   return [...out].sort();
 }
 
-/** ACE reports the fork invocation; it never forks itself. Forking copies
+/** ACE reports fork parameters; it never forks itself. Forking copies
  *  artifacts into a new run, which is the operator's decision.
+ *
+ *  Emits parameter labels and values (not a command line) because the
+ *  operator-facing invocation syntax is undocumented. The skill's body
+ *  fields are specified in skills/fork-run/SKILL.md; this function names
+ *  those fields exactly so the operator can dispatch fork-run with known
+ *  correctness.
  *
  *  Uses fork_at_skill (not fork_at_phase) because a heal is always resuming
  *  from a specific blocked skill — re-running that skill + everything after it
@@ -351,9 +357,10 @@ export function renderForkInvocation(input: {
 }): string {
   const feedback = `Selector map healed; re-walk from ${input.forkAtSkill} to verify the fix`;
   return [
-    `/ace:step fork-run ${input.oppSlug} \\`,
-    `  --fork-at-skill ${input.forkAtSkill} \\`,
-    `  --source-run-id ${input.sourceRunId} \\`,
-    `  --feedback "${feedback}"`,
+    `Fork from here — skill \`fork-run\` (see skills/fork-run/SKILL.md):`,
+    `  opp_slug:      ${input.oppSlug}`,
+    `  source_run_id: ${input.sourceRunId}`,
+    `  fork_at_skill: ${input.forkAtSkill}`,
+    `  feedback:      "${feedback}"`,
   ].join('\n');
 }

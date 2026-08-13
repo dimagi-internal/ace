@@ -128,7 +128,7 @@ the loop closes here and nowhere else.
 
 ## Resume
 
-After a successful heal (green re-run + merged PR), report the fork invocation:
+After a successful heal (green re-run + merged PR), report the fork parameters:
 
 ```
 renderForkInvocation({
@@ -138,13 +138,14 @@ renderForkInvocation({
 })
 ```
 
-This prints the `/ace:step fork-run` invocation the operator can run to fork
-the current run at the healed skill boundary. The fork uses `fork_at_skill` 
-(not `fork_at_phase`) so it resumes from the healed skill onward, validating 
+This prints a parameter block the operator passes to the `fork-run` skill to
+fork the current run at the healed skill boundary. The fork uses `fork_at_skill`
+(not `fork_at_phase`) so it resumes from the healed skill onward, validating
 the fix without re-running the entire phase unnecessarily.
 
 The operator's decision: fork to validate on a fresh run (with upstream artifacts
 copied), or proceed with the current run. ACE never forks itself — forking is the
-operator's call based on the risk/cost trade-off.
+operator's call based on the risk/cost trade-off. See `skills/fork-run/SKILL.md`
+for how to dispatch the fork.
 
-**Do NOT fork.** Print the invocation and stop.
+**Do NOT fork.** Print the parameters and stop.

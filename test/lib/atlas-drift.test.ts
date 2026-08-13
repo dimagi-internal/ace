@@ -422,27 +422,25 @@ selectors:
 });
 
 describe('renderForkInvocation', () => {
-  it('emits the /ace:step fork-run invocation with fork_at_skill (not phase)', () => {
+  it('emits parameter labels and values using the real fork-run SKILL field names', () => {
     const invocation = renderForkInvocation({
       oppSlug: 'bednet-spot-check',
       sourceRunId: '20260812-1030',
       forkAtSkill: 'app-screenshot-capture',
     });
 
-    // Must invoke fork-run skill via /ace:step
-    expect(invocation).toContain('/ace:step fork-run bednet-spot-check');
+    // Names the fork-run skill and points to its documentation
+    expect(invocation).toContain('fork-run');
+    expect(invocation).toContain('skills/fork-run/SKILL.md');
 
-    // Must name the run to fork from
-    expect(invocation).toContain('--source-run-id 20260812-1030');
+    // Emits the real field names the SKILL.md body accepts
+    expect(invocation).toContain('opp_slug:      bednet-spot-check');
+    expect(invocation).toContain('source_run_id: 20260812-1030');
+    expect(invocation).toContain('fork_at_skill: app-screenshot-capture');
 
-    // Must use fork_at_skill, not fork_at_phase — a heal resumes from the
-    // blocked skill to validate it, not re-running the whole phase
-    expect(invocation).toContain('--fork-at-skill app-screenshot-capture');
-
-    // Must seed feedback so the new run carries context
-    expect(invocation).toContain('--feedback');
+    // Seeds feedback so the new run carries heal context
+    expect(invocation).toContain('feedback:');
     expect(invocation).toContain('Selector map healed');
-    expect(invocation).toContain('app-screenshot-capture');
   });
 
   it('surfaces the skill name in the feedback', () => {
