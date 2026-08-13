@@ -662,8 +662,8 @@ describe('recipe-splitter — captureAllBoundaries', () => {
   const opts = { captureAllBoundaries: true };
 
   it('opens a window at every top-level runFlow boundary', () => {
-    expect(windows(readFileSync(`${STATIC}connect-claim-opp.yaml`, 'utf8'), opts)).toBe(13);
-    expect(windows(readFileSync(`${STATIC}deliver-launch.yaml`, 'utf8'), opts)).toBe(13);
+    expect(windows(readFileSync(`${STATIC}connect-claim-opp.yaml`, 'utf8'), opts)).toBe(9);
+    expect(windows(readFileSync(`${STATIC}deliver-launch.yaml`, 'utf8'), opts)).toBe(9);
   });
 
   it('never splits inside a runFlow.commands block', () => {
@@ -757,11 +757,30 @@ declaring alongside the other loop state:
   let runFlowIndex = 0;
 ```
 
-The caller prefixes the recipe id, so `branch0-pre` becomes
-`<recipe-id>-branch0-pre.xml` on disk — matching the naming the tests assert.
-If the resulting counts differ from 13/13, adjust the boundary rule to match
-the measured table in the spec rather than editing the test to match the code:
-the table was computed from the real palette, and the test is the contract.
+**Adjacent `runFlow`s share ONE window.** When a top-level `runFlow`
+immediately follows another, emit a single window at that seam rather than a
+`-post` plus an empty `-pre`. This was corrected during execution: the naive
+"every runFlow gets an independent pre and post" rule produces chunks whose
+flow section is empty (header + `---`, no steps) — 2 in `connect-claim-opp`,
+3 in `deliver-launch`. Those are bad three ways: `runRecipeWithDumps` treats a
+non-zero chunk exit as fatal and aborts the rest, so if `maestro test` rejects
+an empty flow the mode dies on the first adjacent pair; even on success the
+dump duplicates the preceding `-post` frame, because nothing executes between
+the two runFlows; and it burns a full Maestro startup on nothing.
+
+The invariant that matters is therefore **no emitted chunk has an empty flow
+section**, not any particular count — assert that directly. Counts are **10** (`connect-claim-opp`) and **9** (`deliver-launch`),
+measured by running. Three sources of empty chunks had to be removed, and
+each was found only by running: adjacency (a runFlow following a runFlow),
+and — caught by the invariant test itself — the leading `-pre` before the
+FIRST top-level step, which in both recipes is preceded only by comments.
+The general rule is "never open a boundary window before any real top-level
+step has been seen", not a special case for index 0.
+
+Two earlier figures in this plan were wrong: 13/13 (`3 + 5x2`) assumed
+adjacency never collapses a pair, and 11/10 assumed adjacency was the only
+collapse. Do not re-derive this number by arithmetic; assert the invariant
+and read the count off a run.
 
 - [ ] **Step 4: Run to verify it passes**
 
