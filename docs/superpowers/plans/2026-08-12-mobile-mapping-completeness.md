@@ -504,9 +504,72 @@ Add `stringify as stringifyYaml` to the existing `yaml` import at the top of `li
 Run: `npx vitest run test/mcp/mobile/atlas-drift.test.ts`
 Expected: PASS.
 
-- [ ] **Step 5: Wire the probe to write the file**
+- [ ] **Step 5: Fix the probe's default APK, which is wrong three ways**
 
-In `scripts/probe-atlas-drift.ts`, after the existing markdown report is produced, add a `--yaml-out <path>` argument. When given, for each `*-FAILURE.xml` found under the dump dir, call `classifyScreenCoverage` with `wanted: extractWantedMatchers(stderrExcerpt)` — reading the excerpt from the sibling `*-FAILURE.txt` if present, else `[]` — and write `renderReportYaml(...)` to the path. Print the classification line to stdout so a caller that ignores the file still sees it.
+`scripts/probe-atlas-drift.ts` sets `DEFAULT_APK = '2.63.0'`, its doc comment
+claims `2.62.0`, and `.env.tpl:210` pins `ACE_CONNECT_APK_VERSION=2.63.2`. So
+the probe compares dumps against the wrong selector map by default and would
+mis-report coverage before this feature ever ran. Read the pin instead of
+hardcoding:
+
+```ts
+const DEFAULT_APK = process.env.ACE_CONNECT_APK_VERSION || '2.63.2';
+```
+
+Update the doc comment above `--apk` to say so rather than naming a version
+that will drift again.
+
+- [ ] **Step 6: Wire the probe to write the yaml**
+
+Add `--yaml-out <path>` to `CliArgs` and `parseArgs` in
+`scripts/probe-atlas-drift.ts`, alongside the existing `--out`:
+
+```ts
+} else if (a === '--yaml-out') {
+  yamlOutPath = argv[++i] ?? null;
+  if (!yamlOutPath) throw new Error('--yaml-out requires a path');
+}
+```
+
+Then, after the markdown report is written, add:
+
+```ts
+if (args.yamlOutPath) {
+  const failureDumps = dumpFiles.filter((f) => isFailureDumpFile(f));
+  if (failureDumps.length === 0) {
+    process.stderr.write('no *-FAILURE.xml under the dump dir; skipping yaml report\n');
+  } else {
+    // The newest failure dump is the one that stopped the walk.
+    const dumpPath = failureDumps.sort()[failureDumps.length - 1];
+    const stderrPath = dumpPath.replace(/\.xml$/, '.txt');
+    const stderrExcerpt = fs.existsSync(stderrPath)
+      ? fs.readFileSync(stderrPath, 'utf8')
+      : '';
+    const result = classifyScreenCoverage({
+      dumpXml: fs.readFileSync(dumpPath, 'utf8'),
+      selectorMapYaml: fs.readFileSync(selectorPath, 'utf8'),
+      wanted: extractWantedMatchers(stderrExcerpt),
+    });
+    fs.writeFileSync(
+      args.yamlOutPath,
+      renderReportYaml({
+        apkVersion: args.apkVersion,
+        dumpFile: path.basename(dumpPath),
+        result,
+      }),
+      'utf8',
+    );
+    // Print it too: a caller that never opens the file still sees the verdict.
+    process.stdout.write(
+      `atlas: ${result.classification} on ${path.basename(dumpPath)}` +
+        (result.classification === 'unmapped-surface' ? ' — tier 2 warranted\n' : '\n'),
+    );
+  }
+}
+```
+
+Add `classifyScreenCoverage`, `extractWantedMatchers`, and `renderReportYaml`
+to the existing import from `../lib/atlas-drift.js`.
 
 - [ ] **Step 6: Document the close-out step**
 
@@ -602,7 +665,70 @@ Expected: FAIL on the `captureAllBoundaries` counts (13/13); the regression guar
 
 - [ ] **Step 3: Implement**
 
-In `mcp/mobile/recipe-splitter.ts`, add the options parameter and, when `captureAllBoundaries` is set, emit an additional chunk break immediately before and immediately after each **top-level** `- runFlow:` list item. Detect top-level items by a zero-indentation `- ` prefix — the same rule the existing splitter uses to find top-level `takeScreenshot`. Never descend into `commands:`.
+In `mcp/mobile/recipe-splitter.ts`, add the options parameter and the
+`runFlow` boundary rule. The existing loop already identifies top-level steps
+with `topLevelStepRe = /^-\s+/` and only ever splits *between* them, so nested
+`takeScreenshot` inside `commands:` is already invisible to it — the same
+property makes nested `runFlow` invisible for free. Add:
+
+```ts
+export interface SplitOptions {
+  /** Open a dump window at every top-level `runFlow` boundary, not just at
+   *  top-level `takeScreenshot`. EXPENSIVE — one extra `maestro test`
+   *  invocation per window. Default false; only a tier-1 `unmapped-surface`
+   *  classification justifies turning it on. */
+  captureAllBoundaries?: boolean;
+}
+
+const topLevelRunFlowRe = /^-\s+runFlow:/;
+```
+
+Change the signature to
+`export function splitRecipeAtScreenshots(body: string, opts: SplitOptions = {}): RecipeChunk[]`
+and, inside the loop's `if (isTopLevelStep)` branch, replace the existing
+split-decision with:
+
+```ts
+    if (isTopLevelStep) {
+      const startsRunFlow = topLevelRunFlowRe.test(line);
+      // Split BEFORE a runFlow (the `-pre` window) and AFTER the previous
+      // step if it was a runFlow (the `-post` window). A takeScreenshot
+      // split still wins its own name.
+      if (pendingScreenshotName !== undefined) {
+        finalize();
+      } else if (opts.captureAllBoundaries && (startsRunFlow || pendingRunFlowClose)) {
+        pendingScreenshotName = pendingRunFlowClose
+          ? `branch${runFlowIndex - 1}-post`
+          : `branch${runFlowIndex}-pre`;
+        finalize();
+      }
+      if (startsRunFlow) {
+        pendingRunFlowClose = true;
+        runFlowIndex++;
+      } else {
+        pendingRunFlowClose = false;
+      }
+      inTopLevelStep = true;
+
+      const match = line.match(takeScreenshotRe);
+      if (match) {
+        pendingScreenshotName = match[1] ?? match[2] ?? match[3];
+      }
+    }
+```
+
+declaring alongside the other loop state:
+
+```ts
+  let pendingRunFlowClose = false;
+  let runFlowIndex = 0;
+```
+
+The caller prefixes the recipe id, so `branch0-pre` becomes
+`<recipe-id>-branch0-pre.xml` on disk — matching the naming the tests assert.
+If the resulting counts differ from 13/13, adjust the boundary rule to match
+the measured table in the spec rather than editing the test to match the code:
+the table was computed from the real palette, and the test is the contract.
 
 - [ ] **Step 4: Run to verify it passes**
 
@@ -629,7 +755,39 @@ git commit -m "feat(mobile): opt-in captureAllBoundaries splitting (default off)
 
 - [ ] **Step 1: Pass the option down**
 
-Add `captureAllBoundaries?: boolean` to the recipe-run opts type in `mcp/mobile/types.ts`, thread it from `client.ts` into `MaestroBackend.runRecipe`, and forward it to `splitRecipeAtScreenshots` inside `runRecipeWithDumps`.
+Add to the recipe-run options interface in `mcp/mobile/types.ts`:
+
+```ts
+  /** Tier 2 of the mapping ladder: open a dump window at every top-level
+   *  `runFlow` boundary. Costs one extra `maestro test` invocation per
+   *  window. Default false. Turn on only after an atlas-report.yaml says
+   *  `classification: unmapped-surface`. */
+  captureAllBoundaries?: boolean;
+```
+
+In `mcp/mobile/backends/maestro.ts:93`, forward it:
+
+```ts
+    if (opts.serial) {
+      return this.runRecipeWithDumps(recipePath, envVars, screenshotDir, opts as {
+        adbPort?: number;
+        serial: string;
+        captureAllBoundaries?: boolean;
+      });
+    }
+```
+
+and inside `runRecipeWithDumps`, change the split call:
+
+```ts
+    const chunks = splitRecipeAtScreenshots(body, {
+      captureAllBoundaries: opts.captureAllBoundaries === true,
+    });
+```
+
+The `=== true` is deliberate: an `undefined` or a truthy-but-not-true value
+must never turn the expensive mode on. In `mcp/mobile/client.ts`, pass the
+caller's flag through to the backend at the `mobile_run_recipe` entry point.
 
 - [ ] **Step 2: Add the default-off assertion**
 
@@ -660,7 +818,294 @@ gh pr merge <n> -R dimagi-internal/ace --auto --merge
 
 # PR 3 — Heal (tier 3)
 
-### Task 6: `selector-map-heal`
+Task 6 lands before Task 7 deliberately: build the fence before you let the
+thing into the field.
+
+### Task 6: The mechanical `Live-verified` guard
+
+The spec asks that the heal path *cannot* mutate a row carrying a
+`Live-verified` note. A skill-prose assertion is not that — and "prose
+invariants fail under load" is this spec's own thesis, so the plan must not
+fall to it. A diff is a diff: this check does not care whether an LLM, a human,
+or a subagent produced it. There are 34 `Live-verified` rows across the two
+live maps today.
+
+**Files:**
+- Create: `lib/selector-map-guard.ts`
+- Create: `scripts/check-selector-map-diff.ts`
+- Modify: `scripts/hooks/pre-commit`
+- Test: `test/lib/selector-map-guard.test.ts`
+
+**Interfaces:**
+- Consumes: nothing from earlier tasks (deliberately standalone).
+- Produces: `isLiveVerified(row: SelectorRow | undefined): boolean`;
+  `findLiveVerifiedViolations(oldYaml: string, newYaml: string): LiveVerifiedViolation[]`.
+  Task 7's skill cites this check by name as the thing that enforces its Guard 1.
+
+- [ ] **Step 1: Write the failing tests**
+
+Create `test/lib/selector-map-guard.test.ts`:
+
+```ts
+import { describe, it, expect } from 'vitest';
+import { findLiveVerifiedViolations } from '../../lib/selector-map-guard.js';
+
+const base = `
+apk_version: "2.63.2"
+selectors:
+  deliver-home-daily-visits:
+    type: text
+    value: "Daily Visits"
+    purpose: "THE differentiator (#893). Live-verified 2026-07-30."
+  unverified-row:
+    type: id
+    value: "org.commcare.dalvik:id/guess"
+    purpose: "Transcribed from 2.62.0; not yet confirmed."
+`;
+
+describe('findLiveVerifiedViolations', () => {
+  it('flags a mutated value on a Live-verified row', () => {
+    const after = base.replace('"Daily Visits"', '"Daily visits"');
+    const v = findLiveVerifiedViolations(base, after);
+    expect(v).toHaveLength(1);
+    expect(v[0]).toMatchObject({
+      selector: 'deliver-home-daily-visits',
+      kind: 'mutated',
+      field: 'value',
+      before: 'Daily Visits',
+      after: 'Daily visits',
+    });
+  });
+
+  it('flags a deleted Live-verified row', () => {
+    const after = `
+apk_version: "2.63.2"
+selectors:
+  unverified-row:
+    type: id
+    value: "org.commcare.dalvik:id/guess"
+    purpose: "Transcribed from 2.62.0; not yet confirmed."
+`;
+    const v = findLiveVerifiedViolations(base, after);
+    expect(v).toEqual([{ selector: 'deliver-home-daily-visits', kind: 'deleted' }]);
+  });
+
+  it('ALLOWS editing the purpose prose of a Live-verified row', () => {
+    // Load-bearing: connect-2.63.2.yaml:483 currently carries stale prose
+    // that must stay fixable. Only `type` and `value` are frozen.
+    const after = base.replace('Live-verified 2026-07-30.', 'Live-verified 2026-07-30. See #863.');
+    expect(findLiveVerifiedViolations(base, after)).toEqual([]);
+  });
+
+  it('ALLOWS adding a new row, and mutating an unverified one', () => {
+    const withNew = base + `  brand-new:\n    type: id\n    value: "x"\n`;
+    expect(findLiveVerifiedViolations(base, withNew)).toEqual([]);
+    const mutatedUnverified = base.replace('org.commcare.dalvik:id/guess', 'org.commcare.dalvik:id/better');
+    expect(findLiveVerifiedViolations(base, mutatedUnverified)).toEqual([]);
+  });
+
+  it('returns [] rather than throwing on unparseable yaml', () => {
+    expect(findLiveVerifiedViolations(base, ':::not yaml:::')).toEqual([]);
+  });
+});
+```
+
+- [ ] **Step 2: Run to verify it fails**
+
+Run: `npx vitest run test/lib/selector-map-guard.test.ts`
+Expected: FAIL — cannot resolve `../../lib/selector-map-guard.js`.
+
+- [ ] **Step 3: Implement**
+
+Create `lib/selector-map-guard.ts`:
+
+```ts
+import { parse as parseYaml } from 'yaml';
+
+export interface SelectorRow {
+  type?: string;
+  value?: string;
+  purpose?: string;
+}
+
+interface SelectorMapDoc {
+  apk_version?: string;
+  selectors?: Record<string, SelectorRow>;
+}
+
+export interface LiveVerifiedViolation {
+  selector: string;
+  kind: 'mutated' | 'deleted';
+  field?: 'type' | 'value';
+  before?: string;
+  after?: string;
+}
+
+const LIVE_VERIFIED = /live-verified/i;
+
+export function isLiveVerified(row: SelectorRow | undefined): boolean {
+  return !!row && typeof row.purpose === 'string' && LIVE_VERIFIED.test(row.purpose);
+}
+
+/** A row whose `purpose` records a live-device verification is EVIDENCE, not
+ *  an opinion — someone stood in front of a device and looked. Overwriting it
+ *  with a fresh guess is the exact failure class jjackson/ace#893 documents:
+ *  `viewJobCard`'s "absent in Learn" claim was asserted, never observed, and
+ *  survived for months because nothing stopped it being written.
+ *
+ *  Frozen: `type` and `value` (what it matches, and how).
+ *  Free: `purpose` (the prose) — documentation must stay improvable, and
+ *  connect-2.63.2.yaml:483 currently carries stale prose that needs fixing.
+ *  Deleting the row entirely counts as a mutation. */
+export function findLiveVerifiedViolations(
+  oldYaml: string,
+  newYaml: string,
+): LiveVerifiedViolation[] {
+  // Track parse failure separately from "parsed to no selectors". Conflating
+  // them makes an unparseable NEW map look like every Live-verified row was
+  // deleted — a false accusation the committer cannot act on. A broken map is
+  // a real problem, but it is not evidence of a mutation, and this guard only
+  // speaks to mutations. `npm test` catches the malformed map elsewhere.
+  // A try/catch alone is NOT enough: `yaml.parse(':::not yaml:::')` does not
+  // throw, it returns a string. Without the shape check below, `selectors`
+  // reads as undefined and every Live-verified row looks deleted. Verified by
+  // executing this function — the try/catch version reported a false deletion.
+  const rows = (text: string): { ok: boolean; rows: Record<string, SelectorRow> } => {
+    let doc: unknown;
+    try {
+      doc = parseYaml(text);
+    } catch {
+      return { ok: false, rows: {} };
+    }
+    if (!doc || typeof doc !== 'object') return { ok: false, rows: {} };
+    const selectors = (doc as SelectorMapDoc).selectors;
+    if (!selectors || typeof selectors !== 'object') return { ok: false, rows: {} };
+    return { ok: true, rows: selectors };
+  };
+  const beforeParse = rows(oldYaml);
+  const afterParse = rows(newYaml);
+  if (!beforeParse.ok || !afterParse.ok) return [];
+  const before = beforeParse.rows;
+  const after = afterParse.rows;
+  const out: LiveVerifiedViolation[] = [];
+
+  for (const [name, oldRow] of Object.entries(before)) {
+    if (!isLiveVerified(oldRow)) continue;
+    const newRow = after[name];
+    if (!newRow) {
+      out.push({ selector: name, kind: 'deleted' });
+      continue;
+    }
+    for (const field of ['type', 'value'] as const) {
+      if (oldRow[field] !== newRow[field]) {
+        out.push({
+          selector: name,
+          kind: 'mutated',
+          field,
+          before: oldRow[field],
+          after: newRow[field],
+        });
+      }
+    }
+  }
+  return out.sort((a, b) => a.selector.localeCompare(b.selector));
+}
+```
+
+- [ ] **Step 4: Run to verify it passes**
+
+Run: `npx vitest run test/lib/selector-map-guard.test.ts`
+Expected: PASS, all five.
+
+- [ ] **Step 5: Add the CLI that runs it against a real diff**
+
+Create `scripts/check-selector-map-diff.ts`:
+
+```ts
+#!/usr/bin/env npx tsx
+/** Fail if a commit mutates or deletes a `Live-verified` selector row.
+ *  Usage: check-selector-map-diff.ts [--staged | --base <ref>] */
+import { execFileSync } from 'node:child_process';
+import * as fs from 'node:fs';
+import { findLiveVerifiedViolations } from '../lib/selector-map-guard.js';
+
+const argv = process.argv.slice(2);
+const staged = argv.includes('--staged');
+const base = staged ? 'HEAD' : (argv[argv.indexOf('--base') + 1] ?? 'origin/main');
+
+const git = (args: string[]): string =>
+  execFileSync('git', args, { encoding: 'utf8', maxBuffer: 32 * 1024 * 1024 });
+
+const changed = git(['diff', '--name-only', staged ? '--cached' : base])
+  .split('\n')
+  .filter((p) => /^mcp\/mobile\/selectors\/.*\.yaml$/.test(p));
+
+let failed = false;
+for (const file of changed) {
+  let oldText = '';
+  try {
+    oldText = git(['show', `${base}:${file}`]);
+  } catch {
+    continue; // new file — nothing to protect yet
+  }
+  const newText = staged ? git(['show', `:${file}`]) : fs.readFileSync(file, 'utf8');
+  for (const v of findLiveVerifiedViolations(oldText, newText)) {
+    failed = true;
+    const detail =
+      v.kind === 'deleted'
+        ? 'row deleted'
+        : `${v.field}: ${JSON.stringify(v.before)} -> ${JSON.stringify(v.after)}`;
+    process.stderr.write(`${file}: Live-verified row '${v.selector}' ${detail}\n`);
+  }
+}
+
+if (failed) {
+  process.stderr.write(
+    '\nA Live-verified row records a live-device observation. Re-verify on a ' +
+      'device and update the purpose note in the same commit, or add a NEW row ' +
+      'instead of overwriting this one. See jjackson/ace#893.\n',
+  );
+  process.exit(1);
+}
+```
+
+- [ ] **Step 6: Wire it into the pre-commit hook**
+
+Append to `scripts/hooks/pre-commit`, after the existing VERSION block:
+
+```bash
+if git diff --cached --name-only | grep -qE '^mcp/mobile/selectors/.*\.yaml$'; then
+  npx tsx "$(git rev-parse --show-toplevel)/scripts/check-selector-map-diff.ts" --staged
+fi
+```
+
+- [ ] **Step 7: Prove the hook actually blocks**
+
+```bash
+sed -i '' 's/value: "Daily Visits"/value: "Daily visits"/' mcp/mobile/selectors/connect-2.63.2.yaml
+git add mcp/mobile/selectors/connect-2.63.2.yaml
+git commit -m "should be rejected"   # expect: exit 1, names deliver-home-daily-visits
+git restore --staged mcp/mobile/selectors/connect-2.63.2.yaml
+git checkout -- mcp/mobile/selectors/connect-2.63.2.yaml
+```
+
+Expected: the commit is refused and the message names the row. A guard nobody has seen fire is a guard nobody knows works.
+
+- [ ] **Step 8: Commit**
+
+```bash
+git add lib/selector-map-guard.ts scripts/check-selector-map-diff.ts \
+        scripts/hooks/pre-commit test/lib/selector-map-guard.test.ts
+git commit -m "feat(mobile): mechanically forbid overwriting a Live-verified selector row
+
+A row whose purpose records a live-device observation is evidence.
+#893's viewJobCard claim was asserted, never observed, and survived
+months because nothing stopped it being written."
+```
+
+---
+
+### Task 7: `selector-map-heal`
 
 **Files:**
 - Create: `skills/selector-map-heal/SKILL.md`
@@ -684,9 +1129,21 @@ describe('selector-map-heal — the three guards are stated in the skill', () =>
     expect(readFileSync(P, 'utf8')).toMatch(/^name:\s*selector-map-heal$/m);
   });
 
-  it('forbids mutating a Live-verified row', () => {
-    expect(readFileSync(P, 'utf8')).toMatch(/Live-verified/);
-    expect(readFileSync(P, 'utf8')).toMatch(/additive|never mutate|only add/i);
+  it('forbids mutating a Live-verified row AND names its mechanical enforcer', () => {
+    const body = readFileSync(P, 'utf8');
+    expect(body).toMatch(/Live-verified/);
+    expect(body).toMatch(/additive|never mutate|only add/i);
+    // Guard 1 is enforced by Task 6's pre-commit check, not by this prose.
+    // If the skill stops naming it, an implementer may believe the rule is
+    // advisory — which is how it got written as advisory the first time.
+    expect(body).toMatch(/check-selector-map-diff/);
+  });
+
+  it('branches correctly on matcher-miss — the #811/#893 inversion', () => {
+    const body = readFileSync(P, 'utf8');
+    expect(body).toMatch(/matcher-miss/);
+    // Must tell the implementer to STOP, not to author a new anchor.
+    expect(body).toMatch(/matcher-miss[\s\S]{0,400}?(STOP|do NOT add|Fix the recipe)/i);
   });
 
   it('requires a green on-device re-run before any merge', () => {
@@ -709,14 +1166,78 @@ Expected: FAIL — the file does not exist.
 
 - [ ] **Step 3: Write the skill**
 
-Create `skills/selector-map-heal/SKILL.md` with frontmatter `name: selector-map-heal` and a description naming its trigger (`atlas-report.yaml` with `classification: unmapped-surface`). Body sections, each stated explicitly enough for the test above to match:
+Create `skills/selector-map-heal/SKILL.md`:
 
-1. **When to run** — only on `unmapped-surface`. On `matcher-miss` STOP: fix the recipe, do not add a row. On `drift`, update the existing row.
-2. **Guard 1 — additive only.** Add rows; never mutate a row carrying a `Live-verified` note.
-3. **Guard 2 — green or nothing.** Re-run the blocked leg on-device. Green ⇒ PR + `gh pr merge --auto --merge`. Red after a bounded attempt count ⇒ stop and file with the dump attached; never ship an unproven row.
-4. **Guard 3 — never cold-boot over a human's emulator.**
-5. **Provenance** — every new row's `purpose` string names the dump file and run it came from.
-6. **Why auto-merge is legitimate here** — the green re-run *is* the live validation ACE's rule demands, performed immediately before merge.
+````markdown
+---
+name: selector-map-heal
+description: >
+  Repair the mobile selector map from a live failure dump when a Phase 6 walk
+  hits a surface the map has never covered. Triggered by an atlas-report.yaml
+  carrying `classification: unmapped-surface`. Proposes NEW selector rows from
+  the dump, proves them by re-running the blocked leg on-device, and ships them
+  only on green. Narrow sibling of selector-map-calibrate, which stays manual.
+---
+
+# Selector-Map Heal
+
+## When to run — and when to stop
+
+Read `atlas-report.yaml` from the run folder and branch on `classification`:
+
+| classification | action |
+|---|---|
+| `unmapped-surface` | **Run this skill.** The map has no anchor on that screen. |
+| `matcher-miss` | **STOP.** The element IS on screen; the recipe reached for it wrongly. Fix the recipe. Do NOT add a selector row. |
+| `drift` | **STOP.** An anchor moved. Update the existing row via `selector-map-calibrate`. |
+| `mapped` | **STOP.** Nothing to heal; the failure is elsewhere. |
+
+Adding a row on a `matcher-miss` is the inversion that produced
+jjackson/ace#811 and #893 — both shipped a new anchor for a screen whose
+anchors were fine.
+
+## Guard 1 — additive only
+
+You may ADD rows. You may **never mutate a row carrying a `Live-verified`
+note** — that row records a live-device observation, and overwriting evidence
+with a fresh guess is the #893 failure class.
+
+This is enforced mechanically, not on trust: `scripts/check-selector-map-diff.ts`
+runs in the pre-commit hook and rejects the commit. Do not try to route around
+it — if you believe a `Live-verified` row is genuinely wrong, re-verify on a
+device and update its purpose note in the same commit.
+
+## Guard 2 — green or nothing
+
+Propose rows from the dump, apply them, then **re-run the blocked leg
+on-device**.
+
+- Green ⇒ open a PR and arm auto-merge (`gh pr merge <n> --auto --merge`).
+- Red after 2 attempts ⇒ **stop and file** an issue with the dump attached.
+
+Never ship an unproven row. Shipping a plausible guess is precisely the class
+this skill exists to end, and a red re-run is the only thing that can tell you
+your guess was one.
+
+## Guard 3 — never cold-boot over a human's emulator
+
+`mobile_ensure_avd_running` kills and wipes the running emulator. Confirm
+before cold-booting over an AVD someone may be driving by hand.
+
+## Provenance
+
+Every new row's `purpose` string names the dump file and the run it came from,
+so the next reader checks provenance instead of trusting the note. A row that
+cannot say where it came from is a guess wearing a citation.
+
+## Why auto-merge is legitimate here
+
+ACE's standing rule is that selector and recipe changes are validated on a live
+device before merge. Here the green re-run in Guard 2 **is** that validation,
+performed immediately before the merge. This is the one path where self-heal
+and the live-validation rule agree rather than conflict — which is exactly why
+the loop closes here and nowhere else.
+````
 
 - [ ] **Step 4: Run to verify it passes**
 
@@ -738,7 +1259,7 @@ gh pr merge <n> -R dimagi-internal/ace --auto --merge
 
 # PR 4 — Resume (tier 4)
 
-### Task 7: Report the fork point
+### Task 8: Report the fork point
 
 **Files:**
 - Modify: `lib/atlas-drift.ts`
@@ -807,10 +1328,33 @@ gh pr merge <n> -R dimagi-internal/ace --auto --merge
 
 ## Self-Review
 
-**Spec coverage.** Tier 0 — no task, correctly (already ships). Tier 1 — Tasks 1-3. Tier 2 — Tasks 4-5, including the measurement the spec's circuit breaker requires. Tier 3 — Task 6, with all three guards as testable assertions. Tier 4 — Task 7. Deferred CCZ work correctly has no task.
+**Spec coverage.** Tier 0 — no task, correctly (already ships). Tier 1 — Tasks 1-3. Tier 2 — Tasks 4-5, including the measurement the spec's circuit breaker requires. Tier 3 — Tasks 6-7. Tier 4 — Task 8. Deferred CCZ work correctly has no task.
 
-**Known gap, deliberately carried:** the spec's § Testing asks for a static test that the heal path "cannot emit a diff mutating a `Live-verified` row." Task 6 asserts the skill *states* the rule; it does not mechanically block the diff, because the heal path is a skill (prose an LLM executes), not a function with a diff to intercept. A true mechanical preventer would need a pre-commit or CI check on selector-map diffs. That is worth doing and is **not** in this plan — flagged rather than silently downgraded, since the spec's own thesis is that prose invariants fail under load.
+**The `Live-verified` invariant is now mechanical, not prose.** An earlier draft
+of this plan carried it as a known gap, reasoning that the heal path is a skill
+rather than a function and therefore had no diff to intercept. That was wrong: a
+commit has a diff regardless of who authored it. Task 6 makes the invariant a
+pure function (`findLiveVerifiedViolations`) with five unit tests, a CLI, and a
+pre-commit hook — and Step 7 requires *watching it reject a real commit*, because
+a guard nobody has seen fire is a guard nobody knows works. It protects the 34
+`Live-verified` rows in the live maps against humans and agents alike, which is
+strictly more than the spec asked for. The plan no longer falls to the thesis it
+argues from.
 
-**Type consistency.** `ScreenCoverageResult` is produced in Task 2 and consumed by name in Task 3's `AtlasYamlInput`. `SplitOptions.captureAllBoundaries` is spelled identically in Tasks 4 and 5. `loadSelectorMapIds` is left exported and untouched so `scripts/probe-atlas-drift.ts` keeps compiling.
+**Deliberate scope boundary:** the guard freezes `type` and `value` but leaves
+`purpose` editable. Freezing the prose would make
+`connect-2.63.2.yaml:483`'s stale note — which claims a validated Deliver anchor
+"still needs a live dump," thirteen lines above the one that shipped —
+permanently unfixable. Documentation must stay improvable; evidence must not be
+overwritten. Task 6's third test pins that distinction.
 
-**Placeholder scan.** One intentional `<fill in from Step 4>` in PR 2's body — a measured number that cannot exist until the step runs. `<n>` in `gh pr merge` is the PR number GitHub assigns.
+**Two live bugs found while writing this plan, both fixed inside it:**
+`loadSelectorMapIds` is blind to `type: text` rows, so it cannot see the #893
+differentiator (Task 1); and `probe-atlas-drift.ts` hardcodes
+`DEFAULT_APK = '2.63.0'` while `.env.tpl:210` pins `2.63.2` and its own doc
+comment says `2.62.0` — three values, so the probe compares against the wrong
+map by default (Task 3, Step 5).
+
+**Type consistency.** `ScreenCoverageResult` is produced in Task 2 and consumed by name in Task 3's `AtlasYamlInput`. `SplitOptions.captureAllBoundaries` is spelled identically in Tasks 4 and 5, and read with `=== true` at the one place that matters. `loadSelectorMapIds` is left exported and untouched so `scripts/probe-atlas-drift.ts` keeps compiling. `SelectorRow` in Task 6 is intentionally independent of `SelectorMatchers` in Task 1 — the guard must parse maps that the classifier would reject, so coupling them would make a malformed map silently unguarded.
+
+**Placeholder scan.** One intentional `<fill in from Step 4>` in PR 2's body — a measured number that cannot exist until the step runs. `<n>` in `gh pr merge` is the PR number GitHub assigns. No step describes code without showing it.
