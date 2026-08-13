@@ -188,8 +188,13 @@ function main(): void {
     if (failureDumps.length === 0) {
       process.stderr.write('no *-FAILURE.xml under the dump dir; skipping yaml report\n');
     } else {
-      // The newest failure dump is the one that stopped the walk.
-      const dumpPath = failureDumps.sort()[failureDumps.length - 1];
+      // The newest failure dump is the one that stopped the walk. Sort by
+      // mtime, not path string — several stale FAILURE dumps can sit under
+      // one root (e.g. from an earlier run reusing the same screenshot dir),
+      // and alphabetical order has no relation to recency.
+      const dumpPath = [...failureDumps].sort(
+        (a, b) => fs.statSync(a).mtimeMs - fs.statSync(b).mtimeMs,
+      )[failureDumps.length - 1];
       const stderrPath = dumpPath.replace(/\.xml$/, '.txt');
       const stderrExcerpt = fs.existsSync(stderrPath)
         ? fs.readFileSync(stderrPath, 'utf8')

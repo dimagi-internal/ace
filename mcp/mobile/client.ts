@@ -1790,7 +1790,18 @@ export class MobileClient {
       // of whether the caller reads `error.failureForensics`. Forensic capture
       // must never mask the real failure: its own errors are swallowed.
       try {
-        const forensics = await this.captureFailureForensics(avdName, runDir, recipeId);
+        // No structured stderr excerpt is available here: `e` is a raw
+        // thrown transport error (EPIPE/ECONNRESET/etc — see
+        // `maestro-driver-retry.ts`), not a Maestro-classified failure with
+        // `failure.stderrExcerpt` attached. Pass undefined rather than
+        // inventing one from `e.message`, which is a JS/transport error
+        // string, not a Maestro "matching regex: ..." excerpt.
+        const forensics = await this.captureFailureForensics(
+          avdName,
+          runDir,
+          recipeId,
+          undefined,
+        );
         (e as { failureForensics?: RecipeRunResult['failureForensics'] }).failureForensics =
           forensics;
         if (forensics?.screenshotPath || forensics?.uiDumpPath) {
@@ -1856,6 +1867,7 @@ export class MobileClient {
           avdName,
           runDir,
           recipeId,
+          result.failure?.stderrExcerpt,
         );
       } catch (e) {
         logInfo(`runRecipe: failure-forensics capture failed for ${recipeId}: ${String(e)}`);
@@ -1948,10 +1960,12 @@ export class MobileClient {
   /**
    * Best-effort capture of the device state at a recipe FAILURE — a ui-dump
    * (element tree: ids/text/bounds — the highest-signal artifact for selector
-   * and nav debugging) plus a screenshot of the screen the recipe died on.
-   * Written into `screenshotDir` as `<recipeId>-FAILURE.{xml,png}` so they
-   * ride along with the run's other screenshots (uploaded + provenance-stamped)
-   * and are available to the manual-debug fallback. Cross-backend.
+   * and nav debugging) plus a screenshot of the screen the recipe died on,
+   * plus (when available) the Maestro stderr excerpt naming what the recipe
+   * was reaching for. Written into `screenshotDir` as
+   * `<recipeId>-FAILURE.{xml,png,txt}` so they ride along with the run's
+   * other screenshots (uploaded + provenance-stamped) and are available to
+   * the manual-debug fallback. Cross-backend.
    *
    * Bypasses `client.runRecipe` (calls the backend directly) so the throwaway
    * 1-step screenshot recipe doesn't recurse or trip the freshness pre-flight.
@@ -1962,6 +1976,7 @@ export class MobileClient {
     avdName: string | undefined,
     screenshotDir: string,
     recipeId: string,
+    stderrExcerpt: string | undefined,
   ): Promise<RecipeRunResult['failureForensics']> {
     const out: NonNullable<RecipeRunResult['failureForensics']> = {};
     const base = `${recipeId}-FAILURE`;
@@ -2028,6 +2043,26 @@ export class MobileClient {
       }
     } catch (e) {
       logInfo(`captureFailureForensics: screenshot failed for ${recipeId}: ${String(e)}`);
+    }
+
+    // 3. Stderr excerpt — what the recipe was reaching for when it died.
+    // The ui-dump alone shows what IS on screen; without this, the atlas
+    // drift classifier (`lib/atlas-drift.ts`) has no `wanted` matchers to
+    // diff against it and can never distinguish `matcher-miss` (the wanted
+    // element IS on screen — the recipe/selector is wrong) from
+    // `unmapped-surface` (nothing wanted is on screen — a real coverage
+    // gap). Those two have opposite fixes, so this file is what makes that
+    // call possible at all. Best-effort and skipped entirely when no
+    // excerpt was passed in (e.g. a thrown transport error with no
+    // Maestro-classified failure attached).
+    if (stderrExcerpt) {
+      try {
+        const txtPath = path.join(screenshotDir, `${base}.txt`);
+        fs.writeFileSync(txtPath, stderrExcerpt, 'utf8');
+        out.stderrPath = txtPath;
+      } catch (e) {
+        logInfo(`captureFailureForensics: stderr-excerpt write failed for ${recipeId}: ${String(e)}`);
+      }
     }
 
     return out;

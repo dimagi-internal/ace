@@ -386,4 +386,36 @@ describe('renderReportYaml', () => {
     });
     expect((parseYaml(text) as { needs_tier2: boolean }).needs_tier2).toBe(false);
   });
+
+  it('the full chain reports matcher-miss when the stderr excerpt names an element that IS on screen (regression: PR3 review round 1 — matcher-miss was unreachable because nothing ever wrote the stderr excerpt the classifier needs)', () => {
+    // A dump where the element the recipe reached for genuinely is present.
+    const dumpXml = `<?xml version='1.0'?><hierarchy>
+      <node resource-id="org.commcare.dalvik:id/viewJobCard" text="Household Poverty Targeting" />
+    </hierarchy>`;
+    const selectorMapYaml = `
+apk_version: "2.63.2"
+selectors:
+  deliver-home-job-card:
+    type: id
+    value: "org.commcare.dalvik:id/viewJobCard"
+`;
+    // The shape a real `<recipeId>-FAILURE.txt` carries (Maestro's own
+    // "matching regex: <value>" line) once the producer (captureFailureForensics
+    // in mcp/mobile/client.ts) writes it next to the dump.
+    const stderrExcerpt =
+      'Element not found: Id matching regex: org.commcare.dalvik:id/viewJobCard';
+
+    const wanted = extractWantedMatchers(stderrExcerpt);
+    const result = classifyScreenCoverage({ dumpXml, selectorMapYaml, wanted });
+    const text = renderReportYaml({
+      apkVersion: '2.63.2',
+      dumpFile: 'connect-claim-opp-FAILURE.xml',
+      result,
+    });
+    const parsed = parseYaml(text) as { classification: string; needs_tier2: boolean };
+
+    expect(result.classification).toBe('matcher-miss');
+    expect(parsed.classification).toBe('matcher-miss');
+    expect(parsed.needs_tier2).toBe(false);
+  });
 });
