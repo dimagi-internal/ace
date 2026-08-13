@@ -28,7 +28,7 @@
 
 **PR 1 — Detect**
 - Modify `lib/atlas-drift.ts` — add text-matcher awareness and the three-way classifier. Pure functions only; no I/O, no device.
-- Modify `test/mcp/mobile/atlas-drift.test.ts` — the existing suite for this module.
+- Modify `test/lib/atlas-drift.test.ts` — the existing suite for this module.
 - Modify `scripts/probe-atlas-drift.ts` — emit `atlas-report.yaml` alongside the markdown.
 - Modify `skills/app-screenshot-capture/SKILL.md`, `agents/qa-and-training.md` — run the probe at close-out; put the classification in the phase verdict.
 
@@ -57,7 +57,7 @@ Ships value alone: it makes every failure ACE has already recorded legible, with
 
 **Files:**
 - Modify: `lib/atlas-drift.ts`
-- Test: `test/mcp/mobile/atlas-drift.test.ts`
+- Test: `test/lib/atlas-drift.test.ts`
 
 **Interfaces:**
 - Consumes: existing `extractResourceIdsFromDump(xml: string): Set<string>`, the module-private `SelectorMap` / `SelectorMapEntry` interfaces.
@@ -65,7 +65,7 @@ Ships value alone: it makes every failure ACE has already recorded legible, with
 
 - [ ] **Step 1: Write the failing tests**
 
-Append to `test/mcp/mobile/atlas-drift.test.ts`:
+Append to `test/lib/atlas-drift.test.ts`:
 
 ```ts
 describe('text-matcher awareness (#893 differentiator is type: text)', () => {
@@ -118,7 +118,7 @@ Add `extractTextValuesFromDump` and `loadSelectorMapMatchers` to the existing im
 
 - [ ] **Step 2: Run the tests to verify they fail**
 
-Run: `npx vitest run test/mcp/mobile/atlas-drift.test.ts -t "text-matcher awareness"`
+Run: `npx vitest run test/lib/atlas-drift.test.ts -t "text-matcher awareness"`
 Expected: FAIL — `extractTextValuesFromDump is not a function`.
 
 - [ ] **Step 3: Implement**
@@ -174,13 +174,13 @@ export function loadSelectorMapMatchers(yamlText: string): SelectorMatchers {
 
 - [ ] **Step 4: Run the tests to verify they pass**
 
-Run: `npx vitest run test/mcp/mobile/atlas-drift.test.ts`
+Run: `npx vitest run test/lib/atlas-drift.test.ts`
 Expected: PASS, including the pre-existing tests.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add lib/atlas-drift.ts test/mcp/mobile/atlas-drift.test.ts
+git add lib/atlas-drift.ts test/lib/atlas-drift.test.ts
 git commit -m "feat(atlas): see text matchers, not just resource-ids
 
 The map's live-verified Learn-vs-Deliver differentiator is a text row,
@@ -195,7 +195,7 @@ so an id-only view classifies a fully-anchored screen as unmapped."
 
 **Files:**
 - Modify: `lib/atlas-drift.ts`
-- Test: `test/mcp/mobile/atlas-drift.test.ts`
+- Test: `test/lib/atlas-drift.test.ts`
 
 **Interfaces:**
 - Consumes: `extractResourceIdsFromDump`, `extractTextValuesFromDump`, `loadSelectorMapMatchers` (Task 1).
@@ -203,7 +203,7 @@ so an id-only view classifies a fully-anchored screen as unmapped."
 
 - [ ] **Step 1: Write the failing tests**
 
-Append to `test/mcp/mobile/atlas-drift.test.ts`:
+Append to `test/lib/atlas-drift.test.ts`:
 
 ```ts
 describe('classifyScreenCoverage — the three-way split', () => {
@@ -270,6 +270,39 @@ selectors:
     });
     expect(r.classification).toBe('mapped');
   });
+
+  // The five cases above document the branch order but do NOT pin it: in each
+  // of them `wantedPresent` is empty whenever a lower-priority branch could
+  // fire, so `matcher-miss` never actually competes and an inverted ordering
+  // would pass all five. Priority is only observable when matcher-miss's
+  // condition and a lower one are true SIMULTANEOUSLY. These two construct
+  // exactly that. Both must fail if the chain is reordered.
+
+  it('matcher-miss outranks unmapped-surface when both conditions hold', () => {
+    // A raw id the recipe wanted, on screen, but absent from the map:
+    // wantedPresent is non-empty AND mappedOnScreen is empty at once.
+    const r = classifyScreenCoverage({
+      dumpXml: dump('<node resource-id="org.commcare.dalvik:id/unmapped_but_wanted" text="x" />'),
+      selectorMapYaml: MAP,
+      wanted: ['org.commcare.dalvik:id/unmapped_but_wanted'],
+    });
+    expect(r.mappedOnScreen).toEqual([]);
+    expect(r.classification).toBe('matcher-miss');
+  });
+
+  it('matcher-miss outranks drift when both conditions hold', () => {
+    // A mapped anchor present, one wanted matcher present, another absent:
+    // wantedPresent, wantedAbsent and mappedOnScreen are all non-empty.
+    const r = classifyScreenCoverage({
+      dumpXml: dump('<node resource-id="org.commcare.dalvik:id/nsv_home_screen" text="Daily Visits" />'),
+      selectorMapYaml: MAP,
+      wanted: ['Daily Visits', 'org.commcare.dalvik:id/viewJobCard'],
+    });
+    expect(r.wantedPresent).toEqual(['Daily Visits']);
+    expect(r.wantedAbsent).toEqual(['org.commcare.dalvik:id/viewJobCard']);
+    expect(r.mappedOnScreen.length).toBeGreaterThan(0);
+    expect(r.classification).toBe('matcher-miss');
+  });
 });
 
 describe('extractWantedMatchers', () => {
@@ -297,7 +330,7 @@ Add `classifyScreenCoverage` and `extractWantedMatchers` to the import.
 
 - [ ] **Step 2: Run the tests to verify they fail**
 
-Run: `npx vitest run test/mcp/mobile/atlas-drift.test.ts -t "three-way split"`
+Run: `npx vitest run test/lib/atlas-drift.test.ts -t "three-way split"`
 Expected: FAIL — `classifyScreenCoverage is not a function`.
 
 - [ ] **Step 3: Implement**
@@ -383,13 +416,13 @@ export function extractWantedMatchers(stderrExcerpt: string): string[] {
 
 - [ ] **Step 4: Run the tests to verify they pass**
 
-Run: `npx vitest run test/mcp/mobile/atlas-drift.test.ts`
+Run: `npx vitest run test/lib/atlas-drift.test.ts`
 Expected: PASS.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add lib/atlas-drift.ts test/mcp/mobile/atlas-drift.test.ts
+git add lib/atlas-drift.ts test/lib/atlas-drift.test.ts
 git commit -m "feat(atlas): three-way screen classification
 
 unmapped-surface and matcher-miss have opposite fixes; #811 and #893
@@ -406,7 +439,7 @@ On-disk-only is how the FAILURE dumps sat unread for two months (4 of 24 issues 
 - Modify: `scripts/probe-atlas-drift.ts`
 - Modify: `skills/app-screenshot-capture/SKILL.md`
 - Modify: `agents/qa-and-training.md`
-- Test: `test/mcp/mobile/atlas-drift.test.ts`
+- Test: `test/lib/atlas-drift.test.ts`
 
 **Interfaces:**
 - Consumes: `classifyScreenCoverage`, `extractWantedMatchers` (Task 2).
@@ -414,7 +447,7 @@ On-disk-only is how the FAILURE dumps sat unread for two months (4 of 24 issues 
 
 - [ ] **Step 1: Write the failing test**
 
-Append to `test/mcp/mobile/atlas-drift.test.ts`:
+Append to `test/lib/atlas-drift.test.ts`:
 
 ```ts
 describe('renderReportYaml', () => {
@@ -463,7 +496,7 @@ Import `renderReportYaml` from `../../../lib/atlas-drift.js` and `parse as parse
 
 - [ ] **Step 2: Run the test to verify it fails**
 
-Run: `npx vitest run test/mcp/mobile/atlas-drift.test.ts -t "renderReportYaml"`
+Run: `npx vitest run test/lib/atlas-drift.test.ts -t "renderReportYaml"`
 Expected: FAIL — `renderReportYaml is not a function`.
 
 - [ ] **Step 3: Implement**
@@ -501,7 +534,7 @@ Add `stringify as stringifyYaml` to the existing `yaml` import at the top of `li
 
 - [ ] **Step 4: Run the test to verify it passes**
 
-Run: `npx vitest run test/mcp/mobile/atlas-drift.test.ts`
+Run: `npx vitest run test/lib/atlas-drift.test.ts`
 Expected: PASS.
 
 - [ ] **Step 5: Fix the probe's default APK, which is wrong three ways**
@@ -1264,7 +1297,7 @@ gh pr merge <n> -R dimagi-internal/ace --auto --merge
 **Files:**
 - Modify: `lib/atlas-drift.ts`
 - Modify: `skills/selector-map-heal/SKILL.md`
-- Test: `test/mcp/mobile/atlas-drift.test.ts`
+- Test: `test/lib/atlas-drift.test.ts`
 
 **Interfaces:**
 - Consumes: nothing new.
@@ -1289,7 +1322,7 @@ describe('renderForkPointCommand', () => {
 
 - [ ] **Step 2: Run to verify it fails**
 
-Run: `npx vitest run test/mcp/mobile/atlas-drift.test.ts -t "renderForkPointCommand"`
+Run: `npx vitest run test/lib/atlas-drift.test.ts -t "renderForkPointCommand"`
 Expected: FAIL — not a function.
 
 - [ ] **Step 3: Implement**
@@ -1308,7 +1341,7 @@ export function renderForkPointCommand(input: {
 
 - [ ] **Step 4: Run to verify it passes**
 
-Run: `npx vitest run test/mcp/mobile/atlas-drift.test.ts`
+Run: `npx vitest run test/lib/atlas-drift.test.ts`
 Expected: PASS.
 
 - [ ] **Step 5: Document and ship**
