@@ -336,3 +336,13 @@ export function extractWantedMatchers(stderrExcerpt: string): string[] {
   while ((m = bareId.exec(stderrExcerpt)) !== null) out.add(m[0]);
   return [...out].sort();
 }
+
+/** ACE reports the fork point; it never forks itself. Forking copies
+ *  artifacts into a new run, which is the operator's call. */
+export function renderForkPointCommand(input: {
+  runId: string;
+  phase: string;
+  skill: string;
+}): string {
+  return `/ace:fork-run ${input.runId} --at ${input.phase}/${input.skill} --reason "selector map healed; re-walk from the last good boundary"`;
+}

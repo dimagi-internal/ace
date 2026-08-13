@@ -12,6 +12,7 @@ import {
   classifyScreenCoverage,
   extractWantedMatchers,
   renderReportYaml,
+  renderForkPointCommand,
 } from '../../lib/atlas-drift.js';
 
 // Pure helpers behind the atlas-drift harvester (scripts/probe-atlas-
@@ -417,5 +418,18 @@ selectors:
     expect(result.classification).toBe('matcher-miss');
     expect(parsed.classification).toBe('matcher-miss');
     expect(parsed.needs_tier2).toBe(false);
+  });
+});
+
+describe('renderForkPointCommand', () => {
+  it('prints a runnable fork invocation naming run, phase and skill', () => {
+    const cmd = renderForkPointCommand({
+      runId: '20260812-1030',
+      phase: 'qa-and-training',
+      skill: 'app-screenshot-capture',
+    });
+    expect(cmd).toContain('/ace:fork-run');
+    expect(cmd).toContain('20260812-1030');
+    expect(cmd).toContain('app-screenshot-capture');
   });
 });

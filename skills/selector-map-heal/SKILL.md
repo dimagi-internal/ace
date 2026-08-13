@@ -125,3 +125,24 @@ device before merge. Here the green re-run in Guard 2 **is** that validation,
 performed immediately before the merge. This is the one path where self-heal
 and the live-validation rule agree rather than conflict — which is exactly why
 the loop closes here and nowhere else.
+
+## Resume
+
+After a successful heal (green re-run + merged PR), report the fork point:
+
+```
+render_fork_point_command({
+  runId: <current-run-id>,
+  phase: "qa-and-training",
+  skill: <blocking-skill-name>
+})
+```
+
+This prints a command the operator can run to fork the current run at the last
+good boundary (the step before the failure). The fork copies upstream artifacts,
+re-runs from the healed skill onward, and creates a fresh run for side-by-side
+diff. ACE never forks itself — forking is the operator's call.
+
+**Do NOT fork.** Print the command and stop. The operator decides whether to fork
+based on the risk/cost trade-off of re-walking the rest of the phase vs
+proceeding with the current run.
