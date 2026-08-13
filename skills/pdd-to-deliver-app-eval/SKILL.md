@@ -297,7 +297,14 @@ Q8/Q8b split, the Q21b sub-question, the operational-caps
 server-side note). Detection rate must be ≥ 80% on a calibration
 run.
 
-**Fitness-axis ground truth (added 2026-05-29):** the fitness
+**Fitness-axis ground truth (added 2026-05-29):**
+`measured_on: 2026-05-29`. Both cited builds are **live and mutable**
+CommCare/Nova apps — re-measure before using either as a regression gate
+rather than assuming these verdicts still reproduce (`eval-calibration
+§ Step 3c`). The durable half of this anchor is the **verdict list**
+below, not any ratio: verdicts survive re-enumeration, scores don't.
+
+The fitness
 dimensions are calibrated against the malaria-itn-app pair —
 the human expert's `[Final]` builds as the *deployable* bar and the
 ACE run `20260528-1607` thin build as the *negative control*. The
@@ -336,6 +343,7 @@ See `skills/_eval-template.md § Dry-Run Behavior (stock)`.
 
 | Date | Change | Author |
 |------|--------|--------|
+| 2026-08-13 | **Dated the fitness-axis calibration anchor (ace#1212).** The malaria-itn-app pair (`[Final]` deployable bar + ACE run `20260528-1607` negative control) was recorded as a bare pointer at two live, mutable CommCare/Nova apps, with no measurement date — so a drifted anchor could not be told apart from a valid one, and a rubric revision checking itself against it would silently measure something else. Added `measured_on: 2026-05-29` plus a mutability notice, and stated explicitly that the durable half of this anchor is the **verdict list** (`capture_fitness ≤3`, `data_quality_validation ≤3`, `case_persistence ≤2`, `localization_match ≤3 → fail`) rather than any ratio — verdicts survive re-enumeration, scores don't. Per `eval-calibration § Step 3c`. *Enforced:* `test/skills/eval-calibration-anchors.test.ts`. | ACE team |
 | 2026-04-28 | Initial version. Cross-artifact rubric: 5 dimensions (field_count_match, question_order_match, gate_semantics_match, conditional_logic_match, connectify_wiring). Calibrated against `eval-calibration/known-issues.md`. Template for future cross-artifact evals. | ACE team (eval system buildout) |
 | 2026-04-29 | Added step-2 HITL-pending stub detection. If the deliver app summary has no `nova_app_id`, has `TBD`/`null`, is explicitly marked HITL-pending, or carries only skeleton structure, emit `verdict: incomplete` immediately. Surfaced 0.9.11 cross-opp validation against `turmeric-dogfood-20260427`: trying to grade a HITL-pending summary made 2 of 5 dimensions ungradable (field-order, conditional-logic) and inflated the others. The early-return pattern mirrors `connect-program-setup-eval`'s degraded-mode detection — both treat upstream environmental gaps as `incomplete`, not as quality defects. | ACE team (0.10.8) |
 | 2026-05-05 | Step 7 report path migrated to `runs/<run-id>/3-commcare/pdd-to-deliver-app-eval_report.md` (was opp-level `eval-reports/YYYY-MM-DD-pdd-to-deliver-eval.md`). No methodology change. | ACE team |

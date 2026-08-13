@@ -326,10 +326,42 @@ methodology, different dimensions tuned to Learn-app concerns. See
 
    ### The negative control, MEASURED (do not skip this)
 
+   > **`measured_on: 2026-08-12`.** The cited Nova app is **live and
+   > mutable** — apps get repaired, re-run and edited between runs. Re-measure
+   > it before treating this as a regression gate; do not assume the number
+   > below still reproduces. Evidence recorded inline per
+   > `eval-calibration § Step 3c` so the score can be re-derived from this
+   > page without reading the app.
+
    `hh-poverty-targeting/20260722-1341`, Learn app
    `644a7ee2-a02c-4a1b-81e5-90a3ff926ab3` — 15 scored items across both banks,
    9 of them one-virtuous-answer-plus-three-rejectable-distractors.
    **Any revision of this dimension must still score that bank ≤3.**
+
+   **Evidence as measured (2026-08-12).** Recorded score **5/20 = 0.25 →
+   ≤3 → `fail`**. Recorded qualitative facts: 15 scored items (pre 5 + post
+   10); 9 items where every distractor is rejectable on sight, hence
+   excluded from the numerator; **~0 genuinely counter-intuitive rules
+   covered**; and (added below) q1 and q3 do carry real common-sense traps,
+   landing a naive reader at exactly 8/10.
+
+   The control fails on **two independent mechanisms** — a near-empty
+   counter-intuitive-rule numerator, and the per-item exclusion. That
+   redundancy is why it has survived two rubric rewrites; a revision that
+   removes either one should expect the control to still fail on the other,
+   and should say which.
+
+   > **Known evidence gap (`eval-calibration § Step 3c`).** The
+   > **denominator's entries were never written down** — only its size
+   > (20). The score is a ratio over a judge-built enumeration, so without
+   > the entry list this anchor cannot be fully re-derived from this page;
+   > a re-measurement must re-enumerate and will land somewhere of its own
+   > choosing. The size is preserved above so that a re-derivation
+   > producing a materially different denominator is at least *visible* as
+   > a discrepancy rather than passing silently. **The next agent to
+   > re-measure this control must record the entry list here.** This is
+   > exactly the defect the positive control below demonstrates the cost
+   > of.
 
    The first draft of this dimension **did not**, and it was caught by running
    the control rather than reasoning about it. Both numbers are recorded here
@@ -361,30 +393,58 @@ methodology, different dimensions tuned to Learn-app concerns. See
      discriminators landing a know-nothing precisely at the boundary", not
      "every item is free".
 
-   ### The positive control
+   ### The positive control — AND the worked example of anchor drift
+
+   > **`measured_on: 2026-08-13`** (superseding a `2026-08-12` reading — both
+   > recorded below, deliberately). The cited Nova app is **live and
+   > mutable**, and this one demonstrably moved: it was **repaired inside its
+   > own run** after the first measurement. Re-measure before using it as a
+   > regression gate.
 
    `spark-facilitator/20260812-1635`, Learn app
    `036c2c60-be0e-447d-862f-fe14d1dbcbb1` — 20 scored items across both banks,
    **zero excluded** (every distractor is behaviourally plausible; the
-   structural-tell audit found no all-rejectable option set). 7 of ~10
-   counter-intuitive rules covered, 11 of 12 operations covered →
-   `(7×2 + 11) / (10×2 + 12)` = **25/32 = 0.78 → band 7–8 → `warn`**, with the
-   uncovered rules (the appeal window, the 8-person photo minimum,
-   one-photo-exactly) returned as `repairs[]`.
+   structural-tell audit found no all-rejectable option set).
 
-   That is the intended behaviour and the reason this dimension was rewritten:
-   the same build scored **`fail`** under the retired probe. A revision that
-   moves this bank to `fail`, or the `hh-poverty-targeting` bank above to
-   `pass`, has broken the calibration.
+   **This anchor has three recorded readings of the same app.** Keeping all
+   three is the point — a revision needs to know which one its predecessor
+   was calibrated against (`eval-calibration § Step 3c`):
 
-   **Known residual — the band EDGES are untested.** The two anchors sit at 0.25
-   and 0.78; the 0.70 and 0.90 boundaries have never been exercised by a real
-   bank, and the negative control's spread stayed narrow partly *because* its
-   numerator is nearly empty (3 of 15 items qualifying leaves denominator wobble
-   little leverage). A mid-quality bank sitting near a boundary with a ±30%
-   denominator swing could still cross it. Treat 7–8 vs 9–10 as soft until a
-   third anchor lands near an edge, and prefer reporting the ratio itself over
-   arguing the band.
+   | Reading | Date | Numerator / denominator | Ratio | Band |
+   |---|---|---|---|---|
+   | As written into this rubric (ace#1206) | 2026-08-12 | `(7×2 + 11) / (10×2 + 12)` = 25/32 | **0.78** | 7–8 `warn` |
+   | That run's own prior verdict | 2026-08-12 | not recorded | **0.767** | 7–8 `warn` |
+   | Live verdict, post-repair | 2026-08-13 | `(17×2 + 13) / (19×2 + 14)` = 47/52 | **0.904** | 9–10 (scored at band FLOOR, 9.0) |
+
+   Two separate things moved, and they are worth separating:
+
+   - **The artifact changed.** A repair round inside the run covered
+     previously-uncovered rules — the intended behaviour of `repairs[]`,
+     which is precisely why an anchor on a *repairable* artifact decays by
+     design rather than by accident.
+   - **The enumeration changed far more.** The denominator went **32 → 52**
+     (10 counter-intuitive rules + 12 operations → 19 + 14) between two
+     measurements days apart. No repair adds nine counter-intuitive rules;
+     the two graders enumerated the same PDD differently. **The larger error
+     bar on this anchor is the enumeration, not the app**, and the live
+     verdict says so itself — under a coarser but defensible enumeration
+     merging four photo rules into two it reads 43/48 = 0.896, which is a
+     *different band*.
+
+   **Use the 0.904 / 47÷52 row as the current anchor**, and treat the band as
+   soft: report the ratio, not the band. A revision that moves this bank to
+   `fail`, or the `hh-poverty-targeting` bank above to `pass`, has broken the
+   calibration — that pair of statements is the durable gate here, and it
+   survives the drift above because it is expressed in verdicts, not in
+   ratios.
+
+   **Known residual — the band EDGES are untested, and now demonstrably
+   fragile.** The anchors sit at 0.25 and 0.904; 0.904 clears the 0.90
+   boundary by 0.4pp, well inside the enumeration wobble measured above, and
+   the negative control's spread stayed narrow partly *because* its numerator
+   is nearly empty (leaving denominator wobble little leverage). Treat 7–8 vs
+   9–10 as soft until a third anchor lands near an edge with its enumeration
+   recorded, and prefer reporting the ratio itself over arguing the band.
 6. **Write the verdict YAML** to
    `3-commcare/pdd-to-learn-app-eval_verdict.yaml` using the shape from
    `skills/_eval-template.md § Verdict YAML contract`. Dimensions:
@@ -467,7 +527,14 @@ Calibration target on the smoke-20260428-1242 Learn build:
   populates) should NOT score in the 9+ band. Placeholder-WARN flags
   should bring overall into the 8.0–8.7 range.
 
-**Fitness-axis ground truth (added 2026-05-29):** calibrated against the
+**Fitness-axis ground truth (added 2026-05-29):**
+`measured_on: 2026-05-29`. Both cited builds are **live and mutable**
+CommCare/Nova apps — re-measure before using either as a regression gate
+rather than assuming these verdicts still reproduce (`eval-calibration
+§ Step 3c`). The durable half of this anchor is the **verdict list**
+below, not any ratio.
+
+Calibrated against the
 malaria-itn-app pair — the human expert's `[Final]` Learn build
 (pre-test + post-test, 80% threshold enforced via user properties,
 sequential module unlock, pass/retry, bilingual) as the *deployable*
@@ -517,4 +584,5 @@ See `skills/_eval-template.md § Dry-Run Behavior (stock)`.
 | 2026-07-31 | **Migrated every `get_form` read to uuid addressing (ace#1132).** Nova's 2026-07-31 redeploy moved its whole surface from `moduleIndex`/`formIndex`/`fieldId` to `moduleUuid`/`formUuid`/`fieldUuid`, so `form_navigation` and the § 5c blind-probe harness both named uncallable operations. Added an addressing note at § 5b: resolve uuids ONCE per run — from the build summary's `nova_uuids:` frontmatter if present, else one `get_app({app_id})` (its blueprint prints `[uuid …]` on every module/form/field), with `search_blueprint({query, app_id})` for a single semantic name — and reuse the map for every read. The § 5c harness contract is unchanged and if anything reinforced: `get_form({app_id, moduleUuid, formUuid})` still returns stems, options AND the `qN_score` calculates atomically, and `get_field` is now per-field-uuid so it cannot fetch a stem without its key either — a self-probe stays contaminated by construction. Also corrected `localization_match`'s parenthetical (`update_app` now carries only `name`); the no-itext-channel claim itself was re-verified across all 63 live tools. | ACE team |
 | 2026-08-12 | **`assessment_discrimination` becomes a CONTRAST, not a ceiling; `assessment_operation_coverage` added (ace#1187, closes ace#1042).** The dimension scored the *absolute* cold total of a single blind LLM reader briefed as a capable adult with strong exam technique, and hard-gated on it (band table + gate-margin gate). Measured on `spark-facilitator/20260810-0737` (Learn app `34a66bf7-9b48-40ef-aa56-31ac357e8a72`, one 20-item bank, keys withheld, picks committed before reveal): a trained field-persona reader scored **19.0/20**, an untrained field-persona reader **8.0/20**, and the rubric's own M&E-domain-expert reader **11/20** — so the retired proxy sat **15pp above** the population the Deliver gate protects and made the bank read **27% less discriminating** than it is (A−C = 8.0 vs the true A−B = 11.0). Its edge was stability of exam technique, not knowledge the training supplies (it reliably nailed q2/q3/q11/q14 that the field reader got right ~half the time, and *lost* q5 and q20 to it). The rubric returned `2.0` and failed the phase on a bank measuring **2.38x** discrimination, costing two authoring cycles (~500K subagent tokens); the correct verdict was a pass with named residuals. Changes: (1) the statistic is now `discrimination_delta = (trained − untrained) ÷ items_scored` with both readers on the **PDD-derived FLW persona**, differing only in whether they got the module teaching text — bands `>=0.40 → 9–10 · 0.30–0.39 → 7–8 · 0.20–0.29 → 5–6 · <0.20 → ≤3 → fail`; (2) the gate-margin hard-gate on the expert reader is **deleted**, replaced by a hard-gate on the **untrained field reader** clearing the PDD's actual unlock threshold — a direct measurement of the protected population rather than a ceiling proxy, and the path that keeps the `hh-poverty-targeting` negative control failing (it also fails on the collapsed delta and on `absurdity-elimination`); (3) `self-justifying-key` / `minimal-claim` / `odd-one-out-binary` stop deducting and become `[WARN]`s — option-craft is hygiene, the delta is the evidence — while `absurdity-elimination` still deducts as a Gate-1 item defect; (4) new **`assessment_operation_coverage`** dimension (0.03, taken from this dimension's 0.08 → 0.05, axis totals unchanged) maps each item to the instrument field it governs and the failure it prevents (unpaid visit / blocked form / corrupted data), with a hard-gate when a majority of high-consequence operations carry zero items; (5) **low-n rule** — `items_scored < 5` scores `null` + `[WARN]` and fires no hard-gate, since the delta is degenerate there and no authoring choice can change a PDD-mandated item count (**closes ace#1042**); (6) the probe reports `free_items` and the **effective bar** — 5 of the 20 items were answered correctly by both readers in every run, so a nominal 16/20 = 80% gate is really 11/15 = **73%** of signal-carrying items, which falls out of a contrast design and is invisible to a ceiling probe; (7) an explicit scope note — the Learn assessment is a **readiness** check, not an anti-fraud device (fraud is the Evidence Model's job: live photo, GPS, payment predicate, Partner Trainer observation), so adversarial robustness is no longer graded here. Paired 1:1 with the topic-selection + bank-independence rewrite in `_app-component-library.md § discriminating-assessment-items`. | ACE team |
 | 2026-08-12 | **Re-validated the contrast statistic against BOTH calibration anchors; demoted the absolute-floor gate to a `[WARN]` (ace#1187, ace#1131).** Ran the new statistic end-to-end before shipping, two independently-permuted untrained runs per bank, picks committed before reveal, keys from the live `qN_score` calculates. **Positive control** `spark-facilitator` post-test (20 items, gate 16/20): trained **20/20**, untrained 11 and 10 → 10.5, `delta` **0.475** → top band → **pass** (the old rubric returned 2.0 and failed the phase). **Negative control** `hh-poverty-targeting/20260722-1341` post-assessment (10 items, gate 8/10): untrained 9 and 10 → 9.5 (0.95), and since `delta ≤ 1.0 − untrained_ratio` its delta ceiling is **0.05** → **fail**, with both runs independently reporting 9 of 10 items carrying two-or-more options eliminable on sight. Three changes follow from the measurement. (1) The untrained-clears-the-gate **hard-gate is demoted to a `[WARN]`**, as ace#1187 originally proposed: at any threshold ≥ 80 it is mathematically redundant (the delta band already fails such a bank), and `untrained_ratio` proved too noisy to gate on — four runs of the SAME spark bank scored 6, 10, 10, 11 (0.30–0.55), because a persona brief only partly suppresses an LLM's domain knowledge. (2) That noise is now a first-class calibration fact: at least two untrained runs (already required), a `[WARN]` when the two runs differ by more than 2 items, and a mandatory third run when the delta lands within 0.05 of a band boundary. (3) The `untrained_ratio` WARN now fires for **every instrument carrying `connect.assessment`, pre-test included** — Connect stores one `passing_score` per learn app and every 'has this worker passed?' surface uses any-passed semantics, so a pre-test carrying the marker gates Deliver whatever its intro copy says; the prior wording ('the post-test, the gating instrument, drives the score') was the blind spot ace#1131 named. Also recorded: the trained reader scored 20/20 on the spark bank, i.e. every item is answerable from taught content — the Step-1 property the build-side procedure asks for, and what makes the delta large. | ACE team |
+| 2026-08-13 | **Dated both calibration anchors and recorded the positive control's drift (ace#1212).** The controls were pointers at live Nova apps, and the positive control had silently moved: this rubric records `0.78` (denominator 32), that run's own prior verdict recorded `0.767`, and the live verdict reads `0.904` (denominator **52**) after an in-run repair round. Two distinct causes, now separated in the text — the app was repaired (by design; `repairs[]` exists to do that), and the *enumeration* changed far more than the app did (10 counter-intuitive rules + 12 operations → 19 + 14 across two days), which means the dominant error bar on this anchor was never the artifact. All three readings are kept deliberately so a future revision knows which one its predecessor was calibrated against. Both controls now carry `measured_on`, a mutability notice, and their evidence inline; the negative control additionally carries an explicit **known evidence gap** — its denominator's 20 entries were never written down, only the size, so it cannot yet be fully re-derived from the page. The durable gate is restated as the **verdict pair** (this bank must not reach `fail`, `hh-poverty-targeting` must not reach `pass`), which survives re-enumeration in a way ratios do not. Per `eval-calibration § Step 3c`. *Enforced:* `test/skills/eval-calibration-anchors.test.ts`. | ACE team |
 | 2026-08-13 | **Retired the blind two-reader probe; replaced `assessment_discrimination` (0.05) + `assessment_operation_coverage` (0.03) with one structural dimension `assessment_rule_coverage` (0.08), which emits `repairs[]` instead of a verdict (ace#1206).** Two independent defects, either sufficient. (1) **The hard gate was arithmetically the statistic the same revision had just declared too noisy to gate on.** `delta ≤ 1 − untrained_ratio`, and when the trained reader scores 100% (as it did on every well-built bank measured) the bound is TIGHT — the delta simply IS `1 − untrained_ratio`. The 2026-08-12 entry below demoted the `untrained_ratio` floor to a WARN citing 0.30–0.55 run-to-run spread and "hard-gating a statistic with ±12pp run-to-run noise is the same class of error this dimension was filed for", then kept hard-gating the delta, which inherits that noise 1:1. The coupling is derived in that entry's own text; the opposite conclusion was drawn from it. (2) **An LLM cannot proxy an untrained human's difficulty floor.** The untrained-field-persona reader is a fiction — an LLM told to be a low-literacy CBF still reads English fluently, does the arithmetic, and eliminates options; its floor is its own competence. For a CHW curriculum whose taught rules are largely "record what happened, honestly", a HIGH untrained score is the EXPECTED result for a good bank, so it cannot be a failure signal, and driving it down means authoring arbitrary trivia — worse training for the cohort the gate protects. No ACE bank has ever been put in front of a real CHW, so the LLM→CHW inference was never validated while being load-bearing for a hard gate. Trigger: `spark-facilitator/20260812-1635` (Learn app `036c2c60-be0e-447d-862f-fe14d1dbcbb1`) — untrained 11/12 twice with identical miss sets, trained 12/12, delta 0.083 → `fail` on a build scoring **8.45** with complete trilingual coverage, worked examples from the real instrument, correct conditional pass/fail wiring and 11/12 operations covered. A 5%-weight dimension failed an 8.45 build on an unvalidated proxy. **The replacement** is judged from the artifact with no persona and no dispatched readers: enumerate the **counter-intuitive rules** (taught rules where common sense gives the WRONG answer — blank-not-zero, committee-recorded-but-not-paid, disability-inside-not-added, any named window or threshold) plus the **high-consequence operations**, map each scored item across BOTH banks to the rule it keys on, and score coverage with counter-intuitive rules weighted double. Zero counter-intuitive rules caps at 5. An item whose distractors are ALL rejectable on sight is EXCLUDED from the numerator rather than merely deducted for — a first draft routed that defect through a deduction capped at 2, which scored the `hh-poverty-targeting` negative control 5-6 and FAILED the regression requirement; the control was run rather than reasoned about, and the exclusion mechanism (which scales with how hollow the bank is) restores it to 0.25 -> <=3. Crucially this is NOT a difficulty penalty: *solvable by elimination* is an option-set defect and excludes the item, while *answerable cold because the taught rule is itself common sense* is expected for a CHW curriculum and still counts. The measurement also showed the denominator spans three bands under defensible enumerations, so the enumeration must now be built one-entry-per-RULE from named artifacts and recorded in the verdict. Uncovered rules become `repairs[]` — a typed work order the ORCHESTRATOR hands to `pdd-to-learn-app`, never applied by this skill (a grader that repairs its own bank and re-scores it converges on passing itself), capped at ONE repair round because ~500K subagent tokens were already spent looping against an immovable number (ace#1014). Also added **`single_gating_assessment`** to § 5b: more than one form carrying `connect.assessment` against a single PDD-declared gate is a `[BLOCKER]`, because Connect's any-passed semantics turn a diagnostic pre-test into the app's easiest unlock path (ace#1205, ace#1131). Negative control unchanged: `hh-poverty-targeting/20260722-1341` covers ~0 counter-intuitive rules and takes the absurd-distractor deduction on every item → still ≤3. | ACE team |

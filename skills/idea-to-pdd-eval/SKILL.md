@@ -182,6 +182,11 @@ filename rule.
 
 ## LLM-as-Judge Rubric
 
+`measured_on: 2026-04-28`. The cited PDD is a **live, mutable** Drive
+document in a run folder — re-read it before treating these targets as a
+regression gate rather than assuming the numbers still reproduce
+(`eval-calibration § Step 3c`).
+
 This rubric's calibration target on the smoke-20260428-1242 PDD:
 
 - **Detection rate:** ≥ 80% of catalogued PDD issues from
@@ -215,6 +220,7 @@ See `skills/_eval-template.md § Dry-Run Behavior (stock)`.
 
 | Date | Change | Author |
 |------|--------|--------|
+| 2026-08-13 | **Dated the calibration target (ace#1212).** The `smoke-20260428-1242` PDD the detection-rate and variance targets are calibrated against is a live, mutable Drive document, cited with no measurement date. Added `measured_on: 2026-04-28` plus a mutability notice directing a re-read before the targets are used as a regression gate. Per `eval-calibration § Step 3c`. *Enforced:* `test/skills/eval-calibration-anchors.test.ts`. | ACE team |
 | 2026-05-29 | **Added `source_conflict_honesty` dimension (8%) for the v4 evidence-basis contract.** The independent grader now checks Phase-1 authoring integrity: it independently scans the source pack for material disagreements and verifies the run's `decisions.yaml` flagged each via `evidence_basis: conflicting` + ≥ 2 `conflict_signals` (or an explicit PDD callout) rather than silently resolving it. Motivated by the ITN run (`malaria-itn-app/20260528-1607`), where the source described one visit instrument but separately said households are "visited twice" — ACE silently built two distinct forms and the eval still scored 9.6 because no dimension graded conflict honesty. Weight carved from the doc/fidelity bucket: the four existing doc/fidelity dims drop 0.10 → 0.08 each; new dim 0.08; doc/fidelity stays 40%, viability unchanged at 60%. Adds `decisions.yaml` as an input. N/A-neutral (9.0) when the source pack has no conflicts; PDD-callout-only branch + INFO when the log predates v4. | ACE team |
 | 2026-05-08 | **Rubric cleanup: 11 → 10 dimensions; weight-sum bug fix; viability rebalanced to 50%.** Three fixes in one edit: (1) Removed `stress_test_agreement` (10%) — it was structurally tautological (same model applies same rubric twice; cross-model probe confirmed it doesn't discriminate, scoring 8-10 on every grade with variance from rubric ambiguity not from real artifact differences). (2) Folded `numbers_present` (5%) into `numbers_consistent` (10%) since they cover the same axis and `numbers_present` was already a soft check most PDDs trivially pass. (3) Fixed the 0.13.81 weight-sum bug: weights summed to 0.95 not 1.0. New weights cleanly total 1.00 with viability at 50%: `demand_reality` 15→20%, `resource_realism` 10→15%, `mission_alignment` 5→10%, `fallback_validates_primary` held at 5%, `feasibility_headline_metrics` 5→10%. Verification (independent re-grade on turmeric PDD with the new 11-dim rubric scored 7.55 vs old rubric's 8.65 — confirming the viability axis discriminates). | ACE team (0.13.84) |
 | 2026-05-08 | **QA/Eval split: removed `structural_completeness` (10%) — now lives in new `idea-to-pdd-qa` skill.** First migration of the QA/Eval split principle (PR #146). Structural completeness was a static check (regex over `## Heading` lines for the 11 required sections); moved to `skills/idea-to-pdd-qa/checks.ts` as `checkAllRequiredSectionsPresent`. The eval rubric is now quality-only: 4 doc/fidelity dimensions (40%) + 5 viability dimensions (60%). Removed weight (10%) was redistributed to viability dimensions: `demand_reality` 20→22%, `resource_realism` 15→17%, `mission_alignment` 10→12%, `fallback_validates_primary` 5→9%. QA gates eval — eval is skipped (`verdict: incomplete`) if QA fails irrecoverably. Updated dimension descriptions to clarify which structural concerns moved to QA (annotated inline). | ACE team (0.13.88) |
