@@ -10,7 +10,13 @@ jobs:
   clean-install:
     runs-on: ubuntu-latest
     steps:
+      # fetch-depth: 0 (full history, all branches) is required by the
+      # Live-verified selector-map guard below — it diffs the PR's working
+      # tree against `origin/main`, which a shallow (depth-1) checkout
+      # would not have a ref for.
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       # Node 22 LTS. Was '20' until 2026-07-25: undici@8 (a transitive dep of
       # the OCS REST tests) calls webidl.util.markAsUncloneable, which does not
@@ -49,3 +55,16 @@ jobs:
       # stay excluded here), and completes in well under a minute.
       - name: Unit tests
         run: npx vitest run
+
+      # Mechanical fence for 34 live-device-verified selector rows
+      # (mcp/mobile/selectors/*.yaml). Previously only enforced by
+      # scripts/hooks/pre-commit — a per-clone opt-in
+      # (`git config core.hooksPath scripts/hooks`) trivially bypassed by
+      # `--no-verify` — so a PR (including one from the autonomous
+      # selector-map-heal skill, designed to auto-merge on green) could
+      # silently overwrite or delete a Live-verified row with nothing in
+      # CI to stop it. Runs the same check the pre-commit hook runs
+      # (scripts/check-selector-map-diff.ts), diffed against
+      # `origin/main` (its default base when --staged is not passed).
+      - name: Selector map Live-verified guard
+        run: npx tsx scripts/check-selector-map-diff.ts
