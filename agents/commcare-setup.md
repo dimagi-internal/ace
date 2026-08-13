@@ -347,6 +347,16 @@ Invoke the `app-connect-coverage` skill **once per app** (Learn, Deliver).
   - **`blocked` (empty `entity_id`/`entity_name` on re-fetch):**
     halt Phase 3. The malformed bind will fail CCHQ's build at
     `app-release`.
+
+    **Read the BIND, not the element text** (dimagi-internal/ace#1192).
+    In the released CCZ, a *correct* deliver marker renders as **empty
+    elements** — `<entity_id/>` / `<entity_name/>` — with the value
+    carried by a `calculate` bind pointing at them. So "empty" judged
+    from element text false-blocks every standard ACE Deliver app.
+    The defect is a marker with **no non-empty `calculate` bind**;
+    an empty element with a bind is correct and must pass. This
+    matters most on the case-UPDATE path, where the preload-hidden-field
+    pattern (§ `entity_id`, ace#1180) produces exactly that shape.
   - **Coverage dispatch can't produce an app (all 3 attempts fail):**
     **do NOT halt Phase 3.** `app-release` (Step 2.7) is the actual
     wall — its Step 6 downloads the released CCZ and greps for
