@@ -24,7 +24,19 @@ for (const file of changed) {
   } catch {
     continue; // new file — nothing to protect yet
   }
-  const newText = staged ? git(['show', `:${file}`]) : fs.readFileSync(file, 'utf8');
+  let newText: string;
+  try {
+    newText = staged ? git(['show', `:${file}`]) : fs.readFileSync(file, 'utf8');
+  } catch {
+    // Staged/working-tree version is unreadable — most likely the file was
+    // deleted. Fail closed and say why, rather than letting the stack trace
+    // stand in for a message: a deleted selector map silently drops every
+    // Live-verified row it carried, and that's exactly the kind of change
+    // this guard exists to stop and explain.
+    failed = true;
+    process.stderr.write(`${file}: could not read the staged/working-tree version (deleted?)\n`);
+    continue;
+  }
   for (const v of findLiveVerifiedViolations(oldText, newText)) {
     failed = true;
     const detail =

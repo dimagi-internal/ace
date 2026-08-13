@@ -42,8 +42,9 @@ selectors:
   });
 
   it('ALLOWS editing the purpose prose of a Live-verified row', () => {
-    // Load-bearing: connect-2.63.2.yaml:483 currently carries stale prose
-    // that must stay fixable. Only `type` and `value` are frozen.
+    // Load-bearing: Live-verified rows' notes will need correcting over
+    // time (a caveat resolved, a companion anchor shipped, a citation
+    // added) — only `type` and `value` are frozen.
     const after = base.replace('Live-verified 2026-07-30.', 'Live-verified 2026-07-30. See #863.');
     expect(findLiveVerifiedViolations(base, after)).toEqual([]);
   });

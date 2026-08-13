@@ -32,8 +32,10 @@ export function isLiveVerified(row: SelectorRow | undefined): boolean {
  *  survived for months because nothing stopped it being written.
  *
  *  Frozen: `type` and `value` (what it matches, and how).
- *  Free: `purpose` (the prose) — documentation must stay improvable, and
- *  connect-2.63.2.yaml:483 currently carries stale prose that needs fixing.
+ *  Free: `purpose` (the prose) — 34 genuine Live-verified rows exist today,
+ *  their notes will need correcting over time as context changes (a caveat
+ *  resolved, a companion anchor shipped, a citation added), and freezing
+ *  `purpose` would make every one of those corrections impossible.
  *  Deleting the row entirely counts as a mutation. */
 export function findLiveVerifiedViolations(
   oldYaml: string,
@@ -45,9 +47,14 @@ export function findLiveVerifiedViolations(
   // a real problem, but it is not evidence of a mutation, and this guard only
   // speaks to mutations. `npm test` catches the malformed map elsewhere.
   // A try/catch alone is NOT enough: `yaml.parse(':::not yaml:::')` does not
-  // throw, it returns a string. Without the shape check below, `selectors`
-  // reads as undefined and every Live-verified row looks deleted. Verified by
-  // executing this function — the try/catch version reported a false deletion.
+  // throw — it returns `{ ":::not yaml::": null }`, an object, so a bare
+  // `typeof doc !== 'object'` check would not catch it either. It's the
+  // `!selectors` branch below that closes the hole, because that bogus
+  // object has no `selectors` key. Both branches stay: a future `yaml`
+  // version could parse garbage into either shape (string or object), and
+  // the point is that no single check is sufficient on its own. Verified by
+  // executing this function — the try/catch-only version reported a false
+  // deletion for every Live-verified row.
   const rows = (text: string): { ok: boolean; rows: Record<string, SelectorRow> } => {
     let doc: unknown;
     try {
