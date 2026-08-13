@@ -64,14 +64,33 @@ export interface SplitOptions {
    * window. Default false; only a tier-1 `unmapped-surface`
    * classification justifies turning it on.
    *
-   * Every top-level `runFlow` gets its OWN `-pre` and `-post` window,
-   * unconditionally — even a `runFlow` immediately adjacent to another
-   * top-level `runFlow` (no other step between them) still yields both
-   * boundary windows, one of them a zero-step chunk. Boundary chunks
-   * set `screenshotName` to `-branch<N>-pre` / `-branch<N>-post` (note
-   * the leading hyphen: the caller concatenates `<recipe-id>` directly
-   * with `screenshotName`, so the hyphen is the separator, producing
-   * `<recipe-id>-branch<N>-pre.xml` on disk).
+   * Two top-level `runFlow`s directly adjacent to each other (no other
+   * top-level step between them) share ONE window at that seam — not an
+   * independent `-post` for the first plus an empty `-pre` for the
+   * second. Nothing executes between two back-to-back runFlows, so a
+   * second dump there would capture the identical screen the first
+   * already captured (zero diagnostic value) while still paying the
+   * full cost this option warns about (a whole extra `maestro test`
+   * invocation) — and, per `runRecipeWithDumps`'s fail-fast contract, a
+   * chunk with an empty flow section risks Maestro rejecting it outright
+   * and aborting every remaining chunk.
+   *
+   * The same empty-flow-chunk hazard applies to the very FIRST top-level
+   * step in the recipe: if it's a `runFlow`, a naive `-pre` split there
+   * would finalize a chunk containing only whatever preamble preceded
+   * it — and recipe preambles are typically pure comments, which parse
+   * to no steps at all. That leading `-pre` is therefore suppressed
+   * unconditionally; its preamble folds into the first runFlow's own
+   * `-post` chunk instead. No chunk this option ever produces should
+   * have an empty flow section — that's the invariant a dedicated test
+   * enforces, not just these two documented cases.
+   *
+   * Boundary chunks set
+   * `screenshotName` to `-branch<N>-pre` / `-branch<N>-post` (leading
+   * hyphen is part of the name — see the test asserting
+   * `/-branch\d+-pre$/` in test/mcp/mobile/recipe-splitter.test.ts; no
+   * live caller consumes this yet, so there's no established
+   * concatenation convention to match beyond that test contract).
    */
   captureAllBoundaries?: boolean;
 }
@@ -136,6 +155,15 @@ export function splitRecipeAtScreenshots(body: string, opts: SplitOptions = {}):
   // for deterministic, collision-free boundary names.
   let pendingRunFlowClose = false;
   let runFlowIndex = 0;
+  // Tracks whether we've reached the first top-level step yet. A `-pre`
+  // split immediately before the FIRST top-level step in the flow would
+  // finalize a chunk containing only whatever preamble preceded it —
+  // and in both calibration recipes that preamble is pure comments (no
+  // real steps), which is itself an empty-flow chunk by another name.
+  // Suppressing the very first `-pre` folds that preamble into the
+  // first runFlow's own `-post` chunk instead of emitting a wasted
+  // window for it.
+  let sawFirstTopLevelStep = false;
 
   const finalize = () => {
     if (pendingScreenshotName !== undefined) {
@@ -169,30 +197,31 @@ export function splitRecipeAtScreenshots(body: string, opts: SplitOptions = {}):
       const startsRunFlow = topLevelRunFlowRe.test(line);
       if (pendingScreenshotName !== undefined) {
         finalize();
-      } else if (opts.captureAllBoundaries && pendingRunFlowClose) {
-        // The step we just finished was a top-level runFlow — close its
-        // `-post` window before deciding whether the step we're about to
-        // start needs its own `-pre` window (below). Deliberately NOT
-        // merged with the `-pre` check below: two top-level `runFlow`s
-        // back-to-back (no other step between them) still get BOTH the
-        // first one's `-post` and the second one's `-pre` as independent
-        // windows, even though that means finalizing an empty chunk here
-        // — every runFlow boundary gets its own window, unconditionally.
-        // Leading hyphen is deliberate: the caller concatenates
-        // `<recipe-id>` directly with `screenshotName`, so this string
-        // supplies its own separator (`<recipe-id>-branch0-post.xml`).
-        pendingScreenshotName = `-branch${runFlowIndex - 1}-post`;
-        finalize();
-      }
-      if (opts.captureAllBoundaries && startsRunFlow) {
-        // `-pre` window immediately before this runFlow starts.
-        pendingScreenshotName = `-branch${runFlowIndex}-pre`;
+      } else if (
+        opts.captureAllBoundaries &&
+        sawFirstTopLevelStep &&
+        (startsRunFlow || pendingRunFlowClose)
+      ) {
+        // Split BEFORE a runFlow (the `-pre` window) and AFTER the
+        // previous step if IT was a runFlow (the `-post` window). Two
+        // back-to-back top-level runFlows share ONE boundary window here
+        // — labeled as the first one's `-post` — rather than an
+        // independent `-post` + empty `-pre` pair: nothing runs between
+        // them, so a second dump would just be a duplicate of the first
+        // one's screen, paid for at full `maestro test` cost. Gated on
+        // `sawFirstTopLevelStep` so the very first top-level step in the
+        // file never opens a `-pre` window against bare preamble (see
+        // the flag's declaration above).
+        pendingScreenshotName = pendingRunFlowClose
+          ? `-branch${runFlowIndex - 1}-post`
+          : `-branch${runFlowIndex}-pre`;
         finalize();
       }
       pendingRunFlowClose = startsRunFlow;
       if (startsRunFlow) {
         runFlowIndex++;
       }
+      sawFirstTopLevelStep = true;
       inTopLevelStep = true;
 
       const match = line.match(takeScreenshotRe);
@@ -206,14 +235,7 @@ export function splitRecipeAtScreenshots(body: string, opts: SplitOptions = {}):
   finalize();
 
   return chunks
-    // Drop chunks that are BOTH empty and unnamed — the ordinary "tail
-    // chunk when the recipe ends exactly on a takeScreenshot" case.
-    // A chunk WITH a screenshotName is kept even when empty: back-to-back
-    // top-level `runFlow`s under captureAllBoundaries legitimately
-    // produce a zero-line `-post`/`-pre` pair at their shared boundary,
-    // and each one still needs to run (as a no-op `maestro test`) so the
-    // caller gets its dump window.
-    .filter((c) => c.screenshotName !== undefined || c.lines.some((l) => l.trim() !== ''))
+    .filter((c) => c.lines.some((l) => l.trim() !== ''))
     .map((c, index) => ({
       yaml: header + '---\n' + c.lines.join('\n'),
       screenshotName: c.screenshotName,
