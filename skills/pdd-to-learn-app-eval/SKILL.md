@@ -110,9 +110,8 @@ methodology, different dimensions tuned to Learn-app concerns. See
    | Dimension | Weight | Criteria |
    |---|---|---|
    | **Assessment gating (enforcement)** | 22% | Does the app **enforce** readiness, not just expose a trivial score? **Architecture note:** in ACE, the Deliver-unlock gate is enforced *Connect-side* — Connect reads the assessment completion; ACE Learn forms carry NO case blocks (see `pdd-to-learn-app § REQUIRED — Learn forms must NOT carry <case> blocks`). So do NOT require in-app case-property sequential unlock — that would contradict the build architecture. Enforcement fitness means, independent of the PDD: (a) **pre-test + post-test** structure with distinct item banks, not a single quiz; (b) **adequate assessment coverage** — enough scored items to actually test the curriculum (roughly ≥1 item per module/major topic; 5 items for a 5-module course is too thin); (c) the score is a **percentage correctly wired to `connect.assessment` at the PDD threshold** so Connect gates Deliver on it; (d) a **pass/fail result experience in-app** — a result label whose relevance is conditional on `user_score >= threshold` (vs a separate fail/retry label), NOT an unconditional "Well done!" that fires regardless of score; (e) retry guidance for a failing FLW. **Hard-gate:** the PDD specifies a readiness gate AND the build is a single quiz with no pre/post split, trivial item count, AND an unconditional pass message → dimension **≤3**. A score tag Connect can read but that sits behind a single trivial quiz with an unconditional "Well done!" is presence, not enforcement → caps this dimension at 5. |
-   | **Instructional depth** | 17% | Is each module actually *teachable*, at item granularity — not a label naming the topic? Check, independent of the PDD: (a) module bodies carry real instructional substance (steps, examples, do/don't, reference imagery placeholders correctly typed), not one-line labels; (b) *(moved 2026-07-27)* item quality is now scored by **`assessment_discrimination`** via an executed probe — do NOT also grade it here; this dimension keeps only the item-COUNT-per-module element in the mid-tier cap below; (c) citations / source references where the domain calls for them (WHO, PMI, etc.). **Hard-gate:** modules are label-only with no teachable substance → dimension **≤3**. **Mid-tier cap (added 2026-05-29 from ITN validation):** decent expository prose is necessary but NOT sufficient for a deployable training instrument. When modules carry teaching prose but lack pedagogical scaffolding — specifically ALL THREE of: (i) no worked examples or do/don't pairs, (ii) no domain citations where the source material cites them (WHO/PMI/GiveWell), AND (iii) fewer than 2 assessment items per taught module (the ITN build has 1 quiz item per module vs the expert `[Final]`'s 10-item pre-test + 10-item post-test) — cap this dimension at **4.0**. Each module that merely *names* its topic without teaching it = 1.5-point deduction. (This is the item-granular replacement for the old "topic present = covered" reading.) |
-   | **Assessment discrimination** | 5% | **Can the assessment tell a trained worker from an untrained one?** Scored from an **executed two-reader contrast** — see § The discrimination probe below, which is MANDATORY and whose per-item table MUST appear in the verdict. **The statistic is the delta, never one reader's level:** `discrimination_delta = (trained_correct − untrained_correct) ÷ items_scored`, where both readers run the **PDD's own FLW persona** and differ ONLY in whether they were handed the module teaching text. **Bands: ≥0.40 → 9–10 · 0.30–0.39 → 7–8 · 0.20–0.29 → 5–6 · <0.20 → ≤3 → suite `fail`.** A bank that does not move when you teach the curriculum is not measuring the curriculum — and that is true at ANY absolute level: trained 95 / untrained 60 is an excellent instrument, trained 90 / untrained 88 is a broken one. **Why a contrast (2026-08-12, ace#1187).** This dimension scored the *absolute* cold score of a blind LLM reader until 2026-08-12, and hard-gated on it. Measured on `spark-facilitator/20260810-0737` (Learn app `34a66bf7-9b48-40ef-aa56-31ac357e8a72`, same 20-item bank, keys withheld, picks committed before reveal): trained field persona **19.0/20**, untrained field persona **8.0/20**, untrained M&E-domain-expert persona (*the reader the old rubric briefed*) **11/20**. The expert proxy sat **15pp above** the population the Deliver gate protects and made the bank look **27% less discriminating than it is** (A−C = 8.0 vs the true A−B = 11.0) — and its edge over the field reader was **stability, not knowledge** (it reliably nailed q2/q3/q11/q14, which the field reader got right about half the time, and *lost* q5 and q20 to it). So the old number measured consistency of exam technique on a reader who already knows the domain: an untrained-reader level cannot separate "bad test" from "test of things a knowledgeable reader already knows", and driving it down means writing items that are arbitrary rather than sensible. Two prior authoring passes (~500K subagent tokens) were spent chasing it on a bank that measures **2.38x** discrimination. **Deductions, each 1 point:** (a) any item whose distractors are all absurd (the "one virtuous option + N absurd options" shape), capped at 2 — this is a Gate-1 item defect, not a typography quibble; (b) a teaching example or practice item referencing a question **absent from the instrument** the Deliver app implements (`instrument-grounded-examples`); (c) items that test generic professional-ethics sentiment rather than program specifics. **Structural tells are REPORTED, not deducted (revised 2026-08-12, ace#1187):** `self-justifying-key`, `minimal-claim`, `odd-one-out-binary` must still be recorded per-item in the probe table and each surfaces a `[WARN]`, but they no longer carry a deduction — they are option-craft hygiene, and the measured evidence is that option-craft does not by itself create or destroy discrimination. The delta is the evidence; do not re-litigate it with adjectives. **Item independence:** if item N's answer is derivable from item N-1's, note it — a metric assuming N independent items overstates the bank's resolution. **Coverage:** run the probe on the pre-test bank as well as the post-test and report a block per instrument; a hardened post-test over an untouched pre-test makes the PDD's pre/post learning-gain metric overstate the gain, and both banks' deltas must be reported. The post-test drives the dimension score, but **do not treat it as the only gating instrument** — Connect stores one `passing_score` per learn app and every "has this worker passed?" surface uses **any-passed** semantics, so ANY form carrying `connect.assessment` gates Deliver regardless of what its own intro text claims (ace#1131). Report `untrained_ratio` and the `[WARN]` for each such form. **Absolute floor is a `[WARN]`, NOT a gate (ace#1187).** Report `untrained_ratio` per instrument and surface a `[WARN]` when `untrained_ratio × 100 >= the PDD's Deliver-unlock threshold` — the untrained field reader clearing the real gate means the gate is decorative — but do **not** hard-gate on it. Two reasons, both measured 2026-08-12. (1) **At any threshold ≥ 80 the gate is mathematically redundant**: `delta ≤ 1.0 − untrained_ratio`, so `untrained_ratio ≥ 0.80` forces `delta ≤ 0.20`, which the band already fails. The `hh-poverty-targeting` negative control fails on the delta *alone* (untrained 0.95 → delta ceiling **0.05**), so the gate adds nothing there. (2) **`untrained_ratio` is too noisy to gate on** — four independent runs of the SAME 20-item bank scored 6, 10, 10 and 11 (0.30–0.55, a 25pp spread), because a persona instruction only partly suppresses an LLM's domain knowledge. Hard-gating a statistic with ±12pp run-to-run noise is the same class of error this dimension was filed for. Below a 0.80 threshold the WARN is the only signal on this failure mode and a human should read it. Compute against the *actual* threshold in the PDD, not the 80% default, and report it for **every** instrument carrying `connect.assessment` — Connect's `passed` semantics are any-passed, so a pre-test carrying the marker is a gating instrument too whatever its copy says (ace#1131). **Low-n rule (closes ace#1042):** when `items_scored < 5` the delta is degenerate (at n=1 it can only be −1.0, 0 or 1.0, so the outcome is fixed by the item count before the app is built) → score **`null`** and redistribute, surface a `[WARN]` naming the PDD-mandated item count, and **fire no hard-gate** — a builder cannot author its way out of an instrument the PDD dictates. **Scope (ace#1187):** the Learn assessment is a **readiness** check, not an anti-fraud device. Fraud is the Evidence Model's job — required live photo, GPS, the payment predicate, Partner Trainer observation on a sample. Do NOT deduct here for the bank failing to be adversarially robust against a motivated cheat; that is a property it was never designed to have. **N/A rule:** app has no scored assessment (PDD specifies no gate) → score `null` and redistribute. |
-   | **Assessment operation coverage** | 3% | **Does the bank test the operations that actually cost something when they go wrong?** (Added 2026-08-12, ace#1187 — a bank covering every high-consequence operation is doing its job whether or not any reader could pass it cold, and this is the dimension that says so.) Enumerate the **high-consequence operations** from the Deliver app blueprint + the PDD: every instrument field or step whose mishandling causes (i) an **unpaid visit** (wrong `meeting_type`, missing required evidence, wrong payment predicate), (ii) a **blocked form** (a constraint the worker will hit in the field — participants > attendees, out-of-range threshold), or (iii) **corrupted data** (blank-vs-zero on a numeric, a free-text field where a coded one was meant, a date entered in the wrong convention). Then map **each scored item → the instrument field it governs and the failure it prevents**, and report the mapping in the probe block's `operation_coverage` table. Score = fraction of high-consequence operations carrying ≥1 keyed item: **≥0.90 → 9–10 · 0.70–0.89 → 7–8 · 0.50–0.69 → 5–6 · <0.50 → ≤3 → suite `fail`**. An item that maps to **no** operation is not a defect on its own (conceptual/consent items earn their place) but report it as `operation: none` — if more than half the bank maps to nothing, that IS the finding and it caps this dimension at **5**. **Hard-gate:** a majority of high-consequence operations carry **zero** items → dimension **≤3 → suite `fail`**. **N/A rule:** no scored assessment, or the PDD specifies no Deliver instrument to protect → score `null` and redistribute. |
+   | **Instructional depth** | 17% | Is each module actually *teachable*, at item granularity — not a label naming the topic? Check, independent of the PDD: (a) module bodies carry real instructional substance (steps, examples, do/don't, reference imagery placeholders correctly typed), not one-line labels; (b) item quality is scored by **`assessment_rule_coverage`** — do NOT also grade it here; this dimension keeps only the item-COUNT-per-module element in the mid-tier cap below; (c) citations / source references where the domain calls for them (WHO, PMI, etc.). **Hard-gate:** modules are label-only with no teachable substance → dimension **≤3**. **Mid-tier cap (added 2026-05-29 from ITN validation):** decent expository prose is necessary but NOT sufficient for a deployable training instrument. When modules carry teaching prose but lack pedagogical scaffolding — specifically ALL THREE of: (i) no worked examples or do/don't pairs, (ii) no domain citations where the source material cites them (WHO/PMI/GiveWell), AND (iii) fewer than 2 assessment items per taught module (the ITN build has 1 quiz item per module vs the expert `[Final]`'s 10-item pre-test + 10-item post-test) — cap this dimension at **4.0**. Each module that merely *names* its topic without teaching it = 1.5-point deduction. (This is the item-granular replacement for the old "topic present = covered" reading.) |
+   | **Assessment rule coverage** | 8% | **Does the bank test the rules that cost something when a worker gets them wrong?** Structural — judged from the artifact, with no persona, no blind readers, and no run-to-run noise (see § 5c, and § Why the blind probe was retired before reinstating anything like it). Enumerate two sets from the PDD + the Deliver blueprint: **(i) counter-intuitive rules** — taught rules where ordinary common sense produces the WRONG answer (leave the amount BLANK rather than 0; a committee meeting is recorded and deliberately NOT paid; members with disability sit INSIDE total attendance rather than added to it; any named number the worker cannot derive — an appeal window, a minimum subject count, a recency limit); and **(ii) high-consequence operations** — instrument fields or steps whose mishandling causes an unpaid visit, a blocked form, or corrupted data. Map each scored item, across BOTH banks, to the rule it keys on. Score = fraction of (i) ∪ (ii) carrying ≥1 keyed item, **counter-intuitive rules weighted double**: **≥0.90 → 9–10 · 0.70–0.89 → 7–8 · 0.50–0.69 → 5–6 · <0.50 → ≤3**. A bank covering zero counter-intuitive rules is a comprehension check, not a gate → cap at **5**. **Deduction, 1 point each, capped at 2:** an item whose distractors are all rejectable on sight (the "one virtuous answer + N absurd options" shape) — a real item defect and the one option-craft property worth scoring. **Do NOT deduct because an intelligent reader could answer an item cold.** For a CHW curriculum most correct answers ARE sensible; a bank engineered to defeat a clever guesser is a bank of arbitrary trivia, which is worse training for a low-literacy cohort, not better. Uncovered rules are emitted as `repairs[]` for the PRODUCER to fix (§ 5c), not as a verdict. **N/A rule:** no scored assessment → score `null` and redistribute.
    | **Localization match** | 8% | **HARD-FAIL dimension.** If the PDD names a working language other than English, every user-facing string (module names, form names, labels, choices, hints, assessment items and their option labels) must carry its named-language counterpart. **Grade COVERAGE, not MECHANISM (revised 2026-07-30, ace#968).** Nova exposes **no per-language / locale / itext channel on any tool** (re-confirmed 2026-07-31 across all 63 live tools; `update_app` now carries only `name`), so per-language itext is *unreachable* and its absence is NOT a defect. Three distinct states: (a) **complete coverage authored inline** (each string carries English + each named language in one label) → this is the **documented, sanctioned fallback** per `_app-component-library.md § localization-layer`; score it on coverage exactly as if it were itext, no mechanism deduction, and surface `[INFO]` recording that the inline mechanism was used; (b) **materially incomplete coverage** (some strings translated, others English-only) → **≤3 → suite `fail`**; (c) **English-only** → **≤3 → suite `fail`**. **Do not false-fail the two permitted degradations:** option labels identical across all named languages (district names, facility names, other proper nouns) correctly stay BARE, and short strings with no room for stacked paragraphs correctly use the compact `English / Lang2 / Lang3` slash form — neither counts as missing coverage. **`[WARN]` (not a deduction)** when the PDD carries a low-literacy / low-education design constraint AND the build stacks N languages inline: that multiplies every label's reading load for the cohort the PDD singles out, and it is a real product tension a human should see — but it is the sanctioned mechanism, so it does not reduce the score. **N/A rule:** PDD names no working language → score `null` and redistribute weight. (Resolves the 2026-05-29 localization decision: English core, hard-fail if named-language coverage wasn't also built. Supersedes the "via itext" mechanism wording, which instructed something unbuildable.) |
 
    **Deduction rules:**
@@ -149,6 +148,18 @@ methodology, different dimensions tuned to Learn-app concerns. See
      "Previous Screen" (`postSubmit: "previous"`). Read each form via
      `get_form({app_id, moduleUuid, formUuid})`. Any form not `previous`
      → `[BLOCKER]` → `fail`.
+   - **`single_gating_assessment`** (added 2026-08-13, ace#1205) — count the
+     forms carrying a `connect.assessment` block. If the PDD declares ONE
+     readiness gate and more than one form carries the marker → `[BLOCKER]` →
+     `fail`. Connect stores one `passing_score` per learn app and every "has
+     this worker passed?" surface uses **any-passed** semantics (ace#1131), so a
+     *diagnostic* pre-test carrying the marker silently becomes a Deliver-unlock
+     gate — and since a pre-test is by construction the easiest instrument in
+     the app, it is the one that unlocks. Live case:
+     `spark-facilitator/20260812-1635` shipped a pre-test whose own screen read
+     "This check does not open anything" while carrying `m0_pretest` as an
+     assessment. The fix is one `configure_connect` call (REPLACE-ALL — resend
+     the complete participant set). Pure blueprint read, no LLM judgment.
 
    **Addressing note (ace#1132).** Nova is uuid-addressed since
    2026-07-31 — no tool accepts `moduleIndex` / `formIndex` / `fieldId`.
@@ -165,259 +176,113 @@ methodology, different dimensions tuned to Learn-app concerns. See
    Conditions are not representable in the Nova blueprint, so this rubric
    cannot read them yet.
 
-5c. **The discrimination probe (MANDATORY — scores `assessment_discrimination`
-   and `assessment_operation_coverage`).**
+5c. **Rule-coverage audit and repair work order (scores
+   `assessment_rule_coverage`).**
 
-   **Why this is a probe and not a criterion.** Before 2026-07-27 this rubric
-   already required assessment items to be "anti-guess (plausible distractors,
-   not 'pick the obviously-correct option')" as sub-criterion (b) of
-   `instructional_depth`. It scored `hh-poverty-targeting/20260722-1341` at
-   **9.4/10** on a 10-item bank where EVERY item was one virtuous answer plus
-   three absurd distractors, and a domain expert caught it on first read
-   (ace#981). The criterion was true, well-worded, and inert: judging "are these
-   anti-guess?" while looking at the answer key invites the judge to confirm the
-   key is defensible. So the rubric no longer asks for a judgment — it asks for a
-   **result you have to produce by doing the work**.
+   This replaced a two-reader blind-probe harness on 2026-08-13. Read
+   § Why the blind probe was retired before reinstating anything like it.
 
-   **Why it is a CONTRAST and not a ceiling (ace#1187 — read this before
-   running it).** From 2026-07-27 to 2026-08-12 the probe ran ONE reader, scored
-   its absolute cold total, and hard-gated on it. That reader was briefed as a
-   capable adult with strong exam technique, and in practice carried deep
-   background in CommCare, M&E and programme design. The population the Deliver
-   gate exists to protect is an **elected community member in rural Malawi** —
-   limited formal schooling, working in a second or third language, first
-   smartphone, no M&E background. Both errors ran the same direction: the expert
-   proxy overstated the guess floor by **15pp** (55% vs the field reader's 40%)
-   AND understated discrimination by **27%**. Discrimination is a contrast —
-   trained minus untrained — and an untrained reader's LEVEL cannot distinguish
-   "bad test" from "test of things a knowledgeable reader already knows".
-   Chasing the level down means writing items that are arbitrary rather than
-   sensible, which makes the instrument **worse**. So: run two readers, score
-   the gap.
+   **The audit — four steps, no dispatched readers, no persona.**
 
-   **The harness note that makes this runnable (ace#1014).**
-   `get_form({app_id, moduleUuid, formUuid})` returns stems, option labels
-   **and** the `qN_score` calculates in ONE atomic payload — there is no call
-   that fetches items without the key (`get_field` is uuid-addressed and
-   per-field, so it cannot fetch a stem without you already knowing which
-   field you want, and it returns that field's calculate too). So a single-agent
-   self-probe is **contaminated by construction**: step 1's "do not read the
-   calculates yet" is not enforceable by the reader who already has them on
-   screen, and what gets measured is the author's intent rather than the item's
-   difficulty. The workable shape, and the one this rubric requires:
+   1. **Enumerate the counter-intuitive rules.** Walk the module teaching text.
+      For each rule it teaches ask: *if a worker had never read this module,
+      would ordinary common sense give them the RIGHT answer or the WRONG one?*
+      Keep the ones where common sense misleads — they are the only items that
+      can carry training signal. Recurring shapes: a value convention that reads
+      backwards (leave the amount BLANK, never 0, because 0 means "tried and
+      saved nothing"), a deliberate non-payment (a committee meeting is recorded
+      and correctly not paid), an inclusion rule (members with disability are
+      already INSIDE total attendance), and any named number the worker cannot
+      derive (an appeal window, a minimum subject count, a recency limit).
+   2. **Enumerate the high-consequence operations** from the Deliver blueprint
+      and the PDD: every instrument field or step whose mishandling causes an
+      unpaid visit, a blocked form, or corrupted data.
+   3. **Map each scored item to the rule it keys on**, across BOTH the pre-test
+      and the post-test. An item mapping to nothing is not a defect by itself
+      (consent and safety items earn their place) — report it as `rule: none`.
+      Also note any item derivable from another; two items on one rule are one
+      item's worth of resolution reported as two.
+   4. **Compute coverage** over the union, counter-intuitive rules weighted
+      double, and emit every uncovered rule as a `repairs[]` entry.
 
-   - **Dispatch SEPARATE agents** that receive ONLY the stems + option labels
-     (plus, for the trained reader, the module teaching text). Never the
-     calculates, never the answer key, never the build memo.
-   - Give each agent an **independently permuted** option set under **neutral
-     labels** (`A/B/C/D` reassigned per agent), so a shared position bias cannot
-     masquerade as a shared read.
-   - Require every pick to be **committed in writing** before any mapping back
-     to the key. Two independent permutations producing *different* miss sets is
-     weak evidence against permutation leakage; identical miss sets across
-     permutations is the strong signal.
-   - Verify the key against the live `qN_score` calculates, **not** against a
-     stated correct-answer distribution in a build memo.
-
-   **Derive the FLW persona from the PDD — do not improvise it, and do not use a
-   domain expert (ace#1187).** Before dispatching anything, read out of the PDD:
-   formal schooling level, the working language and whether it is the cohort's
-   first, prior data-collection / M&E experience, and smartphone familiarity.
-   Both readers get that SAME persona verbatim. A reader briefed as "a capable
-   adult with strong exam technique" is the retired proxy that caused this
-   rubric's two-cycle false failure — it measures an LLM domain-expert ceiling,
-   not the field.
-
-   Run this on the post-assessment (the gating instrument) **and** on any
-   pre-assessment — report a block per instrument:
-
-   1. **Extract the item bank.** For each scored item, pull the stem and the
-      option labels. Do NOT read the `*_score` calculates yet — those are the
-      answer key, and seeing them contaminates the probe. If you cannot separate
-      them (see the harness note above), dispatch the blind agents rather than
-      probing in-context.
-   2. **Reader B — untrained, field persona.** Given the stems + options and the
-      PDD-derived FLW persona, and **nothing else**: no teaching content, no
-      module text, no PDD body. For each item, pick what that persona would pick
-      and record WHY in ≤10 words ("only non-abusive option", "genuinely 50/50
-      without training"). **Run B at least TWICE**, each run with an
-      independently reshuffled option order, and use the **mean** — B is the
-      noisy reader (the ace#1187 measurement saw 6 and 10 across two runs of the
-      same bank; A was 19 and 19). Report every run, not just the mean.
-   2a. **Reader A — trained, same field persona.** Identical persona, identical
-      stems and options, **plus the five modules' teaching text**. Still blind to
-      the key. One run suffices when the two B runs agree closely; run A twice
-      whenever B's runs diverge by more than 2 items, so the delta isn't read off
-      a single draw on either side.
-   2b. **Audit the option SET for structural tells** — self-justifying key,
-      minimal-claim key, odd-one-out on a binary, any option rejectable on
-      sight. Record them per item, from the blind view, before the key is
-      revealed, including on items neither reader missed. These are **reported,
-      not deducted** (ace#1187) — except `absurdity-elimination`, which is a
-      Gate-1 item defect and still deducts.
-   3. **Now read the answer key** and mark, per item, `trained_correct` and
-      `untrained_correct`.
-   4. **Compute the statistic.**
-      `discrimination_delta = (trained_correct − untrained_correct) ÷ items_scored`,
-      using B's mean. Also record `untrained_ratio = untrained_correct ÷
-      items_scored` — that is what the untrained-field-reader hard-gate is
-      computed against, and it is worth knowing on its own (40% in ace#1187,
-      against a 25% four-option chance floor).
-   4b. **Report the effective bar — the free items.** Count the items **both**
-      readers got right in every run (`free_items`): answerable from arithmetic
-      or from the stem's own framing, carrying no signal about training.
-      `signal_carrying_items = items_scored − free_items`, and the PDD's
-      unlock threshold expressed over those is the **effective bar**. In
-      ace#1187, 5 of 20 items were free, so a 16/20 gate is really **11 of 15
-      signal-carrying items = 73%**, not 80%. This falls straight out of a
-      contrast design and is invisible to an absolute-ceiling probe; it is
-      genuinely useful for gate placement, so always report it.
-   4c. **Build the operation-coverage map** (scores
-      `assessment_operation_coverage`): enumerate the high-consequence
-      operations from the Deliver blueprint + PDD, then map each item to the
-      instrument field it governs and the failure it prevents.
-   5. **Emit the per-item table into the verdict** (this is the auditable
-      artifact — an `assessment_discrimination` score with no table is an
-      incomplete eval, and a reviewer should reject it):
+   **The repair work order — this is the point of the dimension.** An uncovered
+   rule is not a verdict, it is a task with a known fix: re-key a scenario item
+   whose answer decency already supplies onto a rule that must be taught to be
+   known. Emit one entry per uncovered rule:
 
    ```yaml
-   assessment_discrimination_probe:
-     instrument: post_assessment          # repeat the block per assessment form
-     harness:
-       persona_source: pdd                # schooling, language, prior M&E experience
-       persona_summary: "elected community member, primary schooling, Chichewa first language, first smartphone, no M&E background"
-       trained_runs: 1                    # reader A — same persona + module teaching text
-       untrained_runs: 2                  # reader B — same persona, no teaching content
-       options_permuted: true             # independently permuted neutral labels per run
-       picks_committed_before_reveal: true
-       key_source: qN_score_calculates    # never a stated distribution in a memo
-     items_scored: 20
-     trained_correct: 19.0                # reader A, mean across runs
-     untrained_correct: 8.0               # reader B, mean across runs [6, 10]
-     untrained_ratio: 0.40                # vs a 0.25 four-option chance floor
-     discrimination_delta: 0.55           # (19.0 - 8.0) / 20 → band >= 0.40
-     unlock_threshold: 80                 # from the PDD. untrained_ratio >= this is a [WARN], not a gate
-     untrained_run_spread: 4              # |run1 - run2|; > 2 items -> [WARN], run a third
-     free_items: 5                        # both readers correct in every run
-     signal_carrying_items: 15
-     effective_bar: "11 of 15 signal-carrying items = 73% (nominal gate 16/20 = 80%)"
-     verdict: pass
-     items:
-       - id: q6
-         untrained_pick: b
-         untrained_reason: only option that isn't coercive
-         trained_pick: b
-         correct: b
-         untrained_correct: true
-         trained_correct: true
-         free_item: true
-         operation: "meeting_type"
-         prevents: unpaid-meeting
-         structural_tells: [absurdity-elimination]
-       - id: q3
-         untrained_pick: a
-         untrained_reason: sounds like how a survey works
-         trained_pick: b
-         correct: b
-         untrained_correct: false
-         trained_correct: true
-         free_item: false
-         operation: "participants_count"
-         prevents: blocked-form
-         structural_tells: []
-       - id: q7
-         untrained_pick: c
-         untrained_reason: key claims least, others add behavior
-         trained_pick: c
-         correct: c
-         untrained_correct: true
-         trained_correct: true
-         free_item: true
-         operation: none
-         prevents: null
-         structural_tells: [minimal-claim, self-justifying-key]
-     operation_coverage:
-       high_consequence_operations: 8     # from the Deliver blueprint + PDD
-       covered: 7                         # carrying >= 1 keyed item
-       ratio: 0.875
-       uncovered: ["savings_amount blank-vs-zero"]
+   rule_coverage:
+     counter_intuitive_rules: 10
+     counter_intuitive_covered: 7
+     operations: 12
+     operations_covered: 11
+     weighted_ratio: 0.85
+     items_mapping_to_nothing: []
+   repairs:
+     - uncovered_rule: "the appeal window is 7 days from the decision"
+       taught_in: m7_payment
+       failure_prevented: forfeited-payment
+       suggested_target: q12
+       note: >-
+         q12 currently keys on the ACT of appealing, which any sensible worker
+         picks unprompted. Re-key it on the WINDOW, which is taught and cannot
+         be guessed. Keep the stem; change what the options differ on.
    ```
 
-   Permitted `structural_tells` values: `self-justifying-key`,
-   `minimal-claim`, `odd-one-out-binary`, `absurdity-elimination`. Record
-   `derived_from: qN` on any item whose answer follows from an earlier item.
+   **Who applies the repairs: `pdd-to-learn-app`, never this skill.** The judge
+   must not author the bank it grades — a grader that repairs its own items and
+   re-scores them converges on passing itself. The orchestrator dispatches the
+   producer with the `repairs[]` list, exactly as the phase boundary fence
+   dispatches `producedBy` for a missing artifact, then re-runs this eval ONCE.
+   **Cap at one repair round.** If coverage is still short after it, report and
+   stop — do not loop to green. Roughly 500K subagent tokens were spent across
+   two prior authoring cycles looping against a number that could not move
+   (ace#1014).
 
-   **Calibration anchor (negative control).** The `hh-poverty-targeting`
-   `20260722-1341` post-assessment is the canonical FAIL — a 10-item bank of one
-   virtuous answer plus three absurd distractors. Any rubric revision must still
-   score that bank ≤3 on this dimension, and under the contrast statistic it
-   fails on **three** independent paths: the untrained field reader clears the
-   80% unlock threshold cold (hard-gate), the trained reader has almost nothing
-   left to add so the delta collapses below 0.20 (band → ≤3), and every item
-   carries `absurdity-elimination` (deduction, capped at 2). If a future judge
-   scores it above 3, the probe has been weakened — treat that as a rubric
-   regression, not a judge disagreement.
+   ### Why the blind probe was retired (2026-08-13, ace#1206)
 
-   **Second anchor — option-craft is not the lever (ace#1014,
-   `spark-facilitator/20260730-1718`, Learn app
-   `38836b2d-0405-4e99-879a-53cd2344eff9`).** The same 12-item bank was
-   re-authored twice and re-probed against the OLD single-expert-reader harness:
-   as built 12/12; after full typography normalization 10/12; after deliberate
-   virtue-inversion 9/12 and 10/12. q5's four options were exactly uniform at
-   65/65/65/65 characters and were still answered correctly cold, and 7 of 10
-   hits fell to general professional competence rather than any structural tell.
-   Retained as a calibration fact about **authoring**, not about scoring: a judge
-   that credits typography normalization or virtue-inversion as evidence of
-   discrimination is miscalibrated, and so is one that *penalises* their absence.
-   Note what ace#1187 later showed about these three passes — the reader was the
-   confound, so the plateau is not evidence the banks failed to improve. Re-judge
-   them on the delta before drawing any conclusion from those numbers.
+   The dimension used to dispatch blind readers and hard-gate on
+   `discrimination_delta = (trained − untrained) ÷ items_scored`. Two
+   independent reasons, either sufficient on its own.
 
-   **Third anchor — the contrast (ace#1187, `spark-facilitator/20260810-0737`,
-   Learn app `34a66bf7-9b48-40ef-aa56-31ac357e8a72`).** Same 20-item bank, keys
-   withheld, picks committed before reveal, each untrained reader run twice with
-   per-question shuffled option order:
+   **1. The gate was arithmetically the statistic the same revision had just
+   declared too noisy to gate on.** Because `trained ≤ n`, the delta is bounded
+   by `delta ≤ 1 − untrained_ratio`; when the trained reader scores 100% — which
+   it did on every well-built bank ever measured here — the bound is TIGHT and
+   the delta simply IS `1 − untrained_ratio`. The 2026-08-12 revision demoted
+   the `untrained_ratio` floor to a `[WARN]` because four runs of one bank
+   spread 0.30–0.55 and "hard-gating a statistic with ±12pp run-to-run noise is
+   the same class of error this dimension was filed for" — and then kept
+   hard-gating the delta, which inherits that noise one-for-one. It derived the
+   coupling itself and drew the opposite conclusion from it.
 
-   | Reader | Brief | Correct/20 | Ratio |
-   |---|---|---|---|
-   | **A — trained, field persona** | given the five modules' teaching text; CBF persona | **19.0** | 0.95 |
-   | **B — untrained, field persona** | no teaching content; same CBF persona | **8.0** (6 and 10) | 0.40 |
-   | **C — untrained, M&E domain expert** | the RETIRED reader | 11 | 0.55 |
+   **2. An LLM cannot proxy an untrained human's difficulty floor.** The
+   "untrained field persona" reader is a fiction. An LLM told to be a
+   low-literacy CBF still reads English fluently, still does the arithmetic,
+   still has strong multiple-choice elimination; its floor is its own competence,
+   not the persona's. For a CHW curriculum — where the taught rules are largely
+   "record what happened, honestly" — a HIGH untrained score is the EXPECTED
+   result for a well-designed bank, so it cannot be a failure signal. Driving it
+   down means writing items that are arbitrary rather than sensible, which makes
+   the instrument worse for exactly the cohort the gate protects. No ACE bank has
+   ever been put in front of an actual CHW, so the LLM→CHW inference was never
+   validated — and it was load-bearing for a hard gate.
 
-   `discrimination_delta` = (19.0 − 8.0) ÷ 20 = **0.55** → top band, **pass**
-   with named item-level residuals. The old rubric returned `2.0` on this bank
-   and failed the phase. A judge that fails this bank has reintroduced the
-   ceiling measurement. Note also that C's edge over B is **stability, not
-   knowledge**: C reliably nailed q2/q3/q11/q14, which B got right about half the
-   time, and C *lost* q5 and q20 to B.
+   Live case: `spark-facilitator/20260812-1635`, Learn app
+   `036c2c60-be0e-447d-862f-fe14d1dbcbb1`. Untrained persona scored 11/12 in
+   both independent runs with identical miss sets, trained scored 12/12 → delta
+   0.083 → `fail` — on a build scoring **8.45** overall, with complete trilingual
+   coverage, worked examples drawn from the real instrument, correct conditional
+   pass/fail wiring, and 11 of 12 high-consequence operations covered. A
+   5%-weight dimension failed an 8.45 build on an unvalidated proxy.
 
-   **Re-validation of this rubric against both anchors (2026-08-12).** The
-   revised statistic was run end-to-end on both banks before it shipped, two
-   independently-permuted untrained runs each, picks committed before reveal,
-   keys read from the live `qN_score` calculates:
-
-   | Bank | trained | untrained (runs) | delta | verdict |
-   |---|---|---|---|---|
-   | `spark-facilitator` post-test (20 items, gate 16/20) | **20/20** | 11, 10 → 10.5 (0.525) | **0.475** | **pass** (≥0.40) |
-   | `hh-poverty-targeting` post-assessment (10 items, gate 8/10) | ≤10/10 by construction | 9, 10 → 9.5 (0.95) | **≤0.05** | **fail** (<0.20) |
-
-   Three facts a future judge must not lose. (1) **The negative control fails on
-   the delta alone** — `delta ≤ 1.0 − untrained_ratio` is an upper bound, so a
-   bank whose untrained reader scores 0.95 cannot reach the 0.20 floor no matter
-   how the trained reader does. No hard-gate on the absolute score is needed to
-   hold that anchor. Both untrained runs also reported **9 of 10 items with two
-   or more options eliminable on sight**, so `absurdity-elimination` deducts on
-   top. (2) **The untrained reader is NOISY** — across four runs of the SAME
-   spark bank (two from ace#1187, two here) the scores were 6, 10, 10, 11: a
-   0.30–0.55 spread on identical items. The persona brief only partly suppresses
-   an LLM's domain knowledge, so treat a single untrained run as uninformative,
-   always run at least two, and **run a third whenever the delta lands within
-   0.05 of a band boundary**. (3) **The trained reader scored 20/20**, i.e. every
-   item on the spark bank is answerable from the taught modules — that is the
-   Step-1 property `_app-component-library.md` asks builders to author for, and
-   it is what makes the delta large. A bank where the trained reader also misses
-   items has an authoring defect the delta will understate.
-
+   **The negative control still fails on the new metric.** The
+   `hh-poverty-targeting/20260722-1341` post-assessment (10 items, one virtuous
+   answer plus three absurd distractors) keys on professional-ethics sentiment
+   rather than programme rules: it covers ~0 counter-intuitive rules → capped at
+   5 and scored ≤3 on coverage, and every item takes the absurd-distractor
+   deduction. **Any future revision of this dimension must still score that bank
+   ≤3** — that is the regression test.
 6. **Write the verdict YAML** to
    `3-commcare/pdd-to-learn-app-eval_verdict.yaml` using the shape from
    `skills/_eval-template.md § Verdict YAML contract`. Dimensions:
@@ -432,9 +297,8 @@ methodology, different dimensions tuned to Learn-app concerns. See
      archetype_coherence:       { weight: 0.08 }
      # Fitness axis (55%) — trains + gates competence, graded vs expert bar
      assessment_gating:         { weight: 0.22 }   # enforcement: pre/post, sequential unlock, pass/retry
-     instructional_depth:       { weight: 0.17 }   # item-granular teachable content (item QUALITY moved to assessment_discrimination 2026-07-27)
-     assessment_discrimination: { weight: 0.05 }   # MANDATORY two-reader contrast (trained - untrained, both on the PDD's FLW persona); null + redistribute when no scored assessment or items_scored < 5; HARD-FAIL delta < 0.20 OR untrained_ratio >= the PDD unlock threshold
-     assessment_operation_coverage: { weight: 0.03 }   # items mapped to the high-consequence operations they protect; null + redistribute when no scored assessment
+     instructional_depth:       { weight: 0.17 }   # item-granular teachable content (item QUALITY is scored by assessment_rule_coverage)
+     assessment_rule_coverage:  { weight: 0.08 }   # counter-intuitive rules + high-consequence operations carrying >=1 keyed item; emits repairs[] for the producer; null + redistribute when no scored assessment
      localization_match:        { weight: 0.08 }   # null + redistribute when PDD names no working language; HARD-FAIL on English-only or incomplete coverage (inline coverage = the sanctioned mechanism, full credit)
    ```
 
@@ -452,35 +316,21 @@ methodology, different dimensions tuned to Learn-app concerns. See
    - `[BLOCKER]` for each fitness hard-gate that fired (no enforcement
      machinery on a PDD-specified readiness gate; label-only modules;
      missing or materially-incomplete required-language coverage).
-   - `[WARN]` (not a BLOCKER — ace#1187) when `untrained_ratio × 100 >= the
-     PDD's Deliver-unlock threshold` for ANY instrument carrying
-     `connect.assessment`, pre-test included (ace#1131) — the untrained field
-     reader clears the real gate, so the gate is decorative. It is a WARN
-     because at thresholds ≥ 80 the delta band already fails such a bank
-     (`delta ≤ 1.0 − untrained_ratio`), and because `untrained_ratio` carries
-     ±12pp run-to-run noise. Never compute it against a domain-expert reader;
-     that proxy is retired.
-   - `[WARN]` when the two untrained runs differ by more than 2 items — the
-     reader was unstable on this bank, so the delta rests on a wide draw; say
-     so, and run a third untrained pass before trusting a near-boundary score.
-   - `[WARN]` for each structural tell recorded in the probe table
-     (`self-justifying-key`, `minimal-claim`, `odd-one-out-binary`). These are
-     option-craft hygiene worth a human's eye and are **not** deductions
-     (ace#1187) — the delta is the evidence. `absurdity-elimination` still
-     deducts, per the dimension row.
-   - `[WARN]` when the pre-test bank's `discrimination_delta` is materially
-     below the post-test's — the PDD's pre/post learning-gain metric will
-     overstate the gain.
-   - `[WARN]` reporting `free_items` and the resulting **effective bar** —
-     items both readers answered correctly in every run carry no training
-     signal, so the nominal unlock threshold overstates the real bar (16/20 =
-     80% nominal was 11/15 = 73% effective in ace#1187). This is gate-placement
-     information for a human, not a defect.
-   - `[WARN]` when `items_scored < 5` — the delta is degenerate at that item
-     count and the dimension scored `null`; name the PDD-mandated count, since
-     no authoring choice available to the builder can change it (ace#1042).
-   - `[BLOCKER]` when a majority of high-consequence operations carry zero
-     scored items (`assessment_operation_coverage` hard-gate).
+   - `[WARN]` for each uncovered rule emitted in `repairs[]`. These are a work
+     order for `pdd-to-learn-app`, not a verdict against it — name the rule, the
+     module that teaches it, and the item best re-keyed onto it.
+   - `[BLOCKER]` when the bank covers **zero** counter-intuitive rules. A bank
+     of only common-sense items is a comprehension check, not a readiness gate.
+   - `[BLOCKER]` when more than one form carries `connect.assessment` while the
+     PDD declares a single gate — Connect stores one `passing_score` per learn
+     app and every "has this worker passed?" surface is **any-passed**
+     (ace#1131), so a diagnostic pre-test carrying the marker silently becomes a
+     Deliver-unlock gate whatever its own copy says. Mechanically checkable from
+     the blueprint; see § 5b (ace#1205).
+   - `[WARN]` when more than half the scored items map to no rule at all —
+     the bank is testing sentiment rather than the work.
+   - `[WARN]` for each item derivable from another (two items on one rule are
+     one item's worth of resolution reported as two).
    - `[INFO]` recording the localization MECHANISM used (inline
      multilingual labels — the sanctioned fallback, since Nova exposes no
      per-language itext channel, ace#968). Mechanism is never a deduction;
@@ -559,3 +409,4 @@ See `skills/_eval-template.md § Dry-Run Behavior (stock)`.
 | 2026-07-31 | **Migrated every `get_form` read to uuid addressing (ace#1132).** Nova's 2026-07-31 redeploy moved its whole surface from `moduleIndex`/`formIndex`/`fieldId` to `moduleUuid`/`formUuid`/`fieldUuid`, so `form_navigation` and the § 5c blind-probe harness both named uncallable operations. Added an addressing note at § 5b: resolve uuids ONCE per run — from the build summary's `nova_uuids:` frontmatter if present, else one `get_app({app_id})` (its blueprint prints `[uuid …]` on every module/form/field), with `search_blueprint({query, app_id})` for a single semantic name — and reuse the map for every read. The § 5c harness contract is unchanged and if anything reinforced: `get_form({app_id, moduleUuid, formUuid})` still returns stems, options AND the `qN_score` calculates atomically, and `get_field` is now per-field-uuid so it cannot fetch a stem without its key either — a self-probe stays contaminated by construction. Also corrected `localization_match`'s parenthetical (`update_app` now carries only `name`); the no-itext-channel claim itself was re-verified across all 63 live tools. | ACE team |
 | 2026-08-12 | **`assessment_discrimination` becomes a CONTRAST, not a ceiling; `assessment_operation_coverage` added (ace#1187, closes ace#1042).** The dimension scored the *absolute* cold total of a single blind LLM reader briefed as a capable adult with strong exam technique, and hard-gated on it (band table + gate-margin gate). Measured on `spark-facilitator/20260810-0737` (Learn app `34a66bf7-9b48-40ef-aa56-31ac357e8a72`, one 20-item bank, keys withheld, picks committed before reveal): a trained field-persona reader scored **19.0/20**, an untrained field-persona reader **8.0/20**, and the rubric's own M&E-domain-expert reader **11/20** — so the retired proxy sat **15pp above** the population the Deliver gate protects and made the bank read **27% less discriminating** than it is (A−C = 8.0 vs the true A−B = 11.0). Its edge was stability of exam technique, not knowledge the training supplies (it reliably nailed q2/q3/q11/q14 that the field reader got right ~half the time, and *lost* q5 and q20 to it). The rubric returned `2.0` and failed the phase on a bank measuring **2.38x** discrimination, costing two authoring cycles (~500K subagent tokens); the correct verdict was a pass with named residuals. Changes: (1) the statistic is now `discrimination_delta = (trained − untrained) ÷ items_scored` with both readers on the **PDD-derived FLW persona**, differing only in whether they got the module teaching text — bands `>=0.40 → 9–10 · 0.30–0.39 → 7–8 · 0.20–0.29 → 5–6 · <0.20 → ≤3 → fail`; (2) the gate-margin hard-gate on the expert reader is **deleted**, replaced by a hard-gate on the **untrained field reader** clearing the PDD's actual unlock threshold — a direct measurement of the protected population rather than a ceiling proxy, and the path that keeps the `hh-poverty-targeting` negative control failing (it also fails on the collapsed delta and on `absurdity-elimination`); (3) `self-justifying-key` / `minimal-claim` / `odd-one-out-binary` stop deducting and become `[WARN]`s — option-craft is hygiene, the delta is the evidence — while `absurdity-elimination` still deducts as a Gate-1 item defect; (4) new **`assessment_operation_coverage`** dimension (0.03, taken from this dimension's 0.08 → 0.05, axis totals unchanged) maps each item to the instrument field it governs and the failure it prevents (unpaid visit / blocked form / corrupted data), with a hard-gate when a majority of high-consequence operations carry zero items; (5) **low-n rule** — `items_scored < 5` scores `null` + `[WARN]` and fires no hard-gate, since the delta is degenerate there and no authoring choice can change a PDD-mandated item count (**closes ace#1042**); (6) the probe reports `free_items` and the **effective bar** — 5 of the 20 items were answered correctly by both readers in every run, so a nominal 16/20 = 80% gate is really 11/15 = **73%** of signal-carrying items, which falls out of a contrast design and is invisible to a ceiling probe; (7) an explicit scope note — the Learn assessment is a **readiness** check, not an anti-fraud device (fraud is the Evidence Model's job: live photo, GPS, payment predicate, Partner Trainer observation), so adversarial robustness is no longer graded here. Paired 1:1 with the topic-selection + bank-independence rewrite in `_app-component-library.md § discriminating-assessment-items`. | ACE team |
 | 2026-08-12 | **Re-validated the contrast statistic against BOTH calibration anchors; demoted the absolute-floor gate to a `[WARN]` (ace#1187, ace#1131).** Ran the new statistic end-to-end before shipping, two independently-permuted untrained runs per bank, picks committed before reveal, keys from the live `qN_score` calculates. **Positive control** `spark-facilitator` post-test (20 items, gate 16/20): trained **20/20**, untrained 11 and 10 → 10.5, `delta` **0.475** → top band → **pass** (the old rubric returned 2.0 and failed the phase). **Negative control** `hh-poverty-targeting/20260722-1341` post-assessment (10 items, gate 8/10): untrained 9 and 10 → 9.5 (0.95), and since `delta ≤ 1.0 − untrained_ratio` its delta ceiling is **0.05** → **fail**, with both runs independently reporting 9 of 10 items carrying two-or-more options eliminable on sight. Three changes follow from the measurement. (1) The untrained-clears-the-gate **hard-gate is demoted to a `[WARN]`**, as ace#1187 originally proposed: at any threshold ≥ 80 it is mathematically redundant (the delta band already fails such a bank), and `untrained_ratio` proved too noisy to gate on — four runs of the SAME spark bank scored 6, 10, 10, 11 (0.30–0.55), because a persona brief only partly suppresses an LLM's domain knowledge. (2) That noise is now a first-class calibration fact: at least two untrained runs (already required), a `[WARN]` when the two runs differ by more than 2 items, and a mandatory third run when the delta lands within 0.05 of a band boundary. (3) The `untrained_ratio` WARN now fires for **every instrument carrying `connect.assessment`, pre-test included** — Connect stores one `passing_score` per learn app and every 'has this worker passed?' surface uses any-passed semantics, so a pre-test carrying the marker gates Deliver whatever its intro copy says; the prior wording ('the post-test, the gating instrument, drives the score') was the blind spot ace#1131 named. Also recorded: the trained reader scored 20/20 on the spark bank, i.e. every item is answerable from taught content — the Step-1 property the build-side procedure asks for, and what makes the delta large. | ACE team |
+| 2026-08-13 | **Retired the blind two-reader probe; replaced `assessment_discrimination` (0.05) + `assessment_operation_coverage` (0.03) with one structural dimension `assessment_rule_coverage` (0.08), which emits `repairs[]` instead of a verdict (ace#1206).** Two independent defects, either sufficient. (1) **The hard gate was arithmetically the statistic the same revision had just declared too noisy to gate on.** `delta ≤ 1 − untrained_ratio`, and when the trained reader scores 100% (as it did on every well-built bank measured) the bound is TIGHT — the delta simply IS `1 − untrained_ratio`. The 2026-08-12 entry below demoted the `untrained_ratio` floor to a WARN citing 0.30–0.55 run-to-run spread and "hard-gating a statistic with ±12pp run-to-run noise is the same class of error this dimension was filed for", then kept hard-gating the delta, which inherits that noise 1:1. The coupling is derived in that entry's own text; the opposite conclusion was drawn from it. (2) **An LLM cannot proxy an untrained human's difficulty floor.** The untrained-field-persona reader is a fiction — an LLM told to be a low-literacy CBF still reads English fluently, does the arithmetic, and eliminates options; its floor is its own competence. For a CHW curriculum whose taught rules are largely "record what happened, honestly", a HIGH untrained score is the EXPECTED result for a good bank, so it cannot be a failure signal, and driving it down means authoring arbitrary trivia — worse training for the cohort the gate protects. No ACE bank has ever been put in front of a real CHW, so the LLM→CHW inference was never validated while being load-bearing for a hard gate. Trigger: `spark-facilitator/20260812-1635` (Learn app `036c2c60-be0e-447d-862f-fe14d1dbcbb1`) — untrained 11/12 twice with identical miss sets, trained 12/12, delta 0.083 → `fail` on a build scoring **8.45** with complete trilingual coverage, worked examples from the real instrument, correct conditional pass/fail wiring and 11/12 operations covered. A 5%-weight dimension failed an 8.45 build on an unvalidated proxy. **The replacement** is judged from the artifact with no persona and no dispatched readers: enumerate the **counter-intuitive rules** (taught rules where common sense gives the WRONG answer — blank-not-zero, committee-recorded-but-not-paid, disability-inside-not-added, any named window or threshold) plus the **high-consequence operations**, map each scored item across BOTH banks to the rule it keys on, and score coverage with counter-intuitive rules weighted double. Zero counter-intuitive rules caps at 5; the absurd-distractor deduction survives as the one option-craft property worth scoring; **there is no deduction for an item an intelligent reader could answer cold.** Uncovered rules become `repairs[]` — a typed work order the ORCHESTRATOR hands to `pdd-to-learn-app`, never applied by this skill (a grader that repairs its own bank and re-scores it converges on passing itself), capped at ONE repair round because ~500K subagent tokens were already spent looping against an immovable number (ace#1014). Also added **`single_gating_assessment`** to § 5b: more than one form carrying `connect.assessment` against a single PDD-declared gate is a `[BLOCKER]`, because Connect's any-passed semantics turn a diagnostic pre-test into the app's easiest unlock path (ace#1205, ace#1131). Negative control unchanged: `hh-poverty-targeting/20260722-1341` covers ~0 counter-intuitive rules and takes the absurd-distractor deduction on every item → still ≤3. | ACE team |

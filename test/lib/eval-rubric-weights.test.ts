@@ -153,13 +153,27 @@ describe('eval rubric dimension weights', () => {
     });
   }
 
-  // ace#1187: the contrast redesign is only half-applied if the rubric drops
-  // the ceiling statistic but never lands the coverage dimension that replaced
-  // its weight.
-  it('pdd-to-learn-app-eval declares both post-ace#1187 assessment dimensions', () => {
+  // ace#1206: the blind-probe redesign is only half-applied if the rubric drops
+  // the two probe dimensions but never lands the structural one that carries
+  // their combined weight.
+  it('pdd-to-learn-app-eval declares assessment_rule_coverage', () => {
     const source = readFileSync(join(skillsDir, 'pdd-to-learn-app-eval', 'SKILL.md'), 'utf8');
     const names = findWeightBlocks(source).flatMap((b) => b.weights.map((w) => w.name));
-    expect(names).toContain('assessment_discrimination');
-    expect(names).toContain('assessment_operation_coverage');
+    expect(names).toContain('assessment_rule_coverage');
+  });
+
+  // ace#1206: the retired probe dimensions must not come back as WEIGHTED
+  // dimensions without a deliberate decision. Both hard-gated on an LLM
+  // "untrained field persona" reader standing in for a low-literacy CHW — a
+  // proxy that was never validated against a real CHW, and whose gate was
+  // arithmetically the same statistic the rubric had just declared too noisy to
+  // gate on (`delta <= 1 - untrained_ratio`, tight whenever the trained reader
+  // scores 100%). Prose in the change log is not enough to stop a future
+  // revision reinstating them; this assertion is.
+  it('pdd-to-learn-app-eval does not reinstate the retired probe dimensions', () => {
+    const source = readFileSync(join(skillsDir, 'pdd-to-learn-app-eval', 'SKILL.md'), 'utf8');
+    const names = findWeightBlocks(source).flatMap((b) => b.weights.map((w) => w.name));
+    expect(names).not.toContain('assessment_discrimination');
+    expect(names).not.toContain('assessment_operation_coverage');
   });
 });
