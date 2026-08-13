@@ -426,23 +426,32 @@ export function probeRecipeSanity(inputs: ProbeInputs): SanityVerdict {
       }
     }
 
-    // 3. expected-form-not-in-module → recipe references a form name
-    // that exists in some module, but not in the module the recipe
-    // names. Only check when MODULE_NAME resolves to a known module.
-    for (const moduleName of params.moduleNames) {
+    // 3. expected-form-not-in-module → recipe binds a FORM_NAME alongside
+    // a MODULE_NAME in the SAME env block, but that form is not in that
+    // module. Only check when MODULE_NAME resolves to a known module.
+    //
+    // Iterate the PAIRS, never the cross product of the two flat sets.
+    // The cross product emits M x (M-1) failures on a recipe that walks M
+    // modules with one form each — every message individually true, every
+    // conclusion false, because the recipe never bound that pair. That made
+    // multi-module Learn smokes un-passable at Phase 6 pre-flight, and
+    // one-form-per-module is a load-bearing ACE pattern, so multi-module is
+    // the normal shape (ace#1235). A pair with no FORM_NAME is skipped:
+    // the palette derives the form name from the module there, so "no form
+    // bound" is not "form missing".
+    for (const { moduleName, formName } of params.modulePairs) {
+      if (formName === null) continue;
       const knownForms = moduleToForms.get(moduleName);
       if (!knownForms) continue;
-      for (const formName of params.formNames) {
-        if (!knownForms.has(formName)) {
-          failures.push({
-            class: 'expected-form-not-in-module',
-            detail: `recipe ${recipe.name} references FORM_NAME "${formName}" inside module "${moduleName}" but that form is not present in the module (forms in module: ${[...knownForms].join(', ')})`,
-            remediation: `recipe needs re-author via /ace:step app-test-cases — module/form structure has drifted`,
-            recipe: recipe.name,
-            parameter: 'FORM_NAME',
-            value: formName,
-          });
-        }
+      if (!knownForms.has(formName)) {
+        failures.push({
+          class: 'expected-form-not-in-module',
+          detail: `recipe ${recipe.name} references FORM_NAME "${formName}" inside module "${moduleName}" but that form is not present in the module (forms in module: ${[...knownForms].join(', ')})`,
+          remediation: `recipe needs re-author via /ace:step app-test-cases — module/form structure has drifted`,
+          recipe: recipe.name,
+          parameter: 'FORM_NAME',
+          value: formName,
+        });
       }
     }
 
@@ -566,9 +575,25 @@ export function probeRecipeSanity(inputs: ProbeInputs): SanityVerdict {
 export function extractRecipeParameters(recipe: RecipeText): {
   moduleNames: Set<string>;
   formNames: Set<string>;
+  /** Each env/params block that bound a MODULE_NAME, paired with the
+   * FORM_NAME bound ALONGSIDE it in that same block (null when the block
+   * bound no form).
+   *
+   * The flat sets above cannot express this. Checking every form name
+   * against every module name is a cross product: for a recipe walking M
+   * modules with one form each it emits M x (M-1) failures whose detail
+   * text is individually true and whose conclusion is false, because the
+   * recipe never bound that pair (ace#1235). One-form-per-module is a
+   * deliberate, load-bearing ACE pattern — Connect dedups deliver units by
+   * module slug — so multi-module is the NORMAL shape, and the cross
+   * product made every multi-module Learn smoke un-passable at Phase 6
+   * pre-flight. `expected-module-not-in-app` stays on the flat set; it is
+   * correct there. */
+  modulePairs: { moduleName: string; formName: string | null }[];
 } {
   const moduleNames = new Set<string>();
   const formNames = new Set<string>();
+  const modulePairs: { moduleName: string; formName: string | null }[] = [];
 
   // Parse the YAML. Maestro recipes ALMOST ALWAYS use multi-document
   // form (`appId + env` as doc 1, step list as doc 2 after `---`), so
@@ -579,7 +604,7 @@ export function extractRecipeParameters(recipe: RecipeText): {
   try {
     docs = parseAllDocuments(recipe.text);
   } catch {
-    return { moduleNames, formNames };
+    return { moduleNames, formNames, modulePairs };
   }
 
   /** Read one env/params map. Unresolved `${...}` placeholders are NOT
@@ -590,11 +615,24 @@ export function extractRecipeParameters(recipe: RecipeText): {
     const envMap = candidate as Record<string, unknown>;
     const module = envMap.MODULE_NAME;
     const form = envMap.FORM_NAME;
-    if (typeof module === 'string' && module.trim() && !module.includes('${')) {
-      moduleNames.add(module);
+    const moduleOk =
+      typeof module === 'string' && module.trim() !== '' && !module.includes('${');
+    const formOk = typeof form === 'string' && form.trim() !== '' && !form.includes('${');
+    if (moduleOk) {
+      moduleNames.add(module as string);
     }
-    if (typeof form === 'string' && form.trim() && !form.includes('${')) {
-      formNames.add(form);
+    if (formOk) {
+      formNames.add(form as string);
+    }
+    // Record the PAIRING, not just the membership. A block binding a
+    // module and no form yields formName null and must be SKIPPED by the
+    // form check — not reported as a missing form (the same-name Branch B
+    // case, where the palette derives the form name from the module).
+    if (moduleOk) {
+      modulePairs.push({
+        moduleName: module as string,
+        formName: formOk ? (form as string) : null,
+      });
     }
   };
 
@@ -614,7 +652,7 @@ export function extractRecipeParameters(recipe: RecipeText): {
     walk(doc.toJS(), 0);
   }
 
-  return { moduleNames, formNames };
+  return { moduleNames, formNames, modulePairs };
 }
 
 /** Step-kind classification for the form-advance-chain walker. */

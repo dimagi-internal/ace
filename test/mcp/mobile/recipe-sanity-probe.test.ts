@@ -1235,3 +1235,131 @@ describe('probeRecipeSanity — warning class: module-form-checks-not-run', () =
     expect(verdict.warnings).toHaveLength(0);
   });
 });
+
+// --- ace#1235: the module/form cross product ---
+//
+// `expected-form-not-in-module` used to check every collected FORM_NAME
+// against every collected MODULE_NAME. For a recipe walking M modules with
+// one form each that emits M x (M-1) failures — each message individually
+// true ("form X is not in module Y") and the conclusion false, because the
+// recipe never bound that pair.
+//
+// It made every multi-module Learn smoke un-passable at Phase 6 pre-flight,
+// and one-form-per-module is a load-bearing ACE pattern (Connect dedups
+// deliver units by module slug), so multi-module is the NORMAL shape rather
+// than an edge case. Live repro: spark-facilitator 20260812-1635, a 9-module
+// Learn app, ~64 spurious failures.
+//
+// Newly live via ace#1068 — before that `extractRecipeParameters` did not
+// walk nested `runFlow.env`, so the check was silently inert.
+
+/** Multi-module recipe in the shape Phase 3 actually emits: one nested
+ * `runFlow.env` block per module, each pairing a module with ITS OWN form. */
+function multiModuleRecipe(
+  name: string,
+  pairs: { module: string; form?: string }[],
+): { name: string; text: string } {
+  const steps = pairs
+    .map(({ module, form }) =>
+      [
+        `- runFlow:`,
+        `    file: content-form-finish-to-suite.yaml`,
+        `    env:`,
+        `      MODULE_NAME: "${module}"`,
+        ...(form === undefined ? [] : [`      FORM_NAME: "${form}"`]),
+      ].join('\n'),
+    )
+    .join('\n');
+  return { name, text: `appId: org.commcare.dalvik\n---\n${steps}\n` };
+}
+
+const THREE_MODULE_APP: NovaAppSlice = novaApp('app-learn-multi', {
+  'Lesson 1': ['Read lesson 1'],
+  'Lesson 2': ['Read lesson 2'],
+  'Lesson 3': ['Read lesson 3'],
+});
+
+describe('extractRecipeParameters — module/form pairing (ace#1235)', () => {
+  it('records which form was bound alongside which module', () => {
+    const r = multiModuleRecipe('journey-learn.yaml', [
+      { module: 'Lesson 1', form: 'Read lesson 1' },
+      { module: 'Lesson 2', form: 'Read lesson 2' },
+    ]);
+    const params = extractRecipeParameters(r);
+    expect(params.modulePairs).toEqual([
+      { moduleName: 'Lesson 1', formName: 'Read lesson 1' },
+      { moduleName: 'Lesson 2', formName: 'Read lesson 2' },
+    ]);
+    // Flat sets still populated — `expected-module-not-in-app` uses them
+    // and is correct on the flat set.
+    expect(params.moduleNames.size).toBe(2);
+    expect(params.formNames.size).toBe(2);
+  });
+
+  it('pairs a module bound with no form as formName null', () => {
+    const r = multiModuleRecipe('branch-b.yaml', [{ module: 'Lesson 1' }]);
+    const params = extractRecipeParameters(r);
+    expect(params.modulePairs).toEqual([{ moduleName: 'Lesson 1', formName: null }]);
+  });
+
+  it('keeps one pair per env block even when a module repeats', () => {
+    const r = multiModuleRecipe('revisit.yaml', [
+      { module: 'Lesson 1', form: 'Read lesson 1' },
+      { module: 'Lesson 1', form: 'Read lesson 1' },
+    ]);
+    expect(extractRecipeParameters(r).modulePairs).toHaveLength(2);
+    // ...while the flat set still de-duplicates.
+    expect(extractRecipeParameters(r).moduleNames.size).toBe(1);
+  });
+});
+
+describe('probeRecipeSanity — no cross-product failures (ace#1235)', () => {
+  it('passes a multi-module recipe where every pair is correct', () => {
+    const verdict = probeRecipeSanity({
+      recipes: [
+        multiModuleRecipe('journey-learn.yaml', [
+          { module: 'Lesson 1', form: 'Read lesson 1' },
+          { module: 'Lesson 2', form: 'Read lesson 2' },
+          { module: 'Lesson 3', form: 'Read lesson 3' },
+        ]),
+      ],
+      novaApps: [THREE_MODULE_APP],
+      connectOpp: LIVE_OPP,
+    });
+    // Pre-fix this emitted 3 x 2 = 6 spurious failures.
+    expect(
+      verdict.failures.filter((f) => f.class === 'expected-form-not-in-module'),
+    ).toEqual([]);
+  });
+
+  it('still catches a genuinely mispaired form', () => {
+    const verdict = probeRecipeSanity({
+      recipes: [
+        multiModuleRecipe('journey-learn.yaml', [
+          { module: 'Lesson 1', form: 'Read lesson 1' },
+          // Real drift: lesson 2's block names lesson 3's form.
+          { module: 'Lesson 2', form: 'Read lesson 3' },
+        ]),
+      ],
+      novaApps: [THREE_MODULE_APP],
+      connectOpp: LIVE_OPP,
+    });
+    const formFailures = verdict.failures.filter(
+      (f) => f.class === 'expected-form-not-in-module',
+    );
+    expect(formFailures).toHaveLength(1);
+    expect(formFailures[0].value).toBe('Read lesson 3');
+    expect(formFailures[0].detail).toContain('Lesson 2');
+  });
+
+  it('does not report a missing form when the block binds no FORM_NAME', () => {
+    const verdict = probeRecipeSanity({
+      recipes: [multiModuleRecipe('branch-b.yaml', [{ module: 'Lesson 1' }])],
+      novaApps: [THREE_MODULE_APP],
+      connectOpp: LIVE_OPP,
+    });
+    expect(
+      verdict.failures.filter((f) => f.class === 'expected-form-not-in-module'),
+    ).toEqual([]);
+  });
+});
