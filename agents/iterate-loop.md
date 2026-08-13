@@ -66,6 +66,8 @@ Validated by `validateIterateState` (`lib/run-state-validator.ts`).
 opp: bednet-spot-check
 target_phases: [3, 6]          # 4 rides along as a dependency
 golden_run_id: 20260601-1252
+golden_validated_at_version: 0.13.772   # VERSION whose rubrics the golden PASSED
+golden_validated_at: <ISO>              # absent/stale => treat as never validated
 runner: web                    # web | local
 plugin_version: 0.13.502       # informational attribution ONLY — never a gate
 window: 10                     # rolling window: health read over the last N runs
@@ -79,6 +81,7 @@ iterations:
     failure_class: null
     fix_pr: null
     version_at_run: 0.13.502   # attribution, not a gate
+    seeded_prefix_defect: false # true => blocked by the FIXTURE, not by ACE
 ```
 
 `streak` / `required_streak` may still appear in an older state file. They are
@@ -91,6 +94,53 @@ or, on a first run with no state, **halt and ask the operator** to confirm a
 golden run-id (per Task 5 of the plan — never silently pick a possibly-stale
 run). The golden run must have `phases.idea-to-design` and
 `phases.scenarios-and-acceptance` both `done`/`pass`.
+
+## A golden is a snapshot that decays — mint it, don't inherit it
+
+**The golden is not a durable asset.** Its phase-1/2 verdicts were written under
+the rubrics in force the day it ran; every later eval tightening can turn it
+into a permanent hard-fail that no amount of iterating will clear. That is not
+hypothetical — `bednet-spot-check`'s golden `20260706-0649` recorded its PDD as
+`pass`/7.7 on 2026-07-06 and became an `assessment_discrimination` hard-fail
+weeks later, pinning the loop's strict pass rate at 0 for every iteration
+seeded from it (dimagi-internal/ace#1031). The frozen `status: done` /
+`verdict: pass` that the golden rule checks is exactly the thing that goes
+stale, because it records a *past* judgement.
+
+So: **status/verdict is a necessary check, never a sufficient one.**
+
+### `--new-golden` (mint + validate + lock)
+
+1. **Mint.** Create a run on the opp shaped `{idea-to-design,
+   scenarios-and-acceptance: pending; 3–10: skipped}` and drive a plain
+   `/ace:run <opp>/<new-run-id>` resume. Same structural-shape trick the loop
+   uses for seeded runs — the resume path runs the `pending` phases and stops
+   when none remain. Two phases, no Nova, no Connect, no device.
+2. **Validate against TODAY's rubrics.** Confirm `idea-to-pdd-eval`,
+   `pdd-to-test-prompts-eval` and `pdd-to-app-journeys-eval` all `pass` at the
+   current plugin VERSION. **Refuse to lock on any failure** and report which
+   dimension failed — a golden that cannot pass today's evals will fail every
+   iteration seeded from it, and locking it anyway just relocates the failure
+   to somewhere more expensive.
+3. **Archive, don't delete.** If an `iterate-state.yaml` exists, rename it to
+   `iterate-state-legacy-<YYYYMMDD>.yaml` beside it. History is append-only;
+   dropping dirty runs to flatter the number is the failure this loop exists to
+   detect. Archiving keeps the record while making clear the runs measured a
+   different fixture.
+4. **Write fresh state** — `iterations: []`, the new `golden_run_id`,
+   `golden_validated_at_version`, `golden_validated_at`, and a note naming why
+   the prior history was retired.
+
+**`--new-golden` IS the reset — there is no separate `--reset` flag.**
+Iterations seeded from golden A are not comparable to iterations seeded from
+golden B, so replacing the fixture MUST archive the history. Making that one
+operation rather than two removes the state the spot-check loop is in today: a
+fixture nobody trusts and a window still counting against it.
+
+`golden_validated_at_version` is written and read here but is **not yet
+schema-enforced** by `validateIterateState` — adding it there changes the
+`validate_run_state` MCP atom, which needs a full Claude restart to take
+effect. Treat a missing value as "never validated", not as "valid".
 
 ## Loop
 
@@ -109,12 +159,30 @@ run). The golden run must have `phases.idea-to-design` and
    console.log(h.summary); console.log(JSON.stringify(h, null, 2));
    " <path-to-local-copy-of-iterate-state.yaml>
    ```
-   Branch on `h.verdict`:
+   **Check `h.halt` FIRST — before `h.verdict`.** A non-null `halt` means more
+   iterations cannot clear what is blocking:
+   - `stale-golden` → stop and tell the operator to re-mint
+     (`/ace:iterate <opp> --new-golden`). Do NOT keep seeding from a fixture
+     that has already blocked `unfixable_class_cap` runs.
+   - `unfixable-class` → stop and surface the class. It has recurred with no
+     fix ever landing, so the autofix subagent is not reaching it.
+
+   This is the check the old per-failure-class cap could not make: that cap
+   counts iterations *with* a `fix_pr`, so a class that is never fixable at all
+   never trips it and burns the whole budget.
+
+   Then branch on `h.verdict`:
    - `converged` → success, go to Exit.
    - `insufficient-data` / `not-converged` → continue.
 
    Then the hard cap: if `len(iterations) >= caps.max_iterations` →
    halt-and-surface.
+
+   **Set `seeded_prefix_defect: true` on any iteration whose only blocking
+   criterion is an artifact frozen in the golden** (a phase-1/2 eval failing on
+   the seeded PDD, not on anything this iteration built). That flag is what
+   feeds `blocked_by_golden` and the `stale-golden` halt; without it a decayed
+   fixture reads as a regressing system.
 
    **Print `h.summary` every pass, and report it in the final message even on a
    halt.** A halted loop that reports "6/10 clean (60%), trend regressing, top
