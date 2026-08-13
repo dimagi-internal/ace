@@ -1,6 +1,7 @@
 import type { OcsClient } from '../client.js';
 import type { RestBackend } from './rest.js';
 import type { PlaywrightBackend } from './playwright.js';
+import { VersionBadgeUnreadableError } from '../errors.js';
 
 export interface CompositeOptions {
   rest: RestBackend;
@@ -35,7 +36,56 @@ export class CompositeBackend implements OcsClient {
   attachKnowledge = (a: Parameters<OcsClient['attachKnowledge']>[0]) => this.opts.playwright.attachKnowledge(a);
   setChatbotTools = (a: Parameters<OcsClient['setChatbotTools']>[0]) => this.opts.playwright.setChatbotTools(a);
   setSourceMaterial = (a: Parameters<OcsClient['setSourceMaterial']>[0]) => this.opts.playwright.setSourceMaterial(a);
-  publishChatbotVersion = (a: Parameters<OcsClient['publishChatbotVersion']>[0]) => this.opts.playwright.publishChatbotVersion(a);
+  /**
+   * Publish a chatbot version, then read its number back from whichever source
+   * can actually answer (dimagi-internal/ace#891).
+   *
+   * The Playwright path scrapes a `Version N` badge off the chatbot home page.
+   * That scrape fails independently of the publish — the POST already returned
+   * its 302 several lines earlier — so a markup drift or a flaky home-page load
+   * used to hard-fail an operation that had demonstrably succeeded. Four runs
+   * hit it in three weeks, each one showing a correctly-published bot behind
+   * the error.
+   *
+   * On that specific typed failure, ask the API instead. This moves the
+   * read-back from rendered markup to the upstream system's own answer, which
+   * is the direction CLAUDE.md points ("close the loop to the source of truth"
+   * and the HTTP-only preference for backends).
+   *
+   * #823's invariant is preserved, not weakened: never invent a version
+   * number. If the API cannot answer either, this still throws.
+   */
+  publishChatbotVersion = async (a: Parameters<OcsClient['publishChatbotVersion']>[0]) => {
+    try {
+      return await this.opts.playwright.publishChatbotVersion(a);
+    } catch (err) {
+      if (!(err instanceof VersionBadgeUnreadableError)) throw err;
+
+      const publicId = err.publicId ?? (await this.publicIdForExperimentSilently(err.experimentId));
+      if (!publicId) throw err;
+
+      const chatbot = await this.opts.rest.getChatbot({ public_id: publicId });
+
+      // Deliberately NOT `chatbot.version_number` — that is the working/next
+      // counter (observed 3 while the published default was 2), so reading it
+      // here would write an off-by-one into run_state.yaml. The published
+      // version is the one flagged as default.
+      const published = chatbot.versions?.find((v) => v.is_default_version);
+      if (!published) throw err;
+
+      return { version_number: published.version_number, task_id: 'none' as const };
+    }
+  };
+
+  /** Best-effort experiment_id -> public_id, for the ace#891 fallback. */
+  private async publicIdForExperimentSilently(experimentId: number): Promise<string | undefined> {
+    try {
+      const { chatbots } = await this.opts.rest.listChatbots({});
+      return chatbots.find((c) => c.experiment_id === experimentId)?.id;
+    } catch {
+      return undefined;
+    }
+  }
   addTeamMember = (a: Parameters<OcsClient['addTeamMember']>[0]) => this.opts.playwright.addTeamMember(a);
   getChatbotEmbedInfo = (a: Parameters<OcsClient['getChatbotEmbedInfo']>[0]) => this.opts.playwright.getChatbotEmbedInfo(a);
   deleteChatbot = (a: Parameters<OcsClient['deleteChatbot']>[0]) => this.opts.playwright.deleteChatbot(a);

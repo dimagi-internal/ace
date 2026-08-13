@@ -14,7 +14,26 @@ export interface Experiment {
   id: string;
   name: string;
   url?: string;
+  /**
+   * CAUTION — this is the WORKING/next version counter, NOT the published
+   * default. Observed live: `version_number: 3` while the published default
+   * was version 2 (dimagi-internal/ace#891). Reading it as "the version we
+   * just published" writes an off-by-one into run_state.yaml and later breaks
+   * llo-launch's freshness equality check in a way that is very hard to trace
+   * back. To learn what is PUBLISHED, use `versions[].is_default_version`.
+   */
   version_number?: number;
+  /**
+   * Version history. Present on the detail endpoint; the published one is the
+   * entry with `is_default_version: true`. Added in ace#891 — the data was
+   * already flowing through `rest.getChatbot`'s spread at runtime, it just was
+   * not declared here.
+   */
+  versions?: Array<{
+    version_number: number;
+    is_default_version: boolean;
+    version_description?: string;
+  }>;
 }
 
 /**

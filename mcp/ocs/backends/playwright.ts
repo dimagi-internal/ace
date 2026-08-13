@@ -6,7 +6,7 @@ import {
   sameGroups,
 } from '../../../lib/ocs-team-page.js';
 import { patchLlmNodeParams, validatePipeline, getLlmNodeParams, addPipelineNode, linkActionToNode, type PipelinePatchContext } from './pipeline-patch.js';
-import { PipelineValidationError } from '../errors.js';
+import { PipelineValidationError, VersionBadgeUnreadableError } from '../errors.js';
 import type { LlmNodeParams, ClonedChatbot } from '../types.js';
 import { CollectionIndexingTimeoutError, HttpError, PipelineShapeError } from '../errors.js';
 
@@ -1026,11 +1026,18 @@ export class PlaywrightBackend {
       // llo-launch freshness equality check (skills/llo-launch) in a way that
       // is very hard to trace back to here. Fail loud so the mismatch surfaces
       // at publish time instead. (jjackson/ace#823)
-      throw new HttpError(
-        homeRes.status ?? 0,
-        homePath,
+      // dimagi-internal/ace#891: throw a TYPED error, not an HttpError, so the
+      // composite backend can answer the question from the API instead. The
+      // publish itself is not in doubt — only this confirmation read is. Carry
+      // the public_id (already parseable from the HTML we just fetched, the
+      // same way getChatbotEmbedInfo does it) so the fallback costs no extra
+      // request.
+      throw new VersionBadgeUnreadableError(
+        args.experiment_id,
+        extractPublicId(html),
         'Chatbot version published, but the version number could not be read back from the home page ' +
-          '(no `Version N` badge found). Confirm the publish on OCS and re-scrape — the page markup may have drifted.',
+          `(no \`Version N\` badge found; home page HTTP ${homeRes.status ?? 0} ${homePath}). ` +
+          'The publish itself succeeded — this is the read-back only.',
       );
     }
     const versionNumber = Math.max(...versionMatches);
