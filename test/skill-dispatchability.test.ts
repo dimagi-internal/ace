@@ -110,6 +110,54 @@ describe('skill dispatchability', () => {
     ).toEqual([]);
   });
 
+  /**
+   * The budget half.
+   *
+   * Unflagging a skill puts its `description:` into the routing index of every
+   * session in every repo with ACE installed. The 2026-05-06 audit drove the
+   * budget to ~zero by flagging all 54 skills; making the pipeline dispatchable
+   * necessarily spends some of that back, so the remaining lever is description
+   * length. The audit's own discipline was ≤140 chars.
+   *
+   * This is a ratchet, not a style rule: it fails when the CATALOG TOTAL regresses,
+   * so unflagging more skills forces a compensating trim rather than silently
+   * doubling every session's context. Raise CATALOG_BUDGET_CHARS only with a
+   * measured reason — and say what you measured.
+   */
+  const CATALOG_BUDGET_CHARS = 27_000;
+
+  it('the dispatchable catalog stays inside its char budget', () => {
+    const entries: { skill: string; chars: number }[] = [];
+    for (const skill of listSkills()) {
+      if (isFlagged(skill)) continue; // flagged skills cost nothing — not in the index
+      const src = fs.readFileSync(path.join(REPO_ROOT, 'skills', skill, 'SKILL.md'), 'utf-8');
+      const fm = /^---\r?\n([\s\S]*?)\r?\n---/.exec(src);
+      if (!fm) continue;
+      const d = /^description:\s*(?:>[-]?\s*\r?\n((?:[ \t]+.*\r?\n?)+)|(.*))/m.exec(fm[1]);
+      const desc = ((d?.[1] ?? d?.[2] ?? '') as string).trim();
+      entries.push({ skill, chars: desc.length + skill.length });
+    }
+    const total = entries.reduce((a, e) => a + e.chars, 0);
+    const worst = [...entries].sort((a, b) => b.chars - a.chars).slice(0, 8);
+
+    expect(
+      total,
+      [
+        '',
+        `Dispatchable skill catalog is ${total.toLocaleString()} chars across ${entries.length} skills`,
+        `(~${Math.round(total / 4).toLocaleString()} tokens added to EVERY session, in every repo`,
+        `with ACE installed) — over the ${CATALOG_BUDGET_CHARS.toLocaleString()}-char budget.`,
+        '',
+        'Trim the longest descriptions (the index holds `description:`, so that field IS',
+        'the budget), or re-flag skills no agent doc actually dispatches. Longest now:',
+        ...worst.map((w) => `  ${w.chars.toString().padStart(4)}  ${w.skill}`),
+        '',
+        'See skills/README.md § disable-model-invocation → The cost, stated honestly.',
+        '',
+      ].join('\n'),
+    ).toBeLessThanOrEqual(CATALOG_BUDGET_CHARS);
+  });
+
   it('README documents the flag as undispatchable, not catalog-only', () => {
     const readme = fs.readFileSync(path.join(REPO_ROOT, 'skills', 'README.md'), 'utf-8');
     // Guard against the specific false claim regressing back in.
