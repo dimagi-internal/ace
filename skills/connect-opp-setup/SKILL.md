@@ -725,12 +725,33 @@ alone makes the artifact land outside `4-connect` and fail
 
    Hold the invite metadata in memory for Step 10's consolidated write:
 
+   **Collect the READ-BACK result, not just the send** — these are the exact
+   field names `lib/phase-products-schema.ts` declares and
+   `REQUIRED_PRODUCT_KEYS` checks at the phase boundary. Using any other
+   spelling (the pre-#1286 template said `invited_phone` / `invited_at`)
+   writes fields the schema does not declare: they survive only because the
+   object is `.passthrough()`, so they validate clean at write time and
+   contribute nothing at the boundary, and Phase 4 then fails
+   `verify_phase_products` on every run and repairs by hand.
+
    ```
    ace_test_user = {
-     invited_phone: ${ACE_E2E_PHONE},
-     invited_at: <ISO timestamp>,   # send time, not acceptance (see above)
+     phone: ${ACE_E2E_PHONE},
+     invite_row_present: <bool>,        # match !== null from connect_list_flw_invites — REQUIRED at the boundary
+     connect_user_id: <string | null>,  # null with a row present IS the ace#824 signature
+     status: <accepted | pending | unknown>,
+     checked_at: <ISO timestamp>,       # when the read-back ran (NOT the send time)
    }
    ```
+
+   `invite_row_present: false` is a LEGAL, contract-satisfying value — it
+   records a verified-absent row, which is what Step 7's `[BLOCKER]` acts on.
+   What the boundary rejects is the key being ABSENT, i.e. the read-back never
+   ran. Capture `connect_user_id` and `status` for real rather than defaulting
+   them: together they are what lets Phase 6 tell a normal pending pre-claim
+   invite from the ace#824 mode (access with no linked ConnectID user → the
+   opp is invisible on the device forever), which Phase 6 otherwise re-derives
+   on AVD wall-clock.
 
    All Connect-opp-setup state is emitted in one atomic write at
    end-of-skill (Step 10). A crash between Step 7 and Step 10 loses
@@ -852,9 +873,12 @@ alone makes the artifact land outside `4-connect` and fail
               name: <verbatim display name>    # from Step 4 create response — the exact tile text Connect renders (em-dash, NOT slug-reassembled). Phase 6 reads this as its OPP_NAME envVar; never recompose.
               url: <CONNECT_BASE_URL>/a/<org>/opportunity/<uuid>/
               connect_int_id: <integer | null>    # ConnectProd integer id = create-response int_id (Step 9)
-            ace_test_user:
-              invited_phone: ${ACE_E2E_PHONE}  # from Step 7
-              invited_at: <ISO timestamp>
+            ace_test_user:                     # field names per lib/phase-products-schema.ts
+              phone: ${ACE_E2E_PHONE}          # from Step 7
+              invite_row_present: <bool>       # REQUIRED — the Step 7 read-back result
+              connect_user_id: <string | null> # null + row present = the ace#824 signature
+              status: <accepted | pending | unknown>
+              checked_at: <ISO timestamp>      # when the read-back ran
     ```
 
     Apply via `mcp__plugin_ace_ace-gdrive__update_yaml_file` with
