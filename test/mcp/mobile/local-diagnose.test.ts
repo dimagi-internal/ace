@@ -153,10 +153,26 @@ describe('mobile_diagnose is no longer cloud-only (#961)', () => {
     const md = await import('node:fs').then((fs) =>
       fs.readFileSync(new URL('../../../CLAUDE.md', import.meta.url).pathname, 'utf8'),
     );
-    const line = md.split('\n').find((l) => l.includes('ANDROID_ADB_SERVER_PORT=5039'));
+    // Anchored on the ENV VAR, not on a port number. The previous version of
+    // this guard grepped for `ANDROID_ADB_SERVER_PORT=5039` — i.e. it pinned
+    // the very hardcoded constant this gotcha was corrected to remove, so it
+    // fired on the fix rather than on a regression.
+    const line = md.split('\n').find((l) => l.includes('ANDROID_ADB_SERVER_PORT'));
     expect(line, 'the adb-port gotcha line must still exist').toBeTruthy();
     // The gotcha-maintenance rule: an enforced gotcha names its enforcement.
     expect(line).not.toMatch(/Not enforced/);
     expect(line).toMatch(/mobile_diagnose/);
+
+    // The port is ALLOCATED, not fixed: port-allocator.ts starts at 5037 and
+    // walks upward binding a real net.Server so concurrent runs don't collide
+    // (a live run was observed on 5038). Writing any single number down as
+    // THE port is the defect this line was rewritten to fix — it cost a
+    // session two wrong readings, including calling a healthy booted emulator
+    // a zombie. A `$var` assignment in the manual sweep is fine; a literal
+    // one is not.
+    expect(
+      line,
+      'the gotcha must not hand the reader a fixed port to remember — ask mobile_diagnose',
+    ).not.toMatch(/ANDROID_ADB_SERVER_PORT=\d+/);
   });
 });
