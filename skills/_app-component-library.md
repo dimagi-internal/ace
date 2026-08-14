@@ -690,9 +690,12 @@ time; do not skip it because the app "looks right" structurally.
 - **Where language support actually lives.** Not nowhere — just not in the
   app's labels. It belongs to the surfaces that can carry it today: the
   training materials and FLW guide (`training-flw-guide`), the facilitator
-  briefing, and the per-opp OCS chatbot, which answers in whatever language
-  the worker types. Say so in the build memo rather than leaving a reader to
-  assume the language was forgotten.
+  briefing, and the per-opp OCS chatbot — an LLM chat surface, so a worker can
+  type in their own language. **Unmeasured, and do not upgrade it by repetition:**
+  ACE has never tested chatbot answer quality in a non-English working language,
+  so the chatbot is where language support BELONGS, not a validated capability
+  to promise an LLO. Note the working language in the build memo either way,
+  rather than leaving a reader to assume it was forgotten.
 - **What this asks of the English.** Since the English IS the interface for a
   worker who may not be a native speaker, keep source sentences SHORT, plain
   and concrete — no idiom, no subordinate clauses stacked three deep. This
