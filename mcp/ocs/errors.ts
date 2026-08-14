@@ -43,6 +43,33 @@ export class PipelineValidationError extends OcsError {
   }
 }
 
+/**
+ * The version PUBLISH succeeded, but the `Version N` badge could not be read
+ * back off the chatbot home page (dimagi-internal/ace#891).
+ *
+ * This is deliberately NOT an HttpError. The publish POST already returned its
+ * 302 several lines earlier — the failure is in a *separate confirmation GET*,
+ * so the operation the caller asked for demonstrably worked and only the
+ * read-back of its version number did not. Conflating the two produced the
+ * defect this class exists to end: ACE hard-failed mid-Phase-5 on a chatbot
+ * that was correctly published, and the two natural reactions were both wrong
+ * (re-publish mints a spurious version; halt kills a healthy run).
+ *
+ * Carries what the composite backend needs to answer the question
+ * authoritatively via the API instead of the markup. #823's invariant still
+ * holds: never invent a version number — if the API cannot answer either, this
+ * still surfaces.
+ */
+export class VersionBadgeUnreadableError extends OcsError {
+  constructor(
+    public experimentId: number,
+    public publicId: string | undefined,
+    message: string,
+  ) {
+    super(message);
+  }
+}
+
 export class CollectionIndexingTimeoutError extends OcsError {
   constructor(public collectionId: number, public timeoutSec: number) {
     super(`Collection ${collectionId} indexing timed out after ${timeoutSec}s`);

@@ -13,6 +13,7 @@ import {
   assertCollectionPromptInvariant,
 } from '../../../mcp/ocs/backends/playwright.js';
 import type { RequestFn } from '../../../mcp/ocs/backends/pipeline-patch.js';
+import { VersionBadgeUnreadableError } from '../../../mcp/ocs/errors.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -1037,7 +1038,14 @@ describe('PlaywrightBackend publish + embed info', () => {
     const backend = makeBackend(request, publishSeed);
     await expect(
       backend.publishChatbotVersion({ experiment_id: 99, description: 'initial' }),
-    ).rejects.toThrow(/version number could not be read back/);
+    ).rejects.toThrow(VersionBadgeUnreadableError);
+    // ace#891: still fails loud (#823's invariant), but now with a TYPED error
+    // carrying the experiment_id, so the composite backend can answer the
+    // question from the API instead of the caller seeing a bare HTTP failure
+    // on an operation that actually succeeded.
+    await expect(
+      backend.publishChatbotVersion({ experiment_id: 99, description: 'initial' }),
+    ).rejects.toThrow(/publish itself succeeded/);
   });
 
   it('publishChatbotVersion throws when Django re-renders the form (HTTP 200 = validation failure)', async () => {

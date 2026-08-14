@@ -161,7 +161,13 @@ export class RestBackend {
       id: string;
       name: string;
       url?: string;
+      // The WORKING counter, not the published default — see types.ts (ace#891).
       version_number?: number;
+      versions?: Array<{
+        version_number: number;
+        is_default_version: boolean;
+        version_description?: string;
+      }>;
     };
     return { ...raw, experiment_id: extractExperimentId(raw.url) };
   }
