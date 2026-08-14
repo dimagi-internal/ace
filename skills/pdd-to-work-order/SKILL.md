@@ -105,6 +105,21 @@ Take the approved PDD and decisions.yaml and produce a contractual Work Order dr
      - `{{geographic_coverage_body}}` (from PDD Target Population; `[Geographic Coverage — Partner to propose]` if not specified)
      - `{{primary_deliverable_body}}` (from PDD Success Metrics)
      - `{{verified_unit_closing}}` (the "Verification will be performed via..." closing paragraph after the verified-unit bullets)
+     - `{{payment_unit_closing}}` — § 6.2's closing sentence, **archetype-branched**:
+       - `atomic-visit` → "Dimagi will pay only for verified units at the per-visit rate proposed in the partner's solicitation response."
+       - `focus-group` → "…at the per-session rate proposed in the partner's solicitation response."
+       - `multi-stage` → name the stage that is payable, per the PDD's payable-stage declaration.
+
+       **Pick ONE.** Until ace#1004 this sentence was hardcoded in the template as
+       "…at the per-visit (or per-session, per archetype) rate…", and the
+       parenthetical — an instruction to the renderer — rendered verbatim into a
+       signed contract, telling a partner their payment unit depends on an
+       "archetype" defined nowhere in the document. Because it was not a
+       `{{token}}` and not a `<<marker>>`, `no_scaffolding_markers` passed it, the
+       ace#819 token-coverage scan passed it, and QA returned 8/8 with the defect
+       present (hh-poverty-targeting/20260728-0705). The rate itself is negotiated
+       via the solicitation response and is NOT set here.
+       *Enforced:* `pdd-to-work-order-qa § no_renderer_instructions`.
      - `{{wo_total_not_to_exceed_usd}}` — bare number
      - `{{ethics_body}}` — prose
      - `{{pdd_link}}` (Drive URL of the PDD from `phases.idea-to-design.products.pdd.file_id`)

@@ -19,6 +19,7 @@ import {
   checkSignatureBlocksPresent,
   checkArchetypeAppropriateScope,
   checkNoScaffoldingMarkers,
+  checkNoRendererInstructions,
   CHECKS,
 } from '../../../skills/pdd-to-work-order-qa/checks';
 
@@ -258,8 +259,8 @@ describe('checkNoScaffoldingMarkers', () => {
 });
 
 describe('CHECKS array', () => {
-  test('exports eight checks in canonical order', () => {
-    expect(CHECKS).toHaveLength(8);
+  test('exports nine checks in canonical order', () => {
+    expect(CHECKS).toHaveLength(9);
     const ids = CHECKS.map((c) => c.id);
     expect(ids).toEqual([
       'all_required_sections_present',
@@ -269,6 +270,7 @@ describe('CHECKS array', () => {
       'total_nte_present',
       'signature_blocks_present',
       'archetype_appropriate_scope',
+      'no_renderer_instructions',
       'no_scaffolding_markers',
     ]);
   });
@@ -361,5 +363,83 @@ describe('period_of_performance auto_fix_hint is actionable (#1092)', () => {
   test('the compositional form the old hint invited still fails (interior `]`)', () => {
     const wo = GOOD_WO.replace('2026-05-22 to 2026-07-31', '[Start date TBD] to [End date TBD]');
     expect(checkPeriodOfPerformanceComplete(wo).pass).toBe(false);
+  });
+});
+
+/**
+ * dimagi-internal/ace#1004 — scaffolding that does not LOOK like scaffolding.
+ *
+ * The live WORK_ORDER_TEMPLATE_ID ended § 6.2 Payment Schedule with a
+ * hardcoded, non-tokenized sentence:
+ *
+ *   "Dimagi will pay only for verified units at the per-visit (or per-session,
+ *    per archetype) rate proposed in the partner's solicitation response."
+ *
+ * "(or per-session, per archetype)" is an instruction to the RENDERER about
+ * which archetype branch to pick, and it rendered verbatim into a signed
+ * contract. A partner reading their own work order saw a parenthetical telling
+ * them their payment unit depends on an "archetype" defined nowhere in the
+ * document.
+ *
+ * Every existing preventer passed it, and for the same reason: it is not a
+ * `{{token}}` and not a `<<marker>>`. `no_scaffolding_markers` matches only
+ * those two forms; the skill's own token-coverage check (§ Process step 5, the
+ * ace#819 preventer) scans for surviving `{{` only. QA returned 8/8 pass with
+ * the defect present, on run hh-poverty-targeting/20260728-0705.
+ *
+ * The template half is fixed (the sentence is now `{{payment_unit_closing}}`);
+ * this is the half that keeps it fixed. Closing an issue deletes its memory —
+ * a test does not.
+ */
+describe('no renderer instructions in the delivered contract (#1004)', () => {
+  const wrap = (s: string) => `## 6. Payment\n\n### 6.2 Payment Schedule\n\n${s}\n`;
+
+  test('catches the live sentence', () => {
+    const r = checkNoRendererInstructions(
+      wrap(
+        "Dimagi will pay only for verified units at the per-visit (or per-session, per archetype) " +
+          "rate proposed in the partner's solicitation response.",
+      ),
+    );
+    expect(r.pass).toBe(false);
+    expect(r.detail).toMatch(/per archetype/i);
+    expect(r.auto_fix_hint).toBeTruthy();
+  });
+
+  test('catches an archetype-alternation parenthetical without the word "archetype"', () => {
+    const r = checkNoRendererInstructions(
+      wrap('Payment is made per visit (or per session) on verification.'),
+    );
+    expect(r.pass).toBe(false);
+  });
+
+  test('catches renderer TODOs that survived templating', () => {
+    for (const s of ['TBD-by-renderer', 'TODO: pick one', 'FIXME before sending']) {
+      expect(checkNoRendererInstructions(wrap(s)).pass, s).toBe(false);
+    }
+  });
+
+  test('passes the corrected single-unit sentence', () => {
+    const r = checkNoRendererInstructions(
+      wrap(
+        "Dimagi will pay only for verified units at the per-visit rate proposed in the partner's " +
+          'solicitation response.',
+      ),
+    );
+    expect(r.pass).toBe(true);
+  });
+
+  test('does not fire on an ordinary parenthetical', () => {
+    for (const s of [
+      'Payment is made per verified visit (see § 4.1 for the verification criteria).',
+      'The partner may invoice monthly (or quarterly, at their discretion).',
+      'Each household visit is one unit.',
+    ]) {
+      expect(checkNoRendererInstructions(wrap(s)).pass, s).toBe(true);
+    }
+  });
+
+  test('passes the good fixture — this must not become the always-fires check', () => {
+    expect(checkNoRendererInstructions(GOOD_WO).pass).toBe(true);
   });
 });

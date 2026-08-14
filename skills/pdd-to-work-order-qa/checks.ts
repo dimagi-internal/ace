@@ -341,6 +341,91 @@ export function checkNoScaffoldingMarkers(wo: string): QACheckResult {
   };
 }
 
+/**
+ * Renderer instructions that survived templating into the delivered contract.
+ *
+ * The class the existing preventers were built for but do not cover:
+ * **scaffolting that does not look like scaffolding** (ace#1004). The live
+ * WORK_ORDER_TEMPLATE_ID ended § 6.2 with
+ *
+ * > "…at the per-visit (or per-session, per archetype) rate proposed in the
+ * > partner's solicitation response."
+ *
+ * `(or per-session, per archetype)` tells the RENDERER which archetype branch
+ * to pick, and it rendered verbatim into a signed contract — a partner reading
+ * their own work order saw a parenthetical about an "archetype" defined
+ * nowhere in the document. It is not a `{{token}}` and not a `<<marker>>`, so
+ * `no_scaffolding_markers` passed it, and the skill's own token-coverage scan
+ * (§ Process step 5, the ace#819 preventer) looks only for surviving `{{`.
+ * QA returned 8/8 with the defect present.
+ *
+ * Kept HIGH-PRECISION on purpose. A work order is full of legitimate
+ * parentheticals ("(see § 4.1)", "(or quarterly, at their discretion)"), so a
+ * broad "flag alternation" rule would be the always-fires class and would be
+ * routed around within a run. Three narrow triggers only:
+ *
+ *  1. the literal renderer tell `per archetype` / `by archetype`;
+ *  2. a parenthetical alternation between two PAYMENT-UNIT nouns — the choice
+ *     the archetype branch exists to make;
+ *  3. an unresolved authoring marker (TODO / TBD / FIXME) addressed to whoever
+ *     renders the document.
+ */
+const UNIT_NOUNS = ['visit', 'session', 'meeting', 'household', 'group', 'participant', 'form', 'delivery'];
+
+const UNIT_RE = new RegExp(`per[- ](?:${UNIT_NOUNS.join('|')})s?\\b`, 'i');
+
+/**
+ * A parenthetical is a renderer instruction when it names a payment UNIT and
+ * is offering it as an ALTERNATIVE — either it opens with "or" (the
+ * alternative to the unit stated outside the parens) or it names a second unit
+ * inside. Everything else — "(see § 4.1)", "(or quarterly, at their
+ * discretion)" — is ordinary contract prose and must not fire.
+ */
+function unrenderedUnitAlternation(wo: string): string | null {
+  for (const m of wo.matchAll(/\(([^)]*)\)/g)) {
+    const inner = m[1];
+    const units = [...inner.matchAll(new RegExp(UNIT_RE.source, 'gi'))];
+    if (units.length === 0) continue;
+    const opensWithOr = /^\s*or\b/i.test(inner);
+    if (opensWithOr || units.length >= 2) return m[0];
+  }
+  return null;
+}
+
+const RENDERER_TELLS: Array<{ find: (wo: string) => string | null; why: string }> = [
+  {
+    find: (wo) => /\b(?:per|by)\s+archetype\b/i.exec(wo)?.[0] ?? null,
+    why: '"per archetype" is an instruction to the renderer — the partner has no idea what an archetype is',
+  },
+  {
+    find: unrenderedUnitAlternation,
+    why: 'a parenthetical offering an alternative payment UNIT is the archetype branch left unrendered — pick one',
+  },
+  {
+    find: (wo) => /\b(?:TODO|TBD(?:-by-\w+)?|FIXME)\b/i.exec(wo)?.[0] ?? null,
+    why: 'an authoring marker addressed to whoever renders the document',
+  },
+];
+
+export function checkNoRendererInstructions(wo: string): QACheckResult {
+  const findings: string[] = [];
+  for (const { find, why } of RENDERER_TELLS) {
+    const hit = find(wo);
+    if (hit) findings.push(`"${hit.trim()}" — ${why}`);
+  }
+  if (findings.length === 0) return { pass: true };
+  return {
+    pass: false,
+    detail: `found ${findings.length} renderer instruction(s) in the delivered contract: ${findings.join('; ')}`,
+    auto_fix_hint:
+      'Resolve each to the single value this opportunity actually uses, in the TEMPLATE rather than by ' +
+      'hand-editing the rendered doc — a hardcoded sentence outside the token system is one the producing ' +
+      'skill cannot influence, which is how it reached a signed contract. § 6.2\'s closing sentence is ' +
+      '`{{payment_unit_closing}}`; emit the archetype-appropriate wording for it. Do NOT regenerate the ' +
+      'PDD (dimagi-internal/ace#1004).',
+  };
+}
+
 // ── Helpers ────────────────────────────────────────────────────────
 
 /**
@@ -447,6 +532,14 @@ export const CHECKS: QACheck[] = [
     description: 'Scope of Work language matches the declared archetype',
     run: (wo: string, ctx?: QACheckContext) =>
       checkArchetypeAppropriateScope(wo, (ctx?.archetype as string | undefined) ?? null),
+  },
+  {
+    id: 'no_renderer_instructions',
+    type: 'static',
+    description:
+      'No renderer instructions survived into the delivered contract — "per archetype", an unrendered ' +
+      'payment-unit alternation, or a TODO/TBD/FIXME marker (dimagi-internal/ace#1004)',
+    run: (wo: string) => checkNoRendererInstructions(wo),
   },
   {
     id: 'no_scaffolding_markers',
