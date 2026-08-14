@@ -375,6 +375,16 @@ fi
 
 pass() { printf 'PASS %s\n' "$1"; }
 warn() { printf 'WARN %s\n' "$1"; [ -n "${2:-}" ] && printf '  fix: %s\n' "$2"; }
+# A WARN that is fatal to /ace:turn but not to /ace:run (dimagi-internal/ace#1189).
+#
+# Flipping these to FAIL would be wrong: FAIL renders "BROKEN — ACE will not
+# function", and a machine with no Gmail still runs most of /ace:run (Nova
+# build, Connect setup, Drive artifacts). Turns die; runs mostly don't. So the
+# count stays a WARN and the SUMMARY scopes the verdict per surface instead.
+# Without this, a revoked refresh token — every inbound and outbound email path
+# dead — still summarised as "HEALTHY — ACE works; warnings below are
+# non-fatal", which is how a preflight verdict stops being load-bearing.
+warn_turn() { warn "$1 [TURN-BLOCKING]" "${2:-}"; }
 fail() { printf 'FAIL %s\n' "$1"; [ -n "${2:-}" ] && printf '  fix: %s\n' "$2"; }
 # No _log() abstraction in this script; mirrors the pass/warn/fail printf pattern.
 info() { printf 'INFO %s\n' "$1"; }
@@ -1884,14 +1894,14 @@ GMAIL_CLIENT_VAL="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1
 [ -n "$GMAIL_CLIENT_VAL" ] || GMAIL_CLIENT_VAL="$(get_env ACE_GMAIL_CLIENT)"
 GOG_LOGIN_HINT="brew install steipete/tap/gogcli && gog login ${GMAIL_ACCT:-<ACE_GMAIL_ACCOUNT>} --client ${GMAIL_CLIENT_VAL:-<ACE_GMAIL_CLIENT>} --services $GOG_SERVICES --force-consent"
 if ! command -v gog >/dev/null 2>&1; then
-  warn "gog_auth: GOG CLI not installed — email-communicator (Phase 8 invites, training emails) + Google user-identity ops unavailable" "$GOG_LOGIN_HINT"
+  warn_turn "gog_auth: GOG CLI not installed — email-communicator (Phase 8 invites, training emails) + Google user-identity ops unavailable" "$GOG_LOGIN_HINT"
 elif [ -z "$GMAIL_ACCT" ] || [ -z "$GMAIL_CLIENT_VAL" ]; then
-  warn "gog_auth: ACE_GMAIL_ACCOUNT or ACE_GMAIL_CLIENT not set — cannot select GOG credentials" "see gmail_config above; re-inject .env, then: $GOG_LOGIN_HINT"
+  warn_turn "gog_auth: ACE_GMAIL_ACCOUNT or ACE_GMAIL_CLIENT not set — cannot select GOG credentials" "see gmail_config above; re-inject .env, then: $GOG_LOGIN_HINT"
 else
   GOG_TO_BIN="$(command -v timeout 2>/dev/null || command -v gtimeout 2>/dev/null)"
   _gog() { if [ -n "$GOG_TO_BIN" ]; then "$GOG_TO_BIN" 25 gog "$@" 2>&1; else gog "$@" 2>&1; fi; }
   if ! _gog auth status --account "$GMAIL_ACCT" --client "$GMAIL_CLIENT_VAL" --json | grep -q '"credentials_exists": true'; then
-    warn "gog_auth: no stored GOG credentials for $GMAIL_ACCT (client=$GMAIL_CLIENT_VAL) — never authorized on this machine; email + Google ops will fail" "run once (interactive browser OAuth): $GOG_LOGIN_HINT"
+    warn_turn "gog_auth: no stored GOG credentials for $GMAIL_ACCT (client=$GMAIL_CLIENT_VAL) — never authorized on this machine; email + Google ops will fail" "run once (interactive browser OAuth): $GOG_LOGIN_HINT"
   else
     # Live scope probes. A 403 insufficientPermissions means the scope was not
     # granted at login time (e.g. a legacy `--services gmail`-only login).
@@ -1913,7 +1923,7 @@ else
     if [ -z "$GOG_MISSING" ]; then
       pass "gog_auth: $GMAIL_ACCT (client=$GMAIL_CLIENT_VAL) — live scopes OK for gmail+calendar+drive; docs/slides/sheets/forms covered by the same --services login"
     elif printf '%s' "$GOG_MISSING" | grep -qw gmail; then
-      warn "gog_auth: GOG token for $GMAIL_ACCT cannot call Gmail (scope missing/expired) — email send/read will fail" "re-authorize the full service set: $GOG_LOGIN_HINT"
+      warn_turn "gog_auth: GOG token for $GMAIL_ACCT cannot call Gmail (scope missing/expired) — email send/read will fail" "re-authorize the full service set: $GOG_LOGIN_HINT"
     else
       warn "gog_auth: GOG token for $GMAIL_ACCT is too narrow — missing scopes: $GOG_MISSING (live OK: $GOG_OK). Drive/Calendar/Docs/Slides/Sheets/Forms ops will 403" "re-authorize for full access: $GOG_LOGIN_HINT"
     fi
@@ -1926,9 +1936,9 @@ fi
 # invocation time (the shims exit with a remediation, but a run shouldn't be
 # the first place that's discovered).
 if ! command -v canopy >/dev/null 2>&1; then
-  warn "canopy_email_engine: canopy CLI not on PATH — bin/ace-email + bin/ace-mark-read (shims over the shared engine) will fail; email send + mark-read unavailable" "install it: uv tool install <canopy checkout> (see /canopy:setup)"
+  warn_turn "canopy_email_engine: canopy CLI not on PATH — bin/ace-email + bin/ace-mark-read (shims over the shared engine) will fail; email send + mark-read unavailable" "install it: uv tool install <canopy checkout> (see /canopy:setup)"
 elif ! canopy email --help >/dev/null 2>&1; then
-  warn "canopy_email_engine: canopy CLI present but has no \`email\` subcommand — engine predates 0.2.255" "upgrade: uv tool install --force <canopy checkout> (or /canopy:update then re-install the tool)"
+  warn_turn "canopy_email_engine: canopy CLI present but has no \`email\` subcommand — engine predates 0.2.255" "upgrade: uv tool install --force <canopy checkout> (or /canopy:update then re-install the tool)"
 else
   # Version-skew check (ace#888): the uv-tool engine binds its code at install
   # time, while /canopy:update advances the marketplace clone — a lagging
@@ -2612,8 +2622,18 @@ _DOCTOR_FAIL=$(grep -c '^FAIL ' "$DOCTOR_LOG" 2>/dev/null | tr -d '[:space:]')
 _DOCTOR_FAIL_LIST="$(grep '^FAIL ' "$DOCTOR_LOG" 2>/dev/null | sed -E 's/^FAIL ([^:]+):.*$/  - \1/')"
 _DOCTOR_WARN_LIST="$(grep '^WARN ' "$DOCTOR_LOG" 2>/dev/null | sed -E 's/^WARN ([^:]+):.*$/  - \1/')"
 
+# Turn-blocking warnings (ace#1189) — checks that leave the agent unable to
+# read or send mail. They are WARNs (a run survives) but they are NOT
+# "non-fatal": /ace:turn cannot do its job at all, so the verdict names both
+# surfaces rather than averaging them into one misleading word.
+_DOCTOR_TURNBLOCK=$(grep -c '^WARN .*\[TURN-BLOCKING\]' "$DOCTOR_LOG" 2>/dev/null | tr -d '[:space:]')
+: "${_DOCTOR_TURNBLOCK:=0}"
+_DOCTOR_TURNBLOCK_LIST="$(grep '^WARN .*\[TURN-BLOCKING\]' "$DOCTOR_LOG" 2>/dev/null | sed -E 's/^WARN ([^:]+):.*$/  - \1/')"
+
 if [ "$_DOCTOR_FAIL" -gt 0 ]; then
   _DOCTOR_VERDICT="BROKEN — ACE will not function until FAILs are fixed"
+elif [ "$_DOCTOR_TURNBLOCK" -gt 0 ]; then
+  _DOCTOR_VERDICT="HEALTHY for runs · BROKEN for turns — ACE cannot read or send email (see TURN-BLOCKING below)"
 elif [ "$_DOCTOR_WARN" -gt 0 ]; then
   _DOCTOR_VERDICT="HEALTHY — ACE works; warnings below are non-fatal"
 else
@@ -2626,6 +2646,12 @@ echo "================================================================"
 printf "  PASS: %s   WARN: %s   FAIL: %s\n" "$_DOCTOR_PASS" "$_DOCTOR_WARN" "$_DOCTOR_FAIL"
 echo "  Verdict: $_DOCTOR_VERDICT"
 echo "================================================================"
+
+if [ "$_DOCTOR_TURNBLOCK" -gt 0 ]; then
+  echo "TURN-BLOCKING items (/ace:turn cannot run; /ace:run mostly can):"
+  printf '%s\n' "$_DOCTOR_TURNBLOCK_LIST"
+  echo ""
+fi
 
 if [ "$_DOCTOR_FAIL" -gt 0 ]; then
   echo "FAIL items (must fix):"
