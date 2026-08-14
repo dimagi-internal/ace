@@ -78,6 +78,9 @@ function fakeSpool() {
     list: () => spooled.map((a) => `/fake-spool/${path.basename(a.path)}`),
     clear: () => { cleared += 1; spooled.length = 0; },
     dir: () => '/fake-spool',
+    // ace#1084: the wipe removes each video AND its provenance sidecar, so
+    // the honest count is 2 per spooled artifact — not `list().length`.
+    count: () => spooled.length * 2,
   };
   return { hooks, spooled, get clearCount() { return cleared; } };
 }
@@ -384,8 +387,10 @@ describe('MobileClient session-video spool atoms', () => {
       videos: ['/fake-spool/journey-learn.mp4'],
     });
 
-    // `cleared` must be the count BEFORE the wipe — a skill logs it.
-    expect(client.clearSessionVideos()).toEqual({ spoolDir: '/fake-spool', cleared: 1 });
+    // `cleared` must be the count BEFORE the wipe — a skill logs it — and it
+    // counts what the WIPE removes, not what `list()` shows. One spooled video
+    // is two entries on disk: the mp4 and its `.meta.json` sidecar (ace#1084).
+    expect(client.clearSessionVideos()).toEqual({ spoolDir: '/fake-spool', cleared: 2 });
     expect(spool.clearCount).toBe(1);
     expect(client.listSessionVideos().videos).toEqual([]);
   });

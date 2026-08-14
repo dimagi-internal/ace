@@ -52,7 +52,8 @@ import {
   startRecording,
   stopRecording,
 } from './screen-recorder.js';
-import { clearSpool, listSpooled, spoolDir, spoolVideo } from './video-spool.js';
+import { clearSpool, listSpooled, spoolDir,
+  countSpooledEntries, spoolVideo } from './video-spool.js';
 
 /**
  * Return shape of the dual-mode `mobile_diagnose` atom
@@ -94,6 +95,8 @@ export interface SpoolHooks {
   list: typeof listSpooled;
   clear: typeof clearSpool;
   dir: typeof spoolDir;
+  /** Total entries the wipe will remove — see `countSpooledEntries`. */
+  count: typeof countSpooledEntries;
 }
 
 export interface MobileClientOpts {
@@ -667,7 +670,13 @@ export class MobileClient {
       opts.bootstrapConfig === undefined ? bootstrapConfigFromEnv() : opts.bootstrapConfig;
     this.fetchImpl = opts.fetchImpl ?? fetch;
     this.recorder = opts.recorder ?? { start: startRecording, stop: stopRecording };
-    this.spool = opts.spool ?? { video: spoolVideo, list: listSpooled, clear: clearSpool, dir: spoolDir };
+    this.spool = opts.spool ?? {
+      video: spoolVideo,
+      list: listSpooled,
+      clear: clearSpool,
+      dir: spoolDir,
+      count: countSpooledEntries,
+    };
     // Eagerly try to construct CloudBackend so /ace:mobile-backend can
     // flip the toggle mid-session without an MCP restart. We catch the
     // typed env-missing error so envs without ACE_WEB still start up.
@@ -1947,7 +1956,13 @@ export class MobileClient {
    */
   clearSessionVideos(): { spoolDir: string; cleared: number } {
     const dir = this.spool.dir();
-    const cleared = this.spool.list().length;
+    // Count what the WIPE removes, not what `list()` shows. `list()` filters
+    // to `.mp4` because callers want recordings, while `clear()` removes the
+    // directory recursively — so counting from `list()` under-reported the
+    // moment anything else lived in the spool, which is now always: every
+    // spooled video carries a `.meta.json` provenance sidecar
+    // (dimagi-internal/ace#1084).
+    const cleared = this.spool.count();
     this.spool.clear();
     return { spoolDir: dir, cleared };
   }
