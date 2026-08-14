@@ -150,7 +150,9 @@ export function checkPeriodOfPerformanceComplete(wo: string): QACheckResult {
     detail: `Period of Performance value '${value}' is incomplete (need a start and end date: 'YYYY-MM-DD to YYYY-MM-DD', 'Mon DD, YYYY to Mon DD, YYYY', or '[TBD]')`,
     auto_fix_hint:
       'fill the Period of Performance cell with both a start and end date — ISO `YYYY-MM-DD to YYYY-MM-DD` or prose `Mon DD, YYYY to Mon DD, YYYY` — ' +
-      'or use an explicit `[TBD]` placeholder. Scaffolding `{{...}}` markers must not leak through.',
+      'or a single bracketed placeholder spanning the whole cell, e.g. `[TBD]` or `[Start and end dates set at award]`: ' +
+      'one pair of brackets, no nested `]` — NOT two bracketed spans joined by "to". ' +
+      'Scaffolding `{{...}}` markers must not leak through.',
   };
 }
 
