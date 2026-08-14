@@ -3,7 +3,7 @@ import * as crypto from 'node:crypto';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { AvdBootError, AvdBootTimeoutError, AdbError } from '../errors.js';
+import { AvdBootError, AvdBootTimeoutError, AdbError, ShellTimeoutError } from '../errors.js';
 import type { AvdInfo, ApkInfo, UiDumpResult, SnapshotResult, LocalDiagnostics } from '../types.js';
 import { resolveAdbServerPort, resolveEmulatorPair, recordSessionLock, isTcpPortFree, occupiedConsolePortIsFatal } from '../port-allocator.js';
 import { withAllocatorMutex } from '../session-lock.js';
@@ -248,7 +248,10 @@ export const defaultShell: ShellFn = (cmd, args, opts = {}) =>
     const timer = opts.timeoutMs
       ? setTimeout(() => {
           child.kill('SIGKILL');
-          reject(new Error(`shell timeout: ${cmd} ${args.join(' ')}`));
+          // Typed (ace#1164): a bare string here matched the transient-throw
+          // classifier's `timeout` substring and triggered full-journey
+          // replays on wedged subprocesses.
+          reject(new ShellTimeoutError(cmd, args, opts.timeoutMs!));
         }, opts.timeoutMs)
       : null;
     child.on('exit', (code) => {
