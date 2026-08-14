@@ -416,7 +416,7 @@ master `3-commcare/app-test-cases.yaml` AND per-journey recipe files
 `app-screenshot-capture` requires for pre-flight. An inline-composed
 master file with no per-recipe siblings will halt Phase 6 at
 pre-flight (real failure mode from turmeric run 20260509-0455). See
-`agents/ace-orchestrator.md § Skill Invocation Discipline`.
+`agents/orchestrator-reference.md § Skill Invocation Discipline`.
 
 - Reads: pdd-to-app-journeys.md, both app summaries, Nova blueprints
 - Writes:
@@ -583,7 +583,7 @@ the form-patch over-stripping incident at Phase 3 instead of Phase 6).
 
 ### Completion
 Write phase summary to `ACE/<opp-name>/runs/<run-id>/3-commcare/commcare-setup_summary.md`,
-then write the `phases.commcare-setup` block per `agents/ace-orchestrator.md
+then write the `phases.commcare-setup` block per `agents/orchestrator-reference.md
 § Phase Write-Back Contract`. Phase 3 is a procedure doc executed by the
 top-level orchestrator session inline (see § Agent Topology), so the
 orchestrator owns this write. Required top-level keys on the patch:

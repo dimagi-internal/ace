@@ -130,9 +130,11 @@ Unless `--no-evals` was passed AND QA verdict is `pass`, invoke the `pdd-to-work
 
 ### Completion
 Write phase summary to `ACE/<opp-name>/runs/<run-id>/1-design/idea-to-design_summary.md`,
-then write the `phases.idea-to-design` block per `agents/ace-orchestrator.md § Phase
-Write-Back Contract`. Required top-level keys on the patch: `phases`, `last_actor`,
-`last_actor_at`.
+then write the `phases.idea-to-design` block per `agents/orchestrator-reference.md §
+Phase Write-Back Contract`. Set `phases.idea-to-design.status: done` — the enum is
+closed (`lib/run-state-validator.ts`), and `complete` is a tolerated legacy synonym,
+not the canonical spelling (ace#992). Required top-level keys on the patch: `phases`,
+`last_actor`, `last_actor_at`.
 
 The phase summary at `1-design/idea-to-design_summary.md` MUST list both:
 - PDD: `phases.idea-to-design.products.pdd.file_id` (Drive URL)

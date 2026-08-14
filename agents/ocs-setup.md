@@ -116,8 +116,10 @@ placeholder id. `classify_phase_writeback` only checks block shape, so the
 live round-trip is the only real guard against fabricated identifiers.
 
 Write phase summary to `ACE/<opp-name>/runs/<run-id>/5-ocs/ocs-setup_summary.md`,
-then write the `phases.ocs-setup` block per `agents/ace-orchestrator.md §
-Phase Write-Back Contract`. Required top-level keys on the patch: `phases`,
+then write the `phases.ocs-setup` block per `agents/orchestrator-reference.md §
+Phase Write-Back Contract`. Set `phases.ocs-setup.status: done` — the enum is closed
+(`lib/run-state-validator.ts`); `complete` is a tolerated legacy synonym, not the
+canonical spelling (ace#992). Required top-level keys on the patch: `phases`,
 `last_actor`, `last_actor_at`. (0.13.116: legacy
 `gates.ocs-chatbot-eval-quick` flip dropped — pause-point status derived
 from phases.ocs-setup.status + per-skill verdicts.)

@@ -24,6 +24,9 @@ import { resolveGogIdentity } from '../lib/gog-identity.js';
 import {
   validateRunState,
   classifyPhaseWriteBack,
+  classifyStatusSpelling,
+  PHASE_STATUS_VALUES,
+  STEP_STATUS_VALUES,
 } from '../lib/run-state-validator.js';
 import {
   verifyPhaseArtifacts,
@@ -1295,6 +1298,62 @@ export async function handleUpdateYamlFile(
         `INVALID_PHASE_PRODUCTS: phases.${phase}.products does not match the run_state contract — ${detail}. ` +
         `Fix the write shape to match lib/phase-products-schema.ts (the same contract ace-web's summary reads).`,
       );
+    }
+  }
+
+  // --- Write-time status enum guard (dimagi-internal/ace#992) -------------
+  //
+  // UNCONDITIONAL, not opt-in via validateAs. An opt-in guard cannot fix this
+  // class: the agent that does not know the enum is exactly the agent that
+  // will not pass the flag. This is a pure in-memory walk of `patch.phases.*`
+  // — zero extra I/O, and a complete no-op when the patch carries no `phases`
+  // key (opp.yaml, iterate state, decisions).
+  //
+  // It reads the PATCH, so it is merge-mode agnostic: `deep`, `two-level` and
+  // `shallow` all carry `status` at the same path. Stated limit — it sees only
+  // what THIS patch carries; a bad value already on Drive stays the read-time
+  // fence's job.
+  const statusWarnings: string[] = [];
+  const patchPhases = (patch as any)?.phases;
+  if (patchPhases && typeof patchPhases === 'object') {
+    for (const [phaseName, block] of Object.entries(patchPhases as Record<string, any>)) {
+      if (!block || typeof block !== 'object') continue;
+
+      if (typeof block.status === 'string') {
+        const spelling = classifyStatusSpelling('phase', block.status);
+        if (spelling === 'unknown') {
+          // REJECT at phase level. Warn-and-write is wrong here: it leaves the
+          // bad value on Drive, which IS the defect. The refusal is typed, not
+          // an interactive prompt, so an autonomous run reads the enum in the
+          // error and retries in the same turn having spent no Drive I/O.
+          throw new Error(
+            `INVALID_PHASE_STATUS: phases.${phaseName}.status = "${block.status}" is not in the ` +
+            `phase-status enum. Legal values: ${PHASE_STATUS_VALUES.join(' | ')}. ` +
+            `Canonical for a finished phase is \`done\`. No Drive write happened.`,
+          );
+        }
+        if (spelling === 'legacy-synonym') {
+          // MUST NOT reject — ace#1151 deliberately made `complete` legal.
+          statusWarnings.push(
+            `phases.${phaseName}.status = "${block.status}" is a tolerated legacy synonym; write \`done\`.`,
+          );
+        }
+      }
+
+      // Step level warns rather than rejects: failing an entire N-step
+      // write-back over one step word costs more than the slip, and
+      // STEP_STATUSES is the looser, organically-grown vocabulary.
+      if (block.steps && typeof block.steps === 'object') {
+        for (const [stepName, step] of Object.entries(block.steps as Record<string, any>)) {
+          if (!step || typeof step !== 'object' || typeof step.status !== 'string') continue;
+          if (classifyStatusSpelling('step', step.status) !== 'canonical') {
+            statusWarnings.push(
+              `phases.${phaseName}.steps.${stepName}.status = "${step.status}" is not a canonical step status ` +
+              `(${STEP_STATUS_VALUES.join(' | ')}).`,
+            );
+          }
+        }
+      }
     }
   }
 

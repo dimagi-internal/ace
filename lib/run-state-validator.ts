@@ -624,3 +624,28 @@ export function validateIterateState(parsed: unknown): ValidationResult {
 
   return { valid: errors.length === 0, errors, warnings };
 }
+
+/**
+ * How is this status string spelled, relative to the closed enum?
+ *
+ * Extracted for the WRITE-TIME guard (dimagi-internal/ace#992). The read-time
+ * fences already classify a whole `run_state.yaml`; this answers the narrower
+ * question a single patch needs, so `mcp/google-drive-server.ts` holds no
+ * vocabulary of its own — the enum lives here and nowhere else.
+ *
+ * - `canonical`      — in the enum, and the preferred spelling
+ * - `legacy-synonym` — tolerated, warned about, MUST NOT be rejected. #1151
+ *   deliberately made `complete` legal; rejecting it would re-open ace#992
+ *   from the opposite side.
+ * - `unknown`        — not in the enum at all. The enum is closed.
+ */
+export function classifyStatusSpelling(
+  level: 'phase' | 'step',
+  value: string,
+): 'canonical' | 'legacy-synonym' | 'unknown' {
+  const values = level === 'phase' ? PHASE_STATUS_VALUES : STEP_STATUS_VALUES;
+  if (!(values as readonly string[]).includes(value)) return 'unknown';
+  return Object.prototype.hasOwnProperty.call(LEGACY_STATUS_SYNONYMS, value)
+    ? 'legacy-synonym'
+    : 'canonical';
+}
