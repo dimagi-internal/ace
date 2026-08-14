@@ -324,18 +324,34 @@ effect. Treat a missing value as "never validated", not as "valid".
      - `killed` / `timeout` — host or operator, not the run.
      A `phase_halt` **does** count: that is a real verdict, judge it at step 5.
 
-   > **Prefer `--runner web`; `local` is the fallback.** Web is the documented
-   > default and *the observable runner* — ace-web forks, shapes and drives the
-   > run server-side and exposes a transcript at
-   > `GET /sessions/<slug>/messages`. It also **preflights**: the bednet
-   > campaign's web dispatch was refused in ~2s with `409 nova_auth_invalid`
-   > naming the exact credential and remediation, where the local path launched
-   > into the same class of failure with no check at all. Two traps, both live
-   > on 2026-08-14 (ace#1276 items 2–3): a resumed campaign reads `runner` out
-   > of `iterate-state.yaml`, so an inherited `runner: local` silently overrides
-   > the documented default — check it at `--new-golden`. And the two runners
-   > are **not interchangeable at a given moment**: local Nova auth was valid
-   > while web's was not, so preflight the one you actually intend to use.
+   > **Preflight the runner before dispatching — don't launch into a known-dead
+   > one** (ace#1276 item 2). A seeded run is 1–3h of Nova + Connect + on-device
+   > work, so starting one against exhausted capacity or stale auth guarantees a
+   > mid-Phase death the loop cannot tell from a run defect. On `local`: a cheap
+   > `claude -p "Reply PONG"` settles capacity *and* login in seconds — the
+   > bednet campaign found this out the expensive way, then confirmed the cause
+   > in 8s with exactly that probe. Halt-and-surface rather than dispatching;
+   > `canopy:auth-preflight` is the existing precedent.
+   >
+   > **`local` is the deliberate choice, and the loop is PARKED** (Jonathan,
+   > 2026-08-14). The goal right now is getting a run through end-to-end
+   > consistently — not measuring a pass rate over runs that don't finish, and
+   > not running a seeded run like an `/ace:turn`. So: don't reach for this loop
+   > until a plain `/ace:run` clears the bar in § 5 unaided. The fix for local's
+   > opacity is the supervisor above, not a switch to `--runner web`.
+   >
+   > **What survives the parking is § 5's clean bar** — in particular the
+   > server-side term (`connect_get_deliver_progress` → `approved >= 1`). That
+   > is the definition of done for a manual run too: every other clause is
+   > satisfiable by a run whose delivery never left the handset, which was
+   > observed live on `bednet-spot-check/20260729-1239` (Phase 6 shallow
+   > `pass` while the device read `Daily Visits 0/5` / `last synced: never`).
+   > Judge attended runs by it; don't let the loop's parking take it with it.
+   >
+   > For whenever this is unparked: web preflights on its own (the bednet web
+   > dispatch was refused in ~2s with `409 nova_auth_invalid`, naming the
+   > credential and the fix), and the two runners are **not interchangeable at
+   > a given moment** — local Nova auth was valid while web's was not.
 5. **Judge** (client-side interpretation of the standard verdicts):
    - **clean** iff `classifyPhaseWriteBack(run_state, 'commcare-setup') == 'ok'`
      AND `classifyPhaseWriteBack(run_state, 'qa-and-training') == 'ok'` AND the
