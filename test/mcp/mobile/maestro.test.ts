@@ -442,6 +442,86 @@ describe('MaestroBackend.runRecipe — split-and-dump path (when `serial` is pro
   });
 });
 
+// --- ace#1236: screenshots nested by a `/` in an interpolated label ---
+//
+// Maestro resolves `takeScreenshot: "name"` to File("name.png") relative to
+// the process CWD and calls getParentFile/mkdirs, so a `/` inside the name
+// silently becomes a DIRECTORY instead of an error. Recipes interpolate
+// display labels into those names, and ACE's sanctioned inline localization
+// writes them as `English / Chichewa / Tumbuka` — so on every trilingual app
+// the frames landed in subdirectories and a flat readdirSync never saw them.
+// Written, then lost, while the recipe reported every takeScreenshot
+// COMPLETED. 36 frames on a 9-module app.
+describe('MaestroBackend.runRecipe — nested screenshots (ace#1236)', () => {
+  it('collects PNGs written into label-derived subdirectories', async () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'mob-nested-'));
+    // Flat frame, as a well-named step produces.
+    fs.writeFileSync(path.join(tmp, 'step-01-home.png'), 'fake');
+    // What `learn-tap-module-before-${MODULE_NAME}` actually writes when the
+    // module label is "Start here / Yambani apa / Ambani apa".
+    const nested = path.join(tmp, 'learn-tap-module-before-Start here ', ' Yambani apa ');
+    fs.mkdirSync(nested, { recursive: true });
+    fs.writeFileSync(path.join(nested, ' Ambani apa.png'), 'fake');
+
+    const recipePath = path.join(tmp, 'flow.yaml');
+    fs.writeFileSync(recipePath, 'appId: x\n');
+    const shell = fakeShell({
+      [`maestro test --no-ansi --output ${tmp} ${recipePath}`]: { stdout: 'OK\n', code: 0 },
+    });
+    const backend = new MaestroBackend({ shell });
+    const r = await backend.runRecipe(recipePath, {}, tmp);
+
+    expect(r.status).toBe('pass');
+    // Pre-fix this returned ONLY the flat frame.
+    expect(r.screenshots).toHaveLength(2);
+    const names = r.screenshots.map((s) => s.stepName);
+    expect(names).toContain('step-01-home');
+    // The nested path is flattened into one stable, unique stepName, which
+    // preserves the per-module disambiguation the label was there to provide.
+    const nestedName = names.find((n) => n !== 'step-01-home');
+    expect(nestedName).toBeDefined();
+    expect(nestedName).toContain('learn-tap-module-before');
+    expect(nestedName).not.toContain(path.sep);
+  });
+
+  it('still pairs a nested frame with its sibling UI dump', async () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'mob-nested-dump-'));
+    const nested = path.join(tmp, 'frame-A ', ' B');
+    fs.mkdirSync(nested, { recursive: true });
+    fs.writeFileSync(path.join(nested, ' C.png'), 'fake');
+    // The dump sits beside the PNG at its REAL location, not at
+    // <dir>/<flattened-stepName>.xml — deriving it from the flattened name
+    // is the regression this pins.
+    fs.writeFileSync(path.join(nested, ' C.xml'), '<hierarchy/>');
+
+    const recipePath = path.join(tmp, 'flow.yaml');
+    fs.writeFileSync(recipePath, 'appId: x\n');
+    const shell = fakeShell({
+      [`maestro test --no-ansi --output ${tmp} ${recipePath}`]: { stdout: 'OK\n', code: 0 },
+    });
+    const backend = new MaestroBackend({ shell });
+    const r = await backend.runRecipe(recipePath, {}, tmp);
+
+    expect(r.screenshots).toHaveLength(1);
+    expect(r.screenshots[0].uiDumpPath).toBe(path.join(nested, ' C.xml'));
+    expect(r.screenshots[0].uiDumpBytes).toBeGreaterThan(0);
+  });
+
+  it('is unchanged for a flat screenshot dir', async () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'mob-flat-'));
+    fs.writeFileSync(path.join(tmp, 'a.png'), 'fake');
+    fs.writeFileSync(path.join(tmp, 'b.png'), 'fake');
+    const recipePath = path.join(tmp, 'flow.yaml');
+    fs.writeFileSync(recipePath, 'appId: x\n');
+    const shell = fakeShell({
+      [`maestro test --no-ansi --output ${tmp} ${recipePath}`]: { stdout: 'OK\n', code: 0 },
+    });
+    const backend = new MaestroBackend({ shell });
+    const r = await backend.runRecipe(recipePath, {}, tmp);
+    expect(r.screenshots.map((s) => s.stepName).sort()).toEqual(['a', 'b']);
+  });
+});
+
 describe('MaestroBackend.validateRecipe', () => {
   it('rejects YAML with unknown step keys', async () => {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'mob-'));
