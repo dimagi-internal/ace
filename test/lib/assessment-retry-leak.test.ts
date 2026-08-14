@@ -130,3 +130,140 @@ describe('checkAssessmentRetryLeak (#1041)', () => {
     expect(text).toMatch(/earn payments/);
   });
 });
+
+/**
+ * dimagi-internal/ace#1332 — the check was structurally blind on every
+ * RELEASED CCZ, which is the only artifact `app-release-qa` ever has.
+ *
+ * Observed on bednet-check-2-visit/20260814-0856 (Learn app
+ * c0d7027316bc46f8b4fdf4b47fd8d90b, build 8e684b6a24bb447998f2fe3a4cd08926,
+ * form modules-1/forms-1.xml — a genuine 100%-pass score gate): the report
+ * came back `checked=false, leaks=0`, i.e. "not applicable", on a form that
+ * carries a score-gated fail branch. Three independent defects, any one
+ * sufficient:
+ *
+ *  1. `failBranchNodesets` only matched `<` / `<=`. The released bind is
+ *     `relevant="not(/data/user_score >= 100)"` — semantically less-than,
+ *     syntactically a negated GTE. `not(...)` around `>`/`>=` is an entirely
+ *     ordinary way to author the retry branch.
+ *  2. `labelTextFor` read inline `<label>` text. CommCare's XForm compiler
+ *     moves ALL label text into `<itext>`, leaving
+ *     `<label ref="jr:itext('result_retry-label')"/>` whose textContent is ''.
+ *     The loop then `continue`d — silently, so blind was indistinguishable
+ *     from clean.
+ *  3. The answer key in a compiled select1 is the option VALUE (`'c'`), not
+ *     its prose. `includes('c')` is true of almost any sentence, so naively
+ *     fixing 1 and 2 would have turned a false negative into a guaranteed
+ *     false positive.
+ *
+ * The fixture below is the released shape: itext-ref labels, a negated-GTE
+ * fail branch, and single-letter option values.
+ */
+describe('compiled-CCZ forms (#1332)', () => {
+  const compiled = (retryValue: string) => `<?xml version="1.0"?>
+<h:html xmlns:h="http://www.w3.org/1999/xhtml" xmlns="http://www.w3.org/2002/xforms" xmlns:jr="http://openrosa.org/javarosa">
+  <h:head>
+    <model>
+      <instance><data>
+        <q1/><user_score/><result_pass/><result_retry/>
+      </data></instance>
+      <itext>
+        <translation lang="en" default="">
+          <text id="q1-label"><value>Where should the net be hung?</value></text>
+          <text id="q1-a-label"><value>Over the doorway</value></text>
+          <text id="q1-c-label"><value>Over the sleeping area</value></text>
+          <text id="result_pass-label"><value>Passed. Well done.</value></text>
+          <text id="result_retry-label"><value>${retryValue}</value></text>
+        </translation>
+      </itext>
+      <bind nodeset="/data/user_score" calculate="if(/data/q1 = 'c', 100, 0)"/>
+      <bind nodeset="/data/result_pass" relevant="/data/user_score &gt;= 100"/>
+      <bind nodeset="/data/result_retry" relevant="not(/data/user_score &gt;= 100)"/>
+    </model>
+  </h:head>
+  <h:body>
+    <select1 ref="/data/q1">
+      <label ref="jr:itext('q1-label')"/>
+      <item><label ref="jr:itext('q1-a-label')"/><value>a</value></item>
+      <item><label ref="jr:itext('q1-c-label')"/><value>c</value></item>
+    </select1>
+    <trigger ref="/data/result_pass" appearance="minimal"><label ref="jr:itext('result_pass-label')"/></trigger>
+    <trigger ref="/data/result_retry" appearance="minimal"><label ref="jr:itext('result_retry-label')"/></trigger>
+  </h:body>
+</h:html>`;
+
+  it('recognises a negated-GTE fail branch, so the check actually applies', () => {
+    const r = checkAssessmentRetryLeak(compiled('Go back and read the module again.'));
+    expect(r.checked).toBe(true);
+  });
+
+  it('passes the real bednet-check-2-visit form: retry points at the module, names no answer', () => {
+    const r = checkAssessmentRetryLeak(
+      compiled(
+        'Not passed this time. Go back to the training and read it again from the start. ' +
+          'There is no limit on attempts.',
+      ),
+    );
+    expect(r.checked).toBe(true);
+    expect(r.ok).toBe(true);
+    expect(r.leaks).toEqual([]);
+    expect(r.blind).toEqual([]);
+  });
+
+  it('catches a leak stated in the OPTION PROSE, which is what a worker actually reads', () => {
+    const r = checkAssessmentRetryLeak(
+      compiled('Not quite — the net goes over the sleeping area. Try again.'),
+    );
+    expect(r.ok).toBe(false);
+    expect(r.leaks).toHaveLength(1);
+    expect(r.leaks[0].label).toBe('/data/result_retry');
+    expect(r.leaks[0].leaked).toBe('Over the sleeping area');
+  });
+
+  it('does NOT fire on the bare option value — "c" appears in almost any prose', () => {
+    const r = checkAssessmentRetryLeak(compiled('Check the course content once more.'));
+    expect(r.ok).toBe(true);
+    expect(r.leaks).toEqual([]);
+  });
+
+  it('reports BLIND rather than clean when a fail-branch label cannot be resolved', () => {
+    const orphan = compiled('x').replace(
+      `<text id="result_retry-label"><value>x</value></text>`,
+      '',
+    );
+    const r = checkAssessmentRetryLeak(orphan);
+    expect(r.checked).toBe(true);
+    expect(r.ok).toBe(false);
+    expect(r.blind.join(' ')).toMatch(/result_retry/);
+    expect(formatRetryLeakReport(r)).toMatch(/BLIND/);
+  });
+
+  it('matches a leak in any locale, not just the default one', () => {
+    const trilingual = compiled('Retournez au module.').replace(
+      '</itext>',
+      `<translation lang="fr">
+         <text id="q1-c-label"><value>Au-dessus du couchage</value></text>
+         <text id="result_retry-label"><value>Le filet va au-dessus du couchage. Réessayez.</value></text>
+       </translation></itext>`,
+    );
+    const r = checkAssessmentRetryLeak(trilingual);
+    expect(r.ok).toBe(false);
+    expect(r.leaks[0].leaked).toBe('Au-dessus du couchage');
+  });
+
+  it('still reads an inline <label> — the authoring-time blueprint shape keeps working', () => {
+    const r = checkAssessmentRetryLeak(`<?xml version="1.0"?>
+<h:html xmlns:h="http://www.w3.org/1999/xhtml" xmlns="http://www.w3.org/2002/xforms">
+  <h:head><model>
+    <bind nodeset="/data/user_score" calculate="if(/data/q1 = 'over the sleeping area', 100, 0)"/>
+    <bind nodeset="/data/fail_msg" relevant="/data/user_score &lt; 80"/>
+  </model></h:head>
+  <h:body>
+    <trigger ref="/data/fail_msg"><label>Remember: over the sleeping area. Try again.</label></trigger>
+  </h:body>
+</h:html>`);
+    expect(r.checked).toBe(true);
+    expect(r.ok).toBe(false);
+    expect(r.leaks[0].leaked).toBe('over the sleeping area');
+  });
+});

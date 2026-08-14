@@ -50,10 +50,19 @@ export interface RetryLeakReport {
    * inapplicable form is how a check quietly stops covering anything).
    */
   checked: boolean;
+  /**
+   * True only when the check RAN FULLY and found nothing: no leaks AND
+   * nothing it could not resolve. A blind check that reports clean is how
+   * this whole class stayed invisible (#1332) — `blind` is not a footnote.
+   */
   ok: boolean;
   /** Correct-answer literals recovered from the scoring binds. */
   correctAnswers: string[];
+  /** What each literal is actually matched against — its resolved option prose. */
+  answerNeedles: Record<string, string[]>;
   leaks: RetryLeak[];
+  /** Reasons the check could not fully run, one line each. */
+  blind: string[];
 }
 
 /** Normalize for comparison: case-insensitive, whitespace-collapsed. */
@@ -104,22 +113,125 @@ function failBranchNodesets(doc: Document): string[] {
     const nodeset = bind.getAttribute('nodeset');
     if (!rel || !nodeset) continue;
     if (!/score/i.test(rel)) continue;
-    // `&lt;` is already decoded to `<` by the parser.
-    if (/<\s*=?\s*[\d.]/.test(rel)) out.push(nodeset);
+    // `&lt;` / `&gt;` are already decoded by the parser.
+    // Direct less-than, e.g. `/data/user_score < 80`.
+    if (/<\s*=?\s*[\d.]/.test(rel)) {
+      out.push(nodeset);
+      continue;
+    }
+    // Negated greater-than — semantically the same branch, and the shape
+    // CommCare's own builder emits: `not(/data/user_score >= 100)` (#1332).
+    if (/not\s*\([^)]*>\s*=?\s*[\d.][^)]*\)/.test(rel)) out.push(nodeset);
   }
   return out;
 }
 
-/** Visible text of the body control bound to `nodeset` (its `<label>`). */
-function labelTextFor(doc: Document, nodeset: string): string {
+/** Shortest literal matched on its own. Below this an answer VALUE is a code
+ *  (`'c'`, `'ab'`), not prose — see `answerNeedles`. */
+const MIN_LITERAL_LEN = 3;
+
+const ITEXT_REF = /jr:itext\(\s*['"]([^'"]+)['"]\s*\)/;
+
+/** Media forms carry no readable prose. `long`/`short` do. */
+function isProseValue(v: Element): boolean {
+  const form = v.getAttribute('form');
+  return !form || form === 'long' || form === 'short';
+}
+
+/**
+ * `<text id>` → its prose in EVERY locale, kept as one entry per locale.
+ *
+ * Locale-blind on purpose: ACE ships trilingual Learn apps, and a leak in the
+ * French label is a leak. Kept SEPARATE rather than pooled because each
+ * locale's option prose has to be its own needle — a pooled
+ * "Over the sleeping area Au-dessus du couchage" matches neither label.
+ */
+function buildItextIndex(doc: Document): Map<string, string[]> {
+  const idx = new Map<string, string[]>();
+  for (const t of Array.from(doc.getElementsByTagName('text'))) {
+    const id = t.getAttribute('id');
+    if (!id) continue;
+    const parts = Array.from(t.getElementsByTagName('value'))
+      .filter(isProseValue)
+      .map((v) => textOf(v))
+      .filter(Boolean);
+    if (!parts.length) continue;
+    idx.set(id, [...(idx.get(id) ?? []), parts.join(' ')]);
+  }
+  return idx;
+}
+
+function directChildren(el: Element, tag: string): Element[] {
+  return Array.from(el.childNodes ?? [])
+    .filter((n): n is Element => (n as Element).nodeType === 1 && (n as Element).nodeName === tag);
+}
+
+/**
+ * A control's own label text — inline when authored inline, resolved through
+ * `<itext>` when compiled.
+ *
+ * A RELEASED CCZ is always the compiled shape: CommCare's XForm compiler moves
+ * ALL label text into `<itext>` and leaves `<label ref="jr:itext('id')"/>`,
+ * whose `textContent` is the empty string. Reading only inline text described
+ * an authoring-time blueprint, not the artifact `app-release-qa` actually
+ * holds (#1332).
+ *
+ * `null` distinguishes "there is a label and its text is unreachable" from
+ * "there is no label" — the caller must not treat either as clean.
+ */
+function labelTextOf(el: Element, itext: Map<string, string[]>): string | null {
+  const [label] = directChildren(el, 'label');
+  if (!label) return null;
+  const inline = textOf(label);
+  if (inline) return inline;
+  const m = ITEXT_REF.exec(label.getAttribute('ref') ?? '');
+  if (!m) return null;
+  // Every locale joined: the haystack only has to CONTAIN the needle, so
+  // pooling here widens coverage without costing precision.
+  return itext.get(m[1])?.join(' ') ?? null;
+}
+
+function controlFor(doc: Document, nodeset: string): Element | null {
   for (const tag of ['trigger', 'input', 'select1', 'select', 'upload']) {
     for (const el of Array.from(doc.getElementsByTagName(tag))) {
-      if (el.getAttribute('ref') !== nodeset) continue;
-      const labels = Array.from(el.getElementsByTagName('label'));
-      if (labels.length) return textOf(labels[0]);
+      if (el.getAttribute('ref') === nodeset) return el;
     }
   }
-  return '';
+  return null;
+}
+
+/** Option VALUE → its label prose, resolved through itext. */
+function optionProse(doc: Document, itext: Map<string, string[]>): Map<string, string[]> {
+  const out = new Map<string, string[]>();
+  for (const item of Array.from(doc.getElementsByTagName('item'))) {
+    const [valueEl] = directChildren(item, 'value');
+    const value = textOf(valueEl);
+    if (!value) continue;
+    const [label] = directChildren(item, 'label');
+    if (!label) continue;
+    const inline = textOf(label);
+    const m = ITEXT_REF.exec(label.getAttribute('ref') ?? '');
+    // One needle PER LOCALE — see buildItextIndex.
+    const variants = inline ? [inline] : m ? (itext.get(m[1]) ?? []) : [];
+    if (!variants.length) continue;
+    out.set(value, [...(out.get(value) ?? []), ...variants]);
+  }
+  return out;
+}
+
+function escapeRe(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/**
+ * Substring for a phrase; word-boundary for a single word, so a 3-letter
+ * needle does not match inside a longer word ("yes" in "eyes").
+ */
+function containsNeedle(haystack: string, needle: string): boolean {
+  const n = norm(needle);
+  if (!n) return false;
+  if (/\s/.test(n)) return haystack.includes(n);
+  return new RegExp(`(^|[^a-z0-9])${escapeRe(n)}([^a-z0-9]|$)`).test(haystack);
 }
 
 /**
@@ -132,30 +244,85 @@ export function checkAssessmentRetryLeak(xml: string): RetryLeakReport {
   // `as unknown as Document` mirrors lib/constraint-locality.ts: xmldom's
   // Document is structurally narrower than the DOM lib's.
   const doc = new DOMParser().parseFromString(xml, 'text/xml') as unknown as Document;
+  const itext = buildItextIndex(doc);
   const correctAnswers = extractCorrectAnswers(doc);
   const failNodesets = failBranchNodesets(doc);
   const checked = correctAnswers.length > 0 && failNodesets.length > 0;
-  if (!checked) return { checked: false, ok: true, correctAnswers, leaks: [] };
+
+  // What a worker actually reads is the option's PROSE, not the value the
+  // form stores. In a compiled select1 the answer key recovered from the
+  // scoring calculate is the value (`'c'`), so matching the literal directly
+  // would fire on any sentence containing the letter c (#1332 defect 3).
+  const prose = optionProse(doc, itext);
+  const answerNeedles: Record<string, string[]> = {};
+  const blind: string[] = [];
+  for (const answer of correctAnswers) {
+    const needles = [...(prose.get(answer) ?? [])];
+    if (answer.length >= MIN_LITERAL_LEN) needles.push(answer);
+    answerNeedles[answer] = needles;
+    if (checked && needles.length === 0) {
+      blind.push(
+        `answer literal '${answer}' is a ${answer.length}-char option code with no resolvable ` +
+          `option label — nothing to match a leak against`,
+      );
+    }
+  }
+
+  if (!checked) {
+    return { checked: false, ok: true, correctAnswers, answerNeedles, leaks: [], blind: [] };
+  }
 
   const leaks: RetryLeak[] = [];
   for (const nodeset of failNodesets) {
-    const text = labelTextFor(doc, nodeset);
-    if (!text) continue;
+    const control = controlFor(doc, nodeset);
+    const text = control ? labelTextOf(control, itext) : null;
+    if (text === null || text === '') {
+      // A silent `continue` here is precisely what made this check read as
+      // clean on every released CCZ. Blind is a reported state, not a skip.
+      blind.push(
+        control
+          ? `${nodeset}: label text is unresolvable (itext ref points at no <text> id)`
+          : `${nodeset}: no body control is bound to this fail-branch nodeset`,
+      );
+      continue;
+    }
     const haystack = norm(text);
+    let leaked = false;
     for (const answer of correctAnswers) {
-      if (haystack.includes(norm(answer))) {
-        leaks.push({ label: nodeset, leaked: answer, text });
-        break;
+      for (const needle of answerNeedles[answer]) {
+        if (containsNeedle(haystack, needle)) {
+          leaks.push({ label: nodeset, leaked: needle, text });
+          leaked = true;
+          break;
+        }
       }
+      if (leaked) break;
     }
   }
-  return { checked: true, ok: leaks.length === 0, correctAnswers, leaks };
+  return {
+    checked: true,
+    ok: leaks.length === 0 && blind.length === 0,
+    correctAnswers,
+    answerNeedles,
+    leaks,
+    blind,
+  };
 }
 
 export function formatRetryLeakReport(report: RetryLeakReport): string {
   if (!report.checked) return 'assessment-retry-leak: not applicable (no score-gated result labels)';
   if (report.ok) return 'assessment-retry-leak: clean — no fail-branch label restates a correct answer';
+  const blindBlock = report.blind.length
+    ? [
+        `assessment-retry-leak: BLIND on ${report.blind.length} item(s) — the check could not run to`,
+        'completion, which is NOT a pass. Reported rather than skipped because a silent skip is what',
+        'made this decorative on every released CCZ (dimagi-internal/ace#1332).',
+        ...report.blind.map((b) => `  ${b}`),
+      ]
+    : [];
+  if (report.leaks.length === 0) return blindBlock.join('\n');
   return [
+    ...blindBlock,
     `assessment-retry-leak: ${report.leaks.length} fail-branch label(s) restate the correct answer —`,
     'a worker who fails once is shown the answer and passes on the next attempt,',
     'which makes the Connect Deliver-unlock gate decorative (dimagi-internal/ace#1041).',
