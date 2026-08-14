@@ -107,12 +107,13 @@ Read a Google Drive document via personal OAuth (gog CLI) — fallback for files
 
 ### `drive_update_file`
 
-Update the text content of an existing Google Doc in Drive. Use for updating PDDs, summaries, and other docs as ACE skills produce new content. Pass `ifMatchRevisionId` (from a prior `drive_read_file`) to opt into optimistic-concurrency CAS — the write is rejected with a typed `revision_conflict` error if another writer changed the file in between, so the caller can re-read and retry without overw…
+Update the text content of an existing Google Doc in Drive. Use for updating PDDs, summaries, and other docs as ACE skills produce new content. Content comes from exactly ONE of `content` (inline, small updates only — refused above 40,000 chars with a typed `oversized_inline_content` error) or `localFilePath` (preferred for anything large: the server reads the bytes off disk, so a read-modify-writ…
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `fileId` | `z.string` | **required** | The Google Drive file ID |
-| `content` | `z.string` | **required** | The new text content to write |
+| `content` | `z.string` | optional | The new text content, inline. Small updates only (max 40,000 chars). Provide either this OR localFilePath, not both. |
+| `localFilePath` | `z.string` | optional | Absolute path to a local file whose utf-8 content becomes the new file content. Reads directly from disk — avoids passing the whole document through the context window. Provide either this OR content,… |
 | `ifMatchRevisionId` | `z.string` | optional | Optional. The revisionVersion returned by the prior drive_read_file. If supplied and the file's current revisionVersion no longer matches, the update is rejected with a revision_conflict error instead… |
 
 ### `update_yaml_file`

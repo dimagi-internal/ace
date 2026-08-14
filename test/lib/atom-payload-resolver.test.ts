@@ -13,6 +13,8 @@ import { mkdtempSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import {
+  resolveUpdateFileContent,
+  prepareWritePath,
   resolvePatchXformXml,
   resolveUploadMultimediaBytes,
   resolveEnvSubstitution,
@@ -241,5 +243,72 @@ describe('resolveEnvSubstitution — allowlist (security audit 2026-07-31)', () 
 
   it('omitting allow keeps back-compat (any UPPER_SNAKE var expands)', () => {
     expect(resolveEnvSubstitution('${LABS_MCP_TOKEN}', env)).toBe('labs-token');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// dimagi-internal/ace#1218 — path-param parity across MCP atoms:
+// drive_update_file gains localFilePath (the read half of read-modify-write
+// was free via writeToPath; the write half paid full file size in context
+// twice), and caller-supplied write paths create parent dirs + require
+// absolute paths, matching drive_read_file's writeToPath (#1247, absorbed).
+// ---------------------------------------------------------------------------
+
+describe('resolveUpdateFileContent (#1218)', () => {
+  it('rejects both args supplied', () => {
+    expect(() =>
+      resolveUpdateFileContent({ content: 'x', localFilePath: '/tmp/y.md' }),
+    ).toThrow(/exactly one/);
+  });
+
+  it('rejects neither arg supplied', () => {
+    expect(() => resolveUpdateFileContent({})).toThrow(/must supply one/);
+  });
+
+  it('returns small inline content verbatim', () => {
+    expect(resolveUpdateFileContent({ content: 'hello' })).toBe('hello');
+  });
+
+  it('reads the file at localFilePath as utf-8', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'ace-upd-'));
+    const p = join(dir, 'patched.md');
+    writeFileSync(p, '# patched\n');
+    expect(resolveUpdateFileContent({ localFilePath: p })).toBe('# patched\n');
+  });
+
+  it('refuses oversized inline content with a typed error naming localFilePath', () => {
+    // Mirrors drive_read_file's 40,000-char inline ceiling so the expensive
+    // path is loud, not the silent default.
+    const big = 'x'.repeat(40_001);
+    expect(() => resolveUpdateFileContent({ content: big })).toThrow(
+      /oversized_inline_content.*localFilePath/s,
+    );
+  });
+
+  it('accepts content exactly at the ceiling', () => {
+    const atLimit = 'x'.repeat(40_000);
+    expect(resolveUpdateFileContent({ content: atLimit })).toBe(atLimit);
+  });
+});
+
+describe('prepareWritePath (#1218 / #1247)', () => {
+  it('creates missing parent directories and returns the path', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'ace-wp-'));
+    const target = join(dir, 'does', 'not', 'exist', 'yet', 'a.ccz');
+    expect(prepareWritePath(target)).toBe(target);
+    writeFileSync(target, 'ok'); // the write the atom performs next must succeed
+  });
+
+  it('is a no-op when the parent already exists', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'ace-wp2-'));
+    const target = join(dir, 'b.ccz');
+    expect(prepareWritePath(target)).toBe(target);
+  });
+
+  it('rejects a relative path with a typed error', () => {
+    // The MCP server's CWD is the plugin cache, not the caller's project —
+    // a relative path writes somewhere unexpected (same guard as
+    // drive_read_file's writeToPath).
+    expect(() => prepareWritePath('relative/a.ccz')).toThrow(/not_absolute/);
   });
 });

@@ -4,6 +4,7 @@ import type { APIRequestContext, APIResponse } from 'playwright';
 import { unzipSync, strFromU8 } from 'fflate';
 import { PlaywrightSession } from '../auth/playwright-session.js';
 import { SessionExpiredError, summarizeServerErrorBody } from '../errors.js';
+import { prepareWritePath } from '../../../lib/atom-payload-resolver.js';
 import {
   DEFAULT_HQ_ROLE,
   classifyHqInviteState,
@@ -2393,7 +2394,10 @@ export class CommCareBackend {
       // signal callers gate on), and the 25 MB cap does NOT apply here since
       // a disk write doesn't bloat the response.
       if (args.write_to_path) {
-        fs.writeFileSync(args.write_to_path, buf);
+        // prepareWritePath: absolute-path guard + parent-dir creation, matching
+        // drive_read_file's writeToPath (ace#1247 — a fresh scratch dir is the
+        // NORMAL case on the app-release-qa chain, so ENOENT here was routine).
+        fs.writeFileSync(prepareWritePath(args.write_to_path), buf);
         return {
           status,
           size_bytes: size,
