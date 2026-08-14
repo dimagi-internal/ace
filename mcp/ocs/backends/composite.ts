@@ -1,7 +1,7 @@
 import type { OcsClient } from '../client.js';
 import type { RestBackend } from './rest.js';
 import type { PlaywrightBackend } from './playwright.js';
-import { VersionBadgeUnreadableError } from '../errors.js';
+import { ExperimentIdEnrichmentError, VersionBadgeUnreadableError } from '../errors.js';
 
 export interface CompositeOptions {
   rest: RestBackend;
@@ -132,15 +132,24 @@ export class CompositeBackend implements OcsClient {
   getChatbot = async (a: Parameters<OcsClient['getChatbot']>[0]) => {
     const out = await this.opts.rest.getChatbot(a);
     if (out.experiment_id != null) return out;
-    const idsByName = await this.fetchExperimentIdMapSilently();
+    // Loud, not silent (ace#1028): the single-bot read is what resume
+    // idempotency keys on, and a swallowed scrape failure here yields
+    // `experiment_id: null` whose natural recovery is the forbidden
+    // re-clone. A successful scrape that lacks the name stays a null id —
+    // that's honest absence (e.g. the bot lives on a non-default team).
+    let idsByName: Map<string, number>;
+    try {
+      idsByName = await this.opts.playwright.fetchExperimentIdsByName();
+    } catch (e) {
+      throw new ExperimentIdEnrichmentError(out.name, e);
+    }
     const id = idsByName.get(out.name);
     return id != null ? { ...out, experiment_id: id } : out;
   };
 
-  /** Try the HTMX scrape, swallow auth/network errors so list/get still
-   * returns something usable. The trade-off: a silent miss leaves
-   * experiment_id null (same as the regression we're fixing) but doesn't
-   * break the list call entirely. */
+  /** Try the HTMX scrape, swallow auth/network errors so the LIST still
+   * returns something usable — the list contract is documented best-effort
+   * per row. Only the single-bot read (`getChatbot`) fails loud (ace#1028). */
   private async fetchExperimentIdMapSilently(): Promise<Map<string, number>> {
     try {
       return await this.opts.playwright.fetchExperimentIdsByName();

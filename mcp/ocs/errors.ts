@@ -70,6 +70,27 @@ export class VersionBadgeUnreadableError extends OcsError {
   }
 }
 
+/**
+ * Thrown by the composite `getChatbot` when the REST payload carries no
+ * integer `experiment_id` (live OCS returns the UUID-keyed API `url`, so the
+ * URL parser always yields null) AND the chatbots-table enrichment scrape
+ * itself failed. Loud on purpose (dimagi-internal/ace#1028): a silently
+ * swallowed scrape failure returns `experiment_id: null` on exactly the read
+ * path resume idempotency depends on, and the caller's natural — and
+ * documented-forbidden — recovery is cloning a duplicate bot.
+ */
+export class ExperimentIdEnrichmentError extends OcsError {
+  constructor(public chatbotName: string, public cause: unknown) {
+    super(
+      `getChatbot: experiment_id enrichment scrape failed for "${chatbotName}" — ` +
+        `the REST payload carries no integer id and the chatbots-table scrape errored ` +
+        `(${cause instanceof Error ? cause.message : String(cause)}). ` +
+        `Likely an expired OCS Playwright session: run /ace:ocs-login and retry. ` +
+        `Do NOT clone a new bot to recover — the existing bot is intact.`,
+    );
+  }
+}
+
 export class CollectionIndexingTimeoutError extends OcsError {
   constructor(public collectionId: number, public timeoutSec: number) {
     super(`Collection ${collectionId} indexing timed out after ${timeoutSec}s`);

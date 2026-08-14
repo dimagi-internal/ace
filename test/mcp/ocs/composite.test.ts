@@ -143,3 +143,82 @@ describe('CompositeBackend.publishChatbotVersion — badge-unreadable fallback (
     expect(rest.getChatbot).not.toHaveBeenCalled();
   });
 });
+
+// ---------------------------------------------------------------------------
+// dimagi-internal/ace#1028 — getChatbot experiment_id enrichment must fail
+// loud, not silently return null
+// ---------------------------------------------------------------------------
+
+describe('CompositeBackend.getChatbot — experiment_id enrichment (#1028)', () => {
+  // Live REST shape: `url` is the UUID-keyed API URL, so the URL-regex parser
+  // yields experiment_id: null and enrichment is the only integer-id source.
+  const restBot = {
+    id: 'e5fe588f-1604-418c-a1b9-26164213131d',
+    name: 'ACE - spark-facilitator (20260728-1338)',
+    url: 'https://www.openchatstudio.com/api/experiments/e5fe588f-1604-418c-a1b9-26164213131d/',
+    version_number: 3,
+    versions: [],
+    experiment_id: null,
+  };
+
+  it('enriches a null experiment_id from the chatbots-table scrape by name', async () => {
+    const rest = { getChatbot: vi.fn().mockResolvedValue({ ...restBot }) };
+    const pw = {
+      fetchExperimentIdsByName: vi
+        .fn()
+        .mockResolvedValue(new Map([[restBot.name, 12804]])),
+    };
+    const c = new CompositeBackend({ rest: rest as never, playwright: pw as never });
+
+    const out = await c.getChatbot({ public_id: restBot.id });
+
+    expect(out.experiment_id).toBe(12804);
+  });
+
+  it('throws a typed error when the scrape fails — a silent null invites the forbidden re-clone', async () => {
+    // ace#1028's live shape: the id IS derivable (12804), the scrape just
+    // failed that session. Swallowing the failure returns experiment_id: null
+    // on exactly the read path resume idempotency depends on, and the
+    // caller's documented-forbidden recovery is cloning a duplicate bot.
+    const rest = { getChatbot: vi.fn().mockResolvedValue({ ...restBot }) };
+    const pw = {
+      fetchExperimentIdsByName: vi.fn().mockRejectedValue(new Error('401 session expired')),
+    };
+    const c = new CompositeBackend({ rest: rest as never, playwright: pw as never });
+
+    await expect(c.getChatbot({ public_id: restBot.id })).rejects.toThrow(
+      /experiment_id.*scrape failed.*ocs-login.*Do NOT clone/is,
+    );
+  });
+
+  it('returns the bot with a null experiment_id when the scrape succeeds but the name is absent', async () => {
+    // A successful scrape that lacks the name is honest absence (e.g. the bot
+    // lives on a non-default team) — degraded null, not an error.
+    const rest = { getChatbot: vi.fn().mockResolvedValue({ ...restBot }) };
+    const pw = { fetchExperimentIdsByName: vi.fn().mockResolvedValue(new Map()) };
+    const c = new CompositeBackend({ rest: rest as never, playwright: pw as never });
+
+    const out = await c.getChatbot({ public_id: restBot.id });
+
+    expect(out.experiment_id).toBeNull();
+  });
+
+  it('listChatbots keeps best-effort degraded mode: a scrape failure yields null ids, no throw', async () => {
+    // The list contract is documented best-effort per row; only the single-bot
+    // read is load-bearing enough to fail loud.
+    const rest = {
+      listChatbots: vi.fn().mockResolvedValue({
+        chatbots: [{ id: 'u1', name: 'bot one', experiment_id: null }],
+        next_cursor: undefined,
+      }),
+    };
+    const pw = {
+      fetchExperimentIdsByName: vi.fn().mockRejectedValue(new Error('401 session expired')),
+    };
+    const c = new CompositeBackend({ rest: rest as never, playwright: pw as never });
+
+    const out = await c.listChatbots({});
+
+    expect(out.chatbots[0].experiment_id).toBeNull();
+  });
+});
