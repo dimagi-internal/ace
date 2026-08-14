@@ -1016,7 +1016,19 @@ export class PlaywrightBackend {
     const homePath = `/a/${this.opts.teamSlug}/chatbots/${args.experiment_id}/`;
     const homeRes = await this.opts.request('GET', homePath);
     const html = homeRes.ok && homeRes.text ? await homeRes.text() : '';
-    const versionMatches = [...html.matchAll(/Version\s+(\d+)/g)].map((m) => Number(m[1]));
+    // Only badges naming a version OCS can actually have PUBLISHED count.
+    // `Version 0` is not one: on spark-facilitator/20260813-2126 the home page
+    // carried a literal `Version 0` badge and no higher number, so the scrape
+    // returned 0 for a publish that had created version 2 (ace#1297). Writing
+    // that into run_state is the ace#585 fabricated-identifier class, and it
+    // surfaces much later as an llo-launch freshness-equality failure with no
+    // trail back here — the same reasoning that made the no-badge case throw
+    // instead of defaulting to 1 (ace#823). Filtering here routes it into the
+    // typed error below, so the composite answers from the API (ace#891)
+    // rather than the markup.
+    const versionMatches = [...html.matchAll(/Version\s+(\d+)/g)]
+      .map((m) => Number(m[1]))
+      .filter((n) => Number.isFinite(n) && n >= 1);
     if (versionMatches.length === 0) {
       // The publish itself already succeeded (302 handled above), but we could
       // not read back a version number from the home page — the `Version N`
@@ -1036,8 +1048,10 @@ export class PlaywrightBackend {
         args.experiment_id,
         extractPublicId(html),
         'Chatbot version published, but the version number could not be read back from the home page ' +
-          `(no \`Version N\` badge found; home page HTTP ${homeRes.status ?? 0} ${homePath}). ` +
-          'The publish itself succeeded — this is the read-back only.',
+          `(no \`Version N\` badge with N >= 1 found; home page HTTP ${homeRes.status ?? 0} ${homePath}). ` +
+          'The publish itself succeeded — this is the read-back only. A `Version 0` badge alone ' +
+          'lands here too (ace#1297): 0 is not a version OCS can have published, so it is treated ' +
+          'as unreadable rather than returned.',
       );
     }
     const versionNumber = Math.max(...versionMatches);

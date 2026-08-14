@@ -1012,6 +1012,66 @@ describe('PlaywrightBackend publish + embed info', () => {
     expect(out.version_number).toBe(2);
   });
 
+  // ── dimagi-internal/ace#1297 ────────────────────────────────────────
+  // The scrape reads `Version N` badges off the chatbot home page and takes
+  // the max. On spark-facilitator/20260813-2126 it returned **0** for a
+  // publish that had in fact created version 2 — the page carried a literal
+  // `Version 0` (a working/placeholder badge) and no higher number.
+  //
+  // 0 is not a version OCS can have published. Writing it into the run's
+  // state file is the ace#585 fabricated-identifier class, and it later
+  // breaks llo-launch's freshness equality check in a way that is very hard
+  // to trace back here — the same reasoning that made the NO-badge case throw
+  // instead of defaulting to 1 (#823).
+  //
+  // Routed into the SAME typed error, so the composite's proven #891 fallback
+  // answers the question from the API instead of the markup. The publish
+  // itself is never in doubt — only the read-back.
+  it('publishChatbotVersion throws rather than returning an impossible version 0 (ace#1297)', async () => {
+    const request: RequestFn = withPreflight(async (method, url) => {
+      if (method === 'POST' && url === '/a/dimagi/chatbots/99/versions/create') {
+        return {
+          ok: false,
+          status: 302,
+          headers: { location: '/a/dimagi/chatbots/99/#versions' },
+          text: async () => '',
+          json: async () => ({}),
+        };
+      }
+      if (method === 'GET' && url === '/a/dimagi/chatbots/99/') {
+        return {
+          ok: true,
+          // The live shape: a Version 0 badge and nothing higher.
+          text: async () => '<div>Version 0</div><span data-public-id="pub-uuid"></span>',
+          json: async () => ({}),
+        };
+      }
+      throw new Error(`unexpected ${method} ${url}`);
+    });
+
+    const backend = makeBackend(request, publishSeed);
+    await expect(
+      backend.publishChatbotVersion({ experiment_id: 99, description: 'initial' }),
+    ).rejects.toThrow(VersionBadgeUnreadableError);
+  });
+
+  it('publishChatbotVersion still returns a plausible scraped version unchanged (no extra API call)', async () => {
+    // Regression guard: the fix must not turn every publish into an API
+    // round-trip. A healthy badge set is still answered from the scrape.
+    const request: RequestFn = withPreflight(async (method, url) => {
+      if (method === 'POST' && url === '/a/dimagi/chatbots/99/versions/create') {
+        return { ok: false, status: 302, headers: {}, text: async () => '', json: async () => ({}) };
+      }
+      if (method === 'GET' && url === '/a/dimagi/chatbots/99/') {
+        return { ok: true, text: async () => '<div>Version 0</div><div>Version 3</div>', json: async () => ({}) };
+      }
+      throw new Error(`unexpected ${method} ${url}`);
+    });
+    const backend = makeBackend(request, publishSeed);
+    const out = await backend.publishChatbotVersion({ experiment_id: 99, description: 'initial' });
+    expect(out.version_number).toBe(3);
+  });
+
   it('publishChatbotVersion throws (does NOT silently return 1) when the home page has no `Version N` badge (jjackson/ace#823)', async () => {
     const request: RequestFn = withPreflight(async (method, url) => {
       if (method === 'POST' && url === '/a/dimagi/chatbots/99/versions/create') {

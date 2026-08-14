@@ -41,6 +41,10 @@ describe('CompositeBackend routing', () => {
 // dimagi-internal/ace#891 — publish read-back fallback
 // ---------------------------------------------------------------------------
 
+// Also the landing site for ace#1297: a home page whose only badge is
+// `Version 0` now raises the same typed error (0 is not a publishable
+// version), so these cases cover that chain too — the live payload below IS
+// #1297's (top-level counter 3, published default 2).
 describe('CompositeBackend.publishChatbotVersion — badge-unreadable fallback (#891)', () => {
   const badgeFailure = () =>
     new VersionBadgeUnreadableError(99, 'pub-uuid', 'published, badge unreadable');
