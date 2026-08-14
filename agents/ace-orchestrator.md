@@ -873,10 +873,12 @@ in `inputs/` (the manifest), not to pick one canonical PDD file.
    run folder id returned by Step 5's `drive_create_folder`. The
    `render_run_readme` call (id-free) and the `drive_create_file` write
    batch into Step 5's second message (the file-writes batch), NOT into
-   the folder-create message. The README gets refreshed after every
-   phase completes (the
-   boundary fence calls `render_run_readme` with the current phase
-   status map) — see § Per-Phase Folder Lifecycle.
+   the folder-create message. **This is the ONLY place you call
+   `render_run_readme`.** From here on the README refreshes itself: the
+   boundary fence's `verify_phase_artifacts` call derives the phase-status
+   map from `run_state.yaml` and rewrites `README.md` on every phase
+   completion, reporting `readme_refreshed` — see § Per-Phase Folder
+   Lifecycle in `agents/orchestrator-reference.md`.
 
    Do NOT shell out to `npx tsx -e "..."` against `lib/run-readme.ts`
    — the `render_run_readme` atom exists specifically to remove that dance.
@@ -1144,10 +1146,15 @@ Turn N+1:  ONE message — all 6 tool calls in parallel:
              2. drive_list_folder on <runFolderId>/<N>-<phase>/ (artifact verifier)
              3. verify_phase_artifacts(runFolderId, phase=<manifest-key>)
                 — returns {phase, ok, missing[], present_count,
-                  expected_count, optional_present_count, summary}
+                  expected_count, optional_present_count, summary,
+                  readme_refreshed}
                   where each missing entry carries {path, producedBy, description}
                 — covers the artifact-presence half of the gate;
                   classify_phase_writeback covers the run_state.yaml half
+                — ALSO refreshes <run-folder>/README.md from run_state.yaml
+                  (derived, not passed). `readme_refreshed:false` + a
+                  `readme_note` means the index is stale — mention it, but it
+                  never gates the phase.
                 — when narrating the result, echo verify.summary verbatim
                   (e.g. "all 4 required artifacts found (+3 optional)"). Do
                   NOT pair present_count/expected_count into a fraction:
@@ -1300,8 +1307,12 @@ full issue list on a `'malformed'` result, call
 `validate_run_state(fileId)` — returns `{valid, errors, warnings}` with
 `{path, message, severity}` per issue.
 
-**Forbidden boundary improvisations.** The boundary fence's 5 tool
+**Forbidden boundary improvisations.** The boundary fence's 6 tool
 calls listed above are the COMPLETE set. Do NOT also:
+
+- Call `render_run_readme` or write `README.md`. `verify_phase_artifacts`
+  already refreshed it from `run_state.yaml`; a hand-assembled status map is
+  the exact contract that left a finished run's README all-`pending`.
 
 - `drive_read_file` the phase's primary product (e.g. the PDD, app
   manifest, OCS chatbot URL) at the boundary. `drive_list_folder` in

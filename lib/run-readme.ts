@@ -12,7 +12,16 @@
  *   - pending      — phase has not started
  *   - in-progress  — orchestrator dispatched the phase agent; not done
  *   - done         — phase completed cleanly
+ *   - partial      — phase finished with a declared gap (run_state `partial`)
+ *   - blocked      — operator-actionable halt
+ *   - error        — phase returned a hard error
  *   - skipped      — phase explicitly skipped (e.g. --no-evals, no template)
+ *
+ * The status map is DERIVED from `run_state.yaml`, never hand-passed: see
+ * `phaseStatusFromRunState` below, which `verify_phase_artifacts` calls on
+ * every phase boundary so the README refresh cannot be forgotten (ace: the
+ * spark-facilitator/20260813-2126 README said `pending` on all 96 rows of a
+ * run where 8 phases had completed).
  *
  * See docs/superpowers/specs/2026-05-03-run-folder-readability-design.md
  * for the broader rationale.
@@ -25,7 +34,70 @@ import {
   type Phase,
 } from './artifact-manifest.js';
 
-export type PhaseStatus = 'pending' | 'in-progress' | 'done' | 'skipped';
+export type PhaseStatus =
+  | 'pending'
+  | 'in-progress'
+  | 'done'
+  | 'partial'
+  | 'blocked'
+  | 'error'
+  | 'skipped';
+
+/** Every legal README status, in declaration order (drives the atom's enum). */
+export const PHASE_README_STATUSES: readonly PhaseStatus[] = [
+  'pending',
+  'in-progress',
+  'done',
+  'partial',
+  'blocked',
+  'error',
+  'skipped',
+];
+
+/**
+ * `run_state.yaml` phase status -> README status.
+ *
+ * `lib/run-state-validator.ts` owns the run_state vocabulary; this is the
+ * projection of it onto the README's column. Unknown values fall back to
+ * `pending` rather than throwing — a README is an index, not a gate.
+ */
+const RUN_STATE_STATUS_MAP: Record<string, PhaseStatus> = {
+  pending: 'pending',
+  in_progress: 'in-progress',
+  'in-progress': 'in-progress',
+  done: 'done',
+  complete: 'done', // legacy synonym
+  partial: 'partial',
+  blocked: 'blocked',
+  error: 'error',
+  skipped: 'skipped',
+  deferred: 'skipped',
+};
+
+/**
+ * Derive the README's per-phase status map straight from a parsed
+ * `run_state.yaml`.
+ *
+ * This exists so no caller has to ASSEMBLE the map — the previous contract
+ * ("the boundary fence calls `render_run_readme` with the current phase status
+ * map") put both the remembering and the assembling on the orchestrator's
+ * prose, and on `spark-facilitator/20260813-2126` neither happened: the run
+ * finished 8 phases with a README that still read `pending` on every row.
+ * Keys come back as the long phase-agent names used in `run_state.phases.*`;
+ * `generateRunReadme` normalizes them.
+ */
+export function phaseStatusFromRunState(runState: unknown): Partial<Record<string, PhaseStatus>> {
+  const out: Partial<Record<string, PhaseStatus>> = {};
+  const phases = (runState as any)?.phases;
+  if (!phases || typeof phases !== 'object' || Array.isArray(phases)) return out;
+  for (const [name, block] of Object.entries(phases as Record<string, any>)) {
+    const raw = block?.status;
+    if (typeof raw !== 'string') continue;
+    const mapped = RUN_STATE_STATUS_MAP[raw];
+    if (mapped) out[name] = mapped;
+  }
+  return out;
+}
 
 const OPP_LEVEL_PATHS = new Set<string>([
   'inputs/',

@@ -4,8 +4,10 @@ description: >
   QA the ace-web public run-summary page for an opp/run before sharing it: fetch the
   summary payload, check EVERY link on it (apps, connect opportunity, chatbot,
   walkthroughs, dashboards, training docs), and confirm each resolves as expected —
-  a broken link (404/DNS/5xx) fails; an auth-gated link (login redirect / 401 / 403)
-  is a valid pass. Run it whenever you're about to hand someone the run-summary URL.
+  a broken link (404/DNS/5xx) fails, and so does a private ACE-authored Google
+  deliverable (PRIVATE-DELIVERABLE); a third-party auth-gated link (login redirect /
+  401 / 403) is a valid pass. Run it whenever you're about to hand someone the
+  run-summary URL.
 ---
 
 # Run-summary QA — verify every link on the ace-web summary works
@@ -42,12 +44,16 @@ python3 "$ACE_ROOT/scripts/check-summary-links.py" <opp-slug> <run-id> \
   [--workspace dimagi-team] [--base https://labs.connect.dimagi.com/ace] [--json]
 ```
 
-It classifies each link and exits non-zero iff any link is **BROKEN**:
+It classifies each link and exits non-zero iff any link is **BROKEN** or
+**PRIVATE-DELIVERABLE**. It resolves page-relative URLs against the summary page
+URL before checking, so a root-relative link like the footer's `workbench_url`
+is checked exactly as a browser would follow it:
 
 | Class | Meaning | Verdict |
 |---|---|---|
 | ✅ `OK` | 2xx, resolves publicly (e.g. a Drive anyone-with-link video) | pass |
-| 🔒 `AUTH-GATED` | redirects to a sign-in page, or 401/403, on a **login**-gated surface (e.g. labs dashboards — any CCHQ account reaches them) | pass. **NOT a pass for an ACE-authored deliverable doc** (see below). |
+| 🔒 `AUTH-GATED` | redirects to a sign-in page, or 401/403, on a **login**-gated surface (e.g. labs dashboards — any CCHQ account reaches them) | pass |
+| 🚫 `PRIVATE-DELIVERABLE` | 401/403/sign-in redirect on `docs.google.com` / `drive.google.com` — an **ACE-authored deliverable** that is shared with nobody | **FAIL — share it before sharing the summary** |
 | 👤 `MEMBER-GATED` | same anonymous signature, but on a **membership**-gated surface: HQ `/a/<domain>/`, OCS `/a/<team>/`, Connect `/a/<org>/` | **NOT a pass on its own** — see below. |
 | ➖ `REACHABLE` | other 3xx/4xx that isn't a hard failure | inspect |
 | ❌ `BROKEN` | 404 / 410 / 5xx / DNS failure / unreachable | **FAIL — fix before sharing** |
@@ -72,21 +78,29 @@ people you're about to send it to. (Origin: 2026-07-23, `hh-poverty-targeting/20
 sent it to hit 404 on both app links and "Shucks. We couldn't find that." on the chatbot.
 dimagi-internal/ace#913.)
 
-**AUTH-GATED is NOT automatically a pass for an ACE-authored deliverable doc.** A
-`docs.google.com` / Google Slides / `drive.google.com` URL that we produced as a
-*deliverable* (training deck, LLO/FLW guides, FAQ, onboarding email, any doc under
-`products.*` meant for the recipient to open) returns **401/403 when it is private** —
-the checker labels that `AUTH-GATED`, but unlike a Connect/HQ/OCS platform login, a
-private Google Doc only opens for accounts explicitly shared on it. A recipient who
-opens the public summary link hits "You need access." So treat a private ACE-authored
-deliverable doc as a **must-fix**, even though its class is AUTH-GATED not BROKEN: run
-`drive_set_anyone_with_link` on its file_id (reader / anyone-with-link) and re-check
-until it reports `OK 200`. Only a *platform* login gate (Connect, CommCare HQ, OCS,
-labs) legitimately stays AUTH-GATED. The producer skills (`qa-and-training` /
-`training-*`) should set anyone-with-link at creation so this needs no manual step —
-see jjackson/ace#902.
+**PRIVATE-DELIVERABLE is enforced by the checker — you do not have to remember it.**
+A `docs.google.com` / Google Slides / `drive.google.com` URL that we produced as a
+*deliverable* (training deck, LLO/FLW guides, FAQ, onboarding email, open-questions,
+any doc under `products.*` meant for the recipient to open) returns **401/403 when it
+is private**. Unlike a Connect/HQ/OCS platform login, a private Google Doc only opens
+for accounts explicitly shared on it, so the recipient of the public summary link hits
+"You need access." The checker therefore gives it its own class and its own non-zero
+exit — the rule used to live only in this paragraph, and on
+`spark-facilitator/20260813-2126` it duly reported `12 links · 0 BROKEN` while **every
+one** of the run's Google Doc deliverables 401'd. Fix each one with
+`drive_set_anyone_with_link` on its file_id (default `role: reader`; pass
+`role: 'commenter'` when the reviewer is expected to leave feedback in the doc — a
+reader physically cannot comment) and re-check until it reports `OK 200`. Only a
+*platform* login gate (Connect, CommCare HQ, OCS, labs) legitimately stays AUTH-GATED.
 
-**On any BROKEN link, do NOT share the summary — fix the underlying cause first:**
+**Nothing sets anyone-with-link on these docs at creation today.** Only the image/deck
+paths do (`app-screenshot-capture`, `common-screenshot-capture`, `training-deck-render`
+share PNGs so Slides can import them). Until a producer-side fix lands (jjackson/ace#902),
+this check plus the manual `drive_set_anyone_with_link` IS the mechanism — do not assume
+an earlier phase handled it.
+
+**On any BROKEN or PRIVATE-DELIVERABLE link, do NOT share the summary — fix the
+underlying cause first:**
 
 - A **wrong host / dead domain** (e.g. a `nova.dimagi.com` build-tool URL that doesn't
   resolve) → the ace-web summary serializer or the run_state product wrote a bad URL;
@@ -95,10 +109,13 @@ see jjackson/ace#902.
 - A **404 on a real entity** (e.g. a Connect `program` page that 404s while the
   `opportunity` correctly login-redirects) → the URL scheme is wrong or the entity has
   no stakeholder page; correct the product URL or stop surfacing it.
-- A **Drive artifact that isn't shared** (403/404 on a `drive.google.com` link, or a
-  private ACE-authored `docs.google.com`/Slides deliverable that came back **AUTH-GATED
-  401/403** per the note above) → set it anyone-with-link (`drive_set_anyone_with_link`)
-  so recipients can open it, then re-check for `OK 200`.
+- A **Drive artifact that isn't shared** (anything the checker classed
+  **PRIVATE-DELIVERABLE**) → set it anyone-with-link (`drive_set_anyone_with_link`, with
+  `role: 'commenter'` if the reviewer should be able to comment) so recipients can open
+  it, then re-check for `OK 200`.
+- A **relative link that resolves to a 404** (e.g. `workbench_url` missing the `/ace`
+  deployment path prefix) → the ace-web serializer emitted a path that only works from a
+  different mount point; fix it in ace-web, don't hand out the summary in the meantime.
 
 Re-run until the checker reports **✅ No broken links**. Note: a summary change that
 lives in ace-web code only takes effect after that ace-web PR deploys (GitHub Actions
@@ -107,7 +124,8 @@ on merge to `main`); a change that's pure `run_state` data is live on the next f
 
 ## Report
 
-State the summary URL, the count checked / broken, and — per broken link — the URL,
+State the summary URL, the count checked / broken / private-deliverable, and — per
+failing link — the URL,
 its failure, and the fix applied. **Name every MEMBER-GATED link and say who it was
 resolved for** (membership confirmed, or link withheld as internal); "safe to share" is
 only claimable once none are outstanding. A clean run: "N links checked, 0 broken;

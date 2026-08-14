@@ -38,7 +38,12 @@ import {
   isTransientNetworkError as isTransientNetworkErrorLib,
   withTransientRetry as withTransientRetryLib,
 } from '../lib/transient-retry.js';
-import { generateRunReadme, type PhaseStatus } from '../lib/run-readme.js';
+import {
+  generateRunReadme,
+  phaseStatusFromRunState,
+  PHASE_README_STATUSES,
+  type PhaseStatus,
+} from '../lib/run-readme.js';
 import { validatePhaseProductsFragment, classifyPhaseProducts } from '../lib/phase-products-schema.js';
 import { assertDimagiOwnerRecipient } from '../lib/destructive-guards.js';
 import {
@@ -817,20 +822,50 @@ server.tool(
 );
 
 // 11d. Set anyone-with-link sharing on an existing Drive file
+/**
+ * Grant an anyone-with-link permission on an existing Drive file.
+ *
+ * `role` defaults to `reader`, which is right for the original caller (PNGs
+ * that Slides' image-import service fetches). It is NOT right for a document
+ * we are handing an external reviewer to comment on: a Drive `reader` cannot
+ * leave comments, so a doc shared "for review" as reader gives the reviewer no
+ * way to respond in it — while `skills/feedback-ledger`'s canonical example
+ * uses `channel: gdoc-comments`. The one external reviewer who ever managed to
+ * comment on an ACE deliverable could only do so because she separately held
+ * `fileOrganizer` on the shared drive, which is not a grant we hand a partner.
+ * Hence the explicit `commenter` option.
+ *
+ * Extracted from the tool body so the role plumbing is unit-testable
+ * (`test/mcp/gdrive/set-anyone-with-link.test.ts`).
+ */
+export type AnyoneWithLinkRole = 'reader' | 'commenter';
+
+export async function handleSetAnyoneWithLink(
+  args: { fileId: string; role?: AnyoneWithLinkRole },
+  driveClient: typeof drive = drive,
+): Promise<{ fileId: string; permissionId: string | null | undefined; role: AnyoneWithLinkRole; sharing: string }> {
+  const { fileId, role = 'reader' } = args;
+  const resp = await driveClient.permissions.create({
+    fileId,
+    supportsAllDrives: true,
+    requestBody: { role, type: 'anyone' },
+  });
+  return { fileId, permissionId: resp.data.id, role, sharing: `anyone-with-link (${role})` };
+}
+
 server.tool(
   'drive_set_anyone_with_link',
-  'Grant `role: reader, type: anyone` (anyone-with-link) on an existing Drive file. Required for any PNG that downstream Slides `createImage` will fetch — Slides\' image-import service does NOT carry the SA\'s auth, so an SA-only file renders as a blank image in the deck. `drive_upload_binary` accepts a `shareAnyoneWithLink` flag that does this inline at upload time; use this atom when the file already exists or was uploaded without the flag. Idempotent: Drive ignores duplicate `type: anyone` permission grants.',
+  "Grant an anyone-with-link permission (`type: anyone`) on an existing Drive file, at `role: reader` (default) or `role: commenter`. Reader is right for any PNG that downstream Slides `createImage` will fetch — Slides' image-import service does NOT carry the SA's auth, so an SA-only file renders as a blank image in the deck. **Use `commenter` for a document an external reviewer is meant to leave feedback on**: a Drive reader physically cannot comment, so a doc shared for review as reader gives the reviewer no way to respond in it (`skills/feedback-ledger`'s `channel: gdoc-comments` assumes they can). `drive_upload_binary` accepts a `shareAnyoneWithLink` flag that does the reader grant inline at upload time; use this atom when the file already exists, was uploaded without the flag, or needs commenting. Idempotent per role: Drive ignores a duplicate `type: anyone` grant at the same role.",
   {
     fileId: z.string().min(1).describe('The Drive file ID to share. Must be a file the SA can access.'),
+    role: z
+      .enum(['reader', 'commenter'])
+      .optional()
+      .describe("Permission role for the anyone-with-link grant. Default 'reader' (view only). Use 'commenter' when the recipient should be able to leave comments — a reader cannot."),
   },
-  async ({ fileId }) => {
+  async ({ fileId, role }) => {
     try {
-      const resp = await drive.permissions.create({
-        fileId,
-        supportsAllDrives: true,
-        requestBody: { role: 'reader', type: 'anyone' },
-      });
-      return result({ fileId, permissionId: resp.data.id, sharing: 'anyone-with-link' });
+      return result(await handleSetAnyoneWithLink({ fileId, role }, drive));
     } catch (e: any) {
       return error(e.message);
     }
@@ -2850,10 +2885,7 @@ server.tool(
  * unreadable run_state must never change the verdict of an artifact check, it
  * just means "no mode declared", which is the full-requirements default.
  */
-async function readPhaseModeFromRunState(
-  runFolderId: string,
-  phase: Phase,
-): Promise<string | undefined> {
+async function readRunStateFromRunFolder(runFolderId: string): Promise<any | undefined> {
   try {
     const safe = runFolderId.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
     const resp = await drive.files.list({
@@ -2867,17 +2899,61 @@ async function readPhaseModeFromRunState(
     const read = await handleReadFile({ fileId }, drive);
     const text = read.content ?? '';
     if (!text.trim()) return undefined;
-    const parsed = YAML.parse(text);
-    const block = parsed?.phases?.[phaseAgentName(phase)];
-    return typeof block?.mode === 'string' ? block.mode : undefined;
+    return YAML.parse(text);
   } catch {
     return undefined;
   }
 }
 
+function phaseModeFromRunState(parsed: any, phase: Phase): string | undefined {
+  const block = parsed?.phases?.[phaseAgentName(phase)];
+  return typeof block?.mode === 'string' ? block.mode : undefined;
+}
+
+/**
+ * Refresh `<run-folder>/README.md` from the run's own `run_state.yaml`.
+ *
+ * Called as a side effect of `verify_phase_artifacts` — the one boundary-fence
+ * call that is UNCONDITIONAL, already holds `runFolderId`, and already reads
+ * `run_state.yaml`. That placement is the whole point: the previous contract
+ * was prose in `agents/ace-orchestrator.md` ("the boundary fence calls
+ * `render_run_readme` with the current phase status map"), which requires the
+ * orchestrator both to remember an extra call and to assemble the status map by
+ * hand. On `spark-facilitator/20260813-2126` neither happened — the run
+ * finished 8 phases and shipped a 96-row README with every row still `pending`.
+ * Same reasoning as the `mode` read directly above (ace#1069): a fence that
+ * only tells the truth when the orchestrator remembers an argument is exactly
+ * the prose-reliance this repo treats as unenforced.
+ *
+ * BEST-EFFORT by construction: any failure here is reported as
+ * `readme_refreshed: false` with a note and never changes the artifact verdict.
+ * A stale index must not be able to fail a phase that shipped its artifacts.
+ */
+async function refreshRunReadme(
+  runFolderId: string,
+  parsedRunState: any,
+): Promise<{ readme_refreshed: boolean; readme_note?: string }> {
+  try {
+    const meta = await drive.files.get({
+      fileId: runFolderId,
+      fields: 'id, name',
+      supportsAllDrives: true,
+    });
+    const runId = meta.data.name ?? runFolderId;
+    const markdown = generateRunReadme(runId, phaseStatusFromRunState(parsedRunState));
+    await handleCreateFile(
+      { name: 'README.md', content: markdown, parentFolderId: runFolderId, findOrCreate: true },
+      drive,
+    );
+    return { readme_refreshed: true };
+  } catch (e: any) {
+    return { readme_refreshed: false, readme_note: `README refresh failed: ${e?.message ?? e}` };
+  }
+}
+
 server.tool(
   'verify_phase_artifacts',
-  "Verify every artifact the manifest declares required for `phase` is present in the run folder's per-phase subfolder. Returns `{phase, ok, missing, present_count, expected_count, optional_present_count, summary}` where each `missing` entry carries `{path, producedBy, description}` — `producedBy` tells the orchestrator which skill to re-dispatch to heal. Narrate from `summary` (a ready-made one-liner like \"all 4 required artifacts found (+3 optional)\"); do NOT pair `present_count`/`expected_count` into a fraction — present counts every file in the folder, expected counts only the required set, so the ratio routinely exceeds 1. Pair with `classify_phase_writeback` in the boundary fence's parallel block: writeback checks `run_state.yaml`, this checks Drive contents. Walks the phase subfolder two levels deep so `recipes/`, `screenshots/`, etc. children are seen. Implementation: `lib/phase-closeout.ts::verifyPhaseArtifacts`. Manifest: `lib/artifact-manifest.ts`.",
+  "Verify every artifact the manifest declares required for `phase` is present in the run folder's per-phase subfolder. Returns `{phase, ok, missing, present_count, expected_count, optional_present_count, summary}` where each `missing` entry carries `{path, producedBy, description}` — `producedBy` tells the orchestrator which skill to re-dispatch to heal. Narrate from `summary` (a ready-made one-liner like \"all 4 required artifacts found (+3 optional)\"); do NOT pair `present_count`/`expected_count` into a fraction — present counts every file in the folder, expected counts only the required set, so the ratio routinely exceeds 1. Pair with `classify_phase_writeback` in the boundary fence's parallel block: writeback checks `run_state.yaml`, this checks Drive contents. Walks the phase subfolder two levels deep so `recipes/`, `screenshots/`, etc. children are seen. **Side effect (deliberate): it also refreshes `<run-folder>/README.md`** from the run's own `run_state.yaml` phase statuses and reports `readme_refreshed` — the README index is derived state, and making its refresh a remembered extra call is what left a finished 8-phase run with 96 rows of `pending`. Best-effort: a failed refresh sets `readme_refreshed:false` + `readme_note` and never changes `ok`. Implementation: `lib/phase-closeout.ts::verifyPhaseArtifacts` + `lib/run-readme.ts::phaseStatusFromRunState`. Manifest: `lib/artifact-manifest.ts`.",
   {
     runFolderId: z.string().describe("The Google Drive folder ID of the run (e.g. <opp>/runs/<run-id>/)."),
     phase: z
@@ -2913,11 +2989,17 @@ server.tool(
       // pass it is the point: `app-QA-only` is a supported run shape, and a
       // fence that only tells the truth when the orchestrator remembers an
       // argument is the prose-reliance this repo treats as unenforced.
-      const resolvedMode = mode ?? (await readPhaseModeFromRunState(runFolderId, phase as Phase));
+      const parsedRunState = await readRunStateFromRunFolder(runFolderId);
+      const resolvedMode = mode ?? phaseModeFromRunState(parsedRunState, phase as Phase);
       const report = await verifyPhaseArtifacts(adapter, runFolderId, phase as Phase, {
         mode: resolvedMode,
       });
-      return result(report);
+      // Structural README refresh — see `refreshRunReadme`. Never gates the
+      // verdict; surfaced in the payload so a silent failure is still visible.
+      const readme = parsedRunState
+        ? await refreshRunReadme(runFolderId, parsedRunState)
+        : { readme_refreshed: false, readme_note: 'run_state.yaml unreadable — README left as-is' };
+      return result({ ...report, ...readme });
     } catch (e: any) {
       return error(e.message);
     }
@@ -2936,13 +3018,13 @@ server.tool(
 
 server.tool(
   'render_run_readme',
-  'Render the run-folder README markdown for `runId` with optional per-phase status overrides (keys: idea-to-design | scenarios-and-acceptance | commcare-setup | connect-setup | ocs-setup | qa-and-training | synthetic-data-and-workflows | solicitation-management | execution-management | closeout; values: pending | in-progress | done | skipped). Returns `{markdown}`. The orchestrator writes this directly to `<run-folder>/README.md` at run-init (step 7b — all phases default to `pending`) and refreshes after every phase boundary fence with the updated status map. Implementation: `lib/run-readme.ts::generateRunReadme`.',
+  'Render the run-folder README markdown for `runId` with optional per-phase status overrides (keys: idea-to-design | scenarios-and-acceptance | commcare-setup | connect-setup | ocs-setup | qa-and-training | synthetic-data-and-workflows | solicitation-management | execution-management | closeout; values: pending | in-progress | done | partial | blocked | error | skipped). Returns `{markdown}`. Used at RUN-INIT (orchestrator step 7b — all phases default to `pending`; write the markdown to `<run-folder>/README.md`). You do NOT need to call it at phase boundaries: `verify_phase_artifacts` refreshes the README itself from `run_state.yaml` on every fence call. Implementation: `lib/run-readme.ts::generateRunReadme`.',
   {
     runId: z
       .string()
       .describe('The run-id folder name, e.g. "20260526-1334".'),
     phaseStatus: z
-      .record(z.enum(['pending', 'in-progress', 'done', 'skipped']))
+      .record(z.enum(PHASE_README_STATUSES as unknown as [PhaseStatus, ...PhaseStatus[]]))
       .optional()
       .describe('Optional per-phase status overrides; unspecified phases default to "pending".'),
   },

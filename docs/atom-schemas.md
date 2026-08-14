@@ -184,11 +184,12 @@ Download a binary or non-Google-Doc file from Google Drive. The companion atom t
 
 ### `drive_set_anyone_with_link`
 
-Grant `role: reader, type: anyone` (anyone-with-link) on an existing Drive file. Required for any PNG that downstream Slides `createImage` will fetch — Slides' image-import service does NOT carry the SA's auth, so an SA-only file renders as a blank image in the deck. `drive_upload_binary` accepts a `shareAnyoneWithLink` flag that does this inline at upload time; use this atom when the file already exists or was uploaded without the flag. Idempotent: Drive ignores duplicate `type: anyone` permission grants.
+Grant an anyone-with-link permission (`type: anyone`) on an existing Drive file, at `role: reader` (default) or `role: commenter`. Reader is right for any PNG that downstream Slides `createImage` will fetch — Slides' image-import service does NOT carry the SA's auth, so an SA-only file renders as a blank image in the deck. **Use `commenter` for a document an external reviewer is meant to leave feedback on**: a Drive reader physically cannot comment, so a doc shared for review as reader gives the reviewer no way to respond in it (`skills/feedback-ledger`'s `channel: gdoc-comments` assumes they can). `drive_upload_binary` accepts a `shareAnyoneWithLink` flag that does the reader grant inline at upload time; use this atom when the file already exists, was uploaded without the flag, or needs commenting. Idempotent per role: Drive ignores a duplicate `type: anyone` grant at the same role.
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `fileId` | `z.string` | **required** | The Drive file ID to share. Must be a file the SA can access. |
+| `role` | `z.enum` | optional | Permission role for the anyone-with-link grant. Default 'reader' (view only). Use 'commenter' when the recipient should be able to leave comments — a reader cannot. |
 
 ### `drive_create_folder`
 
@@ -389,7 +390,7 @@ Boundary-fence check that a phase's `phases.<phase>.products` block matches the 
 
 ### `verify_phase_artifacts`
 
-Verify every artifact the manifest declares required for `phase` is present in the run folder's per-phase subfolder. Returns `{phase, ok, missing, present_count, expected_count, optional_present_count, summary}` where each `missing` entry carries `{path, producedBy, description}` — `producedBy` tells the orchestrator which skill to re-dispatch to heal. Narrate from `summary` (a ready-made one-liner like "all 4 required artifacts found (+3 optional)"); do NOT pair `present_count`/`expected_count` into a fraction — present counts every file in the folder, expected counts only the required set, so the ratio routinely exceeds 1. Pair with `classify_phase_writeback` in the boundary fence's parallel block: writeback checks `run_state.yaml`, this checks Drive contents. Walks the phase subfolder two levels deep so `recipes/`, `screenshots/`, etc. children are seen. Implementation: `lib/phase-closeout.ts::verifyPhaseArtifacts`. Manifest: `lib/artifact-manifest.ts`.
+Verify every artifact the manifest declares required for `phase` is present in the run folder's per-phase subfolder. Returns `{phase, ok, missing, present_count, expected_count, optional_present_count, summary}` where each `missing` entry carries `{path, producedBy, description}` — `producedBy` tells the orchestrator which skill to re-dispatch to heal. Narrate from `summary` (a ready-made one-liner like "all 4 required artifacts found (+3 optional)"); do NOT pair `present_count`/`expected_count` into a fraction — present counts every file in the folder, expected counts only the required set, so the ratio routinely exceeds 1. Pair with `classify_phase_writeback` in the boundary fence's parallel block: writeback checks `run_state.yaml`, this checks Drive contents. Walks the phase subfolder two levels deep so `recipes/`, `screenshots/`, etc. children are seen. **Side effect (deliberate): it also refreshes `<run-folder>/README.md`** from the run's own `run_state.yaml` phase statuses and reports `readme_refreshed` — the README index is derived state, and making its refresh a remembered extra call is what left a finished 8-phase run with 96 rows of `pending`. Best-effort: a failed refresh sets `readme_refreshed:false` + `readme_note` and never changes `ok`. Implementation: `lib/phase-closeout.ts::verifyPhaseArtifacts` + `lib/run-readme.ts::phaseStatusFromRunState`. Manifest: `lib/artifact-manifest.ts`.
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
@@ -399,7 +400,7 @@ Verify every artifact the manifest declares required for `phase` is present in t
 
 ### `render_run_readme`
 
-Render the run-folder README markdown for `runId` with optional per-phase status overrides (keys: idea-to-design | scenarios-and-acceptance | commcare-setup | connect-setup | ocs-setup | qa-and-training | synthetic-data-and-workflows | solicitation-management | execution-management | closeout; values: pending | in-progress | done | skipped). Returns `{markdown}`. The orchestrator writes this directly to `<run-folder>/README.md` at run-init (step 7b — all phases default to `pending`) and refreshes after every phase boundary fence with the updated status map. Implementation: `lib/run-readme.ts::generateRunReadme`.
+Render the run-folder README markdown for `runId` with optional per-phase status overrides (keys: idea-to-design | scenarios-and-acceptance | commcare-setup | connect-setup | ocs-setup | qa-and-training | synthetic-data-and-workflows | solicitation-management | execution-management | closeout; values: pending | in-progress | done | partial | blocked | error | skipped). Returns `{markdown}`. Used at RUN-INIT (orchestrator step 7b — all phases default to `pending`; write the markdown to `<run-folder>/README.md`). You do NOT need to call it at phase boundaries: `verify_phase_artifacts` refreshes the README itself from `run_state.yaml` on every fence call. Implementation: `lib/run-readme.ts::generateRunReadme`.
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|

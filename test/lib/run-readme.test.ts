@@ -14,7 +14,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { generateRunReadme } from '../../lib/run-readme.js';
+import { generateRunReadme, phaseStatusFromRunState } from '../../lib/run-readme.js';
 
 /** Extract the Status cell for the first row whose path starts with `folderPrefix`. */
 function statusFor(markdown: string, folderPrefix: string): string | undefined {
@@ -90,5 +90,98 @@ describe('generateRunReadme phaseStatus key mapping (#637)', () => {
     const md = generateRunReadme('r', { 'not-a-real-phase': 'done' } as any);
     expect(statusFor(md, '1-design')).toBe('pending');
     expect(statusFor(md, '8-solicitation-management')).toBe('pending');
+  });
+});
+
+/**
+ * `phaseStatusFromRunState` — the derivation that makes the README refresh
+ * STRUCTURAL instead of remembered.
+ *
+ * The old contract asked the orchestrator to (a) remember to call
+ * `render_run_readme` at every phase boundary and (b) hand-assemble the phase
+ * status map. On `spark-facilitator/20260813-2126` neither happened: the run
+ * completed 8 phases and shipped a 96-row README with every row `pending`.
+ * `verify_phase_artifacts` — already unconditional at every boundary, already
+ * holding `runFolderId`, already reading `run_state.yaml` — now derives the map
+ * with this function and rewrites the README itself. These tests pin the
+ * derivation; the round-trip into rendered rows is pinned below it.
+ */
+describe('phaseStatusFromRunState', () => {
+  it('derives the status map straight from a run_state phases block', () => {
+    expect(
+      phaseStatusFromRunState({
+        phases: {
+          'idea-to-design': { status: 'done' },
+          'scenarios-and-acceptance': { status: 'done' },
+          'commcare-setup': { status: 'in_progress' },
+          'connect-setup': { status: 'pending' },
+        },
+      }),
+    ).toEqual({
+      'idea-to-design': 'done',
+      'scenarios-and-acceptance': 'done',
+      'commcare-setup': 'in-progress',
+      'connect-setup': 'pending',
+    });
+  });
+
+  it('maps every run_state phase status onto a README status', () => {
+    const m = phaseStatusFromRunState({
+      phases: {
+        'idea-to-design': { status: 'complete' }, // legacy synonym for done
+        'commcare-setup': { status: 'partial' },
+        'connect-setup': { status: 'blocked' },
+        'ocs-setup': { status: 'error' },
+        'qa-and-training': { status: 'skipped' },
+        'closeout': { status: 'deferred' },
+      },
+    });
+    expect(m).toEqual({
+      'idea-to-design': 'done',
+      'commcare-setup': 'partial',
+      'connect-setup': 'blocked',
+      'ocs-setup': 'error',
+      'qa-and-training': 'skipped',
+      closeout: 'skipped',
+    });
+  });
+
+  it('is total and non-throwing on junk — a README is an index, not a gate', () => {
+    expect(phaseStatusFromRunState(undefined)).toEqual({});
+    expect(phaseStatusFromRunState({})).toEqual({});
+    expect(phaseStatusFromRunState({ phases: 'nope' })).toEqual({});
+    expect(phaseStatusFromRunState({ phases: [] })).toEqual({});
+    expect(phaseStatusFromRunState({ phases: { 'idea-to-design': {} } })).toEqual({});
+    expect(phaseStatusFromRunState({ phases: { 'idea-to-design': { status: 'weird' } } })).toEqual({});
+  });
+
+  it('round-trips into rendered rows: a finished run never renders all-pending', () => {
+    const runState = {
+      phases: {
+        'idea-to-design': { status: 'done' },
+        'scenarios-and-acceptance': { status: 'done' },
+        'commcare-setup': { status: 'done' },
+        'connect-setup': { status: 'done' },
+        'ocs-setup': { status: 'done' },
+        'qa-and-training': { status: 'done' },
+        'synthetic-data-and-workflows': { status: 'done' },
+        'solicitation-management': { status: 'done' },
+      },
+    };
+    const md = generateRunReadme('20260813-2126', phaseStatusFromRunState(runState));
+    for (const folder of [
+      '1-design',
+      '2-scenarios',
+      '3-commcare',
+      '4-connect',
+      '5-ocs',
+      '6-qa-and-training',
+      '7-synthetic',
+      '8-solicitation-management',
+    ]) {
+      expect(statusFor(md, folder), folder).toBe('done');
+    }
+    // …and the phases that did NOT run stay pending.
+    expect(statusFor(md, '10-closeout')).toBe('pending');
   });
 });

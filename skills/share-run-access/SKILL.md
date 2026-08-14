@@ -4,8 +4,8 @@ description: >
   Grant a set of people (typically everyone on a project thread) the access they need to
   review an ACE run — across all surfaces the run-summary links: ace-web workbench + labs
   dashboards, the Connect opportunity, the CommCare HQ apps, and the OCS chatbot. The public
-  run-summary page and every ACE-authored deliverable doc are already anyone-with-link, so
-  reviewers can always open those; this skill covers the platform-gated surfaces. Repeatable,
+  run-summary page itself is public, but its ACE-authored deliverable docs are NOT shared by
+  default — this skill shares them and covers the platform-gated surfaces. Repeatable,
   idempotent, and approval-gated on every outbound invite. Invoked ad-hoc (a human asks "give
   Sophie and Sarvesh access") or as a standing step when a project thread gains participants.
 disable-model-invocation: false
@@ -43,11 +43,29 @@ what was granted vs. what's blocked on a precondition.
 
 ## The access model (why each surface is different)
 
-The run-summary page itself is **public** ("the URL is the secret") and every ACE-authored
-deliverable (training deck, LLO/FLW guides, quick-ref, FAQ, onboarding email, walkthrough video)
-is **anyone-with-link** — set at creation by the producer skills and enforced by `run-summary-qa`.
-So a reviewer can ALWAYS open the summary and its docs with no grant. What needs a grant is the
-**platform-gated** links, each a separate membership system:
+The run-summary page itself is **public** ("the URL is the secret"). Its ACE-authored
+deliverables are **not**.
+
+> **Correction (2026-08-14).** This section used to claim every ACE-authored deliverable
+> "is anyone-with-link — set at creation by the producer skills and enforced by
+> `run-summary-qa`". None of that was true. `grep -rl drive_set_anyone_with_link skills/`
+> hits only `training-deck-render`, `app-screenshot-capture`, `common-screenshot-capture`,
+> `partnership-deck-build`, `run-summary-qa` and this skill — and all of those share **PNG
+> images** so Slides' image-import service can fetch them, never a Doc or the deck itself.
+> No producer skill shares a document. And `run-summary-qa` enforced nothing: its checker
+> bucketed a private-doc 401 as AUTH-GATED and passed the run. Live proof on
+> `spark-facilitator/20260813-2126` — the first run shown to an external partner: all 8
+> reviewer-facing artifacts carried 24 permissions each and **zero** `type: anyone`, and the
+> link checker still reported `12 links · 0 BROKEN`.
+
+**What actually shares them, today, is this skill + `run-summary-qa`.** The checker now
+classes an unshared `docs.google.com`/`drive.google.com` deliverable as
+**`PRIVATE-DELIVERABLE`** and exits non-zero (so it can no longer certify a run whose docs
+open for nobody), and step 2 below is the step that fixes them — by calling
+`drive_set_anyone_with_link` per file. Producer-side sharing at creation is still an open
+gap (jjackson/ace#902); until it lands, treat every run's docs as private until you have
+shared them and re-checked. Beyond the docs, what needs a grant is the **platform-gated**
+links, each a separate membership system:
 
 | Surface | Summary link(s) | Auth | Grant mechanism |
 |---|---|---|---|
@@ -92,10 +110,15 @@ grants membership and tells the person the one sign-in they must do themselves.
    `ace_web_summary_url`. Confirm the summary is clean first — run `run-summary-qa` if you haven't;
    never share a run whose links are broken.
 
-2. **Verify the deliverable docs are public.** The producers should have set anyone-with-link, but
-   confirm with `run-summary-qa`'s link checker (`scripts/check-summary-links.py <opp> <run>`): every
-   `docs.google.com`/Slides/Drive deliverable must report `OK 200`. Any private one → fix with
-   `drive_set_anyone_with_link` before proceeding (a reviewer hits "You need access" otherwise).
+2. **Share the deliverable docs — assume they are private.** Nothing sets anyone-with-link on
+   them at creation (see the correction above), so this is a real step, not a verification.
+   Run `run-summary-qa`'s link checker (`scripts/check-summary-links.py <opp> <run>`): every
+   `docs.google.com`/Slides/Drive deliverable must report `OK 200`, and each one that comes
+   back **`PRIVATE-DELIVERABLE`** must be fixed with `drive_set_anyone_with_link` before
+   proceeding (a reviewer hits "You need access" otherwise). **If the reviewer is expected to
+   leave feedback in the doc — the `gdoc-comments` channel `feedback-ledger` assumes — pass
+   `role: 'commenter'`.** The default `reader` role physically cannot comment, so a
+   "shared for review" doc granted as reader gives the reviewer no way to respond in it.
 
 3. **Classify each email once** (per-person isolation — one person, one decision, like inbox-triage):
    - `@dimagi.com` / `@dimagi-ai.com` → **internal**: ace-web auto-joins on sign-in (no invite needed);

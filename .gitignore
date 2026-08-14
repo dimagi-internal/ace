@@ -46,3 +46,8 @@ mcp/mobile/recipes/static/J[0-9]*[a-z].yaml
 
 # ephemeral Claude Code worktrees
 .claude/worktrees/
+
+# Python bytecode (a stray .pyc was committed once; the checker tests import
+# scripts/check-summary-links.py, which regenerates it)
+__pycache__/
+*.pyc
