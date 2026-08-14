@@ -793,11 +793,10 @@ type PlayStreamOutcome = 'ok' | 'form-init-error' | 'empty-case-list';
  *
  * The ace#1088 signature is deliberately NARROW: `EntityListSubscreen` *and*
  * an index-out-of-bounds. Note what it does not use — `ApplicationHost
- * .loopSession`. ace#1025 proposes widening the benign-EOF test to match that
- * frame anywhere in the stream; every crash unwinds through `loopSession`, so
- * that would silently reclassify real crashes as benign. This fix is
- * independent of that regex: it keys on the frame that is actually specific
- * to case-list rendering.
+ * .loopSession`. Every crash unwinds through `loopSession`, so that frame is
+ * never matched stream-wide; only the benign NPE's MESSAGE is (the ace#1025
+ * fix — see rule 3's comment). This classifier keys on the frame that is
+ * actually specific to case-list rendering.
  */
 function classifyPlayStream(s: string): PlayStreamOutcome {
   if (!s) return 'ok';
@@ -827,11 +826,20 @@ function classifyPlayStream(s: string): PlayStreamOutcome {
   // loopSession reader returns null, throwing NPE on
   // `input.startsWith(":")` at ApplicationHost.java:267. That's benign —
   // form-init already completed.
+  //
+  // The NPE MESSAGE is tested against the WHOLE stream (ace#1025): stderr
+  // routinely carries `XForm Parse Warning` lines ahead of the NPE (any
+  // select1 whose option values contain spaces — the standard ACE Learn
+  // shape), so the NPE is not reliably the first line after the marker.
+  // The message is unique to the stdin-EOF case, so stream-wide is safe.
+  // The loopSession FRAME test stays pinned to the captured line: every
+  // crash unwinds through loopSession, so matching that frame stream-wide
+  // would reclassify real crashes as benign.
   const fatalLine = /Unhandled Fatal Error executing CommCare app\s*(.+)/.exec(s);
   if (fatalLine && fatalLine[1]) {
     const afterFatal = fatalLine[1];
     const benignEof =
-      /String\.startsWith\(String\).*because "input" is null/.test(afterFatal) ||
+      /String\.startsWith\(String\).*because "input" is null/.test(s) ||
       /ApplicationHost\.loopSession\(ApplicationHost\.java:\d+\)/.test(afterFatal);
     if (!benignEof) return 'form-init-error';
   }
