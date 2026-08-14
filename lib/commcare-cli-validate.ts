@@ -878,6 +878,82 @@ export interface UnreachableCaseList {
   commandId: string;
   /** The `detail` ids the module configured but can never show. */
   detailIds: string[];
+  /**
+   * The case type this module declares, derived from its registration datum id
+   * (`case_id_new_<case_type>_<n>` — HQ's own convention) or, failing that, from
+   * a `@case_type` predicate inside the entry. `undefined` when neither is
+   * present, in which case the finding stays a blocker (conservative).
+   */
+  caseType?: string;
+  /**
+   * `'blocker'` — no entry ANYWHERE in the app pushes a selectable list over
+   * this case type, so the case type is dead app-wide. That is the ace#977
+   * defect: dead configuration authored only to satisfy a validator.
+   *
+   * `'info'` — a sibling entry DOES push a selectable list over the same case
+   * type, so the case type is reachable and the release is fine. The details on
+   * THIS module are inert, but Nova refuses to remove them (see below), so this
+   * must not block. Downgraded per dimagi-internal/ace#1281.
+   */
+  severity: 'blocker' | 'info';
+  /** For `severity: 'info'`: the command id whose entry provides the live list. */
+  reachableVia?: string;
+}
+
+/**
+ * Every case type the app can actually put a selectable list on screen for,
+ * mapped to the first command id that does so.
+ *
+ * "Selectable" = an entity datum: a `nodeset` over `casedb` filtered on
+ * `@case_type`, WITH a `detail-select` naming the list to render. Both halves
+ * matter — a `nodeset` datum with no `detail-select` renders no list, and a
+ * `detail-select` with no `nodeset` has no rows to render.
+ */
+export function findReachableCaseTypes(suiteXml: string): Map<string, string> {
+  const reachable = new Map<string, string>();
+  if (!suiteXml) return reachable;
+
+  for (const entryMatch of suiteXml.matchAll(/<entry\b[\s\S]*?<\/entry>/g)) {
+    const entry = entryMatch[0];
+    const commandId = entry.match(/<command\s+id="([^"]+)"/)?.[1];
+    if (!commandId) continue;
+
+    for (const datumMatch of entry.matchAll(/<datum\b[^>]*>/g)) {
+      const datum = datumMatch[0];
+      if (!/\bnodeset\s*=/.test(datum)) continue;
+      if (!/\bdetail-select\s*=/.test(datum)) continue;
+      for (const t of matchCaseTypePredicates(datum)) {
+        if (!reachable.has(t)) reachable.set(t, commandId);
+      }
+    }
+  }
+
+  return reachable;
+}
+
+/** Case types named in `@case_type='x'` predicates within a fragment. */
+function matchCaseTypePredicates(fragment: string): string[] {
+  const out: string[] = [];
+  for (const m of fragment.matchAll(/@case_type\s*=\s*(?:'([^']*)'|(?:"|&quot;)([^"&]*)(?:"|&quot;))/g)) {
+    const t = m[1] ?? m[2];
+    if (t) out.push(t);
+  }
+  return out;
+}
+
+/**
+ * The case type a non-entity entry is authored around. HQ names a
+ * case-CREATE datum `case_id_new_<case_type>_<index>`
+ * (observed live: `case_id_new_community_0` on the spark-facilitator
+ * 2026-08-13 Deliver build), which is the only place suite.xml states a
+ * registration module's case type.
+ */
+function deriveEntryCaseType(entry: string): string | undefined {
+  for (const datumMatch of entry.matchAll(/<datum\b[^>]*\bid="([^"]+)"[^>]*>/g)) {
+    const m = datumMatch[1].match(/^case_id_new_(.+)_\d+$/);
+    if (m) return m[1];
+  }
+  return matchCaseTypePredicates(entry)[0];
 }
 
 /**
@@ -903,10 +979,36 @@ export interface UnreachableCaseList {
  * The discriminator is the same one `deriveNavInput` already uses and has
  * already calibrated live: only a datum backed by `nodeset` puts an entity
  * list on screen; `value=` / `function=` datums are computed silently.
+ *
+ * ## Severity is APP-WIDE, not per-module (dimagi-internal/ace#1281)
+ *
+ * The per-module form of this check was a false positive by construction, and
+ * halted Phase 3 on essentially every ACE Deliver app. Nova will not let the
+ * producer side fix it: asked to remove the last case-list column from exactly
+ * this shape it refused, verbatim —
+ *
+ *   > This change wasn't applied because the resulting app has a problem:
+ *   > - Module "CBF Registration" shows "community" cases but its Results
+ *   >   screen has no visible fields. Every case list needs at least one
+ *   >   visible Results field so users can tell rows apart and pick which case
+ *   >   to open. Add or restore an identifying field such as "case_name" on
+ *   >   Results. Nothing was changed.
+ *
+ * So Nova REQUIRES >=1 visible Results column on any module declaring a case
+ * type, and the inert detail is unavoidable. Both constraints cannot be
+ * satisfied, and the checker was the half that had to move.
+ *
+ * The surviving BLOCKER is the original intent, narrowed: a case type no entry
+ * anywhere in the app can put on screen. When a sibling module DOES provide a
+ * real list over the same case type (proven live on
+ * spark-facilitator/20260813-2126: `m0-f0` walks menu -> uuid() datum -> form
+ * with no Case screen, while `m1-f0` renders `Case | demo` over the same
+ * `community` type), the finding is informational and the release passes.
  */
 export function findUnreachableCaseLists(suiteXml: string): UnreachableCaseList[] {
   if (!suiteXml) return [];
   const out: UnreachableCaseList[] = [];
+  const reachable = findReachableCaseTypes(suiteXml);
 
   for (const entryMatch of suiteXml.matchAll(/<entry\b[\s\S]*?<\/entry>/g)) {
     const entry = entryMatch[0];
@@ -935,7 +1037,17 @@ export function findUnreachableCaseLists(suiteXml: string): UnreachableCaseList[
       }
     }
 
-    if (detailIds.size > 0) out.push({ commandId, detailIds: Array.from(detailIds).sort() });
+    if (detailIds.size === 0) continue;
+
+    const caseType = deriveEntryCaseType(entry);
+    const reachableVia = caseType ? reachable.get(caseType) : undefined;
+    out.push({
+      commandId,
+      detailIds: Array.from(detailIds).sort(),
+      ...(caseType ? { caseType } : {}),
+      severity: reachableVia ? 'info' : 'blocker',
+      ...(reachableVia ? { reachableVia } : {}),
+    });
   }
 
   return out;

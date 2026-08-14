@@ -218,18 +218,44 @@ Two assertions over artifacts this step already holds — the unzipped CCZ's
 `suite.xml` and the form XMLs. Both are pure functions in
 `lib/commcare-cli-validate.ts`; no live Nova build, no device, no Connect.
 
-1. **`findUnreachableCaseLists(suiteXml)` → `[BLOCKER]` `case-list-unreachable`.**
-   Name the command id (`mN-fM`) and the `detail` ids it configured but can
-   never show. A module whose only session datum is `function="uuid()"` puts
-   no entity-selection screen on screen, so its `mN_case_short` /
-   `mN_case_long` details are dead configuration.
+1. **`findUnreachableCaseLists(suiteXml)` → `case-list-unreachable`.**
+   Returns one finding per entry that configures `detail` blocks it can never
+   show (a module whose only session datum is `function="uuid()"` pushes no
+   entity-selection screen). **Branch on each finding's `severity` — this check
+   is app-wide, not per-module (dimagi-internal/ace#1281):**
 
-   **Remediation points at `pdd-to-deliver-app` Step 4d, not at the symptom.**
-   That step calls `add_case_list_columns` on every case-CREATE module with an
-   empty `caseListConfig` purely to clear a Nova `validate_app` error — so ACE
-   authors the unreachable list itself. The fix is either to add a followup
-   form behind an entity datum, or to drop the case-list config rather than
-   paper over the validator.
+   - **`severity: 'blocker'`** → halt with `[BLOCKER]`
+     `case-list-unreachable`, naming the command id (`mN-fM`), the
+     `caseType`, and the inert `detail` ids. No entry anywhere in the app
+     puts a selectable list on screen for that case type, so it is dead
+     app-wide — the ace#977 "dead configuration authored to satisfy a
+     validator" case, and Jon's 2026-07-28 invariant ("a module that declares
+     a case type + case list should have some form that actually opens a
+     case") is violated.
+   - **`severity: 'info'`** → record `[INFO]` naming the module, its inert
+     `detail` ids, and `reachableVia` (the sibling command that DOES render a
+     list over the same case type), then **continue — do not halt.** The case
+     type is reachable; only this module's copy of the detail is inert.
+
+   **Why `info` and not a blocker: Nova makes the shape unavoidable.** Asked
+   to remove the last case-list column from exactly this module (live, on
+   spark-facilitator/20260813-2126), Nova refused, verbatim: *"Module … shows
+   "community" cases but its Results screen has no visible fields. Every case
+   list needs at least one visible Results field so users can tell rows apart
+   and pick which case to open. Add or restore an identifying field such as
+   "case_name" on Results. Nothing was changed."* Nova REQUIRES ≥1 visible
+   Results column on any module declaring a case type, so the inert detail on a
+   registration-only module cannot be removed producer-side. Blocking on it
+   halted Phase 3 on essentially every ACE Deliver app. Do NOT "fix" an
+   `[INFO]` finding by editing the app.
+
+   **When it IS a blocker, remediation points at `pdd-to-deliver-app` Step 4d,
+   not at the symptom.** That step calls `add_case_list_columns` on every
+   case-CREATE module with an empty `caseListConfig` purely to clear a Nova
+   `validate_app` error — so on an app with no followup form at all, ACE
+   authors a list over a case type nothing ever opens. The fix is to add the
+   followup form behind an entity datum (which is also what makes the case
+   type payable), not to paper over the validator.
 
 2. **`hasCaseTransaction(formXml)` → `[BLOCKER]` `case-transaction-missing`.**
    If the Nova blueprint declares ≥1 `caseWrite` / `case_property_on` binding
