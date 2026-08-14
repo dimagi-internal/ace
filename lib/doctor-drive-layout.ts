@@ -17,6 +17,8 @@ export interface DriveLike {
   list: (folderId: string) => Promise<DriveEntry[]>;
 }
 
+import { isAceOwnedOppRootEntry } from './opp-root-files.js';
+
 const FOLDER_MIME = 'application/vnd.google-apps.folder';
 
 /** Find folders under `parentFolderId` whose names appear 2+ times. */
@@ -36,28 +38,21 @@ export async function detectDuplicateFolders(
     .map(([name, ids]) => ({ name, ids }));
 }
 
-const OPP_ROOT_WHITELIST = new Set(['opp.yaml', 'inputs', 'runs', 'current']);
-
 /**
- * Agent-operating-model correspondence logs (e.g. `inbox-triage_comms-log`)
- * live at opp root by design — inbox-triage routes inbound threads by
- * matching Gmail thread_id against them. They are ACE-owned, not stray
- * cruft, and the orchestrator's Step 5b auto-migrate skips them for the
- * same reason (dimagi-internal/ace#929). Keep in sync with
- * `agents/ace-orchestrator.md § Step 5b`.
+ * List opp-root entries (files or folders) ACE does not own.
+ *
+ * The exemption set is `lib/opp-root-files.ts` — the SAME registry the
+ * orchestrator's Step 5b auto-migrate consults. Two hand-maintained copies is
+ * what let `open-questions.md` and `iterate-state.yaml` be reported as cruft
+ * here and swept into the Phase 1 evidence pack there (#1282, #1325).
  */
-export function isOppRootCommsLog(name: string): boolean {
-  return name.includes('_comms-log');
-}
-
-/** List opp-root entries (files or folders) that are NOT in the whitelist. */
 export async function detectStrayOppRootFiles(
   oppFolderId: string,
   drive: DriveLike,
 ): Promise<Array<{ id: string; name: string }>> {
   const children = await drive.list(oppFolderId);
   return children
-    .filter((c) => !OPP_ROOT_WHITELIST.has(c.name) && !isOppRootCommsLog(c.name))
+    .filter((c) => !isAceOwnedOppRootEntry(c.name))
     .map((c) => ({ id: c.id, name: c.name }));
 }
 

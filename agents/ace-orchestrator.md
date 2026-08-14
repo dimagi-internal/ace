@@ -797,17 +797,32 @@ in `inputs/` (the manifest), not to pick one canonical PDD file.
      as a single line: `auto-migrated <name> from opp folder root to
      inputs/`.
 
-     **Skip-list — ACE-owned / operator-managed root files that must
-     NOT be migrated:** `opp.yaml`, and any name containing
-     `_comms-log` (agent-operating-model correspondence logs, e.g.
-     `inbox-triage_comms-log` — inbox-triage routes inbound threads by
-     matching Gmail `thread_id` against these docs, so moving one into
-     the PDD evidence pack both poisons Phase 1 inputs and breaks
-     thread routing; dimagi-internal/ace#929). Subfolders are never
-     moved. (The migrate itself catches the "operator drops the source
-     doc next to opp.yaml" case — jjackson/ace#299.) The same exemption
-     lives in `lib/doctor-drive-layout.ts` so `/ace:doctor` doesn't
-     flag comms-logs as stray cruft — keep the two in sync.
+     **Skip-list — the ACE-owned opp-root registry.** The exemption
+     set is `lib/opp-root-files.ts`
+     (`isAceOwnedOppRootEntry(name)`); `/ace:doctor`'s stray-file check
+     imports the SAME registry, so the two cannot drift, and
+     `test/lib/opp-root-files.test.ts` fails if this list omits an
+     entry. Never migrate:
+
+     | Entry | Owner | Moving it breaks |
+     |---|---|---|
+     | `opp.yaml` | connect-program-setup | the durable Connect program reference every run reuses |
+     | `open-questions.md` | Phase 1 | the ace#1201 durable-questions loop — the read half looks at the opp ROOT, so a migrated file silently stops being found while a fresh one keeps being written (#1325) |
+     | `iterate-state.yaml` (and `iterate-state-legacy-*.yaml`) | `/ace:iterate` | the campaign: golden pointer, pass streak and kill switch all reset (#1282) |
+     | `*_comms-log*` | email-communicator / inbox-triage | Gmail `thread_id` routing, as well as poisoning the evidence pack (ace#929) |
+     | `inputs` / `runs` / `current` / `eval-calibration` / `feedback` | ACE | folders are never moved anyway; listed so doctor doesn't call them cruft |
+
+     Every one of these is a file ACE ITSELF writes to the opp root, so
+     migrating it feeds ACE's own prior output back in as curated
+     source evidence — the `no-inferred-backstory` class through a
+     self-referential back door. Subfolders are never moved. (The
+     migrate itself catches the "operator drops the source doc next to
+     opp.yaml" case — jjackson/ace#299.)
+
+     **Writing a new durable per-opp file?** Register it in
+     `lib/opp-root-files.ts` in the same PR, or Step 5b will migrate it
+     and the skill will stop finding it on the next run. Per-RUN state
+     belongs under `runs/<run-id>/`.
    - **5c. Capture the manifest.** List `<opp>/inputs/` via
      `drive_list_folder`. For each direct child file (skip subfolders),
      capture `{file_id, name, mime_type}`. Write the result as
