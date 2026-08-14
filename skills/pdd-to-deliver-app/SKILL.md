@@ -795,6 +795,22 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
     (Apps with no case-CREATE module, or whose case-create modules
     already carry a non-empty case list, skip cleanly at step 1.)
 
+    **CAUTION — this heal can author a case list nobody can reach
+    (dimagi-internal/ace#977).** On a REGISTRATION-ONLY module the entry's
+    only session datum is `function="uuid()"`, so no entity-selection screen
+    is ever pushed and the column set added here is dead configuration —
+    satisfying `validate_app` while producing a list no worker can ever see.
+    `app-release-qa` Step 4 now hard-blocks that shape
+    (`case-list-unreachable`), so a heal applied for its own sake will fail
+    the release gate rather than ship quietly.
+
+    So when a case-CREATE module has no case list, ask FIRST whether the
+    module is genuinely registration-only. If it is, the right resolution is
+    to drop the case-list config, or to add the followup form the PDD implies
+    — **not** to add a column to clear the validator. This is Jon's blueprint
+    invariant from 2026-07-28: a module that declares a case type + case list
+    should have some form that actually opens a case.
+
 4e. **Deliver-marker compile pre-check (catch a missing app-level Connect
     type before deploy) — runs at LEVEL 0.** Mirror of
     `pdd-to-learn-app` § 4b. The autonomous architect
