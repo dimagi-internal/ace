@@ -270,13 +270,17 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
      > Example for a malaria RDT outlet visit whose dedup key is
      > (outlet, brand, batch): `entity_key` =
      > `concat(/data/outlet_name, ' - ', /data/rdt_brand,
-     > ' - ', /data/batch_number)`. Note that `parts` concatenates
-     > natively, so the composite key can also be expressed directly as
-     > `parts: [{field-ref outlet}, {text " - "}, {field-ref brand},
-     > {text " - "}, {field-ref batch}]` — the hidden `entity_key`
-     > calculate field is still preferred, because persisting the key as
-     > form data is what lets case-UPDATE forms read the same grain back
-     > (see below). Do NOT use `/data/case/@case_id`
+     > ' - ', /data/batch_number)`. **Build the composite inside
+     > `concat(...)`, as shown — do NOT express it as alternating
+     > reference and `{ kind: "text", text: " - " }` parts.** An earlier
+     > version of this section offered that shape as an equivalent; it
+     > is not, and caveat (ii) below records why: a bare separator
+     > between two references parses as XPath **subtraction**. (The two
+     > statements contradicted each other between ace#1230 and ace#969;
+     > the live-derived caveat wins.) The hidden `entity_key` calculate
+     > field is preferred for a second reason too — persisting the key
+     > as form data is what lets case-UPDATE forms read the same grain
+     > back (see below). Do NOT use `/data/case/@case_id`
      > (rejected by `validate_app` — the case block is not a blueprint
      > field) or `#case/case_id` (compiles to a casedb lookup that breaks
      > create-form install, and is the wrong dedup grain anyway: a
@@ -322,6 +326,49 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
      > second payable delivery — the exact risk this section guards.
      > Revert to `case-ref` only once `commcare-nova#458` is fixed and
      > re-verified against a live build.
+
+     **Payability-scoped keys** (any form where SOME submissions are not
+     paid work):
+
+     > REQUIRED: When the PDD marks a SUBSET of submissions to this form
+     > **non-payable** — a did-not-happen branch, a screening-only
+     > visit, an ineligible-household record, a committee meeting on a
+     > form that also records community meetings — the **payability
+     > discriminator MUST be a component of `entity_id`.**
+     >
+     > Derive the key from the PDD's **paid-unit definition**, not only
+     > from its `duplicate-detection-key` identity fields. The key must
+     > be unique per *payable* event, so that a non-payable submission
+     > occupies a DIFFERENT key space and cannot consume the payable
+     > one. An identity-only key on such a form means the FLW's
+     > non-payable submission mints the key first, the real payable
+     > visit dedups against it, and the worker is structurally blocked
+     > from being paid for work they actually did — while the form's own
+     > closing text often tells them to record both.
+     >
+     > Put the discriminator **inside** the `concat(...)`, never as an
+     > extra `parts[]` entry (caveat (ii) above). A dedup key of
+     > (community, date) on a form that records both committee and
+     > community meetings becomes
+     > `concat(/data/community_code, '-', /data/meeting_date, '-', /data/meeting_type)`.
+     >
+     > The discriminator is now a key component, so the "no free `text`
+     > where the option set is enumerable" rule above applies to it: it
+     > MUST be a select. On the CASE-UPDATE path, if the discriminator
+     > is answered per submission use an ordinary `field-ref` to this
+     > form's own field; if it is a property of the entity, persist it
+     > at create time and read it back via the preload-hidden-field
+     > pattern.
+     >
+     > If the PDD's non-payable set cannot be expressed as a form field
+     > at all, do NOT ship the identity-only key silently — record in
+     > the build memo that non-payable submissions share the payable key
+     > space, and name the field that would fix it.
+     >
+     > Scope note: this closes the *slot-consumption* mode. A non-payable
+     > record still mints a CompletedWork on its own key until Layer A
+     > verification rejects it — the `deliver_unit` marker itself carries
+     > no relevance condition, which is upstream of ACE. (ace#969.)
 
      > For the upstream-validator note + the history of why the case id was abandoned, see reference.md § entity_id business key.
 
