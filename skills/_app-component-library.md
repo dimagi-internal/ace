@@ -64,6 +64,7 @@ authored from the PDD per run):
 | [`case-write-back`](#case-write-back) | Deliver | A case-UPDATE / follow-up form captures new observations | `pdd-to-deliver-app-eval § Capture fitness`; `app-connect-coverage` |
 | [`structured-capture`](#structured-capture) | Deliver | An answer has an enumerable option set, OR the PDD spells the field `select` / `lookup` / "choose from", OR the field feeds a Connect `entity_id` | `pdd-to-deliver-app-eval § Capture fitness` |
 | [`section-timestamps`](#section-timestamps) | Deliver | PDD success metrics reference visit-time / a cost model | `pdd-to-deliver-app-eval § Capture fitness` |
+| [`payability-scoped-key`](#payability-scoped-key) | Deliver | The PDD declares ANY submission to the Deliver form non-payable (did-not-happen branch, screening-only visit, ineligible record, non-paid meeting type) | `pdd-to-deliver-app-eval § Connectify wiring (b2)` |
 | [`embedded-bc-script`](#embedded-bc-script) | Deliver | PDD specifies a behavior-change segment delivered verbatim | `pdd-to-deliver-app-eval` |
 | [`assessment-gate`](#assessment-gate) | Learn | PDD specifies a readiness / competency gate before delivery | `pdd-to-learn-app-eval § assessment_gating` |
 | [`localization-layer`](#localization-layer) | Learn + Deliver | PDD names a working language other than English | `pdd-to-{learn,deliver}-app-eval § localization_match` (hard-fail) |
@@ -500,6 +501,44 @@ a select, say so in the build memo next to the `entity_id` you shipped.
 > of the *payable* path is never reached on non-payable outcomes. If the PDD
 > has non-payable branches, either anchor per-branch or state in the build memo
 > that duration is measured on completed encounters only — do NOT pick silently.
+
+### payability-scoped-key
+
+- **App:** Deliver
+- **Trigger:** the PDD declares any submission to the Deliver form
+  **non-payable** — a did-not-happen branch, a screening-only visit, an
+  ineligible-household record, a meeting type that isn't paid work.
+- **Enforced by:** `pdd-to-deliver-app-eval § Connectify wiring (b2)`.
+- **Origin:** ace#969. `entity_id` is Connect's dedup grain, and the brief
+  derived it from the PDD's `duplicate-detection-key` — the *identity* fields —
+  alone. On a form that records both payable and non-payable events, the
+  non-payable submission mints the key first and the real payable visit then
+  dedups against it. The FLW is structurally blocked from being paid for work
+  they actually did, and the form's own closing text typically tells them to
+  record both. Sibling of [`section-timestamps`](#section-timestamps)'s BRANCH
+  CAUTION — same blind spot (non-payable branches), different mechanism.
+
+**Brief paragraph (verbatim):**
+
+> REQUIRED — Payability-scoped `entity_id`: when a SUBSET of submissions to
+> this form is non-payable, the payability discriminator MUST be a component of
+> `entity_id`. Derive the key from the PDD's **paid-unit definition**, not only
+> its `duplicate-detection-key` identity fields — the key must be unique per
+> *payable* event so a non-payable submission occupies a different key space
+> and cannot consume the payable one. Put the discriminator INSIDE the
+> `concat(...)`, never as a separate `{ kind: "text" }` part between two
+> references (a bare separator parses as XPath subtraction). A dedup key of
+> (community, date) on a form recording both committee and community meetings
+> becomes `concat(/data/community_code, '-', /data/meeting_date, '-', /data/meeting_type)`.
+> The discriminator is a key component, so the no-free-text rule applies to it:
+> it MUST be a select. If the non-payable set cannot be expressed as a form
+> field, do NOT ship the identity-only key silently — record in the build memo
+> that non-payable submissions share the payable key space, and name the field
+> that would fix it.
+> SCOPE: this closes the slot-consumption mode only. A non-payable record still
+> mints a CompletedWork on its own key until Layer A verification rejects it —
+> the `deliver_unit` marker carries no relevance condition, which is upstream
+> of ACE.
 
 ### embedded-bc-script
 

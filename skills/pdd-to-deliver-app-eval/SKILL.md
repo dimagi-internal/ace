@@ -102,7 +102,7 @@ and `skills/eval-calibration/SKILL.md` for calibration methodology.
    | **Question-order match** | 6% | Per-section order matches LLO numbering. 1-point deduction per out-of-order question, dimension floor 5.0. |
    | **Gate semantics match** | 14% | Required-yes consent gate present, in correct form-flow position, with correct branch behavior ("if no → refusal-reason + submit"). Missing gate ≤3. Wrong branch ≤4. |
    | **Conditional logic match** | 8% | Relevance/display-conditional fields ONLY (e.g. "Q12 shown iff Q11=yes"). Missing relevance condition = 2-point deduction; inverted = ≤3. (Capture-quality validation expressions are graded under `data_quality_validation`, not here.) |
-   | **Connectify wiring** | 10% | (a) Deliver Unit name exact match; (b) Entity ID composite matches PDD formula (or sensible — market_name + GPS hash for atomic-visit); (c) required-for-credit fields (photo + GPS + consent) wired with relevant `validate` rules. |
+   | **Connectify wiring** | 10% | (a) Deliver Unit name exact match; (b) Entity ID composite matches PDD formula (or sensible — market_name + GPS hash for atomic-visit); **(b2) PAYABILITY (ace#969): when the PDD marks a subset of submissions to this form non-payable (a did-not-happen branch, a screening-only visit, a committee-vs-community meeting type), the `entity_id` calculate MUST reference the payability discriminator. An identity-only key on such a form lets a non-payable submission mint the key first, so the real payable visit dedups against it and the worker cannot be paid for work they did. Hard-gate the dimension ≤3 if the non-payable branch exists and is neither keyed nor recorded in the build memo;** (c) required-for-credit fields (photo + GPS + consent) wired with relevant `validate` rules. |
 
    *Fitness axis (55% — is it a deployable instrument, graded vs expert bar):*
 
@@ -255,8 +255,15 @@ and `skills/eval-calibration/SKILL.md` for calibration methodology.
    severity rules`, plus skill-specific surfaces):
    - `[WARN]` for each user-facing field present in the build but not
      in the PDD spec.
-   - `[INFO]` for hidden/computed fields added beyond spec (case_name,
-     entity_id, etc.) — those are typical Nova decisions, not bugs.
+   - `[INFO]` for the EXISTENCE of hidden/computed fields added beyond
+     spec (case_name, entity_id, etc.) — those are typical Nova
+     decisions, not bugs. **This carve-out is about existence only. It
+     does NOT license the CONTENT of an `entity_id` calculate, which is
+     graded by `connectify_wiring` (b)/(b2) and can absolutely be a bug
+     — an identity-only key on a form with a non-payable branch costs a
+     frontline worker their pay. As originally worded this line read as
+     "entity_id is not a bug surface", which is how ace#969 came to be
+     surfaced only as a free-form observation AGAINST this rule.**
    - `[BLOCKER]` for each fitness hard-gate that fired (plain geopoint
      vs stated radius; near-zero validation; write-nothing case-update
      form; missing or materially-incomplete required-language coverage;
