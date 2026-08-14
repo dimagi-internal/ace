@@ -193,6 +193,20 @@ Generate the Learn (training) app from the PDD using the Nova plugin
 
      For the full failure analysis, see reference.md § add_fields
      verify-then-retry.
+
+     **When the PDD names a working language other than English**, also
+     insert this paragraph verbatim into the brief (dimagi-internal/ace#1181):
+
+     > REQUIRED for multilingual builds: Nova tool payloads over ~5 KB
+     > are truncated in transport before the tool sees them, surfacing
+     > as `InputValidationError: could not be parsed as JSON` — the
+     > JSON is well-formed, it was cut mid-string, and the threshold is
+     > not a clean size check (a 1.9 KB retry has reproduced it). Your
+     > labels stack every language inline, roughly tripling each
+     > field's bytes, so batch `add_fields` at **~5 fields per call**
+     > from the start (commcare-nova#459). Do NOT debug the payload's
+     > quoting when you see that error — shrink the batch. The
+     > verify-then-retry rule above still applies to every batch.
    - **REQUIRED — `user_score` MUST be a PERCENTAGE (0-100), not a raw
      point sum.** Connect's `passing_score` field on each assessment is
      on a 0-100 scale — `passing_score: 80` means "pass at 80%."
