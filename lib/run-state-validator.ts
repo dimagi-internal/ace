@@ -209,6 +209,15 @@ function validatePhaseBlock(
         block.steps,
       );
     } else {
+      // `file_id` is collected and reported ONCE PER PHASE. It is a real ask —
+      // ace-web needs a Drive id to link, the per-step verifier needs
+      // something to check, and it is nearly free at the source (every skill
+      // already holds the `drive_create_doc_from_markdown` response, which
+      // returns exactly that id, and discards it). But 18 identical warnings
+      // train a reader to skip the list, and a validator whose warning list is
+      // always that long leaves a genuinely new warning nowhere to be seen
+      // (ace#1293).
+      const missingFileId: string[] = [];
       for (const [stepName, stepBlock] of Object.entries(block.steps)) {
         validateStepBlock(
           phaseName,
@@ -216,10 +225,34 @@ function validatePhaseBlock(
           stepBlock,
           errors,
           warnings,
+          missingFileId,
+        );
+      }
+      if (missingFileId.length > 0) {
+        pushWarning(
+          warnings,
+          `${path}.steps.file_id`,
+          `${missingFileId.length} \`status: done\` step(s) carry no \`file_id\` (${missingFileId.join(', ')}) — ` +
+            'Drive lookup unavailable, so ace-web cannot link the artifact. The id is free at the ' +
+            'source: it is the `id` the create call already returned',
+          'Drive file ID string per step',
         );
       }
     }
   }
+}
+
+/**
+ * Does this step point at an artifact under ANY of the names the contract
+ * models? `artifact` is the canonical key; `summary_artifact`,
+ * `verdict_artifact` and `catalog_artifact` are what producers actually write,
+ * and the suffix rule covers the next sibling without another patch here
+ * (ace#1293).
+ */
+function hasArtifactPointer(block: Record<string, unknown>): boolean {
+  return Object.entries(block).some(
+    ([k, v]) => (k === 'artifact' || k.endsWith('_artifact')) && typeof v === 'string' && v.length > 0,
+  );
 }
 
 function validateStepBlock(
@@ -228,6 +261,7 @@ function validateStepBlock(
   block: unknown,
   errors: ValidationIssue[],
   warnings: ValidationIssue[],
+  missingFileId: string[] = [],
 ): void {
   const path = `phases.${phaseName}.steps.${stepName}`;
   if (!isObject(block)) {
@@ -265,25 +299,25 @@ function validateStepBlock(
   // artifacts, so the `artifact`/`file_id` requirement does not apply to them —
   // the phase's `verdict` names the gap instead.
   const isDone = status === 'done' || status === 'complete';
-  if (isDone && block.artifact === undefined) {
-    // Per § Phase Write-Back Contract — "artifact is required on every
-    // status: done step". Renders as an unfilled circle in ace-web and
-    // breaks the Producer Artifact Verifier.
+  if (isDone && !hasArtifactPointer(block)) {
+    // ANY `*_artifact` key counts (dimagi-internal/ace#1293). What skills and
+    // agent docs consistently write is `summary_artifact` / `verdict_artifact`
+    // / `catalog_artifact` — the shape every SKILL.md Products section and
+    // every write-back example in `agents/orchestrator-reference.md` models.
+    // Demanding a differently-named bare `artifact` was the validator
+    // inventing a shape nothing was told to produce, which is why the miss was
+    // 100% uniform (18 of 18 steps on a run with zero errors) rather than
+    // sporadic.
     pushWarning(
       warnings,
       `${path}.artifact`,
-      '`status: done` step has no `artifact` field (ace-web renders as unfilled circle; Producer Artifact Verifier cannot check)',
+      '`status: done` step points at no artifact — set `artifact`, or any `*_artifact` key ' +
+        '(summary_artifact / verdict_artifact / catalog_artifact). ace-web renders an unfilled ' +
+        'circle and the Producer Artifact Verifier cannot check',
       'relative artifact path',
     );
   }
-  if (isDone && block.file_id === undefined) {
-    pushWarning(
-      warnings,
-      `${path}.file_id`,
-      '`status: done` step has no `file_id` field (Drive lookup unavailable)',
-      'Drive file ID string',
-    );
-  }
+  if (isDone && block.file_id === undefined) missingFileId.push(stepName);
   if (block.verdict !== undefined && typeof block.verdict !== 'string') {
     pushError(
       errors,

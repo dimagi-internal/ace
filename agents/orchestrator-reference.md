@@ -653,11 +653,33 @@ phases:
         verdict: pass | warn | fail | incomplete | <skill-specific>
         started_at: <ISO>
         completed_at: <ISO>
-        artifact: <relative path>           # REQUIRED when status: done — the primary artifact
-        file_id: <Drive fileId>             # REQUIRED when status: done — Drive file ID
+        artifact: <relative path>           # REQUIRED when status: done — the primary artifact.
+                                            # Any `*_artifact` key satisfies this:
+                                            # summary_artifact / verdict_artifact /
+                                            # catalog_artifact are what producers write and
+                                            # what the validator accepts (ace#1293).
+        file_id: <Drive fileId>             # REQUIRED when status: done — Drive file ID.
+                                            # This is the `id` the create call ALREADY returned;
+                                            # it is free to keep and is what ace-web links.
         artifacts:                          # additional Drive fileIds if the skill produces multiple
           <name>: <fileId>
 ```
+
+**`artifact` is a family, not a literal key (ace#1293).** Every SKILL.md
+Products section and every write-back example here models
+`summary_artifact` / `verdict_artifact` / `catalog_artifact`, and that is what
+agents write — so `validate_run_state` accepts **any** `*_artifact` key as the
+step's pointer. It previously demanded a bare `artifact` and warned on all 18
+`done` steps of a run with **zero errors**, across five phases and three
+different code paths. A 100%-uniform miss is a contract gap, not a run defect.
+
+**`file_id` is still owed, and it is nearly free.** ace-web needs a Drive id to
+link (without it every step renders as an unfilled circle) and the per-step
+Producer Artifact Verifier needs something to check. Every skill already holds
+the `drive_create_doc_from_markdown` / `drive_create_file` response, whose `id`
+is exactly this value — it is discarded today. Keep it. The validator reports
+missing `file_id` **once per phase** with the step names rather than once per
+step, because a warning list that is always 18 long is one nobody reads.
 
 ### `partial` — a phase that shipped but parked something
 
