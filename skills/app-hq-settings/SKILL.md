@@ -207,17 +207,50 @@ For each Deliver form that the walk reports with ≥1 `kind: image` field:
    the canonical serialized form is
    `<upload ref="/data/<field>" mediatype="image/*" appearance="acquire">`.
 
-   **Case-block / Vellum-cache guard (from
-   `skills/pdd-to-learn-app/reference.md`):** `commcare_patch_xform`
-   hits a Vellum-cache-drift class if a patched form carries a `<case>`
-   block — `make_build` then rejects with "Cannot use Case Management UI
-   if you already have a case block in your form." Learn forms are
-   case-less and photos are Deliver-only, so this pass is structurally
-   safe — but **keep the guard**: before patching, scan the fetched
-   `xform_xml` for a `<case>` block; if one is present, halt the form and
-   surface it rather than risk the drift (this should never fire on a
-   Deliver photo form; if it does, the app shape is unexpected and wants
-   human eyes).
+   **Do NOT scan for a `<case>` block — the old pre-patch halt is
+   DELETED (ace#1238).** This step used to refuse to patch any form whose
+   `xform_xml` contained a `<case>` block, on the theory that
+   `commcare_patch_xform` hits a Vellum-cache-drift class and `make_build`
+   then rejects with "Cannot use Case Management UI if you already have a
+   case block in your form."
+
+   **That guard had no recorded reproducer, and it blocked Phase 3 on
+   every run.** Stated plainly so nobody reinstates it from the same
+   intuition:
+
+   - It cited `skills/pdd-to-learn-app/reference.md` as its source. That
+     file does not contain it.
+   - The error string appears exactly ONCE in this repo — inside the
+     guard's own justification. No learning doc, no issue, no run where
+     it was observed.
+   - Its own wording ("this should never fire on a Deliver photo form")
+     is the tell: written from a hypothesis, not an observation.
+   - Counter-evidence: Nova uploads these apps to HQ **with** the case
+     block present and HQ builds them. Nova expresses every case write as
+     a `SaveToCase` operation under `__nova_operations`, and that block
+     literally contains a `<case>` element in the CommCare
+     case-transaction namespace — so the guard fired on essentially every
+     ACE Deliver app that writes case properties. Camera-only never
+     applied, `app-release-qa` Step 2.8 then halted on
+     `camera-only-appearance-missing`, and Phase 3 deadlocked: one step
+     refusing to write the attribute the next refuses to proceed without.
+   - Best read on its origin: the error is real in CommCare HQ, but it
+     belongs to the **form-builder (Vellum) Case Management UI** — it
+     fires when a human opens that tab on a form carrying a hand-authored
+     case block. It is not a `make_build` validation of arbitrary XML,
+     and ACE never opens Vellum; it patches by API and builds by API.
+
+   A narrower scan would still be a guess. So: **patch unconditionally,
+   and let `commcare_make_build` (Step 3.5) be the authority** — attempt
+   the transition and treat the conflict as the signal, never a read-back
+   flag standing in for it (CLAUDE.md § Conventions).
+
+   **Breadcrumb only, never blocking:** if the fetched `xform_xml`
+   carries a `<case>` element OUTSIDE `__nova_operations` (i.e. not the
+   standard Nova `vellum:role="SaveToCase"` shape), record an `[INFO]`
+   line in the Step 5 summary naming the form path — so if this class
+   ever does bite, the run that hit it left evidence. Do **not** halt, do
+   **not** skip the patch.
 
 3. `commcare_patch_xform({ domain, app_id, form_unique_id, new_xform_xml_path: <temp>, sha1: <from step 1> })`.
    Pass the mutated XML via `new_xform_xml_path` (patched Deliver forms
@@ -232,6 +265,33 @@ For each Deliver form that the walk reports with ≥1 `kind: image` field:
    concurrent edit happened between the read and the patch); the operator
    re-fetches and retries. On any other patch failure, **halt loud** with
    the form path + the error (see § Failure modes).
+
+5. **Prove the patch against the builder — once per app, after all its
+   forms are patched.** Call
+
+   ```
+   commcare_make_build({ domain, app_id, comment: 'app-hq-settings camera-only verification' })
+   ```
+
+   This is the authoritative answer to the case-block question step 2
+   deliberately no longer tries to predict:
+
+   - **Build succeeds** → the patch is safe. Proceed to Step 4. (The
+     draft is unchanged by a build; `app-release` makes and releases its
+     own build later.)
+   - **Build rejects with "Cannot use Case Management UI if you already
+     have a case block in your form"** → the drift class DID fire. **Halt
+     loud**, surface the rejection verbatim plus every form patched in
+     this pass, set `status: blocked`, and leave the camera-only residual
+     UNresolved so `app-release-qa` Step 2.8 still sees an open gap. Do
+     not attempt to re-patch around it — this is the case the guard
+     exists for, and it wants human eyes.
+   - **Any other build failure** → halt loud with the error; it is not
+     this skill's class, but shipping past a failing build hides it from
+     `app-release`.
+
+   Skip when no form needed patching (all `already-acquire`) — there is
+   nothing to prove.
 
 ### Step 4: Grid menu display (both Learn + Deliver — BOTH halves)
 
@@ -319,7 +379,10 @@ dry_run: false
 
 Body: per-app table — per Deliver form, the image `<upload>` refs patched
 (or `already-acquire`); per app, the list of module uids gridded; the
-residual-resolution note; any follow-ups.
+`commcare_make_build` result from Step 3.5; the residual-resolution note;
+any follow-ups. Include one `[INFO]` line per patched form that carried a
+`<case>` element outside `__nova_operations` (Step 3.2 breadcrumb) — an
+observation, not a failure; the build already proved it harmless.
 
 Then **clear the resolved residuals** from
 `phases.commcare-setup.residuals[]`. Phase 6 (`qa-and-training`) treats a
@@ -383,6 +446,8 @@ the camera-only residual if one exists, annotating
   listing the would-patch forms + would-grid modules.
 - Do NOT resolve any residual; do NOT write
   `3-commcare/app-hq-settings_summary.md`.
+- Do NOT call `commcare_make_build` (Step 3.5) — dry-run patches nothing,
+  so there is nothing to prove against the builder.
 - Halt-loud on a `suite_xml` walk still applies in dry-run (the plan
   would be un-executable, so surface it).
 
@@ -393,7 +458,9 @@ the camera-only residual if one exists, annotating
 | `form_unique_id_source: 'suite_xml'` | `ACE_HQ_USERNAME`/`ACE_HQ_API_KEY` missing or draft-app API unreachable | Halt before any mutation. Draft uids + module uids are unavailable; both atoms would reject (issue #108). Re-run with creds. |
 | `module_unique_id: null` on a `draft_api` walk | draft-app API row malformed for that module | Halt that module, surface the form path. |
 | `<upload>` already has non-`acquire` appearance | A deliberate appearance hint conflicts | Halt the form, surface the existing value; do not clobber. |
-| `<case>` block in a form being patched (Vellum-cache guard) | Unexpected app shape (should never happen on a Deliver photo form) | Halt the form, surface it; `make_build` would otherwise reject in `app-release`. |
+| `<case>` block OUTSIDE `__nova_operations` in a patched form | Non-standard app shape. Nova's own `SaveToCase` block carries a namespaced `<case>` element and is normal. The pre-patch halt that used to live here was DELETED (ace#1238) — it had no recorded reproducer and blocked Phase 3 on every run | **Not a failure mode.** Record an `[INFO]` breadcrumb with the form path and patch anyway; `commcare_make_build` (Step 3.5) is the authority. |
+| `commcare_make_build` rejects with "Cannot use Case Management UI if you already have a case block in your form" (Step 3.5) | The Vellum-cache drift class actually fired — the authoritative signal, not the substring scan | Halt loud, surface the rejection verbatim + every form patched this pass, `status: blocked`, leave the camera-only residual open for `app-release-qa` Step 2.8. |
+| `commcare_make_build` fails for any other reason (Step 3.5) | HQ rejected the build for an unrelated defect | Halt loud with the error; do not proceed to Step 4 or resolve residuals. |
 | `XformConflictError` on `patch_xform` | Live form sha1 disagrees with the Step-1 token (concurrent edit) | Halt the form, surface the live sha1; operator re-fetches + retries. |
 | `commcare_patch_xform` non-conflict failure | CCHQ rejected the patch | Halt loud, form path + response slice, `status: blocked`. |
 | `commcare_set_menu_display` non-200 | CCHQ rejected the display-style edit | Halt loud, module uid + error, `status: blocked`. |
@@ -413,6 +480,10 @@ the camera-only residual if one exists, annotating
     XML adding `appearance="acquire"`. Prefer `new_xform_xml_path` for
     real forms (arg-size limits); pass exactly one of the two payload
     args. Pass the `sha1` from `get_form_source` as the concurrency token.
+  - `commcare_make_build({domain, app_id, comment?})` — Step 3.5's
+    authority on whether the patched form actually trips the Case
+    Management UI drift class. Read the current signature in
+    `docs/atom-schemas.md`; do not paraphrase it here.
   - `commcare_set_menu_display({domain, app_id, module_unique_id,
     display_style?}) → {status, app_version?}` — set a module's menu to
     grid (`display_style` defaults to `'grid'`). Draft-only; app-release
@@ -435,4 +506,5 @@ the camera-only residual if one exists, annotating
 | Date | Change | Author |
 |------|--------|--------|
 | 2026-07-17 | Initial version. Post-build/post-deploy apply-step for the two HQ-layer standing-instruction settings Nova can't set: camera-only `appearance="acquire"` on Deliver image uploads (#867) and grid menu display per module (both apps). Runs between `app-deploy` and `app-release`; mutates the draft only (app-release ships it, app-release-qa backstops it). Resolves the camera-only + grid `phases.commcare-setup.residuals[]` entries. Backed by the new `commcare_get_form_source` + `commcare_set_menu_display` atoms and a `run-form-walk` extension that emits draft `module_unique_id` + `kind: image`. Halts on `suite_xml` uid source (#108). App-root menu-display grid remains an unimplemented, deliberately-not-invented caveat surfaced as a follow-up. | ACE team |
+| 2026-08-13 | **DELETED the pre-patch `<case>`-block halt; `commcare_make_build` is now the authority (ace#1238).** The guard predicted another system's rejection with a substring scan and was never checked against that system. It had **no recorded reproducer**: it cited `pdd-to-learn-app/reference.md`, which does not contain it; the error string "Cannot use Case Management UI…" appeared exactly once in the repo — inside the guard's own justification; and its wording ("this should never fire on a Deliver photo form") reads as hypothesis, not observation. Meanwhile Nova uploads these apps to HQ **with** a `<case>` element (its `SaveToCase` operation under `__nova_operations`) and HQ builds them, so the guard fired on essentially every ACE Deliver app that writes case properties: camera-only never applied, `app-release-qa` Step 2.8 then halted on `camera-only-appearance-missing`, and Phase 3 deadlocked on every run. Best read on the error's origin is the Vellum **Case Management UI** tab — a human opening that tab on a hand-authored case block — which ACE never touches (patch by API, build by API). A *narrower* scan would still be a guess, so the scan is gone: Step 3 patches unconditionally, new **Step 3.5** builds and treats an HQ rejection as the real signal, and a case block outside `__nova_operations` leaves a non-blocking `[INFO]` breadcrumb. Repro: `spark-facilitator/20260812-1635`, form `bf7eab18f4ad458286dc0e6b05b05f4d`. | ACE team |
 | 2026-07-30 | **Grid Step 4 now sets BOTH halves (closes the apply side of dimagi-internal/ace#1082).** spark-facilitator/20260730-1718 proved the app-root flag was never set (`use_grid_menus: false` on both apps while all 8 modules read `display_style: grid`) — and HQ source proved worse: per-module `display_style` is INERT in the suite until app-level `grid_form_menus == 'some'` (`suite_xml/sections/menus.py:86-92`), so the "applied" per-module grids were doing nothing. New Step 4b calls the new `commcare_set_app_menu_display` atom (`edit_app_attr/<app_id>/all/` + JSON `{"hq": {...}}` — the only route; the flags are not in the per-attr allowlist, `views/apps.py:762,810-811`); new Step 4c verifies all three fields from `GET /apps/source/<app_id>/` (session-cookie auth — ApiKey 401s). Live-validated 2026-07-30 on the spark-facilitator apps. The `app-root-menu-grid-unverified` follow-up class is retired. | ACE team |

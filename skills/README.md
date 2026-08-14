@@ -595,6 +595,30 @@ the source of truth if this prose drifts.
   per-skill `-eval` skills gain rubrics and start writing verdicts,
   opp-eval automatically picks them up.
 
+## A guard that predicts another system's rejection must cite a reproducer
+
+If a step refuses to act because some *other* system would reject the
+result — HQ would fail the build, Nova would reject the expression,
+Connect would 400 — the step must name **where that was observed**: a run
+id, an issue number, or a learning doc. No citation, no guard. Attempt
+the transition and let the owning system answer (CLAUDE.md § Conventions,
+"attempt the transition and treat the conflict as the skip").
+
+An uncited prediction is indistinguishable from a plausible guess, and a
+guess encoded as a halt is worse than no check at all: it fires on the
+cases nobody imagined and never on the one it was written for. Three
+landed in ACE on a single day, all in Phase 3, each costing a run —
+`caseWrite` assumed to preload (ace#1224), a visible case-bound field
+assumed to preload (ace#1232), and a `<case>`-substring scan predicting an
+HQ build rejection that no run has ever seen (ace#1238; its own error
+string appeared exactly once in the repo — inside its justification).
+
+Narrowing an uncited guard is not the fix — a narrower guess is still a
+guess. Delete the prediction, act, and branch on the real answer. Where
+the unexpected shape is worth knowing about, leave a non-blocking
+`[INFO]` breadcrumb in the skill's summary so the next occurrence carries
+evidence.
+
 ## Long-running skills — no fake background tasks
 
 If a skill's work loop runs for more than ~30 seconds (chat suites,

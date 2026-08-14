@@ -262,22 +262,52 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
      > human-readable label field. Both are structured expressions, NOT
      > XPath strings — each takes `{ parts: [...] }`, where a part is
      > `{ kind: "field-ref", uuid: <field uuid> }`,
-     > `{ kind: "case-ref", caseType, property }`, or
-     > `{ kind: "text", text }`. So
+     > `{ kind: "user-ref", property: "username" }`, or
+     > `{ kind: "text", text }`. (`{ kind: "case-ref", caseType,
+     > property }` is in the schema but is REJECTED app-wide on this Nova
+     > instance — never author one; see the case-UPDATE rule below.) So
      > `entity_id: { parts: [{ kind: "field-ref", uuid: <entity_key uuid> }] }`
      > and
      > `entity_name: { parts: [{ kind: "field-ref", uuid: <beneficiary_name uuid> }] }`.
+     >
+     > **`parts` is XPath SOURCE, not a template — it does NOT concatenate
+     > for you.** Every part is interpolated RAW into the compiled
+     > `calculate`, and nothing quotes a `text` part. A bare
+     > `{ kind: "text", text: " - " }` sitting between two references
+     > therefore compiles to the XPath **minus operator**, and the key
+     > evaluates to `NaN` — the same constant for every worker, so Connect
+     > collapses the whole programme into ONE payable entity and everyone
+     > after the first goes unpaid. `configure_connect` accepts that
+     > payload with no error and the app builds clean; the only symptom is
+     > unpaid work (ace#1232, proven against a compiled CCZ). **Any
+     > literal separator MUST be quoted inside a `concat(...)` you write
+     > yourself, in the parts list:**
+     >
+     > ```
+     > parts: [ { kind: "text",     text: "concat(" },
+     >          { kind: "user-ref", property: "username" },
+     >          { kind: "text",     text: ", ' - ', " },
+     >          { kind: "field-ref", uuid: <date field uuid> },
+     >          { kind: "text",     text: ")" } ]
+     > ```
+     >
+     > That verbosity is the only correct form, not defensive style —
+     > "simplifying" it back to a bare `" - "` separator silently breaks
+     > the payment key. The hidden-`entity_key`-field shape below sidesteps
+     > the trap entirely: build the `concat(...)` in the field's own
+     > `calculate`, then point `entity_id` at ONE `field-ref` part.
+     >
      > Example for a malaria RDT outlet visit whose dedup key is
      > (outlet, brand, batch): `entity_key` =
      > `concat(/data/outlet_name, ' - ', /data/rdt_brand,
      > ' - ', /data/batch_number)`. **Build the composite inside
      > `concat(...)`, as shown — do NOT express it as alternating
      > reference and `{ kind: "text", text: " - " }` parts.** An earlier
-     > version of this section offered that shape as an equivalent; it
-     > is not, and caveat (ii) below records why: a bare separator
-     > between two references parses as XPath **subtraction**. (The two
-     > statements contradicted each other between ace#1230 and ace#969;
-     > the live-derived caveat wins.) The hidden `entity_key` calculate
+     > version of this section offered that shape as an equivalent, on a
+     > since-disproven claim that `parts` joins its members for you; it
+     > does not. (The two statements contradicted each other between
+     > ace#1230 and ace#969; the live-derived rule above wins.) The
+     > hidden `entity_key` calculate
      > field is preferred for a second reason too — persisting the key
      > as form data is what lets case-UPDATE forms read the same grain
      > back (see below). Do NOT use `/data/case/@case_id`
@@ -293,39 +323,82 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
 
      > REQUIRED: When a `connect.deliver_unit` spans multiple forms (a
      > registration form plus later visit forms for the same entity),
-     > every form MUST emit the IDENTICAL `entity_id` grain. (a) On the
-     > CASE-CREATE form, in addition to setting `entity_id` to the
-     > business key, persist that key to a case property
-     > (`case_property_on` the relevant case type, e.g. write
-     > `/data/entity_key` to a case property `entity_key`). (b) On each
-     > CASE-UPDATE form, read that stored property back — but **NOT via
-     > a `case-ref` part.** Nova rejects a followup form's `case-ref` to
-     > its OWN case type ("This expression does not survive Nova's
-     > canonical identity parse and print round trip") across every
-     > expression shape and slot, so a brief mandating it is
-     > **unbuildable** — see dimagi-internal/ace#1180 /
-     > `commcare-nova#458`. Use Nova's **preload** mechanic instead:
-     > add an always-relevant **hidden** field bound to the stored case
-     > property (`entity_key`) — case-bound fields open pre-filled with
-     > the case's current value — and reference it with an ordinary
-     > `field-ref` part:
-     > `{ parts: [{ kind: "field-ref", uuid: <hidden entity_key field uuid> }] }`.
-     > Writing the unchanged value back is a no-op. NOT the case id.
+     > every form MUST emit the IDENTICAL `entity_id` grain — and on the
+     > followup forms that grain **MUST NOT depend on reading the case
+     > back into a form node.** There is no mechanism on this Nova
+     > instance that a brief can reliably ask for to get a case property
+     > into a followup form's field. All three surfaces are closed, each
+     > proven live:
      >
-     > Two caveats found live, both of which cost a run to rediscover:
-     > **(i)** a hidden field is rejected without a seed, so each needs
-     > `default_value: ''` — the preload then wins over the seed.
-     > **(ii)** a per-form suffix must go **inside** `concat(...)`, not
-     > as a bare `{ kind: "text", text: " - <form_name>" }` part between
-     > two references — a bare `-` between two references parses as
-     > XPath **subtraction**, not concatenation.
+     > - **`case-ref` parts are rejected app-wide.** A followup form's
+     >   `case-ref` to its OWN case type fails with "This expression does
+     >   not survive Nova's canonical identity parse and print round
+     >   trip" across every expression shape and slot, so a brief
+     >   mandating one is **unbuildable** (ace#1180 /
+     >   `commcare-nova#458`).
+     > - **`caseWrite` is write-only — it does not preload.** A hidden
+     >   field carrying `caseWrite` plus a literal `default_value` looks
+     >   like a preload and is not one: it holds the literal and then
+     >   writes that literal back, wiping the case property (ace#1224).
+     >   Step 4h below halts on this shape.
+     > - **A visible case-bound field does NOT emit a preload either.**
+     >   Proven against a compiled CCZ: the bind is there, the value
+     >   never is (ace#1232).
      >
-     > This grain is identical to the `case-ref` version it replaces,
-     > and strictly safer: because the components are hidden preload
-     > fields rather than worker-editable inputs, a typo cannot mint a
-     > second payable delivery — the exact risk this section guards.
-     > Revert to `case-ref` only once `commcare-nova#458` is fixed and
-     > re-verified against a live build.
+     > (One shape HAS been observed working — a hidden field populated by
+     > a casedb `<setvalue event="xforms-ready">` that Nova emitted on its
+     > own, `bednet-check-2-visit/20260813-2333`. Do not build on it: it
+     > is not requestable from the authoring surface, and it is correct
+     > there only because that `setvalue` happened to be emitted AFTER the
+     > empty-string initializer for the same node. One emission-order
+     > change and every worker silently goes unpaid, with no build,
+     > validate, or `play` error. It is not a sanctioned mechanism.)
+     >
+     > **Sanctioned alternative — key on worker identity + the encounter
+     > date.** In the common ACE shape the FLW maps 1:1 to the entity
+     > (one facilitator per CBF, one worker per assigned household), so
+     > the worker IS the entity referent and no case read is needed:
+     >
+     > ```
+     > entity_id.parts = [ { kind: "text",      text: "concat(" },
+     >                     { kind: "user-ref",  property: "username" },
+     >                     { kind: "text",      text: ", ' - ', " },
+     >                     { kind: "field-ref", uuid: <encounter date uuid> },
+     >                     { kind: "text",      text: ")" } ]
+     > ```
+     >
+     > Note the quoted separator inside an explicit `concat(...)` — a
+     > bare `{ text: " - " }` part is XPath subtraction and yields `NaN`
+     > (see the parts-is-XPath-source rule above). Add the payability
+     > discriminator, and any finer per-encounter component, INSIDE the
+     > same `concat(...)`. `entity_name` follows the same construction
+     > over the human-readable fields.
+     >
+     > **When the FLW does NOT map 1:1 to the entity** (one worker serves
+     > many households/outlets), worker identity alone collapses them.
+     > Then re-ASK the identifying key component on the followup form as
+     > a **select** over the same option source the create form used
+     > (`_app-component-library.md § structured-capture`) and reference it
+     > with an ordinary `field-ref` — an answered field, not a case read.
+     > If neither shape fits, say so in the build memo next to the
+     > `entity_id` you shipped; do not ship a key that silently depends on
+     > a case read.
+     >
+     > Still NOT the case id, in either form: `/data/case/@case_id` is
+     > rejected by `validate_app` (the case block is not a blueprint
+     > field) and `#case/case_id` compiles to a casedb lookup that breaks
+     > create-form install and is the wrong dedup grain anyway (a
+     > per-registration UUID gives no cross-registration / cross-FLW
+     > dedup).
+     >
+     > Caveat that still applies: a per-form suffix must go **inside**
+     > `concat(...)`, never as a bare
+     > `{ kind: "text", text: " - <form_name>" }` part between two
+     > references.
+     >
+     > Re-open the case-read path only once `commcare-nova#458` (#1180)
+     > is fixed AND a preload is re-verified against a live compiled CCZ —
+     > not against the blueprint, which shows the bind either way.
 
      **Payability-scoped keys** (any form where SOME submissions are not
      paid work):
@@ -354,11 +427,11 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
      >
      > The discriminator is now a key component, so the "no free `text`
      > where the option set is enumerable" rule above applies to it: it
-     > MUST be a select. On the CASE-UPDATE path, if the discriminator
-     > is answered per submission use an ordinary `field-ref` to this
-     > form's own field; if it is a property of the entity, persist it
-     > at create time and read it back via the preload-hidden-field
-     > pattern.
+     > MUST be a select. On the CASE-UPDATE path the discriminator must
+     > be answered on THIS form — an ordinary `field-ref` to the form's
+     > own select. Do NOT reach for the entity's stored copy: a followup
+     > form cannot read its own case (see the case-UPDATE rule above), so
+     > a discriminator that "comes off the case" ships as a constant.
      >
      > If the PDD's non-payable set cannot be expressed as a form field
      > at all, do NOT ship the identity-only key silently — record in
@@ -464,12 +537,24 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
        changes, never nest a `repeat` inside a group, and keep a long read-aloud
        passage on the screen carrying the answer it governs. Verified at level 0
        by Step 4g.
-     - `consent-script-floor` — **the PDD describes consent being sought from
-       the people whose data, photos, or recordings are captured, WHETHER OR
-       NOT it declares a consent field.** A read-aloud announcement to an
-       assembled group, a verbal consent taught in the Learn app, or a
-       photo-consent line inside a behavior-change script all fire this
-       trigger. All six floor elements — and check `confidential`, where the
+     - `consent-script-floor` — **always-on for capture of identifiable
+       people, on exactly the same condition as `live-photo-capture`: any
+       image / photo / audio / video capture question of people fires this
+       component ON ITS OWN.** No consent field, no read-aloud passage, and
+       no mention of consent anywhere in the PDD is required — a PDD that is
+       *silent* about consent fires it just as hard as one that describes
+       consent being sought. A photo question that needs `acquire` is
+       categorically also a photo question that needs the floor; evaluate the
+       two off the same detection and emit both. (It also fires on the other
+       clauses in the component: a read-aloud announcement to an assembled
+       group, a verbal consent taught in the Learn app, or a photo-consent
+       line inside a behavior-change script.) **Do not reason "the PDD
+       doesn't mention consent, so the trigger doesn't fire"** — that is
+       exactly the miss that shipped 0-of-6 elements on an app photographing
+       8+ identifiable people into an AI verification layer plus a human
+       audit sample (`spark-facilitator/20260812-1635`, ace#1223; the prior
+       run of the same opp shipped 4/6, so this has now missed twice).
+       All six floor elements — and check `confidential`, where the
        data goes (name any AI verification layer and human audit sample), and
        that participation does not guarantee selection **by name**, because
        those three are the ones builds actually omit (ace#983, ace#1137).
@@ -534,7 +619,7 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
 
        Build `uuids[module][form] -> {moduleUuid, formUuid}` (and the
        per-field uuids) from this ONE response and carry it through the
-       rest of the recipe — Steps 4b–4f all address off this map. One
+       rest of the recipe — Steps 4b–4h all address off this map. One
        lookup beats N. If you only hold a semantic name later,
        `search_blueprint({query, app_id})` resolves it — but prefer the
        map you already have.
@@ -628,10 +713,9 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
     already-fetched blueprint. Same bounded-loop shape as 4a/4b.
 
     1. From `get_app({app_id})`, identify each **case-UPDATE** form (a
-       form that updates an existing case rather than creating one —
-       its `entity_id` reads the stored key back off the case via a
-       `case-ref` part per the case-action rule above, or a
-       form Nova tagged as updating the case type).
+       form Nova tagged as updating an existing case type rather than
+       creating one — it carries `case_property_on` writes against a case
+       type some other form creates).
     2. For each case-update form, list its **user-facing observation
        fields** (non-hidden, non-label questions the FLW answers).
     3. **Assert** that the form binds **≥1** of those observation fields
@@ -909,6 +993,77 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
 
     (Forms with no multi-question group skip cleanly — `screensChecked: 0`.)
 
+4h. **Fake-preload check (a hidden `caseWrite` field can never hold the case
+    value) — runs at LEVEL 0.** The structural preventer for ace#1224. Because
+    a followup form cannot read its own case on this Nova instance (§ `entity_id`
+    case-UPDATE rule), architects reach for a shape that *looks* like a preload
+    and is not: a hidden field with `caseWrite` set whose value comes from a
+    literal `default_value`. It holds the literal forever, and then writes that
+    literal **to the case** — so it simultaneously collapses whatever it feeds
+    and wipes the case property it names. Nothing fails at build, validate, or
+    submit time; every symptom is post-hoc and silent. Cheap; runs on the
+    already-fetched blueprint. Same bounded-loop shape as 4a–4g.
+
+    1. From the `get_app` / `get_form` responses already fetched in Step 4a,
+       enumerate every field where **all three** hold:
+       - `kind == "hidden"`, AND
+       - `caseWrite` is set (any case type / property), AND
+       - its value comes from a literal `default_value` — i.e. there is no
+         `calculate` referencing a real answered field on this form. A
+         `default_value` of `''` (or any constant) with no such `calculate`
+         is the defect shape.
+
+       Collect them as
+       `fake_preloads[] = {field_id, case_type, property, feeds_entity_id,
+       guards_relevant[]}`.
+
+    2. **HALT if any of them feeds a `connect.deliver_unit` `entity_id` or
+       `entity_name`** — directly as a part, or transitively via a field
+       whose `calculate` references it. That is a **payment-correctness**
+       defect, not a data-quality one: the key evaluates to the same constant
+       for every entity, Connect dedups every delivery into ONE payable
+       entity, and every worker after the first goes unpaid while every
+       submission succeeds. Do not write the success summary; surface the
+       field, the marker it feeds, and the case property it would wipe.
+
+    3. **Also inspect every hidden field referenced by a `relevant`
+       expression**, whether or not it feeds a marker. This is how the
+       dead-advisory mode surfaces and it is invisible to an entity_id-only
+       scan: an advisory gated on `x != ''` where `x` is always `''` can never
+       fire, so the guardrail the PDD promised is inert while reading as
+       present in the blueprint, the Work Order and the training materials.
+       Treat a `relevant` guarding on a fake preload as a violation and fix it
+       in the same pass.
+
+    4. **Repair — add a new visible field, never convert in place.** `hidden`
+       is a **TERMINAL kind in Nova**: `edit_field` categorically refuses
+       hidden→visible, and `confirmConversion: true` does NOT unlock it (that
+       flag only covers kind conversions that set saved case values aside).
+       So the repair is: add a NEW visible field that captures the value the
+       form actually needs (a select over the same option source the create
+       form used, per Step 4f), repoint the `entity_id` / `entity_name` parts
+       and any `relevant` at the new field, and **neutralise** the old one —
+       drop its `caseWrite` so it stops overwriting the case property, or
+       `remove_field` it outright if nothing else references it.
+
+       ```
+       /nova:edit <app_id> "Field <id> in <module>/<form> is hidden with a
+       caseWrite to <case_type>/<property> and a literal default_value, so it
+       can never hold the case value and overwrites that property with the
+       literal. Add a new VISIBLE field capturing <value> (select over
+       <option source>), repoint <entity_id|entity_name|relevant> at it, and
+       remove the caseWrite from <id>. Do not attempt to convert <id> to
+       visible — hidden is terminal. After the edit, get_form and verify."
+       ```
+
+    5. Re-fetch and re-assert. **Bounded loop, max 3 iterations.** Anything
+       still on `fake_preloads` after the third iteration goes in the build
+       memo and the Step 7 summary by field id, case property, and what it
+       feeds — and if it feeds a marker, the step halts per step 2 rather
+       than recording.
+
+    (Apps with no hidden `caseWrite` fields skip cleanly at step 1.)
+
 5. **(Optional) Inspect the built app** via `/nova:show <app_id>` to
    cross-check structure against the PDD before writing the summary.
 
@@ -922,6 +1077,10 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
    - Does every screen hold a set the worker can hold in view, with no group
      over the ceiling and no `repeat` nested in a field-list (Step 4g), and is
      each surviving `warn` justified in the build memo?
+   - Does every node feeding `entity_id` / `entity_name` actually vary per
+     worker and per entity — no hidden `caseWrite` fake preload (Step 4h), no
+     bare `text` separator between two parts (which compiles to subtraction),
+     and no dependency on a followup form reading its own case?
    - If any consent is sought from the people whose data or images are
      captured — spoken or field-gated — does that script carry all six
      `consent-script-floor` elements, `confidential` and where-the-data-goes
@@ -1067,7 +1226,7 @@ form, Stage 2 = atomic household-visit form).
 - **Google Drive MCP:** `drive_read_file`, `drive_create_file`
 - **Nova plugin slash commands:** `/nova:autobuild`, `/nova:show`,
   `/nova:list`, `/nova:edit`
-- **Nova MCP tools called directly at level 0** (Steps 4a–4f): `get_app`,
+- **Nova MCP tools called directly at level 0** (Steps 4a–4h): `get_app`,
   `get_module`, `get_form`, `search_blueprint` (semantic id → uuids in one
   call), `add_case_list_columns`, `edit_field`, `configure_connect`,
   `update_form`, `get_lookup_tables`, `set_field_options_source`. Nova is
