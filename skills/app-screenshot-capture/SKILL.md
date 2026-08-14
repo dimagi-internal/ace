@@ -223,12 +223,15 @@ Inputs the caller assembles:
   blueprint prints `[uuid …]` on every module, form, and field — see
   `playbook/integrations/nova-integration.md § The 2026-07-31
   uuid-addressing migration`), mapped onto `forms[].fields[]` as
-  `{id, kind, label, options, children}`. Optional, but supplying it
-  is what makes the probe **screen-shape aware**: it turns on the
-  `label`-screen carve-out (#858) and the
-  `group-field-list-per-question-walk` check (#862). Omit it and both
-  degrade to the old field-blind behaviour — which false-positives on
-  any label-heavy Learn app.
+  `{id, kind, label, options, children, relevant}` — include each
+  field's `relevant` when Nova reports one; its PRESENCE on trailing
+  labels is what arms `score-gated-quiz-over-advance` (ace#1118).
+  Optional, but supplying fields is what makes the probe
+  **screen-shape aware**: it turns on the `label`-screen carve-out
+  (#858), the `group-field-list-per-question-walk` check (#862), the
+  leading-label check (#1045), and the score-gated over-advance check
+  (#1118). Omit it and all degrade to the old field-blind behaviour —
+  which false-positives on any label-heavy Learn app.
 - Live Connect opp — `connect_get_opportunity({org_slug,
   opportunity_id})` from `run_state.yaml.phases.connect-setup.products`
 - (optional) OPP_NAME the recipe was authored against — read from the
@@ -249,6 +252,7 @@ remediation):
 | `tile-name-collision` | Clean up prior-run invites OR use Resume-branch (exact-match claim). |
 | `answer-tap-before-leading-label-advance` | Recipe taps an answer with FEWER bare form-advance steps behind it than the walked form's **leading `kind: label` screens** require. Each label node renders as its own screen with nothing to answer, so the answer selector isn't on screen yet and the tap fails `selector-not-found` — the Learn leg dies, `learn_progress` never reaches 100%, Deliver stays locked. Emit one bare `form-advance` per leading label between the menu-walk entry step (`learn-tap-module` / `deliver-form-walk`) and the first answer tap; re-author via `/ace:step app-test-cases`. This is the **inverse** of the `form-advance-without-answer-tap` carve-out below — that one bounds the count from ABOVE, this one from BELOW — and it is the static enforcement of the previously prose-only #710/#684 rule (ace#1045). Field-gated: inert without `fields`. |
 | `form-advance-without-answer-tap` | Recipe chains consecutive form-advance steps with no answer step between them — required-input questions will stall on `warning_root`. Re-author via `/ace:step app-test-cases`: for each required field, read its label/options via Nova `get_form` and emit a `tapOn:text:"<literal>"` (or `inputText` / photo-capture sequence) BEFORE the form-advance. **Label-aware when `fields` is supplied:** `label` screens have nothing to answer and can only be crossed by nav-next, so the threshold is (longest run of consecutive `label` screens) + 2. Without `fields` it stays at 2 and false-positives on label-heavy apps (#858). |
+| `score-gated-quiz-over-advance` | Recipe chains a bare `form-advance` between the last required answer and `form-submit` on a **score-gated quiz** (trailing `relevant`-gated result labels, #569). `form-submit.yaml` performs the answer→result advance ITSELF, so the extra advance leaves it tapping `nav_btn_next` on the FINISH-only result screen. Remove the explicit advance (ungated trailing label screens each license one); re-author via `/ace:step app-test-cases` (ace#1118). Field-gated: inert without `fields`, and needs `relevant` on the trailing labels. |
 | `group-field-list-per-question-walk` | Recipe advances the form BETWEEN two children of the same Nova `group`. A group compiles to a CommCare **field-list** — all children render on ONE scrollable screen — so the advance fires with required siblings still unanswered (`warning_root`) and reaches for options that may be off-screen. Re-author via `/ace:step app-test-cases` as a single-screen walk: answer every required child on the one screen, then exactly ONE trailing form-advance (#862). |
 | `brief-label-drift` | Recipe has a `tapOn:text:"X"` matcher where X matches a PDD-brief naming pattern (`^[LFM]\d+ — `, `^Stage \d+ — `). Nova rewrites these during autobuild and the matcher won't resolve live. Re-author via `/ace:step app-test-cases`: read the live label from Nova `get_form`/`get_module` and use it verbatim. |
 | `deliver-smoke-rewalks-learn` | Re-author the Deliver smoke as resume-only (`connect-resume-opp` → `deliver-launch.yaml`) via `/ace:step app-test-cases`. The Learn leg already completes Learn. |

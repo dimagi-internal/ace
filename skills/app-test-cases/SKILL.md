@@ -842,10 +842,14 @@ expected vs found. Field-gated: it needs Step 2.6's caller to supply
 inverse of the #858 permissive carve-out, which bounds the same advance
 count from above; the two cannot conflict.
 
-Still prose-only, and worth authoring carefully: the score-gated finalize
-(#569) — a trailing `relevant` label pair means `form-submit.yaml` performs
-the answer→result advance itself, so do NOT chain an extra `form-advance`
-before it.
+**The score-gated finalize (#569) is now statically enforced too**
+(dimagi-internal/ace#1118): a trailing `relevant`-gated label pair means
+`form-submit.yaml` performs the answer→result advance itself, so do NOT
+chain an extra `form-advance` between the last required answer and
+`form-submit` — the probe fails `score-gated-quiz-over-advance` when one is
+present beyond what the form's UNGATED trailing label screens license.
+Field-gated like its siblings, and it needs each trailing label's
+`relevant` flag in the supplied `fields` (Step 2.6's caller passes it).
 
 For each form-walk segment of a recipe:
 
