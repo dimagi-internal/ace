@@ -46,6 +46,17 @@ export function spoolVideo(
     const suffix = artifact.attempt > 1 ? `-attempt${artifact.attempt}` : '';
     const dest = path.join(dir, `${stamp}-${artifact.recipeId}${suffix}.mp4`);
     fs.copyFileSync(artifact.path, dest);
+    // Carry the provenance sidecar too (dimagi-internal/ace#1084). The spool
+    // is what `videos/_device/` is uploaded FROM, so a video spooled without
+    // its `<video>.meta.json` arrives unstamped even though the original next
+    // to it in the run's screenshotDir is stamped. Best-effort and separately
+    // guarded: a missing or unreadable sidecar must never cost us the video.
+    try {
+      const srcMeta = `${artifact.path}.meta.json`;
+      if (fs.existsSync(srcMeta)) fs.copyFileSync(srcMeta, `${dest}.meta.json`);
+    } catch (me) {
+      logInfo(`spoolVideo: failed to copy provenance sidecar for ${artifact.path}: ${String(me)}`);
+    }
     return dest;
   } catch (e) {
     logInfo(`spoolVideo: failed for ${artifact.path}: ${String(e)}`);
@@ -63,6 +74,23 @@ export function listSpooled(opts: SpoolOpts = {}): string[] {
       .map((f) => path.join(dir, f));
   } catch {
     return [];
+  }
+}
+
+/**
+ * How many entries the wipe would actually remove.
+ *
+ * `listSpooled` filters to `.mp4` because callers want RECORDINGS; `clearSpool`
+ * removes the directory recursively. Reporting `cleared` from the former
+ * under-reports the moment anything else lands in the spool — which is now
+ * always, since `spoolVideo` writes a `.meta.json` sidecar beside each video
+ * (dimagi-internal/ace#1084).
+ */
+export function countSpooledEntries(opts: SpoolOpts = {}): number {
+  try {
+    return fs.readdirSync(spoolDir(opts)).length;
+  } catch {
+    return 0;
   }
 }
 

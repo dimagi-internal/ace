@@ -863,6 +863,14 @@ upload both.
 While uploading, build a set of the `recipeId` + `attempt` pairs you
 uploaded. You need it for 5.7b.
 
+**The spool is SESSION-scoped (ppid), not run-scoped (ace#1084).** If two
+capture skills run in one Claude Code session, whichever sweeps first files
+the other's heal/registration clips under its OWN Drive prefix — the clips are
+not lost, but they are filed against the wrong leg. Sweep as late as you can,
+and if both legs ran in one session, check the `<recipeId>` in each spool
+filename against the leg you are uploading for rather than assuming everything
+in the spool is yours.
+
 **5.7b — The REMAINING spool entries only.** Call
 `mobile_list_session_videos` (no arguments — the atom resolves this
 session's spool itself; never hand-resolve `~/.ace/mobile-videos/<ppid>/`,
@@ -878,6 +886,12 @@ returned path:
 - **SKIP it if that `recipeId` + `attempt` pair is already in the set you
   built in 5.7a.** It is the same recording; uploading it again doubles
   the run's video footprint in Drive for zero information.
+- **Known limit of that key (ace#1084):** it is `recipeId` + `attempt`, not
+  file identity. If one leg is re-run **in the same session** — manual
+  debugging, typically — the spool holds two distinct-epoch files for that
+  pair and BOTH get skipped, dropping one forensic clip. When you have
+  deliberately re-run a leg, compare the `<epoch-ms>` prefixes and upload the
+  one 5.7a did not already cover.
 - Otherwise upload it to
   `6-qa-and-training/videos/_device/<filename>` (same mimeType; no
   `shareAnyoneWithLink` needed — these are forensic, not presentational).

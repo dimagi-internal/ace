@@ -57,9 +57,23 @@ export type SpawnFn = (cmd: string, args: string[], env: NodeJS.ProcessEnv) => S
 export interface ErrorEmittingChild extends SpawnedRecorder {
   on(event: 'error', listener: (err: Error) => void): unknown;
 }
+/**
+ * The slice of `child_process.spawn` this module uses.
+ *
+ * Kept STRUCTURALLY ASSIGNABLE from the real `spawn` so the default argument
+ * below needs no cast at all. It previously read
+ * `nodeSpawn as unknown as NodeSpawnLike` — a double cast, which erases the
+ * compile-time check that Node's signature still matches, on a branch whose
+ * whole subject (#1083) was not erasing its own type checks
+ * (dimagi-internal/ace#1084).
+ *
+ * The return type is widened to what `spawn` actually gives back; the
+ * `'error'` listener this module installs is the only member it needs, and
+ * `ChildProcess` satisfies it.
+ */
 export type NodeSpawnLike = (
   cmd: string,
-  args: string[],
+  args: readonly string[],
   opts: { stdio: 'ignore'; detached: boolean; env: NodeJS.ProcessEnv },
 ) => ErrorEmittingChild;
 
@@ -84,7 +98,7 @@ export type NodeSpawnLike = (
  */
 export function createDefaultSpawnFn(
   label: string,
-  spawnImpl: NodeSpawnLike = nodeSpawn as unknown as NodeSpawnLike,
+  spawnImpl: NodeSpawnLike = nodeSpawn as NodeSpawnLike,
 ): SpawnFn {
   return (cmd, argv, env) => {
     const child = spawnImpl(cmd, argv, { stdio: 'ignore', detached: false, env });
