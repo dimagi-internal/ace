@@ -747,40 +747,6 @@ describe('CloudBackend.restartRunner', () => {
   });
 });
 
-describe('CloudBackend.patchLaunchScript', () => {
-  it('POSTs script body + restart_runner=true by default', async () => {
-    const fetchImpl = vi.fn().mockResolvedValue(
-      jsonResponse(200, envelope({
-        sha256: 'abc123', bytes_written: 9876,
-        restarted_runner: true, restart_log: null,
-      })),
-    );
-    const cb = new CloudBackend({ baseUrl: BASE, token: TOKEN, fetchImpl });
-    const r = await cb.patchLaunchScript({ scriptBody: '#!/bin/bash\necho hi\n' });
-    expect(r.sha256).toBe('abc123');
-    expect(r.restarted_runner).toBe(true);
-    const [url, init] = fetchImpl.mock.calls[0];
-    expect(url).toBe(`${BASE}/api/mobile/admin/patch-launch-script`);
-    expect(JSON.parse(init.body as string)).toEqual({
-      script_body: '#!/bin/bash\necho hi\n',
-      restart_runner: true,
-    });
-  });
-
-  it('forwards restart_runner=false when set', async () => {
-    const fetchImpl = vi.fn().mockResolvedValue(
-      jsonResponse(200, envelope({
-        sha256: 'def', bytes_written: 10,
-        restarted_runner: false, restart_log: null,
-      })),
-    );
-    const cb = new CloudBackend({ baseUrl: BASE, token: TOKEN, fetchImpl });
-    await cb.patchLaunchScript({ scriptBody: '#!/bin/bash\n', restartRunner: false });
-    const [, init] = fetchImpl.mock.calls[0];
-    expect(JSON.parse(init.body as string).restart_runner).toBe(false);
-  });
-});
-
 describe('CloudBackend.runRecipe auto-diagnose on failure', () => {
   it('attaches a Diagnostics snapshot on non-zero exit so callers see in-VM state', async () => {
     const [submit, poll] = asyncRecipeMocks({

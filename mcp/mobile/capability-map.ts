@@ -21,8 +21,7 @@ export type Capability =
   | 'list_session_videos'
   | 'clear_session_videos'
   | 'diagnose'
-  | 'restart_runner'
-  | 'patch_launch_script';
+  | 'restart_runner';
 
 export interface CapabilityRoute {
   backend: Backend;
@@ -48,7 +47,6 @@ export const CAPABILITY_MAP: Record<Capability, CapabilityRoute> = {
   clear_session_videos: { backend: 'AVD', description: "Host-side: clear THIS session's video spool (scoped to the MCP's own ppid, so it cannot touch a concurrent session's spool). Returns the number of files removed." },
   diagnose: { backend: 'COMPOSITE', description: 'Dual-mode read-only probe (ace#961). Cloud: runner-VM diagnostics (SSM state, runner-ready marker, adb devices). Local: the adb server port this session actually allocated (raw `adb` defaults to 5037 and sees nothing), plus emulator ports, visible devices on THAT port, and the running AVD. Discriminate on the `backend` field.' },
   restart_runner: { backend: 'CLOUD', description: 'Cloud-only: restart the in-VM runner process. Throws CLOUD_ONLY_OPERATION on local AVD.' },
-  patch_launch_script: { backend: 'CLOUD', description: 'Cloud-only: overwrite /usr/local/bin/ace-emulator-launch on the runner VM (server enforces a 64KB cap). Throws CLOUD_ONLY_OPERATION on local AVD.' },
 };
 
 // Note: `mobile_generate_recipes_from_app_summary` is intentionally NOT

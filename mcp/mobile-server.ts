@@ -441,11 +441,23 @@ server.tool(
 // ── Diagnostics + cloud-only admin atoms ─────────────────────────────
 //
 // `mobile_diagnose` works on BOTH backends (ace#961) — discriminate the
-// result on its `backend` field. `mobile_restart_runner` and
-// `mobile_patch_launch_script` target the ace-web cloud backend
-// specifically and throw `MobileError(CLOUD_ONLY_OPERATION)` against the
-// local AVD backend — skills that need them should gate on the cloud
-// toggle, OR catch the error and skip.
+// result on its `backend` field. `mobile_restart_runner` targets the
+// ace-web cloud backend specifically and throws
+// `MobileError(CLOUD_ONLY_OPERATION)` against the local AVD backend —
+// skills that need it should gate on the cloud toggle, OR catch the
+// error and skip.
+//
+// `mobile_patch_launch_script` was REMOVED 2026-08-14 (ace#1113). It took a
+// full bash body and replaced /usr/local/bin/ace-emulator-launch on the
+// shared cloud runner, then restarted the service — arbitrary code execution
+// on shared infra from one model-authored argument, in a session that
+// routinely ingests untrusted inbound content. It had no production caller
+// (only tests + a "diagnostic/debug" playbook mention), so deleting it beat
+// gating it: deletion is the only mitigation a prompt injection cannot
+// defeat. The launch script belongs in version control, shipped by the
+// normal deploy; if in-session iteration is ever needed again, add a TYPED
+// config atom (avdName / coldBoot / timeouts rendered server-side from a
+// template) rather than a free-form script body.
 
 server.tool(
   'mobile_diagnose',
@@ -475,35 +487,6 @@ server.tool(
         type: 'text',
         text: JSON.stringify(
           await client.restartRunner({ waitForReady }),
-          null,
-          2,
-        ),
-      },
-    ],
-  }),
-);
-
-server.tool(
-  'mobile_patch_launch_script',
-  {
-    scriptBody: z
-      .string()
-      .describe(
-        "Full new body of /usr/local/bin/ace-emulator-launch. Must start with '#!/bin/bash'. Server enforces a 64KB cap.",
-      ),
-    restartRunner: z
-      .boolean()
-      .optional()
-      .describe(
-        'After writing the new script, restart ace-mobile-runner.service so the next cold-boot exercises it (default true).',
-      ),
-  },
-  async ({ scriptBody, restartRunner }) => ({
-    content: [
-      {
-        type: 'text',
-        text: JSON.stringify(
-          await client.patchLaunchScript({ scriptBody, restartRunner }),
           null,
           2,
         ),

@@ -8,7 +8,6 @@ import { AvdBackend } from './backends/avd.js';
 import {
   CloudBackend,
   type CloudDiagnostics,
-  type CloudPatchLaunchScriptResult,
 } from './backends/cloud.js';
 import { MaestroBackend } from './backends/maestro.js';
 import {
@@ -1513,10 +1512,10 @@ export class MobileClient {
   // port + serial + device visibility on THAT port). Callers discriminate
   // on the `backend` field.
   //
-  // `restartRunner` / `patchLaunchScript` remain cloud-only — there is no
-  // local analogue of the runner unit or the launch script. When the active
-  // backend is local they throw a clear typed error rather than silently
-  // no-op'ing, so a skill sees a signal instead of an empty result.
+  // `restartRunner` remains cloud-only — there is no local analogue of the
+  // runner unit. When the active backend is local it throws a clear typed
+  // error rather than silently no-op'ing, so a skill sees a signal instead of
+  // an empty result. (`patchLaunchScript` was removed in ace#1113.)
 
   private requireCloudOnly(operation: string): CloudBackend {
     if (!this.useCloud) {
@@ -1558,12 +1557,6 @@ export class MobileClient {
   }
 
   /** Hot-patch the in-VM ace-emulator-launch script. Cloud only. */
-  patchLaunchScript(opts: {
-    scriptBody: string;
-    restartRunner?: boolean;
-  }): Promise<CloudPatchLaunchScriptResult> {
-    return this.requireCloudOnly('mobile_patch_launch_script').patchLaunchScript(opts);
-  }
 
   /**
    * When `avdName` is provided, the recipe runs against that emulator's

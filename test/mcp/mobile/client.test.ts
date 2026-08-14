@@ -1072,11 +1072,10 @@ describe('MobileClient cloud-only diagnostic atoms', () => {
     return {
       diagnose: vi.fn().mockResolvedValue({ ssm_ok: true, adb_devices: [] }),
       restartRunner: vi.fn().mockResolvedValue({ ssm_ok: true }),
-      patchLaunchScript: vi.fn().mockResolvedValue({ sha256: 'x' }),
     } as any;
   }
 
-  it('routes diagnose / restartRunner / patchLaunchScript to the cloud backend when cloud is active', async () => {
+  it('routes diagnose / restartRunner to the cloud backend when cloud is active', async () => {
     setSessionBackend('cloud');
     const cloud = fakeCloud();
     const client = new MobileClient({ avd: {} as any, maestro: {} as any, cloud });
@@ -1086,12 +1085,6 @@ describe('MobileClient cloud-only diagnostic atoms', () => {
 
     await client.restartRunner({ waitForReady: false });
     expect(cloud.restartRunner).toHaveBeenCalledWith({ waitForReady: false });
-
-    await client.patchLaunchScript({ scriptBody: '#!/bin/bash\n', restartRunner: false });
-    expect(cloud.patchLaunchScript).toHaveBeenCalledWith({
-      scriptBody: '#!/bin/bash\n',
-      restartRunner: false,
-    });
   });
 
   it('throws CLOUD_ONLY_OPERATION for the admin atoms when active backend is local', async () => {
@@ -1103,9 +1096,6 @@ describe('MobileClient cloud-only diagnostic atoms', () => {
     // matching the pattern used by listAvds (see useCloud test above).
     // `diagnose` is deliberately NOT in this list any more — see below.
     expect(() => client.restartRunner()).toThrow(/only available on the cloud/);
-    expect(() => client.patchLaunchScript({ scriptBody: '#!/bin/bash\n' })).toThrow(
-      /only available on the cloud/,
-    );
   });
 
   it('routes diagnose to the LOCAL backend when cloud is inactive (#961)', async () => {
