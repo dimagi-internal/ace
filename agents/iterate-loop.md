@@ -305,17 +305,37 @@ effect. Treat a missing value as "never validated", not as "valid".
      by `<run-dir>/session-id`).
    - **When the process exits, read `<run-dir>/run-exit.json` FIRST.** It is the
      only artifact that says why it stopped. If `counts_as_iteration` is
-     `false`, the run says nothing about ACE's quality — **do not append an
-     iteration and do not run Autofix.** Re-dispatch instead, and record the
-     reason in the campaign notes:
-     - `session_limit` — the account, not ACE. Wait for the reset named in the
-       notice; consider that three concurrent sessions on one macOS account
-       exhausted it simultaneously on 2026-08-13.
+     `false`, the run is **`aborted-infra`** (ace#1276 item 4): it produced no
+     verdict, so **do not append it to `iterations[]` and do not run Autofix** —
+     recording it as `dirty` would move the headline pass rate with an
+     operator-side fact rather than ACE's behaviour, which is exactly the
+     metric failure this loop exists to avoid. Record it in campaign notes so
+     the work isn't invisible, then re-dispatch:
+     - `session_limit` — the account, not ACE. The **local** runner shares the
+       operator's session-limit pool; three concurrent sessions on one macOS
+       account exhausted it simultaneously on 2026-08-13.
+     - `external_kill` — interrupted from outside. This was the real cause of
+       the 41-minute `Execution error` that made this whole section necessary;
+       both Nova apps were built and both evals banked (9.6 / 9.2) when it was
+       stopped. Nothing failed.
      - `mcp_crash` — a subprocess died or is bound to pruned plugin-cache code.
        Needs a full Claude quit-and-reopen (`/reload-plugins` does not respawn
        MCP subprocesses); see `lib/plugin-cache-freshness.ts`.
      - `killed` / `timeout` — host or operator, not the run.
      A `phase_halt` **does** count: that is a real verdict, judge it at step 5.
+
+   > **Prefer `--runner web`; `local` is the fallback.** Web is the documented
+   > default and *the observable runner* — ace-web forks, shapes and drives the
+   > run server-side and exposes a transcript at
+   > `GET /sessions/<slug>/messages`. It also **preflights**: the bednet
+   > campaign's web dispatch was refused in ~2s with `409 nova_auth_invalid`
+   > naming the exact credential and remediation, where the local path launched
+   > into the same class of failure with no check at all. Two traps, both live
+   > on 2026-08-14 (ace#1276 items 2–3): a resumed campaign reads `runner` out
+   > of `iterate-state.yaml`, so an inherited `runner: local` silently overrides
+   > the documented default — check it at `--new-golden`. And the two runners
+   > are **not interchangeable at a given moment**: local Nova auth was valid
+   > while web's was not, so preflight the one you actually intend to use.
 5. **Judge** (client-side interpretation of the standard verdicts):
    - **clean** iff `classifyPhaseWriteBack(run_state, 'commcare-setup') == 'ok'`
      AND `classifyPhaseWriteBack(run_state, 'qa-and-training') == 'ok'` AND the

@@ -56,20 +56,60 @@ describe('classifyRunExit', () => {
     expect(e.numTurns).toBe(180);
   });
 
-  // THE REGRESSION ANCHOR. This is the 2026-08-13 bednet exit, verbatim: 41
-  // minutes of work, then a bare "Execution error" and nothing else. Before
-  // supervision the loop saw exactly this and could say nothing about it.
-  it('the bednet exit is classified instead of being a mystery', () => {
+  // THE REGRESSION ANCHOR — bednet-check-2-visit/20260814-0357 attempt 1,
+  // verbatim. 41 minutes of healthy work (both Nova apps built, both evals
+  // banked at 9.6 / 9.2), then stdout carrying the 15-byte string
+  // "Execution error" and nothing else.
+  //
+  // ace#1276 recovered the real cause by hand afterwards, by hunting
+  // ~/.claude/projects/*.jsonl by mtime and reading the last event: an
+  // EXTERNAL INTERRUPT right after an `Agent` dispatch. Not an ACE failure at
+  // all. The supervisor gets there without the archaeology, because it
+  // pre-assigned the session id and kept the stream.
+  it('the bednet 41-minute death is named, not a mystery', () => {
+    const e = classifyRunExit({
+      exitCode: 1,
+      stderr: 'Execution error',
+      events: [
+        initEvent(),
+        { type: 'user', message: { content: '[Request interrupted by user for tool use]' } },
+      ],
+    });
+    expect(e.reason).toBe('external_kill');
+    // And critically: it did NOT fail, so it must not move the pass rate.
+    expect(e.countsAsIteration).toBe(false);
+    expect(e.sessionId).toBe('20260814-0357-aaaa-bbbb-cccccccccccc');
+  });
+
+  it('without the interrupt marker the same exit stays honestly unknown', () => {
+    // The classifier must not INVENT a cause. An opaque death with no
+    // signature is `unknown` — but even then it recovers the two facts the
+    // old redirect discarded: which transcript to read, and that it ended
+    // early. That is the difference between "no answer" and "no evidence".
     const e = classifyRunExit({
       exitCode: 1,
       stderr: 'Execution error',
       events: [initEvent()],
     });
     expect(e.reason).toBe('unknown');
-    // Even at `unknown` the supervisor now recovers the two facts the old
-    // redirect discarded: which transcript to read, and that it ended early.
     expect(e.sessionId).toBe('20260814-0357-aaaa-bbbb-cccccccccccc');
     expect(e.detail).toMatch(/stream ended early/);
+  });
+
+  it('an interrupt far back in a long stream is NOT the cause of this exit', () => {
+    // A run can be interrupted, resumed, and then die of something else. Only
+    // the tail is scanned, so a stale marker cannot mask the real ending.
+    const filler = Array.from({ length: 30 }, (_, i) => ({ type: 'assistant', i }));
+    const e = classifyRunExit({
+      exitCode: 0,
+      events: [
+        initEvent(),
+        { type: 'user', message: { content: '[Request interrupted by user for tool use]' } },
+        ...filler,
+        resultEvent(),
+      ],
+    });
+    expect(e.reason).toBe('ok');
   });
 
   it('a session limit does NOT count as an iteration', () => {

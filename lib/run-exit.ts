@@ -61,6 +61,16 @@ export type RunExitReason =
   | 'execution_error'
   /** Killed by a signal (operator kill, OOM, host sleep). */
   | 'killed'
+  /**
+   * Interrupted from outside — the transcript's last event is Claude Code's
+   * own `[Request interrupted by user for tool use]`. This was attempt 1 of
+   * `bednet-check-2-visit/20260814-0357`: 41 minutes of healthy work, then an
+   * external interrupt right after an `Agent` dispatch, and stdout carrying
+   * the 15-byte string `Execution error`. Distinct from `killed` (a signal
+   * reaches the process) — here the CLI is asked to stop and exits tidily, so
+   * without this signature it reads as a generic failure.
+   */
+  | 'external_kill'
   /** The supervisor's own wall-clock cap fired. */
   | 'timeout'
   /** Exited without a `result` event and without a recognised signature. */
@@ -129,6 +139,16 @@ const MCP_CRASH_PATTERNS: RegExp[] = [
   /\bMCP error -32000\b/,
 ];
 
+/**
+ * Claude Code's own interrupt marker. Emitted into the stream when the request
+ * is stopped from outside — a `/stop`, a killed terminal, an operator ^C on a
+ * process they did not realise was a run. Anchored on the stable prefix; the
+ * suffix varies ("for tool use", and plain).
+ */
+const EXTERNAL_KILL_PATTERNS: RegExp[] = [
+  /\[Request interrupted by user/i,
+];
+
 /** A phase stopped on purpose. This is a verdict, not a crash. */
 const PHASE_HALT_PATTERNS: RegExp[] = [
   /\bstatus:\s*blocked\b/i,
@@ -160,9 +180,11 @@ export function findSessionId(events: unknown[]): string | null {
 
 /**
  * Everything the classifier reads for signatures: the result event's own
- * error text plus stderr. Deliberately NOT the whole transcript — a run that
- * merely *discusses* a session limit (this review, for instance) must not be
- * classified as having hit one.
+ * error text, stderr, and the harness's own `[Request interrupted…]` marker.
+ * Deliberately NOT the whole transcript — a run that merely *discusses* a
+ * session limit (this review, for instance) must not be classified as having
+ * hit one. The interrupt marker is exempt because it is emitted BY the
+ * harness, never by an assistant turn, so it cannot be produced by chatter.
  */
 function signatureText(result: Record<string, unknown> | null, stderr: string): string {
   const parts: string[] = [stderr];
@@ -177,6 +199,24 @@ function signatureText(result: Record<string, unknown> | null, stderr: string): 
 
 function matchAny(text: string, patterns: RegExp[]): boolean {
   return patterns.some((p) => p.test(text));
+}
+
+/**
+ * The interrupt marker does not reach stderr or the result payload — it is
+ * emitted into the stream as an ordinary event, and on an external kill there
+ * may be no result event at all. So it gets its own narrow scan over the last
+ * few events only.
+ *
+ * Narrow on purpose: this is the ONE signature read from stream bodies, it is
+ * harness-emitted (an assistant turn cannot produce it), and it is bounded to
+ * the tail. Widening this to a general body search is how the classifier would
+ * start diagnosing runs from their own chatter.
+ */
+const INTERRUPT_SCAN_EVENTS = 10;
+
+function streamWasInterrupted(events: unknown[]): boolean {
+  const tail = events.slice(-INTERRUPT_SCAN_EVENTS);
+  return tail.some((e) => matchAny(JSON.stringify(e ?? ''), EXTERNAL_KILL_PATTERNS));
 }
 
 function num(v: unknown): number | null {
@@ -236,6 +276,14 @@ export function classifyRunExit(input: RunExitInput): RunExit {
 
   if (input.signal) {
     return decide('killed', `terminated by ${input.signal}`, false);
+  }
+
+  if (matchAny(text, EXTERNAL_KILL_PATTERNS) || streamWasInterrupted(events)) {
+    return decide(
+      'external_kill',
+      'interrupted from outside the run — no verdict was produced',
+      false,
+    );
   }
 
   if (matchAny(text, PHASE_HALT_PATTERNS)) {
