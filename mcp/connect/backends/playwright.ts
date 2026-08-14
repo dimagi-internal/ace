@@ -6,6 +6,7 @@ import { assertFundsAtLeastOneUser } from '../opportunity-capacity.js';
 import type { PlaywrightSession } from '../auth/playwright-session.js';
 import { parseOrgMemberTable, type OrgMemberRow } from '../../../lib/connect-member-table.js';
 import { parseWorkersTable, findInviteByPhone } from '../../../lib/connect-flw-invites.js';
+import { toConnectQuestionPath } from '../../../lib/connect-question-path.js';
 import {
   decodeHtmlEntities,
   extractFormCsrfToken,
@@ -598,6 +599,16 @@ export class PlaywrightBackend implements ConnectClient {
     // existing row already carries the same (question_path, question_value,
     // deliver_unit) triple, so re-running Phase 4 on the same opportunity
     // does not accumulate duplicates.
+    //
+    // Every `question_path` — incoming AND replayed — goes through
+    // `toConnectQuestionPath`, because Connect reads this field as a JSONPath
+    // into the whole HQ form-JSON doc and an XForm XPath makes its parse raise
+    // an uncaught JsonPathParserError, i.e. HTTP 500 on the HQ->Connect
+    // forward and a payable visit that never reaches Connect
+    // (dimagi-internal/ace#1301 — see lib/connect-question-path.ts for the
+    // motech-log evidence and the reproducer). Normalising the REPLAYED rows
+    // too is deliberate: it repairs an opportunity a previous run poisoned,
+    // rather than faithfully re-posting the value that breaks it.
     if (flags.form_field_rules?.length) {
       const rowIndices = new Set<number>();
       for (const k of Object.keys(current)) {
@@ -610,7 +621,7 @@ export class PlaywrightBackend implements ConnectClient {
       for (const i of [...rowIndices].sort((a, b) => a - b)) {
         const row: JsonRow = {
           name: current[`form_json-${i}-name`] ?? '',
-          question_path: current[`form_json-${i}-question_path`] ?? '',
+          question_path: toConnectQuestionPath(current[`form_json-${i}-question_path`] ?? ''),
           question_value: current[`form_json-${i}-question_value`] ?? '',
           deliver_unit: current[`form_json-${i}-deliver_unit`] ?? '',
           id: current[`form_json-${i}-id`] ?? '',
@@ -625,7 +636,7 @@ export class PlaywrightBackend implements ConnectClient {
       for (const r of flags.form_field_rules) {
         const row: JsonRow = {
           name: r.name,
-          question_path: r.question_path,
+          question_path: toConnectQuestionPath(r.question_path),
           question_value: r.question_value,
           deliver_unit: String(r.deliver_unit_id),
           id: r.id != null ? String(r.id) : '',
