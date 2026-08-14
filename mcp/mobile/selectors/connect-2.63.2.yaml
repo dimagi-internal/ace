@@ -599,6 +599,31 @@ selectors:
     value: "label TextView -> optional hint TextView -> EditText"
     purpose: "NOT a selector — the calibrated LAYOUT ORDER of a CommCare form question, recorded so recipe authors stop reaching for `below: <label>`. Live ui-dump, CommCare 2.63.2, field-list with two text inputs (ace#1299): TextView 'Facilitator's full name (as on the register)' [42,617][1038,691]; TextView 'First name and family name.' [42,691][1038,756] (the HINT); EditText '' focused=true [42,756][1038,892]. A question WITHOUT a hint has the EditText directly below its label, which is why the idiom appears to work on some screens and silently fails on others — the failure mode is per-question, not per-form."
 
+  form-choice-dialog-title:
+    type: id
+    value: "org.commcare.dalvik:id/dialog_title_text"
+    purpose: "Title of CommCare's generic CHOICE DIALOG — the component behind both the form-exit confirmation and every repeat juncture. Live-verified CommCare 2.63.2 / ACE_Pixel_API_34 2026-08-14 (dimagi-internal/ace#1007, #1290). Read it to decide WHICH dialog you are on: 'Exit Form?' vs 'Add a new <repeat label>?'. This is the anchor to branch on — the buttons' ids differ between the two, see below."
+
+  form-exit-dialog-button:
+    type: id
+    value: "org.commcare.dalvik:id/choice_dialog_panel"
+    purpose: "Buttons on the FORM-EXIT confirmation ('Exit Form?'). Live-verified CommCare 2.63.2, 2026-08-14 (ace#1290): TWO buttons that SHARE this one id — 'STAY IN FORM' and 'EXIT WITHOUT SAVING' — with NO numeric suffix. Because the id is ambiguous, disambiguate by TEXT, and note the text is CommCare chrome (not app content) so it is stable across apps. This dialog is what a back-press lands on when form-submit did not finalize, which is where the Deliver smoke died on spark-facilitator/20260813-2126."
+
+  form-repeat-juncture-button:
+    type: id
+    value: "org.commcare.dalvik:id/choice_dialog_panel_2"
+    purpose: "The ADD action on a repeat JUNCTURE prompt. Live-verified CommCare 2.63.2, 2026-08-14 (ace#1007): unlike the exit dialog, the juncture's buttons are INDEXED — choice_dialog_panel_1 'GO BACK', _2 'ADD A NEW <REPEAT LABEL>?', _3 'DO NOT ADD'. Prefer the INDEX over the text: _2's label interpolates the repeat's own name (it read 'ADD A NEW NULL?' on a probe form whose repeat had no label), so a text matcher is app-specific and brittle while the index is stable. Bounds on a 1080x2400 portrait: _1 [133,1137][374,1357], _2 [419,1137][660,1467], _3 [705,1137][947,1412]."
+
+  form-repeat-juncture-skip:
+    type: id
+    value: "org.commcare.dalvik:id/choice_dialog_panel_3"
+    purpose: "The 'DO NOT ADD' action on a repeat juncture — the way PAST a repeat without entering it, which is what a smoke walk usually wants. Live-verified CommCare 2.63.2, 2026-08-14 (ace#1007). Tapping it advances to the next question after the repeat; verified live by landing on the following select1."
+
+  form-repeat-juncture-back:
+    type: id
+    value: "org.commcare.dalvik:id/choice_dialog_panel_1"
+    purpose: "The 'GO BACK' action on a repeat juncture. Live-verified CommCare 2.63.2, 2026-08-14 (ace#1007). Returns to the previous question rather than entering the repeat."
+
   form-date-picker:
     type: class
     value: "android.widget.DatePicker"

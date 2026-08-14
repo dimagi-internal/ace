@@ -852,6 +852,36 @@ For every `tapOn:text` matcher in a recipe:
 syntactically-valid string — it cannot detect a brief-vs-live drift.
 Step 4 (below) adds a runtime smoke check that catches it.
 
+#### CommCare's CHOICE DIALOG — repeat junctures and the form-exit prompt (ace#1007, #1290)
+
+Two surfaces ACE had zero coverage for turn out to be **the same component**,
+live-verified on CommCare 2.63.2 / `ACE_Pixel_API_34` 2026-08-14. Branch on
+`${SELECTOR:form-choice-dialog-title}` to tell them apart — and note the
+buttons are addressed DIFFERENTLY on each, which is the trap:
+
+| Dialog | Title | Buttons |
+|---|---|---|
+| form exit | `Exit Form?` | **TWO buttons sharing ONE id** `choice_dialog_panel` — `STAY IN FORM`, `EXIT WITHOUT SAVING`. Disambiguate by TEXT (it is CommCare chrome, stable across apps). |
+| repeat juncture | `Add a new <repeat label>?` | **THREE INDEXED buttons** — `_1` GO BACK, `_2` ADD A NEW …, `_3` DO NOT ADD. Prefer the INDEX: `_2`'s label interpolates the repeat's own name, so a text matcher is app-specific and brittle. |
+
+**Repeat junctures (ace#1007).** A `kind: repeat` field brackets each
+repetition with an entry prompt and an "add another?" exit prompt. Until now
+neither had a selector, an atlas section, or a palette recipe, so
+`app-test-cases` could not author the roster leg at all and MARKED the region
+instead — and the Deliver leg then hard-failed there on-device. To walk PAST a
+repeat without entering it, tap `${SELECTOR:form-repeat-juncture-skip}`
+(`DO NOT ADD`); verified live to land on the question following the repeat. To
+enter one, tap `${SELECTOR:form-repeat-juncture-button}`.
+
+**The form-exit prompt (ace#1290).** A back-press from inside a form lands
+here, NOT on the previous screen. That is what killed the Deliver smoke on
+`spark-facilitator/20260813-2126`: `form-submit` did not finalize the
+registration form, the inter-leg back-walk pressed back twice, and the walk
+asserted `Start` while sitting on `Exit Form?`. Any guarded back-walk between
+Deliver legs MUST handle this dialog — see the two-leg re-entry snippet above
+(ace#1191) — and a `form-submit` that leaves the device here has NOT submitted,
+whatever its POST_SUBMIT screenshot shows.
+
 #### `kind: date` questions and the inline DatePicker — MANDATORY (ace#1081, #1300)
 
 The skill's answer-tap rule enumerates `single_select`, `image`, `text`,
