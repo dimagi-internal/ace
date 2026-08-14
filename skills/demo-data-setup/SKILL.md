@@ -204,6 +204,35 @@ front half (how the labs-only opp + its data come to exist) differs.
    (supersedes the earlier `docs/learnings/2026-06-13` picker note; the fix is a real
    run_id, minted if needed).
 
+4b. **Audit the generated set against the PDD's data-quality constraints
+    (ace#1346).** Between generation and the dashboard build, read back
+    `user_visits.json` and run `auditDataset` from
+    `lib/dataset-constraints.ts`. Build the spec from the PDD's
+    "Data-quality constraints" table plus the payment rule:
+
+    - every field the form declares as a COUNT → `integerFields` with its
+      stated bounds;
+    - currency → `wholeCurrencyFields`;
+    - each conditional block → `conditionalFields` naming the branch that
+      asks it;
+    - declared cross-field rules (participation ≤ attendance per sex;
+      sub-counts inside their totals) → `crossFieldRules`;
+    - premises the PDD states as facts ("1 CBF per community") →
+      `uniquePairs`.
+
+    **Put the per-class COUNTS in the summary, not a claim.** The labs
+    manifest is a **distribution language**: it draws every field
+    independently, integers are enforced only where the HQ form schema types
+    the question `Int`, and conditional blocks are populated regardless of
+    branch. So a legal-looking set can be arithmetically impossible, and
+    `spark-facilitator/20260813-2126` wrote *"0 constraint violations, all
+    hand-checked"* into `run_state.yaml` for a set with 251 fractional
+    people-counts, 242 fractional Kwacha amounts, 34 off-branch reasons, 22
+    did-not-happen meetings carrying full attendance blocks, and facilitators
+    roaming 190 distinct (facilitator, community) pairs against a stated 1
+    CBF per community. A measured zero and an asserted zero read the same in
+    `run_state.yaml`; only one of them is true.
+
 5. **Emit the handoff + write back.**
 
    Write `realized.json` — the **flat** multi-var map (`{ primary_par_url,
