@@ -71,7 +71,29 @@ export const FeedbackRecordSchema = z
     reviewer_email: z.string().optional(),
     received_at: z.string().min(1),
     channel: z
-      .enum(['gdoc-comments', 'email', 'meeting', 'board', 'other'])
+      .enum([
+        'gdoc-comments',
+        'email',
+        'meeting',
+        'board',
+        // A reaction left on the PUBLIC per-run summary page — anonymous page,
+        // SELF-REPORTED name. Materially different provenance from a comment
+        // by a named colleague, and an agent reading the folder should not
+        // have to infer it (ace#1362). Before this value existed, the marker
+        // was smuggled into the SLUG (`<date>-public-<reviewer>`) and ace-web
+        // filtered on it — which made a FILENAME CONVENTION load-bearing for a
+        // CONFIDENTIALITY BOUNDARY. See `isPubliclyRepublishable`.
+        'public-summary',
+        // A partner EDIT, arriving as Drive document revisions rather than
+        // comments. Live since co-creation grants editor access by default
+        // (`share-run-access`, `drive_share_with_person`). The VALUE exists so
+        // such a record can be written at all; deriving items from
+        // `revisions.list`, using a diff as the item body in place of
+        // `verbatim`, and adding an "accepted the partner's edit as-is"
+        // disposition are NOT designed yet — ace#1335 stays open for them.
+        'revisions',
+        'other',
+      ])
       .default('other'),
     artifact: z.string().optional(),
     artifact_url: z.string().optional(),
@@ -82,6 +104,23 @@ export const FeedbackRecordSchema = z
   .strict();
 
 export type FeedbackRecord = z.infer<typeof FeedbackRecordSchema>;
+
+/**
+ * May this record be republished on a page anyone can open?
+ *
+ * Only feedback the reviewer left ON a public page. Everything else — a gdoc
+ * comment, an email, a meeting note — was given in confidence, and a
+ * privately-captured review sitting in the same `ACE/<opp>/feedback/` folder
+ * must never surface publicly.
+ *
+ * This is a FIELD because it used to be a filename. ace-web filtered on the
+ * `-public-` marker in the record slug, which meant a naming convention was
+ * load-bearing for a confidentiality boundary — one rename away from
+ * republishing a private review (ace#1362).
+ */
+export function isPubliclyRepublishable(record: FeedbackRecord): boolean {
+  return record.channel === 'public-summary';
+}
 
 /** Where a feedback item ended up. Collected from the stores that own it. */
 export type DispositionKind =
@@ -255,6 +294,18 @@ export function renderLedgerMarkdown(
     );
   }
   if (record.against_run) lines.push(`Against run: \`${record.against_run}\``);
+  if (record.channel === 'public-summary') {
+    lines.push(
+      '_Left on the public run summary — the reviewer\'s name is **self-reported** and unverified. ' +
+        'Weigh these items accordingly._',
+    );
+  }
+  if (record.channel === 'revisions') {
+    lines.push(
+      '_Arrived as document **revisions**, not comments — the change itself is the feedback ' +
+        '(dimagi-internal/ace#1335)._',
+    );
+  }
   lines.push('');
   lines.push(
     `**${coverage.total} comments — ${coverage.shipped} shipped, ` +

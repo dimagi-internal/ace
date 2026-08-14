@@ -63,9 +63,34 @@ doesn't apply to that channel.
 
 Do not paper over it by transcribing someone's edit into a fake `gdoc-comments` item —
 that fabricates words they never wrote, which is exactly what `verbatim` exists to prevent.
-Until a revisions channel lands, note in the review record that edits were made and where,
-and treat the ledger as covering the comment channel only.
+
+`channel: revisions` now EXISTS in the schema, so such a record can be written at all —
+but the three things that would make it useful are deliberately not designed yet:
+
+- **derivation** — items from Drive's `revisions.list` / `changes` between the run's
+  publish and the reviewer's last touch, attributed per editor;
+- **an item body that is not `verbatim`** — for an edit, the *change* is the artifact;
+- **a disposition that can say "accepted the partner's edit as-is"**, which today has no
+  shape.
+
+Until those land, note in the review record that edits were made and where, and treat the
+ledger as covering the comment channels only.
 Tracked: dimagi-internal/ace#1335.
+
+## Provenance: a public reaction is not a colleague's comment
+
+`channel: public-summary` marks a reaction left on the **public** per-run summary page —
+an anonymous page with a **self-reported** name. ace-web writes these into
+`ACE/<opp>/feedback/` as ordinary records, so this skill picks them up with no new
+consumer, and the rendered ledger labels them self-reported so a reader can weigh them.
+
+**The confidentiality boundary is a field, not a filename.** Use
+`isPubliclyRepublishable(record)` (`lib/feedback-ledger.ts`) to decide whether a record
+may appear on a page anyone can open — it is true only for `public-summary`. Everything
+else was given in confidence, and a privately-captured review sits in the SAME folder.
+Before ace#1362 the marker was smuggled into the record slug
+(`<YYYYMMDD>-public-<reviewer>`) and ace-web filtered on it, which left a naming
+convention one rename away from republishing a private review.
 
 ## Inputs
 

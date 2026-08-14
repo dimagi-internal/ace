@@ -8,6 +8,7 @@ import {
   parseFeedbackRef,
   renderLedgerMarkdown,
   FeedbackRecordSchema,
+  isPubliclyRepublishable,
   type Disposition,
   type FeedbackRecord,
 } from './feedback-ledger';
@@ -242,5 +243,85 @@ items:
 `);
     const out = renderLedgerMarkdown(buildLedger(multi, []));
     expect(out).toContain('> line one\n> line two');
+  });
+});
+
+/**
+ * dimagi-internal/ace#1362 — a partner reacting on the PUBLIC per-run summary
+ * had nowhere in the schema to say so.
+ *
+ * ace-web now writes each reaction from the public summary page as a
+ * `FeedbackRecordSchema` record into `ACE/<opp>/feedback/`, so this skill picks
+ * it up with no new consumer. But the channel enum was
+ * `['gdoc-comments','email','meeting','board','other']` and the record is
+ * `.strict()`, so an anonymous public page with a SELF-REPORTED name recorded
+ * as `channel: other` — materially different provenance from a gdoc comment by
+ * a named colleague, and an agent reading the folder should not have to infer
+ * it.
+ *
+ * The shipped workaround smuggled the marker into the SLUG
+ * (`<YYYYMMDD>-public-<reviewer-slug>`), and ace-web filters on that marker so
+ * a privately-captured review (Sophie's `20260727-sophie-feintuch`,
+ * `channel: gdoc-comments`) sitting in the same folder is never republished on
+ * a page anyone can open. It works — but it makes a FILENAME CONVENTION
+ * load-bearing for a CONFIDENTIALITY BOUNDARY, which is exactly the thing that
+ * should be a schema field.
+ *
+ * #1335 is the same root shape from the other direction: the schema models one
+ * channel and co-creation produced more. Its `revisions` value lands here so a
+ * record can be written; the derivation (Drive `revisions.list`, a diff-derived
+ * body, an "accepted as-is" disposition) is deliberately NOT designed here and
+ * #1335 stays open for it.
+ */
+describe('feedback channels (#1362, #1335)', () => {
+  const base = {
+    schema_version: 1 as const,
+    slug: '20260813-a-partner',
+    reviewer: 'A Partner',
+    received_at: '2026-08-13T10:00:00Z',
+    items: [{ id: 'a', verbatim: 'This row is wrong.' }],
+  };
+
+  it('accepts public-summary as a first-class channel', () => {
+    const r = FeedbackRecordSchema.parse({ ...base, channel: 'public-summary' });
+    expect(r.channel).toBe('public-summary');
+  });
+
+  it('accepts revisions, so a partner EDIT can be recorded at all (#1335)', () => {
+    expect(FeedbackRecordSchema.parse({ ...base, channel: 'revisions' }).channel).toBe('revisions');
+  });
+
+  it('keeps every pre-existing channel parsing — the change is additive', () => {
+    for (const c of ['gdoc-comments', 'email', 'meeting', 'board', 'other']) {
+      expect(FeedbackRecordSchema.parse({ ...base, channel: c }).channel).toBe(c);
+    }
+  });
+
+  it('still defaults to other when the channel is absent', () => {
+    expect(FeedbackRecordSchema.parse(base).channel).toBe('other');
+  });
+
+  it('exposes the confidentiality boundary as a field, not a filename', () => {
+    expect(isPubliclyRepublishable({ ...base, channel: 'public-summary' } as any)).toBe(true);
+    expect(isPubliclyRepublishable({ ...base, channel: 'gdoc-comments' } as any)).toBe(false);
+    expect(isPubliclyRepublishable({ ...base, channel: 'email' } as any)).toBe(false);
+    // The pre-#1362 slug convention must NOT be what decides it.
+    expect(
+      isPubliclyRepublishable({ ...base, slug: '20260813-public-a-partner', channel: 'email' } as any),
+    ).toBe(false);
+  });
+
+  it('renders self-reported provenance so a reader can weigh the item', () => {
+    const md = renderLedgerMarkdown(
+      buildLedger({ ...base, channel: 'public-summary', artifact: 'Decisions' } as any, []),
+    );
+    expect(md).toMatch(/self-reported/i);
+  });
+
+  it('does not label a gdoc comment as self-reported', () => {
+    const md = renderLedgerMarkdown(
+      buildLedger({ ...base, channel: 'gdoc-comments' } as any, []),
+    );
+    expect(md).not.toMatch(/self-reported/i);
   });
 });
