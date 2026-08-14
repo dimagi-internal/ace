@@ -323,6 +323,34 @@ alone makes the artifact land outside `4-connect` and fail
      overriding an explicit program decision is precisely the drift this
      read-back exists to catch.
 
+     **Do not eyeball the severity — call
+     `classifyPassingScoreReadback` from `lib/passing-score-readback.ts`**
+     with `{posted, readBack, pddDecided}`. It also names the CAUSE, which
+     the `[BLOCKER]` alone did not, and returns the repair (ace#1350):
+
+     > A mismatch here is almost certainly **not** server drift. Connect's
+     > create path runs
+     > `CommCareApp.objects.get_or_create(cc_app_id, cc_domain, organization,
+     > hq_server, defaults=...)` with `update_existing=False`, and the row is
+     > keyed on the **app**, not the opportunity. If a row for this
+     > `cc_app_id` already exists in this org, `get_or_create` ignores
+     > `defaults` and **the posted `passing_score` is silently discarded** —
+     > the opportunity inherits whatever an earlier one set.
+
+     On the `blocker` verdict, apply the returned repair —
+     `connect_set_learn_passing_score(posted)` — then re-read. **Surface its
+     `caution` in the gate brief:** the score lives on the shared
+     `CommCareApp` row, so the repair moves the gate for **every**
+     opportunity in the org wired to this HQ Learn app. Record the
+     `previous_passing_score` the atom returns.
+
+     ACE has escaped this only by an unstated invariant — every `/ace:run`
+     builds a fresh Nova Learn app, so every create posts a new `cc_app_id`
+     and takes the `created=True` branch. It breaks the moment anything
+     reuses an HQ Learn app: a forked run, a hand-wired opp, a Phase 4
+     re-mint against the same release, or an opp created against a prior
+     run's app to save a build.
+
    **Action on mismatch:**
    - Date or app-id field disagreement → `[BLOCKER]` in the gate brief;
      log the diff to `comms-log/observations.md` with both values; do
