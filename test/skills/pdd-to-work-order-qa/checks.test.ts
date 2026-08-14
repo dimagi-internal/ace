@@ -323,3 +323,43 @@ describe('runtime gdoc-as-plain-text exports', () => {
     expect(r.pass).toBe(true);
   });
 });
+
+// ---------------------------------------------------------------------------
+// dimagi-internal/ace#1092 — the period_of_performance auto_fix_hint must
+// describe a placeholder form that actually passes the check. The pre-#1092
+// hint said "use an explicit `[TBD]` placeholder", which read naturally as
+// inviting `[Start date TBD] to [End date TBD]` — a form the whole-cell
+// single-bracket regex rejects, burning a second auto-fix cycle on a hint
+// the producer followed.
+// ---------------------------------------------------------------------------
+
+describe('period_of_performance auto_fix_hint is actionable (#1092)', () => {
+  const failing = () => {
+    const wo = GOOD_WO.replace('2026-05-22 to 2026-07-31', '14 weeks from contract execution');
+    const res = checkPeriodOfPerformanceComplete(wo);
+    expect(res.pass).toBe(false);
+    return res;
+  };
+
+  test('the hint states the accepted placeholder form: one pair of brackets spanning the whole cell', () => {
+    const res = failing();
+    expect(res.auto_fix_hint).toMatch(/one pair of brackets|single bracketed placeholder/i);
+  });
+
+  test('every bracketed exemplar quoted in the hint itself passes the check', () => {
+    // A hint that quotes an exemplar the checker rejects is always a bug —
+    // this pins hint and checker together so they cannot drift.
+    const res = failing();
+    const exemplars = [...res.auto_fix_hint!.matchAll(/`(\[[^`]+\])`/g)].map((m) => m[1]);
+    expect(exemplars.length).toBeGreaterThan(0);
+    for (const ex of exemplars) {
+      const fixed = GOOD_WO.replace('2026-05-22 to 2026-07-31', ex);
+      expect(checkPeriodOfPerformanceComplete(fixed).pass).toBe(true);
+    }
+  });
+
+  test('the compositional form the old hint invited still fails (interior `]`)', () => {
+    const wo = GOOD_WO.replace('2026-05-22 to 2026-07-31', '[Start date TBD] to [End date TBD]');
+    expect(checkPeriodOfPerformanceComplete(wo).pass).toBe(false);
+  });
+});
