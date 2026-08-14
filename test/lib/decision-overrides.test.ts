@@ -224,3 +224,78 @@ describe("applyDecisionOverrides", () => {
     expect(input[0]).toBe(original);
   });
 });
+
+/**
+ * ace-web PR #714 added `decided_by_name`, `decided_by_verified` and
+ * `history` to every override row, additively at schema_version 1. This
+ * reader is non-strict, so it PARSED fine and silently STRIPPED all three —
+ * harmless for binding (`applyDecisionOverrides` needs `id` + `override`
+ * only), fatal for the feedback ledger's edit derivation, whose safety
+ * property is that a self-reported name is never mistaken for a verified one.
+ */
+describe("identity + history fields (ace-web PR #714)", () => {
+  const FILE = `
+schema_version: 1
+kind: decision-overrides
+opp: spark-facilitator
+overrides:
+  - id: photo-required
+    override: "yes"
+    override_reasoning: A supervisor cannot verify a visit without one.
+    ai_default: "no"
+    decided_by: sfeintuch@dimagi-associate.com
+    decided_by_name: Sophie Feintuch
+    decided_by_verified: true
+    decided_at: 2026-07-28T09:00:00Z
+    history:
+      - override: "no"
+        decided_by_name: Anne
+        decided_by_verified: false
+        decided_at: 2026-07-27T09:00:00Z
+`;
+
+  it("keeps the identity fields instead of stripping them", () => {
+    const row = parseDecisionOverridesYaml(FILE).overrides[0];
+    expect(row.decided_by_name).toBe("Sophie Feintuch");
+    expect(row.decided_by_verified).toBe(true);
+  });
+
+  it("keeps history, so a superseded value stays recoverable", () => {
+    const [entry] = parseDecisionOverridesYaml(FILE).overrides[0].history ?? [];
+    expect(entry.override).toBe("no");
+    expect(entry.decided_by_verified).toBe(false);
+  });
+
+  it("still parses a row written before those fields existed", () => {
+    const row = parseDecisionOverridesYaml(`
+schema_version: 1
+kind: decision-overrides
+opp: o
+overrides:
+  - id: a
+    override: b
+`).overrides[0];
+    expect(row.decided_by_verified).toBeUndefined();
+    expect(row.history).toBeUndefined();
+  });
+
+  it("binds exactly as before — identity is read-side only", () => {
+    const rows: DecisionRow[] = [
+      {
+        id: "photo-required",
+        phase: "1-design",
+        question: "Photo?",
+        options: ["no"],
+        "ai-default": "no",
+        reasoning: "r",
+        status: "ai-default",
+      } as DecisionRow,
+    ];
+    const { applied, rows: out } = applyDecisionOverrides(
+      rows,
+      parseDecisionOverridesYaml(FILE).overrides,
+    );
+    expect(applied).toEqual(["photo-required"]);
+    expect(out[0].override).toBe("yes");
+  });
+});
