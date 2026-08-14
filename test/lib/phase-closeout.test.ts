@@ -241,3 +241,51 @@ describe('verifyPhaseArtifacts (integration of enumerate + diff)', () => {
     expect(missingPaths).not.toContain(required[0].path);
   });
 });
+
+
+// ---------------------------------------------------------------------------
+// dimagi-internal/ace#1069 — app-QA-only mode is a first-class supported mode
+// (`agents/qa-and-training.md § Mode: app-QA-only`): when Phase 5 is skipped,
+// Phase 6 runs Step 1 only and marks the seven training skills `skipped`,
+// because they all depend on an OCS chatbot URL that does not exist. The
+// manifest declared all 11 training artifacts unconditionally required, so the
+// boundary fence reported 11 healable misses that are NOT healable —
+// re-dispatching Phase 6 cannot produce them without Phase 5. Live on
+// bednet-spot-check/20260729-1239 (ACE 0.13.692), Step 1 passing cleanly.
+// ---------------------------------------------------------------------------
+
+describe('diffArtifacts — app-QA-only mode (ace#1069)', () => {
+  // Exactly what a clean app-QA-only Phase 6 produces: Step 1's artifacts and
+  // nothing else.
+  const STEP1_ONLY = [
+    '6-qa-and-training/app-screenshot-capture_verdict-shallow.yaml',
+    '6-qa-and-training/app-screenshot-capture_verdict.yaml',
+  ];
+
+  it('is satisfied by Step-1 artifacts alone when mode is app-QA-only', () => {
+    const report = diffArtifacts('qa-and-training', STEP1_ONLY, { mode: 'app-QA-only' });
+    expect(report.missing.map((m) => m.path)).toEqual([]);
+    expect(report.ok).toBe(true);
+  });
+
+  it('still requires the training set in the DEFAULT mode (no silent relaxation)', () => {
+    const report = diffArtifacts('qa-and-training', STEP1_ONLY);
+    expect(report.ok).toBe(false);
+    expect(report.missing.map((m) => m.path)).toContain('6-qa-and-training/training-llo-guide.md');
+  });
+
+  it('does NOT relax on an unrecognized mode string — a typo must not skip the fence', () => {
+    for (const mode of ['app-qa-only', 'appQAonly', 'bogus', '']) {
+      const report = diffArtifacts('qa-and-training', STEP1_ONLY, { mode });
+      expect(report.ok, `mode=${JSON.stringify(mode)} must not relax the fence`).toBe(false);
+    }
+  });
+
+  it('leaves other phases untouched when the mode is set', () => {
+    // The mode is Phase-6-scoped; passing it while verifying another phase must
+    // not drop that phase's requirements.
+    const bare = diffArtifacts('design', []);
+    const withMode = diffArtifacts('design', [], { mode: 'app-QA-only' });
+    expect(withMode.missing.map((m) => m.path)).toEqual(bare.missing.map((m) => m.path));
+  });
+});

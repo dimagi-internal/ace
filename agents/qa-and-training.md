@@ -372,6 +372,22 @@ In this mode:
   Phase Write-Back Contract's "no `has_judge` skill left `deferred`" rule does
   not refuse `verdict: pass`.
 
+- **REQUIRED — write `phases.qa-and-training.mode: app-QA-only` into
+  `run_state.yaml`** (same `update_yaml_file` patch as the status write,
+  `merge: 'deep'`). This is now load-bearing, not documentation: both boundary
+  fences read that field and drop the Step-2 requirements when it is present
+  (dimagi-internal/ace#1069). Omit it and `verify_phase_artifacts` reports 11
+  missing training artifacts that re-dispatching Phase 6 cannot produce, and
+  `verify_phase_products` demands a `training.deck` / `training.docs.onboarding_email`
+  handoff that cannot exist — the non-converging heal loop the mode used to
+  hit. Spell it EXACTLY `app-QA-only`: an unrecognized string is ignored and
+  the full required set applies (a typo cannot skip a fence, by design —
+  `lib/artifact-manifest.ts::PHASE_MODES`).
+- **Terminal status is `done`** with the skipped steps marked as above. `partial`
+  is also legal (ace#1139) if a *declared* producer genuinely failed to ship —
+  but a clean app-QA-only run is `done`, because nothing was deferred: the
+  training skills could not run at all.
+
 Everything below (the pre-flight checklist, Step 1 detail) applies unchanged;
 only Step 2 is short-circuited.
 

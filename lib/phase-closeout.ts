@@ -20,7 +20,7 @@
  * orchestrator wires this in.
  */
 
-import { ARTIFACT_MANIFEST, type ArtifactEntry, type Phase } from './artifact-manifest.js';
+import { ARTIFACT_MANIFEST, isPhaseMode, type ArtifactEntry, type Phase } from './artifact-manifest.js';
 
 /**
  * Manifest entries declared for exactly this phase (NOT cumulative across
@@ -88,8 +88,26 @@ function isRunLevelArtifact(entry: ArtifactEntry): boolean {
  * but no manifest entry → drift agent flags; manifest entry but skill is
  * never dispatched → this runtime gate catches at the boundary).
  */
-export function computeExpectedRequiredArtifacts(phase: Phase): ArtifactEntry[] {
-  return manifestEntriesForExactPhase(phase).filter((a) => a.required && isRunLevelArtifact(a));
+export interface PhaseModeOptions {
+  /**
+   * The phase's declared run mode (`phases.<phase>.mode` in run_state.yaml).
+   * An unrecognized or absent value means "no mode" — the full required set
+   * applies, so a typo cannot relax the fence (ace#1069).
+   */
+  mode?: string;
+}
+
+export function computeExpectedRequiredArtifacts(
+  phase: Phase,
+  opts: PhaseModeOptions = {},
+): ArtifactEntry[] {
+  const mode = isPhaseMode(opts.mode) ? opts.mode : undefined;
+  return manifestEntriesForExactPhase(phase).filter(
+    (a) =>
+      a.required &&
+      isRunLevelArtifact(a) &&
+      !(mode !== undefined && a.notRequiredInModes?.includes(mode)),
+  );
 }
 
 /**
@@ -126,8 +144,9 @@ function presentSatisfies(present: ReadonlySet<string>, expectedPath: string): b
 export function diffArtifacts(
   phase: Phase,
   presentPaths: ReadonlyArray<string>,
+  opts: PhaseModeOptions = {},
 ): PhaseCloseoutReport {
-  const expected = computeExpectedRequiredArtifacts(phase);
+  const expected = computeExpectedRequiredArtifacts(phase, opts);
   const present = new Set(presentPaths);
   const missing = expected
     .filter((e) => !presentSatisfies(present, e.path))
@@ -234,7 +253,8 @@ export async function verifyPhaseArtifacts(
   drive: DriveListAdapter,
   runFolderId: string,
   phase: Phase,
+  opts: PhaseModeOptions = {},
 ): Promise<PhaseCloseoutReport> {
   const present = (await enumeratePhaseFolder(drive, runFolderId, phase)) ?? [];
-  return diffArtifacts(phase, present);
+  return diffArtifacts(phase, present, opts);
 }

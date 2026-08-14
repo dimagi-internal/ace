@@ -395,6 +395,7 @@ Verify every artifact the manifest declares required for `phase` is present in t
 |-------|------|----------|-------------|
 | `runFolderId` | `z.string` | **required** | The Google Drive folder ID of the run (e.g. <opp>/runs/<run-id>/). |
 | `phase` | `z.enum` | **required** | The phase whose declared required artifacts to verify (e.g. "design", "commcare", "synthetic-data-and-workflows"). |
+| `mode` | `z.string` | optional | Optional override of the phase run MODE. Normally omit it: the atom reads `phases.<phase>.mode` out of the run folder's run_state.yaml itself, so a supported mode relaxes the fence without the caller … |
 
 ### `render_run_readme`
 

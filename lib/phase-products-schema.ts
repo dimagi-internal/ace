@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { isPhaseMode, type PhaseMode } from './artifact-manifest.js';
 
 /**
  * Single source of truth for the `phases.<phase>.products.*` typed handoff
@@ -351,6 +352,31 @@ export const REQUIRED_PRODUCT_KEYS: Partial<Record<PhaseName, string[]>> = {
   'solicitation-management': ['solicitation.url'],
 };
 
+/**
+ * Per-mode overrides of {@link REQUIRED_PRODUCT_KEYS} (ace#1069).
+ *
+ * `app-QA-only` drops Phase 6's training handoff entirely: `training.deck` and
+ * `training.docs.onboarding_email` are produced by Step-2 skills that cannot
+ * run without an OCS chatbot URL. Enforcing them on a terminal app-QA-only
+ * phase sent the orchestrator into "heal the producing skill / re-dispatch",
+ * which can never converge — the same non-healable loop the artifact fence hit.
+ *
+ * An unrecognized mode string falls through to the default set, so a typo
+ * cannot relax the fence.
+ */
+export const REQUIRED_PRODUCT_KEYS_BY_MODE: Record<PhaseMode, Partial<Record<PhaseName, string[]>>> = {
+  'app-QA-only': { 'qa-and-training': [] },
+};
+
+/** The required-handoff keys for `phase`, honouring a declared run `mode`. */
+export function requiredProductKeys(phase: string, mode?: string): string[] {
+  if (isPhaseMode(mode)) {
+    const override = REQUIRED_PRODUCT_KEYS_BY_MODE[mode][phase as PhaseName];
+    if (override) return override;
+  }
+  return REQUIRED_PRODUCT_KEYS[phase as PhaseName] ?? [];
+}
+
 export interface ProductsValidationIssue {
   path: string;
   message: string;
@@ -411,10 +437,11 @@ export function validatePhaseProductsFragment(
 export function validatePhaseProductsComplete(
   phase: string,
   products: unknown,
+  mode?: string,
 ): ProductsValidationResult {
   const shape = validatePhaseProductsFragment(phase, products);
   if (!shape.valid || shape.skipped) return shape;
-  const required = REQUIRED_PRODUCT_KEYS[phase as PhaseName] ?? [];
+  const required = requiredProductKeys(phase, mode);
   const issues: ProductsValidationIssue[] = [];
   for (const dotted of required) {
     if (resolveDotPath(products, dotted) === undefined) {
@@ -485,13 +512,16 @@ export function classifyPhaseProducts(
       : {};
   const status: string | undefined = typeof phaseBlock.status === 'string' ? phaseBlock.status : undefined;
   const products = phaseBlock.products;
+  // The run mode lives on the phase block this classifier already reads, so
+  // honouring it needs no signature change (ace#1069).
+  const mode: string | undefined = typeof phaseBlock.mode === 'string' ? phaseBlock.mode : undefined;
   // Keep in lock-step with `TERMINAL_OK_STATUSES` in lib/run-state-validator.ts —
   // the two fences must agree on which statuses mean "this phase is finished"
   // (ace#992: they didn't, and one run got ok:true from two fences and
   // `malformed` from the third on the same literal string).
   const isTerminal = status === 'done' || status === 'complete' || status === 'partial';
   const r = isTerminal
-    ? validatePhaseProductsComplete(phase, products)
+    ? validatePhaseProductsComplete(phase, products, mode)
     : validatePhaseProductsFragment(phase, products);
   return {
     phase,

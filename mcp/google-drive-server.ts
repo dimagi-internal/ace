@@ -33,7 +33,7 @@ import {
   verifyPhaseArtifacts,
   type DriveListAdapter,
 } from '../lib/phase-closeout.js';
-import { PHASES, type Phase } from '../lib/artifact-manifest.js';
+import { PHASES, phaseAgentName, type Phase } from '../lib/artifact-manifest.js';
 import {
   isTransientNetworkError as isTransientNetworkErrorLib,
   withTransientRetry as withTransientRetryLib,
@@ -2844,6 +2844,37 @@ server.tool(
 // drift-checking agent that keeps the manifest honest against the
 // plugin's actual skill set.
 
+/**
+ * Best-effort read of `phases.<agentName>.mode` from a run folder's
+ * run_state.yaml (ace#1069). Returns undefined on any failure — a missing or
+ * unreadable run_state must never change the verdict of an artifact check, it
+ * just means "no mode declared", which is the full-requirements default.
+ */
+async function readPhaseModeFromRunState(
+  runFolderId: string,
+  phase: Phase,
+): Promise<string | undefined> {
+  try {
+    const safe = runFolderId.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+    const resp = await drive.files.list({
+      q: `'${safe}' in parents and trashed = false and name = 'run_state.yaml'`,
+      fields: 'files(id, name)',
+      supportsAllDrives: true,
+      includeItemsFromAllDrives: true,
+    });
+    const fileId = resp.data.files?.[0]?.id;
+    if (!fileId) return undefined;
+    const read = await handleReadFile({ fileId }, drive);
+    const text = read.content ?? '';
+    if (!text.trim()) return undefined;
+    const parsed = YAML.parse(text);
+    const block = parsed?.phases?.[phaseAgentName(phase)];
+    return typeof block?.mode === 'string' ? block.mode : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 server.tool(
   'verify_phase_artifacts',
   "Verify every artifact the manifest declares required for `phase` is present in the run folder's per-phase subfolder. Returns `{phase, ok, missing, present_count, expected_count, optional_present_count, summary}` where each `missing` entry carries `{path, producedBy, description}` — `producedBy` tells the orchestrator which skill to re-dispatch to heal. Narrate from `summary` (a ready-made one-liner like \"all 4 required artifacts found (+3 optional)\"); do NOT pair `present_count`/`expected_count` into a fraction — present counts every file in the folder, expected counts only the required set, so the ratio routinely exceeds 1. Pair with `classify_phase_writeback` in the boundary fence's parallel block: writeback checks `run_state.yaml`, this checks Drive contents. Walks the phase subfolder two levels deep so `recipes/`, `screenshots/`, etc. children are seen. Implementation: `lib/phase-closeout.ts::verifyPhaseArtifacts`. Manifest: `lib/artifact-manifest.ts`.",
@@ -2852,8 +2883,12 @@ server.tool(
     phase: z
       .enum(PHASES as unknown as [Phase, ...Phase[]])
       .describe('The phase whose declared required artifacts to verify (e.g. "design", "commcare", "synthetic-data-and-workflows").'),
+    mode: z
+      .string()
+      .optional()
+      .describe('Optional override of the phase run MODE. Normally omit it: the atom reads `phases.<phase>.mode` out of the run folder\'s run_state.yaml itself, so a supported mode relaxes the fence without the caller having to remember. Recognized values live in `lib/artifact-manifest.ts::PHASE_MODES` (today: `app-QA-only`); an unrecognized string is ignored and the full required set applies, so a typo cannot skip the fence.'),
   },
-  async ({ runFolderId, phase }) => {
+  async ({ runFolderId, phase, mode }) => {
     try {
       const adapter: DriveListAdapter = {
         async listFolder(folderId: string) {
@@ -2873,7 +2908,15 @@ server.tool(
           }));
         },
       };
-      const report = await verifyPhaseArtifacts(adapter, runFolderId, phase as Phase);
+      // Resolve the phase's run MODE from run_state.yaml unless the caller
+      // pinned one (ace#1069). Reading it here rather than making the caller
+      // pass it is the point: `app-QA-only` is a supported run shape, and a
+      // fence that only tells the truth when the orchestrator remembers an
+      // argument is the prose-reliance this repo treats as unenforced.
+      const resolvedMode = mode ?? (await readPhaseModeFromRunState(runFolderId, phase as Phase));
+      const report = await verifyPhaseArtifacts(adapter, runFolderId, phase as Phase, {
+        mode: resolvedMode,
+      });
       return result(report);
     } catch (e: any) {
       return error(e.message);

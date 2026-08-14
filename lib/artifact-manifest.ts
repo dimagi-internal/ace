@@ -62,6 +62,36 @@ export type Phase =
   | 'partnership-deck-build'
   | 'partnership-publish';
 
+/**
+ * Phase-run MODES that legitimately drop part of a phase's declared output.
+ *
+ * A mode is not a failure and not a skip: the phase ran, produced real passing
+ * artifacts, and could never have produced the rest given the run's shape. It
+ * is recorded on the phase block (`phases.<phase>.mode`) by the phase agent.
+ *
+ * `app-QA-only` — `agents/qa-and-training.md § Mode: app-QA-only`. When Phase 5
+ * (OCS) is skipped, Phase 6 runs Step 1 only and marks the seven Step-2
+ * training skills `skipped`, because every one of them consumes an OCS chatbot
+ * URL that does not exist. Before this vocabulary existed the manifest declared
+ * all 11 training artifacts unconditionally required, so the boundary fence
+ * reported 11 "healable" misses that re-dispatching Phase 6 could never produce
+ * (dimagi-internal/ace#1069, live on bednet-spot-check/20260729-1239).
+ *
+ * Adding a mode is deliberately two edits — this list, plus the entries it
+ * exempts — so an exemption cannot be introduced by a typo'd string alone.
+ */
+export const PHASE_MODES = ['app-QA-only'] as const;
+export type PhaseMode = (typeof PHASE_MODES)[number];
+
+/**
+ * Is `value` a mode this plugin recognizes? Unrecognized strings are ignored
+ * (the full requirement set applies), so a misspelled mode can never silently
+ * relax a fence — it just fails the way an undeclared mode does.
+ */
+export function isPhaseMode(value: unknown): value is PhaseMode {
+  return typeof value === 'string' && (PHASE_MODES as readonly string[]).includes(value);
+}
+
 export interface ArtifactEntry {
   /** Relative path under ACE/<opp-name>/, e.g. "1-design/idea-to-pdd.md" */
   path: string;
@@ -77,6 +107,12 @@ export interface ArtifactEntry {
   phase: Phase;
   /** Must exist when this phase completes (false = conditional/optional) */
   required: boolean;
+  /**
+   * Modes in which this REQUIRED artifact is not expected, because the mode's
+   * run shape means its producer never runs (ace#1069). Empty/absent = always
+   * required. Only meaningful together with `required: true`.
+   */
+  notRequiredInModes?: readonly PhaseMode[];
   /** Human-readable purpose */
   description: string;
 }
@@ -742,6 +778,9 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     consumedBy: ['llo-onboarding', 'ocs-agent-setup', 'training-onboarding-email'],
     phase: 'qa-and-training',
     required: true,
+    // Step-2 training artifact: its producer consumes the OCS chatbot URL, so
+    // it cannot exist when Phase 5 was skipped (ace#1069).
+    notRequiredInModes: ['app-QA-only'],
     description: 'LLO Manager guide for overseeing FLW deployment',
   },
   {
@@ -750,6 +789,9 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     consumedBy: ['llo-onboarding', 'ocs-agent-setup', 'training-onboarding-email'],
     phase: 'qa-and-training',
     required: true,
+    // Step-2 training artifact: its producer consumes the OCS chatbot URL, so
+    // it cannot exist when Phase 5 was skipped (ace#1069).
+    notRequiredInModes: ['app-QA-only'],
     description: 'Step-by-step FLW training guide for app usage and protocols',
   },
   {
@@ -758,6 +800,9 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     consumedBy: ['llo-onboarding', 'ocs-agent-setup', 'training-onboarding-email'],
     phase: 'qa-and-training',
     required: true,
+    // Step-2 training artifact: its producer consumes the OCS chatbot URL, so
+    // it cannot exist when Phase 5 was skipped (ace#1069).
+    notRequiredInModes: ['app-QA-only'],
     description: 'One-page laminated pocket card for FLWs in the field',
   },
   {
@@ -766,6 +811,9 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     consumedBy: ['llo-onboarding', 'ocs-agent-setup'],
     phase: 'qa-and-training',
     required: true,
+    // Step-2 training artifact: its producer consumes the OCS chatbot URL, so
+    // it cannot exist when Phase 5 was skipped (ace#1069).
+    notRequiredInModes: ['app-QA-only'],
     description: 'Frequently asked questions for LLOs and FLWs',
   },
   {
@@ -774,6 +822,9 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     consumedBy: ['llo-onboarding'],
     phase: 'qa-and-training',
     required: true,
+    // Step-2 training artifact: its producer consumes the OCS chatbot URL, so
+    // it cannot exist when Phase 5 was skipped (ace#1069).
+    notRequiredInModes: ['app-QA-only'],
     description: 'Phase 8 onboarding email template, with {{LLO_NAME}}/{{LLO_FIRST_NAME}}/{{LLO_ORG}} tokens',
   },
   {
@@ -800,6 +851,9 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     consumedBy: ['opp-eval'],
     phase: 'qa-and-training',
     required: true,
+    // Step-2 training artifact: its producer consumes the OCS chatbot URL, so
+    // it cannot exist when Phase 5 was skipped (ace#1069).
+    notRequiredInModes: ['app-QA-only'],
     description: 'Companion-eval verdict for training-deck-generate. Grades module coverage, content concreteness, image ref validity, slide count.',
   },
   {
@@ -809,6 +863,9 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     consumedBy: ['opp-eval'],
     phase: 'qa-and-training',
     required: true,
+    // Step-2 training artifact: its producer consumes the OCS chatbot URL, so
+    // it cannot exist when Phase 5 was skipped (ace#1069).
+    notRequiredInModes: ['app-QA-only'],
     description: 'Companion-eval verdict from `training-faq-eval`. Grades comprehensiveness, accuracy, scannability, field realism, anticipated-question depth.',
   },
   {
@@ -818,6 +875,9 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     consumedBy: ['opp-eval'],
     phase: 'qa-and-training',
     required: true,
+    // Step-2 training artifact: its producer consumes the OCS chatbot URL, so
+    // it cannot exist when Phase 5 was skipped (ace#1069).
+    notRequiredInModes: ['app-QA-only'],
     description: 'Companion-eval verdict from `training-flw-guide-eval`. Grades step concreteness, screenshot completeness, language accessibility (BLOCKER on wrong language), error recovery, flow ordering.',
   },
   {
@@ -827,6 +887,9 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     consumedBy: ['opp-eval'],
     phase: 'qa-and-training',
     required: true,
+    // Step-2 training artifact: its producer consumes the OCS chatbot URL, so
+    // it cannot exist when Phase 5 was skipped (ace#1069).
+    notRequiredInModes: ['app-QA-only'],
     description: 'Companion-eval verdict from `training-llo-guide-eval`. Grades operational completeness, action-orientation, screenshot grounding, cap-threshold accuracy, escalation-pathway clarity.',
   },
   {
@@ -836,6 +899,9 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     consumedBy: ['opp-eval'],
     phase: 'qa-and-training',
     required: true,
+    // Step-2 training artifact: its producer consumes the OCS chatbot URL, so
+    // it cannot exist when Phase 5 was skipped (ace#1069).
+    notRequiredInModes: ['app-QA-only'],
     description: 'Companion-eval verdict from `training-onboarding-email-eval`. Grades warmth, clarity, call-to-action effectiveness, context fidelity, length discipline.',
   },
   {
@@ -845,6 +911,9 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     consumedBy: ['opp-eval'],
     phase: 'qa-and-training',
     required: true,
+    // Step-2 training artifact: its producer consumes the OCS chatbot URL, so
+    // it cannot exist when Phase 5 was skipped (ace#1069).
+    notRequiredInModes: ['app-QA-only'],
     description: 'Companion-eval verdict from `training-quick-reference-eval`. Grades scannability, key-number coverage, numeric accuracy, printability, glance-priority ordering.',
   },
 
