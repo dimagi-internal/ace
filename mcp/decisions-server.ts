@@ -304,6 +304,13 @@ export interface AppendRowsResult {
    * overrides file exists or nothing matched.
    */
   overridesApplied: string[];
+  /**
+   * Non-fatal repairs made to an inherited decisions.yaml header (ace#1029) —
+   * a non-ISO `generated_at` normalized, or a seeded run's stale `run_id`
+   * adopted. Empty on a healthy log. Surfaced so the repair is visible rather
+   * than silent; it needs no caller action.
+   */
+  headerRepairs?: string[];
 }
 
 export async function handleAppendRows(
@@ -349,6 +356,7 @@ export async function handleAppendRows(
       total: composed.total,
       created: false,
       overridesApplied: [],
+      ...(composed.warnings.length ? { headerRepairs: composed.warnings } : {}),
     };
   }
 
@@ -367,6 +375,7 @@ export async function handleAppendRows(
     revisionVersion: written.revisionVersion,
     created: !existing,
     overridesApplied: composed.overridesApplied,
+    ...(composed.warnings.length ? { headerRepairs: composed.warnings } : {}),
   };
 }
 
@@ -387,7 +396,7 @@ function error(msg: string) {
 
 server.tool(
   'decisions_append_rows',
-  'Append validated load-bearing default rows to a run\'s decisions.yaml. The MCP transport enforces `lib/decisions-schema.ts` v4 on every row, so malformed writes (wrong field names, missing required fields, non-ordinal phase tags) are rejected at the call boundary — they never reach Drive. The tool seeds a fresh v4-compliant log header when decisions.yaml doesn\'t exist yet (and keeps appending to pre-existing v3 logs), and is idempotent: rows whose `id` is already present in the log are silently skipped (returned in `skipped`), so a re-run of the same skill is safe.\n\nReviewer decision-overrides bind automatically (ace#933): if the opp has `inputs/decision-overrides.yaml` (saved by ace-web\'s Phases tab → Decisions panel), any appended row whose `id` matches a saved override is written with `override` + `status: overridden` + `override_reasoning` from that file, with the override value appended to the row\'s `options` if missing. Emitting skills need no changes and should keep sending rows as `status: ai-default` — the binding happens here. Matched ids are reported in `overridesApplied`; override ids the run never raises are ignored.\n\nField shape mirrors `DecisionRowSchema` from `lib/decisions-schema.ts`:\n- `id`: kebab-case (e.g. `archetype-selection`, `wo-period-of-performance`)\n- `phase`: `<N>-<kebab-name>` (e.g. `1-design`, `4-connect`) — ordinal-prefixed, matches the artifact-manifest folder convention\n- `skill`: emitter slug (e.g. `idea-to-pdd`, `pdd-to-work-order`)\n- `question`: the load-bearing question this row records\n- `ai-default`: the AI\'s picked value as a string (exact-match member of `options`)\n- `options`: array of short scannable labels for what was considered\n- `source`: citation only (where the info came from)\n- `evidence_basis` (REQUIRED, v4): how grounded the default is — `stated` (directly in a source), `inferred` (extrapolated beyond any source), or `conflicting` (resolves disagreeing sources). This forces Phase-1 to declare, per decision, whether it sourced, extrapolated, or resolved a contested fork — instead of silently presenting an inferred default as fact.\n- `conflict_signals` (REQUIRED iff `evidence_basis: conflicting`; >= 2 entries): the competing source readings you resolved, one per entry, each ideally citing where it came from. Omit for `stated`/`inferred`.\n- `status`: `ai-default` (always for new rows; the renderer + sync skills flip to `overridden` after human edits)\n- `reasoning` (optional): AI\'s rationale (for `conflicting`, state WHY this resolution won)\n- `override` (optional; only with `status: overridden`)\n- `override_reasoning` (optional; only with `status: overridden`)\n\nReturns `{fileId, added, skipped[], total, created, modifiedTime, revisionVersion}`.',
+  'Append validated load-bearing default rows to a run\'s decisions.yaml. The MCP transport enforces `lib/decisions-schema.ts` v4 on every row, so malformed writes (wrong field names, missing required fields, non-ordinal phase tags) are rejected at the call boundary — they never reach Drive. The tool seeds a fresh v4-compliant log header when decisions.yaml doesn\'t exist yet (and keeps appending to pre-existing v3 logs), and is idempotent: rows whose `id` is already present in the log are silently skipped (returned in `skipped`), so a re-run of the same skill is safe.\n\nReviewer decision-overrides bind automatically (ace#933): if the opp has `inputs/decision-overrides.yaml` (saved by ace-web\'s Phases tab → Decisions panel), any appended row whose `id` matches a saved override is written with `override` + `status: overridden` + `override_reasoning` from that file, with the override value appended to the row\'s `options` if missing. Emitting skills need no changes and should keep sending rows as `status: ai-default` — the binding happens here. Matched ids are reported in `overridesApplied`; override ids the run never raises are ignored.\n\nField shape mirrors `DecisionRowSchema` from `lib/decisions-schema.ts`:\n- `id`: kebab-case (e.g. `archetype-selection`, `wo-period-of-performance`)\n- `phase`: `<N>-<kebab-name>` (e.g. `1-design`, `4-connect`) — ordinal-prefixed, matches the artifact-manifest folder convention\n- `skill`: emitter slug (e.g. `idea-to-pdd`, `pdd-to-work-order`)\n- `question`: the load-bearing question this row records\n- `ai-default`: the AI\'s picked value as a string (exact-match member of `options`)\n- `options`: array of short scannable labels for what was considered\n- `source`: citation only (where the info came from)\n- `evidence_basis` (REQUIRED, v4): how grounded the default is — `stated` (directly in a source), `inferred` (extrapolated beyond any source), or `conflicting` (resolves disagreeing sources). This forces Phase-1 to declare, per decision, whether it sourced, extrapolated, or resolved a contested fork — instead of silently presenting an inferred default as fact.\n- `conflict_signals` (REQUIRED iff `evidence_basis: conflicting`; >= 2 entries): the competing source readings you resolved, one per entry, each ideally citing where it came from. Omit for `stated`/`inferred`.\n- `status`: `ai-default` (always for new rows; the renderer + sync skills flip to `overridden` after human edits)\n- `reasoning` (optional): AI\'s rationale (for `conflicting`, state WHY this resolution won)\n- `override` (optional; only with `status: overridden`)\n- `override_reasoning` (optional; only with `status: overridden`)\n\nReturns `{fileId, added, skipped[], total, created, modifiedTime, revisionVersion}`, plus `headerRepairs[]` when an inherited header needed repair — a SEEDED run copies the parent run\'s header verbatim, so its `generated_at` can arrive in a non-ISO spelling and its `run_id` can name the seed run. Both are repaired in place (the run folder is the authority on run_id) instead of rejecting the write: before ace#1029 either one rejected EVERY append for the whole run, and since this atom is the only sanctioned writer, the run silently lost its entire decisions trail. An `opportunity` mismatch is still a hard error — that one is data loss.',
   {
     runFolderId: z
       .string()

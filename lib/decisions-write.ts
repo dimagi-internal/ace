@@ -16,6 +16,7 @@
  */
 
 import yaml from "yaml";
+import { z } from "zod";
 
 import {
   DECISIONS_SCHEMA_VERSION,
@@ -35,6 +36,13 @@ export const DECISIONS_FILENAME = "decisions.yaml" as const;
 export interface ComposeResult {
   /** Serialized YAML ready to write to Drive. */
   content: string;
+  /**
+   * Non-fatal repairs made to an inherited header (ace#1029). Empty on a
+   * healthy log. Surfaced by `decisions_append_rows` so a silent repair is
+   * still visible to the operator — the point is that the run keeps its
+   * decisions trail, not that the damage goes unmentioned.
+   */
+  warnings: string[];
   /** Rows actually appended this call (excludes ids already present). */
   added: number;
   /** Rows skipped because their `id` was already present in the log. */
@@ -146,12 +154,11 @@ export function composeAppendedLog(args: ComposeArgs): ComposeResult {
   // invariant by construction (the override value is appended to `options`).
   const overridden = applyDecisionOverrides(parsedRows, args.overrides ?? []);
 
-  const log: DecisionsLog = loadOrSeedLog({
-    existingYamlText,
-    opportunity,
-    run_id,
-    generated_at: now(),
-  });
+  const warnings: string[] = [];
+  const log: DecisionsLog = loadOrSeedLog(
+    { existingYamlText, opportunity, run_id, generated_at: now() },
+    warnings,
+  );
 
   const existingIds = new Set(log.decisions.map((d) => d.id));
   const skipped: string[] = [];
@@ -178,7 +185,7 @@ export function composeAppendedLog(args: ComposeArgs): ComposeResult {
   }
 
   const content = yaml.stringify(log, { lineWidth: 0, aliasDuplicateObjects: false });
-  return { content, added, skipped, total: log.decisions.length, overridesApplied };
+  return { content, warnings, added, skipped, total: log.decisions.length, overridesApplied };
 }
 
 interface LoadArgs {
@@ -188,7 +195,41 @@ interface LoadArgs {
   generated_at: string;
 }
 
-function loadOrSeedLog(args: LoadArgs): DecisionsLog {
+/**
+ * Repair a parseable-but-non-ISO `generated_at` in place (ace#1029).
+ *
+ * A SEEDED run inherits the parent's header verbatim, and the seeding path
+ * (outside this repo) re-emits the timestamp in Python's `str(datetime)` shape
+ * — space separator, 6-digit microseconds, `+00:00` — which
+ * `z.string().datetime({offset: true})` rejects. That made a provenance field
+ * able to reject EVERY decision write for the whole run, and since this atom is
+ * the only sanctioned writer, the run lost its decisions trail silently.
+ *
+ * Scope is deliberately narrow: only a value carrying a recoverable instant is
+ * rewritten. A header with no parseable timestamp is genuinely corrupt and is
+ * left alone so schema validation still fails loud.
+ */
+function normalizeGeneratedAt(parsed: unknown, warnings: string[]): void {
+  if (!parsed || typeof parsed !== "object") return;
+  const obj = parsed as Record<string, unknown>;
+  const raw = obj.generated_at;
+  const asString =
+    raw instanceof Date ? raw.toISOString() : typeof raw === "string" ? raw : undefined;
+  if (asString === undefined) return;
+  if (ISO_DATETIME.safeParse(asString).success) return; // already canonical — leave byte-identical
+  const parsedDate = new Date(asString);
+  if (Number.isNaN(parsedDate.getTime())) return; // unrecoverable — let the schema reject it
+  obj.generated_at = parsedDate.toISOString();
+  warnings.push(
+    `repaired non-ISO generated_at in the existing decisions.yaml: ` +
+      `${JSON.stringify(asString)} -> ${JSON.stringify(obj.generated_at)} ` +
+      `(inherited header, dimagi-internal/ace#1029)`,
+  );
+}
+
+const ISO_DATETIME = z.string().datetime({ offset: true });
+
+function loadOrSeedLog(args: LoadArgs, warnings: string[]): DecisionsLog {
   const { existingYamlText, opportunity, run_id, generated_at } = args;
   if (!existingYamlText || !existingYamlText.trim()) {
     return {
@@ -208,6 +249,7 @@ function loadOrSeedLog(args: LoadArgs): DecisionsLog {
       `existing decisions.yaml is not valid YAML: ${(e as Error).message}`,
     );
   }
+  normalizeGeneratedAt(parsed, warnings);
   const result = DecisionsLogSchema.safeParse(parsed);
   if (!result.success) {
     throw new DecisionsWriteError(
@@ -216,11 +258,25 @@ function loadOrSeedLog(args: LoadArgs): DecisionsLog {
     );
   }
   const log = result.data;
-  if (log.opportunity !== opportunity || log.run_id !== run_id) {
+  // OPPORTUNITY mismatch stays fatal: silently appending this opp's decisions
+  // to another opp's log is the data-loss bug this guard exists for.
+  if (log.opportunity !== opportunity) {
     throw new DecisionsWriteError(
       "IDENTITY_MISMATCH",
-      `opportunity/run_id mismatch: existing log is ${log.opportunity}/${log.run_id}, call provided ${opportunity}/${run_id}`,
+      `opportunity mismatch: existing log is ${log.opportunity}/${log.run_id}, call provided ${opportunity}/${run_id}`,
     );
+  }
+  // RUN_ID mismatch is warn-and-adopt (ace#1029). The log's LOCATION —
+  // runs/<run-id>/decisions.yaml — is the authority on which run it belongs
+  // to; a seeded copy's inherited `run_id` is just a stale label, and treating
+  // it as fatal bricked every write for the run rather than fixing the label.
+  if (log.run_id !== run_id) {
+    warnings.push(
+      `adopted run_id ${run_id} for a decisions.yaml whose header claimed ` +
+        `${log.run_id} (inherited from the seed run; the run folder is the ` +
+        `authority, dimagi-internal/ace#1029)`,
+    );
+    log.run_id = run_id;
   }
   return log;
 }

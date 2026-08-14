@@ -115,16 +115,27 @@ describe("composeAppendedLog — appending to an existing log", () => {
     expect(parsed.decisions).toHaveLength(2);
   });
 
-  it("rejects opportunity / run_id drift against an existing log", () => {
+  // Since ace#1029 the two halves of "identity" are treated differently:
+  // OPPORTUNITY drift stays fatal (appending one opp's decisions to another's
+  // log is data loss); RUN_ID drift is warn-and-adopt, because a seeded log
+  // inherits the parent's label and the run FOLDER is the authority. The
+  // adopt half is covered in the ace#1029 suite below.
+  it("rejects opportunity drift against an existing log", () => {
     const seeded = seed();
-    expect(() =>
+    let thrown: unknown;
+    try {
       composeAppendedLog({
         existingYamlText: seeded,
         opportunity: "other-opp",
         run_id: "20260525-2013",
         rows: [WO_ROW],
-      }),
-    ).toThrowError(/IDENTITY_MISMATCH|opportunity\/run_id mismatch/);
+      });
+    } catch (e) {
+      thrown = e;
+    }
+    expect(thrown).toBeInstanceOf(DecisionsWriteError);
+    expect((thrown as DecisionsWriteError).code).toBe("IDENTITY_MISMATCH");
+    expect((thrown as Error).message).toMatch(/opportunity mismatch/);
   });
 
   it("rejects a malformed existing log (the bednet-spot-check shape)", () => {
@@ -351,5 +362,130 @@ describe("composeAppendedLog — reviewer decision-overrides (ace#933)", () => {
 describe("DECISIONS_FILENAME", () => {
   it("is the canonical run-folder name", () => {
     expect(DECISIONS_FILENAME).toBe("decisions.yaml");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// dimagi-internal/ace#1029 — a SEEDED run inherits the parent run's
+// decisions.yaml header verbatim, and two fields in it block every append for
+// the entire run:
+//
+//   run_id: 20260706-0649                            <- the SEED's run, not this one
+//   generated_at: 2026-07-06 13:53:07.331000+00:00   <- not ISO-8601
+//
+// Hit live in Phase 4 of bednet-spot-check/20260728-2222 (seeded_from
+// 20260706-0649). `decisions_append_rows` is the ONLY sanctioned way to write
+// the log ("do not hand-construct YAML and do not write decisions.yaml via
+// update_yaml_file"), so the run silently lost its whole decisions trail —
+// Phases 4..10 would each have failed the same way.
+//
+// The header is PROVENANCE METADATA. It must never be able to brick every
+// decision write for a run.
+// ---------------------------------------------------------------------------
+
+/** The inherited header exactly as observed on Drive, plus one seeded row. */
+const SEEDED_LOG = [
+  "schema_version: 4",
+  "opportunity: bednet-spot-check",
+  "run_id: 20260706-0649",
+  "generated_at: 2026-07-06 13:53:07.331000+00:00",
+  "decisions:",
+  "  - id: archetype-selection",
+  "    phase: 1-design",
+  "    skill: idea-to-pdd",
+  "    question: Which delivery archetype best fits the intervention?",
+  '    "ai-default": atomic-visit',
+  "    options:",
+  "      - atomic-visit",
+  "    source: idea.md §1",
+  "    status: ai-default",
+  "    evidence_basis: stated",
+  "",
+].join("\n");
+
+describe("composeAppendedLog — inherited/seeded header (ace#1029)", () => {
+  const appendToSeeded = () =>
+    composeAppendedLog({
+      existingYamlText: SEEDED_LOG,
+      opportunity: "bednet-spot-check",
+      run_id: "20260728-2222", // THIS run, not the seed's
+      rows: [WO_ROW],
+      now: NOW_PINNED,
+    });
+
+  it("appends despite BOTH inherited defects, and keeps the seeded row", () => {
+    const result = appendToSeeded();
+    expect(result.added).toBe(1);
+    const parsed = parseDecisionsYaml(result.content);
+    expect(parsed.decisions).toHaveLength(2);
+    expect(parsed.decisions.map((d) => d.id)).toContain("archetype-selection");
+  });
+
+  it("normalizes the non-ISO generated_at to ISO-8601 rather than failing the batch", () => {
+    const parsed = parseDecisionsYaml(appendToSeeded().content);
+    // Same instant, canonical spelling — the value is provenance, so it is
+    // repaired, not discarded.
+    expect(parsed.generated_at).toBe("2026-07-06T13:53:07.331Z");
+    expect(() => DecisionsLogSchema.parse(parsed)).not.toThrow();
+  });
+
+  it("adopts THIS run's run_id and warns, instead of throwing IDENTITY_MISMATCH", () => {
+    const result = appendToSeeded();
+    const parsed = parseDecisionsYaml(result.content);
+    // The log lives in runs/20260728-2222/, so the folder — not the copied
+    // header — is the authority on which run it belongs to.
+    expect(parsed.run_id).toBe("20260728-2222");
+    expect(result.warnings.join(" ")).toMatch(/20260706-0649/);
+    expect(result.warnings.join(" ")).toMatch(/20260728-2222/);
+  });
+
+  it("STILL throws on an opportunity mismatch — that guard is the data-loss one", () => {
+    expect(() =>
+      composeAppendedLog({
+        existingYamlText: SEEDED_LOG,
+        opportunity: "some-other-opp",
+        run_id: "20260728-2222",
+        rows: [WO_ROW],
+        now: NOW_PINNED,
+      }),
+    ).toThrow(DecisionsWriteError);
+  });
+
+  it("still rejects a generated_at that is not a timestamp at all", () => {
+    // The fix is scoped to parseable-but-non-ISO. A header that carries no
+    // recoverable instant is genuinely corrupt and must stay loud.
+    const corrupt = SEEDED_LOG.replace(
+      "generated_at: 2026-07-06 13:53:07.331000+00:00",
+      "generated_at: not-a-timestamp",
+    );
+    expect(() =>
+      composeAppendedLog({
+        existingYamlText: corrupt,
+        opportunity: "bednet-spot-check",
+        run_id: "20260728-2222",
+        rows: [WO_ROW],
+        now: NOW_PINNED,
+      }),
+    ).toThrow(/MALFORMED_LOG|generated_at/);
+  });
+
+  it("leaves a healthy log's header untouched and warns about nothing", () => {
+    const healthy = SEEDED_LOG.replace(
+      "run_id: 20260706-0649",
+      "run_id: 20260728-2222",
+    ).replace(
+      "generated_at: 2026-07-06 13:53:07.331000+00:00",
+      "generated_at: 2026-07-06T13:53:07.331Z",
+    );
+    const result = composeAppendedLog({
+      existingYamlText: healthy,
+      opportunity: "bednet-spot-check",
+      run_id: "20260728-2222",
+      rows: [WO_ROW],
+      now: NOW_PINNED,
+    });
+    const parsed = parseDecisionsYaml(result.content);
+    expect(parsed.generated_at).toBe("2026-07-06T13:53:07.331Z");
+    expect(result.warnings).toEqual([]);
   });
 });
