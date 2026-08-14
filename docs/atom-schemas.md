@@ -163,7 +163,7 @@ Copy an existing Google Drive file server-side into a parent folder, optionally 
 
 ### `drive_upload_binary`
 
-Upload a binary file (PNG, JPG, PDF, audio, video, etc.) to Google Drive inside the given parent folder. Accepts content via base64 string (contentBase64) OR a local file path (localFilePath) — use localFilePath for large files like videos to avoid passing megabytes through the context window. The MCP uses Drive's media-upload path with the supplied mime type, so the file lands as its native type (NOT auto-converted to a Google Doc — that's what `drive_create_file` is for). Pass `shareAnyoneWithLink: true` to atomically grant `role: reader` to `type: anyone` on the new file. The parent MUST be a folder on a Shared Drive.
+Upload a binary file (PNG, JPG, PDF, audio, video, etc.) to Google Drive inside the given parent folder. Accepts content via base64 string (contentBase64) OR a local file path (localFilePath) — use localFilePath for large files like videos to avoid passing megabytes through the context window. The MCP uses Drive's media-upload path with the supplied mime type, so the file lands as its native type (NOT auto-converted to a Google Doc — that's what `drive_create_file` is for). Pass `shareAnyoneWithLink: true` to atomically grant `role: reader` to `type: anyone` on the new file. By default, find-or-create: a same-name non-folder sibling under the parent has its BYTES REPLACED and keeps its id, so a corrected re-upload does not leave two files the name-matching `verify_phase_artifacts` fence would both count as present (dimagi-internal/ace#1324); pass `findOrCreate:false` to force a new sibling. The parent MUST be a folder on a Shared Drive.
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
@@ -173,6 +173,7 @@ Upload a binary file (PNG, JPG, PDF, audio, video, etc.) to Google Drive inside 
 | `mimeType` | `z.string` | **required** | MIME type of the binary content. Common ACE values: "image/png", "image/jpeg", "application/pdf", "audio/mpeg", "video/mp4", "application/zip" (CCZ). |
 | `parentFolderId` | `z.string` | **required** | Required. Parent folder ID — MUST be a folder on a Shared Drive (the MCP verifies this before writing). |
 | `shareAnyoneWithLink` | `z.boolean` | optional | When true, after a successful upload set sharing to `role: reader, type: anyone` (anyone-with-link). Required for any PNG that downstream Slides `createImage` will fetch — Slides' image-import service does not carry the SA's auth. Default: false. |
+| `findOrCreate` | `z.boolean` | optional | When true (default), reuse an existing same-name non-folder file under the parent and REPLACE its bytes — the id and every already-shared URL survive. Otherwise always create a new sibling. Default: true. Set false only when you specifically want a separate sibling each call (e.g. timestamped captures that share a base name). |
 
 ### `drive_download_binary`
 
