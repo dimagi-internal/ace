@@ -426,6 +426,40 @@ spark-facilitator/20260730-1718 additionally proved `grid_form_menus:
 now sets both app-level flags via `commcare_set_app_menu_display`, so all
 three fields are asserted as blockers.)
 
+**`entity_id` grain — always, every released Deliver form carrying a
+`deliver_unit` (dimagi-internal/ace#1285).** `entity_id` is Connect's dedup and
+payment grain, and a wrong one silently UNDER-pays: on
+`bednet-check-2-visit/20260814-0357` the released key was
+`(FLW username, visit date, consent answer)` against a PDD mandating a
+per-household business key, so an FLW who legitimately followed up 5 households
+in one day accrued **1** payable unit.
+
+Every existing gate passed it. This skill passed, `pdd-to-deliver-app-eval`
+scored 9.2, and the CCZ projection reported `collision_count: 0` — of course it
+did; a key that collapses five units into one has no collisions. It surfaced
+only in `connect-program-setup-eval`, which runs AFTER Phase 4 has wired a
+payment unit around the wrong grain, and Phase 4 cannot repair it: Connect
+consumes `entity_id` from the form and has no override.
+
+```ts
+import { checkEntityIdGrain } from '../../lib/entity-id-grain';
+const report = checkEntityIdGrain(formXml, declaredBusinessKeyNodes);
+```
+
+Pass the nodes the PDD declares
+(`products.pdd.program_parameters.entity_id_components`, else the nodes named
+in § Deliver App Specification). Any finding is a `[BLOCKER]`
+`entity-id-grain`:
+
+- `missing-declared-node` — the key omits a node the PDD names;
+- `answer-in-grain` — a worker-chosen answer (consent, eligibility, outcome) is
+  inside the dedup grain. This is the ace#969 over-correction: moving the
+  payability predicate INTO the key fixes slot consumption and breaks the grain;
+- `no-entity-component` — fires **even with nothing declared**, because a key of
+  worker + date + answers is worker-and-day scoped by construction.
+
+`checked === false` (no readable `entity_id`) is "not applicable", NOT a pass.
+
 **Scoring arithmetic — always, every Learn form carrying item scores
 (dimagi-internal/ace#1035).** CommCare has **no "mark this option correct"
 primitive** — Vellum's Assessment Score mug takes a hand-written XPath
