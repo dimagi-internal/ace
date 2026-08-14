@@ -35,6 +35,12 @@ export type RgbColor = { red: number; green: number; blue: number };
 export const COLOR_INDIGO = { red: 0x13 / 255, green: 0x01 / 255, blue: 0x68 / 255 };
 export const COLOR_WHITE = { red: 1, green: 1, blue: 1 };
 export const COLOR_GRAY = { red: 0x5F / 255, green: 0x6A / 255, blue: 0x7D / 255 };
+/**
+ * Body text on a DARK panel. Near-white rather than pure white so a paragraph
+ * does not glare next to a white heading — still far above `LIGHT_TEXT_MIN`
+ * (dimagi-internal/ace#1305).
+ */
+export const COLOR_LIGHT_GRAY = { red: 0xE6 / 255, green: 0xEA / 255, blue: 0xF2 / 255 };
 
 // ---------------------------------------------------------------------------
 // Text-box request helper
@@ -234,9 +240,28 @@ export function buildMobileZoomTextBoxes(pageId: string): Record<string, unknown
   ];
 }
 
+/**
+ * The source template slide behind this stencil draws TWO panels: a light-grey
+ * rectangle on the left (`fill rgb(0.95,0.95,0.95)`) and a `themeColor: DARK2`
+ * NAVY rectangle on the right — both starting at y=1_522_275.
+ *
+ * Until ace#1305 both columns got the light-panel colours, so every
+ * `two_column` slide in every deck shipped with a navy-on-navy heading and
+ * grey-on-navy body on the right, and both headings sat ABOVE the panel top
+ * edge and were sliced. The render pipeline was not at fault — the spec
+ * authored plain text and had no way to express the panel behind it.
+ *
+ * `PANEL_TOP_Y` and the per-column tones are declared in `lib/slide-contrast.ts`
+ * (`STENCIL_PANELS`), and a test walks every panel-backed stencil asserting
+ * legibility and that nothing straddles the edge.
+ */
+const PANEL_TOP_Y = 1_522_275;
+
 export function buildTwoColumnTextBoxes(pageId: string): Record<string, unknown>[] {
   const colW = Math.round((SLIDE_W - MARGIN * 3) / 2);
   const rightX = MARGIN * 2 + colW;
+  const headY = PANEL_TOP_Y + 120_000;   // inside the panel, not across its edge
+  const bodyY = headY + 560_000;
   return [
     ...textBoxRequests({
       id: `${pageId}_title`, pageId, text: '{{TITLE}}',
@@ -245,23 +270,25 @@ export function buildTwoColumnTextBoxes(pageId: string): Record<string, unknown>
     }),
     ...textBoxRequests({
       id: `${pageId}_lhead`, pageId, text: '{{LEFT_HEADING}}',
-      x: MARGIN, y: 1_300_000, w: colW, h: 500_000,
+      x: MARGIN, y: headY, w: colW, h: 500_000,
       fontSize: 16, bold: true, color: COLOR_INDIGO,
     }),
     ...textBoxRequests({
       id: `${pageId}_lbody`, pageId, text: '{{LEFT_BODY}}',
-      x: MARGIN, y: 1_800_000, w: colW, h: 3_000_000,
+      x: MARGIN, y: bodyY, w: colW, h: 2_800_000,
       fontSize: 13, color: COLOR_GRAY,
     }),
+    // RIGHT column sits on the DARK2 navy panel — light text, not the
+    // light-panel palette.
     ...textBoxRequests({
       id: `${pageId}_rhead`, pageId, text: '{{RIGHT_HEADING}}',
-      x: rightX, y: 1_300_000, w: colW, h: 500_000,
-      fontSize: 16, bold: true, color: COLOR_INDIGO,
+      x: rightX, y: headY, w: colW, h: 500_000,
+      fontSize: 16, bold: true, color: COLOR_WHITE,
     }),
     ...textBoxRequests({
       id: `${pageId}_rbody`, pageId, text: '{{RIGHT_BODY}}',
-      x: rightX, y: 1_800_000, w: colW, h: 3_000_000,
-      fontSize: 13, color: COLOR_GRAY,
+      x: rightX, y: bodyY, w: colW, h: 2_800_000,
+      fontSize: 13, color: COLOR_LIGHT_GRAY,
     }),
   ];
 }
