@@ -44,6 +44,29 @@ export class AvdBootError extends MobileError {
 }
 
 /**
+ * Thrown BEFORE spawning an emulator when the target AVD directory carries no
+ * disk images (dimagi-internal/ace#1357).
+ *
+ * A de-provisioned AVD used to surface 60 seconds later as an opaque
+ * `dadb` broken pipe or `Connection refused` out of `register_test_user part
+ * B`, naming neither the emulator, the AVD, nor `/ace:mobile-bootstrap` —
+ * and the probe disclaimer attached to it routed the operator to "fix the
+ * probe path first", which is the wrong lead. The real cause was in the MCP's
+ * own boot log the whole time: `Could not open '…/cache.img'`.
+ */
+export class AvdNotProvisionedError extends MobileError {
+  constructor(avdName: string, detail: string, diagnostics?: Record<string, unknown>) {
+    super(
+      'AVD_NOT_PROVISIONED',
+      `AVD ${avdName} is not provisioned: ${detail}`,
+      'Re-provision the AVD with /ace:mobile-bootstrap. Do NOT reinstall the app or re-register ' +
+        'the test user — those are where the downstream dadb error misleadingly points.',
+      diagnostics,
+    );
+  }
+}
+
+/**
  * Thrown by `AvdBackend.ensureAvdRunning` when the cold-boot's post-spawn
  * wait stalls in a specific phase (adb-register → boot-completed →
  * storage-mount). Carries structured diagnostics so the orchestrator's
