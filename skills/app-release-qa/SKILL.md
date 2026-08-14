@@ -426,6 +426,39 @@ spark-facilitator/20260730-1718 additionally proved `grid_form_menus:
 now sets both app-level flags via `commcare_set_app_menu_display`, so all
 three fields are asserted as blockers.)
 
+**Scoring arithmetic — always, every Learn form carrying item scores
+(dimagi-internal/ace#1035).** CommCare has **no "mark this option correct"
+primitive** — Vellum's Assessment Score mug takes a hand-written XPath
+(`dimagi/Vellum@8a1ef02` `src/commcareConnect.js:180-198`), and Connect reads
+`user_score` straight off the submission
+(`commcare_connect/form_receiver/processor.py:230`). Nova's maintainer
+confirmed that is the PLATFORM's shape, not a Nova gap (nova#372). So the score
+is arithmetic the architect writes, and until this check nothing verified it:
+no `-eval` grades it (they grade the app against the PDD, which carries no
+per-item score expressions) and the rest of this skill is structural. The
+Household Poverty Targeting Learn app spends 36+ hidden fields on scoring
+alone; one omitted rollup term produces a plausible score that is quietly
+wrong, and a worker's pass/fail against `passing_score` depends on it — a wrong
+score gates the wrong people out of PAID WORK.
+
+```ts
+import { checkScoringArithmetic, formatScoringReport }
+  from '../../lib/scoring-arithmetic';
+const report = checkScoringArithmetic(formXml);
+```
+
+`checked === false` means the form carries no item scores — "not applicable",
+NOT a pass. Any finding is a `[BLOCKER]` `assessment-scoring-arithmetic`; name
+the kind and the nodeset, and route the fix to `pdd-to-learn-app`. The five
+mechanical classes: `missing-term` (rollup omits an item), `extra-term`
+(rollup names a phantom), `denominator-mismatch` (`* 100 div N` where N is not
+the item count), `self-reference-missing` (an item scores a different
+question), `unreachable-max` (an item awards 0 on every branch), plus
+`no-rollup`.
+
+It deliberately does NOT judge whether the correct answer is correct — that is
+content, and `assessment_rule_coverage` owns it.
+
 **Assessment retry leak — always, every Learn form carrying a score gate
 (dimagi-internal/ace#1041).** A fail/retry result label must not restate the
 correct answer. Run the pure helper over each form XML:
