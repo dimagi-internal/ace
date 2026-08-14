@@ -732,3 +732,123 @@ shipped:
       and #1110 + #1111 as one denylist-shaped path-containment guard — but
       read PR #1194's revert first, that allowlist was validated only against
       ACE-emitted paths and broke Phase 7.
+
+# ===========================================================================
+# BATCH 2 — same day, operator: "move on to the next batch". Scope answered
+# "ship all 5"; #890 answered "transcribe, then close".
+# ===========================================================================
+batch_2:
+  batch: "next 5 oldest — 890, 891, 905, 953, 969"
+  open_at_start: 69
+  open_at_end: 68
+  open_prs_at_start: 0
+  code_ref: "origin/main after batch 1 (0.13.775)"
+  carry_forward: >-
+    Four of five carried their VALIDITY verdict forward from the same-day
+    backlog sweep (evidence paths unmoved). #969 was re-triaged fresh: PR #1230
+    merged hours after the sweep and rewrote skills/pdd-to-deliver-app §
+    entity_id, its primary surface. The sweep was validity-only by design, so
+    all five still got the full disposition/effort/change pass.
+
+  prs:
+    - { number: 1240, closes: [890], state: merged, title: "docs(playbook): record the Box download failure ladder" }
+    - { number: 1241, closes: [891], state: merged, title: "fix(ocs): answer the publish read-back from the API, not the badge markup" }
+    - { number: 1242, closes: [905], state: merged, title: "feat(commcare): ship commcare_invite_web_user" }
+    - { number: 1243, closes: [969], state: merged, title: "fix(deliver): scope entity_id by payability" }
+    - { number: 1244, refs: [953, 1159], state: merged, title: "feat(sweep): audit and repair malformed opportunities" }
+
+  findings_that_changed_the_work:
+    - issue: 891
+      finding: >-
+        The badge scrape is NOT load-bearing. The publish POST returns its 302
+        at playwright.ts:1012; the badge comes from a SEPARATE confirmation GET
+        at :1016. So ACE was hard-failing an operation that had demonstrably
+        succeeded — which is why all four repros show a correctly-published bot
+        behind the error. Both natural reactions were wrong: re-publish mints a
+        spurious version, halt kills a healthy run.
+      trap_avoided: >-
+        Do NOT read chatbot.version_number in the fallback — it is the
+        working/next counter, observed live at 3 while the published default
+        was 2. Reading it writes an off-by-one into run_state.yaml and breaks
+        llo-launch's freshness check SILENTLY, which is worse than the loud
+        failure being fixed. Pinned by a 2-not-3 test.
+      no_new_backend_work: >-
+        versions[] was ALREADY flowing through rest.getChatbot's spread at
+        runtime; it just wasn't declared on the Experiment type.
+    - issue: 905
+      finding: >-
+        The OCS twin (#906) already shipped as PR #947 by lifting the SIBLING
+        HALF OF THE SAME SCRIPT into lib/ocs-team-page.ts + a backend method.
+        File-for-file template; ~85% lift-and-wrap.
+      deliberate_deviation: >-
+        The issue body says "Default role Viewer." Shipped App Editor instead.
+        HQ's stock Read Only grants view_reports + download_reports and NOT
+        view_apps, so a Read Only member 403s on every app link ACE shares
+        while the releases page still renders — which is what makes it look
+        like it mostly works. Deviation noted in the PR.
+    - issue: 969
+      finding: >-
+        PR #1230 rewrote § entity_id hours earlier (case-ref -> preload/
+        field-ref for commcare-nova#458) and added no payability rule — it
+        DELETED the sentence closest to one, leaving per-form key-space
+        discrimination as a bare syntax caveat with its rationale stripped.
+      second_finding: >-
+        pdd-to-deliver-app-eval's [INFO] carve-out ("hidden/computed fields
+        (case_name, entity_id, etc.) are typical Nova decisions, not bugs") read
+        as "entity_id is not a bug surface" — which is why #969 was originally
+        surfaced only as a free-form observation AGAINST the eval's own rule.
+        Narrowed to cover EXISTENCE, explicitly not the calculate's CONTENT.
+      contradiction_resolved: >-
+        #1230 left the CASE-CREATE block offering
+        `parts: [{field-ref}, {text " - "}, {field-ref}]` as an equivalent,
+        while its own new caveat (ii) says exactly that parses as XPath
+        SUBTRACTION. Both were live in the same section. The live-derived
+        caveat wins; the alternative is removed and the disagreement named
+        inline so it isn't silently re-added.
+    - issue: 953
+      finding: >-
+        The prune half is blocked by MORE than #1159. Connect's delete view
+        filters exclude(status=accepted) SERVER-SIDE, and every successful
+        Phase 6 run claims its tile — so accepted rows are the dominant class
+        and are unreachable through that view whatever ids we obtain.
+        delete_opportunity() has no view/REST/atom. #1159 unblocks only the
+        pending minority.
+      shipped_instead: >-
+        The malformed-opportunity audit + repair — ace#938's class, where an
+        empty end_date BRICKS the mobile app for every invited worker. #938 was
+        found the hard way and a hand sweep turned up TEN MORE landmines in the
+        same org. Both atoms it needed had been shipped the whole time.
+      narrow_by_design: >-
+        isMalformedOpportunity counts only an explicitly-read EMPTY end_date.
+        `undefined` (not read) is NOT malformed — the repair WRITES a date, so
+        scoring an unread field as malformed would mutate healthy opportunities
+        on every sweep that skipped the deep read. Test pins it.
+    - issue: 890
+      finding: >-
+        Recommended doc-then-close rather than the proposed skills/source-instrument.
+        ACE's input boundary is Drive by design; this was one operator-steered
+        acquisition (N=1, no recurrence in 3 weeks, #1102 shows that opp working
+        from the artifact 9 days later); and both the atom and skill shapes
+        conflict with CLAUDE.md's HTTP-only / no-click-driving rule. What was
+        worth keeping is the ~1hr Box FAILURE LADDER, which is un-testable
+        external knowledge — transcribed to playbook/integrations/external-sourcing.md.
+      pointer_corrected: >-
+        The issue cites 1Password vault `AI-Agents` for the povertyindex
+        credential; per CLAUDE.md that is the legacy shared vault, no longer
+        read. Corrected to `Agent-Ace` rather than transcribed verbatim.
+
+  operator_decisions:
+    - "#890: transcribe, then close (not build, not close-bare)."
+    - "#953: closed manually by jjackson after reading the re-scope comment. I had recommended keeping it open scoped to the pending-prune slice; the operator's call supersedes."
+
+  side_findings_not_owned_by_this_batch:
+    - "skills/llo-launch/SKILL.md:49-54 compares ocs_get_chatbot's TOP-LEVEL version_number (the working counter) against the recorded published one — structurally prone to the same off-by-one as #891, in the false-stale direction. Not filed; search first."
+    - "The deliver_unit marker carries no relevance condition, so a non-payable submission still mints a CompletedWork on its own key until Layer A verification rejects it. Upstream half of #969; owning repo (commcare-connect vs Nova's emission) needs a check before filing."
+
+  next_run:
+    batch: "next 5 oldest — 970, 972, 977, 986, 992"
+    notes:
+      - "#977 has a queued post-#989 re-verification task on it from batch 1; one fresh Nova Deliver build settles it and #969's upstream half together."
+      - "#972's blocking half shipped under #1138; already relabelled, residual is case-SEARCH only."
+      - "#986 and #1003 were the only two in the whole backlog that could not be settled inside this checkout (1Password ACL; ace-web repo)."
+      - "Still unshipped and cheap: #1022+#1023+#1026 as ONE change (confident-falsy-value class), and #1110+#1111 as one DENYLIST-shaped path-containment guard — read PR #1194's revert first."
