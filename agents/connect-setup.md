@@ -99,7 +99,12 @@ Write the phase summary to `connect-setup_summary.md` with
 `parentFolderId = phaseFolderId` (the `4-connect` folder, surfaced under
 `ACE/<opp-name>/runs/<run-id>/4-connect/`) with:
 - Program: name, UUID, reused-or-created flag
-- Opportunity: name, UUID, status (`draft`)
+- Opportunity: name, UUID, status — **`active` with `is_test=true`**, not
+  `draft`. Step 2's Step 6.5 activates synchronously (see § Activation
+  above), so a `draft` opp at end of Phase 4 is a defect, not the
+  expected end state: `connect-program-setup-eval`'s `active_window_status`
+  dimension scores a never-activated opp ≤3, and Phase 6
+  `app-screenshot-capture` cannot claim a non-active opp.
 - Verification flags as configured
 - Payment units created (count, total budget)
 - Connect deep-link: `<CONNECT_BASE_URL>/a/<org>/opportunity/<uuid>/`

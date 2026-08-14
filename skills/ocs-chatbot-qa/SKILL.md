@@ -203,6 +203,26 @@ Skills — No Fake Background Tasks`). Concrete budget:
      with `X-Embed-Key` header and the `Referer` set to the allowed origin.
    - Record the suite start timestamp (`SUITE_START = $(date +%s)`).
 
+   **Expected HTTP status per call — assert a 2xx RANGE, never `== 200`.**
+   These are the codes observed live on `spark-facilitator/20260813-2126`
+   (dimagi-internal/ace#1298):
+
+   | Call | Status | Note |
+   |---|---|---|
+   | `POST /api/chat/start/` | **201 Created** | body carries `session_id` + `session_token` |
+   | `POST /api/chat/{session_id}/message/` | **202 Accepted** | asynchronous — body is `{"task_id": …, "status": "processing"}`, NOT the answer |
+   | `GET /api/chat/{session_id}/{task_id}/poll/` | 200 | poll until `status: "complete"`; an errored generation can arrive on a non-2xx, so parse the body regardless |
+   | widget loader fetch (embed script for `public_id`) | 200 | optional reachability check only |
+   | any of the above with a WRONG `X-Embed-Key` | 403 | the negative control — proves the key is what's being authorised |
+
+   The send is **queued, not answered**: an `HTTP == 200` assertion on
+   `/message/` discards three accepted sends and reports `0/3` structural
+   pass in ~2.6s, which under Step 9 reads as a miswired bot and
+   manufactures a Phase 5 gate failure. Accepting `200 <= status < 300`
+   on the same run gave 3/3 in 58.2s (#1298). `mcp/ocs/backends/rest.ts`
+   already branches on `!sendRes.ok`, i.e. any 2xx — a hand-rolled harness
+   must match that, not tighten it.
+
    **Write strategy:**
    - `--quick` — **buffer in memory, single write at suite end.** 3
      prompts × 90s = 270s hard cap; the suite either finishes or is
@@ -221,7 +241,9 @@ Skills — No Fake Background Tasks`). Concrete budget:
    from Step 3 — `--deep`/`--monitor` only; `--quick` always starts
    fresh because nothing is persisted mid-loop):
      1. Record the per-prompt start timestamp (`PROMPT_START = $(date +%s)`).
-     2. Send via `POST /api/chat/{session_id}/message/`.
+     2. Send via `POST /api/chat/{session_id}/message/` — treat **any
+        2xx** as accepted (it returns **202** with a `task_id`, not 200
+        with the answer; ace#1298) and carry `task_id` into the poll.
      3. Poll `GET /api/chat/{session_id}/{task_id}/poll/` until
         `status: "complete"` OR per-prompt timeout (**90s**) elapses.
         On timeout: capture an empty response, set
@@ -385,9 +407,10 @@ Skills — No Fake Background Tasks`). Concrete budget:
     NOT clear it, the OCS session-token contract drifted again — re-open
     #742.)
 - Raw widget HTTP (Step 5 — the actual suite): `POST /api/chat/start/`
-  → `POST /api/chat/{session_id}/message/` → `GET
-  /api/chat/{session_id}/{task_id}/poll/`. This path returns the full
-  transcript schema.
+  (**201**) → `POST /api/chat/{session_id}/message/` (**202**, async) →
+  `GET /api/chat/{session_id}/{task_id}/poll/` (200). This path returns
+  the full transcript schema. Gate on a 2xx range, not `== 200` — see the
+  status table in Step 5 (ace#1298).
 - Google Drive:
   - `drive_create_file` — Step 7 single transcript write on `--quick`;
     Step 5 first-write on `--deep`/`--monitor`.
@@ -420,3 +443,4 @@ When `--dry-run` is active:
 | 2026-05-05 | **`--quick` switched to single-shot write.** Buffer entries in memory and call `drive_create_file` once at suite end (Step 7). Reduces Drive RTTs on `--quick` from N+1 (read+write per prompt + metadata) to 1. The incremental CAS-write strategy still applies on `--deep`/`--monitor` where 15–30 min suite runtimes make resume-from-partial worth the cost. Step 3 resume-from-partial is a `--deep`/`--monitor`-only step now (`--quick`'s 270s cap is short enough that re-running is cheaper than the resume bookkeeping). | ACE team |
 | 2026-05-15 | Extend `--quick` suite with archetype-specific prompts for `focus-group` (1–2 from `pdd-to-test-prompts.md` `gdoc-writing-guidance` + `facilitation-technique` categories) since the 3 universal Connect-domain prompts primarily exercise shared-collection retrieval and would pass even if the opp-specific collection was mis-loaded. Wall-clock cap scales to 360s/450s for focus-group. Atomic-visit / multi-stage stay at the 3-prompt / 270s baseline. Prompted by `malaria-itn-fgd/20260514-2352` Phase 5 observation. | ACE team |
 | 2026-06-09 | **Trace triage on generation errors (Step 5.9).** On circuit-break / all-fail, the skill must open the session trace URL the atom now appends to `OCS generation error` failures and record the underlying provider error verbatim — never diagnose "platform outage" from the generic "intermittent load" fallback. Root incident: bednet-spot-check/20260609-0909 lost a session to a revoked team Anthropic key (`401 invalid x-api-key`) misread as a team-wide OCS outage because the golden-template control sat behind the same dead key (jjackson/ace#743). Atom-side enrichment: `mcp/ocs/backends/rest.ts::describeSessionTrace`. | ACE team |
+| 2026-08-14 | **Step 5 now states the expected HTTP status per widget endpoint (dimagi-internal/ace#1298).** The endpoint list named `/start/` → `/message/` → `/poll/` with no status codes, so a hand-rolled harness asserted `HTTP == 200` on the send. `/message/` returns **202 Accepted** with a `task_id` (the send is queued, not answered) and `/start/` returns **201** — the harness discarded three accepted sends and reported `0/3` structural pass in 2.6s, which under Step 9 escalates as a miswired bot. Re-run accepting any 2xx: 3/3 in 58.2s. Step 5 now carries a status table (incl. the wrong-embed-key 403 negative control) and mandates a 2xx range; matching bullet added to `playbook/integrations/ocs-integration.md`. Observed on `spark-facilitator/20260813-2126`. | ACE team |
