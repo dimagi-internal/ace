@@ -132,24 +132,37 @@ So: **status/verdict is a necessary check, never a sufficient one.**
    iteration seeded from it. Checking only steps 1–2 reproduces the exact bug
    this command exists to prevent.
 
-   Run a **blind-guess probe** on the golden PDD's Learn assessment before
-   locking: give a fresh context ONLY the item stem and its options — no
-   teaching content, no answer key — and record what it picks. Repeat a few
-   times per item. `guessable_ratio` = (items answered correctly cold) /
-   (total items); the hard gate fires at **>= 0.80**.
+   **Derive the probe from the CURRENT `pdd-to-learn-app-eval` SKILL.md at
+   mint time — never from a checklist frozen in this doc.** This section
+   once hard-coded a blind-guess probe with a `guessable_ratio >= 0.80` hard
+   gate; the eval retired that gate (ace#1206, 2026-08-13 — an LLM cannot
+   proxy an untrained human's difficulty floor, and cold-guessability of
+   common-sense rules is expected, not a defect) the same day a sibling
+   worktree updated this doc, so a mint that followed this section literally
+   refused goldens the live rubric passes (measured on
+   `bednet-check-2-visit/20260813-2101`: legacy ratio 5/6 = 0.83 → old gate
+   fails, current rubric passes). Read the eval's changelog table for what
+   the assessment gates are TODAY, and probe the golden PDD's item banks
+   against those. As of 2026-08-13 that means, judged structurally from the
+   PDD (no dispatched readers):
 
-   Measured on `bednet-check-2-visit/20260813-1639` (3 trials/item): item 1
-   ("How do you earn money on Connect?") was picked correctly **3/3 cold** —
-   as guessable as the single item that killed the old golden. Item 2 ("which
-   visit earns the payment?") drew the **wrong** answer 3/3, because the
-   payable visit is a program-specific fact stated only in the teaching
-   content. Ratio 0.50 → passes.
+   - `assessment_rule_coverage` — enumerate the counter-intuitive rules and
+     high-consequence operations from the PDD, map every scored item in BOTH
+     banks to the rule it keys on, counter-intuitive rules weighted double;
+     zero counter-intuitive rules caps the dimension; an item whose
+     distractors are ALL rejectable on sight is excluded from coverage.
+   - `single_gating_assessment` — exactly ONE `connect.assessment` marker
+     across the Learn app ([BLOCKER] otherwise; Connect's any-passed
+     semantics make a marker-carrying pre-test the easiest unlock path).
+   - `assessment_gating` (b) — every PDD-declared topic appears in the
+     gating bank, mapped by name.
+   - `delivery_operation_coverage` + `pre_post_split` — the two gates that
+     killed golden `20260813-1639` (a brief that forbids the items the eval
+     requires is unfixable downstream).
 
-   The structural lesson: **a one-item Learn quiz cannot pass this gate.** At
-   n=1 the ratio is 1.00 or 0.00 with nothing in between (ace#1042), so a
-   single guessable item is fatal while a second, genuinely program-specific
-   item halves the ratio. If a golden's PDD carries only one assessment item,
-   treat that as a lock failure and fix the PDD, not the rubric.
+   A lock-time probe that only re-runs whatever gate bit LAST time is how
+   `20260813-1639` passed validation and still failed every iteration —
+   probe ALL the assessment gates the current rubric carries.
 3. **Archive, don't delete.** If an `iterate-state.yaml` exists, rename it to
    `iterate-state-legacy-<YYYYMMDD>.yaml` beside it. History is append-only;
    dropping dirty runs to flatter the number is the failure this loop exists to
