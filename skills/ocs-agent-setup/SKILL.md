@@ -159,10 +159,28 @@ round-trip gate in Step 11.5 below.
 
    The canonical KB recipe is **PDD + inputs + training + app summaries**
    (per [#106 finding 15](https://github.com/jjackson/ace/issues/106)).
-   Indexing the source PDFs/spreadsheets directly alongside the
-   synthesized PDD gives the bot procedural fidelity for SOP-level
-   questions where the PDD summary may have lost detail. The pre-fix
-   recipe was PDD-only; that lost the original SOP wording.
+   Indexing the source documents directly alongside the synthesized PDD
+   gives the bot procedural fidelity for SOP-level questions where the PDD
+   summary may have lost detail. The pre-fix recipe was PDD-only; that lost
+   the original SOP wording.
+
+   **SPREADSHEETS CANNOT BE INDEXED — convert, don't upload
+   (dimagi-internal/ace#1296).** This collection is created `is_index: true`,
+   and OCS applies a DIFFERENT allowlist to indexed collections
+   (`apps/documents/views.py::add_collection_files` branches on
+   `collection.is_index`): `file_search`, which contains **no** spreadsheet
+   format. `.xls` / `.xlsx` / `.csv` are accepted only for NON-indexed media
+   collections, which is what makes this easy to get wrong — the file type
+   looks supported, and OCS's own `SUPPORTED_FILE_TYPES` constant does list it.
+   OCS silently DROPS the rejects from an otherwise-successful multi-file POST,
+   so pre-#1296 the loss surfaced only as a count mismatch naming a number and
+   not a file.
+
+   `ocs_upload_collection_files` now refuses the whole batch up front and names
+   the offending files, so nothing lands and a corrected retry is clean. To
+   index a workbook's content, upload a **text extract** of it (`.md` / `.txt`)
+   — which is what ACE already does when it writes a structured extract
+   alongside the source workbook.
 
    **NEVER INDEX THE DEEP-QA INSTRUMENT
    (`2-scenarios/pdd-to-test-prompts.md`) — hard exclusion, no archetype
@@ -192,7 +210,10 @@ round-trip gate in Step 11.5 below.
    Files to gather:
    - `runs/<run-id>/1-design/idea-to-pdd.md` — synthesized PDD
    - `inputs/*` — every file in the opp's `inputs/` folder (SOPs,
-     questionnaire templates, data spreadsheets, evidence packs).
+     questionnaire templates, evidence packs). **Skip the spreadsheets
+     themselves** and index their text extracts instead — see the
+     conversion note above (ace#1296); an indexed collection rejects
+     `.xls`/`.xlsx`/`.csv` outright.
      Use `drive_list_folder` + `drive_download_binary` for binary
      types (PDF, docx, xlsx — see also [#106 finding 4](https://github.com/jjackson/ace/issues/106));
      use `drive_read_file` for text files (markdown, plain text).
