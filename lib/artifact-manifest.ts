@@ -825,7 +825,7 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     // Step-2 training artifact: its producer consumes the OCS chatbot URL, so
     // it cannot exist when Phase 5 was skipped (ace#1069).
     notRequiredInModes: ['app-QA-only'],
-    description: 'Phase 8 onboarding email template, with {{LLO_NAME}}/{{LLO_FIRST_NAME}}/{{LLO_ORG}} tokens',
+    description: 'LLO onboarding email template authored in Phase 6 and sent by Phase 9 (execution-manager) llo-onboarding, with {{LLO_NAME}}/{{LLO_FIRST_NAME}}/{{LLO_ORG}} tokens',
   },
   {
     path: '6-qa-and-training/training-deck-spec.yaml',
@@ -1269,10 +1269,10 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     consumedBy: [],
     phase: 'solicitation-management',
     required: true,
-    description: 'Phase 7 (solicitation-management) end-of-phase summary written by the solicitation-management subagent. Captures published solicitation URL, invitation count, and gate disposition handed back to the orchestrator.',
+    description: 'Phase 8 (solicitation-management) end-of-phase summary written by the solicitation-management subagent. Captures published solicitation URL, invitation count, and gate disposition handed back to the orchestrator.',
   },
 
-  // ── Execution Management phase (Phase 8) ───────────────────────
+  // ── Execution Management phase (Phase 9) ───────────────────────
   // Renamed from llo-manager (was Phase 7) in 0.12.0; renumbered to Phase 8 in 0.13.0.
 
   {
@@ -1378,10 +1378,10 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     consumedBy: [],
     phase: 'execution-management',
     required: true,
-    description: 'Phase 8 (execution-manager) end-of-phase summary written by the execution-manager subagent. Captures activation status, monitoring config, and gate disposition handed back to the orchestrator.',
+    description: 'Phase 9 (execution-manager) end-of-phase summary written by the execution-manager subagent. Captures activation status, monitoring config, and gate disposition handed back to the orchestrator.',
   },
 
-  // ── Closeout phase (Phase 9) ───────────────────────────────────
+  // ── Closeout phase (Phase 10) ──────────────────────────────────
 
   {
     path: '10-closeout/opp-closeout_invoices.md',
@@ -1450,10 +1450,10 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     consumedBy: [],
     phase: 'closeout',
     required: true,
-    description: 'Phase 9 (closeout) summary written by the closeout subagent at lifecycle completion. The canonical "what shipped, how it landed, what to do next" doc for the opp.',
+    description: 'Phase 10 (closeout) summary written by the closeout subagent at lifecycle completion. The canonical "what shipped, how it landed, what to do next" doc for the opp.',
   },
 
-  // ── Umbrella eval (opp-eval) — ad-hoc, opt-in; not part of the default 8-phase pipeline ──
+  // ── Umbrella eval (opp-eval) — ad-hoc, opt-in; not part of the default 10-phase pipeline ──
 
   {
     path: '10-closeout/opp-eval/opp-eval_scorecard-quick.md',

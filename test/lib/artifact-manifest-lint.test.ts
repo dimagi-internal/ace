@@ -16,7 +16,7 @@
 import { describe, it, expect } from 'vitest';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { ARTIFACT_MANIFEST } from '../../lib/artifact-manifest.js';
+import { ARTIFACT_MANIFEST, PHASE_DEFS } from '../../lib/artifact-manifest.js';
 import { PHASE_FOLDERS, ROLE_VOCAB, baseRole } from '../../lib/artifact-manifest-roles.js';
 
 const SKILLS_DIR = path.resolve(import.meta.dirname, '../../skills');
@@ -210,6 +210,66 @@ describe('artifact manifest lint', () => {
     for (const p of partnershipPhases) {
       expect(phases, `missing partnership phase '${p}'`).toContain(p);
     }
+  });
+
+  /**
+   * Phase ordinals inside `description` must agree with the entry's own
+   * path and with PHASE_DEFS.
+   *
+   * These strings are not decoration: `verify_phase_artifacts` returns
+   * `description` (alongside `producedBy`) in every `missing[]` entry, so
+   * this is the text an orchestrator or a phase subagent reads while
+   * healing a fence miss — at exactly the moment it is deciding what to
+   * write and where. A stale ordinal actively misdirects.
+   *
+   * Three summary descriptions carried pre-renumber ordinals for months
+   * (the Phase 8 solicitation summary described itself as "Phase 7"),
+   * observed live on `spark-facilitator/20260813-2126` and fixed with
+   * this test (dimagi-internal/ace#1308). Renumbers have happened before
+   * (0.13.0 and 0.13.x both shifted the tail of the pipeline) and the
+   * prose is the thing that does not get updated, so the invariant is
+   * mechanical rather than remembered.
+   */
+  it('a description that leads with "Phase N" matches its own path ordinal', () => {
+    const errors: string[] = [];
+    for (const a of ARTIFACT_MANIFEST) {
+      const claimed = /^Phase (\d+)\b/.exec(a.description ?? '');
+      if (!claimed) continue;
+      const own = /^(\d+)-/.exec(a.path);
+      if (!own) {
+        errors.push(`${a.path}: description leads with "Phase ${claimed[1]}" but the path has no ordinal prefix`);
+        continue;
+      }
+      if (claimed[1] !== own[1]) {
+        errors.push(`${a.path}: description says "Phase ${claimed[1]}", path says phase ${own[1]}`);
+      }
+    }
+    expect(errors).toEqual([]);
+  });
+
+  it('every "Phase N (<phase>)" in a description uses that phase\'s real ordinal', () => {
+    // Ordinal lookup accepts BOTH key-spaces (`execution-management` and
+    // `execution-manager`), since descriptions use the agent name.
+    const ordinalOf = new Map<string, number>();
+    for (const d of PHASE_DEFS) {
+      ordinalOf.set(d.key, d.ordinal);
+      ordinalOf.set(d.agentName, d.ordinal);
+    }
+    // The partnership-video pipeline numbers its phases locally (1..6) while
+    // PHASE_DEFS continues the global sequence at 11..16, so its folder
+    // ordinals and PHASE_DEFS ordinals legitimately disagree. Only the
+    // Connect-opp pipeline (ordinals 1..10) is checked here.
+    const errors: string[] = [];
+    for (const a of ARTIFACT_MANIFEST) {
+      for (const m of (a.description ?? '').matchAll(/Phase (\d+) \(([a-z0-9-]+)\)/g)) {
+        const real = ordinalOf.get(m[2]);
+        if (real === undefined || real > 10) continue; // not a phase name, or partnership pipeline
+        if (Number(m[1]) !== real) {
+          errors.push(`${a.path}: description says "Phase ${m[1]} (${m[2]})" but ${m[2]} is phase ${real}`);
+        }
+      }
+    }
+    expect(errors).toEqual([]);
   });
 
   it('every artifact has at least a producedBy', () => {

@@ -519,20 +519,47 @@ alone makes the artifact land outside `4-connect` and fail
    PU after the fact; under the hood it sends a 1-item list to the same
    endpoint and shares the same validation rules.
 
-   **Verify-after-create (mandatory).** Immediately after the create
-   response returns, call `connect_list_payment_units({organization_slug,
-   opportunity_id})` and compare each created PU against what was sent.
-   Specifically check, per unit:
+   **Verify-after-create (mandatory) — the CREATE RESPONSE is the
+   authoritative round-trip source.** `connect_create_payment_units`
+   returns Connect's own post-persist serialization of each stored PU.
+   That object — not a follow-up list call — is what you assert against
+   the request payload. Per unit, check:
    - `name`, `amount`, `org_amount`, `max_total`, `max_daily` — exact
      match against the request payload.
    - `required_deliver_units` — **must be non-empty** AND array length
      matches request AND contains the same DU ids (order may differ). A
-     stored empty `required_deliver_units` is a `[BLOCKER]` even if the
-     rest of the unit matches (it zeroes Phase 7 accrual — see the
-     create-time gate above, jjackson/ace#843).
+     genuinely empty `required_deliver_units` **in the create response**
+     is a `[BLOCKER]` even if the rest of the unit matches (it zeroes
+     Phase 7 accrual — see the create-time gate above, jjackson/ace#843).
    - `optional_deliver_units` — same.
 
-   **Action on any mismatch:** halt with a `[BLOCKER]` in the gate
+   **Do NOT gate on `connect_list_payment_units` for these fields.** That
+   atom's HTML-scraped read path cannot see them: `required_deliver_units`
+   and `optional_deliver_units` come back `[]`, and `description` comes
+   back `""`, **unconditionally** — the listing renders DU display names
+   in an Alpine.js template with no server ids (pinned by
+   `test/mcp/connect/unit/html-scrape.test.ts` "still cannot parse
+   deliver-unit server IDs from the listing"). So an empty
+   `required_deliver_units` from the list call is a constant of the read
+   path, carrying zero information about stored state — halting on it
+   halts every healthy run. Observed live on
+   `spark-facilitator/20260813-2126`: the create response carried
+   `required_deliver_units: [6617]` while the list call on the same PU
+   returned `[]`, and the opp activated normally (Connect only permits
+   activation when a valid PaymentUnit exists). Same divergence on
+   `bednet-spot-check/20260728-2222`. Tracked as dimagi-internal/ace#1026
+   (consolidated into the #1022 read-back umbrella); until the atom either
+   parses the DU column or omits what it cannot read, `connect_list_payment_units`
+   is corroboration on `id` / `payment_unit_uuid` / `name` only.
+
+   The check's intent stands — an unwired payment unit is exactly the
+   #843 class and must still be caught. It is caught at the create
+   response (and, end-to-end, by Phase 6's
+   `connect_get_deliver_progress` showing `delivered >= 1`). What
+   changed is only which source is authoritative.
+
+   **Action on any mismatch in the create response:** halt with a
+   `[BLOCKER]` in the gate
    brief specifying the exact field divergence (sent vs. stored). Log
    the full sent payload AND the full server response to
    `comms-log/observations.md`. Do NOT proceed to Step 7 — a malformed
@@ -1021,6 +1048,7 @@ decisions_append_rows({
 | 2026-06-01 | **Step 6.5: verify activation via Step 7's invite, not the scraped `active` flag (closes jjackson/ace#617, and its #634 duplicate).** Dropped the post-activate `connect_get_opportunity` read-back check — that flag returns `true` on un-transitioned opps and can't distinguish a real `/activate/` from a no-op (the same create-side flag that motivated #624). The authoritative confirmation is `connect_send_flw_invite` in Step 7 succeeding: `invite_users/` hard-rejects a non-active opp, so a successful invite is the only proof the transition landed. | ACE team |
 | 2026-08-12 | **Step 5 rewritten around what Connect's verification form actually has (dimagi-internal/ace#1013).** The step prescribed `gps` / `duplicate` / `catchment_areas` / `location` / `check_attachments`, all five of which were removed from the form — the atom accepts them, Django drops them, and it still returns `ok: true`, so a compliant agent produced an artifact claiming enforcement that never existed. Step 5 now leads with `form_field_rules` (the only server-side Layer A surface), requires reading `question_path` / `question_value` from the RELEASED CCZ rather than the PDD's prose (Nova flattens groups — a rule on a non-existent node enforces nothing and reports success), documents the 25-char `name` cap and the `duration_seconds`-is-really-minutes trap, and requires verifying via `form_field_rules_saved`. Archetype verification lines updated to match. Found live on spark-facilitator/20260810-0737. | ACE team |
 | 2026-08-14 | **Step 5: `question_path` is a JSONPath into the HQ form-JSON doc, not an XForm XPath (dimagi-internal/ace#1301, `blocks-e2e`).** The step (and the atom's own schema) told agents to write `/data/<group>/<question>`. Connect evaluates the field as `jsonpath_ng.ext.parse(f"$.{question_path}")` against the whole forwarded document, so an XPath raises `JsonPathParserError` inside `clean_form_submission` — uncaught on the deliver path — and HQ's forward of every PAYABLE visit returns **HTTP 500**. The device is unaffected (CommCare shows "1 form sent to server!" because HQ *did* accept the submission), so the run looks green while Connect has no visit and the opportunity cannot pay. Observed live on `spark-facilitator/20260813-2126`: motech log 500 for the deliver form, 200 for every registration form on the same app; rewriting the rows to `form.meeting_basics.*` and requeueing the same payload moved Connect from `delivered: 0` to `delivered: 1 / approved: 1`. Correct spelling is `form.<group>.<question>`; `lib/connect-question-path.ts` now normalises `/data/a/b` → `form.a.b` on both incoming and replayed rows so a poisoned opportunity self-repairs. Also: `form_field_rules_saved` is no longer treated as sufficient evidence — it proves storage, not evaluability. | ACE team |
+| 2026-08-14 | **Step 6 verify-after-create re-pointed at the CREATE RESPONSE (dimagi-internal/ace#1026, umbrella #1022).** The step mandated a `[BLOCKER]` when `connect_list_payment_units` returned an empty `required_deliver_units` — but that atom's HTML-scraped read path returns `[]` (and `description: ""`) unconditionally, so the halt condition was a constant of the read path, not a fact about stored state, and a compliant agent would halt every healthy run. Observed on `spark-facilitator/20260813-2126`: create response `required_deliver_units: [6617]`, list call `[]`, opp activated normally. The #843 check's intent is preserved — it now asserts against the create response (Connect's own post-persist serialization), with `connect_list_payment_units` demoted to corroboration on `id` / `payment_unit_uuid` / `name`. | ACE team |
 | 2026-05-10 | State consolidation PR a: retire `connect-state.yaml`; emit a single `run_state.yaml.phases.connect-setup.products.connect` block at end of Step 10. Step 7 holds invite metadata in memory rather than writing immediately. (Initial implementation dual-wrote to `opp.yaml.connect`; corrected on 2026-05-11 — runs are now independent. `opp.yaml.connect.program` is durable cross-run state written by `connect-program-setup`; `opp.yaml.connect.opportunity` / `ace_test_user` are no longer written here.) See `docs/superpowers/specs/2026-05-10-state-consolidation.md`. | ACE team |
 
 <!-- connect_int_id is read directly from the connect_create_opportunity response (ConnectProd integer id); the old post-create labs_context lookup was removed in the jjackson/ace#686 follow-up (the int was always in the create response). -->
