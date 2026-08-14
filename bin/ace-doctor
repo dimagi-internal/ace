@@ -221,11 +221,35 @@ if [ "$PREFLIGHT" = "1" ]; then
   # orchestrator can decide whether Phase 5 is safe to enter.
   PF_SEL_DIR="$ROOT/mcp/mobile/selectors"
   PF_SEL_RECIPES_DIR="$ROOT/mcp/mobile/recipes/static"
-  PF_SEL_APK="$(pf_get_env ACE_CONNECT_APK_VERSION)"
+  # Three independent authorities on which APK the runtime targets. The probe
+  # used to know only the first, which made it structurally incapable of
+  # detecting a STALE pin: it validates whatever it is pointed at, and an old
+  # map is fully populated and internally consistent, so it passed
+  # (dimagi-internal/ace#1156, spark-facilitator/20260731-0656 — machine pinned
+  # 2.63.0 while code + newest map were 2.63.2; a green doctor was one step
+  # from writing new selector rows into a map the runtime does not load).
+  #
+  # `/ace:update` does NOT rewrite the installed .env — only
+  # `/ace:setup --force-env` does, and nothing forces it — so a machine's pin
+  # ages silently while the repo moves on.
+  PF_SEL_PIN="$(pf_get_env ACE_CONNECT_APK_VERSION)"
+  PF_SEL_CODE_DEFAULT="$(sed -nE "s/^export const DEFAULT_APK_VERSION = '([^']+)'.*/\1/p" "$ROOT/mcp/mobile/client.ts" 2>/dev/null | head -1)"
+  PF_SEL_NEWEST_MAP="$(ls -1 "$PF_SEL_DIR"/connect-*.yaml 2>/dev/null \
+    | sed -E 's|.*/connect-([^/]+)\.yaml$|\1|' \
+    | sort -V | tail -1)"
+  PF_SEL_APK="$PF_SEL_PIN"
   if [ -z "$PF_SEL_APK" ]; then
-    PF_SEL_APK="$(ls -1 "$PF_SEL_DIR"/connect-*.yaml 2>/dev/null \
-      | sed -E 's|.*/connect-([^/]+)\.yaml$|\1|' \
-      | sort -V | tail -1)"
+    PF_SEL_APK="$PF_SEL_NEWEST_MAP"
+  fi
+  # `a < b` on dotted versions, without assuming GNU sort semantics beyond -V.
+  pf_ver_lt() { [ "$1" != "$2" ] && [ "$(printf '%s\n%s\n' "$1" "$2" | sort -V | head -1)" = "$1" ]; }
+  PF_SEL_STALE_PIN=""
+  if [ -n "$PF_SEL_PIN" ]; then
+    if [ -n "$PF_SEL_CODE_DEFAULT" ] && pf_ver_lt "$PF_SEL_PIN" "$PF_SEL_CODE_DEFAULT"; then
+      PF_SEL_STALE_PIN="code default $PF_SEL_CODE_DEFAULT"
+    elif [ -n "$PF_SEL_NEWEST_MAP" ] && pf_ver_lt "$PF_SEL_PIN" "$PF_SEL_NEWEST_MAP"; then
+      PF_SEL_STALE_PIN="newest map on disk $PF_SEL_NEWEST_MAP"
+    fi
   fi
   PF_SEL_MAP_REL="mcp/mobile/selectors/connect-${PF_SEL_APK}.yaml"
   PF_SEL_MAP_PATH="$ROOT/$PF_SEL_MAP_REL"
@@ -271,6 +295,15 @@ if [ "$PREFLIGHT" = "1" ]; then
         PF_SEL_UNRESOLVED_YAML="[$(printf '%s\n' "$PF_SEL_UNRESOLVED" | grep . | sed 's/^/"/; s/$/"/' | tr '\n' ',' | sed 's/,$//')]"
       fi
     fi
+  fi
+
+  # A stale pin FAILS regardless of how healthy the map it names is — that
+  # internal consistency is exactly what made the old check misleading
+  # (ace#1156). Runs on-device against one APK while the calibrated map targets
+  # another is the #591/#593 selector-drift class.
+  if [ -n "$PF_SEL_STALE_PIN" ]; then
+    PF_SEL_STATUS="fail"
+    PF_SEL_REMEDIATION="ACE_CONNECT_APK_VERSION is stale (pinned $PF_SEL_PIN, behind $PF_SEL_STALE_PIN) — refresh the installed .env: /ace:setup --force-env (NOT /ace:update, which never touches it)"
   fi
 
   # nova_needs_auth_cache — STATIC check (no network), mirrors the named
@@ -344,6 +377,9 @@ env:
 selector_map_currency:
   status: ${PF_SEL_STATUS}
   apk_version: "${PF_SEL_APK:-}"
+  pin: "${PF_SEL_PIN:-}"
+  code_default: "${PF_SEL_CODE_DEFAULT:-}"
+  newest_map: "${PF_SEL_NEWEST_MAP:-}"
   map_path: "${PF_SEL_MAP_REL}"
   rows_verified: ${PF_SEL_ROWS_VERIFIED}
   rows_unverified: ${PF_SEL_ROWS_UNVERIFIED}
