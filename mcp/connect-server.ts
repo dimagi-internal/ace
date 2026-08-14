@@ -815,6 +815,17 @@ server.tool('commcare_list_users',
   async (args) => runAtom(async () => (await commcareClient(args.server)).listUsers(args))
 );
 
+server.tool('commcare_invite_web_user',
+  'Invite a WEB user (a Dimagi teammate / reviewer, not a mobile worker) to a CommCare HQ domain, or bring an existing member up to the right role. POSTs the live InviteWebUserView form at /a/<domain>/settings/users/web/invite/ and proves the result by read-back. IDEMPOTENT: an email that is already a member or already invited returns already-member / invite-pending rather than erroring. IMPORTANT — role, not membership: the default role is "App Editor" because HQ stock "Read Only" lacks view_apps, so a Read Only member gets a bare 403 on every app link ACE shares while the releases page still renders (looks like it mostly works). An existing member on a DIFFERENT role is reconciled through the edit page, re-posting the whole live form so per-project custom-data fields are not dropped. Role labels are resolved against the live select and an unknown label fails loud with the available list. Backs skills/share-run-access.',
+  {
+    server: HQ_SERVER_FIELD,
+    domain: z.string().describe('HQ project space, e.g. connect-ace-prod'),
+    email: z.string().describe('Email address of the person to invite.'),
+    role: z.string().optional().describe('Role LABEL as HQ renders it. Defaults to "App Editor" — do not set "Read Only" for reviewers who need app links (ace#905).'),
+  },
+  async (args) => runAtom(async () => (await commcareClient(args.server)).inviteWebUser(args))
+);
+
 server.tool('commcare_get_user',
   'Fetch a single CommCare HQ mobile worker by id. GET /a/<domain>/api/v0.5/user/<user_id>/. Returns the full record including user_data.',
   { server: HQ_SERVER_FIELD, domain: z.string(), user_id: z.string() },

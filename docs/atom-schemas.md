@@ -406,7 +406,7 @@ Render the run-folder README markdown for `runId` with optional per-phase status
 
 ## ace-connect
 
-Source: `mcp/connect-server.ts` — 57 atoms
+Source: `mcp/connect-server.ts` — 58 atoms
 
 ### `connect_list_programs`
 
@@ -849,6 +849,17 @@ List mobile workers (CommCareUser) in a CommCare HQ domain. GET /a/<domain>/api/
 | `limit` | `z.number` | optional | _—_ |
 | `offset` | `z.number` | optional | _—_ |
 | `group` | `z.string` | optional | _—_ |
+
+### `commcare_invite_web_user`
+
+Invite a WEB user (a Dimagi teammate / reviewer, not a mobile worker) to a CommCare HQ domain, or bring an existing member up to the right role. POSTs the live InviteWebUserView form at /a/<domain>/settings/users/web/invite/ and proves the result by read-back. IDEMPOTENT: an email that is already a member or already invited returns already-member / invite-pending rather than erroring. IMPORTANT — …
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `server` | `z.string` | optional | CommCare HQ cluster to target — e.g. "us" or "eu". Omit to use the default server ACE_HQ_DEFAULT_SERVER. All configured clusters are live at once. |
+| `domain` | `z.string` | **required** | HQ project space, e.g. connect-ace-prod |
+| `email` | `z.string` | **required** | Email address of the person to invite. |
+| `role` | `z.string` | optional | Role LABEL as HQ renders it. Defaults to "App Editor" — do not set "Read Only" for reviewers who need app links (ace#905). |
 
 ### `commcare_get_user`
 

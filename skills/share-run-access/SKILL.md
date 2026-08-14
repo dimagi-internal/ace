@@ -54,7 +54,7 @@ So a reviewer can ALWAYS open the summary and its docs with no grant. What needs
 | **ace-web workbench** | `/ace/w/<workspace>/opps/<opp>/runs/<run>` (the "how we got there" view) | Connect/CCHQ OAuth + `WorkspaceMembership` | **@dimagi.com/@dimagi-ai.com auto-join** on first sign-in (no grant). **Other domains cannot sign in at all** — see the allowlist box below; an invite to them is a no-op. |
 | **labs dashboards** | `/labs/workflow/<id>/run/?...` | labs (CCHQ OAuth) | Same CCHQ login; visibility follows the run's synthetic/opp. Sign-in via CCHQ. |
 | **Connect opportunity** | `connect.dimagi.com/a/<org>/opportunity/<id>/` | Connect org membership | `connect_add_org_member` (org from `run_state` → `connect.products.connect.organization_slug`). |
-| **CommCare HQ apps** | `commcarehq.org/a/<domain>/apps/view/<id>/` | HQ web-user on the domain | HQ web-user invite — **atom pending (dimagi-internal/ace#905)**; manual via HQ Users UI until then. |
+| **CommCare HQ apps** | `commcarehq.org/a/<domain>/apps/view/<id>/` | HQ web-user on the domain | `commcare_invite_web_user` (ships since ace#905; defaults to the **`App Editor`** role — load-bearing, see below; reconciles an existing member's role rather than skipping). |
 | **OCS chatbot admin** | `openchatstudio.com/a/<team>/chatbots/<id>/` | OCS team membership | `ocs_add_team_member` (defaults to the "Chatbot Admin" group — the least-privilege group that opens the linked chatbot page; reconciles an existing member's groups additively). Internal-tool surface; most reviewers don't need it. |
 
 **The account precondition threads through all of them:** every gated surface authenticates via
@@ -136,11 +136,20 @@ grants membership and tells the person the one sign-in they must do themselves.
      person can sign in to labs (CCHQ account) they reach the run's dashboards. Just include the
      dashboard URLs and "sign in with your CommCare account" in the report.
 
-   - **CommCare HQ apps.** No atom yet (dimagi-internal/ace#905) — so **do it by hand this turn**:
-     invite the email as a web user (read-only role) to the `<domain>` project via
-     `commcarehq.org/a/<domain>/settings/users/`, or by authenticated HTTP against that form. Then
-     read the membership back. Do not defer to "an HQ admin will do it" unless ACE genuinely lacks
-     admin on the domain — and if so, that's a **NOT DONE** with a named owner, surfaced to the human.
+   - **CommCare HQ apps.** Call `commcare_invite_web_user({domain, email})` (ships since ace#905).
+     **Do NOT pass `role: "Read Only"`.** The default is `App Editor` and that is load-bearing: HQ's
+     stock Read Only preset grants `view_reports` + `download_reports` and **not** `view_apps`, so a
+     Read Only member gets a bare 403 on every app link this skill shares — while the *releases* page
+     still renders, which is exactly what makes the access look like it mostly works. Of the stock
+     presets only `App Editor` and `Admin` carry `view_apps`; `App Editor` is the narrower. (Found by
+     a real reviewer, not a judge — Sophie Feintuch, 2026-07-23.)
+
+     The atom handles every state itself with read-back proof: fresh invite, pending-invite
+     idempotent skip, already-a-member no-op, and — the one that matters — **role reconciliation for
+     a member sitting on the wrong role**, which membership-shaped checks report as success. Statuses
+     `invited` / `invite-pending` / `already-member` / `role-reconciled` are all grants; a throw is a
+     **NOT DONE** with the read-back evidence. Do not defer to "an HQ admin will do it" unless ACE
+     genuinely lacks admin on the domain — and if so, that's a **NOT DONE** with a named owner.
 
    - **OCS chatbot admin.** Call `ocs_add_team_member({email})` (ships since ace#906; default group
      "Chatbot Admin" is load-bearing — it carries `experiments.view_experiment`, the permission the
