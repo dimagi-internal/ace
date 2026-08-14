@@ -521,6 +521,27 @@ escalate — auto mode buys speed, not the right to ship known-broken
 work. Use sparingly: eval calibration runs, smoke tests against test
 workspaces, and the like.
 
+**In auto mode, NEVER end a turn with a question.** An auto run is
+normally headless (`claude -p`), so there is no operator on the other
+end — the question IS the halt, and it costs every phase that would
+have followed. The rule above governs the *enumerated* Pause Points;
+this one governs the **unexpected** case, which is where it actually
+bites: a dispatch that errors, a tool result you can't parse, a step
+with two defensible next moves. Decide using the standing rules,
+record the decision and its rationale in `run_state.yaml`, and
+proceed. Halt loud — typed error, write-back, exit — only when a phase
+precondition is genuinely unreachable. *"I don't know which of two
+reasonable things the operator wants"* is not unreachable: pick the
+one consistent with the run's own contract and note that you did.
+
+Measured (dimagi-internal/ace#1248): a `mode: auto` iterate run
+finished Phase 3 with every step `pass`, hit an interrupted eval
+dispatch, and ended its turn asking *"Want me to resume, or skip the
+evals and take the partial?"* — burning the run's remaining phases on
+a question nobody could answer. This is the same lesson CLAUDE.md
+records for gating hooks ("interactive 'ask' prompts stall autonomous
+runs — the hal lesson"), one layer up.
+
 ### Why default mode looks like this
 
 See orchestrator-reference.md § Why default mode looks like this.
