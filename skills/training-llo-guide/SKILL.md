@@ -172,6 +172,19 @@ benefit from different prompts and self-eval criteria.
 This is the **third of the per-artifact training skills**, after
 `training-deck-generate` (0.10.79) and `training-flw-guide` (0.10.83).
 
+## Screenshot citations (shared contract)
+
+Follow `skills/_training-template.md § Screenshot citations — canonical frames
+only` (dimagi-internal/ace#1304): select captures via `canonicalCaptures` from
+`lib/capture-manifest.ts`, and run `findDuplicateCitations` over the steps this
+artifact cites before writing. A `duplicate_of` capture is byte-identical to
+its canonical step — the same moment, never a second one.
+
+**Checking that every `file_id` resolves does not cover this.** That is
+existence; this is distinctness. Two producers asserted the former, self-scored
+`image_hygiene` near 10, and still captioned alias frames as distinct states.
+The self-eval criterion must assert duplicate handling explicitly.
+
 ## Change Log
 
 - v1 (0.10.84): Initial skill. Owns `training-llo-guide.md` only.
