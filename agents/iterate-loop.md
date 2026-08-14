@@ -216,6 +216,18 @@ effect. Treat a missing value as "never validated", not as "valid".
    halt.** A halted loop that reports "6/10 clean (60%), trend regressing, top
    failure class X ×3" is a useful reading; a halted loop that reports only
    "stopped at the cap" is the old failure mode in a new costume.
+2c. **Every seeded run is headless — say so in the dispatch.** The run
+   must never end its turn by asking the operator anything; there is
+   nobody to answer, so a question silently costs the rest of the run
+   (dimagi-internal/ace#1248, which ate a whole iteration after Phase 3
+   had already passed every step). `ace-orchestrator.md § Modes` carries
+   the invariant for `mode: auto`; restate it in the dispatch prompt
+   along with any decision this campaign has already made — in
+   particular **run the phase evals rather than accepting a
+   `passed-with-deferred-evals` partial**, since the loop's own judge
+   requires the phase verdicts to be `pass` and a partial scores the
+   iteration dirty for a reason unrelated to what it was measuring.
+
 3. **Launch a seeded run** on the runner. Run shape is created by
    **fork-then-resume** (NOT a flag): fork the golden into a new run whose
    `run_state.yaml` already encodes `{seed prefix 1,2: done/verdict:seeded;
