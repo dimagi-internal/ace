@@ -6,6 +6,15 @@ import { MobileClient } from '../../../mcp/mobile/client.js';
 import type { RecorderHooks, SpoolHooks } from '../../../mcp/mobile/client.js';
 import type { AvdInfo, RecipeRunResult, VideoArtifact } from '../../../mcp/mobile/types.js';
 
+// ace#1111 pinned screenshot dirs under an allow-listed root. These suites
+// build scratch dirs with `mkdtemp` under the OS temp dir, which is outside
+// the default roots — point the override at it so they exercise the
+// production code path instead of the refusal.
+process.env.ACE_SCREENSHOT_ROOT = os.tmpdir();
+
+
+
+
 /**
  * A fake recorder that records call order and returns a synthetic artifact.
  *

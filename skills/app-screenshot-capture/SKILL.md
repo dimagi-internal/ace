@@ -543,6 +543,14 @@ stands regardless of what's on disk.)
 dispatch (dimagi-internal/ace#1130).** Pass the same
 `screenshotDir: "/tmp/ace-screenshots/<opp>/<run-id>"` to every
 `mobile_run_recipe` call in the phase — both legs, every recipe.
+
+   **The path must be under `/tmp/ace-screenshots/` (or `$TMPDIR/ace-screenshots/`,
+   or `ACE_SCREENSHOT_ROOT` if the operator relocated it).** `mobile_run_recipe`
+   wipes its output dir at execution start, and before ace#1111 the only guard was a
+   shape denylist — so any path with two or more segments (`~/Documents`, `~/.ssh`,
+   `~/Library`) was destroyed irrecoverably by a single argument. It is now
+   containment: anything outside the allow-listed root is refused before the wipe.
+
 `mobile_run_recipe` writes each dispatch's artifacts into
 `<root>/<recipeId>/` and the start-of-run wipe (#756) targets ONLY that
 subdirectory, so one leg can no longer destroy another leg's finished

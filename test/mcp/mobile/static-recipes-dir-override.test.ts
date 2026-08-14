@@ -33,6 +33,15 @@ import {
 import { MobileClient } from '../../../mcp/mobile/client.js';
 import { MobileError } from '../../../mcp/mobile/errors.js';
 
+// ace#1111 pinned screenshot dirs under an allow-listed root. These suites
+// build scratch dirs with `mkdtemp` under the OS temp dir, which is outside
+// the default roots — point the override at it so they exercise the
+// production code path instead of the refusal.
+process.env.ACE_SCREENSHOT_ROOT = os.tmpdir();
+
+
+
+
 /** Distinctive marker only the staged palette carries. */
 const OVERRIDE_MARKER = 'ACE-1062-OVERRIDE-PALETTE-MARKER';
 
