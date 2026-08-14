@@ -10,6 +10,28 @@ export class MobileError extends Error {
   }
 }
 
+/**
+ * A shell invocation exhausted its wall-clock budget and was SIGKILLed
+ * (dimagi-internal/ace#1164). Typed — rather than the old bare
+ * `Error("shell timeout: …")` string — because `isTransientNetworkError`'s
+ * bare-substring `timeout` match classified that string as a transport
+ * blip, and the driver-heal envelope then cold-booted and silently
+ * replayed an hour-long journey on a wedge that had already burned its
+ * full 10-minute ceiling. A wall-clock stall is a real result, not a
+ * transport crash; downstream classifiers key on `code` to keep it out
+ * of every transient-retry path.
+ */
+export class ShellTimeoutError extends MobileError {
+  constructor(cmd: string, args: string[], timeoutMs: number) {
+    super(
+      'SHELL_TIMEOUT',
+      `shell timeout: \`${cmd} ${args.join(' ')}\` produced no exit within ${timeoutMs}ms and was killed`,
+      'The subprocess wedged. Inspect what it was doing (for maestro: ~/.maestro/tests/<latest>/maestro.log) before retrying.',
+      { cmd, args, timeoutMs },
+    );
+  }
+}
+
 export class AvdBootError extends MobileError {
   constructor(avdName: string, reason: string, diagnostics?: Record<string, unknown>) {
     super(

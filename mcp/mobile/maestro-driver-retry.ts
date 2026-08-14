@@ -64,11 +64,28 @@ function errMsg(e: unknown): string {
  * is unit-testable without a device. See
  * `test/mcp/mobile/maestro-driver-retry.test.ts`.
  */
+/**
+ * A wall-clock stall is a REAL result of a recipe that actually ran — never
+ * a transport crash (dimagi-internal/ace#1164). `isTransientNetworkError`'s
+ * bare-substring `timeout` pattern matched the old untyped
+ * `"shell timeout: …"` string, so a wedged 10-minute Maestro chunk was
+ * classified as a transport blip and the envelope cold-booted + silently
+ * REPLAYED the whole journey — ~1h of real device work — then wedged again:
+ * two passes + two 10-minute burns ≈ the 3.1h the harness finally aborted
+ * (spark-facilitator/20260731-0656). Keyed on `code`, which the typed
+ * errors carry and no genuine transport throw does.
+ */
+function isWallClockStall(e: unknown): boolean {
+  const code = (e as { code?: unknown })?.code;
+  return code === 'SHELL_TIMEOUT' || code === 'MAESTRO_STALL';
+}
+
 export async function runRecipeWithDriverHeal(
   opts: DriverHealRetryOpts,
 ): Promise<RecipeRunResult> {
   const maxRetries = opts.maxRetries ?? 1;
-  const isTransientThrow = opts.isTransientThrow ?? isTransientNetworkError;
+  const baseTransient = opts.isTransientThrow ?? isTransientNetworkError;
+  const isTransientThrow = (e: unknown) => !isWallClockStall(e) && baseTransient(e);
 
   for (let attempt = 0; ; attempt++) {
     const canRetry = attempt < maxRetries;

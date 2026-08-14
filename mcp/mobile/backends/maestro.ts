@@ -98,7 +98,9 @@ export class MaestroBackend {
     }
 
     const args = this.buildMaestroArgs(opts.adbPort, envVars, screenshotDir, recipePath);
-    const r = await this.shell('maestro', args, { timeoutMs: 10 * 60 * 1000, cwd: screenshotDir });
+    const r = await this.runMaestroChunk(args, screenshotDir, {
+      recipePath, chunksCompleted: 0, chunksTotal: 1, lastCompletedScreenshot: null,
+    });
     const screenshots = this.collectScreenshots(screenshotDir);
     const failure = classifyMaestroFailure({
       stderr: r.stderr,
@@ -114,6 +116,54 @@ export class MaestroBackend {
       screenshots,
       failure,
     };
+  }
+
+  /**
+   * One `maestro test` invocation with the wall-clock ceiling, converting a
+   * SHELL_TIMEOUT into a MAESTRO_STALL that names the dispatch's progress
+   * (dimagi-internal/ace#1164). The stall is a REAL result of a recipe that
+   * ran — `runRecipeWithDriverHeal` keys on the code to keep it out of the
+   * transport-crash retry, so a wedge can never trigger a silent
+   * full-journey replay again.
+   */
+  private async runMaestroChunk(
+    args: string[],
+    screenshotDir: string,
+    ctx: {
+      recipePath: string;
+      chunksCompleted: number;
+      chunksTotal: number;
+      lastCompletedScreenshot: string | null;
+    },
+  ) {
+    const timeoutMs = 10 * 60 * 1000;
+    try {
+      return await this.shell('maestro', args, { timeoutMs, cwd: screenshotDir });
+    } catch (e) {
+      if ((e as { code?: string })?.code === 'SHELL_TIMEOUT') {
+        throw new MobileError(
+          'MAESTRO_STALL',
+          `maestro wedged (no exit within ${Math.round(timeoutMs / 1000)}s) on chunk ` +
+            `${ctx.chunksCompleted + 1}/${ctx.chunksTotal} of ${path.basename(ctx.recipePath)}` +
+            (ctx.lastCompletedScreenshot
+              ? ` — last completed step ended at screenshot "${ctx.lastCompletedScreenshot}"`
+              : ' — no chunk had completed yet'),
+          'Inspect ~/.maestro/tests/<latest>/maestro.log and the forensics in the screenshot dir. ' +
+            'Do NOT assume the walk failed: on-device progress up to the stall is real ' +
+            '(verify server-side, e.g. connect_get_learn_progress) — a stalled dispatch after ' +
+            'the productive work has completed is the ace#1164 signature.',
+          {
+            recipe: ctx.recipePath,
+            chunks_completed: ctx.chunksCompleted,
+            chunks_total: ctx.chunksTotal,
+            last_completed_screenshot: ctx.lastCompletedScreenshot,
+            timeout_ms: timeoutMs,
+            screenshot_dir: screenshotDir,
+          },
+        );
+      }
+      throw e;
+    }
   }
 
   /**
@@ -197,7 +247,9 @@ export class MaestroBackend {
     // chunk-write overhead for no benefit.
     if (chunks.length === 1 && !chunks[0].screenshotName) {
       const args = this.buildMaestroArgs(opts.adbPort, envVars, screenshotDir, absoluteRecipePath);
-      const r = await this.shell('maestro', args, { timeoutMs: 10 * 60 * 1000, cwd: screenshotDir });
+      const r = await this.runMaestroChunk(args, screenshotDir, {
+        recipePath: absoluteRecipePath, chunksCompleted: 0, chunksTotal: 1, lastCompletedScreenshot: null,
+      });
       const screenshots = this.collectScreenshots(screenshotDir);
       const failure = classifyMaestroFailure({
         stderr: r.stderr,
@@ -257,6 +309,11 @@ export class MaestroBackend {
     // text lands well inside the excerpt window.
     let failingChunkStdout = '';
     let failingChunkStderr = '';
+    // Progress context for MAESTRO_STALL (ace#1164): how far the dispatch
+    // actually got, so a stall names the last completed step instead of
+    // surfacing as a context-free timeout string.
+    let chunksCompleted = 0;
+    let lastCompletedScreenshot: string | null = null;
 
     try {
       for (const chunk of chunks) {
@@ -264,7 +321,12 @@ export class MaestroBackend {
         fs.writeFileSync(chunkPath, chunk.yaml, 'utf8');
 
         const args = this.buildMaestroArgs(opts.adbPort, envVars, screenshotDir, chunkPath);
-        const r = await this.shell('maestro', args, { timeoutMs: 10 * 60 * 1000, cwd: screenshotDir });
+        const r = await this.runMaestroChunk(args, screenshotDir, {
+          recipePath: absoluteRecipePath,
+          chunksCompleted,
+          chunksTotal: chunks.length,
+          lastCompletedScreenshot,
+        });
         const chunkLabel = `# --- chunk ${chunk.index} (screenshot=${chunk.screenshotName ?? 'none'}) ---`;
         stdoutParts.push(`${chunkLabel}\n${r.stdout}`);
         stderrParts.push(`${chunkLabel}\n${r.stderr}`);
@@ -274,6 +336,9 @@ export class MaestroBackend {
           failingChunkStderr = `${chunkLabel}\n${r.stderr}`;
           break;
         }
+
+        chunksCompleted++;
+        if (chunk.screenshotName) lastCompletedScreenshot = chunk.screenshotName;
 
         // Chunk passed and ended on a screenshot — quick window to
         // grab the UI hierarchy XML before the next chunk relaunches
