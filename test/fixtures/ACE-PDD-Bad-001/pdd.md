@@ -47,3 +47,15 @@ None.
 ## Timeline
 
 - 2 weeks.
+
+## Program Parameters
+
+| Key | Value |
+|---|---|
+| learn_passing_score | 90 |
+| assessment_items | 6 |
+| payment_rate_min | 4.00 |
+| payment_rate_max | 2.00 |
+| total_cap_per_flw | 30 |
+| flw_count_min | 2 |
+| expected_reach_max | 30 |
