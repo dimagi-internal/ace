@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   validatePhaseProductsFragment,
   validatePhaseProductsComplete,
+  classifyPhaseProducts,
 } from '../../lib/phase-products-schema.js';
 
 const DOC = {
@@ -126,5 +127,52 @@ describe('connect-setup ACE test-user invite read-back gate (ace#1184 / CI-892)'
     });
     expect(res.valid).toBe(false);
     expect(JSON.stringify(res.issues)).toContain('invite_row_present');
+  });
+});
+
+
+// ---------------------------------------------------------------------------
+// dimagi-internal/ace#1069 — REQUIRED_PRODUCT_KEYS was mode-blind too:
+// `training.deck` / `training.docs.onboarding_email` cannot exist in
+// app-QA-only mode, and the doc string routes the orchestrator into
+// "heal the producing skill / re-dispatch" — which can never converge.
+// The mode already lives in the phase block this classifier reads, so no
+// signature change is needed to see it.
+// ---------------------------------------------------------------------------
+
+describe('classifyPhaseProducts — app-QA-only mode (ace#1069)', () => {
+  const appQaOnlyRun = (extra: Record<string, unknown> = {}) => ({
+    phases: {
+      'ocs-setup': { status: 'skipped' },
+      'qa-and-training': {
+        status: 'done',
+        mode: 'app-QA-only',
+        products: {},
+        ...extra,
+      },
+    },
+  });
+
+  it('accepts a terminal app-QA-only phase with no training products', () => {
+    const r = classifyPhaseProducts(appQaOnlyRun(), 'qa-and-training');
+    expect(r.issues).toEqual([]);
+    expect(r.ok).toBe(true);
+  });
+
+  it('still demands the training products when no mode is declared', () => {
+    const r = classifyPhaseProducts(
+      {
+        phases: {
+          'qa-and-training': { status: 'done', products: {} },
+        },
+      },
+      'qa-and-training',
+    );
+    expect(r.ok).toBe(false);
+  });
+
+  it('does NOT relax on an unrecognized mode string', () => {
+    const r = classifyPhaseProducts(appQaOnlyRun({ mode: 'app-qa-only' }), 'qa-and-training');
+    expect(r.ok).toBe(false);
   });
 });
