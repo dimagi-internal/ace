@@ -336,6 +336,34 @@ alone makes the artifact land outside `4-connect` and fail
      overriding an explicit program decision is precisely the drift this
      read-back exists to catch.
 
+     **On a mismatch, name ROW REUSE as the first suspect — not server
+     drift** (dimagi-internal/ace#1350). Connect keys `CommCareApp` on
+     `(cc_app_id, cc_domain, organization, hq_server)`, **not** on the
+     opportunity, and the create path calls
+     `_build_commcare_app(update_existing=False)`. So when a `CommCareApp`
+     row already exists for this `cc_app_id`, `get_or_create`'s `defaults`
+     are IGNORED and the `passing_score` you just posted is **silently
+     discarded** — the opportunity inherits whatever an earlier one set.
+     The POST looks perfectly healthy; only this read-back sees it.
+
+     That is the likeliest cause of "posted 100, read back 80", and it
+     looks nothing like a server default, so say so in the `[BLOCKER]`:
+
+     > `passing_score` mismatch on `<opp>`: sent `<X>`, server returned
+     > `<Y>`. Most likely cause is CommCareApp ROW REUSE — Connect keys
+     > that row on `(cc_app_id, cc_domain, organization, hq_server)`, not
+     > on the opportunity, and the create path ignores `defaults` for an
+     > existing row. Repair with `connect_set_learn_passing_score` — and
+     > note it will move the gate for EVERY opportunity in this org wired
+     > to the same HQ Learn app, so check `previous_passing_score` in its
+     > response before accepting the change.
+
+     ACE normally avoids this because every `/ace:run` builds a fresh Nova
+     Learn app, so every create posts a new `cc_app_id` and always takes
+     the `created=True` branch. That invariant breaks on a forked run, a
+     hand-wired opp, or a Phase 4 re-mint against the same release —
+     exactly the cases where a mid-run operator is least expecting it.
+
      **Do not eyeball the severity — call
      `classifyPassingScoreReadback` from `lib/passing-score-readback.ts`**
      with `{posted, readBack, pddDecided}`. It also names the CAUSE, which
