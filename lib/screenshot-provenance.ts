@@ -31,6 +31,17 @@ export interface ScreenshotProvenance {
   ace_version: string;
   /** Short git SHA when this is a git checkout; absent in tarball installs. */
   git_sha?: string;
+  /**
+   * The adb serial the recipe actually ran against (`emulator-5554`).
+   *
+   * Recorded because provenance without it cannot answer "was this frame
+   * taken on the device this run provisioned?" — and on a multi-emulator host
+   * that is a real question. On 2026-08-14 two emulators ran the SAME AVD,
+   * both registered to the same test user, so a recipe could land on either
+   * and nothing in the artifact said which (dimagi-internal/ace#1396).
+   * Optional: absent on cloud runs and on older sidecars.
+   */
+  device_serial?: string;
   written_at_epoch_ms: number;
 }
 
@@ -57,6 +68,7 @@ export function buildProvenance(args: {
   dispatchId: string;
   aceVersion: string;
   gitSha?: string;
+  deviceSerial?: string;
   writtenAtEpochMs: number;
 }): ScreenshotProvenance {
   const p: ScreenshotProvenance = {
@@ -66,6 +78,7 @@ export function buildProvenance(args: {
     written_at_epoch_ms: args.writtenAtEpochMs,
   };
   if (args.gitSha !== undefined) p.git_sha = args.gitSha;
+  if (args.deviceSerial !== undefined) p.device_serial = args.deviceSerial;
   return p;
 }
 
