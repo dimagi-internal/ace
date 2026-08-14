@@ -199,7 +199,7 @@ If no mode is passed, default to `--quick`.
       this actual artifact, would a Dimagi domain expert ship it to a
       real LLO today? Score 0–10 on deployability and name the concrete
       blockers (missing input validation, capture fidelity, case
-      write-back, localization, enforcement — whatever applies)." This
+      write-back, language conformance, enforcement — whatever applies)." This
       is the same out-of-chain fitness bar the per-skill rubrics now use
       (`_eval-template.md § out-of-chain fitness requirement`).
     - **Hard-cap rule:** if the deployability probe scores **< 5** while

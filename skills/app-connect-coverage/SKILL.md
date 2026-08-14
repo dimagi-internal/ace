@@ -413,8 +413,12 @@ Future siblings:
 - `app-multimedia-coverage` — verify form labels referencing image
   resources have the resource files attached, fix by re-running Nova
   asset-generation or by uploading from PDD-referenced sources
-- `app-localization-coverage` — for multi-language opps, verify each
-  form has translations for every label
+- `app-language-conformance` — verify every form's user-facing strings are
+  **English-only**: no label, choice, hint or constraint message carrying a
+  stacked or parenthetical translation, and no in-app language selector.
+  ACE builds English-only UIs (ace#968, standing decision 2026-08-14); this
+  check inverted on that date — it used to require translations for every
+  label
 - `app-summary-coverage` — verify the human-readable
   `app-summaries/*.md` written to Drive matches the live blueprint
   (catches stale summaries after edits)

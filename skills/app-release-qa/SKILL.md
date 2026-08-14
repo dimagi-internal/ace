@@ -577,8 +577,10 @@ Each violation carries a `severity`:
   of the user satisfies it. Annoying, not a dead end.
 
 Severity is decided structurally (does the expression mention its own
-nodeset?), never by scanning the message text — ACE forms are routinely
-multilingual, and a phrase list would mis-grade every localized form.
+nodeset?), never by scanning the message text — validation messages are
+free prose written per build, so a phrase list mis-grades any form whose
+author phrased it differently (and mis-grades every language-stacked form
+built before 2026-08-14 outright).
 
 `severity: 'blocker'` → halt with `[BLOCKER]` `non-local-constraint`
 (naming each field, the foreign node, and "move the constraint onto the

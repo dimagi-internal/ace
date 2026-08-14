@@ -67,7 +67,7 @@ authored from the PDD per run):
 | [`payability-scoped-key`](#payability-scoped-key) | Deliver | The PDD declares ANY submission to the Deliver form non-payable (did-not-happen branch, screening-only visit, ineligible record, non-paid meeting type) | `pdd-to-deliver-app-eval § Connectify wiring (b2)` |
 | [`embedded-bc-script`](#embedded-bc-script) | Deliver | PDD specifies a behavior-change segment delivered verbatim | `pdd-to-deliver-app-eval` |
 | [`assessment-gate`](#assessment-gate) | Learn | PDD specifies a readiness / competency gate before delivery | `pdd-to-learn-app-eval § assessment_gating` |
-| [`localization-layer`](#localization-layer) | Learn + Deliver | PDD names a working language other than English | `pdd-to-{learn,deliver}-app-eval § localization_match` (hard-fail) |
+| [`english-only-ui`](#english-only-ui) | Learn + Deliver | PDD names a working language other than English | `pdd-to-{learn,deliver}-app-eval § language_conformance` |
 | [`learn-app-naming`](#learn-app-naming) | Learn | Always | `pdd-to-learn-app-eval § naming_convention` (NEW) |
 | [`end-of-form-previous`](#end-of-form-previous) | Learn | Always | `pdd-to-learn-app-eval § form_navigation` (NEW) |
 | [`assessment-display-lifecycle`](#assessment-display-lifecycle) | Learn | App has BOTH a pre- and a post-assessment form | `pdd-to-learn-app-eval § assessment_gating` (extends) |
@@ -126,6 +126,7 @@ document that outlives the constraint is a lie with a long tail.
 |---|---|---|---|
 | **A conditional primary-case create** — "if `consent_given = no` the form ends WITHOUT creating a case", or any registration form whose own case is opened only on some answers | **Not expressible on Nova's authoring surface**, established by construction on Nova app `74a097c6` and read back, not inferred. `create_form` / `update_form` carry no create-condition slot. `add_case_operations` DOES accept a `create` action with a `condition` Predicate and the call SUCCEEDS — but a read-back shows the form's own primary-case create still present, so what was accepted is an **ADDITIONAL** case that would double-create on every consenting submission (Nova's own framing agrees: case operations exist for creating *another* case). Relevance is not a workaround — a relevance-hidden case-bound field skips its property write, but the form still opens the case. So `type: registration` implies an **unconditional** primary-case create. CommCare itself supports a conditional open-case action, so this is a **Nova toolchain gap, not a platform closure** | **Screen consent BEFORE the registration form, or mark the case rather than withhold it.** Either put the consent question in a preceding form/menu so a decline never reaches the registering form, or let the case be created and carry `consent_given = no` as a case property that every downstream filter and payment rule excludes on. State the residual honestly: a declined household DOES produce a case record. Where withholding the record genuinely matters, raise it as a **Nova capability request** | ace#1294 |
 | **A randomized / per-attempt item draw from an assessment bank** — "12 items served per attempt, drawn from a bank of 30, fresh draw each retake" | **Expressible in XForms.** A seeded random value (`once(random())`) can drive item selection either from a **lookup-table/fixture** nodeset (`randomize()` over the bank, take the first N) or from **hidden questions gated on `relevant`** within a single form. A fresh form instance means a fresh draw, so per-attempt rotation follows. **Connect scores it fine** — a fixed-size draw keeps the denominator constant (12 of 30 served → `passing_score: 10` works normally); only a *variable-size* draw would break commensurability with the single `passing_score`. The real blockers are that **Nova has no authoring primitive for it** and the fixture/relevance machinery is a material complexity and maintenance cost for the value returned | **One fixed bank sized for the gate** (plus a distinct pre-test bank where a baseline is wanted — see [`assessment-gate`](#assessment-gate)). Where retake-resistance genuinely matters, raise it as an **open question** and, if the program needs it, file it as a **Nova capability request** — do not record it as impossible | ace#1121, ace#1213 |
+| **A multilingual app UI** — form labels, choices, hints or assessment items rendered in the FLW's working language, or a language selector | **Expressible in CommCare.** XForms has `<itext>` and HQ supports multiple app languages natively — this is NOT a platform limit. It is closed on **ACE's builder**: Nova's MCP exposes no per-language / locale / itext channel on any tool (verified live 2026-08-14, zero hits across all 81 tools). The inline-stacking fallback used 2026-07-30..2026-08-14 is retired — it multiplies label length by N for a low-literacy cohort and is not localization. | Ships an **English-only UI** with short, plain source sentences, and carries the working language on the surfaces that can hold it — training materials, FLW guide, facilitator briefing, and the per-opp OCS chatbot. The PDD names the working language as context, never as a delivered app property. See [`english-only-ui`](#english-only-ui). | ace#1391 (supersedes ace#968) |
 
 **Evidence discipline — the rule this section broke on its first day.** "Not
 exposed on Nova's authoring surface" is a statement about **ACE's builder**,
@@ -155,13 +156,13 @@ because it reads as settled.
 
 **Related but NOT Phase-1 assertable** (build-surface constraints the PDD
 never speaks to — listed so this reference is complete, detail in their own
-components): per-language **itext / locale channels** are absent from every
-Nova tool, so translations are authored inline
-([`localization-layer`](#localization-layer), ace#968); and any capability
-requiring a **CommCare HQ feature flag** other than `commcare_connect` is
-out of scope, several being `TAG_FROZEN` upstream
+components): any capability requiring a **CommCare HQ feature flag** other
+than `commcare_connect` is out of scope, several being `TAG_FROZEN` upstream
 ([`connect-supported-capabilities-only`](#connect-supported-capabilities-only),
-ace#1195).
+ace#1195). A **multilingual app UI** used to sit here too; as of 2026-08-14 it
+is a Table B row below, because the PDD now DOES speak to it — it may name a
+working language, and must not assert that the app is delivered in it
+([`english-only-ui`](#english-only-ui), ace#968).
 
 ---
 
@@ -656,98 +657,88 @@ time; do not skip it because the app "looks right" structurally.
 > the gate is Connect-side. The in-app job is a genuine pre/post assessment
 > plus an honest pass/fail experience.
 
-### localization-layer
+### english-only-ui
 
 - **App:** Learn **and** Deliver.
 - **Trigger:** the PDD names a working language other than English.
-- **Parameters:** `<LANGUAGE>` (the PDD's named working language).
-- **Enforced by:** `pdd-to-{learn,deliver}-app-eval § localization_match` —
-  a **hard-fail** dimension: English-only when the PDD names a working language
-  fails the gate.
-- **Decision:** resolves the 2026-05-29 localization decision — author the core
-  in English, ship the named-language translation set; do **not** defer
-  localization "downstream."
-- **Tool-surface reality (ace#968) — there is NO itext channel.** Nova's MCP
-  surface exposes **no per-language / locale / translations parameter on any
-  tool**; `update_app` offers only `name` and `connect_type`. Four independent
-  architect instances across two opps each searched the deferred tool set for one,
-  found nothing, and each independently reached the same workaround. The component
-  text used to say "via itext", which instructs something **unbuildable** — so
-  architects fell back to stacking languages inline and reported it as a
-  deviation. Until Nova ships a per-language channel, **inline multilingual
-  authoring in a single label is the documented, sanctioned mechanism**, not a
-  workaround to apologize for. The requirement is COMPLETE TRANSLATION COVERAGE;
-  per-language itext is a capability-gated preference that is currently
-  unreachable. **English-only remains a hard fail** — the fallback exists so that
-  coverage is achievable, not so that it is optional.
-- **Known cost, and why the brief caps string length.** The inline form puts
-  N× string length on every label, with languages the reader cannot read stacked
-  around the one they can, and no language selector. On
-  `spark-facilitator/20260730-1718` the PDD carried an explicit low-literacy
-  design constraint (the registration form's education field admits `None`) and
-  required three languages, producing a genuine lose-lose: English-only hard-fails
-  the eval, stacked-inline triples every label for exactly the cohort the PDD
-  singles out. The brief therefore requires SHORT source sentences and permits the
-  two degradations below; where the PDD carries a literacy constraint, record the
-  tension in the build memo rather than silently picking a side.
-- **Two permitted degradations** (both correct, both must NOT be graded as
-  incomplete coverage):
-  1. **Bare proper nouns.** Option labels that are identical across all named
-     languages — district names, facility names, personal names — stay bare. A
-     tri-lingual block of the same proper noun repeated N times is pure noise.
-  2. **Compact slash form in short strings.** Case-list column headers and other
-     strings with no room for N labelled paragraphs use
-     `English / <LANGUAGE-2> / <LANGUAGE-3>` instead of the block form.
+- **Parameters:** `<LANGUAGE>` (the PDD's named working language) — used only
+  to tell the architect what NOT to do, and what to record in the build memo.
+- **Enforced by:** `pdd-to-{learn,deliver}-app-eval § language_conformance`.
+- **Standing decision (Jon, 2026-08-14): every ACE app ships an English-only
+  UI.** The PDD still records the program's working language — it is real, and
+  it drives the training materials, the facilitator briefing, the per-opp OCS
+  chatbot and the solicitation's language requirement. It does **not** drive
+  the app's strings. A build that ships English-only when the PDD names
+  Chichewa is now CORRECT, not a gap.
+- **Why the previous mechanism is retired (ace#1391, superseding ace#968).** Nova exposes no
+  per-language / locale / itext channel on any tool — re-verified live
+  **2026-08-14** against `tools/list`: **zero hits for `itext` / `locale` /
+  `i18n` / `translat` across all 81 tools**, `update_app` carries only `name`,
+  and the architect's own 70k-character operating prompt (`get_agent_prompt`,
+  mode `autonomous_build`) does not mention languages at all. The only
+  `language`-shaped parameter on the whole surface is `defaultLanguageCode`
+  on `add_automations` / `update_automation`, which sets the language of an
+  outbound SMS/email in a messaging rule — not a form-label channel.
+  Between 2026-07-30 and 2026-08-14 the sanctioned fallback was to stack every
+  language inline in one label. **That is not localization.** It multiplies
+  every label's length by N, surrounds the language a reader can read with two
+  they cannot, offers no language selector, and lands hardest on exactly the
+  low-literacy cohorts these PDDs single out. A convincing-looking fake
+  translation layer is worse than an honest monolingual one, because it
+  reports the problem as solved. ACE builds English and waits for a real
+  per-language channel; see § `Mechanisms a PDD must not assert` **Table B**.
+- **Where language support actually lives.** Not nowhere — just not in the
+  app's labels. It belongs to the surfaces that can carry it today: the
+  training materials and FLW guide (`training-flw-guide`), the facilitator
+  briefing, and the per-opp OCS chatbot, which answers in whatever language
+  the worker types. Say so in the build memo rather than leaving a reader to
+  assume the language was forgotten.
+- **What this asks of the English.** Since the English IS the interface for a
+  worker who may not be a native speaker, keep source sentences SHORT, plain
+  and concrete — no idiom, no subordinate clauses stacked three deep. This
+  was already the rule when stacking multiplied every string; it matters just
+  as much now that the English stands alone.
 
 **Brief paragraph (verbatim) — Deliver:**
 
-> REQUIRED: Every user-facing form string (labels, choices, hints,
-> constraint/validation messages) must carry its <LANGUAGE> counterpart —
-> complete coverage, no English-only string anywhere. English-only is a hard-fail
-> at the eval gate when the PDD names a working language, and localization is NOT
-> deferrable "downstream"; it is part of this build.
-> **Mechanism — read this before you look for a translations parameter.** Nova
-> exposes NO per-language / locale / itext channel on any tool (`update_app`
-> carries only `name` and `connect_type`). Do not search for one and do not report
-> its absence as a blocker. Author every string INLINE in one label: English
-> first, then each named language in turn, each prefixed with its language name
-> (e.g. `<English text> / <LANGUAGE>: <translated text>`), using one consistent
-> separator across the whole app. Two exceptions, both correct: option labels that
-> are identical across languages (district names, facility names, other proper
-> nouns) stay BARE, and short strings with no room for stacked paragraphs (case-list
-> column headers) use the compact `English / <LANGUAGE>` slash form.
-> Because inline stacking multiplies every label's length, keep the ENGLISH source
-> sentences short and plain — this matters most where the PDD names a low-literacy
-> or low-education cohort. State in the build memo which mechanism you used, which
-> strings took a permitted exception, and — if the PDD carries a literacy
-> constraint — that inline stacking increases reading load, so a human can decide
-> whether to trim scope.
+> REQUIRED: Build every user-facing string (labels, choices, hints,
+> constraint/validation messages) in **ENGLISH ONLY**. The PDD names
+> <LANGUAGE> as the program's working language; that is deliberate context for
+> training and facilitation, and it is NOT an instruction to translate the app.
+> **Do not stack languages inline.** Do not author `English / <LANGUAGE>: …`
+> labels, do not put a translation in parentheses after the English, and do not
+> add a language-selector question. A stacked-language build fails
+> `language_conformance` at the eval gate.
+> **Do not go looking for a translations parameter, and do not report its
+> absence as a blocker.** Nova exposes no per-language / locale / itext channel
+> on any tool (verified live 2026-08-14 across all 81 tools). This is a settled
+> decision, not a gap you have discovered.
+> Because the English is the whole interface for a worker who may not be a
+> native speaker, keep sentences SHORT, plain and concrete. In the build memo,
+> record one line: the app ships an English-only UI by standing decision, and
+> <LANGUAGE> support lives in the training materials and the OCS chatbot.
 
 **Brief paragraph (verbatim) — Learn:**
 
-> REQUIRED: Every user-facing module/quiz string (module names, form names,
-> labels, choices, hints, assessment items and their option labels) must carry its
-> <LANGUAGE> counterpart — complete coverage, no English-only string anywhere.
-> English-only is a hard-fail at the eval gate when the PDD names a working
-> language, and localization is NOT deferrable "downstream"; it is part of this
-> build.
-> **Mechanism — read this before you look for a translations parameter.** Nova
-> exposes NO per-language / locale / itext channel on any tool (`update_app`
-> carries only `name` and `connect_type`). Do not search for one and do not report
-> its absence as a blocker. Author every string INLINE in one label: English
-> first, then each named language in turn, each prefixed with its language name
-> (e.g. `<English text> / <LANGUAGE>: <translated text>`), using one consistent
-> separator across the whole app. Two exceptions, both correct: option labels that
-> are identical across languages (district names, facility names, other proper
-> nouns) stay BARE, and short strings with no room for stacked paragraphs use the
-> compact `English / <LANGUAGE>` slash form.
-> Because inline stacking multiplies every label's length, keep the ENGLISH source
-> sentences short and plain — this matters most where the PDD names a low-literacy
-> or low-education cohort, and it matters doubly for assessment stems and option
-> labels, where a tripled option set is read four times per item. State in the
-> build memo which mechanism you used, which strings took a permitted exception,
-> and — if the PDD carries a literacy constraint — that inline stacking increases
-> reading load, so a human can decide whether to trim scope.
+> REQUIRED: Build every user-facing string (module names, form names, labels,
+> choices, hints, assessment items and their option labels) in **ENGLISH
+> ONLY**. The PDD names <LANGUAGE> as the program's working language; that is
+> deliberate context for training and facilitation, and it is NOT an
+> instruction to translate the app.
+> **Do not stack languages inline.** Do not author `English / <LANGUAGE>: …`
+> labels, do not put a translation in parentheses after the English, and do not
+> add a language-selector question. A stacked-language build fails
+> `language_conformance` at the eval gate.
+> **Do not go looking for a translations parameter, and do not report its
+> absence as a blocker.** Nova exposes no per-language / locale / itext channel
+> on any tool (verified live 2026-08-14 across all 81 tools). This is a settled
+> decision, not a gap you have discovered.
+> Because the English is the whole interface for a worker who may not be a
+> native speaker, keep sentences SHORT, plain and concrete — this matters
+> doubly for assessment stems and option labels, which are read repeatedly. In
+> the build memo, record one line: the app ships an English-only UI by standing
+> decision, and <LANGUAGE> support lives in the training materials and the OCS
+> chatbot.
 
 ---
 
@@ -1282,8 +1273,8 @@ respondent may never have heard read out.
 
 **Worked example — a script that satisfies all six.** Substitute every
 angle-bracket parameter with the PDD's real value and keep the sentences short
-(see [`localization-layer`](#localization-layer) — this text gets stacked per
-language). Element letters are annotations, not part of the read-aloud text.
+(see [`english-only-ui`](#english-only-ui) — this English is read aloud by a
+worker who may not be a native speaker). Element letters are annotations, not part of the read-aloud text.
 **No angle bracket may survive into the shipped label** — a literal `<`/`>` in
 label text is invalid XML at `make_build` (see `pdd-to-deliver-app § REQUIRED —
 Forbid angle-bracket placeholder notation`).
@@ -1521,6 +1512,7 @@ the effective bar. One repair round, then re-grade.
 
 | Date | Change | By |
 |---|---|---|
+| 2026-08-14 | **ACE builds English-only app UIs; `localization-layer` retired and `localization_match` INVERTED (ace#1391, superseding ace#968; Jon).** Re-verified Nova's live surface: zero hits for `itext`/`locale`/`i18n`/`translat` across all **81** tools (was 63 on 2026-07-31), `update_app` carries only `name`, and the architect's own 70k-char operating prompt never mentions languages; the surface's only language parameter is `defaultLanguageCode` on messaging automations. Since 2026-07-30 the sanctioned fallback had been stacking every language inline in one label — Jon's call: that is a terrible solution and localization should be solved properly when it can be solved at all, so until Nova ships a real per-language channel ACE ships an honest monolingual UI rather than a convincing fake. Component `localization-layer` → **`english-only-ui`** (same trigger, opposite instruction: build English, do not stack, do not hunt for a translations parameter, record the decision in the build memo). Eval dimension `localization_match` → **`language_conformance`**, same 8% and same null-when-N/A: English-only is now FULL CREDIT, stray stacked strings score 5 + `[WARN]`, systematic inline stacking or an in-app language selector is ≤3 → `fail`. Both calibration anchors amended — the ITN negative control's `localization_match ≤3` clause is REMOVED, not relaxed (the same artifact now scores full credit there; the other three dimensions still force `fail`). Phase 1 still records the working language — it drives training, facilitation, the OCS chatbot and the solicitation — but must not assert a translated app; multilingual UI is now a **Table B** row (buildable in CommCare via itext, closed on ACE's builder — never call it a platform limit). *Enforced:* `test/skills/english-only-ui.test.ts`. | ACE team |
 | 2026-08-14 | **New component `branch-scoped-groups` (ace#1015).** A group whose questions only make sense on one branch of a discriminator must be gated on that discriminator. Ungated, the `savings` group on spark-facilitator/20260728-1338 displayed on both branches of `meeting_conducted` and asked the next-meeting date twice with incompatible constraints, so rescheduling for TODAY was a dead end on the branch the PDD required to be frictionless. Paired with `pdd-to-deliver-app-eval § field_answerability` (e). | ACE |
 | 2026-08-14 | **`consent-script-floor` gains `consent-branch-completeness` (ace#1326).** Element (c) — "you may stop at any time, including after being asked" — and an unconditionally-required observation field contradict each other on the withdrawal branch, and nothing owned the interaction: both resolutions were silently shippable, and one produces INVENTED data in the fields the primary metric is computed from. Element (c) now explicitly wins; the build gates those fields on the consent answer, records each in the memo, and names the denominator consequence. Graded mechanically by `checkConsentBranchCompleteness` (`lib/consent-branch.ts`), shared with `pdd-to-deliver-app-eval § conditional_logic_match` so build-emit and eval-grade cannot drift — same pairing as `screen-grouping` / `lib/screen-shape.ts`. | ACE |
 | 2026-08-14 | **Table B gains "a conditional primary-case create" (ace#1294).** A PDD said a registration form with `consent_given = no` ends "without creating a case". The Nova architect disproved it by construction on app `74a097c6`: no create-condition slot on `create_form`/`update_form`; `add_case_operations` accepts a conditioned `create` and succeeds, but a read-back shows the form's own primary create still present, so the accepted operation is an ADDITIONAL case that would double-create on consent; relevance skips a property write but still opens the case. Filed in **Table B**, not A — CommCare supports a conditional open-case action, so the closure is Nova's authoring surface, and the section's own tiebreak sends a doubtful mechanism to B. Phase 3 was the earliest point this could be falsified, which is exactly the ace#995/#1006/#1121 cost pattern: the sentence had already reached the PDD and would have reached the Work Order and all five Phase-6 training documents. | ACE |

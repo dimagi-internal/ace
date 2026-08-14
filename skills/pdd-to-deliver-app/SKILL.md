@@ -465,17 +465,17 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
 
      > For the full failure analysis, see reference.md § add_fields partial persistence.
 
-     **When the PDD names a working language other than English**, also
-     insert this paragraph verbatim into the brief (dimagi-internal/ace#1181):
+     Also insert this paragraph verbatim into the brief
+     (dimagi-internal/ace#1181):
 
-     > REQUIRED for multilingual builds: Nova tool payloads over ~5 KB
-     > are truncated in transport before the tool sees them, surfacing
-     > as `InputValidationError: could not be parsed as JSON` — the
-     > JSON is well-formed, it was cut mid-string, and the threshold is
-     > not a clean size check (a 1.9 KB retry has reproduced it). Your
-     > labels stack every language inline, roughly tripling each
-     > field's bytes, so batch `add_fields` at **~5 fields per call**
-     > from the start (commcare-nova#459). Do NOT debug the payload's
+     > REQUIRED: Nova tool payloads are truncated in transport before
+     > the tool sees them, surfacing as `InputValidationError: could
+     > not be parsed as JSON` — the JSON is well-formed, it was cut
+     > mid-string, and the threshold is NOT a clean size check (first
+     > seen near 5 KB, then reproduced at 1.9 KB), so no field count is
+     > derivable from bytes. Batch `add_fields` at **~5 fields per
+     > call** from the start (commcare-nova#459) — a conservative floor
+     > proven safe, not a computed limit. Do NOT debug the payload's
      > quoting when you see that error — shrink the batch. The
      > verify-then-retry rule above still applies to every batch.
 
@@ -515,12 +515,14 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
        cost model.
      - `embedded-bc-script` — PDD specifies a verbatim behavior-change
        segment.
-     - `localization-layer` — PDD names a working language other than
-       English (Deliver variant). **Hard-fail** dimension: English-only
-       when the PDD names a working language fails the gate. Nova exposes
-       **no per-language / itext channel** — the sanctioned mechanism is
-       complete coverage authored INLINE in one label; do not search for a
-       translations parameter or report its absence as a blocker (ace#968).
+     - `english-only-ui` — PDD names a working language other than
+       English (Deliver variant). Build the app in **ENGLISH ONLY**
+       anyway: the working language is context for training and
+       facilitation, not an instruction to translate the app. Do not stack
+       languages inline, and do not search for a translations parameter or
+       report its absence as a blocker — Nova exposes no per-language /
+       itext channel and ACE has stopped faking one (standing decision
+       2026-08-14, ace#968). Graded by `language_conformance`.
      - `deliver-app-naming` — always. App name must contain "Deliver app".
      - `live-photo-capture` — any image/photo capture question. Appearance
        Attribute set to `acquire` (live camera, never gallery-browse).

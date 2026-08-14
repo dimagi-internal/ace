@@ -145,7 +145,7 @@ hollow-build root cause: a label-only curriculum + single 5-Q quiz with
 an unconditional pass message). The canonical parameterized text for each
 component lives in `skills/_app-component-library.md`, paired 1:1 with the
 eval fitness dimension (`assessment_gating`, `instructional_depth`,
-`localization_match`) that hard-fails a build omitting it.
+`language_conformance`) that hard-fails a build omitting it.
 
 ## Step 4a safety net
 
