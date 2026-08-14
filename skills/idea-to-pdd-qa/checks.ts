@@ -79,6 +79,24 @@ function escapeRegExp(s: string): string {
 const ORDINAL_PREFIX = '(?:\\d+(?:\\.\\d+)*\\.?\\s+)?';
 
 /**
+ * Optional leading appendix label on an H2 — `Appendix C — `, `Appendix B: `.
+ *
+ * An appendix IS the canonical placement for some required content (SKILL.md
+ * § Process step 6 puts the stress test in an appendix), so the checker must
+ * not reject the placement its own producer doc prescribes
+ * (dimagi-internal/ace#1227, hh-poverty-targeting/20260813-1612 Phase 1).
+ */
+const APPENDIX_PREFIX = '(?:Appendix\\s+[A-Z0-9]+\\s*(?:[—–:-])\\s*)?';
+
+/**
+ * The full heading-prefix tolerance every heading matcher shares: an optional
+ * appendix label, then an optional ordinal. #991 fixed the ordinal at 3 of 5
+ * call sites and the other two drifted (#1227) — every heading regex in this
+ * file MUST anchor through this constant rather than re-deriving its own.
+ */
+const HEADING_PREFIX = `${APPENDIX_PREFIX}${ORDINAL_PREFIX}`;
+
+/**
  * Check 1: All 11 required PDD sections are present (as `## Section Name` headings).
  *
  * Heading-match tolerance (intentional — real PDDs vary):
@@ -100,7 +118,7 @@ export function checkAllRequiredSectionsPresent(pdd: string): QACheckResult {
   for (const section of REQUIRED_SECTIONS) {
     // Match `##\s+(optional ordinal)(optional **)<section>` at line start, case-insensitive.
     const re = new RegExp(
-      `^##\\s+${ORDINAL_PREFIX}(?:\\*\\*)?${escapeRegExp(section)}\\b`,
+      `^##\\s+${HEADING_PREFIX}(?:\\*\\*)?${escapeRegExp(section)}\\b`,
       'mi',
     );
     if (!re.test(body)) {
@@ -169,7 +187,7 @@ export function checkArchetypeDeclared(pdd: string): QACheckResult {
  * tooling expects to find it.
  */
 export function checkStressTestAppendixPresent(pdd: string): QACheckResult {
-  if (/^##\s+Stress[\s-]?Test\s+Results\b/im.test(pdd)) {
+  if (new RegExp(`^##\\s+${HEADING_PREFIX}(?:\\*\\*)?Stress[\\s-]?Test\\s+Results\\b`, 'im').test(pdd)) {
     return { pass: true };
   }
   return {
@@ -255,7 +273,7 @@ function hasLayerRef(body: string, letter: string): boolean {
 export function checkReviewerCommentTableIfReferenced(pdd: string): QACheckResult {
   const body = stripFrontmatter(pdd);
   const hasMarkers = /\[(?:[a-z])\]/i.test(body);
-  const hasSection = /^##\s+Reviewer\s+Comments?\b/im.test(body);
+  const hasSection = new RegExp(`^##\\s+${HEADING_PREFIX}(?:\\*\\*)?Reviewer\\s+Comments?\\b`, 'im').test(body);
 
   if (!hasMarkers && !hasSection) {
     return { pass: true, detail: 'no reviewer comments referenced (clean source pack)' };
@@ -307,7 +325,7 @@ function stripFrontmatter(pdd: string): string {
  */
 function extractSection(pdd: string, headingPattern: string): string | null {
   const headingRe = new RegExp(
-    `^##\\s+${ORDINAL_PREFIX}${headingPattern}[^\\n]*$`,
+    `^##\\s+${HEADING_PREFIX}${headingPattern}[^\\n]*$`,
     'im',
   );
   const headingMatch = pdd.match(headingRe);

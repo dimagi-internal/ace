@@ -278,3 +278,48 @@ describe('CHECKS array', () => {
     ]);
   });
 });
+
+// ---------------------------------------------------------------------------
+// dimagi-internal/ace#1227 — the #991 ORDINAL_PREFIX fix reached only 3 of 5
+// call sites; checks 3 and 6 build their own heading regexes inline and still
+// rejected prefixed headings. Appendix-letter prefixes are canonical placement
+// (SKILL.md step 6 puts the stress test in an appendix), so both tolerances
+// apply to both checks.
+// ---------------------------------------------------------------------------
+
+describe('prefixed headings — checks 3 and 6 (#1227)', () => {
+  const dispositionTable =
+    '| Marker | Disposition |\n| --- | --- |\n| [a] | Honoured in § 6.1 |\n';
+
+  test('check 3 accepts an appendix-prefixed stress-test heading', () => {
+    const r = checkStressTestAppendixPresent('# PDD\n\n## Appendix C — Stress Test Results\n\n5/5\n');
+    expect(r.pass).toBe(true);
+  });
+
+  test('check 3 accepts an ordinal-prefixed stress-test heading', () => {
+    expect(checkStressTestAppendixPresent('## 15. Stress Test Results\n\n5/5\n').pass).toBe(true);
+  });
+
+  test('check 6 accepts an ordinal-prefixed reviewer-comments heading and counts its rows', () => {
+    const pdd = `# PDD\n\nAddresses comment [a].\n\n## 14. Reviewer Comments — Disposition\n\n${dispositionTable}`;
+    const r = checkReviewerCommentTableIfReferenced(pdd);
+    expect(r.pass).toBe(true);
+    // The probe and the extractor must AGREE (the pre-#1227 internal
+    // inconsistency): rows must actually be counted, not skipped via the
+    // defensive "table parse skipped" fallback.
+    expect(r.detail).toMatch(/disposition row/);
+  });
+
+  test('check 6 accepts an appendix-prefixed reviewer-comments heading and counts its rows', () => {
+    const pdd = `# PDD\n\nAddresses comment [a].\n\n## Appendix D — Reviewer Comments — Disposition\n\n${dispositionTable}`;
+    const r = checkReviewerCommentTableIfReferenced(pdd);
+    expect(r.pass).toBe(true);
+    expect(r.detail).toMatch(/disposition row/);
+  });
+
+  test('check 6 still fails a prefixed heading whose table is empty', () => {
+    const pdd = '# PDD\n\nAddresses comment [a].\n\n## 14. Reviewer Comments — Disposition\n\nProse only, no table.\n';
+    const r = checkReviewerCommentTableIfReferenced(pdd);
+    expect(r.pass).toBe(false);
+  });
+});
