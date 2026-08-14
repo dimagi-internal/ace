@@ -639,6 +639,11 @@ selectors:
     value: "android.widget.NumberPicker"
     purpose: "One spinner column of the native date widget. Live-verified CommCare 2.63.2, 2026-08-14 (ace#1081): THREE columns in display order month/day/year, at [235,1250][403,1723], [445,1250][613,1723], [655,1250][823,1723]. Each is `scrollable=true`, which is exactly why it swallows a swipe aimed at the page (ace#1300)."
 
+  form-date-picker-step-next:
+    type: doc
+    value: "the Button immediately BELOW each column's numberpicker_input"
+    purpose: "How to DRIVE the date picker, live-verified CommCare 2.63.2 / ACE_Pixel_API_34 2026-08-14 (dimagi-internal/ace#1081). Each NumberPicker column renders three children in order: a Button holding the PREVIOUS value, the `numberpicker_input` EditText holding the CURRENT value, and a Button holding the NEXT value. Tapping the lower Button increments that column by EXACTLY ONE — measured with read-back: day Aug 14 -> 15 -> 16 on two separate taps. Day-column bounds on a 1080x2400 portrait: prev [445,1250][613,1423], current [445,1423][613,1549], next [445,1549][613,1723]. Read the result back from `form-date-picker-input`; do NOT assume the tap landed. This is the ONLY calibrated way to set a date — a swipe inside a column also moves it, but by an unpredictable number of steps (a single centre swipe jumped Aug 14 -> 22), which is the ace#1300 hazard, not a drive mechanism. UNVERIFIED: bounds stability across a long tap sequence, and month/year rollover at a boundary — a 20-tap burst destabilised the emulator before it could be measured. For the common `. > today()` case one tap is sufficient, so neither residual is on the critical path."
+
   form-date-picker-input:
     type: id
     value: "android:id/numberpicker_input"

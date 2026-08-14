@@ -919,11 +919,35 @@ error and nothing able to assert against it. Use `safeScrollOriginX`
 x-range, and assert the date via `form-date-picker-input` afterwards —
 that read-back is the only surface that reports what the picker now holds.
 
-**A strictly-future constraint is still unwalkable.** The widget defaults
-to today, so `. > today()` cannot be satisfied by the default and there is
-no calibrated way to DRIVE the columns yet (the safe-scroll rule above
-avoids the picker; it does not operate it). Mark that branch rather than
-guessing a gesture — ace#1081 stays open for the drive-the-picker half.
+**Driving the picker — one tap per step, live-calibrated (ace#1081).** Each
+column renders three children in order:
+
+```
+Button    previous value      day column [445,1250][613,1423]   "13"
+EditText  numberpicker_input  day column [445,1423][613,1549]   "14"   <- current
+Button    next value          day column [445,1549][613,1723]   "15"
+```
+
+**Tapping the lower Button increments that column by exactly one** —
+measured with read-back: Aug 14 → 15 → 16 on two separate taps. Always read
+the result back from `${SELECTOR:form-date-picker-input}`; never assume the
+tap landed.
+
+Do **not** swipe inside a column to set a value. A swipe also moves it, but
+by an unpredictable number of steps (one centre swipe jumped Aug 14 → 22) —
+that is the ace#1300 hazard, not a drive mechanism.
+
+So a strictly-future constraint IS walkable, and usually with a single tap:
+
+```
+next_meeting_date   validate: . > today() and . <= date(today() + 30)
+```
+
+The widget defaults to today, which fails `. > today()`. **One** tap on the
+day column's next-value Button makes it tomorrow, satisfying both clauses.
+Only a constraint with a far-future floor needs a longer sequence — and
+there, bounds stability across a long burst and month/year rollover are
+**not yet calibrated**, so verify on-device before authoring one.
 
 #### Quiz / required-input answer-tap rule — MANDATORY
 
