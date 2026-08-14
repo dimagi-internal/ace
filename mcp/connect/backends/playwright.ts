@@ -11,6 +11,7 @@ import {
   decodeHtmlEntities,
   extractFormCsrfToken,
   extractFormFieldValues,
+  extractDisabledFormFieldNames,
   extractUuidFromPath,
   parseDeliveryTypeOptions,
   parseProgramsList,
@@ -490,6 +491,108 @@ export class PlaywrightBackend implements ConnectClient {
     }
     throw await httpErrorFor(postRes, editPath, 'POST');
   }
+
+  /**
+   * Set the Learn-app passing score on an existing opportunity.
+   *
+   * Read-modify-write against the program-scoped INIT form. It is the FULL
+   * init form, not a partial: posting only `learn_app_passing_score` fails
+   * validation on every other required field, so the whole rendered body has
+   * to go back with exactly one value changed.
+   *
+   * Three server behaviours this has to respect, all read out of
+   * `commcare_connect/opportunity/forms.py` rather than guessed:
+   *
+   *  1. `OpportunityInitUpdateForm` is where the field lives — NOT the
+   *     `/opportunity/<id>/edit` form `updateOpportunity` posts.
+   *  2. Once workers have joined, six app fields are Django-`disabled` AND
+   *     `clean()` errors if any of them appears in the payload. We drop every
+   *     field the server rendered `disabled` (see
+   *     `extractDisabledFormFieldNames`) instead of hardcoding that list.
+   *  3. `save()` → `_build_commcare_app(update_existing=True)` assigns
+   *     `app.passing_score` and saves with an explicit `update_fields`, so the
+   *     write persists. On the CREATE path `update_existing` is `false` and
+   *     `get_or_create`'s `defaults` are ignored for an existing row — which
+   *     is exactly why a repair path is needed at all.
+   *
+   * `CommCareApp` is keyed `(cc_app_id, cc_domain, organization, hq_server)`,
+   * NOT by opportunity — so this score is shared by every opportunity in the
+   * org wired to the same HQ Learn app. Callers changing it on a reused app
+   * are changing it for all of them; the returned `previous_passing_score`
+   * makes that visible rather than silent.
+   */
+  setLearnPassingScore: ConnectClient['setLearnPassingScore'] = async ({
+    organization_slug, program_id, opportunity_id, passing_score,
+  }) => {
+    const editPath =
+      `/a/${organization_slug}/program/${program_id}/opportunity/${opportunity_id}/init/edit/`;
+
+    const getRes = await this.request.get(editPath);
+    if (getRes.status() !== 200) throw await httpErrorFor(getRes, editPath);
+    const html = await getRes.text();
+
+    const current = extractFormFieldValues(html);
+    if (!('learn_app_passing_score' in current)) {
+      // Fail loud rather than posting a body the form will silently drop.
+      // Connect 302s on unrecognized POST keys (the ace#1013 class), so a
+      // missing input must be caught HERE or the call reports success for a
+      // write that never happened.
+      throw new ConnectValidationError([
+        `learn_app_passing_score is not rendered on ${editPath} — the init-edit form shape changed. ` +
+        'Re-read commcare_connect/opportunity/forms.py before sending a repair.',
+      ]);
+    }
+    const previousRaw = current['learn_app_passing_score'];
+    const previous = previousRaw === '' ? null : Number(previousRaw);
+
+    const csrf = extractFormCsrfToken(html) ?? this.opts.csrfToken;
+    const disabled = extractDisabledFormFieldNames(html);
+
+    const form: Record<string, string> = { csrfmiddlewaretoken: csrf };
+    for (const [name, value] of Object.entries(current)) {
+      if (name === 'csrfmiddlewaretoken') continue;
+      if (disabled.has(name)) continue;   // see (2) above
+      form[name] = value;
+    }
+    form['learn_app_passing_score'] = String(passing_score);
+
+    const postRes = await this.request.post(editPath, {
+      form,
+      maxRedirects: 0,
+      headers: {
+        Referer: `${this.opts.baseUrl}${editPath}`,
+        'X-CSRFToken': csrf,
+      },
+    });
+    if (postRes.status() === 200) {
+      throw validationErrorFromHtml(await postRes.text(), 'passing_score edit rejected');
+    }
+    if (postRes.status() !== 302) throw await httpErrorFor(postRes, editPath, 'POST');
+
+    // Verify after write. A 302 only says the form validated; it does not say
+    // this field persisted, and `passing_score` is the one value whose being
+    // wrong is completely silent downstream — the app still builds, the worker
+    // still sees a result screen, only the gate differs.
+    const afterRes = await this.request.get(editPath);
+    if (afterRes.status() !== 200) throw await httpErrorFor(afterRes, editPath);
+    const after = extractFormFieldValues(await afterRes.text());
+    const verified = Number(after['learn_app_passing_score']);
+    if (verified !== passing_score) {
+      throw new ConnectValidationError([
+        `passing_score read-back mismatch on ${opportunity_id}: sent ${passing_score}, ` +
+        `form now renders ${after['learn_app_passing_score'] || '(empty)'}. The opportunity is in an ` +
+        'unknown state — inspect it in the Connect UI before relying on the gate.',
+      ]);
+    }
+
+    return {
+      ok: true as const,
+      opportunity_id,
+      passing_score,
+      verified_passing_score: verified,
+      previous_passing_score: Number.isNaN(previous as number) ? null : previous,
+    };
+  };
 
   // ── Verification flags ────────────────────────────────────────────
 

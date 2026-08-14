@@ -105,6 +105,38 @@ export interface ConnectClient {
     is_test?: boolean;
   }): Promise<Opportunity>;
 
+  /**
+   * Change the Learn-app passing score on an EXISTING opportunity.
+   *
+   * Deliberately separate from `updateOpportunity`, which posts the
+   * `/opportunity/<id>/edit` form. `passing_score` does not live on that
+   * form — it lives on the program-scoped INIT form
+   * (`/a/<org>/program/<program_id>/opportunity/<opp_id>/init/edit/`,
+   * `commcare_connect/program/urls.py`), served by
+   * `OpportunityInitUpdateForm`.
+   *
+   * Why this exists: `connect_create_opportunity` requires `passing_score`
+   * and is the only other place ACE can set it, so before this atom a wrong
+   * gate could only be repaired by deleting and recreating the Connect
+   * opportunity. Connect itself never had that limitation — the edit form's
+   * own hint text reads "Learn and Deliver apps and the API key cannot be
+   * changed after Connect Workers have joined. You can still edit the learn
+   * app description and passing score."
+   */
+  setLearnPassingScore(args: {
+    organization_slug: string;
+    program_id: string;
+    opportunity_id: string;
+    passing_score: number;
+  }): Promise<{
+    ok: true;
+    opportunity_id: string;
+    passing_score: number;
+    /** Value read back off the re-rendered form — the write's proof. */
+    verified_passing_score: number;
+    previous_passing_score: number | null;
+  }>;
+
   // Per-opportunity configuration (post-create)
   setVerificationFlags(args: {
     organization_slug: string;
