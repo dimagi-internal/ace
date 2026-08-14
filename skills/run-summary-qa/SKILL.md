@@ -41,11 +41,27 @@ and HTTP-checks each:
 ```bash
 ACE_ROOT="${CLAUDE_PLUGIN_ROOT:-$(python3 -c "import json,os; d=json.load(open(os.path.expanduser('~/.claude/plugins/installed_plugins.json'))); print(d['plugins']['ace@ace'][0]['installPath'])")}"
 python3 "$ACE_ROOT/scripts/check-summary-links.py" <opp-slug> <run-id> \
-  [--workspace dimagi-team] [--base https://labs.connect.dimagi.com/ace] [--json]
+  [--workspace dimagi-team] [--base https://labs.connect.dimagi.com/ace] [--json] \
+  [--reviewer <email> ...] [--memberships <readbacks.json>]
 ```
 
-It classifies each link and exits non-zero iff any link is **BROKEN** or
-**PRIVATE-DELIVERABLE**. It resolves page-relative URLs against the summary page
+**`--reviewer` is MANDATORY whenever you are QA'ing the summary in order to
+share it with named people** — which is the only reason to run this skill
+(ace#1060). Pass one `--reviewer` per person, plus `--memberships` pointing at
+the read-backs the existing tools already produce:
+
+| Surface | Read-back |
+|---|---|
+| HQ, OCS | `npx --prefix "$ACE_ROOT" tsx "$ACE_ROOT/scripts/grant-review-access.ts" --dry-run` |
+| Connect | `connect_add_org_member`'s pre-read of `/organization/member_table` (`lib/connect-member-table.ts`, ace#911) |
+
+Shape: `{"hq": {"a@b.c": true}, "ocs": {...}, "connect": {...}}`. **Without it
+every reviewer is `MEMBER-UNVERIFIED`, and that blocks** — "we did not check"
+is not "it is fine", and treating it as fine is the entire bug.
+
+It classifies each link and exits non-zero iff any link is **BROKEN**,
+**PRIVATE-DELIVERABLE**, or carries a `MEMBER-MISSING` / `MEMBER-UNVERIFIED`
+verdict for a named reviewer. It resolves page-relative URLs against the summary page
 URL before checking, so a root-relative link like the footer's `workbench_url`
 is checked exactly as a browser would follow it:
 
@@ -57,6 +73,26 @@ is checked exactly as a browser would follow it:
 | 👤 `MEMBER-GATED` | same anonymous signature, but on a **membership**-gated surface: HQ `/a/<domain>/`, OCS `/a/<team>/`, Connect `/a/<org>/` | **NOT a pass on its own** — see below. |
 | ➖ `REACHABLE` | other 3xx/4xx that isn't a hard failure | inspect |
 | ❌ `BROKEN` | 404 / 410 / 5xx / DNS failure / unreachable | **FAIL — fix before sharing** |
+
+**Per-reviewer classes** (only emitted with `--reviewer`):
+
+| Class | Meaning | Verdict |
+|---|---|---|
+| ✅ `MEMBER-OK` | the read-back confirms this person is a member of that surface | pass |
+| ❌ `MEMBER-MISSING` | the read-back says they are NOT | **FAIL — grant access first (`skills/share-run-access`)** |
+| ❌ `MEMBER-UNVERIFIED` | no read-back was supplied for that (surface, person) | **FAIL — go get the evidence** |
+
+**Why this is a gate and not a reminder.** For three runs the confirmation was
+prose in this checker's own output, and the confirming got done by an agent
+choosing to comply — at exactly the moment (about to send a reply) when it
+feels already-done. On 2026-07-23 that produced a written claim to an external
+partner, *"you already had access there, so nothing to do"*, that a read-back
+showed was false and that stayed false for a week.
+
+And the failure never announces itself: **a reviewer without membership gets a
+flat 404**, indistinguishable from "this run doesn't exist". It reads to them
+as us shipping a broken link — which is exactly how ace#913 and ace#916 reached
+us, from the same reviewer.
 
 **MEMBER-GATED is never a pass on its own — signing in is not enough.** The checker
 probes **anonymously**, so it can only prove a link is reachable to *somebody*. HQ, OCS

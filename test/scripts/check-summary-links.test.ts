@@ -131,3 +131,78 @@ describe('check-summary-links: relative URLs are collected and checked', () => {
     expect(collected).toEqual([]);
   });
 });
+
+/**
+ * dimagi-internal/ace#1060 — the check that actually matters was prose.
+ *
+ * Found by the same reviewer, the same way, for the THIRD time (Sophie
+ * Feintuch: #913 app links 404, #916 access claimed without read-back, now the
+ * Connect opportunity link on hh-poverty-targeting/20260728-0705).
+ *
+ * The checker reported `12 links · 0 BROKEN` with 4 MEMBER-GATED, and its own
+ * output then said the right thing — "confirm every named reviewer actually
+ * holds membership … or don't present the link to them as reviewer-facing".
+ * But it probes ANONYMOUSLY, so it cannot perform that confirmation. The check
+ * therefore got done by an agent choosing to comply, at exactly the moment
+ * (about to send a reply) when it feels already-done. On 2026-07-23 that
+ * produced a written claim to an external partner:
+ *
+ *   "The Connect opportunity — you already had access there, so nothing to do."
+ *
+ * A read-back showed she was not in `ai-demo-space`'s member table. The
+ * sentence was false when written and stayed false for a week.
+ *
+ * What makes it worth automating rather than remembering: a reviewer who lacks
+ * membership gets a flat 404, indistinguishable from "this run doesn't exist".
+ * It never reads as "you need access", so the reviewer reports it as us
+ * shipping a broken link — which is exactly how #913 and #916 were reported.
+ *
+ * The script probes anonymously by design and must NOT grow three auth paths.
+ * So it takes the read-backs the existing tools already produce
+ * (`grant-review-access.ts --dry-run` for HQ/OCS, `lib/connect-member-table.ts`
+ * for Connect) and REFUSES TO CERTIFY without them, rather than guessing.
+ */
+describe('per-reviewer membership gate (#1060)', () => {
+  it('maps each member-gated host to the read-back path that can answer for it', () => {
+    expect(pyEval('m.member_surface("https://www.commcarehq.org/a/connect-ace-prod/apps/")')).toBe('hq');
+    expect(pyEval('m.member_surface("https://www.openchatstudio.com/a/connect-ace/chatbots/1/")')).toBe('ocs');
+    expect(pyEval('m.member_surface("https://connect.dimagi.com/a/ai-demo-space/opportunity/x/")')).toBe('connect');
+    expect(pyEval('m.member_surface("https://docs.google.com/document/d/x/edit")')).toBe(null);
+  });
+
+  it('MEMBER-OK when the read-back says the reviewer is a member', () => {
+    const r = pyEval(
+      'm.classify_reviewer("https://connect.dimagi.com/a/ai-demo-space/opportunity/x/", ' +
+        '"sfeintuch@dimagi.com", {"connect": {"sfeintuch@dimagi.com": True}})',
+    );
+    expect(r[0]).toBe('MEMBER-OK');
+  });
+
+  it('MEMBER-MISSING on the live 2026-07-23 case — she was not in ai-demo-space', () => {
+    const r = pyEval(
+      'm.classify_reviewer("https://connect.dimagi.com/a/ai-demo-space/opportunity/x/", ' +
+        '"sfeintuch@dimagi.com", {"connect": {"sfeintuch@dimagi.com": False}})',
+    );
+    expect(r[0]).toBe('MEMBER-MISSING');
+    expect(r[1]).toMatch(/404/);
+  });
+
+  it('MEMBER-UNVERIFIED when no read-back was supplied — it refuses to certify, it does not guess', () => {
+    const r = pyEval(
+      'm.classify_reviewer("https://connect.dimagi.com/a/ai-demo-space/opportunity/x/", ' +
+        '"sfeintuch@dimagi.com", {})',
+    );
+    expect(r[0]).toBe('MEMBER-UNVERIFIED');
+    expect(r[1], 'must name the tool that produces the evidence').toMatch(/grant-review-access|member_table/);
+  });
+
+  it('both non-OK classes block sharing', () => {
+    expect(pyEval('sorted(m.REVIEWER_BLOCKING)')).toEqual(['MEMBER-MISSING', 'MEMBER-UNVERIFIED']);
+  });
+
+  it('a non-member-gated link is not judged per reviewer', () => {
+    expect(
+      pyEval('m.classify_reviewer("https://docs.google.com/document/d/x/edit", "a@b.c", {})'),
+    ).toBe(null);
+  });
+});
