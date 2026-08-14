@@ -44,7 +44,7 @@ CCC-301).
 
    | Dimension | Weight | Criteria |
    |---|---|---|
-   | **Widget URL resolves** | 25% | The widget URL in widget-handoff.md must (a) include the bot's `public_id`, (b) include a non-empty `embed_key`, (c) actually return a 200 from the OCS widget endpoint when fetched. URL-shape-correct but unreachable = ≤6 (server-side issue, [PLATFORM]). URL-shape-broken = ≤3. |
+   | **Widget URL resolves** | 25% | The handoff must carry the bot's **public chat URL** — `https://www.openchatstudio.com/a/<team_slug>/chatbots/<public_id>/start/`, built with `buildOcsPublicChatUrl` from `lib/ocs-public-chat-url.ts` — plus the `public_id` and a non-empty `embed_key` for the widget element. Probe it anonymously and require a **200**. **The probe MUST carry cookies through the redirect** (`curl -L -c jar -b jar`, or a Playwright context): `start_session_public` creates a session and 302s to `/s/<session_id>/chat/`, which is wrapped in `@verify_session_access_cookie`, so a cookieless fetch reads **404 on a perfectly working bot**. Verified live 2026-08-14 against `connect-ace` / `f92d26f3-…`: no jar → 302 then 404; with jar → 200. URL-shape-correct but genuinely unreachable = ≤6 ([PLATFORM]). URL-shape-broken, or the retired `/chatbots/embed/<public_id>/` path (a 410 stub since OCS #3540, 2026-08-03) = ≤3. **Do NOT deduct for the absence of an embed page** — there isn't one, and the handoff naming the `start/` route instead is correct, not a defect (ace#1021). |
    | **Connect opp link** | 20% | widget-handoff.md must reference the Connect opportunity URL the LLO needs to paste INTO. Mismatch with run_state.yaml's `connect_opportunity.url` = 4-point deduction. Missing = ≤4. |
    | **Operator instructions clarity** | 30% | The handoff must tell a non-technical LLO (a) where to paste (Connect opp config tab, specific field name), (b) what to paste (the widget URL or just the embed_key, depending on Connect's UI), and (c) how to verify (chat-test prompt). Each missing element = 2-point deduction. |
    | **Credential hygiene** | 25% | embed_key is opp-specific, NOT a global API key. Surface a [WARN] if the handoff includes any global secret (OCS_TEAM_SLUG, OCS_GOLDEN_TEMPLATE_ID, etc.) — those should never appear in an LLO-facing artifact. |
@@ -68,9 +68,11 @@ CCC-301).
      credential leak (a global secret in an LLO-facing doc).
    - `[BLOCKER]` if overall < 7.0.
    - `[WARN]` per missing operator-instruction element.
-   - `[PLATFORM]` for the OCS widget endpoint returning 5xx during
+   - `[PLATFORM]` for the OCS public chat route returning 5xx during
      the probe (handoff structurally correct; live verification
-     unavailable).
+     unavailable). A **404 with no cookie jar is not a platform issue** —
+     it is a defective probe; re-run it with cookies before recording
+     anything (ace#1021).
    - `[PLATFORM]` for Connect's lack of `update_opportunity` widget-config
      API (the entire reason this hop is HITL today). One canonical
      entry per verdict; ties to CCC-301.
@@ -170,4 +172,5 @@ focus-group / multi-stage opps.
 
 | Date | Change | Author |
 |------|--------|--------|
+| 2026-08-14 | **`widget_url_resolves` probes the route that exists (ace#1021).** The dimension gated 25% of the score on fetching an OCS "widget endpoint", while `ocs-agent-setup` already recorded that `/chatbots/embed/<public_id>/` is a 404 — so a CORRECT handoff scored as badly as a broken one. Both skills were wrong about the platform: the anonymous route is team-scoped, `/a/<team_slug>/chatbots/<public_id>/start/` (`apps/chatbots/urls.py:80` mounted under `config/urls.py:88`), and it works. The embed flow really was deleted (OCS #3540, 2026-08-03). The probe now targets the real URL and MUST carry cookies through the 302 — `@verify_session_access_cookie` on the chat view makes a cookieless fetch read 404 on a working bot, which is the false negative that produced this issue. | ACE team |
 | 2026-04-29 | Initial version. 4 dimensions: widget_url_resolves (0.25), connect_opp_link (0.20), operator_instructions_clarity (0.30 — heaviest because LLOs are non-technical), credential_hygiene (0.25 — security guard with auto-fail on global-secret leak). Provisional calibration. Absorbs turmeric run_time_followups item 10 (HITL widget paste-in until CCC-301). | ACE team (0.10.29) |

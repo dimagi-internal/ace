@@ -345,9 +345,37 @@ round-trip gate in Step 11.5 below.
     drop them, #572/#587). Sole writer of `products.ocs_chatbot`. The
     `admin_url` is the OCS
     chatbot home page (auth-gated; useful for ACE operators with OCS
-    access). The `/chatbots/embed/<public_id>/` URL once written by
-    `ocs-widget-handoff` is a 404 — there's no standalone embed page,
-    only the corner widget — so it's not in the typed handoff.
+    access).
+
+    **Also emit the PUBLIC chat URL** — build it with
+    `buildOcsPublicChatUrl` from `lib/ocs-public-chat-url.ts`:
+
+    ```
+    https://www.openchatstudio.com/a/<team_slug>/chatbots/<public_id>/start/
+    ```
+
+    This is a real anonymous surface and it works — verified live
+    2026-08-14 against `connect-ace`. It is what makes an ACE per-opp
+    chatbot reachable by anyone you send the link to, with no OCS
+    account. The route is TEAM-SCOPED (`apps/chatbots/urls.py:80`,
+    mounted under `config/urls.py:88`'s `a/<slug:team_slug>/`), which is
+    why probing `/chatbots/<public_id>/…` at the root 404s.
+
+    Two things to know before you probe it (ace#1021):
+
+    - **Carry cookies through the redirect.** `start_session_public`
+      CREATES a session and 302s to `/s/<session_id>/chat/`, which is
+      wrapped in `@verify_session_access_cookie` — a cookieless `curl`
+      reads **404 on a perfectly working bot**. Use `curl -L -c jar -b
+      jar` or a browser context.
+    - **It requires the PUBLISHED version to be public.**
+      `start_session_public` resolves the published version and checks
+      `is_public`, which is `len(participant_allowlist) == 0`. ACE bots
+      leave the allowlist empty, so Step 9's publish is what turns this
+      URL on.
+
+    The old `/chatbots/embed/<public_id>/` path is genuinely gone — a
+    410 stub since OCS #3540 (2026-08-03) — so do not emit it.
 
 Quality gating (quick + deep qa→eval pairs) and Connect widget handoff
 happen in subsequent steps of the `ocs-setup` agent, not in this skill.
