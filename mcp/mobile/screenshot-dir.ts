@@ -62,11 +62,64 @@ export function isPreservedArtifact(name: string): boolean {
  * namespace, so namespacing (which adds a path segment) can never be a
  * way to smuggle a shallow path past the check — e.g. `screenshotDir:
  * '/tmp'` is still rejected outright rather than becoming a wipe of
- * `/tmp/<recipe>/`. Narrowing the wipe root further (an allow-listed
- * base such as `/tmp/ace-screenshots/`) is dimagi-internal/ace#1111's
- * job, not this module's.
+ * `/tmp/<recipe>/`. Containment under an allow-listed base
+ * (`allowedScreenshotRoots`) landed for dimagi-internal/ace#1111 and runs
+ * FIRST — the shallow-path checks below are now a second line, catching a
+ * caller who points at the root of an allowed tree.
+ */
+/**
+ * Roots a screenshot directory may live under.
+ *
+ * `ACE_SCREENSHOT_ROOT` overrides entirely; otherwise BOTH
+ * `/tmp/ace-screenshots` (the convention every skill actually passes — see
+ * `app-screenshot-capture § Step 5`) and `<os.tmpdir()>/ace-screenshots`,
+ * because on macOS `os.tmpdir()` is a `/var/folders/...` path and is NOT
+ * `/tmp`. Accepting only one of them would break every existing caller on one
+ * platform or the other.
+ */
+export function allowedScreenshotRoots(): string[] {
+  const override = process.env.ACE_SCREENSHOT_ROOT;
+  if (override) return [path.resolve(override)];
+  return [...new Set(['/tmp/ace-screenshots', path.join(os.tmpdir(), 'ace-screenshots')])].map(
+    (r) => path.resolve(r),
+  );
+}
+
+/**
+ * CONTAINMENT, not a denylist (dimagi-internal/ace#1111 — 2026-07-31 security
+ * audit, MCP finding F3, high).
+ *
+ * The previous guard refused the filesystem root, single-segment paths, `$HOME`
+ * exactly and `cwd` exactly. Everything with >= 2 path segments passed, so
+ *
+ *     mobile_run_recipe(recipePath: "<any bundled palette recipe>",
+ *                       screenshotDir: "/Users/op/Documents")
+ *
+ * destroyed `~/Documents` — and `~/.ssh`, `~/Library`, `~/emdash/repositories`
+ * and `/Users/op/code` were all equally reachable. `recipePath` can be any
+ * recipe already shipped in `mcp/mobile/recipes/`, so no prior write is
+ * needed, and the delete happens BEFORE the recipe runs, so no device has to
+ * be present. Unrecoverable: `force: true`, no trash.
+ *
+ * `mobile_run_recipe`'s arguments are LLM-controlled and ACE ingests untrusted
+ * content that can prompt-inject the agent, so a denylist is the wrong shape
+ * outright: it can only ever enumerate the paths someone thought of.
+ *
+ * The shallow-path checks are kept as well — they still catch a caller who
+ * points at the ROOT of an allowed tree, which would wipe every run at once.
  */
 function assertSafeWipeTarget(resolved: string, fnName: string): void {
+  const roots = allowedScreenshotRoots();
+  const contained = roots.some((r) => resolved.startsWith(r + path.sep));
+  if (!contained) {
+    throw new Error(
+      `${fnName}: refusing to touch "${resolved}" — a screenshot directory must be under one of ` +
+        `${roots.join(' or ')}. Set ACE_SCREENSHOT_ROOT to relocate it. This is containment, not a ` +
+        `denylist: this argument is LLM-controlled, and before dimagi-internal/ace#1111 any path with ` +
+        `two or more segments (~/Documents, ~/.ssh, ~/Library) was wiped irrecoverably.`,
+    );
+  }
+
   const { root } = path.parse(resolved);
   const segments = resolved.slice(root.length).split(path.sep).filter(Boolean);
   if (

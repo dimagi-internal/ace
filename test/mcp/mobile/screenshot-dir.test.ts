@@ -3,11 +3,15 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import {
+
+
   resetScreenshotDir,
   isPreservedArtifact,
   dispatchOutputDir,
   recipeNamespace,
 } from '../../../mcp/mobile/screenshot-dir.js';
+
+
 
 // Per-execution screenshot-dir freshness (jjackson/ace#756): the dir a
 // `mobile_run_recipe` dispatch reports must contain ONLY artifacts from
@@ -16,6 +20,16 @@ import {
 // backend. The wipe is SELECTIVE (jjackson/ace#1034): `00-*` ground-truth
 // dumps and `*-FAILURE.*` forensics from a prior attempt survive it.
 describe('resetScreenshotDir', () => {
+  // ace#1111 contains screenshot dirs under an allow-listed root. This suite
+  // works in `mkdtemp` dirs under the OS temp dir, so it points the override
+  // there — the DEFAULT roots are exercised by the `dispatchOutputDir` suite
+  // below and by screenshot-dir-containment.test.ts.
+  const savedRoot = process.env.ACE_SCREENSHOT_ROOT;
+  beforeEach(() => { process.env.ACE_SCREENSHOT_ROOT = os.tmpdir(); });
+  afterEach(() => {
+    if (savedRoot === undefined) delete process.env.ACE_SCREENSHOT_ROOT;
+    else process.env.ACE_SCREENSHOT_ROOT = savedRoot;
+  });
   let tmpDir: string;
   beforeEach(() => {
     tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'reset-shots-'));
@@ -100,7 +114,11 @@ describe('resetScreenshotDir', () => {
   it.each(['/', '/tmp', os.homedir(), process.cwd()])(
     'refuses to wipe protected/shallow path %s',
     (dangerous) => {
-      expect(() => resetScreenshotDir(dangerous)).toThrow(/refusing to wipe/);
+      // ace#1111 moved the first line of defence to CONTAINMENT, so these now
+      // trip "refusing to touch … must be under" before the shallow-path
+      // check. Either refusal satisfies the property under test: none of them
+      // is ever wiped.
+      expect(() => resetScreenshotDir(dangerous)).toThrow(/refusing to (wipe|touch)/);
     },
   );
 });
@@ -137,7 +155,9 @@ describe('dispatchOutputDir', () => {
     // Namespacing adds a segment, so without this the old guard would
     // have let `/tmp` through as `/tmp/<recipe>` (ace#1111 hygiene).
     for (const dangerous of ['/', '/tmp', os.homedir(), process.cwd()]) {
-      expect(() => dispatchOutputDir(dangerous, 'journey-learn')).toThrow(/refusing to wipe/);
+      expect(() => dispatchOutputDir(dangerous, 'journey-learn')).toThrow(
+        /refusing to (wipe|touch)/,
+      );
     }
   });
 

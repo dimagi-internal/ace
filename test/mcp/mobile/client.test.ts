@@ -15,6 +15,15 @@ import {
 import { setSessionBackend, clearSessionBackend } from '../../../mcp/mobile/backend-toggle.js';
 import { TEST_PHONE, TEST_PHONE_LOCAL } from '../../fixtures/test-phone.js';
 
+// ace#1111 pinned screenshot dirs under an allow-listed root. These suites
+// build scratch dirs with `mkdtemp` under the OS temp dir, which is outside
+// the default roots — point the override at it so they exercise the
+// production code path instead of the refusal.
+process.env.ACE_SCREENSHOT_ROOT = os.tmpdir();
+
+
+
+
 // The real static-recipe palette dir. registerTestUser now resolves
 // `${SELECTOR:...}` placeholders via prepareRecipeForMaestro, which reads
 // this palette off disk — so the register tests must point at the real
@@ -1002,7 +1011,12 @@ describe('MobileClient.runRecipe (dispatch-scoped output, dimagi-internal/ace#11
     const cloud = { runRecipe: cloudRunRecipe } as any;
     const client = new MobileClient({ avd: {} as any, maestro: {} as any, cloud });
 
-    await expect(client.runRecipe(recipePath, {}, '/tmp')).rejects.toThrow(/refusing to wipe/);
+    // ace#1111 moved the first line of defence to CONTAINMENT, so `/tmp`
+    // now trips "refusing to touch … must be under" before the shallow-path
+    // check. Either refusal satisfies the property under test.
+    await expect(client.runRecipe(recipePath, {}, '/tmp')).rejects.toThrow(
+      /refusing to (wipe|touch)/,
+    );
     expect(cloudRunRecipe).not.toHaveBeenCalled();
   });
 });
