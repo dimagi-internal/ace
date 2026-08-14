@@ -333,11 +333,21 @@ need only the `runFolderId` plus the path relative to it (e.g.
 `1-design/idea-to-pdd.md`); they walk the folder tree to find the
 file.
 
-After a phase completes, regenerate `README.md` with the updated
-`phaseStatus` (e.g. `{ design: 'done', commcare: 'in-progress', ... }`)
-via `generateRunReadme(runId, phaseStatus)` and write back to
-`runs/<runId>/README.md` via `drive_update_file`. The README is the
-operator's single-glance view of run state; keep it fresh.
+**The README refresh is automatic — do NOT do it by hand.**
+`verify_phase_artifacts` (call #3 of the boundary fence, unconditional on
+every phase completion) rewrites `runs/<runId>/README.md` itself: it already
+holds `runFolderId` and already reads the run's `run_state.yaml`, so it derives
+the phase-status map via `lib/run-readme.ts::phaseStatusFromRunState` and
+upserts the file. It reports `readme_refreshed: true|false` in its payload;
+`false` (plus `readme_note`) means the refresh failed and never affects the
+artifact verdict.
+
+This replaced a prose instruction to "regenerate `README.md` with the updated
+`phaseStatus` … after a phase completes", which required the orchestrator both
+to remember an extra call and to hand-assemble the status map. On
+`spark-facilitator/20260813-2126` neither happened: 8 phases completed and the
+README shipped 96 rows all reading `pending`. `render_run_readme` remains for
+RUN-INIT (step 7b) only.
 
 ### Phase-agent defensive folder contract (every phase agent's Step 0)
 
@@ -439,7 +449,7 @@ forking:**
 | Path | Role |
 |---|---|
 | `runs/<run-id>/run_state.yaml` | Lifecycle state — phase/step pointer, mode, `last_actor`, timestamps. New file at each new run-id. |
-| `runs/<run-id>/README.md` | Per-run index regenerated after each phase via `generateRunReadme(...)`. |
+| `runs/<run-id>/README.md` | Per-run index. Written at run-init via `render_run_readme`, then refreshed automatically by `verify_phase_artifacts` at every phase boundary (derived from `run_state.yaml` — never hand-assembled). |
 | `runs/<run-id>/inputs-manifest.yaml` | Frozen pointer-set captured at run start (`inputs/` file_ids). Snapshots that run's view of the source pack. |
 | `runs/<run-id>/<N>-<phase>/<producer>.md` | Producer artifacts (PDDs, app summaries, training docs, screenshots, etc.). |
 | `runs/<run-id>/<N>-<phase>/<producer>_verdict[-<mode>].yaml` | Producer self-evaluation (when the producing skill self-evaluates). |
