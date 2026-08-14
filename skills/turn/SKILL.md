@@ -38,7 +38,18 @@ improvements ship once (a canopy PR) instead of N backports.
   aggregate verdict** (dimagi-internal/ace#1189): a revoked Gmail refresh token leaves every inbound
   and outbound path dead while the old aggregate still printed `FAIL: 0 / HEALTHY — ACE works;
   warnings below are non-fatal`, because a Gmail-less machine legitimately still runs most of
-  `/ace:run`. The verdict is now surface-scoped — `HEALTHY for runs · BROKEN for turns` — and any
+  `/ace:run`. **A `PASS gog_auth` is NOT sufficient evidence the inbox works — prove it with a live
+  read before you trust it** (dimagi-internal/ace#1338): the probe classifies failure by matching a
+  denylist of gog error strings, and gog's "no token for this (mailbox, client) pair" message
+  (`No auth for gmail <mailbox>.`) matches none of them, so a mailbox that cannot make a single
+  call reports `PASS … live scopes OK`. That is the #1189 gate defeated at its source. So run the
+  inbox pull yourself as the real preflight — `gog gmail search "in:inbox is:unread" --account
+  $ACE_GMAIL_ACCOUNT --client canopy -j` — and treat an auth error there as TURN-BLOCKING no matter
+  what the doctor printed. If the read fails under the configured client, check
+  `gog auth tokens list` for a `token:<client>:<mailbox>` key: the pair, not the account, is what
+  gog stores, and `gog auth list` collapses to one row per account so it can hide a working token
+  (which also misroutes canopy's `reconcile_client` onto a revoked one). The verdict is now
+  surface-scoped — `HEALTHY for runs · BROKEN for turns` — and any
   `[TURN-BLOCKING]` item means **this turn cannot do its job**: do NOT proceed to the inbox pull.
   Abort loudly, naming the item and its `fix:` line (they are all one-command remediations:
   `gog login …`, or installing the canopy CLI). A turn that continues past one reads an empty inbox

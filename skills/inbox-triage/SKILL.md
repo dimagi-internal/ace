@@ -160,6 +160,38 @@ lets an open thread age silently between turns (HENIKE waited 23 days). Every tu
   (`initiated_by` / `last_actor` in `run_state.yaml`) in the close-out, every turn, until resolved —
   not just listed.
 
+### 4b. A STALE inbound is closed, not answered late (Jon, 2026-08-14)
+Aging cuts both ways. §4 covers a thread ACE is sitting on; this covers the inbound that went
+unread so long that **answering it is the wrong move**. Once an unread inbound is roughly **two
+weeks or older**, the default action is **close it (`canopy email archive`) WITHOUT sending** —
+not draft the substantive reply it would have earned on day one. The world has moved: the run it
+referenced has been superseded, the question has been overtaken, or the sender has stopped
+waiting. A detailed answer to a three-week-old message spends the counterpart's attention
+re-opening something they closed, and spends ACE's on work nobody is waiting for.
+
+**Do NOT read this as "old mail is worthless."** Two obligations survive the close, and skipping
+either is the actual failure:
+1. **The WORK behind the thread outlives the thread.** Before archiving, make sure every ask in it
+   is captured on the board (`skills/task-tracker`) — as `in_progress` if it is clearly still
+   wanted, `suggested` if closing it as stale casts doubt on that. Archiving a thread that carried
+   an unbuilt request, with no card, silently deletes the request.
+2. **Name every close in the close-out**, with the sender and what was in it, so the operator can
+   override. Closing is reversible; a silent close is not visible enough to be overridden.
+
+**The exception is a counterpart actively blocked on an ACE deliverable.** They get a **short
+status reply** — where the deliverable actually stands and what happens next — NOT the full late
+answer to their original question. Length here is a tell: if the stale-thread reply is long, it is
+answering the old message rather than unblocking the person.
+
+Escalate rather than decide when the aged thread is an **external partner who delivered something
+we asked for** (materials, answers, a file). Closing silently on them is a relationship cost ACE
+should not spend unilaterally — surface it and let the operator choose.
+
+(Origin: a 2026-08-14 turn found 5 threads aged 9–22 days behind a silently dead mailbox
+([#1338](https://github.com/dimagi-internal/ace/issues/1338)) and drafted full substantive replies
+to all 5. Jon: *"close all of them and don't send since they are old, aside from responding to
+Sophie and telling her I'm still working on getting the next rev running correctly."*)
+
 ### 5. Report
 Per thread: sender, tier, routed opp/run, proposed action, approved & done vs parked. Plus: noise
 counts by class, and the open-thread age list. Feed this into the turn's combined close-out
