@@ -47,6 +47,13 @@ interface Args {
   decisions?: string;
   /** Optional: archetype value passed through as ctx.archetype. */
   archetype?: string;
+  /**
+   * Optional: the artifact's Drive mimeType, passed through as
+   * ctx.artifactMimeType. Required by format checks that cannot be answered
+   * from the bytes — an exported Google Doc and a markdown upload are
+   * identical as text (ace#1061).
+   */
+  artifact_mime_type?: string;
 }
 
 function parseArgs(argv: string[]): Args {
@@ -65,6 +72,9 @@ function parseArgs(argv: string[]): Args {
         break;
       case '--capture-path':
         args.capture_path = argv[++i];
+        break;
+      case '--artifact-mime-type':
+        args.artifact_mime_type = argv[++i];
         break;
       case '--include-passed':
         args.include_passed = true;
@@ -141,6 +151,9 @@ async function main(): Promise<void> {
   }
   if (args.archetype !== undefined) {
     context.archetype = args.archetype;
+  }
+  if (args.artifact_mime_type !== undefined) {
+    context.artifactMimeType = args.artifact_mime_type;
   }
   const hasContext = Object.keys(context).length > 0;
 

@@ -13,7 +13,7 @@
  * `## Checks` table simultaneously.
  */
 
-import type { QACheck, QACheckResult } from '../../lib/qa-types';
+import type { QACheck, QACheckContext, QACheckResult } from '../../lib/qa-types';
 
 const REQUIRED_SECTIONS = [
   'Archetype',
@@ -368,7 +368,60 @@ function countTableDataRows(sectionBody: string): number {
   return dataRows;
 }
 
-// ── Canonical CHECKS array ────────────────────────────────────────
+/** The mimeType a native Google Doc carries in Drive. */
+const GOOGLE_DOC_MIMETYPE = 'application/vnd.google-apps.document';
+
+/**
+ * Check 7: the PDD artifact is a NATIVE Google Doc, not a text/* upload
+ * (dimagi-internal/ace#1061).
+ *
+ * The PDD is the only artifact in the pipeline whose purpose is to be argued
+ * with by a human — the whole feedback → ledger → next-run loop starts with a
+ * domain expert leaving ANCHORED comments on it. A `text/markdown` upload
+ * renders in Drive's plain-text previewer: no comment gutter, no suggesting
+ * mode, no way to anchor to a section. It regressed exactly that way between
+ * two runs of the same opp six days apart (9 anchored comments → none), and
+ * nothing caught it because every CONTENT check still passed.
+ *
+ * Format is checked from Drive metadata, not from the bytes: an exported Doc
+ * and a markdown upload are indistinguishable as text, so the caller must
+ * supply the artifact's mimeType (`qa-run.ts --artifact-mime-type`).
+ *
+ * A MISSING mimeType fails rather than passes. "Nobody verified the format" is
+ * precisely how this shipped; a silent pass would rebuild the hole. The hint
+ * for that case points at the QA invocation, not at the PDD's content, so the
+ * orchestrator does not spend an auto-fix attempt rewriting a healthy document.
+ */
+export function checkPddIsNativeGoogleDoc(ctx?: QACheckContext): QACheckResult {
+  const mime = ctx?.artifactMimeType;
+  if (typeof mime !== 'string' || mime.trim() === '') {
+    return {
+      pass: false,
+      detail:
+        'artifact mimeType was not supplied, so the PDD format could not be verified',
+      auto_fix_hint:
+        'do NOT regenerate the PDD for this failure — it is a QA-invocation gap, not a content defect. ' +
+        'Re-run the QA passing the artifact\'s Drive mimeType: ' +
+        '`npx tsx scripts/qa-run.ts --skill idea-to-pdd-qa --artifact <local.md> --artifact-mime-type <mimeType from drive_read_file/drive_list_folder> ...`.',
+    };
+  }
+  if (mime === GOOGLE_DOC_MIMETYPE) {
+    return { pass: true, detail: mime };
+  }
+  return {
+    pass: false,
+    detail: `PDD artifact is '${mime}', not a native Google Doc (${GOOGLE_DOC_MIMETYPE}) — reviewers get no comment gutter, so it cannot be commented on`,
+    auto_fix_hint:
+      'rewrite the PDD as a NATIVE Google Doc with `drive_create_doc_from_markdown` ' +
+      '(NOT `drive_create_file` with a text/* mimeType), then update ' +
+      '`run_state.yaml` `phases.design.products.pdd.file_id` to the new fileId. ' +
+      'The PDD is the artifact a domain expert comments on; a text/* upload has no ' +
+      'comment gutter, no suggesting mode, and no way to anchor a comment to a section ' +
+      '(dimagi-internal/ace#1061).',
+  };
+}
+
+// ── Canonical CHECKS array ────────────────────────────────
 
 /**
  * Ordered list of static checks idea-to-pdd-qa runs against a PDD artifact.
@@ -376,6 +429,12 @@ function countTableDataRows(sectionBody: string): number {
  * `## Checks` table.
  */
 export const CHECKS: QACheck[] = [
+  {
+    id: 'pdd_is_native_google_doc',
+    type: 'static',
+    description: 'PDD artifact is a native Google Doc (reviewers can comment on it)',
+    run: (_pdd: string, ctx?: QACheckContext) => checkPddIsNativeGoogleDoc(ctx),
+  },
   {
     id: 'all_required_sections_present',
     type: 'static',

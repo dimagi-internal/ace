@@ -35,6 +35,7 @@ See `skills/_qa-template.md` for the shared QA contract (verdict YAML format, au
 | 4 | `success_metrics_table_populated` | static | `## Success Metrics` section contains a markdown table with at least one data row | fill the table with at least one metric row |
 | 5 | `evidence_model_layered` | static | `## Evidence Model` section references all three layers (A, B, C) | populate the section with rows for each layer |
 | 6 | `reviewer_comment_table_if_referenced` | static | If the PDD references reviewer-comment markers ([a]/[b]/etc.) OR has a `## Reviewer Comments` section, the disposition table is populated | add the disposition section + row per reviewer comment |
+| 7 | `pdd_is_native_google_doc` | static | The PDD artifact's Drive mimeType is `application/vnd.google-apps.document`, i.e. a reviewer can actually comment on it. Reads `ctx.artifactMimeType` (`--artifact-mime-type`); a MISSING mimeType fails rather than passes. | re-create the PDD via `drive_create_doc_from_markdown` (never `drive_create_file` with a `text/*` mimeType) and repoint `phases.design.products.pdd.file_id`. If the mimeType simply wasn't passed, fix the QA invocation instead — see the hint. |
 
 The static check functions live at `skills/idea-to-pdd-qa/checks.ts` as importable TS. Every check returns a `QACheckResult` (`{pass, detail?, auto_fix_hint?}`) per `lib/qa-types.ts`.
 
@@ -43,7 +44,9 @@ The static check functions live at `skills/idea-to-pdd-qa/checks.ts` as importab
 ## Process
 
 1. **Read the PDD artifact** from Drive:
-   `drive_read_file(file_id=<idea-to-pdd.md drive id>)`.
+   `drive_read_file(file_id=<idea-to-pdd.md drive id>)`. **Note its
+   `mimeType`** — you pass it to the runner in step 3, and check 7 cannot
+   verify the format without it (the bytes look identical either way).
 
 2. **Save to a local temp path** (so the CLI runner can read it as a file).
    `Bash: TMP=$(mktemp); drive content saved to $TMP`.
@@ -51,8 +54,15 @@ The static check functions live at `skills/idea-to-pdd-qa/checks.ts` as importab
 3. **Run all checks** via the generic CLI runner:
    ```bash
    ACE_ROOT="${CLAUDE_PLUGIN_ROOT:-$(python3 -c "import json,os; d=json.load(open(os.path.expanduser('~/.claude/plugins/installed_plugins.json'))); print(d['plugins']['ace@ace'][0]['installPath'])")}"
-   npx --prefix "$ACE_ROOT" tsx "$ACE_ROOT/scripts/qa-run.ts" --skill idea-to-pdd-qa --artifact "$TMP" --target "<opp-name>" --capture-path "1-design/idea-to-pdd.md"
+   npx --prefix "$ACE_ROOT" tsx "$ACE_ROOT/scripts/qa-run.ts" --skill idea-to-pdd-qa --artifact "$TMP" --target "<opp-name>" --capture-path "1-design/idea-to-pdd.md" --artifact-mime-type "<mimeType from step 1>"
    ```
+
+   **`--artifact-mime-type` is REQUIRED** (ace#1061). Check 7 verifies the PDD
+   is a native Google Doc, and that is not answerable from the file's bytes —
+   an exported Doc and a markdown upload are the same text. Omit the flag and
+   check 7 FAILS by design ("nobody verified the format" is how the regression
+   shipped); its `auto_fix_hint` says to fix the invocation, not the PDD, so
+   don't spend an auto-fix rewriting a healthy document.
 
    The runner:
    - Imports `CHECKS` from `skills/idea-to-pdd-qa/checks.ts`
