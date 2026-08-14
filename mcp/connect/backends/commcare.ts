@@ -4,6 +4,20 @@ import type { APIRequestContext, APIResponse } from 'playwright';
 import { unzipSync, strFromU8 } from 'fflate';
 import { PlaywrightSession } from '../auth/playwright-session.js';
 import { SessionExpiredError, summarizeServerErrorBody } from '../errors.js';
+import {
+  DEFAULT_HQ_ROLE,
+  classifyHqInviteState,
+  csrfFromHtml,
+  findPendingInvite,
+  findWebUser,
+  formContaining,
+  formFields,
+  initialPageData,
+  reconcileRoleReadback,
+  resolveRoleValue,
+  selectOptions,
+  selectedOptionLabel,
+} from '../../../lib/hq-web-users-page.js';
 
 /**
  * CommCare HQ atoms — release apps that Nova uploaded as drafts.
@@ -328,6 +342,20 @@ export interface CreateLookupTableArgs {
   is_global?: boolean;
   /** Default []. */
   item_attributes?: string[];
+}
+
+export interface InviteWebUserArgs {
+  server?: string;
+  domain: string;
+  email: string;
+  /** Role LABEL as HQ renders it. Defaults to `App Editor` — see ace#905. */
+  role?: string;
+}
+
+export interface InviteWebUserResult {
+  status: 'invited' | 'already-member' | 'invite-pending' | 'role-reconciled';
+  role: string;
+  detail: string;
 }
 
 export interface CommCareUser {
@@ -1131,6 +1159,191 @@ export class CommCareBackend {
    * List mobile workers (CommCareUser) in a domain.
    * GET /a/<domain>/api/v0.5/user/  with API-key auth.
    */
+  /**
+   * Invite (or role-reconcile) a WEB user on an HQ domain — the atom half of
+   * `skills/share-run-access` (dimagi-internal/ace#905).
+   *
+   * Lifted from the live-verified `scripts/grant-review-access.ts § grantHq`
+   * (connect-ace-prod, 2026-07-23); all parsing and decision logic lives in the
+   * pure `lib/hq-web-users-page.ts` so the script and this atom share one
+   * surface — the same split `lib/ocs-team-page.ts` made for OCS in ace#906.
+   *
+   * Three behaviours are load-bearing and must not be "simplified":
+   *
+   * 1. **The default role is `App Editor`, not Read Only.** HQ's stock Read
+   *    Only preset has no `view_apps`, so every app link ACE shares 403s while
+   *    the releases page still renders — access that looks like it mostly
+   *    works. See lib/hq-web-users-page.ts for the full citation.
+   * 2. **A member on the wrong role is reconciled, never skipped.** The invite
+   *    POST cannot fix it (HQ rejects a duplicate), so we go through the edit
+   *    page — re-posting the WHOLE live form so the project's custom-data
+   *    fields are not silently dropped.
+   * 3. **The role select is read from the LIVE form and never guessed.** Its
+   *    values are `role.get_qualified_id()` (`admin` / `user-role:<uuid>`), and
+   *    which roles exist is per-domain. An unknown label fails loud with the
+   *    live option list.
+   */
+  async inviteWebUser(args: InviteWebUserArgs): Promise<InviteWebUserResult> {
+    const wantedRole = args.role ?? DEFAULT_HQ_ROLE;
+    const base = this.opts.baseUrl;
+    const usersBase = `/a/${args.domain}/settings/users/web`;
+
+    return this.runWithSessionRetry(async (request) => {
+      const readback = async () => {
+        const jsonUrl =
+          `${base}${usersBase}/json/?limit=100&page=1&showActiveUsers=true` +
+          `&query=${encodeURIComponent(args.email)}`;
+        const jr = await request.get(jsonUrl, { maxRedirects: 0 });
+        CommCareBackend.assertNotLoginRedirect(jr, 'commcare_invite_web_user');
+        const webUser =
+          jr.status() === 200 ? findWebUser(await jr.json(), args.email) : undefined;
+
+        const lr = await request.get(`${base}${usersBase}/`, { maxRedirects: 0 });
+        CommCareBackend.assertNotLoginRedirect(lr, 'commcare_invite_web_user');
+        const listHtml = lr.status() === 200 ? await lr.text() : '';
+        const pendingInvite = listHtml
+          ? findPendingInvite(initialPageData(listHtml, 'invitations'), args.email)
+          : undefined;
+
+        return { webUser, pendingInvite };
+      };
+
+      const before = await readback();
+      const state = classifyHqInviteState({ ...before, wantedRole });
+
+      if (state.action === 'already-member' || state.action === 'invite-pending') {
+        return { status: state.action, role: state.currentRole ?? wantedRole, detail: state.reason };
+      }
+
+      if (state.action === 'reconcile-role') {
+        const editPath = state.editUrl;
+        if (!editPath) {
+          throw new Error(
+            `commcare_invite_web_user: ${args.email} is a web user on ` +
+              `"${state.currentRole ?? 'unknown'}" but HQ rendered no editUrl, so the role ` +
+              `cannot be reconciled. Fix by hand via ${base}${usersBase}/.`,
+          );
+        }
+        const editUrl = editPath.startsWith('http') ? editPath : `${base}${editPath}`;
+        const gr = await request.get(editUrl, { maxRedirects: 0 });
+        CommCareBackend.assertNotLoginRedirect(gr, 'commcare_invite_web_user');
+        const editHtml = await gr.text();
+
+        const options = selectOptions(editHtml, 'role');
+        const roleValue = resolveRoleValue(options, wantedRole);
+        if (!roleValue) {
+          throw new Error(
+            `commcare_invite_web_user: role "${wantedRole}" is not offered on ${args.domain}. ` +
+              `Available: ${options.map((o) => o.label).join(', ') || '(none parsed)'}`,
+          );
+        }
+
+        // Re-post the WHOLE live form, so per-project custom-data fields survive.
+        const form = formContaining(editHtml, 'name="role"');
+        if (!form) throw new Error('commcare_invite_web_user: could not locate the update-user form');
+        const params = new URLSearchParams();
+        for (const [k, v] of formFields(form)) params.set(k, v);
+        params.set('form_type', 'update-user');
+        params.set('role', roleValue);
+        const csrf = csrfFromHtml(editHtml) ?? (await this.csrfFromCookies(request)) ?? '';
+        params.set('csrfmiddlewaretoken', csrf);
+
+        const pr = await request.post(editUrl, {
+          data: params.toString(),
+          headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+            'X-CSRFToken': csrf,
+            Referer: editUrl,
+          },
+          maxRedirects: 0,
+        });
+        CommCareBackend.assertNotLoginRedirect(pr, 'commcare_invite_web_user');
+
+        // A 302 is NOT proof. Re-read the edit page (Couch-backed, authoritative)
+        // and treat any web/json/ disagreement as ES index lag, never a veto.
+        const vr = await request.get(editUrl, { maxRedirects: 0 });
+        const editPageRole = selectedOptionLabel(await vr.text(), 'role');
+        const after = await readback();
+        const verdict = reconcileRoleReadback({
+          editPageRole,
+          listJsonRole: after.webUser?.role,
+          wantedRole,
+        });
+        if (!verdict.ok) {
+          throw new Error(`commcare_invite_web_user: role change not confirmed — ${verdict.detail}`);
+        }
+        return { status: 'role-reconciled' as const, role: wantedRole, detail: verdict.detail };
+      }
+
+      // action === 'invite'
+      const inviteUrl = `${base}${usersBase}/invite/`;
+      const ir = await request.get(inviteUrl, { maxRedirects: 0 });
+      CommCareBackend.assertNotLoginRedirect(ir, 'commcare_invite_web_user');
+      const inviteHtml = await ir.text();
+
+      const options = selectOptions(inviteHtml, 'role');
+      const roleValue = resolveRoleValue(options, wantedRole);
+      if (!roleValue) {
+        throw new Error(
+          `commcare_invite_web_user: role "${wantedRole}" is not offered on ${args.domain}. ` +
+            `Available: ${options.map((o) => o.label).join(', ') || '(none parsed)'}`,
+        );
+      }
+
+      const form = formContaining(inviteHtml, 'name="email"');
+      if (!form) throw new Error('commcare_invite_web_user: could not locate the invite form');
+      const params = new URLSearchParams();
+      for (const [k, v] of formFields(form)) params.set(k, v);
+      params.set('email', args.email);
+      params.set('role', roleValue);
+      const csrf = csrfFromHtml(inviteHtml) ?? (await this.csrfFromCookies(request)) ?? '';
+      params.set('csrfmiddlewaretoken', csrf);
+
+      const res = await request.post(inviteUrl, {
+        data: params.toString(),
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'X-CSRFToken': csrf,
+          Referer: inviteUrl,
+        },
+        maxRedirects: 0,
+      });
+      CommCareBackend.assertNotLoginRedirect(res, 'commcare_invite_web_user');
+
+      if (res.status() === 200) {
+        // The form re-rendered. HQ's validator rejects an email that is already
+        // a web user or already invited — that error IS the idempotency signal
+        // (attempt the transition, treat the conflict as the skip).
+        const html = await res.text();
+        if (/already (a member|in this project)|already been invited|already has a pending/i.test(html)) {
+          return {
+            status: 'already-member' as const,
+            role: wantedRole,
+            detail: 'HQ rejected the invite as a duplicate — already a member or already invited',
+          };
+        }
+        throw new Error(
+          `commcare_invite_web_user: invite form re-rendered without redirect (not saved). ` +
+            `First 300 chars: ${html.slice(0, 300)}`,
+        );
+      }
+
+      // Prove it rather than trusting the 302.
+      const after = await readback();
+      if (!after.pendingInvite && !after.webUser) {
+        throw new Error(
+          `commcare_invite_web_user: POST returned ${res.status()} but neither a pending ` +
+            `invitation nor an accepted membership for ${args.email} is readable back on ${args.domain}.`,
+        );
+      }
+      return {
+        status: 'invited' as const,
+        role: wantedRole,
+        detail: after.pendingInvite ? 'pending invitation confirmed' : 'accepted membership confirmed',
+      };
+    });
+  }
+
   async listUsers(args: ListUsersArgs): Promise<{ users: CommCareUser[]; total: number }> {
     return this.runWithSessionRetry(async (request) => {
       const params = new URLSearchParams();
