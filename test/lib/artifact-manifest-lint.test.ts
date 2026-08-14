@@ -345,3 +345,50 @@ describe('phase 7 required set tracks the converged pipeline', () => {
     expect(offenders).toEqual([]);
   });
 });
+
+// ---------------------------------------------------------------------------
+// dimagi-internal/ace#1308 — three manifest descriptions still carried the OLD
+// phase ordinals from before the pipeline renumber (solicitation-management
+// described as "Phase 7", execution-manager as "Phase 8", closeout as
+// "Phase 9").
+//
+// Not cosmetic: these description strings are the payload
+// `verify_phase_artifacts` returns in each `missing[]` entry, alongside
+// `producedBy`. That is exactly the text an orchestrator — or a phase subagent
+// healing its own fence miss — reads at the moment it is deciding what to
+// write and where. The fence was telling a Phase 8 agent it was Phase 7.
+//
+// PHASE_DEFS is the single source of truth for the (key ↔ agentName ↔ ordinal)
+// relationship, so any ordinal restated in prose is derived data and must be
+// checked against it rather than maintained by hand.
+// ---------------------------------------------------------------------------
+
+describe('manifest descriptions cite the current phase ordinal (#1308)', () => {
+  it('no description contradicts PHASE_DEFS', () => {
+    // Keyed as plain strings: the captured group is a `string`, and `key` is
+    // the narrower `Phase` union, so an inferred Map<Phase, number> would not
+    // accept the lookup.
+    const byAgent = new Map<string, number>(PHASE_DEFS.map((p) => [p.agentName, p.ordinal]));
+    const byKey = new Map<string, number>(PHASE_DEFS.map((p) => [p.key as string, p.ordinal]));
+    const stale: string[] = [];
+
+    for (const entry of ARTIFACT_MANIFEST) {
+      // Matches the "Phase N (<agent-or-key>)" convention these descriptions
+      // use; anything not naming a phase in that shape is out of scope.
+      for (const m of (entry.description ?? '').matchAll(/Phase (\d+) \(([a-z-]+)\)/g)) {
+        const expected = byAgent.get(m[2]) ?? byKey.get(m[2]);
+        if (expected === undefined) continue; // not a phase name — leave it alone
+        if (Number(m[1]) !== expected) {
+          stale.push(`${entry.path}: "${m[0]}" should be Phase ${expected}`);
+        }
+      }
+    }
+
+    expect(
+      stale,
+      'these manifest descriptions cite a stale phase ordinal. They are returned ' +
+        'verbatim by verify_phase_artifacts in missing[] entries, so a healing agent ' +
+        `reads them while deciding what to write (ace#1308):\n  ${stale.join('\n  ')}`,
+    ).toEqual([]);
+  });
+});
