@@ -956,7 +956,11 @@ reached for an anchor that IS on screen — the selector map is not the
 problem, and a new selector row must NOT be authored for it; the fix is
 correcting the recipe.** Only `unmapped-surface` (`needs_tier2: true`
 in the yaml) means the surface itself has no map coverage and is a
-real candidate for a new logical-selector row. Getting this backwards —
+real candidate for a new logical-selector row — **and the remedy for that
+case is `skills/selector-map-heal`** (ace#1256), which proposes the new rows
+from this dump, proves them by re-running the blocked leg on-device, and
+ships only on green. Name it in the verdict note so the classification leads
+somewhere; the pipeline shipped before anything pointed at it. Getting this backwards —
 authoring a selector for a matcher-miss, or shrugging off a genuinely
 unmapped surface as "just a bad selector" — is exactly the #811/#893
 failure this file exists to prevent.

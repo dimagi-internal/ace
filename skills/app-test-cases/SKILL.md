@@ -28,7 +28,8 @@ Phase 6 needs them.
 | Phase 3 | `3-commcare/pdd-to-learn-app_summary.md` and `pdd-to-deliver-app_summary.md` | nova_app_id per app |
 | Nova MCP | `get_app({app_id: <nova_app_id>})` | authoritative form/field IDs to resolve into real Maestro selectors |
 | Static | `mcp/mobile/recipes/static/` | recipe palette / templates |
-| **Atlas** | `docs/mobile-atlas/connect-2.62.0.md` | **ground-truth navigation map for every Connect-side surface.** Use it as the authoritative reference for screen IDs, transitions, and selector behavior — DO NOT improvise selectors that contradict the atlas. |
+| **Selector map** | `mcp/mobile/selectors/connect-<APK>.yaml` | **AUTHORITATIVE for selectors.** Rows are live-calibrated per APK and CI-guarded (`scripts/check-selector-map-diff.ts`). Where the map and the atlas disagree, the map wins. |
+| **Atlas** | `docs/mobile-atlas/connect-2.62.0.md` | Navigation-shape reference: which screens exist, what transitions out of them. **Written against 2.62.0 while the live default is 2.63.2 (ace#972)** — so treat it as a map of the TERRAIN, not as the current selector truth, and never improvise a selector from it that the active map contradicts. |
 
 ## Products
 
@@ -686,8 +687,10 @@ visible), a `form-nav-finish` fallback for the score-gated two-screen FINISH
 entirely** — there is no home round-trip in a single-module app. Multi-module
 apps keep the `content-form-finish` + `learn-suite-reentry` loop above.
 
-**Use the atlas (`docs/mobile-atlas/connect-2.62.0.md`) to verify each
-transition you author.** Each section of the atlas documents one
+**Use the atlas (`docs/mobile-atlas/connect-2.62.0.md`) to verify the SHAPE
+of each transition you author — but resolve every selector against the
+active `mcp/mobile/selectors/connect-<APK>.yaml`, which is two APK versions
+newer than the atlas (ace#972).** Each section of the atlas documents one
 screen with its stable resource-ids, the transitions out of it, and
 side-effects (system prompts, network calls, screen replacements). If
 a recipe needs a transition the atlas doesn't document, that's a gap

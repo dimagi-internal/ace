@@ -500,6 +500,17 @@ name the surface (the failing screen/step) and link the `atlas-report.yaml`
 broken selector, and the summary should say so plainly so the operator
 doesn't chase the wrong fix.
 
+**Then name the remedy: `skills/selector-map-heal` (ace#1256).** That skill
+exists precisely for this classification — it proposes NEW selector rows from
+the failure dump, proves them by re-running the blocked leg on-device, and
+ships only on green. Until this line existed, the classification was surfaced
+and the repair pipeline was never pointed at, so `unmapped-surface` read as a
+dead end.
+
+**Only for `unmapped-surface`.** `matcher-miss` and `drift` have different
+remedies and must NOT be routed here — a matcher-miss means the row exists and
+the matcher is wrong, which `selector-map-heal` is not for.
+
 ### Why six text skills instead of one
 
 Each skill has its own audience, its own four-criterion self-eval,

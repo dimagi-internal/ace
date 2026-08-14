@@ -1,8 +1,18 @@
 # Submit a form at its final question.
 #
-# UNVERIFIED — atlas walk hasn't passed the Final Assessment yet, so we
-# don't know if Deliver forms have an explicit Submit button or
-# auto-finalize via `nav_btn_next` (as Learn-app forms do — atlas §7).
+# ANSWERED (ace#972, 2026-08-13). This header used to say the Deliver
+# finalize surface was UNVERIFIED because the atlas walk hadn't passed Final
+# Assessment. It has since been observed twice, and the answer is: a plain
+# Deliver form takes the SAME `nav_btn_next` auto-finalize branch as a Learn
+# form, and writes to the LOCAL OUTBOX — which is why `deliver-sync.yaml` is
+# mandatory afterwards (ace#1066, live on bednet-spot-check/20260729-1239).
+# There is NO distinct Deliver confirmation surface: ace#866 recorded
+# `journey-deliver-submitted` and `journey-deliver-final` as byte-identical
+# on hh-poverty-targeting/20260702-1456.
+#
+# The branch below is still correct and still needed — a score-gated Learn
+# quiz DOES have an explicit two-screen finalize (`nav_btn_finish`, ace#569).
+# What changed is that the Deliver case is no longer an open question.
 #
 # This recipe branches:
 #   - If a Submit button is visible, tap it (form-submit selector).
@@ -19,8 +29,11 @@
 #
 # Post-state: depends on the form. Learn forms return to
 # StandardHomeActivity with a "1 form sent to server!" toast +
-# `card_subtext` update. Deliver forms (TBD) likely have an explicit
-# confirmation surface.
+# `card_subtext` update. Deliver forms return to the Deliver home with the
+# submission in the LOCAL OUTBOX and no distinct confirmation screen — the
+# post-submit frame is the Deliver home itself. Run `deliver-sync.yaml` to
+# get it to the server; a Deliver leg that stops here has NOT delivered
+# anything server-side (ace#1066).
 #
 # Parameters — BOTH ARE REQUIRED AT EVERY CALL SITE:
 #   ${SCREENSHOT_NAME_PRE_SUBMIT} — screenshot before tapping Submit
