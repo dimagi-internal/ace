@@ -213,6 +213,41 @@ Mismatch → halt with `deliver-marker-missing` (with the form path +
 which marker is absent). The same namespace re-check applies before
 halting.
 
+**Case reachability + case-transaction presence (dimagi-internal/ace#977).**
+Two assertions over artifacts this step already holds — the unzipped CCZ's
+`suite.xml` and the form XMLs. Both are pure functions in
+`lib/commcare-cli-validate.ts`; no live Nova build, no device, no Connect.
+
+1. **`findUnreachableCaseLists(suiteXml)` → `[BLOCKER]` `case-list-unreachable`.**
+   Name the command id (`mN-fM`) and the `detail` ids it configured but can
+   never show. A module whose only session datum is `function="uuid()"` puts
+   no entity-selection screen on screen, so its `mN_case_short` /
+   `mN_case_long` details are dead configuration.
+
+   **Remediation points at `pdd-to-deliver-app` Step 4d, not at the symptom.**
+   That step calls `add_case_list_columns` on every case-CREATE module with an
+   empty `caseListConfig` purely to clear a Nova `validate_app` error — so ACE
+   authors the unreachable list itself. The fix is either to add a followup
+   form behind an entity datum, or to drop the case-list config rather than
+   paper over the validator.
+
+2. **`hasCaseTransaction(formXml)` → `[BLOCKER]` `case-transaction-missing`.**
+   If the Nova blueprint declares ≥1 `caseWrite` / `case_property_on` binding
+   on a case type, at least one form must carry a case transaction in the
+   `http://commcarehq.org/case/transaction/v2` namespace. Name the case type
+   and the count of declared bindings with no writer.
+
+   **This assertion passes today** — a post-#989 released CCZ was verified on
+   2026-08-14 to carry `<create>` plus 34 `<update>` properties, one per
+   declared binding, no drops. It is a regression preventer, and it exists
+   because the alternative — periodically re-grepping a build by hand — is what
+   left ace#977 undecidable across three separate investigations for a month.
+
+**Why `play` cannot substitute for either.** `play verdict: 'skipped'` /
+`empty-case-list` only fires when a case-list screen is actually *pushed*.
+With no entity datum, `play` walks straight to form entry and returns a clean
+`pass`, so the app is verified green while carrying a list no worker can reach.
+
 **An EMPTY `<entity_id/>` / `<entity_name/>` element is NOT a defect —
 read the bind** (dimagi-internal/ace#1192). In a correct released CCZ
 these render as empty elements, with the value carried by a `calculate`
@@ -507,8 +542,11 @@ reproducer, see reference.md § Runtime install validation.
    - **`validate: pass` + `play: fail`** → halt with `[BLOCKER]` `cli-form-init-error` naming `failing_binding` + `unresolved_xpath` + `parser_message` (see § Failure modes for the bednet class + fix).
    - **`play verdict: 'skipped'`** → emit `[INFO]` naming `skip_reason`; **do NOT halt**. The form was never opened, so nothing about form-init was observed either way. Today the only reason is `empty-case-list`: the module's case list rendered zero rows, so the walk died in case-list rendering before form entry. `play` seeds one open case per case type declared in the CCZ's `suite.xml`, so this now only fires when a case-list **filter** excludes the generic seed (it carries `case_type` / `case_name` / `owner_id` and no other properties). Record `cli_validate.play: {verdict: skipped, skip_reason, seeded_case_types}` so the coverage gap is legible rather than silently reported as a pass.
 
-   **Case seeding (dimagi-internal/ace#1088).** Every ACE Deliver app's
-   payable form is a `followup` on a case type, and the restore used to
+   **Case seeding (dimagi-internal/ace#1088).** *Most* ACE Deliver apps' payable
+   form is a `followup` on a case type — but **not all**: the 2026-08-13
+   hh-poverty-targeting build is registration-only, which is exactly the shape
+   ace#977's `case-list-unreachable` check exists for. Do not read the sentence
+   below as a universal. The restore used to
    seed zero cases — so `play` could not reach any of them and this gate
    had **never once** exercised `initAllTriggerables` on an ACE Deliver
    followup form, while reporting `fail` on clean builds. `play` now

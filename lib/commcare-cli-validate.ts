@@ -860,3 +860,104 @@ function extractPlayParserMessage(s: string): string | undefined {
   if (calc) return `Calculation Error: ${calc[1].trim()}`;
   return undefined;
 }
+
+// ---------------------------------------------------------------------------
+// Case reachability + case-transaction presence (dimagi-internal/ace#977)
+// ---------------------------------------------------------------------------
+
+export interface UnreachableCaseList {
+  /** The `mN-fM` command whose entry declares no entity datum. */
+  commandId: string;
+  /** The `detail` ids the module configured but can never show. */
+  detailIds: string[];
+}
+
+/**
+ * Modules that configure a case list which the app can never put on screen.
+ *
+ * ## The defect (ace#977)
+ *
+ * `pdd-to-deliver-app` Step 4d ("Case-list column heal") calls
+ * `add_case_list_columns` on every case-CREATE module whose `caseListConfig`
+ * has no columns — purely to clear a Nova `validate_app` error. On a
+ * REGISTRATION-ONLY module that column set is unreachable by construction:
+ * the entry's only session datum is `function="uuid()"`, so no entity-selection
+ * screen is ever pushed and the configured `m0_case_short` / `m0_case_long`
+ * details are dead configuration. ACE authors the decorative list itself.
+ *
+ * ## Why nothing else catches it
+ *
+ * `commcare-cli play` only reports `skipped/empty-case-list` when a case-list
+ * screen is actually PUSHED. With no entity datum it walks straight to form
+ * entry and returns a clean `pass` — so the app is verified green while
+ * carrying a list no worker can reach.
+ *
+ * The discriminator is the same one `deriveNavInput` already uses and has
+ * already calibrated live: only a datum backed by `nodeset` puts an entity
+ * list on screen; `value=` / `function=` datums are computed silently.
+ */
+export function findUnreachableCaseLists(suiteXml: string): UnreachableCaseList[] {
+  if (!suiteXml) return [];
+  const out: UnreachableCaseList[] = [];
+
+  for (const entryMatch of suiteXml.matchAll(/<entry\b[\s\S]*?<\/entry>/g)) {
+    const entry = entryMatch[0];
+    const commandId = entry.match(/<command\s+id="([^"]+)"/)?.[1];
+    if (!commandId) continue;
+
+    // Does this entry put an entity list on screen? Same rule as deriveNavInput.
+    const hasEntityDatum = [...entry.matchAll(/<datum\b[^>]*>/g)].some((d) =>
+      /\bnodeset\s*=/.test(d[0]),
+    );
+    if (hasEntityDatum) continue;
+
+    // It doesn't. Does it nonetheless reference case-list details?
+    const detailIds = new Set<string>();
+    for (const ref of entry.matchAll(/\b(?:detail-select|detail-confirm)\s*=\s*"([^"]+)"/g)) {
+      detailIds.add(ref[1]);
+    }
+    // A module's details are also discoverable by the mN_case_* convention when
+    // the entry references them only indirectly.
+    const moduleIdx = commandId.match(/^m(\d+)/)?.[1];
+    if (moduleIdx !== undefined) {
+      for (const d of suiteXml.matchAll(
+        new RegExp(`<detail\\b[^>]*\\bid="(m${moduleIdx}_case_[a-z]+)"`, 'g'),
+      )) {
+        detailIds.add(d[1]);
+      }
+    }
+
+    if (detailIds.size > 0) out.push({ commandId, detailIds: Array.from(detailIds).sort() });
+  }
+
+  return out;
+}
+
+/**
+ * Does this form XML carry a CommCare case transaction?
+ *
+ * Counts BOTH shapes seen in the wild on ACE-built apps:
+ *   - top-level, directly under `/data` (the released-CCZ shape observed on
+ *     hh-poverty-targeting/20260813-1612: `<create>` plus 34 `<update>`
+ *     properties, one per declared binding)
+ *   - nested inside `__nova_operations` (a Vellum `SaveToCase`, observed on
+ *     spark-facilitator/20260812-1635)
+ *
+ * Anchored on the `case/transaction/v2` NAMESPACE rather than the bare tag
+ * name, so it cannot be fooled by an unrelated `<case>` element.
+ *
+ * This one PASSES today. It is a regression preventer, and it exists because
+ * the alternative — periodically re-grepping a build by hand — is what made
+ * ace#977 non-probative for a month across three separate investigations.
+ */
+export function hasCaseTransaction(formXml: string): boolean {
+  if (!formXml) return false;
+  const NS = 'http://commcarehq.org/case/transaction/v2';
+  // Either the element carries the namespace inline, or the doc binds a prefix
+  // to it and the element uses that prefix.
+  if (new RegExp(`<case\\b[^>]*xmlns\\s*=\\s*["']${NS}["']`).test(formXml)) return true;
+  const prefix = formXml.match(
+    new RegExp(`xmlns:([A-Za-z0-9_.-]+)\\s*=\\s*["']${NS}["']`),
+  )?.[1];
+  return prefix ? new RegExp(`<${prefix}:case\\b`).test(formXml) : false;
+}
