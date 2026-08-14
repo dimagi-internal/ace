@@ -210,8 +210,30 @@ Generate the Learn (training) app from the PDD using the Nova plugin
    - **REQUIRED — `user_score` MUST be a PERCENTAGE (0-100), not a raw
      point sum.** Connect's `passing_score` field on each assessment is
      on a 0-100 scale — `passing_score: 80` means "pass at 80%."
+
+     **First resolve `<THRESHOLD>` — it is NOT a constant.** Read
+     `run_state.yaml.phases.idea-to-design.products.pdd.program_parameters.learn_passing_score`;
+     fall back to the PDD's § Program Parameters table; use **80 only
+     when the PDD decides nothing.** That is the same resolution order
+     `connect-opp-setup` uses to set the LIVE gate, and it is the skill
+     that owns the value — so following it here is what keeps the two
+     numbers equal.
+
+     **Why this matters more than it looks (ace#1333).** This skill
+     authors the app's ON-SCREEN result experience; `connect-opp-setup`
+     independently sets Connect's live gate. If a PDD pins a different
+     score and the brief hardcodes 80, the two diverge with **no error
+     anywhere** — no build failure, no `validate_app` complaint, no eval
+     finding, no read-back mismatch, because each system is internally
+     consistent with its own number. The app tells the worker
+     **"Passed"** and Connect keeps Deliver **locked**. Live instance:
+     `bednet-check-2-visit/20260814-0856`, whose PDD pins
+     `learn_passing_score: 100` and argues it (six items scored as a
+     percentage, so the reachable scores are 0/17/33/50/67/83/100).
+
      Insert this paragraph **verbatim** into the brief, in its own
-     paragraph, prefixed `REQUIRED:`:
+     paragraph, prefixed `REQUIRED:`, substituting the resolved
+     `<THRESHOLD>` everywhere it appears:
 
      > REQUIRED: The `user_score` hidden field on every quiz form MUST
      > compute a PERCENTAGE on the 0-100 scale, NOT a raw point sum.
@@ -221,13 +243,15 @@ Generate the Learn (training) app from the PDD using the Nova plugin
      > the calculate expression is:
      > `(#form/q1_score + #form/q2_score + #form/q3_score + #form/q4_score + #form/q5_score) * 100 div 5`
      > This produces 0 (0%), 20, 40, 60, 80, or 100 (100%).
-     > Connect's `passing_score` is ALWAYS 80 (= 80%) for ACE-built
-     > Learn apps. With percentage scoring, 80 means "at least 4 of 5
-     > correct" on a 5-Q quiz, "at least 4 of 4" on a 4-Q quiz
-     > (rounds to 100, so 3/4 = 75 < 80 = fail, 4/4 = 100 >= 80 = pass),
-     > and "at least 7 of 8" on an 8-Q quiz (7/8 = 87.5 >= 80 = pass).
-     > Do NOT emit `user_score` as a raw sum (e.g. 4 out of 5) — Connect
-     > compares the raw number against 80 and the FLW always fails.
+     > Connect's `passing_score` for this opportunity is
+     > `<THRESHOLD>` (= <THRESHOLD>%). With percentage scoring at a
+     > threshold of 80, that means "at least 4 of 5 correct" on a 5-Q
+     > quiz, "at least 4 of 4" on a 4-Q quiz (rounds to 100, so
+     > 3/4 = 75 < 80 = fail, 4/4 = 100 >= 80 = pass), and "at least 7 of
+     > 8" on an 8-Q quiz (7/8 = 87.5 >= 80 = pass); at a threshold of
+     > 100 every scored item must be correct. Do NOT emit `user_score`
+     > as a raw sum (e.g. 4 out of 5) — Connect compares the raw number
+     > against `<THRESHOLD>` and the FLW always fails.
 
      For the reproducer, see reference.md § user_score percentage scoring.
    - **REQUIRED — Learn forms must NOT carry `<case>` blocks.** Connect's
@@ -600,8 +624,11 @@ Generate the Learn (training) app from the PDD using the Nova plugin
        to add a pass condition to the existing pass label, and
        `add_fields({app_id, moduleUuid, formUuid, fields})` to append a
        `result_fail` label carrying retry guidance (review the content,
-       answer again). Use `<threshold>` = the PDD's passing score
-       (default 80). Then re-fetch via
+       answer again). Use `<threshold>` = the SAME resolved value the
+       brief used (`learn_passing_score` → PDD § Program Parameters →
+       80), never a hardcoded 80 — an on-screen pass label that
+       disagrees with Connect's live gate tells a worker they passed
+       while Deliver stays locked (ace#1333). Then re-fetch via
        `get_form({app_id, moduleUuid, formUuid})` and re-assert.
        **Bounded loop, max 3 iterations.** If the form still lacks a
        conditional pass+fail pair after the third attempt, halt with a
@@ -615,7 +642,7 @@ Generate the Learn (training) app from the PDD using the Nova plugin
        ```
        relevant: { parts: [
          { kind: "field-ref", uuid: "<user_score field uuid>" },
-         { kind: "text", text: " >= 80" }
+         { kind: "text", text: " >= <threshold>" }
        ] }
        ```
 

@@ -426,3 +426,71 @@ describe('section/table parsing helpers', () => {
     expect(tableRows(section)).toEqual([['a', 'b', 'c', 'd']]);
   });
 });
+
+describe('conditional primary-case create (ace#1294)', () => {
+  // Surfaced live on bednet-check-2-visit/20260813-2313, Phase 3 Deliver
+  // build (Nova app 74a097c6). The PDD said a registration form with
+  // `consent_given = no` "ends the form WITHOUT creating a case". The
+  // architect established by CONSTRUCTION that it is not expressible on
+  // Nova: create_form/update_form carry no create-condition slot;
+  // add_case_operations accepts a `create` with a condition and SUCCEEDS,
+  // but a read-back shows the form's own primary-case create still present,
+  // so the accepted operation is an ADDITIONAL case that would double-create
+  // on every consenting submission; and relevance is no workaround (a
+  // relevance-hidden case-bound field skips its property write, but the form
+  // still opens the case).
+  //
+  // Table B, not Table A. The closure named above is Nova's AUTHORING
+  // SURFACE — CommCare itself supports a conditional open-case action — and
+  // this section's own tiebreak is "when in doubt it goes in Table B",
+  // written after it shipped a false platform constraint. Escalation is a
+  // Nova capability request, not a design change forced by physics.
+  it('is listed in Table B with the Nova surface named', () => {
+    const section = extractSection(librarySource(), SECTION);
+    const rows = tableRows(extractSection(section, TABLE_B, 3));
+    const row = rows.find((cells) => /conditional.*case create|case create.*condition/i.test(cells[0] ?? ''));
+
+    expect(row, 'Table B must carry a conditional primary-case-create row').toBeDefined();
+    const [mechanism, status, alternative, origin] = row!;
+    expect(mechanism).toMatch(/registration|primary case|case create/i);
+    expect(status, 'must name what was tried and read back').toMatch(/add_case_operations/);
+    expect(status, 'must say the extra operation is an ADDITIONAL case').toMatch(/additional|second|double/i);
+    expect(alternative, 'must give the buildable approximation').toMatch(/screen|abandon|flag|consent/i);
+    expect(origin).toMatch(/1294/);
+  });
+
+  it('is NOT in Table A — the closure is Nova\'s authoring surface, not the platform', () => {
+    const section = extractSection(librarySource(), SECTION);
+    const aBody = tableRows(extractSection(section, TABLE_A, 3)).map((r) => r.join(' ')).join('\n');
+    expect(aBody).not.toMatch(/1294/);
+  });
+});
+
+describe('pdd-to-learn-app must not assert a fixed passing score (ace#1333)', () => {
+  // The skill's verbatim brief paragraph said "Connect's passing_score is
+  // ALWAYS 80 (= 80%) for ACE-built Learn apps". connect-opp-setup — which
+  // OWNS the value — reads it from
+  // run_state.yaml…products.pdd.program_parameters.learn_passing_score and
+  // treats 80 as the fallback for a PDD that decides nothing.
+  //
+  // When a PDD pins a different gate (bednet-check-2-visit/20260814-0856
+  // pins 100 and argues it: six items scored as a percentage), the author
+  // follows the verbatim text and the app's on-screen result label uses 80
+  // while Connect's live gate uses 100. Nothing reconciles them, because
+  // each system is internally consistent with its own number: the worker is
+  // told "Passed" and Deliver stays locked.
+  const SKILL = join(REPO, 'skills', 'pdd-to-learn-app', 'SKILL.md');
+  const source = () => readFileSync(SKILL, 'utf8');
+
+  it('does not claim the passing score is always 80', () => {
+    expect(source()).not.toMatch(/always\s+80/i);
+  });
+
+  it('names learn_passing_score as the authoritative source', () => {
+    expect(source()).toMatch(/learn_passing_score/);
+  });
+
+  it('points at connect-opp-setup as the skill that owns the live gate', () => {
+    expect(source()).toMatch(/connect-opp-setup/);
+  });
+});
