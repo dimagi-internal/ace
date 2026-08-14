@@ -23,6 +23,7 @@ import { describe, it, expect } from 'vitest';
 import {
   checkParUrlScope,
   checkParUrlPayloadPopulated,
+  checkInteractiveRunsLive,
   formatPayloadReport,
 } from '../../../skills/demo-data-setup-qa/checks';
 
@@ -145,5 +146,80 @@ describe('checkParUrlPayloadPopulated — look at what the page renders (#1161)'
     const text = formatPayloadReport(checkParUrlPayloadPopulated(DEAD_FIELDS));
     expect(text).toMatch(/flw_kpis/);
     expect(text).toMatch(/visit_count/);
+  });
+});
+
+/**
+ * dimagi-internal/ace#1162 — the interactive run must still be interactive
+ * when the camera arrives.
+ *
+ * Phase 7 completed BOTH workflow runs (5071, 5072) at 2026-08-01T01:12Z,
+ * ~14 minutes before the render at ~01:26Z. Completing is how a par_url
+ * becomes a stable idempotent deep-link, so it is right for most dashboards
+ * — but workflow 5069's render code has a `completed` branch that prints
+ * "This run is completed… Decisions are read-only" and DISABLES the status
+ * dropdown. The narrative's payoff scene is a reviewer taking a decision, so
+ * the payoff was structurally unperformable: all 10 spec actions degraded to
+ * wait_for/hold, 7 scenes produced 2 distinct images, arc scored 1.0/5.
+ *
+ * Option 1 (Jon, 2026-08-14): leave ONLY the review-action dashboard's run
+ * in_progress; complete every other run as today. `source.dashboards[].role`
+ * already carries the signal, so this is checkable from the handoff plus the
+ * payload the QA step already fetches.
+ *
+ * The check is deliberately two-sided. Firing only on "interactive run was
+ * completed" would let the opposite sloppiness through — every run left
+ * in_progress, which silently gives up snapshot stability on links a
+ * stakeholder keeps.
+ */
+describe('checkInteractiveRunsLive (#1162)', () => {
+  const live = { instance: { status: 'in_progress' } };
+  const done = { instance: { status: 'completed' } };
+
+  it('fails when a review-action dashboard’s run is completed — the #1162 repro', () => {
+    const r = checkInteractiveRunsLive([
+      { dashboard: { key: 'program_admin', template: 'program_admin_report', par_url: 'u', role: 'overview' }, payload: done },
+      { dashboard: { key: 'llo_review', template: 'llo_weekly_review', par_url: 'u', role: 'review-action' }, payload: done },
+    ]);
+    expect(r.pass).toBe(false);
+    expect(r.detail).toMatch(/llo_review/);
+    expect(r.detail).toMatch(/read-only/i);
+    expect(r.auto_fix_hint).toMatch(/in_progress/);
+  });
+
+  it('passes the option-1 shape: the review-action run live, every other run completed', () => {
+    const r = checkInteractiveRunsLive([
+      { dashboard: { key: 'program_admin', template: 'program_admin_report', par_url: 'u', role: 'overview' }, payload: done },
+      { dashboard: { key: 'child_recovery', template: 'sam_followup', par_url: 'u', role: 'recovery' }, payload: done },
+      { dashboard: { key: 'llo_review', template: 'llo_weekly_review', par_url: 'u', role: 'review-action' }, payload: live },
+    ]);
+    expect(r.pass).toBe(true);
+  });
+
+  it('fails the opposite sloppiness: a non-interactive run left in_progress loses snapshot stability', () => {
+    const r = checkInteractiveRunsLive([
+      { dashboard: { key: 'program_admin', template: 'program_admin_report', par_url: 'u', role: 'overview' }, payload: live },
+    ]);
+    expect(r.pass).toBe(false);
+    expect(r.detail).toMatch(/program_admin/);
+    expect(r.detail).toMatch(/snapshot/i);
+  });
+
+  it('treats role spelling variants as the same role', () => {
+    for (const role of ['review-action', 'review_action', 'Review-Action', 'decision']) {
+      expect(checkInteractiveRunsLive([{ dashboard: { key: 'k', template: 't', par_url: 'u', role }, payload: done }]).pass).toBe(false);
+    }
+  });
+
+  it('is silent on a dashboard whose payload carries no status — it judges what it can see', () => {
+    const r = checkInteractiveRunsLive([
+      { dashboard: { key: 'llo_review', template: 'llo_weekly_review', par_url: 'u', role: 'review-action' }, payload: {} },
+    ]);
+    expect(r.pass).toBe(true);
+    expect(r.detail).toMatch(/unknown/i);
+  });
+
+  it('passes vacuously on an empty dashboard list', () => {
+    expect(checkInteractiveRunsLive([]).pass).toBe(true);
   });
 });

@@ -98,7 +98,7 @@ export interface PayloadReport {
   findings: PayloadFinding[];
 }
 
-interface WorkflowPayload {
+export interface WorkflowPayload {
   definition?: { pipeline_sources?: Record<string, unknown> };
   instance?: { status?: string; snapshot?: { pipelines?: { alias?: string; rows?: Record<string, unknown>[] }[] } };
 }
@@ -170,4 +170,83 @@ export function formatPayloadReport(report: PayloadReport): string {
     'Re-point the pipeline schema at the REAL form paths the generator writes, and',
     'declare snapshot_inputs.pipelines for every alias (dimagi-internal/ace#1160/#1161).',
   ].join('\n');
+}
+
+// ── #1162: the interactive run must still be interactive at render time ──
+
+/**
+ * Roles whose dashboard exists so that someone can ACT on it on camera.
+ * Compared after lowercasing and folding `_` to `-`.
+ */
+const INTERACTIVE_ROLES = new Set(['review-action', 'review', 'decision']);
+
+function isInteractiveRole(role: string | undefined): boolean {
+  return INTERACTIVE_ROLES.has((role ?? '').trim().toLowerCase().replace(/_/g, '-'));
+}
+
+export interface DashboardPayloadPair {
+  dashboard: DashboardRef;
+  payload: WorkflowPayload;
+}
+
+/**
+ * Exactly the review-action run stays `in_progress`; every other run is
+ * `completed`.
+ *
+ * Completing a run is how `par_url` becomes a stable, idempotent deep-link —
+ * correct, and what most dashboards want. But it also flips the page
+ * read-only: workflow 5069's render code carries a `completed` branch that
+ * prints "This run is completed… Decisions are read-only" and disables the
+ * status dropdown. On hh-poverty-targeting/20260730-2210 Phase 7 completed
+ * BOTH runs ~14 minutes before the render, so the narrative's payoff — a
+ * reviewer taking a decision — had nothing to click: all 10 spec actions were
+ * wait_for/hold, 7 scenes yielded 2 distinct images, arc 1.0/5 (#1162).
+ *
+ * Two-sided on purpose. Firing only on the completed-interactive case would
+ * accept the opposite failure — everything left in_progress, quietly trading
+ * away snapshot stability on links a stakeholder keeps.
+ *
+ * A payload with no `instance.status` is reported, not failed: an absent field
+ * is a fetch-shape question, and a QA gate that fails on what it cannot see is
+ * the always-fires class (ace#1026).
+ */
+export function checkInteractiveRunsLive(pairs: DashboardPayloadPair[]): QACheckResult {
+  const problems: string[] = [];
+  const unknown: string[] = [];
+
+  for (const { dashboard, payload } of pairs) {
+    const status = payload?.instance?.status;
+    const interactive = isInteractiveRole(dashboard.role);
+    if (!status) {
+      unknown.push(`${dashboard.key} (role ${dashboard.role ?? 'unset'})`);
+      continue;
+    }
+    if (interactive && status === 'completed') {
+      problems.push(
+        `${dashboard.key}: role '${dashboard.role}' is interactive but its run is completed — the page ` +
+          `renders "This run is completed… Decisions are read-only" with the status control disabled, so ` +
+          `the decision the narrative demonstrates cannot be performed on camera`,
+      );
+    }
+    if (!interactive && status !== 'completed') {
+      problems.push(
+        `${dashboard.key}: role '${dashboard.role ?? 'unset'}' is non-interactive but its run is ` +
+          `'${status}' — only a completed run carries a snapshot, so this par_url is not a stable ` +
+          `idempotent deep-link`,
+      );
+    }
+  }
+
+  const unknownNote = unknown.length ? ` (unknown run status, not judged: ${unknown.join(', ')})` : '';
+  if (problems.length === 0) {
+    return { pass: true, detail: `${pairs.length} dashboard run state(s) match their role${unknownNote}` };
+  }
+  return {
+    pass: false,
+    detail: problems.join('; ') + unknownNote,
+    auto_fix_hint:
+      'Leave ONLY the review-action dashboard\'s run in_progress — skip workflow_save_snapshot for it — ' +
+      'and complete every other dashboard\'s run as usual. The interactive dashboard trades snapshot ' +
+      'stability for a page the reviewer can actually act on; the rest keep it (dimagi-internal/ace#1162).',
+  };
 }
