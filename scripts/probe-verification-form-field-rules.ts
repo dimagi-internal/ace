@@ -75,8 +75,12 @@ async function main() {
   const rules = [
     // NOTE: `name` is capped at 25 chars by Connect (see the Zod schema).
     // A 26-char name fails the WHOLE formset with a 200 + no success banner.
+    // `question_path` is a JSONPath into the HQ form-JSON doc (`form.<group>.<question>`),
+    // NOT an XForm XPath — an XPath makes Connect's receiver 500 on every payable
+    // visit (ace#1301). The first rule is deliberately written as an XPath to prove
+    // the normaliser rewrites it; the read-back below must show `form.meeting_conducted`.
     { name: 'A1a meeting held', question_path: '/data/meeting_conducted', question_value: 'yes', deliver_unit_id: deliverUnitId },
-    { name: 'A1b meeting type', question_path: '/data/community_meeting/meeting_type', question_value: 'community_meeting', deliver_unit_id: deliverUnitId },
+    { name: 'A1b meeting type', question_path: 'form.community_meeting.meeting_type', question_value: 'community_meeting', deliver_unit_id: deliverUnitId },
   ];
 
   console.log('\nPOSTing form_field_rules:', JSON.stringify(rules, null, 2));

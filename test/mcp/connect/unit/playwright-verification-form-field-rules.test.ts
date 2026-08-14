@@ -134,10 +134,10 @@ describe('setVerificationFlags — form_field_rules (ace#1011)', () => {
     const body = post.body as Record<string, string>;
 
     expect(body['form_json-0-name']).toBe('A1a meeting held');
-    expect(body['form_json-0-question_path']).toBe('/data/meeting_conducted');
+    expect(body['form_json-0-question_path']).toBe('form.meeting_conducted');
     expect(body['form_json-0-question_value']).toBe('yes');
     expect(body['form_json-0-deliver_unit']).toBe('6455');
-    expect(body['form_json-1-question_path']).toBe('/data/community_meeting/meeting_type');
+    expect(body['form_json-1-question_path']).toBe('form.community_meeting.meeting_type');
     expect(body['form_json-1-question_value']).toBe('community_meeting');
     expect(body['form_json-TOTAL_FORMS']).toBe('2');
 
@@ -160,8 +160,8 @@ describe('setVerificationFlags — form_field_rules (ace#1011)', () => {
 
   it('is idempotent — an already-present rule is not appended twice', async () => {
     const already = [
-      { name: 'A1a meeting held', path: '/data/meeting_conducted', value: 'yes', du: '6455', id: '153' },
-      { name: 'A1b meeting type', path: '/data/community_meeting/meeting_type', value: 'community_meeting', du: '6455', id: '154' },
+      { name: 'A1a meeting held', path: 'form.meeting_conducted', value: 'yes', du: '6455', id: '153' },
+      { name: 'A1b meeting type', path: 'form.community_meeting.meeting_type', value: 'community_meeting', du: '6455', id: '154' },
     ];
     const captured: CapturedRequest[] = [];
     const req = makeRequestContext(
@@ -183,7 +183,7 @@ describe('setVerificationFlags — form_field_rules (ace#1011)', () => {
   });
 
   it('preserves existing rules while appending a genuinely new one', async () => {
-    const already = [{ name: 'A1a meeting held', path: '/data/meeting_conducted', value: 'yes', du: '6455', id: '153' }];
+    const already = [{ name: 'A1a meeting held', path: 'form.meeting_conducted', value: 'yes', du: '6455', id: '153' }];
     const captured: CapturedRequest[] = [];
     const req = makeRequestContext(
       [
@@ -198,7 +198,7 @@ describe('setVerificationFlags — form_field_rules (ace#1011)', () => {
     });
     const body = captured.find((c) => c.method === 'POST')!.body as Record<string, string>;
     expect(body['form_json-0-id']).toBe('153');
-    expect(body['form_json-1-question_path']).toBe('/data/community_meeting/meeting_type');
+    expect(body['form_json-1-question_path']).toBe('form.community_meeting.meeting_type');
     expect(body['form_json-1-id']).toBe('');
     expect(body['form_json-TOTAL_FORMS']).toBe('2');
   });
@@ -216,6 +216,75 @@ describe('setVerificationFlags — form_field_rules (ace#1011)', () => {
     // TOTAL_FORMS is replayed from the page (1), not rewritten by rule-building.
     expect(body['form_json-TOTAL_FORMS']).toBe('1');
     expect(body['form_json-0-name']).toBeUndefined();
+  });
+
+  // -------------------------------------------------------------------------
+  // dimagi-internal/ace#1301 — `question_path` is a JSONPath into the HQ
+  // form-JSON doc, not an XForm XPath.
+  //
+  // Connect evaluates it as `jsonpath_ng.ext.parse(f"$.{question_path}")`
+  // against `user_visit.form_json` (commcare-connect
+  // form_receiver/processor.py::clean_form_submission). An XPath raises
+  // JsonPathParserError, which the deliver path does not catch, so HQ's
+  // forward of every PAYABLE visit returns 500 — while the device shows
+  // "1 form sent to server!" because HQ accepted the submission.
+  //
+  // Observed on spark-facilitator/20260813-2126: HQ motech log 437770057
+  // recorded `POST .../api/receiver/?app_id=06f0764c... -> 500` for xform
+  // 46356d2c with rules `/data/meeting_basics/meeting_{conducted,type}`, while
+  // every registration form on the same app returned 200. Rewriting the rows
+  // to `form.meeting_basics.*` and requeueing the same payload moved Connect
+  // from delivered:0 to delivered:1 / approved:1.
+  // -------------------------------------------------------------------------
+  it('rewrites an XForm XPath to a Connect JSONPath (ace#1301)', async () => {
+    const captured: CapturedRequest[] = [];
+    const req = makeRequestContext(
+      [{ status: 200, body: configPage() }, { status: 302, body: '' }, { status: 200, body: configPage({ initialForms: 1 }) }],
+      captured,
+    );
+    await backendFor(req).setVerificationFlags({
+      organization_slug: ORG,
+      opportunity_id: OPP,
+      flags: {
+        form_field_rules: [
+          { name: 'A1a meeting held', question_path: '/data/meeting_basics/meeting_conducted', question_value: 'yes', deliver_unit_id: 6455 },
+        ],
+      },
+    });
+    const body = captured.find((c) => c.method === 'POST')!.body as Record<string, string>;
+    expect(body['form_json-0-question_path']).toBe('form.meeting_basics.meeting_conducted');
+    // The value that 500s must never reach Connect.
+    expect(Object.values(body).some((v) => String(v).startsWith('/data/'))).toBe(false);
+  });
+
+  it('repairs an already-poisoned existing row instead of replaying it (ace#1301)', async () => {
+    // The state ace#1301 left behind: a persisted row holding an XPath.
+    const poisoned = [
+      { name: 'A1a meeting held', path: '/data/meeting_basics/meeting_conducted', value: 'yes', du: '6455', id: '171' },
+    ];
+    const captured: CapturedRequest[] = [];
+    const req = makeRequestContext(
+      [
+        { status: 200, body: configPage({ savedRules: poisoned }) },
+        { status: 302, body: '' },
+        { status: 200, body: configPage({ savedRules: poisoned, initialForms: 1 }) },
+      ],
+      captured,
+    );
+    await backendFor(req).setVerificationFlags({
+      organization_slug: ORG,
+      opportunity_id: OPP,
+      flags: {
+        form_field_rules: [
+          { name: 'A1a meeting held', question_path: 'form.meeting_basics.meeting_conducted', question_value: 'yes', deliver_unit_id: 6455 },
+        ],
+      },
+    });
+    const body = captured.find((c) => c.method === 'POST')!.body as Record<string, string>;
+    // Same row PK (repaired in place), corrected path, and no duplicate appended.
+    expect(body['form_json-0-id']).toBe('171');
+    expect(body['form_json-0-question_path']).toBe('form.meeting_basics.meeting_conducted');
+    expect(body['form_json-TOTAL_FORMS']).toBe('1');
   });
 });
 

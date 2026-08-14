@@ -334,17 +334,30 @@ alone makes the artifact land outside `4-connect` and fail
      predicate can be enforced server-side.** One entry per
      `(question_path, question_value, deliver_unit_id)` the predicate
      requires. Additive and idempotent.
-     - **Read `question_path` and `question_value` out of the RELEASED
-       CCZ, never from the PDD's prose.** The PDD quotes the partner's
-       original app; Nova rebuilds the form and routinely flattens or
-       renames groups, so the PDD path can name a node that does not
-       exist — and a rule matching no node enforces nothing while
-       reporting success. Download the released CCZ
-       (`commcare_download_ccz` with `write_to_path`), read the payable
-       form's `<bind nodeset=...>` list and its `<select1>` `<value>`
-       options, and use those. (Live example: PDD said
+     - **`question_path` is a JSONPath into the HQ form-JSON doc, NOT an
+       XForm XPath.** Connect evaluates it as
+       `jsonpath_ng.ext.parse(f"$.{question_path}")` against the whole
+       forwarded document, in which HQ nests the instance under `form` —
+       so the CCZ's `/data/meeting_basics/meeting_conducted` is written
+       here as **`form.meeting_basics.meeting_conducted`**. An XPath makes
+       that parse raise, the receiver 500s on the HQ→Connect forward, and
+       **every payable visit is lost while the device still shows "1 form
+       sent to server!"** (observed on `spark-facilitator/20260813-2126`,
+       dimagi-internal/ace#1301 — HQ motech log recorded a 500 for the
+       deliver form while every non-payable form on the same app got 200).
+       The atom normalises `/data/a/b` → `form.a.b` for you, but write it
+       correctly so the artifact reads truthfully.
+     - **Read the group/question names out of the RELEASED CCZ, never
+       from the PDD's prose.** The PDD quotes the partner's original app;
+       Nova rebuilds the form and routinely flattens or renames groups, so
+       the PDD path can name a node that does not exist — and a rule
+       matching no node enforces nothing while reporting success. Download
+       the released CCZ (`commcare_download_ccz` with `write_to_path`),
+       read the payable form's `<bind nodeset=...>` list and its
+       `<select1>` `<value>` options, and translate each nodeset to
+       `form.<...>`. (Live example: PDD said
        `/data/community_meeting/meeting_type`; the released CCZ bound it
-       at `/data/meeting_type`.)
+       at `/data/meeting_type`, so the rule is `form.meeting_type`.)
      - `question_value` is the **stored** option value, never the display
        label.
      - `deliver_unit_id` is the DU `server_id` — same value
@@ -353,7 +366,12 @@ alone makes the artifact land outside `4-connect` and fail
        WHOLE formset.
      - **Verify via `form_field_rules_saved` in the response** — the count
        Connect actually persisted. It is the only evidence the write
-       landed; compare it against the number of rules you sent.
+       landed; compare it against the number of rules you sent. But note
+       what it does NOT prove: ace#1301 shipped two rules that persisted
+       fine and then crashed Connect's receiver on every payable visit,
+       because "Connect stored the string" and "Connect can evaluate the
+       string" are different claims. The end-to-end proof is Phase 6's
+       `connect_get_deliver_progress` showing `delivered >= 1`.
    - `form_submission_start` / `form_submission_end`: HH:MM:SS — set
      only if the PDD has time-of-day plausibility constraints.
    - `deliver_unit_checks[].duration_minutes` — MINUTES, matching the
@@ -973,6 +991,7 @@ decisions_append_rows({
 | 2026-06-01 | **Step 6.5: always attempt `/activate/`; treat only the "already active" error as the skip signal (jjackson/ace#624).** The managed-opp create endpoint returns a create-side `active: true` flag that is NOT the `/activate/` state transition `invite_users/` requires — so the old "read `active`, skip if true" pre-check skipped the only call that enables invites, and Step 7 failed. Calling `/activate/` on such an opp succeeds; it rejects only an opp that already completed the transition. Removed the pre-check; now call unconditionally and branch on the result, not the read-back flag. | ACE team |
 | 2026-06-01 | **Step 6.5: verify activation via Step 7's invite, not the scraped `active` flag (closes jjackson/ace#617, and its #634 duplicate).** Dropped the post-activate `connect_get_opportunity` read-back check — that flag returns `true` on un-transitioned opps and can't distinguish a real `/activate/` from a no-op (the same create-side flag that motivated #624). The authoritative confirmation is `connect_send_flw_invite` in Step 7 succeeding: `invite_users/` hard-rejects a non-active opp, so a successful invite is the only proof the transition landed. | ACE team |
 | 2026-08-12 | **Step 5 rewritten around what Connect's verification form actually has (dimagi-internal/ace#1013).** The step prescribed `gps` / `duplicate` / `catchment_areas` / `location` / `check_attachments`, all five of which were removed from the form — the atom accepts them, Django drops them, and it still returns `ok: true`, so a compliant agent produced an artifact claiming enforcement that never existed. Step 5 now leads with `form_field_rules` (the only server-side Layer A surface), requires reading `question_path` / `question_value` from the RELEASED CCZ rather than the PDD's prose (Nova flattens groups — a rule on a non-existent node enforces nothing and reports success), documents the 25-char `name` cap and the `duration_seconds`-is-really-minutes trap, and requires verifying via `form_field_rules_saved`. Archetype verification lines updated to match. Found live on spark-facilitator/20260810-0737. | ACE team |
+| 2026-08-14 | **Step 5: `question_path` is a JSONPath into the HQ form-JSON doc, not an XForm XPath (dimagi-internal/ace#1301, `blocks-e2e`).** The step (and the atom's own schema) told agents to write `/data/<group>/<question>`. Connect evaluates the field as `jsonpath_ng.ext.parse(f"$.{question_path}")` against the whole forwarded document, so an XPath raises `JsonPathParserError` inside `clean_form_submission` — uncaught on the deliver path — and HQ's forward of every PAYABLE visit returns **HTTP 500**. The device is unaffected (CommCare shows "1 form sent to server!" because HQ *did* accept the submission), so the run looks green while Connect has no visit and the opportunity cannot pay. Observed live on `spark-facilitator/20260813-2126`: motech log 500 for the deliver form, 200 for every registration form on the same app; rewriting the rows to `form.meeting_basics.*` and requeueing the same payload moved Connect from `delivered: 0` to `delivered: 1 / approved: 1`. Correct spelling is `form.<group>.<question>`; `lib/connect-question-path.ts` now normalises `/data/a/b` → `form.a.b` on both incoming and replayed rows so a poisoned opportunity self-repairs. Also: `form_field_rules_saved` is no longer treated as sufficient evidence — it proves storage, not evaluability. | ACE team |
 | 2026-05-10 | State consolidation PR a: retire `connect-state.yaml`; emit a single `run_state.yaml.phases.connect-setup.products.connect` block at end of Step 10. Step 7 holds invite metadata in memory rather than writing immediately. (Initial implementation dual-wrote to `opp.yaml.connect`; corrected on 2026-05-11 — runs are now independent. `opp.yaml.connect.program` is durable cross-run state written by `connect-program-setup`; `opp.yaml.connect.opportunity` / `ace_test_user` are no longer written here.) See `docs/superpowers/specs/2026-05-10-state-consolidation.md`. | ACE team |
 
 <!-- connect_int_id is read directly from the connect_create_opportunity response (ConnectProd integer id); the old post-create labs_context lookup was removed in the jjackson/ace#686 follow-up (the int was always in the create response). -->
