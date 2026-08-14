@@ -182,6 +182,34 @@ front half (how the labs-only opp + its data come to exist) differs.
    `sam_followup` are checked-in templates — ADAPT via
    `workflow_create_from_template`, never build render_code from scratch.
 
+   **ADAPT means RE-POINT — a template-instantiated pipeline is not wired
+   until you change its schema (ace#1160).** Run
+   `checkDashboardBindings` from `lib/dashboard-bindings.ts` over each
+   authored workflow before minting its run. Three things it decides, all
+   from the definition alone:
+
+   - **`stock-template-path`** — the pipeline still extracts `form.meta.*`.
+     The synthetic generator writes the run's REAL Deliver-app form paths
+     (`form.visit_summary.*`, `form.ppi_indicators.*`) and NEVER
+     `form.meta.instanceID` / `timeEnd` / `appVersion`, so every stock field
+     resolves null or zero. Re-point the schema at the same paths the
+     scorecard pipeline already resolves.
+   - **`snapshot-missing-alias`** — `snapshot_inputs.pipelines` must cover
+     every alias in `pipeline_sources`, or a completed run snapshots no rows
+     for it.
+   - **`pipeline-declared-but-unread` / `unbackfilled-counter`** — the render
+     must actually read the pipeline. Binding a denormalized
+     `worker.visit_count` instead reads **0**, because the generator writes
+     UserVisit fixtures without back-filling that counter.
+
+   Live: `hh-poverty-targeting/20260730-2210` workflow 5069 hit all three at
+   once. Every worker row showed **`VISITS 0`** beside a chip reading
+   **`visits: 835`**, while the sibling scorecard (5065, correctly authored)
+   credited the same 8 people with 31–125 visits. **The data was fine** —
+   `total_visits` in the same pipeline summed to exactly 835. Three truthful
+   reads of three different stores; the bindings were wrong. Downstream the
+   DDD render+judge scored concept 2.0/5, user 1.0/5, arc 1.0/5.
+
 4. **Build a URL per dashboard — the run deep-link, scoped by OWNERSHIP.**
    `https://labs.connect.dimagi.com/labs/workflow/<def_id>/run/?run_id=<run_id>&<scope>`
    where `<scope>` is the dashboard's OWNING scope:
