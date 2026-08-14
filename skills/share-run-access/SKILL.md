@@ -2,10 +2,12 @@
 name: share-run-access
 description: >
   Grant a set of people (typically everyone on a project thread) the access they need to
-  review an ACE run — across all surfaces the run-summary links: ace-web workbench + labs
-  dashboards, the Connect opportunity, the CommCare HQ apps, and the OCS chatbot. The public
-  run-summary page itself is public, but its ACE-authored deliverable docs are NOT shared by
-  default — this skill shares them and covers the platform-gated surfaces. Repeatable,
+  work on an ACE run — across all surfaces the run-summary links: ace-web workbench + labs
+  dashboards, the Connect opportunity, the CommCare HQ apps, and the OCS chatbot. ACE
+  opportunities are CO-CREATED with partners, so the default grant on a run's own documents is
+  EDITOR for named collaborators, not read-only. The public run-summary page itself is public,
+  but its ACE-authored deliverable docs are NOT shared by default — this skill shares them and
+  covers the platform-gated surfaces. Repeatable,
   idempotent, and approval-gated on every outbound invite. Invoked ad-hoc (a human asks "give
   Sophie and Sarvesh access") or as a standing step when a project thread gains participants.
 disable-model-invocation: false
@@ -40,6 +42,37 @@ scramble each time (Jon, 2026-07-23: access "should go to all individuals on a t
 project we are working on"). This skill is that primitive: given an opp/run and a set of emails,
 it grants each person what they need to review the run, surface by surface, and reports exactly
 what was granted vs. what's blocked on a precondition.
+
+## Access is for CO-CREATION, not review (Jonathan, 2026-08-14)
+
+This skill used to frame every grant as *review* access: share the docs so a partner can read
+them and maybe comment. That is the wrong model. **ACE opportunities are co-created with
+partners.** When Spark, or Sophie, or any partner engages with a run's outputs, they should be
+able to **edit** the artifacts — feedback in this model arrives as *revisions*, not only as
+comments.
+
+So on ACE-authored Drive documents the default grant for a named partner collaborator is
+**editor (`writer`)**, and the primitive is:
+
+| Atom | Grant | Use when |
+|---|---|---|
+| `drive_share_with_person` | `type: user` — `writer` (default) / `commenter` / `reader` | **You know who the collaborators are.** The co-creation primitive. `writer` lets them edit; the grant is scoped to that person. |
+| `drive_set_anyone_with_link` | `type: anyone` — `reader` (default) / `commenter` / `writer` | Nobody named: a public run-summary asset, a PNG a Slides deck must fetch (`reader`), or a doc handed round a thread for reactions (`commenter`). |
+
+⚠ **`drive_set_anyone_with_link` at `writer` is a blunt instrument** — anyone the URL is
+forwarded to can edit *or delete* the document. It works on this Shared Drive (verified
+2026-08-14; Drive returned `{"id":"anyoneWithLink","type":"anyone","role":"writer"}`), but when
+you can name the people, name them.
+
+⚠ **Neither atom emails anyone.** `drive_share_with_person` sets Drive's
+`sendNotificationEmail: false` unless you explicitly opt in — ACE's outbound email is gated
+through `bin/ace-email` and a Drive-sent share notice would route around that gate. Sending the
+link is a separate, approval-gated step you do through the normal email path.
+
+Downstream implication, flagged not solved: `skills/feedback-ledger` models feedback as
+**comments** (`channel: gdoc-comments`). Direct edits are a channel it does not capture — see
+that skill's "Revisions are a channel this ledger does not yet capture" note and
+dimagi-internal/ace#1335.
 
 ## The access model (why each surface is different)
 
@@ -112,13 +145,24 @@ grants membership and tells the person the one sign-in they must do themselves.
 
 2. **Share the deliverable docs — assume they are private.** Nothing sets anyone-with-link on
    them at creation (see the correction above), so this is a real step, not a verification.
-   Run `run-summary-qa`'s link checker (`scripts/check-summary-links.py <opp> <run>`): every
-   `docs.google.com`/Slides/Drive deliverable must report `OK 200`, and each one that comes
-   back **`PRIVATE-DELIVERABLE`** must be fixed with `drive_set_anyone_with_link` before
-   proceeding (a reviewer hits "You need access" otherwise). **If the reviewer is expected to
-   leave feedback in the doc — the `gdoc-comments` channel `feedback-ledger` assumes — pass
-   `role: 'commenter'`.** The default `reader` role physically cannot comment, so a
-   "shared for review" doc granted as reader gives the reviewer no way to respond in it.
+   Two grants, and you normally do both:
+
+   - **Per named collaborator → `drive_share_with_person({fileId, email})`, which defaults to
+     `role: 'writer'`.** This is the co-creation grant: the partner can edit the artifact, and
+     their feedback can arrive as a revision. Do this for everyone on the thread you were asked
+     to grant. Narrow to `commenter` only when the human says the doc is read-and-react
+     (a frozen deliverable, a signed work order), and say so in the report.
+   - **Link-level floor → `drive_set_anyone_with_link`.** Run `run-summary-qa`'s link checker
+     (`scripts/check-summary-links.py <opp> <run>`): every `docs.google.com`/Slides/Drive
+     deliverable must report `OK 200`, and each one that comes back **`PRIVATE-DELIVERABLE`**
+     must be fixed before proceeding (anyone else on the thread hits "You need access"
+     otherwise). Use `role: 'commenter'` as the floor for a document — a `reader` physically
+     cannot comment, so the `gdoc-comments` channel `feedback-ledger` assumes is dead. `reader`
+     stays right for PNGs a Slides deck fetches. `writer` here is available and works, but
+     prefer the named grant above: link-writer means anyone the URL reaches can edit or delete.
+
+   Neither call emails anybody — see the co-creation section. Telling people they have access is
+   step 5/6, through the gated email path.
 
 3. **Classify each email once** (per-person isolation — one person, one decision, like inbox-triage):
    - `@dimagi.com` / `@dimagi-ai.com` → **internal**: ace-web auto-joins on sign-in (no invite needed);
@@ -217,6 +261,8 @@ grants membership and tells the person the one sign-in they must do themselves.
 - **Least privilege.** Default role is `viewer`/`member`, never owner/admin, unless asked.
 
 ## Related skills
+- `feedback-ledger` — captures the reviewer's feedback and renders where each item went. It models
+  **comments**; edits made under a `writer` grant are a channel it does not yet capture (ace#1335).
 - `run-summary-qa` — gate the summary's links (and public-doc sharing) before you share access.
 - `add-org-member` — the internal-only (@dimagi.com) Connect-org add; this skill is the superset
   that also covers ace-web + external collaborators + the other surfaces.
