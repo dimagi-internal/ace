@@ -41,15 +41,35 @@ alone makes the artifact land outside `4-connect` and fail
    `## Archetypes` below.
 
 2. **Check for existing programs** that match this opportunity's domain/scope.
-   Call `connect_list_programs` (with `organization_slug` from the
-   opportunity context — typically `ai-demo-space` for ACE-managed
-   programs). The `name` filter is a case-insensitive **substring** match
-   and name-filtered rows come back fully hydrated (jjackson/ace#1089);
-   unfiltered rows carry `null` for delivery_type/budget/currency/country/
-   dates — hydrate via `connect_get_program` before judging fit on those.
+   Call `connect_list_programs({organization_slug})` **with NO `name`
+   filter** and consider the full org list (dimagi-internal/ace#1252).
+   A name-substring scan is structurally blind to a same-domain,
+   same-archetype program under different words — live case: a
+   `name: 'Bednet'` query returned 12 programs and could never return
+   `Malaria ITN Exploration Multi-Stage Study`, the one same-domain
+   multi-stage candidate in the org. Program names are generated
+   per-archetype by this very skill, so two runs of the same real
+   intervention that describe their domain differently will never find
+   each other by name, by construction — and the silent miss creates
+   exactly the duplicate program the reuse rule exists to prevent.
+
+   Match candidates on **delivery type + archetype** (both structured,
+   both known at this point); use the name only for ranking/display.
+   Unfiltered rows carry `null` for delivery_type/budget/currency/
+   country/dates — hydrate the shortlisted candidates via
+   `connect_get_program` before judging fit on those. (The `name` filter
+   remains available as a case-insensitive substring match whose rows
+   come back fully hydrated, jjackson/ace#1089 — fine for a targeted
+   lookup, never for the reuse scan.)
    Prefer archetype-matched programs when reusing — running
    an FGD opp under a program whose other opps are all atomic-visit
    creates a mixed-method reporting headache downstream.
+
+   **Record the candidate set in the artifact:** `connect-program-setup.md`
+   § Reuse-vs-create decision must state how many programs were
+   considered (the full org count) and on what axis they were matched,
+   so "no reusable program existed" is falsifiable by a reader. A count
+   that silently reflects a name-filtered subset is the #1252 defect.
 
 3. **Decide: reuse or create**
    - If an existing program fits AND shares the archetype, note the

@@ -64,15 +64,33 @@ alone makes the artifact land outside `4-connect` and fail
    so the application doesn't yet exist when this skill runs. Detect
    and resolve:
 
-   1. Compare `organization_slug` and `target_organization_slug`. If
-      they differ, this is the LLO-distinct path — Phase 9 already
-      handled the round-trip; skip this sub-step.
-   2. Same-org case: call a connect-list-program-applications atom
-      (*not yet built — V1 reads `connect-setup/llo-invite_invitations.md`
-      if Phase 8 ran*). If an `ACCEPTED` application already exists for
-      `organization_slug` on `program_id`, capture its
-      `program_application_id` and continue.
-   3. No accepted application → run the round-trip inline:
+   1. Branch on `target_organization_slug` — **three cases**
+      (dimagi-internal/ace#1251):
+      - **Omitted** → self-managed. Omitting does NOT waive the
+        accepted-application requirement; it relocates it to the PM org
+        (the REST backend sends `organization_slug` as the holding org,
+        and the create rejects with `Organization must have an accepted
+        application for this program`). Treat exactly like same-org:
+        run steps 2–4.
+      - **Equal to `organization_slug`** → self-managed; run steps 2–4.
+      - **Different, non-empty** → LLO-distinct path — Phase 9 already
+        handled the round-trip; skip this sub-step.
+
+      (Pre-#1251 this step read "if they differ, skip" — which on
+      `('ai-demo-space', undefined)` reads as *differ → skip*, exactly
+      backwards: the omitted case is the one that needs the round-trip
+      most, and it is the documented-correct choice for a no-LLO PDD.)
+   2. Self-managed case: run the round-trip below **unconditionally** —
+      attempt the transition and treat the conflict as the skip
+      (CLAUDE.md § Conventions). Do NOT try to read the application
+      state first: no list-program-applications atom exists, and in
+      seeded `/ace:iterate` runs Phase 8/9 are `skipped` so
+      `connect-setup/llo-invite_invitations.md` doesn't exist either.
+      If `connect_send_llo_invite` / `connect_accept_program_application`
+      reports the application already exists or is already accepted,
+      **that IS the skip signal** — capture the id it names and
+      continue. Branch on the call result, never on a read-back flag.
+   3. The round-trip:
 
       ```
       mcp__plugin_ace_ace-connect__connect_send_llo_invite(
