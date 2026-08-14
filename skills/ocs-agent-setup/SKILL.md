@@ -218,6 +218,12 @@ round-trip gate in Step 11.5 below.
      types (PDF, docx, xlsx — see also [#106 finding 4](https://github.com/jjackson/ace/issues/106));
      use `drive_read_file` for text files (markdown, plain text).
 
+     **Pass `exportAs: 'text/markdown'` on every `drive_read_file` of a
+     RENDERED gdoc** (the PDD and the Phase-6 training docs are all native
+     Google Docs). The default `text/plain` export strips headings, bold and
+     table syntax, so the collection would be indexed on a flattened,
+     structure-less copy of the document.
+
      **Always pass `writeToPath` (an absolute tmp path) on both**, then hand
      that path to `ocs_upload_collection_files`' `file_path` — the bytes never
      enter your context, and for a large text file `drive_read_file` refuses

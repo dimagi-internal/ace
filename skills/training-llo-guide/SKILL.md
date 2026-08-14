@@ -128,7 +128,17 @@ For LLO operators overseeing FLW deployment of this opportunity.
    - Word count 500-1200 — operations docs should be scannable
 
 7. **Write** to `ACE/<opp>/runs/<run-id>/6-qa-and-training/training-llo-guide.md`
-   via `drive_create_file`. Overwrite if it exists.
+   **as a NATIVE Google Doc via `drive_create_doc_from_markdown`** — NOT
+   `drive_create_file`, which uploads the body as `text/plain` so every `##`,
+   `**`, `|` and `---` stays a literal character on the page. This document is
+   read by a human (the LLO coordinator running the deployment), and a partner opening it should see headings,
+   bold and tables, not markdown source. The renderer round-trips: a properly
+   formatted doc exports back to clean markdown via
+   `drive_read_file(exportAs: 'text/markdown')`, so nothing machine-readable is
+   lost — whereas a `text/plain` upload exports ESCAPED (`\---`, `run\_id`).
+   Same find-or-create semantics: a same-name file under the parent is
+   overwritten IN PLACE, so the fileId — and any sharing already applied to it —
+   survives. (dimagi-internal/ace#1338; sibling of the PDD fix, ace#1061.)
 
 8. **Self-evaluate (LLM-as-Judge).** Four criteria:
    - **Hard-number fidelity:** every payment / cap / GPS-fence number
@@ -147,14 +157,15 @@ For LLO operators overseeing FLW deployment of this opportunity.
 
 ## MCP Tools Used
 
-- `ace-gdrive`: `drive_read_file`, `drive_create_file`,
-  `drive_list_folder`
+- `ace-gdrive`: `drive_read_file`, `drive_create_doc_from_markdown` (the guide —
+  human-facing prose, must render), `drive_create_file` (the verdict YAML —
+  machine-parsed, must stay literal text), `drive_list_folder`
 
 ## Mode Behavior
 
 - **Auto:** Run end-to-end. Write guide, write verdict.
 - **Review:** Pause after step 6, present the drafted guide.
-- **Dry-run:** Steps 1-6, skip `drive_create_file`. Verdict with
+- **Dry-run:** Steps 1-6, skip `drive_create_doc_from_markdown`. Verdict with
   `dry_run: true`.
 
 ## Products

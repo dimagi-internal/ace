@@ -234,6 +234,27 @@ A bullet list of MCP tools the skill calls, grouped by server. For each tool, in
 - Connect: `create_opportunity`, `set_verification_rules` — **NOT YET BUILT** (CCC-301)
 ```
 
+**Human-facing prose is a RENDERED gdoc; machine-parsed files are not.** If a
+human reads the artifact — a PDD, a training guide, a work order, an email
+body — write it with `drive_create_doc_from_markdown` so Drive converts the
+markdown into native headings, bold, links and tables. `drive_create_file`
+uploads `text/plain`, so the reviewer opens the doc and sees literal `##`,
+`**`, `|` and `---`; the failure is silent because every content check still
+passes. Machine-parsed artifacts (`run_state.yaml`, `decisions.yaml`, every
+`*_verdict.yaml`, `app-test-cases.yaml`, manifests, specs) stay on
+`drive_create_file` — Drive's markdown converter mangles YAML. Declare the
+distinction in `lib/artifact-manifest.ts` with `rendered: true`;
+`test/lib/rendered-artifacts.test.ts` enforces it.
+
+**Reading a rendered artifact back: pass `exportAs: 'text/markdown'`.** A
+native Google Doc's default `text/plain` export drops the markdown syntax
+entirely — a real H2 comes back as bare text with no `##`. Any skill that
+regex-checks sections, tables or bold in a rendered artifact MUST read it with
+`drive_read_file(..., exportAs: 'text/markdown')` or its checks fail against a
+perfectly good document. Never pass `exportAs` when reading a YAML/JSON doc:
+the markdown exporter escapes markdown-significant characters (`---` → `\---`,
+`run_id` → `run\_id`) and breaks every parser downstream.
+
 **Drive parent contract.** Every `drive_create_file` and `drive_create_folder` call MUST pass an explicit `parentFolderId` rooted in the opportunity's `ACE/<opp-name>/` folder. Service Accounts have zero My-Drive quota; the MCP rejects calls whose parent isn't on a Shared Drive (typed error from `assertParentOnSharedDrive`, added 0.5.18). Never call these tools without `parentFolderId`, and never rely on a "default to root" fallback — there is no safe root for an SA.
 
 ### 6. `## Mode Behavior`

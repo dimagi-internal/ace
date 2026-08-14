@@ -30,7 +30,7 @@ See `skills/_qa-template.md` for the shared QA contract (verdict YAML format, au
 | # | id | type | description | auto-fix on fail |
 |---|---|---|---|---|
 | 1 | `all_required_sections_present` | static | All 12 required PDD sections present (Archetype, Problem Statement, Intervention Design, Learn App Specification, Deliver App Specification, Target Population, FLW Requirements, LLO Preference, Success Metrics, Evidence Model, Timeline, Program Parameters). Heading match tolerates case variation, bold-wrapping, and trailing parentheticals — see `checks.ts § checkAllRequiredSectionsPresent` for the full tolerance contract. | regenerate the missing section(s) with substantive content matching each section's purpose (auto_fix_hint enumerates per-section purpose in the failure detail) |
-| 2 | `archetype_declared_and_valid` | static | Archetype declared in frontmatter or body; value is one of {atomic-visit, focus-group, multi-stage} | add `archetype:` to frontmatter + matching body declaration |
+| 2 | `archetype_declared_and_valid` | static | Archetype declared in the body's top metadata block (preferred — PDDs are rendered gdocs, so raw `---` frontmatter renders as noise) or, still accepted, in YAML frontmatter; value is one of {atomic-visit, focus-group, multi-stage} | add a `**Archetype:** <value>` line to the PDD's top metadata block |
 | 3 | `stress_test_appendix_present` | static | PDD has a `## Stress Test Results` appendix with the 5-question self-eval grades | add the appendix per skills/idea-to-pdd/SKILL.md § Process step 6 |
 | 4 | `success_metrics_table_populated` | static | `## Success Metrics` section contains a markdown table with at least one data row | fill the table with at least one metric row |
 | 5 | `evidence_model_layered` | static | `## Evidence Model` section references all three layers (A, B, C) | populate the section with rows for each layer |
@@ -45,9 +45,19 @@ The static check functions live at `skills/idea-to-pdd-qa/checks.ts` as importab
 ## Process
 
 1. **Read the PDD artifact** from Drive:
-   `drive_read_file(file_id=<idea-to-pdd.md drive id>)`. **Note its
-   `mimeType`** — you pass it to the runner in step 3, and check 7 cannot
-   verify the format without it (the bytes look identical either way).
+   `drive_read_file(file_id=<idea-to-pdd.md drive id>, exportAs: 'text/markdown')`.
+
+   **`exportAs: 'text/markdown'` is REQUIRED here, not optional.** Since
+   ace#1061 the PDD is a NATIVE Google Doc, so its headings are real Docs
+   heading styles — and a `text/plain` export (the atom's default) renders a
+   heading as bare text with **no `#` markers at all**. Every static check in
+   this skill anchors on markdown syntax (`^##\s+<Section>`, pipe tables,
+   `**bold**`), so reading a correctly-rendered PDD as plain text fails checks
+   1, 3, 4, 5 and 8 while the PDD is perfectly fine. The markdown export
+   restores the syntax the checks are written against.
+
+   **Note its `mimeType`** — you pass it to the runner in step 3, and check 7
+   cannot verify the format without it (the bytes look identical either way).
 
 2. **Save to a local temp path** (so the CLI runner can read it as a file).
    `Bash: TMP=$(mktemp); drive content saved to $TMP`.
@@ -91,7 +101,7 @@ QA is **necessary but not sufficient**. A passing QA result means the PDD is gra
 
 ## MCP Tools Used
 
-- Google Drive: `drive_read_file`, `drive_create_file`
+- Google Drive: `drive_read_file` (always with `exportAs: 'text/markdown'` — the PDD is a rendered gdoc), `drive_create_file`
 - Bash: `npx --prefix "$ACE_ROOT" tsx "$ACE_ROOT/scripts/qa-run.ts" ...` (runs static checks via `lib/qa-runner.ts`)
 
 ## Mode Behavior

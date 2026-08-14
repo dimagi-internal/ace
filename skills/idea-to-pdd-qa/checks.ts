@@ -169,7 +169,9 @@ export function checkArchetypeDeclared(pdd: string): QACheckResult {
       pass: false,
       detail: 'no archetype declared in frontmatter or body',
       auto_fix_hint:
-        'add `archetype: <atomic-visit|focus-group|multi-stage>` to the PDD frontmatter and a matching `**Archetype:**` line in the body',
+        'add a `**Archetype:** <atomic-visit|focus-group|multi-stage>` line to the PDD\'s top metadata block. ' +
+        '(A `---` YAML frontmatter block also satisfies this check, but PDDs are rendered Google Docs — ' +
+        'raw frontmatter renders as a horizontal rule plus key:value noise, so the body form is preferred.)',
     };
   }
   if (!(VALID_ARCHETYPES as readonly string[]).includes(archetype)) {
