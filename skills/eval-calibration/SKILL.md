@@ -119,7 +119,7 @@ Detection rate alone is therefore *insufficient*. Add a coverage check:
 1. **Enumerate the fitness axes** that separate "conformant" from
    "deployable" for this artifact type — the axes a domain expert would
    check before shipping: input validation, capture fidelity,
-   persistence, enforcement, localization, real-world viability,
+   persistence, enforcement, language conformance, real-world viability,
    adversarial coverage, reader-usefulness. Pick the ones that apply.
 2. **Confirm the rubric has a dimension touching each applicable axis.**
    An axis with no dimension is a coverage gap — the rubric cannot

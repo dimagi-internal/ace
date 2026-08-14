@@ -294,8 +294,8 @@ looking connected.
 **`CASE_NAME` must be the value you actually typed into the registration
 form's `case_name` field** — it is what renders in the case list's first
 column. Pass it as a literal prefix plus `.*` (Maestro `text:` is a
-FULL-match regex and case-list cells are routinely trilingual or
-truncated). Omit it on a followup and the walk fails loud on the case
+FULL-match regex and case-list cells are routinely truncated — and on any
+app built before 2026-08-14, language-stacked as well). Omit it on a followup and the walk fails loud on the case
 list rather than silently picking a row.
 
 Two things worth knowing, both live-established on 2.63.2 and both
@@ -925,9 +925,11 @@ For each form-walk segment of a recipe:
 
    **Both halves are load-bearing, and they fail in opposite directions
    (dimagi-internal/ace#1070).** A bare `tapOn` with no scroll misses any
-   option below the fold — with trilingual option labels (en/nya/tum) a
-   4-option question routinely renders ~3 options per screen, so this is the
-   COMMON case for a localized app, not an edge case. But an
+   option below the fold — a long option label on a small screen pushes the
+   4th option off, and this was measured on trilingual labels (en/nya/tum),
+   where a 4-option question routinely rendered ~3 options per screen. ACE
+   now builds English-only (ace#968), so labels are shorter and the case is
+   rarer — but it is still real, and both halves below are unchanged. But an
    *unconditional* `scrollUntilVisible` is equally wrong: on a question
    whose options already fit, there is nothing to scroll, and CommCare's
    form view reads the resulting no-op swipes as **backward form

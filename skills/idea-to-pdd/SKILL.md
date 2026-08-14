@@ -433,8 +433,19 @@ orchestrator from the per-skill QA + eval verdicts on the fly. -->
       both probes.
     - **Working language.** If the program runs in a non-English
       language, state it as a **Working language** line in the Learn and
-      Deliver App Specifications. The build authors English + ships that
-      language's translations; English-only then hard-fails the eval.
+      Deliver App Specifications — it is real design context and it drives
+      the training materials, the facilitator briefing, the per-opp OCS
+      chatbot and the solicitation's language requirement. **It does NOT
+      mean the app is delivered in that language.** ACE builds every app
+      UI in English only (standing decision 2026-08-14, ace#1391 — see
+      `_app-component-library.md § english-only-ui`, and the multilingual-UI
+      row in § `Mechanisms a PDD must not assert` Table B). So state the
+      working language, and do NOT write that labels, choices or
+      assessment items will appear in it, that the app is "translated" or
+      "localized", or that workers can switch language in the app. Where
+      the cohort's English is a real risk, say so as a **residual** and
+      point at the surfaces that carry the language — training and the
+      chatbot — rather than asserting an app property that will not ship.
 
     These become `decisions.yaml` rows where they meet the bar (§
     Decisions Log Convention). This is the upstream half of the
@@ -1036,7 +1047,7 @@ practice-session audio review. No Learn app is produced. See
 **Additional questions to answer in step 3:**
 
 - **Recruitment**: Who are the segments? How will participants be identified? What sample size per segment? Comparison groups and their justification?
-- **Language**: Working language? Need translation? Facilitator language fluency?
+- **Language**: Working language? Facilitator language fluency? (Translation of the APP is out of scope — English-only UI, ace#968; ask instead which surfaces need the working language: training materials, facilitation, OCS chatbot.)
 - **Facilitation skill level**: Existing skill assumed, or training required? Training surface is the per-opp **OCS chatbot** (loaded with the FGD Guide + Output Specification + handbook gdoc) plus a coordinator-graded practice-session audio review. The Learn app produced for focus-group is a **minimal sentinel** (one-form readiness gate, not a training curriculum) — it exists to satisfy Connect's API + gate attestation submissions on coordinator-confirmed practice-session-pass, NOT to carry training content. See `pdd-to-learn-app/SKILL.md § Archetypes § focus-group` for the sentinel spec.
 - **Consent**: Verbal/written? Audio recording consent? Photo consent? Documented how?
 - **Venue**: Neutral / facility / leader's compound? Each biases differently — which is acceptable?
