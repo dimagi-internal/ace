@@ -14,6 +14,7 @@ import {
   checkAllRequiredSectionsPresent,
   checkRequiredWoDecisionsPresent,
   checkPeriodOfPerformanceComplete,
+  checkNoRendererInstructions,
   checkPaymentScheduleSumsTo100,
   checkTotalNtePresent,
   checkSignatureBlocksPresent,
@@ -258,8 +259,8 @@ describe('checkNoScaffoldingMarkers', () => {
 });
 
 describe('CHECKS array', () => {
-  test('exports eight checks in canonical order', () => {
-    expect(CHECKS).toHaveLength(8);
+  test('exports nine checks in canonical order', () => {
+    expect(CHECKS).toHaveLength(9);
     const ids = CHECKS.map((c) => c.id);
     expect(ids).toEqual([
       'all_required_sections_present',
@@ -269,6 +270,10 @@ describe('CHECKS array', () => {
       'total_nte_present',
       'signature_blocks_present',
       'archetype_appropriate_scope',
+      // Paired deliberately: `no_scaffolding_markers` catches scaffolding that
+      // LOOKS like scaffolding (`<<…>>`, `{{…}}`); this one catches scaffolding
+      // that does not (ace#1004).
+      'no_renderer_instructions',
       'no_scaffolding_markers',
     ]);
   });
@@ -361,5 +366,66 @@ describe('period_of_performance auto_fix_hint is actionable (#1092)', () => {
   test('the compositional form the old hint invited still fails (interior `]`)', () => {
     const wo = GOOD_WO.replace('2026-05-22 to 2026-07-31', '[Start date TBD] to [End date TBD]');
     expect(checkPeriodOfPerformanceComplete(wo).pass).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// dimagi-internal/ace#1004 — scaffolding that does not LOOK like scaffolding.
+//
+// The live WORK_ORDER_TEMPLATE_ID ended § 6.2 with a hardcoded, non-tokenized
+// sentence:
+//
+//   "Dimagi will pay only for verified units at the per-visit (or per-session,
+//    per archetype) rate proposed in the partner's solicitation response."
+//
+// "(or per-session, per archetype)" is an instruction to the RENDERER about
+// which archetype branch to pick, and it rendered verbatim into the signed
+// contract: a partner reading their own work order saw a parenthetical telling
+// them the payment unit depends on an "archetype" the document never defines.
+//
+// Every existing preventer passed it. `no_scaffolding_markers` matches only
+// /<<[^>]*>>/ and /\{\{[^}]*\}\}/; the skill's own token-coverage check scans
+// for surviving `{{`. The sentence sat outside the token system entirely, so
+// the producing skill could not influence it and no checker could see it.
+// QA returned 8/8 with the defect present.
+// ---------------------------------------------------------------------------
+
+describe('renderer-instruction language in the rendered contract (#1004)', () => {
+  test('flags the live § 6.2 parenthetical', () => {
+    const withDefect =
+      GOOD_WO +
+      "\n\nDimagi will pay only for verified units at the per-visit (or per-session, per archetype) rate proposed in the partner's solicitation response.\n";
+    const r = checkNoRendererInstructions(withDefect);
+    expect(r.pass).toBe(false);
+    expect(r.detail).toMatch(/per archetype/i);
+    expect(r.auto_fix_hint).toMatch(/payment_unit_closing|one unit/i);
+  });
+
+  test('flags a TODO / TBD-by-renderer marker in the body', () => {
+    for (const marker of ['TODO: pick the right branch', 'TBD-by-renderer', 'TBD by renderer']) {
+      const r = checkNoRendererInstructions(GOOD_WO + `\n\n${marker}\n`);
+      expect(r.pass, `expected "${marker}" to be flagged`).toBe(false);
+    }
+  });
+
+  test('passes the archetype-correct rendering with ONE unit named', () => {
+    const wo =
+      GOOD_WO +
+      "\n\nDimagi will pay only for verified units at the per-visit rate proposed in the partner's solicitation response.\n";
+    expect(checkNoRendererInstructions(wo).pass).toBe(true);
+  });
+
+  test('does not flag ordinary contractual parentheses', () => {
+    // Precision: contracts are full of legitimate parentheticals. Only an
+    // alternation naming another archetype's unit noun, or an explicit
+    // renderer instruction, trips it.
+    const wo =
+      GOOD_WO +
+      '\n\nDimagi (the "Client") will reimburse pre-approved transport costs (receipts required) within 30 days.\n';
+    expect(checkNoRendererInstructions(wo).pass).toBe(true);
+  });
+
+  test('is registered in CHECKS', () => {
+    expect(CHECKS.find((c) => c.id === 'no_renderer_instructions')).toBeDefined();
   });
 });

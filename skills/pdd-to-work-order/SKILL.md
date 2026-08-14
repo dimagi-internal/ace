@@ -105,6 +105,11 @@ Take the approved PDD and decisions.yaml and produce a contractual Work Order dr
      - `{{geographic_coverage_body}}` (from PDD Target Population; `[Geographic Coverage — Partner to propose]` if not specified)
      - `{{primary_deliverable_body}}` (from PDD Success Metrics)
      - `{{verified_unit_closing}}` (the "Verification will be performed via..." closing paragraph after the verified-unit bullets)
+     - `{{payment_unit_closing}}` (the closing sentence under § 6.2's payment-schedule table, stating what Dimagi pays for and at what unit). **Archetype-branched — emit the unit noun for THIS opportunity, never a menu:**
+       - `atomic-visit` → "Dimagi will pay only for verified units at the per-visit rate proposed in the partner's solicitation response."
+       - `focus-group` → "…at the per-session rate proposed in the partner's solicitation response."
+       - `multi-stage` → name the stage's payable unit explicitly (e.g. per screening visit / per follow-up session), matching § 4.2's verified-unit definition.
+       The rate itself is negotiated via the solicitation response and is NOT stated here — only the unit is. Until 2026-08-14 the template hardcoded "at the per-visit **(or per-session, per archetype)** rate", i.e. an instruction to the renderer, rendered verbatim into every signed contract: a partner reading their own work order saw a parenthetical telling them the payment unit depends on an "archetype" the document never defines (dimagi-internal/ace#1004). The token now exists in `WORK_ORDER_TEMPLATE_ID`, so emit it.
      - `{{wo_total_not_to_exceed_usd}}` — bare number
      - `{{ethics_body}}` — prose
      - `{{pdd_link}}` (Drive URL of the PDD from `phases.idea-to-design.products.pdd.file_id`)

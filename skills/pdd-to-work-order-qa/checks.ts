@@ -403,6 +403,67 @@ function extractNumberedSection(wo: string, number: string): string | null {
  *   - `decisionsYaml: string` — the decisions.yaml file contents (for check 2)
  *   - `archetype: string` — the PDD-declared archetype (for check 7)
  */
+/** Payment-unit nouns the template's archetype branches use. */
+const UNIT_NOUNS = ['per-visit', 'per-session', 'per-meeting', 'per-screening', 'per-follow-up'];
+
+/**
+ * Check: no RENDERER INSTRUCTIONS survive into the rendered contract
+ * (dimagi-internal/ace#1004).
+ *
+ * This is the class the existing preventers were built for but cannot see:
+ * **scaffolding that does not look like scaffolding.** The live template ended
+ * § 6.2 with a hardcoded, non-tokenized sentence —
+ *
+ *   "…at the per-visit (or per-session, per archetype) rate proposed in the
+ *    partner's solicitation response."
+ *
+ * — where "(or per-session, per archetype)" is an instruction to the renderer
+ * about which branch to pick. It rendered verbatim into the signed contract, so
+ * a partner reading their own work order saw a parenthetical telling them the
+ * payment unit depends on an "archetype" the document never defines.
+ *
+ * `no_scaffolding_markers` matches only `<<...>>` and `{{...}}`; the skill's own
+ * token-coverage check scans for surviving `{{`. The sentence sat outside the
+ * token system entirely, so nothing could see it and QA returned 8/8.
+ *
+ * Deliberately high-precision: contracts are full of legitimate parentheticals,
+ * and a checker that flags them would be ignored (the ace#1026 lesson). Only two
+ * shapes trip it — an alternation offering a SECOND payment-unit noun, and an
+ * explicit renderer TODO/TBD marker.
+ */
+export function checkNoRendererInstructions(wo: string): QACheckResult {
+  const problems: string[] = [];
+
+  // (a) A parenthetical alternation naming another unit noun, e.g.
+  //     "(or per-session, per archetype)". Requires BOTH the alternation and a
+  //     unit noun inside it, so "(receipts required)" cannot match.
+  const altRe = /\((?:\s*or\s+)([^)]*)\)/gi;
+  for (const m of wo.matchAll(altRe)) {
+    const inner = m[1];
+    if (UNIT_NOUNS.some((n) => inner.toLowerCase().includes(n))) {
+      problems.push(`renderer alternation left in the contract text: "${m[0]}"`);
+    }
+  }
+
+  // (b) An explicit instruction to whoever renders the document.
+  const todoRe = /\b(TODO\b[^\n]*|TBD[-\s]by[-\s]renderer|pick the right branch|per archetype)\b/gi;
+  for (const m of wo.matchAll(todoRe)) {
+    problems.push(`renderer instruction left in the contract text: "${m[0].trim()}"`);
+  }
+
+  if (problems.length === 0) return { pass: true };
+  return {
+    pass: false,
+    detail: [...new Set(problems)].join('; '),
+    auto_fix_hint:
+      'a signed contract must state ONE payment unit, not a menu the reader cannot resolve. Emit the ' +
+      'archetype-correct `{{payment_unit_closing}}` (atomic-visit -> per-visit; focus-group -> per-session; ' +
+      'multi-stage -> the stage\'s payable unit, matching § 4.2\'s verified-unit definition) and remove any ' +
+      'renderer TODO/branch note. The rate itself is negotiated via the solicitation response and is not ' +
+      'stated here — only the unit (dimagi-internal/ace#1004).',
+  };
+}
+
 export const CHECKS: QACheck[] = [
   {
     id: 'all_required_sections_present',
@@ -447,6 +508,12 @@ export const CHECKS: QACheck[] = [
     description: 'Scope of Work language matches the declared archetype',
     run: (wo: string, ctx?: QACheckContext) =>
       checkArchetypeAppropriateScope(wo, (ctx?.archetype as string | undefined) ?? null),
+  },
+  {
+    id: 'no_renderer_instructions',
+    type: 'static',
+    description: 'No renderer-instruction language (archetype branch notes, TODO/TBD-by-renderer) survives into the contract',
+    run: (wo: string) => checkNoRendererInstructions(wo),
   },
   {
     id: 'no_scaffolding_markers',
