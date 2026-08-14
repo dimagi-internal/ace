@@ -12,7 +12,7 @@ For the deterministic atom-rename / remove drift check, see `test/skill-atom-ref
 
 ## ace-gdrive
 
-Source: `mcp/google-drive-server.ts` — 42 atoms
+Source: `mcp/google-drive-server.ts` — 43 atoms
 
 ### `sheets_list_tabs`
 
@@ -184,12 +184,23 @@ Download a binary or non-Google-Doc file from Google Drive. The companion atom t
 
 ### `drive_set_anyone_with_link`
 
-Grant an anyone-with-link permission (`type: anyone`) on an existing Drive file, at `role: reader` (default) or `role: commenter`. Reader is right for any PNG that downstream Slides `createImage` will fetch — Slides' image-import service does NOT carry the SA's auth, so an SA-only file renders as a blank image in the deck. **Use `commenter` for a document an external reviewer is meant to leave feedback on**: a Drive reader physically cannot comment, so a doc shared for review as reader gives the reviewer no way to respond in it (`skills/feedback-ledger`'s `channel: gdoc-comments` assumes they can). `drive_upload_binary` accepts a `shareAnyoneWithLink` flag that does the reader grant inline at upload time; use this atom when the file already exists, was uploaded without the flag, or needs commenting. Idempotent per role: Drive ignores a duplicate `type: anyone` grant at the same role.
+Grant an anyone-with-link permission (`type: anyone`) on an existing Drive file. Three roles, three uses: **`reader`** (default) for any PNG that downstream Slides `createImage` will fetch — Slides' image-import service does NOT carry the SA's auth, so an SA-only file renders as a blank image in the deck; **`commenter`** for a document someone is meant to read and react to — a Drive reader physically cannot comment (`skills/feedback-ledger`'s `channel: gdoc-comments` assumes they can); **`writer`** for a document a partner is meant to CO-CREATE — ACE opportunities are co-created, so feedback also arrives as revisions, and a commenter cannot edit. Verified working on the ACE Shared Drive 2026-08-14 (the tenant does not cap link sharing at commenter). ⚠ `writer` here means ANYONE with the URL can edit or delete the file — when you know who the collaborators are, prefer `drive_share_with_person` (`type: user`), which is the precise primitive for edit access. `drive_upload_binary` accepts a `shareAnyoneWithLink` flag that does the reader grant inline at upload time; use this atom when the file already exists, was uploaded without the flag, or needs a higher role. Idempotent per role: Drive ignores a duplicate `type: anyone` grant at the same role.
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `fileId` | `z.string` | **required** | The Drive file ID to share. Must be a file the SA can access. |
-| `role` | `z.enum` | optional | Permission role for the anyone-with-link grant. Default 'reader' (view only). Use 'commenter' when the recipient should be able to leave comments — a reader cannot. |
+| `role` | `z.enum` | optional | Permission role for the anyone-with-link grant. Default 'reader' (view only). 'commenter' when the recipient should be able to leave comments — a reader cannot. 'writer' when they should be able to EDIT (co-creation); note this grants edit/delete to anyone the URL is forwarded to — prefer drive_share_with_person when the collaborators are known. |
+
+### `drive_share_with_person`
+
+Share a Drive file with a NAMED person (`type: user`) at `role: writer` (default), `commenter`, or `reader`. This is the primitive for **co-creation**: ACE opportunities are co-created with partners, so a partner engaging with a run's artifacts should be able to EDIT them — and you know who your participants are, whereas anyone-with-link `writer` lets anyone the URL is forwarded to edit or delete the doc. Prefer this over `drive_set_anyone_with_link` whenever the collaborators are known by email. ⚠ **This atom does NOT email anyone by default.** Drive's permissions API normally sends the grantee a notification email; `sendNotificationEmail` is forced to `false` unless you explicitly pass `true`, because ACE's outbound email is gated through `bin/ace-email` and a Drive-sent notification would route around that gate. Send the person the link yourself through the normal email path. Verified against the ACE Shared Drive 2026-08-14: a `writer` grant with the notification off returns a `type: user` permission id and reads back in `permissions.list`. If Drive rejects a grant (unknown account, drive-level sharing policy), the atom returns Drive's own error rather than guessing — call it and read the result.
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `fileId` | `z.string` | **required** | The Drive file ID to share. Must be a file the SA can access. |
+| `email` | `z.string` | **required** | The grantee's email address (Google account). Internal or external — external partner collaborators are the whole point of this atom. |
+| `role` | `z.enum` | optional | Permission role. Default 'writer' — the co-creation grant, which lets the person edit the document. Use 'commenter' for read-and-react, 'reader' for view-only. |
+| `sendNotificationEmail` | `z.boolean` | optional | Whether Drive should email the grantee that the file was shared. **Defaults to false.** ACE never silently emails an external party as a side effect of a permission change — outbound email goes through bin/ace-email, which is hook-gated. Pass true ONLY when a human has explicitly approved a Drive-sent notification. |
 
 ### `drive_create_folder`
 

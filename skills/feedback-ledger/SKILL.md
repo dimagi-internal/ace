@@ -47,6 +47,26 @@ so a typo can't quietly swallow a change either.
 Do not "clean up" an UNROUTED row by deleting the item. Route it, or give it a
 `declined` disposition with a reason.
 
+## Revisions are a channel this ledger does not yet capture
+
+The ledger models feedback as **comments** — `channel: gdoc-comments` is the canonical
+example, items are keyed on the reviewer's own comment anchors, and `verbatim` is their
+words. That covers a reviewer who reacts to a document.
+
+It does **not** cover a partner who *edits* one. ACE opportunities are co-created with
+partners (Jonathan, 2026-08-14), and `skills/share-run-access` now grants named partner
+collaborators **editor** access on run artifacts (`drive_share_with_person`, default
+`role: writer`). Feedback from a co-creator therefore also arrives as **Drive revisions**:
+no anchor, no quote, nothing this schema can hold — so a partner who improves the PDD by
+editing it directly produces zero ledger rows, and the completeness property above simply
+doesn't apply to that channel.
+
+Do not paper over it by transcribing someone's edit into a fake `gdoc-comments` item —
+that fabricates words they never wrote, which is exactly what `verbatim` exists to prevent.
+Until a revisions channel lands, note in the review record that edits were made and where,
+and treat the ledger as covering the comment channel only.
+Tracked: dimagi-internal/ace#1335.
+
 ## Inputs
 
 | Source | Artifact | Used for |
