@@ -217,19 +217,32 @@ surfaces in the saved-run screenshot.
       saved-run deep-link actually renders — via `pipeline_preview` on the
       snapshot's run, or by reading the saved-run rows the screenshot shows.
    2. Compare them to the manifest's full-window per-FLW totals.
-      - **Rendered ≈ full-window totals** → the snapshot is NOT period-filtered
-        (the jjackson/ace#764 state, below in step 6); keep manifest-scale
-        thresholds as-is.
+      - **Rendered ≈ full-window totals** → the snapshot is NOT period-filtered,
+        which on a run-shaped template now means `period_scoped` is missing from
+        the saved pipeline schema (see step 6) — prefer restoring it over
+        re-scaling; if you cannot, keep manifest-scale thresholds as-is.
       - **Rendered ≈ per-period (weekly) counts** → derive thresholds at that
         scale (per-week ≈ full-window `threshold / manifest.timeline.weeks`),
         so only genuinely-struggling FLWs flag.
    3. Disclose the chosen scale + any derivation in the run summary.
 
-   Note the tension: this issue (#813) observed a period-scoped snapshot, while
-   the #764 note (step 6) records the rollup as full-window/not-period-filtered.
-   Which holds depends on live labs state, so **verify per run** rather than
-   hard-coding either assumption. The invariant is only: thresholds match the
-   number the screenshot shows.
+   The historical tension between #813 (period-scoped snapshot) and #764
+   (full-window rollup) is resolved: `period_scoped` on the pipeline schema
+   decides it, and `llo_weekly_review` ships with it on. Still **verify per run**
+   rather than hard-coding a scale — the invariant is only that thresholds match
+   the number the screenshot shows.
+
+   **A rate threshold beats a count threshold here.** Rates are scale-invariant,
+   so they survive whatever window the snapshot renders and this whole
+   verification step stops being load-bearing. But a rate needs a denominator to
+   mean anything: with a weekly cadence an FLW may file a single record in the
+   window, and `0%` off one record is noise, not a finding. Gate rate thresholds
+   on a minimum record count (~3) and drive weekly triage off absolute facts
+   instead — no record at all, a wrong-type record, a duplicate, a flagged
+   record. Flagging a worker off one record is exactly the unfair signal an
+   advisory-flag posture is supposed to prevent (live on
+   `spark-facilitator/20260813-2126`, where 11 of 20 CBFs tripped a rate
+   threshold on a single mid-week record before the guard was added).
 
 4. **Populate the pipeline schema.**
 
@@ -432,21 +445,32 @@ surfaces in the saved-run screenshot.
 
    Capture both run IDs and snapshot timestamps for the run summary.
 
-   **⚠️ The two LLO-review snapshots currently render IDENTICAL (jjackson/ace#764).**
-   The `flw_kpis` rollup aggregates **all** of the opportunity's visits and is
-   NOT period-filtered by the run's `period_start`/`period_end` (the labs
-   pipeline groups by `completed_at`, and `save_run_snapshot` freezes a
-   non-period-scoped aggregate). So Week 1 and Week 2 snapshots show the same
-   numbers. This is a labs-side root cause (not local; the pipeline must thread
-   `period_start`/`period_end` into `flw_kpis` as a `visit_date` filter).
-   **Until it lands, do NOT market the two snapshots as week-distinct** in the
-   walkthrough or polish narrative. Either (a) present them as "the same review,
-   run on a recurring cadence" without asserting week-over-week deltas, or
-   (b) point the "recurring rhythm" scene at a page that IS genuinely distinct
-   per period (the program_admin_audit window aggregate) rather than the
-   identical LLO-review weekly snapshots. `synthetic-workflow-polish` must keep
-   any week-referencing narrative conditional on real per-period difference —
-   see its SKILL.md note.
+   **Weekly snapshots ARE genuinely week-distinct — but only if the pipeline
+   schema opts in.** jjackson/ace#764 (every weekly snapshot rendering identical
+   numbers) is **CLOSED**: labs shipped `period_scoped` on the pipeline schema,
+   and `workflow_save_snapshot` threads the run's `period_start`/`period_end`
+   into the cache read, so completion re-aggregates to that half-open window
+   instead of freezing the all-time total. `llo_weekly_review`'s shipped
+   `PIPELINE_SCHEMA` already sets `"period_scoped": True`.
+
+   Two things follow:
+   - **When you REPLACE a run-shaped template's pipeline schema, carry
+     `period_scoped: true` forward.** `pipeline_update_schema` replaces the
+     schema wholesale, so dropping the key silently reverts every future
+     snapshot to the all-time aggregate — the #764 symptom, reintroduced
+     locally with the upstream fix in place.
+   - Only the **aggregated** (per-FLW) terminal stage supports it. A
+     `visit_level` pipeline is never period-scoped; filter it in render code
+     against `instance.period_start` / `instance.period_end` instead (both are
+     exposed on the `instance` prop — verified live 2026-08-14).
+
+   **Verify per run rather than asserting it** — open the concluded run's
+   deep-link and confirm its record count is that week's alone, not the
+   all-window total. Live on `spark-facilitator/20260813-2126`: the concluded
+   week of 3 Aug rendered 35 records / USD 72 against an all-window 253 / USD
+   528, so the week-over-week narrative is safe to make. If the numbers match
+   the all-window total, `period_scoped` is missing from the saved schema — fix
+   that rather than weakening the narrative.
 
    **Per-week try/except:** if Week 1 succeeds but Week 2's create or
    snapshot fails (e.g. transient labs error), surface the partial

@@ -103,18 +103,22 @@ call — see the seed skill's alias-consistency guardrail.
      `manifest.coaching_arcs` entry, add a small inline timeline
      rendering: detection-week → coaching-task → follow-up-week
      improvement number.
-     **⚠️ Do NOT assert a per-period delta the snapshot cannot show
-     (jjackson/ace#764).** The LLO-review `flw_kpis` rollup is NOT
-     period-filtered — Week 1 and Week 2 snapshots render identical
-     numbers (labs-side root cause). Static "by Week 3, +18%" text baked
-     from `manifest.coaching_arcs` is then a falsified claim: the snapshot
-     it renders on shows no such change. Keep any week-referencing /
-     improvement-delta narrative **conditional on a genuinely distinct
-     per-period figure** being present in the rendered state; if the
-     figures are identical across periods, render the coaching arc as a
-     forward-looking plan ("coaching assigned; follow-up next cycle")
-     rather than asserting a realized improvement. (Mirrors the
-     `synthetic-workflow-seed` step-8 warning.)
+     **⚠️ Do NOT assert a per-period delta the snapshot cannot show.**
+     jjackson/ace#764 is CLOSED — a run-shaped pipeline that sets
+     `period_scoped: true` (as `llo_weekly_review` ships) DOES render
+     week-distinct snapshots. But the rule survives the fix, because the
+     failure mode is now local rather than upstream: replacing a pipeline
+     schema without carrying `period_scoped` forward reverts every
+     snapshot to the all-time aggregate. Static "by Week 3, +18%" text
+     baked from `manifest.coaching_arcs` is then a falsified claim — the
+     snapshot it renders on shows no such change. So keep any
+     week-referencing / improvement-delta narrative **conditional on a
+     genuinely distinct per-period figure actually being present in the
+     rendered state** (read it, don't assume it); if the figures are
+     identical across periods, fix the schema, and until then render the
+     coaching arc as a forward-looking plan ("coaching assigned;
+     follow-up next cycle") rather than asserting a realized improvement.
+     (Mirrors the `synthetic-workflow-seed` step-8 note.)
    - **Domain branding.** Pick icons + language matching the PDD's
      domain. Turmeric → market/vendor language; KMC → maternal-health
      iconography; vaccine focus group → immunization framing.
