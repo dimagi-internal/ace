@@ -863,22 +863,64 @@ export class MaestroBackend {
     }
   }
 
+  /** Every `.png` under `dir`, RECURSIVELY.
+   *
+   * Recursive because a screenshot name is not guaranteed to be a flat
+   * filename. Maestro resolves `takeScreenshot: "name"` to `File("name.png")`
+   * relative to the process CWD and calls `getParentFile`/`mkdirs`, so any
+   * `/` inside the name silently becomes a DIRECTORY rather than an error.
+   * Recipes interpolate display labels into those names
+   * (`learn-tap-module-before-${MODULE_NAME}`), and ACE's sanctioned inline
+   * localization authors labels in the compact `English / Chichewa / Tumbuka`
+   * slash form — so on every trilingual app the frames landed in nested
+   * subdirectories and a flat `readdirSync` never saw them. They were written
+   * and then lost, while the recipe reported every `takeScreenshot ...
+   * COMPLETED` (ace#1236; 36 frames on a 9-module app).
+   *
+   * Fixed HERE rather than by sanitizing each recipe's names: the collector is
+   * the one place that closes the class for every recipe, present and future,
+   * and it needs no change to the env contract recipe authors write against.
+   * The nested path is flattened into `stepName`, which preserves the
+   * per-module disambiguation the label was interpolated for in the first
+   * place. */
   private collectScreenshots(dir: string): ScreenshotEntry[] {
     if (!fs.existsSync(dir)) return [];
-    return fs
-      .readdirSync(dir)
-      .filter((f) => f.endsWith('.png'))
+
+    const pngs: string[] = [];
+    const walk = (current: string, depth: number): void => {
+      // Depth bound: a label can nest a few levels (one per `/`), never deep.
+      if (depth > 8) return;
+      for (const entry of fs.readdirSync(current, { withFileTypes: true })) {
+        const full = path.join(current, entry.name);
+        if (entry.isDirectory()) walk(full, depth + 1);
+        else if (entry.isFile() && entry.name.endsWith('.png')) pngs.push(full);
+      }
+    };
+    walk(dir, 0);
+
+    return pngs
       .sort()
-      .map((f) => {
-        const full = path.join(dir, f);
+      .map((full) => {
         const stat = fs.statSync(full);
-        const stepName = f.replace(/\.png$/, '');
+        // Flatten the path RELATIVE to the screenshot dir, so a frame written
+        // into `before-Start here: quick check / Yambani apa/…png` still gets
+        // one stable, unique stepName instead of colliding with its siblings.
+        const stepName = path
+          .relative(dir, full)
+          .replace(/\.png$/, '')
+          .split(path.sep)
+          .join('-')
+          .replace(/\s+/g, ' ')
+          .trim();
         // Pair the PNG with its sibling UI dump if `runRecipeWithDumps`
         // captured one (same basename, .xml suffix). Absence is the
         // normal pre-0.13.229 case (caller didn't pass `serial`); we
         // silently omit `uiDumpPath` so legacy consumers see no
         // change.
-        const dumpPath = path.join(dir, `${stepName}.xml`);
+        // Sibling of the PNG at its ACTUAL location — derive it from `full`,
+        // never by re-joining the flattened stepName onto `dir`, or a nested
+        // frame's dump silently stops pairing.
+        const dumpPath = full.replace(/\.png$/, '.xml');
         let uiDumpPath: string | undefined;
         let uiDumpBytes: number | undefined;
         if (fs.existsSync(dumpPath)) {
