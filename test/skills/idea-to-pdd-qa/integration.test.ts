@@ -26,7 +26,7 @@ interface ExpectedQA {
 }
 
 describe('ACE-PDD-Pass-001 (synthetic clean PDD)', () => {
-  test('passes all 6 idea-to-pdd-qa checks', async () => {
+  test('passes all 7 idea-to-pdd-qa checks', async () => {
     const pdd = loadFixtureText('ACE-PDD-Pass-001', 'pdd.md');
     const result = await runChecks({
       skill: 'idea-to-pdd-qa',
@@ -34,10 +34,13 @@ describe('ACE-PDD-Pass-001 (synthetic clean PDD)', () => {
       capture_path: '1-design/idea-to-pdd.md',
       artifact: pdd,
       checks: CHECKS,
+      // A real QA run supplies the artifact's Drive mimeType so the format
+      // check can verify it (ace#1061). A clean fixture is a native Doc.
+      context: { artifactMimeType: 'application/vnd.google-apps.document' },
     });
     expectQAPass(result);
-    expect(result.stats.checks_run).toBe(6);
-    expect(result.stats.checks_passed).toBe(6);
+    expect(result.stats.checks_run).toBe(7);
+    expect(result.stats.checks_passed).toBe(7);
     expect(result.skill).toBe('idea-to-pdd-qa');
   });
 });
@@ -53,6 +56,9 @@ describe('ACE-PDD-Bad-001 (adversarial fixture with intentional defects)', () =>
       capture_path: '1-design/idea-to-pdd.md',
       artifact: pdd,
       checks: CHECKS,
+      // The adversarial fixture's defects are all CONTENT defects; its format
+      // is fine, so the expected-result file stays about content.
+      context: { artifactMimeType: 'application/vnd.google-apps.document' },
     });
 
     // Verdict matches.

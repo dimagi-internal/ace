@@ -387,7 +387,17 @@ orchestrator from the per-skill QA + eval verdicts on the fly. -->
 
 5. **Self-evaluate (LLM-as-Judge) — Stress-Test Rubric.** Run the rubric defined in `## LLM-as-Judge Rubric` below against the drafted PDD. If **two or more** checks grade other than `pass`, the PDD is **not approved** — iterate on the weak sections and re-run before proceeding.
 
-6. **Write the PDD** to `1-design/idea-to-pdd.md`. **FIRST resolve-or-create the phase subfolder** — `drive_create_folder({name: '1-design', parentFolderId: <runFolderId>, findOrCreate: true})` — and use the returned id as `parentFolderId` for this write **and** for the QA + eval verdicts and the phase summary. Do NOT pass the run-folder id directly as the write parent: that lands the artifact flat at the run root and fails the Phase boundary's `verify_phase_artifacts` (it walks `1-design/`; jjackson/ace#623). `decisions.yaml` is the exception — it stays at the run-folder root. Include the stress-test rubric results as a `## Stress Test Results` appendix at the bottom of the PDD, so downstream skills (and humans) can see what was caught and what was waived.
+6. **Write the PDD** to `1-design/idea-to-pdd.md` **as a NATIVE Google Doc via
+   `drive_create_doc_from_markdown`** — NOT `drive_create_file` with a `text/*`
+   mimeType (dimagi-internal/ace#1061). The PDD is the only artifact in this
+   pipeline whose purpose is to be *argued with* by a human: the entire
+   feedback → ledger → next-run loop starts with a domain expert leaving
+   ANCHORED comments on it. A `text/markdown` upload renders in Drive's
+   plain-text previewer — no comment gutter, no suggesting mode, no way to
+   anchor to a section — and the failure is silent, because every content check
+   still passes. It regressed exactly that way between two runs of the same opp
+   six days apart (9 anchored comments → zero). `idea-to-pdd-qa` check 7
+   (`pdd_is_native_google_doc`) is the structural backstop. **FIRST resolve-or-create the phase subfolder** — `drive_create_folder({name: '1-design', parentFolderId: <runFolderId>, findOrCreate: true})` — and use the returned id as `parentFolderId` for this write **and** for the QA + eval verdicts and the phase summary. Do NOT pass the run-folder id directly as the write parent: that lands the artifact flat at the run root and fails the Phase boundary's `verify_phase_artifacts` (it walks `1-design/`; jjackson/ace#623). `decisions.yaml` is the exception — it stays at the run-folder root. Include the stress-test rubric results as a `## Stress Test Results` appendix at the bottom of the PDD, so downstream skills (and humans) can see what was caught and what was waived.
 
 <!-- 0.13.116: gate-brief write step removed. The orchestrator composes a
 pause-time summary from this skill's QA verdict (idea-to-pdd-qa) +

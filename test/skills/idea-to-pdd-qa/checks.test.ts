@@ -14,6 +14,7 @@ import {
   checkSuccessMetricsTablePopulated,
   checkEvidenceModelLayered,
   checkReviewerCommentTableIfReferenced,
+  checkPddIsNativeGoogleDoc,
   CHECKS,
 } from '../../../skills/idea-to-pdd-qa/checks';
 
@@ -265,10 +266,13 @@ describe('checkReviewerCommentTableIfReferenced', () => {
 });
 
 describe('CHECKS array', () => {
-  test('exports six checks in stable order', () => {
-    expect(CHECKS).toHaveLength(6);
+  test('exports seven checks in stable order', () => {
+    expect(CHECKS).toHaveLength(7);
     const ids = CHECKS.map((c) => c.id);
     expect(ids).toEqual([
+      // Format first: a PDD nobody can comment on fails its purpose before
+      // any question about its contents is worth asking (ace#1061).
+      'pdd_is_native_google_doc',
       'all_required_sections_present',
       'archetype_declared_and_valid',
       'stress_test_appendix_present',
@@ -321,5 +325,64 @@ describe('prefixed headings — checks 3 and 6 (#1227)', () => {
     const pdd = '# PDD\n\nAddresses comment [a].\n\n## 14. Reviewer Comments — Disposition\n\nProse only, no table.\n';
     const r = checkReviewerCommentTableIfReferenced(pdd);
     expect(r.pass).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// dimagi-internal/ace#1061 — the PDD silently regressed from a native Google
+// Doc to text/markdown between two runs of the SAME opp, six days apart:
+//
+//   20260722-1341 → application/vnd.google-apps.document  (Sophie left 9 anchored comments)
+//   20260728-0705 → text/markdown                         (no comment gutter at all)
+//
+// The PDD is the ONE artifact in the pipeline whose purpose is to be argued
+// with by a human; every other Phase-1 output is machine-facing. Ship it as
+// markdown and the whole feedback→ledger→next-run loop has no entry point —
+// and the failure is silent in both directions, because every CONTENT check
+// still passes. Format is exactly the property that regresses invisibly, so it
+// needs a check of its own.
+// ---------------------------------------------------------------------------
+
+describe('checkPddIsNativeGoogleDoc (#1061)', () => {
+  const GDOC = 'application/vnd.google-apps.document';
+
+  test('passes when the artifact is a native Google Doc', () => {
+    expect(checkPddIsNativeGoogleDoc({ artifactMimeType: GDOC }).pass).toBe(true);
+  });
+
+  test('fails on text/markdown — the exact regression — and names the fixing atom', () => {
+    const r = checkPddIsNativeGoogleDoc({ artifactMimeType: 'text/markdown' });
+    expect(r.pass).toBe(false);
+    expect(r.detail).toMatch(/text\/markdown/);
+    expect(r.auto_fix_hint).toMatch(/drive_create_doc_from_markdown/);
+  });
+
+  test('fails on any other non-Doc mimeType (pdf, plain text)', () => {
+    for (const mime of ['application/pdf', 'text/plain', 'application/octet-stream']) {
+      expect(checkPddIsNativeGoogleDoc({ artifactMimeType: mime }).pass).toBe(false);
+    }
+  });
+
+  test('fails — does NOT silently pass — when the mimeType was not supplied', () => {
+    // An unverifiable format check must not report success: "nobody checked"
+    // is how this regression shipped in the first place. The hint points at
+    // the RUNNER (pass --artifact-mime-type), not at the PDD's content, so
+    // the orchestrator does not burn an auto-fix rewriting a healthy doc.
+    const r = checkPddIsNativeGoogleDoc({});
+    expect(r.pass).toBe(false);
+    expect(r.auto_fix_hint).toMatch(/--artifact-mime-type/);
+    // …and it must steer the orchestrator AWAY from an auto-fix rewrite,
+    // since the PDD's content is not what failed.
+    expect(r.auto_fix_hint).toMatch(/do NOT regenerate/i);
+  });
+
+  test('is registered in CHECKS and reads its mimeType from ctx', () => {
+    const entry = CHECKS.find((c) => c.id === 'pdd_is_native_google_doc');
+    expect(entry).toBeDefined();
+    expect(entry!.type).toBe('static');
+    expect(entry!.run('# PDD\n', { artifactMimeType: GDOC })).toMatchObject({ pass: true });
+    expect(entry!.run('# PDD\n', { artifactMimeType: 'text/markdown' })).toMatchObject({
+      pass: false,
+    });
   });
 });
