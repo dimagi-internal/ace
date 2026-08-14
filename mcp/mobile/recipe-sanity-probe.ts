@@ -41,6 +41,7 @@ export type SanityFailureClass =
   | 'form-advance-without-answer-tap'
   | 'answer-tap-before-leading-label-advance'
   | 'group-field-list-per-question-walk'
+  | 'score-gated-quiz-over-advance'
   | 'brief-label-drift'
   | 'inputtext-geopoint-as-string'
   | 'deliver-smoke-rewalks-learn';
@@ -146,6 +147,10 @@ export interface NovaFieldSlice {
   label?: string;
   /** Select options, when the kind carries them. */
   options?: { label?: string }[];
+  /** Relevance condition verbatim, when the field carries one. The probe
+   * only reads its PRESENCE (a trailing relevant-gated `label` pair is
+   * the score-gated-quiz signature, #569/#1118); it never parses it. */
+  relevant?: string;
   /** Present iff `kind === 'group'` — the field-list's children. */
   children?: NovaFieldSlice[];
 }
@@ -338,6 +343,40 @@ export function probeRecipeSanity(inputs: ProbeInputs): SanityVerdict {
         recipe: recipe.name,
         parameter: 'leading-label-advances',
         value: `expected=${labelMiss.expected},found=${labelMiss.found}`,
+      });
+    }
+
+    // 6.7 score-gated-quiz-over-advance → on a SCORE-GATED quiz (#569:
+    // trailing relevant-gated result labels, FINISH-only finalize),
+    // form-submit.yaml performs the answer→result-label advance ITSELF.
+    // An explicit form-advance chained between the last answer and
+    // form-submit consumes that advance, leaving form-submit tapping a
+    // nav_btn_next the result screen does not render (ace#1118, carved
+    // out of #1045; same golden recipe, bednet-spot-check Learn app).
+    //
+    // Precision guards (same tax as 6.5/6.6):
+    //   * armed only when a candidate form's trailing label run carries
+    //     a `relevant`-gated label — an auto-finalize quiz legitimately
+    //     advances into nav_btn_next, so it must never fire there;
+    //   * every UNGATED label in the trailing run renders as its own
+    //     unconditional screen and licenses one bare advance — only
+    //     advances BEYOND that budget are flagged;
+    //   * ambiguous candidates: fires only when EVERY candidate form is
+    //     score-gated, against the most permissive budget among them;
+    //   * inert when the caller supplies no `fields`.
+    const overAdvance = findScoreGatedQuizOverAdvance(
+      recipe.text,
+      formShapes,
+      params.formNames,
+    );
+    if (overAdvance) {
+      failures.push({
+        class: 'score-gated-quiz-over-advance',
+        detail: `recipe ${recipe.name} chains ${overAdvance.found} bare form-advance step(s) between the last answer tap and form-submit (last advance at line ${overAdvance.line}), but form "${overAdvance.formName}" is score-gated (${overAdvance.gatedLabels.join(', ')} are relevant-gated result labels) — form-submit.yaml performs the answer→result advance itself (#569), so the extra advance leaves it tapping nav_btn_next on the FINISH-only result screen${overAdvance.expected > 0 ? ` (${overAdvance.expected} advance(s) are licensed by ungated trailing label screens; found ${overAdvance.found})` : ''}`,
+        remediation: `remove the explicit form-advance between the last required answer and the form-submit runFlow — on a score-gated quiz form-submit.yaml owns that advance (skills/app-test-cases/SKILL.md § Quiz / required-input answer-tap rule, ace#569/#1118); re-author via /ace:step app-test-cases`,
+        recipe: recipe.name,
+        parameter: 'post-answer-advances',
+        value: `expected<=${overAdvance.expected},found=${overAdvance.found}`,
       });
     }
 
@@ -749,6 +788,15 @@ interface FormShape {
    * (group children included). Excludes `label`/`hidden` fields — their
    * text is display-only, so tapping it is never an answer. */
   answerMatchers: string[];
+  /** Ids of the relevant-gated `label` fields in the form's TRAILING
+   * label run (skipping `hidden`). Non-empty = the #569 score-gated
+   * finalize signature: the result screen is FINISH-only, and
+   * form-submit.yaml performs the answer→result advance itself. */
+  trailingGatedLabels: string[];
+  /** Count of UNGATED `label` fields in that same trailing run. Each
+   * renders unconditionally as its own screen, so each licenses one
+   * bare form-advance between the last answer and form-submit. */
+  trailingUngatedLabelBudget: number;
 }
 
 /** One FormShape per supplied form. Empty when no caller passed
@@ -789,7 +837,25 @@ function collectFormShapes(apps: NovaAppSlice[]): FormShape[] {
             if (opt.label) answerMatchers.push(opt.label);
           }
         }
-        out.push({ formName: form.form_name, leadingLabelCount, leadingLabels, answerMatchers });
+        // Trailing label run, scanned from the end (hidden renders no
+        // screen and is skipped; stop at the first answerable field).
+        const trailingGatedLabels: string[] = [];
+        let trailingUngatedLabelBudget = 0;
+        for (let i = form.fields.length - 1; i >= 0; i--) {
+          const field = form.fields[i];
+          if (field.kind === 'hidden') continue;
+          if (field.kind !== 'label') break;
+          if (field.relevant) trailingGatedLabels.unshift(field.id);
+          else trailingUngatedLabelBudget++;
+        }
+        out.push({
+          formName: form.form_name,
+          leadingLabelCount,
+          leadingLabels,
+          answerMatchers,
+          trailingGatedLabels,
+          trailingUngatedLabelBudget,
+        });
       }
     }
   }
@@ -882,6 +948,86 @@ function findAnswerTapBeforeLeadingLabelAdvance(
     }
     // Budget cleared — this segment is done.
     candidates = null;
+  }
+  return null;
+}
+
+/** Find a bare form-advance chained between the last answer tap and a
+ * form-submit palette call on a score-gated quiz — the #569 over-advance,
+ * statically (ace#1118). Returns null when no field data was supplied, no
+ * entry step is present, no candidate is score-gated, or the advance count
+ * stays within the ungated-trailing-label budget. */
+function findScoreGatedQuizOverAdvance(
+  yaml: string,
+  shapes: FormShape[],
+  recipeFormNames: Set<string>,
+): {
+  formName: string;
+  expected: number;
+  found: number;
+  line: number;
+  gatedLabels: string[];
+} | null {
+  if (!shapes.length) return null;
+  if (!ENTRY_STEP_RE.test(yaml)) return null;
+
+  const items = splitTopLevelSteps(yaml);
+  let candidates: FormShape[] | null = null;
+  let sawAnswer = false;
+  let advancesSinceAnswer = 0;
+  let lastAdvanceLine = 0;
+
+  for (const item of items) {
+    if (ENTRY_STEP_RE.test(item.text)) {
+      const named = readStepFormName(item.text);
+      const fallback =
+        named === null && recipeFormNames.size === 1 ? [...recipeFormNames][0] : named;
+      const resolved = fallback === null ? shapes : shapes.filter((s) => s.formName === fallback);
+      candidates = resolved.length ? resolved : null;
+      sawAnswer = false;
+      advancesSinceAnswer = 0;
+      continue;
+    }
+    if (!candidates) continue;
+
+    if (/file:\s*form-submit\.yaml/.test(item.text)) {
+      if (sawAnswer && advancesSinceAnswer > 0) {
+        // Fire only when EVERY candidate is score-gated — if any candidate
+        // auto-finalizes, the advance could be legitimate for it.
+        const armed = candidates.filter((s) => s.trailingGatedLabels.length > 0);
+        if (armed.length === candidates.length) {
+          // Most permissive budget across candidates — flag only when the
+          // recipe over-advances against ALL of them.
+          const budget = Math.max(...armed.map((s) => s.trailingUngatedLabelBudget));
+          if (advancesSinceAnswer > budget) {
+            const shape = armed.reduce((max, s) =>
+              s.trailingUngatedLabelBudget > max.trailingUngatedLabelBudget ? s : max,
+            );
+            return {
+              formName: shape.formName,
+              expected: budget,
+              found: advancesSinceAnswer,
+              line: lastAdvanceLine,
+              gatedLabels: shape.trailingGatedLabels,
+            };
+          }
+        }
+      }
+      // This form walk is finalized — a later entry step starts the next.
+      candidates = null;
+      continue;
+    }
+
+    const kind = classifyStepBlock(item.text);
+    if (kind === 'answer') {
+      sawAnswer = true;
+      advancesSinceAnswer = 0;
+      continue;
+    }
+    if (kind === 'form-advance' && sawAnswer) {
+      advancesSinceAnswer++;
+      lastAdvanceLine = item.startLine;
+    }
   }
   return null;
 }

@@ -885,8 +885,8 @@ const LEADING_LABEL_QUIZ_APP: NovaAppSlice = {
             },
             { id: 'q1_score', kind: 'hidden' },
             { id: 'user_score', kind: 'hidden' },
-            { id: 'pass_msg', kind: 'label', label: 'You passed' },
-            { id: 'fail_msg', kind: 'label', label: 'Please retry' },
+            { id: 'pass_msg', kind: 'label', label: 'You passed', relevant: '#form/user_score >= 80' },
+            { id: 'fail_msg', kind: 'label', label: 'Please retry', relevant: '#form/user_score < 80' },
           ],
         },
       ],
@@ -1361,5 +1361,105 @@ describe('probeRecipeSanity — no cross-product failures (ace#1235)', () => {
     expect(
       verdict.failures.filter((f) => f.class === 'expected-form-not-in-module'),
     ).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// dimagi-internal/ace#1118 — score-gated-quiz-over-advance. On a score-gated
+// quiz (#569: trailing relevant-gated result labels, FINISH-only finalize),
+// form-submit.yaml performs the answer→result-label advance ITSELF. A recipe
+// that chains an explicit form-advance between the last answer and
+// form-submit consumes that advance, leaving form-submit tapping a
+// nav_btn_next the result screen does not render. Carved out of #1045's
+// "second, related miss in the same file"; observed in the same golden
+// recipe (bednet-spot-check, Nova Learn app 8c758d89).
+// ---------------------------------------------------------------------------
+
+/** Quiz walk parameterised on bare advances between the answer tap and the
+ * form-submit palette call (0 = correct for a score-gated quiz). */
+function learnQuizSubmitRecipe(advancesAfterAnswer: number): { name: string; text: string } {
+  const body = [
+    '- runFlow:',
+    '    file: learn-tap-module.yaml',
+    '    env:',
+    '      MODULE_NAME: "Connect Basics"',
+    '      FORM_NAME: "Connect Basics Quiz"',
+    '- runFlow:\n    file: form-advance.yaml', // past the leading intro label
+    '- tapOn:',
+    `    text: "${Q1_OPTION}"`,
+    ...Array.from({ length: advancesAfterAnswer }, () => '- runFlow:\n    file: form-advance.yaml'),
+    '- runFlow:',
+    '    file: form-submit.yaml',
+    '    env:',
+    '      SUBMIT_LABEL: "Submit"',
+  ].join('\n');
+  return recipeBody('journey-learn.yaml', body);
+}
+
+describe('probeRecipeSanity — failure class: score-gated-quiz-over-advance (#1118)', () => {
+  it('flags an explicit form-advance between the last answer and form-submit on a score-gated quiz', () => {
+    const verdict = probeRecipeSanity({
+      recipes: [learnQuizSubmitRecipe(1)],
+      novaApps: [LEADING_LABEL_QUIZ_APP],
+      connectOpp: LIVE_OPP,
+    });
+    const f = verdict.failures.find((x) => x.class === 'score-gated-quiz-over-advance');
+    expect(f).toBeDefined();
+    expect(f!.recipe).toBe('journey-learn.yaml');
+    expect(f!.detail).toContain('Connect Basics Quiz');
+    expect(f!.remediation).toMatch(/form-submit|#569/);
+  });
+
+  it('passes the same walk with NO advance between answer and form-submit', () => {
+    const verdict = probeRecipeSanity({
+      recipes: [learnQuizSubmitRecipe(0)],
+      novaApps: [LEADING_LABEL_QUIZ_APP],
+      connectOpp: LIVE_OPP,
+    });
+    expect(verdict.failures.map((x) => x.class)).not.toContain('score-gated-quiz-over-advance');
+  });
+
+  it('stays inert when the trailing labels carry no relevance gate (auto-finalize quiz)', () => {
+    const ungated: NovaAppSlice = JSON.parse(JSON.stringify(LEADING_LABEL_QUIZ_APP));
+    for (const field of ungated.modules[0].forms[0].fields!) delete (field as any).relevant;
+    const verdict = probeRecipeSanity({
+      recipes: [learnQuizSubmitRecipe(1)],
+      novaApps: [ungated],
+      connectOpp: LIVE_OPP,
+    });
+    expect(verdict.failures.map((x) => x.class)).not.toContain('score-gated-quiz-over-advance');
+  });
+
+  it('allows one bare advance per UNGATED trailing label sitting before the gated pair', () => {
+    const withThanks: NovaAppSlice = JSON.parse(JSON.stringify(LEADING_LABEL_QUIZ_APP));
+    const fields = withThanks.modules[0].forms[0].fields!;
+    // an unconditional wrap-up screen between the last question and the
+    // score-gated result labels — it renders always and needs its own advance
+    fields.splice(fields.length - 2, 0, { id: 'wrap_up', kind: 'label', label: 'Thanks for answering' });
+    const one = probeRecipeSanity({
+      recipes: [learnQuizSubmitRecipe(1)],
+      novaApps: [withThanks],
+      connectOpp: LIVE_OPP,
+    });
+    expect(one.failures.map((x) => x.class)).not.toContain('score-gated-quiz-over-advance');
+    const two = probeRecipeSanity({
+      recipes: [learnQuizSubmitRecipe(2)],
+      novaApps: [withThanks],
+      connectOpp: LIVE_OPP,
+    });
+    expect(two.failures.map((x) => x.class)).toContain('score-gated-quiz-over-advance');
+  });
+
+  it('stays inert when the caller supplies no fields (same contract as the sibling checks)', () => {
+    const noFields: NovaAppSlice = {
+      app_id: 'x',
+      modules: [{ module_name: 'Connect Basics', forms: [{ form_name: 'Connect Basics Quiz' }] }],
+    };
+    const verdict = probeRecipeSanity({
+      recipes: [learnQuizSubmitRecipe(1)],
+      novaApps: [noFields],
+      connectOpp: LIVE_OPP,
+    });
+    expect(verdict.failures.map((x) => x.class)).not.toContain('score-gated-quiz-over-advance');
   });
 });
