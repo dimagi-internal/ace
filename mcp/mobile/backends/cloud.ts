@@ -163,12 +163,6 @@ export interface CloudDiagnostics {
   kvm_dev_present?: boolean | null;
 }
 
-export interface CloudPatchLaunchScriptResult {
-  sha256: string;
-  bytes_written: number;
-  restarted_runner: boolean;
-  restart_log: string | null;
-}
 
 export class CloudBackend {
   private readonly baseUrl: string;
@@ -295,28 +289,6 @@ export class CloudBackend {
     const body: Record<string, unknown> = {};
     if (opts.waitForReady === false) body.wait_for_ready = false;
     return this.post<CloudDiagnostics>('/api/mobile/restart-runner', body);
-  }
-
-  /**
-   * Hot-patch the in-VM `/usr/local/bin/ace-emulator-launch` via
-   * `POST /api/mobile/admin/patch-launch-script`. The same fix MUST
-   * also land in `infra/mobile-ami/files/ace-emulator-launch` on the
-   * ace-web repo so the next AMI rebake picks it up — without that
-   * the live fix evaporates on next AMI roll.
-   *
-   * Server enforces a `#!/bin/bash` shebang + 64KB size cap.
-   */
-  async patchLaunchScript(opts: {
-    scriptBody: string;
-    restartRunner?: boolean;
-  }): Promise<CloudPatchLaunchScriptResult> {
-    return this.post<CloudPatchLaunchScriptResult>(
-      '/api/mobile/admin/patch-launch-script',
-      {
-        script_body: opts.scriptBody,
-        restart_runner: opts.restartRunner ?? true,
-      },
-    );
   }
 
   // ── APK ─────────────────────────────────────────────────────────

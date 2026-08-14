@@ -79,7 +79,7 @@ const SERVERS: Record<string, ServerSpec> = {
   },
   mobile: {
     file: 'mcp/mobile-server.ts',
-    expectedCount: 19, // +2: mobile_list_session_videos / mobile_clear_session_videos
+    expectedCount: 18, // -1: mobile_patch_launch_script deleted (ace#1113)
     allowedPrefixes: ['mobile_'],
     // capabilityMap enabled in PR-R (2026-05-25) after aligning the map
     // with the server registrations. The previously-extra
@@ -87,7 +87,9 @@ const SERVERS: Record<string, ServerSpec> = {
     // capability-map source as "intentionally not registered as an MCP
     // atom" (programmatic-only); the previously-missing 5 atoms
     // (validate_recipe, resolve_selectors, diagnose, restart_runner,
-    // patch_launch_script) now appear in both places.
+    // patch_launch_script) then appeared in both places. `patch_launch_script`
+    // was later DELETED outright (ace#1113 — an unguarded RCE on the shared
+    // cloud runner with no production caller), so it is absent from both.
     capabilityMap: MOBILE_MAP,
     capabilityPrefix: 'mobile_',
   },

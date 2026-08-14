@@ -1404,7 +1404,7 @@ Add a person to the OCS team so a linked chatbot page actually opens for them (d
 
 ## ace-mobile
 
-Source: `mcp/mobile-server.ts` — 19 atoms
+Source: `mcp/mobile-server.ts` — 18 atoms
 
 ### `mobile_ensure_avd_running`
 
@@ -1525,13 +1525,6 @@ _no parameters_
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `waitForReady` | `z.boolean` | optional | Block until the runner re-sets the ready marker (default true). False is fire-and-forget — returns a partial Diagnostics snapshot immediately. |
-
-### `mobile_patch_launch_script`
-
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `scriptBody` | `z.string` | **required** | Full new body of /usr/local/bin/ace-emulator-launch. Must start with '#!/bin/bash'. Server enforces a 64KB cap. |
-| `restartRunner` | `z.boolean` | optional | After writing the new script, restart ace-mobile-runner.service so the next cold-boot exercises it (default true). |
 
 ## ace-decisions
 
