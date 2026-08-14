@@ -279,15 +279,79 @@ effect. Treat a missing value as "never validated", not as "valid".
         `execution-management`, `closeout`) → `status: skipped`. Also set
         `seeded_from: <golden_run_id>` at the run-state root. (Pass the COMPLETE
         `phases` block so the merge replaces the forked default cleanly.)
-     3. **Resume**: spawn a plain `/ace:run <opp>/<new_run_id>` (fresh local
-        `claude -p` / subagent). No flags. The resume path drives the shape.
+     3. **Resume**: spawn a plain `/ace:run <opp>/<new_run_id>` — **always
+        through `bin/ace-run-supervise`**, never a bare `claude -p … > log`.
+        No flags on the run itself; the resume path drives the shape.
+
+        ```bash
+        bin/ace-run-supervise --run-dir "$SCRATCH/iter<N>" --prompt-file "$SCRATCH/iter<N>/prompt.txt"
+        ```
+
+        A bare redirect discards the exit code and the session id and reduces a
+        multi-hour run to whatever text reached the log. Observed 2026-08-13 on
+        `bednet-check-2-visit/20260814-0357`: 41 minutes, then the single
+        string `Execution error` — the loop could not tell a usage limit from
+        an MCP crash from a real phase halt, so it could not decide whether the
+        iteration counted. The supervisor pre-assigns `--session-id` (step 4
+        then reads a known transcript rather than racing on mtime) and writes
+        `run-exit.json`.
    Either way the loop's new run-id is known up-front (the action's `run_id`, or
    the local `fork-run` result) — no post-launch folder-listing race.
 4. **Observe** until phases 3 + 6 reach a terminal state — the loop's only
    inputs, both produced by the run itself:
    - Poll `ACE/<opp>/runs/<new-run-id>/run_state.yaml` on Drive.
    - Read the Claude session transcript for progress + failure detail
-     (web: `GET /api/w/<ws>/sessions/<slug>/messages`; local: the `.jsonl`).
+     (web: `GET /api/w/<ws>/sessions/<slug>/messages`; local: the `.jsonl` named
+     by `<run-dir>/session-id`).
+   - **When the process exits, read `<run-dir>/run-exit.json` FIRST.** It is the
+     only artifact that says why it stopped. If `counts_as_iteration` is
+     `false`, the run is **`aborted-infra`** (ace#1276 item 4): it produced no
+     verdict, so **do not append it to `iterations[]` and do not run Autofix** —
+     recording it as `dirty` would move the headline pass rate with an
+     operator-side fact rather than ACE's behaviour, which is exactly the
+     metric failure this loop exists to avoid. Record it in campaign notes so
+     the work isn't invisible, then re-dispatch:
+     - `session_limit` — the account, not ACE. The **local** runner shares the
+       operator's session-limit pool; three concurrent sessions on one macOS
+       account exhausted it simultaneously on 2026-08-13.
+     - `external_kill` — interrupted from outside. This was the real cause of
+       the 41-minute `Execution error` that made this whole section necessary;
+       both Nova apps were built and both evals banked (9.6 / 9.2) when it was
+       stopped. Nothing failed.
+     - `mcp_crash` — a subprocess died or is bound to pruned plugin-cache code.
+       Needs a full Claude quit-and-reopen (`/reload-plugins` does not respawn
+       MCP subprocesses); see `lib/plugin-cache-freshness.ts`.
+     - `killed` / `timeout` — host or operator, not the run.
+     A `phase_halt` **does** count: that is a real verdict, judge it at step 5.
+
+   > **Preflight the runner before dispatching — don't launch into a known-dead
+   > one** (ace#1276 item 2). A seeded run is 1–3h of Nova + Connect + on-device
+   > work, so starting one against exhausted capacity or stale auth guarantees a
+   > mid-Phase death the loop cannot tell from a run defect. On `local`: a cheap
+   > `claude -p "Reply PONG"` settles capacity *and* login in seconds — the
+   > bednet campaign found this out the expensive way, then confirmed the cause
+   > in 8s with exactly that probe. Halt-and-surface rather than dispatching;
+   > `canopy:auth-preflight` is the existing precedent.
+   >
+   > **`local` is the deliberate choice, and the loop is PARKED** (Jonathan,
+   > 2026-08-14). The goal right now is getting a run through end-to-end
+   > consistently — not measuring a pass rate over runs that don't finish, and
+   > not running a seeded run like an `/ace:turn`. So: don't reach for this loop
+   > until a plain `/ace:run` clears the bar in § 5 unaided. The fix for local's
+   > opacity is the supervisor above, not a switch to `--runner web`.
+   >
+   > **What survives the parking is § 5's clean bar** — in particular the
+   > server-side term (`connect_get_deliver_progress` → `approved >= 1`). That
+   > is the definition of done for a manual run too: every other clause is
+   > satisfiable by a run whose delivery never left the handset, which was
+   > observed live on `bednet-spot-check/20260729-1239` (Phase 6 shallow
+   > `pass` while the device read `Daily Visits 0/5` / `last synced: never`).
+   > Judge attended runs by it; don't let the loop's parking take it with it.
+   >
+   > For whenever this is unparked: web preflights on its own (the bednet web
+   > dispatch was refused in ~2s with `409 nova_auth_invalid`, naming the
+   > credential and the fix), and the two runners are **not interchangeable at
+   > a given moment** — local Nova auth was valid while web's was not.
 5. **Judge** (client-side interpretation of the standard verdicts):
    - **clean** iff `classifyPhaseWriteBack(run_state, 'commcare-setup') == 'ok'`
      AND `classifyPhaseWriteBack(run_state, 'qa-and-training') == 'ok'` AND the
