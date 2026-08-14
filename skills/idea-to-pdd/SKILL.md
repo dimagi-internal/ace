@@ -16,6 +16,7 @@ Take an initial idea and iterate on it to produce a complete Program Design Doc 
 |---|---|---|
 | Operator | `ACE/<opp-name>/runs/<run-id>/inputs-manifest.yaml` | frozen pointer-set to source material captured at run-start |
 | Operator | each `file_id` in the manifest | source content (PDFs, docs, sheets, markdown) |
+| Prior runs | `ACE/<opp-name>/open-questions.md` (opp ROOT, durable across runs; passed inline at handoff) | questions ALREADY raised/verified for this opp — read them back before raising your own (ace#1201) |
 
 ## Products
 
@@ -45,6 +46,23 @@ orchestrator from the per-skill QA + eval verdicts on the fly. -->
    `playbook/integrations/external-sourcing.md` — which records the Box
    failure ladder so it isn't re-derived — and drops the file in
    `inputs/`. See dimagi-internal/ace#890.
+
+   **Read the opp's durable `open-questions.md` too** (opp ROOT, not under
+   `inputs/`, so it is NOT in the manifest — the orchestrator passes its
+   `file_id` inline at handoff; if it wasn't passed, resolve it via
+   `resolve_opp_path` and read it when present). It carries questions prior
+   runs already raised — and, in some rows, ANSWERS a prior run verified.
+   Before adding a question of your own, check whether it is already there.
+
+   For every pre-existing question, this run must state one of:
+   **resolves** (this run answers it — record the answer + evidence),
+   **carries forward** (still open), or **contradicts** (this run's finding
+   disagrees with a recorded, verified answer). A contradiction is LOUD:
+   surface it in the PDD's open-questions section AND at the Phase 1→2 pause
+   summary — never silently overwrite the prior answer. On
+   `hh-poverty-targeting/20260812-1613` two items were contradicted with no
+   signal at all, because the file was written every run and read by none
+   (ace#1201).
 
    Read `ACE/<opp-name>/runs/<run-id>/inputs-manifest.yaml`
    first via `drive_read_file`. The manifest shape is:

@@ -116,6 +116,14 @@ So: **status/verdict is a necessary check, never a sufficient one.**
    `/ace:run <opp>/<new-run-id>` resume. Same structural-shape trick the loop
    uses for seeded runs — the resume path runs the `pending` phases and stops
    when none remain. Two phases, no Nova, no Connect, no device.
+
+   Seeding writes `run_state.yaml` and nothing else; the **inputs manifest is
+   the resume path's job** and is captured unconditionally there
+   (`agents/ace-orchestrator.md § Resolve the run-id → Resume mode`, ace#1234).
+   Before that was unconditional, a hand-seeded run reached Phase 1 with an
+   empty run folder and no declared evidence pack — silently, because Phase 1
+   still produces a PDD. If you seed a run by hand and drive it some other
+   way, capture the manifest yourself.
 2. **Validate against TODAY's rubrics.** Confirm `idea-to-pdd-eval`,
    `pdd-to-test-prompts-eval` and `pdd-to-app-journeys-eval` all `pass` at the
    current plugin VERSION. **Refuse to lock on any failure** and report which
