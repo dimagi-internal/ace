@@ -1,5 +1,6 @@
   39733  39586 Thu Aug 13 14:35:15 2026 npm exec tsx /Users/x/.claude/plugins/cache/ace/ace/0.13.770/mcp/connect-server.ts
   39734  39586 Thu Aug 13 14:35:16 2026 npm exec tsx /Users/x/.claude/plugins/cache/ace/ace/0.13.770/mcp/mobile-server.ts
   39735  39586 Thu Aug 13 14:35:17 2026 npm exec tsx /Users/x/.claude/plugins/cache/ace/ace/0.13.770/mcp/google-drive-server.ts
+  39736  39586 Thu Aug 13 14:35:17 2026 npm exec tsx /Users/x/.claude/plugins/cache/ace/ace/0.13.641/mcp/ocs-server.ts
   39900  39586 Thu Aug 13 14:35:18 2026 npm exec tsx /Users/x/.claude/plugins/cache/chrome-sales/chrome-sales/1.0.0/mcp/google-drive-server.ts
   39901  39586 Thu Aug 13 14:35:19 2026 /bin/zsh -l

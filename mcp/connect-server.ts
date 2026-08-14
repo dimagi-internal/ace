@@ -49,6 +49,12 @@ import {
 } from '../lib/commcare-cli-validate.js';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
+import { existsSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import {
+  isStaleCacheModuleError,
+  pluginRootFromCommand,
+} from '../lib/plugin-cache-freshness.js';
 
 const baseUrl = process.env.CONNECT_BASE_URL ?? 'https://connect.dimagi.com';
 const cchqBaseUrl = process.env.ACE_HQ_BASE_URL ?? 'https://www.commcarehq.org';
@@ -201,6 +207,35 @@ async function runAtom<T>(fn: () => Promise<T>): Promise<{ content: Array<{ type
     }
     if (err instanceof BuildRejectedError) {
       return { ...json(err.toJSON()), isError: true };
+    }
+    // ace#970 — this subprocess is executing from a plugin-cache directory that
+    // has since been pruned, so a lazy module load inside a dependency failed.
+    // The raw text names playwright, which sends the caller after the wrong
+    // system entirely. Retype it once, here: runAtom is the single catch for
+    // every atom this server registers, so this covers all of them.
+    //
+    // Both halves are required. The message alone would mislabel an ordinary
+    // missing dependency; the missing directory alone would mislabel any
+    // unrelated failure that happens after a prune.
+    const msg = err instanceof Error ? err.message : String(err);
+    if (isStaleCacheModuleError(msg)) {
+      const parsed = pluginRootFromCommand(fileURLToPath(import.meta.url));
+      if (parsed && !existsSync(parsed.root)) {
+        return {
+          ...json({
+            error: 'stale_plugin_cache',
+            bound_version: parsed.version,
+            bound_root: parsed.root,
+            detail: msg,
+            remedy:
+              'This MCP subprocess is running from a plugin-cache directory that no longer ' +
+              'exists (a newer ACE version pruned it). Quit and reopen Claude Code (Cmd-Q) — ' +
+              '/reload-plugins does NOT respawn MCP subprocesses. /ace:doctor reports this as ' +
+              'cache_freshness.',
+          }),
+          isError: true,
+        };
+      }
     }
     throw err;
   }
