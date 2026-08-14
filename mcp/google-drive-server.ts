@@ -20,6 +20,7 @@ import { Readable } from 'stream';
 import { fileURLToPath } from 'url';
 import YAML from 'yaml';
 import { resolvePluginDataDir, logPluginDataDirDiag } from '../lib/plugin-data-dir.js';
+import { resolveUpdateFileContent } from '../lib/atom-payload-resolver.js';
 import { resolveGogIdentity } from '../lib/gog-identity.js';
 import {
   validateRunState,
@@ -577,14 +578,16 @@ server.tool(
 // 10. Update a Drive file's content
 server.tool(
   'drive_update_file',
-  'Update the text content of an existing Google Doc in Drive. Use for updating PDDs, summaries, and other docs as ACE skills produce new content. Pass `ifMatchRevisionId` (from a prior `drive_read_file`) to opt into optimistic-concurrency CAS — the write is rejected with a typed `revision_conflict` error if another writer changed the file in between, so the caller can re-read and retry without overwriting concurrent edits. Required pattern for any read-modify-write on a shared file (e.g., opp.yaml updates from concurrent /ace:run invocations).',
+  'Update the text content of an existing Google Doc in Drive. Use for updating PDDs, summaries, and other docs as ACE skills produce new content. Content comes from exactly ONE of `content` (inline, small updates only — refused above 40,000 chars with a typed `oversized_inline_content` error) or `localFilePath` (preferred for anything large: the server reads the bytes off disk, so a read-modify-write via `drive_read_file writeToPath` → local edit → this call costs ~zero context regardless of file size, and the fileId — and every shared URL — is preserved, unlike `drive_upload_binary`, which mints a new file). Pass `ifMatchRevisionId` (from a prior `drive_read_file`) to opt into optimistic-concurrency CAS — the write is rejected with a typed `revision_conflict` error if another writer changed the file in between, so the caller can re-read and retry without overwriting concurrent edits. Required pattern for any read-modify-write on a shared file (e.g., opp.yaml updates from concurrent /ace:run invocations).',
   {
     fileId: z.string().describe('The Google Drive file ID'),
-    content: z.string().describe('The new text content to write'),
+    content: z.string().optional().describe('The new text content, inline. Small updates only (max 40,000 chars). Provide either this OR localFilePath, not both.'),
+    localFilePath: z.string().optional().describe('Absolute path to a local file whose utf-8 content becomes the new file content. Reads directly from disk — avoids passing the whole document through the context window. Provide either this OR content, not both. Mirrors drive_upload_binary\'s param of the same name.'),
     ifMatchRevisionId: z.string().optional().describe('Optional. The revisionVersion returned by the prior drive_read_file. If supplied and the file\'s current revisionVersion no longer matches, the update is rejected with a revision_conflict error instead of overwriting the change.'),
   },
-  async ({ fileId, content: newContent, ifMatchRevisionId }) => {
+  async ({ fileId, content, localFilePath, ifMatchRevisionId }) => {
     try {
+      const newContent = resolveUpdateFileContent({ content, localFilePath });
       // Optimistic concurrency: re-read the file's `version` and compare. Drive's
       // files.update has no native If-Match equivalent, so we do the check
       // server-side here. This narrows but does not eliminate the race; for

@@ -12,13 +12,86 @@
  *
  * Shipped 0.13.29 alongside the atom signatures.
  */
-import { readFileSync } from 'node:fs';
+import { mkdirSync, readFileSync } from 'node:fs';
+import { dirname, isAbsolute } from 'node:path';
 
 export class AtomArgUsageError extends Error {
   constructor(message: string) {
     super(message);
     this.name = 'AtomArgUsageError';
   }
+}
+
+/**
+ * Inline-content ceiling for `drive_update_file` (characters). Mirrors
+ * `drive_read_file`'s inline refusal so the read and write halves of a
+ * read-modify-write have symmetric context costs: above this, callers must
+ * use `localFilePath`, which costs ~zero context regardless of file size
+ * (dimagi-internal/ace#1218).
+ */
+export const UPDATE_FILE_INLINE_CEILING = 40_000;
+
+/**
+ * Resolve the text payload for `drive_update_file` — either the inline
+ * `content` string or the file at `localFilePath` (utf-8), never both,
+ * never neither. Inline content above {@link UPDATE_FILE_INLINE_CEILING}
+ * is refused with a typed error pointing at `localFilePath`, so the
+ * expensive path is loud rather than the silent default.
+ *
+ * @throws AtomArgUsageError when the caller violates the contract.
+ */
+export function resolveUpdateFileContent(args: {
+  content?: string;
+  localFilePath?: string;
+}): string {
+  const { content, localFilePath } = args;
+  if (content !== undefined && localFilePath !== undefined) {
+    throw new AtomArgUsageError(
+      'drive_update_file: pass exactly one of content or localFilePath, not both',
+    );
+  }
+  if (content === undefined && localFilePath === undefined) {
+    throw new AtomArgUsageError(
+      'drive_update_file: must supply one of content or localFilePath',
+    );
+  }
+  if (localFilePath !== undefined) return readFileSync(localFilePath, 'utf-8');
+  if (content!.length > UPDATE_FILE_INLINE_CEILING) {
+    throw new AtomArgUsageError(
+      `oversized_inline_content: content is ${content!.length} chars (ceiling ${UPDATE_FILE_INLINE_CEILING}). ` +
+        `Write it to a local file and pass localFilePath instead — the server reads the bytes off disk, ` +
+        `so the update costs ~zero context regardless of file size.`,
+    );
+  }
+  return content!;
+}
+
+/**
+ * Validate + prepare a caller-supplied write path: require an absolute path
+ * (the MCP server's CWD is the plugin cache, not the caller's project, so a
+ * relative path writes somewhere unexpected) and create missing parent
+ * directories. Returns the path unchanged so call sites can inline it:
+ * `writeFileSync(prepareWritePath(p), buf)`.
+ *
+ * Exists so every write-path param in the plugin behaves like
+ * `drive_read_file`'s `writeToPath` (which documents "missing parent
+ * directories are created") — `commcare_download_ccz`'s `write_to_path`
+ * threw a bare ENOENT instead, on the exact chain `app-release-qa`
+ * prescribes into a fresh scratch dir (dimagi-internal/ace#1247, absorbed
+ * into #1218).
+ *
+ * @throws AtomArgUsageError on a relative path.
+ */
+export function prepareWritePath(p: string): string {
+  if (!isAbsolute(p)) {
+    throw new AtomArgUsageError(
+      `write_path_not_absolute: expected an absolute path (got "${p}"). ` +
+        `This server's working directory is the plugin cache, not your project, ` +
+        `so a relative path would write somewhere unexpected.`,
+    );
+  }
+  mkdirSync(dirname(p), { recursive: true });
+  return p;
 }
 
 /**
