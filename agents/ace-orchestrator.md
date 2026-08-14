@@ -1377,7 +1377,7 @@ When `--dry-run` is passed to `/ace:run`:
 - Effectful skills (those that send emails, publish apps, create tickets, or call external APIs) write their intended actions to `comms-log/dry-run-<step>.md` instead of executing
 - LLM-as-Judge evaluation still runs at each step
 - Gates still apply per the active mode (default/review/auto)
-- `run_state.yaml` marks dry-run steps so they're distinguishable from real runs (e.g. a `dry_run: true` flag on the step entry); the step `status` stays in the standard `done | error | incomplete` enum (§ Phase Write-Back Contract), not the retired `success`/`blocked` vocabulary
+- `run_state.yaml` marks dry-run steps so they're distinguishable from real runs (e.g. a `dry_run: true` flag on the step entry); the step `status` stays in the standard `done | error | incomplete` enum ([reference § Phase Write-Back Contract](orchestrator-reference.md#phase-write-back-contract)), not the retired `success`/`blocked` vocabulary
 - Pass the dry-run flag to all phase agents
 
 ## Sandbox Mode

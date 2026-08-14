@@ -125,5 +125,5 @@ Unless `--no-evals` was passed, invoke `pdd-to-app-journeys-eval`.
 
 ### Completion
 Write phase summary to `ACE/<opp-name>/runs/<run-id>/2-scenarios/scenarios-and-acceptance_summary.md`,
-then write the `phases.scenarios-and-acceptance` block per `agents/ace-orchestrator.md § Phase
+then write the `phases.scenarios-and-acceptance` block per `agents/orchestrator-reference.md § Phase
 Write-Back Contract`. Required top-level keys on the patch: `phases`, `last_actor`, `last_actor_at`.

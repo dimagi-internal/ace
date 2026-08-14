@@ -234,8 +234,8 @@ effect. Treat a missing value as "never validated", not as "valid".
    targets 3,4,6: pending; gap+tail 5,7,8,9,10: skipped}`, then drive a plain
    resume. The orchestrator's resume path runs the `pending` phases in order,
    steps over `skipped`, and ends when no `pending` phase remains — so "run
-   only 3,4,6 then stop" is structural (§ ace-orchestrator.md § Run shape on
-   resume).
+   only 3,4,6 then stop" is structural (§ orchestrator-reference.md § Run shape
+   rationale).
    - **web**: POST the **workspace-scoped** `seeded-run` action — it forks +
      shapes the new run + injects the plain resume command, all server-side,
      and drives it headlessly. First resolve the workspace slug:

@@ -558,7 +558,7 @@ After Step 2 finishes:
 
 1. **Write the phase summary** to `ACE/<opp-name>/runs/<run-id>/6-qa-and-training/qa-and-training_summary.md`. The summary lists the screenshot bundle, the 5 training docs (with Drive URLs from `products.training.docs.*`), the optional deck render (when `ACE_TRAINING_DECK_TEMPLATE_ID` was set), the onboarding email, and any open `phases.commcare-setup.residuals[]` entries (per the pre-flight checklist — repeated until cleared). This file is the operator-facing handoff for Phase 9.
 
-2. **Write the `phases.qa-and-training` block** per [`agents/ace-orchestrator.md § Phase Write-Back Contract`](../agents/orchestrator-reference.md#phase-write-back-contract). Set `phases.qa-and-training.status: done` + a verdict like `proceed` or `proceed-with-warn`, populate `summary_artifact:` with the file ID from step 1, and include the per-skill `steps:` map. Required top-level keys on the patch: `phases`, `last_actor`, `last_actor_at`.
+2. **Write the `phases.qa-and-training` block** per [`agents/orchestrator-reference.md § Phase Write-Back Contract`](../agents/orchestrator-reference.md#phase-write-back-contract). Set `phases.qa-and-training.status: done` + a verdict like `proceed` or `proceed-with-warn`, populate `summary_artifact:` with the file ID from step 1, and include the per-skill `steps:` map. Required top-level keys on the patch: `phases`, `last_actor`, `last_actor_at`.
 
    **Exception — a hollow deck is not a `proceed-with-warn` (dimagi-internal/ace#856).** If `training-deck-generate` returned `severity: BLOCKER` on its visual-coverage gate (step 5b — no per-opp captures at all, or both app legs missing), then:
 
