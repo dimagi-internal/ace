@@ -151,6 +151,17 @@ doesn't re-emit the LLO guide or FAQ.
 
 Fourth of the per-artifact training skills.
 
+## Support channel (shared contract)
+
+Follow `skills/_training-template.md § Support channel — one contract, all six
+skills` (dimagi-internal/ace#1303): this artifact is **worker-facing**, so its
+support line names a HUMAN (LLO coordinator / Partner Trainer) plus the in-app
+**GRM menu** — never the `openchatstudio.com` host, the chatbot `public_id`, or
+the `embed_key`. Those are embed credentials, not a destination a CBF can open
+(the embed path live-probes 404; Connect has no per-opp widget field, CCC-301).
+Run `checkWorkerFacingSupportChannel` from `lib/support-channel-guard.ts` over
+the composed markdown before writing and rewrite any finding.
+
 ## Change Log
 
 - v1 (0.10.84): Initial skill. Owns `training-quick-reference.md` only.

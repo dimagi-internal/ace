@@ -44,11 +44,53 @@ skill defines its own; do not try to share.)
 policy, structural conventions. Each skill's audience and re-run
 semantics drive different rules — do not try to share.)
 
+## Support channel — one contract, all six skills (dimagi-internal/ace#1303)
+
+**Worker-facing artifacts** (`training-flw-guide`, `training-quick-reference`,
+`training-faq`) name a support channel the worker can actually reach:
+
+1. a **human** — the LLO coordinator / Partner Trainer, and
+2. the app's own in-app grievance route (the **GRM menu**), which the PDD
+   already designates as the complaint channel.
+
+**Never print OCS credentials in a worker-facing artifact** — not the
+`openchatstudio.com` host, not the chatbot `public_id`, not the `embed_key`.
+Those are *embed credentials*, not a destination: OCS serves the bot only as an
+embedded corner widget, `/chatbots/embed/<public_id>/` live-probes **404**, and
+Connect has no per-opportunity widget field to embed it into (CCC-301). A
+36-character UUID also cannot be transcribed mid-visit. Phase 5 correctly
+produces credentials; Phase 6 has nothing worker-reachable to turn them into,
+and inventing a plausible-looking `/chat/<id>` URL is worse than saying so.
+
+Credentials ARE correct in the **LLO-facing** artifacts (`training-llo-guide`,
+`training-onboarding-email`) — their recipient is the person doing the
+embedding.
+
+This is shared rather than per-skill because the same run produced **three
+different answers** to this one question: two artifacts printed the
+credentials (flagged independently by `training-quick-reference-eval` and
+`training-faq-eval`, the latter calling it "the single most important
+finding") and a third declined to invent a link and routed to the coordinator.
+
+**Check before writing:** run the pure helper over the composed markdown —
+
+```ts
+import { checkWorkerFacingSupportChannel, formatSupportChannelReport }
+  from '../../lib/support-channel-guard';
+const report = checkWorkerFacingSupportChannel(markdown);
+```
+
+Any finding is a rewrite-before-write, not a warning. It is string logic over
+your own output, so it costs nothing and catches the class the evals otherwise
+catch one artifact at a time, after the fact.
+
 ## Process
 
 1. Read inputs.
 2. Compose the artifact per format rules.
 3. Self-check against the four-criterion self-eval (per-skill specific).
+3b. **Worker-facing skills only:** run the support-channel check above and
+   rewrite any finding before writing.
 4. Write to Drive.
 5. Self-evaluate via LLM-as-Judge — write
    `<artifact>_verdict.yaml` using the verdict shape from
