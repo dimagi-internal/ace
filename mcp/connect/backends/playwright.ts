@@ -358,21 +358,75 @@ export class PlaywrightBackend implements ConnectClient {
 
   // ── Opportunities ─────────────────────────────────────────────────
 
-  listOpportunities: ConnectClient['listOpportunities'] = async ({ organization_slug, name }) => {
+  /**
+   * List an org's opportunities from the list page.
+   *
+   * ## What this atom can and cannot answer (dimagi-internal/ace#1022)
+   *
+   * The list page carries an opportunity's id, name and short description —
+   * and nothing else. Until #1022 this method papered over that by
+   * hardcoding `managed: true, active: false` and silently DROPPING the
+   * `program_id` filter it accepts, so:
+   *
+   * - `connect-program-setup § Step 4a` (program-budget headroom, ace#588)
+   *   needs `Σ(total_budget)` over a PROGRAM's opps. The filter was ignored
+   *   AND `total_budget` was never returned, so the headroom check silently
+   *   no-opped and surfaced later as an un-actionable "Budget exceeds the
+   *   program budget" rejection — precisely the failure #588 was filed to
+   *   prevent.
+   * - `connect-opp-setup § Step 4` (single-active-opp invariant, #106
+   *   finding 11) warns "for each opp where `active=true`". With `active`
+   *   hardcoded `false` that WARN could NEVER fire, so the silent
+   *   deactivation it was written to catch was undetectable by it.
+   *
+   * Live on spark-facilitator/20260728-1338: called with a program created
+   * seconds earlier holding ZERO opportunities, it returned 20 belonging to
+   * other programs, every one `managed: true, active: false`.
+   *
+   * So now: `program_id` is REFUSED loudly (a wrong result set is worse than
+   * an error), and fields the page does not carry are left `undefined`
+   * rather than fabricated. Pass `hydrate: true` to fetch each opp through
+   * `getOpportunity`, which parses the real `active` toggle off the edit
+   * form — the same hydrate-the-filtered-rows pattern `listPrograms` uses.
+   */
+  listOpportunities: ConnectClient['listOpportunities'] = async ({
+    organization_slug,
+    name,
+    program_id,
+    hydrate,
+  }) => {
+    if (program_id) {
+      throw new Error(
+        `unsupported_filter: the opportunity list page carries no program column, so ` +
+          `program_id cannot be filtered here and silently ignoring it returns the whole org ` +
+          `(dimagi-internal/ace#1022). Either hydrate and filter yourself — ` +
+          `listOpportunities({organization_slug, hydrate: true}) then get_opportunity per row — ` +
+          `or read the opportunities off the program page.`,
+      );
+    }
     const path = `/a/${organization_slug}/opportunity/`;
     const res = await this.request.get(path);
     if (res.status() !== 200) throw await httpErrorFor(res, path);
     const stubs = parseOpportunitiesList(await res.text());
-    let opportunities: Opportunity[] = stubs.map((s) => ({
+    // `managed`, `active` and `total_budget` are deliberately ABSENT: the
+    // list page does not carry them, and a fabricated value is worse than a
+    // missing one because a caller cannot tell it apart from a real one.
+    let opportunities = stubs.map((s) => ({
       id: s.id,
       name: s.name,
       short_description: s.short_description,
       description: '',
       organization_slug,
-      managed: true,
-      active: false,
-    }));
+    })) as unknown as Opportunity[];
     if (name) opportunities = opportunities.filter((o) => o.name === name);
+    if (hydrate) {
+      opportunities = await Promise.all(
+        opportunities.map(async (o) => ({
+          ...o,
+          ...(await this.getOpportunity({ organization_slug, opportunity_id: o.id })),
+        })),
+      );
+    }
     return { opportunities };
   };
 

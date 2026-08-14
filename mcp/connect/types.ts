@@ -54,12 +54,17 @@ export interface Opportunity {
   short_description: string;
   description: string;
   organization_slug?: string;          // LLO org executing the opp (`organization` in API)
-  managed: boolean;                    // always true for ACE-created opps
+  // `managed` / `active` are OPTIONAL because the opportunity LIST page does
+  // not carry them. `list_opportunities` leaves them undefined rather than
+  // fabricating `true` / `false`, which is what made the single-active-opp
+  // WARN structurally unable to fire (ace#1022). `get_opportunity` parses
+  // both for real; pass `hydrate: true` to list to get them.
+  managed?: boolean;
   start_date?: string;
   end_date?: string;
   total_budget?: number;
   is_test?: boolean;
-  active: boolean;
+  active?: boolean;
   currency?: string;
   country?: string;
   // App snapshots — populated by `create_opportunity` / `get_opportunity`.

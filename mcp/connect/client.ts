@@ -55,7 +55,14 @@ export interface ConnectClient {
   // synchronously. Returns the opp with `learn_modules` and `deliver_units`
   // already populated, so callers don't need a follow-up `list_deliver_units`
   // before `create_payment_units`.
-  listOpportunities(args: { organization_slug: string; program_id?: string; name?: string }): Promise<{ opportunities: Opportunity[] }>;
+  listOpportunities(args: {
+    organization_slug: string;
+    /** REFUSED by the Playwright backend — see ace#1022. */
+    program_id?: string;
+    name?: string;
+    /** Fetch each row through getOpportunity so `active` is real, not absent. */
+    hydrate?: boolean;
+  }): Promise<{ opportunities: Opportunity[] }>;
   getOpportunity(args: { organization_slug: string; opportunity_id: string }): Promise<Opportunity>;
   createOpportunity(args: {
     organization_slug: string;          // PM-side org running the program

@@ -135,9 +135,22 @@ alone makes the artifact land outside `4-connect` and fail
    ```
    mcp__plugin_ace_ace-connect__connect_list_opportunities({
      organization_slug,
-     program_id,
+     hydrate: true,            // REQUIRED — see below
    })
    ```
+
+   **`hydrate: true` is not optional, and do NOT pass `program_id`
+   (ace#1022).** The opportunity LIST page carries only id / name / short
+   description. Until #1022 this atom hardcoded `active: false` on every
+   row, so this WARN could **never fire** — the silent-deactivation
+   surprise it exists to catch was undetectable by it. It also accepted
+   `program_id` and silently ignored it, returning the whole org (live: 20
+   opportunities from four other programs for a program that had zero).
+   Now `program_id` is refused loudly, and `active` is **absent** unless
+   you hydrate — a missing value you must handle, rather than a fabricated
+   one you cannot tell from a real one. `hydrate: true` fetches each row
+   through `get_opportunity`, which parses the real toggle off the edit
+   form. Filter to this program yourself from the hydrated rows.
 
    For each opp where `active=true`, write to the gate brief:
    `[WARN] Creating opp "<new-name>" will deactivate prior active
