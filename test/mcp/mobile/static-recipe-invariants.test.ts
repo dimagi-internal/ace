@@ -1262,3 +1262,41 @@ describe('deliver-form-walk.yaml composes the case list in the right ORDER (ace#
     );
   });
 });
+
+/**
+ * dimagi-internal/ace#1191 — the canonical two-leg Deliver sequence in
+ * `app-test-cases` cannot execute, and nothing said so.
+ *
+ * This runs the chain linter over the REAL palette files rather than a
+ * fixture, so the assertion tracks what is actually checked in. The palette
+ * entry that fixes the gap (`deliver-home-reentry.yaml`) needs live-device
+ * validation and is deliberately not in this change — what ships is the
+ * preventer, so the SKILL cannot go back to teaching a sequence whose own
+ * recipes do not meet.
+ */
+describe('two-leg Deliver chain continuity (#1191)', () => {
+  const read = (name: string) => readFileSync(`${STATIC_DIR}${name}`, 'utf8');
+
+  it('the un-bridged two-leg sequence does NOT connect', async () => {
+    const { checkChainContinuity } = await import('../../../lib/recipe-state-contract.js');
+    const r = checkChainContinuity([
+      { recipe: 'deliver-form-walk.yaml', text: read('deliver-form-walk.yaml') },
+      { recipe: 'form-submit.yaml', text: read('form-submit.yaml') },
+      { recipe: 'deliver-form-walk.yaml', text: read('deliver-form-walk.yaml') },
+    ]);
+    expect(r.ok, 'if this ever passes un-bridged, the palette changed — re-read #1191').toBe(false);
+  });
+
+  it('form-submit is the step that cannot be shown to land anywhere', async () => {
+    const { parseStateContract } = await import('../../../lib/recipe-state-contract.js');
+    const c = parseStateContract(read('form-submit.yaml'));
+    // Its header says "Post-state: depends on the form ... Deliver forms (TBD)".
+    expect(c.postIsUndetermined).toBe(true);
+  });
+
+  it('deliver-form-walk requires the Deliver home, which is why the gap bites', async () => {
+    const { parseStateContract, anchorsIn } = await import('../../../lib/recipe-state-contract.js');
+    const c = parseStateContract(read('deliver-form-walk.yaml'));
+    expect(anchorsIn(c.pre)).toEqual(expect.arrayContaining(['deliver-home-job-card']));
+  });
+});

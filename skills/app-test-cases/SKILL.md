@@ -245,6 +245,17 @@ the walk crosses the case list on its own:
       SCREENSHOT_NAME_PRE_SUBMIT: "journey-deliver-reg-pre"
       SCREENSHOT_NAME_POST_SUBMIT: "journey-deliver-reg-post"
 
+# 1b. RETURN TO THE DELIVER HOME. Not optional — see below.
+- runFlow:
+    when: {notVisible: {id: "${SELECTOR:deliver-home-job-card}"}}
+    commands: [back, {waitForAnimationToEnd: {timeout: 3000}}]
+- runFlow:
+    when: {notVisible: {id: "${SELECTOR:deliver-home-job-card}"}}
+    commands: [back, {waitForAnimationToEnd: {timeout: 3000}}]
+- extendedWaitUntil:
+    visible: {id: "${SELECTOR:deliver-home-job-card}"}
+    timeout: 20000
+
 # 2. Payable followup — CASE_NAME selects the case just registered.
 - runFlow:
     file: deliver-form-walk.yaml
@@ -253,6 +264,32 @@ the walk crosses the case list on its own:
       FORM_NAME: "Village Monitoring Record"
       CASE_NAME: "Thandiwe Banda.*"                # the case_name you entered
 ```
+
+**Step 1b exists because the two recipes' own contracts do not meet
+(ace#1191).** `deliver-form-walk.yaml`'s header declares
+*"Pre-state: Deliver home (deliver-home-job-card / viewJobCard visible)"* and
+its first action taps `Start`; `form-submit.yaml`'s header declares
+*"Post-state: depends on the form … Deliver forms (TBD)"*. `deliver-sync.yaml`
+records the real behaviour in passing — *"form-submit returns to the form list
+(or the module list) rather than the app home"* — which is exactly why
+deliver-sync itself opens with two guarded `back` steps.
+
+Without 1b the second leg starts inside a form. Live on
+`spark-facilitator/20260813-2126` the Deliver smoke walked leg A, then died at
+the inter-leg back-navigation on CommCare's unmapped **"Exit Form?"** dialog
+(ace#1290) — having already taken its POST_SUBMIT screenshot and reported
+success.
+
+The guarded form above is a **no-op when the device is already home**, and it
+mirrors `deliver-sync.yaml`'s proven pattern rather than inventing a new one.
+It is inlined rather than shipped as a palette recipe because a palette
+recipe must be proven on a live device before it merges, and the
+`deliver-home-reentry.yaml` entry is still pending that validation (#1191).
+
+*Enforced:* `test/mcp/mobile/static-recipe-invariants.test.ts § two-leg Deliver
+chain continuity` runs `checkChainContinuity` (`lib/recipe-state-contract.ts`)
+over the real palette files and fails if the un-bridged sequence ever starts
+looking connected.
 
 **`CASE_NAME` must be the value you actually typed into the registration
 form's `case_name` field** — it is what renders in the case list's first
