@@ -279,15 +279,43 @@ effect. Treat a missing value as "never validated", not as "valid".
         `execution-management`, `closeout`) → `status: skipped`. Also set
         `seeded_from: <golden_run_id>` at the run-state root. (Pass the COMPLETE
         `phases` block so the merge replaces the forked default cleanly.)
-     3. **Resume**: spawn a plain `/ace:run <opp>/<new_run_id>` (fresh local
-        `claude -p` / subagent). No flags. The resume path drives the shape.
+     3. **Resume**: spawn a plain `/ace:run <opp>/<new_run_id>` — **always
+        through `bin/ace-run-supervise`**, never a bare `claude -p … > log`.
+        No flags on the run itself; the resume path drives the shape.
+
+        ```bash
+        bin/ace-run-supervise --run-dir "$SCRATCH/iter<N>" --prompt-file "$SCRATCH/iter<N>/prompt.txt"
+        ```
+
+        A bare redirect discards the exit code and the session id and reduces a
+        multi-hour run to whatever text reached the log. Observed 2026-08-13 on
+        `bednet-check-2-visit/20260814-0357`: 41 minutes, then the single
+        string `Execution error` — the loop could not tell a usage limit from
+        an MCP crash from a real phase halt, so it could not decide whether the
+        iteration counted. The supervisor pre-assigns `--session-id` (step 4
+        then reads a known transcript rather than racing on mtime) and writes
+        `run-exit.json`.
    Either way the loop's new run-id is known up-front (the action's `run_id`, or
    the local `fork-run` result) — no post-launch folder-listing race.
 4. **Observe** until phases 3 + 6 reach a terminal state — the loop's only
    inputs, both produced by the run itself:
    - Poll `ACE/<opp>/runs/<new-run-id>/run_state.yaml` on Drive.
    - Read the Claude session transcript for progress + failure detail
-     (web: `GET /api/w/<ws>/sessions/<slug>/messages`; local: the `.jsonl`).
+     (web: `GET /api/w/<ws>/sessions/<slug>/messages`; local: the `.jsonl` named
+     by `<run-dir>/session-id`).
+   - **When the process exits, read `<run-dir>/run-exit.json` FIRST.** It is the
+     only artifact that says why it stopped. If `counts_as_iteration` is
+     `false`, the run says nothing about ACE's quality — **do not append an
+     iteration and do not run Autofix.** Re-dispatch instead, and record the
+     reason in the campaign notes:
+     - `session_limit` — the account, not ACE. Wait for the reset named in the
+       notice; consider that three concurrent sessions on one macOS account
+       exhausted it simultaneously on 2026-08-13.
+     - `mcp_crash` — a subprocess died or is bound to pruned plugin-cache code.
+       Needs a full Claude quit-and-reopen (`/reload-plugins` does not respawn
+       MCP subprocesses); see `lib/plugin-cache-freshness.ts`.
+     - `killed` / `timeout` — host or operator, not the run.
+     A `phase_halt` **does** count: that is a real verdict, judge it at step 5.
 5. **Judge** (client-side interpretation of the standard verdicts):
    - **clean** iff `classifyPhaseWriteBack(run_state, 'commcare-setup') == 'ok'`
      AND `classifyPhaseWriteBack(run_state, 'qa-and-training') == 'ok'` AND the

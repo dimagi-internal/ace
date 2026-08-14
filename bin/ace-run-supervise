@@ -1,0 +1,132 @@
+#!/usr/bin/env bash
+#
+# ace-run-supervise — spawn a headless /ace:run and record WHY it stopped.
+#
+# Usage:
+#   ace-run-supervise --run-dir DIR --prompt-file FILE [options]
+#   ace-run-supervise --run-dir DIR --prompt "…"       [options]
+#
+# Options:
+#   --session-id UUID    pre-assign the transcript id (default: generated)
+#   --timeout SECONDS    wall-clock cap; on expiry the child is killed and the
+#                        exit is classified `timeout` (default: none)
+#   --                   everything after this is passed through to `claude`
+#
+# Writes into DIR:
+#   stream.jsonl   one JSON event per line (--output-format stream-json)
+#   stderr.log     the child's stderr
+#   run-exit.json  the typed classification (see lib/run-exit.ts)
+#   session-id     the pre-assigned transcript id, for the observer
+#
+# Exits with the child's own exit code, so a caller can still branch on it.
+#
+# ## Why this exists
+#
+# The iterate loop used to spawn seeded runs as
+#
+#     claude -p "/ace:run …" --dangerously-skip-permissions > run.log 2>&1
+#
+# which discards the exit code, discards the session id, and reduces a
+# multi-hour run to whatever text landed in the log. On 2026-08-13 a
+# bednet-check-2-visit iteration ran 41 minutes and left exactly `Execution
+# error` — the loop could not tell a usage limit from an MCP crash from a real
+# phase halt, so it could not decide whether the iteration counted. Three
+# concurrent sessions exhausted the account limit the same evening and every
+# one of those exits was indistinguishable from an ACE defect.
+#
+# Text on stdout is not a supervision channel. `claude -p` already offers the
+# facts; this wrapper stops throwing them away.
+#
+# The classification itself is a pure function in lib/run-exit.ts so it is
+# unit-testable without spawning a run — a supervisor you cannot test is the
+# thing we already had.
+
+set -uo pipefail
+
+run_dir=""
+prompt=""
+prompt_file=""
+session_id=""
+timeout_s=""
+passthrough=()
+
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --run-dir)     run_dir="$2"; shift 2 ;;
+    --prompt)      prompt="$2"; shift 2 ;;
+    --prompt-file) prompt_file="$2"; shift 2 ;;
+    --session-id)  session_id="$2"; shift 2 ;;
+    --timeout)     timeout_s="$2"; shift 2 ;;
+    --)            shift; passthrough=("$@"); break ;;
+    -h|--help)     sed -n '2,40p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    *)             echo "ace-run-supervise: unknown option $1" >&2; exit 2 ;;
+  esac
+done
+
+[ -n "$run_dir" ] || { echo "ace-run-supervise: --run-dir is required" >&2; exit 2; }
+if [ -n "$prompt_file" ]; then
+  [ -r "$prompt_file" ] || { echo "ace-run-supervise: cannot read $prompt_file" >&2; exit 2; }
+  prompt="$(cat "$prompt_file")"
+fi
+[ -n "$prompt" ] || { echo "ace-run-supervise: --prompt or --prompt-file is required" >&2; exit 2; }
+
+mkdir -p "$run_dir"
+
+# Pre-assign the transcript id so the observer knows which .jsonl to read the
+# moment the child starts. The loop used to find it by mtime, which races with
+# any other session started in the same second.
+if [ -z "$session_id" ]; then
+  session_id="$(uuidgen | tr '[:upper:]' '[:lower:]')"
+fi
+printf '%s\n' "$session_id" > "$run_dir/session-id"
+
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+repo_root="$(cd "$script_dir/.." && pwd)"
+
+echo "ace-run-supervise: session=$session_id  dir=$run_dir" >&2
+
+# --verbose is REQUIRED alongside stream-json in print mode; without it the CLI
+# refuses the combination and you get no events at all.
+claude -p "$prompt" \
+  --session-id "$session_id" \
+  --output-format stream-json \
+  --verbose \
+  --dangerously-skip-permissions \
+  "${passthrough[@]+"${passthrough[@]}"}" \
+  > "$run_dir/stream.jsonl" 2> "$run_dir/stderr.log" &
+child=$!
+
+timed_out=""
+if [ -n "$timeout_s" ]; then
+  (
+    sleep "$timeout_s"
+    if kill -0 "$child" 2>/dev/null; then
+      # Leave the breadcrumb BEFORE killing, so the classifier can tell the cap
+      # from a coincidental crash on the way down.
+      touch "$run_dir/.timed-out"
+      kill -TERM "$child" 2>/dev/null
+      sleep 10
+      kill -KILL "$child" 2>/dev/null
+    fi
+  ) &
+  watchdog=$!
+fi
+
+wait "$child"
+rc=$?
+[ -n "${watchdog:-}" ] && kill "$watchdog" 2>/dev/null
+
+# 128+N means signal N. Report the signal name so `killed` is distinguishable
+# from an ordinary non-zero exit.
+status="$rc"
+if [ "$rc" -gt 128 ]; then
+  signum=$((rc - 128))
+  name="$(kill -l "$signum" 2>/dev/null || echo "SIG$signum")"
+  status="SIG${name#SIG}"
+fi
+
+[ -f "$run_dir/.timed-out" ] && { timed_out="--timed-out"; rm -f "$run_dir/.timed-out"; }
+
+(cd "$repo_root" && npx tsx scripts/run-exit-write.ts "$run_dir" "$status" ${timed_out:+$timed_out})
+
+exit "$rc"
