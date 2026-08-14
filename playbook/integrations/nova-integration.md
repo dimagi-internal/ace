@@ -384,10 +384,13 @@ registry's metadata. Locked by `test/scripts/ace-nova-check.test.ts`.
     `InputValidationError: could not be parsed as JSON`, pointing the
     caller at a quoting bug that isn't there. Threshold is NOT clean —
     the same failure reproduced at 1.9 KB after first appearing near
-    5 KB, so do not build against a number. Bites ACE disproportionately
-    because trilingual labels (no per-language channel, ace#968) roughly
-    triple every `add_fields` payload; one 51-field form needed ~20
-    batches. ACE-side tracking: ace#1181.
+    5 KB, so do not build against a number. The worst measured case was
+    trilingual labels roughly tripling every `add_fields` payload — one
+    51-field form needed ~20 batches — but ACE has built **English-only**
+    UIs since 2026-08-14 (ace#1391), so payloads are ~3x smaller and that
+    figure is a historical ceiling, not today's expectation. The bug is
+    unchanged and language-independent: batch at ~5 fields per call
+    regardless. ACE-side tracking: ace#1181.
 
 - **Notable capabilities (nothing upstream currently BLOCKS a run).** The
   two bugs above degrade expressiveness rather than halting. Counts of
