@@ -44,10 +44,23 @@ The static check functions live at `skills/idea-to-pdd-qa/checks.ts` as importab
 
 ## Process
 
-1. **Read the PDD artifact** from Drive:
-   `drive_read_file(file_id=<idea-to-pdd.md drive id>)`. **Note its
-   `mimeType`** — you pass it to the runner in step 3, and check 7 cannot
-   verify the format without it (the bytes look identical either way).
+1. **Read the PDD artifact** from Drive **as markdown**:
+   `drive_read_file(file_id=<idea-to-pdd.md drive id>, exportMimeType='text/markdown')`.
+   **Note its `mimeType`** — you pass it to the runner in step 3, and check 7
+   cannot verify the format without it (the bytes look identical either way).
+   Note the returned `mimeType` is the FILE's type
+   (`application/vnd.google-apps.document`), not the export format, so check 7
+   still sees what it needs.
+
+   **`exportMimeType` is not optional here.** The default `text/plain` export
+   strips every markdown marker, and checks 1/3/4/5/6/8 match `^## ` headings
+   (`extractSection`) and `^|` pipe tables (`countTableDataRows`). Measured on
+   a real PDD (bednet-check-2-visit/20260814-0856): the plain export gave **0
+   headings and 0 table lines**; markdown gave **18 and 139**. Without it,
+   check 7 (native Google Doc, #1061) and the other seven cannot both pass on
+   the same artifact, so Phase 1 QA fails on every run and the auto-fix loop
+   burns two PDD regenerations chasing sections that are present in the
+   document and absent only from the export (#1321).
 
 2. **Save to a local temp path** (so the CLI runner can read it as a file).
    `Bash: TMP=$(mktemp); drive content saved to $TMP`.
