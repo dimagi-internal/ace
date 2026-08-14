@@ -113,15 +113,49 @@ For each form, decide the expected `connect` block deterministically
 where possible, with one LLM-judgment fallback when the form is
 ambiguous:
 
-**Deliver app:**
-- Form `type === "registration"` → expect `deliver_unit: { name: <form name> }`.
-  If multiple registration forms, each gets its own deliver_unit (each
-  is a distinct delivery action).
-- Form `type === "survey"` with no inputs (only labels) →
-  `task: { name, description }`.
-- Otherwise → ask LLM judgment with the form's purpose + field types
-  visible. Default to `deliver_unit` when in doubt; record the
-  decision in the report.
+**Deliver app — decide by ROLE, not by type.** Same rule the Learn
+branch below states for the pre-test, and for the same reason: an unpaid
+registration form has exactly the shape of a paid one.
+
+1. **Read what the PDD declares payable** — § Deliver App Specification,
+   plus the typed handoff
+   `run_state.yaml…products.pdd.program_parameters.payable_stage`. Map
+   each form to `payable` / `not-payable`. That mapping is your job; what
+   it IMPLIES is `deliver-expectations.ts`, so call it rather than
+   re-deriving:
+
+   ```ts
+   import { decideDeliverExpectations, classifyDeliverObservation }
+     from './deliver-expectations';
+   const decisions = decideDeliverExpectations(forms); // forms carry pddRole
+   ```
+
+2. A form the PDD marks **not payable** expects **no** `deliver_unit`,
+   whatever its Nova type. An observed `deliver_unit` there is `extra` —
+   a defect to **REMOVE**, never a match to preserve.
+3. A form the PDD marks **payable** expects
+   `deliver_unit: { name: <form name> }`, whatever its Nova type
+   (`registration`, `followup`, `close`, `survey`). Multiple payable
+   forms each get their own — each is a distinct delivery action.
+4. **Only when the PDD is silent** does shape get a vote: label-only
+   `survey` → `task: { name, description }`; `registration` →
+   `deliver_unit`; otherwise LLM judgment from the form's purpose and
+   fields, defaulting to `deliver_unit`. Every fallback sets
+   `fellBack: true` and **must be recorded in the report** — a
+   defaulted answer is not a known one.
+
+**Why this is role-keyed (ace#1327).** On `bednet-check-2-visit` the PDD's
+operating rule R2 is *"only the follow-up visit is paid; registration is
+not"* — a requirement, taught in the Learn app and tested by an item in the
+gating assessment. The registration form is therefore built with no
+`deliver_unit` on purpose. Type-keyed, it classified `missing` and Step 4
+would have **fixed** it: a deliver_unit on a form the programme says is
+never payable, which Phase 4 can then wire a payment unit to, so the program
+pays for the stage it explicitly does not pay for. And the repair runs
+through `configure_connect`, which is **REPLACE-ALL** — a wrong expectation
+rewrites the whole participant set. The mirror failure is quieter: the paid
+form on that app is `type: close`, which no row covered, so it reached the
+right answer by *defaulting* rather than by knowing.
 
 **Learn app:**
 - Form has zero `single_select` / `multi_select` / `text` inputs (only
@@ -403,6 +437,7 @@ migration` carries the division of labour and the replace-all warning.
 
 | Date | Change | Author |
 |------|--------|--------|
+| 2026-08-14 | **Step 2's Deliver branch is now role-keyed, not type-keyed (ace#1327).** It expected `deliver_unit` from `type === "registration"`, so a deliberately-unpaid registration form classified `missing` and Step 4 would have added a deliver_unit to a form the PDD says is never payable — via `configure_connect`, which is replace-all. It also had no row for a paid `close`-type form, which reached the right answer only by defaulting. Expectations now come from the PDD's payable-stage declaration; shape votes only when the PDD is silent, and every fallback is recorded. New verdict `extra` (a deliver_unit on an unpaid form is a defect to REMOVE) mirrors the Learn side's pre-test rule (ace#1131). Decision extracted to `deliver-expectations.ts` with a two-form fixture pair — paid/unpaid roles swapped — so the type-keyed reading cannot come back. | ACE team |
 | 2026-08-11 | **Finished the 2026-07-31 expression migration in Step 2 (residual of ace#1132/#1133).** Step 4a's `configure_connect` example already emitted the structured `{parts: […]}` shape, but the Step 2 decision table and the Learn per-form rule still specified the `assessment` slot's `user_score` as the bare XPath string `#form/user_score`. The skill therefore computed a string *expectation*, compared it against the structured value Nova returns, and classified correct forms as `wrong`; the "fix" is then a `configure_connect` call, which is replace-all and can clear markers off every form omitted from `participants[]`. Same residual fixed in `pdd-to-deliver-app` for `entity_id`/`entity_name` (case-CREATE now shows `field-ref` parts, case-UPDATE `case-ref` parts, the optional per-form suffix a `text` part). Preventer added: `test/skills/nova-uuid-addressing.test.ts` now fails on any skill documenting `user_score`/`entity_id`/`entity_name` as a string — the pre-existing uuid lint only inspected spelled-out tool-call argument lists, so a shape stated in prose or a table was invisible to it. | ACE team |
 | 2026-04-29 | Initial version. First in the post-Nova verify+fix family. Detection of Connect markers per form, auto-fix via `nova_update_form`, loop until clean or until a known Nova-side blocker is hit. Documents the pattern for future `app-<concern>-coverage` siblings. (0.10.7) | ACE team |
 | 2026-04-29 | Smoke-tested live against `turmeric-market-survey-2026-04-29-coverage`. Skill exited `clean` in one iteration on the Learn side, `blocked` in one iteration on the Deliver side. Updates from the run: (a) bug description was inverted — Nova INJECTS empty `entity_id`/`entity_name`, doesn't strip them; (b) `nova_validate_app` returns `success: true` despite the malformed deliver_unit, so the per-mutation re-fetch in Step 4 is the actual gate (validate_app is necessary but not sufficient). Both findings folded back into Failure Modes. (0.10.12) | ACE team |
