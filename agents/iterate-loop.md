@@ -95,6 +95,31 @@ golden run-id (per Task 5 of the plan — never silently pick a possibly-stale
 run). The golden run must have `phases.idea-to-design` and
 `phases.scenarios-and-acceptance` both `done`/`pass`.
 
+**That check is necessary and NOT sufficient — run the staleness check on every
+inherited golden (ace#1031).** `--new-golden` validates against today's rubrics
+(steps 2 + 2b below); an INHERITED golden — `--golden <id>` or the
+`golden_run_id` resume path — was reading only the frozen fields, which is
+exactly the thing that goes stale.
+
+Before seeding, call `checkGoldenFreshness` from `lib/golden-staleness.ts`
+with the golden's recorded eval verdicts and each `-eval` skill's newest
+change-log date (`latestRubricRevision`). **If it returns `fresh: false`, do
+not seed** — re-validate the golden against today's rubrics per
+`--new-golden` steps 2 + 2b, or mint a new one.
+
+A verdict that predates its rubric's latest revision is not a failure, but it
+is a *past* judgement being read as a current one, and the loop re-grades
+against the current one. Seeding anyway pins `pass_rate` at **0 for every
+iteration** while measuring nothing about the phases actually being targeted —
+the improvement loop silently bricking the measurement loop, the same shape as
+the frozen-`plugin_version` streak bug PR #956 removed, one layer up.
+
+A date comparison rather than re-running every eval is deliberate: re-running
+them on each loop start is the expensive answer to a cheap question, and a
+rubric revision postdating the verdict is already proof the verdict is
+unproven. It cannot produce a false pass — a verdict with no timestamp is
+never treated as fresh.
+
 ## A golden is a snapshot that decays — mint it, don't inherit it
 
 **The golden is not a durable asset.** Its phase-1/2 verdicts were written under
