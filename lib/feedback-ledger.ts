@@ -33,6 +33,11 @@
 import { z } from 'zod';
 import yaml from 'yaml';
 
+import type {
+  DecisionOverrideRow,
+  DecisionOverridesFile,
+} from './decision-overrides.js';
+
 export const FEEDBACK_LEDGER_SCHEMA_VERSION = 1 as const;
 
 /** One verbatim comment from an external reviewer. Append-only: facts. */
@@ -61,6 +66,18 @@ export const FeedbackItemSchema = z
   .strict();
 
 export type FeedbackItem = z.infer<typeof FeedbackItemSchema>;
+
+/**
+ * Ref namespace for EDITS (see the EDITS section below). An edit's ref is
+ * `decision-edits/<decision-row-id>`, so a `Feedback-Ref:` trailer citing an
+ * edit reads `decision-edits/photo-required` — it names the row it responds
+ * to, which is MORE precise than a comment's opaque `[d]`.
+ *
+ * Declared up here because `FeedbackRecordSchema` REFUSES it as a record
+ * slug: the two ref namespaces share one `<slug>/<id>` grammar, so a record
+ * allowed to call itself `decision-edits` could shadow every edit ref.
+ */
+export const EDIT_RECORD_SLUG = 'decision-edits' as const;
 
 export const FeedbackRecordSchema = z
   .object({
@@ -101,7 +118,13 @@ export const FeedbackRecordSchema = z
     against_run: z.string().optional(),
     items: z.array(FeedbackItemSchema).min(1),
   })
-  .strict();
+  .strict()
+  .refine((r) => r.slug !== EDIT_RECORD_SLUG, {
+    message:
+      `slug "${EDIT_RECORD_SLUG}" is reserved for derived decision edits — ` +
+      'a record using it would shadow every edit ref',
+    path: ['slug'],
+  });
 
 export type FeedbackRecord = z.infer<typeof FeedbackRecordSchema>;
 
@@ -341,6 +364,510 @@ export function renderLedgerMarkdown(
     lines.push(
       'These reference a feedback item that does not exist — likely a typo ' +
         'in a `Feedback-Ref` trailer:',
+    );
+    lines.push('');
+    for (const o of orphans) {
+      lines.push(`- \`${o.feedbackRef}\` — ${o.summary}`);
+    }
+    lines.push('');
+  }
+
+  return lines.join('\n');
+}
+
+// ───────────────────────────────────────────────────────────────────────
+// EDITS — the other half of a reviewer's engagement
+//
+// A reviewer who edits a decision instead of commenting on it used to get an
+// EMPTY "where did my comment go?" view: the ledger read `feedback/*.yaml`
+// and nothing else, while their edit landed in
+// `ACE/<opp>/inputs/decision-overrides.yaml` (the same file the Workbench's
+// authenticated editor and the public run summary both write, bound by the
+// plugin on the next run — ace#933, `lib/decision-overrides.ts`).
+//
+// Operator ruling (Jonathan, 2026-08-14): a reviewer should not have to know
+// or care WHICH store their input landed in — comment or edit, the
+// experience and the visibility should be the same.
+//
+// The fix is a DERIVATION, never a double-write. An edit must not also write
+// a feedback record: two stores holding the same fact drift, and this
+// module's whole premise is that the ledger is a derived view whose only
+// write-side obligation is the stamp. So the ledger now reads
+// `decision-overrides.yaml` as a SECOND SOURCE and joins it into the same
+// per-person view. One write path per act; one unified read.
+//
+// An edit carries strictly MORE than a comment for routing purposes — it
+// names the decision id, the old value, the new value, who, and when — so
+// its ref is at least as precise as a comment's.
+// ───────────────────────────────────────────────────────────────────────
+
+
+export function formatEditRef(decisionId: string): string {
+  return formatFeedbackRef(EDIT_RECORD_SLUG, decisionId);
+}
+
+export function isEditRef(ref: string): boolean {
+  return parseFeedbackRef(ref)?.slug === EDIT_RECORD_SLUG;
+}
+
+// ── Identity ───────────────────────────────────────────────────────────
+//
+// Two spellings of the same human: a feedback record has `reviewer` (+
+// optional `reviewer_email`); an override row has `decided_by` (email),
+// `decided_by_name`, and `decided_by_verified`.
+//
+// The join rule, and the one thing it must never do:
+//
+//   A SELF-REPORTED NAME IS NEVER TREATED AS A VERIFIED IDENTITY.
+//
+// Anyone can type "Sophie Feintuch" into the public run summary's name box.
+// So verification is baked into the identity KEY itself — `verified:<email>`
+// vs `self-reported:<name>` — which makes it structurally impossible for an
+// unverified act to be filed under a verified person's bucket, rather than
+// leaving it to a caller to remember. Names are only ever joined to names,
+// within the unverified tier, where the display always says so.
+
+export interface ReviewerIdentity {
+  /** `verified:<email>` | `verified:name:<slug>` | `self-reported:<slug>` */
+  key: string;
+  name: string;
+  email?: string;
+  /** True only for an AUTHENTICATED identity. Never inferred from a name. */
+  verified: boolean;
+}
+
+function slugifyName(name: string): string {
+  const s = name
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+  return s || 'unknown';
+}
+
+function makeIdentity(
+  name: string,
+  email: string | undefined,
+  verified: boolean,
+): ReviewerIdentity {
+  const cleanEmail = email?.trim().toLowerCase() || undefined;
+  const display = name.trim() || cleanEmail || 'Unknown';
+  // An unverified actor's email is as self-asserted as their name, so it is
+  // NOT a join key — only a verified email is.
+  const key = verified
+    ? cleanEmail
+      ? `verified:${cleanEmail}`
+      : `verified:name:${slugifyName(display)}`
+    : `self-reported:${slugifyName(display)}`;
+  return verified
+    ? { key, name: display, email: cleanEmail, verified: true }
+    : { key, name: display, verified: false };
+}
+
+/**
+ * Identity behind a feedback record.
+ *
+ * `public-summary` is the one channel whose name is self-reported (an
+ * anonymous page with a name box — see the channel enum). Every other
+ * channel is a review ACE captured itself from a known counterpart, so the
+ * attribution is as good as ACE's own record-keeping.
+ */
+export function identityOfRecord(record: FeedbackRecord): ReviewerIdentity {
+  const verified = record.channel !== 'public-summary';
+  return makeIdentity(record.reviewer, record.reviewer_email, verified);
+}
+
+/** Identity behind one saved decision edit. */
+export function identityOfEditRow(row: DecisionOverrideRow): ReviewerIdentity {
+  const verified = row.decided_by_verified === true;
+  return makeIdentity(
+    row.decided_by_name || row.decided_by || '',
+    row.decided_by,
+    verified,
+  );
+}
+
+// ── Entries ────────────────────────────────────────────────────────────
+
+/**
+ * Did the edit reach a run yet?
+ *
+ * `applied` — a run raised that decision id and recorded this value.
+ * `pending` — parked in `inputs/decision-overrides.yaml`, binds by
+ *   construction when a run next raises the id. NOT a routing failure:
+ *   nothing was dropped, so it must never render as UNROUTED.
+ */
+export type EditBinding = 'applied' | 'pending';
+
+export interface EditEntry {
+  kind: 'edit';
+  /** `decision-edits/<decision-id>` — stampable, like a comment ref. */
+  ref: string;
+  decisionId: string;
+  question?: string;
+  phase?: string;
+  /** The value ACE proposed (`ai_default`). */
+  from?: string;
+  /** The value the reviewer asserted. */
+  to: string;
+  /** The reviewer's OWN words about the change, if they gave any. */
+  reasoning?: string;
+  at?: string;
+  identity: ReviewerIdentity;
+  binding: EditBinding;
+  /** They put ACE's own default back. Still an act; still shown. */
+  revert: boolean;
+  /** How many earlier values this row buried (its `history` depth). */
+  supersedes: number;
+  /** Downstream work that cites this edit. Separate from the edit landing. */
+  dispositions: Disposition[];
+}
+
+export interface CommentEntry {
+  kind: 'comment';
+  ref: string;
+  item: FeedbackItem;
+  at?: string;
+  identity: ReviewerIdentity;
+  dispositions: Disposition[];
+  unrouted: boolean;
+}
+
+export type EngagementEntry = CommentEntry | EditEntry;
+
+export interface EngagementCoverage {
+  comments: number;
+  commentsShipped: number;
+  commentsUnrouted: number;
+  awaitingHuman: number;
+  edits: number;
+  editsApplied: number;
+}
+
+export interface Engagement {
+  identity: ReviewerIdentity;
+  /** Comments and edits interleaved, oldest first. One list, one person. */
+  entries: EngagementEntry[];
+  coverage: EngagementCoverage;
+}
+
+/** Audience a rendered engagement is destined for. */
+export type LedgerAudience = 'internal' | 'public';
+
+/**
+ * May a derived EDIT appear on a page anyone can open?
+ *
+ * Yes — and the reason is worth stating rather than assuming. Override rows
+ * carry no public/private marker at all (`lib/decision-overrides.ts`), so
+ * this cannot be read off the row. It is a POLICY, already shipped on the
+ * other side: ace-web's unauthenticated per-run summary serves
+ * `decision_edits` for every row in the file, with the reviewer's NAME,
+ * their reasoning, and the full history — withholding only the email
+ * (`apps/opps/decision_overrides.py: project_override(include_email=False)`).
+ * Attribution IS the safety model there ("safety here is visibility and
+ * reversibility, not permission"), so hiding it would defeat it.
+ *
+ * A function, not an inlined `true`, because this is the exact spot a future
+ * private-edit surface would have to change, and because it makes the
+ * asymmetry with {@link isPubliclyRepublishable} testable rather than tacit.
+ */
+export function isEditPubliclyRepublishable(_entry: EditEntry): boolean {
+  return true;
+}
+
+/**
+ * Derive one edit entry per saved override row.
+ *
+ * `boundValues` maps decision id -> the override value a run's
+ * `decisions.yaml` actually recorded. Absent, EVERY edit is `pending`: we do
+ * not claim an edit landed without evidence that it did.
+ */
+export function deriveEditEntries(
+  source: DecisionOverridesFile | readonly DecisionOverrideRow[],
+  opts: {
+    boundValues?: ReadonlyMap<string, string>;
+    dispositions?: readonly Disposition[];
+  } = {},
+): EditEntry[] {
+  const rows: readonly DecisionOverrideRow[] = Array.isArray(source)
+    ? (source as readonly DecisionOverrideRow[])
+    : (source as DecisionOverridesFile).overrides;
+
+  const byRef = new Map<string, Disposition[]>();
+  for (const d of opts.dispositions ?? []) {
+    const list = byRef.get(d.feedbackRef) ?? [];
+    list.push(d);
+    byRef.set(d.feedbackRef, list);
+  }
+
+  return rows.map((row) => {
+    const ref = formatEditRef(row.id);
+    const isRevert =
+      row.ai_default !== undefined &&
+      row.override === row.ai_default &&
+      !row.override_reasoning;
+    const entry: EditEntry = {
+      kind: 'edit',
+      ref,
+      decisionId: row.id,
+      to: row.override,
+      identity: identityOfEditRow(row),
+      binding:
+        opts.boundValues?.get(row.id) === row.override ? 'applied' : 'pending',
+      revert: isRevert,
+      supersedes: row.history?.length ?? 0,
+      dispositions: byRef.get(ref) ?? [],
+    };
+    if (row.question) entry.question = row.question;
+    if (row.phase) entry.phase = row.phase;
+    if (row.ai_default !== undefined) entry.from = row.ai_default;
+    if (row.override_reasoning) entry.reasoning = row.override_reasoning;
+    if (row.decided_at) entry.at = row.decided_at;
+    return entry;
+  });
+}
+
+function timeOf(entry: EngagementEntry): number {
+  const t = entry.at ? Date.parse(entry.at) : NaN;
+  // Undated entries sort last, in input order — never silently first.
+  return Number.isNaN(t) ? Number.POSITIVE_INFINITY : t;
+}
+
+/**
+ * Group every act by the person who performed it, and order each person's
+ * acts into ONE list.
+ *
+ * `audience: 'public'` applies the confidentiality boundary AT THE JOIN,
+ * which is the point: each source already filters itself, but a view whose
+ * job is to MERGE them can reintroduce the leak the sources each avoided. A
+ * privately-captured review (`channel: gdoc-comments`) merged with a public
+ * edit is still private, and the merged document is publishable only if
+ * every entry in it is.
+ */
+export function buildEngagements(input: {
+  records?: readonly FeedbackRecord[];
+  edits?: readonly EditEntry[];
+  dispositions?: readonly Disposition[];
+  /** Default `internal` — the ledger gdoc is an opp artifact, not a page. */
+  audience?: LedgerAudience;
+}): { engagements: Engagement[]; orphans: Disposition[] } {
+  const audience = input.audience ?? 'internal';
+  const records = (input.records ?? []).filter(
+    (r) => audience === 'internal' || isPubliclyRepublishable(r),
+  );
+  const edits = (input.edits ?? []).filter(
+    (e) => audience === 'internal' || isEditPubliclyRepublishable(e),
+  );
+  const dispositions = input.dispositions ?? [];
+
+  const byRef = new Map<string, Disposition[]>();
+  for (const d of dispositions) {
+    const list = byRef.get(d.feedbackRef) ?? [];
+    list.push(d);
+    byRef.set(d.feedbackRef, list);
+  }
+
+  const claimed = new Set<string>();
+  const buckets = new Map<string, Engagement>();
+  const bucketOf = (identity: ReviewerIdentity): Engagement => {
+    let b = buckets.get(identity.key);
+    if (!b) {
+      b = {
+        identity,
+        entries: [],
+        coverage: {
+          comments: 0,
+          commentsShipped: 0,
+          commentsUnrouted: 0,
+          awaitingHuman: 0,
+          edits: 0,
+          editsApplied: 0,
+        },
+      };
+      buckets.set(identity.key, b);
+    }
+    return b;
+  };
+
+  for (const record of records) {
+    const identity = identityOfRecord(record);
+    const bucket = bucketOf(identity);
+    for (const item of record.items) {
+      const ref = formatFeedbackRef(record.slug, item.id);
+      const ds = byRef.get(ref) ?? [];
+      if (ds.length > 0) claimed.add(ref);
+      const entry: CommentEntry = {
+        kind: 'comment',
+        ref,
+        item,
+        identity,
+        dispositions: ds,
+        unrouted: ds.length === 0,
+      };
+      if (record.received_at) entry.at = record.received_at;
+      bucket.entries.push(entry);
+    }
+  }
+
+  for (const edit of edits) {
+    if (edit.dispositions.length > 0) claimed.add(edit.ref);
+    // An edit's ref may also be stamped by a disposition the caller passed
+    // here rather than into deriveEditEntries — merge, never double-count.
+    const extra = (byRef.get(edit.ref) ?? []).filter(
+      (d) => !edit.dispositions.includes(d),
+    );
+    if (extra.length > 0) claimed.add(edit.ref);
+    const merged: EditEntry =
+      extra.length > 0
+        ? { ...edit, dispositions: [...edit.dispositions, ...extra] }
+        : edit;
+    bucketOf(edit.identity).entries.push(merged);
+  }
+
+  for (const bucket of buckets.values()) {
+    bucket.entries = bucket.entries
+      .map((e, i) => ({ e, i }))
+      .sort((a, b) => timeOf(a.e) - timeOf(b.e) || a.i - b.i)
+      .map(({ e }) => e);
+    const c = bucket.coverage;
+    for (const entry of bucket.entries) {
+      if (entry.kind === 'comment') {
+        c.comments += 1;
+        if (entry.unrouted) c.commentsUnrouted += 1;
+        else if (entry.dispositions.every((d) => d.status === 'shipped')) {
+          c.commentsShipped += 1;
+        }
+      } else {
+        c.edits += 1;
+        if (entry.binding === 'applied') c.editsApplied += 1;
+      }
+      if (entry.dispositions.some((d) => d.status === 'awaiting-human')) {
+        c.awaitingHuman += 1;
+      }
+    }
+  }
+
+  const orphans = dispositions.filter((d) => !claimed.has(d.feedbackRef));
+  return { engagements: Array.from(buckets.values()), orphans };
+}
+
+// ── Rendering ──────────────────────────────────────────────────────────
+//
+// A comment and an edit are DIFFERENT ACTS and the view says so — a comment
+// RAISES something (and can therefore be dropped, hence UNROUTED); an edit
+// ASSERTS a value (and cannot be dropped, because it already changed the
+// next run's input). But they render in ONE list, in one order, under one
+// person, because to the reviewer they were one conversation.
+
+function renderComment(entry: CommentEntry, lines: string[]): void {
+  lines.push(`## [${entry.item.id}] ${entry.item.anchor ?? ''}`.trimEnd());
+  lines.push('');
+  lines.push(`> ${entry.item.verbatim.replace(/\n/g, '\n> ')}`);
+  lines.push('');
+  if (entry.unrouted) {
+    lines.push(
+      '- **UNROUTED** — nothing references this comment yet. Either it was ' +
+        'missed, or its disposition is missing a `Feedback-Ref` stamp.',
+    );
+  } else {
+    for (const d of entry.dispositions) renderDisposition(d, lines);
+  }
+  lines.push('');
+}
+
+function renderDisposition(d: Disposition, lines: string[]): void {
+  const link = d.link ? ` — ${d.link}` : '';
+  const run = d.landedInRun ? ` _(run ${d.landedInRun})_` : '';
+  lines.push(
+    `- **${STATUS_LABEL[d.status]}** · ${KIND_LABEL[d.kind]} — ${d.summary}${link}${run}`,
+  );
+}
+
+function renderEdit(entry: EditEntry, lines: string[]): void {
+  lines.push(`## [edit] ${entry.question ?? entry.decisionId}`);
+  lines.push('');
+  if (entry.revert) {
+    lines.push(`**You put it back to** \`${entry.to}\` _(ACE's own default)_`);
+  } else if (entry.from !== undefined) {
+    lines.push(`**You changed it** \`${entry.from}\` → \`${entry.to}\``);
+  } else {
+    lines.push(`**You set it to** \`${entry.to}\``);
+  }
+  lines.push('');
+  if (entry.reasoning) {
+    lines.push(`> ${entry.reasoning.replace(/\n/g, '\n> ')}`);
+    lines.push('');
+  }
+  // An edit is SELF-ROUTING for its own value: it changed the input the next
+  // run reads, so it can never be UNROUTED. What it can be is not-yet-bound.
+  if (entry.binding === 'applied') {
+    lines.push(
+      `- **APPLIED** · edit — \`${entry.decisionId}\` is your answer, not ACE's.`,
+    );
+  } else {
+    lines.push(
+      `- **PENDING NEXT RUN** · edit — saved to \`inputs/decision-overrides.yaml\`; ` +
+        `binds automatically the next time a run raises \`${entry.decisionId}\`.`,
+    );
+  }
+  if (entry.supersedes > 0) {
+    lines.push(
+      `- _Replaced ${entry.supersedes} earlier value${entry.supersedes === 1 ? '' : 's'} — ` +
+        'every one is still recoverable.',
+    );
+  }
+  // Downstream consequences are a SEPARATE question from whether the value
+  // landed, and they still need a stamp — see the skill.
+  for (const d of entry.dispositions) renderDisposition(d, lines);
+  lines.push('');
+}
+
+/**
+ * Render one person's whole engagement — comments and edits, one list.
+ */
+export function renderEngagementMarkdown(
+  engagement: Engagement,
+  orphans: readonly Disposition[] = [],
+): string {
+  const { identity, entries, coverage } = engagement;
+  const lines: string[] = [];
+
+  lines.push(`# Where your input went — ${identity.name}`);
+  lines.push('');
+  if (!identity.verified) {
+    lines.push(
+      '_Identity **self-reported** — these acts were performed on a public page ' +
+        'where the name was typed in, not authenticated. Weigh them accordingly._',
+    );
+    lines.push('');
+  }
+  const parts: string[] = [];
+  if (coverage.comments > 0) {
+    parts.push(
+      `${coverage.comments} comment${coverage.comments === 1 ? '' : 's'} — ` +
+        `${coverage.commentsShipped} shipped, ${coverage.commentsUnrouted} unrouted`,
+    );
+  }
+  if (coverage.edits > 0) {
+    parts.push(
+      `${coverage.edits} edit${coverage.edits === 1 ? '' : 's'} — ` +
+        `${coverage.editsApplied} applied`,
+    );
+  }
+  parts.push(`${coverage.awaitingHuman} need a human`);
+  lines.push(`**${parts.join(' · ')}.**`);
+  lines.push('');
+
+  for (const entry of entries) {
+    if (entry.kind === 'comment') renderComment(entry, lines);
+    else renderEdit(entry, lines);
+  }
+
+  if (orphans.length > 0) {
+    lines.push('## Broken stamps');
+    lines.push('');
+    lines.push(
+      'These reference a feedback item or edit that does not exist — likely a ' +
+        'typo in a `Feedback-Ref` trailer:',
     );
     lines.push('');
     for (const o of orphans) {

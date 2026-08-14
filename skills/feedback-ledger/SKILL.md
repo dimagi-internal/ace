@@ -47,34 +47,73 @@ so a typo can't quietly swallow a change either.
 Do not "clean up" an UNROUTED row by deleting the item. Route it, or give it a
 `declined` disposition with a reason.
 
-## Revisions are a channel this ledger does not yet capture
+## An edit is feedback too — and it is DERIVED, never double-written
 
-The ledger models feedback as **comments** — `channel: gdoc-comments` is the canonical
-example, items are keyed on the reviewer's own comment anchors, and `verbatim` is their
-words. That covers a reviewer who reacts to a document.
+A reviewer should not have to know or care which store their input landed in (Jonathan,
+2026-08-14). Comment or edit, the experience and the visibility are the same.
 
-It does **not** cover a partner who *edits* one. ACE opportunities are co-created with
-partners (Jonathan, 2026-08-14), and `skills/share-run-access` now grants named partner
-collaborators **editor** access on run artifacts (`drive_share_with_person`, default
-`role: writer`). Feedback from a co-creator therefore also arrives as **Drive revisions**:
-no anchor, no quote, nothing this schema can hold — so a partner who improves the PDD by
-editing it directly produces zero ledger rows, and the completeness property above simply
-doesn't apply to that channel.
+ACE opportunities are co-created: `skills/share-run-access` grants named partner
+collaborators **editor** access, and both the Workbench's authenticated editor and the
+public run summary let a human CHANGE a decision. Those edits land in
+`ACE/<opp>/inputs/decision-overrides.yaml` (`lib/decision-overrides.ts`, ace#933) and
+bind on the next run. Before this, a reviewer who edited instead of commenting opened
+their ledger and found it **empty**.
 
-Do not paper over it by transcribing someone's edit into a fake `gdoc-comments` item —
-that fabricates words they never wrote, which is exactly what `verbatim` exists to prevent.
+**The fix is a derivation, not a second write.** An edit must NOT also write a feedback
+record — two stores holding the same fact drift, and this skill's whole premise is that
+the ledger is derived and the stamp is the only write-side obligation. So the ledger now
+reads `decision-overrides.yaml` as a **second source** and joins it into one per-person
+view: `deriveEditEntries()` → `buildEngagements()` → `renderEngagementMarkdown()`.
 
-`channel: revisions` now EXISTS in the schema, so such a record can be written at all —
-but the three things that would make it useful are deliberately not designed yet:
+### A comment RAISES; an edit ASSERTS — and only one of them can be dropped
 
-- **derivation** — items from Drive's `revisions.list` / `changes` between the run's
-  publish and the reviewer's last touch, attributed per editor;
-- **an item body that is not `verbatim`** — for an edit, the *change* is the artifact;
-- **a disposition that can say "accepted the partner's edit as-is"**, which today has no
-  shape.
+Rendered in one list, in one time order, under one person — because to the reviewer it
+was one conversation. But never blurred:
 
-Until those land, note in the review record that edits were made and where, and treat the
-ledger as covering the comment channels only.
+| | comment | edit |
+|---|---|---|
+| body | `> their words` (verbatim) | `**You changed it** \`old\` → \`new\`` + their reasoning if any |
+| can it be dropped? | **yes** → `UNROUTED` | **no** — it already changed the next run's input |
+| landing state | disposition status | `APPLIED` (a run recorded the value) / `PENDING NEXT RUN` (parked; binds when a run next raises the id) |
+| ref | `<record-slug>/<item-id>` | `decision-edits/<decision-id>` |
+
+**An edit is never UNROUTED.** That verdict means "your words were dropped"; an edit
+cannot be dropped, so saying it would be a false accusation. What an edit CAN be is
+not-yet-bound, which is a pending state, not a routing failure.
+
+**But an edit still takes a stamp — for what follows FROM it.** "The value changed" and
+"the work implied by the value changed" are different questions. A partner flipping
+`photo-required: no → yes` binds the input by itself; the Deliver-form change that
+follows still needs `Feedback-Ref: decision-edits/photo-required` like any other
+response. Self-routing for its own value; stampable for its consequences. And the stamp
+is *more* precise than a comment's — it names the decision row, not an opaque `[d]`.
+
+`binding` is only `applied` when a run's `decisions.yaml` actually recorded that value.
+Absent that evidence every edit reads `pending` — we do not claim an edit landed because
+it was saved.
+
+### Identity: a self-reported name is never a verified one
+
+A record spells the reviewer `reviewer` + `reviewer_email`; an override row spells them
+`decided_by_name` + `decided_by_verified`. They join on an **authenticated email only**.
+
+Verification is baked into the identity KEY (`verified:<email>` vs
+`self-reported:<name>`), so an unverified act is *structurally incapable* of landing in a
+verified person's bucket — anyone can type "Sophie Feintuch" into the public summary's
+name box. Unverified acts group by name among themselves, and the rendered page always
+says **self-reported**. A `public-summary` record is self-reported by definition; every
+other channel is a review ACE captured itself from a known counterpart.
+
+Consequence worth knowing: a verified record with **no `reviewer_email`** cannot join to
+that person's edits. Record the email if you want one unified list.
+
+### Drive revisions are still NOT covered
+
+`channel: revisions` exists so a record can be written, but deriving items from Drive's
+`revisions.list`, using a diff as the item body in place of `verbatim`, and an "accepted
+the partner's edit as-is" disposition are **not designed**. This section covers
+STRUCTURED decision edits only. Do not transcribe someone's free-text document edit into
+a fake `gdoc-comments` item — that fabricates words they never wrote.
 Tracked: dimagi-internal/ace#1335.
 
 ## Provenance: a public reaction is not a colleague's comment
@@ -92,6 +131,21 @@ Before ace#1362 the marker was smuggled into the record slug
 (`<YYYYMMDD>-public-<reviewer>`) and ace-web filtered on it, which left a naming
 convention one rename away from republishing a private review.
 
+**Apply the boundary AT THE JOIN, not only per source.** Each source already filters
+itself — ace-web republishes only `public-summary` feedback, and serves every override
+row by policy (`project_override(include_email=False)`; attribution is the safety model
+there, so names and reasoning are public and only the email is withheld). But a view
+whose job is to MERGE them can reintroduce the leak both sources avoid: a private gdoc
+review merged with public edits and published republishes the private review. Pass
+`audience: 'public'` to `buildEngagements()` for anything destined for a page anyone can
+open — it drops non-`public-summary` records and keeps edits, and merged output is
+publishable only if every entry in it is. Default is `internal`, because the ledger gdoc
+is an opp artifact, not a page.
+
+Override rows carry **no** public/private marker at all, so this cannot be read off the
+row — `isEditPubliclyRepublishable()` is where that policy lives, and it is the one place
+a future private-edit surface would change.
+
 ## Inputs
 
 | Source | Artifact | Used for |
@@ -101,6 +155,7 @@ convention one rename away from republishing a private review.
 | GitHub | issues + PRs carrying a `Feedback-Ref:` trailer | `skill-fix` dispositions |
 | Run | `runs/<run-id>/decisions.yaml` rows with `feedback_ref` | `decision` dispositions |
 | Opp | `ACE/<opp>/open-questions.md` | `open-question` dispositions |
+| Opp | `ACE/<opp>/inputs/decision-overrides.yaml` | the reviewer's **edits** (derived, never written here) |
 
 ## Products
 
@@ -153,6 +208,7 @@ One field, three places. This is the ONLY write-side obligation:
 | `decision` | the run's `decisions.yaml` | `feedback_ref: <slug>/<item-id>` on the row |
 | `open-question` | `ACE/<opp>/open-questions.md` | `<!-- feedback-ref: <slug>/<item-id> -->` on the entry |
 | `declined` | the ledger call itself | pass a `declined` disposition with a reason |
+| downstream of an **edit** | wherever the work lands | `Feedback-Ref: decision-edits/<decision-id>` — the edit itself needs no stamp; what follows from it does |
 
 Stamp at the moment you act, not at the end — the same discipline as ACE's
 issues-as-you-go convention, and for the same reason: batching loses the mapping.
@@ -174,7 +230,13 @@ import { parseFeedbackRecord, buildLedgerWithOrphans, renderLedgerMarkdown,
 - **open-questions.md:** entries with the marker → `kind: 'open-question'`,
   `status: 'awaiting-human'` until answered.
 
-Render with `renderLedgerMarkdown(ledger, orphans)` and publish to
+- **decision-overrides.yaml:** `parseDecisionOverridesYaml()` → `deriveEditEntries(file,
+  { boundValues, dispositions })`, where `boundValues` maps decision id → the value the
+  run's `decisions.yaml` recorded. Without it every edit reads `PENDING NEXT RUN`.
+
+For the unified per-person view, `buildEngagements({ records, edits, dispositions })` →
+`renderEngagementMarkdown(engagement, orphans)`. `renderLedgerMarkdown(ledger, orphans)`
+remains the single-review view. Publish to
 `ACE/<opp>/feedback/<slug>-ledger.gdoc` via `drive_create_doc_from_markdown` — **one
 stable URL per review**, updated in place on re-render so the reviewer can re-open the
 same link after each run.

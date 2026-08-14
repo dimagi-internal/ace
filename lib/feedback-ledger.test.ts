@@ -9,6 +9,13 @@ import {
   renderLedgerMarkdown,
   FeedbackRecordSchema,
   isPubliclyRepublishable,
+  EDIT_RECORD_SLUG,
+  buildEngagements,
+  deriveEditEntries,
+  identityOfEditRow,
+  identityOfRecord,
+  isEditPubliclyRepublishable,
+  renderEngagementMarkdown,
   type Disposition,
   type FeedbackRecord,
 } from './feedback-ledger';
@@ -323,5 +330,300 @@ describe('feedback channels (#1362, #1335)', () => {
       buildLedger({ ...base, channel: 'gdoc-comments' } as any, []),
     );
     expect(md).not.toMatch(/self-reported/i);
+  });
+});
+
+/**
+ * dimagi-internal/ace#1335, decision-edit half — the ledger recorded what a
+ * reviewer SAID and not what they CHANGED, so a reviewer who edited decisions
+ * instead of commenting opened the "where did my comment go?" view and found
+ * it empty.
+ *
+ * Operator ruling (Jonathan, 2026-08-14): comment or edit, the experience and
+ * the visibility should be the same. Solved by DERIVING the ledger from
+ * `inputs/decision-overrides.yaml` as well as from feedback records — never by
+ * double-writing a feedback record on edit, which would put the same fact in
+ * two stores that then drift.
+ */
+describe('decision edits as ledger entries (#1335)', () => {
+  const editRow = {
+    id: 'photo-required',
+    override: 'yes',
+    override_reasoning: 'A supervisor cannot verify a visit without one.',
+    phase: 'idea-to-design',
+    question: 'Should a delivery visit require a photo?',
+    ai_default: 'no',
+    decided_by: 'sfeintuch@dimagi-associate.com',
+    decided_by_name: 'Sophie Feintuch',
+    decided_by_verified: true,
+    decided_at: '2026-07-28T09:00:00Z',
+    source_run_id: '20260722-1341',
+  };
+
+  it('derives one stampable entry per saved override row', () => {
+    const [e] = deriveEditEntries([editRow]);
+    expect(e.ref).toBe('decision-edits/photo-required');
+    expect(e.from).toBe('no');
+    expect(e.to).toBe('yes');
+    expect(e.reasoning).toContain('supervisor');
+  });
+
+  it('reserves the edit slug so a record can never shadow an edit ref', () => {
+    expect(() =>
+      FeedbackRecordSchema.parse({
+        schema_version: 1,
+        slug: EDIT_RECORD_SLUG,
+        reviewer: 'Impostor',
+        received_at: '2026-08-14',
+        items: [{ id: 'photo-required', verbatim: 'x' }],
+      }),
+    ).toThrow();
+  });
+
+  // An edit is not a comment: it already changed the next run's input, so it
+  // is self-routing for its own value. Calling it UNROUTED would accuse ACE of
+  // dropping something that already landed.
+  it('never marks an edit UNROUTED, even with no disposition at all', () => {
+    const edits = deriveEditEntries([editRow]);
+    const { engagements } = buildEngagements({ edits });
+    const out = renderEngagementMarkdown(engagements[0]);
+    expect(out).not.toContain('UNROUTED');
+    expect(out).toContain('PENDING NEXT RUN');
+  });
+
+  // ...but "the value landed" and "the work that follows from it landed" are
+  // different questions, so an edit still carries downstream dispositions.
+  it('shows APPLIED once a run recorded the value, and still takes a stamp', () => {
+    const edits = deriveEditEntries([editRow], {
+      boundValues: new Map([['photo-required', 'yes']]),
+      dispositions: [
+        {
+          feedbackRef: 'decision-edits/photo-required',
+          kind: 'skill-fix',
+          summary: 'Deliver form now captures a photo',
+          link: 'https://github.com/dimagi-internal/ace/issues/1',
+          status: 'shipped',
+        },
+      ],
+    });
+    expect(edits[0].binding).toBe('applied');
+    const out = renderEngagementMarkdown(buildEngagements({ edits }).engagements[0]);
+    expect(out).toContain('**APPLIED**');
+    expect(out).toContain('Deliver form now captures a photo');
+  });
+
+  it('does not claim an edit landed without evidence that it did', () => {
+    expect(deriveEditEntries([editRow])[0].binding).toBe('pending');
+    expect(
+      deriveEditEntries([editRow], {
+        boundValues: new Map([['photo-required', 'no']]),
+      })[0].binding,
+    ).toBe('pending');
+  });
+
+  it('renders a revert as the act it is, not as a missing row', () => {
+    const [e] = deriveEditEntries([
+      { id: 'gps-radius', override: '50m', ai_default: '50m' },
+    ]);
+    expect(e.revert).toBe(true);
+    const out = renderEngagementMarkdown(buildEngagements({ edits: [e] }).engagements[0]);
+    expect(out).toContain('You put it back');
+  });
+
+  it('counts buried values so a superseded edit is visibly recoverable', () => {
+    const [e] = deriveEditEntries([
+      { ...editRow, history: [{ override: 'no' }, { override: 'maybe' }] },
+    ]);
+    expect(e.supersedes).toBe(2);
+    const out = renderEngagementMarkdown(buildEngagements({ edits: [e] }).engagements[0]);
+    expect(out).toContain('Replaced 2 earlier values');
+  });
+
+  it('reads one person\'s comments and edits as ONE ordered list', () => {
+    const edits = deriveEditEntries([editRow]);
+    const { engagements } = buildEngagements({
+      records: [record],
+      edits,
+      dispositions,
+    });
+    // record is `channel: gdoc-comments` with reviewer_email == decided_by,
+    // and both sides are verified — so they are one person, one bucket.
+    expect(engagements).toHaveLength(1);
+    const kinds = engagements[0].entries.map((e) => e.kind);
+    expect(kinds.filter((k) => k === 'comment')).toHaveLength(3);
+    expect(kinds.filter((k) => k === 'edit')).toHaveLength(1);
+    // 2026-07-27 comments precede the 2026-07-28 edit.
+    expect(kinds[kinds.length - 1]).toBe('edit');
+    expect(engagements[0].coverage).toMatchObject({ comments: 3, edits: 1 });
+  });
+
+  it('gives an edits-only reviewer a view instead of nothing', () => {
+    const { engagements } = buildEngagements({
+      edits: deriveEditEntries([
+        { ...editRow, decided_by: 'new@dimagi.com', decided_by_name: 'New Person' },
+      ]),
+    });
+    expect(engagements).toHaveLength(1);
+    expect(engagements[0].identity.name).toBe('New Person');
+    expect(renderEngagementMarkdown(engagements[0])).toContain(
+      'Where your input went — New Person',
+    );
+  });
+
+  it('surfaces a stamp pointing at a nonexistent edit as a broken stamp', () => {
+    const { orphans } = buildEngagements({
+      edits: deriveEditEntries([editRow]),
+      dispositions: [
+        {
+          feedbackRef: 'decision-edits/no-such-row',
+          kind: 'skill-fix',
+          summary: 'typo',
+          status: 'shipped',
+        },
+      ],
+    });
+    expect(orphans).toHaveLength(1);
+  });
+});
+
+/**
+ * Identity reconciliation. A ledger record spells a reviewer as `reviewer` +
+ * `reviewer_email`; an override row spells them as `decided_by_name` +
+ * `decided_by_verified`. Joining them must never let a SELF-REPORTED name be
+ * treated as a verified identity — anyone can type a real person's name into
+ * the public run summary's name box.
+ */
+describe('identity join', () => {
+  it('joins a verified edit to a review by authenticated email', () => {
+    expect(
+      identityOfEditRow({
+        id: 'x',
+        override: 'y',
+        decided_by: 'SFeintuch@dimagi-associate.com',
+        decided_by_name: 'Sophie Feintuch',
+        decided_by_verified: true,
+      }).key,
+    ).toBe(identityOfRecord(record).key);
+  });
+
+  it('does NOT let a self-reported name join a verified reviewer', () => {
+    const impostor = identityOfEditRow({
+      id: 'x',
+      override: 'y',
+      decided_by: 'sfeintuch@dimagi-associate.com',
+      decided_by_name: 'Sophie Feintuch',
+      decided_by_verified: false,
+    });
+    expect(impostor.verified).toBe(false);
+    expect(impostor.key).not.toBe(identityOfRecord(record).key);
+    // Not even the email is a join key when the actor was never authenticated.
+    expect(impostor.key).toBe('self-reported:sophie-feintuch');
+    expect(impostor.email).toBeUndefined();
+  });
+
+  it('treats a public-summary record as self-reported, an email as not', () => {
+    const pub = identityOfRecord(
+      FeedbackRecordSchema.parse({
+        schema_version: 1,
+        slug: '20260814-public-anne',
+        reviewer: 'Sophie Feintuch',
+        reviewer_email: 'sfeintuch@dimagi-associate.com',
+        received_at: '2026-08-14',
+        channel: 'public-summary',
+        items: [{ id: 'a', verbatim: 'hi' }],
+      }),
+    );
+    expect(pub.verified).toBe(false);
+    expect(pub.key).not.toBe(identityOfRecord(record).key);
+  });
+
+  it('says self-reported on the rendered page, every time', () => {
+    const { engagements } = buildEngagements({
+      edits: deriveEditEntries([
+        { id: 'x', override: 'y', decided_by_name: 'Anne', decided_by_verified: false },
+      ]),
+    });
+    expect(renderEngagementMarkdown(engagements[0])).toContain(
+      'Identity **self-reported**',
+    );
+  });
+
+  it('keeps two unverified people apart, and two acts by one together', () => {
+    const { engagements } = buildEngagements({
+      edits: deriveEditEntries([
+        { id: 'a', override: '1', decided_by_name: 'Anne K', decided_by_verified: false },
+        { id: 'b', override: '2', decided_by_name: 'anne k', decided_by_verified: false },
+        { id: 'c', override: '3', decided_by_name: 'Bo T', decided_by_verified: false },
+      ]),
+    });
+    expect(engagements).toHaveLength(2);
+    expect(engagements[0].coverage.edits).toBe(2);
+  });
+});
+
+/**
+ * The confidentiality boundary, applied AT THE JOIN.
+ *
+ * Each source already filters itself — ace-web republishes only
+ * `public-summary` feedback, and serves every override row by policy. But a
+ * view whose job is to MERGE the two can reintroduce the leak both sources
+ * avoid: merging a private gdoc review with public edits and publishing the
+ * result republishes the private review. Merged output is publishable only if
+ * EVERY entry in it is.
+ */
+describe('public audience filter', () => {
+  const publicRecord = FeedbackRecordSchema.parse({
+    schema_version: 1,
+    slug: '20260814-public-anne',
+    reviewer: 'Anne',
+    received_at: '2026-08-14',
+    channel: 'public-summary',
+    items: [{ id: 'loud-one', verbatim: 'This row is wrong.' }],
+  });
+
+  it('drops a privately-captured review from a public-audience build', () => {
+    const { engagements } = buildEngagements({
+      records: [record, publicRecord],
+      audience: 'public',
+    });
+    const rendered = engagements.map((e) => renderEngagementMarkdown(e)).join('\n');
+    expect(rendered).not.toContain('visit_outcome is the first question');
+    expect(rendered).toContain('This row is wrong.');
+  });
+
+  it('keeps everything for the default internal audience', () => {
+    const { engagements } = buildEngagements({ records: [record, publicRecord] });
+    expect(engagements).toHaveLength(2);
+  });
+
+  it('keeps edits public — ace-web already serves every override row', () => {
+    const edits = deriveEditEntries([
+      { id: 'x', override: 'y', decided_by_name: 'M', decided_by_verified: true },
+    ]);
+    expect(isEditPubliclyRepublishable(edits[0])).toBe(true);
+    expect(
+      buildEngagements({ edits, audience: 'public' }).engagements,
+    ).toHaveLength(1);
+  });
+
+  it('never carries a private comment into public output via an edit bucket', () => {
+    // Same human, both acts: the verified edit survives the public filter,
+    // the private gdoc comment does not — the bucket is not a loophole.
+    const edits = deriveEditEntries([
+      {
+        id: 'photo-required',
+        override: 'yes',
+        decided_by: 'sfeintuch@dimagi-associate.com',
+        decided_by_name: 'Sophie Feintuch',
+        decided_by_verified: true,
+      },
+    ]);
+    const { engagements } = buildEngagements({
+      records: [record],
+      edits,
+      audience: 'public',
+    });
+    expect(engagements).toHaveLength(1);
+    expect(engagements[0].coverage).toMatchObject({ comments: 0, edits: 1 });
   });
 });

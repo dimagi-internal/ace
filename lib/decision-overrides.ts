@@ -54,6 +54,28 @@ export class DecisionOverridesError extends Error {
 }
 
 /**
+ * One superseded state of an override row. ace-web pushes the prior row
+ * onto the winner's `history` (newest first) whenever a row is rewritten,
+ * so last-write-wins loses nothing and any change is undoable from the UI.
+ *
+ * Loose on purpose: ace-web omits empty fields, and this reader must never
+ * be the reason a reviewer's saved intent fails to load.
+ */
+export const DecisionOverrideHistorySchema = z.object({
+  override: z.string().optional(),
+  override_reasoning: z.string().optional(),
+  decided_by: z.string().optional(),
+  decided_by_name: z.string().optional(),
+  decided_by_verified: z.boolean().optional(),
+  decided_at: z.string().optional(),
+  source_run_id: z.string().optional(),
+});
+
+export type DecisionOverrideHistoryEntry = z.infer<
+  typeof DecisionOverrideHistorySchema
+>;
+
+/**
  * One override row. Only `id` + `override` are load-bearing;
  * everything else is provenance ace-web denormalizes so the file can
  * explain itself years later without resolving a run folder.
@@ -78,6 +100,18 @@ export const DecisionOverrideRowSchema = z.object({
   decided_by: z.string().optional(),
   decided_at: z.string().optional(),
   source_run_id: z.string().optional(),
+  // --- Identity + reversibility (ace-web PR #714, additive at v1) ---
+  // ace-web now writes these on every row. They were previously STRIPPED
+  // here (a non-strict zod object drops what it doesn't declare), which is
+  // safe for BINDING — `applyDecisionOverrides` needs only `id` +
+  // `override` — but makes the row unreadable as an ACT: who changed it,
+  // and whether that identity was authenticated or typed into a public
+  // page. `lib/feedback-ledger.ts` derives a reviewer's EDITS from these,
+  // and its whole safety property is that a self-reported name can never
+  // be mistaken for a verified one — so the flag has to survive the parse.
+  decided_by_name: z.string().optional(),
+  decided_by_verified: z.boolean().optional(),
+  history: z.array(DecisionOverrideHistorySchema).optional(),
 });
 
 export type DecisionOverrideRow = z.infer<typeof DecisionOverrideRowSchema>;
