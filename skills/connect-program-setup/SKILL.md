@@ -142,8 +142,24 @@ alone makes the artifact land outside `4-connect` and fail
 
    1. `connect_get_program({ organization_slug, program_id })` →
       `program.budget`.
-   2. `connect_list_opportunities({ organization_slug, program_id })` →
-      `Σ(total_budget)` across all managed opps.
+   2. `connect_list_opportunities({ organization_slug, hydrate: true })` →
+      then filter to this program yourself and sum `total_budget` across
+      the managed opps.
+
+      **Do NOT pass `program_id`, and `hydrate` is required (ace#1022).**
+      The opportunity list page carries no program column and no budget, so
+      the atom used to silently ignore the filter and return the whole org
+      — and `total_budget` was never in the returned shape at all. Both
+      inputs to this sum were therefore unobtainable and the headroom check
+      **silently no-opped**, which is exactly the failure ace#588 was filed
+      to prevent; it surfaced later as an un-actionable "Budget exceeds the
+      program budget" rejection on `connect_create_opportunity`.
+      `program_id` is now refused loudly rather than dropped.
+
+      If a hydrated row still carries no `total_budget`, treat the sum as
+      **unknown** and raise the ceiling on the conservative assumption
+      rather than computing a headroom from partial data — a wrong Σ is
+      what makes this check worse than no check.
    3. If `program.budget − Σ < EXPECTED_OPP_BUDGET × 3` (keep room for at
       least a few more runs; `EXPECTED_OPP_BUDGET` = the PDD's per-opp
       budget, default the program's own per-opp figure), raise the ceiling
