@@ -363,10 +363,38 @@ walk**:
 
 1. `takeScreenshot` on entering the screen.
 2. Per select child: `scrollUntilVisible` the option, then `tapOn` it.
-3. Per label-less EditText child: focus it with a bare `below:`-scoped
-   tap anchored on the question text, then `inputText`. Live-validated:
-   `tapOn: {below: {text: "Number of household members.*"}}` focuses the
-   int EditText and the following `inputText` lands.
+3. Per label-less EditText child: **`below:` anchored on the question
+   label is NOT reliable and is inert whenever the question has a hint
+   (ace#1299).** The calibrated layout order is
+
+       label TextView  ->  optional hint TextView  ->  EditText
+
+   so `below: <question label>` selects the **hint**, and tapping a
+   TextView does nothing. The tap reports success, focus never moves, and
+   every subsequent `inputText` appends into whichever field was already
+   focused. Live on `spark-facilitator/20260813-2126` that produced
+   `cbf_name = "Thandiwe Banda0991234567"` with `phone_number` empty and
+   required — silent data corruption, not a visible failure.
+
+   The idiom appears to work on questions WITHOUT a hint, which is why it
+   was recorded as live-validated: the failure is per-question, not
+   per-form.
+
+   Two live facts to compose against instead (CommCare 2.63.2 /
+   `ACE_Pixel_API_34`, ui-dump 2026-08-14):
+
+   - **CommCare AUTOFOCUSES the first input of a field-list at form
+     open** — `focused=true` with zero taps — so the first value needs no
+     tap at all, just `inputText`.
+   - **The answer EditText carries NO resource-id** on this build.
+     `org.odk.collect.android:id/answer_text` (the old
+     `form-question-input` guess) does not exist; match by class
+     (`android.widget.EditText`) and position.
+
+   Anchoring on the HINT text where one exists, or on index within the
+   field-list, both remain **uncalibrated** — do not emit either until
+   one is proven on a live device, and prefer a one-question-per-screen
+   group over guessing.
 4. Exactly **ONE** trailing form-advance, after every REQUIRED child is
    answered.
 
@@ -823,6 +851,49 @@ For every `tapOn:text` matcher in a recipe:
 `mobile_validate_recipe` is a static lint that accepts any
 syntactically-valid string — it cannot detect a brief-vs-live drift.
 Step 4 (below) adds a runtime smoke check that catches it.
+
+#### `kind: date` questions and the inline DatePicker — MANDATORY (ace#1081, #1300)
+
+The skill's answer-tap rule enumerates `single_select`, `image`, `text`,
+`decimal`, `geopoint` and hidden fields. It says nothing about
+`kind: date`, and the selector map carried no date row until 2026-08-14.
+
+**The widget, live-calibrated** (CommCare 2.63.2 / `ACE_Pixel_API_34`,
+portrait 1080x2400):
+
+```
+DatePicker                  [214,1208][865,1765]      (no resource-id — match by class)
+  NumberPicker  month       [235,1250][403,1723]      numberpicker_input "Aug"
+  NumberPicker  day         [445,1250][613,1723]      numberpicker_input "14"
+  NumberPicker  year        [655,1250][823,1723]      numberpicker_input "2026"
+```
+
+Rows: `form-date-picker`, `form-date-picker-container`,
+`form-date-picker-column`, `form-date-picker-input`.
+
+**NEVER scroll a field-list screen from its centre when it carries a date
+question.** Each NumberPicker column is `scrollable=true`, so a
+centre-origin swipe — which is exactly what `scrollUntilVisible` issues —
+is **consumed by the picker and spins the date**. Measured on-device:
+
+```
+portrait   swipe x=540  (centre)   Aug 14 -> Aug 22    page did NOT move
+landscape  swipe x=1200 (centre)   Aug 22 -> Aug 25    page did NOT move
+landscape  swipe x=300  (edge)     Aug 25 -> Aug 25    no mutation
+```
+
+Both halves bite: questions below the picker are unreachable, **and** a
+payment-gating field is silently changed by an automation gesture with no
+error and nothing able to assert against it. Use `safeScrollOriginX`
+(`lib/fieldlist-gestures.ts`) to pick an origin outside the picker's
+x-range, and assert the date via `form-date-picker-input` afterwards —
+that read-back is the only surface that reports what the picker now holds.
+
+**A strictly-future constraint is still unwalkable.** The widget defaults
+to today, so `. > today()` cannot be satisfied by the default and there is
+no calibrated way to DRIVE the columns yet (the safe-scroll rule above
+avoids the picker; it does not operate it). Mark that branch rather than
+guessing a gesture — ace#1081 stays open for the drive-the-picker half.
 
 #### Quiz / required-input answer-tap rule — MANDATORY
 

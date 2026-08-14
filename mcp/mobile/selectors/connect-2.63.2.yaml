@@ -590,10 +590,34 @@ selectors:
     purpose: "The button that launches the Deliver app from the post-Learn-completion opp-detail. Best-guess: same label/surface as `opp-detail-start-delivering` (kept as a J1-recipe-named alias for the Deliver-side entry). NOT YET REACHED 2026-05-12 — blocked by upstream 500. When verified, this row may collapse into a pure alias of opp-detail-start-delivering."
 
   form-question-input:
+    type: class
+    value: "android.widget.EditText"
+    purpose: "Free-text answer EditText in a CommCare form question. Live-verified on CommCare 2.63.2 / ACE_Pixel_API_34 2026-08-14 (dimagi-internal/ace#1299): the answer EditText carries **NO resource-id at all** — the previous `org.odk.collect.android:id/answer_text` guess does not exist on this build, and neither does `org.commcare.dalvik:id/answer_text`. Match by CLASS and position instead. Two live facts that follow: (1) CommCare AUTOFOCUSES the first input of a field-list at form open, `focused=true` with zero taps, so its value can be typed without any tap; (2) the per-question layout order is `label TextView -> optional hint TextView -> EditText`, which is why `tapOn: below: <question label>` selects the HINT and is inert — see form-question-input-order below."
+
+  form-question-input-order:
+    type: doc
+    value: "label TextView -> optional hint TextView -> EditText"
+    purpose: "NOT a selector — the calibrated LAYOUT ORDER of a CommCare form question, recorded so recipe authors stop reaching for `below: <label>`. Live ui-dump, CommCare 2.63.2, field-list with two text inputs (ace#1299): TextView 'Facilitator's full name (as on the register)' [42,617][1038,691]; TextView 'First name and family name.' [42,691][1038,756] (the HINT); EditText '' focused=true [42,756][1038,892]. A question WITHOUT a hint has the EditText directly below its label, which is why the idiom appears to work on some screens and silently fails on others — the failure mode is per-question, not per-form."
+
+  form-date-picker:
+    type: class
+    value: "android.widget.DatePicker"
+    purpose: "Native inline date widget rendered by a CommCare `kind: date` question. Live-verified on CommCare 2.63.2 / ACE_Pixel_API_34 2026-08-14 (dimagi-internal/ace#1081, #1300): bounds [214,1208][865,1765] on a 1080x2400 portrait viewport, inside a field-list group. It has no resource-id; match by class. **A scroll gesture originating inside these bounds is CONSUMED by the picker and spins the date** — measured Aug 14 -> Aug 22 from one centre-origin swipe, with the page not moving. Use `lib/fieldlist-gestures.ts safeScrollOriginX` to pick an origin outside its x-range."
+
+  form-date-picker-container:
     type: id
-    value: "org.odk.collect.android:id/answer_text"
-    unverified: true
-    purpose: "Free-text answer EditText in a CommCare/ODK form question. Best-guess from ODK Collect 2.62.0 chrome (CommCare embeds ODK). Used 3× in J1 (Bidiani Market name, '200' weight, 'Northern region farms' origin). NOT YET REACHED 2026-05-12 — Deliver app unreachable due to upstream 500. Verify against the live form question once reachable; common alternates: `org.commcare.dalvik:id/answer_text`, plain `android.widget.EditText` matched by parent prompt."
+    value: "android:id/pickers"
+    purpose: "The LinearLayout holding the three date NumberPicker columns; shares the DatePicker's bounds. Live-verified CommCare 2.63.2, 2026-08-14 (ace#1081). Useful as a presence check for 'this screen carries an inline date question'."
+
+  form-date-picker-column:
+    type: class
+    value: "android.widget.NumberPicker"
+    purpose: "One spinner column of the native date widget. Live-verified CommCare 2.63.2, 2026-08-14 (ace#1081): THREE columns in display order month/day/year, at [235,1250][403,1723], [445,1250][613,1723], [655,1250][823,1723]. Each is `scrollable=true`, which is exactly why it swallows a swipe aimed at the page (ace#1300)."
+
+  form-date-picker-input:
+    type: id
+    value: "android:id/numberpicker_input"
+    purpose: "The EditText inside each date NumberPicker column, holding the CURRENTLY SELECTED value ('Aug', '14', '2026'). Live-verified CommCare 2.63.2, 2026-08-14 (ace#1081). This is the read-back to assert a date against — and the one that proved the silent mutation in ace#1300, since it is the only surface that reports what the picker now holds."
 
   form-photo-capture:
     type: text
