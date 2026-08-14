@@ -1,7 +1,7 @@
 import type { APIRequestContext, APIResponse } from 'playwright';
 import type { ConnectClient } from '../client.js';
-import type { Opportunity, PaymentUnit, Program, ProgramApplication } from '../types.js';
-import { HttpError, ConnectValidationError, ConnectError } from '../errors.js';
+import type { Opportunity, PaymentUnit, Program, ProgramApplication, VerificationFlags } from '../types.js';
+import { HttpError, ConnectValidationError, ConnectError, UnsupportedVerificationFlagError } from '../errors.js';
 import { assertFundsAtLeastOneUser } from '../opportunity-capacity.js';
 import type { PlaywrightSession } from '../auth/playwright-session.js';
 import { parseOrgMemberTable, type OrgMemberRow } from '../../../lib/connect-member-table.js';
@@ -185,6 +185,65 @@ function truncatedKeyLabel(rawKey: string): string {
  * moved to `rest.ts` once the automation API shipped — saving ~600 lines
  * of HTML-form scraping.
  */
+/**
+ * Which requested verification flags have NO backing input on the live
+ * `verification_flags_config/` page (dimagi-internal/ace#1013).
+ *
+ * Pure over the fetched HTML, deliberately: the page IS the authority on what
+ * Connect can enforce today, so the guard cannot go stale the way a hardcoded
+ * denylist of the five removed fields would — if Connect restores `gps`, this
+ * stops firing with no code change.
+ *
+ * Only TRUTHY requests are checked. `duplicate: false` against a page with no
+ * `duplicate` input is a no-op that already matches the caller's intent, so
+ * flagging it would be a false positive on callers that pass explicit falses.
+ */
+export function findUnsupportedVerificationFlags(
+  html: string,
+  flags: VerificationFlags,
+): { flag: string; expected_input: string }[] {
+  const has = (re: RegExp) => re.test(html);
+  const exact = (name: string) => new RegExp(`name=["']${name}["']`);
+  const out: { flag: string; expected_input: string }[] = [];
+
+  const simple: [keyof VerificationFlags, string][] = [
+    ['duplicate', 'duplicate'],
+    ['gps', 'gps'],
+    ['catchment_areas', 'catchment_areas'],
+  ];
+  for (const [flag, input] of simple) {
+    if (flags[flag] && !has(exact(input))) out.push({ flag, expected_input: input });
+  }
+  // `gps_radius_meters` writes the form's numeric `location` input.
+  if (flags.gps_radius_meters != null && !has(exact('location'))) {
+    out.push({ flag: 'gps_radius_meters', expected_input: 'location' });
+  }
+  // Time-window fields (these DO still exist — the probe is general, so it
+  // would catch their removal too rather than silently no-op'ing).
+  if (flags.form_submission_start && !has(exact('form_submission_start'))) {
+    out.push({ flag: 'form_submission_start', expected_input: 'form_submission_start' });
+  }
+  if (flags.form_submission_end && !has(exact('form_submission_end'))) {
+    out.push({ flag: 'form_submission_end', expected_input: 'form_submission_end' });
+  }
+  for (const c of flags.deliver_unit_checks ?? []) {
+    if (c.check_attachments && !has(/name=["'][^"']*check_attachments["']/)) {
+      out.push({ flag: 'deliver_unit_checks[].check_attachments', expected_input: 'deliver_unit-<i>-check_attachments' });
+      break;
+    }
+  }
+  for (const c of flags.deliver_unit_checks ?? []) {
+    if (c.duration_minutes != null && !has(/name=["']deliver_unit-\d+-duration["']/)) {
+      out.push({ flag: 'deliver_unit_checks[].duration_minutes', expected_input: 'deliver_unit-<i>-duration' });
+      break;
+    }
+  }
+  if (flags.form_field_rules?.length && !has(/name=["']form_json-/)) {
+    out.push({ flag: 'form_field_rules', expected_input: 'form_json-<i>-*' });
+  }
+  return out;
+}
+
 export class PlaywrightBackend implements ConnectClient {
   constructor(private opts: PlaywrightBackendOptions) {}
 
@@ -446,6 +505,31 @@ export class PlaywrightBackend implements ConnectClient {
     const getRes = await this.request.get(path);
     if (getRes.status() !== 200) throw await httpErrorFor(getRes, path);
     const html = await getRes.text();
+
+    // Refuse BEFORE writing anything (ace#1013). Connect drops unrecognized
+    // POST keys and still 302s, so posting a flag whose input no longer exists
+    // returned `{ok:true}` for a control that was never set — the shape that
+    // let every run from 2026-06-06 to 2026-07-28 claim "verification flags
+    // configured" with INITIAL_FORMS: 0 on every opportunity.
+    const unsupported = findUnsupportedVerificationFlags(html, flags);
+    if (unsupported.length) throw new UnsupportedVerificationFlagError(path, unsupported);
+
+    // `duration_seconds` was a 60x misnomer: the form's help text reads
+    // "Minimum time to complete form (minutes)", so a caller converting a
+    // 6-minute floor to 360 set a six-hour floor and made the gate unfirable.
+    // Reject rather than reinterpret — silently treating 360 as minutes would
+    // be a different wrong answer.
+    for (const c of flags.deliver_unit_checks ?? []) {
+      if (c.duration_seconds != null) {
+        throw new ConnectError(
+          `deliver_unit_checks[].duration_seconds is not a supported parameter: Connect's ` +
+            `field is MINUTES ("Minimum time to complete form (minutes)"), so a ` +
+            `seconds-converted value sets a 60x-too-long floor. Pass duration_minutes ` +
+            `instead (dimagi-internal/ace#1013).`,
+        );
+      }
+    }
+
     const csrf = extractFormCsrfToken(html) ?? this.opts.csrfToken;
     const current = extractFormFieldValues(html);
 
@@ -490,7 +574,7 @@ export class PlaywrightBackend implements ConnectClient {
             const idx = k.match(/^deliver_unit-(\d+)-/)![1];
             if (c.check_attachments) form[`deliver_unit-${idx}-check_attachments`] = 'on';
             else delete form[`deliver_unit-${idx}-check_attachments`];
-            if (c.duration_seconds != null) form[`deliver_unit-${idx}-duration`] = String(c.duration_seconds);
+            if (c.duration_minutes != null) form[`deliver_unit-${idx}-duration`] = String(c.duration_minutes);
           }
         }
       }

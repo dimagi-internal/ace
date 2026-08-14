@@ -356,9 +356,21 @@ alone makes the artifact land outside `4-connect` and fail
        landed; compare it against the number of rules you sent.
    - `form_submission_start` / `form_submission_end`: HH:MM:SS — set
      only if the PDD has time-of-day plausibility constraints.
-   - `deliver_unit_checks[].duration_seconds` — despite the name this is
-     **MINUTES** (the form label says so). Set only if the PDD states a
-     minimum delivery duration.
+   - `deliver_unit_checks[].duration_minutes` — MINUTES, matching the
+     form's own help text. Set only if the PDD states a minimum delivery
+     duration. (The old `duration_seconds` spelling is now REFUSED with a
+     typed error rather than silently writing a 60x-too-long floor —
+     ace#1013.)
+   - **Any other flag is refused, not dropped.** `gps`, `duplicate`,
+     `catchment_areas`, `gps_radius_meters` and `check_attachments` have no
+     input on the live form, so a truthy value now raises
+     `unsupported_verification_flag` BEFORE the POST. That is deliberate:
+     the atom used to accept them, Django dropped them, and it returned
+     `ok: true` — which is how six opportunities across 2026-06-06..07-28
+     reported "verification flags configured" with nothing persisted. If
+     the PDD needs one of these predicates, express it as a
+     `form_field_rules` rule or cite the CCZ-side enforcement; do not
+     re-send the dead flag.
 
    Layer A rules that none of these can carry (photo-present, date sanity,
    cross-field consistency, dedup) are normally already enforced *in the

@@ -232,3 +232,57 @@ export class ConnectSilentRejectError extends ConnectError {
     };
   }
 }
+
+/**
+ * A requested verification flag has no corresponding input on the LIVE
+ * `verification_flags_config/` page, so posting it would enforce nothing
+ * (dimagi-internal/ace#1013).
+ *
+ * Why this is fail-loud rather than a warning: Connect's form silently drops
+ * unrecognized POST keys and still redirects 302, so the atom used to return
+ * `{ok: true}` for a flag it had not set. Every ACE run from 2026-06-06 to
+ * 2026-07-28 reported "verification flags configured" in its Phase 4 summary
+ * and its `connect-opp-setup.md`, with `INITIAL_FORMS: 0` on every
+ * opportunity — no run had ever persisted one. The artifact was wrong in a
+ * way no downstream phase re-checked, and the Work Order promised those
+ * checks to a partner.
+ *
+ * The support test reads the FETCHED PAGE, never a hardcoded list, so the
+ * guard relaxes by itself if Connect restores a field — "close the loop to
+ * the source of truth" rather than another list to age.
+ */
+export class UnsupportedVerificationFlagError extends ConnectError {
+  retryable = false;
+  constructor(
+    public path: string,
+    public unsupported: { flag: string; expected_input: string }[],
+  ) {
+    super(
+      `Connect's verification form at ${path} has no input for: ` +
+        unsupported.map((u) => `${u.flag} (expected input ${u.expected_input})`).join(', ') +
+        `. Posting these would be dropped server-side and this atom would still ` +
+        `return ok — so they are refused instead. Per ace#1013 only ` +
+        `form_field_rules, form_submission_start/end and the per-deliver-unit ` +
+        `duration are backed by live fields; form_field_rules is the ONLY ` +
+        `surface that enforces a PDD Evidence-Model Layer A predicate ` +
+        `server-side. Drop the unsupported flags (or express the intent as a ` +
+        `form_field_rules rule) and re-run.`,
+    );
+  }
+
+  toJSON(): {
+    error: 'unsupported_verification_flag';
+    message: string;
+    path: string;
+    unsupported: { flag: string; expected_input: string }[];
+    retryable: false;
+  } {
+    return {
+      error: 'unsupported_verification_flag',
+      message: this.message,
+      path: this.path,
+      unsupported: this.unsupported,
+      retryable: false,
+    };
+  }
+}
