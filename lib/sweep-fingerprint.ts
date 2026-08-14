@@ -122,6 +122,25 @@ export interface ConnectItemInfo {
   opportunityId?: string;
   /** From Connect's "active" flag on opportunities. */
   active?: boolean;
+  /**
+   * Connect's `end_date`. An EMPTY string is the malformed state ace#938 was
+   * about — an opportunity with no end date bricks the mobile app for any
+   * worker invited to it. `undefined` means "not read", which is not the same
+   * thing and must never be scored as malformed.
+   */
+  endDate?: string;
+}
+
+/**
+ * Is this opportunity in the malformed state that bricks the app (ace#938)?
+ *
+ * Deliberately narrow: only an explicitly-read EMPTY `end_date` counts.
+ * `undefined` means the field was not read — treating that as malformed would
+ * flag every opportunity the sweep did not deep-read, and the repair writes a
+ * date, so a false positive here MUTATES a healthy opp.
+ */
+export function isMalformedOpportunity(item: ConnectItemInfo): boolean {
+  return item.type === 'opportunity' && item.endDate === '';
 }
 
 /**
@@ -141,6 +160,15 @@ export function scoreConnectItem(item: ConnectItemInfo, _liveSet: LiveSet): Scor
 
   if (KEBAB_OPP_NAME.test(item.name)) {
     signals.push('name is kebab-case opp-style');
+    return { confidence: 'high', signals };
+  }
+
+  // ace#938 / ace#953 — a missing end_date is not an orphan signal, it is a
+  // DEFECT signal, and it is the highest-value thing this scorer can say. An
+  // opportunity with no end date bricks the mobile app for every worker
+  // invited to it, and it is invisible until someone burns a device session.
+  if (isMalformedOpportunity(item)) {
+    signals.push('MALFORMED: end_date is empty — bricks the app for any invited worker (ace#938)');
     return { confidence: 'high', signals };
   }
 
