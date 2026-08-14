@@ -442,6 +442,17 @@ const report = checkAssessmentRetryLeak(formXml);
 nodeset and the leaked option, and route the fix to `pdd-to-learn-app` Step 4c
 (replace the retry text with a pointer to the module content).
 
+**`report.blind` is a `[BLOCKER]` too — a blind check is not a clean one.** It
+lists fail-branch labels whose text could not be resolved and answer literals
+with nothing to match against; `report.ok` is false whenever it is non-empty,
+and `formatRetryLeakReport` prints a `BLIND` block. Emit
+`assessment-retry-leak-blind` and fix the *form*, not the gate. This exists
+because the check reported the benign `checked: false` on every released CCZ
+until 2026-08-14 (#1332): it matched only `<`/`<=` while the compiler emits
+`not(score >= N)`, and it read inline `<label>` text while the compiler moves
+all label text into `<itext>`. Both are properties of a released CCZ — the only
+artifact this skill ever holds.
+
 Why it is a released-CCZ check and not only a build-time one: the live instance
 (bednet-spot-check/20260729-0002) happened *because* the brief was hand-composed
 at L0 and the `assessment-gate` component paragraph was skipped, so a build-time
