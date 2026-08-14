@@ -11,6 +11,7 @@ import {
   AvdNotProvisionedError,
 } from '../errors.js';
 import { checkAvdProvisioned } from '../avd-provisioning.js';
+import { findLatestBootLog, bootLogTail, fatalBootLine } from '../boot-log.js';
 import type { AvdInfo, ApkInfo, UiDumpResult, SnapshotResult, LocalDiagnostics } from '../types.js';
 import { resolveAdbServerPort, resolveEmulatorPair, recordSessionLock, isTcpPortFree, occupiedConsolePortIsFatal } from '../port-allocator.js';
 import { withAllocatorMutex } from '../session-lock.js';
@@ -477,9 +478,33 @@ export class AvdBackend {
   async requireRunningAvd(avdName: string): Promise<AvdInfo> {
     const found = await this.findRunningAvd(avdName);
     if (!found) {
+      // Attach the boot log (dimagi-internal/ace#1357 fix #1). The cold-boot
+      // path attaches its tail only inside its OWN catch, so a failure that
+      // surfaces HERE — which is where every downstream caller discovers there
+      // is no device — used to lose it entirely. On
+      // bednet-check-2-visit/20260814-0856 that turned
+      // `Could not open '…/cache.img'` into three consecutive dadb broken-pipe
+      // errors naming neither the emulator nor the AVD.
+      //
+      // Found by RECENCY, not by port: this method never ran the cold-boot, so
+      // it does not know which console port was allocated. The age window in
+      // `findLatestBootLog` keeps a stale log from an unrelated boot from being
+      // presented as this failure's cause.
+      let diagnostic = '';
+      const logPath = findLatestBootLog(os.tmpdir());
+      if (logPath) {
+        const tail = bootLogTail(logPath);
+        const fatal = fatalBootLine(tail);
+        if (tail) {
+          diagnostic =
+            `\n\nMost recent emulator boot log (${logPath}):\n${tail}` +
+            (fatal ? `\n\nLikely cause: ${fatal.trim()}` : '');
+        }
+      }
       throw new AvdBootError(
         avdName,
-        `AVD '${avdName}' is not currently running. Call mobile_ensure_avd_running first to cold-boot it.`,
+        `AVD '${avdName}' is not currently running. Call mobile_ensure_avd_running first to cold-boot it.` +
+          diagnostic,
       );
     }
     return found;
