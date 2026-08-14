@@ -84,6 +84,31 @@ Any finding is a rewrite-before-write, not a warning. It is string logic over
 your own output, so it costs nothing and catches the class the evals otherwise
 catch one artifact at a time, after the fact.
 
+## Screenshot citations — canonical frames only (dimagi-internal/ace#1304)
+
+Any skill that cites captures from `app-screenshot-capture_manifest.yaml`
+selects them through `canonicalCaptures` and never by scanning `captures[]`
+directly:
+
+```ts
+import { canonicalCaptures, findDuplicateCitations }
+  from '../../lib/capture-manifest';
+const usable = canonicalCaptures(manifest);            // aliases removed
+const bad = findDuplicateCitations(manifest, citedSteps); // pre-write guard
+```
+
+A capture marked `duplicate_of: <step>` is **byte-identical** to that step's
+frame — the same moment, not a second one. Captioning it as a distinct state
+tells a reader the app reached a screen it never showed.
+
+**Verifying that every `file_id` resolves is NOT this check.** Existence and
+distinctness are different properties: two producers asserted the first, scored
+their own `image_hygiene` near 10, and shipped alias frames captioned as
+distinct states anyway — caught only by two independent `-eval` skills after
+the fact (ace#1304, the consumer half of ace#866). Any `image_hygiene`-style
+self-eval criterion must assert duplicate handling explicitly, or it will keep
+scoring 10 on this defect.
+
 ## Process
 
 1. Read inputs.

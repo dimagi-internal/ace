@@ -380,6 +380,19 @@ The spec format separates concerns:
 This makes independent iteration on each concern possible without
 cross-contamination.
 
+## Screenshot citations (shared contract)
+
+Follow `skills/_training-template.md § Screenshot citations — canonical frames
+only` (dimagi-internal/ace#1304): select captures via `canonicalCaptures` from
+`lib/capture-manifest.ts`, and run `findDuplicateCitations` over the steps this
+artifact cites before writing. A `duplicate_of` capture is byte-identical to
+its canonical step — the same moment, never a second one.
+
+**Checking that every `file_id` resolves does not cover this.** That is
+existence; this is distinctness. Two producers asserted the former, self-scored
+`image_hygiene` near 10, and still captioned alias frames as distinct states.
+The self-eval criterion must assert duplicate handling explicitly.
+
 ## Change Log
 
 - v1: Initial skill. Replaces `training-deck-outline`. Produces
