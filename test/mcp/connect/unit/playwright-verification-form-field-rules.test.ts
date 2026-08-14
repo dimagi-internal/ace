@@ -58,8 +58,19 @@ function makeRequestContext(scripted: ScriptedResponse[], captured: CapturedRequ
  * value is the deliver-unit server PK, and Django renders a `__prefix__`
  * template row that must never be treated as a real row.
  */
-function configPage(opts: { savedRules?: Array<{ name: string; path: string; value: string; du: string; id: string }>; initialForms?: number } = {}) {
+function configPage(opts: { savedRules?: Array<{ name: string; path: string; value: string; du: string; id: string }>; initialForms?: number; withLegacyFlagInputs?: boolean } = {}) {
   const saved = opts.savedRules ?? [];
+  // The five inputs ace#1013 found REMOVED from the live page. Off by default
+  // (that is today's reality); switch on to prove the support guard relaxes by
+  // itself if Connect ever restores them — no code change required.
+  const legacy = opts.withLegacyFlagInputs
+    ? `
+    <input type="checkbox" name="duplicate">
+    <input type="checkbox" name="gps">
+    <input type="checkbox" name="catchment_areas">
+    <input type="number" name="location" value="10">
+    <input type="checkbox" name="deliver_unit-0-check_attachments">`
+    : '';
   const rows = saved
     .map((r, i) => `
       <input type="text" name="form_json-${i}-name" value="${r.name}">
@@ -69,13 +80,14 @@ function configPage(opts: { savedRules?: Array<{ name: string; path: string; val
       <input type="hidden" name="form_json-${i}-id" value="${r.id}">`)
     .join('\n');
   return `<html><body><form method="post">
-    <input type="hidden" name="csrfmiddlewaretoken" value="CSRF123">
+    <input type="hidden" name="csrfmiddlewaretoken" value="CSRF123">${legacy}
     <input type="time" name="form_submission_start" value="">
     <input type="time" name="form_submission_end" value="">
     <input type="hidden" name="deliver_unit-TOTAL_FORMS" value="1">
     <input type="hidden" name="deliver_unit-INITIAL_FORMS" value="0">
     <input type="hidden" name="deliver_unit-MIN_NUM_FORMS" value="0">
     <input type="hidden" name="deliver_unit-MAX_NUM_FORMS" value="1">
+    <select name="deliver_unit-0-deliver_unit"><option value="6455" selected>Meeting record</option></select>
     <input type="number" name="deliver_unit-0-duration" value="0">
     <input type="hidden" name="deliver_unit-0-id" value="">
     <input type="hidden" name="form_json-TOTAL_FORMS" value="${saved.length + 1}">
@@ -204,5 +216,145 @@ describe('setVerificationFlags — form_field_rules (ace#1011)', () => {
     // TOTAL_FORMS is replayed from the page (1), not rewritten by rule-building.
     expect(body['form_json-TOTAL_FORMS']).toBe('1');
     expect(body['form_json-0-name']).toBeUndefined();
+  });
+});
+
+
+// ---------------------------------------------------------------------------
+// dimagi-internal/ace#1013 — flags whose input no longer exists must FAIL
+// LOUD, and `duration_seconds` was a 60x misnomer.
+//
+// Live-verified 2026-07-28 across 4 opportunities / 2 programs: the page
+// renders only form_submission_start/end, deliver_unit-<i>-{deliver_unit,
+// duration,id} and form_json-<i>-*. `duplicate`, `gps`, `catchment_areas`,
+// `location` and `check_attachments` appear NOWHERE — the atom posted them as
+// unrecognized keys, Django dropped them, and it returned `{ok: true}`. Six
+// opportunities spanning 2026-06-06..07-28 show INITIAL_FORMS: 0, i.e. no ACE
+// run has ever persisted a verification flag, while every one of those runs
+// reported "verification flags configured" in its Phase 4 summary.
+// ---------------------------------------------------------------------------
+
+describe('setVerificationFlags — unsupported-flag guard (ace#1013)', () => {
+  it('throws naming `gps` when the input is absent, and does NOT post', async () => {
+    const captured: CapturedRequest[] = [];
+    const req = makeRequestContext([{ status: 200, body: configPage() }], captured);
+
+    await expect(
+      backendFor(req).setVerificationFlags({
+        organization_slug: ORG, opportunity_id: OPP, flags: { gps: true },
+      }),
+    ).rejects.toThrow(/gps/);
+
+    // Fail BEFORE the write: a partial post that silently drops the flag is
+    // exactly what produced the false "configured" claim.
+    expect(captured.filter((c) => c.method === 'POST')).toHaveLength(0);
+  });
+
+  it('names EVERY unsupported flag in one error, not just the first', async () => {
+    const captured: CapturedRequest[] = [];
+    const req = makeRequestContext([{ status: 200, body: configPage() }], captured);
+
+    let err: unknown;
+    try {
+      await backendFor(req).setVerificationFlags({
+        organization_slug: ORG,
+        opportunity_id: OPP,
+        flags: {
+          duplicate: true,
+          gps: true,
+          catchment_areas: true,
+          gps_radius_meters: 100,
+          deliver_unit_checks: [{ deliver_unit_id: 6455, check_attachments: true }],
+        },
+      });
+    } catch (e) {
+      err = e;
+    }
+    const msg = (err as Error).message;
+    for (const flag of ['duplicate', 'gps', 'catchment_areas', 'gps_radius_meters', 'check_attachments']) {
+      expect(msg).toContain(flag);
+    }
+  });
+
+  it('does not fire when the caller asks for a flag to be OFF (absent field == off)', async () => {
+    const captured: CapturedRequest[] = [];
+    const req = makeRequestContext(
+      [{ status: 200, body: configPage() }, { status: 302, body: '' }, { status: 200, body: configPage() }],
+      captured,
+    );
+    await expect(
+      backendFor(req).setVerificationFlags({
+        organization_slug: ORG, opportunity_id: OPP, flags: { duplicate: false, gps: false },
+      }),
+    ).resolves.toMatchObject({ ok: true });
+  });
+
+  it('relaxes by itself when the live page carries the inputs again', async () => {
+    const captured: CapturedRequest[] = [];
+    const req = makeRequestContext(
+      [
+        { status: 200, body: configPage({ withLegacyFlagInputs: true }) },
+        { status: 302, body: '' },
+        { status: 200, body: configPage({ withLegacyFlagInputs: true }) },
+      ],
+      captured,
+    );
+    const res = await backendFor(req).setVerificationFlags({
+      organization_slug: ORG, opportunity_id: OPP, flags: { gps: true, gps_radius_meters: 250 },
+    });
+    expect(res.ok).toBe(true);
+    const body = captured.find((c) => c.method === 'POST')!.body as Record<string, string>;
+    expect(body['gps']).toBe('on');
+    expect(body['location']).toBe('250');
+  });
+
+  it('form_submission_* stay supported (the guard is general, not a denylist of five)', async () => {
+    const captured: CapturedRequest[] = [];
+    const req = makeRequestContext(
+      [{ status: 200, body: configPage() }, { status: 302, body: '' }, { status: 200, body: configPage() }],
+      captured,
+    );
+    const res = await backendFor(req).setVerificationFlags({
+      organization_slug: ORG,
+      opportunity_id: OPP,
+      flags: { form_submission_start: '08:00', form_submission_end: '18:00' },
+    });
+    expect(res.ok).toBe(true);
+    const body = captured.find((c) => c.method === 'POST')!.body as Record<string, string>;
+    expect(body['form_submission_start']).toBe('08:00');
+  });
+});
+
+describe('setVerificationFlags — duration is MINUTES (ace#1013)', () => {
+  it('writes duration_minutes verbatim into deliver_unit-<i>-duration', async () => {
+    const captured: CapturedRequest[] = [];
+    const req = makeRequestContext(
+      [{ status: 200, body: configPage() }, { status: 302, body: '' }, { status: 200, body: configPage() }],
+      captured,
+    );
+    await backendFor(req).setVerificationFlags({
+      organization_slug: ORG,
+      opportunity_id: OPP,
+      flags: { deliver_unit_checks: [{ deliver_unit_id: 6455, duration_minutes: 6 }] },
+    });
+    const body = captured.find((c) => c.method === 'POST')!.body as Record<string, string>;
+    // The form label is "Minimum time to complete form (minutes)" — a PDD's
+    // 6-minute floor must land as 6, not 360.
+    expect(body['deliver_unit-0-duration']).toBe('6');
+  });
+
+  it('rejects the legacy duration_seconds name loudly instead of writing a 60x-wrong floor', async () => {
+    const captured: CapturedRequest[] = [];
+    const req = makeRequestContext([{ status: 200, body: configPage() }], captured);
+    await expect(
+      backendFor(req).setVerificationFlags({
+        organization_slug: ORG,
+        opportunity_id: OPP,
+        // A caller honouring the old parameter name converts 6 minutes to 360
+        // and gets a SIX HOUR floor — an unfirable gate, silently.
+        flags: { deliver_unit_checks: [{ deliver_unit_id: 6455, duration_seconds: 360 } as never] },
+      }),
+    ).rejects.toThrow(/duration_minutes/);
+    expect(captured.filter((c) => c.method === 'POST')).toHaveLength(0);
   });
 });

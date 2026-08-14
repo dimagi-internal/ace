@@ -131,7 +131,19 @@ export interface VerificationFlags {
 
 export interface DeliverUnitCheck {
   deliver_unit_id: number;
-  check_attachments: boolean;
+  check_attachments?: boolean;
+  /**
+   * Minimum time to complete the form, in MINUTES — the unit the form's own
+   * help text states ("Minimum time to complete form (minutes)").
+   */
+  duration_minutes?: number;
+  /**
+   * @deprecated Misnomer — REJECTED at the backend (ace#1013). The field is
+   * minutes, so a caller honouring this name and converting a 6-minute floor
+   * to `360` set a SIX HOUR floor, silently making the gate unfirable. Kept in
+   * the shape only so the rejection can fire instead of the value being
+   * stripped and no duration written at all.
+   */
   duration_seconds?: number;
   id?: number;  // existing row PK; omit for new
 }

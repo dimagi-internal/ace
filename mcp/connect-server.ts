@@ -442,8 +442,12 @@ const VerificationFlagsZ = z.object({
   form_submission_end: z.string().optional(),
   deliver_unit_checks: z.array(z.object({
     deliver_unit_id: z.number().int(),
-    check_attachments: z.boolean(),
-    duration_seconds: z.number().int().optional(),
+    check_attachments: z.boolean().optional()
+      .describe('DEAD FIELD — the input is absent from the live form (ace#1013); a truthy value is now REFUSED with a typed unsupported_verification_flag error rather than silently dropped.'),
+    duration_minutes: z.number().int().optional()
+      .describe('Minimum time to complete the form, in MINUTES — the unit the form\'s own help text states. This is one of the few fields on this atom still backed by a live input.'),
+    duration_seconds: z.number().int().optional()
+      .describe('REJECTED (ace#1013) — a misnomer for a MINUTES field, so a seconds-converted value set a 60x-too-long floor and made the gate unfirable. Pass duration_minutes. Kept in the schema only so the rejection fires instead of the key being stripped and no duration written at all.'),
     id: z.number().int().optional(),
   })).optional(),
   form_field_rules: z.array(z.object({
@@ -458,7 +462,7 @@ const VerificationFlagsZ = z.object({
 });
 
 server.tool('connect_set_verification_flags',
-  'Set per-opportunity verification config via the `/opportunity/<id>/verification_flags_config/` HTML form (not on the public REST API; routes through Playwright). Re-posts every existing formset row verbatim, so changes are additive. WHAT ACTUALLY WORKS TODAY (live-verified 2026-07-28, dimagi-internal/ace#1013): only `form_field_rules`, `form_submission_start` / `form_submission_end`, and the per-deliver-unit `duration` are backed by fields that still exist on the form. `duplicate`, `gps`, `catchment_areas`, `gps_radius_meters` and `deliver_unit_checks[].check_attachments` are accepted for back-compat but the corresponding inputs are ABSENT from the page — Django drops them and this atom still returns ok, so do NOT treat setting them as enforcement. `form_field_rules` is therefore the only surface on which a PDD Evidence-Model Layer A predicate can be enforced server-side; it is additive and idempotent, and its `name` is capped at 25 chars (a longer name silently fails the WHOLE formset). Two caveats on the remaining fields: `deliver_unit_checks[].duration_seconds` is really MINUTES (the form label says so), and the response carries `form_field_rules_saved` — the count Connect actually persisted — which is the only evidence the write landed.',
+  'Set per-opportunity verification config via the `/opportunity/<id>/verification_flags_config/` HTML form (not on the public REST API; routes through Playwright). Re-posts every existing formset row verbatim, so changes are additive. WHAT ACTUALLY WORKS TODAY (live-verified 2026-07-28, dimagi-internal/ace#1013): only `form_field_rules`, `form_submission_start` / `form_submission_end`, and the per-deliver-unit `duration` are backed by fields that still exist on the form. `duplicate`, `gps`, `catchment_areas`, `gps_radius_meters` and `deliver_unit_checks[].check_attachments` are now REFUSED when truthy — the atom fetches the form, finds no such input, and throws a typed `unsupported_verification_flag` error BEFORE posting, because Django drops unrecognized keys and the old behaviour returned `ok: true` for a control that was never set. The support test reads the fetched page, not a hardcoded list, so it relaxes by itself if Connect restores a field. `form_field_rules` is the only surface on which a PDD Evidence-Model Layer A predicate can be enforced server-side; it is additive and idempotent, and its `name` is capped at 25 chars (a longer name silently fails the WHOLE formset). Durations are `deliver_unit_checks[].duration_minutes` (MINUTES, per the form label); the legacy `duration_seconds` spelling is rejected rather than reinterpreted. The response carries `form_field_rules_saved` — the count Connect actually persisted — which is the only evidence the write landed.',
   { organization_slug: z.string(), opportunity_id: z.string(), flags: VerificationFlagsZ },
   async (args) => runAtom(async () => (await client()).setVerificationFlags(args))
 );
