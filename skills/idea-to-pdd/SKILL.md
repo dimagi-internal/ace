@@ -580,7 +580,43 @@ eval verdict (idea-to-pdd-eval) at the Phase 1→3 Pause Point. -->
        daily_cap: 5
        total_cap: 30
        entity_id_grain: "worker username + follow-up visit date"
+       # Only when the PDD mandates an EXACT assessment item count — see below.
+       assessment_coverage_deviation:
+         accepted_max_ratio: 0.31
+         reason: "D-1: the gate certifies two payment-model facts and is not a competence certification"
      ```
+
+   **If the PDD mandates an EXACT assessment item count, check it is
+   satisfiable before writing it (ace#1250).** Enumerate the Deliver app's
+   **high-consequence operations** and the **counter-intuitive rules** the
+   same way `pdd-to-learn-app-eval § 5c` step 2 does, then run
+   `checkCoverageFeasibility` from `lib/assessment-coverage-feasibility.ts`.
+   Coverage is the fraction of those two sets carrying ≥1 qualifying item,
+   **counter-intuitive weighted double**, and it must reach **0.50** or the
+   dimension hard-gates at ≤3.
+
+   A mandate below that ceiling **pre-commits Phase 3 to a `fail` and the
+   builder is graded down for obeying its brief.** It also cannot be repaired
+   downstream: the auto-fix loop is capped at one round against an immovable
+   number, and it pins `/ace:iterate` at 0% on the opp forever, because the
+   loop's clean gate requires `pdd-to-learn-app-eval == pass`.
+
+   Two legitimate resolutions, in order of preference:
+
+   1. **Mandate at least `minimumItems`** — the number the check returns.
+   2. **Declare the shortfall.** Write `assessment_coverage_deviation` with
+      an `accepted_max_ratio` the mandate can actually reach and a `reason`
+      saying why the narrow scope is correct. `pdd-to-learn-app-eval` grades
+      the dimension against the declared ceiling and surfaces a `[WARN]`
+      instead of a `[BLOCKER]`. A deviation claiming MORE coverage than the
+      item count permits, or carrying no reason, is refused — that is an
+      escape hatch, not a decision.
+
+   Live: `bednet-check-2-visit/20260813-2333` mandated "exactly 2 questions"
+   against 3 counter-intuitive rules + 7 high-consequence operations →
+   weighted coverage 4/13 = 0.31 → dimension 3.0 → `[BLOCKER]` → overall 7.52
+   → `fail`. It needed 4 items, or the deviation it had already argued in
+   prose as D-1 but had no channel to declare.
 
    ```yaml
    phases:
