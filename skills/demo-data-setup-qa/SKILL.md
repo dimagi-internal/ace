@@ -43,6 +43,8 @@ auto-fix protocol, static-vs-LLM rules).
 | 6 | `deliver_units_present` | static | `source.deliver_units` is a non-empty array | re-capture `deliver_units` from the `synthetic_generate_from_manifest` response |
 | 7 | `par_url_payload_is_populated` | static | **Fetches each `par_url` with the labs session**, parses the embedded `#workflow-data` script, and fails when (a) `definition.pipeline_sources` is non-empty while `instance.snapshot.pipelines` is empty, or (b) any bound field is null/zero for EVERY row. Judgement is pure — `checkParUrlPayloadPopulated` in `checks.ts` takes the parsed payload, so only the fetch is the skill's job. | re-point the pipeline schema at the REAL form paths the generator writes (not the stock template's `form.meta.*`), and declare `snapshot_inputs.pipelines` for every alias in `pipeline_sources` before completing the run (#1160). A field zero for SOME rows is data, not a dead binding, and is not flagged |
 
+| 8 | `interactive_run_is_live` | static | Using the payload check 7 already fetched: the dashboard whose `role` is interactive (`review-action` / `review` / `decision`) MUST have `instance.status != completed`, and every OTHER dashboard MUST have `instance.status == completed`. Importable: `checkInteractiveRunsLive` in `checks.ts`. | a completed run renders "This run is completed… Decisions are read-only" with the status control disabled, so the decision the narrative demonstrates cannot be performed on camera — skip `workflow_save_snapshot` for the interactive dashboard only. The reverse half matters too: a non-interactive run left `in_progress` has no snapshot, so its `par_url` is not a stable deep-link. A payload with no `instance.status` is reported, not failed (#1162) |
+
 All checks are static (<100ms), no LLM. Binary verdict: any BLOCKER fail →
 `fail`; else `pass`.
 
@@ -63,9 +65,18 @@ an integer, a date); none looked at what a `par_url` renders, and a regex cannot
 tell a real run from a fabricated id. The gate would have passed in sequence and
 prevented nothing (dimagi-internal/ace#1161).
 
-**Not covered here, on purpose:** whether a `review-action` dashboard's run
-should be `completed` at render time. Completing a run is how a `par_url`
-becomes a stable idempotent deep-link, and it is also what makes the review
-decision the narrative demonstrates unperformable ("Decisions are read-only").
-That collision is a product-taste call tracked in **#1162** — once it is
-decided, express it as an eighth check here rather than leaving it to prose.
+**Check 8 — the decision behind it (#1162).** Two legitimate requirements
+collide: a **completed** run carries a snapshot, which is what makes a `par_url`
+a stable idempotent deep-link; an **`in_progress`** run is the only state in
+which the review decision the narrative demonstrates can actually be taken.
+Phase 7 completed BOTH runs on `hh-poverty-targeting/20260730-2210`, ~14 minutes
+before the render, so the payoff scene had nothing to click — all 10 spec
+actions degraded to `wait_for`/`hold`, 7 scenes produced 2 distinct images, arc
+scored 1.0/5.
+
+Resolved (Jon, 2026-08-14) as **option 1: leave only the interactive
+dashboard's run live.** `source.dashboards[].role` already carries the signal,
+so the producer needs no new plumbing, and the stability loss is confined to the
+one dashboard whose entire point is that a stakeholder acts on it. Check 8 is
+two-sided so the opposite sloppiness — every run left `in_progress`, silently
+giving up snapshot stability on links a stakeholder keeps — fails too.

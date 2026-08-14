@@ -69,6 +69,12 @@ front half (how the labs-only opp + its data come to exist) differs.
         role: recovery
         shape: action                  # no saved run → mint run_id via workflow_create_run; SAME /run/?run_id= URL
         par_url: <url>
+      - key: llo_review
+        template: llo_weekly_review
+        role: review-action            # INTERACTIVE — its run stays in_progress (see step 3)
+        shape: action
+        interactive: true              # set iff role is review-action / review / decision
+        par_url: <url>
     primary_dashboard: program_admin
     realized_vars_ref: 7-synthetic/realized.json
   ```
@@ -82,7 +88,11 @@ front half (how the labs-only opp + its data come to exist) differs.
    - **Enumerate the dashboards the ask needs.** A narrative like "program
      management across LLOs AND individual children getting better" is **two**
      dashboards, not one. Give each a `key` (e.g. `program_admin`,
-     `child_recovery`) and a `role`.
+     `child_recovery`) and a `role`. **At most one dashboard may take an
+     INTERACTIVE role** (`review-action`, `review`, `decision`) — the one whose
+     scene shows a stakeholder *taking* a decision rather than reading a
+     figure. That role decides step 3's run handling, so choose it in the plan,
+     not at render time.
    - **Select a checked-in template per dashboard — reuse over scratch.** Survey
      the palette with `mcp__connect-labs__list_templates` plus the labs
      `connect_labs/workflow/templates/` library, and map each dashboard to the
@@ -161,7 +171,9 @@ front half (how the labs-only opp + its data come to exist) differs.
    `mcp__connect-labs__workflow_update_render_code` /
    `mcp__connect-labs__workflow_patch_render_code` →
    `mcp__connect-labs__workflow_create_run` →
-   `mcp__connect-labs__workflow_save_snapshot`. Reuse that skill's
+   `mcp__connect-labs__workflow_save_snapshot` — **except for the INTERACTIVE
+   dashboard, where you STOP after `workflow_create_run` and never call
+   `workflow_save_snapshot`** (see § The interactive run stays live). Reuse that skill's
    alias-consistency, period-scoping, and snapshot-hook guidance by reference —
    they are the difference between a populated dashboard and a blank one. Capture
    each dashboard's `<def_id>` + saved `<run_id>`.
@@ -265,6 +277,44 @@ and `demo-narrative` authors the DDD narrative — so Phase 7 becomes
 `demo-data-setup(ace-run)` → `demo-narrative` → DDD, the same pipeline as
 `/ace:demo`. Archetype branching (`atomic-visit` / `multi-stage`; `focus-group`
 is a hard skip) is preserved at the Phase-7 agent level.
+
+## The interactive run stays live
+
+`workflow_save_snapshot` completes a run. That is how a `par_url` becomes a
+**stable, idempotent deep-link** — reopen it next month and the page renders the
+same figures — and it is what every dashboard a stakeholder keeps a link to
+should have.
+
+It also makes the page **read-only**. The run view's `completed` branch prints
+*"This run is completed… Decisions are read-only"* and disables the status
+control. So for the one dashboard whose scene shows a reviewer **taking** a
+decision, completing the run is what makes that scene unperformable.
+
+On `hh-poverty-targeting/20260730-2210` both runs were completed at
+`2026-08-01T01:12Z`, ~14 minutes before the render at ~01:26Z. The result read
+as several unrelated defects and was one: every one of the 10 spec actions
+degraded to `wait_for`/`hold` because nothing was clickable, 7 scenes produced
+only 2 distinct images (5 of 6 adjacent pairs differed by 0.00% of pixels), and
+the arc scored 1.0/5 (dimagi-internal/ace#1162).
+
+**The rule (Jon, 2026-08-14 — option 1 of three):**
+
+- the dashboard whose `role` is `review-action` / `review` / `decision`:
+  `workflow_create_run`, then **stop**. Its run stays `in_progress`, its
+  `par_url` is built exactly as in step 4, and it is the only link that is not
+  snapshot-stable. Mark it `interactive: true` in `source.dashboards[]`.
+- every other dashboard: unchanged — `workflow_save_snapshot`, run completed.
+
+Two alternatives were weighed and not taken: minting two runs for the review
+workflow (one completed for framing, one live for the decision beat) doubles the
+handoff for a gain only a longer narrative would use; completing every run
+*after* the render makes link stability depend on a render that may fail or be
+re-run. Revisit if a demo ever needs the review dashboard's link to outlive the
+recording.
+
+`demo-data-setup-qa` check 8 (`checkInteractiveRunsLive`) enforces both halves —
+an interactive run found `completed` fails, and so does a non-interactive run
+left `in_progress`.
 
 ## Gotchas (encode every one — they are the difference between a live demo and a dead scene)
 

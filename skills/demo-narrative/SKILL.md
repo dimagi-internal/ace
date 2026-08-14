@@ -28,7 +28,7 @@ paraphrase the schema here — read the model / schema and validate.
 |---|---|---|
 | Operator | `--brief <text or drive-path>` | the demo story (same brief `demo-data-setup` used) |
 | `demo-data-setup` | `<demo-run>/7-synthetic/realized.json` | the flat `${var}` map — `primary_par_url`, one `<key>_par_url` per dashboard, `<name>_url` drills — the scenes render |
-| `demo-data-setup` | `run_state…products.synthetic.source` | provider, labs opp id, deliver units, and `dashboards[]` (key/template/role) — one narrative arc per dashboard |
+| `demo-data-setup` | `run_state…products.synthetic.source` | provider, labs opp id, deliver units, and `dashboards[]` (key/template/role/`interactive`) — one narrative arc per dashboard; `interactive: true` marks the only dashboard whose controls are live |
 | Discovery | canopy runtime (resolved from the installed canopy plugin via its `scripts/canopy-runtime.sh` — see Step 4) | `uv run python -m scripts.ddd.validate` (see `docs/superpowers/plans/2026-07-20-plan-a-task1-findings.md`) |
 
 ## Products
@@ -73,6 +73,20 @@ paraphrase the schema here — read the model / schema and validate.
      idempotency live in the joint test** (if `demo-data-setup` regenerates
      rather than reuses, either add an ensure mode or set the command to emit the
      already-written `realized.json`).
+   - **Put the effecting actions on the INTERACTIVE dashboard, and only there.**
+     Exactly one entry in `source.dashboards[]` carries `interactive: true`
+     (`role: review-action` / `review` / `decision`); its run is deliberately
+     left `in_progress` so the control is live (`demo-data-setup § The
+     interactive run stays live`). Every OTHER dashboard's run is completed and
+     therefore **read-only** — its page prints "This run is completed…
+     Decisions are read-only" and disables the status control, so a scene there
+     can only `wait_for` / `hold` / capture. Author the payoff scene — the one
+     where a stakeholder *takes* a decision — against the interactive
+     dashboard's `${<key>_par_url}`. Writing a click into a completed
+     dashboard's scene is what produced the 1.0/5 arc on
+     hh-poverty-targeting/20260730-2210: 10 of 10 actions degraded to
+     `wait_for`/`hold` and 7 scenes rendered 2 distinct images
+     (dimagi-internal/ace#1162).
    - `scenes[]` — each scene: `persona` (must exist in `personas`), `title`,
      `show`, `concept_claim` (≥5 words, falsifiable, NO banned marketing
      phrases), `provenance` (= a spine `id`), `role: demo`, ≥1 `feature` with
