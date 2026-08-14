@@ -480,14 +480,35 @@ run-id-SUFFIX form carried:
    run-id regex and assert it, so the match is positional-order-
    independent: it finds this run's tile wherever it sits in the list.
 
-**Remaining honest caveat.** The invite list itself is still unbounded —
-there is no per-run cleanup atom, so the test user accumulates dozens of
-tiles over time. The run-id match is what makes finding the right one
-*deterministic* despite that accumulation (a short, unique, line-1
-token), but the underlying list growth is unchanged. A periodic
-test-user invite-list-cleanup atom is still desirable (Connect doesn't
-expose this in the public API today; would need a `connect_*` Playwright
-atom).
+**PRUNE THE LIST BEFORE THE WALK (ace#1289).** The run-id match makes
+finding the right tile *deterministic*, but it does not make it
+*reachable*: unclaimed opps render under a "New Opportunities" header that
+sits BELOW the entire "In Progress" section, so on the dogfood device the
+target tile is ~6 full viewport scrolls down and both tile-finding scrolls
+time out. A bigger scroll budget is not a fix — the list grows every run, so
+any fixed budget expires again.
+
+So bound the list. Before Step 5:
+
+1. `connect_list_invites` / `connect_list_flw_invites` for the ACE test
+   user (`${ACE_E2E_PHONE}`);
+2. `selectPrunableInvites` from `lib/invite-pruning.ts` with
+   `currentOpportunityId` set to THIS run's opp and `testUserPhone` set to
+   the test user;
+3. `connect_delete_unaccepted_flw_invites` once per returned opportunity
+   (the atom is per-opp — `byOpportunity` is already grouped for it).
+
+**`currentOpportunityId` is required and the helper throws without it.**
+Pruning this run's own invite would break the very run doing the pruning —
+a far worse failure than the slow scroll. Accepted invites are excluded too
+(they represent real workers), and every exclusion comes back with a reason:
+log them, so "we left 3 alone" is a statement with evidence.
+
+The recipes' own scroll budgets are a separate, device-truth matter:
+`connect-resume-opp.yaml` never received the ace#647 recalibration
+(`timeout: 20000`, `visibilityPercentage: 60`, default speed) while
+`connect-claim-opp.yaml` did, and correcting that needs a live re-run to
+green before it merges (#1289).
 
 ### Step 5: Run the smoke recipes — two independent legs
 
