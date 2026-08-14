@@ -635,6 +635,39 @@ Generate the Learn (training) app from the PDD using the Nova plugin
        clear `assessment-result-unconditional` failure and do NOT write
        the success summary.
 
+    4. **Check what the pass label CLAIMS against what the bank tests
+       (ace#1368).** Run `checkPassLabelScope` from
+       `lib/pass-label-scope.ts` over the built `result_pass` text, with
+       the rules the bank actually keys on and whether the PDD declared
+       the gate is not a competence certification:
+
+       ```ts
+       checkPassLabelScope(resultPassText, {
+         certifiedRules,                 // the rules the bank tests
+         declaredNotCompetence,          // from the PDD's residual/deviation
+         untestedPaymentPredicate,       // e.g. 'consent_confirmed on the follow-up form'
+       });
+       ```
+
+       On a finding, rewrite the label to claim only what was examined —
+       do NOT regenerate the PDD, and do not widen the bank to justify
+       the sentence.
+
+       Live: `bednet-check-2-visit/20260813-2333` built
+       **"You can now begin delivery work"** after examining TWO
+       payment-model facts, directly contradicting the PDD's own D-1
+       residual (*"not a competence certification and must not be
+       described as one"*). The PDD wrote the residual honestly; the
+       builder wrote a label that violates it, and nothing compared the
+       two. **The pass label is what the WORKER reads.**
+
+       That gate also never tests the follow-up **consent
+       re-affirmation** — the sole server-side payment predicate
+       (`form_field_rules` keys on `consent_confirmed`) — so a worker can
+       clear it and still fail the only check that decides whether they
+       get paid. Pass that predicate as
+       `untestedPaymentPredicate` so the finding names it.
+
        **`relevant` is a STRUCTURED expression, not a string** (Nova's
        2026-07-31 redeploy — a bare string is rejected). Reference the
        score field by uuid rather than by `#form/` path:
