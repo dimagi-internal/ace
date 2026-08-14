@@ -203,3 +203,62 @@ describe('scoreLabsItem', () => {
     expect(r.signals.some((s) => s.includes('active opportunity'))).toBe(true);
   });
 });
+
+// ---------------------------------------------------------------------------
+// dimagi-internal/ace#953 / #938 — malformed opportunities
+// ---------------------------------------------------------------------------
+
+describe('scoreConnectItem — malformed end_date (#938/#953)', () => {
+  const live = { drive: new Set<string>(), connect: new Set<string>(), ocs: new Set<string>() } as never;
+
+  it('flags an empty end_date as high-confidence, naming the real cost', () => {
+    // #938: an opportunity with no end date bricks the mobile app for every
+    // worker invited to it, and stays invisible until a device session burns.
+    // Ten more were found by hand in the same org after the first one.
+    const r = scoreConnectItem(
+      { id: '1', name: 'Some Partner Opportunity', type: 'opportunity', endDate: '' },
+      live,
+    );
+    expect(r.confidence).toBe('high');
+    expect(r.signals.join(' ')).toMatch(/MALFORMED/);
+    expect(r.signals.join(' ')).toMatch(/bricks the app/);
+  });
+
+  it('an UNREAD end_date is not malformed — undefined is not empty', () => {
+    // The load-bearing distinction. The repair WRITES a date, so scoring
+    // "not read" as malformed would mutate healthy opportunities on every
+    // sweep that did not deep-read them.
+    const r = scoreConnectItem(
+      { id: '1', name: 'Some Partner Opportunity', type: 'opportunity' },
+      live,
+    );
+    expect(r.signals.join(' ')).not.toMatch(/MALFORMED/);
+    expect(r.confidence).toBe('medium');
+  });
+
+  it('a populated end_date is not malformed', () => {
+    const r = scoreConnectItem(
+      { id: '1', name: 'Some Partner Opportunity', type: 'opportunity', endDate: '2026-12-31' },
+      live,
+    );
+    expect(r.signals.join(' ')).not.toMatch(/MALFORMED/);
+  });
+
+  it('only opportunities can be malformed this way', () => {
+    const r = scoreConnectItem(
+      { id: '1', name: 'Some Payment Unit', type: 'payment_unit', endDate: '' },
+      live,
+    );
+    expect(r.signals.join(' ')).not.toMatch(/MALFORMED/);
+  });
+
+  it('malformed outranks the already-inactive signal', () => {
+    // An inactive opp with no end_date is still a landmine if it is ever
+    // reactivated, and the defect is the more useful thing to report.
+    const r = scoreConnectItem(
+      { id: '1', name: 'Some Partner Opportunity', type: 'opportunity', active: false, endDate: '' },
+      live,
+    );
+    expect(r.signals.join(' ')).toMatch(/MALFORMED/);
+  });
+});
