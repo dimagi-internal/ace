@@ -41,6 +41,14 @@ initiated_by: <email>        # set once on creation; never overwritten
 last_actor: <email>          # updated on every skill invocation
 last_actor_at: <ISO timestamp>  # updated on every skill invocation
 
+# WHO ASKED FOR THIS RUN (optional — a manual /ace:run has no trigger).
+# Populated at run init when /ace:run is dispatched from a turn.
+triggered_by:
+  surface: email|board|manual
+  thread_id: <Gmail thread id>   # REQUIRED when surface: email
+  requester: <email>
+  requested_at: <ISO timestamp>
+
 phases:
   idea-to-design:       # Phase 1
     idea-to-pdd: done|pending|error|dry-run-success|...
@@ -589,6 +597,45 @@ state to downstream phases, which compounds the diagnosis cost. The
 blocker message names the producing skill and gives the one-liner
 recovery — `/ace:step` will re-run the producer cleanly because skills
 are idempotent.
+
+## The triggering thread is state, not a note (ace#1057)
+
+A run dispatched from a turn is a **promise to a person**. Until #1057 it had
+no structural link back to the thread that asked for it: run
+`hh-poverty-targeting/20260728-0705` recorded its trigger only inside a
+free-text `notes` entry ("Triggered by Jon on thread 19f86579142e6ba5"), which
+nothing can read reliably.
+
+The operating model already treats `thread_id` as **the routing key** for
+inbound — `email-communicator` step 7 writes it to the comms-log and
+`inbox-triage` matches on it. That edge was inbound-only, so the outbound
+direction did not exist.
+
+**The cost is measured.** Sophie Feintuch, 2026-07-29, thread
+`19f86579142e6ba5`: *"Just checking if ACE is still working on this?"* — sent
+while the run she was waiting for had been running two days and had completed
+its last phase a few hours earlier. The failure is silent and always points the
+same way: the person waiting concludes we stopped working.
+
+**Close-out obligation.** When `triggered_by.thread_id` is set and the run
+reaches a terminal state, call `pendingCloseoutNotice`
+(`lib/triggering-thread.ts`), write the returned draft into the run's
+comms-log, and surface it as an explicit **pending outbound** in the close-out
+report.
+
+- **Drafted, never sent.** Outbound stays approval-gated (review posture) and
+  `bin/ace-email` remains the only send path. This adds a visible parked item,
+  not an autonomous send.
+- **A HALTED run still drafts.** Silence is the failure mode, not bad news —
+  "Phase 8 is waiting on LLO selection" serves the counterpart far better than
+  two days of nothing.
+- **Nothing is drafted mid-run.** A progress ping is noise, and noise is how a
+  real notice gets ignored.
+
+"Remember to email the requester" is exactly the class of instruction that
+fails under load — a Phase-8 halt at 13:55 and a Phase-7 completion at 15:45
+are the moments nobody is thinking about the inbox. A drafted artifact makes
+the omission visible instead of invisible.
 
 ## Phase Write-Back Contract
 

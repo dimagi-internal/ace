@@ -741,6 +741,28 @@ in `inputs/` (the manifest), not to pick one canonical PDD file.
      (3) lead the operator-facing close-out with that URL. This is the link an
      operator shares; it should never be reconstructed by hand or left unverified.
 
+     **(4) If `run_state.yaml.triggered_by.thread_id` is set, draft the
+     close-out reply (ace#1057).** A run dispatched from a turn is a promise to
+     a person, and the summary URL above only reaches the operator *in this
+     session* — if the session ends, or the run is long, the counterpart who
+     asked learns nothing. Call `pendingCloseoutNotice`
+     (`lib/triggering-thread.ts`), write the draft into the run's comms-log,
+     and surface it as an explicit **pending outbound** in the close-out
+     report. Three rules:
+
+     - **Drafted, never sent.** Outbound stays approval-gated and
+       `bin/ace-email` remains the only send path. This adds a visible parked
+       item, not an autonomous send.
+     - **A HALTED run still drafts.** Silence is the failure mode, not bad
+       news — "Phase 8 is waiting on LLO selection" serves the counterpart far
+       better than days of nothing.
+     - **Nothing mid-run.** A progress ping is noise, and noise is how a real
+       notice gets ignored.
+
+     Measured cost of not doing this: thread `19f86579142e6ba5`, 2026-07-29 —
+     *"Just checking if ACE is still working on this?"*, sent while the run had
+     been running two days and had completed its last phase hours earlier.
+
      **Rebuild the TaskList from the loaded statuses** (one parallel
      `TaskCreate` block, as in Step 4): `done`/`skipped` → `completed`
      (skipped phases carry a one-word "skipped" note), every `pending` phase →

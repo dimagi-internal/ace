@@ -25,6 +25,8 @@
  * validity.
  */
 
+import { parseTriggeredBy } from './triggering-thread.js';
+
 export type ValidationSeverity = 'error' | 'warning';
 
 export interface ValidationIssue {
@@ -374,6 +376,18 @@ export function validateRunState(parsed: unknown): ValidationResult {
       parsed,
     );
     return { valid: false, errors, warnings };
+  }
+
+  // `triggered_by` is optional — a manual /ace:run has no trigger, and
+  // requiring one would make every local run malformed. But when it IS
+  // present its shape is validated, because a malformed trigger is
+  // indistinguishable from an absent one and the run then owes a close-out
+  // reply nobody can route (ace#1057).
+  {
+    const t = parseTriggeredBy((parsed as Record<string, unknown>).triggered_by);
+    for (const issue of t.issues) {
+      pushError(errors, 'triggered_by', issue, 'a well-formed triggered_by block', (parsed as any).triggered_by);
+    }
   }
 
   // `phases` is optional at run-init but if present must be an object.
