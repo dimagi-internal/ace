@@ -34,7 +34,16 @@ improvements ship once (a canopy PR) instead of N backports.
   point defines. Design + counterpart model:
   `docs/superpowers/specs/2026-07-01-agent-operating-model-adoption.md`.
 - **Preflight (core Step 1) specifics:** `bin/ace-doctor --installed` — read the `[Auth liveness]`
-  block; each failure names its remediation command. **The `--installed` flag is load-bearing:**
+  block; each failure names its remediation command. **Read the `TURN-BLOCKING` list, not just the
+  aggregate verdict** (dimagi-internal/ace#1189): a revoked Gmail refresh token leaves every inbound
+  and outbound path dead while the old aggregate still printed `FAIL: 0 / HEALTHY — ACE works;
+  warnings below are non-fatal`, because a Gmail-less machine legitimately still runs most of
+  `/ace:run`. The verdict is now surface-scoped — `HEALTHY for runs · BROKEN for turns` — and any
+  `[TURN-BLOCKING]` item means **this turn cannot do its job**: do NOT proceed to the inbox pull.
+  Abort loudly, naming the item and its `fix:` line (they are all one-command remediations:
+  `gog login …`, or installing the canopy CLI). A turn that continues past one reads an empty inbox
+  and reports "nothing to do", which is indistinguishable from a genuinely quiet mailbox — the
+  silent-failure shape this whole preflight exists to prevent. **The `--installed` flag is load-bearing:**
   `ace-doctor` defaults to `MODE=self` and audits whichever copy you invoke, so a bare
   `bin/ace-doctor` run from an emdash worktree audits the *checkout* — which has no `node_modules`
   until someone runs `npm ci` there, and which never executes anything. ACE runs from the installed
