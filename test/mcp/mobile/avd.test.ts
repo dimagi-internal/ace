@@ -15,6 +15,21 @@ function fakeShell(scripted: Record<string, { stdout: string; stderr?: string; c
 
 import { AvdBootError, AvdBootTimeoutError } from '../../../mcp/mobile/errors.js';
 
+// ace#1357 added a PRE-SPAWN de-provisioning check that reads
+// `$ANDROID_AVD_HOME/<name>.avd/` for `*.img` files. These cold-boot tests
+// exercise the boot-WAIT phases with a fake AVD name, so without a hermetic
+// AVD home they would depend on whatever the developer's ~/.android/avd holds
+// — and on the machine that filed #1357 that directory is genuinely
+// de-provisioned, so the new check fired and the boot-wait assertions never
+// ran. Point the check at a temp home with a provisioned fake.
+const AVD_HOME = fs.mkdtempSync(path.join(os.tmpdir(), 'avd-home-'));
+process.env.ANDROID_AVD_HOME = AVD_HOME;
+for (const name of ['ACE_Pixel_API_34', 'ACE_Pixel_API_34_PS', 'test-avd', 'TestAVD']) {
+  fs.mkdirSync(path.join(AVD_HOME, `${name}.avd`), { recursive: true });
+  fs.writeFileSync(path.join(AVD_HOME, `${name}.avd`, 'userdata-qemu.img'), 'x');
+}
+
+
 /**
  * These suites drive the real AvdBackend, and several paths spawn the actual
  * `emulator` binary. On a GitHub runner there is no Android SDK, so the spawn

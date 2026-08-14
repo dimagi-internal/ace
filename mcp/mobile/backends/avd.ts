@@ -3,7 +3,14 @@ import * as crypto from 'node:crypto';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { AvdBootError, AvdBootTimeoutError, AdbError, ShellTimeoutError } from '../errors.js';
+import {
+  AvdBootError,
+  AvdBootTimeoutError,
+  AdbError,
+  ShellTimeoutError,
+  AvdNotProvisionedError,
+} from '../errors.js';
+import { checkAvdProvisioned } from '../avd-provisioning.js';
 import type { AvdInfo, ApkInfo, UiDumpResult, SnapshotResult, LocalDiagnostics } from '../types.js';
 import { resolveAdbServerPort, resolveEmulatorPair, recordSessionLock, isTcpPortFree, occupiedConsolePortIsFatal } from '../port-allocator.js';
 import { withAllocatorMutex } from '../session-lock.js';
@@ -618,6 +625,22 @@ export class AvdBackend {
     const known = await this.listAvds();
     if (!known.includes(avdName)) {
       throw new AvdBootError(avdName, `AVD '${avdName}' not in emulator -list-avds output`);
+    }
+
+    // Fail fast on a DE-PROVISIONED AVD (dimagi-internal/ace#1357). `-list-avds`
+    // reports it happily — it reads config.ini — so the only thing that catches
+    // this before a doomed 60-second boot is looking for the disk images. Skipped
+    // silently when the directory cannot be read: that is a different failure and
+    // this check makes no claim about it.
+    const avdHome =
+      process.env.ANDROID_AVD_HOME ?? path.join(os.homedir(), '.android', 'avd');
+    const provisioning = checkAvdProvisioned(avdHome, avdName);
+    if (provisioning.provisioned === false) {
+      throw new AvdNotProvisionedError(avdName, provisioning.detail, {
+        avd_dir: provisioning.avdDir,
+        images_found: provisioning.images,
+        stale_residue_files: provisioning.staleResidueCount,
+      });
     }
 
     // If a prior emulator for this AVD is running, kill it and wait for
