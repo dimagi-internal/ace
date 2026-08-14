@@ -732,7 +732,7 @@ server.tool(
 // 11b. Upload a binary file (PNG, PDF, audio, etc.) to Google Drive
 server.tool(
   'drive_upload_binary',
-  'Upload a binary file (PNG, JPG, PDF, audio, video, etc.) to Google Drive inside the given parent folder. Accepts content via base64 string (contentBase64) OR a local file path (localFilePath) — use localFilePath for large files like videos to avoid passing megabytes through the context window. The MCP uses Drive\'s media-upload path with the supplied mime type, so the file lands as its native type (NOT auto-converted to a Google Doc — that\'s what `drive_create_file` is for). Pass `shareAnyoneWithLink: true` to atomically grant `role: reader` to `type: anyone` on the new file. The parent MUST be a folder on a Shared Drive.',
+  'Upload a binary file (PNG, JPG, PDF, audio, video, etc.) to Google Drive inside the given parent folder. Accepts content via base64 string (contentBase64) OR a local file path (localFilePath) — use localFilePath for large files like videos to avoid passing megabytes through the context window. The MCP uses Drive\'s media-upload path with the supplied mime type, so the file lands as its native type (NOT auto-converted to a Google Doc — that\'s what `drive_create_file` is for). Pass `shareAnyoneWithLink: true` to atomically grant `role: reader` to `type: anyone` on the new file. By default, find-or-create: a same-name non-folder sibling under the parent has its BYTES REPLACED and keeps its id, so a corrected re-upload does not leave two files the name-matching `verify_phase_artifacts` fence would both count as present (dimagi-internal/ace#1324); pass `findOrCreate:false` to force a new sibling. The parent MUST be a folder on a Shared Drive.',
   {
     name: z.string().describe('Name for the new file (include the extension — e.g., "screen-01.png", not "screen-01")'),
     contentBase64: z.string().optional().describe('File content, base64-encoded. Provide either this OR localFilePath, not both.'),
@@ -740,11 +740,10 @@ server.tool(
     mimeType: z.string().describe('MIME type of the binary content. Common ACE values: "image/png", "image/jpeg", "application/pdf", "audio/mpeg", "video/mp4", "application/zip" (CCZ).'),
     parentFolderId: z.string().min(1).describe('Required. Parent folder ID — MUST be a folder on a Shared Drive (the MCP verifies this before writing).'),
     shareAnyoneWithLink: z.boolean().optional().describe('When true, after a successful upload set sharing to `role: reader, type: anyone` (anyone-with-link). Required for any PNG that downstream Slides `createImage` will fetch — Slides\' image-import service does not carry the SA\'s auth. Default: false.'),
+    findOrCreate: z.boolean().optional().describe('When true (default), reuse an existing same-name non-folder file under the parent and REPLACE its bytes — the id and every already-shared URL survive. Otherwise always create a new sibling. Default: true. Set false only when you specifically want a separate sibling each call (e.g. timestamped captures that share a base name).'),
   },
-  async ({ name: fileName, contentBase64, localFilePath, mimeType, parentFolderId, shareAnyoneWithLink }) => {
+  async ({ name: fileName, contentBase64, localFilePath, mimeType, parentFolderId, shareAnyoneWithLink, findOrCreate }) => {
     try {
-      const guard = await assertParentOnSharedDrive(parentFolderId);
-      if (!guard.ok) return error(guard.message);
       let buf: Buffer;
       if (localFilePath) {
         const fs = await import('fs');
@@ -760,36 +759,12 @@ server.tool(
       if (buf.length === 0) {
         return error('File is empty (0 bytes).');
       }
-      const created = await drive.files.create({
-        requestBody: {
-          name: fileName,
-          mimeType,
-          parents: [parentFolderId],
-        },
-        media: {
-          mimeType,
-          body: Readable.from(buf),
-        },
-        fields: 'id, name, webViewLink, mimeType, size',
-        supportsAllDrives: true,
-      });
-      let sharing: 'anyone-with-link' | 'sa-only' = 'sa-only';
-      if (shareAnyoneWithLink && created.data.id) {
-        await drive.permissions.create({
-          fileId: created.data.id,
-          supportsAllDrives: true,
-          requestBody: { role: 'reader', type: 'anyone' },
-        });
-        sharing = 'anyone-with-link';
-      }
-      return result({
-        id: created.data.id,
-        name: created.data.name,
-        mimeType: created.data.mimeType,
-        size: created.data.size,
-        webViewLink: created.data.webViewLink,
-        sharing,
-      });
+      return result(
+        await handleUploadBinary(
+          { name: fileName, buffer: buf, mimeType, parentFolderId, shareAnyoneWithLink, findOrCreate },
+          drive,
+        ),
+      );
     } catch (e: any) {
       return error(e.message);
     }
@@ -1637,6 +1612,105 @@ export async function handleCreateFolder(
     supportsAllDrives: true,
   }));
   return { id: resp.data.id!, name: resp.data.name!, webViewLink: resp.data.webViewLink ?? undefined };
+}
+
+/**
+ * Binary-upload handler, exported for unit testing with a mocked Drive client.
+ *
+ * Default behavior is find-or-create, matching every other Drive create atom
+ * (`drive_create_file`, `drive_create_doc_from_markdown`, `drive_create_folder`).
+ * This atom was the one that never got the treatment (dimagi-internal/ace#1324):
+ * a corrected re-upload of the same artifact name left TWO live files in the
+ * phase folder. That is not just a stray file — `verify_phase_artifacts` walks
+ * the folder and matches by NAME, so both copies satisfy "present" and the
+ * fence passes while a name-based read downstream may resolve either one. For
+ * a Phase 2 artifact that is Phase 3/6 ground truth, the stale copy is a
+ * silent wrong answer.
+ *
+ * Reuse REPLACES the bytes via `files.update` and keeps the id, so every URL
+ * already shared stays valid — the same contract `handleCreateFile` offers.
+ * Pass `findOrCreate: false` to force a new sibling.
+ */
+export async function handleUploadBinary(
+  args: {
+    name: string;
+    buffer: Buffer;
+    mimeType: string;
+    parentFolderId: string;
+    shareAnyoneWithLink?: boolean;
+    findOrCreate?: boolean;
+  },
+  driveClient: typeof drive = drive,
+): Promise<{
+  id: string;
+  name: string;
+  mimeType?: string;
+  size?: string;
+  webViewLink?: string;
+  sharing: 'anyone-with-link' | 'sa-only';
+  reused?: boolean;
+}> {
+  const { name, buffer, mimeType, parentFolderId, shareAnyoneWithLink, findOrCreate = true } = args;
+  const guard = await assertParentOnSharedDrive(parentFolderId, driveClient);
+  if (!guard.ok) throw new Error(guard.message);
+
+  let fileId: string | undefined;
+  let fileName = name;
+  let outMime: string | undefined;
+  let size: string | undefined;
+  let webViewLink: string | undefined;
+  let reused = false;
+
+  if (findOrCreate) {
+    const escaped = name.replace(/'/g, "\\'");
+    const list = await driveClient.files.list({
+      q: `name='${escaped}' and '${parentFolderId}' in parents and trashed=false and mimeType!='application/vnd.google-apps.folder'`,
+      fields: 'files(id, name, webViewLink)',
+      supportsAllDrives: true,
+      includeItemsFromAllDrives: true,
+    } as any);
+    const existing = (list.data as any).files?.[0];
+    if (existing?.id) {
+      const updated = await driveClient.files.update({
+        fileId: existing.id,
+        media: { mimeType, body: Readable.from(buffer) },
+        fields: 'id, name, webViewLink, mimeType, size',
+        supportsAllDrives: true,
+      } as any);
+      fileId = existing.id;
+      fileName = (updated.data as any).name ?? existing.name;
+      outMime = (updated.data as any).mimeType;
+      size = (updated.data as any).size;
+      webViewLink = (updated.data as any).webViewLink ?? existing.webViewLink ?? undefined;
+      reused = true;
+    }
+  }
+
+  if (!fileId) {
+    const created = await driveClient.files.create({
+      requestBody: { name, mimeType, parents: [parentFolderId] },
+      media: { mimeType, body: Readable.from(buffer) },
+      fields: 'id, name, webViewLink, mimeType, size',
+      supportsAllDrives: true,
+    } as any);
+    fileId = (created.data as any).id;
+    fileName = (created.data as any).name;
+    outMime = (created.data as any).mimeType;
+    size = (created.data as any).size;
+    webViewLink = (created.data as any).webViewLink ?? undefined;
+  }
+
+  let sharing: 'anyone-with-link' | 'sa-only' = 'sa-only';
+  if (shareAnyoneWithLink && fileId) {
+    await driveClient.permissions.create({
+      fileId,
+      supportsAllDrives: true,
+      requestBody: { role: 'reader', type: 'anyone' },
+    } as any);
+    sharing = 'anyone-with-link';
+  }
+
+  return { id: fileId!, name: fileName, mimeType: outMime, size, webViewLink, sharing, reused: reused || undefined };
 }
 
 /**
