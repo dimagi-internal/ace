@@ -99,6 +99,43 @@ paraphrase the schema here — read the model / schema and validate.
      act/capture. Crossing to a different dashboard = a new scene WITH its
      `${<key>_par_url}`.
 
+3b. **Check every scene's ACTIONS before validating (ace#1379, #1380, #1365).**
+   Run `checkSceneActions` from `lib/ddd-scene-actions.ts` over `scenes[]`.
+   Four ways a scene reports `ok: true` while demonstrating nothing — all
+   found on ONE run, spark-facilitator/20260813-2126:
+
+   - **`ambiguous-text-target`** — target the CONTROL, never the words. A
+     `text:` selector resolves `.first()` in DOM order and **clicking a
+     non-interactive node succeeds**, so the action reports ok while nothing
+     happens. Scene 3's `click text:Needs a look` matched three nodes — a
+     card-subtitle DIV, the real LABEL, a reconciliation-sentence DIV — and
+     took the DIV. `record_video` reported *39 actions: all ok* on a frame
+     showing the checkbox unchecked and "showing 20 of 20 facilitators". Use
+     `role=` / `label:` / `css=` / `testid=`.
+   - **`non-discriminating-gate`** — a `wait_for` must name something only the
+     POST state carries (a count, a status word, the new id). `wait_for
+     text:Showing` was true before and after, so it could not fail.
+   - **`mutation-without-restore`** — a click that creates or destroys a
+     persistent object makes the scene non-idempotent. Scene 5's first render
+     created coaching draft #5139; the next render found "Open draft #5139"
+     instead, failed `target_not_found`, and captured the un-drafted state
+     while the narration described a draft being written. Declare a
+     `restore:` block — and note it must run before **every** render **and
+     before every frame-fit pass**, because the verifier replays these same
+     actions and so consumes the precondition for the render after it.
+   - **`scroll-under-fixed-header`** — the labs shell has a **~72px fixed top
+     bar**, and `scroll_into_view_if_needed` lands the artifact's top edge
+     underneath it. Pass `offset: 96`, or scroll to `bottom`. Seven
+     independent judges rediscovered this in different words
+     (`motion_friction` 2 on 7 of 12 scenes, concept eval **2/5 fail**); the
+     only two scenes scoring 4 are the two that scroll to `bottom`, where no
+     fixed header can occlude anything.
+
+   These are the halves decidable from the SPEC. The runtime halves —
+   resolving an ambiguous target to the interactive node, comparing a gate
+   against the captured before-frame, replaying restores, offsetting the
+   scroll — belong in canopy's walkthrough runner and are tracked upstream.
+
 4. **Validate — the gate.** Resolve canopy's runtime from its installed
    plugin, then run the validator from there (pass the artifact paths as
    absolute paths — the subshell's cwd is the runtime, not yours):
