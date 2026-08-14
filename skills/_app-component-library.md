@@ -1154,6 +1154,36 @@ respondent may never have heard read out.
 > the later answer in a hidden calculate does NOT help — the calculate inherits
 > the position of the latest question it depends on.
 
+### branch-scoped-groups
+
+- **App:** Deliver
+- **Trigger:** any `group` whose questions are only meaningful on ONE branch of
+  a discriminator question (an outcome, a disposition, a yes/no gate).
+- **Rule:** that group MUST carry `relevant` on the discriminator. A
+  branch-scoped group left ungated displays on every branch, which is how a
+  form ends up asking for a value the current branch cannot produce.
+- **Why it is a component and not a style note (ace#1015).** On
+  `spark-facilitator/20260728-1338` the `savings` group had no `relevant`, so
+  it showed on both branches of `meeting_conducted`. On the did-not-happen
+  branch the CBF was asked the next-meeting date **twice**, by two required
+  questions with different constraints:
+
+  | Field | Constraint |
+  |---|---|
+  | `meeting_did_not_happen/reschedule_date` | `. >= today()` |
+  | `savings/next_meeting_date` | `. > today() and . <= today() + 30` |
+
+  Rescheduling for **today** satisfies the first and hard-blocks the second,
+  with no way to reconcile — on exactly the branch the PDD required to be
+  "reachable without friction" (a worker honestly reporting that a meeting did
+  not happen is doing the right thing). The pair is unsatisfiable only at the
+  EDGE, which is why per-field analysis and a happy-path smoke walk both pass.
+- **The surgical fix is one line** (`relevant` on the group); this component
+  exists so the next form does not need one.
+- **Enforced by:** `pdd-to-deliver-app-eval § field_answerability` (e)
+  cross-question satisfiability, graded via `checkPairSatisfiable` from
+  `lib/constraint-satisfiability.ts`.
+
 ### consent-script-floor
 
 - **App:** Deliver
@@ -1491,6 +1521,7 @@ the effective bar. One repair round, then re-grade.
 
 | Date | Change | By |
 |---|---|---|
+| 2026-08-14 | **New component `branch-scoped-groups` (ace#1015).** A group whose questions only make sense on one branch of a discriminator must be gated on that discriminator. Ungated, the `savings` group on spark-facilitator/20260728-1338 displayed on both branches of `meeting_conducted` and asked the next-meeting date twice with incompatible constraints, so rescheduling for TODAY was a dead end on the branch the PDD required to be frictionless. Paired with `pdd-to-deliver-app-eval § field_answerability` (e). | ACE |
 | 2026-08-14 | **`consent-script-floor` gains `consent-branch-completeness` (ace#1326).** Element (c) — "you may stop at any time, including after being asked" — and an unconditionally-required observation field contradict each other on the withdrawal branch, and nothing owned the interaction: both resolutions were silently shippable, and one produces INVENTED data in the fields the primary metric is computed from. Element (c) now explicitly wins; the build gates those fields on the consent answer, records each in the memo, and names the denominator consequence. Graded mechanically by `checkConsentBranchCompleteness` (`lib/consent-branch.ts`), shared with `pdd-to-deliver-app-eval § conditional_logic_match` so build-emit and eval-grade cannot drift — same pairing as `screen-grouping` / `lib/screen-shape.ts`. | ACE |
 | 2026-08-14 | **Table B gains "a conditional primary-case create" (ace#1294).** A PDD said a registration form with `consent_given = no` ends "without creating a case". The Nova architect disproved it by construction on app `74a097c6`: no create-condition slot on `create_form`/`update_form`; `add_case_operations` accepts a conditioned `create` and succeeds, but a read-back shows the form's own primary create still present, so the accepted operation is an ADDITIONAL case that would double-create on consent; relevance skips a property write but still opens the case. Filed in **Table B**, not A — CommCare supports a conditional open-case action, so the closure is Nova's authoring surface, and the section's own tiebreak sends a doubtful mechanism to B. Phase 3 was the earliest point this could be falsified, which is exactly the ace#995/#1006/#1121 cost pattern: the sentence had already reached the PDD and would have reached the Work Order and all five Phase-6 training documents. | ACE |
 | 2026-08-13 | **Table A gains "reading a case property into a followup form's field" (ace#1180 / ace#1224 / ace#1232), and `consent-script-floor`'s trigger is restated as four INDEPENDENT clauses.** The case-read row records three separately-proven closures — `case-ref` rejected app-wide, `caseWrite` write-only, and a visible case-bound field emitting no preload (proven against a compiled CCZ) — because each one was rediscovered by a different run reaching for the next workaround, and the sanctioned alternative (re-ask as a select, or key on worker identity + encounter date via a `user-ref` part inside an explicit `concat(...)`) is what `pdd-to-deliver-app § entity_id` now mandates. The consent trigger's lead-in used to read "the PDD describes consent being sought…", which primed exactly one misread: a PDD *silent* about consent was treated as not firing it. `spark-facilitator/20260812-1635` shipped 0-of-6 floor elements on an app photographing 8+ identifiable people into an AI verification layer plus a human audit sample (ace#1223) — the second miss on the same opp. Clause 3 is now stated as always-on for capture of identifiable people, on the same detection as `live-photo-capture`. | ACE team |
