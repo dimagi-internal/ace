@@ -498,7 +498,16 @@ name the surface (the failing screen/step) and link the `atlas-report.yaml`
 + `*-FAILURE.png`/`*-FAILURE.xml` dump, rather than writing a generic
 "selector failure" line — an unmapped surface is a coverage gap, not a
 broken selector, and the summary should say so plainly so the operator
-doesn't chase the wrong fix.
+doesn't chase the wrong fix. **The remedy is `skills/selector-map-heal`**
+(dimagi-internal/ace#1256): name it in the summary as the next command,
+pointed at the run's `atlas-report.yaml` + FAILURE dump — it authors
+candidate selector rows from the dump, proves them by re-running the
+blocked leg on-device, and ships only on green. This routing applies to
+`unmapped-surface` ONLY (`needs_tier2: true`): a `matcher-miss` means
+fix the recipe, and `drift` (an anchor moved) goes through the manual
+calibrate procedure — `skills/selector-map-heal` § When to run names
+the remedy per classification. Routing either to the heal skill
+recreates the #811/#893 inversion.
 
 ### Why six text skills instead of one
 

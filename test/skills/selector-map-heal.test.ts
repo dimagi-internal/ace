@@ -42,3 +42,43 @@ describe('selector-map-heal — the three guards are stated in the skill', () =>
     expect(readFileSync(P, 'utf8')).not.toMatch(/disable-model-invocation:\s*false/);
   });
 });
+
+// ---------------------------------------------------------------------------
+// dimagi-internal/ace#1256 — the heal pipeline shipped complete (detect →
+// classify → surface) but had NO on-ramp: nothing routed an unmapped-surface
+// classification to skills/selector-map-heal, so the repair tier was
+// unreachable by construction. These assert the routing sentence exists at
+// both places the classification is recorded, and that it stays scoped to
+// unmapped-surface only (matcher-miss / drift have different remedies —
+// routing them here recreates the #811/#893 inversion).
+// ---------------------------------------------------------------------------
+
+describe('selector-map-heal — the on-ramp exists (#1256)', () => {
+  const QA = new URL('../../agents/qa-and-training.md', import.meta.url);
+  const CAP = new URL('../../skills/app-screenshot-capture/SKILL.md', import.meta.url);
+
+  it('agents/qa-and-training.md routes unmapped-surface to selector-map-heal', () => {
+    const body = readFileSync(QA, 'utf8');
+    expect(body).toMatch(/unmapped-surface[\s\S]{0,900}?selector-map-heal/);
+  });
+
+  it('app-screenshot-capture routes unmapped-surface to selector-map-heal', () => {
+    const body = readFileSync(CAP, 'utf8');
+    expect(body).toMatch(/unmapped-surface[\s\S]{0,900}?selector-map-heal/);
+  });
+
+  it('both routings are explicitly scoped to unmapped-surface only', () => {
+    for (const u of [QA, CAP]) {
+      const body = readFileSync(u, 'utf8');
+      // Every mention of the heal skill must sit inside a sentence that also
+      // names the exclusion (matcher-miss / drift are NOT routed here).
+      for (const m of body.matchAll(/selector-map-heal/g)) {
+        // Symmetric window: the scoping sentence may sit on either side of
+        // the mention (the agent doc's remedy-per-classification pointer
+        // follows its scope statement).
+        const window = body.slice(Math.max(0, m.index! - 400), m.index! + 400);
+        expect(window).toMatch(/unmapped-surface.{0,40}(only|ONLY)|only.{0,40}unmapped-surface|matcher-miss/i);
+      }
+    }
+  });
+});

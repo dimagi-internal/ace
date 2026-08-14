@@ -965,6 +965,16 @@ authoring a selector for a matcher-miss, or shrugging off a genuinely
 unmapped surface as "just a bad selector" — is exactly the #811/#893
 failure this file exists to prevent.
 
+**When the classification IS `unmapped-surface`, the next step has a
+name: run `skills/selector-map-heal`** (dimagi-internal/ace#1256),
+pointed at this `atlas-report.yaml` + the FAILURE dump. It authors
+candidate selector rows from the dump, proves them by re-running the
+blocked leg on-device, and ships them only on green — so record the
+classification AND the heal dispatch (or the operator instruction to
+run it) in the step verdict, not just the coverage gap. This applies to
+`unmapped-surface` only; `matcher-miss` and `drift` have the different
+remedies stated above.
+
 ### Step 7: Thin UX smoke judge
 
 For each smoke recipe (Learn + Deliver), assemble the captured
