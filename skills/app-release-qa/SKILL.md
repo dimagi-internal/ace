@@ -343,18 +343,29 @@ verification — the "applied but never verified" shape that #867 / #971 /
 #994 exist to prevent.
 
 **Read it from the raw app doc, NOT from the CCZ and NOT from the REST
-API.** Both intuitive surfaces silently lie:
+API.** Neither intuitive surface can carry the full assertion:
 
-- `suite.xml` emits a bare `<menu id="m0">` with no style attribute.
-  Searching a *correctly gridded* released CCZ for the substring `grid`
-  (case-insensitive, across every zip entry) returns **nothing**. A
-  suite.xml-sourced grid check could never pass, no matter how right the
-  app is.
+- `suite.xml` only carries `style="grid"` on its `<menu>` elements when
+  the app-level `grid_form_menus == 'some'` (HQ's suite generator
+  ignores every per-module `display_style` otherwise —
+  `suite_xml/sections/menus.py:86-92`). So it reads BARE on exactly the
+  half-applied app ace#1082 describes, and even on a fully-gridded app
+  it cannot show `use_grid_menus`/`grid_form_menus` themselves —
+  corroboration at best, never the authoritative read. (Post-#1082
+  correctly-gridded CCZs DO emit `style="grid"`; the pre-#1082 claim
+  here that a gridded CCZ "returns nothing" for the substring `grid`
+  described builds whose `grid_form_menus` was still `'none'` — see
+  dimagi-internal/ace#1246.)
 - `GET /api/v0.5/application/<app_id>/` serializes only
   `['case_properties','case_type','forms','name','unique_id']` per
   module. `display_style` is absent, so this surface reads `None` for a
   module that IS grid — a false negative waiting for whoever reaches for
   the obvious API first.
+
+(Cheap secondary signal, optional: because suite.xml is bare *exactly
+when* `grid_form_menus != 'some'`, a `style="grid"` absence in the CCZ
+already in hand corroborates the half-applied class with no extra HTTP
+call — but the raw app doc remains the assertion surface.)
 
 The authoritative surface is the raw app doc, which works against both
 the draft app id and a released build id:
@@ -762,8 +773,10 @@ defects.
   the release (see Step 4 + dimagi-internal/ace#1009 + #1082). Operator
   fix: re-run `app-hq-settings`, re-release, then re-run
   `app-release-qa`. Do **not** try to confirm this from `suite.xml` or
-  `GET /api/v0.5/application/` — neither carries `display_style`, and the
-  REST API reads a misleading `None` for a correctly-gridded module.
+  `GET /api/v0.5/application/` — suite.xml only carries `style="grid"`
+  when `grid_form_menus == 'some'` (bare on the half-applied app, and
+  never shows the two app-level flags), and the REST API reads a
+  misleading `None` for a correctly-gridded module (ace#1246).
 - `non-local-constraint` — a `constraint` in the released form XML
   references a question or repeat the user cannot edit from the screen
   where it fires, so the error is unfixable in place and the FLW must
