@@ -68,6 +68,21 @@ None pre-named — fixture only.
 
 - **Total:** 2 weeks.
 
+## Program Parameters
+
+| Key | Value |
+|---|---|
+| learn_passing_score | 100 |
+| assessment_items | 6 |
+| payment_rate_min | 1.00 |
+| payment_rate_max | 2.50 |
+| daily_cap_per_flw | 5 |
+| total_cap_per_flw | 30 |
+| flw_count_min | 2 |
+| expected_reach_max | 30 |
+| cap_rationale | Deliberately non-binding: the per-FLW cap is a fraud ceiling, not a throughput target, and is sized for the largest cohort the program might later run. |
+| entity_id_grain | worker username + follow-up visit date |
+
 ## Stress Test Results
 
 | # | Check | Grade |

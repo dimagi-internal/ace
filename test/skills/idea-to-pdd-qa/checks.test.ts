@@ -15,6 +15,7 @@ import {
   checkEvidenceModelLayered,
   checkReviewerCommentTableIfReferenced,
   checkPddIsNativeGoogleDoc,
+  checkProgramParametersCoherent,
   CHECKS,
 } from '../../../skills/idea-to-pdd-qa/checks';
 
@@ -65,6 +66,13 @@ Layer A: x. Layer B: y. Layer C: z.
 ## Timeline
 
 x
+
+## Program Parameters
+
+| Key | Value |
+|---|---|
+| learn_passing_score | 100 |
+| assessment_items | 6 |
 
 ## Stress Test Results
 
@@ -266,18 +274,17 @@ describe('checkReviewerCommentTableIfReferenced', () => {
 });
 
 describe('CHECKS array', () => {
-  test('exports seven checks in stable order', () => {
-    expect(CHECKS).toHaveLength(7);
+  test('exports eight checks in stable order', () => {
+    expect(CHECKS).toHaveLength(8);
     const ids = CHECKS.map((c) => c.id);
     expect(ids).toEqual([
-      // Format first: a PDD nobody can comment on fails its purpose before
-      // any question about its contents is worth asking (ace#1061).
       'pdd_is_native_google_doc',
       'all_required_sections_present',
       'archetype_declared_and_valid',
       'stress_test_appendix_present',
       'success_metrics_table_populated',
       'evidence_model_layered',
+      'program_parameters_coherent',
       'reviewer_comment_table_if_referenced',
     ]);
   });
@@ -384,5 +391,97 @@ describe('checkPddIsNativeGoogleDoc (#1061)', () => {
     expect(entry!.run('# PDD\n', { artifactMimeType: 'text/markdown' })).toMatchObject({
       pass: false,
     });
+  });
+});
+
+describe('checkProgramParametersCoherent', () => {
+  const table = (rows: string) =>
+    `# PDD\n\n## Program Parameters\n\n| Key | Value |\n|---|---|\n${rows}\n\n## Next\n\nx\n`;
+
+  test('passes on a coherent table', () => {
+    const r = checkProgramParametersCoherent(
+      table('| learn_passing_score | 100 |\n| assessment_items | 6 |\n| payment_rate_min | 1.00 |\n| payment_rate_max | 2.50 |'),
+    );
+    expect(r.pass).toBe(true);
+  });
+
+  test('fails when the section is absent', () => {
+    const r = checkProgramParametersCoherent('# PDD\n\n## Timeline\n\nx\n');
+    expect(r.pass).toBe(false);
+    expect(r.detail).toContain('no § Program Parameters');
+    expect(r.auto_fix_hint).toBeTruthy();
+  });
+
+  test('fails when the table has no parseable data rows', () => {
+    const r = checkProgramParametersCoherent(
+      '# PDD\n\n## Program Parameters\n\nTBD.\n\n## Next\n\nx\n',
+    );
+    expect(r.pass).toBe(false);
+    expect(r.detail).toContain('no parseable');
+  });
+
+  test('rejects a passing score outside 0-100', () => {
+    const r = checkProgramParametersCoherent(table('| learn_passing_score | 150 |'));
+    expect(r.pass).toBe(false);
+    expect(r.detail).toContain('0-100');
+  });
+
+  // The bednet case: 90% over 6 items is unreachable except by scoring all six,
+  // so the gate is really 100% while every downstream doc says 90.
+  test('flags a threshold only attainable at 100%', () => {
+    const r = checkProgramParametersCoherent(
+      table('| learn_passing_score | 90 |\n| assessment_items | 6 |'),
+    );
+    expect(r.pass).toBe(false);
+    expect(r.detail).toContain('effectively 100%');
+  });
+
+  test('does NOT flag a threshold that is genuinely attainable below 100', () => {
+    // 80 over 5 items: 4/5 = 80 clears it, so k(4) < items(5) — coherent.
+    const r = checkProgramParametersCoherent(
+      table('| learn_passing_score | 80 |\n| assessment_items | 5 |'),
+    );
+    expect(r.pass).toBe(true);
+  });
+
+  test('does NOT flag an explicit 100% gate', () => {
+    const r = checkProgramParametersCoherent(
+      table('| learn_passing_score | 100 |\n| assessment_items | 6 |'),
+    );
+    expect(r.pass).toBe(true);
+  });
+
+  test('flags an inverted rate band', () => {
+    const r = checkProgramParametersCoherent(
+      table('| payment_rate_min | 4.00 |\n| payment_rate_max | 2.00 |'),
+    );
+    expect(r.pass).toBe(false);
+    expect(r.detail).toContain('exceeds payment_rate_max');
+  });
+
+  test('flags a cap that can never bind', () => {
+    const r = checkProgramParametersCoherent(
+      table('| flw_count_min | 2 |\n| total_cap_per_flw | 30 |\n| expected_reach_max | 30 |'),
+    );
+    expect(r.pass).toBe(false);
+    expect(r.detail).toContain('can never bind');
+  });
+
+  test('accepts a non-binding cap once cap_rationale acknowledges it', () => {
+    const r = checkProgramParametersCoherent(
+      table('| flw_count_min | 2 |\n| total_cap_per_flw | 30 |\n| expected_reach_max | 30 |\n| cap_rationale | Fraud ceiling, not a throughput target. |'),
+    );
+    expect(r.pass).toBe(true);
+  });
+
+  // Every rule must skip silently when an operand is missing — QA is binary
+  // with no warn tier, so a half-specified table must not manufacture a failure.
+  test('skips rules whose operands are absent', () => {
+    const r = checkProgramParametersCoherent(table('| entity_id_grain | username + visit date |'));
+    expect(r.pass).toBe(true);
+  });
+
+  test('is registered in CHECKS', () => {
+    expect(CHECKS.map((c) => c.id)).toContain('program_parameters_coherent');
   });
 });

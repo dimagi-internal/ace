@@ -27,6 +27,7 @@ const REQUIRED_SECTIONS = [
   'Success Metrics',
   'Evidence Model',
   'Timeline',
+  'Program Parameters',
 ] as const;
 
 /**
@@ -54,6 +55,7 @@ const SECTION_PURPOSES: Record<(typeof REQUIRED_SECTIONS)[number], string> = {
   'Success Metrics': 'how to measure if the intervention worked — populated table with Metric / Target / Method / Layer columns',
   'Evidence Model': 'Layer A (delivery proof), Layer B (content proof), Layer C (cross-delivery quality) verification plan',
   'Timeline': 'expected duration of the opportunity, key milestones',
+  'Program Parameters': 'a `| key | value |` table of the PDD decisions a LATER phase must apply verbatim (learn_passing_score, payment_rate_*, caps, entity_id_grain) — see checkProgramParametersCoherent for the key vocabulary and the coherence rules',
 };
 
 const VALID_ARCHETYPES = ['atomic-visit', 'focus-group', 'multi-stage'] as const;
@@ -428,6 +430,163 @@ export function checkPddIsNativeGoogleDoc(ctx?: QACheckContext): QACheckResult {
  * The `id` of each check matches the row in skills/idea-to-pdd-qa/SKILL.md
  * `## Checks` table.
  */
+/**
+ * Keys the `## Program Parameters` table may carry.
+ *
+ * This is a typed handoff, not prose: these are decisions Phase 1 makes that a
+ * LATER phase must apply verbatim, and that cannot be applied in the artifact
+ * Phase 1 produces. The canonical example is `learn_passing_score` — Nova's
+ * `connect.assessment` exposes only `{id, user_score}`, so a PDD gate of 100%
+ * is unsettable app-side and must reach Phase 4's
+ * `connect_create_opportunity.learn_app.passing_score`. On
+ * `bednet-check-2-visit/20260813-2313` it survived only because the
+ * orchestrator hand-carried it through a residual; prose is not a handoff.
+ *
+ * Unknown keys are allowed (forward-compatible); known keys are type-checked.
+ */
+const PROGRAM_PARAM_NUMERIC = [
+  'learn_passing_score',
+  'assessment_items',
+  'payment_rate_min',
+  'payment_rate_max',
+  'daily_cap_per_flw',
+  'total_cap_per_flw',
+  'flw_count_min',
+  'flw_count_max',
+  'expected_reach_min',
+  'expected_reach_max',
+] as const;
+
+function parseProgramParameters(body: string): Map<string, string> {
+  const out = new Map<string, string>();
+  for (const raw of body.split('\n')) {
+    const line = raw.trim();
+    if (!line.startsWith('|')) continue;
+    if (/^\|[\s:|-]+\|?$/.test(line)) continue; // separator row
+    const cells = line.split('|').slice(1, -1).map((c) => c.trim());
+    if (cells.length < 2) continue;
+    const key = cells[0].replace(/`/g, '').trim();
+    if (!/^[a-z][a-z0-9_]*$/.test(key)) continue; // skips the header row too
+    out.set(key, cells[1].replace(/`/g, '').trim());
+  }
+  return out;
+}
+
+function numParam(params: Map<string, string>, key: string): number | null {
+  const raw = params.get(key);
+  if (raw === undefined) return null;
+  const m = raw.match(/-?\d+(?:\.\d+)?/);
+  if (!m) return null;
+  const n = Number(m[0]);
+  return Number.isFinite(n) ? n : null;
+}
+
+/**
+ * Verify the Program Parameters table exists and its numbers do not contradict
+ * each other.
+ *
+ * Deliberately conservative: QA is binary with no warn tier, so every rule here
+ * fires ONLY on an unambiguous contradiction, and every rule skips silently
+ * when either operand is absent. Judgement calls belong in the eval.
+ *
+ * Rules:
+ *  1. The section exists and carries at least one `| key | value |` row.
+ *  2. `learn_passing_score` is within 0–100.
+ *  3. **Attainability** — with N scored items, the attainable score set is
+ *     `k*100/N`. If the stated threshold is only reachable at k = N while being
+ *     written as something below 100, the gate silently means "all correct" and
+ *     every downstream document misstates it.
+ *  4. `payment_rate_min <= payment_rate_max`.
+ *  5. **A cap that can never bind** must be acknowledged. If
+ *     `flw_count_min * total_cap_per_flw` exceeds `expected_reach_max`, the cap
+ *     is inert; that may be deliberate, so the fix is a `cap_rationale` row
+ *     rather than a particular number. Picking the value is a program decision;
+ *     noticing the incoherence is ACE's job.
+ */
+export function checkProgramParametersCoherent(pdd: string): QACheckResult {
+  const body = extractSection(pdd, 'Program Parameters');
+  if (body === null) {
+    return {
+      pass: false,
+      detail: 'no § Program Parameters section',
+      auto_fix_hint:
+        'Add a `## Program Parameters` section containing a `| Key | Value |` markdown table of the decisions a later phase must apply verbatim — at minimum `learn_passing_score` and `assessment_items` when the PDD declares a gating assessment, plus `payment_rate_min`/`payment_rate_max`, `daily_cap_per_flw`, `total_cap_per_flw` and `entity_id_grain` where the PDD decides them. Prose elsewhere in the PDD is not a handoff: a later phase has to notice it, and when it does not the value silently falls back to a skill default.',
+    };
+  }
+
+  const params = parseProgramParameters(body);
+  if (params.size === 0) {
+    return {
+      pass: false,
+      detail: '§ Program Parameters has no parseable `| key | value |` rows',
+      auto_fix_hint:
+        'Populate the Program Parameters table with `| key | value |` rows using snake_case keys (e.g. `| learn_passing_score | 100 |`). Header and separator rows are ignored; at least one data row is required.',
+    };
+  }
+
+  const problems: string[] = [];
+
+  const pass_ = numParam(params, 'learn_passing_score');
+  if (pass_ !== null && (pass_ < 0 || pass_ > 100)) {
+    problems.push(
+      `learn_passing_score is ${pass_}; Connect's passing score is a percentage on a 0-100 scale`,
+    );
+  }
+
+  const items = numParam(params, 'assessment_items');
+  if (pass_ !== null && items !== null && items > 0 && pass_ >= 0 && pass_ <= 100) {
+    // Smallest k whose percentage clears the threshold.
+    let k = 0;
+    while (k <= items && (k * 100) / items < pass_) k++;
+    if (k === items && pass_ < 100 && pass_ > 0) {
+      problems.push(
+        `learn_passing_score ${pass_} with ${items} items is only reachable by scoring all ${items} ` +
+          `(next lowest is ${(((items - 1) * 100) / items).toFixed(1)}), so the gate is effectively 100% ` +
+          `but is written as ${pass_} — every downstream document will misstate it`,
+      );
+    }
+  }
+
+  const rmin = numParam(params, 'payment_rate_min');
+  const rmax = numParam(params, 'payment_rate_max');
+  if (rmin !== null && rmax !== null && rmin > rmax) {
+    problems.push(`payment_rate_min (${rmin}) exceeds payment_rate_max (${rmax})`);
+  }
+
+  const flwMin = numParam(params, 'flw_count_min');
+  const totalCap = numParam(params, 'total_cap_per_flw');
+  const reachMax = numParam(params, 'expected_reach_max');
+  const hasRationale = (params.get('cap_rationale') ?? '').length > 0;
+  if (
+    flwMin !== null &&
+    totalCap !== null &&
+    reachMax !== null &&
+    flwMin > 0 &&
+    totalCap > 0 &&
+    reachMax > 0 &&
+    flwMin * totalCap > reachMax &&
+    !hasRationale
+  ) {
+    problems.push(
+      `total_cap_per_flw ${totalCap} across ${flwMin} FLWs permits ${flwMin * totalCap} units against an ` +
+        `expected_reach_max of ${reachMax}, so the cap can never bind — add a \`cap_rationale\` row saying ` +
+        `why it is deliberately non-binding, or correct the numbers`,
+    );
+  }
+
+  if (problems.length > 0) {
+    return {
+      pass: false,
+      detail: `Program Parameters incoherent: ${problems.join('; ')}`,
+      auto_fix_hint:
+        `Resolve each contradiction in the Program Parameters table and in the PDD prose that states the same numbers, so the two agree: ${problems.join('; ')}. ` +
+        'Where the number is a program decision rather than an error, keep it and add the row the check asks for — noticing the incoherence is the requirement, not picking a particular value.',
+    };
+  }
+
+  return { pass: true, detail: `${params.size} program parameters, no contradictions` };
+}
+
 export const CHECKS: QACheck[] = [
   {
     id: 'pdd_is_native_google_doc',
@@ -464,6 +623,13 @@ export const CHECKS: QACheck[] = [
     type: 'static',
     description: 'Evidence Model section references all three layers (A, B, C)',
     run: checkEvidenceModelLayered,
+  },
+  {
+    id: 'program_parameters_coherent',
+    type: 'static',
+    description:
+      'Program Parameters table present and its numbers do not contradict each other',
+    run: checkProgramParametersCoherent,
   },
   {
     id: 'reviewer_comment_table_if_referenced',

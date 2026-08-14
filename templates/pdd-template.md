@@ -200,6 +200,33 @@ tuple, out-of-band.
   - [Milestone 1]: [date]
   - [Milestone 2]: [date]
 
+## Program Parameters
+
+> **Required, and machine-checked** (`idea-to-pdd-qa § program_parameters_coherent`).
+> This is the typed handoff: every decision THIS document makes that a LATER
+> phase must apply verbatim, and that cannot be applied in the artifact Phase 1
+> produces. Prose elsewhere in the PDD is not a handoff — a later phase has to
+> notice it, and when it does not the value silently falls back to a skill
+> default. Keys are snake_case; omit a row only when this PDD genuinely does not
+> decide it. Unknown keys are allowed.
+
+| Key | Value |
+|---|---|
+| learn_passing_score | [0–100. The Learn gate as a PERCENTAGE. **Not settable on the app** — Nova's `connect.assessment` exposes only `{id, user_score}` — so this reaches Connect via Phase 4's `connect_create_opportunity.learn_app.passing_score` and nowhere else.] |
+| assessment_items | [number of scored items in the gating assessment. Checked against the threshold: with N items the attainable scores are `k*100/N`, so e.g. 90 over 6 items is only reachable by scoring all six and is really a 100% gate.] |
+| payment_rate_min | [lower bound of the proposed band] |
+| payment_rate_max | [upper bound] |
+| payment_rate_currency | [e.g. USD] |
+| payment_rate_unit | [what one payment buys, e.g. "verified follow-up visit"] |
+| daily_cap_per_flw | [max payable units per FLW per day] |
+| total_cap_per_flw | [max payable units per FLW over the opportunity] |
+| flw_count_min | [cohort size lower bound] |
+| flw_count_max | [upper bound] |
+| expected_reach_min | [beneficiaries/entities lower bound] |
+| expected_reach_max | [upper bound] |
+| entity_id_grain | [the payment dedup grain in words, e.g. "worker username + encounter date"] |
+| cap_rationale | [REQUIRED only when a cap cannot bind — i.e. `flw_count_min × total_cap_per_flw` exceeds `expected_reach_max`. Say why it is deliberately non-binding, or correct the numbers. Picking the value is a program decision; noticing the incoherence is not optional.] |
+
 ## Budget
 - Estimated cost: [amount]
 - Payment structure: [per visit / per delivery / fixed]

@@ -235,7 +235,7 @@ orchestrator from the per-skill QA + eval verdicts on the fly. -->
    - **Evidence Model** — Layer A / B / C verification plan (see `## Evidence Model` in `templates/pdd-template.md`)
    - **Timeline** — expected duration of the opportunity
 
-4a. **Spec for deployability, not just topic presence.** The downstream
+4a. **Spec for deployability, not just topic presence.** `[ai-iteration: 2026-05-29]` The downstream
     build skills faithfully transcribe the PDD, and the app evals now
     **hard-fail** a build that is structurally complete but undeployable
     (see `docs/superpowers/specs/2026-05-29-eval-fitness-gap.md` — the
@@ -245,6 +245,52 @@ orchestrator from the per-skill QA + eval verdicts on the fly. -->
     *implies* any of the following, the **Deliver/Learn App
     Specification and Evidence Model MUST spec it explicitly** — don't
     leave it for Nova to infer (it won't):
+
+    **ZEROTH — mark every app-spec statement as a REQUIREMENT or a
+    MECHANISM. This governs everything else in 4a.** Specificity is the
+    point of this step; *unmarked* specificity is what costs runs. Two
+    different kinds of sentence live in the app specs and they must not
+    read alike:
+
+    - A **requirement** is an observable program fact that must hold in the
+      built app. It is **binding**: it flows into the Work Order and the
+      Phase-6 training materials, downstream evals grade against it, and a
+      build that does not satisfy it has failed. *"A household that declines
+      consent must never appear on the follow-up list and must never be
+      payable."*
+    - A **mechanism** is how CommCare/Connect/Nova achieves it. It is
+      **advisory**: Phase 3 may implement it differently, and doing so is a
+      normal build choice, **not a deviation**, and needs no PDD correction.
+      *"…by ending the form without creating a case."*
+
+    Write requirements as prose the program owner would recognise. Where a
+    mechanism is genuinely useful to suggest, mark it explicitly — a
+    `Mechanism (advisory):` prefix, or a `> **Requirement, not mechanism**`
+    callout naming the requirement and leaving the how to the build. Field
+    names, types, constraints, case write-backs, and the data model ARE
+    requirements (they define the instrument); module/form partitioning,
+    marker placement, `entity_id` construction, case-operation ordering, and
+    anything phrased as "the app enforces X by doing Y" are mechanisms.
+
+    **Never escalate a requirement into a mechanism.** This is the specific
+    failure this rule exists to stop. On `bednet-check-2-visit/20260813-2313`
+    the source brief said `consent_given` was *"required, must be yes to
+    proceed"* — a requirement, and an ambiguous one. Phase 1 rendered it as
+    *"a `no` ends the form without creating a case"* — an invented mechanism,
+    unbuildable (a registration form creates its primary case
+    unconditionally; a conditional `add_case_operations` create is accepted
+    but adds a SECOND case). Because it read as binding, Phase 3 finding it
+    unbuildable became a deviation from an approved design document that had
+    already reached the Work Order, and cost a mid-run PDD correction
+    (dimagi-internal/ace#1294). The requirement itself was satisfiable and
+    was satisfied — by gating the later questions on consent and filtering
+    the follow-up case list. Had the mechanism been marked advisory, nothing
+    downstream would ever have been wrong.
+
+    When you are unsure which one a sentence is, ask: **would a program
+    owner who has never heard of CommCare recognise this as part of their
+    program?** If yes it is a requirement; if it only makes sense to someone
+    building the app, it is a mechanism.
 
     **FIRST — check every mechanism against the must-not-assert list.**
     Before specifying any **enforcement or verification** mechanism (a gate,
@@ -385,7 +431,94 @@ orchestrator from the per-skill QA + eval verdicts on the fly. -->
     eval-fitness fix: a thin PDD is the root cause, a deployable PDD is
     the cure.
 
-5. **Self-evaluate (LLM-as-Judge) — Stress-Test Rubric.** Run the rubric defined in `## LLM-as-Judge Rubric` below against the drafted PDD. If **two or more** checks grade other than `pass`, the PDD is **not approved** — iterate on the weak sections and re-run before proceeding.
+5. **Self-evaluate (LLM-as-Judge) — Stress-Test Rubric.** Run the rubric defined in `## Rule provenance — human rulings vs AI iteration
+
+**Not every rule in this file is a durable learning.** ACE iterates hard: about
+half of the last 200 commits carry a `Co-Authored-By: Claude` trailer, so a large
+share of the rules here were written by an AI mid-cycle, to fix a problem that
+may since have moved. Others are human rulings — an operator deciding how ACE
+should behave. **Those two things read identically today, and they should not.**
+
+### The three classes
+
+- **`[human: <name>, <date>]` — a human ruling. Honor it diligently.** Follow it
+  even when it is inconvenient, and *especially* when following it makes a build
+  harder. Do not reinterpret it to make a phase pass, do not narrow it to the
+  case in front of you, and do not quietly drop it. If it appears to conflict
+  with something else, **surface the conflict rather than picking a side.** A
+  human ruling that an agent has silently optimised away is the single most
+  expensive kind of drift in this repo, because the human has no way to see it
+  happened.
+- **`[ai-iteration: <date>]` — added by an AI during an improvement cycle.**
+  Presumed useful, **not sacred.** It encodes what was true when it was written.
+  If it is now causing harm, contradicts a human ruling, or was written for a
+  problem that has since changed shape, it is **fair game to revise** — but say
+  so explicitly, cite the evidence, and change it in the open rather than
+  ignoring it in place.
+- **`unmarked` — provenance not established. Treat as `ai-iteration`.** This is
+  the default and most of this file is currently in it. Tag rules as you touch
+  them rather than in a big retrofit. **Do not promote an unmarked rule to
+  `human` on a hunch** — confirm with the operator, then tag it so the next
+  reader does not have to ask again.
+
+**Precedence: a human ruling beats an AI-iteration rule, always.** Two human
+rulings that genuinely conflict go to the operator — do not arbitrate them.
+
+### Establishing provenance when it is not tagged
+
+The signal already exists in git history and cannot be faked after the fact:
+
+```bash
+scripts/rule-provenance.sh "<distinctive phrase from the rule>" [path...]
+```
+
+It reports `human`, `ai-iteration`, or `unmarked`. Two things make this less
+obvious than it looks, and the script encodes both:
+
+1. **Git authorship is useless here.** Every commit carries the operator's name,
+   including AI-authored ones. The `Co-Authored-By: Claude` trailer is the only
+   authorship signal in the history.
+2. **The trailer is a one-way signal.** Present → reliably AI. *Absent → proves
+   nothing*: measured 2026-08-14, **45 of the last 300 non-merge commits carry no
+   trailer** and sampled ones are plainly AI-written. So a missing trailer yields
+   `unmarked`, never `human`. Inferring "human" from a missing trailer would
+   sanctify stale AI rules — the exact failure this section exists to prevent.
+3. **A trailer tells you who TYPED the rule, not whose DECISION it was.** An AI
+   transcribing an operator ruling carries the trailer while the rule is
+   genuinely human. So the script checks the **rule text itself** for a human
+   citation first (`Operator ruling (Jon, 2026-08-13)`, `(Jon, 2026-07-01)`,
+   `standing operator directive` — how this repo already records them), and that
+   outranks the trailer.
+
+Merge commits are skipped: a PR merge carries no trailer regardless of who wrote
+the work, and would otherwise read as human.
+
+### Why this section exists
+
+Both rules that collided on `bednet-check-2-visit/20260813-2313` turned out to be
+AI-authored during heavy iteration, and neither was marked:
+
+| Rule | Commit | Provenance |
+|---|---|---|
+| Step 4a "spec for deployability, not just topic presence" | `336039b1`, 2026-05-29 | `ai-iteration` |
+| `pdd-to-learn-app` "Connect's `passing_score` is ALWAYS 80" | `d6c26e86`, 2026-05-23 | `ai-iteration` |
+
+The second one is the instructive case. The PDD specified a 6-of-6 gate
+(`passing_score: 100`) sourced directly from the operator's brief; the build
+skill said *always 80*. Read as equally authoritative, that is an unresolvable
+standoff, and picking 80 would have let 5-of-6 through and defeated the gate the
+brief asked for. Read with provenance, it is not close: a source-stated program
+decision beats a generalisation an AI wrote while fixing a different bug. The run
+picked 100 and was right to — but it had to reason its way there from scratch,
+and a headless run might not have.
+
+**Applying this in practice:** when you hit a conflict between what the source
+material says and what a rule in a skill file says, check the rule's provenance
+before deciding. If the rule is `ai-iteration` and the source is explicit, the
+source wins and you note the override. If the rule is `[human: …]`, honor it and
+raise the conflict.
+
+## LLM-as-Judge Rubric` below against the drafted PDD. If **two or more** checks grade other than `pass`, the PDD is **not approved** — iterate on the weak sections and re-run before proceeding.
 
 6. **Write the PDD** to `1-design/idea-to-pdd.md` **as a NATIVE Google Doc via
    `drive_create_doc_from_markdown`** — NOT `drive_create_file` with a `text/*`
@@ -416,6 +549,28 @@ eval verdict (idea-to-pdd-eval) at the Phase 1→3 Pause Point. -->
      content as a single line.
    - `file_id`: the Drive `fileId` returned by Step 6's
      `drive_create_file`.
+   - `program_parameters`: the typed handoff block — **every PDD decision
+     that a LATER phase must apply verbatim and that cannot be applied in
+     the artifact this phase produces.** Prose in the PDD body is not a
+     handoff: a later phase has to notice it, and when it doesn't the value
+     silently falls back to a skill default. Emit every key you can
+     determine; omit one only when the PDD genuinely does not decide it.
+
+     | Key | Applied by | Failure if it defaults instead |
+     |---|---|---|
+     | `learn_passing_score` | Phase 4 `connect_create_opportunity.learn_app.passing_score` | Nova exposes no `passing_score` slot — `connect.assessment` carried only `{id, user_score}` when the Learn build read it back (repro: run `bednet-check-2-visit/20260813-2313`, Nova app `53583a46-298a-4a02-857a-bb86cd8e9a75`) — so a PDD gate of 100% silently becomes the skill's default 80 and 5-of-6 passes |
+     | `payment_rate_band` | Phase 4 payment unit; Phase 8 solicitation | The band reads as an agreed price, or the awarded rate is applied without reference to it |
+     | `daily_cap` / `total_cap` | Phase 4 opportunity config | Caps that do not match the PDD's stated economics |
+     | `entity_id_grain` | Phase 3 `pdd-to-deliver-app`; Phase 4 payment unit | A payment grain chosen per-run rather than per-design |
+
+     ```yaml
+     program_parameters:
+       learn_passing_score: 100
+       payment_rate_band: { currency: USD, min: 1.00, max: 2.50, unit: "verified follow-up visit" }
+       daily_cap: 5
+       total_cap: 30
+       entity_id_grain: "worker username + follow-up visit date"
+     ```
 
    ```yaml
    phases:
@@ -425,6 +580,9 @@ eval verdict (idea-to-pdd-eval) at the Phase 1→3 Pause Point. -->
            title: "Turmeric Market Survey"
            description: "FLWs visit markets to photograph turmeric vendors..."
            file_id: <fileId>
+           program_parameters:
+             learn_passing_score: 100
+             daily_cap: 5
    ```
 
    Apply via `mcp__plugin_ace_ace-gdrive__update_yaml_file` with
@@ -460,8 +618,33 @@ Background and worked examples live in `docs/examples/pdd-stress-test-observatio
 4. **Stage-gate clarity** — *For multi-stage PDDs, what must be true at the end of this stage to proceed to the next?*
    Common failure modes: Stage 1 → Stage 2 transition undefined, no explicit "go / no-go / iterate" criteria, downstream stage references findings the upstream stage isn't required to produce.
 
-5. **Resource realism** — *Are the LLO's capabilities matched to what's being asked?*
+5. **Resource realism** — *Are the LLO's capabilities matched to what's being asked, **and does the money match the work?***
    Common failure modes: focus-group facilitation skill assumed without training, ~50 participants to recruit across 6 segments with no recruitment plan, FLW asked to make subjective research judgments (Q12/Q13-style) the artifact should answer instead, photo/data quality dependencies on equipment LLOs may not have.
+
+   **Cost the labour, not just the capability.** This half is mandatory and
+   was missing until 2026-08-14: the question asked only whether the LLO
+   *could* do the work, never whether the rate covers it, so a PDD with
+   uncosted labour could pass 5/5. Compute and state, in the PDD:
+
+   - **Gross earnings per working day** at the proposed rate and daily cap.
+   - **Effective earnings per day of TOTAL field time** whenever any visit
+     type, travel leg, or preparation step is unpaid. Divide by all the time
+     the work actually takes, not just the payable units.
+   - The gap between those two numbers, stated plainly, when unpaid work is
+     a material share of the day.
+
+   Grade `partial` at best when unpaid work is material and the PDD never
+   computes its effect; grade `fail` when effective earnings fall below a
+   plausible local floor and the PDD does not acknowledge it. Where no
+   geography is named there is no market floor to compare against — say so
+   rather than assuming the rate is fine, and carry it as an open question.
+
+   Worked failure (`bednet-check-2-visit/20260813-2313`): R2 makes
+   registration unpaid while registration is the heavier visit, so roughly
+   half of a worker's field time earned nothing. Stated gross was
+   USD 5.00–12.50/day; effective was USD 2.50–6.25. The PDD self-graded
+   this check `pass` and the independent eval scored `resource_realism`
+   6.5 — a 1.88-point self-eval gap concentrated entirely here.
 
 **Grading anchors (worked examples):**
 

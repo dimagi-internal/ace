@@ -7,7 +7,7 @@
 skill: idea-to-pdd-qa
 verdict: fail
 
-# Five checks should fail; one should pass.
+# Six checks should fail; one should pass.
 expected_failures:
   - check: all_required_sections_present
     detail_contains: Target Population
@@ -23,6 +23,12 @@ expected_failures:
 
   - check: evidence_model_layered
     detail_contains: Layer B
+
+  # Three independent contradictions in one table: a threshold only reachable
+  # by scoring all 6, an inverted rate band, and a cap that can never bind with
+  # no cap_rationale acknowledging it.
+  - check: program_parameters_coherent
+    detail_contains: Program Parameters incoherent
 
 # This check passes — there are no [a]/[b] markers and no Reviewer Comments
 # section, so it correctly returns pass with detail "no reviewer comments

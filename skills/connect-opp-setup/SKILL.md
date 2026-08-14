@@ -237,7 +237,24 @@ alone makes the artifact land outside `4-connect` and fail
      - `cc_app_id`: bare 32-char HQ app id
      - `description`: required (Connect form marks it `*`); pulled from PDD
        § Training Plan
-     - `passing_score`: 0–100 (from PDD § Quality Floor; default 80)
+     - `passing_score`: 0–100. **Read it from
+       `run_state.yaml.phases.idea-to-design.products.pdd.program_parameters.learn_passing_score`
+       — that is the typed handoff and it is authoritative.** Fall back to the
+       PDD's § Program Parameters table, then to 80 ONLY when the PDD decides
+       nothing; when you fall back, say so explicitly in the step log and in
+       `comms-log/observations.md`, because a defaulted gate is a program
+       decision ACE made on the operator's behalf.
+
+       **This value cannot be set anywhere else.** Nova's `connect.assessment`
+       exposes only `{id, user_score}` — there is no `passing_score` slot — so
+       this call is the ONLY place the Learn gate is established. It is a
+       required field on the atom, so it cannot be omitted, only set wrong.
+       Getting it wrong is silent: the app still builds, the worker still sees
+       a result screen, and only the gate is different from the one the program
+       specified. On `bednet-check-2-visit/20260813-2313` the PDD specified a
+       source-stated 6-of-6 gate (100); with percentage scoring over six items
+       5-of-6 is 83.3, so defaulting to 80 would have passed a worker who got
+       one wrong, against an explicit program decision that they must not.
    - `deliver_app`: `{ hq_server_url, api_key, cc_domain, cc_app_id }`
      — `cc_app_id` MUST differ from `learn_app.cc_app_id` (server-validated)
    - `auto_activate`: **pass `false` explicitly** (it is also the atom
@@ -290,19 +307,31 @@ alone makes the artifact land outside `4-connect` and fail
    - `is_test` — boolean match
    - `learn_app.cc_app_id` and `deliver_app.cc_app_id` — bare 32-char
      match
-   - `passing_score` — numeric match (write-vs-read drift here is a
-     known class — PDD `70%` may show as opp `80%` if the server
-     overrode; surface as `[INFO]` not `[BLOCKER]` because Connect's
-     server has its own default; document the diff in
-     `comms-log/observations.md`)
+   - `passing_score` — numeric match. **Severity depends on whether the
+     PDD decided the value**, because the two cases mean different things:
+     - The PDD stated a gate (`program_parameters.learn_passing_score` is
+       set) and the read-back differs → **`[BLOCKER]`**. The gate the
+       program specified is not the gate that is live, this call is the
+       only place it can be set, and nothing downstream re-checks it. Do
+       not proceed; log both values to `comms-log/observations.md`.
+     - ACE defaulted the value (the PDD decided nothing) and the server
+       returned its own → `[INFO]`; document the diff and proceed.
+
+     The pre-2026-08-14 rule made this `[INFO]` unconditionally, on the
+     reasoning that "Connect's server has its own default". That is true
+     and irrelevant when the PDD stated a gate: a server default silently
+     overriding an explicit program decision is precisely the drift this
+     read-back exists to catch.
 
    **Action on mismatch:**
    - Date or app-id field disagreement → `[BLOCKER]` in the gate brief;
      log the diff to `comms-log/observations.md` with both values; do
      NOT proceed to Step 5. The opp is in an unknown state — operator
      must inspect via the Connect web UI before continuing.
-   - Description / passing_score / is_test disagreement → `[INFO]` log
-     to observations; proceed.
+   - Description / is_test disagreement → `[INFO]` log to observations;
+     proceed.
+   - `passing_score` disagreement → severity per the rule above:
+     `[BLOCKER]` when the PDD stated the gate, `[INFO]` when ACE defaulted.
 
    This step costs one extra HTML-driven `connect_get_opportunity` call
    (~2s) and catches a class of bugs the producing skill's response
