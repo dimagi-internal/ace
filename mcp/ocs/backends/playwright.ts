@@ -8,7 +8,11 @@ import {
 import { patchLlmNodeParams, validatePipeline, getLlmNodeParams, addPipelineNode, linkActionToNode, type PipelinePatchContext } from './pipeline-patch.js';
 import { PipelineValidationError, VersionBadgeUnreadableError } from '../errors.js';
 import type { LlmNodeParams, ClonedChatbot } from '../types.js';
-import { CollectionIndexingTimeoutError, HttpError, PipelineShapeError } from '../errors.js';
+import { CollectionIndexingTimeoutError, HttpError, OcsError, PipelineShapeError } from '../errors.js';
+import {
+  findUnsupportedCollectionFiles,
+  formatUnsupportedFilesError,
+} from '../../../lib/ocs-supported-file-types.js';
 
 // ── HTML scrape helpers ────────────────────────────────────────────
 // These match the exact templates rendered by OCS's Django views. If a
@@ -414,6 +418,13 @@ export class PlaywrightBackend {
      */
     chunk_size?: number;
     chunk_overlap?: number;
+    /**
+     * Whether the target collection is INDEXED. Defaults true — every ACE
+     * collection is (`ocs-agent-setup` Step 5 creates `is_index: true`) — and
+     * defaulting to the stricter allowlist fails safe. See the pre-flight
+     * below for why this flag decides which list OCS applies (ace#1296).
+     */
+    is_index?: boolean;
   }) {
     // Django's `add_collection_files` view (apps/documents/views.py) parses
     // `request.FILES`, which requires multipart/form-data. The view returns a
@@ -431,6 +442,28 @@ export class PlaywrightBackend {
       throw new Error(
         `uploadCollectionFiles: chunk_overlap (${chunkOverlap}) must be < chunk_size (${chunkSize})`,
       );
+    }
+
+    // Extension pre-flight (ace#1296). OCS validates extensions server-side and
+    // silently DROPS the rejects from an otherwise-successful multi-file POST,
+    // so without this the loss surfaces only as the #1016 count mismatch —
+    // which names a number, not a file, leaving no recovery path (the same
+    // error correctly forbids re-uploading the shortfall).
+    //
+    // Critically, the applicable allowlist depends on the collection shape:
+    // OCS uses `file_search` for an INDEXED collection and `collections`
+    // otherwise. `.xlsx` sits in the second and NOT the first, which is exactly
+    // how a spreadsheet the skill told the agent to index died silently on an
+    // ACE RAG collection. Checking the wrong list would have passed it.
+    //
+    // Fail BEFORE the POST so nothing has landed and a corrected retry is
+    // clean.
+    const unsupported = findUnsupportedCollectionFiles(
+      args.files.map((f) => f.name),
+      { isIndex: args.is_index ?? true },
+    );
+    if (unsupported.length > 0) {
+      throw new OcsError(formatUnsupportedFilesError(unsupported));
     }
     // Snapshot the collection's existing rows BEFORE the POST so the
     // post-upload count assertion below can diff (jjackson/ace#1016). A
