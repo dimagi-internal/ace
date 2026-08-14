@@ -9,9 +9,11 @@ import {
   AdbError,
   ShellTimeoutError,
   AvdNotProvisionedError,
+  AvdContendedError,
 } from '../errors.js';
 import { checkAvdProvisioned } from '../avd-provisioning.js';
 import { findLatestBootLog, bootLogTail, fatalBootLine } from '../boot-log.js';
+import { checkAvdContention, clearStaleAvdLock } from '../avd-contention.js';
 import type { AvdInfo, ApkInfo, UiDumpResult, SnapshotResult, LocalDiagnostics } from '../types.js';
 import { resolveAdbServerPort, resolveEmulatorPair, recordSessionLock, isTcpPortFree, occupiedConsolePortIsFatal } from '../port-allocator.js';
 import { withAllocatorMutex } from '../session-lock.js';
@@ -666,6 +668,24 @@ export class AvdBackend {
         images_found: provisioning.images,
         stale_residue_files: provisioning.staleResidueCount,
       });
+    }
+
+    // Refuse a CONTENDED AVD before spawning (dimagi-internal/ace#1047).
+    // Port allocation is per-session; the AVD name is not. Two emulators on
+    // one AVD do not queue — the second never registers with adb, and the
+    // failure then surfaces 60s later as `phase=adb-register` which reads as
+    // a boot timeout. A STALE lock (holder gone) is cleared and the boot
+    // proceeds; only a LIVE holder stops us.
+    const contention = checkAvdContention(avdHome, avdName, { selfPid: process.pid });
+    if (contention.contended) {
+      throw new AvdContendedError(avdName, contention.detail, {
+        holder_pid: contention.holderPid,
+        lock_path: contention.lockPath,
+      });
+    }
+    if (contention.stale) {
+      clearStaleAvdLock(avdHome, avdName, { selfPid: process.pid });
+      console.warn(`[ace-mobile] ensureAvdRunning: cleared stale AVD lock on ${avdName} — ${contention.detail}`);
     }
 
     // If a prior emulator for this AVD is running, kill it and wait for

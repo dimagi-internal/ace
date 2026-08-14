@@ -44,6 +44,28 @@ export class AvdBootError extends MobileError {
 }
 
 /**
+ * Thrown BEFORE spawning when a LIVE emulator already holds the target AVD
+ * (dimagi-internal/ace#1047).
+ *
+ * Port allocation is per-session but the AVD NAME is not, so a second local
+ * session targets the same AVD and loses the race. Without this the failure
+ * surfaced 60 seconds later as `phase=adb-register / last_adb_state=absent`,
+ * which reads as a boot timeout or a driver fault — the emulator never
+ * booted at all.
+ */
+export class AvdContendedError extends MobileError {
+  constructor(avdName: string, detail: string, diagnostics?: Record<string, unknown>) {
+    super(
+      'AVD_CONTENDED',
+      `AVD ${avdName} is already in use: ${detail}`,
+      'Boot a different AVD (or stop the holding emulator). Two emulators on one AVD do not ' +
+        'queue — the second never registers with adb.',
+      diagnostics,
+    );
+  }
+}
+
+/**
  * Thrown BEFORE spawning an emulator when the target AVD directory carries no
  * disk images (dimagi-internal/ace#1357).
  *
