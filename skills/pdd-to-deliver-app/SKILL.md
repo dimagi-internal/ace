@@ -972,10 +972,35 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
        field id, what the PDD declared, what shipped, and the exact table +
        value column + label column that needs to exist before go-live.
        **Halt** — do not write the success summary — if any still-degraded
-       field `feeds_entity_id`: a free-text component of Connect's dedup /
-       payment grain is a payment-correctness defect, not a data-quality one
-       (one typo mints a second payable delivery; two same-named entities
-       collapse into one). Everything else records and proceeds.
+       field `feeds_entity_id` **on a PAYABLE deliver unit**: a free-text
+       component of Connect's dedup / payment grain is a payment-correctness
+       defect, not a data-quality one (one typo mints a second payable
+       delivery; two same-named entities collapse into one). Everything else
+       records and proceeds.
+
+       **Two exemptions, both from the halt's own rationale (ace#1295).**
+       The rationale is payment correctness, so it does not reach a case where
+       payment cannot be affected, and the escape ladder in step 5 has no rung
+       that fits a field which is not enumerable in principle:
+
+       - **The deliver unit is UNPAID.** A form the PDD declares not payable
+         carries no payment unit (`app-connect-coverage § Step 2` decides
+         payability by role — ace#1327), so neither failure mode exists.
+         Record the gap in `option_source_gaps` and proceed.
+       - **The component is non-enumerable BY NATURE** — a personal name, a
+         free-text identifier, anything captured at the moment the entity
+         first enters the system. On a registration form there is no roster to
+         select from: no lookup table can exist, inline enumeration is
+         impossible for an open-ended name, and "the values you DO have plus
+         Other" is nonsense for a name field. `concat(username,
+         hh_head_name, visit_date)` is the STANDARD registration-key shape,
+         not a degradation.
+
+       Both exemptions must be **stated in the build memo with the reason**,
+       never taken silently — and when the unit is payable, a non-enumerable
+       component still halts. Live false-halt:
+       `bednet-check-2-visit/20260813-2313`, Deliver app `74a097c6`, where
+       both exemptions applied at once.
 
     (Apps whose PDD declares no select/lookup fields skip cleanly at step 1.)
 

@@ -19,7 +19,11 @@
  * here.
  */
 import { describe, it, expect } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { AppsProductsSchema } from '../../lib/products-apps-schema.js';
+
+const REPO = join(__dirname, '..', '..');
 
 function validApp(overrides: Partial<Record<string, unknown>> = {}) {
   return {
@@ -116,5 +120,51 @@ describe('app-deploy products.apps contract', () => {
     block.learn.nova_app_id = 'nova-abc-123';
     block.learn.nova_url = 'https://commcare.app/build/different-id-999';
     expect(AppsProductsSchema.safeParse(block).success).toBe(false);
+  });
+});
+
+/**
+ * dimagi-internal/ace#1331 + #1295 — three skills each assumed that every
+ * Deliver form is a paid one.
+ *
+ * The standard ACE Deliver shape carries an unpaid registration form as a
+ * deliberate auxiliary participant with no `deliver_unit` (decided by ROLE,
+ * not form type — ace#1327). On bednet-check-2-visit/20260814-0856 that
+ * shape tripped two more skills:
+ *
+ *  - `app-release-eval`'s `deliver_units_enumerable` said "at least one unit
+ *    per Deliver-app form = full marks", and defined a deduction only for the
+ *    ZERO case — so 2 forms / 1 unit fell in undefined territory that the
+ *    literal reading points at a 4-point deduction, on an app that is
+ *    correct and was independently verified correct three ways.
+ *  - `pdd-to-deliver-app § 4f` HALTS on any free-text field feeding an
+ *    `entity_id`. Its stated rationale is payment correctness — "one typo
+ *    mints a second payable delivery" — but it fired on an UNPAID unit whose
+ *    key is `concat(username, hh_head_name, bednet_given_date)`, where
+ *    `hh_head_name` is a household head's personal name on a household being
+ *    registered for the first time. There is no roster, so step 4f's own
+ *    escape ladder has no rung that fits, and no payment unit exists for
+ *    either failure mode to occur through.
+ */
+describe('the unpaid-registration Deliver shape (#1331, #1295)', () => {
+  const read = (p: string) => readFileSync(join(REPO, p), 'utf8');
+
+  it('app-release-eval scores deliver units against PAYABLE stages, not form count', () => {
+    const src = read('skills/app-release-eval/SKILL.md');
+    expect(src, 'the form-count rule must be gone').not.toMatch(
+      /At least one unit per Deliver-app form = full marks/,
+    );
+    expect(src).toMatch(/payable/i);
+    expect(src, 'must still deduct when there are zero units').toMatch(/zero units at all/i);
+    expect(src).toMatch(/1331/);
+  });
+
+  it('pdd-to-deliver-app 4f halts only when payment can actually be affected', () => {
+    const src = read('skills/pdd-to-deliver-app/SKILL.md');
+    expect(src).toMatch(/feeds_entity_id\D{0,40}PAYABLE/);
+    expect(src, 'must name the unpaid exemption').toMatch(/UNPAID/);
+    expect(src, 'must name the non-enumerable-by-nature exemption').toMatch(/non-enumerable BY NATURE/i);
+    expect(src, 'exemptions must be recorded, not silent').toMatch(/build memo with the reason/i);
+    expect(src).toMatch(/1295/);
   });
 });
