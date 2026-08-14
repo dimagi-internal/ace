@@ -578,6 +578,21 @@ See `skills/_eval-template.md § Mode Behavior (stock)`.
 
 See `skills/_eval-template.md § Dry-Run Behavior (stock)`.
 
+## Taught-vs-collectable (shared with the sibling eval, ace#1259)
+
+Read the Step 4h `taught-vs-collectable` report from the Phase 3 build memo (or
+re-run `checkTaughtStepsCollectable` from `lib/taught-vs-collectable.ts` over
+the two blueprints). Every evidence step the curriculum states as unconditional must be
+recordable on EVERY branch a worker can be on.
+
+A finding is an `[INFO]` on this eval, not a deduction, **unless** this artifact
+is the one that should change — because both apps can be PDD-conformant while
+disagreeing with each other, which is exactly what happened on
+hh-poverty-targeting/20260813-1612 (Learn M8 taught an unconditional
+photograph; the Deliver photo field was gated on consent and unreachable on a
+vacant visit). Say which side you think should move and why; do not silently
+absorb the disagreement into a score.
+
 ## Change Log
 
 | Date | Change | Author |

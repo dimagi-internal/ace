@@ -1029,6 +1029,37 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
 
     (Forms with no multi-question group skip cleanly — `screensChecked: 0`.)
 
+4h. **Taught-vs-collectable cross-check (dimagi-internal/ace#1259).** Runs
+    ONLY when the Learn app for this run already exists (it is built first in
+    Phase 3; if you are building Deliver standalone, skip and say so).
+
+    Nothing in ACE cross-reads the two blueprints: `pdd-to-learn-app` and this
+    skill each build from the PDD independently, and each `-eval` grades its
+    own app against the PDD in isolation. So a curriculum can instruct a worker
+    to perform a step this form cannot record, and every Phase 3 gate passes.
+    Live on hh-poverty-targeting/20260813-1612: Learn M8's padlocked-dwelling
+    worked example says "you still do all of this… take one photograph… record
+    the outcome as vacant", while the only `dwelling_photo` sits in a group
+    gated `relevant: consent = 'yes'` — never reached on a vacant visit. At
+    their first padlocked dwelling the worker follows the training, takes the
+    photo, and finds no screen to attach it to. A human found it by reading the
+    two blueprints side by side.
+
+    ```ts
+    import { checkTaughtStepsCollectable, formatTaughtVsCollectableReport }
+      from '../../lib/taught-vs-collectable';
+    const report = checkTaughtStepsCollectable(learnBlueprint, deliverBlueprint);
+    ```
+
+    **Do NOT auto-fix.** Which artifact is wrong is a judgement — the Learn app
+    may over-teach or this form may under-collect, and BOTH can be
+    PDD-conformant at once (they were on that run: §5.1 listed the live
+    photograph under "a payable visit requires all of", §5.2 gated the photo
+    screen on Consent = yes). Surface each finding in the build memo with both
+    sides quoted, and raise it at the Phase 3 pause so a human decides which
+    side moves. `report.checked === false` means the curriculum states no
+    unconditional evidence step — "not applicable", not "clean".
+
 4h. **Fake-preload check (a hidden `caseWrite` field can never hold the case
     value) — runs at LEVEL 0.** The structural preventer for ace#1224. Because
     a followup form cannot read its own case on this Nova instance (§ `entity_id`
