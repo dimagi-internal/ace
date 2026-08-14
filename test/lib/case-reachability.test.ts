@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 
 import {
+  findReachableCaseTypes,
   findUnreachableCaseLists,
   hasCaseTransaction,
 } from '../../lib/commcare-cli-validate.js';
@@ -57,6 +58,10 @@ describe('findUnreachableCaseLists — the surviving ace#977 defect', () => {
     expect(out).toHaveLength(1);
     expect(out[0].commandId).toBe('m0-f0');
     expect(out[0].detailIds).toEqual(['m0_case_short', 'm0_case_long'].sort());
+    // Nothing else in this app selects on `household`, so it is dead app-wide.
+    expect(out[0].severity).toBe('blocker');
+    expect(out[0].caseType).toBe('household');
+    expect(out[0].reachableVia).toBeUndefined();
   });
 
   it('a followup module with an entity datum is reachable — no finding', () => {
@@ -76,10 +81,12 @@ describe('findUnreachableCaseLists — the surviving ace#977 defect', () => {
     expect(findUnreachableCaseLists(suite)).toEqual([]);
   });
 
-  it('finds the unreachable one in a mixed app and leaves the reachable one alone', () => {
+  it('reports only the non-entity entry in a mixed app', () => {
     const mixed = REGISTRATION_ONLY_SUITE.replace('</suite>', '') + FOLLOWUP_SUITE.replace('<suite>', '');
     const out = findUnreachableCaseLists(mixed);
     expect(out.map((o) => o.commandId)).toEqual(['m0-f0']);
+    // ...and because m1 selects on the SAME case type, it is not a blocker.
+    expect(out[0].severity).toBe('info');
   });
 
   it('a value= datum is computed silently and does not make a list reachable', () => {
@@ -99,6 +106,114 @@ describe('findUnreachableCaseLists — the surviving ace#977 defect', () => {
   it('returns [] on empty or unparseable suite xml rather than throwing', () => {
     expect(findUnreachableCaseLists('')).toEqual([]);
     expect(findUnreachableCaseLists('<not-a-suite/>')).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// dimagi-internal/ace#1281 — the per-module form of the check was a FALSE
+// POSITIVE BY CONSTRUCTION and halted Phase 3 on every ACE Deliver app.
+//
+// Observed live on spark-facilitator/20260813-2126 (Deliver app
+// c6cdfa87-3bc1-4d85-aa98-f4eb521d5fa1, released build e57853f9dcef…): the
+// registration module m0 gets ONLY `<datum id="case_id_new_community_0"
+// function="uuid()"/>`, while the sibling Village Monitoring Visit module m1
+// carries a real entity datum over the SAME `community` case type. `play`
+// traces confirmed both: entry [0,0] goes menu -> DATUM -> COMMAND with no
+// Case screen; entry [1,0] renders `Case | demo` with both columns.
+//
+// The producer side CANNOT fix it. Asked to remove the last case-list column
+// from m0, Nova refused: "Module ... shows \"community\" cases but its Results
+// screen has no visible fields. Every case list needs at least one visible
+// Results field ... Nothing was changed." Nova requires the column; the checker
+// blocked on the inert detail that necessarily results.
+// ---------------------------------------------------------------------------
+
+/** Verbatim shape of the spark-facilitator 2026-08-13 released Deliver suite. */
+const SPARK_FACILITATOR_SUITE = `
+<suite>
+  <detail id="m0_case_short"><title><text>Communities</text></title></detail>
+  <detail id="m0_case_long"><title><text>Community</text></title></detail>
+  <detail id="m1_case_short"><title><text>Communities</text></title></detail>
+  <detail id="m1_case_long"><title><text>Community</text></title></detail>
+  <entry>
+    <command id="m0-f0"><text>CBF Registration</text></command>
+    <session>
+      <datum id="case_id_new_community_0" function="uuid()"/>
+    </session>
+  </entry>
+  <entry>
+    <command id="m1-f0"><text>Village Monitoring Visit</text></command>
+    <session>
+      <datum id="case_id"
+             nodeset="instance('casedb')/casedb/case[@case_type='community'][@status='open']"
+             value="./@case_id" detail-select="m1_case_short" detail-confirm="m1_case_long"/>
+    </session>
+  </entry>
+</suite>`;
+
+describe('findUnreachableCaseLists — app-wide severity (ace#1281)', () => {
+  it('DOWNGRADES to info when a sibling module selects on the same case type', () => {
+    const out = findUnreachableCaseLists(SPARK_FACILITATOR_SUITE);
+    const m0 = out.find((o) => o.commandId === 'm0-f0');
+    expect(m0).toBeDefined();
+    expect(m0!.severity).toBe('info');
+    expect(m0!.caseType).toBe('community');
+    expect(m0!.reachableVia).toBe('m1-f0');
+    // The inert details are still NAMED — the finding is informational, not gone.
+    expect(m0!.detailIds).toEqual(['m0_case_long', 'm0_case_short']);
+    // And the reachable module is never itself a finding.
+    expect(out.some((o) => o.commandId === 'm1-f0')).toBe(false);
+    // Nothing in this app blocks the release.
+    expect(out.filter((o) => o.severity === 'blocker')).toEqual([]);
+  });
+
+  it('NEGATIVE CONTROL: the only entry is uuid()-only — BLOCKER still fires', () => {
+    // Same app with the followup module deleted: `community` is now reachable
+    // from nowhere, which is the genuine ace#977 dead-configuration case.
+    const registrationOnly = SPARK_FACILITATOR_SUITE.replace(
+      /<entry>\s*<command id="m1-f0"[\s\S]*?<\/entry>/,
+      '',
+    );
+    const out = findUnreachableCaseLists(registrationOnly);
+    expect(out).toHaveLength(1);
+    expect(out[0].commandId).toBe('m0-f0');
+    expect(out[0].severity).toBe('blocker');
+    expect(out[0].caseType).toBe('community');
+    expect(out[0].reachableVia).toBeUndefined();
+  });
+
+  it('a sibling list over a DIFFERENT case type does not make it reachable', () => {
+    const otherType = SPARK_FACILITATOR_SUITE.replace(
+      "@case_type='community'",
+      "@case_type='village'",
+    );
+    const out = findUnreachableCaseLists(otherType);
+    const m0 = out.find((o) => o.commandId === 'm0-f0');
+    expect(m0!.severity).toBe('blocker');
+    expect(m0!.reachableVia).toBeUndefined();
+  });
+
+  it('a nodeset datum with no detail-select renders no list — not reachability', () => {
+    const noDetailSelect = SPARK_FACILITATOR_SUITE.replace(
+      ' detail-select="m1_case_short" detail-confirm="m1_case_long"',
+      '',
+    );
+    const out = findUnreachableCaseLists(noDetailSelect);
+    expect(out.find((o) => o.commandId === 'm0-f0')!.severity).toBe('blocker');
+  });
+});
+
+describe('findReachableCaseTypes', () => {
+  it('maps each selectable case type to the command that puts it on screen', () => {
+    const map = findReachableCaseTypes(SPARK_FACILITATOR_SUITE);
+    expect(map.get('community')).toBe('m1-f0');
+    expect(map.size).toBe(1);
+  });
+
+  it('is empty for a registration-only app and for junk input', () => {
+    expect(findReachableCaseTypes(REGISTRATION_ONLY_SUITE).size).toBe(0);
+    expect(findReachableCaseTypes('').size).toBe(0);
+    expect(findReachableCaseTypes('<not-a-suite/>').size).toBe(0);
   });
 });
 
