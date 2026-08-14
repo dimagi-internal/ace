@@ -222,7 +222,17 @@ orchestrator from the per-skill QA + eval verdicts on the fly. -->
 4. **Draft the PDD** with the **base sections** below, plus **archetype-specific additions** from `## Archetypes`. Use the values selected in step 3a's `decisions.yaml` as authoritative — every numeric or named-entity in the PDD body should match the corresponding row's effective value (`override` if present else `ai-default`). If a re-run reads a `decisions.yaml` from a prior run with `status: overridden` rows (human edited via the renderer + sync skills), use the `override` value instead of the `ai-default`.
 
    **Base sections (all archetypes):**
-   - **Archetype** — declared in frontmatter, repeated as the first heading
+   - **Document metadata** — the PDD's identifying facts (archetype, opportunity,
+     run id, status, sources) go at the very top as a RENDERED block, one bold-label
+     line per fact — e.g. `**Archetype:** atomic-visit`, `**Opportunity:** <slug>`,
+     `**Run:** <run-id>`, `**Status:** …`, `**Sources:** …`. Do **NOT** emit a raw
+     `---` YAML frontmatter block: the PDD is written as a native Google Doc
+     (step 6), where `---` renders as a horizontal rule and the keys render as a
+     wall of `key: value` noise above the title — the first thing a partner sees.
+     Nothing parses the frontmatter: `idea-to-pdd-qa` check 2
+     (`archetype_declared_and_valid`) reads the archetype from frontmatter **or**
+     the body, and the bold-label form satisfies the body branch.
+   - **Archetype** — declared in the metadata block, repeated as the first heading
    - **Problem Statement** — what problem this solves
    - **Intervention Design** — how the intervention works
    - **Learn App Specification** — what FLWs need to learn (data collection, facilitation, etc., depending on archetype)
@@ -548,7 +558,7 @@ eval verdict (idea-to-pdd-eval) at the Phase 1→3 Pause Point. -->
      `## Abstract`) section. Strip markdown bold/italic wrappers; keep
      content as a single line.
    - `file_id`: the Drive `fileId` returned by Step 6's
-     `drive_create_file`.
+     `drive_create_doc_from_markdown`.
    - `program_parameters`: the typed handoff block — **every PDD decision
      that a LATER phase must apply verbatim and that cannot be applied in
      the artifact this phase produces.** Prose in the PDD body is not a
@@ -1012,7 +1022,7 @@ The PDD has two or more sequenced stages with different archetypes. Treat the ba
 **Required for multi-stage PDDs:** an explicit **Stage Gate** subsection between every pair of stages, stating exactly what must be true at the end of stage N to proceed to stage N+1 (with go / no-go / iterate criteria).
 
 ## MCP Tools Used
-- Google Drive: `drive_read_file`, `drive_create_file`, `drive_update_file`, `drive_download_binary` (binary/`.ccz`/`.xlsx` inputs)
+- Google Drive: `drive_read_file` (pass `exportAs: 'text/markdown'` when re-reading the PDD — it is a rendered gdoc, and the default plain-text export drops the `#` heading markers), `drive_create_doc_from_markdown` (the PDD and `open-questions.md` — human-facing prose), `drive_create_file` (machine-parsed YAML only), `drive_update_file`, `drive_download_binary` (binary/`.ccz`/`.xlsx` inputs)
 - Google Sheets: `sheets_list_tabs`, `sheets_batch_read` (Google-Sheet inputs)
 - Google Forms: `get_google_form_definition` (Google-Form inputs)
 

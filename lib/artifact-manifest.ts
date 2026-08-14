@@ -113,6 +113,33 @@ export interface ArtifactEntry {
    * required. Only meaningful together with `required: true`.
    */
   notRequiredInModes?: readonly PhaseMode[];
+  /**
+   * True when this artifact is PROSE A HUMAN READS — a PDD, a training guide,
+   * a work order, an email body — as opposed to a machine-parsed file
+   * (run_state.yaml, a verdict, a manifest, a spec).
+   *
+   * Load-bearing, not documentation: a `rendered` artifact must be written
+   * with `drive_create_doc_from_markdown`, which lets Drive convert the
+   * markdown into native headings / bold / links / tables. `drive_create_file`
+   * uploads the body as `text/plain`, so the reviewer opens the doc and sees
+   * literal `##`, `**`, `|` and `---`. The failure is SILENT — every content
+   * check still passes — and it has shipped twice: once on the PDD
+   * (dimagi-internal/ace#1061) and once across all five training guides
+   * (ace#1338, caught by a partner, not by ACE).
+   *
+   * Enforced by `test/lib/rendered-artifacts.test.ts`: every entry with
+   * `rendered: true` must have a producer whose SKILL.md references
+   * `drive_create_doc_from_markdown`. It is a RATCHET — machine-parsed
+   * artifacts simply omit the flag and are never checked — so adding a
+   * human-facing artifact without the renderer fails CI, while YAML/verdict
+   * artifacts stay on `drive_create_file` untouched.
+   *
+   * Nothing machine-readable is lost by rendering: a properly formatted doc
+   * exports back to clean markdown via `drive_read_file(exportAs:
+   * 'text/markdown')`. A `text/plain` upload of markdown exports ESCAPED
+   * (`\---`, `run\_id`) — the worst of both worlds.
+   */
+  rendered?: true;
   /** Human-readable purpose */
   description: string;
 }
@@ -249,6 +276,7 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     consumedBy: ['ace-orchestrator'],
     phase: 'design',
     required: false,
+    rendered: true,
     description: 'Per-opp deferred-question doc. Written by idea-to-pdd when stress-test grades partial/fail and a default reasonable-pick is taken; phase agents append unresolved questions here at end-of-run for human review (per the feedback_phase_open_questions user-memory item). Opp-level (NOT under runs/<run-id>/) so questions survive across runs until answered.',
   },
   {
@@ -295,6 +323,7 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     ],
     phase: 'design',
     required: true,
+    rendered: true,
     description: 'Program Design Document with archetype, Evidence Model, Solicitation block, and stress-test appendix (the canonical pdd.md, renamed to match its producer)',
   },
   {
@@ -315,6 +344,7 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     ],
     phase: 'design',
     required: false,
+    rendered: true,
     description: 'Contractual Work Order draft derived from the PDD and decisions.yaml. Generic by default — Partner identity is a placeholder unless an LLO was supplied. Re-runs create pdd-to-work-order-2.gdoc, pdd-to-work-order-3.gdoc, etc.; products.work_order in run_state.yaml points at the latest. Parallel to Phase 8 solicitation, not a replacement. Spec: docs/superpowers/specs/2026-05-21-work-order-skill-design.md',
   },
   {
@@ -781,6 +811,7 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     // Step-2 training artifact: its producer consumes the OCS chatbot URL, so
     // it cannot exist when Phase 5 was skipped (ace#1069).
     notRequiredInModes: ['app-QA-only'],
+    rendered: true,
     description: 'LLO Manager guide for overseeing FLW deployment',
   },
   {
@@ -792,6 +823,7 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     // Step-2 training artifact: its producer consumes the OCS chatbot URL, so
     // it cannot exist when Phase 5 was skipped (ace#1069).
     notRequiredInModes: ['app-QA-only'],
+    rendered: true,
     description: 'Step-by-step FLW training guide for app usage and protocols',
   },
   {
@@ -803,6 +835,7 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     // Step-2 training artifact: its producer consumes the OCS chatbot URL, so
     // it cannot exist when Phase 5 was skipped (ace#1069).
     notRequiredInModes: ['app-QA-only'],
+    rendered: true,
     description: 'One-page laminated pocket card for FLWs in the field',
   },
   {
@@ -814,6 +847,7 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     // Step-2 training artifact: its producer consumes the OCS chatbot URL, so
     // it cannot exist when Phase 5 was skipped (ace#1069).
     notRequiredInModes: ['app-QA-only'],
+    rendered: true,
     description: 'Frequently asked questions for LLOs and FLWs',
   },
   {
@@ -825,6 +859,7 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     // Step-2 training artifact: its producer consumes the OCS chatbot URL, so
     // it cannot exist when Phase 5 was skipped (ace#1069).
     notRequiredInModes: ['app-QA-only'],
+    rendered: true,
     description: 'LLO onboarding email template authored in Phase 6 and sent by Phase 9 (execution-manager) llo-onboarding, with {{LLO_NAME}}/{{LLO_FIRST_NAME}}/{{LLO_ORG}} tokens',
   },
   {

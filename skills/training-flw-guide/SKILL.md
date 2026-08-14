@@ -83,8 +83,22 @@ from PDD's Evidence Model.>
   has no matching screenshot in the manifest, write the step in plain
   text without a placeholder image — never reference a fileId you
   haven't verified exists.
-- **Every screenshot ref uses `drive:<fileId>` from the manifest.** No
-  guessed IDs, no `[screenshot needed]` markers.
+- **Every screenshot ref uses the fileId from the manifest** — no guessed IDs,
+  no `[screenshot needed]` markers — and is emitted as a **markdown LINK to a
+  real Drive URL**, never a markdown IMAGE against the internal `drive:` scheme:
+
+  ```markdown
+  [Connect home](https://drive.google.com/file/d/<fileId>/view)     ✅
+  ![Connect home](drive:<fileId>)                                   ❌
+  ```
+
+  `drive:<fileId>` is an ACE-internal reference, not a resolvable URL. This
+  guide is written as a native Google Doc (step 7), and **Drive's markdown
+  importer drops an image node whose src it cannot fetch — silently, alt text
+  and all.** Measured on `spark-facilitator/20260813-2126`: all 44 screenshot
+  references disappeared from the rendered doc, 224 words gone, and every
+  content check still passed (ace#1338). The link form survives the conversion
+  AND is clickable, which the literal `drive:<id>` text never was.
 - **Common-pool screenshots come first** (sign-in, claim, sync) — these
   are the Connect navigation surfaces shared across opps. They live
   under `ACE/_common/connect-screenshots/<v>/`.
@@ -155,7 +169,7 @@ from PDD's Evidence Model.>
    CONNECT MENU" beats "navigate to the Connect menu".
 
 6. **Self-check before write.** Verify:
-   - Every `drive:<fileId>` ref exists in the resolved map (no
+   - Every screenshot link's fileId exists in the resolved map (no
      fabricated IDs)
    - Every Learn module from `learn-app-summary.md` is referenced at
      least once
@@ -164,7 +178,17 @@ from PDD's Evidence Model.>
      unrealistic for a field worker to absorb
 
 7. **Write** to `ACE/<opp>/runs/<run-id>/6-qa-and-training/training-flw-guide.md`
-   via `drive_create_file`. Overwrite if it already exists.
+   **as a NATIVE Google Doc via `drive_create_doc_from_markdown`** — NOT
+   `drive_create_file`, which uploads the body as `text/plain` so every `##`,
+   `**`, `|` and `---` stays a literal character on the page. This document is
+   read by a human (a field worker following it step by step), and a partner opening it should see headings,
+   bold and tables, not markdown source. The renderer round-trips: a properly
+   formatted doc exports back to clean markdown via
+   `drive_read_file(exportAs: 'text/markdown')`, so nothing machine-readable is
+   lost — whereas a `text/plain` upload exports ESCAPED (`\---`, `run\_id`).
+   Same find-or-create semantics: a same-name file under the parent is
+   overwritten IN PLACE, so the fileId — and any sharing already applied to it —
+   survives. (dimagi-internal/ace#1338; sibling of the PDD fix, ace#1061.)
 
 8. **Self-evaluate (LLM-as-Judge).** Four criteria:
    - **Coverage:** every Learn module + every Deliver form referenced
@@ -186,8 +210,9 @@ from PDD's Evidence Model.>
 
 ## MCP Tools Used
 
-- `ace-gdrive`: `drive_read_file`, `drive_create_file`,
-  `drive_list_folder`
+- `ace-gdrive`: `drive_read_file`, `drive_create_doc_from_markdown` (the guide —
+  human-facing prose, must render), `drive_create_file` (the verdict YAML —
+  machine-parsed, must stay literal text), `drive_list_folder`
 
 No live AVD or Slides — this skill is pure document generation against
 existing per-opp + common-pool artifacts.
@@ -197,7 +222,7 @@ existing per-opp + common-pool artifacts.
 - **Auto:** Run end-to-end. Write guide, write verdict.
 - **Review:** Pause after step 6 (self-check), present the drafted
   guide, resume on approval.
-- **Dry-run:** Steps 1-6 in memory, skip the `drive_create_file`.
+- **Dry-run:** Steps 1-6 in memory, skip the `drive_create_doc_from_markdown`.
   Verdict written with `dry_run: true`.
 
 ## Products

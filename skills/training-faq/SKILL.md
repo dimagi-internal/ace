@@ -138,8 +138,18 @@ which rule triggered, what to do>
    - At least 4 Q's seeded from `test-prompts.md`
    - At least 2 Q's seeded from `pdd-to-app-journeys.md` edge cases
 
-8. **Write** to `ACE/<opp>/runs/<run-id>/6-qa-and-training/training-faq.md` via
-   `drive_create_file`.
+8. **Write** to `ACE/<opp>/runs/<run-id>/6-qa-and-training/training-faq.md`
+   **as a NATIVE Google Doc via `drive_create_doc_from_markdown`** — NOT
+   `drive_create_file`, which uploads the body as `text/plain` so every `##`,
+   `**`, `|` and `---` stays a literal character on the page. This document is
+   read by a human (an FLW or LLO supervisor scanning for their question), and a partner opening it should see headings,
+   bold and tables, not markdown source. The renderer round-trips: a properly
+   formatted doc exports back to clean markdown via
+   `drive_read_file(exportAs: 'text/markdown')`, so nothing machine-readable is
+   lost — whereas a `text/plain` upload exports ESCAPED (`\---`, `run\_id`).
+   Same find-or-create semantics: a same-name file under the parent is
+   overwritten IN PLACE, so the fileId — and any sharing already applied to it —
+   survives. (dimagi-internal/ace#1338; sibling of the PDD fix, ace#1061.)
 
 9. **Self-evaluate (LLM-as-Judge).** Four criteria:
    - **Coverage:** every PDD escalation trigger + every Layer-A
@@ -156,8 +166,9 @@ which rule triggered, what to do>
 
 ## MCP Tools Used
 
-- `ace-gdrive`: `drive_read_file`, `drive_create_file`,
-  `drive_list_folder`
+- `ace-gdrive`: `drive_read_file`, `drive_create_doc_from_markdown` (the guide —
+  human-facing prose, must render), `drive_create_file` (the verdict YAML —
+  machine-parsed, must stay literal text), `drive_list_folder`
 
 ## Mode Behavior
 

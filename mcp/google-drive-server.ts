@@ -485,7 +485,7 @@ server.tool(
 // 9. Read a Drive file
 server.tool(
   'drive_read_file',
-  'Read the text content of a file in Google Drive. Works with Google Docs (exported as plain text), text/* files (markdown, plain text, etc.), and JSON/YAML/XML/CSV variants. Refuses non-text mimetypes (PDF, docx/xlsx/pptx, images, audio, zip) with a typed `unsupported_binary_mimetype` error pointing at `drive_download_binary` — pre-#106-finding-4 the read returned raw binary as a JSON-corrupted string and silently fed garbage into callers. Returns revisionVersion so callers can pair the read with an optimistic-concurrency `ifMatchRevisionId` on `drive_update_file` (read-modify-write without lost updates). Transient 5xx responses are retried internally (3 attempts, 1s/2s/4s backoff).\n\nThree delivery modes — pick by how much of the document you actually need in context:\n\n- Default (no extra args): returns the whole document inline. Refused with a typed `oversized_document` error above 40,000 characters, since a larger result blows the tool-result token budget.\n- `writeToPath` (preferred for large or whole-document reads): writes the full text to that absolute local path and returns `{path, name, mimeType, total_length, revisionVersion}` with NO content — costs zero context regardless of file size. Then grep or read that file, ideally inside a subagent so the content never enters your context at all. Use this whenever you need the whole document, and especially when you only need a fact out of it.\n- `offset`/`limit` (in characters): returns one slice inline plus `{total_length, offset, returned_length, has_more}`. Walk with `offset += returned_length` until `has_more` is false. Note that paging a large document to completion still spends its full size in context — `writeToPath` is cheaper for that; paging is for a bounded peek, e.g. identifying a doc or reading one section.\n\n`writeToPath` cannot be combined with `offset`/`limit` — it always writes the complete document.',
+  'Read the text content of a file in Google Drive. Works with Google Docs (exported as plain text), text/* files (markdown, plain text, etc.), and JSON/YAML/XML/CSV variants. Refuses non-text mimetypes (PDF, docx/xlsx/pptx, images, audio, zip) with a typed `unsupported_binary_mimetype` error pointing at `drive_download_binary` — pre-#106-finding-4 the read returned raw binary as a JSON-corrupted string and silently fed garbage into callers. Returns revisionVersion so callers can pair the read with an optimistic-concurrency `ifMatchRevisionId` on `drive_update_file` (read-modify-write without lost updates). Transient 5xx responses are retried internally (3 attempts, 1s/2s/4s backoff).\n\nThree delivery modes — pick by how much of the document you actually need in context:\n\n- Default (no extra args): returns the whole document inline. Refused with a typed `oversized_document` error above 40,000 characters, since a larger result blows the tool-result token budget.\n- `writeToPath` (preferred for large or whole-document reads): writes the full text to that absolute local path and returns `{path, name, mimeType, total_length, revisionVersion}` with NO content — costs zero context regardless of file size. Then grep or read that file, ideally inside a subagent so the content never enters your context at all. Use this whenever you need the whole document, and especially when you only need a fact out of it.\n- `offset`/`limit` (in characters): returns one slice inline plus `{total_length, offset, returned_length, has_more}`. Walk with `offset += returned_length` until `has_more` is false. Note that paging a large document to completion still spends its full size in context — `writeToPath` is cheaper for that; paging is for a bounded peek, e.g. identifying a doc or reading one section.\n\n`writeToPath` cannot be combined with `offset`/`limit` — it always writes the complete document.\n\n`exportAs` (Google Docs only, default `text/plain`) picks the export format. Pass `text/markdown` ONLY to read a human-facing PROSE doc back as markdown — a doc written via `drive_create_doc_from_markdown` round-trips to clean markdown (headings, bold, links, tables), so this is the right way to re-read a partner-edited PDD or training guide and feed the edits back into a run. NEVER pass it for a MACHINE-PARSED doc: ACE stores `run_state.yaml`, `opp.yaml`, `decisions.yaml` and every `*_verdict.yaml` as Google Docs, and Drive\'s markdown exporter escapes markdown-significant characters (`---` becomes `\\---`, `run_id` becomes `run\\_id`), which breaks `update_yaml_file`, `validate_run_state` and every YAML parser downstream. Keep the default for anything you intend to parse. Ignored for non-Docs files (text/*, JSON, YAML), whose stored bytes are returned verbatim either way.',
   {
     fileId: z.string().describe('The Google Drive file ID'),
     writeToPath: z
@@ -506,8 +506,12 @@ server.tool(
       .min(1)
       .optional()
       .describe('Optional. Max CHARACTERS to return inline (default: to the end of the document). Must be 40,000 or less — a larger slice is refused with oversized_document, so limit cannot be used to bypass the inline budget.'),
+    exportAs: z
+      .enum(['text/plain', 'text/markdown'])
+      .optional()
+      .describe('Optional. Export format for NATIVE GOOGLE DOCS. Default text/plain. Use text/markdown only for human-facing prose docs you want back as markdown; it ESCAPES markdown-significant characters, so it corrupts YAML/JSON docs (run_state.yaml, decisions.yaml, verdict files) — keep the default for anything that will be parsed. Ignored for non-Docs files.'),
   },
-  async ({ fileId, writeToPath, offset, limit }) => {
+  async ({ fileId, writeToPath, offset, limit, exportAs }) => {
     try {
       if (writeToPath !== undefined && (offset !== undefined || limit !== undefined)) {
         return error(
@@ -516,10 +520,10 @@ server.tool(
         );
       }
       if (writeToPath !== undefined) {
-        return result(await handleReadFileToDisk({ fileId, writeToPath }, drive));
+        return result(await handleReadFileToDisk({ fileId, writeToPath, exportAs }, drive));
       }
       const r = await handleReadFile(
-        { fileId, offset, limit, maxChars: DEFAULT_INLINE_MAX_CHARS },
+        { fileId, offset, limit, maxChars: DEFAULT_INLINE_MAX_CHARS, exportAs },
         drive,
       );
       return result(r);
@@ -1004,11 +1008,22 @@ export const withTransientRetry = withTransientRetryLib;
  * single 503 / 500 / "Backend Error" doesn't force the caller to handle a
  * retry by hand. 4xx responses (404, 403, etc.) are not retried — those
  * indicate caller bugs, not transient infrastructure flakes.
+ *
+ * `exportAs` picks the export mimeType for NATIVE GOOGLE DOCS only, and
+ * defaults to `text/plain`. The default is load-bearing, not a stylistic
+ * pick: ACE stores `run_state.yaml`, `opp.yaml`, `decisions.yaml` and every
+ * `*_verdict.yaml` as Google Docs, and Drive's `text/markdown` exporter
+ * escapes markdown-significant characters — a YAML document exports as
+ * `\---` / `run\_id`, which no YAML parser accepts. So `text/markdown` is
+ * strictly opt-in, for reading a human-facing prose doc back as markdown.
+ * For non-Docs files (text/*, JSON, YAML uploaded as text) the bytes are
+ * already the source of truth and `exportAs` is ignored.
  */
 async function fetchDriveText(
   fileId: string,
   driveClient: typeof drive,
   opts: { sleep?: (ms: number) => Promise<void> },
+  exportAs: 'text/plain' | 'text/markdown' = 'text/plain',
 ): Promise<{ name: string | undefined; mimeType: string; content: string; revisionVersion: string | undefined }> {
   const retry = <T>(op: () => Promise<T>) => withTransientRetry(op, opts);
 
@@ -1041,7 +1056,7 @@ async function fetchDriveText(
   let content: string;
   if (mimeType === 'application/vnd.google-apps.document') {
     const resp = await retry(() =>
-      driveClient.files.export({ fileId: resolvedId, mimeType: 'text/plain' }, { responseType: 'text' }),
+      driveClient.files.export({ fileId: resolvedId, mimeType: exportAs }, { responseType: 'text' }),
     );
     content = resp.data as string;
   } else if (isTextMimeType(mimeType)) {
@@ -1100,7 +1115,7 @@ async function fetchDriveText(
  * can't smuggle an oversized payload past the boundary.
  */
 export async function handleReadFile(
-  args: { fileId: string; offset?: number; limit?: number; maxChars?: number },
+  args: { fileId: string; offset?: number; limit?: number; maxChars?: number; exportAs?: 'text/plain' | 'text/markdown' },
   driveClient: typeof drive = drive,
   opts: { sleep?: (ms: number) => Promise<void> } = {},
 ): Promise<{
@@ -1113,7 +1128,7 @@ export async function handleReadFile(
   returned_length: number;
   has_more: boolean;
 }> {
-  const { fileId, offset = 0, limit, maxChars } = args;
+  const { fileId, offset = 0, limit, maxChars, exportAs = 'text/plain' } = args;
 
   if (!Number.isInteger(offset) || offset < 0) {
     throw new Error(`invalid_range: offset must be a non-negative integer (got ${offset}).`);
@@ -1122,7 +1137,7 @@ export async function handleReadFile(
     throw new Error(`invalid_range: limit must be a positive integer when supplied (got ${limit}).`);
   }
 
-  const file = await fetchDriveText(fileId, driveClient, opts);
+  const file = await fetchDriveText(fileId, driveClient, opts, exportAs);
   const total_length = file.content.length;
   const slice = file.content.slice(offset, limit === undefined ? undefined : offset + limit);
   const returned_length = slice.length;
@@ -1178,7 +1193,7 @@ export async function handleReadFile(
  * to guess it on the other; that guessability is most of the value.
  */
 export async function handleReadFileToDisk(
-  args: { fileId: string; writeToPath: string },
+  args: { fileId: string; writeToPath: string; exportAs?: 'text/plain' | 'text/markdown' },
   driveClient: typeof drive = drive,
   opts: { sleep?: (ms: number) => Promise<void> } = {},
 ): Promise<{
@@ -1188,7 +1203,7 @@ export async function handleReadFileToDisk(
   total_length: number;
   revisionVersion: string | undefined;
 }> {
-  const { fileId, writeToPath } = args;
+  const { fileId, writeToPath, exportAs = 'text/plain' } = args;
 
   if (!path.isAbsolute(writeToPath)) {
     throw new Error(
@@ -1198,7 +1213,7 @@ export async function handleReadFileToDisk(
     );
   }
 
-  const file = await fetchDriveText(fileId, driveClient, opts);
+  const file = await fetchDriveText(fileId, driveClient, opts, exportAs);
   fs.mkdirSync(path.dirname(writeToPath), { recursive: true });
   fs.writeFileSync(writeToPath, file.content, 'utf8');
 
