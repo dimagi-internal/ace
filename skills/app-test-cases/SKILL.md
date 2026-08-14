@@ -852,6 +852,45 @@ For every `tapOn:text` matcher in a recipe:
 syntactically-valid string — it cannot detect a brief-vs-live drift.
 Step 4 (below) adds a runtime smoke check that catches it.
 
+#### Score-gated assessments DO render a result screen — both branches (ace#1302, confirms #569)
+
+`spark-facilitator/20260813-2126` reported that a score-gated Learn assessment
+**auto-finalized on the last answer** and went straight to `1 form sent to
+server!`, so the CBF completed a payment gate with no on-screen confirmation.
+The report was explicit that it had observed the **pass path only** and could
+not say whether the platform or the app was at fault.
+
+**Settled on-device, both branches** — CommCare 2.63.2 / `ACE_Probe_API_34`,
+2026-08-14, on a single-question score-gated quiz with trailing
+relevance-gated `result_pass` / `result_retry` labels:
+
+| answer | `user_score` | what rendered |
+|---|---|---|
+| correct | 100 | `PASSED. You scored 100 percent.` + `FINISH` |
+| wrong | 0 | `NOT PASSED. Go back to module 1 and read it again.` + `FINISH` |
+
+```
+cc:nav_btn_finish       [126,293][1059,419]
+cc:nav_btn_finish_text  'FINISH'
+TextView                'NOT PASSED. Go back to module 1 and read it again.'
+```
+
+Two consequences for how you diagnose this:
+
+1. **A missing result screen is an APP-SHAPE defect, not platform behaviour.**
+   The platform renders trailing relevance-gated labels on both branches, so
+   if a walk never sees one, look at the app: are the labels reachable in form
+   order, is `user_score` computed before they are evaluated, are their
+   `relevant` expressions exhaustive? Do not record it as a CommCare
+   limitation.
+2. **ace#569's two-screen finalize needs NO qualifier.** #1302 suggested the
+   rule might only hold for multi-question quizzes. It held on a
+   SINGLE-question score-gated quiz: `nav_btn_next` advanced to the result
+   screen, and `nav_btn_finish` was present there. So `form-submit.yaml`'s
+   score-gated branch is correct as written, and a walk that reports
+   `nav_btn_finish` not visible has not reached the result screen — that is
+   the thing to investigate, not the rule.
+
 #### CommCare's CHOICE DIALOG — repeat junctures and the form-exit prompt (ace#1007, #1290)
 
 Two surfaces ACE had zero coverage for turn out to be **the same component**,
