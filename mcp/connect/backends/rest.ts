@@ -448,6 +448,7 @@ export class RestBackend implements ConnectClient {
   listOpportunities = stub('listOpportunities') as ConnectClient['listOpportunities'];
   getOpportunity = stub('getOpportunity') as ConnectClient['getOpportunity'];
   updateOpportunity = stub('updateOpportunity') as ConnectClient['updateOpportunity'];
+  setLearnPassingScore = stub('setLearnPassingScore') as ConnectClient['setLearnPassingScore'];
   setVerificationFlags = stub('setVerificationFlags') as ConnectClient['setVerificationFlags'];
   deleteUnacceptedFlwInvites = stub('deleteUnacceptedFlwInvites') as ConnectClient['deleteUnacceptedFlwInvites'];
   listFlwInvites = stub('listFlwInvites') as ConnectClient['listFlwInvites'];

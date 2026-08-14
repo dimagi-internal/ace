@@ -303,6 +303,47 @@ export function extractFormFieldValues(html: string): Record<string, string> {
 }
 
 /**
+ * Names of form controls Django rendered as `disabled`.
+ *
+ * A disabled field's value comes from the form's `initial`, never from POST
+ * data — and some Connect forms go further and REJECT a disabled field that
+ * shows up in the payload anyway. `OpportunityInitUpdateForm.clean()` does
+ * exactly that once Connect Workers have joined the opportunity:
+ *
+ *   for field_name in self._disabled_fields:
+ *       if field_name in self.data:
+ *           self.add_error(field_name, "This field cannot be edited after
+ *                          Connect Workers have joined the opportunity.")
+ *
+ * (`commcare_connect/opportunity/forms.py`, disabling `hq_server`, `api_key`,
+ * `learn_app_domain`, `learn_app`, `deliver_app_domain`, `deliver_app`.)
+ *
+ * So a naive read-modify-write of that form — re-post every value the GET
+ * rendered — is correct on a fresh opportunity and REJECTED the moment a
+ * worker has joined. Callers filter their POST body through this set instead
+ * of hardcoding which fields lock, so the rule stays whatever the server says
+ * it is rather than whatever ACE last believed.
+ */
+export function extractDisabledFormFieldNames(html: string): Set<string> {
+  const out = new Set<string>();
+  for (const m of html.matchAll(/<(?:input|select|textarea)\b([^>]*)>/g)) {
+    const attrs = m[1];
+    const name = attrs.match(/\bname="([^"]+)"/)?.[1];
+    if (!name) continue;
+    // Blank out quoted VALUES before looking for the attribute NAME. Connect's
+    // templates carry `data-loading-disable`-style hooks and hyphenated field
+    // names, so a naive /\bdisabled\b/ over the raw attribute string matches
+    // inside `name="…-disabled-…"` and reports a live field as locked — which
+    // would silently DROP it from the repair POST and fail the write.
+    const attrNames = attrs.replace(/="[^"]*"/g, '=""').replace(/='[^']*'/g, "=''");
+    // `disabled`, `disabled=""` and `disabled="disabled"` are all the same
+    // thing to a browser; match the bare attribute in any of those shapes.
+    if (/(?:^|\s)disabled(?:\s|=|$)/.test(attrNames)) out.add(name);
+  }
+  return out;
+}
+
+/**
  * Parse Connect's deliver_unit_table HTML into typed rows.
  *
  * The page renders a plain `<table>` whose `<tr>` rows have whitespace-padded

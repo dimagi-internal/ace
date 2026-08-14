@@ -420,7 +420,7 @@ Render the run-folder README markdown for `runId` with optional per-phase status
 
 ## ace-connect
 
-Source: `mcp/connect-server.ts` — 58 atoms
+Source: `mcp/connect-server.ts` — 59 atoms
 
 ### `connect_list_programs`
 
@@ -514,6 +514,15 @@ Source: `mcp/connect-server.ts` — 58 atoms
 | `description` | `z.string` | optional | _—_ |
 | `end_date` | `z.string` | optional | _—_ |
 | `is_test` | `z.boolean` | optional | _—_ |
+
+### `connect_set_learn_passing_score`
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `organization_slug` | `z.string` | **required** | PM-side org slug that owns the program (e.g. ai-demo-space). |
+| `program_id` | `z.string` | **required** | Program UUID. Required because the form carrying passing_score is the PROGRAM-SCOPED init-edit form (/a/<org>/program/<program_id>/opportunity/<opp_id>/init/edit/), not the opportunity edit form connect_update_opportunity posts. |
+| `opportunity_id` | `z.string` | **required** | Opportunity UUID whose Learn app gate is being changed. Note the score lives on the CommCareApp row, which is keyed (cc_app_id, cc_domain, organization, hq_server) and NOT by opportunity — so every opportunity in this org wired to the same HQ Learn app shares it. The returned previous_passing_score shows what was displaced. |
+| `passing_score` | `z.coerce.number` | **required** | Learn-app passing score, 0-100 (Connect renders the input with min=0 max=100). This is the ONLY gate on Deliver unlock: Connect sets passed = score >= passing_score for every submitted form block carrying user_score. |
 
 ### `connect_set_verification_flags`
 

@@ -44,6 +44,7 @@ export type Capability =
   | 'update_program'
   | 'create_opportunity'
   | 'update_opportunity'
+  | 'set_learn_passing_score'
   | 'set_verification_flags'
   | 'create_payment_unit'
   | 'create_payment_units'
@@ -74,6 +75,7 @@ export const CAPABILITY_MAP: Record<Capability, CapabilityRoute> = {
   update_program:               { backend: 'PLAYWRIGHT', restTarget: 'PATCH /api/programs/{id}/ (not yet shipped)' },
   create_opportunity:           { backend: 'REST',       restTarget: 'POST /api/programs/{program_id}/opportunities/' },
   update_opportunity:           { backend: 'PLAYWRIGHT', restTarget: 'PATCH /api/opportunities/{id}/ (not yet shipped)' },
+  set_learn_passing_score:      { backend: 'PLAYWRIGHT', restTarget: 'PATCH /api/opportunities/{id}/ (not yet shipped) — note passing_score lives on CommCareApp, not Opportunity' },
   set_verification_flags:       { backend: 'PLAYWRIGHT', restTarget: 'PUT /api/opportunities/{id}/verification-flags/ (not yet shipped)' },
   create_payment_unit:          { backend: 'REST',       restTarget: 'POST /api/opportunities/{id}/payment_units/' },
   create_payment_units:         { backend: 'REST',       restTarget: 'POST /api/opportunities/{id}/payment_units/' },
