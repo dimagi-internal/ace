@@ -1182,8 +1182,39 @@ respondent may never have heard read out.
   point the worker speaks it, and (b) record the attestation in a field — an
   unrecorded consent is unauditable, and the payment record is the only place it
   can be evidenced.
+- **`consent-branch-completeness` — what element (c) implies for REQUIRED
+  fields (ace#1326).** When this floor fires AND the PDD states any field
+  downstream of the consent gate as unconditionally required, the two
+  requirements contradict each other on the withdrawal branch, and **both
+  resolutions build fine**:
+
+  - *Keep `required`, no `relevant`.* The worker who has just read aloud "you
+    can stop at any time" must then interrogate the household that withdrew,
+    or put SOMETHING in the fields to close the form. Those fields cannot be
+    legitimately answered, so what lands is **invented data** — in exactly the
+    fields the programme's primary metric is computed from.
+  - *Add `relevant: <consent> = 'yes'`.* Correct, but it silently changes an
+    observable program fact and puts blank-observation records into a
+    denominator the PDD defined with no exclusion.
+
+  **The build MUST:** (1) gate those fields on the consent answer — **element
+  (c) wins over a literal completeness rule; collecting data after a
+  withdrawal is never the right resolution**; (2) record the deviation in the
+  build memo naming each gated field; (3) note the denominator consequence for
+  any metric computed over them.
+
+  Run `checkConsentBranchCompleteness` from `lib/consent-branch.ts` over the
+  blueprint — the same helper `pdd-to-deliver-app-eval § conditional_logic_match`
+  grades with, so build-emit and eval-grade cannot drift.
+
+  Live: `bednet-check-2-visit/20260814-0856`, whose primary metric is "share
+  of followed-up households with `slept_under_net = yes` AND `net_hanging =
+  yes`" over closed `household` cases with **no** exclusion for withdrawn
+  consent, on a programme targeting ≥ 90% `consent_confirmed = yes` — so up to
+  ~10% of follow-ups can bias the headline net-use rate downward.
 - **Enforced by:** `pdd-to-deliver-app-eval § consent_floor` — binary hard-gate,
-  surfaces `[BLOCKER]`.
+  surfaces `[BLOCKER]`; and `§ conditional_logic_match` for the branch-
+  completeness clause.
 - **Overlaps with [`embedded-bc-script`](#embedded-bc-script) — both fire; this
   one wins.** A verbatim read-aloud passage that seeks consent is a consent
   script first and a read-aloud script second. Emitting only `embedded-bc-script`
@@ -1268,6 +1299,11 @@ Forbid angle-bracket placeholder notation`).
 > `label` at the point the worker speaks it AND record the attestation in a
 > field — an unrecorded consent cannot be evidenced against a payment. Elements
 > (d), (e) and (f) are the ones builds actually omit; check those three by name
+> — and where any field downstream of the consent gate is stated as
+> unconditionally required, gate it on the consent answer (`relevant: <consent>
+> = 'yes'`) rather than leaving a withdrawn household unable to close the form:
+> a respondent who has just been told they may stop must not then be required
+> to answer. Record every field you gate this way in the build memo.
 > before you ship. They matter most on exactly the programs where a participant
 > has the strongest incentive to misreport: a script that says "to help target
 > support to families who need it most" while hiding that most respondents will
@@ -1455,6 +1491,7 @@ the effective bar. One repair round, then re-grade.
 
 | Date | Change | By |
 |---|---|---|
+| 2026-08-14 | **`consent-script-floor` gains `consent-branch-completeness` (ace#1326).** Element (c) — "you may stop at any time, including after being asked" — and an unconditionally-required observation field contradict each other on the withdrawal branch, and nothing owned the interaction: both resolutions were silently shippable, and one produces INVENTED data in the fields the primary metric is computed from. Element (c) now explicitly wins; the build gates those fields on the consent answer, records each in the memo, and names the denominator consequence. Graded mechanically by `checkConsentBranchCompleteness` (`lib/consent-branch.ts`), shared with `pdd-to-deliver-app-eval § conditional_logic_match` so build-emit and eval-grade cannot drift — same pairing as `screen-grouping` / `lib/screen-shape.ts`. | ACE |
 | 2026-08-14 | **Table B gains "a conditional primary-case create" (ace#1294).** A PDD said a registration form with `consent_given = no` ends "without creating a case". The Nova architect disproved it by construction on app `74a097c6`: no create-condition slot on `create_form`/`update_form`; `add_case_operations` accepts a conditioned `create` and succeeds, but a read-back shows the form's own primary create still present, so the accepted operation is an ADDITIONAL case that would double-create on consent; relevance skips a property write but still opens the case. Filed in **Table B**, not A — CommCare supports a conditional open-case action, so the closure is Nova's authoring surface, and the section's own tiebreak sends a doubtful mechanism to B. Phase 3 was the earliest point this could be falsified, which is exactly the ace#995/#1006/#1121 cost pattern: the sentence had already reached the PDD and would have reached the Work Order and all five Phase-6 training documents. | ACE |
 | 2026-08-13 | **Table A gains "reading a case property into a followup form's field" (ace#1180 / ace#1224 / ace#1232), and `consent-script-floor`'s trigger is restated as four INDEPENDENT clauses.** The case-read row records three separately-proven closures — `case-ref` rejected app-wide, `caseWrite` write-only, and a visible case-bound field emitting no preload (proven against a compiled CCZ) — because each one was rediscovered by a different run reaching for the next workaround, and the sanctioned alternative (re-ask as a select, or key on worker identity + encounter date via a `user-ref` part inside an explicit `concat(...)`) is what `pdd-to-deliver-app § entity_id` now mandates. The consent trigger's lead-in used to read "the PDD describes consent being sought…", which primed exactly one misread: a PDD *silent* about consent was treated as not firing it. `spark-facilitator/20260812-1635` shipped 0-of-6 floor elements on an app photographing 8+ identifiable people into an AI verification layer plus a human audit sample (ace#1223) — the second miss on the same opp. Clause 3 is now stated as always-on for capture of identifiable people, on the same detection as `live-photo-capture`. | ACE team |
 | 2026-08-13 | **CORRECTION — split the section into Table A / Table B; question-bank randomization was wrongly listed as unbuildable (ace#1213).** Jonathan, same day: *"you can select a random number and then select the questions from a fixture or from the form based on that … it's certainly possible to do in an xform + fixture or just within an xform with hidden questions."* Correct, and **both** of the arguments the row shipped with were wrong. (1) *"No per-attempt item-selection primitive on Nova's surface"* is a fact about ACE's BUILDER; the entry itself said not to launder that into a platform claim, and then the row did exactly that. (2) The supposedly decisive Connect argument — one absolute `passing_score` per `CommCareApp`, so a draw is not commensurable with the gate — **only holds for a VARIABLE-size draw.** The specified mechanism was a FIXED 12-of-30, which keeps the denominator constant at 12, so `passing_score: 10` works normally. The argument never bit. The section is renamed **`Mechanisms a PDD must not assert`** and split: **Table A** = closed at the platform surface (Connect's verification-flags form no longer renders `gps`/`gps_radius_meters`; JavaRosa's calculate-recomputation semantics making a bare-`now()` duration permanently 0), **Table B** = buildable but outside ACE's toolchain today (question-bank randomization). Both tables produce the same PDD behaviour — do not assert it — and different escalation paths: Table A means the design changes, Table B means a **capability request**. Also corrected in Table A: an in-form GPS accuracy gate via an adjacent constrained question is **ACE policy-closed** (#723, PR #988), not platform-closed, and must not be described as impossible. New tiebreak: **when in doubt a mechanism goes in Table B** — under-claiming a constraint costs a capability request, over-claiming it costs the capability, and a false platform limit written into a Work Order outlives the constraint. `idea-to-pdd-eval` gains a **symmetric check**: asserting a Table B mechanism is *impossible* is itself a 1-point deduction + `[INFO]`. *Enforced:* `test/skills/pdd-must-not-assert-mechanisms.test.ts` pins randomization to Table B and fails on either retired claim by name. | ACE team |
