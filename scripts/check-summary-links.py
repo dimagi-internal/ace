@@ -97,6 +97,84 @@ def is_member_gated(url: str) -> bool:
     )
 
 
+# ── Per-reviewer membership (dimagi-internal/ace#1060) ──────────────────
+#
+# MEMBER-GATED says "this link needs membership". It does NOT say whether the
+# person we are about to send it to HAS that membership — and this script
+# probes anonymously, so it cannot find out.
+#
+# For three runs that gap was covered by prose: the output told the reader to
+# "confirm every named reviewer actually holds membership", and the confirming
+# got done by an agent choosing to comply, at exactly the moment (about to send
+# a reply) when it feels already-done. On 2026-07-23 that produced a written
+# claim to an external partner — "you already had access there, so nothing to
+# do" — that a read-back showed was false, and it stayed false for a week.
+#
+# What makes it worth automating: a reviewer without membership gets a flat
+# 404, indistinguishable from "this run doesn't exist". It never reads as "you
+# need access", so they report it as us shipping a broken link.
+#
+# This script does NOT grow three auth paths. The read-backs already exist —
+# `scripts/grant-review-access.ts --dry-run` (HQ + OCS) and
+# `lib/connect-member-table.ts` (Connect, ace#911). It consumes their results
+# and REFUSES TO CERTIFY without them.
+
+MEMBER_SURFACES = (
+    ("commcarehq.org", "hq"),
+    ("openchatstudio.com", "ocs"),
+    ("connect.dimagi.com", "connect"),
+)
+
+#: Reviewer classes that block sharing. UNVERIFIED blocks too — "we did not
+#: check" is not "it is fine", and treating it as fine is the whole bug.
+REVIEWER_BLOCKING = ("MEMBER-MISSING", "MEMBER-UNVERIFIED")
+
+READBACK_HINT = {
+    "hq": "npx tsx scripts/grant-review-access.ts --dry-run (HQ role read-back)",
+    "ocs": "npx tsx scripts/grant-review-access.ts --dry-run (OCS group read-back)",
+    "connect": "connect_add_org_member's pre-read of /organization/member_table "
+               "(lib/connect-member-table.ts)",
+}
+
+
+def member_surface(url: str):
+    """Which read-back path can answer for this URL, or None if not gated."""
+    from urllib.parse import urlsplit
+
+    if not is_member_gated(url):
+        return None
+    host = urlsplit(url).netloc
+    for suffix, surface in MEMBER_SURFACES:
+        if host.endswith(suffix):
+            return surface
+    return None
+
+
+def classify_reviewer(url: str, reviewer: str, memberships: dict):
+    """(url, reviewer, read-back results) -> (class, note), or None.
+
+    `memberships` is `{surface: {email: bool}}` as produced by the read-back
+    tools above. A surface or email that is absent is UNVERIFIED, never OK.
+    """
+    surface = member_surface(url)
+    if surface is None:
+        return None
+    known = (memberships or {}).get(surface, {})
+    if reviewer not in known:
+        return "MEMBER-UNVERIFIED", (
+            f"no membership read-back for {reviewer} on {surface} - run "
+            f"{READBACK_HINT[surface]} and pass the result via --memberships. "
+            "Not checked is not the same as fine"
+        )
+    if known[reviewer]:
+        return "MEMBER-OK", f"{reviewer} is a member of the {surface} surface"
+    return "MEMBER-MISSING", (
+        f"{reviewer} is NOT a member on {surface} - they will get a flat 404, "
+        "indistinguishable from 'this run does not exist', and will report it as a "
+        "broken link. Grant access before sharing (skills/share-run-access)"
+    )
+
+
 def is_ace_deliverable(url: str) -> bool:
     """True for a Google Docs/Slides/Sheets/Drive URL — a doc WE authored."""
     from urllib.parse import urlsplit
@@ -199,6 +277,21 @@ def main() -> int:
     ap.add_argument("--workspace", default="dimagi-team")
     ap.add_argument("--base", default="https://labs.connect.dimagi.com/ace")
     ap.add_argument("--json", action="store_true")
+    ap.add_argument(
+        "--reviewer",
+        action="append",
+        default=[],
+        help="Email of a named reviewer this summary is being prepared FOR. Repeatable. "
+             "Every MEMBER-GATED link is then classified per reviewer, and an unverified "
+             "or missing membership blocks the same way a BROKEN link does (ace#1060).",
+    )
+    ap.add_argument(
+        "--memberships",
+        help="Path to a JSON file of read-back results, {surface: {email: bool}} with "
+             "surface in hq|ocs|connect. Produced by scripts/grant-review-access.ts "
+             "--dry-run (HQ, OCS) and lib/connect-member-table.ts (Connect). Without it "
+             "every reviewer is MEMBER-UNVERIFIED, which blocks.",
+    )
     a = ap.parse_args()
 
     base = a.base.rstrip("/")
@@ -225,15 +318,39 @@ def main() -> int:
         code, cls, note = check(url)
         results.append({"label": label, "url": url, "status": code, "class": cls, "note": note})
 
+    memberships = {}
+    if a.memberships:
+        try:
+            with open(a.memberships, encoding="utf-8") as fh:
+                memberships = json.load(fh)
+        except Exception as e:  # noqa: BLE001
+            print(f"FAILED to read --memberships {a.memberships}: {e}", file=sys.stderr)
+            return 2
+
+    # Per-reviewer verdicts on every member-gated link (ace#1060). Absent
+    # --reviewer, behaviour is unchanged.
+    reviewer_rows = []
+    for r in results:
+        for reviewer in a.reviewer:
+            verdict = classify_reviewer(r["url"], reviewer, memberships)
+            if verdict is None:
+                continue
+            cls, note = verdict
+            reviewer_rows.append({"label": r["label"], "url": r["url"],
+                                  "reviewer": reviewer, "class": cls, "note": note})
+    reviewer_blocked = [r for r in reviewer_rows if r["class"] in REVIEWER_BLOCKING]
+
     broken = [r for r in results if r["class"] == "BROKEN"]
     private = [r for r in results if r["class"] == "PRIVATE-DELIVERABLE"]
     member_gated = [r for r in results if r["class"] == "MEMBER-GATED"]
-    failed = broken + private
+    failed = broken + private + reviewer_blocked
 
     if a.json:
         print(json.dumps({"page_url": page_url, "checked": len(results),
                           "broken": len(broken), "private_deliverable": len(private),
                           "failed": len(failed), "member_gated": len(member_gated),
+                          "reviewer_blocked": len(reviewer_blocked),
+                          "reviewers": reviewer_rows,
                           "results": results}, indent=2))
     else:
         print(f"Run-summary link check — {a.slug}/{a.run_id}")
@@ -259,7 +376,18 @@ def main() -> int:
             print("   should be able to leave feedback) and re-check for OK 200:")
             for r in private:
                 print(f"   - {r['label']}: {r['url']}")
-        if not failed and member_gated:
+        if reviewer_rows:
+            print(f"\n👤 Per-reviewer membership on {len(member_gated)} member-gated link(s):")
+            for r in reviewer_rows:
+                mark = "✅" if r["class"] == "MEMBER-OK" else "❌"
+                print(f"   {mark} [{r['class']:<18}] {r['reviewer']} — {r['label']}")
+                print(f"        {r['note']}")
+        if reviewer_blocked:
+            print(f"\n❌ {len(reviewer_blocked)} reviewer/link pair(s) NOT cleared to share.")
+            print("   A reviewer without membership gets a flat 404 — indistinguishable from")
+            print("   'this run does not exist' — and will report it as a broken link, which is")
+            print("   exactly how ace#913 and ace#916 reached us (ace#1060).")
+        if not failed and member_gated and not a.reviewer:
             print(f"\n✅ No broken or private links, but {len(member_gated)} link(s) are "
                   "MEMBER-GATED — NOT cleared to share yet.")
             print("   This probe is anonymous. Each of these 404s for a signed-in NON-member,")
@@ -267,6 +395,8 @@ def main() -> int:
             print("   or don't present the link to them as reviewer-facing:")
             for r in member_gated:
                 print(f"   - {r['label']}: {r['url']}")
+        if not failed and member_gated and a.reviewer:
+            print("\n✅ No broken links, and every named reviewer's membership is verified.")
         if not failed and not member_gated:
             print("\n✅ No broken links — every summary link is reachable.")
 
