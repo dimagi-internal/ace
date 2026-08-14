@@ -199,7 +199,10 @@ describe('validateRunState', () => {
       });
       expect(r.valid).toBe(true);
       expect(r.warnings.some((w) => w.path === 'phases.p.steps.s1.artifact')).toBe(true);
-      expect(r.warnings.some((w) => w.path === 'phases.p.steps.s1.file_id')).toBe(true);
+      // ace#1293: missing file_id is now reported ONCE PER PHASE with the step
+      // names, not once per step — 18 identical warnings on a clean run train
+      // a reader to skip the list entirely.
+      expect(r.warnings.some((w) => w.path === 'phases.p.steps.file_id')).toBe(true);
     });
 
     it('accepts the legacy `complete` step status as a synonym for `done`', () => {
