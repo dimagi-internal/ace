@@ -426,6 +426,34 @@ spark-facilitator/20260730-1718 additionally proved `grid_form_menus:
 now sets both app-level flags via `commcare_set_app_menu_display`, so all
 three fields are asserted as blockers.)
 
+**Assessment retry leak — always, every Learn form carrying a score gate
+(dimagi-internal/ace#1041).** A fail/retry result label must not restate the
+correct answer. Run the pure helper over each form XML:
+
+```ts
+import { checkAssessmentRetryLeak, formatRetryLeakReport }
+  from '../../lib/assessment-retry-leak';
+const report = checkAssessmentRetryLeak(formXml);
+```
+
+`report.checked === false` means the form carries no score-gated result labels
+(nothing to leak into) — that is "not applicable", NOT a pass. Any entry in
+`report.leaks` is a `[BLOCKER]` `assessment-retry-answer-leak`: name the label
+nodeset and the leaked option, and route the fix to `pdd-to-learn-app` Step 4c
+(replace the retry text with a pointer to the module content).
+
+Why it is a released-CCZ check and not only a build-time one: the live instance
+(bednet-spot-check/20260729-0002) happened *because* the brief was hand-composed
+at L0 and the `assessment-gate` component paragraph was skipped, so a build-time
+assertion inside the producer is exactly the thing that was absent. The correct
+answer is recoverable here because ACE's scoring calculates compare the question
+against the correct answer's literal value — CommCare has no correct-option
+primitive, so that literal is the only answer key that exists.
+
+Effect if missed: the Connect Deliver-unlock gate is decorative. With no attempt
+limit, a worker who fails once is shown the answer and passes on attempt 2, while
+`user_score >= 80` remains wired and inert — and every structural check passes.
+
 **Constraint locality — always, every form with constraints
 (dimagi-internal/ace#980).** A `constraint` must be satisfiable on the
 screen where it fires. Run the pure helper over each form XML:
