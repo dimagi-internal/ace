@@ -293,8 +293,27 @@ procedure below to rediscover.
 The `app-connect-coverage` skill (Phase 3 Step 1.5) verifies and
 auto-fixes Connect markers before deploy — this skill consumes its
 `clean | blocked` verdict. Step 6's CCZ structural verification
-(grep for `<learn:deliver>` / `<learn:module>` counts) is the
+(the `projected_connect_state` per-type record counts) is the
 post-release boundary check.
+
+> **If you hand-check the CCZ, match markers by NAMESPACE, never by a
+> `<learn:` prefix.** Nova emits them as **default-namespace** elements
+> — there is no `xmlns:learn` declaration anywhere in the CCZ, so a
+> literal `grep '<learn:module'` returns **0 on a perfectly clean app**
+> and reads as a missing-marker halt. The wire format is:
+>
+> ```xml
+> <module     xmlns="http://commcareconnect.com/data/v1/learn" id="m1_role">
+> <assessment xmlns="http://commcareconnect.com/data/v1/learn" id="readiness_quiz">
+> <deliver    xmlns="http://commcareconnect.com/data/v1/learn" id="vmf_visit">
+> ```
+>
+> `commcare_download_ccz`'s own parser is namespace-aware and correct —
+> prefer its `connect_markers` / `projected_connect_state` counts over any
+> hand-rolled grep. The prefixed spelling used elsewhere in this file is
+> shorthand for the element TYPE, not a literal string to search for.
+> (dimagi-internal/ace#680 fixed this in the sibling `app-release-qa`;
+> observed again from this file on spark-facilitator/20260813-2126.)
 
 5. **Update 3-commcare/app-deploy_summary.md.**
    Append a `releases` block to the frontmatter with the new build IDs and
