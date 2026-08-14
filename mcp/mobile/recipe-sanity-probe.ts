@@ -44,6 +44,7 @@ export type SanityFailureClass =
   | 'score-gated-quiz-over-advance'
   | 'brief-label-drift'
   | 'inputtext-geopoint-as-string'
+  | 'unguarded-option-tap-below-long-label'
   | 'deliver-smoke-rewalks-learn';
 
 /** Non-blocking caveat classes. A warning NEVER flips `ok` — it names a
@@ -297,6 +298,25 @@ export function probeRecipeSanity(inputs: ProbeInputs): SanityVerdict {
         recipe: recipe.name,
         parameter: 'group-field-list',
         value: groupWalk.groupId,
+      });
+    }
+
+    // 6.6 unguarded-option-tap-below-long-label → an answer tap on a
+    // REQUIRED select sharing a field-list screen with a long read-aloud
+    // label, with no scroll guard. The label pushes the options below the
+    // fold and the bare tap dies `selector-not-found`. Live:
+    // bednet-check-2-visit/20260814-0856 Deliver leg — an ~840-char consent
+    // script above `consent_given`, killed the whole leg on its first answer.
+    // Field-gated like its siblings: needs `fields` supplied.
+    const unguarded = findUnguardedOptionTapBelowLongLabel(recipe.text, groupScreens);
+    if (unguarded) {
+      failures.push({
+        class: 'unguarded-option-tap-below-long-label',
+        detail: `recipe ${recipe.name} taps option "${unguarded.matcher}" at line ${unguarded.line} with no preceding scrollUntilVisible — it shares the Nova group "${unguarded.groupId}" (a CommCare field-list, so ONE screen) with a ${unguarded.labelChars}-character label, which pushes the options below the fold`,
+        remediation: `guard the tap with a scrollUntilVisible for the same option text before it (centerElement: true), per skills/app-test-cases § group-field-list walk. An unnecessary guard is a runtime no-op, so applying it is always safe; a missing one is selector-not-found on a live device`,
+        recipe: recipe.name,
+        parameter: 'unguarded-option-tap',
+        value: unguarded.matcher,
       });
     }
 
@@ -1047,7 +1067,29 @@ function readStepFormName(stepText: string): string | null {
 interface GroupScreen {
   groupId: string;
   matchers: string[];
+  /**
+   * Longest LABEL-kind child on this screen, in characters. A group is a
+   * CommCare field-list, so a long read-aloud passage (consent script,
+   * behaviour-change segment) shares the screen with the questions it
+   * governs and pushes their options below the fold.
+   */
+  longestLabelChars: number;
+  /** Option labels belonging to REQUIRED select children of this group. */
+  requiredOptionMatchers: string[];
 }
+
+/**
+ * Character budget above which a label child is assumed to push its
+ * screen-mates below the fold on a 1080x2400 device.
+ *
+ * Calibrated from the live failure (bednet-check-2-visit/20260814-0856): an
+ * ~840-char consent script put the Yes/No radios of the SAME field-list off
+ * screen, and the recipe's bare `tapOn` died `selector-not-found`. 400 is
+ * deliberately well below that — the cost of a false positive here is one
+ * redundant guarded scroll, which is a no-op when the option is already
+ * visible; the cost of a false negative is a dead Phase 6 leg.
+ */
+const BELOW_FOLD_LABEL_CHARS = 400;
 
 /** Collect one GroupScreen per `kind: group` field across the supplied
  * apps. Hidden children contribute nothing (they never render). */
@@ -1059,19 +1101,104 @@ function collectGroupScreens(apps: NovaAppSlice[]): GroupScreen[] {
         for (const field of form.fields ?? []) {
           if (field.kind !== 'group' || !field.children?.length) continue;
           const matchers: string[] = [];
+          const requiredOptionMatchers: string[] = [];
+          let longestLabelChars = 0;
           for (const child of field.children) {
             if (child.kind === 'hidden') continue;
             if (child.label) matchers.push(child.label);
+            if (child.kind === 'label' && child.label) {
+              longestLabelChars = Math.max(longestLabelChars, child.label.length);
+            }
+            // `NovaFieldSlice` carries no `required` flag, so every select on
+            // the screen counts. That is the right side to err on here: an
+            // OPTIONAL select below the fold is equally untappable, and the
+            // remediation (a guarded scroll) is a runtime no-op when the
+            // option is already visible.
+            const isSelect = child.kind === 'single_select' || child.kind === 'multi_select';
             for (const opt of child.options ?? []) {
-              if (opt.label) matchers.push(opt.label);
+              if (!opt.label) continue;
+              matchers.push(opt.label);
+              if (isSelect) requiredOptionMatchers.push(opt.label);
             }
           }
-          if (matchers.length) out.push({ groupId: field.id, matchers });
+          if (matchers.length) {
+            out.push({ groupId: field.id, matchers, longestLabelChars, requiredOptionMatchers });
+          }
         }
       }
     }
   }
   return out;
+}
+
+/**
+ * An answer tap on a REQUIRED select whose field-list screen also carries a
+ * long read-aloud label, with no scroll guard for that option anywhere
+ * earlier in the recipe.
+ *
+ * This is the `bednet-check-2-visit/20260814-0856` Deliver-leg failure. The
+ * Register Household `Consent` group is one field-list holding an ~840-char
+ * consent script plus `consent_given` (Yes/No). The authored recipe tapped
+ * "Yes" bare and died `selector-not-found` — the radios were below the fold.
+ *
+ * The asymmetry that makes this worth enforcing rather than documenting: the
+ * SAME authoring pass produced a Learn recipe with a guarded scroll on all
+ * ten of its option taps and a Deliver recipe with none. The rule was
+ * already written down (§ group-field-list remediation says "scrollUntilVisible
+ * + tap per select") and was still missed, which is the definition of a rule
+ * that needs a check behind it.
+ *
+ * Narrow by construction, per the #858 false-positive lesson: it fires only
+ * when the screen has BOTH a label over the character budget AND a required
+ * select, and only when NO scroll targeting that option appears earlier.
+ * A guarded scroll that is unnecessary is a no-op at runtime, so the
+ * remediation is always safe to apply.
+ */
+function findUnguardedOptionTapBelowLongLabel(
+  recipeText: string,
+  groupScreens: GroupScreen[],
+): { line: number; groupId: string; matcher: string; labelChars: number } | null {
+  const risky = groupScreens.filter(
+    (g) => g.longestLabelChars >= BELOW_FOLD_LABEL_CHARS && g.requiredOptionMatchers.length > 0,
+  );
+  if (risky.length === 0) return null;
+
+  const lines = recipeText.split('\n');
+  const blockAt = (start: number): string => {
+    const block = [lines[start]];
+    for (let j = start + 1; j < lines.length && !/^\s*-\s+\S/.test(lines[j]); j++) block.push(lines[j]);
+    return block.join('\n');
+  };
+  const matches = (a: string, b: string): boolean =>
+    a.length > 0 && b.length > 0 && (a.startsWith(b) || b.startsWith(a));
+
+  // Every scroll guard in the recipe, with the line it starts on. A guard
+  // hoisted into a `when: notVisible` runFlow still counts — what matters is
+  // that a scroll targeting this option happens before the tap.
+  const guards: { line: number; matchers: string[] }[] = [];
+  for (let i = 0; i < lines.length; i++) {
+    if (!/scrollUntilVisible/.test(lines[i])) continue;
+    guards.push({ line: i, matchers: stepTextMatchers(blockAt(i)) });
+  }
+
+  for (let i = 0; i < lines.length; i++) {
+    if (!/^\s*-\s+tapOn:/.test(lines[i])) continue;
+    const taps = stepTextMatchers(blockAt(i));
+    if (taps.length === 0) continue;
+
+    for (const g of risky) {
+      for (const opt of g.requiredOptionMatchers) {
+        if (!taps.some((t) => matches(opt, t))) continue;
+        const guarded = guards.some(
+          (guard) => guard.line < i && guard.matchers.some((t) => matches(opt, t)),
+        );
+        if (!guarded) {
+          return { line: i + 1, groupId: g.groupId, matcher: opt, labelChars: g.longestLabelChars };
+        }
+      }
+    }
+  }
+  return null;
 }
 
 /** Extract the `text:` matchers a step selects on, normalised for

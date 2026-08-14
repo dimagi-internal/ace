@@ -1463,3 +1463,112 @@ describe('probeRecipeSanity — failure class: score-gated-quiz-over-advance (#1
     expect(verdict.failures.map((x) => x.class)).not.toContain('score-gated-quiz-over-advance');
   });
 });
+
+describe('probeRecipeSanity — failure class: unguarded-option-tap-below-long-label', () => {
+  // The live bednet-check-2-visit/20260814-0856 Deliver-leg failure. The
+  // `Consent` group is ONE CommCare field-list holding an ~840-char read-aloud
+  // consent script plus `consent_given` (Yes/No). The authored recipe tapped
+  // "Yes" bare and died `selector-not-found` — the radios were below the fold.
+  //
+  // What makes this worth a check rather than a doc line: the SAME authoring
+  // pass produced a Learn recipe with a guarded scroll on all ten of its
+  // option taps and a Deliver recipe with none. The rule was already written
+  // down and still missed.
+  const CONSENT_SCRIPT = 'Read this aloud to the household. '.repeat(26); // ~880 chars
+
+  const CONSENT_GROUP_APP = {
+    app_id: 'deliver-app',
+    modules: [
+      {
+        name: 'Register Household',
+        forms: [
+          {
+            name: 'Register Household',
+            fields: [
+              {
+                id: 'consent',
+                kind: 'group',
+                label: 'Consent',
+                children: [
+                  { id: 'consent_script', kind: 'label', label: CONSENT_SCRIPT },
+                  {
+                    id: 'consent_given',
+                    kind: 'single_select',
+                    label: 'Does this household agree to take part?',
+                    options: [{ label: 'Yes' }, { label: 'No' }],
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+    ],
+  };
+
+  it('flags a bare option tap on a screen whose label pushes it below the fold', () => {
+    const body = ['- tapOn:', '    text: "Yes"'].join('\n');
+    const verdict = probeRecipeSanity({
+      recipes: [recipeBody('journey-deliver.yaml', body)],
+      novaApps: [CONSENT_GROUP_APP as never],
+      connectOpp: LIVE_OPP,
+    });
+    const f = verdict.failures.find((x) => x.class === 'unguarded-option-tap-below-long-label');
+    expect(f, 'the exact defect that killed the live Deliver leg must be caught').toBeDefined();
+    expect(f!.value).toBe('Yes');
+    expect(f!.recipe).toBe('journey-deliver.yaml');
+    expect(f!.detail).toMatch(/below the fold/);
+    expect(f!.remediation).toMatch(/scrollUntilVisible/);
+  });
+
+  it('passes once the tap is guarded by a scroll for the same option', () => {
+    // The idiom journey-learn.yaml used throughout — and journey-deliver
+    // used nowhere.
+    const body = [
+      '- runFlow:',
+      '    when:',
+      '      notVisible:',
+      '        text: "Yes"',
+      '    commands:',
+      '      - scrollUntilVisible:',
+      '          element:',
+      '            text: "Yes"',
+      '          direction: DOWN',
+      '- tapOn:',
+      '    text: "Yes"',
+    ].join('\n');
+    const verdict = probeRecipeSanity({
+      recipes: [recipeBody('journey-deliver.yaml', body)],
+      novaApps: [CONSENT_GROUP_APP as never],
+      connectOpp: LIVE_OPP,
+    });
+    expect(verdict.failures.find((x) => x.class === 'unguarded-option-tap-below-long-label'))
+      .toBeUndefined();
+  });
+
+  it('does NOT fire on a short-label screen — narrow by construction (#858)', () => {
+    // A false positive here costs a redundant scroll; the #858 lesson is that
+    // careless breadth in this probe is expensive. Same recipe, short label.
+    const shortLabelApp = JSON.parse(JSON.stringify(CONSENT_GROUP_APP));
+    shortLabelApp.modules[0].forms[0].fields[0].children[0].label = 'Consent';
+    const body = ['- tapOn:', '    text: "Yes"'].join('\n');
+    const verdict = probeRecipeSanity({
+      recipes: [recipeBody('journey-deliver.yaml', body)],
+      novaApps: [shortLabelApp as never],
+      connectOpp: LIVE_OPP,
+    });
+    expect(verdict.failures.find((x) => x.class === 'unguarded-option-tap-below-long-label'))
+      .toBeUndefined();
+  });
+
+  it('does not fire when no field data is supplied — field-gated like its siblings', () => {
+    const body = ['- tapOn:', '    text: "Yes"'].join('\n');
+    const verdict = probeRecipeSanity({
+      recipes: [recipeBody('journey-deliver.yaml', body)],
+      novaApps: [{ app_id: 'deliver-app', modules: [{ name: 'Register Household', forms: [{ name: 'Register Household' }] }] } as never],
+      connectOpp: LIVE_OPP,
+    });
+    expect(verdict.failures.find((x) => x.class === 'unguarded-option-tap-below-long-label'))
+      .toBeUndefined();
+  });
+});
