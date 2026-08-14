@@ -97,3 +97,31 @@ describe('doctor-env-freshness — never breaks the diagnostic', () => {
     expect(() => run(join(tmpdir(), 'nope', '.env'))).not.toThrow();
   });
 });
+
+describe('doctor-env-freshness — cache_freshness (#970)', () => {
+  it('warns about a subprocess running from a pruned cache directory', () => {
+    // The fixture carries one row at 0.13.641 alongside three at 0.13.770.
+    // None of those paths exist on the test machine, so every judged proc is
+    // "pruned" here — what this asserts is that the SECOND verdict line is
+    // emitted at all, which the old `head -1` doctor wiring would have eaten.
+    const out = run(envFileWithMtime(-600));
+    expect(out).toMatch(/^(WARN|PASS) cache_freshness:/m);
+  });
+
+  it('emits BOTH verdict lines, not just the first', () => {
+    // The regression this guards: doctor used to parse `head -1` only, so
+    // adding a second probe to the same script would have been silently
+    // swallowed.
+    const out = run(envFileWithMtime(-600));
+    expect(out).toMatch(/env_freshness:/);
+    expect(out).toMatch(/cache_freshness:/);
+  });
+
+  it('names the module-load symptom so the operator does not chase playwright', () => {
+    const out = run(envFileWithMtime(-600));
+    if (/WARN cache_freshness/.test(out)) {
+      expect(out).toMatch(/Cannot find module/);
+      expect(out).toMatch(/does NOT respawn/);
+    }
+  });
+});

@@ -31,6 +31,10 @@ import { execFileSync } from 'node:child_process';
 import { statSync, readFileSync, existsSync } from 'node:fs';
 
 import { classifyEnvFreshness, type McpProc } from '../lib/env-freshness.js';
+import {
+  classifyPluginCacheFreshness,
+  pluginRootFromCommand,
+} from '../lib/plugin-cache-freshness.js';
 
 const MAX_ANCESTOR_HOPS = 6;
 
@@ -101,6 +105,20 @@ function resolveEnvPath(): string {
   return `${dataDir}/.env`;
 }
 
+/** Best-effort installed version, for contrast in the warn message. */
+function readInstalledVersion(): string | undefined {
+  try {
+    const reg = JSON.parse(
+      readFileSync(`${process.env.HOME}/.claude/plugins/installed_plugins.json`, 'utf8'),
+    );
+    const e = reg['ace@ace'] ?? reg.plugins?.['ace@ace'];
+    const v = Array.isArray(e) ? e[0] : e;
+    return v?.version;
+  } catch {
+    return undefined;
+  }
+}
+
 function main(): void {
   const envPath = resolveEnvPath();
   let envMtimeMs: number | null = null;
@@ -135,6 +153,18 @@ function main(): void {
 
   const result = classifyEnvFreshness({ envMtimeMs, procs, claudeAncestorFound });
 
+  // ace#970 — same process list, one extra existsSync per child. A subprocess
+  // running from a pruned plugin-cache dir dies on its next lazy module load,
+  // and session_freshness reports PASS in that scenario (the doctor launcher
+  // falls through to the new root, where both on-disk facts agree).
+  const cache = classifyPluginCacheFreshness({
+    procs: procs.map((p) => {
+      const parsed = pluginRootFromCommand(p.command);
+      return { pid: p.pid, command: p.command, rootExists: parsed ? existsSync(parsed.root) : false };
+    }),
+    installedVersion: readInstalledVersion(),
+  });
+
   if (result.verdict === 'warn') {
     console.log(`WARN env_freshness: ${result.reason}`);
     console.log(
@@ -146,6 +176,14 @@ function main(): void {
     console.log(`PASS env_freshness: ${result.reason}`);
   } else {
     console.log(`SKIP env_freshness: ${result.reason}`);
+  }
+
+  if (cache.verdict === 'warn') {
+    console.log(`WARN cache_freshness: ${cache.reason}`);
+  } else if (cache.verdict === 'pass') {
+    console.log(`PASS cache_freshness: ${cache.reason}`);
+  } else {
+    console.log(`SKIP cache_freshness: ${cache.reason}`);
   }
 }
 

@@ -447,16 +447,23 @@ fi
 # process list to this session — e.g. run from a plain terminal.
 if [ -f "$ROOT/scripts/doctor-env-freshness.ts" ]; then
   ENV_FRESH_OUT="$(cd "$ROOT" && npx tsx scripts/doctor-env-freshness.ts 2>/dev/null || true)"
-  case "$ENV_FRESH_OUT" in
-    WARN*)
-      warn "$(printf '%s' "$ENV_FRESH_OUT" | head -1 | sed 's/^WARN //')" \
-           "quit and reopen Claude Code (Cmd-Q) — MCP servers read .env only at subprocess startup, and /reload-plugins does NOT respawn them. Order matters: run /ace:setup FIRST, restart AFTER."
-      ;;
-    PASS*)
-      pass "$(printf '%s' "$ENV_FRESH_OUT" | head -1 | sed 's/^PASS //')"
-      ;;
-    *) : ;;  # SKIP / empty — nothing useful to report, stay quiet
-  esac
+  # The probe now emits MORE THAN ONE verdict line (env_freshness +
+  # cache_freshness, ace#970), so read every line — a `head -1` here would
+  # silently swallow the second.
+  while IFS= read -r _line; do
+    case "$_line" in
+      WARN*)
+        warn "$(printf '%s' "$_line" | sed 's/^WARN //')" \
+             "quit and reopen Claude Code (Cmd-Q) — MCP subprocesses bind their .env AND their module code at startup, and /reload-plugins does NOT respawn them. Order matters: run /ace:setup FIRST, restart AFTER."
+        ;;
+      PASS*)
+        pass "$(printf '%s' "$_line" | sed 's/^PASS //')"
+        ;;
+      *) : ;;  # SKIP / empty — nothing useful to report, stay quiet
+    esac
+  done <<EOF
+$ENV_FRESH_OUT
+EOF
 fi
 
 # --- Node / npm ---
