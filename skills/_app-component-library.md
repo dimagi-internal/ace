@@ -641,7 +641,16 @@ time; do not skip it because the app "looks right" structurally.
 > **conditional on the score** — a pass `label` relevant when
 > `#form/user_score >= <THRESHOLD>` AND a separate fail/retry `label` relevant
 > when below — NOT an unconditional "Well done!" that fires regardless of the
-> score; (e) give a failing FLW retry guidance. Do NOT try to enforce the gate
+> score; (e) give a failing FLW retry guidance that **MUST NOT contain the
+> correct answer** — not the correct option's label text, not a paraphrase that
+> uniquely identifies it. Point the worker back at the MODULE CONTENT instead:
+> the point of a fail message is to send them to the teaching, not to
+> substitute for it. Without this clause the natural authoring of "retry
+> guidance" re-teaches by restating the right answer and then invites another
+> attempt — and with no attempt limit, a worker who fails once is shown the
+> answer and passes on attempt 2, leaving the `user_score >= <THRESHOLD>`
+> wiring intact and completely inert (dimagi-internal/ace#1041; shipped through
+> two runs, including one promoted to golden). Do NOT try to enforce the gate
 > via in-app case-property sequential unlock — Learn forms carry no case blocks;
 > the gate is Connect-side. The in-app job is a genuine pre/post assessment
 > plus an honest pass/fail experience.

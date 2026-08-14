@@ -570,6 +570,30 @@ Generate the Learn (training) app from the PDD using the Nova plugin
        (the FAIL/retry message). A single result `label` with NO
        `relevant` condition (fires unconditionally) FAILS this assertion —
        that is the `assessment_gating` hard-gate trigger.
+    2b. **Assert the fail/retry label does NOT contain the correct answer**
+       (dimagi-internal/ace#1041). `get_form` returns both the option labels
+       and the fail label, so this is a deterministic string check on data
+       already in hand — not another adjective. The correct answer is
+       whatever literal the scoring `calculate` compares the question
+       against (CommCare has no correct-option primitive, so that literal
+       IS the answer key). Compare case-insensitively with whitespace
+       collapsed; a reworded restatement leaks just as much as a verbatim
+       one. On a hit, heal at L0 via `edit_field` to replace the retry text
+       with a pointer to the module content, then re-assert.
+
+       A leak makes the gate DECORATIVE while every structural check still
+       passes: with no attempt limit, a worker who fails once is shown the
+       answer and passes on attempt 2. Live case
+       (bednet-spot-check/20260729-0002): `fail_msg` restated the correct
+       option verbatim and told the worker to answer again — and the golden
+       run it forked from carries the identical leak.
+
+       The released-CCZ backstop is `lib/assessment-retry-leak.ts`
+       (`checkAssessmentRetryLeak`), run by `app-release-qa`, which catches
+       the class even when this step is skipped — which is exactly what
+       happened live, because the brief was hand-composed at L0 and the
+       `assessment-gate` component paragraph was never inserted.
+
     3. On a miss, heal at LEVEL 0 (`edit_field` / `add_fields` are
        available to the level-0 session that executes this skill):
        `edit_field({app_id, moduleUuid, formUuid, fieldUuid, updates})`
