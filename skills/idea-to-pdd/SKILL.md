@@ -609,6 +609,34 @@ Background and worked examples live in `docs/examples/pdd-stress-test-observatio
 1. **Executability** — *Could an LLO read this PDD on day one and start work without asking clarifying questions?*
    Common failure modes: recruitment criteria unspecified (how is "under-vaccinated" determined? self-report vs. card vs. records), language and translation not addressed, facilitator/FLW skill level not stated, consent process missing, venue selection unspecified, participant compensation not mentioned.
 
+   **REQUIRED — walk the form flow for ANSWERABILITY, screen by screen
+   (dimagi-internal/ace#1211).** Being fully *specified* is not the same as
+   being *answerable*. For each screen in the § Deliver App form flow, in order,
+   confirm every field on it can be answered from what the worker knows or has
+   observed **at that point in the real-world sequence**. A field whose value is
+   a function of a LATER screen's answer fails this check — regardless of
+   whether a recode or a relevance condition patches it downstream.
+
+   **The recode is the tell.** A spec that assigns a value and then reassigns it
+   later is asserting the first assignment was premature. On
+   `hh-poverty-targeting/20260812-2034` the flow asked `visit_outcome` as a
+   `select1` on screen 2 — before eligibility (4) and consent (5) — then recoded
+   it on screen 6, and this self-eval graded Executability **pass** while
+   *citing* §6.1 approvingly ("specified screen by screen with relevance
+   conditions"). That is ace#979 reintroduced against a binding reviewer
+   correction which had supplied the fix verbatim:
+
+   ```
+   visit_outcome = if(occupied='no','vacant',
+                   if(eligible_respondent='no','no_eligible_respondent',
+                   if(consent='no','refused','completed')))
+   ```
+
+   Catching it here is worth more than catching it downstream: Phase 3 builds
+   forms directly from this section, so a miss ships a form an FLW cannot
+   complete in order. Four gates missed it on that run and only Phase 2 caught
+   it, incidentally.
+
 2. **Verifiability** — *For every claimed output, is there a concrete artifact we can collect and check?*
    Common failure modes: "summary of key themes" with no format/length/template, photo capture without standardization protocol (lighting, angle, distance, color reference), self-reported education delivery with no audit mechanism, qualitative outputs with no path from raw data to AI-ingestable form.
 

@@ -1,6 +1,6 @@
 {
   "name": "ace",
-  "version": "0.13.824",
+  "version": "0.13.825",
   "engines": {
     "node": ">=22"
   },
