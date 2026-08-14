@@ -1594,6 +1594,8 @@ export class MobileClient {
     avdName?: string,
     opts?: RunRecipeOptions,
   ): Promise<RecipeRunResult> {
+    // The serial the recipe actually ran on, for provenance (ace#1396).
+    let lastDeviceSerial: string | undefined;
     // Pre-flight: refuse to run if the recipe carries a provenance
     // header that doesn't match the current selector map. Closes the
     // stale-Drive-artifact class from
@@ -1726,6 +1728,11 @@ export class MobileClient {
           log: logInfo,
           runOnce: async () => {
             const avdInfo = avdName ? await this.resolveAvdInfo(avdName) : undefined;
+            // Hoisted for provenance (ace#1396). A driver heal cold-boots the
+            // AVD and ROTATES the serial, so the value that matters is the one
+            // from the attempt that actually produced the artifacts — not the
+            // first resolution.
+            lastDeviceSerial = avdInfo?.serial ?? lastDeviceSerial;
             // Start/stop INSIDE runOnce, not around the whole try: a driver
             // heal cold-boots the AVD and rotates the serial, so each attempt
             // needs its own recorder. The `finally` also covers the throw
@@ -1840,6 +1847,10 @@ export class MobileClient {
             dispatchId,
             aceVersion: getAceVersion(),
             gitSha: getGitSha(),
+            // ace#1396: which device this actually ran on. Without it an
+            // artifact cannot be attributed after the fact, and on a
+            // multi-emulator host that is a real question.
+            deviceSerial: lastDeviceSerial,
             writtenAtEpochMs: Date.now(),
           });
           for (const v of videos) {
@@ -1889,6 +1900,8 @@ export class MobileClient {
       dispatchId,
       aceVersion: getAceVersion(),
       gitSha: getGitSha(),
+      // ace#1396: which device this actually ran on.
+      deviceSerial: lastDeviceSerial,
       writtenAtEpochMs: Date.now(),
     });
     for (const s of result.screenshots) {

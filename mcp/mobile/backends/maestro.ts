@@ -97,7 +97,7 @@ export class MaestroBackend {
       });
     }
 
-    const args = this.buildMaestroArgs(opts.adbPort, envVars, screenshotDir, recipePath);
+    const args = this.buildMaestroArgs(opts.adbPort, envVars, screenshotDir, recipePath, opts.serial);
     const r = await this.runMaestroChunk(args, screenshotDir, {
       recipePath, chunksCompleted: 0, chunksTotal: 1, lastCompletedScreenshot: null,
     });
@@ -177,6 +177,7 @@ export class MaestroBackend {
     envVars: Record<string, string>,
     screenshotDir: string,
     recipePath: string,
+    serial?: string,
   ): string[] {
     const args: string[] = [];
     // When the caller knows the target emulator's adb port, prefer
@@ -195,6 +196,19 @@ export class MaestroBackend {
     // them to a known-stable form here.
     if (typeof adbPort === 'number') {
       args.push('--host=localhost', `--port=${adbPort}`);
+    }
+    // PIN THE DEVICE (dimagi-internal/ace#1396). `--host`/`--port` route to an
+    // adb SERVER; they do not choose among the devices that server can see. On
+    // a host where more than one is visible, Maestro auto-selects — and on
+    // 2026-08-14 that meant two emulators both running ACE_Pixel_API_34, both
+    // registered to the SAME ${ACE_E2E_PHONE} test user. A recipe landing on
+    // the wrong one still logs in, still finds the opp tile, and can still
+    // SUBMIT A REAL DELIVER VISIT against the real opportunity — consuming a
+    // one-way precondition or a payable-visit quota on another session's
+    // device, silently. ACE has known the serial all along; it just was not
+    // passed to the CLI. Top-level flag, so it goes before `test`.
+    if (serial) {
+      args.push('--device', serial);
     }
     args.push('test', '--no-ansi');
     for (const [k, v] of Object.entries(envVars)) {
@@ -246,7 +260,7 @@ export class MaestroBackend {
     // to the simple single-invocation path so we don't pay the
     // chunk-write overhead for no benefit.
     if (chunks.length === 1 && !chunks[0].screenshotName) {
-      const args = this.buildMaestroArgs(opts.adbPort, envVars, screenshotDir, absoluteRecipePath);
+      const args = this.buildMaestroArgs(opts.adbPort, envVars, screenshotDir, absoluteRecipePath, opts.serial);
       const r = await this.runMaestroChunk(args, screenshotDir, {
         recipePath: absoluteRecipePath, chunksCompleted: 0, chunksTotal: 1, lastCompletedScreenshot: null,
       });
@@ -320,7 +334,7 @@ export class MaestroBackend {
         const chunkPath = path.join(chunkDir, `chunk-${chunk.index}.yaml`);
         fs.writeFileSync(chunkPath, chunk.yaml, 'utf8');
 
-        const args = this.buildMaestroArgs(opts.adbPort, envVars, screenshotDir, chunkPath);
+        const args = this.buildMaestroArgs(opts.adbPort, envVars, screenshotDir, chunkPath, opts.serial);
         const r = await this.runMaestroChunk(args, screenshotDir, {
           recipePath: absoluteRecipePath,
           chunksCompleted,
