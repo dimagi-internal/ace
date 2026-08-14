@@ -148,3 +148,84 @@ describe('dump-atom-schemas', () => {
     expect(blanks).toBeLessThanOrEqual(290);
   });
 });
+
+// ---------------------------------------------------------------------------
+// dimagi-internal/ace#1278 — a field whose Zod value is a NAMED CONST or a
+// nested schema (`flags: VerificationFlagsZ`, `learn_app: HqAppZ.extend({…})`)
+// rendered no row at all, while the rest of the table rendered normally. That
+// is worse than #757's `_no parameters_`, which at least announced itself: a
+// silently short table is indistinguishable from a complete one, so a skill
+// author grepping the doc CLAUDE.md mandates concludes `connect_create_opportunity`
+// has no app-wire fields — the two fields that are write-once at create and
+// unrecoverable-without-delete when wrong.
+//
+// This is a FLOOR, deliberately computed independently of the dump script's
+// own parser: if the two disagree, the floor wins and this fails.
+// ---------------------------------------------------------------------------
+
+describe('atom-schemas floor: named-const fields must still render a row (#1278)', () => {
+  const SERVER_FILES = [
+    'mcp/google-drive-server.ts',
+    'mcp/connect-server.ts',
+    'mcp/ocs-server.ts',
+    'mcp/mobile-server.ts',
+    'mcp/decisions-server.ts',
+  ];
+
+  /**
+   * Schema fields whose value references a named Zod const.
+   *
+   * Keyed on the repo's `…Z` naming convention for Zod schema constants
+   * (`VerificationFlagsZ`, `HqAppZ`) rather than "any capitalized identifier",
+   * which also matches ordinary function params and object literals
+   * (`scopes: SCOPES`, `body: Readable…`, `args: AppendRowsArgs`) and would
+   * make this floor permanently noisy. Not line-anchored: an inline schema
+   * object (`{ organization_slug: z.string(), flags: VerificationFlagsZ }`)
+   * puts the field mid-line.
+   */
+  function namedConstFields(src: string): string[] {
+    const out = new Set<string>();
+    for (const m of src.matchAll(/([a-z_][a-zA-Z0-9_]*)\s*:\s*([A-Z][A-Za-z0-9_]*Z)\b/g)) {
+      out.add(m[1]);
+    }
+    return [...out];
+  }
+
+  it('every field referencing a named Zod const appears as a row somewhere in the doc', () => {
+    const doc = fs.readFileSync(path.join(REPO_ROOT, 'docs/atom-schemas.md'), 'utf-8');
+    const missing: string[] = [];
+    for (const file of SERVER_FILES) {
+      const src = fs.readFileSync(path.join(REPO_ROOT, file), 'utf-8');
+      for (const field of namedConstFields(src)) {
+        if (!doc.includes(`\`${field}\``)) missing.push(`${file}: ${field}`);
+      }
+    }
+    expect(
+      missing,
+      `these schema fields render NO row in docs/atom-schemas.md — the table looks ` +
+        `complete while omitting them (ace#1278):\n  ${missing.join('\n  ')}`,
+    ).toEqual([]);
+  });
+
+  it('connect_create_opportunity documents both app-wire fields', () => {
+    const doc = fs.readFileSync(path.join(REPO_ROOT, 'docs/atom-schemas.md'), 'utf-8');
+    const section = doc.split('### `connect_create_opportunity`')[1]?.split('\n### ')[0] ?? '';
+    expect(section).toContain('`learn_app`');
+    expect(section).toContain('`deliver_app`');
+  });
+
+  it('connect_set_verification_flags documents its flags payload', () => {
+    const doc = fs.readFileSync(path.join(REPO_ROOT, 'docs/atom-schemas.md'), 'utf-8');
+    const section =
+      doc.split('### `connect_set_verification_flags`')[1]?.split('\n### ')[0] ?? '';
+    expect(section).toContain('`flags`');
+  });
+
+  it('does not truncate an atom description mid-contract', () => {
+    // The descriptions are load-bearing contracts, not blurbs: the operative
+    // half of connect_set_verification_flags' (which flags are refused, the
+    // 25-char name cap, the MINUTES unit) sat past the old 400-char cut.
+    const doc = fs.readFileSync(path.join(REPO_ROOT, 'docs/atom-schemas.md'), 'utf-8');
+    expect(doc).not.toContain('…\n');
+  });
+});

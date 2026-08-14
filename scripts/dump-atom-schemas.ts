@@ -251,6 +251,44 @@ function extractDescription(args: string): string {
  * looked for `{`, which mis-located the schema on the no-description form
  * (the connect_create_opportunity `_no parameters_` mis-read — jjackson/ace#757).
  */
+/**
+ * The text of a `.describe()` applied DIRECTLY to a field's schema — never one
+ * nested inside another modifier's arguments.
+ *
+ * `learn_app: HqAppZ.extend({ description: z.string().describe('Required — …') })`
+ * has a describe belonging to a CHILD field. A naive "first `.describe(` in the
+ * chain" grab attributes the child's prose to the parent, which is the same
+ * "stray field-level describe leaks into the slot" mis-attribution #757 called
+ * out. So scan at paren-depth 0 only.
+ */
+function ownDescribeText(chain: string): string | null {
+  let depth = 0;
+  let inString: string | null = null;
+  let escape = false;
+  for (let i = 0; i < chain.length; i++) {
+    const c = chain[i];
+    if (escape) { escape = false; continue; }
+    if (inString) {
+      if (c === '\\') escape = true;
+      else if (c === inString) inString = null;
+      continue;
+    }
+    if (c === '"' || c === "'" || c === '`') { inString = c; continue; }
+    if (c === '(') {
+      if (depth === 0 && /\.describe\s*$/.test(chain.slice(0, i))) {
+        // The argument starts here; read the first string literal.
+        const rest = chain.slice(i + 1);
+        const m = /^\s*(['"`])((?:\\.|(?!\1)[\s\S])*)\1/.exec(rest);
+        if (m) return unescapeStringLiteral(m[2]);
+      }
+      depth++;
+      continue;
+    }
+    if (c === ')') { depth--; continue; }
+  }
+  return null;
+}
+
 function extractFields(args: string): AtomField[] {
   const nameLex = /(['"`])((?:\\.|(?!\1)[\s\S])*)\1/g;
   if (!nameLex.exec(args)) return []; // no atom name string
@@ -346,6 +384,46 @@ function extractFields(args: string): AtomField[] {
       : '';
     out.push({ name, typeHint, optional, description });
   }
+  // SECOND PASS — fields whose value is a NAMED CONST or nested schema
+  // (`flags: VerificationFlagsZ`, `learn_app: HqAppZ.extend({…})`).
+  //
+  // `fieldRe` above only matches a value that STARTS `z.<type>(`, so these
+  // rendered no row at all while the rest of the table rendered normally
+  // (ace#1278). That is worse than #757's `_no parameters_`: a silently short
+  // table is indistinguishable from a complete one, so a skill author grepping
+  // this doc concluded `connect_create_opportunity` takes no app-wire fields —
+  // the two that are write-once at create and unrecoverable when wrong.
+  //
+  // The row names the referenced schema rather than expanding it. Expansion
+  // would mean resolving arbitrary Zod composition statically; a row that says
+  // "this field exists and here is the schema to look up" is the honest floor,
+  // and `test/scripts/dump-atom-schemas.test.ts` enforces that no such field is
+  // dropped.
+  const captured = new Set(out.map((f) => f.name));
+  const CONST_FIELD = new RegExp(
+    String.raw`([a-zA-Z_][a-zA-Z0-9_]*)\s*:\s*([A-Z][A-Za-z0-9_]*Z)\b((?:\s*\.\s*[a-zA-Z]+\s*` +
+      ARG_LIST +
+      String.raw`)*)`,
+    'g',
+  );
+  let cm: RegExpExecArray | null;
+  while ((cm = CONST_FIELD.exec(block)) !== null) {
+    const name = cm[1];
+    if (captured.has(name)) continue;
+    captured.add(name);
+    const schemaRef = cm[2];
+    const chain = cm[3] ?? '';
+    const own = ownDescribeText(chain);
+    out.push({
+      name,
+      typeHint: schemaRef,
+      optional: /\.optional\s*\(/.test(chain),
+      description:
+        own ??
+        `Shared schema \`${schemaRef}\` — see its definition in the server source for the full shape.`,
+    });
+  }
+
   return out;
 }
 
@@ -407,13 +485,12 @@ function renderMarkdown(): string {
       lines.push(`### \`${atom.name}\``);
       lines.push('');
       if (atom.description) {
-        // Trim very long descriptions to ~400 chars for readability;
-        // the full description lives in the server source.
-        const trimmed =
-          atom.description.length > 400
-            ? atom.description.slice(0, 400) + '…'
-            : atom.description;
-        lines.push(trimmed);
+        // NOT truncated (ace#1278). These descriptions are load-bearing
+        // contracts, not blurbs — the operative half of
+        // `connect_set_verification_flags`' (which flags are refused, the
+        // 25-char name cap, the MINUTES unit) sat past the old 400-char cut,
+        // in a doc CLAUDE.md mandates grepping INSTEAD of reading the source.
+        lines.push(atom.description);
         lines.push('');
       }
       if (atom.fields.length === 0) {
@@ -424,11 +501,12 @@ function renderMarkdown(): string {
       lines.push('| Field | Type | Required | Description |');
       lines.push('|-------|------|----------|-------------|');
       for (const f of atom.fields) {
-        const desc = f.description.length > 200
-          ? f.description.slice(0, 200) + '…'
-          : f.description;
+        // Field descriptions carry the same contract weight as the atom's
+        // (ace#1278) — and a table cell cannot contain a newline, so the only
+        // reshaping needed is escaping pipes.
+        const desc = f.description.replace(/\|/g, '\\|');
         lines.push(
-          `| \`${f.name}\` | \`z.${f.typeHint}\` | ${f.optional ? 'optional' : '**required**'} | ${desc || '_—_'} |`,
+          `| \`${f.name}\` | \`${/^[A-Z]/.test(f.typeHint) ? f.typeHint : `z.${f.typeHint}`}\` | ${f.optional ? 'optional' : '**required**'} | ${desc || '_—_'} |`,
         );
       }
       lines.push('');
