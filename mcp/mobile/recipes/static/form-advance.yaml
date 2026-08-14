@@ -13,7 +13,8 @@
 # atlas walks Deliver.
 #
 # Parameters — REQUIRED AT EVERY CALL SITE:
-#   ${SCREENSHOT_NAME} — name for the screenshot taken after advancing.
+#   ${SCREENSHOT_NAME} — name for the screenshot of the screen being LEFT,
+#                        captured BEFORE the advance (dimagi-internal/ace#1291).
 #                        Composer fills with e.g. "form-q3-photo-rendered"
 #                        or "form-q11-yes-conditional-q12-shown".
 #
@@ -40,14 +41,29 @@
 #     id: form-required-warning` after advancing on questions that DO
 #     require input — confirms the answer registered.
 #   - Form auto-finalize: tapping next on the last question returns to
-#     StandardHomeActivity (no animation back to a "next question"). If
-#     the caller doesn't expect this, the post-tap `takeScreenshot` will
-#     show the home tiles, not a form question — useful structural
-#     signal for "form complete."
+#     StandardHomeActivity (no animation back to a "next question").
+#     Since ace#1291 the screenshot is taken BEFORE the tap, so it shows
+#     the last QUESTION rather than the home tiles. Callers that want the
+#     post-finalize surface must assert on the home tile directly
+#     (`learn-home-start-tile` / `deliver-home-job-card`) — a screenshot
+#     named for the question it left is not a "form complete" signal.
+#
+# SCREENSHOT ORDER — BEFORE the tap, deliberately (dimagi-internal/ace#1291).
+# This recipe used to tap first and capture second, so every frame was saved
+# under the name of the screen it had just LEFT while showing the one it
+# advanced TO. Verified visually on bednet-check-2-visit/20260814-0357:
+# `journey-learn-m1-intro.png` held the b1 question, and
+# `journey-learn-m2-t2-payment.png` held t3 — a systematic one-screen offset
+# across all 8 teaching screens and every `*-answered` step. The manifest is
+# the input contract for `training-flw-guide` and `training-deck-generate`,
+# both of which caption by step name, so a deck built from it asserted the
+# wrong screen for every advance-derived frame — the ace#866 class, and
+# invisible unless someone opens the PNGs. Capturing first also means the
+# FIRST screen of a form is finally captured under its own name.
 appId: org.commcare.dalvik
 ---
+- takeScreenshot: "${SCREENSHOT_NAME}"
 - tapOn:
     ${SELECTOR:form-nav-next}
 - waitForAnimationToEnd:
     timeout: 3000
-- takeScreenshot: "${SCREENSHOT_NAME}"

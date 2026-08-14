@@ -1300,3 +1300,55 @@ describe('two-leg Deliver chain continuity (#1191)', () => {
     expect(anchorsIn(c.pre)).toEqual(expect.arrayContaining(['deliver-home-job-card']));
   });
 });
+
+/**
+ * dimagi-internal/ace#1291 — `form-advance.yaml` tapped `nav_btn_next` and
+ * THEN took its screenshot, so every frame was saved under the name of the
+ * screen it had just LEFT while showing the one it advanced TO.
+ *
+ * Verified visually on bednet-check-2-visit/20260814-0357, Learn leg:
+ *
+ *   journey-learn-m1-intro.png        held the b1 question, not the intro
+ *   journey-learn-m2-t2-payment.png   held t3, not t2
+ *
+ * — a systematic one-screen offset across all 8 teaching screens and every
+ * `*-answered` step.
+ *
+ * It matters because the manifest is the input contract for
+ * `training-flw-guide` and `training-deck-generate`, both of which caption
+ * slides and steps BY STEP NAME. A deck built from that manifest asserts the
+ * wrong screen for every advance-derived frame — the ace#866 class (presenting
+ * frames as moments they are not), and invisible unless someone opens the
+ * PNGs. Capturing first also means the FIRST screen of a form is finally
+ * captured under its own name.
+ */
+describe('form-advance captures BEFORE it advances (#1291)', () => {
+  const steps = () => {
+    const text = readFileSync(`${STATIC_DIR}form-advance.yaml`, 'utf8');
+    const body = text.split(/^---$/m).slice(1).join('---');
+    return parseYaml(body) as Array<Record<string, unknown>>;
+  };
+
+  it('takeScreenshot is the FIRST step, before any tap', () => {
+    const s = steps();
+    expect(Object.keys(s[0])[0]).toBe('takeScreenshot');
+  });
+
+  it('the tap comes after the capture', () => {
+    const s = steps();
+    const shot = s.findIndex((x) => 'takeScreenshot' in x);
+    const tap = s.findIndex((x) => 'tapOn' in x);
+    expect(shot).toBeGreaterThanOrEqual(0);
+    expect(tap).toBeGreaterThan(shot);
+  });
+
+  it('still binds the caller-supplied name (the ace#1033 guard is intact)', () => {
+    const s = steps();
+    expect(s[0].takeScreenshot).toBe('${SCREENSHOT_NAME}');
+  });
+
+  it('still advances via the resource-id selector, not a text match', () => {
+    const raw = readFileSync(`${STATIC_DIR}form-advance.yaml`, 'utf8');
+    expect(raw).toMatch(/\$\{SELECTOR:form-nav-next\}/);
+  });
+});
