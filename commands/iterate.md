@@ -52,6 +52,19 @@ its frozen-version streak is superseded).
 - `--runner web|local` — where runs execute (default `web`; the observable
   runner). `local` runs the same first-class operation in a fresh local
   process.
+
+  **Precedence is explicit, and an inherited value is announced (ace#1276).**
+  Resolve it with `resolveRunner` from `lib/iterate-runner-precedence.ts`:
+  an explicit `--runner` always wins silently; `--new-golden` takes the
+  DEFAULT and says it is discarding the archived value; a `runner:` read from
+  `iterate-state.yaml` on a `--resume` is honoured but **warned** when it
+  differs from the default. Before this, a `runner: local` carried in from an
+  archived campaign silently selected the failure-prone path with no warning
+  — even on a fresh `--new-golden` lock — so the runner documented as *the*
+  observable one was the one you didn't get. On the bednet campaign that cost
+  two dead attempts and ~50 min of Nova/HQ work stranded: a 41-minute run
+  whose entire log was the 15 bytes `Execution error`, and one killed by the
+  operator's session limit nine minutes in with artifacts already on Drive.
 - `--window N` — rolling window size (default `10`). Health is read over the
   last N iterations.
 - `--pass-target <0..1>` — pass rate required to converge (default `0.8`).
