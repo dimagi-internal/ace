@@ -308,6 +308,36 @@ orchestrator from per-skill QA + eval verdicts. -->
    (`update_yaml_file two-level merge replaces a phase child WHOLESALE`)
    and jjackson/ace#572 / #587.
 
+## HQ-id stability — EVERY re-upload rewrites the artifacts (dimagi-internal/ace#1239)
+
+The summary's ids are only trustworthy if the re-upload path owns the
+bookkeeping. The obligation below binds to the ACT of re-uploading a
+Phase 3 app, **wherever it happens** — Step 4.6's in-skill path, a Step
+4g split, or a mid-Phase-3 repair re-upload performed while debugging
+`app-release` / `app-release-qa`, long after Step 5 first wrote the
+summary. Whoever re-uploads MUST, in the same breath:
+
+1. **Rewrite `app-deploy_summary.md` frontmatter**: the new id into
+   `<app>_app_id` / `<app>_app_url`, the old id APPENDED to
+   `<app>_superseded_hq_app_id`, and `uploaded_at` refreshed. If the
+   body claims "each app was uploaded exactly once", delete that claim —
+   it is now false and nothing else marks it stale.
+2. **Patch `run_state.yaml` `products.apps.<app>.hq_app_id`** (merge:
+   `deep`, per Step 6).
+3. **Never leave a prose note as the only guard.** A hand-written
+   `FINAL_IDS:` warning in run_state is a manual guard doing a machine's
+   job — the live case (spark-facilitator/20260812-1635, Deliver
+   uploaded four times) left the summary pointing at the superseded
+   original while every downstream mutation atom would have returned
+   200 against the wrong app (the ace#1046 silent-wrong-target class,
+   arriving through a stale artifact).
+
+Consumers: `run_state.yaml` is the run's source of truth (CLAUDE.md);
+downstream skills treat `products.apps.*.hq_app_id` as PRIMARY and this
+summary as the cross-check — and may assert their target id is absent
+from `<app>_superseded_hq_app_id` before mutating. See
+`app-hq-settings` Step 1 for the consumer-side contract.
+
 <!-- 0.13.116: gate-brief write step + ## Gate Brief section removed.
 At the Phase 3→4 Pause Point, the orchestrator composes the
 pause-time summary from this skill's eval verdict

@@ -68,8 +68,8 @@ that track the two toggles so the residual state reflects reality.
 
 | Source | Artifact | Used for |
 |---|---|---|
-| Phase 3 § Step 2 | `3-commcare/app-deploy_summary.md` frontmatter | `hq_domain`, `learn_app_id`, `deliver_app_id` (the draft apps to mutate) |
-| Phase 3 § Step 2 | `run_state.yaml` `phases.commcare-setup.products.apps` | cross-check of the same HQ app ids + friendly names |
+| Phase 3 § Step 2 | `run_state.yaml` `phases.commcare-setup.products.apps` | **PRIMARY**: `hq_app_id` per app (the draft apps to mutate) — run_state is the run's source of truth (CLAUDE.md; ace#1239) |
+| Phase 3 § Step 2 | `3-commcare/app-deploy_summary.md` frontmatter | cross-check: `hq_domain` + the same app ids + `*_superseded_hq_app_id` lists |
 | Phase 3 residual tracking | `run_state.yaml` `phases.commcare-setup.residuals[]` | the camera-only + grid entries this skill resolves once applied |
 | Phase 1 (context) | `1-design/idea-to-pdd.md` | whether the PDD demands camera-only capture — the acquire pass is PDD-conditional, mirroring `app-release-qa` Step 4 |
 | Env | `ACE_HQ_USERNAME` / `ACE_HQ_API_KEY` | required so `run-form-walk` can overlay draft `form_unique_id` + `module_unique_id` from the draft-app API (issue #108) |
@@ -116,11 +116,26 @@ irrelevant here (no orphan-pruning hazard as in `app-multimedia-coverage`
 
 ### Step 1: Read HQ app ids
 
-Read `3-commcare/app-deploy_summary.md` frontmatter for `hq_domain`,
-`learn_app_id`, and `deliver_app_id`. Cross-check against
-`run_state.yaml` `phases.commcare-setup.products.apps.{learn,deliver}.hq_app_id`
-— if they disagree, halt (a re-upload happened after the summary was
-written; re-read the canonical ids per `app-deploy` § HQ-id stability).
+Read `run_state.yaml`
+`phases.commcare-setup.products.apps.{learn,deliver}.hq_app_id` as the
+**primary** id source (run_state is the run's source of truth —
+dimagi-internal/ace#1239 inverted the old summary-first precedence,
+which sent every downstream skill to a stale id after a mid-Phase-3
+repair re-upload). Read `3-commcare/app-deploy_summary.md` frontmatter
+for `hq_domain` and as the cross-check. On disagreement:
+
+- If the summary's id appears in run_state's or the summary's own
+  `<app>_superseded_hq_app_id` list → the summary is stale, not
+  corrupt: **proceed with the run_state id**, log
+  `[WARN] app-deploy_summary.md stale (superseded id <old>; using
+  <new>)`, and note it in this skill's summary so the bookkeeping gap
+  is visible.
+- If the disagreement is NOT explained by a superseded-id entry (or
+  run_state has no id at all) → **halt**: neither source can be
+  trusted, and mutating a guessed app id returns 200 against the wrong
+  app (the ace#1046 silent-wrong-target class). Name both values in
+  the halt. Re-upload bookkeeping contract:
+  `app-deploy` § HQ-id stability.
 
 Read `1-design/idea-to-pdd.md` (or the run's PDD copy) to decide whether
 camera-only capture is demanded. If the PDD does NOT demand camera-only
