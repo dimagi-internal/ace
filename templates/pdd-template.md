@@ -217,14 +217,14 @@ tuple, out-of-band.
 | payment_rate_min | [lower bound of the proposed band] |
 | payment_rate_max | [upper bound] |
 | payment_rate_currency | [e.g. USD] |
-| payment_rate_unit | [what one payment buys, e.g. "verified follow-up visit"] |
+| payment_rate_unit | [what one payment buys — must be the SAME grain as `entity_id_grain` below, because Connect resolves payable units by `entity_id`. If the grain keys on a date, the unit is a worker-DAY (e.g. "verified follow-up day"), not a visit, however the Deliver app describes it. ace#1420.] |
 | daily_cap_per_flw | [max payable units per FLW per day] |
 | total_cap_per_flw | [max payable units per FLW over the opportunity] |
 | flw_count_min | [cohort size lower bound] |
 | flw_count_max | [upper bound] |
 | expected_reach_min | [beneficiaries/entities lower bound] |
 | expected_reach_max | [upper bound] |
-| entity_id_grain | [the payment dedup grain in words, e.g. "worker username + encounter date"] |
+| entity_id_grain | [the payment dedup grain in words, e.g. "worker username + encounter date" — note this example collapses several same-day events by one worker into ONE payment entity, so `payment_rate_unit` above must be quoted per DAY. For a per-event unit, the grain needs a per-event key (e.g. "worker username + visit uuid").] |
 | cap_rationale | [REQUIRED only when a cap cannot bind — i.e. `flw_count_min × total_cap_per_flw` exceeds `expected_reach_max`. Say why it is deliberately non-binding, or correct the numbers. Picking the value is a program decision; noticing the incoherence is not optional.] |
 
 ## Budget

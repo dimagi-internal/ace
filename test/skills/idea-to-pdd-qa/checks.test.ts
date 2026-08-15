@@ -274,8 +274,8 @@ describe('checkReviewerCommentTableIfReferenced', () => {
 });
 
 describe('CHECKS array', () => {
-  test('exports eight checks in stable order', () => {
-    expect(CHECKS).toHaveLength(8);
+  test('exports nine checks in stable order', () => {
+    expect(CHECKS).toHaveLength(9);
     const ids = CHECKS.map((c) => c.id);
     expect(ids).toEqual([
       'pdd_is_native_google_doc',
@@ -285,6 +285,7 @@ describe('CHECKS array', () => {
       'success_metrics_table_populated',
       'evidence_model_layered',
       'program_parameters_coherent',
+      'payment_unit_matches_entity_grain',
       'reviewer_comment_table_if_referenced',
     ]);
   });
