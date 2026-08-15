@@ -1,5 +1,5 @@
 /**
- * Containment checks for LLM-supplied file paths and artifact names.
+ * Containment checks for LLM-supplied file paths, artifact names and hosts.
  *
  * ace#1110 (2026-07-31 audit, F2/F4/F6/F7/F9/F10). MCP tool arguments come from
  * the ACE agent, which routinely ingests untrusted content — inbound email in
@@ -170,6 +170,70 @@ export function assertContainedPath(p: string, roots: readonly string[], opts: C
     throw new PathContainmentError(
       `${opts.atom}: "${p}" resolves to ${resolved}, which is outside every allowed root ` +
         `(${roots.join(', ')}). ace#1110.`,
+    );
+  }
+}
+
+/**
+ * Hosts an OCS Custom Action may be pointed at.
+ *
+ * ace#1110 F-series, the URL half. `ocs_add_custom_action` configures a
+ * PRODUCTION chatbot to call a host as an LLM-invocable tool — so an
+ * attacker-chosen `server_url` becomes a tool the bot will call with
+ * participant and session data, on every conversation, long after the call
+ * that configured it. That is a durable exfil channel, not a one-shot read.
+ *
+ * Enumerable, unlike the read-side roots question: the atom has ZERO callers in
+ * skills/agents/commands, and its own description says what it exists for —
+ * "for Connect Interviews this is how the bot posts session_completion or
+ * 24hr-expiry back to HQ's Inbound API". So the legitimate targets are
+ * Dimagi-operated APIs, and nothing breaks by saying so. Same reasoning that
+ * made removing `jar_path` safe.
+ */
+export const ALLOWED_ACTION_HOST_SUFFIXES: readonly string[] = [
+  'commcarehq.org',
+  'dimagi.com',
+  'dimagi-ai.com',
+];
+
+export interface ActionHostOpts {
+  atom: string;
+  /** Extra hosts to permit — e.g. the configured HQ base URL's host. */
+  extraHosts?: readonly string[];
+}
+
+/**
+ * Require `rawUrl` to be an https URL on a Dimagi-operated host.
+ *
+ * Suffix matching is anchored on a dot so `evil-dimagi.com` and
+ * `dimagi.com.attacker.net` are both refused — a bare `endsWith` would accept
+ * the first and a bare `includes` both.
+ */
+export function assertAllowedActionHost(rawUrl: string, opts: ActionHostOpts): void {
+  let url: URL;
+  try {
+    url = new URL(rawUrl);
+  } catch {
+    throw new PathContainmentError(`${opts.atom}: "${rawUrl}" is not a valid URL.`);
+  }
+  if (url.protocol !== 'https:') {
+    throw new PathContainmentError(
+      `${opts.atom}: refusing "${rawUrl}" — a production chatbot's tool endpoint must be https, ` +
+        `not ${url.protocol.replace(':', '')} (ace#1110).`,
+    );
+  }
+  const host = url.hostname.toLowerCase();
+  const allowed = [
+    ...ALLOWED_ACTION_HOST_SUFFIXES,
+    ...(opts.extraHosts ?? []).map((h) => h.toLowerCase()),
+  ];
+  const ok = allowed.some((suffix) => host === suffix || host.endsWith(`.${suffix}`));
+  if (!ok) {
+    throw new PathContainmentError(
+      `${opts.atom}: refusing to point a production chatbot's tool at "${host}" — ` +
+        `allowed hosts are ${allowed.join(', ')} (and their subdomains). This atom makes the ` +
+        `host an LLM-invocable tool the bot calls with participant and session data on every ` +
+        `conversation, so an arbitrary host here is a durable exfil channel (ace#1110).`,
     );
   }
 }
