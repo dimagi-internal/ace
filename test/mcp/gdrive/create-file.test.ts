@@ -183,7 +183,11 @@ describe('drive_create_file', () => {
       );
 
       expect(r.id).toBe('new-id');
-      expect(fakeDrive.files.list).toHaveBeenCalledTimes(2);
+      // 3 = the failed pre-create lookup, its retry, and the post-create
+      // reconcile listing added by ace#1417. What this test is about is the
+      // ONE backoff below; the extra call is the reconcile pass, which sees a
+      // response the mock never scripted and correctly does nothing.
+      expect(fakeDrive.files.list).toHaveBeenCalledTimes(3);
       expect(delays).toEqual([1000]); // one backoff before the second attempt
     });
 
