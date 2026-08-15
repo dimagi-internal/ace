@@ -15,7 +15,7 @@ ACE has one architectural rule: **anything that calls `Agent` must run at level 
 | `connect-setup` (Phase 4) | no | subagent | `Agent(connect-setup)` from level 0 |
 | `ocs-setup` (Phase 5) | no | subagent | `Agent(ocs-setup)` from level 0 |
 | `qa-and-training` (Phase 6) | no | subagent | `Agent(qa-and-training)` from level 0 |
-| `synthetic-data-and-workflows` (Phase 7) | no | subagent | `Agent(synthetic-data-and-workflows)` from level 0 |
+| `synthetic-data-and-workflows` (Phase 7) | yes — `Agent(canopy:ddd)` is the render+converge loop | procedure doc | orchestrator reads it and executes inline |
 | `solicitation-management` (Phase 8) | no | subagent | `Agent(solicitation-management)` from level 0 |
 | `execution-manager` (Phase 9) | no | subagent | `Agent(execution-manager)` from level 0 |
 | `closeout` (Phase 10) | no | subagent | `Agent(closeout)` from level 0 |

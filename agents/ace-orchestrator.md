@@ -1084,17 +1084,19 @@ freeze `inputs/`, and overloading it blurs per-opp vs per-run state.
 
 ### Phase 7: Synthetic Data and Workflows
 
-**Dispatch:** `Agent(synthetic-data-and-workflows)`.
+**Dispatch:** **inline procedure-doc `agents/synthetic-data-and-workflows.md`** — do NOT call `Agent(synthetic-data-and-workflows)`. Level-0 constraint, see Notes.
 
 **Inputs (inline at handoff):** PDD, Phase-4 Connect identifiers (`4-connect/connect-opp-setup.md`), `run_state.yaml`.
 
-**Atoms / skills used (orchestrator-visible only):** `Agent(synthetic-data-and-workflows)`. Internally: authors a story-coherent synthetic-data manifest from the PDD, generates fixture data via the connect-labs MCP, instantiates the LLO weekly review + program admin audit workflows, polishes them per-opp, and runs persona walkthroughs that produce stakeholder-ready HTML decks.
+**Atoms / skills used (orchestrator-visible only):** read + execute `agents/synthetic-data-and-workflows.md` inline. Internally: authors a story-coherent synthetic-data manifest from the PDD, generates fixture data via the connect-labs MCP, instantiates the LLO weekly review + program admin audit workflows, polishes them per-opp, and runs persona walkthroughs that produce stakeholder-ready HTML decks.
 
 **Products:** synthetic narrative manifest; fixture FLW/visit/payment data; two demonstrative workflows (`llo_weekly_review`, `program_admin_audit`); per-persona walkthrough HTML decks; single one-page summary (`7-synthetic/synthetic-summary.md`).
 
 **Gate:** **no phase pause** — `/ace:run` proceeds straight from Phase 7 to Phase 8 without halting (no run-time gate; see § Pause Points in reference).
 
-**Notes:** **No irreversible external action.** The connect-labs `SyntheticOpportunity` row is reversible via `synthetic_disable`; workflows can be deleted via `workflow_delete`. See `agents/synthetic-data-and-workflows.md`.
+**Notes:** **Level-0 constraint — Phase 7 is a procedure doc, not a subagent.** Its Step 3 dispatches `Agent(canopy:ddd)` (and that loop's per-scene judges), and the `Agent` tool is unavailable to subagents. Dispatching Phase 7 as a subagent leaves only a single render+judge pass reachable — no loop, no convergence rule, no stopping rule — which is what `spark-facilitator/20260813-2126` hand-drove for four iterations before a human halted it. Same reason Phase 3 is inline.
+
+**No irreversible external action.** The connect-labs `SyntheticOpportunity` row is reversible via `synthetic_disable`; workflows can be deleted via `workflow_delete`. See `agents/synthetic-data-and-workflows.md`.
 
 ### Phase 8: Solicitation Management
 

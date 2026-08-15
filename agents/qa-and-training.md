@@ -601,7 +601,7 @@ Phase 6 has no named gate (`/ace:qa-deep` is the actual quality gate, run separa
 
 This is a subagent dispatched from level 0 by `ace-orchestrator`. It runs
 its skills inline using their respective MCP tools (`ace-mobile`,
-`ace-gdrive`). It does NOT call `Agent(...)` further.
+`ace-gdrive`). It does NOT dispatch any further subagents.
 
 ## History
 
