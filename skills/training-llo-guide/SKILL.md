@@ -190,7 +190,27 @@ For LLO operators overseeing FLW deployment of this opportunity.
 
 9. **Hand off.** Print Drive URL + verdict summary.
 
+
+10. **Share it anyone-with-link.** The LLO manager guide is a deliverable a partner coordinator opens from
+   the run summary — a private Doc opens only for accounts explicitly shared on
+   it, so a recipient following the link hits *You need access*. Nothing
+   upstream catches this: the doc exists, has the right words, passes every
+   content eval, and returns a 401 that a link checker reasonably reads as
+   "auth-gated" (the correct verdict for a Connect/HQ/OCS login gate, the wrong
+   one here).
+
+   ```
+   drive_set_anyone_with_link(fileId: <docId>, role: 'commenter')
+   ```
+
+   `role: 'commenter'` rather than `reader` — a partner reviewing a training
+   deliverable should be able to leave feedback on it. Do this at creation, not
+   as a cleanup step: on hh-poverty-targeting/20260722-1341 all six training
+   links shipped private and were shared by hand afterwards. (ace#902; enforced
+   by `test/lib/recipient-facing-artifacts.test.ts`.)
+
 ## MCP Tools Used
+- `ace-gdrive`: `drive_set_anyone_with_link` — share the deliverable (ace#902).
 
 - `ace-gdrive`: `drive_read_file`, `drive_create_doc_from_markdown` (the guide —
   human-facing prose, must render), `docs_batch_update` (step 7b — the

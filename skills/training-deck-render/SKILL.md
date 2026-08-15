@@ -150,6 +150,19 @@ when it rebuilds stencils, so re-rendered decks self-clean.
 
 ## Same-link re-render
 
+**Share the rendered deck anyone-with-link.** The pre-flight share above is
+for the IMAGES the Slides importer fetches — it does not share the deck. The
+deck is what the partner actually opens from the run summary, so share it too,
+once, right after `slides_copy_template` returns:
+
+```
+drive_set_anyone_with_link(fileId: <presentationId>, role: 'commenter')
+```
+
+`commenter` so a reviewer can leave feedback on a slide. (ace#902 — on
+hh-poverty-targeting/20260722-1341 the deck shipped private alongside the five
+guides and every link check read green.)
+
 For a deck that has already been shared at a stable URL and needs
 regeneration (e.g. new screenshots after a capture unblock), do NOT
 copy the template again — that mints a new presentationId and breaks
