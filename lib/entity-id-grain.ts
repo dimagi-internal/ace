@@ -130,7 +130,55 @@ const NON_ENTITY = /^(username|\/data\/[\w/-]*(date|time|today|now)[\w/-]*)$/i;
 /** Node names that are a worker's ANSWER — a predicate, not an identity. */
 const ANSWER_LIKE = /(consent|confirm|eligib|payable|status|outcome|conducted|agree|yes_no)/i;
 
-export function checkEntityIdGrain(xml: string, declaredNodes: string[] = []): GrainReport {
+/**
+ * True when `component` is the node `want` names — comparing the last path
+ * segment, so a PDD saying `consent_confirmed` matches a released
+ * `/data/consent_block/consent_confirmed`.
+ */
+function nodeTailMatches(component: string, want: string): boolean {
+  const tail = (x: string) => x.split('/').filter(Boolean).pop()?.toLowerCase() ?? '';
+  return tail(component) === tail(want);
+}
+
+export interface GrainCheckOpts {
+  /**
+   * The field that discriminates payable from non-payable, when the PDD
+   * declares a non-payable branch. Pass it and `hasNonPayableBranch` together.
+   */
+  payabilityDiscriminator?: string;
+  /** True when the PDD marks a subset of submissions to this form non-payable. */
+  hasNonPayableBranch?: boolean;
+}
+
+/**
+ * ## The mandated shape and this gate disagreed (ace#1441)
+ *
+ * `_app-component-library § payability-scoped-key` requires the payability
+ * discriminator INSIDE `entity_id` whenever a non-payable branch exists (#969),
+ * and ace#1434 made that unconditional by ruling it wins over a PDD-pinned
+ * identity-only grain. A discriminator is an ANSWER by construction — that is
+ * what discriminates — so every build obeying the mandate tripped
+ * `answer-in-grain`, and, with the residual key being worker + date, also
+ * `no-entity-component`.
+ *
+ * This gate is halt-loud at Phase 3, so any opportunity declaring a non-payable
+ * branch could not clear it: the component library told the builder to ship a
+ * key the release gate refused. #1285's counter-evidence comment predicted
+ * exactly this — "a gate hard-asserting either shape will false-fail the
+ * other". The ruling shipped in 0.13.897 without reconciling the gate.
+ *
+ * The check could not even SEE the question: its only inputs were the form XML
+ * and `declaredNodes`, so it had no way to know a non-payable branch existed.
+ * It now takes the same inputs `resolveEntityIdGrain()` does and suppresses the
+ * two findings for the ONE component that resolution mandates — never for any
+ * other answer field, which is still exactly the #969 over-correction it was
+ * written to catch.
+ */
+export function checkEntityIdGrain(
+  xml: string,
+  declaredNodes: string[] = [],
+  opts: GrainCheckOpts = {},
+): GrainReport {
   const { resolved, components } = extractEntityIdComponents(xml);
   if (!resolved) {
     return {
@@ -154,7 +202,16 @@ export function checkEntityIdGrain(xml: string, declaredNodes: string[] = []): G
     }
   }
 
+  // The one component the ruling mandates, if any. Matched on the node's tail
+  // so a declared `consent_confirmed` matches the released
+  // `/data/consent_block/consent_confirmed`.
+  const mandated =
+    opts.hasNonPayableBranch === true && opts.payabilityDiscriminator
+      ? components.find((c) => nodeTailMatches(c, opts.payabilityDiscriminator!))
+      : undefined;
+
   for (const c of components) {
+    if (c === mandated) continue; // required by payability-scoped-key (ace#1434/#1441)
     if (ANSWER_LIKE.test(c)) {
       findings.push({
         kind: 'answer-in-grain',
@@ -168,8 +225,18 @@ export function checkEntityIdGrain(xml: string, declaredNodes: string[] = []): G
 
   // Fires with no declaration at all: a key of worker + time + answers is
   // worker-and-day scoped by construction, whatever the PDD says.
-  const hasEntityNode = components.some((c) => !NON_ENTITY.test(c) && !ANSWER_LIKE.test(c));
-  if (!hasEntityNode) {
+  // The mandated discriminator is excluded here too: it is not an entity
+  // component and was never claimed to be. Suppress the finding only when the
+  // RESIDUAL key — everything except the mandated discriminator — is exactly
+  // what the PDD declared, i.e. the build kept the pinned grain and added the
+  // one component it was told to. A key that is worker + day + answer with NO
+  // declared grain behind it is still the real defect.
+  const residual = components.filter((c) => c !== mandated);
+  const residualIsDeclared =
+    declaredNodes.length > 0 &&
+    declaredNodes.every((want) => residual.some((c) => c.includes(want)));
+  const hasEntityNode = residual.some((c) => !NON_ENTITY.test(c) && !ANSWER_LIKE.test(c));
+  if (!hasEntityNode && !(mandated !== undefined && residualIsDeclared)) {
     findings.push({
       kind: 'no-entity-component',
       detail:
