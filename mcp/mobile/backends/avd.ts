@@ -11,6 +11,8 @@ import {
   AvdNotProvisionedError,
   AvdContendedError,
 } from '../errors.js';
+import { selectAvd, type AvdPoolEntry } from '../avd-allocator.js';
+import { readProvisionedMarker, markerProvesFor } from '../avd-provisioned-marker.js';
 import { checkAvdProvisioned } from '../avd-provisioning.js';
 import { findLatestBootLog, bootLogTail, fatalBootLine } from '../boot-log.js';
 import { checkAvdContention, clearStaleAvdLock } from '../avd-contention.js';
@@ -652,6 +654,34 @@ export class AvdBackend {
     const known = await this.listAvds();
     if (!known.includes(avdName)) {
       throw new AvdBootError(avdName, `AVD '${avdName}' not in emulator -list-avds output`);
+    }
+
+    // Allocate an AVD NAME the way ports are already allocated (ace#1047 fix 2).
+    // The two probes below run over the WHOLE pool first, so a session whose
+    // requested AVD is held by a live sibling takes a different provisioned one
+    // instead of failing. Without this, /ace:iterate's per-dispatch cold boot
+    // re-grabs the shared AVD every cycle and starves every other session.
+    const avdHomeForPool =
+      process.env.ANDROID_AVD_HOME ?? path.join(os.homedir(), '.android', 'avd');
+    const pool: AvdPoolEntry[] = known.map((name) => {
+      const prov = checkAvdProvisioned(avdHomeForPool, name);
+      if (prov.provisioned === false) {
+        return { name, free: false, reason: `de-provisioned (${prov.detail})` };
+      }
+      const cont = checkAvdContention(avdHomeForPool, name, { selfPid: process.pid });
+      if (cont.contended) {
+        return { name, free: false, reason: `held by live pid ${cont.holderPid}` };
+      }
+      // Free, but only PROVEN entries are eligible as a fallback — see
+      // avd-provisioned-marker.ts. The requested AVD does not need a marker,
+      // so nothing changes for a machine that has never recorded one.
+      const marker = readProvisionedMarker(avdHomeForPool, name);
+      return { name, free: true, proven: markerProvesFor(marker, process.env.ACE_SELECTOR_MAP) };
+    });
+    const selection = selectAvd(avdName, pool, { selfPid: process.pid });
+    if (selection.switched) {
+      console.warn(`[ace-mobile] ensureAvdRunning: ${selection.note}`);
+      avdName = selection.name;
     }
 
     // Fail fast on a DE-PROVISIONED AVD (dimagi-internal/ace#1357). `-list-avds`

@@ -1,5 +1,6 @@
 // mcp/mobile/client.ts
 import * as path from 'node:path';
+import { writeProvisionedMarker } from './avd-provisioned-marker.js';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as crypto from 'node:crypto';
@@ -2273,6 +2274,21 @@ export class MobileClient {
       success = true;
       return { alreadyRegistered: false, phone: args.phone, backupCode: args.backupCode };
     } finally {
+      // Record that this AVD has PROVEN itself (ace#1047 fix 2). Reaching here
+      // with success means CommCare is installed and a test user exists — the
+      // only evidence that makes this AVD a safe fallback for a concurrent
+      // session whose own AVD is held. Written here rather than at each return
+      // so all four success paths are covered by one line. Best-effort: a
+      // marker that fails to write only leaves the AVD ineligible as a
+      // fallback, which is the safe direction.
+      if (success) {
+        const avdHome =
+          process.env.ANDROID_AVD_HOME ?? path.join(os.homedir(), '.android', 'avd');
+        writeProvisionedMarker(avdHome, args.avdName, {
+          marked_at: new Date().toISOString(),
+          selector_map: process.env.ACE_SELECTOR_MAP,
+        });
+      }
       // The resolved-recipe temp dir is internal plumbing — always reap it,
       // success or failure (it holds no post-mortem signal; the screenshot
       // artifacts under `tmp` are what matters).
