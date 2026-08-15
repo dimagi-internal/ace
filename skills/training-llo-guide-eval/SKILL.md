@@ -73,7 +73,7 @@ Score each dimension 0–10. Weights sum to 1.0.
 | **Operational realism** (fitness — out-of-chain) | 0.20 | Judged against a real ops-lead bar (parallel to `idea-to-pdd-eval`'s `resource_realism`): would these procedures actually run a real cohort? Anchor on real operations, NOT on the PDD's enumerated loop. 10 = the guide handles the judgment calls and the messy cases an ops lead actually hits — disputed rejections, simultaneous anomalies, a held payment with an angry FLW, "the obvious action didn't work, now what" — not just the happy-path loop. 6 = the daily loop is sound but the guide assumes everything goes right; troubleshooting is thin. 3 = pure happy-path; the first real-world snag and the LLO is improvising. **Hard-gate: a guide that only reproduces the catalogued happy-path loop with no real troubleshooting/judgment-call content scores ≤ 3 → suite verdict `fail`.** PDD silence on the messy cases is a finding here, not a free pass — judge what a guide that actually runs a cohort *must* contain. |
 | **Operational completeness** (conformance) | 0.25 | Does the guide cover the full daily/weekly LLO loop catalogued from the PDD (morning check-in, daily caps, escalations, payment approval, end-of-week report)? 10 = ≥ 80% of catalogued ops covered with concrete cadence. 6 = 50–80%; gaps in either escalation or payment. 3 = < 50%; LLO doesn't know what their day looks like. Hard-deduct -3 if escalation triggers are missing entirely. |
 | **Action-orientation** | 0.20 | Each section reads "if X happens, do Y" rather than "the system supports X." 10 = imperative voice with named buttons/screens; LLO can act without re-reading. 6 = mixed; some sections are descriptive. 3 = mostly descriptive prose; LLO would need a synchronous walkthrough. |
-| **Screenshot grounding** | 0.15 | Every UI-bound action references a screenshot (or has a clear "Screen: <X>" anchor). 10 = full grounding, all referenced Drive IDs resolve. 6 = ≥ 70% grounded, no dead links. 3 = < 50% grounded OR ≥ 1 dead screenshot reference. Hard-deduct -3 per dead Drive-ID reference. |
+| **Screenshot grounding** | 0.15 | **Judge the PUBLISHED Google Doc, not the markdown.** First count the images the document actually renders — `docs_get` on the published doc and count `inlineObjects`, or count `<img` in its anonymous HTML export (`https://docs.google.com/document/d/<id>/export?format=html`). **If the guide cites screenshots and renders none, this dimension is 0 and the suite verdict is `fail`.** Then judge grounding: every UI-bound action is SHOWN (or has a clear "Screen: <X>" anchor). 10 = full grounding, every cited frame rendered. 6 = ≥ 70% grounded, no dead links. 3 = < 50% grounded OR ≥ 1 dead screenshot reference. Hard-deduct -3 per dead Drive-ID reference; hard-deduct -3 when a cited filename names a frame the run never captured. |
 | **Cap & threshold accuracy** | 0.10 | Numeric caps (daily visits, payment amounts, escalation thresholds) match the PDD verbatim. 10 = no drift. 6 = 1 minor drift. 3 = any contradicted cap. Hard-deduct -5 for any contradicted operational cap. |
 | **Escalation pathway clarity** | 0.10 | When something goes wrong (rejected visit, anomaly, FLW absence), does the LLO know exactly who/where to go? 10 = named contact, channel, expected response time. 6 = named contact only. 3 = vague ("contact support"). |
 
@@ -82,6 +82,7 @@ Weights sum to 1.0: 0.20 + 0.25 + 0.20 + 0.15 + 0.10 + 0.10 = 1.00.
 **Hard-deduct rules:**
 - Happy-path-only guide with no real troubleshooting/judgment content (`operational_realism` ≤ 3) → BLOCKER; suite verdict `fail`. A faithful reproduction of the PDD's loop does not earn a pass.
 - Dead screenshot Drive ID → BLOCKER (cap overall ≤ 5; see screenshot dimension).
+- **Guide cites screenshots and the published document renders ZERO → BLOCKER; suite verdict `fail`.** This is the failure the rubric was blind to: a guide cited nine frames by filename and rendered none, and this eval scored it a pass because every word was present (ace#1418). Counting citations cannot detect it. Count what the document renders.
 - LLO guide contradicts a PDD operational cap → BLOCKER.
 - Any single dimension ≤ 3 → suite verdict `fail`.
 
@@ -109,7 +110,10 @@ Provisional until first real run produces ground truth.
 
 See `skills/_eval-template.md § MCP Tools Used (stock)`. Plus an
 optional `drive_read_file` per referenced screenshot Drive ID — the
-rubric resolves screenshot links to detect dead references.
+rubric resolves screenshot links to detect dead references — and
+**`docs_get` on the published guide to count rendered `inlineObjects`**,
+which is a required input to the screenshot dimension and cannot be read
+off the markdown.
 
 ## Mode Behavior
 
@@ -125,3 +129,4 @@ See `skills/_eval-template.md § Dry-Run Behavior (stock)`.
 |---|---|---|
 | 2026-05-09 | Initial version. 5 dimensions: operational_completeness (0.35), action_orientation (0.25), screenshot_grounding (0.20), cap_threshold_accuracy (0.10), escalation_pathway_clarity (0.10). Provisional rubric — calibration TBD until first real run grades the artifact. | ACE team (qa-eval-registry initial buildout) |
 | 2026-05-29 | Added out-of-chain fitness dimension `operational_realism` (0.20, hard-gate on happy-path-only guides) — judged against a real ops-lead bar (parallel to `idea-to-pdd-eval`'s `resource_realism`): would the procedures actually run a real cohort (judgment calls, troubleshooting beyond the catalogued loop)? Demoted the catalogue tally `operational_completeness` 0.35→0.25; action_orientation 0.25→0.20, screenshot_grounding 0.20→0.15. Sum = 1.00. Per `docs/superpowers/specs/2026-05-29-eval-fitness-gap.md`. | ACE team (eval-fitness-gap) |
+| 2026-08-14 | Screenshot grounding now judges the PUBLISHED document's rendered image count (`docs_get` inlineObjects / anonymous `<img>` export), not the markdown's citation count. Cites screenshots + renders none → dimension 0 + BLOCKER. Closes the blind spot that scored `spark-facilitator/20260813-2126` a pass with 9 filename citations and 0 pictures (ace#1418). | ACE team (ace#1418) |

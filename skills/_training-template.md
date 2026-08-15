@@ -109,6 +109,53 @@ the fact (ace#1304, the consumer half of ace#866). Any `image_hygiene`-style
 self-eval criterion must assert duplicate handling explicitly, or it will keep
 scoring 10 on this defect.
 
+## Illustrated guides — render, THEN embed (dimagi-internal/ace#1418)
+
+Applies to the artifacts flagged `illustrated: true` in
+`lib/artifact-manifest.ts` — today the FLW guide and the LLO guide. **Not**
+`training-quick-reference` (a printed pocket card: no screenshots by design)
+and not the FAQ or onboarding email.
+
+Publishing one of these is a **two-step write**, and step 2 is not optional:
+
+1. `drive_create_doc_from_markdown` — converts the prose. Every screenshot
+   reference stays as it is written: a Drive link
+   `[Connect home](https://drive.google.com/file/d/<fileId>/view)`, or a
+   filename citation `` `learn-launch-home-tiles.png` ``. Both are legible
+   captions and both survive the conversion.
+2. **Embed the frames into the converted doc:**
+
+   ```bash
+   ACE_ROOT="${CLAUDE_PLUGIN_ROOT:-$(python3 -c "import json,os; d=json.load(open(os.path.expanduser('~/.claude/plugins/installed_plugins.json'))); print(d['plugins']['ace@ace'][0]['installPath'])")}"
+   npx --prefix "$ACE_ROOT" tsx "$ACE_ROOT/scripts/embed-doc-screenshots.ts" <docId> \
+     --screenshots <screenshots folderId from the capture manifest's drive_folders>
+   ```
+
+   It anchors on the references the prose ALREADY carries and appends those
+   frames right after the citing paragraph — no prose added, moved or
+   reworded — then re-reads the document and counts the images an ANONYMOUS
+   reader gets. Non-zero exit means the pictures are not there. Re-running is
+   safe: an already-illustrated paragraph is skipped.
+
+**Why the images cannot just ride in the markdown.** Drive's importer *will*
+fetch a real `https` image src (measured 2026-08-14 across four Drive URL
+forms — all imported as real, anonymously-visible images). What it will not do
+is size them: it takes the natural pixel dimensions, so a 1080x2400 phone
+screenshot lands 9.4 inches wide and a page and a half tall, forty-four times
+over. `insertInlineImage` takes an explicit `objectSize`. That is the entire
+reason for the two-step shape. (`![alt](drive:<id>)` is a separate and older
+mistake: `drive:` is an ACE-internal reference, not a URL, and the importer
+drops that node silently, alt text included — ace#1338.)
+
+**Why this is a contract and not advice.** Both guides shipped to a partner
+with zero images and every word intact, twice, for two different reasons. Word
+counts, section checks and all five per-artifact content evals scored them a
+pass both times; a partner reading the docs found it, and then the surface
+auditor's `DOC-SCREENSHOTS-ABSENT` did. A step-by-step guide whose steps are
+not shown is not a step-by-step guide — for a functionally-literate CBF reading
+it mid-visit, 44 links is close to useless. Enforced by
+`test/lib/illustrated-artifacts.test.ts`.
+
 ## Process
 
 1. Read inputs.
@@ -117,6 +164,8 @@ scoring 10 on this defect.
 3b. **Worker-facing skills only:** run the support-channel check above and
    rewrite any finding before writing.
 4. Write to Drive.
+4b. **Illustrated artifacts only:** run the embed step above and confirm it
+   exits 0 with a non-zero anonymous image count.
 5. Self-evaluate via LLM-as-Judge — write
    `<artifact>_verdict.yaml` using the verdict shape from
    `skills/_eval-template.md § Verdict YAML contract`.
