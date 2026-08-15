@@ -13,6 +13,7 @@
  * Shipped 0.13.29 alongside the atom signatures.
  */
 import { mkdirSync, readFileSync } from 'node:fs';
+import { assertNotCredentialPath } from './contained-path.js';
 import { dirname, isAbsolute } from 'node:path';
 
 export class AtomArgUsageError extends Error {
@@ -55,7 +56,11 @@ export function resolveUpdateFileContent(args: {
       'drive_update_file: must supply one of content or localFilePath',
     );
   }
-  if (localFilePath !== undefined) return readFileSync(localFilePath, 'utf-8');
+  if (localFilePath !== undefined) {
+    // ace#1110 F2: an arbitrary local read reaching a Drive file.
+    assertNotCredentialPath(localFilePath, { atom: 'drive_update_file' });
+    return readFileSync(localFilePath, 'utf-8');
+  }
   if (content!.length > UPDATE_FILE_INLINE_CEILING) {
     throw new AtomArgUsageError(
       `oversized_inline_content: content is ${content!.length} chars (ceiling ${UPDATE_FILE_INLINE_CEILING}). ` +
@@ -83,6 +88,8 @@ export function resolveUpdateFileContent(args: {
  * @throws AtomArgUsageError on a relative path.
  */
 export function prepareWritePath(p: string): string {
+  // ace#1110 F4: an arbitrary OVERWRITE — clobber .zshrc, a git hook, or .env.
+  assertNotCredentialPath(p, { atom: 'commcare_download_ccz' });
   if (!isAbsolute(p)) {
     throw new AtomArgUsageError(
       `write_path_not_absolute: expected an absolute path (got "${p}"). ` +
@@ -117,6 +124,8 @@ export function resolvePatchXformXml(args: {
     );
   }
   if (new_xform_xml) return new_xform_xml;
+  // ace#1110 F7: an arbitrary read landing in an app's XForm source on prod HQ.
+  assertNotCredentialPath(new_xform_xml_path!, { atom: 'commcare_patch_xform' });
   return readFileSync(new_xform_xml_path!, 'utf-8');
 }
 
@@ -142,7 +151,12 @@ export function resolveUploadMultimediaBytes(args: {
       'commcare_upload_multimedia: must supply one of file_bytes_base64 or file_bytes_path',
     );
   }
-  if (file_bytes_path) return readFileSync(file_bytes_path);
+  if (file_bytes_path) {
+    // ace#1110 F6: an arbitrary read landing in HQ multimedia, which
+    // `download_ccz include_multimedia` can pull back out.
+    assertNotCredentialPath(file_bytes_path, { atom: 'commcare_upload_multimedia' });
+    return readFileSync(file_bytes_path);
+  }
   return Buffer.from(file_bytes_base64!, 'base64');
 }
 

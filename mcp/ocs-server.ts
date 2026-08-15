@@ -18,6 +18,7 @@
 // eoi-llm-judge session 2026-04-21: the env var arrives empty even with an
 // inline `mcpServers` in plugin.json).
 import { config as dotenvConfig } from 'dotenv';
+import { assertNotCredentialPath } from '../lib/contained-path.js';
 import * as path from 'node:path';
 import { resolvePluginDataDir, logPluginDataDirDiag } from '../lib/plugin-data-dir.js';
 logPluginDataDirDiag('ace-ocs', import.meta.url);
@@ -363,6 +364,17 @@ server.tool(
   },
 );
 
+/**
+ * ace#1110 F9. The nastiest of the read sinks: the bytes land in an OCS RAG
+ * collection, so a stolen secret is retrievable later through an ordinary chat
+ * turn and never appears in the transcript of the call that stole it.
+ */
+async function readFileChecked(filePath: string): Promise<Buffer> {
+  assertNotCredentialPath(filePath, { atom: 'ocs_upload_collection_files' });
+  const { readFile } = await import('node:fs/promises');
+  return readFile(filePath);
+}
+
 server.tool(
   'ocs_upload_collection_files',
   'Upload files to an existing Collection. Each file MUST supply EXACTLY ONE source: `file_path` (local filesystem path — MCP reads + base64-encodes server-side, preferred for any payload >1KB) OR `content` (caller-supplied base64 — legacy inline mode, only sensible for tiny strings). Mixing both, or supplying neither, fails fast. The file_path mode exists because emitting megabytes of base64 in the tool_use input wedges model generation (stream-idle timeout) — class-level preventer for the 2026-05-19 Phase 5 wedge (`docs/learnings/2026-05-19-ocs-upload-b64-context-wedge.md`). For files that live on Drive, `drive_download_binary` to a tmp path first, then pass that as `file_path` — keeps the b64 entirely out of agent context. Files will be chunked and embedded asynchronously. chunk_size and chunk_overlap are optional (default 800/400, matching the upstream NM Bot collection).',
@@ -427,7 +439,7 @@ export async function decodeUploadCollectionFileSource(f: {
     );
   }
   const bytes = hasPath
-    ? await readFile(f.file_path!)
+    ? await readFileChecked(f.file_path!)
     : Buffer.from(f.content!, 'base64');
   return { name: f.name, content: bytes, mime_type: f.mime_type };
 }

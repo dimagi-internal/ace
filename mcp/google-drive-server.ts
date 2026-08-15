@@ -8,6 +8,7 @@
  */
 
 import { config as dotenvConfig } from 'dotenv';
+import { assertNotCredentialPath } from '../lib/contained-path.js';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
@@ -746,6 +747,9 @@ server.tool(
     try {
       let buf: Buffer;
       if (localFilePath) {
+        // ace#1110 F2: an arbitrary local read whose SAME call can set
+        // shareAnyoneWithLink — one call to read a secret and publish it.
+        assertNotCredentialPath(localFilePath, { atom: 'drive_upload_binary' });
         const fs = await import('fs');
         if (!fs.existsSync(localFilePath)) {
           return error(`localFilePath not found: ${localFilePath}`);

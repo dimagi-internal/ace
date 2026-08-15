@@ -27,6 +27,7 @@
 //   instance stop) — useful for within-run checkpoints, not for AMI bakes.
 
 import * as fs from 'node:fs/promises';
+import { isSafeArtifactName } from '../../../lib/contained-path.js';
 import * as path from 'node:path';
 import {
   MobileError,
@@ -647,6 +648,13 @@ export class CloudBackend {
     for (const art of result.artifacts) {
       // Skip non-image artifacts — they go alongside but ScreenshotEntry
       // is specifically images per the type.
+      // ace#1110: `art.name` comes from the REMOTE side, and path.join happily
+      // walks out of screenshotDir on `../`. No legitimate artifact name has a
+      // separator, so this needs no allowed-roots decision.
+      if (!isSafeArtifactName(art.name)) {
+        console.warn(`[ace-mobile] cloud: skipping artifact with unsafe name ${JSON.stringify(art.name)} (ace#1110)`);
+        continue;
+      }
       const dest = path.join(screenshotDir, art.name);
       const bytes = await this.downloadTo(art.presigned_url, dest);
       if (art.content_type.startsWith('image/')) {
