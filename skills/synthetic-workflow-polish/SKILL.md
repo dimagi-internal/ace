@@ -119,6 +119,35 @@ call — see the seed skill's alias-consistency guardrail.
      coaching arc as a forward-looking plan ("coaching assigned;
      follow-up next cycle") rather than asserting a realized improvement.
      (Mirrors the `synthetic-workflow-seed` step-8 note.)
+   - **Row actions follow the row's REASON — never one action for every row.**
+     The ACTION column must offer what answers *why this row is listed*, taken
+     from the same reason array that already renders the row's amber
+     annotations. Transcribe the mapping from `lib/review-row-action.ts`
+     (`primaryRowAction`) rather than re-deriving it:
+
+     | the row's reason | action |
+     |---|---|
+     | a flagged record | `Open flagged record` (drill to the record under review) |
+     | no record filed this period | `Draft check-in message` |
+     | a rate below its stated review threshold | `Draft coaching message` |
+     | advisory only (e.g. a fix above tolerance) | drill-down; **no message action** |
+
+     When a row carries several reasons, the most actionable wins — coaching
+     ranks BELOW the two specific actions on purpose. A row with no reasons
+     gets the drill-down, so a rendering bug never surfaces as an unwarranted
+     coaching prompt.
+
+     **Why this is a rule and not a preference (ace#1394).** The dashboard
+     shipped `Draft coaching message` on every row, including one reading
+     `100% of 2` with the annotation *WHY THE REST WERE NOT PAID: all payable*
+     (listed only because a record was flagged), and one listed only for a
+     location fix above tolerance — which the same page's *WHAT IS NOT A
+     PAYMENT GATE* card says never blocks payment. The only offered next step
+     for both was to coach them, which converts "read this record" into "this
+     person is underperforming", against the review's own stated posture. It
+     was raised at iteration 2, re-cited at iteration 3, and capped
+     `design_soundness` at 2 again at iteration 4.
+
    - **Domain branding.** Pick icons + language matching the PDD's
      domain. Turmeric → market/vendor language; KMC → maternal-health
      iconography; vaccine focus group → immunization framing.
