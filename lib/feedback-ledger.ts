@@ -40,6 +40,43 @@ import type {
 
 export const FEEDBACK_LEDGER_SCHEMA_VERSION = 1 as const;
 
+/**
+ * The body of a `revisions` feedback item: what the partner actually changed.
+ *
+ * ace#1335. The ledger modelled feedback as COMMENTS — items keyed on a
+ * reviewer's `[a]`/`[b]` anchor with a `verbatim` quote. Co-creation grants
+ * partners EDITOR access by default (`share-run-access`,
+ * `drive_share_with_person`), so feedback now also arrives as document
+ * revisions. A revision has no anchor and no quote, so a partner who improves
+ * a PDD by editing it directly produced ZERO ledger rows — and the ledger's
+ * completeness property (an item nobody actioned shows up as UNROUTED rather
+ * than vanishing) silently did not hold for that channel.
+ *
+ * The change is the artifact. `before`/`after` are kept verbatim for the same
+ * reason a comment's words are: a summary of someone's edit is a paraphrase,
+ * and the paraphrase is what drifts.
+ */
+export const FeedbackChangeSchema = z
+  .object({
+    before: z.string().describe('The text as ACE published it. Empty string for an insertion.'),
+    after: z.string().describe('The text as the partner left it. Empty string for a deletion.'),
+    revision_id: z
+      .string()
+      .optional()
+      .describe('Drive revision id the change was observed in — the provenance for this row.'),
+    edited_by: z
+      .string()
+      .optional()
+      .describe('Drive `lastModifyingUser` display name or email, when Drive reports one.'),
+    edited_at: z.string().optional().describe('Revision `modifiedTime`, ISO.'),
+  })
+  .strict()
+  .refine((c) => c.before !== '' || c.after !== '', {
+    message: 'a change with neither before nor after text is not a change',
+  });
+
+export type FeedbackChange = z.infer<typeof FeedbackChangeSchema>;
+
 /** One verbatim comment from an external reviewer. Append-only: facts. */
 export const FeedbackItemSchema = z
   .object({
@@ -54,16 +91,31 @@ export const FeedbackItemSchema = z
     verbatim: z
       .string()
       .min(1)
+      .optional()
       .describe(
         'The reviewer\'s words, unedited. Never paraphrase — the paraphrase is ' +
-          'what drifts, and the verbatim text is the whole point of the fact store.',
+          'what drifts, and the verbatim text is the whole point of the fact store. ' +
+          'Required for every channel EXCEPT `revisions`, where the reviewer left ' +
+          'no words at all; use `change` there.',
       ),
+    change: FeedbackChangeSchema.optional().describe(
+      'For a `revisions` item: the EDIT is the artifact, because a partner who ' +
+        'rewrites a paragraph never says anything. Carries the before/after text ' +
+        'so the ledger has a body to render and a reviewer can see their edit ' +
+        'was seen (ace#1335).',
+    ),
     anchor: z
       .string()
       .optional()
       .describe('Where in the artifact it was left (section, field, slide).'),
   })
-  .strict();
+  .strict()
+  .refine((i) => (i.verbatim === undefined) !== (i.change === undefined), {
+    message:
+      'a feedback item carries EXACTLY one body: `verbatim` (the reviewer said it) ' +
+      'or `change` (the reviewer edited it). Both means the record is guessing at ' +
+      'words nobody wrote; neither means there is nothing to render.',
+  });
 
 export type FeedbackItem = z.infer<typeof FeedbackItemSchema>;
 
@@ -145,11 +197,116 @@ export function isPubliclyRepublishable(record: FeedbackRecord): boolean {
   return record.channel === 'public-summary';
 }
 
+/**
+ * A Drive revision, as `revisions.list` reports it. Only the fields the
+ * derivation needs — the caller does the API call.
+ */
+export interface DriveRevision {
+  id: string;
+  modifiedTime?: string;
+  lastModifyingUser?: { displayName?: string; emailAddress?: string };
+}
+
+export interface DeriveRevisionItemsArgs {
+  /** The revision that produced `after`. */
+  revision: DriveRevision;
+  /** Artifact text as ACE published it. */
+  before: string;
+  /** Artifact text after the partner's edit. */
+  after: string;
+  /**
+   * Editors whose changes are ACE's own and must NOT become feedback items.
+   * Matched case-insensitively against display name and email. Without this,
+   * every ACE write to a shared doc would file feedback against itself.
+   */
+  ignoreEditors?: readonly string[];
+}
+
+/**
+ * Turn one Drive revision into feedback items — one per changed block.
+ *
+ * ace#1335. Deliberately a LINE-BLOCK diff rather than a word diff: the ledger
+ * row exists so a partner can see their edit was seen, and a block of changed
+ * prose is what a person recognises as "my edit". A word-level diff would
+ * shatter one rewritten paragraph into a dozen unrouted rows, each of which
+ * would then read as its own ignored piece of feedback.
+ *
+ * Returns [] when the editor is ours or nothing changed, so a caller can run
+ * it over every revision unconditionally.
+ */
+export function deriveRevisionItems(args: DeriveRevisionItemsArgs): FeedbackItem[] {
+  const { revision, before, after } = args;
+  const who = [
+    revision.lastModifyingUser?.displayName,
+    revision.lastModifyingUser?.emailAddress,
+  ].filter((x): x is string => !!x);
+  const ignore = (args.ignoreEditors ?? []).map((e) => e.toLowerCase());
+  if (who.some((w) => ignore.includes(w.toLowerCase()))) return [];
+
+  const blocks = diffBlocks(before.split('\n'), after.split('\n'));
+  return blocks.map((b, i) => ({
+    // Stable and traceable: same revision + same block index => same id, so
+    // re-deriving does not mint new unrouted rows on every pass.
+    id: `rev-${revision.id.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-${i + 1}`.replace(/-+/g, '-'),
+    change: {
+      before: b.before.join('\n'),
+      after: b.after.join('\n'),
+      revision_id: revision.id,
+      ...(who[0] !== undefined ? { edited_by: who[0] } : {}),
+      ...(revision.modifiedTime !== undefined ? { edited_at: revision.modifiedTime } : {}),
+    },
+    ...(b.anchor !== undefined ? { anchor: b.anchor } : {}),
+  }));
+}
+
+interface DiffBlock {
+  before: string[];
+  after: string[];
+  /** Nearest preceding markdown heading, so a row says WHERE it happened. */
+  anchor?: string;
+}
+
+/**
+ * Minimal line-block diff. Common prefix and suffix are stripped and whatever
+ * remains in the middle is ONE block — sufficient because the consumer is a
+ * human reading "here is what they changed", not a merge tool.
+ */
+function diffBlocks(a: readonly string[], b: readonly string[]): DiffBlock[] {
+  let start = 0;
+  while (start < a.length && start < b.length && a[start] === b[start]) start++;
+  let endA = a.length - 1;
+  let endB = b.length - 1;
+  while (endA >= start && endB >= start && a[endA] === b[endB]) {
+    endA--;
+    endB--;
+  }
+  const before = a.slice(start, endA + 1);
+  const after = b.slice(start, endB + 1);
+  if (before.length === 0 && after.length === 0) return [];
+
+  let anchor: string | undefined;
+  for (let i = start - 1; i >= 0; i--) {
+    const m = /^#{1,6}\s+(.*)$/.exec(a[i]);
+    if (m) {
+      anchor = m[1].trim();
+      break;
+    }
+  }
+  return [{ before, after, ...(anchor !== undefined ? { anchor } : {}) }];
+}
+
 /** Where a feedback item ended up. Collected from the stores that own it. */
 export type DispositionKind =
   | 'skill-fix' // a generalizable defect -> GitHub issue + PR
   | 'decision' // ACE chose; a human wants different -> decisions.yaml
   | 'open-question' // needs a human answer -> open-questions.md
+  // A partner's EDIT kept as they wrote it (ace#1335). Needed because the
+  // other four kinds all describe ACE doing something in response, and the
+  // correct response to a good edit is to do NOTHING and say so. Without this,
+  // accepting an edit had no shape: it either went unrouted — reading to the
+  // partner as "we ignored you", the intended loud failure — or got
+  // mislabelled `decision`, which claims ACE chose when the partner did.
+  | 'accepted-edit'
   | 'declined'; // considered and not actioned, with a reason
 
 export type DispositionStatus =
@@ -191,6 +348,23 @@ export interface Ledger {
   record: FeedbackRecord;
   rows: LedgerRow[];
   coverage: LedgerCoverage;
+}
+
+/**
+ * The quotable body of an item, whichever channel it came from.
+ *
+ * A comment quotes the reviewer. A `revisions` item has no words to quote —
+ * the EDIT is what the reviewer said — so it renders as the change (ace#1335).
+ * Every consumer that used to reach for `.verbatim` goes through here, so a
+ * revision item can never render blank.
+ */
+export function itemBody(item: FeedbackItem): string {
+  if (item.verbatim !== undefined) return item.verbatim;
+  const c = item.change;
+  if (c === undefined) return '';
+  if (c.before === '') return `They ADDED:\n${c.after}`;
+  if (c.after === '') return `They DELETED:\n${c.before}`;
+  return `They CHANGED:\n- ${c.before}\n+ ${c.after}`;
 }
 
 /** `20260727-sophie-feintuch` + `d` -> `20260727-sophie-feintuch/d`. */
@@ -292,6 +466,7 @@ const KIND_LABEL: Record<DispositionKind, string> = {
   'skill-fix': 'skill fix',
   decision: 'decision',
   'open-question': 'open question',
+  'accepted-edit': 'kept your edit',
   declined: 'declined',
 };
 
@@ -339,7 +514,7 @@ export function renderLedgerMarkdown(
   for (const row of rows) {
     lines.push(`## [${row.item.id}] ${row.item.anchor ?? ''}`.trimEnd());
     lines.push('');
-    lines.push(`> ${row.item.verbatim.replace(/\n/g, '\n> ')}`);
+    lines.push(`> ${itemBody(row.item).replace(/\n/g, '\n> ')}`);
     lines.push('');
     if (row.unrouted) {
       lines.push(
@@ -761,7 +936,7 @@ export function buildEngagements(input: {
 function renderComment(entry: CommentEntry, lines: string[]): void {
   lines.push(`## [${entry.item.id}] ${entry.item.anchor ?? ''}`.trimEnd());
   lines.push('');
-  lines.push(`> ${entry.item.verbatim.replace(/\n/g, '\n> ')}`);
+  lines.push(`> ${itemBody(entry.item).replace(/\n/g, '\n> ')}`);
   lines.push('');
   if (entry.unrouted) {
     lines.push(
