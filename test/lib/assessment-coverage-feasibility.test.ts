@@ -131,3 +131,79 @@ describe('checkCoverageFeasibility (#1250)', () => {
     expect(r.detail).toMatch(/no exact item count/i);
   });
 });
+
+/**
+ * ace#1433 — `maxAchievableCoverage` modelled an item bank as ONE rule per
+ * item, justified as "an item that covers two rules covers neither well enough
+ * to qualify". Measured false on bednet-check-2-visit/20260814-2019: the helper
+ * declared 0.667 the ceiling and the built 6-item bank reached 0.867 (13/15).
+ * The rubric's qualifying test is *does answering REQUIRE the rule*, and item
+ * q6 requires both R6 and R7 — its key is unreachable knowing either alone.
+ */
+describe('multi-entry items (ace#1433)', () => {
+  // The repro's enumeration.
+  const e = { counterIntuitiveRules: 4, highConsequenceOps: 7 };
+
+  it('reproduces the shipped under-estimate by default', () => {
+    // Every existing caller must keep its current answer.
+    expect(maxAchievableCoverage({ ...e, itemCount: 6 })).toBeCloseTo(0.667, 3);
+  });
+
+  it('reproduces the MEASURED ceiling from the real blueprint', () => {
+    // 3 of the 6 items each carry two entries: q6 (R6+R7), q5 (both
+    // observation ops), q3 (R3 + the consent re-affirmation op).
+    expect(
+      maxAchievableCoverage({ ...e, itemCount: 6, maxEntriesPerItem: 2, pairedItems: 3 }),
+    ).toBeCloseTo(13 / 15, 3);
+  });
+
+  it('clears the 0.7 band the PDD declared unreachable at 6 items', () => {
+    const ratio = maxAchievableCoverage({ ...e, itemCount: 6, maxEntriesPerItem: 2, pairedItems: 3 });
+    expect(ratio).toBeGreaterThanOrEqual(0.7);
+    expect(coverageBandCeiling(ratio)).toBe(8);
+  });
+
+  it('does NOT assume every item is paired — that error runs the dangerous way', () => {
+    // Assuming all six are paired returns 1.000 against a measured 0.867. A
+    // ceiling nothing can reach declares an infeasible mandate feasible.
+    const assumed = maxAchievableCoverage({ ...e, itemCount: 6, maxEntriesPerItem: 2 });
+    const actual = maxAchievableCoverage({ ...e, itemCount: 6, maxEntriesPerItem: 2, pairedItems: 3 });
+    expect(assumed).toBeGreaterThan(actual);
+    expect(actual).toBeCloseTo(13 / 15, 3);
+  });
+
+  it('pairedItems: 0 is identical to the old model', () => {
+    expect(maxAchievableCoverage({ ...e, itemCount: 6, maxEntriesPerItem: 2, pairedItems: 0 }))
+      .toBeCloseTo(maxAchievableCoverage({ ...e, itemCount: 6 }), 6);
+  });
+
+  it('cannot pair more items than the bank has', () => {
+    expect(maxAchievableCoverage({ ...e, itemCount: 6, maxEntriesPerItem: 2, pairedItems: 99 }))
+      .toBeCloseTo(maxAchievableCoverage({ ...e, itemCount: 6, maxEntriesPerItem: 2, pairedItems: 6 }), 6);
+  });
+
+  it('never exceeds 1', () => {
+    expect(maxAchievableCoverage({ ...e, itemCount: 50, maxEntriesPerItem: 4, pairedItems: 50 })).toBe(1);
+  });
+
+  it('spends capacity on the double-weighted rules first', () => {
+    // 1 paired item, 2 entries, both should land on CI rules (worth 2 each).
+    const r = maxAchievableCoverage({
+      counterIntuitiveRules: 4, highConsequenceOps: 7,
+      itemCount: 1, maxEntriesPerItem: 2, pairedItems: 1,
+    });
+    expect(r).toBeCloseTo(4 / 15, 3);
+  });
+
+  it('minimumItemsForBand tracks the same model', () => {
+    // The number a PDD quotes as "reaching 0.7 would require N items" — an
+    // inflated N reads as a source constraint the design does not have.
+    expect(minimumItemsForBand(e, 0.7)).toBe(7);
+    expect(minimumItemsForBand(e, 0.7, { maxEntriesPerItem: 2, pairedItems: 3 })).toBeLessThan(7);
+  });
+
+  it('minimumItemsForBand never pairs more items than the bank it is trying', () => {
+    // Otherwise a 1-item bank would be credited with 3 paired items.
+    expect(minimumItemsForBand(e, 0.7, { maxEntriesPerItem: 2, pairedItems: 99 })).toBeGreaterThan(0);
+  });
+});
