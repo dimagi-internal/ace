@@ -274,6 +274,56 @@ export function parseInvitesList(html: string, programId: string): Invite[] {
  * un-decoded read gets STORED and re-escaped on the next render — one extra
  * level of escaping per update, forever (dimagi-internal/ace#1140).
  */
+/**
+ * Narrow `html` to the single `<form>` element that owns a control named
+ * `fieldName`. Returns the whole document unchanged when there is no such
+ * form, so callers degrade to today's behaviour rather than to an empty map.
+ *
+ * ## Why this exists (dimagi-internal/ace#1449)
+ *
+ * {@link extractFormFieldValues} scans the whole DOCUMENT and is LAST-WINS on
+ * a repeated name. A browser never behaves that way: it submits ONE form, and
+ * controls in a sibling form are not part of that submission.
+ *
+ * Connect's program-scoped opportunity init-edit page renders TWO forms — the
+ * real one, and a small htmx sub-form that reloads the API-key picker. Both
+ * contain a `<select name="hq_server">`:
+ *
+ * ```
+ * form[0]  14498..48276  16 fields  <select name="hq_server" id="id_hq_server" …>
+ *                                     <option value="1" selected>   ← the real value
+ * form[1]  48822..50867   4 fields  <select name="hq_server" id="api_key_form_id_for_hq_server" …>
+ *                                     (no option selected)          ← clobbers it
+ * ```
+ *
+ * So an unscoped read of that page resolves `hq_server` to `''`. The
+ * read-modify-write repair paths then POST that empty string back and Django
+ * answers `hq_server: This field is required` — an error that reads like a
+ * missing argument and is actually a second form bleeding into the first.
+ *
+ * The failure is STATE-DEPENDENT, which is what made it hard to see: once
+ * Connect Workers have joined, the *first* `hq_server` renders `disabled`, so
+ * `extractDisabledFormFieldNames` puts the name in the drop-set and the empty
+ * value is never posted at all. The bug is therefore invisible on a
+ * worker-joined opportunity and fires on a fresh one — the opposite of the
+ * usual "works until someone joins" shape, and the reason a live A/B on an
+ * opportunity that already had workers came back clean (HTTP 302).
+ *
+ * Note the two extractors disagreed about WHICH element they were describing:
+ * the disabled-set membership came from form[0] while the value came from
+ * form[1]. Scoping both to the same form is what makes them consistent.
+ *
+ * Verified against the live form for
+ * `bednet-check-2-visit/20260814-2019` on 2026-08-15.
+ */
+export function scopeToFormContaining(html: string, fieldName: string): string {
+  const needle = new RegExp(`\\bname="${fieldName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}"`);
+  for (const m of html.matchAll(/<form\b[\s\S]*?<\/form>/g)) {
+    if (needle.test(m[0])) return m[0];
+  }
+  return html;
+}
+
 export function extractFormFieldValues(html: string): Record<string, string> {
   const out: Record<string, string> = {};
 

@@ -12,6 +12,7 @@ import {
   extractFormCsrfToken,
   extractFormFieldValues,
   extractDisabledFormFieldNames,
+  scopeToFormContaining,
   extractUuidFromPath,
   parseDeliveryTypeOptions,
   parseProgramsList,
@@ -599,7 +600,12 @@ export class PlaywrightBackend implements ConnectClient {
 
     const getRes = await this.request.get(editPath);
     if (getRes.status() !== 200) throw await httpErrorFor(getRes, editPath);
-    const html = await getRes.text();
+    // Scope to the form that OWNS the score before reading anything off it.
+    // The page also renders an htmx api-key sub-form carrying a duplicate,
+    // unselected `hq_server`, and the whole-document read is last-wins — so
+    // unscoped, `hq_server` resolves to '' and gets POSTed back as empty,
+    // which Django rejects as "This field is required" (ace#1449).
+    const html = scopeToFormContaining(await getRes.text(), 'learn_app_passing_score');
 
     const current = extractFormFieldValues(html);
     if (!('learn_app_passing_score' in current)) {
@@ -645,7 +651,9 @@ export class PlaywrightBackend implements ConnectClient {
     // still sees a result screen, only the gate differs.
     const afterRes = await this.request.get(editPath);
     if (afterRes.status() !== 200) throw await httpErrorFor(afterRes, editPath);
-    const after = extractFormFieldValues(await afterRes.text());
+    const after = extractFormFieldValues(
+      scopeToFormContaining(await afterRes.text(), 'learn_app_passing_score'),
+    );
     const verified = Number(after['learn_app_passing_score']);
     if (verified !== passing_score) {
       throw new ConnectValidationError([
@@ -687,7 +695,12 @@ export class PlaywrightBackend implements ConnectClient {
     const res = await this.request.get(sourcePath);
     if (res.status() !== 200) throw await httpErrorFor(res, sourcePath);
 
-    const fields = extractFormFieldValues(await res.text());
+    // Same form-scoping as the setter — see ace#1449. The score itself is not
+    // duplicated across the two forms on this page, but reading it through the
+    // identical path is what keeps getter and setter describing one form.
+    const fields = extractFormFieldValues(
+      scopeToFormContaining(await res.text(), 'learn_app_passing_score'),
+    );
     if (!('learn_app_passing_score' in fields)) {
       // Same fail-loud contract as the setter: a missing input means the form
       // shape changed, and returning a default here would report a gate value

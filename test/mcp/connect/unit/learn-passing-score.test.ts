@@ -312,3 +312,108 @@ describe('connect_get_learn_passing_score', () => {
     await expect(backend.getLearnPassingScore(ARGS)).rejects.toThrow();
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────
+// ace#1449 — a SECOND form on the page was blanking hq_server
+// ─────────────────────────────────────────────────────────────────────
+
+import { scopeToFormContaining } from '../../../../mcp/connect/backends/html-scrape.js';
+
+/**
+ * The init-edit page renders TWO forms. Structure verified live against
+ * `bednet-check-2-visit/20260814-2019` on 2026-08-15:
+ *
+ *   form[0]  16 fields  <select name="hq_server" id="id_hq_server">
+ *                         <option value="1" selected>      ← the real value
+ *   form[1]   4 fields  <select name="hq_server" id="api_key_form_id_for_hq_server">
+ *                         (nothing selected)               ← clobbers it
+ *
+ * `extractFormFieldValues` scans the whole document and is LAST-WINS, so the
+ * htmx sub-form's empty duplicate wins and `hq_server` reads as ''. The
+ * read-modify-write then POSTs that empty string and Django answers
+ * `hq_server: This field is required`.
+ *
+ * A browser never does this — it submits one form.
+ */
+const TWO_FORM_PAGE = `
+<form method="post">
+  <input type="hidden" name="csrfmiddlewaretoken" value="tok-real">
+  <input name="name" value="Bednet Check 2-Visit">
+  <select name="hq_server" id="id_hq_server" required>
+    <option value="">---------</option>
+    <option value="1"  selected
+ >CommCareHQ (https://www.commcarehq.org)</option>
+    <option value="2">India</option>
+  </select>
+  <input name="learn_app_passing_score" value="100" required>
+</form>
+<form method="post" id="api_key_form">
+  <input type="hidden" name="csrfmiddlewaretoken" value="tok-subform">
+  <select name="hq_server" id="api_key_form_id_for_hq_server">
+    <option value="">---------</option>
+    <option value="1">CommCareHQ (https://www.commcarehq.org)</option>
+  </select>
+</form>`;
+
+describe('ace#1449 — hq_server blanked by a sibling form', () => {
+  it('reproduces the bug: an unscoped read resolves hq_server to empty', () => {
+    const unscoped = extractFormFieldValues(TWO_FORM_PAGE);
+    expect(unscoped['hq_server']).toBe('');          // ← the defect
+    expect(unscoped['learn_app_passing_score']).toBe('100');
+  });
+
+  it('scoping to the form that owns the score recovers the real value', () => {
+    const scoped = extractFormFieldValues(
+      scopeToFormContaining(TWO_FORM_PAGE, 'learn_app_passing_score'),
+    );
+    expect(scoped['hq_server']).toBe('1');
+    expect(scoped['learn_app_passing_score']).toBe('100');
+  });
+
+  it('drops the sibling form entirely, including its CSRF token', () => {
+    // Posting the sub-form's token against the main form would 403.
+    const scoped = extractFormFieldValues(
+      scopeToFormContaining(TWO_FORM_PAGE, 'learn_app_passing_score'),
+    );
+    expect(scoped['csrfmiddlewaretoken']).toBe('tok-real');
+  });
+
+  it('is why the live A/B looked clean on a worker-joined opportunity', () => {
+    // Once workers join, the FIRST hq_server renders `disabled`, so the name
+    // lands in the drop-set and the empty value is never posted at all. The
+    // bug is invisible there and fires on a FRESH opportunity — the opposite
+    // of the usual "works until someone joins" shape.
+    const joined = TWO_FORM_PAGE.replace(
+      '<select name="hq_server" id="id_hq_server" required>',
+      '<select name="hq_server" id="id_hq_server" required disabled>',
+    );
+    expect(extractDisabledFormFieldNames(joined).has('hq_server')).toBe(true);
+    expect(extractDisabledFormFieldNames(TWO_FORM_PAGE).has('hq_server')).toBe(false);
+  });
+
+  it('makes the value and the disabled-set describe the SAME element', () => {
+    // Unscoped, disabled-set membership came from form[0] while the value came
+    // from form[1] — two different controls. Scoping makes them consistent.
+    const joined = TWO_FORM_PAGE.replace(
+      '<select name="hq_server" id="id_hq_server" required>',
+      '<select name="hq_server" id="id_hq_server" required disabled>',
+    );
+    const scopedHtml = scopeToFormContaining(joined, 'learn_app_passing_score');
+    expect(extractFormFieldValues(scopedHtml)['hq_server']).toBe('1');
+    expect(extractDisabledFormFieldNames(scopedHtml).has('hq_server')).toBe(true);
+  });
+
+  it('falls back to the whole document when no form owns the field', () => {
+    const orphan = '<div><input name="stray" value="x"></div>';
+    expect(scopeToFormContaining(orphan, 'stray')).toBe(orphan);
+  });
+
+  it('picks the owning form even when it is not the first', () => {
+    const reordered = `<form><input name="other" value="a"></form>${TWO_FORM_PAGE}`;
+    const scoped = extractFormFieldValues(
+      scopeToFormContaining(reordered, 'learn_app_passing_score'),
+    );
+    expect(scoped['hq_server']).toBe('1');
+    expect(scoped['other']).toBeUndefined();
+  });
+});
