@@ -27,9 +27,14 @@
 # (Do NOT write a bare op-scheme reference in a comment: `op inject` scans the
 # whole file and aborts on it, even inside a `#` line.)
 # `op inject` is ALL-OR-NOTHING: ONE unresolvable ref makes the entire render
-# fail and writes an EMPTY .env for every consumer (a silent breakage that
-# burned a week of headless runs). If the field isn't ready yet, land the line
-# COMMENTED OUT. `/ace:doctor`'s env_tpl_render probe test-renders this file and
+# fail, so NOTHING is injected. It does NOT write an empty .env — measured
+# against op 2.32.1 (ace#986): the run exits 1 BEFORE writing, leaving an
+# existing .env completely intact and creating no file when none was there.
+# That distinction matters for triage: on a provisioned machine a failed setup
+# is loud and harmless, which is exactly why ACE's own workstation kept working
+# while the deployed runner — a FRESH container, so nothing to leave intact —
+# came up with no secrets at all and stayed that way for weeks.
+# If the field isn't ready yet, land the line COMMENTED OUT. `/ace:doctor`'s env_tpl_render probe test-renders this file and
 # FAILs naming any ref that can't resolve — run it after editing.
 
 # ── OCS Integration ─────────────────────────────────────────────────
