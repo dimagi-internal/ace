@@ -24,7 +24,7 @@ approval-gated on every outbound invite.
 Invoke the `share-run-access` skill with the parsed arguments and follow it exactly. Key rules it
 enforces:
 
-- **Public docs first** — confirm every deliverable link is `OK 200` (run `run-summary-qa`) before sharing.
+- **Public docs first** — confirm every deliverable link is `OK 200` (run `run-surface-audit`) before sharing.
 - **Per-person isolation** — one person, one decision; classify internal (@dimagi.com auto-joins
   ace-web on sign-in) vs. external collaborator (explicit invite).
 - **Least privilege** — default role `viewer`/`member`.

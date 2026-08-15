@@ -735,9 +735,16 @@ in `inputs/` (the manifest), not to pick one canonical PDD file.
      (`.env` defaults: `ACE_WEB_BASE_URL=https://labs.connect.dimagi.com/ace`,
      `ACE_WEB_WORKSPACE=dimagi-team`.) At the end of the run and at every pause
      point: (1) write it to `run_state.yaml` top-level as `ace_web_summary_url`;
-     (2) **QA it before presenting** — invoke `run-summary-qa` (runs
-     `scripts/check-summary-links.py <opp> <run-id>`) to confirm every link on
-     the summary resolves; fix any BROKEN link at its source before sharing; and
+     (2) **Audit it before presenting** — invoke `run-surface-audit` (runs
+     `scripts/audit-run-surface.ts <opp> <run-id> --render --run-state <path>`),
+     which probes the page as an anonymous outsider: every link by class, the
+     payload's own shape contract, confidentiality, every artifact the run
+     actually produced, each published document's rendering, and the rendered
+     page in a headless browser. Fix every **broken** and **misleading** finding
+     at its source before sharing — a page that states something untrue costs
+     more than a page with a dead link, and that is the tier that shipped
+     undetected on `spark-facilitator/20260813-2126`. Then run
+     `run-surface-audit-eval` for the judged half; and
      (3) lead the operator-facing close-out with that URL. This is the link an
      operator shares; it should never be reconstructed by hand or left unverified.
 
