@@ -1,7 +1,8 @@
 import type { OcsClient } from '../client.js';
 import type { RestBackend } from './rest.js';
 import type { PlaywrightBackend } from './playwright.js';
-import { ExperimentIdEnrichmentError, VersionBadgeUnreadableError } from '../errors.js';
+import { ExperimentIdEnrichmentError,
+  ExperimentIdStaleError, VersionBadgeUnreadableError } from '../errors.js';
 
 export interface CompositeOptions {
   rest: RestBackend;
@@ -144,8 +145,33 @@ export class CompositeBackend implements OcsClient {
       throw new ExperimentIdEnrichmentError(out.name, e);
     }
     const id = idsByName.get(out.name);
-    return id != null ? { ...out, experiment_id: id } : out;
+    if (id != null) return { ...out, experiment_id: id };
+
+    // The scrape worked and does not list this bot. Two very different causes
+    // (ace#1451): the bot lives on a non-default team — honest absence, the
+    // documented degraded mode — or the table is STALE because the bot was
+    // just cloned. Distinguish them instead of returning the same silent null
+    // for both: REST's unscoped list IS the default team, so a bot present
+    // there but missing from the scrape is definitively stale.
+    if (await this.isOnDefaultTeamSilently(out.id)) {
+      throw new ExperimentIdStaleError(out.name, out.id);
+    }
+    return out;
   };
+
+  /**
+   * Is this public_id on the DEFAULT team? Uses REST's unscoped list, which is
+   * exactly that team. Silent on failure and answers "no", so a flaky extra
+   * call degrades to today's behaviour rather than inventing a loud error.
+   */
+  private async isOnDefaultTeamSilently(publicId: string): Promise<boolean> {
+    try {
+      const { chatbots } = await this.opts.rest.listChatbots({});
+      return chatbots.some((c) => c.id === publicId);
+    } catch {
+      return false;
+    }
+  }
 
   /** Try the HTMX scrape, swallow auth/network errors so the LIST still
    * returns something usable — the list contract is documented best-effort
