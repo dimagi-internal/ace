@@ -837,11 +837,88 @@ server.tool(
  */
 export type AnyoneWithLinkRole = 'reader' | 'commenter' | 'writer';
 
+/**
+ * Refuse to make a file world-readable unless it lives on ACE's own Shared Drive.
+ *
+ * ace#1110 F2 / ace#1112. `drive_set_anyone_with_link` turns any SA-reachable
+ * file into a public URL, which is the exfil half of the F2 path — the
+ * credential denylist that shipped stops a SECRET being uploaded and published,
+ * but nothing stopped an already-present file being published. Containment is
+ * the rail with real value here, and unlike the read-side roots question
+ * (ace#1110, still open) it needs no enumeration: every file this atom is
+ * legitimately called on lives under `ACE_DRIVE_ROOT_FOLDER_ID`.
+ *
+ * Bounded to ACE's OWN drive, not "any Shared Drive", because the SA can reach
+ * more than one and "shared" is not the property that matters — "ours" is. The
+ * expected driveId is resolved once from the configured root folder and cached
+ * for the session, the same shape `assertParentOnSharedDrive` already uses.
+ *
+ * When `ACE_DRIVE_ROOT_FOLDER_ID` is unset the check DEGRADES to "must be on
+ * some Shared Drive" rather than refusing everything: a misconfigured install
+ * that cannot publish at all is a worse failure than a slightly wider rail, and
+ * that weaker form still matches the existing posture of the parent probe.
+ */
+let aceDriveIdCache: { value: string | null; expires: number } | null = null;
+
+async function resolveAceDriveId(driveClient: typeof drive): Promise<string | null> {
+  if (aceDriveIdCache && aceDriveIdCache.expires > Date.now()) return aceDriveIdCache.value;
+  const root = process.env.ACE_DRIVE_ROOT_FOLDER_ID;
+  let value: string | null = null;
+  if (root) {
+    try {
+      const meta = await driveClient.files.get({
+        fileId: root,
+        fields: 'id, driveId',
+        supportsAllDrives: true,
+      });
+      value = meta.data.driveId ?? null;
+    } catch {
+      value = null; // unreachable root: degrade rather than brick the atom
+    }
+  }
+  aceDriveIdCache = { value, expires: Date.now() + 10 * 60_000 };
+  return value;
+}
+
+/** Exported for tests. */
+export function __resetAceDriveIdCacheForTests(): void {
+  aceDriveIdCache = null;
+}
+
+export async function assertPublishableFile(
+  fileId: string,
+  driveClient: typeof drive = drive,
+): Promise<void> {
+  const meta = await driveClient.files.get({
+    fileId,
+    fields: 'id, name, driveId',
+    supportsAllDrives: true,
+  });
+  const fileDriveId = meta.data.driveId ?? null;
+  if (!fileDriveId) {
+    throw new Error(
+      `drive_set_anyone_with_link: refusing to publish ${fileId} ("${meta.data.name ?? '?'}") — ` +
+        `it is not on a Shared Drive, so it is not an ACE artifact. Making an arbitrary ` +
+        `SA-reachable file world-readable is the exfil half of the 2026-07-31 audit's F2 ` +
+        `path (ace#1112).`,
+    );
+  }
+  const expected = await resolveAceDriveId(driveClient);
+  if (expected && fileDriveId !== expected) {
+    throw new Error(
+      `drive_set_anyone_with_link: refusing to publish ${fileId} ("${meta.data.name ?? '?'}") — ` +
+        `it is on Shared Drive ${fileDriveId}, not ACE's (${expected}). ACE publishes its own ` +
+        `artifacts; a file on another drive is not one (ace#1112).`,
+    );
+  }
+}
+
 export async function handleSetAnyoneWithLink(
   args: { fileId: string; role?: AnyoneWithLinkRole },
   driveClient: typeof drive = drive,
 ): Promise<{ fileId: string; permissionId: string | null | undefined; role: AnyoneWithLinkRole; sharing: string }> {
   const { fileId, role = 'reader' } = args;
+  await assertPublishableFile(fileId, driveClient);
   const resp = await driveClient.permissions.create({
     fileId,
     supportsAllDrives: true,
