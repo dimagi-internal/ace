@@ -151,9 +151,30 @@ For each app in scope, enumerate its forms and modules against the
 
 ```bash
 ACE_ROOT="${CLAUDE_PLUGIN_ROOT:-$(python3 -c "import json,os; d=json.load(open(os.path.expanduser('~/.claude/plugins/installed_plugins.json'))); print(d['plugins']['ace@ace'][0]['installPath'])")}"
-WALK_OUT="$(npx --prefix "$ACE_ROOT" tsx "$ACE_ROOT/scripts/run-form-walk.ts" <hq_domain> <hq_app_id> --out-scratch)"
+WALK_OUT="$(npx --prefix "$ACE_ROOT" tsx "$ACE_ROOT/scripts/run-form-walk.ts" <hq_domain> <hq_app_id> --draft-only --with-fields --out-scratch)"
 jq . "$WALK_OUT"
 ```
+
+**`--draft-only` is REQUIRED at this pipeline position (ace#971, ace#1437).**
+This skill runs at Phase 3 Step 2.65 — between `app-deploy` and `app-release` —
+because it mutates the CCHQ *draft*, so it must land before the build is cut.
+Without the flag the walk hard-requires a downloadable CCZ, and on a fresh run
+the draft has never been built, so the command returns
+`download_ccz failed: status=404`.
+
+That 404 does not stay quiet. This skill is best-effort and fail-soft, so the
+run proceeds with grid menu display never applied — and `app-release-qa`
+(Step 2.8) BLOCKER-gates all three grid fields (ace#1082). The result is a
+Phase 3 halt two steps later whose cause is three steps upstream and disguised
+as a release-QA failure. That is the silent-degrade shape #971 was filed about,
+and it came back through the doc: the code carried `--draft-only` while this
+line did not, at the same installed version.
+
+**`--with-fields` is REQUIRED for Step 3.** A plain `--draft-only` walk emits
+uids only, and Step 3 triggers on forms carrying `kind: image` — so without it
+the walk reports no field inventory and a literal reading skips the camera-only
+patch (ace#994). Check `fields_available` in the output before evaluating
+Step 3.
 
 **Never pass a fixed `--out /tmp/ace-hq-<app>.json` (ace#1046).** That path
 is shared across macOS users on this workstation: the write fails `EACCES`
@@ -534,7 +555,7 @@ the camera-only residual if one exists, annotating
     app_version?}` — set the app-level flags (defaults `true` / `'some'`
     are the component values). Draft-only; app-release ships it.
 - **CLI wrappers (Bash):**
-  - `scripts/run-form-walk.ts <domain> <app_id> [--out <path>]` —
+  - `scripts/run-form-walk.ts <domain> <app_id> [--build-id <hex>] [--draft-only [--with-fields]] [--out <path> | --out-scratch]` —
     read-only draft/CCZ walk. Emits per-form `form_unique_id` +
     `module_unique_id` (draft, from the `/api/v0.5/application/` overlay)
     + per-field `kind` (`image` for image `<upload>`s), plus the
