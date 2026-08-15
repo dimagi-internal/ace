@@ -12,9 +12,18 @@
  * image-import paths — is unchanged), and `commenter` reaches the Drive API.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { handleSetAnyoneWithLink } from '../../../mcp/google-drive-server.js';
+import {
+  handleSetAnyoneWithLink,
+  __resetAceDriveIdCacheForTests,
+} from '../../../mcp/google-drive-server.js';
+
+const ACE_DRIVE = '0AIUhETtpTlpcUk9PVA';
 
 const fakeDrive = {
+  // ace#1112: the handler now probes the file's drive before publishing, so
+  // these role tests must present a file that IS on the ACE Shared Drive —
+  // containment is covered separately in publish-containment.test.ts.
+  files: { get: vi.fn() },
   permissions: {
     create: vi.fn(),
   },
@@ -22,6 +31,10 @@ const fakeDrive = {
 
 describe('drive_set_anyone_with_link role', () => {
   beforeEach(() => {
+    __resetAceDriveIdCacheForTests();
+    delete process.env.ACE_DRIVE_ROOT_FOLDER_ID;
+    fakeDrive.files.get.mockReset();
+    fakeDrive.files.get.mockResolvedValue({ data: { id: 'file-1', name: 'f', driveId: ACE_DRIVE } });
     fakeDrive.permissions.create.mockReset();
     fakeDrive.permissions.create.mockResolvedValue({ data: { id: 'perm-1' } });
   });
