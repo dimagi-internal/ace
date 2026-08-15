@@ -169,6 +169,31 @@ referenced has been superseded, the question has been overtaken, or the sender h
 waiting. A detailed answer to a three-week-old message spends the counterpart's attention
 re-opening something they closed, and spends ACE's on work nobody is waiting for.
 
+**A multi-turn thread gets a board task, and a parked draft is written down
+(ace#1093).** Four sessions in one window each independently read thread
+`19f86579142e6ba5`, reconstructed run state from Drive, re-verified access, and
+drafted a full reply — each draft parked for approval and superseded before the
+next turn started from zero. A fifth session existed only to reconcile the
+three divergent drafts. One of them noted in passing: *"No board task exists
+for this thread"* — `skills/task-tracker` was never invoked by any of the four.
+Worse, a false claim ("Sophie has no Connect account", the #1064 parser bug) was
+"independently confirmed" three times: replication without shared state just
+replicates the bug.
+
+So, as a step and not an option:
+
+1. **Create-or-advance the thread's board task** on any thread that will take
+   more than one turn. It carries what has been VERIFIED (access, links,
+   membership) so the next turn does not re-verify — and so a wrong verification
+   is corrected once rather than re-confirmed.
+2. **Park the draft where the next turn will look.** When review posture parks a
+   reply awaiting approval, write the draft VERBATIM plus its
+   `agent-turn-review` verdict to the thread's comms-log before the turn closes.
+   The next turn's first move on that thread is *read the parked draft*, not
+   redraft it. A scratchpad does not count: CLAUDE.md says turn state lives in
+   Drive, and a parked draft in a per-session scratchpad is exactly the state
+   that dies at the boundary.
+
 **Do NOT read this as "old mail is worthless."** Two obligations survive the close, and skipping
 either is the actual failure:
 1. **The WORK behind the thread outlives the thread.** Before archiving, make sure every ask in it

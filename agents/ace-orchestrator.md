@@ -114,6 +114,37 @@ value those probes would surface is in the doctor's one-call output.
 Whether a given plugin MCP (`ace-mobile`, `ace-decisions`, Nova, …) bound
 in *this* Claude Code session is per-process state the doctor CLI
 subprocess cannot observe — it can only confirm the server *can* start.
+**Whenever you halt for a restart, write a handoff first (ace#1093).** A
+restart-required halt is the one session boundary ACE *chooses*: it knows it is
+about to be replaced, it knows what it already established, and it knows the
+exact next command. Session `d9eefb36` halted correctly here and the
+post-restart session six minutes later redid ~30 context calls it could not see
+had been made — including re-flailing the same `gog` flags, one guessing
+`--max` and the other `--limit`.
+
+Before printing the halt, write the brief:
+
+```bash
+"$ACE_ROOT/node_modules/.bin/tsx" -e "
+  import { writeHandoff } from '$ACE_ROOT/lib/session-handoff.ts';
+  writeHandoff({
+    written_at: new Date().toISOString(),
+    reason: '<why this session must be restarted>',
+    established: ['<fact 1>', '<fact 2>'],   // the calls the next session must NOT repeat
+    artifacts: ['<paths / Drive ids / branch>'],
+    next_command: '<the literal command to run first>',
+    run: '<opp>/<run-id>',                    // when it is run work
+  });
+"
+```
+
+The next session's preflight prints it back under
+`handoff_from_previous_session` and is told not to re-derive it. It expires
+after two hours, and a stale one is reported as stale rather than hidden —
+silence would read as "the mechanism never ran". Consume it (`clearHandoff`)
+once you have acted on it, so a third session does not act on context two
+boundaries old.
+
 The preflight's `selector_map_currency` block is a STATIC file check; a
 green `selector_map_currency` says nothing about whether `ace-mobile`
 bound. MCP subprocesses bind at session start and are NOT respawned by
