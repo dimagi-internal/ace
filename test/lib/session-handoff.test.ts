@@ -100,7 +100,13 @@ describe('a broken handoff never blocks a session', () => {
 
   it('a failed write returns false rather than crashing the halt', () => {
     // A handoff that cannot be written must not turn a clean halt into a crash.
-    expect(writeHandoff(sample, '/proc/nonexistent-and-unwritable')).toBe(false);
+    // The parent is a FILE, so mkdir under it is ENOTDIR for every user
+    // including root. A chmod-based lock would silently pass as root, and a
+    // platform path like /proc makes the behaviour depend on the OS running
+    // the suite — the thing under test is only "the write failed".
+    const notADir = path.join(home, 'this-is-a-file');
+    writeFileSync(notADir, 'x');
+    expect(writeHandoff(sample, notADir)).toBe(false);
   });
 });
 
