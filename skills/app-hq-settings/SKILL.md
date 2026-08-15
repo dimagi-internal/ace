@@ -189,11 +189,36 @@ Likewise, if any module this skill needs to grid has `module_unique_id:
 null` despite a `draft_api` source, halt for that module and surface the
 form path — the draft-app API row was malformed.
 
+**CRITICAL (ace#994): a `--draft-only` walk emits NO field inventory unless
+you pass `--with-fields`.** Plain `--draft-only` returns uids only — no
+`fields`, no `form_path` — and Step 3 below triggers on forms carrying
+`kind: image`. A literal reading therefore finds **zero** image-bearing forms
+on a never-built draft and silently skips the camera-only patch, which is the
+same fail-soft class #971 set out to close, one step downstream. It shipped
+live on `spark-facilitator/20260727-1850`.
+
+The walk now says which it is, in a top-level `fields_available`:
+
+- `fields_available: true` — the inventory is real; "no `kind: image` fields"
+  means there are none.
+- `fields_available: false` — **nothing was collected.** Do NOT conclude the
+  app has no image fields. Re-run the walk with `--with-fields` (opt-in
+  because it costs a Playwright session, which plain `--draft-only`
+  deliberately avoids) and use that result for Step 3.
+
+`--with-fields` reads each form's source from the draft through the same
+`/apps/browse/<app_id>/<form_unique_id>/source/` path Step 3 already uses via
+`commcare_get_form_source`, so it needs no build.
+
 ### Step 3: Camera-only — `appearance="acquire"` (Deliver only)
 
 Skip entirely when the PDD does not demand camera-only (Step 1) or when
 `--app=learn`. Photos are Deliver-only in the Connect model; Learn forms
 are case-less content/quiz forms and never carry image uploads.
+
+**Pre-flight:** if the Step-2 walk reported `fields_available: false`, re-run it with
+`--with-fields` before evaluating this step. A `false` there means the inventory was
+never collected — treating it as "no image fields" is the ace#994 silent skip.
 
 For each Deliver form that the walk reports with ≥1 `kind: image` field:
 

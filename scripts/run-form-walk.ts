@@ -50,6 +50,25 @@
  *
  * Shipped 0.13.29.
  */
+
+// Load ${CLAUDE_PLUGIN_DATA}/.env before anything reads process.env (ace#993).
+// MCP subprocesses get .env injected by the server bootstrap; a plain
+// `npx tsx` shell invocation does NOT — so the command block documented in
+// `skills/app-hq-settings § Step 2` failed verbatim as written, and reported
+// it as an unrelated issue-#108 uid halt ("falling back to suite.xml ... 0
+// forms") while the credentials were correctly provisioned all along. Same
+// idiom as the MCP servers (`mcp/connect-server.ts`).
+import { config as dotenvConfig } from 'dotenv';
+import { resolvePluginDataDir } from '../lib/plugin-data-dir.js';
+import * as nodePath from 'node:path';
+
+const __formWalkPluginDataDir = resolvePluginDataDir(import.meta.url);
+dotenvConfig({
+  path: __formWalkPluginDataDir
+    ? nodePath.join(__formWalkPluginDataDir, '.env')
+    : nodePath.join(process.cwd(), '.env'),
+});
+
 import { unzipSync, strFromU8 } from 'fflate';
 import { DOMParser } from '@xmldom/xmldom';
 import { scratchPath, writeVerifiedJson } from '../lib/scratch-file.js';
@@ -655,6 +674,14 @@ interface CliArgs {
   /** Resolve uids from the draft-app API ONLY — no CCZ, no Playwright.
    * See `--draft-only` handling in `main()` for why this mode exists. */
   draft_only?: boolean;
+  /**
+   * `--with-fields`: in draft-only mode, ALSO emit the per-form field
+   * inventory by pulling each form's source from the draft (ace#994).
+   * Costs a Playwright session, which plain `--draft-only` deliberately
+   * avoids — so it is opt-in, and the callers that need `kind: image` ask
+   * for it explicitly.
+   */
+  with_fields?: boolean;
 }
 
 function parseCliArgs(argv: string[]): CliArgs | null {
@@ -664,6 +691,8 @@ function parseCliArgs(argv: string[]): CliArgs | null {
     const a = argv[i];
     if (a === '--build-id') {
       out.build_id = argv[++i];
+    } else if (a === '--with-fields') {
+      out.with_fields = true;
     } else if (a === '--draft-only') {
       out.draft_only = true;
     } else if (a === '--out') {
@@ -720,7 +749,7 @@ async function main(): Promise<number> {
   const args = parseCliArgs(process.argv.slice(2));
   if (!args) {
     console.error(
-      'Usage: npx tsx scripts/run-form-walk.ts <domain> <app_id> [--build-id <hex>] [--draft-only] [--out <path> | --out-scratch]',
+      'Usage: npx tsx scripts/run-form-walk.ts <domain> <app_id> [--build-id <hex>] [--draft-only [--with-fields]] [--out <path> | --out-scratch]',
     );
     return 1;
   }
@@ -760,21 +789,65 @@ async function main(): Promise<number> {
       );
       return 2;
     }
+    // Per-form field inventory (ace#994). `--draft-only` alone emits uids
+    // only — no `fields`, no `form_path` — but `app-hq-settings § Step 3`
+    // (camera-only) triggers on forms carrying >= 1 field with `kind: image`.
+    // A literal reading therefore found ZERO image-bearing forms on a
+    // never-built draft and silently skipped the acquire patch: the same
+    // fail-soft class #971 set out to close, moved one step downstream.
+    //
+    // Halting instead would be worse — Step 3 would then halt on EVERY
+    // first-time run, which is the ace#1026 trap (a blocker that always fires
+    // trains agents to route around it). So the inventory is made available
+    // on a draft instead, via the same `/apps/browse/<app>/<form>/source/`
+    // path `commcare_patch_xform` already uses against drafts in this very
+    // skill. `fields_available` lets the consumer tell "no image fields" from
+    // "no inventory was collected" — the distinction whose absence is the bug.
+    const draftForms: Array<{
+      form_key: string;
+      form_unique_id: string;
+      fields?: WalkedField[];
+    }> = [...formMap].map(([form_key, form_unique_id]) => ({ form_key, form_unique_id }));
+
+    if (args.with_fields) {
+      const { CommCareBackend: CB } = await import('../mcp/connect/backends/commcare.js');
+      const { PlaywrightSession: PS } = await import('../mcp/connect/auth/playwright-session.js');
+      const dsession = new PS({
+        baseUrl: process.env.CONNECT_BASE_URL ?? 'https://connect.dimagi.com',
+        cchqBaseUrl,
+        hqUsername: process.env.ACE_HQ_USERNAME,
+        hqPassword: process.env.ACE_HQ_PASSWORD,
+      });
+      await dsession.getContext();
+      const dc = new CB({ baseUrl: cchqBaseUrl, session: dsession });
+      for (const f of draftForms) {
+        const src = await dc.getFormSource({
+          domain: args.domain,
+          app_id: args.app_id,
+          form_unique_id: f.form_unique_id,
+        });
+        f.fields = walkFormFields(src.xform_xml);
+      }
+    }
+
     const result = {
       domain: args.domain,
       app_id: args.app_id,
       build_id: null,
       form_unique_id_source: 'draft_api' as const,
+      /**
+       * False on a plain `--draft-only` walk. A consumer that keys off
+       * `kind: image` MUST NOT read "no image-bearing forms" from an absent
+       * inventory — re-run with `--with-fields` (ace#994).
+       */
+      fields_available: args.with_fields === true,
       modules: [...moduleMap].map(([module_key, module_unique_id]) => ({
         module_key,
         module_unique_id,
       })),
-      forms: [...formMap].map(([form_key, form_unique_id]) => ({
-        form_key,
-        form_unique_id,
-      })),
+      forms: draftForms,
     };
-    emitResult(args, result, ' (draft_api)');
+    emitResult(args, result, args.with_fields ? ' (draft_api + fields)' : ' (draft_api)');
     return 0;
   }
 
