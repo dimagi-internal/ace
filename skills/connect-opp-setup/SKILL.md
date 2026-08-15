@@ -320,8 +320,28 @@ alone makes the artifact land outside `4-connect` and fail
    - `is_test` — boolean match
    - `learn_app.cc_app_id` and `deliver_app.cc_app_id` — bare 32-char
      match
-   - `passing_score` — numeric match. **Severity depends on whether the
-     PDD decided the value**, because the two cases mean different things:
+   - `passing_score` — numeric match. **Read it with
+     `connect_get_learn_passing_score({organization_slug, program_id,
+     opportunity_id})`, NOT from `connect_get_opportunity`** (ace#1449).
+     `connect_get_opportunity` hydrates from `/a/<org>/opportunity/<id>/edit`
+     plus the read-only detail page, and `learn_app_passing_score` is rendered
+     on **neither** — it lives only on the program-scoped init-edit form. So
+     this comparison silently had nothing to compare against: the field came
+     back `undefined`, which reads as "unreadable", not as "mismatch". There is
+     no REST alternative — commcare-connect's automation API (PR #1135) ships
+     no opportunity GET endpoint at all.
+
+     Two return values that are NOT the same thing:
+     - `passing_score: null` — the input rendered EMPTY, i.e. the gate is
+       **unset**. Do not coerce that to `0`; `0` means "every worker passes",
+       the most permissive possible gate, and is the opposite of unconfigured.
+     - the atom THROWS — the field is absent from the form altogether, meaning
+       the form shape changed. Treat as `[BLOCKER]`; do not substitute a
+       default, or you will report a gate value ACE invented as one Connect
+       stored.
+
+     **Severity depends on whether the PDD decided the value**, because the two
+     cases mean different things:
      - The PDD stated a gate (`program_parameters.learn_passing_score` is
        set) and the read-back differs → **`[BLOCKER]`**. The gate the
        program specified is not the gate that is live, this call is the

@@ -72,6 +72,21 @@ async function httpErrorFor(res: APIResponse, urlPath: string, method: string = 
  * Used for hq_server resolution, api_key dropdown, and learn/deliver app
  * dropdowns where the value attribute is the actual form payload.
  */
+/**
+ * The one page that renders `learn_app_passing_score`.
+ *
+ * It is the PROGRAM-scoped init-edit form (`OpportunityInitUpdateForm`), NOT
+ * the `/a/<org>/opportunity/<id>/edit` form `updateOpportunity` posts and NOT
+ * the read-only detail page `getOpportunity` scrapes — neither of those
+ * renders the field at all. Shared by the getter and the setter so a URL
+ * change cannot leave one reading a page the other does not.
+ */
+function learnPassingScoreEditPath(
+  organizationSlug: string, programId: string, opportunityId: string,
+): string {
+  return `/a/${organizationSlug}/program/${programId}/opportunity/${opportunityId}/init/edit/`;
+}
+
 function parseSelectOptions(html: string): Array<{ value: string; text: string }> {
   const opts: Array<{ value: string; text: string }> = [];
   for (const m of html.matchAll(/<option[^>]*value=["']([^"']*)["'][^>]*>([^<]*)<\/option>/g)) {
@@ -578,8 +593,9 @@ export class PlaywrightBackend implements ConnectClient {
   setLearnPassingScore: ConnectClient['setLearnPassingScore'] = async ({
     organization_slug, program_id, opportunity_id, passing_score,
   }) => {
-    const editPath =
-      `/a/${organization_slug}/program/${program_id}/opportunity/${opportunity_id}/init/edit/`;
+    const editPath = learnPassingScoreEditPath(
+      organization_slug, program_id, opportunity_id,
+    );
 
     const getRes = await this.request.get(editPath);
     if (getRes.status() !== 200) throw await httpErrorFor(getRes, editPath);
@@ -645,6 +661,54 @@ export class PlaywrightBackend implements ConnectClient {
       passing_score,
       verified_passing_score: verified,
       previous_passing_score: Number.isNaN(previous as number) ? null : previous,
+    };
+  };
+
+  /**
+   * Read the Learn-app passing score. GET-only — no form is posted.
+   *
+   * This is the first half of `setLearnPassingScore` lifted into its own
+   * capability, and it shares that method's page and field via
+   * `learnPassingScoreEditPath` so the two cannot drift on the URL.
+   *
+   * The write path is the fragile one (it has to re-post the whole init form,
+   * respecting Django-`disabled` fields), and it has been observed failing on
+   * an unrelated required field — which previously took the READ down with it,
+   * because the read only existed inside the write. Separating them means a
+   * broken repair path no longer costs the ability to verify the gate.
+   */
+  getLearnPassingScore: ConnectClient['getLearnPassingScore'] = async ({
+    organization_slug, program_id, opportunity_id,
+  }) => {
+    const sourcePath = learnPassingScoreEditPath(
+      organization_slug, program_id, opportunity_id,
+    );
+
+    const res = await this.request.get(sourcePath);
+    if (res.status() !== 200) throw await httpErrorFor(res, sourcePath);
+
+    const fields = extractFormFieldValues(await res.text());
+    if (!('learn_app_passing_score' in fields)) {
+      // Same fail-loud contract as the setter: a missing input means the form
+      // shape changed, and returning a default here would report a gate value
+      // ACE invented as one Connect stored.
+      throw new ConnectValidationError([
+        `learn_app_passing_score is not rendered on ${sourcePath} — the init-edit form shape changed. ` +
+        'Re-read commcare_connect/opportunity/forms.py before trusting any gate value.',
+      ]);
+    }
+
+    const rendered = fields['learn_app_passing_score'] ?? '';
+    // An empty input is UNSET, which is not 0 — 0 would mean "every worker
+    // passes", the opposite of an unconfigured gate. Report null and let the
+    // caller decide.
+    const parsed = rendered.trim() === '' ? null : Number(rendered);
+
+    return {
+      opportunity_id,
+      passing_score: parsed !== null && Number.isFinite(parsed) ? parsed : null,
+      rendered,
+      source_path: sourcePath,
     };
   };
 

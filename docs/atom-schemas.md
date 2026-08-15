@@ -422,7 +422,7 @@ Render the run-folder README markdown for `runId` with optional per-phase status
 
 ## ace-connect
 
-Source: `mcp/connect-server.ts` — 59 atoms
+Source: `mcp/connect-server.ts` — 60 atoms
 
 ### `connect_list_programs`
 
@@ -525,6 +525,14 @@ Source: `mcp/connect-server.ts` — 59 atoms
 | `program_id` | `z.string` | **required** | Program UUID. Required because the form carrying passing_score is the PROGRAM-SCOPED init-edit form (/a/<org>/program/<program_id>/opportunity/<opp_id>/init/edit/), not the opportunity edit form connect_update_opportunity posts. |
 | `opportunity_id` | `z.string` | **required** | Opportunity UUID whose Learn app gate is being changed. Note the score lives on the CommCareApp row, which is keyed (cc_app_id, cc_domain, organization, hq_server) and NOT by opportunity — so every opportunity in this org wired to the same HQ Learn app shares it. The returned previous_passing_score shows what was displaced. |
 | `passing_score` | `z.coerce.number` | **required** | Learn-app passing score, 0-100 (Connect renders the input with min=0 max=100). This is the ONLY gate on Deliver unlock: Connect sets passed = score >= passing_score for every submitted form block carrying user_score. |
+
+### `connect_get_learn_passing_score`
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `organization_slug` | `z.string` | **required** | PM-side org slug that owns the program (e.g. ai-demo-space). |
+| `program_id` | `z.string` | **required** | Program UUID. Required because the score is rendered ONLY on the PROGRAM-SCOPED init-edit form (/a/<org>/program/<program_id>/opportunity/<opp_id>/init/edit/). connect_get_opportunity reads the opportunity edit form plus the detail page, and the field appears on neither — which is why it does not return it. |
+| `opportunity_id` | `z.string` | **required** | Opportunity UUID whose Learn gate to read. Note the score lives on the CommCareApp row, keyed (cc_app_id, cc_domain, organization, hq_server) and NOT by opportunity, so this value is shared by every opportunity in the org wired to the same HQ Learn app. |
 
 ### `connect_set_verification_flags`
 

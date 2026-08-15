@@ -61,6 +61,7 @@ export type Capability =
   | 'list_delivery_types'
   | 'list_opportunities'
   | 'get_opportunity'
+  | 'get_learn_passing_score'
   | 'list_deliver_units'
   | 'list_payment_units'
   | 'list_invites'
@@ -76,6 +77,7 @@ export const CAPABILITY_MAP: Record<Capability, CapabilityRoute> = {
   create_opportunity:           { backend: 'REST',       restTarget: 'POST /api/programs/{program_id}/opportunities/' },
   update_opportunity:           { backend: 'PLAYWRIGHT', restTarget: 'PATCH /api/opportunities/{id}/ (not yet shipped)' },
   set_learn_passing_score:      { backend: 'PLAYWRIGHT', restTarget: 'PATCH /api/opportunities/{id}/ (not yet shipped) — note passing_score lives on CommCareApp, not Opportunity' },
+  get_learn_passing_score:      { backend: 'PLAYWRIGHT', restTarget: 'GET /api/opportunities/{id}/ (not yet shipped) — no opportunity READ endpoint exists in the PR #1135 automation API at all; the score is rendered only on the program-scoped init-edit form' },
   set_verification_flags:       { backend: 'PLAYWRIGHT', restTarget: 'PUT /api/opportunities/{id}/verification-flags/ (not yet shipped)' },
   create_payment_unit:          { backend: 'REST',       restTarget: 'POST /api/opportunities/{id}/payment_units/' },
   create_payment_units:         { backend: 'REST',       restTarget: 'POST /api/opportunities/{id}/payment_units/' },

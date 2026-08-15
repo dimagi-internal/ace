@@ -160,3 +160,155 @@ describe('the gate arithmetic this atom exists to protect', () => {
     expect(differing).toEqual([83]);   // 5-of-6, and only 5-of-6
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────
+// connect_get_learn_passing_score — the READ half (ace#1449)
+// ─────────────────────────────────────────────────────────────────────
+
+/**
+ * Why a read atom exists at all.
+ *
+ * `passing_score` is the one value in the whole Connect wiring whose being
+ * wrong is completely SILENT: the app still builds, the worker still answers
+ * the quiz, the form still submits — only the Deliver gate differs. And
+ * `connect_create_opportunity`'s posted value is DISCARDED for an existing
+ * `CommCareApp` row (`get_or_create(..., update_existing=False)`) with no
+ * error raised. So without a read there is no way to tell "posted and stored"
+ * from "posted and dropped".
+ *
+ * There is no REST path: commcare-connect's PR #1135 automation API is
+ * POST-only, with no `GET /api/opportunities/{id}/` endpoint at all. And
+ * `connect_get_opportunity` cannot answer it either — it hydrates from
+ * `/a/<org>/opportunity/<id>/edit` plus the read-only detail page, and
+ * `learn_app_passing_score` is rendered on NEITHER. It lives only on the
+ * program-scoped init-edit form.
+ *
+ * Live motivation: `bednet-check-2-visit/20260814-2019` posted a
+ * PDD-pinned gate of 100 and could not verify it, because the only code that
+ * read the field lived inside the WRITE atom — and the write was failing for
+ * an unrelated reason (`hq_server: This field is required`). A broken repair
+ * path took the read down with it.
+ */
+import { PlaywrightBackend } from '../../../../mcp/connect/backends/playwright.js';
+
+/** Minimal APIRequestContext stub: records GETs, replays canned HTML. */
+function stubRequest(html: string, status = 200) {
+  const gets: string[] = [];
+  return {
+    gets,
+    ctx: {
+      get: async (path: string) => {
+        gets.push(path);
+        return { status: () => status, text: async () => html };
+      },
+    } as never,
+  };
+}
+
+function backendFor(html: string, status = 200) {
+  const { gets, ctx } = stubRequest(html, status);
+  const backend = new PlaywrightBackend({
+    baseUrl: 'https://connect.dimagi.com',
+    csrfToken: 'tok',
+    request: ctx,
+  });
+  return { backend, gets };
+}
+
+const ARGS = {
+  organization_slug: 'ai-demo-space',
+  program_id: 'efb8af66-fbfd-488f-bf99-66f864cea68b',
+  opportunity_id: '94d2c7ec-bd5b-4acc-983e-3e8aebf5416c',
+};
+
+describe('connect_get_learn_passing_score', () => {
+  it('reads the score off the program-scoped init-edit form', async () => {
+    const { backend, gets } = backendFor(FORM_FRESH);
+    const out = await backend.getLearnPassingScore(ARGS);
+
+    expect(out.passing_score).toBe(100);
+    expect(out.rendered).toBe('100');
+    expect(out.opportunity_id).toBe(ARGS.opportunity_id);
+    expect(gets).toEqual([
+      `/a/${ARGS.organization_slug}/program/${ARGS.program_id}` +
+      `/opportunity/${ARGS.opportunity_id}/init/edit/`,
+    ]);
+  });
+
+  it('does NOT read the opportunity edit form or detail page', async () => {
+    // Those are the two pages `getOpportunity` scrapes, and the field is
+    // rendered on neither — which is the whole reason this atom exists.
+    const { backend, gets } = backendFor(FORM_FRESH);
+    await backend.getLearnPassingScore(ARGS);
+
+    expect(gets.join()).not.toContain(`/opportunity/${ARGS.opportunity_id}/edit`);
+    expect(gets.join()).toContain('/program/');
+  });
+
+  it('hits the SAME page the setter writes to', async () => {
+    // Pins the shared `learnPassingScoreEditPath` helper. If these ever
+    // diverge, the read verifies a page the write does not touch — which
+    // would report a stale gate as a confirmed one.
+    const read = backendFor(FORM_FRESH);
+    await read.backend.getLearnPassingScore(ARGS);
+
+    const write = backendFor(FORM_FRESH);
+    await write.backend
+      .setLearnPassingScore({ ...ARGS, passing_score: 100 })
+      .catch(() => { /* POST is unstubbed; we only care about the first GET */ });
+
+    expect(write.gets[0]).toBe(read.gets[0]);
+  });
+
+  it('reports an EMPTY input as null, never as 0', async () => {
+    // 0 would mean "every worker passes" — the exact opposite of an
+    // unconfigured gate. Coercing '' to 0 would turn "I do not know" into
+    // the most permissive possible answer.
+    const { backend } = backendFor(
+      FORM_FRESH.replace('name="learn_app_passing_score" value="100"',
+                         'name="learn_app_passing_score" value=""'),
+    );
+    const out = await backend.getLearnPassingScore(ARGS);
+
+    expect(out.passing_score).toBeNull();
+    expect(out.rendered).toBe('');
+  });
+
+  it('distinguishes a real 0 from an unset field', async () => {
+    const { backend } = backendFor(
+      FORM_FRESH.replace('name="learn_app_passing_score" value="100"',
+                         'name="learn_app_passing_score" value="0"'),
+    );
+    const out = await backend.getLearnPassingScore(ARGS);
+
+    expect(out.passing_score).toBe(0);
+    expect(out.rendered).toBe('0');
+  });
+
+  it('still reads the score after workers have joined', async () => {
+    // The six app/credential fields go Django-`disabled` once workers join,
+    // but passing_score deliberately does not — the form's own hint says
+    // "You can still edit the learn app description and passing score."
+    const { backend } = backendFor(FORM_WORKERS_JOINED);
+    const out = await backend.getLearnPassingScore(ARGS);
+
+    expect(out.passing_score).toBe(100);
+  });
+
+  it('THROWS when the field is absent rather than defaulting', async () => {
+    // Returning a default here would report a gate value ACE invented as one
+    // Connect stored — the same silent-wrong-answer class the atom exists to
+    // close. Fail loud instead, matching the setter's contract.
+    const { backend } = backendFor(
+      FORM_FRESH.replace(/<input name="learn_app_passing_score"[^>]*>/, ''),
+    );
+    await expect(backend.getLearnPassingScore(ARGS)).rejects.toThrow(
+      /learn_app_passing_score is not rendered/,
+    );
+  });
+
+  it('throws on a non-200 rather than reporting a score', async () => {
+    const { backend } = backendFor('<h1>Not found</h1>', 404);
+    await expect(backend.getLearnPassingScore(ARGS)).rejects.toThrow();
+  });
+});

@@ -449,6 +449,35 @@ server.tool('connect_set_learn_passing_score',
   async (args) => runAtom(async () => (await client()).setLearnPassingScore(args))
 );
 
+server.tool('connect_get_learn_passing_score',
+  {
+    organization_slug: z.string().describe(
+      'PM-side org slug that owns the program (e.g. ai-demo-space).',
+    ),
+    program_id: z.string().describe(
+      'Program UUID. Required because the score is rendered ONLY on the PROGRAM-SCOPED init-edit form (/a/<org>/program/<program_id>/opportunity/<opp_id>/init/edit/). connect_get_opportunity reads the opportunity edit form plus the detail page, and the field appears on neither — which is why it does not return it.',
+    ),
+    opportunity_id: z.string().describe(
+      'Opportunity UUID whose Learn gate to read. Note the score lives on the CommCareApp row, keyed (cc_app_id, cc_domain, organization, hq_server) and NOT by opportunity, so this value is shared by every opportunity in the org wired to the same HQ Learn app.',
+    ),
+  },
+  // Read-only counterpart to connect_set_learn_passing_score. It exists because
+  // passing_score is the one value whose being wrong is completely silent —
+  // the app builds, the worker sees a result screen, only the Deliver gate
+  // differs — and the value posted by connect_create_opportunity is DISCARDED
+  // for an existing CommCareApp row (get_or_create with update_existing=False)
+  // with no error raised. Without a read there is no way to distinguish
+  // "posted and stored" from "posted and dropped". Returns passing_score: null
+  // when the input renders empty (UNSET is not 0; 0 would mean every worker
+  // passes) and throws rather than defaulting when the field is absent.
+  // ace#1350 / ace#1449.
+  //
+  // NOTE: no bare apostrophe anywhere in these comment lines — the schema
+  // dumper is comment-unaware, and one would open a phantom string that
+  // silently drops every server.tool registered below this point.
+  async (args) => runAtom(async () => (await client()).getLearnPassingScore(args))
+);
+
 // ── Per-opportunity configuration ────────────────────────────────
 
 const VerificationFlagsZ = z.object({
