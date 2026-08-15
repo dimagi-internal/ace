@@ -282,6 +282,19 @@ function renderDecision(builder: RequestBuilder, row: DecisionRow): void {
   // Status: <value>
   builder.appendBoldPrefix("Status:", row.status);
 
+  // Supersession (ace#1421). A reader of the rendered log must be able to see
+  // at a glance which of two contradicting rows is live — before this, both
+  // carried `status: ai-default` and nothing but prose distinguished them.
+  if (row.superseded_by !== undefined) {
+    builder.appendBoldPrefix(
+      "SUPERSEDED — do not use:",
+      `corrected by \`${row.superseded_by}\`. Kept for the audit trail.`,
+    );
+  }
+  if (row.supersedes !== undefined) {
+    builder.appendBoldPrefix("Supersedes:", `\`${row.supersedes}\` (this row is the live value)`);
+  }
+
   // Evidence basis: <basis> (v4; absent on legacy pre-v4 rows).
   // For a `conflicting` default, surface the competing source readings
   // prominently so a reviewer sees the contested fork was resolved by

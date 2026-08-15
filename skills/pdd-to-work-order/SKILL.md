@@ -37,7 +37,7 @@ Take the approved PDD and decisions.yaml and produce a contractual Work Order dr
 
 3. **Resolve contractual fields.** For each work-order field, apply the inference order:
 
-   - (a) If an existing `decisions.yaml` row from an earlier skill covers it (e.g., `payment-rate`, `flw-count`, `working-language`, `budget-plausibility`), use that value as-is. Never duplicate or rename.
+   - (a) If an existing `decisions.yaml` row from an earlier skill covers it (e.g., `payment-rate`, `flw-count`, `working-language`, `budget-plausibility`), use that value as-is. Never duplicate or rename. **Resolve to the row that is NOT superseded** — a row carrying `superseded_by` is history, kept for the audit trail, and its value is wrong by construction. The log is append-only, so a mid-run correction cannot edit the original in place; it lands as a new row and the write boundary stamps `superseded_by` on the one it replaced. Use `resolveDecision(log, id)` from `lib/decisions-schema.ts` rather than a bare id lookup — a bare lookup on the canonical id is exactly what returns the stale value. On bednet-check-2-visit/20260814-2019, `payment-rate` held a per-visit band that a later row corrected to a per-day band (ace#1420); following this step literally would have put the wrong rate into the Phase 4 payment unit and a contractual document (ace#1421).
    - (b) If inferable from PDD body (Timeline → period of performance; Success Metrics + Budget → NTE; etc.), use the inference and emit a new `wo-*` row capturing it.
    - (c) If genuinely unknowable (partner name absent, WO# unknown, MSA date unknown), insert a bracketed placeholder like `[Partner Name]` in the gdoc and emit a `wo-*` row with `status: open` + `notes` telling the human what to fill in.
 
