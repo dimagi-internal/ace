@@ -9,6 +9,7 @@
 
 import { config as dotenvConfig } from 'dotenv';
 import { assertNotCredentialPath } from '../lib/contained-path.js';
+import { reconcileAfterCreate } from '../lib/drive-duplicate-reconcile.js';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
@@ -1615,6 +1616,62 @@ export async function handleCreateFolder(
     fields: 'id, name, webViewLink',
     supportsAllDrives: true,
   }));
+
+  // Reconcile (ace#1417) — this atom's own description says it exists to close
+  // "the duplicate-`verdicts/` class of bug from parallel skill writes", so
+  // parallel writes are the stated design case and were precisely the case the
+  // implementation did not handle.
+  if (findOrCreate) {
+    const escaped2 = name.replace(/'/g, "\\'");
+    const after = await retry(() => driveClient.files.list({
+      q: `mimeType='application/vnd.google-apps.folder' and name='${escaped2}' and '${parentFolderId}' in parents and trashed=false`,
+      fields: 'files(id, createdTime)',
+      supportsAllDrives: true,
+      includeItemsFromAllDrives: true,
+    }));
+    const siblings = (after?.data?.files ?? []).map((f) => ({
+      id: f.id!,
+      createdTime: f.createdTime ?? null,
+    }));
+    const verdict = reconcileAfterCreate(resp.data.id!, siblings);
+    if (verdict.action === 'adopt') {
+      // A folder has no content to merge, but it may already have CHILDREN if
+      // a sibling skill wrote into it in the window. Trashing it would take
+      // them with it, so only reclaim an empty one; a populated duplicate is
+      // left for /ace:sweep drive rather than silently destroyed.
+      const kids = await retry(() => driveClient.files.list({
+        q: `'${verdict.trashId}' in parents and trashed=false`,
+        fields: 'files(id)',
+        pageSize: 1,
+        supportsAllDrives: true,
+        includeItemsFromAllDrives: true,
+      }));
+      if ((kids?.data?.files ?? []).length === 0) {
+        await retry(() => driveClient.files.update({
+          fileId: verdict.trashId,
+          requestBody: { trashed: true },
+          fields: 'id',
+          supportsAllDrives: true,
+        }));
+      } else {
+        console.warn(
+          `[ace-gdrive] handleCreateFolder: duplicate folder "${name}" (${verdict.trashId}) ` +
+            `already has children — left in place for /ace:sweep drive (ace#1417)`,
+        );
+      }
+      const canon = await retry(() => driveClient.files.get({
+        fileId: verdict.canonicalId,
+        fields: 'id, name, webViewLink',
+        supportsAllDrives: true,
+      }));
+      return {
+        id: canon.data.id!,
+        name: canon.data.name!,
+        webViewLink: canon.data.webViewLink ?? undefined,
+      };
+    }
+  }
+
   return { id: resp.data.id!, name: resp.data.name!, webViewLink: resp.data.webViewLink ?? undefined };
 }
 
@@ -1788,7 +1845,7 @@ export async function handleCreateFile(
     fields: 'id, name, webViewLink',
     supportsAllDrives: true,
   }));
-  const fileId = created.data.id!;
+  let fileId = created.data.id!;
 
   await retry(() => driveClient.files.update({
     fileId,
@@ -1796,6 +1853,57 @@ export async function handleCreateFile(
     fields: 'id',
     supportsAllDrives: true,
   }));
+
+  // Reconcile (ace#1417). The findOrCreate lookup above is check-then-act, so
+  // a concurrent writer of the same name can have created its own file in the
+  // window — which for a large markdown body is minutes, not milliseconds.
+  // Re-list and converge: if we lost the race, apply our content to the
+  // canonical file and trash the one WE made. Never trash another writer's
+  // file, and never discard our own content — that is what findOrCreate would
+  // have done had it seen the file.
+  if (findOrCreate) {
+    const escaped2 = name.replace(/'/g, "\\'");
+    const after = await retry(() => driveClient.files.list({
+      q: `name='${escaped2}' and '${parentFolderId}' in parents and trashed=false and mimeType!='application/vnd.google-apps.folder'`,
+      fields: 'files(id, createdTime)',
+      supportsAllDrives: true,
+      includeItemsFromAllDrives: true,
+    }));
+    const siblings = (after?.data?.files ?? []).map((f) => ({
+      id: f.id!,
+      createdTime: f.createdTime ?? null,
+    }));
+    const verdict = reconcileAfterCreate(fileId, siblings);
+    if (verdict.action === 'adopt') {
+      await retry(() => driveClient.files.update({
+        fileId: verdict.canonicalId,
+        media: bodyMedia,
+        fields: 'id',
+        supportsAllDrives: true,
+      }));
+      await retry(() => driveClient.files.update({
+        fileId: verdict.trashId,
+        requestBody: { trashed: true },
+        fields: 'id',
+        supportsAllDrives: true,
+      }));
+      const canon = await retry(() => driveClient.files.get({
+        fileId: verdict.canonicalId,
+        fields: 'id, name, webViewLink',
+        supportsAllDrives: true,
+      }));
+      console.warn(
+        `[ace-gdrive] handleCreateFile: lost a findOrCreate race on "${name}" — ` +
+          `adopted ${verdict.canonicalId}, trashed our duplicate ${verdict.trashId} (ace#1417)`,
+      );
+      return {
+        id: canon.data.id!,
+        name: canon.data.name!,
+        webViewLink: canon.data.webViewLink ?? undefined,
+        reused: true,
+      };
+    }
+  }
 
   return {
     id: fileId,
