@@ -65,6 +65,7 @@ export class CompositeBackend implements ConnectClient {
   getOpportunity = (a: Parameters<ConnectClient['getOpportunity']>[0]) => this.opts.playwright.getOpportunity(a);
   updateOpportunity = (a: Parameters<ConnectClient['updateOpportunity']>[0]) => this.opts.playwright.updateOpportunity(a);
   setLearnPassingScore = (a: Parameters<ConnectClient['setLearnPassingScore']>[0]) => this.opts.playwright.setLearnPassingScore(a);
+  getLearnPassingScore = (a: Parameters<ConnectClient['getLearnPassingScore']>[0]) => this.opts.playwright.getLearnPassingScore(a);
   setVerificationFlags = (a: Parameters<ConnectClient['setVerificationFlags']>[0]) => this.opts.playwright.setVerificationFlags(a);
   listDeliverUnits = (a: Parameters<ConnectClient['listDeliverUnits']>[0]) => this.opts.playwright.listDeliverUnits(a);
   listPaymentUnits = (a: Parameters<ConnectClient['listPaymentUnits']>[0]) => this.opts.playwright.listPaymentUnits(a);

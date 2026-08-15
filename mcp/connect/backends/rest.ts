@@ -449,6 +449,10 @@ export class RestBackend implements ConnectClient {
   getOpportunity = stub('getOpportunity') as ConnectClient['getOpportunity'];
   updateOpportunity = stub('updateOpportunity') as ConnectClient['updateOpportunity'];
   setLearnPassingScore = stub('setLearnPassingScore') as ConnectClient['setLearnPassingScore'];
+  // Stubbed because the automation API (PR #1135) has no opportunity READ
+  // endpoint at all — not merely none carrying passing_score. Routed to
+  // PLAYWRIGHT in capability-map.ts.
+  getLearnPassingScore = stub('getLearnPassingScore') as ConnectClient['getLearnPassingScore'];
   setVerificationFlags = stub('setVerificationFlags') as ConnectClient['setVerificationFlags'];
   deleteUnacceptedFlwInvites = stub('deleteUnacceptedFlwInvites') as ConnectClient['deleteUnacceptedFlwInvites'];
   listFlwInvites = stub('listFlwInvites') as ConnectClient['listFlwInvites'];

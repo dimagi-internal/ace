@@ -144,6 +144,50 @@ export interface ConnectClient {
     previous_passing_score: number | null;
   }>;
 
+  /**
+   * Read the Learn-app passing score for an existing opportunity.
+   *
+   * **Why this is its own atom rather than a field on `getOpportunity`.**
+   * `getOpportunity` hydrates from `/a/<org>/opportunity/<id>/edit` plus the
+   * read-only detail page, and `learn_app_passing_score` is rendered on
+   * NEITHER — it lives on the program-scoped init-edit form served by
+   * `OpportunityInitUpdateForm`. Adding it to `getOpportunity` would mean a
+   * third page fetch (and a `program_id` argument) on every opportunity read,
+   * so the read is kept separate and paid for only when asked for.
+   *
+   * There is no REST path for this: `commcare-connect`'s automation API
+   * (PR #1135) ships POST-only endpoints, with no `GET /api/opportunities/{id}/`
+   * at all — every opportunity read in `capability-map.ts` is marked
+   * `not yet shipped`. Scraping the form ACE already posts is the honest
+   * mechanism, not a workaround for one we skipped.
+   *
+   * **Why a read-only atom matters here.** `passing_score` is the single value
+   * whose being wrong is completely silent: the app still builds, the worker
+   * still sees a result screen, the form still submits — only the Deliver gate
+   * differs. `connect_create_opportunity` posts it, but on the CREATE path
+   * `get_or_create`'s `defaults` are DISCARDED for an existing `CommCareApp`
+   * row (`update_existing=False`), with no error. Without a read there is no
+   * way to tell "posted and stored" from "posted and dropped" — which left
+   * `bednet-check-2-visit/20260814-2019` unable to verify a gate the PDD
+   * pinned at 100 (dimagi-internal/ace#1350, #1449).
+   *
+   * Deliberately does NOT fall back to a default on a missing field: an
+   * unreadable gate is reported as unreadable, never as a number.
+   */
+  getLearnPassingScore(args: {
+    organization_slug: string;
+    program_id: string;
+    opportunity_id: string;
+  }): Promise<{
+    opportunity_id: string;
+    /** null when the input renders empty — unset, which is not the same as 0. */
+    passing_score: number | null;
+    /** The raw form value, before coercion — so a caller can see `''` vs `'0'`. */
+    rendered: string;
+    /** The page this was read from, so a stale answer can be traced. */
+    source_path: string;
+  }>;
+
   // Per-opportunity configuration (post-create)
   setVerificationFlags(args: {
     organization_slug: string;
