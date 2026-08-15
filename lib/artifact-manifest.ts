@@ -174,6 +174,31 @@ export interface ArtifactEntry {
    * own contract says the reader is shown the screens.
    */
   illustrated?: true;
+  /**
+   * A deliverable a RECIPIENT opens by link — an LLO, an FLW, a funder — as
+   * opposed to an internal artifact a signed-in operator reads.
+   *
+   * ace#902. Its producer must share it anyone-with-link at creation. A
+   * private Google Doc opens only for accounts explicitly shared on it, so a
+   * recipient following the run-summary link hits "You need access" — while
+   * every check upstream reads green, because the doc exists, has the right
+   * words, and returns a perfectly respectable 401.
+   *
+   * The detect half of this now exists: `LINK-PRIVATE-DELIVERABLE` in
+   * `lib/run-surface-audit.ts` classifies it correctly. This is the PREVENT
+   * half — the audit runs after the fact and needs someone to act on it, and
+   * on hh-poverty-targeting/20260722-1341 all six training links were private
+   * and had to be shared by hand.
+   *
+   * NOT for internal artifacts. A verdict YAML, a manifest, a spec file and a
+   * transcript are read by operators and skills, never handed to a
+   * counterpart; publishing those anyone-with-link widens exposure for no one's
+   * benefit. Flag only what is meant to leave the building.
+   *
+   * Enforced by `test/lib/recipient-facing-artifacts.test.ts` (producer must
+   * name the share step).
+   */
+  recipientFacing?: true;
   /** Human-readable purpose */
   description: string;
 }
@@ -847,6 +872,7 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     notRequiredInModes: ['app-QA-only'],
     rendered: true,
     illustrated: true,
+    recipientFacing: true,
     description: 'LLO Manager guide for overseeing FLW deployment',
   },
   {
@@ -860,6 +886,7 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     notRequiredInModes: ['app-QA-only'],
     rendered: true,
     illustrated: true,
+    recipientFacing: true,
     description: 'Step-by-step FLW training guide for app usage and protocols',
   },
   {
@@ -872,6 +899,7 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     // it cannot exist when Phase 5 was skipped (ace#1069).
     notRequiredInModes: ['app-QA-only'],
     rendered: true,
+    recipientFacing: true,
     description: 'One-page laminated pocket card for FLWs in the field',
   },
   {
@@ -884,6 +912,7 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     // it cannot exist when Phase 5 was skipped (ace#1069).
     notRequiredInModes: ['app-QA-only'],
     rendered: true,
+    recipientFacing: true,
     description: 'Frequently asked questions for LLOs and FLWs',
   },
   {
@@ -896,6 +925,7 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     // it cannot exist when Phase 5 was skipped (ace#1069).
     notRequiredInModes: ['app-QA-only'],
     rendered: true,
+    recipientFacing: true,
     description: 'LLO onboarding email template authored in Phase 6 and sent by Phase 9 (execution-manager) llo-onboarding, with {{LLO_NAME}}/{{LLO_FIRST_NAME}}/{{LLO_ORG}} tokens',
   },
   {
