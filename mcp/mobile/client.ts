@@ -1,6 +1,8 @@
 // mcp/mobile/client.ts
 import * as path from 'node:path';
 import { writeProvisionedMarker } from './avd-provisioned-marker.js';
+import { buildUnreachableMessage } from './device-reachable.js';
+import { findLatestBootLog, bootLogTail, fatalBootLine } from './boot-log.js';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as crypto from 'node:crypto';
@@ -2147,6 +2149,29 @@ export class MobileClient {
     // another cold-boot here would wipe the just-installed CommCare
     // APK and loop forever.
     const avd = await this.avd.requireRunningAvd(args.avdName);
+
+    // Prove the device ANSWERS before driving recipes at it (ace#1357 fix 3).
+    // requireRunningAvd only asserts adb LISTS the serial; a cold boot that
+    // died after registering leaves an entry nothing can reach, and Maestro
+    // then fails installing its driver apk with `Connection refused`. The real
+    // cause is already on disk — #1047's stderr capture wrote it — but its
+    // attach block only decorates boot-wait errors, so on this path it was
+    // dropped and replaced by a dadb trace. Lead with the fatal line instead.
+    const reach = await this.avd.probeDeviceReachable(avd.serial);
+    if (!reach.reachable) {
+      const bootLogPath = findLatestBootLog(os.tmpdir());
+      throw new Error(
+        buildUnreachableMessage({
+          serial: avd.serial,
+          avdName: args.avdName,
+          reason: reach.reason ?? 'no response',
+          bootLogPath,
+          fatalLine: bootLogPath ? fatalBootLine(bootLogTail(bootLogPath, 200)) : undefined,
+          tail: bootLogPath ? bootLogTail(bootLogPath) : undefined,
+        }),
+      );
+    }
+
     const adbPort = AvdBackend.adbPortFromSerial(avd.serial) ?? undefined;
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'ace-mobile-reg-'));
 

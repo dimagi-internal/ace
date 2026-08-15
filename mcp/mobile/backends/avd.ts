@@ -12,6 +12,7 @@ import {
   AvdContendedError,
 } from '../errors.js';
 import { selectAvd, type AvdPoolEntry } from '../avd-allocator.js';
+import { classifyAdbEcho, REACHABILITY_TOKEN, type ReachabilityVerdict } from '../device-reachable.js';
 import { readProvisionedMarker, markerProvesFor } from '../avd-provisioned-marker.js';
 import { checkAvdProvisioned } from '../avd-provisioning.js';
 import { findLatestBootLog, bootLogTail, fatalBootLine } from '../boot-log.js';
@@ -1795,6 +1796,26 @@ export class AvdBackend {
    * surfaces an Android system permission dialog that the registration
    * recipe can't dismiss.
    */
+  /**
+   * One cheap `adb shell echo` to prove a listed serial actually answers
+   * (ace#1357 fix 3). `requireRunningAvd` can hand back an AvdInfo for a
+   * device nothing can reach; without this, Maestro fails installing its
+   * driver apk and the operator gets a dadb transport trace instead of the
+   * emulator's own fatal line, which #1047 already wrote to disk.
+   */
+  async probeDeviceReachable(serial: string): Promise<ReachabilityVerdict> {
+    try {
+      const r = await this.shell('adb', [
+        '-s', serial, 'shell', 'echo', REACHABILITY_TOKEN,
+      ]);
+      return classifyAdbEcho({ stdout: r.stdout ?? '', stderr: r.stderr ?? '' });
+    } catch (err) {
+      return classifyAdbEcho({
+        stdout: '', stderr: '', error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+
   async grantRuntimePermissions(avdName: string): Promise<void> {
     const avd = await this.findRunningAvd(avdName);
     if (!avd) return;

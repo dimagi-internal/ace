@@ -20,6 +20,8 @@
     "mcp/google-drive-server.ts",
     "mcp/connect/**/*.ts",
     "mcp/connect-server.ts",
+    "mcp/mobile/**/*.ts",
+    "mcp/mobile-server.ts",
     "test/**/*.ts",
     "scripts/*.ts",
     "vitest.config.ts"

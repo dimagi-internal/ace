@@ -38,6 +38,8 @@ function fakeMaestroAndAvd(opts: {
   const avd = {
     ensureAvdRunning: vi.fn().mockResolvedValue({ name: 'AVD', serial: 'emulator-5554', status: 'booted' }),
     requireRunningAvd: vi.fn().mockResolvedValue({ name: 'AVD', serial: 'emulator-5554', status: 'booted' }),
+    // ace#1357 fix 3: registerTestUser now proves the device answers.
+    probeDeviceReachable: vi.fn().mockResolvedValue({ reachable: true }),
     findRunningAvd: vi.fn().mockResolvedValue({ name: 'AVD', serial: 'emulator-5554', status: 'booted' }),
     setGmsEnabled: vi.fn().mockResolvedValue(undefined),
     disableHeadsUpNotifications: vi.fn().mockResolvedValue(undefined),
@@ -86,11 +88,62 @@ describe('MobileClient.registerTestUser', () => {
   // This test reads the exact files handed to maestro and asserts the
   // placeholders are gone (substituted) and a real resolved resource-id is
   // present. It fails before the fix (raw recipe → placeholder survives).
+  // ace#1357 fix 3. The observed run: three consecutive halts at
+  // `register_test_user part B` with a dadb broken-pipe trace, against an AVD
+  // that never really booted. requireRunningAvd only asserts adb LISTS the
+  // serial. Without this guard the recipes run at a dead device and the real
+  // cause — already on disk from #1047's stderr capture — is replaced by a
+  // transport error.
+  it('refuses to drive recipes at a listed-but-unreachable device', async () => {
+    const avd = {
+      requireRunningAvd: vi.fn().mockResolvedValue({ name: 'AVD', serial: 'emulator-5554', status: 'booted' }),
+      probeDeviceReachable: vi.fn().mockResolvedValue({
+        reachable: false, reason: 'adb reports the device offline',
+      }),
+      setGmsEnabled: vi.fn(),
+      grantRuntimePermissions: vi.fn(),
+    } as any;
+    const maestro = { runRecipe: vi.fn() } as any;
+    const client = new MobileClient({ avd, maestro });
+
+    await expect(
+      client.registerTestUser({
+        avdName: 'ACE_Pixel_API_34', phone: '+74260000000', phoneLocal: '0000000',
+        countryCode: '+7426', pin: '1234', backupCode: 'abcd', name: 'Test',
+      }),
+    ).rejects.toThrow(/does not respond/);
+
+    // The point of the fix: fail BEFORE burning a recipe run at a dead device.
+    expect(maestro.runRecipe).not.toHaveBeenCalled();
+  });
+
+  it('names the cause rather than the transport symptom', async () => {
+    const avd = {
+      requireRunningAvd: vi.fn().mockResolvedValue({ name: 'AVD', serial: 'emulator-5554', status: 'booted' }),
+      probeDeviceReachable: vi.fn().mockResolvedValue({
+        reachable: false, reason: 'adb reports the device offline',
+      }),
+      setGmsEnabled: vi.fn(),
+      grantRuntimePermissions: vi.fn(),
+    } as any;
+    const client = new MobileClient({ avd, maestro: { runRecipe: vi.fn() } as any });
+
+    const err = await client.registerTestUser({
+      avdName: 'ACE_Pixel_API_34', phone: '+74260000000', phoneLocal: '0000000',
+      countryCode: '+7426', pin: '1234', backupCode: 'abcd', name: 'Test',
+    }).catch((e: Error) => e);
+
+    expect((err as Error).message).toContain('Not a registration failure');
+    expect((err as Error).message).toContain('/ace:mobile-bootstrap');
+  });
+
   it('resolves ${SELECTOR:...} placeholders before handing recipes to maestro', async () => {
     const capturedRecipePaths: string[] = [];
     const avd = {
       ensureAvdRunning: vi.fn().mockResolvedValue({ name: 'AVD', serial: 'emulator-5554', status: 'booted' }),
       requireRunningAvd: vi.fn().mockResolvedValue({ name: 'AVD', serial: 'emulator-5554', status: 'booted' }),
+      // ace#1357 fix 3: registerTestUser now proves the device answers.
+      probeDeviceReachable: vi.fn().mockResolvedValue({ reachable: true }),
       findRunningAvd: vi.fn().mockResolvedValue({ name: 'AVD', serial: 'emulator-5554', status: 'booted' }),
       setGmsEnabled: vi.fn().mockResolvedValue(undefined),
       grantRuntimePermissions: vi.fn().mockResolvedValue(undefined),
@@ -354,6 +407,8 @@ describe('MobileClient.runRecipe (captureAllBoundaries passthrough — local bac
     const avd = {
       ensureAvdRunning: vi.fn(),
       requireRunningAvd: vi.fn(),
+      // ace#1357 fix 3: registerTestUser now proves the device answers.
+      probeDeviceReachable: vi.fn().mockResolvedValue({ reachable: true }),
       findRunningAvd: vi.fn().mockResolvedValue(null),
       getAllocatedPorts: vi.fn().mockResolvedValue({ adbServerPort: 5039 }),
       getAdbShell: vi.fn(),
@@ -1313,6 +1368,8 @@ describe('MobileClient.ensureAvdRunning', () => {
     const avd = {
       ensureAvdRunning: vi.fn().mockResolvedValue({ name: 'AVD', serial: 'emulator-5554', status: 'booted' }),
       requireRunningAvd: vi.fn().mockResolvedValue({ name: 'AVD', serial: 'emulator-5554', status: 'booted' }),
+      // ace#1357 fix 3: registerTestUser now proves the device answers.
+      probeDeviceReachable: vi.fn().mockResolvedValue({ reachable: true }),
       findRunningAvd: vi.fn().mockResolvedValue({ name: 'AVD', serial: 'emulator-5554', status: 'booted' }),
       listPackages: vi.fn().mockResolvedValue(['org.commcare.dalvik']),
       clearConnectAppData: vi.fn().mockResolvedValue(true),
@@ -1623,6 +1680,8 @@ describe('MobileClient.restoreDeviceUserState (post-2026-05-14: always-bootstrap
     return {
       ensureAvdRunning: vi.fn().mockResolvedValue(readyAvd),
       requireRunningAvd: vi.fn().mockResolvedValue(readyAvd),
+      // ace#1357 fix 3: registerTestUser now proves the device answers.
+      probeDeviceReachable: vi.fn().mockResolvedValue({ reachable: true }),
       findRunningAvd: vi.fn().mockResolvedValue(readyAvd),
       listPackages: vi
         .fn()
@@ -2740,6 +2799,8 @@ describe('runLocalBootstrap: no snapshot save (cold-boot model)', () => {
     const avd = {
       ensureAvdRunning: vi.fn().mockResolvedValue(readyAvd),
       requireRunningAvd: vi.fn().mockResolvedValue(readyAvd),
+      // ace#1357 fix 3: registerTestUser now proves the device answers.
+      probeDeviceReachable: vi.fn().mockResolvedValue({ reachable: true }),
       findRunningAvd: vi.fn().mockResolvedValue(readyAvd),
       listPackages: vi.fn().mockResolvedValue([]),
       getFocusedActivity: vi.fn(),
