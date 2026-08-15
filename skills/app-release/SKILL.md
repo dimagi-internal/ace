@@ -19,7 +19,23 @@ can read its form schema and surface deliver units to the opportunity.
 
 ## Products
 
-- `3-commcare/app-release_summary.md` — released build IDs + version numbers per app
+- `3-commcare/app-release_summary.md` — released build IDs + version numbers per app.
+
+  **Frontmatter contract (ace#1439).** `app-release-eval § both_apps_released`
+  reads these keys, so they are declared here rather than left to whatever the
+  run happened to write. `is_released` lives HERE and not in the deploy
+  summary's `releases:` block:
+
+  ```yaml
+  apps:
+    learn_app:   { hq_app_id: <id>, build_id: <id>, version: <n>, is_released: true, released_at: <iso> }
+    deliver_app: { hq_app_id: <id>, build_id: <id>, version: <n>, is_released: true, released_at: <iso> }
+  ```
+
+  `is_released` and `version` mirror what HQ returns from the release POST
+  (`{"is_released": true, "latest_released_version": <n>}` — note HQ's field is
+  `latest_released_version`; the artifact key is `version`, and conflating the
+  two is what put a phantom key in the rubric for four months).
 
 ## Why this skill exists
 
@@ -319,15 +335,21 @@ post-release boundary check.
    Append a `releases` block to the frontmatter with the new build IDs and
    release timestamps:
 
+   The block has ONE shape — the same one Step 7 declares (ace#1439). It was
+   documented here with only `{build_id, released_at}` and at Step 7 with
+   `{build_id, version, released_at, connect_markers}`, which made three
+   declared shapes across two files for one block and left `app-release-eval`
+   grading keys nobody writes.
+
    ```yaml
    releases:
-     learn_app:
-       build_id: <build_id>
-       released_at: <ISO-8601>
-     deliver_app:
-       build_id: <build_id>
-       released_at: <ISO-8601>
+     learn_app:  { build_id: <id>, version: <n>, released_at: <iso>, connect_markers: <count> }
+     deliver_app: { build_id: <id>, version: <n>, released_at: <iso>, connect_markers: <count> }
    ```
+
+   `is_released` is NOT in this block — it lives in this skill's own
+   `3-commcare/app-release_summary.md` frontmatter, which is where
+   `app-release-eval § both_apps_released` reads it.
 
 6. **Verify Connect can see the release.**
    Optional but recommended sanity check before Phase 4 starts:
