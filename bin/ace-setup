@@ -376,13 +376,38 @@ EOF_KEYS
     # KEY= lines are passed through verbatim.
     INJECT_TPL="$(mktemp)"
     awk '/^[[:space:]]*#/ { gsub(/op:\/\//, "op-SCHEME-//") } { print }' "$ENV_TPL" > "$INJECT_TPL"
+    # Vault-reachability preflight (ace#986). `op inject` is all-or-nothing, so
+    # a vault-LEVEL lockout surfaces as one cryptic line about whichever ref it
+    # happened to hit first, and reads as "a bad item" rather than "you cannot
+    # see the vault at all". Every ref in .env.tpl lives in $OP_VAULT, so one
+    # cheap call separates the two causes before the abort.
+    VAULT_ERR="$(op vault get "$OP_VAULT" $OP_ACCOUNT_FLAG 2>&1 >/dev/null)"
+    if [ -n "$VAULT_ERR" ]; then
+      fail "env: 1Password vault \"$OP_VAULT\" is not readable by this account" \
+           "every op:// ref in .env.tpl lives in this vault, so NOTHING will resolve — this is an
+    ACCESS problem, not a bad field. A 1Password admin must grant this principal
+    read on \"$OP_VAULT\". For the deployed ace-web runner this is its service
+    account, not your user. 1Password said:
+    $VAULT_ERR"
+      mark_fail
+      printf '  (skipping op inject — it would abort on the first ref anyway)\n'
+      SKIP_INJECT=1
+    fi
+    if [ "${SKIP_INJECT:-0}" = "1" ]; then
+      INJECT_OUT=""; INJECT_RC=1
+    else
     INJECT_OUT="$(op inject -i "$INJECT_TPL" -o "$ENV_OUT" --force $OP_ACCOUNT_FLAG 2>&1)"
     INJECT_RC=$?
+    fi
     rm -f "$INJECT_TPL"
     if [ "$INJECT_RC" -ne 0 ]; then
-      fail "env: op inject failed (exit $INJECT_RC)" "see error below — usually means your account/SA is missing read on one of the items in vault $OP_VAULT"
-      printf '%s\n' "$INJECT_OUT" | sed 's/^/    /'
-      mark_fail
+      if [ "${SKIP_INJECT:-0}" != "1" ]; then
+        # The vault IS readable (preflight passed), so this is a per-ITEM
+        # problem — a missing item or field, not an ACL.
+        fail "env: op inject failed (exit $INJECT_RC)" "vault \"$OP_VAULT\" is readable, so this is a missing ITEM or FIELD rather than an access problem. Your existing $ENV_OUT (if any) is UNTOUCHED — op inject fails before it writes."
+        printf '%s\n' "$INJECT_OUT" | sed 's/^/    /'
+        mark_fail
+      fi
     else
       # Re-append preserved local-only secrets after the inject succeeded.
       # Block-marker comment makes the boundary obvious to operators
@@ -450,6 +475,12 @@ UNRESOLVED_EOF
            "per-ref diagnostic below — fix each cause and re-run with --force-env:
 $DIAG"
       mark_fail
+    elif [ "${SKIP_INJECT:-0}" = "1" ] || [ "${INJECT_RC:-0}" -ne 0 ]; then
+      # ace#986: do NOT print a green line here after the inject already
+      # FAILED. `$ENV_OUT` carries no `op://` refs in that case simply because
+      # op inject never wrote it — the absence of unresolved refs is not
+      # evidence that anything resolved.
+      :
     else
       pass "env: all 1Password references resolved"
     fi
