@@ -10,7 +10,7 @@ If you're executing `/ace:run`, read `agents/ace-orchestrator.md` first. Come he
 
 The architectural rule and full topology table live in `CLAUDE.md § Agent topology` (the canonical source — every session loads it). Summary for the orchestrator's purposes:
 
-- **The rule:** anything that calls `Agent` runs at level 0. `ace-orchestrator` and `commcare-setup` (Phase 3) are procedure docs read and executed inline by the top-level session because they dispatch further work; the other nine agents (`idea-to-design`, `scenarios-and-acceptance`, `connect-setup`, `ocs-setup`, `qa-and-training`, `synthetic-data-and-workflows`, `solicitation-management`, `execution-manager`, `closeout`, `ocs-tester`) are subagents dispatched via `Agent(...)` from level 0.
+- **The rule:** anything that calls `Agent` runs at level 0. `ace-orchestrator`, `commcare-setup` (Phase 3, `/nova:autobuild`) and `synthetic-data-and-workflows` (Phase 7, `Agent(canopy:ddd)`) are procedure docs read and executed inline by the top-level session because they dispatch further work; the other eight agents (`idea-to-design`, `scenarios-and-acceptance`, `connect-setup`, `ocs-setup`, `qa-and-training`, `solicitation-management`, `execution-manager`, `closeout`, `ocs-tester`) are subagents dispatched via `Agent(...)` from level 0. Enforced by `test/agents/agent-topology.test.ts` — a subagent doc containing an `Agent(` dispatch fails CI, because the dispatch would be silently unreachable (that is what stalled Phase 7 in `spark-facilitator/20260813-2126`).
 - **Invocation in the procedure below:** "dispatch the X agent" means a top-level `Agent(X)` call (subagent rows in the CLAUDE.md table) or "read `agents/X.md` and execute it inline" (procedure-doc rows).
 - **Why the rule:** the `Agent` tool is unavailable to subagents; a node that nests further work cannot itself be a subagent. There are never two levels of `Agent` dispatch.
 
@@ -301,9 +301,8 @@ run's `README.md` index after the phase completes.
 
 Before dispatching each phase agent (`Agent(idea-to-design)`,
 `Agent(scenarios-and-acceptance)`,
-`Agent(commcare-setup)` (inline procedure doc — same rule applies),
+`commcare-setup` and `synthetic-data-and-workflows` (inline procedure docs — same rule applies),
 `Agent(connect-setup)`, `Agent(ocs-setup)`, `Agent(qa-and-training)`,
-`Agent(synthetic-data-and-workflows)`,
 `Agent(solicitation-management)`, `Agent(execution-manager)`,
 `Agent(closeout)`), the orchestrator MUST:
 

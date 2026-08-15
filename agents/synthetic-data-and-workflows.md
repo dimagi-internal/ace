@@ -15,7 +15,20 @@ skills:
   - { name: demo-narrative,     has_judge: false } # canopy scripts.ddd.validate is the gate
 ---
 
-# Synthetic Data and Workflows Agent (Phase 7 — converged)
+# Synthetic Data and Workflows (Phase 7 Procedure Document)
+
+**This file is read and executed inline by the top-level Claude Code session — it
+is NOT dispatched as a subagent.** Step 3 dispatches `canopy:ddd` (and that loop's
+per-scene judges), which needs the `Agent` tool, available only at level 0
+(`CLAUDE.md § Agent topology`). Same reason `commcare-setup` (Phase 3) is a
+procedure doc: its `/nova:autobuild` is a hidden Agent dispatch.
+
+This was the structural bug behind `spark-facilitator/20260813-2126`. Phase 7 was
+a subagent, so the `Agent(canopy:ddd)` branch below was unreachable and the only
+executable path was a single render+judge with no loop, no convergence rule, and
+no stopping rule — which is exactly what got hand-driven for four iterations and
+~2M tokens before a human called a halt. The frontmatter is retained for tooling
+introspection (`/ace:status`, `/ace:eval`, `/ace:doctor`, `/ace:docs`).
 
 You run the synthetic-data + demo phase between training (Phase 6) and solicitation
 (Phase 8). By phase start, Phases 1–5 have produced an approved PDD, deployed
@@ -88,14 +101,47 @@ It authors a DDD `WhyBrief` + `UnifiedSpec` (scenes on `${…_par_url}`, honest 
 and **validates both via canopy `scripts.ddd.validate`** — do not proceed until both
 validate. Writes `7-synthetic/why_brief.yaml` + `<slug>.yaml`.
 
-### Step 3: Render — canopy DDD
+### Step 3: Render + converge — canopy DDD
 
-Invoke `canopy:ddd-run` with `{run_id, unified_spec: <slug>.yaml, why_brief: why_brief.yaml}`
-(single render+judge — per-scene screenshots + verdicts + the live dashboards), or
-`Agent(canopy:ddd)` for the full converge → video → upload loop. The verified
-render mechanics (labs-session refresh precondition, `record_video --storage-state`,
-the `workflow_create_run` run_id URL model) live in `agents/demo.md § Render` —
-follow them. Screenshots are the fallback if canopy's `webm→mp4` conversion fails.
+**Dispatch `Agent(canopy:ddd)`** — the full converge → video → upload loop. This is
+the default and the only path that terminates on its own. Pass the run id, the
+unified spec, and the why-brief.
+
+Do NOT substitute a bare `canopy:ddd-run` invocation as the phase's render step.
+`ddd-run` is ONE render+judge pass: it returns a verdict and a findings list and
+nothing else. It does not apply fixes, does not iterate, and does not decide when
+to stop — the caller has to, and a caller that invents its own stopping rule is
+the failure this phase already paid for. Use `ddd-run` directly only for a
+deliberate single-pass smoke check, never as the phase's convergence step.
+
+**What the loop guarantees (canopy ≥ 0.2.409) — read it, don't re-derive it:**
+
+- **Accuracy findings are fixed, never escalated.** A finding where the narration
+  asserts something the artifact itself contradicts (a wrong word over a labelled
+  panel; a claim that exceeds its own n) is forced to `fix_kind: mechanical` by
+  `scripts/ddd/finding_class.py` and cannot reach the `concept_change` gate. Only
+  **strategy** findings — where the artifact is wrong, not the wording — surface.
+- **The loop owns its termination.** `compute_auto_iterate` stops on convergence,
+  a noise-banded score stall, a finding plateau, or the hard cap, and stamps
+  `state.terminal_status`: `converged_clean` / `converged_with_open_questions` /
+  `stopped_not_converged` / `diverging`. Report that status verbatim in the phase
+  summary — "converged, good" and "converged, still failing" must not print the same.
+- **No gate hangs an unattended run.** `scripts/ddd/gates.py` gives each gate a
+  no-human default (`concept_change` → `defer`, `external_release` → `hold`), so
+  an `/ace:run` with nobody watching finishes and reports instead of stalling.
+- **The verdict is de-noised.** Per-cell judge variance is ±1 on identical frames,
+  so a capping cell is re-judged (k=3, median) before it blocks, and the verdict
+  carries the distribution, not just the floor.
+
+The verified render mechanics (labs-session refresh precondition,
+`record_video --storage-state`, the `workflow_create_run` run_id URL model) live
+in `agents/demo.md § Render` — follow them. Screenshots are the fallback if
+canopy's `webm→mp4` conversion fails.
+
+**On a non-`converged_clean` ending, do not halt the run.** Phase 7 has no gate.
+Record the terminal status and any open strategy findings in the phase write-back
+(`verdict: passed-with-deferred-evals`), publish the `--stuck` package URL as the
+`summary_artifact`, and proceed to Phase 8.
 
 ### Step 4: Write-back + summary
 
@@ -124,6 +170,10 @@ phases:
         walkthroughs:
           - web_view_link: <DDD /ddd/<slug>/<run_id> package URL>
             eval_score: <0-5 or omit>
+        # canopy's own ending for the DDD loop — never collapse these to pass/fail:
+        # converged_clean | converged_with_open_questions | stopped_not_converged | diverging
+        ddd_terminal_status: <status>
+        ddd_open_strategy_findings: <int>
     steps:
       demo-data-setup: { status: done }
       demo-narrative:   { status: done }

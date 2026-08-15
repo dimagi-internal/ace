@@ -28,7 +28,7 @@ recurring_skills:
 > the awarded LLO directly (onboarding email, UAT instructions, Connect
 > go-live) and is **not yet enabled**. `/ace:run` terminates at the Phase
 > 8→9 boundary and the orchestrator does not dispatch this agent. If you
-> are dispatched anyway (a manual `Agent(execution-manager)` or
+> are dispatched anyway (a manual dispatch of this agent by name, or
 > `/ace:step`), **halt immediately before any step** — send no LLO email,
 > make no Connect mutation, write no `run_state.yaml` block — and return:
 > "Phase 9 (execution-management) is not yet live; aborting before any
