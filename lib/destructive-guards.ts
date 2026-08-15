@@ -151,3 +151,70 @@ export function assertDimagiOwnerRecipient(email: string): void {
     );
   }
 }
+
+/**
+ * Refuse to delete the golden template's PIPELINE.
+ *
+ * ace#1112, the last F5 item. Unlike the chatbot and collection guards, whose
+ * protected value was already an env var, there is no golden-pipeline id in
+ * config — so this one has to RESOLVE it, which is why it was left out of the
+ * earlier passes rather than bundled with the one-line comparisons.
+ *
+ * Resolution is the same route `sweep-ocs` already uses to pair an orphan
+ * chatbot with its pipeline (`ocs_get_chatbot_pipeline_id`), so this is not a
+ * new contract — it is the existing one, pointed at OCS_GOLDEN_TEMPLATE_ID.
+ * Cached for the session like `assertParentOnSharedDrive`'s Shared-Drive probe,
+ * so the cost is one lookup per session rather than per delete.
+ *
+ * Fails OPEN on a resolution error, deliberately. `/ace:sweep ocs` deletes
+ * orphan pipelines to keep the team clean, and a guard that blocks every
+ * delete because OCS was briefly unreachable would train operators to route
+ * around it — the ace#1026 lesson. A pipeline delete is also recoverable
+ * (is_archived=True) in a way that a collection purge is not. So: refuse when
+ * we KNOW it is the golden one, proceed when we cannot tell, and say which.
+ */
+let goldenPipelineCache: { value: number | null; expires: number } | null = null;
+
+/** Exported for tests. */
+export function __resetGoldenPipelineCacheForTests(): void {
+  goldenPipelineCache = null;
+}
+
+export interface PipelineResolver {
+  getChatbotPipelineId(args: { experiment_id: number }): Promise<{ pipeline_id: number }>;
+}
+
+export async function assertNotGoldenTemplatePipeline(
+  pipelineId: number,
+  resolver: PipelineResolver,
+  env: NodeJS.ProcessEnv = process.env,
+  nowMs: number = Date.now(),
+): Promise<void> {
+  const golden = env.OCS_GOLDEN_TEMPLATE_ID;
+  if (golden == null || golden === '') return; // nothing configured to protect
+  const goldenId = Number(golden);
+  if (!Number.isFinite(goldenId)) return;
+
+  let goldenPipeline: number | null;
+  if (goldenPipelineCache && goldenPipelineCache.expires > nowMs) {
+    goldenPipeline = goldenPipelineCache.value;
+  } else {
+    try {
+      const r = await resolver.getChatbotPipelineId({ experiment_id: goldenId });
+      goldenPipeline = typeof r?.pipeline_id === 'number' ? r.pipeline_id : null;
+    } catch {
+      goldenPipeline = null; // see the fail-open note above
+    }
+    goldenPipelineCache = { value: goldenPipeline, expires: nowMs + 10 * 60_000 };
+  }
+
+  if (goldenPipeline !== null && goldenPipeline === pipelineId) {
+    throw new DestructiveGuardError(
+      `Refusing to delete pipeline_id=${pipelineId}: it is the pipeline of ` +
+        `OCS_GOLDEN_TEMPLATE_ID (experiment ${goldenId}), the chatbot every per-opp ` +
+        `clone descends from. Deleting it would break cloning for every future opp. ` +
+        `Per-opp clones get their own pipeline via create_new_version(is_copy=True), ` +
+        `so a pipeline that is safe to sweep will never match this one.`,
+    );
+  }
+}

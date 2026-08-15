@@ -18,7 +18,13 @@
 // eoi-llm-judge session 2026-04-21: the env var arrives empty even with an
 // inline `mcpServers` in plugin.json).
 import { config as dotenvConfig } from 'dotenv';
-import { assertNotCredentialPath } from '../lib/contained-path.js';
+import { assertNotCredentialPath, assertAllowedActionHost } from '../lib/contained-path.js';
+
+/** Host of a configured base URL, as a 0-or-1 element list. Never throws. */
+function hostOf(raw: string | undefined): string[] {
+  if (!raw) return [];
+  try { return [new URL(raw).hostname]; } catch { return []; }
+}
 import * as path from 'node:path';
 import { resolvePluginDataDir, logPluginDataDirDiag } from '../lib/plugin-data-dir.js';
 logPluginDataDirDiag('ace-ocs', import.meta.url);
@@ -53,6 +59,7 @@ const OCS_INLINE_MAX_BASE64_CHARS = 40_000;
 import {
   assertNotGoldenTemplateChatbot,
   assertNotGoldenTemplateCollection,
+  assertNotGoldenTemplatePipeline,
 } from '../lib/destructive-guards.js';
 
 const baseUrl = loadBaseUrl();
@@ -288,7 +295,15 @@ server.tool(
     prompt: z.string().optional().describe('Additional instructions to the LLM about how to use this action.'),
     healthcheck_path: z.string().optional().describe('Optional health endpoint path; auto-detected from schema if omitted.'),
   },
-  async (args) => result(await composite.addCustomAction(args)),
+  async (args) => {
+    // Rail (ace#1110): this makes `server_url` a tool the production bot calls
+    // with participant data on every conversation.
+    assertAllowedActionHost(args.server_url, {
+      atom: 'ocs_add_custom_action',
+      extraHosts: hostOf(process.env.ACE_HQ_BASE_URL),
+    });
+    return result(await composite.addCustomAction(args));
+  },
 );
 
 server.tool(
@@ -523,7 +538,12 @@ server.tool(
   'ocs_delete_pipeline',
   'Delete a pipeline (sets is_archived=True server-side). SAFE PER-OPP: when ACE clones a chatbot, Pipeline.create_new_version(is_copy=True) deep-clones the Pipeline row + its nodes — each clone has its own pipeline. Deleting the pipeline does NOT cascade-delete its referenced Collections — those need separate ocs_delete_collection calls. Routes through Playwright to /a/<team>/pipelines/<pk>/delete/ (HTTP DELETE method on Django View.delete(); returns 200 empty body).',
   { pipeline_id: z.number().int() },
-  async (args) => result(await composite.deletePipeline(args)),
+  async (args) => {
+    // Rail (audit F5, ace#1112). The golden template's pipeline has no id in
+    // config, so it is resolved through the same route sweep-ocs already uses.
+    await assertNotGoldenTemplatePipeline(args.pipeline_id, composite);
+    return result(await composite.deletePipeline(args));
+  },
 );
 
 server.tool(
