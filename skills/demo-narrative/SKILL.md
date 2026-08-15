@@ -157,6 +157,37 @@ paraphrase the schema here — read the model / schema and validate.
 - **`concept_claim` is falsifiability-gated** by `ddd-spec-qa`: ≥5 words, no
   marketing filler ("seamless", "powerful", …). Write claims a skeptic could
   check against the on-screen dashboard.
+- **Three overreach shapes that PASS the falsifiability gate and are still
+  wrong** (ace#1395 — all three shipped in the same walkthrough, so the gate
+  above is necessary and not sufficient). Each is checkable while writing:
+  1. **Renaming the quantity.** The scene was titled *"What a verified
+     community meeting costs"* and narrated *"what a funder buys here"*, over a
+     panel headed **FACILITATOR EARNINGS**. A piece rate paid to facilitators
+     is not the programme's cost: by the frame's own footnote every payment
+     also passes a human reviewer, and the 56 recorded-but-unpayable records
+     still consumed facilitator time. **Use the label the panel actually
+     shows.** If you want the derived figure, render it as its own labelled row
+     naming what it excludes — don't rename it in narration.
+  2. **Causality from n=1.** The coaching-arc panel plotted eight weekly
+     medians for ONE facilitator, no n per bar, no cohort baseline, and a
+     bolded before/after conclusion. A reader is led to "the coaching caused
+     this" from an uncontrolled single-subject pre/post. Either plot the cohort
+     median behind it as a reference band (making the causal read testable) or
+     lead with the claim the frame CAN carry — here, that the tolerance
+     withheld no payment, evidenced by all four above-tolerance records reading
+     `Paid · USD 3`.
+  3. **A summary adjective that doesn't match the plotted series.** Narration
+     said the weekly median *"sat in the low fifties across the three weeks
+     before"*; the visible bars are **52.5 / 57.6 / 53.3**, and the page's own
+     caption ("between 52.5 m and 57.6 m") was correct. This survived an
+     explicit narration-correction pass that was supposed to read off the
+     plotted series — so **read the rendered numbers, don't summarise from
+     memory of the design**.
+- **No build notes in funder-facing copy.** The integrity dashboard's
+  methodology footnote shipped *"Every colour on this page is an inline style
+  so that no compiled-CSS purge can silently blank a bar."* That is a note to
+  ourselves about a rendering workaround, in a block a funder reads. Keep the
+  practice; delete the sentence.
 - **`provenance` must match a real spine `id`**, and every `demo`-role scene
   needs a `feature` with both `description` and `verify` — the actionability
   eval cold-derives a build plan from narration and checks it against
