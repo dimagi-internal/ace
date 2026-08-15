@@ -9,6 +9,21 @@
  * var in the MCP process, so the guard is a one-line comparison, not a redesign.
  *
  * Pure + env-injectable so they unit-test without live OCS / Drive.
+ *
+ * ## One of these guards shipped inert, and the tests were green
+ *
+ * `assertNotGoldenTemplateCollection` originally read
+ * `OCS_GOLDEN_TEMPLATE_COLLECTION_ID`. That variable is declared nowhere — not
+ * in `.env.tpl`, not in either installed `.env`. The guard therefore compared
+ * against `undefined` on every call and could never fire, while its unit test
+ * injected the phantom key by hand and passed. The audit item read as closed
+ * and the shared collection stayed deletable. The real key is
+ * `OCS_SHARED_COLLECTION_ID` (=350, which the atom's own description calls
+ * "typically id 350").
+ *
+ * `GUARD_ENV_KEYS` + its test are the preventer: every env key a guard depends
+ * on must be declared in `.env.tpl`, so a guard keyed on a variable nobody
+ * sets cannot ship green again.
  */
 
 export class DestructiveGuardError extends Error {
@@ -46,14 +61,73 @@ export function assertNotGoldenTemplateCollection(
   collectionId: number,
   env: NodeJS.ProcessEnv = process.env,
 ): void {
-  const golden = env.OCS_GOLDEN_TEMPLATE_COLLECTION_ID;
+  // `OCS_SHARED_COLLECTION_ID` is the key that actually exists — see the note
+  // at the top of this file on why. The alias is accepted so that if the
+  // clearer name is ever introduced it works without a code change.
+  const golden = env.OCS_SHARED_COLLECTION_ID ?? env.OCS_GOLDEN_TEMPLATE_COLLECTION_ID;
   if (golden != null && golden !== '' && Number(golden) === collectionId) {
     throw new DestructiveGuardError(
       `Refusing to delete collection_id=${collectionId}: it is ` +
-        `OCS_GOLDEN_TEMPLATE_COLLECTION_ID, referenced by every cloned pipeline. ` +
-        `Deleting it would break RAG retrieval for every clone.`,
+        `OCS_SHARED_COLLECTION_ID, the shared collection referenced by every ` +
+        `cloned pipeline. Deleting it would break RAG retrieval for every clone.`,
     );
   }
+}
+
+/**
+ * Env keys these guards read. Exported so a test can assert every one is
+ * actually declared in `.env.tpl` — see the false-green note at the top of
+ * this file. A guard keyed on a variable nobody sets is not a guard.
+ */
+export const GUARD_ENV_KEYS = [
+  'OCS_GOLDEN_TEMPLATE_ID',
+  'OCS_SHARED_COLLECTION_ID',
+  'ACE_HQ_DOMAIN',
+] as const;
+
+/**
+ * Restrict `commcare_delete_app` to an ACE-owned HQ domain.
+ *
+ * The atom takes any `domain` + `app_id` and POSTs HQ's `delete_app` view, so
+ * a wrong-domain call soft-deletes some other project space's application. The
+ * audit flagged this as "needs judgment — may affect legit cross-domain
+ * cleanup". Checked (2026-08-14): every caller in the repo already passes
+ * ACE_HQ_DOMAIN — `skills/app-deploy` Step 4.6 and `skills/sweep-hq` are the
+ * only two — so the rail is non-breaking as written.
+ *
+ * The override is a STRING that must equal the target domain, not a boolean.
+ * A boolean flag is reusable boilerplate the model can set reflexively; having
+ * to restate the exact domain makes the intent specific to one call. To be
+ * clear about what this does and does not do: it bounds accidental blast
+ * radius (a typo'd or stale domain, a sweep bug). It does not stop a
+ * determined injection that also sets the override — nothing at this layer
+ * can, which is why this is a rail and not an approval gate.
+ */
+export function assertAceOwnedHqDomain(
+  domain: string,
+  allowForeignDomain?: string,
+  env: NodeJS.ProcessEnv = process.env,
+): void {
+  const target = domain.trim().toLowerCase();
+  const owned = (env.ACE_HQ_DOMAIN ?? '').trim().toLowerCase();
+
+  if (!owned) {
+    throw new DestructiveGuardError(
+      `Refusing to delete an app in domain "${domain}": ACE_HQ_DOMAIN is unset, ` +
+        `so there is no way to tell an ACE-owned project space from someone ` +
+        `else's. Run /ace:setup --force-env.`,
+    );
+  }
+  if (target === owned) return;
+  if (allowForeignDomain != null && allowForeignDomain.trim().toLowerCase() === target) {
+    return;
+  }
+  throw new DestructiveGuardError(
+    `Refusing to delete app in domain "${domain}": ACE owns "${owned}" ` +
+      `(ACE_HQ_DOMAIN). If this is deliberate, pass allow_foreign_domain with ` +
+      `the exact domain name "${domain}" — a bare true is not accepted, so the ` +
+      `override has to name what it is overriding.`,
+  );
 }
 
 /** Dimagi-owned email domains ACE may transfer Drive ownership to. */
