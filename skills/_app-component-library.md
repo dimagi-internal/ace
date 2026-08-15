@@ -538,6 +538,27 @@ a select, say so in the build memo next to the `entity_id` you shipped.
 > field, do NOT ship the identity-only key silently — record in the build memo
 > that non-payable submissions share the payable key space, and name the field
 > that would fix it.
+> PRECEDENCE (ace#1434) — when the PDD **pins an identity-only `entity_id`
+> grain** (typically in § Program Parameters, often marked source-pinned and
+> "not to be re-litigated per run") AND a non-payable branch exists, **the
+> discriminator wins.** Ship the payability-scoped key and disclose the
+> override as a NAMED deviation at the Phase 3 boundary; record in the build
+> memo which payable-grain invariant is preserved. The two are not symmetric:
+> honouring the pin ships a build that is wrong in the field — the non-payable
+> submission mints the key first and the real payable visit dedups against it,
+> so the worker is blocked from payment for work they did (#969) — whereas
+> honouring the discriminator leaves the PDD out of date, which is a disclosure
+> problem, not a payment problem. "Source-pinned" binds against per-run
+> re-litigation on TASTE; it does not bind against a correctness preventer.
+> Use `resolveEntityIdGrain()` in `lib/entity-id-precedence.ts` rather than
+> re-deciding — the same opportunity resolved this two different ways on two
+> consecutive runs.
+> REQUIRED WHEN THIS SHIPS: a payability-scoped key only delivers its benefit
+> if Phase 4 applies a verification rule rejecting the non-payable predicate.
+> Without one, the run's daily payable cap decides, and a worker whose first
+> follow-up of the day was a refusal can STILL be blocked — the #969 failure
+> one layer down. So name the required Phase-4 predicate in the residual list,
+> and fail loud if the PDD names a predicate no Phase 4 step applies.
 > SCOPE: this closes the slot-consumption mode only. A non-payable record still
 > mints a CompletedWork on its own key until Layer A verification rejects it —
 > the `deliver_unit` marker carries no relevance condition, which is upstream
