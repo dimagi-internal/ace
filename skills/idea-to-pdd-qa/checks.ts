@@ -505,6 +505,101 @@ function numParam(params: Map<string, string>, key: string): number | null {
  *     rather than a particular number. Picking the value is a program decision;
  *     noticing the incoherence is ACE's job.
  */
+/**
+ * ace#1420. A PDD can state a per-VISIT payment unit while pinning an
+ * `entity_id` grain that makes the payable unit a worker-DAY. Connect resolves
+ * payable units by `entity_id`, so the grain wins and the stated unit holds
+ * only at exactly one event per worker per day — the two agree in a single
+ * edge case and disagree everywhere else.
+ *
+ * Both statements then flow into the rate, the caps, the worker economics, the
+ * Work Order's commercial terms and the Phase 4 payment unit. On
+ * bednet-check-2-visit/20260814-2019 the first draft quoted USD 1.50-2.50 per
+ * visit with a daily cap of 6 and "gross earnings per working day at the cap:
+ * 6 x USD 1.50-2.50" — every money number wrong by ~6x, because a worker's six
+ * same-day follow-ups are ONE payment entity.
+ *
+ * It survived the 5-question stress test (Resource realism: pass, with a full
+ * effective-earnings walkthrough built on the wrong unit — internally
+ * consistent and externally meaningless), this file's own
+ * `program_parameters_coherent` (which checks min <= max and the cap-vs-reach
+ * rule, but has no notion of what the rate is PER), and
+ * `idea-to-pdd-eval`'s `source_conflict_honesty` at 9.5. It was caught while
+ * drafting the Work Order, because pricing a contractual unit forces you to
+ * name what the unit is.
+ *
+ * Directed rather than open-ended on purpose. `source_conflict_honesty` asks
+ * for a scan for "material disagreements", which is the right general
+ * instruction and is exactly what failed: an open-ended scan finds the SALIENT
+ * conflict, not necessarily the load-bearing one. This pair is enumerable,
+ * present in every paid-delivery PDD, and the only conflict that silently
+ * multiplies every money number in three downstream documents.
+ */
+
+/** Terms that make a grain (or a rate unit) day-scoped. */
+const DAY_TERMS = ['date', 'day', 'daily', 'calendar day', 'per day'];
+/** Terms that make a rate unit per-event — finer than a day. */
+const EVENT_TERMS = [
+  'visit', 'session', 'form', 'submission', 'encounter', 'meeting',
+  'interview', 'record', 'delivery', 'assessment', 'screening',
+];
+
+function mentions(haystack: string, needles: readonly string[]): string | null {
+  const h = haystack.toLowerCase();
+  for (const n of needles) {
+    if (new RegExp(`\\b${n.replace(/ /g, '\\s+')}s?\\b`).test(h)) return n;
+  }
+  return null;
+}
+
+export function checkPaymentUnitMatchesEntityGrain(pdd: string): QACheckResult {
+  const body = extractSection(pdd, 'Program Parameters');
+  if (body === null) return { pass: true, detail: 'no § Program Parameters — covered by program_parameters_coherent' };
+
+  const params = parseProgramParameters(body);
+  const unit = (params.get('payment_rate_unit') ?? '').trim();
+  const grain = (params.get('entity_id_grain') ?? '').trim();
+
+  // Skip silently when either operand is absent, per this file's binary-QA
+  // convention — an unpaid or undecided PDD is not in scope for this check.
+  if (!unit || !grain) {
+    return { pass: true, detail: 'payment_rate_unit and/or entity_id_grain not declared — not applicable' };
+  }
+
+  // If the rate unit is ITSELF day-scoped ("per verified follow-up day"),
+  // it already matches a day grain no matter what else it names.
+  const unitDay = mentions(unit, DAY_TERMS);
+  if (unitDay) {
+    return { pass: true, detail: `payment_rate_unit is day-scoped ("${unit}"), consistent with grain "${grain}"` };
+  }
+
+  const grainDay = mentions(grain, DAY_TERMS);
+  const unitEvent = mentions(unit, EVENT_TERMS);
+  if (grainDay && unitEvent) {
+    return {
+      pass: false,
+      detail:
+        `payment_rate_unit is per-${unitEvent} ("${unit}") but entity_id_grain is day-scoped ` +
+        `("${grain}"): Connect resolves payable units by entity_id, so several same-${unitEvent}s ` +
+        `by one worker on one day collapse into ONE payment entity. The two statements agree only ` +
+        `when there is exactly one ${unitEvent} per worker per day.`,
+      auto_fix_hint:
+        `The payable unit is the GRAIN, not the stated unit. Either quote the rate per that grain ` +
+        `(e.g. "per verified follow-up day", with the band multiplied by the expected events per ` +
+        `worker-day and daily_cap_per_flw restated in those units), or narrow entity_id_grain so ` +
+        `each ${unitEvent} is its own entity. Whichever you choose, re-derive payment_rate_min/max, ` +
+        `daily_cap_per_flw, total_cap_per_flw and any worker-economics prose — a mismatch here ` +
+        `multiplies every money number in the PDD, the Work Order and the Phase 4 payment unit ` +
+        `(ace#1420).`,
+    };
+  }
+
+  return {
+    pass: true,
+    detail: `payment_rate_unit ("${unit}") is consistent with entity_id_grain ("${grain}")`,
+  };
+}
+
 export function checkProgramParametersCoherent(pdd: string): QACheckResult {
   const body = extractSection(pdd, 'Program Parameters');
   if (body === null) {
@@ -632,6 +727,13 @@ export const CHECKS: QACheck[] = [
     description:
       'Program Parameters table present and its numbers do not contradict each other',
     run: checkProgramParametersCoherent,
+  },
+  {
+    id: 'payment_unit_matches_entity_grain',
+    type: 'static',
+    description:
+      'Declared payment unit is not finer than the entity_id grain that actually resolves payable units',
+    run: checkPaymentUnitMatchesEntityGrain,
   },
   {
     id: 'reviewer_comment_table_if_referenced',
