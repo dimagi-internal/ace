@@ -91,6 +91,40 @@ export class ExperimentIdEnrichmentError extends OcsError {
   }
 }
 
+/**
+ * The scrape SUCCEEDED but does not yet list a bot that REST says is on the
+ * default team — i.e. a stale table, not honest absence.
+ *
+ * ace#1451. `getChatbot` had three branches: scrape throws (loud, ace#1028),
+ * scrape has the name (enriched), scrape lacks the name (null, commented as
+ * "honest absence — e.g. the bot lives on a non-default team"). That third
+ * branch also swallowed a STALE scrape: a freshly-cloned bot is not yet in the
+ * chatbots table, so a default-team bot took the non-default-team path. Live on
+ * bednet-check-2-visit/20260814-2019 Phase 5, `experiment_id` was null at t0
+ * and 12948 ~7 minutes later, same call, nothing changed.
+ *
+ * The null is what makes it dangerous rather than merely wrong. `ocs-setup`'s
+ * Resumption Contract designates this exact read authoritative, and the stale
+ * window is precisely the window in which resume fires — a run that dies
+ * between `ocs_clone_chatbot` and the Step 11 state write leaves a live bot and
+ * no state file. The resuming agent reads null, cannot drive any authoring
+ * atom, and the natural recovery is the duplicate clone that ace#1017 and
+ * ace#1028 both forbid. ace#1028's own rationale applies verbatim; it just did
+ * not cover this branch.
+ */
+export class ExperimentIdStaleError extends OcsError {
+  constructor(public chatbotName: string, public publicId: string) {
+    super(
+      `getChatbot: "${chatbotName}" (${publicId}) IS on the default team per REST, but the ` +
+        `chatbots-table scrape does not list it yet, so experiment_id cannot be resolved. ` +
+        `This is a STALE scrape, not absence — a freshly-cloned bot takes minutes to appear ` +
+        `in that table (observed ~7 on ace#1451). Wait and retry the same call; the id ` +
+        `materialises on its own. Do NOT clone a new bot to recover — the existing bot is ` +
+        `intact, and a duplicate is what ace#1017 and ace#1028 exist to prevent.`,
+    );
+  }
+}
+
 export class CollectionIndexingTimeoutError extends OcsError {
   constructor(public collectionId: number, public timeoutSec: number) {
     super(`Collection ${collectionId} indexing timed out after ${timeoutSec}s`);
