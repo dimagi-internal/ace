@@ -194,20 +194,35 @@ export class MaestroBackend {
     // emulator directly. The flags are picocli-defined on `App.class` but
     // omitted from `--help`, so they are effectively undocumented; pinning
     // them to a known-stable form here.
+    // PIN THE DEVICE (dimagi-internal/ace#1396), by exactly ONE mechanism
+    // (dimagi-internal/ace#1454). The two flag groups below are mutually
+    // exclusive — emitting both makes Maestro refuse to run at all:
+    //
+    //   * `--host`/`--port` puts Maestro on the `Dadb.create(host, port)`
+    //     DIRECT-TCP path. `adbPort` is `adbPortFromSerial(serial)`
+    //     (`emulator-5554` -> 5555), i.e. the port is derived from the very
+    //     serial we want, so this is already a single-emulator channel: it
+    //     pins the device by construction. A device reached this way is NOT
+    //     named `emulator-5554`, so adding `--device emulator-5554` on top
+    //     matches nothing and Maestro aborts with "Device emulator-5554 was
+    //     requested, but it is not connected" — before step 0, on a device
+    //     that is demonstrably healthy. That combination shipped in #1396 and
+    //     killed every local-backend Phase 6 walk (0.13.885-0.13.903).
+    //
+    //   * `--device <serial>` is meaningful only on the FALLBACK path, where
+    //     no adbPort is known and Maestro enumerates an adb SERVER that can
+    //     multiplex several devices. That is the case #1396 was really about:
+    //     two emulators both running ACE_Pixel_API_34, both registered to the
+    //     SAME ${ACE_E2E_PHONE} test user, where landing on the wrong one can
+    //     SUBMIT A REAL DELIVER VISIT and consume a one-way precondition on
+    //     another session's device, silently.
+    //
+    // So: direct-TCP when we can (it pins harder), `--device` when we cannot.
+    // #1396's safety property is preserved on both paths, not weakened.
+    // Top-level flags, so they go before `test`.
     if (typeof adbPort === 'number') {
       args.push('--host=localhost', `--port=${adbPort}`);
-    }
-    // PIN THE DEVICE (dimagi-internal/ace#1396). `--host`/`--port` route to an
-    // adb SERVER; they do not choose among the devices that server can see. On
-    // a host where more than one is visible, Maestro auto-selects — and on
-    // 2026-08-14 that meant two emulators both running ACE_Pixel_API_34, both
-    // registered to the SAME ${ACE_E2E_PHONE} test user. A recipe landing on
-    // the wrong one still logs in, still finds the opp tile, and can still
-    // SUBMIT A REAL DELIVER VISIT against the real opportunity — consuming a
-    // one-way precondition or a payable-visit quota on another session's
-    // device, silently. ACE has known the serial all along; it just was not
-    // passed to the CLI. Top-level flag, so it goes before `test`.
-    if (serial) {
+    } else if (serial) {
       args.push('--device', serial);
     }
     args.push('test', '--no-ansi');

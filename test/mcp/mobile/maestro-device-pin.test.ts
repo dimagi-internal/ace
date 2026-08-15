@@ -23,6 +23,17 @@
  * Same silent-wrong-target class as ace#1046 (predictable /tmp paths handing a
  * run another session's data), but on the device rather than the filesystem.
  *
+ * FOLLOW-UP (dimagi-internal/ace#1454): #1396's first fix passed `--device`
+ * UNCONDITIONALLY, alongside the pre-existing `--host`/`--port` flags. Those
+ * are mutually exclusive: `--host`/`--port` puts Maestro on the direct-TCP
+ * `Dadb.create()` path, where the device is not named `emulator-5554`, so the
+ * `--device` match fails and Maestro aborts before step 0. Verified live by
+ * A/B on a healthy device (2026-08-15, run bednet-check-2-visit/20260814-2019):
+ * with both flags -> "not connected"; dropping `--device` -> flow COMPLETED.
+ * The corrected contract: direct-TCP when adbPort is known (it pins harder,
+ * since adbPort is derived from the serial), `--device` only on the
+ * adb-server fallback path.
+ *
  * argv construction is pure, so this needs no device.
  */
 import { describe, it, expect } from 'vitest';
@@ -42,15 +53,42 @@ function argsFor(opts: { adbPort?: number; serial?: string }): string[] {
   return b.buildMaestroArgs(opts.adbPort, {}, '/tmp/shots', '/tmp/r.yaml', opts.serial);
 }
 
-describe('maestro argv pins the device (#1396)', () => {
-  it('passes --device when the serial is known', () => {
-    const a = argsFor({ adbPort: 5037, serial: 'emulator-5554' });
+describe('maestro argv pins the device (#1396) by exactly one mechanism (#1454)', () => {
+  it('pins via direct-TCP when adbPort is known, and does NOT also pass --device', () => {
+    // The regression #1454 is about: both groups together make Maestro abort
+    // with "Device emulator-5554 was requested, but it is not connected"
+    // before executing step 0, on a device that is healthy.
+    const a = argsFor({ adbPort: 5555, serial: 'emulator-5554' });
+    expect(a).toContain('--host=localhost');
+    expect(a).toContain('--port=5555');
+    expect(a).not.toContain('--device');
+  });
+
+  it('never emits --host/--port and --device together, for any input', () => {
+    for (const opts of [
+      { adbPort: 5037, serial: 'emulator-5554' },
+      { adbPort: 5555, serial: 'emulator-5556' },
+      { adbPort: 5039 },
+      { serial: 'emulator-5554' },
+      {},
+    ]) {
+      const a = argsFor(opts);
+      const direct = a.includes('--host=localhost');
+      const pinned = a.includes('--device');
+      expect(direct && pinned).toBe(false);
+    }
+  });
+
+  it('falls back to --device when no adbPort is known, rather than auto-selecting', () => {
+    // This is the multi-emulator hazard #1396 was really about: an adb SERVER
+    // can multiplex several devices, so the serial is the only discriminator.
+    const a = argsFor({ serial: 'emulator-5554' });
     expect(a).toContain('--device');
     expect(a[a.indexOf('--device') + 1]).toBe('emulator-5554');
   });
 
   it('pins the device BEFORE the `test` subcommand — it is a top-level flag', () => {
-    const a = argsFor({ adbPort: 5037, serial: 'emulator-5554' });
+    const a = argsFor({ serial: 'emulator-5554' });
     expect(a.indexOf('--device')).toBeLessThan(a.indexOf('test'));
   });
 
