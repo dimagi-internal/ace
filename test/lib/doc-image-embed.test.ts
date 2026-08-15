@@ -233,3 +233,51 @@ describe('countInlineImages', () => {
     expect(countInlineImages(doc)).toBe(2);
   });
 });
+
+describe('idempotency', () => {
+  // The bug this pins: the images land in a NEW paragraph AFTER the citing
+  // one, so a check that only looks at the citing paragraph always says "no
+  // image here" and a second run appends a second copy of everything.
+  // Measured live before the fix: a re-run took a published guide from 44
+  // images to 88.
+  it('skips a paragraph whose images were already written after it', () => {
+    const doc: DocLike = {
+      body: {
+        content: [
+          para(50, [['Tap the tile. ', null], ['Connect home', `https://drive.google.com/file/d/${FILE_A}/view`], ['\n', null]]),
+          para(52, [[' ', null]], { image: true }),
+        ],
+      },
+    };
+    const { anchors } = collectImageAnchors(doc, () => null);
+    expect(anchors[0].alreadyIllustrated).toBe(true);
+    expect(buildEmbedRequests(anchors)).toEqual([]);
+  });
+
+  it('still fills a paragraph whose next paragraph is ordinary prose', () => {
+    const doc: DocLike = {
+      body: {
+        content: [
+          para(50, [['Connect home', `https://drive.google.com/file/d/${FILE_A}/view`], ['\n', null]]),
+          para(80, [['Next you sync.\n', null]]),
+        ],
+      },
+    };
+    const { anchors } = collectImageAnchors(doc, () => null);
+    expect(anchors[0].alreadyIllustrated).toBe(false);
+    expect(buildEmbedRequests(anchors).length).toBeGreaterThan(0);
+  });
+
+  it('does not mistake a captioned image paragraph for one of ours', () => {
+    const doc: DocLike = {
+      body: {
+        content: [
+          para(50, [['Connect home', `https://drive.google.com/file/d/${FILE_A}/view`], ['\n', null]]),
+          para(80, [['Figure 1: the home screen', null]], { image: true }),
+        ],
+      },
+    };
+    const { anchors } = collectImageAnchors(doc, () => null);
+    expect(anchors[0].alreadyIllustrated).toBe(false);
+  });
+});

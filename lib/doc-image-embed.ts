@@ -87,7 +87,11 @@ export interface ImageAnchor {
   endIndex: number;
   /** Drive file ids cited by this paragraph, in citation order, deduped. */
   fileIds: string[];
-  /** True when this paragraph already renders an inline image. */
+  /**
+   * True when this paragraph's frames are already on the page — either the
+   * paragraph itself holds an inline image, or the paragraph immediately after
+   * it is one this module already wrote.
+   */
   alreadyIllustrated: boolean;
   /** The citation text, for reporting. */
   excerpt: string;
@@ -150,6 +154,22 @@ export function driveImageUri(fileId: string): string {
   return `https://drive.google.com/uc?export=view&id=${fileId}`;
 }
 
+/**
+ * True for a paragraph this module wrote: one or more inline images and no
+ * text beyond whitespace. That shape is what makes a re-run a no-op.
+ */
+export function isImageOnlyParagraph(el: DocElement | undefined): boolean {
+  const elements = el?.paragraph?.elements;
+  if (!elements?.length) return false;
+  let images = 0;
+  for (const pe of elements) {
+    if (pe.inlineObjectElement) { images++; continue; }
+    if (pe.textRun && !/^\s*$/.test(pe.textRun.content ?? '')) return false;
+    if (!pe.textRun && !pe.inlineObjectElement) return false;
+  }
+  return images > 0;
+}
+
 function walkParagraphs(content: DocElement[] | null | undefined, out: DocElement[]): void {
   for (const el of content ?? []) {
     if (el.paragraph) out.push(el);
@@ -179,7 +199,8 @@ export function collectImageAnchors(
 
   const anchors: ImageAnchor[] = [];
   const unresolvedCitations: string[] = [];
-  for (const el of paragraphs) {
+  for (let pi = 0; pi < paragraphs.length; pi++) {
+    const el = paragraphs[pi];
     const endIndex = el.endIndex;
     if (typeof endIndex !== 'number') continue;
 
@@ -217,8 +238,13 @@ export function collectImageAnchors(
     if (!deduped.length) continue;
     anchors.push({
       endIndex,
+      // The images this module writes land in a NEW paragraph AFTER the citing
+      // one, so asking only "does the citing paragraph hold an image?" always
+      // answers no and a second run appends a second copy of every frame.
+      // Measured live: a re-run took the FLW guide from 44 images to 88.
+      // Idempotency has to look where the images actually went.
+      alreadyIllustrated: alreadyIllustrated || isImageOnlyParagraph(paragraphs[pi + 1]),
       fileIds: deduped,
-      alreadyIllustrated,
       excerpt: text.trim().slice(0, 80),
     });
   }
