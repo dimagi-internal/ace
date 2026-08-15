@@ -66,7 +66,7 @@ Score each dimension 0–10. Weights sum to 1.0.
 |---|---|---|
 | **Step-by-step concreteness** (fitness — held-out comprehension test, out-of-chain) | 0.35 | Run the held-out test: a naive, first-time worker with *only* this guide and no one to ask — do they complete the visit end-to-end, or do they get stranded? Anchor on real task completion, NOT on whether each step happens to name a control (naming a button is necessary but not sufficient — "Tap **Submit**" is useless if the reader doesn't know what to enter first). 10 = the naive reader completes every form, every decision, every entry, with no point where they'd have to guess or ask. 6 = they get through the main flow but stall at ≥ 1 underspecified step (a field with no guidance on what to enter, a decision with no criterion). 3 = the guide names topics/controls but a first-timer would be improvising for most of the visit. **Hard-gate: if the held-out reader cannot complete the visit from the guide alone, score ≤ 3 → suite verdict `fail`.** Hard-deduct -3 if a deliver-app form is skipped entirely. PDD silence on a step is a finding here, not a free pass — judge what a deployable first-visit guide *must* tell the reader. |
 | **Error-recovery coverage** | 0.20 | What happens when GPS fails, photo blurs, consent is refused, market is closed? These are exactly where the naive first-timer gets stuck, so this is weighted as a primary fitness signal. 10 = explicit recovery path for each Layer A failure mode. 6 = recovery for the common cases (photo retake) but not edges. 3 = no error-recovery section; FLW will be stuck. |
-| **Screenshot completeness** | 0.20 | Every step that involves a non-trivial UI choice has a screenshot. 10 = full coverage of forms + decision points + error recovery, all Drive IDs resolve. 6 = main flow covered, edge cases (retake photo, retry GPS) missing. 3 = < 50% of steps have screenshots OR ≥ 1 dead Drive-ID reference. Hard-deduct -3 per dead Drive-ID reference. |
+| **Screenshot completeness** | 0.20 | **Judge the PUBLISHED Google Doc, not the markdown.** First count the images the document actually renders — `docs_get` on the published doc and count `inlineObjects`, or count `<img` in its anonymous HTML export (`https://docs.google.com/document/d/<id>/export?format=html`). **If that count is zero, this dimension is 0 and the suite verdict is `fail`, no matter how many references the text carries.** Then, and only then, judge coverage: every step that involves a non-trivial UI choice is SHOWN. 10 = full coverage of forms + decision points + error recovery, every cited frame rendered. 6 = main flow shown, edge cases (retake photo, retry GPS) missing. 3 = < 50% of steps shown OR ≥ 1 dead Drive-ID reference. Hard-deduct -3 per dead Drive-ID reference; hard-deduct -3 if the rendered image count is materially below the citation count (references that became text). |
 | **Language accessibility** | 0.15 | Reading level matches the PDD's stated FLW literacy/language constraint. 10 = short sentences, no jargon, names UI controls in the deployed language. 6 = mostly accessible; occasional jargon. 3 = English-only when PDD specifies local language, or developer-jargon throughout. Hard-deduct -5 if guide is in the wrong language entirely. |
 | **Flow ordering fidelity** | 0.10 | Step ordering matches the actual deliver-app form order. 10 = exact match. 6 = ≤ 1 swap. 3 = ≥ 2 ordering errors; FLW reads steps that don't match what they see on-screen. |
 
@@ -75,6 +75,7 @@ Weights sum to 1.0: 0.35 + 0.20 + 0.20 + 0.15 + 0.10 = 1.00.
 **Hard-deduct rules:**
 - Held-out reader cannot complete the visit from the guide alone (`step_concreteness` ≤ 3) → BLOCKER; suite verdict `fail`. A guide that names controls but leaves a first-timer improvising does not earn a pass.
 - Dead screenshot Drive ID → BLOCKER (cap overall ≤ 5).
+- **Published document renders ZERO images → BLOCKER; suite verdict `fail`.** A step-by-step guide whose steps are not shown is not a step-by-step guide, and this is the failure the rubric was blind to: a guide published 44 screenshot *references* and 0 pictures, and every content eval — this one included — scored it a pass, because every word was there (ace#1418). Counting references cannot detect it. Count what the document renders.
 - Guide is in the wrong language vs PDD constraint → BLOCKER.
 - Any single dimension ≤ 3 → suite verdict `fail`.
 
@@ -102,7 +103,9 @@ Provisional until first real run produces ground truth.
 
 See `skills/_eval-template.md § MCP Tools Used (stock)`. Plus optional
 `drive_read_file` per referenced screenshot Drive ID to detect dead
-references.
+references, and **`docs_get` on the published guide to count rendered
+`inlineObjects`** — the rendered-image count is a required input to the
+screenshot dimension, and it cannot be read off the markdown.
 
 ## Mode Behavior
 
@@ -118,3 +121,4 @@ See `skills/_eval-template.md § Dry-Run Behavior (stock)`.
 |---|---|---|
 | 2026-05-09 | Initial version. 5 dimensions: step_concreteness (0.35), screenshot_completeness (0.25), language_accessibility (0.15), error_recovery_coverage (0.15), flow_ordering_fidelity (0.10). Provisional rubric — calibration TBD until first real run grades the artifact. | ACE team (qa-eval-registry initial buildout) |
 | 2026-05-29 | Converted `step_concreteness` (0.35, unchanged weight) from a "names the visible UI control" presence check into an out-of-chain held-out comprehension test (naive first-timer with only the guide completes the visit), with a hard-gate. Weighted `error_recovery_coverage` up 0.15→0.20 (where naive readers get stuck); demoted screenshot_completeness 0.25→0.20 to compensate. Sum = 1.00. Per `docs/superpowers/specs/2026-05-29-eval-fitness-gap.md`. | ACE team (eval-fitness-gap) |
+| 2026-08-14 | Screenshot dimension now judges the PUBLISHED document's rendered image count (`docs_get` inlineObjects / anonymous `<img>` export), not the markdown's reference count. Zero rendered images → dimension 0 + BLOCKER. Closes the blind spot that scored `spark-facilitator/20260813-2126` a pass with 44 references and 0 pictures (ace#1418). | ACE team (ace#1418) |

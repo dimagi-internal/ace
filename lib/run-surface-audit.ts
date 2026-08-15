@@ -1144,9 +1144,11 @@ export function auditGuideScreenshots(runState: unknown, docs: DocProbe[]): Find
         `(${captured.evidence}). A step-by-step guide with no steps shown reads as complete — ` +
         `every word is there — which is exactly why nothing caught it`,
       fix:
-        'Drive\'s importer DROPS `![alt](drive:<id>)`. Insert the images with docs_batch_update ' +
-        'after conversion (or reference real Drive image URLs), then re-audit until the published ' +
-        'image count is non-zero',
+        'Render the markdown, THEN embed: `npx tsx scripts/embed-doc-screenshots.ts <docId> ' +
+        '--screenshots <folderId>` (Docs API insertInlineImage via docs_batch_update). It anchors ' +
+        'on the references the prose already carries and verifies the published image count. Note ' +
+        'the importer DOES fetch a real https image src — it just sizes it at the natural ' +
+        '1080x2400, i.e. a page and a half per screenshot — which is why the embed is a second step',
       defect: '12 (a guide silently lost 44 screenshots and 224 words)',
     });
   }

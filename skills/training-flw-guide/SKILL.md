@@ -99,6 +99,18 @@ from PDD's Evidence Model.>
   references disappeared from the rendered doc, 224 words gone, and every
   content check still passed (ace#1338). The link form survives the conversion
   AND is clickable, which the literal `drive:<id>` text never was.
+
+- **The link is the CAPTION, not the picture. Step 7b embeds the picture.**
+  The link form above fixed the missing *words*; it did not put a single
+  screenshot on the page. The same run published this guide with 44 links and
+  zero images, and all five content evals passed it — a field worker following
+  it mid-visit got a list of links (ace#1418). This artifact is
+  `illustrated: true` in `lib/artifact-manifest.ts`, which means writing it is
+  a two-step write: render the markdown (step 7), then run
+  `scripts/embed-doc-screenshots.ts` (step 7b) to insert the frames the prose
+  already cites. See `skills/_training-template.md § Illustrated guides —
+  render, THEN embed` for the mechanism and why the images cannot ride in the
+  markdown. Never treat step 7 as finished on its own.
 - **Common-pool screenshots come first** (sign-in, claim, sync) — these
   are the Connect navigation surfaces shared across opps. They live
   under `ACE/_common/connect-screenshots/<v>/`.
@@ -190,13 +202,36 @@ from PDD's Evidence Model.>
    overwritten IN PLACE, so the fileId — and any sharing already applied to it —
    survives. (dimagi-internal/ace#1338; sibling of the PDD fix, ace#1061.)
 
+7b. **Embed the screenshots into the rendered doc.** Step 7 publishes prose
+   and captions; this is what puts the pictures on the page. Required —
+   `training-flw-guide.md` is `illustrated: true`.
+
+   ```bash
+   ACE_ROOT="${CLAUDE_PLUGIN_ROOT:-$(python3 -c "import json,os; d=json.load(open(os.path.expanduser('~/.claude/plugins/installed_plugins.json'))); print(d['plugins']['ace@ace'][0]['installPath'])")}"
+   npx --prefix "$ACE_ROOT" tsx "$ACE_ROOT/scripts/embed-doc-screenshots.ts" <docId from step 7> \
+     --screenshots <drive_folders.screenshots from app-screenshot-capture_manifest.yaml>
+   ```
+
+   It anchors only on references the prose already carries, so nothing is
+   reworded and no placement is invented. It re-reads the published document
+   and reports the image count an ANONYMOUS reader sees; a non-zero exit means
+   the pictures are not there. **Do not record this step as done on the
+   strength of the batchUpdate returning 200** — that is the exact failure
+   mode this whole class came from. Halt on non-zero exit and report the
+   script's output. Full contract: `skills/_training-template.md § Illustrated
+   guides — render, THEN embed` (dimagi-internal/ace#1418).
+
 8. **Self-evaluate (LLM-as-Judge).** Four criteria:
    - **Coverage:** every Learn module + every Deliver form referenced
      by name
    - **Concreteness:** uses real button/field names from the
      app-summaries, not generic "tap the button"
    - **Image hygiene:** zero unresolved screenshot refs, every
-     embedded image came from the resolved map
+     embedded image came from the resolved map, no `duplicate_of`
+     capture cited as a distinct state, **and the PUBLISHED document
+     carries a non-zero image count** — quote the number step 7b
+     reported, not the number of references in the markdown. A
+     reference is not a picture; that gap is what shipped twice.
    - **Audience fit:** language a high-school reader can follow; no
      jargon without explanation
 
@@ -211,7 +246,9 @@ from PDD's Evidence Model.>
 ## MCP Tools Used
 
 - `ace-gdrive`: `drive_read_file`, `drive_create_doc_from_markdown` (the guide —
-  human-facing prose, must render), `drive_create_file` (the verdict YAML —
+  human-facing prose, must render), `docs_batch_update` (step 7b — the
+  `insertInlineImage` requests that put the screenshots on the page; driven by
+  `scripts/embed-doc-screenshots.ts`), `drive_create_file` (the verdict YAML —
   machine-parsed, must stay literal text), `drive_list_folder`
 
 No live AVD or Slides — this skill is pure document generation against
@@ -222,7 +259,8 @@ existing per-opp + common-pool artifacts.
 - **Auto:** Run end-to-end. Write guide, write verdict.
 - **Review:** Pause after step 6 (self-check), present the drafted
   guide, resume on approval.
-- **Dry-run:** Steps 1-6 in memory, skip the `drive_create_doc_from_markdown`.
+- **Dry-run:** Steps 1-6 in memory, skip the `drive_create_doc_from_markdown`
+  and step 7b (or run the embed script with `--dry-run` against a prior doc).
   Verdict written with `dry_run: true`.
 
 ## Products
@@ -290,3 +328,4 @@ The self-eval criterion must assert duplicate handling explicitly.
   Common + per-opp screenshot layering. Archetype-aware structure.
 - 2026-05-07: Per-opp screenshot path corrected from `ACE/<opp>/screenshots/` to `ACE/<opp>/runs/<run-id>/6-qa-and-training/screenshots/` to match the runs/<run-id>/<phase>/ scheme producers actually use. Doc-only fix; matches what `app-screenshot-capture` writes.
 - 2026-05-15: Expand `focus-group` archetype branch (Step 4) from one-line "session-based" note to full shape spec: (1) acknowledge sentinel readiness form instead of full Learn-app walkthrough, (2) two-step session workflow (run FGD verbally → submit attestation within 24h → write gdoc within 72h), (3) add OCS chatbot subsection (primary writing-guidance surface), (4) drop form-fill pitfalls + add FGD-specific pitfalls (leading questions, premature Section 5 preview). Prompted by `malaria-itn-fgd/20260514-2352` Phase 6 observations.
+- 2026-08-14: Added Step 7b — embed the screenshots into the rendered doc via `scripts/embed-doc-screenshots.ts` (Docs API `insertInlineImage`). The link form added for ace#1338 restored the WORDS but published 44 links and zero pictures; a CBF reading the guide mid-visit cannot use that. Artifact flagged `illustrated: true`; enforced by `test/lib/illustrated-artifacts.test.ts` (ace#1418).

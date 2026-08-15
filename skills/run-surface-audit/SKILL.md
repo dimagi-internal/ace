@@ -105,7 +105,7 @@ Every finding names its own fix. The common ones:
 | `LINK-UNTAGGED` | a link with no `access` tag | tag it in ace-web so the page can say why it cannot be opened. Untagged, it reads as broken rather than deliberate |
 | `MISSING-ARTIFACT` | the run made it; the page does not link it | surface it in ace-web, or say on the page why it is withheld |
 | `DOC-LITERAL-MARKDOWN` | the reader is looking at raw `##` and `**` | republish via `drive_create_doc_from_markdown` (Drive **converts**) rather than uploading the `.md` as `text/plain` |
-| `DOC-SCREENSHOTS-ABSENT` | a step-by-step guide published with zero images while the run captured screenshots | Drive's importer **drops** `![alt](drive:<id>)` silently. Insert images with `docs_batch_update` after conversion |
+| `DOC-SCREENSHOTS-ABSENT` | a step-by-step guide published with zero images while the run captured screenshots | Render, **then embed**: `scripts/embed-doc-screenshots.ts` (`insertInlineImage` via `docs_batch_update`). The importer drops `![alt](drive:<id>)` outright, and sizes a real https src at its natural 1080x2400 — hence the second step |
 | `CONF-SECRET-EXPOSED` | a secret-shaped value on the anonymous payload | stop serving it, or add it to `ACCEPTED_PUBLIC_SECRETS` **with the reasoning that makes it safe** — and mirror that in ace-web's `test_public_surface_contract.py` |
 | `CONF-PRIVATE-REVIEW-LINKED` | a privately-captured reviewer's ledger, republished | ace-web `_read_feedback` must omit a non-public ledger for a non-member |
 | `CONTRACT-*` | the auditor's assumptions about the payload are wrong | reconcile `lib/run-surface-audit.ts` against ace-web `apps/opps/summary.py`. **Do not relax one side** — both are frozen contracts |

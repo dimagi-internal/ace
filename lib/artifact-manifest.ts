@@ -140,6 +140,40 @@ export interface ArtifactEntry {
    * (`\---`, `run\_id`) — the worst of both worlds.
    */
   rendered?: true;
+  /**
+   * True when this artifact's VALUE IS PARTLY THE PICTURES — a step-by-step
+   * guide whose steps are shown, not merely described. Implies `rendered`.
+   *
+   * The sibling of `rendered`, and the same shape of silent failure one level
+   * up. `rendered` catches "the reader sees literal `##`". This catches "the
+   * reader sees every word and not one screenshot", which is strictly harder
+   * to notice: the prose is intact, so word counts, section checks and all
+   * five per-artifact content evals pass. It has now shipped twice on the same
+   * two documents — first as `![alt](drive:<id>)`, which Drive's importer
+   * drops silently (ace#1338), then as `[alt](https://…/file/d/<id>/view)`,
+   * which restored the words as 44 clickable links and none of the pictures
+   * (ace#1418). A functionally-literate CBF reading the guide mid-visit
+   * cannot use either.
+   *
+   * Load-bearing: an illustrated artifact is a TWO-STEP write —
+   * `drive_create_doc_from_markdown` to convert the prose, then
+   * `scripts/embed-doc-screenshots.ts` (Docs API `insertInlineImage` via
+   * `docs_batch_update`) to insert the frames the prose already cites. The
+   * markdown importer will in fact fetch a real https image src, but it takes
+   * the image's natural size — a 1080x2400 phone screenshot lands 9.4 inches
+   * wide and a page and a half tall — so the two-step write is what produces a
+   * document a human can read. See `lib/doc-image-embed.ts`.
+   *
+   * Enforced by `test/lib/illustrated-artifacts.test.ts` (producer must name
+   * the embed step) and, on the published surface, by
+   * `DOC-SCREENSHOTS-ABSENT` in `lib/run-surface-audit.ts`.
+   *
+   * NOT for every human-facing doc. `training-quick-reference.md` is a printed
+   * pocket card whose skill says "No screenshots — graphics blow the page
+   * budget"; flagging it would be a false positive. Flag only artifacts whose
+   * own contract says the reader is shown the screens.
+   */
+  illustrated?: true;
   /** Human-readable purpose */
   description: string;
 }
@@ -812,6 +846,7 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     // it cannot exist when Phase 5 was skipped (ace#1069).
     notRequiredInModes: ['app-QA-only'],
     rendered: true,
+    illustrated: true,
     description: 'LLO Manager guide for overseeing FLW deployment',
   },
   {
@@ -824,6 +859,7 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     // it cannot exist when Phase 5 was skipped (ace#1069).
     notRequiredInModes: ['app-QA-only'],
     rendered: true,
+    illustrated: true,
     description: 'Step-by-step FLW training guide for app usage and protocols',
   },
   {

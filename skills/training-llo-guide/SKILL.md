@@ -96,6 +96,17 @@ For LLO operators overseeing FLW deployment of this opportunity.
   `pass_criteria` in `pdd-to-app-journeys.md`.** Every journey's
   pass-criterion line becomes a tickable item. Don't paraphrase —
   paste the criterion verbatim with a leading `- [ ]`.
+- **Cite screenshots by their exact capture filename, and expect them to be
+  SHOWN.** A citation is either a `` `journey-deliver-01-meeting-basics.png` ``
+  filename (from `app-screenshot-capture_manifest.yaml`) or a Drive link
+  `[Deliver home](https://drive.google.com/file/d/<fileId>/view)`. Step 7b
+  turns every such citation into an actual embedded picture, so a citation
+  must name a frame the run really captured — a name the manifest does not
+  carry is reported as unresolved and stays as bare text. This artifact is
+  `illustrated: true` in `lib/artifact-manifest.ts`: the guide published on
+  `spark-facilitator/20260813-2126` cited nine frames in prose and rendered
+  zero of them, and its content eval passed anyway (ace#1418). See
+  `skills/_training-template.md § Illustrated guides — render, THEN embed`.
 
 ## Process
 
@@ -140,6 +151,26 @@ For LLO operators overseeing FLW deployment of this opportunity.
    overwritten IN PLACE, so the fileId — and any sharing already applied to it —
    survives. (dimagi-internal/ace#1338; sibling of the PDD fix, ace#1061.)
 
+7b. **Embed the screenshots into the rendered doc.** Step 7 publishes prose
+   and citations; this is what puts the pictures on the page. Required —
+   `training-llo-guide.md` is `illustrated: true`.
+
+   ```bash
+   ACE_ROOT="${CLAUDE_PLUGIN_ROOT:-$(python3 -c "import json,os; d=json.load(open(os.path.expanduser('~/.claude/plugins/installed_plugins.json'))); print(d['plugins']['ace@ace'][0]['installPath'])")}"
+   npx --prefix "$ACE_ROOT" tsx "$ACE_ROOT/scripts/embed-doc-screenshots.ts" <docId from step 7> \
+     --screenshots <drive_folders.screenshots from app-screenshot-capture_manifest.yaml>
+   ```
+
+   It anchors only on citations the prose already carries, so nothing is
+   reworded and no placement is invented. It re-reads the published document
+   and reports the image count an ANONYMOUS reader sees; a non-zero exit means
+   the pictures are not there. **Do not record this step as done on the
+   strength of the batchUpdate returning 200.** Also read its `NOTE` line: a
+   filename citation that matched no captured frame means the guide is citing
+   a screenshot this run never took — fix the citation, don't ignore it. Full
+   contract: `skills/_training-template.md § Illustrated guides — render, THEN
+   embed` (dimagi-internal/ace#1418).
+
 8. **Self-evaluate (LLM-as-Judge).** Four criteria:
    - **Hard-number fidelity:** every payment / cap / GPS-fence number
      matches `run_state.yaml`
@@ -150,6 +181,10 @@ For LLO operators overseeing FLW deployment of this opportunity.
      is represented by at least one checklist item, and each item's
      wording matches the journey's `pass_criteria` (no editorial
      dropping)
+   - **Screenshot grounding:** every screenshot citation resolves to a
+     real captured frame, and the PUBLISHED document carries a non-zero
+     image count — quote the number step 7b reported, not the number of
+     citations in the markdown. A citation is not a picture.
 
    Verdict to `ACE/<opp>/runs/<run-id>/6-qa-and-training/training-llo-guide_verdict.yaml`.
 
@@ -158,14 +193,17 @@ For LLO operators overseeing FLW deployment of this opportunity.
 ## MCP Tools Used
 
 - `ace-gdrive`: `drive_read_file`, `drive_create_doc_from_markdown` (the guide —
-  human-facing prose, must render), `drive_create_file` (the verdict YAML —
+  human-facing prose, must render), `docs_batch_update` (step 7b — the
+  `insertInlineImage` requests that put the screenshots on the page; driven by
+  `scripts/embed-doc-screenshots.ts`), `drive_create_file` (the verdict YAML —
   machine-parsed, must stay literal text), `drive_list_folder`
 
 ## Mode Behavior
 
 - **Auto:** Run end-to-end. Write guide, write verdict.
 - **Review:** Pause after step 6, present the drafted guide.
-- **Dry-run:** Steps 1-6, skip `drive_create_doc_from_markdown`. Verdict with
+- **Dry-run:** Steps 1-6, skip `drive_create_doc_from_markdown` and step 7b
+  (or run the embed script with `--dry-run` against a prior doc). Verdict with
   `dry_run: true`.
 
 ## Products
@@ -199,3 +237,4 @@ The self-eval criterion must assert duplicate handling explicitly.
 ## Change Log
 
 - v1 (0.10.84): Initial skill. Owns `training-llo-guide.md` only.
+- 2026-08-14: Added Step 7b — embed the screenshots into the rendered doc via `scripts/embed-doc-screenshots.ts` (Docs API `insertInlineImage`), plus a format rule making filename citations first-class and a `screenshot grounding` self-eval criterion keyed to the PUBLISHED image count. The guide cited nine frames in prose and rendered none. Artifact flagged `illustrated: true`; enforced by `test/lib/illustrated-artifacts.test.ts` (ace#1418).
