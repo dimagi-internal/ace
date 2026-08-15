@@ -612,6 +612,21 @@ eval verdict (idea-to-pdd-eval) at the Phase 1→3 Pause Point. -->
    number, and it pins `/ace:iterate` at 0% on the opp forever, because the
    loop's clean gate requires `pdd-to-learn-app-eval == pass`.
 
+   **Before declaring a shortfall, check whether your blueprint PAIRS items
+   (ace#1433).** The helper assumes one entry per item unless told otherwise,
+   and that under-estimates the ceiling whenever a single question genuinely
+   *requires* two rules — the qualifying test is "does answering REQUIRE the
+   rule", and one item can require two. On
+   `bednet-check-2-visit/20260814-2019` the helper declared 0.667 the ceiling
+   and the built 6-item bank measured **0.867**; the PDD had already written
+   "reaching the next band would require 7 items, which the source forbids".
+   If your blueprint table pairs rules on an item — an item whose key is
+   unreachable knowing only one of them — pass `maxEntriesPerItem` and
+   `pairedItems` (how many of the mandated items are paired, NOT all of them)
+   and re-read the ceiling before reaching for a deviation. A spurious
+   deviation is exactly the escape hatch ace#1250 built the channel to keep
+   honest.
+
    Two legitimate resolutions, in order of preference:
 
    1. **Mandate at least `minimumItems`** — the number the check returns.

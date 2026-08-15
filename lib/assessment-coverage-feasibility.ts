@@ -73,12 +73,67 @@ function totalWeight(e: RuleEnumeration): number {
   return 2 * e.counterIntuitiveRules + e.highConsequenceOps;
 }
 
-/** The best weighted coverage an `itemCount`-item bank can possibly reach. */
-export function maxAchievableCoverage(input: { itemCount: number } & RuleEnumeration): number {
+/**
+ * The best weighted coverage an `itemCount`-item bank can possibly reach.
+ *
+ * ## One rule per item was wrong (ace#1433)
+ *
+ * This used to assume an item covers exactly one entry, justified as "an item
+ * that covers two rules covers neither well enough to qualify". That is
+ * empirically false, and it under-estimated the ceiling badly enough to write a
+ * wrong number into a shipped PDD: for `{itemCount: 6, CI: 4, ops: 7}` it
+ * declared 0.667 as the ceiling and the built bank measured 0.867 (13/15) on
+ * bednet-check-2-visit/20260814-2019. The PDD then stated that "reaching the
+ * next band (0.7) would require 7 items, which the source forbids" — and the
+ * build reached 0.867 with six.
+ *
+ * The rubric's qualifying test is *does answering REQUIRE the rule*, and a
+ * single item can require two. That PDD's own blueprint mandates it: item q6
+ * keys on R6 + R7 with a distractor that is only excluded by R7 and two only
+ * excluded by R6, so the key is unreachable knowing either alone. q5 covers
+ * both observation operations (key = the union, distractors = proper subsets).
+ *
+ * The error direction was safe — it declares a feasible mandate infeasible, so
+ * it never let a bad PDD through — but it is not free: a judge grading against
+ * the declared ceiling under-scores a build that beat it, and it pushes
+ * `idea-to-pdd` toward inflating the item count or declaring an
+ * `assessment_coverage_deviation` that is not needed, which is exactly the
+ * escape hatch ace#1250 built the channel to keep honest.
+ *
+ * `maxEntriesPerItem` defaults to 1, so every existing caller keeps its
+ * current answer and only a caller whose blueprint actually pairs rules opts
+ * in. Pairing is capped at the double-weighted entries first, because that is
+ * where a single question can genuinely require two rules; spilling onto the
+ * operations still costs one item each.
+ */
+export function maxAchievableCoverage(
+  input: {
+    itemCount: number;
+    maxEntriesPerItem?: number;
+    pairedItems?: number;
+  } & RuleEnumeration,
+): number {
   const total = totalWeight(input);
   if (total === 0) return 1;
-  const ci = Math.min(input.itemCount, input.counterIntuitiveRules);
-  const ops = Math.min(Math.max(0, input.itemCount - input.counterIntuitiveRules), input.highConsequenceOps);
+
+  const perItem = Math.max(1, Math.floor(input.maxEntriesPerItem ?? 1));
+  // How many items the blueprint actually pairs. Defaulting to ALL of them
+  // would swing the error to the dangerous side — a ceiling nothing can reach
+  // declares an infeasible mandate feasible. On the repro run only 3 of 6
+  // items were paired, and assuming all six returns 1.000 against a measured
+  // 0.867.
+  const paired = Math.min(
+    input.itemCount,
+    Math.max(0, Math.floor(input.pairedItems ?? (perItem > 1 ? input.itemCount : 0))),
+  );
+
+  // Entry capacity of the bank: paired items carry up to `perItem` entries
+  // each, the rest carry one.
+  const capacity = paired * perItem + (input.itemCount - paired);
+
+  // Counter-intuitive rules are worth double, so capacity is spent there first.
+  const ci = Math.min(capacity, input.counterIntuitiveRules);
+  const ops = Math.min(capacity - ci, input.highConsequenceOps);
   return Math.min(1, (2 * ci + ops) / total);
 }
 
@@ -90,17 +145,41 @@ export function coverageBandCeiling(ratio: number): number {
   return 3;
 }
 
-/** Fewest items that can reach `band`. */
-export function minimumItemsForBand(e: RuleEnumeration, band: number): number {
+/**
+ * Fewest items that can reach `band`.
+ *
+ * Walks the same model as `maxAchievableCoverage` and so had the same
+ * one-entry-per-item error (ace#1433) — it is the number a PDD quotes when it
+ * says "reaching 0.7 would require N items", so an inflated N reads as a
+ * source constraint the design does not actually have.
+ */
+export function minimumItemsForBand(
+  e: RuleEnumeration,
+  band: number,
+  opts: { maxEntriesPerItem?: number; pairedItems?: number } = {},
+): number {
   const total = totalWeight(e);
   if (total === 0) return 0;
   const need = band * total;
-  let weight = 0;
-  for (let n = 1; n <= e.counterIntuitiveRules + e.highConsequenceOps; n++) {
-    weight += n <= e.counterIntuitiveRules ? 2 : 1;
-    if (weight >= need) return n;
+  const cap = e.counterIntuitiveRules + e.highConsequenceOps;
+  for (let n = 1; n <= cap; n++) {
+    // `pairedItems` cannot exceed the bank being tried.
+    const paired =
+      opts.pairedItems === undefined ? undefined : Math.min(opts.pairedItems, n);
+    if (
+      maxAchievableCoverage({
+        ...e,
+        itemCount: n,
+        maxEntriesPerItem: opts.maxEntriesPerItem,
+        pairedItems: paired,
+      }) *
+        total >=
+      need
+    ) {
+      return n;
+    }
   }
-  return e.counterIntuitiveRules + e.highConsequenceOps;
+  return cap;
 }
 
 export interface FeasibilityVerdict {
