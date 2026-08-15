@@ -211,7 +211,12 @@ describe('explainScreenshotDirFailure (ace#1456)', () => {
   });
 
   it('does NOT blame shared /tmp when the failure is elsewhere', () => {
-    const e = explainScreenshotDirFailure(eacces, path.join(os.tmpdir(), 'ace-screenshots/o/r'));
+    // An explicitly non-/tmp path, NOT os.tmpdir(): on Linux os.tmpdir() IS
+    // /tmp, so building the "elsewhere" case from it asserts the opposite of
+    // what it means there. The product behaviour is right either way — on a
+    // box where tmpdir is /tmp the shared-/tmp explanation genuinely applies —
+    // it was this test that carried a macOS-only assumption.
+    const e = explainScreenshotDirFailure(eacces, '/opt/ace-screenshots/o/r');
     expect(e!.message).not.toMatch(/SHARED across macOS accounts/);
   });
 
