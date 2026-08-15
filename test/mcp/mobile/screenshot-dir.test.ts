@@ -1,15 +1,9 @@
+import { readFileSync } from 'node:fs';
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import {
-
-
-  resetScreenshotDir,
-  isPreservedArtifact,
-  dispatchOutputDir,
-  recipeNamespace,
-} from '../../../mcp/mobile/screenshot-dir.js';
+import { resetScreenshotDir, isPreservedArtifact, dispatchOutputDir, recipeNamespace, allowedScreenshotRoots, explainScreenshotDirFailure } from '../../../mcp/mobile/screenshot-dir';
 
 
 
@@ -176,5 +170,75 @@ describe('dispatchOutputDir', () => {
     expect(recipeNamespace('../evil')).toBe('evil');
     expect(() => recipeNamespace('..')).toThrow(/cannot derive an output namespace/);
     expect(() => recipeNamespace('')).toThrow(/cannot derive an output namespace/);
+  });
+});
+
+/**
+ * ace#1456 — the allow-list was fine; the DOCUMENTED DEFAULT was the one that
+ * breaks. `/tmp` is shared across macOS accounts, so whichever account runs
+ * ACE first owns `/tmp/ace-screenshots` at mode 755 and every other account is
+ * locked out of exactly the path the skill told it to use. Reproduced on this
+ * machine: `drwxr-xr-x acedimagi wheel /tmp/ace-screenshots`, and `mkdir` as
+ * jjackson returns EACCES.
+ */
+describe('per-user root is preferred (ace#1456)', () => {
+  it('lists $TMPDIR/ace-screenshots FIRST — order is what docs and callers copy', () => {
+    const roots = allowedScreenshotRoots();
+    expect(roots[0]).toBe(path.resolve(path.join(os.tmpdir(), 'ace-screenshots')));
+  });
+
+  it('still accepts the legacy /tmp root, so an in-flight run keeps resolving', () => {
+    expect(allowedScreenshotRoots()).toContain(path.resolve('/tmp/ace-screenshots'));
+  });
+});
+
+describe('explainScreenshotDirFailure (ace#1456)', () => {
+  const eacces = Object.assign(new Error('EACCES: permission denied, mkdir'), { code: 'EACCES' });
+
+  it('turns a bare EACCES into a typed error naming the accepted roots', () => {
+    const e = explainScreenshotDirFailure(eacces, '/tmp/ace-screenshots/opp/run/journey-learn');
+    expect(e).toBeTruthy();
+    expect(e!.message).toContain(path.join(os.tmpdir(), 'ace-screenshots'));
+    expect(e!.message).toContain('ACE_SCREENSHOT_ROOT');
+  });
+
+  it('names the shared-/tmp cause when the path is under /tmp', () => {
+    // Without this the caller reads it as "something broke" and goes to the
+    // source to discover two other roots exist.
+    const e = explainScreenshotDirFailure(eacces, '/tmp/ace-screenshots/opp/run');
+    expect(e!.message).toMatch(/SHARED across macOS accounts/);
+    expect(e!.message).toMatch(/ran ACE first/);
+  });
+
+  it('does NOT blame shared /tmp when the failure is elsewhere', () => {
+    const e = explainScreenshotDirFailure(eacces, path.join(os.tmpdir(), 'ace-screenshots/o/r'));
+    expect(e!.message).not.toMatch(/SHARED across macOS accounts/);
+  });
+
+  it('handles EPERM as well as EACCES', () => {
+    const eperm = Object.assign(new Error('EPERM'), { code: 'EPERM' });
+    expect(explainScreenshotDirFailure(eperm, '/tmp/ace-screenshots/a/b')).toBeTruthy();
+  });
+
+  it('returns null for an unrelated error, so the real one is not masked', () => {
+    const enospc = Object.assign(new Error('ENOSPC'), { code: 'ENOSPC' });
+    expect(explainScreenshotDirFailure(enospc, '/tmp/ace-screenshots/a/b')).toBeNull();
+    expect(explainScreenshotDirFailure(new Error('plain'), '/tmp/x')).toBeNull();
+  });
+});
+
+describe('the skill documents the per-user default (ace#1456)', () => {
+  const skill = readFileSync(
+    path.join(__dirname, '../../../skills/app-screenshot-capture/SKILL.md'),
+    'utf8',
+  );
+
+  it('tells the caller to pass $TMPDIR, not /tmp', () => {
+    expect(skill).toContain('screenshotDir: "$TMPDIR/ace-screenshots/<opp>/<run-id>"');
+  });
+
+  it('explains why, so it is not "corrected" back to /tmp', () => {
+    expect(skill).toMatch(/SHARED across macOS\s*\n?\s*accounts/);
+    expect(skill).toContain('ace#1456');
   });
 });
