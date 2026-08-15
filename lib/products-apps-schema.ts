@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { isNovaAppUrl, novaAppUrl } from './nova-url.js';
 
 /**
  * Schema for `run_state.yaml.phases.commcare-setup.products.apps`.
@@ -29,9 +30,11 @@ const AppEntrySchema = z.object({
   hq_url: z.string().url(),
   build_status: BUILD_STATUS,
 }).refine(
-  (e) => e.nova_url === `https://commcare.app/build/${e.nova_app_id}`,
+  // Single source for the route (ace#1431) — `/build/`, never the legacy
+  // `/apps/`, which 404s.
+  (e) => isNovaAppUrl(e.nova_url, e.nova_app_id),
   {
-    message: 'nova_url must be https://commcare.app/build/<nova_app_id>',
+    message: `nova_url must be ${novaAppUrl('<nova_app_id>')}`,
     path: ['nova_url'],
   },
 );
