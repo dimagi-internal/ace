@@ -83,15 +83,16 @@ deliverables are **not**.
 > "is anyone-with-link — set at creation by the producer skills and enforced by
 > `run-summary-qa`". None of that was true. `grep -rl drive_set_anyone_with_link skills/`
 > hits only `training-deck-render`, `app-screenshot-capture`, `common-screenshot-capture`,
-> `partnership-deck-build`, `run-summary-qa` and this skill — and all of those share **PNG
+> `partnership-deck-build`, the summary gate and this skill — and all of those share **PNG
 > images** so Slides' image-import service can fetch them, never a Doc or the deck itself.
-> No producer skill shares a document. And `run-summary-qa` enforced nothing: its checker
+> No producer skill shares a document. And `run-summary-qa` (now superseded by
+> `run-surface-audit`) enforced nothing: its checker
 > bucketed a private-doc 401 as AUTH-GATED and passed the run. Live proof on
 > `spark-facilitator/20260813-2126` — the first run shown to an external partner: all 8
 > reviewer-facing artifacts carried 24 permissions each and **zero** `type: anyone`, and the
 > link checker still reported `12 links · 0 BROKEN`.
 
-**What actually shares them, today, is this skill + `run-summary-qa`.** The checker now
+**What actually shares them, today, is this skill + `run-surface-audit`.** The auditor now
 classes an unshared `docs.google.com`/`drive.google.com` deliverable as
 **`PRIVATE-DELIVERABLE`** and exits non-zero (so it can no longer certify a run whose docs
 open for nobody), and step 2 below is the step that fixes them — by calling
@@ -140,8 +141,8 @@ grants membership and tells the person the one sign-in they must do themselves.
 1. **Resolve the run's identifiers** from `run_state.yaml` (`resolve_opp_path` → read the run's
    `run_state.yaml`): `connect.products.connect.organization_slug` (Connect org), `.opportunity.url`,
    the `commcare` `domain` (HQ), the `ocs_chatbot.team_slug` (OCS), the labs `opp_id`, and the
-   `ace_web_summary_url`. Confirm the summary is clean first — run `run-summary-qa` if you haven't;
-   never share a run whose links are broken.
+   `ace_web_summary_url`. Confirm the summary is clean first — run `run-surface-audit` if you
+   haven't; never share a run with an unresolved **broken** or **misleading** finding.
 
 2. **Share the deliverable docs — assume they are private.** Nothing sets anyone-with-link on
    them at creation (see the correction above), so this is a real step, not a verification.
@@ -152,8 +153,8 @@ grants membership and tells the person the one sign-in they must do themselves.
      their feedback can arrive as a revision. Do this for everyone on the thread you were asked
      to grant. Narrow to `commenter` only when the human says the doc is read-and-react
      (a frozen deliverable, a signed work order), and say so in the report.
-   - **Link-level floor → `drive_set_anyone_with_link`.** Run `run-summary-qa`'s link checker
-     (`scripts/check-summary-links.py <opp> <run>`): every `docs.google.com`/Slides/Drive
+   - **Link-level floor → `drive_set_anyone_with_link`.** Run `run-surface-audit`
+     (`scripts/audit-run-surface.ts <opp> <run>`): every `docs.google.com`/Slides/Drive
      deliverable must report `OK 200`, and each one that comes back **`PRIVATE-DELIVERABLE`**
      must be fixed before proceeding (anyone else on the thread hits "You need access"
      otherwise). Use `role: 'commenter'` as the floor for a document — a `reader` physically
@@ -263,7 +264,9 @@ grants membership and tells the person the one sign-in they must do themselves.
 ## Related skills
 - `feedback-ledger` — captures the reviewer's feedback and renders where each item went. It models
   **comments**; edits made under a `writer` grant are a channel it does not yet capture (ace#1335).
-- `run-summary-qa` — gate the summary's links (and public-doc sharing) before you share access.
+- `run-surface-audit` — gate the whole external review surface (links, payload contract,
+  confidentiality, published-document rendering, and the rendered page) before you share access.
+  `run-surface-audit-eval` is its judged half.
 - `add-org-member` — the internal-only (@dimagi.com) Connect-org add; this skill is the superset
   that also covers ace-web + external collaborators + the other surfaces.
 - `inbox-triage` — the per-sender isolation discipline this skill borrows for per-person grants.

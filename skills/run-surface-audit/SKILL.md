@@ -1,0 +1,188 @@
+---
+name: run-surface-audit
+description: >
+  Audit the EXTERNAL REVIEW SURFACE of a run — the public run-summary page an
+  outside partner is sent to — before sharing it with anyone. Probes anonymously
+  (no cookies, no service account): every link by class, the payload's own shape
+  contract, confidentiality boundaries, every artifact the run actually
+  produced, each published document's rendering and completeness, and the
+  rendered page itself in a headless browser. Distinguishes BROKEN (a reviewer
+  hits a wall) from MISLEADING (the page states something untrue) from
+  IMPROVEMENT. Run it before handing anyone a run-summary URL.
+---
+
+# Run-surface audit — what an outsider actually gets
+
+The **run-summary page is ACE's canonical shareable output** and, since
+2026-08-13, the first thing an external partner ever sees of a run. It is
+served by ace-web from `run_state.yaml` live in Drive, at:
+
+```
+${ACE_WEB_BASE_URL}/opps/${ACE_WEB_WORKSPACE}/<opp-slug>/runs/<run-id>/summary
+```
+
+Defaults: `ACE_WEB_BASE_URL=https://labs.connect.dimagi.com/ace`,
+`ACE_WEB_WORKSPACE=dimagi-team`. It is un-authed — the URL is the secret —
+which is exactly why what it shows an anonymous visitor has to be right.
+
+## Why this skill exists, and what it replaces
+
+**It supersedes `run-summary-qa`.** That skill drove
+`scripts/check-summary-links.py`, which asked one question — *does this URL
+resolve?* — and answered it well. On 2026-08-14, `spark-facilitator/20260813-2126`
+went out with **twelve** defects and the checker printed
+`12 links · 0 BROKEN`, exit 0. Eleven of the twelve were not link reachability.
+A day was spent finding them by hand, by eye.
+
+Those twelve are now this capability's regression corpus
+(`test/lib/run-surface-audit.test.ts`, one `describe` each). The old checker's
+rules — the `PRIVATE-DELIVERABLE` class, `MEMBER-GATED`, relative-URL
+resolution, per-reviewer membership read-backs — are ported intact into
+`lib/run-surface-audit.ts` and still enforced.
+
+**The governing rule: a check that cannot see the thing it checks is worse than
+no check.** The single most expensive failure of that day was an agent
+"verifying" open questions by counting a payload key named `questions` when the
+field is `items` — it reported 0 forever and nearly sent someone to fix a
+working feature. So this auditor declares every section and key it reads up
+front, and an unknown section, a vanished section, or a populated section
+missing the key it reads all **block**. It never reports a silent zero.
+
+## When to run
+
+- **Before sharing the run-summary link with anyone** — that is the whole
+  trigger. A stakeholder email, a Slack message, a gate.
+- At the end of an `/ace:run`, when the orchestrator surfaces the URL.
+- After editing `run_state.yaml` products that feed the summary.
+- After an ace-web deploy that touched `apps/opps/summary.py` or the summary
+  page components.
+
+## Process
+
+### 1. Gather the two inputs that turn "unverified" into "verified"
+
+Both are blocking when absent, deliberately — see § Unverified blocks.
+
+```
+# The run's own record of what it produced.
+resolve_opp_path(slug) → opp_root_id
+drive_list_folder(runs_id) → the run folder
+drive_read_file(<run_state.yaml file id>, writeToPath="/tmp/<run>-run_state.yaml")
+```
+
+If you are preparing the page **for named people**, also get the membership
+read-backs (`scripts/grant-review-access.ts --dry-run` for HQ + OCS;
+`connect_add_org_member`'s pre-read of `/organization/member_table` for
+Connect) and write them as `{"hq": {"a@b.c": true}, "ocs": {...}, "connect": {...}}`.
+
+### 2. Run the audit
+
+```bash
+ACE_ROOT="${CLAUDE_PLUGIN_ROOT:-$(python3 -c "import json,os; d=json.load(open(os.path.expanduser('~/.claude/plugins/installed_plugins.json'))); print(d['plugins']['ace@ace'][0]['installPath'])")}"
+npx --prefix "$ACE_ROOT" tsx "$ACE_ROOT/scripts/audit-run-surface.ts" <opp-slug> <run-id> \
+  --render \
+  --run-state /tmp/<run>-run_state.yaml \
+  [--reviewer sophie@example.org ...] [--memberships /tmp/memberships.json] \
+  [--doc-source /tmp/doc-sources.json] \
+  [--workspace dimagi-team] [--base https://labs.connect.dimagi.com/ace] [--json]
+```
+
+`--render` launches headless Chromium in a **fresh anonymous context**. It is
+where four of the twelve defects live and it is not optional for a share gate;
+without it the audit blocks with `RENDER-UNVERIFIED`.
+
+Exit 0 iff there are **no `broken` and no `misleading`** findings.
+
+### 3. Fix, then re-run until it is clean
+
+Every finding names its own fix. The common ones:
+
+| Finding | What it means | Fix |
+|---|---|---|
+| `LINK-PRIVATE-DELIVERABLE` | an ACE-authored Google Doc that is shared with nobody — the recipient hits "You need access" | `drive_set_anyone_with_link` on the file id (`role: 'commenter'` when they should be able to leave feedback), then re-audit for `OK 200` |
+| `LINK-BROKEN` | 404 / 5xx / DNS | fix the product URL or stop surfacing it. A **relative** link that 404s usually means a missing deployment path prefix — that is an ace-web serializer bug, not a data bug |
+| `LINK-ACCESS-MISLABELLED` | the page says `public`, an outsider gets a gate | either share it or correct the tag. The page is telling the reader something untrue |
+| `LINK-UNTAGGED` | a link with no `access` tag | tag it in ace-web so the page can say why it cannot be opened. Untagged, it reads as broken rather than deliberate |
+| `MISSING-ARTIFACT` | the run made it; the page does not link it | surface it in ace-web, or say on the page why it is withheld |
+| `DOC-LITERAL-MARKDOWN` | the reader is looking at raw `##` and `**` | republish via `drive_create_doc_from_markdown` (Drive **converts**) rather than uploading the `.md` as `text/plain` |
+| `DOC-SCREENSHOTS-ABSENT` | a step-by-step guide published with zero images while the run captured screenshots | Drive's importer **drops** `![alt](drive:<id>)` silently. Insert images with `docs_batch_update` after conversion |
+| `CONF-SECRET-EXPOSED` | a secret-shaped value on the anonymous payload | stop serving it, or add it to `ACCEPTED_PUBLIC_SECRETS` **with the reasoning that makes it safe** — and mirror that in ace-web's `test_public_surface_contract.py` |
+| `CONF-PRIVATE-REVIEW-LINKED` | a privately-captured reviewer's ledger, republished | ace-web `_read_feedback` must omit a non-public ledger for a non-member |
+| `CONTRACT-*` | the auditor's assumptions about the payload are wrong | reconcile `lib/run-surface-audit.ts` against ace-web `apps/opps/summary.py`. **Do not relax one side** — both are frozen contracts |
+
+A change that lives in ace-web code is live only after that PR deploys; a change
+that is pure `run_state` data is live on the next fetch (the audit passes
+`?force=1` to bypass the 60s summary cache).
+
+### 4. Then run the judged half
+
+`run-surface-audit-eval` grades what determinism cannot: whether an outsider
+understands what they are looking at and what they are being asked to do.
+QA gates eval — do not run eval on a surface that is still `NOT SAFE TO SHARE`.
+
+## Unverified blocks — "we did not check" is not "it is fine"
+
+Four checks refuse to certify without their inputs, and each one blocks exactly
+as a broken link does:
+
+| Blocking finding | Why it is not a warning |
+|---|---|
+| `COMPLETENESS-UNVERIFIED` | without `run_state.yaml` nothing compares the page against what the run PRODUCED. The PDD and the Work Order were absent from the page entirely and nothing noticed, because "absent" and "the run hasn't got there yet" look identical |
+| `RENDER-UNVERIFIED` | four defects are invisible to a payload check. They shipped |
+| `MEMBER-UNVERIFIED` / `REVIEWERS-UNDECLARED` | the probe is anonymous; anonymous reachability only proves a link works for SOMEBODY. A signed-in non-member gets a flat 404 — indistinguishable from "this run does not exist" — and reports it to us as a broken link (ace#913, ace#916, ace#1060) |
+| `DOC-FIDELITY-UNVERIFIED` | nothing compared what was PUBLISHED against what was WRITTEN. One guide lost 44 screenshots and 224 words with every content check green |
+
+Treating any of these as fine **is** the bug. If you genuinely cannot get an
+input this session, say so explicitly in the report — do not certify around it.
+
+## Report
+
+State, in this order:
+
+1. The summary URL, and that it was probed **anonymously**.
+2. Links probed, by class.
+3. Findings by severity — **broken**, **misleading**, **improvement** — each
+   with what a reviewer would experience, and the fix applied.
+4. What was **not** verified and why (naming each `*-UNVERIFIED`).
+5. `SAFE TO SHARE` only when there are zero broken and zero misleading. Never
+   claim it while a `MEMBER-GATED` link is unresolved for the people you are
+   about to send it to.
+
+Severity language matters to the reader: **broken** = a reviewer hits a wall;
+**misleading** = the page states something untrue; **improvement** = it would
+confuse or underserve them. On 2026-08-14 the worst defects were *misleading*,
+which is precisely why a checker that only knew reachable-vs-not certified them.
+
+## What this cannot catch, and why
+
+Say these out loud in the report rather than implying coverage.
+
+- **The end-to-end write round-trip.** The audit proves both public write paths
+  are live by sending a deliberately INVALID body and asserting the handler
+  rejects it on validation (a 422 means the route exists, is wired, and is
+  reachable anonymously). It does **not** post a real comment: there is no
+  delete endpoint, writes land as feedback records in the opp's Drive folder,
+  and **fabricated content must not go into a real opp**. The full round-trip —
+  comment and decision edit persisted and read back — is covered hermetically in
+  ace-web against a fake Drive (`apps/opps/tests/test_api.py`:
+  `test_reaction_shows_up_on_the_next_summary_read`,
+  `test_edit_shows_up_on_the_next_summary_read`).
+- **Whether the CONTENT is any good.** Jargon, overstatement, an unclear ask —
+  that is `run-surface-audit-eval`'s job, and it needs an LLM.
+- **Whether a named reviewer's membership read-back is current.** The audit
+  consumes the read-back; it does not perform it. A read-back from last week is
+  a hypothesis.
+- **Slides and Sheets rendering.** Google Slides has no plain-text export, so a
+  training deck is judged by link reachability only.
+- **Anything gated behind the member payload.** By construction — a member's
+  view is a different document and a different test.
+
+## MCP tools used
+
+- `resolve_opp_path`, `drive_list_folder`, `drive_read_file` — to fetch the
+  run's `run_state.yaml` (and any source markdown for `--doc-source`).
+- `drive_set_anyone_with_link` — to fix a `LINK-PRIVATE-DELIVERABLE`.
+
+Everything else is read-only anonymous HTTP plus a headless browser
+(`scripts/audit-run-surface.ts`, `scripts/audit-run-surface-render.ts`,
+`lib/run-surface-audit.ts`).
