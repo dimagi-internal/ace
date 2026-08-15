@@ -692,13 +692,14 @@ List CommCare HQ applications in a domain. Hits the REST API at GET /a/<domain>/
 
 ### `commcare_delete_app`
 
-Soft-delete a CommCare HQ application. POST /a/<domain>/apps/delete_app/<app_id>/ via the web view (no REST equivalent — the view soft-deletes by mutating doc_type to `<original>-Deleted` and creates a DeleteApplicationRecord for restore). Restore is possible via HQ admin UI's "deleted applications" list. Routes through the existing PlaywrightSession (session cookies + CSRF from cookie jar; API key auth is insufficient because this is a CSRF-protected Django web view). Used by `/ace:sweep hq` to clean up orphan apps in the ACE-owned domain.
+Soft-delete a CommCare HQ application. POST /a/<domain>/apps/delete_app/<app_id>/ via the web view (no REST equivalent — the view soft-deletes by mutating doc_type to `<original>-Deleted` and creates a DeleteApplicationRecord for restore). Restore is possible via HQ admin UI's "deleted applications" list. Routes through the existing PlaywrightSession (session cookies + CSRF from cookie jar; API key auth is insufficient because this is a CSRF-protected Django web view). Used by `/ace:sweep hq` to clean up orphan apps in the ACE-owned domain. GUARDED: refuses any `domain` other than ACE_HQ_DOMAIN unless `allow_foreign_domain` is passed with that exact domain name.
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `server` | `z.string` | optional | CommCare HQ cluster to target — e.g. "us" or "eu". Omit to use the default server ACE_HQ_DEFAULT_SERVER. All configured clusters are live at once. |
 | `domain` | `z.string` | **required** | _—_ |
 | `app_id` | `z.string` | **required** | _—_ |
+| `allow_foreign_domain` | `z.string` | optional | Escape hatch for deleting outside ACE_HQ_DOMAIN. Must equal `domain` EXACTLY — a bare `true` is not accepted, so the override has to name what it is overriding. Bounds accidental blast radius (a stale or typo'd domain, a sweep bug); it is a rail, not an approval gate. |
 
 ### `commcare_create_domain`
 

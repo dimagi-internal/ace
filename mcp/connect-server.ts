@@ -11,6 +11,7 @@
  * See docs/superpowers/specs/2026-04-28-ace-connect-mcp-design.md
  */
 import { config as dotenvConfig } from 'dotenv';
+import { assertAceOwnedHqDomain } from '../lib/destructive-guards.js';
 import * as path from 'node:path';
 import { resolvePluginDataDir, logPluginDataDirDiag } from '../lib/plugin-data-dir.js';
 logPluginDataDirDiag('ace-connect', import.meta.url);
@@ -695,13 +696,18 @@ server.tool('commcare_list_apps',
 );
 
 server.tool('commcare_delete_app',
-  'Soft-delete a CommCare HQ application. POST /a/<domain>/apps/delete_app/<app_id>/ via the web view (no REST equivalent — the view soft-deletes by mutating doc_type to `<original>-Deleted` and creates a DeleteApplicationRecord for restore). Restore is possible via HQ admin UI\'s "deleted applications" list. Routes through the existing PlaywrightSession (session cookies + CSRF from cookie jar; API key auth is insufficient because this is a CSRF-protected Django web view). Used by `/ace:sweep hq` to clean up orphan apps in the ACE-owned domain.',
+  'Soft-delete a CommCare HQ application. POST /a/<domain>/apps/delete_app/<app_id>/ via the web view (no REST equivalent — the view soft-deletes by mutating doc_type to `<original>-Deleted` and creates a DeleteApplicationRecord for restore). Restore is possible via HQ admin UI\'s "deleted applications" list. Routes through the existing PlaywrightSession (session cookies + CSRF from cookie jar; API key auth is insufficient because this is a CSRF-protected Django web view). Used by `/ace:sweep hq` to clean up orphan apps in the ACE-owned domain. GUARDED: refuses any `domain` other than ACE_HQ_DOMAIN unless `allow_foreign_domain` is passed with that exact domain name.',
   {
     server: HQ_SERVER_FIELD,
     domain: z.string(),
     app_id: z.string(),
+    allow_foreign_domain: z.string().optional().describe('Escape hatch for deleting outside ACE_HQ_DOMAIN. Must equal `domain` EXACTLY — a bare `true` is not accepted, so the override has to name what it is overriding. Bounds accidental blast radius (a stale or typo\'d domain, a sweep bug); it is a rail, not an approval gate.'),
   },
-  async (args) => runAtom(async () => (await commcareClient(args.server)).deleteApp(args))
+  async ({ allow_foreign_domain, ...args }) => runAtom(async () => {
+    // Rail (audit F5): the atom will delete in ANY domain it is given.
+    assertAceOwnedHqDomain(args.domain, allow_foreign_domain);
+    return (await commcareClient(args.server)).deleteApp(args);
+  })
 );
 
 server.tool('commcare_create_domain',
