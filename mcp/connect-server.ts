@@ -299,7 +299,17 @@ server.tool('connect_list_delivery_types',
 // ── Opportunities ─────────────────────────────────────────────────
 
 server.tool('connect_list_opportunities',
-  { organization_slug: z.string(), program_id: z.string().optional(), name: z.string().optional() },
+  'List opportunities in an organization. `hydrate: true` fetches each row through `connect_get_opportunity` so `active` and `is_test` are REAL rather than absent — the list view returns only {id, name, short_description, description, organization_slug}. `program_id` is NOT a filter here and is refused loudly by the backend (ace#1022): the list endpoint has no program scope, and silently ignoring it would return the whole org while the caller believed it was scoped to one program. Filter client-side instead.',
+  {
+    organization_slug: z.string(),
+    // Advertised so the backend's LOUD refusal fires with its explanation,
+    // rather than the caller getting a schema rejection with no reason
+    // (ace#1448). Removing it entirely would trade one silent failure for
+    // another.
+    program_id: z.string().optional().describe('REFUSED by the backend — the list endpoint has no program scope (ace#1022). Present only so the refusal explains itself; filter client-side.'),
+    name: z.string().optional(),
+    hydrate: z.boolean().optional().describe('Fetch each row through getOpportunity so `active`/`is_test` are real. REQUIRED by connect-program-setup Step 4a and connect-opp-setup Step 4; unreachable before ace#1448.'),
+  },
   async (args) => runAtom(async () => (await client()).listOpportunities(args))
 );
 
