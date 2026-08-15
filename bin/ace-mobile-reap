@@ -81,7 +81,20 @@ cd "$PLUGIN_ROOT"
 # Use file:// URL absolute path because tsx -e doesn't establish a
 # stable CWD for relative imports.
 LOCK_MOD_URL="file://$PLUGIN_ROOT/mcp/mobile/session-lock.ts"
-exec npx --yes tsx -e "
+# Resolve tsx from the plugin's OWN node_modules rather than `npx --yes`
+# (2026-07-31 security audit C2, ace#1114). `npx --yes` silently fetches
+# whatever version of `tsx` resolves at that moment, with no lockfile pin — a
+# supply-chain surface on every invocation, and a network dependency in a tool
+# whose job is local cleanup. The repo already depends on tsx, so prefer the
+# pinned binary and fail with an install hint rather than reaching out.
+TSX_BIN="$PLUGIN_ROOT/node_modules/.bin/tsx"
+if [ ! -x "$TSX_BIN" ]; then
+  echo "ace-mobile-reap: tsx not found at $TSX_BIN" >&2
+  echo "  Install the plugin's dependencies first:  (cd \"$PLUGIN_ROOT\" && npm ci)" >&2
+  echo "  Deliberately NOT falling back to \`npx --yes\`, which would fetch an unpinned tsx at runtime (ace#1114 C2)." >&2
+  exit 1
+fi
+exec "$TSX_BIN" -e "
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { reapStaleSessions, inspectLocklessOrphans, describeLocklessSweep, SESSION_LOCK_DIR, isPidAlive } from '$LOCK_MOD_URL';

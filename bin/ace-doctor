@@ -14,6 +14,24 @@
 # Exit status: 0 always (check results go to stdout as PASS/WARN/FAIL lines).
 set +e
 
+
+# ── Credential-safe curl (2026-07-31 security audit C1, ace#1114) ──────
+#
+# `curl -H "Authorization: Bearer $TOKEN"` puts the live secret on the process
+# command line, where ANY local process can read it via `ps` for the duration
+# of the call. A real exposure on a shared workstation, and it applied to five
+# probes here: the labs PAT (x2), the HQ ApiKey, the Nova key, and the ace-web
+# PAT.
+#
+# curl reads a header from a file with `-H @path` and from STDIN with `-H @-`,
+# so passing it on stdin keeps it out of argv entirely. Request bodies here are
+# public JSON and stay inline.
+#
+# Usage: curl_auth "<header line>" <curl args...>
+curl_auth() {
+  _auth_hdr="$1"; shift
+  printf '%s\n' "$_auth_hdr" | curl -H @- "$@"
+}
 SELF_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 MODE="self"
 ROOT=""
@@ -1354,9 +1372,9 @@ $(printf '%s' "$RENDER_ERR" | sed 's/^/      /')"
     pass "connect_labs_env: LABS_MCP_TOKEN present"
     # Probe 1: PAT validity. POST an initialize frame; expect 200 (or any 2xx).
     # 401 means PAT bad/revoked; timeout means labs is down.
-    LABS_REACH_CODE="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 5 \
+    LABS_REACH_CODE="$(curl_auth "Authorization: Bearer $LABS_TOKEN" \
+      -sS -o /dev/null -w '%{http_code}' --max-time 5 \
       -X POST \
-      -H "Authorization: Bearer $LABS_TOKEN" \
       -H "Content-Type: application/json" \
       -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"ace-doctor","version":"1"}}}' \
       "$LABS_URL" 2>/dev/null || echo "000")"
@@ -1366,9 +1384,9 @@ $(printf '%s' "$RENDER_ERR" | sed 's/^/      /')"
         # Probe 2: Connect OAuth bridge. Call list_solicitations and look at
         # the response body for tool-level PERMISSION_DENIED (which means
         # PAT is good but the labs user hasn't completed Connect OAuth).
-        LABS_OAUTH_BODY="$(curl -sS --max-time 5 \
+        LABS_OAUTH_BODY="$(curl_auth "Authorization: Bearer $LABS_TOKEN" \
+          -sS --max-time 5 \
           -X POST \
-          -H "Authorization: Bearer $LABS_TOKEN" \
           -H "Content-Type: application/json" \
           -d '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"list_solicitations","arguments":{}}}' \
           "$LABS_URL" 2>/dev/null || echo "")"
@@ -1676,8 +1694,8 @@ if [ -n "$HQ_KEY_VAL" ] && [ -n "$HQ_DOMAIN" ] && [ -n "$HQ_USER" ]; then
   # doctor wall-clock. cchq_auth + net_commcarehq above already cover
   # basic CCHQ reachability — if THIS probe still trips 000 while those
   # passed, the diagnosis is server-side endpoint slowness, not network.
-  HQ_API_PROBE_CODE="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 3 \
-    -H "Authorization: ApiKey $HQ_USER:$HQ_KEY_VAL" \
+  HQ_API_PROBE_CODE="$(curl_auth "Authorization: ApiKey $HQ_USER:$HQ_KEY_VAL" \
+-sS -o /dev/null -w '%{http_code}' --max-time 3 \
     "https://www.commcarehq.org/a/$HQ_DOMAIN/api/v0.5/user/?limit=1" 2>/dev/null)"
   [ -z "$HQ_API_PROBE_CODE" ] && HQ_API_PROBE_CODE="000"
   case "$HQ_API_PROBE_CODE" in
@@ -1874,10 +1892,10 @@ fi
 # Worst case ~18s before WARN. Source: select-session feedback that
 # nova_auth WARNed while the live MCP subprocess was healthy.
 if [ -n "$NOVA_KEY_VAL" ]; then
-  NOVA_REACH_CODE="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 5 \
+  NOVA_REACH_CODE="$(curl_auth "Authorization: Bearer $NOVA_KEY_VAL" \
+-sS -o /dev/null -w '%{http_code}' --max-time 5 \
     --retry 2 --retry-delay 1 --retry-all-errors --retry-connrefused \
     -X POST \
-    -H "Authorization: Bearer $NOVA_KEY_VAL" \
     -H "Content-Type: application/json" \
     -H "Accept: application/json, text/event-stream" \
     -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"ace-doctor","version":"1"}}}' \
@@ -2226,8 +2244,8 @@ if [ -n "$PAT_TOKEN" ] && [ -n "$ACE_WEB_BASE" ]; then
   # Strip trailing slash to mirror cloud.ts normalisation.
   ACE_WEB_BASE="${ACE_WEB_BASE%/}"
   CLOUD_EMU_BODY="$(mktemp -t ace-doctor-cloud-emu.XXXXXX)"
-  CLOUD_EMU_CODE="$(curl -sS -o "$CLOUD_EMU_BODY" -w '%{http_code}' --max-time 8 \
-    -H "Authorization: Bearer $PAT_TOKEN" \
+  CLOUD_EMU_CODE="$(curl_auth "Authorization: Bearer $PAT_TOKEN" \
+-sS -o "$CLOUD_EMU_BODY" -w '%{http_code}' --max-time 8 \
     "$ACE_WEB_BASE/api/mobile/diagnose" 2>/dev/null || echo "000")"
   case "$CLOUD_EMU_CODE" in
     2*)

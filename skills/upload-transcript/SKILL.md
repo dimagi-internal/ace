@@ -102,7 +102,8 @@ omit `opp_run_id`. The ace-web ingest endpoint accepts either shape.
    If any fail, stop and report which precondition failed.
 
 3. **POST `<base-url>/api/ingest/upload`** with:
-   - `-H "Authorization: Bearer $ACE_WEB_PAT_TOKEN"` for auth (no
+   - the PAT on STDIN via `-H @-`, never `-H "Authorization: Bearer $TOK"` in
+     argv — that publishes the live token to `ps` (ace#1114 C1). Auth (no
      cookies, no CSRF — the django-ninja router's `session_auth`
      accepts the Bearer PAT)
    - `-F "opp_slug=<slug>"` (if provided)
@@ -176,9 +177,12 @@ UPLOAD_ARGS+=(-F "file=@$REDACTED_PATH;type=application/x-ndjson")
 # follow-up read silently returns another session's response body (and here
 # that would mean publishing the WRONG session slug).
 RESP_JSON="$(mktemp "${TMPDIR:-/tmp}/ace-upload-resp-XXXXXX.json")"
-HTTP=$(curl -sS -o "$RESP_JSON" -w '%{http_code}' \
+# The PAT goes in on STDIN, never in argv (ace#1114 C1): `curl -H "Authorization:
+# Bearer $TOK"` publishes the live token to `ps` for the duration of the call.
+# curl reads a header from stdin with `-H @-`.
+HTTP=$(printf '%s\n' "Authorization: Bearer $ACE_WEB_PAT_TOKEN" | curl -sS -o "$RESP_JSON" -w '%{http_code}' \
+  -H @- \
   -X POST "$BASE_URL/api/ingest/upload" \
-  -H "Authorization: Bearer $ACE_WEB_PAT_TOKEN" \
   "${UPLOAD_ARGS[@]}")
 # 409 = identical content already uploaded; treat as idempotent success.
 [ "$HTTP" = "201" ] || [ "$HTTP" = "409" ] || { echo "upload $HTTP"; cat "$RESP_JSON"; exit 4; }
