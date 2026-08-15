@@ -373,6 +373,65 @@ recording.
 an interactive run found `completed` fails, and so does a non-interactive run
 left `in_progress`.
 
+## Hand-authoring a generator instead of the manifest DSL
+
+Sometimes the manifest DSL cannot express a design and the data gets authored by
+a hand-written Python script. That is allowed. What is not allowed is shipping
+one whose determinism is *claimed* rather than *demonstrated* — the fixture is
+the substrate of every rendered scene, so a dataset that cannot be regenerated
+means any later fix is hand-editing JSON or re-authoring every narration number
+against a different dataset (ace#1388).
+
+**Three obligations, all three or use the DSL:**
+
+1. **Never derive a persisted value from builtin `hash()`.** This is the one
+   that actually shipped. `hash()` of a str — or of a tuple containing one — is
+   randomised per process by design (PEP 456). It is perfectly stable *within* a
+   process, which is exactly what makes `h = hash((user, week)) % 100` such an
+   inviting way to derive a fixed per-key value, and it silently reshuffles on
+   the next run. In the spark-facilitator generator it decided the record
+   **count**. Use a stable digest:
+
+   ```python
+   def stable_hash(x):
+       return int.from_bytes(hashlib.blake2b(repr(x).encode(), digest_size=8).digest(), "big")
+   ```
+
+2. **Sort every iteration that a draw is consumed inside** — `for k in sorted(d)`,
+   never `for k in some_set`. Same symptom by a different route: the RNG is
+   seeded correctly and the draw *order* is not.
+
+3. **Run a CROSS-PROCESS determinism check before upload, and publish the
+   generator alongside the fixture** with the assertion that it reproduces the
+   uploaded bytes.
+
+   > **The obvious check does not work.** "Generate twice in one process, assert
+   > byte-identical" passes over both defects above: `PYTHONHASHSEED` is drawn
+   > once per process, so both generations see the same `hash()` values and walk
+   > any set in the same order. Measured — in-process identical `True` while
+   > three processes gave three different digests. A green check over a live bug
+   > is worse than no check.
+
+   The check that catches it re-executes the generator under two different
+   `PYTHONHASHSEED` values and compares output bytes. Take the exact snippet from
+   `lib/generator-determinism.ts` (`CROSS_PROCESS_SELFCHECK`) rather than
+   rewriting it.
+
+**Before uploading, lint the generator:**
+
+```bash
+npx tsx -e "
+import {checkGeneratorDeterminism} from './lib/generator-determinism';
+import {readFileSync} from 'node:fs';
+const r = checkGeneratorDeterminism(readFileSync(process.argv[1], 'utf8'));
+for (const f of r.findings) console.log(\`[\${f.kind}] line \${f.line}: \${f.detail}\`);
+process.exit(r.ok ? 0 : 1);
+" <generator.py>
+```
+
+The lint catches the two known causes; the cross-process check catches the ones
+nobody has enumerated yet. Run both — neither is a substitute for the other.
+
 ## Gotchas (encode every one — they are the difference between a live demo and a dead scene)
 
 - [ ] **Labs-only opp ids ≥ 10,000 have no CommCare HQ app.** Anything needing a
