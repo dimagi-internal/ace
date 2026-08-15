@@ -249,6 +249,25 @@ Skills — No Fake Background Tasks`). Concrete budget:
         On timeout: capture an empty response, set
         `structural_pass: false`, `structural_notes: "timeout @ 90s"`.
      4. Capture the response content, cited_files, tags, and elapsed time.
+
+        **Where each field lives in the poll payload.** The completed poll
+        body is `{status, message}`, and `message` carries exactly
+        `['attachments', 'content', 'created_at', 'metadata', 'role', 'tags']`.
+        There is **no top-level `message.cited_files`** — citations live at
+        **`message.metadata.cited_files`**, alongside `metadata.trace_info`
+        (the Step 5.9 trace pointer) and `metadata.generated_files`. A harness
+        that reads `message.cited_files` — the obvious path, and the one the
+        Step 7 transcript schema's flat `cited_files:` field implies — silently
+        records `[]` for every entry, which is indistinguishable from a
+        genuinely empty array and quietly removes the evidence the eval's
+        Source-usage dimension reads. Verified live on
+        `bednet-check-2-visit/20260814-2019`.
+
+        Note this does NOT contradict `ocs-chatbot-eval`'s widget branch: the
+        field is expected to be *empty* on widget captures (that rubric emits
+        `[PLATFORM]` and grades body text instead). The point here is that it
+        must be read from the right path, so an empty array is an observation
+        rather than an artifact of looking in the wrong place.
      5. **Run structural checks (Step 6) on this response inline.**
      6. **Persist the entry per the write strategy:**
         - `--quick`: append to in-memory buffer.
@@ -297,7 +316,13 @@ Skills — No Fake Background Tasks`). Concrete budget:
      `structural_notes` (see Step 5.9 — the fallback text itself never
      names the real failure)
    - `has_citations`: for prompts where the expected answer is KB-sourced,
-     `cited_files` is non-empty
+     `message.metadata.cited_files` is non-empty (see Step 5.4 for the path —
+     it is NOT a top-level field). On `widget` captures this is routinely
+     empty by design; record it, but do NOT fail `structural_pass` on it
+     alone — `ocs-chatbot-eval` § Source usage owns that judgment and
+     explicitly does not apply the empty-`cited_files` cap to widget
+     captures. Failing the suite on an always-empty array manufactures the
+     ace#1298 class of false "miswired bot" gate failure.
    - Set per-prompt `structural_pass: true | false` and a `structural_notes`
      string for the judge (and humans) to read
 
@@ -444,3 +469,4 @@ When `--dry-run` is active:
 | 2026-05-15 | Extend `--quick` suite with archetype-specific prompts for `focus-group` (1–2 from `pdd-to-test-prompts.md` `gdoc-writing-guidance` + `facilitation-technique` categories) since the 3 universal Connect-domain prompts primarily exercise shared-collection retrieval and would pass even if the opp-specific collection was mis-loaded. Wall-clock cap scales to 360s/450s for focus-group. Atomic-visit / multi-stage stay at the 3-prompt / 270s baseline. Prompted by `malaria-itn-fgd/20260514-2352` Phase 5 observation. | ACE team |
 | 2026-06-09 | **Trace triage on generation errors (Step 5.9).** On circuit-break / all-fail, the skill must open the session trace URL the atom now appends to `OCS generation error` failures and record the underlying provider error verbatim — never diagnose "platform outage" from the generic "intermittent load" fallback. Root incident: bednet-spot-check/20260609-0909 lost a session to a revoked team Anthropic key (`401 invalid x-api-key`) misread as a team-wide OCS outage because the golden-template control sat behind the same dead key (jjackson/ace#743). Atom-side enrichment: `mcp/ocs/backends/rest.ts::describeSessionTrace`. | ACE team |
 | 2026-08-14 | **Step 5 now states the expected HTTP status per widget endpoint (dimagi-internal/ace#1298).** The endpoint list named `/start/` → `/message/` → `/poll/` with no status codes, so a hand-rolled harness asserted `HTTP == 200` on the send. `/message/` returns **202 Accepted** with a `task_id` (the send is queued, not answered) and `/start/` returns **201** — the harness discarded three accepted sends and reported `0/3` structural pass in 2.6s, which under Step 9 escalates as a miswired bot. Re-run accepting any 2xx: 3/3 in 58.2s. Step 5 now carries a status table (incl. the wrong-embed-key 403 negative control) and mandates a 2xx range; matching bullet added to `playbook/integrations/ocs-integration.md`. Observed on `spark-facilitator/20260813-2126`. | ACE team |
+| 2026-08-15 | **Name the citation path (Step 5.4) and stop `has_citations` from failing a healthy widget capture (Step 6).** The skill told implementers to capture `cited_files` but never said where it lives; the poll payload has no top-level `message.cited_files` — it is `message.metadata.cited_files`, next to `trace_info`. A hand-rolled harness reading the obvious flat path records `[]` on every entry, indistinguishable from a genuinely empty array. Step 6 now also states that an empty array must not fail `structural_pass` on its own, since `ocs-chatbot-eval` § Source usage already declines to apply the empty-`cited_files` cap on widget captures — failing it here recreates the ace#1298 false-gate-failure class from the other side. Observed on `bednet-check-2-visit/20260814-2019` Phase 5. | ACE team |
