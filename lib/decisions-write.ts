@@ -63,6 +63,10 @@ export type DecisionsWriteCode =
   | "MALFORMED_YAML"
   | "MALFORMED_LOG"
   | "IDENTITY_MISMATCH"
+  // ace#1421 — supersession, validated at the write boundary.
+  | "SELF_SUPERSEDES"
+  | "DANGLING_SUPERSEDES"
+  | "ALREADY_SUPERSEDED"
   | "INTERNAL_INVARIANT";
 
 export class DecisionsWriteError extends Error {
@@ -174,6 +178,49 @@ export function composeAppendedLog(args: ComposeArgs): ComposeResult {
     existingIds.add(row.id);
     if (appliedIds.has(row.id)) overridesApplied.push(row.id);
     added++;
+  }
+
+  // ── Supersession (ace#1421) ─────────────────────────────────────────────
+  // A row declaring `supersedes: X` stamps `superseded_by` onto X, so the log
+  // keeps the wrong value and its reasoning while the live value is
+  // unambiguous. Validated at the write boundary, like the options/ai-default
+  // invariant above — a dangling reference here is worse than a rejected
+  // write, because the consumer contract is "look up the canonical id and use
+  // it as-is".
+  const byId = new Map(log.decisions.map((d) => [d.id, d]));
+  for (const row of overridden.rows) {
+    const target = row.supersedes;
+    if (target === undefined) continue;
+    // Only act for rows we actually appended; a skipped (already-present) row
+    // has already had its effect applied on the run that first wrote it.
+    if (skipped.includes(row.id)) continue;
+
+    if (target === row.id) {
+      throw new DecisionsWriteError(
+        "SELF_SUPERSEDES",
+        `row ${row.id} declares supersedes: ${target} — a row cannot supersede itself`,
+      );
+    }
+    const predecessor = byId.get(target);
+    if (predecessor === undefined) {
+      throw new DecisionsWriteError(
+        "DANGLING_SUPERSEDES",
+        `row ${row.id} declares supersedes: ${target}, which is not in the log or this batch. ` +
+          `Append the row you are correcting first, or fix the id.`,
+      );
+    }
+    if (
+      predecessor.superseded_by !== undefined &&
+      predecessor.superseded_by !== row.id
+    ) {
+      throw new DecisionsWriteError(
+        "ALREADY_SUPERSEDED",
+        `row ${target} is already superseded by ${predecessor.superseded_by}; ` +
+          `${row.id} cannot also supersede it. Supersede ${predecessor.superseded_by} instead ` +
+          `so the chain stays single-valued.`,
+      );
+    }
+    predecessor.superseded_by = row.id;
   }
 
   const finalCheck = DecisionsLogSchema.safeParse(log);

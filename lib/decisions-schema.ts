@@ -92,6 +92,24 @@ export const DecisionRowSchema = z
         "Citation only — where the AI sourced the info (e.g. 'PDD § Evidence Model', 'EOI responses spreadsheet row 4'). " +
           "Not a place for rationale; use `reasoning` for that.",
       ),
+    supersedes: z
+      .string()
+      .regex(/^[a-z0-9]+(-[a-z0-9]+)*$/)
+      .optional()
+      .describe(
+        "Id of an earlier row this one CORRECTS. The write boundary stamps `superseded_by` on that " +
+          "row, so the log keeps both the wrong value and its reasoning (the point of an audit log) " +
+          "while making the live value unambiguous. Must name a row that already exists in the log " +
+          "or earlier in the same batch — a dangling reference is rejected.",
+      ),
+    superseded_by: z
+      .string()
+      .regex(/^[a-z0-9]+(-[a-z0-9]+)*$/)
+      .optional()
+      .describe(
+        "Set by `decisions_append_rows`, never by an emitting skill. Names the row that replaced this " +
+          "one. A row carrying this is HISTORY: consumers must resolve to the row that does not carry it.",
+      ),
     status: z.enum(["ai-default", "overridden"]),
     override_reasoning: z
       .string()
@@ -303,4 +321,47 @@ export function serializeDecisionsLog(log: DecisionsLog): string {
  */
 export function effectiveValue(row: DecisionRow): string {
   return row.override ?? row["ai-default"];
+}
+
+/**
+ * Rows that are still LIVE — i.e. not corrected by a later row.
+ *
+ * ace#1421. `decisions.yaml` is append-only and `decisions_append_rows` is
+ * idempotent-by-id, so a row can never be edited in place. That is the right
+ * write semantic, but without supersession a mid-run correction leaves the log
+ * holding the wrong value AND the right one, both `status: ai-default`, with
+ * nothing machine-readable saying which wins.
+ *
+ * That is a correctness problem, not tidiness: `pdd-to-work-order § Process`
+ * step 3(a) tells the next skill to look up a canonical id and "use that value
+ * as-is", which on bednet-check-2-visit/20260814-2019 would have resolved
+ * `payment-rate` to a superseded per-visit band and put it into the Phase 4
+ * payment unit and a contractual document.
+ */
+export function liveDecisions(log: DecisionsLog): DecisionRow[] {
+  return log.decisions.filter((d) => d.superseded_by === undefined);
+}
+
+/**
+ * Resolve an id to the row that is actually live, following the supersession
+ * chain. Returns undefined when the id is absent.
+ *
+ * Prefer this over a bare `.find(d => d.id === wanted)` in any consumer that
+ * reads a canonical id — that is exactly the lookup that returns history.
+ */
+export function resolveDecision(
+  log: DecisionsLog,
+  id: string,
+): DecisionRow | undefined {
+  const byId = new Map(log.decisions.map((d) => [d.id, d]));
+  let row = byId.get(id);
+  const seen = new Set<string>();
+  while (row?.superseded_by !== undefined) {
+    if (seen.has(row.id)) return row; // cycle guard; the writer rejects these
+    seen.add(row.id);
+    const next = byId.get(row.superseded_by);
+    if (next === undefined) return row; // dangling; the writer rejects these
+    row = next;
+  }
+  return row;
 }
