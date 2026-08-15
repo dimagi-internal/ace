@@ -562,11 +562,22 @@ stands regardless of what's on disk.)
 
 **Output dirs — pass ONE run-scoped ROOT; the MCP namespaces per
 dispatch (dimagi-internal/ace#1130).** Pass the same
-`screenshotDir: "/tmp/ace-screenshots/<opp>/<run-id>"` to every
+`screenshotDir: "$TMPDIR/ace-screenshots/<opp>/<run-id>"` to every
 `mobile_run_recipe` call in the phase — both legs, every recipe.
 
-   **The path must be under `/tmp/ace-screenshots/` (or `$TMPDIR/ace-screenshots/`,
-   or `ACE_SCREENSHOT_ROOT` if the operator relocated it).** `mobile_run_recipe`
+   **Use `$TMPDIR`, not `/tmp` (ace#1456).** `/tmp` is SHARED across macOS
+   accounts: whichever account runs ACE first on a machine owns
+   `/tmp/ace-screenshots` at mode 755, and every other account is then locked
+   out of exactly the path this skill used to tell it to use — a bare
+   `EACCES: permission denied, mkdir` mid-dispatch. `$TMPDIR` is per-user and
+   correct on both single- and multi-user machines. Observed on
+   `bednet-check-2-visit/20260814-2019`, where `/tmp/ace-screenshots` was owned
+   by the other account on the box; it cost a dispatch cycle to diagnose. Same
+   shared-`/tmp` family as ace#1046, which was the read-side sibling.
+
+   **The path must be under `$TMPDIR/ace-screenshots/` (or the legacy
+   `/tmp/ace-screenshots/`, still accepted so an in-flight run's artifacts keep
+   resolving, or `ACE_SCREENSHOT_ROOT` if the operator relocated it).** `mobile_run_recipe`
    wipes its output dir at execution start, and before ace#1111 the only guard was a
    shape denylist — so any path with two or more segments (`~/Documents`, `~/.ssh`,
    `~/Library`) was destroyed irrecoverably by a single argument. It is now

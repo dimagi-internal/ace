@@ -80,8 +80,48 @@ export function isPreservedArtifact(name: string): boolean {
 export function allowedScreenshotRoots(): string[] {
   const override = process.env.ACE_SCREENSHOT_ROOT;
   if (override) return [path.resolve(override)];
-  return [...new Set(['/tmp/ace-screenshots', path.join(os.tmpdir(), 'ace-screenshots')])].map(
+  // Per-user root FIRST (ace#1456). Both stay allowed — an existing run's
+  // artifacts under /tmp must keep resolving — but order is what callers and
+  // docs copy, and /tmp is the one that breaks. /tmp is shared across macOS
+  // accounts, so whichever account runs ACE first owns /tmp/ace-screenshots at
+  // mode 755 and every other account is locked out of exactly the path the
+  // skill told it to use. os.tmpdir() is per-user and correct on both single-
+  // and multi-user machines. Same shared-/tmp family as ace#1046, which was
+  // the read-side sibling (silently reading another session's data).
+  return [...new Set([path.join(os.tmpdir(), 'ace-screenshots'), '/tmp/ace-screenshots'])].map(
     (r) => path.resolve(r),
+  );
+}
+
+/**
+ * Turn a permission failure on an allowed root into a typed, actionable error.
+ *
+ * ace#1456. The containment allow-list was fine — `$TMPDIR/ace-screenshots/…`
+ * works — but a caller following the documented `/tmp/ace-screenshots/…`
+ * default on a shared Mac got a bare Node error:
+ *
+ *     EACCES: permission denied, mkdir '/tmp/ace-screenshots/<opp>/<run>/journey-learn'
+ *
+ * with no hint that two other roots are accepted. Everything else in this area
+ * throws a typed, remediation-naming error; this path didn't, so diagnosing it
+ * meant reading this file. Cost one dispatch cycle on
+ * bednet-check-2-visit/20260814-2019.
+ */
+export function explainScreenshotDirFailure(err: unknown, resolved: string): Error | null {
+  const code = (err as NodeJS.ErrnoException | undefined)?.code;
+  if (code !== 'EACCES' && code !== 'EPERM') return null;
+  const roots = allowedScreenshotRoots();
+  const perUser = path.join(os.tmpdir(), 'ace-screenshots');
+  const shared = resolved.startsWith('/tmp/');
+  return new Error(
+    `screenshotDir "${resolved}" is not writable (${code}).` +
+      (shared
+        ? ` /tmp is SHARED across macOS accounts, so /tmp/ace-screenshots is owned by whichever ` +
+          `account ran ACE first on this machine and is mode 755 — another user cannot write into ` +
+          `it. This is the documented-default trap, not a broken allow-list (ace#1456).`
+        : '') +
+      ` Accepted roots: ${roots.join(', ')}. Use the per-user root ${perUser}/<opp>/<run-id>, ` +
+      `or set ACE_SCREENSHOT_ROOT to relocate it entirely.`,
   );
 }
 

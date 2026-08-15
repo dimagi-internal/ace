@@ -41,7 +41,11 @@ import type {
   VideoArtifact, LocalDiagnostics, DeviceProbeFailures, RunRecipeOptions,
 } from './types.js';
 import { logInfo } from './logging.js';
-import { dispatchOutputDir, resetScreenshotDir } from './screenshot-dir.js';
+import {
+  dispatchOutputDir,
+  resetScreenshotDir,
+  explainScreenshotDirFailure,
+} from './screenshot-dir.js';
 import { runRecipeWithDriverHeal } from './maestro-driver-retry.js';
 import {
   buildProvenance,
@@ -1697,7 +1701,14 @@ export class MobileClient {
     // happens to live inside the dir has already been copied out, and
     // AFTER the freshness gate so a pre-flight rejection doesn't
     // destroy prior artifacts without producing new ones.
-    resetScreenshotDir(runDir);
+    try {
+      resetScreenshotDir(runDir);
+    } catch (err) {
+      // ace#1456: a bare EACCES here reads as "something broke" and gives no
+      // hint that other roots are accepted. Rethrow it typed and actionable.
+      const explained = explainScreenshotDirFailure(err, runDir);
+      throw explained ?? err;
+    }
 
     // Screen recording (local backend only — cloud is Phase 2). Best-effort
     // throughout: a recording failure must never change the recipe verdict.
