@@ -410,6 +410,23 @@ nova_needs_auth_cache:
   nova_api_key: ${PF_NOVA_KEY_PRESENT}
   remediation: "${PF_NOVA_CACHE_REMEDIATION}"
 EOF
+
+  # Handoff from a session that halted knowing it would be restarted (ace#1093).
+  # This is the block that stops the next session redoing ~30 context calls it
+  # cannot see were already made. Rendered by lib/session-handoff.ts so the
+  # freshness rule lives in one place; a stale one is REPORTED rather than
+  # hidden, because silence reads as "the mechanism never ran".
+  HANDOFF_JSON="$HOME/.ace/session-handoff.json"
+  if [ -f "$HANDOFF_JSON" ]; then
+    TSX_BIN="$ROOT/node_modules/.bin/tsx"
+    if [ -x "$TSX_BIN" ]; then
+      "$TSX_BIN" -e "
+        import { readHandoff, renderHandoff } from '$ROOT/lib/session-handoff.ts';
+        const r = readHandoff();
+        if (r.status === 'fresh') console.log(renderHandoff(r.handoff, r.ageMs));
+        else if (r.status === 'stale') console.log('INFO handoff_present_but_stale=' + Math.round(r.ageMs/60000) + 'm — ignoring (see ace#1093)');
+      " 2>/dev/null || true
+    fi
   exit 0
 fi
 
@@ -425,6 +442,7 @@ while [ "$D" != "/" ]; do
 done
 if [ -n "$PWD_MATCH" ] && [ "$PWD_MATCH" != "$ROOT" ]; then
   echo "INFO cwd_is_ace_checkout=$PWD_MATCH (pass --here to audit it instead)"
+  fi
 fi
 
 pass() { printf 'PASS %s\n' "$1"; }
