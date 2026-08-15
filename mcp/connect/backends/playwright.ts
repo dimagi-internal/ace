@@ -489,6 +489,17 @@ export class PlaywrightBackend implements ConnectClient {
       currency: v['currency'] ?? '',
       country: v['country'] ?? '',
       end_date: v['end_date'] ?? '',
+      // ace#1448. Field names verified LIVE against the real edit form on
+      // 2026-08-15 (ai-demo-space / 34703fdb-…), which carries exactly:
+      //   active, country, csrfmiddlewaretoken, currency, delivery_level,
+      //   delivery_type, description, enable_credentials, end_date, is_test,
+      //   learn_level, name, short_description, submit, users
+      // `total_budget` and `start_date` are on NEITHER this form nor the
+      // program init/edit form (which carries learn_app_passing_score, not
+      // passing_score) — so they cannot be surfaced from either read path, and
+      // this deliberately does not pretend otherwise. See the issue for what
+      // that means for the Step 4a budget-headroom check.
+      is_test: v['is_test'] === 'on' || v['is_test'] === 'true',
       learn_app: learnAppId
         ? { cc_domain: learnAppDomain, cc_app_id: learnAppId, name: '' }
         : undefined,
