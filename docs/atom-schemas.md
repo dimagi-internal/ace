@@ -982,7 +982,6 @@ Set up a linked-project-spaces relationship: upstream (master) → downstream. R
 | `ccz_base64` | `z.string` | optional | Base64-encoded CCZ bytes. Use when chaining directly from `commcare_download_ccz` without writing to disk. Exactly one of `ccz_path` or `ccz_base64` must be supplied. |
 | `mode` | `z.enum` | optional | `validate` (default; fast, parser-class only) vs `play` (slow, catches runtime-binding defects like the bednet `entity_id` class). Use `play` as the authoritative Phase 3 install-time gate. |
 | `entry_path` | `z.array` | **required** | _—_ |
-| `jar_path` | `z.string` | optional | Override the resolved commcare-cli.jar path (default: $ACE_COMMCARE_CLI_JAR or $CLAUDE_PLUGIN_DATA/commcare-cli.jar). |
 | `timeout_ms` | `z.number` | optional | Spawn timeout. validate default 60000ms; play default 30000ms. |
 
 ### `commcare_patch_xform`

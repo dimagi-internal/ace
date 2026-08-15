@@ -1025,7 +1025,6 @@ server.tool('commcare_validate_ccz',
     ccz_base64: z.string().optional().describe('Base64-encoded CCZ bytes. Use when chaining directly from `commcare_download_ccz` without writing to disk. Exactly one of `ccz_path` or `ccz_base64` must be supplied.'),
     mode: z.enum(['validate', 'play']).optional().describe('`validate` (default; fast, parser-class only) vs `play` (slow, catches runtime-binding defects like the bednet `entity_id` class). Use `play` as the authoritative Phase 3 install-time gate.'),
     entry_path: z.array(z.number().int().min(0)).optional().describe('`play` mode only. Menu indices to navigate to a form (default `[0, 0]` = first module → first form). For multi-module apps, invoke once per module to cover every form-init.'),
-    jar_path: z.string().optional().describe('Override the resolved commcare-cli.jar path (default: $ACE_COMMCARE_CLI_JAR or $CLAUDE_PLUGIN_DATA/commcare-cli.jar).'),
     timeout_ms: z.number().int().positive().optional().describe('Spawn timeout. validate default 60000ms; play default 30000ms.'),
   },
   async (args) =>
@@ -1054,7 +1053,13 @@ server.tool('commcare_validate_ccz',
           timed_out: false,
         };
       }
-      const jarPath = resolveCommCareCliJarPath(args.jar_path);
+      // ace#1110 F10: `jar_path` was an LLM-settable argument feeding
+      // `java -jar` — arbitrary code execution with operator privileges from a
+      // path the model chose. No skill, agent or command ever passed it, so
+      // removing it costs nothing. The escape hatch that remains,
+      // $ACE_COMMCARE_CLI_JAR, is OPERATOR config rather than a tool argument,
+      // which is the boundary that matters here.
+      const jarPath = resolveCommCareCliJarPath();
       const mode = args.mode ?? 'validate';
 
       // Materialize CCZ to disk: caller-provided path wins; otherwise
