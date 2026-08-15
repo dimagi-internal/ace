@@ -864,6 +864,50 @@ function productIdentity(product: unknown): { key: string; shown: string } | nul
 }
 
 /**
+ * Walkthroughs are counted, not URL-matched.
+ *
+ * Every other product here is checked by resolving its link on the page, but a
+ * walkthrough legitimately has no link in two of its four states (`withheld`,
+ * `unavailable`) — so a link check would flag a page that is behaving
+ * correctly. What must hold instead is far simpler and stronger: **the page
+ * has one entry for every walkthrough the run produced.** Each entry then
+ * declares its own state.
+ *
+ * This is the check that was missing when it mattered.
+ * `spark-facilitator/20260813-2126` produced a 12-scene narrated video,
+ * published it to Drive, recorded it in `run_state`, and served
+ * `walkthroughs: []` — because the reader's accepted-URL-key list did not
+ * include the key the run happened to write (ace#1432). No finding fired: the
+ * contract check only inspects items that are present, so an empty list is
+ * indistinguishable from a run that made nothing, and completeness had no
+ * walkthrough row at all. Count parity closes both halves at once, and it
+ * cannot be defeated by a future key rename.
+ */
+export function auditWalkthroughParity(payload: unknown, phases: unknown): Finding[] {
+  const produced = getPath(phases, 'synthetic-data-and-workflows.products.synthetic.walkthroughs');
+  if (!Array.isArray(produced) || produced.length === 0) return [];
+  const shown = getPath(payload, 'walkthroughs');
+  const shownCount = Array.isArray(shown) ? shown.length : 0;
+  if (shownCount >= produced.length) return [];
+  return [
+    {
+      code: 'WALKTHROUGH-DROPPED',
+      severity: 'misleading',
+      where: 'walkthroughs',
+      detail:
+        `the run produced ${produced.length} walkthrough(s) and the page shows ${shownCount}. ` +
+        'A produced walkthrough that never reaches the page reads exactly like a run that never ' +
+        'made one — the reader is not withholding it, it is denying it exists',
+      fix:
+        'surface every entry in ace-web `_read_walkthroughs` — a walkthrough with no recognised ' +
+        'URL key belongs on the page as `availability: unavailable`, never dropped. If a URL was ' +
+        'written under a new key, add it to `_WALKTHROUGH_URL_KEYS`',
+      defect: '7 (a passing walkthrough served as `walkthroughs: []`)',
+    },
+  ];
+}
+
+/**
  * Compare the page against `run_state.yaml`: did the run PRODUCE something the
  * page never shows?
  *
@@ -889,6 +933,7 @@ export function auditCompleteness(payload: unknown, runState: unknown | null): F
   }
   const out: Finding[] = [];
   const phases = getPath(runState, 'phases');
+  out.push(...auditWalkthroughParity(payload, phases));
   const onPage = new Set(
     collectUrls(payload, 'https://labs.connect.dimagi.com/ace/')
       .map((u) => canonicalDocUrl(u.url)),

@@ -25,6 +25,7 @@ import { describe, expect, it } from 'vitest';
 import {
   ACCEPTED_PUBLIC_SECRETS,
   auditCompleteness,
+  auditWalkthroughParity,
   auditConfidentiality,
   auditContract,
   auditDocFidelity,
@@ -426,6 +427,73 @@ describe('defect 6 — a product the run made and the page never shows', () => {
       phases: { 'commcare-setup': { products: { apps: { learn: { nova_url: 'https://commcare.app/build/x' } } } } },
     };
     expect(auditCompleteness(healthyPayload(), withNova)).toEqual([]);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════
+// Defect 7 — a produced walkthrough served as `walkthroughs: []`
+// ═══════════════════════════════════════════════════════════════════
+
+describe('walkthrough count parity', () => {
+  const withWalkthroughs = (n: number) => ({
+    'synthetic-data-and-workflows': {
+      products: {
+        synthetic: {
+          walkthroughs: Array.from({ length: n }, (_, i) => ({
+            persona: `p${i}`,
+            video_web_view_link: `https://drive.google.com/file/d/v${i}/view`,
+            eval_verdict: 'warn',
+          })),
+        },
+      },
+    },
+  });
+
+  it('flags a produced walkthrough the page does not show at all', () => {
+    // The exact shape that shipped: run_state has the video, the page has
+    // an empty list, and every other check is green because there is no
+    // item present to inspect.
+    const findings = auditWalkthroughParity({ walkthroughs: [] }, withWalkthroughs(1));
+    expect(findings).toHaveLength(1);
+    expect(findings[0].code).toBe('WALKTHROUGH-DROPPED');
+    expect(findings[0].detail).toContain('produced 1');
+    expect(findings[0].detail).toContain('shows 0');
+    expect(isBlocking(findings[0])).toBe(true);
+  });
+
+  it('flags a partial drop, not just a total one', () => {
+    const findings = auditWalkthroughParity({ walkthroughs: [{ persona: 'p0' }] }, withWalkthroughs(3));
+    expect(findings).toHaveLength(1);
+    expect(findings[0].detail).toContain('produced 3');
+  });
+
+  it('passes a WITHHELD walkthrough, which has no link by design', () => {
+    // The point of counting rather than URL-matching: a withheld entry is
+    // the page behaving correctly. A link check would flag it and train
+    // the reader to ignore this finding.
+    const findings = auditWalkthroughParity(
+      { walkthroughs: [{ persona: 'p0', url: null, availability: 'withheld' }] },
+      withWalkthroughs(1),
+    );
+    expect(findings).toEqual([]);
+  });
+
+  it('passes an UNAVAILABLE walkthrough — surfaced without a link is still surfaced', () => {
+    const findings = auditWalkthroughParity(
+      { walkthroughs: [{ persona: 'p0', url: null, availability: 'unavailable' }] },
+      withWalkthroughs(1),
+    );
+    expect(findings).toEqual([]);
+  });
+
+  it('stays silent when the run produced no walkthroughs', () => {
+    expect(auditWalkthroughParity({ walkthroughs: [] }, {})).toEqual([]);
+    expect(auditWalkthroughParity({ walkthroughs: [] }, withWalkthroughs(0))).toEqual([]);
+  });
+
+  it('is reached through auditCompleteness, not only when called directly', () => {
+    const findings = auditCompleteness({ walkthroughs: [] }, { phases: withWalkthroughs(1) });
+    expect(findings.some((f) => f.code === 'WALKTHROUGH-DROPPED')).toBe(true);
   });
 });
 
