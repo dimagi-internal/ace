@@ -270,3 +270,38 @@ re-review-from-scratch failure this skill exists to prevent.
 ## Dry-Run Behavior
 
 Print the rendered markdown; write nothing to Drive.
+
+## The `revisions` channel — feedback that arrives as an EDIT
+
+Co-creation grants partners **editor** access by default (`share-run-access`,
+`drive_share_with_person`), so some feedback arrives as document revisions
+rather than comments. A revision has no `[a]`/`[b]` anchor and no words to
+quote — **the change is the artifact** — so these items carry `change`
+(before/after) instead of `verbatim`. An item must have exactly one of the two;
+both means the record is guessing at words nobody wrote, neither means there is
+nothing to render.
+
+Building a `revisions` record:
+
+1. `drive_read_file` the artifact as ACE published it (the run folder copy is
+   the `before`) and as it stands now (the `after`).
+2. For each revision from Drive's `revisions.list`, call
+   `deriveRevisionItems({ revision, before, after, ignoreEditors })` from
+   `lib/feedback-ledger.ts`. **Always pass `ignoreEditors`** with ACE's own
+   identity — otherwise ACE files feedback against itself on every write it
+   made to the shared doc.
+3. Write the record with `channel: revisions`.
+
+The diff is deliberately **line-block, not word-level**: the row exists so a
+partner can see their edit was seen, and a block of changed prose is what a
+person recognises as "my edit". A word diff would shatter one rewritten
+paragraph into a dozen rows, each of which then reads as its own ignored piece
+of feedback.
+
+**Disposition:** an edit you keep gets `kind: accepted-edit`. The other kinds
+all describe ACE *doing something in response*, and the correct response to a
+good edit is to do nothing and say so. Without it, accepting an edit either
+went UNROUTED — which renders to the partner as "we ignored you", the intended
+loud failure — or got mislabelled `decision`, which claims ACE chose when the
+partner did.
+
