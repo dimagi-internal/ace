@@ -443,18 +443,42 @@ consumes `entity_id` from the form and has no override.
 
 ```ts
 import { checkEntityIdGrain } from '../../lib/entity-id-grain';
-const report = checkEntityIdGrain(formXml, declaredBusinessKeyNodes);
+const report = checkEntityIdGrain(formXml, declaredBusinessKeyNodes, {
+  // ace#1441 — REQUIRED whenever the PDD declares a non-payable branch.
+  hasNonPayableBranch,        // true when the PDD marks any submission non-payable
+  payabilityDiscriminator,    // the field that discriminates (e.g. consent_confirmed)
+});
 ```
 
 Pass the nodes the PDD declares
 (`products.pdd.program_parameters.entity_id_components`, else the nodes named
-in § Deliver App Specification). Any finding is a `[BLOCKER]`
-`entity-id-grain`:
+in § Deliver App Specification).
+
+**Pass the payability inputs too, and a disclosed override is a PASS
+(ace#1441).** `_app-component-library § payability-scoped-key` REQUIRES the
+discriminator inside `entity_id` when a non-payable branch exists, and ace#1434
+ruled that requirement wins over a PDD-pinned identity-only grain. A
+discriminator is an ANSWER by construction, so without these inputs this
+halt-loud gate rejects exactly the key ACE mandates — and any opportunity
+declaring a non-payable branch cannot clear Phase 3. Observed on
+`bednet-check-2-visit/20260814-2019`, where a correct build disclosing the
+override as deviation D-9 tripped `answer-in-grain` + `no-entity-component`
+with every other gate green.
+
+With the inputs supplied, the check suppresses those two findings for the ONE
+component `resolveEntityIdGrain()` mandates — never for any other answer field,
+and never when the residual key is not the declared grain. A build that
+deviates from a pinned grain and DISCLOSES it as a named deviation is a pass
+here; an undisclosed deviation is still the builder's problem, not this gate's.
+
+Any remaining finding is a `[BLOCKER]` `entity-id-grain`:
 
 - `missing-declared-node` — the key omits a node the PDD names;
 - `answer-in-grain` — a worker-chosen answer (consent, eligibility, outcome) is
-  inside the dedup grain. This is the ace#969 over-correction: moving the
-  payability predicate INTO the key fixes slot consumption and breaks the grain;
+  inside the dedup grain **and is not the mandated discriminator**. This is the
+  ace#969 over-correction: moving a payability predicate INTO the key fixes slot
+  consumption and breaks the grain. The mandated discriminator is exempt
+  (ace#1441); a SECOND answer field is not;
 - `no-entity-component` — fires **even with nothing declared**, because a key of
   worker + date + answers is worker-and-day scoped by construction.
 

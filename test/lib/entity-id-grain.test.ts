@@ -106,3 +106,91 @@ describe('checkEntityIdGrain (#1285)', () => {
     expect(r.ok).toBe(true);
   });
 });
+
+/**
+ * ace#1441 — ace#1434's precedence ruling shipped on 0.13.897 and this gate was
+ * never reconciled with it. `_app-component-library § payability-scoped-key`
+ * requires the payability discriminator inside `entity_id`; a discriminator is
+ * an ANSWER by construction, so every build obeying the mandate tripped
+ * `answer-in-grain` and, with the residual key being worker + date, also
+ * `no-entity-component`.
+ *
+ * `app-release-qa` is halt-loud at Phase 3, so any opportunity declaring a
+ * non-payable branch could not clear it — the component library told the
+ * builder to ship a key the release gate refused. #1285's counter-evidence
+ * comment predicted exactly this.
+ */
+describe('the payability-scoped key passes the gate (ace#1441)', () => {
+  // The released key from bednet-check-2-visit/20260814-2019, Deliver app
+  // af48aa88-d980-423a-a831-87c42a1f6fd6, HQ build 8e654f32… (v5).
+  const xml = `
+    <h:html xmlns:h="http://www.w3.org/1999/xhtml">
+      <h:head><model>
+        <bind nodeset="/data/entity_id" type="string"
+              calculate="concat(instance('casedb')/casedb/case[@case_id = instance('commcaresession')/session/user/data/case_id]/username, ' - ', /data/visit_date, ' - ', /data/consent_block/consent_confirmed)"/>
+      </model></h:head>
+    </h:html>`;
+  const declared = ['username', 'visit_date'];
+
+  it('PASSES when the PDD declares a non-payable branch', () => {
+    const r = checkEntityIdGrain(xml, declared, {
+      hasNonPayableBranch: true,
+      payabilityDiscriminator: 'consent_confirmed',
+    });
+    expect(r.findings).toEqual([]);
+    expect(r.ok).toBe(true);
+  });
+
+  it('still FAILS the same key when no non-payable branch is declared', () => {
+    // The #969 over-correction the gate exists to catch: an answer in the key
+    // with nothing requiring it there.
+    const r = checkEntityIdGrain(xml, declared);
+    expect(r.ok).toBe(false);
+    expect(r.findings.map((f) => f.kind)).toContain('answer-in-grain');
+  });
+
+  it('matches a declared short name against the released full path', () => {
+    // The PDD says `consent_confirmed`; the form says
+    // `/data/consent_block/consent_confirmed`.
+    const r = checkEntityIdGrain(xml, declared, {
+      hasNonPayableBranch: true,
+      payabilityDiscriminator: '/data/consent_block/consent_confirmed',
+    });
+    expect(r.ok).toBe(true);
+  });
+
+  it('does not suppress an answer field that is NOT the discriminator', () => {
+    const twoAnswers = xml.replace(
+      "/data/consent_block/consent_confirmed)\"/>",
+      "/data/consent_block/consent_confirmed, ' - ', /data/visit_outcome)\"/>",
+    );
+    const r = checkEntityIdGrain(twoAnswers, declared, {
+      hasNonPayableBranch: true,
+      payabilityDiscriminator: 'consent_confirmed',
+    });
+    expect(r.ok).toBe(false);
+    expect(r.findings.some((f) => f.detail.includes('visit_outcome'))).toBe(true);
+  });
+
+  it('needs BOTH inputs — a discriminator without the branch suppresses nothing', () => {
+    const r = checkEntityIdGrain(xml, declared, { payabilityDiscriminator: 'consent_confirmed' });
+    expect(r.ok).toBe(false);
+  });
+
+  it('still fires no-entity-component when the residual is NOT the declared grain', () => {
+    // worker + day + answer with no declared grain behind it is the real defect.
+    const r = checkEntityIdGrain(xml, [], {
+      hasNonPayableBranch: true,
+      payabilityDiscriminator: 'consent_confirmed',
+    });
+    expect(r.findings.map((f) => f.kind)).toContain('no-entity-component');
+  });
+
+  it('a missing declared node still fails, branch or no branch', () => {
+    const r = checkEntityIdGrain(xml, ['username', 'visit_date', 'household_id'], {
+      hasNonPayableBranch: true,
+      payabilityDiscriminator: 'consent_confirmed',
+    });
+    expect(r.findings.map((f) => f.kind)).toContain('missing-declared-node');
+  });
+});
