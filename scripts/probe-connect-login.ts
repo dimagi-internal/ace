@@ -92,16 +92,26 @@ if (/commcarehq\.org/.test(afterClickUrl)) {
     console.log(`[probe] Did NOT land back on Connect: ${(e as Error).message}`);
     console.log(`[probe] Stuck at: ${page.url()}`);
     // Capture the page so we can see whether HQ rejected creds, asked for 2FA, or showed an OAuth-approve prompt
-    const snippet = (await page.content()).slice(0, 4000);
-    console.log('[probe] Page HTML snippet:');
-    console.log(snippet);
+    // Do NOT dump page HTML (2026-07-31 security audit C3, ace#1114). This
+    // lands verbatim in the session transcript, and a login page's HTML can
+    // carry CSRF tokens, hidden form state and error text naming the account.
+    // Log only the structural facts that make the failure diagnosable.
+    const html = await page.content();
+    const title = (/<title[^>]*>([^<]*)<\/title>/i.exec(html) || [, ''])[1].trim();
+    console.log(
+      `[probe] Page: title=${JSON.stringify(title)} bytes=${html.length} ` +
+        `has2FA=${/two-factor|verification code|authenticator/i.test(html)} ` +
+        `hasOAuthApprove=${/authorize|approve/i.test(html)}`,
+    );
   }
 }
 
 console.log(`[probe] Final URL: ${page.url()}`);
 console.log('[probe] Cookies:');
 for (const c of await context.cookies()) {
-  console.log(`  ${c.domain}/${c.name} = ${c.value.slice(0, 12)}…`);
+  // NAMES ONLY (ace#1114 C3). The first 12 characters of a session cookie are
+  // still session material, and this line goes straight into the transcript.
+  console.log(`  ${c.domain}/${c.name} (${c.value.length} chars)`);
 }
 
 fs.mkdirSync(path.dirname(stateFile), { recursive: true });

@@ -17,6 +17,18 @@ Usage:
   bin/ace-email --to "a@x,b@y" [--cc "c@z"] --subject "Re: ..." \\
       --body-file body.txt [--reply-to-message-id <id>] [--reply-all] [--dry-run]
 
+  # When the subject comes from INBOUND mail, pass it as a FILE, never inline:
+  bin/ace-email --to "a@x" --subject-file subj.txt --body-file body.txt
+
+--subject-file exists because the SUBJECT of a reply is attacker-controlled
+(2026-07-31 security audit, A4 / dimagi-internal/ace#1114). `inbox-triage`
+derives `--subject` from inbound mail as `Re: <their subject>`, and
+`email-communicator` has the MODEL compose this invocation as a **Bash**
+command — so a crafted subject containing `"; curl ...|sh; #` is a shell
+injection into the operator's own machine. The body was already file-passed for
+exactly this reason; the subject was not. This shim reads the file and hands the
+value to canopy through `execvp` argv, where no shell is involved.
+
 Auth check: `canopy email preflight --repo <this repo>` (exact `gog login` fix on failure).
 """
 import json
@@ -52,10 +64,45 @@ def _exec_via_canopy_runtime(args):
         return
 
 
+def _resolve_subject_file(argv):
+    """Translate `--subject-file PATH` into `--subject <contents>`.
+
+    canopy's engine takes `--subject TEXT` only, and adding a file form
+    upstream would not help the injection this closes: the danger is the Bash
+    command line the MODEL writes, which is upstream of both. Reading it here
+    means the untrusted bytes never appear in a shell command — `execvp` below
+    takes an argv LIST, so nothing re-parses them.
+    """
+    out = []
+    i = 0
+    while i < len(argv):
+        if argv[i] == "--subject-file":
+            if i + 1 >= len(argv):
+                sys.exit("--subject-file needs a path")
+            try:
+                with open(argv[i + 1], encoding="utf-8") as f:
+                    subject = f.read().strip()
+            except OSError as e:
+                sys.exit(f"--subject-file: cannot read {argv[i + 1]}: {e}")
+            if not subject:
+                sys.exit(f"--subject-file: {argv[i + 1]} is empty")
+            # Subjects are a single header line; a newline would let an
+            # attacker inject additional headers.
+            subject = subject.splitlines()[0]
+            out += ["--subject", subject]
+            i += 2
+            continue
+        out.append(argv[i])
+        i += 1
+    return out
+
+
+ARGS = _resolve_subject_file(sys.argv[1:])
+
 try:
-    os.execvp("canopy", ["canopy", "email", "send", "--repo", REPO, *sys.argv[1:]])
+    os.execvp("canopy", ["canopy", "email", "send", "--repo", REPO, *ARGS])
 except FileNotFoundError:
-    _exec_via_canopy_runtime(["email", "send", "--repo", REPO, *sys.argv[1:]])
+    _exec_via_canopy_runtime(["email", "send", "--repo", REPO, *ARGS])
     sys.exit(
         "canopy CLI not on PATH — the shared email engine lives there (canopy ≥ 0.2.255).\n"
         "Install it (`uv tool install canopy` from the canopy checkout) or run "
