@@ -1,0 +1,200 @@
+run_date: 2026-08-17
+repo: dimagi-internal/ace
+scope_contract: triage-plus-quick-wins
+code_ref: 5fbfe8b7
+open_total: 8            # 10 fetched; #1466/#1468 were closed by the operator ~10 min after filing, before this run
+triaged: 8
+carried_forward: 0       # prior sidecar (2026-08-13) covered 5 issues, all since closed; no overlap
+truncated: false
+operator_policy:
+  device_truth: merge-and-move-on
+  note: >-
+    Operator judged the "never ship a mobile change without live-device validation"
+    rule to be costing more than it is worth. `blocked` was NOT available this run
+    for "needs a device"; it was reserved for genuinely unreachable surfaces.
+    Two issues proved the point and drove the CLAUDE.md amendment (PR #1478).
+clusters:
+  - name: stale-citations
+    members: [972, 1181, 1467]
+    one_fix: >-
+      Three instances of ACE docs asserting something false about another system
+      or itself. No single code change serves all three, but they share a preventer
+      shape: a ratchet that fails when a citation stops being true. Shipped two --
+      citation-currency vs DEFAULT_APK_VERSION (#972) and a refuted-upstream-citation
+      rail (#1181).
+tier_counts: { blocks-e2e: 1, harness: 6, polish: 1 }
+prs: []                  # zero open PRs at run start
+verdicts:
+  - number: 972
+    disposition: implement
+    blocking: harness
+    confidence: high
+    effort: S
+    cluster: stale-citations
+    evidence_paths:
+      - mcp/mobile/recipes/static/form-submit.yaml
+      - mcp/mobile/recipes/static/deliver-sync.yaml
+      - mcp/mobile/selectors/connect-2.63.2.yaml
+      - skills/app-test-cases/SKILL.md
+      - mcp/mobile/client.ts
+      - test/mcp/mobile/static-palette-health.test.ts
+    unblocked_by: null
+    duplicate_of: null
+    source: fresh
+    action: "PR #1473 (merged, v0.13.918); atlas write-up split to #1479"
+    outcome: >-
+      CLOSED completed. Its 2026-08-15 "blocked on a live device" comment rested on a
+      premise already false on the day it was written. The new ratchet caught two more
+      instances the issue never named.
+  - number: 1002
+    disposition: close
+    blocking: harness
+    confidence: high
+    effort: n/a
+    cluster: null
+    evidence_paths:
+      - lib/iterate-health.ts
+      - commands/iterate.md
+      - agents/iterate-loop.md
+      - lib/run-state-validator.ts
+      - lib/opp-root-files.ts
+    unblocked_by: null
+    duplicate_of: null
+    source: fresh
+    action: "gh issue close --reason completed"
+    outcome: >-
+      CLOSED completed. Every code path exists and emits a reading even on a partial
+      window; what is missing is live run hours, which is an ops commitment, not a defect.
+  - number: 1110
+    disposition: implement
+    blocking: harness
+    confidence: high
+    effort: S
+    cluster: null
+    evidence_paths:
+      - lib/contained-path.ts
+      - lib/atom-payload-resolver.ts
+      - mcp/google-drive-server.ts
+      - mcp/ocs-server.ts
+      - test/lib/writetopath-guard-coverage.test.ts
+    unblocked_by: "each caller's legitimate roots, enumerated against a live Phase 3/6/7 run (assertContainedPath half only)"
+    duplicate_of: null
+    source: fresh
+    action: "PR #1474 (merged, v0.13.919) — roots-free half only"
+    outcome: >-
+      OPEN. Three writeToPath sinks guarded + class-level ratchet. assertContainedPath
+      wiring still unwired by design (#1194 reverted a blind allowlist). Threat-model
+      judgment recorded on the issue: low-to-medium, not "security = high", because an
+      ungated Bash tool bypasses the atom boundary entirely.
+  - number: 1181
+    disposition: implement
+    blocking: harness
+    confidence: high
+    effort: S
+    cluster: stale-citations
+    evidence_paths:
+      - skills/pdd-to-deliver-app/SKILL.md
+      - skills/pdd-to-learn-app/SKILL.md
+      - playbook/integrations/nova-integration.md
+      - CLAUDE.md
+      - test/skills/predictive-guard-citation.test.ts
+    unblocked_by: null
+    duplicate_of: null
+    source: fresh
+    action: "PR #1476 (merged, v0.13.921)"
+    outcome: >-
+      CLOSED completed. Upstream commcare-nova#459 was CLOSED NOT_PLANNED and DISPROVED
+      with request logs (23.4 KB payloads returning 200). ACE was shipping the refuted
+      cause into every architect brief plus a ~5-fields-per-call cadence guarding a
+      nonexistent limit. Added an offline refuted-citation rail.
+  - number: 1289
+    disposition: implement
+    blocking: blocks-e2e
+    confidence: high
+    effort: S
+    cluster: null
+    evidence_paths:
+      - mcp/mobile/recipes/static/connect-resume-opp.yaml
+      - mcp/mobile/recipes/static/connect-claim-opp.yaml
+      - lib/invite-pruning.ts
+      - test/mcp/mobile/static-recipe-invariants.test.ts
+    unblocked_by: "an upstream atom that drops accepted OpportunityAccess rows for the test user"
+    duplicate_of: null
+    source: fresh
+    action: "PR #1475 (merged, v0.13.920)"
+    outcome: >-
+      OPEN — headroom, not a closed class. The device evidence was ALREADY IN THE ISSUE
+      BODY (on-device 2026-08-14, scroll+assert COMPLETED, Learn leg green); this was a
+      transcription job that waited three days for a device it had already visited. The
+      defect was drift: connect-resume-opp never got the #647 recalibration. Anti-drift
+      ratchet added.
+  - number: 1395
+    disposition: blocked
+    blocking: polish
+    confidence: high
+    effort: S
+    cluster: null
+    evidence_paths:
+      - skills/demo-narrative/SKILL.md
+    unblocked_by: >-
+      Jonathan's concept_change call on scenes 11+12 of spark-facilitator-verified-meetings
+      (re-render vs reword), plus two real narrative YAMLs to derive the
+      narration-numbers-vs-plotted-values checker from
+    duplicate_of: null
+    source: fresh
+    action: "comment; left open"
+    outcome: >-
+      OPEN. The in-repo preventer already shipped (PR #1416). The residual is a human
+      product call on a funder-facing artifact that lives in Drive/labs, not this repo.
+      Third triage to reach this conclusion — flagged as such so a fourth does not.
+  - number: 1461
+    disposition: implement
+    blocking: harness
+    confidence: high
+    effort: M
+    cluster: null
+    evidence_paths:
+      - mcp/connect/backends/playwright.ts
+      - mcp/connect/capability-map.ts
+      - mcp/connect/backends/html-scrape.ts
+      - skills/interview-opp-verify/SKILL.md
+    unblocked_by: null
+    duplicate_of: null
+    source: fresh
+    action: "comment + label harness; handed back (M, over the S cap)"
+    outcome: >-
+      OPEN. Root cause verified on both sides (edit view is org_member_required and
+      raises Http404; detail view is org_viewer_required and already renders most
+      fields). No upstream API needed. getProgram carries the identical pattern and
+      should be fixed in the same PR.
+  - number: 1467
+    disposition: implement
+    blocking: harness
+    confidence: high
+    effort: S
+    cluster: stale-citations
+    evidence_paths:
+      - mcp/google-drive-server.ts
+      - CLAUDE.md
+      - skills/app-hq-settings/SKILL.md
+      - test/mcp/gdrive/update-yaml-file.test.ts
+      - docs/atom-schemas.md
+    unblocked_by: null
+    duplicate_of: null
+    source: fresh
+    action: "PR #1477 (merged, v0.13.922)"
+    outcome: >-
+      CLOSED completed. Code was always correct and already tested; three author-facing
+      surfaces described `deep` as safe for the case it breaks. Option 3 (warn on array
+      shrink) deliberately deferred — the handler has no warnings return channel.
+rule_changes:
+  - pr: 1478
+    file: CLAUDE.md
+    change: >-
+      The device-truth gate is now a PREFERENCE, not a blocker. Recorded device evidence
+      counts as device evidence; a device-truth fix may merge with the residual named;
+      a stale block is not a block. Driven by #972 and #1289.
+follow_ups_filed:
+  - number: 1479
+    title: "Write docs/mobile-atlas/connect-2.63.2.md from the 2026-08-14 evidence dumps"
+    why: "split from #972 — authorship, not correction; different size and risk"
