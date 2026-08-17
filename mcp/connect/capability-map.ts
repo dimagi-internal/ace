@@ -94,6 +94,9 @@ export const CAPABILITY_MAP: Record<Capability, CapabilityRoute> = {
   get_program:                  { backend: 'PLAYWRIGHT', restTarget: 'GET /api/programs/{id}/ (not yet shipped)' },
   list_delivery_types:          { backend: 'PLAYWRIGHT', restTarget: 'GET /api/delivery-types/ (not yet shipped)' },
   list_opportunities:           { backend: 'PLAYWRIGHT', restTarget: 'GET /api/opportunities/ (not yet shipped)' },
+  // Reads at VIEWER tier: degrades from the org_member_required /edit form to
+  // the org_viewer_required dashboard on 403/404 (ace#1461). short_description
+  // and country are absent on the degraded path.
   get_opportunity:              { backend: 'PLAYWRIGHT', restTarget: 'GET /api/opportunities/{id}/ (not yet shipped)' },
   list_deliver_units:           { backend: 'PLAYWRIGHT', restTarget: 'GET /api/opportunities/{id}/deliver-units/ (not yet shipped)' },
   list_payment_units:           { backend: 'PLAYWRIGHT', restTarget: 'GET /api/opportunities/{id}/payment-units/ (not yet shipped)' },

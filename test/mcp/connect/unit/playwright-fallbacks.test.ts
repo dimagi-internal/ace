@@ -1380,3 +1380,166 @@ describe('CompositeBackend REST→Playwright 404 fallback', () => {
     ]);
   });
 });
+
+// ---------------------------------------------------------------------------
+// dimagi-internal/ace#1461 — a pure READ must not require write tier.
+//
+// getOpportunity hydrated metadata only from the /edit form, which upstream
+// guards with `org_member_required`; its decorator raises Http404 (not 403),
+// so a VIEWER-tier account that can open the opportunity in a browser got
+// `404 .../edit` for the whole call. The detail page is `org_viewer_required`
+// and carries most of the same fields.
+// ---------------------------------------------------------------------------
+describe('getOpportunity viewer-tier degrade (#1461)', () => {
+  const dashboardHtml = fs.readFileSync(
+    path.join(__dirname, '../../../fixtures/connect-opportunity-dashboard.html'),
+    'utf8',
+  );
+
+  // The edit form as a member sees it — enough fields to prove precedence.
+  const editFormHtml = `<form>
+    <input name="name" value="Name From Edit Form">
+    <input name="short_description" value="short desc">
+    <input name="description" value="Description From Edit Form">
+    <input name="currency" value="EUR">
+    <input name="country" value="MW">
+    <input name="end_date" value="2027-01-31">
+    <input type="checkbox" name="active" value="on" checked>
+  </form>`;
+
+  it('degrades to the dashboard when the edit form 404s for a viewer', async () => {
+    const captured: CapturedRequest[] = [];
+    const request = makeRequestContext(
+      [
+        { status: 404, body: 'not found' },        // /edit  — viewer denied
+        { status: 200, body: dashboardHtml },      // detail — viewer allowed
+      ],
+      captured,
+    );
+    const backend = new PlaywrightBackend({ baseUrl, csrfToken, request });
+
+    const opp = await backend.getOpportunity({
+      organization_slug: 'dimagi-interviews',
+      opportunity_id: '0223aceb-4878-4e9d-8e8b-180c9a8a944e',
+    });
+
+    expect(opp.name).toBe('ANC Follow-up Round 3');
+    expect(opp.description).toContain('Structured follow-up interviews');
+    expect(opp.active).toBe(true);
+    expect(opp.is_test).toBe(false);
+    expect(opp.currency).toBe('USD');
+    expect(opp.end_date).toBe('2026-12-31');
+    // Still scrapes the app wiring off the same detail page.
+    expect(opp.learn_app?.cc_app_id).toBe('8f2c1a4b6d7e0f39a5c8b2d14e6f7091');
+    expect(opp.deliver_app?.cc_app_id).toBe('1b9d3e5f7a0c2e4680d1f3a5b7c9e024');
+  });
+
+  it('degrades on 403 as well as 404', async () => {
+    const captured: CapturedRequest[] = [];
+    const request = makeRequestContext(
+      [
+        { status: 403, body: 'forbidden' },
+        { status: 200, body: dashboardHtml },
+      ],
+      captured,
+    );
+    const backend = new PlaywrightBackend({ baseUrl, csrfToken, request });
+    const opp = await backend.getOpportunity({ organization_slug: 'o', opportunity_id: 'i' });
+    expect(opp.name).toBe('ANC Follow-up Round 3');
+  });
+
+  it('does NOT fabricate the two fields the dashboard lacks', async () => {
+    // short_description and country are not on the dashboard. Empty is the
+    // honest answer; inferring them from `description` would be worse than
+    // the 404 this fix replaces.
+    const captured: CapturedRequest[] = [];
+    const request = makeRequestContext(
+      [
+        { status: 404, body: 'not found' },
+        { status: 200, body: dashboardHtml },
+      ],
+      captured,
+    );
+    const backend = new PlaywrightBackend({ baseUrl, csrfToken, request });
+    const opp = await backend.getOpportunity({ organization_slug: 'o', opportunity_id: 'i' });
+    expect(opp.short_description).toBe('');
+    expect(opp.country).toBe('');
+  });
+
+  it('the edit form still WINS when the caller has write tier', async () => {
+    // Negative control for the whole change: the degrade must not leak into
+    // the member path, where the form is authoritative.
+    const captured: CapturedRequest[] = [];
+    const request = makeRequestContext(
+      [
+        { status: 200, body: editFormHtml },
+        { status: 200, body: dashboardHtml },
+      ],
+      captured,
+    );
+    const backend = new PlaywrightBackend({ baseUrl, csrfToken, request });
+    const opp = await backend.getOpportunity({ organization_slug: 'o', opportunity_id: 'i' });
+
+    expect(opp.name).toBe('Name From Edit Form');
+    expect(opp.description).toBe('Description From Edit Form');
+    expect(opp.currency).toBe('EUR');
+    expect(opp.country).toBe('MW');
+    expect(opp.end_date).toBe('2027-01-31');
+    expect(opp.short_description).toBe('short desc');
+  });
+
+  it('a 500 on the edit page still THROWS — that is not a permission answer', async () => {
+    // Only 403/404 mean "you may not read this". Degrading on a 500 or a
+    // login redirect would return a thin object for a broken session.
+    const captured: CapturedRequest[] = [];
+    const request = makeRequestContext(
+      [
+        { status: 500, body: 'boom' },
+        { status: 200, body: dashboardHtml },
+      ],
+      captured,
+    );
+    const backend = new PlaywrightBackend({ baseUrl, csrfToken, request });
+    await expect(
+      backend.getOpportunity({ organization_slug: 'o', opportunity_id: 'i' }),
+    ).rejects.toThrow(HttpError);
+  });
+
+  it('throws when NEITHER surface is readable', async () => {
+    const captured: CapturedRequest[] = [];
+    const request = makeRequestContext(
+      [
+        { status: 404, body: 'not found' },
+        { status: 404, body: 'not found' },
+      ],
+      captured,
+    );
+    const backend = new PlaywrightBackend({ baseUrl, csrfToken, request });
+    await expect(
+      backend.getOpportunity({ organization_slug: 'o', opportunity_id: 'i' }),
+    ).rejects.toThrow(HttpError);
+  });
+});
+
+describe('getProgram has no viewer-tier fallback, and says so (#1461)', () => {
+  it('explains that every program route needs admin + program-manager', async () => {
+    // Deliberately NOT symmetrical with getOpportunity: upstream's
+    // ProgramManagerMixin guards init/, <pk>/edit AND <pk>/view, and there is
+    // no read-only program detail route at all. A fallback parser would have
+    // to invent its source, so the fix here is an honest error instead.
+    const captured: CapturedRequest[] = [];
+    const request = makeRequestContext([{ status: 403, body: 'forbidden' }], captured);
+    const backend = new PlaywrightBackend({ baseUrl, csrfToken, request });
+
+    const err = await backend
+      .getProgram({ organization_slug: 'dimagi-interviews', program_id: 'p1' })
+      .catch((e: Error) => e);
+
+    expect(err).toBeInstanceOf(HttpError);
+    expect((err as Error).message).toMatch(/ADMIN \+ program-manager/);
+    expect((err as Error).message).toMatch(/no degraded read/i);
+    // HttpError truncates (~250 chars), so the REMEDY has to survive the cut —
+    // a fix buried past the truncation point is a fix nobody reads.
+    expect((err as Error).message).toMatch(/Fix: grant admin/);
+  });
+});

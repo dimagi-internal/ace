@@ -83,7 +83,13 @@ describe('getOpportunity reports only fields the live form carries (ace#1448)', 
   const pw = readFileSync(join(REPO, 'mcp/connect/backends/playwright.ts'), 'utf8');
 
   it('parses is_test, which the edit form does carry', () => {
-    expect(pw).toMatch(/is_test: v\['is_test'\]/);
+    // ace#1461 wrapped this in the viewer-tier degrade
+    // (`editDenied ? dash.is_test : v['is_test'] === 'on' || ...`), so the
+    // old exact-literal match no longer holds. The INTENT is unchanged and is
+    // what's asserted: the edit form remains the source for is_test whenever
+    // we can read it. The behavioural counterpart — that the form still wins
+    // at member tier — is pinned in playwright-fallbacks.test.ts.
+    expect(pw).toMatch(/is_test:[^\n]*v\['is_test'\]/);
   });
 
   it('does NOT fabricate total_budget or start_date', () => {

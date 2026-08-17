@@ -1,0 +1,95 @@
+<!-- Fixture for dimagi-internal/ace#1461.
+     Structure transcribed from commcare_connect/templates/opportunity/dashboard.html
+     and OpportunityDashboard.get_context_data (commcare_connect/opportunity/views.py),
+     with the Django tags rendered as they would be for a viewer-tier request.
+     Values are synthetic; the SHAPE is the contract under test. -->
+<div x-data="{isTest: false, showCatchmentImportModal: false, showCatchmentExportModal: false }"
+     class="container md:max-w-screen-2xl mx-auto flex flex-col gap-4">
+  <div class="flex flex-col gap-8 w-full rounded-lg p-4" :class="isTest ? 'bg-white shadow-xs' : 'bg-brand-deep-purple'">
+    <div class="flex items-center relative" x-data="{ isOpen: false }">
+      <h3 class="text-sm font-medium text-brand-sky flex-1">Maternal Health Interviews</h3>
+      <i class="fa-solid opacity-50"></i>
+    </div>
+    <div class="flex justify-between items-end">
+      <div class="flex flex-col gap-2">
+        <h1 class="text-2xl font-medium block" :class="isTest? 'text-brand-deep-purple': 'text-white' ">ANC Follow-up Round 3</h1>
+        <p class="text-sm font-regular w-6/12" :class="isTest ? 'text-gray-600' : 'text-gray-100'">Structured follow-up interviews with mothers enrolled in ANC, covering danger signs &amp; referral uptake.</p>
+      </div>
+      <div class="flex mt-6">
+        <div x-cloak class="flex gap-4">
+          <div class="min-w-48 flex flex-row items-center justify-between px-4 h-10 bg-brand-indigo rounded cursor-pointer">
+            <a href="/a/dimagi-interviews/apps/view/8f2c1a4b6d7e0f39a5c8b2d14e6f7091">Learn App</a>
+          </div>
+          <div class="min-w-48 flex flex-row items-center justify-between px-4 h-10 bg-brand-indigo rounded cursor-pointer">
+            <a href="/a/dimagi-interviews/apps/view/1b9d3e5f7a0c2e4680d1f3a5b7c9e024">Deliver App</a>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="p-4 rounded-lg w-full" :class="isTest ? 'bg-slate-100' : 'bg-black/20'">
+      <div class="flex gap-2 w-full items-center justify-between">
+        <div class="flex gap-2 items-start">
+          <div :class="isTest? 'infocard-dark' : 'infocard-light'">
+            <i class="fa-solid fa-file-circle-check"></i>
+            <div>
+              <h6 :class="{ '!text-brand-cornflower-blue': isTest }">Delivery Type</h6>
+              <p>Household Visit</p>
+            </div>
+          </div>
+        </div>
+        <div class="w-0.5 h-10 bg-white bg-opacity-30"></div>
+        <div class="flex gap-2 items-start">
+          <div :class="isTest? 'infocard-dark' : 'infocard-light'">
+            <i class="fa-solid fa-calendar-days"></i>
+            <div>
+              <h6 :class="{ '!text-brand-cornflower-blue': isTest }">Start Date</h6>
+              <p>2026-07-01</p>
+            </div>
+          </div>
+        </div>
+        <div class="flex gap-2 items-start">
+          <div :class="isTest? 'infocard-dark' : 'infocard-light'">
+            <i class="fa-solid fa-arrow-right !text-brand-mango"></i>
+            <div>
+              <h6 :class="{ '!text-brand-cornflower-blue': isTest }">End Date</h6>
+              <p>2026-12-31</p>
+            </div>
+          </div>
+        </div>
+        <div class="w-0.5 h-10 bg-white bg-opacity-30"></div>
+        <div class="flex gap-2 items-start">
+          <div :class="isTest? 'infocard-dark' : 'infocard-light'">
+            <i class="fa-solid fa-users"></i>
+            <div>
+              <h6 :class="{ '!text-brand-cornflower-blue': isTest }">Max Connect Workers</h6>
+              <p><span x-data x-tooltip.raw="Maximum allowed workers in the Opportunity">250</span></p>
+            </div>
+          </div>
+        </div>
+        <div class="w-0.5 h-10 bg-white bg-opacity-30"></div>
+        <div class="flex gap-2 items-start">
+          <div :class="isTest? 'infocard-dark' : 'infocard-light'">
+            <i class="fa-solid fa-gears"></i>
+            <div>
+              <h6 :class="{ '!text-brand-cornflower-blue': isTest }">Max Service Deliveries</h6>
+              <p><span x-data x-tooltip.raw="Maximum number of payment units that can be delivered. Each payment unit is a service delivery">5000</span></p>
+            </div>
+          </div>
+        </div>
+        <div class="w-0.5 h-10 bg-white bg-opacity-30"></div>
+        <div class="flex gap-2 items-start">
+          <div :class="isTest? 'infocard-dark' : 'infocard-light'">
+            <i class="fa-solid fa-money-bill"></i>
+            <div>
+              <h6 :class="{ '!text-brand-cornflower-blue': isTest }">Max Budget</h6>
+              <p><span x-data x-tooltip.raw="Maximum payments that can be made for workers and organization">USD 1,250,000</span></p>
+            </div>
+          </div>
+        </div>
+        <div>
+          <span class="badge badge-md positive-dark">Active</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>

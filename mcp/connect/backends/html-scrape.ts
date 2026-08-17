@@ -1052,3 +1052,143 @@ export function parseWorkerDeliverTable(html: string): { workers: WorkerDeliverR
   }
   return { workers };
 }
+
+/**
+ * Fields recoverable from the VIEWER-tier opportunity dashboard
+ * (`/a/<org>/opportunity/<id>/`), for dimagi-internal/ace#1461.
+ *
+ * Every field is optional: this is a degraded read, and a field that is not
+ * on the page must come back `undefined` rather than be fabricated. Callers
+ * merge it under the edit-form read, never over it.
+ */
+export interface OpportunityDashboardFields {
+  name?: string;
+  description?: string;
+  program_name?: string;
+  is_test?: boolean;
+  /** The rendered badge, verbatim. `active` below is DERIVED from it — see the note. */
+  status_badge?: 'Active' | 'Ended' | 'Inactive';
+  active?: boolean;
+  delivery_type?: string;
+  start_date?: string;
+  end_date?: string;
+  max_workers?: number;
+  max_deliveries?: number;
+  currency?: string;
+  total_budget?: string;
+}
+
+/**
+ * Parse the read-only opportunity dashboard that VIEWER-tier accounts can see.
+ *
+ * Why this exists: `getOpportunity` hydrated metadata exclusively from the
+ * `/edit` form, which is `org_member_required` and raises `Http404` for a
+ * viewer — so a pure READ hard-failed with a 404 for accounts that can see the
+ * opportunity perfectly well in a browser (ace#1461). The dashboard is
+ * `org_viewer_required` and already carries most of the same fields.
+ *
+ * The parse shape is taken from the Django template and view themselves
+ * (`opportunity/dashboard.html`, `OpportunityDashboard.get_context_data`),
+ * not from one live page capture. Per CLAUDE.md § "close the loop to the
+ * source of truth", the source is the better authority here: a live fetch
+ * tells you what one page looked like once, the template tells you what every
+ * page always renders.
+ *
+ * TWO HONEST LIMITS, both deliberate:
+ *
+ * 1. `active` is DERIVED FROM A THREE-WAY BADGE AND IS LOSSY IN ONE DIRECTION.
+ *    The template renders `Active` when `is_active` (= not archived AND active
+ *    AND end_date >= today), `Ended` when `active and has_ended`, else
+ *    `Inactive`. So `Active` and `Ended` both mean the `active` FIELD is true —
+ *    an "Ended" opportunity is still `active: true` in the database. But
+ *    `Inactive` is ambiguous: it is produced by `active=False`, *and also* by
+ *    an archived opportunity, *and also* by a null `end_date`, all of which
+ *    can hold with `active=True`. We map Inactive -> false because that is the
+ *    common case, and `status_badge` is returned alongside so a caller that
+ *    cares can see the raw signal instead of the lossy boolean.
+ *
+ * 2. `short_description` and `country` are NOT on this page at all. They stay
+ *    `undefined`. Do not infer them from `description`.
+ *
+ * One thing the dashboard has that the EDIT FORM DOES NOT: `start_date` and
+ * `total_budget`. The edit form carries neither (see the field inventory in
+ * `getOpportunity`), so for those two the viewer-tier read is strictly better
+ * than the write-tier one.
+ */
+export function parseOpportunityDashboard(html: string): OpportunityDashboardFields {
+  const out: OpportunityDashboardFields = {};
+
+  // <h1 class="text-2xl font-medium block" ...>{{ object.name }}</h1>
+  const h1 = html.match(/<h1[^>]*>([\s\S]*?)<\/h1>/);
+  if (h1) {
+    const name = decodeHtmlEntities(stripTagsAttributeAware(h1[1]));
+    if (name) out.name = name;
+  }
+
+  // The description is the <p> immediately following that <h1> in the same
+  // block. Anchor on the h1 so an unrelated <p> elsewhere can't win.
+  const descAfterH1 = html.match(/<h1[^>]*>[\s\S]*?<\/h1>\s*<p[^>]*>([\s\S]*?)<\/p>/);
+  if (descAfterH1) {
+    const d = decodeHtmlEntities(stripTagsAttributeAware(descAfterH1[1]));
+    if (d) out.description = d;
+  }
+
+  // <h3 class="text-sm font-medium text-brand-sky flex-1">{{ object.program.name }}</h3>
+  const h3 = html.match(/<h3[^>]*text-brand-sky[^>]*>([\s\S]*?)<\/h3>/);
+  if (h3) {
+    const p = decodeHtmlEntities(stripTagsAttributeAware(h3[1]));
+    if (p) out.program_name = p;
+  }
+
+  // x-data="{isTest: true, ...}" — Django renders yesno:'true,false,none'.
+  const isTest = html.match(/x-data\s*=\s*"\{\s*isTest:\s*(true|false|none)/);
+  if (isTest && isTest[1] !== 'none') out.is_test = isTest[1] === 'true';
+
+  // <span class="badge badge-md positive-dark">Active</span>  (or Ended / Inactive)
+  const badge = html.match(/<span[^>]*class="[^"]*badge[^"]*"[^>]*>\s*(Active|Ended|Inactive)\s*<\/span>/);
+  if (badge) {
+    out.status_badge = badge[1] as OpportunityDashboardFields['status_badge'];
+    // See limit (1) above: Ended still means the `active` field is true.
+    out.active = badge[1] === 'Active' || badge[1] === 'Ended';
+  }
+
+  // basic_details infocards: <h6 ...>Label</h6> <p>Value</p>. Three of the six
+  // values are wrapped by header_with_tooltip in a <span x-tooltip>, so the
+  // value must be tag-stripped, not read raw.
+  const cards = new Map<string, string>();
+  for (const m of html.matchAll(/<h6[^>]*>([\s\S]*?)<\/h6>\s*<p[^>]*>([\s\S]*?)<\/p>/g)) {
+    const label = decodeHtmlEntities(stripTagsAttributeAware(m[1]));
+    const value = decodeHtmlEntities(stripTagsAttributeAware(m[2]));
+    if (label) cards.set(label, value);
+  }
+
+  // `safe_display` renders a missing value as the literal "---".
+  const card = (label: string): string | undefined => {
+    const v = cards.get(label);
+    return v && v !== '---' ? v : undefined;
+  };
+
+  out.delivery_type = card('Delivery Type');
+  out.start_date = card('Start Date');
+  out.end_date = card('End Date');
+
+  const workers = card('Max Connect Workers');
+  if (workers && /^\d+$/.test(workers)) out.max_workers = Number(workers);
+
+  const deliveries = card('Max Service Deliveries');
+  if (deliveries && /^\d+$/.test(deliveries)) out.max_deliveries = Number(deliveries);
+
+  // "Max Budget" renders as f"{currency_code} {intcomma(total_budget)}",
+  // e.g. "USD 1,250,000". Split rather than regex the number out, so an
+  // unexpected shape degrades to undefined instead of a wrong figure.
+  const budget = card('Max Budget');
+  if (budget) {
+    const m = budget.match(/^([A-Za-z]{3})\s+([\d,.]+)$/);
+    if (m) {
+      out.currency = m[1];
+      out.total_budget = m[2].replace(/,/g, '');
+    }
+  }
+
+  return out;
+}
