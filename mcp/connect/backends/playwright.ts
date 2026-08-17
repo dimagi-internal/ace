@@ -11,6 +11,7 @@ import {
   decodeHtmlEntities,
   extractFormCsrfToken,
   extractFormFieldValues,
+  parseOpportunityDashboard,
   extractDisabledFormFieldNames,
   scopeToFormContaining,
   extractUuidFromPath,
@@ -314,6 +315,25 @@ export class PlaywrightBackend implements ConnectClient {
     const editPath = `/a/${organization_slug}/program/${program_id}/edit`;
     const editRes = await this.request.get(editPath);
     if (editRes.status() === 404) throw new HttpError(404, editPath, 'program not found');
+    // ace#1461 — deliberately NO viewer-tier fallback here, unlike
+    // getOpportunity. There is nowhere to fall back TO: every program route
+    // (`init/`, `<pk>/edit`, `<pk>/view`) is guarded by upstream's
+    // `ProgramManagerMixin`, which requires org-membership `is_admin` AND
+    // `org.program_manager` — stricter than the opportunity edit form's
+    // `org_member_required`, and with no read-only detail view anywhere in
+    // `program/urls.py`. Program metadata is simply not exposed below that
+    // tier, so a fallback parser would have to invent its source. What we can
+    // do is stop reporting a bare 403 and name the actual requirement.
+    if (editRes.status() === 403) {
+      throw new HttpError(
+        403,
+        editPath,
+        `needs ADMIN + program-manager on org "${organization_slug}"; no degraded read ` +
+          `exists (ace#1461). Fix: grant admin, or read the opportunities individually. ` +
+          `Every program route is behind ProgramManagerMixin — Connect exposes no ` +
+          `viewer-tier program page, unlike connect_get_opportunity.`,
+      );
+    }
     if (editRes.status() !== 200) throw await httpErrorFor(editRes, editPath);
     const v = extractFormFieldValues(await editRes.text());
     return {
@@ -457,16 +477,43 @@ export class PlaywrightBackend implements ConnectClient {
       this.request.get(editPath),
       this.request.get(detailPath),
     ]);
-    if (editRes.status() !== 200) throw await httpErrorFor(editRes, editPath);
-    const v = extractFormFieldValues(await editRes.text());
-    const isActive = v['active'] === 'on' || v['active'] === 'true' || v['active'] === '';
+
+    // ace#1461 — a pure READ must not require write tier. Upstream guards the
+    // edit form with `org_member_required` and its decorator raises Http404
+    // (not 403), so a VIEWER-tier account that can open the opportunity in a
+    // browser used to get `404 .../edit` for the whole call. The detail page
+    // is `org_viewer_required` and carries most of the same fields, so on an
+    // edit-page permission failure we degrade to it instead of throwing.
+    //
+    // Only 403/404 degrade. A 500 or a redirect-to-login is NOT a permission
+    // answer and must still surface — silently returning a thin object for a
+    // broken session would be worse than the original bug.
+    const editDenied = editRes.status() === 403 || editRes.status() === 404;
+    if (editRes.status() !== 200 && !editDenied) throw await httpErrorFor(editRes, editPath);
+
+    const detailHtmlText = detailRes.status() === 200 ? await detailRes.text() : '';
+
+    if (editDenied && !detailHtmlText) {
+      // Neither surface is readable — that is a real failure, not a degrade.
+      throw await httpErrorFor(editRes, editPath);
+    }
+
+    const v = editDenied ? {} : extractFormFieldValues(await editRes.text());
+    const dash = editDenied ? parseOpportunityDashboard(detailHtmlText) : {};
+
+    // The edit form's `active` checkbox is authoritative when we have it; the
+    // dashboard's is derived from a three-way badge and is lossy on Inactive
+    // (see parseOpportunityDashboard). Prefer the form, fall back to the badge.
+    const isActive = editDenied
+      ? (dash.active ?? false)
+      : v['active'] === 'on' || v['active'] === 'true' || v['active'] === '';
 
     let learnAppDomain = '';
     let learnAppId = '';
     let deliverAppDomain = '';
     let deliverAppId = '';
-    if (detailRes.status() === 200) {
-      const detailHtml = await detailRes.text();
+    if (detailHtmlText) {
+      const detailHtml = detailHtmlText;
       const matches = [...detailHtml.matchAll(/\/a\/([a-z0-9_-]+)\/apps\/(?:view\/)?([a-f0-9]{32})/g)];
       const seen = new Set<string>();
       const uniq: Array<{ domain: string; appId: string }> = [];
@@ -480,15 +527,18 @@ export class PlaywrightBackend implements ConnectClient {
 
     return {
       id: opportunity_id,
-      name: v['name'] ?? '',
+      name: v['name'] ?? dash.name ?? '',
+      // NOT on the dashboard — stays empty on the degraded path rather than
+      // being inferred from `description`.
       short_description: v['short_description'] ?? '',
-      description: v['description'] ?? '',
+      description: v['description'] ?? dash.description ?? '',
       organization_slug,
       managed: true,
       active: isActive,
-      currency: v['currency'] ?? '',
+      currency: v['currency'] ?? dash.currency ?? '',
+      // NOT on the dashboard either.
       country: v['country'] ?? '',
-      end_date: v['end_date'] ?? '',
+      end_date: v['end_date'] ?? dash.end_date ?? '',
       // ace#1448. Field names verified LIVE against the real edit form on
       // 2026-08-15 (ai-demo-space / 34703fdb-…), which carries exactly:
       //   active, country, csrfmiddlewaretoken, currency, delivery_level,
@@ -499,7 +549,7 @@ export class PlaywrightBackend implements ConnectClient {
       // passing_score) — so they cannot be surfaced from either read path, and
       // this deliberately does not pretend otherwise. See the issue for what
       // that means for the Step 4a budget-headroom check.
-      is_test: v['is_test'] === 'on' || v['is_test'] === 'true',
+      is_test: editDenied ? (dash.is_test ?? false) : v['is_test'] === 'on' || v['is_test'] === 'true',
       learn_app: learnAppId
         ? { cc_domain: learnAppDomain, cc_app_id: learnAppId, name: '' }
         : undefined,

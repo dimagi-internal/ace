@@ -134,6 +134,9 @@ For each unverifiable:
 ## Process detail
 
 1. **Resolve identifiers.** Given the opp URL, call `connect_get_opportunity` to fetch the opp; extract `learn_app.domain` as the downstream HQ domain.
+   Works at **viewer tier** — ACE does not need write access on the org (ace#1461). On a viewer-tier read the opp is hydrated from the read-only
+   dashboard instead of the edit form, so `short_description` and `country` come back EMPTY (they are not rendered there). Do not treat an empty
+   `short_description` as a configuration defect on this path; re-read with member tier if you actually need those two fields.
 
 2. **Load the schema.** Read `docs/connect-interviews/checklist-schema.yaml` from the plugin install dir; iterate per_program / per_domain / per_cohort / per_user items.
 
