@@ -418,7 +418,7 @@ Future siblings:
   English still `sourceLanguage`, the working language present, `out-of-date`
   = 0) rather than as stacked or parenthetical translations inside single
   labels, and that there is no in-app language-selector *question*. ACE
-  builds a real per-language layer as of 2026-08-17 (ace#1391 forward — see
+  builds a real per-language layer as of 2026-08-17 (ace#1466 (forward anchor; supersedes the CLOSED ace#1391) — see
   `_app-component-library.md § app-language-layer`). **This check has
   inverted twice** — it required inline translations until 2026-08-14, then
   required English-only until 2026-08-17 — so implement it against the
