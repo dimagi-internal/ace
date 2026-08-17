@@ -178,6 +178,24 @@ describe('handleDownloadBinaryToDisk (#1027)', () => {
     ).rejects.toThrow(/writeToPath_not_absolute/);
   });
 
+  // dimagi-internal/ace#1110 residual — see read-file-paging.test.ts for the
+  // full note. A binary download is the same overwrite primitive.
+  it('refuses a writeToPath that would clobber credential material', async () => {
+    await expect(
+      handleDownloadBinaryToDisk(
+        { fileId: 'f1', writeToPath: pathNode.join(tmpDir, 'credentials.json') },
+        fakeBinaryDrive(Buffer.from([1])) as any,
+      ),
+    ).rejects.toThrow(/credential/i);
+  });
+
+  it('negative control: an ordinary binary writeToPath still writes', async () => {
+    const bytes = Buffer.from([9, 9, 9]);
+    const writeToPath = pathNode.join(tmpDir, 'ordinary.bin');
+    await handleDownloadBinaryToDisk({ fileId: 'f1', writeToPath }, fakeBinaryDrive(bytes) as any);
+    expect(fsNode.readFileSync(writeToPath).equals(bytes)).toBe(true);
+  });
+
   it('refuses an oversized base64 payload and names writeToPath', async () => {
     const bytes = Buffer.alloc(60_000, 0x41); // 60 KB -> 80,000 base64 chars
     await expect(
