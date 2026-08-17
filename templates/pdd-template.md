@@ -3,11 +3,12 @@
 ## Opportunity: [Name]
 **Date:** [Date]
 **Author:** [Name]
-**Archetype:** [atomic-visit | focus-group | multi-stage]
+**Archetype:** [atomic-visit | longitudinal-visits | focus-group | multi-stage]
 
 > **Archetype guidance.** ACE skills branch on this field. Pick the closest single archetype, or `multi-stage` for PDDs that combine archetypes across stages (then declare each stage's archetype in its section header — see Stage examples below). The current supported archetypes are:
 >
 > - **`atomic-visit`** — one FLW visit produces one structured delivery (photo + GPS + form). Verification is automated. Examples: turmeric market survey, household-level data collection. **Default if unspecified.**
+> - **`longitudinal-visits`** — repeat visits to a durable entity (community, household, patient, farm) over time. CommCare case management: case type + registration + follow-up forms against a case list. The paid unit is still one visit, but a visit's validity can depend on the entity's history. Pick this over `atomic-visit` whenever the same subject is visited more than once and the visits are not interchangeable; pick it over `multi-stage` whenever entities progress independently of each other. Example: FCAP community facilitation.
 > - **`focus-group`** — one FLW-facilitated group session produces qualitative content (audio + per-domain summaries + attendance). Verification mixes automated session-level checks with AI-assisted content evaluation. Example: vaccine-hesitancy Stage 1.
 > - **`multi-stage`** — combines two or more archetypes across sequenced stages, each with its own gate. Stage 1 may be `focus-group`, Stage 2 may be `atomic-visit`, etc. Example: full vaccine-hesitancy PDD.
 >
@@ -23,7 +24,7 @@
 
 ## Learn App Specification
 
-> **Archetype-conditional.** For `atomic-visit` and `multi-stage`,
+> **Archetype-conditional.** For `atomic-visit`, `longitudinal-visits` and `multi-stage`,
 > fill out the sub-sections below as the full training curriculum.
 >
 > For **`focus-group`**, this section describes a **minimal sentinel
@@ -50,6 +51,18 @@ The unit of FLW work depends on the archetype:
   - Visit frequency: [daily / weekly / monthly]
   - Expected visits per FLW: [number]
   - Duration per visit: [minutes]
+- **`longitudinal-visits`** — one FLW visit to one followed entity.
+  Fill in:
+  - The entity: [what is followed over time; case type]
+  - Expected visit sequence: [the visits, in order]
+  - Cadence: [interval; note any change across the arc]
+  - Expected active entities per FLW: [caseload]
+  - **Payability against history:** [is the same activity twice payable?
+    out-of-order? per-entity cap? — never leave blank; silence here makes
+    the payment predicate "any visit counts", ace#1462]
+  - **`entity_id` composition:** [default
+    `concat(<case_id>, '-', <activity_code>)` = one payment per activity
+    per entity]
 - **`multi-stage`** — per-stage. Declare each stage's archetype and fill
   in that archetype's bullets in the stage's own subsection.
 

@@ -171,6 +171,58 @@ describe('checkSignatureBlocksPresent', () => {
 });
 
 describe('checkArchetypeAppropriateScope', () => {
+  // ── longitudinal-visits (ace#1462) ──────────────────────────────
+  //
+  // The archetype exists because a longitudinal programme can produce a
+  // work order that reads exactly like an atomic-visit one — visits,
+  // photos, GPS — while saying nothing about the entity being followed.
+  // That is precisely what shipped for spark-facilitator: the PDD prose
+  // was longitudinal-aware and the payment predicate was not. So the
+  // gate has to REJECT an atomic-visit-shaped scope under this
+  // archetype, not merely accept a good one.
+  const LONGITUDINAL_SCOPE = (body: string) =>
+    `## 2. Scope of Work\n\n${body}\n\n## 3. Deliverables\n`;
+
+  test('rejects a scope that is indistinguishable from atomic-visit', () => {
+    const wo = LONGITUDINAL_SCOPE(
+      'The Subcontractor shall complete one visit per site, capturing a photo and GPS coordinate at each visit.',
+    );
+    const r = checkArchetypeAppropriateScope(wo, 'longitudinal-visits');
+    expect(r.pass).toBe(false);
+    expect(r.detail).toMatch(/longitudinal marker/i);
+  });
+
+  test('accepts a scope naming the followed entity', () => {
+    const wo = LONGITUDINAL_SCOPE(
+      'The Subcontractor shall complete one visit per community meeting, capturing a photo and GPS ' +
+      'coordinate, against each registered community case over the engagement.',
+    );
+    expect(checkArchetypeAppropriateScope(wo, 'longitudinal-visits').pass).toBe(true);
+  });
+
+  test('accepts a scope naming the sequence instead of the entity', () => {
+    const wo = LONGITUDINAL_SCOPE(
+      'Each visit records a photo and GPS fix; visits follow the published phase sequence and ' +
+      'the follow-up cadence defined in the design document.',
+    );
+    expect(checkArchetypeAppropriateScope(wo, 'longitudinal-visits').pass).toBe(true);
+  });
+
+  test('still requires visit + evidence phrasing, not just a longitudinal word', () => {
+    const wo = LONGITUDINAL_SCOPE(
+      'The Subcontractor shall track each household case through its phases and report monthly.',
+    );
+    const r = checkArchetypeAppropriateScope(wo, 'longitudinal-visits');
+    expect(r.pass).toBe(false);
+    expect(r.detail).toMatch(/photo or GPS/i);
+  });
+
+  test('names all four archetypes when the value is unknown', () => {
+    const r = checkArchetypeAppropriateScope(GOOD_WO, 'nonsense-archetype');
+    expect(r.pass).toBe(false);
+    expect(r.detail).toContain('longitudinal-visits');
+  });
+
   test('atomic-visit passes when scope mentions per-visit + photo/GPS', () => {
     const r = checkArchetypeAppropriateScope(GOOD_WO, 'atomic-visit');
     expect(r.pass).toBe(true);

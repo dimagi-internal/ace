@@ -54,6 +54,25 @@ Quantitative review as written above:
 
 This corresponds to Layer B and Layer C of the PDD's Evidence Model.
 
+### `longitudinal-visits`
+Everything in `atomic-visit`, plus the per-entity views that are the
+whole point of the archetype — cross-sectional review cannot see any of
+these:
+
+- **Progression** — entities on schedule vs stalled, by phase/sequence
+  position. This is usually the partner's headline indicator.
+- **Sequence integrity** — out-of-order visits, skipped activities,
+  repeated activities within one case.
+- **Coverage** — entities with no visit in the expected interval
+  (an entity going quiet is invisible to submission-rate-by-FLW).
+- **Dedup collapse** — visits submitted that shared an `entity_id` with
+  a prior payment. A rising collapse rate means FLWs are doing work that
+  will not be paid; that is a training or design signal, not fraud.
+- **Per-FLW caseload** — cases owned vs cases actually visited.
+
+This corresponds to Layer B and Layer C of the PDD's Evidence Model,
+read along the entity axis rather than the submission axis.
+
 ### `focus-group`
 Qualitative review — the FLW data is **session content**, not numeric submissions. The skill is acting as a research analyst, not a data quality auditor.
 

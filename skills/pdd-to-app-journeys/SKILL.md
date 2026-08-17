@@ -147,6 +147,27 @@ Generate **2–4 journeys** covering:
   been submitted. Pass criterion: the FLW understands why the
   submission was rejected and what to do next.
 
+### `longitudinal-visits`
+
+The PDD describes repeat visits to a durable entity over time.
+Generate **3–5 journeys**. Keep `visit-flow` and `data-quality-error`
+from `atomic-visit`, and add the journeys that only exist once there is
+a case:
+
+- **case-selection** — the FLW opens the Deliver app, finds the right
+  entity in the case list (search / filter), and sees enough state on
+  the case tile to know which visit is due. Pass criterion: the FLW can
+  tell *which* visit is next without asking anyone.
+- **followup-with-preload** — a follow-up visit against an existing
+  case. Pass criterion: prior state visibly preloads, and the FLW is not
+  re-keying what the case already knows.
+- **repeat-activity** — the FLW submits an activity this entity has
+  already had. Pass criterion: the app or the payment model handles it
+  per `payability-against-history`, and the FLW is not misled into
+  expecting payment for work that will dedup away.
+- **registration** — only when the entity is registered in-app
+  (skip when cases arrive by import or already exist).
+
 ### `focus-group`
 
 The PDD describes FLW-facilitated group discussions where qualitative

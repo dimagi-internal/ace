@@ -220,7 +220,7 @@ export const TrainingDeckSpecSchema = z.object({
   slug: z.string(),
   name: z.string(),
   program: z.string(),
-  archetype: z.enum(['atomic-visit', 'focus-group', 'multi-stage', 'partnership-pitch']),
+  archetype: z.enum(['atomic-visit', 'longitudinal-visits', 'focus-group', 'multi-stage', 'partnership-pitch']),
   template_id: z.string(),
   generated_at: z.string(),
   source: z.object({

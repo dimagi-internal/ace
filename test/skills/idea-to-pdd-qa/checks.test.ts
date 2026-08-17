@@ -168,6 +168,23 @@ describe('checkArchetypeDeclared', () => {
     expect(r.detail).toBe('multi-stage');
   });
 
+  test('accepts longitudinal-visits in frontmatter', () => {
+    const pdd = `---\narchetype: longitudinal-visits\n---\n# PDD\n`;
+    const r = checkArchetypeDeclared(pdd);
+    expect(r.pass).toBe(true);
+    expect(r.detail).toBe('longitudinal-visits');
+  });
+
+  test('accepts longitudinal-visits in a body declaration', () => {
+    // The regex alternation must not let `atomic-visit` or a prefix shadow
+    // it, and the value must come back whole — a truncated match here would
+    // route the PDD down the wrong archetype branch silently.
+    const pdd = `# PDD\n**Archetype:** longitudinal-visits\n`;
+    const r = checkArchetypeDeclared(pdd);
+    expect(r.pass).toBe(true);
+    expect(r.detail).toBe('longitudinal-visits');
+  });
+
   test('fails when no archetype declared', () => {
     const pdd = `# PDD\n\nNo archetype here.\n`;
     const r = checkArchetypeDeclared(pdd);

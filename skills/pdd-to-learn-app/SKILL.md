@@ -842,6 +842,24 @@ what good vs. bad inputs look like (e.g., the photo standardization
 protocol from the Evidence Model — Layer A), how to handle edge cases (no
 stock, hostile vendor, duplicate), submission and case closure.
 
+### `longitudinal-visits`
+Everything in `atomic-visit`, plus the three things an FLW working a case
+list has to be taught and a fresh-sample FLW does not:
+
+- **Working the case list** — finding an entity, reading its tile to see
+  which visit is due, and what to do when the entity is missing.
+- **The sequence** — which visits exist, in what order, at what cadence,
+  and how to tell whether a case is on track or behind.
+- **What gets paid, given history** — teach the
+  `payability-against-history` decision plainly: whether repeating an
+  activity on the same entity pays, and what happens if it does not.
+  This is the single most expensive thing for an FLW to learn by
+  discovering it in a payment statement.
+
+Skip the parts of the `atomic-visit` walkthrough that assume a fresh
+subject each time (duplicate-vendor handling, per-day caps) unless the
+PDD actually declares them.
+
 ### `focus-group`
 
 **Produce a minimal sentinel Learn app** — one module, one form, ~7

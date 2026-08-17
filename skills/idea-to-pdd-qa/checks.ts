@@ -44,7 +44,7 @@ const REQUIRED_SECTIONS = [
  * pattern.
  */
 const SECTION_PURPOSES: Record<(typeof REQUIRED_SECTIONS)[number], string> = {
-  'Archetype': 'declared in frontmatter, repeated as the first heading; one of {atomic-visit, focus-group, multi-stage}',
+  'Archetype': 'declared in frontmatter, repeated as the first heading; one of {atomic-visit, longitudinal-visits, focus-group, multi-stage}',
   'Problem Statement': 'what problem this opportunity solves',
   'Intervention Design': 'how the intervention works end-to-end',
   'Learn App Specification': 'what FLWs need to learn (data collection, facilitation, etc., depending on archetype)',
@@ -58,7 +58,7 @@ const SECTION_PURPOSES: Record<(typeof REQUIRED_SECTIONS)[number], string> = {
   'Program Parameters': 'a `| key | value |` table of the PDD decisions a LATER phase must apply verbatim (learn_passing_score, payment_rate_*, caps, entity_id_grain) — see checkProgramParametersCoherent for the key vocabulary and the coherence rules',
 };
 
-const VALID_ARCHETYPES = ['atomic-visit', 'focus-group', 'multi-stage'] as const;
+const VALID_ARCHETYPES = ['atomic-visit', 'longitudinal-visits', 'focus-group', 'multi-stage'] as const;
 
 function escapeRegExp(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -160,7 +160,7 @@ export function checkArchetypeDeclared(pdd: string): QACheckResult {
 
   // Body form: `**Archetype:** <value>` or `Archetype: <value>` near the top.
   if (!archetype) {
-    const m = pdd.match(/Archetype[:\s]*\*{0,2}\s*(atomic-visit|focus-group|multi-stage)\b/im);
+    const m = pdd.match(/Archetype[:\s]*\*{0,2}\s*(atomic-visit|longitudinal-visits|focus-group|multi-stage)\b/im);
     if (m) archetype = m[1];
   }
 
@@ -169,7 +169,7 @@ export function checkArchetypeDeclared(pdd: string): QACheckResult {
       pass: false,
       detail: 'no archetype declared in frontmatter or body',
       auto_fix_hint:
-        'add a `**Archetype:** <atomic-visit|focus-group|multi-stage>` line to the PDD\'s top metadata block. ' +
+        'add a `**Archetype:** <atomic-visit|longitudinal-visits|focus-group|multi-stage>` line to the PDD\'s top metadata block. ' +
         '(A `---` YAML frontmatter block also satisfies this check, but PDDs are rendered Google Docs — ' +
         'raw frontmatter renders as a horizontal rule plus key:value noise, so the body form is preferred.)',
     };

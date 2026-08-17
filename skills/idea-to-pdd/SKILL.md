@@ -196,7 +196,7 @@ orchestrator from the per-skill QA + eval verdicts on the fly. -->
     build the delta, not a duplicate app. If NO `.ccz` is present, this
     step is a **no-op** — design the app from the other inputs as usual.
 
-2. **Determine the delivery archetype** (see `## Archetypes` below). The archetype shapes the section list and the questions you ask in step 3. If the idea spans multiple delivery patterns (e.g., focus groups in Stage 1, atomic visits in Stage 2), pick `multi-stage` and assign an archetype to each stage.
+2. **Determine the delivery archetype** (see `## Archetypes` below). The archetype shapes the section list and the questions you ask in step 3. If the same subject is visited more than once and the visits are not interchangeable, pick `longitudinal-visits` — NOT `atomic-visit` (which has no entity to track) and NOT `multi-stage` (which stages the programme, not the entity). Reserve `multi-stage` for a programme whose stages use *different archetypes* (e.g., focus groups in Stage 1, atomic visits in Stage 2), assigning an archetype to each stage.
 
 3. **Research and expand** the idea:
    - What health/development problem does this address?
@@ -855,6 +855,21 @@ to the opp; add others not listed when they meet the bar.
 | `duplicate-detection-key` | What constitutes a duplicate? (vendor id, GPS bucket, household id) | PDD `Evidence Model` Layer A |
 | `per-visit-daily-cap` | Daily / weekly cap per FLW? | PDD `FLW Requirements` numeric |
 
+**`longitudinal-visits` (additive):**
+
+| ID | Question | Map to surface |
+|---|---|---|
+| `longitudinal-entity` | What entity is followed over time, and what case type represents it? | PDD `Entity Lifecycle` |
+| `entity-registration-path` | Registered by a separate form, by the first visit, or already existing in the partner's system? | PDD `Entity Lifecycle` + `pdd-to-deliver-app` case ops |
+| `visit-sequence-and-cadence` | Expected visits, their order, and the interval — including any change in cadence across the arc. | PDD `Entity Lifecycle` |
+| `payability-against-history` | Is the same activity twice payable? An out-of-order visit? A per-entity cap over a window? **Never leave unanswered** — silence degrades Layer A to "any visit counts" (ace#1462). | PDD `Evidence Model` Layer A |
+| `payment-unit-entity-id` | The Connect dedup business key expressing the row above. Default for this archetype: `concat(<case_id>, '-', <activity_code>)` = one payment per activity per entity. Never the case id alone (that would pay once per entity, ever). | `connect-opp-setup` Connect form; `pdd-to-deliver-app` §entity_id |
+| `case-state-read-write` | What each visit preloads from the case and writes back. | `pdd-to-deliver-app` case ops |
+| `visit-ownership` | Payable only from the FLW who owns the case, or from any FLW? | PDD `Evidence Model` Layer A |
+| `progression-affects-payment` | Does a stalled entity affect payment, or is progression monitored only? | PDD `Evidence Model` + `Success Metrics` |
+| `entity-completion` | What "complete" means for an entity, and what happens to the case then. | PDD `Entity Lifecycle` |
+| `payment-rate` | Per-visit payment rate band (range, not fixed) to propose to the LLO — same negotiation principle as `atomic-visit`. | PDD `FLW Requirements` numeric |
+
 **`focus-group` (additive):**
 
 | ID | Question | Map to surface |
@@ -922,7 +937,7 @@ decisions:
     skill: idea-to-pdd
     question: Which delivery archetype best fits the intervention?
     ai-default: atomic-visit
-    options: [atomic-visit, focus-group, multi-stage]
+    options: [atomic-visit, longitudinal-visits, focus-group, multi-stage]
     source: idea.md §1
     status: ai-default
     evidence_basis: stated
@@ -1004,7 +1019,7 @@ decisions_append_rows({
       skill: "idea-to-pdd",
       question: "Which delivery archetype best fits the intervention?",
       "ai-default": "atomic-visit",
-      options: ["atomic-visit", "focus-group", "multi-stage"],
+      options: ["atomic-visit", "longitudinal-visits", "focus-group", "multi-stage"],
       source: "idea.md §1; one-FLW-one-delivery pattern",
       status: "ai-default",
       evidence_basis: "stated",
@@ -1054,6 +1069,95 @@ The PDD describes one FLW visit producing one structured delivery (photo + GPS +
 - What's the standardization protocol for any photo/measurement (lighting, angle, distance, color reference)?
 - What's the per-FLW and per-location daily cap?
 - How is duplicate detection handled (vendor ID, stall number, GPS resolution)?
+
+### `longitudinal-visits`
+
+The PDD describes **repeat visits to a durable entity over time** — a
+community, household, patient, farm, savings group — where the entity
+persists between visits, carries state, and the visits are ordered. This
+is CommCare case management: a case type, a registration form, and
+follow-up forms against a case list.
+
+The paid unit is still one visit producing one structured delivery, as in
+`atomic-visit`. **What differs is that a visit's validity can depend on
+the entity's history** — whether this activity has already been
+delivered to this entity, whether the sequence is advancing, whether the
+visit came from the FLW who owns the case.
+
+**Choose this over `atomic-visit`** whenever the same subject is visited
+more than once and the visits are not interchangeable. The tell is that
+someone in the program can ask *"is this community/household on track?"*
+— a question `atomic-visit` cannot answer, because it has no entity to
+track. `atomic-visit`'s duplicate-detection question is framed purely
+cross-sectionally ("vendor id, GPS bucket, household id" — *is this the
+same subject as some other submission*); it cannot express *duplicate
+within this entity's own sequence*.
+
+**Choose this over `multi-stage`** whenever the entities progress
+**independently and asynchronously** through the same activity type.
+`multi-stage` stages the *program*: one clock, the whole cohort advances
+together through a management go/no-go gate, and it builds one Learn app,
+one Deliver app and one payment unit **per stage**. `longitudinal-visits`
+stages the *entity*: N clocks running at their own pace, one Learn app,
+one Deliver app and one payment unit for the whole arc, and the gate is
+data written by the visits themselves. Same word "stage", different
+subject — picking `multi-stage` for an entity-asynchronous program builds
+a fan-out of apps nobody needs and announces "Stage 2 is live" to a
+cohort that is not uniformly in Stage 2.
+
+**The `entity_id` lever — read this before writing the Evidence Model.**
+Connect's payment dedup grain is `entity_id`, an arbitrary business key
+(see `payment-unit-entity-id` in the decisions table). That is what makes
+this archetype implementable today with no new platform capability:
+
+- `atomic-visit` sets it cross-sectionally — `concat(username, today())`
+  = one paid visit per FLW per day.
+- **`longitudinal-visits` sets it to entity + sequence position** — e.g.
+  `concat(<case_id>, '-', <activity_code>)` = one payment per activity
+  per entity, for the life of the case. A repeat of the same activity on
+  the same entity collapses to a single payment automatically.
+
+If the Evidence Model does not say which longitudinal facts Layer A
+reads, this archetype degrades silently into `atomic-visit` — the PDD
+prose stays longitudinal-aware while the payment predicate quietly
+becomes "any visit counts." That is a real, measured failure
+(`spark-facilitator/20260813-2126`, ace#1462), and it is the specific
+thing this archetype exists to prevent.
+
+**Additional questions to answer in step 3:**
+
+- **The entity**: what is followed over time, what case type represents
+  it, and what identifies one instance?
+- **Registration**: is the entity registered by a separate form, by the
+  first visit, or does it already exist in the partner's system (and if
+  so, how does the case get created — import, sync, or re-registration)?
+- **Expected sequence and cadence**: what visits are expected, in what
+  order, at what interval — and does the cadence change across the arc?
+- **State read and written**: what does each visit preload from the case,
+  and what does it write back? (This is what makes progression
+  measurable at all.)
+- **Payability against history**: is the same activity twice payable? Is
+  an out-of-order visit payable? Is there a per-entity cap over a
+  window? **Answer this explicitly — silence here is what produces
+  "any visit counts."**
+- **`entity_id` composition**: the business key that expresses the
+  answer above (see the lever, above).
+- **Ownership**: is a visit payable only from the FLW assigned to that
+  case, or from any FLW?
+- **Progression vs payment**: does a stalled entity affect payment, or
+  is progression monitored only? (Both are legitimate; leaving it
+  undecided is not.)
+- **End of arc**: what does "complete" mean for an entity, and what
+  happens to the case — graduation, handover, closure?
+
+**Additional sections to include in the PDD draft:**
+
+- **Entity Lifecycle** — the entity, its states/phases, what moves it
+  between them, the expected visit sequence, and what completion means.
+- The **Evidence Model** gains an explicit *longitudinal clause* under
+  Layer A: which case facts the payment predicate reads, and the
+  resulting `entity_id`. A Layer A that reads only the current form's
+  fields is the degradation described above.
 
 ### `focus-group`
 

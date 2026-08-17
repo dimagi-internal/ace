@@ -1219,6 +1219,34 @@ verification artifact: every required field, photo, GPS coordinate. Case
 management follows the standard create → update → close pattern. The
 form's fields map 1:1 to Layer A and Layer B of the PDD's Evidence Model.
 
+### `longitudinal-visits`
+
+Delivery unit = **one FLW visit to one followed entity**, and the entity
+is a real case with a life longer than the visit. Structurally this is
+CommCare case management as normal — case type, registration form,
+follow-up form(s) against a case list — with three requirements the
+`atomic-visit` branch does not carry:
+
+1. **The case list must show which visit is due.** Put the entity's
+   phase / last-activity / next-due state in the case-list columns (and
+   in search inputs where the caseload is large). An FLW who has to open
+   a case to discover the next activity will guess instead.
+2. **Follow-up forms preload the case state the predicate reads.** Any
+   longitudinal fact Layer A depends on must be *on the submitted form*
+   to be enforceable downstream — Connect's form-field rules see the
+   form, not the case. Preloading is what makes the longitudinal
+   predicate expressible at all.
+3. **`entity_id` carries entity + sequence position**, per the PDD's
+   `payment-unit-entity-id` decision — typically
+   `concat(<case_id>, '-', <activity_code>)`. As elsewhere, `entity_id`
+   is a **business key, not the case id**: the case id alone pays each
+   entity exactly once, ever.
+
+The failure mode to design against is a Deliver app that is
+case-managed and a payment predicate that is not — the app tracks the
+entity beautifully while Connect pays for any visit at all
+(`spark-facilitator/20260813-2126`, ace#1462).
+
 ### `focus-group`
 
 Delivery unit = **one completed FGD session, attested by a 5-field

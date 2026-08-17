@@ -266,9 +266,11 @@ export function checkSignatureBlocksPresent(wo: string): QACheckResult {
  * Check 7: Scope of Work language matches the declared archetype.
  *
  * Branches on the `archetype` argument:
- *   - atomic-visit: requires /per[- ]visit/ AND /photo|gps/
- *   - focus-group:  requires /per[- ]session|attestation/ AND /gdoc|google doc/
- *   - multi-stage:  requires /stage\s*\d|per stage/
+ *   - atomic-visit:        requires /per[- ]visit/ AND /photo|gps/
+ *   - longitudinal-visits: requires visit phrasing AND a longitudinal marker
+ *                          (the entity being followed, or its sequence/phase)
+ *   - focus-group:         requires /per[- ]session|attestation/ AND /gdoc|google doc/
+ *   - multi-stage:         requires /stage\s*\d|per stage/
  *
  * Pass `null`/`undefined` to skip the check entirely (returns pass with a note).
  */
@@ -289,6 +291,19 @@ export function checkArchetypeAppropriateScope(
     // canonical phrase.
     if (!/\bvisit(?:s|-|\b)/i.test(scope)) missing.push('"visit" phrasing as the unit of work');
     if (!/photo|gps/i.test(scope)) missing.push('photo or GPS evidence');
+  } else if (archetype === 'longitudinal-visits') {
+    // Same visit-shaped unit as atomic-visit — the paid thing is still one
+    // visit producing one record. What must ALSO be present is evidence the
+    // scope describes work against a followed entity over time, because that
+    // is the whole distinction. A work order that reads identically to an
+    // atomic-visit one has lost the longitudinal half somewhere between the
+    // PDD and the contract, which is exactly how ace#1462 happened: the PDD
+    // prose was longitudinal-aware and the payment predicate was not.
+    if (!/\bvisit(?:s|-|\b)/i.test(scope)) missing.push('"visit" phrasing as the unit of work');
+    if (!/photo|gps/i.test(scope)) missing.push('photo or GPS evidence');
+    if (!/\b(case|cases|household|community|participant|enrol|enroll|register|registered|cohort|longitudinal|over time|follow[- ]?up|repeat|phase|sequence|milestone|visit\s*\d)\b/i.test(scope)) {
+      missing.push('a longitudinal marker (the followed entity, or its phase/sequence/follow-up cadence)');
+    }
   } else if (archetype === 'focus-group') {
     if (!/per[- ]session|session|attestation/i.test(scope)) missing.push('"session" or attestation phrasing');
     if (!/gdoc|google\s+doc/i.test(scope)) missing.push('gdoc reference');
@@ -297,9 +312,9 @@ export function checkArchetypeAppropriateScope(
   } else {
     return {
       pass: false,
-      detail: `unknown archetype '${archetype}' (expected atomic-visit | focus-group | multi-stage)`,
+      detail: `unknown archetype '${archetype}' (expected atomic-visit | longitudinal-visits | focus-group | multi-stage)`,
       auto_fix_hint:
-        'archetype must be one of atomic-visit, focus-group, multi-stage; verify the PDD frontmatter',
+        'archetype must be one of atomic-visit, longitudinal-visits, focus-group, multi-stage; verify the PDD frontmatter',
     };
   }
   if (missing.length === 0) return { pass: true, detail: `scope matches ${archetype} archetype` };
@@ -309,7 +324,8 @@ export function checkArchetypeAppropriateScope(
     auto_fix_hint:
       `rewrite § 2 Scope of Work to match the ${archetype} archetype's expected language. ` +
       `Missing markers: ${missing.join(', ')}. ` +
-      `atomic-visit needs "per visit" + photo/GPS; focus-group needs "per session"/attestation + gdoc; ` +
+      `atomic-visit needs "per visit" + photo/GPS; longitudinal-visits needs those PLUS the followed entity ` +
+      `(case/household/community) or its phase/sequence; focus-group needs "per session"/attestation + gdoc; ` +
       `multi-stage needs stage references.`,
   };
 }

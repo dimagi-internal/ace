@@ -1051,6 +1051,31 @@ The PDD's `archetype:` field shapes verification + payment unit setup:
   `opportunity.md` but no Connect toggle; surfaced via
   `flw-data-review` skill in Phase 6.
 
+### `longitudinal-visits`
+- **Verification:** as `atomic-visit` — one `form_field_rules` entry per
+  clause of the payment predicate — **plus** the longitudinal clause of
+  the PDD's Layer A. Where a longitudinal fact is written onto the form
+  by a case preload, it is a normal form-field rule and needs nothing
+  special; where the predicate depends on case state that never reaches
+  the submitted form, it cannot be a form-field rule. Record that
+  explicitly in `opportunity.md § caveats` rather than dropping it
+  silently — a dropped longitudinal clause is exactly how this archetype
+  degrades back into `atomic-visit` (ace#1462).
+- **Payment:** **one** payment unit for the whole arc — not one per
+  phase. The sequence is expressed in `entity_id`, not in the number of
+  payment units. (Contrast `multi-stage`, which really does take one PU
+  per stage.)
+- **`entity_id` is the load-bearing field for this archetype.** It must
+  carry entity + sequence position, per the PDD's
+  `payment-unit-entity-id` decision — e.g.
+  `concat(<case_id>, '-', <activity_code>)`. Two failure modes to check
+  before writing it: the case id **alone** pays each entity once, ever;
+  a `concat(username, today())`-style key silently reverts to
+  cross-sectional dedup and makes repeat activities payable.
+- **Soft flags** (Layer B/C): progression and sequence-integrity checks
+  have no Connect toggle; log them in `opportunity.md` and leave them to
+  `flw-data-review` in Phase 6.
+
 ### `focus-group`
 - **Verification:** same `form_field_rules`-only surface as above (venue
   GPS was never meaningful here, and is unavailable regardless). Enforce
