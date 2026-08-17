@@ -182,17 +182,36 @@ appId: org.commcare.dalvik
 # into canonical here. Applied to every `scrollUntilVisible` in this
 # file for parity.
 #
-# SCROLL BUDGET (jjackson/ace#647) — `speed: 80`, `timeout: 40000`,
-# `visibilityPercentage: 30`, live-calibrated 2026-06-01 on
-# malaria-rdt/20260601-0929. The ACE test user accumulates invites
-# across every /ace:run; on a dogfood machine the target tile sits
-# 8+ prior-run tiles deep. The prior budget (`speed 40`, `timeout
-# 20000`, `visibilityPercentage 60`, no explicit speed) exhausted its
-# 20s window before reaching a tile that was PRESENT and claimable —
-# deterministic FAILED (twice). The calibrated probe (`speed 80`,
-# `timeout 40000`, `visibilityPercentage 30`) reached + asserted the
-# target on the first try. Applied to every `scrollUntilVisible` in
-# this file for parity.
+# SCROLL BUDGET (jjackson/ace#647, recalibrated by ace#1289) —
+# `speed: 40`, `timeout: 120000`, `visibilityPercentage: 30`.
+#
+# History, because the direction of `speed` is counter-intuitive:
+# #647 (2026-06-01, malaria-rdt/20260601-0929) moved 20s/speed-40 →
+# 40s/speed-80 when the target sat ~8 prior-run tiles deep. By
+# 2026-08-14 the ACE test user's invite list had grown to ~25 tiles and
+# the 40s window was exhausted again — and raising `speed` further makes
+# it WORSE, because a faster fling overshoots the matcher between
+# samples. #1289 therefore lowers speed back to 40 and buys the depth
+# with TIME instead: 120000ms.
+#
+# Live-proven on bednet-check-2-visit/20260814-0357 — same matcher, same
+# device, only the budget changed:
+#   Scrolling DOWN until ".*${OPP_RUN_ID}.*" is visible with speed 40,
+#   visibility percentage 30%, timeout 120000 ms ... COMPLETED
+#   Assert that ".*${OPP_RUN_ID}.*" is visible ... COMPLETED
+# Both smoke legs then cleared tile discovery and the Learn leg walked to
+# green (Connect: learn_complete: true, modules_completed_pct: 100).
+#
+# This buys HEADROOM, not a closed class: the invite list is unbounded
+# and no atom shortens it. `connect_delete_unaccepted_flw_invites` skips
+# accepted invites (lib/invite-pruning.ts excludes status 'accepted'), so
+# it cannot touch the ~20-card In Progress section that supplies most of
+# the depth, and soft-deactivating prior opps does not remove tiles
+# either (Connect's mobile opp-list endpoint has no active=True filter —
+# skills/sweep-connect § note). The durable fix is upstream: either an
+# atom that drops accepted OpportunityAccess rows for the test user, or a
+# section-anchored two-stage scroll off the `home-new-opportunities`
+# selector. Tracked on ace#1289.
 #
 # CENTER THE CARD (jjackson/ace#800) — `centerElement: true` is
 # load-bearing on connect-2.63.0. Without it the title-scroll leaves the
@@ -209,8 +228,8 @@ appId: org.commcare.dalvik
     element:
       text: ".*${OPP_RUN_ID}.*"
     direction: DOWN
-    speed: 80
-    timeout: 40000
+    speed: 40
+    timeout: 120000
     visibilityPercentage: 30
     centerElement: true
 - assertVisible:
@@ -262,8 +281,8 @@ appId: org.commcare.dalvik
             below:
               text: ".*${OPP_RUN_ID}.*"
           direction: DOWN
-          speed: 80
-          timeout: 40000
+          speed: 40
+          timeout: 120000
           visibilityPercentage: 30
       - takeScreenshot: "claim-opp-resume-tile"
       - tapOn:
@@ -328,8 +347,8 @@ appId: org.commcare.dalvik
             below:
               text: ".*${OPP_RUN_ID}.*"
           direction: DOWN
-          speed: 80
-          timeout: 40000
+          speed: 40
+          timeout: 120000
           visibilityPercentage: 30
       - takeScreenshot: "claim-opp-new-tile"
       - tapOn:

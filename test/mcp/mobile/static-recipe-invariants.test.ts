@@ -1352,3 +1352,86 @@ describe('form-advance captures BEFORE it advances (#1291)', () => {
     expect(raw).toMatch(/\$\{SELECTOR:form-nav-next\}/);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Tile-discovery scroll budget parity (dimagi-internal/ace#1289).
+//
+// The defect #1289 names is DRIFT, not a wrong number. connect-claim-opp.yaml
+// was recalibrated by #647 (2026-06-01) and again by #800; connect-resume-opp
+// .yaml received neither and sat on the pre-#647 defaults (timeout 20000,
+// visibilityPercentage 60, no explicit speed) for two and a half months. Two
+// recipes that solve the same problem — find the target opp's tile in an
+// unbounded, ever-growing list — silently diverged, and only the un-tuned one
+// failed.
+//
+// So the invariant is not "the numbers are >= X" alone; it is "both recipes
+// carry the SAME budget". A future tuner who raises one and forgets the other
+// fails here.
+//
+// Direction note, because it is counter-intuitive and was got wrong once:
+// raising `speed` does NOT buy depth. A faster fling overshoots the matcher
+// between samples, so depth is bought with `timeout`. #1289 lowered speed
+// 80 -> 40 and raised timeout 40000 -> 120000; that pair is the live-proven
+// one (bednet-check-2-visit/20260814-0357).
+// ---------------------------------------------------------------------------
+describe('tile-discovery scroll budgets stay in lockstep (#1289)', () => {
+  const RECIPES = ['connect-claim-opp.yaml', 'connect-resume-opp.yaml'];
+
+  /** Every scrollUntilVisible that hunts the run-id tile, with its budget. */
+  function tileScrolls(yamlText: string) {
+    const out: { speed: number; timeout: number; visibility: number }[] = [];
+    const re =
+      /scrollUntilVisible:[\s\S]{0,400}?text:\s*"\.\*\$\{OPP_RUN_ID\}\.\*"[\s\S]{0,400}?(?=\n\s*-\s|\n\S|$)/g;
+    for (const m of yamlText.matchAll(re)) {
+      const blk = m[0];
+      const speed = Number(blk.match(/speed:\s*(\d+)/)?.[1] ?? NaN);
+      const timeout = Number(blk.match(/timeout:\s*(\d+)/)?.[1] ?? NaN);
+      const visibility = Number(blk.match(/visibilityPercentage:\s*(\d+)/)?.[1] ?? NaN);
+      out.push({ speed, timeout, visibility });
+    }
+    return out;
+  }
+
+  it('every tile scroll declares an explicit budget (no silent Maestro defaults)', () => {
+    // The pre-#647 resume recipe omitted `speed` entirely, which is how it
+    // drifted invisibly — an absent key reads as "fine" in review.
+    for (const r of RECIPES) {
+      const scrolls = tileScrolls(readRecipe(r));
+      expect(scrolls.length, `${r}: expected at least one run-id tile scroll`).toBeGreaterThan(0);
+      scrolls.forEach((s, i) => {
+        expect(s.speed, `${r} scroll ${i}: missing explicit speed`).not.toBeNaN();
+        expect(s.timeout, `${r} scroll ${i}: missing explicit timeout`).not.toBeNaN();
+        expect(s.visibility, `${r} scroll ${i}: missing explicit visibilityPercentage`).not.toBeNaN();
+      });
+    }
+  });
+
+  it('the two recipes carry the SAME budget — this is the anti-drift guard', () => {
+    const [claim, resume] = RECIPES.map((r) => tileScrolls(readRecipe(r)));
+    const budgets = [...claim, ...resume].map((s) => `${s.speed}/${s.timeout}/${s.visibility}`);
+    expect(
+      new Set(budgets).size,
+      `claim-opp and resume-opp tile scrolls must share one budget ` +
+        `(speed/timeout/visibility). Found: ${[...new Set(budgets)].join(' vs ')}. ` +
+        `#1289: resume-opp missed the #647 recalibration entirely because nothing pinned them together.`,
+    ).toBe(1);
+  });
+
+  it('the budget is the live-proven one, and speed is not raised to buy depth', () => {
+    const all = RECIPES.flatMap((r) => tileScrolls(readRecipe(r)));
+    for (const s of all) {
+      expect(
+        s.timeout,
+        'depth is bought with TIME: >=120s, live-proven on bednet-check-2-visit/20260814-0357',
+      ).toBeGreaterThanOrEqual(120000);
+      expect(
+        s.speed,
+        'a faster fling overshoots the matcher between samples — speed must stay <=40',
+      ).toBeLessThanOrEqual(40);
+      expect(
+        s.visibility,
+        'a wrapped multi-line title may never present 60% of itself; <=30 keeps it matchable',
+      ).toBeLessThanOrEqual(30);
+    }
+  });
+});
