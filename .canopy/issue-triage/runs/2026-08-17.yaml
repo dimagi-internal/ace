@@ -142,11 +142,14 @@ verdicts:
       narration-numbers-vs-plotted-values checker from
     duplicate_of: null
     source: fresh
-    action: "comment; left open"
+    action: "gh issue close --reason 'not planned'"
     outcome: >-
-      OPEN. The in-repo preventer already shipped (PR #1416). The residual is a human
-      product call on a funder-facing artifact that lives in Drive/labs, not this repo.
-      Third triage to reach this conclusion — flagged as such so a fourth does not.
+      CLOSED not-planned (operator call, same session). Wrong tracker for what remained:
+      the residual is a defect in ONE RUN's artifacts (Drive + labs workflow 5125), and
+      the repo tracker is for code and harness. The generalizable preventer already
+      shipped in PR #1416. Scene edits belong in a DDD iteration on the narrative; the
+      narration-numbers-vs-plotted-values checker belongs in canopy, filed with two real
+      YAMLs when they exist.
   - number: 1461
     disposition: implement
     blocking: harness
@@ -161,12 +164,21 @@ verdicts:
     unblocked_by: null
     duplicate_of: null
     source: fresh
-    action: "comment + label harness; handed back (M, over the S cap)"
+    action: "PR #1482 (merged, v0.13.925) — picked up in the same session at operator request"
     outcome: >-
-      OPEN. Root cause verified on both sides (edit view is org_member_required and
-      raises Http404; detail view is org_viewer_required and already renders most
-      fields). No upstream API needed. getProgram carries the identical pattern and
-      should be fixed in the same PR.
+      CLOSED completed. getOpportunity degrades to the org_viewer_required dashboard on
+      403/404; 500 and login-redirect still throw. Parse shape taken from the Django
+      template + view rather than one live capture. short_description/country stay empty
+      (absent from the page); `active` derived from a three-way badge that is lossy on
+      Inactive, with the raw status_badge returned alongside.
+      CORRECTION to this run's own plan: getProgram could NOT take the symmetric fix —
+      every program route is behind ProgramManagerMixin (is_admin AND program_manager)
+      and no read-only program route exists, so a fallback would have invented its
+      source. Its 403 now names the requirement + remedy instead, front-loaded to
+      survive HttpError's ~250-char truncation.
+      Noted, not done: the dashboard carries start_date and total_budget, which the edit
+      form lacks entirely — the viewer read beats the write read for those two, pending
+      an Opportunity type widening.
   - number: 1467
     disposition: implement
     blocking: harness
