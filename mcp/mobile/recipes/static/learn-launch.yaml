@@ -22,7 +22,8 @@
 # Phase 3 apply grid display app-wide, because the anchor resolved to the
 # list container alone. Never narrow it back to one container.
 #
-# Atlas reference: docs/mobile-atlas/connect-2.62.0.md §§ 5-6.
+# The selector map is ground truth; the atlas below is narrative only.
+# Atlas reference (historical, 2.62.0): docs/mobile-atlas/connect-2.62.0.md §§ 5-6.
 appId: org.commcare.dalvik
 ---
 # StandardHomeActivity gives us 4 tiles. We want the green Start tile.

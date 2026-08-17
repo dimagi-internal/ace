@@ -16,7 +16,8 @@
 # Sync with Server, Log out of CommCare) is structurally identical
 # to Learn mode; the project-card widget is what disambiguates.
 #
-# Atlas reference: docs/mobile-atlas/connect-2.62.0.md §§ 8, 9, 10.
+# The selector map is ground truth; the atlas below is narrative only.
+# Atlas reference (historical, 2.62.0): docs/mobile-atlas/connect-2.62.0.md §§ 8, 9, 10.
 #
 # RESOURCE-ID STATUS (2026-05-26 — Deliver-side atlas verified live
 # against bednet-spot-check run 20260526-1556's J2 dumps):

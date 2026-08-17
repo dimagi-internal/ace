@@ -561,7 +561,7 @@ selectors:
     type: text
     value: "Submit"
     unverified: true
-    purpose: "Generic Submit button on the final form screen. NOTE 2026-05-14: Learn-app forms AUTO-FINALIZE via nav_btn_next on the last question (atlas §7) — they have NO explicit Submit button. Deliver-app forms may have a Submit; UNREACHED until the atlas walk passes Final Assessment. If used in recipes, branch on `form-submit visible?` before tapping — Learn-app recipes should use form-nav-next throughout, not this."
+    purpose: "Generic Submit button on the final form screen. Plain Learn AND plain Deliver forms both AUTO-FINALIZE via nav_btn_next on the last question (atlas §7 for Learn; live-observed for Deliver on bednet-spot-check/20260729-1239, recorded in mcp/mobile/recipes/static/deliver-sync.yaml) — neither has an explicit Submit button, and finalizing lands the form in the LOCAL OUTBOX without syncing. This row is kept as a defensive branch for a future form that does ship a Submit; recipes must branch on `form-submit visible?` before tapping and fall through to form-nav-next. Its absence on a surface is EXPECTED, not a coverage gap."
 
   assessment-result-passed:
     type: text

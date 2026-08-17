@@ -397,3 +397,91 @@ describe('static palette health — connect-claim-opp landing classification (#8
     expect(stripped).toMatch(/takeScreenshot:\s*"claim-already-learn-complete-deliver-gate"/);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Citation-currency ratchet (dimagi-internal/ace#972).
+//
+// #972 was not a code defect: `form-submit.yaml` declared the Deliver
+// finalize surface UNVERIFIED while its own sibling `deliver-sync.yaml`
+// documented the live observation, and `app-test-cases` named the 2.62.0
+// atlas "ground truth" months after DEFAULT_APK_VERSION moved to 2.63.2.
+// Both are the same class: a doc that keeps asserting a stale version's
+// map is authoritative, which then reads as a device-validation blocker
+// nobody can clear.
+//
+// This ratchet makes the class structurally impossible to re-accumulate
+// on the NEXT APK bump: nothing author-facing may name a selector map
+// older than the default without saying so.
+// ---------------------------------------------------------------------------
+describe('citation currency vs DEFAULT_APK_VERSION (#972)', () => {
+  const APK_RE = /connect-(\d+\.\d+\.\d+)(?:\.yaml|\.md)/g;
+
+  /** Compare dotted versions numerically. */
+  const olderThan = (a: string, b: string): boolean => {
+    const pa = a.split('.').map(Number);
+    const pb = b.split('.').map(Number);
+    for (let i = 0; i < 3; i++) {
+      if ((pa[i] ?? 0) !== (pb[i] ?? 0)) return (pa[i] ?? 0) < (pb[i] ?? 0);
+    }
+    return false;
+  };
+
+  it('DEFAULT_APK_VERSION is readable from client.ts', () => {
+    const src = readFileSync(
+      fileURLToPath(new URL('../../../mcp/mobile/client.ts', import.meta.url)),
+      'utf8',
+    );
+    const m = src.match(/DEFAULT_APK_VERSION\s*=\s*'([\d.]+)'/);
+    expect(m, 'DEFAULT_APK_VERSION must stay greppable — this ratchet keys on it').toBeTruthy();
+  });
+
+  it('no palette recipe cites a selector map older than the default APK', () => {
+    const src = readFileSync(
+      fileURLToPath(new URL('../../../mcp/mobile/client.ts', import.meta.url)),
+      'utf8',
+    );
+    const def = src.match(/DEFAULT_APK_VERSION\s*=\s*'([\d.]+)'/)![1];
+
+    const dir = fileURLToPath(new URL('../../../mcp/mobile/recipes/static/', import.meta.url));
+    const offenders: string[] = [];
+
+    for (const f of readdirSync(dir).filter((n) => n.endsWith('.yaml'))) {
+      const text = readFileSync(dir + f, 'utf8');
+      for (const m of text.matchAll(APK_RE)) {
+        const cited = m[1];
+        if (!olderThan(cited, def)) continue;
+        // A stale citation is allowed ONLY when the same line marks it as
+        // historical — that is the honest form and the one #972 was missing.
+        const line = text.split('\n').find((l) => l.includes(m[0])) ?? '';
+        if (/historical|superseded|was written against|one minor behind|not ground truth/i.test(line)) {
+          continue;
+        }
+        offenders.push(`${f}: cites ${m[0]} (default is ${def}) — "${line.trim().slice(0, 90)}"`);
+      }
+    }
+
+    expect(
+      offenders,
+      `Palette recipes cite a stale selector map without marking it historical.\n` +
+        `Either repoint at connect-${def}, or say on the same line that the citation is historical.\n` +
+        offenders.join('\n'),
+    ).toEqual([]);
+  });
+
+  it('form-submit.yaml no longer declares the Deliver finalize surface unknown', () => {
+    // The specific #972 regression: the header claimed we "don't know" whether
+    // Deliver forms auto-finalize, while deliver-sync.yaml recorded that we do.
+    const text = readFileSync(
+      fileURLToPath(new URL('../../../mcp/mobile/recipes/static/form-submit.yaml', import.meta.url)),
+      'utf8',
+    );
+    expect(text, 'the UNVERIFIED banner was retired by #972').not.toMatch(
+      /UNVERIFIED — atlas walk hasn't passed/,
+    );
+    expect(text, 'Deliver post-state is no longer "(TBD)"').not.toMatch(/Deliver forms \(TBD\)/);
+    expect(
+      text,
+      'the header must point at the recipe that actually recorded the observation',
+    ).toMatch(/deliver-sync\.yaml/);
+  });
+});
