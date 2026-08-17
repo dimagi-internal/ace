@@ -515,14 +515,19 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
        cost model.
      - `embedded-bc-script` — PDD specifies a verbatim behavior-change
        segment.
-     - `english-only-ui` — PDD names a working language other than
-       English (Deliver variant). Build the app in **ENGLISH ONLY**
-       anyway: the working language is context for training and
-       facilitation, not an instruction to translate the app. Do not stack
-       languages inline, and do not search for a translations parameter or
-       report its absence as a blocker — Nova exposes no per-language /
-       itext channel and ACE has stopped faking one (standing decision
-       2026-08-14, ace#968). Graded by `language_conformance`.
+     - `app-language-layer` — PDD names a working language other than
+       English (Deliver variant). Build the ENTIRE app in English first —
+       English is the source language and stays the runtime default —
+       then, as the **LAST** build step, add the working language
+       (`add_language(copyFrom: 'en')`) and author real translations via
+       `update_translations`, echoing each unit's `sourceFingerprint`.
+       Translating before the English is final is the failure mode: any
+       later edit silently reverts that string to English
+       (`out-of-date`). Confirm `out-of-date` is 0 via `get_languages`
+       before hand-off. Never stack languages inline. (Standing decision
+       2026-08-17, ace#1391 forward — Nova shipped the channel; see
+       `_app-component-library.md § app-language-layer` for the proven
+       contract.) Graded by `language_conformance`.
      - `deliver-app-naming` — always. App name must contain "Deliver app".
      - `live-photo-capture` — any image/photo capture question. Appearance
        Attribute set to `acquire` (live camera, never gallery-browse).

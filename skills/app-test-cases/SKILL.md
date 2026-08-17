@@ -1091,9 +1091,12 @@ For each form-walk segment of a recipe:
    (dimagi-internal/ace#1070).** A bare `tapOn` with no scroll misses any
    option below the fold — a long option label on a small screen pushes the
    4th option off, and this was measured on trilingual labels (en/nya/tum),
-   where a 4-option question routinely rendered ~3 options per screen. ACE
-   now builds English-only (ace#968), so labels are shorter and the case is
-   rarer — but it is still real, and both halves below are unchanged. But an
+   where a 4-option question routinely rendered ~3 options per screen. This
+   case is **back in full force as of 2026-08-17** (ace#1391 forward): ACE
+   builds a real per-language layer again, and a translated label is often
+   LONGER than its English source, so plan for the same off-screen options
+   the trilingual builds hit. (It briefly went rare during the English-only
+   window, 2026-08-14..2026-08-17.) Both halves below are unchanged. But an
    *unconditional* `scrollUntilVisible` is equally wrong: on a question
    whose options already fit, there is nothing to scroll, and CommCare's
    form view reads the resulting no-op swipes as **backward form

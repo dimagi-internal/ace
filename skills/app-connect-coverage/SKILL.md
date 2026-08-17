@@ -413,12 +413,16 @@ Future siblings:
 - `app-multimedia-coverage` — verify form labels referencing image
   resources have the resource files attached, fix by re-running Nova
   asset-generation or by uploading from PDD-referenced sources
-- `app-language-conformance` — verify every form's user-facing strings are
-  **English-only**: no label, choice, hint or constraint message carrying a
-  stacked or parenthetical translation, and no in-app language selector.
-  ACE builds English-only UIs (ace#968, standing decision 2026-08-14); this
-  check inverted on that date — it used to require translations for every
-  label
+- `app-language-conformance` — when the PDD names a working language,
+  verify the app carries it as a **real CommCare language** (`get_languages`:
+  English still `sourceLanguage`, the working language present, `out-of-date`
+  = 0) rather than as stacked or parenthetical translations inside single
+  labels, and that there is no in-app language-selector *question*. ACE
+  builds a real per-language layer as of 2026-08-17 (ace#1391 forward — see
+  `_app-component-library.md § app-language-layer`). **This check has
+  inverted twice** — it required inline translations until 2026-08-14, then
+  required English-only until 2026-08-17 — so implement it against the
+  current component brief, not against memory
 - `app-summary-coverage` — verify the human-readable
   `app-summaries/*.md` written to Drive matches the live blueprint
   (catches stale summaries after edits)
