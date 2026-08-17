@@ -1270,6 +1270,12 @@ export async function handleReadFileToDisk(
     );
   }
 
+  // A write sink is an overwrite primitive: `writeToPath` can clobber `.env`,
+  // a git hook, or an SSH key just as readily as it can land a scratch file.
+  // The denylist was wired across the read/upload args in #1110 but skipped
+  // the three writeToPath handlers; this is that gap (#1110 residual).
+  assertNotCredentialPath(writeToPath, { atom: 'drive_read_file' });
+
   const file = await fetchDriveText(fileId, driveClient, opts, exportAs);
   fs.mkdirSync(path.dirname(writeToPath), { recursive: true });
   fs.writeFileSync(writeToPath, file.content, 'utf8');
@@ -1400,6 +1406,9 @@ export async function handleDownloadBinaryToDisk(
         `path would write somewhere unexpected.`,
     );
   }
+
+  // Same overwrite primitive as drive_read_file above (#1110 residual).
+  assertNotCredentialPath(writeToPath, { atom: 'drive_download_binary' });
 
   const { id, name, mimeType, buf } = await fetchDriveBinary(fileId, driveClient, opts);
   fs.mkdirSync(path.dirname(writeToPath), { recursive: true });

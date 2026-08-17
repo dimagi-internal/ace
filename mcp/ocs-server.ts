@@ -709,6 +709,10 @@ server.tool(
             `path would write somewhere unexpected.`,
         );
       }
+      // Same overwrite primitive as the gdrive writeToPath sinks (#1110
+      // residual): a download that lands on `.env` or an SSH key is a
+      // clobber, not a download.
+      assertNotCredentialPath(writeToPath, { atom: 'ocs_download_file' });
       const safePath = writeToPath;
       fsSync.mkdirSync(nodePath.dirname(safePath), { recursive: true });
       fsSync.writeFileSync(safePath, f.content);

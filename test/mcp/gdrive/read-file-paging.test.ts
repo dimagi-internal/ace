@@ -292,5 +292,41 @@ describe('drive_read_file: writeToPath (read to disk, not to context)', () => {
       handleReadFileToDisk({ fileId: 'f1', writeToPath: path.join(tmpDir, 'a.txt') }, fake as any, { sleep }),
     ).rejects.toThrow(/unsupported_binary_mimetype/);
   });
+
+  // dimagi-internal/ace#1110 residual. The credential denylist was wired
+  // across the read/upload path args but SKIPPED the writeToPath sinks, which
+  // are overwrite primitives: a "download" onto .env or an SSH key is a
+  // clobber. `path.isAbsolute` was the only guard here, and it is a
+  // correctness check, not a containment one.
+  it('refuses a writeToPath that would clobber credential material', async () => {
+    queueTextFile(fake, 'body');
+    await expect(
+      handleReadFileToDisk(
+        { fileId: 'f1', writeToPath: path.join(tmpDir, '.env') },
+        fake as any,
+        { sleep },
+      ),
+    ).rejects.toThrow(/credential/i);
+  });
+
+  it('refuses a writeToPath traversing an .ssh directory', async () => {
+    queueTextFile(fake, 'body');
+    await expect(
+      handleReadFileToDisk(
+        { fileId: 'f1', writeToPath: path.join(tmpDir, '.ssh', 'authorized_keys') },
+        fake as any,
+        { sleep },
+      ),
+    ).rejects.toThrow(/credential/i);
+  });
+
+  it('negative control: an ordinary writeToPath still writes', async () => {
+    // Without this the two refusals above would also pass if the guard
+    // rejected everything.
+    queueTextFile(fake, 'body');
+    const writeToPath = path.join(tmpDir, 'ordinary.txt');
+    await handleReadFileToDisk({ fileId: 'f1', writeToPath }, fake as any, { sleep });
+    expect(fs.readFileSync(writeToPath, 'utf8')).toBe('body');
+  });
 });
 
