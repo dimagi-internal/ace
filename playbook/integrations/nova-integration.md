@@ -379,20 +379,49 @@ registry's metadata. Locked by `test/scripts/ace-nova-check.test.ts`.
     (each needs `default_value: ''` or it is rejected — the preload then
     wins over the seed), and read them with ordinary `field-ref` parts.
     ACE-side tracking: ace#1180.
-  - `voidcraft-labs/commcare-nova#459` — tool payloads are truncated
-    before the tool sees them and surface as
-    `InputValidationError: could not be parsed as JSON`, pointing the
-    caller at a quoting bug that isn't there. Threshold is NOT clean —
-    the same failure reproduced at 1.9 KB after first appearing near
-    5 KB, so do not build against a number. The worst measured case was
-    trilingual labels roughly tripling every `add_fields` payload — one
-    51-field form needed ~20 batches. That ceiling is **relevant again but
-    by a different route**: as of 2026-08-17 ACE builds multilingual apps
-    through Nova's real per-language channel (see § below), so `add_fields`
-    payloads stay English-sized while the translation volume moves to
-    `update_translations`, which caps at 50 units per call by schema. The
-    bug is unchanged and language-independent: batch at ~5 fields per call
-    regardless. ACE-side tracking: ace#1181.
+  - ~~`voidcraft-labs/commcare-nova#459`~~ — **CLOSED NOT_PLANNED
+    2026-08-16, and DISPROVED. This was never a Nova bug.** Kept here
+    because ACE shipped the wrong root cause into every architect brief
+    for three days, and the correction is the useful part.
+
+    What we claimed: Nova truncated tool payloads in transport before the
+    tool saw them, surfacing as `InputValidationError: could not be
+    parsed as JSON`, with an unclean threshold (~5 KB, then 1.9 KB).
+
+    What upstream found: **the payloads never reached Nova.** That error
+    string does not exist anywhere in Nova's stack — it is Claude Code's
+    own client-side error, raised when the model's streamed tool-call
+    arguments fail `JSON.parse` locally, *before any HTTP request is
+    made*. Nova's request logs for 2026-08-10 show zero malformed-body
+    failures and payloads up to **23.4 KB returning 200** — including
+    7-8 KB calls from ACE's own batch workaround, already above the
+    ceiling we thought we were avoiding. There is no size limit on
+    Nova's input path, which is also why Nova could not have returned a
+    "payload is N bytes, limit is M" refusal: there is no limit to name.
+
+    Why it LOOKED like truncation: the harness echoes only the first
+    ~200 chars of the received input in that error, so any larger payload
+    reads as "cut mid-string" by construction. Two harness-side causes
+    fit the inconsistent threshold — the generation being cut mid-call,
+    and a deferred tool's schema dropping out of context after
+    compaction (typed params then arrive as unparseable strings). The
+    byte count the error reports is the RECEIVED length, so comparing it
+    to the intended payload size distinguishes the two.
+
+    **What this changes for ACE:** stop pre-batching `add_fields`
+    defensively. The ~5-fields-per-call cadence guarded a limit that does
+    not exist and cost real turns against the architect's 250-turn budget
+    (one 51-field form burned ~20 batches). Send the natural batch; treat
+    the error as a RECOVERY trigger — shrink and retry — not a planned
+    cadence. Nova commits each batch atomically, so "nothing partially
+    persisted" holds by construction and a retry cannot double-write.
+    The receipt-checked verify-then-retry rule stays: it was always
+    justified independently of this bug.
+
+    The trilingual pressure that made this bite is gone regardless —
+    per-language label support shipped upstream in #465/#466/#467, so
+    labels no longer stack English + Chichewa + Tumbuka into every
+    string. ACE-side tracking: ace#1181.
 
 - **Notable capabilities (nothing upstream currently BLOCKS a run).** The
   two bugs above degrade expressiveness rather than halting. Counts of

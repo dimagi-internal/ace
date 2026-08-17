@@ -178,6 +178,83 @@ describe('predictive guards must cite a reproducer', () => {
     ).toBe('');
   });
 
+  // -------------------------------------------------------------------------
+  // Refuted-citation rail (dimagi-internal/ace#1181).
+  //
+  // The ratchet above asks only whether a citation EXISTS. That is not the
+  // same as whether it is TRUE, and #1181 is the gap: ACE asserted that Nova
+  // truncated tool payloads in transport and cited commcare-nova#459 for it.
+  // The citation was real, so the ratchet passed it — and the claim kept
+  // shipping into every architect brief for three days after upstream CLOSED
+  // #459 NOT_PLANNED with request logs disproving it (payloads never reached
+  // Nova; 23.4 KB returned 200; the error is Claude Code's own client-side
+  // JSON.parse failure).
+  //
+  // A citation can be refuted after it is written, and nothing re-reads it.
+  // This is the cheap offline rail: once we learn an upstream reference was
+  // disproved, name it here and the repo can never quietly lean on it again.
+  // Deliberately NOT a network call — CI must not depend on another tracker's
+  // availability, and a live lookup would also flag legitimate historical
+  // prose. Add an entry when upstream disproves something we cited.
+  // -------------------------------------------------------------------------
+  const REFUTED: { citation: RegExp; why: string; sayInstead: string }[] = [
+    {
+      citation: /commcare-nova#459/,
+      why:
+        'CLOSED NOT_PLANNED 2026-08-16 and disproved — the payloads never reached Nova; ' +
+        'InputValidationError is Claude Code\'s own client-side JSON.parse error.',
+      sayInstead:
+        'Describe it as a harness-side failure and a RECOVERY trigger (shrink-and-retry), ' +
+        'never as a Nova size limit or a planned ~5-fields-per-call cadence.',
+    },
+  ];
+
+  it('no file leans on a citation upstream has disproved (#1181)', () => {
+    const offenders: string[] = [];
+    for (const dir of ['skills', 'agents', 'playbook']) {
+      let files: string[] = [];
+      try {
+        files = markdownFilesUnder(join(repoRoot, dir));
+      } catch {
+        continue;
+      }
+      for (const abs of files) {
+        const lines = readFileSync(abs, 'utf8').split('\n');
+        lines.forEach((line, i) => {
+          for (const r of REFUTED) {
+            if (!r.citation.test(line)) return;
+            // Naming a refuted citation is FINE — required, even — as long as
+            // the same line marks it as refuted rather than relying on it.
+            if (/DISPROVED|CLOSED NOT_PLANNED|NOT_PLANNED|refuted|~~/i.test(line)) return;
+            offenders.push(
+              `${abs.replace(repoRoot, '')}:${i + 1} — cites ${r.citation.source} as live support.\n` +
+                `      ${r.why}\n      ${r.sayInstead}`,
+            );
+          }
+        });
+      }
+    }
+    expect(
+      offenders,
+      'A disproved upstream citation is being used as live support:\n' + offenders.join('\n'),
+    ).toEqual([]);
+  });
+
+  it('the refuted-citation rail actually fires (negative control)', () => {
+    const pathologic = 'Batch add_fields at ~5 fields per call (commcare-nova#459).';
+    const marked = 'commcare-nova#459 — CLOSED NOT_PLANNED 2026-08-16 and DISPROVED.';
+    const r = REFUTED[0];
+    expect(r.citation.test(pathologic), 'must match an unqualified use').toBe(true);
+    expect(
+      /DISPROVED|CLOSED NOT_PLANNED|NOT_PLANNED|refuted|~~/i.test(pathologic),
+      'and that use is not marked as refuted',
+    ).toBe(false);
+    expect(
+      /DISPROVED|CLOSED NOT_PLANNED|NOT_PLANNED|refuted|~~/i.test(marked),
+      'while a properly-marked mention is exempt',
+    ).toBe(true);
+  });
+
   it('the detector actually fires on the guard that cost us Phase 3', () => {
     // Negative control. Without this, a regex that matches nothing would pass
     // both assertions above and look like a healthy repo.
