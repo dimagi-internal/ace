@@ -197,16 +197,24 @@ Generate the Learn (training) app from the PDD using the Nova plugin
      Also insert this paragraph verbatim into the brief
      (dimagi-internal/ace#1181):
 
-     > REQUIRED: Nova tool payloads are truncated in transport before
-     > the tool sees them, surfacing as `InputValidationError: could
-     > not be parsed as JSON` — the JSON is well-formed, it was cut
-     > mid-string, and the threshold is NOT a clean size check (first
-     > seen near 5 KB, then reproduced at 1.9 KB), so no field count is
-     > derivable from bytes. Batch `add_fields` at **~5 fields per
-     > call** from the start (commcare-nova#459) — a conservative floor
-     > proven safe, not a computed limit. Do NOT debug the payload's
-     > quoting when you see that error — shrink the batch. The
-     > verify-then-retry rule above still applies to every batch.
+     > REQUIRED: a large `add_fields` call can fail with
+     > `InputValidationError: could not be parsed as JSON`. This is a
+     > HARNESS-side failure, not a Nova one, and not a size limit —
+     > `commcare-nova#459` was closed NOT_PLANNED on 2026-08-16 after
+     > Nova's request logs showed zero malformed bodies and payloads up
+     > to 23.4 KB returning 200. The error is Claude Code's own
+     > client-side error, raised when the model's streamed tool-call
+     > arguments fail `JSON.parse` locally, before any request is made;
+     > the two known causes are a generation cut mid-call and a deferred
+     > tool's schema dropping out of context after compaction. The
+     > "cut mid-string" appearance is an artifact of the harness echoing
+     > only the first ~200 chars.
+     > So: do NOT pre-batch defensively, and do NOT debug the payload's
+     > quoting. Send the natural batch. IF you see that error, shrink the
+     > batch and retry — as RECOVERY, not as a planned cadence. Nova
+     > commits each batch atomically (all-or-nothing), so a retry after
+     > this error cannot double-write. The verify-then-retry rule above
+     > still applies to every batch.
    - **REQUIRED — `user_score` MUST be a PERCENTAGE (0-100), not a raw
      point sum.** Connect's `passing_score` field on each assessment is
      on a 0-100 scale — `passing_score: 80` means "pass at 80%."
