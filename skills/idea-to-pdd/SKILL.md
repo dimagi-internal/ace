@@ -433,19 +433,26 @@ orchestrator from the per-skill QA + eval verdicts on the fly. -->
       both probes.
     - **Working language.** If the program runs in a non-English
       language, state it as a **Working language** line in the Learn and
-      Deliver App Specifications — it is real design context and it drives
-      the training materials, the facilitator briefing, the per-opp OCS
-      chatbot and the solicitation's language requirement. **It does NOT
-      mean the app is delivered in that language.** ACE builds every app
-      UI in English only (standing decision 2026-08-14, ace#1391 — see
-      `_app-component-library.md § english-only-ui`, and the multilingual-UI
-      row in § `Mechanisms a PDD must not assert` Table B). So state the
-      working language, and do NOT write that labels, choices or
-      assessment items will appear in it, that the app is "translated" or
-      "localized", or that workers can switch language in the app. Where
-      the cohort's English is a real risk, say so as a **residual** and
-      point at the surfaces that carry the language — training and the
-      chatbot — rather than asserting an app property that will not ship.
+      Deliver App Specifications, with its CommCare language code — it is
+      real design context, it drives the training materials, the
+      facilitator briefing, the per-opp OCS chatbot and the solicitation's
+      language requirement, **and as of 2026-08-17 it is also delivered in
+      the app.** Nova shipped a real per-language channel, so ACE builds
+      the app's strings in the working language on top of an
+      always-complete English source (standing decision 2026-08-17,
+      ace#1391 forward — see `_app-component-library.md §
+      app-language-layer`). What the PDD may now assert: labels, choices,
+      hints and assessment items appear in the working language, and the
+      app carries English as its source language. What it must still NOT
+      assert: that the translations are **professionally or
+      native-speaker reviewed** at delivery — ACE authors them, Nova marks
+      them `needs-review`, and review is a normal downstream obligation
+      exactly like review of the English copy, not a completed step. Also
+      do not promise an in-app language-*selector question*; language
+      choice is CommCare's own runtime affordance. English remains the
+      runtime default for now, so if the design depends on an FLW seeing
+      the working language first, raise that as an **open question**
+      rather than asserting it.
 
     These become `decisions.yaml` rows where they meet the bar (§
     Decisions Log Convention). This is the upstream half of the
@@ -831,7 +838,7 @@ to the opp; add others not listed when they meet the bar.
 | `primary-metric-vs-goal` | Direct goal vs upstream proxy? | `mission_alignment` (eval input, PR #144) |
 | `ai-fallback-design` | True validation harness or parallel sampling? | `fallback_validates_primary` (eval input, PR #144) |
 | `flw-count` | How many FLWs? | PDD `FLW Requirements` numeric |
-| `working-language` | Working language(s)? | PDD `Learn App Specification` |
+| `working-language` | Working language(s) + CommCare language code? Who reviews the translations? | PDD `Learn App Specification` |
 | `verification-layers` | Which evidence-model layers in scope? | PDD `Evidence Model` section |
 | `solicitation-type` | Solicitation type (EOI/RFP/custom)? | PDD `Solicitation` section |
 | `solicitation-deadline` | Solicitation deadline? | PDD `Solicitation` section |
@@ -1062,7 +1069,7 @@ practice-session audio review. No Learn app is produced. See
 **Additional questions to answer in step 3:**
 
 - **Recruitment**: Who are the segments? How will participants be identified? What sample size per segment? Comparison groups and their justification?
-- **Language**: Working language? Facilitator language fluency? (Translation of the APP is out of scope — English-only UI, ace#968; ask instead which surfaces need the working language: training materials, facilitation, OCS chatbot.)
+- **Language**: Working language, and its CommCare language code? Facilitator language fluency? (The APP is now translated into the working language on top of an always-complete English source — ace#1391 forward, 2026-08-17. Also ask which OTHER surfaces need the working language: training materials, facilitation, OCS chatbot. Translations are ACE-authored and carry `needs-review` — ask who reviews them, same as you would for the English.)
 - **Facilitation skill level**: Existing skill assumed, or training required? Training surface is the per-opp **OCS chatbot** (loaded with the FGD Guide + Output Specification + handbook gdoc) plus a coordinator-graded practice-session audio review. The Learn app produced for focus-group is a **minimal sentinel** (one-form readiness gate, not a training curriculum) — it exists to satisfy Connect's API + gate attestation submissions on coordinator-confirmed practice-session-pass, NOT to carry training content. See `pdd-to-learn-app/SKILL.md § Archetypes § focus-group` for the sentinel spec.
 - **Consent**: Verbal/written? Audio recording consent? Photo consent? Documented how?
 - **Venue**: Neutral / facility / leader's compound? Each biases differently — which is acceptable?

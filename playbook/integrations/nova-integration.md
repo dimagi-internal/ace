@@ -386,10 +386,12 @@ registry's metadata. Locked by `test/scripts/ace-nova-check.test.ts`.
     the same failure reproduced at 1.9 KB after first appearing near
     5 KB, so do not build against a number. The worst measured case was
     trilingual labels roughly tripling every `add_fields` payload — one
-    51-field form needed ~20 batches — but ACE has built **English-only**
-    UIs since 2026-08-14 (ace#1391), so payloads are ~3x smaller and that
-    figure is a historical ceiling, not today's expectation. The bug is
-    unchanged and language-independent: batch at ~5 fields per call
+    51-field form needed ~20 batches. That ceiling is **relevant again but
+    by a different route**: as of 2026-08-17 ACE builds multilingual apps
+    through Nova's real per-language channel (see § below), so `add_fields`
+    payloads stay English-sized while the translation volume moves to
+    `update_translations`, which caps at 50 units per call by schema. The
+    bug is unchanged and language-independent: batch at ~5 fields per call
     regardless. ACE-side tracking: ace#1181.
 
 - **Notable capabilities (nothing upstream currently BLOCKS a run).** The
@@ -419,6 +421,62 @@ registry's metadata. Locked by `test/scripts/ace-nova-check.test.ts`.
   Connect as hours. Author it as hours. Upstream:
   voidcraft-labs/nova-plugin#36. Do not "correct" ACE's skill text to
   match the upstream string — the string is the bug.
+
+## The per-language (i18n) channel — shipped 2026-08-16/17
+
+Nova shipped a real translation channel over that weekend. Verified live
+against `tools/list` on **2026-08-17**: **95 tools, up from 81 on
+2026-08-14** — the date ACE checked and found zero language surface, which
+is why ACE spent three days building English-only UIs (ace#1391).
+
+**Six atoms:** `get_languages`, `get_translatable_content`, `add_language`,
+`update_language`, `remove_language`, `update_translations`. All six are
+already on `nova-architect-autonomous`'s allowed-tool list. Read their
+schemas from the live `tools/list`; do not paraphrase them into a skill.
+
+It is a genuine itext-shaped layer, not a workaround: translation units
+(`tu1:` ids) over 17 worker-facing roles, per-language effective values,
+source fingerprints for optimistic concurrency, explicit provenance and
+review state, protected reference parts (a `field-ref` / `case-ref` /
+`user-ref` inside a label survives translation exactly), ordered
+source/default/target languages, ltr/rtl, and per-language coverage counts.
+
+**The architect will not use it unprompted.** `get_agent_prompt`
+(`autonomous_build`, 70,643 chars, read live 2026-08-17) contains **zero**
+occurrences of `itext`, `locale`, `multiling` or `English`. Its only
+substantive `language` mention states that the *chat* language is
+independent of the app's configured languages, and its numbered build
+workflow has no language step. The capability is real and the tools are
+reachable; nothing happens unless the brief asks. ACE asks via
+`_app-component-library.md § app-language-layer`.
+
+### Contract facts — observed live, not inferred
+
+Proven on 2026-08-17 against scratch app `b4e2c8fd` (created, exercised,
+deleted). Each line is a behaviour ACE would otherwise have guessed at.
+
+| Behaviour | Detail |
+|---|---|
+| Apps are born English | `sourceLanguage: en`, `defaultLanguage: en` on a fresh app |
+| Catalog is broad, auto-translation is narrow | `classicCatalogSize: 486` codes addable manually; automatic translation covers only a checked-in **57-language set**, and **no MCP atom triggers it**. Chichewa/Nyanja (`ny`) returns `automaticTranslation.status: not-evaluated` |
+| `add_language` COPIES, it does not translate | Response: *"copied 4 worker-facing strings from English. Every copied value needs review."* Entries land `origin: copied`, `review: needs-review`. A language added and left alone is an English app wearing another language's name |
+| Writes are provenance-tagged automatically | An `update_translations` write flips `origin` from `copied` to **`ai`**. ACE never has to self-declare machine authorship — Nova records it |
+| **`needs-review` text IS served to workers** | A `needs-review` unit's `effective` is the translation (`"Kafukufuku"`), not the English. **`review` is bookkeeping, not a publish gate.** Nothing withholds unreviewed text from a worker |
+| **Stale translations fail safe to English** | Editing an English label demoted its `ny` translation to `out-of-date`, and that unit's `effective` reverted to the English source. Coverage moved `needs-review: 4` → `needs-review: 3, out-of-date: 1` |
+| Optimistic concurrency is mandatory | `set` requires the current `expectedSourceFingerprint` (`source-v1:text:"Survey"` / `source-v1:prose:{…}`). Max 50 units per call. Page reads with `nextCursor` |
+| `prose` units reject bare strings | `{"error":"Translation unit tu1:… requires a prose value."}`. Labels/hints/help/validation messages are `prose` → `{parts:[{kind:'text',text:'…'}]}`. App/module/form names are `text` → bare string |
+
+### The two rules that follow
+
+1. **Translate LAST.** Because any English edit demotes that unit to
+   `out-of-date` and silently reverts it to English, a language added
+   mid-build is progressively undone by the rest of the build. Finish the
+   English, then add the language, then author translations, then confirm
+   `get_languages` reports `out-of-date: 0`.
+2. **`needs-review` is not a safety net.** Unreviewed ACE-authored text
+   reaches workers immediately. The honesty mechanism is the provenance
+   record (`origin: ai`) plus a real downstream review — not the state name.
+   Do not tell an LLO that unreviewed translations are "not live yet."
 
 ## The 2026-07-31 uuid-addressing migration (read this before writing a Nova call)
 

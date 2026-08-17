@@ -307,7 +307,7 @@ skills don't duplicate it:
   (`pdd-to-deliver-app`, `pdd-to-learn-app`). The canonical, named,
   parameterized **deployability/fitness components** (GPS accuracy-capture,
   data-quality constraints, case-write-back, assessment-gate,
-  english-only-ui, …) the build skills emit into the `/nova:autobuild`
+  app-language-layer, …) the build skills emit into the `/nova:autobuild`
   brief by archetype. Single source of truth for each component's verbatim
   brief paragraph; each component pairs 1:1 with the `pdd-to-*-app-eval`
   fitness dimension that hard-fails a build omitting it.

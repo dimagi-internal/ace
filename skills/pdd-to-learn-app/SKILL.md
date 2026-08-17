@@ -319,15 +319,19 @@ Generate the Learn (training) app from the PDD using the Nova plugin
      - `assessment-gate` — trigger: PDD specifies a readiness /
        competency gate before delivery. (Gate stays Connect-side — Learn
        forms carry no case blocks per the rule above.)
-     - `english-only-ui` (Learn variant) — trigger: PDD names a
-       working language other than English. Build the app in **ENGLISH
-       ONLY** anyway: the working language is context for training and
-       facilitation, not an instruction to translate the app. Do not
-       stack languages inline, and do not search for a translations
-       parameter or report its absence as a blocker — Nova exposes no
-       per-language / itext channel and ACE has stopped faking one
-       (standing decision 2026-08-14, ace#968). Graded by
-       `language_conformance`.
+     - `app-language-layer` (Learn variant) — trigger: PDD names a
+       working language other than English. Build the ENTIRE app in
+       English first — English is the source language and stays the
+       runtime default — then, as the **LAST** build step, add the
+       working language (`add_language(copyFrom: 'en')`) and author real
+       translations via `update_translations`, echoing each unit's
+       `sourceFingerprint`. Translating before the English is final is
+       the failure mode: any later edit silently reverts that string to
+       English (`out-of-date`). Confirm `out-of-date` is 0 via
+       `get_languages` before hand-off. Never stack languages inline.
+       (Standing decision 2026-08-17, ace#1391 forward — Nova shipped the
+       channel; see `_app-component-library.md § app-language-layer` for
+       the proven contract.) Graded by `language_conformance`.
      - `learn-app-naming` — always. App name must contain "Learn app".
      - `end-of-form-previous` — always, every form. End of Form Navigation
        must be "Previous Screen".
@@ -801,11 +805,15 @@ When invoked with a `repairs[]` list:
    *differ on*, so the answer turns on the uncovered rule rather than on general
    judgment. Adding items instead of re-keying inflates the bank and lowers the
    effective bar the gate applies.
-2. **Preserve the invariants.** Every edited item keeps: English-only stem
-   AND options (`english-only-ui`), no option
-   rejectable on sight, no literal `<` / `>` in label text, and a `qN_score`
-   whose calculate references the question as `#form/<id>` — a bare id persists
-   as raw text with no error and silently breaks the scoring chain (ace#1119).
+2. **Preserve the invariants.** Every edited item keeps: an English source
+   stem AND options (`app-language-layer` — repairs edit the English, which is
+   the source language), no option rejectable on sight, no literal `<` / `>` in
+   label text, and a `qN_score` whose calculate references the question as
+   `#form/<id>` — a bare id persists as raw text with no error and silently
+   breaks the scoring chain (ace#1119). **If the app carries a working
+   language, every repaired string's translation is now `out-of-date` and
+   falls back to English** — re-translate the repaired units via
+   `update_translations` and re-confirm `out-of-date` is 0 before hand-off.
 3. **Read back the scoring chain.** After any pass that rewrites options or
    keys, `get_field` on the edited `qN_score` and on `user_score` and assert
    each `calculate.parts` still contains a `field-ref` part, not only text.
