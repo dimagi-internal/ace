@@ -161,6 +161,33 @@ from step 3):
 - **Duplicate handling** — "What happens if I visit the same household
   twice?" — answers from duplicate-detection rules
 
+### `longitudinal-visits`
+
+The PDD describes repeat visits to a durable entity (community,
+household, patient, farm) over time. Take the `atomic-visit` categories
+above, then **replace "Duplicate handling" with the longitudinal form of
+it** and add the entity-lifecycle categories — an FLW working a case list
+asks different questions from one working a fresh sample.
+
+**Archetype-specific categories:**
+
+- **Finding and choosing the entity** — "How do I find the household I
+  visited last month?" / "What if the community I need isn't in my
+  list?" — answers from the case list config and registration path
+- **Sequence and cadence** — "Which visit am I supposed to do next?" /
+  "What if we're behind schedule?" — answers from the Entity Lifecycle
+  section
+- **Duplicate *within a case*** — "I already did this activity with this
+  community — do I get paid if I do it again?" — answers from
+  `payability-against-history` and the `entity_id` composition. This is
+  the question `atomic-visit`'s "same household twice" category cannot
+  express, and it is the one FLWs actually ask.
+- **Ownership and handover** — "Can I submit for a case assigned to
+  another FLW?" / "What happens to my cases if I leave?" — answers from
+  `visit-ownership`
+- **Completion** — "What happens when a community finishes?" — answers
+  from `entity-completion`
+
 ### `focus-group`
 
 The PDD describes FLW-facilitated group discussions where the

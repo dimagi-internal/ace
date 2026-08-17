@@ -70,6 +70,19 @@ Use the 6 dimensions as written:
 
 **FLW Performance** is graded on submission volume, data quality, cap compliance, and per-FLW outliers. **Intervention Effectiveness** is graded on whether quantitative success metrics from the PDD were met.
 
+### `longitudinal-visits`
+Use the 6 dimensions, with two re-anchored:
+
+**FLW Performance** is graded on caseload coverage and sequence
+integrity, not submission volume alone — an FLW submitting steadily
+while their cases stall is not performing well, and volume-only grading
+scores that as success.
+
+**Intervention Effectiveness** is graded on **entity progression**
+(did the entities move through their lifecycle as designed?), which is
+usually the partner's own headline indicator, rather than on submission
+counts.
+
 ### `focus-group`
 The same 6 dimensions, but **FLW Performance** and **Intervention Effectiveness** need different rubrics:
 

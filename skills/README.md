@@ -324,7 +324,7 @@ These are added when the skill needs them. They have a fixed location and format
 
 ### `## Archetypes` (when the skill branches on PDD delivery archetype)
 
-Required if the skill behaves differently for `atomic-visit` vs `focus-group` vs `multi-stage` PDDs. Place this section **immediately before** `## MCP Tools Used`.
+Required if the skill behaves differently for `atomic-visit` vs `longitudinal-visits` vs `focus-group` vs `multi-stage` PDDs. Place this section **immediately before** `## MCP Tools Used`.
 
 Each archetype is a `### <archetype-name>` subheading with a short description and the archetype-specific instructions. The default (`atomic-visit`) goes first. Skills that don't branch on archetype omit this section entirely.
 
@@ -697,7 +697,7 @@ If you're writing a skill that sets up verification, runs tests, reviews data, o
 
 ## How to register a new archetype
 
-The 3 current archetypes are `atomic-visit`, `focus-group`, and `multi-stage`. Adding a new archetype is a framework-level change that touches ~3 places:
+The 4 current archetypes are `atomic-visit`, `longitudinal-visits`, `focus-group`, and `multi-stage`. Adding a new archetype is a framework-level change that touches ~3 places:
 
 1. **`templates/pdd-template.md`** — add the new archetype to the `Archetype:` enum description and to the archetype-guidance block at the top of the template.
 2. **`skills/idea-to-pdd/SKILL.md`** — add a `### <new-archetype>` subheading inside `## Archetypes` describing the additional questions to ask in step 3 and the archetype-specific sections to draft in step 4.
