@@ -428,8 +428,9 @@ Nova shipped a real translation channel over that weekend. Verified live
 against `tools/list` on **2026-08-17**: **95 tools, up from 81 on
 2026-08-14** — the date ACE checked and found zero language surface, which
 is why ACE spent three days building English-only UIs (ace#1391 — now CLOSED
-carrying the superseded English-only resolution; the forward anchor for current
-behaviour is **ace#1466**, with the translation-quality residual in ace#1468).
+carrying the superseded English-only resolution, as is ace#968 before it. This
+section plus `_app-component-library.md § app-language-layer` IS the current
+source of truth; cite them and PR #1463, not those tickets).
 
 **Six atoms:** `get_languages`, `get_translatable_content`, `add_language`,
 `update_language`, `remove_language`, `update_translations`. All six are
