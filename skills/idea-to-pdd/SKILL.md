@@ -440,7 +440,7 @@ orchestrator from the per-skill QA + eval verdicts on the fly. -->
       the app.** Nova shipped a real per-language channel, so ACE builds
       the app's strings in the working language on top of an
       always-complete English source (standing decision 2026-08-17,
-      ace#1466 (forward anchor; supersedes the CLOSED ace#1391) — see `_app-component-library.md §
+      PR #1463, superseding ace#968/#1391 — see `_app-component-library.md §
       app-language-layer`). What the PDD may now assert: labels, choices,
       hints and assessment items appear in the working language, and the
       app carries English as its source language. What it must still NOT
@@ -1173,7 +1173,7 @@ practice-session audio review. No Learn app is produced. See
 **Additional questions to answer in step 3:**
 
 - **Recruitment**: Who are the segments? How will participants be identified? What sample size per segment? Comparison groups and their justification?
-- **Language**: Working language, and its CommCare language code? Facilitator language fluency? (The APP is now translated into the working language on top of an always-complete English source — ace#1466 (forward anchor; supersedes the CLOSED ace#1391), 2026-08-17. Also ask which OTHER surfaces need the working language: training materials, facilitation, OCS chatbot. Translations are ACE-authored and carry `needs-review` — ask who reviews them, same as you would for the English.)
+- **Language**: Working language, and its CommCare language code? Facilitator language fluency? (The APP is now translated into the working language on top of an always-complete English source — PR #1463, superseding ace#968/#1391, 2026-08-17. Also ask which OTHER surfaces need the working language: training materials, facilitation, OCS chatbot. Translations are ACE-authored and carry `needs-review` — ask who reviews them, same as you would for the English.)
 - **Facilitation skill level**: Existing skill assumed, or training required? Training surface is the per-opp **OCS chatbot** (loaded with the FGD Guide + Output Specification + handbook gdoc) plus a coordinator-graded practice-session audio review. The Learn app produced for focus-group is a **minimal sentinel** (one-form readiness gate, not a training curriculum) — it exists to satisfy Connect's API + gate attestation submissions on coordinator-confirmed practice-session-pass, NOT to carry training content. See `pdd-to-learn-app/SKILL.md § Archetypes § focus-group` for the sentinel spec.
 - **Consent**: Verbal/written? Audio recording consent? Photo consent? Documented how?
 - **Venue**: Neutral / facility / leader's compound? Each biases differently — which is acceptable?

@@ -1092,7 +1092,7 @@ For each form-walk segment of a recipe:
    option below the fold — a long option label on a small screen pushes the
    4th option off, and this was measured on trilingual labels (en/nya/tum),
    where a 4-option question routinely rendered ~3 options per screen. This
-   case is **back in full force as of 2026-08-17** (ace#1466 (forward anchor; supersedes the CLOSED ace#1391)): ACE
+   case is **back in full force as of 2026-08-17** (PR #1463, superseding ace#968/#1391): ACE
    builds a real per-language layer again, and a translated label is often
    LONGER than its English source, so plan for the same off-screen options
    the trilingual builds hit. (It briefly went rare during the English-only

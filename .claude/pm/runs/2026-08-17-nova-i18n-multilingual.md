@@ -68,7 +68,7 @@ Design calls worth recording:
 
 ## Closed
 
-- Superseded the 2026-08-14 English-only decision (ace#1466 (forward anchor; supersedes the CLOSED ace#1391)). #1391 and
+- Superseded the 2026-08-14 English-only decision (PR #1463, superseding ace#968/#1391). #1391 and
   the component brief both carry the reason.
 - **Latent bug fixed:** `pdd-to-deliver-app-eval` still carried the
   **pre-2026-08-14** weight comment (`HARD-FAIL on English-only … inline
@@ -120,3 +120,23 @@ Design calls worth recording:
   descriptions and writing plausible instructions — would have produced
   translate-first ordering, which fails silently and only shows up as English
   strings in a shipped app.
+
+- **Filed two issues that should not have been issues, and closed them same
+  day.** #1466 ("shipped unvalidated") and #1468 ("translation quality
+  unmeasured") were both really *"this new thing has not had a real run yet"* —
+  which is the normal state of newly shipped code, not a finding. Jon: *"there
+  are plenty of things that we haven't proven but they don't deserve issues, the
+  next AI will think there is something specific to test there and be confused …
+  the entire CommCare app has the issue of needing to be validated."* Both closed
+  `not planned`. **The bar for filing is a specific defect or a specific piece of
+  work, not a general validation residual** — CLAUDE.md's "file the moment you've
+  confirmed one" is about *confirmed defects*, and I over-applied it to
+  not-yet-exercised code.
+- **A closed issue is a bad anchor for current behaviour, and so is a new issue.**
+  I correctly spotted that docs citing the CLOSED #1391 point at the opposite
+  decision — then fixed it by filing #1466 as a "forward anchor," which is the
+  same mistake wearing a different hat (and created the phantom work item above).
+  The durable citation is a **merged PR** (stable history that cannot contradict
+  itself) plus the **in-repo brief** (`_app-component-library.md §
+  app-language-layer`), which is current by construction because the preventer
+  test pins it. All 20 citations now read "PR #1463, superseding ace#968/#1391."
