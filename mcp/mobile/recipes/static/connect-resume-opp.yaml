@@ -173,8 +173,23 @@ appId: org.commcare.dalvik
 - takeScreenshot: "connect-resume-opp-list-synced"
 
 # Scroll the target opp's In-Progress card into the viewport.
-# `visibilityPercentage: 60` tolerates multi-line title-wrap (same
-# reasoning as connect-claim-opp.yaml).
+# SCROLL BUDGET (ace#1289) — `speed: 40`, `timeout: 120000`,
+# `visibilityPercentage: 30`, matching connect-claim-opp.yaml.
+#
+# This recipe NEVER received the #647 recalibration: it sat on the
+# pre-#647 defaults (`timeout: 20000`, `visibilityPercentage: 60`, no
+# explicit speed) through both #647 and #800, so its budget was two
+# rounds of tuning behind the sibling recipe it is supposed to mirror.
+# That is the actual defect #1289 names — not that the numbers were
+# wrong, but that only one of the two tile-finding recipes was ever
+# tuned.
+#
+# `visibilityPercentage` drops 60 → 30 for the same reason it did in the
+# claim recipe: a multi-line wrapped title may never present 60% of
+# itself in the viewport, so the higher bar can make a VISIBLE tile
+# unmatchable. Live-proven budget: see connect-claim-opp.yaml's
+# SCROLL BUDGET note (bednet-check-2-visit/20260814-0357).
+#
 # `centerElement: true` (jjackson/ace#800) — keep the whole card (title +
 # CTA button) in the viewport. The card-scoped `childOf containsChild`
 # tap guards below need the CTA rendered, not clipped at the viewport
@@ -183,8 +198,9 @@ appId: org.commcare.dalvik
     element:
       text: ".*${OPP_RUN_ID}.*"
     direction: DOWN
-    timeout: 20000
-    visibilityPercentage: 60
+    speed: 40
+    timeout: 120000
+    visibilityPercentage: 30
     centerElement: true
 - assertVisible:
     text: ".*${OPP_RUN_ID}.*"
