@@ -467,9 +467,15 @@ here is safe. Because removing an array element is a **replace**, not a
 deep-merge add, write the filtered list back with
 `mcp__plugin_ace_ace-gdrive__update_yaml_file` scoped to
 `phases.commcare-setup.residuals` — set that single key to the filtered array
-(overwrite the list). Do NOT use `merge: 'deep'` (it can only add/update
-entries, never remove one), and keep the write scoped to that one key so sibling
-phase state is untouched (`app-deploy` § Step 6; jjackson/ace#572).
+(overwrite the list). Keep the write scoped to that one key so sibling phase
+state is untouched (`app-deploy` § Step 6; jjackson/ace#572).
+
+Do not reason about this as "deep merge cannot remove an entry" — that model is
+wrong and it is the one that caused ace#1467. `deep` REPLACES an array
+wholesale, exactly like the other modes, so it *would* remove entries; the
+hazard is the opposite of the one that sentence described. The rule that
+actually matters is the same either way: **build the full intended list and
+write it once**, because anything you do not resend is gone.
 
 If the camera-only pass was skipped (`not-required-by-pdd`), still resolve
 the camera-only residual if one exists, annotating
