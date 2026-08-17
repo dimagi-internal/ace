@@ -70,13 +70,15 @@ describe('no hand-rolled foreground PR-wait loops', () => {
     ).toEqual([]);
   });
 
-  it('skills/shipping exists and documents the backgrounded wait', () => {
+  it('skills/shipping binds to the fleet-canonical core rather than forking it', () => {
     const skill = readFileSync('skills/shipping/SKILL.md', 'utf8');
-    expect(skill).toMatch(/run_in_background/);
-    expect(skill).toMatch(/gh pr checks .*--watch/);
-    // The ship checkpoint — merge state stated explicitly, never implied.
-    expect(skill).toMatch(/MERGED/);
-    expect(skill).toMatch(/ship checkpoint/i);
+    // The mechanics live in canopy agent-core/shipping.md; this stub must point there,
+    // not re-derive them (canopy #498 — hal/eva/ace had each written their own copy).
+    expect(skill).toMatch(/agent-core\/shipping\.md/);
+    expect(skill).toMatch(/canopy-update-check\.sh/);
+    // ACE-specific facts that must NOT be pushed up into the shared core.
+    expect(skill).toMatch(/clean-install/);
+    expect(skill).toMatch(/\/ace:update/);
   });
 
   it('the fix-and-ship dispatch template delegates rather than inlining a wait', () => {
