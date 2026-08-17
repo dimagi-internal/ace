@@ -9,7 +9,7 @@ import { join } from 'node:path';
 // hazard:
 //   2026-07-30  inline stacking sanctioned      (ace#968)
 //   2026-08-14  English-only, stacking retired  (ace#1391)
-//   2026-08-17  real per-language channel       (ace#1391 forward)
+//   2026-08-17  real per-language channel       (ace#1466 (forward anchor; supersedes the CLOSED ace#1391))
 //
 // Two distinct failure modes follow, and this file pins both:
 //
@@ -58,7 +58,7 @@ function componentBody(): string {
   return rest.slice(0, end === -1 ? undefined : end);
 }
 
-describe('app-language-layer (ace#1391 forward, 2026-08-17)', () => {
+describe('app-language-layer (ace#1466 (forward anchor; supersedes the CLOSED ace#1391), 2026-08-17)', () => {
   it('the component ships under its new name; both retired names are gone', () => {
     const lib = read(...LIBRARY);
     expect(lib).toMatch(/^### app-language-layer$/m);

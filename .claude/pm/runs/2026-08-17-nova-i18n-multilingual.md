@@ -68,7 +68,7 @@ Design calls worth recording:
 
 ## Closed
 
-- Superseded the 2026-08-14 English-only decision (ace#1391 forward). #1391 and
+- Superseded the 2026-08-14 English-only decision (ace#1466 (forward anchor; supersedes the CLOSED ace#1391)). #1391 and
   the component brief both carry the reason.
 - **Latent bug fixed:** `pdd-to-deliver-app-eval` still carried the
   **pre-2026-08-14** weight comment (`HARD-FAIL on English-only … inline
@@ -78,12 +78,12 @@ Design calls worth recording:
 
 ## Backlog
 
-- **`defaultLanguage` stays `en`.** The working language is a selectable target,
-  not what an FLW sees first. That reads "English is always the primary
-  language" literally, and it is ONE atom to flip
-  (`update_language action: 'set-default'`). Flagged to Jon in the PR, because
-  `needs-review` text is served live — so it is a product decision about what a
-  worker sees, not a build detail. **Unresolved on purpose.**
+- ~~**`defaultLanguage` stays `en`.**~~ **RESOLVED same day.** Flagged to Jon in
+  the PR as a product decision rather than a build detail; his answer: *"all
+  screenshots for review for now should stay english."* Confirmed for the
+  current review posture and recorded in the component brief so it is not
+  re-raised. Still one atom to flip if a live deployment later needs the
+  worker's language first.
 - **No multilingual build has actually run yet.** The contract is proven atom by
   atom on a 4-string scratch app; the ordering rule is proven; but no Learn or
   Deliver app has been built through `app-language-layer` end-to-end. First real

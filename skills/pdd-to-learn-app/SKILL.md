@@ -329,7 +329,7 @@ Generate the Learn (training) app from the PDD using the Nova plugin
        the failure mode: any later edit silently reverts that string to
        English (`out-of-date`). Confirm `out-of-date` is 0 via
        `get_languages` before hand-off. Never stack languages inline.
-       (Standing decision 2026-08-17, ace#1391 forward — Nova shipped the
+       (Standing decision 2026-08-17, ace#1466 (forward anchor; supersedes the CLOSED ace#1391) — Nova shipped the
        channel; see `_app-component-library.md § app-language-layer` for
        the proven contract.) Graded by `language_conformance`.
      - `learn-app-naming` — always. App name must contain "Learn app".
