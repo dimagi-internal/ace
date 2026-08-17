@@ -207,6 +207,78 @@ describe('update_yaml_file: server-side patch+CAS', () => {
     expect(YAML.parse(fake.state.content)).toEqual({ a: { list: [9], n: 2, keep: 'x' } });
   });
 
+  // ---------------------------------------------------------------------
+  // dimagi-internal/ace#1467 — the LOST-RESIDUAL repro, named.
+  //
+  // The generic array test above already pinned the semantics, and it passed
+  // the whole time. That is the point: the CODE was never wrong. CLAUDE.md
+  // described `deep` as "recursive, preserves siblings at every depth", which
+  // is true for object keys and false for array elements, and
+  // app-hq-settings carried the inverse-but-also-false rationale that deep
+  // "can only add/update entries, never remove one".
+  //
+  // So this test exists to pin the SHAPE that actually loses data in
+  // production — successive partial patches of an array-valued phase key —
+  // rather than the abstract rule. residuals[] is standing state with no
+  // status field: Phase 6 treats presence as open, so a silently dropped
+  // entry is indistinguishable from a resolved one.
+  // ---------------------------------------------------------------------
+  it('deep merge: successive partial patches of residuals[] keep ONLY the last (#1467)', async () => {
+    const yaml = YAML.stringify({
+      phases: {
+        'commcare-setup': {
+          status: 'in-progress',
+          residuals: [{ id: 'camera-only' }, { id: 'grid-menu' }],
+        },
+      },
+    });
+    const fake = makeFakeDriveWithDoc(yaml, '1');
+
+    // A caller who believes "deep preserves siblings at every depth" writes
+    // just the one residual it owns.
+    await handleUpdateYamlFile(
+      {
+        fileId: 'f1',
+        patch: { phases: { 'commcare-setup': { residuals: [{ id: 'camera-only' }] } } },
+        merge: 'deep',
+      },
+      fake as any,
+    );
+
+    const after = YAML.parse(fake.state.content);
+    // grid-menu is GONE — not merged, not appended. This is the data loss.
+    expect(after.phases['commcare-setup'].residuals).toEqual([{ id: 'camera-only' }]);
+    // ...while sibling OBJECT keys at the same depth survive, which is exactly
+    // why the doc's wording read as safe.
+    expect(after.phases['commcare-setup'].status).toBe('in-progress');
+  });
+
+  it('deep merge: the correct pattern is read, filter, write the WHOLE list (#1467)', async () => {
+    // The remedy, pinned alongside the hazard so the fix is discoverable from
+    // the failing test rather than only from a doc.
+    const yaml = YAML.stringify({
+      phases: {
+        'commcare-setup': {
+          status: 'in-progress',
+          residuals: [{ id: 'camera-only' }, { id: 'grid-menu' }],
+        },
+      },
+    });
+    const fake = makeFakeDriveWithDoc(yaml, '1');
+
+    const current = YAML.parse(fake.state.content).phases['commcare-setup'].residuals;
+    const remaining = current.filter((r: { id: string }) => r.id !== 'camera-only');
+
+    await handleUpdateYamlFile(
+      { fileId: 'f1', patch: { phases: { 'commcare-setup': { residuals: remaining } } }, merge: 'deep' },
+      fake as any,
+    );
+
+    const after = YAML.parse(fake.state.content);
+    expect(after.phases['commcare-setup'].residuals).toEqual([{ id: 'grid-menu' }]);
+    expect(after.phases['commcare-setup'].status).toBe('in-progress');
+  });
+
   it('retries once on revision_conflict (concurrent writer wins, we re-read)', async () => {
     const yaml = YAML.stringify({ phase: 'a', counter: 1 });
     const fake = makeFakeDriveWithDoc(yaml, '5');
