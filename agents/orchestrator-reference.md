@@ -1495,70 +1495,54 @@ out the precise diagnosis the retry needs.
 ## Fix-and-ship subagent template — explicit merge confirmation
 
 When the orchestrator (or any level-0 dispatcher) launches a
-background fix-and-ship subagent, the subagent's final step MUST be
-an explicit poll loop that waits for a terminal PR state. Returning
-after `gh pr merge --auto --merge` is armed — without confirming the
-merge actually landed — is the canonical failure mode that surfaced
-across all 6 fix-and-ship dispatches in the turmeric 20260515-0536
-cycle. Each one returned "checks running" / "watchers armed" / "PR
-queued" and the operator had to re-poll manually.
+background fix-and-ship subagent, the subagent's final step MUST be a
+confirmed terminal PR state. Returning after `gh pr merge --auto
+--merge` is armed — without confirming the merge actually landed — is
+the canonical failure mode that surfaced across all 6 fix-and-ship
+dispatches in the turmeric 20260515-0536 cycle. Each one returned
+"checks running" / "watchers armed" / "PR queued" and the operator had
+to re-poll manually.
 
-### Bad pattern (don't do this)
+**The mechanics live in `skills/shipping`. Dispatch it; do not inline a
+wait here.** This section previously carried a verbatim
+`until [ … = MERGED ]; do sleep 30; done` loop and told dispatchers it
+was "cheap (~6 calls per merge cycle)". Both halves were wrong: a
+foreground `sleep` used to wait is **blocked by the harness Bash
+contract**, so the loop never ran as written, and the fallback burned
+the full 10-minute Bash timeout (`Exit code 143`) waiting on a PR that
+merges in ~70 seconds. Measured 2026-08-17; reproducer and the
+corrected backgrounded form are in `skills/shipping/SKILL.md § Step 2`.
+
+### The dispatch prompt
+
+Tell the subagent to run `skills/shipping` and return its Step 5 ship
+checkpoint. Don't re-list the steps — that narrows scope and silently
+skips skill-defined work (`CLAUDE.md`, dispatch-prompt discipline).
 
 ```
 ... (subagent does the fix + push + PR creation) ...
 
-gh pr merge 333 --auto --merge
-
-Return: PR #333 created and auto-merge armed. clean-install check
-        is running.
+Run skills/shipping end to end. Return its Step 5 ship checkpoint
+verbatim, plus the fields below.
 ```
-
-The subagent has no idea whether the PR merged. The next dispatcher
-either polls itself (defeats the point of backgrounding) or assumes
-success (silently builds on un-merged work).
-
-### Good pattern (canonical)
-
-```
-... (subagent does the fix + push + PR creation) ...
-
-gh pr merge 333 --auto --merge
-
-# Poll until terminal state: MERGED, DIRTY (needs rebase), or
-# any FAILURE in the status check rollup.
-until [ "$(gh pr view 333 --json state -q .state 2>/dev/null)" = "MERGED" ] || \
-      [ "$(gh pr view 333 --json mergeStateStatus -q .mergeStateStatus 2>/dev/null)" = "DIRTY" ] || \
-      gh pr view 333 --json statusCheckRollup -q '.statusCheckRollup[] | select(.conclusion=="FAILURE")' 2>/dev/null | grep -q .; do
-  sleep 30
-done
-
-Return: PR #333 state=<MERGED|DIRTY|CHECK-FAILED>
-        mergedAt=<timestamp-if-merged>
-        failed-check=<name-if-failure>
-```
-
-If `DIRTY` surfaces, the subagent should resolve via
-`bash scripts/version-bump.sh --rebase-first && git push --force-with-lease`
-and re-enter the poll. If a check `FAILURE` surfaces, return the check
-name + URL — the orchestrator decides whether to escalate or relaunch
-with a fix.
-
-The poll loop is cheap (one `gh pr view` per 30s; ~6 calls per merge
-cycle) and is the only signal that distinguishes "merged" from "armed
-but stuck."
 
 ### Required fields in the subagent return
 
 - PR URL
-- Final state (MERGED / DIRTY-after-rebase-exhausted / CHECK-FAILED /
-  open-waiting-only-if-timeout)
+- **Merge state** — `MERGED` / `OPEN` / `CLOSED`, read from
+  `gh pr view --json state`, never inferred from auto-merge being armed
 - For MERGED: `mergedAt`
-- For DIRTY-after-rebase-exhausted: which non-version files conflicted
-- For CHECK-FAILED: check name + first 200 chars of failure log
+- For OPEN: `mergeStateStatus` + why (checks running / DIRTY after
+  rebase exhausted / check-failed), and for DIRTY-after-exhaustion
+  which non-version files conflicted
+- For a failed check: check name + first 200 chars of the failure log
+- The next planned action
+
+`OPEN` with a reason is a valid, useful return. "Auto-merge armed" is
+not — it is the absence of a return.
 
 See also: `CLAUDE.md § Plugin updates — NEVER locally patch` for the
-end-to-end "bump → PR → poll → /ace:update" workflow this template
+end-to-end "bump → PR → wait → /ace:update" workflow this template
 slots into.
 
 ## Pre-flight rationale

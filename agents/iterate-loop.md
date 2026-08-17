@@ -443,14 +443,18 @@ The subagent:
 1. Root-causes via the `investigate` skill (Iron Law: no fix without root
    cause).
 2. Makes the **minimal** fix in the failing skill / recipe / atom.
-3. Ships per the canonical poll-loop
-   (`orchestrator-reference.md § Fix-and-ship subagent template`):
+3. Ships via `skills/shipping` (dispatch wrapper:
+   `orchestrator-reference.md § Fix-and-ship subagent template`):
    `bash scripts/version-bump.sh` → commit → push → `gh pr create` →
-   `gh pr merge <pr> --auto --merge` → **poll until terminal state**
-   (MERGED / DIRTY / CHECK-FAILED).
+   `gh pr merge <pr> --auto --merge` → **wait per `skills/shipping`
+   § Step 2** (one backgrounded command that exits on the condition —
+   never a foreground sleep loop) → confirm a terminal state
+   (MERGED / OPEN-with-reason / CLOSED).
 4. `gh issue create` against the ACE repo's `origin` (no `-R` needed) (one per distinct finding — the
    "file ACE issues mid-run" rule).
-5. Returns: PR URL, final state, merged VERSION (if MERGED), issue URL.
+5. Returns: the `skills/shipping` Step 5 ship checkpoint (PR URL, merge
+   state, `mergedAt` or why-still-open, next action), merged VERSION (if
+   MERGED), issue URL.
 
 **After the subagent returns MERGED:**
 - **Refresh the runner to the new plugin version** ("trigger a plugin update
