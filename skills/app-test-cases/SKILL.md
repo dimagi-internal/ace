@@ -28,7 +28,8 @@ Phase 6 needs them.
 | Phase 3 | `3-commcare/pdd-to-learn-app_summary.md` and `pdd-to-deliver-app_summary.md` | nova_app_id per app |
 | Nova MCP | `get_app({app_id: <nova_app_id>})` | authoritative form/field IDs to resolve into real Maestro selectors |
 | Static | `mcp/mobile/recipes/static/` | recipe palette / templates |
-| **Atlas** | `docs/mobile-atlas/connect-2.62.0.md` | **ground-truth navigation map for every Connect-side surface.** Use it as the authoritative reference for screen IDs, transitions, and selector behavior — DO NOT improvise selectors that contradict the atlas. |
+| **Selector map** | `mcp/mobile/selectors/connect-<apkVersion>.yaml` (default `2.63.2`) | **the authoritative, live-calibrated source for screen IDs and selector behavior.** Rows carry `unverified: true` or a `Live-verified` note, so the map states its own confidence per row — DO NOT improvise selectors that contradict it. |
+| **Atlas** (partial, historical) | `docs/mobile-atlas/connect-2.62.0.md` | narrative transition/side-effect notes only, written against **2.62.0**. The default APK is `2.63.2` (`mcp/mobile/client.ts` `DEFAULT_APK_VERSION`), so this atlas is one minor behind and is **not** ground truth. Where the atlas and the selector map disagree, the selector map wins; where the atlas says a surface is UNREACHED, check the palette recipes in `mcp/mobile/recipes/static/` before believing it. |
 
 ## Products
 
@@ -751,13 +752,17 @@ visible), a `form-nav-finish` fallback for the score-gated two-screen FINISH
 entirely** — there is no home round-trip in a single-module app. Multi-module
 apps keep the `content-form-finish` + `learn-suite-reentry` loop above.
 
-**Use the atlas (`docs/mobile-atlas/connect-2.62.0.md`) to verify each
-transition you author.** Each section of the atlas documents one
-screen with its stable resource-ids, the transitions out of it, and
-side-effects (system prompts, network calls, screen replacements). If
-a recipe needs a transition the atlas doesn't document, that's a gap
-in the atlas — flag it in the recipe header comment AND in the atlas's
-"Open questions" list for the next walk.
+**Verify each transition you author against the selector map for the
+active APK (`mcp/mobile/selectors/connect-<apkVersion>.yaml`, default
+`2.63.2`), and against the palette recipes in
+`mcp/mobile/recipes/static/`** — those two are live-calibrated and carry
+per-row provenance. `docs/mobile-atlas/connect-2.62.0.md` remains useful
+for narrative transition and side-effect notes (which screen replaces
+which, what system prompts fire), but it was written against **2.62.0**
+and its "Open questions" are stale — several have since been answered in
+recipe headers rather than in the atlas. If a recipe needs a transition
+neither source documents, flag it in the recipe header comment and file
+it, rather than treating the 2.62.0 atlas's silence as evidence.
 
 Each `is_smoke=true` journey's recipe **must** include the Connect-
 login + opp-claim prefix so it can run from a cold boot (the cloud

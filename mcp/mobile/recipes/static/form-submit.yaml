@@ -1,8 +1,20 @@
 # Submit a form at its final question.
 #
-# UNVERIFIED — atlas walk hasn't passed the Final Assessment yet, so we
-# don't know if Deliver forms have an explicit Submit button or
-# auto-finalize via `nav_btn_next` (as Learn-app forms do — atlas §7).
+# DELIVER FINALIZE IS KNOWN — do not re-file this as unverified.
+# Plain (non-score-gated) Deliver forms AUTO-FINALIZE via `nav_btn_next`
+# on the last question, exactly as plain Learn forms do (atlas §7). There
+# is no explicit Submit button on that path, and finalizing writes the
+# form to the LOCAL OUTBOX and returns to the form list — it does NOT
+# sync. Observed live on bednet-spot-check/20260729-1239; the full
+# transcript, including the "You last synced with the server: never"
+# reading that proved it, is recorded in the sibling `deliver-sync.yaml`
+# header (dimagi-internal/ace#1066). Server round-trip is that recipe's
+# job, not this one's.
+#
+# The `form-submit` branch below is therefore a defensive no-op on every
+# surface walked to date. It is retained because it costs one invisible-
+# element check and would catch a future Deliver form that does ship an
+# explicit Submit, but its absence is the expected case — not a gap.
 #
 # This recipe branches:
 #   - If a Submit button is visible, tap it (form-submit selector).
@@ -19,8 +31,9 @@
 #
 # Post-state: depends on the form. Learn forms return to
 # StandardHomeActivity with a "1 form sent to server!" toast +
-# `card_subtext` update. Deliver forms (TBD) likely have an explicit
-# confirmation surface.
+# `card_subtext` update. Plain Deliver forms return to the FORM LIST with
+# the visit in the local outbox and no toast — chain `deliver-sync.yaml`
+# when the leg has to prove the visit reached Connect.
 #
 # Parameters — BOTH ARE REQUIRED AT EVERY CALL SITE:
 #   ${SCREENSHOT_NAME_PRE_SUBMIT} — screenshot before tapping Submit
@@ -52,9 +65,9 @@
 # would land on the SAME `undefined.png` and post-submit would overwrite
 # pre-submit (the original #852 symptom).
 #
-# When the atlas walks Deliver, this recipe should be replaced with a
-# concrete branch (either keep the auto-finalize path or use a real
-# Submit selector with known label).
+# The 2.62.0-era note that this recipe should be "replaced once the atlas
+# walks Deliver" is retired: Deliver was walked, the auto-finalize path is
+# the answer, and the branch above already encodes it.
 appId: org.commcare.dalvik
 ---
 - takeScreenshot: "${SCREENSHOT_NAME_PRE_SUBMIT}"
