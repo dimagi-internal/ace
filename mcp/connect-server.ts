@@ -841,6 +841,20 @@ server.tool('commcare_create_ucr_expression',
   async (args) => runAtom(async () => (await commcareClient(args.server)).createUcrExpression(args))
 );
 
+server.tool('commcare_linked_app_copy',
+  'Pull a linked copy of an app from an upstream domain into a downstream domain. POSTs CopyApplicationForm to /a/<upstream_domain>/apps/copy_app/ (view: copy_app in corehq.apps.app_manager.views.apps). Closes the long-standing Connect Interviews atom gap — reverse-engineered from CommCare HQ source since app-copying is NOT handled by the generic linked_domain content-sync RMI (MODEL_APP is deliberately absent from that dispatch table). Returns the new app\'s id and name (recovered via a re-list-by-name after the redirect, not by parsing the Location header). linked defaults to true (a live linked app eligible for future pulls, not a disconnected one-off copy) — this is what the Connect Interviews per-cohort flow always wants. NOT YET LIVE-VALIDATED — probe against a disposable domain pair before relying on it in a real run.',
+  {
+    server: HQ_SERVER_FIELD,
+    upstream_domain: z.string().describe('Domain the source app currently lives in (the linked-domain upstream/master).'),
+    upstream_app_id: z.string().describe('The source app\'s id, to be copied (from commcare_list_apps on the upstream domain).'),
+    downstream_domain: z.string().describe('Domain to copy the app into (the linked-domain downstream).'),
+    name: z.string().describe('Name for the new copy — should include the cohort id per the Connect Interviews naming convention.'),
+    linked: z.boolean().optional().describe('Whether the copy stays connected to upstream as a live linked app eligible for future pulls, vs. a disconnected one-off copy. Default true.'),
+    build_id: z.string().optional().describe('Specific build/version of the source app to copy. Omit for the latest saved version.'),
+  },
+  async (args) => runAtom(async () => (await commcareClient(args.server)).createLinkedAppCopy(args))
+);
+
 server.tool('commcare_list_inbound_apis',
   'List Inbound API configurations on a CommCare HQ domain. POST /a/<domain>/motech/inbound/ with action=paginate. Returns each API\'s id, name, description, api_url, edit_url. Pro Edition / DATA_FORWARDING required.',
   { server: HQ_SERVER_FIELD, domain: z.string(), limit: z.number().int().positive().optional() },
