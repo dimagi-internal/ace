@@ -36,7 +36,7 @@ See `skills/_qa-template.md` for the shared QA contract (verdict YAML format, au
 | 4 | `payment_schedule_sums_to_100` | static | Milestone percentages in section 6.2 sum to 100. | re-derive percentages from `wo-payment-schedule-split` decision and re-render |
 | 5 | `total_nte_present` | static | Total Not-to-Exceed USD value present in section 6.1 (number or `[Placeholder]`). | insert "USD <amount>" from `wo-total-not-to-exceed-usd` or `USD [TBD]` |
 | 6 | `signature_blocks_present` | static | Both `**Subcontractor**` and `**Dimagi, Inc.**` signature blocks present. | re-add missing block per templates/work-order-template.md |
-| 7 | `archetype_appropriate_scope` | static | Scope of Work language matches declared archetype: atomic-visit references per-visit + photo/GPS; focus-group references per-session + attestation + gdoc; multi-stage references per-stage subsections. | re-draft Scope of Work to match archetype |
+| 7 | `archetype_appropriate_scope` | static | Scope of Work language matches declared archetype: atomic-visit references per-visit + photo/GPS; **longitudinal-visits** references per-visit + photo/GPS **and** a longitudinal marker (the followed entity, or its phase/sequence/follow-up cadence); focus-group references per-session + attestation + gdoc; multi-stage references per-stage subsections. | re-draft Scope of Work to match archetype |
 | 8 | `no_scaffolding_markers` | static | No leaked `<<...>>` AI scaffolding markers in the work-order body. | resolve each marker with concrete content or `[Placeholder]` bracket |
 
 The static check functions live at `skills/pdd-to-work-order-qa/checks.ts` as importable TS. Every check returns a `QACheckResult` (`{pass, detail?, auto_fix_hint?}`) per `lib/qa-types.ts`.

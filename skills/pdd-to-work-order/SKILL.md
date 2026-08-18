@@ -33,7 +33,7 @@ Take the approved PDD and decisions.yaml and produce a contractual Work Order dr
 
 1. **Read inputs in parallel.** Issue one `drive_read_file` block for the PDD, decisions.yaml, and inputs-manifest. Then read the skill-local `references/writing-style.md` once — it governs every prose token you synthesize below. Trust context across subsequent steps (do not re-read).
 
-2. **Determine archetype** from the PDD's frontmatter (`archetype: atomic-visit | focus-group | multi-stage`). The archetype branches the Scope of Work, Verification, Roles RACI, and Payment per-unit sections.
+2. **Determine archetype** from the PDD's frontmatter (`archetype: atomic-visit | longitudinal-visits | focus-group | multi-stage`). The archetype branches the Scope of Work, Verification, Roles RACI, and Payment per-unit sections.
 
 3. **Resolve contractual fields.** For each work-order field, apply the inference order:
 
@@ -54,7 +54,7 @@ Take the approved PDD and decisions.yaml and produce a contractual Work Order dr
    | `wo-ethics-scope` | Operational-only vs patient-level | Ethics section |
    | `wo-data-storage-region` | Server region for data storage (default: US) | Data Handling section |
 
-4. **Append `wo-*` rows to `decisions.yaml`** via the `decisions_append_rows` MCP atom (ace-decisions server). Do not hand-construct YAML and do not use `update_yaml_file` for this file — the dedicated atom validates each row against `lib/decisions-schema.ts` v3 at the call boundary and is idempotent on re-runs.
+4. **Append `wo-*` rows to `decisions.yaml`** via the `decisions_append_rows` MCP atom (ace-decisions server). Do not hand-construct YAML and do not use `update_yaml_file` for this file — the dedicated atom validates each row against `lib/decisions-schema.ts` v4 at the call boundary and is idempotent on re-runs.
 
    Tool call:
 
@@ -72,16 +72,19 @@ Take the approved PDD and decisions.yaml and produce a contractual Work Order dr
          "ai-default": "2026-05-22 to 2026-07-31",
          options: ["2026-05-22 to 2026-07-31"],
          source: "pdd-timeline",
-         status: "ai-default"
+         status: "ai-default",
+         evidence_basis: "stated"
        },
        ...
      ]
    })
    ```
 
-   Field shape: `phase: "1-design"` (ordinal-prefixed, not `idea-to-design`), `skill: "pdd-to-work-order"`, and `status: "ai-default"` on every row this skill writes. `decision`, `rationale`, `default`, `options_considered`, and `notes` are NOT valid keys — the schema is `id` / `phase` / `skill` / `question` / `ai-default` / `options` / `source` / `status`, with optional `reasoning`. The atom rejects any row that doesn't match.
+   Field shape: `phase: "1-design"` (ordinal-prefixed, not `idea-to-design`), `skill: "pdd-to-work-order"`, and `status: "ai-default"` on every row this skill writes. `decision`, `rationale`, `default`, `options_considered`, and `notes` are NOT valid keys — the schema is `id` / `phase` / `skill` / `question` / `ai-default` / `options` / `source` / `status` / **`evidence_basis`**, with optional `reasoning` (and `conflict_signals`, REQUIRED when `evidence_basis` is `conflicting`). The atom rejects any row that doesn't match.
 
-   When a load-bearing field is genuinely unknowable (partner name absent, WO# unknown), insert a bracketed placeholder like `[Partner Name]` in the gdoc and pass the placeholder as `ai-default` (e.g. `"ai-default": "[Partner Name]"`) plus a `reasoning` line telling the human what to fill in. `status` is still `"ai-default"` — `"open"` is not a valid v3 status.
+   **`evidence_basis` is mandatory on every new row** (schema v4, `lib/decisions-schema.ts:12`): `stated` (the value is directly in a source), `inferred` (extrapolated beyond any source — say so in `reasoning`), or `conflicting` (resolves disagreeing sources; then `conflict_signals` must enumerate at least two competing readings). `DecisionRowStrictSchema` rejects a row without it at the MCP boundary before any Drive write, so a row missing it never lands. Full contract: `skills/idea-to-pdd/SKILL.md § The evidence_basis contract`. (This section documented the v3 shape until ace#1485 — its own worked example was rejected verbatim.)
+
+   When a load-bearing field is genuinely unknowable (partner name absent, WO# unknown), insert a bracketed placeholder like `[Partner Name]` in the gdoc and pass the placeholder as `ai-default` (e.g. `"ai-default": "[Partner Name]"`) plus a `reasoning` line telling the human what to fill in. `status` is still `"ai-default"` — `"open"` is not a valid status. A placeholder default is `evidence_basis: "inferred"` unless a source actually states it.
 
    Canonical worked fixture with `wo-*` rows: `test/skills/pdd-to-work-order-qa/fixtures/good-decisions.yaml`.
 
@@ -107,6 +110,7 @@ Take the approved PDD and decisions.yaml and produce a contractual Work Order dr
      - `{{verified_unit_closing}}` (the "Verification will be performed via..." closing paragraph after the verified-unit bullets)
      - `{{payment_unit_closing}}` — § 6.2's closing sentence, **archetype-branched**:
        - `atomic-visit` → "Dimagi will pay only for verified units at the per-visit rate proposed in the partner's solicitation response."
+       - `longitudinal-visits` → same per-visit rate sentence, extended so the repeat is unambiguous: "…at the per-visit rate proposed in the partner's solicitation response, for each verified visit in the follow-up sequence."
        - `focus-group` → "…at the per-session rate proposed in the partner's solicitation response."
        - `multi-stage` → name the stage that is payable, per the PDD's payable-stage declaration.
 
@@ -171,6 +175,12 @@ Take the approved PDD and decisions.yaml and produce a contractual Work Order dr
 - Verification: photo + GPS Layer A on the deliver-app form.
 - Payment unit: per visit (rate from existing `payment-rate` decision).
 - Roles: Dimagi configures app + verification audit; Partner recruits FLWs, runs field ops, transports samples (if applicable).
+
+### `longitudinal-visits`
+- Scope: per-visit data capture against a **followed entity over time** — the same visit-shaped unit as `atomic-visit`, but the Scope of Work must name what is being followed (the case / household / participant / cohort) and its cadence (phase, sequence, follow-up interval, or `visit 1..n`). A scope that reads identically to an atomic-visit one has lost the longitudinal half between the PDD and the contract — the ace#1462 failure, where the PDD prose was longitudinal-aware and the payment predicate was not.
+- Verification: photo + GPS Layer A on the deliver-app form, as `atomic-visit`; PLUS the visit's position in the sequence must be recoverable from the submitted record, since that is what makes a repeat visit payable rather than a duplicate.
+- Payment unit: per visit (rate from existing `payment-rate` decision). Each qualifying visit in the sequence is separately payable — state this explicitly, because "per visit" against a followed entity otherwise reads as one payment per entity.
+- Roles: as `atomic-visit`, plus Partner owns the follow-up schedule and re-contact of enrolled entities.
 
 ### `focus-group`
 - Scope: per-session facilitation with attestation form submission and gdoc write-up.

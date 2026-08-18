@@ -471,6 +471,38 @@ describe('no renderer instructions in the delivered contract (#1004)', () => {
     }
   });
 
+  // ace#1484 — cross-check contradiction. Checks 3 and 5 tell the producer to
+  // write `[TBD]`; check 9 used to fail the document for containing it, so
+  // following one check's own auto_fix_hint guaranteed the other's blocker and
+  // the Phase-1 loop oscillated until it halted `incomplete`. These assertions
+  // pin BOTH directions so the two checks can't drift apart again.
+  test('accepts [TBD] — the placeholder checks 3 and 5 recommend', () => {
+    for (const s of ['USD [TBD]', 'Period of Performance | [TBD]', 'the cap is [tbd]']) {
+      expect(checkNoRendererInstructions(wrap(s)).pass, s).toBe(true);
+    }
+  });
+
+  test('still rejects a bare TBD, and brackets do not launder a renderer tell', () => {
+    for (const s of ['TBD', 'rate is TBD', '[TBD-by-renderer]', '[TODO: pick one]']) {
+      expect(checkNoRendererInstructions(wrap(s)).pass, s).toBe(false);
+    }
+  });
+
+  test("check 5's auto_fix_hint does not recommend a string check 9 rejects", () => {
+    // The literal cross-check: take every placeholder check 5 hands the
+    // producer and run it through check 9. Any hint that fails here is the
+    // ace#1484 defect reappearing.
+    const missing = checkTotalNtePresent(MISSING_SECTIONS_WO);
+    expect(missing.auto_fix_hint).toBeTruthy();
+    const recommended = [...(missing.auto_fix_hint ?? '').matchAll(/`([^`]*TBD[^`]*)`/gi)].map(
+      (m) => m[1],
+    );
+    expect(recommended.length).toBeGreaterThan(0);
+    for (const s of recommended) {
+      expect(checkNoRendererInstructions(wrap(s)).pass, `check 5 recommends "${s}"`).toBe(true);
+    }
+  });
+
   test('passes the corrected single-unit sentence', () => {
     const r = checkNoRendererInstructions(
       wrap(
