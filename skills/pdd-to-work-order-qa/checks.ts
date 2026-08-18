@@ -418,7 +418,19 @@ const RENDERER_TELLS: Array<{ find: (wo: string) => string | null; why: string }
     why: 'a parenthetical offering an alternative payment UNIT is the archetype branch left unrendered — pick one',
   },
   {
-    find: (wo) => /\b(?:TODO|TBD(?:-by-\w+)?|FIXME)\b/i.exec(wo)?.[0] ?? null,
+    // `[TBD]` — a bare TBD alone inside brackets — is the placeholder checks 3
+    // and 5 explicitly instruct the producer to write, so it must NOT read as a
+    // renderer tell. Before ace#1484 it did: check 5's auto_fix_hint said "state
+    // `USD [TBD]` if pending" and this rule then failed the document for saying
+    // exactly that, so a producer following the hint could never satisfy both
+    // checks and the Phase-1 loop oscillated until it halted `incomplete`.
+    //
+    // Everything else still fails, because everything else IS addressed to a
+    // renderer rather than to the counterparty: bare `TBD` in prose, `TODO:`,
+    // `FIXME`, and `[TBD-by-renderer]` (bracketed, but naming the renderer —
+    // the brackets don't launder it).
+    find: (wo) =>
+      /\b(?:TODO|TBD(?:-by-\w+)?|FIXME)\b/i.exec(wo.replace(/\[TBD\]/gi, '[…]'))?.[0] ?? null,
     why: 'an authoring marker addressed to whoever renders the document',
   },
 ];
