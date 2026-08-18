@@ -175,3 +175,49 @@ describe('gating_guard.py — deny-rail bypass matrix (security audit 2026-07-31
     expect(r.exitCode).toBe(0);
   });
 });
+
+/**
+ * Search-before-create rail (issue-filing audit 2026-08-18).
+ *
+ * CLAUDE.md has mandated a duplicate search before `gh issue create` since
+ * the #858/#860 double-filing. It kept being violated the SAME way, and the
+ * violations diagnosed themselves in their own close comments:
+ *
+ *   ace#1141 — "I ran the mandatory duplicate search and the `gh issue create`
+ *               in the same shell invocation, so the create executed before I
+ *               could read the search results."
+ *   ace#1052 — "I ran the required pre-filing search, it returned #1039, and I
+ *               created this anyway instead of gating on the result."
+ *
+ * Chained in one Bash call the search cannot gate anything — the create has
+ * already run. That is mechanical, so it gets a rail rather than more prose:
+ * the block forces the search into its own call, whose results then land in
+ * context before the create decision. Deny-only, so the agent self-corrects
+ * and keeps going (CLAUDE.md § hooks are rails, not gates).
+ */
+describe('gating_guard.py — search-before-create rail (issue-filing audit 2026-08-18)', () => {
+  it.each([
+    ['&& chain', 'gh issue list --search "resolveEntityIdGrain" --state open && gh issue create --title x --body y'],
+    ['; chain', 'gh issue list --search "foo" --state open; gh issue create -t a -b b --label harness'],
+    ['newline chain', 'gh issue search "bar"\ngh issue create --title t --body b'],
+    ['reverse order', 'gh issue create --title t --body b && gh issue list --search "t"'],
+  ])('DENIES search chained with create in one invocation: %s', (_label, command) => {
+    const r = runGuard('Bash', { command });
+    expect(r.exitCode).toBe(2);
+    expect(r.stderr).toContain('ONE Bash invocation');
+  });
+
+  // The rail must not tax the correct workflow: search, read, then decide.
+  it.each([
+    ['search alone (the gating call)', 'gh issue list --search "resolveEntityIdGrain" --state open'],
+    ['create alone (after reading hits)', 'gh issue create --title "x" --body "y" --label harness'],
+    ['a plain backlog listing', 'gh issue list --state open --limit 30 --json number,title'],
+    ['commenting on the match instead', 'gh issue comment 1022 --body "adding my repro"'],
+    ['gh pr, not gh issue', 'gh pr list --search "issue create"'],
+    ['reading one issue', 'gh issue view 1489 --json body'],
+  ])('ALLOWS %s', (_label, command) => {
+    const r = runGuard('Bash', { command });
+    expect(r.exitCode).toBe(0);
+    expect(r.decision).toBeNull();
+  });
+});

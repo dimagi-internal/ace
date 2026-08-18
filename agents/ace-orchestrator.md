@@ -1296,7 +1296,11 @@ Turn N+2:  Branch on classify_phase_writeback AND verify_phase_artifacts
            solicitation. Instead FINISH the write-back inline from the
            landed artifacts. See § External-resource phases: finish inline
            in `agents/orchestrator-reference.md`.
-Turn N+3:  Agent(<next-phase>) with inline-artifact prompt.
+Turn N+3:  Self-heal sweep (§ below) — one BACKGROUND fix-and-ship
+           dispatch per self-healable issue this phase filed. Never
+           blocks; the run does not wait on it.
+           Agent(<next-phase>) with inline-artifact prompt, in the SAME
+           message as the sweep dispatches.
 ```
 
 **Products-presence check (Turn N+2 — the `verify_phase_products` atom).**
@@ -1339,6 +1343,56 @@ agents' own definitions carry the explicit `products.<block>` write step
 (see e.g. `agents/solicitation-management.md` § After Step 2,
 `agents/synthetic-data-and-workflows.md` § Completion) — this is the
 structural backstop for when a subagent skips it.
+
+### Self-heal sweep (Turn N+3, one dispatch per issue, never blocking)
+
+`CLAUDE.md § Self-heal a filed issue when you can, then close it` (Jon,
+2026-07-22) has been an unenforced prose rule: it appears twice in
+CLAUDE.md and **zero times** in this file, so compliance depended on the
+model remembering it mid-run. Measured 2026-08-18 over 119 issues filed
+since 08-11: **58%** of issues filed by a live run were fixed the same
+day, against **71%** for issues filed retrospectively by a review
+session. The gap is the rule losing to the phase loop — exactly what
+CLAUDE.md predicts of prose ("invariants are hooks, not memory — prose
+relies on the model choosing to comply, which fails under load"). Seven
+issues sat open from two days of runs; three of them (ace#1484, #1485,
+#1486) were static edits inside one skill directory.
+
+So the decision is a fence step, not a memory. **At Turn N+3, for every
+ACE issue this phase filed**, classify it once:
+
+| | Test | Action |
+|---|---|---|
+| **self-healable** | root cause understood AND the fix is bounded, low-risk, and lands in the ACE repo (a skill/doc/recipe/atom/contract edit) | dispatch it (below) |
+| **not** | it makes a **device-truth** claim with no recorded evidence, needs human product/legal/taste judgment, is a risky cross-cutting refactor, or you cannot validate it this session | leave open; comment ONE line saying which of those it is |
+
+For each self-healable issue, dispatch **one background subagent** per
+§ Fix-and-ship subagent template in `agents/orchestrator-reference.md`
+— it runs `skills/shipping` end to end and closes the issue referencing
+its PR. Batch the dispatches into the SAME message as
+`Agent(<next-phase>)`.
+
+Three rules make this safe to run inside a live `/ace:run`:
+
+1. **It never blocks the run.** The dispatches are backgrounded and the
+   next phase starts in the same message. A self-heal that fails, stalls,
+   or needs a device costs the run nothing — the issue simply stays open,
+   which is where it already was.
+2. **One issue per dispatch, no bundling.** A subagent that fans out
+   across several issues is how a phase boundary becomes a build session.
+3. **The run does not consume its own fix.** `/ace:update` lands in the
+   dispatching session only after the current run ends — a merged self-heal
+   does not hot-swap skill code underneath a phase in flight.
+
+**Attempting the fix is itself the premise check, and that is half the
+value.** Filing costs nothing and touches no artifact, so an unverified
+claim survives into a filed issue; ace#1481 asserted "grep for `MSA` —
+all zero hits" when the clause is at `templates/work-order-template.md:147`
+and in both documents it cited, and a follow-up comment then claimed to
+have confirmed the absence. A self-heal attempt opens that file and the
+issue dies on sight. If the fix attempt refutes the issue, **close it
+`--reason "not planned"` with the evidence** — that is a successful sweep,
+not a failed one.
 
 **Open-questions doc (run-end, once).** The summary page reads
 `open-questions.md` from the run-folder root by name (it's the lone
