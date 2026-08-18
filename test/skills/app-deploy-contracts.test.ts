@@ -168,3 +168,73 @@ describe('the unpaid-registration Deliver shape (#1331, #1295)', () => {
     expect(src).toMatch(/1295/);
   });
 });
+
+/**
+ * HQ uploads UPDATE IN PLACE (2026-08-18).
+ *
+ * ACE carried the opposite belief in three load-bearing docs: "CCHQ has no
+ * atomic app-update API, so every `upload_app_to_hq` creates a fresh HQ
+ * application document." That premise drove an orphan cleanup on every
+ * re-upload, an `hq_app_id_history` chase in `app-release`'s build-rejection
+ * loop, and the Phase 3→4 HQ-id-stability warning in `commcare-setup`.
+ *
+ * It is false. Verified live against `connect-ace-prod`: Nova app `4dd0325b…`
+ * re-uploaded twice returned `hq_app_action: "updated"` both times, held
+ * `hq_app_id: c0d7027316bc46f8b4fdf4b47fd8d90b` constant, advanced
+ * `deployment.remote_revision` 6 → 8, and returned `left_behind: []` each time.
+ *
+ * This is the "close the loop to the source of truth" rule applied to a claim
+ * about a system ACE does not own. The claim is prose, so the ratchet is over
+ * prose: the retired phrasing must not reappear, and the live contract's own
+ * vocabulary (`hq_app_action`) must stay named where skills branch on it.
+ */
+describe('upload_app_to_hq updates the HQ app in place', () => {
+  const read = (p: string) => readFileSync(join(REPO, p), 'utf8');
+
+  const CLAIM_SITES = [
+    'skills/app-deploy/SKILL.md',
+    'skills/app-release/SKILL.md',
+    'agents/commcare-setup.md',
+  ];
+
+  // The retired premise, in the phrasings it actually shipped in. A doc may
+  // still NAME the retired belief to mark it retired, so each pattern targets
+  // the assertion itself rather than the words in isolation.
+  const RETIRED = [
+    /CCHQ has no atomic update API\)/i,
+    /has no atomic app-update API, so \*\*every\*\*/i,
+    /call creates a \*\*fresh\*\* HQ application document/i,
+    /This\s+creates a \*\*fresh\*\* HQ app id/i,
+  ];
+
+  for (const site of CLAIM_SITES) {
+    it(`${site} no longer asserts a fresh HQ app per upload`, () => {
+      const src = read(site);
+      for (const pattern of RETIRED) {
+        expect(src, `retired fresh-app-id premise resurfaced in ${site}`).not.toMatch(pattern);
+      }
+    });
+  }
+
+  it('app-deploy branches on hq_app_action and still guards left_behind', () => {
+    const src = read('skills/app-deploy/SKILL.md');
+    expect(src, 'must name the field the live contract reports the action in').toMatch(
+      /hq_app_action/,
+    );
+    expect(src, 'the summary must record which action happened').toMatch(
+      /learn_hq_app_action/,
+    );
+    expect(src, 'left_behind cleanup survives as the defensive branch').toMatch(
+      /commcare_delete_app/,
+    );
+    expect(src, 'the id can still move via remote_app_missing').toMatch(/remote_app_missing/);
+  });
+
+  it('the durable contract lives in the Nova playbook, not only in skills', () => {
+    const src = read('playbook/integrations/nova-integration.md');
+    expect(src).toMatch(/Uploading to HQ updates in place/);
+    expect(src, 'must cite the live verification, not just assert').toMatch(/2026-08-18/);
+    expect(src).toMatch(/hq_app_action/);
+    expect(src, 'must keep the not-immutable caveat').toMatch(/remote_app_missing/);
+  });
+});
