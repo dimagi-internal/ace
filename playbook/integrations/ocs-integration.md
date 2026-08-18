@@ -1,5 +1,10 @@
 # OCS Integration
 
+> **Upstream repo: [`dimagi/open-chat-studio`](https://github.com/dimagi/open-chat-studio).** OCS ships continuously,
+> so an ACE call path that has not changed in months can break because *they* shipped.
+> When something that used to work starts failing — especially with an opaque error —
+> run `skills/upstream-regression-triage` before concluding it needs a live probe.
+
 ## Overview
 
 The ACE↔OCS integration layer is a composite MCP backend that exposes 22

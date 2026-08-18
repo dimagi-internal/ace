@@ -973,6 +973,18 @@ export class PlaywrightBackend {
    * (apps/channels/forms.py:649), so we don't supply one. We pass
    * `allow_all_domains=on` so the widget can be embedded on any origin (ACE's
    * connect-labs chat route will add per-opp domain restrictions later if needed).
+   *
+   * `enabled=on` is REQUIRED and is not optional politeness (ace#1492).
+   * OCS PR #4202 (merged 2026-08-17) added `enabled` to `ChannelForm.Meta.fields`
+   * as an admin kill-switch. It is a Django BooleanField rendered as a checkbox,
+   * and **a checkbox absent from POST data resolves to False** — the model's
+   * `default=True` does NOT apply once the ModelForm owns the field. The channel
+   * is created by `ChannelFormWrapper.save()` -> `ChannelForm.save()`, so every
+   * channel this method created between 2026-08-17 and this fix landed
+   * `enabled=False`, and `ChannelDisabledStage` then dropped every inbound
+   * message. Symptom: a freshly cloned chatbot fails generation with an opaque
+   * error while the golden template and older clones answer fine — the migration
+   * backfilled existing rows to `enabled=True`, so only NEW channels were hit.
    */
   private async createEmbeddedWidgetChannel(experimentId: number, channelName: string): Promise<void> {
     // Note the URL prefix: channel create-dialog lives under /channels/<team>/...
@@ -986,6 +998,8 @@ export class PlaywrightBackend {
         name: channelName,
         platform: 'embedded_widget',
         allow_all_domains: 'on',
+        // Django checkbox: omitting it means False, not "use the model default".
+        enabled: 'on',
         csrfmiddlewaretoken: this.opts.csrfToken,
       },
       { followRedirects: false, formEncoded: true },

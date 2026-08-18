@@ -1,11 +1,16 @@
 # Connect Integration
 
+> **Upstream repo: [`dimagi/commcare-connect`](https://github.com/dimagi/commcare-connect).** Connect ships continuously,
+> so an ACE call path that has not changed in months can break because *they* shipped.
+> When something that used to work starts failing — especially with an opaque error —
+> run `skills/upstream-regression-triage` before concluding it needs a live probe.
+
 ## Two MCP servers, two domains
 
 ACE talks to Connect through **two** MCP servers, each scoped to a distinct
 domain:
 
-1. **`connect-labs` MCP** (lives in the [`connect-labs` repo](https://github.com/dimagi/connect-labs))
+1. **`connect-labs` MCP** (lives in the [`connect-labs` repo](https://github.com/dimagi-internal/connect-labs))
    — solicitations, reviews, awards, funds. Production-ready and unrelated to
    the Programs/Opportunities lifecycle ACE manages.
 
