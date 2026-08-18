@@ -22,7 +22,7 @@
  *
  * `deliver-sync.yaml` documents the real answer in passing — *"form-submit
  * returns to the form list (or the module list) rather than the app home"* —
- * which is exactly why deliver-sync itself opens with two guarded `back` steps
+ * which is exactly why deliver-sync itself opens with four guarded `back` steps
  * before it can find the home tile.
  *
  * Live consequence (ace#1290, same run family): the Deliver smoke walked leg

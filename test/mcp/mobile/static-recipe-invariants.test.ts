@@ -490,6 +490,41 @@ describe('deliver-sync.yaml', () => {
   // opportunity whose Deliver->Connect path was completely broken would
   // still pass. Observed live on bednet-spot-check/20260729-1239.
 
+  // Regression guard for dimagi-internal/ace#1494. The back-walk climbs from
+  // wherever form-submit left the device to StandardHomeActivity, where the
+  // "Sync with Server" tile lives. A CASE-BOUND Deliver form sits one level
+  // DEEPER than the shallow path: deliver-form-walk.yaml composes
+  // deliver-case-select.yaml between the module row and the form row, whose
+  // live-observed order is
+  //   module row -> CASE LIST -> case detail -> CONTINUE -> FORM LIST -> form
+  // (2.63.2, ace#1138). With only two backs the assert below fired on the
+  // module grid, so the Deliver leg could never return `pass` on a multi-stage
+  // opp — a blocks-e2e defect that looked like a flaky sync.
+  //
+  // Every back is guarded on `notVisible` the home tile, so over-provisioning
+  // is a provable no-op on the shallow path: this count is a floor, not an
+  // exact figure, and raising it cannot regress the shallow leg.
+  it('walks back deep enough for a case-bound Deliver form (>= 4 guarded backs)', () => {
+    const beforeAssert = yaml.slice(0, yaml.indexOf('assertVisible'));
+    const guarded = [...beforeAssert.matchAll(/notVisible:/g)].length;
+    expect(
+      guarded,
+      'deliver-sync.yaml must guard-walk back at least 4 levels before asserting the ' +
+        'home sync tile — a case-bound Deliver form adds a case list + case detail ' +
+        'above the form list (ace#1494).',
+    ).toBeGreaterThanOrEqual(4);
+  });
+
+  it('makes every back conditional, so the extra depth is a no-op when already home', () => {
+    // If a `back` were unguarded, over-provisioning the count would pop past
+    // the home surface and break the shallow leg. The guard is what makes the
+    // floor above safe.
+    const backs = [...yaml.matchAll(/^\s*- back\s*$/gm)].length;
+    const guards = [...yaml.matchAll(/notVisible:/g)].length;
+    expect(backs).toBeGreaterThan(0);
+    expect(guards, 'every `back` in deliver-sync must sit inside a guarded runFlow').toBeGreaterThanOrEqual(backs);
+  });
+
   it('asserts the SERVER-DERIVED visit counter, not just the sync banner', () => {
     // The banner only says the sync call returned — it returns even with an
     // empty outbox (observed live: "Sync Successful" alongside the toast

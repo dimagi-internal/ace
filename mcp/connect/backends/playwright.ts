@@ -11,6 +11,7 @@ import {
   decodeHtmlEntities,
   extractFormCsrfToken,
   extractFormFieldValues,
+  isCheckboxChecked,
   parseOpportunityDashboard,
   extractDisabledFormFieldNames,
   scopeToFormContaining,
@@ -498,7 +499,8 @@ export class PlaywrightBackend implements ConnectClient {
       throw await httpErrorFor(editRes, editPath);
     }
 
-    const v = editDenied ? {} : extractFormFieldValues(await editRes.text());
+    const editFormHtml = editDenied ? '' : await editRes.text();
+    const v = editDenied ? {} : extractFormFieldValues(editFormHtml);
     const dash = editDenied ? parseOpportunityDashboard(detailHtmlText) : {};
 
     // The edit form's `active` checkbox is authoritative when we have it; the
@@ -506,7 +508,7 @@ export class PlaywrightBackend implements ConnectClient {
     // (see parseOpportunityDashboard). Prefer the form, fall back to the badge.
     const isActive = editDenied
       ? (dash.active ?? false)
-      : v['active'] === 'on' || v['active'] === 'true' || v['active'] === '';
+      : isCheckboxChecked(v, editFormHtml, 'active');
 
     let learnAppDomain = '';
     let learnAppId = '';
@@ -549,7 +551,7 @@ export class PlaywrightBackend implements ConnectClient {
       // passing_score) — so they cannot be surfaced from either read path, and
       // this deliberately does not pretend otherwise. See the issue for what
       // that means for the Step 4a budget-headroom check.
-      is_test: editDenied ? (dash.is_test ?? false) : v['is_test'] === 'on' || v['is_test'] === 'true',
+      is_test: editDenied ? (dash.is_test ?? false) : isCheckboxChecked(v, editFormHtml, 'is_test'),
       learn_app: learnAppId
         ? { cc_domain: learnAppDomain, cc_app_id: learnAppId, name: '' }
         : undefined,
@@ -601,8 +603,8 @@ export class PlaywrightBackend implements ConnectClient {
 
     // Checkboxes: `active` and `is_test`. To toggle ON, set `=on`. To toggle
     // OFF, OMIT the field. We preserve current state if not overridden.
-    const wantActive = overrides.active ?? (current['active'] === 'on' || (current['active'] === '' && /name="active"[^>]*checked/.test(editHtml)));
-    const wantTest = overrides.is_test ?? (current['is_test'] === 'on' || (current['is_test'] === '' && /name="is_test"[^>]*checked/.test(editHtml)));
+    const wantActive = overrides.active ?? isCheckboxChecked(current, editHtml, 'active');
+    const wantTest = overrides.is_test ?? isCheckboxChecked(current, editHtml, 'is_test');
     if (wantActive) form['active'] = 'on';
     if (wantTest) form['is_test'] = 'on';
 

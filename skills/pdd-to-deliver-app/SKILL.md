@@ -1100,7 +1100,7 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
     side moves. `report.checked === false` means the curriculum states no
     unconditional evidence step — "not applicable", not "clean".
 
-4h. **Fake-preload check (a hidden `caseWrite` field can never hold the case
+4i. **Fake-preload check (a hidden `caseWrite` field can never hold the case
     value) — runs at LEVEL 0.** The structural preventer for ace#1224. Because
     a followup form cannot read its own case on this Nova instance (§ `entity_id`
     case-UPDATE rule), architects reach for a shape that *looks* like a preload
@@ -1170,6 +1170,60 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
        than recording.
 
     (Apps with no hidden `caseWrite` fields skip cleanly at step 1.)
+
+4j. **Payability-discriminator backstop (ace#1489) — runs at LEVEL 0.** The
+    `entity_id` payability rule lives in Step 3's Nova brief, which is
+    *architect prose*: nothing downstream of the build re-checks that the key
+    the architect actually shipped honours it. So an identity-only key on a
+    form with a non-payable branch escapes Phase 3 silently and is caught a
+    whole Nova build later by `app-release-qa` Step 2.8, which raises
+    `no-entity-component` as a `[BLOCKER]` and hard-halts the phase. The
+    resolution helper already exists and the EVAL side already runs it
+    (`pdd-to-deliver-app-eval § Connectify wiring (b2)`); this step closes the
+    build/eval asymmetry, exactly as 4g pairs with the eval's `checkScreenShape`.
+
+    1. Read the PDD's Program Parameters `entity_id_grain` and whether the PDD
+       marks any subset of submissions to this form non-payable (a did-not-happen
+       branch, a screening-only visit, a committee-vs-community meeting type).
+
+    2. Feed it to the pure helper — do NOT adjudicate this by reading the key:
+
+       ```ts
+       import { resolveEntityIdGrain } from '../../lib/entity-id-precedence';
+       const grain = resolveEntityIdGrain({
+         pinnedComponents,          // from the PDD's entity_id_grain
+         payabilityDiscriminator,   // the built form field expressing payability, if any
+         hasNonPayableBranch,
+         sourcePinned,
+       });
+       ```
+
+    3. Branch on the resolution:
+       - `deviates: true` → the built key MUST ship `grain.components` in order,
+         and the build memo MUST disclose it using `grain.discloseAs`. Edit the
+         `entity_id` calculate via Nova if it does not match, then re-fetch.
+       - `unresolvable: true` → a non-payable branch exists but **no field
+         expresses payability**. Do NOT ship silently: record `grain.reason` in
+         the build memo verbatim and name the field that would fix it. This is
+         the case the helper exists to stop from passing quietly.
+       - otherwise → the PDD-pinned grain stands; record the one-line reason.
+
+    4. **Whenever the shipped key is payability-scoped, the residual list MUST
+       name the Phase-4 verification predicate that rejects the non-payable
+       value** (ace#1434). The scoped key stops a non-payable submission
+       consuming the payable slot, but it also mints `<identity> - no` as its
+       own countable entity — so without that predicate the daily cap decides,
+       and a worker whose first follow-up was a refusal can still be blocked.
+       A key shipped without the residual is the ace#969 failure one layer down.
+
+    5. Re-fetch and re-assert. **Bounded loop, max 3 iterations.** If the key
+       still disagrees with `grain.components` after the third, surface a clear
+       failure naming the built key and the required one, and do NOT write the
+       success summary — halting here costs one loop; letting it through costs
+       a Nova build plus a Phase-3 halt.
+
+    (Forms with no non-payable branch skip cleanly — `deviates:false`, and the
+    pinned grain stands.)
 
 5. **(Optional) Inspect the built app** via `/nova:show <app_id>` to
    cross-check structure against the PDD before writing the summary.

@@ -324,6 +324,50 @@ export function scopeToFormContaining(html: string, fieldName: string): string {
   return html;
 }
 
+/**
+ * Is a boolean checkbox CHECKED, given an extracted field map plus the HTML it
+ * came from?
+ *
+ * ## Why this exists (dimagi-internal/ace#1491)
+ *
+ * Django renders a boolean checkbox as `<input type="checkbox" name="is_test"
+ * … checked>` — **no `value` attribute**. {@link extractFormFieldValues} reads
+ * `value="…"`, so both a checked and an unchecked box extract to `''` and the
+ * map alone cannot tell them apart. `checked` lives only in the raw HTML.
+ *
+ * Reading the map alone therefore silently mis-answers every boolean on
+ * Connect's opportunity edit form, and it did, in both directions:
+ *
+ * - `is_test` was `v['is_test'] === 'on' || v['is_test'] === 'true'` → always
+ *   **false**, so `connect_get_opportunity` / `connect_list_opportunities`
+ *   reported every opportunity as non-test and `connect-opp-setup`'s mandated
+ *   verify-after-create `is_test` comparison could never pass.
+ * - `active` carried a compensating `|| v['active'] === ''` clause → always
+ *   **true**, which is the same bug with the opposite sign.
+ *
+ * The WRITE path had the correct predicate inline all along (preserve-current
+ * state on update). This helper is that predicate, named once, so a read and a
+ * write of the same checkbox cannot disagree again.
+ *
+ * Pass the same HTML the values were extracted from — ideally already narrowed
+ * with {@link scopeToFormContaining}, since `checked` is matched by name across
+ * whatever string it is given.
+ */
+export function isCheckboxChecked(
+  values: Record<string, string>,
+  html: string,
+  name: string,
+): boolean {
+  const v = values[name];
+  // An explicit submitted value wins: 'on' is what a browser sends, and some
+  // surfaces render value="true".
+  if (v === 'on' || v === 'true') return true;
+  if (v !== '' && v !== undefined) return false;
+  // Valueless checkbox: the state is only in the raw tag.
+  const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp(`name="${escaped}"[^>]*\\bchecked\\b`).test(html);
+}
+
 export function extractFormFieldValues(html: string): Record<string, string> {
   const out: Record<string, string> = {};
 
