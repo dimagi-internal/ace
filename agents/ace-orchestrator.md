@@ -1380,9 +1380,38 @@ Three rules make this safe to run inside a live `/ace:run`:
    which is where it already was.
 2. **One issue per dispatch, no bundling.** A subagent that fans out
    across several issues is how a phase boundary becomes a build session.
-3. **The run does not consume its own fix.** `/ace:update` lands in the
-   dispatching session only after the current run ends — a merged self-heal
-   does not hot-swap skill code underneath a phase in flight.
+3. **The run DOES consume its own fix — take the update at the next phase
+   boundary, never mid-phase.** Standing operator directive (Jon,
+   2026-08-18): *"`/ace:run` should always try to be the most up to date; we
+   are always improving ACE."* A run that finishes on code we already knew
+   was wrong spends hours proving a stale premise. So when a self-heal
+   merges — or when the boundary currency check below reports drift — run
+   `/ace:update` at the **next phase boundary**, in the same message as the
+   fence, and say in the run notes which version the remaining phases are
+   on.
+
+   The boundary is the whole of the safety margin: it is the one point where
+   no phase is in flight, so nothing is hot-swapped underneath a running
+   skill. Do NOT update in the middle of a phase, and do NOT kill a phase in
+   flight to take an update — **`qa-and-training` in particular consumes a
+   one-way precondition** (Learn completion is one-way per `(test user,
+   opportunity)`), so an interrupted walk cannot be re-run without a fresh
+   opportunity, which costs a fresh Phase 4.
+
+   Know what each action actually does, because only one of them is
+   `/ace:update`'s job:
+
+   | Action | Takes effect on | Who can run it |
+   |---|---|---|
+   | `/ace:update` | disk + registry; **subsequent `Skill()` loads** resolve to the new `installPath` | the orchestrator |
+   | `/reload-plugins` | skills, agents, commands, hooks already bound | the operator |
+   | full Claude restart | **MCP subprocesses** — nothing else respawns them | the operator |
+
+   When the update reports `MCP_CHANGED: yes`, the remaining phases still run
+   on the OLD MCP code until the operator restarts. Say so explicitly rather
+   than implying the update fixed it, and write a handoff (§ Pre-flight Step
+   1) before recommending the restart so the resumed session does not
+   re-derive what this one established.
 
 **Attempting the fix is itself the premise check, and that is half the
 value.** Filing costs nothing and touches no artifact, so an unverified
@@ -1438,8 +1467,44 @@ full issue list on a `'malformed'` result, call
 `validate_run_state(fileId)` — returns `{valid, errors, warnings}` with
 `{path, message, severity}` per issue.
 
-**Forbidden boundary improvisations.** The boundary fence's 6 tool
-calls listed above are the COMPLETE set. Do NOT also:
+**Plugin currency at the boundary (the 7th call).** Add ONE Bash call to
+Turn N+1's batched message. `bin/ace-doctor --preflight` reports
+`plugin.version` once, at run start; on a repo that merges ~9x/day that
+reading has a shelf life of minutes, and a full `/ace:run` is multi-hour. So
+re-check it where the run is already stopped:
+
+```bash
+node -e "const d=JSON.parse(require('fs').readFileSync(process.env.HOME+'/.claude/plugins/installed_plugins.json','utf8'));console.log('installed',d.plugins['ace@ace'][0].version)"
+ps -eo ppid,command | awk -v c="$PPID" '$1==c' | grep -o "ace/ace/0\.[0-9.]*" | sort -u   # live MCP children
+```
+
+Three outcomes, and they are NOT the same:
+
+- **installed == live MCP == origin/main** → current; say nothing.
+- **installed < origin/main** → run `/ace:update` here, per rule 3 above.
+- **live MCP < installed** → the session's MCP subprocesses are stale.
+  `/ace:update` does NOT fix this and `/reload-plugins` does NOT respawn
+  them. Report the gap, name the changed `mcp/` files, and let the operator
+  decide whether to restart now or at run end.
+
+**A stale MCP child is worse than stale compiled code for recipes.**
+CLAUDE.md says `mcp/mobile/recipes/*.yaml` are re-read from disk per call —
+true, but they are re-read from **the version directory the subprocess was
+launched from**. A session bound at 0.13.915 keeps reading 0.13.915's
+recipes no matter how current the disk is. That reads as hot-patchable and
+is not, which is exactly how a Phase 6 device walk runs against superseded
+selectors while every version file on disk says the run is current.
+
+Measured (ace#1500), `bednet-check-2-visit/20260817-1720`: bound at
+0.13.915, ran to Phase 6 while main reached 0.13.930 — 13 changed files
+under `mcp/`, 21 under `skills/` + `agents/`. Two costs. A premise retired
+as false that same day (`a9e4ff06`, HQ uploads update in place) was
+propagated verbatim into the Phase 4 dispatch; and five static mobile
+recipes changed under a device walk already in flight.
+
+**Forbidden boundary improvisations.** Aside from the currency check above,
+the boundary fence's 6 tool calls listed earlier are the COMPLETE set. Do
+NOT also:
 
 - Call `render_run_readme` or write `README.md`. `verify_phase_artifacts`
   already refreshed it from `run_state.yaml`; a hand-assembled status map is
