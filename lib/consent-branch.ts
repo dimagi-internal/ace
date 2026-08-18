@@ -74,6 +74,22 @@ export interface ConsentBranchOptions {
   consentField?: string;
   /** Field ids the build memo explicitly discloses as consent-gated. */
   disclosedInMemo?: string[];
+  /**
+   * The field ids this consent gate actually GOVERNS. When non-empty, only
+   * these fields are checked.
+   *
+   * Absent (the default) means the gate governs the whole instrument, which is
+   * right for a household-visit form where consent precedes every question.
+   * It is WRONG for a form where consent governs one capture — an FCAP meeting
+   * record whose photo-consent announcement covers the photograph, on a form
+   * whose other fields are attendance counts nobody consents to individually.
+   * Run unscoped there, this check flags every unrelated required field as
+   * `ungated-required-after-consent` and hard-gates a correct build to `fail`.
+   * dimagi-internal/ace#1509. Observed on spark-facilitator/20260817-1610,
+   * whose PDD states explicitly
+   * that FCAP meetings are open assemblies with no per-beneficiary consent.
+   */
+  governs?: string[];
 }
 
 function referencesConsent(relevant: string, consentField: string): boolean {
@@ -85,8 +101,9 @@ export function checkConsentBranchCompleteness(
   pdd: PddFieldSpec[],
   opts: ConsentBranchOptions = {},
 ): ConsentBranchReport {
-  const { consentField, disclosedInMemo = [] } = opts;
+  const { consentField, disclosedInMemo = [], governs = [] } = opts;
   if (!consentField) return { pass: true, findings: [] };
+  const governed = new Set(governs);
 
   const spec = new Map(pdd.map((f) => [f.id, f]));
   const disclosed = new Set(disclosedInMemo);
@@ -95,6 +112,9 @@ export function checkConsentBranchCompleteness(
   for (const field of built) {
     if (field.id === consentField) continue;
     if (!field.required) continue;
+    // Scoped gate: a consent that governs one capture says nothing about the
+    // fields outside its scope. See ConsentBranchOptions.governs.
+    if (governed.size > 0 && !governed.has(field.id)) continue;
 
     const declared = spec.get(field.id);
     // Only fields the PDD states as REQUIRED are in the collision. A field the

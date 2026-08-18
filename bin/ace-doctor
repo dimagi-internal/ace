@@ -427,6 +427,14 @@ EOF
         else if (r.status === 'stale') console.log('INFO handoff_present_but_stale=' + Math.round(r.ageMs/60000) + 'm — ignoring (see ace#1093)');
       " 2>/dev/null || true
     fi
+  fi
+
+  # Preflight is a machine-facing YAML snapshot: it ends here, unconditionally.
+  # (dimagi-internal/ace#1506. Until 0.13.933 this `exit 0` sat INSIDE the
+  # handoff guard above, so a
+  # machine with no pending handoff fell through and ran the entire doctor —
+  # live auth probes, network reachability, Drive-layout walk — on every
+  # /ace:run, contradicting the contract documented at the top of this block.)
   exit 0
 fi
 
@@ -443,7 +451,6 @@ done
 if [ -n "$PWD_MATCH" ] && [ "$PWD_MATCH" != "$ROOT" ]; then
   echo "INFO cwd_is_ace_checkout=$PWD_MATCH (pass --here to audit it instead)"
   fi
-fi
 
 pass() { printf 'PASS %s\n' "$1"; }
 warn() { printf 'WARN %s\n' "$1"; [ -n "${2:-}" ] && printf '  fix: %s\n' "$2"; }
@@ -1398,6 +1405,7 @@ $(printf '%s' "$RENDER_ERR" | sed 's/^/      /')"
       -sS -o /dev/null -w '%{http_code}' --max-time 5 \
       -X POST \
       -H "Content-Type: application/json" \
+      -H "Accept: application/json, text/event-stream" \
       -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"ace-doctor","version":"1"}}}' \
       "$LABS_URL" 2>/dev/null || echo "000")"
     case "$LABS_REACH_CODE" in
@@ -1410,6 +1418,7 @@ $(printf '%s' "$RENDER_ERR" | sed 's/^/      /')"
           -sS --max-time 5 \
           -X POST \
           -H "Content-Type: application/json" \
+          -H "Accept: application/json, text/event-stream" \
           -d '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"list_solicitations","arguments":{}}}' \
           "$LABS_URL" 2>/dev/null || echo "")"
         if echo "$LABS_OAUTH_BODY" | grep -q "PERMISSION_DENIED\|connect_oauth\|ConnectTokenError"; then
@@ -1426,8 +1435,16 @@ $(printf '%s' "$RENDER_ERR" | sed 's/^/      /')"
       000)
         warn "connect_labs_mcp_reachable: cannot reach $LABS_URL (network/DNS/timeout)" "verify labs.connect.dimagi.com is up and reachable from this network"
         ;;
+      406)
+        # MCP Streamable HTTP requires the client to advertise BOTH content
+        # types; a spec-compliant server answers 406 when Accept does not.
+        # This probe omitted the header until 0.13.933 (ace#1507), so the WARN fired on a
+        # perfectly healthy labs and its remedy sent the reader at the wrong
+        # system. Kept as a named case so a regression is self-describing.
+        warn "connect_labs_mcp_reachable: HTTP 406 — this probe did not send an MCP Accept header" "client-side probe bug, NOT a labs outage: the request needs 'Accept: application/json, text/event-stream'"
+        ;;
       *)
-        warn "connect_labs_mcp_reachable: $LABS_URL returned HTTP $LABS_REACH_CODE" "investigate labs MCP health"
+        warn "connect_labs_mcp_reachable: $LABS_URL returned HTTP $LABS_REACH_CODE" "check the response body by hand before assuming labs is down — compare against a working MCP client's request headers"
         ;;
     esac
   fi

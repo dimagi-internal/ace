@@ -311,6 +311,44 @@ After **each** Nova `Agent` dispatch returns, verify an app was created:
 Apply this check after the Learn dispatch and again after the Deliver
 dispatch — they fail independently.
 
+**An app that EXISTS but is half-built is the other case, and it is NOT a
+re-dispatch (dimagi-internal/ace#1504).** The rule above covers "the architect
+never got started." A Nova build is long, so the likelier interruption is a
+transport failure (`Connection lost mid-response`, an API 5xx) that kills the
+agent *after* `create_app` returned and partway through the field work. The
+return string is missing or truncated, so a literal reading of step 2 says
+"no app → re-dispatch" — and `/nova:autobuild` **creates a second Nova app**,
+leaving a duplicate for `app-deploy` to choose between and an orphan for the
+sweep to find.
+
+So branch on whether an app exists, not on whether the agent returned cleanly:
+
+- **No app** (`list_apps` shows nothing created in the window) → the rule
+  above; re-dispatch, cap 3.
+- **App exists** → **RESUME the same agent** with `SendMessage` rather than
+  re-dispatching `/nova:autobuild`. It still holds the build context, so it
+  resumes where it stopped instead of re-deriving the app from the brief.
+
+  The resume message MUST tell it to re-establish ground truth rather than
+  trust its own recollection: call `get_app`, then `get_form` on every form it
+  believes it finished, and compare persisted field counts against what it
+  intended. The `add_fields` partial-persistence quirk applies to everything
+  built before the interruption, so a form that looked complete in the agent's
+  own summary may not be. Restate the invariants most likely to be mid-flight
+  at the cut — for a Learn app: the language phase runs LAST (an English edit
+  after translating silently reverts that unit), and only the gating
+  assessment may carry `connect.assessment`.
+
+  If the resumed agent also dies, resume once more, then fall back to a
+  `/nova:edit` against the existing `app_id` naming the specific gaps. Never
+  reach for `/nova:autobuild` while an app for this run exists.
+
+Live: `spark-facilitator/20260817-1610`, where the Learn build dropped
+mid-language-phase. On resume `get_app` showed all 8 forms at their intended
+counts — no structural repair was needed at all, and the only casualty was one
+`update_translations` batch Nova had ATOMICALLY refused over a mistyped uuid,
+so nothing from it had saved.
+
 - Input: approved PDD from GDrive
 - Output:
   - app JSON/CCZ files + summaries written to `ACE/<opp-name>/app-summaries/`
