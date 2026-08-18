@@ -22,10 +22,11 @@
 // build passed every Phase 3 gate and `field_answerability` scored 9.5. It
 // surfaced two steps later, while authoring the Phase 6 smoke recipe — after
 // the app had already been uploaded to CommCare HQ, so fixing it cost a
-// re-upload, a fresh HQ app id, and an orphan app to clean up. Had Phase 4 run
-// first it would have cost a delete-and-recreate of the Connect opportunity,
-// because `connect_create_opportunity` writes HQ app ids at create time and
-// Connect's edit form does not expose them.
+// re-upload. (At the time that also meant a fresh HQ app id and an orphan app
+// to clean up; since 2026-08-18 uploads are known to update the HQ app in
+// place, so a re-upload keeps its id — see
+// `playbook/integrations/nova-integration.md § Uploading to HQ updates in
+// place`. The wasted rebuild is still the cost this module exists to avoid.)
 //
 // Operator ruling that this module encodes (Jon, 2026-08-13): "It's actually
 // fine app design practice to have multiple questions on a screen if that

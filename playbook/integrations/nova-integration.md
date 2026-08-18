@@ -226,6 +226,54 @@ ACE's contract:
    spaces — `app-deploy` surfaces that as a `[BLOCKER]` rather than
    uploading to an unintended space.
 
+## Uploading to HQ updates in place
+
+**`upload_app_to_hq` is idempotent on the HQ application document.** The first
+upload of a Nova app to a project space CREATES the HQ application; every
+upload after that UPDATES that same document and keeps its id. The result says
+which happened:
+
+| field | meaning |
+|---|---|
+| `hq_app_action` | `created` on the first upload to the space, `updated` after |
+| `hq_app_id` | stable across updates — this is the id Phase 4 wires into Connect |
+| `deployment.remote_revision` | HQ's own revision, advances on each update |
+| `deployment.left_behind` | superseded HQ app id(s). Normally `[]` |
+
+Verified live 2026-08-18 against `connect-ace-prod`: Nova app `4dd0325b…`
+(already linked to HQ `c0d7027316bc46f8b4fdf4b47fd8d90b` at
+`pushed_revision: 10`) re-uploaded twice returned `hq_app_action: "updated"`
+both times, held the same `hq_app_id`, advanced `remote_revision` 6 → 8, and
+returned `left_behind: []` each time.
+
+**This retires ACE's previous belief** that "CCHQ has no atomic app-update API,
+so every `upload_app_to_hq` creates a fresh HQ application document." That
+premise drove three things that are now wrong: an orphan cleanup on every
+re-upload, an `hq_app_id_history` chase in `app-release`'s build-rejection
+loop, and the Phase 3→4 HQ-id-stability warning in `agents/commcare-setup.md`.
+All three are corrected; the `left_behind` cleanup survives as a defensive
+branch, not the expected path.
+
+**The id is still not immutable.** If the linked HQ app is deleted on HQ, the
+call refuses with `remote_app_missing`; uploading again then creates a fresh
+one. So read `hq_app_action` and `left_behind` rather than assuming stability
+in either direction.
+
+**Creating a NEW app needs a permission that updating does not appear to.** On
+2026-08-18 two fresh Nova apps uploading to `connect-ace-prod` for the first
+time both failed with:
+
+```
+error_type: hq_upload_failed
+message: Your CommCare HQ account can't create apps in this project space.
+         Ask an administrator there for the Edit Apps permission.
+```
+
+…while the update path against an already-linked app succeeded in the same
+session with the same key. Tracked as an ACE issue; if Phase 3 `app-deploy`
+halts on `hq_upload_failed` for a brand-new app, this is the first thing to
+check (the HQ role behind Nova's stored HQ API key, on `ACE_HQ_DOMAIN`).
+
 **Two distinct keys.** Don't conflate them:
 - `NOVA_API_KEY` (`sk-nova-v1-…`) authenticates **ACE → Nova**. Lives
   in 1Password item `ACE - Nova` / `api_key`. Read by the user-scope

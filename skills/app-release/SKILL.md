@@ -179,16 +179,25 @@ procedure below to rediscover.
 
     4. **Re-upload via `/nova:upload_to_hq <nova_app_id> <ACE_HQ_DOMAIN>`.**
        Pass the target project space explicitly (same as `app-deploy`,
-       Nova plugin voidcraft-labs/nova-plugin#12). This
-       creates a **fresh** HQ app id (CCHQ has no atomic update API).
-       Update the in-memory app reference to the new `hq_app_id` AND
-       record both ids in
-       `3-commcare/app-release_summary.md.frontmatter.hq_app_id_history`
-       so Phase 4's downstream wiring (which reads the LATEST id)
-       lines up. The prior orphan id stays in `ai-demo-space` —
-       expected; CCHQ has no MCP delete path.
+       Nova plugin voidcraft-labs/nova-plugin#12). Nova **updates the
+       HQ app in place**: the id is unchanged and `hq_app_action` comes
+       back `updated` (verified live 2026-08-18 — see
+       `playbook/integrations/nova-integration.md § Uploading to HQ
+       updates in place`). So there is normally no new id to chase and
+       no orphan left behind.
 
-    5. **Retry `commcare_make_build` against the new HQ app id.** If
+       Read `hq_app_action` and `deployment.left_behind` anyway rather
+       than assuming. If the id DID change (`left_behind` non-empty, or
+       `hq_app_action: created` for an app already uploaded — reachable
+       when the linked HQ app was deleted on HQ and the call refused
+       with `remote_app_missing`), update the in-memory app reference to
+       the new `hq_app_id`, record both ids in
+       `3-commcare/app-release_summary.md.frontmatter.hq_app_id_history`
+       so Phase 4's downstream wiring (which reads the LATEST id) lines
+       up, and surface the change loudly.
+
+    5. **Retry `commcare_make_build` against the current HQ app id** (the
+       same one, unless step 4 reported it changed). If
        it still throws `BuildRejectedError`, parse the new
        `error_text` (it may name a different form / line / cause) and
        loop. **Cap at 3 total attempts per app.**

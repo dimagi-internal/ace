@@ -370,19 +370,35 @@ Invoke the `app-deploy` skill.
 - Output: apps uploaded to CCHQ as **draft builds** (Nova does not release
   by design — see Step 2.7)
 - **Gate (review mode):** Present app deployment summary for verification
-- **HQ-id stability requirement (added 2026-04-30):** every `nova_upload_to_hq`
-  call creates a **fresh** HQ application document with a new id (CCHQ has no
-  atomic update API for app uploads). If Phase 3 has to re-upload an app for
-  ANY reason after the first deploy — XForm escape fixes, Connect-marker
-  patches, build-rejection iteration — the HQ ids in
-  `3-commcare/app-deploy_summary.md` must be updated, and Phase 4
-  (`connect-opp-setup`) MUST run against the FINAL post-iteration ids.
+- **HQ-id stability (added 2026-04-30; premise INVERTED 2026-08-18):**
+  `nova_upload_to_hq` **updates the HQ app in place**. The first upload to a
+  project space creates the HQ application; every upload after that updates
+  that same document and keeps its id, with `hq_app_action` reporting
+  `created` | `updated`. Verified live 2026-08-18 against `connect-ace-prod`
+  (`4dd0325b…` re-uploaded twice: `updated` both times, id constant,
+  `remote_revision` 6 → 8, `left_behind: []`) — see
+  `playbook/integrations/nova-integration.md § Uploading to HQ updates in
+  place`. The original entry asserted the opposite (a fresh document with a
+  new id per upload, CCHQ having no atomic update API); that is retired.
+
+  What still holds: if Phase 3 re-uploads an app for ANY reason after the
+  first deploy — XForm escape fixes, Connect-marker patches, build-rejection
+  iteration — Phase 4 (`connect-opp-setup`) MUST still run against the FINAL
+  post-iteration state, because the app CONTENT changed even though the id
+  did not. And the id is not guaranteed immutable: if the linked HQ app is
+  deleted on HQ, the call refuses with `remote_app_missing` and the next
+  upload creates a fresh one. So read `hq_app_action` / `left_behind` rather
+  than assuming either way, and update the ids in
+  `3-commcare/app-deploy_summary.md` if they moved.
   Phase 4's `connect_create_opportunity` writes the HQ ids into the opp's
   app-wire fields at create time, and Connect's edit form does NOT expose
   those fields — so re-pointing a wired opp at new HQ ids requires
   delete-and-recreate **of the Connect opportunity** (CCC-301 will
   eventually expose `update_opportunity({learn_app, deliver_app})` and
-  retire this dance). The orchestrator's Phase 3→4 transition MUST
+  retire this dance). Update-in-place makes this the exception rather than
+  the routine cost of a re-upload: it is now only reachable when an id
+  actually moved (`remote_app_missing` → recreate), not every time Phase 3
+  iterates. The orchestrator's Phase 3→4 transition MUST
   verify `3-commcare/app-deploy_summary.md.released_at >= 3-commcare/app-deploy_summary.md.uploaded_at`
   AND that no subsequent re-upload happened, before dispatching Phase 4.
 
