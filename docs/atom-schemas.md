@@ -413,12 +413,13 @@ Verify every artifact the manifest declares required for `phase` is present in t
 
 ### `render_run_readme`
 
-Render the run-folder README markdown for `runId` with optional per-phase status overrides (keys: idea-to-design | scenarios-and-acceptance | commcare-setup | connect-setup | ocs-setup | qa-and-training | synthetic-data-and-workflows | solicitation-management | execution-management | closeout; values: pending | in-progress | done | partial | blocked | error | skipped). Returns `{markdown}`. Used at RUN-INIT (orchestrator step 7b — all phases default to `pending`; write the markdown to `<run-folder>/README.md`). You do NOT need to call it at phase boundaries: `verify_phase_artifacts` refreshes the README itself from `run_state.yaml` on every fence call. Implementation: `lib/run-readme.ts::generateRunReadme`.
+Render the run-folder README index and, when `runFolderFileId` is supplied, WRITE it to `<run-folder>/README.md` server-side (find-or-update). Pass `runFolderFileId` — that is the intended call at RUN-INIT (orchestrator step 7b): one call renders and persists the index, and nothing has to be relayed back through `drive_create_file`. Returns `{markdown, written, fileId?}`; omitting `runFolderFileId` renders only (`written: false`) and is kept for callers that genuinely want the markdown without persisting it. Optional per-phase status overrides (keys: idea-to-design | scenarios-and-acceptance | commcare-setup | connect-setup | ocs-setup | qa-and-training | synthetic-data-and-workflows | solicitation-management | execution-management | closeout; values: pending | in-progress | done | partial | blocked | error | skipped); unspecified phases default to `pending`. You do NOT need to call this at phase boundaries: `verify_phase_artifacts` refreshes the README itself from `run_state.yaml` on every fence call. Implementation: `lib/run-readme.ts::generateRunReadme`.
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `runId` | `z.string` | **required** | The run-id folder name, e.g. "20260526-1334". |
 | `phaseStatus` | `z.record` | **required** | _—_ |
+| `runFolderFileId` | `z.string` | optional | Drive folder ID of the run (ACE/<opp>/runs/<run-id>/). When supplied, the rendered index is WRITTEN to README.md in that folder (find-or-update) and `written: true` is returned. Supply it at run-init; omit it only when you want the markdown without persisting it. |
 
 ## ace-connect
 

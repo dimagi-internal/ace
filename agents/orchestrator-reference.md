@@ -1119,6 +1119,56 @@ threshold balances "let a slow but live skill finish" against "don't
 wait on a dead one." Tighten or loosen per skill if needed via a
 documented exception in the skill's SKILL.md.
 
+### Producers landed, only the summary + write-back are missing — finish inline
+
+The boundary fence's heal instruction for `verify.ok=false` is "dispatch each
+missing artifact's `producedBy` via `Skill(<producedBy>)`". That works for
+artifacts a SKILL owns. It does not work for the one artifact every phase owns
+itself — `<N>-<phase>/<phase>_summary.md`, whose `producedBy` in
+`lib/artifact-manifest.ts` is the PHASE, and a phase is not a `Skill`
+(dimagi-internal/ace#1505).
+
+The shape is common enough to name, because incremental writes make it the
+EXPECTED outcome of an interrupted phase rather than an exotic one: a phase
+agent writes each artifact as it is produced, so when it dies late — an API
+5xx, a context wall, an operator halt — every producer artifact is on Drive and
+only the phase's own bookkeeping is missing. `verify_phase_artifacts` reports
+`N-1 of N`, `classify_phase_writeback` reports `missing`/`in_progress`, and a
+literal reading of the retry branch says re-dispatch the whole phase.
+
+**Do not.** Re-dispatching re-runs every producer AND every `-eval` that
+already completed — and an `-eval` is an LLM judge, so the second run draws a
+DIFFERENT verdict that overwrites the first. The run silently takes a second
+sample and keeps whichever landed last. That is strictly worse than the gap it
+was trying to close.
+
+When **every** artifact except the phase summary is present and its per-skill
+verdicts are on Drive, finish inline at level 0:
+
+1. Read the landed verdicts (`<producer>-qa_result.yaml`,
+   `<producer>-eval_verdict.yaml`). They are the evidence; do not re-derive
+   their content.
+2. Write `<N>-<phase>/<phase>_summary.md` from them, and say in the summary
+   that the phase was completed inline after an interruption, what the
+   interruption was, and what was NOT re-run.
+3. Write the phase block per § Phase Write-Back Contract, with `status_note`
+   naming the same thing.
+4. Record the interruption in `run_state.yaml.notes`.
+5. Re-run the fence and require it green before advancing.
+
+**Only when the producers actually landed.** If a PRODUCER artifact is
+missing, heal that producer through its own skill first — this is finish-inline
+for bookkeeping, never a way to skip work. That distinction is the same one
+§ Skill Invocation Discipline draws: composing a producer's output inline is
+always wrong; writing the phase's own summary from artifacts the producers
+already wrote is not.
+
+Live: `spark-facilitator/20260817-1610` Phase 2. A server-side 500 killed the
+subagent after all five required artifacts had landed — the journeys eval
+verdict wrote at 23:06:42Z, past the agent's last status line — leaving only
+the summary and the write-back. Finishing inline preserved both eval verdicts;
+re-dispatching would have re-rolled two LLM judges for nothing.
+
 ### External-resource phases: finish inline, don't re-dispatch on a malformed write-back
 
 The re-dispatch rules above (§ State-as-canary, and the boundary fence's
