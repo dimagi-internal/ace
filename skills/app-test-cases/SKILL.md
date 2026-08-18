@@ -273,7 +273,8 @@ its first action taps `Start`; `form-submit.yaml`'s header declares
 *"Post-state: depends on the form … Deliver forms (TBD)"*. `deliver-sync.yaml`
 records the real behaviour in passing — *"form-submit returns to the form list
 (or the module list) rather than the app home"* — which is exactly why
-deliver-sync itself opens with two guarded `back` steps.
+deliver-sync itself opens with four guarded `back` steps (a case-bound Deliver
+form sits one level deeper — ace#1494).
 
 Without 1b the second leg starts inside a form. Live on
 `spark-facilitator/20260813-2126` the Deliver smoke walked leg A, then died at

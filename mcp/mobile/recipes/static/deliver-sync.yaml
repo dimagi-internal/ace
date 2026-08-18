@@ -63,8 +63,35 @@ appId: org.commcare.dalvik
 # form-submit returns to the form list (or the module list) rather than
 # the app home, and the "Sync with Server" tile lives on
 # StandardHomeActivity. Walk back until the home surface is showing.
-# `optional: true` on each BACK so an already-home device is a no-op
-# rather than a hard failure.
+# Each BACK is guarded on `notVisible` the home tile, so it is a no-op
+# once home is reached rather than a hard failure — which is what makes
+# the count safe to over-provision.
+#
+# FOUR backs, not two (ace#1494). A CASE-BOUND Deliver form sits one
+# level deeper than the shallow path: deliver-form-walk.yaml composes
+# deliver-case-select.yaml between the module row and the form row, whose
+# live-observed order is
+#   module row -> CASE LIST -> case detail -> CONTINUE -> FORM LIST -> form
+# (2.63.2, ace#1138). Two backs cannot climb that, so the assert below
+# fired on the module grid and the Deliver leg could never return `pass`
+# on a multi-stage opp. The guard makes the extra backs provable no-ops
+# on the shallow path, so leg A is unchanged.
+- runFlow:
+    when:
+      notVisible:
+        ${SELECTOR:learn-home-sync-tile}
+    commands:
+      - back
+      - waitForAnimationToEnd:
+          timeout: 3000
+- runFlow:
+    when:
+      notVisible:
+        ${SELECTOR:learn-home-sync-tile}
+    commands:
+      - back
+      - waitForAnimationToEnd:
+          timeout: 3000
 - runFlow:
     when:
       notVisible:

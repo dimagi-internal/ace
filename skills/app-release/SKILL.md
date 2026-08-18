@@ -313,6 +313,15 @@ procedure below to rediscover.
    discover it, GET the wizard page and read the `hx-post` attribute on
    the Sync Deliver Units button.
 
+9. **Verify Connect can see the release.**
+   Optional but recommended sanity check before Phase 4 starts:
+
+   - GET `/a/<connect_org>/opportunity/init/` (Connect side, via ace-connect MCP context)
+   - Look at the deliver_app dropdown options for `<hq_domain>`. The option
+     text should change from `Unreleased - <name>` to `Released - <name>`
+     once the release propagates (typically immediate; Connect doesn't
+     cache).
+
 ## Connect-marker verification
 
 The `app-connect-coverage` skill (Phase 3 Step 1.5) verifies and
@@ -339,35 +348,6 @@ post-release boundary check.
 > shorthand for the element TYPE, not a literal string to search for.
 > (dimagi-internal/ace#680 fixed this in the sibling `app-release-qa`;
 > observed again from this file on spark-facilitator/20260813-2126.)
-
-5. **Update 3-commcare/app-deploy_summary.md.**
-   Append a `releases` block to the frontmatter with the new build IDs and
-   release timestamps:
-
-   The block has ONE shape — the same one Step 7 declares (ace#1439). It was
-   documented here with only `{build_id, released_at}` and at Step 7 with
-   `{build_id, version, released_at, connect_markers}`, which made three
-   declared shapes across two files for one block and left `app-release-eval`
-   grading keys nobody writes.
-
-   ```yaml
-   releases:
-     learn_app:  { build_id: <id>, version: <n>, released_at: <iso>, connect_markers: <count> }
-     deliver_app: { build_id: <id>, version: <n>, released_at: <iso>, connect_markers: <count> }
-   ```
-
-   `is_released` is NOT in this block — it lives in this skill's own
-   `3-commcare/app-release_summary.md` frontmatter, which is where
-   `app-release-eval § both_apps_released` reads it.
-
-6. **Verify Connect can see the release.**
-   Optional but recommended sanity check before Phase 4 starts:
-
-   - GET `/a/<connect_org>/opportunity/init/` (Connect side, via ace-connect MCP context)
-   - Look at the deliver_app dropdown options for `<hq_domain>`. The option
-     text should change from `Unreleased - <name>` to `Released - <name>`
-     once the release propagates (typically immediate; Connect doesn't
-     cache).
 
 ## MCP Tools Used
 
