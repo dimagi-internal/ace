@@ -149,6 +149,41 @@ round-trip gate in Step 11.5 below.
      — run-scoped name, matching the Step 2 filter exactly (ace#1017).
    - Capture `{experiment_id, public_id, pipeline_id}`
 
+3.5. **Post-clone liveness gate (mandatory — runs BEFORE the collection
+    build, dimagi-internal/ace#1492).** A freshly cloned chatbot is not
+    guaranteed to be able to generate. Prove it can, before spending
+    5–10 minutes building and indexing a collection for it.
+
+    - `ocs_get_chatbot_embed_info({ experiment_id })` for the new clone,
+      then send ONE probe (`ocs_send_test_message(public_id, embed_key,
+      "ping")`, or the raw widget handshake `POST /api/chat/start/` →
+      `POST /api/chat/<sid>/message/` → `GET /api/chat/<sid>/<tid>/poll/`).
+    - **On success:** continue to Step 4.
+    - **On failure: probe `$OCS_GOLDEN_TEMPLATE_ID` the same way, in the
+      same session, before reporting anything.** The two results together
+      are the diagnosis; either one alone is misleading.
+
+    | clone | golden | What it means | What to do |
+    |---|---|---|---|
+    | fail | fail | The TEAM's LLM provider key is dead or the platform is down (the ace#743 class) | Re-key the provider at `/a/<team>/service_providers/llm/<pk>/`. Re-cloning will not help. |
+    | fail | **pass** | **The clone mechanism is broken** (ace#1492) | Halt the phase. Do **NOT** touch the prompt or the collections — they are not the cause, and `--prompt-patch` cannot fix this. File/escalate. |
+    | pass | — | Healthy clone | Continue to Step 4. |
+
+    This is an **observing** gate — it performs the call and branches on
+    the real result. It is not a predictive guard and must never be
+    reduced to one.
+
+    Why it exists: without it, a dead clone is only discovered at the
+    Phase 5 quick gate, *after* the collection build, and it presents
+    there as a **quality** failure. The documented remedy at that point
+    (`--prompt-patch` → re-run qa+eval → escalate) then aims the whole
+    retry loop at the prompt, which is provably not the cause. On
+    `bednet-check-2-visit/20260817-1720` that cost an entire phase
+    budget: the prompt was rewritten twice, the per-opp collection was
+    rebuilt from scratch, and the shared collection was swapped, before
+    a virgin-clone control identified the clone itself. The 2×2 above is
+    what that session had to derive by hand.
+
 4. **Create a per-opp Collection:**
    - `ocs_create_collection({ name: "ACE <opp-name>", summary: "Knowledge base for <opp-name> — PDD, training, app summaries", is_index: true, is_remote_index: false })`
    - `llm_provider` and `embedding_model` default from `OCS_LLM_PROVIDER_ID` and `OCS_EMBEDDING_MODEL_ID` env vars (required for indexed collections)
@@ -451,3 +486,4 @@ Each row this skill writes uses `phase: 5-ocs` and
 | 2026-05-05 | **Two idempotency improvements.** (1) New Step 0 reads the local state file (`runs/<run-id>/5-ocs/ocs-agent-setup.md`) before any OCS call — saves ~1s on a normal re-run and avoids the silent-pipeline-walk on `--prompt-patch` re-runs. (2) New `--prompt-patch` mode reuses the existing chatbot/collection/files, skipping clone + create-collection + upload + 5–10 min indexing wait, and just recomposes the prompt → calls `ocs_set_chatbot_pipeline` → publishes. This is the canonical Phase 5 retry path after `ocs-chatbot-eval --quick` flags a prompt issue (the previous skill prose said the agent should "retry prompt-patch" but no such mode existed — re-runs walked the full pipeline). | ACE team |
 | 2026-05-08 | Add `## Decisions Log` section: 3 anchor rows (system-prompt-baseline, rag-collection-scope, test-prompt-count) + bar-criterion reference. Pairs with decisions-log PR #4 (Phase 3-10 writes). | ACE team (decisions-log PR #4) |
 | 2026-05-15 | Add `2-scenarios/pdd-to-test-prompts.md` to the canonical KB recipe (Step 5); add archetype-aware "primary vs supplementary surface" line to the system-prompt composition checklist (Step 7) — for `focus-group`, the chatbot is the primary facilitator training + post-session writing surface. Make `6-qa-and-training/*` reads tolerant of missing files (Phase 6 may not have run yet in `/ace:run` flow). Prompted by `malaria-itn-fgd/20260514-2352` Phase 5 agent observations. | ACE team |
+| 2026-08-18 | **New Step 3.5 — post-clone liveness gate, with a golden-template control.** Probe the fresh clone before building the collection; on failure probe `$OCS_GOLDEN_TEMPLATE_ID` too and branch on the 2×2 (both fail = team LLM key, the ace#743 class; clone fails + golden passes = the clone mechanism, ace#1492 — do NOT touch prompt or collections). Previously a dead clone surfaced only at the Phase 5 quick gate, *after* the 5–10 min collection build, and presented as a *quality* failure — so the documented remedy (`--prompt-patch` → re-run qa+eval) aimed the retry loop at the prompt, which cannot be the cause. On `bednet-check-2-visit/20260817-1720` that cost the whole phase budget before a virgin-clone control found it. Observing gate, not a predictive guard. | ACE team |
