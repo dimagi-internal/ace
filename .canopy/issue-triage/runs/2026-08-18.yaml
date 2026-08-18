@@ -1,0 +1,182 @@
+run_date: 2026-08-18
+repo: dimagi-internal/ace
+scope_contract: triage-plus-one-cluster
+lens: filing-quality-audit    # operator asked whether ACE should have filed these at all
+code_ref: c6b0e3d4
+open_total: 10
+triaged: 10
+carried_forward: 0            # 8 of 10 filed since the prior run; 1289/1110 evidence paths had moved
+truncated: false
+
+clusters:
+  - name: work-order-contract
+    members: [1484, 1485, 1486]
+    one_fix: "one PR across skills/pdd-to-work-order{,-qa}: un-contradict check5/check9 on [TBD], refresh the v3 decision-row shape to v4, add the longitudinal-visits branch"
+    shipped: "PR #1498"
+  - name: fixture-opp-class
+    members: [1487, 1488]
+    one_fix: "an opp-class/fixture marker that both scopes the Phase 1 open-questions inline AND gives idea-to-pdd-eval a declared-deviation channel for viability dims a bare smoke fixture cannot satisfy"
+    shipped: null
+tier_counts: { blocks-e2e: 0, harness: 9, polish: 1 }   # after the 1289 downgrade
+
+prs: []   # zero open PRs at run time
+
+# --- The audit lens (the operator's actual question) -------------------------
+filing_audit:
+  question: "these are all AI-generated — were they good issues?"
+  open_issue_verdicts: { good-filing: 9, premise-false: 1 }
+  headline: >-
+    Filing quality is good. 9 of 10 open issues are specific, premise-verified,
+    non-duplicate, correctly labelled, run-stamped. The real defect is self-heal,
+    not filing.
+  calibration:                # 26 issues closed NOT_PLANNED since 2026-07-18
+    total_not_planned: 26
+    of_filed_45d: "24 of 296 = 8%"
+    buckets:
+      real-finding-wrong-granularity: 12   # belonged on #1022 / #1218 / #1250
+      false-premise-or-misdiagnosis: 6     # 1128 1054 897 811 1012 824
+      duplicate-search-should-have-caught: 5
+      not-a-specific-defect: 2             # 1466 1468, closed by Jon 2026-08-17
+      wrong-tracker: 1                     # 1395, per-run artifacts
+  self_heal_measurement:      # 119 issues filed since 2026-08-11
+    by_past_run_retrospective: { n: 75, same_day_fixed: 53, rate: 0.71 }
+    by_live_run_same_day:      { n: 33, same_day_fixed: 19, rate: 0.58 }
+    no_run_stamp:              { n: 11, same_day_fixed: 5,  rate: 0.45 }
+    root_cause: >-
+      `self-heal` appears twice in CLAUDE.md and ZERO times in
+      agents/ace-orchestrator.md, the procedure /ace:run executes. Mechanics
+      existed (orchestrator-reference.md § Fix-and-ship subagent template,
+      skills/shipping); nothing in the run loop pointed at them.
+    fix: "PR #1496 — Turn N+3 § Self-heal sweep in the phase boundary fence"
+
+verdicts:
+  - number: 1481
+    disposition: close
+    blocking: harness
+    confidence: high
+    effort: n/a
+    cluster: null
+    evidence_paths: [templates/work-order-template.md, skills/pdd-to-work-order-qa/checks.ts]
+    duplicate_of: null
+    source: fresh
+    filing_verdict: premise-false
+    premise_check: >-
+      Claimed "grep for MSA / Master Services / incorporat — all zero hits".
+      Clause is at templates/work-order-template.md:147, live template gdoc
+      export line 198, and BOTH cited rendered docs (1W0HfmbN… line 229,
+      18BudyOf… line 205). A follow-up comment then asserted "Confirmed zero
+      hits" on a document containing the string.
+    action: "closed not-planned + retracted the fabricated confirmation"
+    outcome: closed
+  - number: 1110
+    disposition: close
+    blocking: harness
+    confidence: medium
+    effort: n/a
+    cluster: null
+    evidence_paths: [lib/atom-payload-resolver.ts, mcp/google-drive-server.ts, mcp/ocs-server.ts, mcp/connect-server.ts, lib/contained-path.ts, test/lib/writetopath-guard-coverage.test.ts]
+    source: fresh
+    filing_verdict: good-filing
+    filing_note: >-
+      Enumerated-findings-with-file-paths is what made it productive (4 PRs).
+      What kept it open 19 days after its findings shipped was bundling a
+      DEFERRED DESIGN DECISION (allowed roots) into a findings umbrella.
+    action: "closed completed with per-finding citations; roots residual named, not tracked"
+    outcome: closed
+  - number: 1484
+    disposition: implement
+    blocking: harness
+    confidence: high
+    effort: S
+    cluster: work-order-contract
+    evidence_paths: [skills/pdd-to-work-order-qa/checks.ts, test/skills/pdd-to-work-order-qa/checks.test.ts]
+    source: fresh
+    filing_verdict: good-filing
+    action: "SELF-HEALED — PR #1498"
+    outcome: fixed
+  - number: 1485
+    disposition: implement
+    blocking: harness
+    confidence: high
+    effort: S
+    cluster: work-order-contract
+    evidence_paths: [skills/pdd-to-work-order/SKILL.md, skills/connect-opp-setup/SKILL.md, lib/decisions-schema.ts, mcp/decisions-server.ts]
+    source: fresh
+    filing_verdict: good-filing
+    action: "SELF-HEALED — PR #1498 (+ test/skills/decisions-example-currency.test.ts)"
+    outcome: fixed
+  - number: 1486
+    disposition: implement
+    blocking: polish
+    confidence: high
+    effort: S
+    cluster: work-order-contract
+    evidence_paths: [skills/idea-to-pdd-qa/SKILL.md, skills/pdd-to-work-order-qa/SKILL.md, skills/pdd-to-work-order/SKILL.md, skills/idea-to-pdd-qa/checks.ts]
+    source: fresh
+    filing_verdict: good-filing
+    action: "SELF-HEALED — PR #1498 (+ test/skills/archetype-enum-drift.test.ts)"
+    outcome: fixed
+  - number: 1487
+    disposition: implement
+    blocking: harness
+    confidence: high
+    effort: S
+    cluster: fixture-opp-class
+    evidence_paths: [agents/ace-orchestrator.md, skills/idea-to-pdd/SKILL.md, lib/opp-root-files.ts, lib/artifact-manifest.ts]
+    source: fresh
+    filing_verdict: good-filing
+    action: "handed back — needs the opp-class design call shared with 1488"
+    outcome: null
+  - number: 1488
+    disposition: implement
+    blocking: harness
+    confidence: high
+    effort: M
+    cluster: fixture-opp-class
+    evidence_paths: [skills/idea-to-pdd-eval/SKILL.md, skills/_eval-template.md, lib/assessment-coverage-feasibility.ts]
+    source: fresh
+    filing_verdict: good-filing
+    filing_note: "title overclaims — 'structurally cannot pass' vs a ~7.68 ceiling against a 7.5 threshold"
+    action: "handed back — the naive fix would neutralise demand_reality for the orphan-dataset case it exists to catch"
+    outcome: null
+  - number: 1489
+    disposition: implement
+    blocking: harness
+    confidence: high
+    effort: S
+    cluster: null
+    evidence_paths: [skills/pdd-to-deliver-app/SKILL.md, lib/entity-id-precedence.ts, lib/entity-id-grain.ts, skills/app-release-qa/SKILL.md]
+    source: fresh
+    filing_verdict: good-filing
+    action: "handed back — next-run quick win (Step 4i + static test, mirrors the 4g screen-shape pairing)"
+    outcome: null
+  - number: 1479
+    disposition: implement
+    blocking: harness
+    confidence: high
+    effort: M
+    cluster: null
+    evidence_paths: [docs/mobile-atlas/connect-2.62.0.md, mcp/mobile/selectors/connect-2.63.2.yaml, mcp/mobile/client.ts]
+    source: fresh
+    filing_verdict: good-filing
+    action: "handed back — all 4 evidence dumps present in-repo, no device needed"
+    outcome: null
+  - number: 1289
+    disposition: implement
+    blocking: harness      # DOWNGRADED from blocks-e2e this run
+    confidence: high
+    effort: M
+    cluster: null
+    evidence_paths: [mcp/mobile/recipes/static/connect-resume-opp.yaml, mcp/mobile/recipes/static/connect-claim-opp.yaml, lib/invite-pruning.ts, test/mcp/mobile/static-recipe-invariants.test.ts]
+    source: fresh
+    filing_verdict: good-filing
+    action: "relabelled harness + commented; budget half shipped, durable unbounded-list fix remains"
+    outcome: relabelled
+
+shipped:
+  - pr: 1496
+    title: "wire self-heal into the phase boundary fence + rail the search-before-create class"
+    state: merged
+  - pr: 1498
+    title: "self-heal the work-order-contract cluster (#1484, #1485, #1486)"
+    state: pending
