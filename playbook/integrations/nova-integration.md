@@ -1,5 +1,10 @@
 # Nova Integration
 
+> **Upstream repo: [`voidcraft-labs/commcare-nova`](https://github.com/voidcraft-labs/commcare-nova).** Nova ships continuously,
+> so an ACE call path that has not changed in months can break because *they* shipped.
+> When something that used to work starts failing — especially with an opaque error —
+> run `skills/upstream-regression-triage` before concluding it needs a live probe.
+
 ## Status
 
 **Live (via the Nova Claude Code plugin's native PAT path, v1.1.0+).**

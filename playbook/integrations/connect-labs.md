@@ -1,5 +1,10 @@
 # Connect-Labs Integration
 
+> **Upstream repo: [`dimagi-internal/connect-labs`](https://github.com/dimagi-internal/connect-labs).** Connect Labs ships continuously,
+> so an ACE call path that has not changed in months can break because *they* shipped.
+> When something that used to work starts failing — especially with an opaque error —
+> run `skills/upstream-regression-triage` before concluding it needs a live probe.
+
 ## Status
 
 **Live.** ACE consumes labs.connect.dimagi.com via the `connect-labs`

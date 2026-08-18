@@ -262,6 +262,9 @@ describe('PlaywrightBackend.cloneChatbot', () => {
           name: 'ACE - Malaria Pilot',
           platform: 'embedded_widget',
           allow_all_domains: 'on',
+          // ace#1492 — see the dedicated checkbox test below for why this is
+          // load-bearing rather than cosmetic.
+          enabled: 'on',
           csrfmiddlewaretoken: 'csrf-xyz',
         });
         return { ok: true, status: 200, text: async () => '', json: async () => ({}) };
@@ -284,6 +287,64 @@ describe('PlaywrightBackend.cloneChatbot', () => {
       'GET /a/dimagi/chatbots/99/edit/',
       'POST /channels/dimagi/chatbots/99/channels/create-dialog/embedded_widget/',
     ]);
+  });
+
+  /**
+   * ace#1492 — the Django-checkbox trap, found by reading upstream PRs.
+   *
+   * OCS PR #4202 (merged 2026-08-17) added `enabled` to `ChannelForm.Meta.fields`
+   * as an admin kill-switch for a channel. It is a BooleanField rendered as a
+   * checkbox, and in a Django ModelForm **a checkbox absent from the POST data
+   * resolves to False** — the model's `default=True` is bypassed the moment the
+   * form owns the field. Channels are created through
+   * `ChannelFormWrapper.save()` -> `ChannelForm.save()`, so ACE's POST, written
+   * before that PR and never updated, silently created DISABLED channels.
+   * `ChannelDisabledStage` then dropped every inbound message.
+   *
+   * What made it hard to see from this side: the golden template and every
+   * pre-#4202 clone kept answering, because the migration backfilled existing
+   * rows to `enabled=True`. Only NEW clones broke, and they broke with an
+   * opaque generation error rather than anything naming a channel.
+   *
+   * This assertion is deliberately `toHaveProperty` rather than part of the
+   * `toMatchObject` above: `toMatchObject` passes when a key is ABSENT, which is
+   * exactly the shape of this defect, so the permissive matcher could never have
+   * caught it.
+   */
+  it('sends enabled=on — an omitted Django checkbox means False, not the default', async () => {
+    let channelBody: Record<string, unknown> | undefined;
+    const request: RequestFn = async (method, url, body) => {
+      if (method === 'POST' && url === '/a/dimagi/chatbots/5/copy/') {
+        return {
+          ok: false,
+          status: 302,
+          headers: { location: '/a/dimagi/chatbots/99/' },
+          text: async () => '',
+          json: async () => ({}),
+        };
+      }
+      if (method === 'GET' && url === '/a/dimagi/chatbots/99/') {
+        return { ok: true, status: 200, text: async () => HOME_HTML_WITH_WIDGET, json: async () => ({}) };
+      }
+      if (method === 'GET' && url === '/a/dimagi/chatbots/99/edit/') {
+        return { ok: true, status: 200, text: async () => EDIT_HTML_WITH_PIPELINE_ID, json: async () => ({}) };
+      }
+      if (method === 'POST' && url.includes('create-dialog/embedded_widget/')) {
+        channelBody = body as Record<string, unknown>;
+        return { ok: true, status: 200, text: async () => '', json: async () => ({}) };
+      }
+      throw new Error(`unexpected ${method} ${url}`);
+    };
+
+    await makeBackend(request).cloneChatbot({ template_id: 5, new_name: 'ACE - Malaria Pilot' });
+
+    expect(channelBody).toBeDefined();
+    expect(
+      channelBody,
+      'The widget-channel POST must send `enabled`. Omitting it makes Django read the ' +
+        'checkbox as False, so the channel is created DISABLED and every inbound message ' +
+        'is dropped by ChannelDisabledStage (ace#1492, upstream OCS #4202).',
+    ).toHaveProperty('enabled', 'on');
   });
 
   it('throws when the copy POST response has no Location header', async () => {

@@ -1,5 +1,10 @@
 # CommCare API Integration
 
+> **Upstream repo: [`dimagi/commcare-hq`](https://github.com/dimagi/commcare-hq).** CommCare HQ ships continuously,
+> so an ACE call path that has not changed in months can break because *they* shipped.
+> When something that used to work starts failing — especially with an opaque error —
+> run `skills/upstream-regression-triage` before concluding it needs a live probe.
+
 ## What Exists Today
 
 The **connect-labs MCP** includes a set of CommCare HQ tools alongside the Connect
