@@ -1380,9 +1380,29 @@ Three rules make this safe to run inside a live `/ace:run`:
    which is where it already was.
 2. **One issue per dispatch, no bundling.** A subagent that fans out
    across several issues is how a phase boundary becomes a build session.
-3. **The run does not consume its own fix.** `/ace:update` lands in the
-   dispatching session only after the current run ends — a merged self-heal
-   does not hot-swap skill code underneath a phase in flight.
+3. **The run does not consume its own fix — do NOT `/ace:update` mid-run.**
+   A merged self-heal must not hot-swap skill code underneath a phase in
+   flight. Finish the run, then update. (Stated as an instruction, not a
+   description: nothing makes this happen automatically, and the first
+   version of this rule said `/ace:update` "lands only after the current run
+   ends", which reads as a mechanism and is not one — ace#1500.) This is the
+   run-side half of `CLAUDE.md § Update workflow` step 4, whose "update
+   IMMEDIATELY after the merge" is addressed to a session that is NOT
+   executing a run; the two are one rule seen from two sides. The stake is
+   higher than staleness: Phase 6 consumes a one-way precondition (Learn
+   completion per `(test user, opportunity)`), so a code swap mid-run can
+   leave the run unrecoverable without a fresh opportunity.
+
+   **Corollary — a long run goes stale and nothing tells it so.** Preflight
+   reads `plugin.version` once; on a repo merging ~9x/day a multi-hour run can
+   finish 15 versions behind the installed plugin, and the MCP children stay
+   bound to the version they were launched from. Two measured costs on
+   `bednet-check-2-visit/20260817-1720`: a retired premise (`upload_to_hq`
+   creates a fresh app id — falsified that same day) was propagated into a
+   Phase 4 dispatch, and Phase 6 walked a device against five static recipes
+   that had all changed. So: **treat the version bound at preflight as the
+   run's version for its whole life**, cite docs as of that version, and do
+   not assume a mid-run merge is in effect anywhere.
 
 **Attempting the fix is itself the premise check, and that is half the
 value.** Filing costs nothing and touches no artifact, so an unverified
