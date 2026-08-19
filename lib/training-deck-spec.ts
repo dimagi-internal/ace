@@ -544,6 +544,73 @@ export const STENCILS = {
 } as const;
 export type StencilKey = keyof typeof STENCILS;
 
+/**
+ * The placeholder tokens each stencil ACTUALLY contains.
+ *
+ * Captured from the live template (`ACE_TRAINING_DECK_TEMPLATE_ID`
+ * = 1bqUvRgxtEODF3WToXKDXn6m_aLjmMgNb6uOOXiWZ_sA) on 2026-08-18 by reading
+ * every stencil page's text runs through the Slides API.
+ *
+ * This exists to make stencil/builder drift a TEST FAILURE rather than a
+ * silent render defect. A builder that fills a token the stencil does not have
+ * produces a no-op replacement, and any token the stencil DOES have that
+ * nothing fills survives onto the rendered slide as raw `{{TOKEN}}` text. That
+ * shipped for months as dimagi-internal/ace#1503: the `timeline` branch filled
+ * {{STEPn_LABEL}}/{{STEPn_DETAIL}} against a stencil whose only placeholders
+ * are {{BODY}} and {{TITLE}}, so every timeline slide in every ACE training
+ * deck rendered a literal `{{BODY}}` and dropped all of its steps.
+ *
+ * Nothing caught it because the two checks that could have look at different
+ * populations: `training-deck-generate`'s token sweep reads the SPEC (clean —
+ * the leak is introduced by the renderer), and `training-deck-render`'s
+ * self-eval checks slide count, image resolution, API success and visual
+ * coverage — none of which reads rendered text.
+ *
+ * When you re-mint the template, re-run the probe and update this map in the
+ * same commit; the parity test in `test/lib/training-deck-spec.test.ts` is what
+ * holds the two halves together.
+ *
+ * NOTE: `{{NOTES}}` is deliberately absent. It lives on each slide's NOTES
+ * page (`<pageId>:notes`), not on the stencil body, so the parity test exempts
+ * replacements scoped to a notes page.
+ */
+export const STENCIL_PLACEHOLDERS: Record<StencilKey, readonly string[]> = {
+  cover: ['{{DATE}}', '{{SUBTITLE}}', '{{TITLE}}'],
+  section: ['{{TITLE}}'],
+  agenda: ['{{BODY}}', '{{TITLE}}'],
+  content: ['{{BODY}}', '{{TITLE}}'],
+  walkthrough: ['{{BODY}}', '{{TITLE}}'],
+  mobile_flow: [
+    '{{STEP_0_CAPTION}}',
+    '{{STEP_1_CAPTION}}',
+    '{{STEP_2_CAPTION}}',
+    '{{STEP_3_CAPTION}}',
+    '{{TITLE}}',
+  ],
+  web_screen: ['{{CAPTION}}', '{{TITLE}}'],
+  mobile_zoom: ['{{CALLOUTS}}', '{{TITLE}}'],
+  two_column: [
+    '{{LEFT_BODY}}',
+    '{{LEFT_HEADING}}',
+    '{{RIGHT_BODY}}',
+    '{{RIGHT_HEADING}}',
+    '{{TITLE}}',
+  ],
+  stats: [
+    '{{STAT1}}',
+    '{{STAT1_LABEL}}',
+    '{{STAT2}}',
+    '{{STAT2_LABEL}}',
+    '{{STAT3}}',
+    '{{STAT3_LABEL}}',
+    '{{TITLE}}',
+  ],
+  timeline: ['{{BODY}}', '{{TITLE}}'],
+  checklist: ['{{BODY}}', '{{TITLE}}'],
+  exercise: ['{{BODY}}', '{{DURATION}}', '{{TITLE}}'],
+  closing: ['{{BODY}}', '{{TITLE}}'],
+} as const;
+
 export interface BuildOptsV2 {
   stencils: Record<StencilKey, string>;
   manifest: ResolvedManifest;
@@ -811,15 +878,22 @@ function buildLayoutRequests(
       }
       break;
     case 'timeline':
-      for (let i = 0; i < 5; i++) {
-        if (i < slide.steps.length) {
-          r(`{{STEP${i + 1}_LABEL}}`, slide.steps[i].label);
-          r(`{{STEP${i + 1}_DETAIL}}`, slide.steps[i].detail);
-        } else {
-          r(`{{STEP${i + 1}_LABEL}}`, '');
-          r(`{{STEP${i + 1}_DETAIL}}`, '');
-        }
-      }
+      // The timeline stencil is a TITLE + BODY text layout — it has NO
+      // per-step boxes. This branch used to fill {{STEP1_LABEL}} …
+      // {{STEP5_DETAIL}}, none of which exist on the stencil, so all ten
+      // replacements were no-ops, {{BODY}} was never targeted by anything, and
+      // it survived to the rendered slide with every step missing. Verified
+      // against the live template on 2026-08-18: `ace_stencil_timeline`
+      // contains exactly {{BODY}} and {{TITLE}}. Matches the `checklist` and
+      // `agenda` precedent — compose the list into BODY.
+      // dimagi-internal/ace#1503. Parity is now enforced by
+      // STENCIL_PLACEHOLDERS + its test, so this cannot silently drift again.
+      r(
+        '{{BODY}}',
+        slide.steps
+          .map((step, i) => `${i + 1}.  ${step.label}  —  ${step.detail}`)
+          .join('\n'),
+      );
       break;
     case 'checklist':
       r('{{BODY}}', slide.items.map((item) => `☐ ${item}`).join('\n'));
