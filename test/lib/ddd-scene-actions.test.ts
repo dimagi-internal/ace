@@ -59,21 +59,60 @@ describe('checkSceneActions (#1379)', () => {
     ]);
     expect(r.ok).toBe(false);
     expect(r.findings.map((f) => f.kind)).toContain('ambiguous-text-target');
-    expect(r.findings[0].detail).toMatch(/role=|label|control/i);
+    expect(r.findings[0].detail).toMatch(/control/i);
   });
 
-  it('accepts a click on an explicit control selector', () => {
-    for (const target of ['role=checkbox[name="Needs a look (9)"]', 'label:Needs a look (9)', 'css=#filter-needs-look']) {
+  // ace#1519 — the guard's prefixes are canopy's RECORDER prefixes, which use
+  // `:` and have no `=` form (`_PREFIXES` / `_PREFIX_SEPARATOR` in
+  // runtime/scripts/walkthrough/_lib/targets.py). The `=` spellings the old
+  // regex listed fall through parse_target to the bare-string heuristic — the
+  // exact ambiguous resolution this check exists to prevent — so they must be
+  // FLAGGED, not accepted. Both halves are load-bearing: without the second,
+  // the regex could regress to `=` forms and this suite would stay green.
+  it('accepts a click on a recorder control prefix', () => {
+    for (const target of [
+      'css:#filter-needs-look',
+      'testid:filter-needs-look',
+      'aria:Needs a look (9)',
+      'role:checkbox',
+      'role:checkbox:Needs a look (9)',
+    ]) {
       const r = checkSceneActions([scene({ actions: [{ kind: 'click', target }] })]);
       expect(r.findings.map((f) => f.kind), target).not.toContain('ambiguous-text-target');
     }
+  });
+
+  it('flags targets the recorder does NOT parse as a control prefix', () => {
+    for (const target of [
+      'Needs a look (9)', // bare string — the heuristic, not a control
+      'text:Needs a look (9)', // the ambiguous form being guarded against
+      'css=#filter-needs-look', // `=` is not a recorder separator
+      'role=checkbox[name="Needs a look (9)"]',
+      'testid=filter-needs-look',
+      'aria=Needs a look (9)',
+      'label:Needs a look (9)', // never a recorder prefix
+      'xpath=//input',
+    ]) {
+      const r = checkSceneActions([scene({ actions: [{ kind: 'click', target }] })]);
+      expect(r.findings.map((f) => f.kind), target).toContain('ambiguous-text-target');
+    }
+  });
+
+  it('remediation names only prefixes the recorder actually parses', () => {
+    const r = checkSceneActions([
+      scene({ actions: [{ kind: 'click', target: 'Needs a look' }] }),
+    ]);
+    const detail = r.findings.find((f) => f.kind === 'ambiguous-text-target')!.detail;
+    expect(detail).toMatch(/css:/);
+    expect(detail).toMatch(/testid:/);
+    expect(detail).not.toMatch(/css=|role=|testid=|aria=|label:/);
   });
 
   it('flags a wait_for gate that cannot discriminate before from after', () => {
     const r = checkSceneActions([
       scene({
         actions: [
-          { kind: 'click', target: 'role=checkbox[name="Needs a look"]' },
+          { kind: 'click', target: 'role:checkbox:Needs a look' },
           { kind: 'wait_for', target: 'text:Showing' },
         ],
       }),
@@ -85,7 +124,7 @@ describe('checkSceneActions (#1379)', () => {
     const r = checkSceneActions([
       scene({
         actions: [
-          { kind: 'click', target: 'role=checkbox[name="Needs a look"]' },
+          { kind: 'click', target: 'role:checkbox:Needs a look' },
           { kind: 'wait_for', target: 'text:Showing 9 of 20 facilitators' },
         ],
       }),
@@ -97,7 +136,7 @@ describe('checkSceneActions (#1379)', () => {
 describe('checkSceneActions (#1380)', () => {
   it('flags a state-mutating click with no declared restore', () => {
     const r = checkSceneActions([
-      scene({ actions: [{ kind: 'click', target: 'role=button[name="Draft coaching message"]' }] }),
+      scene({ actions: [{ kind: 'click', target: 'role:button:Draft coaching message' }] }),
     ]);
     expect(r.ok).toBe(false);
     expect(r.findings.map((f) => f.kind)).toContain('mutation-without-restore');
@@ -109,8 +148,8 @@ describe('checkSceneActions (#1380)', () => {
   it('accepts the same scene once it declares a restore', () => {
     const r = checkSceneActions([
       scene({
-        restore: [{ kind: 'click', target: 'role=button[name="Discard"]' }],
-        actions: [{ kind: 'click', target: 'role=button[name="Draft coaching message"]' }],
+        restore: [{ kind: 'click', target: 'role:button:Discard' }],
+        actions: [{ kind: 'click', target: 'role:button:Draft coaching message' }],
       }),
     ]);
     expect(r.findings.map((f) => f.kind)).not.toContain('mutation-without-restore');
@@ -118,7 +157,7 @@ describe('checkSceneActions (#1380)', () => {
 
   it('does not treat a read-only click as a mutation', () => {
     const r = checkSceneActions([
-      scene({ actions: [{ kind: 'click', target: 'role=tab[name="Payments"]' }] }),
+      scene({ actions: [{ kind: 'click', target: 'role:tab:Payments' }] }),
     ]);
     expect(r.findings.map((f) => f.kind)).not.toContain('mutation-without-restore');
   });
@@ -150,10 +189,10 @@ describe('checkSceneActions reporting', () => {
   it('passes a fully-correct scene', () => {
     const r = checkSceneActions([
       scene({
-        restore: [{ kind: 'click', target: 'role=button[name="Discard"]' }],
+        restore: [{ kind: 'click', target: 'role:button:Discard' }],
         actions: [
           { kind: 'scroll_to', target: 'text:Coaching', offset: 96 },
-          { kind: 'click', target: 'role=button[name="Draft coaching message"]' },
+          { kind: 'click', target: 'role:button:Draft coaching message' },
           { kind: 'wait_for', target: 'text:Draft #5139 — Not sent' },
         ],
       }),

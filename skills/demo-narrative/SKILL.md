@@ -110,8 +110,12 @@ paraphrase the schema here — read the model / schema and validate.
      happens. Scene 3's `click text:Needs a look` matched three nodes — a
      card-subtitle DIV, the real LABEL, a reconciliation-sentence DIV — and
      took the DIV. `record_video` reported *39 actions: all ok* on a frame
-     showing the checkbox unchecked and "showing 20 of 20 facilitators". Use
-     `role=` / `label:` / `css=` / `testid=`.
+     showing the checkbox unchecked and "showing 20 of 20 facilitators". Use a
+     recorder prefix — `css:` / `testid:` / `aria:` / `role:` (`role:` also
+     takes a name: `role:button:Save`). The separator is `:`; canopy's
+     `parse_target` has no `=` form, so `css=…` falls through to the
+     bare-string heuristic — the ambiguity you were trying to escape
+     (ace#1519).
    - **`non-discriminating-gate`** — a `wait_for` must name something only the
      POST state carries (a count, a status word, the new id). `wait_for
      text:Showing` was true before and after, so it could not fail.
