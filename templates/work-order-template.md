@@ -89,7 +89,7 @@ Dimagi's total financial commitment under this Work Order is USD {{wo_total_not_
 | 1 | Mobilization advance | {{wo_mobilization_advance_pct}}% | {{wo_mobilization_amount}} | {{wo_mobilization_trigger}} | {{wo_mobilization_timing}} |
 | 2 | Final reconciliation | {{wo_reconciliation_pct}}% | {{wo_reconciliation_amount}} | {{wo_reconciliation_trigger}} | {{wo_reconciliation_timing}} |
 
-Dimagi will pay only for verified units at the per-visit (or per-session, per archetype) rate proposed in the partner's solicitation response.
+{{payment_unit_closing}}
 
 ## 7. Roles and Responsibilities
 
