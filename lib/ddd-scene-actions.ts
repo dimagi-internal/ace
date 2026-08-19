@@ -90,8 +90,20 @@ export interface SceneReport {
 /** The labs shell's fixed top bar, measured on spark-facilitator (#1365). */
 export const FIXED_HEADER_PX = 72;
 
-/** Selector forms that name a CONTROL rather than whatever text matches first. */
-const CONTROL_SELECTOR = /^(role=|label:|css=|xpath=|testid=|aria=)/i;
+/**
+ * Selector forms that name a CONTROL rather than whatever text matches first.
+ *
+ * These are exactly canopy's recorder prefixes, minus `text:` (the ambiguous
+ * form this check exists to catch). The recorder's separator is `:` and it
+ * accepts NO `=` form — `_PREFIXES = ("css", "text", "testid", "aria", "role")`
+ * with `_PREFIX_SEPARATOR = ":"` in
+ * `runtime/scripts/walkthrough/_lib/targets.py`; anything else falls through
+ * `parse_target` to the bare-string heuristic, i.e. the very ambiguous-text
+ * resolution being guarded against. (ace#1519 — the old `=`-flavoured regex
+ * matched zero real prefixes: it flagged correct `css:` targets AND its
+ * remediation told authors to write forms the recorder does not recognise.)
+ */
+const CONTROL_SELECTOR = /^(css:|testid:|aria:|role:)/i;
 
 /**
  * Verbs whose click CREATES or DESTROYS something, so the same action finds a
@@ -122,7 +134,7 @@ export function checkSceneActions(scenes: DddScene[]): SceneReport {
           detail:
             `click targets "${a.target}" by TEXT. A text selector resolves .first() in DOM order, and ` +
             'clicking a non-interactive node SUCCEEDS — so the action reports ok while nothing happens. ' +
-            'Target the control: role=… / label: / css= / testid=',
+            'Target the control with a recorder prefix: css: / testid: / aria: / role:',
         });
       }
 

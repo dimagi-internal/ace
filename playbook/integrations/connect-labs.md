@@ -199,13 +199,32 @@ retry tax.
 - **`binary` distribution: the param is `rate` (0-1), NOT `p_yes`.**
   `{ field: "slept_under_net", distribution: "binary", rate: 0.7 }` draws
   1 at 70%. To vary the rate per week — the week-scoped-anomaly
-  mechanism — add `period_rates: {<week_index>: <rate>}` (week_index is
-  an int), e.g. `period_rates: {2: 0.3}` drops week 2 to 30% while every
-  other week keeps `rate`. Emitting `p_yes` silently fails to set the
+  mechanism — add `period_rates: {<week_index>: <rate>}`.
+  **`week_index` is 1-BASED: key `1` is the FIRST week of the timeline,
+  key `2` is the SECOND.** So `period_rates: {2: 0.3}` drops the second
+  week (0-based index 1, i.e. `start_date + 7…13 days`) to 30% while
+  every other week keeps `rate`; to dip the week at 0-based index 2, key
+  it `3`. This is upstream's intent, not a bug — `VisitSlot.week_index`
+  is declared `# 1-based` and produced by `for week in range(1,
+  timeline.weeks + 1)` in `.../generator/fixtures/timeline.py`, the
+  engine passes `period=slot.week_index` straight through, and
+  `BinaryDistribution.rate_for_period` does a bare
+  `period_rates.get(period, self.rate)` with no rebasing (pinned by
+  `test_timeline.py`'s `assert 1 <= slot.week_index <= 4`). Measured
+  live on labs opp 10045 (`random_seed: 20260817`, `start_date:
+  2026-07-20`, 4 weeks): `net_hanging` (base 0.78) with a requested dip
+  of 0.55 at key `2` measured 28/51 = **0.549** on 0-based week 1, while
+  0-based week 2 sat at the 0.78 base (23/33 = 0.697) — the requested
+  dip exactly, one 0-based slot "early", because the key is 1-based.
+  Note this is NOT the same convention as `anomalies[].week` as ACE
+  authors it (`skills/demo-data-setup/SKILL.md` records those as
+  0-based) — do not carry one over to the other.
+
+  Emitting `p_yes` silently fails to set the
   rate (`rate` is the required field; an unknown `p_yes` is ignored), so
   the output reverts toward the default share — the bednet-spot-check
   20260608-0711 45%-vs-requested-70% symptom (jjackson/ace#737). Source:
-  `BinaryDistribution` in `.../generator/manifest.py`.
+  `BinaryDistribution` in `.../generator/fixtures/manifest.py`.
 
 - **`aggregation` enum is `count | mean | validated_rate |
   non_null_rate`.** No `count_where_eq` (the natural author-side

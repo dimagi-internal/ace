@@ -452,7 +452,13 @@ nobody has enumerated yet. Run both — neither is a substitute for the other.
   and one still-open cluster in a *different* opp — otherwise `good_*`/
   `incomplete_*` vars are omitted.
 - [ ] **Anomaly weeks are 0-based (audits); coaching-arc weeks are 1-based
-  (tasks).** Out-of-window anomalies are silently skipped.
+  (tasks); `field_distributions[].period_rates` keys are 1-based
+  (`period_rates: {2: …}` = the SECOND week).** All three live in the same
+  manifest, so state the base rather than inferring it from a neighbour —
+  `period_rates` is keyed on the generator's own `VisitSlot.week_index`,
+  which is 1-based by declaration (see `playbook/integrations/connect-labs.md
+  § binary distribution` for the source + the live measurement, ace#1518).
+  Out-of-window anomalies are silently skipped.
 
 ## Not in scope
 
