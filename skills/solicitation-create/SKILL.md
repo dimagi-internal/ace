@@ -588,14 +588,8 @@ contract.
    `evaluation_criteria[0].linked_questions`). Read the error and fix
    the composition; do NOT retry with the same payload, and do NOT
    work around schema rejections by stuffing extras into a free-form
-   field. Step 7a's public-page verifier remains the structural
+   field. Step 7a's `get_solicitation` round-trip remains the structural
    double-check.
-
-   The atom requires `data` (object) and at least one of `program_id` /
-   `organization_id` (both strings). Application-level fields go inside
-   `data` — flat top-level fields (e.g. just sending `title` next to
-   `program_id`) get dropped by the labs adapter and the create returns
-   without the values being persisted.
 
    Capture the returned `id` (the labs record id) into `solicitation_id`.
    The response also includes `experiment` (echo of the program_id) and
@@ -606,16 +600,23 @@ contract.
    `/solicitations/`, not `/labs/solicitations/`. The `/labs/` prefix is
    reserved for the authenticated Labs UI (overview, login, explorer).
 
-   **Verify reachability before recording the URL.** After publish,
-   issue a HEAD against the constructed public URL and confirm 200. A
-   404 here means either the URL pattern doesn't match the current labs
-   URLconf (regression on labs side) or the record's envelope `public`
-   flag didn't flip (regression on MCP side — see PRs
-   commcare-connect#162/164/165 for the canonical contract). Either way,
-   surface as `[BLOCKER]` rather than writing a broken URL into
-   `run_state.yaml`. This catches the class of bug where the MCP
-   reports `is_public: true` but the public listing page renders empty
-   (verified jjackson/ace e2e malaria-itn-app run 20260517-1829).
+   **Check the route exists before recording the URL — expect a 302,
+   NOT a 200.** After publish, issue a HEAD against the constructed
+   public URL. The labs detail page requires a labs login by design
+   (§ Step 7a explains why `is_public` is not anonymous readability),
+   so a correctly-published solicitation answers **302 → `/labs/login/`**.
+   Measured on solicitation 14796 (`bednet-check-2-visit/20260817-1720`):
+   `/solicitations/14796/` → `302 → https://labs.connect.dimagi.com/labs/login/?next=/solicitations/14796/`.
+
+   The signal here is **404, not non-200**. A 404 means the URL pattern
+   doesn't match the current labs URLconf (regression on labs side) —
+   surface that as a `[BLOCKER]` rather than writing a broken URL into
+   `run_state.yaml`. Any 2xx/3xx means the route resolves; do NOT
+   `[BLOCKER]` on the 302, which is the expected response for every
+   solicitation ACE publishes. Whether the record's `public` flag
+   actually flipped is settled by Step 7a's `get_solicitation`
+   round-trip, not by this probe — an anonymous HTTP client never gets
+   far enough to see it.
 
 7a. **Verify the round-trip via `get_solicitation`.** Immediately after
    publish (whether via MCP atom or direct JSON-RPC fallback), call
@@ -820,6 +821,7 @@ Each row this skill writes uses `phase: 8-solicitation-management` and
 
 | Date | Change | Author |
 |------|--------|--------|
+| 2026-08-19 | **Deleted two superseded paragraphs that Step 6 still contradicted itself with (dimagi-internal/ace#1523).** Surfaced on `bednet-check-2-visit/20260817-1720` Phase 8 (labs solicitation 14796). The 2026-05-22 correction below rewrote Step 6's headline guidance but left the retracted prose sitting underneath it, so Step 6 gave opposite instructions on the only two things it exists to specify. (1) A paragraph claiming "the atom requires `data` (object) … flat top-level fields get dropped by the labs adapter" survived 19 lines below the bolded "**All solicitation fields are flat … There is no `data: {...}` envelope**". The flat shape is correct — re-verified against the live `tools/list` this run: `additionalProperties: false`, no `data` property, `required: [title, description, solicitation_type]` — so a payload built per the stale paragraph sends an unknown top-level key and is rejected `INVALID_SCHEMA`. Deleted. (2) "**Verify reachability … confirm 200 … otherwise `[BLOCKER]`**" contradicted Step 7a's own "**Why round-trip and not curl-the-public-URL**", which states that the detail page 302s to the labs login *by design* because `is_public` is marketplace listing visibility, not anonymous readability. Measured on 14796: `/solicitations/14796/` → `302 → /labs/login/?next=…`, never 200 — so the rule as written raised a `[BLOCKER]` on every correctly-published solicitation ACE will ever produce. Rewritten to check for **404 specifically** (route missing → `[BLOCKER]`) and to state the 302 as expected, with `get_solicitation` named as the thing that actually settles whether the `public` flag flipped. Also fixed the stale "Step 7a's public-page verifier" phrase — Step 7a has been a persistence-layer round-trip since 2026-05-22. Class: `docs/learnings/2026-04-28-mcp-vs-skill-doc-drift.md`, same shape as the closed #1043 / #1055, except both leftovers here sat in the *same section* as the text superseding them. | ACE team |
 | 2026-07-29 | **Fixed five drifts between `skills/_solicitation-template.md` and `lib/artifact-manifest.ts` (dimagi-internal/ace#1055), plus this skill's own self-contradicting § Products line.** Surfaced during `hh-poverty-targeting/20260728-0705` Phase 8 (labs solicitation 10687). The shared reference doc every Phase 8 skill points at had: (1) `public_url: .../grants/solicitation/<id>/` — a route that does not exist; canonical is `/solicitations/<id>/`, which this skill's § Step 6 already documented including the "NO `/labs/` prefix" trap. Verified live on solicitation 10687: `/solicitations/10687/` → **302** (the route exists and redirects to the labs login, which § Step 6 documents as by-design — the detail page is not anonymously readable), while `/grants/solicitation/10687/` → **404**, i.e. the route the template documented genuinely does not exist; (2) prose calling the state block `outputs` at two places while its own code block and the rest of the file said `products` — `products` is correct and is what `lib/phase-products-schema.ts` and `verify_phase_products` enforce; (3) a Drive-paths table where two of four rows were wrong — `solicitation-create_summary.md` (no such artifact; it's `_draft.md` + `_published.md`) and `llo-invite_outbound-emails/<llo>.md` (it's `llo-invite_invitations.md`) — the table is now the full manifest set with each entry's real `required` flag; (4) `awarded.awardee_org_slug` where the writer emits `awarded_org_slug`, a silently-wrong key, plus an invented `awarded_by` and three missing fields; (5) `id: <labs solicitation UUID>` where the record id is an integer and the key is `solicitation_id`. This skill's § Products also still named the retired `solicitation-create_summary.md` while its own § Output correctly named the draft/published pair. Class: `docs/learnings/2026-04-28-mcp-vs-skill-doc-drift.md` — `test/skill-atom-references.test.ts` catches atom renames but not artifact paths or state keys restated in a shared `skills/_*.md` reference doc, the same blind spot ace#1043 hit two days earlier. | ACE team |
 | 2026-05-21 | **Work-order-as-primary-input + canonical-schema field names + comprehensive-content shape.** Three bundled rewrites prompted by solicitation 3130 on `malaria-itn-app/20260521-1400` where the public page rendered blank Description, "TBD" timeline, "No deadline," Python-list-repr Scope, and zero questions / zero rubric simultaneously. (1) Inputs now read Phase 1's work order (`1-design/pdd-to-work-order.gdoc`) as the primary content source + `decisions.yaml` for later run decisions, alongside the PDD (now used for problem-framing only, not for scope). (2) Field names migrated to the labs canonical schema (`description` not `overview`, `application_deadline` not `response_window_days`, `expected_start_date/_end_date` not `anticipated_*`, `estimated_scale` not `sample_target`, `questions[].text` not `response_questions[].question`, `evaluation_criteria[].name/.scoring_guide/.linked_questions` not `rubric[].dimension/.criterion`; `solicitation_type: 'eoi'` lowercase). Top-level fields not in `solicitations/models.py` (`pass_bar`, `eligibility_criteria`, `geographic_scope`, `per_hh_payment_band_usd`, `budget`) folded into `description`/`scope_of_work` prose. (3) Content shape demands comprehensive prose: `description` 500-800 words foundation-pitch tone; `scope_of_work` 600-1000+ words derived section-by-section from the work order with explicit de-prescription rules (exact dollars → ranges, exact weeks → windows); every question has a required `framing` field; every evaluation criterion has a required `scoring_guide` + `linked_questions`. (4) Added Step 7a — a curl-the-public-URL structural verifier that catches field-name drift at write time instead of at human-eye time. | ACE team |
 | 2026-05-22 | **(superseded — see 2026-05-22 correction below)** Align with current labs reality + document the ideal end-state (`jjackson/connect-labs#212`). Three labs-side gaps surfaced during the malaria-itn-app `20260521-1400` Phase 8 republish required inline workarounds. Three of the four "labs-side gaps" I diagnosed turned out to be ACE-side stale-schema reads, not labs bugs — see the correction entry. | ACE team |
