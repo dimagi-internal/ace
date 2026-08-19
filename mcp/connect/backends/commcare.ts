@@ -19,6 +19,15 @@ import {
   selectOptions,
   selectedOptionLabel,
 } from '../../../lib/hq-web-users-page.js';
+// parseFormErrors's core `<ul class="errorlist">` regex is standard Django
+// forms rendering (BoundField → ErrorList), not something specific to
+// Connect's crispy-tailwind templates despite living in html-scrape.ts —
+// reused here so "form re-render" failures surface the ACTUAL validation
+// message instead of the first N chars of raw page HTML (which is usually
+// just the <title>). Added 2026-08-18 after commcare_create_connection's
+// truncated error hid a real validation failure during Connect Interviews
+// live testing.
+import { parseFormErrors } from './html-scrape.js';
 
 /**
  * CommCare HQ atoms — release apps that Nova uploaded as drafts.
@@ -954,9 +963,14 @@ export class CommCareBackend {
             'commcare_create_domain: RESTRICT_DOMAIN_CREATION is set on this HQ instance and the user is not a superuser.',
           );
         }
-        throw new Error(
-          `commcare_create_domain POST ${path} returned 200 (form re-render — validation failed). First 400 chars: ${html.slice(0, 400)}`,
-        );
+        {
+          const errors = parseFormErrors(html);
+          throw new Error(
+            errors.length
+              ? `commcare_create_domain POST ${path}: form re-render — validation failed: ${errors.join(' | ')}`
+              : `commcare_create_domain POST ${path} returned 200 (form re-render — validation failed, no errorlist found). First 400 chars: ${html.slice(0, 400)}`,
+          );
+        }
       }
       throw new Error(
         `commcare_create_domain POST ${path} returned ${res.status()}: ${(await res.text()).slice(0, 300)}`,
@@ -1565,8 +1579,11 @@ export class CommCareBackend {
       } else if (res.status() === 200) {
         // Form re-render = validation failed
         const html = await res.text();
+        const errors = parseFormErrors(html);
         throw new Error(
-          `commcare_create_connection: form re-render — validation failed. First 400 chars: ${html.slice(0, 400)}`,
+          errors.length
+            ? `commcare_create_connection: form re-render — validation failed: ${errors.join(' | ')}`
+            : `commcare_create_connection: form re-render — validation failed (no errorlist found). First 400 chars: ${html.slice(0, 400)}`,
         );
       } else {
         throw new Error(`commcare_create_connection POST ${addPath} returned ${res.status()}: ${(await res.text()).slice(0, 300)}`);
@@ -1760,8 +1777,11 @@ export class CommCareBackend {
         // Success — redirects to the new (linked) app's settings page.
       } else if (res.status() === 200) {
         const html = await res.text();
+        const errors = parseFormErrors(html);
         throw new Error(
-          `commcare_linked_app_copy: form re-render — validation failed. First 400 chars: ${html.slice(0, 400)}`,
+          errors.length
+            ? `commcare_linked_app_copy: form re-render — validation failed: ${errors.join(' | ')}`
+            : `commcare_linked_app_copy: form re-render — validation failed (no errorlist found). First 400 chars: ${html.slice(0, 400)}`,
         );
       } else {
         throw new Error(
@@ -1977,8 +1997,11 @@ export class CommCareBackend {
           return { ok: true as const, count: args.fields.length };
         }
         if (/Unable to save/i.test(html)) {
+          const errors = parseFormErrors(html);
           throw new Error(
-            `commcare_set_user_fields: form validation failed. First 400 chars: ${html.slice(0, 400)}`,
+            errors.length
+              ? `commcare_set_user_fields: form validation failed: ${errors.join(' | ')}`
+              : `commcare_set_user_fields: form validation failed (no errorlist found). First 400 chars: ${html.slice(0, 400)}`,
           );
         }
         // Inconclusive — assume success.
@@ -2179,8 +2202,11 @@ export class CommCareBackend {
       }
       if (res.status() === 200) {
         const html = await res.text();
+        const errors = parseFormErrors(html);
         throw new Error(
-          `commcare_create_repeater: form re-render — validation failed. First 400 chars: ${html.slice(0, 400)}`,
+          errors.length
+            ? `commcare_create_repeater: form re-render — validation failed: ${errors.join(' | ')}`
+            : `commcare_create_repeater: form re-render — validation failed (no errorlist found). First 400 chars: ${html.slice(0, 400)}`,
         );
       }
       throw new Error(`commcare_create_repeater POST ${addPath} returned ${res.status()}: ${(await res.text()).slice(0, 300)}`);
