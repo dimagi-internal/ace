@@ -67,8 +67,11 @@ OCS_API_TOKEN=op://Agent-Ace/hxgm3tn37wwmr2vpneoffjem5i/credential
 #
 # Add one line per team you also want read access to:
 # UUID reference for the same parentheses reason as OCS_API_TOKEN above
-# ("ACE - OCS REST API Key (Vaccine_Coach)").
-OCS_API_TOKEN_VACCINE_COACH=op://Agent-Ace/suwzmq2q2jzh5qjdibfngspmvi/credential
+# ("ACE - OCS REST API Key (Vaccine_Coach)"). This is a deliberately
+# read-only-scoped UserAPIKey (allow-write unchecked at creation) — do not
+# repoint this at a Bearer Token item; those are personal, full-access
+# credentials, not something ACE should depend on for this team.
+OCS_API_TOKEN_VACCINE_COACH=op://Agent-Ace/bmds4rxalkubtqdzepwdsjon6u/credential
 
 # Golden template (created by `/ace:ocs-bootstrap-template`, stored in 1Password)
 OCS_GOLDEN_TEMPLATE_ID=op://Agent-Ace/ACE - Open Chat Studio/Config/golden_template_id
