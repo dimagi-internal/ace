@@ -24,7 +24,7 @@ Don't trust first-pass output — verify and fix in a loop.
 
 ## Products
 
-- `3-commcare/app-connect-coverage_summary.md` — per-form marker coverage report and any Nova edits applied
+- `3-commcare/app-connect-coverage_<app-type>.md` (`_learn.md` / `_deliver.md`) — per-form marker coverage report and any Nova edits applied. The app-type suffix is REQUIRED: Phase 3 runs this skill twice into the same folder and `drive_create_file` is find-or-update by name, so an undiscriminated name makes the second pass silently overwrite the first (ace#1528).
 
 ## Why this skill exists
 
@@ -314,7 +314,8 @@ convergence (see below).
 
 ### Step 7: Report
 
-Write `ACE/<opp-name>/app-coverage/<app-type>-connect-coverage.md`:
+Write `3-commcare/app-connect-coverage_<app-type>.md` in the current run
+folder (`_learn.md` or `_deliver.md`):
 
 ```yaml
 ---
@@ -404,8 +405,8 @@ skills. The shared shape:
    gate after each fix.
 3. **Platform validate** as the final coherence check.
 4. **Bounded loop** with a max-iteration ceiling.
-5. **Coverage report** in a uniform shape under
-   `ACE/<opp-name>/app-coverage/`.
+5. **Coverage report** in a uniform shape at
+   `<N>-<phase>/app-<concern>-coverage_<app-type>.md` in the run folder.
 6. **Known-bug taxonomy** that distinguishes "we can fix this" from
    "upstream blocker" so the operator gets unambiguous direction.
 

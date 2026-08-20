@@ -108,7 +108,7 @@ procedure below to rediscover.
    Phase 3 Step 1.5.** The `app-connect-coverage` skill is responsible
    for verifying + auto-fixing Connect markers on the Nova side BEFORE
    deploy + release. Just check that
-   `ACE/<opp-name>/app-coverage/{learn,deliver}-connect-coverage.md`
+   `3-commcare/app-connect-coverage_{learn,deliver}.md`
    exists with `status: clean`. If missing or `blocked`, halt and tell
    the operator to resolve coverage first — re-running app-release on
    uncovered apps will succeed at the build level but the opp will get
