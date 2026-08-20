@@ -52,6 +52,7 @@ describe('archetype enumerations track VALID_ARCHETYPES', () => {
   // check the producer will be graded by.
   it.each([
     ['skills/idea-to-pdd-qa/SKILL.md', 'the check-2 row a PDD author reads'],
+    ['skills/idea-to-pdd-eval/SKILL.md', '§ Archetypes — the per-archetype sub-checks under archetype_coherence'],
     ['skills/pdd-to-work-order-qa/SKILL.md', 'the check-7 row describing per-archetype scope'],
     ['skills/pdd-to-work-order/SKILL.md', '§ Archetypes — the branch the producer follows'],
   ])('%s names every archetype (%s)', (rel, _why) => {
