@@ -504,11 +504,27 @@ a far worse failure than the slow scroll. Accepted invites are excluded too
 (they represent real workers), and every exclusion comes back with a reason:
 log them, so "we left 3 alone" is a statement with evidence.
 
-The recipes' own scroll budgets are a separate, device-truth matter:
-`connect-resume-opp.yaml` never received the ace#647 recalibration
-(`timeout: 20000`, `visibilityPercentage: 60`, default speed) while
-`connect-claim-opp.yaml` did, and correcting that needs a live re-run to
-green before it merges (#1289).
+**What pruning provably CANNOT reach — record this so nobody re-proposes
+it.** `lib/invite-pruning.ts:88-91` excludes `status: 'accepted'`, so the
+pruner only ever shortens the **New Opportunities** section (~5 tiles of a
+~25-tile steady-state list). The ~20-card **In Progress** section — which
+supplies most of the scroll depth — is structurally unprunable, and
+soft-deactivating prior opps does not remove tiles either (Connect's mobile
+opp-list endpoint has no `active=True` filter — see `skills/sweep-connect`).
+Bounding the list is a real but bounded win; it is not the class fix.
+
+The recipes' own scroll budgets are **already recalibrated and pinned** —
+do not re-litigate them. PR #1475 put `speed: 40` / `timeout: 120000` /
+`visibilityPercentage: 30` on the tile scroll in **both**
+`connect-claim-opp.yaml` and `connect-resume-opp.yaml` (live-proven on
+bednet-check-2-visit/20260814-0357), and
+`test/mcp/mobile/static-recipe-invariants.test.ts §
+"tile-discovery scroll budgets stay in lockstep"` fails if either recipe
+drifts off that shared constant. Each recipe additionally carries a
+fallback re-hunt after its primary tile scroll (claim-opp re-anchors on the
+`home-new-opportunities` section header first, making the second pass
+O(section) instead of O(list)); the same suite pins that too. The residual
+tracked on #1289 is the unbounded list itself, not the budget.
 
 ### Step 5: Run the smoke recipes — two independent legs
 

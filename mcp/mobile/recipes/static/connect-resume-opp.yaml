@@ -202,6 +202,44 @@ appId: org.commcare.dalvik
     timeout: 120000
     visibilityPercentage: 30
     centerElement: true
+    # `optional: true` (ace#1289, second clause) — an exhausted budget
+    # falls through to the fallback re-hunt below instead of aborting.
+    optional: true
+
+# --- FALLBACK RE-HUNT (ace#1289) ----------------------------------------
+#
+# Same second-budget mechanism as connect-claim-opp.yaml, but WITHOUT a
+# section anchor. This recipe's target is an In-Progress card in the FIRST
+# section, and NO verified selector exists for that section's header — grep
+# `mcp/mobile/selectors/connect-2.63.2.yaml` for `in.progress` /
+# `section_header` and the only hits are prose. Inventing the string would
+# be exactly the "guess at a value another system owns" CLAUDE.md forbids,
+# so this fallback is a single UP re-hunt on the run-id at the same
+# live-proven budget: it recovers the case where the DOWN scroll ran past
+# the tile or hit the list end, and nothing more.
+#
+# `centerElement: true` stays on this scroll — it is the last step to touch
+# the viewport before the card-scoped `childOf containsChild` tap guards
+# below, which need the CTA rendered, not clipped (#800).
+#
+# RESIDUAL: depth here stays O(In Progress), which grows one card per
+# /ace:run and is unprunable (lib/invite-pruning.ts:88-91 excludes
+# accepted invites). Only a doubled budget, not a bounded walk.
+- runFlow:
+    when:
+      notVisible:
+        text: ".*${OPP_RUN_ID}.*"
+    commands:
+      - scrollUntilVisible:
+          element:
+            text: ".*${OPP_RUN_ID}.*"
+          direction: UP
+          speed: 40
+          timeout: 120000
+          visibilityPercentage: 30
+          centerElement: true
+
+# Failure stays LOUD.
 - assertVisible:
     text: ".*${OPP_RUN_ID}.*"
 
