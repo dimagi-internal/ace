@@ -114,3 +114,39 @@ describe('work-order template token contract', () => {
     expect(text).not.toMatch(/\(or per-session/i);
   });
 });
+
+/**
+ * A Work Order is a CONTRACTUAL document a partner reads (dimagi-internal/ace#1542).
+ * Internal Dimagi/Connect acronyms are not defined anywhere in it, and
+ * `pdd-to-work-order-eval`'s `writing_style` dimension grades their presence —
+ * so an unexpanded acronym baked into the TEMPLATE ships into every rendered
+ * Work Order, not just one.
+ *
+ * `FLW` sat in § 6.1 and § 8.3 as a template literal (not a `{{token}}`), so no
+ * producer-side check could ever see it: the token-coverage scan above only
+ * compares `{{...}}` names, and `pdd-to-work-order-qa` runs against the RENDERED
+ * doc after a partner-facing artifact already exists.
+ *
+ * SCOPE: this is a deliberate allow-nothing check on a SPECIFIC acronym list,
+ * not an English-prose linter. Add an entry only when it is (a) internal jargon
+ * and (b) undefined in the document.
+ */
+const INTERNAL_ACRONYMS = [
+  // Front-Line Worker — expand to "field worker(s)" in partner-facing prose.
+  /\bFLWs?\b/,
+];
+
+describe('work-order template partner-facing language', () => {
+  const text = fs.readFileSync(path.join(REPO_ROOT, TEMPLATE), 'utf8');
+
+  for (const pattern of INTERNAL_ACRONYMS) {
+    it(`carries no unexpanded internal acronym matching ${pattern}`, () => {
+      const offending = text
+        .split('\n')
+        .map((line, i) => [i + 1, line] as const)
+        .filter(([, line]) => pattern.test(line))
+        .map(([n, line]) => `${TEMPLATE}:${n}: ${line.trim()}`);
+      expect(offending).toEqual([]);
+    });
+  }
+});
