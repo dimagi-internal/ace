@@ -80,7 +80,7 @@ The partner will flag any timeline risk in writing to Dimagi within 24 hours of 
 
 ### 6.1 Total Not-to-Exceed
 
-Dimagi's total financial commitment under this Work Order is USD {{wo_total_not_to_exceed_usd}}, not-to-exceed, inclusive of all field collection costs, FLW compensation, supervision, transport, and partner reporting time.
+Dimagi's total financial commitment under this Work Order is USD {{wo_total_not_to_exceed_usd}}, not-to-exceed, inclusive of all field collection costs, field worker compensation, supervision, transport, and partner reporting time.
 
 ### 6.2 Payment Schedule
 
@@ -127,7 +127,7 @@ The partner will provide Dimagi with copies of all written permissions or notifi
 
 ### 8.3 Security and Duty of Care
 
-The partner retains sole responsibility for the safety and security of its field teams. The partner will not deploy FLWs to areas where the prevailing security situation, in the partner's professional judgement, poses an unacceptable risk.
+The partner retains sole responsibility for the safety and security of its field teams. The partner will not deploy field workers to areas where the prevailing security situation, in the partner's professional judgement, poses an unacceptable risk.
 
 ## 9. Data Handling
 
