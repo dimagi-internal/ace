@@ -2057,7 +2057,9 @@ export class AvdBackend {
    * Verified live: 2026-05-14 — snapshot loaded ~10h45m after capture;
    * pre-fix `connect_fragment_jobs_list` was empty + 401; post-fix the
    * 4 expected opp tiles appeared on the very next `action_sync` tap.
-   * See `docs/mobile-atlas/connect-2.62.0.md § Prerequisites`.
+   * See `docs/mobile-atlas/connect-2.63.2.md § Prerequisites` (the invariant
+   * carries over from the 2026-05-14 2.62.0 walk and is tagged there as
+   * carried-over — it is a snapshot/clock mechanism, not an APK one).
    */
   async syncDeviceClockToHost(avdName: string): Promise<boolean> {
     const avd = await this.requireRunningAvd(avdName);

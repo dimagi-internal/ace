@@ -17,7 +17,16 @@
 # to Learn mode; the project-card widget is what disambiguates.
 #
 # The selector map is ground truth; the atlas below is narrative only.
-# Atlas reference (historical, 2.62.0): docs/mobile-atlas/connect-2.62.0.md §§ 8, 9, 10.
+# Atlas reference: docs/mobile-atlas/connect-2.63.2.md, its § 5 — the
+# certificate opp-detail, the Download Delivery gate and the Deliver-mode
+# StandardHomeActivity are carried over there from the 2.62.0 walk and NOT
+# re-walked on 2.63.2. Its § 5 also records that viewJobCard is NOT a
+# Learn-vs-Deliver differentiator on 2.63.x (ace#893).
+#
+# NOTE ON § NUMBERS BELOW: every bare "§ N" in the rest of this header is a
+# section of the 2.62.0 atlas (§ 8 certificate, § 9 download gate, § 10
+# Deliver home). Those numbers are preserved because that is where the prose
+# still lives; the 2.63.2 atlas collects all of them under its own § 5.
 #
 # RESOURCE-ID STATUS (2026-05-26 — Deliver-side atlas verified live
 # against bednet-spot-check run 20260526-1556's J2 dumps):
