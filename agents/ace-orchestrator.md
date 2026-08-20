@@ -1043,6 +1043,37 @@ Phase 1 must state, for each pre-existing open question, whether this run
 `generate_inputs_manifest` to include opp-root files: the manifest's job is to
 freeze `inputs/`, and overloading it blurs per-opp vs per-run state.
 
+**Two bounds on that inline (dimagi-internal/ace#1487).** The #1201 read above
+was unconditional and unscoped, and the durable ledger is append-only, so it
+grew without limit and Phase 1's mandated per-question read-back grew with it.
+Both bounds NARROW the read; neither removes it, and the #1201 rationale above
+stands unchanged. The classifier is `classifyOpenQuestionsInline` in
+`lib/open-questions-inline.ts` — pure, imported by
+`test/lib/open-questions-inline.test.ts`, and the source of truth if this prose
+ever disagrees with it.
+
+- **FIXTURE SKIP.** When the opp root carries `iterate-state.yaml` (the
+  `/ace:iterate` campaign-state file, per the registry in
+  `lib/opp-root-files.ts` — this is the fixture signal; do NOT add a `fixture:`
+  field to `opp.yaml`), do **NOT** pass `open-questions.md` at all, at any
+  size. A fixture opp's brief is the whole intended input, and its regression
+  baseline must not absorb accumulated run history — that is ace#1325's hazard
+  (ACE reading its own prior output as Phase 1 source evidence) arriving
+  through the sanctioned inline path. Say so **once** in the run notes, citing
+  dimagi-internal/ace#1487; do not repeat it per phase.
+- **BOUNDED INLINE.** Otherwise pass the durable doc's **`## Open` section
+  only** — `## Archive` is never read back and never inlined (see
+  `skills/idea-to-pdd/SKILL.md` for the two-section shape). Above
+  `OPEN_QUESTIONS_INLINE_CAP_CHARS` (8,000 chars, exported from
+  `lib/open-questions-inline.ts`), pass the `file_id` plus the most recent open
+  rows rather than the whole section, and **name the truncation at the Phase
+  1→2 pause** so the run states what it did not read. Tripping the cap is
+  itself a signal the ledger needs pruning — resolved rows belong under
+  `## Archive`.
+
+Each branch's `reason` string is written to be pasted straight into the Phase
+1→2 pause summary.
+
 **Atoms / skills used (orchestrator-visible only):** `Agent(idea-to-design)`.
 
 **Products:** PDD (`1-design/idea-to-pdd.md`) — the formal design doc; Work Order (`1-design/pdd-to-work-order.gdoc`) — contractual draft derived from PDD + decisions.yaml. Both are required outputs of Phase 1; the work order chain (Steps 2, 2.4, 2.5 in `agents/idea-to-design.md`) runs after the PDD chain.
