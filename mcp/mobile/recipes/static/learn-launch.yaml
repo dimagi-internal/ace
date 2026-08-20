@@ -23,7 +23,10 @@
 # list container alone. Never narrow it back to one container.
 #
 # The selector map is ground truth; the atlas below is narrative only.
-# Atlas reference (historical, 2.62.0): docs/mobile-atlas/connect-2.62.0.md §§ 5-6.
+# Atlas reference: docs/mobile-atlas/connect-2.63.2.md § 5 — the Learn
+# StandardHomeActivity + suite/form-list MenuActivity are carried over there
+# from the 2.62.0 walk and NOT re-walked on 2.63.2; § 5 states exactly what
+# the 2.63.0 -> 2.63.2 drift check did and did not establish about them.
 appId: org.commcare.dalvik
 ---
 # StandardHomeActivity gives us 4 tiles. We want the green Start tile.

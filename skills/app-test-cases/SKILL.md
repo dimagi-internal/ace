@@ -29,7 +29,7 @@ Phase 6 needs them.
 | Nova MCP | `get_app({app_id: <nova_app_id>})` | authoritative form/field IDs to resolve into real Maestro selectors |
 | Static | `mcp/mobile/recipes/static/` | recipe palette / templates |
 | **Selector map** | `mcp/mobile/selectors/connect-<apkVersion>.yaml` (default `2.63.2`) | **the authoritative, live-calibrated source for screen IDs and selector behavior.** Rows carry `unverified: true` or a `Live-verified` note, so the map states its own confidence per row — DO NOT improvise selectors that contradict it. |
-| **Atlas** (partial, historical) | `docs/mobile-atlas/connect-2.62.0.md` | narrative transition/side-effect notes only, written against **2.62.0**. The default APK is `2.63.2` (`mcp/mobile/client.ts` `DEFAULT_APK_VERSION`), so this atlas is one minor behind and is **not** ground truth. Where the atlas and the selector map disagree, the selector map wins; where the atlas says a surface is UNREACHED, check the palette recipes in `mcp/mobile/recipes/static/` before believing it. |
+| **Atlas** (partial) | `docs/mobile-atlas/connect-2.63.2.md` | narrative transition/side-effect notes only — sequence and side-effects, never identity. Its `## Provenance and coverage` table tags every surface `calibrated-2.63.2`, `carried-from-2.62.0-unverified`, or `uncovered`; read that tag before relying on a section. Where the atlas and the selector map disagree, **the selector map wins**; where the atlas says a surface is uncovered, check the palette recipes in `mcp/mobile/recipes/static/` before believing it. The carried-over surfaces are reproduced by reference from the older 2.62.0 atlas (its §§ 1-11) rather than restated. |
 
 ## Products
 
@@ -757,13 +757,16 @@ apps keep the `content-form-finish` + `learn-suite-reentry` loop above.
 active APK (`mcp/mobile/selectors/connect-<apkVersion>.yaml`, default
 `2.63.2`), and against the palette recipes in
 `mcp/mobile/recipes/static/`** — those two are live-calibrated and carry
-per-row provenance. `docs/mobile-atlas/connect-2.62.0.md` remains useful
-for narrative transition and side-effect notes (which screen replaces
-which, what system prompts fire), but it was written against **2.62.0**
-and its "Open questions" are stale — several have since been answered in
-recipe headers rather than in the atlas. If a recipe needs a transition
-neither source documents, flag it in the recipe header comment and file
-it, rather than treating the 2.62.0 atlas's silence as evidence.
+per-row provenance. `docs/mobile-atlas/connect-2.63.2.md` is the narrative
+companion — which screen replaces which, what fires in between, what a
+transition changes as a side-effect. It is written against the default APK,
+but it is **partial**: read a section's provenance tag before relying on it
+(`calibrated-2.63.2` vs `carried-from-2.62.0-unverified` vs `uncovered`),
+and note that its carried-over § 5 surfaces point back into the older
+2.62.0 atlas, whose "Open questions" are stale — several have since been
+answered in recipe headers rather than in either atlas. If a recipe needs
+a transition neither source documents, flag it in the recipe header
+comment and file it, rather than treating an atlas's silence as evidence.
 
 Each `is_smoke=true` journey's recipe **must** include the Connect-
 login + opp-claim prefix so it can run from a cold boot (the cloud
