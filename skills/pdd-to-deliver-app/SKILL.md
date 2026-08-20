@@ -17,6 +17,7 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
 | Source | Artifact | Used for |
 |---|---|---|
 | Phase 1 | `1-design/idea-to-pdd.md` | source PDD; archetype + Deliver App Specification + delivery unit drive the Nova brief |
+| Run root | `runs/<run-id>/inputs-manifest.yaml` | the resolver from a PDD-named `[FIXED]` source instrument to the `file_id` of its published file in `inputs/`. Step 4k reads that file — the workbook/PDF itself, never the brief — to check every scoring constant against the source (ace#1527). Absent, or no entry matching the instrument → 4k skips and says so. |
 
 ## Products
 
@@ -1225,6 +1226,120 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
     (Forms with no non-payable branch skip cleanly — `deviates:false`, and the
     pinned grain stands.)
 
+4k. **Fixed-instrument constant fidelity (ace#1527) — runs at LEVEL 0.** When
+    the PDD marks an instrument `[FIXED]`, its questions AND its arithmetic are
+    fixed by a published document that ACE only *digitises*. Every other gate on
+    this path is structurally blind to a constant's VALUE: `validate_app`
+    checks expression structure and references, `pdd-to-deliver-app-eval` grades
+    the build against the PDD — which describes the instrument narratively, so a
+    wrong constant is PDD-conformant prose — and `app-release-qa` checks form
+    counts, Connect markers and install-time behaviour. Step 3 hands the
+    architect the point values as PROSE, so the architect transcribes from a
+    model-authored brief, and **the brief is the thing under test**. On
+    `hh-poverty-targeting/20260819-1435` that shipped 9 of 17 point values wrong
+    and all 101 poverty-likelihood values invented. A wrong scorecard produces a
+    complete, plausible, fully-verified dataset that ranks the wrong households,
+    and no downstream check has a symptom to catch. (The PPI licence permits
+    digitising a scorecard and its lookup tables only UNMODIFIED, so this is a
+    compliance question as well as a quality one.)
+
+    1. **Trigger.** This step fires iff BOTH hold: the PDD marks an instrument
+       `[FIXED]`, AND `runs/<run-id>/inputs-manifest.yaml` carries a source file
+       for it. If no instrument is `[FIXED]`, or the manifest names no source
+       file for the one that is, **skip cleanly and say so in the memo**
+       (`instrument_constants: skipped — <reason>`). Do not compose a path, do
+       not go looking in `inputs/` by name, and do not substitute the PDD's
+       prose restatement of the table for the file. A `[FIXED]` instrument whose
+       source file is absent from the manifest is a Phase-1 gap: record it as a
+       residual naming the file that would close it.
+
+    2. **Resolve from the MANIFEST and fetch the bytes.** Read
+       `inputs-manifest.yaml`, match the entry for the instrument the PDD names,
+       and fetch by its `file_id`:
+
+       ```ts
+       drive_download_binary({ fileId, writeToPath: '<scratch>/<name>.xlsx' })
+       ```
+
+       `drive_read_file` returns a typed `unsupported_binary_mimetype` error for
+       `.xlsx` / `.pdf` / `.docx` and points at `drive_download_binary` (see
+       `docs/atom-schemas.md § drive_read_file`) — reach for the binary atom
+       first rather than rediscovering that (ace#1527). **Read the SOURCE, never
+       the Nova brief and never the PDD's restatement**: both are model-authored,
+       and one of them is the artifact this step exists to test.
+
+    3. **Trust the extraction BEFORE using it as an oracle — run this FIRST.**
+
+       ```ts
+       import {
+         readXlsxColumn,
+         assertExtractionTrusted,
+       } from '../../lib/instrument-constants';
+       const extracted = readXlsxColumn(bytes, {
+         sheet, column, firstRow, lastRow,      // all declared by the SOURCE
+       });
+       const trust = assertExtractionTrusted(extracted.values, {
+         expectedFirst, expectedLast, expectedRowCount,
+       });
+       ```
+
+       `trusted: false` → **HALT.** Print every `trust.failures` entry and every
+       `extracted.problems` entry, then stop: do NOT diff, do NOT edit the app,
+       and do NOT write the success summary. An unchecked extraction is a second
+       way to ship a wrong instrument while reporting success — the first repair
+       round's extraction produced `score 4 -> 79.0`, because an `.xlsx` cell
+       carrying `t="s"` holds an INDEX into `xl/sharedStrings.xml` and an
+       undecoded index is a perfectly plausible number. `readXlsxColumn` decodes
+       through the shared-string table and returns an unresolved index as a
+       STRING for exactly that reason, so a `non-numeric` failure is the
+       header-leak signature, not a parser quirk. The three assertions
+       (endpoints, strict monotonicity, row count) are independent and all run,
+       so the printed list is every way the extraction is wrong, not the first.
+
+    4. **Read the BUILT literals from Nova, then diff.** `get_field` over each
+       scoring `calculate` and each lookup branch, addressed off the Step-4a
+       `get_app` blueprint map — reuse it, do not re-fetch the app. Build a flat
+       `key -> points` table plus an `indicator -> {option -> points}` table for
+       each side, then:
+
+       ```ts
+       import {
+         diffScoringConstants,
+         compareMaxScore,
+       } from '../../lib/instrument-constants';
+       const diff = diffScoringConstants({ source: sourceConstants, built: builtConstants });
+       const max  = compareMaxScore({ sourcePoints, builtPoints, clampAt });
+       ```
+
+       `clampAt` is the ceiling of the PDD's `min(<score>, N)` clamp. Judge
+       nothing by eye: `diff.mismatches`, `diff.missingInBuild` and
+       `diff.extraInBuild` are the finding set, and `max.clampDead` is the
+       second-order one.
+
+    5. **Any mismatch, or `clampDead: true`, is a HALT — this is not a warn.**
+       Repair in a **bounded loop, max 3 iterations**: `edit_field` the offending
+       literal → re-fetch → re-diff. If anything still disagrees after the third,
+       surface a structured failure naming every `{key, source, built}` plus
+       `sourceMax` vs `builtMax`, and do NOT write the success summary.
+       `clampDead: true` alongside `clampReachableInSource: true` means the built
+       instrument cannot reach the ceiling its own clamp exists to enforce — the
+       clamp is dead code and the overshoot the PDD wants observable can never
+       fire, which is precisely how a wrong instrument stays internally
+       consistent with its own wrong numbers. Fix the constants; never delete
+       the clamp to make the check pass.
+
+    6. **The memo records the CHECK, not just its verdict.** Write the source
+       `file_id` and file name, the sheet / column / row range read, the number
+       of rows checked, both endpoint values as extracted, `sourceMax` vs
+       `builtMax` and whether the clamp is live, and the mismatch count (`0` on
+       success). Add the licence note: the published instrument is reproduced
+       UNMODIFIED — verbatim transcription of the scorecard and its lookup table
+       is what the licence permits, and any "improvement", including a tidier
+       rounding, is out of scope for this build.
+
+    (No `[FIXED]` instrument, or no source file in the manifest → skip cleanly.
+    A skip is a legitimate outcome; a SILENT skip is not — the memo says which.)
+
 5. **(Optional) Inspect the built app** via `/nova:show <app_id>` to
    cross-check structure against the PDD before writing the summary.
 
@@ -1246,6 +1361,11 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
      captured — spoken or field-gated — does that script carry all six
      `consent-script-floor` elements, `confidential` and where-the-data-goes
      included?
+   - If the PDD marks an instrument `[FIXED]`, was every scoring constant
+     diffed against the SOURCE file from `inputs-manifest.yaml` (not the brief,
+     not the PDD's restatement) on a `trusted` extraction, with zero mismatches
+     and a clamp that can still fire (Step 4k)? If the step skipped, does the
+     memo say why?
 
 7. **Write the summary** to
    `ACE/<opp-name>/runs/<run-id>/3-commcare/pdd-to-deliver-app_summary.md` with required
@@ -1263,6 +1383,12 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
                             # that still shipped as free text, with the
                             # table + value column + label column it needs.
                             # Empty list is the expected value.
+   instrument_constants:    # Step 4k (ace#1527). Omit the block ONLY when no
+                            # instrument is [FIXED]; when it skipped for any
+                            # other reason record `skipped: <reason>` here.
+     source_file_id: <file_id from inputs-manifest.yaml>
+     rows_checked: <n>      # rows actually diffed against the source
+     mismatches: 0          # anything above 0 means Step 4k halted
    ---
    ```
 
@@ -1471,3 +1597,9 @@ at end of every phase.
 
 Each row this skill writes uses `phase: 3-commcare` and
 `skill: pdd-to-deliver-app`.
+
+## Change log
+
+| Date | Change | Author |
+|------|--------|--------|
+| 2026-08-20 | **New Step 4k — fixed-instrument constant fidelity (ace#1527).** Nothing on this path opened the `[FIXED]` source instrument in `inputs/` and diffed it, so on `hh-poverty-targeting/20260819-1435` the digitised Nigeria PPI 2020 shipped with **9 of 17 point values wrong and all 101 poverty-likelihood values invented** — and every gate passed it, because each one is structurally blind to a constant's VALUE (`validate_app` checks structure, the eval grades against a narrative PDD, `app-release-qa` checks counts and install-time behaviour, and the architect transcribes from a model-authored brief). 4k resolves the source file from `inputs-manifest.yaml`, fetches it with `drive_download_binary` + `writeToPath`, and runs `lib/instrument-constants.ts`: `assertExtractionTrusted` FIRST (endpoints + strict monotonicity + row count — the first repair-round extraction produced `score 4 -> 79.0` from an undecoded `t="s"` shared-string index), then `diffScoringConstants` and `compareMaxScore` over the built literals read via `get_field`. Any mismatch, or a `clampDead` verdict, is a **HALT with a bounded 3-iteration repair loop**, not a warn — a built max of 96 against an official 102 made the PDD's `min(ppi_score, 100)` clamp dead code, which is how the instrument stayed internally consistent with its own wrong numbers. Paired with `_app-component-library § fixed-instrument-transcription` and the eval's `fixed_instrument_fidelity` hard-gate. *Enforced:* `test/lib/instrument-constants.test.ts` + `test/skills/deliver-l0-loop-integrity.test.ts`. | ACE team |
