@@ -1607,6 +1607,32 @@ restart. Catching it at pre-flight (second 0) instead of at Phase 3 Step 0
 (~25 min in) saves the operator from running Phases 1–2 only to halt. See
 jjackson/ace#582.
 
+**`ocs_generation` halt class — and why preflight makes one live
+exception.** Every other OCS check the doctor runs is env-presence or a
+reachability GET; `ocs_shared_collection_team` proves a collection is
+*reachable*, never that the model behind it can answer. So a dead,
+revoked, or usage-capped team GENERATION provider stayed invisible until
+Phase 5's quick gate — after Phases 1-4 and 6 had run. That class has now
+cost two sessions: ace#743 (revoked key, 2026-06-09) and
+bednet-check-2-visit/20260817-1720 (usage cap, 2026-08-19, where the
+run's own config was flawless — 8/8 indexed, `pipeline_valid`, published
+v2, channel enabled). ace#743's preventer shipped and worked, but it is a
+*diagnosis* fix that fires inside Phase 5; #1516 is the *timing* fix.
+
+Three details worth not rediscovering: (1) the generation provider is not
+the one any env var names — `OCS_LLM_PROVIDER_ID` is the EMBEDDINGS
+provider, so the probe discovers generation from
+`ocs_inspect_chatbot`'s `pipeline.nodes[].llm.provider_id`; (2)
+embeddings and generation sit on separate keys, so a probe that only
+checked indexing reports green through this failure; (3) OCS masks the
+real provider error behind a generic "intermittent load" fallback unless
+`debug_mode` is on, so the block carries the session's `trace` URL —
+open that, not the OCS error text, before calling it a platform outage.
+
+`skip` is not `fail`. Live means it can be un-runnable (no session,
+`--no-live`, env unset); treat `skip` as "unknown, proceed" and let
+`ocs_auth` explain it.
+
 **Don't probe `.env` before the doctor — anti-pattern.** Observed in real
 sessions (2026-05-24 e2e-malaria-rdt, 2026-05-26 bednet-spot-check): the
 orchestrator burns 2–3 turns probing `$CLAUDE_PLUGIN_DATA` (reliably empty

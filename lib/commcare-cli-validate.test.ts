@@ -141,12 +141,28 @@ describe('parseValidatorOutput', () => {
   });
 });
 
+/**
+ * These cases assert the INPUT-validation error kinds, and `commcareCliValidateCcz`
+ * checks for Java FIRST (lib/commcare-cli-validate.ts — the java-first guard added
+ * by bb36c267). Without an explicit javaPath every one of them throws
+ * `java_not_found` on a machine with no JDK on PATH — including GitHub runners that
+ * do not preinstall one — so `clean-install`, the only REQUIRED check on main, went
+ * red on unrelated PRs (dimagi-internal/ace#1535, hit live on #1533).
+ *
+ * An explicit path is returned verbatim without probing (pinned by the
+ * 'returns an explicit path verbatim without probing' case above), so this satisfies
+ * the guard and lets the assertion under test actually run. Nothing is ever spawned —
+ * each case throws before reaching the spawn.
+ */
+const PINNED_JAVA = '/pinned/java-for-input-validation-tests';
+
 describe('commcareCliValidateCcz — input validation', () => {
   it('throws CommCareCliInputError when CCZ does not exist', async () => {
     await expect(
       commcareCliValidateCcz({
         cczPath: '/tmp/nonexistent-ccz-' + Date.now() + '.ccz',
         jarPath: '/tmp/anything.jar',
+        javaPath: PINNED_JAVA,
       }),
     ).rejects.toMatchObject({ name: 'CommCareCliInputError', kind: 'ccz_not_found' });
   });
@@ -156,7 +172,7 @@ describe('commcareCliValidateCcz — input validation', () => {
     const cczPath = path.join(dir, 'empty.ccz');
     writeFileSync(cczPath, '');
     await expect(
-      commcareCliValidateCcz({ cczPath, jarPath: '/tmp/anything.jar' }),
+      commcareCliValidateCcz({ cczPath, jarPath: '/tmp/anything.jar', javaPath: PINNED_JAVA }),
     ).rejects.toMatchObject({ name: 'CommCareCliInputError', kind: 'ccz_empty' });
   });
 
@@ -168,6 +184,7 @@ describe('commcareCliValidateCcz — input validation', () => {
       commcareCliValidateCcz({
         cczPath,
         jarPath: '/tmp/nonexistent-jar-' + Date.now() + '.jar',
+        javaPath: PINNED_JAVA,
       }),
     ).rejects.toMatchObject({ name: 'CommCareCliInputError', kind: 'jar_not_found' });
   });
