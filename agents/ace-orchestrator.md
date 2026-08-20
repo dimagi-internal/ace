@@ -97,13 +97,28 @@ already in it. (Live auth liveness is *not* included — orchestrator
 pre-flight trusts the cached session and lets phase atoms surface
 auth failures at point-of-use.)
 
-**Two static blocks the preflight DOES emit — halt before Phase 1 if
-either is `fail`:** `selector_map_currency` and `nova_needs_auth_cache`.
-Both are no-network static checks for halt-classes unrecoverable
-in-session. On `fail`: surface the block's `remediation`, run the
-cache-clear node one-liner the full `/ace:doctor` prints, and tell the
-operator to Cmd-Q + reopen, then resume. (Rationale + jjackson/ace#582:
-see orchestrator-reference.md § Pre-flight rationale.)
+**Three blocks the preflight DOES emit — halt before Phase 1 if any is
+`fail`:** `selector_map_currency`, `nova_needs_auth_cache`, and
+`ocs_generation`. The first two are no-network static checks for
+halt-classes unrecoverable in-session. On `fail`: surface the block's
+`remediation`, run the cache-clear node one-liner the full `/ace:doctor`
+prints, and tell the operator to Cmd-Q + reopen, then resume. (Rationale
++ jjackson/ace#582: see orchestrator-reference.md § Pre-flight rationale.)
+
+`ocs_generation` is different in two ways and must not be lumped in with
+them. It is the ONE **live** probe in preflight — it asks OCS to generate
+a single token through the golden template — so it can legitimately
+report a `skip` verdict (no OCS session on this machine, env unset,
+`--no-live` passed). A `skip` is not a halt; it means the check could not
+run, and `ocs_auth` in the full `/ace:doctor` says why. And its
+remediation is **not** a restart: fix the team's GENERATION provider key
+in OCS / 1Password (the block names the exact
+`/a/<team>/service_providers/llm/<pk>/` page — note that is *not* the id
+`OCS_LLM_PROVIDER_ID` holds, which is embeddings), then re-run
+`/ace:run`. No Claude Code restart needed, unlike the other two. Halt on
+`fail` because no OCS-dependent phase can pass with a dead generation
+provider, and the only other place it surfaces is Phase 5 — after Phases
+1-4 and 6 have already run (dimagi-internal/ace#1516).
 
 **Do NOT probe `.env` before running the doctor** — no `echo
 $CLAUDE_PLUGIN_DATA`, no `ls .../.env`, no `find ... -name .env`. Every

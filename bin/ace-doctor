@@ -82,6 +82,9 @@ elif [ "${1:-}" = "deep-qa-freshness" ]; then
 fi
 
 PREFLIGHT=0
+# --no-live suppresses the ONE live probe --preflight runs (ocs_generation,
+# ace#1516) so `/ace:doctor --preflight --no-live` stays instant.
+NO_LIVE=0
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -89,6 +92,7 @@ while [ $# -gt 0 ]; do
     --installed)  MODE="installed" ;;
     --root)       shift; ROOT="$1" ;;
     --preflight)  PREFLIGHT=1 ;;
+    --no-live)    NO_LIVE=1 ;;
     *)            echo "ace-doctor: unknown arg: $1" >&2; exit 2 ;;
   esac
   shift
@@ -176,7 +180,18 @@ fi
 
 # --preflight — emit a tight YAML snapshot of local state for the orchestrator's
 # pre-flight checklist (agents/ace-orchestrator.md § Pre-flight Checklist Step 1).
-# Skips human-facing PASS/WARN/FAIL noise, hygiene checks, and live auth probes.
+# Skips human-facing PASS/WARN/FAIL noise, hygiene checks, and live auth probes,
+# with ONE deliberate exception: `ocs_generation` (dimagi-internal/ace#1516).
+#
+# Why that exception exists. Every other OCS check here is env-presence or a
+# reachability GET, so a dead/exhausted/revoked team GENERATION provider stayed
+# invisible until Phase 5's quick gate — after Phases 1-4 and 6 had already run
+# (bednet-check-2-visit/20260817-1720, 2026-08-19; and ace#743 before it). The
+# generic "trust the cached session, let phase atoms surface auth failures at
+# point-of-use" rule is right for credentials a phase can re-mint; it is wrong
+# for a provider outage that makes EVERY OCS-dependent phase unpassable, because
+# the only cost it can be discovered at is hours of wasted run. So preflight
+# spends one live token here and nowhere else. `--no-live` opts out.
 # What it covers: env_file path, plugin version + install_path, git user.email,
 # presence of the env vars Phase 1+ skills depend on. Sensitive values (passwords,
 # tokens) are reported as `present`/`missing`; public IDs (Drive root, HQ domain,
@@ -362,6 +377,50 @@ if [ "$PREFLIGHT" = "1" ]; then
     fi
   fi
 
+  # ocs_generation — the ONE live probe in preflight (dimagi-internal/ace#1516).
+  #
+  # Asks OCS to generate a single token through the golden template's widget
+  # path. Everything else doctor knows about OCS is env-presence or a
+  # reachability GET; `ocs_shared_collection_team` proves a collection is
+  # reachable, never that the model behind it can answer. Two sessions have
+  # now been burned by that gap (ace#743 revoked key; the 2026-08-19 usage cap
+  # on provider 377 while the run's own config was flawless: 8/8 indexed,
+  # pipeline_valid, published v2, channel enabled).
+  #
+  # This block is why the fix is a TIMING fix rather than another diagnosis
+  # improvement: a probe wired only into [Auth liveness] below would never run
+  # inside /ace:run, because preflight exits before it.
+  #
+  # Gated: needs OCS_GOLDEN_TEMPLATE_ID + OCS_TEAM_SLUG + a live session file
+  # (the script guards again and returns `skip` without launching chromium).
+  # `--no-live` skips it outright. The script hard-caps its own wall clock at
+  # 25s and always exits 0. `status: fail` here is a halt-class for the
+  # orchestrator, exactly like selector_map_currency / nova_needs_auth_cache.
+  PF_OCS_GEN_YAML=""
+  PF_OCS_SESS="$HOME/.ace/ocs-session-${OCS_TEAM_SLUG}.json"
+  PF_OCS_GEN_SKIP_REASON=""
+  if [ "$NO_LIVE" = "1" ]; then
+    PF_OCS_GEN_SKIP_REASON="--no-live passed; re-run /ace:doctor --preflight without it to prove OCS can generate"
+  elif [ ! -f "$ROOT/scripts/doctor-ocs-generation.ts" ]; then
+    PF_OCS_GEN_SKIP_REASON="scripts/doctor-ocs-generation.ts not present; run /ace:update"
+  elif [ -z "$OCS_GTID" ] || [ -z "$OCS_TEAM_SLUG" ]; then
+    PF_OCS_GEN_SKIP_REASON="OCS_GOLDEN_TEMPLATE_ID or OCS_TEAM_SLUG not set in .env"
+  elif [ ! -f "$PF_OCS_SESS" ]; then
+    PF_OCS_GEN_SKIP_REASON="$PF_OCS_SESS missing — run /ace:ocs-login (or set OCS_USERNAME/OCS_PASSWORD)"
+  else
+    PF_OCS_GEN_YAML="$(cd "$ROOT" && npx tsx scripts/doctor-ocs-generation.ts --format=yaml 2>/dev/null || true)"
+  fi
+  if [ -z "$PF_OCS_GEN_YAML" ]; then
+    [ -z "$PF_OCS_GEN_SKIP_REASON" ] && PF_OCS_GEN_SKIP_REASON="probe produced no output"
+    PF_OCS_GEN_YAML="ocs_generation:
+  status: skip
+  class: no_session
+  provider_id: null
+  trace: \"\"
+  detail: \"\"
+  remediation: \"${PF_OCS_GEN_SKIP_REASON}\""
+  fi
+
   # Build the YAML body. Missing public values render as empty strings; the
   # orchestrator can decide how to react (some are required, some optional).
   cat <<EOF
@@ -409,6 +468,7 @@ nova_needs_auth_cache:
   cache_key_present: ${PF_NOVA_CACHE_KEY_PRESENT}
   nova_api_key: ${PF_NOVA_KEY_PRESENT}
   remediation: "${PF_NOVA_CACHE_REMEDIATION}"
+${PF_OCS_GEN_YAML}
 EOF
 
   # Handoff from a session that halted knowing it would be restarted (ace#1093).
@@ -435,6 +495,16 @@ EOF
   # machine with no pending handoff fell through and ran the entire doctor —
   # live auth probes, network reachability, Drive-layout walk — on every
   # /ace:run, contradicting the contract documented at the top of this block.)
+  #
+  # AMENDED (ace#1516): "no live probes in preflight" now has exactly ONE
+  # named exception, `ocs_generation`, emitted above. That is deliberate and
+  # does not reopen #1506 — the whole point of #1506 was that preflight must
+  # not FALL THROUGH into the rest of the doctor; a single scoped probe run
+  # inside the block is a different thing from running all of them. The rest
+  # of [Auth liveness] still never executes here, and this `exit 0` still
+  # fires unconditionally. If you are tempted to add a second live probe,
+  # the bar is the one #1516 met: an unrecoverable, run-wide halt class whose
+  # only other discovery point is hours into a run.
   exit 0
 fi
 
@@ -1611,6 +1681,28 @@ if [ -n "$OCS_BASE" ] && [ -n "$OCS_TEAM" ]; then
   fi
 else
   warn "ocs_auth: skipped — OCS_BASE_URL or OCS_TEAM_SLUG not set in .env" "see ocs_env warning above"
+fi
+
+# 2b. ace-ocs generation — proves the team's GENERATION provider can actually
+# answer, not merely that OCS is reachable (dimagi-internal/ace#1516).
+#
+# Same backing script as the --preflight `ocs_generation:` block; that one is
+# the load-bearing wiring (it runs before Phase 1, which is the whole point of
+# the issue) and this one is the human surface. Severity deliberately differs:
+# WARN here, per the standing "runtime-health checks are WARN, not FAIL"
+# convention, and `status: fail` in the preflight YAML because that is what the
+# orchestrator halts on. Never invoked twice in one run — preflight exits long
+# before this block.
+#
+# The script emits its own PASS/WARN/INFO + `fix:` lines (same shape as
+# scripts/doctor-drive-layout.ts) because the remedy is class-dependent: a
+# capped provider and a revoked key need different sentences, and both must
+# name the GENERATION provider's /service_providers/llm/<pk>/ page — which is
+# NOT the id OCS_LLM_PROVIDER_ID holds (that is embeddings; see the script).
+if [ -f "$ROOT/scripts/doctor-ocs-generation.ts" ]; then
+  ( cd "$ROOT" && npx tsx scripts/doctor-ocs-generation.ts --format=lines 2>/dev/null ) || true
+else
+  info "ocs_generation: skipped — scripts/doctor-ocs-generation.ts not present (run /ace:update)"
 fi
 
 # 3. ace-connect — GET /accounts/login/ with connect.dimagi.com cookies, --max-redirs 0
