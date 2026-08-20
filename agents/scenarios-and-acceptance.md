@@ -97,7 +97,7 @@ Unless `--no-evals` was passed AND QA verdict is `pass`, invoke `pdd-to-test-pro
 
 - Inputs: the test-prompts doc + the source PDD
 - Output: `runs/<run-id>/2-scenarios/pdd-to-test-prompts-eval_verdict.yaml`
-- 6 quality dimensions: expected-answer specificity, adversarial-prompt quality, archetype coverage, prompt phrasing realism, expected-tag correctness, escalation-prompt quality.
+- 7 quality dimensions: expected-answer specificity, adversarial-prompt quality, archetype coverage, prompt phrasing realism, expected-tag correctness, escalation-prompt quality, and `failure_mode_coverage` (18%, out-of-chain) — which **floors the suite to `fail` at ≤3**, regardless of the other six.
 - Skipped (verdict: incomplete) if QA failed.
 
 ### Step 2: PDD to App Journeys
@@ -121,7 +121,7 @@ Unless `--no-evals` was passed, invoke `pdd-to-app-journeys-eval`.
 
 - Inputs: the journeys doc + the source PDD (for archetype + Target FLW reference)
 - Output: `runs/<run-id>/2-scenarios/pdd-to-app-journeys-eval_verdict.yaml`
-- 6 quality dimensions: persona specificity, archetype alignment, coverage completeness, happy-path narrative voice, edge-case recoverability, pass-criteria measurability.
+- 7 quality dimensions: persona specificity, archetype alignment, coverage completeness, happy-path narrative voice, edge-case recoverability, pass-criteria measurability, and `deployability_fitness` (25%, out-of-chain) — the largest single weight, which **hard-gates the suite to `fail` at ≤3**, regardless of the other six.
 
 ### Completion
 Write phase summary to `ACE/<opp-name>/runs/<run-id>/2-scenarios/scenarios-and-acceptance_summary.md`,
