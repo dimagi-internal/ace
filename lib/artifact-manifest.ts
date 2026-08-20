@@ -336,7 +336,7 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     phase: 'design',
     required: false,
     rendered: true,
-    description: 'Per-opp deferred-question doc. Written by idea-to-pdd when stress-test grades partial/fail and a default reasonable-pick is taken; phase agents append unresolved questions here at end-of-run for human review (per the feedback_phase_open_questions user-memory item). Opp-level (NOT under runs/<run-id>/) so questions survive across runs until answered.',
+    description: 'Per-opp deferred-question doc. Written by idea-to-pdd when stress-test grades partial/fail and a default reasonable-pick is taken; phase agents append unresolved questions here at end-of-run for human review (per the feedback_phase_open_questions user-memory item). Opp-level (NOT under runs/<run-id>/) so questions survive across runs until answered. NOT append-only: it carries exactly two sections, `## Open` (the live list — the only section ever read back or inlined at Phase 1 handoff) and `## Archive` (closed history, never read back and never inlined). Resolving a question MOVES its row from `## Open` to `## Archive` with resolved_at / resolved_by / resolution_note — it is never annotated in place, which is what let the ledger grow to 26,577 chars and leak inherited framing into a fixture opp\'s PDD (dimagi-internal/ace#1487). The read side is bounded by lib/open-questions-inline.ts: fixture opps (an iterate-state.yaml at the opp root) skip the inline entirely; everyone else gets `## Open` capped at OPEN_QUESTIONS_INLINE_CAP_CHARS. Shape contract: skills/idea-to-pdd/SKILL.md § The durable open-questions doc.',
   },
   {
     path: 'eval-calibration/known-issues.md',

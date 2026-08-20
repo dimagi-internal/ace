@@ -16,7 +16,7 @@ Take an initial idea and iterate on it to produce a complete Program Design Doc 
 |---|---|---|
 | Operator | `ACE/<opp-name>/runs/<run-id>/inputs-manifest.yaml` | frozen pointer-set to source material captured at run-start |
 | Operator | each `file_id` in the manifest | source content (PDFs, docs, sheets, markdown) |
-| Prior runs | `ACE/<opp-name>/open-questions.md` (opp ROOT, durable across runs; passed inline at handoff) | questions ALREADY raised/verified for this opp — read them back before raising your own (ace#1201) |
+| Prior runs | `ACE/<opp-name>/open-questions.md` § `## Open` (opp ROOT, durable across runs; passed inline at handoff when the orchestrator's bounds allow — ace#1487) | questions ALREADY raised/verified for this opp — read them back before raising your own (ace#1201). `## Archive` is never read back |
 
 ## Products
 
@@ -54,7 +54,20 @@ orchestrator from the per-skill QA + eval verdicts on the fly. -->
    runs already raised — and, in some rows, ANSWERS a prior run verified.
    Before adding a question of your own, check whether it is already there.
 
-   For every pre-existing question, this run must state one of:
+   **Read `## Open` ONLY.** The doc has exactly two sections (§ The durable
+   open-questions doc below). `## Archive` is closed history — never read it
+   back, never reason from it, never carry its rows into the PDD.
+
+   **The orchestrator may pass less than the whole section, or nothing at
+   all** (dimagi-internal/ace#1487): on a `/ace:iterate` fixture opp the
+   ledger is not passed at all, and above the inline cap only the most recent
+   `## Open` rows arrive with the `file_id`. That is deliberate — do NOT go
+   fetch the rest to "be thorough". Reconcile against what you were given, and
+   if the handoff said the inline was truncated or skipped, say so in the PDD's
+   open-questions section rather than implying full coverage.
+
+   For every pre-existing question **in `## Open` that you were passed**, this
+   run must state one of:
    **resolves** (this run answers it — record the answer + evidence),
    **carries forward** (still open), or **contradicts** (this run's finding
    disagrees with a recorded, verified answer). A contradiction is LOUD:
@@ -63,6 +76,12 @@ orchestrator from the per-skill QA + eval verdicts on the fly. -->
    `hh-poverty-targeting/20260812-1613` two items were contradicted with no
    signal at all, because the file was written every run and read by none
    (ace#1201).
+
+   **Resolving a question MOVES it, it does not annotate it.** A row you
+   resolve is removed from `## Open` and appended to `## Archive` with
+   `resolved_at` / `resolved_by` / `resolution_note`. Never annotate in place
+   ("RESOLVED 2026-05-03 by …") — that is exactly what made this doc grow
+   without bound.
 
    Read `ACE/<opp-name>/runs/<run-id>/inputs-manifest.yaml`
    first via `drive_read_file`. The manifest shape is:
@@ -777,6 +796,71 @@ QA verdict + eval verdict directly (per `agents/ace-orchestrator.md §
 Pause Points`). The producer no longer authors a separate gate-brief
 artifact. -->
 
+## The durable open-questions doc
+
+`ACE/<opp-name>/open-questions.md` lives at the opp ROOT and is durable
+across runs (ace#1201). It is **not** append-only: it has a **bounded
+shape**, and it is this skill's job to keep it in that shape every run.
+
+**Exactly two sections, in this order, and no others:**
+
+```markdown
+# Open Questions — <opp-name>
+
+## Open
+
+- **id:** rate-band-source
+  **question:** What is the authoritative source for the per-visit rate band?
+  **raised_by:** 20260812-1613
+  **owner:** operator
+  **answered_where:** solicitation responses
+
+## Archive
+
+- **id:** deliver-app-photo-capture
+  **question:** Should photo capture be camera-only?
+  **raised_by:** 20260714-0902
+  **owner:** ACE
+  **resolved_at:** 2026-08-17T14:02:00Z
+  **resolved_by:** idea-to-pdd (run 20260817-1531)
+  **resolution_note:** app-hq-settings applies appearance="acquire"; settled.
+```
+
+Rules:
+
+- **`## Open` is the live work list.** Only genuinely-unanswered questions
+  live here. It is the ONLY section any reader — this skill, the
+  orchestrator, a human — reads back.
+- **`## Archive` is closed history.** It is **never read back and never
+  inlined** at phase handoff. It exists so the audit trail survives without
+  weighing on every future run.
+- **Resolution MOVES a row; it never annotates one in place.** Remove the row
+  from `## Open`, append it verbatim to `## Archive`, and add exactly three
+  fields: `resolved_at`, `resolved_by`, `resolution_note`. Nothing else
+  changes, so the archived row still reads as the question it was.
+- **Never delete a row.** Archiving is the only removal from `## Open`.
+- **Contradictions stay in `## Open`.** A run that contradicts a recorded
+  answer does not archive it — it records the contradiction on the live row
+  and surfaces it loudly (§ Process step 1).
+
+This mirrors the `archive:` convention `run_state.yaml`'s `open_questions:`
+list already follows — see `agents/orchestrator-reference.md § Cruft
+management — `archive:` block convention`, whose three `resolved_*` fields
+are the same three used here.
+
+**Why the shape is a contract and not a style note (ace#1487).** Annotating
+resolved rows in place made this doc grow monotonically —
+`bednet-check-2-visit` reached 26,577 chars across three runs — while
+§ Process step 1 mandates a read-back statement for every pre-existing
+question, so Phase 1's cost grew linearly with the ledger forever. On the
+`/ace:iterate` fixture opp the inherited history then leaked into the PDD:
+a 43,003-char PDD from a 15,449-char brief, carrying rates, cohort sizes and
+programme ceilings the brief never states. The orchestrator now bounds the
+READ (`lib/open-questions-inline.ts` — fixture opps skip the inline entirely;
+everyone else gets `## Open` capped at `OPEN_QUESTIONS_INLINE_CAP_CHARS`);
+this section bounds the WRITE, so the live list stays small enough that the
+cap is rarely the thing doing the work.
+
 ## Decisions Log (rendered)
 
 The skill always emits `decisions.yaml` and invokes `decisions-render`
@@ -1195,7 +1279,7 @@ The PDD has two or more sequenced stages with different archetypes. Treat the ba
 **Required for multi-stage PDDs:** an explicit **Stage Gate** subsection between every pair of stages, stating exactly what must be true at the end of stage N to proceed to stage N+1 (with go / no-go / iterate criteria).
 
 ## MCP Tools Used
-- Google Drive: `drive_read_file` (pass `exportAs: 'text/markdown'` when re-reading the PDD — it is a rendered gdoc, and the default plain-text export drops the `#` heading markers), `drive_create_doc_from_markdown` (the PDD and `open-questions.md` — human-facing prose), `drive_create_file` (machine-parsed YAML only), `drive_update_file`, `drive_download_binary` (binary/`.ccz`/`.xlsx` inputs)
+- Google Drive: `drive_read_file` (pass `exportAs: 'text/markdown'` when re-reading the PDD — it is a rendered gdoc, and the default plain-text export drops the `#` heading markers), `drive_create_doc_from_markdown` (the PDD and `open-questions.md` — human-facing prose; write `open-questions.md` in the two-section `## Open` / `## Archive` shape from § The durable open-questions doc, moving resolved rows into `## Archive` rather than annotating them in place — ace#1487), `drive_create_file` (machine-parsed YAML only), `drive_update_file`, `drive_download_binary` (binary/`.ccz`/`.xlsx` inputs)
 - Google Sheets: `sheets_list_tabs`, `sheets_batch_read` (Google-Sheet inputs)
 - Google Forms: `get_google_form_definition` (Google-Form inputs)
 
