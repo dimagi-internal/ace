@@ -199,6 +199,25 @@ image-bearing forms carry at least one field with `kind: image` (an
 `<upload mediatype="image/*">` control). It also emits a top-level
 `form_unique_id_source`.
 
+**Module uids come from the TOP-LEVEL `modules[]` array in `--draft-only`
+mode, NOT from the form rows (ace#1539).** This skill mandates `--draft-only`,
+and in that mode there is no CCZ to key the per-form overlay against, so
+`scripts/run-form-walk.ts` emits
+
+```json
+"modules": [{ "module_key": "modules-0/forms-0.xml",
+              "module_unique_id": "<32- or 40-hex>" }]
+```
+
+while **every** form row carries `module_unique_id: null` AND `form_path: null`
+by construction. That is the normal, healthy shape — read Step 4a's module list
+off `modules[]`. Module uids are CCHQ 40-hex SHA-1 (form uids are 32-hex); both
+widths are valid.
+
+The `module_unique_id: null` halt below therefore applies to an entry MISSING
+from `modules[]`, never to the per-form nulls — reading it against the form rows
+halts every clean run.
+
 **CRITICAL (issue #108): halt if `form_unique_id_source: 'suite_xml'`.**
 suite.xml uids are a build-only CCHQ variant that `commcare_patch_xform`
 REJECTS, and in that fallback mode `module_unique_id` comes back `null`
@@ -259,9 +278,17 @@ For each Deliver form that the walk reports with ≥1 `kind: image` field:
 
    Mirror `scripts/run-xform-patch.ts`'s XML handling conventions
    (in-place attribute edit on the parsed body element; write the mutated
-   XML to a scratch file created with
-   `mktemp "${TMPDIR:-/tmp}/ace-hq-acquire-XXXXXX.xml"` — never a fixed
-   `/tmp/ace-hq-acquire-<form_unique_id>.xml`, per ace#1046 above).
+   XML into a scratch DIRECTORY created with
+   `D=$(mktemp -d "${TMPDIR:-/tmp}/ace-hq-acquire-XXXXXX")`, then use
+   `"$D/<field-id>.xml"` — never a fixed
+   `/tmp/ace-hq-acquire-<form_unique_id>.xml`, per ace#1046 above.
+   **Take the directory form literally: `mktemp -d`, not `mktemp` with a
+   suffix.** BSD/macOS `mktemp` only substitutes trailing `X`s, so the
+   plausible one-liner `mktemp "${TMPDIR:-/tmp}/ace-hq-acquire-XXXXXX.xml"`
+   substitutes NOTHING and creates the literal path
+   `.../ace-hq-acquire-XXXXXX.xml` — a fixed, cross-user-shared path, i.e.
+   exactly the ace#1046 hazard this sentence exists to prevent. It shipped
+   here as the prescribed remedy until ace#1539.)
    The contract truth (verified 2026-07-13 against commcare-android:
    `QuestionWidget.ACQUIREFIELD = "acquire"`) is that the widget hides
    the gallery button when the appearance hint **contains** `acquire`;
@@ -523,7 +550,7 @@ the camera-only residual if one exists, annotating
 | Mode | Cause | Behavior |
 |---|---|---|
 | `form_unique_id_source: 'suite_xml'` | `ACE_HQ_USERNAME`/`ACE_HQ_API_KEY` missing or draft-app API unreachable | Halt before any mutation. Draft uids + module uids are unavailable; both atoms would reject (issue #108). Re-run with creds. |
-| `module_unique_id: null` on a `draft_api` walk | draft-app API row malformed for that module | Halt that module, surface the form path. |
+| A module MISSING from the walk's top-level `modules[]` array on a `draft_api` walk | draft-app API row malformed for that module | Halt that module, surface the module key. **Per-form `module_unique_id: null` is NOT this** — it is the normal `--draft-only` shape (ace#1539); see Step 2. |
 | `<upload>` already has non-`acquire` appearance | A deliberate appearance hint conflicts | Halt the form, surface the existing value; do not clobber. |
 | `<case>` block OUTSIDE `__nova_operations` in a patched form | Non-standard app shape. Nova's own `SaveToCase` block carries a namespaced `<case>` element and is normal. The pre-patch halt that used to live here was DELETED (ace#1238) — it had no recorded reproducer and blocked Phase 3 on every run | **Not a failure mode.** Record an `[INFO]` breadcrumb with the form path and patch anyway; `commcare_make_build` (Step 3.5) is the authority. |
 | `commcare_make_build` rejects with "Cannot use Case Management UI if you already have a case block in your form" (Step 3.5) | The Vellum-cache drift class actually fired — the authoritative signal, not the substring scan | Halt loud, surface the rejection verbatim + every form patched this pass, `status: blocked`, leave the camera-only residual open for `app-release-qa` Step 2.8. |

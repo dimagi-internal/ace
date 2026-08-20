@@ -626,7 +626,26 @@ import { checkRelevanceReachability, formatRelevanceReachabilityReport }
 
 It flags any `relevant` referencing a field answered LATER, resolving
 calculates transitively so a hidden calculate over a later answer inherits
-that answer's position and can't launder it. Two severities:
+that answer's position and can't launder it.
+
+**Read the report's REAL fields (dimagi-internal/ace#1539).**
+`RelevanceReachabilityReport` is
+`{ relevancesChecked: number, violations: RelevanceViolation[] }`, and each
+violation carries `whollyUnreachable: boolean`. There is **no** `checked`, no
+`unreachable`, and no `partial` field — reaching for those names yields
+`undefined` on every form, which renders as "nothing found" and reports a
+BLIND PASS on the one check whose whole job is catching a field that can never
+display. Derive the two buckets explicitly:
+
+```ts
+const wholly  = report.violations.filter((v) => v.whollyUnreachable);
+const partial = report.violations.filter((v) => !v.whollyUnreachable);
+```
+
+`relevancesChecked === 0` means the form carries no relevance conditions —
+"not applicable", NOT a pass, the same rule every other checker here follows.
+
+Two severities:
 
 - `whollyUnreachable: true` — every reference is later, so the field can
   **never** display. `[BLOCKER]`.
@@ -831,7 +850,9 @@ per_app:
 #   camera_only_uploads:   pass | not-required-by-pdd | [<offending upload refs>]
 #   geopoint_binds:        pass | [<offending field paths>]
 #   constraint_locality:   pass | { constraints_checked, violations: [...] }
-#   relevance_reachability: pass | { checked, unreachable: [...], partial: [...] }
+#   relevance_reachability: { relevances_checked, wholly_unreachable: [...], partial: [...] }
+#                          # derived from violations[].whollyUnreachable (ace#1539);
+#                          # the lib exposes NO checked/unreachable/partial fields
 #   grid_menu_display:     { use_grid_menus, grid_form_menus,
 #                            modules_checked, modules_gridded, non_grid: [...] }
 #                          # all three fields are BLOCKER-gated (ace#1082)
