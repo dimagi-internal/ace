@@ -55,7 +55,7 @@ describe('pdd-to-deliver-app Step 4 L0 verification loop', () => {
       `Duplicate Step-4 labels: ${dupes.join(', ')}. Two blocks sharing a label make ` +
         '"re-run 4h" ambiguous in the recovery path these steps drive.',
     ).toEqual([]);
-    expect(labels.length).toBeGreaterThanOrEqual(9);
+    expect(labels.length).toBeGreaterThanOrEqual(10);
   });
 
   it('runs the payability discriminator through resolveEntityIdGrain (ace#1489)', () => {
@@ -83,6 +83,62 @@ describe('pdd-to-deliver-app Step 4 L0 verification loop', () => {
   it('imports the helper from lib/entity-id-precedence, not a restated rule', () => {
     const body = stepLabels().map(stepBody).join('\n');
     expect(body).toContain('lib/entity-id-precedence');
+  });
+
+  // ace#1527 — the same asymmetry, one layer down. The `[FIXED]` instrument's
+  // point values reached the architect as PROSE in the Step-3 brief, and
+  // nothing in Step 4 re-opened the published source in `inputs/` to check what
+  // the architect actually wrote down. 9 of 17 point values and all 101
+  // poverty-likelihood values shipped fabricated, through every gate, because
+  // each gate is blind to a constant's VALUE rather than its structure.
+  //
+  // The same "a prose mention elsewhere is not sufficient" argument the
+  // resolveEntityIdGrain check makes applies verbatim: the rule can be stated
+  // in `_app-component-library.md` and still never run.
+  it('diffs [FIXED]-instrument constants against the source via lib/instrument-constants (ace#1527)', () => {
+    const owning = stepLabels().filter((l) => stepBody(l).includes('diffScoringConstants'));
+    expect(
+      owning.length,
+      'No Step-4 block calls diffScoringConstants. The scoring constants of a ' +
+        '[FIXED] published instrument are then whatever the architect transcribed ' +
+        'from a model-authored brief, and nothing opens the source file in ' +
+        'inputs/ to check (ace#1527). A prose mention in _app-component-library.md ' +
+        'is NOT sufficient — that is the prose this check exists to backstop.',
+    ).toBeGreaterThan(0);
+
+    const body = owning.map(stepBody).join('\n');
+
+    // The helper must be IMPORTED, not a restated rule.
+    expect(body).toContain('lib/instrument-constants');
+
+    // The extraction has to be trusted before it can be an oracle — an
+    // undecoded `t="s"` shared-string index reads as a plausible number
+    // (`score 4 -> 79.0`), so a diff against an unchecked extraction is a
+    // second way to ship a wrong instrument while reporting success.
+    expect(
+      body,
+      'Step 4k diffs constants but never runs assertExtractionTrusted, so an ' +
+        'unchecked extraction can serve as the oracle (ace#1527).',
+    ).toContain('assertExtractionTrusted');
+
+    // The trigger must be the PDD marking the instrument [FIXED], resolved
+    // through the run's frozen inputs manifest.
+    expect(body).toContain('[FIXED]');
+    expect(body).toContain('inputs-manifest.yaml');
+
+    // And it must HALT. A warn on a wrong scorecard is worthless: the output
+    // is a complete, plausible, fully-verified dataset that ranks the wrong
+    // households, so there is no later symptom for anyone to act on.
+    expect(body).toContain('HALT');
+    expect(
+      body,
+      'Step 4k must say explicitly that a mismatch is a HALT and not a warn.',
+    ).toMatch(/not a warn/i);
+
+    // The self-concealing second-order symptom: a built max below the PDD's
+    // clamp means the clamp is dead code.
+    expect(body).toContain('compareMaxScore');
+    expect(body).toMatch(/clampDead/);
   });
 
   it('names the Phase-4 verification predicate residual when the key is payability-scoped', () => {

@@ -84,6 +84,7 @@ authored from the PDD per run):
 | [`threshold-coherence-flag`](#threshold-coherence-flag) | Deliver | PDD fixes ≥2 numeric thresholds constraining one physical quantity | `pdd-to-deliver-app-eval § threshold_coherence` (hard-gate) |
 | [`discriminating-assessment-items`](#discriminating-assessment-items) | Learn | Any scored assessment | `pdd-to-learn-app-eval § assessment_rule_coverage` |
 | [`instrument-grounded-examples`](#instrument-grounded-examples) | Learn | Learn app teaches administration of a fixed instrument | `pdd-to-learn-app-eval § assessment_rule_coverage` (examples criterion) |
+| [`fixed-instrument-transcription`](#fixed-instrument-transcription) | Deliver | The Deliver app digitises a `[FIXED]` published instrument whose source file is in `inputs/` (scorecard, eligibility matrix, dosing table, fee schedule) | `pdd-to-deliver-app-eval § fixed_instrument_fidelity` (hard-gate); `pdd-to-deliver-app § Step 4k` (mechanical, `lib/instrument-constants.ts`) |
 
 ---
 
@@ -1587,10 +1588,63 @@ the effective bar. One repair round, then re-grade.
 
 ---
 
+### fixed-instrument-transcription
+
+- **App:** Deliver
+- **Trigger:** the Deliver app digitises a `[FIXED]` published instrument —
+  a scorecard, eligibility matrix, dosing table, fee schedule — whose source
+  file is in the opportunity's `inputs/` and named by the run's
+  `inputs-manifest.yaml`.
+- **Enforced by:** `pdd-to-deliver-app-eval § fixed_instrument_fidelity`
+  (binary hard-gate) and, on the build side, `pdd-to-deliver-app § Step 4k`,
+  which runs `lib/instrument-constants.ts` against the source file itself.
+- **Origin:** ace#1527. On `hh-poverty-targeting/20260819-1435` the digitised
+  Nigeria PPI 2020 shipped **9 of 17 point values wrong and all 101
+  poverty-likelihood values invented** — the build memo described the latter as
+  *"provisional placeholders with the correct monotonic shape"*, and the point
+  values were not flagged at all. Nothing caught it: a wrong scorecard produces
+  a complete, plausible, fully-verified dataset that ranks the wrong
+  households, so there is no downstream symptom. The licence half matters too —
+  the PPI permits digitising the scorecard and its lookup tables only
+  UNMODIFIED.
+
+  The sibling component `instrument-grounded-examples` says the Learn app must
+  TEACH the real instrument. This one says the Deliver app must IMPLEMENT it,
+  digit for digit.
+
+**Brief paragraph (verbatim):**
+
+> REQUIRED — This instrument is FIXED by a published source document, and every
+> constant below is transcribed from it. Use the point values, thresholds, and
+> lookup-table rows EXACTLY as given: no rounding, no smoothing, no rescaling,
+> no "provisional placeholder with the correct shape", and no value carried over
+> from a similar instrument you know. If a constant you need is missing from
+> this brief, or a table is truncated, or two figures here contradict each
+> other, STOP and say which one — an invented value is worse than a gap, because
+> a gap is visible and a plausible wrong number is not. Where the instrument's
+> maximum attainable score overshoots a downstream lookup, keep the clamp the
+> spec states (e.g. `min(<score>, 100)`) — do not "fix" the overshoot by
+> lowering point values, and do not drop the clamp because the values you were
+> given happen not to reach it.
+
+**Skill-side half (not the architect's job).** The brief is model-authored, so
+the architect transcribing it faithfully proves nothing about whether the brief
+matches the source. `pdd-to-deliver-app § Step 4k` closes that loop at LEVEL 0:
+it fetches the source file by `file_id` from `inputs-manifest.yaml`, clears the
+extraction with `assertExtractionTrusted` before trusting a single value, then
+runs `diffScoringConstants` + `compareMaxScore` against the literals read back
+from Nova. Any mismatch is a HALT with a bounded repair loop, and a `clampDead`
+verdict — the built maximum cannot reach the clamp the spec mandates — is
+treated the same way, because that is the shape a wrong instrument takes when it
+is internally consistent with its own wrong numbers (ace#1527).
+
+---
+
 ## Change log
 
 | Date | Change | By |
 |---|---|---|
+| 2026-08-20 | **New component `fixed-instrument-transcription` (ace#1527).** A `[FIXED]` published instrument's point values reached the Nova architect as PROSE in the Step-3 brief, and nothing anywhere re-opened the source file sitting in the run's own frozen `inputs/`. On `hh-poverty-targeting/20260819-1435` that shipped 9 of 17 point values wrong and all 101 poverty-likelihood values invented, past `validate_app` (structure, not values), past `pdd-to-deliver-app-eval` (grades against a narrative PDD, so a wrong constant is conformant prose) and past `app-release-qa` (counts and install-time behaviour). The component carries both halves: a brief paragraph telling the architect to transcribe exactly and to STOP rather than invent when a constant is missing, and the skill-side check (`pdd-to-deliver-app § Step 4k`) that diffs the built literals against the source file via `lib/instrument-constants.ts` — extraction trusted FIRST (an undecoded `t="s"` shared-string index reads as a plausible number: `score 4 -> 79.0`), then `diffScoringConstants` and `compareMaxScore`. Paired 1:1 with the eval's new `fixed_instrument_fidelity` hard-gate. Sibling of `instrument-grounded-examples`: that one makes the Learn app TEACH the real instrument, this one makes the Deliver app IMPLEMENT it. Also a licence rule — the PPI permits digitising the scorecard and its lookup tables only UNMODIFIED. *Enforced:* `test/lib/instrument-constants.test.ts` + `test/skills/deliver-l0-loop-integrity.test.ts`. | ACE team |
 | 2026-08-17 | **Nova shipped a real per-language channel; ACE builds multilingual again — `english-only-ui` → `app-language-layer` (PR #1463, superseding ace#968/#1391; Jon).** Verified live against `tools/list`: **95 tools, up from 81 on 2026-08-14**, carrying six itext-shaped language atoms (`get_languages`, `get_translatable_content`, `add_language`, `update_language`, `remove_language`, `update_translations`) — translation units with source fingerprints, provenance, review state and protected reference parts. The 2026-08-14 English-only decision rested on that channel not existing; it now does, so the decision is superseded, NOT reversed on taste. Jon's call: fully implement, but **English is always the source language and the review surface** (every app always gets a complete English version), and translations are reviewed like any other artifact — English included — with no bespoke native-speaker gate. Contract proven live on scratch app `b4e2c8fd`, not inferred: `add_language` COPIES rather than translates; automatic translation covers only a checked-in 57-language set with no MCP trigger (Chichewa = `not-evaluated`), so ACE authors the strings; `needs-review` text **IS served to workers**, so review is bookkeeping and not a publish gate; and editing an English string demotes its translation to `out-of-date` whose `effective` **falls back to English** — hence the load-bearing **translate-LAST** ordering rule. `defaultLanguage` stays `en` for now (one `update_language set-default` call to change). Inline stacking stays retired and is now a hard fail. Table B's multilingual row is DELETED — it is no longer a toolchain gap. *Enforced:* `test/skills/app-language-layer.test.ts`. | ACE team |
 | 2026-08-14 | **ACE builds English-only app UIs; `localization-layer` retired and `localization_match` INVERTED (ace#1391, superseding ace#968; Jon).** Re-verified Nova's live surface: zero hits for `itext`/`locale`/`i18n`/`translat` across all **81** tools (was 63 on 2026-07-31), `update_app` carries only `name`, and the architect's own 70k-char operating prompt never mentions languages; the surface's only language parameter is `defaultLanguageCode` on messaging automations. Since 2026-07-30 the sanctioned fallback had been stacking every language inline in one label — Jon's call: that is a terrible solution and localization should be solved properly when it can be solved at all, so until Nova ships a real per-language channel ACE ships an honest monolingual UI rather than a convincing fake. Component `localization-layer` → **`english-only-ui`** (same trigger, opposite instruction: build English, do not stack, do not hunt for a translations parameter, record the decision in the build memo). Eval dimension `localization_match` → **`language_conformance`**, same 8% and same null-when-N/A: English-only is now FULL CREDIT, stray stacked strings score 5 + `[WARN]`, systematic inline stacking or an in-app language selector is ≤3 → `fail`. Both calibration anchors amended — the ITN negative control's `localization_match ≤3` clause is REMOVED, not relaxed (the same artifact now scores full credit there; the other three dimensions still force `fail`). Phase 1 still records the working language — it drives training, facilitation, the OCS chatbot and the solicitation — but must not assert a translated app; multilingual UI is now a **Table B** row (buildable in CommCare via itext, closed on ACE's builder — never call it a platform limit). *Enforced:* `test/skills/english-only-ui.test.ts`. | ACE team |
 | 2026-08-14 | **New component `branch-scoped-groups` (ace#1015).** A group whose questions only make sense on one branch of a discriminator must be gated on that discriminator. Ungated, the `savings` group on spark-facilitator/20260728-1338 displayed on both branches of `meeting_conducted` and asked the next-meeting date twice with incompatible constraints, so rescheduling for TODAY was a dead end on the branch the PDD required to be frictionless. Paired with `pdd-to-deliver-app-eval § field_answerability` (e). | ACE |

@@ -360,10 +360,10 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
   {
     path: 'inputs-manifest.yaml',
     producedBy: 'ace-orchestrator',
-    consumedBy: ['idea-to-pdd'],
+    consumedBy: ['idea-to-pdd', 'pdd-to-deliver-app', 'pdd-to-deliver-app-eval'],
     phase: 'design',
     required: false,
-    description: 'Frozen pointer-set captured at run start: every direct child file under inputs/ as {file_id, name, mime_type}. idea-to-pdd reads each entry to synthesize the PDD. Lives at the run-folder root alongside run_state.yaml — both are run-level metadata, scoped beyond any single phase. Pointing at file_ids (not paths) means a human re-arranging inputs/ mid-run does not shift the source pack out from under Phase 1. NOT YET required: existing fixtures predate the 2026-05-05 evidence-pack refactor; flip to required=true once the next round of fixture updates lands.',
+    description: 'Frozen pointer-set captured at run start: every direct child file under inputs/ as {file_id, name, mime_type}. idea-to-pdd reads each entry to synthesize the PDD; pdd-to-deliver-app Step 4k (and its eval) resolve the published source file of a [FIXED] instrument through it, so a wrong scoring constant is caught against the document rather than against the model-authored brief (ace#1527). Lives at the run-folder root alongside run_state.yaml — both are run-level metadata, scoped beyond any single phase. Pointing at file_ids (not paths) means a human re-arranging inputs/ mid-run does not shift the source pack out from under Phase 1. NOT YET required: existing fixtures predate the 2026-05-05 evidence-pack refactor; flip to required=true once the next round of fixture updates lands.',
   },
   {
     path: '1-design/idea-to-pdd.md',

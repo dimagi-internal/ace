@@ -36,6 +36,7 @@ and `skills/eval-calibration/SKILL.md` for calibration methodology.
 | Phase 1 | `1-design/idea-to-pdd.md` | source PDD; archetype + Deliver App Specification + delivery unit drive expectation |
 | Phase 3 | `3-commcare/pdd-to-deliver-app_summary.md` | Deliver-app structure summary (`nova_app_id`, forms, fields) |
 | Nova MCP (optional) | `get_app({app_id: <nova_app_id>})` | authoritative field-by-field blueprint (recommended) |
+| Run root (conditional) | `runs/<run-id>/inputs-manifest.yaml` + the `file_id` it names | the published source file for a `[FIXED]` instrument, graded by § 5b `fixed_instrument_fidelity` (ace#1527). Read only when the PDD marks an instrument `[FIXED]`. |
 
 ## Products
 
@@ -220,6 +221,55 @@ and `skills/eval-calibration/SKILL.md` for calibration methodology.
      incoherent pair with NO build-memo entry → `[BLOCKER]` → `fail`. An
      incoherent pair that IS surfaced → `[WARN]` (the value is a PM decision;
      noticing it is ACE's job).
+   - **`fixed_instrument_fidelity`** (added 2026-08-20, ace#1527) — **when the
+     PDD marks an instrument `[FIXED]` and the run's `inputs-manifest.yaml`
+     carries its published source file, every scoring constant in the build MUST
+     match that file.** Binary, non-weighted, and deliberately NOT a rubric
+     dimension: this is arithmetic against a published table, not a judgement,
+     and the weighted dimensions are the reason it went unseen — they grade the
+     build against the PDD, which describes the instrument narratively, so a
+     fabricated constant reads as PDD-conformant prose. Pairs 1:1 with
+     `_app-component-library.md § fixed-instrument-transcription` and the build's
+     `pdd-to-deliver-app § Step 4k`, which runs the same helper.
+
+     **Do not eyeball this and do not re-derive it — run
+     `lib/instrument-constants.ts`** over (a) the source file, fetched by
+     `file_id` from the manifest via `drive_download_binary` + `writeToPath`, and
+     (b) the built literals read from the Nova blueprint. In order:
+     `assertExtractionTrusted` on the extracted series FIRST, then
+     `diffScoringConstants`, then `compareMaxScore`.
+
+     Verdicts:
+     - `trusted: false` on the extraction → `[BLOCKER]` → `fail`, reported as an
+       **eval-side extraction failure**, not as a build defect. An unchecked
+       extraction is a second way to ship a wrong instrument while reporting
+       success: the ace#1527 repair round's first read produced `score 4 -> 79.0`
+       because an `.xlsx` `t="s"` cell holds an INDEX into `xl/sharedStrings.xml`
+       and an undecoded index is a plausible number. Re-extract; never grade
+       against a series that failed its own endpoint / monotonicity / row-count
+       assertions.
+     - Any `mismatches`, `missingInBuild`, or `extraInBuild` → `[BLOCKER]` →
+       `fail`, listing each `{key, source, built}`. There is no tolerance band:
+       these are published integers.
+     - `clampDead: true` where the PDD mandates a `min(<score>, N)` clamp →
+       `[BLOCKER]` → `fail`. The built Nigeria PPI 2020 maxed at **96** against
+       an official **102**, so the clamp was dead code and the overshoot the PDD
+       wants observable could never fire — the instrument was internally
+       consistent with its own wrong numbers, which is exactly why nothing
+       downstream had a symptom.
+     - The build memo's `instrument_constants:` frontmatter block present, with
+       `mismatches: 0` and a source `file_id` that matches the manifest entry →
+       no finding. A `[FIXED]` instrument with NO such block, and no recorded
+       skip reason, → `[BLOCKER]` → `fail`: the check not having run is
+       indistinguishable at this layer from it having been skipped because it
+       would have failed.
+
+     **Why a blocker rather than a deduction.** A wrong scorecard produces a
+     complete, plausible, fully-verified dataset that ranks the wrong households
+     for a programme that acts on the list, and every Evidence Model control
+     passes it. The licence is the second half: the PPI permits digitising the
+     scorecard and its lookup tables only UNMODIFIED, so a deviation is a
+     compliance finding as well as a quality one (ace#1527).
 
    *Not enforced here (deferred to the post-build HQ step per
    `docs/superpowers/specs/2026-06-25-post-build-hq-settings-automation.md`):*
@@ -380,6 +430,7 @@ absorb the disagreement into a score.
 
 | Date | Change | Author |
 |------|--------|--------|
+| 2026-08-20 | **New non-weighted hard-gate `fixed_instrument_fidelity` (ace#1527).** Nine of 17 point values and all 101 poverty-likelihood values in a digitised `[FIXED]` Nigeria PPI 2020 scorecard shipped fabricated, and this rubric passed them: all 11 weighted dimensions grade the build against the **PDD**, which describes the instrument narratively ("ten indicators… scored 0-100"), so a wrong constant is PDD-conformant prose. Nothing here ever opened the workbook sitting in the run's own frozen `inputs/`. The gate is binary and non-weighted because it is arithmetic against a published table, not a judgement — and because a wrong scorecard has **no downstream symptom**: it yields a complete, plausible, fully-verified dataset that ranks the wrong households, and every Evidence Model control passes it. Graded mechanically via `lib/instrument-constants.ts` (`assertExtractionTrusted` FIRST — an undecoded `t="s"` shared-string index reads as a plausible number, which is how the repair round's first extraction produced `score 4 -> 79.0` — then `diffScoringConstants`, then `compareMaxScore`), the same helper the build runs at `pdd-to-deliver-app § Step 4k`, so build-emit and eval-grade cannot drift. `clampDead: true` is its own blocker: a built max of 96 against an official 102 makes the PDD's `min(ppi_score, 100)` clamp dead code, which is the self-concealing half. Also a licence finding — the PPI permits digitising the scorecard and its lookup tables only UNMODIFIED. Paired 1:1 with `_app-component-library.md § fixed-instrument-transcription`. *Enforced:* `test/lib/instrument-constants.test.ts` + `test/skills/deliver-l0-loop-integrity.test.ts`. | ACE team |
 | 2026-08-17 | **Nova shipped a real per-language channel; `language_conformance` RE-INVERTED (PR #1463, superseding ace#968/#1391; Jon).** Verified live against `tools/list`: **95 tools, up from 81 on 2026-08-14**, carrying six itext-shaped language atoms. The 2026-08-14 English-only decision rested on that channel not existing; it now does. Jon's call: fully implement, but **English is always the source language and the review surface**, and translations are reviewed like any other artifact — English included — with no bespoke native-speaker gate. Same 8%, same null-when-N/A, so no reweighting and every other anchor holds. Full credit now needs a REAL layer (English source complete + working language authored + `out-of-date` 0 + English still `sourceLanguage`); `fail` on no layer, `out-of-date` > 0, English displaced as source, inline stacking, or a language-selector question. **`needs-review` is explicitly NOT a deduction** — ACE's writes are `origin: ai` by construction and Nova serves them live, so it is an audit trail, not a defect. Component `english-only-ui` → **`app-language-layer`**, carrying the translate-LAST ordering rule (editing English demotes a translation to `out-of-date`, whose `effective` falls back to English — proven live on scratch app `b4e2c8fd`). The ITN negative control's clause is **RESTORED** as `language_conformance ≤3 → fail`: its original 2026-05-29 verdict was right, only the mechanism changed. **This dimension has now flipped twice in four days — the criteria say so out loud, because a judge's priors are the failure mode here.** *Enforced:* `test/skills/app-language-layer.test.ts`. | ACE team |
 | 2026-08-14 | **ACE builds English-only app UIs; `localization-layer` retired and `localization_match` INVERTED (ace#1391, superseding ace#968; Jon).** Re-verified Nova's live surface: zero hits for `itext`/`locale`/`i18n`/`translat` across all **81** tools (was 63 on 2026-07-31), `update_app` carries only `name`, and the architect's own 70k-char operating prompt never mentions languages; the surface's only language parameter is `defaultLanguageCode` on messaging automations. Since 2026-07-30 the sanctioned fallback had been stacking every language inline in one label — Jon's call: that is a terrible solution and localization should be solved properly when it can be solved at all, so until Nova ships a real per-language channel ACE ships an honest monolingual UI rather than a convincing fake. Component `localization-layer` → **`english-only-ui`** (same trigger, opposite instruction: build English, do not stack, do not hunt for a translations parameter, record the decision in the build memo). Eval dimension `localization_match` → **`language_conformance`**, same 8% and same null-when-N/A: English-only is now FULL CREDIT, stray stacked strings score 5 + `[WARN]`, systematic inline stacking or an in-app language selector is ≤3 → `fail`. Both calibration anchors amended — the ITN negative control's `localization_match ≤3` clause is REMOVED, not relaxed (the same artifact now scores full credit there; the other three dimensions still force `fail`). Phase 1 still records the working language — it drives training, facilitation, the OCS chatbot and the solicitation — but must not assert a translated app; multilingual UI is now a **Table B** row (buildable in CommCare via itext, closed on ACE's builder — never call it a platform limit). *Enforced:* `test/skills/english-only-ui.test.ts`. | ACE team |
 | 2026-08-14 | **`field_answerability` gains (e) cross-question satisfiability (ace#1015).** Two REQUIRED questions capturing the same real-world value, on one walk path, with incompatible constraints — a class none of (a)/(b)/(c) names, and all three correctly PASSED the form that carried it. Only unsatisfiable at the EDGE (`= today()`), so per-field analysis and a happy-path smoke walk both miss it. Graded via `checkPairSatisfiable` (`lib/constraint-satisfiability.ts`): empty intersection hard-gates ≤3, a NARROWED range is a 1-point deduction, and an unparsed constraint is `'unknown'` rather than a pass. Paired with the new `branch-scoped-groups` component, which addresses the proximate cause (an ungated branch-scoped group). | ACE team |
