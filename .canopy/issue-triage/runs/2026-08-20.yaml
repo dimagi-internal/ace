@@ -20,7 +20,37 @@ clusters:
     members: [1479, 1289]
     one_fix: "none — disjoint file sets (atlas doc + launch palettes vs tile-discovery recipes). Parallelised with an explicit file split."
 tier_counts: { blocks-e2e: 0, harness: 8, polish: 0 }
-prs: []
+prs:
+  - number: 1530
+    disposition: shipped
+    refs_issues: [1487]
+    outcome: merged
+  - number: 1531
+    disposition: shipped
+    refs_issues: [1479]
+    outcome: merged
+  - number: 1532
+    disposition: shipped
+    refs_issues: [1289]
+    outcome: merged
+  - number: 1533
+    disposition: shipped
+    refs_issues: [1516, 1535]
+    outcome: merged
+    note: >
+      Went red twice on clean-install for a defect it did not introduce
+      (lib/commcare-cli-validate.test.ts asserting input-validation kinds without
+      pinning javaPath, so a java-less runner short-circuits to java_not_found).
+      Filed as #1535 and self-healed in the same PR.
+  - number: 1534
+    disposition: shipped
+    refs_issues: [1527]
+    outcome: merged
+  - number: 1536
+    disposition: shipped
+    refs_issues: [1535]
+    outcome: merged
+    note: "structural preventer on top of #1535's instance fix"
 verdicts:
   - number: 1527
     disposition: implement
@@ -39,7 +69,7 @@ verdicts:
     duplicate_of: null
     source: fresh
     action: "new lib/instrument-constants.ts + Step 4k L0 gate + eval [BLOCKER] + tests"
-    outcome: pending
+    outcome: "shipped PR #1534 (v0.13.945); issue auto-closed completed"
   - number: 1516
     disposition: implement
     blocking: harness
@@ -59,7 +89,7 @@ verdicts:
     duplicate_of: null
     source: fresh
     action: "new lib/ocs-generation-probe.ts + scripts/doctor-ocs-generation.ts, wired BEFORE the preflight exit 0"
-    outcome: pending
+    outcome: "shipped PR #1533 (v0.13.946); issue auto-closed completed; live round-trip observed (provider 377 discovered, not 378 from env)"
     note: >
       The issue's own "fix lands here" pointer (~line 1119, [Auth liveness]) is
       wrong: --preflight exits at bin/ace-doctor:438, so a probe placed there
@@ -82,7 +112,7 @@ verdicts:
     duplicate_of: null
     source: fresh
     action: "new lib/open-questions-inline.ts + two-section Open/Archive shape; fixture skip keys off existing iterate-state.yaml"
-    outcome: pending
+    outcome: "shipped PR #1530 (v0.13.942); issue auto-closed completed"
     note: >
       Deliberately did NOT take the issue's proposed `fixture: true` opp.yaml
       field — the fixture signal already exists at the opp root as
@@ -105,7 +135,7 @@ verdicts:
     duplicate_of: null
     source: fresh
     action: "author docs/mobile-atlas/connect-2.63.2.md from the committed dumps; repoint 5 stale 2.62.0 citations; add a DEFAULT_APK_VERSION atlas-exists gate"
-    outcome: pending
+    outcome: "shipped PR #1531 (v0.13.943); issue auto-closed completed"
     note: >
       Not device-gated: all four 2026-08-14 dumps are committed, parse cleanly,
       and each maps to a named surface. Case SEARCH stays an open question
@@ -127,7 +157,7 @@ verdicts:
     duplicate_of: null
     source: fresh
     action: "section-anchored fallback re-hunt + LIVE_PROVEN_TILE_BUDGET constant; retitle to the unbounded-list class, leave OPEN"
-    outcome: pending
+    outcome: "shipped PR #1532 (v0.13.944); issue RETITLED and left OPEN — fix buys a second budget, does not close the class"
     note: >
       Title premise is STALE — the #647 recalibration landed in PR #1475
       (0bac8047) and is ratcheted. The prior `blocked` verdict rested on a
