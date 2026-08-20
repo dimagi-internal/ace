@@ -368,7 +368,7 @@ so nothing from it had saved.
 ### Step 1.5: Connect-marker coverage (verify + auto-fix)
 Invoke the `app-connect-coverage` skill **once per app** (Learn, Deliver).
 - Input: `nova_app_id` from each app summary; PDD for context
-- Output: `ACE/<opp-name>/app-coverage/{learn,deliver}-connect-coverage.md`
+- Output: `3-commcare/app-connect-coverage_{learn,deliver}.md`
   reporting before/after state per form. The Nova app on Firestore is
   mutated in place — every form's `connect` block (`learn_module` /
   `assessment` / `deliver_unit` / `task`) is set per the form's purpose.
