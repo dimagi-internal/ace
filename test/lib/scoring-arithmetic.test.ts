@@ -118,6 +118,60 @@ describe('checkScoringArithmetic (#1035)', () => {
     expect(r.findings.map((f) => f.kind)).not.toContain('denominator-mismatch');
   });
 
+  /**
+   * dimagi-internal/ace#1538 — ITEM_SCORE hard-coded a `q` prefix, so a
+   * pre-test scoring `p1_score`..`p10_score` matched ZERO items and the
+   * function returned `checked: false`, which `app-release-qa` defines as
+   * "not applicable, NOT a pass". The gate silently covered nothing on a form
+   * that did carry item scores.
+   *
+   * Live instance: hh-poverty-targeting/20260819-1435, Learn build
+   * 35384a8007114f29b5e04b9ac78274a2, `modules-0/forms-0.xml` ("Before you
+   * start"), 10 items + a `* 100 div 10` rollup — never checked, while the
+   * sibling `modules-5/forms-0.xml` (q-prefixed) was.
+   *
+   * Both instruments live in ONE Learn app by construction, so the prefix
+   * cannot be assumed.
+   */
+  const PRETEST = `<?xml version="1.0"?>
+<h:html xmlns:h="http://www.w3.org/1999/xhtml" xmlns="http://www.w3.org/2002/xforms">
+  <h:head><model>
+    <bind nodeset="/data/p1_score" calculate="if(/data/p1 = 'c', 1, 0)"/>
+    <bind nodeset="/data/p2_score" calculate="if(/data/p2 = 'a', 1, 0)"/>
+    <bind nodeset="/data/p10_score" calculate="if(/data/p10 = 'b', 1, 0)"/>
+    <bind nodeset="/data/user_score" calculate="(/data/p1_score + /data/p2_score + /data/p10_score) * 100 div 3"/>
+  </model></h:head>
+</h:html>`;
+
+  it('CHECKS a non-q-prefixed pre-test instead of reporting not-applicable (#1538)', () => {
+    const r = checkScoringArithmetic(PRETEST);
+    expect(r.checked).toBe(true);
+    expect(r.ok).toBe(true);
+    expect(r.itemScores).toEqual([
+      '/data/p1_score',
+      '/data/p2_score',
+      '/data/p10_score',
+    ]);
+  });
+
+  it('still CATCHES a defect in a non-q-prefixed pre-test (#1538)', () => {
+    // p2_score scores p1 — the copy-paste class, now reachable on a pre-test.
+    const r = checkScoringArithmetic(
+      PRETEST.replace(
+        '<bind nodeset="/data/p2_score" calculate="if(/data/p2 = \'a\', 1, 0)"/>',
+        '<bind nodeset="/data/p2_score" calculate="if(/data/p1 = \'a\', 1, 0)"/>',
+      ),
+    );
+    expect(r.checked).toBe(true);
+    expect(r.ok).toBe(false);
+    expect(r.findings.map((f) => f.kind)).toContain('self-reference-missing');
+  });
+
+  it('does not mistake /data/user_score itself for an item score (#1538)', () => {
+    const r = checkScoringArithmetic(PRETEST);
+    expect(r.itemScores).not.toContain('/data/user_score');
+  });
+
   it('names every finding in the formatted report', () => {
     const r = checkScoringArithmetic(withUserScore('(/data/q1_score) * 100 div 3'));
     const out = formatScoringReport(r);

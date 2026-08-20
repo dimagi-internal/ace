@@ -66,7 +66,16 @@ export interface ScoringReport {
   findings: ScoringFinding[];
 }
 
-const ITEM_SCORE = /^\/data\/(q[\w-]*?\d+)_score$/;
+// Item-score nodes are `<prefix><n>_score` where the prefix is whatever the
+// architect named the questions — `q1_score` on a post-test, `p1_score` on a
+// pre-test, and both in the same Learn app whenever it carries baseline AND
+// assessment instruments. This used to hard-code `q`, so a `p`-prefixed
+// pre-test matched zero items and the function returned `checked: false` —
+// which `app-release-qa` defines as "not applicable, NOT a pass". The gate
+// silently covered nothing on a form that did carry item scores
+// (dimagi-internal/ace#1538; observed on hh-poverty-targeting/20260819-1435,
+// Learn build 35384a8007114f29b5e04b9ac78274a2, modules-0/forms-0.xml).
+const ITEM_SCORE = /^\/data\/([a-z][\w-]*?\d+)_score$/;
 
 interface Bind {
   nodeset: string;
