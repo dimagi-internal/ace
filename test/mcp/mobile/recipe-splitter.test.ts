@@ -196,9 +196,14 @@ describe('recipe-splitter — captureAllBoundaries', () => {
     //    and its preamble folds into that runFlow's own `-post` chunk
     //    instead.
     //
-    // connect-claim-opp.yaml: 5 top-level runFlows, 2 adjacent pairs (2
+    // connect-claim-opp.yaml: 6 top-level runFlows, 2 adjacent pairs (2
     // seams collapse) + 1 suppressed leading `-pre` → 3 existing
-    // takeScreenshot windows + 7 runFlow windows = 10.
+    // takeScreenshot windows + 9 runFlow windows = 12.
+    //
+    // 10 → 12 in ace#1289, which added the fallback tile re-hunt as a
+    // sixth top-level runFlow. It is NOT adjacent to another runFlow
+    // (an `assertVisible` follows it), so no seam collapses and it
+    // contributes a full `-pre`/`-post` pair rather than one window.
     // deliver-launch.yaml: 5 top-level runFlows, one run of 3
     // back-to-back (2 internal seams collapse) + 1 suppressed leading
     // `-pre` → 1 existing takeScreenshot window + 7 runFlow windows = 8.
@@ -220,7 +225,7 @@ describe('recipe-splitter — captureAllBoundaries', () => {
     // the numbers that actually come out of running the splitter with
     // an implementation that also passes that test.
     expect(windows(readFileSync(new URL('connect-claim-opp.yaml', STATIC), 'utf8'), opts)).toBe(
-      10,
+      12,
     );
     expect(windows(readFileSync(new URL('deliver-launch.yaml', STATIC), 'utf8'), opts)).toBe(8);
   });

@@ -176,37 +176,74 @@ describe('connect-claim-opp.yaml', () => {
     // The old test asserted only the BODY scoping of those blocks and
     // never constrained their GUARD scoping; the defect lived exactly in
     // that gap. So assert the postcondition instead of an
-    // implementation: between the centered title-scroll and Branch A,
-    // nothing may move the list.
+    // implementation.
+    //
+    // RESTATED 2026-08-20 (ace#1289, second clause). The original form of
+    // this test said "nothing may follow the FIRST title-scroll". That
+    // over-constrained: the fallback re-hunt added for #1289 legitimately
+    // scrolls after the primary scroll, and then re-establishes the
+    // centering itself. What #800 actually requires is weaker and exact:
+    //
+    //   (a) the LAST viewport-moving step before Branch A is a centered
+    //       DOWN hunt for the run-id — so the card (title + button) is in
+    //       the viewport when the `below:`-scoped guards evaluate; and
+    //   (b) every runFlow that sits before Branch A scopes its `when:`
+    //       guard to `${OPP_RUN_ID}` — which is the property the
+    //       2026-07-29 wedge blocks lacked (their guards were UNSCOPED, so
+    //       a stale In-Progress tile's btn_resume entered the body).
+    //
+    // Both halves of the original defect still fail here.
     const branchAIdx = yaml.indexOf('# --- BRANCH A:');
     expect(branchAIdx, 'expected Branch A marker').toBeGreaterThan(-1);
 
-    const titleScrollIdx = yaml.search(
-      /- scrollUntilVisible:\s*\n\s*element:\s*\n\s*text: "\.\*\$\{OPP_RUN_ID\}\.\*"\s*\n\s*direction: DOWN/,
-    );
-    expect(titleScrollIdx, 'expected an unconditional title scroll').toBeGreaterThan(-1);
-
-    // Strip comments — the rationale above legitimately names these steps.
-    const between = yaml
-      .slice(titleScrollIdx, branchAIdx)
+    // Strip comments — the rationale prose legitimately names these steps.
+    const preBranch = yaml
+      .slice(0, branchAIdx)
       .split('\n')
       .filter((line) => !line.trimStart().startsWith('#'))
-      .join('\n')
-      // drop the title scroll itself; we are checking what FOLLOWS it
-      .replace(/^- scrollUntilVisible:[\s\S]*?(?=\n- |$)/, '');
+      .join('\n');
 
+    // (a) The last scroll before the guards must be the centered run-id hunt.
+    const lastScrollIdx = preBranch.lastIndexOf('scrollUntilVisible:');
+    expect(lastScrollIdx, 'expected a tile scroll before Branch A').toBeGreaterThan(-1);
+    const lastScroll = preBranch.slice(lastScrollIdx);
     expect(
-      between,
-      'no second scrollUntilVisible may follow the centered title scroll — it destroys the centering',
-    ).not.toMatch(/- scrollUntilVisible:/);
+      lastScroll,
+      'the last scroll before the branch guards must hunt the run-id tile',
+    ).toMatch(/text: "\.\*\$\{OPP_RUN_ID\}\.\*"/);
     expect(
-      between,
-      'no runFlow may sit between the title scroll and Branch A — an unscoped `when:` guard can match a stale tile',
-    ).not.toMatch(/- runFlow:/);
+      lastScroll,
+      'the last scroll before the branch guards must center the card (#800) — ' +
+        'without it btn_view_opportunity/btn_resume is clipped and both guards evaluate false',
+    ).toMatch(/centerElement: true/);
     expect(
-      between,
-      'no swipe/scroll step may follow the centered title scroll',
-    ).not.toMatch(/- (swipe|scroll):/);
+      lastScroll,
+      'the last scroll before the branch guards must run DOWN onto the tile',
+    ).toMatch(/direction: DOWN/);
+
+    const after = preBranch.slice(lastScrollIdx + 'scrollUntilVisible:'.length);
+    expect(
+      after,
+      'nothing may move the list after the centered run-id scroll — it destroys the centering',
+    ).not.toMatch(/(scrollUntilVisible|swipe|scroll):/);
+
+    // (b) Every guard in the TILE-DISCOVERY region — i.e. from the first
+    //     run-id scroll to Branch A — must be scoped to THIS run's tile.
+    //     (Earlier runFlows in this recipe handle app first-start and are
+    //     legitimately unscoped; they run before any tile exists.)
+    const firstTileScrollIdx = preBranch.search(
+      /-\s*scrollUntilVisible:\s*\n\s*element:\s*\n\s*text: "\.\*\$\{OPP_RUN_ID\}\.\*"/,
+    );
+    expect(firstTileScrollIdx, 'expected a run-id tile scroll').toBeGreaterThan(-1);
+    const guards = preBranch.slice(firstTileScrollIdx).split(/-\s*runFlow:/).slice(1);
+    for (const [i, chunk] of guards.entries()) {
+      const when = chunk.split(/commands:/)[0];
+      expect(
+        when,
+        `pre-branch runFlow ${i}: its \`when:\` guard must reference \${OPP_RUN_ID} — ` +
+          'an unscoped guard matches a STALE tile and wedges a claimable opp (2026-07-29)',
+      ).toMatch(/\$\{OPP_RUN_ID\}/);
+    }
   });
 
   it('branches on btn_resume vs btn_view_opportunity, both card-scoped', () => {
@@ -1409,20 +1446,61 @@ describe('form-advance captures BEFORE it advances (#1291)', () => {
 // 80 -> 40 and raised timeout 40000 -> 120000; that pair is the live-proven
 // one (bednet-check-2-visit/20260814-0357).
 // ---------------------------------------------------------------------------
+// The live-proven tile-discovery budget. ONE constant, asserted by
+// identity against every tile scroll in every tile-finding recipe.
+//
+// Parity used to be INFERRED (`new Set(budgets).size === 1`), which would
+// have passed if a future tuner changed BOTH recipes to a non-proven pair.
+// Naming the triple makes the budget structural: a change to it is a change
+// to this line, reviewed as such, and has to cite its own device evidence.
+//
+// Provenance: run on-device 2026-08-14, bednet-check-2-visit/20260814-0357.
+// The scroll reported COMPLETED, the assert COMPLETED, and the Learn leg
+// then walked green (Connect: learn_complete: true).
+const LIVE_PROVEN_TILE_BUDGET = { speed: 40, timeout: 120000, visibility: 30 };
+
 describe('tile-discovery scroll budgets stay in lockstep (#1289)', () => {
   const RECIPES = ['connect-claim-opp.yaml', 'connect-resume-opp.yaml'];
 
-  /** Every scrollUntilVisible that hunts the run-id tile, with its budget. */
+  /**
+   * Every `scrollUntilVisible` that hunts the run-id tile, with its budget.
+   *
+   * Split-on-keyword rather than one big lookahead regex. The original form
+   * bounded each block with a fixed `[\s\S]{0,400}` window, which is a
+   * silent-zero-match hazard the moment blocks get nested (the #1289
+   * fallback re-hunt lives inside a `runFlow`, adding indentation and two
+   * more keys) — and widening the window instead lets one block reach
+   * FORWARD into the next block's matcher and mis-attribute a budget.
+   * Splitting has neither failure mode, and the match count is asserted
+   * explicitly below so an empty set can never read as a pass.
+   */
   function tileScrolls(yamlText: string) {
     const out: { speed: number; timeout: number; visibility: number }[] = [];
-    const re =
-      /scrollUntilVisible:[\s\S]{0,400}?text:\s*"\.\*\$\{OPP_RUN_ID\}\.\*"[\s\S]{0,400}?(?=\n\s*-\s|\n\S|$)/g;
-    for (const m of yamlText.matchAll(re)) {
-      const blk = m[0];
-      const speed = Number(blk.match(/speed:\s*(\d+)/)?.[1] ?? NaN);
-      const timeout = Number(blk.match(/timeout:\s*(\d+)/)?.[1] ?? NaN);
-      const visibility = Number(blk.match(/visibilityPercentage:\s*(\d+)/)?.[1] ?? NaN);
-      out.push({ speed, timeout, visibility });
+    // Comment prose in these recipes legitimately quotes keys
+    // (`# WHY `direction: UP` ...`, `# `optional: true` ...`), so strip it.
+    const code = yamlText
+      .split('\n')
+      .filter((line) => !line.trimStart().startsWith('#'))
+      .join('\n');
+
+    for (const raw of code.split(/scrollUntilVisible:/).slice(1)) {
+      // One block ends where the next step (`- ...`) or a column-0 line begins.
+      const body: string[] = [];
+      for (const line of raw.split('\n')) {
+        if (/^\s*-\s/.test(line)) break;
+        if (line.trim() !== '' && /^\S/.test(line)) break;
+        body.push(line);
+      }
+      const blk = body.join('\n');
+      // Only the run-id hunts. The fallback's section anchor
+      // ("New Opportunities") is a different step with a different contract:
+      // it deliberately omits `centerElement`, so it must not be judged here.
+      if (!/text:\s*"\.\*\$\{OPP_RUN_ID\}\.\*"/.test(blk)) continue;
+      out.push({
+        speed: Number(blk.match(/speed:\s*(\d+)/)?.[1] ?? NaN),
+        timeout: Number(blk.match(/timeout:\s*(\d+)/)?.[1] ?? NaN),
+        visibility: Number(blk.match(/visibilityPercentage:\s*(\d+)/)?.[1] ?? NaN),
+      });
     }
     return out;
   }
@@ -1441,15 +1519,113 @@ describe('tile-discovery scroll budgets stay in lockstep (#1289)', () => {
     }
   });
 
-  it('the two recipes carry the SAME budget — this is the anti-drift guard', () => {
-    const [claim, resume] = RECIPES.map((r) => tileScrolls(readRecipe(r)));
-    const budgets = [...claim, ...resume].map((s) => `${s.speed}/${s.timeout}/${s.visibility}`);
-    expect(
-      new Set(budgets).size,
-      `claim-opp and resume-opp tile scrolls must share one budget ` +
-        `(speed/timeout/visibility). Found: ${[...new Set(budgets)].join(' vs ')}. ` +
-        `#1289: resume-opp missed the #647 recalibration entirely because nothing pinned them together.`,
-    ).toBe(1);
+  it('every tile scroll equals the ONE live-proven budget constant', () => {
+    // Stronger than the parity check this replaces. Parity alone
+    // (`new Set(budgets).size === 1`) would pass if a future tuner changed
+    // BOTH recipes to a pair no device has ever run. Identity against a
+    // single named constant makes the budget structural: it is one line,
+    // and moving it is a reviewable act that must carry its own evidence.
+    for (const r of RECIPES) {
+      const scrolls = tileScrolls(readRecipe(r));
+      expect(scrolls.length, `${r}: expected at least one run-id tile scroll`).toBeGreaterThan(0);
+      scrolls.forEach((s, i) => {
+        expect(
+          s,
+          `${r} scroll ${i}: every tile-finding scroll must carry LIVE_PROVEN_TILE_BUDGET. ` +
+            `#1289: resume-opp missed the #647 recalibration entirely because nothing pinned ` +
+            `the two recipes together, and nothing pinned either to a device-observed value.`,
+        ).toEqual(LIVE_PROVEN_TILE_BUDGET);
+      });
+    }
+  });
+
+  it('every tile-finding recipe has a fallback re-hunt after its primary scroll', () => {
+    // ace#1289 second clause. The primary scroll is O(unbounded invite
+    // list) and the list grows one card per /ace:run — accepted
+    // OpportunityAccess rows are unprunable (lib/invite-pruning.ts:88-91),
+    // so a single fixed budget re-exhausts on a schedule. Each recipe
+    // therefore gets a second, guarded pass.
+    for (const r of RECIPES) {
+      const yaml = readRecipe(r);
+      const code = yaml
+        .split('\n')
+        .filter((line) => !line.trimStart().startsWith('#'))
+        .join('\n');
+
+      // (1) The PRIMARY run-id scroll is optional, so an exhausted budget
+      //     reaches the fallback instead of aborting the flow.
+      const primaryIdx = code.search(
+        /-\s*scrollUntilVisible:\s*\n\s*element:\s*\n\s*text: "\.\*\$\{OPP_RUN_ID\}\.\*"/,
+      );
+      expect(primaryIdx, `${r}: expected a primary run-id scroll`).toBeGreaterThan(-1);
+      const primaryBlock = code.slice(primaryIdx).split(/\n-\s/)[0];
+      expect(
+        primaryBlock,
+        `${r}: the primary tile scroll must be \`optional: true\` — otherwise an exhausted ` +
+          `budget aborts the flow and the fallback re-hunt is unreachable`,
+      ).toMatch(/optional: true/);
+
+      // (2) A runFlow guarded on the tile being ABSENT follows it.
+      const fallbackIdx = code.indexOf('- runFlow:', primaryIdx);
+      expect(fallbackIdx, `${r}: expected a fallback runFlow after the primary scroll`).toBeGreaterThan(-1);
+      const fallback = code.slice(fallbackIdx).split(/\n#/)[0];
+      expect(
+        fallback,
+        `${r}: the fallback must be guarded on \`notVisible\` of the run-id tile — ` +
+          `an unguarded second scroll would run on the happy path and destroy the centering (#800)`,
+      ).toMatch(/when:\s*\n\s*notVisible:\s*\n\s*text: "\.\*\$\{OPP_RUN_ID\}\.\*"/);
+
+      // (3) …and it re-hunts the run-id tile inside that guard.
+      expect(
+        fallback.split(/commands:/)[1] ?? '',
+        `${r}: the fallback body must contain a second run-id scrollUntilVisible`,
+      ).toMatch(/scrollUntilVisible:[\s\S]*?text: "\.\*\$\{OPP_RUN_ID\}\.\*"/);
+    }
+  });
+
+  it('the final run-id scroll is the last viewport-moving step before the branch guards', () => {
+    // The #800 / 2026-07-29 invariant this change is closest to breaking:
+    // whatever scrolls last must leave the whole card (title + CTA) in the
+    // viewport, or the card-scoped `below:` / `childOf` guards evaluate
+    // false and the recipe SKIPs on a perfectly claimable tile.
+    for (const r of RECIPES) {
+      const code = readRecipe(r)
+        .split('\n')
+        .filter((line) => !line.trimStart().startsWith('#'))
+        .join('\n');
+
+      // The first guard that scopes itself to this run's tile — i.e. the
+      // start of the branch region the centering must survive into.
+      let guardIdx = -1;
+      for (const m of code.matchAll(/-\s*runFlow:/g)) {
+        const when = code.slice(m.index!).split(/commands:/)[0];
+        if (/\$\{OPP_RUN_ID\}/.test(when) && !/notVisible:/.test(when)) {
+          guardIdx = m.index!;
+          break;
+        }
+      }
+      expect(guardIdx, `${r}: expected a card-scoped branch guard`).toBeGreaterThan(-1);
+
+      const pre = code.slice(0, guardIdx);
+      const lastScrollIdx = pre.lastIndexOf('scrollUntilVisible:');
+      expect(lastScrollIdx, `${r}: expected a tile scroll before the branch guards`).toBeGreaterThan(-1);
+
+      const lastScroll = pre.slice(lastScrollIdx);
+      expect(
+        lastScroll,
+        `${r}: the last scroll before the branch guards must hunt the run-id tile`,
+      ).toMatch(/text: "\.\*\$\{OPP_RUN_ID\}\.\*"/);
+      expect(
+        lastScroll,
+        `${r}: the last scroll before the branch guards must set \`centerElement: true\` (#800)`,
+      ).toMatch(/centerElement: true/);
+
+      const after = pre.slice(lastScrollIdx + 'scrollUntilVisible:'.length);
+      expect(
+        after,
+        `${r}: nothing may scroll/swipe between the centered run-id scroll and the branch guards`,
+      ).not.toMatch(/(scrollUntilVisible|swipe|scroll):/);
+    }
   });
 
   it('the budget is the live-proven one, and speed is not raised to buy depth', () => {
