@@ -1218,21 +1218,96 @@ function stepTextMatchers(stepText: string): string[] {
   return out;
 }
 
-/** Which group (if any) a step's matchers point at. Returns the group id
- * and the matched string, or null. */
+/**
+ * The wildcard idioms a recipe uses to say "anything may sit here":
+ * the trailing `.*` of the literal-prefix idiom (#862) and the
+ * `[\s\S]*` an authored `below:` anchor wraps a question label in so
+ * regex metacharacters and line breaks in the label can't break it.
+ */
+const RECIPE_WILDCARD_SRC = String.raw`(?:\.\*|\[\\s\\S\]\*|\[\^\]\*)`;
+const LEADING_WILDCARD_RE = new RegExp(`^(?:${RECIPE_WILDCARD_SRC})+`);
+const TRAILING_WILDCARD_RE = new RegExp(`(?:${RECIPE_WILDCARD_SRC})+$`);
+
+/** One `text:` matcher from a step, split into its literal text and
+ * whether the recipe left either side open with a wildcard. */
+interface StepTextMatcherSpec {
+  /** Literal text, with any leading/trailing wildcard stripped. */
+  text: string;
+  /** The recipe allowed anything BEFORE / AFTER the literal. */
+  openLeft: boolean;
+  openRight: boolean;
+}
+
+/** Every `text:` matcher in a step block, with its wildcard shape kept.
+ * `stepTextMatchers` is the text-only view of the same scan. */
+function stepTextMatcherSpecs(stepText: string): StepTextMatcherSpec[] {
+  const out: StepTextMatcherSpec[] = [];
+  const re = /text:\s*(?:"([^"]*)"|'([^']*)'|([^\s{}[\],]+))/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(stepText)) !== null) {
+    const raw = (m[1] ?? m[2] ?? m[3] ?? '').trim();
+    if (!raw) continue;
+    const openLeft = LEADING_WILDCARD_RE.test(raw);
+    const openRight = TRAILING_WILDCARD_RE.test(raw);
+    const text = raw.replace(LEADING_WILDCARD_RE, '').replace(TRAILING_WILDCARD_RE, '').trim();
+    if (!text) continue;
+    out.push({ text, openLeft, openRight });
+  }
+  return out;
+}
+
+/** Does a live Nova label satisfy one recipe matcher? The recipe's own
+ * wildcards decide: a bare matcher must match the label EXACTLY, and
+ * only the sides the recipe left open may absorb extra characters. */
+function candidateMatchesSpec(candidate: string, spec: StepTextMatcherSpec): boolean {
+  if (!candidate || !spec.text) return false;
+  if (spec.openLeft && spec.openRight) return candidate.includes(spec.text);
+  if (spec.openRight) return candidate.startsWith(spec.text);
+  if (spec.openLeft) return candidate.endsWith(spec.text);
+  return candidate === spec.text;
+}
+
+/**
+ * Which group (if any) a step's matchers point at. Returns the group id
+ * and the matched string, or null.
+ *
+ * Attribution is EVIDENCE-driven, not iteration-order-driven (ace#1548).
+ * Two rules, both learned from the false positive that made a
+ * correctly-composed recipe unpassable:
+ *
+ * 1. **Most specific matcher first.** An answer step usually carries a
+ *    `below:` anchor naming its question; that anchor identifies the
+ *    screen, while the option text ("Yes") does not. Ranking by literal
+ *    length asks the anchor before the option.
+ * 2. **An AMBIGUOUS matcher attributes to nothing.** When a matcher hits
+ *    more than one group — the normal shape when a form carries two
+ *    Yes/No field-lists — there is no evidence which screen the step is
+ *    on, so the probe declines to guess and moves to the next matcher.
+ *    Previously the first group in enumeration order won, which made the
+ *    reported group an artefact of field ordering.
+ *
+ * Consequence: a step whose every matcher is ambiguous is not attributed
+ * at all, so `group-field-list-per-question-walk` goes inert for it. That
+ * is the correct direction for a false-positive class — the check is
+ * narrow by construction (#858), and a recipe that anchors its taps
+ * (what `app-test-cases` emits) is still fully covered.
+ */
 function matchGroupForStep(
   stepText: string,
   groups: GroupScreen[],
 ): { groupId: string; matched: string } | null {
-  const matchers = stepTextMatchers(stepText);
-  if (!matchers.length) return null;
-  for (const matcher of matchers) {
+  const specs = stepTextMatcherSpecs(stepText);
+  if (!specs.length) return null;
+  const ranked = [...specs].sort((a, b) => b.text.length - a.text.length);
+  for (const spec of ranked) {
+    const hits = new Set<string>();
     for (const group of groups) {
-      for (const candidate of group.matchers) {
-        if (candidate === matcher || candidate.startsWith(matcher)) {
-          return { groupId: group.groupId, matched: matcher };
-        }
+      if (group.matchers.some((candidate) => candidateMatchesSpec(candidate, spec))) {
+        hits.add(group.groupId);
       }
+    }
+    if (hits.size === 1) {
+      return { groupId: [...hits][0], matched: spec.text };
     }
   }
   return null;
