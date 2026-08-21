@@ -414,6 +414,16 @@ Two matcher traps on that screen:
 `group-field-list-per-question-walk` when Step 2.6's caller supplies
 `fields` (ace#862).
 
+**Anchor every shared option label.** The probe attributes a step to a
+group by the strings the step selects on, and a bare `tapOn: text: "Yes"`
+names no screen — on the normal shape (a consumption block plus an assets
+block, both Yes/No) it is a child of two groups at once. Since ace#1548 an
+ambiguous matcher attributes to NOTHING rather than to whichever group
+enumerates first, so the check simply goes quiet on unanchored option taps.
+Keep the `below:` anchor naming the question
+(`"[\s\S]*<question label>[\s\S]*"`) on every option tap — it is what
+makes the check able to see your screen at all.
+
 Compose each smoke recipe using the static palette pattern (one Maestro
 step per UI interaction, with `${SELECTOR:logical-name}`
 placeholders resolved at write time, and `takeScreenshot` calls

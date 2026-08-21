@@ -790,6 +790,165 @@ describe('probeRecipeSanity — failure class: group-field-list-per-question-wal
   });
 });
 
+// --- ace#1548: two Yes/No field-lists on one form ---
+
+/**
+ * The ace#1548 shape: three groups on one Deliver form, two of them
+ * plain Yes/No field-lists plus a consent block whose options merely
+ * START with "Yes"/"No". Label-prefix attribution sent every bare
+ * `tapOn: text: "Yes"` to whichever group enumerates first, so a
+ * correct one-advance-per-screen walk read as an advance between two
+ * children of a third group.
+ * Repro: hh-poverty-targeting/20260819-1435, Deliver
+ * 8c57579d-bc5a-40df-8e60-0c26d030bb38.
+ */
+const TWO_YES_NO_DELIVER_APP: NovaAppSlice = {
+  app_id: 'app-deliver-two-yes-no',
+  modules: [
+    {
+      module_name: 'Household Survey',
+      forms: [
+        {
+          form_name: 'Household Poverty Survey Visit',
+          fields: [
+            {
+              id: 'consent_block',
+              kind: 'group',
+              label: 'Consent',
+              children: [
+                {
+                  id: 'consent_given',
+                  kind: 'single_select',
+                  label: 'Does the respondent consent to this survey?',
+                  options: [{ label: 'Yes, the respondent agrees' }, { label: 'No, the respondent declines' }],
+                },
+              ],
+            },
+            {
+              id: 'consumption_7d',
+              kind: 'group',
+              label: 'Consumption in the past 7 days',
+              children: [
+                { id: 'i3_bread', kind: 'single_select', label: 'In the past 7 days, did anyone in this household consume bread', options: [{ label: 'Yes' }, { label: 'No' }] },
+                { id: 'i4_eggs', kind: 'single_select', label: 'In the past 7 days, did anyone in this household consume eggs', options: [{ label: 'Yes' }, { label: 'No' }] },
+                { id: 'i5_milk', kind: 'single_select', label: 'In the past 7 days, did anyone in this household consume milk', options: [{ label: 'Yes' }, { label: 'No' }] },
+                { id: 'i6_water', kind: 'single_select', label: 'In the past 7 days, did anyone in this household consume bottled water', options: [{ label: 'Yes' }, { label: 'No' }] },
+              ],
+            },
+            {
+              id: 'assets',
+              kind: 'group',
+              label: 'Household assets',
+              children: [
+                { id: 'i8_sofa', kind: 'single_select', label: 'Does this household own a sofa', options: [{ label: 'Yes' }, { label: 'No' }] },
+                { id: 'i9_fridge', kind: 'single_select', label: 'Does this household own a refrigerator', options: [{ label: 'Yes' }, { label: 'No' }] },
+              ],
+            },
+          ],
+        },
+      ],
+    },
+  ],
+};
+
+/** One anchored option tap: the `below:` anchor names the question
+ * unambiguously, the way an authored journey recipe emits it. */
+function anchoredTap(option: string, questionLabel: string): string[] {
+  return [
+    '- tapOn:',
+    `    text: "${option}"`,
+    '    below:',
+    `      text: "[\\s\\S]*${questionLabel}[\\s\\S]*"`,
+  ];
+}
+
+const ADVANCE = ['- runFlow:', '    file: form-advance.yaml'];
+
+describe('probeRecipeSanity — group attribution with two Yes/No field-lists (ace#1548)', () => {
+  it('does NOT flag a correct one-advance-per-field-list walk', () => {
+    // Every required child of consumption_7d answered on its one screen,
+    // then exactly ONE trailing advance; same for assets. This is the
+    // shape the probe's own remediation text asks for.
+    const body = [
+      ...anchoredTap('Yes, the respondent agrees', 'Does the respondent consent to this survey?'),
+      ...ADVANCE,
+      ...anchoredTap('Yes', 'In the past 7 days, did anyone in this household consume bread'),
+      ...anchoredTap('Yes', 'In the past 7 days, did anyone in this household consume eggs'),
+      ...anchoredTap('No', 'In the past 7 days, did anyone in this household consume milk'),
+      ...anchoredTap('Yes', 'In the past 7 days, did anyone in this household consume bottled water'),
+      ...ADVANCE,
+      ...anchoredTap('No', 'Does this household own a sofa'),
+      ...anchoredTap('Yes', 'Does this household own a refrigerator'),
+      ...ADVANCE,
+    ].join('\n');
+    const verdict = probeRecipeSanity({
+      recipes: [recipeBody('journey-deliver.yaml', body)],
+      novaApps: [TWO_YES_NO_DELIVER_APP],
+      connectOpp: LIVE_OPP,
+    });
+    expect(verdict.failures.find((x) => x.class === 'group-field-list-per-question-walk')).toBeUndefined();
+  });
+
+  it('STILL flags a real per-question walk, and names the group the anchors point at', () => {
+    // Same form, wrong recipe: consumption_7d walked one question per
+    // screen. The finding must name consumption_7d — not whichever
+    // group happens to enumerate first with a "Yes"-ish option label.
+    const body = [
+      ...anchoredTap('Yes', 'In the past 7 days, did anyone in this household consume bread'),
+      ...ADVANCE,
+      ...anchoredTap('Yes', 'In the past 7 days, did anyone in this household consume eggs'),
+      ...ADVANCE,
+    ].join('\n');
+    const verdict = probeRecipeSanity({
+      recipes: [recipeBody('journey-deliver.yaml', body)],
+      novaApps: [TWO_YES_NO_DELIVER_APP],
+      connectOpp: LIVE_OPP,
+    });
+    const f = verdict.failures.find((x) => x.class === 'group-field-list-per-question-walk');
+    expect(f).toBeDefined();
+    expect(f!.value).toBe('consumption_7d');
+  });
+
+  it('does not attribute an AMBIGUOUS bare option tap to an arbitrary group', () => {
+    // No anchors at all: a bare "Yes" is a child of two groups here, so
+    // there is no evidence which screen the step is on. Attributing it
+    // anyway is what manufactured the false positive.
+    const body = [
+      '- tapOn:',
+      '    text: "Yes"',
+      ...ADVANCE,
+      '- tapOn:',
+      '    text: "No"',
+    ].join('\n');
+    const verdict = probeRecipeSanity({
+      recipes: [recipeBody('journey-deliver.yaml', body)],
+      novaApps: [TWO_YES_NO_DELIVER_APP],
+      connectOpp: LIVE_OPP,
+    });
+    expect(verdict.failures.find((x) => x.class === 'group-field-list-per-question-walk')).toBeUndefined();
+  });
+
+  it('resolves a bare option tap when only ONE group carries that label', () => {
+    // "Yes, the respondent agrees" belongs to consent_block alone, so a
+    // per-question walk of that group is still caught without anchors.
+    const body = [
+      '- tapOn:',
+      '    text: "Yes, the respondent agrees"',
+      ...ADVANCE,
+      '- tapOn:',
+      '    text: "Does the respondent consent to this survey?"',
+    ].join('\n');
+    const verdict = probeRecipeSanity({
+      recipes: [recipeBody('journey-deliver.yaml', body)],
+      novaApps: [TWO_YES_NO_DELIVER_APP],
+      connectOpp: LIVE_OPP,
+    });
+    const f = verdict.failures.find((x) => x.class === 'group-field-list-per-question-walk');
+    expect(f).toBeDefined();
+    expect(f!.value).toBe('consent_block');
+  });
+});
+
 describe('probeRecipeSanity — observed records WHICH probe ran', () => {
   it('reports field_data_supplied=false and inert counters without fields', () => {
     const verdict = probeRecipeSanity({
