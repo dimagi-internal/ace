@@ -74,7 +74,7 @@ was one conversation. But never blurred:
 |---|---|---|
 | body | `> their words` (verbatim) | `**You changed it** \`old\` → \`new\`` + their reasoning if any |
 | can it be dropped? | **yes** → `UNROUTED` | **no** — it already changed the next run's input |
-| landing state | disposition status | `APPLIED` (a run recorded the value) / `PENDING NEXT RUN` (parked; binds when a run next raises the id) |
+| landing state | disposition status | `APPLIED` (a run recorded the value) / `PENDING NEXT RUN` (parked; binds when a run next raises the id) / `STALE — NOT BINDING` (completed runs have stopped raising the id) |
 | ref | `<record-slug>/<item-id>` | `decision-edits/<decision-id>` |
 
 **An edit is never UNROUTED.** That verdict means "your words were dropped"; an edit
@@ -91,6 +91,33 @@ is *more* precise than a comment's — it names the decision row, not an opaque 
 `binding` is only `applied` when a run's `decisions.yaml` actually recorded that value.
 Absent that evidence every edit reads `pending` — we do not claim an edit landed because
 it was saved.
+
+### …and `pending` must not be able to mean "never" (ace#1549)
+
+Overrides match on `id` alone, and an id no run raises is ignored by construction
+(`lib/decision-overrides.ts` — the file is opp-level and cumulative, so unmatched ids
+are expected, not an error). So when a design change **retires or renames** a decision,
+the reviewer's saved answer quietly stops having any effect — and with two states, it
+kept rendering `PENDING NEXT RUN`, i.e. *"this will bind."* It never will. A hand-written
+note omits silently; that one **reassured falsely**, which is worse, and it inverted the
+completeness property this skill exists for.
+
+The third state, `stale`, is the `UNROUTED` of edits: it fails LOUD rather than looking
+fine, names the runs that prove it, and asks the reviewer the only question that can
+resolve it (*does this still apply?*). It counts in the coverage line and toward
+"need a human", so it reaches the reply email, not just the gdoc.
+
+**Only a COMPLETED run is evidence.** A run that halted at a Phase 2→3 boundary raises
+no Phase 3 decision at all, so absence from it proves nothing about the design — keying
+staleness off "not in the latest `decisions.yaml`" would mark every downstream override
+stale and make the ledger *more* misleading than the fall-through it replaces. Pass only
+runs that reached the end of the pipeline (§ 3 below), and only runs that finished
+*after* the edit was saved: an edit is never judged by a run that never had the chance
+to bind it. **Threshold: 2 completed misses** (`DEFAULT_STALE_AFTER_COMPLETED_RUNS`), a
+taste call, not something the code implies — a conditionally-raised decision (an
+archetype-specific question) is absent from a run that took the other branch, and one
+such run should not condemn a live override. Override per call with
+`staleAfterCompletedRuns` if an opp wants a different bar.
 
 ### Identity: a self-reported name is never a verified one
 
@@ -231,8 +258,17 @@ import { parseFeedbackRecord, buildLedgerWithOrphans, renderLedgerMarkdown,
   `status: 'awaiting-human'` until answered.
 
 - **decision-overrides.yaml:** `parseDecisionOverridesYaml()` → `deriveEditEntries(file,
-  { boundValues, dispositions })`, where `boundValues` maps decision id → the value the
-  run's `decisions.yaml` recorded. Without it every edit reads `PENDING NEXT RUN`.
+  { boundValues, dispositions, completedRuns })`, where `boundValues` maps decision id →
+  the value the run's `decisions.yaml` recorded. Without it every edit reads
+  `PENDING NEXT RUN`.
+  - `completedRuns` is what keeps `PENDING NEXT RUN` from meaning "never" (§ above).
+    Build one entry per run under `ACE/<opp>/runs/` that **completed the pipeline** —
+    read its `run_state.yaml` and include the run only if every phase it declared
+    reached a terminal `status` (`validate_run_state` / `classify_phase_writeback` tell
+    you the block is well-formed; a halted or still-running run is NOT admissible).
+    For each, `runId`, `completedAt` (the last phase's `completed_at`), and `raisedIds`
+    = every `id` in that run's `decisions.yaml`. Newest first. Supplying nothing is
+    always safe — no evidence, no `stale`.
 
 For the unified per-person view, `buildEngagements({ records, edits, dispositions })` →
 `renderEngagementMarkdown(engagement, orphans)`. `renderLedgerMarkdown(ledger, orphans)`
@@ -245,9 +281,11 @@ same link after each run.
 
 The gdoc is the durable artifact; the reply email is what they actually read. When
 replying to the review thread, lead with the coverage line
-(*"9 comments — 6 shipped, 2 need you, 1 unrouted"*), link the ledger, and name anything
-still needing them. Never send a "here's the new run" with no diff — that is the
-re-review-from-scratch failure this skill exists to prevent.
+(*"9 comments — 6 shipped, 2 need you, 1 unrouted · 3 edits — 2 applied, 1 stale"*),
+link the ledger, and name anything still needing them — a `STALE` edit is one of those:
+they are the only person who can say whether the retired decision still matters. Never
+send a "here's the new run" with no diff — that is the re-review-from-scratch failure
+this skill exists to prevent.
 
 ## Anti-patterns
 
@@ -257,6 +295,8 @@ re-review-from-scratch failure this skill exists to prevent.
   the stamp is missing upstream — fix that instead.
 - **Don't delete an UNROUTED row to make the coverage line look better.** It is telling
   you something true.
+  Same for a `STALE` edit: dropping the row hides that a reviewer's answer stopped
+  applying, which is exactly what they opened the ledger to find out.
 - **Don't paraphrase into `verbatim`.**
 
 ## Mode Behavior
@@ -265,7 +305,7 @@ re-review-from-scratch failure this skill exists to prevent.
 |---|---|
 | `default` | Capture + stamp + render; report the coverage line. |
 | `auto` | Same; no pause. Ledger is read-only output. |
-| `review` | Additionally surface every UNROUTED item as an explicit pause item. |
+| `review` | Additionally surface every UNROUTED item — and every `STALE` edit — as an explicit pause item. |
 
 ## Dry-Run Behavior
 
