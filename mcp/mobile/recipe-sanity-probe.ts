@@ -294,7 +294,7 @@ export function probeRecipeSanity(inputs: ProbeInputs): SanityVerdict {
       failures.push({
         class: 'group-field-list-per-question-walk',
         detail: `recipe ${recipe.name} advances the form at line ${groupWalk.line} between two children of the Nova group "${groupWalk.groupId}" ("${groupWalk.firstMatch}" then "${groupWalk.secondMatch}") — a group compiles to a CommCare field-list, so both render on ONE screen and the advance fires with required children still unanswered (warning_root)`,
-        remediation: `re-author the group as a single-screen field-list walk via /ace:step app-test-cases: answer every REQUIRED child on the one screen (scrollUntilVisible + tap per select; for label-less EditTexts use a bare below:-scoped tap then inputText), then emit exactly ONE trailing form-advance — never a per-child advance`,
+        remediation: `re-author the group as a single-screen field-list walk via /ace:step app-test-cases: answer every REQUIRED child on the one screen (scrollUntilVisible + tap per select; for label-less EditTexts the FIRST input is autofocused (bare inputText); each later one needs an unconditional centring scrollUntilVisible at speed 30 onto the element immediately above it (its hint when it has one, else the question label) then tapOn: below: that anchor, then inputText (ace#1299)), then emit exactly ONE trailing form-advance — never a per-child advance`,
         recipe: recipe.name,
         parameter: 'group-field-list',
         value: groupWalk.groupId,

@@ -29,6 +29,7 @@ Every surface below is one of three states. Nothing in this atlas is an untagged
 |---|---|---|---|
 | § 1 `FormEntryActivity` chrome + question layout order | `evidence/2026-08-14-commcare-2.63.2-fieldlist-date.xml`; commit `9bd240c3` | 2026-08-14 | calibrated-2.63.2 |
 | § 1 autofocus of the first field-list input | same dump (`EditText … focused="true"`); commit `9bd240c3` | 2026-08-14 | calibrated-2.63.2 |
+| § 1 hint-anchored focus tap for a NON-first field-list input | ace#1299 follow-up comment — isolated live probe on the `spark-facilitator/20260813-2126` registration screen (`cbf_name` = `'PROBE-NAME'`, `phone_number` = `'0991234567'`, each in its own field), diffed against Nova's `hint` map for all 14 inputs | 2026-08-14 | calibrated-2.63.2 (issue-recorded) |
 | § 1.1 inline date widget (structure + drive mechanism) | same dump; commits `9bd240c3`, `d529fd77` | 2026-08-14 | calibrated-2.63.2 |
 | § 1.1 date-picker scroll-consumption side effect | commit `9bd240c3` (measured Aug 14 → Aug 22) | 2026-08-14 | calibrated-2.63.2 |
 | § 1.1 bounds stability across a long tap burst; month/year rollover | — (a 20-tap burst destabilised the emulator first) | — | **uncovered** — reproduced from `connect-2.63.2.yaml:645` |
@@ -111,7 +112,7 @@ Both were live-observed in the dump above and are the reason § 1 exists as its 
 
    The idiom *appears* to work on questions **without** a hint, where the `EditText` sits directly below the label. The failure is therefore **per-question, not per-form**, which is exactly why it survived being recorded as "live-validated". See `connect-2.63.2.yaml:600` (`form-question-input-order`).
 
-Replacement idioms (hint-anchored, index-based) are deliberately left **UNCALIBRATED** rather than guessed — `9bd240c3` says so explicitly.
+3. **The replacement idiom is hint-anchored, and it IS calibrated.** `9bd240c3` left it UNCALIBRATED rather than guess; ace#1299's own follow-up then proved it on this device and the issue closed COMPLETED on that basis. The rule is: **the focus anchor is the element immediately above the `EditText` — the field's `hint` when it has one, the question label when it does not.** Diffed against Nova's authoritative `hint` map for all 14 inputs of the `spark-facilitator/20260813-2126` Deliver forms; the isolated live probe on this screen then landed `cbf_name` = `'PROBE-NAME'` and `phone_number` = `'0991234567'` in their OWN fields. The centring scroll onto that anchor must be **unconditional** (`speed: 30`): the failure it exists for is "anchor visible, its `EditText` still below the fold", which a `when: notVisible: <anchor>` guard cannot see. Authoring form is `skills/app-test-cases/SKILL.md § Step 3` item 3. Only **index-based** anchoring remains uncalibrated.
 
 ### Transitions
 
@@ -126,14 +127,15 @@ Replacement idioms (hint-anchored, index-based) are deliberately left **UNCALIBR
 
 ### Recipe-authoring guidance
 
-- Do not author `tapOn: below: <label>` against a text question. It is inert whenever the question has a hint, and it fails silently.
+- Do not author `tapOn: below: <label>` against a text question that carries a `hint` — the anchor resolves to the hint TextView and the tap is inert (ace#1299). Anchor on the **hint** there, and on the label only when the question has no hint.
 - Do not tap to focus the first field-list input; it is already focused.
+- Every LATER input on the same field-list needs the focus sequence: **unconditional** centring `scrollUntilVisible` at `speed: 30` onto that anchor, then `tapOn: below: <anchor>`, then `inputText`, then `hideKeyboard` (ace#1299, proven live on this build).
 - Assert `warning_root` is **not** visible after answering, before advancing — that is the cheap structural proof the answer registered.
 - Resolve every id through `${SELECTOR:...}`; the raw ids above are for reading dumps, not for authoring.
 
 ### Open questions for this screen
 
-- The hint-anchored / index-based replacement idioms for reaching a specific input in a multi-question field-list are **uncalibrated** (`9bd240c3` refused to guess them). Autofocus covers the first input only.
+- **Index-based** anchoring into a multi-question field-list is still uncalibrated. The hint-anchored idiom is not — it was proven live in ace#1299 after `9bd240c3` declined to guess it; see § 1 fact 3.
 - `select_one` / `select_multi` / integer widgets were not in this dump; their shapes are `carried-from-2.62.0-unverified` (2.62.0 atlas § 7, § 12).
 
 ---
@@ -440,7 +442,7 @@ Two corrections from the 2.62.0 era that are load-bearing and easy to re-import 
 
 3. **Everything still flagged `unverified: true` in the map, plus the CARRY-OVER CAVEAT set.** Per `connect-2.63.2.yaml:20-25` and `:548-590`: `opp-detail-start-delivering`, `form-submit` (whose absence is *expected*, not a gap — see its row), `assessment-result-passed`, `assessment-result-failed`, `deliver-start-button`, and the registration/OTP + in-form camera/geopoint + Learn-suite + Deliver-state surfaces. This atlas neither promotes nor demotes any of them. `/ace:step selector-map-calibrate` is the systematic walk that closes them.
 
-4. **§ 1's replacement idioms for reaching a non-first input in a field-list are uncalibrated** (hint-anchored, index-based). `9bd240c3` refused to guess them and so does this document.
+4. **§ 1's INDEX-based idiom for reaching a non-first input in a field-list is uncalibrated.** `9bd240c3` refused to guess it and so does this document. The hint-anchored idiom is calibrated — ace#1299 proved it live after `9bd240c3` shipped; see § 1 fact 3.
 
 5. **§ 2.2's repeat ENTRY prompt was never dumped** — only the "add another?" juncture. Likely the same component; not observed.
 
