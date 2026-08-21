@@ -410,7 +410,10 @@ export class PlaywrightBackend implements ConnectClient {
    *   AND `total_budget` was never returned, so the headroom check silently
    *   no-opped and surfaced later as an un-actionable "Budget exceeds the
    *   program budget" rejection — precisely the failure #588 was filed to
-   *   prevent.
+   *   prevent. Both inputs now exist on the HYDRATED row only:
+   *   `getOpportunity` reads `total_budget` and `program_name` off the
+   *   opportunity dashboard (ace#1550). The list page still carries neither,
+   *   so `hydrate: true` is not optional for that sum.
    * - `connect-opp-setup § Step 4` (single-active-opp invariant, #106
    *   finding 11) warns "for each opp where `active=true`". With `active`
    *   hardcoded `false` that WARN could NEVER fire, so the silent
@@ -501,7 +504,13 @@ export class PlaywrightBackend implements ConnectClient {
 
     const editFormHtml = editDenied ? '' : await editRes.text();
     const v = editDenied ? {} : extractFormFieldValues(editFormHtml);
-    const dash = editDenied ? parseOpportunityDashboard(detailHtmlText) : {};
+    // Parse the dashboard WHENEVER it is readable, not only on the viewer-tier
+    // degrade (ace#1550): it is the only read surface that carries
+    // `total_budget`, `start_date` and the opportunity's program. `dash` keeps
+    // its old meaning — the degrade-path merge, empty when the edit form won —
+    // so edit-form precedence is untouched.
+    const detail = detailHtmlText ? parseOpportunityDashboard(detailHtmlText) : {};
+    const dash = editDenied ? detail : {};
 
     // The edit form's `active` checkbox is authoritative when we have it; the
     // dashboard's is derived from a three-way badge and is lossy on Inactive
@@ -548,12 +557,41 @@ export class PlaywrightBackend implements ConnectClient {
       //   learn_level, name, short_description, submit, users
       // `total_budget` and `start_date` are on NEITHER this form nor the
       // program init/edit form (which carries learn_app_passing_score, not
-      // passing_score) — so they cannot be surfaced from either read path, and
-      // this deliberately does not pretend otherwise. dimagi-internal/ace#1550
-      // tracks what that means for the Step 4a budget-headroom check in
-      // skills/connect-program-setup (Σ(total_budget) is unobtainable, so the
-      // conservative ceiling raise is that step's primary path).
+      // passing_score) — see the three dashboard-sourced fields below for
+      // where they DO come from (ace#1550).
       is_test: editDenied ? (dash.is_test ?? false) : isCheckboxChecked(v, editFormHtml, 'is_test'),
+      // ace#1550 — the three fields the EDIT form cannot answer, read off the
+      // DASHBOARD this method already fetches for the app-wire ids. Upstream
+      // source, not a live capture: `OpportunityDashboard.get_context_data`
+      // renders the "Max Budget" infocard as
+      // f"{object.currency_code} {intcomma(object.total_budget)}" and a
+      // "Start Date" card (commcare_connect/opportunity/views.py), and
+      // templates/opportunity/dashboard.html renders the program as
+      // <h3 class="… text-brand-sky …">{{ object.program.name }}</h3>.
+      //
+      // `total_budget` is the field Connect's own program-budget validation
+      // sums —
+      //   Opportunity.objects.filter(program=program).aggregate(Sum("total_budget"))
+      // in program/api/serializers.py, the check that raises "Budget exceeds
+      // the program budget" — so this is the exact input
+      // connect-program-setup § Step 4a needs, and until now had no way to get.
+      //
+      // Each degrades to `undefined` when its card is absent. UNDEFINED MEANS
+      // UNKNOWN, NEVER ZERO: a caller summing budgets must treat a missing
+      // value as an unknown Σ, because a partial sum silently understates the
+      // ceiling in exactly the direction that lets a create fail later.
+      total_budget:
+        detail.total_budget != null && Number.isFinite(Number(detail.total_budget))
+          ? Number(detail.total_budget)
+          : undefined,
+      start_date: detail.start_date,
+      // A program NAME, not the program UUID — no opportunity read surface
+      // carries the id (`program_id` stays undefined here, and the list page
+      // has no program column at all, which is why `list_opportunities`
+      // REFUSES a program_id filter — ace#1022). A caller scoping a sum to one
+      // program matches on this name and must treat a name that is not unique
+      // in the org as unknown rather than guessing.
+      program_name: detail.program_name,
       learn_app: learnAppId
         ? { cc_domain: learnAppDomain, cc_app_id: learnAppId, name: '' }
         : undefined,

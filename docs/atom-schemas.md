@@ -480,9 +480,11 @@ List opportunities in an organization. `hydrate: true` fetches each row through 
 | `organization_slug` | `z.string` | **required** | _—_ |
 | `program_id` | `z.string` | optional | REFUSED by the backend — the list endpoint has no program scope (ace#1022). Present only so the refusal explains itself; filter client-side. |
 | `name` | `z.string` | optional | _—_ |
-| `hydrate` | `z.boolean` | optional | Fetch each row through getOpportunity so `active`/`is_test` are real. REQUIRED by connect-program-setup Step 4a and connect-opp-setup Step 4; unreachable before ace#1448. |
+| `hydrate` | `z.boolean` | optional | Fetch each row through getOpportunity so `active`, `is_test`, `total_budget` and `program_name` are real. REQUIRED by connect-program-setup Step 4a and connect-opp-setup Step 4; unreachable before ace#1448. |
 
 ### `connect_get_opportunity`
+
+Read one opportunity from the edit form (authoritative for name/description/currency/country/end_date/active/is_test) merged with the dashboard (learn_app/deliver_app wiring, plus `total_budget`, `start_date` and `program_name`, which no form carries — ace#1550). A field the pages do not render comes back undefined: UNDEFINED MEANS UNKNOWN, NEVER ZERO. `program_id` is never populated by a read — `program_name` is the only program key any read surface carries, so scope a per-program sum by name and treat a non-unique name as unknown. Degrades to the dashboard alone on a 403/404 from the edit form (viewer tier, ace#1461).
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
