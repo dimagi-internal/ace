@@ -12,7 +12,7 @@ For the deterministic atom-rename / remove drift check, see `test/skill-atom-ref
 
 ## ace-gdrive
 
-Source: `mcp/google-drive-server.ts` — 43 atoms
+Source: `mcp/google-drive-server.ts` — 44 atoms
 
 ### `sheets_list_tabs`
 
@@ -84,6 +84,16 @@ List files in a Google Drive folder
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `folderId` | `z.string` | **required** | The Google Drive folder ID |
+
+### `drive_list_comments`
+
+List the comment threads a reviewer left on a Drive file (Docs, Sheets, Slides). ACE publishes the PDD as a Google Doc SO THAT reviewers can comment on it and grants `commenter` for exactly that — this is the atom that reads what they wrote, so a comment no longer depends on a human noticing it and retyping it into `inputs/`. Returns `{file_id, total, comments: [{id, author, created_time, modified_time, resolved, content, quoted_text, anchor, replies: [{author, created_time, content}]}]}`. **`quoted_text` is the point.** Drive returns the document text the comment is anchored to (`quotedFileContent`), so a caller can bind a comment to the SECTION it sits on rather than guessing from prose. That is what makes it possible to detect a comment contradicting the text it is attached to — the failure mode a hand transcription cannot see, because transcription throws the anchor away. `resolved: true` marks a thread someone closed in the Drive UI. They are returned by default (`includeResolved`, default true) because a resolved thread is still evidence of what was asked — do not confuse resolved with honoured. Deleted comments are never returned; Drive drops them. Runs as the service account, which owns the artifacts ACE generates. Verified against a live Shared Drive file: create → list → delete round-trips, and the SA reads comments on its own PDD and Work Order. Note the SA and `ace@dimagi-ai.com` have DIFFERENT grants — `gog drive comments` (the ace@ path) 403s on SA-created files, so use this atom for anything ACE produced.
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `fileId` | `z.string` | **required** | The Google Drive file ID to read comments from. |
+| `includeResolved` | `z.boolean` | optional | Include threads marked resolved in the Drive UI. Default true — a resolved thread still records what the reviewer asked for, and "resolved" means someone closed the thread, NOT that the build honoured it. |
+| `maxResults` | `z.number` | optional | Max comment threads to return (default 100, the Drive page maximum). |
 
 ### `drive_read_file`
 

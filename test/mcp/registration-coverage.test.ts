@@ -100,7 +100,7 @@ const SERVERS: Record<string, ServerSpec> = {
   },
   'google-drive': {
     file: 'mcp/google-drive-server.ts',
-    expectedCount: 43, // +1: drive_share_with_person (named-person type:user sharing, co-creation)
+    expectedCount: 44, // +1: drive_list_comments (reviewer comments were never read — ace#1563)
     // gdrive bridges five Google APIs — one prefix per surface plus a
     // small set of cross-surface helpers (manifest generator, forms
     // reader, OAuth-personal Drive read, YAML patch helper, opp-path

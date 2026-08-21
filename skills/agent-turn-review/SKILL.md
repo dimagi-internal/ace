@@ -33,6 +33,31 @@ is fleet-wide and DRY — **invoke `canopy:agent-turn-review`** and apply it in 
   had never been granted and the third was blocked by a domain allowlist that made the instructed
   step impossible. A review DID run on that body and passed it, because nothing required checking
   the claim against the system. See also `share-run-access`'s NOT DONE contract and #913.)
+- **A claim that ACE CANNOT do something is a factual claim too — PROBE IT before it ships.** The
+  rule above governs "X is true"; this is its mirror, and it fails more quietly. Any sentence
+  telling a counterpart that a capability is missing, blocked, or impossible — *"I can't read
+  comments"*, *"the platform doesn't support that"*, *"that's not something we can do today"*,
+  *"the tooling rejects it"* — must be backed by a probe you ran **this turn**, or by an upstream
+  issue you re-read **this turn** and confirmed still open. Never by absence of evidence.
+  **Grepping ACE's own skills or MCP atoms proves only that ACE has not WIRED it — not that it
+  cannot be done.** ACE reaches Google through TWO identities (the `gws-sa-key.json` service
+  account behind `ace-gdrive`, and `ace@dimagi-ai.com` via `gog`) with different grants and
+  different surfaces, plus whatever the underlying API supports; a missing atom is evidence about
+  one of those, and a capability question is only settled once you have checked the one that would
+  actually own it. When a probe is genuinely not available, say what you checked and what you did
+  not — *"no ACE skill does this today; I have not checked whether the API allows it"* — which is
+  honest and, unlike a flat denial, invites correction.
+  **Why this is worth its own rule:** a false capability-denial is strictly worse than a false
+  done-claim. A done-claim gets caught when the person looks and finds nothing; a denial is never
+  checked, because they simply stop asking. It closes off work silently and can stand for months.
+  (Origin: 2026-08-21, ONE draft carrying TWO of them. (i) It told a partner *"ACE has no way to
+  read Google Doc comments"* on the strength of a grep finding no comments atom in `ace-gdrive`.
+  `gog drive comments` exposes full CRUD — proven by a create-then-read round-trip — and the
+  service account returns HTTP 200 on `comments.list` for ACE's own generated PDD. The real gap was
+  unbuilt wiring, filed as ace#1563, and the honest answer was near-term buildable rather than
+  impossible. (ii) The same draft nearly cited `commcare-nova#458` as a live constraint because
+  `CLAUDE.md` still lists it open; it closed COMPLETED six days earlier (ace#1558). The first was
+  caught only because a human asked *"are you sure?"* — nothing in the review had required a probe.)
 - **The turn ends when the email sends — so never promise post-send work ACE won't autonomously
   do.** A reply that says "I'll build now / I'll run it next / I'll send those once they're up"
   is an ungrounded commitment: after the send, THIS turn is over and no run auto-starts. Any
