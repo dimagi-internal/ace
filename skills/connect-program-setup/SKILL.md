@@ -126,8 +126,9 @@ alone makes the artifact land outside `4-connect` and fail
      (e.g. `"United States of America"`, not `"USA"`)
    - `start_date` / `end_date`: PDD timeline (YYYY-MM-DD)
 
-4a. **Ensure program budget headroom (idempotent — both reuse and create
-   paths) (jjackson/ace#588).** Connect's program-budget validation on
+4a. **Ensure program budget headroom (runs on both the reuse and create
+   paths; the raise is monotonic — it never shrinks a ceiling)
+   (jjackson/ace#588).** Connect's program-budget validation on
    `connect_create_opportunity` ("Budget exceeds the program budget") sums
    the `total_budget` of **all** managed opps on the program — including
    the inactive opps left by every prior `/ace:run` — against the fixed
@@ -142,31 +143,52 @@ alone makes the artifact land outside `4-connect` and fail
 
    1. `connect_get_program({ organization_slug, program_id })` →
       `program.budget`.
-   2. `connect_list_opportunities({ organization_slug, hydrate: true })` →
-      then filter to this program yourself and sum `total_budget` across
-      the managed opps.
+   2. **Σ(`total_budget`) over the program's managed opps is currently
+      UNOBTAINABLE. Do not attempt to compute it, and do not call
+      `connect_list_opportunities` in this step (ace#1550).** Neither
+      read surface carries either input: `connect_get_opportunity`
+      returns exactly `id, name, short_description, description,
+      organization_slug, managed, active, currency, country, end_date,
+      is_test, learn_app, deliver_app` — no `total_budget`, no
+      `program_id` — and `connect_list_opportunities` rows carry neither
+      field either, hydrated or not. That is deliberate, not a gap in the
+      call: `total_budget` and `start_date` are on **neither** the
+      opportunity edit form nor the program init/edit form, so no read
+      path can surface them (`mcp/connect/backends/playwright.ts`, the
+      `getOpportunity` return comment). Without `program_id` on the row
+      the sum cannot even be scoped to this program; without
+      `total_budget` there is nothing to add up.
 
-      **Do NOT pass `program_id`, and `hydrate` is required (ace#1022).**
-      The opportunity list page carries no program column and no budget, so
-      the atom used to silently ignore the filter and return the whole org
-      — and `total_budget` was never in the returned shape at all. Both
-      inputs to this sum were therefore unobtainable and the headroom check
-      **silently no-opped**, which is exactly the failure ace#588 was filed
-      to prevent; it surfaced later as an un-actionable "Budget exceeds the
-      program budget" rejection on `connect_create_opportunity`.
-      `program_id` is now refused loudly rather than dropped.
+      A `hydrate: true` listing here is also the most expensive read in
+      Phase 4 — one sequential Playwright edit-page fetch per row across
+      the whole org — for zero information (measured on
+      hh-poverty-targeting/20260819-1435: 20 fetches, no `total_budget`,
+      no `program_id`). `hydrate: true` remains correct where the field
+      it fetches actually exists — `connect-opp-setup` Step 4 uses it for
+      `active` — but this step has nothing to hydrate for.
 
-      If a hydrated row still carries no `total_budget`, treat the sum as
-      **unknown** and raise the ceiling on the conservative assumption
-      rather than computing a headroom from partial data — a wrong Σ is
-      what makes this check worse than no check.
-   3. If `program.budget − Σ < EXPECTED_OPP_BUDGET × 3` (keep room for at
-      least a few more runs; `EXPECTED_OPP_BUDGET` = the PDD's per-opp
-      budget, default the program's own per-opp figure), raise the ceiling
-      via `connect_update_program({ organization_slug, program_id,
-      budget: Σ + EXPECTED_OPP_BUDGET × 10 })` — a generous buffer so this
-      step rarely re-fires. Idempotent: a no-op when headroom is already
-      ample. Log the before/after budget in the program notes (Step 5).
+      **Restore the computed Σ if — and only if — Connect ever exposes
+      `total_budget` *and* `program_id` on a read surface.** The intended
+      check is: list the org's opportunities, filter to this `program_id`
+      yourself, sum `total_budget` across the managed opps (**never pass
+      `program_id` to the atom** — the list page has no program column, so
+      the atom used to silently ignore the filter and return the whole
+      org; it is now refused loudly rather than dropped, ace#1022). That
+      silent no-op is exactly the failure ace#588 was filed to prevent; it
+      surfaced later as an un-actionable "Budget exceeds the program
+      budget" rejection on `connect_create_opportunity`.
+   3. **PRIMARY PATH — the conservative raise.** Because Σ is unknown,
+      assume the worst case (the ceiling is fully consumed, Σ :=
+      `program.budget`) and raise unconditionally rather than computing a
+      headroom from partial data — a wrong Σ is what makes this check
+      worse than no check. Call `connect_update_program({
+      organization_slug, program_id, budget: program.budget +
+      EXPECTED_OPP_BUDGET × 10 })`, where `EXPECTED_OPP_BUDGET` = the
+      PDD's per-opp budget (default the program's own per-opp figure) — a
+      generous buffer so this step rarely re-fires. Log the before/after
+      budget in the program notes (Step 5), and record the sum as
+      `unknown` there rather than writing a computed Σ into the artifact.
+
       **Single-opp floor:** `EXPECTED_OPP_BUDGET` must itself be at least
       `min_budget_for_one_user × FUND_USERS` (= `Σ(max_total × (amount +
       org_amount))` over the planned payment units × ~3, the same floor
@@ -174,6 +196,11 @@ alone makes the artifact land outside `4-connect` and fail
       below that floor, use the floor — the program ceiling must be able to
       fund at least one opp that funds ≥1 FLW at its payment-unit max, or
       Phase 4 will halt on the budget-funds-≥1-FLW guard.
+
+      (If Σ is ever obtainable again, the check becomes conditional: raise
+      only when `program.budget − Σ < EXPECTED_OPP_BUDGET × 3` — keep room
+      for at least a few more runs — to `Σ + EXPECTED_OPP_BUDGET × 10`,
+      making it idempotent, a no-op when headroom is already ample.)
 
    This makes the by-design per-run accumulation safe without a
    reclamation mechanism (none exists yet — a payment-unit-delete /
@@ -229,8 +256,7 @@ alone makes the artifact land outside `4-connect` and fail
   - `connect_list_delivery_types` — resolve human name → slug/int FK if needed
   - `connect_create_program` — create (REST `POST /api/programs/`)
   - `connect_get_program` — verify after create; read live fields for reconcile (Step 3a) and `budget` for the headroom check (Step 4a)
-  - `connect_list_opportunities` — sum managed-opp budgets for the headroom check (Step 4a)
-  - `connect_update_program` — refresh stale description/dates on reuse (Step 3a); raise the program budget ceiling idempotently (Step 4a)
+  - `connect_update_program` — refresh stale description/dates on reuse (Step 3a); raise the program budget ceiling on the conservative assumption (Step 4a)
 
 ## Mode Behavior
 - **Auto:** Create program (or reuse), proceed
@@ -263,3 +289,4 @@ downstream coherence:
 | 2026-04-28 | Replace HITL workaround with `connect_*_program` atoms (ace-connect 0.8.1) | ACE team |
 | 2026-04-30 | Switch `connect_create_program` to `POST /api/programs/` (commcare-connect PR #1135). `delivery_type` now accepts the slug; `country` is the human country name. (0.10.47) | ACE team |
 | 2026-07-30 | Step 3a: reconcile reused program content (description/budget/dates) against the current run's PDD via `lib/program-reconcile.ts` — update or `[WARN]` per diverging field (jjackson/ace#1078). Note substring-match + hydration semantics of `connect_list_programs` (jjackson/ace#1089). | ACE team |
+| 2026-08-21 | Step 4a: invert the branches — Σ(`total_budget`) is unobtainable on every Connect read surface, so the conservative raise is now the documented PRIMARY path and the `connect_list_opportunities({hydrate: true})` call is dropped (20 sequential edit-page fetches for zero fields). Computed-Σ kept as the restore-if path (dimagi-internal/ace#1550). | ACE team |

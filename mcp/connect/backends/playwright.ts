@@ -549,8 +549,10 @@ export class PlaywrightBackend implements ConnectClient {
       // `total_budget` and `start_date` are on NEITHER this form nor the
       // program init/edit form (which carries learn_app_passing_score, not
       // passing_score) — so they cannot be surfaced from either read path, and
-      // this deliberately does not pretend otherwise. See the issue for what
-      // that means for the Step 4a budget-headroom check.
+      // this deliberately does not pretend otherwise. dimagi-internal/ace#1550
+      // tracks what that means for the Step 4a budget-headroom check in
+      // skills/connect-program-setup (Σ(total_budget) is unobtainable, so the
+      // conservative ceiling raise is that step's primary path).
       is_test: editDenied ? (dash.is_test ?? false) : isCheckboxChecked(v, editFormHtml, 'is_test'),
       learn_app: learnAppId
         ? { cc_domain: learnAppDomain, cc_app_id: learnAppId, name: '' }
