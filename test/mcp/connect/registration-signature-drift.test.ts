@@ -98,13 +98,24 @@ describe('getOpportunity reports only fields the live form carries (ace#1448)', 
     expect(pw).toMatch(/is_test:\s*editDenied \?[^\n]*isCheckboxChecked/);
   });
 
-  it('does NOT fabricate total_budget or start_date', () => {
+  it('sources total_budget / start_date from the DASHBOARD, never from the edit form (ace#1550)', () => {
     // Measured live 2026-08-15: neither is on the opportunity edit form nor on
-    // the program init/edit form. Returning them would be inventing data.
+    // the program init/edit form, so reading either out of the form's value
+    // map would be inventing data. They ARE on the opportunity dashboard,
+    // which this method already fetches for the app-wire ids — and until they
+    // were surfaced from there, connect-program-setup § Step 4a's
+    // Σ(total_budget) headroom sum had no obtainable inputs on any run.
+    // Slice the RETURNED OBJECT, not `indexOf('};')` from the method head —
+    // any `: {};` ternary earlier in the body (there is one) ends that slice
+    // before the return is reached, which reads as "the field is absent".
     const at = pw.indexOf("getOpportunity: ConnectClient['getOpportunity']");
-    const body = pw.slice(at, pw.indexOf('};', at));
-    expect(body).not.toMatch(/total_budget:/);
-    expect(body).not.toMatch(/start_date:/);
+    const retAt = pw.indexOf('return {', at);
+    const body = pw.slice(retAt, pw.indexOf('\n    };', retAt));
+    expect(body).not.toMatch(/total_budget:\s*v\[/);
+    expect(body).not.toMatch(/start_date:\s*v\[/);
+    expect(body).toMatch(/total_budget:[\s\S]{0,200}?detail\.total_budget/);
+    expect(body).toMatch(/start_date:\s*detail\.start_date/);
+    expect(body).toMatch(/program_name:\s*detail\.program_name/);
   });
 
   it('records the measured field list so nobody re-probes it', () => {

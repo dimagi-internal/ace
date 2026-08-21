@@ -50,6 +50,12 @@ export interface Opportunity {
                                        // surfaces and the `/a/<org>/opportunity/<int>/` Playwright URLs use;
                                        // it is NOT a labs-minted id. Recorded as `connect_int_id` in run_state.
   program_id?: string;
+  // The program's NAME, scraped off the opportunity dashboard (ace#1550) —
+  // the only program key any opportunity READ surface carries. `program_id`
+  // is set on the create path only; no read path can populate it, so a caller
+  // scoping a sum to one program matches on this and must treat a non-unique
+  // program name as unknown.
+  program_name?: string;
   name: string;
   short_description: string;
   description: string;

@@ -1154,10 +1154,13 @@ export interface OpportunityDashboardFields {
  * 2. `short_description` and `country` are NOT on this page at all. They stay
  *    `undefined`. Do not infer them from `description`.
  *
- * One thing the dashboard has that the EDIT FORM DOES NOT: `start_date` and
- * `total_budget`. The edit form carries neither (see the field inventory in
- * `getOpportunity`), so for those two the viewer-tier read is strictly better
- * than the write-tier one.
+ * Three things the dashboard has that the EDIT FORM DOES NOT: `start_date`,
+ * `total_budget` and `program_name`. The edit form carries none of them (see
+ * the field inventory in `getOpportunity`), which is why `getOpportunity`
+ * runs this parse on EVERY read and not only on the viewer-tier degrade —
+ * without it, `connect-program-setup` § Step 4a's Σ(total_budget) headroom
+ * sum has no obtainable inputs at all and silently no-ops on every run
+ * (dimagi-internal/ace#1550).
  */
 export function parseOpportunityDashboard(html: string): OpportunityDashboardFields {
   const out: OpportunityDashboardFields = {};
