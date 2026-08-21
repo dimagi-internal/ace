@@ -393,10 +393,61 @@ walk**:
      `form-question-input` guess) does not exist; match by class
      (`android.widget.EditText`) and position.
 
-   Anchoring on the HINT text where one exists, or on index within the
-   field-list, both remain **uncalibrated** — do not emit either until
-   one is proven on a live device, and prefer a one-question-per-screen
-   group over guessing.
+   **The focus anchor is the element immediately above the `EditText` —
+   the field's `hint` when it has one, the question label when it does
+   not** (ace#1299, follow-up comment: Nova's authoritative `hint` map
+   diffed against all 14 inputs of both Deliver forms on
+   `spark-facilitator/20260813-2126`; 3 anchors were wrong and all 3 were
+   hint-carrying fields anchored on their label, which is why this read as
+   intermittent rather than systematic).
+
+   So for every input the autofocus does NOT cover — i.e. every input
+   after the first on a field-list — emit (validated on-device, ace#1299:
+   an isolated probe on that live registration screen landed `cbf_name` =
+   `'PROBE-NAME'` and `phone_number` = `'0991234567'` in their OWN fields,
+   where the label-anchored idiom had put both into one):
+
+   ```yaml
+   - scrollUntilVisible:
+       element:
+         text: "[\\s\\S]*<hint if present, else question label>[\\s\\S]*"
+       direction: DOWN
+       speed: 30
+       timeout: 20000
+       visibilityPercentage: 60
+       centerElement: true
+   - tapOn:
+       below:
+         text: "[\\s\\S]*<same anchor>[\\s\\S]*"
+   - inputText: "<value>"
+   - hideKeyboard
+   ```
+
+   **Guarded vs unconditional — the discriminator is whether the anchor IS
+   the tap target.** Both shapes are correct, in different places, and
+   picking by habit rather than by this test reintroduces one of the two
+   bugs (ace#1070, ace#1299):
+
+   - **Anchor IS the tap target** (a unique option label, a named button)
+     → keep the `when: notVisible` **guarded** scroll of § Quiz /
+     required-input answer-tap rule. ace#1070 stands: an unconditional
+     scroll on an option that already fits reads as backward form
+     navigation and walks the flow out of the form.
+   - **Anchor is a DIFFERENT element from the tap target** (an `EditText`
+     reached via the hint above it; a field-list option addressed via its
+     question label) → **unconditional** centring scroll, as in the
+     snippet above. The failure mode there is "anchor visible, its
+     `EditText` still below the fold", which `notVisible: <anchor>` is
+     structurally blind to — so the guard suppresses the one scroll that
+     was needed. That half affected all 14 inputs, not just the 3 with
+     wrong anchors (ace#1299).
+
+   `speed: 30`, not 80: at 80 the centring scroll overshot a ~300px radio
+   band and halted the leg (ace#1299).
+
+   Index-based anchoring within the field-list is still **uncalibrated** —
+   use the hint/label anchor above, which is proven (ace#1299); do not
+   guess an index.
 4. Exactly **ONE** trailing form-advance, after every REQUIRED child is
    answered.
 
@@ -1098,7 +1149,7 @@ For each form-walk segment of a recipe:
              element:
                text: "<literal option label>.*"
              direction: DOWN
-             speed: 80
+             speed: 30
              timeout: 20000
              visibilityPercentage: 60
              centerElement: true
@@ -1134,7 +1185,14 @@ For each form-walk segment of a recipe:
    (`camera-take-photo` → `camera-shutter-button` → `camera-save-photo`)
    before advance.
 4. For `kind: text` / `kind: decimal` required fields, emit `inputText`
-   with a plausible sample value before advance.
+   with a plausible sample value before advance. **On a field-list
+   (`kind: group`) screen a bare `inputText` only lands for the FIRST
+   input** — CommCare autofocuses that one and nothing else. Every later
+   input needs the calibrated focus sequence of § Step 3 item 3:
+   unconditional centring scroll at `speed: 30` on the element
+   immediately above the `EditText` (its `hint` when it has one, else the
+   question label), then `tapOn: below: <that anchor>`, then `inputText`,
+   then `hideKeyboard` (ace#1299).
 4.5. For `kind: geopoint` required fields, do **NOT** `inputText` a
    `"lat lon alt accuracy"` string. A native CommCare geopoint is a
    **Capture-button widget** that reads the device GPS — not a free-text
@@ -1486,3 +1544,4 @@ already maps the producer to `3-commcare/` (see
 | 2026-07-31 | **Menu anchors are display-mode-agnostic; a single-container anchor is now a CI failure (closes dimagi-internal/ace#1127).** #1082/PR #1100 correctly made Phase 3 `app-hq-settings` apply GRID menu display app-wide — and because every Phase 6 menu anchor resolved to the LIST container `screen_suite_menu_list` ALONE, no shipped palette recipe could execute on any ACE opp (bednet-spot-check/20260731-1353: Learn halted at `learn-launch.yaml`, Deliver walled identically, Phase 6 `verdict: blocked`, apps confirmed healthy server-side). CommCare renders the SAME `row_img`/`row_txt` rows in either container; only the container id changes. Fix: `learn-suite-menu` / `deliver-suite-menu` are now regex alternations (`org.commcare.dalvik:id/(screen_suite_menu_list|grid_menu_grid)`) in connect-2.63.0 + 2.63.2, `deliver-form-walk.yaml`'s two RAW container literals now route through the map, and a new `menu-container anchors are display-mode-complete` invariant suite fails on (a) any palette file hardcoding a container id, (b) any selector-map row naming one container but not all, (c) any RESOLVED palette anchor that isn't complete. Adding a future display mode = one id in `KNOWN_MENU_CONTAINERS` + one map edit. | ACE team |
 | 2026-06-01 | **Learn content forms are multi-screen + finalize to StandardHomeActivity (closes #646).** Two new static palette pieces: `content-form-finish.yaml` (bounded multi-screen advance loop that taps `nav_btn_next` until a Learn CONTENT form auto-finalizes, exits on the `learn-home-start-tile` home anchor — NOT the suite menu — handles the score-gated two-screen FINISH, and asserts the home grid post-finalize) and `learn-suite-reentry.yaml` (the explicit "tap Start → wait `screen_suite_menu_list`" re-entry that MUST run between every module, because a Learn form finalizes to the home grid not the suite menu). Added §§ "Multi-screen content forms" + "Suite re-entry between modules"; the prior single-screen-only content-form note is subsumed. Closes the malaria-rdt/20260601-0929 Phase 6 Learn-walk blocker (recipe walked each content form as single-screen and called the next `learn-tap-module` directly, stalling on page 2 then hard-failing the suite-menu assert). Validated structurally (`mobile_validate_recipe` + selector-resolution gate against connect-2.63.0); full live re-walk lands on the next fresh-run Phase 6 (this run consumed its one-way Learn state). | ACE team |
 | 2026-08-01 | **Migrated Nova reads to uuid addressing (ace#1132).** Nova's 2026-07-31 redeploy moved its whole surface from `moduleIndex`/`formIndex`/`fieldId` to `moduleUuid`/`formUuid`/`fieldUuid`. Two `get_form` reads here named uncallable operations — § Use live labels passed a bare `form_id`, and the per-form-walk field read in § Emitting a form-walk segment passed the index pair — both rejected server-side with `unrecognized_keys`. Both now pass `{app_id, moduleUuid, formUuid}`, resolved ONCE from `get_app({app_id})` (its blueprint prints `[uuid …]` on every module, form, and field), with `search_blueprint({query, app_id})` for a single semantic name. Enforced by `test/skills/nova-uuid-addressing.test.ts`. | ACE team |
+| 2026-08-20 | **Sanction the hint-anchored focus tap ace#1299 actually validated (closes ace#1547).** PR #1397 closed ace#1299 COMPLETED but left § Step 3 item 3 declaring both replacement idioms un-emittable until proven on a live device, 14 hours after that issue's own follow-up comment proved the hint-anchored one on-device (isolated probe, `spark-facilitator/20260813-2126`: `cbf_name` and `phone_number` landed in their OWN fields). Read literally, that made any Deliver field-list with more than one text input unauthorable — Step 2.6 halts `[BLOCKER]` and Phase 6 gets zero Deliver screenshots (observed on `hh-poverty-targeting/20260819-1435`). Item 3 now carries the validated rule (**the focus anchor is the element immediately above the `EditText` — the field's `hint` when it has one, the question label when it does not**), the validated idiom, and the guarded-vs-unconditional discriminator: guarded when the anchor IS the tap target (ace#1070 stands for option taps), unconditional when the anchor is a DIFFERENT element from the tap target, because there `when: notVisible: <anchor>` is structurally blind to the real failure ("anchor visible, its EditText still below the fold"). `speed: 30` replaces `speed: 80` in the option snippet — at 80 the centring scroll overshot a ~300px radio band and halted the leg (ace#1299). Index-based anchoring stays uncalibrated. Same reconciliation applied to `docs/mobile-atlas/connect-2.63.2.md` § 1, `mcp/mobile/selectors/connect-2.63.2.yaml` (`form-question-input*` prose), and the `group-field-list-per-question-walk` remediation string in `mcp/mobile/recipe-sanity-probe.ts`, which still taught the inert bare `below:` tap. Pinned by `test/mcp/mobile/static-recipe-invariants.test.ts § app-test-cases field-list input focus contract`. | ACE team |
