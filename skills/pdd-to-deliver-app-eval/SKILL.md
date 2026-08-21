@@ -81,7 +81,7 @@ and `skills/eval-calibration/SKILL.md` for calibration methodology.
 4. **Extract the built app's actual structure** from the Nova
    blueprint (or app summary). Build the matching structured snapshot.
 
-5. **Grade across 9 dimensions** — 5 conformance (45%) + 4 fitness
+5. **Grade across 10 dimensions** — 5 conformance (45%) + 5 fitness
    (55%). Each dimension is 0–10. Overall score is the weighted mean.
 
    **The fitness dimensions are graded against an external expert
