@@ -484,6 +484,59 @@ server.tool(
   },
 );
 
+// 8b. List reviewer comments on a Drive file
+server.tool(
+  'drive_list_comments',
+  "List the comment threads a reviewer left on a Drive file (Docs, Sheets, Slides). ACE publishes the PDD as a Google Doc SO THAT reviewers can comment on it and grants `commenter` for exactly that — this is the atom that reads what they wrote, so a comment no longer depends on a human noticing it and retyping it into `inputs/`.\n\nReturns `{file_id, total, comments: [{id, author, created_time, modified_time, resolved, content, quoted_text, anchor, replies: [{author, created_time, content}]}]}`.\n\n**`quoted_text` is the point.** Drive returns the document text the comment is anchored to (`quotedFileContent`), so a caller can bind a comment to the SECTION it sits on rather than guessing from prose. That is what makes it possible to detect a comment contradicting the text it is attached to — the failure mode a hand transcription cannot see, because transcription throws the anchor away.\n\n`resolved: true` marks a thread someone closed in the Drive UI. They are returned by default (`includeResolved`, default true) because a resolved thread is still evidence of what was asked — do not confuse resolved with honoured. Deleted comments are never returned; Drive drops them.\n\nRuns as the service account, which owns the artifacts ACE generates. Verified against a live Shared Drive file: create → list → delete round-trips, and the SA reads comments on its own PDD and Work Order. Note the SA and `ace@dimagi-ai.com` have DIFFERENT grants — `gog drive comments` (the ace@ path) 403s on SA-created files, so use this atom for anything ACE produced.",
+  {
+    fileId: z.string().describe('The Google Drive file ID to read comments from.'),
+    includeResolved: z
+      .boolean()
+      .optional()
+      .describe('Include threads marked resolved in the Drive UI. Default true — a resolved thread still records what the reviewer asked for, and "resolved" means someone closed the thread, NOT that the build honoured it.'),
+    maxResults: z
+      .number()
+      .int()
+      .min(1)
+      .max(100)
+      .optional()
+      .describe('Max comment threads to return (default 100, the Drive page maximum).'),
+  },
+  async ({ fileId, includeResolved = true, maxResults = 100 }) => {
+    try {
+      const resp = await drive.comments.list({
+        fileId,
+        pageSize: maxResults,
+        fields:
+          'comments(id,content,resolved,createdTime,modifiedTime,author/displayName,quotedFileContent/value,anchor,replies(content,createdTime,author/displayName))',
+      });
+      const all = resp.data.comments ?? [];
+      const kept = includeResolved ? all : all.filter((c: any) => !c.resolved);
+      return result({
+        file_id: fileId,
+        total: kept.length,
+        comments: kept.map((c: any) => ({
+          id: c.id,
+          author: c.author?.displayName ?? null,
+          created_time: c.createdTime ?? null,
+          modified_time: c.modifiedTime ?? null,
+          resolved: c.resolved ?? false,
+          content: c.content ?? '',
+          quoted_text: c.quotedFileContent?.value ?? null,
+          anchor: c.anchor ?? null,
+          replies: (c.replies ?? []).map((r: any) => ({
+            author: r.author?.displayName ?? null,
+            created_time: r.createdTime ?? null,
+            content: r.content ?? '',
+          })),
+        })),
+      });
+    } catch (e: any) {
+      return error(e.message);
+    }
+  },
+);
+
 // 9. Read a Drive file
 server.tool(
   'drive_read_file',

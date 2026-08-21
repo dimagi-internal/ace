@@ -17,6 +17,7 @@ Take an initial idea and iterate on it to produce a complete Program Design Doc 
 | Operator | `ACE/<opp-name>/runs/<run-id>/inputs-manifest.yaml` | frozen pointer-set to source material captured at run-start |
 | Operator | each `file_id` in the manifest | source content (PDFs, docs, sheets, markdown) |
 | Prior runs | `ACE/<opp-name>/open-questions.md` § `## Open` (opp ROOT, durable across runs; passed inline at handoff when the orchestrator's bounds allow — ace#1487) | questions ALREADY raised/verified for this opp — read them back before raising your own (ace#1201). `## Archive` is never read back |
+| Reviewer | comment threads on the PRIOR run's PDD, via `drive_list_comments` | what a domain expert asked for IN PLACE, anchored to the section they were reading |
 
 ## Products
 
@@ -53,6 +54,20 @@ orchestrator from the per-skill QA + eval verdicts on the fly. -->
    `resolve_opp_path` and read it when present). It carries questions prior
    runs already raised — and, in some rows, ANSWERS a prior run verified.
    Before adding a question of your own, check whether it is already there.
+
+   **Read the reviewer's COMMENTS on the prior run's PDD** — `drive_list_comments`
+   on that PDD's `file_id`. ACE publishes the PDD as a Google Doc so reviewers can
+   comment on it; those comments are review input exactly like an `inputs/` document,
+   and until ace#1563 nothing read them, so a comment only landed if a human retyped
+   it. Treat each unresolved thread as a requirement to honour or to disposition
+   explicitly, the same as any reviewer feedback record.
+
+   **Use `quoted_text` to bind a comment to the section it sits on**, and check that
+   section against the comment before you rewrite it. A comment whose `quoted_text`
+   no longer matches anything in your draft is the signature of the regression class
+   in ace#979 — the fix was reverted while the disposition table still claimed it was
+   honoured. `resolved: true` means someone closed the thread in Drive, NOT that the
+   build honoured it; do not read it as done.
 
    **Read `## Open` ONLY.** The doc has exactly two sections (§ The durable
    open-questions doc below). `## Archive` is closed history — never read it
