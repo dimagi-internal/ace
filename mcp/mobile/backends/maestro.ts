@@ -6,6 +6,20 @@ import { MobileError, RecipeValidationError } from '../errors.js';
 import type { ShellFn } from './avd.js';
 import { defaultShell } from './avd.js';
 import { splitRecipeAtScreenshots } from '../recipe-splitter.js';
+import { resolveChunkTimeout, countRecipeSteps } from '../../../lib/maestro-chunk-timeout.js';
+
+/**
+ * Step count for a recipe on disk, or `undefined` when it cannot be read.
+ * Sizing a timeout must never be able to fail a run, so every error here
+ * degrades to the floor (ace#1570).
+ */
+function safeCountSteps(recipePath: string): number | undefined {
+  try {
+    return countRecipeSteps(fs.readFileSync(recipePath, 'utf8'));
+  } catch {
+    return undefined;
+  }
+}
 import { logInfo } from '../logging.js';
 import type { RecipeRunResult, ScreenshotEntry } from '../types.js';
 import { readProvenanceSidecar } from '../../../lib/screenshot-provenance.js';
@@ -100,6 +114,7 @@ export class MaestroBackend {
     const args = this.buildMaestroArgs(opts.adbPort, envVars, screenshotDir, recipePath, opts.serial);
     const r = await this.runMaestroChunk(args, screenshotDir, {
       recipePath, chunksCompleted: 0, chunksTotal: 1, lastCompletedScreenshot: null,
+      stepCount: safeCountSteps(recipePath),
     });
     const screenshots = this.collectScreenshots(screenshotDir);
     const failure = classifyMaestroFailure({
@@ -134,16 +149,24 @@ export class MaestroBackend {
       chunksCompleted: number;
       chunksTotal: number;
       lastCompletedScreenshot: string | null;
+      /**
+       * Top-level step count of the chunk being invoked, when known. Sizes the
+       * wall-clock ceiling (ace#1570) — omitted means "use the floor", which is
+       * exactly the pre-fix behaviour.
+       */
+      stepCount?: number;
     },
   ) {
-    const timeoutMs = 10 * 60 * 1000;
+    const budget = resolveChunkTimeout({ stepCount: ctx.stepCount });
+    const timeoutMs = budget.timeoutMs;
     try {
       return await this.shell('maestro', args, { timeoutMs, cwd: screenshotDir });
     } catch (e) {
       if ((e as { code?: string })?.code === 'SHELL_TIMEOUT') {
         throw new MobileError(
           'MAESTRO_STALL',
-          `maestro wedged (no exit within ${Math.round(timeoutMs / 1000)}s) on chunk ` +
+          `maestro wedged (no exit within ${Math.round(timeoutMs / 1000)}s, budget basis ` +
+            `${budget.basis}${budget.stepCount === null ? '' : ` over ${budget.stepCount} step(s)`}) on chunk ` +
             `${ctx.chunksCompleted + 1}/${ctx.chunksTotal} of ${path.basename(ctx.recipePath)}` +
             (ctx.lastCompletedScreenshot
               ? ` — last completed step ended at screenshot "${ctx.lastCompletedScreenshot}"`
@@ -158,6 +181,8 @@ export class MaestroBackend {
             chunks_total: ctx.chunksTotal,
             last_completed_screenshot: ctx.lastCompletedScreenshot,
             timeout_ms: timeoutMs,
+            timeout_basis: budget.basis,
+            step_count: budget.stepCount,
             screenshot_dir: screenshotDir,
           },
         );
@@ -278,6 +303,7 @@ export class MaestroBackend {
       const args = this.buildMaestroArgs(opts.adbPort, envVars, screenshotDir, absoluteRecipePath, opts.serial);
       const r = await this.runMaestroChunk(args, screenshotDir, {
         recipePath: absoluteRecipePath, chunksCompleted: 0, chunksTotal: 1, lastCompletedScreenshot: null,
+        stepCount: countRecipeSteps(body),
       });
       const screenshots = this.collectScreenshots(screenshotDir);
       const failure = classifyMaestroFailure({
@@ -355,6 +381,7 @@ export class MaestroBackend {
           chunksCompleted,
           chunksTotal: chunks.length,
           lastCompletedScreenshot,
+          stepCount: countRecipeSteps(chunk.yaml),
         });
         const chunkLabel = `# --- chunk ${chunk.index} (screenshot=${chunk.screenshotName ?? 'none'}) ---`;
         stdoutParts.push(`${chunkLabel}\n${r.stdout}`);
