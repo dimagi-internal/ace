@@ -26,6 +26,8 @@ import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from '
 import os from 'node:os';
 import path from 'node:path';
 
+import { stringify as stringifyYaml } from 'yaml';
+
 /**
  * A handoff older than this is ignored. Two hours is well past a restart or an
  * account switch and well short of "yesterday's run" — the window where the
@@ -117,22 +119,52 @@ export function clearHandoff(homeDir: string = os.homedir()): void {
   }
 }
 
-/** Render for the preflight block. One screen, no scrolling. */
+/**
+ * Render for the preflight block. One screen, no scrolling — and PARSEABLE.
+ *
+ * ace#1582. This used to hand-build the lines, which produced three separate
+ * YAML violations: a scalar header (`handoff_from_previous_session: 4m ago`)
+ * with mapping keys nested under it, a bare sentence as the closing line, and
+ * unquoted free text that routinely contains `: `. `bin/ace-doctor --preflight`
+ * documents itself as emitting YAML, so it failed to parse in exactly the
+ * situation the handoff exists for — right after a halt.
+ *
+ * Serialising through the YAML writer (rather than fixing the three cases by
+ * hand) is what stops the class returning the next time a field is added.
+ * `lineWidth: 0` disables folding so a long `reason` stays on one line and the
+ * block reads the way it always has.
+ */
 export function renderHandoff(h: SessionHandoff, ageMs: number): string {
   const mins = Math.round(ageMs / 60000);
-  const lines = [
-    `handoff_from_previous_session: ${mins}m ago`,
-    `  reason: ${h.reason}`,
-  ];
-  if (h.run) lines.push(`  run: ${h.run}`);
-  if (h.thread_id) lines.push(`  thread: ${h.thread_id}`);
-  lines.push('  already_established:');
-  for (const e of h.established) lines.push(`    - ${e}`);
-  if (h.artifacts?.length) {
-    lines.push('  artifacts:');
-    for (const a of h.artifacts) lines.push(`    - ${a}`);
-  }
-  if (h.next_command) lines.push(`  next_command: ${h.next_command}`);
-  lines.push('  DO NOT re-derive the above. Start from next_command.');
-  return lines.join('\n');
+
+  const block: Record<string, unknown> = {
+    age: `${mins}m ago`,
+    reason: h.reason,
+  };
+  if (h.run) block.run = h.run;
+  if (h.thread_id) block.thread = h.thread_id;
+  block.already_established = h.established;
+  if (h.artifacts?.length) block.artifacts = h.artifacts;
+  if (h.next_command) block.next_command = h.next_command;
+  block.note = 'DO NOT re-derive the above. Start from next_command.';
+
+  return stringifyYaml({ handoff_from_previous_session: block }, { lineWidth: 0 }).trimEnd();
+}
+
+/**
+ * The stale counterpart. A stale handoff is REPORTED rather than hidden —
+ * silence would read as "the mechanism never ran" — so it has to be as
+ * parseable as the fresh one (ace#1582).
+ */
+export function renderStaleHandoff(ageMs: number): string {
+  return stringifyYaml(
+    {
+      handoff_from_previous_session: {
+        status: 'stale',
+        age: `${Math.round(ageMs / 60000)}m ago`,
+        note: 'ignoring (see ace#1093)',
+      },
+    },
+    { lineWidth: 0 },
+  ).trimEnd();
 }
