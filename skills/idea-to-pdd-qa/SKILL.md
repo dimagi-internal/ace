@@ -56,6 +56,15 @@ The static check functions live at `skills/idea-to-pdd-qa/checks.ts` as importab
    1, 3, 4, 5 and 8 while the PDD is perfectly fine. The markdown export
    restores the syntax the checks are written against.
 
+   **The markdown export also ESCAPES punctuation** — `## 1. Archetype` comes
+   back as `## 1\. Archetype`, `learn_passing_score` as `learn\_passing\_score`.
+   `checks.ts` strips that at every check's entry (`normalizeDriveExport`, in
+   `lib/drive-export.ts`), so the escaping is handled and you should NOT
+   pre-clean the body or fall back to `text/plain` when you see backslashes
+   (ace#1617 — before the strip, all 12 required sections read as missing on a
+   healthy PDD and Phase 1 halted). The sibling `pdd-to-work-order-qa` requires
+   the OPPOSITE format (`text/plain`, ace#1609) and shares the same normaliser.
+
    **Note its `mimeType`** — you pass it to the runner in step 3, and check 7
    cannot verify the format without it (the bytes look identical either way).
 
