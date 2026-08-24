@@ -125,6 +125,46 @@ export class ExperimentIdStaleError extends OcsError {
   }
 }
 
+/**
+ * The chatbots-table page came back 200 with rows on it, but the row parser
+ * could not read a single chatbot name out of them — i.e. OCS reshaped the
+ * markup the scrape depends on.
+ *
+ * ace#1561. Before this error existed, `parseChatbotTable` returned whatever
+ * it managed to parse with no signal, so an unparseable table was
+ * indistinguishable from an empty one. On hh-poverty-targeting/20260819-1435
+ * Phase 5, all 72 bots on `connect-ace` came back with `experiment_id: null`
+ * and `getChatbot` reported each of them — including a seven-week-old bot — as
+ * a freshly-cloned row that had not appeared yet (`ExperimentIdStaleError`),
+ * whose remedy ("wait and retry") could never work.
+ *
+ * The cause was upstream: OCS PR #4220 ("Consistent chip rendering in tables",
+ * merged 2026-08-18) changed `templates/generic/action.html` from rendering
+ * `{{ label }}` directly inside the `<a>` to `{% include
+ * "generic/chip_label.html" %}`, and turned truncation ON for the chatbots
+ * table's name chip (`apps/chatbots/tables.py` `ChatbotTable.name`,
+ * `truncate=True`). The anchor body became
+ * `<span class="min-w-0 truncate" title="NAME">NAME</span>` instead of `NAME`.
+ *
+ * Sibling of `PipelineShapeError`, which has named the same class of drift on
+ * `pipeline_builder.html` since 0.6.x.
+ */
+export class ChatbotTableShapeError extends OcsError {
+  constructor(public detail: string) {
+    super(
+      `Could not read chatbot names out of the /a/<team>/chatbots/table/ page: ${detail} ` +
+        `The request succeeded and the page HAS rows, so this is TEMPLATE DRIFT in OCS, not an ` +
+        `empty team and not a stale table — waiting will not fix it. The scrape depends on ` +
+        `dimagi/open-chat-studio templates/generic/action.html + generic/chip_label.html ` +
+        `(the name chip) and the per-row id="record-<int>" attribute from ` +
+        `config/settings.py DJANGO_TABLES2_ROW_ATTRS. Re-derive the parse from the CURRENT ` +
+        `upstream template via skills/upstream-regression-triage (ace#1561 was OCS PR #4220). ` +
+        `Do NOT clone a new bot to recover — every existing bot is intact; read liveness with ` +
+        `ocs_inspect_chatbot (REST v2, scrape-independent) in the meantime.`,
+    );
+  }
+}
+
 export class CollectionIndexingTimeoutError extends OcsError {
   constructor(public collectionId: number, public timeoutSec: number) {
     super(`Collection ${collectionId} indexing timed out after ${timeoutSec}s`);

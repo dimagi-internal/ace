@@ -170,6 +170,11 @@ describe('assertCollectionPromptInvariant', () => {
 });
 
 // ── parseChatbotTable (N2 fix, 0.6.6) ────────────────────────────────
+//
+// The rows below are the PRE-#4220 shape (captured 2026-04-28); they stay
+// because the parser must keep reading them. The CURRENT shape, the template
+// drift that broke it, and the loud errors that now surface an unparseable
+// table live in `chatbot-table-shape.test.ts` (ace#1561).
 
 describe('parseChatbotTable', () => {
   // The /a/<team>/chatbots/table/ HTMX endpoint renders one <tr> per bot:
@@ -204,6 +209,10 @@ describe('parseChatbotTable', () => {
   });
 
   it('returns an empty map for a body without record rows', () => {
+    // The PURE parse stays non-throwing: it cannot tell an empty team from a
+    // reshaped template, because it does not know the request succeeded.
+    // `fetchExperimentIdsByName` is the layer that classifies the two and
+    // throws `ChatbotTableShapeError` on drift — see chatbot-table-shape.test.ts.
     const map = parseChatbotTable('<html><body>no rows here</body></html>');
     expect(map.size).toBe(0);
   });
