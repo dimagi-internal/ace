@@ -34,10 +34,21 @@
  *                      Loads `mcp/mobile/selectors/connect-<version>.yaml`.
  *   --out <path>       Write the markdown report to this file. Defaults
  *                      to stdout.
- *   --yaml-out <path>  Also classify the newest `*-FAILURE.xml` dump
- *                      (via `classifyScreenCoverage`) and write the
+ *   --yaml-out <path>  Also classify a `*-FAILURE.xml` dump (via
+ *                      `classifyScreenCoverage`) and write the
  *                      machine-readable verdict to this path. No-op
  *                      when no failure dump is present.
+ *
+ *                      The dump is the NEWEST one that still means
+ *                      something (ace#1571): dumps that a later passing
+ *                      dispatch superseded, and dumps that caught the
+ *                      home screen / system chrome rather than an app
+ *                      screen, are skipped — because `unmapped-surface`
+ *                      routes a HUMAN to `skills/selector-map-heal`, and
+ *                      a false positive there costs a device session.
+ *                      When nothing is eligible the newest dump is still
+ *                      reported, honestly labelled `superseded` /
+ *                      `non-app-surface`, with a `skipped:` ledger.
  */
 
 import * as fs from 'node:fs';
@@ -54,6 +65,11 @@ import {
   classifyScreenCoverage,
   extractWantedMatchers,
   renderReportYaml,
+  selectFailureDumpForClassification,
+  isSupersededFailureDump,
+  isNonAppSurfaceDump,
+  type ArtifactFileMeta,
+  type FailureDumpSkipReason,
 } from '../lib/atlas-drift.js';
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -105,7 +121,12 @@ function printUsage(): void {
   );
 }
 
-function findDumpFiles(root: string): string[] {
+/** Every file under `root`, not just the XMLs. The supersession test
+ *  (ace#1571) needs to see a passing dispatch's PNGs, and on the cloud
+ *  backend PNGs are the ONLY ordinary captures — no sibling .xml dumps are
+ *  written at all — so an xml-only walk would be blind to exactly the
+ *  evidence that proves a FAILURE dump stale. */
+function findAllFiles(root: string): string[] {
   const out: string[] = [];
   const stack: string[] = [root];
   while (stack.length) {
@@ -114,12 +135,26 @@ function findDumpFiles(root: string): string[] {
     for (const entry of entries) {
       const p = path.join(dir, entry.name);
       if (entry.isDirectory()) stack.push(p);
-      else if (entry.isFile() && entry.name.toLowerCase().endsWith('.xml')) {
-        out.push(p);
-      }
+      else if (entry.isFile()) out.push(p);
     }
   }
   return out.sort();
+}
+
+/** Stat every path once into a lookup. Never inside a comparator: a naive
+ *  `sort((a, b) => statSync(a)... - statSync(b)...)` re-stats on every
+ *  comparison, and this dir is a live TOCTOU target — another process can
+ *  delete a dump between the readdir above and the stat, so an unguarded
+ *  statSync can throw ENOENT and crash the whole probe run. A file that
+ *  vanished falls back to mtime 0 rather than aborting. */
+function statAll(files: string[]): ArtifactFileMeta[] {
+  return files.map((p) => {
+    try {
+      return { path: p, mtimeMs: fs.statSync(p).mtimeMs };
+    } catch {
+      return { path: p, mtimeMs: 0 };
+    }
+  });
 }
 
 function main(): void {
@@ -135,7 +170,8 @@ function main(): void {
     process.exit(2);
   }
 
-  const dumpFiles = findDumpFiles(args.dumpDir);
+  const allFiles = statAll(findAllFiles(args.dumpDir));
+  const dumpFiles = allFiles.filter((f) => f.path.toLowerCase().endsWith('.xml'));
   if (dumpFiles.length === 0) {
     process.stderr.write(`no .xml dump files found under ${args.dumpDir}\n`);
     process.exit(2);
@@ -145,15 +181,38 @@ function main(): void {
   // which ids appeared specifically on a `*-FAILURE.xml` screen — those are
   // the priority drift suspects (a candidate root cause for a recipe failure
   // in this run, not just untapped coverage).
+  //
+  // A FAILURE dump only earns that priority treatment if it is still live
+  // evidence about an app screen (ace#1571). A superseded dump's ids and a
+  // launcher dump's ids are noise in the section whose header says "review
+  // FIRST" — on hh-poverty-targeting/20260819-1435 that was 50 suspects,
+  // essentially all of them launcher chrome from a retry that then passed.
+  // The dumps still feed the ordinary coverage aggregate below: this is a
+  // filter on what gets ESCALATED, not on what gets harvested.
+  const failureXmlCache = new Map<string, string>();
+  const excludedFailureDumps: Array<{ file: string; reason: FailureDumpSkipReason }> = [];
   const observed = new Set<string>();
   const observedOnFailure = new Set<string>();
   for (const f of dumpFiles) {
-    const xml = fs.readFileSync(f, 'utf8');
+    const xml = fs.readFileSync(f.path, 'utf8');
     const ids = extractResourceIdsFromDump(xml);
-    const fromFailureScreen = isFailureDumpFile(f);
+    let fromLiveFailureScreen = false;
+    if (isFailureDumpFile(f.path)) {
+      failureXmlCache.set(f.path, xml);
+      const superseded = isSupersededFailureDump(f, allFiles);
+      const nonApp = isNonAppSurfaceDump(xml);
+      if (superseded || nonApp) {
+        excludedFailureDumps.push({
+          file: path.relative(args.dumpDir, f.path),
+          reason: superseded ? 'superseded' : 'non-app-surface',
+        });
+      } else {
+        fromLiveFailureScreen = true;
+      }
+    }
     for (const id of ids) {
       observed.add(id);
-      if (fromFailureScreen) observedOnFailure.add(id);
+      if (fromLiveFailureScreen) observedOnFailure.add(id);
     }
   }
 
@@ -163,7 +222,7 @@ function main(): void {
 
   // Make dump-file paths relative to the dump dir so the report stays
   // readable when the absolute path is deep.
-  const relativeDumpFiles = dumpFiles.map((f) => path.relative(args.dumpDir, f));
+  const relativeDumpFiles = dumpFiles.map((f) => path.relative(args.dumpDir, f.path));
 
   const report = renderReportMarkdown({
     apkVersion: args.apkVersion,
@@ -172,6 +231,7 @@ function main(): void {
     onlyInMap: diff.onlyInMap,
     inBoth: diff.inBoth,
     failureScreenCandidates,
+    excludedFailureDumps,
   });
 
   if (args.outPath) {
@@ -184,39 +244,40 @@ function main(): void {
   }
 
   if (args.yamlOutPath) {
-    const failureDumps = dumpFiles.filter((f) => isFailureDumpFile(f));
+    const failureDumps = dumpFiles.filter((f) => isFailureDumpFile(f.path));
     if (failureDumps.length === 0) {
       process.stderr.write('no *-FAILURE.xml under the dump dir; skipping yaml report\n');
     } else {
-      // The newest failure dump is the one that stopped the walk. Sort by
-      // mtime, not path string — several stale FAILURE dumps can sit under
-      // one root (e.g. from an earlier run reusing the same screenshot dir),
-      // and alphabetical order has no relation to recency. Read each mtime
-      // ONCE into a map (not inside the comparator — a naive `sort((a, b) =>
-      // statSync(a)... - statSync(b)...)` re-stats on every comparison, and
-      // this dir is a live TOCTOU target: another process can delete a dump
-      // between `findDumpFiles()`'s readdir and this stat, so an unguarded
-      // statSync can throw ENOENT and crash the whole probe run). A file
-      // that vanished falls back to mtime 0 rather than aborting.
-      const mtimes = new Map<string, number>();
-      for (const f of failureDumps) {
-        try {
-          mtimes.set(f, fs.statSync(f).mtimeMs);
-        } catch {
-          mtimes.set(f, 0);
-        }
-      }
-      const dumpPath = [...failureDumps].sort(
-        (a, b) => (mtimes.get(a) ?? 0) - (mtimes.get(b) ?? 0),
-      )[failureDumps.length - 1];
+      // Which failure dump describes the walk we actually care about?
+      //
+      // Newest-by-mtime is the right tiebreak (several FAILURE dumps can sit
+      // under one root, one per recipe dir, and alphabetical order has no
+      // relation to recency) — but it is applied only among dumps that still
+      // MEAN something. `selectFailureDumpForClassification` drops the two
+      // classes of noise that make the verdict lie (ace#1571): a dump a later
+      // passing dispatch superseded, and a dump of the home screen / system
+      // chrome rather than an app screen. Both used to come out as
+      // `unmapped-surface`, which the skills route straight to
+      // `skills/selector-map-heal`.
+      const selection = selectFailureDumpForClassification(
+        failureDumps.map((f) => ({
+          path: f.path,
+          mtimeMs: f.mtimeMs,
+          xml: failureXmlCache.get(f.path) ?? '',
+          siblings: allFiles,
+        })),
+      );
+      const selected = selection.selected!;
+      const dumpPath = selected.path;
       const stderrPath = dumpPath.replace(/\.xml$/, '.txt');
       const stderrExcerpt = fs.existsSync(stderrPath)
         ? fs.readFileSync(stderrPath, 'utf8')
         : '';
       const result = classifyScreenCoverage({
-        dumpXml: fs.readFileSync(dumpPath, 'utf8'),
+        dumpXml: failureXmlCache.get(dumpPath) ?? fs.readFileSync(dumpPath, 'utf8'),
         selectorMapYaml: fs.readFileSync(mapPath, 'utf8'),
         wanted: extractWantedMatchers(stderrExcerpt),
+        superseded: selected.superseded,
       });
       fs.writeFileSync(
         args.yamlOutPath,
@@ -224,6 +285,10 @@ function main(): void {
           apkVersion: args.apkVersion,
           dumpFile: path.basename(dumpPath),
           result,
+          skipped: selection.skipped.map((s) => ({
+            path: path.relative(args.dumpDir, s.path),
+            reason: s.reason,
+          })),
         }),
         'utf8',
       );
@@ -232,6 +297,15 @@ function main(): void {
         `atlas: ${result.classification} on ${path.basename(dumpPath)}` +
           (result.classification === 'unmapped-surface' ? ' — tier 2 warranted\n' : '\n'),
       );
+      if (selection.skipped.length > 0) {
+        process.stderr.write(
+          `atlas: skipped ${selection.skipped.length} failure dump(s): ` +
+            selection.skipped
+              .map((s) => `${path.relative(args.dumpDir, s.path)} (${s.reason})`)
+              .join(', ') +
+            '\n',
+        );
+      }
     }
   }
 }
