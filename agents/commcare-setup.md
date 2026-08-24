@@ -184,8 +184,18 @@ So make one addressed check:
 On a miss, **HALT**: *"The Nova MCP bound a different principal than
 NOVA_API_KEY names — `list_apps` does not show this run's apps (`<learn-id>`,
 `<deliver-id>`). MCP auth binds at connection time, so this is unrecoverable
-in-session: quit and reopen Claude Code (a full restart, not
-`/reload-plugins`), then resume `/ace:run <opp>/<run-id>`."*
+in-session. A plain restart is NOT the remedy here — it has been tried and the
+wrong principal came back (dimagi-internal/ace#1614). Run `/mcp`, select the
+`nova` server, and clear/re-authenticate it so the connection uses the
+`NOVA_API_KEY` bearer; confirm `list_apps` shows this run's ids, then resume
+`/ace:run <opp>/<run-id>`."*
+
+Keep this distinct from a plain **bind miss** (the `nova` tools do not resolve
+at all), which a full restart DOES fix. Wrong-principal means the connection
+attached and authenticated as someone else, so restarting re-establishes the
+same binding. See `agents/ace-orchestrator.md § Step 2a` for the full
+rationale and the one-`curl` confirmation that separates a bad credential
+(rare) from a bad binding (the observed case).
 
 **Do NOT rebuild the apps in response to `App not found`.** They exist, under
 a principal this session is not talking to. Rebuilding orphans the run's two
