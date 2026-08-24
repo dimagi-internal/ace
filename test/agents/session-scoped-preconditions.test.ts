@@ -187,4 +187,33 @@ describe('session-scoped preconditions are re-asserted on resume (#1604)', () =>
       ).toBe(true);
     }
   });
+
+  /**
+   * The halt has a second job beyond stopping the run: telling the NEXT session
+   * where not to look. A wrong-principal binding presents as a credential
+   * problem and is not one — the key on disk is byte-identical to the one that
+   * works. The session that hit ace#1604 burned its opening turns proving a
+   * correct key correct (hashing it across `.env`, `~/.ace/env.sh`, and the
+   * parent process env, and mis-reading a grep that matched a comment line) and
+   * only converged once it called the endpoint directly. That one call is the
+   * control, so the halt must name it.
+   */
+  it('the wrong-principal halt points at the curl control and clears the credential', () => {
+    const md = readFileSync(`${AGENTS_DIR}ace-orchestrator.md`, 'utf8').replace(/\n>?\s*/g, ' ');
+
+    expect(
+      /credential on disk is almost certainly fine/i.test(md),
+      'the wrong-principal halt in agents/ace-orchestrator.md must say the ' +
+        'on-disk credential is almost certainly fine. Without it the next ' +
+        'session re-diagnoses a working key, which is exactly what ace#1604 ' +
+        'cost the session that found it.',
+    ).toBe(true);
+
+    expect(
+      /curl https:\/\/mcp\.commcare\.app\/mcp/.test(md),
+      'the halt must name the direct `curl https://mcp.commcare.app/mcp` ' +
+        'control. "The binding is wrong, not the key" is only actionable if ' +
+        'the reader is told the one call that distinguishes them.',
+    ).toBe(true);
+  });
 });

@@ -251,38 +251,6 @@ phase whose status is `pending` **or** `in_progress` in the loaded
 | `ocs-setup` | `ocs_*` (`ace-ocs`) |
 | `qa-and-training` | `mobile_ensure_avd_running` (`ace-mobile`) |
 
-**Resolvable is not enough for Nova — assert the PRINCIPAL.** Every other row
-above fails closed: an unbound server's atoms simply do not resolve. Nova fails
-*open*, because it is a remote `type: "http"` MCP whose `headersHelper` degrades
-to `{}` when it cannot supply a bearer, and the connection then comes up as some
-other principal. Its atoms resolve perfectly; they just answer for the wrong
-account. So when `commcare-setup` is `pending` **or `in_progress`**, add one
-call:
-
-- The run already has Nova app ids (a resume mid-Phase-3):
-  `list_apps({limit: 25, sort: 'updated_desc'})` and assert
-  `phases.commcare-setup.products.apps.{learn,deliver}.nova_app_id` appear in the
-  result.
-- No app ids yet (a fresh run): `get_hq_connection()` must succeed and report the
-  expected `ACE_HQ_DOMAIN` among `available_domains`.
-
-On a miss, halt with the same restart `[BLOCKER]` — and say explicitly that the
-credential on disk is probably fine, so the next session does not spend its
-opening turns re-diagnosing a correct key:
-
-> `<opp>/<run-id>`: the Nova MCP in this session is bound to a different
-> principal than `NOVA_API_KEY` (`<what you observed>`). This is an in-session
-> binding fault, not a config defect — verify with a direct
-> `curl https://mcp.commcare.app/mcp` using the key from `~/.ace/env.sh`; if that
-> call sees the run's apps, the key is correct and only the binding is wrong.
-> MCP auth binds at connection time: **quit and reopen Claude Code**, then resume
-> `/ace:run <opp>/<run-id>`.
-
-(dimagi-internal/ace#1604. The phase-level backstop is `agents/commcare-setup.md
-§ Step 0`, which is session-scoped and re-runs on resume — but reaching it costs
-the whole Phase 3 entry, and on a resumed run Step 0 is the step most likely to
-already be marked `done`.)
-
 On a miss, **halt before the first `Agent` dispatch** with a `[BLOCKER]`:
 
 > `<opp>/<run-id>`: `<server>` did not bind in this Claude Code session,
@@ -324,7 +292,11 @@ in-session:
 > `<opp>/<run-id>`: the Nova MCP bound a different principal than
 > `NOVA_API_KEY` names — `list_apps` does not show this run's apps
 > (`<learn-id>`, `<deliver-id>`). Do NOT rebuild them; they exist, under a
-> principal this session is not talking to. MCP auth binds at connection
+> principal this session is not talking to. **The credential on disk is
+> almost certainly fine — do not go re-diagnosing it.** Confirm with one
+> direct call, `curl https://mcp.commcare.app/mcp` bearing the key from
+> `~/.ace/env.sh`: if that returns this run's apps, the key is correct and
+> only the binding is wrong. MCP auth binds at connection
 > time: **quit and reopen Claude Code**, then resume
 > `/ace:run <opp>/<run-id>`.
 
