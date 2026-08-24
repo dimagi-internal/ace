@@ -68,3 +68,32 @@ jobs:
       # `origin/main` (its default base when --staged is not passed).
       - name: Selector map Live-verified guard
         run: npx tsx scripts/check-selector-map-diff.ts
+
+      # VERSION must advance past origin/main's CURRENT tip (ace#1593).
+      #
+      # This lives in clean-install, not version-check.yml, for one reason:
+      # clean-install is the ONLY REQUIRED check on main, so it is the only
+      # place an assertion actually blocks a merge. version-check.yml is
+      # advisory and never stopped anything.
+      #
+      # It also asserts a different property. version-check compares against
+      # the PR's captured BASE sha - "did I bump relative to where I branched"
+      # - which two PRs off one base both satisfy while bumping to the SAME
+      # value. This reads origin/main LIVE, which is the only reference that
+      # can see a concurrent merge.
+      #
+      # Why it matters: the plugin cache is keyed by version, so two trees
+      # behind one version means the second is on main and unreachable by
+      # /ace:update at the same time, with every version file reading correct.
+      # Measured 2026-08-24: 4 of ~20 PRs in one sweep collided; 3 needed a
+      # follow-up bump purely to become reachable.
+      - name: VERSION advances past origin/main
+        if: github.event_name == 'pull_request'
+        run: npx tsx scripts/check-version-unique.ts
+
+      # Post-merge backstop. Cannot block anything - it runs after the merge -
+      # but turns an escaped race into an immediately RED main instead of a
+      # silent unreachable release nobody notices for days.
+      - name: main actually advanced VERSION
+        if: github.event_name == 'push'
+        run: npx tsx scripts/check-version-unique.ts --post-merge
