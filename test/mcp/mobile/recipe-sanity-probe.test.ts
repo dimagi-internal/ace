@@ -1,4 +1,6 @@
 import { describe, it, expect } from 'vitest';
+import { readFileSync, readdirSync } from 'node:fs';
+import { join } from 'node:path';
 import {
   probeRecipeSanity,
   extractRecipeParameters,
@@ -851,14 +853,29 @@ const TWO_YES_NO_DELIVER_APP: NovaAppSlice = {
   ],
 };
 
+/**
+ * The wildcard spellings a `below:` anchor can carry, as RAW RECIPE BYTES
+ * (the probe reads bytes, not parsed YAML).
+ *
+ * `\s` is not a legal escape in a YAML double-quoted scalar, so the idiom
+ * `skills/app-test-cases/SKILL.md` mandates — and every authored journey
+ * recipe therefore carries — is the TWO-backslash `"[\\s\\S]*…"`. The
+ * one-backslash form only survives inside a single-quoted scalar. Both are
+ * pinned so neither can regress into a green no-op (ace#1583).
+ */
+const WILDCARD_SPELLINGS: ReadonlyArray<readonly [string, string]> = [
+  ['one-backslash', '[\\s\\S]*'],
+  ['two-backslash', '[\\\\s\\\\S]*'],
+] as const;
+
 /** One anchored option tap: the `below:` anchor names the question
  * unambiguously, the way an authored journey recipe emits it. */
-function anchoredTap(option: string, questionLabel: string): string[] {
+function anchoredTap(option: string, questionLabel: string, wildcard = '[\\s\\S]*'): string[] {
   return [
     '- tapOn:',
     `    text: "${option}"`,
     '    below:',
-    `      text: "[\\s\\S]*${questionLabel}[\\s\\S]*"`,
+    `      text: "${wildcard}${questionLabel}${wildcard}"`,
   ];
 }
 
@@ -946,6 +963,111 @@ describe('probeRecipeSanity — group attribution with two Yes/No field-lists (a
     const f = verdict.failures.find((x) => x.class === 'group-field-list-per-question-walk');
     expect(f).toBeDefined();
     expect(f!.value).toBe('consent_block');
+  });
+});
+
+describe.each(WILDCARD_SPELLINGS)(
+  'probeRecipeSanity — group attribution, %s anchor spelling (ace#1583)',
+  (_spelling, W) => {
+    const tap = (option: string, label: string) => anchoredTap(option, label, W);
+
+    // NON-VACUITY: this positive case and the negative case below share
+    // the same helper and the same app fixture, so a spelling the probe
+    // cannot see would fail HERE first — the negative case can never pass
+    // merely because attribution went inert.
+    it('flags a real per-question walk and names the group the anchors point at', () => {
+      const body = [
+        ...tap('Yes', 'In the past 7 days, did anyone in this household consume bread'),
+        ...ADVANCE,
+        ...tap('Yes', 'In the past 7 days, did anyone in this household consume eggs'),
+        ...ADVANCE,
+      ].join('\n');
+      const verdict = probeRecipeSanity({
+        recipes: [recipeBody('journey-deliver.yaml', body)],
+        novaApps: [TWO_YES_NO_DELIVER_APP],
+        connectOpp: LIVE_OPP,
+      });
+      const f = verdict.failures.find((x) => x.class === 'group-field-list-per-question-walk');
+      expect(f).toBeDefined();
+      expect(f!.value).toBe('consumption_7d');
+    });
+
+    // The ace#1548 false-positive guard, re-run in this spelling: a recipe
+    // that answers every child of a field-list on ONE screen must stay
+    // clean now that the anchors are legible.
+    it('does NOT flag a correct one-advance-per-field-list walk', () => {
+      const body = [
+        ...tap('Yes, the respondent agrees', 'Does the respondent consent to this survey?'),
+        ...ADVANCE,
+        ...tap('Yes', 'In the past 7 days, did anyone in this household consume bread'),
+        ...tap('Yes', 'In the past 7 days, did anyone in this household consume eggs'),
+        ...tap('No', 'In the past 7 days, did anyone in this household consume milk'),
+        ...tap('Yes', 'In the past 7 days, did anyone in this household consume bottled water'),
+        ...ADVANCE,
+        ...tap('No', 'Does this household own a sofa'),
+        ...tap('Yes', 'Does this household own a refrigerator'),
+        ...ADVANCE,
+      ].join('\n');
+      const verdict = probeRecipeSanity({
+        recipes: [recipeBody('journey-deliver.yaml', body)],
+        novaApps: [TWO_YES_NO_DELIVER_APP],
+        connectOpp: LIVE_OPP,
+      });
+      expect(
+        verdict.failures.find((x) => x.class === 'group-field-list-per-question-walk'),
+      ).toBeUndefined();
+    });
+
+    // An anchor whose literal matches NO live label is no evidence about
+    // which screen the step is on — silence under uncertainty (ace#1548).
+    it('stays silent when the anchor literal matches no live question', () => {
+      const body = [
+        ...tap('Yes', 'A question this form does not contain'),
+        ...ADVANCE,
+        ...tap('Yes', 'Another question this form does not contain'),
+        ...ADVANCE,
+      ].join('\n');
+      const verdict = probeRecipeSanity({
+        recipes: [recipeBody('journey-deliver.yaml', body)],
+        novaApps: [TWO_YES_NO_DELIVER_APP],
+        connectOpp: LIVE_OPP,
+      });
+      expect(
+        verdict.failures.find((x) => x.class === 'group-field-list-per-question-walk'),
+      ).toBeUndefined();
+    });
+  },
+);
+
+describe('probeRecipeSanity — widening the recogniser starts no false-positive storm (ace#1583)', () => {
+  // Teaching RECIPE_WILDCARD_SRC the two-backslash spelling re-arms every
+  // check that reaches it. This pins the blast radius against the SHIPPED
+  // palette: the static recipes must keep exactly the verdicts they had.
+  // `form-advance-without-answer-tap` legitimately fires on three of them,
+  // so this asserts about the re-armable classes only.
+  const STATIC_DIR = join(import.meta.dirname, '..', '..', '..', 'mcp', 'mobile', 'recipes', 'static');
+  const staticRecipes = readdirSync(STATIC_DIR)
+    .filter((f) => f.endsWith('.yaml'))
+    .sort()
+    .map((f) => ({ name: f, text: readFileSync(join(STATIC_DIR, f), 'utf8') }));
+
+  it('sees a non-empty shipped palette', () => {
+    // Non-vacuity guard: an empty read would make every case below pass.
+    expect(staticRecipes.length).toBeGreaterThan(10);
+  });
+
+  it('fires neither re-armed check on any shipped static recipe, alone or as one corpus', () => {
+    const REARMED = ['group-field-list-per-question-walk', 'answer-tap-before-leading-label-advance'];
+    const corpora = [...staticRecipes.map((r) => [r]), staticRecipes];
+    for (const recipes of corpora) {
+      const verdict = probeRecipeSanity({
+        recipes,
+        novaApps: [TWO_YES_NO_DELIVER_APP],
+        connectOpp: LIVE_OPP,
+      });
+      const hits = verdict.failures.filter((f) => REARMED.includes(f.class));
+      expect(hits.map((f) => `${f.recipe}:${f.class}`)).toEqual([]);
+    }
   });
 });
 

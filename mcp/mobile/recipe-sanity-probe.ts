@@ -1327,8 +1327,21 @@ function stepTextMatchers(stepText: string): string[] {
  * the trailing `.*` of the literal-prefix idiom (#862) and the
  * `[\s\S]*` an authored `below:` anchor wraps a question label in so
  * regex metacharacters and line breaks in the label can't break it.
+ *
+ * BOTH backslash spellings are recognised, and the two-backslash one is
+ * the load-bearing case (ace#1583). The probe reads RAW recipe bytes, and
+ * `\s` is not a legal escape in a YAML double-quoted scalar — `js-yaml`
+ * rejects `text: "[\s\S]*…"` with `unknown escape sequence`. So the idiom
+ * `skills/app-test-cases/SKILL.md` mandates, and every authored journey
+ * recipe carries on disk, is `text: "[\\s\\S]*<anchor>[\\s\\S]*"`. While
+ * only the one-backslash form was recognised, the wildcard was never
+ * stripped, the literal never matched a live Nova label, and
+ * `group-field-list-per-question-walk` (#862) was silent on precisely the
+ * anchoring style the skill mandates: a rail that shipped green and
+ * enforced nothing. The one-backslash form stays recognised because it is
+ * legal inside a single-quoted scalar.
  */
-const RECIPE_WILDCARD_SRC = String.raw`(?:\.\*|\[\\s\\S\]\*|\[\^\]\*)`;
+const RECIPE_WILDCARD_SRC = String.raw`(?:\.\*|\[\\{1,2}s\\{1,2}S\]\*|\[\^\]\*)`;
 const LEADING_WILDCARD_RE = new RegExp(`^(?:${RECIPE_WILDCARD_SRC})+`);
 const TRAILING_WILDCARD_RE = new RegExp(`(?:${RECIPE_WILDCARD_SRC})+$`);
 
@@ -1637,35 +1650,6 @@ function collectAnchorFields(apps: NovaAppSlice[]): AnchorField[] {
   return out;
 }
 
-/**
- * `stepTextMatcherSpecs` over text whose backslashes have been collapsed
- * one escaping level first.
- *
- * The probe reads RAW recipe bytes, and `RECIPE_WILDCARD_SRC` recognises
- * the one-backslash spelling `[\s\S]*`. But `\s` is not a legal escape in
- * a YAML double-quoted scalar, so the idiom `skills/app-test-cases`
- * actually emits — and that this class exists to police — is
- * `text: "[\\s\\S]*<anchor>[\\s\\S]*"`, two backslashes on disk. Left
- * un-normalised, the wildcard is not stripped, the literal never matches a
- * live Nova label, and both checks below would be structurally unable to
- * fire on any real recipe: a rail that ships green and enforces nothing.
- *
- * Collapsing is deliberately scoped to these two checks rather than folded
- * into the shared recogniser. Widening `RECIPE_WILDCARD_SRC` would also
- * re-arm `group-field-list-per-question-walk` and
- * `answer-tap-before-leading-label-advance` on recipe text they have never
- * matched — a blast radius that belongs in its own PR with its own
- * evidence, not bundled into a fix whose premise is "do not introduce a
- * new false-positive class". Tracked as ace#1583, which also carries the
- * reproducer showing `group-field-list-per-question-walk` going SILENT on
- * the two-backslash spelling and firing on the one-backslash one.
- *
- * A no-op on the one-backslash spelling, so both are handled.
- */
-function inputAnchorSpecs(blockText: string): StepTextMatcherSpec[] {
-  return stepTextMatcherSpecs(blockText.replace(/\\\\/g, '\\'));
-}
-
 /** One recognised input focus tap: a `tapOn:` carrying a `below:` anchor
  * whose IMMEDIATELY following step is an `inputText`. */
 interface InputFocusStep {
@@ -1724,7 +1708,7 @@ function findInputFocusSteps(yaml: string): InputFocusStep[] {
     if (!below) continue;
     const next = items[i + 1];
     if (!next || !/^\s*-\s+inputText:/.test(next.text)) continue;
-    const anchorSpecs = inputAnchorSpecs(below);
+    const anchorSpecs = stepTextMatcherSpecs(below);
     if (!anchorSpecs.length) continue;
     out.push({ line: items[i].startLine, stepIndex: i, anchorSpecs });
   }
@@ -1819,11 +1803,11 @@ function findGuardedInputFocusScroll(
       for (let i = 0; i < step.stepIndex; i++) {
         const text = items[i].text;
         if (!/scrollUntilVisible/.test(text)) continue;
-        const targets = inputAnchorSpecs(text).map((s) => s.text);
+        const targets = stepTextMatcherSpecs(text).map((s) => s.text);
         if (!targets.includes(spec.text)) continue;
         if (isGuardedScrollStep(text)) {
           const when = extractKeyBlock(text, 'when') ?? '';
-          if (!inputAnchorSpecs(when).some((s) => s.text === spec.text)) continue;
+          if (!stepTextMatcherSpecs(when).some((s) => s.text === spec.text)) continue;
           if (guardLine === -1) guardLine = items[i].startLine;
         } else {
           unconditional = true;

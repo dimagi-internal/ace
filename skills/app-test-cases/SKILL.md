@@ -484,8 +484,10 @@ block, both Yes/No) it is a child of two groups at once. Since ace#1548 an
 ambiguous matcher attributes to NOTHING rather than to whichever group
 enumerates first, so the check simply goes quiet on unanchored option taps.
 Keep the `below:` anchor naming the question
-(`"[\s\S]*<question label>[\s\S]*"`) on every option tap — it is what
-makes the check able to see your screen at all.
+(`"[\\s\\S]*<question label>[\\s\\S]*"` — two backslashes, as in the
+snippet above; `\s` is not a legal escape in a YAML double-quoted scalar)
+on every option tap — it is what makes the check able to see your screen
+at all.
 
 Compose each smoke recipe using the static palette pattern (one Maestro
 step per UI interaction, with `${SELECTOR:logical-name}`
