@@ -561,7 +561,16 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
        question placed before its own inputs is a defect (ace#979).
      - `constraint-locality` — always, for any form with constraints. A
        constraint must be fixable on the screen where it fires; it may
-       reference only `.` or same-repeat siblings (ace#980).
+       reference only `.` or same-repeat siblings (ace#980). **Carve-out
+       (ace#1560): a MINIMUM-rows gate must be bound OUTSIDE the repeat it
+       counts.** A constraint on a node inside a repeat is evaluated per
+       repeat INSTANCE, so at zero repetitions it never evaluates — the one
+       case the gate exists to catch. `count(/data/roster[…]) >= 1` bound on
+       a question INSIDE `/data/roster` is a same-repeat sibling reference,
+       satisfies the sentence above exactly, and is dead. Put the minimum on
+       a gate question immediately AFTER the repeat. A cap (`count(…) <= 10`)
+       is the opposite case and correctly stays inside. Verified at Step 2.8
+       by `app-release-qa` over the released binds.
      - `screen-grouping` — always, for any form that puts more than one
        question in a `group`. A group is a CommCare field-list, so its children
        share ONE scrollable screen. Multiple questions per screen is GOOD

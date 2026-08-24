@@ -42,6 +42,18 @@ import { DOMParser } from '@xmldom/xmldom';
  */
 export type ConstraintSeverity = 'blocker' | 'warn';
 
+/**
+ * `non-local` — the ace#980 class: the constraint fires on a screen where the
+ * fix lives somewhere else.
+ *
+ * `dead-repeat-cardinality-gate` — the ace#1560 class: a minimum-rows gate
+ * bound INSIDE the repeat it counts. Locality and reachability are different
+ * properties, and this shape satisfies locality exactly (a same-repeat
+ * reference) while being unreachable at the one input it exists to reject.
+ * See `findMinimumCardinalityGate`.
+ */
+export type ConstraintViolationKind = 'non-local' | 'dead-repeat-cardinality-gate';
+
 export interface ConstraintViolation {
   /** The question the constraint is bound to (its nodeset). */
   nodeset: string;
@@ -55,6 +67,13 @@ export interface ConstraintViolation {
   message?: string;
   /** How badly this traps the user. See `ConstraintSeverity`. */
   severity: ConstraintSeverity;
+  /** Which defect this is. See `ConstraintViolationKind`. */
+  kind: ConstraintViolationKind;
+  /**
+   * Set iff `kind === 'dead-repeat-cardinality-gate'`: the repeat the gate
+   * counts, and the minimum it demands.
+   */
+  deadGate?: DeadRepeatCardinalityGate;
 }
 
 export interface ConstraintLocalityReport {
@@ -65,6 +84,166 @@ export interface ConstraintLocalityReport {
 
 /** Absolute path refs: `/data/foo`, `/data/roster/member_name`. */
 const PATH_REF = /\/[A-Za-z_][\w.-]*(?:\/[A-Za-z_][\w.-]*)*/g;
+
+//
+// ---------------------------------------------------------------------------
+// Dead repeat-cardinality gates — the ZERO-ROW sibling of constraint locality.
+// ---------------------------------------------------------------------------
+//
+// Constraint locality asks "can the user fix this WHERE it fires?".
+// This asks "does it fire AT ALL on the input it exists to reject?".
+//
+// A `constraint` bound to a node inside a repeat is evaluated per repeat
+// INSTANCE. At zero repetitions that node does not exist, so nothing is
+// evaluated — `required` included. A gate meant to enforce "at least N rows",
+// placed inside the repeat it counts, is therefore dead at exactly 0 rows: the
+// one case it exists to catch.
+//
+// Why it slipped through: `_app-component-library.md § constraint-locality`
+// licenses "only `.` or same-repeat siblings", and `count(/data/roster[...])`
+// from inside `/data/roster` IS a same-repeat reference. Locality and
+// reachability are different properties, and only the first was checked.
+//
+// Origin: dimagi-internal/ace#1560 — `hh-poverty-targeting/20260819-1435`,
+// Deliver app 8c57579d-bc5a-40df-8e60-0c26d030bb38, released build v5:
+//
+//   <bind nodeset="/data/roster/member_confirm" required="true()"
+//         constraint="count(/data/roster[member_confirm = 'yes']) >= 1"/>
+//
+// A completed visit with an EMPTY roster was submittable, so
+// `i2_household_size` derived 0 and the PPI card forfeited its largest single
+// indicator (31 points) with nothing on screen to betray it. Invisible to a
+// device walk for the same reason it is invisible to the FLW.
+//
+// Verified against the runtime, not intuition (2026-08-23, ace#1560): the
+// bind above, played through upstream `commcare-cli.jar`
+// (`org.javarosa.engine.XFormPlayer`) with the repeat declined at "Add new
+// repeat?", completed form entry and emitted
+// `<data><i2_household_size>0</i2_household_size>…</data>`. The same rule moved
+// to a node AFTER the repeat blocked entry on the same walk with
+// `Input yes is invalid! At least one confirmed member is required.` — which is
+// exactly the remedy this check names.
+//
+// Deliberately NARROW. Only a LOWER bound (`>= N` / `> N` and their reversed
+// forms) is a minimum-rows gate. An UPPER bound (`count(...) <= 10`) inside the
+// repeat is correctly placed — it fires as the worker adds the row that breaks
+// it — and must never be flagged, or every future app carrying a capped repeat
+// false-halts.
+//
+
+/** A minimum-rows gate found in a constraint expression. */
+export interface DeadRepeatCardinalityGate {
+  /** The repeat the `count()` counts (its nodeset). */
+  repeat: string;
+  /** The `count(...)` argument exactly as written. */
+  countArg: string;
+  /** The comparison exactly as written, e.g. `>= 1`. */
+  comparison: string;
+  /** Fewest rows the gate demands. Always >= 1 (that is what makes it dead). */
+  minimumRows: number;
+}
+
+/**
+ * Find the end index (exclusive) of a parenthesised argument list whose
+ * opening `(` sits at `open`. Quote-aware, so `count(/data/r[x = ')'])` does
+ * not terminate early. Returns -1 when unbalanced.
+ */
+function matchingParen(expr: string, open: number): number {
+  let depth = 0;
+  let quote: string | null = null;
+  for (let i = open; i < expr.length; i++) {
+    const c = expr[i];
+    if (quote) {
+      if (c === quote) quote = null;
+      continue;
+    }
+    if (c === "'" || c === '"') {
+      quote = c;
+      continue;
+    }
+    if (c === '(') depth++;
+    else if (c === ')') {
+      depth--;
+      if (depth === 0) return i + 1;
+    }
+  }
+  return -1;
+}
+
+/** True when a `count()` argument counts nodes of `repeat` itself. */
+function countsRepeat(countArg: string, repeat: string): boolean {
+  const arg = countArg.trim();
+  if (arg === repeat) return true;
+  // `/data/roster[...]`, `/data/roster/member_confirm`, `/data/roster/x[...]`
+  return arg.startsWith(repeat + '[') || arg.startsWith(repeat + '/');
+}
+
+/**
+ * Return the minimum-rows gate a constraint places on `repeat`, or `undefined`
+ * when the expression carries none.
+ *
+ * Recognised (all establish a floor of at least one row):
+ *
+ *   count(<repeat…>) >= N   with N >= 1
+ *   count(<repeat…>) >  N   with N >= 0
+ *   N <= count(<repeat…>)   with N >= 1
+ *   N <  count(<repeat…>)   with N >= 0
+ *
+ * NOT recognised, on purpose: any UPPER bound (`<=`, `<`, and the reversed
+ * `>=` / `>` forms), which is a cap rather than a minimum and belongs inside
+ * the repeat; and `= N`, which pairs a floor with a cap — moving it out would
+ * trade a real defect for a UX regression on the cap half, so it stays out of
+ * scope rather than being half-handled here.
+ *
+ * Exported so the boundary is directly testable without building a form.
+ */
+export function findMinimumCardinalityGate(
+  constraint: string,
+  repeat: string,
+): DeadRepeatCardinalityGate | undefined {
+  const COUNT = /\bcount\s*\(/g;
+  for (const m of Array.from(constraint.matchAll(COUNT))) {
+    const open = m.index! + m[0].length - 1;
+    const close = matchingParen(constraint, open);
+    if (close < 0) continue;
+    const countArg = constraint.slice(open + 1, close - 1);
+    if (!countsRepeat(countArg, repeat)) continue;
+
+    // Forward form: count(...) >= N   /   count(...) > N
+    const after = constraint.slice(close).match(/^\s*(>=|>)\s*(\d+(?:\.\d+)?)/);
+    if (after) {
+      const n = Number(after[2]);
+      const minimumRows = after[1] === '>=' ? Math.ceil(n) : Math.floor(n) + 1;
+      if (minimumRows >= 1) {
+        return {
+          repeat,
+          countArg,
+          comparison: `${after[1]} ${after[2]}`,
+          minimumRows,
+        };
+      }
+      continue;
+    }
+
+    // Reversed form: N <= count(...)   /   N < count(...)
+    const before = constraint
+      .slice(0, m.index!)
+      .match(/(\d+(?:\.\d+)?)\s*(<=|<)\s*$/);
+    if (before) {
+      const n = Number(before[1]);
+      const minimumRows = before[2] === '<=' ? Math.ceil(n) : Math.floor(n) + 1;
+      if (minimumRows >= 1) {
+        return {
+          repeat,
+          countArg,
+          comparison: `${before[1]} ${before[2]}`,
+          minimumRows,
+        };
+      }
+    }
+  }
+  return undefined;
+}
 
 function lastSegment(path: string): string {
   const parts = path.split('/').filter(Boolean);
@@ -187,6 +366,21 @@ function buildScreenMap(doc: Document): Map<string, string> {
   return screens;
 }
 
+/**
+ * The bind's constraint message, with `jr:itext('...')` resolved so a report
+ * quotes the real instruction rather than an itext id.
+ */
+function resolveConstraintMessage(
+  b: { getAttribute(name: string): string | null },
+  itext: Map<string, string>,
+): string | undefined {
+  const raw =
+    b.getAttribute('jr:constraintMsg') ?? b.getAttribute('constraintMsg') ?? undefined;
+  if (!raw) return undefined;
+  const itextId = raw.match(ITEXT_REF)?.[1];
+  return itextId ? (itext.get(itextId) ?? raw) : raw;
+}
+
 function isFieldList(el: Element): boolean {
   const appearance = el.getAttribute('appearance') ?? '';
   return appearance.split(/\s+/).includes('field-list');
@@ -228,7 +422,9 @@ function referencesOwnNode(constraint: string, nodeset: string): boolean {
  *  - `.` / `selected-at(., 3)` — the question itself.
  *  - the question's own descendants (a repeat constraining its children).
  *  - a same-repeat sibling, or the enclosing repeat itself (the user is
- *    inside that repeat and can add/edit rows from there).
+ *    inside that repeat and can add/edit rows from there) — EXCEPT a
+ *    minimum-rows gate over that same repeat, which is local and still dead at
+ *    zero rows (ace#1560); see `findMinimumCardinalityGate`.
  *  - a calculate over constants, or over questions that are themselves local.
  *
  * Non-local (reported): any reference — direct or via a calculate — to a
@@ -336,6 +532,26 @@ export function checkConstraintLocality(xml: string): ConstraintLocalityReport {
     const ownScreen = screens.get(nodeset);
     const foreign = new Set<string>();
 
+    // A minimum-rows gate bound inside the repeat it counts never evaluates at
+    // zero repetitions — the one input it exists to reject (ace#1560). Checked
+    // BEFORE the locality pass because the two are independent: this shape is
+    // perfectly local and still dead. A bind can therefore raise both.
+    const deadGate = ownRepeat
+      ? findMinimumCardinalityGate(constraint, ownRepeat)
+      : undefined;
+    if (deadGate) {
+      violations.push({
+        nodeset,
+        fieldId: lastSegment(nodeset),
+        constraint,
+        foreignRefs: [ownRepeat],
+        message: resolveConstraintMessage(b, itext),
+        severity: 'blocker',
+        kind: 'dead-repeat-cardinality-gate',
+        deadGate,
+      });
+    }
+
     for (const ref of resolveRefs(constraint)) {
       if (ref === nodeset) continue; // itself, spelled absolutely
       if (ref.startsWith(nodeset + '/')) continue; // own descendant
@@ -357,21 +573,14 @@ export function checkConstraintLocality(xml: string): ConstraintLocalityReport {
     }
 
     if (foreign.size > 0) {
-      const raw =
-        b.getAttribute('jr:constraintMsg') ??
-        b.getAttribute('constraintMsg') ??
-        undefined;
-      // Resolve `jr:itext('...')` so the report quotes the real instruction.
-      let msg = raw ?? undefined;
-      const itextId = raw?.match(ITEXT_REF)?.[1];
-      if (itextId) msg = itext.get(itextId) ?? raw ?? undefined;
       violations.push({
         nodeset,
         fieldId: lastSegment(nodeset),
         constraint,
         foreignRefs: Array.from(foreign),
-        message: msg,
+        message: resolveConstraintMessage(b, itext),
         severity: referencesOwnNode(constraint, nodeset) ? 'warn' : 'blocker',
+        kind: 'non-local',
       });
     }
   }
@@ -388,18 +597,29 @@ export function formatConstraintLocalityReport(
   }
   const blockers = report.violations.filter((v) => v.severity === 'blocker');
   const warnings = report.violations.filter((v) => v.severity === 'warn');
-  const lines = report.violations.map(
-    (v) =>
+  const lines = report.violations.map((v) => {
+    const msg = v.message ? ` (msg: "${v.message}")` : '';
+    if (v.kind === 'dead-repeat-cardinality-gate') {
+      const g = v.deadGate!;
+      return (
+        `  [BLOCKER] ${v.fieldId}: cardinality gate \`count(${g.countArg}) ` +
+        `${g.comparison}\` demands >= ${g.minimumRows} row(s) but is bound INSIDE ` +
+        `${g.repeat}, so it never evaluates at zero repetitions — move the gate ` +
+        `to a question immediately after the repeat${msg}`
+      );
+    }
+    return (
       `  [${v.severity.toUpperCase()}] ${v.fieldId}: constraint references ` +
       `${v.foreignRefs.join(', ')} — ` +
       (v.severity === 'blocker'
         ? 'not editable on this screen'
         : 'on another screen, but satisfiable by changing this answer') +
-      `${v.message ? ` (msg: "${v.message}")` : ''}`,
-  );
+      msg
+    );
+  });
   const header =
     blockers.length > 0
-      ? `constraint-locality: FAIL (${blockers.length} of ${report.constraintsChecked} constraint(s) non-local` +
+      ? `constraint-locality: FAIL (${blockers.length} of ${report.constraintsChecked} constraint(s) unenforceable as bound` +
         (warnings.length > 0 ? `; ${warnings.length} cross-screen warning(s)` : '') +
         ')'
       : `constraint-locality: WARN (${warnings.length} of ${report.constraintsChecked} constraint(s) cross a screen boundary but are fixable in place)`;
