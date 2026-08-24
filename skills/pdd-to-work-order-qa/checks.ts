@@ -46,6 +46,42 @@ function escapeRegExp(s: string): string {
 }
 
 /**
+ * Matches a backslash escaping any ASCII punctuation character — the
+ * CommonMark escapable set, which is what Drive's markdown exporter emits.
+ *
+ * The CommonMark escapable set; the ones actually observed in a real ACE
+ * work-order export (`1_Dzp2ND_qDI2m9hMr_q2qf2VIIUsbR11ElM4cNRHQww`,
+ * revision 11, captured 2026-08-23) are `\_` (118x), `\.` (9x), `\]` (8x),
+ * `\[` (8x) and `\#` (2x).
+ */
+const MD_ESCAPABLE_PUNCT = /\\([\u0021-\u002F\u003A-\u0040\u005B-\u0060\u007B-\u007E])/g;
+
+/**
+ * Strip Google Drive markdown-export escaping so the checks below match the
+ * same document regardless of which `exportAs` the caller used.
+ *
+ * WHY THIS EXISTS: every matcher in this file was written against the
+ * `text/plain` gdoc export, which is the format `SKILL.md` § Process step 1
+ * mandates. Drive's `text/markdown` export escapes markdown-significant
+ * characters, so `## 1. Background` arrives as `## **1\. Background**` and
+ * `[TBD]` as `\[TBD\]` — defeating the heading, section and placeholder
+ * matchers at once. On a real, CORRECT work order that turned 9/9 into 4/9,
+ * and the resulting `auto_fix_hint`s told the producer to regenerate a sound
+ * contract to fix a reader bug (dimagi-internal/ace#1609).
+ *
+ * `SKILL.md` naming the export format is the fix; this is the preventer, so
+ * the reader's format stops being load-bearing and the two sibling QA skills
+ * (this one wants text/plain, `idea-to-pdd-qa` REQUIRES text/markdown)
+ * cannot silently drift into each other again.
+ *
+ * Normalisation is applied for MATCHING only — reported `detail` strings are
+ * taken from the normalised text, which is also what a human wants to read.
+ */
+export function normalizeDriveExport(text: string): string {
+  return text.replace(MD_ESCAPABLE_PUNCT, '$1');
+}
+
+/**
  * Check 1: All 11 required work-order sections are present.
  *
  * Heading-match tolerance (intentional — real work orders vary):
@@ -55,7 +91,8 @@ function escapeRegExp(s: string): string {
  *   ✓ case variation:   `## background`
  *   ✗ truncated:        `## Backgrd`
  */
-export function checkAllRequiredSectionsPresent(wo: string): QACheckResult {
+export function checkAllRequiredSectionsPresent(raw: string): QACheckResult {
+  const wo = normalizeDriveExport(raw);
   const missing: string[] = [];
   for (const section of REQUIRED_SECTIONS) {
     // Match a section-heading line. Accepts BOTH:
@@ -66,7 +103,7 @@ export function checkAllRequiredSectionsPresent(wo: string): QACheckResult {
       // Tolerate leading whitespace — gdoc plain-text export tab-indents
       // section headings that abut a preceding table (sections 1, Signatures,
       // Annexures in the work-order template).
-      `^\\s*(?:#{2,3}\\s+)?(?:\\d+(?:\\.\\d+)?\\.?\\s+)?(?:\\*\\*)?${escapeRegExp(section)}\\b`,
+      `^\\s*(?:#{2,3}\\s+)?(?:\\*\\*)?(?:\\d+(?:\\.\\d+)?\\.?\\s+)?(?:\\*\\*)?${escapeRegExp(section)}\\b`,
       'mi',
     );
     if (!re.test(wo)) {
@@ -118,7 +155,8 @@ export function checkRequiredWoDecisionsPresent(decisionsYaml: string): QACheckR
  * Check 3: Period of Performance has both start + end dates (`YYYY-MM-DD to YYYY-MM-DD`)
  * OR an explicit `[...]` placeholder. Scaffolding `{{...}}` markers fail.
  */
-export function checkPeriodOfPerformanceComplete(wo: string): QACheckResult {
+export function checkPeriodOfPerformanceComplete(raw: string): QACheckResult {
+  const wo = normalizeDriveExport(raw);
   // Find the Period of Performance value. Tries two layouts:
   //   - markdown table:  `| Period of Performance | 2026-05-22 to 2026-07-31 |`
   //   - gdoc plain text: `Period of Performance\n\t2026-05-22 to 2026-07-31` (label
@@ -164,7 +202,8 @@ export function checkPeriodOfPerformanceComplete(wo: string): QACheckResult {
  * mixed. Section 6.2 might be `### 6.2 Payment Schedule` (subsection of § 6) so
  * the extractor matches either heading level.
  */
-export function checkPaymentScheduleSumsTo100(wo: string): QACheckResult {
+export function checkPaymentScheduleSumsTo100(raw: string): QACheckResult {
+  const wo = normalizeDriveExport(raw);
   const body = extractNumberedSection(wo, '6.2');
   if (body === null) {
     return {
@@ -198,7 +237,8 @@ export function checkPaymentScheduleSumsTo100(wo: string): QACheckResult {
  *
  * Accepts `USD 2500`, `USD 2,500`, `USD [TBD]`. Rejects bare `USD ` with nothing after.
  */
-export function checkTotalNtePresent(wo: string): QACheckResult {
+export function checkTotalNtePresent(raw: string): QACheckResult {
+  const wo = normalizeDriveExport(raw);
   const body = extractNumberedSection(wo, '6.1');
   if (body === null) {
     return {
@@ -227,7 +267,8 @@ export function checkTotalNtePresent(wo: string): QACheckResult {
  * The bold-marker pattern is the canonical template form. Flexible to allow
  * `## Subcontractor` style headings as well.
  */
-export function checkSignatureBlocksPresent(wo: string): QACheckResult {
+export function checkSignatureBlocksPresent(raw: string): QACheckResult {
+  const wo = normalizeDriveExport(raw);
   // Accept four forms for each label:
   //   - bold form           `**Subcontractor**`
   //   - markdown heading     `## Subcontractor`
@@ -241,12 +282,23 @@ export function checkSignatureBlocksPresent(wo: string): QACheckResult {
   // that line (the trailing tab + the other label aren't whitespace-then-EOL),
   // so we match each label as a standalone token bounded by line-start-or-tab on
   // the left and tab-or-line-end on the right. See jjackson/ace#706.
+  //
+  // `|` joins `\t` as a cell delimiter so the markdown export of that same
+  // table (`| Subcontractor | Dimagi, Inc. |`) matches too — the doc is the
+  // same, only `exportAs` differs (dimagi-internal/ace#1609).
+  //
+  // The CELL-delimited Dimagi alternative requires the full `Dimagi, Inc.`
+  // legal name, unlike the bold/heading ones. Allowing bare `Dimagi` in a
+  // table cell made the Roles and Responsibilities header row
+  // (`| Activity | Partner | Dimagi |`) read as a signature block, so a work
+  // order with its signature section deleted still passed. A signature block
+  // names the legal entity; a responsibilities column header does not.
   const hasSub =
-    /\*\*\s*Subcontractor\s*\*\*|^#{1,3}\s+Subcontractor\b|(?:^|\t)[ \t]*Subcontractor[ \t]*(?:\t|$)/im.test(
+    /\*\*\s*Subcontractor\s*\*\*|^#{1,3}\s+Subcontractor\b|(?:^|\t|\|)[ \t]*Subcontractor[ \t]*(?:\t|\||$)/im.test(
       wo,
     );
   const hasDimagi =
-    /\*\*\s*Dimagi(?:,\s*Inc\.?)?\s*\*\*|^#{1,3}\s+Dimagi(?:,\s*Inc\.?)?\b|(?:^|\t)[ \t]*Dimagi(?:,\s*Inc\.?)?[ \t]*(?:\t|$)/im.test(
+    /\*\*\s*Dimagi(?:,\s*Inc\.?)?\s*\*\*|^#{1,3}\s+Dimagi(?:,\s*Inc\.?)?\b|(?:^|\t|\|)[ \t]*Dimagi,\s*Inc\.?[ \t]*(?:\t|\||$)/im.test(
       wo,
     );
   const missing: string[] = [];
@@ -275,12 +327,13 @@ export function checkSignatureBlocksPresent(wo: string): QACheckResult {
  * Pass `null`/`undefined` to skip the check entirely (returns pass with a note).
  */
 export function checkArchetypeAppropriateScope(
-  wo: string,
+  raw: string,
   archetype?: string | null,
 ): QACheckResult {
   if (!archetype) {
     return { pass: true, detail: 'archetype not provided; skip' };
   }
+  const wo = normalizeDriveExport(raw);
   const scope = extractNumberedSection(wo, '2') ?? wo;
   const missing: string[] = [];
   if (archetype === 'atomic-visit') {
@@ -342,7 +395,8 @@ export function checkArchetypeAppropriateScope(
  *    regen-blocking as a leaked `<<...>>` and previously slipped through
  *    because only `<<...>>` was matched (jjackson/ace#833).
  */
-export function checkNoScaffoldingMarkers(wo: string): QACheckResult {
+export function checkNoScaffoldingMarkers(raw: string): QACheckResult {
+  const wo = normalizeDriveExport(raw);
   const matches = [...(wo.match(/<<[^>]*>>/g) || []), ...(wo.match(/\{\{[^}]*\}\}/g) || [])];
   if (matches.length === 0) return { pass: true };
   const dedup = Array.from(new Set(matches));
@@ -435,7 +489,8 @@ const RENDERER_TELLS: Array<{ find: (wo: string) => string | null; why: string }
   },
 ];
 
-export function checkNoRendererInstructions(wo: string): QACheckResult {
+export function checkNoRendererInstructions(raw: string): QACheckResult {
+  const wo = normalizeDriveExport(raw);
   const findings: string[] = [];
   for (const { find, why } of RENDERER_TELLS) {
     const hit = find(wo);
@@ -473,7 +528,7 @@ function extractNumberedSection(wo: string, number: string): string | null {
   const headingRe = new RegExp(
     // Tolerate leading whitespace (gdoc plain-text export indents some
     // headings with `\t` when they abut a table).
-    `^\\s*(?:${hashes}\\s+)?${escapeRegExp(number)}(?:\\.|\\s)[^\\n]*$`,
+    `^\\s*(?:${hashes}\\s+)?(?:\\*\\*)?${escapeRegExp(number)}(?:\\.|\\s)[^\\n]*$`,
     'mi',
   );
   const headingMatch = wo.match(headingRe);
@@ -496,7 +551,7 @@ function extractNumberedSection(wo: string, number: string): string | null {
     //   depth=3 (subsection): `^\d+\.\d+\s` OR `^\d+\.\s` (matches `6.2 …` or `7. …`)
     depth === 3 ? `\\d+\\.\\d+\\s|\\d+\\.\\s` : `\\d+\\.\\s`,
   ];
-  const stopRe = new RegExp(`^\\s*(?:${stopAlternatives.join('|')})`, 'm');
+  const stopRe = new RegExp(`^\\s*(?:\\*\\*)?(?:${stopAlternatives.join('|')})`, 'm');
   const nextHeadingMatch = tail.match(stopRe);
   const bodyEnd =
     nextHeadingMatch && nextHeadingMatch.index !== undefined

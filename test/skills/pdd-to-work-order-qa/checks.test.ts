@@ -20,6 +20,7 @@ import {
   checkArchetypeAppropriateScope,
   checkNoScaffoldingMarkers,
   checkNoRendererInstructions,
+  normalizeDriveExport,
   CHECKS,
 } from '../../../skills/pdd-to-work-order-qa/checks';
 
@@ -37,6 +38,20 @@ const MISSING_WO_DECISIONS = readFileSync(join(FIXTURES, 'missing-wo-decisions.y
 // Captured 2026-05-21 from malaria-itn-app/20260521-1025. Lines use \r\n
 // endings; headings have no `##` prefix; tables use tab separators.
 const GDOC_WO = readFileSync(join(FIXTURES, 'gdoc-work-order.txt'), 'utf8');
+
+// The SAME work order as a `text/markdown` gdoc export — Drive's markdown
+// exporter escapes markdown-significant punctuation and renders tables as
+// pipe tables. Captured 2026-08-23 from the live artifact
+// `1_Dzp2ND_qDI2m9hMr_q2qf2VIIUsbR11ElM4cNRHQww` (revision 11) named in
+// dimagi-internal/ace#1609 — real ground truth, not a hand-written
+// approximation of Drive's escaping rules.
+const GDOC_WO_MARKDOWN = readFileSync(join(FIXTURES, 'gdoc-work-order-markdown.txt'), 'utf8');
+
+// The SAME document again, via the `text/plain` export the skill mandates —
+// the paired half of the fixture above. Both were captured from revision 11
+// in the same breath, so any check that disagrees between the two is
+// disagreeing about the EXPORT, never about the content.
+const GDOC_WO_PLAIN = readFileSync(join(FIXTURES, 'gdoc-work-order-plain.txt'), 'utf8');
 const GDOC_DECISIONS = readFileSync(join(FIXTURES, 'gdoc-decisions.txt'), 'utf8');
 
 describe('checkAllRequiredSectionsPresent', () => {
@@ -525,5 +540,74 @@ describe('no renderer instructions in the delivered contract (#1004)', () => {
 
   test('passes the good fixture — this must not become the always-fires check', () => {
     expect(checkNoRendererInstructions(GOOD_WO).pass).toBe(true);
+  });
+});
+
+// ── Export-format independence (dimagi-internal/ace#1609) ──────────
+//
+// `SKILL.md` § Process step 1 mandates `exportAs: 'text/plain'`. Its sibling
+// QA skill `idea-to-pdd-qa` mandates the OPPOSITE (`text/markdown`, REQUIRED),
+// and both run in the same Phase 1 — so an agent carrying the sibling's
+// convention across reads the work order as markdown.
+//
+// When it did, this document — which is CORRECT and scores 9/9 on the
+// text/plain export — scored 4/9, and the five spurious failures' auto_fix
+// hints instructed the producer to regenerate a sound contract to fix a
+// reader bug. These tests pin the CLASS: the checks must agree on the same
+// document regardless of which export the caller used.
+describe('export-format independence (ace#1609)', () => {
+  const ctx = { decisionsYaml: GDOC_DECISIONS, archetype: 'longitudinal-visits' };
+
+  test('normalizeDriveExport strips markdown-export punctuation escaping', () => {
+    expect(normalizeDriveExport('## **1\\. Background**')).toBe('## **1. Background**');
+    expect(normalizeDriveExport('\\[Start\\] to \\[End \\+ 8 weeks\\]')).toBe(
+      '[Start] to [End + 8 weeks]',
+    );
+    expect(normalizeDriveExport('run\\_id')).toBe('run_id');
+  });
+
+  test('leaves a non-punctuation escape alone (not a markdown escape)', () => {
+    expect(normalizeDriveExport('a\\nb')).toBe('a\\nb');
+  });
+
+  test('the markdown export of a healthy work order passes every check', async () => {
+    const failures: string[] = [];
+    for (const check of CHECKS) {
+      if (!(await check.run(GDOC_WO_MARKDOWN, ctx)).pass) failures.push(check.id);
+    }
+    expect(failures).toEqual([]);
+  });
+
+  test('markdown and plain-text exports of the same document agree check-for-check', async () => {
+    for (const check of CHECKS) {
+      expect(
+        (await check.run(GDOC_WO_MARKDOWN, ctx)).pass,
+        `${check.id} disagrees between the markdown and plain-text exports`,
+      ).toBe((await check.run(GDOC_WO_PLAIN, ctx)).pass);
+    }
+  });
+
+  test.each([
+    ['all_required_sections_present', checkAllRequiredSectionsPresent],
+    ['period_of_performance_complete', checkPeriodOfPerformanceComplete],
+    ['payment_schedule_sums_to_100', checkPaymentScheduleSumsTo100],
+    ['total_nte_present', checkTotalNtePresent],
+    ['signature_blocks_present', checkSignatureBlocksPresent],
+  ] as const)(
+    '%s passes on the markdown export (was a spurious blocker pre-fix)',
+    (_id, fn) => {
+      expect(fn(GDOC_WO_MARKDOWN).pass).toBe(true);
+    },
+  );
+
+  // The pipe-cell tolerance added for the markdown signature table must not
+  // turn the Roles and Responsibilities header row (`| Activity | Partner |
+  // Dimagi |`) into a signature block.
+  test('a pipe-table cell naming bare "Dimagi" is not a signature block', () => {
+    const r = checkSignatureBlocksPresent(
+      '## Roles and Responsibilities\n| Activity | Partner | Dimagi |\n| Recruit | Yes | No |\n',
+    );
+    expect(r.pass).toBe(false);
+    expect(r.detail).toMatch(/Dimagi/i);
   });
 });
