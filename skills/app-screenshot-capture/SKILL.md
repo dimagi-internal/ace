@@ -223,9 +223,16 @@ Inputs the caller assembles:
   blueprint prints `[uuid …]` on every module, form, and field — see
   `playbook/integrations/nova-integration.md § The 2026-07-31
   uuid-addressing migration`), mapped onto `forms[].fields[]` as
-  `{id, kind, label, options, children, relevant}` — include each
+  `{id, kind, label, hint, options, children, relevant}` — include each
   field's `relevant` when Nova reports one; its PRESENCE on trailing
   labels is what arms `score-gated-quiz-over-advance` (ace#1118).
+  **Include each field's `hint`** (flattened to its rendered text, the
+  same way `label` is) — CommCare renders `label -> hint -> EditText`, so
+  the hint is what a field-list input's focus anchor must name, and it is
+  what arms `input-anchor-skips-hint` (ace#1554/#1299). **OMIT the key
+  for a field with no hint; never pass `""` to mean "none"** — the check
+  reads only fields that positively carry a hint, so under-supplying
+  degrades to a no-op rather than to a false "this field has no hint".
   Optional, but supplying fields is what makes the probe
   **screen-shape aware**: it turns on the `label`-screen carve-out
   (#858), the `group-field-list-per-question-walk` check (#862), the
@@ -254,6 +261,8 @@ remediation):
 | `form-advance-without-answer-tap` | Recipe chains consecutive form-advance steps with no answer step between them — required-input questions will stall on `warning_root`. Re-author via `/ace:step app-test-cases`: for each required field, read its label/options via Nova `get_form` and emit a `tapOn:text:"<literal>"` (or `inputText` / photo-capture sequence) BEFORE the form-advance. **Label-aware when `fields` is supplied:** `label` screens have nothing to answer and can only be crossed by nav-next, so the threshold is (longest run of consecutive `label` screens) + 2. Without `fields` it stays at 2 and false-positives on label-heavy apps (#858). |
 | `score-gated-quiz-over-advance` | Recipe chains a bare `form-advance` between the last required answer and `form-submit` on a **score-gated quiz** (trailing `relevant`-gated result labels, #569). `form-submit.yaml` performs the answer→result advance ITSELF, so the extra advance leaves it tapping `nav_btn_next` on the FINISH-only result screen. Remove the explicit advance (ungated trailing label screens each license one); re-author via `/ace:step app-test-cases` (ace#1118). Field-gated: inert without `fields`, and needs `relevant` on the trailing labels. |
 | `group-field-list-per-question-walk` | Recipe advances the form BETWEEN two children of the same Nova `group`. A group compiles to a CommCare **field-list** — all children render on ONE scrollable screen — so the advance fires with required siblings still unanswered (`warning_root`) and reaches for options that may be off-screen. Re-author via `/ace:step app-test-cases` as a single-screen walk: answer every required child on the one screen, then exactly ONE trailing form-advance (#862). |
+| `input-anchor-skips-hint` | A field-list input focus tap (`tapOn: below:` + `inputText`) anchors on the QUESTION LABEL of a field that carries a `hint`. CommCare renders `label -> hint -> EditText`, so `below: <question label>` resolves to the hint TextView; tapping a TextView moves no focus, the tap reports success, and the value appends into whatever was focused before — **silent data corruption, not a failed leg** (`cbf_name = "Thandiwe Banda0991234567"` with a required `phone_number` empty, `spark-facilitator/20260813-2126`). Anchor on the hint instead, in BOTH the centring scroll and the `below:`; re-author via `/ace:step app-test-cases` (ace#1299 § 1, ace#1554). **Hint-gated:** reads only fields that positively carry a `hint`, so it is a no-op when hints were not supplied (`observed.hint_data_supplied: false`). |
+| `input-focus-scroll-is-guarded` | The centring scroll onto a field-list input's focus anchor is wrapped in `when: notVisible: <that same anchor>`. The real failure is *"anchor visible, its `EditText` still below the fold"*, which that guard is structurally blind to — so no scroll fires and the tap lands off-target. Per ace#1299 § 2 this is "the more important half of the bug" (all 14 inputs of that run, wrong-anchored or not). Make the scroll **unconditional** (`speed: 30`, `centerElement: true`); guarded scrolls stay correct only where the anchor IS the tap target, e.g. an option label (ace#1070). Needs no field data — the defect is pure recipe shape. |
 | `brief-label-drift` | Recipe has a `tapOn:text:"X"` matcher where X matches a PDD-brief naming pattern (`^[LFM]\d+ — `, `^Stage \d+ — `). Nova rewrites these during autobuild and the matcher won't resolve live. Re-author via `/ace:step app-test-cases`: read the live label from Nova `get_form`/`get_module` and use it verbatim. |
 | `deliver-smoke-rewalks-learn` | Re-author the Deliver smoke as resume-only (`connect-resume-opp` → `deliver-launch.yaml`) via `/ace:step app-test-cases`. The Learn leg already completes Learn. |
 
@@ -268,6 +277,12 @@ WARN rather than an unqualified pass:
   `group-field-list-per-question-walk` and
   `answer-tap-before-leading-label-advance` could not fire at all. Name
   the missing `nova_get_form` call.
+- `hint_data_supplied: false` — no supplied field carried a `hint`, so
+  `input-anchor-skips-hint` never ran (ace#1554). Deliberately NOT a
+  `warnings[]` entry: unlike the two below, a `false` here is ambiguous
+  between "the caller omitted hints" and "no question in this app has
+  one", and the latter is a common, legitimately clean state. Report it
+  as a caveat only when the walked forms plausibly carry hints.
 - `module_form_checks_ran: false` — no recipe bound a readable
   `MODULE_NAME`, so `expected-module-not-in-app` and
   `expected-form-not-in-module` never ran (ace#1068). The probe now emits
