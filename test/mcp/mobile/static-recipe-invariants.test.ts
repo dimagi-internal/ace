@@ -1646,3 +1646,138 @@ describe('tile-discovery scroll budgets stay in lockstep (#1289)', () => {
     }
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────
+// CLASS-LEVEL PREVENTER — a Learn finalize/re-entry PAIR must agree on the
+// surface between them, and the skill must name the discriminator
+//
+// dimagi-internal/ace#1566 (the finalize half of #1071). `app-test-cases`
+// carried two sibling sections that disagreed. § Suite re-entry between
+// modules branched on `get_form().post_submit` (that was the #1071 fix);
+// § Multi-screen content forms prescribed `content-form-finish.yaml`
+// UNCONDITIONALLY. But `content-form-finish.yaml` guards its whole bounded
+// advance loop on `notVisible: learn-home-start-tile` and terminates on
+// `assertVisible: learn-home-start-tile` — a home-grid surface that is
+// simply not where a `post_submit: previous` form (Nova's default) lands.
+// It finalizes to the module's own form list, one level inside the suite.
+//
+// Cost: the walk burns its 12 bounded advance slots doing nothing and dies
+// on `Assertion is false: "Start" is visible` — Learn never reaches 100%,
+// Connect never unlocks Deliver, Phase 6 lands `verdict: blocked` with zero
+// Deliver screenshots. Live on bednet-check-2-visit/20260820-0832 (2
+// modules, 5 forms, all `previous`); the re-entry half of the same
+// signature was live on spark-facilitator/20260728-1338 (#1071).
+//
+// The prose fix is the instance fix. THIS is the class fix, and it is
+// DERIVED from the palette rather than restated:
+//
+//   1. A finalize recipe's EXIT anchor is its LAST ${SELECTOR:…}; a
+//      re-entry recipe's ENTRY anchor is its FIRST. A composed pair is
+//      correct iff those two anchors are the same surface. Any yaml block
+//      in the skill that chains a mismatched pair is the #1071/#1566 bug,
+//      whichever half is wrong.
+//   2. The home-anchored finalize is only ever correct for one value of
+//      `post_submit`, so any section prescribing it must name the field AND
+//      name the counterpart recipe — otherwise an author reading that
+//      section alone routes a `previous` app into a recipe that cannot
+//      terminate, which is exactly what happened.
+//
+// Adding a third Learn shape = add its finalize/re-entry pair to the
+// palette; the derivation picks it up and this stays honest.
+// ─────────────────────────────────────────────────────────────────────────
+describe('home-anchored finalize is post_submit-gated (ace#1566)', () => {
+  const SKILL_PATH = fileURLToPath(
+    new URL('../../../skills/app-test-cases/SKILL.md', import.meta.url),
+  );
+  const skill = readFileSync(SKILL_PATH, 'utf8');
+
+  const FINALIZE_RECIPES = ['content-form-finish.yaml', 'content-form-finish-to-suite.yaml'];
+  const REENTRY_RECIPES = ['learn-suite-reentry.yaml', 'learn-suite-reentry-from-module.yaml'];
+
+  /** Every selector placeholder in a palette file, comments stripped, in order. */
+  function selectorRefs(filename: string): string[] {
+    const body = stripComments(readFileSync(`${STATIC_DIR}${filename}`, 'utf8'));
+    return [...body.matchAll(/\$\{SELECTOR:([a-z0-9-]+)\}/g)].map((m) => m[1]);
+  }
+
+  /** Where the recipe leaves the device: its last selector reference. */
+  const exitAnchor = (f: string) => selectorRefs(f).at(-1)!;
+  /** What the recipe expects on entry: its first selector reference. */
+  const entryAnchor = (f: string) => selectorRefs(f)[0];
+
+  it('the two finalize recipes leave the device on DIFFERENT surfaces (sanity)', () => {
+    expect(exitAnchor('content-form-finish.yaml')).toBe('learn-home-start-tile');
+    expect(exitAnchor('content-form-finish-to-suite.yaml')).toBe('learn-suite-menu');
+  });
+
+  it('the two re-entry recipes expect DIFFERENT surfaces on entry (sanity)', () => {
+    expect(entryAnchor('learn-suite-reentry.yaml')).toBe('learn-home-start-tile');
+    expect(entryAnchor('learn-suite-reentry-from-module.yaml')).toBe('learn-suite-menu');
+  });
+
+  it('every finalize-to-re-entry pair the skill composes agrees on the surface between them', () => {
+    const blocks = [...skill.matchAll(/```yaml\n([\s\S]*?)```/g)].map((m) => m[1]);
+    const composed = (block: string, recipe: string) => block.includes(`file: ${recipe}`);
+
+    let checked = 0;
+    for (const block of blocks) {
+      const finalize = FINALIZE_RECIPES.filter((r) => composed(block, r));
+      const reentry = REENTRY_RECIPES.filter((r) => composed(block, r));
+      if (finalize.length === 0 || reentry.length === 0) continue;
+
+      expect(
+        finalize.length,
+        `a yaml block composes two finalize recipes (${finalize.join(', ')}) — one block, one shape`,
+      ).toBe(1);
+      expect(
+        reentry.length,
+        `a yaml block composes two re-entry recipes (${reentry.join(', ')}) — one block, one shape`,
+      ).toBe(1);
+
+      checked += 1;
+      expect(
+        entryAnchor(reentry[0]),
+        `${finalize[0]} leaves the device on \`${exitAnchor(finalize[0])}\`, but the ` +
+          `${reentry[0]} chained after it opens by waiting on ` +
+          `\`${entryAnchor(reentry[0])}\`. That wait can never fire — this is the ` +
+          'ace#1071 / ace#1566 hang. Pair the finalize and re-entry halves that share a ' +
+          'surface, and pick BOTH from `get_form().post_submit`.',
+      ).toBe(exitAnchor(finalize[0]));
+    }
+
+    expect(
+      checked,
+      'no yaml block in app-test-cases composes a finalize + re-entry pair — the ' +
+        'per-module Learn loop template has moved or been deleted; re-point this rail',
+    ).toBeGreaterThanOrEqual(2);
+  });
+
+  it('every section prescribing the home-anchored finalize names post_submit and its counterpart', () => {
+    // Split on markdown headings of any depth; a "prescription" is a runFlow
+    // composition (`file: <recipe>`), not a passing mention in a palette list.
+    const sections = skill.split(/\n(?=#{2,6} )/);
+    const prescribing = sections.filter((s) => s.includes('file: content-form-finish.yaml'));
+
+    expect(
+      prescribing.length,
+      'no section composes content-form-finish.yaml — the rail has lost its target',
+    ).toBeGreaterThan(0);
+
+    for (const section of prescribing) {
+      const heading = section.split('\n')[0].trim();
+      expect(
+        section,
+        `${heading}: composes the home-anchored \`content-form-finish.yaml\` without naming ` +
+          '`post_submit`. It only terminates on a `post_submit: module` app; on `previous` ' +
+          "(Nova's default) the finalize lands on the module form list and the recipe's " +
+          'terminal home assert cannot fire (ace#1566).',
+      ).toContain('post_submit');
+      expect(
+        section,
+        `${heading}: names the home-anchored finalize but not the \`previous\` counterpart ` +
+          '`content-form-finish-to-suite.yaml`, so an author reading this section alone has ' +
+          'nowhere to route a `post_submit: previous` app (ace#1566).',
+      ).toContain('content-form-finish-to-suite.yaml');
+    }
+  });
+});
