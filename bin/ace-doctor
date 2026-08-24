@@ -484,6 +484,7 @@ selector_map_currency:
   remediation: "${PF_SEL_REMEDIATION}"
 nova_needs_auth_cache:
   status: ${PF_NOVA_CACHE_STATUS}
+  scope: "cache-file + NOVA_API_KEY presence only; says nothing about which principal the live Nova MCP connection bound (ace#1604)"
   cache_key_present: ${PF_NOVA_CACHE_KEY_PRESENT}
   nova_api_key: ${PF_NOVA_KEY_PRESENT}
   cleared: ${PF_NOVA_CACHE_CLEARED}

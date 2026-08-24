@@ -38,6 +38,26 @@ Execute these steps in order for the given opportunity:
 
 ### Step 0: Nova preconditions (HARD GATE — run before anything else)
 
+**SESSION-SCOPED PRECONDITION — re-run on EVERY entry into Phase 3,
+including a mid-phase resume.** Step 0 asserts facts about *this Claude Code
+session* — which principal the Nova MCP bound, which tool surface it serves.
+`run_state.yaml` is per-RUN state that outlives the session, so a `done`
+marker written by yesterday's session is not evidence about today's binding:
+**treat Step 0 as unrun on entry, whatever the recorded step state says**,
+and run it before the first not-yet-done step even when that step is 2.6 and
+both apps are already built. Restore, don't adapt (CLAUDE.md § Phase
+preconditions are restored, not adapted) — run it unconditionally, do not
+probe-then-branch on whether it "already passed". The whole gate is three
+read-only calls; what it catches is unrecoverable in-session. Precedent:
+`ace-orchestrator.md § Resolution` step 5 makes the inputs-manifest capture
+unconditional on resume for exactly this reason (dimagi-internal/ace#1234).
+Cost of skipping it: dimagi-internal/ace#1604 —
+`spark-facilitator/20260820-0817` resumed into Phase 3 mid-phase with the
+Nova MCP bound to a different principal than `NOVA_API_KEY` names, and the
+first Nova call answered `App not found` for an app the previous session had
+built. Neither the L0 binding fence (which covered `pending` phases only) nor
+this gate (stepped over as already-done) was in the resume path.
+
 Before dispatching any architect, verify Nova is bound to the expected
 HQ project space. Skipping this step is the single biggest documented
 time-sink in Phase 3 — see the turmeric-20260429-2330 e2e: the
@@ -144,6 +164,36 @@ result:
 
 Do NOT dispatch the architect until `get_hq_connection` returns
 `configured: true` with `<ACE_HQ_DOMAIN>` among `available_domains`.
+
+**`configured: true` does not tell you WHO you are — assert the principal
+too (dimagi-internal/ace#1604).** `get_hq_connection` describes the HQ key
+saved on whichever Nova account this session's MCP connection bound; it does
+not prove that account is the one `NOVA_API_KEY` names. A connection bound to
+a different principal answers every call normally, about a different
+account's apps — the failure looks like data loss, not like an auth problem.
+So make one addressed check:
+
+- **The run already records app ids** (`phases.commcare-setup.products.apps.{learn,deliver}.nova_app_id`
+  in `run_state.yaml` — the normal case on a resume) → call
+  `list_apps({limit: 20, sort: "updated_desc"})` and assert **both ids appear
+  in the result**.
+- **No app ids recorded yet** (a fresh run that has built nothing) → there is
+  nothing to compare against; `get_hq_connection` returning `configured: true`
+  is the whole assertion, and Step 1's first build establishes the ids.
+
+On a miss, **HALT**: *"The Nova MCP bound a different principal than
+NOVA_API_KEY names — `list_apps` does not show this run's apps (`<learn-id>`,
+`<deliver-id>`). MCP auth binds at connection time, so this is unrecoverable
+in-session: quit and reopen Claude Code (a full restart, not
+`/reload-plugins`), then resume `/ace:run <opp>/<run-id>`."*
+
+**Do NOT rebuild the apps in response to `App not found`.** They exist, under
+a principal this session is not talking to. Rebuilding orphans the run's two
+Nova apps, re-burns two architect dispatches, and leaves the run's recorded
+`nova_app_id`s pointing at the originals — which is a worse end state than
+the halt. Verify the principal first; `App not found` from a level-0 Nova
+read on an app THIS run built is a binding symptom until proven otherwise.
+
 
 **This call is ALSO the level-0 Nova-binding check — actually make it;
 do not skip it or hand-wave it as "the architect subagent will
