@@ -423,11 +423,86 @@ workstation, not via a placeholder ship. Pre-0.13.165 the skill wrote
 `incomplete` here and Phase 6 shipped without screenshots; that escape
 valve hid real capability gaps behind a yellow verdict.
 
+### Step 3b: Per-run demo test user — OFF BY DEFAULT (ace#1289)
+
+**Skip this entire step unless the switch is on.** Read it once via
+`perRunTestUserEnabled()` (`lib/per-run-test-user.ts`; env var
+`ACE_PER_RUN_TEST_USER`, fails CLOSED on anything but an explicit
+`true`/`1`/`yes`/`on`). Off → Step 3 booted the AVD exactly as it always has,
+registering the fixed `${ACE_E2E_PHONE}`, and Step 4 follows unchanged.
+
+**On**, the device side of the **invite → register → re-invite** sequence runs
+here, in this order, before any recipe:
+
+1. **Recover the run's minted phone** from
+   `run_state.yaml.phases.connect-setup.products.connect.ace_test_user.phone`
+   (Phase 4 Step 7b wrote it, and it is REQUIRED at that boundary when
+   `per_run: true`). Cross-check it against
+   `derivePerRunTestUser(run_state.yaml.run_id)` — they must match; a mismatch
+   means the run id changed under a fork and the recorded value wins, because
+   that is the number Connect actually holds an invite for.
+
+2. **Register it on the device.** Pass the credentials to
+   `mobile_ensure_avd_running` — it takes an OPTIONAL `testUser` override:
+
+   ```
+   mobile_ensure_avd_running({
+     avdName: '${ACE_AVD_NAME}',
+     testUser: { phone, phoneLocal, countryCode, name }   // pin + backupCode stay env-derived
+   })
+   ```
+
+   **No `.env` write, and therefore no Claude Code restart.** That is the whole
+   reason this is a call argument: every MCP server reads `.env` at module load,
+   so an `.env` rewrite would need a full restart to take effect (CLAUDE.md §
+   *MCP changes need a full Claude restart*). Registration already runs on every
+   dispatch — the cold-boot funnel re-registers unconditionally, ~15-25s — so
+   this changes WHICH number registers, not WHETHER one does.
+
+   Local AVD backend only. The cloud backend throws
+   `CLOUD_TEST_USER_OVERRIDE_UNSUPPORTED`; making it work needs
+   `ACE_MOBILE_CLOUD_LIVE_REGISTER=true` plus an ace-web change to forward
+   caller-supplied credentials, and is out of scope.
+
+3. **Re-invite, then GATE on the read-back.** The first invite (Phase 4) could
+   not link an `OpportunityAccess`, because Connect creates that link only at
+   invite time and only for a ConnectID user that already exists
+   (`opportunity/tasks.py`). Now that the user exists, send it again:
+
+   ```
+   connect_send_flw_invite({ organization_slug, opportunity_id, phone_numbers: [phone] })
+   connect_list_flw_invites({ organization_slug, opportunity_id, phone })
+   ```
+
+   Classify the result with `classifyPerRunPostRegistrationGate(match)` and
+   **honour `halt: true` — do not walk.** It requires `connect_user_id !== null`:
+   Connect's mobile opp-list endpoint filters `opportunityaccess__user`, so an
+   access with a null user matches nothing and the opportunity is invisible on
+   the device forever, without self-healing (connect-id `2bd03c4`). Proceeding
+   past this burns a full dispatch discovering zero tiles.
+
+   Record `registered_at` (ISO) alongside the Phase-4 `ace_test_user` block.
+
+**Why this exists, and why it is off.** A fresh user has no accepted invites, so
+the tile list is O(1) instead of O(list-that-grows-forever) — this is the
+durable end of the class #1475 and #1532 only bought headroom against
+(pruning provably cannot reach the accepted In Progress section, see Step 4).
+It stays off because the fresh-signup branch routes through the photo-capture
+surface whose 7 camera ids `mcp/mobile/selectors/connect-2.63.2.yaml` records as
+"deliberately raw pending live calibration", inside a `runFlow.when visible:`
+guard that fails SILENTLY. **The precondition to flip it on:** *the 7 camera ids
+in `connect-register-from-otp.yaml` are calibrated against a live 2.63.2
+`mobile_capture_ui_dump`, and one fresh-signup registration has completed on
+2.63.2.*
+
 ### Step 4: Run static prerequisite recipes
 
 These set up the AVD to the post-claim state the smoke recipes assume:
 
-- `connect-login.yaml` with `${ACE_E2E_PHONE_LOCAL}`, `${ACE_E2E_PIN}`.
+- `connect-login.yaml` with `${ACE_E2E_PHONE_LOCAL}`, `${ACE_E2E_PIN}`. (Only
+  when Step 3b ran — `ACE_PER_RUN_TEST_USER` on, default OFF — substitute the
+  run's minted `phoneLocal` for `${ACE_E2E_PHONE_LOCAL}`; the PIN is unchanged,
+  it is not a per-user secret in the demo range.)
 - `connect-claim-opp.yaml` with **`${OPP_RUN_ID}`** (the deterministic
   tile matcher) read verbatim from `run_state.yaml.run_id`, AND
   `${OPP_NAME}` read verbatim from
@@ -527,6 +602,11 @@ supplies most of the scroll depth — is structurally unprunable, and
 soft-deactivating prior opps does not remove tiles either (Connect's mobile
 opp-list endpoint has no `active=True` filter — see `skills/sweep-connect`).
 Bounding the list is a real but bounded win; it is not the class fix.
+
+**The class fix is Step 3b, and it is built but switched off.** A per-run demo
+phone gives a user with zero accepted invites, so depth is O(1) by construction
+rather than O(a list nothing can shorten). It is gated on
+`ACE_PER_RUN_TEST_USER` (default OFF) pending one calibration — see Step 3b.
 
 The recipes' own scroll budgets are **already recalibrated and pinned** —
 do not re-litigate them. PR #1475 put `speed: 40` / `timeout: 120000` /

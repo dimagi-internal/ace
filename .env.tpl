@@ -207,6 +207,38 @@ ACE_E2E_BACKUP_CODE=op://Agent-Ace/connect-test-user/backup-code
 ACE_E2E_NAME="ACE Test"
 ACE_AVD_NAME=ACE_Pixel_API_34
 
+# ── Per-run demo test user (ace#1289) — DEFAULT OFF. DO NOT FLIP YET. ──
+#
+# OFF (unset, or anything other than true/1/yes/on): every run registers the
+# fixed ACE_E2E_PHONE above. That is today's behaviour, unchanged.
+#
+# ON: each /ace:run mints its OWN +7426… demo number, derived deterministically
+# from the run id (lib/per-run-test-user.ts). This is the durable fix for the
+# unbounded tile-scroll class: claiming an opportunity flips its invite to
+# status=accepted, and connect_delete_unaccepted_flw_invites skips accepted
+# invites server-side, so the fixed user's In Progress section grows by one card
+# every run and NOTHING can shorten it. A user minted this morning has no
+# accepted rows, so tile depth becomes O(1) by construction. Upstream is not
+# required: +7426 is connect-id's TEST_NUMBER_PREFIX and every demo behaviour
+# there is a startswith, so ACE can mint arbitrarily many demo users.
+#
+# ⚠ PRECONDITION TO FLIP THIS ON — BOTH CLAUSES MUST HOLD:
+#   the 7 camera ids in connect-register-from-otp.yaml are calibrated against a
+#   live 2.63.2 mobile_capture_ui_dump, and one fresh-signup registration has
+#   completed on 2.63.2
+#
+# Why that gate: mcp/mobile/selectors/connect-2.63.2.yaml records those 7 camera
+# ids as "deliberately raw pending live calibration". They sit inside a
+# `runFlow.when visible:` guard, so a drifted id makes the block silently SKIP
+# and the failure surfaces ~60s later at a terminal assertion. Today the
+# fresh-signup branch is exercised rarely (the phone is fixed, so steady state
+# is the RECOVERY path); turning this on routes EVERY run through that
+# uncalibrated surface, trading a bounded scroll cost for an unbounded
+# silent-skip risk. Grep PER_RUN_TEST_USER_FLIP_PRECONDITION for the same
+# sentence in code, and see skills/app-screenshot-capture § Step 4.
+#
+# ACE_PER_RUN_TEST_USER=true
+
 # Pinned Connect APK version. Read by:
 #   - `bin/ace-doctor` `selector_map_currency` probe (warns when this !=
 #     the newest `mcp/mobile/selectors/connect-*.yaml` selector map).
