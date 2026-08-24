@@ -20,6 +20,42 @@ function safeCountSteps(recipePath: string): number | undefined {
     return undefined;
   }
 }
+
+/**
+ * Kill switch for subflow-aware chunking (ace#1570). Set
+ * `ACE_MOBILE_SPLIT_AT_SUBFLOW_SCREENSHOTS=off` to fall back to the
+ * top-level-only splitting that shipped before it — an operator on a live
+ * Phase 6 leg can revert without waiting for a plugin update.
+ */
+export const SUBFLOW_SPLIT_ENV = 'ACE_MOBILE_SPLIT_AT_SUBFLOW_SCREENSHOTS';
+
+/**
+ * Reader for the palette files a recipe's `runFlow: file:` steps name.
+ *
+ * Rooted at the RESOLVED recipe's own directory, which is exactly how Maestro
+ * resolves those refs — `prepareRecipeForMaestro` copies every palette file in
+ * next to the top-level recipe — so the splitter reads the same bytes the
+ * device will run, not whatever is newest in the install. Returns `null` for
+ * anything it can't read or that escapes that directory; the splitter then
+ * behaves as it did before ace#1570.
+ */
+export function subflowResolverFor(
+  absoluteRecipePath: string,
+  env: NodeJS.ProcessEnv = process.env,
+): ((filename: string) => string | null) | undefined {
+  if ((env[SUBFLOW_SPLIT_ENV] ?? '').trim().toLowerCase() === 'off') return undefined;
+  const dir = path.dirname(absoluteRecipePath);
+  return (filename: string): string | null => {
+    try {
+      const resolved = path.resolve(dir, filename);
+      if (path.dirname(resolved) !== dir) return null;
+      if (resolved === absoluteRecipePath) return null;
+      return fs.readFileSync(resolved, 'utf8');
+    } catch {
+      return null;
+    }
+  };
+}
 import { logInfo } from '../logging.js';
 import type { RecipeRunResult, ScreenshotEntry } from '../types.js';
 import { readProvenanceSidecar } from '../../../lib/screenshot-provenance.js';
@@ -292,7 +328,18 @@ export class MaestroBackend {
     // `SplitOptions.captureAllBoundaries` in `../recipe-splitter.ts`.
     const chunks = splitRecipeAtScreenshots(body, {
       captureAllBoundaries: opts.captureAllBoundaries === true,
+      resolveSubflow: subflowResolverFor(absoluteRecipePath),
     });
+    // State the chunking up front. Every wall-clock question about
+    // subflow-aware splitting (ace#1570) — how much per-invocation overhead
+    // it costs, whether a journey chunked at all — is answerable from this
+    // line plus the per-chunk markers below, without a device sitting in
+    // front of anyone.
+    logInfo(
+      `maestro: ${path.basename(absoluteRecipePath)} → ${chunks.length} chunk(s), ` +
+        `${chunks.filter((c) => c.screenshotName).length} dump window(s), ` +
+        `${countRecipeSteps(body)} top-level step(s)`,
+    );
 
     // Zero-screenshot recipes (e.g. probe recipes, or a recipe where
     // every `takeScreenshot:` is nested inside a `runFlow.commands`
