@@ -22,7 +22,7 @@ Authored 0.10.29 in response to turmeric run_time_followups item 2
 
 | Source | Artifact | Used for |
 |---|---|---|
-| Phase 3 | `3-commcare/app-deploy_summary.md` | the artifact `app-release` updates with `releases:` block |
+| Phase 3 | `3-commcare/app-deploy_summary.md` | **corroboration only** — `app-deploy` owns this file; `app-release` merely appends a `releases:` cross-reference to it at its Step 7 |
 | Phase 3 | `3-commcare/app-release_summary.md` | **the artifact `app-release` owns** — released `build_id` + version per app; the sole source for `build_id_traceability` |
 | Phase 3 | `?latest=release` CCZ projection | deliver-unit list as Connect's Sync Deliver Units will see it (see `deliver_units_enumerable`) |
 | Phase 4 (optional, later passes only) | `4-connect/connect-opp-setup.md` | live Connect confirmation of deliver-unit enumeration, when Phase 4 has already run |
@@ -44,21 +44,41 @@ other per-step eval does.
 
 ## Process
 
+**Precedence — the owned artifact is the grading anchor (ace#1567).**
+`app-release` owns exactly one artifact: `3-commcare/app-release_summary.md`
+(its `§ Products` frontmatter contract). Everything else this rubric reads is
+**corroboration**, including the `releases:` block `app-release` appends to
+`app-deploy_summary.md` — that file belongs to `app-deploy`, and the append is
+a cross-reference, not a product. So: only the owned artifact can settle "did
+the skill run"; corroborating evidence that DISAGREES is a real finding, and
+corroborating evidence that is merely ABSENT is a bounded `[WARN]`, never an
+ungradable verdict and never a deduction in two dimensions at once. This is
+the third recurrence of the same class in this one rubric (ace#1010 →
+`build_id_traceability`, ace#1439 → `both_apps_released`, ace#1567 → the
+`incomplete` gate below), which is why it is now stated once, up front.
+*Enforced:* `test/skills/eval-gate-artifact-ownership.test.ts`.
+
 1. **Read inputs from GDrive** (paths in `## Inputs` above).
 
-2. **Detect missing artifacts.** If `3-commcare/app-deploy_summary.md` is missing
-   or has no `releases:` block, emit `verdict: incomplete` immediately
-   with `[INFO] app-release output missing — skill did not run or did
-   not complete writing its artifact`. Do not score zero.
+2. **Detect missing artifacts.** If `3-commcare/app-release_summary.md` is
+   missing, or its frontmatter carries no `apps.*` block, emit
+   `verdict: incomplete` immediately with `[INFO] app-release output missing —
+   skill did not run or did not complete writing its artifact`. Do not score
+   zero. That artifact is the ONLY one whose absence actually means
+   `app-release` did not complete — never gate this verdict on a file another
+   skill owns (ace#1567: a fully released, live-verified run read as "skill
+   did not run" because a cross-reference append had been skipped, and in
+   `opp-eval` `incomplete` is "not gradable", so the run lost its pass AND
+   the real finding).
 
 3. **Grade across 4 dimensions.** Each dimension is 0–10. Overall is
    the weighted mean.
 
    | Dimension | Weight | Criteria |
    |---|---|---|
-   | **Both apps released** | 35% | **Read the keys the producer actually writes (ace#1439).** Per app: `apps.<app>.is_released: true` in **`3-commcare/app-release_summary.md`** frontmatter — a contract `app-release § Products` now DECLARES, so this dimension reads a key the producer is instructed to emit, cross-checked against the deploy summary's `releases:` block carrying a `version` ≥ 1 and a `released_at` for that app. This dimension previously named `is_released` and `latest_released_version` **in the `releases:` block**, where neither has ever been written — the exact class ace#1010 fixed for `build_id_traceability`, surviving in the sibling dimension. A grader reading it literally deducts on a perfect release; on bednet-check-2-visit/20260814-2019 that was avoided only because the grader went and read the producer's contract. Per ace#1010's standing note: **never deduct for evidence the producer is not instructed to emit** — if a key you want is absent from BOTH artifacts, that is a finding against this rubric, not against the build. Either app missing release = ≤3 (fail). One app released, the other still draft = ≤6 (warn). |
+   | **Both apps released** | 35% | **Read the keys the producer actually writes (ace#1439).** Per app: `apps.<app>.is_released: true` in **`3-commcare/app-release_summary.md`** frontmatter — a contract `app-release § Products` now DECLARES, so this dimension reads a key the producer is instructed to emit. The deploy summary's `releases:` block (`version` ≥ 1 + `released_at` per app) is **corroborating only** (ace#1567): present-and-agreeing is confirmation, **absent is an `[INFO]` here and at most one `[WARN]` in `build_id_traceability` — never a deduction in this dimension**, and present-but-disagreeing is scored ONCE, in `build_id_traceability`, not twice across both. This dimension previously named `is_released` and `latest_released_version` **in the `releases:` block**, where neither has ever been written — the exact class ace#1010 fixed for `build_id_traceability`, surviving in the sibling dimension. A grader reading it literally deducts on a perfect release; on bednet-check-2-visit/20260814-2019 that was avoided only because the grader went and read the producer's contract. Per ace#1010's standing note: **never deduct for evidence the producer is not instructed to emit** — if a key you want is absent from BOTH artifacts, that is a finding against this rubric, not against the build. Either app missing release = ≤3 (fail). One app released, the other still draft = ≤6 (warn). |
    | **CCZ-marker integrity** | 25% | CCZ verification (Step 6 of app-release) confirms each released build has the canonical Connect markers (`connect.learn_module` / `connect.deliver_unit` / `connect.assessment`). Missing markers = ≤4 deduction per missing class. (Note: this is the dimension that catches turmeric run_time_followups item 2 — the CCZ regex bug that uses `<learn:` prefix instead of the actual `xmlns` attribute. A regex bug that mis-reports a perfectly-marked app as missing markers should surface as a [PLATFORM] entry on the CCZ-checker side, not a deduction here.) |
-   | **Build-id traceability** | 20% | Graded **against `3-commcare/app-release_summary.md`** — the artifact `app-release` is contractually required to write (ace#1010). Per app, it must carry a released `build_id` and a version number, and those must agree with the `releases:` block `app-release` appended to `app-deploy_summary.md`. Missing `build_id` for an app = 4-point deduction; the two artifacts disagreeing = 4-point deduction (that IS a real traceability defect). **Never deduct for `run_state.yaml` not carrying `hq_build_id` or an `app-release` step entry** — see the Inputs note: the orchestrator writes those minutes later, and grading them here is pure rubric noise. If a `run_state.yaml` written by a *previous* boundary-fence pass happens to be readable (e.g. on an `/ace:eval --all` re-grade), a disagreement with the summary is worth a `[DRIFT]` entry, not a deduction. |
+   | **Build-id traceability** | 20% | Graded **against `3-commcare/app-release_summary.md`** — the artifact `app-release` is contractually required to write (ace#1010). Per app, it must carry a released `build_id` and a version number. Missing `build_id` for an app = 4-point deduction. The `releases:` block `app-release` appends to `app-deploy_summary.md` is the **corroborating** leg, not a required one (ace#1567): present-and-disagreeing = 4-point deduction (that IS a real traceability defect); **absent = `[WARN] app-release Step 7 cross-reference not written to the deploy summary` and no deduction** — the append is a courtesy write into another skill's artifact, and its absence says nothing about whether the build was released. **Never deduct for `run_state.yaml` not carrying `hq_build_id` or an `app-release` step entry** — see the Inputs note: the orchestrator writes those minutes later, and grading them here is pure rubric noise. If a `run_state.yaml` written by a *previous* boundary-fence pass happens to be readable (e.g. on an `/ace:eval --all` re-grade), a disagreement with the summary is worth a `[DRIFT]` entry, not a deduction. |
    | **Connect deliver-units enumerable** | 20% | Does the released Deliver build actually expose deliver units for Connect to find? Score from whichever evidence exists, in this order: **(1) `?latest=release` CCZ projection (first-class, always available).** Download the released Deliver CCZ via the `?latest=release` projection — the literal artifact Connect's Sync Deliver Units consumes — and enumerate the forms carrying a `<learn:deliver>` marker. **The expected count is what the PDD declares PAYABLE, not the form count.** The standard ACE Deliver shape carries an unpaid registration form as a deliberate auxiliary participant with no `deliver_unit` (`app-connect-coverage § Step 2` decides this by role, not by form type — ace#1327), so 2 forms / 1 unit is the CORRECT reading of a PDD whose rule is "only the follow-up visit is paid". Read the payable stages from the PDD (§ Deliver App Specification / `products.pdd.program_parameters.payable_stage`) and compare against that: every payable form exposing a unit = full marks; a payable form with no unit = 4-point deduction; **zero units at all = 4-point deduction**. A unit on a form the PDD says is unpaid is a `[WARN]`, not a bonus — it is the shape that lets Phase 4 wire payment to a stage the programme does not pay for. Never deduct for units < forms without checking payability (ace#1331). Note also that Nova emits the MODULE slug as `<deliver id>` for every form in a module and Connect dedups `DeliverUnit` on `(app, slug)`, so one-unit-per-form is not even the shape a multi-form module produces. **(2) Live Connect probe (upgrade to full marks).** When Phase 4 HAS already run, additionally confirm via `4-connect/connect-opp-setup.md`'s `Sync Deliver Units enumerated:` line or a `connect_list_deliver_units` probe. **Do NOT return `unverifiable` / `partial` just because Phase 4 hasn't run** (ace#1010): this eval fires inside Phase 3, so both of the previously-named paths were structurally unavailable at invocation time and the dimension carried no information. The CCZ projection answers the real question — "will Connect find a unit?" — without Phase 4. |
 
    **Deduction rules:**
@@ -74,7 +94,9 @@ other per-step eval does.
      verification failed at grading time. **Phase 4 simply not having
      run yet is NOT a `partial`** — the `?latest=release` CCZ projection
      is a first-class scoring path (ace#1010).
-   - `incomplete` — 3-commcare/app-deploy_summary.md missing or no `releases:` block.
+   - `incomplete` — `3-commcare/app-release_summary.md` missing, or its
+     frontmatter carrying no `apps.*` block. Nothing else earns this
+     verdict (ace#1567).
 
    **Severity tiers** (mirror connect-program-setup-eval):
    - `[BLOCKER]` — must-fix before Phase 4 can proceed (e.g., one app unreleased).
@@ -127,8 +149,10 @@ specific surfaces:
 - `[PLATFORM]` per CCHQ 5xx, Nova upload-shape change, or CCZ format
   change requiring app-release update.
 - `[DRIFT]` per deployment-summary ↔ live `apps/view/<app_id>` discrepancy.
-- `[INFO]` per app whose `releases:` `version` > 1 (re-release scenario,
+- `[INFO]` per app whose released `version` > 1 (re-release scenario,
   worth noting in opp-eval).
+- `[WARN]` when the deploy summary carries no `releases:` block — bounded,
+  once, in `build_id_traceability` only (ace#1567).
 
 ## LLM-as-Judge Rubric
 
@@ -198,4 +222,5 @@ as effectful).
 | Date | Change | Author |
 |------|--------|--------|
 | 2026-04-29 | Initial version. 4 dimensions: both_apps_released (0.35), ccz_marker_integrity (0.25), build_id_traceability (0.20), deliver_units_enumerable (0.20). Provisional calibration. Authored to absorb turmeric run_time_followups item 2 (CCZ regex false-positive in app-release Step 6) — the eval has an explicit step 4 to distinguish "regex bug" from "real missing markers." | ACE team (0.10.29) |
+| 2026-08-23 | **The `incomplete` gate re-pointed at the owned artifact, and the precedence stated once (ace#1567 — third instance of the ace#1010/#1439 class).** Step 2 gated `verdict: incomplete` on `app-deploy_summary.md` having a `releases:` block. That file belongs to `app-deploy`; the block is a cross-reference `app-release` appends at its Step 7. On bednet-check-2-visit/20260820-0832 both apps were live-released (`is_released: true`, `version: 5`, confirmed against the HQ application API) and `app-release_summary.md` carried the full declared frontmatter — but Step 7 had not run, so a literal grader had to call a perfect release ungradable with the factually false message "skill did not run". In `opp-eval` that is worse than a deduction: `incomplete` counts as "not gradable" in the coverage cap, so the run got neither its pass nor the (minor, real) finding. Now: the gate keys on `3-commcare/app-release_summary.md` / its `apps.*` frontmatter; `both_apps_released` and `build_id_traceability` demote the `releases:` block from a required cross-check leg to a corroborating one (disagreeing = one 4-point traceability deduction, scored once, not in both dimensions; absent = one bounded `[WARN]`); and the precedence — **owned artifact anchors, everything else corroborates** — is stated at the top of `## Process` rather than re-derived per dimension. *Enforced:* `test/skills/eval-gate-artifact-ownership.test.ts`, which asserts the rule generically across every `-eval` whose producer declares a `## Products` contract. | ACE team |
 | 2026-07-28 | **Two rubric dimensions re-pointed at gradable evidence (ace#1010).** (1) `build_id_traceability` graded `run_state.yaml`, which `app-release` explicitly does NOT write — the orchestrator does, at the Phase 3 boundary fence, AFTER the per-step evals run. A perfect release scored 6/10 on it every time: a fixed 0.8-point downward bias on every Phase 3 release eval. Now graded against `3-commcare/app-release_summary.md`, the artifact the skill actually owns, cross-checked against the `releases:` block. (2) `deliver_units_enumerable` was structurally un-verifiable at invocation — both its named paths needed Phase 4, and this eval runs inside Phase 3. The `?latest=release` CCZ projection (the literal artifact Sync Deliver Units consumes) is promoted to the first-class scoring path, with the live Connect probe as the upgrade to full marks; Phase 4 not having run is explicitly no longer a `partial`. Also recorded three grading traps: `last_released: None` on a released build, the shared marker parser with no independent cross-check, and the TBD known-issues catalogue that leaves the detection target unmeasurable. | ACE team |
