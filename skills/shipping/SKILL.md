@@ -62,10 +62,32 @@ everything between arming and merging is waiting.
   `/ace:update` + `/reload-plugins` do NOT respawn MCP subprocesses — they bind their tool list,
   schemas, and env at spawn. See `CLAUDE.md § MCP changes need a full Claude restart`. Otherwise
   `/reload-plugins` is enough.
-- **Version collision** (`mergeStateStatus: DIRTY` from a parallel worktree bump):
-  `bash scripts/version-bump.sh --rebase-first && git push --force-with-lease`, then re-enter the
-  wait. It auto-resolves the 4 version files and aborts cleanly if a non-version file conflicts —
-  those need human review.
+- **Version collision** (`mergeStateStatus: DIRTY` from a parallel worktree bump) — **disarm
+  auto-merge FIRST, or the recovery races the merge and silently loses** (ace#1593):
+  ```bash
+  gh pr merge <N> --disable-auto              # STOP the race before touching the branch
+  bash scripts/version-bump.sh --rebase-first # auto-resolves the 4 version files
+  git push --force-with-lease
+  gh pr merge <N> --auto --merge              # re-arm only after the corrected VERSION is pushed
+  ```
+  Then re-enter the wait. `--rebase-first` aborts cleanly if a non-version file conflicts — those
+  need human review.
+
+  **Why the disarm step is load-bearing.** Auto-merge stays armed while you rebase, and
+  `clean-install` (the only REQUIRED check) can go green on the **pre-rebase head** first. The
+  merge then wins the race and your `--force-with-lease` is a no-op against an already-merged
+  branch. The PR lands carrying the OLD version, `main` shows the same VERSION before and after,
+  and because the plugin cache is keyed by version, `/ace:update` can never reach the change.
+  Measured 2026-08-24: 4 of ~20 PRs in one sweep collided; the 3 that left auto-merge armed all
+  needed a follow-up bump PR (#1597, #1598, #1588); the 1 that disarmed first (#1601) did not.
+  `check-version` does NOT save you here — it is advisory, not required.
+- **After ANY merge, verify the version actually advanced** — `state: MERGED` is not sufficient:
+  ```bash
+  git fetch origin main -q && git show origin/main:VERSION
+  ```
+  If it did not advance past your base, ship an immediate follow-up bump PR and say so in your
+  report. An agent that trusts `state=MERGED` alone will report success and leave an unreachable
+  fix on `main` (ace#1593).
 - **From a worktree, drop `--delete-branch`** — `main` is checked out elsewhere.
 - **Self-heal PRs additionally close their issue** referencing the PR, then re-run the blocked
   step (`CLAUDE.md § Self-heal a filed issue`).
