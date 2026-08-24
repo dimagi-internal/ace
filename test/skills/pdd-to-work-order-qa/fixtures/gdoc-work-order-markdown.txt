@@ -1,0 +1,187 @@
+# **Work Order Agreement \#\[WO Number\]**
+
+## **Bednet Check — Two-Visit Household Spot-Check**
+
+| Work Order Number | \[WO Number\] |
+| :---- | :---- |
+| Work Order Date | 2026-08-24 |
+| Work Order Title | Bednet Check — Two-Visit Household Spot-Check |
+| Period of Performance | \[Start and end dates set at award; 8 weeks total\] |
+
+## **1\. Background**
+
+Insecticide-treated nets reduce malaria transmission only if households hang them and sleep under them. Distribution is comparatively easy to fund and to count; use is neither. A net that ends up unopened, repurposed, or hung over an unused room is indistinguishable from a net in nightly use if the only record is the distribution list.
+
+This Work Order engages \[Partner Name\] (henceforth, referred to as "partner") to close that gap with a two-visit household spot-check. A Frontline Worker (FLW) registers a household that has received a net, and returns at least three days later to record whether the net is in use. The three-day interval is what makes the second visit informative: it gives the household time to hang the net and sleep under it, or not.
+
+Each household is tracked as a single case across the two visits, so the follow-up visit is completed against the household the worker already registered rather than against a fresh record. The partner is paid for verified follow-up work only; registration visits are not payable.
+
+The engagement measures observed and reported bednet use among the households the partner's workers register. It does not measure malaria incidence and does not sample a population frame. Findings are used by Dimagi and the partner to supervise field quality and to improve the worker training content.
+
+## **2\. Scope of Work**
+
+The partner will run a two-visit spot-check sequence against households that have received an insecticide-treated net, tracking each household as a case from registration through to a single verified follow-up visit.
+
+For each engagement, the partner will:
+
+* Register each participating household on a first visit, capturing the household's consent, the head-of-household name, the date the bednet was given, and the number of people living in the household.  
+* Maintain one case per household, so that the household is selected from the worker's case list on the follow-up visit rather than registered a second time.  
+* Return to each registered, consenting household at least three days after registration, and complete one follow-up visit against that household's existing case.  
+* Record the household's consent re-affirmation on every follow-up visit. This answer is the payment predicate and must be captured for the visit to be payable.  
+* Record both required observations on every follow-up visit: whether the household reports sleeping under the bednet, and whether the bednet was visibly hanging over the sleeping area. Either answer is acceptable; an honest "no" is a valid and payable result.  
+* Close each household's case on submission of its follow-up visit, so that each household is spot-checked exactly once.  
+* Recruit and supervise 6 to 10 Frontline Workers (FLWs), each equipped with an Android device, operating in an area compact enough to permit a return visit to the same households.  
+* Ensure every FLW completes the Learn app and scores 6 of 6 on the gating assessment before beginning any delivery work.  
+* Supervise field quality, including following up on households that could not be re-contacted.
+
+The partner will not:
+
+* Capture photographs, GPS coordinates, or audio recordings. No photo or GPS evidence is collected for this engagement, and verification does not depend on either.  
+* Visit any household more than twice, or re-open a household whose follow-up visit has already been submitted.  
+* Follow up any household that declined consent at registration.  
+* Collect health outcome data, clinical measurements, or any personal information beyond the head-of-household name and the household size.  
+* Conduct a follow-up visit sooner than three days after the household was registered.  
+* Sub-contract field data collection to a third party without Dimagi's prior written approval.
+
+## **3\. Geographic Coverage**
+
+\[Geographic Coverage — Partner to propose\]
+
+The design does not fix an operating geography. The partner will propose the districts or communities it will cover, drawn from an existing bednet distribution activity it already runs. The one binding constraint is proximity: a worker must be able to return to the same households at least three days after registering them, so the working area must be compact enough to make a second visit practical.
+
+## **4\. Deliverables and Verification**
+
+### **4.1 Primary Deliverable**
+
+The primary deliverable is a set of completed, verified follow-up visits, each recording whether a registered household is using the bednet it received.
+
+Dimagi will measure the engagement on the following, computed from submitted form and case data:
+
+Follow-up completion rate — households spot-checked as a proportion of households registered with consent. Target: at least 80%.
+
+Observed net-hanging rate and reported use rate — the proportion of follow-up visits recording a visibly hanging net, and the proportion recording that the household slept under it. These are the substantive findings and deliberately carry no target: setting one would give workers a reason to report it.
+
+Gap compliance — the proportion of follow-up visits completed at least three days after registration. Target: at least 95%.
+
+Learn pass rate on first attempt — the proportion of workers scoring 6 of 6 at the first attempt. Target: at least 60%.
+
+Duplicate registration rate — households registered more than once by the same worker. Target: no more than 2%.
+
+### **4.2 Definition of a Verified Unit**
+
+A unit qualifies as "verified" and is payable under this Work Order only when all of the following are met:
+
+* The submission is a follow-up visit, not a household registration. Registration visits are not payable.  
+* The submission updates an existing household case that is open and awaiting follow-up. A submission that creates a new case is not a verified unit.  
+* The household's consent re-affirmation is recorded as yes. A follow-up visit recording no is not payable.  
+* Both required observations are recorded. Either answer is acceptable, but a missing answer is not.  
+* The household case has not already been spot-checked. A repeat visit against a closed case is not a verified unit.
+
+The application and Connect together enforce the criteria above, and they do so at different points. The worker's case list offers only households that are registered, consenting and not yet spot-checked, so the worker cannot open a follow-up visit against a household that declined, or against one already spot-checked. Connect then checks each submitted follow-up visit for the consent re-affirmation and for both observations, and settles the day as payable or not. Because each submission carries the household case it updates, the visit's position in the sequence stays recoverable from the submitted data: a first visit and a repeat visit against the same household remain distinguishable, which is what makes a genuine follow-up payable and a duplicate not.
+
+No photograph or GPS fix is captured for this engagement, so verification includes no image check and no location check. Dimagi will additionally review a sample of submitted follow-up visits against the case record, covering the interval between registration and follow-up, registrations that were never followed up, and unusual divergence between the two observations. Visits that fail one or more of the criteria above are not payable.
+
+### **4.3 Reporting Deliverables**
+
+* A weekly progress report covering households registered, follow-up visits completed, and follow-up visits still outstanding.  
+* A weekly exception report listing households that could not be re-contacted, with the reason in each case.  
+* A final reconciliation report at the end of the period of performance, listing every verified unit claimed.  
+* Prompt notification of any incident affecting worker safety or household consent.
+
+## **5\. Timeline and Milestones**
+
+| Week | Dates | Activities |
+| :---- | :---- | :---- |
+| 1 | Week 1 | Solicitation open; partner responses submitted |
+| 2 | Week 2 | Solicitation closes; responses reviewed and scored |
+| 3 | Week 3 | Award and onboarding; Connect programme invite issued; FLW invites sent; FLW cohort recruited |
+| 4 | Week 4 | Worker training on the Learn app; gating assessment completed at 6 of 6; household registration begins; first follow-up visits become due from day 4 |
+| 5 | Week 5 | Field work: registration and follow-up visits in parallel; first weekly progress and exception reports |
+| 6 | Week 6 | Field work continues; Dimagi sample review of submitted follow-up visits |
+| 7 | Week 7 | Field work concludes; final registrations must complete at least three days before the window closes |
+| 8 | Week 8 | Review and closeout; final reconciliation report; settlement of verified units |
+
+The partner will flag any timeline risk in writing to Dimagi within 24 hours of identification.
+
+## **6\. Payment Terms**
+
+### **6.1 Total Not-to-Exceed**
+
+Dimagi's total financial commitment under this Work Order is USD 3,500, not-to-exceed, inclusive of all field collection costs, FLW compensation, supervision, transport, and partner reporting time.
+
+### **6.2 Payment Schedule**
+
+| \# | Milestone | % of Cap | Amount (USD) | Trigger / Deliverable | Expected Timing |
+| :---- | :---- | :---- | :---- | :---- | :---- |
+| 1 | Mobilization advance | 30% | USD 1,050 | Countersignature of this Work Order and confirmation that the partner has recruited its FLW cohort | Within 15 business days of countersignature |
+| 2 | Final reconciliation | 70% | USD 2,450 | Acceptance of the final reconciliation report and settlement of all verified units | Within 30 business days of acceptance |
+
+Dimagi will pay only for verified units, at the per-verified-follow-up-day rate proposed in the partner's solicitation response. A verified unit is one calendar day on which a Frontline Worker submits at least one follow-up visit meeting every criterion in section 4.2. Payment is resolved per worker per day, so several follow-up visits completed by the same worker on the same day together constitute one payable unit. Each subsequent day on which that worker completes a qualifying follow-up visit is separately payable.
+
+## **7\. Roles and Responsibilities**
+
+| Responsibility | Dimagi | Partner |
+| :---- | :---- | :---- |
+| Design the programme and author the Programme Design Document | Lead | Reviews |
+| Build and configure the Learn and Deliver applications | Lead | Reviews |
+| Configure the Connect opportunity, verification rules and payment unit | Lead | — |
+| Recruit and contract Frontline Workers | — | Lead |
+| Ensure every FLW passes the Learn gate before delivery work begins | Reviews | Lead |
+| Register households and maintain one case per household | — | Lead |
+| Own the follow-up schedule and re-contact of registered households | — | Lead |
+| Verify submitted follow-up visits and determine payable units | Lead | — |
+| Review a sample of submissions for interval compliance and data quality | Lead | Supports |
+| Produce weekly progress and exception reports | Reviews | Produces |
+| Settle payment for verified units | Lead | Supports |
+
+## **8\. Permissions, Ethics, and Compliance**
+
+### **8.1 Permissions**
+
+The partner is responsible for securing all in-country permissions required to conduct the field activities, including:
+
+* Permission to operate in the areas where the partner's bednet distribution activity runs.  
+* Household consent to take part, recorded on the registration form.  
+* Household consent to the follow-up visit, re-affirmed on the follow-up form.  
+* Any local or national approvals required for community-level data collection in the partner's operating area.
+
+The partner will provide Dimagi with copies of all written permissions or notifications obtained.
+
+### **8.2 Ethics**
+
+This engagement is operational. It collects household consent, the head-of-household name, the household size, the date a bednet was distributed, and two observations about whether that bednet is in use. It collects no clinical measurement, no health outcome, and no individual health record.
+
+Consent is taken twice and recorded both times. At registration, the worker reads a consent script and records whether the household agrees to take part; a household that declines is asked nothing further and is never followed up. At the follow-up visit, the worker re-reads the consent line and records whether the household still agrees. A household may decline at either point.
+
+The head-of-household name is personal information and must be treated as such by the partner. It is collected for one purpose: to let a worker identify the correct household on the doorstep at the follow-up visit.
+
+### **8.3 Security and Duty of Care**
+
+The partner retains sole responsibility for the safety and security of its field teams. The partner will not deploy FLWs to areas where the prevailing security situation, in the partner's professional judgement, poses an unacceptable risk.
+
+## **9\. Data Handling**
+
+| Field | Value |
+| :---- | :---- |
+| Project overview | A two-visit household spot-check confirming whether insecticide-treated nets distributed by the partner are in use. Frontline Workers register consenting households on a first visit and return at least three days later to record two observations about bednet use. |
+| Data subjects | Households that have received an insecticide-treated net from the partner and have consented to take part. Frontline Workers employed or contracted by the partner. |
+| Personal information processed | Yes, limited. Head-of-household name and household size are collected, together with the date a bednet was distributed. No national identifier, no contact details, no date of birth, and no health record are collected. Frontline Worker identity is held in Connect for payment purposes. |
+| Purpose of processing | To confirm that distributed bednets are in use, to determine which follow-up visits are payable, and to supervise field data quality. Aggregate findings inform worker training content. Data is not used for any secondary purpose without further agreement. |
+| Technical and organizational security | CommCare captures data on the worker's device and transmits it to Dimagi-managed servers over an encrypted connection. Dimagi restricts access to named Dimagi staff and named partner supervisors, grants it on a least-privilege basis, and revokes it at the end of the engagement. |
+| Measures by Partner | The partner will ensure each worker's device is screen-locked, will restrict access to submitted data to named supervisors, will not export or copy household names outside the platform, and will report any suspected loss or unauthorised disclosure to Dimagi without delay. |
+| Data storage location | United States |
+| Data protection | Personal information is retained only for the period of performance and the reconciliation window that follows it, after which household names are deleted or irreversibly de-identified. Aggregate and de-identified figures may be retained for programme learning. The partner will not retain a separate copy of household-level data after closeout. |
+
+## **Signatures**
+
+IN WITNESS WHEREOF, the parties hereto have caused this Work Order to be executed by their authorized agents as of the date first above written, and annexed to the parties' Master Services Agreement (MSA) dated \_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_.
+
+| Subcontractor | Dimagi, Inc. |
+| :---- | :---- |
+| By: \_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_ Name: \[Partner Signatory Name\] Title: \[Partner Signatory Title\] Date: \_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_ Address for correspondence: \[Partner Registered Address\] | By: \_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_ Name: Lucina Tse Title: COO Dimagi, Inc. Date: \_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_\_ Address for correspondence: 245 Main Street, 2nd Floor, Cambridge, MA 02142 (617) 649-2214; legal@dimagi.com |
+
+## **Annexures**
+
+- Annexure A: Program Design Document — see https://docs.google.com/document/d/1aXXgCZgwcTP59yVyWBCNAaTDX4p3My09TIxGfFUVbgQ/edit  
+- Annexure B: To be provided
+

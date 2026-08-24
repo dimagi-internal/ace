@@ -59,6 +59,14 @@ The static check functions live at `skills/idea-to-pdd-qa/checks.ts` as importab
    **Note its `mimeType`** — you pass it to the runner in step 3, and check 7
    cannot verify the format without it (the bytes look identical either way).
 
+   **The sibling skill `pdd-to-work-order-qa` requires the OPPOSITE
+   (`exportAs: 'text/plain'`).** Both run in Phase 1, so do not carry this
+   skill's markdown convention across to it: its `checks.ts` matches the
+   unescaped gdoc form, and the markdown export's `1\.` / `\[` escaping
+   defeats it (dimagi-internal/ace#1609). The requirement is per-skill,
+   decided by what that skill's checks are written against — always read the
+   target skill's step 1 rather than reusing the last one you ran.
+
 2. **Save to a local temp path** (so the CLI runner can read it as a file).
    `Bash: TMP=$(mktemp); drive content saved to $TMP`.
 
