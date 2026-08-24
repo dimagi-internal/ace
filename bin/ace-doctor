@@ -355,6 +355,7 @@ if [ "$PREFLIGHT" = "1" ]; then
   PF_NOVA_CACHE_KEY_PRESENT=false
   PF_NOVA_CACHE_STATUS=pass
   PF_NOVA_CACHE_REMEDIATION=""
+  PF_NOVA_CACHE_CLEARED=false
   if [ -f "$PF_NOVA_CACHE_FILE" ]; then
     PF_NOVA_CACHE_HAS="$(node -e "
       try {
@@ -366,7 +367,25 @@ if [ "$PREFLIGHT" = "1" ]; then
       PF_NOVA_CACHE_KEY_PRESENT=true
       if [ "$PF_NOVA_KEY_PRESENT" = "true" ]; then
         PF_NOVA_CACHE_STATUS=fail
-        PF_NOVA_CACHE_REMEDIATION="plugin:nova:nova stuck in needs-auth cache despite valid NOVA_API_KEY; clear it from $PF_NOVA_CACHE_FILE then Cmd-Q + reopen Claude Code (run /ace:doctor for the exact node one-liner)"
+        # cache_key_present AND a valid NOVA_API_KEY together PROVE the entry is
+        # stale, so there is nothing to decide — clear it here rather than
+        # printing a one-liner a human has to run. Claude Code rewrites the
+        # entry at every startup without re-attempting auth (nova-plugin#11), so
+        # a restart alone does NOT clear it and the halt repeats on every
+        # restart. Still `fail`: MCP subprocesses cannot be respawned
+        # in-session, so the restart stays mandatory — this just makes ONE
+        # restart sufficient. See dimagi-internal/ace#1579.
+        if [ -f "$ROOT/scripts/clear-nova-needs-auth-cache.mjs" ]; then
+          PF_NOVA_CACHE_CLEAR_RESULT="$(node "$ROOT/scripts/clear-nova-needs-auth-cache.mjs" --file "$PF_NOVA_CACHE_FILE" 2>/dev/null)"
+        else
+          PF_NOVA_CACHE_CLEAR_RESULT="helper not present; run /ace:update"
+        fi
+        if [ "$PF_NOVA_CACHE_CLEAR_RESULT" = "cleared" ]; then
+          PF_NOVA_CACHE_CLEARED=true
+          PF_NOVA_CACHE_REMEDIATION="plugin:nova:nova was stuck in needs-auth cache despite valid NOVA_API_KEY; the stale entry has been CLEARED automatically. Cmd-Q + reopen Claude Code, then re-run your command (MCP subprocesses only rebind on a full restart)"
+        else
+          PF_NOVA_CACHE_REMEDIATION="plugin:nova:nova stuck in needs-auth cache despite valid NOVA_API_KEY; auto-clear did not apply ($PF_NOVA_CACHE_CLEAR_RESULT). Clear it from $PF_NOVA_CACHE_FILE then Cmd-Q + reopen Claude Code (run /ace:doctor for the exact node one-liner)"
+        fi
       else
         PF_NOVA_CACHE_STATUS=warn
         PF_NOVA_CACHE_REMEDIATION="plugin:nova:nova cached as needs-auth but NOVA_API_KEY not set; entry may be correct. To use Nova, set the key, clear the entry, restart Claude Code"
@@ -467,6 +486,7 @@ nova_needs_auth_cache:
   status: ${PF_NOVA_CACHE_STATUS}
   cache_key_present: ${PF_NOVA_CACHE_KEY_PRESENT}
   nova_api_key: ${PF_NOVA_KEY_PRESENT}
+  cleared: ${PF_NOVA_CACHE_CLEARED}
   remediation: "${PF_NOVA_CACHE_REMEDIATION}"
 ${PF_OCS_GEN_YAML}
 EOF
@@ -2271,10 +2291,27 @@ else
     # tools won't surface until it's cleared. Soft warn otherwise
     # (operator may genuinely not be authed yet).
     if [ -n "$NOVA_KEY_VAL" ]; then
-      fail "nova_needs_auth_cache: plugin:nova:nova cached as needs-auth despite valid NOVA_API_KEY" "remove the stuck entry and restart Claude Code (running process won't re-connect on its own):
+      # A present key PROVES the cached entry is stale, so clear it rather than
+      # printing a one-liner a human has to run — Claude Code rewrites the entry
+      # at every startup without re-attempting auth, so a restart alone does not
+      # clear it (dimagi-internal/ace#1579). Still `fail`: the restart is what
+      # rebinds the MCP subprocess.
+      if [ -f "$ROOT/scripts/clear-nova-needs-auth-cache.mjs" ]; then
+        NOVA_CACHE_CLEAR_RESULT="$(node "$ROOT/scripts/clear-nova-needs-auth-cache.mjs" --file "$NOVA_NEEDS_AUTH_CACHE" 2>/dev/null)"
+      else
+        NOVA_CACHE_CLEAR_RESULT="helper not present; run /ace:update"
+      fi
+      if [ "$NOVA_CACHE_CLEAR_RESULT" = "cleared" ]; then
+        fail "nova_needs_auth_cache: plugin:nova:nova was cached as needs-auth despite valid NOVA_API_KEY" "the stale entry has been CLEARED automatically from $NOVA_NEEDS_AUTH_CACHE.
+       Now Cmd-Q Claude Code and reopen — MCP subprocesses only rebind on a full restart.
+       Symptom this fixes: only \`mcp__plugin_nova_nova__authenticate\` surfaces, real tools (\`list_apps\` etc.) are missing.
+       Per Braxton's nova-plugin#11."
+      else
+        fail "nova_needs_auth_cache: plugin:nova:nova cached as needs-auth despite valid NOVA_API_KEY" "auto-clear did not apply ($NOVA_CACHE_CLEAR_RESULT); remove the stuck entry by hand and restart Claude Code (running process won't re-connect on its own):
        node -e 'const f=\"$NOVA_NEEDS_AUTH_CACHE\"; const d=JSON.parse(require(\"fs\").readFileSync(f,\"utf8\")); delete d[\"plugin:nova:nova\"]; require(\"fs\").writeFileSync(f, JSON.stringify(d,null,2)+\"\\n\");'
        Then Cmd-Q Claude Code and reopen. Symptom: only \`mcp__plugin_nova_nova__authenticate\` surfaces, real tools (\`list_apps\` etc.) are missing.
        Per Braxton's nova-plugin#11."
+      fi
     else
       warn "nova_needs_auth_cache: plugin:nova:nova cached as needs-auth (NOVA_API_KEY not set — possibly correct)" "if you intend to use Nova, see nova_env above; otherwise this entry is benign"
     fi
