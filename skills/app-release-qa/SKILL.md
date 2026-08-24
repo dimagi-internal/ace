@@ -606,13 +606,38 @@ free prose written per build, so a phrase list mis-grades any form whose
 author phrased it differently (and mis-grades every language-stacked form
 built before 2026-08-14 outright).
 
-`severity: 'blocker'` → halt with `[BLOCKER]` `non-local-constraint`
-(naming each field, the foreign node, and "move the constraint onto the
-node it is about"). `severity: 'warn'` → emit `[WARN]`
-`cross-screen-constraint` and continue. Record per-app under
-`constraint_locality` in the verdict:
+Each violation also carries a `kind`, because two different defects halt
+here and their remedies differ:
+
+- `kind: 'non-local'` — the ace#980 class above.
+- `kind: 'dead-repeat-cardinality-gate'` — a **minimum-rows gate bound
+  INSIDE the repeat it counts** (dimagi-internal/ace#1560). A constraint on
+  a node inside a repeat is evaluated per repeat INSTANCE, so at zero
+  repetitions it never evaluates at all — the one input the gate exists to
+  reject. This shape satisfies locality *exactly* (a `count()` over your own
+  repeat is a same-repeat reference), which is why it needed its own check:
+  locality and reachability are different properties. The violation carries
+  `deadGate: { repeat, countArg, comparison, minimumRows }`.
+
+  Read `kind` on every violation. A report whose violations you bucket by
+  `severity` alone loses the remedy — both kinds are `blocker`, and "move
+  the constraint onto the node it is about" is the WRONG instruction for a
+  dead gate (it is already on a node it is about).
+
+`severity: 'blocker'` + `kind: 'non-local'` → halt with `[BLOCKER]`
+`non-local-constraint` (naming each field, the foreign node, and "move the
+constraint onto the node it is about"). `kind:
+'dead-repeat-cardinality-gate'` → halt with `[BLOCKER]`
+`dead-repeat-cardinality-gate`, naming the field, the repeat, and the
+remedy the checker already whitelists: **move the gate to a question
+immediately after the repeat**, where it evaluates at zero rows. (Nova
+cannot carry it on the repeat container itself — `edit_field` on a repeat
+answers `kind "repeat" carries no 'validate' slot`, ace#1560.)
+`severity: 'warn'` → emit `[WARN]` `cross-screen-constraint` and continue.
+Record per-app under `constraint_locality` in the verdict:
 `{ constraints_checked, violations: [...] }` (each violation carrying its
-`severity`). Zero violations records `constraint_locality: pass`.
+`severity` AND its `kind`). Zero violations records
+`constraint_locality: pass`.
 
 **Relevance reachability — always, every form with relevance conditions
 (dimagi-internal/ace#996).** The temporal sibling of the check above: a
@@ -967,6 +992,19 @@ defects.
   Only `severity: 'blocker'` violations halt; questions sharing an
   `appearance="field-list"` group are one screen and are not violations
   at all (ace#1019).
+- `dead-repeat-cardinality-gate` — a minimum-rows gate (`count(<repeat>…)
+  >= N`, N >= 1) is bound to a node INSIDE the repeat it counts, so it
+  never evaluates at zero repetitions: the visit submits with an empty
+  repeat and whatever the repeat feeds derives from nothing (see Step 4 +
+  dimagi-internal/ace#1560, where an empty roster forfeited the PPI card's
+  largest single indicator, 31 points, with nothing on screen to betray
+  it). **This one is invisible to a device walk** — the same reason the FLW
+  never sees it — so the released binds are the only place it surfaces.
+  Operator fix: add a gate question **immediately after the repeat**
+  carrying the same rule (the shape this checker already whitelists), and
+  drop the inside-the-repeat copy; then re-release and re-run
+  `app-release-qa`. Not fixable on the repeat container: Nova answers
+  `kind "repeat" carries no 'validate' slot` (ace#1560).
 - `cross-screen-constraint` — `[WARN]`, not a halt. A `constraint` reaches
   into another screen, but it also references its own node, so the FLW
   clears it by changing the answer in front of them. Worth tightening

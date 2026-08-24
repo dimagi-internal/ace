@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   checkConstraintLocality,
   checkRelevanceReachability,
+  findMinimumCardinalityGate,
   formatConstraintLocalityReport,
   formatRelevanceReachabilityReport,
 } from './constraint-locality';
@@ -559,5 +560,200 @@ describe('checkRelevanceReachability', () => {
     expect(out).toMatch(/^relevance-reachability: FAIL \(1 of 1/);
     expect(out).toContain('outcome_note');
     expect(out).toContain('never contribute');
+  });
+});
+
+//
+// dimagi-internal/ace#1560 — a minimum-rows gate bound INSIDE the repeat it
+// counts is dead at zero rows.
+//
+// The bind below is the real one from the released hh-poverty-targeting
+// Deliver CCZ (`hh-poverty-targeting/20260819-1435`, app
+// 8c57579d-bc5a-40df-8e60-0c26d030bb38, build v5, `modules-0/forms-0.xml`),
+// pinned as a negative control the way the ace#980 binds above are. It passed
+// `checkConstraintLocality` clean before this check existed — measured at HEAD
+// 9974f123: `constraint-locality: PASS (1 constraint(s) checked, all local)`.
+//
+// The runtime half of the premise was verified against upstream
+// `commcare-cli.jar` (`org.javarosa.engine.XFormPlayer`), not intuition: this
+// form, walked with the repeat declined at "Add new repeat?", COMPLETED entry
+// and emitted `<i2_household_size>0</i2_household_size>`. The same rule bound
+// to a node AFTER the repeat blocked the same walk with `Input yes is invalid!
+// At least one confirmed member is required.`
+//
+const DEAD_GATE_FORM = `<?xml version="1.0"?>
+<h:html xmlns:h="http://www.w3.org/1999/xhtml" xmlns:jr="http://openrosa.org/javarosa">
+  <h:head><model>
+    <instance><data>
+      <roster><member_name/><member_confirm/></roster>
+      <i2_household_size/><ppi_size_pts/>
+    </data></instance>
+    <bind nodeset="/data/roster/member_name" required="true()"/>
+    <bind nodeset="/data/roster/member_confirm" required="true()"
+          constraint="count(/data/roster[member_confirm = 'yes']) &gt;= 1"
+          jr:constraintMsg="Confirm at least one household member."/>
+    <bind nodeset="/data/i2_household_size"
+          calculate="count(/data/roster[member_confirm = 'yes'])"/>
+    <bind nodeset="/data/ppi_size_pts"
+          calculate="if(/data/i2_household_size = 0, 0, 31)"/>
+  </model></h:head>
+  <h:body>
+    <repeat nodeset="/data/roster">
+      <input ref="/data/roster/member_name"/>
+      <select1 ref="/data/roster/member_confirm"/>
+    </repeat>
+  </h:body>
+</h:html>`;
+
+describe('dead repeat-cardinality gates (ace#1560)', () => {
+  it('flags the real shipped bind that constraint-locality passed clean', () => {
+    const { violations } = checkConstraintLocality(DEAD_GATE_FORM);
+    expect(violations.map((v) => v.fieldId)).toEqual(['member_confirm']);
+    expect(violations[0].kind).toBe('dead-repeat-cardinality-gate');
+    expect(violations[0].severity).toBe('blocker');
+    expect(violations[0].deadGate).toMatchObject({
+      repeat: '/data/roster',
+      minimumRows: 1,
+    });
+  });
+
+  it('carries the constraint message through for the QA report', () => {
+    const { violations } = checkConstraintLocality(DEAD_GATE_FORM);
+    expect(violations[0].message).toMatch(/at least one household member/i);
+  });
+
+  it('names the remedy the parser already whitelists', () => {
+    const out = formatConstraintLocalityReport(
+      checkConstraintLocality(DEAD_GATE_FORM),
+    );
+    expect(out).toMatch(/^constraint-locality: FAIL \(1 of 1/);
+    expect(out).toContain('never evaluates at zero repetitions');
+    expect(out).toContain('immediately after the repeat');
+  });
+
+  it('does NOT flag the same gate once it is bound outside the repeat', () => {
+    // The v6 fix shape: `roster_confirm` immediately after the repeat. Proven
+    // on the runtime to block a zero-row walk (see the header note).
+    const xml = `<?xml version="1.0"?>
+<h:html xmlns:h="http://www.w3.org/1999/xhtml">
+  <h:head><model>
+    <bind nodeset="/data/roster/member_confirm" required="true()"/>
+    <bind nodeset="/data/roster_confirm" required="true()"
+          constraint=". = 'yes' and count(/data/roster[member_confirm = 'yes']) &gt;= 1"/>
+  </model></h:head>
+  <h:body><repeat nodeset="/data/roster"/></h:body>
+</h:html>`;
+    expect(checkConstraintLocality(xml).violations).toEqual([]);
+  });
+
+  it('does NOT flag an UPPER bound inside the repeat — a cap belongs there', () => {
+    // The false-halt this check must never cause: `count(...) <= 10` fires as
+    // the worker adds the eleventh row, which is exactly where it should.
+    const xml = `<?xml version="1.0"?>
+<h:html xmlns:h="http://www.w3.org/1999/xhtml">
+  <h:head><model>
+    <bind nodeset="/data/roster/member_name"
+          constraint="count(/data/roster) &lt;= 10"/>
+  </model></h:head>
+  <h:body><repeat nodeset="/data/roster"/></h:body>
+</h:html>`;
+    expect(checkConstraintLocality(xml).violations).toEqual([]);
+  });
+
+  it('does NOT flag an ordinary per-row constraint inside the repeat', () => {
+    const xml = `<?xml version="1.0"?>
+<h:html xmlns:h="http://www.w3.org/1999/xhtml">
+  <h:head><model>
+    <bind nodeset="/data/roster/age" constraint=". &gt;= 0 and . &lt;= 120"/>
+  </model></h:head>
+  <h:body><repeat nodeset="/data/roster"/></h:body>
+</h:html>`;
+    expect(checkConstraintLocality(xml).violations).toEqual([]);
+  });
+
+  it('does NOT call a count over a DIFFERENT repeat a dead gate', () => {
+    // Still non-local (the other repeat is another screen) — but the remedy is
+    // different, so the two classes must not be conflated.
+    const xml = `<?xml version="1.0"?>
+<h:html xmlns:h="http://www.w3.org/1999/xhtml">
+  <h:head><model>
+    <bind nodeset="/data/roster/note" constraint="count(/data/visits) &gt;= 1"/>
+    <bind nodeset="/data/visits/when"/>
+  </model></h:head>
+  <h:body>
+    <repeat nodeset="/data/roster"/>
+    <repeat nodeset="/data/visits"/>
+  </h:body>
+</h:html>`;
+    const { violations } = checkConstraintLocality(xml);
+    expect(violations.map((v) => v.kind)).toEqual(['non-local']);
+  });
+
+  it('reports BOTH classes when one bind carries a dead gate and a foreign ref', () => {
+    const xml = `<?xml version="1.0"?>
+<h:html xmlns:h="http://www.w3.org/1999/xhtml">
+  <h:head><model>
+    <bind nodeset="/data/consent"/>
+    <bind nodeset="/data/roster/member_confirm"
+          constraint="count(/data/roster) &gt;= 1 and /data/consent = 'yes'"/>
+  </model></h:head>
+  <h:body><repeat nodeset="/data/roster"/></h:body>
+</h:html>`;
+    const { violations } = checkConstraintLocality(xml);
+    expect(violations.map((v) => v.kind).sort()).toEqual([
+      'dead-repeat-cardinality-gate',
+      'non-local',
+    ]);
+  });
+
+  it('stamps kind: non-local on the pre-existing ace#980 violations', () => {
+    const { violations } = checkConstraintLocality(DEFECTIVE_FORM);
+    expect(violations.every((v) => v.kind === 'non-local')).toBe(true);
+  });
+});
+
+describe('findMinimumCardinalityGate (the boundary, without a form)', () => {
+  const R = '/data/roster';
+
+  it.each([
+    ['count(/data/roster) >= 1', 1],
+    ['count(/data/roster) > 0', 1],
+    ['count(/data/roster) >= 2', 2],
+    ['count(/data/roster) > 2', 3],
+    ['1 <= count(/data/roster)', 1],
+    ['0 < count(/data/roster)', 1],
+    ["count( /data/roster[x = 'yes'] ) >= 1", 1],
+    ["count(/data/roster/member_confirm[. = 'yes']) >= 1", 1],
+    ["not(/data/skip = 'yes') or count(/data/roster) >= 1", 1],
+  ])('%s is a minimum-rows gate demanding %i row(s)', (expr, min) => {
+    expect(findMinimumCardinalityGate(expr as string, R)?.minimumRows).toBe(min);
+  });
+
+  it.each([
+    'count(/data/roster) <= 10',
+    'count(/data/roster) < 10',
+    'count(/data/roster) >= 0',
+    '10 >= count(/data/roster)',
+    'count(/data/roster) = 1',
+    'count(/data/visits) >= 1',
+    '. >= 1',
+    'string-length(.) >= 1',
+  ])('%s is not one', (expr) => {
+    expect(findMinimumCardinalityGate(expr, R)).toBeUndefined();
+  });
+
+  it('is quote-aware, so a paren inside a predicate does not end the argument', () => {
+    const gate = findMinimumCardinalityGate(
+      "count(/data/roster[selected(member_confirm, 'yes')]) >= 1",
+      R,
+    );
+    expect(gate?.countArg).toBe("/data/roster[selected(member_confirm, 'yes')]");
+    expect(gate?.minimumRows).toBe(1);
+  });
+
+  it('does not throw on an unbalanced expression', () => {
+    expect(() =>
+      findMinimumCardinalityGate('count(/data/roster >= 1', R),
+    ).not.toThrow();
   });
 });
