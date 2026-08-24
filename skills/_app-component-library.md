@@ -697,16 +697,50 @@ time; do not skip it because the app "looks right" structurally.
   was no channel; it is indefensible now that there is one.
 
 **The six atoms** — `get_languages`, `get_translatable_content`, `add_language`,
-`update_language`, `remove_language`, `update_translations` — are already on
-`nova-architect-autonomous`'s allowed-tool list. Read their live schemas from
-Nova's `tools/list`; do not paraphrase them into a skill.
+`update_language`, `remove_language`, `update_translations` — are on
+`nova-architect-autonomous`'s allowed-tool list AND on ACE's own Nova MCP
+surface at level 0. Read their live schemas from Nova's `tools/list`; do not
+paraphrase them into a skill.
 
-**Nova's architect will not do this on its own.** Its `autonomous_build`
-operating prompt (70,643 chars, read live 2026-08-17) has **zero** occurrences
-of `itext`, `locale`, `multiling` or `English`; its only substantive `language`
-mention says the *chat* language is independent of the app's languages, and its
-numbered build workflow has no language step. The tools exist and the architect
-may call them, but nothing will happen unless the brief below asks for it.
+**WHO authors the translations: ACE at level 0, never the architect
+(ace#1556).** This is the load-bearing correction of 2026-08-23, and it is a
+mechanism fix, not a reversal of Jon's 2026-08-17 decision — that decision
+("translations are authored by ACE") is exactly what the old wiring failed to
+execute, because it delegated the authoring to a subagent whose own operating
+prompt forbids it.
+
+Nova's architect operating prompt — read verbatim off disk from the installed
+plugin at `nova/1.27.0/skills/autobuild/SKILL.md` (also `1.26.0`, and the same
+sentence appears in `agents/nova-architect-autonomous.md`) — says:
+
+> Never treat your own language fluency as a substitute or bulk-translate
+> self-generated text through `update_translations`. Only save target text
+> supplied by the user: page `get_translatable_content` to completion,
+> preserve typed `protectedParts`, and write at most 50 distinct stable unit
+> IDs per atomic call. … never mark copied or machine-authored text reviewed
+> on the user's behalf.
+
+An `/ace:run` supplies no human-authored target strings, so a brief that told
+the architect to author them asked for the one thing that clause rules out.
+The architect declined, correctly, and the language step became a silent no-op:
+`spark-facilitator/20260820-0817`, Learn app `64ec7be2-e9a4-49c5-8151-3dca69f9b879`,
+PDD working languages `nya` + `tum` — final `get_languages` reported **207
+units `needs-review`, 0 ready in BOTH targets**, i.e. every unit still the
+copied English string, presented to a worker under the language's name. That
+is a false affordance, and it shipped on every multilingual build.
+
+The fix is the **ownership split** below. It resolves the conflict rather than
+arguing with it: the clause constrains the ARCHITECT's self-generated text, and
+ACE — the caller, the "user" in that sentence — supplies the target text.
+Nova's platform contract already anticipates this: writes from ACE are
+auto-tagged `origin: "ai"` and land `needs-review`, so provenance stays honest
+by construction and nothing is marked reviewed on anyone's behalf.
+
+| | Architect (inside `/nova:autobuild`) | ACE (level 0, after the build returns) |
+|---|---|---|
+| English source content | **owns it** — every string, final | reads it |
+| `add_language` / `update_translations` | **never calls them** | **owns them** |
+| `get_languages` verification | reports what it sees | gates on `out-of-date` = 0 |
 
 **Contract facts, each proven live on 2026-08-17 against a scratch Nova app
 (`b4e2c8fd`, since deleted) — observed, not inferred:**
@@ -722,21 +756,26 @@ may call them, but nothing will happen unless the brief below asks for it.
 | A `prose` unit rejects a bare string — `"requires a prose value."` | Labels/hints/help take `{parts:[{kind:'text',text:…}]}`; app/module/form names take a bare string |
 | ACE's writes are auto-tagged `origin: "ai"` | Provenance is recorded for you. Never claim a human review you did not do |
 
-**Build order — the load-bearing rule.**
+**Build order — the load-bearing rule.** Steps 2–4 are ACE's, run at level 0
+after `/nova:autobuild` returns AND after every level-0 English repair step in
+the build skill has finished. Nothing may edit an English string after step 3.
 
-1. Build the **entire** app in English. Every string, final.
-2. Only once the English is settled and the app otherwise passes its build
-   checks, add the language: `add_language(code: <CODE>, copyFrom: 'en')`.
-3. Page `get_translatable_content(language: <CODE>)` to completion and author
-   real `<LANGUAGE>` values through `update_translations`, echoing each unit's
-   current `sourceFingerprint`.
-4. Re-read `get_languages`. **`out-of-date` must be 0 at hand-off.** A non-zero
-   count means the English moved after step 3: re-translate those units rather
-   than shipping them.
+1. **Architect:** build the **entire** app in English. Every string, final.
+   The architect adds NO language and calls NO language atom.
+2. **ACE, level 0:** only once the English is settled and the app has passed
+   its build checks, add the language:
+   `add_language(code: <CODE>, copyFrom: 'en')`.
+3. **ACE, level 0:** page `get_translatable_content(language: <CODE>)` to
+   completion and author real `<LANGUAGE>` values through
+   `update_translations`, echoing each unit's current `sourceFingerprint`.
+4. **ACE, level 0:** re-read `get_languages`. **`out-of-date` must be 0 at
+   hand-off.** A non-zero count means the English moved after step 3:
+   re-translate those units rather than shipping them.
 
 Inverting steps 1 and 2 is precisely the failure this rule prevents — the copy
-lands, the architect keeps editing, every edited string silently reverts to
-English, and the coverage counts still look populated.
+lands, editing continues, every edited string silently reverts to English, and
+the coverage counts still look populated. Putting steps 2–4 wholly outside the
+architect's turn is what makes translate-LAST structural rather than a request.
 
 **English stays the runtime default — CONFIRMED by Jon, 2026-08-17.**
 `defaultLanguage` remains `en` and `<LANGUAGE>` is a selectable target. Jon's
@@ -769,56 +808,79 @@ translations are ACE-authored (`origin: ai`) and carry `needs-review` until a
 speaker of `<LANGUAGE>` reviews them — a normal ACE review obligation, exactly
 like the English copy, not a special gate.
 
+**ACE's level-0 recipe (steps 2–4 above).** Run it in the build skill after
+every English-editing step has completed, immediately before the summary is
+written. `pdd-to-learn-app § 4e` and `pdd-to-deliver-app § 4l` are the two
+homes; both are thin wrappers over this recipe.
+
+1. `get_languages(appId)` — confirm English is still `sourceLanguage` and that
+   `<CODE>` is not already present. If it is present (a rerun), skip the add.
+2. `add_language(appId, code: <CODE>, copyFrom: 'en')`.
+3. Loop until `nextCursor` is absent: `get_translatable_content(appId,
+   language: <CODE>)` → author real `<LANGUAGE>` values for every unit in the
+   page → `update_translations` with at most **50** unit IDs per call, echoing
+   each unit's just-read `sourceFingerprint` as `expectedSourceFingerprint`.
+   `prose` units (labels, hints, help, validation messages) take
+   `{parts:[{kind:'text',text:'…'}]}`; app / module / form names are `text`
+   units and take a bare string. Preserve every typed `protectedParts` entry
+   exactly as read. Keep sibling choice labels semantically distinct — a
+   translation that collapses two options destroys an assessment item's
+   discrimination.
+4. `get_languages(appId)` again. Record the counts. **`out-of-date` must be 0
+   and `missing` must be 0.** Non-zero `out-of-date` means an English string
+   moved after step 3 — re-run step 3 for those units. Never mark anything
+   reviewed; `needs-review` is the correct resting state for ACE-authored text.
+
+If any step cannot complete, fail loud with the counts rather than writing a
+summary that claims a language layer the app does not carry. A partially
+authored layer is the false affordance ace#1556 was filed about: the units left
+`origin: copied` are English strings wearing `<LANGUAGE>`'s name, and the
+worker cannot tell them apart from real translations.
+
 **Brief paragraph (verbatim) — Deliver:**
 
 > REQUIRED: Build every user-facing string (module names, form names, labels,
-> choices, hints, help, validation messages) in **English first, and finish the
-> whole app in English before touching languages.** English is the app's source
-> language and stays the runtime default.
-> THEN, as the LAST step of the build: call `add_language(code: <CODE>,
-> copyFrom: 'en')`, page `get_translatable_content(language: <CODE>)` to
-> completion, and author real <LANGUAGE> values via `update_translations`,
-> echoing each unit's current `sourceFingerprint`. Field labels, hints, help and
-> validation messages are `prose` units — send
-> `{parts:[{kind:'text',text:'…'}]}`, never a bare string; a bare string is
-> rejected with "requires a prose value." App, module and form names are `text`
-> units and take a bare string. Batch at most 50 units per call.
-> FINALLY re-read `get_languages` and confirm `out-of-date` is **0**. If you
-> edit any English string after translating, that unit reverts to English —
-> re-translate it.
+> choices, hints, help, validation messages) in **English, and only English.**
+> English is the app's source language and stays the runtime default.
+> **Do NOT add any language and do NOT call `add_language`,
+> `update_language` or `update_translations`** — even though the PDD names
+> <LANGUAGE> as the working language, and even if you are asked to make the app
+> multilingual. ACE adds the <LANGUAGE> layer itself, at its own level, after
+> this build returns and after its own English repair passes have finished;
+> your operating instructions are right that self-generated target text is not
+> yours to save, and the split exists so that neither of us has to break its
+> own contract (ace#1556). Adding a language now would also be silently undone:
+> every English string you edit afterwards demotes its translation to
+> `out-of-date`, which falls back to English.
 > **Do not stack languages inline.** No `English / <LANGUAGE>: …` labels, no
 > parenthetical translations, no language-selector question. Stacking fails
 > `language_conformance` at the eval gate.
 > Keep the English SHORT, plain and concrete — it is both the translation source
-> and the fallback. In the build memo record the language, its code, and the
-> final coverage counts.
+> and the fallback for every stale unit. In the build memo record that the app
+> is English-complete and carries no language layer yet.
 
 **Brief paragraph (verbatim) — Learn:**
 
 > REQUIRED: Build every user-facing string (module names, form names, labels,
-> choices, hints, assessment items and their option labels) in **English first,
-> and finish the whole app in English before touching languages.** English is
-> the app's source language and stays the runtime default.
-> THEN, as the LAST step of the build: call `add_language(code: <CODE>,
-> copyFrom: 'en')`, page `get_translatable_content(language: <CODE>)` to
-> completion, and author real <LANGUAGE> values via `update_translations`,
-> echoing each unit's current `sourceFingerprint`. Field labels, hints, help and
-> validation messages are `prose` units — send
-> `{parts:[{kind:'text',text:'…'}]}`, never a bare string; a bare string is
-> rejected with "requires a prose value." App, module and form names are `text`
-> units and take a bare string. Batch at most 50 units per call. Assessment
-> stems and option labels are ordinary translatable units — translate them too,
-> and keep each option's meaning distinct in <LANGUAGE>, since a translation
-> that collapses two options destroys the item's discrimination.
-> FINALLY re-read `get_languages` and confirm `out-of-date` is **0**. If you
-> edit any English string after translating, that unit reverts to English —
-> re-translate it.
+> choices, hints, assessment items and their option labels) in **English, and
+> only English.** English is the app's source language and stays the runtime
+> default.
+> **Do NOT add any language and do NOT call `add_language`,
+> `update_language` or `update_translations`** — even though the PDD names
+> <LANGUAGE> as the working language, and even if you are asked to make the app
+> multilingual. ACE adds the <LANGUAGE> layer itself, at its own level, after
+> this build returns and after its own English repair passes have finished;
+> your operating instructions are right that self-generated target text is not
+> yours to save, and the split exists so that neither of us has to break its
+> own contract (ace#1556). Adding a language now would also be silently undone:
+> every English string you edit afterwards — assessment re-keys included —
+> demotes its translation to `out-of-date`, which falls back to English.
 > **Do not stack languages inline.** No `English / <LANGUAGE>: …` labels, no
 > parenthetical translations, no language-selector question. Stacking fails
 > `language_conformance` at the eval gate.
 > Keep the English SHORT, plain and concrete — it is both the translation source
 > and the fallback, and assessment stems are read repeatedly. In the build memo
-> record the language, its code, and the final coverage counts.
+> record that the app is English-complete and carries no language layer yet.
 
 ---
 
@@ -1644,6 +1706,7 @@ is internally consistent with its own wrong numbers (ace#1527).
 
 | Date | Change | By |
 |---|---|---|
+| 2026-08-23 | **`app-language-layer` ownership split — ACE authors the translations at level 0; the architect never touches a language atom (ace#1556).** The 2026-08-17 decision said translations are *authored by ACE*; the wiring delegated the authoring to `/nova:autobuild`, whose operating prompt (read verbatim off disk, nova plugin `1.26.0` and `1.27.0`, `skills/autobuild/SKILL.md` + `agents/nova-architect-autonomous.md`) says: *"Never treat your own language fluency as a substitute or bulk-translate self-generated text through `update_translations`. Only save target text supplied by the user…"* An `/ace:run` supplies no human target strings, so the architect declined — correctly — and the language step was a silent no-op on every multilingual build. Measured: `spark-facilitator/20260820-0817`, Learn app `64ec7be2-e9a4-49c5-8151-3dca69f9b879`, working languages `nya` + `tum` → **207 units `needs-review`, 0 ready in BOTH targets**, i.e. every unit still the copied English string served to a worker under the language's name. This is a MECHANISM fix, not a product reversal: the clause constrains the architect's *self-generated* text, and ACE — the caller, the "user" in that sentence — supplies the target text through the same six atoms on its own Nova MCP surface. New homes: `pdd-to-learn-app § Step 4e` and `pdd-to-deliver-app § Step 4l`, both thin wrappers over the component's level-0 recipe. Both brief paragraphs now tell the architect to build English-ONLY and to call no language atom, which makes translate-LAST structural rather than a request — the architect's turn is over before the language exists. Provenance is unchanged and honest: ACE's writes stay `origin: ai` / `needs-review`, nothing is marked reviewed on anyone's behalf. *Enforced:* `test/skills/app-language-layer.test.ts`. | ACE team |
 | 2026-08-20 | **New component `fixed-instrument-transcription` (ace#1527).** A `[FIXED]` published instrument's point values reached the Nova architect as PROSE in the Step-3 brief, and nothing anywhere re-opened the source file sitting in the run's own frozen `inputs/`. On `hh-poverty-targeting/20260819-1435` that shipped 9 of 17 point values wrong and all 101 poverty-likelihood values invented, past `validate_app` (structure, not values), past `pdd-to-deliver-app-eval` (grades against a narrative PDD, so a wrong constant is conformant prose) and past `app-release-qa` (counts and install-time behaviour). The component carries both halves: a brief paragraph telling the architect to transcribe exactly and to STOP rather than invent when a constant is missing, and the skill-side check (`pdd-to-deliver-app § Step 4k`) that diffs the built literals against the source file via `lib/instrument-constants.ts` — extraction trusted FIRST (an undecoded `t="s"` shared-string index reads as a plausible number: `score 4 -> 79.0`), then `diffScoringConstants` and `compareMaxScore`. Paired 1:1 with the eval's new `fixed_instrument_fidelity` hard-gate. Sibling of `instrument-grounded-examples`: that one makes the Learn app TEACH the real instrument, this one makes the Deliver app IMPLEMENT it. Also a licence rule — the PPI permits digitising the scorecard and its lookup tables only UNMODIFIED. *Enforced:* `test/lib/instrument-constants.test.ts` + `test/skills/deliver-l0-loop-integrity.test.ts`. | ACE team |
 | 2026-08-17 | **Nova shipped a real per-language channel; ACE builds multilingual again — `english-only-ui` → `app-language-layer` (PR #1463, superseding ace#968/#1391; Jon).** Verified live against `tools/list`: **95 tools, up from 81 on 2026-08-14**, carrying six itext-shaped language atoms (`get_languages`, `get_translatable_content`, `add_language`, `update_language`, `remove_language`, `update_translations`) — translation units with source fingerprints, provenance, review state and protected reference parts. The 2026-08-14 English-only decision rested on that channel not existing; it now does, so the decision is superseded, NOT reversed on taste. Jon's call: fully implement, but **English is always the source language and the review surface** (every app always gets a complete English version), and translations are reviewed like any other artifact — English included — with no bespoke native-speaker gate. Contract proven live on scratch app `b4e2c8fd`, not inferred: `add_language` COPIES rather than translates; automatic translation covers only a checked-in 57-language set with no MCP trigger (Chichewa = `not-evaluated`), so ACE authors the strings; `needs-review` text **IS served to workers**, so review is bookkeeping and not a publish gate; and editing an English string demotes its translation to `out-of-date` whose `effective` **falls back to English** — hence the load-bearing **translate-LAST** ordering rule. `defaultLanguage` stays `en` for now (one `update_language set-default` call to change). Inline stacking stays retired and is now a hard fail. Table B's multilingual row is DELETED — it is no longer a toolchain gap. *Enforced:* `test/skills/app-language-layer.test.ts`. | ACE team |
 | 2026-08-14 | **ACE builds English-only app UIs; `localization-layer` retired and `localization_match` INVERTED (ace#1391, superseding ace#968; Jon).** Re-verified Nova's live surface: zero hits for `itext`/`locale`/`i18n`/`translat` across all **81** tools (was 63 on 2026-07-31), `update_app` carries only `name`, and the architect's own 70k-char operating prompt never mentions languages; the surface's only language parameter is `defaultLanguageCode` on messaging automations. Since 2026-07-30 the sanctioned fallback had been stacking every language inline in one label — Jon's call: that is a terrible solution and localization should be solved properly when it can be solved at all, so until Nova ships a real per-language channel ACE ships an honest monolingual UI rather than a convincing fake. Component `localization-layer` → **`english-only-ui`** (same trigger, opposite instruction: build English, do not stack, do not hunt for a translations parameter, record the decision in the build memo). Eval dimension `localization_match` → **`language_conformance`**, same 8% and same null-when-N/A: English-only is now FULL CREDIT, stray stacked strings score 5 + `[WARN]`, systematic inline stacking or an in-app language selector is ≤3 → `fail`. Both calibration anchors amended — the ITN negative control's `localization_match ≤3` clause is REMOVED, not relaxed (the same artifact now scores full credit there; the other three dimensions still force `fail`). Phase 1 still records the working language — it drives training, facilitation, the OCS chatbot and the solicitation — but must not assert a translated app; multilingual UI is now a **Table B** row (buildable in CommCare via itext, closed on ACE's builder — never call it a platform limit). *Enforced:* `test/skills/english-only-ui.test.ts`. | ACE team |
