@@ -171,8 +171,16 @@ alone makes the artifact land outside `4-connect` and fail
       by `EXPECTED_OPP_BUDGET × 10` on *every* run of *every* opp, forever,
       on the live LLO-facing program Step 3a reconciles against the PDD.
 
-      **Σ is UNKNOWN — not partial — in three cases. Check each before
+      **Σ is UNKNOWN — not partial — in four cases. Check each before
       trusting it:**
+      - the listing itself was incomplete: the atom returns a `listing`
+        block alongside `opportunities`, and **`listing.complete !== true`
+        means rows exist that you did not see** — Σ over the rows you got
+        is not a smaller-but-valid total, it is a number about a different
+        set. Report `listing.truncated_reason` verbatim. (Connect
+        paginates this view at 20 rows and said nothing about it until
+        dimagi-internal/ace#1590; the walk is exhaustive now, so this
+        should only fire above 5,000 opportunities in one org.);
       - a kept row carries no `total_budget` (the dashboard's "Max Budget"
         card did not parse — this is how the field silently disappears if
         Connect restyles the page);
@@ -263,7 +271,7 @@ alone makes the artifact land outside `4-connect` and fail
   - `connect_list_delivery_types` — resolve human name → slug/int FK if needed
   - `connect_create_program` — create (REST `POST /api/programs/`)
   - `connect_get_program` — verify after create; read live fields for reconcile (Step 3a) and `budget` for the headroom check (Step 4a)
-  - `connect_list_opportunities` — with `hydrate: true`, the ONLY source of the headroom Σ's two inputs (`total_budget`, `program_name` — both dashboard-read per row, ace#1550); the unhydrated list page carries neither (Step 4a)
+  - `connect_list_opportunities` — with `hydrate: true`, the ONLY source of the headroom Σ's two inputs (`total_budget`, `program_name` — both dashboard-read per row, ace#1550); the unhydrated list page carries neither (Step 4a). Returns a `listing` completeness block; `listing.complete !== true` makes Σ UNKNOWN (ace#1590)
   - `connect_update_program` — refresh stale description/dates on reuse (Step 3a); raise the program budget ceiling, idempotently when Σ is known and on the conservative assumption when it is not (Step 4a)
 
 ## Mode Behavior
@@ -298,4 +306,5 @@ downstream coherence:
 | 2026-04-30 | Switch `connect_create_program` to `POST /api/programs/` (commcare-connect PR #1135). `delivery_type` now accepts the slug; `country` is the human country name. (0.10.47) | ACE team |
 | 2026-07-30 | Step 3a: reconcile reused program content (description/budget/dates) against the current run's PDD via `lib/program-reconcile.ts` — update or `[WARN]` per diverging field (jjackson/ace#1078). Note substring-match + hydration semantics of `connect_list_programs` (jjackson/ace#1089). | ACE team |
 | 2026-08-21 | Step 4a: invert the branches — Σ(`total_budget`) is unobtainable on every Connect read surface, so the conservative raise is now the documented PRIMARY path and the `connect_list_opportunities({hydrate: true})` call is dropped (20 sequential edit-page fetches for zero fields). Computed-Σ kept as the restore-if path (dimagi-internal/ace#1550). | ACE team |
+| 2026-08-23 | Step 4a: a fourth UNKNOWN condition — `connect_list_opportunities` walked only Connect's first page (20 rows) with no signal more existed, so Σ could be computed over a fifth of the program and read as complete. The atom now paginates to exhaustion and returns a `listing` completeness block; Σ is UNKNOWN when `listing.complete !== true` (dimagi-internal/ace#1590). | ACE team |
 | 2026-08-21 | Step 4a: Σ is executable again — `connect_get_opportunity` now reads `total_budget` + `program_name` off the opportunity dashboard, so a hydrated list can be scoped to this program and summed (supersedes the row above, same day). Names the three UNKNOWN cases and requires the branch taken to be reported in the program notes (dimagi-internal/ace#1550). | ACE team |

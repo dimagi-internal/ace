@@ -1,6 +1,13 @@
 import type { APIRequestContext, APIResponse } from 'playwright';
 import type { ConnectClient } from '../client.js';
-import type { Opportunity, PaymentUnit, Program, ProgramApplication, VerificationFlags } from '../types.js';
+import type {
+  ListingCompleteness,
+  Opportunity,
+  PaymentUnit,
+  Program,
+  ProgramApplication,
+  VerificationFlags,
+} from '../types.js';
 import { HttpError, ConnectValidationError, ConnectError, UnsupportedVerificationFlagError } from '../errors.js';
 import { assertFundsAtLeastOneUser } from '../opportunity-capacity.js';
 import type { PlaywrightSession } from '../auth/playwright-session.js';
@@ -19,6 +26,7 @@ import {
   parseDeliveryTypeOptions,
   parseProgramsList,
   parseOpportunitiesList,
+  parseTablePagination,
   parseInvitesList,
   parseFormErrors,
   parseFormErrorsByField,
@@ -46,6 +54,49 @@ const OPPORTUNITY_LIST_PAGE_SIZE = 100;
  * a short page.
  */
 const OPPORTUNITY_LIST_MAX_PAGES = 50;
+
+/** Upstream `DEFAULT_PAGE_SIZE` — the smallest page a NON-final page can be. */
+const CONNECT_DEFAULT_PAGE_SIZE = 20;
+
+/**
+ * django-tables2 `prefixed_page_field` with the default empty table prefix.
+ * Only a fallback: the real name is read off the rendered footer, because a
+ * table with a prefix ignores a bare `?page=` entirely.
+ */
+const OPPORTUNITY_LIST_DEFAULT_PAGE_FIELD = 'page';
+
+/**
+ * Max hydrate fetches in flight at once.
+ *
+ * Hydration is 2 GETs per row, and it used to be bounded by accident: the
+ * listing stopped at 20 rows, so `Promise.all` fanned out ~40 requests. Now
+ * that the walk is exhaustive, an org like `ai-demo-space` (114 opportunities
+ * at ace#938 time) would fan out ~230 in one burst against a single Playwright
+ * request context. Correct-and-exhaustive must not mean unbounded.
+ */
+const OPPORTUNITY_HYDRATE_CONCURRENCY = 8;
+
+/**
+ * `Promise.all`-shaped map with a fixed concurrency ceiling. Results keep the
+ * input order; the first rejection propagates, as with `Promise.all`.
+ */
+async function mapWithConcurrency<T, R>(
+  items: T[],
+  limit: number,
+  fn: (item: T) => Promise<R>,
+): Promise<R[]> {
+  const out = new Array<R>(items.length);
+  let next = 0;
+  const worker = async () => {
+    for (;;) {
+      const i = next++;
+      if (i >= items.length) return;
+      out[i] = await fn(items[i]);
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
+  return out;
+}
 
 /**
  * Build a structured ConnectValidationError from a 200-with-errorlist response
@@ -479,27 +530,75 @@ export class PlaywrightBackend implements ConnectClient {
     // that existed on page 2+.
     const stubs: ReturnType<typeof parseOpportunitiesList> = [];
     const seenIds = new Set<string>();
+    let pageField = OPPORTUNITY_LIST_DEFAULT_PAGE_FIELD;
+    let declaredPages: number | undefined;
+    let pagesFetched = 0;
+    let pageSizeHonored = false;
+    let truncatedReason: string | undefined;
     for (let page = 1; page <= OPPORTUNITY_LIST_MAX_PAGES; page++) {
       const path =
         `/a/${organization_slug}/opportunity/` +
-        `?page_size=${OPPORTUNITY_LIST_PAGE_SIZE}&page=${page}`;
+        `?page_size=${OPPORTUNITY_LIST_PAGE_SIZE}&${pageField}=${page}`;
       const res = await this.request.get(path);
-      // Django's Paginator 404s an out-of-range page, so a non-200 after the
-      // first page is the end of the list, not a failure. On page 1 it is a
+      // An out-of-range page is NOT an error on this surface: django-tables2
+      // configures the table with `RequestConfig(..., silent=True)`, which maps
+      // `EmptyPage` to `paginator.page(paginator.num_pages)` -- the LAST page,
+      // HTTP 200 (`django_tables2/config.py`). The stop conditions below are
+      // what actually terminate the walk. This branch stays as a defensive
+      // floor for a surface that behaves differently; on page 1 a non-200 is a
       // real error and must still surface.
       if (res.status() !== 200) {
         if (page === 1) throw await httpErrorFor(res, path);
         break;
       }
-      const pageStubs = parseOpportunitiesList(await res.text());
+      const html = await res.text();
+      pagesFetched++;
+      if (page === 1) {
+        // The footer carries BOTH the paginator page count and the name of the
+        // page parameter (`table.prefixed_page_field`), so neither is guessed.
+        const pagination = parseTablePagination(html);
+        pageField = pagination.page_field ?? pageField;
+        declaredPages = pagination.num_pages;
+      }
+      const pageStubs = parseOpportunitiesList(html);
+      if (page === 1) {
+        // Did the server actually honour `page_size`? Only conclude "short
+        // page means last page" against the size it really used. A response
+        // pinned at DEFAULT_PAGE_SIZE would otherwise look short on page 1 and
+        // stop the walk at 20 rows -- the exact shape ace#1590 reported live.
+        pageSizeHonored = pageStubs.length > CONNECT_DEFAULT_PAGE_SIZE;
+      }
       const fresh = pageStubs.filter((s) => !seenIds.has(s.id));
       for (const s of fresh) seenIds.add(s.id);
       stubs.push(...fresh);
-      // Stop on a short page (the last one) or when a page adds nothing new —
-      // the latter also makes this terminate against a server that ignores
-      // `page` and re-serves the same rows.
-      if (pageStubs.length < OPPORTUNITY_LIST_PAGE_SIZE || fresh.length === 0) break;
+      // Stop where the paginator says it ends; failing that, on a short page
+      // (the last one) or when a page adds nothing new -- the latter also makes
+      // this terminate against a server that ignores the page parameter and
+      // re-serves the same rows.
+      const shortPageAt = pageSizeHonored ? OPPORTUNITY_LIST_PAGE_SIZE : CONNECT_DEFAULT_PAGE_SIZE;
+      if (declaredPages !== undefined) {
+        if (page >= declaredPages) break;
+      } else if (pageStubs.length < shortPageAt || fresh.length === 0) {
+        break;
+      }
+      if (page === OPPORTUNITY_LIST_MAX_PAGES) {
+        truncatedReason =
+          `walked ${OPPORTUNITY_LIST_MAX_PAGES} pages of ${OPPORTUNITY_LIST_PAGE_SIZE} without ` +
+          `reaching the end of /a/${organization_slug}/opportunity/` +
+          (declaredPages !== undefined ? ` (page declares ${declaredPages} pages)` : '');
+      }
     }
+    // Say whether the walk actually finished. Without this a caller cannot
+    // distinguish a complete listing from a capped one, which is the half of
+    // ace#1590 that makes a silently-wrong Sigma possible in the first place.
+    const listing: ListingCompleteness = {
+      complete: truncatedReason === undefined,
+      total_count: stubs.length,
+      pages_fetched: pagesFetched,
+      page_size: OPPORTUNITY_LIST_PAGE_SIZE,
+      ...(declaredPages !== undefined ? { declared_pages: declaredPages } : {}),
+      ...(truncatedReason !== undefined ? { truncated_reason: truncatedReason } : {}),
+    };
     // `managed`, `active` and `total_budget` are deliberately ABSENT: the
     // list page does not carry them, and a fabricated value is worse than a
     // missing one because a caller cannot tell it apart from a real one.
@@ -512,14 +611,16 @@ export class PlaywrightBackend implements ConnectClient {
     })) as unknown as Opportunity[];
     if (name) opportunities = opportunities.filter((o) => o.name === name);
     if (hydrate) {
-      opportunities = await Promise.all(
-        opportunities.map(async (o) => ({
+      opportunities = await mapWithConcurrency(
+        opportunities,
+        OPPORTUNITY_HYDRATE_CONCURRENCY,
+        async (o) => ({
           ...o,
           ...(await this.getOpportunity({ organization_slug, opportunity_id: o.id })),
-        })),
+        }),
       );
     }
-    return { opportunities };
+    return { opportunities, listing };
   };
 
   getOpportunity: ConnectClient['getOpportunity'] = async ({ organization_slug, opportunity_id }) => {

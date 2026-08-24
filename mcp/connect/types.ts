@@ -381,3 +381,32 @@ export interface DeliverProgress {
   opportunity_id: string;
   workers: WorkerDeliverRow[];
 }
+
+/**
+ * Honesty envelope for a list read off a SERVER-PAGINATED Connect page.
+ *
+ * Connect paginates its list views at `DEFAULT_PAGE_SIZE = 20`
+ * (`commcare_connect/utils/tables.py:17`) and a single GET returns page 1 with
+ * nothing in the payload saying so. A caller summing a column over that page
+ * gets a confident number computed from a fifth of the data — which is exactly
+ * how `connect-program-setup` Step 4a could under-count a program budget and
+ * skip the raise it exists to perform (dimagi-internal/ace#1590).
+ *
+ * So every paginated list read reports what it actually saw. `complete: false`
+ * means rows exist that are NOT in the returned array; a caller that aggregates
+ * must treat its result as UNKNOWN, never as a smaller-but-valid total.
+ */
+export interface ListingCompleteness {
+  /** `true` iff every row the server holds for this listing was read. */
+  complete: boolean;
+  /** Rows read from the full listing, BEFORE any client-side filter. */
+  total_count: number;
+  /** How many pages were actually fetched. */
+  pages_fetched: number;
+  /** The `page_size` requested per page. */
+  page_size: number;
+  /** `paginator.num_pages` as the page itself declared it, when it did. */
+  declared_pages?: number;
+  /** Set only when `complete` is false — why the walk stopped short. */
+  truncated_reason?: string;
+}

@@ -1239,3 +1239,69 @@ export function parseOpportunityDashboard(html: string): OpportunityDashboardFie
 
   return out;
 }
+
+/**
+ * What upstream's shared table footer declares about server-side pagination.
+ *
+ * Every field is optional because the footer is CONDITIONAL: Connect renders
+ * it only `{% if table.page and table.paginator.count > DEFAULT_PAGE_SIZE %}`
+ * (`commcare_connect/templates/base_table.html`), so a list of 20 rows or
+ * fewer carries no footer at all. An absent field therefore means "the page
+ * did not say", never "there is one page".
+ */
+export interface TablePagination {
+  /** `table.paginator.num_pages` — the authoritative total page count. */
+  num_pages?: number;
+  /** `table.page.number` — the page the server actually rendered. */
+  current_page?: number;
+  /**
+   * `table.prefixed_page_field` — the query parameter that selects a page.
+   * django-tables2 prefixes it per table, so it is read off the page rather
+   * than assumed to be `page`.
+   */
+  page_field?: string;
+}
+
+/**
+ * Parse the pagination footer that every Connect list table renders.
+ *
+ * Source of truth: `commcare_connect/templates/base_table.html`, the project's
+ * `DJANGO_TABLES2_TEMPLATE` (`config/settings/base.py:357`). It renders
+ *
+ *   <input type="number" value="{{ table.page.number }}" min="1"
+ *          max="{{ table.paginator.num_pages }}" ...
+ *          hx-on:change="goToPage('{{ table.prefixed_page_field }}', this.value)">
+ *   <span class="whitespace-nowrap ml-1">of {{ table.paginator.num_pages }}</span>
+ *
+ * so the total page count AND the name of the page parameter are both on the
+ * page. That matters because django-tables2 does NOT 404 an out-of-range page:
+ * `RequestConfig.configure` runs with `silent=True` by default and maps
+ * `EmptyPage` to `paginator.page(paginator.num_pages)` — the LAST page
+ * (django_tables2/config.py). A scraper that walks `&page=N` until it gets an
+ * error therefore never terminates; it has to know when to stop.
+ */
+export function parseTablePagination(html: string): TablePagination {
+  const out: TablePagination = {};
+  for (const m of html.matchAll(/goToPage\(\s*['"]([A-Za-z0-9_-]+)['"]/g)) {
+    if (m[1] !== 'page_size') {
+      out.page_field = m[1];
+      break;
+    }
+  }
+  for (const m of html.matchAll(/<input\b[^>]*>/gi)) {
+    const tag = m[0];
+    if (!/type=["']?number/i.test(tag) || !/goToPage/.test(tag)) continue;
+    const max = tag.match(/\bmax=["']?(\d+)/);
+    if (max) out.num_pages = Number(max[1]);
+    const value = tag.match(/\bvalue=["']?(\d+)/);
+    if (value) out.current_page = Number(value[1]);
+    break;
+  }
+  if (out.num_pages === undefined) {
+    // Fallback to the human-readable "of <n>" the same footer prints, so a
+    // restyled input still yields the count.
+    const of = html.match(/>\s*of\s+(\d+)\s*</i);
+    if (of) out.num_pages = Number(of[1]);
+  }
+  return out;
+}
