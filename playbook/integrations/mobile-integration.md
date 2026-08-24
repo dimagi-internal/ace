@@ -370,6 +370,25 @@ If the resolver fails, `export JAVA_HOME=/path/to/jdk17` before launching Claude
 
 probe1 timeout budget is 20s in `mcp/mobile/client.ts` to accommodate Maestro v2's slower JVM cold-start. Don't tighten it — v1's faster startup is no longer the reference. See `docs/learnings/2026-05-19-maestro-v2-probe-timeout.md`.
 
+### Chunking follows `runFlow: file:` into the palette (ace#1570)
+
+`mobile_run_recipe` splits a recipe into chunks and runs each as its own `maestro test`, dumping the UI hierarchy XML in the quiet window between them (that window is the only place `uiautomator dump` can run — Maestro holds the service exclusively). Each chunk also gets its own watchdog budget.
+
+The splitter used to look **only** at the parent recipe's own top-level `takeScreenshot:` steps. ACE's Phase-3 authoring idiom composes journeys almost entirely out of `runFlow: file: <palette>.yaml`, and every palette file screenshots internally — so a Learn journey saw **zero** split points and ran as `chunk 1/1`. On hh-poverty-targeting/20260819-1435 that single chunk was killed by the then-flat 600s watchdog mid-walk, and Connect's Learn completion is one-way per (test user, opportunity), so the run was gone.
+
+It now reads the subflow. A top-level `runFlow: file:` opens a boundary where the subflow itself screenshots at an edge:
+
+- **leading** (subflow's first non-assertion step is `takeScreenshot`, e.g. `form-advance.yaml`) → boundary **before** the runFlow;
+- **trailing** (subflow's last non-assertion step is `takeScreenshot`, e.g. `learn-launch.yaml`, `form-submit.yaml`) → boundary **after** it.
+
+Only assertions count as screen-neutral padding around that screenshot. A palette that opens with `extendedWaitUntil` (`learn-tap-module.yaml`) reports **no** leading boundary on purpose: a wait exists because the surface is still changing, so the screen at the parent's boundary need not be the one in the PNG — and a mismatched dump is worse than a missing one. A trailing boundary meeting the next call's leading one collapses into a single window (nothing runs in between; it would be the same screen at full cost).
+
+`<name>.xml` is named from the caller's own `env:` binding, so it pairs with the `<name>.png` Maestro writes. An unbound call site still gets its chunk boundary but no dump — never a literal `${SCREENSHOT_NAME}.xml`.
+
+**Cost, and the knob.** More chunks means more Maestro cold-starts at ~10–12s each (see above). A 6-module Learn journey goes from 1 chunk to ~79. Set `ACE_MOBILE_SPLIT_AT_SUBFLOW_SCREENSHOTS=off` to fall back to top-level-only splitting without a plugin update. Every dispatch logs `maestro: <recipe> → N chunk(s), M dump window(s), S top-level step(s)`, so the real cost is readable from any run's log.
+
+*Enforced:* `test/mcp/mobile/recipe-splitter-subflow.test.ts` pins the leading/trailing contract of every file in `recipes/static/`, so a palette that moves or adds a screenshot the splitter cannot act on fails CI instead of silently switching chunking off again.
+
 ### A subflow's own `env:` block OVERRIDES caller-passed `runFlow: env:` (Maestro 2.5.1)
 
 Maestro's `env:` block reads like "defaults you can override." It is the
