@@ -1310,17 +1310,38 @@ if [ -n "$ENV_FILE" ]; then
       # to write a device file) with --force (skip the overwrite prompt, which
       # aborts non-interactively). We only care whether every ref RESOLVES; the
       # rendered secrets are discarded immediately.
+      # RETRY ONCE before classifying. A single `op` invocation must not decide the
+      # run's verdict: this is the only FAIL most machines can produce here, so one
+      # transient flips the summary to "BROKEN — ACE will not function" on a healthy
+      # box (ace#1613).
       RENDER_ERR="$(op inject -i "$RENDER_TPL" -o "$RENDER_OUT" --force --account dimagi.1password.com 2>&1)"
       RENDER_RC=$?
-      rm -f "$RENDER_TPL" "$RENDER_OUT"
-      if [ "$RENDER_RC" -eq 0 ]; then
-        pass "env_tpl_render: .env.tpl renders cleanly (every op:// ref resolves)"
-      elif printf '%s' "$RENDER_ERR" | grep -qiE 'sign[- ]?in|session|authoriz|not currently|account .* (not found|isn.t)|no account|could not find account'; then
-        : # op not signed in / account not configured on this machine — informational skip, not a config defect
-      else
-        fail "env_tpl_render: op inject -i .env.tpl FAILS — one or more op:// refs are unresolvable, so a real op inject writes NOTHING: an existing .env is left on its previous (possibly stale) values, and a fresh machine or container gets no .env at all (jjackson/ace#753, corrected by ace#986)" "fix the field named below in 1Password (vault Agent-Ace), or comment the ref out of .env.tpl until the field exists:
-$(printf '%s' "$RENDER_ERR" | sed 's/^/      /')"
+      RENDER_CLASS="$(printf '%s' "$RENDER_ERR" | "$SELF_DIR/scripts/classify-op-inject.sh" "$RENDER_RC")"
+      if [ "$RENDER_CLASS" = "unknown" ]; then
+        sleep 2
+        RENDER_ERR="$(op inject -i "$RENDER_TPL" -o "$RENDER_OUT" --force --account dimagi.1password.com 2>&1)"
+        RENDER_RC=$?
+        RENDER_CLASS="$(printf '%s' "$RENDER_ERR" | "$SELF_DIR/scripts/classify-op-inject.sh" "$RENDER_RC")"
       fi
+      rm -f "$RENDER_TPL" "$RENDER_OUT"
+      case "$RENDER_CLASS" in
+        ok)
+          pass "env_tpl_render: .env.tpl renders cleanly (every op:// ref resolves)"
+          ;;
+        auth_skip)
+          : # op not signed in / account not configured on this machine — informational skip, not a config defect
+          ;;
+        unresolvable)
+          fail "env_tpl_render: op inject -i .env.tpl FAILS — one or more op:// refs are unresolvable, so a real op inject writes NOTHING: an existing .env is left on its previous (possibly stale) values, and a fresh machine or container gets no .env at all (jjackson/ace#753, corrected by ace#986)" "fix the field named below in 1Password (vault Agent-Ace), or comment the ref out of .env.tpl until the field exists:
+$(printf '%s' "$RENDER_ERR" | sed 's/^/      /')"
+          ;;
+        *)
+          # Twice non-zero, but the error matches no known unresolvable-reference
+          # signature. Do NOT assert a config defect we have no evidence for —
+          # surface it and let the operator read the actual error.
+          warn "env_tpl_render: op inject failed twice with an unrecognised error — NOT classified as a broken ref (ace#1613). If .env writes are actually failing, read the error below" "$(printf '%s' "$RENDER_ERR" | sed 's/^/      /')"
+          ;;
+      esac
     fi
   fi
 
