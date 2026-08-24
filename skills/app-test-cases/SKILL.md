@@ -612,11 +612,11 @@ The static palette lives at `mcp/mobile/recipes/static/`:
 - `learn-tap-module.yaml` — MenuActivity row tap (generic — handles ANY level of the 3-level suite tree)
 - `form-advance.yaml` — `nav_btn_next` ImageButton tap (NOT text-match "Next" — see atlas §7). **Every `runFlow` of this palette MUST pass `SCREENSHOT_NAME`** — see § Screenshot names are caller-bound.
 - `form-submit.yaml` — branched: explicit Submit button if visible, otherwise auto-finalize via `nav_btn_next`. **Every `runFlow` of this palette MUST pass `SCREENSHOT_NAME_PRE_SUBMIT` + `SCREENSHOT_NAME_POST_SUBMIT` env params** with per-journey names (e.g. `deliver-final-review` / `deliver-submitted-confirmation`) — see § Screenshot names are caller-bound. There are NO palette-side fallbacks: the `env:` defaults added for ace#852 turned out to SHADOW the caller's names and were removed in ace#1033.
-- `content-form-finish.yaml` — **the canonical Learn CONTENT-form finalize.** A bounded multi-screen advance loop that taps `nav_btn_next` until the form auto-finalizes back to StandardHomeActivity, exits on the `learn-home-start-tile` home anchor (NOT the suite menu), handles the score-gated two-screen FINISH, and asserts the home grid post-finalize. Use this for every label-only content/lesson form — NOT for required-input quizzes (those still need per-field answer-taps + `form-advance` + `form-submit`). Requires `SCREENSHOT_NAME`. See § Multi-screen content forms below.
+- `content-form-finish.yaml` — **the Learn CONTENT-form finalize, home-grid variant.** A bounded multi-screen advance loop that taps `nav_btn_next` until the form auto-finalizes back to StandardHomeActivity, exits on the `learn-home-start-tile` home anchor (NOT the suite menu), handles the score-gated two-screen FINISH, and asserts the home grid post-finalize. Correct ONLY on a multi-module Learn app whose forms are `post_submit: module`; on `post_submit: previous` (Nova's default) the finalize lands on the module form list and this recipe's terminal home assert cannot fire (dimagi-internal/ace#1566). Use it for label-only content/lesson forms — NOT for required-input quizzes (those still need per-field answer-taps + `form-advance` + `form-submit`). Requires `SCREENSHOT_NAME`. See § Multi-screen content forms below.
 - `learn-suite-reentry.yaml` — **the between-modules suite re-entry, home-grid variant.** Tap the home Start tile → wait `screen_suite_menu_list`. Correct ONLY when the form is `post_submit: module`, which finalizes to StandardHomeActivity. Same surface contract as `learn-launch.yaml` (the first, post-claim suite entry); split out under a distinct name to document the between-modules intent at the call site.
 - `learn-suite-reentry-from-module.yaml` — **the between-modules suite re-entry, form-list variant.** `back` → wait `screen_suite_menu_list`. Correct when the form is `post_submit: previous` (**Nova's default**), which finalizes to the module's own form list rather than the home grid. Composing the home-grid variant here hangs the walk for 30s on a "Start" tile that never renders (dimagi-internal/ace#1071).
 - **Pick between those two from `get_form().post_submit`** — see § Suite re-entry between modules below for the table and the reason they cannot be merged into one guarded recipe. **NOTE:** both are for MULTI-module Learn apps. For a **single-module** Learn app (one CommCare module holding all forms), forms finalize back to the suite list — use `content-form-finish-to-suite.yaml` and OMIT the re-entry step entirely. See § SINGLE-MODULE Learn app below (jjackson/ace#894).
-- `content-form-finish-to-suite.yaml` — **single-module Learn form finalize.** `content-form-finish.yaml` re-keyed on `${SELECTOR:learn-suite-menu}` (the N-form suite list) instead of the home tile, for Learn apps built as one CommCare module holding all forms. Proven live hh-poverty-targeting/20260722-1341. See § SINGLE-MODULE Learn app (jjackson/ace#894).
+- `content-form-finish-to-suite.yaml` — **the Learn CONTENT-form finalize, menu variant.** `content-form-finish.yaml` re-keyed on `${SELECTOR:learn-suite-menu}` (a display-mode-agnostic alternation that matches the suite root AND a module's own form list, #1127) instead of the home tile. Correct for a **single-module** Learn app (one CommCare module holding all forms — proven live hh-poverty-targeting/20260722-1341, jjackson/ace#894) AND for a **multi-module** app whose forms are `post_submit: previous` (dimagi-internal/ace#1566). Requires `SCREENSHOT_NAME`. See § Multi-screen content forms and § SINGLE-MODULE Learn app below.
 - `connect-resume-opp.yaml` — opp-list → scroll to the target opp's In-Progress card → tap Resume → lands on the certificate/opp-detail surface (atlas § 8) that `deliver-launch.yaml` expects. Pre-state: Connect opp-list visible, opp already Learn-in-progress or complete. Warm-session only (journey-learn leg completed Learn in this dispatch). Matches the tile on **`OPP_RUN_ID`** (`text: ".*${OPP_RUN_ID}.*"`), not `OPP_NAME` — the recipe header is the contract, don't restate its parameters here (ace#974).
 - `deliver-launch.yaml` — post-Learn-complete certificate (atlas § 8) → tap VIEW OPPORTUNITY DETAILS → Download Delivery gate (§ 9) → tap DOWNLOAD → Deliver-mode StandardHomeActivity (§ 10) anchored on `id/viewJobCard`. All surfaces ID-anchored (verified 2026-05-26 against bednet J2 dumps; no coordinate fallbacks). Chain after `connect-resume-opp.yaml` in the Deliver smoke recipe.
 
@@ -656,33 +656,65 @@ For the canonical Learn-app smoke recipe template:
 
 Read live module + form names from Nova's `get_form` per the "Use live labels" section below — the pre-claim teaser at `tv_learn_modules_list` lists module names verbatim, but form names inside each module are only visible via Nova. `FORM_NAME` MUST be the form's live `label` from `get_form` (verbatim), not the PDD-brief name.
 
-##### Multi-screen content forms — use `content-form-finish.yaml`
+##### Multi-screen content forms — pick the finalize variant from `post_submit`
 
 **Learn CONTENT forms are paginated, multi-screen, and label-only — walk
-each one with `content-form-finish.yaml`, NOT a single `form-submit.yaml`.**
+each one with a `content-form-finish*` recipe, NOT a single
+`form-submit.yaml`.**
 A Learn content/lesson form (e.g. "Program Orientation", "Identifying RDTs",
 "Photo Protocol") is a multi-screen form: the first screen shows BOTH
 `nav_btn_prev` and `nav_btn_next` and the progress bar is not full. A single
 `form-submit.yaml` (one `nav_btn_next` tap) advances exactly ONE page and
 then looks for FINISH — so it **stalls on page 2 of the first content form**,
-and the next `learn-tap-module` hard-fails asserting `screen_suite_menu_list`.
+and the next `learn-tap-module` hard-fails asserting the suite menu.
 This was the malaria-rdt/20260601-0929 Phase 6 Learn-walk blocker
 (jjackson/ace#646).
 
-`content-form-finish.yaml` is the class-level fix: a bounded multi-screen
-advance loop that taps `nav_btn_next` until the form auto-finalizes, then
-**exits on the StandardHomeActivity home anchor (`learn-home-start-tile`),
-NOT on the suite menu.** Learn forms finalize back to the home grid (Start /
-View Job Status / Sync / Log out, "1 form sent to server!"), not to
-`screen_suite_menu_list` — so an advance loop keyed on the suite menu as its
-exit never fires and spins past finalize into a maestro-process timeout
-(observed live). The recipe also handles the score-gated two-screen FINISH
-(#569) and asserts the home grid post-finalize so any miss fails loud with a
-named anchor.
+The class-level fix is a bounded multi-screen advance loop that taps
+`nav_btn_next` until the form auto-finalizes, then exits on the anchor of
+**wherever that finalize actually lands**. There are two of them, and they
+differ ONLY in that exit anchor:
 
-Call it once per content form (pass `SCREENSHOT_NAME`):
+- `content-form-finish.yaml` — exits + asserts on the StandardHomeActivity
+  home grid (`${SELECTOR:learn-home-start-tile}`, the Start / View Job
+  Status / Sync / Log out surface, "1 form sent to server!").
+- `content-form-finish-to-suite.yaml` — exits + waits on
+  `${SELECTOR:learn-suite-menu}`, a display-mode-agnostic regex alternation
+  over the MenuActivity containers (dimagi-internal/ace#1127) that matches
+  the suite root AND a module's own one-level-in form list.
+
+**Which one is correct is decided by the same `get_form().post_submit` field
+that decides the re-entry recipe** — the two are one 2x2, not two independent
+choices (dimagi-internal/ace#1566, the finalize half of the #1071 class):
+
+| Learn app shape | `post_submit` | finalize recipe | re-entry recipe |
+|---|---|---|---|
+| multi-module | `module` | `content-form-finish.yaml` | `learn-suite-reentry.yaml` |
+| multi-module | `previous` (**Nova's default**) | `content-form-finish-to-suite.yaml` | `learn-suite-reentry-from-module.yaml` |
+| single-module | any | `content-form-finish-to-suite.yaml` | none (see § SINGLE-MODULE Learn app) |
+
+**Read `post_submit` off the blueprint before you pick.** On a multi-module
+app whose forms are `post_submit: previous`, the finalize lands on the
+module's own form list, one level inside the suite — the home grid never
+renders. `content-form-finish.yaml` cannot terminate there: its advance loop
+is guarded on `notVisible: ${SELECTOR:learn-home-start-tile}` (true forever
+on a menu screen) while the inner `visible: ${SELECTOR:form-nav-next}` guard
+no-ops on a menu, so all 12 bounded slots burn doing nothing and the terminal
+`assertVisible ${SELECTOR:learn-home-start-tile}` dies with
+`Assertion is false: "Start" is visible` — the same signature #1071 observed
+live for the re-entry half on spark-facilitator/20260728-1338, one step
+earlier in the loop. Live repro of the finalize half:
+bednet-check-2-visit/20260820-0832 (2 CommCare modules, 5 forms, all
+`post_submit: previous`; workaround recorded in that run's
+`journey-learn.yaml` header). `content-form-finish-to-suite.yaml` is correct
+there because `learn-suite-menu` matches that module form list, and
+`learn-suite-reentry-from-module.yaml` (`back` → suite root) then restores
+`learn-tap-module`'s pre-state.
+
+Call the chosen recipe once per content form (pass `SCREENSHOT_NAME`):
 
 ```yaml
+# ── multi-module, post_submit: module ────────────────────────────────
 - runFlow:
     file: learn-tap-module.yaml
     env:
@@ -698,15 +730,32 @@ Call it once per content form (pass `SCREENSHOT_NAME`):
     file: learn-suite-reentry.yaml
 ```
 
+```yaml
+# ── multi-module, post_submit: previous (Nova's default) ─────────────
+- runFlow:
+    file: learn-tap-module.yaml
+    env:
+      MODULE_NAME: "1. Program Orientation"
+      FORM_NAME: "Program Orientation"
+- runFlow:
+    file: content-form-finish-to-suite.yaml
+    env:
+      SCREENSHOT_NAME: "journey-learn-m0-orientation-finished"
+# device is now on the MODULE's own form list — one `back` restores the
+# suite root (see § Suite re-entry between modules).
+- runFlow:
+    file: learn-suite-reentry-from-module.yaml
+```
+
 Do NOT hand-chain `form-advance.yaml` + `form-submit.yaml` for content
-forms — `content-form-finish.yaml` subsumes both the single-screen and the
+forms — both `content-form-finish*` recipes subsume the single-screen and the
 multi-screen cases (the bounded loop no-ops its remaining advances once the
 form auto-finalizes on its only/last screen). Reserve explicit
 `form-advance` → answer-tap → `form-submit` sequencing for QUIZ /
 assessment forms with required inputs (per the MANDATORY answer-tap rule
-below) — `content-form-finish.yaml` deliberately does NOT select answers and
-would stall on `warning_root` ("Sorry, this response is required!") if
-pointed at a required-input quiz.
+below) — neither `content-form-finish*` recipe selects answers, so pointing
+one at a required-input quiz stalls on `warning_root` ("Sorry, this response
+is required!"; jjackson/ace#646).
 
 ##### Screenshot names are caller-bound — never rely on a palette default (dimagi-internal/ace#1033)
 
@@ -756,6 +805,11 @@ it decides which re-entry recipe to compose:
 |---|---|---|
 | `module` | StandardHomeActivity — the home grid (Start / View Job Status / Sync / Log out) | `learn-suite-reentry.yaml` (tap Start → wait `screen_suite_menu_list`) |
 | `previous` (**Nova's default**) | the MODULE's own form list — one level INSIDE the suite | `learn-suite-reentry-from-module.yaml` (`back` → wait `screen_suite_menu_list`) |
+
+**The finalize recipe branches on the SAME field** — see the 2x2 in
+§ Multi-screen content forms (dimagi-internal/ace#1566). `post_submit:
+previous` means BOTH halves change: `content-form-finish-to-suite.yaml`
+to finalize, `learn-suite-reentry-from-module.yaml` to re-enter.
 
 Composing the wrong one hangs the walk. `learn-suite-reentry.yaml` opens with
 a 30s `extendedWaitUntil` on the home "Start" tile; from a module form list
@@ -812,7 +866,11 @@ bounded guarded advance loop (`tapOn form-nav-next` while the suite list is not
 visible), a `form-nav-finish` fallback for the score-gated two-screen FINISH
 (#569), then `assertVisible learn-suite-menu`. **Omit `learn-suite-reentry`
 entirely** — there is no home round-trip in a single-module app. Multi-module
-apps keep the `content-form-finish` + `learn-suite-reentry` loop above.
+apps keep the finalize + re-entry loop above, whose BOTH halves are picked
+from `post_submit` (dimagi-internal/ace#1566) — a multi-module
+`post_submit: previous` app also finalizes with
+`content-form-finish-to-suite.yaml`, but unlike the single-module shape it
+still needs `learn-suite-reentry-from-module.yaml` between modules.
 
 **Verify each transition you author against the selector map for the
 active APK (`mcp/mobile/selectors/connect-<apkVersion>.yaml`, default
@@ -1526,6 +1584,7 @@ already maps the producer to `3-commcare/` (see
 
 | Date | Change | Author |
 |------|--------|--------|
+| 2026-08-23 | **§ Multi-screen content forms now branches on `post_submit` (closes dimagi-internal/ace#1566 — the finalize half of the #1071 class).** The section prescribed `content-form-finish.yaml` unconditionally for every content form while § Suite re-entry between modules already branched, so a multi-module Learn app whose forms are `post_submit: previous` (Nova's default) got a finalize recipe whose bounded advance loop and terminal assert are both keyed on the home-grid `learn-home-start-tile` — a surface that never renders when the finalize lands on the module's own form list. Live: bednet-check-2-visit/20260820-0832 (2 modules, 5 forms, all `previous`). Finalize + re-entry are now stated as one 2x2 (multi/`module` → `content-form-finish` + `learn-suite-reentry`; multi/`previous` → `content-form-finish-to-suite` + `learn-suite-reentry-from-module`; single-module → `content-form-finish-to-suite`, no re-entry). Enforced by `test/mcp/mobile/static-recipe-invariants.test.ts § home-anchored finalize is post_submit-gated`. | ACE team |
 | 2026-05-04 | Initial version. Phase 3 producer for app-test-cases.yaml; binds pdd-to-app-journeys.md to Nova-built structure with Maestro recipe stubs. Successor to qa-plan (retired in same release). | ACE team |
 | 2026-05-08 | Add `## Decisions Log` section: 2 anchor rows (test-scenario-count, test-archetype-coverage) + bar-criterion reference. Pairs with decisions-log PR #4 (Phase 3-10 writes). | ACE team (decisions-log PR #4) |
 | 2026-05-22 | Fix `phase:` tag in Decisions Log footer: was `6-qa-and-training` (the consuming phase), now `3-commcare` (the dispatching phase, matching the artifact manifest's existing `3-commcare/` path mapping). Follow-up to issue #399. | ACE team |
