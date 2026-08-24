@@ -29,6 +29,20 @@
 # Post-state: StandardHomeActivity home (`learn-home-start-tile` /
 #   text "Start" visible), form submitted + synced.
 #
+# SCOPE — `post_submit: module` ONLY, and only on a MULTI-module Learn app.
+# The "returns to StandardHomeActivity" paragraph above is a property of that
+# value, not of Learn forms in general. Nova's DEFAULT is
+# `post_submit: previous`, which finalizes to the module's own form list one
+# level inside the suite: the home tile never renders, so the outer
+# `notVisible: learn-home-start-tile` guard below stays true forever while the
+# inner `visible: form-nav-next` guard no-ops on a menu screen — all 12 slots
+# burn doing nothing and the terminal assert dies with
+# `Assertion is false: "Start" is visible` (dimagi-internal/ace#1566, live on
+# bednet-check-2-visit/20260820-0832). Use `content-form-finish-to-suite.yaml`
+# there, and on a single-module app (jjackson/ace#894). The re-entry recipe
+# branches on the same field — see learn-suite-reentry.yaml's SCOPE block for
+# the pair table.
+#
 # SCOPE: content/lesson forms ONLY. QUIZ / assessment forms have
 #   required inputs and per-question answer-taps — those are walked
 #   explicitly by the journey recipe (per-field `tapOn` + `form-advance`
