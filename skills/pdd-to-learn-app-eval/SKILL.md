@@ -134,6 +134,52 @@ methodology, different dimensions tuned to Learn-app concerns. See
      protocol collapses to 0.00 post-cap and we lose visibility
      into the underlying judge discretion.
 
+   **Terminal verdict bands — an ORDERED cascade, first match wins
+   (ace#1578).** Until now § 5 stated only the `fail` trigger: there was no
+   `pass` band and no `warn` band at all, so every Learn build that is not
+   failing matched NO rule and the judge legislated the terminal verdict at
+   grade time. These bands mirror the sibling `pdd-to-deliver-app-eval`
+   cascade exactly (operator decision, Jon — see ace#1568, PR #1577).
+   Evaluate top to bottom and STOP at the first rule that fires. The order is
+   load-bearing: it is what makes the bands both exhaustive (every reachable
+   score vector lands somewhere) and unambiguous (a vector matching two rules
+   takes the more severe one).
+
+   1. Any scored dimension ≤3, **or** any § 5b hard-gate `[BLOCKER]` →
+      suite verdict `fail`.
+   2. Any scored dimension **< 7**, **or** overall < 7.5 → suite verdict
+      `warn`.
+   3. Otherwise — every scored dimension ≥ 7 **and** overall ≥ 7.5 →
+      suite verdict `pass`.
+
+   **Rule 1 is where every Learn-specific hard gate lands, and every one of
+   them keeps firing unchanged.** The cascade sits UNDERNEATH them — it adds
+   the two bands this rubric never had, it does not soften a single existing
+   `fail` trigger: the `language_conformance` anchors (b1)/(c)/(d)/(e)/(f),
+   the `assessment_gating` and `instructional_depth` hard-gates (each drives
+   its own dimension to ≤3), and the § 5b `naming_convention` /
+   `form_navigation` / `single_gating_assessment` `[BLOCKER]`s. The thin ITN
+   Learn build this rubric is anchored on still fails on `assessment_gating`,
+   the depth cap, and `language_conformance` independently.
+
+   Rule 2 is the catch-all, not a special case. **Do not** narrow it to a
+   4–6 *range*, and do not re-phrase it as a COUNT of mid-range dimensions
+   (the shape ace#1568 removed from the sibling): scores here are fractional
+   — every dimension anchor is stated at the half-point — so a range trigger
+   strands 3 < s < 4 and 6 < s < 7, and a count trigger strands the
+   count-minus-one case. The trigger has to be the exact complement of
+   rule 3's `≥ 7`. Nothing the old wording produced is lost: the `fail`
+   trigger is untouched at ≤3, so a dimension at 3.5 warns rather than
+   failing, and a build that would have failed still fails.
+
+   `incomplete` and `partial` are **gradability** states, resolved BEFORE
+   this cascade (Step 2's HITL-pending stub early return; a live probe that
+   failed at grading time), not bands within it. *Enforced:*
+   `test/lib/eval-verdict-bands.test.ts` enumerates this rubric's real
+   9-dimension weight set and asserts totality + severity ordering; the
+   cascade is encoded as data in `lib/eval-verdict-bands.ts`
+   (`LEARN_APP_BANDS`).
+
 5b. **Standing-instruction hard-gates (binary, non-weighted).** Pass/fail
    conformance checks on the standing app-build instructions (see
    `skills/_app-component-library.md`). These are NOT weighted dimensions —
@@ -606,6 +652,7 @@ absorb the disagreement into a score.
 
 | Date | Change | Author |
 |------|--------|--------|
+| 2026-08-23 | **Terminal verdict bands added — § 5 stated no `pass` band and no `warn` band at all, only the `fail` trigger (ace#1578).** The four `Deduction rules` bullets were one terminal rule (`fail`), one N/A rule, one inflation cap and one reporting rule; § 5b added two more `fail` triggers. Nothing in the file said what makes a Learn build `pass` or `warn`, so the entire NON-FAIL half of the score space matched no rule and the LLM judge legislated the terminal verdict at grade time — two runs with identical scores could disagree with nothing to say either was wrong, and `opp-eval` rolled up a verdict whose derivation was unreproducible. Same class as ace#1568 (PR #1577) in the sibling `pdd-to-deliver-app-eval` and strictly larger: #1568 left two reachable classes homeless, this left half the space. Operator decision (Jon): **mirror the sibling bands exactly** — an ORDERED cascade, first match wins: (1) any scored dimension ≤3 or any § 5b `[BLOCKER]` → `fail`; (2) any scored dimension **< 7** or overall < 7.5 → `warn`; (3) otherwise → `pass`. Rule 2's trigger is `< 7`, the exact complement of rule 3, NOT a 4–6 *range* and NOT a count of mid-range dimensions: dimension anchors are stated at the half-point, so a range strands 3 < s < 4 and 6 < s < 7 and a count strands the count-minus-one case (the trap ace#1568 documented). Every existing Learn `fail` trigger is preserved and fires through rule 1 — the `language_conformance` anchors (b1)/(c)/(d)/(e)/(f), the `assessment_gating` and `instructional_depth` hard-gates, and the § 5b `naming_convention` / `form_navigation` / `single_gating_assessment` `[BLOCKER]`s — so no previously-failing build now passes; the cascade only adds the two bands that were missing. Encoded as data in `lib/eval-verdict-bands.ts` (`LEARN_APP_BANDS`, built by the shared `standardOrderedCascade()` the Deliver rubric also uses — no hand-rolled second copy). *Enforced:* `test/lib/eval-verdict-bands.test.ts` audits the cascade for totality + severity ordering over this rubric's real 9-dimension weight set (incl. the `assessment_rule_coverage` / `language_conformance` N/A redistribution), and keeps `LEARN_APP_BANDS_PRE_1578` as a live regression witness so the auditor cannot pass vacuously. | ACE team |
 | 2026-08-23 | **`language_conformance` anchor (b1) added — a language added with NOTHING authored is `fail`, not a 5 (ace#1556).** The mechanism behind the dimension changed: ACE now authors the translations at LEVEL 0 (`pdd-to-{learn,deliver}-app § Step 4e/4m`), and the Nova brief tells the architect to build English-ONLY and call no language atom — because the architect's operating prompt forbids it saving self-generated target text (*"Only save target text supplied by the user"*, nova plugin 1.26.0/1.27.0), so every brief that asked it to translate produced a silent no-op. The graded OUTCOME is unchanged (English source complete + working language authored + `out-of-date` 0 + English still `sourceLanguage` = full credit); what changed is that the observed failure — `spark-facilitator/20260820-0817`, 207 units `origin: copied` / 0 ready in BOTH `nya` and `tum` — scored as anchor (b) *thinly authored* = **5**, a near-pass for a build with 0% coverage. A fully-copied layer is a FALSE AFFORDANCE and strictly worse than English-only: the worker sees the language offered and gets English under its name. (b1) makes that `≤3 → suite fail`. Weight, null-when-N/A and every other anchor are untouched. *Enforced:* `test/skills/app-language-layer.test.ts`. | ACE team |
 | 2026-08-17 | **Nova shipped a real per-language channel; `language_conformance` RE-INVERTED (PR #1463, superseding ace#968/#1391; Jon).** Verified live against `tools/list`: **95 tools, up from 81 on 2026-08-14**, carrying six itext-shaped language atoms. The 2026-08-14 English-only decision rested on that channel not existing; it now does. Jon's call: fully implement, but **English is always the source language and the review surface**, and translations are reviewed like any other artifact — English included — with no bespoke native-speaker gate. Same 8%, same null-when-N/A, so no reweighting and every other anchor holds. Full credit now needs a REAL layer (English source complete + working language authored + `out-of-date` 0 + English still `sourceLanguage`); `fail` on no layer, `out-of-date` > 0, English displaced as source, inline stacking, or a language-selector question. **`needs-review` is explicitly NOT a deduction** — ACE's writes are `origin: ai` by construction and Nova serves them live, so it is an audit trail, not a defect. Component `english-only-ui` → **`app-language-layer`**, carrying the translate-LAST ordering rule (editing English demotes a translation to `out-of-date`, whose `effective` falls back to English — proven live on scratch app `b4e2c8fd`). The ITN negative control's clause is **RESTORED** as `language_conformance ≤3 → fail`: its original 2026-05-29 verdict was right, only the mechanism changed. **This dimension has now flipped twice in four days — the criteria say so out loud, because a judge's priors are the failure mode here.** *Enforced:* `test/skills/app-language-layer.test.ts`. | ACE team |
 | 2026-08-14 | **ACE builds English-only app UIs; `localization-layer` retired and `localization_match` INVERTED (ace#1391, superseding ace#968; Jon).** Re-verified Nova's live surface: zero hits for `itext`/`locale`/`i18n`/`translat` across all **81** tools (was 63 on 2026-07-31), `update_app` carries only `name`, and the architect's own 70k-char operating prompt never mentions languages; the surface's only language parameter is `defaultLanguageCode` on messaging automations. Since 2026-07-30 the sanctioned fallback had been stacking every language inline in one label — Jon's call: that is a terrible solution and localization should be solved properly when it can be solved at all, so until Nova ships a real per-language channel ACE ships an honest monolingual UI rather than a convincing fake. Component `localization-layer` → **`english-only-ui`** (same trigger, opposite instruction: build English, do not stack, do not hunt for a translations parameter, record the decision in the build memo). Eval dimension `localization_match` → **`language_conformance`**, same 8% and same null-when-N/A: English-only is now FULL CREDIT, stray stacked strings score 5 + `[WARN]`, systematic inline stacking or an in-app language selector is ≤3 → `fail`. Both calibration anchors amended — the ITN negative control's `localization_match ≤3` clause is REMOVED, not relaxed (the same artifact now scores full credit there; the other three dimensions still force `fail`). Phase 1 still records the working language — it drives training, facilitation, the OCS chatbot and the solicitation — but must not assert a translated app; multilingual UI is now a **Table B** row (buildable in CommCare via itext, closed on ACE's builder — never call it a platform limit). *Enforced:* `test/skills/english-only-ui.test.ts`. | ACE team |

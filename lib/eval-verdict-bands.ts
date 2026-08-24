@@ -21,6 +21,11 @@
  * — while 41 further classes matched TWO rules at once (`fail` + `warn`
  * whenever some dimension is <=3 and two others sit in 4-6).
  *
+ * `pdd-to-learn-app-eval` had the same defect, strictly larger (ace#1578): its
+ * § 5 stated ONLY the `fail` trigger — no `pass` band and no `warn` band at all
+ * — so the entire non-fail half of the space was homeless. It mirrors the
+ * Deliver cascade exactly (operator decision, Jon).
+ *
  * The repair is an ORDERED cascade, first match wins, with a catch-all tail.
  * This module encodes it as data and ships the enumerator that proves the
  * property, so the next rubric revision does not have to re-derive the
@@ -61,31 +66,62 @@ export interface BandRule {
 }
 
 /**
+ * The canonical three-rule ordered cascade. ONE definition, instantiated per
+ * rubric — `pdd-to-deliver-app-eval` shipped it for ace#1568 and
+ * `pdd-to-learn-app-eval` adopted it verbatim for ace#1578 (operator decision,
+ * Jon: mirror the sibling bands exactly). A second rubric hand-rolling the
+ * arithmetic is precisely what this module exists to prevent, so add rubrics by
+ * calling this, not by copying the array.
+ *
+ * Each rubric gets its OWN array instance (rules are data, and a future rubric
+ * may legitimately diverge) while the arithmetic stays in one place.
+ */
+export function standardOrderedCascade(): BandRule[] {
+  return [
+    {
+      verdict: 'fail',
+      label: 'any scored dimension <= 3, or any § 5b hard-gate [BLOCKER]',
+      test: ({ scores, blocker }) => blocker || scores.some((s) => s <= 3),
+    },
+    {
+      verdict: 'warn',
+      // `< 7`, NOT "in the 4-6 range". Scores are fractional (every rubric
+      // anchor is stated at the half-point), so a range trigger strands
+      // 3 < s < 4 and 6 < s < 7 — the ace#1568 trap, re-flagged on ace#1578.
+      label: 'any scored dimension < 7, or overall < 7.5',
+      test: ({ scores, overall }) => scores.some((s) => s < 7) || overall < 7.5,
+    },
+    {
+      verdict: 'pass',
+      // Stated as a real predicate, not `() => true`. A catch-all tail makes
+      // totality trivially true and hides exactly the class these rubrics had.
+      label: 'every scored dimension >= 7 and overall >= 7.5',
+      test: ({ scores, overall }) => scores.every((s) => s >= 7) && overall >= 7.5,
+    },
+  ];
+}
+
+/**
  * `skills/pdd-to-deliver-app-eval/SKILL.md § 5 Deduction rules` — the ordered
  * cascade, as shipped for ace#1568. Keep this list and the prose in lockstep;
  * `test/lib/eval-verdict-bands.test.ts` asserts they agree.
  */
-export const DELIVER_APP_BANDS: BandRule[] = [
-  {
-    verdict: 'fail',
-    label: 'any scored dimension <= 3, or any § 5b hard-gate [BLOCKER]',
-    test: ({ scores, blocker }) => blocker || scores.some((s) => s <= 3),
-  },
-  {
-    verdict: 'warn',
-    label: 'any scored dimension < 7, or overall < 7.5',
-    test: ({ scores, overall }) => scores.some((s) => s < 7) || overall < 7.5,
-  },
-  {
-    verdict: 'pass',
-    // Stated as a real predicate, not `() => true`. A catch-all tail makes
-    // totality trivially true and hides exactly the class this rubric had:
-    // rule 2 phrased as "in the 4-6 range" leaves 3 < s < 4 and 6 < s < 7
-    // homeless, and the scores ARE fractional (anchors are stated at .5).
-    label: 'every scored dimension >= 7 and overall >= 7.5',
-    test: ({ scores, overall }) => scores.every((s) => s >= 7) && overall >= 7.5,
-  },
-];
+export const DELIVER_APP_BANDS: BandRule[] = standardOrderedCascade();
+
+/**
+ * `skills/pdd-to-learn-app-eval/SKILL.md § 5 Deduction rules` — the same
+ * ordered cascade, adopted for ace#1578. That rubric previously stated ONLY
+ * the `fail` trigger, so the whole non-fail half of the space was homeless and
+ * the judge picked `pass` vs `warn` at grade time.
+ *
+ * The Learn rubric's own `fail` triggers are UNCHANGED and all still fire
+ * through rule 1: the `language_conformance` hard-fail anchors, the
+ * `assessment_gating` / `instructional_depth` hard-gates (each drives its
+ * dimension to <= 3), and the § 5b `naming_convention` / `form_navigation` /
+ * `single_gating_assessment` `[BLOCKER]`s (the `blocker` flag). The cascade
+ * sits underneath them.
+ */
+export const LEARN_APP_BANDS: BandRule[] = standardOrderedCascade();
 
 /** The band set as it read BEFORE ace#1568 — three independent tests, no
  *  catch-all. Kept so the enumerator has a known-defective input to prove it
@@ -105,6 +141,19 @@ export const DELIVER_APP_BANDS_PRE_1568: BandRule[] = [
     verdict: 'pass',
     label: 'all scored dimensions >= 7 AND overall >= 7.5',
     test: ({ scores, overall }) => scores.every((s) => s >= 7) && overall >= 7.5,
+  },
+];
+
+/** The Learn band set as it read BEFORE ace#1578: the `fail` trigger and
+ *  nothing else. § 5 stated no `pass` band and no `warn` band at all, so every
+ *  vector that is not failing matched ZERO rules — a strictly larger gap than
+ *  ace#1568's two homeless classes. Kept as a live regression witness so the
+ *  auditor cannot pass vacuously. */
+export const LEARN_APP_BANDS_PRE_1578: BandRule[] = [
+  {
+    verdict: 'fail',
+    label: 'any single dimension <= 3 (or a § 5b [BLOCKER]) — the ONLY stated band',
+    test: ({ scores, blocker }) => blocker || scores.some((s) => s <= 3),
   },
 ];
 
