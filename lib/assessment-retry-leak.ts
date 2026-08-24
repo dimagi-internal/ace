@@ -99,8 +99,38 @@ function extractCorrectAnswers(doc: Document): string[] {
 }
 
 /**
+ * Score thresholds a PASS branch compares against — the `100` in
+ * `relevant="/data/user_score >= 100"`.
+ *
+ * Needed because `!= N` names the fail branch only when N is the PASSING
+ * threshold: `user_score != 100` is "did not pass" under a 100% gate, while
+ * `user_score != 0` is "scored something" and is not a fail branch at all.
+ * The threshold is not a parameter anywhere on this path — the check reads a
+ * form XML and nothing else — so it is recovered from the same document,
+ * which is also where every other fact this checker uses comes from.
+ *
+ * `>` / `>=` / bare `=` are the pass-side operators; `!=`, `<=` and `>=`'s own
+ * `=` are excluded by the lookbehind so only a genuine equality contributes.
+ * A `not(...)` relevant is skipped outright: that is the fail branch.
+ */
+function passThresholds(doc: Document): Set<number> {
+  const out = new Set<number>();
+  for (const bind of Array.from(doc.getElementsByTagName('bind'))) {
+    const rel = bind.getAttribute('relevant');
+    if (!rel || !/score/i.test(rel)) continue;
+    if (/\bnot\s*\(/.test(rel)) continue;
+    for (const m of rel.matchAll(/(?:>\s*=?|(?<![<>!=])=(?!=))\s*([\d.]+)/g)) {
+      const n = Number(m[1]);
+      if (Number.isFinite(n)) out.add(n);
+    }
+  }
+  return out;
+}
+
+/**
  * Nodesets whose `relevant` marks them as the FAIL branch of a score gate —
- * a comparison of a score node against a threshold using `<` / `<=`.
+ * a comparison of a score node against a threshold using `<` / `<=`, the
+ * negated `not(... >= N)`, or the inequality `!= N` / `not(... = N)`.
  *
  * The PASS branch is deliberately NOT checked: a pass message may legitimately
  * restate what the worker got right. Only the retry path can be used to guess
@@ -108,6 +138,7 @@ function extractCorrectAnswers(doc: Document): string[] {
  */
 function failBranchNodesets(doc: Document): string[] {
   const out: string[] = [];
+  const thresholds = passThresholds(doc);
   for (const bind of Array.from(doc.getElementsByTagName('bind'))) {
     const rel = bind.getAttribute('relevant');
     const nodeset = bind.getAttribute('nodeset');
@@ -121,7 +152,22 @@ function failBranchNodesets(doc: Document): string[] {
     }
     // Negated greater-than — semantically the same branch, and the shape
     // CommCare's own builder emits: `not(/data/user_score >= 100)` (#1332).
-    if (/not\s*\([^)]*>\s*=?\s*[\d.][^)]*\)/.test(rel)) out.push(nodeset);
+    if (/not\s*\([^)]*>\s*=?\s*[\d.][^)]*\)/.test(rel)) {
+      out.push(nodeset);
+      continue;
+    }
+    // Inequality against the passing threshold: `!= 100`, or its `not(... = 100)`
+    // spelling. NOT an exotic shape — it is the natural one whenever the passing
+    // score is 100, because a 0–100 score has no headroom above the threshold, so
+    // "not passed" IS "not exactly 100" and `< 100` is the LESS obvious spelling.
+    // Every 100%-gated assessment was therefore unchecked until #1576.
+    //
+    // Gated on the literal actually being the passing threshold, so a `!= 0`
+    // ("scored something") is not mistaken for a retry branch.
+    const neq =
+      /!=\s*([\d.]+)/.exec(rel) ??
+      /not\s*\([^)]*?(?<![<>!=])=(?!=)\s*([\d.]+)[^)]*\)/.exec(rel);
+    if (neq && thresholds.has(Number(neq[1]))) out.push(nodeset);
   }
   return out;
 }
