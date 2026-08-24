@@ -13,8 +13,14 @@ import {
   extractWantedMatchers,
   renderReportYaml,
   renderForkInvocation,
+  extractPackagesFromDump,
+  isNonAppSurfaceDump,
+  isSupersededFailureDump,
+  isPreservedArtifactName,
+  selectFailureDumpForClassification,
 } from '../../lib/atlas-drift.js';
 import { classifyMaestroFailure } from '../../lib/maestro-failure-class.js';
+import { isPreservedArtifact } from '../../mcp/mobile/screenshot-dir.js';
 
 // Pure helpers behind the atlas-drift harvester (scripts/probe-atlas-
 // drift.ts). The harvester walks a Phase 6 run's ui-dump XMLs and
@@ -559,5 +565,357 @@ describe('renderForkInvocation', () => {
       forkAtSkill: 'connect-claim-opp',
     });
     expect(invocation).toContain('re-walk from connect-claim-opp');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// dimagi-internal/ace#1571 — the probe routed an operator to
+// `selector-map-heal` for the ANDROID LAUNCHER, off a FAILURE dump that a
+// later passing retry had superseded.
+//
+// Two independent defects, so two independent filters:
+//   (a) SUPERSESSION — `*-FAILURE.*` deliberately survives the per-dispatch
+//       wipe (#1034), so a leg that fails once and then passes leaves a stale
+//       dump sitting next to the passing retry's captures. Nothing compared
+//       the two.
+//   (b) NON-APP SURFACE — a dump whose every node belongs to the home screen
+//       or system chrome is not an app screen at all, so no selector row
+//       should ever be authored for it.
+//
+// Both are pure classification over recorded dumps: unit-test class, no
+// device (precedent ace#1235).
+// ---------------------------------------------------------------------------
+
+// Same shape as the dump quoted in ace#1571, where 33/33 nodes were
+// `com.google.android.apps.nexuslauncher` — captured while the app was
+// force-stopped and therefore not foregrounded.
+const LAUNCHER_DUMP = `<?xml version='1.0' encoding='UTF-8' standalone='yes' ?>
+<hierarchy rotation="0">
+  <node index="0" package="com.google.android.apps.nexuslauncher" resource-id="com.google.android.apps.nexuslauncher:id/launcher" text="" />
+  <node index="1" package="com.google.android.apps.nexuslauncher" resource-id="com.google.android.apps.nexuslauncher:id/workspace" text="" />
+  <node index="2" package="com.google.android.apps.nexuslauncher" resource-id="com.google.android.apps.nexuslauncher:id/hotseat" text="Phone" />
+</hierarchy>`;
+
+const APP_DUMP = `<?xml version='1.0' encoding='UTF-8' standalone='yes' ?>
+<hierarchy rotation="0">
+  <node index="0" package="org.commcare.dalvik" resource-id="org.commcare.dalvik:id/brand_new_surface" text="Confirm household" />
+</hierarchy>`;
+
+const HEAL_MAP = `
+apk_version: "2.63.2"
+selectors:
+  deliver-home-job-card:
+    type: id
+    value: "org.commcare.dalvik:id/viewJobCard"
+  deliver-home-daily-visits:
+    type: text
+    value: "Daily Visits"
+`;
+
+describe('extractPackagesFromDump', () => {
+  it('extracts every package attribute, ignoring blanks', () => {
+    expect([...extractPackagesFromDump(LAUNCHER_DUMP)]).toEqual([
+      'com.google.android.apps.nexuslauncher',
+    ]);
+    expect([...extractPackagesFromDump(APP_DUMP)]).toEqual(['org.commcare.dalvik']);
+  });
+
+  it('returns an empty set when the dump carries no package attributes', () => {
+    expect(extractPackagesFromDump('<hierarchy><node text="x" /></hierarchy>').size).toBe(0);
+  });
+});
+
+describe('isNonAppSurfaceDump — the launcher/system-chrome filter (#1571b)', () => {
+  it('calls the ace#1571 launcher dump a non-app surface', () => {
+    expect(isNonAppSurfaceDump(LAUNCHER_DUMP)).toBe(true);
+  });
+
+  it.each([
+    'com.android.launcher3',
+    'com.android.launcher',
+    'com.sec.android.app.launcher',
+    'com.android.systemui',
+    'android',
+  ])('treats %s as non-app chrome', (pkg) => {
+    expect(isNonAppSurfaceDump(`<hierarchy><node package="${pkg}" /></hierarchy>`)).toBe(true);
+  });
+
+  it('does NOT fire on a real app surface', () => {
+    expect(isNonAppSurfaceDump(APP_DUMP)).toBe(false);
+  });
+
+  it('does NOT fire when the app is present under system chrome (status-bar overlay)', () => {
+    const mixed = `<hierarchy>
+      <node package="com.android.systemui" resource-id="com.android.systemui:id/status_bar" />
+      <node package="org.commcare.dalvik" resource-id="org.commcare.dalvik:id/btn_start" />
+    </hierarchy>`;
+    expect(isNonAppSurfaceDump(mixed)).toBe(false);
+  });
+
+  it('does NOT fire on a dump with no package attributes at all — an empty set is not evidence', () => {
+    expect(isNonAppSurfaceDump('<hierarchy><node resource-id="a:id/b" /></hierarchy>')).toBe(false);
+  });
+
+  it('does NOT fire on system surfaces the map legitimately anchors (camera, settings PIN, gms)', () => {
+    for (const pkg of ['com.android.camera2', 'com.android.settings', 'com.google.android.gms']) {
+      expect(isNonAppSurfaceDump(`<hierarchy><node package="${pkg}" /></hierarchy>`)).toBe(false);
+    }
+  });
+});
+
+describe('isSupersededFailureDump — the outcome filter (#1571a)', () => {
+  const dir = '/run/screenshots/journey-deliver';
+  const failure = { path: `${dir}/journey-deliver-FAILURE.xml`, mtimeMs: 1_000 };
+
+  it('is superseded when the passing retry wrote ordinary captures afterwards', () => {
+    expect(
+      isSupersededFailureDump(failure, [
+        failure,
+        { path: `${dir}/03-deliver-home.png`, mtimeMs: 2_000 },
+        { path: `${dir}/03-deliver-home.xml`, mtimeMs: 2_000 },
+      ]),
+    ).toBe(true);
+  });
+
+  it('is NOT superseded when every ordinary capture predates it — the failing dispatch is the latest word', () => {
+    expect(
+      isSupersededFailureDump(failure, [
+        failure,
+        { path: `${dir}/01-home.png`, mtimeMs: 500 },
+        { path: `${dir}/02-list.xml`, mtimeMs: 900 },
+      ]),
+    ).toBe(false);
+  });
+
+  it("ignores the dump's OWN forensics siblings, which are written after it", () => {
+    expect(
+      isSupersededFailureDump(failure, [
+        failure,
+        { path: `${dir}/journey-deliver-FAILURE.png`, mtimeMs: 1_100 },
+        { path: `${dir}/journey-deliver-FAILURE.txt`, mtimeMs: 1_200 },
+      ]),
+    ).toBe(false);
+  });
+
+  it('ignores `00-` pre-recipe ground truth — captured BEFORE the recipe, never by a later dispatch', () => {
+    expect(
+      isSupersededFailureDump(failure, [
+        failure,
+        { path: `${dir}/00-postlearn-landing.xml`, mtimeMs: 9_000 },
+      ]),
+    ).toBe(false);
+  });
+
+  it('ignores newer captures from a DIFFERENT recipe dir — the wipe is dispatch-scoped (#1130)', () => {
+    expect(
+      isSupersededFailureDump(failure, [
+        failure,
+        { path: '/run/screenshots/journey-learn/03-learn.png', mtimeMs: 9_000 },
+      ]),
+    ).toBe(false);
+  });
+
+  it('needs a strictly newer capture — an equal mtime is not evidence of a later dispatch', () => {
+    expect(
+      isSupersededFailureDump(failure, [failure, { path: `${dir}/03.png`, mtimeMs: 1_000 }]),
+    ).toBe(false);
+  });
+});
+
+describe('classifyScreenCoverage — #1571 never routes a heal at noise', () => {
+  it('a superseded dump classifies as `superseded`, not `unmapped-surface`', () => {
+    const r = classifyScreenCoverage({
+      dumpXml: APP_DUMP,
+      selectorMapYaml: HEAL_MAP,
+      wanted: [],
+      superseded: true,
+    });
+    expect(r.classification).toBe('superseded');
+  });
+
+  it('the ace#1571 launcher dump classifies as `non-app-surface`, not `unmapped-surface`', () => {
+    const r = classifyScreenCoverage({
+      dumpXml: LAUNCHER_DUMP,
+      selectorMapYaml: HEAL_MAP,
+      wanted: [],
+    });
+    expect(r.classification).toBe('non-app-surface');
+  });
+
+  it('NON-VACUOUS: the same empty map coverage on a real APP dump is still `unmapped-surface`', () => {
+    const r = classifyScreenCoverage({
+      dumpXml: APP_DUMP,
+      selectorMapYaml: HEAL_MAP,
+      wanted: [],
+    });
+    expect(r.classification).toBe('unmapped-surface');
+    expect(r.mappedOnScreen).toEqual([]);
+  });
+
+  it('supersession outranks everything — a stale dump says nothing about the current map', () => {
+    const r = classifyScreenCoverage({
+      dumpXml:
+        '<hierarchy><node package="org.commcare.dalvik" resource-id="org.commcare.dalvik:id/viewJobCard" /></hierarchy>',
+      selectorMapYaml: HEAL_MAP,
+      wanted: ['org.commcare.dalvik:id/viewJobCard'],
+      superseded: true,
+    });
+    expect(r.classification).toBe('superseded');
+  });
+
+  it('the non-app filter only refines `unmapped-surface` — it never masks a real matcher-miss on system chrome', () => {
+    const map = `
+apk_version: "2.63.2"
+selectors:
+  device-lock-password:
+    type: id
+    value: "com.android.systemui:id/lockPassword"
+`;
+    const r = classifyScreenCoverage({
+      dumpXml:
+        '<hierarchy><node package="com.android.systemui" resource-id="com.android.systemui:id/lockPassword" /></hierarchy>',
+      selectorMapYaml: map,
+      wanted: ['com.android.systemui:id/lockPassword'],
+    });
+    expect(r.classification).toBe('matcher-miss');
+  });
+
+  it('CLASS-LEVEL PREVENTER: `needs_tier2` is never true for a non-app package or a superseded dump', () => {
+    const cases: Array<Parameters<typeof classifyScreenCoverage>[0]> = [
+      { dumpXml: LAUNCHER_DUMP, selectorMapYaml: HEAL_MAP, wanted: [] },
+      { dumpXml: LAUNCHER_DUMP, selectorMapYaml: HEAL_MAP, wanted: ['anything'] },
+      { dumpXml: APP_DUMP, selectorMapYaml: HEAL_MAP, wanted: [], superseded: true },
+      { dumpXml: LAUNCHER_DUMP, selectorMapYaml: HEAL_MAP, wanted: [], superseded: true },
+    ];
+    for (const c of cases) {
+      const yaml = parseYaml(
+        renderReportYaml({
+          apkVersion: '2.63.2',
+          dumpFile: 'journey-deliver-FAILURE.xml',
+          result: classifyScreenCoverage(c),
+        }),
+      ) as { classification: string; needs_tier2: boolean };
+      expect(yaml.needs_tier2).toBe(false);
+      expect(yaml.classification).not.toBe('unmapped-surface');
+    }
+  });
+});
+
+describe('selectFailureDumpForClassification — the fixture dump set from #1571', () => {
+  const dir = '/run/screenshots/journey-deliver';
+  const learnDir = '/run/screenshots/journey-learn';
+
+  // The shape of hh-poverty-targeting/20260819-1435: a launcher FAILURE dump
+  // at 13:37:04, superseded by the passing dispatch's captures at 13:45.
+  const supersededLauncher = {
+    path: `${dir}/journey-deliver-FAILURE.xml`,
+    mtimeMs: 133_704,
+    xml: LAUNCHER_DUMP,
+    siblings: [
+      { path: `${dir}/journey-deliver-FAILURE.xml`, mtimeMs: 133_704 },
+      { path: `${dir}/03-deliver-home.png`, mtimeMs: 134_500 },
+      { path: `${dir}/03-deliver-home.xml`, mtimeMs: 134_500 },
+    ],
+  };
+  const liveAppFailure = {
+    path: `${learnDir}/journey-learn-FAILURE.xml`,
+    mtimeMs: 133_000,
+    xml: APP_DUMP,
+    siblings: [
+      { path: `${learnDir}/journey-learn-FAILURE.xml`, mtimeMs: 133_000 },
+      { path: `${learnDir}/01-learn-home.png`, mtimeMs: 132_000 },
+    ],
+  };
+
+  it('skips the superseded launcher dump and selects the genuine, older app failure', () => {
+    const sel = selectFailureDumpForClassification([supersededLauncher, liveAppFailure]);
+    expect(sel.selected?.path).toBe(liveAppFailure.path);
+    expect(sel.selected?.superseded).toBe(false);
+    expect(sel.selected?.nonAppSurface).toBe(false);
+    expect(sel.skipped).toEqual([{ path: supersededLauncher.path, reason: 'superseded' }]);
+  });
+
+  it('NON-VACUOUS: the newest-by-mtime rule still wins among eligible dumps', () => {
+    const newerApp = { ...liveAppFailure, path: `${dir}/other-FAILURE.xml`, mtimeMs: 900_000 };
+    const sel = selectFailureDumpForClassification([liveAppFailure, newerApp]);
+    expect(sel.selected?.path).toBe(newerApp.path);
+    expect(sel.skipped).toEqual([]);
+  });
+
+  it('when NOTHING is eligible it still reports the newest dump, flagged, rather than inventing a verdict', () => {
+    const sel = selectFailureDumpForClassification([supersededLauncher]);
+    expect(sel.selected?.path).toBe(supersededLauncher.path);
+    expect(sel.selected?.superseded).toBe(true);
+    expect(sel.selected?.nonAppSurface).toBe(true);
+    // The selected dump is not ALSO listed as skipped — its state is carried
+    // by the flags, which become the classification.
+    expect(sel.skipped).toEqual([]);
+  });
+
+  it('returns nothing for an empty candidate set', () => {
+    expect(selectFailureDumpForClassification([])).toEqual({ selected: null, skipped: [] });
+  });
+
+  it('labels a live-but-launcher dump `non-app-surface`, not `superseded`', () => {
+    const launcherOnly = {
+      path: `${dir}/journey-deliver-FAILURE.xml`,
+      mtimeMs: 500_000,
+      xml: LAUNCHER_DUMP,
+      siblings: [{ path: `${dir}/journey-deliver-FAILURE.xml`, mtimeMs: 500_000 }],
+    };
+    const sel = selectFailureDumpForClassification([launcherOnly, liveAppFailure]);
+    expect(sel.selected?.path).toBe(liveAppFailure.path);
+    expect(sel.skipped).toEqual([{ path: launcherOnly.path, reason: 'non-app-surface' }]);
+  });
+});
+
+describe('renderReportYaml — the skipped ledger keeps the silence auditable', () => {
+  it('names every dump the filters dropped, and why', () => {
+    const yaml = parseYaml(
+      renderReportYaml({
+        apkVersion: '2.63.2',
+        dumpFile: 'journey-learn-FAILURE.xml',
+        result: classifyScreenCoverage({
+          dumpXml: APP_DUMP,
+          selectorMapYaml: HEAL_MAP,
+          wanted: [],
+        }),
+        skipped: [{ path: 'journey-deliver/journey-deliver-FAILURE.xml', reason: 'superseded' }],
+      }),
+    ) as { skipped: Array<{ file: string; reason: string }> };
+    expect(yaml.skipped).toEqual([
+      { file: 'journey-deliver/journey-deliver-FAILURE.xml', reason: 'superseded' },
+    ]);
+  });
+
+  it('omits the skipped block entirely when nothing was dropped', () => {
+    const yaml = parseYaml(
+      renderReportYaml({
+        apkVersion: '2.63.2',
+        dumpFile: 'x-FAILURE.xml',
+        result: classifyScreenCoverage({
+          dumpXml: APP_DUMP,
+          selectorMapYaml: HEAL_MAP,
+          wanted: [],
+        }),
+      }),
+    ) as Record<string, unknown>;
+    expect(yaml).not.toHaveProperty('skipped');
+  });
+});
+
+describe('the preserved-artifact predicate must not drift from the mobile wipe', () => {
+  it('agrees with mcp/mobile/screenshot-dir.ts § isPreservedArtifact on every shape it guards', () => {
+    for (const name of [
+      '00-postlearn-landing.xml',
+      'journey-deliver-FAILURE.xml',
+      'journey-deliver-FAILURE.png',
+      'journey-deliver-FAILURE.txt',
+      '03-deliver-home.png',
+      '03-deliver-home.xml',
+      'journey-deliver.mp4',
+    ]) {
+      expect(isPreservedArtifactName(name)).toBe(isPreservedArtifact(name));
+    }
   });
 });

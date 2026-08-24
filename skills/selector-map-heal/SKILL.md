@@ -20,6 +20,18 @@ Read `atlas-report.yaml` from the run folder and branch on `classification`:
 | `matcher-miss` | **STOP.** The element IS on screen; the recipe reached for it wrongly. Fix the recipe. Do NOT add a selector row. |
 | `drift` | **STOP.** An anchor moved. Update the existing row via `selector-map-calibrate`. |
 | `mapped` | **STOP.** Nothing to heal; the failure is elsewhere. |
+| `superseded` | **STOP.** The dump is from an attempt a later dispatch of the same recipe already replaced — quite possibly a passing one. It is stale forensics, not a coverage gap. |
+| `non-app-surface` | **STOP.** Every node on that screen belongs to the home screen or system chrome, so the recipe was not in the app at all. The finding is "the app was not foregrounded", not "the map is missing rows" — never author a selector row for the launcher. |
+
+`superseded` and `non-app-surface` exist because both used to read as
+`unmapped-surface` (dimagi-internal/ace#1571): a **green** Deliver leg on
+`hh-poverty-targeting/20260819-1435` emitted `needs_tier2: true` off a dump
+whose 33/33 nodes were `com.google.android.apps.nexuslauncher`, left behind by
+an earlier attempt that a later passing dispatch superseded. An unattended
+agent following this table would have opened a heal run against the Android
+launcher. Both are now filtered in `lib/atlas-drift.ts`
+(`test/lib/atlas-drift.test.ts`), so they should reach you only as an explicit
+non-verdict — but if you ever see one, it is a STOP, not a heal.
 
 Adding a row on a `matcher-miss` is the inversion that produced
 jjackson/ace#811 and #893 — both shipped a new anchor for a screen whose

@@ -1018,8 +1018,8 @@ navigates), `gh issue create` against `jjackson/ace` proposing the new
 source of truth" rule — one live dump beats another plausible guess.
 
 **After any leg fails**, also re-run the probe with `--yaml-out
-<screenshotDir>/atlas-report.yaml`. This classifies the newest
-`*-FAILURE.xml` three ways (`mapped` / `drift` / `unmapped-surface` /
+<screenshotDir>/atlas-report.yaml`. This classifies a
+`*-FAILURE.xml` four ways (`mapped` / `drift` / `unmapped-surface` /
 `matcher-miss`) and is the machine-readable sibling of the markdown
 report above — copy its `classification` value verbatim into the
 failing step's entry in `per_item[].note` on the Step 9 verdict, so the
@@ -1044,6 +1044,25 @@ classification AND the heal dispatch (or the operator instruction to
 run it) in the step verdict, not just the coverage gap. This applies to
 `unmapped-surface` only; `matcher-miss` and `drift` have the different
 remedies stated above.
+
+**Two more values are NON-verdicts — record them and move on, never heal
+on them** (dimagi-internal/ace#1571):
+
+- `superseded` — the dump is from an attempt a later dispatch of the same
+  recipe already replaced. `*-FAILURE.*` deliberately survives the
+  per-dispatch wipe (#1034), so a leg that fails once and then passes
+  leaves stale forensics sitting next to the passing retry's captures.
+- `non-app-surface` — every node belongs to the home screen or system
+  chrome, so the recipe was not in the app at all. The real finding is
+  "the app was not foregrounded" (force-stopped, crashed, backgrounded by
+  a heal); note that instead, and never author a selector row for it.
+
+Both used to surface as `unmapped-surface` with `needs_tier2: true`, and the
+routing above is scoped to `unmapped-surface` only — so neither may reach
+`selector-map-heal`. On `hh-poverty-targeting/20260819-1435` a **passing**
+Deliver leg asked for a heal against the Android launcher. The probe now
+filters both and names the dumps it dropped in a `skipped:` block; a
+`skipped:` entry is context for the verdict note, not work.
 
 ### Step 7: Thin UX smoke judge
 

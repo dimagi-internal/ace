@@ -16,6 +16,8 @@
 // matching by text instead. The harvester surfaces candidates; a
 // human decides.
 
+import * as path from 'node:path';
+
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
 
 /** Extract every non-empty `resource-id="..."` value from an Android
@@ -47,6 +49,177 @@ export function extractTextValuesFromDump(xml: string): Set<string> {
     if (value) out.add(value);
   }
   return out;
+}
+
+/** Extract every non-empty `package="..."` value from a uiautomator dump.
+ *  Which app owns the nodes on screen is the cheapest possible answer to
+ *  "is this an app surface at all?" — see `isNonAppSurfaceDump`. */
+export function extractPackagesFromDump(xml: string): Set<string> {
+  const out = new Set<string>();
+  const re = /\spackage\s*=\s*(?:"([^"]*)"|'([^']*)')/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(xml)) !== null) {
+    const value = (m[1] ?? m[2] ?? '').trim();
+    if (value) out.add(value);
+  }
+  return out;
+}
+
+/** Packages that are the phone's own furniture — the home screen and the
+ *  system chrome drawn over every app. A recipe that dies here did not reach
+ *  an unmapped APP screen; it reached NO app screen, because the app was not
+ *  foregrounded (force-stopped, crashed, backgrounded by a heal).
+ *
+ *  Deliberately a DENYLIST of home-screen/system-chrome packages, not an
+ *  allowlist of app packages: the selector map legitimately anchors rows on
+ *  `com.android.camera2`, `com.android.settings`, `com.google.android.gms`
+ *  and even `com.android.systemui:id/lockPassword`, so an allowlist would
+ *  silence real coverage gaps on system dialogs the recipes genuinely drive.
+ *
+ *  dimagi-internal/ace#1571: a dump whose 33/33 nodes were
+ *  `com.google.android.apps.nexuslauncher` was classified `unmapped-surface`,
+ *  and the documented routing sends that to `skills/selector-map-heal` — i.e.
+ *  it asked an operator to author selector rows for the Android launcher. */
+const NON_APP_PACKAGE_PATTERNS: readonly RegExp[] = [
+  /^com\.google\.android\.apps\.nexuslauncher$/, // Pixel launcher (the #1571 case)
+  /(^|\.)launcher\d*$/, // com.android.launcher3, com.sec.android.app.launcher, …
+  /^com\.android\.systemui$/, // status bar, nav bar, notification shade
+  /^android$/, // bare framework dialogs (ANR, resolver)
+];
+
+export function isNonAppPackage(pkg: string): boolean {
+  return NON_APP_PACKAGE_PATTERNS.some((re) => re.test(pkg));
+}
+
+/** True when the dump names at least one package and EVERY package it names
+ *  is phone furniture. The "at least one" guard is load-bearing: a dump with
+ *  no `package=` attributes at all (a trimmed fixture, a truncated capture)
+ *  would otherwise satisfy "all packages are non-app" vacuously and get
+ *  silenced. Absence of evidence is not evidence here. */
+export function isNonAppSurfaceDump(xml: string): boolean {
+  const packages = extractPackagesFromDump(xml);
+  if (packages.size === 0) return false;
+  for (const pkg of packages) {
+    if (!isNonAppPackage(pkg)) return false;
+  }
+  return true;
+}
+
+/** Local mirror of `isPreservedArtifact` in `mcp/mobile/screenshot-dir.ts`.
+ *  Duplicated rather than imported to keep `lib/` free of a dependency on
+ *  `mcp/` (the arrow points the other way everywhere else); the two are
+ *  pinned together by a drift test in `test/lib/atlas-drift.test.ts`. */
+export function isPreservedArtifactName(name: string): boolean {
+  return name.startsWith('00-') || /-FAILURE\./.test(name);
+}
+
+/** Enough of a file for the supersession arithmetic. */
+export interface ArtifactFileMeta {
+  path: string;
+  mtimeMs: number;
+}
+
+/** Is this `*-FAILURE.xml` stale — evidence from an attempt a LATER dispatch
+ *  of the same recipe has already replaced?
+ *
+ *  The mechanism is `mcp/mobile/screenshot-dir.ts`. Since #1130 each dispatch
+ *  owns `<root>/<recipeId>/` and wipes it at start; since #1034 the wipe
+ *  SPARES `00-*` ground truth and `*-FAILURE.*` forensics. So inside one
+ *  recipe dir:
+ *    - ordinary captures (`.png` / `.xml` that are neither `00-` nor
+ *      `-FAILURE.`) can only ever come from the MOST RECENT dispatch, and
+ *    - the failure forensics are written AFTER that dispatch's own captures.
+ *  An ordinary capture strictly newer than the FAILURE dump therefore has
+ *  exactly one explanation: a later dispatch ran and got further. That dump
+ *  describes a superseded attempt and says nothing about the current map.
+ *
+ *  Strictly newer, not newer-or-equal: on a coarse-granularity filesystem a
+ *  fast recipe can stamp its last capture and its forensics in the same tick,
+ *  and treating that tie as supersession would silence real failures.
+ *
+ *  Why mtime and not `dispatch_id`: ace#1571 suggests comparing provenance
+ *  sidecars, but `MobileClient.runRecipe` stamps sidecars over
+ *  `result.screenshots` and `videos` only — `captureFailureForensics` writes
+ *  `<recipeId>-FAILURE.{xml,png,txt}` with no `.meta.json` at all
+ *  (`mcp/mobile/client.ts`). There is no dispatch id on a FAILURE dump to
+ *  compare, so mtime is the signal that actually exists on disk. */
+export function isSupersededFailureDump(
+  failureDump: ArtifactFileMeta,
+  siblings: readonly ArtifactFileMeta[],
+): boolean {
+  const dir = path.dirname(failureDump.path);
+  return siblings.some((s) => {
+    if (s.path === failureDump.path) return false;
+    if (path.dirname(s.path) !== dir) return false;
+    const name = path.basename(s.path);
+    if (!/\.(png|xml)$/i.test(name)) return false;
+    if (isPreservedArtifactName(name)) return false;
+    return s.mtimeMs > failureDump.mtimeMs;
+  });
+}
+
+/** One `*-FAILURE.xml` plus everything needed to judge whether it is worth
+ *  classifying: its own contents and the other files in its directory. */
+export interface FailureDumpCandidate extends ArtifactFileMeta {
+  xml: string;
+  siblings: readonly ArtifactFileMeta[];
+}
+
+export type FailureDumpSkipReason = 'superseded' | 'non-app-surface';
+
+export interface FailureDumpSelection {
+  selected: { path: string; superseded: boolean; nonAppSurface: boolean } | null;
+  skipped: Array<{ path: string; reason: FailureDumpSkipReason }>;
+}
+
+/** Choose which FAILURE dump the machine-readable verdict should describe.
+ *
+ *  Newest-first is right, but only among dumps that still mean something:
+ *  a superseded dump or a non-app surface must never out-rank a live failure
+ *  on a real app screen, because the verdict routes a HUMAN to
+ *  `skills/selector-map-heal` and a false positive costs a device session.
+ *
+ *  When nothing is eligible, the newest dump is still reported — flagged, so
+ *  `classifyScreenCoverage` labels it `superseded` / `non-app-surface`.
+ *  Reporting the real dump with an honest label beats both alternatives:
+ *  inventing a verdict, and going silent with no file at all. */
+export function selectFailureDumpForClassification(
+  candidates: readonly FailureDumpCandidate[],
+): FailureDumpSelection {
+  const annotated = candidates.map((c) => ({
+    path: c.path,
+    mtimeMs: c.mtimeMs,
+    superseded: isSupersededFailureDump(c, c.siblings),
+    nonAppSurface: isNonAppSurfaceDump(c.xml),
+  }));
+  if (annotated.length === 0) return { selected: null, skipped: [] };
+
+  // Path is the tiebreaker so the choice is deterministic when two dumps
+  // share an mtime (coarse filesystem granularity, or a fast run).
+  const newest = (list: typeof annotated) =>
+    [...list].sort((a, b) => a.mtimeMs - b.mtimeMs || a.path.localeCompare(b.path)).pop() ?? null;
+
+  const eligible = annotated.filter((a) => !a.superseded && !a.nonAppSurface);
+  const selected = newest(eligible.length > 0 ? eligible : annotated)!;
+
+  const skipped = annotated
+    .filter((a) => a.path !== selected.path && (a.superseded || a.nonAppSurface))
+    .map((a) => ({
+      path: a.path,
+      // Supersession is the stronger statement: a stale dump is irrelevant
+      // whatever surface it caught.
+      reason: (a.superseded ? 'superseded' : 'non-app-surface') as FailureDumpSkipReason,
+    }))
+    .sort((a, b) => a.path.localeCompare(b.path));
+
+  return {
+    selected: {
+      path: selected.path,
+      superseded: selected.superseded,
+      nonAppSurface: selected.nonAppSurface,
+    },
+    skipped,
+  };
 }
 
 interface SelectorMapEntry {
@@ -173,6 +346,10 @@ export interface AtlasReportInput {
    *  recipe failure in this run. Omit/empty when no failure dumps were
    *  present. */
   failureScreenCandidates?: string[];
+  /** FAILURE dumps excluded from `failureScreenCandidates` because they are
+   *  superseded or not app surfaces (ace#1571). Rendered as a short note so
+   *  the omission is visible rather than silent. */
+  excludedFailureDumps?: Array<{ file: string; reason: FailureDumpSkipReason }>;
 }
 
 /** Render the diff as a human-readable markdown report. Stable output
@@ -197,6 +374,18 @@ export function renderReportMarkdown(input: AtlasReportInput): string {
     );
     lines.push('');
     for (const id of failureCandidates) lines.push(`- \`${id}\``);
+    lines.push('');
+  }
+
+  const excluded = input.excludedFailureDumps ?? [];
+  if (excluded.length > 0) {
+    lines.push('## FAILURE dumps excluded from the priority section');
+    lines.push('');
+    lines.push(
+      'These `*-FAILURE.xml` dumps contributed no priority suspects (ace#1571). `superseded` = a later dispatch of the same recipe wrote captures after this dump, so it describes an attempt that has already been replaced. `non-app-surface` = every node belongs to the home screen or system chrome, so the recipe was not on an app screen at all (the app was not foregrounded) — never author a selector row for one.',
+    );
+    lines.push('');
+    for (const e of excluded) lines.push(`- \`${e.file}\` — ${e.reason}`);
     lines.push('');
   }
 
@@ -243,8 +432,21 @@ export function renderReportMarkdown(input: AtlasReportInput): string {
  *  `matcher-miss`: they have OPPOSITE fixes. Unmapped means author a new
  *  anchor and probably a new palette step. Matcher-miss means the anchor
  *  exists and the recipe reached for it wrongly. jjackson/ace#811 and #893
- *  were each a confident hand-guess between these two, and each was wrong. */
-export type ScreenCoverage = 'mapped' | 'drift' | 'unmapped-surface' | 'matcher-miss';
+ *  were each a confident hand-guess between these two, and each was wrong.
+ *
+ *  `superseded` and `non-app-surface` are the two NON-verdicts (ace#1571).
+ *  Neither says anything about map coverage: the first means the dump is
+ *  stale evidence a later dispatch replaced, the second means the recipe was
+ *  not on an app screen at all. Both exist so the probe can stay SILENT
+ *  legibly — an operator reading `non-app-surface` learns the real fact
+ *  ("the app was not foregrounded"), which `unmapped-surface` actively hid. */
+export type ScreenCoverage =
+  | 'mapped'
+  | 'drift'
+  | 'unmapped-surface'
+  | 'matcher-miss'
+  | 'non-app-surface'
+  | 'superseded';
 
 export interface ClassifyScreenInput {
   /** A uiautomator dump — normally `<recipe-id>-FAILURE.xml`. */
@@ -255,6 +457,10 @@ export interface ClassifyScreenInput {
    *  on the Maestro stderr excerpt. Empty is legal (a non-selector
    *  failure); classification then reports coverage only. */
   wanted: string[];
+  /** True when a later dispatch of the same recipe already replaced this
+   *  dump's attempt — see `isSupersededFailureDump`. Short-circuits to
+   *  `superseded`. Absent/false means "this is the latest word". */
+  superseded?: boolean;
 }
 
 export interface ScreenCoverageResult {
@@ -283,13 +489,27 @@ export function classifyScreenCoverage(input: ClassifyScreenInput): ScreenCovera
   const wantedPresent = input.wanted.filter((w) => observed.has(w)).sort();
   const wantedAbsent = input.wanted.filter((w) => !observed.has(w)).sort();
 
-  // Order is the contract. `matcher-miss` outranks everything: if what we
-  // reached for is demonstrably on screen, the map is not the problem and
-  // no amount of new anchors will help. Only once that is ruled out does
-  // total absence of map coverage mean "we have never built this shape".
+  // Order is the contract.
+  //
+  // `superseded` outranks everything (ace#1571): a dump from an attempt a
+  // later dispatch already replaced is not evidence about the current map at
+  // all, so there is nothing to say about coverage, drift, or matchers.
+  //
+  // `matcher-miss` is next: if what we reached for is demonstrably on screen,
+  // the map is not the problem and no amount of new anchors will help.
+  //
+  // Only once BOTH are ruled out does total absence of map coverage mean
+  // anything — and even then it splits, because "no map coverage" on the
+  // Android launcher is not a coverage gap, it is the app not being
+  // foregrounded. The non-app test sits HERE rather than at the top on
+  // purpose: it must refine `unmapped-surface` only, never mask a genuine
+  // `matcher-miss` or `drift` on a system surface the map really does anchor
+  // (`com.android.systemui:id/lockPassword` is a live row).
   let classification: ScreenCoverage;
-  if (wantedPresent.length > 0) classification = 'matcher-miss';
-  else if (mappedOnScreen.length === 0) classification = 'unmapped-surface';
+  if (input.superseded === true) classification = 'superseded';
+  else if (wantedPresent.length > 0) classification = 'matcher-miss';
+  else if (mappedOnScreen.length === 0)
+    classification = isNonAppSurfaceDump(input.dumpXml) ? 'non-app-surface' : 'unmapped-surface';
   else if (wantedAbsent.length > 0) classification = 'drift';
   else classification = 'mapped';
 
@@ -300,15 +520,23 @@ export interface AtlasYamlInput {
   apkVersion: string;
   dumpFile: string;
   result: ScreenCoverageResult;
+  /** FAILURE dumps the selection filters dropped, and why. Silence an
+   *  operator cannot audit is worse than noise, so when the probe declines to
+   *  classify a dump it says which one and on what grounds. Omit when empty —
+   *  the key then does not appear at all. */
+  skipped?: Array<{ path: string; reason: FailureDumpSkipReason }>;
 }
 
 /** Machine-readable sibling of `renderReportMarkdown`. `needs_tier2` is the
  *  gate on the expensive instrumented re-walk: ONLY an unmapped surface
  *  earns it. A matcher-miss is fixed by correcting the recipe, and drift by
  *  updating a row — neither justifies re-walking a leg with full
- *  boundary dumps. */
+ *  boundary dumps, and neither do the two non-verdicts (`superseded`,
+ *  `non-app-surface`), which by construction cannot equal
+ *  `'unmapped-surface'` and so can never set the gate. */
 export function renderReportYaml(input: AtlasYamlInput): string {
   const r = input.result;
+  const skipped = input.skipped ?? [];
   return stringifyYaml({
     apk_version: input.apkVersion,
     dump_file: input.dumpFile,
@@ -318,6 +546,9 @@ export function renderReportYaml(input: AtlasYamlInput): string {
     wanted_present: r.wantedPresent,
     wanted_absent: r.wantedAbsent,
     candidates: r.candidates,
+    ...(skipped.length > 0
+      ? { skipped: skipped.map((s) => ({ file: s.path, reason: s.reason })) }
+      : {}),
   });
 }
 

@@ -525,6 +525,17 @@ calibrate procedure — `skills/selector-map-heal` § When to run names
 the remedy per classification. Routing either to the heal skill
 recreates the #811/#893 inversion.
 
+Two classifications are NON-verdicts and must never reach the heal skill
+(dimagi-internal/ace#1571): `superseded` (a later dispatch of the same
+recipe already replaced that attempt — stale forensics preserved by
+#1034's wipe exemption) and `non-app-surface` (every node is home screen
+or system chrome, so the app was not foregrounded). Both used to emit
+`unmapped-surface` / `needs_tier2: true`, and on
+`hh-poverty-targeting/20260819-1435` a **passing** Deliver leg therefore
+routed an operator to author selector rows for the Android launcher.
+Name the real fact in the summary — "attempt superseded by a passing
+retry", "the app was not in the foreground" — and do not name the heal.
+
 ### Why six text skills instead of one
 
 Each skill has its own audience, its own four-criterion self-eval,

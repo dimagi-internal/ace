@@ -81,4 +81,30 @@ describe('selector-map-heal — the on-ramp exists (#1256)', () => {
       }
     }
   });
+
+  // dimagi-internal/ace#1571: the probe emitted `unmapped-surface` for a dump
+  // a passing retry had superseded, whose every node was the Android
+  // launcher. `lib/atlas-drift.ts` now classifies those `superseded` /
+  // `non-app-surface` — but the routing docs are what an unattended agent
+  // reads, so the STOP has to be written down at every place that branches on
+  // the classification, or the next agent invents a remedy for a value the
+  // table does not cover.
+  const HEAL = new URL('../../skills/selector-map-heal/SKILL.md', import.meta.url);
+
+  it.each([
+    ['selector-map-heal', HEAL],
+    ['qa-and-training', QA],
+    ['app-screenshot-capture', CAP],
+  ])('%s names the two #1571 non-verdicts as STOPs', (_name, url) => {
+    const body = readFileSync(url, 'utf8');
+    for (const value of ['superseded', 'non-app-surface']) {
+      expect(body).toContain(value);
+      // …and never as something to heal on: no mention of the heal skill
+      // within a sentence of either value.
+      for (const m of body.matchAll(new RegExp(value, 'g'))) {
+        const window = body.slice(m.index!, m.index! + 120);
+        expect(window).not.toMatch(/run\s+`?skills\/selector-map-heal/);
+      }
+    }
+  });
 });
