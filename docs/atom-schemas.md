@@ -494,7 +494,7 @@ Source: `mcp/connect-server.ts` — 61 atoms
 
 ### `connect_list_opportunities`
 
-List opportunities in an organization. `hydrate: true` fetches each row through `connect_get_opportunity` so `active` and `is_test` are REAL rather than absent — the list view returns only {id, name, short_description, description, organization_slug}. `program_id` is NOT a filter here and is refused loudly by the backend (ace#1022): the list endpoint has no program scope, and silently ignoring it would return the whole org while the caller believed it was scoped to one program. Filter client-side instead.
+List opportunities in an organization. Walks EVERY page of Connect's paginated list view (it serves 20 rows at a time and says nothing about the rest — ace#1590) and returns a `listing` block next to `opportunities`: {complete, total_count, pages_fetched, page_size, declared_pages?, truncated_reason?}. A caller that AGGREGATES these rows — connect-program-setup Step 4a sums `total_budget` — must treat `listing.complete !== true` as UNKNOWN, never as a smaller total. `hydrate: true` fetches each row through `connect_get_opportunity` so `active` and `is_test` are REAL rather than absent — the list view returns only {id, name, short_description, description, organization_slug}. `program_id` is NOT a filter here and is refused loudly by the backend (ace#1022): the list endpoint has no program scope, and silently ignoring it would return the whole org while the caller believed it was scoped to one program. `name` is filtered client-side over the FULL walked listing.
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|

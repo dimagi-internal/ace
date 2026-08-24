@@ -12,6 +12,7 @@ import type {
   DeliverUnit,
   LearnProgress,
   DeliverProgress,
+  ListingCompleteness,
 } from './types.js';
 
 export interface ConnectClient {
@@ -62,7 +63,18 @@ export interface ConnectClient {
     name?: string;
     /** Fetch each row through getOpportunity so `active` is real, not absent. */
     hydrate?: boolean;
-  }): Promise<{ opportunities: Opportunity[] }>;
+  }): Promise<{
+    opportunities: Opportunity[];
+    /**
+     * Whether the returned array is the WHOLE listing. Connect paginates this
+     * view at 20 rows and the payload does not say so, so the backend walks
+     * every page and reports what it saw (ace#1590). A caller that sums a
+     * column over these rows — `connect-program-setup` Step 4a sums
+     * `total_budget` — must treat `complete: false` as UNKNOWN, not as a
+     * smaller total.
+     */
+    listing: ListingCompleteness;
+  }>;
   getOpportunity(args: { organization_slug: string; opportunity_id: string }): Promise<Opportunity>;
   createOpportunity(args: {
     organization_slug: string;          // PM-side org running the program
