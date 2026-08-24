@@ -1,7 +1,7 @@
 import type { OcsClient } from '../client.js';
 import type { RestBackend } from './rest.js';
 import type { PlaywrightBackend } from './playwright.js';
-import { ExperimentIdEnrichmentError,
+import { ChatbotTableShapeError, ExperimentIdEnrichmentError,
   ExperimentIdStaleError, VersionBadgeUnreadableError } from '../errors.js';
 
 export interface CompositeOptions {
@@ -142,6 +142,11 @@ export class CompositeBackend implements OcsClient {
     try {
       idsByName = await this.opts.playwright.fetchExperimentIdsByName();
     } catch (e) {
+      // Template drift already names itself precisely — it is neither an
+      // expired session nor a stale table, and re-wrapping it would bury the
+      // one remedy that works (re-derive the parse from upstream source).
+      // ace#1561.
+      if (e instanceof ChatbotTableShapeError) throw e;
       throw new ExperimentIdEnrichmentError(out.name, e);
     }
     const id = idsByName.get(out.name);
@@ -153,29 +158,59 @@ export class CompositeBackend implements OcsClient {
     // just cloned. Distinguish them instead of returning the same silent null
     // for both: REST's unscoped list IS the default team, so a bot present
     // there but missing from the scrape is definitively stale.
-    if (await this.isOnDefaultTeamSilently(out.id)) {
-      throw new ExperimentIdStaleError(out.name, out.id);
+    //
+    // This branch was written assuming a POPULATED map missing ONE row. When
+    // the map is wholesale wrong it fired for every bot that exists — telling a
+    // seven-week-old bot to wait for a row that was already there (ace#1561).
+    // Two guards now stand between: `fetchExperimentIdsByName` throws on a
+    // table it cannot parse at all, and the overlap check below catches the
+    // nastier variant where the parse "succeeds" but keys the map on something
+    // no REST name can ever equal.
+    const defaultTeam = await this.listDefaultTeamSilently();
+    if (defaultTeam == null || !defaultTeam.some((c) => c.id === out.id)) return out;
+
+    // The bot IS on the default team and the scrape does not list it. That is
+    // staleness — UNLESS the scrape and REST are describing the same team and
+    // agree on NOT ONE name, which no amount of waiting explains. A freshly
+    // cloned bot is one missing row among many matching ones; zero overlap
+    // between two non-empty views of the same team is a broken parse.
+    if (idsByName.size > 0 && !defaultTeam.some((c) => idsByName.has(c.name))) {
+      throw new ChatbotTableShapeError(
+        `the table parsed ${idsByName.size} row(s), but not one of them matches any of the ` +
+          `${defaultTeam.length} chatbot name(s) REST reports for this same team ` +
+          `(e.g. parsed "${[...idsByName.keys()][0]}" vs REST "${defaultTeam[0].name}").`,
+      );
     }
-    return out;
+    throw new ExperimentIdStaleError(out.name, out.id);
   };
 
   /**
-   * Is this public_id on the DEFAULT team? Uses REST's unscoped list, which is
-   * exactly that team. Silent on failure and answers "no", so a flaky extra
-   * call degrades to today's behaviour rather than inventing a loud error.
+   * The DEFAULT team's chatbots per REST's unscoped list, which is exactly that
+   * team. Returns null on failure, so a flaky extra call degrades to today's
+   * behaviour rather than inventing a loud error.
+   *
+   * Returns the rows rather than a boolean (ace#1561) because the caller needs
+   * their NAMES too: whether the scrape's map overlaps this list at all is what
+   * separates a stale table from a mis-parsed one.
    */
-  private async isOnDefaultTeamSilently(publicId: string): Promise<boolean> {
+  private async listDefaultTeamSilently(): Promise<Array<{ id: string; name: string }> | null> {
     try {
       const { chatbots } = await this.opts.rest.listChatbots({});
-      return chatbots.some((c) => c.id === publicId);
+      return chatbots;
     } catch {
-      return false;
+      return null;
     }
   }
 
   /** Try the HTMX scrape, swallow auth/network errors so the LIST still
    * returns something usable — the list contract is documented best-effort
-   * per row. Only the single-bot read (`getChatbot`) fails loud (ace#1028). */
+   * per row. Only the single-bot read (`getChatbot`) fails loud (ace#1028).
+   *
+   * That includes `ChatbotTableShapeError`: during template drift EVERY row
+   * degrades to `experiment_id: null`, which is the documented degraded mode,
+   * and hard-failing the list would take out callers that never wanted the
+   * integer id. The loud read is `getChatbot`, and it is the one resume
+   * idempotency keys on. */
   private async fetchExperimentIdMapSilently(): Promise<Map<string, number>> {
     try {
       return await this.opts.playwright.fetchExperimentIdsByName();

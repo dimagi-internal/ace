@@ -347,10 +347,18 @@ round-trip gate in Step 11.5 below.
     must correspond to a LIVE OCS object, not a value carried through a
     latency window. Re-call `ocs_get_chatbot_embed_info({ experiment_id })`
     fresh and assert the `public_id` + `embed_key` it returns are exactly
-    the ones captured in Steps 10–11. If they do not round-trip — or
-    `experiment_id` does not resolve to a live chatbot via
-    `ocs_get_chatbot({ experiment_id })` — **fail the phase loudly** with a
+    the ones captured in Steps 10–11. If they do not round-trip — or that
+    `public_id` does not resolve to a live chatbot via
+    `ocs_inspect_chatbot({ public_id })` — **fail the phase loudly** with a
     typed error naming the mismatch; do NOT write `products.ocs_chatbot`.
+
+    **Use `ocs_inspect_chatbot`, not `ocs_get_chatbot`, as the liveness read.**
+    When REST carries no integer id, `ocs_get_chatbot` resolves one by scraping
+    the team's chatbots table — so its verdict depends on a server-rendered
+    template ACE does not own. `ocs_inspect_chatbot` reads the same object over
+    REST v2 and is scrape-independent. ace#1561: an OCS template change (PR
+    #4220) made that scrape resolve nothing, and this gate became unsatisfiable
+    for every bot on the team while the bots themselves were fine.
     (Optional belt-and-suspenders: also confirm exactly one collection
     named `ACE <opp-name>` exists via `ocs_list_*` to catch the
     duplicate-collection symptom.) This is the structural backstop that
