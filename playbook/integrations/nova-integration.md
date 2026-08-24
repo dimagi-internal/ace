@@ -526,14 +526,46 @@ review state, protected reference parts (a `field-ref` / `case-ref` /
 `user-ref` inside a label survives translation exactly), ordered
 source/default/target languages, ltr/rtl, and per-language coverage counts.
 
-**The architect will not use it unprompted.** `get_agent_prompt`
-(`autonomous_build`, 70,643 chars, read live 2026-08-17) contains **zero**
-occurrences of `itext`, `locale`, `multiling` or `English`. Its only
-substantive `language` mention states that the *chat* language is
-independent of the app's configured languages, and its numbered build
-workflow has no language step. The capability is real and the tools are
-reachable; nothing happens unless the brief asks. ACE asks via
-`_app-component-library.md § app-language-layer`.
+**The architect must NOT use it — ACE does, at level 0 (ace#1556, and this
+SUPERSEDES the 2026-08-17 reading below).** On 2026-08-17 the architect's
+operating prompt (`autonomous_build`, 70,643 chars, read live) contained
+**zero** occurrences of `itext`, `locale`, `multiling` or `English` and had no
+language step, so ACE concluded "nothing happens unless the brief asks" and
+asked. **Nova has since shipped language guidance into that prompt, and it
+forbids exactly what ACE was asking for.** Read verbatim off disk from the
+installed plugin — `nova/1.27.0/skills/autobuild/SKILL.md`, identical in
+`1.26.0`, same sentence in `agents/nova-architect-autonomous.md`:
+
+> Never treat your own language fluency as a substitute or bulk-translate
+> self-generated text through `update_translations`. Only save target text
+> supplied by the user: page `get_translatable_content` to completion,
+> preserve typed `protectedParts`, and write at most 50 distinct stable unit
+> IDs per atomic call. … never mark copied or machine-authored text reviewed
+> on the user's behalf.
+
+An `/ace:run` supplies no human-authored target strings, so the architect
+declines — correctly — and the language step becomes a silent no-op.
+Measured: `spark-facilitator/20260820-0817`, Learn app
+`64ec7be2-e9a4-49c5-8151-3dca69f9b879`, working languages `nya` + `tum` → 207
+units `origin: copied` / 0 ready in BOTH targets.
+
+**Resolution: an ownership split, not an argument with the clause.** The
+clause constrains the ARCHITECT's *self-generated* text; ACE is the caller —
+the "user" in that sentence — and holds the same six atoms on its own Nova
+MCP surface. So the brief now tells the architect to build **English only**
+and call **no** language atom, and ACE adds the layer at level 0 afterwards
+(`pdd-to-learn-app § Step 4e`, `pdd-to-deliver-app § Step 4l`, both thin
+wrappers over `_app-component-library.md § app-language-layer`'s level-0
+recipe). Provenance stays honest either way: ACE's writes are auto-tagged
+`origin: ai` and rest at `needs-review`, and nothing is marked reviewed on
+anyone's behalf. A bonus the old wiring never had — translate-LAST becomes
+**structural**, because the architect's turn is over before the language
+exists.
+
+This is also a standing lesson about this integration: **a prompt-absence
+observation has a shelf life.** ACE read "no language step" once and encoded
+it as a durable fact; Nova shipped one within days, and nothing surfaced the
+drift until a run produced 0% coverage. See `skills/upstream-regression-triage`.
 
 ### Contract facts — observed live, not inferred
 
