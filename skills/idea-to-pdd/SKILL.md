@@ -57,17 +57,46 @@ orchestrator from the per-skill QA + eval verdicts on the fly. -->
 
    **Read the reviewer's COMMENTS on the prior run's PDD** — `drive_list_comments`
    on that PDD's `file_id`. ACE publishes the PDD as a Google Doc so reviewers can
-   comment on it; those comments are review input exactly like an `inputs/` document,
-   and until ace#1563 nothing read them, so a comment only landed if a human retyped
-   it. Treat each unresolved thread as a requirement to honour or to disposition
-   explicitly, the same as any reviewer feedback record.
+   comment on it; those comments are review input exactly like an `inputs/` document.
+   Treat each unresolved thread as a requirement to honour or to disposition
+   explicitly. Use `quoted_text` to bind a comment to the section it sits on, and
+   check that section against the comment before you rewrite it — a comment whose
+   `quoted_text` no longer matches anything in your draft is the signature of the
+   ace#979 regression class, where a fix was reverted while the disposition table
+   still claimed it honoured. `resolved: true` means someone closed the thread in
+   Drive, NOT that the build honoured it.
 
-   **Use `quoted_text` to bind a comment to the section it sits on**, and check that
-   section against the comment before you rewrite it. A comment whose `quoted_text`
-   no longer matches anything in your draft is the signature of the regression class
-   in ace#979 — the fix was reverted while the disposition table still claimed it was
-   honoured. `resolved: true` means someone closed the thread in Drive, NOT that the
-   build honoured it; do not read it as done.
+   **A COMMENT IS AN INBOX, NOT A STORE — convert it or lose it.** Every run writes a
+   NEW PDD document (`runs/<run-id>/1-design/idea-to-pdd.md` has a fresh `file_id` per
+   run — verified: `20260813-1612` is `14RRcWZH…`, `20260819-1435` is `1sKoXbVvEN…`).
+   So a comment lives on a document no later run produces. This step reads the PRIOR
+   run's PDD, which means an unconverted comment is read exactly ONCE, at run N+1, and
+   is gone by N+2 — silently, with nothing reporting the loss. Comments accumulating
+   on a superseded document are not a durable review record and must never be treated
+   as one.
+
+   So for EVERY comment you read, before the phase ends, carry its substance into
+   durable **opp-level** state (which every future run re-reads) and then close the
+   thread:
+
+   1. **Write it into the opp's feedback record** — `ACE/<opp>/feedback/<YYYYMMDD>-<reviewer>.yaml`,
+      verbatim, per `skills/feedback-ledger`. That file is opp-level and is the ledger's
+      denominator, so once an item is there a later run that drops it renders as
+      **UNROUTED** instead of vanishing. A comment that never reaches this file is not
+      UNROUTED — it is absent, and the ledger cannot accuse what it was never told about.
+   2. **Route the substance to its durable home**: a requirement → this run's PDD body
+      (and it must survive into every later PDD); a question → `open-questions.md` §
+      `## Open` (opp root); a choice → a `decisions.yaml` row, or
+      `inputs/decision-overrides.yaml` when the reviewer's answer must bind future runs.
+   3. **Reply and resolve** — `drive_reply_to_comment` with `action: 'resolve'`, naming
+      WHERE it landed (the record slug + item id, the question row, the decision id).
+      The thread then becomes an audit trail pointing at the durable record rather than
+      being the record. Never resolve a thread whose substance is not yet carried
+      forward: that destroys the only remaining copy.
+
+   Do not ask the reviewer to maintain this themselves — deleting a comment once it is
+   incorporated, or hand-editing the resolution into the body, is the reviewer doing by
+   hand what this step exists to do, and it costs them the audit trail.
 
    **Read `## Open` ONLY.** The doc has exactly two sections (§ The durable
    open-questions doc below). `## Archive` is closed history — never read it
