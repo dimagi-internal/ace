@@ -199,6 +199,28 @@ twin gate: dimagi-internal/ace#1604.
       - **`match.claimed === true`** → the opp is already In Progress for this
         user; `connect-claim-opp` takes its already-claimed branch.
 
+      **THIS GATE INVERTS UNDER THE PER-RUN DEMO PHONE — and that path is OFF
+      by default (ace#1289).** Check `perRunTestUserEnabled()`
+      (`lib/per-run-test-user.ts`; env `ACE_PER_RUN_TEST_USER`, fails CLOSED on
+      anything but an explicit affirmative). **Off → everything above applies
+      verbatim; nothing changes.** On → `match === null` here is EXPECTED, not a
+      `[BLOCKER]`: the run minted a phone nobody has registered yet, and Connect
+      creates the invite → `OpportunityAccess` link only at invite time and only
+      for an existing ConnectID user (`opportunity/tasks.py`). Classify with
+      `classifyPerRunPreRegistrationGate(match)` and PROCEED; the blocking gate
+      moves to `app-screenshot-capture` **Step 3b**, after the device registers
+      and the invite is re-sent, where `classifyPerRunPostRegistrationGate`
+      requires `connect_user_id !== null` before any walk. Read the phone from
+      `…connect.ace_test_user.phone` (REQUIRED at the Phase 4 boundary when
+      `per_run: true`), not from `${ACE_E2E_PHONE}`.
+
+      **Do not flip the switch on to unblock a run.** The precondition is: *the
+      7 camera ids in `connect-register-from-otp.yaml` are calibrated against a
+      live 2.63.2 `mobile_capture_ui_dump`, and one fresh-signup registration
+      has completed on 2.63.2*. Until both hold, per-run phones route every run
+      through a photo-capture surface whose `runFlow.when visible:` guard fails
+      SILENTLY — trading a bounded scroll cost for a total Phase 6 outage.
+
       **Known caveat (unresolved):** on 2026-07-25/26 two pending invites
       (LEEP, Malaria ITN) did NOT surface on the device as claimable cards
       even though rows existed server-side, and neither an in-app sync nor a

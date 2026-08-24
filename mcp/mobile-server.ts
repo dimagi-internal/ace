@@ -96,9 +96,55 @@ const server = new McpServer({ name: 'ace-mobile', version: '0.9.0' });
 
 server.tool(
   'mobile_ensure_avd_running',
-  { avdName: z.string().default(process.env.ACE_AVD_NAME ?? 'ACE_Pixel_API_34') },
-  async ({ avdName }) => ({
-    content: [{ type: 'text', text: JSON.stringify(await client.ensureAvdRunning(avdName), null, 2) }],
+  {
+    avdName: z.string().default(process.env.ACE_AVD_NAME ?? 'ACE_Pixel_API_34'),
+    // OPTIONAL per-run test-user override (dimagi-internal/ace#1289).
+    //
+    // Omit it — the production default while ACE_PER_RUN_TEST_USER is off —
+    // and the cold-boot registers the env-derived ACE_E2E_* user exactly as it
+    // always has. `mergeTestUserOverride` returns the env object by reference
+    // when this is absent, so "omitted" is byte-identical to the pre-#1289
+    // behaviour, not merely equivalent.
+    //
+    // Supplied, it lets a caller register a run-scoped `+7426…` demo number
+    // WITHOUT rewriting `.env`. That distinction is the point: every MCP
+    // server reads `.env` at module load, so an `.env` write needs a full
+    // Claude Code restart to take effect (CLAUDE.md § MCP changes need a full
+    // Claude restart) — a call argument needs none. Pass only what varies per
+    // run (phone / phoneLocal / countryCode / name); pin + backupCode are not
+    // per-user secrets in the demo range and still come from env.
+    //
+    // LOCAL BACKEND ONLY — the cloud path throws
+    // CLOUD_TEST_USER_OVERRIDE_UNSUPPORTED rather than silently registering
+    // the env user.
+    testUser: z
+      .object({
+        phone: z
+          .string()
+          .optional()
+          .describe('Full E.164 demo number. MUST keep the +7426 prefix — upstream demo behaviour (OTP skip, Play Integrity bypass) is a startswith on it. Derive via lib/per-run-test-user.ts.'),
+        phoneLocal: z
+          .string()
+          .optional()
+          .describe('National number without the +7 country code (10 digits), as the registration recipe types it.'),
+        countryCode: z.string().optional().describe('Country code for the registration screen. Always "+7" for the demo range.'),
+        pin: z.string().optional().describe('Device PIN. Not a per-user secret in the demo range — normally omitted so ACE_E2E_PIN is used.'),
+        backupCode: z.string().optional().describe('PersonalID backup code. Normally omitted so ACE_E2E_BACKUP_CODE is used.'),
+        name: z.string().optional().describe('Display name written during registration; naming it after the run id makes the Connect workers table readable.'),
+      })
+      .optional()
+      .describe(
+        'Optional per-run test-user credential override (ace#1289). Omit for the env-derived ' +
+          'ACE_E2E_* user (the default). Local AVD backend only.',
+      ),
+  },
+  async ({ avdName, testUser }) => ({
+    content: [
+      {
+        type: 'text',
+        text: JSON.stringify(await client.ensureAvdRunning(avdName, testUser ? { testUser } : undefined), null, 2),
+      },
+    ],
   }),
 );
 

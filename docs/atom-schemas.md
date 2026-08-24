@@ -1471,6 +1471,12 @@ Source: `mcp/mobile-server.ts` — 18 atoms
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `avdName` | `z.string` | optional | _—_ |
+| `testUser` | `z.object` | optional | Full E.164 demo number. MUST keep the +7426 prefix — upstream demo behaviour (OTP skip, Play Integrity bypass) is a startswith on it. Derive via lib/per-run-test-user.ts. |
+| `phoneLocal` | `z.string` | optional | National number without the +7 country code (10 digits), as the registration recipe types it. |
+| `countryCode` | `z.string` | optional | Country code for the registration screen. Always "+7" for the demo range. |
+| `pin` | `z.string` | optional | Device PIN. Not a per-user secret in the demo range — normally omitted so ACE_E2E_PIN is used. |
+| `backupCode` | `z.string` | optional | PersonalID backup code. Normally omitted so ACE_E2E_BACKUP_CODE is used. |
+| `name` | `z.string` | optional | Display name written during registration; naming it after the run id makes the Connect workers table readable. |
 
 ### `mobile_stop_avd`
 

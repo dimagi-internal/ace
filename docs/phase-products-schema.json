@@ -298,6 +298,12 @@
                       },
                       "checked_at": {
                         "type": "string"
+                      },
+                      "per_run": {
+                        "type": "boolean"
+                      },
+                      "registered_at": {
+                        "type": "string"
                       }
                     },
                     "additionalProperties": true

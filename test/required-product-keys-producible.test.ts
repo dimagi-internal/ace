@@ -24,7 +24,10 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync, existsSync } from 'node:fs';
 
-import { REQUIRED_PRODUCT_KEYS } from '../lib/phase-products-schema.js';
+import {
+  PER_RUN_TEST_USER_REQUIRED_KEYS,
+  REQUIRED_PRODUCT_KEYS,
+} from '../lib/phase-products-schema.js';
 
 /**
  * Which skill(s) are responsible for emitting each phase's products block.
@@ -77,6 +80,39 @@ describe('every REQUIRED_PRODUCT_KEY is teachable from its producing skill (#128
       'these keys are REQUIRED at the phase boundary but no producing skill tells an agent to ' +
         'write them — the producer will fail verify_phase_products every run and repair by hand ' +
         `(ace#1286):\n  ${missing.join('\n  ')}`,
+    ).toEqual([]);
+  });
+});
+
+/**
+ * Same floor, applied to the CONDITIONAL key set (dimagi-internal/ace#1289).
+ *
+ * A required key that only becomes required under a switch is *more* prone to
+ * this failure than an unconditional one, not less: it is unexercised until the
+ * day someone flips the switch, and that is the worst possible moment to
+ * discover the producing skill never mentions it.
+ */
+describe('the per-run-test-user required keys are teachable too (#1289)', () => {
+  it('names each conditionally-required key in its producing SKILL.md', () => {
+    const missing: string[] = [];
+    for (const [phase, keys] of Object.entries(PER_RUN_TEST_USER_REQUIRED_KEYS)) {
+      const producers = PRODUCER_SKILLS[phase] ?? [];
+      expect(
+        producers.length,
+        `PER_RUN_TEST_USER_REQUIRED_KEYS has '${phase}' but PRODUCER_SKILLS does not name its producer`,
+      ).toBeGreaterThan(0);
+      const corpus = producers.map(skillText).join('\n');
+      for (const dotted of keys ?? []) {
+        const leaf = dotted.split('.').pop()!;
+        if (!corpus.includes(leaf)) {
+          missing.push(`${phase}: ${dotted} (leaf '${leaf}' absent from ${producers.join(', ')})`);
+        }
+      }
+    }
+    expect(
+      missing,
+      'these keys become REQUIRED the moment ACE_PER_RUN_TEST_USER is flipped on, but no ' +
+        'producing skill tells an agent to write them (ace#1289):\n  ' + missing.join('\n  '),
     ).toEqual([]);
   });
 });

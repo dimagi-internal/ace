@@ -852,7 +852,7 @@ alone makes the artifact land outside `4-connect` and fail
 
    ```
    ace_test_user = {
-     phone: ${ACE_E2E_PHONE},
+     phone: ${ACE_E2E_PHONE},           # or this run's minted phone — see 7b
      invite_row_present: <bool>,        # match !== null from connect_list_flw_invites — REQUIRED at the boundary
      connect_user_id: <string | null>,  # null with a row present IS the ace#824 signature
      status: <accepted | pending | unknown>,
@@ -880,6 +880,63 @@ alone makes the artifact land outside `4-connect` and fail
    longer written. Step 6.5 activates synchronously, so the deferred-to-
    `llo-launch` branch is dead code. `llo-launch` (Phase 9) only sends
    the real-LLO invite; it does not re-fire the ACE test-user invite.
+
+7b. **Per-run demo test user — OFF BY DEFAULT (ace#1289). Skip this entire
+   sub-step unless the switch is on.**
+
+   **Read the switch first, and read it exactly once:**
+   `perRunTestUserEnabled()` from `lib/per-run-test-user.ts` — the env var is
+   `ACE_PER_RUN_TEST_USER`, and it is `false` for unset / empty / `false` /
+   `0` / `off` / any typo (it fails CLOSED). **If it is off, Step 7 above is
+   the whole story: invite `${ACE_E2E_PHONE}`, read it back, and move on.
+   Nothing below runs.**
+
+   **What changes when it is on.** Instead of the fixed `${ACE_E2E_PHONE}`,
+   this run mints its OWN demo number:
+
+   ```
+   const testUser = derivePerRunTestUser(run_state.yaml.run_id)   // lib/per-run-test-user.ts
+   // → { phone: '+7426…', phoneLocal, countryCode: '+7', name: 'ACE Test <run_id>' }
+   ```
+
+   Deterministic from the run id, so a re-entered or resumed run registers the
+   SAME user rather than orphaning the first one. Send the Step 7 invite to
+   `testUser.phone` in place of `${ACE_E2E_PHONE}` — everything else about the
+   call is identical.
+
+   **The read-back branch INVERTS, and this is the part to get right.**
+   Registration requires a pre-existing invite (connect-id `decorators.py`), but
+   Connect creates the invite → `OpportunityAccess` link only at invite time and
+   only if the ConnectID user ALREADY EXISTS (`opportunity/tasks.py`). A phone
+   nobody has registered yet therefore produces **no row, or a row with
+   `connect_user_id: null`** — and under a per-run phone that is the EXPECTED
+   state, not the ace#824 silent failure. Do NOT `[BLOCKER]` on it.
+
+   Classify with `classifyPerRunPreRegistrationGate(match)` and log its
+   `reason` verbatim. The real gate lives downstream in Phase 6, after the
+   device registers and the invite is re-sent — see
+   `skills/app-screenshot-capture § Step 4`. The verified ordering is
+   **invite → register → re-invite** (ace#855, live-verified on
+   `hh-poverty-targeting/20260702-1456`); the old self-heal that used to paper
+   over the missing link, `resend_connect_invite`, is dead code with zero
+   callers.
+
+   **Write two extra fields** into the Step 10 `ace_test_user` block — both are
+   REQUIRED at the phase boundary once `per_run` is true
+   (`PER_RUN_TEST_USER_REQUIRED_KEYS` in `lib/phase-products-schema.ts`):
+
+   ```
+   phone: <testUser.phone>   # the MINTED number, not ${ACE_E2E_PHONE} — Phase 6
+                             # has no fallback and cannot proceed without it
+   per_run: true             # the contract discriminator; it is what moves the
+                             # blocking gate from Phase 4 to post-registration
+   ```
+
+   **Do not flip the switch on to "try it".** The precondition is: *the 7 camera
+   ids in `connect-register-from-otp.yaml` are calibrated against a live 2.63.2
+   `mobile_capture_ui_dump`, and one fresh-signup registration has completed on
+   2.63.2*. Until then, per-run phones route every run through an uncalibrated
+   photo-capture surface whose `runFlow.when visible:` guard fails SILENTLY.
 
 7.5. **Learn-app CCHQ pre-flight (Phase 6 prerequisite, idempotent).**
 
@@ -995,6 +1052,11 @@ alone makes the artifact land outside `4-connect` and fail
               connect_user_id: <string | null> # null + row present = the ace#824 signature
               status: <accepted | pending | unknown>
               checked_at: <ISO timestamp>      # when the read-back ran
+              # ONLY when Step 7b ran (ACE_PER_RUN_TEST_USER on — default OFF, so
+              # normally OMIT this line entirely). Setting it flips the boundary
+              # contract to PER_RUN_TEST_USER_REQUIRED_KEYS, which additionally
+              # requires `phone` (the minted number) — see lib/phase-products-schema.ts.
+              per_run: true
     ```
 
     Apply via `mcp__plugin_ace_ace-gdrive__update_yaml_file` with
