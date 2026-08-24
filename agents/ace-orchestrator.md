@@ -296,9 +296,27 @@ in-session:
 > almost certainly fine — do not go re-diagnosing it.** Confirm with one
 > direct call, `curl https://mcp.commcare.app/mcp` bearing the key from
 > `~/.ace/env.sh`: if that returns this run's apps, the key is correct and
-> only the binding is wrong. MCP auth binds at connection
-> time: **quit and reopen Claude Code**, then resume
-> `/ace:run <opp>/<run-id>`.
+> only the binding is wrong. **A plain restart is NOT sufficient for the
+> principal case — it has been tried and it did not clear
+> (dimagi-internal/ace#1614).** In Claude Code run `/mcp`, select the `nova`
+> server, and clear/re-authenticate it so the connection uses the
+> `NOVA_API_KEY` bearer rather than a stored credential; then confirm
+> `list_apps` shows this run's ids and resume `/ace:run <opp>/<run-id>`.
+
+**Do not collapse the two failures into one remedy.** A *bind miss* (the
+server never attached) IS cleared by quitting and reopening Claude Code — that
+is the remedy above this block, and it stays. A *wrong principal* is a
+connection that attached fine and authenticated as somebody else, so a restart
+just re-establishes it: measured on `spark-facilitator/20260820-0817`, where
+the second halt came from a claude process started **after** the first halt
+and bound exactly the same wrong principal. Prescribing a restart there sends
+the operator around a loop that produces no new information and costs a
+session each lap. `nova` is a `type: http` server whose `headersHelper` reads
+`$NOVA_API_KEY` from Claude Code's own process env; when the key is verifiably
+present there (`ps -Eww -p <claude-pid>`) and a direct `curl` with it returns
+the right apps, what is left is the connection's stored credential, which is
+what `/mcp` re-auth replaces. Do NOT probe the macOS Keychain to confirm that
+— `security(1)` hangs forever on a GUI prompt in a non-interactive shell.
 
 `bin/ace-doctor`'s `nova_needs_auth_cache` cannot stand in for this. It is a
 static check of a cache FILE plus the key's PRESENCE — it reported a green
