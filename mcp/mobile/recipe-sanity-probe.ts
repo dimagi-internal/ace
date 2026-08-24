@@ -45,6 +45,8 @@ export type SanityFailureClass =
   | 'brief-label-drift'
   | 'inputtext-geopoint-as-string'
   | 'unguarded-option-tap-below-long-label'
+  | 'input-anchor-skips-hint'
+  | 'input-focus-scroll-is-guarded'
   | 'deliver-smoke-rewalks-learn';
 
 /** Non-blocking caveat classes. A warning NEVER flips `ok` — it names a
@@ -120,6 +122,20 @@ export interface SanityVerdict {
      * (ace#1068). The matching `module-form-checks-not-run` warning
      * names the recipe(s). */
     module_form_checks_ran: boolean;
+    /** Whether ANY supplied field carried a non-blank `hint`.
+     *
+     * **Read this before trusting a clean verdict** — same contract as
+     * `field_data_supplied` and `module_form_checks_ran`. When false,
+     * `input-anchor-skips-hint` did NOT run, and the verdict is
+     * byte-identical to one where it ran and passed (ace#1554).
+     *
+     * Deliberately NOT a warning: unlike `module_form_checks_ran`, a
+     * false here is ambiguous between "the caller did not supply hints"
+     * and "no question in this app HAS a hint", and the latter is a
+     * common, legitimately clean state. A warning that fires on every
+     * hint-free app is noise, and noise is how the caveats that matter
+     * stop being read. */
+    hint_data_supplied: boolean;
   };
 }
 
@@ -146,6 +162,29 @@ export interface NovaFieldSlice {
   kind: string;
   /** Question/label text as it renders on-screen. */
   label?: string;
+  /** The question's HINT text as it renders on-screen, when it has one.
+   *
+   * Load-bearing for `input-anchor-skips-hint` (ace#1554/#1299). CommCare
+   * renders a question as `label TextView -> optional hint TextView ->
+   * EditText`, so the element IMMEDIATELY above the input is the hint when
+   * one exists and the question label when it does not — and `tapOn:
+   * below: <question label>` on a hint-carrying field therefore resolves
+   * to the hint TextView, which is not focusable. The tap reports success,
+   * focus never moves, and the value appends into whatever was focused
+   * before (live: `cbf_name = "Thandiwe Banda0991234567"` with a required
+   * `phone_number` empty).
+   *
+   * Nova exposes it as a structured `hint` expression on the field; the
+   * Step 2.6 caller flattens it to its rendered text the same way `label`
+   * is flattened.
+   *
+   * **OMIT the key when the field has no hint — never pass `''` to mean
+   * "none".** The check is silent for every field whose `hint` is absent
+   * or blank, so under-supplying degrades to a no-op rather than to a
+   * false "this field has no hint" conclusion. That asymmetry is the whole
+   * reason ace#1554 shipped separately from ace#1553: a false positive in
+   * this probe halts Phase 3 with an `incomplete` re-author loop. */
+  hint?: string;
   /** Select options, when the kind carries them. */
   options?: { label?: string }[];
   /** Relevance condition verbatim, when the field carries one. The probe
@@ -223,6 +262,8 @@ export function probeRecipeSanity(inputs: ProbeInputs): SanityVerdict {
   const maxLabelRun = maxConsecutiveLabelScreens(inputs.novaApps);
   const groupScreens = collectGroupScreens(inputs.novaApps);
   const formShapes = collectFormShapes(inputs.novaApps);
+  const anchorFields = collectAnchorFields(inputs.novaApps);
+  const hintDataSupplied = anchorFields.some((f) => !!f.hint && f.hint.trim() !== '');
   const fieldDataSupplied = inputs.novaApps.some((app) =>
     app.modules.some((mod) => mod.forms.some((form) => form.fields !== undefined)),
   );
@@ -317,6 +358,68 @@ export function probeRecipeSanity(inputs: ProbeInputs): SanityVerdict {
         recipe: recipe.name,
         parameter: 'unguarded-option-tap',
         value: unguarded.matcher,
+      });
+    }
+
+    // 6.7 input-anchor-skips-hint → a field-list input focus tap anchored
+    // on the question LABEL of a field that carries a HINT. CommCare's
+    // calibrated layout order is `label TextView -> optional hint TextView
+    // -> EditText`, so `below: <question label>` resolves to the hint
+    // TextView, and tapping a TextView moves no focus. The tap reports
+    // success and the value appends into whatever was focused before —
+    // silent data corruption, not a failed leg (live:
+    // spark-facilitator/20260813-2126, `cbf_name` =
+    // "Thandiwe Banda0991234567" with a required `phone_number` empty).
+    // 3 of that run's 14 inputs were wrong exactly this way, and all 3
+    // were hint-carrying fields anchored on their label (ace#1299 § 1).
+    //
+    // Hint-gated, and that gate is the point (ace#1554): the check reads
+    // ONLY fields that positively carry a hint, so a caller that has not
+    // been taught to supply `hint` gets a no-op instead of an assumed
+    // "no hint". Under-supplying loses recall; assuming would manufacture
+    // a Phase 3 halt whose remediation is a no-op — the #858 tax.
+    const anchorMiss = findInputAnchorSkipsHint(recipe.text, anchorFields);
+    if (anchorMiss) {
+      failures.push({
+        class: 'input-anchor-skips-hint',
+        detail: `recipe ${recipe.name} focuses the input for "${anchorMiss.fieldId}" at line ${anchorMiss.line} by anchoring on its QUESTION LABEL ("${anchorMiss.anchor}"), but that field carries a hint ("${anchorMiss.hint}") — CommCare renders label -> hint -> EditText, so below:<question label> resolves to the hint TextView, the tap moves no focus, and the value appends into whichever field was already focused (ace#1299)`,
+        remediation: `anchor the focus tap on the element IMMEDIATELY above the EditText — this field's hint, "${anchorMiss.hint}" — in BOTH the centring scrollUntilVisible and the tapOn: below:, per skills/app-test-cases/SKILL.md § group-field-list walk item 3 (ace#1299); re-author via /ace:step app-test-cases`,
+        recipe: recipe.name,
+        parameter: 'input-focus-anchor',
+        value: anchorMiss.fieldId,
+      });
+    }
+
+    // 6.8 input-focus-scroll-is-guarded → the centring scroll onto a
+    // field-list input's focus anchor wrapped in `when: notVisible:
+    // <the same anchor>`. Per ace#1299 § 2 this is "the more important
+    // half of the bug": the real failure mode is "anchor VISIBLE, its
+    // EditText still below the fold", which `notVisible: <anchor>` is
+    // structurally blind to — so the guard suppresses the one scroll that
+    // was needed. It affected all 14 inputs of that run, wrong-anchored or
+    // not.
+    //
+    // The discriminator SKILL.md states is whether the anchor IS the tap
+    // target: guarded when it is (ace#1070 — an unconditional scroll on an
+    // already-visible option reads as backward form nav), unconditional
+    // when it is not. A `tapOn: below: <anchor>` + `inputText` pair is by
+    // construction the "anchor is a DIFFERENT element" case, which is why
+    // the check keys on that exact shape and never on an option tap.
+    //
+    // No field data needed — the defect is pure recipe shape. Three
+    // silence guards keep it narrow: the guard step must scroll to the
+    // SAME anchor literal the tap uses, the guarded scroll must be the
+    // only scroll for that anchor before the tap, and a recipe with no
+    // scroll at all is left alone (that is a different class).
+    const guardedFocus = findGuardedInputFocusScroll(recipe.text);
+    if (guardedFocus) {
+      failures.push({
+        class: 'input-focus-scroll-is-guarded',
+        detail: `recipe ${recipe.name} wraps the centring scroll for input anchor "${guardedFocus.anchor}" (line ${guardedFocus.guardLine}) in a when: notVisible guard on that same anchor, then taps below: it at line ${guardedFocus.line} — the failure mode is "anchor visible, its EditText still below the fold", which notVisible:<anchor> cannot detect, so no scroll fires and the tap lands off-target (ace#1299 § 2: this half affected all 14 inputs of spark-facilitator/20260813-2126)`,
+        remediation: `make the centring scrollUntilVisible UNCONDITIONAL (drop the runFlow when: notVisible wrapper; keep speed: 30 + centerElement: true), per skills/app-test-cases/SKILL.md § group-field-list walk item 3 — guarded scrolls stay correct only where the anchor IS the tap target, e.g. an option label (ace#1070); re-author via /ace:step app-test-cases`,
+        recipe: recipe.name,
+        parameter: 'input-focus-scroll',
+        value: guardedFocus.anchor,
       });
     }
 
@@ -608,6 +711,7 @@ export function probeRecipeSanity(inputs: ProbeInputs): SanityVerdict {
       max_label_screen_run: maxLabelRun,
       nova_groups_seen: groupScreens.length,
       module_form_checks_ran: recipeModuleNames.size > 0,
+      hint_data_supplied: hintDataSupplied,
     },
   };
 }
@@ -1486,4 +1590,249 @@ function findGeopointStringInputs(
     }
   }
   return out;
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// ace#1554 / ace#1299 — the two field-list INPUT defects.
+//
+// Both key on ONE recognised shape, the focus-tap idiom
+// `skills/app-test-cases/SKILL.md § group-field-list walk` item 3 emits:
+//
+//     - scrollUntilVisible: {element: {text: <anchor>}, centerElement: true}
+//     - tapOn: {below: {text: <anchor>}}
+//     - inputText: "<value>"
+//
+// Everything here is pure set/string logic over the recipe text plus the
+// Nova fields already in hand — unit-test class per CLAUDE.md, not
+// device-truth (precedent ace#1235).
+
+/** A field flattened for focus-anchor resolution: one rendered question
+ * label, plus the hint that renders between it and the EditText. Group
+ * children are lifted to the top level — a group is one field-list
+ * screen, and its children are the things a recipe anchors on. */
+interface AnchorField {
+  id: string;
+  label: string;
+  hint?: string;
+}
+
+/** Every label-bearing field across the supplied apps, group children
+ * included. `hidden` fields render nothing, so they are skipped. */
+function collectAnchorFields(apps: NovaAppSlice[]): AnchorField[] {
+  const out: AnchorField[] = [];
+  const visit = (field: NovaFieldSlice, depth: number): void => {
+    if (depth > 8 || field.kind === 'hidden') return;
+    if (field.label && field.label.trim()) {
+      out.push({ id: field.id, label: field.label, hint: field.hint });
+    }
+    for (const child of field.children ?? []) visit(child, depth + 1);
+  };
+  for (const app of apps) {
+    for (const mod of app.modules) {
+      for (const form of mod.forms) {
+        for (const field of form.fields ?? []) visit(field, 0);
+      }
+    }
+  }
+  return out;
+}
+
+/**
+ * `stepTextMatcherSpecs` over text whose backslashes have been collapsed
+ * one escaping level first.
+ *
+ * The probe reads RAW recipe bytes, and `RECIPE_WILDCARD_SRC` recognises
+ * the one-backslash spelling `[\s\S]*`. But `\s` is not a legal escape in
+ * a YAML double-quoted scalar, so the idiom `skills/app-test-cases`
+ * actually emits — and that this class exists to police — is
+ * `text: "[\\s\\S]*<anchor>[\\s\\S]*"`, two backslashes on disk. Left
+ * un-normalised, the wildcard is not stripped, the literal never matches a
+ * live Nova label, and both checks below would be structurally unable to
+ * fire on any real recipe: a rail that ships green and enforces nothing.
+ *
+ * Collapsing is deliberately scoped to these two checks rather than folded
+ * into the shared recogniser. Widening `RECIPE_WILDCARD_SRC` would also
+ * re-arm `group-field-list-per-question-walk` and
+ * `answer-tap-before-leading-label-advance` on recipe text they have never
+ * matched — a blast radius that belongs in its own PR with its own
+ * evidence, not bundled into a fix whose premise is "do not introduce a
+ * new false-positive class". Tracked as ace#1583, which also carries the
+ * reproducer showing `group-field-list-per-question-walk` going SILENT on
+ * the two-backslash spelling and firing on the one-backslash one.
+ *
+ * A no-op on the one-backslash spelling, so both are handled.
+ */
+function inputAnchorSpecs(blockText: string): StepTextMatcherSpec[] {
+  return stepTextMatcherSpecs(blockText.replace(/\\\\/g, '\\'));
+}
+
+/** One recognised input focus tap: a `tapOn:` carrying a `below:` anchor
+ * whose IMMEDIATELY following step is an `inputText`. */
+interface InputFocusStep {
+  /** 1-based line the tapOn step starts on. */
+  line: number;
+  /** Index into `splitTopLevelSteps` — everything before it is "earlier". */
+  stepIndex: number;
+  /** The anchor matchers read out of the `below:` block only. */
+  anchorSpecs: StepTextMatcherSpec[];
+}
+
+/**
+ * Pull the block of a step belonging to one key — `below:`, `when:` — as
+ * raw text. Returns the inline remainder for the flow form
+ * (`below: {text: "x"}`) and the indented sub-block otherwise. Null when
+ * the key is absent.
+ */
+function extractKeyBlock(stepText: string, key: string): string | null {
+  const lines = stepText.split('\n');
+  const keyRe = new RegExp(`^(\\s*)(-\\s+)?${key}:(.*)$`);
+  for (let i = 0; i < lines.length; i++) {
+    const m = lines[i].match(keyRe);
+    if (!m) continue;
+    if (m[3].trim()) return m[3];
+    // A `- key:` line's children are indented past the dash, not past the
+    // whitespace before it.
+    const indent = m[1].length + (m[2] ? m[2].length : 0);
+    const block: string[] = [];
+    for (let j = i + 1; j < lines.length; j++) {
+      if (lines[j].trim() === '') continue;
+      const childIndent = lines[j].match(/^(\s*)/)![1].length;
+      if (childIndent <= indent) break;
+      block.push(lines[j]);
+    }
+    return block.join('\n');
+  }
+  return null;
+}
+
+/**
+ * Every input focus tap in a recipe.
+ *
+ * Requiring the `inputText` to be the very next top-level step is the
+ * narrowing that keeps this off everything else a `below:` anchor is used
+ * for — `connect-claim-opp.yaml` scopes a View-Opportunity button that
+ * way, and an option addressed by `below:` is not an input. Anything
+ * between the tap and the text is evidence we are not looking at the
+ * focus idiom, so the probe declines.
+ */
+function findInputFocusSteps(yaml: string): InputFocusStep[] {
+  const items = splitTopLevelSteps(yaml);
+  const out: InputFocusStep[] = [];
+  for (let i = 0; i < items.length; i++) {
+    if (!/^\s*-\s+tapOn:/.test(items[i].text)) continue;
+    const below = extractKeyBlock(items[i].text, 'below');
+    if (!below) continue;
+    const next = items[i + 1];
+    if (!next || !/^\s*-\s+inputText:/.test(next.text)) continue;
+    const anchorSpecs = inputAnchorSpecs(below);
+    if (!anchorSpecs.length) continue;
+    out.push({ line: items[i].startLine, stepIndex: i, anchorSpecs });
+  }
+  return out;
+}
+
+/**
+ * An input focus tap anchored on the QUESTION LABEL of a field that
+ * carries a HINT (ace#1299 § 1).
+ *
+ * Four silence guards, in the order they fire. Each one exists because
+ * flagging under that uncertainty would halt Phase 3 on a recipe the
+ * re-author would emit again:
+ *
+ *   1. **No hint anywhere → return immediately.** Absent `hint` data is
+ *      indistinguishable from a hint-free app, and assuming the latter is
+ *      how a missing-data case becomes a blocking failure (ace#1554).
+ *   2. **The anchor matches SOME field's hint → the step is fine.** That
+ *      is the sanctioned idiom, however the recipe wrote it.
+ *   3. **An ambiguous anchor attributes to nothing** — the ace#1548 rule.
+ *      More than one field's label satisfying the matcher is no evidence
+ *      about which field this is, so the probe does not pick one by
+ *      enumeration order.
+ *   4. **A resolved field with no hint is CORRECT** — #1299's own table:
+ *      8 of 14 inputs had no hint and rightly anchored on the label,
+ *      because there the label IS the element directly above the input.
+ */
+function findInputAnchorSkipsHint(
+  yaml: string,
+  anchorFields: AnchorField[],
+): { line: number; fieldId: string; anchor: string; hint: string } | null {
+  const hasHint = (f: AnchorField): boolean => !!f.hint && f.hint.trim() !== '';
+  if (!anchorFields.some(hasHint)) return null;
+
+  for (const step of findInputFocusSteps(yaml)) {
+    const anchorsAHint = step.anchorSpecs.some((spec) =>
+      anchorFields.some((f) => hasHint(f) && candidateMatchesSpec(f.hint!, spec)),
+    );
+    if (anchorsAHint) continue;
+
+    for (const spec of step.anchorSpecs) {
+      const hits = anchorFields.filter((f) => candidateMatchesSpec(f.label, spec));
+      const ids = new Set(hits.map((f) => f.id));
+      if (ids.size !== 1) continue;
+      const field = hits[0];
+      if (!hasHint(field)) continue;
+      return { line: step.line, fieldId: field.id, anchor: spec.text, hint: field.hint! };
+    }
+  }
+  return null;
+}
+
+/** Does a step both carry a `when: notVisible` condition and issue a
+ * scroll? The guarded shape ace#1299 § 2 indicts. */
+function isGuardedScrollStep(stepText: string): boolean {
+  if (!/scrollUntilVisible/.test(stepText)) return false;
+  const when = extractKeyBlock(stepText, 'when');
+  return when !== null && /notVisible/.test(when);
+}
+
+/**
+ * A centring scroll onto an input focus anchor that is wrapped in
+ * `when: notVisible: <that same anchor>` (ace#1299 § 2 — "the more
+ * important half of the bug").
+ *
+ * The guard cannot see the failure it is nominally guarding against: the
+ * real one is "anchor VISIBLE, its EditText still below the fold", so
+ * `notVisible: <anchor>` evaluates false and the scroll never runs.
+ *
+ * Narrow by construction, per the #858 tax:
+ *
+ *   * only fires on the input focus idiom (`tapOn: below:` + `inputText`),
+ *     never on an option tap — there the anchor IS the tap target and the
+ *     guard is CORRECT (ace#1070), which is exactly the discriminator
+ *     SKILL.md states;
+ *   * the guard step must name the same anchor literal in BOTH its
+ *     `notVisible` condition and its scroll target, so a guard on some
+ *     other element is left alone;
+ *   * an unconditional scroll for the same anchor anywhere earlier clears
+ *     the tap — the needed scroll does fire, so there is no defect;
+ *   * a recipe with NO scroll for the anchor is not this class and is not
+ *     flagged here.
+ */
+function findGuardedInputFocusScroll(
+  yaml: string,
+): { line: number; guardLine: number; anchor: string } | null {
+  const items = splitTopLevelSteps(yaml);
+  for (const step of findInputFocusSteps(yaml)) {
+    for (const spec of step.anchorSpecs) {
+      let guardLine = -1;
+      let unconditional = false;
+      for (let i = 0; i < step.stepIndex; i++) {
+        const text = items[i].text;
+        if (!/scrollUntilVisible/.test(text)) continue;
+        const targets = inputAnchorSpecs(text).map((s) => s.text);
+        if (!targets.includes(spec.text)) continue;
+        if (isGuardedScrollStep(text)) {
+          const when = extractKeyBlock(text, 'when') ?? '';
+          if (!inputAnchorSpecs(when).some((s) => s.text === spec.text)) continue;
+          if (guardLine === -1) guardLine = items[i].startLine;
+        } else {
+          unconditional = true;
+        }
+      }
+      if (guardLine !== -1 && !unconditional) {
+        return { line: step.line, guardLine, anchor: spec.text };
+      }
+    }
+  }
+  return null;
 }
