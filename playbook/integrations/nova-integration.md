@@ -154,6 +154,54 @@ Five blockers landed and were cleared between 2026-04-27 and
   the same process env, so they read the same `NOVA_API_KEY` and
   authenticate as the same identity as level-0.
 
+- **A stored OAuth credential OUTRANKS the `headersHelper` PAT, so
+  #11 and #13 are only conditionally cleared
+  (voidcraft-labs/nova-plugin#52, open, hit live 2026-08-23/24 on
+  `spark-facilitator/20260820-0817`).** Both mechanisms write the same
+  `Authorization` header, and if Claude Code already holds an OAuth
+  token for `mcp.commcare.app` that token wins — `NOVA_API_KEY` set or
+  not. The session then answers **normally, about a different account**:
+  `get_lookup_tables` returned `App not found` for an app built the day
+  before, and `get_hq_connection` returned `scope_missing:
+  nova.hq.read`. That is #13's symptom verbatim, which #13 closed as
+  structurally impossible on the PAT path — it isn't, it is impossible
+  only when no OAuth token exists.
+
+  **The scope is the tell, not the identity.** Identity alone can look
+  like coincidence; a credential missing a permission the PAT
+  demonstrably has cannot be the PAT:
+
+  ```
+  in-session  get_hq_connection → scope_missing: nova.hq.read
+  curl + PAT  get_hq_connection → configured:true, connect-ace-prod present
+  ```
+
+  **Three things that do NOT fix it, in the order you will try them:**
+  1. *Restarting Claude Code* — the stored token is re-presented, so the
+     wrong principal comes straight back. Cost us two sessions.
+  2. *`/mcp` → nova → **Authenticate*** — mints a NEW OAuth token. If you
+     sign in as the right account the identity now matches and it looks
+     fixed, but `get_hq_connection` still returns `scope_missing`,
+     because you are still on OAuth. This is the trap.
+  3. *Anything that checks the PAT* — `/ace:doctor`, `nova_env`,
+     `nova_shell_env`, `nova_needs_auth_cache` all report green. The PAT
+     is fine; it simply is not the credential in use.
+
+  **The fix is `/mcp` → nova → `Clear authentication`, then RESTART.**
+  Clearing drops the connection outright (all 101 tools disappear)
+  rather than falling back live, so the restart is what re-establishes
+  it — and with no stored token and `NOVA_API_KEY` set, the
+  `headersHelper` bearer is the only credential left. Do not
+  re-authenticate afterwards.
+
+  **Verify with two calls, never one.** `list_apps` alone is not enough:
+  step 2 above passes it while still on OAuth.
+
+  ```
+  list_projects      → must be the PAT's project, not a human's
+  get_hq_connection  → must be configured:true (proves PAT, not OAuth)
+  ```
+
 ## ACE service identity for Nova
 
 Under API-key auth, the bearer is identity. ACE's `NOVA_API_KEY`
@@ -168,8 +216,15 @@ machine. The user-scope override is re-registered with the new
 bearer.
 
 The plugin's OAuth path is still available for human-at-a-browser
-use (one user, one Claude Code session, no concurrent sessions);
-ACE just doesn't take that path because of the cascade.
+use (one user, one Claude Code session, no concurrent sessions).
+
+**ACE does not CHOOSE that path — but it can silently END UP on it,
+and then ACE's service identity becomes whichever human last signed
+in at a browser.** That is nova-plugin#52 above, and it is the single
+most expensive Nova failure mode ACE has hit, precisely because every
+call keeps succeeding. If you are ever unsure which identity a session
+is on, `get_hq_connection` answers it in one call: `configured: true`
+means the PAT, `scope_missing: nova.hq.read` means OAuth.
 
 ## ACE's surface area on Nova
 

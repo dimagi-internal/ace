@@ -298,10 +298,27 @@ in-session:
 > `~/.ace/env.sh`: if that returns this run's apps, the key is correct and
 > only the binding is wrong. **A plain restart is NOT sufficient for the
 > principal case — it has been tried and it did not clear
-> (dimagi-internal/ace#1614).** In Claude Code run `/mcp`, select the `nova`
-> server, and clear/re-authenticate it so the connection uses the
-> `NOVA_API_KEY` bearer rather than a stored credential; then confirm
-> `list_apps` shows this run's ids and resume `/ace:run <opp>/<run-id>`.
+> (dimagi-internal/ace#1614).** The cause is a stored OAuth token
+> outranking the `headersHelper` PAT (voidcraft-labs/nova-plugin#52). Run
+> `/mcp`, select `nova`, choose **`Clear authentication`** — NOT
+> `Authenticate` — then **quit and reopen Claude Code**, and resume
+> `/ace:run <opp>/<run-id>`.
+>
+> Verify with TWO calls before resuming: `list_projects` must return the
+> PAT's project, and `get_hq_connection` must return `configured: true`.
+> `list_apps` alone is not sufficient — re-authenticating as the right
+> account fixes the identity while leaving you on OAuth, where
+> `get_hq_connection` still answers `scope_missing: nova.hq.read`.
+
+**`Clear authentication`, never `Authenticate`.** They sit next to each
+other in the same `/mcp` menu and the wrong one reports success, which is
+why this needs saying. `Authenticate` mints a *new* OAuth token — so if you
+sign in as the right account the principal assertion above starts passing
+and the run proceeds while still on the wrong credential, missing
+`nova.hq.read`, and Phase 3 dies later at `upload_app_to_hq` instead. Only
+`Clear authentication` removes the token and lets the PAT bind. It drops the
+Nova connection outright rather than falling back live, which is why the
+restart is part of the remedy rather than an alternative to it.
 
 **Do not collapse the two failures into one remedy.** A *bind miss* (the
 server never attached) IS cleared by quitting and reopening Claude Code — that
@@ -314,9 +331,14 @@ the operator around a loop that produces no new information and costs a
 session each lap. `nova` is a `type: http` server whose `headersHelper` reads
 `$NOVA_API_KEY` from Claude Code's own process env; when the key is verifiably
 present there (`ps -Eww -p <claude-pid>`) and a direct `curl` with it returns
-the right apps, what is left is the connection's stored credential, which is
-what `/mcp` re-auth replaces. Do NOT probe the macOS Keychain to confirm that
-— `security(1)` hangs forever on a GUI prompt in a non-interactive shell.
+the right apps, what is left is the connection's stored OAuth credential,
+which only `Clear authentication` removes. Do NOT probe the macOS Keychain to
+confirm that — `security(1)` hangs forever on a GUI prompt in a
+non-interactive shell.
+
+Full mechanism, the three non-fixes, and why every PAT-side health check
+reports green throughout: `playbook/integrations/nova-integration.md`
+§ Auth history → the nova-plugin#52 entry.
 
 `bin/ace-doctor`'s `nova_needs_auth_cache` cannot stand in for this. It is a
 static check of a cache FILE plus the key's PRESENCE — it reported a green

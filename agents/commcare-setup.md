@@ -185,10 +185,14 @@ On a miss, **HALT**: *"The Nova MCP bound a different principal than
 NOVA_API_KEY names — `list_apps` does not show this run's apps (`<learn-id>`,
 `<deliver-id>`). MCP auth binds at connection time, so this is unrecoverable
 in-session. A plain restart is NOT the remedy here — it has been tried and the
-wrong principal came back (dimagi-internal/ace#1614). Run `/mcp`, select the
-`nova` server, and clear/re-authenticate it so the connection uses the
-`NOVA_API_KEY` bearer; confirm `list_apps` shows this run's ids, then resume
-`/ace:run <opp>/<run-id>`."*
+wrong principal came back (dimagi-internal/ace#1614). The cause is a stored
+OAuth token outranking the `headersHelper` PAT (voidcraft-labs/nova-plugin#52).
+Run `/mcp`, select `nova`, choose **`Clear authentication`** — NOT
+`Authenticate`, which mints a fresh OAuth token and leaves you on the wrong
+credential — then quit and reopen Claude Code and resume
+`/ace:run <opp>/<run-id>`. Verify with BOTH `list_projects` (must be the PAT's
+project) and `get_hq_connection` (must be `configured: true`); `list_apps`
+alone passes while still on OAuth."*
 
 Keep this distinct from a plain **bind miss** (the `nova` tools do not resolve
 at all), which a full restart DOES fix. Wrong-principal means the connection
