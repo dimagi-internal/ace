@@ -537,6 +537,44 @@ server.tool(
   },
 );
 
+// 8c. Reply to a reviewer comment, optionally resolving the thread
+server.tool(
+  'drive_reply_to_comment',
+  "Post a reply on a Drive comment thread, optionally resolving or reopening it. The write half of `drive_list_comments`, and the step that closes the review loop: a reviewer who commented in place should learn where their comment LANDED without having to ask.\n\n`action: 'resolve'` marks the thread resolved (verified live: Drive returns the reply with `action: resolve` and the comment then reads `resolved: true`). `action: 'reopen'` undoes it. Omit `action` to reply without changing thread state.\n\n**Resolve ONLY after the comment has been written into durable opp-level state** — a feedback record under `ACE/<opp>/feedback/`, an `open-questions.md` row, or a decision. Each run writes a NEW PDD document, so a comment lives on a doc no later run produces: resolving a thread whose substance was not carried forward destroys the only remaining copy. Say in the reply exactly where it landed, so the thread is an audit trail pointing at the durable record rather than the record itself.\n\nRuns as the service account — correct for artifacts ACE generated.",
+  {
+    fileId: z.string().describe('The Google Drive file ID the comment is on.'),
+    commentId: z.string().describe('The comment thread id, from `drive_list_comments`.'),
+    content: z
+      .string()
+      .min(1)
+      .describe('The reply body. Name WHERE the comment landed (the durable record, question row, or decision id) — not just that it was handled.'),
+    action: z
+      .enum(['resolve', 'reopen'])
+      .optional()
+      .describe("Optional. 'resolve' closes the thread, 'reopen' undoes that. Omit to reply without changing state. Only resolve once the substance is in durable opp-level state."),
+  },
+  async ({ fileId, commentId, content, action }) => {
+    try {
+      const resp = await drive.replies.create({
+        fileId,
+        commentId,
+        fields: 'id,content,action,createdTime,author/displayName',
+        requestBody: action ? { content, action } : { content },
+      });
+      return result({
+        reply_id: resp.data.id,
+        comment_id: commentId,
+        action: resp.data.action ?? null,
+        content: resp.data.content ?? '',
+        author: resp.data.author?.displayName ?? null,
+        created_time: resp.data.createdTime ?? null,
+      });
+    } catch (e: any) {
+      return error(e.message);
+    }
+  },
+);
+
 // 9. Read a Drive file
 server.tool(
   'drive_read_file',

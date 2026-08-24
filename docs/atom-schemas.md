@@ -12,7 +12,7 @@ For the deterministic atom-rename / remove drift check, see `test/skill-atom-ref
 
 ## ace-gdrive
 
-Source: `mcp/google-drive-server.ts` — 44 atoms
+Source: `mcp/google-drive-server.ts` — 45 atoms
 
 ### `sheets_list_tabs`
 
@@ -94,6 +94,17 @@ List the comment threads a reviewer left on a Drive file (Docs, Sheets, Slides).
 | `fileId` | `z.string` | **required** | The Google Drive file ID to read comments from. |
 | `includeResolved` | `z.boolean` | optional | Include threads marked resolved in the Drive UI. Default true — a resolved thread still records what the reviewer asked for, and "resolved" means someone closed the thread, NOT that the build honoured it. |
 | `maxResults` | `z.number` | optional | Max comment threads to return (default 100, the Drive page maximum). |
+
+### `drive_reply_to_comment`
+
+Post a reply on a Drive comment thread, optionally resolving or reopening it. The write half of `drive_list_comments`, and the step that closes the review loop: a reviewer who commented in place should learn where their comment LANDED without having to ask. `action: 'resolve'` marks the thread resolved (verified live: Drive returns the reply with `action: resolve` and the comment then reads `resolved: true`). `action: 'reopen'` undoes it. Omit `action` to reply without changing thread state. **Resolve ONLY after the comment has been written into durable opp-level state** — a feedback record under `ACE/<opp>/feedback/`, an `open-questions.md` row, or a decision. Each run writes a NEW PDD document, so a comment lives on a doc no later run produces: resolving a thread whose substance was not carried forward destroys the only remaining copy. Say in the reply exactly where it landed, so the thread is an audit trail pointing at the durable record rather than the record itself. Runs as the service account — correct for artifacts ACE generated.
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `fileId` | `z.string` | **required** | The Google Drive file ID the comment is on. |
+| `commentId` | `z.string` | **required** | The comment thread id, from `drive_list_comments`. |
+| `content` | `z.string` | **required** | The reply body. Name WHERE the comment landed (the durable record, question row, or decision id) — not just that it was handled. |
+| `action` | `z.enum` | optional | Optional. 'resolve' closes the thread, 'reopen' undoes that. Omit to reply without changing state. Only resolve once the substance is in durable opp-level state. |
 
 ### `drive_read_file`
 
