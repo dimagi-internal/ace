@@ -396,6 +396,19 @@ Generate the Learn (training) app from the PDD using the Nova plugin
        good/bad pair built from a REAL instrument item, preferring the
        highest coaching-risk items (self-reported consumption over
        observable assets) (ace#982).
+     - `entity-state-taxonomy` — the followed entity carries states the
+       curriculum names (always for `archetype: longitudinal-visits`).
+       **Teach the PDD's declared `program_parameters.entity_state_taxonomy`
+       verbatim** — the same values, labels and step ranges the Deliver app
+       ships, parsed with `parseStateTaxonomy` from
+       `lib/entity-state-taxonomy.ts` before the brief is composed. Where
+       that row names a source document, brief from THAT file out of the
+       run's frozen `inputs/`. `declared: false` or non-empty `problems` is
+       a **HALT** with a Phase-1 finding, never a licence to invent phase
+       names. Both apps deriving from the one declaration is what makes
+       Learn and Deliver agree; a Learn app taught on an invented mapping
+       sends a trained worker to a phase where the step they were taught
+       does not exist (ace#1564).
 
      Do NOT inline-paraphrase these — reference the library so the build
      and `pdd-to-learn-app-eval` stay symmetric. Skip a component whose

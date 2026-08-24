@@ -607,6 +607,23 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
      - `threshold-coherence-flag` — PDD fixes ≥2 numbers constraining one
        physical quantity. Check the pairs, surface conflicts in the build
        memo (ace#984).
+     - `fixed-instrument-transcription` — the app digitises a `[FIXED]`
+       published instrument whose source file the run's
+       `inputs-manifest.yaml` names. Transcribe every constant exactly;
+       verified at level 0 by Step 4k (ace#1527).
+     - `entity-state-taxonomy` — **always for `archetype:
+       longitudinal-visits`**, and for any archetype whose PDD declares a
+       phase / stage / status vocabulary the worker sees. Carry the PDD's
+       `program_parameters.entity_state_taxonomy` into the brief
+       **verbatim** — every state value with its label and its member
+       activity/step range — and where that row names a source document,
+       read THAT document out of the run's frozen `inputs/` (resolved via
+       `inputs-manifest.yaml`) rather than enumerating from the PDD's
+       summary table. Parse the row with `parseStateTaxonomy` from
+       `lib/entity-state-taxonomy.ts` BEFORE composing the brief:
+       `declared: false`, or a non-empty `problems`, is a **HALT** with a
+       Phase-1 finding, never a licence to invent a vocabulary. Verified
+       at level 0 by Step 4l (ace#1564).
 
      Do NOT inline-paraphrase these — reference the library so the build
      and `pdd-to-deliver-app-eval` stay symmetric. Skip a component whose
@@ -1352,7 +1369,87 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
     (No `[FIXED]` instrument, or no source file in the manifest → skip cleanly.
     A skip is a legitimate outcome; a SILENT skip is not — the memo says which.)
 
-4l. **Language layer — runs at LEVEL 0, LAST of the 4x steps (ace#1556).**
+4l. **Entity state-taxonomy fidelity (ace#1564) — runs at LEVEL 0.** When the
+    followed entity carries states the app must NAME, those names are the
+    partner's own process vocabulary and ACE only transcribes them. Step 3
+    hands the architect the taxonomy as PROSE, and the architect needs the
+    option set to build the phase-filtered step picker `longitudinal-visits`
+    requires — so a thin or missing declaration is filled in with something
+    plausible. On `spark-facilitator/20260820-0817` that shipped four invented
+    phase labels and a different four-way partition of the 24 steps than
+    Spark's own published guide (which sat in the run's `inputs/`). Every gate
+    passed it: `validate_app` checks structure, the eval grades against a PDD
+    that describes the lifecycle narratively, and `app-release-qa` checks counts
+    and install-time behaviour — an app is internally consistent with its own
+    invented vocabulary. The Learn app then teaches one mapping while Deliver
+    offers another, and the invented labels reach real workers and, via the
+    training deck, the partner.
+
+    1. **Trigger.** Fires iff the app ships any state option set the worker
+       sees — a phase / stage / status / round picker, case-list column, or
+       filter. **Always fires for `archetype: longitudinal-visits`**, whose
+       case-list requirement makes such a state mandatory. No such state
+       anywhere → skip cleanly and say so in the memo
+       (`entity_state_taxonomy: skipped — <reason>`).
+
+    2. **Parse the DECLARED taxonomy — this is the only authority.**
+
+       ```ts
+       import { parseStateTaxonomy } from '../../lib/entity-state-taxonomy';
+       const declared = parseStateTaxonomy(programParameters.entity_state_taxonomy);
+       ```
+
+       `declared: false` → **HALT.** The PDD declares no state vocabulary while
+       the trigger fires: record a Phase-1 finding naming
+       `program_parameters.entity_state_taxonomy` (and the § Entity Lifecycle
+       prose it should be derived from), and do not build the picker.
+       **Do not substitute a generic lifecycle vocabulary to keep the build
+       moving** — an invented phase name is worse than a gap, because a gap is
+       visible and a plausible wrong vocabulary is not. `problems` non-empty
+       (overlapping step ranges, duplicate values, duplicate labels) → HALT the
+       same way: the ambiguity is the PDD's to resolve, not this step's.
+
+       When `declared.source` names a document, the brief must have been
+       composed from THAT file out of the run's frozen `inputs/` (resolved via
+       `inputs-manifest.yaml`), not from the PDD's summary table. If it was
+       not, re-compose before diffing — the summary table is the artifact under
+       test.
+
+    3. **Read the BUILT option set from Nova, then diff.** `get_field` over each
+       state-bearing select, addressed off the Step-4a `get_app` blueprint map
+       (reuse it, do not re-fetch), plus the member activity/step list each
+       state exposes. Then:
+
+       ```ts
+       import { diffStateTaxonomy, describeTaxonomyDiff } from '../../lib/entity-state-taxonomy';
+       const diff = diffStateTaxonomy({ declared: declared.states, built });
+       ```
+
+       Judge nothing by eye: `diff.extraInBuild` (an invented state),
+       `diff.missingInBuild`, `diff.relabelled` (the partner's words rewritten)
+       and `diff.repartitioned` (the step partition moved) are the finding set,
+       and `describeTaxonomyDiff` renders them.
+
+    4. **Any finding is a HALT — this is not a warn.** Repair in a **bounded
+       loop, max 3 iterations**: `edit_field` the offending option value / label
+       / member list → re-fetch → re-diff. If anything still disagrees after the
+       third, surface a structured failure listing every finding line and do NOT
+       write the success summary. Never "fix" the diff by editing the PDD's
+       declared taxonomy to match what was built.
+
+    5. **The Learn app is briefed from the SAME declared taxonomy**, so
+       Learn/Deliver agreement is transitive — two builds that each match the
+       PDD cannot contradict each other. If the Learn app was briefed from
+       anything else, that is the same defect one app over: record it as a
+       residual against `pdd-to-learn-app` rather than reconciling Deliver to
+       Learn.
+
+    6. **The memo records the CHECK, not just its verdict.** Write the declared
+       state values with their labels and step ranges, the source document (or
+       `none — declared inline in the PDD`), the number of states and steps
+       compared, and the finding count (`0` on success).
+
+4m. **Language layer — runs at LEVEL 0, LAST of the 4x steps (ace#1556).**
     Applies only when the PDD names a working language other than English;
     otherwise skip and say so in the summary.
 
@@ -1465,6 +1562,14 @@ follow-up form(s) against a case list — with three requirements the
    phase / last-activity / next-due state in the case-list columns (and
    in search inputs where the caseload is large). An FLW who has to open
    a case to discover the next activity will guess instead.
+   **Those state names are the PARTNER's vocabulary, and this archetype
+   is the reason they exist at all** — a case list showing state means
+   the app must name every state, and the architect will invent the set
+   if the brief does not carry it. Emit
+   `_app-component-library.md § entity-state-taxonomy` (always, for this
+   archetype), carry the PDD's declared taxonomy into the brief verbatim,
+   and HALT rather than invent when the PDD declares none. Verified at
+   level 0 by Step 4l (ace#1564).
 2. **Follow-up forms preload the case state the predicate reads.** Any
    longitudinal fact Layer A depends on must be *on the submitted form*
    to be enforceable downstream — Connect's form-field rules see the
@@ -1648,4 +1753,5 @@ Each row this skill writes uses `phase: 3-commcare` and
 
 | Date | Change | Author |
 |------|--------|--------|
+| 2026-08-23 | **New Step 4l — entity state-taxonomy fidelity (ace#1564).** The followed entity's state model lived only as PROSE in the PDD's § Entity Lifecycle, and nothing in Step 3's brief-composition checklist asked for it — while `longitudinal-visits` REQUIRES a case list showing state, so the architect must name every state and invents the set when the brief carries none. On `spark-facilitator/20260820-0817` the PDD's `1 = Planning (steps 1–14)` … `4 = Transition (steps 23–24)`, sourced from Spark's own published FCAP guide sitting in the run's `inputs/`, shipped as four invented labels over a different partition, with all 24 step names invented too. Learn then teaches one mapping while Deliver offers another, and the invented words reach real workers and the partner. Step 3 now emits `_app-component-library § entity-state-taxonomy` (always for this archetype) and parses `program_parameters.entity_state_taxonomy` with `parseStateTaxonomy` BEFORE briefing — `declared: false` or non-empty `problems` is a **HALT** with a Phase-1 finding, never a licence to invent; where the row names a source document the brief is composed from THAT file out of `inputs/`. 4l then diffs the built option set with `diffStateTaxonomy`: any invented, dropped, relabelled or re-partitioned state is a **HALT with a bounded 3-iteration repair loop**, not a warn. Deliberately ships NO canonical vocabulary — hard-coding one would impose ACE's words on every partner, the mirror image of the defect. Paired with the eval's `entity_state_fidelity` hard-gate. *Enforced:* `test/lib/entity-state-taxonomy.test.ts` + `test/skills/entity-state-taxonomy-component.test.ts` + `test/skills/deliver-l0-loop-integrity.test.ts`. **The language layer moved 4l → 4m** in the same change: it must stay LAST of the 4x steps because every English-editing step has to precede it, and 4l's repair loop calls `edit_field` on option labels — running it after the layer would demote those translations to `out-of-date`. Pointers updated in `_app-component-library § app-language-layer`, both `-eval` change logs, and `test/skills/app-language-layer.test.ts`. | ACE team |
 | 2026-08-20 | **New Step 4k — fixed-instrument constant fidelity (ace#1527).** Nothing on this path opened the `[FIXED]` source instrument in `inputs/` and diffed it, so on `hh-poverty-targeting/20260819-1435` the digitised Nigeria PPI 2020 shipped with **9 of 17 point values wrong and all 101 poverty-likelihood values invented** — and every gate passed it, because each one is structurally blind to a constant's VALUE (`validate_app` checks structure, the eval grades against a narrative PDD, `app-release-qa` checks counts and install-time behaviour, and the architect transcribes from a model-authored brief). 4k resolves the source file from `inputs-manifest.yaml`, fetches it with `drive_download_binary` + `writeToPath`, and runs `lib/instrument-constants.ts`: `assertExtractionTrusted` FIRST (endpoints + strict monotonicity + row count — the first repair-round extraction produced `score 4 -> 79.0` from an undecoded `t="s"` shared-string index), then `diffScoringConstants` and `compareMaxScore` over the built literals read via `get_field`. Any mismatch, or a `clampDead` verdict, is a **HALT with a bounded 3-iteration repair loop**, not a warn — a built max of 96 against an official 102 made the PDD's `min(ppi_score, 100)` clamp dead code, which is how the instrument stayed internally consistent with its own wrong numbers. Paired with `_app-component-library § fixed-instrument-transcription` and the eval's `fixed_instrument_fidelity` hard-gate. *Enforced:* `test/lib/instrument-constants.test.ts` + `test/skills/deliver-l0-loop-integrity.test.ts`. | ACE team |

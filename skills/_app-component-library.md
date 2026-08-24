@@ -85,6 +85,7 @@ authored from the PDD per run):
 | [`discriminating-assessment-items`](#discriminating-assessment-items) | Learn | Any scored assessment | `pdd-to-learn-app-eval § assessment_rule_coverage` |
 | [`instrument-grounded-examples`](#instrument-grounded-examples) | Learn | Learn app teaches administration of a fixed instrument | `pdd-to-learn-app-eval § assessment_rule_coverage` (examples criterion) |
 | [`fixed-instrument-transcription`](#fixed-instrument-transcription) | Deliver | The Deliver app digitises a `[FIXED]` published instrument whose source file is in `inputs/` (scorecard, eligibility matrix, dosing table, fee schedule) | `pdd-to-deliver-app-eval § fixed_instrument_fidelity` (hard-gate); `pdd-to-deliver-app § Step 4k` (mechanical, `lib/instrument-constants.ts`) |
+| [`entity-state-taxonomy`](#entity-state-taxonomy) | Learn + Deliver | The followed entity carries STATES the app must name — always for `archetype: longitudinal-visits`, and for any archetype whose PDD declares a phase / stage / status vocabulary the worker sees | `pdd-to-deliver-app-eval § entity_state_fidelity` (hard-gate); `pdd-to-deliver-app § Step 4l` (mechanical, `lib/entity-state-taxonomy.ts`) |
 
 ---
 
@@ -810,7 +811,7 @@ like the English copy, not a special gate.
 
 **ACE's level-0 recipe (steps 2–4 above).** Run it in the build skill after
 every English-editing step has completed, immediately before the summary is
-written. `pdd-to-learn-app § 4e` and `pdd-to-deliver-app § 4l` are the two
+written. `pdd-to-learn-app § 4e` and `pdd-to-deliver-app § 4m` are the two
 homes; both are thin wrappers over this recipe.
 
 1. `get_languages(appId)` — confirm English is still `sourceLanguage` and that
@@ -1717,11 +1718,99 @@ is internally consistent with its own wrong numbers (ace#1527).
 
 ---
 
+### entity-state-taxonomy
+
+- **App:** Learn + Deliver
+- **Trigger:** the followed entity carries STATES the app has to name — a
+  phase, stage, status, or round the worker selects, filters on, or is shown.
+  Always fires for `archetype: longitudinal-visits` (the archetype requires a
+  case list showing which visit is due, which is a state by definition); fires
+  for any other archetype whose PDD declares such a vocabulary.
+- **Enforced by:** `pdd-to-deliver-app-eval § entity_state_fidelity` (binary
+  hard-gate) and, on the build side, `pdd-to-deliver-app § Step 4l`, which runs
+  `lib/entity-state-taxonomy.ts` against the taxonomy the PDD declared.
+- **Origin:** ace#1564. On `spark-facilitator/20260820-0817` the entity's state
+  model lived only as PROSE in the PDD's § Entity Lifecycle — sourced from
+  Spark's own published *FCAP Structure, Phases and Activities* guide, which
+  sequences all 24 steps explicitly and sat in the run's own `inputs/`. Nothing
+  carried it into the Nova brief, and the architect needs those option sets to
+  build the phase-filtered step picker the archetype requires, so it invented
+  them: the PDD's `1 = Planning (steps 1–14)` … `4 = Transition (steps 23–24)`
+  shipped as `1 = "Introduction and community entry" (steps 1–4)` …
+  `4 = "Sustainability and graduation" (steps 23–24)`, with all 24 step names
+  invented too.
+
+  Three consequences, none of which any existing gate caught. **Learn and
+  Deliver contradict each other** — a worker trained on the PDD's mapping picks
+  "Planning", lands in a different phase, and cannot find the step they were
+  taught. **Program Parameters stop mapping** — a pilot window pinned to
+  `Goal Setting (Planning, Steps 1–7)` straddles two phases under the built
+  taxonomy. And it is **`no-inferred-backstory` on a real partner**: invented
+  labels for the partner's OWN published process reach real field workers and,
+  through the training deck, the partner itself.
+
+  Same shape as `fixed-instrument-transcription`, one layer up: that one says
+  the app must implement the published NUMBERS digit for digit, this one says
+  it must use the published WORDS. Both fail silently, because an app that is
+  internally consistent with its own invention passes every structural gate.
+
+  **This component ships no vocabulary of its own, deliberately.** There is no
+  canonical state set here and there must never be one: hard-coding
+  "enrolled / active / lapsed / graduated" would impose ACE's words on every
+  partner, which is the mirror image of the defect above and a worse one,
+  because it would be systematic rather than per-run. The taxonomy is DERIVED
+  from the PDD or the build HALTS. *Enforced:*
+  `test/skills/entity-state-taxonomy-component.test.ts`.
+
+**Brief paragraph (verbatim):**
+
+> REQUIRED — The entity's states are the PARTNER's vocabulary, not yours. Use
+> the state values, their labels, and the activity/step numbers belonging to
+> each one EXACTLY as given below: no renaming, no re-ordering, no merging or
+> splitting of phases, no "clearer" label, and no state model carried over from
+> a similar programme you know. Where a state's label reads oddly or a phase
+> boundary looks wrong to you, it is still the partner's published process and
+> it ships as written. Every state the app offers — in a picker, a case-list
+> column, a filter, or a training screen — MUST be one of the values below, and
+> the activity/step list you show inside a state MUST be exactly that state's
+> members. If a state you need is missing from this brief, or the step ranges
+> here overlap or leave a gap, or two places in this brief disagree, STOP and
+> say which — an invented phase name is worse than a gap, because a gap is
+> visible and a plausible wrong vocabulary is not, and it will be taught to
+> workers and read back by the partner as their own.
+
+**Where the taxonomy comes from (skill-side, not the architect's job).** The
+brief is model-authored, so an architect transcribing it faithfully proves
+nothing about whether the brief matches the partner's process. The build skill
+reads `program_parameters.entity_state_taxonomy` from the PDD (the typed
+handoff — `templates/pdd-template.md § Program Parameters`) via
+`parseStateTaxonomy`, and:
+
+- **`declared: false` → HALT.** The PDD declares no taxonomy while the trigger
+  fires. That is a Phase-1 gap: record it as a finding naming the PDD section
+  that would close it, and do not build the state picker. Never substitute a
+  generic lifecycle vocabulary "to unblock" — that is the defect.
+- **`source` names a document → read THAT document** out of the run's frozen
+  `inputs/`, resolved through `inputs-manifest.yaml`, and brief from it rather
+  than from the PDD's summary table. The canonical register was one document
+  away on `spark-facilitator/20260820-0817` and the brief never reached for it.
+- **`problems` non-empty → HALT.** Overlapping step ranges, duplicate values,
+  or duplicate labels make the picker non-deterministic; fix the PDD, do not
+  resolve the ambiguity by choosing.
+
+`pdd-to-deliver-app § Step 4l` then diffs the option set the app actually
+shipped against the declared taxonomy with `diffStateTaxonomy`. The Learn app
+is briefed from the same declared taxonomy, so Learn/Deliver agreement is
+transitive — two builds that each match the PDD cannot contradict each other.
+
+---
+
 ## Change log
 
 | Date | Change | By |
 |---|---|---|
-| 2026-08-23 | **`app-language-layer` ownership split — ACE authors the translations at level 0; the architect never touches a language atom (ace#1556).** The 2026-08-17 decision said translations are *authored by ACE*; the wiring delegated the authoring to `/nova:autobuild`, whose operating prompt (read verbatim off disk, nova plugin `1.26.0` and `1.27.0`, `skills/autobuild/SKILL.md` + `agents/nova-architect-autonomous.md`) says: *"Never treat your own language fluency as a substitute or bulk-translate self-generated text through `update_translations`. Only save target text supplied by the user…"* An `/ace:run` supplies no human target strings, so the architect declined — correctly — and the language step was a silent no-op on every multilingual build. Measured: `spark-facilitator/20260820-0817`, Learn app `64ec7be2-e9a4-49c5-8151-3dca69f9b879`, working languages `nya` + `tum` → **207 units `needs-review`, 0 ready in BOTH targets**, i.e. every unit still the copied English string served to a worker under the language's name. This is a MECHANISM fix, not a product reversal: the clause constrains the architect's *self-generated* text, and ACE — the caller, the "user" in that sentence — supplies the target text through the same six atoms on its own Nova MCP surface. New homes: `pdd-to-learn-app § Step 4e` and `pdd-to-deliver-app § Step 4l`, both thin wrappers over the component's level-0 recipe. Both brief paragraphs now tell the architect to build English-ONLY and to call no language atom, which makes translate-LAST structural rather than a request — the architect's turn is over before the language exists. Provenance is unchanged and honest: ACE's writes stay `origin: ai` / `needs-review`, nothing is marked reviewed on anyone's behalf. *Enforced:* `test/skills/app-language-layer.test.ts`. | ACE team |
+| 2026-08-23 | **`app-language-layer` ownership split — ACE authors the translations at level 0; the architect never touches a language atom (ace#1556).** The 2026-08-17 decision said translations are *authored by ACE*; the wiring delegated the authoring to `/nova:autobuild`, whose operating prompt (read verbatim off disk, nova plugin `1.26.0` and `1.27.0`, `skills/autobuild/SKILL.md` + `agents/nova-architect-autonomous.md`) says: *"Never treat your own language fluency as a substitute or bulk-translate self-generated text through `update_translations`. Only save target text supplied by the user…"* An `/ace:run` supplies no human target strings, so the architect declined — correctly — and the language step was a silent no-op on every multilingual build. Measured: `spark-facilitator/20260820-0817`, Learn app `64ec7be2-e9a4-49c5-8151-3dca69f9b879`, working languages `nya` + `tum` → **207 units `needs-review`, 0 ready in BOTH targets**, i.e. every unit still the copied English string served to a worker under the language's name. This is a MECHANISM fix, not a product reversal: the clause constrains the architect's *self-generated* text, and ACE — the caller, the "user" in that sentence — supplies the target text through the same six atoms on its own Nova MCP surface. New homes: `pdd-to-learn-app § Step 4e` and `pdd-to-deliver-app § Step 4m`, both thin wrappers over the component's level-0 recipe. Both brief paragraphs now tell the architect to build English-ONLY and to call no language atom, which makes translate-LAST structural rather than a request — the architect's turn is over before the language exists. Provenance is unchanged and honest: ACE's writes stay `origin: ai` / `needs-review`, nothing is marked reviewed on anyone's behalf. *Enforced:* `test/skills/app-language-layer.test.ts`. | ACE team |
+| 2026-08-23 | **New component `entity-state-taxonomy` (ace#1564).** The followed entity's state model — the phase names and which activity/step numbers belong to each phase — existed only as PROSE in the PDD's § Entity Lifecycle, and nothing in `pdd-to-deliver-app`'s brief-composition checklist asked for it. The architect needs those option sets to build the phase-filtered step picker `longitudinal-visits` requires, so on `spark-facilitator/20260820-0817` it invented them: the PDD's `1 = Planning (steps 1–14)` … `4 = Transition (steps 23–24)`, sourced from Spark's own published FCAP guide sitting in the run's `inputs/`, shipped as `1 = "Introduction and community entry" (steps 1–4)` … `4 = "Sustainability and graduation" (steps 23–24)`, with all 24 step names invented too. Learn then teaches one mapping while Deliver offers another, a pilot window pinned to `Goal Setting (Planning, Steps 1–7)` straddles two phases, and `no-inferred-backstory` fails on a REAL partner's own published process, in front of real workers. The component **ships no vocabulary**: the taxonomy is DERIVED from the PDD's typed `entity_state_taxonomy` handoff (or the source document it names, read out of `inputs/`) and the build HALTS when it is absent — hard-coding a canonical state set would be the mirror image of the defect, and systematic. Paired 1:1 with the eval's `entity_state_fidelity` hard-gate and the build's `pdd-to-deliver-app § Step 4l`. *Enforced:* `test/lib/entity-state-taxonomy.test.ts` + `test/skills/entity-state-taxonomy-component.test.ts` + `test/skills/deliver-l0-loop-integrity.test.ts`. | ACE team |
 | 2026-08-20 | **New component `fixed-instrument-transcription` (ace#1527).** A `[FIXED]` published instrument's point values reached the Nova architect as PROSE in the Step-3 brief, and nothing anywhere re-opened the source file sitting in the run's own frozen `inputs/`. On `hh-poverty-targeting/20260819-1435` that shipped 9 of 17 point values wrong and all 101 poverty-likelihood values invented, past `validate_app` (structure, not values), past `pdd-to-deliver-app-eval` (grades against a narrative PDD, so a wrong constant is conformant prose) and past `app-release-qa` (counts and install-time behaviour). The component carries both halves: a brief paragraph telling the architect to transcribe exactly and to STOP rather than invent when a constant is missing, and the skill-side check (`pdd-to-deliver-app § Step 4k`) that diffs the built literals against the source file via `lib/instrument-constants.ts` — extraction trusted FIRST (an undecoded `t="s"` shared-string index reads as a plausible number: `score 4 -> 79.0`), then `diffScoringConstants` and `compareMaxScore`. Paired 1:1 with the eval's new `fixed_instrument_fidelity` hard-gate. Sibling of `instrument-grounded-examples`: that one makes the Learn app TEACH the real instrument, this one makes the Deliver app IMPLEMENT it. Also a licence rule — the PPI permits digitising the scorecard and its lookup tables only UNMODIFIED. *Enforced:* `test/lib/instrument-constants.test.ts` + `test/skills/deliver-l0-loop-integrity.test.ts`. | ACE team |
 | 2026-08-17 | **Nova shipped a real per-language channel; ACE builds multilingual again — `english-only-ui` → `app-language-layer` (PR #1463, superseding ace#968/#1391; Jon).** Verified live against `tools/list`: **95 tools, up from 81 on 2026-08-14**, carrying six itext-shaped language atoms (`get_languages`, `get_translatable_content`, `add_language`, `update_language`, `remove_language`, `update_translations`) — translation units with source fingerprints, provenance, review state and protected reference parts. The 2026-08-14 English-only decision rested on that channel not existing; it now does, so the decision is superseded, NOT reversed on taste. Jon's call: fully implement, but **English is always the source language and the review surface** (every app always gets a complete English version), and translations are reviewed like any other artifact — English included — with no bespoke native-speaker gate. Contract proven live on scratch app `b4e2c8fd`, not inferred: `add_language` COPIES rather than translates; automatic translation covers only a checked-in 57-language set with no MCP trigger (Chichewa = `not-evaluated`), so ACE authors the strings; `needs-review` text **IS served to workers**, so review is bookkeeping and not a publish gate; and editing an English string demotes its translation to `out-of-date` whose `effective` **falls back to English** — hence the load-bearing **translate-LAST** ordering rule. `defaultLanguage` stays `en` for now (one `update_language set-default` call to change). Inline stacking stays retired and is now a hard fail. Table B's multilingual row is DELETED — it is no longer a toolchain gap. *Enforced:* `test/skills/app-language-layer.test.ts`. | ACE team |
 | 2026-08-14 | **ACE builds English-only app UIs; `localization-layer` retired and `localization_match` INVERTED (ace#1391, superseding ace#968; Jon).** Re-verified Nova's live surface: zero hits for `itext`/`locale`/`i18n`/`translat` across all **81** tools (was 63 on 2026-07-31), `update_app` carries only `name`, and the architect's own 70k-char operating prompt never mentions languages; the surface's only language parameter is `defaultLanguageCode` on messaging automations. Since 2026-07-30 the sanctioned fallback had been stacking every language inline in one label — Jon's call: that is a terrible solution and localization should be solved properly when it can be solved at all, so until Nova ships a real per-language channel ACE ships an honest monolingual UI rather than a convincing fake. Component `localization-layer` → **`english-only-ui`** (same trigger, opposite instruction: build English, do not stack, do not hunt for a translations parameter, record the decision in the build memo). Eval dimension `localization_match` → **`language_conformance`**, same 8% and same null-when-N/A: English-only is now FULL CREDIT, stray stacked strings score 5 + `[WARN]`, systematic inline stacking or an in-app language selector is ≤3 → `fail`. Both calibration anchors amended — the ITN negative control's `localization_match ≤3` clause is REMOVED, not relaxed (the same artifact now scores full credit there; the other three dimensions still force `fail`). Phase 1 still records the working language — it drives training, facilitation, the OCS chatbot and the solicitation — but must not assert a translated app; multilingual UI is now a **Table B** row (buildable in CommCare via itext, closed on ACE's builder — never call it a platform limit). *Enforced:* `test/skills/english-only-ui.test.ts`. | ACE team |

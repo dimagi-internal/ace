@@ -188,7 +188,7 @@ describe('app-language-layer (PR #1463, superseding ace#968/#1391, 2026-08-17)',
       /pdd-to-learn-app § 4e/,
     );
     expect(body, 'must carry a level-0 recipe naming the two skill homes').toMatch(
-      /pdd-to-deliver-app § 4l/,
+      /pdd-to-deliver-app § 4m/,
     );
   });
 
@@ -211,7 +211,7 @@ describe('app-language-layer (PR #1463, superseding ace#968/#1391, 2026-08-17)',
   it('both build skills own the language layer at level 0, after the English is final', () => {
     // translate-LAST is now STRUCTURAL: the architect's turn is over before the
     // language exists. The step must therefore exist, run at level 0, and gate.
-    const steps = { 'pdd-to-learn-app': '4e', 'pdd-to-deliver-app': '4l' } as const;
+    const steps = { 'pdd-to-learn-app': '4e', 'pdd-to-deliver-app': '4m' } as const;
     for (const parts of BUILD_SKILLS) {
       const skill = parts[1] as keyof typeof steps;
       const body = read(...parts);
