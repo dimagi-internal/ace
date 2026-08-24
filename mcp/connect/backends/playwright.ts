@@ -30,6 +30,24 @@ import {
 } from './html-scrape.js';
 
 /**
+ * Page size requested when walking Connect's paginated opportunity list.
+ *
+ * Upstream honours ONLY `PAGE_SIZE_OPTIONS = [20, 30, 50, 100]`
+ * (`commcare_connect/utils/tables.py`); `get_validated_page_size` silently
+ * falls back to `DEFAULT_PAGE_SIZE = 20` for any other value, so this must
+ * stay one of those four. 100 is the largest, minimising round-trips.
+ */
+const OPPORTUNITY_LIST_PAGE_SIZE = 100;
+
+/**
+ * Hard stop on the page walk so a server that ignores `page` can never spin
+ * forever. At 100 rows/page this covers 5,000 opportunities in one org —
+ * far beyond any real ACE org — and the loop normally exits much earlier on
+ * a short page.
+ */
+const OPPORTUNITY_LIST_MAX_PAGES = 50;
+
+/**
  * Build a structured ConnectValidationError from a 200-with-errorlist response
  * body. Tries field-keyed parsing first (preferred); falls back to the flat
  * list. If neither finds anything, returns a single-line "rejected" stub so
@@ -444,10 +462,44 @@ export class PlaywrightBackend implements ConnectClient {
           `or read the opportunities off the program page.`,
       );
     }
-    const path = `/a/${organization_slug}/opportunity/`;
-    const res = await this.request.get(path);
-    if (res.status() !== 200) throw await httpErrorFor(res, path);
-    const stubs = parseOpportunitiesList(await res.text());
+    // WALK EVERY PAGE (dimagi-internal/ace#1590). Connect's `OpportunityList`
+    // is a paginated `SingleTableView` whose page size is
+    // `get_validated_page_size(request)` — `DEFAULT_PAGE_SIZE = 20`, and only
+    // `PAGE_SIZE_OPTIONS = [20, 30, 50, 100]` are honoured (anything else
+    // silently falls back to 20). A single unparameterised GET therefore
+    // returns the 20 most-recent opportunities with NO signal that more exist,
+    // and the caller cannot tell a complete org listing from page 1 of N.
+    //
+    // That silence is load-bearing: `connect-program-setup § Step 4a` sums
+    // `total_budget` over a program's opps to size the budget headroom, and it
+    // treats a truncated page as a fully-known Σ — too small, so the raise
+    // never fires and the next create rejects with "Budget exceeds the program
+    // budget", the exact failure the step exists to prevent. The `name` filter
+    // below is applied CLIENT-SIDE too, so it returned zero for an opportunity
+    // that existed on page 2+.
+    const stubs: ReturnType<typeof parseOpportunitiesList> = [];
+    const seenIds = new Set<string>();
+    for (let page = 1; page <= OPPORTUNITY_LIST_MAX_PAGES; page++) {
+      const path =
+        `/a/${organization_slug}/opportunity/` +
+        `?page_size=${OPPORTUNITY_LIST_PAGE_SIZE}&page=${page}`;
+      const res = await this.request.get(path);
+      // Django's Paginator 404s an out-of-range page, so a non-200 after the
+      // first page is the end of the list, not a failure. On page 1 it is a
+      // real error and must still surface.
+      if (res.status() !== 200) {
+        if (page === 1) throw await httpErrorFor(res, path);
+        break;
+      }
+      const pageStubs = parseOpportunitiesList(await res.text());
+      const fresh = pageStubs.filter((s) => !seenIds.has(s.id));
+      for (const s of fresh) seenIds.add(s.id);
+      stubs.push(...fresh);
+      // Stop on a short page (the last one) or when a page adds nothing new —
+      // the latter also makes this terminate against a server that ignores
+      // `page` and re-serves the same rows.
+      if (pageStubs.length < OPPORTUNITY_LIST_PAGE_SIZE || fresh.length === 0) break;
+    }
     // `managed`, `active` and `total_budget` are deliberately ABSENT: the
     // list page does not carry them, and a fabricated value is worse than a
     // missing one because a caller cannot tell it apart from a real one.
