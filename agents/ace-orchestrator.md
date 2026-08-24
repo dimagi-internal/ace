@@ -251,6 +251,16 @@ phase whose status is `pending` **or** `in_progress` in the loaded
 | `ocs-setup` | `ocs_*` (`ace-ocs`) |
 | `qa-and-training` | `mobile_ensure_avd_running` (`ace-mobile`) |
 
+On a miss, **halt before the first `Agent` dispatch** with a `[BLOCKER]`:
+
+> `<opp>/<run-id>`: `<server>` did not bind in this Claude Code session,
+> so `<atom>` is unresolvable and phase `<N>` cannot run. This is a
+> session-level bind miss, not a config or code defect — confirm with
+> `npx tsx mcp/<server>-server.ts` against the install path (it will
+> answer `initialize` + `tools/list` normally). MCP subprocesses bind at
+> session start and are not respawned by `/reload-plugins`: **quit and
+> reopen Claude Code**, then resume `/ace:run <opp>/<run-id>`.
+
 **`in_progress` counts, and that is the whole point on a resume
 (dimagi-internal/ace#1604).** What this fence tests is per-SESSION (which MCP
 servers, and which principal, bound at startup); what it reads is per-RUN
@@ -290,16 +300,6 @@ in-session:
 static check of a cache FILE plus the key's PRESENCE — it reported a green
 `pass` verdict throughout the incident above, which is why the block now
 carries an explicit `scope:` line saying what it does not cover.
-
-On a miss, **halt before the first `Agent` dispatch** with a `[BLOCKER]`:
-
-> `<opp>/<run-id>`: `<server>` did not bind in this Claude Code session,
-> so `<atom>` is unresolvable and phase `<N>` cannot run. This is a
-> session-level bind miss, not a config or code defect — confirm with
-> `npx tsx mcp/<server>-server.ts` against the install path (it will
-> answer `initialize` + `tools/list` normally). MCP subprocesses bind at
-> session start and are not respawned by `/reload-plugins`: **quit and
-> reopen Claude Code**, then resume `/ace:run <opp>/<run-id>`.
 
 Halting *here* rather than at point-of-use is the whole value: the phase
 agents do carry their own binding guards (`commcare-setup` § Step 0,
