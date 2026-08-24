@@ -501,10 +501,10 @@ EOF
     TSX_BIN="$ROOT/node_modules/.bin/tsx"
     if [ -x "$TSX_BIN" ]; then
       "$TSX_BIN" -e "
-        import { readHandoff, renderHandoff } from '$ROOT/lib/session-handoff.ts';
+        import { readHandoff, renderHandoff, renderStaleHandoff } from '$ROOT/lib/session-handoff.ts';
         const r = readHandoff();
         if (r.status === 'fresh') console.log(renderHandoff(r.handoff, r.ageMs));
-        else if (r.status === 'stale') console.log('INFO handoff_present_but_stale=' + Math.round(r.ageMs/60000) + 'm — ignoring (see ace#1093)');
+        else if (r.status === 'stale') console.log(renderStaleHandoff(r.ageMs));
       " 2>/dev/null || true
     fi
   fi
