@@ -1607,6 +1607,17 @@ restart. Catching it at pre-flight (second 0) instead of at Phase 3 Step 0
 (~25 min in) saves the operator from running Phases 1–2 only to halt. See
 jjackson/ace#582.
 
+**What it does NOT cover — read `pass` narrowly (dimagi-internal/ace#1604).**
+The probe is static: a stale cache FILE, plus `NOVA_API_KEY`'s PRESENCE.
+Neither says anything about which principal the live Nova MCP connection
+actually bound — a session can hold a resolvable Nova connection authed as a
+completely different account and this block still reports a green `pass`
+verdict (measured on `spark-facilitator/20260820-0817`). The emitted block now carries
+a `scope:` line saying so. Principal identity is asserted in-session, where
+it is observable: `ace-orchestrator.md § Pre-flight Step 2a` (the `list_apps`
+check for a `pending`/`in_progress` `commcare-setup`) and
+`commcare-setup.md § Step 0b`.
+
 **`ocs_generation` halt class — and why preflight makes one live
 exception.** Every other OCS check the doctor runs is env-presence or a
 reachability GET; `ocs_shared_collection_team` proves a collection is

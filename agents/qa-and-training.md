@@ -77,6 +77,16 @@ avoids burning AVD time on screenshots that don't change.
 Before dispatching Step 1, verify these. Each one is a class of
 silent-failure prevention learned from earlier real-world dogfood.
 
+**SESSION-SCOPED PRECONDITION — re-run on EVERY entry into Phase 6,
+including a mid-phase resume.** The binding item below is a fact about *this
+Claude Code session*, not about the run: MCP subprocesses bind at session
+start. `run_state.yaml` is per-RUN state that outlives the session, so a
+step recorded `done` by a previous session never satisfies it — **treat this
+checklist as unrun on entry** and run it before the first not-yet-done step,
+even when the phase resumes mid-way. Restore, don't adapt (CLAUDE.md § Phase
+preconditions are restored, not adapted). The class was measured on Phase 3's
+twin gate: dimagi-internal/ace#1604.
+
 - [ ] **The `ace-mobile` MCP is bound at level 0 this session — CHECK
       THIS FIRST, before any AVD probe.** Every mobile step below calls an
       `ace-mobile` atom (`mobile_ensure_avd_running`,

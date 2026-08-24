@@ -175,9 +175,14 @@ lives in TWO places, both load-bearing:
    to rediscover an unbound server.
 2. **At the point of use, in the phase agent** — Nova has
    `commcare-setup` § Step 0 (`get_hq_connection`), and Phase 6 has
-   `qa-and-training` § Pre-flight Step 0 (`ace-mobile` binding). These
+   `qa-and-training` § Pre-flight checklist (`ace-mobile` binding). These
    remain the backstop for `/ace:step`, for phases dispatched outside
-   `/ace:run`, and for a server that dies mid-session.
+   `/ace:run`, and for a server that dies mid-session. **Both are
+   SESSION-SCOPED: they re-run on every entry into their phase, including a
+   mid-phase resume that steps over already-`done` steps.** A `done` marker
+   in `run_state.yaml` was written by a *previous session* and says nothing
+   about this session's bindings, so it never satisfies them
+   (dimagi-internal/ace#1604).
 
 The same class can silently force a decisions-log hand-write
 when `ace-decisions` is unbound (jjackson/ace#782) — if a `decisions_*`
@@ -235,16 +240,56 @@ returns nothing, because MCP subprocesses bind at session start and are
 NOT respawned by `/reload-plugins`. A binding miss is **unrecoverable
 in-session**.
 
-Then assert, against the run's shape (fresh = all phases; resume = the
-`pending` phases from the loaded `run_state.yaml`), that the atoms those
-phases need are present:
+Then assert, against the run's shape (fresh = all phases; resume = every
+phase whose status is `pending` **or** `in_progress` in the loaded
+`run_state.yaml`), that the atoms those phases need are present:
 
-| A `pending` phase of… | requires resolvable |
+| A `pending` / `in_progress` phase of… | requires resolvable |
 |---|---|
 | `commcare-setup` | `commcare_*` (`ace-connect`) + Nova (`get_hq_connection`) |
 | `connect-setup` | `connect_*` (`ace-connect`) |
 | `ocs-setup` | `ocs_*` (`ace-ocs`) |
 | `qa-and-training` | `mobile_ensure_avd_running` (`ace-mobile`) |
+
+**`in_progress` counts, and that is the whole point on a resume
+(dimagi-internal/ace#1604).** What this fence tests is per-SESSION (which MCP
+servers, and which principal, bound at startup); what it reads is per-RUN
+state that outlives the session. Gating on `pending` alone excludes the one
+phase a resume is about to execute — the `in_progress` one — so the fence is
+absent from exactly the entry it is needed for. Observed on
+`spark-facilitator/20260820-0817`: Phase 3 resumed `in_progress`, the fence
+did not cover it, and the first Nova call answered `App not found` for an app
+the previous session had built the day before.
+
+**For `commcare-setup`, resolvability is not the assertion — the PRINCIPAL
+is (ace#1604).** Nova's atoms can resolve perfectly while the connection is
+bound to a different principal than `NOVA_API_KEY` names. Every read answers
+normally; it answers about a different account's apps. A resolvability check
+is structurally blind to that. So, for a `pending`/`in_progress`
+`commcare-setup`, run one addressed check:
+
+- If the run records
+  `phases.commcare-setup.products.apps.{learn,deliver}.nova_app_id` → call
+  Nova `list_apps` and assert **both ids are in the result**.
+- If no app ids are recorded yet (a fresh run that has built nothing) → the
+  assertion is `get_hq_connection` returning `configured: true`; there is
+  nothing else to compare against.
+
+On a miss, halt with the same `[BLOCKER]` shape as a bind miss — MCP auth
+also binds at connection time, so a wrong principal is equally unrecoverable
+in-session:
+
+> `<opp>/<run-id>`: the Nova MCP bound a different principal than
+> `NOVA_API_KEY` names — `list_apps` does not show this run's apps
+> (`<learn-id>`, `<deliver-id>`). Do NOT rebuild them; they exist, under a
+> principal this session is not talking to. MCP auth binds at connection
+> time: **quit and reopen Claude Code**, then resume
+> `/ace:run <opp>/<run-id>`.
+
+`bin/ace-doctor`'s `nova_needs_auth_cache` cannot stand in for this. It is a
+static check of a cache FILE plus the key's PRESENCE — it reported a green
+`pass` verdict throughout the incident above, which is why the block now
+carries an explicit `scope:` line saying what it does not cover.
 
 On a miss, **halt before the first `Agent` dispatch** with a `[BLOCKER]`:
 
