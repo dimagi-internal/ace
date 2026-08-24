@@ -14,6 +14,7 @@
  * `QACheckContext` — see qa-types.ts for the shape.
  */
 import type { QACheck, QACheckContext, QACheckResult } from '../../lib/qa-types';
+import { normalizeDriveExport } from '../../lib/drive-export';
 
 /**
  * The 11 required headings in a complete work order. Matched against
@@ -46,40 +47,18 @@ function escapeRegExp(s: string): string {
 }
 
 /**
- * Matches a backslash escaping any ASCII punctuation character — the
- * CommonMark escapable set, which is what Drive's markdown exporter emits.
+ * Drive-export escape normalisation. Lives in `lib/drive-export.ts` because
+ * `idea-to-pdd-qa` hit the identical class through its own read path
+ * (dimagi-internal/ace#1617) — see that module for the full mechanism. Applied
+ * at the entry of every body check below so the reader's `exportAs` is never
+ * load-bearing: `SKILL.md` § Process step 1 mandates `text/plain` here, its
+ * sibling mandates `text/markdown`, and both must score the same document
+ * identically (dimagi-internal/ace#1609).
  *
- * The CommonMark escapable set; the ones actually observed in a real ACE
- * work-order export (`1_Dzp2ND_qDI2m9hMr_q2qf2VIIUsbR11ElM4cNRHQww`,
- * revision 11, captured 2026-08-23) are `\_` (118x), `\.` (9x), `\]` (8x),
- * `\[` (8x) and `\#` (2x).
+ * Re-exported so callers and tests that already import it from this module
+ * keep working.
  */
-const MD_ESCAPABLE_PUNCT = /\\([\u0021-\u002F\u003A-\u0040\u005B-\u0060\u007B-\u007E])/g;
-
-/**
- * Strip Google Drive markdown-export escaping so the checks below match the
- * same document regardless of which `exportAs` the caller used.
- *
- * WHY THIS EXISTS: every matcher in this file was written against the
- * `text/plain` gdoc export, which is the format `SKILL.md` § Process step 1
- * mandates. Drive's `text/markdown` export escapes markdown-significant
- * characters, so `## 1. Background` arrives as `## **1\. Background**` and
- * `[TBD]` as `\[TBD\]` — defeating the heading, section and placeholder
- * matchers at once. On a real, CORRECT work order that turned 9/9 into 4/9,
- * and the resulting `auto_fix_hint`s told the producer to regenerate a sound
- * contract to fix a reader bug (dimagi-internal/ace#1609).
- *
- * `SKILL.md` naming the export format is the fix; this is the preventer, so
- * the reader's format stops being load-bearing and the two sibling QA skills
- * (this one wants text/plain, `idea-to-pdd-qa` REQUIRES text/markdown)
- * cannot silently drift into each other again.
- *
- * Normalisation is applied for MATCHING only — reported `detail` strings are
- * taken from the normalised text, which is also what a human wants to read.
- */
-export function normalizeDriveExport(text: string): string {
-  return text.replace(MD_ESCAPABLE_PUNCT, '$1');
-}
+export { normalizeDriveExport } from '../../lib/drive-export';
 
 /**
  * Check 1: All 11 required work-order sections are present.

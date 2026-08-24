@@ -14,6 +14,7 @@
  */
 
 import type { QACheck, QACheckContext, QACheckResult } from '../../lib/qa-types';
+import { normalizeDriveExport } from '../../lib/drive-export';
 
 const REQUIRED_SECTIONS = [
   'Archetype',
@@ -77,8 +78,21 @@ function escapeRegExp(s: string): string {
  *
  * Shared by `checkAllRequiredSectionsPresent` and `extractSection` because
  * they anchor the same way; fixing only one leaves the secondary failures.
+ *
+ * The backslash slots (`\\?` in the regex source) tolerate Drive's
+ * markdown-export ESCAPING of the ordinal's periods: `## 1. Archetype` is
+ * exported as `## 1\. Archetype`, because a bare `1.` at line start would
+ * otherwise read as an ordered-list marker. `normalizeDriveExport` already
+ * strips that at every check's entry; this is the second line of defence, so
+ * the heading matcher stays correct on raw export bytes and neither mechanism
+ * can silently become the only one (dimagi-internal/ace#1617 — the #991 class
+ * reintroduced through the export read path; on
+ * hh-poverty-targeting/20260824-1404 Phase 1 the same PDD scored 9/9 from
+ * local markdown and 4/9 after a Drive round-trip, halting the phase).
+ * Only a TRAILING period is escaped — `### 6.1` comes back unescaped — but
+ * both positions are tolerated rather than relying on that staying true.
  */
-const ORDINAL_PREFIX = '(?:\\d+(?:\\.\\d+)*\\.?\\s+)?';
+const ORDINAL_PREFIX = '(?:\\d+(?:\\\\?\\.\\d+)*\\\\?\\.?\\s+)?';
 
 /**
  * Optional leading appendix label on an H2 — `Appendix C — `, `Appendix B: `.
@@ -114,8 +128,8 @@ const HEADING_PREFIX = `${APPENDIX_PREFIX}${ORDINAL_PREFIX}`;
  * Skips matching inside YAML frontmatter so "title:" lines etc. don't false-positive.
  * Tolerance is documented in the auto_fix_hint so producers know what counts.
  */
-export function checkAllRequiredSectionsPresent(pdd: string): QACheckResult {
-  const body = stripFrontmatter(pdd);
+export function checkAllRequiredSectionsPresent(raw: string): QACheckResult {
+  const body = stripFrontmatter(normalizeDriveExport(raw));
   const missing: (typeof REQUIRED_SECTIONS)[number][] = [];
   for (const section of REQUIRED_SECTIONS) {
     // Match `##\s+(optional ordinal)(optional **)<section>` at line start, case-insensitive.
@@ -148,7 +162,8 @@ export function checkAllRequiredSectionsPresent(pdd: string): QACheckResult {
 /**
  * Check 2: Archetype is declared (frontmatter or body) and value is in the valid enum.
  */
-export function checkArchetypeDeclared(pdd: string): QACheckResult {
+export function checkArchetypeDeclared(raw: string): QACheckResult {
+  const pdd = normalizeDriveExport(raw);
   let archetype: string | undefined;
 
   // Frontmatter form: `archetype: <value>`
@@ -190,7 +205,8 @@ export function checkArchetypeDeclared(pdd: string): QACheckResult {
  * Required by skills/idea-to-pdd/SKILL.md § Process step 6. Downstream review
  * tooling expects to find it.
  */
-export function checkStressTestAppendixPresent(pdd: string): QACheckResult {
+export function checkStressTestAppendixPresent(raw: string): QACheckResult {
+  const pdd = normalizeDriveExport(raw);
   if (new RegExp(`^##\\s+${HEADING_PREFIX}(?:\\*\\*)?Stress[\\s-]?Test\\s+Results\\b`, 'im').test(pdd)) {
     return { pass: true };
   }
@@ -206,8 +222,8 @@ export function checkStressTestAppendixPresent(pdd: string): QACheckResult {
  * Check 4: `## Success Metrics` section contains a populated markdown table
  * (header row + at least one data row).
  */
-export function checkSuccessMetricsTablePopulated(pdd: string): QACheckResult {
-  const body = extractSection(pdd, 'Success Metrics');
+export function checkSuccessMetricsTablePopulated(raw: string): QACheckResult {
+  const body = extractSection(normalizeDriveExport(raw), 'Success Metrics');
   if (body === null) {
     return {
       pass: false,
@@ -236,8 +252,8 @@ export function checkSuccessMetricsTablePopulated(pdd: string): QACheckResult {
  *   - `**A — Delivery proof**`, `**B — Content proof**`, `**C — Cross-delivery**`
  *     (leep-style table-row prefix)
  */
-export function checkEvidenceModelLayered(pdd: string): QACheckResult {
-  const body = extractSection(pdd, 'Evidence Model');
+export function checkEvidenceModelLayered(raw: string): QACheckResult {
+  const body = extractSection(normalizeDriveExport(raw), 'Evidence Model');
   if (body === null) {
     return {
       pass: false,
@@ -274,8 +290,8 @@ function hasLayerRef(body: string, letter: string): boolean {
  * No-op when the source pack is clean (no markers, no section). The eval grades
  * whether dispositions are *concrete* (semantic); QA only checks they exist.
  */
-export function checkReviewerCommentTableIfReferenced(pdd: string): QACheckResult {
-  const body = stripFrontmatter(pdd);
+export function checkReviewerCommentTableIfReferenced(raw: string): QACheckResult {
+  const body = stripFrontmatter(normalizeDriveExport(raw));
   const hasMarkers = /\[(?:[a-z])\]/i.test(body);
   const hasSection = new RegExp(`^##\\s+${HEADING_PREFIX}(?:\\*\\*)?Reviewer\\s+Comments?\\b`, 'im').test(body);
 
@@ -552,8 +568,8 @@ function mentions(haystack: string, needles: readonly string[]): string | null {
   return null;
 }
 
-export function checkPaymentUnitMatchesEntityGrain(pdd: string): QACheckResult {
-  const body = extractSection(pdd, 'Program Parameters');
+export function checkPaymentUnitMatchesEntityGrain(raw: string): QACheckResult {
+  const body = extractSection(normalizeDriveExport(raw), 'Program Parameters');
   if (body === null) return { pass: true, detail: 'no § Program Parameters — covered by program_parameters_coherent' };
 
   const params = parseProgramParameters(body);
@@ -600,8 +616,8 @@ export function checkPaymentUnitMatchesEntityGrain(pdd: string): QACheckResult {
   };
 }
 
-export function checkProgramParametersCoherent(pdd: string): QACheckResult {
-  const body = extractSection(pdd, 'Program Parameters');
+export function checkProgramParametersCoherent(raw: string): QACheckResult {
+  const body = extractSection(normalizeDriveExport(raw), 'Program Parameters');
   if (body === null) {
     return {
       pass: false,
