@@ -127,8 +127,41 @@ and `skills/eval-calibration/SKILL.md` for calibration methodology.
    - **Inflation guard (0.9.1, mirrors `ocs-chatbot-eval`):** if the
      rubric surfaces ≥2 `[WARN]`-tier `auto_surfaced` entries, overall
      is capped at **8.5**.
-   - 2+ dimensions in 4–6 range → suite verdict `warn`.
-   - All scored dimensions ≥ 7 AND overall ≥ 7.5 → suite verdict `pass`.
+
+   **Terminal verdict bands — an ORDERED cascade, first match wins
+   (ace#1568).** Evaluate top to bottom and STOP at the first rule that
+   fires. The order is load-bearing: it is what makes the bands both
+   exhaustive (every reachable score vector lands somewhere) and
+   unambiguous (a vector matching two rules takes the more severe one).
+
+   1. Any scored dimension ≤3, **or** any § 5b hard-gate `[BLOCKER]` →
+      suite verdict `fail`.
+   2. Any scored dimension **< 7**, **or** overall < 7.5 → suite verdict
+      `warn`.
+   3. Otherwise — every scored dimension ≥ 7 **and** overall ≥ 7.5 →
+      suite verdict `pass`.
+
+   Rule 2 is the catch-all, not a special case. **Do not** read it as
+   "2+ dimensions in 4–6" (its pre-ace#1568 wording), and do not narrow
+   it back to a 4–6 *range* — scores here are fractional (every anchor is
+   stated at the half-point), so a range trigger leaves 3 < s < 4 and
+   6 < s < 7 homeless in exactly the same way. Under the old
+   three-independent-tests reading a build with **exactly one** dimension
+   in 4–6 matched no rule at all, and neither did one with every
+   dimension ≥ 7 but an overall under 7.5 — so the judge had to legislate
+   at grade time and two runs with identical scores could disagree. Live
+   case: `spark-facilitator/20260820-0817`, `language_conformance` **5.0**
+   with every other dimension ≥ 8.0, overall 8.58 → capped 8.5. Every
+   outcome the old wording produced is preserved — 2+ dimensions in 4–6
+   still lands on rule 2 — and the `fail` trigger is untouched at ≤3, so a
+   dimension at 3.5 warns rather than failing.
+
+   `incomplete` and `partial` are **gradability** states, resolved BEFORE
+   this cascade (Step 2's HITL-stub early return; a live probe that failed
+   at grading time), not bands within it. *Enforced:*
+   `test/lib/eval-verdict-bands.test.ts` enumerates the score space and
+   asserts totality + severity ordering; the cascade is encoded as data in
+   `lib/eval-verdict-bands.ts`.
 
 5b. **Standing-instruction hard-gates (binary, non-weighted).** Pass/fail
    conformance checks on the standing app-build instructions (see
@@ -430,6 +463,7 @@ absorb the disagreement into a score.
 
 | Date | Change | Author |
 |------|--------|--------|
+| 2026-08-23 | **Terminal verdict bands are now an ORDERED cascade; they did not partition the score space (ace#1568).** The three band rules were independent tests — `any dim ≤3 → fail`, `2+ dims in 4–6 → warn`, `all dims ≥7 AND overall ≥7.5 → pass` — and an enumeration over the rubric's own 10 weights found **two** reachable classes matching NONE of them: exactly ONE dimension in 4–6 (the reported case), and every dimension ≥7 with an overall under 7.5 (unreported; reachable at all dimensions exactly 7.0). 41 further classes matched TWO rules at once (`fail` + `warn` whenever some dimension is ≤3 and two others sit in 4–6), with no stated precedence. A rubric applied by an LLM judge never throws on this — it legislates, so two runs with identical scores can disagree and nothing marks either wrong. Live: `spark-facilitator/20260820-0817`, `language_conformance` 5.0, every other dimension ≥8.0, overall 8.58 → capped 8.5; the judge resolved it `warn` and recorded the gap rather than filing unilaterally. Repair: rule 2's trigger widens from "2+ dimensions in 4–6" to "any scored dimension **< 7**, **or** overall < 7.5", and the three rules become a first-match-wins cascade — every outcome the old wording produced is preserved. Widening to "**any** dimension in 4–6" (the repair sketched on the issue) is NOT enough: dimension scores are fractional, every anchor is stated at the half-point, and a *range* trigger strands 3 < s < 4 and 6 < s < 7 the same way — a `language_conformance` of 3.5 or 6.5 with everything else at 9.5 matches nothing under it. `< 7` is the complement of the `pass` trigger, which is what makes the partition exact. The `fail` trigger is untouched at ≤3, so 3.5 warns. Deliberately NOT added: an `overall < 5.0 → fail` floor like the `connect-opp-setup-eval` / `app-release-eval` / `llo-uat-eval` tier blocks carry — that would change existing verdicts, which is a calibration decision, not a gap fix. Cascade encoded as data in `lib/eval-verdict-bands.ts`. *Enforced:* `test/lib/eval-verdict-bands.test.ts` (exhaustive + class-partition enumeration asserting totality and severity ordering, with the pre-fix band set kept as the regression witness). | ACE team |
 | 2026-08-20 | **New non-weighted hard-gate `fixed_instrument_fidelity` (ace#1527).** Nine of 17 point values and all 101 poverty-likelihood values in a digitised `[FIXED]` Nigeria PPI 2020 scorecard shipped fabricated, and this rubric passed them: all 11 weighted dimensions grade the build against the **PDD**, which describes the instrument narratively ("ten indicators… scored 0-100"), so a wrong constant is PDD-conformant prose. Nothing here ever opened the workbook sitting in the run's own frozen `inputs/`. The gate is binary and non-weighted because it is arithmetic against a published table, not a judgement — and because a wrong scorecard has **no downstream symptom**: it yields a complete, plausible, fully-verified dataset that ranks the wrong households, and every Evidence Model control passes it. Graded mechanically via `lib/instrument-constants.ts` (`assertExtractionTrusted` FIRST — an undecoded `t="s"` shared-string index reads as a plausible number, which is how the repair round's first extraction produced `score 4 -> 79.0` — then `diffScoringConstants`, then `compareMaxScore`), the same helper the build runs at `pdd-to-deliver-app § Step 4k`, so build-emit and eval-grade cannot drift. `clampDead: true` is its own blocker: a built max of 96 against an official 102 makes the PDD's `min(ppi_score, 100)` clamp dead code, which is the self-concealing half. Also a licence finding — the PPI permits digitising the scorecard and its lookup tables only UNMODIFIED. Paired 1:1 with `_app-component-library.md § fixed-instrument-transcription`. *Enforced:* `test/lib/instrument-constants.test.ts` + `test/skills/deliver-l0-loop-integrity.test.ts`. | ACE team |
 | 2026-08-17 | **Nova shipped a real per-language channel; `language_conformance` RE-INVERTED (PR #1463, superseding ace#968/#1391; Jon).** Verified live against `tools/list`: **95 tools, up from 81 on 2026-08-14**, carrying six itext-shaped language atoms. The 2026-08-14 English-only decision rested on that channel not existing; it now does. Jon's call: fully implement, but **English is always the source language and the review surface**, and translations are reviewed like any other artifact — English included — with no bespoke native-speaker gate. Same 8%, same null-when-N/A, so no reweighting and every other anchor holds. Full credit now needs a REAL layer (English source complete + working language authored + `out-of-date` 0 + English still `sourceLanguage`); `fail` on no layer, `out-of-date` > 0, English displaced as source, inline stacking, or a language-selector question. **`needs-review` is explicitly NOT a deduction** — ACE's writes are `origin: ai` by construction and Nova serves them live, so it is an audit trail, not a defect. Component `english-only-ui` → **`app-language-layer`**, carrying the translate-LAST ordering rule (editing English demotes a translation to `out-of-date`, whose `effective` falls back to English — proven live on scratch app `b4e2c8fd`). The ITN negative control's clause is **RESTORED** as `language_conformance ≤3 → fail`: its original 2026-05-29 verdict was right, only the mechanism changed. **This dimension has now flipped twice in four days — the criteria say so out loud, because a judge's priors are the failure mode here.** *Enforced:* `test/skills/app-language-layer.test.ts`. | ACE team |
 | 2026-08-14 | **ACE builds English-only app UIs; `localization-layer` retired and `localization_match` INVERTED (ace#1391, superseding ace#968; Jon).** Re-verified Nova's live surface: zero hits for `itext`/`locale`/`i18n`/`translat` across all **81** tools (was 63 on 2026-07-31), `update_app` carries only `name`, and the architect's own 70k-char operating prompt never mentions languages; the surface's only language parameter is `defaultLanguageCode` on messaging automations. Since 2026-07-30 the sanctioned fallback had been stacking every language inline in one label — Jon's call: that is a terrible solution and localization should be solved properly when it can be solved at all, so until Nova ships a real per-language channel ACE ships an honest monolingual UI rather than a convincing fake. Component `localization-layer` → **`english-only-ui`** (same trigger, opposite instruction: build English, do not stack, do not hunt for a translations parameter, record the decision in the build memo). Eval dimension `localization_match` → **`language_conformance`**, same 8% and same null-when-N/A: English-only is now FULL CREDIT, stray stacked strings score 5 + `[WARN]`, systematic inline stacking or an in-app language selector is ≤3 → `fail`. Both calibration anchors amended — the ITN negative control's `localization_match ≤3` clause is REMOVED, not relaxed (the same artifact now scores full credit there; the other three dimensions still force `fail`). Phase 1 still records the working language — it drives training, facilitation, the OCS chatbot and the solicitation — but must not assert a translated app; multilingual UI is now a **Table B** row (buildable in CommCare via itext, closed on ACE's builder — never call it a platform limit). *Enforced:* `test/skills/english-only-ui.test.ts`. | ACE team |
