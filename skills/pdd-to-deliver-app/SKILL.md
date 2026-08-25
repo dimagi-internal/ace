@@ -553,8 +553,22 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
        and BOTH are `TAG_FROZEN` in HQ ("do not add new projects to this
        list"), so the build cannot ship as designed rather than merely waiting
        on provisioning (ace#1195).
-     - `grid-menu-display` — always (Learn + Deliver). Modules and Forms
-       Menu Display set to "Grid".
+     - `grid-menu-display` — always (Learn + Deliver), but **do NOT put it
+       in the Nova brief**. Nova's authoring surface exposes no
+       menu-display-format control at all: `update_app` sets only the display
+       name, `create_module` / `update_module` carry no display-format field,
+       `set_menu_media` sets icons and audio labels, and `set_case_list_tile`
+       lays out a case LIST, which is a different thing entirely. The
+       component is real and enforced, just not here: it is applied
+       POST-BUILD by `app-hq-settings` (Phase 3 Step 2.65) via
+       `commcare_set_menu_display` + `commcare_set_app_menu_display`, and
+       BLOCKER-gated by `app-release-qa` off the released app's raw doc.
+       Briefing it made every architect build report a spurious "unmet
+       requirement" in the build memo — the one artifact meant to carry REAL
+       deviations — and invited the architect to reach for an unrelated atom
+       to satisfy the paragraph (dimagi-internal/ace#1632; live on
+       bednet-check-2-visit/20260825-1310, where Step 2.65 then applied all
+       three fields HQ-side on the first attempt).
      - `observable-before-derived` — any visit/encounter form with an
        outcome / disposition / status field. Ask observations in
        real-world order; COMPUTE the outcome. A user-facing outcome

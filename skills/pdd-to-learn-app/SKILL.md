@@ -347,8 +347,22 @@ Generate the Learn (training) app from the PDD using the Nova plugin
      - `learn-app-naming` — always. App name must contain "Learn app".
      - `end-of-form-previous` — always, every form. End of Form Navigation
        must be "Previous Screen".
-     - `grid-menu-display` — always (Learn + Deliver). Modules and Forms
-       Menu Display set to "Grid".
+     - `grid-menu-display` — always (Learn + Deliver), but **do NOT put it
+       in the Nova brief**. Nova's authoring surface exposes no
+       menu-display-format control at all: `update_app` sets only the display
+       name, `create_module` / `update_module` carry no display-format field,
+       `set_menu_media` sets icons and audio labels, and `set_case_list_tile`
+       lays out a case LIST — unrelated, and inapplicable to case-less Learn
+       modules. The component is real and enforced, just not here: it is
+       applied POST-BUILD by `app-hq-settings` (Phase 3 Step 2.65) via
+       `commcare_set_menu_display` + `commcare_set_app_menu_display`, and
+       BLOCKER-gated by `app-release-qa` off the released app's raw doc.
+       Briefing it made every architect build report a spurious "unmet
+       requirement" in the build memo — the one artifact meant to carry REAL
+       deviations — and invited the architect to reach for an unrelated atom
+       to satisfy the paragraph (dimagi-internal/ace#1632; live on
+       bednet-check-2-visit/20260825-1310, where Step 2.65 then applied all
+       three fields HQ-side on the first attempt).
      - `connect-supported-capabilities-only` — always (Learn + Deliver). Use
        only capabilities that work WITHOUT an HQ feature flag; `commcare_connect`
        is the sole exception. Learn apps are case-less so the case-search trap
