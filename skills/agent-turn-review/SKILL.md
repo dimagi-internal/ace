@@ -134,6 +134,13 @@ is fleet-wide and DRY — **invoke `canopy:agent-turn-review`** and apply it in 
 - **Multi-ask replies:** when a message contained MULTIPLE asks, enumerate them in the reply and
   say how each was handled, one line each (done / link / status) — the requester must see their
   checklist reflected back.
+  - **Number section headings `N)`, never `N.` — `N.` ships every section numbered "1".**
+    `agent_email.to_html` turns a numbered line into a list item, and a heading followed by a
+    prose body closes that list after one item; each later heading opens a fresh bare `<ol>`,
+    which restarts at 1. So a 5-part reply arrives as 1, 1, 1, 1, 1 — destroying exactly the
+    enumeration this bullet requires. `_list_kind` only matches `\d+\.`, so `N)` renders
+    literally with the right number. Not enforced (`harness`): fix is canopy#520 — drop this
+    line when it lands. Caught by §9a's render check, never by reading the body file.
 - **Reply mechanics** follow canopy `docs/agent-operating-model.md § 1b` by reference
   (jjackson/ace#828): deliverables/attachments are **gdocs** with the draft shown **inline** —
   never a local file the human must open; **verify the recipient set from the structured thread
