@@ -75,7 +75,17 @@ export interface ScoringReport {
 // silently covered nothing on a form that did carry item scores
 // (dimagi-internal/ace#1538; observed on hh-poverty-targeting/20260819-1435,
 // Learn build 35384a8007114f29b5e04b9ac78274a2, modules-0/forms-0.xml).
-const ITEM_SCORE = /^\/data\/([a-z][\w-]*?\d+)_score$/;
+// ...and it must match at ANY depth. This used to anchor as
+// `^/data/<name>_score$`, admitting only a score node sitting DIRECTLY under
+// `/data`. Nova nests fields inside their section/group container, so on any
+// form built with `set_form_sections` — ACE's standard Nova output shape — the
+// score nodes are one level deeper and matched zero, and the function again
+// returned `checked: false`. ace#1538 fixed the PREFIX half of this regex and
+// never touched the DEPTH half (dimagi-internal/ace#1634; observed on
+// bednet-check-2-visit/20260825-1310, Learn build
+// 59e714e4d46b444690c3b7ea00be68ef, `/data/check_result/q1_score` and
+// `/data/your_baseline/b1_score`).
+const ITEM_SCORE = /^\/data\/(?:[\w-]+\/)*([a-z][\w-]*?\d+)_score$/;
 
 interface Bind {
   nodeset: string;
@@ -106,10 +116,16 @@ export function checkScoringArithmetic(xml: string): ScoringReport {
   const itemScores = items.map((i) => i.nodeset);
 
   for (const item of items) {
-    const question = item.nodeset.replace(/_score$/, '');
-    // The item must compare its OWN question. Copy-paste across 20 hidden
-    // fields is exactly how a wrong-but-plausible score is produced.
-    if (!new RegExp(`${question.replace(/\//g, '\\/')}\\b`).test(item.calculate)) {
+    // Match on the node's TAIL segment, not its full path. The score node and
+    // the question it scores are siblings only on a FLAT form; once the
+    // architect groups them into sections the score lives at
+    // `/data/check_result/q1_score` while the question is at
+    // `/data/check_q1/q1`, and a full-path derivation reports every correct
+    // item as `self-reference-missing`. Coupled to the ITEM_SCORE depth fix
+    // above — landing that one alone turns this into a false BLOCKER on
+    // exactly the forms it was widened to cover (ace#1634).
+    const question = ITEM_SCORE.exec(item.nodeset)?.[1] ?? '';
+    if (!new RegExp(`(^|/)${question}\\b`).test(item.calculate)) {
       findings.push({
         kind: 'self-reference-missing',
         detail: `${item.nodeset} never references ${question} — it scores a different question, or none`,

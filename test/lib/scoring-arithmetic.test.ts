@@ -172,6 +172,58 @@ describe('checkScoringArithmetic (#1035)', () => {
     expect(r.itemScores).not.toContain('/data/user_score');
   });
 
+  // --- ace#1634: score nodes nested inside a section ---------------------
+  // The shape Nova emits whenever the architect used `set_form_sections`, which
+  // is ACE's standard output. Verbatim from the released Learn CCZ of
+  // bednet-check-2-visit/20260825-1310 (build 59e714e4d46b444690c3b7ea00be68ef,
+  // modules-1/forms-1.xml — the app's one gating `connect.assessment`).
+  const SECTIONED = [
+    '<data>',
+    ...[1, 2, 3, 4, 5, 6].map(
+      (n) =>
+        `<bind nodeset="/data/check_result/q${n}_score" type="xsd:string" ` +
+        `calculate="if(/data/check_q${n}/q${n} = 'ans${n}', 1, 0)"/>`,
+    ),
+    '<bind nodeset="/data/check_result/user_score" type="xsd:string" calculate="(' +
+      [1, 2, 3, 4, 5, 6].map((n) => `/data/check_result/q${n}_score`).join(' + ') +
+      ') * 100 div 6"/>',
+    '</data>',
+  ].join('');
+
+  it('SEES item scores nested inside a section (#1634)', () => {
+    const r = checkScoringArithmetic(SECTIONED);
+    // The whole defect: this reported `checked: false` — which app-release-qa
+    // defines as "not applicable, NOT a pass" — so the gate covered nothing.
+    expect(r.checked).toBe(true);
+    expect(r.itemScores).toHaveLength(6);
+    expect(r.itemScores).toContain('/data/check_result/q1_score');
+  });
+
+  it('does not false-fire self-reference-missing on a sectioned form (#1634)', () => {
+    // The score node and its question are NOT siblings here, so a full-path
+    // derivation flags all six correct items. Coupled to the depth fix.
+    const r = checkScoringArithmetic(SECTIONED);
+    expect(r.findings).toEqual([]);
+    expect(r.ok).toBe(true);
+  });
+
+  it('still CATCHES a cross-scored item on a sectioned form (#1634)', () => {
+    const r = checkScoringArithmetic(
+      SECTIONED.replace(
+        `calculate="if(/data/check_q2/q2 = 'ans2', 1, 0)"`,
+        `calculate="if(/data/check_q1/q1 = 'ans2', 1, 0)"`,
+      ),
+    );
+    expect(r.checked).toBe(true);
+    expect(r.ok).toBe(false);
+    expect(r.findings.map((f) => f.kind)).toContain('self-reference-missing');
+  });
+
+  it('still CATCHES a denominator mismatch on a sectioned form (#1634)', () => {
+    const r = checkScoringArithmetic(SECTIONED.replace('* 100 div 6', '* 100 div 5'));
+    expect(r.findings.map((f) => f.kind)).toContain('denominator-mismatch');
+  });
+
   it('names every finding in the formatted report', () => {
     const r = checkScoringArithmetic(withUserScore('(/data/q1_score) * 100 div 3'));
     const out = formatScoringReport(r);
