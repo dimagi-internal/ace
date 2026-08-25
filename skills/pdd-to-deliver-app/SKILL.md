@@ -1010,6 +1010,14 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
          'text', text}]}}, …]}` (≥2 options).
        - **Neither** → ship a select over the values you DO have plus an
          explicit "Other" with a relevance-gated `_other` free-text follow-up.
+
+         **Neither rung is available when the PDD names a partner register for
+         this field (ace#1621).** Both invent vocabulary — the inline rung by
+         enumerating a set the architect composed, the Other rung by shipping a
+         partial set as if it were the register — and "knowable from the PDD /
+         inputs / a source `.ccz`" is precisely the case where the real values
+         exist and must be read rather than composed. Go to the register halt
+         in step 7.
     6. **Re-run steps 2–3. Bounded loop, max 3 iterations.**
     7. **Whatever survives is a NAMED gap, never a silent one.** Any field
        still on `degraded` after the third iteration MUST appear in the build
@@ -1022,6 +1030,52 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
        defect, not a data-quality one (one typo mints a second payable
        delivery; two same-named entities collapse into one). Everything else
        records and proceeds.
+
+       **A SECOND halt class: a PDD-named partner register (ace#1621).**
+       The halt above is scoped to payment correctness, so it is silent on the
+       other way a degraded select does damage — shipping ACE's invented words
+       as the PARTNER's taxonomy. When the PDD sources a field's options from a
+       named register (`<field> from <tag> [source: …] [filtered by …]` in
+       § Program Parameters), **an inline invented option list is a HALT**,
+       whatever the field's `feeds_entity_id` / payability status, and it is
+       never dischargeable as a named gap.
+
+       Do not eyeball it and do not re-derive it — run
+       `lib/option-register.ts`: `parseRegisterDeclaration` over the PDD row,
+       then `diffOptionRegister({declaration, built, registerRows})` over the
+       option source read back from the blueprint. Any finding halts; the
+       `unbound-register` code is the one that fires here. `declared: false`
+       while the field exists is a **Phase-1 gap** (the PDD owes the register),
+       reported against Phase 1, not as an architect defect — the build was
+       supposed to HALT rather than fill it.
+
+       Source the rows from the partner's own `.ccz` fixture XML via
+       `parseFixtureRegister` in preference to a prose structure document: a
+       production CCZ carries the register's REAL value codes, which are what
+       the app stores and what the partner's M&E joins on, whereas a
+       human-readable guide usually carries only labels and forces the build to
+       mint an identifier scheme the partner has never seen (the #1527
+       "trust extraction first" rule, one layer over).
+
+       **Where ACE cannot finish the job, HALT with the handoff — never
+       placeholders.** Nova has no MCP atom that creates a lookup table and its
+       row-import route is browser-session-only (`enableSessionForAPIKeys:
+       false`), so binding a fresh register is not yet autonomous. The terminal
+       behaviour is: extract the register, emit `renderRegisterCsv` output plus
+       the table spec (tag + column names) into the run folder, and halt naming
+       the two operator steps. A select carrying invented values is strictly
+       worse than a halt, because it has no downstream symptom — the app is
+       complete and internally consistent with its own invention, and every
+       structural gate passes it (ace#1564's rationale, same class).
+
+       Why this is not covered by the payment halt: on
+       `spark-facilitator/20260820-0817` the meeting-activity repeat shipped 11
+       ACE-authored placeholders (`attendance_register`,
+       `facilitated_discussion`, `savings_collection`, …) identical on all 24
+       FCAP steps, while Spark's own 78-activity register sat in the run's
+       frozen `inputs/`. The field does not feed `entity_id`, so 4f recorded a
+       gap and proceeded exactly as written — and it took an operator reading
+       the residual, days later, to stop the release.
 
        **Two exemptions, both from the halt's own rationale (ace#1295).**
        The rationale is payment correctness, so it does not reach a case where
@@ -1753,5 +1807,6 @@ Each row this skill writes uses `phase: 3-commcare` and
 
 | Date | Change | Author |
 |------|--------|--------|
+| 2026-08-24 | **Step 4f gains a partner-register halt (ace#1621).** 4f's halt was scoped to payment correctness — a still-degraded select halts only when it `feeds_entity_id` on a PAYABLE deliver unit — so a field that fails neither test recorded an `option_source_gaps` entry and proceeded. That is right for a genuinely unknowable set and wrong for a register that EXISTS: on `spark-facilitator/20260820-0817` the meeting-activity repeat shipped 11 ACE-authored placeholders identical on all 24 FCAP steps while Spark's own 78-activity register sat in the run's `inputs/`, and the recorded gap deferred the catch to an operator reading the residual days later. When the PDD declares `<field> from <tag> [source: …] [filtered by …]`, an inline invented option list is now a **HALT** whatever the payability status, and is never dischargeable as a named gap; both inline rungs of the step-5 escape ladder are withdrawn for such a field. Mechanical via `lib/option-register.ts` (`parseRegisterDeclaration` + `diffOptionRegister`), sourcing rows from the partner's `.ccz` fixture XML in preference to a prose guide because a production CCZ carries the REAL value codes the partner's M&E joins on. Where ACE cannot finish — Nova has no lookup-table create atom and its row-import route is browser-session-only — the terminal behaviour is extract → emit `renderRegisterCsv` + table spec → halt naming the two operator steps. Paired with `_app-component-library § partner-option-register` and the eval's `option_register_fidelity` hard-gate. *Enforced:* `test/lib/option-register.test.ts`. | ACE team |
 | 2026-08-23 | **New Step 4l — entity state-taxonomy fidelity (ace#1564).** The followed entity's state model lived only as PROSE in the PDD's § Entity Lifecycle, and nothing in Step 3's brief-composition checklist asked for it — while `longitudinal-visits` REQUIRES a case list showing state, so the architect must name every state and invents the set when the brief carries none. On `spark-facilitator/20260820-0817` the PDD's `1 = Planning (steps 1–14)` … `4 = Transition (steps 23–24)`, sourced from Spark's own published FCAP guide sitting in the run's `inputs/`, shipped as four invented labels over a different partition, with all 24 step names invented too. Learn then teaches one mapping while Deliver offers another, and the invented words reach real workers and the partner. Step 3 now emits `_app-component-library § entity-state-taxonomy` (always for this archetype) and parses `program_parameters.entity_state_taxonomy` with `parseStateTaxonomy` BEFORE briefing — `declared: false` or non-empty `problems` is a **HALT** with a Phase-1 finding, never a licence to invent; where the row names a source document the brief is composed from THAT file out of `inputs/`. 4l then diffs the built option set with `diffStateTaxonomy`: any invented, dropped, relabelled or re-partitioned state is a **HALT with a bounded 3-iteration repair loop**, not a warn. Deliberately ships NO canonical vocabulary — hard-coding one would impose ACE's words on every partner, the mirror image of the defect. Paired with the eval's `entity_state_fidelity` hard-gate. *Enforced:* `test/lib/entity-state-taxonomy.test.ts` + `test/skills/entity-state-taxonomy-component.test.ts` + `test/skills/deliver-l0-loop-integrity.test.ts`. **The language layer moved 4l → 4m** in the same change: it must stay LAST of the 4x steps because every English-editing step has to precede it, and 4l's repair loop calls `edit_field` on option labels — running it after the layer would demote those translations to `out-of-date`. Pointers updated in `_app-component-library § app-language-layer`, both `-eval` change logs, and `test/skills/app-language-layer.test.ts`. | ACE team |
 | 2026-08-20 | **New Step 4k — fixed-instrument constant fidelity (ace#1527).** Nothing on this path opened the `[FIXED]` source instrument in `inputs/` and diffed it, so on `hh-poverty-targeting/20260819-1435` the digitised Nigeria PPI 2020 shipped with **9 of 17 point values wrong and all 101 poverty-likelihood values invented** — and every gate passed it, because each one is structurally blind to a constant's VALUE (`validate_app` checks structure, the eval grades against a narrative PDD, `app-release-qa` checks counts and install-time behaviour, and the architect transcribes from a model-authored brief). 4k resolves the source file from `inputs-manifest.yaml`, fetches it with `drive_download_binary` + `writeToPath`, and runs `lib/instrument-constants.ts`: `assertExtractionTrusted` FIRST (endpoints + strict monotonicity + row count — the first repair-round extraction produced `score 4 -> 79.0` from an undecoded `t="s"` shared-string index), then `diffScoringConstants` and `compareMaxScore` over the built literals read via `get_field`. Any mismatch, or a `clampDead` verdict, is a **HALT with a bounded 3-iteration repair loop**, not a warn — a built max of 96 against an official 102 made the PDD's `min(ppi_score, 100)` clamp dead code, which is how the instrument stayed internally consistent with its own wrong numbers. Paired with `_app-component-library § fixed-instrument-transcription` and the eval's `fixed_instrument_fidelity` hard-gate. *Enforced:* `test/lib/instrument-constants.test.ts` + `test/skills/deliver-l0-loop-integrity.test.ts`. | ACE team |
