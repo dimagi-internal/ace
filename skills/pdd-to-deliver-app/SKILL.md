@@ -541,8 +541,23 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
        contract and the level-0 recipe.) Graded by
        `language_conformance`.
      - `deliver-app-naming` — always. App name must contain "Deliver app".
-     - `live-photo-capture` — any image/photo capture question. Appearance
-       Attribute set to `acquire` (live camera, never gallery-browse).
+     - `live-photo-capture` — any image/photo capture question, but **do NOT
+       put it in the Nova brief**. Nova's authoring surface has no appearance
+       control: an `image` field's slots are `id` / `kind` / `label` / `hint` /
+       `help` / `required` / `relevant` / `validate` / `calculate` /
+       `default_value` / `caseWrite` / `optionsSource`, and none of them is
+       `appearance` (`caseWrite.mode` saves a link to the attachment — a
+       different thing). The component is real and enforced, just not here: it
+       is applied POST-BUILD by `app-hq-settings` § Step 3, which fetches each
+       Deliver form's draft XForm (`commcare_get_form_source`), injects
+       `appearance="acquire"` onto every image `<upload>`, and patches it back
+       (`commcare_patch_xform`) before `app-release`; `app-release-qa` then
+       BLOCKER-gates it off the released CCZ form XML as
+       `camera-only-appearance-missing`. Briefing it only makes the architect
+       search for an atom that does not exist and report a spurious "unmet
+       requirement" in the build memo — the one artifact meant to carry REAL
+       deviations (dimagi-internal/ace#1640; same defect as ace#1632, which
+       hit `grid-menu-display` on bednet-check-2-visit/20260825-1310).
      - `no-section-module-language` — always. No user-facing "section" or
        "module" wording anywhere.
      - `connect-supported-capabilities-only` — always. Use only capabilities

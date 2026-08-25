@@ -33,19 +33,6 @@ const library = readFileSync(`${SKILLS}_app-component-library.md`, 'utf8');
 
 const BUILD_SKILLS = ['pdd-to-learn-app', 'pdd-to-deliver-app'] as const;
 
-/**
- * KNOWN-UNMARKED LEDGER (a ratchet, not an exemption).
- *
- * `live-photo-capture` is the same shape — `pdd-to-deliver-app-eval` says in
- * so many words that it and `grid-menu-display` "are not representable in the
- * Nova blueprint" — and it is still emitted into the Deliver brief. It is NOT
- * fixed here: ace#1632 scoped itself to `grid-menu-display`, and dropping a
- * paragraph from the Deliver brief is a separate, separately-reviewable
- * change. New post-build components must be marked; this row is a debt to pay
- * down, and paying it means deleting the row, not adding to it.
- */
-const KNOWN_UNMARKED = new Set(['live-photo-capture']);
-
 /** Sections of the library keyed by component name (`### <name>`). */
 function components(): Map<string, string> {
   const out = new Map<string, string>();
@@ -98,7 +85,6 @@ describe('post-build components are not briefed to Nova (ace#1632)', () => {
         .filter((b) => /^\s*- `[a-z0-9-]+`/.test(b));
 
       for (const name of post) {
-        if (KNOWN_UNMARKED.has(name)) continue;
         const entry = bullets.find((b) => b.trimStart().startsWith(`- \`${name}\``));
         if (!entry) continue;
         expect(
