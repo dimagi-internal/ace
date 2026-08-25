@@ -350,6 +350,59 @@ and `skills/eval-calibration/SKILL.md` for calibration methodology.
      training deck. That is `no-inferred-backstory` at its most expensive
      (ace#1564).
 
+   - **`option_register_fidelity`** (added 2026-08-24, ace#1621) — **when the
+     PDD sources a field's options from a NAMED PARTNER REGISTER, the build
+     must bind that register; an inline option list the architect composed is a
+     `[BLOCKER]`.** Binary, non-weighted, for the same reason its two siblings
+     are: the weighted dimensions grade the build against a PDD that describes
+     the field narratively, so an invented option set reads as PDD-conformant
+     prose. Pairs 1:1 with `_app-component-library.md § partner-option-register`
+     and the build's `pdd-to-deliver-app § Step 4f` register halt, which runs
+     the same helper.
+
+     **Do not eyeball this and do not re-derive it — run
+     `lib/option-register.ts`** over (a) the PDD's register declaration via
+     `parseRegisterDeclaration` and (b) the option source read back from the
+     Nova blueprint, via `diffOptionRegister`. Where the bound table's rows are
+     available, also run `diffRegisterRows` against the register extracted from
+     the source file (`parseFixtureRegister` on a partner `.ccz`).
+
+     Verdicts:
+     - `unbound-register` (an inline list, or no source at all, where a
+       register is declared) → `[BLOCKER]` → `fail`. This is the reported
+       defect: 11 invented activity names on a real partner's published
+       process. Never gradeable as a deduction — see below.
+     - `undeclared-register` while the field exists → `[BLOCKER]` → `fail`,
+       reported as a **Phase-1 gap** (the PDD owes the register), not as an
+       architect defect.
+     - `unfiltered-register` / `wrong-table` → `[BLOCKER]` → `fail`. An
+       unfiltered register shows every partition's options on every partition —
+       the "11 options identical on all 24 steps" symptom.
+     - `source-unavailable` (the declared source file is not in the run's
+       manifest, or could not be read) → `[BLOCKER]` → `fail`. Unverifiable and
+       correct are different answers; a read failure is never permission.
+     - `invented-option` / `missing-option` / `relabelled-option` from
+       `diffRegisterRows` → `[BLOCKER]` → `fail`, listing each. No tolerance
+       band and no "clearer label" allowance: these are the partner's own
+       codes and words.
+     - The build memo's `option_register:` block present, finding count `0`,
+       register tag echoed → no finding. A triggered field with NO such block
+       and no recorded skip reason → `[BLOCKER]` → `fail`: the check not having
+       run is indistinguishable at this layer from it having been skipped
+       because it would have failed.
+
+     **Why a blocker rather than an `option_source_gaps` entry.** Step 4f
+     already *permitted* this: its halt is scoped to payment correctness
+     (`feeds_entity_id` on a payable unit), so a field that fails neither test
+     records a named gap and proceeds. That is right for a genuinely
+     unknowable set and wrong for a register that exists — on
+     `spark-facilitator/20260820-0817` the gap was duly recorded, the run
+     continued, and it took an operator reading the residual days later to stop
+     the release. A named gap discharges the obligation to a human who may not
+     read it; the harm here is not payment but `no-inferred-backstory` on a
+     partner's OWN published process, reaching real field workers and — through
+     the training deck — the partner.
+
    *Not enforced here (deferred to the post-build HQ step per
    `docs/superpowers/specs/2026-06-25-post-build-hq-settings-automation.md`):*
    `live-photo-capture` (`acquire` appearance) and `grid-menu-display` are not
@@ -509,6 +562,7 @@ absorb the disagreement into a score.
 
 | Date | Change | Author |
 |------|--------|--------|
+| 2026-08-24 | **New `option_register_fidelity` hard-gate (ace#1621).** Third sibling of `fixed_instrument_fidelity` (#1527, a `[FIXED]` instrument's CONSTANTS vs a source file) and `entity_state_fidelity` (#1564, the entity's STATE vocabulary vs a PDD-declared taxonomy): this one grades a field's OPTION SET against a partner register the PDD names. Binary and non-weighted for the same reason as both — the weighted dimensions grade against a narrative PDD, so an invented option set reads as conformant prose. On `spark-facilitator/20260820-0817` the meeting-activity repeat shipped 11 ACE-authored placeholders identical on all 24 FCAP steps, past this rubric, while Spark's own 78-activity register sat in the run's `inputs/`. Verdicts: `unbound-register` (inline list where a register is declared), `undeclared-register` (Phase-1 gap), `unfiltered-register` / `wrong-table`, `source-unavailable` (unverifiable ≠ correct), and row-level `invented-option` / `missing-option` / `relabelled-option` — all `[BLOCKER]` → `fail`, no tolerance band, because these are the partner's own codes and words. Run `lib/option-register.ts`; do not eyeball it. Blocker rather than a deduction because `pdd-to-deliver-app § Step 4f` already *permitted* this via an `option_source_gaps` entry, and a named gap discharges the obligation to a human who may not read it. Paired 1:1 with `_app-component-library § partner-option-register` and 4f's register halt. *Enforced:* `test/lib/option-register.test.ts`. | ACE team |
 | 2026-08-23 | **New non-weighted hard-gate `entity_state_fidelity` (ace#1564).** A `longitudinal-visits` Deliver app shipped four invented phase labels over a re-partitioned step set for a real partner's own published process, and this rubric passed it: every weighted dimension grades the build against a PDD that describes the entity lifecycle NARRATIVELY, so an invented vocabulary is PDD-conformant prose, and the app is internally consistent with its own invention so no structural gate has a symptom. The gate is binary and non-weighted because it is a set/label/partition comparison against a declared taxonomy, not a judgement. Graded mechanically via `lib/entity-state-taxonomy.ts` (`parseStateTaxonomy` on `program_parameters.entity_state_taxonomy`, then `diffStateTaxonomy` against the option set read from the blueprint) — the same helper the build runs at `pdd-to-deliver-app § Step 4l`, so build-emit and eval-grade cannot drift. `declared: false` while the trigger fires is its own blocker, reported as a Phase-1 gap: the build was supposed to HALT there, so a build that proceeded invented the vocabulary by construction. Paired 1:1 with `_app-component-library.md § entity-state-taxonomy`. *Enforced:* `test/lib/entity-state-taxonomy.test.ts` + `test/skills/entity-state-taxonomy-component.test.ts`. | ACE team |
 | 2026-08-23 | **Terminal verdict bands are now an ORDERED cascade; they did not partition the score space (ace#1568).** The three band rules were independent tests — `any dim ≤3 → fail`, `2+ dims in 4–6 → warn`, `all dims ≥7 AND overall ≥7.5 → pass` — and an enumeration over the rubric's own 10 weights found **two** reachable classes matching NONE of them: exactly ONE dimension in 4–6 (the reported case), and every dimension ≥7 with an overall under 7.5 (unreported; reachable at all dimensions exactly 7.0). 41 further classes matched TWO rules at once (`fail` + `warn` whenever some dimension is ≤3 and two others sit in 4–6), with no stated precedence. A rubric applied by an LLM judge never throws on this — it legislates, so two runs with identical scores can disagree and nothing marks either wrong. Live: `spark-facilitator/20260820-0817`, `language_conformance` 5.0, every other dimension ≥8.0, overall 8.58 → capped 8.5; the judge resolved it `warn` and recorded the gap rather than filing unilaterally. Repair: rule 2's trigger widens from "2+ dimensions in 4–6" to "any scored dimension **< 7**, **or** overall < 7.5", and the three rules become a first-match-wins cascade — every outcome the old wording produced is preserved. Widening to "**any** dimension in 4–6" (the repair sketched on the issue) is NOT enough: dimension scores are fractional, every anchor is stated at the half-point, and a *range* trigger strands 3 < s < 4 and 6 < s < 7 the same way — a `language_conformance` of 3.5 or 6.5 with everything else at 9.5 matches nothing under it. `< 7` is the complement of the `pass` trigger, which is what makes the partition exact. The `fail` trigger is untouched at ≤3, so 3.5 warns. Deliberately NOT added: an `overall < 5.0 → fail` floor like the `connect-opp-setup-eval` / `app-release-eval` / `llo-uat-eval` tier blocks carry — that would change existing verdicts, which is a calibration decision, not a gap fix. Cascade encoded as data in `lib/eval-verdict-bands.ts`. *Enforced:* `test/lib/eval-verdict-bands.test.ts` (exhaustive + class-partition enumeration asserting totality and severity ordering, with the pre-fix band set kept as the regression witness). | ACE team |
 | 2026-08-23 | **`language_conformance` anchor (b1) added — a language added with NOTHING authored is `fail`, not a 5 (ace#1556).** The mechanism behind the dimension changed: ACE now authors the translations at LEVEL 0 (`pdd-to-{learn,deliver}-app § Step 4e/4m`), and the Nova brief tells the architect to build English-ONLY and call no language atom — because the architect's operating prompt forbids it saving self-generated target text (*"Only save target text supplied by the user"*, nova plugin 1.26.0/1.27.0), so every brief that asked it to translate produced a silent no-op. The graded OUTCOME is unchanged (English source complete + working language authored + `out-of-date` 0 + English still `sourceLanguage` = full credit); what changed is that the observed failure — `spark-facilitator/20260820-0817`, 207 units `origin: copied` / 0 ready in BOTH `nya` and `tum` — scored as anchor (b) *thinly authored* = **5**, a near-pass for a build with 0% coverage. A fully-copied layer is a FALSE AFFORDANCE and strictly worse than English-only: the worker sees the language offered and gets English under its name. (b1) makes that `≤3 → suite fail`. Weight, null-when-N/A and every other anchor are untouched. *Enforced:* `test/skills/app-language-layer.test.ts`. | ACE team |
