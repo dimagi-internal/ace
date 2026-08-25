@@ -382,9 +382,9 @@ if [ "$PREFLIGHT" = "1" ]; then
         fi
         if [ "$PF_NOVA_CACHE_CLEAR_RESULT" = "cleared" ]; then
           PF_NOVA_CACHE_CLEARED=true
-          PF_NOVA_CACHE_REMEDIATION="plugin:nova:nova was stuck in needs-auth cache despite valid NOVA_API_KEY; the stale entry has been CLEARED automatically. Cmd-Q + reopen Claude Code, then re-run your command (MCP subprocesses only rebind on a full restart)"
+          PF_NOVA_CACHE_REMEDIATION="plugin:nova:nova was stuck in needs-auth cache despite valid NOVA_API_KEY; the stale entry has been CLEARED automatically. FIRST occurrence: Cmd-Q + reopen Claude Code, then re-run your command (MCP subprocesses only rebind on a full restart). If you have ALREADY restarted once since the last clear and nova still exposes only authenticate/complete_authentication, the cache is NOT the cause: a stored OAuth credential is outranking the headersHelper PAT (dimagi-internal/ace#1614, voidcraft-labs/nova-plugin#52). Run /mcp, select nova, choose 'Clear authentication' -- NOT 'Authenticate', which mints a fresh OAuth token and leaves the session on the wrong credential without nova.hq.read -- THEN Cmd-Q + reopen."
         else
-          PF_NOVA_CACHE_REMEDIATION="plugin:nova:nova stuck in needs-auth cache despite valid NOVA_API_KEY; auto-clear did not apply ($PF_NOVA_CACHE_CLEAR_RESULT). Clear it from $PF_NOVA_CACHE_FILE then Cmd-Q + reopen Claude Code (run /ace:doctor for the exact node one-liner)"
+          PF_NOVA_CACHE_REMEDIATION="plugin:nova:nova stuck in needs-auth cache despite valid NOVA_API_KEY; auto-clear did not apply ($PF_NOVA_CACHE_CLEAR_RESULT). Clear it from $PF_NOVA_CACHE_FILE then Cmd-Q + reopen Claude Code (run /ace:doctor for the exact node one-liner). If you have ALREADY restarted once since the last clear and nova still exposes only authenticate/complete_authentication, the cache is NOT the cause: a stored OAuth credential is outranking the headersHelper PAT (dimagi-internal/ace#1614, voidcraft-labs/nova-plugin#52). Run /mcp, select nova, choose 'Clear authentication' -- NOT 'Authenticate', which mints a fresh OAuth token and leaves the session on the wrong credential without nova.hq.read -- THEN Cmd-Q + reopen."
         fi
       else
         PF_NOVA_CACHE_STATUS=warn
