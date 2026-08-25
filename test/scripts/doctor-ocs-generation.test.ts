@@ -1,6 +1,12 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import {
+  MAX_PROBE_ATTEMPTS,
+  runGenerationProbeWithRetry,
+  shouldRetryGenerationProbe,
+  type GenerationProbeClass,
+} from '../../lib/ocs-generation-probe.js';
 
 // ---------------------------------------------------------------------------
 // dimagi-internal/ace#1516 — static gates on the WIRING of the ocs_generation
@@ -112,10 +118,104 @@ describe('scripts/doctor-ocs-generation.ts is safe to run in a preflight', () =>
     expect(code).not.toMatch(/dotenv\.config/);
   });
 
+  it('retries the round-trip through the shared retry policy', () => {
+    // ace#1628: the retry decision lives in lib/ocs-generation-probe.ts so it
+    // is unit-testable without a live OCS. If the script stops routing through
+    // it, the behaviour below stops describing what preflight actually does.
+    expect(SCRIPT).toContain('runGenerationProbeWithRetry');
+  });
+
   it('discovers the generation provider instead of reading OCS_LLM_PROVIDER_ID', () => {
     // OCS_LLM_PROVIDER_ID is the EMBEDDINGS provider (378 on connect-ace);
     // generation is 377. Reading env here would name the wrong page.
     expect(SCRIPT).toContain('pickGenerationProviderId');
     expect(SCRIPT).not.toMatch(/process\.env\.OCS_LLM_PROVIDER_ID/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// dimagi-internal/ace#1628 — a transient `timeout` must not halt /ace:run.
+//
+// Observed on bednet-check-2-visit/20260825-1310: preflight reported
+// `status: fail, class: timeout, provider_id: 377`, and two immediate re-runs
+// of the same script both returned `status: pass, class: ok`. The provider was
+// healthy the whole time; the first probe was just slow past the 25s cap. The
+// orchestrator halts before Phase 1 on `fail`, so a healthy provider blocked a
+// multi-hour run.
+//
+// These exercise the pure driver the script routes through, so no live OCS is
+// needed. The script's status mapping is `class === 'ok' ? pass : fail`, so
+// "the last attempt's class" IS the reported status.
+// ---------------------------------------------------------------------------
+
+interface FakeResult {
+  status: 'pass' | 'fail' | 'skip';
+  class: GenerationProbeClass;
+}
+
+/** Mirrors the script: every non-ok class reports `fail`. */
+function resultFor(cls: GenerationProbeClass): FakeResult {
+  return { status: cls === 'ok' ? 'pass' : 'fail', class: cls };
+}
+
+/** Drive the real retry loop over a scripted sequence of round-trip outcomes. */
+async function driveSequence(sequence: GenerationProbeClass[]): Promise<{
+  result: FakeResult;
+  attempts: number;
+}> {
+  let attempts = 0;
+  const result = await runGenerationProbeWithRetry<FakeResult>(async (n) => {
+    attempts = n;
+    const cls = sequence[Math.min(n, sequence.length) - 1];
+    return resultFor(cls);
+  });
+  return { result, attempts };
+}
+
+describe('the probe retries a transient timeout exactly once (ace#1628)', () => {
+  it('timeout → ok reports pass', async () => {
+    const { result, attempts } = await driveSequence(['timeout', 'ok']);
+    expect(attempts).toBe(2);
+    expect(result.class).toBe('ok');
+    expect(result.status).toBe('pass');
+  });
+
+  it('timeout → timeout reports fail, exactly as before the fix', async () => {
+    const { result, attempts } = await driveSequence(['timeout', 'timeout']);
+    expect(attempts).toBe(2);
+    expect(result.class).toBe('timeout');
+    expect(result.status).toBe('fail');
+  });
+
+  it('never spends more than MAX_PROBE_ATTEMPTS round-trips', async () => {
+    const { attempts } = await driveSequence(['timeout', 'timeout', 'timeout', 'timeout']);
+    expect(MAX_PROBE_ATTEMPTS).toBe(2);
+    expect(attempts).toBe(MAX_PROBE_ATTEMPTS);
+  });
+
+  it('does NOT retry the definitive dead-provider classes', async () => {
+    // A capped provider errors in ~6s (scripts/doctor-ocs-generation.ts) and an
+    // auth rejection likewise: these are conclusive, so a retry would only
+    // double the latency of a real failure. Pinning that is the point.
+    for (const cls of ['provider_capped', 'provider_auth', 'no_channel'] as GenerationProbeClass[]) {
+      const { result, attempts } = await driveSequence([cls, 'ok']);
+      expect(attempts, `${cls} must not be retried`).toBe(1);
+      expect(result.class).toBe(cls);
+      expect(result.status).toBe('fail');
+    }
+  });
+
+  it('does not retry a pass, and does not retry the other non-transient classes', async () => {
+    for (const cls of ['ok', 'transport', 'unknown', 'no_session'] as GenerationProbeClass[]) {
+      const { attempts } = await driveSequence([cls, 'ok']);
+      expect(attempts, `${cls} must not be retried`).toBe(1);
+    }
+  });
+
+  it('shouldRetryGenerationProbe is timeout-only and attempt-bounded', () => {
+    expect(shouldRetryGenerationProbe('timeout', 1)).toBe(true);
+    expect(shouldRetryGenerationProbe('timeout', MAX_PROBE_ATTEMPTS)).toBe(false);
+    expect(shouldRetryGenerationProbe('provider_capped', 1)).toBe(false);
+    expect(shouldRetryGenerationProbe('ok', 1)).toBe(false);
   });
 });

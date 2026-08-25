@@ -188,6 +188,58 @@ export function remediationFor(cls: GenerationProbeClass, ctx: RemediationContex
   }
 }
 
+// ── Retry policy ─────────────────────────────────────────────────────────────
+
+/**
+ * How many round-trips the live probe may spend before it reports (ace#1628).
+ * Two: one retry, and only for the one transient class.
+ */
+export const MAX_PROBE_ATTEMPTS = 2;
+
+/**
+ * `timeout` is the ONE class that is transient BY CONSTRUCTION: it carries no
+ * information about the provider at all, only "nothing came back inside the
+ * 25s wall-clock cap", which a cold provider, a slow model, or momentary OCS
+ * load all produce. `scripts/doctor-ocs-generation.ts` maps every non-`ok`
+ * class to `status: fail`, and `agents/ace-orchestrator.md § Pre-flight
+ * Checklist` halts a whole `/ace:run` on `fail` — so one slow first probe used
+ * to block a multi-hour run against a provider that was healthy the whole
+ * time. Observed on bednet-check-2-visit/20260825-1310: preflight reported
+ * `class: timeout` on provider 377, and two immediate re-runs of the same
+ * script both returned `pass`.
+ *
+ * Every other failing class is DEFINITIVE and fails fast — a capped provider
+ * errors in ~6s, an auth rejection likewise — so retrying them would only
+ * double the latency of a real failure. Hence: retry `timeout`, nothing else.
+ *
+ * Keeping the decision here (rather than emitting `warn` and teaching the
+ * orchestrator which classes halt) keeps the halt/no-halt class table in ONE
+ * file.
+ */
+export function shouldRetryGenerationProbe(
+  cls: GenerationProbeClass,
+  attemptsSoFar: number,
+): boolean {
+  if (attemptsSoFar >= MAX_PROBE_ATTEMPTS) return false;
+  return cls === 'timeout';
+}
+
+/**
+ * Drive a probe round-trip under {@link shouldRetryGenerationProbe}. Pure
+ * control flow — the caller supplies the I/O — so the retry behaviour is
+ * unit-testable without a live OCS.
+ */
+export async function runGenerationProbeWithRetry<T extends { class: GenerationProbeClass }>(
+  attempt: (attemptNumber: number) => Promise<T>,
+): Promise<T> {
+  let attempts = 0;
+  for (;;) {
+    attempts += 1;
+    const result = await attempt(attempts);
+    if (!shouldRetryGenerationProbe(result.class, attempts)) return result;
+  }
+}
+
 // ── Generation-provider discovery ────────────────────────────────────────────
 
 interface NodeLike {

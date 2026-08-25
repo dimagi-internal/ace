@@ -118,7 +118,10 @@ in OCS / 1Password (the block names the exact
 `/ace:run`. No Claude Code restart needed, unlike the other two. Halt on
 `fail` because no OCS-dependent phase can pass with a dead generation
 provider, and the only other place it surfaces is Phase 5 — after Phases
-1-4 and 6 have already run (dimagi-internal/ace#1516).
+1-4 and 6 have already run (dimagi-internal/ace#1516). A `fail` with
+`class: timeout` already means TWO consecutive 25s round-trips returned
+nothing — the probe retries that one transient class itself, so there is
+never anything to re-run by hand (ace#1628).
 
 **Do NOT probe `.env` before running the doctor** — no `echo
 $CLAUDE_PLUGIN_DATA`, no `ls .../.env`, no `find ... -name .env`. Every
