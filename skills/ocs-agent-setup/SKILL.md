@@ -298,7 +298,46 @@ round-trip gate in Step 11.5 below.
    - Summarize the intervention (from PDD)
    - Tell the bot to escalate to the admin group at ace@dimagi-ai.com on specific triggers
    - Reference the relevant knowledge sources (the shared Connect collection and/or the opp-specific collection, matching what you'll attach in step 8)
-   - Use [training-gap] and [product-feedback] tags per the golden template conventions
+   - **Make tagging a MANDATORY CLOSING STEP of every answer, with the
+     two triggers written as TESTS — not as a description
+     (dimagi-internal/ace#1646).** `ocs-chatbot-eval`'s deep rubric
+     weights Tagging at 15%, and on a clean fully-passing 51-prompt deep
+     run (`bednet-check-2-visit/20260825-1310`, experiment 13005) the bot
+     scored **5.0/10** on that dimension — its weakest — purely from
+     inconsistency: 5 of 8 expected tags missed, while defensible tags
+     appeared on seven entries the instrument expected none for. It is
+     not inability to tag; tagging was never triggered reliably. Every
+     other high-consequence behaviour in this checklist got a mandatory,
+     checkable instruction and held at 51/51. This one was written as a
+     description, and it is the one that came back at 5.0.
+
+     The composed prompt MUST therefore state, as an obligation:
+
+     - **Every answer ends with a tag line** — either the applicable
+       tag(s) or an explicit statement that none applies. Never silently
+       omit it.
+     - `[training-gap]` — apply when *the question reveals a worker did
+       not absorb something the Learn app teaches, **and** the answer is
+       in the knowledge base.*
+     - `[product-feedback]` — apply when *the person is reporting a bug,
+       **OR** the answer names a known limitation of the app or of
+       Connect.*
+
+     The second half of the `[product-feedback]` trigger is the
+     load-bearing one. On that run, prompts 9 and 10 both *correctly
+     volunteered a known product limitation* (a declining household
+     still produces a case record; photo/GPS are out of scope and the
+     Connect flags are refused) — precisely the trigger — and neither
+     tagged it. The bot reached for the tag when someone **reported**
+     something and not when it **volunteered** a limitation, so state
+     both halves explicitly rather than relying on "per the golden
+     template conventions".
+
+     Why it is worth the prompt real estate even though it degrades no
+     answer: these tags are how training gaps and product defects get
+     routed out of live LLO conversations. A 60% miss rate on
+     `[product-feedback]` means real limitation reports go unrouted once
+     LLOs are on the bot.
 
 8. **Patch the chatbot in one transactional call:**
    - Build the collection list:
@@ -495,3 +534,4 @@ Each row this skill writes uses `phase: 5-ocs` and
 | 2026-05-08 | Add `## Decisions Log` section: 3 anchor rows (system-prompt-baseline, rag-collection-scope, test-prompt-count) + bar-criterion reference. Pairs with decisions-log PR #4 (Phase 3-10 writes). | ACE team (decisions-log PR #4) |
 | 2026-05-15 | Add `2-scenarios/pdd-to-test-prompts.md` to the canonical KB recipe (Step 5); add archetype-aware "primary vs supplementary surface" line to the system-prompt composition checklist (Step 7) — for `focus-group`, the chatbot is the primary facilitator training + post-session writing surface. Make `6-qa-and-training/*` reads tolerant of missing files (Phase 6 may not have run yet in `/ace:run` flow). Prompted by `malaria-itn-fgd/20260514-2352` Phase 5 agent observations. | ACE team |
 | 2026-08-18 | **New Step 3.5 — post-clone liveness gate, with a golden-template control.** Probe the fresh clone before building the collection; on failure probe `$OCS_GOLDEN_TEMPLATE_ID` too and branch on the 2×2 (both fail = team LLM key, the ace#743 class; clone fails + golden passes = the clone mechanism, ace#1492 — do NOT touch prompt or collections). Previously a dead clone surfaced only at the Phase 5 quick gate, *after* the 5–10 min collection build, and presented as a *quality* failure — so the documented remedy (`--prompt-patch` → re-run qa+eval) aimed the retry loop at the prompt, which cannot be the cause. On `bednet-check-2-visit/20260817-1720` that cost the whole phase budget before a virgin-clone control found it. Observing gate, not a predictive guard. | ACE team |
+| 2026-08-25 | **Step 7: tagging is now a mandatory closing step with the two triggers stated as tests (dimagi-internal/ace#1646).** The composition checklist carried tagging as a single descriptive bullet ("use [training-gap] and [product-feedback] tags per the golden template conventions") with no obligation attached, and it is the one behaviour in that checklist that came back weak: 5.0/10 on the deep rubric's 15%-weighted Tagging dimension, 5 of 8 expected tags missed on a 51-prompt suite where content scored 49 Pass / 2 Warn / 0 Fail. Sharpest miss: two answers that correctly volunteered a known product limitation and did not tag it — the bot reached for `[product-feedback]` on a *reported* bug but not on a *volunteered* limitation, so both halves of that trigger are now spelled out. Validate with `--prompt-patch` (no re-index) plus a deep re-run. Observed on `bednet-check-2-visit/20260825-1310` Phase 5. | ACE team |

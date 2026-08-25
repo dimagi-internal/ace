@@ -309,17 +309,51 @@ alone makes the artifact land outside `4-connect` and fail
 
    **Verify-after-create (mandatory).** Immediately after the create
    response returns, call `connect_get_opportunity({organization_slug,
-   opportunity_id})` and compare every field that was sent against what
-   the server stored. Specifically check:
+   opportunity_id})` and compare what was sent against what the server
+   stored.
+
+   **⚠️ Only some of those fields are READABLE at this point
+   (dimagi-internal/ace#1647).** A never-activated opportunity renders
+   only the edit-form half of `connect_get_opportunity`'s hydration; the
+   dashboard half returns nothing until the opp has been through
+   `/activate/` (Step 6.5). A Write→Read→Compare that cannot read is
+   worse than no check — it reports confidence it does not have — so the
+   list below is split, and the unreadable half is **deferred to Step
+   6.6**, not asserted here.
+
+   *Verified live on `bednet-check-2-visit/20260825-1310` Phase 4: the
+   same opp read twice through the same atom, ~2 min apart either side of
+   activation. Pre-activation the payload carried `name`,
+   `short_description`, `description`, `end_date`, `is_test`, `active`,
+   `currency`, `country` and nothing else; post-activation it also
+   carried `total_budget`, `start_date`, `program_name`, `learn_app` and
+   `deliver_app`. Upstream half tracked as #1637.*
+
+   **Verify HERE (readable pre-activation):**
    - `name`, `short_description`, `description` — string match
-   - `start_date`, `end_date` — `YYYY-MM-DD` match (the `turmeric-20260503`
-     run hit a write-vs-read drift where `end_date=2026-08-09` was
-     accepted by create but `connect_get_opportunity` returned `""`;
-     this read-back is the canary)
-   - `total_budget` — numeric match
+   - `end_date` — `YYYY-MM-DD` match (the `turmeric-20260503` run hit a
+     write-vs-read drift where `end_date=2026-08-09` was accepted by
+     create but `connect_get_opportunity` returned `""`; this read-back
+     is the canary)
    - `is_test` — boolean match
-   - `learn_app.cc_app_id` and `deliver_app.cc_app_id` — bare 32-char
-     match
+
+   **DEFER to Step 6.6 (unreadable pre-activation — do NOT assert here):**
+   - `start_date` — `YYYY-MM-DD` match
+   - `total_budget` — numeric match
+   - `learn_app.cc_app_id` and `deliver_app.cc_app_id` — bare 32-char match
+
+   **An absent field is `unreadable-at-this-point`, never a match.** If
+   any DEFERRED field unexpectedly IS present in this read, compare it —
+   a present value is real. But never record a comparison you did not
+   perform: write `unreadable-at-this-point (deferred to Step 6.6)`
+   against each one you skipped, in `comms-log/observations.md` and in
+   whatever verification summary this step reports. Silently counting an
+   absent field as a pass is the exact defect #1647 fixed; the sibling
+   class is ace#1449 below, where a field the read surface does not
+   render came back `undefined` and read as "unreadable" rather than
+   "mismatch".
+
+   Also check:
    - `passing_score` — numeric match. **Read it with
      `connect_get_learn_passing_score({organization_slug, program_id,
      opportunity_id})`, NOT from `connect_get_opportunity`** (ace#1449).
@@ -413,10 +447,12 @@ alone makes the artifact land outside `4-connect` and fail
      run's app to save a build.
 
    **Action on mismatch:**
-   - Date or app-id field disagreement → `[BLOCKER]` in the gate brief;
-     log the diff to `comms-log/observations.md` with both values; do
-     NOT proceed to Step 5. The opp is in an unknown state — operator
-     must inspect via the Connect web UI before continuing.
+   - `end_date` (or any DEFERRED field that did read, and disagreed) →
+     `[BLOCKER]` in the gate brief; log the diff to
+     `comms-log/observations.md` with both values; do NOT proceed to
+     Step 5. The opp is in an unknown state — operator must inspect via
+     the Connect web UI before continuing. (The deferred fields get the
+     same `[BLOCKER]` treatment at Step 6.6, where they are readable.)
    - Description / is_test disagreement → `[INFO]` log to observations;
      proceed.
    - `passing_score` disagreement → severity per the rule above:
@@ -638,8 +674,21 @@ alone makes the artifact land outside `4-connect` and fail
    activation when a valid PaymentUnit exists). Same divergence on
    `bednet-spot-check/20260728-2222`. Tracked as dimagi-internal/ace#1026
    (consolidated into the #1022 read-back umbrella); until the atom either
-   parses the DU column or omits what it cannot read, `connect_list_payment_units`
-   is corroboration on `id` / `payment_unit_uuid` / `name` only.
+   parses the DU column or omits what it cannot read,
+   `connect_list_payment_units` is corroboration on **`payment_unit_uuid`
+   and `name` only**.
+
+   **`id` is NOT on that list — it is a per-opp display index, not the
+   server PK (dimagi-internal/ace#1642).** The listing's first column is
+   the row's `#`, so the same PU that `connect_create_payment_units`
+   returned as `id: 2495` reads back as `id: 1` seconds later (observed
+   on `bednet-check-2-visit/20260825-1310`, opp
+   `7cea3952-8375-43ca-979f-53db29302409`). Passing the list's `id`
+   anywhere a server id is required reproduces the `du.id` vs
+   `du.server_id` "Invalid Data" rejection this step already warns about
+   for deliver units. **The durable identifier is
+   `payment_unit_uuid`** — it matches the create response's
+   `payment_unit_id` exactly and is the only field safe to key on.
 
    The check's intent stands — an unwired payment unit is exactly the
    #843 class and must still be caught. It is caught at the create
@@ -752,6 +801,40 @@ alone makes the artifact land outside `4-connect` and fail
      common cause is "no PaymentUnit" — Step 6's verify-after-create
      check should already have failed loudly; if we got here without
      one, the verify-after-create has a gap to file against.
+
+6.6. **Deferred verify-after-create — re-read the dashboard fields now
+   that they are readable (dimagi-internal/ace#1647).**
+
+   Step 4's Write→Read→Compare could not see `start_date`,
+   `total_budget`, `learn_app.cc_app_id` or `deliver_app.cc_app_id`: a
+   never-activated opportunity renders only the edit-form half of
+   `connect_get_opportunity`. Activation (Step 6.5) makes the dashboard
+   half readable, so the deferred comparisons run **here**, against the
+   same payload Step 4 sent.
+
+   - Call `connect_get_opportunity({organization_slug, opportunity_id})`
+     once more.
+   - Compare against the Step 4 request payload:
+     - `start_date` — `YYYY-MM-DD` match
+     - `total_budget` — numeric match
+     - `learn_app.cc_app_id` — bare 32-char match
+     - `deliver_app.cc_app_id` — bare 32-char match
+   - **On any disagreement → `[BLOCKER]`** in the gate brief; log both
+     values to `comms-log/observations.md`; do NOT proceed to Step 7.
+     A wrong `cc_app_id` means the opportunity is wired to the wrong
+     CommCare app, which cascades silently through Phase 6's device walk
+     and Phase 7's accrual.
+   - **If a field is STILL absent after activation, that is a
+     `[BLOCKER]` too — not a pass.** The read surface changed shape;
+     say so verbatim rather than substituting a default or treating the
+     absence as agreement. Never record a comparison you did not
+     perform.
+
+   Do not confuse this with Step 6.5's own verification: activation is
+   still confirmed by Step 7's invite succeeding, never by the scraped
+   `active` flag (see above). This step re-reads *stored configuration
+   values*, which is a different question from *did the state transition
+   land*.
 
 7. **Pre-invite the ACE test user (REQUIRED for PersonalID registration).**
 
@@ -1157,7 +1240,8 @@ The PDD's `archetype:` field shapes verification + payment unit setup:
 - Connect (`ace-connect` MCP, 0.10.47+):
   - `connect_create_opportunity` — REST `POST /api/programs/<id>/opportunities/`
   - `connect_get_opportunity` — verify after create (HTML-driven read,
-    Step 4 verify-after-create)
+    Step 4 verify-after-create, and again at Step 6.6 for the four
+    dashboard fields that are unreadable until activation — ace#1647)
   - `connect_set_verification_flags` — still HTML-driven (no REST yet)
   - `connect_create_payment_units` — REST `POST /api/opportunities/<id>/payment_units/` (atomic list)
   - `connect_list_payment_units` — verify after create (Step 6
@@ -1253,6 +1337,8 @@ decisions_append_rows({
 | 2026-08-12 | **Step 5 rewritten around what Connect's verification form actually has (dimagi-internal/ace#1013).** The step prescribed `gps` / `duplicate` / `catchment_areas` / `location` / `check_attachments`, all five of which were removed from the form — the atom accepts them, Django drops them, and it still returns `ok: true`, so a compliant agent produced an artifact claiming enforcement that never existed. Step 5 now leads with `form_field_rules` (the only server-side Layer A surface), requires reading `question_path` / `question_value` from the RELEASED CCZ rather than the PDD's prose (Nova flattens groups — a rule on a non-existent node enforces nothing and reports success), documents the 25-char `name` cap and the `duration_seconds`-is-really-minutes trap, and requires verifying via `form_field_rules_saved`. Archetype verification lines updated to match. Found live on spark-facilitator/20260810-0737. | ACE team |
 | 2026-08-14 | **Step 5: `question_path` is a JSONPath into the HQ form-JSON doc, not an XForm XPath (dimagi-internal/ace#1301, `blocks-e2e`).** The step (and the atom's own schema) told agents to write `/data/<group>/<question>`. Connect evaluates the field as `jsonpath_ng.ext.parse(f"$.{question_path}")` against the whole forwarded document, so an XPath raises `JsonPathParserError` inside `clean_form_submission` — uncaught on the deliver path — and HQ's forward of every PAYABLE visit returns **HTTP 500**. The device is unaffected (CommCare shows "1 form sent to server!" because HQ *did* accept the submission), so the run looks green while Connect has no visit and the opportunity cannot pay. Observed live on `spark-facilitator/20260813-2126`: motech log 500 for the deliver form, 200 for every registration form on the same app; rewriting the rows to `form.meeting_basics.*` and requeueing the same payload moved Connect from `delivered: 0` to `delivered: 1 / approved: 1`. Correct spelling is `form.<group>.<question>`; `lib/connect-question-path.ts` now normalises `/data/a/b` → `form.a.b` on both incoming and replayed rows so a poisoned opportunity self-repairs. Also: `form_field_rules_saved` is no longer treated as sufficient evidence — it proves storage, not evaluability. | ACE team |
 | 2026-08-14 | **Step 6 verify-after-create re-pointed at the CREATE RESPONSE (dimagi-internal/ace#1026, umbrella #1022).** The step mandated a `[BLOCKER]` when `connect_list_payment_units` returned an empty `required_deliver_units` — but that atom's HTML-scraped read path returns `[]` (and `description: ""`) unconditionally, so the halt condition was a constant of the read path, not a fact about stored state, and a compliant agent would halt every healthy run. Observed on `spark-facilitator/20260813-2126`: create response `required_deliver_units: [6617]`, list call `[]`, opp activated normally. The #843 check's intent is preserved — it now asserts against the create response (Connect's own post-persist serialization), with `connect_list_payment_units` demoted to corroboration on `id` / `payment_unit_uuid` / `name`. | ACE team |
+| 2026-08-25 | **Step 4's verify-after-create no longer asserts four fields it cannot read; new Step 6.6 verifies them post-activation (dimagi-internal/ace#1647).** A never-activated opportunity renders only the edit-form half of `connect_get_opportunity`, so `start_date`, `total_budget`, `learn_app.cc_app_id` and `deliver_app.cc_app_id` were all absent at the moment Step 4 ran — four mandated comparisons passing vacuously on every run while the log read as verified. Same shape as ace#1449 (`passing_score` compared against a field the surface does not render). Step 4 now splits readable-here (`name`, `short_description`, `description`, `end_date`, `is_test`) from deferred, and requires an absent field to be recorded `unreadable-at-this-point` rather than counted as a match; Step 6.6 re-reads after `/activate/` and `[BLOCKER]`s on disagreement OR on continued absence. Verified live on `bednet-check-2-visit/20260825-1310` Phase 4 (same opp, same atom, either side of activation). Upstream half stays on #1637. | ACE team |
+| 2026-08-25 | **Step 6: `id` dropped from the `connect_list_payment_units` corroboration allowlist (dimagi-internal/ace#1642).** The listing's first column is the row `#`, so the PU that `connect_create_payment_units` returned as `id: 2495` reads back as `id: 1` — a per-opp display index, not the server PK, and passing it where a server id is required reproduces the `du.id` vs `du.server_id` rejection. Corroboration is now `payment_unit_uuid` / `name` only, with `payment_unit_uuid` named as the durable identifier. Atom description in `mcp/connect-server.ts` corrected to match. Observed on `bednet-check-2-visit/20260825-1310` Phase 4. | ACE team |
 | 2026-05-10 | State consolidation PR a: retire `connect-state.yaml`; emit a single `run_state.yaml.phases.connect-setup.products.connect` block at end of Step 10. Step 7 holds invite metadata in memory rather than writing immediately. (Initial implementation dual-wrote to `opp.yaml.connect`; corrected on 2026-05-11 — runs are now independent. `opp.yaml.connect.program` is durable cross-run state written by `connect-program-setup`; `opp.yaml.connect.opportunity` / `ace_test_user` are no longer written here.) See `docs/superpowers/specs/2026-05-10-state-consolidation.md`. | ACE team |
 
 <!-- connect_int_id is read directly from the connect_create_opportunity response (ConnectProd integer id); the old post-create labs_context lookup was removed in the jjackson/ace#686 follow-up (the int was always in the create response). -->
