@@ -373,8 +373,19 @@ if [ "$PREFLIGHT" = "1" ]; then
         # entry at every startup without re-attempting auth (nova-plugin#11), so
         # a restart alone does NOT clear it and the halt repeats on every
         # restart. Still `fail`: MCP subprocesses cannot be respawned
-        # in-session, so the restart stays mandatory — this just makes ONE
-        # restart sufficient. See dimagi-internal/ace#1579.
+        # in-session, so the restart stays mandatory — this makes ONE restart
+        # sufficient FOR THE STALE-CACHE CLASS ONLY. See ace#1579.
+        #
+        # It is NOT sufficient when a stored expired OAuth credential is
+        # outranking the headersHelper PAT: there the fresh session rewrites the
+        # entry itself, so no number of restarts helps. Measured on
+        # hh-poverty-targeting/20260824-1404 — cleared at 20:13, session started
+        # 20:43:35 (so it WAS that restart), nova re-cached at 20:45:15 ~100s in,
+        # then cleared and back a second time with no restart between, while a
+        # direct curl with the same PAT returned get_hq_connection
+        # configured:true. Both remediation strings route that recurrence case
+        # to /mcp -> Clear authentication. See ace#1624, ace#1614,
+        # voidcraft-labs/nova-plugin#52.
         if [ -f "$ROOT/scripts/clear-nova-needs-auth-cache.mjs" ]; then
           PF_NOVA_CACHE_CLEAR_RESULT="$(node "$ROOT/scripts/clear-nova-needs-auth-cache.mjs" --file "$PF_NOVA_CACHE_FILE" 2>/dev/null)"
         else
@@ -2325,9 +2336,24 @@ else
       fi
       if [ "$NOVA_CACHE_CLEAR_RESULT" = "cleared" ]; then
         fail "nova_needs_auth_cache: plugin:nova:nova was cached as needs-auth despite valid NOVA_API_KEY" "the stale entry has been CLEARED automatically from $NOVA_NEEDS_AUTH_CACHE.
-       Now Cmd-Q Claude Code and reopen — MCP subprocesses only rebind on a full restart.
+       FIRST occurrence: Cmd-Q Claude Code and reopen — MCP subprocesses only rebind on a full restart.
        Symptom this fixes: only \`mcp__plugin_nova_nova__authenticate\` surfaces, real tools (\`list_apps\` etc.) are missing.
-       Per Braxton's nova-plugin#11."
+       Per Braxton's nova-plugin#11.
+
+       IF YOU HAVE ALREADY RESTARTED once since the last clear and nova still exposes
+       only \`authenticate\`, the cache is NOT the cause and a further restart will loop:
+       a stored OAuth credential is outranking the headersHelper PAT.
+         1. /mcp -> nova -> 'Clear authentication'  (NOT 'Authenticate' — that mints a
+            fresh OAuth token and leaves the session on the wrong credential, without
+            nova.hq.read, so Phase 3 dies later at upload_app_to_hq instead)
+         2. Cmd-Q Claude Code and reopen
+         3. verify BOTH: list_projects returns the PAT's project, AND
+            get_hq_connection returns configured:true  (list_apps alone is NOT enough)
+       Confirm the PAT itself is fine first, so nobody re-diagnoses a good credential:
+         curl -s https://mcp.commcare.app/mcp -H \"Authorization: Bearer \$NOVA_API_KEY\" \\
+           -H 'Content-Type: application/json' -H 'Accept: application/json, text/event-stream' \\
+           -d '{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/call\",\"params\":{\"name\":\"get_hq_connection\",\"arguments\":{}}}'
+       See dimagi-internal/ace#1624, ace#1614, voidcraft-labs/nova-plugin#52."
       else
         fail "nova_needs_auth_cache: plugin:nova:nova cached as needs-auth despite valid NOVA_API_KEY" "auto-clear did not apply ($NOVA_CACHE_CLEAR_RESULT); remove the stuck entry by hand and restart Claude Code (running process won't re-connect on its own):
        node -e 'const f=\"$NOVA_NEEDS_AUTH_CACHE\"; const d=JSON.parse(require(\"fs\").readFileSync(f,\"utf8\")); delete d[\"plugin:nova:nova\"]; require(\"fs\").writeFileSync(f, JSON.stringify(d,null,2)+\"\\n\");'
