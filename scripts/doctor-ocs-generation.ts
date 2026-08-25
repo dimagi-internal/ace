@@ -31,14 +31,22 @@ import {
   extractTracePointer,
   pickGenerationProviderId,
   remediationFor,
+  runGenerationProbeWithRetry,
   type GenerationProbeClass,
 } from '../lib/ocs-generation-probe.js';
 
-// ── The hard cap. rest.ts polls to a 120s deadline, which is far too slow for
-// a preflight that runs on every /ace:run; a capped provider errors in ~6s.
+// ── The hard cap, PER ATTEMPT. rest.ts polls to a 120s deadline, which is far
+// too slow for a preflight that runs on every /ace:run; a capped provider
+// errors in ~6s.
 // Keep this well under 30s — test/scripts/doctor-ocs-generation.test.ts gates
 // it, because a preflight that can hang for two minutes gets removed rather
 // than fixed.
+//
+// A `timeout` classification — and ONLY that one — is retried once before the
+// probe reports (see lib/ocs-generation-probe.ts § Retry policy, ace#1628), so
+// the worst case is two caps (~50s) and only on the already-bad path. Every
+// definitive class fails fast and is never retried, so the common case and the
+// real-failure case are both unchanged.
 const PROBE_TIMEOUT_MS = 25_000;
 
 type Status = 'pass' | 'fail' | 'skip';
@@ -209,41 +217,51 @@ async function probe(): Promise<Result> {
     });
     const composite = new CompositeBackend({ rest, playwright });
 
-    let publicId = '';
-    let embedKey = '';
-    try {
-      const info = await withTimeout(
-        composite.getChatbotEmbedInfo({ experiment_id: Number(gtid) }),
-        PROBE_TIMEOUT_MS,
-        'getChatbotEmbedInfo',
-      );
-      publicId = info.public_id;
-      embedKey = info.embed_key;
-    } catch (e) {
-      return await failure(composite, String((e as Error)?.message ?? e), baseUrl, team, publicId);
-    }
+    // One full round-trip. Retried once — and only on a `timeout`
+    // classification — by runGenerationProbeWithRetry below. The embed-info
+    // handshake is inside the attempt because it is timed out on the same cap:
+    // if IT is what timed out, `publicId` is empty and the retry has to redo it.
+    // The browser context is reused across attempts, so a retry pays for the
+    // round-trip, not another chromium launch.
+    const roundTrip = async (): Promise<Result> => {
+      let publicId = '';
+      let embedKey = '';
+      try {
+        const info = await withTimeout(
+          composite.getChatbotEmbedInfo({ experiment_id: Number(gtid) }),
+          PROBE_TIMEOUT_MS,
+          'getChatbotEmbedInfo',
+        );
+        publicId = info.public_id;
+        embedKey = info.embed_key;
+      } catch (e) {
+        return await failure(composite, String((e as Error)?.message ?? e), baseUrl, team, publicId);
+      }
 
-    try {
-      await withTimeout(
-        composite.sendTestMessage({ public_id: publicId, embed_key: embedKey, message: 'ping' }),
-        PROBE_TIMEOUT_MS,
-        'sendTestMessage',
-      );
-    } catch (e) {
-      return await failure(composite, String((e as Error)?.message ?? e), baseUrl, team, publicId);
-    }
+      try {
+        await withTimeout(
+          composite.sendTestMessage({ public_id: publicId, embed_key: embedKey, message: 'ping' }),
+          PROBE_TIMEOUT_MS,
+          'sendTestMessage',
+        );
+      } catch (e) {
+        return await failure(composite, String((e as Error)?.message ?? e), baseUrl, team, publicId);
+      }
 
-    // Success path: resolve the provider id for the record, best-effort.
-    const providerId = await resolveProviderId(composite, publicId);
-    return {
-      status: 'pass',
-      class: 'ok',
-      summary: 'OCS generated a live response',
-      providerId,
-      trace: null,
-      detail: '',
-      remediation: '',
+      // Success path: resolve the provider id for the record, best-effort.
+      const providerId = await resolveProviderId(composite, publicId);
+      return {
+        status: 'pass',
+        class: 'ok',
+        summary: 'OCS generated a live response',
+        providerId,
+        trace: null,
+        detail: '',
+        remediation: '',
+      };
     };
+
+    return await runGenerationProbeWithRetry(roundTrip);
   } finally {
     await browser.close().catch(() => {});
   }
