@@ -972,6 +972,17 @@ to the opp; add others not listed when they meet the bar.
 | `solicitation-deadline` | Solicitation deadline? | PDD `Solicitation` section |
 | `candidate-llo-roster` | Named candidates or public-only? | `LLO Preference` named entity |
 
+**These base rows are `value_set_by: external` — always.** Their real value is
+fixed by a solicitation response, a contract, or deployment, never by ACE:
+`flw-count`, `payment-rate`, `budget-plausibility`, `named-downstream-consumer`,
+plus the work-order rows `wo-period-of-performance` and
+`wo-total-not-to-exceed-usd`. Still emit your best estimate as `ai-default` and
+keep going — but tag them `external` so the estimate is not read downstream as a
+commitment. Measured across 22 runs of two opps, these are precisely the rows
+that produced a different confident-looking number on nearly every run.
+
+Everything else in the base table is `value_set_by: ace`.
+
 **`atomic-visit` (additive):**
 
 | ID | Question | Map to surface |
@@ -1069,6 +1080,7 @@ decisions:
     source: idea.md §1
     status: ai-default
     evidence_basis: stated
+    value_set_by: ace
     reasoning: Single per-FLW visit producing one structured delivery.
 ```
 
@@ -1079,6 +1091,40 @@ resolves — hand-writing skips the strict write-boundary validation, so
 re-validate against `DecisionsLogSchema` mentally before saving. (This
 exact `rows:`-vs-`decisions:` confusion bit a hand-written fallback when
 `ace-decisions` was unbound — jjackson/ace#782.)
+
+**The `value_set_by` contract (load-bearing, v5).** Every row MUST also
+declare `value_set_by`: `ace` or `external`. It answers a different
+question from `evidence_basis` — not *how well-grounded is this default*
+but *whose value is it in the end*.
+
+- **`ace`** — ACE's judgment to make from the source material. Archetype
+  selection, verification layers, solicitation type. A reviewer may
+  override it; a later run may decide it better.
+- **`external`** — the real value gets fixed later by someone else: a
+  rate negotiated in a solicitation response, dates set on contract
+  execution, an FLW count set at deployment.
+
+**`external` does not defer, escalate, or block anything.** ACE still
+picks a value, still writes it as `ai-default`, and the run still
+proceeds — exactly as before. `"open"` is still not a valid `status`,
+and there is deliberately no `needs-human`. The flag exists so a
+downstream phase does not cite a projection as a settled commitment, and
+so a later run re-deriving it differently reads as *expected* rather
+than as drift.
+
+**Why it was added.** Measured across 22 runs of two opportunities,
+`flw-count`, `payment-rate`, `wo-period-of-performance` and
+`wo-total-not-to-exceed-usd` produced a different confident-looking
+answer on nearly every run. ACE had originally got this right and had
+nowhere to put it: hh-poverty run `20260702-1456` wrote *"Deferred to
+deployment (Annex B); negotiated via solicitation response"* **inside
+the `ai-default` string** on four rows. Prose in a value field is
+invisible to every consumer, so within a few runs all four had become
+specific numbers.
+
+Note the name: **`value_set_by`, not `resolved_by`** — `resolved_by`
+already means something else in this skill (which run closed an
+open-question, § Open questions), and the collision would be silent.
 
 **The `evidence_basis` contract (load-bearing, v4).** Every row MUST
 declare `evidence_basis`: one of `stated`, `inferred`, or `conflicting`.
@@ -1151,6 +1197,7 @@ decisions_append_rows({
       source: "idea.md §1; one-FLW-one-delivery pattern",
       status: "ai-default",
       evidence_basis: "stated",
+      value_set_by: "ace",
       reasoning: "Single per-FLW visit producing one structured delivery."
     },
     {

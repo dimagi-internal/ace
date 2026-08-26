@@ -5,6 +5,18 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.13.999 — 2026-08-26
+
+**`decisions.yaml` v5: a human's ruling is now recorded as a human's ruling, and a projection is no longer mistaken for a decision.**
+
+Two additive fields close a loop that has never once completed in production. Across 22 runs of `spark-facilitator` and `hh-poverty-targeting`, 851 decision rows carry exactly **2** overrides — and neither is a reviewer changing a design call; both are operators overriding a run-control gate. `decision-overrides.yaml` does not exist on either opportunity. Yet 31 rows carry `feedback_ref`, meaning a reviewer demonstrably shaped them: all 31 were stamped `status: ai-default`, so nothing entered the override file, so the next run bound nothing and re-derived each ruling from scratch.
+
+- **`status` gains `human-decided`** (requires `decided_by` + `decided_at`). Distinct from `overridden`: that is the point-and-click path where ACE proposed a value and a human replaced it, keeping both. `human-decided` is for a ruling that arrives as input — a review doc, an email — where there is no ACE proposal to preserve.
+- **`value_set_by: ace | external`** (required on new writes) records whether the value is ACE's to set or gets fixed later by a solicitation response, a contract, or deployment. **This gates nothing.** ACE still picks a value, writes it as `ai-default`, and proceeds. There is deliberately no `needs-human` and no `open` status. The flag stops a projection being cited downstream as settled, and makes a later run re-deriving it read as expected rather than as drift. ACE already made this distinction and had nowhere to put it — hh-poverty's first run wrote *"Deferred to deployment (Annex B); negotiated via solicitation response"* inside the `ai-default` string on four rows, all of which had become confident numbers within a few runs.
+- **`schema_version` is derived from `SUPPORTED_SCHEMA_VERSIONS`** instead of restating it as a literal union. The two had already drifted, which fails as an opaque `schema_version: Invalid input` from inside a write.
+
+Back-compat verified by replay: all 851 rows across all 22 existing runs parse unchanged under v5. Renderer surfaces both new fields so a reviewer can see a decision is already settled by a person before re-litigating their own ruling. Migration notes: `migrations/0.13.999-decisions-v5.md`.
+
 ## 0.13.679 — 2026-07-28
 
 **ACE now reads its secrets from its own `Agent-Ace` 1Password vault (fleet per-agent vault split).**
