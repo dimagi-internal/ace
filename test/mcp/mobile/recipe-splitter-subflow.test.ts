@@ -227,7 +227,11 @@ describe('recipe-splitter — every static palette is split-visible (ace#1570 pr
     'content-form-finish-to-suite.yaml': { trailing: '${SCREENSHOT_NAME}' },
     'content-form-finish.yaml': { trailing: '${SCREENSHOT_NAME}' },
     'deliver-case-select.yaml': { trailing: 'deliver-case-select-selected' },
-    'deliver-form-walk.yaml': { trailing: 'deliver-form-walk-form-question' },
+    // ace#1651: the fixed captures carry a per-invocation `${WALK_LABEL}`
+    // discriminator, so the trailing NAME TEMPLATE (which is what the splitter
+    // records) now includes it. Unbound it expands to the empty string, so the
+    // frame on disk is unchanged for a single-invocation caller.
+    'deliver-form-walk.yaml': { trailing: 'deliver-form-walk-form-question${WALK_LABEL}' },
     'deliver-launch.yaml': { trailing: 'deliver-launch-home' },
     'deliver-sync.yaml': {
       leading: 'deliver-sync-pre',

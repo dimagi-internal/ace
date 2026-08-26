@@ -1314,7 +1314,9 @@ describe('deliver-form-walk.yaml composes the case list in the right ORDER (ace#
 
     // Anchor on content rather than a comment: this screenshot is taken inside
     // Level-2 branch 2a, so it marks where the form-row handling begins.
-    const level2Idx = yaml.indexOf('takeScreenshot: "deliver-form-walk-form-list"');
+    // Prefix match, not an exact one: the capture now carries the ace#1651
+    // per-invocation discriminator (`...-form-list${WALK_LABEL}`).
+    const level2Idx = yaml.indexOf('takeScreenshot: "deliver-form-walk-form-list');
     expect(level2Idx, 'expected the Level-2 form-list screenshot').toBeGreaterThan(-1);
 
     expect(
@@ -1778,6 +1780,104 @@ describe('home-anchored finalize is post_submit-gated (ace#1566)', () => {
           '`content-form-finish-to-suite.yaml`, so an author reading this section alone has ' +
           'nowhere to route a `post_submit: previous` app (ace#1566).',
       ).toContain('content-form-finish-to-suite.yaml');
+    }
+  });
+});
+
+describe('deliver-form-walk per-invocation frame names (dimagi-internal/ace#1651)', () => {
+  // The palette is invoked TWICE in one recipe on every register-then-followup
+  // Deliver smoke (the shape ace#1138 established as necessary for a
+  // case-bound payable unit). Its three fixed captures used to write the same
+  // three filenames on both legs, so leg B silently overwrote leg A's frames.
+  //
+  // Measured on bednet-check-2-visit/20260825-1310 (ACE 0.13.987, a PASSING
+  // run): stdout reported all three captures COMPLETED in each leg, and
+  // exactly one file of each name survived carrying leg B's `takenAt`. The
+  // only frames that survived were the two whose names interpolate
+  // `${MODULE_NAME}` — i.e. the ones that already had a discriminator.
+  //
+  // Per CLAUDE.md's device-truth vs unit-test split, this is the UNIT-TEST
+  // side: the filename derivation is deterministic string handling, and
+  // nothing here changes what is sent to, or matched against, the device.
+
+  const raw = readFileSync(`${STATIC_DIR}deliver-form-walk.yaml`, 'utf8');
+
+  /** Every `takeScreenshot:` NAME TEMPLATE in the recipe body, in order. */
+  function screenshotTemplates(yaml: string): string[] {
+    return yaml
+      .split('\n')
+      .filter((l) => !/^\s*#/.test(l))
+      .map((l) => l.match(/^\s*-\s+takeScreenshot:\s*(?:"([^"]*)"|'([^']*)'|([^\s#]+))\s*$/))
+      .filter((m): m is RegExpMatchArray => m !== null)
+      .map((m) => m[1] ?? m[2] ?? m[3]);
+  }
+
+  /** Maestro substitutes an UNBOUND `${VAR}` with the empty string — the same
+   * semantics this palette's MODULE_NAME/FORM_NAME guards already rely on. */
+  function expand(template: string, env: Record<string, string>): string {
+    return template.replace(/\$\{([A-Z0-9_]+)\}/g, (_m, k: string) => env[k] ?? '');
+  }
+
+  const templates = screenshotTemplates(raw);
+
+  it('takes screenshots at all (the invariant below is non-vacuous)', () => {
+    expect(templates.length).toBeGreaterThanOrEqual(4);
+  });
+
+  it('every capture carries the ${WALK_LABEL} discriminator', () => {
+    for (const t of templates) {
+      expect(t, `capture "${t}" has no per-invocation discriminator`).toContain('${WALK_LABEL}');
+    }
+  });
+
+  it('two invocations with distinct WALK_LABELs produce DISJOINT frame names', () => {
+    // The exact two legs of the run that surfaced this.
+    const legA = templates.map((t) =>
+      expand(t, { MODULE_NAME: 'Register household', WALK_LABEL: '-register' }),
+    );
+    const legB = templates.map((t) =>
+      expand(t, { MODULE_NAME: 'Follow-up spot-check', WALK_LABEL: '-followup' }),
+    );
+    expect(new Set(legA).size).toBe(legA.length);
+    expect(new Set(legB).size).toBe(legB.length);
+    for (const name of legA) {
+      expect(legB, `"${name}" is written by BOTH legs — leg B overwrites leg A`).not.toContain(
+        name,
+      );
+    }
+  });
+
+  it('stays disjoint even when both legs walk the SAME module', () => {
+    // WALK_LABEL, not MODULE_NAME, is what has to carry the distinction —
+    // otherwise the module-row capture (which interpolates MODULE_NAME)
+    // silently re-collides the moment two legs share a module.
+    const legA = templates.map((t) => expand(t, { MODULE_NAME: 'Daily Visit', WALK_LABEL: '-first' }));
+    const legB = templates.map((t) => expand(t, { MODULE_NAME: 'Daily Visit', WALK_LABEL: '-second' }));
+    for (const name of legA) expect(legB).not.toContain(name);
+  });
+
+  it('is byte-identical to the pre-#1651 names when WALK_LABEL is unbound', () => {
+    // Back-compat: an existing single-invocation caller binds nothing and must
+    // keep the exact names its manifests and training decks already reference.
+    const legacy = templates.map((t) => expand(t, { MODULE_NAME: 'Register household' }));
+    expect(legacy).toEqual([
+      'deliver-form-walk-module-list',
+      'deliver-form-walk-module-row-Register household',
+      'deliver-form-walk-form-list',
+      'deliver-form-walk-form-question',
+    ]);
+  });
+
+  it('a bound WALK_LABEL never introduces a path separator into a frame name', () => {
+    // `takeScreenshot` resolves its name as a file path, so a `/` becomes a
+    // DIRECTORY (ace#1236). The collector flattens nested frames back into a
+    // unique stepName, so nothing is lost — but the palette's own template
+    // must not be the thing that introduces one.
+    for (const name of templates.map((t) =>
+      expand(t, { MODULE_NAME: 'Register household', WALK_LABEL: '-register' }),
+    )) {
+      expect(name).not.toContain('/');
+      expect(name).not.toContain('\\');
     }
   });
 });

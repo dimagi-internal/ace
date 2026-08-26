@@ -33,7 +33,6 @@ import { parseAllDocuments } from 'yaml';
 /** Failure classes the probe can surface. Stable strings — telemetry
  * and the SKILL.md remediation table reference them by name. */
 export type SanityFailureClass =
-  | 'module-name-equals-form-name'
   | 'expected-module-not-in-app'
   | 'expected-form-not-in-module'
   | 'tile-name-collision'
@@ -53,7 +52,17 @@ export type SanityFailureClass =
  * check that could not RUN, so a clean verdict isn't read as a clean
  * app. Same "configured vs configured *correctly*" gap the
  * `field_data_supplied` flag closes for the screen-shape checks. */
-export type SanityWarningClass = 'module-form-checks-not-run';
+export type SanityWarningClass =
+  | 'module-form-checks-not-run'
+  /** MODULE_NAME == FORM_NAME. Structurally HANDLED by learn-tap-module's
+   * Branch B since v0.13.255 (PR #331); demoted from a failure to a caveat
+   * in 0.13.99x (ace#1649). It was a failure to flag recipes authored against
+   * an OLDER palette — but a recipe and the palette it runs against ship in
+   * the SAME plugin version, so the un-handled state it guarded is not
+   * reachable, and on bednet-check-2-visit/20260825-1310 it contributed three
+   * of the four `failures[]` entries that halted Phase 6 on a recipe which
+   * then walked green end to end. */
+  | 'module-name-equals-form-name';
 
 export interface SanityFailure {
   class: SanityFailureClass;
@@ -547,13 +556,11 @@ export function probeRecipeSanity(inputs: ProbeInputs): SanityVerdict {
     // palette or accept the (now-handled) intermediate list.
     for (const moduleName of params.moduleNames) {
       if (params.formNames.has(moduleName)) {
-        failures.push({
+        warnings.push({
           class: 'module-name-equals-form-name',
-          detail: `recipe ${recipe.name} parameterizes both MODULE_NAME and FORM_NAME with "${moduleName}" — Connect renders an intermediate list when the names collide`,
-          remediation: `verify ace plugin >= 0.13.255 (handled by learn-tap-module); if older, re-author the recipe via /ace:step app-test-cases`,
+          detail: `recipe ${recipe.name} parameterizes both MODULE_NAME and FORM_NAME with "${moduleName}" — CommCare renders an intermediate one-row form list when the names collide, which learn-tap-module.yaml Branch B (and deliver-form-walk.yaml branch 2b) cross on their own`,
+          remediation: `no action — the intermediate list is handled by the palette that ships with this recipe. Only re-author (/ace:step app-test-cases) if the walk actually stalls on a one-row form list carrying the module's own name.`,
           recipe: recipe.name,
-          parameter: 'MODULE_NAME==FORM_NAME',
-          value: moduleName,
         });
       }
     }
@@ -575,11 +582,39 @@ export function probeRecipeSanity(inputs: ProbeInputs): SanityVerdict {
       }
     }
 
+    // `MODULE_NAME` names ANY SUITE ROW, not necessarily a module (ace#1649).
+    //
+    // `learn-tap-module.yaml` says so in its own header: *"the recipe is called
+    // learn-tap-module for historical reasons (the original recipe assumed a
+    // flat module list). With the atlas-corrected suite-tree understanding, the
+    // same recipe drills any level of the tree — module OR form — by row
+    // text"*, and its `${MODULE_NAME}` parameter doc reads "the visible label of
+    // the row to tap". Branch A of that recipe is precisely the tapped-a-form-row
+    // case. So a recipe that drills to a form row by its own label — exactly as
+    // the palette documents — is CORRECT, and checking the name against modules
+    // alone reports it as live-structure drift.
+    //
+    // Live false positive: bednet-check-2-visit/20260825-1310 (ACE 0.13.987).
+    // `journey-learn.yaml` bound MODULE_NAME "Final check", the FORM inside
+    // module "Spot-check training", after a guarded drill-back into that module.
+    // The probe returned ok:false; the walk then went green end to end.
+    //
+    // Surfaced only because ace#1068 correctly turned this check ON for the
+    // first time (it was blind to nested `runFlow.env`). #1068 is right; this
+    // check's premise is what had to catch up. The check still has teeth: a name
+    // matching NEITHER a module NOR a form anywhere in the app is still drift.
+    const allFormNames = new Set<string>();
+    for (const app of inputs.novaApps) {
+      for (const mod of app.modules) {
+        for (const f of mod.forms) allFormNames.add(f.form_name);
+      }
+    }
+
     for (const moduleName of params.moduleNames) {
-      if (!allModuleNames.has(moduleName)) {
+      if (!allModuleNames.has(moduleName) && !allFormNames.has(moduleName)) {
         failures.push({
           class: 'expected-module-not-in-app',
-          detail: `recipe ${recipe.name} references MODULE_NAME "${moduleName}" but no Nova app has a module with that name (apps checked: ${inputs.novaApps.map(a => a.app_id).join(', ')})`,
+          detail: `recipe ${recipe.name} references MODULE_NAME "${moduleName}" but no Nova app has a module OR a form with that name — MODULE_NAME is the visible label of the suite row to tap, which may be either (apps checked: ${inputs.novaApps.map(a => a.app_id).join(', ')})`,
           remediation: `recipe needs re-author via /ace:step app-test-cases — the live app structure has drifted from what the recipe expects`,
           recipe: recipe.name,
           parameter: 'MODULE_NAME',

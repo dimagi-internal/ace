@@ -26,7 +26,8 @@ export interface LintViolation {
     | 'inputText-scalar-with-sibling-option'
     | 'unknown-property-textRegex'
     | 'runFlow-guard-scope-mismatch'
-    | 'runFlow-unbound-screenshot-name';
+    | 'runFlow-unbound-screenshot-name'
+    | 'repeat-palette-invocation-without-discriminator';
   /** 1-based line number of the offending list-item start. */
   line: number;
   /** Human-readable detail. Stable enough to grep for. */
@@ -86,6 +87,38 @@ export const PALETTE_REQUIRED_SCREENSHOT_ENV: Record<string, readonly string[]> 
   'form-submit.yaml': ['SCREENSHOT_NAME_PRE_SUBMIT', 'SCREENSHOT_NAME_POST_SUBMIT'],
   'content-form-finish.yaml': ['SCREENSHOT_NAME'],
   'content-form-finish-to-suite.yaml': ['SCREENSHOT_NAME'],
+};
+
+/**
+ * Palette subflows whose captures are FIXED strings plus one optional
+ * per-invocation discriminator — and the env key that carries it.
+ *
+ * WHY (dimagi-internal/ace#1651). `PALETTE_REQUIRED_SCREENSHOT_ENV` above
+ * covers palettes whose screenshot name is *entirely* caller-supplied, so an
+ * unbound call site is visible (`undefined.png`). This registry covers the
+ * OTHER shape: a palette that names its own frames, which is perfectly fine
+ * until the SAME palette is invoked twice in one recipe — at which point the
+ * second invocation silently overwrites the first's files. Nothing fails and
+ * nothing warns; the manifest simply holds fewer moments than the walk
+ * observed.
+ *
+ * Measured on bednet-check-2-visit/20260825-1310 (ACE 0.13.987, a PASSING
+ * run): `deliver-form-walk.yaml` ran both legs of a register-then-followup
+ * Deliver smoke, its stdout reported all three captures COMPLETED in each leg,
+ * and exactly one file of each name survived carrying leg B's `takenAt`. Leg
+ * A's registration frames — the evidence the training deck and `app-ux-eval`
+ * draw on — were destroyed. The only frames that survived were the two whose
+ * names interpolate `${MODULE_NAME}`, i.e. the ones that already had a
+ * discriminator by accident.
+ *
+ * The rule below therefore fires only on the shape that actually loses data:
+ * the SAME palette invoked more than once in one recipe, with the
+ * discriminator unbound or bound to the same value twice. A single invocation
+ * is untouched, which is what keeps the discriminator optional and the
+ * unbound default byte-identical to the pre-#1651 names.
+ */
+export const PALETTE_INVOCATION_DISCRIMINATOR: Record<string, string> = {
+  'deliver-form-walk.yaml': 'WALK_LABEL',
 };
 
 /**
@@ -240,6 +273,16 @@ export function lintRecipeText(yaml: string): LintResult {
   // takeScreenshot in the same subflow OVERWRITES the first, silently
   // collapsing a pre/post pair into one image. Both were observed live.
   for (const v of findUnboundScreenshotNames(yaml)) {
+    violations.push(v);
+  }
+
+  // Rule: repeat-palette-invocation-without-discriminator.
+  //
+  // A palette in PALETTE_INVOCATION_DISCRIMINATOR names its own frames from
+  // fixed strings. Invoking it twice in one recipe without giving each call
+  // site a DISTINCT discriminator makes the second invocation overwrite the
+  // first's screenshots — silently, on a passing run (ace#1651).
+  for (const v of findRepeatPaletteInvocations(yaml)) {
     violations.push(v);
   }
 
@@ -429,5 +472,118 @@ function findUnboundScreenshotNames(yaml: string): LintViolation[] {
   for (const doc of docs) {
     if (doc.contents) visit(doc.contents as Node);
   }
+  return out;
+}
+
+/**
+ * Flag every palette in PALETTE_INVOCATION_DISCRIMINATOR that is invoked more
+ * than once in one recipe without a DISTINCT discriminator per call site
+ * (dimagi-internal/ace#1651).
+ *
+ * Two offending shapes, both reported at the SECOND (and any later) call site,
+ * because that is the invocation whose captures destroy the earlier one's:
+ *
+ *   1. the discriminator env key is missing/blank at any call site; or
+ *   2. two call sites bind it to the SAME value.
+ *
+ * A single invocation is never reported — the discriminator is optional by
+ * design so the unbound default stays byte-identical to the pre-#1651 names.
+ */
+function findRepeatPaletteInvocations(yaml: string): LintViolation[] {
+  const out: LintViolation[] = [];
+  let docs: ReturnType<typeof parseAllDocuments>;
+  try {
+    docs = parseAllDocuments(yaml);
+  } catch {
+    return out;
+  }
+
+  const lineOf = (node: Node): number => {
+    const start = (node.range && node.range[0]) ?? 0;
+    return yaml.slice(0, start).split('\n').length;
+  };
+
+  /** Every call site of a tracked palette, in document order. */
+  const calls: { filename: string; line: number; value: string | null }[] = [];
+
+  const record = (host: Node, runFlow: unknown): void => {
+    let filename: string;
+    let env: unknown = null;
+    if (typeof runFlow === 'string') {
+      filename = flowBasename(runFlow);
+    } else if (isMap(runFlow)) {
+      const file = runFlow.get('file');
+      if (typeof file !== 'string') return;
+      filename = flowBasename(file);
+      env = runFlow.get('env', true);
+    } else {
+      return;
+    }
+    const key = PALETTE_INVOCATION_DISCRIMINATOR[filename];
+    if (!key) return;
+    let value: string | null = null;
+    if (isMap(env)) {
+      const raw = env.get(key);
+      if (typeof raw === 'string' && raw.trim() !== '') value = raw;
+    }
+    calls.push({ filename, line: lineOf(host), value });
+  };
+
+  const visit = (node: Node | null): void => {
+    if (node == null) return;
+    if (isSeq(node)) {
+      for (const item of node.items) visit(item as Node);
+      return;
+    }
+    if (!isMap(node)) return;
+    if (node.has('runFlow')) record(node, node.get('runFlow') as unknown);
+    for (const pair of node.items) visit(pair.value as Node);
+  };
+
+  for (const doc of docs) {
+    if (doc.contents) visit(doc.contents as Node);
+  }
+
+  // Group by palette; a palette invoked once is always fine.
+  const byFile = new Map<string, typeof calls>();
+  for (const c of calls) {
+    const list = byFile.get(c.filename) ?? [];
+    list.push(c);
+    byFile.set(c.filename, list);
+  }
+
+  for (const [filename, list] of byFile) {
+    if (list.length < 2) continue;
+    const key = PALETTE_INVOCATION_DISCRIMINATOR[filename];
+    const seen = new Set<string>();
+    // The FIRST call site is the one whose frames survive; report each
+    // LATER one, since that is the invocation doing the overwriting.
+    for (let i = 0; i < list.length; i++) {
+      const c = list[i];
+      const collides = c.value === null || seen.has(c.value);
+      if (c.value !== null) seen.add(c.value);
+      if (i === 0 || !collides) continue;
+      const why =
+        c.value === null
+          ? `binds no \`${key}\``
+          : `binds \`${key}: "${c.value}"\`, the same value an earlier call site already used`;
+      out.push({
+        rule: 'repeat-palette-invocation-without-discriminator',
+        line: c.line,
+        detail:
+          `runFlow into \`${filename}\` at line ${c.line} is invocation #${i + 1} of that palette ` +
+          `in this recipe and ${why}. That palette names its captures from FIXED strings plus ` +
+          `\`\${${key}}\`, so without a distinct discriminator this invocation OVERWRITES the ` +
+          `earlier one's screenshots — silently, on a passing run (dimagi-internal/ace#1651: a ` +
+          `register-then-followup Deliver smoke lost leg A's registration frames on every run).`,
+        remediation:
+          `give every call site of \`${filename}\` a DISTINCT \`${key}\`, including the leading ` +
+          `separator, e.g.\n- runFlow:\n    file: ${filename}\n    env:\n      ${key}: "-register"\n` +
+          `...\n- runFlow:\n    file: ${filename}\n    env:\n      ${key}: "-followup"\n` +
+          `Keep it a \`[a-z0-9-]\` slug — the name resolves as a file path.`,
+      });
+    }
+  }
+
   return out;
 }

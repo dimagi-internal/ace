@@ -31,11 +31,46 @@
 #
 # ── MODULE_NAME / FORM_NAME SCOPING (dimagi-internal/ace#1138) ──────────────
 #
-# Parameters (BOTH OPTIONAL — omit both for the legacy single-module behavior):
+# Parameters (ALL OPTIONAL — omit them all for the legacy single-module
+# behavior):
 #   ${MODULE_NAME} — visible label of the MODULE row to tap in the module list
 #                    (e.g. "Community Meeting Record").
 #   ${FORM_NAME}   — visible label of the FORM row inside that module, when it
 #                    DIFFERS from ${MODULE_NAME}.
+#   ${WALK_LABEL}  — per-INVOCATION screenshot discriminator; see below.
+#
+# ── ${WALK_LABEL}: why the fixed captures need a discriminator (ace#1651) ───
+#
+# This palette is invoked TWICE in one recipe on every register-then-followup
+# Deliver smoke (the shape ace#1138 established as necessary for a case-bound
+# payable unit): once for the registration form, once for the payable
+# follow-up. Its captures used to be FIXED strings, so the second invocation
+# silently OVERWROTE the first's frames — leg A's registration evidence was
+# destroyed on every such run, on a PASSING run, with nothing failing and
+# nothing warning.
+#
+# Measured on bednet-check-2-visit/20260825-1310 (ACE 0.13.987, status: pass):
+# the recipe stdout shows all three captures running in BOTH legs, but only one
+# file of each name survives and its `takenAt` is leg B's (23:44) — leg A's
+# (23:42) is gone. The two frames that DID survive are exactly the two whose
+# names interpolate `${MODULE_NAME}`; the collision is caused by the ABSENCE of
+# a per-invocation discriminator, and the row that happens to have one is
+# unaffected. That is the diagnostic, and the fix follows from it directly:
+# every capture below now carries `${WALK_LABEL}`.
+#
+# BACK-COMPAT. Unbound, Maestro substitutes the empty string (the same
+# semantics the MODULE_NAME/FORM_NAME guards below already rely on), so a
+# single-invocation caller that binds nothing gets BYTE-IDENTICAL names to the
+# pre-#1651 palette. Nothing existing has to change.
+#
+# CALLER CONTRACT. Bind a short slug — `WALK_LABEL: "-register"` /
+# `"-followup"` — INCLUDING the leading separator, so the unbound default stays
+# clean. Keep it `[a-z0-9-]`: `takeScreenshot` resolves its name as a file path,
+# so a `/` becomes a DIRECTORY (ace#1236 — the collector flattens nested frames
+# back into a unique `stepName`, so nothing is lost, but a slug is what you
+# want in a filename). Two invocations in one recipe MUST bind DIFFERENT
+# values; `lintRecipeText`'s `repeat-palette-invocation-without-discriminator`
+# rule fails the recipe otherwise, so this cannot regress silently again.
 #
 # WHY THIS EXISTS. This recipe used to tap the FIRST `row_txt` row at each of
 # the two menu levels, on the stated assumption that "the deliver smoke is one
@@ -100,7 +135,7 @@ appId: org.commcare.dalvik
     visible:
       id: "${SELECTOR:deliver-suite-menu}"
     timeout: 15000
-- takeScreenshot: "deliver-form-walk-module-list"
+- takeScreenshot: "deliver-form-walk-module-list${WALK_LABEL}"
 
 # ── LEVEL 1: module row ────────────────────────────────────────────────────
 # Named branch. Body-scoped so the tap lands on the tappable row, not the
@@ -112,7 +147,7 @@ appId: org.commcare.dalvik
         below:
           id: "${SELECTOR:deliver-suite-menu}"
     commands:
-      - takeScreenshot: "deliver-form-walk-module-row-${MODULE_NAME}"
+      - takeScreenshot: "deliver-form-walk-module-row-${MODULE_NAME}${WALK_LABEL}"
       - tapOn:
           text: "${MODULE_NAME}"
           below:
@@ -197,7 +232,7 @@ appId: org.commcare.dalvik
       notVisible:
         id: "${SELECTOR:form-nav-next}"
     commands:
-      - takeScreenshot: "deliver-form-walk-form-list"
+      - takeScreenshot: "deliver-form-walk-form-list${WALK_LABEL}"
       - runFlow:
           when:
             visible:
@@ -269,4 +304,4 @@ appId: org.commcare.dalvik
     visible:
       id: "${SELECTOR:form-nav-next}"
     timeout: 15000
-- takeScreenshot: "deliver-form-walk-form-question"
+- takeScreenshot: "deliver-form-walk-form-question${WALK_LABEL}"
