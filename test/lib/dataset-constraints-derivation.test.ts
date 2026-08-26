@@ -238,12 +238,63 @@ describe('scrubOffBranchFields (#1658 defect 2 — the remedy that actually exis
   });
 
   it('reports a field it could never locate rather than reporting a silent zero', () => {
-    const rows = [{ consent_confirmed: 'no' }];
+    // The gate MATCHES here, so the form did ask for `ghost` — and it is
+    // nowhere. That is the nesting-mismatch case this report exists for.
+    // (Pre-#1695 this row used `consent_confirmed: 'no'`, i.e. a gate that
+    // never matched, which is the case #1695 showed is NOT a finding.)
+    const rows = [{ consent_confirmed: 'yes' }];
     const { report } = scrubOffBranchFields(rows, [
       { field: 'ghost', path: '/data/x/ghost', requiredWhen: { field: 'consent_confirmed', equals: 'yes' } },
     ]);
     expect(report.unresolvedFields).toEqual(['ghost']);
     expect(formatScrubReport(report)).toMatch(/UNRESOLVED/);
+  });
+
+  // ── ace#1695: resolution is per FIELD, over the conjunction of its gates ──
+  //
+  // The scrub-side half of ace#1693/#1694. `specFromDeliverApp` emits one spec
+  // per gate, so asking "did I find this field somewhere" once per SPEC reports
+  // a field as unresolved whenever a SINGLE gate matched — even though the form
+  // only ever asks for it when they ALL match.
+  //
+  // The gates below are the two the spark-facilitator deliver app
+  // (28464041b4d54511af2989f4349fce30 v14, opp 2219) declares for
+  // /data/meeting_classification/step_phase_2, verbatim.
+  const STEP_PHASE_2_GATES: ConditionalFieldSpec[] = [
+    {
+      field: 'step_phase_2',
+      path: '/data/meeting_classification/step_phase_2',
+      requiredWhen: {
+        field: 'meeting_conducted',
+        path: '/data/meeting_details/meeting_conducted',
+        equals: 'yes',
+      },
+    },
+    {
+      field: 'step_phase_2',
+      path: '/data/meeting_classification/step_phase_2',
+      requiredWhen: { field: 'phase', path: '/data/meeting_classification/phase', equals: '2' },
+    },
+  ];
+
+  it('does NOT report a field whose gates never all match — it was never asked (#1695)', () => {
+    // Every pilot community sits in FCAP phase 1 (Goal Setting, Steps 1-7), so
+    // step_phase_2 is never asked and is correctly absent from every record.
+    const rows = [
+      { form: { meeting_details: { meeting_conducted: 'yes' }, meeting_classification: { phase: '1', step_phase_1: '3' } } },
+      { form: { meeting_details: { meeting_conducted: 'yes' }, meeting_classification: { phase: '1', step_phase_1: '4' } } },
+    ];
+    const { report } = scrubOffBranchFields(rows, STEP_PHASE_2_GATES);
+    expect(report.unresolvedFields).toEqual([]);
+  });
+
+  it('still reports a multi-gated field when EVERY gate matched and it is missing (#1695)', () => {
+    const rows = [
+      { form: { meeting_details: { meeting_conducted: 'yes' }, meeting_classification: { phase: '2' } } },
+    ];
+    const { report } = scrubOffBranchFields(rows, STEP_PHASE_2_GATES);
+    // Reported once, not once per gate.
+    expect(report.unresolvedFields).toEqual(['step_phase_2']);
   });
 
   it('counts records with no gate field rather than deleting on a guess', () => {
