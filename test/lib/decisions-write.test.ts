@@ -25,7 +25,7 @@ const VALID_ROW = {
   status: "ai-default" as const,
   reasoning: "Single per-FLW visit producing one structured delivery.",
   evidence_basis: "stated" as const,
-  resolved_by: "ace" as const,
+  value_set_by: "ace" as const,
 };
 
 const WO_ROW = {
@@ -38,7 +38,7 @@ const WO_ROW = {
   source: "pdd-timeline",
   status: "ai-default" as const,
   evidence_basis: "inferred" as const,
-  resolved_by: "external" as const,
+  value_set_by: "external" as const,
 };
 
 describe("composeAppendedLog — seeding a new log", () => {
@@ -403,7 +403,7 @@ const SEEDED_LOG = [
   "    source: idea.md §1",
   "    status: ai-default",
   "    evidence_basis: stated",
-  "    resolved_by: ace",
+  "    value_set_by: ace",
   "",
 ].join("\n");
 

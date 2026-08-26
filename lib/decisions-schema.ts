@@ -34,7 +34,7 @@ import yaml from "yaml";
  *   `decision-overrides.yaml` and every one of those rulings was re-derived
  *   from scratch on the next run.
  *
- * - `resolved_by` records whether the value is ACE's to set (`ace`) or
+ * - `value_set_by` records whether the value is ACE's to set (`ace`) or
  *   arrives later from outside (`external`) — a negotiated rate, a contract
  *   date, a cohort size fixed at deployment. ACE still emits its best
  *   estimate and keeps going either way; nothing blocks and there is no
@@ -46,7 +46,7 @@ import yaml from "yaml";
  *   all of which had become confident numbers within a few runs.
  *
  * All three fields are OPTIONAL on the permissive read schema (pre-v5 logs
- * lack them). `resolved_by` is REQUIRED on new strict writes.
+ * lack them). `value_set_by` is REQUIRED on new strict writes.
  */
 export const DECISIONS_SCHEMA_VERSION = 5 as const;
 
@@ -149,7 +149,7 @@ export const DecisionRowSchema = z
           "`overridden`: ACE proposed `ai-default` and a human replaced it via the override path, " +
           "which keeps both values. " +
           "Note this axis is about AUTHORSHIP only — it never gates or blocks a run. " +
-          "Whether a value is ACE's to set at all is `resolved_by`, a separate question.",
+          "Whether a value is ACE's to set at all is `value_set_by`, a separate question.",
       ),
     decided_by: z
       .string()
@@ -170,7 +170,7 @@ export const DecisionRowSchema = z
         "When the person ruled. REQUIRED when `status: human-decided`. This is the ruling's own " +
           "date, not the run's — a ruling from a prior run keeps its original date when carried forward.",
       ),
-    resolved_by: z
+    value_set_by: z
       .enum(["ace", "external"])
       .optional()
       .describe(
@@ -316,14 +316,14 @@ export const DecisionRowStrictSchema = DecisionRowSchema.superRefine(
     // best estimate and proceeds either way. It exists so a projection is not
     // read downstream as a settled decision, and so the re-derivation of a
     // projection on the next run is legible as expected rather than as drift.
-    if (row.resolved_by === undefined) {
+    if (row.value_set_by === undefined) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         message:
-          "`resolved_by` is required on every new decision row — 'ace' (ACE's judgment to make " +
+          "`value_set_by` is required on every new decision row — 'ace' (ACE's judgment to make " +
           "from the source material) or 'external' (the real value is fixed later by a solicitation " +
           "response, a contract, or deployment; ACE's value is its best estimate and still ships).",
-        path: ["resolved_by"],
+        path: ["value_set_by"],
       });
     }
     // v4: every new row must declare how grounded the default is. This is the
@@ -386,7 +386,7 @@ export const DecisionsLogSchema = z
       )
       .describe(
         `Decisions-log schema version. Reads accept ${SUPPORTED_SCHEMA_VERSIONS.join(", ")} ` +
-          `(v3 legacy has no \`evidence_basis\`; v4 has no \`resolved_by\`); ` +
+          `(v3 legacy has no \`evidence_basis\`; v4 has no \`value_set_by\`); ` +
           `new logs are seeded at v${DECISIONS_SCHEMA_VERSION} (DECISIONS_SCHEMA_VERSION).`,
       ),
     opportunity: z.string().min(1),

@@ -1336,7 +1336,7 @@ decisions_append_rows({
       source: "PDD §6/§8 verification mechanism",
       status: "ai-default",
       evidence_basis: "stated",
-      resolved_by: "ace",
+      value_set_by: "ace",
       reasoning: "Smoke opp — no GPS or photo capture in scope; duplicate guard only."
     },
     ...

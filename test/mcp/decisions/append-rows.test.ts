@@ -114,7 +114,7 @@ const ROW_1 = {
   source: 'idea.md §1',
   status: 'ai-default' as const,
   evidence_basis: 'stated' as const,
-  resolved_by: "ace" as const,
+  value_set_by: "ace" as const,
 };
 
 const ROW_2_WO = {
@@ -127,7 +127,7 @@ const ROW_2_WO = {
   source: 'pdd-timeline',
   status: 'ai-default' as const,
   evidence_basis: 'inferred' as const,
-  resolved_by: "external" as const,
+  value_set_by: "external" as const,
 };
 
 describe('findDecisionsFile', () => {

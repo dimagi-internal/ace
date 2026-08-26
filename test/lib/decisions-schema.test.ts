@@ -463,7 +463,7 @@ describe("DecisionRowStrictSchema (write-boundary invariants)", () => {
       status: "ai-default",
       reasoning: "Per-FLW per-POC visit, no group facilitation, no stage gates.",
       evidence_basis: "stated",
-      resolved_by: "ace",
+      value_set_by: "ace",
     };
     expect(() => DecisionRowStrictSchema.parse(row)).not.toThrow();
   });
@@ -559,7 +559,7 @@ describe("DecisionRowStrictSchema (write-boundary invariants)", () => {
       source: "src",
       status: "overridden",
       evidence_basis: "stated",
-      resolved_by: "ace",
+      value_set_by: "ace",
     };
     expect(() => DecisionRowStrictSchema.parse(row)).not.toThrow();
   });
@@ -625,7 +625,7 @@ describe("evidence_basis + conflict_signals (v4)", () => {
         DecisionRowStrictSchema.parse({
           ...base,
           evidence_basis: basis,
-          resolved_by: "ace",
+          value_set_by: "ace",
         }),
       ).not.toThrow();
     },
@@ -636,7 +636,7 @@ describe("evidence_basis + conflict_signals (v4)", () => {
       DecisionRowStrictSchema.parse({
         ...base,
         evidence_basis: "inferred",
-        resolved_by: "ace",
+        value_set_by: "ace",
         conflict_signals: ["a", "b"],
       }),
     ).toThrow(/conflict_signals.*only valid when.*conflicting/);
@@ -647,7 +647,7 @@ describe("evidence_basis + conflict_signals (v4)", () => {
       DecisionRowStrictSchema.parse({
         ...base,
         evidence_basis: "conflicting",
-        resolved_by: "ace",
+        value_set_by: "ace",
       }),
     ).toThrow(/conflict_signals.*at least 2/);
   });
@@ -657,7 +657,7 @@ describe("evidence_basis + conflict_signals (v4)", () => {
       DecisionRowStrictSchema.parse({
         ...base,
         evidence_basis: "conflicting",
-        resolved_by: "ace",
+        value_set_by: "ace",
         conflict_signals: ["only one reading"],
       }),
     ).toThrow(/conflict_signals.*at least 2/);
@@ -667,7 +667,7 @@ describe("evidence_basis + conflict_signals (v4)", () => {
     const row = {
       ...base,
       evidence_basis: "conflicting" as const,
-      resolved_by: "ace" as const,
+      value_set_by: "ace" as const,
       conflict_signals: [
         "Exploration App § Visit structure: describes ONE instrument (Sections 1-6), no distinct Visit-2 content",
         "Exploration App § Open-Q4 + Photos: households are 'visited twice' / 'across both visits'",
@@ -688,7 +688,7 @@ describe("evidence_basis + conflict_signals (v4)", () => {
         {
           ...base,
           evidence_basis: "conflicting" as const,
-          resolved_by: "ace" as const,
+          value_set_by: "ace" as const,
           conflict_signals: [
             "Exploration App § Visit structure: one instrument",
             "Exploration App § Open-Q4: visited twice",
@@ -714,7 +714,7 @@ describe("provenance + resolution owner (v5)", () => {
     options: ["GPS on every outcome", "GPS only on payable outcomes"],
     source: "REVIEWER FEEDBACK D2 [c]",
     evidence_basis: "stated" as const,
-    resolved_by: "ace" as const,
+    value_set_by: "ace" as const,
   };
 
   // ── status: human-decided ───────────────────────────────────────────────
@@ -788,20 +788,20 @@ describe("provenance + resolution owner (v5)", () => {
     ).toThrow(/only valid on status=human-decided/);
   });
 
-  // ── resolved_by ─────────────────────────────────────────────────────────
+  // ── value_set_by ─────────────────────────────────────────────────────────
   // This axis is deliberately NOT an escalation path. ACE fills `ai-default`
   // and proceeds on both values; `external` only marks the value as a
   // projection of something a solicitation response or contract will fix.
 
-  it("strict write schema: REQUIRES resolved_by on a new row", () => {
-    const { resolved_by: _omitted, ...withoutOwner } = base;
+  it("strict write schema: REQUIRES value_set_by on a new row", () => {
+    const { value_set_by: _omitted, ...withoutOwner } = base;
     expect(() =>
       DecisionRowStrictSchema.parse({ ...withoutOwner, status: "ai-default" }),
-    ).toThrow(/resolved_by/);
+    ).toThrow(/value_set_by/);
   });
 
-  it("permissive read schema: resolved_by is OPTIONAL (pre-v5 logs lack it)", () => {
-    const { resolved_by: _omitted, ...withoutOwner } = base;
+  it("permissive read schema: value_set_by is OPTIONAL (pre-v5 logs lack it)", () => {
+    const { value_set_by: _omitted, ...withoutOwner } = base;
     expect(() =>
       DecisionRowSchema.parse({ ...withoutOwner, status: "ai-default" }),
     ).not.toThrow();
@@ -816,15 +816,15 @@ describe("provenance + resolution owner (v5)", () => {
       options: ["USD 1.50-3.00 per verified survey", "USD 0.75-1.25 per verified survey"],
       status: "ai-default",
       evidence_basis: "inferred",
-      resolved_by: "external",
+      value_set_by: "external",
     });
     expect(parsed.status).toBe("ai-default");
     expect(effectiveValue(parsed)).toBe("USD 1.50-3.00 per verified survey");
   });
 
-  it("rejects an out-of-enum resolved_by", () => {
+  it("rejects an out-of-enum value_set_by", () => {
     expect(() =>
-      DecisionRowSchema.parse({ ...base, status: "ai-default", resolved_by: "deferred" }),
+      DecisionRowSchema.parse({ ...base, status: "ai-default", value_set_by: "deferred" }),
     ).toThrow();
   });
 

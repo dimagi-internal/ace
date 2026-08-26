@@ -296,7 +296,7 @@ function renderDecision(builder: RequestBuilder, row: DecisionRow): void {
   // Resolution owner (v5; absent on legacy pre-v5 rows). Marks a value that is
   // ACE's best estimate of something someone else will actually fix later, so a
   // reviewer does not read a projection as a settled commitment.
-  if (row.resolved_by === "external") {
+  if (row.value_set_by === "external") {
     builder.appendBoldPrefix(
       "Set externally:",
       "this value is fixed later (solicitation response / contract / deployment). " +

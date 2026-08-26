@@ -157,7 +157,7 @@ describe("renderDecisionsLog", () => {
           ...MINIMAL_LOG.decisions[0]!,
           id: "visit-cadence-and-form-model",
           evidence_basis: "conflicting",
-          resolved_by: "ace",
+          value_set_by: "ace",
           conflict_signals: [
             "Exploration App § Visit structure: one instrument",
             "Exploration App § Open-Q4: visited twice",
