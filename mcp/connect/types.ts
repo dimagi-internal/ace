@@ -350,10 +350,15 @@ export interface LearnProgress {
  * assertion that a delivery actually EXISTS server-side.
  *
  * `approved` is stronger still: a delivery can be submitted and then rejected
- * by verification, which is precisely the "one payment unit registers"
- * criterion `app-test-cases.yaml` declares. Assert `approved >= 1` when the
- * journey claims a payment unit registered; assert `delivered >= 1` when it
- * only claims the visit reached Connect.
+ * by verification, so `delivered >= 1` does not prove payability. It is NOT,
+ * however, a criterion `app-test-cases.yaml` declares — no `approved` /
+ * "one payment unit registers" criterion exists in that artifact (ace#1667).
+ * And it is structurally unreachable on any opportunity whose deliver-unit
+ * duration floor exceeds a machine-speed Maestro walk, because Connect
+ * correctly REJECTS the sub-floor visit. So `delivered >= 1` is the hard
+ * assertion, and `approved >= 1` is conditional on the walk being able to
+ * clear that floor — see `skills/app-screenshot-capture/SKILL.md` Step 5's
+ * `deliver-gate` block for the branch and its measurement.
  *
  * Mirrors jjackson/ace#897's lesson on the Learn side: the device is not
  * authoritative about completion — Connect is.

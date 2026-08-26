@@ -37,21 +37,45 @@
  * tools that each need pristine state, run back to back, guarantee the second
  * sees dirty state.
  *
- * ## #1365 — the artifact framed under a fixed header
+ * ## #1365 — the artifact framed under a fixed header (RETRACTED, ace#1660)
  *
- * The labs page has a **~72px fixed top bar**. `scroll_to` uses Playwright's
- * `scroll_into_view_if_needed`, which lands the artifact's top edge at y < 72
- * — underneath the bar. The scene captures, the action reports ok, and seven
- * independent judges rediscovered the same defect in different words
- * (`motion_friction` 2 on 7 of 12 scenes; concept eval **2/5, fail**). The
- * control case is decisive: the only two scenes scoring 4 are the two that
- * scroll to `bottom`, where no fixed header can occlude anything.
+ * This module used to carry a `scroll-under-fixed-header` check: it flagged
+ * every `scroll_to` whose `offset` was under 72px and told the author to pass
+ * `offset: 96`. **Both halves were wrong, and the check is deleted. Do not
+ * re-add it.**
+ *
+ * 1. **The remediation named a field canopy REJECTS.** `ScrollToAction` in
+ *    canopy's `runtime/scripts/narrative/models.py` declares only `kind` and
+ *    `target` (plus `note` / `must_succeed` / `timeout_ms` from `_ActionBase`),
+ *    and `_ActionBase` sets `model_config = ConfigDict(extra="forbid")` — which
+ *    its own docstring calls "the whole point of the discriminated union".
+ *    Constructed against canopy 0.2.423:
+ *    `ScrollToAction(kind="scroll_to", target="…", offset=96)` →
+ *    `('offset',) Extra inputs are not permitted`. An author who followed the
+ *    remediation converted a passing spec into one canopy refuses.
+ *
+ * 2. **The premise was stale.** The recorder does not stop at
+ *    `scroll_into_view_if_needed`. `runtime/scripts/walkthrough/_lib/recorder.py`
+ *    chases it with an explicit centring scroll —
+ *    `window.scrollTo({top: y + window.scrollY - window.innerHeight / 2})` —
+ *    which puts the element's top edge at the vertical CENTRE of the viewport,
+ *    unreachable by a 72px fixed bar on any viewport taller than ~144px. That
+ *    is ace#1365's own fix, closed COMPLETED 2026-08-14; the check outlived it
+ *    and kept reporting a defect that had already been repaired.
+ *
+ * On bednet-check-2-visit/20260825-1310 it drew 5 findings, all false, on a
+ * spec that validates clean. There is no `offset`-shaped field in canopy's
+ * schema at any level, so the only honest levers on framing today are `scroll`
+ * to `top`/`bottom` (its `value` takes a pixel offset) or a per-scene
+ * `viewport`. This is the same shape as ace#1519 — a checker inventing syntax
+ * for a system it does not own — which is why the remediation vocabulary is
+ * now pinned by a test (see `test/lib/ddd-scene-actions.test.ts`).
  *
  * ## Scope
  *
  * The RUNTIME halves belong in canopy's walkthrough runner — resolving an
  * ambiguous `text:` target to the interactive node, comparing a gate against
- * the captured before-frame, replaying restores, and offsetting the scroll.
+ * the captured before-frame, and replaying restores.
  * This module is the ACE half: what `demo-narrative` can decide about its own
  * spec before handing off to the DDD loop.
  */
@@ -59,8 +83,6 @@
 export interface SceneAction {
   kind: string;
   target?: string;
-  /** Pixels to leave above the artifact — see #1365. */
-  offset?: number;
 }
 
 export interface DddScene {
@@ -73,8 +95,7 @@ export interface DddScene {
 export type SceneFindingKind =
   | 'ambiguous-text-target'
   | 'non-discriminating-gate'
-  | 'mutation-without-restore'
-  | 'scroll-under-fixed-header';
+  | 'mutation-without-restore';
 
 export interface SceneFinding {
   kind: SceneFindingKind;
@@ -87,23 +108,29 @@ export interface SceneReport {
   findings: SceneFinding[];
 }
 
-/** The labs shell's fixed top bar, measured on spark-facilitator (#1365). */
-export const FIXED_HEADER_PX = 72;
+/**
+ * canopy's recorder prefixes, verbatim.
+ *
+ * `_PREFIXES = ("css", "text", "testid", "aria", "role")` with
+ * `_PREFIX_SEPARATOR = ":"` in
+ * `runtime/scripts/walkthrough/_lib/targets.py` (read against canopy 0.2.423).
+ * `parse_target` looks for an exact `<prefix>:` match and returns
+ * `("auto", target)` for everything else — so any OTHER spelling (`css=`,
+ * `label:`, `xpath=`) falls through to the bare-string heuristic, i.e. the very
+ * ambiguous-text resolution these checks exist to guard against. There is no
+ * `=` form. (ace#1519.)
+ */
+const RECORDER_PREFIXES = ['css', 'text', 'testid', 'aria', 'role'] as const;
 
 /**
- * Selector forms that name a CONTROL rather than whatever text matches first.
- *
- * These are exactly canopy's recorder prefixes, minus `text:` (the ambiguous
- * form this check exists to catch). The recorder's separator is `:` and it
- * accepts NO `=` form — `_PREFIXES = ("css", "text", "testid", "aria", "role")`
- * with `_PREFIX_SEPARATOR = ":"` in
- * `runtime/scripts/walkthrough/_lib/targets.py`; anything else falls through
- * `parse_target` to the bare-string heuristic, i.e. the very ambiguous-text
- * resolution being guarded against. (ace#1519 — the old `=`-flavoured regex
- * matched zero real prefixes: it flagged correct `css:` targets AND its
- * remediation told authors to write forms the recorder does not recognise.)
+ * The subset that names a CONTROL rather than whatever text matches first —
+ * every recorder prefix except `text:` (the ambiguous form). `role:` also takes
+ * a name segment (`role:button:Save`), which is why matching is prefix-only.
  */
 const CONTROL_SELECTOR = /^(css:|testid:|aria:|role:)/i;
+
+/** Strips any recorder prefix, so a word count sees the author's words only. */
+const ANY_RECORDER_PREFIX = new RegExp(`^(${RECORDER_PREFIXES.join('|')}):`, 'i');
 
 /**
  * Verbs whose click CREATES or DESTROYS something, so the same action finds a
@@ -113,7 +140,7 @@ const MUTATING_VERB =
   /\b(draft|create|send|submit|award|approve|reject|delete|discard|publish|invite|assign|archive)\b/i;
 
 function targetText(t: string | undefined): string {
-  return (t ?? '').replace(/^text:/i, '').trim();
+  return (t ?? '').replace(ANY_RECORDER_PREFIX, '').trim();
 }
 
 export function checkSceneActions(scenes: DddScene[]): SceneReport {
@@ -134,7 +161,7 @@ export function checkSceneActions(scenes: DddScene[]): SceneReport {
           detail:
             `click targets "${a.target}" by TEXT. A text selector resolves .first() in DOM order, and ` +
             'clicking a non-interactive node SUCCEEDS — so the action reports ok while nothing happens. ' +
-            'Target the control with a recorder prefix: css: / testid: / aria: / role:',
+            'Target the control with a recorder prefix — css: / testid: / aria: / role:',
         });
       }
 
@@ -143,8 +170,8 @@ export function checkSceneActions(scenes: DddScene[]): SceneReport {
           kind: 'mutation-without-restore',
           scene: name,
           detail:
-            `click "${targetText(a.target)}" creates or destroys a persistent object, so this scene is ` +
-            'NOT idempotent: on the second render the same action finds a different affordance and ' +
+            `click "${a.target}" creates or destroys a persistent object, so this scene is ` +
+            'NOT idempotent — on the second render the same action finds a different affordance and ' +
             'fails. Declare a `restore:` block that returns the page to this scene\'s precondition — ' +
             'and note it must run before EVERY render and before every frame-fit pass, since the ' +
             'verifier replays these actions too',
@@ -155,9 +182,23 @@ export function checkSceneActions(scenes: DddScene[]): SceneReport {
         // A gate must name something only the POST state contains. The tell of
         // a gate that cannot discriminate is that it is a bare prefix — no
         // number, no changed word — of text present either way.
+        //
+        // The heuristic is a WORD COUNT, so it only means anything on a target
+        // made of words. A control selector (`testid:`/`css:`/`aria:`/`role:`)
+        // names one specific element by id, and whether that element is present
+        // only in the post-state is a fact about the DOM that no amount of
+        // counting its id's words can answer — `testid:coverage-table` would be
+        // flagged and `testid:coverage-table-9` waved through, for the same
+        // gate. So: skip the heuristic when the author has already named a
+        // control, and apply it to `text:`/bare targets, whose words ARE the
+        // gate. Before ace#1660 only `text:` was stripped, so every control
+        // selector was measured with its prefix still attached and flagged
+        // unless its id happened to contain a digit — penalising exactly the
+        // form `ambiguous-text-target` tells authors to use.
+        const named = CONTROL_SELECTOR.test(a.target ?? '');
         const gate = targetText(a.target);
         const discriminating = /\d/.test(gate) || gate.split(/\s+/).length >= 4;
-        if (!discriminating) {
+        if (!named && !discriminating) {
           findings.push({
             kind: 'non-discriminating-gate',
             scene: name,
@@ -168,21 +209,6 @@ export function checkSceneActions(scenes: DddScene[]): SceneReport {
         }
       }
 
-      if (a.kind === 'scroll_to') {
-        const t = targetText(a.target).toLowerCase();
-        const anchored = t === 'bottom' || t === 'top';
-        if (!anchored && (a.offset ?? 0) < FIXED_HEADER_PX) {
-          findings.push({
-            kind: 'scroll-under-fixed-header',
-            scene: name,
-            detail:
-              `scroll_to "${targetText(a.target)}" has no offset clearing the ~${FIXED_HEADER_PX}px fixed ` +
-              'top bar. scroll_into_view_if_needed lands the artifact\'s top edge underneath it — the ' +
-              'scene still captures and the action still reports ok, the frame is just wrong. Pass ' +
-              `offset: ${FIXED_HEADER_PX + 24} or scroll to bottom`,
-          });
-        }
-      }
     }
   }
 

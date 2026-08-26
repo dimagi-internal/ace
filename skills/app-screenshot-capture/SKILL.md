@@ -761,19 +761,99 @@ broken would still have produced a green Deliver leg.
 
 So **after the Deliver recipe passes**, call
 `connect_get_deliver_progress({ domain, opportunity_id })` and find the ACE
-test user's row. Assert against what the journey actually claims:
+test user's row.
 
-- **`delivered >= 1`** — the visit reached Connect. This is the minimum; a
-  Deliver leg that cannot clear it is `not-delivered-on-connect`, never `pass`.
-- **`approved >= 1`** — a payment unit actually registered. This is the
-  criterion `app-test-cases.yaml` declares (*"one payment unit registers"*),
-  and it is strictly stronger: a delivery can be submitted and then **rejected**
-  by verification, so `delivered` alone does not prove payability. When the
-  journey claims a payment unit, assert this one.
-- **`rejected > 0` with `approved == 0`** → record
-  `delivered-but-rejected` with the counts; the visit reached Connect but
-  failed verification. That is a real finding about the opportunity's
-  verification wiring, NOT a recipe defect — do not retry the walk to "fix" it.
+<!-- deliver-gate:begin — normative block pinned by
+     test/skills/deliver-gate-duration-floor.test.ts (ace#1667).
+     Every Deliver-gate assertion must live INSIDE these markers. -->
+
+**Measure the walk elapsed FIRST — the gate below branches on it.** Take it
+from this run's own frames: `mobile_run_recipe` returns
+`screenshots[].takenAt` (ISO 8601) on every capture, so
+
+```
+walk_elapsed_seconds =
+  takenAt("journey-deliver-submitted")           # the post-submit frame
+  − takenAt("deliver-form-walk-form-question")   # the FIRST Deliver form-question frame
+```
+
+Those are the two frames on the canonical run
+(`hh-poverty-targeting/20260824-1404`). Both labels are **caller-bound**, so
+resolve them per run rather than assuming these literals:
+`deliver-form-walk.yaml` captures
+`deliver-form-walk-form-question${WALK_LABEL}` (so the emitted name carries
+the leg's `WALK_LABEL` suffix), and `form-submit.yaml` captures the
+caller-supplied `${SCREENSHOT_NAME_POST_SUBMIT}` that the per-run
+`journey-deliver` recipe binds. The rule is therefore: **first Deliver
+form-question frame → post-submit frame**, and record which two names you
+measured between.
+
+**Then read the opportunity's duration floor** — the minimum visit duration
+Connect will accept for this deliver unit, in
+`deliver_unit_checks[].duration_minutes` (MINUTES; × 60 for
+`duration_floor_seconds`). **There is no read-back atom for it, and you must
+not invent one:** grep `docs/atom-schemas.md` —
+`connect_set_verification_flags` is the only atom that touches the field and
+it is write-only, and `connect_get_opportunity` reads the opportunity edit
+form merged with the dashboard, neither of which renders the
+verification-flags config. So read the value **this run itself wrote in
+Phase 4**: the `cs-verification-flags` row in the run's `decisions.yaml`,
+corroborated by `4-connect/connect-opp-setup_summary.md`
+(`connect-opp-setup` § Step 5 is the sole writer, and it sets a duration only
+when the PDD states a minimum delivery duration). If neither records one, the
+opportunity has **no** duration floor: `duration_floor_seconds = 0`.
+
+Now assert against the counts:
+
+- **`delivered >= 1` — HARD, unconditional.** The visit reached Connect. This
+  is the real end-to-end proof of the Deliver→Connect path and the floor of
+  the gate; a Deliver leg that cannot clear it is `not-delivered-on-connect`,
+  never `pass`. It is reachable on every opportunity, floor or no floor, so it
+  is never conditional.
+- **`approved >= 1` — CONDITIONAL.** A payment unit actually registered. It is
+  strictly stronger than `delivered` (a delivery can be submitted and then
+  **rejected** by verification), so assert it **only when the walk could
+  physically satisfy the opportunity's own verification rules** — i.e. when
+  `duration_floor_seconds == 0` **or**
+  `walk_elapsed_seconds >= duration_floor_seconds`. Asserting it
+  unconditionally is structurally unreachable on any opportunity whose floor
+  exceeds a machine-speed Maestro walk, and Connect is *correct* to reject
+  such a visit (ace#1667).
+  **This is NOT a criterion `app-test-cases.yaml` declares** — the sentence
+  that used to claim so was false. A Deliver journey's
+  `structural_pass_criteria` are device- and sync-level (`app_boots`,
+  `no_crash`, `submission_confirmed`, and per-opp additions of the same kind
+  such as `daily_visits_counter_non_zero_after_sync`); `approved` and the
+  phrase "one payment unit registers" appear nowhere in the producer skill or
+  in any emitted artifact. Verified —
+  `grep -rn -i "payment unit registers\|approved" skills/app-test-cases/SKILL.md
+  test/fixtures/ACE-Test-001/3-commcare/app-test-cases.yaml` → no matches
+  (exit 1), and the same grep over the
+  `hh-poverty-targeting/20260824-1404` artifact matched only comments
+  (ace#1667). So `approved >= 1` is an extra payability check **this gate**
+  adds, which is exactly why it may be skipped when the opportunity's own
+  configuration makes it unreachable — no journey criterion is being waived.
+- **`rejected > 0` and `approved == 0` and
+  `walk_elapsed_seconds < duration_floor_seconds`** → record
+  **`rejected-by-duration-floor-as-designed`**: a **PASS-with-note**, NOT
+  `delivered-but-rejected`. The verification wiring is working exactly as the
+  PDD specified — an automated walk is faster than a human visit, so it lands
+  under the floor and Connect rejects it by design. Record both numbers
+  (`walk_elapsed_seconds`, `duration_floor_seconds`) plus the counts in the
+  Deliver leg outcome, keep the leg `pass`, and **do not** file a finding, do
+  not retry the walk, and above all **do not relax or remove the duration
+  floor** — that floor is the PDD control this branch exists to protect.
+  Corroborating evidence that the floor is evaluated rather than merely
+  stored: `hh-poverty-targeting/20260824-1404` walked in 287 s against a 360 s
+  floor and Connect returned `{delivered: 1, approved: 0, rejected: 1}`.
+- **`rejected > 0` and `approved == 0` with NO applicable duration floor**
+  (`duration_floor_seconds == 0`, or the walk already cleared it) → record
+  `delivered-but-rejected` with the counts; the visit reached Connect and
+  then failed verification for some other reason. *That* is a real finding
+  about the opportunity's verification wiring, NOT a recipe defect — do not
+  retry the walk to "fix" it.
+
+<!-- deliver-gate:end -->
 
 The device-side `deliver-sync.yaml` gate (the server-derived `Daily Visits`
 counter) stays as the cheap in-recipe check, but it is still the device

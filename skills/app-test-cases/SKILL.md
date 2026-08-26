@@ -203,10 +203,12 @@ exactly as you already do for `learn-tap-module.yaml`:
     env:
       MODULE_NAME: "Community Meeting Record"   # the PAYABLE module
       FORM_NAME: "Community Meeting Record"     # omit when it equals MODULE_NAME
+      WALK_LABEL: "-deliver"                    # REQUIRED even on a lone leg (ace#1668)
 ```
 
-Both are optional and default to the legacy tap-first-row behavior when
-unbound, so single-module callers are unchanged — but a Deliver app with
+`MODULE_NAME` / `FORM_NAME` are optional and default to the legacy
+tap-first-row behavior when unbound, so single-module callers are
+unchanged — but a Deliver app with
 more than one module MUST bind `MODULE_NAME`, or the walk is silently
 wrong rather than loudly broken. Enforced structurally by
 `test/mcp/mobile/static-recipe-invariants.test.ts § positional row taps`.
@@ -268,8 +270,8 @@ the walk crosses the case list on its own:
       WALK_LABEL: "-followup"                      # MUST differ from leg A's
 ```
 
-**`WALK_LABEL` is not optional once the palette is invoked twice
-(ace#1651).** `deliver-form-walk.yaml` names three of its captures from
+**`WALK_LABEL` is REQUIRED at every call site — including a lone one
+(ace#1651, corrected by ace#1668).** `deliver-form-walk.yaml` names three of its captures from
 FIXED strings — `deliver-form-walk-module-list`, `-form-list`,
 `-form-question`. Two invocations in one recipe therefore wrote the same
 three filenames twice, and leg B's frames **silently overwrote leg A's**:
@@ -281,14 +283,31 @@ leg B fails it destroys precisely the frames an operator needs to see how
 the case got created.
 
 Bind a short `[a-z0-9-]` slug **including the leading separator**, and a
-DIFFERENT one per call site. Unbound it substitutes to the empty string,
-so a single-invocation caller keeps byte-identical names and needs no
-change. *Enforced:* `lintRecipeText`'s
-`repeat-palette-invocation-without-discriminator` rule (run by
-`mobile_validate_recipe`) fails any recipe that invokes the palette twice
-with a missing or duplicated `WALK_LABEL`, and
+DIFFERENT one per call site.
+
+**Do not omit it on a single-invocation walk.** The #1651 fix said you
+could, on the premise that an unbound `${WALK_LABEL}` substitutes to the
+empty string and keeps byte-identical names. That premise is false:
+Maestro evaluates `${...}` in a JS engine, so an unbound variable
+stringifies to the literal text `undefined`. The very next run's Deliver
+leg wrote `deliver-form-walk-module-listundefined.png`,
+`-form-listundefined.png`, `-form-questionundefined.png` and
+`deliver-form-walk-module-row-Household poverty surveyundefined.png`
+(hh-poverty-targeting/20260824-1404) — names that reach the screenshot
+manifest, the training deck and the FLW guide, where they read as a
+defect in the deliverable (ace#1668). And a default inside the palette's
+own `env:` block is NOT the fix — a subflow `env:` OVERRIDES the caller's
+`runFlow.env` in Maestro (ace#1033), so it would force both legs to the
+same value and silently restore the #1651 overwrite.
+
+*Enforced two ways, both run by `mobile_validate_recipe`:*
+`lintRecipeText`'s `runFlow-unbound-screenshot-name` rule fails **any**
+call site that omits `WALK_LABEL` (or binds it empty), and
+`repeat-palette-invocation-without-discriminator` fails a recipe that
+invokes the palette twice with a duplicated one.
 `test/mcp/mobile/static-recipe-invariants.test.ts § deliver-form-walk
-per-invocation frame names` pins the palette side.
+per-invocation frame names` pins the palette side, including the literal
+`undefined` expansion that #1651's own test suite had assumed away.
 
 **Step 1b exists because the two recipes' own contracts do not meet
 (ace#1191).** `deliver-form-walk.yaml`'s header declares

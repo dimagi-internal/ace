@@ -24,11 +24,10 @@ the per-opp screenshots. Independent of `training-llo-guide`,
 
 | Source | Artifact | Used for |
 |---|---|---|
-| Phase 1 | `ACE/<opp>/runs/<run-id>/1-design/idea-to-pdd.md` | opp framing, archetype, target FLW persona |
+| Phase 1 | `ACE/<opp>/runs/<run-id>/1-design/idea-to-pdd.md` | opp framing, archetype, target FLW persona, support contact + GRM escalation route |
 | Phase 3 | `ACE/<opp>/runs/<run-id>/3-commcare/pdd-to-learn-app_summary.md` | Learn modules + assessment threshold |
 | Phase 3 | `ACE/<opp>/runs/<run-id>/3-commcare/pdd-to-deliver-app_summary.md` | Deliver form structure (the "what to do here" section) |
 | Phase 4 (`run_state.yaml`) | `connect.opportunity` (claim flow), `connect.payment_units` | "what FLWs get paid for" framing |
-| Phase 5 | `ACE/<opp>/runs/<run-id>/5-ocs/ocs-setup_widget-handoff.md` (`widget_url`) | "where to get help" section |
 | Phase 6 Step 1 (`app-screenshot-capture`) | `ACE/<opp>/runs/<run-id>/6-qa-and-training/app-screenshot-capture_manifest.yaml` + per-opp PNGs | embed step-by-step Learn/Deliver screenshots |
 | Common assets | `ACE/_common/connect-screenshots/<v>/manifest.yaml` + PNGs | embed common Connect navigation (sign-in, claim opp, sync, payments) |
 
@@ -71,7 +70,7 @@ from PDD's Evidence Model.>
 <short framing from connect.payment_units in run_state.yaml>
 
 ## Where to get help
-- The OCS chat widget is available at all times: <widget_url>
+- To raise something formally, use the **GRM** option in the app menu.
 - Your LLO manager: <name from connect-setup/opportunity.md>
 - For technical issues with the app, contact <support contact from PDD>
 ```
