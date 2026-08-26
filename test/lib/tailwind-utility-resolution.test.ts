@@ -137,10 +137,40 @@ describe('extractUtilityTokens', () => {
   });
 
   it('tags class-attribute strings distinctly from bare string literals', () => {
-    const tokens = extractUtilityTokens('<div className="mx-auto" title="x" />');
+    const tokens = extractUtilityTokens('<div className="mx-auto">{fn("x")}</div>');
     const mx = tokens.find((t) => t.token === 'mx-auto');
     expect(mx?.origin).toBe('class-attribute');
     expect(tokens.find((t) => t.token === 'x')?.origin).toBe('string-literal');
+  });
+
+  // ── ace#1699: a named non-class attribute is not a class ────────────────
+  //
+  // `data-testid="row-count"` was linted as a utility, reported MISSING, and
+  // BLOCKED the upload with a remedy ("use an inline style prop") that is
+  // meaningless for a test id. demo-narrative § 3b requires a `testid:`
+  // selector on every scene action, so a render_code a DDD walkthrough can
+  // drive must carry them.
+  it('does not lint data-* / aria-* / title attribute values as utilities (#1699)', () => {
+    const src = '<span data-testid="row-count" aria-label="grid-cols-99" title="w-1/2" className="p-4" />';
+    const tokens = extractUtilityTokens(src);
+    const byToken = (t: string) => tokens.find((x) => x.token === t)?.origin;
+    expect(byToken('row-count')).toBe('attribute-value');
+    expect(byToken('grid-cols-99')).toBe('attribute-value');
+    expect(byToken('w-1/2')).toBe('attribute-value');
+    expect(byToken('p-4')).toBe('class-attribute');
+
+    const report = classifyUtilities(src, DEPLOYED_CSS);
+    const seen = [...report.present, ...report.missing, ...report.ignored].map((f) => f.token);
+    expect(seen).not.toContain('row-count');
+    expect(seen).not.toContain('grid-cols-99');
+  });
+
+  it('still lints a utility assigned to a VARIABLE, not just a class attribute (#1699 guard)', () => {
+    // `var cardBorder = 'border-slate-300'` has the same `<name> = "<value>"`
+    // shape as a JSX attribute and is one of the seven ace#1662 ground-truth
+    // misses — narrowing by "anything before an =" would have lost it.
+    const tokens = extractUtilityTokens("var cardBorder = 'border-slate-300';");
+    expect(tokens.find((t) => t.token === 'border-slate-300')?.origin).toBe('string-literal');
   });
 
   it('does not let an apostrophe in JSX text swallow the classes that follow', () => {
