@@ -4,25 +4,70 @@ ACE (AI Connect Engine) is a Claude Code plugin that orchestrates the ACE lifecy
 
 ## Agent topology
 
-ACE has one architectural rule: **anything that calls `Agent` must run at level 0** (the top-level Claude Code session). The `Agent` tool is unavailable to subagents, so a node that needs to dispatch further work cannot itself be a subagent. Both procedure docs and subagents live under `agents/`; the wiring differs:
+ACE's nodes come in two forms, and the difference is what they cost in **dispatch
+depth**: an `inline` procedure doc is read and executed in its caller's context
+(costs nothing, but inflates that context), while a `subagent` is dispatched via
+`Agent(...)` and descends one level. Both live under `agents/`.
 
-| Node | Calls `Agent`? | Form | Invoked how |
-|------|----------------|------|-------------|
-| `ace-orchestrator` | yes (dispatches phases + Nova) | procedure doc | `/ace:run` reads it and executes inline |
-| `commcare-setup` (Phase 3) | yes — `/nova:autobuild` is a hidden Agent dispatch | procedure doc | orchestrator reads it and executes inline |
-| `idea-to-design` (Phase 1) | no | subagent | `Agent(idea-to-design)` from level 0 |
-| `scenarios-and-acceptance` (Phase 2) | no | subagent | `Agent(scenarios-and-acceptance)` from level 0 |
-| `connect-setup` (Phase 4) | no | subagent | `Agent(connect-setup)` from level 0 |
-| `ocs-setup` (Phase 5) | no | subagent | `Agent(ocs-setup)` from level 0 |
-| `qa-and-training` (Phase 6) | no | subagent | `Agent(qa-and-training)` from level 0 |
-| `synthetic-data-and-workflows` (Phase 7) | yes — `Agent(canopy:ddd)` is the render+converge loop | procedure doc | orchestrator reads it and executes inline |
-| `solicitation-management` (Phase 8) | no | subagent | `Agent(solicitation-management)` from level 0 |
-| `execution-manager` (Phase 9) | no | subagent | `Agent(execution-manager)` from level 0 |
-| `closeout` (Phase 10) | no | subagent | `Agent(closeout)` from level 0 |
-| `ocs-tester` | no — leaf qa+eval pair | subagent | `Agent(ocs-tester)` ad-hoc |
-| `sweep` | no — orphan triage | subagent | `Agent(sweep)` via `/ace:sweep` |
+**This used to be a binary rule and is now a budget.** For most of 2026 Claude Code
+withheld the `Agent` tool from every subagent, so anything that dispatched further
+work *had* to run at level 0 — that is why the orchestrator and six other nodes are
+procedure docs. Nesting landed in **v2.1.172** (depth 5, un-tunable), was defaulted
+back to 1 in **v2.1.217**, and settled at **3** in **v2.1.219**. Subagents can now
+spawn subagents, `CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH` sets the limit, and
+`CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS` (default 20) caps simultaneous fan-out.
 
-Procedure docs retain frontmatter so `/ace:status`, `/ace:eval`, `/ace:doctor`, `/ace:docs` keep working; `/ace:run` and `/ace:step` execute them inline. Never two levels of `Agent` dispatch — that's the invariant. (The rule exists because a Nova migration once silently broke a level-2 `Agent` call.)
+| Node | Form | Dispatches | Invoked how |
+|------|------|-----------|-------------|
+| `ace-orchestrator` | inline | the 10 phase nodes | `/ace:run` reads it and executes inline |
+| `idea-to-design` (P1) | subagent | — | `Agent(idea-to-design)` |
+| `scenarios-and-acceptance` (P2) | subagent | — | `Agent(scenarios-and-acceptance)` |
+| `commcare-setup` (P3) | inline | `nova:nova-architect-autonomous` via `/nova:autobuild` | orchestrator reads it inline |
+| `connect-setup` (P4) | subagent | — | `Agent(connect-setup)` |
+| `ocs-setup` (P5) | subagent | — | `Agent(ocs-setup)` |
+| `qa-and-training` (P6) | subagent | — | `Agent(qa-and-training)` |
+| `synthetic-data-and-workflows` (P7) | inline | `canopy:ddd` | orchestrator reads it inline |
+| `solicitation-management` (P8) | subagent | — | `Agent(solicitation-management)` |
+| `execution-manager` (P9) | subagent | — | `Agent(execution-manager)` |
+| `closeout` (P10) | subagent | — | `Agent(closeout)` |
+| `demo` | inline | `canopy:ddd` | `/ace:demo` reads it inline |
+| `partnership-video` | inline | `nova:autobuild`, deep-research | `/ace:partnership-video` reads it inline |
+| `sweep` | inline | `sweep-live-set`, `sweep-<system>` | `/ace:sweep` reads it inline |
+| `iterate-loop` | inline | one fix+ship subagent | `/ace:iterate` reads it inline |
+| `ocs-tester` | subagent | — | `Agent(ocs-tester)` ad-hoc |
+
+> `sweep` was listed here as a subagent until 2026-08-26. It never was one —
+> `commands/sweep.md` executes it inline and `agents/sweep.md` § Notes says "the
+> procedure doc is the only thing that calls `Agent`." The table and the code had
+> drifted, which is why the topology is now machine-checked.
+
+**Current depth: 2, budget: 3.** The deepest chain is
+`ace-orchestrator → synthetic-data-and-workflows → canopy:ddd → canopy:visual-judge`;
+the two inline hops cost nothing, so the DDD loop sits at level 1 and its per-scene
+judges at level 2. `lib/agent-depth.ts` declares the graph and computes this;
+`test/lib/agent-depth.test.ts` fails CI if a chain outgrows the budget, if an
+`Agent(...)` target appears in the repo without being counted, or if an inline node
+stops justifying its inline-ness.
+
+**Read the depth number before restructuring, and note the failure mode inverted.**
+The old rule failed loudly — a level-2 dispatch errored, which is how the Nova
+migration regression surfaced. Now, at the limit, Claude Code *withholds* the
+`Agent` tool and the subagent at the floor does the delegated work itself and
+returns one summary. Nothing errors. `ddd-concept-eval` dispatches
+`canopy:visual-judge` as a deliberately *fresh* subagent per scene — its rubric
+docks every dimension by 1 if that independence isn't real — so a collapsed
+fan-out still emits a full set of verdicts, just correlated and optimistic. Same
+shape as the self-graded evals in dimagi-internal/ace#1203, and invisible in every
+artifact ACE writes.
+
+So: the inline nodes are no longer *required* to be inline. Lifting
+`ace-orchestrator` into a real subagent is now legal (it would take the deepest
+chain to exactly 3) and buys real context isolation for a 10-phase run. It also
+leaves **zero headroom** — one more nesting level anywhere below it degrades
+silently. Before doing it, check whether the DDD specialist fixers
+(`/design-review`, `/review`, `/qa`) dispatch anything of their own, and pin
+`CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH` explicitly in `settings.json` rather than
+inheriting a default that has moved three times this year.
 
 ## Phases (current pipeline)
 

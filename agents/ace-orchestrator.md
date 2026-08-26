@@ -1243,7 +1243,7 @@ Each branch's `reason` string is written to be pasted straight into the Phase
 
 **Gate:** pause-on-`app-deploy`.
 
-**Notes:** Phase 3 invokes `/nova:autobuild`, which dispatches the `nova:nova-architect-autonomous` subagent. That dispatch requires `Agent` at level 0 — running Phase 3 itself as a subagent would put Nova's dispatch at level 2 and fail. See § Agent Topology in reference. This is the only orchestrator-visible inline procedure-doc dispatch in the workflow.
+**Notes:** Phase 3 invokes `/nova:autobuild`, which dispatches the `nova:nova-architect-autonomous` subagent. Running Phase 3 inline keeps that dispatch at level 1 rather than spending a level on the phase itself. See `CLAUDE.md § Agent topology` (and `lib/agent-depth.ts` for the arithmetic). This is the only orchestrator-visible inline procedure-doc dispatch in the workflow.
 
 ### Phase 4: Connect Setup
 
@@ -1295,7 +1295,7 @@ Each branch's `reason` string is written to be pasted straight into the Phase
 
 **Gate:** **no phase pause** — `/ace:run` proceeds straight from Phase 7 to Phase 8 without halting (no run-time gate; see § Pause Points in reference).
 
-**Notes:** **Level-0 constraint — Phase 7 is a procedure doc, not a subagent.** Its Step 3 dispatches `Agent(canopy:ddd)` (and that loop's per-scene judges), and the `Agent` tool is unavailable to subagents. Dispatching Phase 7 as a subagent leaves only a single render+judge pass reachable — no loop, no convergence rule, no stopping rule — which is what `spark-facilitator/20260813-2126` hand-drove for four iterations before a human halted it. Same reason Phase 3 is inline.
+**Notes:** **Depth constraint — Phase 7 is a procedure doc, not a subagent.** Its Step 3 dispatches `Agent(canopy:ddd)`, which fans out per-scene judges of its own: the deepest chain in ACE. Running Phase 7 inline puts that chain at depth 2 inside a budget of 3. When `spark-facilitator/20260813-2126` ran it as a subagent, the nested dispatch was unreachable under the Claude Code of the time, so only a single render+judge pass executed — no loop, no convergence rule, no stopping rule — and a human halted it after four hand-driven iterations. Nesting is permitted now, but the failure mode is worse: past the budget the `Agent` tool is silently withheld and the per-scene judging collapses into one context while still emitting full verdicts. Keep it inline unless `lib/agent-depth.ts` says the chain still fits. Same reasoning as Phase 3.
 
 **No irreversible external action.** The connect-labs `SyntheticOpportunity` row is reversible via `synthetic_disable`; workflows can be deleted via `workflow_delete`. See `agents/synthetic-data-and-workflows.md`.
 

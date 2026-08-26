@@ -27,9 +27,10 @@ video + pitch deck and publish a shareable package.
 session — it is NOT dispatched as a subagent.** This procedure dispatches
 `Agent` for `deep-research`, `canopy:walkthrough` (micro-demo mock filming),
 `nova:autobuild` (Nova app stub when no reusable clip exists), and
-`canopy:walkthrough-share` (package publish). `Agent` is only available at
-level 0; running partnership-video as a subagent would put those dispatches
-at level 2 and fail. See `agents/ace-orchestrator.md` § Agent Topology.
+`canopy:walkthrough-share` (package publish). `Agent(nova:autobuild)` costs two
+levels on its own — the autobuild skill is dispatched as a subagent and then
+dispatches the architect — so running partnership-video inline is what keeps
+that chain inside the depth budget. See `CLAUDE.md § Agent topology`.
 The frontmatter is retained for tooling that introspects agent metadata, not
 because this procedure is itself dispatched. **Never dispatch
 `Agent(partnership-video)` — if you see that pattern, stop and fix it.**
@@ -566,7 +567,7 @@ legal:
 - `Skill(canopy:walkthrough-share)` — invoked inside `partnership-publish`
   to publish the assembled package to canopy-web.
 
-All four would push to level 2 and fail if this procedure were dispatched
-as a subagent. That is the architectural reason this file is executed
-inline at level 0 — and the reason you must never write
-`Agent(partnership-video)`.
+All four descend a level from wherever this procedure runs, and
+`Agent(nova:autobuild)` descends two. Running inline at level 0 is what keeps
+them inside the depth budget (`CLAUDE.md § Agent topology`) — and is why you
+must never write `Agent(partnership-video)`.

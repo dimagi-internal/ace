@@ -9,9 +9,10 @@ model: inherit
 
 # iterate-loop (Procedure Document)
 
-Level-0 procedure executed inline by `/ace:iterate`. **NEVER dispatched as a
-subagent** — it dispatches `Agent` for the fix+ship cycle, and the `Agent` tool
-is unavailable to subagents (see `CLAUDE.md § Agent topology`).
+Level-0 procedure executed inline by `/ace:iterate`. **Not dispatched as a
+subagent** — it dispatches `Agent` for the fix+ship cycle, and running inline
+keeps that dispatch at level 1 with the full depth budget behind it (see
+`CLAUDE.md § Agent topology`; the budget is computed in `lib/agent-depth.ts`).
 
 ## Invariant: server runs first-class, client observes
 

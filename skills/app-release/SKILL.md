@@ -313,12 +313,13 @@ procedure below to rediscover.
     **Why bounded (3 attempts).** For the rationale, see reference.md
     § Why the BuildRejectedError loop is bounded at 3.
 
-    **Subagent dispatch note.** `/nova:edit` runs the Nova architect
-    via `Agent`, which is only available at level 0. `app-release` is
+    **Dispatch-depth note.** `/nova:edit` runs the Nova architect via
+    `Agent`, which costs a level of dispatch depth. `app-release` is
     invoked from Phase 3 (`commcare-setup`), which runs inline at
-    level 0 per § Agent Topology in `agents/ace-orchestrator.md`. So
-    the dispatch is structurally legal here — but if a future caller
-    moves `app-release` into a subagent, this loop breaks. Keep the
+    level 0 per `CLAUDE.md § Agent topology`, so the architect lands at
+    level 1 with room to spare. Moving `app-release` under more layers
+    pushes it down; past the budget the `Agent` tool is withheld and the
+    loop degrades silently instead of failing. Keep the
     invariant.
 
 5. **Verify both apps show `is_released: true`** via the API.
