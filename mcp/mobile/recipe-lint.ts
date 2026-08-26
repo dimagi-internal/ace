@@ -27,7 +27,9 @@ export interface LintViolation {
     | 'unknown-property-textRegex'
     | 'runFlow-guard-scope-mismatch'
     | 'runFlow-unbound-screenshot-name'
-    | 'repeat-palette-invocation-without-discriminator';
+    | 'repeat-palette-invocation-without-discriminator'
+    | 'selector-inline-key-position'
+    | 'selector-value-position-type-mismatch';
   /** 1-based line number of the offending list-item start. */
   line: number;
   /** Human-readable detail. Stable enough to grep for. */
@@ -39,6 +41,20 @@ export interface LintViolation {
 export interface LintResult {
   ok: boolean;
   violations: LintViolation[];
+}
+
+/** Optional inputs a caller can inject to unlock map-aware rules. */
+export interface LintOptions {
+  /**
+   * `logical-name -> declared type` from the ACTIVE selector map
+   * (`mcp/mobile/selectors/connect-<apk>.yaml`), as produced by
+   * `loadSelectorTypes` in `recipe-resolver.ts`.
+   *
+   * The linter stays a pure function, so the map is injected rather than
+   * read. Omit it and `selector-value-position-type-mismatch` abstains —
+   * every other rule is unaffected.
+   */
+  selectorTypes?: Record<string, 'id' | 'text' | 'point'>;
 }
 
 /**
@@ -148,7 +164,7 @@ export const PALETTE_INVOCATION_DISCRIMINATOR: Record<string, string> = {
  * Lint a Maestro recipe YAML body for known-broken structural shapes.
  * Pure function — no I/O, same input always produces the same output.
  */
-export function lintRecipeText(yaml: string): LintResult {
+export function lintRecipeText(yaml: string, options: LintOptions = {}): LintResult {
   const violations: LintViolation[] = [];
   const lines = yaml.split('\n');
 
@@ -309,7 +325,145 @@ export function lintRecipeText(yaml: string): LintResult {
     violations.push(v);
   }
 
+  // Rules: selector-inline-key-position + selector-value-position-type-mismatch.
+  //
+  // Both are static checks over the recipe text (plus, for the second, the
+  // active selector map) — no device, no Maestro (dimagi-internal/ace#1690).
+  for (const v of findSelectorPlacementDefects(yaml, options.selectorTypes)) {
+    violations.push(v);
+  }
+
   return { ok: violations.length === 0, violations };
+}
+
+/** Matcher keys a value-position selector can legitimately sit under. */
+const MATCHER_TYPE_KEYS = new Set(['id', 'text', 'point']);
+
+/**
+ * Flag the two `${SELECTOR:...}` PLACEMENT defects that survive both the
+ * resolver and every existing lint rule (dimagi-internal/ace#1690).
+ *
+ * The resolver (`recipe-resolver.ts` § resolveSelectorsInYaml) supports two
+ * placeholder forms, and each has a placement precondition the resolver
+ * itself cannot check, because it is a blind text substitution:
+ *
+ *   1. KEY position — a bare `${SELECTOR:name}` resolves to the WHOLE
+ *      matcher, key included: `text: "RECORD LOCATION"`. That is only
+ *      raw-YAML-valid when the placeholder is the sole content of its line.
+ *      Written INLINE after a step key —
+ *
+ *          - tapOn: ${SELECTOR:geopoint-record-location}
+ *
+ *      — it resolves to `- tapOn: text: "RECORD LOCATION"`, which no YAML
+ *      parser accepts. Measured on spark-facilitator/20260820-0817 Phase 6:
+ *      Maestro rejected the chunk with
+ *      `chunk-10.yaml:45 ... ^ mapping values are not allowed here`
+ *      after the recipe had already been dispatched to a device.
+ *      The correct shape is the nested block:
+ *
+ *          - tapOn:
+ *              ${SELECTOR:geopoint-record-location}
+ *
+ *   2. VALUE position — a quoted `"${SELECTOR:name}"` resolves to the bare
+ *      value only, leaving the key the AUTHOR wrote in place. So the author
+ *      is now responsible for a fact the map owns: which key the value
+ *      belongs under. Same run wrote
+ *      `id: "${SELECTOR:camera-take-photo}"` for a selector the map declares
+ *      `type: text` (`connect-2.63.2.yaml:337`), producing `id: "TAKE
+ *      PICTURE"` — perfectly valid YAML, and permanently unmatchable,
+ *      because no view carries that string as a resource-id.
+ *
+ * Both rules are deliberately NARROW — they fire only on the exact shapes
+ * above. A bare placeholder alone on its line, a value-position placeholder
+ * under the key its map entry declares, a placeholder inside a comment, and
+ * a placeholder under a key the map has no opinion about (`childOf:`,
+ * `below:`) are all untouched. Every recipe under
+ * `mcp/mobile/recipes/**` lints clean with these rules on.
+ */
+function findSelectorPlacementDefects(
+  yaml: string,
+  selectorTypes?: Record<string, 'id' | 'text' | 'point'>,
+): LintViolation[] {
+  const out: LintViolation[] = [];
+  const lines = yaml.split('\n');
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    // Whole-line comments carry prose that legitimately quotes both forms
+    // (every palette header does) — never lint prose.
+    if (/^\s*#/.test(line)) continue;
+
+    const re = /\$\{SELECTOR:([a-z0-9-]+)\}/g;
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(line)) !== null) {
+      const name = m[1];
+      const before = line.slice(0, m.index);
+      const after = line.slice(m.index + m[0].length);
+      // A `#` anywhere earlier on the line means we are inside a trailing
+      // comment. Abstain rather than risk a false positive on prose.
+      if (before.includes('#')) continue;
+
+      const quoted = before.endsWith('"') && after.startsWith('"');
+
+      if (quoted) {
+        // VALUE position. The enclosing key is whatever precedes the opening
+        // quote on this line. Only the same-line `key: "<sel>"` shape is
+        // checked — that is the shape recipes actually use.
+        if (!selectorTypes) continue;
+        const keyMatch = before
+          .slice(0, before.length - 1)
+          .match(/([A-Za-z_][A-Za-z0-9_-]*)\s*:\s*$/);
+        if (!keyMatch) continue;
+        const key = keyMatch[1];
+        if (!MATCHER_TYPE_KEYS.has(key)) continue;
+        const declared = selectorTypes[name];
+        // An unknown name is the resolver's problem (it reports `unresolved`),
+        // not this rule's.
+        if (!declared || declared === key) continue;
+        out.push({
+          rule: 'selector-value-position-type-mismatch',
+          line: i + 1,
+          detail:
+            `value-position \`${key}: "\${SELECTOR:${name}}"\` on line ${i + 1} sits under \`${key}:\`, ` +
+            `but the active selector map declares \`${name}\` as \`type: ${declared}\`. The value-position ` +
+            `form substitutes ONLY the value and leaves the key you wrote, so this resolves to a ` +
+            `\`${key}:\` matcher holding a ${declared} value — valid YAML that can never match a view ` +
+            `(dimagi-internal/ace#1690: \`id: "TAKE PICTURE"\`).`,
+          remediation:
+            `use the key the map declares: \`${declared}: "\${SELECTOR:${name}}"\` — or drop to the ` +
+            `key-position form on its own line (\`\${SELECTOR:${name}}\` under \`- tapOn:\`), which ` +
+            `emits the correct key for you. If you believe the map is wrong, fix the map entry's ` +
+            `\`type:\` against a live \`mobile_capture_ui_dump\`, not the recipe.`,
+        });
+        continue;
+      }
+
+      // KEY position. Valid only as the sole content of its line; the failure
+      // shape is an inline placeholder sitting where a scalar VALUE is
+      // expected, i.e. directly after a `<key>:`.
+      const prefix = before.replace(/\s+$/, '');
+      if (prefix === '' || prefix === '-') continue; // sole content of the line — the canonical form.
+      if (!/(^|\s|-)[A-Za-z_][A-Za-z0-9_-]*\s*:$/.test(prefix)) continue;
+      const key = prefix.replace(/:$/, '').replace(/^.*?([A-Za-z_][A-Za-z0-9_-]*)$/, '$1');
+      out.push({
+        rule: 'selector-inline-key-position',
+        line: i + 1,
+        detail:
+          `bare \`\${SELECTOR:${name}}\` on line ${i + 1} sits INLINE after \`${key}:\`. The bare ` +
+          `(key-position) form resolves to a COMPLETE matcher — key and value — so this becomes ` +
+          `\`${key}: <type>: "<value>"\`, which no YAML parser accepts. Maestro fails the whole chunk ` +
+          `at parse time with "mapping values are not allowed here" ` +
+          `(dimagi-internal/ace#1690, spark-facilitator/20260820-0817 Phase 6).`,
+        remediation:
+          `put the placeholder on its OWN line, nested under the key:\n- ${key}:\n    \${SELECTOR:${name}}\n` +
+          `Or, if you need sibling matcher keys (\`below:\` / \`childOf:\` / \`index:\`), use the ` +
+          `VALUE-position form under the key the selector map declares for \`${name}\`, e.g. ` +
+          `\`text: "\${SELECTOR:${name}}"\`.`,
+      });
+    }
+  }
+
+  return out;
 }
 
 /** Property keys that scope a matcher to a SPECIFIC node among several

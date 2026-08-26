@@ -162,6 +162,38 @@ export function getActiveSelectorMapMetadata(apkVersion: string): {
   };
 }
 
+/**
+ * Load the `logical-name -> declared type` view of the active selector map.
+ *
+ * This is the only piece of the map `recipe-lint.ts` needs: the
+ * `selector-value-position-type-mismatch` rule compares the KEY a recipe
+ * wrote a value-position `"${SELECTOR:name}"` under against the `type:` the
+ * map declares for `name` (dimagi-internal/ace#1690). Keeping the linter a
+ * pure function means the map has to be injected, and this is the injector.
+ *
+ * Throws if the map file is missing — same contract as
+ * `getActiveSelectorMapMetadata`; callers that want to degrade gracefully
+ * (e.g. `mobile_validate_recipe` on an unknown APK) catch and abstain.
+ */
+export function loadSelectorTypes(
+  apkVersion: string,
+): Record<string, 'id' | 'text' | 'point'> {
+  const selectorPath = path.join(SELECTORS_DIR, `connect-${apkVersion}.yaml`);
+  if (!fs.existsSync(selectorPath)) {
+    throw new Error(`selector map not found: ${selectorPath}`);
+  }
+  const map = parseYaml(fs.readFileSync(selectorPath, 'utf8')) as SelectorMap;
+  if (!map || !map.selectors) {
+    throw new Error(`selector map at ${selectorPath} has no \`selectors\` block`);
+  }
+  const out: Record<string, 'id' | 'text' | 'point'> = {};
+  for (const [name, entry] of Object.entries(map.selectors)) {
+    const t = entry?.type;
+    if (t === 'id' || t === 'text' || t === 'point') out[name] = t;
+  }
+  return out;
+}
+
 /** Outcome of resolving a single recipe YAML body. */
 export interface SelectorResolution {
   /** The resolved YAML — every `${SELECTOR:...}` replaced with the matching matcher block. */
