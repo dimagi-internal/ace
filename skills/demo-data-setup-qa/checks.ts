@@ -89,7 +89,10 @@ export function checkParUrlScope(dashboards: DashboardRef[]): QACheckResult {
   };
 }
 
-export type PayloadFindingKind = 'snapshot-missing-pipelines' | 'field-all-null';
+export type PayloadFindingKind =
+  | 'snapshot-missing-pipelines'
+  | 'field-all-null'
+  | 'live-pipelines-unavailable';
 
 export interface PayloadFinding {
   kind: PayloadFindingKind;
@@ -103,15 +106,79 @@ export interface PayloadReport {
   findings: PayloadFinding[];
 }
 
+export interface SnapshotPipeline {
+  alias?: string;
+  rows?: Record<string, unknown>[];
+}
+
 export interface WorkflowPayload {
-  definition?: { pipeline_sources?: Record<string, unknown> };
-  instance?: { status?: string; snapshot?: { pipelines?: { alias?: string; rows?: Record<string, unknown>[] }[] } };
+  definition?: { pipeline_sources?: Record<string, unknown> | Array<{ alias?: string; [k: string]: unknown }> };
+  instance?: {
+    status?: string;
+    /**
+     * `pipelines` arrives in EITHER shape (ace#1701):
+     *   - a dict keyed by alias — what labs actually writes today
+     *     (`connect_labs/workflow/templates/__init__.py`:
+     *      `out["pipelines"] = {alias: pipelines[alias] ...}`)
+     *   - an array of `{alias, rows}` — the shape this check was written for.
+     */
+    snapshot?: { pipelines?: SnapshotPipeline[] | Record<string, SnapshotPipeline> };
+  };
+}
+
+/**
+ * Both snapshot shapes, as one array (ace#1701).
+ *
+ * Reading only the array shape made this check throw `pipelines is not
+ * iterable` on every real completed run, and made the
+ * `snapshot-missing-pipelines` branch unreachable besides — a dict has no
+ * `.length`, and `undefined === 0` is false. Check 7 exists so that a dead
+ * dashboard cannot reach a stakeholder (#1161); it could not see one.
+ */
+export function normalizeSnapshotPipelines(
+  pipelines: SnapshotPipeline[] | Record<string, SnapshotPipeline> | undefined,
+): SnapshotPipeline[] {
+  if (!pipelines) return [];
+  if (Array.isArray(pipelines)) return pipelines;
+  return Object.entries(pipelines).map(([alias, value]) => ({ alias, ...(value ?? {}) }));
+}
+
+/** `pipeline_sources` is a dict of alias->id in the stored definition and an array of {alias,...} on the run page. */
+function declaredAliases(sources: WorkflowPayload['definition'] extends infer D ? any : never): string[] {
+  if (!sources) return [];
+  if (Array.isArray(sources)) {
+    return sources.map((s: { alias?: string }) => String(s?.alias ?? '')).filter(Boolean);
+  }
+  return Object.keys(sources);
 }
 
 /** Null, undefined, empty string, or numeric zero — the shapes a dead binding produces. */
 function isDeadValue(v: unknown): boolean {
   return v === null || v === undefined || v === '' || v === 0;
 }
+
+/**
+ * labs' own row columns, which every pipeline row carries whether or not the
+ * terminal stage fills them (ace#1701).
+ *
+ * Whether one of these is populated is decided by `terminal_stage`, not by the
+ * schema: WORKFLOW_REFERENCE § "Built-in Row Fields" gives `visit_level` rows
+ * `username / visit_date / entity_id / entity_name` and `aggregated` rows the
+ * `*_visits` counters and `first/last_visit_date`, and the `entity` stage
+ * "drops the status/flagged counters because they're visit-level facts". So a
+ * built-in that is null for every row is NOT evidence of a wrong schema path —
+ * and it fires on every entity-stage and visit-level pipeline. Measured on
+ * run 5258 (healthy, `pipeline_preview` `fields_all_null: []`): 15 findings,
+ * all built-ins, none a schema path.
+ *
+ * #1160's real defect is not one of these: that was render code binding the
+ * denormalized `worker.visit_count`, not a pipeline column.
+ */
+const LABS_BUILTIN_ROW_COLUMNS = new Set([
+  'id', 'username', 'visit_date', 'entity_id', 'entity_name', 'status', 'flagged',
+  'opportunity_id', 'days_active', 'total_visits', 'approved_visits', 'pending_visits',
+  'rejected_visits', 'flagged_visits', 'first_visit_date', 'last_visit_date',
+]);
 
 /**
  * Does the page actually render data? Operates on the parsed `#workflow-data`
@@ -130,18 +197,41 @@ function isDeadValue(v: unknown): boolean {
  * A field that is zero for SOME rows is data, not a dead binding — flagging it
  * would make this the always-fires class.
  */
-export function checkParUrlPayloadPopulated(payload: WorkflowPayload): PayloadReport {
+/**
+ * @param livePipelines Rows for a run that is deliberately still `in_progress`
+ *   (the `review-action` dashboard check 8 requires to stay live, #1162). Such
+ *   a run has no snapshot BY DESIGN, and the server-rendered `#workflow-data`
+ *   carries `pipeline_data: {}` because the page fills it over SSE after
+ *   mount — so the caller fetches
+ *   `GET /labs/workflow/api/<def>/pipeline-data/?opportunity_id=<opp>` and
+ *   passes the result here. Absence is a reported finding, never a silent pass.
+ */
+export function checkParUrlPayloadPopulated(
+  payload: WorkflowPayload,
+  livePipelines?: SnapshotPipeline[] | Record<string, SnapshotPipeline>,
+): PayloadReport {
   const findings: PayloadFinding[] = [];
-  const declared = Object.keys(payload?.definition?.pipeline_sources ?? {});
-  const pipelines = payload?.instance?.snapshot?.pipelines ?? [];
+  const declared = declaredAliases(payload?.definition?.pipeline_sources);
+  const completed = payload?.instance?.status === 'completed';
+
+  const live = normalizeSnapshotPipelines(
+    livePipelines ?? (payload as { pipeline_data?: Record<string, SnapshotPipeline> })?.pipeline_data,
+  );
+  const pipelines = completed
+    ? normalizeSnapshotPipelines(payload?.instance?.snapshot?.pipelines)
+    : live;
 
   if (declared.length > 0 && pipelines.length === 0) {
     findings.push({
-      kind: 'snapshot-missing-pipelines',
-      detail:
-        `definition declares pipeline_sources (${declared.join(', ')}) but the run snapshot holds no ` +
-        `pipelines — the page renders no pipeline data at all. Declare snapshot_inputs.pipelines ` +
-        `covering every alias in pipeline_sources before completing the run.`,
+      kind: completed ? 'snapshot-missing-pipelines' : 'live-pipelines-unavailable',
+      detail: completed
+        ? `definition declares pipeline_sources (${declared.join(', ')}) but the run snapshot holds no ` +
+          `pipelines — the page renders no pipeline data at all. Declare snapshot_inputs.pipelines ` +
+          `covering every alias in pipeline_sources before completing the run.`
+        : `this run is '${payload?.instance?.status ?? 'unknown'}', so it has no snapshot by design ` +
+          `(#1162) — and no live pipeline rows were supplied for ${declared.join(', ')}, so nothing ` +
+          `was judged. Fetch GET /labs/workflow/api/<definition_id>/pipeline-data/?opportunity_id=<opp> ` +
+          `and pass it as livePipelines.`,
     });
   }
 
@@ -151,6 +241,7 @@ export function checkParUrlPayloadPopulated(payload: WorkflowPayload): PayloadRe
     const columns = new Set<string>();
     for (const r of rows) for (const k of Object.keys(r)) columns.add(k);
     for (const field of columns) {
+      if (LABS_BUILTIN_ROW_COLUMNS.has(field)) continue;
       const allDead = rows.every((r) => isDeadValue(r[field]));
       if (allDead) {
         findings.push({
