@@ -61,8 +61,12 @@ export interface ExtractedToken {
   token: string;
   /** 1-based line number of the string literal the token came from. */
   line: number;
-  /** How the token was reached: a class attribute, or any string literal. */
-  origin: 'class-attribute' | 'string-literal';
+  /**
+   * How the token was reached: a class attribute, the value of a NAMED
+   * non-class attribute (`data-testid`, `title`, `id`, ...), or any other
+   * string literal.
+   */
+  origin: 'class-attribute' | 'attribute-value' | 'string-literal';
 }
 
 export interface UtilityFinding {
@@ -333,6 +337,50 @@ export function extractUtilityTokens(source: string): ExtractedToken[] {
     return PREFIX_KEYWORDS.has(word);
   };
 
+  /**
+   * JSX attributes that hold something other than classes and must not be
+   * linted as utilities (ace#1699).
+   *
+   * `data-*` and `aria-*` are matched by prefix; they contain a hyphen, so
+   * they can never be a JS identifier and the match is unambiguous. The rest
+   * is a short, closed list of attribute names — deliberately not "any
+   * identifier before an `=`", because `var cardBorder = 'border-slate-300'`
+   * has exactly that shape and IS a utility the lint must keep catching
+   * (it is one of the seven ace#1662 ground-truth misses).
+   */
+  const NON_CLASS_ATTRS = new Set([
+    'title', 'id', 'alt', 'href', 'src', 'type', 'name', 'placeholder',
+    'role', 'key', 'htmlFor', 'target', 'rel', 'value', 'label',
+  ]);
+
+  /**
+   * How to treat a string literal that opens at `q`.
+   *
+   * A `data-testid` cannot hold utilities, and linting it is a false positive
+   * that BLOCKS an upload — test-id first segments routinely match a Tailwind
+   * family (`row-count`, `grid-toggle`, `text-filter`). ACE's own
+   * `demo-narrative` requires a `testid:` selector on every scene action, so a
+   * render_code a DDD walkthrough can drive must carry them (ace#1699).
+   *
+   * Everything else stays `string-literal` and IS classified:
+   * `cond ? 'text-rose-700' : ''` and `var cardBorder = 'border-slate-300'`
+   * are the shapes ace#1662 exists to catch.
+   */
+  const originFor = (q: number): ExtractedToken['origin'] => {
+    if (isClassAttribute(q)) return 'class-attribute';
+    // JSX attribute shape only: <name>="..." with no space around the `=`.
+    let j = q - 1;
+    while (j >= 0 && /[{(]/.test(source[j])) j--;
+    if (j < 0 || source[j] !== '=') return 'string-literal';
+    j--;
+    const end = j + 1;
+    while (j >= 0 && /[A-Za-z0-9_:-]/.test(source[j])) j--;
+    const name = source.slice(j + 1, end);
+    if (!name || (j >= 0 && !/[\s{]/.test(source[j]))) return 'string-literal';
+    if (/^(data|aria)-/.test(name) || NON_CLASS_ATTRS.has(name)) return 'attribute-value';
+    return 'string-literal';
+  };
+
   /** Is the string that starts at `q` the value of a class attribute? */
   const isClassAttribute = (q: number): boolean => {
     let j = q - 1;
@@ -429,11 +477,11 @@ export function extractUtilityTokens(source: string): ExtractedToken[] {
         continue;
       }
       if ((c === '"' || c === "'") && opensStringLiteral(i)) {
-        readQuoted(isClassAttribute(i) ? 'class-attribute' : 'string-literal');
+        readQuoted(originFor(i));
         continue;
       }
       if (c === '`' && opensStringLiteral(i)) {
-        readTemplate(isClassAttribute(i) ? 'class-attribute' : 'string-literal');
+        readTemplate(originFor(i));
         continue;
       }
       if (c === '{') {
@@ -610,6 +658,8 @@ export function classifyUtilities(source: string, css: string): ResolutionReport
   const order: string[] = [];
   const lines = new Map<string, number[]>();
   for (const t of tokens) {
+    // The value of a named non-class attribute is not a class (ace#1699).
+    if (t.origin === 'attribute-value') continue;
     if (!lines.has(t.token)) {
       lines.set(t.token, []);
       order.push(t.token);
