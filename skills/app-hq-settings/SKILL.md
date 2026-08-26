@@ -520,6 +520,23 @@ the camera-only residual if one exists, annotating
   do NOT resolve the affected residual, and stop. A partial application
   (some forms patched, one failed) writes `status: partial` with the
   failed form named and leaves the camera-only residual UNresolved.
+- **A Nova re-upload REVERTS half of what this skill applies, so this
+  skill must run AGAIN after one (ace#1643).** Measured on
+  hh-poverty-targeting/20260824-1404: `upload_app_to_hq` wiped
+  `appearance="acquire"` and reverted every per-module
+  `display_style` to list, while the app-level `use_grid_menus` and
+  `grid_form_menus` survived. `app-release-qa` Step 2.8 BLOCKER-gates all
+  four, so a re-upload that skips the re-apply halts Phase 3 two steps
+  later. `app-release § Step 3a` owns that ordering — re-upload, re-apply
+  here, then build. Whoever re-uploads a Phase 3 app owes this re-apply,
+  wherever the re-upload happens.
+- **After a re-upload the draft's form uids are 40-hex, not 32-hex
+  (ace#1644).** Step 2's walk and Step 3's `commcare_get_form_source` /
+  `commcare_patch_xform` accept both widths (`lib/hq-unique-id.ts`). A
+  `unique_id` validation error or a `--draft-only resolved 0 forms`
+  against a healthy re-uploaded app means the running MCP subprocess
+  predates that fix — quit and reopen Claude Code, since MCP children
+  bind their schemas at spawn.
 
 ## Dry-Run Behavior
 
