@@ -30,6 +30,13 @@ can read its form schema and surface deliver units to the opportunity.
   apps:
     learn_app:   { hq_app_id: <id>, build_id: <id>, version: <n>, is_released: true, released_at: <iso> }
     deliver_app: { hq_app_id: <id>, build_id: <id>, version: <n>, is_released: true, released_at: <iso> }
+  # Step 3a's pre-build drift decision, per app (ace#1643). Present on
+  # every run — `drift: false` is a RESULT and must be recorded, because a
+  # skip that is not written down is indistinguishable from a check that
+  # never ran.
+  drift_check:
+    learn:   { drift: <bool>, conclusive: <bool>, action: <build-directly|reupload-reapply-settings-then-build>, reupload: <bool>, settings_reapplied: [...], reasons: [...] }
+    deliver: { drift: <bool>, conclusive: <bool>, action: <...>, reupload: <bool>, settings_reapplied: [...], reasons: [...] }
   ```
 
   `is_released` and `version` mirror what HQ returns from the release POST
@@ -113,6 +120,96 @@ procedure below to rediscover.
    the operator to resolve coverage first — re-running app-release on
    uncovered apps will succeed at the build level but the opp will get
    stuck at Phase 4 Step 2 with empty deliver units.
+
+3a. **Pre-build drift check — is the HQ draft still the Nova app? (ace#1643)**
+
+    `commcare_make_build` versions the **CCHQ draft**. It does not pull
+    from Nova. So any Nova edit made after `app-deploy` is absent from
+    the released CCZ and the release still reports success. Run this
+    check per app, BEFORE Step 4.
+
+    **Step 6's marker verification cannot cover this.** The markers were
+    correct on the stale build too — it was a well-formed build of the
+    wrong content. **Marker integrity is not a proxy for content
+    integrity**, which is why this check is content-level and sits
+    before the build. (`app-release-eval`, ace#1643.)
+
+    1. **Gather the signals** (all cheap, all read-only):
+
+       | Signal | Source |
+       |---|---|
+       | `deployedAt` | `3-commcare/app-deploy_summary.md` frontmatter `uploaded_at` |
+       | `novaEditedSinceDeploy` | THIS RUN's own knowledge — did any step dispatch `/nova:edit`, an eval-driven repair, or a Step 4a build-rejection fix on this app AFTER `app-deploy`? `true` / `false`; leave unset if genuinely unknown |
+       | `novaFormCount` / `novaFieldCount` | `get_app({app_id: <nova_app_id>})` — one call per app |
+       | `hqDraftFormCount` / `hqDraftFieldCount` | `run-form-walk.ts <hq_domain> <hq_app_id> --draft-only --with-fields --out-scratch` (same invocation `app-hq-settings § Step 2` documents; check `fields_available: true` before trusting the field count) |
+       | `novaEditedAt` | optional — pass only if the Nova surface actually exposes a last-edited timestamp. Do NOT invent one; an omitted signal is handled, a guessed one is not |
+
+    2. **Classify** with `classifyAppDrift` from `lib/app-release-drift.ts`
+       (a pure function, unit-tested in `test/lib/app-release-drift.test.ts`
+       — the decision is not left to prose). It returns
+       `{drift, action, conclusive, reasons}`.
+
+       Two properties of the classifier are deliberate and must not be
+       "optimised" away:
+
+       - **Matching counts never clear the build-directly branch.** Of the
+         three drifting Deliver edits in the ace#1643 repro, only
+         `gps_lat`/`gps_lon` moved a count; the extended consent paragraph
+         and the `area_ref` constraint moved none. Counts detect drift;
+         they cannot prove its absence. Clearing the skip needs an
+         ORDERING fact.
+       - **Unresolved signals default to `drift: true`** (with
+         `conclusive: false`). A needless re-upload costs one idempotent
+         call; a skipped one ships the wrong app and reports success.
+
+    3. **On `action: 'reupload-reapply-settings-then-build'` — an ordered
+       TRIPLE, and the middle item is the one a naive fix omits:**
+
+       1. `/nova:upload_to_hq <nova_app_id> <ACE_HQ_DOMAIN>` — updates the
+          HQ app in place (`hq_app_action: updated`, id unchanged,
+          `left_behind: []`). Honour `app-deploy § HQ-id stability` if the
+          id DID change.
+       2. **Re-apply `app-hq-settings` and re-verify from
+          `GET /apps/source/`.** The re-upload REVERTS two of the four
+          settings that skill applies — measured on
+          hh-poverty-targeting/20260824-1404 (ace#1643):
+
+          | Setting | Survives a re-upload? |
+          |---|---|
+          | `appearance="acquire"` on Deliver image fields | **no — wiped** |
+          | per-module `display_style: grid` | **no — reverted to list** |
+          | app-level `use_grid_menus` | yes |
+          | app-level `grid_form_menus` | yes |
+
+          `app-release-qa` Step 2.8 BLOCKER-gates all three grid fields
+          and the `acquire` appearance, so re-uploading WITHOUT this
+          re-apply converts a silent stale-content bug into a hard Phase 3
+          halt.
+
+          After a re-upload the form uids are the 40-hex SHA-1 variant, not
+          32-hex. `commcare_get_form_source` / `commcare_patch_xform` and
+          `run-form-walk --draft-only` all accept both widths (ace#1644,
+          `lib/hq-unique-id.ts`) — a `unique_id` validation error or a
+          `resolved 0 forms` here means the plugin predates that fix, and
+          **MCP code needs a full Claude Code restart, not `/reload-plugins`**.
+       3. Only then proceed to Step 4.
+
+    4. **On `action: 'build-directly'`**, go straight to Step 4 — and say
+       so explicitly in the summary. A skip that is not recorded is
+       indistinguishable from a check that never ran.
+
+    5. **Record the decision** in `3-commcare/app-release_summary.md`
+       frontmatter, per app, so it is auditable:
+
+       ```yaml
+       drift_check:
+         learn:   { drift: false, conclusive: true,  action: build-directly, reupload: false, settings_reapplied: [], reasons: [...] }
+         deliver: { drift: true,  conclusive: true,  action: reupload-reapply-settings-then-build, reupload: true, settings_reapplied: [camera_only_acquire, module_display_style_grid], reasons: [...] }
+       ```
+
+       `reasons` is `AppDriftDecision.reasons` verbatim. When
+       `conclusive: false`, the body MUST say the verdict was a default
+       taken on missing signals, not an observation.
 
 4. **For each app (learn + deliver):** run the verified Step 1 + Step 2
    POSTs above. Each call is idempotent on the build side: re-POSTing
@@ -400,3 +497,15 @@ When `--dry-run` is active:
   warning about prior builds; new build creation should still work.
 - **`is_released` doesn't flip after release POST**: probe URL pattern;
   the release endpoint may have moved.
+- **The release succeeded but ships stale content (ace#1643)**: the
+  symptom is a green build + a green Step 6 whose CCZ is missing a Nova
+  edit made after `app-deploy`. Step 3a is the guard; if the summary has
+  no `drift_check` block, the guard did not run. Repair is the same
+  ordered triple Step 3a prescribes — re-upload, **re-apply
+  `app-hq-settings`**, rebuild, re-release.
+- **`unique_id` validation error, or `--draft-only resolved 0 forms`,
+  right after a re-upload (ace#1644)**: CCHQ hands back 40-hex SHA-1 form
+  uids after `upload_app_to_hq`. Both widths are accepted since the
+  ace#1644 fix (`lib/hq-unique-id.ts`). Seeing the old behaviour means
+  the running MCP subprocess predates it — **quit and reopen Claude Code**;
+  `/ace:update` + `/reload-plugins` do not respawn MCP children.

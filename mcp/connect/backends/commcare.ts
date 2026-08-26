@@ -622,7 +622,12 @@ export interface ConnectSyncProjection {
 export interface PatchXformArgs {
   domain: string;
   app_id: string;
-  /** 32-char hex `unique_id` of the form (NOT the `m/f` index). */
+  /**
+   * CCHQ `unique_id` of the form (NOT the `m/f` index). **32-hex (uuid4) or
+   * 40-hex (SHA-1)** — HQ hands back a 40-hex form uid after a Nova
+   * `upload_app_to_hq`, and accepts it on this endpoint (observed on
+   * hh-poverty-targeting/20260824-1404, ace#1644). See `lib/hq-unique-id.ts`.
+   */
   form_unique_id: string;
   /** Full replacement XForm XML. */
   new_xform_xml: string;
@@ -684,7 +689,12 @@ export interface PatchXformResult {
 export interface GetFormSourceArgs {
   domain: string;
   app_id: string;
-  /** 32-char hex `unique_id` of the form (NOT the `m/f` index). */
+  /**
+   * CCHQ `unique_id` of the form (NOT the `m/f` index). **32-hex (uuid4) or
+   * 40-hex (SHA-1)** — HQ hands back a 40-hex form uid after a Nova
+   * `upload_app_to_hq`, and accepts it on this endpoint (observed on
+   * hh-poverty-targeting/20260824-1404, ace#1644). See `lib/hq-unique-id.ts`.
+   */
   form_unique_id: string;
 }
 
@@ -714,7 +724,11 @@ export interface GetFormSourceResult {
 export interface SetMenuDisplayArgs {
   domain: string;
   app_id: string;
-  /** 32-char hex `unique_id` of the module (a.k.a. menu). */
+  /**
+   * CCHQ `unique_id` of the module (a.k.a. menu). **32-hex (uuid4) or 40-hex
+   * (SHA-1)**; HQ modules are typically 40-hex. See `lib/hq-unique-id.ts`
+   * (ace#1644).
+   */
   module_unique_id: string;
   /**
    * Menu display style. CCHQ's `edit_module_attr` `display_style` attr

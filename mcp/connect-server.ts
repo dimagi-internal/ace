@@ -56,6 +56,7 @@ import {
   isStaleCacheModuleError,
   pluginRootFromCommand,
 } from '../lib/plugin-cache-freshness.js';
+import { HQ_UNIQUE_ID_RE, HQ_UNIQUE_ID_HINT } from '../lib/hq-unique-id.js';
 
 const baseUrl = process.env.CONNECT_BASE_URL ?? 'https://connect.dimagi.com';
 const cchqBaseUrl = process.env.ACE_HQ_BASE_URL ?? 'https://www.commcarehq.org';
@@ -1239,7 +1240,7 @@ server.tool('commcare_patch_xform',
     server: HQ_SERVER_FIELD,
     domain: z.string(),
     app_id: z.string(),
-    form_unique_id: z.string().regex(/^[0-9a-f]{32}$/, 'unique_id is a 32-char hex string from suite.xml or the delete_form action URL'),
+    form_unique_id: z.string().regex(HQ_UNIQUE_ID_RE, HQ_UNIQUE_ID_HINT),
     new_xform_xml: z.string().min(1).optional().describe('Inline XForm XML (mutually exclusive with new_xform_xml_path).'),
     new_xform_xml_path: z.string().optional().describe('Local path to the XForm XML file (mutually exclusive with new_xform_xml). Use this for large patched XML that blows past tool-call arg-size limits.'),
     sha1: z.string().optional().describe('Optional concurrency token; CCHQ rejects with XformConflictError on mismatch.'),
@@ -1320,7 +1321,7 @@ server.tool('commcare_get_form_source',
     server: HQ_SERVER_FIELD,
     domain: z.string(),
     app_id: z.string(),
-    form_unique_id: z.string().regex(/^[0-9a-f]{32}$/, 'unique_id is a 32-char hex string from suite.xml or the delete_form action URL'),
+    form_unique_id: z.string().regex(HQ_UNIQUE_ID_RE, HQ_UNIQUE_ID_HINT),
   },
   async (args) => runAtom(async () => (await commcareClient(args.server)).getFormSource(args))
 );
@@ -1344,7 +1345,7 @@ server.tool('commcare_set_menu_display',
     server: HQ_SERVER_FIELD,
     domain: z.string(),
     app_id: z.string(),
-    module_unique_id: z.string().regex(/^[0-9a-f]{32}(?:[0-9a-f]{8})?$/, 'unique_id is a 32- or 40-hex string (CCHQ modules are 40-hex SHA-1; forms are 32-hex) from the module edit URL or the draft-app API'),
+    module_unique_id: z.string().regex(HQ_UNIQUE_ID_RE, HQ_UNIQUE_ID_HINT),
     display_style: z.enum(['list', 'grid']).optional().describe('Menu display style; defaults to "grid".'),
   },
   async (args) => runAtom(async () => (await commcareClient(args.server)).setMenuDisplay(args))
