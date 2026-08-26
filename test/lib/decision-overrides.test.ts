@@ -38,6 +38,7 @@ function makeRow(overrides: Partial<DecisionRow> = {}): DecisionRow {
     source: "idea.md §1",
     status: "ai-default",
     evidence_basis: "stated",
+    resolved_by: "ace",
     ...overrides,
   } as DecisionRow;
 }

@@ -7,6 +7,7 @@ import {
   composeAppendedLog,
 } from "../../lib/decisions-write.js";
 import {
+  DECISIONS_SCHEMA_VERSION,
   DecisionsLogSchema,
   parseDecisionsYaml,
 } from "../../lib/decisions-schema.js";
@@ -24,6 +25,7 @@ const VALID_ROW = {
   status: "ai-default" as const,
   reasoning: "Single per-FLW visit producing one structured delivery.",
   evidence_basis: "stated" as const,
+  resolved_by: "ace" as const,
 };
 
 const WO_ROW = {
@@ -36,10 +38,11 @@ const WO_ROW = {
   source: "pdd-timeline",
   status: "ai-default" as const,
   evidence_basis: "inferred" as const,
+  resolved_by: "external" as const,
 };
 
 describe("composeAppendedLog — seeding a new log", () => {
-  it("seeds schema_version=4 + opportunity + run_id + generated_at when text is null", () => {
+  it("seeds schema_version=5 + opportunity + run_id + generated_at when text is null", () => {
     const result = composeAppendedLog({
       existingYamlText: null,
       opportunity: "bednet-spot-check",
@@ -49,7 +52,7 @@ describe("composeAppendedLog — seeding a new log", () => {
     });
 
     const parsed = parseDecisionsYaml(result.content);
-    expect(parsed.schema_version).toBe(4);
+    expect(parsed.schema_version).toBe(DECISIONS_SCHEMA_VERSION);
     expect(parsed.opportunity).toBe("bednet-spot-check");
     expect(parsed.run_id).toBe("20260525-2013");
     expect(parsed.generated_at).toBe("2026-05-25T20:13:04Z");
@@ -385,7 +388,7 @@ describe("DECISIONS_FILENAME", () => {
 
 /** The inherited header exactly as observed on Drive, plus one seeded row. */
 const SEEDED_LOG = [
-  "schema_version: 4",
+  "schema_version: 5",
   "opportunity: bednet-spot-check",
   "run_id: 20260706-0649",
   "generated_at: 2026-07-06 13:53:07.331000+00:00",
@@ -400,6 +403,7 @@ const SEEDED_LOG = [
   "    source: idea.md §1",
   "    status: ai-default",
   "    evidence_basis: stated",
+  "    resolved_by: ace",
   "",
 ].join("\n");
 

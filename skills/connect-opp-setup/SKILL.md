@@ -1307,7 +1307,7 @@ Each row this skill writes uses `phase: "4-connect"` and
 `skill: "connect-opp-setup"`. Append via the `decisions_append_rows` MCP
 atom (ace-decisions server) — do not hand-construct YAML and do not
 write decisions.yaml via `update_yaml_file`. The atom validates each row
-against `lib/decisions-schema.ts` v4 at the call boundary; misspelled
+against `lib/decisions-schema.ts` v5 at the call boundary; misspelled
 keys (`decision`, `rationale`, `default`, `options_considered`, `notes`)
 are rejected before they touch Drive, and so is any row missing
 `evidence_basis` (`stated` | `inferred` | `conflicting` — mandatory on
@@ -1336,6 +1336,7 @@ decisions_append_rows({
       source: "PDD §6/§8 verification mechanism",
       status: "ai-default",
       evidence_basis: "stated",
+      resolved_by: "ace",
       reasoning: "Smoke opp — no GPS or photo capture in scope; duplicate guard only."
     },
     ...

@@ -27,6 +27,7 @@ const base = (over: Record<string, unknown> = {}) => ({
   source: 'inputs/idea.md § Connect Deliver app',
   status: 'ai-default' as const,
   evidence_basis: 'stated' as const,
+  resolved_by: "ace" as const,
   ...over,
 });
 

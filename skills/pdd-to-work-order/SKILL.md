@@ -54,7 +54,7 @@ Take the approved PDD and decisions.yaml and produce a contractual Work Order dr
    | `wo-ethics-scope` | Operational-only vs patient-level | Ethics section |
    | `wo-data-storage-region` | Server region for data storage (default: US) | Data Handling section |
 
-4. **Append `wo-*` rows to `decisions.yaml`** via the `decisions_append_rows` MCP atom (ace-decisions server). Do not hand-construct YAML and do not use `update_yaml_file` for this file — the dedicated atom validates each row against `lib/decisions-schema.ts` v4 at the call boundary and is idempotent on re-runs.
+4. **Append `wo-*` rows to `decisions.yaml`** via the `decisions_append_rows` MCP atom (ace-decisions server). Do not hand-construct YAML and do not use `update_yaml_file` for this file — the dedicated atom validates each row against `lib/decisions-schema.ts` v5 at the call boundary and is idempotent on re-runs.
 
    Tool call:
 
@@ -73,18 +73,23 @@ Take the approved PDD and decisions.yaml and produce a contractual Work Order dr
          options: ["2026-05-22 to 2026-07-31"],
          source: "pdd-timeline",
          status: "ai-default",
-         evidence_basis: "stated"
+         evidence_basis: "stated",
+         resolved_by: "external"
        },
        ...
      ]
    })
    ```
 
-   Field shape: `phase: "1-design"` (ordinal-prefixed, not `idea-to-design`), `skill: "pdd-to-work-order"`, and `status: "ai-default"` on every row this skill writes. `decision`, `rationale`, `default`, `options_considered`, and `notes` are NOT valid keys — the schema is `id` / `phase` / `skill` / `question` / `ai-default` / `options` / `source` / `status` / **`evidence_basis`**, with optional `reasoning` (and `conflict_signals`, REQUIRED when `evidence_basis` is `conflicting`). The atom rejects any row that doesn't match.
+   Field shape: `phase: "1-design"` (ordinal-prefixed, not `idea-to-design`), `skill: "pdd-to-work-order"`, and `status: "ai-default"` on every row this skill writes. `decision`, `rationale`, `default`, `options_considered`, and `notes` are NOT valid keys — the schema is `id` / `phase` / `skill` / `question` / `ai-default` / `options` / `source` / `status` / **`evidence_basis`** / **`resolved_by`**, with optional `reasoning` (and `conflict_signals`, REQUIRED when `evidence_basis` is `conflicting`). The atom rejects any row that doesn't match.
 
-   **`evidence_basis` is mandatory on every new row** (schema v4, `lib/decisions-schema.ts:12`): `stated` (the value is directly in a source), `inferred` (extrapolated beyond any source — say so in `reasoning`), or `conflicting` (resolves disagreeing sources; then `conflict_signals` must enumerate at least two competing readings). `DecisionRowStrictSchema` rejects a row without it at the MCP boundary before any Drive write, so a row missing it never lands. Full contract: `skills/idea-to-pdd/SKILL.md § The evidence_basis contract`. (This section documented the v3 shape until ace#1485 — its own worked example was rejected verbatim.)
+   **`evidence_basis` is mandatory on every new row** (schema v5, `lib/decisions-schema.ts`): `stated` (the value is directly in a source), `inferred` (extrapolated beyond any source — say so in `reasoning`), or `conflicting` (resolves disagreeing sources; then `conflict_signals` must enumerate at least two competing readings). `DecisionRowStrictSchema` rejects a row without it at the MCP boundary before any Drive write, so a row missing it never lands. Full contract: `skills/idea-to-pdd/SKILL.md § The evidence_basis contract`. (This section documented the v3 shape until ace#1485 — its own worked example was rejected verbatim.)
 
-   When a load-bearing field is genuinely unknowable (partner name absent, WO# unknown), insert a bracketed placeholder like `[Partner Name]` in the gdoc and pass the placeholder as `ai-default` (e.g. `"ai-default": "[Partner Name]"`) plus a `reasoning` line telling the human what to fill in. `status` is still `"ai-default"` — `"open"` is not a valid status. A placeholder default is `evidence_basis: "inferred"` unless a source actually states it.
+   **`resolved_by` is mandatory on every new row** (schema v5): `ace` when the value is ACE's judgment to make from the source material, `external` when the real value gets fixed later by someone else — a rate negotiated in a solicitation response, dates set on contract execution, an FLW count fixed at deployment. Nearly every `wo-*` row is `external`: the work order states ACE's best estimate, and the contract sets the real number.
+
+   `resolved_by` is **not** an escalation path and does not gate anything. ACE still picks a value, still writes it as `ai-default`, and the run still proceeds — exactly as before. The flag exists so a downstream phase does not cite a projection as a settled commitment, and so a later run re-deriving it differently reads as expected rather than as drift. Measured across 22 runs of two opps, `wo-period-of-performance`, `wo-total-not-to-exceed-usd` and `payment-rate` produced a different confident-looking answer on nearly every run, and the first hh-poverty run had originally recorded them correctly as *"Deferred to deployment (Annex B); negotiated via solicitation response"* — inside the `ai-default` string, where nothing could read it.
+
+   When a load-bearing field is genuinely unknowable (partner name absent, WO# unknown), insert a bracketed placeholder like `[Partner Name]` in the gdoc and pass the placeholder as `ai-default` (e.g. `"ai-default": "[Partner Name]"`) plus a `reasoning` line telling the human what to fill in. `status` is still `"ai-default"` — `"open"` is not a valid status, and `resolved_by: "external"` is how you say "someone else sets this," not a status. A placeholder default is `evidence_basis: "inferred"` unless a source actually states it.
 
    Canonical worked fixture with `wo-*` rows: `test/skills/pdd-to-work-order-qa/fixtures/good-decisions.yaml`.
 
