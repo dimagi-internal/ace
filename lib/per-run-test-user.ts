@@ -261,7 +261,8 @@ export function classifyPerRunPreRegistrationGate(match: InviteGateRow | null): 
       halt: false,
       reason:
         'per-run test user: invite row present with connect_user_id=null — EXPECTED before ' +
-        'registration (this is the ace#824 signature ONLY for an already-registered phone). ' +
+        'registration. (That column populates on CLAIM, so it is null on any pending row ' +
+        'whatever the phone; it is never the ace#824 signature here — ace#1663.) ' +
         'Proceed to registration, then re-invite.',
     };
   }

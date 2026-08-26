@@ -937,7 +937,7 @@ alone makes the artifact land outside `4-connect` and fail
    ace_test_user = {
      phone: ${ACE_E2E_PHONE},           # or this run's minted phone — see 7b
      invite_row_present: <bool>,        # match !== null from connect_list_flw_invites — REQUIRED at the boundary
-     connect_user_id: <string | null>,  # null with a row present IS the ace#824 signature
+     connect_user_id: <string | null>,  # populates on CLAIM; null on a pending row is NORMAL
      status: <accepted | pending | unknown>,
      checked_at: <ISO timestamp>,       # when the read-back ran (NOT the send time)
    }
@@ -947,10 +947,27 @@ alone makes the artifact land outside `4-connect` and fail
    records a verified-absent row, which is what Step 7's `[BLOCKER]` acts on.
    What the boundary rejects is the key being ABSENT, i.e. the read-back never
    ran. Capture `connect_user_id` and `status` for real rather than defaulting
-   them: together they are what lets Phase 6 tell a normal pending pre-claim
-   invite from the ace#824 mode (access with no linked ConnectID user → the
-   opp is invisible on the device forever), which Phase 6 otherwise re-derives
-   on AVD wall-clock.
+   them — Phase 6 wants both — but do NOT read `connect_user_id` as a fault
+   indicator here.
+
+   **`connect_user_id: null` on a pending row is the NORMAL pre-claim state,
+   NOT the ace#824 signature (ace#1663).** On this read path the id is not a
+   view of the `OpportunityAccess.user` FK at all: `parseWorkersTable`
+   (`lib/connect-flw-invites.ts`) extracts it from the **Name cell**, which
+   Connect renders as a bare `-` until the worker claims the opportunity —
+   so `cellText` yields null and the id stays null on *every* pending row,
+   whatever the underlying link is. It populates on CLAIM, exactly like
+   `name`, and null therefore carries no information about #824 at Phase 4.
+   Reading it as a fault would raise a `[BLOCKER]` on every healthy run,
+   since Phase 4 invites and Phase 6 claims. Verified live on
+   `hh-poverty-targeting/20260824-1404`: the same atom and the same phone
+   returned `connect_user_id: null` on a fresh pending invite and
+   `"1277adbd0ceea89e367d"` on a CLAIMED opp of the same program.
+
+   At Phase 4 the only #824 discriminator on this path is **row existence**
+   (`invite_row_present`), which Step 7 already gates on. The linked-vs-
+   unlinked distinction does not become observable until after a claim —
+   Phase 6's claim attempt is what surfaces it.
 
    All Connect-opp-setup state is emitted in one atomic write at
    end-of-skill (Step 10). A crash between Step 7 and Step 10 loses
@@ -1132,7 +1149,7 @@ alone makes the artifact land outside `4-connect` and fail
             ace_test_user:                     # field names per lib/phase-products-schema.ts
               phone: ${ACE_E2E_PHONE}          # from Step 7
               invite_row_present: <bool>       # REQUIRED — the Step 7 read-back result
-              connect_user_id: <string | null> # null + row present = the ace#824 signature
+              connect_user_id: <string | null> # populates on CLAIM; null on a pending row is NORMAL, not #824
               status: <accepted | pending | unknown>
               checked_at: <ISO timestamp>      # when the read-back ran
               # ONLY when Step 7b ran (ACE_PER_RUN_TEST_USER on — default OFF, so
