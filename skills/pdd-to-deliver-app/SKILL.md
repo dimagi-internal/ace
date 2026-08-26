@@ -1210,8 +1210,11 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
     photograph under "a payable visit requires all of", §5.2 gated the photo
     screen on Consent = yes). Surface each finding in the build memo with both
     sides quoted, and raise it at the Phase 3 pause so a human decides which
-    side moves. `report.checked === false` means the curriculum states no
-    unconditional evidence step — "not applicable", not "clean".
+    side moves. `report.status === 'unable'` means the check **did not run** —
+    the curriculum states no unconditional evidence step, so there was nothing
+    to cross-check. That is NOT "the two apps agree": record it in the build
+    memo with its `reason` (`formatTaughtVsCollectableReport` renders it), and
+    if the curriculum visibly DOES teach one, the phrase matchers are the bug.
 
 4i. **Fake-preload check (a hidden `caseWrite` field can never hold the case
     value) — runs at LEVEL 0.** The structural preventer for ace#1224. Because

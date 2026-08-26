@@ -32,6 +32,7 @@
 //
 
 import { DOMParser } from '@xmldom/xmldom';
+import { type CheckOutcome, checked, unable, formatUnable } from './check-outcome.js';
 
 export interface RetryLeak {
   /** Nodeset of the fail-branch label that leaked, e.g. `/data/fail_msg`. */
@@ -42,28 +43,32 @@ export interface RetryLeak {
   text: string;
 }
 
-export interface RetryLeakReport {
-  /**
-   * False when the form carries no score-gated result labels — nothing to
-   * leak into, so the check did not apply. Distinguished from `ok` so a
-   * caller can tell "clean" from "not applicable" (a silent pass on an
-   * inapplicable form is how a check quietly stops covering anything).
-   */
-  checked: boolean;
-  /**
-   * True only when the check RAN FULLY and found nothing: no leaks AND
-   * nothing it could not resolve. A blind check that reports clean is how
-   * this whole class stayed invisible (#1332) — `blind` is not a footnote.
-   */
-  ok: boolean;
-  /** Correct-answer literals recovered from the scoring binds. */
-  correctAnswers: string[];
-  /** What each literal is actually matched against — its resolved option prose. */
-  answerNeedles: Record<string, string[]>;
-  leaks: RetryLeak[];
-  /** Reasons the check could not fully run, one line each. */
-  blind: string[];
-}
+/**
+ * `status: 'unable'` when the form carries no score-gated result labels —
+ * nothing to leak into, so the check did not apply. That is NOT a pass and is
+ * no longer expressible as one (`lib/check-outcome.ts`); this helper returned
+ * `checked: false, ok: true` on that path, and #1332 is the run where a
+ * matcher bug made EVERY released CCZ take it.
+ *
+ * `ok` on the `checked` branch is true only when the check RAN FULLY and found
+ * nothing: no leaks AND nothing it could not resolve. `blind` is not a
+ * footnote — a blind check that reports clean is the same class one level down.
+ *
+ * `findings` holds the leaks (renamed from `leaks` when this moved onto the
+ * shared `CheckOutcome` shape, so `opp-eval`-style consumers can read any
+ * check's findings without per-helper knowledge).
+ */
+export type RetryLeakReport = CheckOutcome<
+  RetryLeak,
+  {
+    /** Correct-answer literals recovered from the scoring binds. */
+    correctAnswers: string[];
+    /** What each literal is actually matched against — its resolved option prose. */
+    answerNeedles: Record<string, string[]>;
+    /** Reasons the check could not fully run, one line each. */
+    blind: string[];
+  }
+>;
 
 /** Normalize for comparison: case-insensitive, whitespace-collapsed. */
 function norm(s: string): string {
@@ -293,7 +298,7 @@ export function checkAssessmentRetryLeak(xml: string): RetryLeakReport {
   const itext = buildItextIndex(doc);
   const correctAnswers = extractCorrectAnswers(doc);
   const failNodesets = failBranchNodesets(doc);
-  const checked = correctAnswers.length > 0 && failNodesets.length > 0;
+  const ran = correctAnswers.length > 0 && failNodesets.length > 0;
 
   // What a worker actually reads is the option's PROSE, not the value the
   // form stores. In a compiled select1 the answer key recovered from the
@@ -306,7 +311,7 @@ export function checkAssessmentRetryLeak(xml: string): RetryLeakReport {
     const needles = [...(prose.get(answer) ?? [])];
     if (answer.length >= MIN_LITERAL_LEN) needles.push(answer);
     answerNeedles[answer] = needles;
-    if (checked && needles.length === 0) {
+    if (ran && needles.length === 0) {
       blind.push(
         `answer literal '${answer}' is a ${answer.length}-char option code with no resolvable ` +
           `option label — nothing to match a leak against`,
@@ -314,8 +319,13 @@ export function checkAssessmentRetryLeak(xml: string): RetryLeakReport {
     }
   }
 
-  if (!checked) {
-    return { checked: false, ok: true, correctAnswers, answerNeedles, leaks: [], blind: [] };
+  if (!ran) {
+    return unable(
+      `no score-gated result label to inspect: recovered ${correctAnswers.length} correct-answer ` +
+        `literal(s) from the scoring binds and ${failNodesets.length} fail-branch nodeset(s); both ` +
+        'must be non-empty. If this form DOES gate a retry message on the score, the recovery ' +
+        'matchers are the bug — that was #1332 on every released CCZ',
+    );
   }
 
   const leaks: RetryLeak[] = [];
@@ -346,17 +356,15 @@ export function checkAssessmentRetryLeak(xml: string): RetryLeakReport {
     }
   }
   return {
-    checked: true,
-    ok: leaks.length === 0 && blind.length === 0,
+    ...checked(leaks.length === 0 && blind.length === 0, leaks),
     correctAnswers,
     answerNeedles,
-    leaks,
     blind,
   };
 }
 
 export function formatRetryLeakReport(report: RetryLeakReport): string {
-  if (!report.checked) return 'assessment-retry-leak: not applicable (no score-gated result labels)';
+  if (report.status === 'unable') return formatUnable('assessment-retry-leak', report.reason);
   if (report.ok) return 'assessment-retry-leak: clean — no fail-branch label restates a correct answer';
   const blindBlock = report.blind.length
     ? [
@@ -366,13 +374,13 @@ export function formatRetryLeakReport(report: RetryLeakReport): string {
         ...report.blind.map((b) => `  ${b}`),
       ]
     : [];
-  if (report.leaks.length === 0) return blindBlock.join('\n');
+  if (report.findings.length === 0) return blindBlock.join('\n');
   return [
     ...blindBlock,
-    `assessment-retry-leak: ${report.leaks.length} fail-branch label(s) restate the correct answer —`,
+    `assessment-retry-leak: ${report.findings.length} fail-branch label(s) restate the correct answer —`,
     'a worker who fails once is shown the answer and passes on the next attempt,',
     'which makes the Connect Deliver-unlock gate decorative (dimagi-internal/ace#1041).',
-    ...report.leaks.map(
+    ...report.findings.map(
       (l) => `  ${l.label}: leaks "${l.leaked}"\n    text: ${l.text}`,
     ),
     'Fix: point the failing worker back at the MODULE CONTENT — the point of a fail',

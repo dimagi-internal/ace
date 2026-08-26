@@ -26,8 +26,10 @@ import { describe, it, expect } from 'vitest';
 import {
   extractEntityIdComponents,
   checkEntityIdGrain,
+  formatGrainReport,
 } from '../../lib/entity-id-grain.js';
 
+import { assertChecked, assertUnable, isPass } from '../../lib/check-outcome.js';
 /** The live released shape, including the entity_key indirection. */
 const LIVE = `<?xml version="1.0"?>
 <h:html xmlns:h="http://www.w3.org/1999/xhtml" xmlns="http://www.w3.org/2002/xforms">
@@ -69,41 +71,59 @@ describe('checkEntityIdGrain (#1285)', () => {
 
   it('fails the live key: none of the PDD-declared nodes appear', () => {
     const r = checkEntityIdGrain(LIVE, declared);
+    assertChecked(r);
     expect(r.ok).toBe(false);
     expect(r.findings.map((f) => f.kind)).toContain('missing-declared-node');
     expect(r.detail).toMatch(/hh_name_preload/);
   });
 
   it('names the concrete cost, not just the mismatch', () => {
-    expect(checkEntityIdGrain(LIVE, declared).detail).toMatch(/same.?day|collapse|one payable unit/i);
+    expect(formatGrainReport(checkEntityIdGrain(LIVE, declared))).toMatch(
+      /same.?day|collapse|one payable unit/i,
+    );
   });
 
   it('flags a payability ANSWER inside the key — the #969 over-correction', () => {
     const r = checkEntityIdGrain(LIVE, declared);
+    assertChecked(r);
     expect(r.findings.map((f) => f.kind)).toContain('answer-in-grain');
     expect(r.findings.find((f) => f.kind === 'answer-in-grain')!.detail).toMatch(/consent_confirmed/);
   });
 
   it('passes the mandated composite', () => {
-    expect(checkEntityIdGrain(CORRECT, declared).ok).toBe(true);
+    expect(isPass(checkEntityIdGrain(CORRECT, declared))).toBe(true);
   });
 
   it('fires with NO declaration at all when the key carries no entity-identifying node', () => {
     // username + date + an answer is worker-and-day scoped by construction.
     const r = checkEntityIdGrain(LIVE, []);
+    assertChecked(r);
     expect(r.ok).toBe(false);
     expect(r.findings.map((f) => f.kind)).toContain('no-entity-component');
   });
 
   it('does not fire the no-entity heuristic when the key carries a per-entity node', () => {
     const r = checkEntityIdGrain(CORRECT, []);
+    assertChecked(r);
     expect(r.findings.map((f) => f.kind)).not.toContain('no-entity-component');
   });
 
-  it('reports BLIND rather than clean when entity_id cannot be resolved', () => {
+  it('is UNABLE, not clean, when entity_id cannot be resolved', () => {
     const r = checkEntityIdGrain('<h:html xmlns:h="http://www.w3.org/1999/xhtml"><h:head/></h:html>', declared);
-    expect(r.checked).toBe(false);
-    expect(r.ok).toBe(true);
+    // No `ok` on this branch, so a caller cannot read an unresolved key as a
+    // clean one — and `isPass` says so explicitly (ace#1634).
+    expect(r.status).toBe('unable');
+    expect(isPass(r)).toBe(false);
+    assertUnable(r);
+    expect(r.reason).toMatch(/no readable entity_id calculate/i);
+    const text = formatGrainReport(r);
+    expect(text).toMatch(/UNABLE TO CHECK/);
+    expect(text).toMatch(/NOT a pass/);
+    // No green-looking word anywhere: "clean" is what the checked-and-fine
+    // branch says, and "not applicable" is the benign phrasing three prior
+    // instances of this class were signed off under.
+    expect(text).not.toMatch(/\bclean\b/i);
+    expect(text).not.toMatch(/not applicable/i);
   });
 });
 
@@ -137,6 +157,7 @@ describe('the payability-scoped key passes the gate (ace#1441)', () => {
       hasNonPayableBranch: true,
       payabilityDiscriminator: 'consent_confirmed',
     });
+    assertChecked(r);
     expect(r.findings).toEqual([]);
     expect(r.ok).toBe(true);
   });
@@ -145,6 +166,7 @@ describe('the payability-scoped key passes the gate (ace#1441)', () => {
     // The #969 over-correction the gate exists to catch: an answer in the key
     // with nothing requiring it there.
     const r = checkEntityIdGrain(xml, declared);
+    assertChecked(r);
     expect(r.ok).toBe(false);
     expect(r.findings.map((f) => f.kind)).toContain('answer-in-grain');
   });
@@ -156,6 +178,7 @@ describe('the payability-scoped key passes the gate (ace#1441)', () => {
       hasNonPayableBranch: true,
       payabilityDiscriminator: '/data/consent_block/consent_confirmed',
     });
+    assertChecked(r);
     expect(r.ok).toBe(true);
   });
 
@@ -168,12 +191,14 @@ describe('the payability-scoped key passes the gate (ace#1441)', () => {
       hasNonPayableBranch: true,
       payabilityDiscriminator: 'consent_confirmed',
     });
+    assertChecked(r);
     expect(r.ok).toBe(false);
     expect(r.findings.some((f) => f.detail.includes('visit_outcome'))).toBe(true);
   });
 
   it('needs BOTH inputs — a discriminator without the branch suppresses nothing', () => {
     const r = checkEntityIdGrain(xml, declared, { payabilityDiscriminator: 'consent_confirmed' });
+    assertChecked(r);
     expect(r.ok).toBe(false);
   });
 
@@ -183,6 +208,7 @@ describe('the payability-scoped key passes the gate (ace#1441)', () => {
       hasNonPayableBranch: true,
       payabilityDiscriminator: 'consent_confirmed',
     });
+    assertChecked(r);
     expect(r.findings.map((f) => f.kind)).toContain('no-entity-component');
   });
 
@@ -191,6 +217,7 @@ describe('the payability-scoped key passes the gate (ace#1441)', () => {
       hasNonPayableBranch: true,
       payabilityDiscriminator: 'consent_confirmed',
     });
+    assertChecked(r);
     expect(r.findings.map((f) => f.kind)).toContain('missing-declared-node');
   });
 });

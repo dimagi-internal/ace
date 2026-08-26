@@ -32,6 +32,7 @@ import {
   formatTaughtVsCollectableReport,
 } from '../../lib/taught-vs-collectable.js';
 
+import { assertChecked, assertUnable } from '../../lib/check-outcome.js';
 /** M8's worked example, plus a module that teaches nothing procedural. */
 const LEARN = {
   modules: [
@@ -82,6 +83,7 @@ const DELIVER = {
 describe('checkTaughtStepsCollectable (#1259)', () => {
   it('flags the photograph M8 teaches but the form gates behind consent', () => {
     const report = checkTaughtStepsCollectable(LEARN, DELIVER);
+    assertChecked(report);
     expect(report.ok).toBe(false);
     const photo = report.findings.find((f) => /photograph/i.test(f.taught));
     expect(photo).toBeDefined();
@@ -94,6 +96,7 @@ describe('checkTaughtStepsCollectable (#1259)', () => {
 
   it('does NOT flag GPS — it is required with no relevance, so the taught step works on every outcome', () => {
     const report = checkTaughtStepsCollectable(LEARN, DELIVER);
+    assertChecked(report);
     expect(report.findings.some((f) => /gps/i.test(f.taught))).toBe(false);
   });
 
@@ -101,6 +104,7 @@ describe('checkTaughtStepsCollectable (#1259)', () => {
     const fixed = JSON.parse(JSON.stringify(DELIVER));
     delete fixed.modules[0].forms[0].fields[2].relevant;
     const report = checkTaughtStepsCollectable(LEARN, fixed);
+    assertChecked(report);
     expect(report.findings).toEqual([]);
     expect(report.ok).toBe(true);
   });
@@ -109,10 +113,11 @@ describe('checkTaughtStepsCollectable (#1259)', () => {
     const noPhoto = JSON.parse(JSON.stringify(DELIVER));
     noPhoto.modules[0].forms[0].fields.splice(2, 1);
     const report = checkTaughtStepsCollectable(LEARN, noPhoto);
+    assertChecked(report);
     expect(report.findings.find((f) => /photograph/i.test(f.taught))!.reason).toBe('absent');
   });
 
-  it('is inert when the curriculum states no unconditional evidence step', () => {
+  it('is UNABLE, not clean, when the curriculum states no unconditional evidence step', () => {
     const chatty = {
       modules: [
         { module_name: 'Welcome', forms: [{ form_name: 'M1', fields: [
@@ -121,8 +126,19 @@ describe('checkTaughtStepsCollectable (#1259)', () => {
       ],
     };
     const report = checkTaughtStepsCollectable(chatty, DELIVER);
-    expect(report.checked).toBe(false);
-    expect(report.ok).toBe(true);
+    // Nothing to cross-check is NOT the two apps agreeing, and there is no
+    // `ok` on this branch to say otherwise (ace#1634).
+    expect(report.status).toBe('unable');
+    assertUnable(report);
+    expect(report.reason).toMatch(/unconditionally-taught evidence step/i);
+    const text = formatTaughtVsCollectableReport(report);
+    expect(text).toMatch(/UNABLE TO CHECK/);
+    expect(text).toMatch(/NOT a pass/);
+    // No green-looking word anywhere: "clean" is what the checked-and-fine
+    // branch says, and "not applicable" is the benign phrasing three prior
+    // instances of this class were signed off under.
+    expect(text).not.toMatch(/\bclean\b/i);
+    expect(text).not.toMatch(/not applicable/i);
   });
 
   it('reports enough for a human to adjudicate which artifact is wrong', () => {

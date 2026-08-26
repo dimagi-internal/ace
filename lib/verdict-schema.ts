@@ -113,6 +113,42 @@ export const AutoSurfacedSchema = z.object({
 });
 export type AutoSurfaced = z.infer<typeof AutoSurfacedSchema>;
 
+/**
+ * `checks[]` — which structural helpers a rubric actually RAN, and which it
+ * could not run.
+ *
+ * **This channel is ADVISORY.** Nothing can force an LLM-authored verdict to
+ * write the field; the schema can only validate what is written. The strong
+ * rails for this defect class live in `lib/check-outcome.ts` (a discriminated
+ * union, so `.ok` is unreachable without narrowing) and in
+ * `test/lib/check-outcome-contract.test.ts` (a source scan). This is the
+ * third rail: it carries the same distinction into the artifact a human reads.
+ *
+ * Why it exists: on `bednet-check-2-visit/20260825-1310` the scoring-arithmetic
+ * helper could not run against EITHER Learn scoring form — including the
+ * gating assessment — and reported `checked: false, ok: true`. The verdict had
+ * nowhere to say "this dimension was not evaluated", so the dimension scored
+ * as if it had been (ace#1634).
+ *
+ * `reason` is optional in the schema and REQUIRED in practice when `status`
+ * is `unable` — `validateVerdict` emits a WARNING, not an error, because a
+ * verdict that discloses an unrun check without saying why is still strictly
+ * better than one that says nothing, and rejecting it would push authors back
+ * to omitting the field.
+ *
+ * Deliberately NOT added: `unable` on `VerdictDispositionSchema`. One
+ * un-runnable check does not make a whole verdict un-runnable, and
+ * `incomplete` already covers the whole-artifact case.
+ */
+export const CheckRecordSchema = z.object({
+  /** The helper or check that was (or was not) run, e.g. `scoring-arithmetic`. */
+  name: z.string().min(1),
+  status: z.enum(['checked', 'unable']),
+  /** Why it could not run. Required in practice when `status` is `unable`. */
+  reason: z.string().optional(),
+});
+export type CheckRecord = z.infer<typeof CheckRecordSchema>;
+
 export const GateSchema = z.object({
   threshold: z.number().min(0).max(10),
   disposition: z.enum(['approve', 'reject', 'iterate']),
@@ -167,6 +203,15 @@ export const VerdictSchema = z.object({
   per_item: z.array(PerItemSchema).optional(),
   auto_surfaced: z.array(AutoSurfacedSchema).optional(),
   gate: GateSchema.optional(),
+
+  /**
+   * Structural checks this rubric ran, and the ones it could not. See
+   * `CheckRecordSchema`. Optional and advisory — a rubric that runs a helper
+   * returning `unable` MUST list it here and MUST NOT let the dimension it
+   * covers score as if it had been evaluated (`skills/README.md § Verdict
+   * YAML shape`).
+   */
+  checks: z.array(CheckRecordSchema).optional(),
 }).passthrough();
 
 export type Verdict = z.infer<typeof VerdictSchema>;
@@ -176,6 +221,12 @@ export type Verdict = z.infer<typeof VerdictSchema>;
 export interface VerdictValidationResult {
   ok: boolean;
   errors: string[];
+  /**
+   * Non-fatal findings. `ok` is unaffected — a warning marks a verdict that
+   * is valid but less useful than it should be (e.g. an `unable` check with
+   * no reason).
+   */
+  warnings: string[];
 }
 
 /**
@@ -190,6 +241,7 @@ export function validateVerdict(input: unknown): VerdictValidationResult {
     const weightSum = Object.values(parsed.data.dimensions)
       .reduce((acc, d) => acc + d.weight, 0);
     const errors: string[] = [];
+    const warnings: string[] = [];
     if (Math.abs(weightSum - 1.0) > 0.01) {
       errors.push(
         `dimensions weights sum to ${weightSum.toFixed(3)}, expected 1.0 ` +
@@ -197,10 +249,23 @@ export function validateVerdict(input: unknown): VerdictValidationResult {
           `sums to 1.0 makes the per-skill score legible standalone)`,
       );
     }
-    return { ok: errors.length === 0, errors };
+    // An `unable` check with no reason is the disclosure without the content:
+    // a reader cannot tell a genuinely inapplicable input from a matcher bug,
+    // which is precisely the ambiguity that let ace#1332/#1538/#1576/#1634
+    // each run for weeks. A warning, not an error — see CheckRecordSchema.
+    for (const c of parsed.data.checks ?? []) {
+      if (c.status === 'unable' && !c.reason?.trim()) {
+        warnings.push(
+          `checks[${c.name}]: status is 'unable' with no reason — say WHY the check could not ` +
+            `run, or a reader cannot tell an inapplicable input from a broken matcher`,
+        );
+      }
+    }
+    return { ok: errors.length === 0, errors, warnings };
   }
   return {
     ok: false,
     errors: parsed.error.issues.map((i) => `${i.path.join('.') || '(root)'}: ${i.message}`),
+    warnings: [],
   };
 }

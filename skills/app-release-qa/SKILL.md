@@ -482,7 +482,12 @@ Any remaining finding is a `[BLOCKER]` `entity-id-grain`:
 - `no-entity-component` — fires **even with nothing declared**, because a key of
   worker + date + answers is worker-and-day scoped by construction.
 
-`checked === false` (no readable `entity_id`) is "not applicable", NOT a pass.
+`report.status === 'unable'` (no readable `entity_id`) means the check **did
+not run** — NOT a pass. Render it with `formatGrainReport(report)`, record it
+in the verdict's `checks[]` with its `reason`, and treat the dedup grain as
+UNVERIFIED rather than clean. `report.detail` and `report.ok` are unreachable
+on that branch by construction (`lib/check-outcome.ts`); if you expected the
+form to set `entity_id`, the extractor is the bug.
 
 **Scoring arithmetic — always, every Learn form carrying item scores
 (dimagi-internal/ace#1035).** CommCare has **no "mark this option correct"
@@ -505,8 +510,15 @@ import { checkScoringArithmetic, formatScoringReport }
 const report = checkScoringArithmetic(formXml);
 ```
 
-`checked === false` means the form carries no item scores — "not applicable",
-NOT a pass. Any finding is a `[BLOCKER]` `assessment-scoring-arithmetic`; name
+`report.status === 'unable'` means the check **did not run** — no bind matched
+an item-score node. That is NOT a pass: record it in the verdict's `checks[]`
+with its `reason` and treat the scoring as UNVERIFIED. **If the form visibly
+DOES carry item scores, the `ITEM_SCORE` regex is the bug, not the form** —
+that exact failure has now shipped four times (#1332 → #1538 → #1576 →
+#1634), most recently sending both Learn scoring forms on
+`bednet-check-2-visit/20260825-1310`, gating assessment included, down this
+path while the gate reported fine. Any finding is a `[BLOCKER]`
+`assessment-scoring-arithmetic`; name
 the kind and the nodeset, and route the fix to `pdd-to-learn-app`. The five
 mechanical classes: `missing-term` (rollup omits an item), `extra-term`
 (rollup names a phantom), `denominator-mismatch` (`* 100 div N` where N is not
@@ -527,9 +539,11 @@ import { checkAssessmentRetryLeak, formatRetryLeakReport }
 const report = checkAssessmentRetryLeak(formXml);
 ```
 
-`report.checked === false` means the form carries no score-gated result labels
-(nothing to leak into) — that is "not applicable", NOT a pass. Any entry in
-`report.leaks` is a `[BLOCKER]` `assessment-retry-answer-leak`: name the label
+`report.status === 'unable'` means the check **did not run** — the form carries
+no score-gated result labels, so there was nothing to leak into. That is NOT a
+pass: record it in the verdict's `checks[]` with its `reason`. If the form DOES
+gate a retry message on the score, the recovery matchers are the bug. Any entry
+in `report.findings` is a `[BLOCKER]` `assessment-retry-answer-leak`: name the label
 nodeset and the leaked option, and route the fix to `pdd-to-learn-app` Step 4c
 (replace the retry text with a pointer to the module content).
 
@@ -538,7 +552,7 @@ lists fail-branch labels whose text could not be resolved and answer literals
 with nothing to match against; `report.ok` is false whenever it is non-empty,
 and `formatRetryLeakReport` prints a `BLIND` block. Emit
 `assessment-retry-leak-blind` and fix the *form*, not the gate. This exists
-because the check reported the benign `checked: false` on every released CCZ
+because the check reported the benign old `checked: false` on every released CCZ
 until 2026-08-14 (#1332): it matched only `<`/`<=` while the compiler emits
 `not(score >= N)`, and it read inline `<label>` text while the compiler moves
 all label text into `<itext>`. Both are properties of a released CCZ — the only

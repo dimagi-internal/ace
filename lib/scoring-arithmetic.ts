@@ -38,6 +38,7 @@
  */
 
 import { DOMParser } from '@xmldom/xmldom';
+import { type CheckOutcome, checked, unable, formatUnable } from './check-outcome.js';
 
 export type ScoringFindingKind =
   /** The rollup omits an item that exists. */
@@ -58,13 +59,13 @@ export interface ScoringFinding {
   detail: string;
 }
 
-export interface ScoringReport {
-  /** False when the form carries no scoring at all — not applicable, NOT a pass. */
-  checked: boolean;
-  ok: boolean;
-  itemScores: string[];
-  findings: ScoringFinding[];
-}
+/**
+ * `status: 'unable'` when the form carries no scoring at all. That is NOT a
+ * pass, and it is no longer expressible as one — see `lib/check-outcome.ts`.
+ * This helper's own `checked: false, ok: true` return was the canonical
+ * instance of the class (ace#1634).
+ */
+export type ScoringReport = CheckOutcome<ScoringFinding, { itemScores: string[] }>;
 
 // Item-score nodes are `<prefix><n>_score` where the prefix is whatever the
 // architect named the questions — `q1_score` on a post-test, `p1_score` on a
@@ -109,7 +110,11 @@ export function checkScoringArithmetic(xml: string): ScoringReport {
   const rollup = binds.find((b) => /\/user_score$/.test(b.nodeset));
 
   if (items.length === 0) {
-    return { checked: false, ok: true, itemScores: [], findings: [] };
+    return unable(
+      `the form declares ${binds.length} calculate bind(s) but none match an item-score node ` +
+        '(`<prefix><n>_score` at any depth under /data), so there is no scoring arithmetic to ' +
+        'verify. If this form DOES carry item scores, ITEM_SCORE is the bug',
+    );
   }
 
   const findings: ScoringFinding[] = [];
@@ -149,7 +154,7 @@ export function checkScoringArithmetic(xml: string): ScoringReport {
         `${items.length} item score(s) are computed but no user_score rolls them up — Connect reads ` +
         'user_score and would find nothing',
     });
-    return { checked: true, ok: false, itemScores, findings };
+    return { ...checked(false, findings), itemScores };
   }
 
   const referenced = new Set(
@@ -185,11 +190,11 @@ export function checkScoringArithmetic(xml: string): ScoringReport {
     });
   }
 
-  return { checked: true, ok: findings.length === 0, itemScores, findings };
+  return { ...checked(findings.length === 0, findings), itemScores };
 }
 
 export function formatScoringReport(r: ScoringReport): string {
-  if (!r.checked) return 'scoring-arithmetic: not applicable (form carries no item scores)';
+  if (r.status === 'unable') return formatUnable('scoring-arithmetic', r.reason);
   if (r.ok) {
     return `scoring-arithmetic: clean — ${r.itemScores.length} item score(s) roll up correctly`;
   }
