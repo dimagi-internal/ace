@@ -156,10 +156,20 @@ const ConnectProducts = z
             /** `match !== null` from connect_list_flw_invites. */
             invite_row_present: z.boolean().optional(),
             /**
-             * Null means the row exists but has no linked ConnectID user — the
-             * ace#824 signature. Such an access matches nothing in
-             * `opportunityaccess__user`, so the opp is invisible on device
-             * forever and does not self-heal.
+             * ConnectID user id, which populates **on CLAIM** — not on invite.
+             *
+             * Null on a pending row is the NORMAL pre-claim state, NOT the
+             * ace#824 signature (dimagi-internal/ace#1663). On this read path
+             * the id is not a view of the `OpportunityAccess.user` FK:
+             * `parseWorkersTable` (`lib/connect-flw-invites.ts`) splits it out
+             * of the **Name cell**, which Connect renders as a bare `-` until
+             * the worker claims the opportunity — so it is null on every
+             * pending row regardless of the underlying link. Phase 4 invites
+             * and Phase 6 claims, so treating null as a fault would fire on
+             * every healthy run.
+             *
+             * The #824 discriminator at Phase 4 is `invite_row_present`
+             * (a MISSING row), not this field.
              */
             connect_user_id: z.string().nullable().optional(),
             /** `accepted` | `pending` | `unknown`. `pending` is healthy pre-claim. */
