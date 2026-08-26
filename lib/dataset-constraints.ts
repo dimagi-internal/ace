@@ -161,13 +161,44 @@ export function auditDataset(rows: Row[], spec: DatasetSpec): ConstraintReport {
         `${JSON.stringify(c.requiredWhen.equals)} — the form skips that branch entirely, so the value ` +
         'cannot exist in real data',
     );
+  }
+
+  // `conditional-missing` is evaluated ONCE PER FIELD, over the CONJUNCTION of
+  // that field's gates — not once per gate (ace#1693).
+  //
+  // `specFromDeliverApp` emits one spec per gate, inheriting a group-level
+  // `relevant` down to every descendant, so one question under two gates yields
+  // two entries. Checking them independently is correct for the OFF-BRANCH
+  // direction above (if ANY gate is unsatisfied the value cannot exist) and
+  // wrong here: the form asks for the field only when EVERY gate holds, so
+  // demanding it present whenever a SINGLE gate holds contradicts the other
+  // gate, and the field becomes unsatisfiable in both directions.
+  //
+  // Measured on deliver app 28464041b4d54511af2989f4349fce30 v14 (opp 2219):
+  // 12 of 59 derived `conditionalFields` carry two gates. `meeting_photo` is
+  // gated on `meeting_conducted='yes'` (group) AND `consent_given='yes'`
+  // (field), so a meeting that happened but declined the photograph — the only
+  // legal shape for that case — fired `conditional-missing` with the photo
+  // absent and `conditional-off-branch` with it present. `step_phase_2/3/4`
+  // were worse: `phase` holds one value per record, so they fired on EVERY
+  // meeting record by construction and no dataset could pass check 9.
+  const gatesByField = new Map<string, ConditionalFieldSpec[]>();
+  for (const c of spec.conditionalFields ?? []) {
+    const group = gatesByField.get(c.field);
+    if (group) group.push(c);
+    else gatesByField.set(c.field, [c]);
+  }
+  for (const [field, gates] of gatesByField) {
     const missing = rows.filter(
-      (r) => r[c.requiredWhen.field] === c.requiredWhen.equals && !present(r[c.field]),
+      (r) =>
+        gates.every((g) => r[g.requiredWhen.field] === g.requiredWhen.equals) && !present(r[field]),
     ).length;
+    const where = gates
+      .map((g) => `${g.requiredWhen.field} = ${JSON.stringify(g.requiredWhen.equals)}`)
+      .join(' and ');
     add(
-      'conditional-missing', c.field, missing,
-      `${c.field} is absent on ${missing} record(s) where ${c.requiredWhen.field} = ` +
-        `${JSON.stringify(c.requiredWhen.equals)} asks for it`,
+      'conditional-missing', field, missing,
+      `${field} is absent on ${missing} record(s) where ${where} asks for it`,
     );
   }
 
