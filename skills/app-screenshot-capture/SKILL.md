@@ -252,8 +252,7 @@ remediation):
 
 | Class | Remediation |
 |---|---|
-| `module-name-equals-form-name` | Verify plugin >= 0.13.255 (handled by learn-tap-module). If older, re-author via `/ace:step app-test-cases`. |
-| `expected-module-not-in-app` | Recipe needs re-author via `/ace:step app-test-cases` — live app structure has drifted. |
+| `expected-module-not-in-app` | Recipe references a `MODULE_NAME` matching **neither a module NOR a form** anywhere in the supplied apps. Re-author via `/ace:step app-test-cases` — the live app structure has drifted. **`MODULE_NAME` is the visible label of ANY suite row, module or form** (`learn-tap-module.yaml` header; its Branch A is the tapped-a-form-row case), so a name matching a form is CORRECT and no longer flagged (ace#1649). |
 | `expected-form-not-in-module` | Same as above — module/form structure has drifted. |
 | `opp-name-mismatch` | Pass `OPP_NAME` verbatim from `run_state.yaml.phases.connect-setup.products.connect.opportunity.name` (NOT slug-reassembled). Fallback only if missing: `connect_get_opportunity({org_slug, opportunity_id}).name`. |
 | `tile-name-collision` | Clean up prior-run invites OR use Resume-branch (exact-match claim). |
@@ -288,6 +287,13 @@ WARN rather than an unqualified pass:
   `expected-form-not-in-module` never ran (ace#1068). The probe now emits
   this itself as a `module-form-checks-not-run` entry in
   `verdict.warnings[]`, naming the recipe.
+- `module-name-equals-form-name` — a `warnings[]` class, not a failure
+  (ace#1649). `MODULE_NAME == FORM_NAME` makes CommCare render an
+  intermediate one-row form list, which `learn-tap-module.yaml` Branch B and
+  `deliver-form-walk.yaml` branch 2b cross on their own; recipe and palette
+  ship in the same plugin version, so the un-handled state the old failure
+  guarded is not reachable. No action unless the walk actually stalls on a
+  one-row form list carrying the module's own name.
 
 **Copy `verdict.warnings[]` into the verdict YAML verbatim.** Warnings
 never flip `ok` — they qualify a pass. A pass reported without them is

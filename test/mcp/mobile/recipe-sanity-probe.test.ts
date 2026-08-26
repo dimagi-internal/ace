@@ -176,22 +176,44 @@ describe('probeRecipeSanity — healthy inputs pass', () => {
   });
 });
 
-describe('probeRecipeSanity — failure class: module-name-equals-form-name', () => {
-  it('flags recipes where MODULE_NAME and FORM_NAME are the same string', () => {
-    // Real-world case from PR #331: app authored with a module that has
-    // a single form whose name matches the module name verbatim.
-    const collisionApp = novaApp('app-x', { 'Daily Visit': ['Daily Visit'] });
-    const verdict = probeRecipeSanity({
+describe('probeRecipeSanity — warning class: module-name-equals-form-name (ace#1649)', () => {
+  // Demoted from `failures[]` to `warnings[]`. It existed to flag recipes
+  // authored against a palette OLDER than v0.13.255 (PR #331), but a recipe
+  // and the palette it runs against ship in the SAME plugin version, so the
+  // un-handled state it guarded is not reachable — and it contributed three of
+  // the four failures that halted Phase 6 on bednet-check-2-visit/20260825-1310
+  // against a recipe that then walked green end to end.
+  const collisionApp = novaApp('app-x', { 'Daily Visit': ['Daily Visit'] });
+  const collisionVerdict = () =>
+    probeRecipeSanity({
       recipes: [recipe('J1a.yaml', { MODULE_NAME: 'Daily Visit', FORM_NAME: 'Daily Visit' })],
       novaApps: [collisionApp],
       connectOpp: LIVE_OPP,
     });
-    expect(verdict.ok).toBe(false);
-    const f = verdict.failures.find((x) => x.class === 'module-name-equals-form-name');
-    expect(f).toBeDefined();
-    expect(f!.recipe).toBe('J1a.yaml');
-    expect(f!.value).toBe('Daily Visit');
-    expect(f!.remediation).toMatch(/0\.13\.255/);
+
+  it('still SURFACES the name collision — as a warning, naming the recipe', () => {
+    const w = collisionVerdict().warnings.find(
+      (x) => x.class === 'module-name-equals-form-name',
+    );
+    expect(w).toBeDefined();
+    expect(w!.recipe).toBe('J1a.yaml');
+    expect(w!.detail).toContain('Daily Visit');
+  });
+
+  it('does NOT flip ok, and does NOT appear in failures[]', () => {
+    const verdict = collisionVerdict();
+    expect(verdict.failures.map((f) => f.class)).not.toContain(
+      'module-name-equals-form-name' as never,
+    );
+    expect(verdict.ok).toBe(true);
+  });
+
+  it('drops the stale ">= 0.13.255" remediation (we ship 0.13.99x)', () => {
+    const w = collisionVerdict().warnings.find(
+      (x) => x.class === 'module-name-equals-form-name',
+    );
+    expect(w!.remediation).not.toMatch(/0\.13\.255/);
+    expect(w!.remediation).toMatch(/no action/i);
   });
 });
 
@@ -206,6 +228,46 @@ describe('probeRecipeSanity — failure class: expected-module-not-in-app', () =
     expect(f).toBeDefined();
     expect(f!.value).toBe('GhostModule');
     expect(f!.remediation).toMatch(/app-test-cases/);
+  });
+
+  // --- ace#1649: MODULE_NAME is ANY suite row, form or module ---
+  //
+  // `learn-tap-module.yaml` documents `${MODULE_NAME}` as "the visible label of
+  // the row to tap", and its Branch A is the tapped-a-form-row case. Checking
+  // that label against MODULE names alone reports a recipe using the palette
+  // exactly as documented as live-structure drift.
+  //
+  // Repro shape from bednet-check-2-visit/20260825-1310: module
+  // "Spot-check training" holds forms "Training" and "Final check"; the recipe
+  // drills back into the module and then taps the FORM row "Final check" by its
+  // own label. The probe returned ok:false; the walk went green end to end.
+  it('does NOT fire when MODULE_NAME names a FORM row rather than a module', () => {
+    const app = novaApp('app-learn-bednet', {
+      'Baseline check': ['What you know now'],
+      'Spot-check training': ['Training', 'Final check'],
+    });
+    const verdict = probeRecipeSanity({
+      recipes: [recipe('journey-learn.yaml', { MODULE_NAME: 'Final check', FORM_NAME: 'Final check' })],
+      novaApps: [app],
+      connectOpp: LIVE_OPP,
+    });
+    expect(verdict.failures.find((x) => x.class === 'expected-module-not-in-app')).toBeUndefined();
+    expect(verdict.ok).toBe(true);
+  });
+
+  it('still fires when the label matches NEITHER a module NOR a form (real drift)', () => {
+    const app = novaApp('app-learn-bednet', {
+      'Spot-check training': ['Training', 'Final check'],
+    });
+    const verdict = probeRecipeSanity({
+      recipes: [recipe('journey-learn.yaml', { MODULE_NAME: 'Renamed upstream' })],
+      novaApps: [app],
+      connectOpp: LIVE_OPP,
+    });
+    const f = verdict.failures.find((x) => x.class === 'expected-module-not-in-app');
+    expect(f).toBeDefined();
+    expect(f!.detail).toMatch(/module OR a form/);
+    expect(verdict.ok).toBe(false);
   });
 });
 
@@ -291,9 +353,11 @@ describe('probeRecipeSanity — multi-failure recipes', () => {
     });
     expect(verdict.ok).toBe(false);
     const classes = verdict.failures.map((f) => f.class).sort();
-    expect(classes).toContain('module-name-equals-form-name');
     expect(classes).toContain('expected-module-not-in-app');
     expect(classes).toContain('opp-name-mismatch');
+    // The name collision rides along as a WARNING now (ace#1649) — still
+    // surfaced, no longer blocking.
+    expect(verdict.warnings.map((w) => w.class)).toContain('module-name-equals-form-name');
   });
 });
 

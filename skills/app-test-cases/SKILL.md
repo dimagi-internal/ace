@@ -239,6 +239,7 @@ the walk crosses the case list on its own:
     env:
       MODULE_NAME: "CBF Registration"
       FORM_NAME: "CBF Registration"
+      WALK_LABEL: "-register"                     # per-invocation frame suffix
 # ...answer the registration fields, then:
 - runFlow:
     file: form-submit.yaml
@@ -264,7 +265,30 @@ the walk crosses the case list on its own:
       MODULE_NAME: "Community Meeting Record"      # the PAYABLE module
       FORM_NAME: "Village Monitoring Record"
       CASE_NAME: "Thandiwe Banda.*"                # the case_name you entered
+      WALK_LABEL: "-followup"                      # MUST differ from leg A's
 ```
+
+**`WALK_LABEL` is not optional once the palette is invoked twice
+(ace#1651).** `deliver-form-walk.yaml` names three of its captures from
+FIXED strings — `deliver-form-walk-module-list`, `-form-list`,
+`-form-question`. Two invocations in one recipe therefore wrote the same
+three filenames twice, and leg B's frames **silently overwrote leg A's**:
+measured on bednet-check-2-visit/20260825-1310 (a PASSING run) the stdout
+reported all three captures COMPLETED in both legs while exactly one file
+of each name survived, carrying leg B's `takenAt`. The registration
+evidence the training deck and `app-ux-eval` read was destroyed, and if
+leg B fails it destroys precisely the frames an operator needs to see how
+the case got created.
+
+Bind a short `[a-z0-9-]` slug **including the leading separator**, and a
+DIFFERENT one per call site. Unbound it substitutes to the empty string,
+so a single-invocation caller keeps byte-identical names and needs no
+change. *Enforced:* `lintRecipeText`'s
+`repeat-palette-invocation-without-discriminator` rule (run by
+`mobile_validate_recipe`) fails any recipe that invokes the palette twice
+with a missing or duplicated `WALK_LABEL`, and
+`test/mcp/mobile/static-recipe-invariants.test.ts § deliver-form-walk
+per-invocation frame names` pins the palette side.
 
 **Step 1b exists because the two recipes' own contracts do not meet
 (ace#1191).** `deliver-form-walk.yaml`'s header declares

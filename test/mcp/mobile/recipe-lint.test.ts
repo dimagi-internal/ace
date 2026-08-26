@@ -402,3 +402,99 @@ describe('lintRecipeText — runFlow-unbound-screenshot-name', () => {
     expect(lintRecipeText(yaml).ok).toBe(true);
   });
 });
+
+describe('rule: repeat-palette-invocation-without-discriminator (ace#1651)', () => {
+  // `deliver-form-walk.yaml` names three captures from FIXED strings plus
+  // `${WALK_LABEL}`. Invoking it twice in one recipe without a DISTINCT
+  // discriminator makes the second invocation overwrite the first's
+  // screenshots — silently, on a passing run. Measured on
+  // bednet-check-2-visit/20260825-1310: leg A's registration frames were gone,
+  // and the only survivors were the two whose names already interpolated
+  // `${MODULE_NAME}`.
+
+  const RULE = 'repeat-palette-invocation-without-discriminator';
+
+  function twoLegs(envA: string[], envB: string[]): string {
+    return [
+      'appId: org.commcare.dalvik',
+      '---',
+      '- runFlow:',
+      '    file: deliver-form-walk.yaml',
+      '    env:',
+      ...envA.map((l) => `      ${l}`),
+      '- runFlow:',
+      '    file: deliver-form-walk.yaml',
+      '    env:',
+      ...envB.map((l) => `      ${l}`),
+      '',
+    ].join('\n');
+  }
+
+  it('passes a SINGLE invocation that binds no WALK_LABEL (discriminator stays optional)', () => {
+    const yaml = [
+      'appId: org.commcare.dalvik',
+      '---',
+      '- runFlow:',
+      '    file: deliver-form-walk.yaml',
+      '    env:',
+      '      MODULE_NAME: "Register household"',
+      '',
+    ].join('\n');
+    const result = lintRecipeText(yaml);
+    expect(result.violations.filter((v) => v.rule === RULE)).toEqual([]);
+  });
+
+  it('flags a second invocation that binds no WALK_LABEL', () => {
+    const result = lintRecipeText(
+      twoLegs(['MODULE_NAME: "Register household"'], ['MODULE_NAME: "Follow-up spot-check"']),
+    );
+    const hits = result.violations.filter((v) => v.rule === RULE);
+    expect(hits).toHaveLength(1);
+    expect(result.ok).toBe(false);
+    expect(hits[0].detail).toContain('deliver-form-walk.yaml');
+    expect(hits[0].detail).toContain('invocation #2');
+    expect(hits[0].remediation).toContain('WALK_LABEL');
+  });
+
+  it('flags two invocations that bind the SAME WALK_LABEL', () => {
+    const result = lintRecipeText(
+      twoLegs(
+        ['MODULE_NAME: "Register household"', 'WALK_LABEL: "-walk"'],
+        ['MODULE_NAME: "Follow-up spot-check"', 'WALK_LABEL: "-walk"'],
+      ),
+    );
+    const hits = result.violations.filter((v) => v.rule === RULE);
+    expect(hits).toHaveLength(1);
+    expect(hits[0].detail).toContain('the same value');
+  });
+
+  it('passes two invocations with DISTINCT WALK_LABELs — the fixed shape', () => {
+    const result = lintRecipeText(
+      twoLegs(
+        ['MODULE_NAME: "Register household"', 'WALK_LABEL: "-register"'],
+        ['MODULE_NAME: "Follow-up spot-check"', 'WALK_LABEL: "-followup"'],
+      ),
+    );
+    expect(result.violations.filter((v) => v.rule === RULE)).toEqual([]);
+  });
+
+  it('reports the SECOND call site, not the first (that is the one that overwrites)', () => {
+    const yaml = twoLegs(['MODULE_NAME: "A"'], ['MODULE_NAME: "B"']);
+    const hit = lintRecipeText(yaml).violations.find((v) => v.rule === RULE)!;
+    const firstCallLine = yaml.split('\n').findIndex((l) => l.includes('- runFlow:')) + 1;
+    expect(hit.line).toBeGreaterThan(firstCallLine);
+  });
+
+  it('does not fire for palettes outside the discriminator registry', () => {
+    const yaml = [
+      'appId: org.commcare.dalvik',
+      '---',
+      '- runFlow:',
+      '    file: deliver-sync.yaml',
+      '- runFlow:',
+      '    file: deliver-sync.yaml',
+      '',
+    ].join('\n');
+    expect(lintRecipeText(yaml).violations.filter((v) => v.rule === RULE)).toEqual([]);
+  });
+});
