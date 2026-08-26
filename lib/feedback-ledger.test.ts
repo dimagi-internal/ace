@@ -12,6 +12,7 @@ import {
   EDIT_RECORD_SLUG,
   buildEngagements,
   deriveEditEntries,
+  DEFAULT_STALE_AFTER_COMPLETED_RUNS,
   identityOfEditRow,
   identityOfRecord,
   isEditPubliclyRepublishable,
@@ -468,6 +469,176 @@ describe('decision edits as ledger entries (#1335)', () => {
     expect(renderEngagementMarkdown(engagements[0])).toContain(
       'Where your input went — New Person',
     );
+  });
+
+  /**
+   * The state machine, pinned (ace#1549).
+   *
+   * `binding` had exactly two states, so an override whose decision id no
+   * run will ever raise again rendered identically to one that binds
+   * tomorrow: `PENDING NEXT RUN`, forever. Overrides match on `id` alone and
+   * an unmatched id is dropped by design, so a design change that retires a
+   * decision silently retires the reviewer's answer — and the one view built
+   * to say where their input went asserted the opposite.
+   *
+   * Every case below is about the DISCRIMINATOR, because getting it wrong in
+   * the other direction (calling a live override dead) would make this view
+   * more misleading than the fall-through it replaces.
+   */
+  describe('stale overrides — the id stopped being raised (#1549)', () => {
+    const run = (
+      runId: string,
+      completedAt: string,
+      raisedIds: string[] = [],
+    ) => ({ runId, completedAt, raisedIds });
+
+    // The defect itself, stated as the property that must hold.
+    it('does NOT render a never-raised-again override as PENDING', () => {
+      const edits = deriveEditEntries([editRow], {
+        completedRuns: [
+          run('20260812-0900', '2026-08-12T11:00:00Z', ['gps-radius']),
+          run('20260805-0900', '2026-08-05T11:00:00Z', ['gps-radius']),
+        ],
+      });
+      expect(edits[0].binding).toBe('stale');
+      const out = renderEngagementMarkdown(
+        buildEngagements({ edits }).engagements[0],
+      );
+      expect(out).not.toContain('PENDING NEXT RUN');
+      expect(out).toContain('STALE — NOT BINDING');
+      // The evidence is named, so the reviewer can check it themselves.
+      expect(out).toContain('20260812-0900');
+      expect(out).toContain('20260805-0900');
+    });
+
+    it('needs the full threshold of misses — one is not evidence', () => {
+      expect(DEFAULT_STALE_AFTER_COMPLETED_RUNS).toBe(2);
+      const [e] = deriveEditEntries([editRow], {
+        completedRuns: [run('20260812-0900', '2026-08-12T11:00:00Z')],
+      });
+      expect(e.binding).toBe('pending');
+      expect(e.missedRuns).toEqual(['20260812-0900']);
+    });
+
+    it('lets a caller set its own bar without touching the code', () => {
+      const [e] = deriveEditEntries([editRow], {
+        completedRuns: [run('20260812-0900', '2026-08-12T11:00:00Z')],
+        staleAfterCompletedRuns: 1,
+      });
+      expect(e.binding).toBe('stale');
+    });
+
+    // A run that HALTED raises none of the ids downstream of where it
+    // stopped. It is not admissible evidence, and the caller keeps it out of
+    // `completedRuns` — with none supplied, nothing may ever read stale.
+    it('stays PENDING when no completed-run evidence is supplied at all', () => {
+      const [e] = deriveEditEntries([editRow]);
+      expect(e.binding).toBe('pending');
+      expect(e.missedRuns).toEqual([]);
+    });
+
+    // Ordering is the other half of the discriminator: runs that finished
+    // BEFORE the edit was saved never had a chance to bind it.
+    it('ignores runs that completed before the edit was saved', () => {
+      const [e] = deriveEditEntries([editRow], {
+        completedRuns: [
+          run('20260710-0900', '2026-07-10T11:00:00Z'),
+          run('20260715-0900', '2026-07-15T11:00:00Z'),
+        ],
+      });
+      expect(e.binding).toBe('pending');
+      expect(e.missedRuns).toEqual([]);
+    });
+
+    it('ignores a run it cannot order against the edit', () => {
+      expect(
+        deriveEditEntries([editRow], {
+          completedRuns: [
+            { runId: 'a', raisedIds: [] },
+            { runId: 'b', raisedIds: [], completedAt: 'not-a-date' },
+          ],
+        })[0].binding,
+      ).toBe('pending');
+      // ...and an undated EDIT cannot be ordered either, so it never goes stale.
+      const { decided_at: _omitted, ...undated } = editRow;
+      expect(
+        deriveEditEntries([undated], {
+          completedRuns: [
+            run('20260812-0900', '2026-08-12T11:00:00Z'),
+            run('20260805-0900', '2026-08-05T11:00:00Z'),
+          ],
+        })[0].binding,
+      ).toBe('pending');
+    });
+
+    it('a run that DID raise the id is not a miss', () => {
+      const [e] = deriveEditEntries([editRow], {
+        completedRuns: [
+          run('20260812-0900', '2026-08-12T11:00:00Z', ['photo-required']),
+          run('20260805-0900', '2026-08-05T11:00:00Z', ['photo-required']),
+        ],
+      });
+      expect(e.binding).toBe('pending');
+      expect(e.missedRuns).toEqual([]);
+    });
+
+    // A value a run recorded is a fact; later silence does not unmake it.
+    it('never downgrades an APPLIED edit to stale', () => {
+      const [e] = deriveEditEntries([editRow], {
+        boundValues: new Map([['photo-required', 'yes']]),
+        completedRuns: [
+          run('20260812-0900', '2026-08-12T11:00:00Z'),
+          run('20260805-0900', '2026-08-05T11:00:00Z'),
+        ],
+      });
+      expect(e.binding).toBe('applied');
+      expect(e.missedRuns).toEqual([]);
+    });
+
+    // The coverage line is what the reply email leads with (SKILL § 4), so a
+    // dead override has to be visible there — not only in the entry body.
+    it('counts a stale edit in the coverage line and as needing a human', () => {
+      const edits = deriveEditEntries([editRow], {
+        completedRuns: [
+          run('20260812-0900', '2026-08-12T11:00:00Z'),
+          run('20260805-0900', '2026-08-05T11:00:00Z'),
+        ],
+      });
+      const [engagement] = buildEngagements({ edits }).engagements;
+      expect(engagement.coverage).toMatchObject({
+        edits: 1,
+        editsApplied: 0,
+        editsStale: 1,
+        awaitingHuman: 1,
+      });
+      const out = renderEngagementMarkdown(engagement);
+      expect(out).toContain('1 edit — 0 applied, 1 stale');
+      expect(out).toContain('1 need a human');
+    });
+
+    // It is a third state, not a rebranded UNROUTED: nothing was dropped by
+    // ACE, the reviewer's value is still saved and still recoverable.
+    it('is not UNROUTED, and still takes downstream stamps', () => {
+      const edits = deriveEditEntries([editRow], {
+        completedRuns: [
+          run('20260812-0900', '2026-08-12T11:00:00Z'),
+          run('20260805-0900', '2026-08-05T11:00:00Z'),
+        ],
+        dispositions: [
+          {
+            feedbackRef: 'decision-edits/photo-required',
+            kind: 'skill-fix',
+            summary: 'Deliver form captures a photo regardless',
+            status: 'shipped',
+          },
+        ],
+      });
+      const out = renderEngagementMarkdown(
+        buildEngagements({ edits }).engagements[0],
+      );
+      expect(out).not.toContain('UNROUTED');
+      expect(out).toContain('Deliver form captures a photo regardless');
+    });
   });
 
   it('surfaces a stamp pointing at a nonexistent edit as a broken stamp', () => {

@@ -282,6 +282,28 @@ function renderDecision(builder: RequestBuilder, row: DecisionRow): void {
   // Status: <value>
   builder.appendBoldPrefix("Status:", row.status);
 
+  // Provenance of a human ruling (v5). A reviewer opening this doc must be able
+  // to see that a decision is already SETTLED BY A PERSON and will bind on the
+  // next run — otherwise they re-litigate their own prior ruling, which is what
+  // happened to all 31 reviewer-shaped rows measured across spark + hh-poverty.
+  if (row.status === "human-decided") {
+    builder.appendBoldPrefix(
+      "Decided by:",
+      `${row.decided_by ?? "unattributed"}${row.decided_at ? ` on ${row.decided_at}` : ""} — binds on later runs until explicitly revised`,
+    );
+  }
+
+  // Resolution owner (v5; absent on legacy pre-v5 rows). Marks a value that is
+  // ACE's best estimate of something someone else will actually fix later, so a
+  // reviewer does not read a projection as a settled commitment.
+  if (row.value_set_by === "external") {
+    builder.appendBoldPrefix(
+      "Set externally:",
+      "this value is fixed later (solicitation response / contract / deployment). " +
+        "ACE's value is its best estimate and is expected to change.",
+    );
+  }
+
   // Supersession (ace#1421). A reader of the rendered log must be able to see
   // at a glance which of two contradicting rows is live — before this, both
   // carried `status: ai-default` and nothing but prose distinguished them.

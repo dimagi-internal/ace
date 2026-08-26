@@ -164,8 +164,8 @@ Required top-level fields:
 - `artifact_refs: { learn_build_id, deliver_build_id }` — read from
   `3-commcare/app-deploy_summary.md` so the Phase 9 gate can
   timestamp-compare against the currently released builds
-- `dimensions` — per-dimension scores + reasons (5 dimensions, equal
-  0.20 weights)
+- `dimensions` — per-dimension scores + reasons (6 dimensions, weights
+  per the rubric above)
 - `per_item` — per-journey verdicts (canonical key per
   `skills/README.md § QA vs Eval`); `ref`/`journey` is the journey's
   `journey-`-prefixed slug id from `app-test-cases.yaml` (e.g.

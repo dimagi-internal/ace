@@ -223,3 +223,111 @@ describe('checkInteractiveRunsLive (#1162)', () => {
     expect(checkInteractiveRunsLive([]).pass).toBe(true);
   });
 });
+
+// ── #1658 ──────────────────────────────────────────────────────────
+
+/**
+ * Check 9's two defects, measured on `bednet-check-2-visit`:
+ *
+ *  - `20260817-1720` passed check 9 with `conditionalFields: []` and the
+ *    justification "no conditional blocks", while the app returned two
+ *    `relevant` expressions. `20260825-1310`, same app + generator, declared
+ *    them and measured 18 of 276 off-branch on each. The spec — not the data
+ *    — decided the verdict, so the spec must be derived, and a run with no
+ *    derivation behind it must not pass.
+ *  - The auto-fix hint sent the author to a manifest knob that does not exist
+ *    (`BeneficiaryCohort` has no conditional/relevant primitive), making the
+ *    check unpassable for any gated form. The hint now names the scrub.
+ */
+import { checkDatasetObeysPddConstraints } from '../../../skills/demo-data-setup-qa/checks';
+import type { ConstraintReport } from '../../../lib/dataset-constraints';
+
+const CLEAN_REPORT: ConstraintReport = { ok: true, total: 276, violations: [] };
+const DERIVED = { unparsed: [], questionsSeen: 4, gatesParsed: 2 };
+
+describe('checkDatasetObeysPddConstraints (#1658)', () => {
+  it('passes a measured zero over a spec that was actually derived', () => {
+    const r = checkDatasetObeysPddConstraints({ derivation: DERIVED, report: CLEAN_REPORT });
+    expect(r.pass).toBe(true);
+    expect(r.detail).toMatch(/spec derived from 4 question/);
+  });
+
+  it('FAILS a clean audit that has no derivation behind it — the false-green shape', () => {
+    const r = checkDatasetObeysPddConstraints({ derivation: null, report: CLEAN_REPORT });
+    expect(r.pass).toBe(false);
+    expect(r.detail).toMatch(/no spec derivation/);
+    expect(r.auto_fix_hint).toMatch(/specFromDeliverApp/);
+  });
+
+  it('accepts a stated no-deliver-app reason (the denovo provider)', () => {
+    const r = checkDatasetObeysPddConstraints({
+      derivation: null,
+      noDeliverAppReason: 'provider denovo — labs-only opp 10046 has no deliver app',
+      report: CLEAN_REPORT,
+    });
+    expect(r.pass).toBe(true);
+  });
+
+  it('FAILS when the app returned no questions — an empty spec measures an empty zero', () => {
+    const r = checkDatasetObeysPddConstraints({
+      derivation: { unparsed: [], questionsSeen: 0, gatesParsed: 0 },
+      report: CLEAN_REPORT,
+    });
+    expect(r.pass).toBe(false);
+    expect(r.detail).toMatch(/0 questions/);
+  });
+
+  it('reports an unparsed relevant expression instead of passing silently', () => {
+    const r = checkDatasetObeysPddConstraints({
+      derivation: {
+        unparsed: [
+          {
+            kind: 'relevant',
+            field: 'slept_under_net',
+            path: '/data/net_check/slept_under_net',
+            expression: "selected(/data/agree_again/consent_confirmed, 'yes')",
+            reason: 'not an equality',
+          },
+        ],
+        questionsSeen: 4,
+        gatesParsed: 1,
+      },
+      report: CLEAN_REPORT,
+    });
+    expect(r.pass).toBe(false);
+    expect(r.detail).toMatch(/were NOT audited/);
+    expect(r.detail).toMatch(/selected\(/);
+    expect(r.auto_fix_hint).toMatch(/ADDITION/);
+  });
+
+  it('reports a field the scrub could never locate', () => {
+    const r = checkDatasetObeysPddConstraints({
+      derivation: DERIVED,
+      scrub: { records: 276, fields: [], totalCleared: 0, unresolvedFields: ['slept_under_net'] },
+      report: CLEAN_REPORT,
+    });
+    expect(r.pass).toBe(false);
+    expect(r.detail).toMatch(/could not locate slept_under_net/);
+  });
+
+  it('fails on violations and hints at the scrub, NOT at the manifest knob that does not exist', () => {
+    const r = checkDatasetObeysPddConstraints({
+      derivation: DERIVED,
+      report: {
+        ok: false,
+        total: 276,
+        violations: [
+          { kind: 'conditional-off-branch', field: 'slept_under_net', count: 18, detail: 'off branch' },
+          { kind: 'conditional-off-branch', field: 'net_visibly_hanging', count: 18, detail: 'off branch' },
+        ],
+      },
+    });
+    expect(r.pass).toBe(false);
+    expect(r.detail).toMatch(/18 of 276/);
+    expect(r.auto_fix_hint).toMatch(/scrubOffBranchFields/);
+    // The impossible remedy must not come back: there is no manifest-side
+    // conditional primitive, so a hint that demands one is unsatisfiable.
+    expect(r.auto_fix_hint).not.toMatch(/regenerate with the constraint applied at the manifest/i);
+    expect(r.auto_fix_hint).toMatch(/no manifest-side remedy/i);
+  });
+});

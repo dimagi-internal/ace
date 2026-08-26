@@ -72,6 +72,7 @@ dotenvConfig({
 import { unzipSync, strFromU8 } from 'fflate';
 import { DOMParser } from '@xmldom/xmldom';
 import { scratchPath, writeVerifiedJson } from '../lib/scratch-file.js';
+import { HQ_UNIQUE_ID_RE } from '../lib/hq-unique-id.js';
 
 // ── Public types ─────────────────────────────────────────────────
 
@@ -200,6 +201,11 @@ export function parseSuiteFormResources(suiteXml: string): Map<string, string> {
   for (let i = 0; i < resources.length; i++) {
     const res = resources.item(i)!;
     const id = res.getAttribute('id');
+    // Deliberately 32-only, unlike the DRAFT parsers below (ace#1644). This
+    // reads a BUILT suite.xml, where the id is CCHQ's build-time resource id;
+    // no 40-hex value has been observed on this surface, and app-hq-settings
+    // halts on a suite_xml-sourced uid regardless (issue #108). Widen this only
+    // against an observed 40-hex suite.xml resource id, not by symmetry.
     if (!id || !/^[0-9a-f]{32}$/.test(id)) continue;
     const locations = res.getElementsByTagName('location');
     for (let j = 0; j < locations.length; j++) {
@@ -488,14 +494,23 @@ export function walkCcz(args: {
 /**
  * Parse the draft-app API JSON response (from
  * /a/<domain>/api/v0.5/application/<app_id>/) into a map of form path
- * → 32-hex form_unique_id. The path key matches what the CCZ entries
+ * → form_unique_id. The path key matches what the CCZ entries
  * use, so this map can drop-in overlay onto `parseSuiteFormResources`'s
  * output.
  *
- * Tolerates partial/malformed responses: rows without a `unique_id` or
- * a non-32-hex one are skipped silently. The caller decides what to do
- * when the map comes back empty (CLI's main warns and falls back to
- * suite.xml).
+ * Tolerates partial/malformed responses: rows without a `unique_id`, or
+ * with one that is neither of CCHQ's two widths, are skipped silently.
+ * The caller decides what to do when the map comes back empty (CLI's
+ * main warns and falls back to suite.xml).
+ *
+ * **Accepts 32-hex AND 40-hex (ace#1644).** A 32-only gate here was the
+ * form-side twin of the module-side bug fixed just below: after a Nova
+ * `upload_app_to_hq` CCHQ hands back 40-hex SHA-1 form uids, every row
+ * was dropped, and `--draft-only` reported
+ * `[run-form-walk] --draft-only resolved 0 forms` — a documented halt in
+ * `app-hq-settings` — against a perfectly healthy re-uploaded app.
+ * Observed on hh-poverty-targeting/20260824-1404. Shared pattern:
+ * `lib/hq-unique-id.ts`.
  *
  * Exported for unit tests.
  */
@@ -509,7 +524,7 @@ export function parseDraftAppFormUids(draftJson: unknown): DraftFormUidMap {
     for (let fi = 0; fi < mod.forms.length; fi++) {
       const form = mod.forms[fi] as { unique_id?: unknown } | null;
       const uid = typeof form?.unique_id === 'string' ? form.unique_id : null;
-      if (!uid || !/^[0-9a-f]{32}$/.test(uid)) continue;
+      if (!uid || !HQ_UNIQUE_ID_RE.test(uid)) continue;
       out.set(`modules-${mi}/forms-${fi}.xml`, uid);
     }
   }
@@ -543,7 +558,7 @@ export function parseDraftAppModuleUids(draftJson: unknown): DraftModuleUidMap {
     // silently dropped every real module uid, leaving module_unique_id
     // null and halting app-hq-settings (the RDT Deliver draft surfaced
     // this: 40-hex modules, 32-hex forms).
-    if (!modUid || !/^[0-9a-f]{32}(?:[0-9a-f]{8})?$/.test(modUid)) continue;
+    if (!modUid || !HQ_UNIQUE_ID_RE.test(modUid)) continue;
     const forms = Array.isArray(mod.forms) ? mod.forms : [];
     // Map every form path under this module to the module uid. Fall back
     // to at least forms-0 so a module with a broken/empty forms[] array

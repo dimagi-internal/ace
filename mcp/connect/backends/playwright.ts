@@ -1,6 +1,13 @@
 import type { APIRequestContext, APIResponse } from 'playwright';
 import type { ConnectClient } from '../client.js';
-import type { Opportunity, PaymentUnit, Program, ProgramApplication, VerificationFlags } from '../types.js';
+import type {
+  ListingCompleteness,
+  Opportunity,
+  PaymentUnit,
+  Program,
+  ProgramApplication,
+  VerificationFlags,
+} from '../types.js';
 import { HttpError, ConnectValidationError, ConnectError, UnsupportedVerificationFlagError } from '../errors.js';
 import { assertFundsAtLeastOneUser } from '../opportunity-capacity.js';
 import type { PlaywrightSession } from '../auth/playwright-session.js';
@@ -11,13 +18,16 @@ import {
   decodeHtmlEntities,
   extractFormCsrfToken,
   extractFormFieldValues,
+  isCheckboxChecked,
   parseOpportunityDashboard,
+  classifyDashboardRead,
   extractDisabledFormFieldNames,
   scopeToFormContaining,
   extractUuidFromPath,
   parseDeliveryTypeOptions,
   parseProgramsList,
   parseOpportunitiesList,
+  parseTablePagination,
   parseInvitesList,
   parseFormErrors,
   parseFormErrorsByField,
@@ -27,6 +37,67 @@ import {
   parseWorkerLearnTable,
   parseWorkerDeliverTable,
 } from './html-scrape.js';
+
+/**
+ * Page size requested when walking Connect's paginated opportunity list.
+ *
+ * Upstream honours ONLY `PAGE_SIZE_OPTIONS = [20, 30, 50, 100]`
+ * (`commcare_connect/utils/tables.py`); `get_validated_page_size` silently
+ * falls back to `DEFAULT_PAGE_SIZE = 20` for any other value, so this must
+ * stay one of those four. 100 is the largest, minimising round-trips.
+ */
+const OPPORTUNITY_LIST_PAGE_SIZE = 100;
+
+/**
+ * Hard stop on the page walk so a server that ignores `page` can never spin
+ * forever. At 100 rows/page this covers 5,000 opportunities in one org —
+ * far beyond any real ACE org — and the loop normally exits much earlier on
+ * a short page.
+ */
+const OPPORTUNITY_LIST_MAX_PAGES = 50;
+
+/** Upstream `DEFAULT_PAGE_SIZE` — the smallest page a NON-final page can be. */
+const CONNECT_DEFAULT_PAGE_SIZE = 20;
+
+/**
+ * django-tables2 `prefixed_page_field` with the default empty table prefix.
+ * Only a fallback: the real name is read off the rendered footer, because a
+ * table with a prefix ignores a bare `?page=` entirely.
+ */
+const OPPORTUNITY_LIST_DEFAULT_PAGE_FIELD = 'page';
+
+/**
+ * Max hydrate fetches in flight at once.
+ *
+ * Hydration is 2 GETs per row, and it used to be bounded by accident: the
+ * listing stopped at 20 rows, so `Promise.all` fanned out ~40 requests. Now
+ * that the walk is exhaustive, an org like `ai-demo-space` (114 opportunities
+ * at ace#938 time) would fan out ~230 in one burst against a single Playwright
+ * request context. Correct-and-exhaustive must not mean unbounded.
+ */
+const OPPORTUNITY_HYDRATE_CONCURRENCY = 8;
+
+/**
+ * `Promise.all`-shaped map with a fixed concurrency ceiling. Results keep the
+ * input order; the first rejection propagates, as with `Promise.all`.
+ */
+async function mapWithConcurrency<T, R>(
+  items: T[],
+  limit: number,
+  fn: (item: T) => Promise<R>,
+): Promise<R[]> {
+  const out = new Array<R>(items.length);
+  let next = 0;
+  const worker = async () => {
+    for (;;) {
+      const i = next++;
+      if (i >= items.length) return;
+      out[i] = await fn(items[i]);
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
+  return out;
+}
 
 /**
  * Build a structured ConnectValidationError from a 200-with-errorlist response
@@ -409,7 +480,10 @@ export class PlaywrightBackend implements ConnectClient {
    *   AND `total_budget` was never returned, so the headroom check silently
    *   no-opped and surfaced later as an un-actionable "Budget exceeds the
    *   program budget" rejection — precisely the failure #588 was filed to
-   *   prevent.
+   *   prevent. Both inputs now exist on the HYDRATED row only:
+   *   `getOpportunity` reads `total_budget` and `program_name` off the
+   *   opportunity dashboard (ace#1550). The list page still carries neither,
+   *   so `hydrate: true` is not optional for that sum.
    * - `connect-opp-setup § Step 4` (single-active-opp invariant, #106
    *   finding 11) warns "for each opp where `active=true`". With `active`
    *   hardcoded `false` that WARN could NEVER fire, so the silent
@@ -440,10 +514,92 @@ export class PlaywrightBackend implements ConnectClient {
           `or read the opportunities off the program page.`,
       );
     }
-    const path = `/a/${organization_slug}/opportunity/`;
-    const res = await this.request.get(path);
-    if (res.status() !== 200) throw await httpErrorFor(res, path);
-    const stubs = parseOpportunitiesList(await res.text());
+    // WALK EVERY PAGE (dimagi-internal/ace#1590). Connect's `OpportunityList`
+    // is a paginated `SingleTableView` whose page size is
+    // `get_validated_page_size(request)` — `DEFAULT_PAGE_SIZE = 20`, and only
+    // `PAGE_SIZE_OPTIONS = [20, 30, 50, 100]` are honoured (anything else
+    // silently falls back to 20). A single unparameterised GET therefore
+    // returns the 20 most-recent opportunities with NO signal that more exist,
+    // and the caller cannot tell a complete org listing from page 1 of N.
+    //
+    // That silence is load-bearing: `connect-program-setup § Step 4a` sums
+    // `total_budget` over a program's opps to size the budget headroom, and it
+    // treats a truncated page as a fully-known Σ — too small, so the raise
+    // never fires and the next create rejects with "Budget exceeds the program
+    // budget", the exact failure the step exists to prevent. The `name` filter
+    // below is applied CLIENT-SIDE too, so it returned zero for an opportunity
+    // that existed on page 2+.
+    const stubs: ReturnType<typeof parseOpportunitiesList> = [];
+    const seenIds = new Set<string>();
+    let pageField = OPPORTUNITY_LIST_DEFAULT_PAGE_FIELD;
+    let declaredPages: number | undefined;
+    let pagesFetched = 0;
+    let pageSizeHonored = false;
+    let truncatedReason: string | undefined;
+    for (let page = 1; page <= OPPORTUNITY_LIST_MAX_PAGES; page++) {
+      const path =
+        `/a/${organization_slug}/opportunity/` +
+        `?page_size=${OPPORTUNITY_LIST_PAGE_SIZE}&${pageField}=${page}`;
+      const res = await this.request.get(path);
+      // An out-of-range page is NOT an error on this surface: django-tables2
+      // configures the table with `RequestConfig(..., silent=True)`, which maps
+      // `EmptyPage` to `paginator.page(paginator.num_pages)` -- the LAST page,
+      // HTTP 200 (`django_tables2/config.py`). The stop conditions below are
+      // what actually terminate the walk. This branch stays as a defensive
+      // floor for a surface that behaves differently; on page 1 a non-200 is a
+      // real error and must still surface.
+      if (res.status() !== 200) {
+        if (page === 1) throw await httpErrorFor(res, path);
+        break;
+      }
+      const html = await res.text();
+      pagesFetched++;
+      if (page === 1) {
+        // The footer carries BOTH the paginator page count and the name of the
+        // page parameter (`table.prefixed_page_field`), so neither is guessed.
+        const pagination = parseTablePagination(html);
+        pageField = pagination.page_field ?? pageField;
+        declaredPages = pagination.num_pages;
+      }
+      const pageStubs = parseOpportunitiesList(html);
+      if (page === 1) {
+        // Did the server actually honour `page_size`? Only conclude "short
+        // page means last page" against the size it really used. A response
+        // pinned at DEFAULT_PAGE_SIZE would otherwise look short on page 1 and
+        // stop the walk at 20 rows -- the exact shape ace#1590 reported live.
+        pageSizeHonored = pageStubs.length > CONNECT_DEFAULT_PAGE_SIZE;
+      }
+      const fresh = pageStubs.filter((s) => !seenIds.has(s.id));
+      for (const s of fresh) seenIds.add(s.id);
+      stubs.push(...fresh);
+      // Stop where the paginator says it ends; failing that, on a short page
+      // (the last one) or when a page adds nothing new -- the latter also makes
+      // this terminate against a server that ignores the page parameter and
+      // re-serves the same rows.
+      const shortPageAt = pageSizeHonored ? OPPORTUNITY_LIST_PAGE_SIZE : CONNECT_DEFAULT_PAGE_SIZE;
+      if (declaredPages !== undefined) {
+        if (page >= declaredPages) break;
+      } else if (pageStubs.length < shortPageAt || fresh.length === 0) {
+        break;
+      }
+      if (page === OPPORTUNITY_LIST_MAX_PAGES) {
+        truncatedReason =
+          `walked ${OPPORTUNITY_LIST_MAX_PAGES} pages of ${OPPORTUNITY_LIST_PAGE_SIZE} without ` +
+          `reaching the end of /a/${organization_slug}/opportunity/` +
+          (declaredPages !== undefined ? ` (page declares ${declaredPages} pages)` : '');
+      }
+    }
+    // Say whether the walk actually finished. Without this a caller cannot
+    // distinguish a complete listing from a capped one, which is the half of
+    // ace#1590 that makes a silently-wrong Sigma possible in the first place.
+    const listing: ListingCompleteness = {
+      complete: truncatedReason === undefined,
+      total_count: stubs.length,
+      pages_fetched: pagesFetched,
+      page_size: OPPORTUNITY_LIST_PAGE_SIZE,
+      ...(declaredPages !== undefined ? { declared_pages: declaredPages } : {}),
+      ...(truncatedReason !== undefined ? { truncated_reason: truncatedReason } : {}),
+    };
     // `managed`, `active` and `total_budget` are deliberately ABSENT: the
     // list page does not carry them, and a fabricated value is worse than a
     // missing one because a caller cannot tell it apart from a real one.
@@ -456,14 +612,16 @@ export class PlaywrightBackend implements ConnectClient {
     })) as unknown as Opportunity[];
     if (name) opportunities = opportunities.filter((o) => o.name === name);
     if (hydrate) {
-      opportunities = await Promise.all(
-        opportunities.map(async (o) => ({
+      opportunities = await mapWithConcurrency(
+        opportunities,
+        OPPORTUNITY_HYDRATE_CONCURRENCY,
+        async (o) => ({
           ...o,
           ...(await this.getOpportunity({ organization_slug, opportunity_id: o.id })),
-        })),
+        }),
       );
     }
-    return { opportunities };
+    return { opportunities, listing };
   };
 
   getOpportunity: ConnectClient['getOpportunity'] = async ({ organization_slug, opportunity_id }) => {
@@ -498,15 +656,28 @@ export class PlaywrightBackend implements ConnectClient {
       throw await httpErrorFor(editRes, editPath);
     }
 
-    const v = editDenied ? {} : extractFormFieldValues(await editRes.text());
-    const dash = editDenied ? parseOpportunityDashboard(detailHtmlText) : {};
+    const editFormHtml = editDenied ? '' : await editRes.text();
+    const v = editDenied ? {} : extractFormFieldValues(editFormHtml);
+    // Parse the dashboard WHENEVER it is readable, not only on the viewer-tier
+    // degrade (ace#1550): it is the only read surface that carries
+    // `total_budget`, `start_date` and the opportunity's program. `dash` keeps
+    // its old meaning — the degrade-path merge, empty when the edit form won —
+    // so edit-form precedence is untouched.
+    const detail = detailHtmlText ? parseOpportunityDashboard(detailHtmlText) : {};
+    // ace#1637 - say whether the dashboard half ANSWERED, so a caller stops
+    // inferring "not in a program / no budget" from "could not read the
+    // page". 16 of 81 hydrated ai-demo-space rows came back with the
+    // list-page key set only; Step 4a read that as absent and inflated a
+    // live LLO-facing program ceiling by EXPECTED_OPP_BUDGET x 10 every run.
+    const dashboardRead = classifyDashboardRead(detailHtmlText);
+    const dash = editDenied ? detail : {};
 
     // The edit form's `active` checkbox is authoritative when we have it; the
     // dashboard's is derived from a three-way badge and is lossy on Inactive
     // (see parseOpportunityDashboard). Prefer the form, fall back to the badge.
     const isActive = editDenied
       ? (dash.active ?? false)
-      : v['active'] === 'on' || v['active'] === 'true' || v['active'] === '';
+      : isCheckboxChecked(v, editFormHtml, 'active');
 
     let learnAppDomain = '';
     let learnAppId = '';
@@ -546,10 +717,42 @@ export class PlaywrightBackend implements ConnectClient {
       //   learn_level, name, short_description, submit, users
       // `total_budget` and `start_date` are on NEITHER this form nor the
       // program init/edit form (which carries learn_app_passing_score, not
-      // passing_score) — so they cannot be surfaced from either read path, and
-      // this deliberately does not pretend otherwise. See the issue for what
-      // that means for the Step 4a budget-headroom check.
-      is_test: editDenied ? (dash.is_test ?? false) : v['is_test'] === 'on' || v['is_test'] === 'true',
+      // passing_score) — see the three dashboard-sourced fields below for
+      // where they DO come from (ace#1550).
+      is_test: editDenied ? (dash.is_test ?? false) : isCheckboxChecked(v, editFormHtml, 'is_test'),
+      // ace#1550 — the three fields the EDIT form cannot answer, read off the
+      // DASHBOARD this method already fetches for the app-wire ids. Upstream
+      // source, not a live capture: `OpportunityDashboard.get_context_data`
+      // renders the "Max Budget" infocard as
+      // f"{object.currency_code} {intcomma(object.total_budget)}" and a
+      // "Start Date" card (commcare_connect/opportunity/views.py), and
+      // templates/opportunity/dashboard.html renders the program as
+      // <h3 class="… text-brand-sky …">{{ object.program.name }}</h3>.
+      //
+      // `total_budget` is the field Connect's own program-budget validation
+      // sums —
+      //   Opportunity.objects.filter(program=program).aggregate(Sum("total_budget"))
+      // in program/api/serializers.py, the check that raises "Budget exceeds
+      // the program budget" — so this is the exact input
+      // connect-program-setup § Step 4a needs, and until now had no way to get.
+      //
+      // Each degrades to `undefined` when its card is absent. UNDEFINED MEANS
+      // UNKNOWN, NEVER ZERO: a caller summing budgets must treat a missing
+      // value as an unknown Σ, because a partial sum silently understates the
+      // ceiling in exactly the direction that lets a create fail later.
+      total_budget:
+        detail.total_budget != null && Number.isFinite(Number(detail.total_budget))
+          ? Number(detail.total_budget)
+          : undefined,
+      start_date: detail.start_date,
+      // A program NAME, not the program UUID — no opportunity read surface
+      // carries the id (`program_id` stays undefined here, and the list page
+      // has no program column at all, which is why `list_opportunities`
+      // REFUSES a program_id filter — ace#1022). A caller scoping a sum to one
+      // program matches on this name and must treat a name that is not unique
+      // in the org as unknown rather than guessing.
+      program_name: detail.program_name,
+      dashboard_read: dashboardRead,
       learn_app: learnAppId
         ? { cc_domain: learnAppDomain, cc_app_id: learnAppId, name: '' }
         : undefined,
@@ -601,8 +804,8 @@ export class PlaywrightBackend implements ConnectClient {
 
     // Checkboxes: `active` and `is_test`. To toggle ON, set `=on`. To toggle
     // OFF, OMIT the field. We preserve current state if not overridden.
-    const wantActive = overrides.active ?? (current['active'] === 'on' || (current['active'] === '' && /name="active"[^>]*checked/.test(editHtml)));
-    const wantTest = overrides.is_test ?? (current['is_test'] === 'on' || (current['is_test'] === '' && /name="is_test"[^>]*checked/.test(editHtml)));
+    const wantActive = overrides.active ?? isCheckboxChecked(current, editHtml, 'active');
+    const wantTest = overrides.is_test ?? isCheckboxChecked(current, editHtml, 'is_test');
     if (wantActive) form['active'] = 'on';
     if (wantTest) form['is_test'] = 'on';
 

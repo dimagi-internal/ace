@@ -1521,6 +1521,98 @@ describe('getOpportunity viewer-tier degrade (#1461)', () => {
   });
 });
 
+// ---------------------------------------------------------------------------
+// dimagi-internal/ace#1550 — the Σ(total_budget) headroom inputs.
+//
+// connect-program-setup § Step 4a sizes program-budget headroom by summing
+// `total_budget` over the opportunities on ONE program. Neither input was on
+// any read surface: the edit form carries no budget and no program, and the
+// list page carries neither either — so the sum was unobtainable on every run
+// and the step always fell through to its own unknown-Σ branch while reading
+// as a computed check. Both fields are on the opportunity DASHBOARD, which
+// getOpportunity already fetches for the app-wire ids.
+//
+// Upstream source (not a live capture): OpportunityDashboard.get_context_data
+// renders the "Max Budget" infocard as
+//   f"{object.currency_code} {intcomma(object.total_budget)}"
+// and dashboard.html renders {{ object.program.name }} in the text-brand-sky
+// <h3>. `total_budget` is the very field the create-time check sums —
+//   Opportunity.objects.filter(program=program).aggregate(Sum("total_budget"))
+// in program/api/serializers.py.
+// ---------------------------------------------------------------------------
+describe('getOpportunity surfaces the Step 4a budget-headroom inputs (#1550)', () => {
+  const dashboardHtml = fs.readFileSync(
+    path.join(__dirname, '../../../fixtures/connect-opportunity-dashboard.html'),
+    'utf8',
+  );
+
+  const editFormHtml = `<form>
+    <input name="name" value="Name From Edit Form">
+    <input name="short_description" value="short desc">
+    <input name="description" value="Description From Edit Form">
+    <input name="currency" value="EUR">
+    <input name="country" value="MW">
+    <input name="end_date" value="2027-01-31">
+    <input type="checkbox" name="active" value="on" checked>
+  </form>`;
+
+  const get = async (edit: ScriptedResponse, detail: ScriptedResponse) => {
+    const captured: CapturedRequest[] = [];
+    const request = makeRequestContext([edit, detail], captured);
+    const backend = new PlaywrightBackend({ baseUrl, csrfToken, request });
+    return backend.getOpportunity({ organization_slug: 'o', opportunity_id: 'i' });
+  };
+
+  it('returns total_budget as a NUMBER on the ordinary member path', async () => {
+    // The member path is the one Step 4a runs on. Before #1550 the dashboard
+    // was parsed only when the edit form 403/404'd, so this was undefined for
+    // every caller who could actually edit the opportunity.
+    const opp = await get({ status: 200, body: editFormHtml }, { status: 200, body: dashboardHtml });
+    expect(opp.total_budget).toBe(1250000);
+    expect(typeof opp.total_budget).toBe('number');
+  });
+
+  it('returns the program NAME — the only program key on any read surface', async () => {
+    const opp = await get({ status: 200, body: editFormHtml }, { status: 200, body: dashboardHtml });
+    expect(opp.program_name).toBe('Maternal Health Interviews');
+    // The UUID is NOT recoverable from a read; a caller must scope by name.
+    expect(opp.program_id).toBeUndefined();
+  });
+
+  it('returns start_date, which the edit form does not carry', async () => {
+    const opp = await get({ status: 200, body: editFormHtml }, { status: 200, body: dashboardHtml });
+    expect(opp.start_date).toBe('2026-07-01');
+  });
+
+  it('still returns all three on the viewer-tier degrade', async () => {
+    const opp = await get({ status: 404, body: 'not found' }, { status: 200, body: dashboardHtml });
+    expect(opp.total_budget).toBe(1250000);
+    expect(opp.program_name).toBe('Maternal Health Interviews');
+    expect(opp.start_date).toBe('2026-07-01');
+  });
+
+  it('leaves them UNDEFINED — never 0 — when the dashboard omits the cards', async () => {
+    // Undefined is the signal Step 4a keys its unknown-Σ branch on. A zero
+    // here would understate the sum and let a create fail later with the
+    // un-actionable "Budget exceeds the program budget" this check exists to
+    // pre-empt.
+    const bare = '<html><body><h1>Some Opportunity</h1></body></html>';
+    const opp = await get({ status: 200, body: editFormHtml }, { status: 200, body: bare });
+    expect(opp.total_budget).toBeUndefined();
+    expect(opp.program_name).toBeUndefined();
+    expect(opp.start_date).toBeUndefined();
+  });
+
+  it('does not let the dashboard override an edit-form field', async () => {
+    // Negative control: the three new fields are additive. Everything the
+    // form answers must still come from the form.
+    const opp = await get({ status: 200, body: editFormHtml }, { status: 200, body: dashboardHtml });
+    expect(opp.name).toBe('Name From Edit Form');
+    expect(opp.currency).toBe('EUR');
+    expect(opp.end_date).toBe('2027-01-31');
+  });
+});
+
 describe('getProgram has no viewer-tier fallback, and says so (#1461)', () => {
   it('explains that every program route needs admin + program-manager', async () => {
     // Deliberately NOT symmetrical with getOpportunity: upstream's

@@ -29,6 +29,7 @@ paraphrase the schema here — read the model / schema and validate.
 | Operator | `--brief <text or drive-path>` | the demo story (same brief `demo-data-setup` used) |
 | `demo-data-setup` | `<demo-run>/7-synthetic/realized.json` | the flat `${var}` map — `primary_par_url`, one `<key>_par_url` per dashboard, `<name>_url` drills — the scenes render |
 | `demo-data-setup` | `run_state…products.synthetic.source` | provider, labs opp id, deliver units, and `dashboards[]` (key/template/role/`interactive`) — one narrative arc per dashboard; `interactive: true` marks the only dashboard whose controls are live |
+| `demo-data-setup` | `run_state…products.synthetic.source.record_counts` + `.data_shape` | **the dataset's cardinality** — `record_counts` verbatim from the generator, and the three axes a demonstration can need (`rows` / `periods` / `groups`). Step 2b checks each demonstration against it BEFORE scenes are written (ace#1670). Absent on a pre-2026-08-26 run — then read `record_counts` from `<demo-run>/7-synthetic/demo-data-setup.md` and the week span from `demo-data-setup_manifest.yaml`, and say in the summary that you re-derived them |
 | Discovery | canopy runtime (resolved from the installed canopy plugin via its `scripts/canopy-runtime.sh` — see Step 4) | `uv run python -m scripts.ddd.validate` (see `docs/superpowers/plans/2026-07-20-plan-a-task1-findings.md`) |
 
 ## Products
@@ -56,6 +57,37 @@ paraphrase the schema here — read the model / schema and validate.
    `evidence.kind: assumed` and a matching `Gap` of type `DECISION` or
    `CAPABILITY`. Every grounded spine item needs ≥1 non-`assumed` evidence;
    every `Gap.claim_ref` must resolve to a spine `id`.
+
+2b. **Check the DATA'S SHAPE before you pick a demonstration (ace#1670).**
+   A demonstration is only observable if the data has enough of the thing it
+   acts on, and the axis it needs is not always the axis the dataset is big on.
+   Read `source.data_shape` (and `source.record_counts` behind it), then hold
+   every demonstration you are considering against these minimums — from
+   `MIN_CARDINALITY` in `lib/ddd-scene-actions.ts`, where each is derived with
+   its reasoning:
+
+   | Demonstration | Axis it needs | Minimum | Why |
+   |---|---|---|---|
+   | filter / search / sort | `rows` | **12** | the after-state must still read as a list (≥3 rows) AND the drop must register at a glance (~8 rows) |
+   | trend | `periods` | **4** | a baseline, the turn the narration names, and a period after it — below that the claim is asserted over the plot, not read off it |
+   | comparison | `groups` | **3** | with two groups one is always above the other, so the ordering carries no information about whether being behind is unusual |
+
+   **When the data cannot carry the demonstration there are exactly two
+   branches, and both are taken HERE, not after a render:** pick a different
+   demonstration for that dashboard (one the shape supports — a single-value
+   callout instead of a trend, a drill-in instead of a filter), or go back to
+   `demo-data-setup` and regenerate with a larger cohort. A third answer is
+   legitimate only if it is written down: if the surface actually enumerates a
+   different population than `data_shape.rows` names (a visit table has
+   `user_visits` rows, not `user_data` rows), say which and use that count.
+
+   `bednet-check-2-visit/20260825-1310` is why this step exists. It authored a
+   filter demonstration over a **five-worker** cohort — filtering 5 rows removes
+   at most 4, so the before-frame and after-frame are the same screenshot minus
+   a line. `checkSceneActions` passed it, `scripts.ddd.validate` passed it, and
+   the concept judge caught it after a full render; the loop ended
+   `stopped_not_converged` at concept 3.0 four iterations later, on a defect
+   decidable from two numbers before the first frame was recorded.
 
 3. **Author the `UnifiedSpec`** (`<demo-slug>.yaml`):
    - `base_url: https://labs.connect.dimagi.com`; no `auth` block (labs cookies
@@ -99,9 +131,24 @@ paraphrase the schema here — read the model / schema and validate.
      act/capture. Crossing to a different dashboard = a new scene WITH its
      `${<key>_par_url}`.
 
-3b. **Check every scene's ACTIONS before validating (ace#1379, #1380, #1365).**
-   Run `checkSceneActions` from `lib/ddd-scene-actions.ts` over `scenes[]`.
-   Four ways a scene reports `ok: true` while demonstrating nothing — all
+3b. **Check every scene's ACTIONS before validating (ace#1379, #1380, #1660).**
+   Run `checkSceneActions` from `lib/ddd-scene-actions.ts` over `scenes[]`,
+   **and `checkSceneCardinality(scenes, shape)` from the same module** — the
+   executable form of Step 2b, which re-reads the authored scenes rather than
+   your intent. It emits two kinds, and it FLAGS rather than rejects, because it
+   reads the data's shape but not the dashboard's rendering and so cannot be
+   certain which population a surface enumerates — refusing a legal spec on that
+   would be the ace#1238 guard-predicts-a-rejection failure. **A flag is
+   therefore never carried past silently: resolve every one** by taking a Step-2b
+   branch or by recording which population the surface actually lists.
+
+   - **`insufficient-cardinality`** — the demonstration needs more than the data
+     has. Take one of the two Step-2b branches.
+   - **`unknown-cardinality`** — the axis is not in the handoff at all. That is
+     the ace#1670 starting state; go get the number (§ Inputs names where), do
+     not author past it.
+
+   Three more ways a scene reports `ok: true` while demonstrating nothing — all
    found on ONE run, spark-facilitator/20260813-2126:
 
    - **`ambiguous-text-target`** — target the CONTROL, never the words. A
@@ -110,8 +157,12 @@ paraphrase the schema here — read the model / schema and validate.
      happens. Scene 3's `click text:Needs a look` matched three nodes — a
      card-subtitle DIV, the real LABEL, a reconciliation-sentence DIV — and
      took the DIV. `record_video` reported *39 actions: all ok* on a frame
-     showing the checkbox unchecked and "showing 20 of 20 facilitators". Use
-     `role=` / `label:` / `css=` / `testid=`.
+     showing the checkbox unchecked and "showing 20 of 20 facilitators". Use a
+     recorder prefix — `css:` / `testid:` / `aria:` / `role:` (`role:` also
+     takes a name: `role:button:Save`). The separator is `:`; canopy's
+     `parse_target` has no `=` form, so `css=…` falls through to the
+     bare-string heuristic — the ambiguity you were trying to escape
+     (ace#1519).
    - **`non-discriminating-gate`** — a `wait_for` must name something only the
      POST state carries (a count, a status word, the new id). `wait_for
      text:Showing` was true before and after, so it could not fail.
@@ -123,18 +174,35 @@ paraphrase the schema here — read the model / schema and validate.
      `restore:` block — and note it must run before **every** render **and
      before every frame-fit pass**, because the verifier replays these same
      actions and so consumes the precondition for the render after it.
-   - **`scroll-under-fixed-header`** — the labs shell has a **~72px fixed top
-     bar**, and `scroll_into_view_if_needed` lands the artifact's top edge
-     underneath it. Pass `offset: 96`, or scroll to `bottom`. Seven
-     independent judges rediscovered this in different words
-     (`motion_friction` 2 on 7 of 12 scenes, concept eval **2/5 fail**); the
-     only two scenes scoring 4 are the two that scroll to `bottom`, where no
-     fixed header can occlude anything.
+
+   The gate check is a WORD COUNT, so it only runs on `text:`/bare targets.
+   A control-selector gate (`testid:` / `css:` / `aria:` / `role:`) is left
+   alone — you have already named one element, and counting the words in its
+   id cannot say whether it is post-state-only (ace#1660).
+
+   **Retracted (ace#1660): there is no `scroll-under-fixed-header` check, and
+   `scroll_to` needs no offset.** A fourth check used to flag every `scroll_to`
+   without `offset: 96`. Both halves were wrong against canopy 0.2.423 and it
+   is deleted — **do not re-add it, and never write `offset:` on an action**:
+
+   - canopy's `ScrollToAction` declares only `kind` + `target`, and
+     `_ActionBase` sets `extra="forbid"`, so `offset:` makes the spec FAIL
+     validation (`Extra inputs are not permitted`). Following the old
+     remediation turned a passing spec into one canopy refuses.
+   - The premise was stale anyway. `recorder.py::scroll_to` chases
+     `scroll_into_view_if_needed` with an explicit centring scroll
+     (`window.scrollTo({top: y + scrollY - innerHeight / 2})`), so the element
+     lands at the vertical CENTRE — no fixed bar reaches it. That was #1365's
+     own fix, closed 2026-08-14.
+
+   If a scene genuinely needs different framing, the only levers canopy accepts
+   are `scroll` (whose `value` takes `top` / `bottom` / a pixel offset) and a
+   per-scene `viewport`.
 
    These are the halves decidable from the SPEC. The runtime halves —
    resolving an ambiguous target to the interactive node, comparing a gate
-   against the captured before-frame, replaying restores, offsetting the
-   scroll — belong in canopy's walkthrough runner and are tracked upstream.
+   against the captured before-frame, replaying restores — belong in
+   canopy's walkthrough runner and are tracked upstream.
 
 4. **Validate — the gate.** Resolve canopy's runtime from its installed
    plugin, then run the validator from there (pass the artifact paths as
@@ -195,3 +263,9 @@ paraphrase the schema here — read the model / schema and validate.
 - **First-scene-only `url`** per surface (see Step 3).
 - **This skill authors + validates only.** Rendering, judging, and video are the
   DDD loop's job, invoked by `agents/demo.md` after this skill returns.
+
+## Change Log
+
+| Date | Change | Author |
+|------|--------|--------|
+| 2026-08-26 | Add the dataset's cardinality as an INPUT (`source.record_counts` + `source.data_shape`) and a pre-authoring shape check (Step 2b) with a per-verb minimum — `rows` 12 for filter/search/sort, `periods` 4 for a trend, `groups` 3 for a comparison — enforced by `checkSceneCardinality` in `lib/ddd-scene-actions.ts` at Step 3b. Flags rather than rejects (the rule reads the data's shape but not the dashboard's rendering, so it cannot be certain which population a surface enumerates — ace#1238), but every flag must be resolved. `bednet-check-2-visit/20260825-1310` authored a filter demonstration over a five-worker cohort; every existing gate reported green and the concept judge caught it four render iterations later, ending the loop `stopped_not_converged` at concept 3.0. ace#1670. | ACE team |

@@ -203,6 +203,47 @@ Skills — No Fake Background Tasks`). Concrete budget:
      with `X-Embed-Key` header and the `Referer` set to the allowed origin.
    - Record the suite start timestamp (`SUITE_START = $(date +%s)`).
 
+   **Session scope — mode-dependent. NOT one session for the whole
+   suite (dimagi-internal/ace#1645).** *Independent prompts must not
+   share history, and the verdict they produce gates activation.*
+
+   ACE's golden-template chatbots run the LLM node with conversation
+   history ON — read live off experiment 13005 (a fresh clone of golden
+   template 11792) via `ocs_inspect_chatbot`:
+
+   ```json
+   "history_mode": "summarize", "history_type": "global", "max_history_length": 10
+   ```
+
+   So a single-session suite feeds a rolling summary of previously
+   answered, mutually unrelated prompts into every later prompt — while
+   `ocs-chatbot-eval` grades each entry **independently** against its
+   own `expected_answer_summary` (its § Process step 3). The carryover
+   biases the measurement, and it biases it **upward**: a later answer
+   can inherit a fact the bot was never asked to retrieve for that
+   prompt, crediting Correctness and Source-usage the retrieval did not
+   earn. The deep verdict feeds the Phase 9 `llo-launch` activation
+   gate, so an inflated deep score lets that gate pass on evidence it
+   should not — the ace#1018 instrument-contamination class arriving
+   through a different door.
+
+   - `--quick` — **one session for the whole suite.** 3 prompts, well
+     inside `max_history_length`, and the shallow gate is a smoke test.
+   - `--deep` / `--monitor` — **one session per prompt.** Call
+     `POST /api/chat/start/` again immediately before each prompt and
+     use that `session_id` for exactly one send + poll. The **only**
+     exception is a prompt the suite explicitly declares multi-turn
+     (the "Multi-turn (follow-up referencing previous answer)"
+     edge-case entry) — that one stays on the preceding prompt's
+     session, which is the entire point of it.
+   - **Cost is ~1s per extra `/api/chat/start/` and does not threaten
+     the budget.** Measured on `bednet-check-2-visit/20260825-1310`:
+     the 51-prompt deep suite ran fresh-session-per-prompt in 1162s of
+     the 1800s cap, 51/51 structural pass.
+   - **Record the per-prompt `session_id` on every transcript entry**
+     (Step 7 schema). It is the only way a later reader can tell which
+     regime a capture ran under.
+
    **Expected HTTP status per call — assert a 2xx RANGE, never `== 200`.**
    These are the codes observed live on `spark-facilitator/20260813-2126`
    (dimagi-internal/ace#1298):
@@ -241,6 +282,11 @@ Skills — No Fake Background Tasks`). Concrete budget:
    from Step 3 — `--deep`/`--monitor` only; `--quick` always starts
    fresh because nothing is persisted mid-loop):
      1. Record the per-prompt start timestamp (`PROMPT_START = $(date +%s)`).
+        On `--deep` / `--monitor`, open a **fresh session here** via
+        `POST /api/chat/start/` per the session-scope rule above, and
+        carry its `session_id` through steps 2–4; on `--quick`, reuse
+        the suite session. A declared multi-turn prompt keeps the
+        preceding prompt's `session_id`.
      2. Send via `POST /api/chat/{session_id}/message/` — treat **any
         2xx** as accepted (it returns **202** with a `task_id`, not 200
         with the answer; ace#1298) and carry `task_id` into the poll.
@@ -248,7 +294,8 @@ Skills — No Fake Background Tasks`). Concrete budget:
         `status: "complete"` OR per-prompt timeout (**90s**) elapses.
         On timeout: capture an empty response, set
         `structural_pass: false`, `structural_notes: "timeout @ 90s"`.
-     4. Capture the response content, cited_files, tags, and elapsed time.
+     4. Capture the response content, cited_files, tags, elapsed time,
+        and the `session_id` this prompt ran under.
 
         **Where each field lives in the poll payload.** The completed poll
         body is `{status, message}`, and `message` carries exactly
@@ -303,6 +350,30 @@ Skills — No Fake Background Tasks`). Concrete budget:
         `/a/<team>/service_providers/llm/<pk>/` (key source of truth:
         1P `ACE - Anthropic API Key (OCS connect-ace)`), then re-run
         this skill — no chatbot config change needed.
+
+        **When there is NO trace pointer, the instruction above
+        dead-ends — run the golden-template control instead
+        (dimagi-internal/ace#1492).** A generation that fails *before*
+        persisting a message has no `messages[].metadata.trace_info` at
+        all (`GET /api/sessions/<id>/` returns `"messages": []`), so
+        `describeSessionTrace` correctly returns `''` and there is
+        nothing to open. Do not report "no trace, therefore platform
+        outage" — that is the same unevidenced leap #743 punished.
+        Instead probe `$OCS_GOLDEN_TEMPLATE_ID` over this same widget
+        path, in this same session, and record BOTH results:
+
+        | target bot | golden | Diagnosis |
+        |---|---|---|
+        | fail | fail | Team LLM provider key / platform (the #743 class) — re-key the provider. |
+        | fail | **pass** | The bot itself is dead while the team is healthy. If it was created by clone this run, suspect the clone mechanism (ace#1492) — **not** its prompt or collections. |
+
+        Note the second row **inverts** the #743 heuristic: that
+        incident taught "golden fails too, so it is key-scope", and a
+        reader who only remembers that reads a *passing* golden as
+        "platform is fine, so it must be my config" and starts
+        bisecting a configuration that is provably identical to a
+        working one. Observed on `bednet-check-2-visit/20260817-1720`,
+        where that misreading consumed the whole phase budget.
    - At loop exit (clean finish, cap-hit, or circuit-break), proceed to
      Step 7 (which handles both write strategies — single create for
      `--quick`, metadata flush for `--deep`/`--monitor`).
@@ -380,6 +451,7 @@ Skills — No Fake Background Tasks`). Concrete budget:
 
    - **Cited files:** [doc-42, doc-17]
    - **Tags:** []
+   - **Session id:** <the session_id this prompt ran under>   # REQUIRED — see Step 5 session scope
    - **Elapsed:** 4.3s
    - **Structural pass:** true
    - **Structural notes:** —
@@ -470,3 +542,5 @@ When `--dry-run` is active:
 | 2026-06-09 | **Trace triage on generation errors (Step 5.9).** On circuit-break / all-fail, the skill must open the session trace URL the atom now appends to `OCS generation error` failures and record the underlying provider error verbatim — never diagnose "platform outage" from the generic "intermittent load" fallback. Root incident: bednet-spot-check/20260609-0909 lost a session to a revoked team Anthropic key (`401 invalid x-api-key`) misread as a team-wide OCS outage because the golden-template control sat behind the same dead key (jjackson/ace#743). Atom-side enrichment: `mcp/ocs/backends/rest.ts::describeSessionTrace`. | ACE team |
 | 2026-08-14 | **Step 5 now states the expected HTTP status per widget endpoint (dimagi-internal/ace#1298).** The endpoint list named `/start/` → `/message/` → `/poll/` with no status codes, so a hand-rolled harness asserted `HTTP == 200` on the send. `/message/` returns **202 Accepted** with a `task_id` (the send is queued, not answered) and `/start/` returns **201** — the harness discarded three accepted sends and reported `0/3` structural pass in 2.6s, which under Step 9 escalates as a miswired bot. Re-run accepting any 2xx: 3/3 in 58.2s. Step 5 now carries a status table (incl. the wrong-embed-key 403 negative control) and mandates a 2xx range; matching bullet added to `playbook/integrations/ocs-integration.md`. Observed on `spark-facilitator/20260813-2126`. | ACE team |
 | 2026-08-15 | **Name the citation path (Step 5.4) and stop `has_citations` from failing a healthy widget capture (Step 6).** The skill told implementers to capture `cited_files` but never said where it lives; the poll payload has no top-level `message.cited_files` — it is `message.metadata.cited_files`, next to `trace_info`. A hand-rolled harness reading the obvious flat path records `[]` on every entry, indistinguishable from a genuinely empty array. Step 6 now also states that an empty array must not fail `structural_pass` on its own, since `ocs-chatbot-eval` § Source usage already declines to apply the empty-`cited_files` cap on widget captures — failing it here recreates the ace#1298 false-gate-failure class from the other side. Observed on `bednet-check-2-visit/20260814-2019` Phase 5. | ACE team |
+| 2026-08-18 | **Step 5.9 no longer assumes a trace pointer exists (ace#1492).** A generation failing before any message is persisted has no `messages[].metadata.trace_info`, so `describeSessionTrace` returns `''` and the mandated "open the trace" instruction dead-ends. Documented the golden-template control as the fallback diagnostic, with an explicit warning that a *passing* golden **inverts** the #743 heuristic: #743 taught "golden fails too, so it is key-scope", and a reader who only remembers that reads a passing golden as "platform is fine, must be my config" and bisects a configuration that is provably identical to a working one. Observed on `bednet-check-2-visit/20260817-1720`. | ACE team |
+| 2026-08-25 | **Step 5 session scope is mode-dependent — `--deep`/`--monitor` open a FRESH session per prompt (dimagi-internal/ace#1645).** The step opened one anonymous session and looped every prompt through it, which is fine for `--quick` (3 prompts) and wrong for a 51-prompt deep suite: the golden template runs `history_mode: summarize`, `history_type: global`, `max_history_length: 10`, so a single session feeds a rolling summary of unrelated prior answers into every later prompt — while `ocs-chatbot-eval` grades each entry independently. The carryover biases the deep score UPWARD (an answer inherits a fact retrieval never earned), and that verdict gates Phase 9 `llo-launch` activation. Fresh-session-per-prompt costs ~1s per prompt: measured 1162s/1800s at 51/51 on `bednet-check-2-visit/20260825-1310`. Declared multi-turn prompts stay on the preceding session. Transcript entries now carry `Session id:` so a reader can tell which regime a capture ran under. | ACE team |

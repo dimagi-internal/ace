@@ -35,6 +35,7 @@
  */
 
 import { DOMParser } from '@xmldom/xmldom';
+import { type CheckOutcome, checked, unable, formatUnable } from './check-outcome.js';
 
 export interface EntityIdComponents {
   /** False when no `entity_id` bind exists, or its calculate cannot be read. */
@@ -116,14 +117,18 @@ export interface GrainFinding {
   detail: string;
 }
 
-export interface GrainReport {
-  /** False when there is no readable `entity_id` — not applicable, not a pass. */
-  checked: boolean;
-  ok: boolean;
-  components: string[];
-  findings: GrainFinding[];
-  detail: string;
-}
+/**
+ * `status: 'unable'` when there is no readable `entity_id` calculate. That is
+ * NOT a pass and is no longer expressible as one — `lib/check-outcome.ts`.
+ */
+export type GrainReport = CheckOutcome<
+  GrainFinding,
+  {
+    components: string[];
+    /** The operator-facing report line(s) for the `checked` branch. */
+    detail: string;
+  }
+>;
 
 /** Nodes that are worker identity or time, never entity identity. */
 const NON_ENTITY = /^(username|\/data\/[\w/-]*(date|time|today|now)[\w/-]*)$/i;
@@ -181,13 +186,10 @@ export function checkEntityIdGrain(
 ): GrainReport {
   const { resolved, components } = extractEntityIdComponents(xml);
   if (!resolved) {
-    return {
-      checked: false,
-      ok: true,
-      components: [],
-      findings: [],
-      detail: 'entity-id-grain: not applicable (no readable entity_id calculate)',
-    };
+    return unable(
+      'no readable entity_id calculate was found in the form XML, so the dedup grain could not be ' +
+        'inspected at all. If the form DOES set entity_id, extractEntityIdComponents is the bug',
+    );
   }
 
   const findings: GrainFinding[] = [];
@@ -247,19 +249,15 @@ export function checkEntityIdGrain(
 
   if (findings.length === 0) {
     return {
-      checked: true,
-      ok: true,
+      ...checked(true, findings),
       components,
-      findings,
       detail: `entity-id-grain: clean — keyed on ${components.join(' + ')}`,
     };
   }
 
   return {
-    checked: true,
-    ok: false,
+    ...checked(false, findings),
     components,
-    findings,
     detail: [
       `entity-id-grain: the released key is ${components.join(' + ')}, which is NOT the mandated grain.`,
       'Every legitimate same-day submission past the first collapses into one payable unit, so the',
@@ -269,4 +267,14 @@ export function checkEntityIdGrain(
       ...findings.map((f) => `  [${f.kind}] ${f.detail}`),
     ].join('\n'),
   };
+}
+
+/**
+ * The operator-facing render. `unable` never renders as a pass — see
+ * `formatUnable`. Use this rather than reading `.detail` directly, which is
+ * only reachable on the `checked` branch by construction.
+ */
+export function formatGrainReport(report: GrainReport): string {
+  if (report.status === 'unable') return formatUnable('entity-id-grain', report.reason);
+  return report.detail;
 }

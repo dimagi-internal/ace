@@ -12,7 +12,7 @@ For the deterministic atom-rename / remove drift check, see `test/skill-atom-ref
 
 ## ace-gdrive
 
-Source: `mcp/google-drive-server.ts` — 43 atoms
+Source: `mcp/google-drive-server.ts` — 45 atoms
 
 ### `sheets_list_tabs`
 
@@ -84,6 +84,27 @@ List files in a Google Drive folder
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `folderId` | `z.string` | **required** | The Google Drive folder ID |
+
+### `drive_list_comments`
+
+List the comment threads a reviewer left on a Drive file (Docs, Sheets, Slides). ACE publishes the PDD as a Google Doc SO THAT reviewers can comment on it and grants `commenter` for exactly that — this is the atom that reads what they wrote, so a comment no longer depends on a human noticing it and retyping it into `inputs/`. Returns `{file_id, total, comments: [{id, author, created_time, modified_time, resolved, content, quoted_text, anchor, replies: [{author, created_time, content}]}]}`. **`quoted_text` is the point.** Drive returns the document text the comment is anchored to (`quotedFileContent`), so a caller can bind a comment to the SECTION it sits on rather than guessing from prose. That is what makes it possible to detect a comment contradicting the text it is attached to — the failure mode a hand transcription cannot see, because transcription throws the anchor away. `resolved: true` marks a thread someone closed in the Drive UI. They are returned by default (`includeResolved`, default true) because a resolved thread is still evidence of what was asked — do not confuse resolved with honoured. Deleted comments are never returned; Drive drops them. Runs as the service account, which owns the artifacts ACE generates. Verified against a live Shared Drive file: create → list → delete round-trips, and the SA reads comments on its own PDD and Work Order. Note the SA and `ace@dimagi-ai.com` have DIFFERENT grants — `gog drive comments` (the ace@ path) 403s on SA-created files, so use this atom for anything ACE produced.
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `fileId` | `z.string` | **required** | The Google Drive file ID to read comments from. |
+| `includeResolved` | `z.boolean` | optional | Include threads marked resolved in the Drive UI. Default true — a resolved thread still records what the reviewer asked for, and "resolved" means someone closed the thread, NOT that the build honoured it. |
+| `maxResults` | `z.number` | optional | Max comment threads to return (default 100, the Drive page maximum). |
+
+### `drive_reply_to_comment`
+
+Post a reply on a Drive comment thread, optionally resolving or reopening it. The write half of `drive_list_comments`, and the step that closes the review loop: a reviewer who commented in place should learn where their comment LANDED without having to ask. `action: 'resolve'` marks the thread resolved (verified live: Drive returns the reply with `action: resolve` and the comment then reads `resolved: true`). `action: 'reopen'` undoes it. Omit `action` to reply without changing thread state. **Resolve ONLY after the comment has been written into durable opp-level state** — a feedback record under `ACE/<opp>/feedback/`, an `open-questions.md` row, or a decision. Each run writes a NEW PDD document, so a comment lives on a doc no later run produces: resolving a thread whose substance was not carried forward destroys the only remaining copy. Say in the reply exactly where it landed, so the thread is an audit trail pointing at the durable record rather than the record itself. Runs as the service account — correct for artifacts ACE generated.
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `fileId` | `z.string` | **required** | The Google Drive file ID the comment is on. |
+| `commentId` | `z.string` | **required** | The comment thread id, from `drive_list_comments`. |
+| `content` | `z.string` | **required** | The reply body. Name WHERE the comment landed (the durable record, question row, or decision id) — not just that it was handled. |
+| `action` | `z.enum` | optional | Optional. 'resolve' closes the thread, 'reopen' undoes that. Omit to reply without changing state. Only resolve once the substance is in durable opp-level state. |
 
 ### `drive_read_file`
 
@@ -413,16 +434,17 @@ Verify every artifact the manifest declares required for `phase` is present in t
 
 ### `render_run_readme`
 
-Render the run-folder README markdown for `runId` with optional per-phase status overrides (keys: idea-to-design | scenarios-and-acceptance | commcare-setup | connect-setup | ocs-setup | qa-and-training | synthetic-data-and-workflows | solicitation-management | execution-management | closeout; values: pending | in-progress | done | partial | blocked | error | skipped). Returns `{markdown}`. Used at RUN-INIT (orchestrator step 7b — all phases default to `pending`; write the markdown to `<run-folder>/README.md`). You do NOT need to call it at phase boundaries: `verify_phase_artifacts` refreshes the README itself from `run_state.yaml` on every fence call. Implementation: `lib/run-readme.ts::generateRunReadme`.
+Render the run-folder README index and, when `runFolderFileId` is supplied, WRITE it to `<run-folder>/README.md` server-side (find-or-update). Pass `runFolderFileId` — that is the intended call at RUN-INIT (orchestrator step 7b): one call renders and persists the index, and nothing has to be relayed back through `drive_create_file`. Returns `{markdown, written, fileId?}`; omitting `runFolderFileId` renders only (`written: false`) and is kept for callers that genuinely want the markdown without persisting it. Optional per-phase status overrides (keys: idea-to-design | scenarios-and-acceptance | commcare-setup | connect-setup | ocs-setup | qa-and-training | synthetic-data-and-workflows | solicitation-management | execution-management | closeout; values: pending | in-progress | done | partial | blocked | error | skipped); unspecified phases default to `pending`. You do NOT need to call this at phase boundaries: `verify_phase_artifacts` refreshes the README itself from `run_state.yaml` on every fence call. Implementation: `lib/run-readme.ts::generateRunReadme`.
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `runId` | `z.string` | **required** | The run-id folder name, e.g. "20260526-1334". |
 | `phaseStatus` | `z.record` | **required** | _—_ |
+| `runFolderFileId` | `z.string` | optional | Drive folder ID of the run (ACE/<opp>/runs/<run-id>/). When supplied, the rendered index is WRITTEN to README.md in that folder (find-or-update) and `written: true` is returned. Supply it at run-init; omit it only when you want the markdown without persisting it. |
 
 ## ace-connect
 
-Source: `mcp/connect-server.ts` — 60 atoms
+Source: `mcp/connect-server.ts` — 61 atoms
 
 ### `connect_list_programs`
 
@@ -472,16 +494,18 @@ Source: `mcp/connect-server.ts` — 60 atoms
 
 ### `connect_list_opportunities`
 
-List opportunities in an organization. `hydrate: true` fetches each row through `connect_get_opportunity` so `active` and `is_test` are REAL rather than absent — the list view returns only {id, name, short_description, description, organization_slug}. `program_id` is NOT a filter here and is refused loudly by the backend (ace#1022): the list endpoint has no program scope, and silently ignoring it would return the whole org while the caller believed it was scoped to one program. Filter client-side instead.
+List opportunities in an organization. Walks EVERY page of Connect's paginated list view (it serves 20 rows at a time and says nothing about the rest — ace#1590) and returns a `listing` block next to `opportunities`: {complete, total_count, pages_fetched, page_size, declared_pages?, truncated_reason?}. A caller that AGGREGATES these rows — connect-program-setup Step 4a sums `total_budget` — must treat `listing.complete !== true` as UNKNOWN, never as a smaller total. `hydrate: true` fetches each row through `connect_get_opportunity` so `active` and `is_test` are REAL rather than absent — the list view returns only {id, name, short_description, description, organization_slug}. `program_id` is NOT a filter here and is refused loudly by the backend (ace#1022): the list endpoint has no program scope, and silently ignoring it would return the whole org while the caller believed it was scoped to one program. `name` is filtered client-side over the FULL walked listing.
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `organization_slug` | `z.string` | **required** | _—_ |
 | `program_id` | `z.string` | optional | REFUSED by the backend — the list endpoint has no program scope (ace#1022). Present only so the refusal explains itself; filter client-side. |
 | `name` | `z.string` | optional | _—_ |
-| `hydrate` | `z.boolean` | optional | Fetch each row through getOpportunity so `active`/`is_test` are real. REQUIRED by connect-program-setup Step 4a and connect-opp-setup Step 4; unreachable before ace#1448. |
+| `hydrate` | `z.boolean` | optional | Fetch each row through getOpportunity so `active`, `is_test`, `total_budget` and `program_name` are real. REQUIRED by connect-program-setup Step 4a and connect-opp-setup Step 4; unreachable before ace#1448. |
 
 ### `connect_get_opportunity`
+
+Read one opportunity from the edit form (authoritative for name/description/currency/country/end_date/active/is_test) merged with the dashboard (learn_app/deliver_app wiring, plus `total_budget`, `start_date` and `program_name`, which no form carries — ace#1550). A field the pages do not render comes back undefined: UNDEFINED MEANS UNKNOWN, NEVER ZERO. `program_id` is never populated by a read — `program_name` is the only program key any read surface carries, so scope a per-program sum by name and treat a non-unique name as unknown. Degrades to the dashboard alone on a 403/404 from the edit form (viewer tier, ace#1461).
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
@@ -585,7 +609,7 @@ List deliver units for an opportunity. Each entry has `id` (per-opp display inde
 
 ### `connect_list_payment_units`
 
-List payment units on an opportunity. **HTML-scraped read-back has known unreliable fields:** `amount` returns undefined (the table doesn't render it); `max_total` and `max_daily` are mislabeled / swapped on some pages (verified live on `malaria-itn-fgd/20260514-2352` Phase 4); `required_deliver_units` returns `[]` regardless of actual config. **Use `createPaymentUnit`'s response object for round-trip verification** of those fields rather than this list endpoint. `id`, `payment_unit_uuid`, `name`, and `description` ARE reliable. Issue tracking: jjackson/ace#106 finding 5 + turmeric-20260503-0835. When upstream ships a real GET /api/payment_units/ endpoint, all fields become reliable in one routing change.
+List payment units on an opportunity. **HTML-scraped read-back has known unreliable fields:** `amount` returns undefined (the table doesn't render it); `max_total` and `max_daily` are mislabeled / swapped on some pages (verified live on `malaria-itn-fgd/20260514-2352` Phase 4); `required_deliver_units` returns `[]` regardless of actual config. **Use `createPaymentUnit`'s response object for round-trip verification** of those fields rather than this list endpoint. Only `payment_unit_uuid` and `name` are reliable here. **`id` is a per-opp DISPLAY INDEX (the table's `#` column), NOT the server PK** — the PU that createPaymentUnit returned as `id: 2495` reads back as `id: 1` (dimagi-internal/ace#1642, observed live on `bednet-check-2-visit/20260825-1310`); passing it where a server id is required reproduces the `du.id` vs `du.server_id` "Invalid Data" rejection. **`description` is always `''`** on this scraped path — the listing does not render it. `payment_unit_uuid` is the durable identifier (it equals the create response's `payment_unit_id`). Issue tracking: jjackson/ace#106 finding 5 + turmeric-20260503-0835. When upstream ships a real GET /api/payment_units/ endpoint, all fields become reliable in one routing change.
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
@@ -685,7 +709,7 @@ Read each accepted worker's AUTHORITATIVE Learn progression from Connect's Worke
 
 ### `connect_get_deliver_progress`
 
-Read each accepted worker's AUTHORITATIVE DELIVERY progression from Connect's WorkerDeliverView (GET /a/<domain>/opportunity/<opportunity_id>/workers/deliver/, htmx fragment; session-cookie authed, read-only). The Deliver counterpart to connect_get_learn_progress, and the server-side read dimagi-internal/ace#1066 is about: Phase 6's Deliver smoke can return pass while the visit sits UNSENT in the device's local outbox, because the device is not authoritative about whether a delivery reached Connect. Assert `delivered >= 1` for "the visit reached Connect"; assert `approved >= 1` for the stronger "one payment unit registers" criterion app-test-cases.yaml actually declares (a delivery can be submitted and then REJECTED by verification, so delivered alone does not prove payability). Returns `{ domain, opportunity_id, workers: [{ name, payment_unit, delivered, approved, rejected, progress_completed, progress_total, last_active }] }` — one row per worker+payment-unit. `domain` is the Connect org slug in the /a/<domain>/ path; `opportunity_id` is the opportunity UUID. Columns are resolved by header label, so a live template reshape throws WorkerDeliverTableSchemaError rather than returning shifted fields.
+Read each accepted worker's AUTHORITATIVE DELIVERY progression from Connect's WorkerDeliverView (GET /a/<domain>/opportunity/<opportunity_id>/workers/deliver/, htmx fragment; session-cookie authed, read-only). The Deliver counterpart to connect_get_learn_progress, and the server-side read dimagi-internal/ace#1066 is about: Phase 6's Deliver smoke can return pass while the visit sits UNSENT in the device's local outbox, because the device is not authoritative about whether a delivery reached Connect. Assert `delivered >= 1` for "the visit reached Connect"; assert `approved >= 1` only as a CONDITIONAL payability check (a delivery can be submitted and then REJECTED by verification, so delivered alone does not prove payability). `approved >= 1` is NOT a criterion app-test-cases.yaml declares — no such criterion exists in that artifact (ace#1667) — and it is structurally unreachable on any opportunity whose deliver_unit duration floor exceeds a machine-speed Maestro walk, because Connect correctly rejects the sub-floor visit. See skills/app-screenshot-capture/SKILL.md Step 5 deliver-gate block for the duration-floor branch. Returns `{ domain, opportunity_id, workers: [{ name, payment_unit, delivered, approved, rejected, progress_completed, progress_total, last_active }] }` — one row per worker+payment-unit. `domain` is the Connect org slug in the /a/<domain>/ path; `opportunity_id` is the opportunity UUID. Columns are resolved by header label, so a live template reshape throws WorkerDeliverTableSchemaError rather than returning shifted fields.
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
@@ -796,6 +820,20 @@ Create a named UCR expression or filter on a domain. POST the UCRExpressionForm 
 | `expression_type` | `z.enum` | **required** | _—_ |
 | `definition` | `z.record` | **required** | _—_ |
 | `description` | `z.string` | optional | _—_ |
+
+### `commcare_linked_app_copy`
+
+Pull a linked copy of an app from an upstream domain into a downstream domain. POSTs CopyApplicationForm to /a/<upstream_domain>/apps/copy_app/ (view: copy_app in corehq.apps.app_manager.views.apps). Closes the long-standing Connect Interviews atom gap — reverse-engineered from CommCare HQ source since app-copying is NOT handled by the generic linked_domain content-sync RMI (MODEL_APP is deliberately absent from that dispatch table). Returns the new app's id and name (recovered via a re-list-by-name after the redirect, not by parsing the Location header). linked defaults to true (a live linked app eligible for future pulls, not a disconnected one-off copy) — this is what the Connect Interviews per-cohort flow always wants. NOT YET LIVE-VALIDATED — probe against a disposable domain pair before relying on it in a real run.
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `server` | `z.string` | optional | CommCare HQ cluster to target — e.g. "us" or "eu". Omit to use the default server ACE_HQ_DEFAULT_SERVER. All configured clusters are live at once. |
+| `upstream_domain` | `z.string` | **required** | Domain the source app currently lives in (the linked-domain upstream/master). |
+| `upstream_app_id` | `z.string` | **required** | The source app's id, to be copied (from commcare_list_apps on the upstream domain). |
+| `downstream_domain` | `z.string` | **required** | Domain to copy the app into (the linked-domain downstream). |
+| `name` | `z.string` | **required** | Name for the new copy — should include the cohort id per the Connect Interviews naming convention. |
+| `linked` | `z.boolean` | optional | Whether the copy stays connected to upstream as a live linked app eligible for future pulls, vs. a disconnected one-off copy. Default true. |
+| `build_id` | `z.string` | optional | Specific build/version of the source app to copy. Omit for the latest saved version. |
 
 ### `commcare_list_inbound_apis`
 
@@ -1433,6 +1471,12 @@ Source: `mcp/mobile-server.ts` — 18 atoms
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `avdName` | `z.string` | optional | _—_ |
+| `testUser` | `z.object` | optional | Full E.164 demo number. MUST keep the +7426 prefix — upstream demo behaviour (OTP skip, Play Integrity bypass) is a startswith on it. Derive via lib/per-run-test-user.ts. |
+| `phoneLocal` | `z.string` | optional | National number without the +7 country code (10 digits), as the registration recipe types it. |
+| `countryCode` | `z.string` | optional | Country code for the registration screen. Always "+7" for the demo range. |
+| `pin` | `z.string` | optional | Device PIN. Not a per-user secret in the demo range — normally omitted so ACE_E2E_PIN is used. |
+| `backupCode` | `z.string` | optional | PersonalID backup code. Normally omitted so ACE_E2E_BACKUP_CODE is used. |
+| `name` | `z.string` | optional | Display name written during registration; naming it after the run id makes the Connect workers table readable. |
 
 ### `mobile_stop_avd`
 

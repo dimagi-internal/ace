@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { mkdtempSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, writeFileSync, readFileSync } from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 
@@ -141,12 +141,28 @@ describe('parseValidatorOutput', () => {
   });
 });
 
+/**
+ * These cases assert the INPUT-validation error kinds, and `commcareCliValidateCcz`
+ * checks for Java FIRST (lib/commcare-cli-validate.ts — the java-first guard added
+ * by bb36c267). Without an explicit javaPath every one of them throws
+ * `java_not_found` on a machine with no JDK on PATH — including GitHub runners that
+ * do not preinstall one — so `clean-install`, the only REQUIRED check on main, went
+ * red on unrelated PRs (dimagi-internal/ace#1535, hit live on #1533).
+ *
+ * An explicit path is returned verbatim without probing (pinned by the
+ * 'returns an explicit path verbatim without probing' case above), so this satisfies
+ * the guard and lets the assertion under test actually run. Nothing is ever spawned —
+ * each case throws before reaching the spawn.
+ */
+const PINNED_JAVA = '/pinned/java-for-input-validation-tests';
+
 describe('commcareCliValidateCcz — input validation', () => {
   it('throws CommCareCliInputError when CCZ does not exist', async () => {
     await expect(
       commcareCliValidateCcz({
         cczPath: '/tmp/nonexistent-ccz-' + Date.now() + '.ccz',
         jarPath: '/tmp/anything.jar',
+        javaPath: PINNED_JAVA,
       }),
     ).rejects.toMatchObject({ name: 'CommCareCliInputError', kind: 'ccz_not_found' });
   });
@@ -156,7 +172,7 @@ describe('commcareCliValidateCcz — input validation', () => {
     const cczPath = path.join(dir, 'empty.ccz');
     writeFileSync(cczPath, '');
     await expect(
-      commcareCliValidateCcz({ cczPath, jarPath: '/tmp/anything.jar' }),
+      commcareCliValidateCcz({ cczPath, jarPath: '/tmp/anything.jar', javaPath: PINNED_JAVA }),
     ).rejects.toMatchObject({ name: 'CommCareCliInputError', kind: 'ccz_empty' });
   });
 
@@ -168,8 +184,36 @@ describe('commcareCliValidateCcz — input validation', () => {
       commcareCliValidateCcz({
         cczPath,
         jarPath: '/tmp/nonexistent-jar-' + Date.now() + '.jar',
+        javaPath: PINNED_JAVA,
       }),
     ).rejects.toMatchObject({ name: 'CommCareCliInputError', kind: 'jar_not_found' });
+  });
+
+  /**
+   * Class-level preventer for ace#1535.
+   *
+   * The cases above are environment-independent only because each pins
+   * `javaPath`. A fourth case added without it would pass on every developer
+   * machine with a JDK and fail only on a java-less runner — the worst failure
+   * signature there is, because it reads as flake and gets re-run rather than
+   * fixed. #1535 cost two red `clean-install` runs on an unrelated PR before
+   * anyone traced it. The instance fix pins three call sites; this asserts the
+   * property structurally, so the next author cannot reintroduce the class by
+   * not reading the comment above.
+   */
+  it('every commcareCliValidateCcz input-validation case pins javaPath', () => {
+    const src = readFileSync(new URL('./commcare-cli-validate.test.ts', import.meta.url), 'utf8');
+    const body = src.slice(src.indexOf("describe('commcareCliValidateCcz — input validation'"));
+    const calls = [...body.matchAll(/commcareCliValidateCcz\(\{[\s\S]*?\}\)/g)].map((m) => m[0]);
+    expect(calls.length, 'regex matched no calls — it has drifted from the call shape').
+      toBeGreaterThanOrEqual(3);
+    const unpinned = calls.filter((c) => !c.includes('javaPath'));
+    expect(
+      unpinned,
+      'commcareCliValidateCcz probes java FIRST and short-circuits with java_not_found, ' +
+        'so an input-validation call omitting javaPath asserts a kind it cannot reach on ' +
+        'a java-less runner. Add `javaPath: PINNED_JAVA`. See ace#1535.',
+    ).toEqual([]);
   });
 
   it('CommCareCliInputError carries the offending path + kind', () => {

@@ -82,23 +82,40 @@ describe('connect_list_opportunities registration matches its client contract', 
 describe('getOpportunity reports only fields the live form carries (ace#1448)', () => {
   const pw = readFileSync(join(REPO, 'mcp/connect/backends/playwright.ts'), 'utf8');
 
-  it('parses is_test, which the edit form does carry', () => {
-    // ace#1461 wrapped this in the viewer-tier degrade
-    // (`editDenied ? dash.is_test : v['is_test'] === 'on' || ...`), so the
-    // old exact-literal match no longer holds. The INTENT is unchanged and is
-    // what's asserted: the edit form remains the source for is_test whenever
-    // we can read it. The behavioural counterpart — that the form still wins
-    // at member tier — is pinned in playwright-fallbacks.test.ts.
-    expect(pw).toMatch(/is_test:[^\n]*v\['is_test'\]/);
+  it('parses is_test from the edit form, via the shared checkbox predicate', () => {
+    // ace#1461 wrapped this in the viewer-tier degrade; ace#1491 then replaced
+    // the inline predicate with `isCheckboxChecked`, because reading the
+    // extracted VALUE map alone can never answer this — Django emits a boolean
+    // checkbox with no `value` attribute, so checked and unchecked both
+    // extract to ''. The old assertion here matched the SOURCE TEXT of the
+    // expression and passed for months while the expression was wrong; that is
+    // the whole reason it is not a source-text assertion any more.
+    //
+    // Behaviour is pinned against the live-captured edit form in
+    // test/mcp/connect/unit/checkbox-readback.test.ts. What this drift test
+    // still owns is narrower and genuinely textual: the edit form must remain
+    // the SOURCE for is_test whenever we can read it.
+    expect(pw).toMatch(/is_test:\s*editDenied \?[^\n]*isCheckboxChecked/);
   });
 
-  it('does NOT fabricate total_budget or start_date', () => {
+  it('sources total_budget / start_date from the DASHBOARD, never from the edit form (ace#1550)', () => {
     // Measured live 2026-08-15: neither is on the opportunity edit form nor on
-    // the program init/edit form. Returning them would be inventing data.
+    // the program init/edit form, so reading either out of the form's value
+    // map would be inventing data. They ARE on the opportunity dashboard,
+    // which this method already fetches for the app-wire ids — and until they
+    // were surfaced from there, connect-program-setup § Step 4a's
+    // Σ(total_budget) headroom sum had no obtainable inputs on any run.
+    // Slice the RETURNED OBJECT, not `indexOf('};')` from the method head —
+    // any `: {};` ternary earlier in the body (there is one) ends that slice
+    // before the return is reached, which reads as "the field is absent".
     const at = pw.indexOf("getOpportunity: ConnectClient['getOpportunity']");
-    const body = pw.slice(at, pw.indexOf('};', at));
-    expect(body).not.toMatch(/total_budget:/);
-    expect(body).not.toMatch(/start_date:/);
+    const retAt = pw.indexOf('return {', at);
+    const body = pw.slice(retAt, pw.indexOf('\n    };', retAt));
+    expect(body).not.toMatch(/total_budget:\s*v\[/);
+    expect(body).not.toMatch(/start_date:\s*v\[/);
+    expect(body).toMatch(/total_budget:[\s\S]{0,200}?detail\.total_budget/);
+    expect(body).toMatch(/start_date:\s*detail\.start_date/);
+    expect(body).toMatch(/program_name:\s*detail\.program_name/);
   });
 
   it('records the measured field list so nobody re-probes it', () => {

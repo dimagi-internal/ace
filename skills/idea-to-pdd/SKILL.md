@@ -16,7 +16,8 @@ Take an initial idea and iterate on it to produce a complete Program Design Doc 
 |---|---|---|
 | Operator | `ACE/<opp-name>/runs/<run-id>/inputs-manifest.yaml` | frozen pointer-set to source material captured at run-start |
 | Operator | each `file_id` in the manifest | source content (PDFs, docs, sheets, markdown) |
-| Prior runs | `ACE/<opp-name>/open-questions.md` (opp ROOT, durable across runs; passed inline at handoff) | questions ALREADY raised/verified for this opp — read them back before raising your own (ace#1201) |
+| Prior runs | `ACE/<opp-name>/open-questions.md` § `## Open` (opp ROOT, durable across runs; passed inline at handoff when the orchestrator's bounds allow — ace#1487) | questions ALREADY raised/verified for this opp — read them back before raising your own (ace#1201). `## Archive` is never read back |
+| Reviewer | comment threads on the PRIOR run's PDD, via `drive_list_comments` | what a domain expert asked for IN PLACE, anchored to the section they were reading |
 
 ## Products
 
@@ -54,7 +55,63 @@ orchestrator from the per-skill QA + eval verdicts on the fly. -->
    runs already raised — and, in some rows, ANSWERS a prior run verified.
    Before adding a question of your own, check whether it is already there.
 
-   For every pre-existing question, this run must state one of:
+   **Read the reviewer's COMMENTS on the prior run's PDD** — `drive_list_comments`
+   on that PDD's `file_id`. ACE publishes the PDD as a Google Doc so reviewers can
+   comment on it; those comments are review input exactly like an `inputs/` document.
+   Treat each unresolved thread as a requirement to honour or to disposition
+   explicitly. Use `quoted_text` to bind a comment to the section it sits on, and
+   check that section against the comment before you rewrite it — a comment whose
+   `quoted_text` no longer matches anything in your draft is the signature of the
+   ace#979 regression class, where a fix was reverted while the disposition table
+   still claimed it honoured. `resolved: true` means someone closed the thread in
+   Drive, NOT that the build honoured it.
+
+   **A COMMENT IS AN INBOX, NOT A STORE — convert it or lose it.** Every run writes a
+   NEW PDD document (`runs/<run-id>/1-design/idea-to-pdd.md` has a fresh `file_id` per
+   run — verified: `20260813-1612` is `14RRcWZH…`, `20260819-1435` is `1sKoXbVvEN…`).
+   So a comment lives on a document no later run produces. This step reads the PRIOR
+   run's PDD, which means an unconverted comment is read exactly ONCE, at run N+1, and
+   is gone by N+2 — silently, with nothing reporting the loss. Comments accumulating
+   on a superseded document are not a durable review record and must never be treated
+   as one.
+
+   So for EVERY comment you read, before the phase ends, carry its substance into
+   durable **opp-level** state (which every future run re-reads) and then close the
+   thread:
+
+   1. **Write it into the opp's feedback record** — `ACE/<opp>/feedback/<YYYYMMDD>-<reviewer>.yaml`,
+      verbatim, per `skills/feedback-ledger`. That file is opp-level and is the ledger's
+      denominator, so once an item is there a later run that drops it renders as
+      **UNROUTED** instead of vanishing. A comment that never reaches this file is not
+      UNROUTED — it is absent, and the ledger cannot accuse what it was never told about.
+   2. **Route the substance to its durable home**: a requirement → this run's PDD body
+      (and it must survive into every later PDD); a question → `open-questions.md` §
+      `## Open` (opp root); a choice → a `decisions.yaml` row, or
+      `inputs/decision-overrides.yaml` when the reviewer's answer must bind future runs.
+   3. **Reply and resolve** — `drive_reply_to_comment` with `action: 'resolve'`, naming
+      WHERE it landed (the record slug + item id, the question row, the decision id).
+      The thread then becomes an audit trail pointing at the durable record rather than
+      being the record. Never resolve a thread whose substance is not yet carried
+      forward: that destroys the only remaining copy.
+
+   Do not ask the reviewer to maintain this themselves — deleting a comment once it is
+   incorporated, or hand-editing the resolution into the body, is the reviewer doing by
+   hand what this step exists to do, and it costs them the audit trail.
+
+   **Read `## Open` ONLY.** The doc has exactly two sections (§ The durable
+   open-questions doc below). `## Archive` is closed history — never read it
+   back, never reason from it, never carry its rows into the PDD.
+
+   **The orchestrator may pass less than the whole section, or nothing at
+   all** (dimagi-internal/ace#1487): on a `/ace:iterate` fixture opp the
+   ledger is not passed at all, and above the inline cap only the most recent
+   `## Open` rows arrive with the `file_id`. That is deliberate — do NOT go
+   fetch the rest to "be thorough". Reconcile against what you were given, and
+   if the handoff said the inline was truncated or skipped, say so in the PDD's
+   open-questions section rather than implying full coverage.
+
+   For every pre-existing question **in `## Open` that you were passed**, this
+   run must state one of:
    **resolves** (this run answers it — record the answer + evidence),
    **carries forward** (still open), or **contradicts** (this run's finding
    disagrees with a recorded, verified answer). A contradiction is LOUD:
@@ -63,6 +120,12 @@ orchestrator from the per-skill QA + eval verdicts on the fly. -->
    `hh-poverty-targeting/20260812-1613` two items were contradicted with no
    signal at all, because the file was written every run and read by none
    (ace#1201).
+
+   **Resolving a question MOVES it, it does not annotate it.** A row you
+   resolve is removed from `## Open` and appended to `## Archive` with
+   `resolved_at` / `resolved_by` / `resolution_note`. Never annotate in place
+   ("RESOLVED 2026-05-03 by …") — that is exactly what made this doc grow
+   without bound.
 
    Read `ACE/<opp-name>/runs/<run-id>/inputs-manifest.yaml`
    first via `drive_read_file`. The manifest shape is:
@@ -777,6 +840,71 @@ QA verdict + eval verdict directly (per `agents/ace-orchestrator.md §
 Pause Points`). The producer no longer authors a separate gate-brief
 artifact. -->
 
+## The durable open-questions doc
+
+`ACE/<opp-name>/open-questions.md` lives at the opp ROOT and is durable
+across runs (ace#1201). It is **not** append-only: it has a **bounded
+shape**, and it is this skill's job to keep it in that shape every run.
+
+**Exactly two sections, in this order, and no others:**
+
+```markdown
+# Open Questions — <opp-name>
+
+## Open
+
+- **id:** rate-band-source
+  **question:** What is the authoritative source for the per-visit rate band?
+  **raised_by:** 20260812-1613
+  **owner:** operator
+  **answered_where:** solicitation responses
+
+## Archive
+
+- **id:** deliver-app-photo-capture
+  **question:** Should photo capture be camera-only?
+  **raised_by:** 20260714-0902
+  **owner:** ACE
+  **resolved_at:** 2026-08-17T14:02:00Z
+  **resolved_by:** idea-to-pdd (run 20260817-1531)
+  **resolution_note:** app-hq-settings applies appearance="acquire"; settled.
+```
+
+Rules:
+
+- **`## Open` is the live work list.** Only genuinely-unanswered questions
+  live here. It is the ONLY section any reader — this skill, the
+  orchestrator, a human — reads back.
+- **`## Archive` is closed history.** It is **never read back and never
+  inlined** at phase handoff. It exists so the audit trail survives without
+  weighing on every future run.
+- **Resolution MOVES a row; it never annotates one in place.** Remove the row
+  from `## Open`, append it verbatim to `## Archive`, and add exactly three
+  fields: `resolved_at`, `resolved_by`, `resolution_note`. Nothing else
+  changes, so the archived row still reads as the question it was.
+- **Never delete a row.** Archiving is the only removal from `## Open`.
+- **Contradictions stay in `## Open`.** A run that contradicts a recorded
+  answer does not archive it — it records the contradiction on the live row
+  and surfaces it loudly (§ Process step 1).
+
+This mirrors the `archive:` convention `run_state.yaml`'s `open_questions:`
+list already follows — see `agents/orchestrator-reference.md § Cruft
+management — `archive:` block convention`, whose three `resolved_*` fields
+are the same three used here.
+
+**Why the shape is a contract and not a style note (ace#1487).** Annotating
+resolved rows in place made this doc grow monotonically —
+`bednet-check-2-visit` reached 26,577 chars across three runs — while
+§ Process step 1 mandates a read-back statement for every pre-existing
+question, so Phase 1's cost grew linearly with the ledger forever. On the
+`/ace:iterate` fixture opp the inherited history then leaked into the PDD:
+a 43,003-char PDD from a 15,449-char brief, carrying rates, cohort sizes and
+programme ceilings the brief never states. The orchestrator now bounds the
+READ (`lib/open-questions-inline.ts` — fixture opps skip the inline entirely;
+everyone else gets `## Open` capped at `OPEN_QUESTIONS_INLINE_CAP_CHARS`);
+this section bounds the WRITE, so the live list stays small enough that the
+cap is rarely the thing doing the work.
+
 ## Decisions Log (rendered)
 
 The skill always emits `decisions.yaml` and invokes `decisions-render`
@@ -843,6 +971,17 @@ to the opp; add others not listed when they meet the bar.
 | `solicitation-type` | Solicitation type (EOI/RFP/custom)? | PDD `Solicitation` section |
 | `solicitation-deadline` | Solicitation deadline? | PDD `Solicitation` section |
 | `candidate-llo-roster` | Named candidates or public-only? | `LLO Preference` named entity |
+
+**These base rows are `value_set_by: external` — always.** Their real value is
+fixed by a solicitation response, a contract, or deployment, never by ACE:
+`flw-count`, `payment-rate`, `budget-plausibility`, `named-downstream-consumer`,
+plus the work-order rows `wo-period-of-performance` and
+`wo-total-not-to-exceed-usd`. Still emit your best estimate as `ai-default` and
+keep going — but tag them `external` so the estimate is not read downstream as a
+commitment. Measured across 22 runs of two opps, these are precisely the rows
+that produced a different confident-looking number on nearly every run.
+
+Everything else in the base table is `value_set_by: ace`.
 
 **`atomic-visit` (additive):**
 
@@ -941,6 +1080,7 @@ decisions:
     source: idea.md §1
     status: ai-default
     evidence_basis: stated
+    value_set_by: ace
     reasoning: Single per-FLW visit producing one structured delivery.
 ```
 
@@ -951,6 +1091,40 @@ resolves — hand-writing skips the strict write-boundary validation, so
 re-validate against `DecisionsLogSchema` mentally before saving. (This
 exact `rows:`-vs-`decisions:` confusion bit a hand-written fallback when
 `ace-decisions` was unbound — jjackson/ace#782.)
+
+**The `value_set_by` contract (load-bearing, v5).** Every row MUST also
+declare `value_set_by`: `ace` or `external`. It answers a different
+question from `evidence_basis` — not *how well-grounded is this default*
+but *whose value is it in the end*.
+
+- **`ace`** — ACE's judgment to make from the source material. Archetype
+  selection, verification layers, solicitation type. A reviewer may
+  override it; a later run may decide it better.
+- **`external`** — the real value gets fixed later by someone else: a
+  rate negotiated in a solicitation response, dates set on contract
+  execution, an FLW count set at deployment.
+
+**`external` does not defer, escalate, or block anything.** ACE still
+picks a value, still writes it as `ai-default`, and the run still
+proceeds — exactly as before. `"open"` is still not a valid `status`,
+and there is deliberately no `needs-human`. The flag exists so a
+downstream phase does not cite a projection as a settled commitment, and
+so a later run re-deriving it differently reads as *expected* rather
+than as drift.
+
+**Why it was added.** Measured across 22 runs of two opportunities,
+`flw-count`, `payment-rate`, `wo-period-of-performance` and
+`wo-total-not-to-exceed-usd` produced a different confident-looking
+answer on nearly every run. ACE had originally got this right and had
+nowhere to put it: hh-poverty run `20260702-1456` wrote *"Deferred to
+deployment (Annex B); negotiated via solicitation response"* **inside
+the `ai-default` string** on four rows. Prose in a value field is
+invisible to every consumer, so within a few runs all four had become
+specific numbers.
+
+Note the name: **`value_set_by`, not `resolved_by`** — `resolved_by`
+already means something else in this skill (which run closed an
+open-question, § Open questions), and the collision would be silent.
 
 **The `evidence_basis` contract (load-bearing, v4).** Every row MUST
 declare `evidence_basis`: one of `stated`, `inferred`, or `conflicting`.
@@ -1023,6 +1197,7 @@ decisions_append_rows({
       source: "idea.md §1; one-FLW-one-delivery pattern",
       status: "ai-default",
       evidence_basis: "stated",
+      value_set_by: "ace",
       reasoning: "Single per-FLW visit producing one structured delivery."
     },
     {
@@ -1195,7 +1370,7 @@ The PDD has two or more sequenced stages with different archetypes. Treat the ba
 **Required for multi-stage PDDs:** an explicit **Stage Gate** subsection between every pair of stages, stating exactly what must be true at the end of stage N to proceed to stage N+1 (with go / no-go / iterate criteria).
 
 ## MCP Tools Used
-- Google Drive: `drive_read_file` (pass `exportAs: 'text/markdown'` when re-reading the PDD — it is a rendered gdoc, and the default plain-text export drops the `#` heading markers), `drive_create_doc_from_markdown` (the PDD and `open-questions.md` — human-facing prose), `drive_create_file` (machine-parsed YAML only), `drive_update_file`, `drive_download_binary` (binary/`.ccz`/`.xlsx` inputs)
+- Google Drive: `drive_read_file` (pass `exportAs: 'text/markdown'` when re-reading the PDD — it is a rendered gdoc, and the default plain-text export drops the `#` heading markers), `drive_create_doc_from_markdown` (the PDD and `open-questions.md` — human-facing prose; write `open-questions.md` in the two-section `## Open` / `## Archive` shape from § The durable open-questions doc, moving resolved rows into `## Archive` rather than annotating them in place — ace#1487), `drive_create_file` (machine-parsed YAML only), `drive_update_file`, `drive_download_binary` (binary/`.ccz`/`.xlsx` inputs)
 - Google Sheets: `sheets_list_tabs`, `sheets_batch_read` (Google-Sheet inputs)
 - Google Forms: `get_google_form_definition` (Google-Form inputs)
 

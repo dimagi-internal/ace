@@ -97,13 +97,31 @@ already in it. (Live auth liveness is *not* included — orchestrator
 pre-flight trusts the cached session and lets phase atoms surface
 auth failures at point-of-use.)
 
-**Two static blocks the preflight DOES emit — halt before Phase 1 if
-either is `fail`:** `selector_map_currency` and `nova_needs_auth_cache`.
-Both are no-network static checks for halt-classes unrecoverable
-in-session. On `fail`: surface the block's `remediation`, run the
-cache-clear node one-liner the full `/ace:doctor` prints, and tell the
-operator to Cmd-Q + reopen, then resume. (Rationale + jjackson/ace#582:
-see orchestrator-reference.md § Pre-flight rationale.)
+**Three blocks the preflight DOES emit — halt before Phase 1 if any is
+`fail`:** `selector_map_currency`, `nova_needs_auth_cache`, and
+`ocs_generation`. The first two are no-network static checks for
+halt-classes unrecoverable in-session. On `fail`: surface the block's
+`remediation`, run the cache-clear node one-liner the full `/ace:doctor`
+prints, and tell the operator to Cmd-Q + reopen, then resume. (Rationale
++ jjackson/ace#582: see orchestrator-reference.md § Pre-flight rationale.)
+
+`ocs_generation` is different in two ways and must not be lumped in with
+them. It is the ONE **live** probe in preflight — it asks OCS to generate
+a single token through the golden template — so it can legitimately
+report a `skip` verdict (no OCS session on this machine, env unset,
+`--no-live` passed). A `skip` is not a halt; it means the check could not
+run, and `ocs_auth` in the full `/ace:doctor` says why. And its
+remediation is **not** a restart: fix the team's GENERATION provider key
+in OCS / 1Password (the block names the exact
+`/a/<team>/service_providers/llm/<pk>/` page — note that is *not* the id
+`OCS_LLM_PROVIDER_ID` holds, which is embeddings), then re-run
+`/ace:run`. No Claude Code restart needed, unlike the other two. Halt on
+`fail` because no OCS-dependent phase can pass with a dead generation
+provider, and the only other place it surfaces is Phase 5 — after Phases
+1-4 and 6 have already run (dimagi-internal/ace#1516). A `fail` with
+`class: timeout` already means TWO consecutive 25s round-trips returned
+nothing — the probe retries that one transient class itself, so there is
+never anything to re-run by hand (ace#1628).
 
 **Do NOT probe `.env` before running the doctor** — no `echo
 $CLAUDE_PLUGIN_DATA`, no `ls .../.env`, no `find ... -name .env`. Every
@@ -160,9 +178,14 @@ lives in TWO places, both load-bearing:
    to rediscover an unbound server.
 2. **At the point of use, in the phase agent** — Nova has
    `commcare-setup` § Step 0 (`get_hq_connection`), and Phase 6 has
-   `qa-and-training` § Pre-flight Step 0 (`ace-mobile` binding). These
+   `qa-and-training` § Pre-flight checklist (`ace-mobile` binding). These
    remain the backstop for `/ace:step`, for phases dispatched outside
-   `/ace:run`, and for a server that dies mid-session.
+   `/ace:run`, and for a server that dies mid-session. **Both are
+   SESSION-SCOPED: they re-run on every entry into their phase, including a
+   mid-phase resume that steps over already-`done` steps.** A `done` marker
+   in `run_state.yaml` was written by a *previous session* and says nothing
+   about this session's bindings, so it never satisfies them
+   (dimagi-internal/ace#1604).
 
 The same class can silently force a decisions-log hand-write
 when `ace-decisions` is unbound (jjackson/ace#782) — if a `decisions_*`
@@ -220,11 +243,11 @@ returns nothing, because MCP subprocesses bind at session start and are
 NOT respawned by `/reload-plugins`. A binding miss is **unrecoverable
 in-session**.
 
-Then assert, against the run's shape (fresh = all phases; resume = the
-`pending` phases from the loaded `run_state.yaml`), that the atoms those
-phases need are present:
+Then assert, against the run's shape (fresh = all phases; resume = every
+phase whose status is `pending` **or** `in_progress` in the loaded
+`run_state.yaml`), that the atoms those phases need are present:
 
-| A `pending` phase of… | requires resolvable |
+| A `pending` / `in_progress` phase of… | requires resolvable |
 |---|---|
 | `commcare-setup` | `commcare_*` (`ace-connect`) + Nova (`get_hq_connection`) |
 | `connect-setup` | `connect_*` (`ace-connect`) |
@@ -240,6 +263,90 @@ On a miss, **halt before the first `Agent` dispatch** with a `[BLOCKER]`:
 > answer `initialize` + `tools/list` normally). MCP subprocesses bind at
 > session start and are not respawned by `/reload-plugins`: **quit and
 > reopen Claude Code**, then resume `/ace:run <opp>/<run-id>`.
+
+**`in_progress` counts, and that is the whole point on a resume
+(dimagi-internal/ace#1604).** What this fence tests is per-SESSION (which MCP
+servers, and which principal, bound at startup); what it reads is per-RUN
+state that outlives the session. Gating on `pending` alone excludes the one
+phase a resume is about to execute — the `in_progress` one — so the fence is
+absent from exactly the entry it is needed for. Observed on
+`spark-facilitator/20260820-0817`: Phase 3 resumed `in_progress`, the fence
+did not cover it, and the first Nova call answered `App not found` for an app
+the previous session had built the day before.
+
+**For `commcare-setup`, resolvability is not the assertion — the PRINCIPAL
+is (ace#1604).** Nova's atoms can resolve perfectly while the connection is
+bound to a different principal than `NOVA_API_KEY` names. Every read answers
+normally; it answers about a different account's apps. A resolvability check
+is structurally blind to that. So, for a `pending`/`in_progress`
+`commcare-setup`, run one addressed check:
+
+- If the run records
+  `phases.commcare-setup.products.apps.{learn,deliver}.nova_app_id` → call
+  Nova `list_apps` and assert **both ids are in the result**.
+- If no app ids are recorded yet (a fresh run that has built nothing) → the
+  assertion is `get_hq_connection` returning `configured: true`; there is
+  nothing else to compare against.
+
+On a miss, halt with the same `[BLOCKER]` shape as a bind miss — MCP auth
+also binds at connection time, so a wrong principal is equally unrecoverable
+in-session:
+
+> `<opp>/<run-id>`: the Nova MCP bound a different principal than
+> `NOVA_API_KEY` names — `list_apps` does not show this run's apps
+> (`<learn-id>`, `<deliver-id>`). Do NOT rebuild them; they exist, under a
+> principal this session is not talking to. **The credential on disk is
+> almost certainly fine — do not go re-diagnosing it.** Confirm with one
+> direct call, `curl https://mcp.commcare.app/mcp` bearing the key from
+> `~/.ace/env.sh`: if that returns this run's apps, the key is correct and
+> only the binding is wrong. **A plain restart is NOT sufficient for the
+> principal case — it has been tried and it did not clear
+> (dimagi-internal/ace#1614).** The cause is a stored OAuth token
+> outranking the `headersHelper` PAT (voidcraft-labs/nova-plugin#52). Run
+> `/mcp`, select `nova`, choose **`Clear authentication`** — NOT
+> `Authenticate` — then **quit and reopen Claude Code**, and resume
+> `/ace:run <opp>/<run-id>`.
+>
+> Verify with TWO calls before resuming: `list_projects` must return the
+> PAT's project, and `get_hq_connection` must return `configured: true`.
+> `list_apps` alone is not sufficient — re-authenticating as the right
+> account fixes the identity while leaving you on OAuth, where
+> `get_hq_connection` still answers `scope_missing: nova.hq.read`.
+
+**`Clear authentication`, never `Authenticate`.** They sit next to each
+other in the same `/mcp` menu and the wrong one reports success, which is
+why this needs saying. `Authenticate` mints a *new* OAuth token — so if you
+sign in as the right account the principal assertion above starts passing
+and the run proceeds while still on the wrong credential, missing
+`nova.hq.read`, and Phase 3 dies later at `upload_app_to_hq` instead. Only
+`Clear authentication` removes the token and lets the PAT bind. It drops the
+Nova connection outright rather than falling back live, which is why the
+restart is part of the remedy rather than an alternative to it.
+
+**Do not collapse the two failures into one remedy.** A *bind miss* (the
+server never attached) IS cleared by quitting and reopening Claude Code — that
+is the remedy above this block, and it stays. A *wrong principal* is a
+connection that attached fine and authenticated as somebody else, so a restart
+just re-establishes it: measured on `spark-facilitator/20260820-0817`, where
+the second halt came from a claude process started **after** the first halt
+and bound exactly the same wrong principal. Prescribing a restart there sends
+the operator around a loop that produces no new information and costs a
+session each lap. `nova` is a `type: http` server whose `headersHelper` reads
+`$NOVA_API_KEY` from Claude Code's own process env; when the key is verifiably
+present there (`ps -Eww -p <claude-pid>`) and a direct `curl` with it returns
+the right apps, what is left is the connection's stored OAuth credential,
+which only `Clear authentication` removes. Do NOT probe the macOS Keychain to
+confirm that — `security(1)` hangs forever on a GUI prompt in a
+non-interactive shell.
+
+Full mechanism, the three non-fixes, and why every PAT-side health check
+reports green throughout: `playbook/integrations/nova-integration.md`
+§ Auth history → the nova-plugin#52 entry.
+
+`bin/ace-doctor`'s `nova_needs_auth_cache` cannot stand in for this. It is a
+static check of a cache FILE plus the key's PRESENCE — it reported a green
+`pass` verdict throughout the incident above, which is why the block now
+carries an explicit `scope:` line saying what it does not cover.
 
 Halting *here* rather than at point-of-use is the whole value: the phase
 agents do carry their own binding guards (`commcare-setup` § Step 0,
@@ -883,27 +990,53 @@ in `inputs/` (the manifest), not to pick one canonical PDD file.
      `lib/opp-root-files.ts` in the same PR, or Step 5b will migrate it
      and the skill will stop finding it on the next run. Per-RUN state
      belongs under `runs/<run-id>/`.
-   - **5c. Capture the manifest.** List `<opp>/inputs/` via
-     `drive_list_folder`. For each direct child file (skip subfolders),
-     capture `{file_id, name, mime_type}`. Write the result as
+   - **5c. Capture the manifest — files AND the ids of the subfolders you
+     did not descend into.** List `<opp>/inputs/` via `drive_list_folder`.
+     For each direct child FILE, capture `{file_id, name, mime_type}` under
+     `inputs:`. For each direct child SUBFOLDER, capture
+     `{folder_id, name}` under `subfolders_not_listed:` — **mandatory, not
+     optional** (ace#1648). Also record `source_folder_id`, the `inputs/`
+     folder's own id. No extra call is needed for the subfolders:
+     `generate_inputs_manifest` already returns them in `files[]` carrying
+     `mime_type: application/vnd.google-apps.folder` — it is this step that
+     used to drop them on the floor. Write the result as
      `runs/<runId>/inputs-manifest.yaml` via `drive_create_file`:
 
      ```yaml
      opportunity: <opp>
      run_id: <runId>
      captured_at: <ISO timestamp>
+     source_folder_id: <inputs-folder-id>
      inputs:
        - file_id: <id>
          name: <name>
          mime_type: <mime>
        - ...
+     subfolders_not_listed:        # ALWAYS present; `[]` when there are none
+       - folder_id: <id>
+         name: <name>
+       - ...
      ```
+
+     **Why the folder ids are mandatory.** `inputs[]` stays direct-child
+     FILES only — its job is to freeze the evidence set Phase 1 synthesizes
+     from, and widening it would change what counts as evidence. But a
+     published instrument bundle is naturally a SUBFOLDER of `inputs/` (a
+     vendor download), and `pdd-to-deliver-app` Step 4k resolves the
+     `[FIXED]` source instrument FROM THIS MANIFEST. With no folder id
+     recorded, that workbook is unaddressable, 4k used to skip silently, and
+     the run reported green having verified no constants at all — the
+     `hh-poverty-targeting` failure class (9 of 17 scorecard point values
+     wrong, 101 lookup values invented). Recording the id lets 4k walk it one
+     level; it is NOT permission to compose a path by name.
 
    - **5d. Halt only if still empty.** If after auto-create + migration
      `<opp>/inputs/` contains zero direct child files, halt with the
      fallback message in § Fallback below. Subfolders inside `inputs/`
      don't count as files; if every direct child is a subfolder the
-     manifest is empty and the same fallback fires.
+     manifest's `inputs[]` is empty and the same fallback fires — their ids
+     are still recorded under `subfolders_not_listed` per 5c, but a manifest
+     with no evidence files is not a Phase-1 seed.
 
    Phase agents materialize their own `<N>-<phase>/` folders when
    they run (see § Per-Phase Folder Lifecycle); the orchestrator does
@@ -1024,8 +1157,10 @@ When invoked with an opportunity, execute these phases in order.
 **Dispatch:** `Agent(idea-to-design)`.
 
 **Inputs (inline at handoff):** the inputs manifest, `run_state.yaml`, and
-**`<opp>/open-questions.md` (opp-root, durable across runs) when it exists** —
-pass its `file_id` alongside the manifest.
+**`<opp>/open-questions.md` (opp-root, durable across runs) when it exists AND
+§ Two bounds below allows it** — pass its `file_id` alongside the manifest.
+The bounds are not optional trimming: on a fixture opp the file is not passed
+at all (dimagi-internal/ace#1487).
 
 Why it is listed separately: the manifest enumerates `<opp>/inputs/` **only**
 (it is generated by `generate_inputs_manifest(inputs_id)`), and
@@ -1041,7 +1176,42 @@ Phase 1 must state, for each pre-existing open question, whether this run
 **resolves / carries forward / contradicts** it — and a contradiction is loud
 (surface it at the Phase 1→2 pause, not only in the file). Do NOT widen
 `generate_inputs_manifest` to include opp-root files: the manifest's job is to
-freeze `inputs/`, and overloading it blurs per-opp vs per-run state.
+freeze `inputs/`, and overloading it blurs per-opp vs per-run state. (Step 5c's
+`subfolders_not_listed` is not a widening of this kind: it records the ids of
+folders INSIDE `inputs/` that `inputs[]` deliberately does not list, so a
+downstream step can address them. `inputs[]` — the evidence set Phase 1
+synthesizes from — stays direct child files only.)
+
+**Two bounds on that inline (dimagi-internal/ace#1487).** The #1201 read above
+was unconditional and unscoped, and the durable ledger is append-only, so it
+grew without limit and Phase 1's mandated per-question read-back grew with it.
+Both bounds NARROW the read; neither removes it, and the #1201 rationale above
+stands unchanged. The classifier is `classifyOpenQuestionsInline` in
+`lib/open-questions-inline.ts` — pure, imported by
+`test/lib/open-questions-inline.test.ts`, and the source of truth if this prose
+ever disagrees with it.
+
+- **FIXTURE SKIP.** When the opp root carries `iterate-state.yaml` (the
+  `/ace:iterate` campaign-state file, per the registry in
+  `lib/opp-root-files.ts` — this is the fixture signal; do NOT add a `fixture:`
+  field to `opp.yaml`), do **NOT** pass `open-questions.md` at all, at any
+  size. A fixture opp's brief is the whole intended input, and its regression
+  baseline must not absorb accumulated run history — that is ace#1325's hazard
+  (ACE reading its own prior output as Phase 1 source evidence) arriving
+  through the sanctioned inline path. Say so **once** in the run notes, citing
+  dimagi-internal/ace#1487; do not repeat it per phase.
+- **BOUNDED INLINE.** Otherwise pass the durable doc's **`## Open` section
+  only** — `## Archive` is never read back and never inlined (see
+  `skills/idea-to-pdd/SKILL.md` for the two-section shape). Above
+  `OPEN_QUESTIONS_INLINE_CAP_CHARS` (8,000 chars, exported from
+  `lib/open-questions-inline.ts`), pass the `file_id` plus the most recent open
+  rows rather than the whole section, and **name the truncation at the Phase
+  1→2 pause** so the run states what it did not read. Tripping the cap is
+  itself a signal the ledger needs pruning — resolved rows belong under
+  `## Archive`.
+
+Each branch's `reason` string is written to be pasted straight into the Phase
+1→2 pause summary.
 
 **Atoms / skills used (orchestrator-visible only):** `Agent(idea-to-design)`.
 
@@ -1296,7 +1466,11 @@ Turn N+2:  Branch on classify_phase_writeback AND verify_phase_artifacts
            solicitation. Instead FINISH the write-back inline from the
            landed artifacts. See § External-resource phases: finish inline
            in `agents/orchestrator-reference.md`.
-Turn N+3:  Agent(<next-phase>) with inline-artifact prompt.
+Turn N+3:  Self-heal sweep (§ below) — one BACKGROUND fix-and-ship
+           dispatch per self-healable issue this phase filed. Never
+           blocks; the run does not wait on it.
+           Agent(<next-phase>) with inline-artifact prompt, in the SAME
+           message as the sweep dispatches.
 ```
 
 **Products-presence check (Turn N+2 — the `verify_phase_products` atom).**
@@ -1339,6 +1513,85 @@ agents' own definitions carry the explicit `products.<block>` write step
 (see e.g. `agents/solicitation-management.md` § After Step 2,
 `agents/synthetic-data-and-workflows.md` § Completion) — this is the
 structural backstop for when a subagent skips it.
+
+### Self-heal sweep (Turn N+3, one dispatch per issue, never blocking)
+
+`CLAUDE.md § Self-heal a filed issue when you can, then close it` (Jon,
+2026-07-22) has been an unenforced prose rule: it appears twice in
+CLAUDE.md and **zero times** in this file, so compliance depended on the
+model remembering it mid-run. Measured 2026-08-18 over 119 issues filed
+since 08-11: **58%** of issues filed by a live run were fixed the same
+day, against **71%** for issues filed retrospectively by a review
+session. The gap is the rule losing to the phase loop — exactly what
+CLAUDE.md predicts of prose ("invariants are hooks, not memory — prose
+relies on the model choosing to comply, which fails under load"). Seven
+issues sat open from two days of runs; three of them (ace#1484, #1485,
+#1486) were static edits inside one skill directory.
+
+So the decision is a fence step, not a memory. **At Turn N+3, for every
+ACE issue this phase filed**, classify it once:
+
+| | Test | Action |
+|---|---|---|
+| **self-healable** | root cause understood AND the fix is bounded, low-risk, and lands in the ACE repo (a skill/doc/recipe/atom/contract edit) | dispatch it (below) |
+| **not** | it makes a **device-truth** claim with no recorded evidence, needs human product/legal/taste judgment, is a risky cross-cutting refactor, or you cannot validate it this session | leave open; comment ONE line saying which of those it is |
+
+For each self-healable issue, dispatch **one background subagent** per
+§ Fix-and-ship subagent template in `agents/orchestrator-reference.md`
+— it runs `skills/shipping` end to end and closes the issue referencing
+its PR. Batch the dispatches into the SAME message as
+`Agent(<next-phase>)`.
+
+Three rules make this safe to run inside a live `/ace:run`:
+
+1. **It never blocks the run.** The dispatches are backgrounded and the
+   next phase starts in the same message. A self-heal that fails, stalls,
+   or needs a device costs the run nothing — the issue simply stays open,
+   which is where it already was.
+2. **One issue per dispatch, no bundling.** A subagent that fans out
+   across several issues is how a phase boundary becomes a build session.
+3. **The run DOES consume its own fix — take the update at the next phase
+   boundary, never mid-phase.** Standing operator directive (Jon,
+   2026-08-18): *"`/ace:run` should always try to be the most up to date; we
+   are always improving ACE."* A run that finishes on code we already knew
+   was wrong spends hours proving a stale premise. So when a self-heal
+   merges — or when the boundary currency check below reports drift — run
+   `/ace:update` at the **next phase boundary**, in the same message as the
+   fence, and say in the run notes which version the remaining phases are
+   on.
+
+   The boundary is the whole of the safety margin: it is the one point where
+   no phase is in flight, so nothing is hot-swapped underneath a running
+   skill. Do NOT update in the middle of a phase, and do NOT kill a phase in
+   flight to take an update — **`qa-and-training` in particular consumes a
+   one-way precondition** (Learn completion is one-way per `(test user,
+   opportunity)`), so an interrupted walk cannot be re-run without a fresh
+   opportunity, which costs a fresh Phase 4.
+
+   Know what each action actually does, because only one of them is
+   `/ace:update`'s job:
+
+   | Action | Takes effect on | Who can run it |
+   |---|---|---|
+   | `/ace:update` | disk + registry; **subsequent `Skill()` loads** resolve to the new `installPath` | the orchestrator |
+   | `/reload-plugins` | skills, agents, commands, hooks already bound | the operator |
+   | full Claude restart | **MCP subprocesses** — nothing else respawns them | the operator |
+
+   When the update reports `MCP_CHANGED: yes`, the remaining phases still run
+   on the OLD MCP code until the operator restarts. Say so explicitly rather
+   than implying the update fixed it, and write a handoff (§ Pre-flight Step
+   1) before recommending the restart so the resumed session does not
+   re-derive what this one established.
+
+**Attempting the fix is itself the premise check, and that is half the
+value.** Filing costs nothing and touches no artifact, so an unverified
+claim survives into a filed issue; ace#1481 asserted "grep for `MSA` —
+all zero hits" when the clause is at `templates/work-order-template.md:147`
+and in both documents it cited, and a follow-up comment then claimed to
+have confirmed the absence. A self-heal attempt opens that file and the
+issue dies on sight. If the fix attempt refutes the issue, **close it
+`--reason "not planned"` with the evidence** — that is a successful sweep,
+not a failed one.
 
 **Open-questions doc (run-end, once).** The summary page reads
 `open-questions.md` from the run-folder root by name (it's the lone
@@ -1384,8 +1637,44 @@ full issue list on a `'malformed'` result, call
 `validate_run_state(fileId)` — returns `{valid, errors, warnings}` with
 `{path, message, severity}` per issue.
 
-**Forbidden boundary improvisations.** The boundary fence's 6 tool
-calls listed above are the COMPLETE set. Do NOT also:
+**Plugin currency at the boundary (the 7th call).** Add ONE Bash call to
+Turn N+1's batched message. `bin/ace-doctor --preflight` reports
+`plugin.version` once, at run start; on a repo that merges ~9x/day that
+reading has a shelf life of minutes, and a full `/ace:run` is multi-hour. So
+re-check it where the run is already stopped:
+
+```bash
+node -e "const d=JSON.parse(require('fs').readFileSync(process.env.HOME+'/.claude/plugins/installed_plugins.json','utf8'));console.log('installed',d.plugins['ace@ace'][0].version)"
+ps -eo ppid,command | awk -v c="$PPID" '$1==c' | grep -o "ace/ace/0\.[0-9.]*" | sort -u   # live MCP children
+```
+
+Three outcomes, and they are NOT the same:
+
+- **installed == live MCP == origin/main** → current; say nothing.
+- **installed < origin/main** → run `/ace:update` here, per rule 3 above.
+- **live MCP < installed** → the session's MCP subprocesses are stale.
+  `/ace:update` does NOT fix this and `/reload-plugins` does NOT respawn
+  them. Report the gap, name the changed `mcp/` files, and let the operator
+  decide whether to restart now or at run end.
+
+**A stale MCP child is worse than stale compiled code for recipes.**
+CLAUDE.md says `mcp/mobile/recipes/*.yaml` are re-read from disk per call —
+true, but they are re-read from **the version directory the subprocess was
+launched from**. A session bound at 0.13.915 keeps reading 0.13.915's
+recipes no matter how current the disk is. That reads as hot-patchable and
+is not, which is exactly how a Phase 6 device walk runs against superseded
+selectors while every version file on disk says the run is current.
+
+Measured (ace#1500), `bednet-check-2-visit/20260817-1720`: bound at
+0.13.915, ran to Phase 6 while main reached 0.13.930 — 13 changed files
+under `mcp/`, 21 under `skills/` + `agents/`. Two costs. A premise retired
+as false that same day (`a9e4ff06`, HQ uploads update in place) was
+propagated verbatim into the Phase 4 dispatch; and five static mobile
+recipes changed under a device walk already in flight.
+
+**Forbidden boundary improvisations.** Aside from the currency check above,
+the boundary fence's 6 tool calls listed earlier are the COMPLETE set. Do
+NOT also:
 
 - Call `render_run_readme` or write `README.md`. `verify_phase_artifacts`
   already refreshed it from `run_state.yaml`; a hand-assembled status map is

@@ -6,6 +6,56 @@ import { MobileError, RecipeValidationError } from '../errors.js';
 import type { ShellFn } from './avd.js';
 import { defaultShell } from './avd.js';
 import { splitRecipeAtScreenshots } from '../recipe-splitter.js';
+import { resolveChunkTimeout, countRecipeSteps } from '../../../lib/maestro-chunk-timeout.js';
+
+/**
+ * Step count for a recipe on disk, or `undefined` when it cannot be read.
+ * Sizing a timeout must never be able to fail a run, so every error here
+ * degrades to the floor (ace#1570).
+ */
+function safeCountSteps(recipePath: string): number | undefined {
+  try {
+    return countRecipeSteps(fs.readFileSync(recipePath, 'utf8'));
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Kill switch for subflow-aware chunking (ace#1570). Set
+ * `ACE_MOBILE_SPLIT_AT_SUBFLOW_SCREENSHOTS=off` to fall back to the
+ * top-level-only splitting that shipped before it — an operator on a live
+ * Phase 6 leg can revert without waiting for a plugin update.
+ */
+export const SUBFLOW_SPLIT_ENV = 'ACE_MOBILE_SPLIT_AT_SUBFLOW_SCREENSHOTS';
+
+/**
+ * Reader for the palette files a recipe's `runFlow: file:` steps name.
+ *
+ * Rooted at the RESOLVED recipe's own directory, which is exactly how Maestro
+ * resolves those refs — `prepareRecipeForMaestro` copies every palette file in
+ * next to the top-level recipe — so the splitter reads the same bytes the
+ * device will run, not whatever is newest in the install. Returns `null` for
+ * anything it can't read or that escapes that directory; the splitter then
+ * behaves as it did before ace#1570.
+ */
+export function subflowResolverFor(
+  absoluteRecipePath: string,
+  env: NodeJS.ProcessEnv = process.env,
+): ((filename: string) => string | null) | undefined {
+  if ((env[SUBFLOW_SPLIT_ENV] ?? '').trim().toLowerCase() === 'off') return undefined;
+  const dir = path.dirname(absoluteRecipePath);
+  return (filename: string): string | null => {
+    try {
+      const resolved = path.resolve(dir, filename);
+      if (path.dirname(resolved) !== dir) return null;
+      if (resolved === absoluteRecipePath) return null;
+      return fs.readFileSync(resolved, 'utf8');
+    } catch {
+      return null;
+    }
+  };
+}
 import { logInfo } from '../logging.js';
 import type { RecipeRunResult, ScreenshotEntry } from '../types.js';
 import { readProvenanceSidecar } from '../../../lib/screenshot-provenance.js';
@@ -100,6 +150,7 @@ export class MaestroBackend {
     const args = this.buildMaestroArgs(opts.adbPort, envVars, screenshotDir, recipePath, opts.serial);
     const r = await this.runMaestroChunk(args, screenshotDir, {
       recipePath, chunksCompleted: 0, chunksTotal: 1, lastCompletedScreenshot: null,
+      stepCount: safeCountSteps(recipePath),
     });
     const screenshots = this.collectScreenshots(screenshotDir);
     const failure = classifyMaestroFailure({
@@ -134,16 +185,24 @@ export class MaestroBackend {
       chunksCompleted: number;
       chunksTotal: number;
       lastCompletedScreenshot: string | null;
+      /**
+       * Top-level step count of the chunk being invoked, when known. Sizes the
+       * wall-clock ceiling (ace#1570) — omitted means "use the floor", which is
+       * exactly the pre-fix behaviour.
+       */
+      stepCount?: number;
     },
   ) {
-    const timeoutMs = 10 * 60 * 1000;
+    const budget = resolveChunkTimeout({ stepCount: ctx.stepCount });
+    const timeoutMs = budget.timeoutMs;
     try {
       return await this.shell('maestro', args, { timeoutMs, cwd: screenshotDir });
     } catch (e) {
       if ((e as { code?: string })?.code === 'SHELL_TIMEOUT') {
         throw new MobileError(
           'MAESTRO_STALL',
-          `maestro wedged (no exit within ${Math.round(timeoutMs / 1000)}s) on chunk ` +
+          `maestro wedged (no exit within ${Math.round(timeoutMs / 1000)}s, budget basis ` +
+            `${budget.basis}${budget.stepCount === null ? '' : ` over ${budget.stepCount} step(s)`}) on chunk ` +
             `${ctx.chunksCompleted + 1}/${ctx.chunksTotal} of ${path.basename(ctx.recipePath)}` +
             (ctx.lastCompletedScreenshot
               ? ` — last completed step ended at screenshot "${ctx.lastCompletedScreenshot}"`
@@ -158,6 +217,8 @@ export class MaestroBackend {
             chunks_total: ctx.chunksTotal,
             last_completed_screenshot: ctx.lastCompletedScreenshot,
             timeout_ms: timeoutMs,
+            timeout_basis: budget.basis,
+            step_count: budget.stepCount,
             screenshot_dir: screenshotDir,
           },
         );
@@ -267,7 +328,18 @@ export class MaestroBackend {
     // `SplitOptions.captureAllBoundaries` in `../recipe-splitter.ts`.
     const chunks = splitRecipeAtScreenshots(body, {
       captureAllBoundaries: opts.captureAllBoundaries === true,
+      resolveSubflow: subflowResolverFor(absoluteRecipePath),
     });
+    // State the chunking up front. Every wall-clock question about
+    // subflow-aware splitting (ace#1570) — how much per-invocation overhead
+    // it costs, whether a journey chunked at all — is answerable from this
+    // line plus the per-chunk markers below, without a device sitting in
+    // front of anyone.
+    logInfo(
+      `maestro: ${path.basename(absoluteRecipePath)} → ${chunks.length} chunk(s), ` +
+        `${chunks.filter((c) => c.screenshotName).length} dump window(s), ` +
+        `${countRecipeSteps(body)} top-level step(s)`,
+    );
 
     // Zero-screenshot recipes (e.g. probe recipes, or a recipe where
     // every `takeScreenshot:` is nested inside a `runFlow.commands`
@@ -278,6 +350,7 @@ export class MaestroBackend {
       const args = this.buildMaestroArgs(opts.adbPort, envVars, screenshotDir, absoluteRecipePath, opts.serial);
       const r = await this.runMaestroChunk(args, screenshotDir, {
         recipePath: absoluteRecipePath, chunksCompleted: 0, chunksTotal: 1, lastCompletedScreenshot: null,
+        stepCount: countRecipeSteps(body),
       });
       const screenshots = this.collectScreenshots(screenshotDir);
       const failure = classifyMaestroFailure({
@@ -355,6 +428,7 @@ export class MaestroBackend {
           chunksCompleted,
           chunksTotal: chunks.length,
           lastCompletedScreenshot,
+          stepCount: countRecipeSteps(chunk.yaml),
         });
         const chunkLabel = `# --- chunk ${chunk.index} (screenshot=${chunk.screenshotName ?? 'none'}) ---`;
         stdoutParts.push(`${chunkLabel}\n${r.stdout}`);

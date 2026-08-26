@@ -84,6 +84,9 @@ authored from the PDD per run):
 | [`threshold-coherence-flag`](#threshold-coherence-flag) | Deliver | PDD fixes ≥2 numeric thresholds constraining one physical quantity | `pdd-to-deliver-app-eval § threshold_coherence` (hard-gate) |
 | [`discriminating-assessment-items`](#discriminating-assessment-items) | Learn | Any scored assessment | `pdd-to-learn-app-eval § assessment_rule_coverage` |
 | [`instrument-grounded-examples`](#instrument-grounded-examples) | Learn | Learn app teaches administration of a fixed instrument | `pdd-to-learn-app-eval § assessment_rule_coverage` (examples criterion) |
+| [`fixed-instrument-transcription`](#fixed-instrument-transcription) | Deliver | The Deliver app digitises a `[FIXED]` published instrument whose source file is in `inputs/` (scorecard, eligibility matrix, dosing table, fee schedule) | `pdd-to-deliver-app-eval § fixed_instrument_fidelity` (hard-gate); `pdd-to-deliver-app § Step 4k` (mechanical, `lib/instrument-constants.ts`) |
+| [`entity-state-taxonomy`](#entity-state-taxonomy) | Learn + Deliver | The followed entity carries STATES the app must name — always for `archetype: longitudinal-visits`, and for any archetype whose PDD declares a phase / stage / status vocabulary the worker sees | `pdd-to-deliver-app-eval § entity_state_fidelity` (hard-gate); `pdd-to-deliver-app § Step 4l` (mechanical, `lib/entity-state-taxonomy.ts`) |
+| [`partner-option-register`](#partner-option-register) | Deliver | The PDD sources a field's options from a NAMED PARTNER REGISTER the partner already maintains (activity register, commodity list, cadre list, facility roster) | `pdd-to-deliver-app-eval § option_register_fidelity` (hard-gate); `pdd-to-deliver-app § Step 4f` register halt (mechanical, `lib/option-register.ts`) |
 
 ---
 
@@ -696,16 +699,50 @@ time; do not skip it because the app "looks right" structurally.
   was no channel; it is indefensible now that there is one.
 
 **The six atoms** — `get_languages`, `get_translatable_content`, `add_language`,
-`update_language`, `remove_language`, `update_translations` — are already on
-`nova-architect-autonomous`'s allowed-tool list. Read their live schemas from
-Nova's `tools/list`; do not paraphrase them into a skill.
+`update_language`, `remove_language`, `update_translations` — are on
+`nova-architect-autonomous`'s allowed-tool list AND on ACE's own Nova MCP
+surface at level 0. Read their live schemas from Nova's `tools/list`; do not
+paraphrase them into a skill.
 
-**Nova's architect will not do this on its own.** Its `autonomous_build`
-operating prompt (70,643 chars, read live 2026-08-17) has **zero** occurrences
-of `itext`, `locale`, `multiling` or `English`; its only substantive `language`
-mention says the *chat* language is independent of the app's languages, and its
-numbered build workflow has no language step. The tools exist and the architect
-may call them, but nothing will happen unless the brief below asks for it.
+**WHO authors the translations: ACE at level 0, never the architect
+(ace#1556).** This is the load-bearing correction of 2026-08-23, and it is a
+mechanism fix, not a reversal of Jon's 2026-08-17 decision — that decision
+("translations are authored by ACE") is exactly what the old wiring failed to
+execute, because it delegated the authoring to a subagent whose own operating
+prompt forbids it.
+
+Nova's architect operating prompt — read verbatim off disk from the installed
+plugin at `nova/1.27.0/skills/autobuild/SKILL.md` (also `1.26.0`, and the same
+sentence appears in `agents/nova-architect-autonomous.md`) — says:
+
+> Never treat your own language fluency as a substitute or bulk-translate
+> self-generated text through `update_translations`. Only save target text
+> supplied by the user: page `get_translatable_content` to completion,
+> preserve typed `protectedParts`, and write at most 50 distinct stable unit
+> IDs per atomic call. … never mark copied or machine-authored text reviewed
+> on the user's behalf.
+
+An `/ace:run` supplies no human-authored target strings, so a brief that told
+the architect to author them asked for the one thing that clause rules out.
+The architect declined, correctly, and the language step became a silent no-op:
+`spark-facilitator/20260820-0817`, Learn app `64ec7be2-e9a4-49c5-8151-3dca69f9b879`,
+PDD working languages `nya` + `tum` — final `get_languages` reported **207
+units `needs-review`, 0 ready in BOTH targets**, i.e. every unit still the
+copied English string, presented to a worker under the language's name. That
+is a false affordance, and it shipped on every multilingual build.
+
+The fix is the **ownership split** below. It resolves the conflict rather than
+arguing with it: the clause constrains the ARCHITECT's self-generated text, and
+ACE — the caller, the "user" in that sentence — supplies the target text.
+Nova's platform contract already anticipates this: writes from ACE are
+auto-tagged `origin: "ai"` and land `needs-review`, so provenance stays honest
+by construction and nothing is marked reviewed on anyone's behalf.
+
+| | Architect (inside `/nova:autobuild`) | ACE (level 0, after the build returns) |
+|---|---|---|
+| English source content | **owns it** — every string, final | reads it |
+| `add_language` / `update_translations` | **never calls them** | **owns them** |
+| `get_languages` verification | reports what it sees | gates on `out-of-date` = 0 |
 
 **Contract facts, each proven live on 2026-08-17 against a scratch Nova app
 (`b4e2c8fd`, since deleted) — observed, not inferred:**
@@ -721,21 +758,26 @@ may call them, but nothing will happen unless the brief below asks for it.
 | A `prose` unit rejects a bare string — `"requires a prose value."` | Labels/hints/help take `{parts:[{kind:'text',text:…}]}`; app/module/form names take a bare string |
 | ACE's writes are auto-tagged `origin: "ai"` | Provenance is recorded for you. Never claim a human review you did not do |
 
-**Build order — the load-bearing rule.**
+**Build order — the load-bearing rule.** Steps 2–4 are ACE's, run at level 0
+after `/nova:autobuild` returns AND after every level-0 English repair step in
+the build skill has finished. Nothing may edit an English string after step 3.
 
-1. Build the **entire** app in English. Every string, final.
-2. Only once the English is settled and the app otherwise passes its build
-   checks, add the language: `add_language(code: <CODE>, copyFrom: 'en')`.
-3. Page `get_translatable_content(language: <CODE>)` to completion and author
-   real `<LANGUAGE>` values through `update_translations`, echoing each unit's
-   current `sourceFingerprint`.
-4. Re-read `get_languages`. **`out-of-date` must be 0 at hand-off.** A non-zero
-   count means the English moved after step 3: re-translate those units rather
-   than shipping them.
+1. **Architect:** build the **entire** app in English. Every string, final.
+   The architect adds NO language and calls NO language atom.
+2. **ACE, level 0:** only once the English is settled and the app has passed
+   its build checks, add the language:
+   `add_language(code: <CODE>, copyFrom: 'en')`.
+3. **ACE, level 0:** page `get_translatable_content(language: <CODE>)` to
+   completion and author real `<LANGUAGE>` values through
+   `update_translations`, echoing each unit's current `sourceFingerprint`.
+4. **ACE, level 0:** re-read `get_languages`. **`out-of-date` must be 0 at
+   hand-off.** A non-zero count means the English moved after step 3:
+   re-translate those units rather than shipping them.
 
 Inverting steps 1 and 2 is precisely the failure this rule prevents — the copy
-lands, the architect keeps editing, every edited string silently reverts to
-English, and the coverage counts still look populated.
+lands, editing continues, every edited string silently reverts to English, and
+the coverage counts still look populated. Putting steps 2–4 wholly outside the
+architect's turn is what makes translate-LAST structural rather than a request.
 
 **English stays the runtime default — CONFIRMED by Jon, 2026-08-17.**
 `defaultLanguage` remains `en` and `<LANGUAGE>` is a selectable target. Jon's
@@ -768,56 +810,79 @@ translations are ACE-authored (`origin: ai`) and carry `needs-review` until a
 speaker of `<LANGUAGE>` reviews them — a normal ACE review obligation, exactly
 like the English copy, not a special gate.
 
+**ACE's level-0 recipe (steps 2–4 above).** Run it in the build skill after
+every English-editing step has completed, immediately before the summary is
+written. `pdd-to-learn-app § 4e` and `pdd-to-deliver-app § 4m` are the two
+homes; both are thin wrappers over this recipe.
+
+1. `get_languages(appId)` — confirm English is still `sourceLanguage` and that
+   `<CODE>` is not already present. If it is present (a rerun), skip the add.
+2. `add_language(appId, code: <CODE>, copyFrom: 'en')`.
+3. Loop until `nextCursor` is absent: `get_translatable_content(appId,
+   language: <CODE>)` → author real `<LANGUAGE>` values for every unit in the
+   page → `update_translations` with at most **50** unit IDs per call, echoing
+   each unit's just-read `sourceFingerprint` as `expectedSourceFingerprint`.
+   `prose` units (labels, hints, help, validation messages) take
+   `{parts:[{kind:'text',text:'…'}]}`; app / module / form names are `text`
+   units and take a bare string. Preserve every typed `protectedParts` entry
+   exactly as read. Keep sibling choice labels semantically distinct — a
+   translation that collapses two options destroys an assessment item's
+   discrimination.
+4. `get_languages(appId)` again. Record the counts. **`out-of-date` must be 0
+   and `missing` must be 0.** Non-zero `out-of-date` means an English string
+   moved after step 3 — re-run step 3 for those units. Never mark anything
+   reviewed; `needs-review` is the correct resting state for ACE-authored text.
+
+If any step cannot complete, fail loud with the counts rather than writing a
+summary that claims a language layer the app does not carry. A partially
+authored layer is the false affordance ace#1556 was filed about: the units left
+`origin: copied` are English strings wearing `<LANGUAGE>`'s name, and the
+worker cannot tell them apart from real translations.
+
 **Brief paragraph (verbatim) — Deliver:**
 
 > REQUIRED: Build every user-facing string (module names, form names, labels,
-> choices, hints, help, validation messages) in **English first, and finish the
-> whole app in English before touching languages.** English is the app's source
-> language and stays the runtime default.
-> THEN, as the LAST step of the build: call `add_language(code: <CODE>,
-> copyFrom: 'en')`, page `get_translatable_content(language: <CODE>)` to
-> completion, and author real <LANGUAGE> values via `update_translations`,
-> echoing each unit's current `sourceFingerprint`. Field labels, hints, help and
-> validation messages are `prose` units — send
-> `{parts:[{kind:'text',text:'…'}]}`, never a bare string; a bare string is
-> rejected with "requires a prose value." App, module and form names are `text`
-> units and take a bare string. Batch at most 50 units per call.
-> FINALLY re-read `get_languages` and confirm `out-of-date` is **0**. If you
-> edit any English string after translating, that unit reverts to English —
-> re-translate it.
+> choices, hints, help, validation messages) in **English, and only English.**
+> English is the app's source language and stays the runtime default.
+> **Do NOT add any language and do NOT call `add_language`,
+> `update_language` or `update_translations`** — even though the PDD names
+> <LANGUAGE> as the working language, and even if you are asked to make the app
+> multilingual. ACE adds the <LANGUAGE> layer itself, at its own level, after
+> this build returns and after its own English repair passes have finished;
+> your operating instructions are right that self-generated target text is not
+> yours to save, and the split exists so that neither of us has to break its
+> own contract (ace#1556). Adding a language now would also be silently undone:
+> every English string you edit afterwards demotes its translation to
+> `out-of-date`, which falls back to English.
 > **Do not stack languages inline.** No `English / <LANGUAGE>: …` labels, no
 > parenthetical translations, no language-selector question. Stacking fails
 > `language_conformance` at the eval gate.
 > Keep the English SHORT, plain and concrete — it is both the translation source
-> and the fallback. In the build memo record the language, its code, and the
-> final coverage counts.
+> and the fallback for every stale unit. In the build memo record that the app
+> is English-complete and carries no language layer yet.
 
 **Brief paragraph (verbatim) — Learn:**
 
 > REQUIRED: Build every user-facing string (module names, form names, labels,
-> choices, hints, assessment items and their option labels) in **English first,
-> and finish the whole app in English before touching languages.** English is
-> the app's source language and stays the runtime default.
-> THEN, as the LAST step of the build: call `add_language(code: <CODE>,
-> copyFrom: 'en')`, page `get_translatable_content(language: <CODE>)` to
-> completion, and author real <LANGUAGE> values via `update_translations`,
-> echoing each unit's current `sourceFingerprint`. Field labels, hints, help and
-> validation messages are `prose` units — send
-> `{parts:[{kind:'text',text:'…'}]}`, never a bare string; a bare string is
-> rejected with "requires a prose value." App, module and form names are `text`
-> units and take a bare string. Batch at most 50 units per call. Assessment
-> stems and option labels are ordinary translatable units — translate them too,
-> and keep each option's meaning distinct in <LANGUAGE>, since a translation
-> that collapses two options destroys the item's discrimination.
-> FINALLY re-read `get_languages` and confirm `out-of-date` is **0**. If you
-> edit any English string after translating, that unit reverts to English —
-> re-translate it.
+> choices, hints, assessment items and their option labels) in **English, and
+> only English.** English is the app's source language and stays the runtime
+> default.
+> **Do NOT add any language and do NOT call `add_language`,
+> `update_language` or `update_translations`** — even though the PDD names
+> <LANGUAGE> as the working language, and even if you are asked to make the app
+> multilingual. ACE adds the <LANGUAGE> layer itself, at its own level, after
+> this build returns and after its own English repair passes have finished;
+> your operating instructions are right that self-generated target text is not
+> yours to save, and the split exists so that neither of us has to break its
+> own contract (ace#1556). Adding a language now would also be silently undone:
+> every English string you edit afterwards — assessment re-keys included —
+> demotes its translation to `out-of-date`, which falls back to English.
 > **Do not stack languages inline.** No `English / <LANGUAGE>: …` labels, no
 > parenthetical translations, no language-selector question. Stacking fails
 > `language_conformance` at the eval gate.
 > Keep the English SHORT, plain and concrete — it is both the translation source
 > and the fallback, and assessment stems are read repeatedly. In the build memo
-> record the language, its code, and the final coverage counts.
+> record that the app is English-complete and carries no language layer yet.
 
 ---
 
@@ -927,8 +992,21 @@ like the English copy, not a special gate.
   confirmed-separate fields, and the shipped per-module grids were inert.
   App-level atom live-validated 2026-07-30 against those apps.
   `app-release-qa` BLOCKER-gates all three fields.
+- **DO NOT BRIEF THIS (dimagi-internal/ace#1632).** This component is applied
+  entirely HQ-side, post-build. Nova's authoring surface exposes no
+  menu-display-format control, so the Brief paragraph below MUST NOT be emitted
+  into a `/nova:autobuild` brief by `pdd-to-learn-app` / `pdd-to-deliver-app` —
+  the architect can only search for an atom that does not exist and then report
+  an "unmet requirement", polluting the build memo's deviations list (live on
+  `bednet-check-2-visit/20260825-1310`). It is kept below as the statement of
+  intent that `app-hq-settings` implements and `app-release-qa` gates.
+  **General rule for this library:** when a component's **Enforced by** names a
+  post-build skill rather than a build-time eval dimension, it is NOT briefed —
+  mark it with a `DO NOT BRIEF THIS` bullet the same way, and keep it out of the
+  build skills' emit-checklists.
 
-**Brief paragraph (verbatim):**
+**Brief paragraph (verbatim)** — reference only; NOT emitted into any Nova
+brief (see the DO NOT BRIEF THIS bullet above)**:**
 
 > REQUIRED — Grid menu display: the app MUST present BOTH its module/menu list
 > and its form list as a GRID, not a list. In CommCare HQ: App Settings >
@@ -973,8 +1051,19 @@ like the English copy, not a special gate.
   live validation lands on the first post-install runs. Nova still can't set this at
   build time (the image-field blueprint has no appearance key) — hence the post-build
   patch.
+- **DO NOT BRIEF THIS (dimagi-internal/ace#1640).** This component is applied entirely
+  HQ-side, post-build, so the Brief paragraph below MUST NOT be emitted into a
+  `/nova:autobuild` brief by `pdd-to-deliver-app`. Confirmed against Nova's live
+  `add_fields` / `edit_field` schemas: an `image` field has no `appearance` slot on any
+  kind (`caseWrite.mode` saves a link to the attachment, which is unrelated), so the
+  architect can only report an "unmet requirement" it has no call to satisfy — noise in
+  the one artifact meant to carry real deviations. Kept below as the statement of intent
+  that `app-hq-settings` § Step 3 implements and `app-release-qa` gates
+  (`camera-only-appearance-missing`). Same defect as ace#1632; see the general rule under
+  `grid-menu-display`.
 
-**Brief paragraph (verbatim):**
+**Brief paragraph (verbatim)** — reference only; NOT emitted into any Nova
+brief (see the DO NOT BRIEF THIS bullet above)**:**
 
 > REQUIRED — Live photo capture only: EVERY photo/image capture question MUST be
 > taken live with the camera, never browsed from the device gallery. Set the
@@ -1044,7 +1133,16 @@ capability budget, not a blocklist.
 > any menu.** A case LIST needs no flag and is what the worker actually uses;
 > a case SEARCH requires `search_claim`, and any fuzzy or advanced matching
 > additionally requires `case_search_advanced` — and BOTH of those are frozen.
-> Give each menu a plain case list with useful columns instead. If you believe a
+> Give each menu **that a worker navigates THROUGH to reach an existing
+> record** a plain case list with useful columns instead. A
+> **registration-only** menu — one whose only form CREATES a new case, and
+> which no other menu opens that case type from — must NOT be given case-list
+> columns: its entry's only session datum is `function="uuid()"`, so CommCare
+> never pushes an entity-selection screen and nothing can ever navigate to
+> those columns. That dead detail set is a `[BLOCKER]` at `app-release-qa`
+> Step 2.8 (`case-list-unreachable`; ace#977, #1281, #1652), and it cannot be
+> healed afterwards — Nova refuses to remove the last visible Results column
+> from a module that declares a case type. If you believe a
 > capability genuinely requires a feature flag and the app cannot meet its
 > requirement without it, do NOT quietly use it: name the capability, the flag
 > it needs, and the requirement it serves in the build memo, and build the
@@ -1190,7 +1288,8 @@ respondent may never have heard read out.
 - **Enforced by:** `pdd-to-deliver-app-eval § field_answerability`, plus the
   **mechanical bind check** in `app-release-qa` (no LLM — parses each `<bind>` in
   the released CCZ and flags any `constraint` referencing a node outside its own
-  nodeset).
+  nodeset, AND any minimum-rows gate bound inside the repeat it counts —
+  `lib/constraint-locality.ts`, `checkConstraintLocality`).
 - **Origin:** ace#980 — two independent instances in one form. `gps_onsite_confirm`
   carried `constraint="number(selected-at(/data/gps, 3)) <= 50"` with the message
   "recapture the location", on a screen with no location widget; `i1_zone` ("In
@@ -1206,13 +1305,27 @@ respondent may never have heard read out.
 > to the node it is actually about. Concretely: a GPS-accuracy rule belongs on the
 > geopoint question itself (`selected-at(., 3) <= <MINIMUM_M>`), NEVER on a later
 > confirmation question; a repeat-cardinality rule ("roster must have ≥1 row")
-> belongs on the repeat itself or on a gate **immediately** following it — never
-> on an unrelated later question. Every `constraint` expression should reference
+> belongs on a gate question **immediately** following the repeat — never on an
+> unrelated later question. Every `constraint` expression should reference
 > only `.` (the question itself), same-repeat siblings, or the repeat it directly
 > guards; a constraint reaching out to a node the user cannot edit from this
 > screen is a build defect. Wrapping the foreign reference in a hidden calculate
 > does NOT make it local — the check resolves calculates transitively. The
 > `validate_msg` must name an action the user can take RIGHT NOW, on THIS screen.
+>
+> CARVE-OUT — a MINIMUM-rows gate must be bound OUTSIDE the repeat it counts
+> (ace#1560). "Same-repeat siblings are local" is true and is NOT a licence to
+> put the cardinality gate there: a `constraint` on a node inside a repeat is
+> evaluated per repeat INSTANCE, so at **zero** repetitions it never evaluates —
+> the one case the gate exists to catch. `count(/data/roster[…]) >= 1` bound on a
+> question inside `/data/roster` is therefore dead, and dead silently: the FLW
+> sees no error, and a device walk cannot catch it either. Locality and
+> reachability are different properties. Bind the minimum on a question
+> immediately AFTER the repeat, which always exists. (Not on the repeat
+> container: `edit_field` on a repeat answers `kind "repeat" carries no
+> 'validate' slot`.) An UPPER bound — a cap like `count(…) <= 10` — is the
+> opposite case and correctly stays INSIDE the repeat, where it fires on the row
+> that breaks it.
 >
 > RELEVANCE REACHABILITY (the temporal sibling of the same rule): a `relevant`
 > expression MUST be decidable by the time the form walks past the field it
@@ -1587,10 +1700,218 @@ the effective bar. One repair round, then re-grade.
 
 ---
 
+### fixed-instrument-transcription
+
+- **App:** Deliver
+- **Trigger:** the Deliver app digitises a `[FIXED]` published instrument —
+  a scorecard, eligibility matrix, dosing table, fee schedule — whose source
+  file is in the opportunity's `inputs/` and named by the run's
+  `inputs-manifest.yaml`.
+- **Enforced by:** `pdd-to-deliver-app-eval § fixed_instrument_fidelity`
+  (binary hard-gate) and, on the build side, `pdd-to-deliver-app § Step 4k`,
+  which runs `lib/instrument-constants.ts` against the source file itself.
+- **Origin:** ace#1527. On `hh-poverty-targeting/20260819-1435` the digitised
+  Nigeria PPI 2020 shipped **9 of 17 point values wrong and all 101
+  poverty-likelihood values invented** — the build memo described the latter as
+  *"provisional placeholders with the correct monotonic shape"*, and the point
+  values were not flagged at all. Nothing caught it: a wrong scorecard produces
+  a complete, plausible, fully-verified dataset that ranks the wrong
+  households, so there is no downstream symptom. The licence half matters too —
+  the PPI permits digitising the scorecard and its lookup tables only
+  UNMODIFIED.
+
+  The sibling component `instrument-grounded-examples` says the Learn app must
+  TEACH the real instrument. This one says the Deliver app must IMPLEMENT it,
+  digit for digit.
+
+**Brief paragraph (verbatim):**
+
+> REQUIRED — This instrument is FIXED by a published source document, and every
+> constant below is transcribed from it. Use the point values, thresholds, and
+> lookup-table rows EXACTLY as given: no rounding, no smoothing, no rescaling,
+> no "provisional placeholder with the correct shape", and no value carried over
+> from a similar instrument you know. If a constant you need is missing from
+> this brief, or a table is truncated, or two figures here contradict each
+> other, STOP and say which one — an invented value is worse than a gap, because
+> a gap is visible and a plausible wrong number is not. Where the instrument's
+> maximum attainable score overshoots a downstream lookup, keep the clamp the
+> spec states (e.g. `min(<score>, 100)`) — do not "fix" the overshoot by
+> lowering point values, and do not drop the clamp because the values you were
+> given happen not to reach it.
+
+**Skill-side half (not the architect's job).** The brief is model-authored, so
+the architect transcribing it faithfully proves nothing about whether the brief
+matches the source. `pdd-to-deliver-app § Step 4k` closes that loop at LEVEL 0:
+it fetches the source file by `file_id` from `inputs-manifest.yaml`, clears the
+extraction with `assertExtractionTrusted` before trusting a single value, then
+runs `diffScoringConstants` + `compareMaxScore` against the literals read back
+from Nova. Any mismatch is a HALT with a bounded repair loop, and a `clampDead`
+verdict — the built maximum cannot reach the clamp the spec mandates — is
+treated the same way, because that is the shape a wrong instrument takes when it
+is internally consistent with its own wrong numbers (ace#1527).
+
+---
+
+### partner-option-register
+
+- **App:** Deliver
+- **Trigger:** the PDD sources a field's options from a NAMED PARTNER REGISTER
+  — a code list the partner already maintains (activity register, commodity
+  list, cadre list, facility roster), declared in § Program Parameters as
+  `<field> from <tag> [source: <file>] [filtered by <column>]`.
+- **Enforced by:** `pdd-to-deliver-app-eval § option_register_fidelity` (binary
+  hard-gate) and, on the build side, `pdd-to-deliver-app § Step 4f`'s register
+  halt, which runs `lib/option-register.ts`.
+- **Origin:** ace#1621. On `spark-facilitator/20260820-0817` the meeting-activity
+  repeat shipped **11 ACE-authored placeholders** (`attendance_register`,
+  `facilitated_discussion`, `savings_collection`, …), identical on all 24 FCAP
+  steps, while Spark's own 78-activity register sat in the run's frozen
+  `inputs/` — both as a published structure guide and as fixture XML inside
+  Spark's production CCZ, which carries the register's REAL value codes.
+
+  What let it through was not a missing rule but a **wrongly-scoped** one. Step
+  4f already governs this field, and its halt fires only when a degraded select
+  `feeds_entity_id` on a payable deliver unit — payment correctness. The
+  activity field feeds neither, so 4f recorded a named gap and proceeded
+  exactly as written. The gap was real and duly written down; it then took an
+  operator reading the residual, days later, to stop the release.
+
+  So the register halt is a SECOND halt class alongside the payment one, and it
+  is not dischargeable as a named gap. A named gap defers the obligation to a
+  human who may not read it, and the harm here is not payment but
+  `no-inferred-backstory` on a partner's own published process, reaching real
+  field workers and — through the training deck — the partner.
+
+  Sibling of `entity-state-taxonomy` one layer down: that one governs the STATE
+  vocabulary (which phase, which step), this one governs the OPTION SET WITHIN
+  a state (which activities belong to step 3). Both fail silently for the same
+  reason — an app internally consistent with its own invention passes every
+  structural gate.
+
+  **Prefer the partner's `.ccz` fixture XML over a prose source document.** A
+  production CCZ carries the real value codes, which are what the app stores
+  and what the partner's M&E joins on; a human-readable guide usually carries
+  only labels, so sourcing from it forces the build to mint an identifier
+  scheme the partner has never seen. Same rule as
+  `fixed-instrument-transcription`'s "trust extraction first".
+
+  **Ships no register of its own, deliberately** — no default activity list, no
+  fallback vocabulary, no normalisation of the partner's codes toward ACE's.
+  Absence is a HALT with a Phase-1 finding, never a licence to invent.
+
+  **Where ACE cannot finish, it halts with the handoff.** Nova has no MCP atom
+  that creates a lookup table and its row-import route is browser-session-only
+  (`enableSessionForAPIKeys: false` — "API keys authenticate the MCP route
+  only, never a browser session"), so binding a fresh register is not yet
+  autonomous. Terminal behaviour is: extract, emit `renderRegisterCsv` output
+  plus the table spec, halt naming the two operator steps. *Enforced:*
+  `test/lib/option-register.test.ts`.
+
+**Brief paragraph (verbatim):**
+
+> REQUIRED — This field's options are the PARTNER's register, not yours. Do not
+> compose, guess, complete, or "improve" the option set, and do not ship a
+> partial set plus "Other" as a stand-in for it. The values and labels come
+> from the named register EXACTLY as published — the partner's own codes, which
+> their own reporting joins on. If the register is not in front of you, STOP
+> and say so; an invented option list is worse than an unfinished form, because
+> nothing downstream can tell that it is invented.
+
+### entity-state-taxonomy
+
+- **App:** Learn + Deliver
+- **Trigger:** the followed entity carries STATES the app has to name — a
+  phase, stage, status, or round the worker selects, filters on, or is shown.
+  Always fires for `archetype: longitudinal-visits` (the archetype requires a
+  case list showing which visit is due, which is a state by definition); fires
+  for any other archetype whose PDD declares such a vocabulary.
+- **Enforced by:** `pdd-to-deliver-app-eval § entity_state_fidelity` (binary
+  hard-gate) and, on the build side, `pdd-to-deliver-app § Step 4l`, which runs
+  `lib/entity-state-taxonomy.ts` against the taxonomy the PDD declared.
+- **Origin:** ace#1564. On `spark-facilitator/20260820-0817` the entity's state
+  model lived only as PROSE in the PDD's § Entity Lifecycle — sourced from
+  Spark's own published *FCAP Structure, Phases and Activities* guide, which
+  sequences all 24 steps explicitly and sat in the run's own `inputs/`. Nothing
+  carried it into the Nova brief, and the architect needs those option sets to
+  build the phase-filtered step picker the archetype requires, so it invented
+  them: the PDD's `1 = Planning (steps 1–14)` … `4 = Transition (steps 23–24)`
+  shipped as `1 = "Introduction and community entry" (steps 1–4)` …
+  `4 = "Sustainability and graduation" (steps 23–24)`, with all 24 step names
+  invented too.
+
+  Three consequences, none of which any existing gate caught. **Learn and
+  Deliver contradict each other** — a worker trained on the PDD's mapping picks
+  "Planning", lands in a different phase, and cannot find the step they were
+  taught. **Program Parameters stop mapping** — a pilot window pinned to
+  `Goal Setting (Planning, Steps 1–7)` straddles two phases under the built
+  taxonomy. And it is **`no-inferred-backstory` on a real partner**: invented
+  labels for the partner's OWN published process reach real field workers and,
+  through the training deck, the partner itself.
+
+  Same shape as `fixed-instrument-transcription`, one layer up: that one says
+  the app must implement the published NUMBERS digit for digit, this one says
+  it must use the published WORDS. Both fail silently, because an app that is
+  internally consistent with its own invention passes every structural gate.
+
+  **This component ships no vocabulary of its own, deliberately.** There is no
+  canonical state set here and there must never be one: hard-coding
+  "enrolled / active / lapsed / graduated" would impose ACE's words on every
+  partner, which is the mirror image of the defect above and a worse one,
+  because it would be systematic rather than per-run. The taxonomy is DERIVED
+  from the PDD or the build HALTS. *Enforced:*
+  `test/skills/entity-state-taxonomy-component.test.ts`.
+
+**Brief paragraph (verbatim):**
+
+> REQUIRED — The entity's states are the PARTNER's vocabulary, not yours. Use
+> the state values, their labels, and the activity/step numbers belonging to
+> each one EXACTLY as given below: no renaming, no re-ordering, no merging or
+> splitting of phases, no "clearer" label, and no state model carried over from
+> a similar programme you know. Where a state's label reads oddly or a phase
+> boundary looks wrong to you, it is still the partner's published process and
+> it ships as written. Every state the app offers — in a picker, a case-list
+> column, a filter, or a training screen — MUST be one of the values below, and
+> the activity/step list you show inside a state MUST be exactly that state's
+> members. If a state you need is missing from this brief, or the step ranges
+> here overlap or leave a gap, or two places in this brief disagree, STOP and
+> say which — an invented phase name is worse than a gap, because a gap is
+> visible and a plausible wrong vocabulary is not, and it will be taught to
+> workers and read back by the partner as their own.
+
+**Where the taxonomy comes from (skill-side, not the architect's job).** The
+brief is model-authored, so an architect transcribing it faithfully proves
+nothing about whether the brief matches the partner's process. The build skill
+reads `program_parameters.entity_state_taxonomy` from the PDD (the typed
+handoff — `templates/pdd-template.md § Program Parameters`) via
+`parseStateTaxonomy`, and:
+
+- **`declared: false` → HALT.** The PDD declares no taxonomy while the trigger
+  fires. That is a Phase-1 gap: record it as a finding naming the PDD section
+  that would close it, and do not build the state picker. Never substitute a
+  generic lifecycle vocabulary "to unblock" — that is the defect.
+- **`source` names a document → read THAT document** out of the run's frozen
+  `inputs/`, resolved through `inputs-manifest.yaml`, and brief from it rather
+  than from the PDD's summary table. The canonical register was one document
+  away on `spark-facilitator/20260820-0817` and the brief never reached for it.
+- **`problems` non-empty → HALT.** Overlapping step ranges, duplicate values,
+  or duplicate labels make the picker non-deterministic; fix the PDD, do not
+  resolve the ambiguity by choosing.
+
+`pdd-to-deliver-app § Step 4l` then diffs the option set the app actually
+shipped against the declared taxonomy with `diffStateTaxonomy`. The Learn app
+is briefed from the same declared taxonomy, so Learn/Deliver agreement is
+transitive — two builds that each match the PDD cannot contradict each other.
+
+---
+
 ## Change log
 
 | Date | Change | By |
 |---|---|---|
+| 2026-08-24 | **New component `partner-option-register` (ace#1621).** A field whose options the PDD sources from a NAMED PARTNER REGISTER could ship an option list the architect composed. What let it through was not a missing rule but a **wrongly-scoped** one: `pdd-to-deliver-app § Step 4f` already governs option sources, and its halt fires only when a degraded select `feeds_entity_id` on a PAYABLE deliver unit — payment correctness — so anything else records an `option_source_gaps` entry and proceeds. On `spark-facilitator/20260820-0817` the meeting-activity repeat shipped **11 ACE-authored placeholders** (`attendance_register`, `facilitated_discussion`, `savings_collection`, …) identical on all 24 FCAP steps, while Spark's own 78-activity register sat in the run's frozen `inputs/` — as a published guide AND as fixture XML in Spark's production CCZ carrying the real value codes. The field feeds neither `entity_id` nor a payable unit, so 4f recorded the gap and proceeded exactly as written, and an operator reading the residual days later is what stopped the release. 4f gains a SECOND halt class, not dischargeable as a named gap: a declared register + an inline option list is a HALT regardless of payability, because the harm is `no-inferred-backstory` on the partner's own published process rather than payment. Both inline rungs of the escape ladder are withdrawn when a register is declared — "knowable from the PDD / inputs / a source `.ccz`" is exactly the case where the real values exist and must be READ. Ships no register of its own; absence is a HALT with a Phase-1 finding. Where ACE cannot finish (Nova has no lookup-table create atom and its import route is browser-session-only) the terminal behaviour is extract → emit CSV + table spec → halt with the operator handoff, never placeholders. Paired 1:1 with the eval's `option_register_fidelity` hard-gate. *Enforced:* `test/lib/option-register.test.ts`. | ACE team |
+| 2026-08-23 | **`app-language-layer` ownership split — ACE authors the translations at level 0; the architect never touches a language atom (ace#1556).** The 2026-08-17 decision said translations are *authored by ACE*; the wiring delegated the authoring to `/nova:autobuild`, whose operating prompt (read verbatim off disk, nova plugin `1.26.0` and `1.27.0`, `skills/autobuild/SKILL.md` + `agents/nova-architect-autonomous.md`) says: *"Never treat your own language fluency as a substitute or bulk-translate self-generated text through `update_translations`. Only save target text supplied by the user…"* An `/ace:run` supplies no human target strings, so the architect declined — correctly — and the language step was a silent no-op on every multilingual build. Measured: `spark-facilitator/20260820-0817`, Learn app `64ec7be2-e9a4-49c5-8151-3dca69f9b879`, working languages `nya` + `tum` → **207 units `needs-review`, 0 ready in BOTH targets**, i.e. every unit still the copied English string served to a worker under the language's name. This is a MECHANISM fix, not a product reversal: the clause constrains the architect's *self-generated* text, and ACE — the caller, the "user" in that sentence — supplies the target text through the same six atoms on its own Nova MCP surface. New homes: `pdd-to-learn-app § Step 4e` and `pdd-to-deliver-app § Step 4m`, both thin wrappers over the component's level-0 recipe. Both brief paragraphs now tell the architect to build English-ONLY and to call no language atom, which makes translate-LAST structural rather than a request — the architect's turn is over before the language exists. Provenance is unchanged and honest: ACE's writes stay `origin: ai` / `needs-review`, nothing is marked reviewed on anyone's behalf. *Enforced:* `test/skills/app-language-layer.test.ts`. | ACE team |
+| 2026-08-23 | **New component `entity-state-taxonomy` (ace#1564).** The followed entity's state model — the phase names and which activity/step numbers belong to each phase — existed only as PROSE in the PDD's § Entity Lifecycle, and nothing in `pdd-to-deliver-app`'s brief-composition checklist asked for it. The architect needs those option sets to build the phase-filtered step picker `longitudinal-visits` requires, so on `spark-facilitator/20260820-0817` it invented them: the PDD's `1 = Planning (steps 1–14)` … `4 = Transition (steps 23–24)`, sourced from Spark's own published FCAP guide sitting in the run's `inputs/`, shipped as `1 = "Introduction and community entry" (steps 1–4)` … `4 = "Sustainability and graduation" (steps 23–24)`, with all 24 step names invented too. Learn then teaches one mapping while Deliver offers another, a pilot window pinned to `Goal Setting (Planning, Steps 1–7)` straddles two phases, and `no-inferred-backstory` fails on a REAL partner's own published process, in front of real workers. The component **ships no vocabulary**: the taxonomy is DERIVED from the PDD's typed `entity_state_taxonomy` handoff (or the source document it names, read out of `inputs/`) and the build HALTS when it is absent — hard-coding a canonical state set would be the mirror image of the defect, and systematic. Paired 1:1 with the eval's `entity_state_fidelity` hard-gate and the build's `pdd-to-deliver-app § Step 4l`. *Enforced:* `test/lib/entity-state-taxonomy.test.ts` + `test/skills/entity-state-taxonomy-component.test.ts` + `test/skills/deliver-l0-loop-integrity.test.ts`. | ACE team |
+| 2026-08-20 | **New component `fixed-instrument-transcription` (ace#1527).** A `[FIXED]` published instrument's point values reached the Nova architect as PROSE in the Step-3 brief, and nothing anywhere re-opened the source file sitting in the run's own frozen `inputs/`. On `hh-poverty-targeting/20260819-1435` that shipped 9 of 17 point values wrong and all 101 poverty-likelihood values invented, past `validate_app` (structure, not values), past `pdd-to-deliver-app-eval` (grades against a narrative PDD, so a wrong constant is conformant prose) and past `app-release-qa` (counts and install-time behaviour). The component carries both halves: a brief paragraph telling the architect to transcribe exactly and to STOP rather than invent when a constant is missing, and the skill-side check (`pdd-to-deliver-app § Step 4k`) that diffs the built literals against the source file via `lib/instrument-constants.ts` — extraction trusted FIRST (an undecoded `t="s"` shared-string index reads as a plausible number: `score 4 -> 79.0`), then `diffScoringConstants` and `compareMaxScore`. Paired 1:1 with the eval's new `fixed_instrument_fidelity` hard-gate. Sibling of `instrument-grounded-examples`: that one makes the Learn app TEACH the real instrument, this one makes the Deliver app IMPLEMENT it. Also a licence rule — the PPI permits digitising the scorecard and its lookup tables only UNMODIFIED. *Enforced:* `test/lib/instrument-constants.test.ts` + `test/skills/deliver-l0-loop-integrity.test.ts`. | ACE team |
 | 2026-08-17 | **Nova shipped a real per-language channel; ACE builds multilingual again — `english-only-ui` → `app-language-layer` (PR #1463, superseding ace#968/#1391; Jon).** Verified live against `tools/list`: **95 tools, up from 81 on 2026-08-14**, carrying six itext-shaped language atoms (`get_languages`, `get_translatable_content`, `add_language`, `update_language`, `remove_language`, `update_translations`) — translation units with source fingerprints, provenance, review state and protected reference parts. The 2026-08-14 English-only decision rested on that channel not existing; it now does, so the decision is superseded, NOT reversed on taste. Jon's call: fully implement, but **English is always the source language and the review surface** (every app always gets a complete English version), and translations are reviewed like any other artifact — English included — with no bespoke native-speaker gate. Contract proven live on scratch app `b4e2c8fd`, not inferred: `add_language` COPIES rather than translates; automatic translation covers only a checked-in 57-language set with no MCP trigger (Chichewa = `not-evaluated`), so ACE authors the strings; `needs-review` text **IS served to workers**, so review is bookkeeping and not a publish gate; and editing an English string demotes its translation to `out-of-date` whose `effective` **falls back to English** — hence the load-bearing **translate-LAST** ordering rule. `defaultLanguage` stays `en` for now (one `update_language set-default` call to change). Inline stacking stays retired and is now a hard fail. Table B's multilingual row is DELETED — it is no longer a toolchain gap. *Enforced:* `test/skills/app-language-layer.test.ts`. | ACE team |
 | 2026-08-14 | **ACE builds English-only app UIs; `localization-layer` retired and `localization_match` INVERTED (ace#1391, superseding ace#968; Jon).** Re-verified Nova's live surface: zero hits for `itext`/`locale`/`i18n`/`translat` across all **81** tools (was 63 on 2026-07-31), `update_app` carries only `name`, and the architect's own 70k-char operating prompt never mentions languages; the surface's only language parameter is `defaultLanguageCode` on messaging automations. Since 2026-07-30 the sanctioned fallback had been stacking every language inline in one label — Jon's call: that is a terrible solution and localization should be solved properly when it can be solved at all, so until Nova ships a real per-language channel ACE ships an honest monolingual UI rather than a convincing fake. Component `localization-layer` → **`english-only-ui`** (same trigger, opposite instruction: build English, do not stack, do not hunt for a translations parameter, record the decision in the build memo). Eval dimension `localization_match` → **`language_conformance`**, same 8% and same null-when-N/A: English-only is now FULL CREDIT, stray stacked strings score 5 + `[WARN]`, systematic inline stacking or an in-app language selector is ≤3 → `fail`. Both calibration anchors amended — the ITN negative control's `localization_match ≤3` clause is REMOVED, not relaxed (the same artifact now scores full credit there; the other three dimensions still force `fail`). Phase 1 still records the working language — it drives training, facilitation, the OCS chatbot and the solicitation — but must not assert a translated app; multilingual UI is now a **Table B** row (buildable in CommCare via itext, closed on ACE's builder — never call it a platform limit). *Enforced:* `test/skills/english-only-ui.test.ts`. | ACE team |
 | 2026-08-14 | **New component `branch-scoped-groups` (ace#1015).** A group whose questions only make sense on one branch of a discriminator must be gated on that discriminator. Ungated, the `savings` group on spark-facilitator/20260728-1338 displayed on both branches of `meeting_conducted` and asked the next-meeting date twice with incompatible constraints, so rescheduling for TODAY was a dead end on the branch the PDD required to be frictionless. Paired with `pdd-to-deliver-app-eval § field_answerability` (e). | ACE |
@@ -1615,3 +1936,7 @@ the effective bar. One repair round, then re-grade.
 | 2026-08-12 | **`discriminating-assessment-items` enforcement moves off the author onto a measured build-time probe (closes ace#1119).** The component shipped a mandatory PRE-RELEASE SELF-CHECK graded by the same agent that wrote the bank — while the component's own text records that author self-prediction here is worthless (ace#1014's rewrite 2 self-predicted 5–7/12 and measured 9–10/12). New `pdd-to-learn-app § 4d` replaces the prediction with a measurement at build time, alongside the existing 4a/4b/4c post-build pre-checks: two separate agents, PDD-derived FLW persona, stems and options only, independently permuted neutral labels, picks committed before reveal, scored against the live `qN_score` calculates. Gate is `untrained_max × 100 >= the PDD's unlock threshold` → rewrite the items the probe got right, **bounded at two cycles**, then record a residual and proceed. Deliberately a FLOOR, not the eval's contrast: it catches only 'the protected population passes cold', and the brief says explicitly not to tune against it beyond clearing it — chasing an absolute cold score is what ace#1187 cost two authoring cycles. Calibrated on three real banks with large margins (decorative hh-poverty 20260722 fires at 1.00; spark-facilitator 20260810 clears at 0.55; hh-poverty 20260730 clears at 0.17). Skips below 5 scored items (degenerate, ace#1042). Carries a topology note: the step calls `Agent` so it must run at level 0, which holds because `commcare-setup` is executed inline — if the skill is ever dispatched as a subagent, skip and let the eval carry it rather than restructuring the phase. The self-check paragraph stays as authoring hygiene, now labelled as such. | ACE team |
 | 2026-08-13 | **Retired the cold-read probe on BOTH sides; `discriminating-assessment-items` is now enforced by a structural audit (ace#1206).** The 2026-08-12 entries above hardened a persona-based blind-reader measurement in two places — a blocking build-time floor in `pdd-to-learn-app § 4d` and a trained-minus-untrained contrast in `pdd-to-learn-app-eval § assessment_discrimination`. Both are removed. **(1)** The eval's gate was arithmetically the statistic the same revision had just declared too noisy to gate on: `delta <= 1 - untrained_ratio`, tight whenever the trained reader scores 100%. **(2)** More fundamentally, the untrained reader is an LLM told to role-play a low-literacy CHW, and an LLM's floor is its own competence — it still reads English fluently, does the arithmetic, and eliminates options. For a CHW curriculum whose taught rules are largely "record what happened, honestly", the proxy passing cold is the EXPECTED result for a GOOD bank, so it cannot be a failure signal; the only way to drive it down is arbitrary trivia, which is harder to learn and less useful in the field. The metric's gradient pointed away from good material for the cohort it protected. No ACE bank has ever been put in front of a real CHW, so the LLM->CHW inference was never validated while being load-bearing for a gate. Trigger: `spark-facilitator/20260812-1635` — untrained persona 11/12 twice with identical miss sets, trained 12/12, on a build scoring 8.45 with complete trilingual coverage, worked examples from the real instrument and correct conditional gating. **The replacement asks the same question structurally**: enumerate the taught rules where common sense gives the WRONG answer (a convention that reads backwards, a deliberate non-payment, an inclusion rule, a named window or threshold) plus the high-consequence operations, map each scored item to the rule it keys on, and score coverage with counter-intuitive rules weighted double — from the artifact, with no persona, no dispatched agents and no run-to-run noise. An item whose distractors are all rejectable on sight is EXCLUDED from coverage rather than deducted for, so the penalty scales with how hollow the bank is — a capped deduction let nine hollow items cost the same as two and failed the negative control on measurement. Uncovered rules return as `repairs[]`, a work order the orchestrator hands to `pdd-to-learn-app` (never applied by the judge, which would converge on passing itself), capped at one round. Component text went 216 -> ~120 lines; the authoring guidance now leads with TOPIC selection and counter-intuitive coverage, and option craft is explicitly hygiene. Kept from the retired pass: the framing that an item nobody can answer without the training is perfect even if it looks easy. Negative control unchanged — `hh-poverty-targeting/20260722-1341` covers ~0 counter-intuitive rules and takes the absurd-distractor deduction on every item. | ACE team |
 | 2026-08-13 | **New `screen-grouping` component — nothing governed screen composition (hh-poverty-targeting/20260812-2034).** A Nova `kind: group` compiles to a CommCare field-list, so every child shares ONE scrollable screen — and no component said so at build time: `observable-before-derived` governs question ORDER, `constraint-locality` governs CONSTRAINTS, and that was the whole surface. `pdd-to-deliver-app`'s Steps 4a-4f checked field counts, one-form-per-module, case write-back, case-list columns, the deliver marker and option sources; `pdd-to-deliver-app-eval` had ten dimensions. None looked at how many questions share a screen. So an architect grouping by relevance-condition (defensible on its own terms) put **all ten PPI indicators plus the household roster repeat on one screen**, cleared every Phase 3 gate, and scored `field_answerability` **9.5**. It surfaced two steps later while authoring the Phase 6 smoke recipe — after upload — costing a re-upload, a fresh HQ app id and an orphan to soft-delete; after Phase 4 it would have cost a delete-and-recreate of the Connect opportunity. **This is explicitly NOT a one-question-per-screen rule** (operator ruling, Jon 2026-08-13: multiple questions per screen is good design when they belong together; it just "shouldn't be a super long scroll") and must never be graded as one. The component states the coherence rule — group by a shared recall period / answer source / instruction, split when that changes, and give a question its own screen precisely when its rule DIFFERS (the 30-day electricity item among 7-day consumption items earns its own screen, and that separation is itself a teaching aid). Thresholds live in `lib/screen-shape.ts` so the brief, the build check and the eval cannot drift. Also extends `assessment-gate` (b): when the PDD names required topics and a per-topic minimum, the GATING bank must cover THOSE topics — a topic tested only in the non-gating pre-test is not covered by the gate, and a deliberate re-allocation must be named in the build memo. *Enforced:* `pdd-to-deliver-app § Step 4g` + `test/lib/screen-shape.test.ts` (regression anchor is the exact shipped group). | ACE team |
+| 2026-08-23 | **`constraint-locality` gains a zero-row carve-out — a MINIMUM-rows gate must be bound OUTSIDE the repeat it counts (ace#1560).** The rule as written ("may reference only `.` or same-repeat siblings") licensed the one shape that silently never fires: on `hh-poverty-targeting/20260819-1435` (Deliver app 8c57579d-bc5a-40df-8e60-0c26d030bb38, released v5) `member_confirm` — a field INSIDE the `roster` repeat — carried `constraint="count(/data/roster[member_confirm = 'yes']) >= 1"`. A constraint on a node inside a repeat is evaluated per repeat INSTANCE, so at zero repetitions it never evaluates at all, and a completed visit with an EMPTY roster was submittable: `i2_household_size` derived 0 and the PPI card forfeited its largest single indicator (31 points). Invisible to the FLW (no score is shown) and invisible to a device walk for the same reason — it took an eval reading the released binds. Locality and reachability are different properties and only the first was checked. Verified against the runtime rather than argued: played through upstream `commcare-cli.jar` (`org.javarosa.engine.XFormPlayer`), the defective form COMPLETED entry with the repeat declined and emitted `<i2_household_size>0</i2_household_size>`; the same rule bound after the repeat blocked the identical walk with `Input yes is invalid!`. The check is deliberately narrow — only a LOWER bound (`>= N` / `> N` and reversed) is a minimum; a cap (`count(…) <= 10`) is correctly placed inside the repeat and must never be flagged. *Enforced:* `lib/constraint-locality.ts` (`findMinimumCardinalityGate`, `kind: 'dead-repeat-cardinality-gate'`, severity `blocker`) + `lib/constraint-locality.test.ts`, with the real shipped bind as the negative control; halts in `app-release-qa` as `dead-repeat-cardinality-gate`. | ACE team |
+| 2026-08-25 | **`grid-menu-display` is no longer briefed to Nova (closes dimagi-internal/ace#1632).** The component was in the `pdd-to-{learn,deliver}-app` emit-checklists — i.e. its Brief paragraph went verbatim into the `/nova:autobuild` brief — while its own **Enforced by** says it is applied POST-BUILD by `app-hq-settings` (Phase 3 Step 2.65) via `commcare_set_menu_display` + `commcare_set_app_menu_display`. Nova's authoring surface has no menu-display-format control at all, so every architect build was asked for something structurally impossible and reported a spurious "unmet requirement" in the build memo — the one artifact meant to carry REAL deviations — twice per run (Learn + Deliver). Live on `bednet-check-2-visit/20260825-1310`: the Learn architect searched the deferred tool catalogue three ways, found no atom, and reported it unmet; Step 2.65 then applied all three fields HQ-side on the first attempt and verified them from the raw app doc. Both emit-checklist entries now say **do NOT put it in the Nova brief** and name the post-build owner, and the component carries a `DO NOT BRIEF THIS` bullet stating the general rule (a component enforced by a post-build skill is never briefed). *Enforced:* `test/skills/post-build-components-not-briefed.test.ts`. | ACE team |
+| 2026-08-25 | **`live-photo-capture` is no longer briefed to Nova either (closes dimagi-internal/ace#1640).** The sibling instance of the ace#1632 defect, one component over: it sat in `pdd-to-deliver-app`'s emit-checklist while its own **Enforced by** says it is applied POST-BUILD by `app-hq-settings` § Step 3 (`commcare_get_form_source` -> inject `acquire` -> `commcare_patch_xform`) and gated by `app-release-qa` (`camera-only-appearance-missing`) — and `pdd-to-deliver-app-eval` already said in so many words that it "is not representable in the Nova blueprint". Confirmed against Nova's LIVE `add_fields` / `edit_field` schemas rather than our own docs: no field kind has an `appearance` slot (`caseWrite.mode` saves a link to the attachment, which is a different thing), so the paragraph was unsatisfiable by any call the architect has. Entry now marked **do NOT put it in the Nova brief** with the post-build owner and gate named, plus a `DO NOT BRIEF THIS` bullet here. The `KNOWN_UNMARKED` ledger row in `test/skills/post-build-components-not-briefed.test.ts` is deleted, so the rail now enforces the rule with no exception. | ACE team |
+| 2026-08-25 | **`connect-supported-capabilities-only`'s brief no longer instructs UNCONDITIONAL case-list authoring (closes dimagi-internal/ace#1652).** The clause conflated two different things: *don't use case SEARCH* (correct, always) and *therefore give each menu a case LIST* (correct only for a menu a worker navigates THROUGH to reach an existing record). On a registration-only module the entry's only session datum is `function="uuid()"`, so CommCare pushes no entity-selection screen and the authored columns are unreachable by construction — `app-release-qa` Step 2.8 raises `[BLOCKER] case-list-unreachable` on exactly that shape. ace#1281 closed this class at the OTHER producer (`pdd-to-deliver-app` § 4d's case-list *heal*, which now correctly declines), but § 4d only ever fires on a module whose `caseListConfig.columns` is EMPTY — and this brief, whose trigger is **always**, had already populated it. Same class, different door: the configuration was authored upstream of its own guard. Observed on `hh-poverty-targeting/20260824-1404` (HQ app `f94db1bd…`, build v10 `is_released: true`): one `<entry>`, one `uuid()` datum, a dead 4-column detail set traceable to this paragraph. It is also unhealable after the fact — Nova refuses to remove the last visible Results column from a module that declares a case type — and the PDD (`archetype: atomic-visit`, census-saturation, each household surveyed at most once) implies no followup form, so neither documented remediation was available. The second half of the clause is now scoped to navigate-through menus, with the registration-only carve-out stated explicitly. Checked while in the file: no other always-on component instructs case-list authoring. *Enforced:* `test/skills/component-brief-case-list-scoping.test.ts`. | ACE team |

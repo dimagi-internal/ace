@@ -247,6 +247,29 @@ describe('parsePaymentUnitTable', () => {
     expect(pu.optional_deliver_units).toEqual([]);
   });
 
+  // dimagi-internal/ace#1642: the atom description used to call `id` and
+  // `description` reliable. They are not. `id` is the table's leading `#`
+  // column — a per-opp DISPLAY INDEX — so the PU that createPaymentUnits
+  // returned as `id: 2495` reads back here as `id: 1` (observed live on
+  // `bednet-check-2-visit/20260825-1310`), and `description` is never
+  // rendered by this table at all. `payment_unit_uuid` is the only durable
+  // identifier the listing carries. Pinned so the doc cannot drift back.
+  it('`id` is the display index, not the server PK, and `description` is always empty (ace#1642)', () => {
+    const html = `<table>${thead7}<tbody>
+      <tr class="even"><td>1</td><td>Verified follow-up day</td><td>2026-08-25</td><td>2026-12-22</td><td>60</td><td>1</td><td>1</td>
+        <td><a href="/a/ai-demo-space/opportunity/7cea3952/payment_unit/5e106d34-4ef2-46dc-b0e5-fa2229ffd011/edit">edit</a></td></tr>
+    </tbody></table>`;
+    const out = parsePaymentUnitTable(html);
+    expect(out).toHaveLength(1);
+    // The create response for this PU carried id 2495; the listing shows 1.
+    expect(out[0].id).toBe(1);
+    expect(out[0].id).not.toBe(2495);
+    // 450 chars stored server-side; the table renders none of it.
+    expect(out[0].description).toBe('');
+    // The durable identifier — equal to the create response's payment_unit_id.
+    expect(out[0].payment_unit_uuid).toBe('5e106d34-4ef2-46dc-b0e5-fa2229ffd011');
+  });
+
   it('regression: rejects pre-0.13.2 reading where cells[4] was treated as amount', () => {
     // The old parser would have returned amount=100 (from cells[4], the
     // "Total Deliveries" column) and max_total=20 (from cells[5], the

@@ -484,4 +484,32 @@ describe('citation currency vs DEFAULT_APK_VERSION (#972)', () => {
       'the header must point at the recipe that actually recorded the observation',
     ).toMatch(/deliver-sync\.yaml/);
   });
+
+  // The other half of the same class (dimagi-internal/ace#1479). The ratchet
+  // above stops a recipe from CITING a stale atlas; this stops the atlas from
+  // silently falling a version behind in the first place. #1479 existed
+  // because DEFAULT_APK_VERSION moved to 2.63.2 while the only atlas on disk
+  // was 2.62.0 — nothing failed, so nobody noticed for months, and the stale
+  // citations #972 had to hedge were a downstream symptom of exactly that.
+  //
+  // Keyed off DEFAULT_APK_VERSION so the NEXT APK bump fails loudly here
+  // rather than quietly re-opening this issue.
+  it('an atlas exists for the default APK version', () => {
+    const src = readFileSync(
+      fileURLToPath(new URL('../../../mcp/mobile/client.ts', import.meta.url)),
+      'utf8',
+    );
+    const def = src.match(/DEFAULT_APK_VERSION\s*=\s*'([\d.]+)'/)![1];
+
+    const atlasDir = fileURLToPath(new URL('../../../docs/mobile-atlas/', import.meta.url));
+    const expected = `connect-${def}.md`;
+
+    expect(
+      readdirSync(atlasDir),
+      `docs/mobile-atlas/${expected} is missing. DEFAULT_APK_VERSION is ${def}, so the\n` +
+        `narrative atlas is a version behind — write it (see ace#1479 for the shape:\n` +
+        `a Provenance-and-coverage table tagging every surface calibrated / carried-over /\n` +
+        `uncovered) rather than leaving palette recipes citing an older map.`,
+    ).toContain(expected);
+  });
 });

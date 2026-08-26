@@ -77,6 +77,16 @@ avoids burning AVD time on screenshots that don't change.
 Before dispatching Step 1, verify these. Each one is a class of
 silent-failure prevention learned from earlier real-world dogfood.
 
+**SESSION-SCOPED PRECONDITION — re-run on EVERY entry into Phase 6,
+including a mid-phase resume.** The binding item below is a fact about *this
+Claude Code session*, not about the run: MCP subprocesses bind at session
+start. `run_state.yaml` is per-RUN state that outlives the session, so a
+step recorded `done` by a previous session never satisfies it — **treat this
+checklist as unrun on entry** and run it before the first not-yet-done step,
+even when the phase resumes mid-way. Restore, don't adapt (CLAUDE.md § Phase
+preconditions are restored, not adapted). The class was measured on Phase 3's
+twin gate: dimagi-internal/ace#1604.
+
 - [ ] **The `ace-mobile` MCP is bound at level 0 this session — CHECK
       THIS FIRST, before any AVD probe.** Every mobile step below calls an
       `ace-mobile` atom (`mobile_ensure_avd_running`,
@@ -188,6 +198,28 @@ silent-failure prevention learned from earlier real-world dogfood.
         renders as a "New Opportunities" card. Do NOT gate on `claimed`.
       - **`match.claimed === true`** → the opp is already In Progress for this
         user; `connect-claim-opp` takes its already-claimed branch.
+
+      **THIS GATE INVERTS UNDER THE PER-RUN DEMO PHONE — and that path is OFF
+      by default (ace#1289).** Check `perRunTestUserEnabled()`
+      (`lib/per-run-test-user.ts`; env `ACE_PER_RUN_TEST_USER`, fails CLOSED on
+      anything but an explicit affirmative). **Off → everything above applies
+      verbatim; nothing changes.** On → `match === null` here is EXPECTED, not a
+      `[BLOCKER]`: the run minted a phone nobody has registered yet, and Connect
+      creates the invite → `OpportunityAccess` link only at invite time and only
+      for an existing ConnectID user (`opportunity/tasks.py`). Classify with
+      `classifyPerRunPreRegistrationGate(match)` and PROCEED; the blocking gate
+      moves to `app-screenshot-capture` **Step 3b**, after the device registers
+      and the invite is re-sent, where `classifyPerRunPostRegistrationGate`
+      requires `connect_user_id !== null` before any walk. Read the phone from
+      `…connect.ace_test_user.phone` (REQUIRED at the Phase 4 boundary when
+      `per_run: true`), not from `${ACE_E2E_PHONE}`.
+
+      **Do not flip the switch on to unblock a run.** The precondition is: *the
+      7 camera ids in `connect-register-from-otp.yaml` are calibrated against a
+      live 2.63.2 `mobile_capture_ui_dump`, and one fresh-signup registration
+      has completed on 2.63.2*. Until both hold, per-run phones route every run
+      through a photo-capture surface whose `runFlow.when visible:` guard fails
+      SILENTLY — trading a bounded scroll cost for a total Phase 6 outage.
 
       **Known caveat (unresolved):** on 2026-07-25/26 two pending invites
       (LEEP, Malaria ITN) did NOT surface on the device as claimable cards
@@ -524,6 +556,17 @@ fix the recipe, and `drift` (an anchor moved) goes through the manual
 calibrate procedure — `skills/selector-map-heal` § When to run names
 the remedy per classification. Routing either to the heal skill
 recreates the #811/#893 inversion.
+
+Two classifications are NON-verdicts and must never reach the heal skill
+(dimagi-internal/ace#1571): `superseded` (a later dispatch of the same
+recipe already replaced that attempt — stale forensics preserved by
+#1034's wipe exemption) and `non-app-surface` (every node is home screen
+or system chrome, so the app was not foregrounded). Both used to emit
+`unmapped-surface` / `needs_tier2: true`, and on
+`hh-poverty-targeting/20260819-1435` a **passing** Deliver leg therefore
+routed an operator to author selector rows for the Android launcher.
+Name the real fact in the summary — "attempt superseded by a passing
+retry", "the app was not in the foreground" — and do not name the heal.
 
 ### Why six text skills instead of one
 

@@ -13,6 +13,7 @@ import {
   computeVisualCoverage,
   resolveModuleRefs,
   STENCILS,
+  STENCIL_PLACEHOLDERS,
   buildSlidesRequestsV2,
   type BuildOptsV2,
   type StencilKey,
@@ -1380,5 +1381,135 @@ describe('resolveManifest — template precedence (#873)', () => {
       'common',
     );
     expect(resolveManifest({ template: { x: 'template' } }).get('x')).toBe('template');
+  });
+});
+
+// ============================================================================
+// Stencil / builder placeholder parity (dimagi-internal/ace#1503)
+// ============================================================================
+
+describe('stencil/builder placeholder parity (#1503)', () => {
+  // One minimal-but-valid slide per layout. Image refs resolve against the
+  // manifest v2Yaml() already declares.
+  const SLIDE_FIXTURES: Record<string, string> = {
+    cover: `- id: s1
+        layout: cover
+        title: T
+        subtitle: S
+        date: "2026-08-18"`,
+    section: `- id: s1
+        layout: section
+        title: T`,
+    agenda: `- id: s1
+        layout: agenda
+        title: T
+        items:
+          - { label: One, duration: 5m }`,
+    content: `- id: s1
+        layout: content
+        title: T
+        body: B`,
+    walkthrough: `- id: s1
+        layout: walkthrough
+        title: T
+        image: 'drive:scr1'
+        body: B`,
+    mobile_flow: `- id: s1
+        layout: mobile_flow
+        title: T
+        steps:
+          - { image: 'drive:scr1', caption: C1 }
+          - { image: 'drive:scr2', caption: C2 }`,
+    web_screen: `- id: s1
+        layout: web_screen
+        title: T
+        image: 'drive:web1'
+        caption: C`,
+    mobile_zoom: `- id: s1
+        layout: mobile_zoom
+        title: T
+        image: 'drive:zoom1'
+        callouts: [A, B]`,
+    two_column: `- id: s1
+        layout: two_column
+        title: T
+        left: { heading: LH, body: LB }
+        right: { heading: RH, body: RB }`,
+    stats: `- id: s1
+        layout: stats
+        title: T
+        stats:
+          - { big: "90%", label: L1 }`,
+    timeline: `- id: s1
+        layout: timeline
+        title: T
+        steps:
+          - { label: Day 1, detail: Arrive }
+          - { label: Day 2, detail: Begin }`,
+    checklist: `- id: s1
+        layout: checklist
+        title: T
+        items: [A, B]`,
+    exercise: `- id: s1
+        layout: exercise
+        title: T
+        duration: 10m
+        body: B`,
+    closing: `- id: s1
+        layout: closing
+        title: T
+        body: B`,
+  };
+
+  /** Tokens the builder targets on the SLIDE body (notes-page ones excluded). */
+  function targetedTokens(layout: string): string[] {
+    const yamlStr = v2Yaml('      ' + SLIDE_FIXTURES[layout]);
+    const spec = parseTrainingSpec(yamlStr);
+    const reqs = buildSlidesRequestsV2(spec, v2Opts(yamlStr));
+    return reqs
+      .filter((r: any) => r.replaceAllText)
+      .filter((r: any) =>
+        // {{NOTES}} lives on <pageId>:notes, not on the stencil body.
+        !(r.replaceAllText.pageObjectIds ?? []).some((id: string) => id.endsWith(':notes')),
+      )
+      .map((r: any) => r.replaceAllText.containsText.text);
+  }
+
+  it.each(Object.keys(SLIDE_FIXTURES))(
+    '%s: every token the builder targets exists on its stencil',
+    (layout) => {
+      const declared = new Set(STENCIL_PLACEHOLDERS[layout as StencilKey]);
+      const orphans = [...new Set(targetedTokens(layout))].filter((t) => !declared.has(t));
+      expect(
+        orphans,
+        `${layout} fills ${JSON.stringify(orphans)}, which ${STENCILS[layout as StencilKey]} ` +
+          `does not contain. Those replacements are no-ops, and any stencil token left unfilled ` +
+          `renders as literal text on the slide (#1503).`,
+      ).toEqual([]);
+    },
+  );
+
+  it('timeline fills BODY — the specific regression from #1503', () => {
+    const tokens = targetedTokens('timeline');
+    expect(tokens).toContain('{{BODY}}');
+    expect(tokens.filter((t) => t.startsWith('{{STEP'))).toEqual([]);
+  });
+
+  it('timeline BODY carries every declared step', () => {
+    const yamlStr = v2Yaml('      ' + SLIDE_FIXTURES.timeline);
+    const spec = parseTrainingSpec(yamlStr);
+    const reqs = buildSlidesRequestsV2(spec, v2Opts(yamlStr));
+    const body = (reqs as any[]).find(
+      (r) => r.replaceAllText?.containsText?.text === '{{BODY}}',
+    );
+    expect(body).toBeTruthy();
+    expect(body.replaceAllText.replaceText).toContain('Day 1');
+    expect(body.replaceAllText.replaceText).toContain('Arrive');
+    expect(body.replaceAllText.replaceText).toContain('Day 2');
+    expect(body.replaceAllText.replaceText).toContain('Begin');
+  });
+
+  it('every stencil key has a declared placeholder set', () => {
+    expect(Object.keys(STENCIL_PLACEHOLDERS).sort()).toEqual(Object.keys(STENCILS).sort());
   });
 });

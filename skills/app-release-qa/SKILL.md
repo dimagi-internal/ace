@@ -482,7 +482,12 @@ Any remaining finding is a `[BLOCKER]` `entity-id-grain`:
 - `no-entity-component` — fires **even with nothing declared**, because a key of
   worker + date + answers is worker-and-day scoped by construction.
 
-`checked === false` (no readable `entity_id`) is "not applicable", NOT a pass.
+`report.status === 'unable'` (no readable `entity_id`) means the check **did
+not run** — NOT a pass. Render it with `formatGrainReport(report)`, record it
+in the verdict's `checks[]` with its `reason`, and treat the dedup grain as
+UNVERIFIED rather than clean. `report.detail` and `report.ok` are unreachable
+on that branch by construction (`lib/check-outcome.ts`); if you expected the
+form to set `entity_id`, the extractor is the bug.
 
 **Scoring arithmetic — always, every Learn form carrying item scores
 (dimagi-internal/ace#1035).** CommCare has **no "mark this option correct"
@@ -505,8 +510,15 @@ import { checkScoringArithmetic, formatScoringReport }
 const report = checkScoringArithmetic(formXml);
 ```
 
-`checked === false` means the form carries no item scores — "not applicable",
-NOT a pass. Any finding is a `[BLOCKER]` `assessment-scoring-arithmetic`; name
+`report.status === 'unable'` means the check **did not run** — no bind matched
+an item-score node. That is NOT a pass: record it in the verdict's `checks[]`
+with its `reason` and treat the scoring as UNVERIFIED. **If the form visibly
+DOES carry item scores, the `ITEM_SCORE` regex is the bug, not the form** —
+that exact failure has now shipped four times (#1332 → #1538 → #1576 →
+#1634), most recently sending both Learn scoring forms on
+`bednet-check-2-visit/20260825-1310`, gating assessment included, down this
+path while the gate reported fine. Any finding is a `[BLOCKER]`
+`assessment-scoring-arithmetic`; name
 the kind and the nodeset, and route the fix to `pdd-to-learn-app`. The five
 mechanical classes: `missing-term` (rollup omits an item), `extra-term`
 (rollup names a phantom), `denominator-mismatch` (`* 100 div N` where N is not
@@ -527,9 +539,11 @@ import { checkAssessmentRetryLeak, formatRetryLeakReport }
 const report = checkAssessmentRetryLeak(formXml);
 ```
 
-`report.checked === false` means the form carries no score-gated result labels
-(nothing to leak into) — that is "not applicable", NOT a pass. Any entry in
-`report.leaks` is a `[BLOCKER]` `assessment-retry-answer-leak`: name the label
+`report.status === 'unable'` means the check **did not run** — the form carries
+no score-gated result labels, so there was nothing to leak into. That is NOT a
+pass: record it in the verdict's `checks[]` with its `reason`. If the form DOES
+gate a retry message on the score, the recovery matchers are the bug. Any entry
+in `report.findings` is a `[BLOCKER]` `assessment-retry-answer-leak`: name the label
 nodeset and the leaked option, and route the fix to `pdd-to-learn-app` Step 4c
 (replace the retry text with a pointer to the module content).
 
@@ -538,7 +552,7 @@ lists fail-branch labels whose text could not be resolved and answer literals
 with nothing to match against; `report.ok` is false whenever it is non-empty,
 and `formatRetryLeakReport` prints a `BLIND` block. Emit
 `assessment-retry-leak-blind` and fix the *form*, not the gate. This exists
-because the check reported the benign `checked: false` on every released CCZ
+because the check reported the benign old `checked: false` on every released CCZ
 until 2026-08-14 (#1332): it matched only `<`/`<=` while the compiler emits
 `not(score >= N)`, and it read inline `<label>` text while the compiler moves
 all label text into `<itext>`. Both are properties of a released CCZ — the only
@@ -606,13 +620,38 @@ free prose written per build, so a phrase list mis-grades any form whose
 author phrased it differently (and mis-grades every language-stacked form
 built before 2026-08-14 outright).
 
-`severity: 'blocker'` → halt with `[BLOCKER]` `non-local-constraint`
-(naming each field, the foreign node, and "move the constraint onto the
-node it is about"). `severity: 'warn'` → emit `[WARN]`
-`cross-screen-constraint` and continue. Record per-app under
-`constraint_locality` in the verdict:
+Each violation also carries a `kind`, because two different defects halt
+here and their remedies differ:
+
+- `kind: 'non-local'` — the ace#980 class above.
+- `kind: 'dead-repeat-cardinality-gate'` — a **minimum-rows gate bound
+  INSIDE the repeat it counts** (dimagi-internal/ace#1560). A constraint on
+  a node inside a repeat is evaluated per repeat INSTANCE, so at zero
+  repetitions it never evaluates at all — the one input the gate exists to
+  reject. This shape satisfies locality *exactly* (a `count()` over your own
+  repeat is a same-repeat reference), which is why it needed its own check:
+  locality and reachability are different properties. The violation carries
+  `deadGate: { repeat, countArg, comparison, minimumRows }`.
+
+  Read `kind` on every violation. A report whose violations you bucket by
+  `severity` alone loses the remedy — both kinds are `blocker`, and "move
+  the constraint onto the node it is about" is the WRONG instruction for a
+  dead gate (it is already on a node it is about).
+
+`severity: 'blocker'` + `kind: 'non-local'` → halt with `[BLOCKER]`
+`non-local-constraint` (naming each field, the foreign node, and "move the
+constraint onto the node it is about"). `kind:
+'dead-repeat-cardinality-gate'` → halt with `[BLOCKER]`
+`dead-repeat-cardinality-gate`, naming the field, the repeat, and the
+remedy the checker already whitelists: **move the gate to a question
+immediately after the repeat**, where it evaluates at zero rows. (Nova
+cannot carry it on the repeat container itself — `edit_field` on a repeat
+answers `kind "repeat" carries no 'validate' slot`, ace#1560.)
+`severity: 'warn'` → emit `[WARN]` `cross-screen-constraint` and continue.
+Record per-app under `constraint_locality` in the verdict:
 `{ constraints_checked, violations: [...] }` (each violation carrying its
-`severity`). Zero violations records `constraint_locality: pass`.
+`severity` AND its `kind`). Zero violations records
+`constraint_locality: pass`.
 
 **Relevance reachability — always, every form with relevance conditions
 (dimagi-internal/ace#996).** The temporal sibling of the check above: a
@@ -626,7 +665,26 @@ import { checkRelevanceReachability, formatRelevanceReachabilityReport }
 
 It flags any `relevant` referencing a field answered LATER, resolving
 calculates transitively so a hidden calculate over a later answer inherits
-that answer's position and can't launder it. Two severities:
+that answer's position and can't launder it.
+
+**Read the report's REAL fields (dimagi-internal/ace#1539).**
+`RelevanceReachabilityReport` is
+`{ relevancesChecked: number, violations: RelevanceViolation[] }`, and each
+violation carries `whollyUnreachable: boolean`. There is **no** `checked`, no
+`unreachable`, and no `partial` field — reaching for those names yields
+`undefined` on every form, which renders as "nothing found" and reports a
+BLIND PASS on the one check whose whole job is catching a field that can never
+display. Derive the two buckets explicitly:
+
+```ts
+const wholly  = report.violations.filter((v) => v.whollyUnreachable);
+const partial = report.violations.filter((v) => !v.whollyUnreachable);
+```
+
+`relevancesChecked === 0` means the form carries no relevance conditions —
+"not applicable", NOT a pass, the same rule every other checker here follows.
+
+Two severities:
 
 - `whollyUnreachable: true` — every reference is later, so the field can
   **never** display. `[BLOCKER]`.
@@ -831,7 +889,9 @@ per_app:
 #   camera_only_uploads:   pass | not-required-by-pdd | [<offending upload refs>]
 #   geopoint_binds:        pass | [<offending field paths>]
 #   constraint_locality:   pass | { constraints_checked, violations: [...] }
-#   relevance_reachability: pass | { checked, unreachable: [...], partial: [...] }
+#   relevance_reachability: { relevances_checked, wholly_unreachable: [...], partial: [...] }
+#                          # derived from violations[].whollyUnreachable (ace#1539);
+#                          # the lib exposes NO checked/unreachable/partial fields
 #   grid_menu_display:     { use_grid_menus, grid_form_menus,
 #                            modules_checked, modules_gridded, non_grid: [...] }
 #                          # all three fields are BLOCKER-gated (ace#1082)
@@ -946,6 +1006,19 @@ defects.
   Only `severity: 'blocker'` violations halt; questions sharing an
   `appearance="field-list"` group are one screen and are not violations
   at all (ace#1019).
+- `dead-repeat-cardinality-gate` — a minimum-rows gate (`count(<repeat>…)
+  >= N`, N >= 1) is bound to a node INSIDE the repeat it counts, so it
+  never evaluates at zero repetitions: the visit submits with an empty
+  repeat and whatever the repeat feeds derives from nothing (see Step 4 +
+  dimagi-internal/ace#1560, where an empty roster forfeited the PPI card's
+  largest single indicator, 31 points, with nothing on screen to betray
+  it). **This one is invisible to a device walk** — the same reason the FLW
+  never sees it — so the released binds are the only place it surfaces.
+  Operator fix: add a gate question **immediately after the repeat**
+  carrying the same rule (the shape this checker already whitelists), and
+  drop the inside-the-repeat copy; then re-release and re-run
+  `app-release-qa`. Not fixable on the repeat container: Nova answers
+  `kind "repeat" carries no 'validate' slot` (ace#1560).
 - `cross-screen-constraint` — `[WARN]`, not a halt. A `constraint` reaches
   into another screen, but it also references its own node, so the FLW
   clears it by changing the answer in front of them. Worth tightening

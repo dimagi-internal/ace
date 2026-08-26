@@ -670,8 +670,60 @@ export function identityOfEditRow(row: DecisionOverrideRow): ReviewerIdentity {
  * `pending` — parked in `inputs/decision-overrides.yaml`, binds by
  *   construction when a run next raises the id. NOT a routing failure:
  *   nothing was dropped, so it must never render as UNROUTED.
+ * `stale`   — completed runs have gone by WITHOUT raising the id, so the
+ *   value is saved but nothing reads it. Overrides match on `id` alone and
+ *   an unmatched id is ignored by construction
+ *   (`lib/decision-overrides.ts`), so a design change that retires or
+ *   renames a decision silently retires the reviewer's answer with it.
+ *   Before this state existed every such row fell through to `pending` and
+ *   read "binds on the next run" forever — the one view built to tell a
+ *   reviewer where their input went asserting the opposite of the truth
+ *   (ace#1549). Same shape as `UNROUTED` for comments: fail LOUD rather
+ *   than look fine.
  */
-export type EditBinding = 'applied' | 'pending';
+export type EditBinding = 'applied' | 'pending' | 'stale';
+
+/**
+ * Evidence that a decision id is no longer raised: one run that ran the
+ * pipeline to the END and recorded the ids it raised.
+ *
+ * COMPLETED is load-bearing and is why this is caller-supplied rather than
+ * derived from the latest `decisions.yaml`. A run that halts at a Phase 2→3
+ * boundary raises no Phase 3 decision at all, so absence from it proves
+ * nothing; treating it as evidence would mark every downstream override
+ * `stale` and make this view MORE misleading than the fall-through it
+ * replaces. See `skills/feedback-ledger/SKILL.md § 3` for how to decide a
+ * run completed (`run_state.yaml`, closeout reached) and how to collect
+ * `raisedIds`.
+ */
+export interface CompletedRunDecisions {
+  /** Run id, e.g. `20260818-1130`. Rendered as the evidence. */
+  runId: string;
+  /** Every decision id that run's `decisions.yaml` recorded. */
+  raisedIds: readonly string[] | ReadonlySet<string>;
+  /**
+   * ISO timestamp the run finished. A run that finished BEFORE the edit was
+   * saved cannot be evidence about it, and a run with no parseable
+   * timestamp cannot be ordered against it — neither counts.
+   */
+  completedAt?: string;
+}
+
+/**
+ * How many completed runs must go by without raising an id before the edit
+ * reads `stale`.
+ *
+ * TASTE CALL, not implied by the code (ace#1549). Two, because a decision
+ * can be raised conditionally — an archetype-specific question is absent
+ * from a run that took the other branch, and one such run would flip a
+ * perfectly live override to `stale`. Two consecutive misses makes that
+ * coincidence unlikely while still surfacing a genuine retirement within
+ * days. The asymmetry favours acting: a false `stale` is visible and
+ * self-correcting (the reviewer says "no, keep it"), a false `pending` is
+ * the silent lie this state exists to kill. Override per call via
+ * `staleAfterCompletedRuns` if an opp wants a different bar.
+ */
+export const DEFAULT_STALE_AFTER_COMPLETED_RUNS = 2;
 
 export interface EditEntry {
   kind: 'edit';
@@ -689,6 +741,13 @@ export interface EditEntry {
   at?: string;
   identity: ReviewerIdentity;
   binding: EditBinding;
+  /**
+   * Ids of the completed runs that ran AFTER this edit and did not raise
+   * its decision id, in the order the caller supplied them. The evidence
+   * behind `stale` — and, below the threshold, the reason a `pending` row
+   * is worth a second look. Empty when no evidence was supplied.
+   */
+  missedRuns: string[];
   /** They put ACE's own default back. Still an act; still shown. */
   revert: boolean;
   /** How many earlier values this row buried (its `history` depth). */
@@ -713,9 +772,16 @@ export interface EngagementCoverage {
   comments: number;
   commentsShipped: number;
   commentsUnrouted: number;
+  /**
+   * Entries a person still has to act on: a disposition parked on a human,
+   * or an edit gone `stale`. A stale edit counts because the reviewer is
+   * the only one who can say whether the retired decision still matters,
+   * and this number is what the reply email leads with (SKILL § 4).
+   */
   awaitingHuman: number;
   edits: number;
   editsApplied: number;
+  editsStale: number;
 }
 
 export interface Engagement {
@@ -750,17 +816,56 @@ export function isEditPubliclyRepublishable(_entry: EditEntry): boolean {
 }
 
 /**
+ * Which completed runs postdate this edit and failed to raise its id?
+ *
+ * Conservative in both directions: an unparseable timestamp on EITHER side
+ * means the run cannot be ordered against the edit, so it is not evidence.
+ * The cost of skipping evidence is a row that stays `pending` one run
+ * longer; the cost of using it would be telling a reviewer their live
+ * answer is dead.
+ */
+function missedRunsFor(
+  row: DecisionOverrideRow,
+  completedRuns: readonly CompletedRunDecisions[],
+): string[] {
+  if (completedRuns.length === 0) return [];
+  const savedAt = row.decided_at ? Date.parse(row.decided_at) : NaN;
+  if (Number.isNaN(savedAt)) return [];
+  const missed: string[] = [];
+  for (const run of completedRuns) {
+    const finishedAt = run.completedAt ? Date.parse(run.completedAt) : NaN;
+    if (Number.isNaN(finishedAt) || finishedAt < savedAt) continue;
+    const raised =
+      run.raisedIds instanceof Set
+        ? (run.raisedIds as ReadonlySet<string>)
+        : new Set(run.raisedIds as readonly string[]);
+    if (!raised.has(row.id)) missed.push(run.runId);
+  }
+  return missed;
+}
+
+/**
  * Derive one edit entry per saved override row.
  *
  * `boundValues` maps decision id -> the override value a run's
  * `decisions.yaml` actually recorded. Absent, EVERY edit is `pending`: we do
  * not claim an edit landed without evidence that it did.
+ *
+ * `completedRuns` is the other half of that honesty. Without it an edge no
+ * run will ever bind is indistinguishable from one that binds tomorrow, and
+ * both read "PENDING NEXT RUN" (ace#1549). Supply the completed runs since
+ * the edit was saved and an id that has stopped being raised reads `stale`
+ * instead — see {@link CompletedRunDecisions} for why COMPLETED runs are
+ * the only admissible evidence, and
+ * {@link DEFAULT_STALE_AFTER_COMPLETED_RUNS} for the threshold.
  */
 export function deriveEditEntries(
   source: DecisionOverridesFile | readonly DecisionOverrideRow[],
   opts: {
     boundValues?: ReadonlyMap<string, string>;
     dispositions?: readonly Disposition[];
+    completedRuns?: readonly CompletedRunDecisions[];
+    staleAfterCompletedRuns?: number;
   } = {},
 ): EditEntry[] {
   const rows: readonly DecisionOverrideRow[] = Array.isArray(source)
@@ -774,20 +879,38 @@ export function deriveEditEntries(
     byRef.set(d.feedbackRef, list);
   }
 
+  const completedRuns = opts.completedRuns ?? [];
+  // A caller asking for 0 is asking "any miss is a miss"; below one run
+  // there is no evidence at all, so clamp rather than mark everything stale.
+  const threshold = Math.max(
+    1,
+    Math.trunc(
+      opts.staleAfterCompletedRuns ?? DEFAULT_STALE_AFTER_COMPLETED_RUNS,
+    ),
+  );
+
   return rows.map((row) => {
     const ref = formatEditRef(row.id);
     const isRevert =
       row.ai_default !== undefined &&
       row.override === row.ai_default &&
       !row.override_reasoning;
+    const applied = opts.boundValues?.get(row.id) === row.override;
+    // Evidence of absence is only interesting for a row that has NOT bound:
+    // a value a run recorded is a fact, and no later silence unmakes it.
+    const missedRuns = applied ? [] : missedRunsFor(row, completedRuns);
     const entry: EditEntry = {
       kind: 'edit',
       ref,
       decisionId: row.id,
       to: row.override,
       identity: identityOfEditRow(row),
-      binding:
-        opts.boundValues?.get(row.id) === row.override ? 'applied' : 'pending',
+      binding: applied
+        ? 'applied'
+        : missedRuns.length >= threshold
+          ? 'stale'
+          : 'pending',
+      missedRuns,
       revert: isRevert,
       supersedes: row.history?.length ?? 0,
       dispositions: byRef.get(ref) ?? [],
@@ -856,6 +979,7 @@ export function buildEngagements(input: {
           awaitingHuman: 0,
           edits: 0,
           editsApplied: 0,
+          editsStale: 0,
         },
       };
       buckets.set(identity.key, b);
@@ -914,8 +1038,12 @@ export function buildEngagements(input: {
       } else {
         c.edits += 1;
         if (entry.binding === 'applied') c.editsApplied += 1;
+        else if (entry.binding === 'stale') c.editsStale += 1;
       }
-      if (entry.dispositions.some((d) => d.status === 'awaiting-human')) {
+      if (
+        entry.dispositions.some((d) => d.status === 'awaiting-human') ||
+        (entry.kind === 'edit' && entry.binding === 'stale')
+      ) {
         c.awaitingHuman += 1;
       }
     }
@@ -973,10 +1101,21 @@ function renderEdit(entry: EditEntry, lines: string[]): void {
     lines.push('');
   }
   // An edit is SELF-ROUTING for its own value: it changed the input the next
-  // run reads, so it can never be UNROUTED. What it can be is not-yet-bound.
+  // run reads, so it can never be UNROUTED. What it can be is not-yet-bound —
+  // or, once completed runs stop raising the id, bound to nothing at all.
   if (entry.binding === 'applied') {
     lines.push(
       `- **APPLIED** · edit — \`${entry.decisionId}\` is your answer, not ACE's.`,
+    );
+  } else if (entry.binding === 'stale') {
+    const n = entry.missedRuns.length;
+    lines.push(
+      `- **STALE — NOT BINDING** · edit — the last ${n} completed run` +
+        `${n === 1 ? '' : 's'} (${entry.missedRuns.join(', ')}) never asked ` +
+        `\`${entry.decisionId}\`, so your answer is saved but nothing is ` +
+        'reading it. That decision was most likely retired or renamed by a ' +
+        'design change. **Tell us if it should still apply** — we will ' +
+        're-raise it under the id the current design uses.',
     );
   } else {
     lines.push(
@@ -1025,7 +1164,7 @@ export function renderEngagementMarkdown(
   if (coverage.edits > 0) {
     parts.push(
       `${coverage.edits} edit${coverage.edits === 1 ? '' : 's'} — ` +
-        `${coverage.editsApplied} applied`,
+        `${coverage.editsApplied} applied, ${coverage.editsStale} stale`,
     );
   }
   parts.push(`${coverage.awaitingHuman} need a human`);

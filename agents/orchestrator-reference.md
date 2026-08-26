@@ -1119,6 +1119,56 @@ threshold balances "let a slow but live skill finish" against "don't
 wait on a dead one." Tighten or loosen per skill if needed via a
 documented exception in the skill's SKILL.md.
 
+### Producers landed, only the summary + write-back are missing — finish inline
+
+The boundary fence's heal instruction for `verify.ok=false` is "dispatch each
+missing artifact's `producedBy` via `Skill(<producedBy>)`". That works for
+artifacts a SKILL owns. It does not work for the one artifact every phase owns
+itself — `<N>-<phase>/<phase>_summary.md`, whose `producedBy` in
+`lib/artifact-manifest.ts` is the PHASE, and a phase is not a `Skill`
+(dimagi-internal/ace#1505).
+
+The shape is common enough to name, because incremental writes make it the
+EXPECTED outcome of an interrupted phase rather than an exotic one: a phase
+agent writes each artifact as it is produced, so when it dies late — an API
+5xx, a context wall, an operator halt — every producer artifact is on Drive and
+only the phase's own bookkeeping is missing. `verify_phase_artifacts` reports
+`N-1 of N`, `classify_phase_writeback` reports `missing`/`in_progress`, and a
+literal reading of the retry branch says re-dispatch the whole phase.
+
+**Do not.** Re-dispatching re-runs every producer AND every `-eval` that
+already completed — and an `-eval` is an LLM judge, so the second run draws a
+DIFFERENT verdict that overwrites the first. The run silently takes a second
+sample and keeps whichever landed last. That is strictly worse than the gap it
+was trying to close.
+
+When **every** artifact except the phase summary is present and its per-skill
+verdicts are on Drive, finish inline at level 0:
+
+1. Read the landed verdicts (`<producer>-qa_result.yaml`,
+   `<producer>-eval_verdict.yaml`). They are the evidence; do not re-derive
+   their content.
+2. Write `<N>-<phase>/<phase>_summary.md` from them, and say in the summary
+   that the phase was completed inline after an interruption, what the
+   interruption was, and what was NOT re-run.
+3. Write the phase block per § Phase Write-Back Contract, with `status_note`
+   naming the same thing.
+4. Record the interruption in `run_state.yaml.notes`.
+5. Re-run the fence and require it green before advancing.
+
+**Only when the producers actually landed.** If a PRODUCER artifact is
+missing, heal that producer through its own skill first — this is finish-inline
+for bookkeeping, never a way to skip work. That distinction is the same one
+§ Skill Invocation Discipline draws: composing a producer's output inline is
+always wrong; writing the phase's own summary from artifacts the producers
+already wrote is not.
+
+Live: `spark-facilitator/20260817-1610` Phase 2. A server-side 500 killed the
+subagent after all five required artifacts had landed — the journeys eval
+verdict wrote at 23:06:42Z, past the agent's last status line — leaving only
+the summary and the write-back. Finishing inline preserved both eval verdicts;
+re-dispatching would have re-rolled two LLM judges for nothing.
+
 ### External-resource phases: finish inline, don't re-dispatch on a malformed write-back
 
 The re-dispatch rules above (§ State-as-canary, and the boundary fence's
@@ -1556,6 +1606,43 @@ fabricated `app_id`s at Phase 3, and the only fix is a full Claude Code
 restart. Catching it at pre-flight (second 0) instead of at Phase 3 Step 0
 (~25 min in) saves the operator from running Phases 1–2 only to halt. See
 jjackson/ace#582.
+
+**What it does NOT cover — read `pass` narrowly (dimagi-internal/ace#1604).**
+The probe is static: a stale cache FILE, plus `NOVA_API_KEY`'s PRESENCE.
+Neither says anything about which principal the live Nova MCP connection
+actually bound — a session can hold a resolvable Nova connection authed as a
+completely different account and this block still reports a green `pass`
+verdict (measured on `spark-facilitator/20260820-0817`). The emitted block now carries
+a `scope:` line saying so. Principal identity is asserted in-session, where
+it is observable: `ace-orchestrator.md § Pre-flight Step 2a` (the `list_apps`
+check for a `pending`/`in_progress` `commcare-setup`) and
+`commcare-setup.md § Step 0b`.
+
+**`ocs_generation` halt class — and why preflight makes one live
+exception.** Every other OCS check the doctor runs is env-presence or a
+reachability GET; `ocs_shared_collection_team` proves a collection is
+*reachable*, never that the model behind it can answer. So a dead,
+revoked, or usage-capped team GENERATION provider stayed invisible until
+Phase 5's quick gate — after Phases 1-4 and 6 had run. That class has now
+cost two sessions: ace#743 (revoked key, 2026-06-09) and
+bednet-check-2-visit/20260817-1720 (usage cap, 2026-08-19, where the
+run's own config was flawless — 8/8 indexed, `pipeline_valid`, published
+v2, channel enabled). ace#743's preventer shipped and worked, but it is a
+*diagnosis* fix that fires inside Phase 5; #1516 is the *timing* fix.
+
+Three details worth not rediscovering: (1) the generation provider is not
+the one any env var names — `OCS_LLM_PROVIDER_ID` is the EMBEDDINGS
+provider, so the probe discovers generation from
+`ocs_inspect_chatbot`'s `pipeline.nodes[].llm.provider_id`; (2)
+embeddings and generation sit on separate keys, so a probe that only
+checked indexing reports green through this failure; (3) OCS masks the
+real provider error behind a generic "intermittent load" fallback unless
+`debug_mode` is on, so the block carries the session's `trace` URL —
+open that, not the OCS error text, before calling it a platform outage.
+
+`skip` is not `fail`. Live means it can be un-runnable (no session,
+`--no-live`, env unset); treat `skip` as "unknown, proceed" and let
+`ocs_auth` explain it.
 
 **Don't probe `.env` before the doctor — anti-pattern.** Observed in real
 sessions (2026-05-24 e2e-malaria-rdt, 2026-05-26 bednet-spot-check): the

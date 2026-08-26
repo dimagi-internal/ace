@@ -37,21 +37,70 @@
  * tools that each need pristine state, run back to back, guarantee the second
  * sees dirty state.
  *
- * ## #1365 — the artifact framed under a fixed header
+ * ## #1365 — the artifact framed under a fixed header (RETRACTED, ace#1660)
  *
- * The labs page has a **~72px fixed top bar**. `scroll_to` uses Playwright's
- * `scroll_into_view_if_needed`, which lands the artifact's top edge at y < 72
- * — underneath the bar. The scene captures, the action reports ok, and seven
- * independent judges rediscovered the same defect in different words
- * (`motion_friction` 2 on 7 of 12 scenes; concept eval **2/5, fail**). The
- * control case is decisive: the only two scenes scoring 4 are the two that
- * scroll to `bottom`, where no fixed header can occlude anything.
+ * This module used to carry a `scroll-under-fixed-header` check: it flagged
+ * every `scroll_to` whose `offset` was under 72px and told the author to pass
+ * `offset: 96`. **Both halves were wrong, and the check is deleted. Do not
+ * re-add it.**
+ *
+ * 1. **The remediation named a field canopy REJECTS.** `ScrollToAction` in
+ *    canopy's `runtime/scripts/narrative/models.py` declares only `kind` and
+ *    `target` (plus `note` / `must_succeed` / `timeout_ms` from `_ActionBase`),
+ *    and `_ActionBase` sets `model_config = ConfigDict(extra="forbid")` — which
+ *    its own docstring calls "the whole point of the discriminated union".
+ *    Constructed against canopy 0.2.423:
+ *    `ScrollToAction(kind="scroll_to", target="…", offset=96)` →
+ *    `('offset',) Extra inputs are not permitted`. An author who followed the
+ *    remediation converted a passing spec into one canopy refuses.
+ *
+ * 2. **The premise was stale.** The recorder does not stop at
+ *    `scroll_into_view_if_needed`. `runtime/scripts/walkthrough/_lib/recorder.py`
+ *    chases it with an explicit centring scroll —
+ *    `window.scrollTo({top: y + window.scrollY - window.innerHeight / 2})` —
+ *    which puts the element's top edge at the vertical CENTRE of the viewport,
+ *    unreachable by a 72px fixed bar on any viewport taller than ~144px. That
+ *    is ace#1365's own fix, closed COMPLETED 2026-08-14; the check outlived it
+ *    and kept reporting a defect that had already been repaired.
+ *
+ * On bednet-check-2-visit/20260825-1310 it drew 5 findings, all false, on a
+ * spec that validates clean. There is no `offset`-shaped field in canopy's
+ * schema at any level, so the only honest levers on framing today are `scroll`
+ * to `top`/`bottom` (its `value` takes a pixel offset) or a per-scene
+ * `viewport`. This is the same shape as ace#1519 — a checker inventing syntax
+ * for a system it does not own — which is why the remediation vocabulary is
+ * now pinned by a test (see `test/lib/ddd-scene-actions.test.ts`).
+ *
+ * ## #1670 — the demonstration was impossible on the data
+ *
+ * Different failure, same shape: the spec is structurally perfect and
+ * semantically empty. On bednet-check-2-visit/20260825-1310 a scene filtered a
+ * **five-worker** cohort. Filtering 5 rows removes at most 4 of them, so the
+ * before-frame and the after-frame are the same screenshot minus a line or two
+ * and the demonstration has no observable effect. Every existing gate passed
+ * it — the action is well-formed (`checkSceneActions`), the spec is valid
+ * (`scripts.ddd.validate`) — and it was only caught by the concept judge after
+ * a full render, four iterations in, ending the loop `stopped_not_converged`
+ * at concept 3.0.
+ *
+ * The two numbers that decide it existed before the first frame was recorded:
+ * the generator's own `synthetic_generate_from_manifest` response carried
+ * `record_counts` = `{opportunity: 1, user_visits: 276, user_data: 5, ...}`.
+ * `demo-narrative` simply had no cardinality input — `realized.json` is a flat
+ * URL map by design, and `products.synthetic.source` carried no counts. So the
+ * skill could not tell a filter over 5 rows from one over 500.
+ *
+ * `checkSceneCardinality` is that check: each demonstration verb needs a
+ * MINIMUM cardinality on a specific axis to be observable, and the axis it
+ * needs is not always the axis the dataset is big on — 276 visits spread over
+ * one week is a trend demo with nothing to plot, on the same dataset where a
+ * worker filter has nothing to filter.
  *
  * ## Scope
  *
  * The RUNTIME halves belong in canopy's walkthrough runner — resolving an
  * ambiguous `text:` target to the interactive node, comparing a gate against
- * the captured before-frame, replaying restores, and offsetting the scroll.
+ * the captured before-frame, and replaying restores.
  * This module is the ACE half: what `demo-narrative` can decide about its own
  * spec before handing off to the DDD loop.
  */
@@ -59,8 +108,6 @@
 export interface SceneAction {
   kind: string;
   target?: string;
-  /** Pixels to leave above the artifact — see #1365. */
-  offset?: number;
 }
 
 export interface DddScene {
@@ -74,7 +121,10 @@ export type SceneFindingKind =
   | 'ambiguous-text-target'
   | 'non-discriminating-gate'
   | 'mutation-without-restore'
-  | 'scroll-under-fixed-header';
+  /** #1670 — the demonstration needs more cardinality than the data has. */
+  | 'insufficient-cardinality'
+  /** #1670 — the axis this demonstration depends on is not in the handoff. */
+  | 'unknown-cardinality';
 
 export interface SceneFinding {
   kind: SceneFindingKind;
@@ -87,11 +137,29 @@ export interface SceneReport {
   findings: SceneFinding[];
 }
 
-/** The labs shell's fixed top bar, measured on spark-facilitator (#1365). */
-export const FIXED_HEADER_PX = 72;
+/**
+ * canopy's recorder prefixes, verbatim.
+ *
+ * `_PREFIXES = ("css", "text", "testid", "aria", "role")` with
+ * `_PREFIX_SEPARATOR = ":"` in
+ * `runtime/scripts/walkthrough/_lib/targets.py` (read against canopy 0.2.423).
+ * `parse_target` looks for an exact `<prefix>:` match and returns
+ * `("auto", target)` for everything else — so any OTHER spelling (`css=`,
+ * `label:`, `xpath=`) falls through to the bare-string heuristic, i.e. the very
+ * ambiguous-text resolution these checks exist to guard against. There is no
+ * `=` form. (ace#1519.)
+ */
+const RECORDER_PREFIXES = ['css', 'text', 'testid', 'aria', 'role'] as const;
 
-/** Selector forms that name a CONTROL rather than whatever text matches first. */
-const CONTROL_SELECTOR = /^(role=|label:|css=|xpath=|testid=|aria=)/i;
+/**
+ * The subset that names a CONTROL rather than whatever text matches first —
+ * every recorder prefix except `text:` (the ambiguous form). `role:` also takes
+ * a name segment (`role:button:Save`), which is why matching is prefix-only.
+ */
+const CONTROL_SELECTOR = /^(css:|testid:|aria:|role:)/i;
+
+/** Strips any recorder prefix, so a word count sees the author's words only. */
+const ANY_RECORDER_PREFIX = new RegExp(`^(${RECORDER_PREFIXES.join('|')}):`, 'i');
 
 /**
  * Verbs whose click CREATES or DESTROYS something, so the same action finds a
@@ -101,7 +169,7 @@ const MUTATING_VERB =
   /\b(draft|create|send|submit|award|approve|reject|delete|discard|publish|invite|assign|archive)\b/i;
 
 function targetText(t: string | undefined): string {
-  return (t ?? '').replace(/^text:/i, '').trim();
+  return (t ?? '').replace(ANY_RECORDER_PREFIX, '').trim();
 }
 
 export function checkSceneActions(scenes: DddScene[]): SceneReport {
@@ -122,7 +190,7 @@ export function checkSceneActions(scenes: DddScene[]): SceneReport {
           detail:
             `click targets "${a.target}" by TEXT. A text selector resolves .first() in DOM order, and ` +
             'clicking a non-interactive node SUCCEEDS — so the action reports ok while nothing happens. ' +
-            'Target the control: role=… / label: / css= / testid=',
+            'Target the control with a recorder prefix — css: / testid: / aria: / role:',
         });
       }
 
@@ -131,8 +199,8 @@ export function checkSceneActions(scenes: DddScene[]): SceneReport {
           kind: 'mutation-without-restore',
           scene: name,
           detail:
-            `click "${targetText(a.target)}" creates or destroys a persistent object, so this scene is ` +
-            'NOT idempotent: on the second render the same action finds a different affordance and ' +
+            `click "${a.target}" creates or destroys a persistent object, so this scene is ` +
+            'NOT idempotent — on the second render the same action finds a different affordance and ' +
             'fails. Declare a `restore:` block that returns the page to this scene\'s precondition — ' +
             'and note it must run before EVERY render and before every frame-fit pass, since the ' +
             'verifier replays these actions too',
@@ -143,9 +211,23 @@ export function checkSceneActions(scenes: DddScene[]): SceneReport {
         // A gate must name something only the POST state contains. The tell of
         // a gate that cannot discriminate is that it is a bare prefix — no
         // number, no changed word — of text present either way.
+        //
+        // The heuristic is a WORD COUNT, so it only means anything on a target
+        // made of words. A control selector (`testid:`/`css:`/`aria:`/`role:`)
+        // names one specific element by id, and whether that element is present
+        // only in the post-state is a fact about the DOM that no amount of
+        // counting its id's words can answer — `testid:coverage-table` would be
+        // flagged and `testid:coverage-table-9` waved through, for the same
+        // gate. So: skip the heuristic when the author has already named a
+        // control, and apply it to `text:`/bare targets, whose words ARE the
+        // gate. Before ace#1660 only `text:` was stripped, so every control
+        // selector was measured with its prefix still attached and flagged
+        // unless its id happened to contain a digit — penalising exactly the
+        // form `ambiguous-text-target` tells authors to use.
+        const named = CONTROL_SELECTOR.test(a.target ?? '');
         const gate = targetText(a.target);
         const discriminating = /\d/.test(gate) || gate.split(/\s+/).length >= 4;
-        if (!discriminating) {
+        if (!named && !discriminating) {
           findings.push({
             kind: 'non-discriminating-gate',
             scene: name,
@@ -156,20 +238,225 @@ export function checkSceneActions(scenes: DddScene[]): SceneReport {
         }
       }
 
-      if (a.kind === 'scroll_to') {
-        const t = targetText(a.target).toLowerCase();
-        const anchored = t === 'bottom' || t === 'top';
-        if (!anchored && (a.offset ?? 0) < FIXED_HEADER_PX) {
-          findings.push({
-            kind: 'scroll-under-fixed-header',
-            scene: name,
-            detail:
-              `scroll_to "${targetText(a.target)}" has no offset clearing the ~${FIXED_HEADER_PX}px fixed ` +
-              'top bar. scroll_into_view_if_needed lands the artifact\'s top edge underneath it — the ' +
-              'scene still captures and the action still reports ok, the frame is just wrong. Pass ' +
-              `offset: ${FIXED_HEADER_PX + 24} or scroll to bottom`,
-          });
-        }
+    }
+  }
+
+  return { ok: findings.length === 0, findings };
+}
+
+/* ────────────────────────── #1670 — cardinality ────────────────────────── */
+
+/**
+ * The three axes a demonstration can need. Which one a verb needs is the whole
+ * point — a dataset can be large on one axis and empty on another, and the
+ * scene only cares about the axis its own demonstration acts on.
+ *
+ * - `rows`    — entities the surface enumerates one line per; what a filter,
+ *               a search, or a sort acts on.
+ * - `periods` — distinct time buckets the data spans; what a trend plots.
+ * - `groups`  — distinct groups (LLOs, sites, cohorts, arms) a comparison
+ *               contrasts.
+ */
+export type CardinalityAxis = 'rows' | 'periods' | 'groups';
+
+/**
+ * The realized dataset's shape, per axis. Sourced from the generator's own
+ * numbers via `demo-data-setup` — see `datasetShapeFromRecordCounts` for what
+ * `record_counts` can and cannot answer.
+ *
+ * An axis left `undefined` is UNKNOWN, not zero, and produces an
+ * `unknown-cardinality` finding rather than silence: silence on an unknown
+ * axis is precisely the ace#1670 failure, where the skill had no cardinality
+ * input at all and authored the scene anyway.
+ */
+export interface DatasetShape {
+  rows?: number;
+  periods?: number;
+  groups?: number;
+}
+
+/**
+ * Minimum cardinality per axis for the demonstration to be OBSERVABLE. Each is
+ * derived from what has to be visible in a captured frame, not picked to fit
+ * the one run that failed.
+ */
+export const MIN_CARDINALITY: Readonly<Record<CardinalityAxis, number>> = {
+  /**
+   * **12 rows for a filter / search / sort.**
+   *
+   * Principle: a filter demonstration is observable only if BOTH frames read
+   * as lists AND the difference between them registers without counting. So
+   * the after-state must still be a list (≥3 rows — two rows read as a pair,
+   * one reads as an empty state), and the filter must remove enough rows that
+   * the change is legible at a glance rather than a diff (~8 rows, roughly a
+   * third of a table's visible height at 1280x800, is the smallest drop a
+   * viewer registers as "the list got shorter"). 3 + 8 = 11, rounded to 12 —
+   * about one screenful of a dashboard table before it scrolls.
+   *
+   * The observed failure was 5, but 5 is not the rule: at 5 rows the maximum
+   * possible removal is 4 and the after-state is 1-2 lines, so it fails both
+   * halves at once. A 9-row cohort fails the second half alone and is just as
+   * unwatchable.
+   */
+  rows: 12,
+  /**
+   * **4 periods for a trend.**
+   *
+   * Principle: a trend claim is a claim about DIRECTION, and the narration
+   * always names a turn ("it was flat, then the coaching landed"). Two points
+   * are a line with no shape; three can show one change of direction but leave
+   * no baseline before it; four is the smallest series carrying a baseline,
+   * the turn, and a period after it — i.e. the smallest series where the claim
+   * is READ off the plot rather than asserted over it. Below 4, the honest
+   * scene is a single-value callout, not a trend.
+   */
+  periods: 4,
+  /**
+   * **3 groups for a comparison.**
+   *
+   * Principle: with two groups one is always above the other, so the ordering
+   * is the only possible outcome and carries no information about whether
+   * being behind is unusual. Three is the smallest set where a comparison
+   * shows a DISTRIBUTION — one group visibly off the pace of the others —
+   * which is what "this site needs attention" actually claims.
+   */
+  groups: 3,
+};
+
+/**
+ * Which axis each demonstration verb needs, and the vocabulary that names it.
+ *
+ * Derived from the scene the same way `checkSceneActions` derives its verbs —
+ * from the words in the declared action targets (any recorder prefix stripped)
+ * — plus the scene's own `title`, which is the author's name for the
+ * demonstration and often the only readable place the verb appears when the
+ * control is an opaque id like `testid:f1`.
+ *
+ * The vocabulary is deliberately TIGHT. A word that also occurs as ordinary
+ * spec syntax or dashboard chrome must not be in it: `top` is a `scroll`
+ * target, `weekly` is half the labs template names (`llo_weekly_review`), and
+ * either would fire this check on scenes that demonstrate nothing of the kind.
+ * Missing a demonstration costs one un-flagged scene; inventing one costs the
+ * author's trust in every flag after it.
+ */
+const DEMONSTRATION_VERBS: ReadonlyArray<{
+  axis: CardinalityAxis;
+  verb: string;
+  pattern: RegExp;
+}> = [
+  {
+    axis: 'rows',
+    verb: 'filter / search / sort',
+    pattern: /\b(filter|filters|filtered|filtering|search|searches|searched|sort|sorts|sorted|narrow|narrows|narrowed|refine|refines|refined|shortlist)\b/i,
+  },
+  {
+    axis: 'periods',
+    verb: 'trend',
+    pattern: /\b(trend|trends|trending|trajectory|timeline|progression|over time|week[- ]over[- ]week|month[- ]over[- ]month|recovery curve)\b/i,
+  },
+  {
+    axis: 'groups',
+    verb: 'comparison',
+    pattern: /\b(compare|compares|compared|comparison|versus|vs|benchmark|benchmarks|leaderboard|ranking|rankings|side[- ]by[- ]side)\b/i,
+  },
+];
+
+/**
+ * The generator's `record_counts`, read honestly.
+ *
+ * `synthetic_generate_from_manifest` returns e.g.
+ * `{opportunity: 1, user_visits: 276, user_data: 5, completed_works: 0,
+ *   completed_module: 0}`. Only ONE of those keys is an entity population a
+ * dashboard enumerates one row per: `user_data` (the worker cohort — the five
+ * workers of ace#1670). `user_visits` is the FACT table those rows aggregate,
+ * `completed_works` / `completed_module` are progress counters, and
+ * `opportunity` is the container. So:
+ *
+ * - `rows` is answerable, and defaults to `user_data`.
+ * - `periods` and `groups` are **NOT answerable from `record_counts`** — the
+ *   response carries no dates and no grouping. They come from the generator
+ *   MANIFEST (`demo-data-setup_manifest.yaml`: the `timeline` week span, and
+ *   the number of opportunities / LLO cohorts), which `demo-data-setup`
+ *   resolves and persists alongside the counts. Pass them via `known`.
+ *
+ * `known` also overrides `rows` — a dashboard that enumerates visits rather
+ * than workers has 276 rows, not 5, and only the skill that authored the
+ * dashboard knows which population it lists.
+ */
+export function datasetShapeFromRecordCounts(
+  recordCounts: Record<string, number> | undefined,
+  known: DatasetShape = {},
+): DatasetShape {
+  const rows = recordCounts?.user_data;
+  const shape: DatasetShape = {};
+  if (typeof rows === 'number') shape.rows = rows;
+  for (const axis of ['rows', 'periods', 'groups'] as const) {
+    if (typeof known[axis] === 'number') shape[axis] = known[axis];
+  }
+  return shape;
+}
+
+/**
+ * Flag any scene whose demonstration needs more cardinality than the realized
+ * dataset has (ace#1670).
+ *
+ * **This FLAGS, it does not reject** — and the distinction is deliberate. The
+ * rule reads the data's shape but not the dashboard's rendering, so it cannot
+ * know for certain WHICH population a given surface enumerates; a scene over a
+ * 5-worker cohort may legitimately be filtering 276 visit rows. Refusing a
+ * legal spec on a heuristic that can be wrong about the population is the
+ * ace#1238 failure class — a guard predicting a rejection and blocking correct
+ * work. A flag costs the author one decision and moves the discovery from
+ * "four render iterations in" to "before the first frame". The skill's
+ * contract is that every flag is RESOLVED explicitly — the demonstration
+ * changes, the data is regenerated, or the author records which population the
+ * surface actually lists — never silently carried past.
+ */
+export function checkSceneCardinality(
+  scenes: DddScene[],
+  shape: DatasetShape | undefined,
+): SceneReport {
+  const findings: SceneFinding[] = [];
+
+  for (const s of scenes ?? []) {
+    const name = s.title ?? '(untitled)';
+    const words = [
+      s.title ?? '',
+      ...(s.actions ?? []).map((a) => targetText(a.target)),
+    ].join(' ');
+
+    for (const { axis, verb, pattern } of DEMONSTRATION_VERBS) {
+      if (!pattern.test(words)) continue;
+      const need = MIN_CARDINALITY[axis];
+      const have = shape?.[axis];
+
+      if (typeof have !== 'number') {
+        findings.push({
+          kind: 'unknown-cardinality',
+          scene: name,
+          detail:
+            `this scene demonstrates ${verb}, which is observable only with enough ${axis} — at least ` +
+            `${need} — and the realized dataset's shape carries no ${axis} count. A filter over 5 rows ` +
+            'and one over 500 are indistinguishable from the spec alone, which is how ace#1670 reached ' +
+            'the concept judge. Read the generator record_counts and manifest shape that demo-data-setup ' +
+            'persists under products.synthetic.source, and pass them before authoring this scene',
+        });
+        continue;
+      }
+
+      if (have < need) {
+        findings.push({
+          kind: 'insufficient-cardinality',
+          scene: name,
+          detail:
+            `this scene demonstrates ${verb}, which needs at least ${need} ${axis} to be observable, ` +
+            `and the realized dataset has ${have}. The before-frame and the after-frame differ by too ` +
+            'little to read as a demonstration, so the scene renders green and shows nothing — the ' +
+            'ace#1670 stop trigger. Two branches, both taken BEFORE authoring — pick a demonstration ' +
+            `this dashboard's data can carry, or go back and regenerate with a larger cohort. If this ` +
+            `surface actually enumerates a different population than the ${axis} count given, say which ` +
+            'and pass that count',
+        });
       }
     }
   }

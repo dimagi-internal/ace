@@ -38,6 +38,7 @@
  */
 
 import { DOMParser } from '@xmldom/xmldom';
+import { type CheckOutcome, checked, unable, formatUnable } from './check-outcome.js';
 
 export type ScoringFindingKind =
   /** The rollup omits an item that exists. */
@@ -58,15 +59,34 @@ export interface ScoringFinding {
   detail: string;
 }
 
-export interface ScoringReport {
-  /** False when the form carries no scoring at all — not applicable, NOT a pass. */
-  checked: boolean;
-  ok: boolean;
-  itemScores: string[];
-  findings: ScoringFinding[];
-}
+/**
+ * `status: 'unable'` when the form carries no scoring at all. That is NOT a
+ * pass, and it is no longer expressible as one — see `lib/check-outcome.ts`.
+ * This helper's own `checked: false, ok: true` return was the canonical
+ * instance of the class (ace#1634).
+ */
+export type ScoringReport = CheckOutcome<ScoringFinding, { itemScores: string[] }>;
 
-const ITEM_SCORE = /^\/data\/(q[\w-]*?\d+)_score$/;
+// Item-score nodes are `<prefix><n>_score` where the prefix is whatever the
+// architect named the questions — `q1_score` on a post-test, `p1_score` on a
+// pre-test, and both in the same Learn app whenever it carries baseline AND
+// assessment instruments. This used to hard-code `q`, so a `p`-prefixed
+// pre-test matched zero items and the function returned `checked: false` —
+// which `app-release-qa` defines as "not applicable, NOT a pass". The gate
+// silently covered nothing on a form that did carry item scores
+// (dimagi-internal/ace#1538; observed on hh-poverty-targeting/20260819-1435,
+// Learn build 35384a8007114f29b5e04b9ac78274a2, modules-0/forms-0.xml).
+// ...and it must match at ANY depth. This used to anchor as
+// `^/data/<name>_score$`, admitting only a score node sitting DIRECTLY under
+// `/data`. Nova nests fields inside their section/group container, so on any
+// form built with `set_form_sections` — ACE's standard Nova output shape — the
+// score nodes are one level deeper and matched zero, and the function again
+// returned `checked: false`. ace#1538 fixed the PREFIX half of this regex and
+// never touched the DEPTH half (dimagi-internal/ace#1634; observed on
+// bednet-check-2-visit/20260825-1310, Learn build
+// 59e714e4d46b444690c3b7ea00be68ef, `/data/check_result/q1_score` and
+// `/data/your_baseline/b1_score`).
+const ITEM_SCORE = /^\/data\/(?:[\w-]+\/)*([a-z][\w-]*?\d+)_score$/;
 
 interface Bind {
   nodeset: string;
@@ -90,17 +110,27 @@ export function checkScoringArithmetic(xml: string): ScoringReport {
   const rollup = binds.find((b) => /\/user_score$/.test(b.nodeset));
 
   if (items.length === 0) {
-    return { checked: false, ok: true, itemScores: [], findings: [] };
+    return unable(
+      `the form declares ${binds.length} calculate bind(s) but none match an item-score node ` +
+        '(`<prefix><n>_score` at any depth under /data), so there is no scoring arithmetic to ' +
+        'verify. If this form DOES carry item scores, ITEM_SCORE is the bug',
+    );
   }
 
   const findings: ScoringFinding[] = [];
   const itemScores = items.map((i) => i.nodeset);
 
   for (const item of items) {
-    const question = item.nodeset.replace(/_score$/, '');
-    // The item must compare its OWN question. Copy-paste across 20 hidden
-    // fields is exactly how a wrong-but-plausible score is produced.
-    if (!new RegExp(`${question.replace(/\//g, '\\/')}\\b`).test(item.calculate)) {
+    // Match on the node's TAIL segment, not its full path. The score node and
+    // the question it scores are siblings only on a FLAT form; once the
+    // architect groups them into sections the score lives at
+    // `/data/check_result/q1_score` while the question is at
+    // `/data/check_q1/q1`, and a full-path derivation reports every correct
+    // item as `self-reference-missing`. Coupled to the ITEM_SCORE depth fix
+    // above — landing that one alone turns this into a false BLOCKER on
+    // exactly the forms it was widened to cover (ace#1634).
+    const question = ITEM_SCORE.exec(item.nodeset)?.[1] ?? '';
+    if (!new RegExp(`(^|/)${question}\\b`).test(item.calculate)) {
       findings.push({
         kind: 'self-reference-missing',
         detail: `${item.nodeset} never references ${question} — it scores a different question, or none`,
@@ -124,7 +154,7 @@ export function checkScoringArithmetic(xml: string): ScoringReport {
         `${items.length} item score(s) are computed but no user_score rolls them up — Connect reads ` +
         'user_score and would find nothing',
     });
-    return { checked: true, ok: false, itemScores, findings };
+    return { ...checked(false, findings), itemScores };
   }
 
   const referenced = new Set(
@@ -160,11 +190,11 @@ export function checkScoringArithmetic(xml: string): ScoringReport {
     });
   }
 
-  return { checked: true, ok: findings.length === 0, itemScores, findings };
+  return { ...checked(findings.length === 0, findings), itemScores };
 }
 
 export function formatScoringReport(r: ScoringReport): string {
-  if (!r.checked) return 'scoring-arithmetic: not applicable (form carries no item scores)';
+  if (r.status === 'unable') return formatUnable('scoring-arithmetic', r.reason);
   if (r.ok) {
     return `scoring-arithmetic: clean — ${r.itemScores.length} item score(s) roll up correctly`;
   }

@@ -148,21 +148,86 @@ describe('app-language-layer (PR #1463, superseding ace#968/#1391, 2026-08-17)',
     }
   });
 
-  it('both build skills carry the translate-LAST instruction into the Nova brief', () => {
-    // The architect's own operating prompt has no language step (70,643 chars,
-    // zero hits for itext/locale/multiling, read live 2026-08-17). If the brief
-    // does not say it, nothing will.
+  // ---------------------------------------------------------------------
+  // The ownership split (ace#1556, 2026-08-23).
+  //
+  // The 2026-08-17 decision said translations are AUTHORED BY ACE. The wiring
+  // asked `/nova:autobuild` to author them, and the architect's operating
+  // prompt (nova plugin 1.26.0 AND 1.27.0, skills/autobuild/SKILL.md +
+  // agents/nova-architect-autonomous.md, read verbatim off disk) says:
+  //
+  //   "Never treat your own language fluency as a substitute or bulk-translate
+  //    self-generated text through `update_translations`. Only save target text
+  //    supplied by the user"
+  //
+  // An /ace:run supplies no human target strings, so the architect declined and
+  // the layer was a silent no-op: spark-facilitator/20260820-0817 shipped 207
+  // units `origin: copied` / 0 ready in BOTH nya and tum.
+  //
+  // These three checks pin the split. Regressing any of them re-creates a build
+  // that reports a language layer and ships English under the language's name.
+  // ---------------------------------------------------------------------
+
+  /** Collapse markdown wrapping (newlines + blockquote markers) to single spaces. */
+  const unwrap = (t: string) => t.replace(/\n>?\s*/g, ' ').replace(/\s+/g, ' ');
+
+  it('the component assigns translation authoring to ACE at level 0, not the architect', () => {
+    const body = componentBody();
+    const flat = unwrap(body);
+    expect(body, 'must cite the issue the split was filed under').toMatch(/ace#1556/);
+    expect(
+      flat,
+      'must quote the architect-prompt clause that forbids it authoring translations — ' +
+        'a paraphrase is what let the conflict survive three days',
+    ).toMatch(/Only save target text supplied by the user/);
+    expect(body, 'must name ACE as the author, at level 0').toMatch(
+      /ACE at level 0|level 0, never the architect|ACE.{0,40}level.0/i,
+    );
+    // The recipe has to live somewhere runnable, not as an aspiration.
+    expect(body, 'must carry a level-0 recipe naming the two skill homes').toMatch(
+      /pdd-to-learn-app § 4e/,
+    );
+    expect(body, 'must carry a level-0 recipe naming the two skill homes').toMatch(
+      /pdd-to-deliver-app § 4m/,
+    );
+  });
+
+  it('both brief paragraphs forbid the architect calling any language atom', () => {
+    const body = componentBody();
+    const briefs = body.split('**Brief paragraph (verbatim)').slice(1);
+    expect(briefs.length, 'both the Deliver and Learn briefs must exist').toBe(2);
+    for (const brief of briefs) {
+      expect(
+        brief,
+        'the brief must tell the architect NOT to call the language atoms — ' +
+          'instructing an action its operating prompt forbids is ace#1556',
+      ).toMatch(/[Dd]o NOT add any language and do NOT call `add_language`/);
+      expect(unwrap(brief), 'the brief must say English only').toMatch(
+        /English, and \*?\*?only English/,
+      );
+    }
+  });
+
+  it('both build skills own the language layer at level 0, after the English is final', () => {
+    // translate-LAST is now STRUCTURAL: the architect's turn is over before the
+    // language exists. The step must therefore exist, run at level 0, and gate.
+    const steps = { 'pdd-to-learn-app': '4e', 'pdd-to-deliver-app': '4m' } as const;
     for (const parts of BUILD_SKILLS) {
+      const skill = parts[1] as keyof typeof steps;
       const body = read(...parts);
-      expect(body, `${parts[1]}: brief must order English-first / language-last`).toMatch(
-        /LAST/,
+      expect(body, `${skill}: must carry the level-0 language step`).toMatch(
+        new RegExp(`^${steps[skill]}\\. \\*\\*Language layer`, 'm'),
       );
-      expect(body, `${parts[1]}: brief must name the add_language call`).toMatch(
-        /add_language/,
+      expect(body, `${skill}: the language step must run at LEVEL 0`).toMatch(
+        /Language layer — runs at LEVEL 0/,
       );
-      expect(body, `${parts[1]}: brief must name the update_translations call`).toMatch(
-        /update_translations/,
-      );
+      expect(body, `${skill}: must cite the issue`).toMatch(/ace#1556/);
+      expect(body, `${skill}: must gate on out-of-date`).toMatch(/out-of-date/);
+      // The emit-checklist entry must NOT still tell the architect to author.
+      expect(
+        body,
+        `${skill}: the emit-checklist must not tell the architect to author translations`,
+      ).not.toMatch(/as the \*\*LAST\*\* build step, add the/);
     }
   });
 

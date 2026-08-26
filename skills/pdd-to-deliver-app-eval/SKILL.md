@@ -36,6 +36,7 @@ and `skills/eval-calibration/SKILL.md` for calibration methodology.
 | Phase 1 | `1-design/idea-to-pdd.md` | source PDD; archetype + Deliver App Specification + delivery unit drive expectation |
 | Phase 3 | `3-commcare/pdd-to-deliver-app_summary.md` | Deliver-app structure summary (`nova_app_id`, forms, fields) |
 | Nova MCP (optional) | `get_app({app_id: <nova_app_id>})` | authoritative field-by-field blueprint (recommended) |
+| Run root (conditional) | `runs/<run-id>/inputs-manifest.yaml` + the `file_id` it names | the published source file for a `[FIXED]` instrument, graded by § 5b `fixed_instrument_fidelity` (ace#1527). Read only when the PDD marks an instrument `[FIXED]`. |
 
 ## Products
 
@@ -80,7 +81,7 @@ and `skills/eval-calibration/SKILL.md` for calibration methodology.
 4. **Extract the built app's actual structure** from the Nova
    blueprint (or app summary). Build the matching structured snapshot.
 
-5. **Grade across 9 dimensions** — 5 conformance (45%) + 4 fitness
+5. **Grade across 10 dimensions** — 5 conformance (45%) + 5 fitness
    (55%). Each dimension is 0–10. Overall score is the weighted mean.
 
    **The fitness dimensions are graded against an external expert
@@ -112,7 +113,7 @@ and `skills/eval-calibration/SKILL.md` for calibration methodology.
    | **Data-quality validation** | 13% | Does the instrument *enforce* data quality? Graded vs what a deployable form should constrain, NOT vs the PDD: numeric bounds on counts (`household_size 1–30`), cross-field checks (`under_5 ≤ household_size`), phone-format regex where a phone field exists, char limits on free text, required `validate` on every credit-bearing field. **Hard-gate:** a data-capture instrument with near-zero validation (only a consent check + one range) → dimension **≤3**. Each whole class of missing constraint that a deployable build needs (counts unbounded, phone unformatted, free-text uncapped) = 1.5-point deduction. |
    | **Case persistence** | 12% | Do follow-up / case-update forms **write back the observations they capture**? A case-update form that captures new observations (retention, change, V2 readings) but writes **zero** case properties defeats its own purpose. **Hard-gate:** a case-update form that captures new user-facing observations and writes 0 case properties → dimension **≤2** (this is the exact ITN Visit-2 defect). **N/A rule:** single-form atomic-visit with no follow-up form has nothing to persist — score this dimension `null` and redistribute its weight proportionally across the other fitness dims (do NOT score it 10 — absence of the form isn't a win). |
    | **Field answerability (walkability)** | 8% | **Can a real user walk this form front-to-back in the real-world sequence, answering each question at the moment it is asked and fixing every error where it appears?** Graded by mentally walking the form in order as the FLW lives it — NOT by checking it against the PDD (the PDD usually leaves flow to ACE, which is why this is a fitness dimension). Two independent checks, each with its own hard-gate: **(a) Observable-before-derived** — no required, user-facing question may ask for a value that is a function of answers ordered AFTER it. The tell is an outcome / disposition / status field near the top of the form with downstream questions relevance-gated on it. **Hard-gate:** a user-facing outcome question precedes its own inputs → dimension **≤3** (ace#979: `visit_outcome` was question 1, with 20+ fields gated on it). **(b) Constraint locality** — every `constraint` / `validate` must be satisfiable on the screen where it fires, referencing only `.` or same-repeat siblings, with a `validate_msg` naming an action available on THAT screen. **Hard-gate:** any constraint references a node the user cannot edit from that screen → dimension **≤3** (ace#980: a 50m GPS-accuracy rule whose message said "recapture the location" sat on a later yes/no confirmation; a roster-minimum rule sat on an unrelated zone question). **(c) Relevance reachability** — a `relevant` clause must be decidable by the time the form walks past the field it gates. A relevance referencing a field answered LATER means the field is skipped and, if a later branch ends the form, never revisited. **Hard-gate:** a field whose relevance references ONLY later answers can never display → dimension **≤3** (ace#996: `outcome_note` submitted empty on exactly the two outcomes it existed to capture). A partially-decidable relevance is a 1-point deduction. **(d) Screen composition** — a `group` is a CommCare field-list, so every question inside it shares ONE scrollable screen. **This is NOT a one-question-per-screen criterion and must never be graded as one** (operator ruling, 2026-08-13: multiple questions per screen is good design when they belong together). Grade the two things that are actually defects: a screen carrying more answerable questions than a worker can hold in view, and a `repeat` nested inside a group (which does not render as its own repeat flow). **Do not eyeball the counts — run `checkScreenShape` from `lib/screen-shape.ts` over the blueprint** (same helper the build calls at `pdd-to-deliver-app § Step 4g`, so build-emit and eval-grade cannot drift). **Hard-gate:** any `severity: 'violation'` finding → dimension **≤3**. Each `severity: 'warn'` that the build memo does NOT justify is a 1-point deduction; a warn the memo justifies as one coherent set is no deduction. Cross-check against `app-release-qa`'s mechanical bind report when a released CCZ exists — that check is authoritative for (b) and (c); disagreeing with it means re-reading, not overriding. **(e) Cross-question satisfiability** — two REQUIRED questions on the same walk path that capture the same real-world value must not carry constraints a worker cannot satisfy together. Identifying the pair is your call (it is semantic); what the pair IMPLIES is arithmetic — **run `checkPairSatisfiable` from `lib/constraint-satisfiability.ts`**, do not eyeball the intervals. `satisfiable: false` (empty intersection) → **hard-gate ≤3**. `narrowed: true` with a non-empty intersection → **1-point deduction**: the worker can answer the first question with a date the form ACCEPTED and then be blocked on the second. `'unknown'` (a constraint the parser could not read) is judged by hand and must not be recorded as a pass. Live: spark-facilitator/20260728-1338 asked the next-meeting date twice — `. >= today()` then `. > today() and . <= today() + 30` — so rescheduling for TODAY was a dead end, on exactly the branch the PDD required to be reachable without friction. All of (a)/(b)/(c) passed on that form (ace#1015). |
-   | **Language conformance** | 8% | **HARD-FAIL dimension — RE-INVERTED 2026-08-17 (PR #1463, superseding ace#968/#1391). Read the criteria, not your memory: this dimension has flipped TWICE in four days.** Until 2026-08-14 complete inline coverage was full credit; from 2026-08-14 English-only was full credit; from **2026-08-17** Nova ships a real per-language channel and ACE builds it, so a *real translation layer* is full credit and English-only is a miss. Applies only when the PDD names a working language other than English; otherwise `null` + redistribute. **English is always the source language and the review surface** (standing decision, Jon, 2026-08-17 — see `_app-component-library.md § app-language-layer`). Grade against `get_languages` + `get_translatable_content` on the built app, plus the build memo: (a) **English source complete AND the working language present as a real target with authored translations, `out-of-date` = 0**, English still `sourceLanguage` → full credit, with an `[INFO]` recording the coverage counts; (b) **language added but thinly authored** — a substantial share of units still `origin: copied` (an English copy wearing the language's name) → **5** + `[WARN]` naming the roles left untranslated; (c) **no language layer at all** when the PDD names a working language → **≤3 → suite `fail`**; (d) **`out-of-date` > 0 at hand-off** → **≤3 → suite `fail`** — the English moved after translation and those strings silently fell back to English, which is the exact failure the translate-LAST rule exists to prevent; (e) **English is no longer the source language, or was removed/relabelled away** → **≤3 → suite `fail`**; (f) **systematic inline stacking** (labels carrying `English / <LANGUAGE>: …`, the pre-2026-08-14 pattern) or a **language-selector question** → **≤3 → suite `fail`** — a real channel exists now, so faking one is strictly worse than it was. **Review state is NOT a deduction.** ACE-authored translations are `origin: ai` / `review: needs-review` by construction and Nova serves them live; `needs-review` is an audit trail, not a defect, and it is cleared by the same human review the English copy gets — do not treat it as a special gate. **Quality note, not a deduction:** since the English is both the translation source and the fallback for every stale unit, surface a `[WARN]` where stems or labels are long, idiomatic or clause-heavy. |
+   | **Language conformance** | 8% | **HARD-FAIL dimension — RE-INVERTED 2026-08-17 (PR #1463, superseding ace#968/#1391). Read the criteria, not your memory: this dimension has flipped TWICE in four days.** Until 2026-08-14 complete inline coverage was full credit; from 2026-08-14 English-only was full credit; from **2026-08-17** Nova ships a real per-language channel and ACE builds it, so a *real translation layer* is full credit and English-only is a miss. Applies only when the PDD names a working language other than English; otherwise `null` + redistribute. **English is always the source language and the review surface** (standing decision, Jon, 2026-08-17 — see `_app-component-library.md § app-language-layer`). Grade against `get_languages` + `get_translatable_content` on the built app, plus the build memo: (a) **English source complete AND the working language present as a real target with authored translations, `out-of-date` = 0**, English still `sourceLanguage` → full credit, with an `[INFO]` recording the coverage counts; (b) **language added but thinly authored** — a substantial share of units still `origin: copied` (an English copy wearing the language's name) → **5** + `[WARN]` naming the roles left untranslated; **(b1) language added and NOTHING authored** — every unit `origin: copied`, 0 ready in the target → **≤3 → suite `fail`**, NOT a 5: an app that offers a language and serves English under its name is a false affordance, strictly worse than English-only, because the worker cannot tell it from a real translation. This is the exact signature of ace#1556 (`spark-facilitator/20260820-0817`: 207 copied, 0 ready, both targets) and it scored as merely thin under the pre-2026-08-23 anchors; (c) **no language layer at all** when the PDD names a working language → **≤3 → suite `fail`**; (d) **`out-of-date` > 0 at hand-off** → **≤3 → suite `fail`** — the English moved after translation and those strings silently fell back to English, which is the exact failure the translate-LAST rule exists to prevent; (e) **English is no longer the source language, or was removed/relabelled away** → **≤3 → suite `fail`**; (f) **systematic inline stacking** (labels carrying `English / <LANGUAGE>: …`, the pre-2026-08-14 pattern) or a **language-selector question** → **≤3 → suite `fail`** — a real channel exists now, so faking one is strictly worse than it was. **Review state is NOT a deduction.** ACE-authored translations are `origin: ai` / `review: needs-review` by construction and Nova serves them live; `needs-review` is an audit trail, not a defect, and it is cleared by the same human review the English copy gets — do not treat it as a special gate. **Quality note, not a deduction:** since the English is both the translation source and the fallback for every stale unit, surface a `[WARN]` where stems or labels are long, idiomatic or clause-heavy. |
 
    **Deduction rules:**
    - Any single dimension ≤3 → suite verdict `fail`, regardless of
@@ -126,8 +127,41 @@ and `skills/eval-calibration/SKILL.md` for calibration methodology.
    - **Inflation guard (0.9.1, mirrors `ocs-chatbot-eval`):** if the
      rubric surfaces ≥2 `[WARN]`-tier `auto_surfaced` entries, overall
      is capped at **8.5**.
-   - 2+ dimensions in 4–6 range → suite verdict `warn`.
-   - All scored dimensions ≥ 7 AND overall ≥ 7.5 → suite verdict `pass`.
+
+   **Terminal verdict bands — an ORDERED cascade, first match wins
+   (ace#1568).** Evaluate top to bottom and STOP at the first rule that
+   fires. The order is load-bearing: it is what makes the bands both
+   exhaustive (every reachable score vector lands somewhere) and
+   unambiguous (a vector matching two rules takes the more severe one).
+
+   1. Any scored dimension ≤3, **or** any § 5b hard-gate `[BLOCKER]` →
+      suite verdict `fail`.
+   2. Any scored dimension **< 7**, **or** overall < 7.5 → suite verdict
+      `warn`.
+   3. Otherwise — every scored dimension ≥ 7 **and** overall ≥ 7.5 →
+      suite verdict `pass`.
+
+   Rule 2 is the catch-all, not a special case. **Do not** read it as
+   "2+ dimensions in 4–6" (its pre-ace#1568 wording), and do not narrow
+   it back to a 4–6 *range* — scores here are fractional (every anchor is
+   stated at the half-point), so a range trigger leaves 3 < s < 4 and
+   6 < s < 7 homeless in exactly the same way. Under the old
+   three-independent-tests reading a build with **exactly one** dimension
+   in 4–6 matched no rule at all, and neither did one with every
+   dimension ≥ 7 but an overall under 7.5 — so the judge had to legislate
+   at grade time and two runs with identical scores could disagree. Live
+   case: `spark-facilitator/20260820-0817`, `language_conformance` **5.0**
+   with every other dimension ≥ 8.0, overall 8.58 → capped 8.5. Every
+   outcome the old wording produced is preserved — 2+ dimensions in 4–6
+   still lands on rule 2 — and the `fail` trigger is untouched at ≤3, so a
+   dimension at 3.5 warns rather than failing.
+
+   `incomplete` and `partial` are **gradability** states, resolved BEFORE
+   this cascade (Step 2's HITL-stub early return; a live probe that failed
+   at grading time), not bands within it. *Enforced:*
+   `test/lib/eval-verdict-bands.test.ts` enumerates the score space and
+   asserts totality + severity ordering; the cascade is encoded as data in
+   `lib/eval-verdict-bands.ts`.
 
 5b. **Standing-instruction hard-gates (binary, non-weighted).** Pass/fail
    conformance checks on the standing app-build instructions (see
@@ -220,6 +254,154 @@ and `skills/eval-calibration/SKILL.md` for calibration methodology.
      incoherent pair with NO build-memo entry → `[BLOCKER]` → `fail`. An
      incoherent pair that IS surfaced → `[WARN]` (the value is a PM decision;
      noticing it is ACE's job).
+   - **`fixed_instrument_fidelity`** (added 2026-08-20, ace#1527) — **when the
+     PDD marks an instrument `[FIXED]` and the run's `inputs-manifest.yaml`
+     carries its published source file, every scoring constant in the build MUST
+     match that file.** Binary, non-weighted, and deliberately NOT a rubric
+     dimension: this is arithmetic against a published table, not a judgement,
+     and the weighted dimensions are the reason it went unseen — they grade the
+     build against the PDD, which describes the instrument narratively, so a
+     fabricated constant reads as PDD-conformant prose. Pairs 1:1 with
+     `_app-component-library.md § fixed-instrument-transcription` and the build's
+     `pdd-to-deliver-app § Step 4k`, which runs the same helper.
+
+     **Do not eyeball this and do not re-derive it — run
+     `lib/instrument-constants.ts`** over (a) the source file, fetched by
+     `file_id` from the manifest via `drive_download_binary` + `writeToPath`, and
+     (b) the built literals read from the Nova blueprint. In order:
+     `assertExtractionTrusted` on the extracted series FIRST, then
+     `diffScoringConstants`, then `compareMaxScore`.
+
+     Verdicts:
+     - `trusted: false` on the extraction → `[BLOCKER]` → `fail`, reported as an
+       **eval-side extraction failure**, not as a build defect. An unchecked
+       extraction is a second way to ship a wrong instrument while reporting
+       success: the ace#1527 repair round's first read produced `score 4 -> 79.0`
+       because an `.xlsx` `t="s"` cell holds an INDEX into `xl/sharedStrings.xml`
+       and an undecoded index is a plausible number. Re-extract; never grade
+       against a series that failed its own endpoint / monotonicity / row-count
+       assertions.
+     - Any `mismatches`, `missingInBuild`, or `extraInBuild` → `[BLOCKER]` →
+       `fail`, listing each `{key, source, built}`. There is no tolerance band:
+       these are published integers.
+     - `clampDead: true` where the PDD mandates a `min(<score>, N)` clamp →
+       `[BLOCKER]` → `fail`. The built Nigeria PPI 2020 maxed at **96** against
+       an official **102**, so the clamp was dead code and the overshoot the PDD
+       wants observable could never fire — the instrument was internally
+       consistent with its own wrong numbers, which is exactly why nothing
+       downstream had a symptom.
+     - The build memo's `instrument_constants:` frontmatter block present, with
+       `mismatches: 0` and a source `file_id` that matches the manifest entry →
+       no finding. A `[FIXED]` instrument with NO such block, and no recorded
+       skip reason, → `[BLOCKER]` → `fail`: the check not having run is
+       indistinguishable at this layer from it having been skipped because it
+       would have failed.
+
+     **Why a blocker rather than a deduction.** A wrong scorecard produces a
+     complete, plausible, fully-verified dataset that ranks the wrong households
+     for a programme that acts on the list, and every Evidence Model control
+     passes it. The licence is the second half: the PPI permits digitising the
+     scorecard and its lookup tables only UNMODIFIED, so a deviation is a
+     compliance finding as well as a quality one (ace#1527).
+   - **`entity_state_fidelity`** (added 2026-08-23, ace#1564) — **when the app
+     ships a state the worker sees (a phase / stage / status / round picker,
+     case-list column, or filter — always for `archetype:
+     longitudinal-visits`), every state value, label, and member activity/step
+     range MUST match the taxonomy the PDD declares.** Binary, non-weighted,
+     and deliberately NOT a rubric dimension, for the same reason
+     `fixed_instrument_fidelity` is not: the weighted dimensions grade the build
+     against a PDD that describes the entity lifecycle NARRATIVELY, so an
+     invented phase vocabulary reads as PDD-conformant prose. Pairs 1:1 with
+     `_app-component-library.md § entity-state-taxonomy` and the build's
+     `pdd-to-deliver-app § Step 4l`, which runs the same helper.
+
+     **Do not eyeball this and do not re-derive it — run
+     `lib/entity-state-taxonomy.ts`** over (a) the PDD's
+     `program_parameters.entity_state_taxonomy` row via `parseStateTaxonomy`
+     and (b) the option set read back from the Nova blueprint, via
+     `diffStateTaxonomy`.
+
+     Verdicts:
+     - `declared: false` while the trigger fires → `[BLOCKER]` → `fail`,
+       reported as a **Phase-1 gap** (the PDD owes the taxonomy), not as an
+       architect defect. The build was supposed to HALT here; a build that
+       proceeded shipped an invented vocabulary by construction.
+     - Non-empty `problems` on the declaration (overlapping step ranges,
+       duplicate values or labels) → `[BLOCKER]` → `fail`, again against the
+       PDD.
+     - Any `extraInBuild`, `missingInBuild`, `relabelled`, or `repartitioned`
+       → `[BLOCKER]` → `fail`, listing each finding from
+       `describeTaxonomyDiff`. There is no tolerance band and no "clearer
+       label" allowance: these are the partner's own words.
+     - The build memo's `entity_state_taxonomy:` block present, with a finding
+       count of `0` and the declared states echoed → no finding. A triggered
+       app with NO such block and no recorded skip reason → `[BLOCKER]` →
+       `fail`: the check not having run is indistinguishable at this layer from
+       it having been skipped because it would have failed.
+
+     **Why a blocker rather than a deduction.** An invented state vocabulary has
+     no downstream symptom — the app is complete and internally consistent with
+     its own invention, and every structural gate passes it. What it produces
+     instead is a Learn app teaching one mapping while Deliver offers another
+     (a trained worker picks the taught phase and cannot find the taught step),
+     Program Parameters that stop mapping onto the built app, and — on a real
+     partner — ACE's invented labels for the partner's OWN published process,
+     shown to real field workers and read back to the partner through the
+     training deck. That is `no-inferred-backstory` at its most expensive
+     (ace#1564).
+
+   - **`option_register_fidelity`** (added 2026-08-24, ace#1621) — **when the
+     PDD sources a field's options from a NAMED PARTNER REGISTER, the build
+     must bind that register; an inline option list the architect composed is a
+     `[BLOCKER]`.** Binary, non-weighted, for the same reason its two siblings
+     are: the weighted dimensions grade the build against a PDD that describes
+     the field narratively, so an invented option set reads as PDD-conformant
+     prose. Pairs 1:1 with `_app-component-library.md § partner-option-register`
+     and the build's `pdd-to-deliver-app § Step 4f` register halt, which runs
+     the same helper.
+
+     **Do not eyeball this and do not re-derive it — run
+     `lib/option-register.ts`** over (a) the PDD's register declaration via
+     `parseRegisterDeclaration` and (b) the option source read back from the
+     Nova blueprint, via `diffOptionRegister`. Where the bound table's rows are
+     available, also run `diffRegisterRows` against the register extracted from
+     the source file (`parseFixtureRegister` on a partner `.ccz`).
+
+     Verdicts:
+     - `unbound-register` (an inline list, or no source at all, where a
+       register is declared) → `[BLOCKER]` → `fail`. This is the reported
+       defect: 11 invented activity names on a real partner's published
+       process. Never gradeable as a deduction — see below.
+     - `undeclared-register` while the field exists → `[BLOCKER]` → `fail`,
+       reported as a **Phase-1 gap** (the PDD owes the register), not as an
+       architect defect.
+     - `unfiltered-register` / `wrong-table` → `[BLOCKER]` → `fail`. An
+       unfiltered register shows every partition's options on every partition —
+       the "11 options identical on all 24 steps" symptom.
+     - `source-unavailable` (the declared source file is not in the run's
+       manifest, or could not be read) → `[BLOCKER]` → `fail`. Unverifiable and
+       correct are different answers; a read failure is never permission.
+     - `invented-option` / `missing-option` / `relabelled-option` from
+       `diffRegisterRows` → `[BLOCKER]` → `fail`, listing each. No tolerance
+       band and no "clearer label" allowance: these are the partner's own
+       codes and words.
+     - The build memo's `option_register:` block present, finding count `0`,
+       register tag echoed → no finding. A triggered field with NO such block
+       and no recorded skip reason → `[BLOCKER]` → `fail`: the check not having
+       run is indistinguishable at this layer from it having been skipped
+       because it would have failed.
+
+     **Why a blocker rather than an `option_source_gaps` entry.** Step 4f
+     already *permitted* this: its halt is scoped to payment correctness
+     (`feeds_entity_id` on a payable unit), so a field that fails neither test
+     records a named gap and proceeds. That is right for a genuinely
+     unknowable set and wrong for a register that exists — on
+     `spark-facilitator/20260820-0817` the gap was duly recorded, the run
+     continued, and it took an operator reading the residual days later to stop
+     the release. A named gap discharges the obligation to a human who may not
+     read it; the harm here is not payment but `no-inferred-backstory` on a
+     partner's OWN published process, reaching real field workers and — through
+     the training deck — the partner.
 
    *Not enforced here (deferred to the post-build HQ step per
    `docs/superpowers/specs/2026-06-25-post-build-hq-settings-automation.md`):*
@@ -380,6 +562,11 @@ absorb the disagreement into a score.
 
 | Date | Change | Author |
 |------|--------|--------|
+| 2026-08-24 | **New `option_register_fidelity` hard-gate (ace#1621).** Third sibling of `fixed_instrument_fidelity` (#1527, a `[FIXED]` instrument's CONSTANTS vs a source file) and `entity_state_fidelity` (#1564, the entity's STATE vocabulary vs a PDD-declared taxonomy): this one grades a field's OPTION SET against a partner register the PDD names. Binary and non-weighted for the same reason as both — the weighted dimensions grade against a narrative PDD, so an invented option set reads as conformant prose. On `spark-facilitator/20260820-0817` the meeting-activity repeat shipped 11 ACE-authored placeholders identical on all 24 FCAP steps, past this rubric, while Spark's own 78-activity register sat in the run's `inputs/`. Verdicts: `unbound-register` (inline list where a register is declared), `undeclared-register` (Phase-1 gap), `unfiltered-register` / `wrong-table`, `source-unavailable` (unverifiable ≠ correct), and row-level `invented-option` / `missing-option` / `relabelled-option` — all `[BLOCKER]` → `fail`, no tolerance band, because these are the partner's own codes and words. Run `lib/option-register.ts`; do not eyeball it. Blocker rather than a deduction because `pdd-to-deliver-app § Step 4f` already *permitted* this via an `option_source_gaps` entry, and a named gap discharges the obligation to a human who may not read it. Paired 1:1 with `_app-component-library § partner-option-register` and 4f's register halt. *Enforced:* `test/lib/option-register.test.ts`. | ACE team |
+| 2026-08-23 | **New non-weighted hard-gate `entity_state_fidelity` (ace#1564).** A `longitudinal-visits` Deliver app shipped four invented phase labels over a re-partitioned step set for a real partner's own published process, and this rubric passed it: every weighted dimension grades the build against a PDD that describes the entity lifecycle NARRATIVELY, so an invented vocabulary is PDD-conformant prose, and the app is internally consistent with its own invention so no structural gate has a symptom. The gate is binary and non-weighted because it is a set/label/partition comparison against a declared taxonomy, not a judgement. Graded mechanically via `lib/entity-state-taxonomy.ts` (`parseStateTaxonomy` on `program_parameters.entity_state_taxonomy`, then `diffStateTaxonomy` against the option set read from the blueprint) — the same helper the build runs at `pdd-to-deliver-app § Step 4l`, so build-emit and eval-grade cannot drift. `declared: false` while the trigger fires is its own blocker, reported as a Phase-1 gap: the build was supposed to HALT there, so a build that proceeded invented the vocabulary by construction. Paired 1:1 with `_app-component-library.md § entity-state-taxonomy`. *Enforced:* `test/lib/entity-state-taxonomy.test.ts` + `test/skills/entity-state-taxonomy-component.test.ts`. | ACE team |
+| 2026-08-23 | **Terminal verdict bands are now an ORDERED cascade; they did not partition the score space (ace#1568).** The three band rules were independent tests — `any dim ≤3 → fail`, `2+ dims in 4–6 → warn`, `all dims ≥7 AND overall ≥7.5 → pass` — and an enumeration over the rubric's own 10 weights found **two** reachable classes matching NONE of them: exactly ONE dimension in 4–6 (the reported case), and every dimension ≥7 with an overall under 7.5 (unreported; reachable at all dimensions exactly 7.0). 41 further classes matched TWO rules at once (`fail` + `warn` whenever some dimension is ≤3 and two others sit in 4–6), with no stated precedence. A rubric applied by an LLM judge never throws on this — it legislates, so two runs with identical scores can disagree and nothing marks either wrong. Live: `spark-facilitator/20260820-0817`, `language_conformance` 5.0, every other dimension ≥8.0, overall 8.58 → capped 8.5; the judge resolved it `warn` and recorded the gap rather than filing unilaterally. Repair: rule 2's trigger widens from "2+ dimensions in 4–6" to "any scored dimension **< 7**, **or** overall < 7.5", and the three rules become a first-match-wins cascade — every outcome the old wording produced is preserved. Widening to "**any** dimension in 4–6" (the repair sketched on the issue) is NOT enough: dimension scores are fractional, every anchor is stated at the half-point, and a *range* trigger strands 3 < s < 4 and 6 < s < 7 the same way — a `language_conformance` of 3.5 or 6.5 with everything else at 9.5 matches nothing under it. `< 7` is the complement of the `pass` trigger, which is what makes the partition exact. The `fail` trigger is untouched at ≤3, so 3.5 warns. Deliberately NOT added: an `overall < 5.0 → fail` floor like the `connect-opp-setup-eval` / `app-release-eval` / `llo-uat-eval` tier blocks carry — that would change existing verdicts, which is a calibration decision, not a gap fix. Cascade encoded as data in `lib/eval-verdict-bands.ts`. *Enforced:* `test/lib/eval-verdict-bands.test.ts` (exhaustive + class-partition enumeration asserting totality and severity ordering, with the pre-fix band set kept as the regression witness). | ACE team |
+| 2026-08-23 | **`language_conformance` anchor (b1) added — a language added with NOTHING authored is `fail`, not a 5 (ace#1556).** The mechanism behind the dimension changed: ACE now authors the translations at LEVEL 0 (`pdd-to-{learn,deliver}-app § Step 4e/4m`), and the Nova brief tells the architect to build English-ONLY and call no language atom — because the architect's operating prompt forbids it saving self-generated target text (*"Only save target text supplied by the user"*, nova plugin 1.26.0/1.27.0), so every brief that asked it to translate produced a silent no-op. The graded OUTCOME is unchanged (English source complete + working language authored + `out-of-date` 0 + English still `sourceLanguage` = full credit); what changed is that the observed failure — `spark-facilitator/20260820-0817`, 207 units `origin: copied` / 0 ready in BOTH `nya` and `tum` — scored as anchor (b) *thinly authored* = **5**, a near-pass for a build with 0% coverage. A fully-copied layer is a FALSE AFFORDANCE and strictly worse than English-only: the worker sees the language offered and gets English under its name. (b1) makes that `≤3 → suite fail`. Weight, null-when-N/A and every other anchor are untouched. *Enforced:* `test/skills/app-language-layer.test.ts`. | ACE team |
+| 2026-08-20 | **New non-weighted hard-gate `fixed_instrument_fidelity` (ace#1527).** Nine of 17 point values and all 101 poverty-likelihood values in a digitised `[FIXED]` Nigeria PPI 2020 scorecard shipped fabricated, and this rubric passed them: all 11 weighted dimensions grade the build against the **PDD**, which describes the instrument narratively ("ten indicators… scored 0-100"), so a wrong constant is PDD-conformant prose. Nothing here ever opened the workbook sitting in the run's own frozen `inputs/`. The gate is binary and non-weighted because it is arithmetic against a published table, not a judgement — and because a wrong scorecard has **no downstream symptom**: it yields a complete, plausible, fully-verified dataset that ranks the wrong households, and every Evidence Model control passes it. Graded mechanically via `lib/instrument-constants.ts` (`assertExtractionTrusted` FIRST — an undecoded `t="s"` shared-string index reads as a plausible number, which is how the repair round's first extraction produced `score 4 -> 79.0` — then `diffScoringConstants`, then `compareMaxScore`), the same helper the build runs at `pdd-to-deliver-app § Step 4k`, so build-emit and eval-grade cannot drift. `clampDead: true` is its own blocker: a built max of 96 against an official 102 makes the PDD's `min(ppi_score, 100)` clamp dead code, which is the self-concealing half. Also a licence finding — the PPI permits digitising the scorecard and its lookup tables only UNMODIFIED. Paired 1:1 with `_app-component-library.md § fixed-instrument-transcription`. *Enforced:* `test/lib/instrument-constants.test.ts` + `test/skills/deliver-l0-loop-integrity.test.ts`. | ACE team |
 | 2026-08-17 | **Nova shipped a real per-language channel; `language_conformance` RE-INVERTED (PR #1463, superseding ace#968/#1391; Jon).** Verified live against `tools/list`: **95 tools, up from 81 on 2026-08-14**, carrying six itext-shaped language atoms. The 2026-08-14 English-only decision rested on that channel not existing; it now does. Jon's call: fully implement, but **English is always the source language and the review surface**, and translations are reviewed like any other artifact — English included — with no bespoke native-speaker gate. Same 8%, same null-when-N/A, so no reweighting and every other anchor holds. Full credit now needs a REAL layer (English source complete + working language authored + `out-of-date` 0 + English still `sourceLanguage`); `fail` on no layer, `out-of-date` > 0, English displaced as source, inline stacking, or a language-selector question. **`needs-review` is explicitly NOT a deduction** — ACE's writes are `origin: ai` by construction and Nova serves them live, so it is an audit trail, not a defect. Component `english-only-ui` → **`app-language-layer`**, carrying the translate-LAST ordering rule (editing English demotes a translation to `out-of-date`, whose `effective` falls back to English — proven live on scratch app `b4e2c8fd`). The ITN negative control's clause is **RESTORED** as `language_conformance ≤3 → fail`: its original 2026-05-29 verdict was right, only the mechanism changed. **This dimension has now flipped twice in four days — the criteria say so out loud, because a judge's priors are the failure mode here.** *Enforced:* `test/skills/app-language-layer.test.ts`. | ACE team |
 | 2026-08-14 | **ACE builds English-only app UIs; `localization-layer` retired and `localization_match` INVERTED (ace#1391, superseding ace#968; Jon).** Re-verified Nova's live surface: zero hits for `itext`/`locale`/`i18n`/`translat` across all **81** tools (was 63 on 2026-07-31), `update_app` carries only `name`, and the architect's own 70k-char operating prompt never mentions languages; the surface's only language parameter is `defaultLanguageCode` on messaging automations. Since 2026-07-30 the sanctioned fallback had been stacking every language inline in one label — Jon's call: that is a terrible solution and localization should be solved properly when it can be solved at all, so until Nova ships a real per-language channel ACE ships an honest monolingual UI rather than a convincing fake. Component `localization-layer` → **`english-only-ui`** (same trigger, opposite instruction: build English, do not stack, do not hunt for a translations parameter, record the decision in the build memo). Eval dimension `localization_match` → **`language_conformance`**, same 8% and same null-when-N/A: English-only is now FULL CREDIT, stray stacked strings score 5 + `[WARN]`, systematic inline stacking or an in-app language selector is ≤3 → `fail`. Both calibration anchors amended — the ITN negative control's `localization_match ≤3` clause is REMOVED, not relaxed (the same artifact now scores full credit there; the other three dimensions still force `fail`). Phase 1 still records the working language — it drives training, facilitation, the OCS chatbot and the solicitation — but must not assert a translated app; multilingual UI is now a **Table B** row (buildable in CommCare via itext, closed on ACE's builder — never call it a platform limit). *Enforced:* `test/skills/english-only-ui.test.ts`. | ACE team |
 | 2026-08-14 | **`field_answerability` gains (e) cross-question satisfiability (ace#1015).** Two REQUIRED questions capturing the same real-world value, on one walk path, with incompatible constraints — a class none of (a)/(b)/(c) names, and all three correctly PASSED the form that carried it. Only unsatisfiable at the EDGE (`= today()`), so per-field analysis and a happy-path smoke walk both miss it. Graded via `checkPairSatisfiable` (`lib/constraint-satisfiability.ts`): empty intersection hard-gates ≤3, a NARROWED range is a 1-point deduction, and an unparsed constraint is `'unknown'` rather than a pass. Paired with the new `branch-scoped-groups` component, which addresses the proximate cause (an ungated branch-scoped group). | ACE team |

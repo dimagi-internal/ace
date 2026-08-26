@@ -30,7 +30,7 @@ See `skills/_qa-template.md` for the shared QA contract (verdict YAML format, au
 | # | id | type | description | auto-fix on fail |
 |---|---|---|---|---|
 | 1 | `all_required_sections_present` | static | All 12 required PDD sections present (Archetype, Problem Statement, Intervention Design, Learn App Specification, Deliver App Specification, Target Population, FLW Requirements, LLO Preference, Success Metrics, Evidence Model, Timeline, Program Parameters). Heading match tolerates case variation, bold-wrapping, and trailing parentheticals — see `checks.ts § checkAllRequiredSectionsPresent` for the full tolerance contract. | regenerate the missing section(s) with substantive content matching each section's purpose (auto_fix_hint enumerates per-section purpose in the failure detail) |
-| 2 | `archetype_declared_and_valid` | static | Archetype declared in the body's top metadata block (preferred — PDDs are rendered gdocs, so raw `---` frontmatter renders as noise) or, still accepted, in YAML frontmatter; value is one of {atomic-visit, focus-group, multi-stage} | add a `**Archetype:** <value>` line to the PDD's top metadata block |
+| 2 | `archetype_declared_and_valid` | static | Archetype declared in the body's top metadata block (preferred — PDDs are rendered gdocs, so raw `---` frontmatter renders as noise) or, still accepted, in YAML frontmatter; value is one of {atomic-visit, longitudinal-visits, focus-group, multi-stage} (canonical list: `checks.ts § VALID_ARCHETYPES`) | add a `**Archetype:** <value>` line to the PDD's top metadata block |
 | 3 | `stress_test_appendix_present` | static | PDD has a `## Stress Test Results` appendix with the 5-question self-eval grades | add the appendix per skills/idea-to-pdd/SKILL.md § Process step 6 |
 | 4 | `success_metrics_table_populated` | static | `## Success Metrics` section contains a markdown table with at least one data row | fill the table with at least one metric row |
 | 5 | `evidence_model_layered` | static | `## Evidence Model` section references all three layers (A, B, C) | populate the section with rows for each layer |
@@ -56,8 +56,25 @@ The static check functions live at `skills/idea-to-pdd-qa/checks.ts` as importab
    1, 3, 4, 5 and 8 while the PDD is perfectly fine. The markdown export
    restores the syntax the checks are written against.
 
+   **The markdown export also ESCAPES punctuation** — `## 1. Archetype` comes
+   back as `## 1\. Archetype`, `learn_passing_score` as `learn\_passing\_score`.
+   `checks.ts` strips that at every check's entry (`normalizeDriveExport`, in
+   `lib/drive-export.ts`), so the escaping is handled and you should NOT
+   pre-clean the body or fall back to `text/plain` when you see backslashes
+   (ace#1617 — before the strip, all 12 required sections read as missing on a
+   healthy PDD and Phase 1 halted). The sibling `pdd-to-work-order-qa` requires
+   the OPPOSITE format (`text/plain`, ace#1609) and shares the same normaliser.
+
    **Note its `mimeType`** — you pass it to the runner in step 3, and check 7
    cannot verify the format without it (the bytes look identical either way).
+
+   **The sibling skill `pdd-to-work-order-qa` requires the OPPOSITE
+   (`exportAs: 'text/plain'`).** Both run in Phase 1, so do not carry this
+   skill's markdown convention across to it: its `checks.ts` matches the
+   unescaped gdoc form, and the markdown export's `1\.` / `\[` escaping
+   defeats it (dimagi-internal/ace#1609). The requirement is per-skill,
+   decided by what that skill's checks are written against — always read the
+   target skill's step 1 rather than reusing the last one you ran.
 
 2. **Save to a local temp path** (so the CLI runner can read it as a file).
    `Bash: TMP=$(mktemp); drive content saved to $TMP`.

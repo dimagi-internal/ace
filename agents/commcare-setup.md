@@ -39,6 +39,26 @@ Execute these steps in order for the given opportunity:
 
 ### Step 0: Nova preconditions (HARD GATE — run before anything else)
 
+**SESSION-SCOPED PRECONDITION — re-run on EVERY entry into Phase 3,
+including a mid-phase resume.** Step 0 asserts facts about *this Claude Code
+session* — which principal the Nova MCP bound, which tool surface it serves.
+`run_state.yaml` is per-RUN state that outlives the session, so a `done`
+marker written by yesterday's session is not evidence about today's binding:
+**treat Step 0 as unrun on entry, whatever the recorded step state says**,
+and run it before the first not-yet-done step even when that step is 2.6 and
+both apps are already built. Restore, don't adapt (CLAUDE.md § Phase
+preconditions are restored, not adapted) — run it unconditionally, do not
+probe-then-branch on whether it "already passed". The whole gate is three
+read-only calls; what it catches is unrecoverable in-session. Precedent:
+`ace-orchestrator.md § Resolution` step 5 makes the inputs-manifest capture
+unconditional on resume for exactly this reason (dimagi-internal/ace#1234).
+Cost of skipping it: dimagi-internal/ace#1604 —
+`spark-facilitator/20260820-0817` resumed into Phase 3 mid-phase with the
+Nova MCP bound to a different principal than `NOVA_API_KEY` names, and the
+first Nova call answered `App not found` for an app the previous session had
+built. Neither the L0 binding fence (which covered `pending` phases only) nor
+this gate (stepped over as already-done) was in the resume path.
+
 Before dispatching any architect, verify Nova is bound to the expected
 HQ project space. Skipping this step is the single biggest documented
 time-sink in Phase 3 — see the turmeric-20260429-2330 e2e: the
@@ -145,6 +165,50 @@ result:
 
 Do NOT dispatch the architect until `get_hq_connection` returns
 `configured: true` with `<ACE_HQ_DOMAIN>` among `available_domains`.
+
+**`configured: true` does not tell you WHO you are — assert the principal
+too (dimagi-internal/ace#1604).** `get_hq_connection` describes the HQ key
+saved on whichever Nova account this session's MCP connection bound; it does
+not prove that account is the one `NOVA_API_KEY` names. A connection bound to
+a different principal answers every call normally, about a different
+account's apps — the failure looks like data loss, not like an auth problem.
+So make one addressed check:
+
+- **The run already records app ids** (`phases.commcare-setup.products.apps.{learn,deliver}.nova_app_id`
+  in `run_state.yaml` — the normal case on a resume) → call
+  `list_apps({limit: 20, sort: "updated_desc"})` and assert **both ids appear
+  in the result**.
+- **No app ids recorded yet** (a fresh run that has built nothing) → there is
+  nothing to compare against; `get_hq_connection` returning `configured: true`
+  is the whole assertion, and Step 1's first build establishes the ids.
+
+On a miss, **HALT**: *"The Nova MCP bound a different principal than
+NOVA_API_KEY names — `list_apps` does not show this run's apps (`<learn-id>`,
+`<deliver-id>`). MCP auth binds at connection time, so this is unrecoverable
+in-session. A plain restart is NOT the remedy here — it has been tried and the
+wrong principal came back (dimagi-internal/ace#1614). The cause is a stored
+OAuth token outranking the `headersHelper` PAT (voidcraft-labs/nova-plugin#52).
+Run `/mcp`, select `nova`, choose **`Clear authentication`** — NOT
+`Authenticate`, which mints a fresh OAuth token and leaves you on the wrong
+credential — then quit and reopen Claude Code and resume
+`/ace:run <opp>/<run-id>`. Verify with BOTH `list_projects` (must be the PAT's
+project) and `get_hq_connection` (must be `configured: true`); `list_apps`
+alone passes while still on OAuth."*
+
+Keep this distinct from a plain **bind miss** (the `nova` tools do not resolve
+at all), which a full restart DOES fix. Wrong-principal means the connection
+attached and authenticated as someone else, so restarting re-establishes the
+same binding. See `agents/ace-orchestrator.md § Step 2a` for the full
+rationale and the one-`curl` confirmation that separates a bad credential
+(rare) from a bad binding (the observed case).
+
+**Do NOT rebuild the apps in response to `App not found`.** They exist, under
+a principal this session is not talking to. Rebuilding orphans the run's two
+Nova apps, re-burns two architect dispatches, and leaves the run's recorded
+`nova_app_id`s pointing at the originals — which is a worse end state than
+the halt. Verify the principal first; `App not found` from a level-0 Nova
+read on an app THIS run built is a binding symptom until proven otherwise.
+
 
 **This call is ALSO the level-0 Nova-binding check — actually make it;
 do not skip it or hand-wave it as "the architect subagent will
@@ -312,6 +376,44 @@ After **each** Nova `Agent` dispatch returns, verify an app was created:
 Apply this check after the Learn dispatch and again after the Deliver
 dispatch — they fail independently.
 
+**An app that EXISTS but is half-built is the other case, and it is NOT a
+re-dispatch (dimagi-internal/ace#1504).** The rule above covers "the architect
+never got started." A Nova build is long, so the likelier interruption is a
+transport failure (`Connection lost mid-response`, an API 5xx) that kills the
+agent *after* `create_app` returned and partway through the field work. The
+return string is missing or truncated, so a literal reading of step 2 says
+"no app → re-dispatch" — and `/nova:autobuild` **creates a second Nova app**,
+leaving a duplicate for `app-deploy` to choose between and an orphan for the
+sweep to find.
+
+So branch on whether an app exists, not on whether the agent returned cleanly:
+
+- **No app** (`list_apps` shows nothing created in the window) → the rule
+  above; re-dispatch, cap 3.
+- **App exists** → **RESUME the same agent** with `SendMessage` rather than
+  re-dispatching `/nova:autobuild`. It still holds the build context, so it
+  resumes where it stopped instead of re-deriving the app from the brief.
+
+  The resume message MUST tell it to re-establish ground truth rather than
+  trust its own recollection: call `get_app`, then `get_form` on every form it
+  believes it finished, and compare persisted field counts against what it
+  intended. The `add_fields` partial-persistence quirk applies to everything
+  built before the interruption, so a form that looked complete in the agent's
+  own summary may not be. Restate the invariants most likely to be mid-flight
+  at the cut — for a Learn app: the language phase runs LAST (an English edit
+  after translating silently reverts that unit), and only the gating
+  assessment may carry `connect.assessment`.
+
+  If the resumed agent also dies, resume once more, then fall back to a
+  `/nova:edit` against the existing `app_id` naming the specific gaps. Never
+  reach for `/nova:autobuild` while an app for this run exists.
+
+Live: `spark-facilitator/20260817-1610`, where the Learn build dropped
+mid-language-phase. On resume `get_app` showed all 8 forms at their intended
+counts — no structural repair was needed at all, and the only casualty was one
+`update_translations` batch Nova had ATOMICALLY refused over a mistyped uuid,
+so nothing from it had saved.
+
 - Input: approved PDD from GDrive
 - Output:
   - app JSON/CCZ files + summaries written to `ACE/<opp-name>/app-summaries/`
@@ -331,7 +433,7 @@ dispatch — they fail independently.
 ### Step 1.5: Connect-marker coverage (verify + auto-fix)
 Invoke the `app-connect-coverage` skill **once per app** (Learn, Deliver).
 - Input: `nova_app_id` from each app summary; PDD for context
-- Output: `ACE/<opp-name>/app-coverage/{learn,deliver}-connect-coverage.md`
+- Output: `3-commcare/app-connect-coverage_{learn,deliver}.md`
   reporting before/after state per form. The Nova app on Firestore is
   mutated in place — every form's `connect` block (`learn_module` /
   `assessment` / `deliver_unit` / `task`) is set per the form's purpose.
@@ -371,19 +473,35 @@ Invoke the `app-deploy` skill.
 - Output: apps uploaded to CCHQ as **draft builds** (Nova does not release
   by design — see Step 2.7)
 - **Gate (review mode):** Present app deployment summary for verification
-- **HQ-id stability requirement (added 2026-04-30):** every `nova_upload_to_hq`
-  call creates a **fresh** HQ application document with a new id (CCHQ has no
-  atomic update API for app uploads). If Phase 3 has to re-upload an app for
-  ANY reason after the first deploy — XForm escape fixes, Connect-marker
-  patches, build-rejection iteration — the HQ ids in
-  `3-commcare/app-deploy_summary.md` must be updated, and Phase 4
-  (`connect-opp-setup`) MUST run against the FINAL post-iteration ids.
+- **HQ-id stability (added 2026-04-30; premise INVERTED 2026-08-18):**
+  `nova_upload_to_hq` **updates the HQ app in place**. The first upload to a
+  project space creates the HQ application; every upload after that updates
+  that same document and keeps its id, with `hq_app_action` reporting
+  `created` | `updated`. Verified live 2026-08-18 against `connect-ace-prod`
+  (`4dd0325b…` re-uploaded twice: `updated` both times, id constant,
+  `remote_revision` 6 → 8, `left_behind: []`) — see
+  `playbook/integrations/nova-integration.md § Uploading to HQ updates in
+  place`. The original entry asserted the opposite (a fresh document with a
+  new id per upload, CCHQ having no atomic update API); that is retired.
+
+  What still holds: if Phase 3 re-uploads an app for ANY reason after the
+  first deploy — XForm escape fixes, Connect-marker patches, build-rejection
+  iteration — Phase 4 (`connect-opp-setup`) MUST still run against the FINAL
+  post-iteration state, because the app CONTENT changed even though the id
+  did not. And the id is not guaranteed immutable: if the linked HQ app is
+  deleted on HQ, the call refuses with `remote_app_missing` and the next
+  upload creates a fresh one. So read `hq_app_action` / `left_behind` rather
+  than assuming either way, and update the ids in
+  `3-commcare/app-deploy_summary.md` if they moved.
   Phase 4's `connect_create_opportunity` writes the HQ ids into the opp's
   app-wire fields at create time, and Connect's edit form does NOT expose
   those fields — so re-pointing a wired opp at new HQ ids requires
   delete-and-recreate **of the Connect opportunity** (CCC-301 will
   eventually expose `update_opportunity({learn_app, deliver_app})` and
-  retire this dance). The orchestrator's Phase 3→4 transition MUST
+  retire this dance). Update-in-place makes this the exception rather than
+  the routine cost of a re-upload: it is now only reachable when an id
+  actually moved (`remote_app_missing` → recreate), not every time Phase 3
+  iterates. The orchestrator's Phase 3→4 transition MUST
   verify `3-commcare/app-deploy_summary.md.released_at >= 3-commcare/app-deploy_summary.md.uploaded_at`
   AND that no subsequent re-upload happened, before dispatching Phase 4.
 

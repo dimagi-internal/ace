@@ -97,6 +97,28 @@ grader exists, who consumes the verdict.)
 (Per-skill rubric. Dimensions, weights, deduction rules,
 inflation guard if applicable.)
 
+**A numeric band belongs to exactly ONE dimension, and the producer
+REFERENCES it rather than restating it.** Two failure modes, both
+observed in the same skill pair:
+
+1. **Cross-file divergence.** The producer states a band and the eval
+   states a different one, so an artifact written to spec is penalised
+   for complying. `training-onboarding-email` authorised 200–400 words
+   while its eval scored `length_discipline` 10 only inside 80–350 —
+   0.05 of weight lost by construction (ace#1673). The eval is
+   authoritative; tighten the producer to sit inside the eval's band and
+   say in the producer that the band is the eval's.
+2. **Intra-rubric double-count.** A second dimension re-scores the same
+   quantity at a heavier weight, usually as a throwaway clause. The same
+   pair scored length inside `clarity` (0.30) as well as inside
+   `length_discipline` (0.05) — 6× the weight of the dimension that
+   exists for it, and `clarity`'s `10 = ≤ 200 words` anchor sat at the
+   producer's 200-word FLOOR, so no compliant email could score 10.
+
+So: pick the dimension that owns each measurable quantity, anchor it
+there only, and re-anchor every other dimension on something it can
+judge independently.
+
 ## Archetypes
 
 (Per-archetype branches. See `skills/idea-to-pdd-eval/SKILL.md` for the

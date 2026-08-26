@@ -125,3 +125,76 @@ describe('checkConsentBranchCompleteness (#1326)', () => {
     expect(r.findings).toEqual([]);
   });
 });
+
+describe('checkConsentBranchCompleteness — scoped gates (spark-facilitator/20260817-1610)', () => {
+  // A consent gate does not always govern the whole instrument. On an FCAP
+  // community meeting record the photo-consent announcement governs the
+  // PHOTOGRAPH; the attendance and savings counts are observations of an open
+  // public assembly that the PDD states explicitly has no per-beneficiary
+  // consent. Run unscoped, this check flagged every unrelated required field
+  // and would have hard-gated a correct build to `fail`.
+  const meetingPdd = [
+    { id: 'photo_consent_announced', required: true },
+    { id: 'attach_a_photo_for_the_meeting', required: true },
+    { id: 'male_attendance', required: true },
+    { id: 'female_attendance', required: true },
+    { id: 'amt_savings', required: true },
+  ];
+  const meetingBuilt = [
+    { id: 'photo_consent_announced', required: true },
+    { id: 'attach_a_photo_for_the_meeting', required: true, relevant: "/data/photo_consent_announced = 'yes'" },
+    { id: 'male_attendance', required: true },
+    { id: 'female_attendance', required: true },
+    { id: 'amt_savings', required: true },
+  ];
+
+  it('UNSCOPED: flags every unrelated required field — the false-fail this option exists to stop', () => {
+    const r = checkConsentBranchCompleteness(meetingBuilt, meetingPdd, {
+      consentField: 'photo_consent_announced',
+    });
+    expect(r.pass).toBe(false);
+    // The false-fail class: three observations of a public assembly, none of
+    // which the photo-consent announcement has anything to say about.
+    const ungated = r.findings.filter((f) => f.kind === 'ungated-required-after-consent');
+    expect(ungated.map((f) => f.field).sort()).toEqual([
+      'amt_savings',
+      'female_attendance',
+      'male_attendance',
+    ]);
+  });
+
+  it('SCOPED: checks only the fields the gate governs', () => {
+    const r = checkConsentBranchCompleteness(meetingBuilt, meetingPdd, {
+      consentField: 'photo_consent_announced',
+      governs: ['attach_a_photo_for_the_meeting'],
+      disclosedInMemo: ['attach_a_photo_for_the_meeting'],
+    });
+    expect(r.pass).toBe(true);
+    expect(r.findings.every((f) => f.field === 'attach_a_photo_for_the_meeting')).toBe(true);
+  });
+
+  it('SCOPED still catches a real miss INSIDE the scope', () => {
+    const ungatedPhoto = meetingBuilt.map((f) =>
+      f.id === 'attach_a_photo_for_the_meeting' ? { id: f.id, required: true } : f,
+    );
+    const r = checkConsentBranchCompleteness(ungatedPhoto, meetingPdd, {
+      consentField: 'photo_consent_announced',
+      governs: ['attach_a_photo_for_the_meeting'],
+    });
+    expect(r.pass).toBe(false);
+    expect(r.findings).toHaveLength(1);
+    expect(r.findings[0]).toMatchObject({
+      field: 'attach_a_photo_for_the_meeting',
+      kind: 'ungated-required-after-consent',
+    });
+  });
+
+  it('an empty governs list means unscoped — the default is not silently narrowed', () => {
+    const r = checkConsentBranchCompleteness(meetingBuilt, meetingPdd, {
+      consentField: 'photo_consent_announced',
+      governs: [],
+    });
+    expect(r.pass).toBe(false);
+    expect(r.findings.filter((f) => f.kind === 'ungated-required-after-consent')).toHaveLength(3);
+  });
+});

@@ -232,6 +232,76 @@ appId: org.commcare.dalvik
     timeout: 120000
     visibilityPercentage: 30
     centerElement: true
+    # `optional: true` (ace#1289, second clause) so an EXHAUSTED budget
+    # falls through to the section-anchored fallback below instead of
+    # aborting the flow outright. Nothing else about this step changed —
+    # on the happy path it still completes and centers the card, and the
+    # fallback's `notVisible` guard is then false, so no extra scroll runs.
+    optional: true
+
+# --- FALLBACK RE-HUNT (ace#1289) — section-anchored, O(section) ----------
+#
+# WHY THIS EXISTS. The primary scroll above is O(unbounded invite list).
+# The ACE test user's list grows by one card per /ace:run and nothing
+# shortens it: `connect_delete_unaccepted_flw_invites` skips accepted
+# invites (lib/invite-pruning.ts:88-91 excludes status 'accepted'), so it
+# cannot touch the ~20-card In Progress section that supplies most of the
+# depth, and soft-deactivating prior opps does not remove tiles either.
+# A fixed budget therefore re-exhausts on a schedule. This buys a second
+# pass whose cost is O(New Opportunities section) — ~5 tiles per the
+# 20260814-0357 dump census — rather than a second full-list traversal.
+#
+# WHY IT IS PLACED *AFTER* THE TITLE-SCROLL, NOT BEFORE. Read the
+# 2026-07-29 note below before moving it: nothing may scroll between the
+# centered title-scroll and the Branch A/B `below:`-scoped guards. An
+# anchor running FIRST would also abort the already-claimed path (Branch
+# A, In Progress), where no "New Opportunities" header precedes the tile.
+#
+# WHY `direction: UP` ON THE ANCHOR. An exhausted DOWN scroll leaves the
+# list at or near the bottom, so "New Opportunities" is ABOVE the current
+# viewport; re-anchoring upward costs one section, not one list. Anchoring
+# downward would retraverse the same unbounded distance and buy nothing
+# but a second timeout.
+#
+# WHY THE ANCHOR OMITS `centerElement`. Per #800 (see above) the LAST
+# scroll to touch the viewport must be the run-id scroll with
+# `centerElement: true`, or the Branch A/B `below:` guards evaluate false.
+# The anchor is deliberately not that scroll.
+#
+# BUDGET. Same live-proven triple as the primary scroll — speed 40 /
+# timeout 120000 / visibilityPercentage 30 (bednet-check-2-visit/
+# 20260814-0357). Transcribed, not invented; the parity ratchet in
+# test/mcp/mobile/static-recipe-invariants.test.ts pins it.
+#
+# RESIDUAL: no UP-direction scroll has been run against
+# "New Opportunities" on 2.63.2 — the string's presence above the target
+# is recorded (jobs-06.xml, 20260814-0357) but the direction is not.
+# Falsifier: the anchor reports NOT COMPLETED with the header in the dump.
+- runFlow:
+    when:
+      notVisible:
+        text: ".*${OPP_RUN_ID}.*"
+    commands:
+      - scrollUntilVisible:
+          element:
+            text: "${SELECTOR:home-new-opportunities}"
+          direction: UP
+          speed: 40
+          timeout: 120000
+          visibilityPercentage: 30
+          optional: true
+      - scrollUntilVisible:
+          element:
+            text: ".*${OPP_RUN_ID}.*"
+          direction: DOWN
+          speed: 40
+          timeout: 120000
+          visibilityPercentage: 30
+          centerElement: true
+
+# Failure stays LOUD: if neither the primary scroll nor the fallback
+# surfaced the tile, this aborts here rather than falling through to a
+# misleading branch SKIP.
 - assertVisible:
     text: ".*${OPP_RUN_ID}.*"
 

@@ -13,6 +13,20 @@
  * bednet-check-2-visit/20260814-2019 that was avoided only because the grader
  * went and read the producer's contract. Same class ace#1010 fixed for
  * `build_id_traceability`, surviving in the sibling dimension.
+ *
+ * UPDATED FOR ace#1636 (2026-08-26), the fourth and last instance. Re-pointing
+ * one reader at a time kept missing readers: #1567 demoted the `releases:`
+ * block to corroboration here without noticing that `llo-launch`'s
+ * app-verdict-freshness gate read it as a hard `[BLOCKER]` input. `app-release`
+ * Step 7 was skipped on 2 of 2 observed runs, so that gate either halted
+ * falsely or silently skipped the staleness check and let a stale deep app-UX
+ * verdict authorize a go-live. The block is now RETIRED: Step 7 is deleted,
+ * `llo-launch` reads `app-release_summary.md`'s `apps.<app>.build_id`, and this
+ * rubric's corroborating leg is gone. So the shape assertions below flip from
+ * "every `releases:` template agrees" to "no `releases:` template survives" —
+ * a shape nobody writes cannot drift.
+ *
+ * The ownership rail proper is `deploy-summary-owns-no-release-state.test.ts`.
  */
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
@@ -48,10 +62,11 @@ describe('the rubric grades keys the producer is instructed to emit', () => {
     expect(row).toMatch(/is_released/);
   });
 
-  it('cross-checks against keys the releases: block really carries', () => {
-    for (const key of ['version', 'released_at']) {
-      expect(row).toContain(key);
-    }
+  it('sources release evidence from the owned artifact alone (ace#1636)', () => {
+    // The corroborating leg is gone with the block. What must survive is the
+    // instruction NOT to go looking for release evidence in app-deploy's file.
+    expect(row).toMatch(/never look for release evidence there/i);
+    expect(row).toMatch(/never deduct for its absence/i);
   });
 
   it('carries ace#1010’s standing rule, since this is its second instance', () => {
@@ -71,33 +86,41 @@ describe('the producer declares what the rubric reads', () => {
     },
   );
 
-  it('says explicitly that is_released is NOT in the releases: block', () => {
-    expect(producer).toMatch(/is_released` lives HERE and not in the deploy/);
+  it('claims sole ownership of released build state (ace#1636)', () => {
+    // Was: "is_released lives HERE and not in the deploy summary's releases:
+    // block". Now that the block is retired there is no rival location to
+    // contrast against, so the contract states ownership positively — and
+    // names the readers, which is what #1567 failed to enumerate.
+    expect(producer).toMatch(/sole owner of released build\s+state/);
+    for (const reader of ['app-release-eval', 'app-release-qa', 'llo-launch']) {
+      expect(
+        producer.slice(producer.indexOf('sole owner of released build')).slice(0, 500),
+      ).toContain(reader);
+    }
   });
 });
 
-describe('the releases: block has ONE declared shape', () => {
-  /** Every `releases:` template in the producer, as a sorted key set. */
-  const shapes = [...producer.matchAll(/releases:\n([\s\S]{0,400}?)```/g)].map((m) =>
-    [...new Set([...m[1].matchAll(/\b([a-z_]+):/g)].map((k) => k[1]))]
-      .filter((k) => !['learn_app', 'deliver_app', 'releases'].includes(k))
-      .sort()
-      .join(','),
-  );
+describe('the releases: block is retired, not merely tolerated (ace#1636)', () => {
+  /**
+   * Was: "every `releases:` template agrees on one four-key shape" — three
+   * declared shapes across two files for one block is what let the rubric
+   * drift away from the producer unnoticed. The stronger answer is zero
+   * templates: a shape nobody writes cannot drift, and a write with no reader
+   * is not worth keeping alive.
+   */
+  const templates = (doc: string) => [...doc.matchAll(/releases:\n([\s\S]{0,400}?)```/g)];
 
-  it('found more than one template — the drift risk is real', () => {
-    expect(shapes.length).toBeGreaterThanOrEqual(1);
+  it('the producer no longer declares a releases: template', () => {
+    expect(
+      templates(producer).length,
+      'app-release Step 7 wrote a `releases:` block into `app-deploy_summary.md`, ' +
+        'an artifact app-deploy owns. It was skipped on 2 of 2 observed runs while ' +
+        'the release itself was clean, and its only hard reader (llo-launch) now ' +
+        'reads the owned artifact. Retired in ace#1636.',
+    ).toBe(0);
   });
 
-  it('all templates agree', () => {
-    // Three declared shapes across two files for one block is what let the
-    // rubric drift away from the producer unnoticed.
-    expect(new Set(shapes).size).toBe(1);
-  });
-
-  it('and that shape is the four-key one', () => {
-    expect(shapes[0].split(',').sort()).toEqual(
-      ['build_id', 'connect_markers', 'released_at', 'version'].sort(),
-    );
+  it('the rubric no longer declares one either', () => {
+    expect(templates(rubric).length).toBe(0);
   });
 });

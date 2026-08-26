@@ -189,14 +189,49 @@ export interface DeviceStateHealLog {
  */
 export interface LocalBootstrapConfig {
   apkVersion: string;
-  testUser: {
-    phone: string;
-    phoneLocal: string;
-    countryCode: string;
-    pin: string;
-    backupCode: string;
-    name: string;
-  };
+  testUser: TestUserCredentials;
+}
+
+/**
+ * The credential set `runLocalBootstrap` registers on the device.
+ *
+ * Extracted from {@link LocalBootstrapConfig} (which used to inline it) so a
+ * caller can hand `mobile_ensure_avd_running` a PARTIAL override without
+ * restating the whole bootstrap config — see {@link EnsureAvdRunningOptions}.
+ */
+export interface TestUserCredentials {
+  phone: string;
+  phoneLocal: string;
+  countryCode: string;
+  pin: string;
+  backupCode: string;
+  name: string;
+}
+
+/**
+ * Optional per-call overrides for `MobileClient.ensureAvdRunning`.
+ *
+ * **Omitting this is the production default and changes nothing** — the client
+ * uses `bootstrapConfigFromEnv()` exactly as it always has, byte for byte.
+ *
+ * It exists for the per-run demo test user (dimagi-internal/ace#1289): a caller
+ * that minted a run-scoped `+7426…` number needs the cold-boot registration to
+ * use THAT number without rewriting `.env` — which matters because every MCP
+ * server reads `.env` at module load, so an `.env` write would need a full
+ * Claude Code restart to take effect. A call argument needs none.
+ *
+ * Only the fields you pass are overridden; the rest still come from
+ * `ACE_E2E_*`. That is deliberate: `pin` / `backupCode` are not per-user
+ * secrets in the demo range, so a per-run caller passes only
+ * `{ phone, phoneLocal, countryCode, name }`.
+ *
+ * LOCAL BACKEND ONLY. The cloud backend registers inside the AMI and needs
+ * `ACE_MOBILE_CLOUD_LIVE_REGISTER=true` plus an ace-web change to accept
+ * caller-supplied credentials; passing overrides while routed to cloud throws
+ * rather than silently registering the wrong user.
+ */
+export interface EnsureAvdRunningOptions {
+  testUser?: Partial<TestUserCredentials>;
 }
 
 export interface ApkInfo {

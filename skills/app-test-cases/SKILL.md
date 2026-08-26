@@ -29,7 +29,7 @@ Phase 6 needs them.
 | Nova MCP | `get_app({app_id: <nova_app_id>})` | authoritative form/field IDs to resolve into real Maestro selectors |
 | Static | `mcp/mobile/recipes/static/` | recipe palette / templates |
 | **Selector map** | `mcp/mobile/selectors/connect-<apkVersion>.yaml` (default `2.63.2`) | **the authoritative, live-calibrated source for screen IDs and selector behavior.** Rows carry `unverified: true` or a `Live-verified` note, so the map states its own confidence per row — DO NOT improvise selectors that contradict it. |
-| **Atlas** (partial, historical) | `docs/mobile-atlas/connect-2.62.0.md` | narrative transition/side-effect notes only, written against **2.62.0**. The default APK is `2.63.2` (`mcp/mobile/client.ts` `DEFAULT_APK_VERSION`), so this atlas is one minor behind and is **not** ground truth. Where the atlas and the selector map disagree, the selector map wins; where the atlas says a surface is UNREACHED, check the palette recipes in `mcp/mobile/recipes/static/` before believing it. |
+| **Atlas** (partial) | `docs/mobile-atlas/connect-2.63.2.md` | narrative transition/side-effect notes only — sequence and side-effects, never identity. Its `## Provenance and coverage` table tags every surface `calibrated-2.63.2`, `carried-from-2.62.0-unverified`, or `uncovered`; read that tag before relying on a section. Where the atlas and the selector map disagree, **the selector map wins**; where the atlas says a surface is uncovered, check the palette recipes in `mcp/mobile/recipes/static/` before believing it. The carried-over surfaces are reproduced by reference from the older 2.62.0 atlas (its §§ 1-11) rather than restated. |
 
 ## Products
 
@@ -203,10 +203,12 @@ exactly as you already do for `learn-tap-module.yaml`:
     env:
       MODULE_NAME: "Community Meeting Record"   # the PAYABLE module
       FORM_NAME: "Community Meeting Record"     # omit when it equals MODULE_NAME
+      WALK_LABEL: "-deliver"                    # REQUIRED even on a lone leg (ace#1668)
 ```
 
-Both are optional and default to the legacy tap-first-row behavior when
-unbound, so single-module callers are unchanged — but a Deliver app with
+`MODULE_NAME` / `FORM_NAME` are optional and default to the legacy
+tap-first-row behavior when unbound, so single-module callers are
+unchanged — but a Deliver app with
 more than one module MUST bind `MODULE_NAME`, or the walk is silently
 wrong rather than loudly broken. Enforced structurally by
 `test/mcp/mobile/static-recipe-invariants.test.ts § positional row taps`.
@@ -239,6 +241,7 @@ the walk crosses the case list on its own:
     env:
       MODULE_NAME: "CBF Registration"
       FORM_NAME: "CBF Registration"
+      WALK_LABEL: "-register"                     # per-invocation frame suffix
 # ...answer the registration fields, then:
 - runFlow:
     file: form-submit.yaml
@@ -264,7 +267,47 @@ the walk crosses the case list on its own:
       MODULE_NAME: "Community Meeting Record"      # the PAYABLE module
       FORM_NAME: "Village Monitoring Record"
       CASE_NAME: "Thandiwe Banda.*"                # the case_name you entered
+      WALK_LABEL: "-followup"                      # MUST differ from leg A's
 ```
+
+**`WALK_LABEL` is REQUIRED at every call site — including a lone one
+(ace#1651, corrected by ace#1668).** `deliver-form-walk.yaml` names three of its captures from
+FIXED strings — `deliver-form-walk-module-list`, `-form-list`,
+`-form-question`. Two invocations in one recipe therefore wrote the same
+three filenames twice, and leg B's frames **silently overwrote leg A's**:
+measured on bednet-check-2-visit/20260825-1310 (a PASSING run) the stdout
+reported all three captures COMPLETED in both legs while exactly one file
+of each name survived, carrying leg B's `takenAt`. The registration
+evidence the training deck and `app-ux-eval` read was destroyed, and if
+leg B fails it destroys precisely the frames an operator needs to see how
+the case got created.
+
+Bind a short `[a-z0-9-]` slug **including the leading separator**, and a
+DIFFERENT one per call site.
+
+**Do not omit it on a single-invocation walk.** The #1651 fix said you
+could, on the premise that an unbound `${WALK_LABEL}` substitutes to the
+empty string and keeps byte-identical names. That premise is false:
+Maestro evaluates `${...}` in a JS engine, so an unbound variable
+stringifies to the literal text `undefined`. The very next run's Deliver
+leg wrote `deliver-form-walk-module-listundefined.png`,
+`-form-listundefined.png`, `-form-questionundefined.png` and
+`deliver-form-walk-module-row-Household poverty surveyundefined.png`
+(hh-poverty-targeting/20260824-1404) — names that reach the screenshot
+manifest, the training deck and the FLW guide, where they read as a
+defect in the deliverable (ace#1668). And a default inside the palette's
+own `env:` block is NOT the fix — a subflow `env:` OVERRIDES the caller's
+`runFlow.env` in Maestro (ace#1033), so it would force both legs to the
+same value and silently restore the #1651 overwrite.
+
+*Enforced two ways, both run by `mobile_validate_recipe`:*
+`lintRecipeText`'s `runFlow-unbound-screenshot-name` rule fails **any**
+call site that omits `WALK_LABEL` (or binds it empty), and
+`repeat-palette-invocation-without-discriminator` fails a recipe that
+invokes the palette twice with a duplicated one.
+`test/mcp/mobile/static-recipe-invariants.test.ts § deliver-form-walk
+per-invocation frame names` pins the palette side, including the literal
+`undefined` expansion that #1651's own test suite had assumed away.
 
 **Step 1b exists because the two recipes' own contracts do not meet
 (ace#1191).** `deliver-form-walk.yaml`'s header declares
@@ -273,7 +316,8 @@ its first action taps `Start`; `form-submit.yaml`'s header declares
 *"Post-state: depends on the form … Deliver forms (TBD)"*. `deliver-sync.yaml`
 records the real behaviour in passing — *"form-submit returns to the form list
 (or the module list) rather than the app home"* — which is exactly why
-deliver-sync itself opens with two guarded `back` steps.
+deliver-sync itself opens with four guarded `back` steps (a case-bound Deliver
+form sits one level deeper — ace#1494).
 
 Without 1b the second leg starts inside a form. Live on
 `spark-facilitator/20260813-2126` the Deliver smoke walked leg A, then died at
@@ -392,10 +436,61 @@ walk**:
      `form-question-input` guess) does not exist; match by class
      (`android.widget.EditText`) and position.
 
-   Anchoring on the HINT text where one exists, or on index within the
-   field-list, both remain **uncalibrated** — do not emit either until
-   one is proven on a live device, and prefer a one-question-per-screen
-   group over guessing.
+   **The focus anchor is the element immediately above the `EditText` —
+   the field's `hint` when it has one, the question label when it does
+   not** (ace#1299, follow-up comment: Nova's authoritative `hint` map
+   diffed against all 14 inputs of both Deliver forms on
+   `spark-facilitator/20260813-2126`; 3 anchors were wrong and all 3 were
+   hint-carrying fields anchored on their label, which is why this read as
+   intermittent rather than systematic).
+
+   So for every input the autofocus does NOT cover — i.e. every input
+   after the first on a field-list — emit (validated on-device, ace#1299:
+   an isolated probe on that live registration screen landed `cbf_name` =
+   `'PROBE-NAME'` and `phone_number` = `'0991234567'` in their OWN fields,
+   where the label-anchored idiom had put both into one):
+
+   ```yaml
+   - scrollUntilVisible:
+       element:
+         text: "[\\s\\S]*<hint if present, else question label>[\\s\\S]*"
+       direction: DOWN
+       speed: 30
+       timeout: 20000
+       visibilityPercentage: 60
+       centerElement: true
+   - tapOn:
+       below:
+         text: "[\\s\\S]*<same anchor>[\\s\\S]*"
+   - inputText: "<value>"
+   - hideKeyboard
+   ```
+
+   **Guarded vs unconditional — the discriminator is whether the anchor IS
+   the tap target.** Both shapes are correct, in different places, and
+   picking by habit rather than by this test reintroduces one of the two
+   bugs (ace#1070, ace#1299):
+
+   - **Anchor IS the tap target** (a unique option label, a named button)
+     → keep the `when: notVisible` **guarded** scroll of § Quiz /
+     required-input answer-tap rule. ace#1070 stands: an unconditional
+     scroll on an option that already fits reads as backward form
+     navigation and walks the flow out of the form.
+   - **Anchor is a DIFFERENT element from the tap target** (an `EditText`
+     reached via the hint above it; a field-list option addressed via its
+     question label) → **unconditional** centring scroll, as in the
+     snippet above. The failure mode there is "anchor visible, its
+     `EditText` still below the fold", which `notVisible: <anchor>` is
+     structurally blind to — so the guard suppresses the one scroll that
+     was needed. That half affected all 14 inputs, not just the 3 with
+     wrong anchors (ace#1299).
+
+   `speed: 30`, not 80: at 80 the centring scroll overshot a ~300px radio
+   band and halted the leg (ace#1299).
+
+   Index-based anchoring within the field-list is still **uncalibrated** —
+   use the hint/label anchor above, which is proven (ace#1299); do not
+   guess an index.
 4. Exactly **ONE** trailing form-advance, after every REQUIRED child is
    answered.
 
@@ -412,6 +507,30 @@ Two matcher traps on that screen:
 `recipe-sanity-probe` enforces this statically as
 `group-field-list-per-question-walk` when Step 2.6's caller supplies
 `fields` (ace#862).
+
+**Both halves of item 3 are statically enforced too** (ace#1554):
+
+- `input-anchor-skips-hint` — a focus tap anchored on the QUESTION LABEL
+  of a field that carries a `hint`. Hint-gated: it reads only fields that
+  positively carry a hint, so a caller that did not supply `hint` gets a
+  no-op, never an assumed "no hint". Supply `hint` alongside `label` in
+  Step 2.6's `fields` for it to run at all.
+- `input-focus-scroll-is-guarded` — a `when: notVisible: <anchor>` wrapper
+  around the centring scroll for a `tapOn: below:` + `inputText` pair.
+  This one needs no Nova data; it is the guarded-vs-unconditional
+  discriminator below, made non-optional.
+
+**Anchor every shared option label.** The probe attributes a step to a
+group by the strings the step selects on, and a bare `tapOn: text: "Yes"`
+names no screen — on the normal shape (a consumption block plus an assets
+block, both Yes/No) it is a child of two groups at once. Since ace#1548 an
+ambiguous matcher attributes to NOTHING rather than to whichever group
+enumerates first, so the check simply goes quiet on unanchored option taps.
+Keep the `below:` anchor naming the question
+(`"[\\s\\S]*<question label>[\\s\\S]*"` — two backslashes, as in the
+snippet above; `\s` is not a legal escape in a YAML double-quoted scalar)
+on every option tap — it is what makes the check able to see your screen
+at all.
 
 Compose each smoke recipe using the static palette pattern (one Maestro
 step per UI interaction, with `${SELECTOR:logical-name}`
@@ -550,11 +669,11 @@ The static palette lives at `mcp/mobile/recipes/static/`:
 - `learn-tap-module.yaml` — MenuActivity row tap (generic — handles ANY level of the 3-level suite tree)
 - `form-advance.yaml` — `nav_btn_next` ImageButton tap (NOT text-match "Next" — see atlas §7). **Every `runFlow` of this palette MUST pass `SCREENSHOT_NAME`** — see § Screenshot names are caller-bound.
 - `form-submit.yaml` — branched: explicit Submit button if visible, otherwise auto-finalize via `nav_btn_next`. **Every `runFlow` of this palette MUST pass `SCREENSHOT_NAME_PRE_SUBMIT` + `SCREENSHOT_NAME_POST_SUBMIT` env params** with per-journey names (e.g. `deliver-final-review` / `deliver-submitted-confirmation`) — see § Screenshot names are caller-bound. There are NO palette-side fallbacks: the `env:` defaults added for ace#852 turned out to SHADOW the caller's names and were removed in ace#1033.
-- `content-form-finish.yaml` — **the canonical Learn CONTENT-form finalize.** A bounded multi-screen advance loop that taps `nav_btn_next` until the form auto-finalizes back to StandardHomeActivity, exits on the `learn-home-start-tile` home anchor (NOT the suite menu), handles the score-gated two-screen FINISH, and asserts the home grid post-finalize. Use this for every label-only content/lesson form — NOT for required-input quizzes (those still need per-field answer-taps + `form-advance` + `form-submit`). Requires `SCREENSHOT_NAME`. See § Multi-screen content forms below.
+- `content-form-finish.yaml` — **the Learn CONTENT-form finalize, home-grid variant.** A bounded multi-screen advance loop that taps `nav_btn_next` until the form auto-finalizes back to StandardHomeActivity, exits on the `learn-home-start-tile` home anchor (NOT the suite menu), handles the score-gated two-screen FINISH, and asserts the home grid post-finalize. Correct ONLY on a multi-module Learn app whose forms are `post_submit: module`; on `post_submit: previous` (Nova's default) the finalize lands on the module form list and this recipe's terminal home assert cannot fire (dimagi-internal/ace#1566). Use it for label-only content/lesson forms — NOT for required-input quizzes (those still need per-field answer-taps + `form-advance` + `form-submit`). Requires `SCREENSHOT_NAME`. See § Multi-screen content forms below.
 - `learn-suite-reentry.yaml` — **the between-modules suite re-entry, home-grid variant.** Tap the home Start tile → wait `screen_suite_menu_list`. Correct ONLY when the form is `post_submit: module`, which finalizes to StandardHomeActivity. Same surface contract as `learn-launch.yaml` (the first, post-claim suite entry); split out under a distinct name to document the between-modules intent at the call site.
-- `learn-suite-reentry-from-module.yaml` — **the between-modules suite re-entry, form-list variant.** `back` → wait `screen_suite_menu_list`. Correct when the form is `post_submit: previous` (**Nova's default**), which finalizes to the module's own form list rather than the home grid. Composing the home-grid variant here hangs the walk for 30s on a "Start" tile that never renders (dimagi-internal/ace#1071).
-- **Pick between those two from `get_form().post_submit`** — see § Suite re-entry between modules below for the table and the reason they cannot be merged into one guarded recipe. **NOTE:** both are for MULTI-module Learn apps. For a **single-module** Learn app (one CommCare module holding all forms), forms finalize back to the suite list — use `content-form-finish-to-suite.yaml` and OMIT the re-entry step entirely. See § SINGLE-MODULE Learn app below (jjackson/ace#894).
-- `content-form-finish-to-suite.yaml` — **single-module Learn form finalize.** `content-form-finish.yaml` re-keyed on `${SELECTOR:learn-suite-menu}` (the N-form suite list) instead of the home tile, for Learn apps built as one CommCare module holding all forms. Proven live hh-poverty-targeting/20260722-1341. See § SINGLE-MODULE Learn app (jjackson/ace#894).
+- `learn-suite-reentry-from-module.yaml` — **the between-modules suite re-entry, form-list variant.** `back` → wait `screen_suite_menu_list`. Correct when the form is `post_submit: previous` (**Nova's default**) AND the form's own module renders a form list to come back to. Composing the home-grid variant here hangs the walk for 30s on a "Start" tile that never renders (dimagi-internal/ace#1071); firing this one from the suite root instead — which is where `previous` lands for a module CommCare auto-skipped — walks back out of the suite (dimagi-internal/ace#1633), so **always call it guarded on the next module's row**. Both are per-FORM decisions: see § Suite re-entry between modules.
+- **Pick between those two PER FORM, from `get_form().post_submit` plus the owning module's form count** — see § Suite re-entry between modules below for the table, the per-form rule (dimagi-internal/ace#1633), the guarded call site, and the reason the two recipes cannot be merged into one. **NOTE:** both are for MULTI-module Learn apps. For a **single-module** Learn app (one CommCare module holding all forms), forms finalize back to the suite list — use `content-form-finish-to-suite.yaml` and OMIT the re-entry step entirely. See § SINGLE-MODULE Learn app below (jjackson/ace#894).
+- `content-form-finish-to-suite.yaml` — **the Learn CONTENT-form finalize, menu variant.** `content-form-finish.yaml` re-keyed on `${SELECTOR:learn-suite-menu}` (a display-mode-agnostic alternation that matches the suite root AND a module's own form list, #1127) instead of the home tile. Correct for a **single-module** Learn app (one CommCare module holding all forms — proven live hh-poverty-targeting/20260722-1341, jjackson/ace#894) AND for a **multi-module** app whose forms are `post_submit: previous` (dimagi-internal/ace#1566). Requires `SCREENSHOT_NAME`. See § Multi-screen content forms and § SINGLE-MODULE Learn app below.
 - `connect-resume-opp.yaml` — opp-list → scroll to the target opp's In-Progress card → tap Resume → lands on the certificate/opp-detail surface (atlas § 8) that `deliver-launch.yaml` expects. Pre-state: Connect opp-list visible, opp already Learn-in-progress or complete. Warm-session only (journey-learn leg completed Learn in this dispatch). Matches the tile on **`OPP_RUN_ID`** (`text: ".*${OPP_RUN_ID}.*"`), not `OPP_NAME` — the recipe header is the contract, don't restate its parameters here (ace#974).
 - `deliver-launch.yaml` — post-Learn-complete certificate (atlas § 8) → tap VIEW OPPORTUNITY DETAILS → Download Delivery gate (§ 9) → tap DOWNLOAD → Deliver-mode StandardHomeActivity (§ 10) anchored on `id/viewJobCard`. All surfaces ID-anchored (verified 2026-05-26 against bednet J2 dumps; no coordinate fallbacks). Chain after `connect-resume-opp.yaml` in the Deliver smoke recipe.
 
@@ -594,33 +713,74 @@ For the canonical Learn-app smoke recipe template:
 
 Read live module + form names from Nova's `get_form` per the "Use live labels" section below — the pre-claim teaser at `tv_learn_modules_list` lists module names verbatim, but form names inside each module are only visible via Nova. `FORM_NAME` MUST be the form's live `label` from `get_form` (verbatim), not the PDD-brief name.
 
-##### Multi-screen content forms — use `content-form-finish.yaml`
+##### Multi-screen content forms — pick the finalize variant from `post_submit`
 
 **Learn CONTENT forms are paginated, multi-screen, and label-only — walk
-each one with `content-form-finish.yaml`, NOT a single `form-submit.yaml`.**
+each one with a `content-form-finish*` recipe, NOT a single
+`form-submit.yaml`.**
 A Learn content/lesson form (e.g. "Program Orientation", "Identifying RDTs",
 "Photo Protocol") is a multi-screen form: the first screen shows BOTH
 `nav_btn_prev` and `nav_btn_next` and the progress bar is not full. A single
 `form-submit.yaml` (one `nav_btn_next` tap) advances exactly ONE page and
 then looks for FINISH — so it **stalls on page 2 of the first content form**,
-and the next `learn-tap-module` hard-fails asserting `screen_suite_menu_list`.
+and the next `learn-tap-module` hard-fails asserting the suite menu.
 This was the malaria-rdt/20260601-0929 Phase 6 Learn-walk blocker
 (jjackson/ace#646).
 
-`content-form-finish.yaml` is the class-level fix: a bounded multi-screen
-advance loop that taps `nav_btn_next` until the form auto-finalizes, then
-**exits on the StandardHomeActivity home anchor (`learn-home-start-tile`),
-NOT on the suite menu.** Learn forms finalize back to the home grid (Start /
-View Job Status / Sync / Log out, "1 form sent to server!"), not to
-`screen_suite_menu_list` — so an advance loop keyed on the suite menu as its
-exit never fires and spins past finalize into a maestro-process timeout
-(observed live). The recipe also handles the score-gated two-screen FINISH
-(#569) and asserts the home grid post-finalize so any miss fails loud with a
-named anchor.
+The class-level fix is a bounded multi-screen advance loop that taps
+`nav_btn_next` until the form auto-finalizes, then exits on the anchor of
+**wherever that finalize actually lands**. There are two of them, and they
+differ ONLY in that exit anchor:
 
-Call it once per content form (pass `SCREENSHOT_NAME`):
+- `content-form-finish.yaml` — exits + asserts on the StandardHomeActivity
+  home grid (`${SELECTOR:learn-home-start-tile}`, the Start / View Job
+  Status / Sync / Log out surface, "1 form sent to server!").
+- `content-form-finish-to-suite.yaml` — exits + waits on
+  `${SELECTOR:learn-suite-menu}`, a display-mode-agnostic regex alternation
+  over the MenuActivity containers (dimagi-internal/ace#1127) that matches
+  the suite root AND a module's own one-level-in form list.
+
+**Which one is correct is decided by the same `get_form().post_submit` field
+that decides the re-entry recipe** — the two are one 2x2, not two independent
+choices (dimagi-internal/ace#1566, the finalize half of the #1071 class):
+
+| Learn app shape | `post_submit` | finalize recipe | re-entry recipe |
+|---|---|---|---|
+| multi-module | `module` | `content-form-finish.yaml` | `learn-suite-reentry.yaml` |
+| multi-module | `previous` (**Nova's default**) | `content-form-finish-to-suite.yaml` | `learn-suite-reentry-from-module.yaml` |
+| single-module | any | `content-form-finish-to-suite.yaml` | none (see § SINGLE-MODULE Learn app) |
+
+**The finalize column reads per APP; the re-entry column reads per FORM
+(dimagi-internal/ace#1633).** `content-form-finish-to-suite.yaml` exits on
+`${SELECTOR:learn-suite-menu}`, a regex alternation that matches the module
+form list AND the suite root, so it is correct wherever a `previous` finalize
+lands. The re-entry is not: `learn-suite-reentry-from-module.yaml` is an
+unconditional `back`, which is right only when the finalize actually landed
+one level in. Pick it per form, from the OWNING MODULE's shape, and call it
+guarded — see § Suite re-entry between modules.
+
+**Read `post_submit` off the blueprint before you pick.** On a multi-module
+app whose forms are `post_submit: previous`, the finalize lands on the
+module's own form list, one level inside the suite — the home grid never
+renders. `content-form-finish.yaml` cannot terminate there: its advance loop
+is guarded on `notVisible: ${SELECTOR:learn-home-start-tile}` (true forever
+on a menu screen) while the inner `visible: ${SELECTOR:form-nav-next}` guard
+no-ops on a menu, so all 12 bounded slots burn doing nothing and the terminal
+`assertVisible ${SELECTOR:learn-home-start-tile}` dies with
+`Assertion is false: "Start" is visible` — the same signature #1071 observed
+live for the re-entry half on spark-facilitator/20260728-1338, one step
+earlier in the loop. Live repro of the finalize half:
+bednet-check-2-visit/20260820-0832 (2 CommCare modules, 5 forms, all
+`post_submit: previous`; workaround recorded in that run's
+`journey-learn.yaml` header). `content-form-finish-to-suite.yaml` is correct
+there because `learn-suite-menu` matches that module form list, and
+`learn-suite-reentry-from-module.yaml` (`back` → suite root) then restores
+`learn-tap-module`'s pre-state.
+
+Call the chosen recipe once per content form (pass `SCREENSHOT_NAME`):
 
 ```yaml
+# ── multi-module, post_submit: module ────────────────────────────────
 - runFlow:
     file: learn-tap-module.yaml
     env:
@@ -636,15 +796,40 @@ Call it once per content form (pass `SCREENSHOT_NAME`):
     file: learn-suite-reentry.yaml
 ```
 
+```yaml
+# ── multi-module, post_submit: previous (Nova's default) ─────────────
+- runFlow:
+    file: learn-tap-module.yaml
+    env:
+      MODULE_NAME: "1. Program Orientation"
+      FORM_NAME: "Program Orientation"
+- runFlow:
+    file: content-form-finish-to-suite.yaml
+    env:
+      SCREENSHOT_NAME: "journey-learn-m0-orientation-finished"
+# device is now on the MODULE's own form list (or, if THIS module held one
+# auto-skipped form, already at the suite root) — so the `back` is GUARDED
+# on the next module's row (see § Suite re-entry between modules, ace#1633).
+- runFlow:
+    when:
+      notVisible:
+        text: "2. Spot-check training"
+        below:
+          id: "${SELECTOR:learn-suite-menu}"
+    commands:
+      - runFlow:
+          file: learn-suite-reentry-from-module.yaml
+```
+
 Do NOT hand-chain `form-advance.yaml` + `form-submit.yaml` for content
-forms — `content-form-finish.yaml` subsumes both the single-screen and the
+forms — both `content-form-finish*` recipes subsume the single-screen and the
 multi-screen cases (the bounded loop no-ops its remaining advances once the
 form auto-finalizes on its only/last screen). Reserve explicit
 `form-advance` → answer-tap → `form-submit` sequencing for QUIZ /
 assessment forms with required inputs (per the MANDATORY answer-tap rule
-below) — `content-form-finish.yaml` deliberately does NOT select answers and
-would stall on `warning_root` ("Sorry, this response is required!") if
-pointed at a required-input quiz.
+below) — neither `content-form-finish*` recipe selects answers, so pointing
+one at a required-input quiz stalls on `warning_root` ("Sorry, this response
+is required!"; jjackson/ace#646).
 
 ##### Screenshot names are caller-bound — never rely on a palette default (dimagi-internal/ace#1033)
 
@@ -680,7 +865,7 @@ over-step on bednet-spot-check run 20260528-0556 Phase 6 (a `form-advance` +
 `content-form-finish.yaml` handles one-screen and N-screen content forms
 under one contract.
 
-##### Suite re-entry between modules — pick the variant from `post_submit`
+##### Suite re-entry between modules — pick the variant PER FORM, then guard the call
 
 **You MUST re-enter the suite root between every module** — the next
 `learn-tap-module` asserts `screen_suite_menu_list` at the SUITE ROOT as its
@@ -693,11 +878,69 @@ it decides which re-entry recipe to compose:
 | `post_submit` | Where the finalize lands | Re-entry recipe |
 |---|---|---|
 | `module` | StandardHomeActivity — the home grid (Start / View Job Status / Sync / Log out) | `learn-suite-reentry.yaml` (tap Start → wait `screen_suite_menu_list`) |
-| `previous` (**Nova's default**) | the MODULE's own form list — one level INSIDE the suite | `learn-suite-reentry-from-module.yaml` (`back` → wait `screen_suite_menu_list`) |
+| `previous` (**Nova's default**) | the screen the form was entered FROM: the MODULE's own form list when that module HAS one, else the suite ROOT | `learn-suite-reentry-from-module.yaml` (`back` → wait `screen_suite_menu_list`), **called guarded** — see below |
 
-Composing the wrong one hangs the walk. `learn-suite-reentry.yaml` opens with
-a 30s `extendedWaitUntil` on the home "Start" tile; from a module form list
-that tile never renders, so a multi-module walk dies after form 1 with
+**The choice is per FORM, not per APP (dimagi-internal/ace#1633).**
+`post_submit: previous` means "the screen you came from", and on a
+multi-module app that is **not the same screen for every module**: CommCare
+**auto-skips** a module's intermediate one-row form list when the module
+holds exactly ONE form whose display name DIFFERS from the module name
+(`learn-tap-module.yaml`'s header records that behaviour as live-observed).
+So for each form, read the shape of the module that OWNS it:
+
+- **The module renders a form list** — it holds TWO OR MORE forms, or exactly
+  one form whose name EQUALS the module name (no auto-skip). `previous` lands
+  on that form list, one level inside the suite →
+  `learn-suite-reentry-from-module.yaml` (`back` → suite root).
+- **The module was auto-skipped** — exactly ONE form, whose name DIFFERS from
+  the module name. There was no form list on the way in, so there is none to
+  come back to and `previous` is the suite ROOT → the walk is already at the
+  re-entry postcondition, and the re-entry must be a **no-op**. An
+  unconditional `back` fired from the suite root exits the suite entirely and
+  the following 15s wait then expires — the same signature #1071 records for
+  the wrong variant.
+
+**One app can be BOTH shapes at once,** which is exactly what a per-app
+reading cannot express. Live: `bednet-check-2-visit/20260825-1310`, Nova Learn
+app `80145765-6ad8-4617-8b5b-9ec2a4fa4bc1` — module "Baseline check" holds ONE
+form ("What you know now", a different name → auto-skipped), module
+"Spot-check training" holds TWO ("Training", "Final check" → a real form
+list), and every form is `post_submit: previous`. Following the table per app
+and firing an unconditional `back` after module 1 walks back OUT of the suite
+before module 2 is ever entered — Learn never reaches 100% and Deliver stays
+locked (the #897 consequence).
+
+**Compose the call GUARDED POSITIVELY on the row you need next** — the next
+module's suite-root row — so it is a no-op when the finalize already landed at
+the root:
+
+```yaml
+# after the last form of module N, before module N+1's learn-tap-module
+- runFlow:
+    when:
+      notVisible:
+        text: "<NEXT MODULE ROW LABEL>"        # verbatim from get_app
+        below:
+          id: "${SELECTOR:learn-suite-menu}"
+    commands:
+      - runFlow:
+          file: learn-suite-reentry-from-module.yaml
+```
+
+Guard on the row you WANT (`notVisible` the next module row ⇒ we are not at
+the root yet ⇒ go back), never on the absence of the other branch's surface —
+the same lesson `connect-resume-opp.yaml` and `deliver-form-walk.yaml` Level 1
+already encode. This composition is also what makes the rule safe under the
+one fact here that is an INFERENCE rather than a live observation: the
+blueprint shapes above are quoted verbatim from `get_app`, but "an
+auto-skipped module's `previous` lands on the suite root" is derived from
+`learn-tap-module.yaml`'s recorded auto-skip plus the plain meaning of
+`previous`, and has not been re-observed on a device. The guard is correct
+under either landing; a second unconditional variant would not be.
+
+Composing the wrong VARIANT hangs the walk. `learn-suite-reentry.yaml` opens
+with a 30s `extendedWaitUntil` on the home "Start" tile; from a module form
+list that tile never renders, so a multi-module walk dies after form 1 with
 `Assertion is false: "Start" is visible`. Live repro:
 spark-facilitator/20260728-1338 (9 modules, all `post_submit: previous`) —
 the pre-test finalized and synced cleanly, then the walk hung, with the dump
@@ -707,7 +950,7 @@ The per-module loop is therefore:
 
 ```
 learn-tap-module → content-form-finish (or quiz answer-taps + form-submit)
-                 → <re-entry variant per the table>
+                 → <re-entry variant per the table, GUARDED per above>
                  → (next module's learn-tap-module)
 ```
 
@@ -718,9 +961,13 @@ of `post_submit` — it enters from the Connect handoff, not from a finalize.
 module form list and the suite root share the same `screen_suite_menu_list`
 id, so no on-screen signal distinguishes "one level in" from "already at the
 root"; a guard keyed on that id would press `back` out of the suite entirely
-on a `post_submit: module` app. The app-metadata branch above is the
-reliable discriminator. (See the header of
-`learn-suite-reentry-from-module.yaml`.)
+on a `post_submit: module` app. The app-metadata branch above is the reliable
+discriminator. (See the header of `learn-suite-reentry-from-module.yaml`.)
+That is NOT in tension with the call-site guard above: the guard there is
+keyed on the NEXT ROW'S NAME — a per-journey value the palette cannot know —
+not on the shared container id. Parameterising the recipe on a
+`${NEXT_ROW_NAME}` would move the guard back into the palette; until it does,
+the guard lives at the call site.
 
 ##### SINGLE-MODULE Learn app — use `content-form-finish-to-suite.yaml`, NOT the home round-trip (jjackson/ace#894)
 
@@ -750,19 +997,26 @@ bounded guarded advance loop (`tapOn form-nav-next` while the suite list is not
 visible), a `form-nav-finish` fallback for the score-gated two-screen FINISH
 (#569), then `assertVisible learn-suite-menu`. **Omit `learn-suite-reentry`
 entirely** — there is no home round-trip in a single-module app. Multi-module
-apps keep the `content-form-finish` + `learn-suite-reentry` loop above.
+apps keep the finalize + re-entry loop above, whose BOTH halves are picked
+from `post_submit` (dimagi-internal/ace#1566) — a multi-module
+`post_submit: previous` app also finalizes with
+`content-form-finish-to-suite.yaml`, but unlike the single-module shape it
+still needs `learn-suite-reentry-from-module.yaml` between modules.
 
 **Verify each transition you author against the selector map for the
 active APK (`mcp/mobile/selectors/connect-<apkVersion>.yaml`, default
 `2.63.2`), and against the palette recipes in
 `mcp/mobile/recipes/static/`** — those two are live-calibrated and carry
-per-row provenance. `docs/mobile-atlas/connect-2.62.0.md` remains useful
-for narrative transition and side-effect notes (which screen replaces
-which, what system prompts fire), but it was written against **2.62.0**
-and its "Open questions" are stale — several have since been answered in
-recipe headers rather than in the atlas. If a recipe needs a transition
-neither source documents, flag it in the recipe header comment and file
-it, rather than treating the 2.62.0 atlas's silence as evidence.
+per-row provenance. `docs/mobile-atlas/connect-2.63.2.md` is the narrative
+companion — which screen replaces which, what fires in between, what a
+transition changes as a side-effect. It is written against the default APK,
+but it is **partial**: read a section's provenance tag before relying on it
+(`calibrated-2.63.2` vs `carried-from-2.62.0-unverified` vs `uncovered`),
+and note that its carried-over § 5 surfaces point back into the older
+2.62.0 atlas, whose "Open questions" are stale — several have since been
+answered in recipe headers rather than in either atlas. If a recipe needs
+a transition neither source documents, flag it in the recipe header
+comment and file it, rather than treating an atlas's silence as evidence.
 
 Each `is_smoke=true` journey's recipe **must** include the Connect-
 login + opp-claim prefix so it can run from a cold boot (the cloud
@@ -1084,7 +1338,7 @@ For each form-walk segment of a recipe:
              element:
                text: "<literal option label>.*"
              direction: DOWN
-             speed: 80
+             speed: 30
              timeout: 20000
              visibilityPercentage: 60
              centerElement: true
@@ -1120,7 +1374,14 @@ For each form-walk segment of a recipe:
    (`camera-take-photo` → `camera-shutter-button` → `camera-save-photo`)
    before advance.
 4. For `kind: text` / `kind: decimal` required fields, emit `inputText`
-   with a plausible sample value before advance.
+   with a plausible sample value before advance. **On a field-list
+   (`kind: group`) screen a bare `inputText` only lands for the FIRST
+   input** — CommCare autofocuses that one and nothing else. Every later
+   input needs the calibrated focus sequence of § Step 3 item 3:
+   unconditional centring scroll at `speed: 30` on the element
+   immediately above the `EditText` (its `hint` when it has one, else the
+   question label), then `tapOn: below: <that anchor>`, then `inputText`,
+   then `hideKeyboard` (ace#1299).
 4.5. For `kind: geopoint` required fields, do **NOT** `inputText` a
    `"lat lon alt accuracy"` string. A native CommCare geopoint is a
    **Capture-button widget** that reads the device GPS — not a free-text
@@ -1454,6 +1715,8 @@ already maps the producer to `3-commcare/` (see
 
 | Date | Change | Author |
 |------|--------|--------|
+| 2026-08-25 | **Learn suite re-entry is selected PER FORM, not per app, and the call is guarded (closes dimagi-internal/ace#1633).** § Suite re-entry between modules picked the finalize/re-entry pair from a single per-APP reading of `post_submit`, but where a `previous` finalize lands is a property of the OWNING MODULE: CommCare auto-skips a module's one-row form list when the module holds exactly one form whose name differs from the module name, so `previous` lands on the suite ROOT there and on the form LIST everywhere else. One app can be both shapes at once — `bednet-check-2-visit/20260825-1310` (module "Baseline check": one form "What you know now"; module "Spot-check training": two forms; all `post_submit: previous`) — and the per-app table then prescribes an unconditional `back` that walks OUT of the suite after module 1, hanging the walk before module 2 (the #1071 signature, #897 consequence). The section now states the per-form rule with both module shapes spelled out, and every composition of `learn-suite-reentry-from-module.yaml` is guarded POSITIVELY on the next module's suite row (the workaround that run shipped), which is correct under either landing. The 2x2 stays as the choice of WHICH recipe; the finalize half is landing-agnostic because `content-form-finish-to-suite.yaml` exits on the `learn-suite-menu` alternation. *Enforced:* `test/skills/learn-suite-reentry-guarded.test.ts`. | ACE team |
+| 2026-08-23 | **§ Multi-screen content forms now branches on `post_submit` (closes dimagi-internal/ace#1566 — the finalize half of the #1071 class).** The section prescribed `content-form-finish.yaml` unconditionally for every content form while § Suite re-entry between modules already branched, so a multi-module Learn app whose forms are `post_submit: previous` (Nova's default) got a finalize recipe whose bounded advance loop and terminal assert are both keyed on the home-grid `learn-home-start-tile` — a surface that never renders when the finalize lands on the module's own form list. Live: bednet-check-2-visit/20260820-0832 (2 modules, 5 forms, all `previous`). Finalize + re-entry are now stated as one 2x2 (multi/`module` → `content-form-finish` + `learn-suite-reentry`; multi/`previous` → `content-form-finish-to-suite` + `learn-suite-reentry-from-module`; single-module → `content-form-finish-to-suite`, no re-entry). Enforced by `test/mcp/mobile/static-recipe-invariants.test.ts § home-anchored finalize is post_submit-gated`. | ACE team |
 | 2026-05-04 | Initial version. Phase 3 producer for app-test-cases.yaml; binds pdd-to-app-journeys.md to Nova-built structure with Maestro recipe stubs. Successor to qa-plan (retired in same release). | ACE team |
 | 2026-05-08 | Add `## Decisions Log` section: 2 anchor rows (test-scenario-count, test-archetype-coverage) + bar-criterion reference. Pairs with decisions-log PR #4 (Phase 3-10 writes). | ACE team (decisions-log PR #4) |
 | 2026-05-22 | Fix `phase:` tag in Decisions Log footer: was `6-qa-and-training` (the consuming phase), now `3-commcare` (the dispatching phase, matching the artifact manifest's existing `3-commcare/` path mapping). Follow-up to issue #399. | ACE team |
@@ -1472,3 +1735,5 @@ already maps the producer to `3-commcare/` (see
 | 2026-07-31 | **Menu anchors are display-mode-agnostic; a single-container anchor is now a CI failure (closes dimagi-internal/ace#1127).** #1082/PR #1100 correctly made Phase 3 `app-hq-settings` apply GRID menu display app-wide — and because every Phase 6 menu anchor resolved to the LIST container `screen_suite_menu_list` ALONE, no shipped palette recipe could execute on any ACE opp (bednet-spot-check/20260731-1353: Learn halted at `learn-launch.yaml`, Deliver walled identically, Phase 6 `verdict: blocked`, apps confirmed healthy server-side). CommCare renders the SAME `row_img`/`row_txt` rows in either container; only the container id changes. Fix: `learn-suite-menu` / `deliver-suite-menu` are now regex alternations (`org.commcare.dalvik:id/(screen_suite_menu_list|grid_menu_grid)`) in connect-2.63.0 + 2.63.2, `deliver-form-walk.yaml`'s two RAW container literals now route through the map, and a new `menu-container anchors are display-mode-complete` invariant suite fails on (a) any palette file hardcoding a container id, (b) any selector-map row naming one container but not all, (c) any RESOLVED palette anchor that isn't complete. Adding a future display mode = one id in `KNOWN_MENU_CONTAINERS` + one map edit. | ACE team |
 | 2026-06-01 | **Learn content forms are multi-screen + finalize to StandardHomeActivity (closes #646).** Two new static palette pieces: `content-form-finish.yaml` (bounded multi-screen advance loop that taps `nav_btn_next` until a Learn CONTENT form auto-finalizes, exits on the `learn-home-start-tile` home anchor — NOT the suite menu — handles the score-gated two-screen FINISH, and asserts the home grid post-finalize) and `learn-suite-reentry.yaml` (the explicit "tap Start → wait `screen_suite_menu_list`" re-entry that MUST run between every module, because a Learn form finalizes to the home grid not the suite menu). Added §§ "Multi-screen content forms" + "Suite re-entry between modules"; the prior single-screen-only content-form note is subsumed. Closes the malaria-rdt/20260601-0929 Phase 6 Learn-walk blocker (recipe walked each content form as single-screen and called the next `learn-tap-module` directly, stalling on page 2 then hard-failing the suite-menu assert). Validated structurally (`mobile_validate_recipe` + selector-resolution gate against connect-2.63.0); full live re-walk lands on the next fresh-run Phase 6 (this run consumed its one-way Learn state). | ACE team |
 | 2026-08-01 | **Migrated Nova reads to uuid addressing (ace#1132).** Nova's 2026-07-31 redeploy moved its whole surface from `moduleIndex`/`formIndex`/`fieldId` to `moduleUuid`/`formUuid`/`fieldUuid`. Two `get_form` reads here named uncallable operations — § Use live labels passed a bare `form_id`, and the per-form-walk field read in § Emitting a form-walk segment passed the index pair — both rejected server-side with `unrecognized_keys`. Both now pass `{app_id, moduleUuid, formUuid}`, resolved ONCE from `get_app({app_id})` (its blueprint prints `[uuid …]` on every module, form, and field), with `search_blueprint({query, app_id})` for a single semantic name. Enforced by `test/skills/nova-uuid-addressing.test.ts`. | ACE team |
+| 2026-08-20 | **Sanction the hint-anchored focus tap ace#1299 actually validated (closes ace#1547).** PR #1397 closed ace#1299 COMPLETED but left § Step 3 item 3 declaring both replacement idioms un-emittable until proven on a live device, 14 hours after that issue's own follow-up comment proved the hint-anchored one on-device (isolated probe, `spark-facilitator/20260813-2126`: `cbf_name` and `phone_number` landed in their OWN fields). Read literally, that made any Deliver field-list with more than one text input unauthorable — Step 2.6 halts `[BLOCKER]` and Phase 6 gets zero Deliver screenshots (observed on `hh-poverty-targeting/20260819-1435`). Item 3 now carries the validated rule (**the focus anchor is the element immediately above the `EditText` — the field's `hint` when it has one, the question label when it does not**), the validated idiom, and the guarded-vs-unconditional discriminator: guarded when the anchor IS the tap target (ace#1070 stands for option taps), unconditional when the anchor is a DIFFERENT element from the tap target, because there `when: notVisible: <anchor>` is structurally blind to the real failure ("anchor visible, its EditText still below the fold"). `speed: 30` replaces `speed: 80` in the option snippet — at 80 the centring scroll overshot a ~300px radio band and halted the leg (ace#1299). Index-based anchoring stays uncalibrated. Same reconciliation applied to `docs/mobile-atlas/connect-2.63.2.md` § 1, `mcp/mobile/selectors/connect-2.63.2.yaml` (`form-question-input*` prose), and the `group-field-list-per-question-walk` remediation string in `mcp/mobile/recipe-sanity-probe.ts`, which still taught the inert bare `below:` tap. Pinned by `test/mcp/mobile/static-recipe-invariants.test.ts § app-test-cases field-list input focus contract`. | ACE team |
+| 2026-08-23 | **Both halves of the § group-field-list item-3 input rule are now STATICALLY ENFORCED (closes ace#1554).** ace#1299 § 4 specified two checks and called them explicitly unit-testable; neither had landed, because `NovaFieldSlice` carried no `hint` — `grep -n "hint" mcp/mobile/recipe-sanity-probe.ts` returned exactly one hit, prose inside a remediation string. So the probe returned a clean `ok: true` with `field_data_supplied: true` on the very recipe that produced `cbf_name = "Thandiwe Banda0991234567"` with a required `phone_number` empty. `recipe-sanity-probe` gains `input-anchor-skips-hint` (a focus tap anchored on the QUESTION LABEL of a hint-carrying field — the anchor resolves to the hint TextView and the tap moves no focus) and `input-focus-scroll-is-guarded` (a `when: notVisible: <anchor>` wrapper around the centring scroll, structurally blind to "anchor visible, its EditText still below the fold" — ace#1299's "more important half"), plus `hint?: string` on `NovaFieldSlice` and `observed.hint_data_supplied`. Filed un-bundled from ace#1547/PR #1553 precisely because a false positive here halts Phase 3 in an `incomplete` re-author loop, so both checks default to SILENCE under uncertainty: the hint check reads only fields that positively carry a `hint` (missing hints ⇒ no-op, never an assumed "no hint"), an ambiguous anchor attributes to nothing (the ace#1548 rule), a hint-less field anchored on its label is CORRECT and never flagged, and the guard check fires only on the `tapOn: below:` + `inputText` shape, never on an option tap where ace#1070 keeps the guard right. Step 2.6's caller must now pass `hint` alongside `label` (omit the key when there is none). Pinned by 22 cases in `test/mcp/mobile/recipe-sanity-probe.test.ts`, half of them "does NOT flag". | ACE team |

@@ -1,11 +1,16 @@
 # Connect Integration
 
+> **Upstream repo: [`dimagi/commcare-connect`](https://github.com/dimagi/commcare-connect).** Connect ships continuously,
+> so an ACE call path that has not changed in months can break because *they* shipped.
+> When something that used to work starts failing — especially with an opaque error —
+> run `skills/upstream-regression-triage` before concluding it needs a live probe.
+
 ## Two MCP servers, two domains
 
 ACE talks to Connect through **two** MCP servers, each scoped to a distinct
 domain:
 
-1. **`connect-labs` MCP** (lives in the [`connect-labs` repo](https://github.com/dimagi/connect-labs))
+1. **`connect-labs` MCP** (lives in the [`connect-labs` repo](https://github.com/dimagi-internal/connect-labs))
    — solicitations, reviews, awards, funds. Production-ready and unrelated to
    the Programs/Opportunities lifecycle ACE manages.
 
@@ -112,6 +117,42 @@ maintainer doesn't try to "fix" it by attempting form-level granularity
 in the verification-flags layer. If Connect ships per-form deliver units
 in a future release, update this section and Nova's deliver-unit
 guidance together.
+
+### Every Connect list VIEW is paginated at 20, and the payload never says so
+
+Connect renders its list pages through `django_tables2`, and the shared
+`base_table.html` footer is the only place the pagination surfaces. A scraper
+that issues one GET gets page 1 and cannot tell. This bit
+`connect_list_opportunities`, whose result feeds a Sigma over `total_budget`
+(dimagi-internal/ace#1590) — see `parseTablePagination` +
+`test/mcp/connect/unit/list-opportunities-pagination.test.ts` for the walk and
+its gate.
+
+The contract, from upstream source (re-read it before trusting this):
+
+| Fact | Source |
+|---|---|
+| `DEFAULT_PAGE_SIZE = 20`, `PAGE_SIZE_OPTIONS = [20, 30, 50, 100]` | `commcare_connect/utils/tables.py:17-18` |
+| `?page_size=n` is honoured ONLY for `n` in `PAGE_SIZE_OPTIONS`; anything else silently falls back to 20 | `commcare_connect/utils/tables.py:111-116` |
+| The page parameter is django-tables2 `prefixed_page_field` — per-table, not always `page` | `base_table.html`, rendered into `goToPage('<field>', n)` |
+| `paginator.num_pages` is rendered as `max="<n>"` on the page input and as `of <n>` beside it | `base_table.html` |
+| The footer renders ONLY when `paginator.count > DEFAULT_PAGE_SIZE`, so its absence means "20 rows or fewer", never "one page" | `base_table.html` |
+
+The one that ruins a naive loop: **an out-of-range `page` does NOT 404.**
+`django_tables2/config.py::RequestConfig.configure` runs with `silent=True`,
+mapping `EmptyPage` to `paginator.page(paginator.num_pages)` — the LAST page,
+HTTP 200. Walking `&page=N` until an error therefore never terminates. Stop on
+the declared `num_pages`, or on a page that adds no new ids.
+
+Not every Connect surface is a paginated table: `program_home` renders
+`programs = list(programs_qs)` with no paginator
+(`commcare_connect/program/views.py`), which is why `connect_list_programs`
+returns a whole org in one GET.
+
+**Still single-page as of 2026-08-23**, and liable to under-read on a large
+org: `member_table` (pins `page_size=100`, no page loop), `payment_unit_table`,
+`deliver_unit_table`, `workers/learn`, `workers/deliver`. Reuse
+`parseTablePagination` when one of them starts mattering.
 
 ## Operator runbook
 

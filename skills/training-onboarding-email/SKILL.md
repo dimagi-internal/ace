@@ -57,16 +57,21 @@ invites. Here's everything you need to start.
 
 <one-paragraph opp framing from PDD intervention summary, ~3-4 sentences>
 
-## Getting started
+## Your one next step
 
-1. **Accept the opportunity invite** in your Connect dashboard:
-   <opportunity URL from connect-setup/opportunity.md>
-2. **Read the LLO Manager Guide** — your operations playbook:
-   <Drive URL of training-llo-guide.md>
-3. **Print the FLW Quick Reference card** for each FLW:
-   <Drive URL of training-quick-reference.md>
-4. **Send the FLW Training Guide to your roster** before they start:
-   <Drive URL of training-flw-guide.md>
+**Accept the opportunity invite** here — it takes about 5 minutes, and
+we'd like it done by <deadline: absolute date, or "within 3 working
+days">:
+<opportunity URL from connect-setup/opportunity.md>
+
+## Then, before your FLWs start
+
+- **Read the LLO Manager Guide** — your operations playbook:
+  <Drive URL of training-llo-guide.md>
+- **Print the FLW Quick Reference card** for each FLW:
+  <Drive URL of training-quick-reference.md>
+- **Send the FLW Training Guide to your roster**:
+  <Drive URL of training-flw-guide.md>
 
 ## What FLWs get paid
 
@@ -105,8 +110,18 @@ ace@dimagi-ai.com
   scan and click.
 - **Subject line on the first line, prefixed `Subject:`** so Phase 9
   can extract.
-- **Word count: 200-400.** Longer emails get skimmed and key links
-  missed; shorter feels dismissive.
+- **Word count: 200-350 (excluding URLs).** Longer emails get skimmed
+  and key links missed; shorter feels dismissive. This band is the
+  eval's, not an independent judgement — `training-onboarding-email-eval`
+  scores `length_discipline` 10 only inside 80–350, so 200–350 is the
+  intersection of "not dismissive" and "scores clean". Do not restate it
+  as a wider band here; the eval is authoritative (ace#1673).
+- **Exactly ONE primary call to action, and it carries a deadline, a
+  time estimate, and a real link.** Everything else is a follow-on, not
+  a competing ask — a four-item numbered "getting started" list reads as
+  four CTAs and the independent eval scores that shape at 3 (ace#1654).
+  Preserve the "Your one next step" / "Then, before your FLWs start"
+  split above; don't collapse them back into one numbered list.
 
 ## Process
 
@@ -124,12 +139,14 @@ ace@dimagi-ai.com
 4. **Self-check before write.** Verify:
    - Subject line is present and ≤ 78 chars
    - Every URL is a real URL (no `<...>` placeholders, no `TODO`)
-   - Word count 200-400
+   - Word count 200-350, excluding URLs
    - All three sibling docs are linked
    - Widget URL is the actual `widget_url` from
      `ocs-setup/widget-handoff.md`
    - The three personalization tokens are used (none more, none
      fewer)
+   - Exactly one primary CTA, and it carries a deadline, a time
+     estimate, and a real link (ace#1654)
 
 5. **Write** to `ACE/<opp>/runs/<run-id>/6-qa-and-training/training-onboarding-email.md`
    **as a NATIVE Google Doc via `drive_create_doc_from_markdown`** — NOT
@@ -144,16 +161,48 @@ ace@dimagi-ai.com
    overwritten IN PLACE, so the fileId — and any sharing already applied to it —
    survives. (dimagi-internal/ace#1338; sibling of the PDD fix, ace#1061.)
 
-6. **Self-evaluate (LLM-as-Judge).** Four criteria:
+6. **Self-evaluate (LLM-as-Judge).** Five criteria:
    - **Subject + token discipline:** subject ≤ 78 chars, exactly
      `LLO_NAME`/`LLO_FIRST_NAME`/`LLO_ORG` tokens used
    - **URL hygiene:** all 4 URLs (opp + 3 docs + widget) are real
      URLs, not placeholders
-   - **Word budget:** 200-400 words
+   - **Word budget:** 200-350 words, excluding URLs
    - **Audience fit:** professional but warm; no jargon-heavy
      phrasing
+   - **Call to action:** grade all four of —
+     1. **exactly one PRIMARY ask.** "Getting started" is a numbered
+        list of four actions; name which one is the ask (accept the
+        opportunity invite) and let the other three read as what
+        follows, not as four competing CTAs.
+     2. **a deadline.** Absolute ("by Friday 12 Sept") or relative
+        ("within the next 3 working days"). "Soon" is not a deadline.
+     3. **a time estimate** for the primary ask ("takes about 5
+        minutes").
+     4. **a named link or contact** for that ask — the actual
+        opportunity URL, not "your Connect dashboard".
+
+     Score 10 only with all four present. Missing a deadline OR a time
+     estimate caps this criterion at 6. No CTA at all, or multiple
+     competing CTAs, caps it at 3 — and cap the OVERALL self-score at
+     6.5, because that is where the independent eval lands.
 
    Verdict to `ACE/<opp>/runs/<run-id>/6-qa-and-training/training-onboarding-email_verdict.yaml`.
+
+   **Why the CTA criterion exists (ace#1654).** This rubric had four
+   criteria and none of them was CTA, while
+   `training-onboarding-email-eval` weights **call-to-action
+   effectiveness at 0.25** with a `-5` hard deduct — so 25% of the
+   independent score rode on an axis the producer was never asked to
+   check. On bednet-check-2-visit/20260825-1310 the producer self-graded
+   **9.3** and the independent eval returned **6.90 / warn** (no
+   deadline, no time estimate, diluted CTA): a **2.40** delta, well
+   outside the ±1.5 target. The artifact was revised to **8.95 / pass**,
+   so the artifact was never the defect — the missing axis was. A
+   self-eval that cannot see the axis it is graded on inflates on it
+   every time. The anchors above are deliberately the eval's own, so the
+   two rubrics agree; **keep them in sync with
+   `skills/training-onboarding-email-eval/SKILL.md § LLM-as-Judge
+   Rubric` — if they diverge, the eval is authoritative.**
 
 7. **Hand off.** Print Drive URL + verdict summary.
 
@@ -215,4 +264,25 @@ agent now dispatches each child directly.
 
 ## Change Log
 
+- v3 (0.13.1000): Tighten the word band **200-400 → 200-350 (excluding
+  URLs)** in all three places it is stated (§ Format rules, Process step 4,
+  Process step 6). The producer authorised a band its own eval penalised:
+  `training-onboarding-email-eval` scored `length_discipline` (0.05) 10 only
+  inside 80–350, and `clarity` (0.30) capped at 6 at ≥ 350 — so an email in
+  the upper half of the producer's own band lost **0.35 of total weight** for
+  complying. Measured on hh-poverty-targeting/20260824-1404: a 390-word email
+  scored clarity 6.5 and length_discipline 6.0, ~0.5 of overall 8.375 being
+  the divergence rather than the artifact. Same class as ace#1654 (a producer
+  graded on an axis it cannot see) and resolved the same way — the eval is
+  authoritative, the producer moves. The eval side dropped `clarity`'s
+  length anchors so length is scored in exactly one dimension. Closes
+  ace#1673; enforced by `test/skills/onboarding-email-word-band.test.ts`.
+- v2 (0.13.99x): Add the **call to action** criterion to the Step 6
+  self-eval, and split the format template's four-item "Getting started"
+  list into one primary ask plus follow-ons. Closes ace#1654 — the
+  self-eval had no CTA dimension at all while
+  `training-onboarding-email-eval` weights it 0.25 with a `-5` hard
+  deduct, producing a 2.40 self-vs-independent delta on
+  bednet-check-2-visit/20260825-1310 (9.3 self → 6.90/warn independent →
+  8.95/pass after revision). The eval was NOT weakened to match.
 - v1 (0.10.84): Initial skill. Owns `training-onboarding-email.md` only.

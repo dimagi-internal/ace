@@ -61,7 +61,7 @@ interface ServerSpec {
 const SERVERS: Record<string, ServerSpec> = {
   connect: {
     file: 'mcp/connect-server.ts',
-    expectedCount: 60, // +1: connect_get_learn_passing_score (ace#1449) — the READ half of the gate
+    expectedCount: 61, // +1: commcare_linked_app_copy (Connect Interviews atom gap, ace#1461-adjacent)
     // `connect_*` are Connect atoms; `commcare_*` are CommCare HQ atoms
     // (build/release/upload-multimedia) registered alongside because they
     // close the LLO-deploy loop through the same MCP.
@@ -100,7 +100,7 @@ const SERVERS: Record<string, ServerSpec> = {
   },
   'google-drive': {
     file: 'mcp/google-drive-server.ts',
-    expectedCount: 43, // +1: drive_share_with_person (named-person type:user sharing, co-creation)
+    expectedCount: 45, // +2: drive_list_comments + drive_reply_to_comment (comment read/close loop — ace#1563)
     // gdrive bridges five Google APIs — one prefix per surface plus a
     // small set of cross-surface helpers (manifest generator, forms
     // reader, OAuth-personal Drive read, YAML patch helper, opp-path

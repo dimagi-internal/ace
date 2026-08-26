@@ -324,6 +324,50 @@ export function scopeToFormContaining(html: string, fieldName: string): string {
   return html;
 }
 
+/**
+ * Is a boolean checkbox CHECKED, given an extracted field map plus the HTML it
+ * came from?
+ *
+ * ## Why this exists (dimagi-internal/ace#1491)
+ *
+ * Django renders a boolean checkbox as `<input type="checkbox" name="is_test"
+ * … checked>` — **no `value` attribute**. {@link extractFormFieldValues} reads
+ * `value="…"`, so both a checked and an unchecked box extract to `''` and the
+ * map alone cannot tell them apart. `checked` lives only in the raw HTML.
+ *
+ * Reading the map alone therefore silently mis-answers every boolean on
+ * Connect's opportunity edit form, and it did, in both directions:
+ *
+ * - `is_test` was `v['is_test'] === 'on' || v['is_test'] === 'true'` → always
+ *   **false**, so `connect_get_opportunity` / `connect_list_opportunities`
+ *   reported every opportunity as non-test and `connect-opp-setup`'s mandated
+ *   verify-after-create `is_test` comparison could never pass.
+ * - `active` carried a compensating `|| v['active'] === ''` clause → always
+ *   **true**, which is the same bug with the opposite sign.
+ *
+ * The WRITE path had the correct predicate inline all along (preserve-current
+ * state on update). This helper is that predicate, named once, so a read and a
+ * write of the same checkbox cannot disagree again.
+ *
+ * Pass the same HTML the values were extracted from — ideally already narrowed
+ * with {@link scopeToFormContaining}, since `checked` is matched by name across
+ * whatever string it is given.
+ */
+export function isCheckboxChecked(
+  values: Record<string, string>,
+  html: string,
+  name: string,
+): boolean {
+  const v = values[name];
+  // An explicit submitted value wins: 'on' is what a browser sends, and some
+  // surfaces render value="true".
+  if (v === 'on' || v === 'true') return true;
+  if (v !== '' && v !== undefined) return false;
+  // Valueless checkbox: the state is only in the raw tag.
+  const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp(`name="${escaped}"[^>]*\\bchecked\\b`).test(html);
+}
+
 export function extractFormFieldValues(html: string): Record<string, string> {
   const out: Record<string, string> = {};
 
@@ -1110,11 +1154,79 @@ export interface OpportunityDashboardFields {
  * 2. `short_description` and `country` are NOT on this page at all. They stay
  *    `undefined`. Do not infer them from `description`.
  *
- * One thing the dashboard has that the EDIT FORM DOES NOT: `start_date` and
- * `total_budget`. The edit form carries neither (see the field inventory in
- * `getOpportunity`), so for those two the viewer-tier read is strictly better
- * than the write-tier one.
+ * Three things the dashboard has that the EDIT FORM DOES NOT: `start_date`,
+ * `total_budget` and `program_name`. The edit form carries none of them (see
+ * the field inventory in `getOpportunity`), which is why `getOpportunity`
+ * runs this parse on EVERY read and not only on the viewer-tier degrade —
+ * without it, `connect-program-setup` § Step 4a's Σ(total_budget) headroom
+ * sum has no obtainable inputs at all and silently no-ops on every run
+ * (dimagi-internal/ace#1550).
  */
+/**
+ * Whether the opportunity DASHBOARD half of a `get_opportunity` read actually
+ * produced an answer (dimagi-internal/ace#1637).
+ *
+ * `total_budget`, `start_date` and `program_name` come ONLY from the dashboard
+ * (the edit form carries none of them — see the field inventory in
+ * `getOpportunity`). Each degrades to `undefined` when its card is absent. That
+ * made two very different facts indistinguishable to a caller:
+ *
+ *   - "this opportunity is in no program / states no budget"  (absent)
+ *   - "we could not read the page that would have told us"    (unread)
+ *
+ * `connect-program-setup § Step 4a` sums `total_budget` over a program's opps
+ * to size the ceiling, and it treated the second case as the first. On
+ * `bednet-check-2-visit/20260825-1310`, 16 of 81 hydrated `ai-demo-space` rows
+ * came back with the LIST-page key set only — no `program_name`, no
+ * `total_budget`, no `start_date`, no app ids — while 65 rows carried all of
+ * them. Two of the 16 were prior runs of the very program being sized. Σ went
+ * UNKNOWN and the unconditional conservative raise fired, inflating a live
+ * LLO-facing ceiling from 19,400 to 64,400 against a known consumption of
+ * 4,062 — on every run, forever.
+ *
+ * WHAT THIS DOES AND DOES NOT CLAIM. It does not claim to know WHY those rows
+ * do not render their cards; `active` is correlated but demonstrably not causal
+ * (5 inactive rows DO carry the fields). Root-causing that needs the live
+ * surface. What it does is make the DISTINCTION decidable from the bytes we
+ * already have, so a caller stops inferring absence from silence:
+ *
+ *   `ok`         — the page rendered as an opportunity dashboard AND its
+ *                  infocard block parsed. A field that is still `undefined` is
+ *                  genuinely not stated on the page.
+ *   `no_cards`   — the page rendered, but the `<h6>label</h6><p>value</p>`
+ *                  infocard block that carries Max Budget / Start Date / End
+ *                  Date is absent. The dashboard-only fields are UNREAD, not
+ *                  absent.
+ *   `not_a_dashboard` — the body is not an opportunity dashboard at all (no
+ *                  `<h1>` title). Everything dashboard-sourced is unread.
+ *   `not_fetched` — no body: the detail page was not 200. Same conclusion, and
+ *                  kept separate because it is a transport fact, not a parse
+ *                  one.
+ *
+ * Only `ok` licenses reading `undefined` as "absent".
+ */
+export type DashboardReadStatus = 'ok' | 'no_cards' | 'not_a_dashboard' | 'not_fetched';
+
+/**
+ * Classify the dashboard read. `html` is the detail-page body, or `''`/
+ * `undefined` when the fetch did not return 200.
+ *
+ * Deliberately keyed on the SHAPE the parser depends on, not on any one field
+ * being present: a dashboard for an opportunity with no program and no budget
+ * is a legitimate `ok`, and must not be reported as unread.
+ */
+export function classifyDashboardRead(html: string | undefined | null): DashboardReadStatus {
+  if (!html) return 'not_fetched';
+  // The title is the one element every rendered dashboard has, and the anchor
+  // the description parse already depends on.
+  if (!/<h1[^>]*>[\s\S]*?<\/h1>/.test(html)) return 'not_a_dashboard';
+  // `basic_details` infocards: <h6>Label</h6><p>Value</p>. This block is what
+  // carries Max Budget, Start Date, End Date, Delivery Type, Max Connect
+  // Workers and Max Service Deliveries. No block, no dashboard-only fields.
+  if (!/<h6[^>]*>[\s\S]*?<\/h6>\s*<p[^>]*>[\s\S]*?<\/p>/.test(html)) return 'no_cards';
+  return 'ok';
+}
+
 export function parseOpportunityDashboard(html: string): OpportunityDashboardFields {
   const out: OpportunityDashboardFields = {};
 
@@ -1190,5 +1302,71 @@ export function parseOpportunityDashboard(html: string): OpportunityDashboardFie
     }
   }
 
+  return out;
+}
+
+/**
+ * What upstream's shared table footer declares about server-side pagination.
+ *
+ * Every field is optional because the footer is CONDITIONAL: Connect renders
+ * it only `{% if table.page and table.paginator.count > DEFAULT_PAGE_SIZE %}`
+ * (`commcare_connect/templates/base_table.html`), so a list of 20 rows or
+ * fewer carries no footer at all. An absent field therefore means "the page
+ * did not say", never "there is one page".
+ */
+export interface TablePagination {
+  /** `table.paginator.num_pages` — the authoritative total page count. */
+  num_pages?: number;
+  /** `table.page.number` — the page the server actually rendered. */
+  current_page?: number;
+  /**
+   * `table.prefixed_page_field` — the query parameter that selects a page.
+   * django-tables2 prefixes it per table, so it is read off the page rather
+   * than assumed to be `page`.
+   */
+  page_field?: string;
+}
+
+/**
+ * Parse the pagination footer that every Connect list table renders.
+ *
+ * Source of truth: `commcare_connect/templates/base_table.html`, the project's
+ * `DJANGO_TABLES2_TEMPLATE` (`config/settings/base.py:357`). It renders
+ *
+ *   <input type="number" value="{{ table.page.number }}" min="1"
+ *          max="{{ table.paginator.num_pages }}" ...
+ *          hx-on:change="goToPage('{{ table.prefixed_page_field }}', this.value)">
+ *   <span class="whitespace-nowrap ml-1">of {{ table.paginator.num_pages }}</span>
+ *
+ * so the total page count AND the name of the page parameter are both on the
+ * page. That matters because django-tables2 does NOT 404 an out-of-range page:
+ * `RequestConfig.configure` runs with `silent=True` by default and maps
+ * `EmptyPage` to `paginator.page(paginator.num_pages)` — the LAST page
+ * (django_tables2/config.py). A scraper that walks `&page=N` until it gets an
+ * error therefore never terminates; it has to know when to stop.
+ */
+export function parseTablePagination(html: string): TablePagination {
+  const out: TablePagination = {};
+  for (const m of html.matchAll(/goToPage\(\s*['"]([A-Za-z0-9_-]+)['"]/g)) {
+    if (m[1] !== 'page_size') {
+      out.page_field = m[1];
+      break;
+    }
+  }
+  for (const m of html.matchAll(/<input\b[^>]*>/gi)) {
+    const tag = m[0];
+    if (!/type=["']?number/i.test(tag) || !/goToPage/.test(tag)) continue;
+    const max = tag.match(/\bmax=["']?(\d+)/);
+    if (max) out.num_pages = Number(max[1]);
+    const value = tag.match(/\bvalue=["']?(\d+)/);
+    if (value) out.current_page = Number(value[1]);
+    break;
+  }
+  if (out.num_pages === undefined) {
+    // Fallback to the human-readable "of <n>" the same footer prints, so a
+    // restyled input still yields the count.
+    const of = html.match(/>\s*of\s+(\d+)\s*</i);
+    if (of) out.num_pages = Number(of[1]);
+  }
   return out;
 }

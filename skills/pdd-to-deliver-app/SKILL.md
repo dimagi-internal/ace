@@ -17,6 +17,7 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
 | Source | Artifact | Used for |
 |---|---|---|
 | Phase 1 | `1-design/idea-to-pdd.md` | source PDD; archetype + Deliver App Specification + delivery unit drive the Nova brief |
+| Run root | `runs/<run-id>/inputs-manifest.yaml` | the resolver from a PDD-named `[FIXED]` source instrument to the `file_id` of its published file in `inputs/`. Step 4k reads that file — the workbook/PDF itself, never the brief — to check every scoring constant against the source (ace#1527). `inputs[]` lists direct child FILES only, so when the published bundle is a SUBFOLDER of `inputs/` 4k walks the manifest's own recorded `subfolders_not_listed[].folder_id` one level to find it (ace#1648). No `[FIXED]` instrument → 4k skips and says so; a `[FIXED]` instrument whose source cannot be resolved → 4k **HALTS**, never skips. |
 
 ## Products
 
@@ -524,21 +525,39 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
      - `embedded-bc-script` — PDD specifies a verbatim behavior-change
        segment.
      - `app-language-layer` — PDD names a working language other than
-       English (Deliver variant). Build the ENTIRE app in English first —
-       English is the source language and stays the runtime default —
-       then, as the **LAST** build step, add the working language
-       (`add_language(copyFrom: 'en')`) and author real translations via
-       `update_translations`, echoing each unit's `sourceFingerprint`.
-       Translating before the English is final is the failure mode: any
-       later edit silently reverts that string to English
-       (`out-of-date`). Confirm `out-of-date` is 0 via `get_languages`
-       before hand-off. Never stack languages inline. (Standing decision
-       2026-08-17, PR #1463, superseding ace#968/#1391 — Nova shipped the channel; see
+       English (Deliver variant). The brief tells the architect to build
+       the app in **English ONLY** and to call no language atom. **ACE
+       owns the language layer**, at LEVEL 0, in Step 4l below — after
+       every English-editing step has finished. That split is the fix
+       for ace#1556: the architect's operating prompt forbids it saving
+       self-generated target text, so a brief that asked it to author
+       translations produced a silent no-op (207 units copied, 0
+       translated, both targets, on `spark-facilitator/20260820-0817`).
+       It also makes translate-LAST structural — the architect's turn is
+       over before the language exists. Never stack languages inline.
+       (Standing decision 2026-08-17, PR #1463, superseding
+       ace#968/#1391; ownership split 2026-08-23, ace#1556 — see
        `_app-component-library.md § app-language-layer` for the proven
-       contract.) Graded by `language_conformance`.
+       contract and the level-0 recipe.) Graded by
+       `language_conformance`.
      - `deliver-app-naming` — always. App name must contain "Deliver app".
-     - `live-photo-capture` — any image/photo capture question. Appearance
-       Attribute set to `acquire` (live camera, never gallery-browse).
+     - `live-photo-capture` — any image/photo capture question, but **do NOT
+       put it in the Nova brief**. Nova's authoring surface has no appearance
+       control: an `image` field's slots are `id` / `kind` / `label` / `hint` /
+       `help` / `required` / `relevant` / `validate` / `calculate` /
+       `default_value` / `caseWrite` / `optionsSource`, and none of them is
+       `appearance` (`caseWrite.mode` saves a link to the attachment — a
+       different thing). The component is real and enforced, just not here: it
+       is applied POST-BUILD by `app-hq-settings` § Step 3, which fetches each
+       Deliver form's draft XForm (`commcare_get_form_source`), injects
+       `appearance="acquire"` onto every image `<upload>`, and patches it back
+       (`commcare_patch_xform`) before `app-release`; `app-release-qa` then
+       BLOCKER-gates it off the released CCZ form XML as
+       `camera-only-appearance-missing`. Briefing it only makes the architect
+       search for an atom that does not exist and report a spurious "unmet
+       requirement" in the build memo — the one artifact meant to carry REAL
+       deviations (dimagi-internal/ace#1640; same defect as ace#1632, which
+       hit `grid-menu-display` on bednet-check-2-visit/20260825-1310).
      - `no-section-module-language` — always. No user-facing "section" or
        "module" wording anywhere.
      - `connect-supported-capabilities-only` — always. Use only capabilities
@@ -549,15 +568,38 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
        and BOTH are `TAG_FROZEN` in HQ ("do not add new projects to this
        list"), so the build cannot ship as designed rather than merely waiting
        on provisioning (ace#1195).
-     - `grid-menu-display` — always (Learn + Deliver). Modules and Forms
-       Menu Display set to "Grid".
+     - `grid-menu-display` — always (Learn + Deliver), but **do NOT put it
+       in the Nova brief**. Nova's authoring surface exposes no
+       menu-display-format control at all: `update_app` sets only the display
+       name, `create_module` / `update_module` carry no display-format field,
+       `set_menu_media` sets icons and audio labels, and `set_case_list_tile`
+       lays out a case LIST, which is a different thing entirely. The
+       component is real and enforced, just not here: it is applied
+       POST-BUILD by `app-hq-settings` (Phase 3 Step 2.65) via
+       `commcare_set_menu_display` + `commcare_set_app_menu_display`, and
+       BLOCKER-gated by `app-release-qa` off the released app's raw doc.
+       Briefing it made every architect build report a spurious "unmet
+       requirement" in the build memo — the one artifact meant to carry REAL
+       deviations — and invited the architect to reach for an unrelated atom
+       to satisfy the paragraph (dimagi-internal/ace#1632; live on
+       bednet-check-2-visit/20260825-1310, where Step 2.65 then applied all
+       three fields HQ-side on the first attempt).
      - `observable-before-derived` — any visit/encounter form with an
        outcome / disposition / status field. Ask observations in
        real-world order; COMPUTE the outcome. A user-facing outcome
        question placed before its own inputs is a defect (ace#979).
      - `constraint-locality` — always, for any form with constraints. A
        constraint must be fixable on the screen where it fires; it may
-       reference only `.` or same-repeat siblings (ace#980).
+       reference only `.` or same-repeat siblings (ace#980). **Carve-out
+       (ace#1560): a MINIMUM-rows gate must be bound OUTSIDE the repeat it
+       counts.** A constraint on a node inside a repeat is evaluated per
+       repeat INSTANCE, so at zero repetitions it never evaluates — the one
+       case the gate exists to catch. `count(/data/roster[…]) >= 1` bound on
+       a question INSIDE `/data/roster` is a same-repeat sibling reference,
+       satisfies the sentence above exactly, and is dead. Put the minimum on
+       a gate question immediately AFTER the repeat. A cap (`count(…) <= 10`)
+       is the opposite case and correctly stays inside. Verified at Step 2.8
+       by `app-release-qa` over the released binds.
      - `screen-grouping` — always, for any form that puts more than one
        question in a `group`. A group is a CommCare field-list, so its children
        share ONE scrollable screen. Multiple questions per screen is GOOD
@@ -594,6 +636,23 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
      - `threshold-coherence-flag` — PDD fixes ≥2 numbers constraining one
        physical quantity. Check the pairs, surface conflicts in the build
        memo (ace#984).
+     - `fixed-instrument-transcription` — the app digitises a `[FIXED]`
+       published instrument whose source file the run's
+       `inputs-manifest.yaml` names. Transcribe every constant exactly;
+       verified at level 0 by Step 4k (ace#1527).
+     - `entity-state-taxonomy` — **always for `archetype:
+       longitudinal-visits`**, and for any archetype whose PDD declares a
+       phase / stage / status vocabulary the worker sees. Carry the PDD's
+       `program_parameters.entity_state_taxonomy` into the brief
+       **verbatim** — every state value with its label and its member
+       activity/step range — and where that row names a source document,
+       read THAT document out of the run's frozen `inputs/` (resolved via
+       `inputs-manifest.yaml`) rather than enumerating from the PDD's
+       summary table. Parse the row with `parseStateTaxonomy` from
+       `lib/entity-state-taxonomy.ts` BEFORE composing the brief:
+       `declared: false`, or a non-empty `problems`, is a **HALT** with a
+       Phase-1 finding, never a licence to invent a vocabulary. Verified
+       at level 0 by Step 4l (ace#1564).
 
      Do NOT inline-paraphrase these — reference the library so the build
      and `pdd-to-deliver-app-eval` stay symmetric. Skip a component whose
@@ -980,6 +1039,14 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
          'text', text}]}}, …]}` (≥2 options).
        - **Neither** → ship a select over the values you DO have plus an
          explicit "Other" with a relevance-gated `_other` free-text follow-up.
+
+         **Neither rung is available when the PDD names a partner register for
+         this field (ace#1621).** Both invent vocabulary — the inline rung by
+         enumerating a set the architect composed, the Other rung by shipping a
+         partial set as if it were the register — and "knowable from the PDD /
+         inputs / a source `.ccz`" is precisely the case where the real values
+         exist and must be read rather than composed. Go to the register halt
+         in step 7.
     6. **Re-run steps 2–3. Bounded loop, max 3 iterations.**
     7. **Whatever survives is a NAMED gap, never a silent one.** Any field
        still on `degraded` after the third iteration MUST appear in the build
@@ -992,6 +1059,52 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
        defect, not a data-quality one (one typo mints a second payable
        delivery; two same-named entities collapse into one). Everything else
        records and proceeds.
+
+       **A SECOND halt class: a PDD-named partner register (ace#1621).**
+       The halt above is scoped to payment correctness, so it is silent on the
+       other way a degraded select does damage — shipping ACE's invented words
+       as the PARTNER's taxonomy. When the PDD sources a field's options from a
+       named register (`<field> from <tag> [source: …] [filtered by …]` in
+       § Program Parameters), **an inline invented option list is a HALT**,
+       whatever the field's `feeds_entity_id` / payability status, and it is
+       never dischargeable as a named gap.
+
+       Do not eyeball it and do not re-derive it — run
+       `lib/option-register.ts`: `parseRegisterDeclaration` over the PDD row,
+       then `diffOptionRegister({declaration, built, registerRows})` over the
+       option source read back from the blueprint. Any finding halts; the
+       `unbound-register` code is the one that fires here. `declared: false`
+       while the field exists is a **Phase-1 gap** (the PDD owes the register),
+       reported against Phase 1, not as an architect defect — the build was
+       supposed to HALT rather than fill it.
+
+       Source the rows from the partner's own `.ccz` fixture XML via
+       `parseFixtureRegister` in preference to a prose structure document: a
+       production CCZ carries the register's REAL value codes, which are what
+       the app stores and what the partner's M&E joins on, whereas a
+       human-readable guide usually carries only labels and forces the build to
+       mint an identifier scheme the partner has never seen (the #1527
+       "trust extraction first" rule, one layer over).
+
+       **Where ACE cannot finish the job, HALT with the handoff — never
+       placeholders.** Nova has no MCP atom that creates a lookup table and its
+       row-import route is browser-session-only (`enableSessionForAPIKeys:
+       false`), so binding a fresh register is not yet autonomous. The terminal
+       behaviour is: extract the register, emit `renderRegisterCsv` output plus
+       the table spec (tag + column names) into the run folder, and halt naming
+       the two operator steps. A select carrying invented values is strictly
+       worse than a halt, because it has no downstream symptom — the app is
+       complete and internally consistent with its own invention, and every
+       structural gate passes it (ace#1564's rationale, same class).
+
+       Why this is not covered by the payment halt: on
+       `spark-facilitator/20260820-0817` the meeting-activity repeat shipped 11
+       ACE-authored placeholders (`attendance_register`,
+       `facilitated_discussion`, `savings_collection`, …) identical on all 24
+       FCAP steps, while Spark's own 78-activity register sat in the run's
+       frozen `inputs/`. The field does not feed `entity_id`, so 4f recorded a
+       gap and proceeded exactly as written — and it took an operator reading
+       the residual, days later, to stop the release.
 
        **Two exemptions, both from the halt's own rationale (ace#1295).**
        The rationale is payment correctness, so it does not reach a case where
@@ -1097,10 +1210,13 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
     photograph under "a payable visit requires all of", §5.2 gated the photo
     screen on Consent = yes). Surface each finding in the build memo with both
     sides quoted, and raise it at the Phase 3 pause so a human decides which
-    side moves. `report.checked === false` means the curriculum states no
-    unconditional evidence step — "not applicable", not "clean".
+    side moves. `report.status === 'unable'` means the check **did not run** —
+    the curriculum states no unconditional evidence step, so there was nothing
+    to cross-check. That is NOT "the two apps agree": record it in the build
+    memo with its `reason` (`formatTaughtVsCollectableReport` renders it), and
+    if the curriculum visibly DOES teach one, the phrase matchers are the bug.
 
-4h. **Fake-preload check (a hidden `caseWrite` field can never hold the case
+4i. **Fake-preload check (a hidden `caseWrite` field can never hold the case
     value) — runs at LEVEL 0.** The structural preventer for ace#1224. Because
     a followup form cannot read its own case on this Nova instance (§ `entity_id`
     case-UPDATE rule), architects reach for a shape that *looks* like a preload
@@ -1171,6 +1287,337 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
 
     (Apps with no hidden `caseWrite` fields skip cleanly at step 1.)
 
+4j. **Payability-discriminator backstop (ace#1489) — runs at LEVEL 0.** The
+    `entity_id` payability rule lives in Step 3's Nova brief, which is
+    *architect prose*: nothing downstream of the build re-checks that the key
+    the architect actually shipped honours it. So an identity-only key on a
+    form with a non-payable branch escapes Phase 3 silently and is caught a
+    whole Nova build later by `app-release-qa` Step 2.8, which raises
+    `no-entity-component` as a `[BLOCKER]` and hard-halts the phase. The
+    resolution helper already exists and the EVAL side already runs it
+    (`pdd-to-deliver-app-eval § Connectify wiring (b2)`); this step closes the
+    build/eval asymmetry, exactly as 4g pairs with the eval's `checkScreenShape`.
+
+    1. Read the PDD's Program Parameters `entity_id_grain` and whether the PDD
+       marks any subset of submissions to this form non-payable (a did-not-happen
+       branch, a screening-only visit, a committee-vs-community meeting type).
+
+    2. Feed it to the pure helper — do NOT adjudicate this by reading the key:
+
+       ```ts
+       import { resolveEntityIdGrain } from '../../lib/entity-id-precedence';
+       const grain = resolveEntityIdGrain({
+         pinnedComponents,          // from the PDD's entity_id_grain
+         payabilityDiscriminator,   // the built form field expressing payability, if any
+         hasNonPayableBranch,
+         sourcePinned,
+       });
+       ```
+
+    3. Branch on the resolution:
+       - `deviates: true` → the built key MUST ship `grain.components` in order,
+         and the build memo MUST disclose it using `grain.discloseAs`. Edit the
+         `entity_id` calculate via Nova if it does not match, then re-fetch.
+       - `unresolvable: true` → a non-payable branch exists but **no field
+         expresses payability**. Do NOT ship silently: record `grain.reason` in
+         the build memo verbatim and name the field that would fix it. This is
+         the case the helper exists to stop from passing quietly.
+       - otherwise → the PDD-pinned grain stands; record the one-line reason.
+
+    4. **Whenever the shipped key is payability-scoped, the residual list MUST
+       name the Phase-4 verification predicate that rejects the non-payable
+       value** (ace#1434). The scoped key stops a non-payable submission
+       consuming the payable slot, but it also mints `<identity> - no` as its
+       own countable entity — so without that predicate the daily cap decides,
+       and a worker whose first follow-up was a refusal can still be blocked.
+       A key shipped without the residual is the ace#969 failure one layer down.
+
+    5. Re-fetch and re-assert. **Bounded loop, max 3 iterations.** If the key
+       still disagrees with `grain.components` after the third, surface a clear
+       failure naming the built key and the required one, and do NOT write the
+       success summary — halting here costs one loop; letting it through costs
+       a Nova build plus a Phase-3 halt.
+
+    (Forms with no non-payable branch skip cleanly — `deviates:false`, and the
+    pinned grain stands.)
+
+4k. **Fixed-instrument constant fidelity (ace#1527) — runs at LEVEL 0.** When
+    the PDD marks an instrument `[FIXED]`, its questions AND its arithmetic are
+    fixed by a published document that ACE only *digitises*. Every other gate on
+    this path is structurally blind to a constant's VALUE: `validate_app`
+    checks expression structure and references, `pdd-to-deliver-app-eval` grades
+    the build against the PDD — which describes the instrument narratively, so a
+    wrong constant is PDD-conformant prose — and `app-release-qa` checks form
+    counts, Connect markers and install-time behaviour. Step 3 hands the
+    architect the point values as PROSE, so the architect transcribes from a
+    model-authored brief, and **the brief is the thing under test**. On
+    `hh-poverty-targeting/20260819-1435` that shipped 9 of 17 point values wrong
+    and all 101 poverty-likelihood values invented. A wrong scorecard produces a
+    complete, plausible, fully-verified dataset that ranks the wrong households,
+    and no downstream check has a symptom to catch. (The PPI licence permits
+    digitising a scorecard and its lookup tables only UNMODIFIED, so this is a
+    compliance question as well as a quality one.)
+
+    1. **Trigger — two conditions, two DIFFERENT outcomes (ace#1648).** The
+       trigger used to AND "the PDD marks an instrument `[FIXED]`" with "the
+       manifest carries a source file for it" into ONE silent skip, so
+       *nothing to check* and *the thing I must check is unreachable* were
+       indistinguishable and both reported green. **A skip that disables a
+       correctness check is worse than one that degrades an output, because
+       the run still says green.** Split them:
+
+       - **No instrument is `[FIXED]`** → **skip cleanly** and say so in the
+         memo (`instrument_constants: skipped — <reason>`). Legitimate.
+       - **A `[FIXED]` instrument whose source resolves** (step 2) → run the
+         check.
+       - **A `[FIXED]` instrument whose source does NOT resolve** → **HALT.**
+         Never a skip. Print the resolution detail, record a `[BLOCKER]`-grade
+         residual naming the file that would close it (a Phase-1 gap), and do
+         NOT write the success summary. Shipping a digitised scorecard that
+         nothing ever compared against its published source — while reporting
+         a clean phase — is exactly the ace#1527 failure this step exists to
+         prevent.
+
+       In every branch: do not substitute the PDD's prose restatement of the
+       table or the Nova brief for the file, and **do not compose a path by
+       name**.
+
+    2. **Resolve from the MANIFEST — `inputs[]` first, then the folder ids the
+       manifest itself records, ONE LEVEL (ace#1648) — then fetch the bytes.**
+       Read `inputs-manifest.yaml` and match the entry for the instrument the
+       PDD names. If no `inputs[]` entry matches, walk the manifest's own
+       recorded folder ids — each `subfolders_not_listed[].folder_id`, plus
+       `source_folder_id` when present — with
+       `drive_list_folder({folderId})`, **one level deep, never recursively**,
+       and match there. The manifest's `inputs[]` is direct child FILES only
+       (orchestrator Step 5c) — that is deliberate, since `inputs[]` is the
+       frozen evidence set Phase 1 synthesizes from — so a vendor bundle
+       published as a SUBFOLDER of `inputs/`, the natural shape for a vendor
+       download, is never in `inputs[]`, and 4k took the skip branch every
+       time it was.
+       Walking an id the manifest ITSELF recorded is not guessing; composing a
+       path from a name still is, and is still forbidden. Exactly one match →
+       proceed; more than one → HALT rather than pick; zero → HALT per step 1.
+
+       Classify the outcome with the helper rather than by eye — it owns the
+       skip-vs-halt split, so the branch cannot silently revert:
+
+       ```ts
+       import { resolveInstrumentSource } from '../../lib/instrument-constants';
+       const resolution = resolveInstrumentSource({
+         fixedInstrument,              // does the PDD mark an instrument [FIXED]?
+         manifestEntry,                // matching inputs[] entry, or null
+         subfolderCandidates,          // matches from the one-level walk
+         manifestRecordsSubfolders,    // did the manifest record any folder ids?
+         instrumentName,
+       });
+       // 'skipped' -> write resolution.memo and move on
+       // 'halt'    -> print resolution.detail and STOP (no success summary)
+       // 'proceed' -> resolution.source.file_id is the source
+       ```
+
+       Then fetch by `file_id`:
+
+       ```ts
+       drive_download_binary({ fileId, writeToPath: '<scratch>/<name>.xlsx' })
+       ```
+
+       `drive_read_file` returns a typed `unsupported_binary_mimetype` error for
+       `.xlsx` / `.pdf` / `.docx` and points at `drive_download_binary` (see
+       `docs/atom-schemas.md § drive_read_file`) — reach for the binary atom
+       first rather than rediscovering that (ace#1527). **Read the SOURCE, never
+       the Nova brief and never the PDD's restatement**: both are model-authored,
+       and one of them is the artifact this step exists to test.
+
+    3. **Trust the extraction BEFORE using it as an oracle — run this FIRST.**
+
+       ```ts
+       import {
+         readXlsxColumn,
+         assertExtractionTrusted,
+       } from '../../lib/instrument-constants';
+       const extracted = readXlsxColumn(bytes, {
+         sheet, column, firstRow, lastRow,      // all declared by the SOURCE
+       });
+       const trust = assertExtractionTrusted(extracted.values, {
+         expectedFirst, expectedLast, expectedRowCount,
+       });
+       ```
+
+       `trusted: false` → **HALT.** Print every `trust.failures` entry and every
+       `extracted.problems` entry, then stop: do NOT diff, do NOT edit the app,
+       and do NOT write the success summary. An unchecked extraction is a second
+       way to ship a wrong instrument while reporting success — the first repair
+       round's extraction produced `score 4 -> 79.0`, because an `.xlsx` cell
+       carrying `t="s"` holds an INDEX into `xl/sharedStrings.xml` and an
+       undecoded index is a perfectly plausible number. `readXlsxColumn` decodes
+       through the shared-string table and returns an unresolved index as a
+       STRING for exactly that reason, so a `non-numeric` failure is the
+       header-leak signature, not a parser quirk. The three assertions
+       (endpoints, strict monotonicity, row count) are independent and all run,
+       so the printed list is every way the extraction is wrong, not the first.
+
+    4. **Read the BUILT literals from Nova, then diff.** `get_field` over each
+       scoring `calculate` and each lookup branch, addressed off the Step-4a
+       `get_app` blueprint map — reuse it, do not re-fetch the app. Build a flat
+       `key -> points` table plus an `indicator -> {option -> points}` table for
+       each side, then:
+
+       ```ts
+       import {
+         diffScoringConstants,
+         compareMaxScore,
+       } from '../../lib/instrument-constants';
+       const diff = diffScoringConstants({ source: sourceConstants, built: builtConstants });
+       const max  = compareMaxScore({ sourcePoints, builtPoints, clampAt });
+       ```
+
+       `clampAt` is the ceiling of the PDD's `min(<score>, N)` clamp. Judge
+       nothing by eye: `diff.mismatches`, `diff.missingInBuild` and
+       `diff.extraInBuild` are the finding set, and `max.clampDead` is the
+       second-order one.
+
+    5. **Any mismatch, or `clampDead: true`, is a HALT — this is not a warn.**
+       Repair in a **bounded loop, max 3 iterations**: `edit_field` the offending
+       literal → re-fetch → re-diff. If anything still disagrees after the third,
+       surface a structured failure naming every `{key, source, built}` plus
+       `sourceMax` vs `builtMax`, and do NOT write the success summary.
+       `clampDead: true` alongside `clampReachableInSource: true` means the built
+       instrument cannot reach the ceiling its own clamp exists to enforce — the
+       clamp is dead code and the overshoot the PDD wants observable can never
+       fire, which is precisely how a wrong instrument stays internally
+       consistent with its own wrong numbers. Fix the constants; never delete
+       the clamp to make the check pass.
+
+    6. **The memo records the CHECK, not just its verdict.** Write the source
+       `file_id` and file name, the sheet / column / row range read, the number
+       of rows checked, both endpoint values as extracted, `sourceMax` vs
+       `builtMax` and whether the clamp is live, and the mismatch count (`0` on
+       success). Add the licence note: the published instrument is reproduced
+       UNMODIFIED — verbatim transcription of the scorecard and its lookup table
+       is what the licence permits, and any "improvement", including a tidier
+       rounding, is out of scope for this build.
+
+    (No `[FIXED]` instrument → skip cleanly; the memo says so. A `[FIXED]`
+    instrument whose source cannot be resolved — not in `inputs[]`, and not
+    found by the one-level walk of the manifest's recorded folder ids — is a
+    **HALT**, never a skip (ace#1648). A skip is a legitimate outcome only in
+    the first case; a SILENT skip is never one.)
+
+4l. **Entity state-taxonomy fidelity (ace#1564) — runs at LEVEL 0.** When the
+    followed entity carries states the app must NAME, those names are the
+    partner's own process vocabulary and ACE only transcribes them. Step 3
+    hands the architect the taxonomy as PROSE, and the architect needs the
+    option set to build the phase-filtered step picker `longitudinal-visits`
+    requires — so a thin or missing declaration is filled in with something
+    plausible. On `spark-facilitator/20260820-0817` that shipped four invented
+    phase labels and a different four-way partition of the 24 steps than
+    Spark's own published guide (which sat in the run's `inputs/`). Every gate
+    passed it: `validate_app` checks structure, the eval grades against a PDD
+    that describes the lifecycle narratively, and `app-release-qa` checks counts
+    and install-time behaviour — an app is internally consistent with its own
+    invented vocabulary. The Learn app then teaches one mapping while Deliver
+    offers another, and the invented labels reach real workers and, via the
+    training deck, the partner.
+
+    1. **Trigger.** Fires iff the app ships any state option set the worker
+       sees — a phase / stage / status / round picker, case-list column, or
+       filter. **Always fires for `archetype: longitudinal-visits`**, whose
+       case-list requirement makes such a state mandatory. No such state
+       anywhere → skip cleanly and say so in the memo
+       (`entity_state_taxonomy: skipped — <reason>`).
+
+    2. **Parse the DECLARED taxonomy — this is the only authority.**
+
+       ```ts
+       import { parseStateTaxonomy } from '../../lib/entity-state-taxonomy';
+       const declared = parseStateTaxonomy(programParameters.entity_state_taxonomy);
+       ```
+
+       `declared: false` → **HALT.** The PDD declares no state vocabulary while
+       the trigger fires: record a Phase-1 finding naming
+       `program_parameters.entity_state_taxonomy` (and the § Entity Lifecycle
+       prose it should be derived from), and do not build the picker.
+       **Do not substitute a generic lifecycle vocabulary to keep the build
+       moving** — an invented phase name is worse than a gap, because a gap is
+       visible and a plausible wrong vocabulary is not. `problems` non-empty
+       (overlapping step ranges, duplicate values, duplicate labels) → HALT the
+       same way: the ambiguity is the PDD's to resolve, not this step's.
+
+       When `declared.source` names a document, the brief must have been
+       composed from THAT file out of the run's frozen `inputs/` (resolved via
+       `inputs-manifest.yaml`), not from the PDD's summary table. If it was
+       not, re-compose before diffing — the summary table is the artifact under
+       test.
+
+    3. **Read the BUILT option set from Nova, then diff.** `get_field` over each
+       state-bearing select, addressed off the Step-4a `get_app` blueprint map
+       (reuse it, do not re-fetch), plus the member activity/step list each
+       state exposes. Then:
+
+       ```ts
+       import { diffStateTaxonomy, describeTaxonomyDiff } from '../../lib/entity-state-taxonomy';
+       const diff = diffStateTaxonomy({ declared: declared.states, built });
+       ```
+
+       Judge nothing by eye: `diff.extraInBuild` (an invented state),
+       `diff.missingInBuild`, `diff.relabelled` (the partner's words rewritten)
+       and `diff.repartitioned` (the step partition moved) are the finding set,
+       and `describeTaxonomyDiff` renders them.
+
+    4. **Any finding is a HALT — this is not a warn.** Repair in a **bounded
+       loop, max 3 iterations**: `edit_field` the offending option value / label
+       / member list → re-fetch → re-diff. If anything still disagrees after the
+       third, surface a structured failure listing every finding line and do NOT
+       write the success summary. Never "fix" the diff by editing the PDD's
+       declared taxonomy to match what was built.
+
+    5. **The Learn app is briefed from the SAME declared taxonomy**, so
+       Learn/Deliver agreement is transitive — two builds that each match the
+       PDD cannot contradict each other. If the Learn app was briefed from
+       anything else, that is the same defect one app over: record it as a
+       residual against `pdd-to-learn-app` rather than reconciling Deliver to
+       Learn.
+
+    6. **The memo records the CHECK, not just its verdict.** Write the declared
+       state values with their labels and step ranges, the source document (or
+       `none — declared inline in the PDD`), the number of states and steps
+       compared, and the finding count (`0` on success).
+
+4m. **Language layer — runs at LEVEL 0, LAST of the 4x steps (ace#1556).**
+    Applies only when the PDD names a working language other than English;
+    otherwise skip and say so in the summary.
+
+    **Why level 0 and not the architect.** The architect's operating prompt
+    (nova plugin `1.26.0`/`1.27.0`, `skills/autobuild/SKILL.md`) says *"Never
+    treat your own language fluency as a substitute or bulk-translate
+    self-generated text through `update_translations`. Only save target text
+    supplied by the user."* An `/ace:run` supplies no human target strings, so
+    the architect declines and the layer silently never lands — 207 units
+    copied, 0 translated, in both targets on `spark-facilitator/20260820-0817`
+    (ace#1556). ACE is the caller — the "user" in that sentence — so ACE
+    supplies the target text through the same six atoms on its own Nova MCP
+    surface. Running here also makes translate-LAST **structural**: every
+    English-editing step (4a–4k) is already done, so nothing can demote a
+    translation to `out-of-date` behind you.
+
+    Execute `_app-component-library.md § app-language-layer` **ACE's level-0
+    recipe** verbatim — `get_languages` → `add_language(copyFrom: 'en')` →
+    page `get_translatable_content` and author real values via
+    `update_translations` (≤50 units/call, echoing each just-read
+    `sourceFingerprint`) → `get_languages` again. Read the atoms' live schemas
+    from Nova's `tools/list`; do not paraphrase them here.
+
+    **Gate:** `out-of-date` and `missing` must both be 0 at hand-off. Record
+    the final per-language coverage counts in the build memo, plus one line
+    stating the translations are ACE-authored (`origin: ai`) and carry
+    `needs-review` until a speaker of the language reviews them. If the layer
+    cannot be completed, halt loud with the counts — do NOT write a summary
+    claiming a language layer the app does not carry. Partial coverage is the
+    false affordance the issue was filed about: units left `origin: copied`
+    are English strings wearing the language's name, and a worker cannot tell
+    them apart from real translations.
+
 5. **(Optional) Inspect the built app** via `/nova:show <app_id>` to
    cross-check structure against the PDD before writing the summary.
 
@@ -1192,6 +1639,12 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
      captured — spoken or field-gated — does that script carry all six
      `consent-script-floor` elements, `confidential` and where-the-data-goes
      included?
+   - If the PDD marks an instrument `[FIXED]`, was every scoring constant
+     diffed against the SOURCE file from `inputs-manifest.yaml` (not the brief,
+     not the PDD's restatement) on a `trusted` extraction, with zero mismatches
+     and a clamp that can still fire (Step 4k)? If the step skipped, does the
+     memo say why — and was the reason "no instrument is `[FIXED]`"? An
+     unresolvable `[FIXED]` source is a HALT, not a skip (ace#1648).
 
 7. **Write the summary** to
    `ACE/<opp-name>/runs/<run-id>/3-commcare/pdd-to-deliver-app_summary.md` with required
@@ -1209,6 +1662,13 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
                             # that still shipped as free text, with the
                             # table + value column + label column it needs.
                             # Empty list is the expected value.
+   instrument_constants:    # Step 4k (ace#1527). Omit the block ONLY when no
+                            # instrument is [FIXED]. There is no other skip
+                            # reason: an unresolvable [FIXED] source HALTS the
+                            # step rather than recording a skip (ace#1648).
+     source_file_id: <file_id from inputs-manifest.yaml>
+     rows_checked: <n>      # rows actually diffed against the source
+     mismatches: 0          # anything above 0 means Step 4k halted
    ---
    ```
 
@@ -1239,6 +1699,14 @@ follow-up form(s) against a case list — with three requirements the
    phase / last-activity / next-due state in the case-list columns (and
    in search inputs where the caseload is large). An FLW who has to open
    a case to discover the next activity will guess instead.
+   **Those state names are the PARTNER's vocabulary, and this archetype
+   is the reason they exist at all** — a case list showing state means
+   the app must name every state, and the architect will invent the set
+   if the brief does not carry it. Emit
+   `_app-component-library.md § entity-state-taxonomy` (always, for this
+   archetype), carry the PDD's declared taxonomy into the brief verbatim,
+   and HALT rather than invent when the PDD declares none. Verified at
+   level 0 by Step 4l (ace#1564).
 2. **Follow-up forms preload the case state the predicate reads.** Any
    longitudinal fact Layer A depends on must be *on the submitted form*
    to be enforceable downstream — Connect's form-field rules see the
@@ -1417,3 +1885,12 @@ at end of every phase.
 
 Each row this skill writes uses `phase: 3-commcare` and
 `skill: pdd-to-deliver-app`.
+
+## Change log
+
+| Date | Change | Author |
+|------|--------|--------|
+| 2026-08-26 | **Step 4k's skip is split, and its source is resolvable through the manifest's own folder ids (ace#1648).** 4k's trigger ANDed "the PDD marks an instrument `[FIXED]`" with "`inputs-manifest.yaml` carries a source file for it" into ONE silent skip, so *nothing to check* and *the thing I must check is unreachable* were indistinguishable and both reported green. They were not equally rare: `inputs[]` records direct child FILES only, so a published instrument bundle sitting in a SUBFOLDER of `inputs/` — the natural shape for a vendor download — always took the second branch. On `hh-poverty-targeting/20260824-1404` the workbook sat in `official-nigeria-ppi-2020 (povertyindex.org)/` and none of the five `inputs[]` entries was it, so a 4k run following its documented path checks nothing. **A skip that disables a correctness check is worse than one that degrades an output, because the run still says green.** Two changes: step 2 may now resolve through ids the manifest ALREADY records (`subfolders_not_listed[].folder_id`, `source_folder_id`) by walking them ONE level with `drive_list_folder` — walking a recorded id is not guessing, composing a path by name still is and is still forbidden — and orchestrator Step 5c now MANDATES recording those ids. Step 1's trigger is split: no `[FIXED]` instrument → skip cleanly; a `[FIXED]` instrument whose source does not resolve → **HALT**, never a skip. The decision is delegated to `resolveInstrumentSource` in `lib/instrument-constants.ts` so it is unit-tested rather than prose-only. *Enforced:* `test/skills/instrument-source-resolution.test.ts` (5 assertions red against the pre-fix text), `test/lib/instrument-constants.test.ts`, `test/mcp/gdrive/generate-inputs-manifest.test.ts`. | ACE team |
+| 2026-08-24 | **Step 4f gains a partner-register halt (ace#1621).** 4f's halt was scoped to payment correctness — a still-degraded select halts only when it `feeds_entity_id` on a PAYABLE deliver unit — so a field that fails neither test recorded an `option_source_gaps` entry and proceeded. That is right for a genuinely unknowable set and wrong for a register that EXISTS: on `spark-facilitator/20260820-0817` the meeting-activity repeat shipped 11 ACE-authored placeholders identical on all 24 FCAP steps while Spark's own 78-activity register sat in the run's `inputs/`, and the recorded gap deferred the catch to an operator reading the residual days later. When the PDD declares `<field> from <tag> [source: …] [filtered by …]`, an inline invented option list is now a **HALT** whatever the payability status, and is never dischargeable as a named gap; both inline rungs of the step-5 escape ladder are withdrawn for such a field. Mechanical via `lib/option-register.ts` (`parseRegisterDeclaration` + `diffOptionRegister`), sourcing rows from the partner's `.ccz` fixture XML in preference to a prose guide because a production CCZ carries the REAL value codes the partner's M&E joins on. Where ACE cannot finish — Nova has no lookup-table create atom and its row-import route is browser-session-only — the terminal behaviour is extract → emit `renderRegisterCsv` + table spec → halt naming the two operator steps. Paired with `_app-component-library § partner-option-register` and the eval's `option_register_fidelity` hard-gate. *Enforced:* `test/lib/option-register.test.ts`. | ACE team |
+| 2026-08-23 | **New Step 4l — entity state-taxonomy fidelity (ace#1564).** The followed entity's state model lived only as PROSE in the PDD's § Entity Lifecycle, and nothing in Step 3's brief-composition checklist asked for it — while `longitudinal-visits` REQUIRES a case list showing state, so the architect must name every state and invents the set when the brief carries none. On `spark-facilitator/20260820-0817` the PDD's `1 = Planning (steps 1–14)` … `4 = Transition (steps 23–24)`, sourced from Spark's own published FCAP guide sitting in the run's `inputs/`, shipped as four invented labels over a different partition, with all 24 step names invented too. Learn then teaches one mapping while Deliver offers another, and the invented words reach real workers and the partner. Step 3 now emits `_app-component-library § entity-state-taxonomy` (always for this archetype) and parses `program_parameters.entity_state_taxonomy` with `parseStateTaxonomy` BEFORE briefing — `declared: false` or non-empty `problems` is a **HALT** with a Phase-1 finding, never a licence to invent; where the row names a source document the brief is composed from THAT file out of `inputs/`. 4l then diffs the built option set with `diffStateTaxonomy`: any invented, dropped, relabelled or re-partitioned state is a **HALT with a bounded 3-iteration repair loop**, not a warn. Deliberately ships NO canonical vocabulary — hard-coding one would impose ACE's words on every partner, the mirror image of the defect. Paired with the eval's `entity_state_fidelity` hard-gate. *Enforced:* `test/lib/entity-state-taxonomy.test.ts` + `test/skills/entity-state-taxonomy-component.test.ts` + `test/skills/deliver-l0-loop-integrity.test.ts`. **The language layer moved 4l → 4m** in the same change: it must stay LAST of the 4x steps because every English-editing step has to precede it, and 4l's repair loop calls `edit_field` on option labels — running it after the layer would demote those translations to `out-of-date`. Pointers updated in `_app-component-library § app-language-layer`, both `-eval` change logs, and `test/skills/app-language-layer.test.ts`. | ACE team |
+| 2026-08-20 | **New Step 4k — fixed-instrument constant fidelity (ace#1527).** Nothing on this path opened the `[FIXED]` source instrument in `inputs/` and diffed it, so on `hh-poverty-targeting/20260819-1435` the digitised Nigeria PPI 2020 shipped with **9 of 17 point values wrong and all 101 poverty-likelihood values invented** — and every gate passed it, because each one is structurally blind to a constant's VALUE (`validate_app` checks structure, the eval grades against a narrative PDD, `app-release-qa` checks counts and install-time behaviour, and the architect transcribes from a model-authored brief). 4k resolves the source file from `inputs-manifest.yaml`, fetches it with `drive_download_binary` + `writeToPath`, and runs `lib/instrument-constants.ts`: `assertExtractionTrusted` FIRST (endpoints + strict monotonicity + row count — the first repair-round extraction produced `score 4 -> 79.0` from an undecoded `t="s"` shared-string index), then `diffScoringConstants` and `compareMaxScore` over the built literals read via `get_field`. Any mismatch, or a `clampDead` verdict, is a **HALT with a bounded 3-iteration repair loop**, not a warn — a built max of 96 against an official 102 made the PDD's `min(ppi_score, 100)` clamp dead code, which is how the instrument stayed internally consistent with its own wrong numbers. Paired with `_app-component-library § fixed-instrument-transcription` and the eval's `fixed_instrument_fidelity` hard-gate. *Enforced:* `test/lib/instrument-constants.test.ts` + `test/skills/deliver-l0-loop-integrity.test.ts`. | ACE team |

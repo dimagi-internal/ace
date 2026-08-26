@@ -3,6 +3,8 @@
 // PR #1135 (2026-04-30): the automation endpoints that replaced the previous
 // HTML-form-driven authoring flow.
 
+import type { DashboardReadStatus } from './backends/html-scrape.js';
+
 export interface Program {
   id: string;                          // UUID (Connect's `program_id`)
   int_id?: number;                     // ConnectProd legacy integer id (`id` in the API response), when
@@ -50,6 +52,24 @@ export interface Opportunity {
                                        // surfaces and the `/a/<org>/opportunity/<int>/` Playwright URLs use;
                                        // it is NOT a labs-minted id. Recorded as `connect_int_id` in run_state.
   program_id?: string;
+  // The program's NAME, scraped off the opportunity dashboard (ace#1550) —
+  // the only program key any opportunity READ surface carries. `program_id`
+  // is set on the create path only; no read path can populate it, so a caller
+  // scoping a sum to one program matches on this and must treat a non-unique
+  // program name as unknown.
+  program_name?: string;
+  /**
+   * Whether the DASHBOARD half of a `get_opportunity` read produced an answer
+   * (ace#1637). `total_budget`, `start_date`, `program_name` and the app-wire
+   * ids come only from that page, and each degrades to `undefined` when its
+   * card is absent — which made "not in a program / no budget stated"
+   * indistinguishable from "could not read the page". Only `'ok'` licenses
+   * reading those fields' absence as a fact about the opportunity. Set by
+   * `get_opportunity` (and therefore on every hydrated `list_opportunities`
+   * row); undefined on an unhydrated list row, where nothing was attempted.
+   * See `classifyDashboardRead` in `mcp/connect/backends/html-scrape.ts`.
+   */
+  dashboard_read?: DashboardReadStatus;
   name: string;
   short_description: string;
   description: string;
@@ -344,10 +364,15 @@ export interface LearnProgress {
  * assertion that a delivery actually EXISTS server-side.
  *
  * `approved` is stronger still: a delivery can be submitted and then rejected
- * by verification, which is precisely the "one payment unit registers"
- * criterion `app-test-cases.yaml` declares. Assert `approved >= 1` when the
- * journey claims a payment unit registered; assert `delivered >= 1` when it
- * only claims the visit reached Connect.
+ * by verification, so `delivered >= 1` does not prove payability. It is NOT,
+ * however, a criterion `app-test-cases.yaml` declares — no `approved` /
+ * "one payment unit registers" criterion exists in that artifact (ace#1667).
+ * And it is structurally unreachable on any opportunity whose deliver-unit
+ * duration floor exceeds a machine-speed Maestro walk, because Connect
+ * correctly REJECTS the sub-floor visit. So `delivered >= 1` is the hard
+ * assertion, and `approved >= 1` is conditional on the walk being able to
+ * clear that floor — see `skills/app-screenshot-capture/SKILL.md` Step 5's
+ * `deliver-gate` block for the branch and its measurement.
  *
  * Mirrors jjackson/ace#897's lesson on the Learn side: the device is not
  * authoritative about completion — Connect is.
@@ -374,4 +399,33 @@ export interface DeliverProgress {
   domain: string;
   opportunity_id: string;
   workers: WorkerDeliverRow[];
+}
+
+/**
+ * Honesty envelope for a list read off a SERVER-PAGINATED Connect page.
+ *
+ * Connect paginates its list views at `DEFAULT_PAGE_SIZE = 20`
+ * (`commcare_connect/utils/tables.py:17`) and a single GET returns page 1 with
+ * nothing in the payload saying so. A caller summing a column over that page
+ * gets a confident number computed from a fifth of the data — which is exactly
+ * how `connect-program-setup` Step 4a could under-count a program budget and
+ * skip the raise it exists to perform (dimagi-internal/ace#1590).
+ *
+ * So every paginated list read reports what it actually saw. `complete: false`
+ * means rows exist that are NOT in the returned array; a caller that aggregates
+ * must treat its result as UNKNOWN, never as a smaller-but-valid total.
+ */
+export interface ListingCompleteness {
+  /** `true` iff every row the server holds for this listing was read. */
+  complete: boolean;
+  /** Rows read from the full listing, BEFORE any client-side filter. */
+  total_count: number;
+  /** How many pages were actually fetched. */
+  pages_fetched: number;
+  /** The `page_size` requested per page. */
+  page_size: number;
+  /** `paginator.num_pages` as the page itself declared it, when it did. */
+  declared_pages?: number;
+  /** Set only when `complete` is false — why the walk stopped short. */
+  truncated_reason?: string;
 }

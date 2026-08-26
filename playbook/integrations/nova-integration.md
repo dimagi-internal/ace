@@ -1,5 +1,10 @@
 # Nova Integration
 
+> **Upstream repo: [`voidcraft-labs/commcare-nova`](https://github.com/voidcraft-labs/commcare-nova).** Nova ships continuously,
+> so an ACE call path that has not changed in months can break because *they* shipped.
+> When something that used to work starts failing — especially with an opaque error —
+> run `skills/upstream-regression-triage` before concluding it needs a live probe.
+
 ## Status
 
 **Live (via the Nova Claude Code plugin's native PAT path, v1.1.0+).**
@@ -149,6 +154,54 @@ Five blockers landed and were cleared between 2026-04-27 and
   the same process env, so they read the same `NOVA_API_KEY` and
   authenticate as the same identity as level-0.
 
+- **A stored OAuth credential OUTRANKS the `headersHelper` PAT, so
+  #11 and #13 are only conditionally cleared
+  (voidcraft-labs/nova-plugin#52, open, hit live 2026-08-23/24 on
+  `spark-facilitator/20260820-0817`).** Both mechanisms write the same
+  `Authorization` header, and if Claude Code already holds an OAuth
+  token for `mcp.commcare.app` that token wins — `NOVA_API_KEY` set or
+  not. The session then answers **normally, about a different account**:
+  `get_lookup_tables` returned `App not found` for an app built the day
+  before, and `get_hq_connection` returned `scope_missing:
+  nova.hq.read`. That is #13's symptom verbatim, which #13 closed as
+  structurally impossible on the PAT path — it isn't, it is impossible
+  only when no OAuth token exists.
+
+  **The scope is the tell, not the identity.** Identity alone can look
+  like coincidence; a credential missing a permission the PAT
+  demonstrably has cannot be the PAT:
+
+  ```
+  in-session  get_hq_connection → scope_missing: nova.hq.read
+  curl + PAT  get_hq_connection → configured:true, connect-ace-prod present
+  ```
+
+  **Three things that do NOT fix it, in the order you will try them:**
+  1. *Restarting Claude Code* — the stored token is re-presented, so the
+     wrong principal comes straight back. Cost us two sessions.
+  2. *`/mcp` → nova → **Authenticate*** — mints a NEW OAuth token. If you
+     sign in as the right account the identity now matches and it looks
+     fixed, but `get_hq_connection` still returns `scope_missing`,
+     because you are still on OAuth. This is the trap.
+  3. *Anything that checks the PAT* — `/ace:doctor`, `nova_env`,
+     `nova_shell_env`, `nova_needs_auth_cache` all report green. The PAT
+     is fine; it simply is not the credential in use.
+
+  **The fix is `/mcp` → nova → `Clear authentication`, then RESTART.**
+  Clearing drops the connection outright (all 101 tools disappear)
+  rather than falling back live, so the restart is what re-establishes
+  it — and with no stored token and `NOVA_API_KEY` set, the
+  `headersHelper` bearer is the only credential left. Do not
+  re-authenticate afterwards.
+
+  **Verify with two calls, never one.** `list_apps` alone is not enough:
+  step 2 above passes it while still on OAuth.
+
+  ```
+  list_projects      → must be the PAT's project, not a human's
+  get_hq_connection  → must be configured:true (proves PAT, not OAuth)
+  ```
+
 ## ACE service identity for Nova
 
 Under API-key auth, the bearer is identity. ACE's `NOVA_API_KEY`
@@ -163,8 +216,15 @@ machine. The user-scope override is re-registered with the new
 bearer.
 
 The plugin's OAuth path is still available for human-at-a-browser
-use (one user, one Claude Code session, no concurrent sessions);
-ACE just doesn't take that path because of the cascade.
+use (one user, one Claude Code session, no concurrent sessions).
+
+**ACE does not CHOOSE that path — but it can silently END UP on it,
+and then ACE's service identity becomes whichever human last signed
+in at a browser.** That is nova-plugin#52 above, and it is the single
+most expensive Nova failure mode ACE has hit, precisely because every
+call keeps succeeding. If you are ever unsure which identity a session
+is on, `get_hq_connection` answers it in one call: `configured: true`
+means the PAT, `scope_missing: nova.hq.read` means OAuth.
 
 ## ACE's surface area on Nova
 
@@ -225,6 +285,54 @@ ACE's contract:
    `error_type: domain_not_authorized` with the list of reachable
    spaces — `app-deploy` surfaces that as a `[BLOCKER]` rather than
    uploading to an unintended space.
+
+## Uploading to HQ updates in place
+
+**`upload_app_to_hq` is idempotent on the HQ application document.** The first
+upload of a Nova app to a project space CREATES the HQ application; every
+upload after that UPDATES that same document and keeps its id. The result says
+which happened:
+
+| field | meaning |
+|---|---|
+| `hq_app_action` | `created` on the first upload to the space, `updated` after |
+| `hq_app_id` | stable across updates — this is the id Phase 4 wires into Connect |
+| `deployment.remote_revision` | HQ's own revision, advances on each update |
+| `deployment.left_behind` | superseded HQ app id(s). Normally `[]` |
+
+Verified live 2026-08-18 against `connect-ace-prod`: Nova app `4dd0325b…`
+(already linked to HQ `c0d7027316bc46f8b4fdf4b47fd8d90b` at
+`pushed_revision: 10`) re-uploaded twice returned `hq_app_action: "updated"`
+both times, held the same `hq_app_id`, advanced `remote_revision` 6 → 8, and
+returned `left_behind: []` each time.
+
+**This retires ACE's previous belief** that "CCHQ has no atomic app-update API,
+so every `upload_app_to_hq` creates a fresh HQ application document." That
+premise drove three things that are now wrong: an orphan cleanup on every
+re-upload, an `hq_app_id_history` chase in `app-release`'s build-rejection
+loop, and the Phase 3→4 HQ-id-stability warning in `agents/commcare-setup.md`.
+All three are corrected; the `left_behind` cleanup survives as a defensive
+branch, not the expected path.
+
+**The id is still not immutable.** If the linked HQ app is deleted on HQ, the
+call refuses with `remote_app_missing`; uploading again then creates a fresh
+one. So read `hq_app_action` and `left_behind` rather than assuming stability
+in either direction.
+
+**Creating a NEW app needs a permission that updating does not appear to.** On
+2026-08-18 two fresh Nova apps uploading to `connect-ace-prod` for the first
+time both failed with:
+
+```
+error_type: hq_upload_failed
+message: Your CommCare HQ account can't create apps in this project space.
+         Ask an administrator there for the Edit Apps permission.
+```
+
+…while the update path against an already-linked app succeeded in the same
+session with the same key. Tracked as an ACE issue; if Phase 3 `app-deploy`
+halts on `hq_upload_failed` for a brand-new app, this is the first thing to
+check (the HQ role behind Nova's stored HQ API key, on `ACE_HQ_DOMAIN`).
 
 **Two distinct keys.** Don't conflate them:
 - `NOVA_API_KEY` (`sk-nova-v1-…`) authenticates **ACE → Nova**. Lives
@@ -473,14 +581,46 @@ review state, protected reference parts (a `field-ref` / `case-ref` /
 `user-ref` inside a label survives translation exactly), ordered
 source/default/target languages, ltr/rtl, and per-language coverage counts.
 
-**The architect will not use it unprompted.** `get_agent_prompt`
-(`autonomous_build`, 70,643 chars, read live 2026-08-17) contains **zero**
-occurrences of `itext`, `locale`, `multiling` or `English`. Its only
-substantive `language` mention states that the *chat* language is
-independent of the app's configured languages, and its numbered build
-workflow has no language step. The capability is real and the tools are
-reachable; nothing happens unless the brief asks. ACE asks via
-`_app-component-library.md § app-language-layer`.
+**The architect must NOT use it — ACE does, at level 0 (ace#1556, and this
+SUPERSEDES the 2026-08-17 reading below).** On 2026-08-17 the architect's
+operating prompt (`autonomous_build`, 70,643 chars, read live) contained
+**zero** occurrences of `itext`, `locale`, `multiling` or `English` and had no
+language step, so ACE concluded "nothing happens unless the brief asks" and
+asked. **Nova has since shipped language guidance into that prompt, and it
+forbids exactly what ACE was asking for.** Read verbatim off disk from the
+installed plugin — `nova/1.27.0/skills/autobuild/SKILL.md`, identical in
+`1.26.0`, same sentence in `agents/nova-architect-autonomous.md`:
+
+> Never treat your own language fluency as a substitute or bulk-translate
+> self-generated text through `update_translations`. Only save target text
+> supplied by the user: page `get_translatable_content` to completion,
+> preserve typed `protectedParts`, and write at most 50 distinct stable unit
+> IDs per atomic call. … never mark copied or machine-authored text reviewed
+> on the user's behalf.
+
+An `/ace:run` supplies no human-authored target strings, so the architect
+declines — correctly — and the language step becomes a silent no-op.
+Measured: `spark-facilitator/20260820-0817`, Learn app
+`64ec7be2-e9a4-49c5-8151-3dca69f9b879`, working languages `nya` + `tum` → 207
+units `origin: copied` / 0 ready in BOTH targets.
+
+**Resolution: an ownership split, not an argument with the clause.** The
+clause constrains the ARCHITECT's *self-generated* text; ACE is the caller —
+the "user" in that sentence — and holds the same six atoms on its own Nova
+MCP surface. So the brief now tells the architect to build **English only**
+and call **no** language atom, and ACE adds the layer at level 0 afterwards
+(`pdd-to-learn-app § Step 4e`, `pdd-to-deliver-app § Step 4l`, both thin
+wrappers over `_app-component-library.md § app-language-layer`'s level-0
+recipe). Provenance stays honest either way: ACE's writes are auto-tagged
+`origin: ai` and rest at `needs-review`, and nothing is marked reviewed on
+anyone's behalf. A bonus the old wiring never had — translate-LAST becomes
+**structural**, because the architect's turn is over before the language
+exists.
+
+This is also a standing lesson about this integration: **a prompt-absence
+observation has a shelf life.** ACE read "no language step" once and encoded
+it as a durable fact; Nova shipped one within days, and nothing surfaced the
+drift until a run produced 0% coverage. See `skills/upstream-regression-triage`.
 
 ### Contract facts — observed live, not inferred
 
@@ -637,6 +777,37 @@ property.)
   `{kind:'user-ref', property}` ·
   `{kind:'user-property-ref', userPropertyUuid}`.
   **A plain string is rejected.**
+- **Two ADJACENT `text` parts are rejected — merge them before sending.**
+  Nova's canonical print merges adjacent text runs, so a `parts` array
+  carrying two `text` atoms in a row re-parses to a *different* array than
+  the one it was handed and the identity round trip fails. The rejection
+  names a REFERENCE problem, which is misleading — the refs are fine:
+
+  ```
+  Field "household_size" … (calculated value) has a reference that doesn't
+  exist in this form: This expression does not survive Nova's canonical
+  identity parse and print round trip.. Nothing was changed.
+  ```
+
+  This bites whenever you build a `parts` array by **wrapping or
+  concatenating onto an existing expression** — the wrapper's prefix text
+  butts up against the original's leading `text` atom. The fix changes no
+  character of the expression, only its segmentation: walk the array and
+  concatenate each run of consecutive `text` parts into one atom. Assert
+  `flatten(spec) === flatten(merged)` before sending, so a merge bug cannot
+  quietly alter semantics. Live on `hh-poverty-targeting/20260824-1404`
+  wrapping six derived fields in `if(<consent field-ref> = 'yes', …, '')`:
+  the unmerged shape was rejected on the first call; merged, all six landed.
+- **`validate_msg` is read as a SIBLING of `validate` and written NESTED
+  inside it — re-nest it or the message is silently dropped.** `get_form`
+  returns `validate` holding only the bare expr (`{parts:[…]}`) with the
+  message alongside it as its own top-level `validate_msg` key, whereas
+  `edit_field`'s `updates.validate` schema carries the message at
+  `validate.msg`. So a read-modify-write that replays a field's own
+  `validate_msg` straight back through `edit_field` posts it in a slot the
+  schema does not read: the expression updates, the message is dropped, and
+  **nothing errors**. Shape it as
+  `updates: {validate: {parts: […], msg: {parts: […]}}}`.
 - **A `hidden` field is rejected unless it carries `calculate` or
   `default_value`.** `calculate` recomputes when a referenced field
   changes; `default_value` is fixed at load.

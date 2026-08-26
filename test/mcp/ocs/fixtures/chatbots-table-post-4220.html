@@ -1,0 +1,103 @@
+<!--
+  /a/connect-ace/chatbots/table/ — the CURRENT (post-OCS-PR-#4220) row shape.
+
+  Re-derived from upstream SOURCE at dimagi/open-chat-studio (default branch,
+  read 2026-08-23), not guessed:
+
+    apps/chatbots/tables.py        ChatbotTable.name = ActionsColumn([chip_action(
+                                     label_factory=_name_label_factory,
+                                     url_factory=_chip_chatbot_url_factory,
+                                     button_style=actions.CHIP_BUTTON_STYLE,
+                                     truncate=True)])
+                                   Meta.row_attrs = {**DJANGO_TABLES2_ROW_ATTRS,
+                                     "data-redirect-url": _chatbot_url_factory}
+                                   Meta.empty_text = "No chatbots found."
+    config/settings.py             DJANGO_TABLES2_ROW_ATTRS -> class (multi-line),
+                                   id = f"record-{record.id}", data-redirect-url
+    templates/generic/crud_actions_column.html   wraps actions in <div class="join …">
+    templates/generic/action.html  <a … class="btn btn-sm join-item {{ button_style }}
+                                     {% if truncate %} max-w-xs{% endif %}">
+                                     {% include "generic/chip_label.html" %}
+                                     {% if icon_class %}<i …></i>{% endif %}</a>
+    templates/generic/chip_label.html  truncate ->
+                                     <span class="min-w-0 truncate" title="{{ label }}">{{ label }}</span>
+
+  PR #4220 "Consistent chip rendering in tables", merged 2026-08-18T11:56Z, is
+  what moved the label from `{{ label }}` into that <span>. See ace#1561.
+
+  Rows here cover: an ordinary bot, a Django-escaped ampersand in the name, and
+  an archived bot (`_name_label_factory` appends " (archived)").
+-->
+<div class="table-container">
+  <table class="table w-full">
+    <thead>
+      <tr>
+        <th class="text-left">Name</th>
+        <th class="text-center">Total Participants</th>
+        <th class="text-center">Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr class="
+        border-b border-base-300 hover:bg-base-200
+        data-redirect-url:[&amp;:not([data-redirect-url=''])]:hover:cursor-pointer
+        " id="record-12003" data-redirect-url="/a/connect-ace/chatbots/12003/">
+        <td class="text-left px-3 py-2">
+          <div class="join join-vertical lg:join-horizontal">
+            <a href="/a/connect-ace/chatbots/12003/" class="btn btn-sm join-item btn-soft btn-primary max-w-xs"  >
+
+  <span class="min-w-0 truncate" title="ACE - hh-poverty-targeting">ACE - hh-poverty-targeting</span>
+
+            </a>
+          </div>
+        </td>
+        <td class="text-center px-3 py-2">4</td>
+        <td class="text-center px-3 py-2">
+          <div class="join join-vertical lg:join-horizontal">
+            <a href="/a/connect-ace/chatbots/12003/edit/" class="btn btn-sm join-item" title="Edit"><i class="fa-solid fa-pencil"></i></a>
+          </div>
+        </td>
+      </tr>
+      <tr class="
+        border-b border-base-300 hover:bg-base-200
+        data-redirect-url:[&amp;:not([data-redirect-url=''])]:hover:cursor-pointer
+        " id="record-11792" data-redirect-url="/a/connect-ace/chatbots/11792/">
+        <td class="text-left px-3 py-2">
+          <div class="join join-vertical lg:join-horizontal">
+            <a href="/a/connect-ace/chatbots/11792/" class="btn btn-sm join-item btn-soft btn-primary max-w-xs"  >
+
+  <span class="min-w-0 truncate" title="ACE Golden Template &amp; Fixtures">ACE Golden Template &amp; Fixtures</span>
+
+            </a>
+          </div>
+        </td>
+        <td class="text-center px-3 py-2">0</td>
+        <td class="text-center px-3 py-2">
+          <div class="join join-vertical lg:join-horizontal">
+            <a href="/a/connect-ace/chatbots/11792/edit/" class="btn btn-sm join-item" title="Edit"><i class="fa-solid fa-pencil"></i></a>
+          </div>
+        </td>
+      </tr>
+      <tr class="
+        border-b border-base-300 hover:bg-base-200
+        data-redirect-url:[&amp;:not([data-redirect-url=''])]:hover:cursor-pointer
+        " id="record-12948" data-redirect-url="/a/connect-ace/chatbots/12948/">
+        <td class="text-left px-3 py-2">
+          <div class="join join-vertical lg:join-horizontal">
+            <a href="/a/connect-ace/chatbots/12948/" class="btn btn-sm join-item btn-soft btn-primary max-w-xs"  >
+
+  <span class="min-w-0 truncate" title="ACE - bednet-check-2-visit (archived)">ACE - bednet-check-2-visit (archived)</span>
+
+            </a>
+          </div>
+        </td>
+        <td class="text-center px-3 py-2">12</td>
+        <td class="text-center px-3 py-2">
+          <div class="join join-vertical lg:join-horizontal">
+            <a href="/a/connect-ace/chatbots/12948/edit/" class="btn btn-sm join-item" title="Edit"><i class="fa-solid fa-pencil"></i></a>
+          </div>
+        </td>
+      </tr>
+    </tbody>
+  </table>
+</div>

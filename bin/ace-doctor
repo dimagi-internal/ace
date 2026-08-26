@@ -82,6 +82,9 @@ elif [ "${1:-}" = "deep-qa-freshness" ]; then
 fi
 
 PREFLIGHT=0
+# --no-live suppresses the ONE live probe --preflight runs (ocs_generation,
+# ace#1516) so `/ace:doctor --preflight --no-live` stays instant.
+NO_LIVE=0
 
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -89,6 +92,7 @@ while [ $# -gt 0 ]; do
     --installed)  MODE="installed" ;;
     --root)       shift; ROOT="$1" ;;
     --preflight)  PREFLIGHT=1 ;;
+    --no-live)    NO_LIVE=1 ;;
     *)            echo "ace-doctor: unknown arg: $1" >&2; exit 2 ;;
   esac
   shift
@@ -176,7 +180,18 @@ fi
 
 # --preflight — emit a tight YAML snapshot of local state for the orchestrator's
 # pre-flight checklist (agents/ace-orchestrator.md § Pre-flight Checklist Step 1).
-# Skips human-facing PASS/WARN/FAIL noise, hygiene checks, and live auth probes.
+# Skips human-facing PASS/WARN/FAIL noise, hygiene checks, and live auth probes,
+# with ONE deliberate exception: `ocs_generation` (dimagi-internal/ace#1516).
+#
+# Why that exception exists. Every other OCS check here is env-presence or a
+# reachability GET, so a dead/exhausted/revoked team GENERATION provider stayed
+# invisible until Phase 5's quick gate — after Phases 1-4 and 6 had already run
+# (bednet-check-2-visit/20260817-1720, 2026-08-19; and ace#743 before it). The
+# generic "trust the cached session, let phase atoms surface auth failures at
+# point-of-use" rule is right for credentials a phase can re-mint; it is wrong
+# for a provider outage that makes EVERY OCS-dependent phase unpassable, because
+# the only cost it can be discovered at is hours of wasted run. So preflight
+# spends one live token here and nowhere else. `--no-live` opts out.
 # What it covers: env_file path, plugin version + install_path, git user.email,
 # presence of the env vars Phase 1+ skills depend on. Sensitive values (passwords,
 # tokens) are reported as `present`/`missing`; public IDs (Drive root, HQ domain,
@@ -340,6 +355,7 @@ if [ "$PREFLIGHT" = "1" ]; then
   PF_NOVA_CACHE_KEY_PRESENT=false
   PF_NOVA_CACHE_STATUS=pass
   PF_NOVA_CACHE_REMEDIATION=""
+  PF_NOVA_CACHE_CLEARED=false
   if [ -f "$PF_NOVA_CACHE_FILE" ]; then
     PF_NOVA_CACHE_HAS="$(node -e "
       try {
@@ -351,7 +367,36 @@ if [ "$PREFLIGHT" = "1" ]; then
       PF_NOVA_CACHE_KEY_PRESENT=true
       if [ "$PF_NOVA_KEY_PRESENT" = "true" ]; then
         PF_NOVA_CACHE_STATUS=fail
-        PF_NOVA_CACHE_REMEDIATION="plugin:nova:nova stuck in needs-auth cache despite valid NOVA_API_KEY; clear it from $PF_NOVA_CACHE_FILE then Cmd-Q + reopen Claude Code (run /ace:doctor for the exact node one-liner)"
+        # cache_key_present AND a valid NOVA_API_KEY together PROVE the entry is
+        # stale, so there is nothing to decide — clear it here rather than
+        # printing a one-liner a human has to run. Claude Code rewrites the
+        # entry at every startup without re-attempting auth (nova-plugin#11), so
+        # a restart alone does NOT clear it and the halt repeats on every
+        # restart. Still `fail`: MCP subprocesses cannot be respawned
+        # in-session, so the restart stays mandatory — this makes ONE restart
+        # sufficient FOR THE STALE-CACHE CLASS ONLY. See ace#1579.
+        #
+        # It is NOT sufficient when a stored expired OAuth credential is
+        # outranking the headersHelper PAT: there the fresh session rewrites the
+        # entry itself, so no number of restarts helps. Measured on
+        # hh-poverty-targeting/20260824-1404 — cleared at 20:13, session started
+        # 20:43:35 (so it WAS that restart), nova re-cached at 20:45:15 ~100s in,
+        # then cleared and back a second time with no restart between, while a
+        # direct curl with the same PAT returned get_hq_connection
+        # configured:true. Both remediation strings route that recurrence case
+        # to /mcp -> Clear authentication. See ace#1624, ace#1614,
+        # voidcraft-labs/nova-plugin#52.
+        if [ -f "$ROOT/scripts/clear-nova-needs-auth-cache.mjs" ]; then
+          PF_NOVA_CACHE_CLEAR_RESULT="$(node "$ROOT/scripts/clear-nova-needs-auth-cache.mjs" --file "$PF_NOVA_CACHE_FILE" 2>/dev/null)"
+        else
+          PF_NOVA_CACHE_CLEAR_RESULT="helper not present; run /ace:update"
+        fi
+        if [ "$PF_NOVA_CACHE_CLEAR_RESULT" = "cleared" ]; then
+          PF_NOVA_CACHE_CLEARED=true
+          PF_NOVA_CACHE_REMEDIATION="plugin:nova:nova was stuck in needs-auth cache despite valid NOVA_API_KEY; the stale entry has been CLEARED automatically. FIRST occurrence: Cmd-Q + reopen Claude Code, then re-run your command (MCP subprocesses only rebind on a full restart). If you have ALREADY restarted once since the last clear and nova still exposes only authenticate/complete_authentication, the cache is NOT the cause: a stored OAuth credential is outranking the headersHelper PAT (dimagi-internal/ace#1614, voidcraft-labs/nova-plugin#52). Run /mcp, select nova, choose 'Clear authentication' -- NOT 'Authenticate', which mints a fresh OAuth token and leaves the session on the wrong credential without nova.hq.read -- THEN Cmd-Q + reopen."
+        else
+          PF_NOVA_CACHE_REMEDIATION="plugin:nova:nova stuck in needs-auth cache despite valid NOVA_API_KEY; auto-clear did not apply ($PF_NOVA_CACHE_CLEAR_RESULT). Clear it from $PF_NOVA_CACHE_FILE then Cmd-Q + reopen Claude Code (run /ace:doctor for the exact node one-liner). If you have ALREADY restarted once since the last clear and nova still exposes only authenticate/complete_authentication, the cache is NOT the cause: a stored OAuth credential is outranking the headersHelper PAT (dimagi-internal/ace#1614, voidcraft-labs/nova-plugin#52). Run /mcp, select nova, choose 'Clear authentication' -- NOT 'Authenticate', which mints a fresh OAuth token and leaves the session on the wrong credential without nova.hq.read -- THEN Cmd-Q + reopen."
+        fi
       else
         PF_NOVA_CACHE_STATUS=warn
         PF_NOVA_CACHE_REMEDIATION="plugin:nova:nova cached as needs-auth but NOVA_API_KEY not set; entry may be correct. To use Nova, set the key, clear the entry, restart Claude Code"
@@ -360,6 +405,50 @@ if [ "$PREFLIGHT" = "1" ]; then
       PF_NOVA_CACHE_STATUS=warn
       PF_NOVA_CACHE_REMEDIATION="$PF_NOVA_CACHE_FILE present but unparseable; inspect or remove it (Claude Code recreates as needed)"
     fi
+  fi
+
+  # ocs_generation — the ONE live probe in preflight (dimagi-internal/ace#1516).
+  #
+  # Asks OCS to generate a single token through the golden template's widget
+  # path. Everything else doctor knows about OCS is env-presence or a
+  # reachability GET; `ocs_shared_collection_team` proves a collection is
+  # reachable, never that the model behind it can answer. Two sessions have
+  # now been burned by that gap (ace#743 revoked key; the 2026-08-19 usage cap
+  # on provider 377 while the run's own config was flawless: 8/8 indexed,
+  # pipeline_valid, published v2, channel enabled).
+  #
+  # This block is why the fix is a TIMING fix rather than another diagnosis
+  # improvement: a probe wired only into [Auth liveness] below would never run
+  # inside /ace:run, because preflight exits before it.
+  #
+  # Gated: needs OCS_GOLDEN_TEMPLATE_ID + OCS_TEAM_SLUG + a live session file
+  # (the script guards again and returns `skip` without launching chromium).
+  # `--no-live` skips it outright. The script hard-caps its own wall clock at
+  # 25s and always exits 0. `status: fail` here is a halt-class for the
+  # orchestrator, exactly like selector_map_currency / nova_needs_auth_cache.
+  PF_OCS_GEN_YAML=""
+  PF_OCS_SESS="$HOME/.ace/ocs-session-${OCS_TEAM_SLUG}.json"
+  PF_OCS_GEN_SKIP_REASON=""
+  if [ "$NO_LIVE" = "1" ]; then
+    PF_OCS_GEN_SKIP_REASON="--no-live passed; re-run /ace:doctor --preflight without it to prove OCS can generate"
+  elif [ ! -f "$ROOT/scripts/doctor-ocs-generation.ts" ]; then
+    PF_OCS_GEN_SKIP_REASON="scripts/doctor-ocs-generation.ts not present; run /ace:update"
+  elif [ -z "$OCS_GTID" ] || [ -z "$OCS_TEAM_SLUG" ]; then
+    PF_OCS_GEN_SKIP_REASON="OCS_GOLDEN_TEMPLATE_ID or OCS_TEAM_SLUG not set in .env"
+  elif [ ! -f "$PF_OCS_SESS" ]; then
+    PF_OCS_GEN_SKIP_REASON="$PF_OCS_SESS missing — run /ace:ocs-login (or set OCS_USERNAME/OCS_PASSWORD)"
+  else
+    PF_OCS_GEN_YAML="$(cd "$ROOT" && npx tsx scripts/doctor-ocs-generation.ts --format=yaml 2>/dev/null || true)"
+  fi
+  if [ -z "$PF_OCS_GEN_YAML" ]; then
+    [ -z "$PF_OCS_GEN_SKIP_REASON" ] && PF_OCS_GEN_SKIP_REASON="probe produced no output"
+    PF_OCS_GEN_YAML="ocs_generation:
+  status: skip
+  class: no_session
+  provider_id: null
+  trace: \"\"
+  detail: \"\"
+  remediation: \"${PF_OCS_GEN_SKIP_REASON}\""
   fi
 
   # Build the YAML body. Missing public values render as empty strings; the
@@ -406,9 +495,12 @@ selector_map_currency:
   remediation: "${PF_SEL_REMEDIATION}"
 nova_needs_auth_cache:
   status: ${PF_NOVA_CACHE_STATUS}
+  scope: "cache-file + NOVA_API_KEY presence only; says nothing about which principal the live Nova MCP connection bound (ace#1604)"
   cache_key_present: ${PF_NOVA_CACHE_KEY_PRESENT}
   nova_api_key: ${PF_NOVA_KEY_PRESENT}
+  cleared: ${PF_NOVA_CACHE_CLEARED}
   remediation: "${PF_NOVA_CACHE_REMEDIATION}"
+${PF_OCS_GEN_YAML}
 EOF
 
   # Handoff from a session that halted knowing it would be restarted (ace#1093).
@@ -421,12 +513,30 @@ EOF
     TSX_BIN="$ROOT/node_modules/.bin/tsx"
     if [ -x "$TSX_BIN" ]; then
       "$TSX_BIN" -e "
-        import { readHandoff, renderHandoff } from '$ROOT/lib/session-handoff.ts';
+        import { readHandoff, renderHandoff, renderStaleHandoff } from '$ROOT/lib/session-handoff.ts';
         const r = readHandoff();
         if (r.status === 'fresh') console.log(renderHandoff(r.handoff, r.ageMs));
-        else if (r.status === 'stale') console.log('INFO handoff_present_but_stale=' + Math.round(r.ageMs/60000) + 'm — ignoring (see ace#1093)');
+        else if (r.status === 'stale') console.log(renderStaleHandoff(r.ageMs));
       " 2>/dev/null || true
     fi
+  fi
+
+  # Preflight is a machine-facing YAML snapshot: it ends here, unconditionally.
+  # (dimagi-internal/ace#1506. Until 0.13.933 this `exit 0` sat INSIDE the
+  # handoff guard above, so a
+  # machine with no pending handoff fell through and ran the entire doctor —
+  # live auth probes, network reachability, Drive-layout walk — on every
+  # /ace:run, contradicting the contract documented at the top of this block.)
+  #
+  # AMENDED (ace#1516): "no live probes in preflight" now has exactly ONE
+  # named exception, `ocs_generation`, emitted above. That is deliberate and
+  # does not reopen #1506 — the whole point of #1506 was that preflight must
+  # not FALL THROUGH into the rest of the doctor; a single scoped probe run
+  # inside the block is a different thing from running all of them. The rest
+  # of [Auth liveness] still never executes here, and this `exit 0` still
+  # fires unconditionally. If you are tempted to add a second live probe,
+  # the bar is the one #1516 met: an unrecoverable, run-wide halt class whose
+  # only other discovery point is hours into a run.
   exit 0
 fi
 
@@ -443,7 +553,6 @@ done
 if [ -n "$PWD_MATCH" ] && [ "$PWD_MATCH" != "$ROOT" ]; then
   echo "INFO cwd_is_ace_checkout=$PWD_MATCH (pass --here to audit it instead)"
   fi
-fi
 
 pass() { printf 'PASS %s\n' "$1"; }
 warn() { printf 'WARN %s\n' "$1"; [ -n "${2:-}" ] && printf '  fix: %s\n' "$2"; }
@@ -1212,17 +1321,38 @@ if [ -n "$ENV_FILE" ]; then
       # to write a device file) with --force (skip the overwrite prompt, which
       # aborts non-interactively). We only care whether every ref RESOLVES; the
       # rendered secrets are discarded immediately.
+      # RETRY ONCE before classifying. A single `op` invocation must not decide the
+      # run's verdict: this is the only FAIL most machines can produce here, so one
+      # transient flips the summary to "BROKEN — ACE will not function" on a healthy
+      # box (ace#1613).
       RENDER_ERR="$(op inject -i "$RENDER_TPL" -o "$RENDER_OUT" --force --account dimagi.1password.com 2>&1)"
       RENDER_RC=$?
-      rm -f "$RENDER_TPL" "$RENDER_OUT"
-      if [ "$RENDER_RC" -eq 0 ]; then
-        pass "env_tpl_render: .env.tpl renders cleanly (every op:// ref resolves)"
-      elif printf '%s' "$RENDER_ERR" | grep -qiE 'sign[- ]?in|session|authoriz|not currently|account .* (not found|isn.t)|no account|could not find account'; then
-        : # op not signed in / account not configured on this machine — informational skip, not a config defect
-      else
-        fail "env_tpl_render: op inject -i .env.tpl FAILS — one or more op:// refs are unresolvable, so a real op inject writes NOTHING: an existing .env is left on its previous (possibly stale) values, and a fresh machine or container gets no .env at all (jjackson/ace#753, corrected by ace#986)" "fix the field named below in 1Password (vault Agent-Ace), or comment the ref out of .env.tpl until the field exists:
-$(printf '%s' "$RENDER_ERR" | sed 's/^/      /')"
+      RENDER_CLASS="$(printf '%s' "$RENDER_ERR" | "$SELF_DIR/scripts/classify-op-inject.sh" "$RENDER_RC")"
+      if [ "$RENDER_CLASS" = "unknown" ]; then
+        sleep 2
+        RENDER_ERR="$(op inject -i "$RENDER_TPL" -o "$RENDER_OUT" --force --account dimagi.1password.com 2>&1)"
+        RENDER_RC=$?
+        RENDER_CLASS="$(printf '%s' "$RENDER_ERR" | "$SELF_DIR/scripts/classify-op-inject.sh" "$RENDER_RC")"
       fi
+      rm -f "$RENDER_TPL" "$RENDER_OUT"
+      case "$RENDER_CLASS" in
+        ok)
+          pass "env_tpl_render: .env.tpl renders cleanly (every op:// ref resolves)"
+          ;;
+        auth_skip)
+          : # op not signed in / account not configured on this machine — informational skip, not a config defect
+          ;;
+        unresolvable)
+          fail "env_tpl_render: op inject -i .env.tpl FAILS — one or more op:// refs are unresolvable, so a real op inject writes NOTHING: an existing .env is left on its previous (possibly stale) values, and a fresh machine or container gets no .env at all (jjackson/ace#753, corrected by ace#986)" "fix the field named below in 1Password (vault Agent-Ace), or comment the ref out of .env.tpl until the field exists:
+$(printf '%s' "$RENDER_ERR" | sed 's/^/      /')"
+          ;;
+        *)
+          # Twice non-zero, but the error matches no known unresolvable-reference
+          # signature. Do NOT assert a config defect we have no evidence for —
+          # surface it and let the operator read the actual error.
+          warn "env_tpl_render: op inject failed twice with an unrecognised error — NOT classified as a broken ref (ace#1613). If .env writes are actually failing, read the error below" "$(printf '%s' "$RENDER_ERR" | sed 's/^/      /')"
+          ;;
+      esac
     fi
   fi
 
@@ -1398,6 +1528,7 @@ $(printf '%s' "$RENDER_ERR" | sed 's/^/      /')"
       -sS -o /dev/null -w '%{http_code}' --max-time 5 \
       -X POST \
       -H "Content-Type: application/json" \
+      -H "Accept: application/json, text/event-stream" \
       -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"ace-doctor","version":"1"}}}' \
       "$LABS_URL" 2>/dev/null || echo "000")"
     case "$LABS_REACH_CODE" in
@@ -1410,6 +1541,7 @@ $(printf '%s' "$RENDER_ERR" | sed 's/^/      /')"
           -sS --max-time 5 \
           -X POST \
           -H "Content-Type: application/json" \
+          -H "Accept: application/json, text/event-stream" \
           -d '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"list_solicitations","arguments":{}}}' \
           "$LABS_URL" 2>/dev/null || echo "")"
         if echo "$LABS_OAUTH_BODY" | grep -q "PERMISSION_DENIED\|connect_oauth\|ConnectTokenError"; then
@@ -1426,8 +1558,16 @@ $(printf '%s' "$RENDER_ERR" | sed 's/^/      /')"
       000)
         warn "connect_labs_mcp_reachable: cannot reach $LABS_URL (network/DNS/timeout)" "verify labs.connect.dimagi.com is up and reachable from this network"
         ;;
+      406)
+        # MCP Streamable HTTP requires the client to advertise BOTH content
+        # types; a spec-compliant server answers 406 when Accept does not.
+        # This probe omitted the header until 0.13.933 (ace#1507), so the WARN fired on a
+        # perfectly healthy labs and its remedy sent the reader at the wrong
+        # system. Kept as a named case so a regression is self-describing.
+        warn "connect_labs_mcp_reachable: HTTP 406 — this probe did not send an MCP Accept header" "client-side probe bug, NOT a labs outage: the request needs 'Accept: application/json, text/event-stream'"
+        ;;
       *)
-        warn "connect_labs_mcp_reachable: $LABS_URL returned HTTP $LABS_REACH_CODE" "investigate labs MCP health"
+        warn "connect_labs_mcp_reachable: $LABS_URL returned HTTP $LABS_REACH_CODE" "check the response body by hand before assuming labs is down — compare against a working MCP client's request headers"
         ;;
     esac
   fi
@@ -1594,6 +1734,28 @@ if [ -n "$OCS_BASE" ] && [ -n "$OCS_TEAM" ]; then
   fi
 else
   warn "ocs_auth: skipped — OCS_BASE_URL or OCS_TEAM_SLUG not set in .env" "see ocs_env warning above"
+fi
+
+# 2b. ace-ocs generation — proves the team's GENERATION provider can actually
+# answer, not merely that OCS is reachable (dimagi-internal/ace#1516).
+#
+# Same backing script as the --preflight `ocs_generation:` block; that one is
+# the load-bearing wiring (it runs before Phase 1, which is the whole point of
+# the issue) and this one is the human surface. Severity deliberately differs:
+# WARN here, per the standing "runtime-health checks are WARN, not FAIL"
+# convention, and `status: fail` in the preflight YAML because that is what the
+# orchestrator halts on. Never invoked twice in one run — preflight exits long
+# before this block.
+#
+# The script emits its own PASS/WARN/INFO + `fix:` lines (same shape as
+# scripts/doctor-drive-layout.ts) because the remedy is class-dependent: a
+# capped provider and a revoked key need different sentences, and both must
+# name the GENERATION provider's /service_providers/llm/<pk>/ page — which is
+# NOT the id OCS_LLM_PROVIDER_ID holds (that is embeddings; see the script).
+if [ -f "$ROOT/scripts/doctor-ocs-generation.ts" ]; then
+  ( cd "$ROOT" && npx tsx scripts/doctor-ocs-generation.ts --format=lines 2>/dev/null ) || true
+else
+  info "ocs_generation: skipped — scripts/doctor-ocs-generation.ts not present (run /ace:update)"
 fi
 
 # 3. ace-connect — GET /accounts/login/ with connect.dimagi.com cookies, --max-redirs 0
@@ -2125,8 +2287,52 @@ elif [ -f "$HOME/.ace/env.sh" ]; then
 else
   warn "nova_shell_env: NOVA_API_KEY not in shell env and ~/.ace/env.sh missing" "run /ace:setup --force-env  (writes ~/.ace/env.sh and appends source line to $NOVA_RC_FILE)"
 fi
+# A user-scope `nova:` entry is NOT automatically stale cruft — that heuristic
+# predates voidcraft-labs/nova-plugin#52 and became actively harmful
+# (dimagi-internal/ace#1629). Claude Code 2.1.238 changed what env the
+# interactive-session MCP connect path passes to `headersHelper`; Nova's helper
+# is env-var dependent (`if [ -n "$NOVA_API_KEY" ] ... else printf '{}'`), so it
+# silently emits `{}` and sends NO Authorization header. Measured on
+# spark-facilitator/20260820-0817: 2.1.237 = 32/32 sessions sent a header,
+# 2.1.238+ = 0/53, with a same-session control on 2.1.243 showing canopy's
+# helper (reads a FILE) at hdr=1 while nova's (reads an ENV VAR) sat at hdr=0.
+#
+# The ONLY working fix today is a user-scope server carrying a STATIC header,
+# which bypasses the helper entirely:
+#   claude mcp add --transport http --scope user nova https://mcp.commcare.app/mcp \
+#     --header 'Authorization: Bearer <PAT>'
+#
+# So the presence of a static `Authorization` header is exactly what separates
+# the #52 workaround from genuine pre-1.1.0 cruft. Blanket-WARNing told the
+# operator to delete the only credential path that works and restart — which
+# returns them to the needs-auth/wrong-principal loop that cost that run three
+# sessions. A doctor must not be able to talk an operator out of the only
+# configuration that works.
+#
+# The classification is a tested pure function
+# (scripts/classify-nova-user-scope-override.mjs), not a regex buried here.
+# The header value is a live PAT, so `claude mcp get` is PIPED into it on stdin
+# — never argv (visible in `ps`), never a shell variable, and the classifier
+# prints only `workaround` / `stale`, never an input line.
 if command -v claude >/dev/null 2>&1 && claude mcp list 2>/dev/null | grep -qE '^nova:[[:space:]]'; then
-  warn "nova_shell_env: stale user-scope nova: MCP override detected (pre-1.1.0 setup)" "the override shadows the Nova plugin's PAT-aware MCP entry. Run: claude mcp remove nova --scope user  (then restart Claude Code)"
+  NOVA_OVERRIDE_CLASS="$(claude mcp get nova 2>/dev/null \
+    | node "$ROOT/scripts/classify-nova-user-scope-override.mjs" 2>/dev/null || true)"
+  case "$NOVA_OVERRIDE_CLASS" in
+    workaround)
+      info "nova_shell_env: user-scope nova: MCP override carries a static Authorization header — this is the voidcraft-labs/nova-plugin#52 workaround, NOT stale cruft. Leave it in place; remove it only once #52 ships a file-based or static-header helper (dimagi-internal/ace#1629)."
+      ;;
+    stale)
+      warn "nova_shell_env: stale user-scope nova: MCP override detected — no static Authorization header (pre-1.1.0 setup)" "the override shadows the Nova plugin's PAT-aware MCP entry AND carries no credential of its own. Run: claude mcp remove nova --scope user  (then restart Claude Code). If you meant to install the nova-plugin#52 workaround, re-add it WITH --header 'Authorization: Bearer <PAT>'"
+      ;;
+    *)
+      # Classification could not run (node missing, `claude mcp get` shape
+      # changed). Say so — do NOT fall back to the removal prescription. The
+      # whole point of ace#1629 is that the removal advice is destructive when
+      # the entry IS the working credential path, so an unclassified entry must
+      # never inherit it by default.
+      warn "nova_shell_env: user-scope nova: MCP override present but could not be classified" "inspect it yourself with: claude mcp get nova  — if it carries a static 'Authorization: Bearer …' header it is the nova-plugin#52 workaround and MUST BE LEFT ALONE. Do not remove it on the strength of this warning"
+      ;;
+  esac
 fi
 
 # 7c. nova_needs_auth_cache — verify Claude Code is not caching
@@ -2162,10 +2368,42 @@ else
     # tools won't surface until it's cleared. Soft warn otherwise
     # (operator may genuinely not be authed yet).
     if [ -n "$NOVA_KEY_VAL" ]; then
-      fail "nova_needs_auth_cache: plugin:nova:nova cached as needs-auth despite valid NOVA_API_KEY" "remove the stuck entry and restart Claude Code (running process won't re-connect on its own):
+      # A present key PROVES the cached entry is stale, so clear it rather than
+      # printing a one-liner a human has to run — Claude Code rewrites the entry
+      # at every startup without re-attempting auth, so a restart alone does not
+      # clear it (dimagi-internal/ace#1579). Still `fail`: the restart is what
+      # rebinds the MCP subprocess.
+      if [ -f "$ROOT/scripts/clear-nova-needs-auth-cache.mjs" ]; then
+        NOVA_CACHE_CLEAR_RESULT="$(node "$ROOT/scripts/clear-nova-needs-auth-cache.mjs" --file "$NOVA_NEEDS_AUTH_CACHE" 2>/dev/null)"
+      else
+        NOVA_CACHE_CLEAR_RESULT="helper not present; run /ace:update"
+      fi
+      if [ "$NOVA_CACHE_CLEAR_RESULT" = "cleared" ]; then
+        fail "nova_needs_auth_cache: plugin:nova:nova was cached as needs-auth despite valid NOVA_API_KEY" "the stale entry has been CLEARED automatically from $NOVA_NEEDS_AUTH_CACHE.
+       FIRST occurrence: Cmd-Q Claude Code and reopen — MCP subprocesses only rebind on a full restart.
+       Symptom this fixes: only \`mcp__plugin_nova_nova__authenticate\` surfaces, real tools (\`list_apps\` etc.) are missing.
+       Per Braxton's nova-plugin#11.
+
+       IF YOU HAVE ALREADY RESTARTED once since the last clear and nova still exposes
+       only \`authenticate\`, the cache is NOT the cause and a further restart will loop:
+       a stored OAuth credential is outranking the headersHelper PAT.
+         1. /mcp -> nova -> 'Clear authentication'  (NOT 'Authenticate' — that mints a
+            fresh OAuth token and leaves the session on the wrong credential, without
+            nova.hq.read, so Phase 3 dies later at upload_app_to_hq instead)
+         2. Cmd-Q Claude Code and reopen
+         3. verify BOTH: list_projects returns the PAT's project, AND
+            get_hq_connection returns configured:true  (list_apps alone is NOT enough)
+       Confirm the PAT itself is fine first, so nobody re-diagnoses a good credential:
+         curl -s https://mcp.commcare.app/mcp -H \"Authorization: Bearer \$NOVA_API_KEY\" \\
+           -H 'Content-Type: application/json' -H 'Accept: application/json, text/event-stream' \\
+           -d '{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/call\",\"params\":{\"name\":\"get_hq_connection\",\"arguments\":{}}}'
+       See dimagi-internal/ace#1624, ace#1614, voidcraft-labs/nova-plugin#52."
+      else
+        fail "nova_needs_auth_cache: plugin:nova:nova cached as needs-auth despite valid NOVA_API_KEY" "auto-clear did not apply ($NOVA_CACHE_CLEAR_RESULT); remove the stuck entry by hand and restart Claude Code (running process won't re-connect on its own):
        node -e 'const f=\"$NOVA_NEEDS_AUTH_CACHE\"; const d=JSON.parse(require(\"fs\").readFileSync(f,\"utf8\")); delete d[\"plugin:nova:nova\"]; require(\"fs\").writeFileSync(f, JSON.stringify(d,null,2)+\"\\n\");'
        Then Cmd-Q Claude Code and reopen. Symptom: only \`mcp__plugin_nova_nova__authenticate\` surfaces, real tools (\`list_apps\` etc.) are missing.
        Per Braxton's nova-plugin#11."
+      fi
     else
       warn "nova_needs_auth_cache: plugin:nova:nova cached as needs-auth (NOVA_API_KEY not set — possibly correct)" "if you intend to use Nova, see nova_env above; otherwise this entry is benign"
     fi

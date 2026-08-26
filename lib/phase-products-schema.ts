@@ -156,15 +156,47 @@ const ConnectProducts = z
             /** `match !== null` from connect_list_flw_invites. */
             invite_row_present: z.boolean().optional(),
             /**
-             * Null means the row exists but has no linked ConnectID user — the
-             * ace#824 signature. Such an access matches nothing in
-             * `opportunityaccess__user`, so the opp is invisible on device
-             * forever and does not self-heal.
+             * ConnectID user id, which populates **on CLAIM** — not on invite.
+             *
+             * Null on a pending row is the NORMAL pre-claim state, NOT the
+             * ace#824 signature (dimagi-internal/ace#1663). On this read path
+             * the id is not a view of the `OpportunityAccess.user` FK:
+             * `parseWorkersTable` (`lib/connect-flw-invites.ts`) splits it out
+             * of the **Name cell**, which Connect renders as a bare `-` until
+             * the worker claims the opportunity — so it is null on every
+             * pending row regardless of the underlying link. Phase 4 invites
+             * and Phase 6 claims, so treating null as a fault would fire on
+             * every healthy run.
+             *
+             * The #824 discriminator at Phase 4 is `invite_row_present`
+             * (a MISSING row), not this field.
              */
             connect_user_id: z.string().nullable().optional(),
             /** `accepted` | `pending` | `unknown`. `pending` is healthy pre-claim. */
             status: z.string().optional(),
             checked_at: z.string().optional(),
+            /**
+             * TRUE when this run minted a RUN-SCOPED demo phone rather than
+             * using the fixed `ACE_E2E_PHONE` (dimagi-internal/ace#1289, gated
+             * on `ACE_PER_RUN_TEST_USER`).
+             *
+             * This field is the CONTRACT DISCRIMINATOR: it is what flips the
+             * required-key set below, so the inversion is run-scoped and
+             * declared by the run itself rather than read from ambient env
+             * inside a pure module. While the switch is off nothing ever
+             * writes it, so the required set is byte-identical to pre-#1289.
+             *
+             * Why the inversion is needed at all: with a per-run phone the
+             * ConnectID user does not exist at Phase 4, and connect-id creates
+             * the invite -> OpportunityAccess link only at invite time and only
+             * for an existing user (`opportunity/tasks.py`). So an absent or
+             * unlinked row at Phase 4 is EXPECTED, not the ace#824 silent
+             * failure — the real gate moves to post-registration (Phase 6,
+             * after the re-invite), where `connect_user_id !== null` must hold.
+             */
+            per_run: z.boolean().optional(),
+            /** ISO timestamp of the on-device registration walk (per-run path only). */
+            registered_at: z.string().optional(),
           })
           .passthrough()
           .optional(),
@@ -368,11 +400,67 @@ export const REQUIRED_PRODUCT_KEYS_BY_MODE: Record<PhaseMode, Partial<Record<Pha
   'app-QA-only': { 'qa-and-training': [] },
 };
 
-/** The required-handoff keys for `phase`, honouring a declared run `mode`. */
-export function requiredProductKeys(phase: string, mode?: string): string[] {
+/**
+ * Required `connect-setup` keys when the run declared a PER-RUN demo phone
+ * (`connect.ace_test_user.per_run === true`, gated on `ACE_PER_RUN_TEST_USER` —
+ * dimagi-internal/ace#1289).
+ *
+ * What changes and why: `invite_row_present` stays required — the read-back
+ * must still run, and `false` remains a legal contract-satisfying value — but
+ * under a per-run phone `false` stops being a `[BLOCKER]` at Phase 4, because
+ * the ConnectID user does not exist yet and Connect only links the invite to an
+ * `OpportunityAccess` for a user that already exists. Two keys become required
+ * instead:
+ *
+ *   - `phone` — Phase 6 has to know WHICH number this run minted in order to
+ *     register it. Under the fixed phone it could always fall back to
+ *     `ACE_E2E_PHONE`; under per-run phones there is no fallback, so an unwritten
+ *     phone means Phase 6 cannot proceed at all.
+ *   - `per_run` — the discriminator itself. Requiring it stops a run from
+ *     silently landing in the per-run path with no record of having done so.
+ *
+ * The blocking gate that used to live at Phase 4 moves to Phase 6, after the
+ * re-invite: `connect_user_id !== null`. See
+ * `lib/per-run-test-user.ts::classifyPerRunPostRegistrationGate`.
+ */
+export const PER_RUN_TEST_USER_REQUIRED_KEYS: Partial<Record<PhaseName, string[]>> = {
+  'connect-setup': [
+    'connect.opportunity.url',
+    'connect.domain',
+    'connect.ace_test_user.invite_row_present',
+    'connect.ace_test_user.phone',
+    'connect.ace_test_user.per_run',
+  ],
+};
+
+/**
+ * Does this products block declare the per-run demo test user (ace#1289)?
+ *
+ * Reads the run's OWN products block — never `process.env` — so this module
+ * stays pure and the contract a run is judged against is the one that run
+ * recorded. While `ACE_PER_RUN_TEST_USER` is off nothing writes `per_run`, so
+ * this is `false` on every existing and every future default run.
+ */
+export function declaresPerRunTestUser(products: unknown): boolean {
+  const v = (products as any)?.connect?.ace_test_user?.per_run;
+  return v === true;
+}
+
+/**
+ * The required-handoff keys for `phase`, honouring a declared run `mode` and
+ * (for `connect-setup`) the run's own per-run-test-user declaration.
+ *
+ * `products` is OPTIONAL and defaults to undefined — every pre-existing call
+ * site keeps its exact previous answer.
+ */
+export function requiredProductKeys(phase: string, mode?: string, products?: unknown): string[] {
   if (isPhaseMode(mode)) {
     const override = REQUIRED_PRODUCT_KEYS_BY_MODE[mode][phase as PhaseName];
     if (override) return override;
+  }
+  if (products !== undefined && declaresPerRunTestUser(products)) {
+    const perRun = PER_RUN_TEST_USER_REQUIRED_KEYS[phase as PhaseName];
+    if (perRun) return perRun;
   }
   return REQUIRED_PRODUCT_KEYS[phase as PhaseName] ?? [];
 }
@@ -441,7 +529,7 @@ export function validatePhaseProductsComplete(
 ): ProductsValidationResult {
   const shape = validatePhaseProductsFragment(phase, products);
   if (!shape.valid || shape.skipped) return shape;
-  const required = requiredProductKeys(phase, mode);
+  const required = requiredProductKeys(phase, mode, products);
   const issues: ProductsValidationIssue[] = [];
   for (const dotted of required) {
     if (resolveDotPath(products, dotted) === undefined) {

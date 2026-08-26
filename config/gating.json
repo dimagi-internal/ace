@@ -13,6 +13,11 @@
     },
     {
       "tool": "Bash",
+      "pattern": "gh\\s+issue\\s+(?:list|search)[\\s\\S]*?gh\\s+issue\\s+create|gh\\s+issue\\s+create[\\s\\S]*?gh\\s+issue\\s+(?:list|search)",
+      "message": "BLOCKED: duplicate-search and `gh issue create` in ONE Bash invocation. The whole point of the mandatory search is to READ its results before deciding — chained in one call, `create` executes before you can, so the search is theatre. Run the search as its own call, read the hits, THEN either comment on the match or create. (ace#1141 self-diagnosed exactly this: \"I ran the mandatory duplicate search and the `gh issue create` in the same shell invocation, so the create executed before I could read the search results.\" ace#1052 is the same defect. Both were filed as duplicates of issues the search had already returned.) See CLAUDE.md § File ACE issues mid-run, rule 2."
+    },
+    {
+      "tool": "Bash",
       "pattern": "op\\s+inject\\b[\\s\\S]*?(?:-o|--out-file|>)[=\\s]*\\S*(?:CLAUDE_PLUGIN_DATA|plugins/data/ace)\\S*\\.env",
       "message": "BLOCKED: raw `op inject` writing to <plugin-data>/.env overwrites the whole file and DROPS local-only secrets (ACE_WEB_PAT_TOKEN and any key not in .env.tpl). Use `/ace:setup --force-env` (= `bash \"$CLAUDE_PLUGIN_ROOT/bin/ace-setup\" --force-env`), which snapshots the `# --- ACE local-only secrets ---` block and re-appends it after the inject. (This rail catches `-o`, `--out-file`, and `>` redirect forms; a raw inject to a NON-plugin-data path, e.g. a dev-worktree ./.env, is not blocked.)"
     }

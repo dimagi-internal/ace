@@ -328,23 +328,41 @@ Generate the Learn (training) app from the PDD using the Nova plugin
        competency gate before delivery. (Gate stays Connect-side — Learn
        forms carry no case blocks per the rule above.)
      - `app-language-layer` (Learn variant) — trigger: PDD names a
-       working language other than English. Build the ENTIRE app in
-       English first — English is the source language and stays the
-       runtime default — then, as the **LAST** build step, add the
-       working language (`add_language(copyFrom: 'en')`) and author real
-       translations via `update_translations`, echoing each unit's
-       `sourceFingerprint`. Translating before the English is final is
-       the failure mode: any later edit silently reverts that string to
-       English (`out-of-date`). Confirm `out-of-date` is 0 via
-       `get_languages` before hand-off. Never stack languages inline.
-       (Standing decision 2026-08-17, PR #1463, superseding ace#968/#1391 — Nova shipped the
-       channel; see `_app-component-library.md § app-language-layer` for
-       the proven contract.) Graded by `language_conformance`.
+       working language other than English. The brief tells the
+       architect to build the app in **English ONLY** and to call no
+       language atom. **ACE owns the language layer**, at LEVEL 0, in
+       Step 4e below — after every English-editing step has finished.
+       That split is the fix for ace#1556: the architect's operating
+       prompt forbids it saving self-generated target text, so a brief
+       that asked it to author translations produced a silent no-op
+       (207 units copied, 0 translated, both targets, on
+       `spark-facilitator/20260820-0817`). It also makes translate-LAST
+       structural — the architect's turn is over before the language
+       exists. Never stack languages inline. (Standing decision
+       2026-08-17, PR #1463, superseding ace#968/#1391; ownership split
+       2026-08-23, ace#1556 — see
+       `_app-component-library.md § app-language-layer` for the proven
+       contract and the level-0 recipe.) Graded by
+       `language_conformance`.
      - `learn-app-naming` — always. App name must contain "Learn app".
      - `end-of-form-previous` — always, every form. End of Form Navigation
        must be "Previous Screen".
-     - `grid-menu-display` — always (Learn + Deliver). Modules and Forms
-       Menu Display set to "Grid".
+     - `grid-menu-display` — always (Learn + Deliver), but **do NOT put it
+       in the Nova brief**. Nova's authoring surface exposes no
+       menu-display-format control at all: `update_app` sets only the display
+       name, `create_module` / `update_module` carry no display-format field,
+       `set_menu_media` sets icons and audio labels, and `set_case_list_tile`
+       lays out a case LIST — unrelated, and inapplicable to case-less Learn
+       modules. The component is real and enforced, just not here: it is
+       applied POST-BUILD by `app-hq-settings` (Phase 3 Step 2.65) via
+       `commcare_set_menu_display` + `commcare_set_app_menu_display`, and
+       BLOCKER-gated by `app-release-qa` off the released app's raw doc.
+       Briefing it made every architect build report a spurious "unmet
+       requirement" in the build memo — the one artifact meant to carry REAL
+       deviations — and invited the architect to reach for an unrelated atom
+       to satisfy the paragraph (dimagi-internal/ace#1632; live on
+       bednet-check-2-visit/20260825-1310, where Step 2.65 then applied all
+       three fields HQ-side on the first attempt).
      - `connect-supported-capabilities-only` — always (Learn + Deliver). Use
        only capabilities that work WITHOUT an HQ feature flag; `commcare_connect`
        is the sole exception. Learn apps are case-less so the case-search trap
@@ -392,6 +410,19 @@ Generate the Learn (training) app from the PDD using the Nova plugin
        good/bad pair built from a REAL instrument item, preferring the
        highest coaching-risk items (self-reported consumption over
        observable assets) (ace#982).
+     - `entity-state-taxonomy` — the followed entity carries states the
+       curriculum names (always for `archetype: longitudinal-visits`).
+       **Teach the PDD's declared `program_parameters.entity_state_taxonomy`
+       verbatim** — the same values, labels and step ranges the Deliver app
+       ships, parsed with `parseStateTaxonomy` from
+       `lib/entity-state-taxonomy.ts` before the brief is composed. Where
+       that row names a source document, brief from THAT file out of the
+       run's frozen `inputs/`. `declared: false` or non-empty `problems` is
+       a **HALT** with a Phase-1 finding, never a licence to invent phase
+       names. Both apps deriving from the one declaration is what makes
+       Learn and Deliver agree; a Learn app taught on an invented mapping
+       sends a trained worker to a phase where the step they were taught
+       does not exist (ace#1564).
 
      Do NOT inline-paraphrase these — reference the library so the build
      and `pdd-to-learn-app-eval` stay symmetric. Skip a component whose
@@ -747,6 +778,40 @@ Generate the Learn (training) app from the PDD using the Nova plugin
     and it returns `repairs[]` naming the specific items to re-key (see
     § Repair mode below). Do not reinstate a persona probe here without
     reading ace#1206 first.
+4e. **Language layer — runs at LEVEL 0, LAST of the 4x steps (ace#1556).**
+    Applies only when the PDD names a working language other than English;
+    otherwise skip and say so in the summary.
+
+    **Why level 0 and not the architect.** The architect's operating prompt
+    (nova plugin `1.26.0`/`1.27.0`, `skills/autobuild/SKILL.md`) says *"Never
+    treat your own language fluency as a substitute or bulk-translate
+    self-generated text through `update_translations`. Only save target text
+    supplied by the user."* An `/ace:run` supplies no human target strings, so
+    the architect declines and the layer silently never lands — 207 units
+    copied, 0 translated, in both targets on `spark-facilitator/20260820-0817`
+    (ace#1556). ACE is the caller — the "user" in that sentence — so ACE
+    supplies the target text through the same six atoms on its own Nova MCP
+    surface. Running here also makes translate-LAST **structural**: every
+    English-editing step (4a–4d, and any `repairs[]` pass) is already done, so
+    nothing can demote a translation to `out-of-date` behind you.
+
+    Execute `_app-component-library.md § app-language-layer` **ACE's level-0
+    recipe** verbatim — `get_languages` → `add_language(copyFrom: 'en')` →
+    page `get_translatable_content` and author real values via
+    `update_translations` (≤50 units/call, echoing each just-read
+    `sourceFingerprint`) → `get_languages` again. Read the atoms' live schemas
+    from Nova's `tools/list`; do not paraphrase them here.
+
+    **Gate:** `out-of-date` and `missing` must both be 0 at hand-off. Record
+    the final per-language coverage counts in the build memo, plus one line
+    stating the translations are ACE-authored (`origin: ai`) and carry
+    `needs-review` until a speaker of the language reviews them. If the layer
+    cannot be completed, halt loud with the counts — do NOT write a summary
+    claiming a language layer the app does not carry. Partial coverage is the
+    false affordance the issue was filed about: units left `origin: copied`
+    are English strings wearing the language's name, and a worker cannot tell
+    them apart from real translations.
+
 5. **(Optional) Inspect the built app** via `/nova:show <app_id>` to
    cross-check the structure against the PDD before writing the summary.
 
@@ -820,8 +885,9 @@ When invoked with a `repairs[]` list:
    `#form/<id>` — a bare id persists as raw text with no error and silently
    breaks the scoring chain (ace#1119). **If the app carries a working
    language, every repaired string's translation is now `out-of-date` and
-   falls back to English** — re-translate the repaired units via
-   `update_translations` and re-confirm `out-of-date` is 0 before hand-off.
+   falls back to English** — re-run § Step 4e (the LEVEL-0 language layer;
+   never the architect, ace#1556) for the repaired units and re-confirm
+   `out-of-date` is 0 before hand-off.
 3. **Read back the scoring chain.** After any pass that rewrites options or
    keys, `get_field` on the edited `qN_score` and on `user_score` and assert
    each `calculate.parts` still contains a `field-ref` part, not only text.

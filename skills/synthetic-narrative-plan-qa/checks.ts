@@ -50,8 +50,17 @@ const VALID_ANOMALY_TYPES = ['field_outlier', 'missing_visits', 'duplicate_submi
 const VALID_KPI_AGGREGATIONS = ['validated_rate', 'non_null_rate', 'mean', 'count'] as const;
 // Upstream `Progression = Literal['improvement_curve','flat','regression']`.
 const VALID_PROGRESSIONS = ['improvement_curve', 'flat', 'regression'] as const;
-// Upstream `FieldDistribution = Annotated[Normal|Uniform|Binary, Field(discriminator='distribution')]`.
-const VALID_DISTRIBUTIONS = ['normal', 'uniform', 'binary'] as const;
+// Upstream (read 2026-08-26 at
+// dimagi-internal/connect-labs@main:connect_labs/labs/synthetic/generator/fixtures/manifest.py):
+//   FieldDistribution = Annotated[
+//       NormalDistribution | UniformDistribution | BinaryDistribution | CategoricalDistribution,
+//       Field(discriminator="distribution"),
+//   ]
+// FOUR variants, not three. `categorical` was wrongly listed as rejected here and
+// in playbook/integrations/connect-labs.md until ace#1656 — it landed upstream in
+// connect-labs PR #655 (2026-06-19) and is live-confirmed accepted
+// (bednet-check-2-visit/20260825-1310, labs-only opp 10046).
+const VALID_DISTRIBUTIONS = ['normal', 'uniform', 'binary', 'categorical'] as const;
 
 // ── Zod schemas (used both by the schema-shape check and the cross-field checks) ──
 
@@ -92,10 +101,10 @@ const KpiZ = z.object({
 }).passthrough(); // threshold_underperform / threshold_target — upstream validates types
 
 // Discriminated union on the `distribution` tag — mirrors upstream
-// `FieldDistribution = Annotated[Normal|Uniform|Binary, Field(discriminator='distribution')]`.
-// normal/uniform passthrough their params (mean/stddev, low/high) — upstream
-// validates the numeric ranges; QA only mirrors the closed tag set so a
-// non-member tag (e.g. `categorical`, or a `type:` key instead of
+// `FieldDistribution = Annotated[Normal|Uniform|Binary|Categorical, Field(discriminator='distribution')]`.
+// normal/uniform/categorical passthrough their params (mean/stddev, low/high,
+// values) — upstream validates the numeric ranges; QA only mirrors the closed
+// tag set so a non-member tag (e.g. `uniform_int`, or a `type:` key instead of
 // `distribution:`) fails ACE-side instead of burning a labs round-trip.
 // `binary` is the exception: it REQUIRES `rate` (0-1). Upstream's
 // `BinaryDistribution` param is `rate` (NOT `p_yes`) and `rate` is a required
@@ -104,12 +113,24 @@ const KpiZ = z.object({
 // 45%-vs-requested-70% symptom. Requiring it here turns that silent miss into
 // a loud ACE-side QA failure (jjackson/ace#737). Per-week variation is
 // `period_rates: {<week_index>: <rate>}` (passed through; upstream validates).
+// `categorical` (upstream `CategoricalDistribution`) draws a KEY of
+// `values: {<value>: <share>}` verbatim, so it is the correct tag for any
+// select1/coded field whose released XForm constrains it to strings — encoding
+// such a field as `binary` writes floats 1.0/0.0 and diverges from production
+// (ace#1656). `values` must be a non-empty mapping; upstream additionally
+// requires every share >= 0 and the sum > 0.
 const FieldDistributionZ = z.discriminatedUnion('distribution', [
   z.object({ distribution: z.literal('normal') }).passthrough(),
   z.object({ distribution: z.literal('uniform') }).passthrough(),
   z.object({
     distribution: z.literal('binary'),
     rate: z.number().min(0).max(1),
+  }).passthrough(),
+  z.object({
+    distribution: z.literal('categorical'),
+    values: z.record(z.string(), z.number()).refine((v) => Object.keys(v).length > 0, {
+      message: 'categorical distribution needs at least one value',
+    }),
   }).passthrough(),
 ]);
 
@@ -119,7 +140,8 @@ const FieldDistributionZ = z.discriminatedUnion('distribution', [
 // defaults apply). The high-cost escapes this catches, both of which passed
 // the old `z.array(z.unknown())` cohort and were rejected at the labs boundary
 // (jjackson/ace#713): an invalid `progression` value (`rising_yes_share`) and a
-// `field_distributions` entry whose tag isn't in {normal,uniform,binary}.
+// `field_distributions` entry whose tag isn't in the union
+// {normal,uniform,binary,categorical}.
 // field_distributions itself is validated in checkBeneficiaryCohortsWellFormed
 // (it REQUIRES a mapping/record shape — upstream is `dict[str, FieldDistribution]`;
 // a list shape is rejected at the labs boundary, jjackson/ace#806).
@@ -263,12 +285,15 @@ export function checkFlwPersonasWellFormed(text: string): QACheckResult {
  * Check (beneficiary_cohorts_well_formed): each cohort is shape-valid against
  * the upstream contract — id present, size a positive int (when present),
  * progression in the closed enum (when present), and every field_distributions
- * entry a discriminated union on `distribution` ∈ {normal,uniform,binary}.
+ * entry a discriminated union on `distribution` ∈
+ * {normal,uniform,binary,categorical}.
  *
  * Closes jjackson/ace#713: the old `z.array(z.unknown())` cohort + a
  * `passthrough()` subtree let two upstream-rejected shapes through ACE-side QA
- * (`progression: rising_yes_share`; a `{type: categorical}` distribution),
- * costing a full labs dispatch round-trip to discover.
+ * (`progression: rising_yes_share`; a `{type: categorical}` distribution —
+ * note the escape is the `type:` KEY, not the categorical tag itself, which is
+ * a legitimate upstream variant, ace#1656), costing a full labs dispatch
+ * round-trip to discover.
  */
 export function checkBeneficiaryCohortsWellFormed(text: string): QACheckResult {
   const m = getParsed(text);
@@ -326,8 +351,9 @@ export function checkBeneficiaryCohortsWellFormed(text: string): QACheckResult {
       `progression ∈ {${VALID_PROGRESSIONS.join(', ')}}, and every field_distributions entry must be ` +
       `discriminated on distribution ∈ {${VALID_DISTRIBUTIONS.join(', ')}} (e.g. {distribution: binary, rate: 0.6} — the binary param is 'rate' (0-1), NOT 'p_yes'; vary it per week with period_rates: {<week_index>: <rate>}). ` +
       `field_distributions must be a MAPPING keyed by field path (dict[str, FieldDistribution]), NOT a list — the labs generator rejects a list with "Input should be a valid dictionary" (jjackson/ace#806). ` +
-      `Generic tags like 'categorical' or progression values like 'rising_yes_share' are rejected at the labs boundary. ` +
-      `Upstream truth: commcare_connect/labs/synthetic/generator/manifest.py.`,
+      `A select1/coded field belongs on {distribution: categorical, values: {'yes': 0.66, 'no': 0.34}} — that draws the string keys the released form actually writes; 'binary' would write floats 1.0/0.0 (jjackson/ace#1656). ` +
+      `The 'type:' KEY (instead of 'distribution:') and progression values like 'rising_yes_share' are rejected at the labs boundary. ` +
+      `Upstream truth: connect_labs/labs/synthetic/generator/fixtures/manifest.py.`,
   };
 }
 
@@ -548,7 +574,7 @@ export const CHECKS: QACheck[] = [
     id: 'beneficiary_cohorts_well_formed',
     type: 'static',
     description:
-      'beneficiary_cohorts non-empty; each has id, valid progression enum (when present), and field_distributions entries discriminated on distribution ∈ {normal,uniform,binary}',
+      'beneficiary_cohorts non-empty; each has id, valid progression enum (when present), and field_distributions entries discriminated on distribution ∈ {normal,uniform,binary,categorical}',
     run: checkBeneficiaryCohortsWellFormed,
   },
   {

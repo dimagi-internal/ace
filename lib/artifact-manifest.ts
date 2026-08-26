@@ -336,7 +336,7 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     phase: 'design',
     required: false,
     rendered: true,
-    description: 'Per-opp deferred-question doc. Written by idea-to-pdd when stress-test grades partial/fail and a default reasonable-pick is taken; phase agents append unresolved questions here at end-of-run for human review (per the feedback_phase_open_questions user-memory item). Opp-level (NOT under runs/<run-id>/) so questions survive across runs until answered.',
+    description: 'Per-opp deferred-question doc. Written by idea-to-pdd when stress-test grades partial/fail and a default reasonable-pick is taken; phase agents append unresolved questions here at end-of-run for human review (per the feedback_phase_open_questions user-memory item). Opp-level (NOT under runs/<run-id>/) so questions survive across runs until answered. NOT append-only: it carries exactly two sections, `## Open` (the live list — the only section ever read back or inlined at Phase 1 handoff) and `## Archive` (closed history, never read back and never inlined). Resolving a question MOVES its row from `## Open` to `## Archive` with resolved_at / resolved_by / resolution_note — it is never annotated in place, which is what let the ledger grow to 26,577 chars and leak inherited framing into a fixture opp\'s PDD (dimagi-internal/ace#1487). The read side is bounded by lib/open-questions-inline.ts: fixture opps (an iterate-state.yaml at the opp root) skip the inline entirely; everyone else gets `## Open` capped at OPEN_QUESTIONS_INLINE_CAP_CHARS. Shape contract: skills/idea-to-pdd/SKILL.md § The durable open-questions doc.',
   },
   {
     path: 'eval-calibration/known-issues.md',
@@ -360,10 +360,10 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
   {
     path: 'inputs-manifest.yaml',
     producedBy: 'ace-orchestrator',
-    consumedBy: ['idea-to-pdd'],
+    consumedBy: ['idea-to-pdd', 'pdd-to-deliver-app', 'pdd-to-deliver-app-eval'],
     phase: 'design',
     required: false,
-    description: 'Frozen pointer-set captured at run start: every direct child file under inputs/ as {file_id, name, mime_type}. idea-to-pdd reads each entry to synthesize the PDD. Lives at the run-folder root alongside run_state.yaml — both are run-level metadata, scoped beyond any single phase. Pointing at file_ids (not paths) means a human re-arranging inputs/ mid-run does not shift the source pack out from under Phase 1. NOT YET required: existing fixtures predate the 2026-05-05 evidence-pack refactor; flip to required=true once the next round of fixture updates lands.',
+    description: 'Frozen pointer-set captured at run start: every direct child file under inputs/ as {file_id, name, mime_type}. idea-to-pdd reads each entry to synthesize the PDD; pdd-to-deliver-app Step 4k (and its eval) resolve the published source file of a [FIXED] instrument through it, so a wrong scoring constant is caught against the document rather than against the model-authored brief (ace#1527). Lives at the run-folder root alongside run_state.yaml — both are run-level metadata, scoped beyond any single phase. Pointing at file_ids (not paths) means a human re-arranging inputs/ mid-run does not shift the source pack out from under Phase 1. NOT YET required: existing fixtures predate the 2026-05-05 evidence-pack refactor; flip to required=true once the next round of fixture updates lands.',
   },
   {
     path: '1-design/idea-to-pdd.md',
@@ -636,6 +636,24 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     phase: 'commcare',
     required: true,
     description: 'Per-skill -eval verdict for app-release: every uploaded build successfully released, CCZ-marker checks passed, no draft-only apps remain.',
+  },
+  {
+    path: '3-commcare/app-connect-coverage_learn.md',
+    producedBy: 'app-connect-coverage',
+    role: 'learn',
+    consumedBy: ['app-release'],
+    phase: 'commcare',
+    required: false,
+    description: 'Per-form Connect-marker coverage report for the Learn app. Frontmatter carries `status: clean | blocked | partial`; `app-release` gates on `status: clean` before build+release.',
+  },
+  {
+    path: '3-commcare/app-connect-coverage_deliver.md',
+    producedBy: 'app-connect-coverage',
+    role: 'deliver',
+    consumedBy: ['app-release'],
+    phase: 'commcare',
+    required: false,
+    description: 'Per-form Connect-marker coverage report for the Deliver app. Frontmatter carries `status: clean | blocked | partial`; `app-release` gates on `status: clean` before build+release.',
   },
   {
     path: '3-commcare/commcare-setup_summary.md',
@@ -1049,6 +1067,16 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     required: true,
     description:
       'The generation contract for the synthetic dataset: pinned timeline anchor, FLW personas, outcome/field model keyed on the real deliver-app form paths, and the realised totals. Under the `ace-run` provider this is derived from the run\'s own PDD + built apps, not from a free-text brief.',
+  },
+  {
+    path: '7-synthetic/branch-scrub_report.yaml',
+    producedBy: 'demo-data-setup',
+    role: 'qa-result',
+    consumedBy: ['demo-data-setup-qa'],
+    phase: 'synthetic-data-and-workflows',
+    required: false,
+    description:
+      "Step 2c's ledger for the dataset's own legality: the DatasetSpec derived from the deliver app (every question's `relevant` / `constraint`), every expression the derivation could NOT read (`unparsed[]` — a gate this run did not audit), the branch scrub that removed the off-branch values the labs manifest has no primitive to avoid, and `auditDataset` over the records as they now stand. Optional because the `denovo` provider has no deliver app to derive from; when it is absent, `demo-data-setup-qa` check 9 requires a stated reason rather than accepting a hand-declared spec (ace#1658).",
   },
   {
     path: '7-synthetic/demo-data-setup-qa_result.yaml',

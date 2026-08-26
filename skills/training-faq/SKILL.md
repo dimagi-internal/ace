@@ -23,12 +23,11 @@ questions.
 
 | Source | Artifact | Used for |
 |---|---|---|
-| Phase 1 | `ACE/<opp>/runs/<run-id>/1-design/idea-to-pdd.md` | escalation triggers, evidence model rules, opp framing |
+| Phase 1 | `ACE/<opp>/runs/<run-id>/1-design/idea-to-pdd.md` | escalation triggers, evidence model rules, opp framing, support contact + GRM escalation route |
 | Phase 1 | `ACE/<opp>/runs/<run-id>/2-scenarios/pdd-to-test-prompts.md` | seed Q's that the OCS bot was tested on (high-confidence "FLWs will ask this") |
 | Phase 3 | `ACE/<opp>/runs/<run-id>/3-commcare/pdd-to-learn-app_summary.md` | content-clarification questions |
 | Phase 3 | `ACE/<opp>/runs/<run-id>/3-commcare/pdd-to-deliver-app_summary.md` | per-form field-clarification questions |
 | Phase 4 (`run_state.yaml`) | `connect.payment_units` + `connect.verification_flags` | "why was my submission flagged?" answers |
-| Phase 5 | `ACE/<opp>/runs/<run-id>/5-ocs/ocs-setup_widget-handoff.md` (`widget_url`) | "how do I ask?" answer |
 | Phase 1 | `ACE/<opp>/runs/<run-id>/2-scenarios/pdd-to-app-journeys.md` (edge cases per journey) | seed Q's about boundary conditions |
 
 ## Output

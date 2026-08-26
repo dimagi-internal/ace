@@ -27,6 +27,7 @@ import { describe, it, expect } from 'vitest';
 
 import { checkAssessmentRetryLeak, formatRetryLeakReport } from '../../lib/assessment-retry-leak.js';
 
+import { assertChecked, assertUnable } from '../../lib/check-outcome.js';
 /**
  * A one-item score-gated quiz in the shape ACE builds: `value == label` on the
  * options (so the scoring calculate can compare against the literal answer
@@ -68,9 +69,10 @@ describe('checkAssessmentRetryLeak (#1041)', () => {
           'That was not correct. Connect allows you to earn payments for verified service deliveries. Go back to the question and answer it again to pass Connect Basics and unlock bednet spot-check visits.',
       }),
     );
-    expect(report.leaks).toHaveLength(1);
-    expect(report.leaks[0].label).toBe('/data/fail_msg');
-    expect(report.leaks[0].leaked).toContain('earn payments for verified service deliveries');
+    assertChecked(report);
+    expect(report.findings).toHaveLength(1);
+    expect(report.findings[0].label).toBe('/data/fail_msg');
+    expect(report.findings[0].leaked).toContain('earn payments for verified service deliveries');
   });
 
   it('passes a retry message that points back at the module content instead', () => {
@@ -80,7 +82,8 @@ describe('checkAssessmentRetryLeak (#1041)', () => {
           'That was not correct. Re-read the "How Connect pays you" section of this module, then answer again.',
       }),
     );
-    expect(report.leaks).toEqual([]);
+    assertChecked(report);
+    expect(report.findings).toEqual([]);
     expect(report.ok).toBe(true);
   });
 
@@ -94,7 +97,8 @@ describe('checkAssessmentRetryLeak (#1041)', () => {
           'Correct: Connect allows you to earn payments for verified service deliveries.',
       }),
     );
-    expect(report.leaks).toEqual([]);
+    assertChecked(report);
+    expect(report.findings).toEqual([]);
   });
 
   it('is case- and whitespace-insensitive, so a reworded restatement still trips it', () => {
@@ -104,10 +108,11 @@ describe('checkAssessmentRetryLeak (#1041)', () => {
           'Not quite. Remember: connect allows you to EARN PAYMENTS   for verified service deliveries. Try again.',
       }),
     );
-    expect(report.leaks).toHaveLength(1);
+    assertChecked(report);
+    expect(report.findings).toHaveLength(1);
   });
 
-  it('is inert on a form with no score-conditional labels (nothing to leak into)', () => {
+  it('is UNABLE, not clean, on a form with no score-conditional labels', () => {
     const plain = `<?xml version="1.0"?>
 <h:html xmlns:h="http://www.w3.org/1999/xhtml" xmlns="http://www.w3.org/2002/xforms">
   <h:head><model>
@@ -117,14 +122,27 @@ describe('checkAssessmentRetryLeak (#1041)', () => {
   <h:body><input ref="/data/name"><label>Your name</label></input></h:body>
 </h:html>`;
     const report = checkAssessmentRetryLeak(plain);
-    expect(report.ok).toBe(true);
-    expect(report.checked).toBe(false);
+    // There is no `ok` on this branch to misread — that is the point of
+    // `CheckOutcome` (ace#1634). It must also SAY why, and the rendered
+    // report must not read as a pass.
+    expect(report.status).toBe('unable');
+    assertUnable(report);
+    expect(report.reason).toMatch(/score-gated result label/i);
+    const text = formatRetryLeakReport(report);
+    expect(text).toMatch(/UNABLE TO CHECK/);
+    expect(text).toMatch(/NOT a pass/);
+    // No green-looking word anywhere: "clean" is what the checked-and-fine
+    // branch says, and "not applicable" is the benign phrasing three prior
+    // instances of this class were signed off under.
+    expect(text).not.toMatch(/\bclean\b/i);
+    expect(text).not.toMatch(/not applicable/i);
   });
 
   it('reports which option leaked so the fix is obvious', () => {
     const report = checkAssessmentRetryLeak(
       quizXml({ failText: 'Wrong. Connect pays a monthly salary is not it; the answer is Connect allows you to earn payments for verified service deliveries.' }),
     );
+    assertChecked(report);
     const text = formatRetryLeakReport(report);
     expect(text).toMatch(/fail_msg/);
     expect(text).toMatch(/earn payments/);
@@ -194,7 +212,7 @@ describe('compiled-CCZ forms (#1332)', () => {
 
   it('recognises a negated-GTE fail branch, so the check actually applies', () => {
     const r = checkAssessmentRetryLeak(compiled('Go back and read the module again.'));
-    expect(r.checked).toBe(true);
+    assertChecked(r);
   });
 
   it('passes the real bednet-check-2-visit form: retry points at the module, names no answer', () => {
@@ -204,9 +222,9 @@ describe('compiled-CCZ forms (#1332)', () => {
           'There is no limit on attempts.',
       ),
     );
-    expect(r.checked).toBe(true);
+    assertChecked(r);
     expect(r.ok).toBe(true);
-    expect(r.leaks).toEqual([]);
+    expect(r.findings).toEqual([]);
     expect(r.blind).toEqual([]);
   });
 
@@ -214,16 +232,18 @@ describe('compiled-CCZ forms (#1332)', () => {
     const r = checkAssessmentRetryLeak(
       compiled('Not quite — the net goes over the sleeping area. Try again.'),
     );
+    assertChecked(r);
     expect(r.ok).toBe(false);
-    expect(r.leaks).toHaveLength(1);
-    expect(r.leaks[0].label).toBe('/data/result_retry');
-    expect(r.leaks[0].leaked).toBe('Over the sleeping area');
+    expect(r.findings).toHaveLength(1);
+    expect(r.findings[0].label).toBe('/data/result_retry');
+    expect(r.findings[0].leaked).toBe('Over the sleeping area');
   });
 
   it('does NOT fire on the bare option value — "c" appears in almost any prose', () => {
     const r = checkAssessmentRetryLeak(compiled('Check the course content once more.'));
+    assertChecked(r);
     expect(r.ok).toBe(true);
-    expect(r.leaks).toEqual([]);
+    expect(r.findings).toEqual([]);
   });
 
   it('reports BLIND rather than clean when a fail-branch label cannot be resolved', () => {
@@ -232,7 +252,7 @@ describe('compiled-CCZ forms (#1332)', () => {
       '',
     );
     const r = checkAssessmentRetryLeak(orphan);
-    expect(r.checked).toBe(true);
+    assertChecked(r);
     expect(r.ok).toBe(false);
     expect(r.blind.join(' ')).toMatch(/result_retry/);
     expect(formatRetryLeakReport(r)).toMatch(/BLIND/);
@@ -247,8 +267,9 @@ describe('compiled-CCZ forms (#1332)', () => {
        </translation></itext>`,
     );
     const r = checkAssessmentRetryLeak(trilingual);
+    assertChecked(r);
     expect(r.ok).toBe(false);
-    expect(r.leaks[0].leaked).toBe('Au-dessus du couchage');
+    expect(r.findings[0].leaked).toBe('Au-dessus du couchage');
   });
 
   it('still reads an inline <label> — the authoring-time blueprint shape keeps working', () => {
@@ -262,8 +283,119 @@ describe('compiled-CCZ forms (#1332)', () => {
     <trigger ref="/data/fail_msg"><label>Remember: over the sleeping area. Try again.</label></trigger>
   </h:body>
 </h:html>`);
-    expect(r.checked).toBe(true);
+    assertChecked(r);
     expect(r.ok).toBe(false);
-    expect(r.leaks[0].leaked).toBe('over the sleeping area');
+    expect(r.findings[0].leaked).toBe('over the sleeping area');
+  });
+});
+
+/**
+ * dimagi-internal/ace#1576 — third instance of the #1332/#1538 class: the
+ * checker reports a benign "not applicable" on the exact artifact it exists
+ * to gate.
+ *
+ * `failBranchNodesets` recognised `< N`, `<= N` and `not(... >= N)` — but not
+ * `!= N`. That is not an exotic spelling: it is the NATURAL one whenever the
+ * passing score is 100. With a 0–100 score and a 100% gate there is no
+ * headroom, so the pass/retry pair compiles to `>= 100` / `!= 100` rather than
+ * `>= 80` / `< 80`, and every 100%-gated assessment ACE ships went unchecked.
+ *
+ * Observed live on bednet-check-2-visit/20260820-0832 (Learn app
+ * 923c2f1eb6784015b441ab31d67486e2, released build v5, `modules-1/forms-3.xml`):
+ *
+ *   <bind nodeset="/data/result_pass"  relevant="/data/user_score &gt;= 100"/>
+ *   <bind nodeset="/data/result_retry" relevant="/data/user_score != 100"/>
+ *
+ * The shipped checker returned `checked: false`. Rewriting ONLY the operator
+ * (`!= 100` → `< 100`, identical at a 100 maximum) returned
+ * `checked: true, ok: true, blind: []` — it could resolve the form completely.
+ * It simply never looked. That app happened to be clean; `app-release-qa`
+ * could not have told the difference, because a LEAKING label on a `!= 100`
+ * gate reported the same `checked: false` (second case below).
+ */
+describe('inequality fail branches (#1576)', () => {
+  /** The released shape, with the fail branch's `relevant` parameterised. */
+  const gated = (failRelevant: string, retryValue: string) => `<?xml version="1.0"?>
+<h:html xmlns:h="http://www.w3.org/1999/xhtml" xmlns="http://www.w3.org/2002/xforms" xmlns:jr="http://openrosa.org/javarosa">
+  <h:head>
+    <model>
+      <instance><data><q1/><user_score/><result_pass/><result_retry/></data></instance>
+      <itext>
+        <translation lang="en" default="">
+          <text id="q1-label"><value>Where should the net be hung?</value></text>
+          <text id="q1-a-label"><value>Over the doorway</value></text>
+          <text id="q1-c-label"><value>Over the sleeping area</value></text>
+          <text id="result_pass-label"><value>Passed. Well done.</value></text>
+          <text id="result_retry-label"><value>${retryValue}</value></text>
+        </translation>
+      </itext>
+      <bind nodeset="/data/user_score" calculate="if(/data/q1 = 'c', 100, 0)"/>
+      <bind nodeset="/data/result_pass" relevant="/data/user_score &gt;= 100"/>
+      <bind nodeset="/data/result_retry" relevant="${failRelevant}"/>
+    </model>
+  </h:head>
+  <h:body>
+    <select1 ref="/data/q1">
+      <label ref="jr:itext('q1-label')"/>
+      <item><label ref="jr:itext('q1-a-label')"/><value>a</value></item>
+      <item><label ref="jr:itext('q1-c-label')"/><value>c</value></item>
+    </select1>
+    <trigger ref="/data/result_pass" appearance="minimal"><label ref="jr:itext('result_pass-label')"/></trigger>
+    <trigger ref="/data/result_retry" appearance="minimal"><label ref="jr:itext('result_retry-label')"/></trigger>
+  </h:body>
+</h:html>`;
+
+  const CLEAN_RETRY =
+    'Not passed this time. Go back to the training and read it again from the start.';
+  const LEAKING_RETRY = 'Not quite — the net goes over the sleeping area. Try again.';
+
+  it('recognises a `!= N` fail branch, so the check actually applies', () => {
+    const r = checkAssessmentRetryLeak(gated('/data/user_score != 100', CLEAN_RETRY));
+    assertChecked(r);
+    expect(r.ok).toBe(true);
+    expect(r.blind).toEqual([]);
+  });
+
+  it('CATCHES a leak on a `!= N` gate — the whole point, and previously inert', () => {
+    const r = checkAssessmentRetryLeak(gated('/data/user_score != 100', LEAKING_RETRY));
+    assertChecked(r);
+    expect(r.ok).toBe(false);
+    expect(r.findings).toHaveLength(1);
+    expect(r.findings[0].label).toBe('/data/result_retry');
+    expect(r.findings[0].leaked).toBe('Over the sleeping area');
+  });
+
+  it('recognises the symmetric `not(... = N)` spelling', () => {
+    const r = checkAssessmentRetryLeak(gated('not(/data/user_score = 100)', LEAKING_RETRY));
+    assertChecked(r);
+    expect(r.findings).toHaveLength(1);
+  });
+
+  it('tolerates whitespace and a decimal threshold around the operator', () => {
+    const r = checkAssessmentRetryLeak(
+      gated('/data/user_score  !=  100.0', LEAKING_RETRY).replace(
+        'relevant="/data/user_score &gt;= 100"',
+        'relevant="/data/user_score &gt;= 100.0"',
+      ),
+    );
+    assertChecked(r);
+    expect(r.findings).toHaveLength(1);
+  });
+
+  it('treats `!= N` as the fail branch ONLY when N is the passing threshold', () => {
+    // `user_score != 0` is "scored something", not "did not pass" — the gate
+    // here is 100. Matching every `!=` on a score node regardless of value
+    // would invent a fail branch that does not exist.
+    const r = checkAssessmentRetryLeak(gated('/data/user_score != 0', LEAKING_RETRY));
+    expect(r.status).toBe('unable');
+  });
+
+  it('still recognises the operators #1332 covered', () => {
+    expect(checkAssessmentRetryLeak(gated('/data/user_score &lt; 100', CLEAN_RETRY)).status).toBe(
+      'checked',
+    );
+    expect(
+      checkAssessmentRetryLeak(gated('not(/data/user_score &gt;= 100)', CLEAN_RETRY)).status,
+    ).toBe('checked');
   });
 });

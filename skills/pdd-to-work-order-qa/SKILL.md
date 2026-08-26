@@ -36,7 +36,7 @@ See `skills/_qa-template.md` for the shared QA contract (verdict YAML format, au
 | 4 | `payment_schedule_sums_to_100` | static | Milestone percentages in section 6.2 sum to 100. | re-derive percentages from `wo-payment-schedule-split` decision and re-render |
 | 5 | `total_nte_present` | static | Total Not-to-Exceed USD value present in section 6.1 (number or `[Placeholder]`). | insert "USD <amount>" from `wo-total-not-to-exceed-usd` or `USD [TBD]` |
 | 6 | `signature_blocks_present` | static | Both `**Subcontractor**` and `**Dimagi, Inc.**` signature blocks present. | re-add missing block per templates/work-order-template.md |
-| 7 | `archetype_appropriate_scope` | static | Scope of Work language matches declared archetype: atomic-visit references per-visit + photo/GPS; focus-group references per-session + attestation + gdoc; multi-stage references per-stage subsections. | re-draft Scope of Work to match archetype |
+| 7 | `archetype_appropriate_scope` | static | Scope of Work language matches declared archetype: atomic-visit references per-visit + photo/GPS; **longitudinal-visits** references per-visit + photo/GPS **and** a longitudinal marker (the followed entity, or its phase/sequence/follow-up cadence); focus-group references per-session + attestation + gdoc; multi-stage references per-stage subsections. | re-draft Scope of Work to match archetype |
 | 8 | `no_scaffolding_markers` | static | No leaked `<<...>>` AI scaffolding markers in the work-order body. | resolve each marker with concrete content or `[Placeholder]` bracket |
 
 The static check functions live at `skills/pdd-to-work-order-qa/checks.ts` as importable TS. Every check returns a `QACheckResult` (`{pass, detail?, auto_fix_hint?}`) per `lib/qa-types.ts`.
@@ -45,7 +45,28 @@ The static check functions live at `skills/pdd-to-work-order-qa/checks.ts` as im
 
 ## Process
 
-1. **Read the work-order artifact.** Resolve the latest `pdd-to-work-order.gdoc` (the one referenced by `phases.idea-to-design.products.work_order.file_id` in `run_state.yaml`). Read its body via `drive_read_file`.
+1. **Read the work-order artifact.** Resolve the latest `pdd-to-work-order.gdoc` (the one referenced by `phases.idea-to-design.products.work_order.file_id` in `run_state.yaml`). Read its body via
+   `drive_read_file(file_id=<pdd-to-work-order.gdoc drive id>, exportAs: 'text/plain')`.
+
+   **`exportAs: 'text/plain'` is REQUIRED here, not optional — and it is the
+   OPPOSITE of what the sibling skill `idea-to-pdd-qa` requires.** That skill
+   mandates `text/markdown` (its checks anchor on markdown syntax); this one
+   needs plain text, because every matcher in `checks.ts` is written against
+   the unescaped gdoc form. Drive's markdown exporter ESCAPES
+   markdown-significant punctuation, so `## 1. Background` arrives as
+   `## **1\. Background**` and `[TBD]` as `\[TBD\]`.
+
+   Both skills are steps of Phase 1 (`agents/idea-to-design.md` §§ 1.4 and
+   2.4), so carrying the sibling's convention across is the easy mistake — and
+   it is expensive rather than merely noisy: on a real, CORRECT work order the
+   markdown export scored **4/9 instead of 9/9**, and the five spurious
+   failures' `auto_fix_hint`s instructed the producer to *regenerate a sound
+   contract* to fix a reader bug (dimagi-internal/ace#1609).
+
+   `checks.ts` now normalises markdown-export escaping defensively, so passing
+   the wrong format no longer produces spurious failures. That is a safety net,
+   not a licence — pass `text/plain` and keep the checks matching what they were
+   written against.
 
 2. **Read decisions.yaml** via `drive_read_file`.
 
@@ -62,3 +83,8 @@ The static check functions live at `skills/pdd-to-work-order-qa/checks.ts` as im
 6. **Compose and write the verdict YAML** to `1-design/pdd-to-work-order-qa_result.yaml` per the QA verdict schema (`lib/qa-types.ts`). `verdict: pass` iff every check passes; `verdict: fail` with `failures[]` array otherwise (each entry: `{check, detail, auto_fix_hint}`). `verdict: incomplete` if a check could not be evaluated (e.g., decisions.yaml unreadable).
 
 7. **Trigger the producer-retry loop on `verdict: fail`** per `agents/idea-to-design.md § Step 2.4`. After retry: re-run QA. Halt with `verdict: incomplete` when the producer can no longer make progress on the same failures.
+
+## MCP Tools Used
+
+- Google Drive: `drive_read_file` — **always with `exportAs: 'text/plain'`** for the work-order gdoc (see § Process step 1; the inverse of `idea-to-pdd-qa`, which requires `text/markdown`), and the default for `decisions.yaml`, `drive_create_file`
+- Bash: `npx --prefix "$ACE_ROOT" tsx "$ACE_ROOT/scripts/qa-run.ts" ...` (runs static checks via `lib/qa-runner.ts`)

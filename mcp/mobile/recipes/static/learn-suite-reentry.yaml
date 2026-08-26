@@ -12,8 +12,20 @@
 # called directly from the home grid.
 #
 # This recipe is the explicit "tap Start → wait suite menu" re-entry the
-# journey recipe MUST run between every module (after `content-form-finish`
+# journey recipe runs between every module (after `content-form-finish`
 # / `form-submit` for module N, before `learn-tap-module` for module N+1).
+#
+# SCOPE — this is the `post_submit: module` HALF OF A PAIR. The paragraph
+# above is true only when the form finalizes to the home grid. Nova's DEFAULT
+# is `post_submit: previous`, which finalizes to the module's own form list;
+# there this recipe's 30s wait on the home "Start" tile never fires and the
+# walk hangs after form 1 (dimagi-internal/ace#1071). Read `post_submit` off
+# the blueprint and compose the matching PAIR — the finalize half branches on
+# the same field (dimagi-internal/ace#1566):
+#
+#   post_submit: module    -> content-form-finish          + this recipe
+#   post_submit: previous  -> content-form-finish-to-suite + learn-suite-reentry-from-module
+#   single-module app      -> content-form-finish-to-suite + no re-entry (ace#894)
 #
 # Identical surface contract to `learn-launch.yaml` (which is the FIRST
 # suite entry, post-claim). Split out as its own named primitive so the

@@ -1,0 +1,210 @@
+run_date: 2026-08-20
+repo: dimagi-internal/ace
+scope_contract: full-sweep
+code_ref: 7730f912
+open_total: 8
+triaged: 8
+carried_forward: 0
+truncated: false
+notes: >
+  Operator asked to "fix everything in ACE so that we have no pending issues
+  remaining" — that pre-answers Phase 0.5 as a full sweep, so the scope question
+  was announced rather than asked. Nothing was carried forward: 4 of the 8 were
+  filed after the prior run, and the other 4 needed fix-grade analysis (not just
+  a disposition) to be actionable, so all 8 were re-triaged fresh.
+clusters:
+  - name: phase-1-docs
+    members: [1487, 1488]
+    one_fix: "none — 1488 refuted; 1487 ships alone. Adjacent files, not a shared root cause."
+  - name: mobile
+    members: [1479, 1289]
+    one_fix: "none — disjoint file sets (atlas doc + launch palettes vs tile-discovery recipes). Parallelised with an explicit file split."
+tier_counts: { blocks-e2e: 0, harness: 8, polish: 0 }
+prs:
+  - number: 1530
+    disposition: shipped
+    refs_issues: [1487]
+    outcome: merged
+  - number: 1531
+    disposition: shipped
+    refs_issues: [1479]
+    outcome: merged
+  - number: 1532
+    disposition: shipped
+    refs_issues: [1289]
+    outcome: merged
+  - number: 1533
+    disposition: shipped
+    refs_issues: [1516, 1535]
+    outcome: merged
+    note: >
+      Went red twice on clean-install for a defect it did not introduce
+      (lib/commcare-cli-validate.test.ts asserting input-validation kinds without
+      pinning javaPath, so a java-less runner short-circuits to java_not_found).
+      Filed as #1535 and self-healed in the same PR.
+  - number: 1534
+    disposition: shipped
+    refs_issues: [1527]
+    outcome: merged
+  - number: 1536
+    disposition: shipped
+    refs_issues: [1535]
+    outcome: merged
+    note: "structural preventer on top of #1535's instance fix"
+verdicts:
+  - number: 1527
+    disposition: implement
+    blocking: harness
+    confidence: high
+    effort: M
+    cluster: null
+    evidence_paths:
+      - skills/pdd-to-deliver-app/SKILL.md
+      - skills/pdd-to-deliver-app-eval/SKILL.md
+      - skills/_app-component-library.md
+      - skills/idea-to-pdd/SKILL.md
+      - test/skills/deliver-l0-loop-integrity.test.ts
+      - package.json
+    unblocked_by: null
+    duplicate_of: null
+    source: fresh
+    action: "new lib/instrument-constants.ts + Step 4k L0 gate + eval [BLOCKER] + tests"
+    outcome: "shipped PR #1534 (v0.13.945); issue auto-closed completed"
+  - number: 1516
+    disposition: implement
+    blocking: harness
+    confidence: high
+    effort: M
+    cluster: null
+    evidence_paths:
+      - bin/ace-doctor
+      - agents/ace-orchestrator.md
+      - mcp/ocs/backends/rest.ts
+      - mcp/ocs/backends/playwright.ts
+      - mcp/ocs/backends/composite.ts
+      - mcp/ocs/types.ts
+      - scripts/probe-composite-list.ts
+      - lib/doctor-drive-layout.ts
+    unblocked_by: null
+    duplicate_of: null
+    source: fresh
+    action: "new lib/ocs-generation-probe.ts + scripts/doctor-ocs-generation.ts, wired BEFORE the preflight exit 0"
+    outcome: "shipped PR #1533 (v0.13.946); issue auto-closed completed; live round-trip observed (provider 377 discovered, not 378 from env)"
+    note: >
+      The issue's own "fix lands here" pointer (~line 1119, [Auth liveness]) is
+      wrong: --preflight exits at bin/ace-doctor:438, so a probe placed there
+      would not run in /ace:run at all. Both wiring points are required, and a
+      static test asserts the preflight call site sorts before the exit.
+  - number: 1487
+    disposition: implement
+    blocking: harness
+    confidence: high
+    effort: M
+    cluster: phase-1-docs
+    evidence_paths:
+      - agents/ace-orchestrator.md
+      - skills/idea-to-pdd/SKILL.md
+      - lib/opp-root-files.ts
+      - lib/artifact-manifest.ts
+      - agents/orchestrator-reference.md
+      - agents/iterate-loop.md
+    unblocked_by: null
+    duplicate_of: null
+    source: fresh
+    action: "new lib/open-questions-inline.ts + two-section Open/Archive shape; fixture skip keys off existing iterate-state.yaml"
+    outcome: "shipped PR #1530 (v0.13.942); issue auto-closed completed"
+    note: >
+      Deliberately did NOT take the issue's proposed `fixture: true` opp.yaml
+      field — the fixture signal already exists at the opp root as
+      iterate-state.yaml (lib/opp-root-files.ts:106-114).
+  - number: 1479
+    disposition: implement
+    blocking: harness
+    confidence: high
+    effort: M
+    cluster: mobile
+    evidence_paths:
+      - docs/mobile-atlas/connect-2.62.0.md
+      - docs/mobile-atlas/evidence/2026-08-14-commcare-2.63.2-exit-form-dialog.xml
+      - docs/mobile-atlas/evidence/2026-08-14-commcare-2.63.2-repeat-juncture.xml
+      - docs/mobile-atlas/evidence/2026-08-14-commcare-2.63.2-fieldlist-date.xml
+      - docs/mobile-atlas/evidence/2026-08-14-commcare-2.63.2-score-gate-fail-branch.xml
+      - mcp/mobile/selectors/connect-2.63.2.yaml
+      - test/mcp/mobile/static-palette-health.test.ts
+    unblocked_by: null
+    duplicate_of: null
+    source: fresh
+    action: "author docs/mobile-atlas/connect-2.63.2.md from the committed dumps; repoint 5 stale 2.62.0 citations; add a DEFAULT_APK_VERSION atlas-exists gate"
+    outcome: "shipped PR #1531 (v0.13.943); issue auto-closed completed"
+    note: >
+      Not device-gated: all four 2026-08-14 dumps are committed, parse cleanly,
+      and each maps to a named surface. Case SEARCH stays an open question
+      (no selector rows, no case-list dump) and is routed to selector-map-heal.
+  - number: 1289
+    disposition: implement
+    blocking: harness
+    confidence: high
+    effort: M
+    cluster: mobile
+    evidence_paths:
+      - mcp/mobile/recipes/static/connect-resume-opp.yaml
+      - mcp/mobile/recipes/static/connect-claim-opp.yaml
+      - test/mcp/mobile/static-recipe-invariants.test.ts
+      - lib/invite-pruning.ts
+      - skills/app-screenshot-capture/SKILL.md
+      - mcp/mobile/selectors/connect-2.63.2.yaml
+    unblocked_by: null
+    duplicate_of: null
+    source: fresh
+    action: "section-anchored fallback re-hunt + LIVE_PROVEN_TILE_BUDGET constant; retitle to the unbounded-list class, leave OPEN"
+    outcome: "shipped PR #1532 (v0.13.944); issue RETITLED and left OPEN — fix buys a second budget, does not close the class"
+    note: >
+      Title premise is STALE — the #647 recalibration landed in PR #1475
+      (0bac8047) and is ratcheted. The prior `blocked` verdict rested on a
+      device visit the issue body itself records having already happened.
+      Durable end of the class is an upstream commcare-connect atom.
+  - number: 1500
+    disposition: close
+    blocking: harness
+    confidence: high
+    effort: n/a
+    cluster: null
+    evidence_paths: [CLAUDE.md, agents/ace-orchestrator.md]
+    unblocked_by: null
+    duplicate_of: null
+    source: fresh
+    action: "gh issue close --reason completed"
+    outcome: closed-completed
+  - number: 1511
+    disposition: close
+    blocking: harness
+    confidence: high
+    effort: n/a
+    cluster: null
+    evidence_paths:
+      - agents/scenarios-and-acceptance.md
+      - agents/commcare-setup.md
+      - agents/ace-orchestrator.md
+      - skills/_eval-template.md
+      - test/agents/agent-topology.test.ts
+    unblocked_by: null
+    duplicate_of: null
+    source: fresh
+    action: "gh issue close --reason 'not planned'"
+    outcome: closed-not-planned
+  - number: 1488
+    disposition: close
+    blocking: harness
+    confidence: high
+    effort: n/a
+    cluster: phase-1-docs
+    evidence_paths:
+      - skills/idea-to-pdd-eval/SKILL.md
+      - skills/_eval-template.md
+      - skills/connect-opp-setup-eval/SKILL.md
+      - lib/assessment-coverage-feasibility.ts
+    unblocked_by: null
+    duplicate_of: null
+    source: fresh
+    action: "gh issue close --reason 'not planned'"
+    outcome: closed-not-planned

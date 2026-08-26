@@ -503,3 +503,137 @@ describe('checkProgramParametersCoherent', () => {
     expect(CHECKS.map((c) => c.id)).toContain('program_parameters_coherent');
   });
 });
+
+// ---------------------------------------------------------------------------
+// dimagi-internal/ace#1617 — the #991 ordinal class, reintroduced through the
+// EXPORT read path. `SKILL.md` § Process step 1 mandates reading the PDD with
+// `exportAs: 'text/markdown'`, and Drive's markdown exporter backslash-escapes
+// a numbered H2 (`## 1. Archetype` → `## 1\. Archetype`) because a bare `1.`
+// at line start would otherwise read as an ordered-list marker. Every
+// heading-anchored check reads through ORDINAL_PREFIX, so one cause reported
+// all 12 required sections plus four section-bodied checks as missing on a
+// healthy PDD, and Phase 1 halted.
+//
+// Measured on hh-poverty-targeting/20260824-1404: the SAME document scored
+// 9/9 from local markdown and 4/9 after the Drive round-trip. These tests pin
+// the round-trip half — #991 was fixed once and regressed through a different
+// reader, so the invariant is "escaped and unescaped score identically", not
+// "the regex has a backslash in it".
+// ---------------------------------------------------------------------------
+
+/**
+ * Reproduce Google Drive's `text/markdown` export escaping.
+ *
+ * Deliberately narrow to what a real export was observed to emit (ace#1609
+ * captured `\_`, `\.`, `\[`, `\]`, `\#`; ace#1617 quotes the `## 1\.` heading
+ * form): a trailing ordinal period, underscores inside snake_case keys, and
+ * square brackets around reviewer-comment markers. `### 6.1` is NOT escaped —
+ * only a trailing period triggers it.
+ */
+function driveMarkdownExport(md: string): string {
+  return md
+    .replace(/^(#{1,6}\s+\d+(?:\.\d+)*)\.(\s)/gm, '$1\\.$2')
+    .replace(/_/g, '\\_')
+    .replace(/([[\]])/g, '\\$1');
+}
+
+/** `SECTIONS_FULL` with every H2 numbered, the way a producer mirrors a numbered source PDD. */
+function numberH2s(md: string): string {
+  let n = 0;
+  return md.replace(/^## (?!$)/gm, () => `## ${++n}. `);
+}
+
+describe('Drive markdown-export escaping (#1617)', () => {
+  const numbered = numberH2s(SECTIONS_FULL);
+  const exported = driveMarkdownExport(numbered);
+
+  test('the fixture really is escaped the way Drive exports it', () => {
+    // Guards the test itself: if driveMarkdownExport stopped escaping, every
+    // assertion below would pass vacuously.
+    expect(exported).toContain('## 1\\. Archetype');
+    expect(exported).toContain('## 2\\. Problem Statement');
+    expect(exported).toContain('learn\\_passing\\_score');
+  });
+
+  test('check 1 resolves every required section from an escaped export', () => {
+    const r = checkAllRequiredSectionsPresent(exported);
+    expect(r.pass).toBe(true);
+    expect(r.detail).toBeUndefined();
+  });
+
+  test('tolerates an escaped multi-level ordinal (`## 4\\.2 Target Population`)', () => {
+    const pdd = SECTIONS_FULL.replace(
+      '## Target Population',
+      '## 4\\.2 Target Population',
+    );
+    expect(checkAllRequiredSectionsPresent(pdd).pass).toBe(true);
+  });
+
+  test('tolerates an escaped ordinal on BOTH separators (`## 4\\.2\\. Target Population`)', () => {
+    const pdd = SECTIONS_FULL.replace(
+      '## Target Population',
+      '## 4\\.2\\. Target Population',
+    );
+    expect(checkAllRequiredSectionsPresent(pdd).pass).toBe(true);
+  });
+
+  test('still rejects a truncated section name in an escaped export', () => {
+    const pdd = driveMarkdownExport(
+      numbered.replace(/^## (\d+)\. Target Population$/m, '## $1. Target Pop'),
+    );
+    const r = checkAllRequiredSectionsPresent(pdd);
+    expect(r.pass).toBe(false);
+    expect(r.detail).toContain('Target Population');
+  });
+
+  // The four secondary failures from the repro — all of them anchor through
+  // extractSection, so they came from the same single cause.
+  test('check 3 finds the stress-test appendix in an escaped export', () => {
+    expect(checkStressTestAppendixPresent(exported).pass).toBe(true);
+  });
+
+  test('check 4 counts Success Metrics rows in an escaped export', () => {
+    expect(checkSuccessMetricsTablePopulated(exported).pass).toBe(true);
+  });
+
+  test('check 5 finds all three evidence layers in an escaped export', () => {
+    expect(checkEvidenceModelLayered(exported).pass).toBe(true);
+  });
+
+  test('check 7 parses escaped snake_case Program Parameters keys', () => {
+    // `learn\_passing\_score` must resolve to `learn_passing_score`; an
+    // unresolved key reads as "no parseable rows" and fails the check.
+    const r = checkProgramParametersCoherent(exported);
+    expect(r.pass).toBe(true);
+  });
+
+  test('check 2 reads the archetype out of an escaped export', () => {
+    expect(checkArchetypeDeclared(exported).detail).toBe('atomic-visit');
+  });
+
+  test('check 6 sees escaped reviewer markers and counts the disposition table', () => {
+    const withComments = driveMarkdownExport(
+      `${numbered}\n## 14. Reviewer Comments — Disposition\n\n| Marker | Disposition |\n| --- | --- |\n| [a] | Honoured in § 6.1 |\n`,
+    );
+    const r = checkReviewerCommentTableIfReferenced(withComments);
+    expect(r.pass).toBe(true);
+    expect(r.detail).toMatch(/disposition row/);
+  });
+
+  // The end-to-end shape of the repro: 4/9 before the fix, 9/9 after — and
+  // identical to the same document read as local markdown.
+  test('all 9 checks score an escaped export exactly as they score the source', () => {
+    const ctx = { artifactMimeType: 'application/vnd.google-apps.document' };
+    const score = (pdd: string) =>
+      CHECKS.map((c) => {
+        const r = c.run(pdd, ctx);
+        // Every check in this skill is static/sync; narrow rather than await
+        // so an accidentally-async check fails loudly instead of comparing
+        // two identical Promises and passing vacuously.
+        if (r instanceof Promise) throw new Error(`${c.id} returned a Promise`);
+        return `${c.id}=${r.pass}`;
+      });
+    expect(score(exported)).toEqual(score(numbered));
+    expect(score(exported).filter((s) => s.endsWith('=true'))).toHaveLength(9);
+  });
+});

@@ -484,6 +484,97 @@ server.tool(
   },
 );
 
+// 8b. List reviewer comments on a Drive file
+server.tool(
+  'drive_list_comments',
+  "List the comment threads a reviewer left on a Drive file (Docs, Sheets, Slides). ACE publishes the PDD as a Google Doc SO THAT reviewers can comment on it and grants `commenter` for exactly that — this is the atom that reads what they wrote, so a comment no longer depends on a human noticing it and retyping it into `inputs/`.\n\nReturns `{file_id, total, comments: [{id, author, created_time, modified_time, resolved, content, quoted_text, anchor, replies: [{author, created_time, content}]}]}`.\n\n**`quoted_text` is the point.** Drive returns the document text the comment is anchored to (`quotedFileContent`), so a caller can bind a comment to the SECTION it sits on rather than guessing from prose. That is what makes it possible to detect a comment contradicting the text it is attached to — the failure mode a hand transcription cannot see, because transcription throws the anchor away.\n\n`resolved: true` marks a thread someone closed in the Drive UI. They are returned by default (`includeResolved`, default true) because a resolved thread is still evidence of what was asked — do not confuse resolved with honoured. Deleted comments are never returned; Drive drops them.\n\nRuns as the service account, which owns the artifacts ACE generates. Verified against a live Shared Drive file: create → list → delete round-trips, and the SA reads comments on its own PDD and Work Order. Note the SA and `ace@dimagi-ai.com` have DIFFERENT grants — `gog drive comments` (the ace@ path) 403s on SA-created files, so use this atom for anything ACE produced.",
+  {
+    fileId: z.string().describe('The Google Drive file ID to read comments from.'),
+    includeResolved: z
+      .boolean()
+      .optional()
+      .describe('Include threads marked resolved in the Drive UI. Default true — a resolved thread still records what the reviewer asked for, and "resolved" means someone closed the thread, NOT that the build honoured it.'),
+    maxResults: z
+      .number()
+      .int()
+      .min(1)
+      .max(100)
+      .optional()
+      .describe('Max comment threads to return (default 100, the Drive page maximum).'),
+  },
+  async ({ fileId, includeResolved = true, maxResults = 100 }) => {
+    try {
+      const resp = await drive.comments.list({
+        fileId,
+        pageSize: maxResults,
+        fields:
+          'comments(id,content,resolved,createdTime,modifiedTime,author/displayName,quotedFileContent/value,anchor,replies(content,createdTime,author/displayName))',
+      });
+      const all = resp.data.comments ?? [];
+      const kept = includeResolved ? all : all.filter((c: any) => !c.resolved);
+      return result({
+        file_id: fileId,
+        total: kept.length,
+        comments: kept.map((c: any) => ({
+          id: c.id,
+          author: c.author?.displayName ?? null,
+          created_time: c.createdTime ?? null,
+          modified_time: c.modifiedTime ?? null,
+          resolved: c.resolved ?? false,
+          content: c.content ?? '',
+          quoted_text: c.quotedFileContent?.value ?? null,
+          anchor: c.anchor ?? null,
+          replies: (c.replies ?? []).map((r: any) => ({
+            author: r.author?.displayName ?? null,
+            created_time: r.createdTime ?? null,
+            content: r.content ?? '',
+          })),
+        })),
+      });
+    } catch (e: any) {
+      return error(e.message);
+    }
+  },
+);
+
+// 8c. Reply to a reviewer comment, optionally resolving the thread
+server.tool(
+  'drive_reply_to_comment',
+  "Post a reply on a Drive comment thread, optionally resolving or reopening it. The write half of `drive_list_comments`, and the step that closes the review loop: a reviewer who commented in place should learn where their comment LANDED without having to ask.\n\n`action: 'resolve'` marks the thread resolved (verified live: Drive returns the reply with `action: resolve` and the comment then reads `resolved: true`). `action: 'reopen'` undoes it. Omit `action` to reply without changing thread state.\n\n**Resolve ONLY after the comment has been written into durable opp-level state** — a feedback record under `ACE/<opp>/feedback/`, an `open-questions.md` row, or a decision. Each run writes a NEW PDD document, so a comment lives on a doc no later run produces: resolving a thread whose substance was not carried forward destroys the only remaining copy. Say in the reply exactly where it landed, so the thread is an audit trail pointing at the durable record rather than the record itself.\n\nRuns as the service account — correct for artifacts ACE generated.",
+  {
+    fileId: z.string().describe('The Google Drive file ID the comment is on.'),
+    commentId: z.string().describe('The comment thread id, from `drive_list_comments`.'),
+    content: z
+      .string()
+      .min(1)
+      .describe('The reply body. Name WHERE the comment landed (the durable record, question row, or decision id) — not just that it was handled.'),
+    action: z
+      .enum(['resolve', 'reopen'])
+      .optional()
+      .describe("Optional. 'resolve' closes the thread, 'reopen' undoes that. Omit to reply without changing state. Only resolve once the substance is in durable opp-level state."),
+  },
+  async ({ fileId, commentId, content, action }) => {
+    try {
+      const resp = await drive.replies.create({
+        fileId,
+        commentId,
+        fields: 'id,content,action,createdTime,author/displayName',
+        requestBody: action ? { content, action } : { content },
+      });
+      return result({
+        reply_id: resp.data.id,
+        comment_id: commentId,
+        action: resp.data.action ?? null,
+        content: resp.data.content ?? '',
+        author: resp.data.author?.displayName ?? null,
+        created_time: resp.data.createdTime ?? null,
+      });
+    } catch (e: any) {
+      return error(e.message);
+    }
+  },
+);
+
 // 9. Read a Drive file
 server.tool(
   'drive_read_file',
@@ -3410,7 +3501,7 @@ server.tool(
 
 server.tool(
   'render_run_readme',
-  'Render the run-folder README markdown for `runId` with optional per-phase status overrides (keys: idea-to-design | scenarios-and-acceptance | commcare-setup | connect-setup | ocs-setup | qa-and-training | synthetic-data-and-workflows | solicitation-management | execution-management | closeout; values: pending | in-progress | done | partial | blocked | error | skipped). Returns `{markdown}`. Used at RUN-INIT (orchestrator step 7b — all phases default to `pending`; write the markdown to `<run-folder>/README.md`). You do NOT need to call it at phase boundaries: `verify_phase_artifacts` refreshes the README itself from `run_state.yaml` on every fence call. Implementation: `lib/run-readme.ts::generateRunReadme`.',
+  'Render the run-folder README index and, when `runFolderFileId` is supplied, WRITE it to `<run-folder>/README.md` server-side (find-or-update). Pass `runFolderFileId` — that is the intended call at RUN-INIT (orchestrator step 7b): one call renders and persists the index, and nothing has to be relayed back through `drive_create_file`. Returns `{markdown, written, fileId?}`; omitting `runFolderFileId` renders only (`written: false`) and is kept for callers that genuinely want the markdown without persisting it. Optional per-phase status overrides (keys: idea-to-design | scenarios-and-acceptance | commcare-setup | connect-setup | ocs-setup | qa-and-training | synthetic-data-and-workflows | solicitation-management | execution-management | closeout; values: pending | in-progress | done | partial | blocked | error | skipped); unspecified phases default to `pending`. You do NOT need to call this at phase boundaries: `verify_phase_artifacts` refreshes the README itself from `run_state.yaml` on every fence call. Implementation: `lib/run-readme.ts::generateRunReadme`.',
   {
     runId: z
       .string()
@@ -3419,11 +3510,28 @@ server.tool(
       .record(z.enum(PHASE_README_STATUSES as unknown as [PhaseStatus, ...PhaseStatus[]]))
       .optional()
       .describe('Optional per-phase status overrides; unspecified phases default to "pending".'),
+    runFolderFileId: z
+      .string()
+      .optional()
+      .describe(
+        'Drive folder ID of the run (ACE/<opp>/runs/<run-id>/). When supplied, the rendered index is WRITTEN to README.md in that folder (find-or-update) and `written: true` is returned. Supply it at run-init; omit it only when you want the markdown without persisting it.',
+      ),
   },
-  async ({ runId, phaseStatus }) => {
+  async ({ runId, phaseStatus, runFolderFileId }) => {
     try {
       const markdown = generateRunReadme(runId, (phaseStatus ?? {}) as Partial<Record<Phase, PhaseStatus>>);
-      return result({ markdown });
+      // Render-and-return alone was the whole defect: the caller had to re-emit
+      // ~10KB of markdown verbatim into a separate `drive_create_file`, which is
+      // the same hand-relay `render_decisions_log` exists to eliminate
+      // (jjackson/ace#574, dimagi-internal/ace#1508) and which
+      // `verify_phase_artifacts` already avoids by
+      // writing the file itself. Writing here makes the three consistent.
+      if (!runFolderFileId) return result({ markdown, written: false });
+      const created = await handleCreateFile(
+        { name: 'README.md', content: markdown, parentFolderId: runFolderFileId, findOrCreate: true },
+        drive,
+      );
+      return result({ markdown, written: true, fileId: (created as any)?.id ?? undefined });
     } catch (e: any) {
       return error(e.message);
     }

@@ -19,6 +19,15 @@ import {
   selectOptions,
   selectedOptionLabel,
 } from '../../../lib/hq-web-users-page.js';
+// parseFormErrors's core `<ul class="errorlist">` regex is standard Django
+// forms rendering (BoundField → ErrorList), not something specific to
+// Connect's crispy-tailwind templates despite living in html-scrape.ts —
+// reused here so "form re-render" failures surface the ACTUAL validation
+// message instead of the first N chars of raw page HTML (which is usually
+// just the <title>). Added 2026-08-18 after commcare_create_connection's
+// truncated error hid a real validation failure during Connect Interviews
+// live testing.
+import { parseFormErrors } from './html-scrape.js';
 
 /**
  * CommCare HQ atoms — release apps that Nova uploaded as drafts.
@@ -238,6 +247,25 @@ export interface CreateUcrExpressionArgs {
   /** The UCR spec (a JSON object — passed as JSON-encoded string to the form). */
   definition: Record<string, unknown>;
   description?: string;
+}
+
+export interface CreateLinkedAppCopyArgs {
+  /** Domain the source app currently lives in (upstream/master). */
+  upstream_domain: string;
+  /** The source app's id, to be copied. */
+  upstream_app_id: string;
+  /** Domain to copy the app into (downstream). */
+  downstream_domain: string;
+  /** Name for the new copy (should include the cohort id per the Connect Interviews naming convention). */
+  name: string;
+  /**
+   * Whether the copy stays connected to upstream as a live linked app
+   * (eligible for future pulls) vs. a disconnected one-off copy.
+   * Default true — the Connect Interviews flow always wants a linked copy.
+   */
+  linked?: boolean;
+  /** Specific build/version of the source app to copy. Omit for latest saved version. */
+  build_id?: string;
 }
 
 /** Custom user data field definition (per HQ's CustomDataFieldsForm field schema). */
@@ -594,7 +622,12 @@ export interface ConnectSyncProjection {
 export interface PatchXformArgs {
   domain: string;
   app_id: string;
-  /** 32-char hex `unique_id` of the form (NOT the `m/f` index). */
+  /**
+   * CCHQ `unique_id` of the form (NOT the `m/f` index). **32-hex (uuid4) or
+   * 40-hex (SHA-1)** — HQ hands back a 40-hex form uid after a Nova
+   * `upload_app_to_hq`, and accepts it on this endpoint (observed on
+   * hh-poverty-targeting/20260824-1404, ace#1644). See `lib/hq-unique-id.ts`.
+   */
   form_unique_id: string;
   /** Full replacement XForm XML. */
   new_xform_xml: string;
@@ -656,7 +689,12 @@ export interface PatchXformResult {
 export interface GetFormSourceArgs {
   domain: string;
   app_id: string;
-  /** 32-char hex `unique_id` of the form (NOT the `m/f` index). */
+  /**
+   * CCHQ `unique_id` of the form (NOT the `m/f` index). **32-hex (uuid4) or
+   * 40-hex (SHA-1)** — HQ hands back a 40-hex form uid after a Nova
+   * `upload_app_to_hq`, and accepts it on this endpoint (observed on
+   * hh-poverty-targeting/20260824-1404, ace#1644). See `lib/hq-unique-id.ts`.
+   */
   form_unique_id: string;
 }
 
@@ -686,7 +724,11 @@ export interface GetFormSourceResult {
 export interface SetMenuDisplayArgs {
   domain: string;
   app_id: string;
-  /** 32-char hex `unique_id` of the module (a.k.a. menu). */
+  /**
+   * CCHQ `unique_id` of the module (a.k.a. menu). **32-hex (uuid4) or 40-hex
+   * (SHA-1)**; HQ modules are typically 40-hex. See `lib/hq-unique-id.ts`
+   * (ace#1644).
+   */
   module_unique_id: string;
   /**
    * Menu display style. CCHQ's `edit_module_attr` `display_style` attr
@@ -935,9 +977,14 @@ export class CommCareBackend {
             'commcare_create_domain: RESTRICT_DOMAIN_CREATION is set on this HQ instance and the user is not a superuser.',
           );
         }
-        throw new Error(
-          `commcare_create_domain POST ${path} returned 200 (form re-render — validation failed). First 400 chars: ${html.slice(0, 400)}`,
-        );
+        {
+          const errors = parseFormErrors(html);
+          throw new Error(
+            errors.length
+              ? `commcare_create_domain POST ${path}: form re-render — validation failed: ${errors.join(' | ')}`
+              : `commcare_create_domain POST ${path} returned 200 (form re-render — validation failed, no errorlist found). First 400 chars: ${html.slice(0, 400)}`,
+          );
+        }
       }
       throw new Error(
         `commcare_create_domain POST ${path} returned ${res.status()}: ${(await res.text()).slice(0, 300)}`,
@@ -1546,8 +1593,11 @@ export class CommCareBackend {
       } else if (res.status() === 200) {
         // Form re-render = validation failed
         const html = await res.text();
+        const errors = parseFormErrors(html);
         throw new Error(
-          `commcare_create_connection: form re-render — validation failed. First 400 chars: ${html.slice(0, 400)}`,
+          errors.length
+            ? `commcare_create_connection: form re-render — validation failed: ${errors.join(' | ')}`
+            : `commcare_create_connection: form re-render — validation failed (no errorlist found). First 400 chars: ${html.slice(0, 400)}`,
         );
       } else {
         throw new Error(`commcare_create_connection POST ${addPath} returned ${res.status()}: ${(await res.text()).slice(0, 300)}`);
@@ -1685,6 +1735,83 @@ export class CommCareBackend {
         );
       }
       return { id: match.id, name: match.name };
+    });
+  }
+
+  /**
+   * Pull a linked copy of an app from an upstream domain into a downstream
+   * domain. POSTs the CopyApplicationForm to /a/<upstream_domain>/apps/copy_app/
+   * (view: corehq.apps.app_manager.views.apps.copy_app). Reverse-engineered
+   * from CommCare HQ's own source (dimagi/commcare-hq) since this was a
+   * documented atom gap — MODEL_APP is deliberately NOT handled by the
+   * generic linked_domain update_linked_model RMI (confirmed by reading
+   * corehq/apps/linked_domain/updates.py's update_fn dispatch table), so
+   * app-copying uses this separate, dedicated app_manager mechanism instead.
+   *
+   * Form fields: `app` (source app_id), `domain` (target domain), `name`,
+   * `linked` (checkbox — 'on' for a live linked copy), `build_id` (optional,
+   * specific source version). Response is an HttpResponseRedirect on success
+   * (not JSON) — same convention as createConnection: treat any non-login
+   * 302 as success and re-list the target domain's apps by name to recover
+   * the new app's id, since the redirect Location isn't a reliably parseable
+   * contract across HQ versions.
+   *
+   * NOT YET LIVE-VALIDATED against a real domain — probe this against a
+   * disposable test domain pair before relying on it (see CLAUDE.md's
+   * "close the loop to the source of truth" convention). If the request
+   * shape is wrong, expect either a 200 (form re-render, surfaced as an
+   * error with the HTML) or a redirect to an error page that won't contain
+   * the new app.
+   */
+  async createLinkedAppCopy(args: CreateLinkedAppCopyArgs): Promise<{ id: string; name: string }> {
+    return this.runWithSessionRetry(async (request) => {
+      const path = `/a/${encodeURIComponent(args.upstream_domain)}/apps/copy_app/`;
+      const csrf = await this.csrfFromCookies(request);
+      const params = new URLSearchParams();
+      params.set('csrfmiddlewaretoken', csrf ?? '');
+      params.set('app', args.upstream_app_id);
+      params.set('domain', args.downstream_domain);
+      params.set('name', args.name);
+      if (args.linked !== false) params.set('linked', 'on');
+      if (args.build_id) params.set('build_id', args.build_id);
+      const res = await request.post(`${this.opts.baseUrl}${path}`, {
+        data: params.toString(),
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'X-CSRFToken': csrf ?? '',
+          Referer: `${this.opts.baseUrl}${path}`,
+        },
+        maxRedirects: 0,
+      });
+      if (res.status() === 302) {
+        const location = res.headers()['location'] || '';
+        if (/\/login\/?(\?|$)/.test(location)) {
+          throw new SessionExpiredError();
+        }
+        // Success — redirects to the new (linked) app's settings page.
+      } else if (res.status() === 200) {
+        const html = await res.text();
+        const errors = parseFormErrors(html);
+        throw new Error(
+          errors.length
+            ? `commcare_linked_app_copy: form re-render — validation failed: ${errors.join(' | ')}`
+            : `commcare_linked_app_copy: form re-render — validation failed (no errorlist found). First 400 chars: ${html.slice(0, 400)}`,
+        );
+      } else {
+        throw new Error(
+          `commcare_linked_app_copy POST ${path} returned ${res.status()}: ${(await res.text()).slice(0, 300)}`,
+        );
+      }
+      // Re-list the downstream domain's apps to find the new one by name.
+      const list = await this.listApps({ domain: args.downstream_domain });
+      const match = list.apps.filter((a) => a.name === args.name);
+      if (match.length === 0) {
+        throw new Error(
+          `commcare_linked_app_copy: created but could not find app named "${args.name}" in ${args.downstream_domain}. Names visible: ${list.apps.map((a) => a.name).join(', ')}`,
+        );
+      }
+      const newest = match[match.length - 1];
+      return { id: newest.id, name: newest.name };
     });
   }
 
@@ -1884,8 +2011,11 @@ export class CommCareBackend {
           return { ok: true as const, count: args.fields.length };
         }
         if (/Unable to save/i.test(html)) {
+          const errors = parseFormErrors(html);
           throw new Error(
-            `commcare_set_user_fields: form validation failed. First 400 chars: ${html.slice(0, 400)}`,
+            errors.length
+              ? `commcare_set_user_fields: form validation failed: ${errors.join(' | ')}`
+              : `commcare_set_user_fields: form validation failed (no errorlist found). First 400 chars: ${html.slice(0, 400)}`,
           );
         }
         // Inconclusive — assume success.
@@ -2086,8 +2216,11 @@ export class CommCareBackend {
       }
       if (res.status() === 200) {
         const html = await res.text();
+        const errors = parseFormErrors(html);
         throw new Error(
-          `commcare_create_repeater: form re-render — validation failed. First 400 chars: ${html.slice(0, 400)}`,
+          errors.length
+            ? `commcare_create_repeater: form re-render — validation failed: ${errors.join(' | ')}`
+            : `commcare_create_repeater: form re-render — validation failed (no errorlist found). First 400 chars: ${html.slice(0, 400)}`,
         );
       }
       throw new Error(`commcare_create_repeater POST ${addPath} returned ${res.status()}: ${(await res.text()).slice(0, 300)}`);

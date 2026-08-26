@@ -7,6 +7,7 @@ import {
   findDecisionOverridesFile,
   writeDecisionsFile,
 } from '../../../mcp/decisions-server.js';
+import { DECISIONS_SCHEMA_VERSION } from '../../../lib/decisions-schema.js';
 
 /**
  * Fake drive client with queued responses for files.list / files.get /
@@ -113,6 +114,7 @@ const ROW_1 = {
   source: 'idea.md §1',
   status: 'ai-default' as const,
   evidence_basis: 'stated' as const,
+  value_set_by: "ace" as const,
 };
 
 const ROW_2_WO = {
@@ -125,6 +127,7 @@ const ROW_2_WO = {
   source: 'pdd-timeline',
   status: 'ai-default' as const,
   evidence_basis: 'inferred' as const,
+  value_set_by: "external" as const,
 };
 
 describe('findDecisionsFile', () => {
@@ -181,7 +184,7 @@ describe('handleAppendRows', () => {
       const body = args.media.body as string;
       // A freshly-seeded log is written at the current schema version (v4).
       const parsed = yaml.parse(body);
-      expect(parsed.schema_version).toBe(4);
+      expect(parsed.schema_version).toBe(DECISIONS_SCHEMA_VERSION);
       expect(parsed.opportunity).toBe('bednet-spot-check');
       expect(parsed.run_id).toBe('20260525-2013');
       expect(parsed.generated_at).toBe('2026-05-25T20:13:04Z');

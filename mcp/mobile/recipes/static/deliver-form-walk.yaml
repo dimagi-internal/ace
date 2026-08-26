@@ -31,11 +31,73 @@
 #
 # ── MODULE_NAME / FORM_NAME SCOPING (dimagi-internal/ace#1138) ──────────────
 #
-# Parameters (BOTH OPTIONAL — omit both for the legacy single-module behavior):
-#   ${MODULE_NAME} — visible label of the MODULE row to tap in the module list
-#                    (e.g. "Community Meeting Record").
-#   ${FORM_NAME}   — visible label of the FORM row inside that module, when it
-#                    DIFFERS from ${MODULE_NAME}.
+# Parameters:
+#   ${MODULE_NAME} — OPTIONAL. Visible label of the MODULE row to tap in the
+#                    module list (e.g. "Community Meeting Record"). Omit for
+#                    the legacy single-module positional behavior.
+#   ${FORM_NAME}   — OPTIONAL. Visible label of the FORM row inside that
+#                    module, when it DIFFERS from ${MODULE_NAME}.
+#   ${WALK_LABEL}  — REQUIRED at every call site (ace#1668). Per-INVOCATION
+#                    screenshot discriminator; bind "" on a single-invocation
+#                    call. See below — an unbound one is NOT empty, it is the
+#                    literal string `undefined`.
+#
+# ── ${WALK_LABEL}: why the fixed captures need a discriminator (ace#1651) ───
+#
+# This palette is invoked TWICE in one recipe on every register-then-followup
+# Deliver smoke (the shape ace#1138 established as necessary for a case-bound
+# payable unit): once for the registration form, once for the payable
+# follow-up. Its captures used to be FIXED strings, so the second invocation
+# silently OVERWROTE the first's frames — leg A's registration evidence was
+# destroyed on every such run, on a PASSING run, with nothing failing and
+# nothing warning.
+#
+# Measured on bednet-check-2-visit/20260825-1310 (ACE 0.13.987, status: pass):
+# the recipe stdout shows all three captures running in BOTH legs, but only one
+# file of each name survives and its `takenAt` is leg B's (23:44) — leg A's
+# (23:42) is gone. The two frames that DID survive are exactly the two whose
+# names interpolate `${MODULE_NAME}`; the collision is caused by the ABSENCE of
+# a per-invocation discriminator, and the row that happens to have one is
+# unaffected. That is the diagnostic, and the fix follows from it directly:
+# every capture below now carries `${WALK_LABEL}`.
+#
+# ${WALK_LABEL} IS REQUIRED AT EVERY CALL SITE (ace#1668). The original #1651
+# fix asserted that "unbound, Maestro substitutes the empty string", so a
+# single-invocation caller could omit it and still get byte-identical names.
+# THAT IS FALSE, and the very next run proved it: Maestro resolves `${...}`
+# through a JS engine, so an UNBOUND variable evaluates to the JS value
+# `undefined` and stringifies to the literal text `undefined`. Measured on
+# hh-poverty-targeting/20260824-1404, whose Deliver leg wrote
+# `deliver-form-walk-form-listundefined.png`,
+# `deliver-form-walk-form-questionundefined.png`,
+# `deliver-form-walk-module-listundefined.png` and
+# `deliver-form-walk-module-row-Household poverty surveyundefined.png`. Those
+# names are operator-facing — they reach the screenshot manifest, the training
+# deck and the FLW guide, where they read as a defect in the deliverable.
+#
+# AND THE OBVIOUS FIX IS WRONG. A `env: {WALK_LABEL: ""}` block in this file's
+# own flow config does NOT act as a default: a subflow's `env:` OVERRIDES the
+# caller's `runFlow.env` in Maestro (ace#1033, verified against the pinned
+# Maestro 2.5.1 source — `DefineVariables(subflowEnv)` runs AFTER
+# `DefineVariables(callerEnv)` and last write wins). A default here would
+# clobber BOTH legs to `""` and silently re-create the exact #1651 overwrite
+# this discriminator exists to prevent. Same reason no palette carries a
+# `SCREENSHOT_NAME` default.
+#
+# So the discriminator is REQUIRED, exactly like `SCREENSHOT_NAME` on the other
+# capture palettes: `deliver-form-walk.yaml` is registered in
+# `PALETTE_REQUIRED_SCREENSHOT_ENV`, and `lintRecipeText`'s
+# `runFlow-unbound-screenshot-name` rule fails any call site that omits it.
+#
+# CALLER CONTRACT. Bind a short slug INCLUDING the leading separator —
+# `WALK_LABEL: "-register"` / `"-followup"`. A SINGLE-invocation caller binds
+# `WALK_LABEL: ""` explicitly, which reproduces the pre-#1651 names exactly.
+# Keep it `[a-z0-9-]`: `takeScreenshot` resolves its name as a file path, so a
+# `/` becomes a DIRECTORY (ace#1236 — the collector flattens nested frames back
+# into a unique `stepName`, so nothing is lost, but a slug is what you want in
+# a filename). Two invocations in one recipe MUST bind DIFFERENT values;
+# `lintRecipeText`'s `repeat-palette-invocation-without-discriminator` rule
+# fails the recipe otherwise, so this cannot regress silently again.
 #
 # WHY THIS EXISTS. This recipe used to tap the FIRST `row_txt` row at each of
 # the two menu levels, on the stated assumption that "the deliver smoke is one
@@ -51,11 +113,15 @@
 # never reached the payable form, so `app-test-cases` could not author
 # `journey-deliver.yaml` at all.
 #
-# BACK-COMPAT. When neither name is bound, Maestro substitutes the empty
-# string; `text: ""` matches NO node (the same semantics learn-tap-module.yaml
-# Branch C already relies on), so every name-scoped guard below evaluates
-# false and the positional fallback fires — byte-for-byte the legacy behavior
-# for existing single-module callers.
+# BACK-COMPAT. When neither name is bound, Maestro substitutes the literal
+# string `undefined` (ace#1668 — NOT the empty string, as this header claimed
+# until then); no CommCare row carries that label, so every name-scoped guard
+# below evaluates false and the positional fallback fires — byte-for-byte the
+# legacy behavior for existing single-module callers. The outcome is the same
+# one learn-tap-module.yaml Branch C relies on; the mechanism is "matches no
+# row", not "empty matcher". Do NOT "tidy" this by adding `env:` defaults of
+# `""` for these two: an empty `text:` matcher is device-truth and is not a
+# no-match.
 #
 # KNOWN CAVEAT (deliberate, matches the Learn side's risk profile): if
 # ${MODULE_NAME} IS bound but its row is scrolled out of the viewport, the
@@ -83,6 +149,10 @@
 #                 skills/app-test-cases/SKILL.md
 #                 § Registration-then-followup Deliver apps.
 appId: org.commcare.dalvik
+# DELIBERATELY NO `env:` BLOCK. See the ${WALK_LABEL} section above: a subflow's
+# own `env:` OVERRIDES the caller's `runFlow.env` in Maestro (ace#1033), so a
+# default here would clobber every leg's discriminator and silently re-create
+# the ace#1651 overwrite it exists to prevent.
 ---
 # NO opening home shot (ace#869). The Deliver home this palette starts on has
 # ALWAYS already been captured by whoever handed control here:
@@ -100,7 +170,7 @@ appId: org.commcare.dalvik
     visible:
       id: "${SELECTOR:deliver-suite-menu}"
     timeout: 15000
-- takeScreenshot: "deliver-form-walk-module-list"
+- takeScreenshot: "deliver-form-walk-module-list${WALK_LABEL}"
 
 # ── LEVEL 1: module row ────────────────────────────────────────────────────
 # Named branch. Body-scoped so the tap lands on the tappable row, not the
@@ -112,7 +182,7 @@ appId: org.commcare.dalvik
         below:
           id: "${SELECTOR:deliver-suite-menu}"
     commands:
-      - takeScreenshot: "deliver-form-walk-module-row-${MODULE_NAME}"
+      - takeScreenshot: "deliver-form-walk-module-row-${MODULE_NAME}${WALK_LABEL}"
       - tapOn:
           text: "${MODULE_NAME}"
           below:
@@ -197,7 +267,7 @@ appId: org.commcare.dalvik
       notVisible:
         id: "${SELECTOR:form-nav-next}"
     commands:
-      - takeScreenshot: "deliver-form-walk-form-list"
+      - takeScreenshot: "deliver-form-walk-form-list${WALK_LABEL}"
       - runFlow:
           when:
             visible:
@@ -269,4 +339,4 @@ appId: org.commcare.dalvik
     visible:
       id: "${SELECTOR:form-nav-next}"
     timeout: 15000
-- takeScreenshot: "deliver-form-walk-form-question"
+- takeScreenshot: "deliver-form-walk-form-question${WALK_LABEL}"

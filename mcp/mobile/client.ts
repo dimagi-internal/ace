@@ -38,6 +38,7 @@ import { resolveBackend, preflightMobileBackend } from './backend-toggle.js';
 import type {
   AvdInfo, ApkInfo, RecipeRunResult, TestUserRegistrationResult, UiDumpResult,
   SnapshotResult, DeviceUserStateClass, DeviceStateHealLog, LocalBootstrapConfig,
+  TestUserCredentials, EnsureAvdRunningOptions,
   VideoArtifact, LocalDiagnostics, DeviceProbeFailures, RunRecipeOptions,
 } from './types.js';
 import { logInfo } from './logging.js';
@@ -198,6 +199,35 @@ export function bootstrapConfigFromEnv(): LocalBootstrapConfig | null {
       name: process.env.ACE_E2E_NAME!,
     },
   };
+}
+
+/**
+ * Merge a PARTIAL per-call test-user override onto the env-derived credentials
+ * (dimagi-internal/ace#1289).
+ *
+ * **Inertness is the contract, and it is stronger than "equivalent":** with no
+ * override — the production default while `ACE_PER_RUN_TEST_USER` is off — this
+ * returns the `base` object BY REFERENCE. Not a copy, not a spread. There is no
+ * code path in which an absent override can perturb what gets registered.
+ *
+ * Only keys whose value is a non-empty string override. An empty string from a
+ * caller that read an unset env var must not blank out a working credential —
+ * the same "caller args still win when present" rule
+ * `mobile_register_test_user` already applies, for the same reason (a blank
+ * pass there produced a server-side "Request validation failed" with no
+ * field-level detail).
+ */
+export function mergeTestUserOverride(
+  base: TestUserCredentials,
+  override?: Partial<TestUserCredentials>,
+): TestUserCredentials {
+  if (!override) return base;
+  const merged = { ...base };
+  for (const key of Object.keys(base) as (keyof TestUserCredentials)[]) {
+    const v = override[key];
+    if (typeof v === 'string' && v.length > 0) merged[key] = v;
+  }
+  return merged;
 }
 
 /**
@@ -752,7 +782,7 @@ export class MobileClient {
    * Maestro state on their side, and the gRPC channel they expose
    * through ace-web has its own health semantics.
    */
-  async ensureAvdRunning(name: string): Promise<AvdInfo> {
+  async ensureAvdRunning(name: string, opts?: EnsureAvdRunningOptions): Promise<AvdInfo> {
     // Pre-boot backend preflight (jjackson/ace#839): fail loud on an
     // unconfigured cloud toggle, or note a likely dispatch/session mismatch,
     // BEFORE booting any local AVD. Purely a check over the resolved backend
@@ -775,6 +805,24 @@ export class MobileClient {
     }
 
     if (this.useCloud) {
+      // Per-run test-user overrides are LOCAL-ONLY (dimagi-internal/ace#1289).
+      // The cloud backend registers inside the AMI from its own baked recipes,
+      // so honouring an override here would need `ACE_MOBILE_CLOUD_LIVE_REGISTER=true`
+      // AND an ace-web change to forward caller-supplied credentials. Throw
+      // rather than silently register the env-derived user under a caller that
+      // believes it minted a fresh one — a silent fallback would reintroduce
+      // the accumulated-invite class the override exists to close.
+      if (opts?.testUser) {
+        throw new MobileError(
+          'CLOUD_TEST_USER_OVERRIDE_UNSUPPORTED',
+          'mobile_ensure_avd_running: per-run testUser overrides are not supported on the cloud backend — ' +
+            'registration happens inside the AMI from its baked recipes, which do not accept ' +
+            'caller-supplied credentials.',
+          'Run on the local AVD backend (/ace:mobile-backend local), or land ' +
+            'ACE_MOBILE_CLOUD_LIVE_REGISTER=true plus ace-web support for caller-supplied ' +
+            'registration credentials first.',
+        );
+      }
       const info = await this.requireCloud().ensureAvdRunning(name);
       // Symmetric with the local branch — drive registration through
       // `restoreDeviceUserState` so the same contract holds across
@@ -808,7 +856,7 @@ export class MobileClient {
       try {
         const info = await this.avd.ensureAvdRunning(name);
         await this.assertMaestroDriverHealthy(info.serial);
-        const deviceUserState = await this.restoreDeviceUserState(info);
+        const deviceUserState = await this.restoreDeviceUserState(info, opts);
         return { ...info, heal: { deviceUserState } };
       } catch (e) {
         lastErr = e;
@@ -885,7 +933,10 @@ export class MobileClient {
    * save a snapshot via the MCP atom to capture interesting state for
    * later inspection, but the heal flow never saves or loads snapshots.
    */
-  async restoreDeviceUserState(avd: AvdInfo): Promise<DeviceStateHealLog> {
+  async restoreDeviceUserState(
+    avd: AvdInfo,
+    opts?: EnsureAvdRunningOptions,
+  ): Promise<DeviceStateHealLog> {
     if (this.useCloud) {
       // Two cloud modes, gated on ACE_MOBILE_CLOUD_LIVE_REGISTER:
       //   true  → live cloud-bootstrap (pm clear + registerTestUser),
@@ -911,7 +962,7 @@ export class MobileClient {
     logInfo(
       `device_user_state: restoring to known state via deterministic bootstrap on ${avd.serial}`,
     );
-    const bootstrapSteps = await this.runLocalBootstrap(avd);
+    const bootstrapSteps = await this.runLocalBootstrap(avd, opts);
     const verifyAfterBootstrap = await this.probeDeviceUserState(avd);
     if (
       verifyAfterBootstrap.classified_as === 'ready' ||
@@ -1140,7 +1191,7 @@ export class MobileClient {
     );
   }
 
-  async runLocalBootstrap(avd: AvdInfo): Promise<string[]> {
+  async runLocalBootstrap(avd: AvdInfo, opts?: EnsureAvdRunningOptions): Promise<string[]> {
     if (!this.bootstrapConfig) {
       throw new MobileError(
         'NO_BOOTSTRAP_CONFIG',
@@ -1148,7 +1199,11 @@ export class MobileClient {
         'Run /ace:setup --force-env to re-inject .env from 1Password.',
       );
     }
-    const { apkVersion, testUser } = this.bootstrapConfig;
+    const { apkVersion } = this.bootstrapConfig;
+    // Per-call credential override (dimagi-internal/ace#1289). With no `opts`
+    // — the production default while ACE_PER_RUN_TEST_USER is off — this
+    // returns the env-derived object ITSELF, unchanged and not even copied.
+    const testUser = mergeTestUserOverride(this.bootstrapConfig.testUser, opts?.testUser);
     const steps: string[] = [];
 
     // Step 1: ensure CommCare APK installed.

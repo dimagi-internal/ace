@@ -28,6 +28,8 @@
 //
 
 /** Minimal blueprint shapes — the subset both Nova apps expose. */
+
+import { type CheckOutcome, checked, unable, formatUnable } from './check-outcome.js';
 export interface BlueprintField {
   id: string;
   kind: string;
@@ -96,12 +98,12 @@ export interface TaughtFinding {
   reason: TaughtFindingReason;
 }
 
-export interface TaughtVsCollectableReport {
-  /** False when the curriculum states no unconditional evidence step. */
-  checked: boolean;
-  ok: boolean;
-  findings: TaughtFinding[];
-}
+/**
+ * `status: 'unable'` when the curriculum states no unconditional evidence
+ * step — there is nothing to cross-check, which is NOT the same as the two
+ * apps agreeing. `lib/check-outcome.ts`.
+ */
+export type TaughtVsCollectableReport = CheckOutcome<TaughtFinding>;
 
 function flatten(fields: BlueprintField[] | undefined, inheritedGate?: string): {
   field: BlueprintField;
@@ -168,13 +170,19 @@ export function checkTaughtStepsCollectable(
     }
   }
 
-  return { checked: taughtAny, ok: findings.length === 0, findings };
+  if (!taughtAny) {
+    return unable(
+      'the Learn blueprint states no unconditionally-taught evidence step (no label matched both an ' +
+        'UNCONDITIONAL_MARKERS phrase and an EVIDENCE_ACTIONS phrase), so there was nothing to ' +
+        'cross-check against the Deliver form. If the curriculum DOES teach one, the phrase ' +
+        'matchers are the bug',
+    );
+  }
+  return checked(findings.length === 0, findings);
 }
 
 export function formatTaughtVsCollectableReport(report: TaughtVsCollectableReport): string {
-  if (!report.checked) {
-    return 'taught-vs-collectable: not applicable (curriculum states no unconditional evidence step)';
-  }
+  if (report.status === 'unable') return formatUnable('taught-vs-collectable', report.reason);
   if (report.ok) {
     return 'taught-vs-collectable: every unconditionally-taught evidence step is collectable on all branches';
   }

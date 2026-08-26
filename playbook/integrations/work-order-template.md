@@ -74,6 +74,7 @@ Each varying cell or bullet contains one `{{snake_case}}` token. Body-token repl
 | `{{wo_total_not_to_exceed_usd}}` | `wo-total-not-to-exceed-usd` decision |
 | `{{wo_mobilization_advance_pct}}`, `{{wo_mobilization_amount}}`, `{{wo_mobilization_trigger}}`, `{{wo_mobilization_timing}}` | Payment milestone 1 (from `wo-payment-schedule-split` + `wo-mobilization-advance-pct`) |
 | `{{wo_reconciliation_pct}}`, `{{wo_reconciliation_amount}}`, `{{wo_reconciliation_trigger}}`, `{{wo_reconciliation_timing}}` | Payment milestone 2 |
+| `{{payment_unit_closing}}` | § 6.2's closing sentence, **archetype-branched** (per-visit / per-session / named payable stage). Was hardcoded until ace#1004 — see `skills/pdd-to-work-order/SKILL.md § Process` step 5 for the per-archetype wording. |
 | `{{raci_N_responsibility}}`, `{{raci_N_dimagi}}`, `{{raci_N_partner}}` (N=1..11) | Archetype-derived RACI |
 | `{{permissions_body}}` ★ | Newline-separated required permissions (one bullet per line) |
 | `{{ethics_body}}` | Ethics paragraph (prose; template defaults + PDD scope) |

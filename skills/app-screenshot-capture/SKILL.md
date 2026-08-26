@@ -223,9 +223,16 @@ Inputs the caller assembles:
   blueprint prints `[uuid …]` on every module, form, and field — see
   `playbook/integrations/nova-integration.md § The 2026-07-31
   uuid-addressing migration`), mapped onto `forms[].fields[]` as
-  `{id, kind, label, options, children, relevant}` — include each
+  `{id, kind, label, hint, options, children, relevant}` — include each
   field's `relevant` when Nova reports one; its PRESENCE on trailing
   labels is what arms `score-gated-quiz-over-advance` (ace#1118).
+  **Include each field's `hint`** (flattened to its rendered text, the
+  same way `label` is) — CommCare renders `label -> hint -> EditText`, so
+  the hint is what a field-list input's focus anchor must name, and it is
+  what arms `input-anchor-skips-hint` (ace#1554/#1299). **OMIT the key
+  for a field with no hint; never pass `""` to mean "none"** — the check
+  reads only fields that positively carry a hint, so under-supplying
+  degrades to a no-op rather than to a false "this field has no hint".
   Optional, but supplying fields is what makes the probe
   **screen-shape aware**: it turns on the `label`-screen carve-out
   (#858), the `group-field-list-per-question-walk` check (#862), the
@@ -245,8 +252,7 @@ remediation):
 
 | Class | Remediation |
 |---|---|
-| `module-name-equals-form-name` | Verify plugin >= 0.13.255 (handled by learn-tap-module). If older, re-author via `/ace:step app-test-cases`. |
-| `expected-module-not-in-app` | Recipe needs re-author via `/ace:step app-test-cases` — live app structure has drifted. |
+| `expected-module-not-in-app` | Recipe references a `MODULE_NAME` matching **neither a module NOR a form** anywhere in the supplied apps. Re-author via `/ace:step app-test-cases` — the live app structure has drifted. **`MODULE_NAME` is the visible label of ANY suite row, module or form** (`learn-tap-module.yaml` header; its Branch A is the tapped-a-form-row case), so a name matching a form is CORRECT and no longer flagged (ace#1649). |
 | `expected-form-not-in-module` | Same as above — module/form structure has drifted. |
 | `opp-name-mismatch` | Pass `OPP_NAME` verbatim from `run_state.yaml.phases.connect-setup.products.connect.opportunity.name` (NOT slug-reassembled). Fallback only if missing: `connect_get_opportunity({org_slug, opportunity_id}).name`. |
 | `tile-name-collision` | Clean up prior-run invites OR use Resume-branch (exact-match claim). |
@@ -254,6 +260,8 @@ remediation):
 | `form-advance-without-answer-tap` | Recipe chains consecutive form-advance steps with no answer step between them — required-input questions will stall on `warning_root`. Re-author via `/ace:step app-test-cases`: for each required field, read its label/options via Nova `get_form` and emit a `tapOn:text:"<literal>"` (or `inputText` / photo-capture sequence) BEFORE the form-advance. **Label-aware when `fields` is supplied:** `label` screens have nothing to answer and can only be crossed by nav-next, so the threshold is (longest run of consecutive `label` screens) + 2. Without `fields` it stays at 2 and false-positives on label-heavy apps (#858). |
 | `score-gated-quiz-over-advance` | Recipe chains a bare `form-advance` between the last required answer and `form-submit` on a **score-gated quiz** (trailing `relevant`-gated result labels, #569). `form-submit.yaml` performs the answer→result advance ITSELF, so the extra advance leaves it tapping `nav_btn_next` on the FINISH-only result screen. Remove the explicit advance (ungated trailing label screens each license one); re-author via `/ace:step app-test-cases` (ace#1118). Field-gated: inert without `fields`, and needs `relevant` on the trailing labels. |
 | `group-field-list-per-question-walk` | Recipe advances the form BETWEEN two children of the same Nova `group`. A group compiles to a CommCare **field-list** — all children render on ONE scrollable screen — so the advance fires with required siblings still unanswered (`warning_root`) and reaches for options that may be off-screen. Re-author via `/ace:step app-test-cases` as a single-screen walk: answer every required child on the one screen, then exactly ONE trailing form-advance (#862). |
+| `input-anchor-skips-hint` | A field-list input focus tap (`tapOn: below:` + `inputText`) anchors on the QUESTION LABEL of a field that carries a `hint`. CommCare renders `label -> hint -> EditText`, so `below: <question label>` resolves to the hint TextView; tapping a TextView moves no focus, the tap reports success, and the value appends into whatever was focused before — **silent data corruption, not a failed leg** (`cbf_name = "Thandiwe Banda0991234567"` with a required `phone_number` empty, `spark-facilitator/20260813-2126`). Anchor on the hint instead, in BOTH the centring scroll and the `below:`; re-author via `/ace:step app-test-cases` (ace#1299 § 1, ace#1554). **Hint-gated:** reads only fields that positively carry a `hint`, so it is a no-op when hints were not supplied (`observed.hint_data_supplied: false`). |
+| `input-focus-scroll-is-guarded` | The centring scroll onto a field-list input's focus anchor is wrapped in `when: notVisible: <that same anchor>`. The real failure is *"anchor visible, its `EditText` still below the fold"*, which that guard is structurally blind to — so no scroll fires and the tap lands off-target. Per ace#1299 § 2 this is "the more important half of the bug" (all 14 inputs of that run, wrong-anchored or not). Make the scroll **unconditional** (`speed: 30`, `centerElement: true`); guarded scrolls stay correct only where the anchor IS the tap target, e.g. an option label (ace#1070). Needs no field data — the defect is pure recipe shape. |
 | `brief-label-drift` | Recipe has a `tapOn:text:"X"` matcher where X matches a PDD-brief naming pattern (`^[LFM]\d+ — `, `^Stage \d+ — `). Nova rewrites these during autobuild and the matcher won't resolve live. Re-author via `/ace:step app-test-cases`: read the live label from Nova `get_form`/`get_module` and use it verbatim. |
 | `deliver-smoke-rewalks-learn` | Re-author the Deliver smoke as resume-only (`connect-resume-opp` → `deliver-launch.yaml`) via `/ace:step app-test-cases`. The Learn leg already completes Learn. |
 
@@ -268,11 +276,24 @@ WARN rather than an unqualified pass:
   `group-field-list-per-question-walk` and
   `answer-tap-before-leading-label-advance` could not fire at all. Name
   the missing `nova_get_form` call.
+- `hint_data_supplied: false` — no supplied field carried a `hint`, so
+  `input-anchor-skips-hint` never ran (ace#1554). Deliberately NOT a
+  `warnings[]` entry: unlike the two below, a `false` here is ambiguous
+  between "the caller omitted hints" and "no question in this app has
+  one", and the latter is a common, legitimately clean state. Report it
+  as a caveat only when the walked forms plausibly carry hints.
 - `module_form_checks_ran: false` — no recipe bound a readable
   `MODULE_NAME`, so `expected-module-not-in-app` and
   `expected-form-not-in-module` never ran (ace#1068). The probe now emits
   this itself as a `module-form-checks-not-run` entry in
   `verdict.warnings[]`, naming the recipe.
+- `module-name-equals-form-name` — a `warnings[]` class, not a failure
+  (ace#1649). `MODULE_NAME == FORM_NAME` makes CommCare render an
+  intermediate one-row form list, which `learn-tap-module.yaml` Branch B and
+  `deliver-form-walk.yaml` branch 2b cross on their own; recipe and palette
+  ship in the same plugin version, so the un-handled state the old failure
+  guarded is not reachable. No action unless the walk actually stalls on a
+  one-row form list carrying the module's own name.
 
 **Copy `verdict.warnings[]` into the verdict YAML verbatim.** Warnings
 never flip `ok` — they qualify a pass. A pass reported without them is
@@ -408,11 +429,86 @@ workstation, not via a placeholder ship. Pre-0.13.165 the skill wrote
 `incomplete` here and Phase 6 shipped without screenshots; that escape
 valve hid real capability gaps behind a yellow verdict.
 
+### Step 3b: Per-run demo test user — OFF BY DEFAULT (ace#1289)
+
+**Skip this entire step unless the switch is on.** Read it once via
+`perRunTestUserEnabled()` (`lib/per-run-test-user.ts`; env var
+`ACE_PER_RUN_TEST_USER`, fails CLOSED on anything but an explicit
+`true`/`1`/`yes`/`on`). Off → Step 3 booted the AVD exactly as it always has,
+registering the fixed `${ACE_E2E_PHONE}`, and Step 4 follows unchanged.
+
+**On**, the device side of the **invite → register → re-invite** sequence runs
+here, in this order, before any recipe:
+
+1. **Recover the run's minted phone** from
+   `run_state.yaml.phases.connect-setup.products.connect.ace_test_user.phone`
+   (Phase 4 Step 7b wrote it, and it is REQUIRED at that boundary when
+   `per_run: true`). Cross-check it against
+   `derivePerRunTestUser(run_state.yaml.run_id)` — they must match; a mismatch
+   means the run id changed under a fork and the recorded value wins, because
+   that is the number Connect actually holds an invite for.
+
+2. **Register it on the device.** Pass the credentials to
+   `mobile_ensure_avd_running` — it takes an OPTIONAL `testUser` override:
+
+   ```
+   mobile_ensure_avd_running({
+     avdName: '${ACE_AVD_NAME}',
+     testUser: { phone, phoneLocal, countryCode, name }   // pin + backupCode stay env-derived
+   })
+   ```
+
+   **No `.env` write, and therefore no Claude Code restart.** That is the whole
+   reason this is a call argument: every MCP server reads `.env` at module load,
+   so an `.env` rewrite would need a full restart to take effect (CLAUDE.md §
+   *MCP changes need a full Claude restart*). Registration already runs on every
+   dispatch — the cold-boot funnel re-registers unconditionally, ~15-25s — so
+   this changes WHICH number registers, not WHETHER one does.
+
+   Local AVD backend only. The cloud backend throws
+   `CLOUD_TEST_USER_OVERRIDE_UNSUPPORTED`; making it work needs
+   `ACE_MOBILE_CLOUD_LIVE_REGISTER=true` plus an ace-web change to forward
+   caller-supplied credentials, and is out of scope.
+
+3. **Re-invite, then GATE on the read-back.** The first invite (Phase 4) could
+   not link an `OpportunityAccess`, because Connect creates that link only at
+   invite time and only for a ConnectID user that already exists
+   (`opportunity/tasks.py`). Now that the user exists, send it again:
+
+   ```
+   connect_send_flw_invite({ organization_slug, opportunity_id, phone_numbers: [phone] })
+   connect_list_flw_invites({ organization_slug, opportunity_id, phone })
+   ```
+
+   Classify the result with `classifyPerRunPostRegistrationGate(match)` and
+   **honour `halt: true` — do not walk.** It requires `connect_user_id !== null`:
+   Connect's mobile opp-list endpoint filters `opportunityaccess__user`, so an
+   access with a null user matches nothing and the opportunity is invisible on
+   the device forever, without self-healing (connect-id `2bd03c4`). Proceeding
+   past this burns a full dispatch discovering zero tiles.
+
+   Record `registered_at` (ISO) alongside the Phase-4 `ace_test_user` block.
+
+**Why this exists, and why it is off.** A fresh user has no accepted invites, so
+the tile list is O(1) instead of O(list-that-grows-forever) — this is the
+durable end of the class #1475 and #1532 only bought headroom against
+(pruning provably cannot reach the accepted In Progress section, see Step 4).
+It stays off because the fresh-signup branch routes through the photo-capture
+surface whose 7 camera ids `mcp/mobile/selectors/connect-2.63.2.yaml` records as
+"deliberately raw pending live calibration", inside a `runFlow.when visible:`
+guard that fails SILENTLY. **The precondition to flip it on:** *the 7 camera ids
+in `connect-register-from-otp.yaml` are calibrated against a live 2.63.2
+`mobile_capture_ui_dump`, and one fresh-signup registration has completed on
+2.63.2.*
+
 ### Step 4: Run static prerequisite recipes
 
 These set up the AVD to the post-claim state the smoke recipes assume:
 
-- `connect-login.yaml` with `${ACE_E2E_PHONE_LOCAL}`, `${ACE_E2E_PIN}`.
+- `connect-login.yaml` with `${ACE_E2E_PHONE_LOCAL}`, `${ACE_E2E_PIN}`. (Only
+  when Step 3b ran — `ACE_PER_RUN_TEST_USER` on, default OFF — substitute the
+  run's minted `phoneLocal` for `${ACE_E2E_PHONE_LOCAL}`; the PIN is unchanged,
+  it is not a per-user secret in the demo range.)
 - `connect-claim-opp.yaml` with **`${OPP_RUN_ID}`** (the deterministic
   tile matcher) read verbatim from `run_state.yaml.run_id`, AND
   `${OPP_NAME}` read verbatim from
@@ -504,11 +600,32 @@ a far worse failure than the slow scroll. Accepted invites are excluded too
 (they represent real workers), and every exclusion comes back with a reason:
 log them, so "we left 3 alone" is a statement with evidence.
 
-The recipes' own scroll budgets are a separate, device-truth matter:
-`connect-resume-opp.yaml` never received the ace#647 recalibration
-(`timeout: 20000`, `visibilityPercentage: 60`, default speed) while
-`connect-claim-opp.yaml` did, and correcting that needs a live re-run to
-green before it merges (#1289).
+**What pruning provably CANNOT reach — record this so nobody re-proposes
+it.** `lib/invite-pruning.ts:88-91` excludes `status: 'accepted'`, so the
+pruner only ever shortens the **New Opportunities** section (~5 tiles of a
+~25-tile steady-state list). The ~20-card **In Progress** section — which
+supplies most of the scroll depth — is structurally unprunable, and
+soft-deactivating prior opps does not remove tiles either (Connect's mobile
+opp-list endpoint has no `active=True` filter — see `skills/sweep-connect`).
+Bounding the list is a real but bounded win; it is not the class fix.
+
+**The class fix is Step 3b, and it is built but switched off.** A per-run demo
+phone gives a user with zero accepted invites, so depth is O(1) by construction
+rather than O(a list nothing can shorten). It is gated on
+`ACE_PER_RUN_TEST_USER` (default OFF) pending one calibration — see Step 3b.
+
+The recipes' own scroll budgets are **already recalibrated and pinned** —
+do not re-litigate them. PR #1475 put `speed: 40` / `timeout: 120000` /
+`visibilityPercentage: 30` on the tile scroll in **both**
+`connect-claim-opp.yaml` and `connect-resume-opp.yaml` (live-proven on
+bednet-check-2-visit/20260814-0357), and
+`test/mcp/mobile/static-recipe-invariants.test.ts §
+"tile-discovery scroll budgets stay in lockstep"` fails if either recipe
+drifts off that shared constant. Each recipe additionally carries a
+fallback re-hunt after its primary tile scroll (claim-opp re-anchors on the
+`home-new-opportunities` section header first, making the second pass
+O(section) instead of O(list)); the same suite pins that too. The residual
+tracked on #1289 is the unbounded list itself, not the budget.
 
 ### Step 5: Run the smoke recipes — two independent legs
 
@@ -644,19 +761,99 @@ broken would still have produced a green Deliver leg.
 
 So **after the Deliver recipe passes**, call
 `connect_get_deliver_progress({ domain, opportunity_id })` and find the ACE
-test user's row. Assert against what the journey actually claims:
+test user's row.
 
-- **`delivered >= 1`** — the visit reached Connect. This is the minimum; a
-  Deliver leg that cannot clear it is `not-delivered-on-connect`, never `pass`.
-- **`approved >= 1`** — a payment unit actually registered. This is the
-  criterion `app-test-cases.yaml` declares (*"one payment unit registers"*),
-  and it is strictly stronger: a delivery can be submitted and then **rejected**
-  by verification, so `delivered` alone does not prove payability. When the
-  journey claims a payment unit, assert this one.
-- **`rejected > 0` with `approved == 0`** → record
-  `delivered-but-rejected` with the counts; the visit reached Connect but
-  failed verification. That is a real finding about the opportunity's
-  verification wiring, NOT a recipe defect — do not retry the walk to "fix" it.
+<!-- deliver-gate:begin — normative block pinned by
+     test/skills/deliver-gate-duration-floor.test.ts (ace#1667).
+     Every Deliver-gate assertion must live INSIDE these markers. -->
+
+**Measure the walk elapsed FIRST — the gate below branches on it.** Take it
+from this run's own frames: `mobile_run_recipe` returns
+`screenshots[].takenAt` (ISO 8601) on every capture, so
+
+```
+walk_elapsed_seconds =
+  takenAt("journey-deliver-submitted")           # the post-submit frame
+  − takenAt("deliver-form-walk-form-question")   # the FIRST Deliver form-question frame
+```
+
+Those are the two frames on the canonical run
+(`hh-poverty-targeting/20260824-1404`). Both labels are **caller-bound**, so
+resolve them per run rather than assuming these literals:
+`deliver-form-walk.yaml` captures
+`deliver-form-walk-form-question${WALK_LABEL}` (so the emitted name carries
+the leg's `WALK_LABEL` suffix), and `form-submit.yaml` captures the
+caller-supplied `${SCREENSHOT_NAME_POST_SUBMIT}` that the per-run
+`journey-deliver` recipe binds. The rule is therefore: **first Deliver
+form-question frame → post-submit frame**, and record which two names you
+measured between.
+
+**Then read the opportunity's duration floor** — the minimum visit duration
+Connect will accept for this deliver unit, in
+`deliver_unit_checks[].duration_minutes` (MINUTES; × 60 for
+`duration_floor_seconds`). **There is no read-back atom for it, and you must
+not invent one:** grep `docs/atom-schemas.md` —
+`connect_set_verification_flags` is the only atom that touches the field and
+it is write-only, and `connect_get_opportunity` reads the opportunity edit
+form merged with the dashboard, neither of which renders the
+verification-flags config. So read the value **this run itself wrote in
+Phase 4**: the `cs-verification-flags` row in the run's `decisions.yaml`,
+corroborated by `4-connect/connect-opp-setup_summary.md`
+(`connect-opp-setup` § Step 5 is the sole writer, and it sets a duration only
+when the PDD states a minimum delivery duration). If neither records one, the
+opportunity has **no** duration floor: `duration_floor_seconds = 0`.
+
+Now assert against the counts:
+
+- **`delivered >= 1` — HARD, unconditional.** The visit reached Connect. This
+  is the real end-to-end proof of the Deliver→Connect path and the floor of
+  the gate; a Deliver leg that cannot clear it is `not-delivered-on-connect`,
+  never `pass`. It is reachable on every opportunity, floor or no floor, so it
+  is never conditional.
+- **`approved >= 1` — CONDITIONAL.** A payment unit actually registered. It is
+  strictly stronger than `delivered` (a delivery can be submitted and then
+  **rejected** by verification), so assert it **only when the walk could
+  physically satisfy the opportunity's own verification rules** — i.e. when
+  `duration_floor_seconds == 0` **or**
+  `walk_elapsed_seconds >= duration_floor_seconds`. Asserting it
+  unconditionally is structurally unreachable on any opportunity whose floor
+  exceeds a machine-speed Maestro walk, and Connect is *correct* to reject
+  such a visit (ace#1667).
+  **This is NOT a criterion `app-test-cases.yaml` declares** — the sentence
+  that used to claim so was false. A Deliver journey's
+  `structural_pass_criteria` are device- and sync-level (`app_boots`,
+  `no_crash`, `submission_confirmed`, and per-opp additions of the same kind
+  such as `daily_visits_counter_non_zero_after_sync`); `approved` and the
+  phrase "one payment unit registers" appear nowhere in the producer skill or
+  in any emitted artifact. Verified —
+  `grep -rn -i "payment unit registers\|approved" skills/app-test-cases/SKILL.md
+  test/fixtures/ACE-Test-001/3-commcare/app-test-cases.yaml` → no matches
+  (exit 1), and the same grep over the
+  `hh-poverty-targeting/20260824-1404` artifact matched only comments
+  (ace#1667). So `approved >= 1` is an extra payability check **this gate**
+  adds, which is exactly why it may be skipped when the opportunity's own
+  configuration makes it unreachable — no journey criterion is being waived.
+- **`rejected > 0` and `approved == 0` and
+  `walk_elapsed_seconds < duration_floor_seconds`** → record
+  **`rejected-by-duration-floor-as-designed`**: a **PASS-with-note**, NOT
+  `delivered-but-rejected`. The verification wiring is working exactly as the
+  PDD specified — an automated walk is faster than a human visit, so it lands
+  under the floor and Connect rejects it by design. Record both numbers
+  (`walk_elapsed_seconds`, `duration_floor_seconds`) plus the counts in the
+  Deliver leg outcome, keep the leg `pass`, and **do not** file a finding, do
+  not retry the walk, and above all **do not relax or remove the duration
+  floor** — that floor is the PDD control this branch exists to protect.
+  Corroborating evidence that the floor is evaluated rather than merely
+  stored: `hh-poverty-targeting/20260824-1404` walked in 287 s against a 360 s
+  floor and Connect returned `{delivered: 1, approved: 0, rejected: 1}`.
+- **`rejected > 0` and `approved == 0` with NO applicable duration floor**
+  (`duration_floor_seconds == 0`, or the walk already cleared it) → record
+  `delivered-but-rejected` with the counts; the visit reached Connect and
+  then failed verification for some other reason. *That* is a real finding
+  about the opportunity's verification wiring, NOT a recipe defect — do not
+  retry the walk to "fix" it.
+
+<!-- deliver-gate:end -->
 
 The device-side `deliver-sync.yaml` gate (the server-derived `Daily Visits`
 counter) stays as the cheap in-recipe check, but it is still the device
@@ -1002,8 +1199,8 @@ navigates), `gh issue create` against `jjackson/ace` proposing the new
 source of truth" rule — one live dump beats another plausible guess.
 
 **After any leg fails**, also re-run the probe with `--yaml-out
-<screenshotDir>/atlas-report.yaml`. This classifies the newest
-`*-FAILURE.xml` three ways (`mapped` / `drift` / `unmapped-surface` /
+<screenshotDir>/atlas-report.yaml`. This classifies a
+`*-FAILURE.xml` four ways (`mapped` / `drift` / `unmapped-surface` /
 `matcher-miss`) and is the machine-readable sibling of the markdown
 report above — copy its `classification` value verbatim into the
 failing step's entry in `per_item[].note` on the Step 9 verdict, so the
@@ -1028,6 +1225,25 @@ classification AND the heal dispatch (or the operator instruction to
 run it) in the step verdict, not just the coverage gap. This applies to
 `unmapped-surface` only; `matcher-miss` and `drift` have the different
 remedies stated above.
+
+**Two more values are NON-verdicts — record them and move on, never heal
+on them** (dimagi-internal/ace#1571):
+
+- `superseded` — the dump is from an attempt a later dispatch of the same
+  recipe already replaced. `*-FAILURE.*` deliberately survives the
+  per-dispatch wipe (#1034), so a leg that fails once and then passes
+  leaves stale forensics sitting next to the passing retry's captures.
+- `non-app-surface` — every node belongs to the home screen or system
+  chrome, so the recipe was not in the app at all. The real finding is
+  "the app was not foregrounded" (force-stopped, crashed, backgrounded by
+  a heal); note that instead, and never author a selector row for it.
+
+Both used to surface as `unmapped-surface` with `needs_tier2: true`, and the
+routing above is scoped to `unmapped-surface` only — so neither may reach
+`selector-map-heal`. On `hh-poverty-targeting/20260819-1435` a **passing**
+Deliver leg asked for a heal against the Android launcher. The probe now
+filters both and names the dumps it dropped in a `skipped:` block; a
+`skipped:` entry is context for the verdict note, not work.
 
 ### Step 7: Thin UX smoke judge
 

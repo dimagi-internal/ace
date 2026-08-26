@@ -8,7 +8,13 @@ import {
 import { patchLlmNodeParams, validatePipeline, getLlmNodeParams, addPipelineNode, linkActionToNode, type PipelinePatchContext } from './pipeline-patch.js';
 import { PipelineValidationError, VersionBadgeUnreadableError } from '../errors.js';
 import type { LlmNodeParams, ClonedChatbot } from '../types.js';
-import { CollectionIndexingTimeoutError, HttpError, OcsError, PipelineShapeError } from '../errors.js';
+import {
+  ChatbotTableShapeError,
+  CollectionIndexingTimeoutError,
+  HttpError,
+  OcsError,
+  PipelineShapeError,
+} from '../errors.js';
 import {
   findUnsupportedCollectionFiles,
   formatUnsupportedFilesError,
@@ -141,29 +147,103 @@ export function assertCollectionPromptInvariant(prompt: string, collectionIds: r
 }
 
 /**
- * Parse the HTMX-rendered `/a/<team>/chatbots/table/` HTML into a
- * `name → experiment_id` map. Each row in the live OCS response has the
- * shape:
- *   `<tr id="record-<int>" data-redirect-url="/a/<team>/chatbots/<int>/">
- *      ... <a href="/a/<team>/chatbots/<int>/" ...>NAME</a> ... </tr>`
- * The `id` attribute is the cheapest reliable signal for the integer; the
- * inner anchor body (trimmed of whitespace) is the canonical chatbot name.
+ * Decode the handful of HTML entities Django's autoescaping emits, plus any
+ * numeric character reference. `&amp;` is decoded LAST so `&amp;lt;` survives
+ * as the literal `&lt;` a chatbot name could genuinely contain.
+ */
+function decodeHtmlEntities(text: string): string {
+  return text
+    .replace(/&#x([0-9a-fA-F]+);/g, (_, hex) => String.fromCodePoint(parseInt(hex, 16)))
+    .replace(/&#(\d+);/g, (_, dec) => String.fromCodePoint(parseInt(dec, 10)))
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&');
+}
+
+/**
+ * One parsed row of the chatbots table. `name` is null when the row's name
+ * chip could not be read — the precise signal of template drift.
+ */
+export interface ChatbotTableRow {
+  experimentId: number;
+  name: string | null;
+}
+
+export interface ChatbotTableParse {
+  rows: ChatbotTableRow[];
+  idsByName: Map<string, number>;
+  /**
+   * Per-row markers seen on the page, independent of whether a name parsed:
+   * `id="record-<int>"` row ids AND `data-redirect-url="/a/<team>/chatbots/…"`
+   * row attributes. Two independent signals, so a page that plainly HAS
+   * chatbot rows stays recognisable as such if either marker moves.
+   */
+  rowMarkerCount: number;
+}
+
+/**
+ * Parse the HTMX-rendered `/a/<team>/chatbots/table/` HTML.
  *
- * Returns an empty map on a malformed or unexpected page. Bots with
- * duplicate names map to whichever row appeared last; OCS treats name as
- * effectively unique per team.
+ * Row shape (django-tables2 + `config/settings.py DJANGO_TABLES2_ROW_ATTRS`):
+ *   `<tr class="…" id="record-<int>" data-redirect-url="/a/<team>/chatbots/<int>/">`
+ * The `id` attribute is the cheapest reliable signal for the integer.
+ *
+ * The NAME lives in the row's first anchor, but the anchor's inner markup is
+ * NOT stable: `ChatbotTable.name` is a `chip_action` rendered by
+ * `templates/generic/action.html`, which since OCS PR #4220 ("Consistent chip
+ * rendering in tables", merged 2026-08-18) includes `generic/chip_label.html`
+ * instead of emitting the label directly — and that same PR turned
+ * `truncate=True` on for this table, so the anchor body is now
+ *   `<span class="min-w-0 truncate" title="NAME">NAME</span>`
+ * where it used to be the bare `NAME`. It can also carry a trailing
+ * `<i class="…"></i>` icon. So: take the anchor's inner HTML, strip tags,
+ * decode entities, trim — which reads BOTH shapes and survives the next
+ * wrapper someone adds. Keying the map on the RAW inner HTML (the pre-ace#1561
+ * behaviour) produced `<span …>NAME</span>` keys that match no REST name, so
+ * every `experiment_id` came back null. See ace#1561.
+ *
+ * Each row's anchor hunt is bounded to that row's own region (up to the next
+ * `id="record-"`), so a row whose name chip is missing entirely is reported as
+ * `name: null` rather than silently stealing the NEXT row's anchor.
+ *
+ * Bots with duplicate names map to whichever row appeared last; OCS treats
+ * name as effectively unique per team.
+ */
+export function parseChatbotTableRows(html: string): ChatbotTableParse {
+  const recordIdRegex = /id="record-(\d+)"/g;
+  const matches = [...html.matchAll(recordIdRegex)];
+  const redirectMarkers = html.match(/data-redirect-url="\/a\/[^"]*\/chatbots\//g)?.length ?? 0;
+
+  const rows: ChatbotTableRow[] = [];
+  const idsByName = new Map<string, number>();
+
+  for (let i = 0; i < matches.length; i++) {
+    const m = matches[i];
+    const id = Number(m[1]);
+    if (!Number.isFinite(id)) continue;
+    const start = (m.index ?? 0) + m[0].length;
+    const end = i + 1 < matches.length ? (matches[i + 1].index ?? html.length) : html.length;
+    const region = html.slice(start, end);
+    const anchor = /<a[\s][^>]*>([\s\S]*?)<\/a>/.exec(region);
+    const name = anchor ? decodeHtmlEntities(anchor[1].replace(/<[^>]*>/g, '')).trim() : '';
+    rows.push({ experimentId: id, name: name || null });
+    if (name) idsByName.set(name, id);
+  }
+
+  return { rows, idsByName, rowMarkerCount: matches.length + redirectMarkers };
+}
+
+/**
+ * `name → experiment_id` map. Pure and non-throwing: an empty map here means
+ * "nothing parsed", which the caller (`fetchExperimentIdsByName`) classifies as
+ * an empty team vs. template drift — it is the only layer that knows the
+ * request actually succeeded.
  */
 export function parseChatbotTable(html: string): Map<string, number> {
-  const map = new Map<string, number>();
-  // Anchor on `id="record-<int>"` then find the first `<a ...>NAME</a>` after
-  // it. `[\s\S]*?` is lazy across newlines so we stop at the first anchor.
-  const rowRegex = /id="record-(\d+)"[\s\S]*?<a [^>]*>([\s\S]*?)<\/a>/g;
-  for (const m of html.matchAll(rowRegex)) {
-    const id = Number(m[1]);
-    const name = m[2].trim();
-    if (name && Number.isFinite(id)) map.set(name, id);
-  }
-  return map;
+  return parseChatbotTableRows(html).idsByName;
 }
 
 /**
@@ -247,7 +327,27 @@ export class PlaywrightBackend {
       throw new Error('RequestResult.text is required for fetchExperimentIdsByName');
     }
     const html = await res.text();
-    return parseChatbotTable(html);
+    const parse = parseChatbotTableRows(html);
+
+    // Fail loud on template drift (ace#1561). This is the only layer that
+    // knows the request SUCCEEDED, so it is the only one that can tell
+    // "unparseable" from "empty". Both look like an empty map downstream, and
+    // conflating them is what made `getChatbot` diagnose a seven-week-old bot
+    // as freshly cloned. A team with no chatbots has no row markers at all and
+    // still returns an empty map without erroring.
+    const unnamed = parse.rows.filter((r) => r.name == null).map((r) => r.experimentId);
+    if (parse.idsByName.size === 0 && parse.rowMarkerCount > 0) {
+      throw new ChatbotTableShapeError(
+        `${parse.rowMarkerCount} row marker(s) present, 0 names parsed.`,
+      );
+    }
+    if (unnamed.length > 0) {
+      throw new ChatbotTableShapeError(
+        `${parse.rows.length} rows found but ${unnamed.length} had no readable name chip ` +
+          `(experiment ids ${unnamed.slice(0, 5).join(', ')}${unnamed.length > 5 ? ', …' : ''}).`,
+      );
+    }
+    return parse.idsByName;
   }
 
   async pipelineIdFor(experimentId: number): Promise<number> {
@@ -973,6 +1073,18 @@ export class PlaywrightBackend {
    * (apps/channels/forms.py:649), so we don't supply one. We pass
    * `allow_all_domains=on` so the widget can be embedded on any origin (ACE's
    * connect-labs chat route will add per-opp domain restrictions later if needed).
+   *
+   * `enabled=on` is REQUIRED and is not optional politeness (ace#1492).
+   * OCS PR #4202 (merged 2026-08-17) added `enabled` to `ChannelForm.Meta.fields`
+   * as an admin kill-switch. It is a Django BooleanField rendered as a checkbox,
+   * and **a checkbox absent from POST data resolves to False** — the model's
+   * `default=True` does NOT apply once the ModelForm owns the field. The channel
+   * is created by `ChannelFormWrapper.save()` -> `ChannelForm.save()`, so every
+   * channel this method created between 2026-08-17 and this fix landed
+   * `enabled=False`, and `ChannelDisabledStage` then dropped every inbound
+   * message. Symptom: a freshly cloned chatbot fails generation with an opaque
+   * error while the golden template and older clones answer fine — the migration
+   * backfilled existing rows to `enabled=True`, so only NEW channels were hit.
    */
   private async createEmbeddedWidgetChannel(experimentId: number, channelName: string): Promise<void> {
     // Note the URL prefix: channel create-dialog lives under /channels/<team>/...
@@ -986,6 +1098,8 @@ export class PlaywrightBackend {
         name: channelName,
         platform: 'embedded_widget',
         allow_all_domains: 'on',
+        // Django checkbox: omitting it means False, not "use the model default".
+        enabled: 'on',
         csrfmiddlewaretoken: this.opts.csrfToken,
       },
       { followRedirects: false, formEncoded: true },
