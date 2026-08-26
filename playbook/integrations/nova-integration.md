@@ -777,6 +777,37 @@ property.)
   `{kind:'user-ref', property}` ·
   `{kind:'user-property-ref', userPropertyUuid}`.
   **A plain string is rejected.**
+- **Two ADJACENT `text` parts are rejected — merge them before sending.**
+  Nova's canonical print merges adjacent text runs, so a `parts` array
+  carrying two `text` atoms in a row re-parses to a *different* array than
+  the one it was handed and the identity round trip fails. The rejection
+  names a REFERENCE problem, which is misleading — the refs are fine:
+
+  ```
+  Field "household_size" … (calculated value) has a reference that doesn't
+  exist in this form: This expression does not survive Nova's canonical
+  identity parse and print round trip.. Nothing was changed.
+  ```
+
+  This bites whenever you build a `parts` array by **wrapping or
+  concatenating onto an existing expression** — the wrapper's prefix text
+  butts up against the original's leading `text` atom. The fix changes no
+  character of the expression, only its segmentation: walk the array and
+  concatenate each run of consecutive `text` parts into one atom. Assert
+  `flatten(spec) === flatten(merged)` before sending, so a merge bug cannot
+  quietly alter semantics. Live on `hh-poverty-targeting/20260824-1404`
+  wrapping six derived fields in `if(<consent field-ref> = 'yes', …, '')`:
+  the unmerged shape was rejected on the first call; merged, all six landed.
+- **`validate_msg` is read as a SIBLING of `validate` and written NESTED
+  inside it — re-nest it or the message is silently dropped.** `get_form`
+  returns `validate` holding only the bare expr (`{parts:[…]}`) with the
+  message alongside it as its own top-level `validate_msg` key, whereas
+  `edit_field`'s `updates.validate` schema carries the message at
+  `validate.msg`. So a read-modify-write that replays a field's own
+  `validate_msg` straight back through `edit_field` posts it in a slot the
+  schema does not read: the expression updates, the message is dropped, and
+  **nothing errors**. Shape it as
+  `updates: {validate: {parts: […], msg: {parts: […]}}}`.
 - **A `hidden` field is rejected unless it carries `calculate` or
   `default_value`.** `calculate` recomputes when a referenced field
   changes; `default_value` is fixed at load.
