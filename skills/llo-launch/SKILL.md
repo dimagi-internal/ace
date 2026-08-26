@@ -15,6 +15,7 @@ Activate the opportunity and notify LLOs that they are live.
 1. **Read inputs from GDrive:**
    - UAT results: `ACE/<opp-name>/runs/<run-id>/9-execution-manager/llo-uat_results.md` (includes archetype)
    - Deployment summary: `ACE/<opp-name>/runs/<run-id>/3-commcare/app-deploy_summary.md` (atomic-visit)
+   - Release summary: `ACE/<opp-name>/runs/<run-id>/3-commcare/app-release_summary.md` — the artifact that owns released `build_id` / `version` / `is_released` per app (Step 4's app-verdict-freshness gate reads this)
    - Opportunity config: `ACE/<opp-name>/runs/<run-id>/4-connect/connect-opp-setup.md`
    - Awarded LLO: `phases.solicitation-management.products.selected_llo` in the current run's `run_state.yaml` (populated by Phase 8 `solicitation-review`)
    - PDD: `ACE/<opp-name>/runs/<run-id>/1-design/idea-to-pdd.md` (fallback archetype source)
@@ -56,11 +57,33 @@ Activate the opportunity and notify LLOs that they are live.
         `deliver_build_id` from
         `6-qa-and-training/app-ux-eval_verdict-deep.yaml`'s
         `artifact_refs:` block, then read
-        `3-commcare/app-deploy_summary.md`'s `releases:` block. The
+        `3-commcare/app-release_summary.md`'s `apps:` frontmatter —
+        `apps.learn_app.build_id` and `apps.deliver_app.build_id`. The
         verdict's build IDs must match the latest released build IDs.
         If either app has been re-released since the verdict was
         written, the screenshots that grounded the eval are out of
         date.
+
+        **Read the artifact that OWNS release state, not a
+        cross-reference to it** (ace#1636, fourth instance of the
+        ace#1010 / #1439 / #1567 class). `app-release` declares
+        `apps.<app>.{hq_app_id, build_id, version, is_released,
+        released_at}` in its `## Products` frontmatter contract
+        (ace#1439); that is where released build IDs live. This gate
+        previously read a `releases:` block appended into
+        `3-commcare/app-deploy_summary.md`, an artifact `app-deploy`
+        owns. That append was skipped on 2 of 2 observed runs
+        (`bednet-check-2-visit/20260820-0832` and `/20260825-1310`)
+        while the release itself was clean, so the gate had nothing to
+        compare against — halting with a factually false `[BLOCKER]`,
+        or silently skipping the staleness check and letting a stale
+        deep app-UX verdict authorize a go-live. The `releases:` block
+        has since been retired.
+
+        If `app-release_summary.md` is missing or carries no
+        `apps.<app>.build_id`, that IS a `[BLOCKER]` — `app-release`
+        contractually owns it, so its absence means the release step
+        genuinely did not complete.
 
    If ANY check fails, halt with `[BLOCKER]` and emit:
 
@@ -344,6 +367,7 @@ Each row this skill writes uses `phase: 9-execution-management` and
 
 | Date | Change | Author |
 |------|--------|--------|
+| 2026-08-26 | **Step 4's app-verdict-freshness gate reads the artifact that OWNS release state (ace#1636).** It read `3-commcare/app-deploy_summary.md`'s `releases:` block — a cross-reference `app-release` appended into `app-deploy`'s artifact at its Step 7. That step was skipped on 2 of 2 observed runs (`bednet-check-2-visit/20260820-0832`, `/20260825-1310`) while the release itself was clean and `app-release_summary.md` carried the full declared frontmatter, so this gate had nothing to compare against: it either halted with a factually false `[BLOCKER]` on a current build, or silently skipped the staleness check — which is worse, because it lets a stale deep app-UX verdict authorize a go-live. Now reads `3-commcare/app-release_summary.md`'s `apps.<app>.build_id`, the frontmatter contract `app-release § Products` declares (ace#1439), and a MISSING release summary is a genuine `[BLOCKER]` because `app-release` contractually owns it. `app-release` Step 7 is deleted with the block; `app-release-eval`'s corroborating leg and its every-run `[WARN]` go with it. Fourth instance of the ace#1010/#1439/#1567 class and the first where the reader was a producer skill, not an `-eval`. *Enforced:* `test/skills/deploy-summary-owns-no-release-state.test.ts`. | ACE team |
 | 2026-05-05 | **Path-scheme migration on the deep-QA gate.** Step 4 verdict reads, error messages, and gate-brief BLOCKER rows now reference `5-ocs/ocs-chatbot-eval_verdict-deep.yaml` and `6-qa-and-training/app-ux-eval_verdict-deep.yaml` (per the manifest); freshness check pulls build IDs from `3-commcare/app-deploy_summary.md`. Wiring fix — the prior `verdicts/...` paths no longer exist on disk, so the gate would always fail with "verdict missing" against current main. No behavior change beyond paths. | ACE team |
 | 2026-05-08 | Add `## Decisions Log` section: 4 anchor rows mapped 1:1 to `llo-launch-eval`'s viability axis (llo-capacity-actual, day-one-readiness, downstream-handoff-alignment, stop-loss-planning) + bar-criterion reference. Pairs with decisions-log PR #4 (Phase 3-10 writes). | ACE team (decisions-log PR #4) |
 | 2026-05-10 | Drop the deferred FLW pre-invite path: `connect-opp-setup` (Phase 4 Step 7) now invites `${ACE_E2E_PHONE}` directly after activating the opp in Phase 4 Step 6.5. Step 6 here is reframed from "activate the opp" to "confirm the opp is active" — the idempotent skip-if-active path is now the canonical case; the active-otherwise branch is a fallback for the rare operator-deactivated case. No behavior change for real-LLO invites (still sent in this skill); behavior change for ACE test-user invites (no longer rescued here). Closes the Phase-6-placeholder-screenshots chicken-and-egg. | ACE team |

@@ -1,0 +1,96 @@
+{
+  "_provenance": {
+    "atom": "get_opportunity_apps(2214, 'deliver')",
+    "issue": "dimagi-internal/ace#1658",
+    "run": "bednet-check-2-visit/20260825-1310",
+    "verbatim": [
+      "/data/net_check/slept_under_net",
+      "/data/net_check/net_visibly_hanging"
+    ],
+    "envelope": "HQ api/v0.5/application/<id>/ shape — {learn_app, deliver_app} wrapper from commcare_connect/data_export/views.py:AppStructureView; modules[].forms[].questions[] with value/type/relevant/required/constraint/is_group per corehq/apps/app_manager/xform.py",
+    "synthesized": [
+      "/data/net_check/nets_in_household is NOT from the observed app — it exists so the Int + constraint derivation path has a fixture. Everything else mirrors the observed deliver app."
+    ]
+  },
+  "learn_app": null,
+  "deliver_app": {
+    "id": "1a2b3c4d5e6f7890abcdef1234567890",
+    "name": "Bednet Check Visit 2 (Deliver)",
+    "modules": [
+      {
+        "name": "Follow-up visit",
+        "case_type": "household",
+        "unique_id": "m0",
+        "forms": [
+          {
+            "name": "Bednet follow-up",
+            "xmlns": "http://openrosa.org/formdesigner/BEDNET-FOLLOWUP",
+            "unique_id": "f0",
+            "questions": [
+              {
+                "label": "Consent",
+                "tag": "group",
+                "value": "/data/agree_again",
+                "type": "Group",
+                "relevant": null,
+                "required": false,
+                "constraint": null,
+                "is_group": true
+              },
+              {
+                "label": "Does the household consent to this visit?",
+                "tag": "select1",
+                "value": "/data/agree_again/consent_confirmed",
+                "type": "Select1",
+                "relevant": null,
+                "required": true,
+                "constraint": null,
+                "is_group": false
+              },
+              {
+                "label": "Net check",
+                "tag": "group",
+                "value": "/data/net_check",
+                "type": "Group",
+                "relevant": null,
+                "required": false,
+                "constraint": null,
+                "is_group": true
+              },
+              {
+                "label": "Did the child sleep under the net last night?",
+                "tag": "select1",
+                "value": "/data/net_check/slept_under_net",
+                "type": "Select1",
+                "relevant": "/data/agree_again/consent_confirmed = 'yes'",
+                "required": true,
+                "constraint": null,
+                "is_group": false
+              },
+              {
+                "label": "Is the net visibly hanging?",
+                "tag": "select1",
+                "value": "/data/net_check/net_visibly_hanging",
+                "type": "Select1",
+                "relevant": "/data/agree_again/consent_confirmed = 'yes'",
+                "required": true,
+                "constraint": null,
+                "is_group": false
+              },
+              {
+                "label": "How many nets are in the household?",
+                "tag": "input",
+                "value": "/data/net_check/nets_in_household",
+                "type": "Int",
+                "relevant": "/data/agree_again/consent_confirmed = 'yes'",
+                "required": true,
+                "constraint": ". >= 1 and . <= 30",
+                "is_group": false
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

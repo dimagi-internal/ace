@@ -20,6 +20,7 @@ import {
   extractFormFieldValues,
   isCheckboxChecked,
   parseOpportunityDashboard,
+  classifyDashboardRead,
   extractDisabledFormFieldNames,
   scopeToFormContaining,
   extractUuidFromPath,
@@ -663,6 +664,12 @@ export class PlaywrightBackend implements ConnectClient {
     // its old meaning — the degrade-path merge, empty when the edit form won —
     // so edit-form precedence is untouched.
     const detail = detailHtmlText ? parseOpportunityDashboard(detailHtmlText) : {};
+    // ace#1637 - say whether the dashboard half ANSWERED, so a caller stops
+    // inferring "not in a program / no budget" from "could not read the
+    // page". 16 of 81 hydrated ai-demo-space rows came back with the
+    // list-page key set only; Step 4a read that as absent and inflated a
+    // live LLO-facing program ceiling by EXPECTED_OPP_BUDGET x 10 every run.
+    const dashboardRead = classifyDashboardRead(detailHtmlText);
     const dash = editDenied ? detail : {};
 
     // The edit form's `active` checkbox is authoritative when we have it; the
@@ -745,6 +752,7 @@ export class PlaywrightBackend implements ConnectClient {
       // program matches on this name and must treat a name that is not unique
       // in the org as unknown rather than guessing.
       program_name: detail.program_name,
+      dashboard_read: dashboardRead,
       learn_app: learnAppId
         ? { cc_domain: learnAppDomain, cc_app_id: learnAppId, name: '' }
         : undefined,

@@ -323,6 +323,38 @@ retry tax.
   applies the polish pass automatically — don't expect a useful
   dashboard from a raw `create_from_template`.
 
+- **A timed-out `workflow_patch_render_code` does NOT apply — re-fetch,
+  do not assume a partial write.** Observed on
+  `bednet-check-2-visit/20260825-1310`: the call timed out, a `workflow_get`
+  showed `render_code_version` unmoved, and a single full
+  `workflow_update_render_code` then succeeded. The timeout is unambiguous
+  rather than a possible half-application, so the recovery is
+  **re-fetch → re-derive the patch against what is actually there → retry**,
+  never "assume the search string already got replaced". Assuming partial
+  application is how a retry turns into an `AMBIGUOUS_MATCH` chase against a
+  file that never changed. (ace#1662, secondary observation.)
+
+- **A workflow's `render_code` is invisible to labs' Tailwind purge.** labs
+  builds its bundle by scanning its own Django templates; `render_code`
+  lives in the database and is never scanned, so any utility labs does not
+  itself use is dropped from the shipped CSS — silently, because a missing
+  utility degrades to the unstyled baseline (`bg-*` → transparent, `text-*`
+  → inherited near-black, `border-*` → default grey, `h-*` → 0px) rather
+  than erroring. The purge is per-UTILITY, not per-family (`text-slate-700`
+  ships while `bg-slate-400` and `border-slate-400` do not), `border-*` and
+  `text-*` do not mirror `bg-*`, and arbitrary values are not categorically
+  blocked (`text-[11px]` ships, `min-w-[52px]` does not). ACE's preventer is
+  the authoring-time lint `scripts/check-render-code-utilities.ts` (over
+  `lib/tailwind-utility-resolution.ts`), wired into
+  `skills/demo-data-setup` step 3b, `skills/synthetic-workflow-seed`
+  § Utility-resolution gate, and `skills/synthetic-workflow-polish` step 3.
+  Root cause is tracked upstream as **connect-labs#1294**; the ACE-side lint
+  earns its keep regardless, because the available set drifts whenever labs
+  changes its own UI. Check against ENUMERATED CSS RULES, never computed
+  styles — `text-*` and `border-*` inherit `currentColor`, so a
+  computed-style probe returns a plausible colour for a utility that does
+  not exist and yields false passes. (ace#1662.)
+
 - **`award_response` succeeded but `opp.yaml.selected_llo` is null.**
   The labs `award_response` call is server-side authoritative for the
   award, but the ACE-side write to `opp.yaml.selected_llo` is the
@@ -366,3 +398,4 @@ retry tax.
 | 2026-05-09 | `## Synthetic-manifest schema gotchas` added — captures the 5-retry tax observed on `leep-paint-collection` run `20260509-1448`; conform on first attempt to skip it |
 | 2026-05-28 | Replaced the stdio→HTTP proxy with a native `type: "http"` entry + `headersHelper` (`scripts/labs-auth-headers.mjs`). Proxy retained as one-line-revert fallback pending production validation. Requires Claude Code ≥ 2.1.141. |
 | 2026-05-28 | Native path confirmed in production (live `labs_context` returned the real org tree via headersHelper); removed the retired stdio proxy (`connect-labs-server.ts` + its tests). Restore from git history if a revert is ever needed. |
+| 2026-08-26 | `## Troubleshooting` gains the two `render_code` findings from `bednet-check-2-visit/20260825-1310` (ace#1662): a timed-out `workflow_patch_render_code` does not apply (re-fetch before retrying), and `render_code` is invisible to labs' Tailwind purge (ACE preventer: `scripts/check-render-code-utilities.ts`; root cause upstream as connect-labs#1294). |

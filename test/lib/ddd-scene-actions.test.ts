@@ -58,7 +58,12 @@
  */
 import { describe, it, expect } from 'vitest';
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
-import { checkSceneActions } from '../../lib/ddd-scene-actions.js';
+import {
+  checkSceneActions,
+  checkSceneCardinality,
+  datasetShapeFromRecordCounts,
+  MIN_CARDINALITY,
+} from '../../lib/ddd-scene-actions.js';
 
 const scene = (over: Record<string, unknown> = {}) => ({
   title: 'a scene',
@@ -353,6 +358,28 @@ describe('remediation vocabulary is expressible in canopy (#1660, #1519)', () =>
     expect(VOCABULARY.has('offset')).toBe(false);
   });
 
+  // ace#1670's findings go through the SAME audit. They name no canopy key at
+  // all — the remediation is "change the demonstration or regenerate" — so any
+  // `identifier:` appearing in one is either an invented spec key or prose that
+  // wants a dash. That is exactly the lesson #1660 failed to carry forward, and
+  // the only way it carries to a check written after it is to audit that one too.
+  it('names no key canopy does not accept, in the cardinality findings either', () => {
+    const cardinality = [
+      ...checkSceneCardinality([{ title: 'filter the roster' }], { rows: 5 }).findings,
+      ...checkSceneCardinality([{ title: 'the trend over time' }], undefined).findings,
+      ...checkSceneCardinality([{ title: 'compare the sites' }], { groups: 2 }).findings,
+    ];
+    expect(cardinality.length).toBeGreaterThan(0);
+    for (const f of cardinality) {
+      for (const [, key] of f.detail.matchAll(/([a-z_][a-z0-9_]*):/g)) {
+        expect(
+          VOCABULARY.has(key),
+          `finding "${f.kind}" names "${key}:" — not canopy vocabulary (ace#1660).\n  detail: ${f.detail}`,
+        ).toBe(true);
+      }
+    }
+  });
+
   // Drift guard, local-only: when canopy IS installed, re-derive the pin from
   // its models rather than trusting a comment. Skipped in CI, which has no
   // plugin cache.
@@ -404,5 +431,195 @@ describe('checkSceneActions reporting', () => {
 
   it('is inert on a scene with no actions', () => {
     expect(checkSceneActions([{ title: 'static', actions: [] }]).ok).toBe(true);
+  });
+});
+
+/**
+ * ace#1670 — the demonstration was impossible on the data.
+ *
+ * bednet-check-2-visit/20260825-1310 authored a filter scene over a
+ * **five-worker** cohort. Nothing checked the scene's premise against the
+ * dataset's shape: `realized.json` is a flat URL map by design and
+ * `products.synthetic.source` carried no counts, so `demo-narrative` could not
+ * tell a filter over 5 rows from one over 500. `checkSceneActions` passed it
+ * (the action is well-formed), `scripts.ddd.validate` passed it (the spec is
+ * valid), and the concept judge caught it after a full render — four
+ * iterations in, ending the loop `stopped_not_converged` at concept 3.0.
+ *
+ * The generator's own response had the answer before the first frame:
+ * `record_counts` = `{opportunity: 1, user_visits: 276, user_data: 5,
+ * completed_works: 0, completed_module: 0}`.
+ */
+describe('checkSceneCardinality (#1670)', () => {
+  // The actual failing shape, verbatim from the run's
+  // synthetic_generate_from_manifest response (quoted in the issue).
+  const BEDNET_RECORD_COUNTS = {
+    opportunity: 1,
+    user_visits: 276,
+    user_data: 5,
+    completed_works: 0,
+    completed_module: 0,
+  };
+
+  // A filter demonstration in the form the run authored it: a control-prefixed
+  // click (so `checkSceneActions` is clean) gated on a post-state count (so the
+  // gate check is clean too). Every existing gate reports green on this scene —
+  // only its PREMISE is wrong.
+  const filterScene = {
+    title: 'narrow the roster to who needs a look',
+    actions: [
+      { kind: 'click', target: 'testid:filter-needs-attention' },
+      { kind: 'wait_for', target: 'text:Showing 2 of 5 workers' },
+    ],
+  };
+
+  it('is invisible to the checks that already exist', () => {
+    expect(checkSceneActions([filterScene]).ok).toBe(true);
+  });
+
+  it('flags the bednet filter demo over the 5-worker cohort', () => {
+    const shape = datasetShapeFromRecordCounts(BEDNET_RECORD_COUNTS);
+    expect(shape.rows).toBe(5);
+
+    const r = checkSceneCardinality([filterScene], shape);
+    expect(r.ok).toBe(false);
+    const f = r.findings.find((x) => x.kind === 'insufficient-cardinality')!;
+    expect(f, JSON.stringify(r.findings)).toBeTruthy();
+    expect(f.scene).toBe('narrow the roster to who needs a look');
+    // It must say what it has, what it needs, and which axis.
+    expect(f.detail).toContain('5');
+    expect(f.detail).toContain(String(MIN_CARDINALITY.rows));
+    expect(f.detail).toMatch(/rows/);
+    // ...and both actionable branches from the issue.
+    expect(f.detail, 'the change-the-demonstration branch').toMatch(/pick a demonstration/i);
+    expect(f.detail, 'the regenerate branch').toMatch(/regenerate with a larger cohort/i);
+  });
+
+  it('passes the SAME scene over a plausible large cohort', () => {
+    const r = checkSceneCardinality(
+      [filterScene],
+      datasetShapeFromRecordCounts({ ...BEDNET_RECORD_COUNTS, user_data: 240 }),
+    );
+    expect(r.ok, JSON.stringify(r.findings)).toBe(true);
+  });
+
+  it('reads only what record_counts can answer, and leaves the rest unknown', () => {
+    // `user_data` is the one entity population in the response. `user_visits`
+    // is the fact table those rows aggregate; `completed_*` are counters;
+    // `opportunity` is the container. None of them is a period or a group, and
+    // inventing one from 276 visits is precisely the mistake this guards.
+    const shape = datasetShapeFromRecordCounts(BEDNET_RECORD_COUNTS);
+    expect(shape).toEqual({ rows: 5 });
+    expect(datasetShapeFromRecordCounts(undefined)).toEqual({});
+  });
+
+  it('lets the caller override rows for a surface that enumerates something else', () => {
+    // The dashboard that lists 276 visit rows is not the dashboard that lists
+    // 5 workers, and only the skill that authored it knows which.
+    const shape = datasetShapeFromRecordCounts(BEDNET_RECORD_COUNTS, { rows: 276 });
+    expect(shape.rows).toBe(276);
+    expect(checkSceneCardinality([filterScene], shape).ok).toBe(true);
+  });
+
+  // The issue's explicit second axis: "A trend demo over 276 visits but 1 week
+  // of dates is the same defect with a different axis." A dataset can be large
+  // on the axis the scene does not need.
+  it('flags a trend on PERIODS even when the row count is generous', () => {
+    const trendScene = {
+      title: 'coverage trend over time',
+      actions: [{ kind: 'wait_for', target: 'testid:coverage-trend' }],
+    };
+    const r = checkSceneCardinality([trendScene], { rows: 276, periods: 1, groups: 4 });
+    const f = r.findings.find((x) => x.kind === 'insufficient-cardinality')!;
+    expect(f, JSON.stringify(r.findings)).toBeTruthy();
+    expect(f.detail).toMatch(/periods/);
+    expect(f.detail).toContain(String(MIN_CARDINALITY.periods));
+    // And the generous row count did NOT excuse it.
+    expect(r.findings.filter((x) => /rows/.test(x.detail))).toHaveLength(0);
+  });
+
+  it('passes a trend once the series is long enough to show a turn', () => {
+    const trendScene = {
+      title: 'coverage trend over time',
+      actions: [{ kind: 'wait_for', target: 'testid:coverage-trend' }],
+    };
+    expect(checkSceneCardinality([trendScene], { rows: 276, periods: 8, groups: 4 }).ok).toBe(true);
+  });
+
+  it('flags a comparison of two groups, and passes three', () => {
+    const compareScene = {
+      title: 'compare the three sites',
+      actions: [{ kind: 'click', target: 'testid:site-breakdown' }],
+    };
+    expect(checkSceneCardinality([compareScene], { rows: 40, periods: 8, groups: 2 }).ok).toBe(
+      false,
+    );
+    expect(
+      checkSceneCardinality([compareScene], { rows: 40, periods: 8, groups: 3 }).ok,
+      JSON.stringify(checkSceneCardinality([compareScene], { rows: 40, periods: 8, groups: 3 })),
+    ).toBe(true);
+  });
+
+  // Silence on an unknown axis IS the ace#1670 failure — the skill had no
+  // cardinality input at all and authored the scene anyway.
+  it('flags a demonstration whose axis the handoff does not carry', () => {
+    const r = checkSceneCardinality([filterScene], undefined);
+    expect(r.ok).toBe(false);
+    expect(r.findings.map((f) => f.kind)).toContain('unknown-cardinality');
+    expect(r.findings[0].detail).toMatch(/record_counts/);
+  });
+
+  it('flags only the missing axis when the others are known', () => {
+    const trendScene = {
+      title: 'the recovery trajectory week over week',
+      actions: [{ kind: 'wait_for', target: 'testid:muac-trajectory' }],
+    };
+    const r = checkSceneCardinality([trendScene], { rows: 40 });
+    expect(r.findings.map((f) => f.kind)).toEqual(['unknown-cardinality']);
+    expect(r.findings[0].detail).toMatch(/periods/);
+  });
+
+  it('is inert on a scene that demonstrates none of the three', () => {
+    const r = checkSceneCardinality(
+      [
+        {
+          title: 'the programme at a glance',
+          actions: [
+            { kind: 'scroll_to', target: 'text:Coverage' },
+            { kind: 'wait_for', target: 'text:Showing 9 of 20 facilitators' },
+          ],
+        },
+      ],
+      { rows: 1, periods: 1, groups: 1 },
+    );
+    expect(r.ok, JSON.stringify(r.findings)).toBe(true);
+  });
+
+  // The vocabulary is deliberately tight, and these are the words left OUT on
+  // purpose. `top` is a `scroll` target and `weekly` is half the labs template
+  // names — either in the pattern would fire this check on scenes that
+  // demonstrate nothing of the kind, and a checker that cries wolf is the
+  // ace#1660 failure repeated. This pins the omissions so a later "let's widen
+  // the regex" pass has to argue with a test.
+  it('does not read ordinary spec syntax or template names as demonstrations', () => {
+    for (const s of [
+      { title: 'the payment rules', actions: [{ kind: 'scroll_to', target: 'top' }] },
+      { title: 'the LLO weekly review', actions: [{ kind: 'wait_for', target: 'testid:llo-weekly-review' }] },
+      { title: 'open the dashboard', actions: [{ kind: 'goto', target: '${llo_review_par_url}' }] },
+      { title: 'a scene', actions: [{ kind: 'wait_for', target: 'text:Showing 9 of 20' }] },
+    ]) {
+      const r = checkSceneCardinality([s], { rows: 1, periods: 1, groups: 1 });
+      expect(r.ok, `${s.title} -> ${JSON.stringify(r.findings)}`).toBe(true);
+    }
+  });
+
+  it('reports the same shape as checkSceneActions', () => {
+    const r = checkSceneCardinality([filterScene], { rows: 5 });
+    expect(Object.keys(r).sort()).toEqual(['findings', 'ok']);
+    expect(Object.keys(r.findings[0]).sort()).toEqual(['detail', 'kind', 'scene']);
+  });
+
+  it('is inert on an empty scene list', () => {
+    expect(checkSceneCardinality([], undefined).ok).toBe(true);
   });
 });

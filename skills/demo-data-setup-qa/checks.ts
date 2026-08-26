@@ -24,6 +24,11 @@
  */
 
 import type { QACheckResult } from '../../lib/qa-types';
+import type {
+  ConstraintReport,
+  ScrubReport,
+  UnparsedExpression,
+} from '../../lib/dataset-constraints';
 
 /** Templates whose workflows are PROGRAM-owned (cross-opp rollups). */
 const PROGRAM_OWNED_TEMPLATES = ['program_admin_report', 'audit_par'];
@@ -249,4 +254,127 @@ export function checkInteractiveRunsLive(pairs: DashboardPayloadPair[]): QACheck
       'and complete every other dashboard\'s run as usual. The interactive dashboard trades snapshot ' +
       'stability for a page the reviewer can actually act on; the rest keep it (dimagi-internal/ace#1162).',
   };
+}
+
+// ── #1658: check 9's spec is DERIVED, and its auto-fix is one that exists ──
+
+/**
+ * Check 9 (`dataset_obeys_pdd_constraints`) as a pure function.
+ *
+ * Two defects it closes, both measured on `bednet-check-2-visit` (ace#1658):
+ *
+ * 1. **The spec was author-supplied**, so under-declaring it produced a false
+ *    green. `20260817-1720` recorded `pass` with `conditionalFields: []` and
+ *    the justification "no conditional blocks" — while
+ *    `get_opportunity_apps(2214, 'deliver')` returned two `relevant`
+ *    expressions verbatim. `20260825-1310`, same opp / app / generator,
+ *    declared them and measured 18 of 276 off-branch on each. So the spec now
+ *    comes from `specFromDeliverApp`, and this check REFUSES a run that has
+ *    no derivation behind it: a `derivation` of `null` is only legal with a
+ *    stated reason (the `denovo` provider has no deliver app to read).
+ *
+ * 2. **The old auto-fix was impossible.** "Regenerate with the constraint
+ *    applied at the manifest" names a knob the labs generator does not have —
+ *    `BeneficiaryCohort` in
+ *    `connect_labs/labs/synthetic/generator/fixtures/manifest.py` carries no
+ *    conditional / relevant / branch primitive, and `FieldDistribution.null_rate`
+ *    is unconditional. So a gated form could only reach green by narrowing the
+ *    spec or hand-patching records. The hint now points at
+ *    `scrubOffBranchFields` — a declared, reproducible, idempotent generator
+ *    post-step.
+ *
+ * An unparsed `relevant` is a FINDING, not a silent pass: an expression the
+ * derivation could not read is a gate this check cannot prove was audited.
+ */
+export interface DatasetConstraintCheckInput {
+  /**
+   * `specFromDeliverApp(get_opportunity_apps(<opp>, 'deliver'))`, or `null`
+   * when the demo has no deliver app to derive from.
+   */
+  derivation: { unparsed: UnparsedExpression[]; questionsSeen: number; gatesParsed: number } | null;
+  /** Required when `derivation` is null — why no app was read (e.g. provider `denovo`). */
+  noDeliverAppReason?: string;
+  /** The scrub actually applied to the fixture before the dashboards read it. */
+  scrub?: ScrubReport;
+  /** `auditDataset` over the records as they now stand. */
+  report: ConstraintReport;
+}
+
+const SCRUB_HINT =
+  'Re-run the branch scrub, do not narrow the spec: scrubOffBranchFields(records, spec.conditionalFields) ' +
+  'from lib/dataset-constraints.ts, then write the scrubbed user_visits.json back to the opp\'s fixture ' +
+  'folder BEFORE any dashboard run is minted, and record the per-field counts in the run summary. There is ' +
+  'no manifest-side remedy: the labs generator has no conditional/relevant primitive, so a gated form ' +
+  'always draws off-branch values (dimagi-internal/ace#1658).';
+
+export function checkDatasetObeysPddConstraints(input: DatasetConstraintCheckInput): QACheckResult {
+  const problems: string[] = [];
+  const hints: string[] = [];
+
+  if (!input.derivation) {
+    if (!input.noDeliverAppReason?.trim()) {
+      problems.push(
+        'no spec derivation and no stated reason — the spec would be hand-declared from prose, which is ' +
+          'the false-green shape this check exists to close',
+      );
+      hints.push(
+        'derive the spec with specFromDeliverApp(get_opportunity_apps(<connect opp>, \'deliver\')); if this ' +
+          'demo genuinely has no deliver app (provider denovo), state that as noDeliverAppReason.',
+      );
+    }
+  } else if (input.derivation.questionsSeen === 0) {
+    problems.push(
+      'the deliver app returned 0 questions, so conditionalFields / integerFields were derived from nothing',
+    );
+    hints.push(
+      're-fetch get_opportunity_apps(<connect opp>, \'deliver\') and confirm deliver_app is non-null before ' +
+        'auditing; an empty app derives an empty spec, and an empty spec measures zero violations.',
+    );
+  }
+
+  const unparsed = input.derivation?.unparsed ?? [];
+  if (unparsed.length > 0) {
+    problems.push(
+      `${unparsed.length} expression(s) could not be derived into the spec, so those gates were NOT audited: ` +
+        unparsed.map((u) => `${u.field} [${u.kind}] ${u.expression}`).join('; '),
+    );
+    hints.push(
+      'hand-declare each unparsed gate as an ADDITION (mergeDatasetSpecs(derived, additions)) — never as a ' +
+        'replacement for the derived spec — then re-run the scrub and the audit.',
+    );
+  }
+
+  if (input.scrub?.unresolvedFields.length) {
+    problems.push(
+      `the branch scrub could not locate ${input.scrub.unresolvedFields.join(', ')} in any record, so those ` +
+        'fields were never scrubbed',
+    );
+    hints.push(
+      'check the fixture nesting against the app XPath — the scrub resolves a field by XPath suffix, and a ' +
+        'field it cannot find is reported rather than silently counted as clean.',
+    );
+  }
+
+  if (!input.report.ok) {
+    problems.push(
+      `${input.report.violations.length} constraint class(es) violated across ${input.report.total} records: ` +
+        input.report.violations.map((v) => `[${v.kind}] ${v.count} of ${input.report.total} — ${v.field}`).join('; '),
+    );
+    hints.push(SCRUB_HINT);
+  }
+
+  if (problems.length === 0) {
+    const derivedNote = input.derivation
+      ? `spec derived from ${input.derivation.questionsSeen} question(s), ${input.derivation.gatesParsed} gate(s)`
+      : `no deliver app (${input.noDeliverAppReason})`;
+    const scrubNote = input.scrub
+      ? `; branch scrub cleared ${input.scrub.totalCleared} off-branch value(s)`
+      : '';
+    return {
+      pass: true,
+      detail: `0 violations across ${input.report.total} records (measured) — ${derivedNote}${scrubNote}`,
+    };
+  }
+
+  return { pass: false, detail: problems.join('; '), auto_fix_hint: hints.join(' ') };
 }

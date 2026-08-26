@@ -71,6 +71,31 @@
  * for a system it does not own — which is why the remediation vocabulary is
  * now pinned by a test (see `test/lib/ddd-scene-actions.test.ts`).
  *
+ * ## #1670 — the demonstration was impossible on the data
+ *
+ * Different failure, same shape: the spec is structurally perfect and
+ * semantically empty. On bednet-check-2-visit/20260825-1310 a scene filtered a
+ * **five-worker** cohort. Filtering 5 rows removes at most 4 of them, so the
+ * before-frame and the after-frame are the same screenshot minus a line or two
+ * and the demonstration has no observable effect. Every existing gate passed
+ * it — the action is well-formed (`checkSceneActions`), the spec is valid
+ * (`scripts.ddd.validate`) — and it was only caught by the concept judge after
+ * a full render, four iterations in, ending the loop `stopped_not_converged`
+ * at concept 3.0.
+ *
+ * The two numbers that decide it existed before the first frame was recorded:
+ * the generator's own `synthetic_generate_from_manifest` response carried
+ * `record_counts` = `{opportunity: 1, user_visits: 276, user_data: 5, ...}`.
+ * `demo-narrative` simply had no cardinality input — `realized.json` is a flat
+ * URL map by design, and `products.synthetic.source` carried no counts. So the
+ * skill could not tell a filter over 5 rows from one over 500.
+ *
+ * `checkSceneCardinality` is that check: each demonstration verb needs a
+ * MINIMUM cardinality on a specific axis to be observable, and the axis it
+ * needs is not always the axis the dataset is big on — 276 visits spread over
+ * one week is a trend demo with nothing to plot, on the same dataset where a
+ * worker filter has nothing to filter.
+ *
  * ## Scope
  *
  * The RUNTIME halves belong in canopy's walkthrough runner — resolving an
@@ -95,7 +120,11 @@ export interface DddScene {
 export type SceneFindingKind =
   | 'ambiguous-text-target'
   | 'non-discriminating-gate'
-  | 'mutation-without-restore';
+  | 'mutation-without-restore'
+  /** #1670 — the demonstration needs more cardinality than the data has. */
+  | 'insufficient-cardinality'
+  /** #1670 — the axis this demonstration depends on is not in the handoff. */
+  | 'unknown-cardinality';
 
 export interface SceneFinding {
   kind: SceneFindingKind;
@@ -209,6 +238,226 @@ export function checkSceneActions(scenes: DddScene[]): SceneReport {
         }
       }
 
+    }
+  }
+
+  return { ok: findings.length === 0, findings };
+}
+
+/* ────────────────────────── #1670 — cardinality ────────────────────────── */
+
+/**
+ * The three axes a demonstration can need. Which one a verb needs is the whole
+ * point — a dataset can be large on one axis and empty on another, and the
+ * scene only cares about the axis its own demonstration acts on.
+ *
+ * - `rows`    — entities the surface enumerates one line per; what a filter,
+ *               a search, or a sort acts on.
+ * - `periods` — distinct time buckets the data spans; what a trend plots.
+ * - `groups`  — distinct groups (LLOs, sites, cohorts, arms) a comparison
+ *               contrasts.
+ */
+export type CardinalityAxis = 'rows' | 'periods' | 'groups';
+
+/**
+ * The realized dataset's shape, per axis. Sourced from the generator's own
+ * numbers via `demo-data-setup` — see `datasetShapeFromRecordCounts` for what
+ * `record_counts` can and cannot answer.
+ *
+ * An axis left `undefined` is UNKNOWN, not zero, and produces an
+ * `unknown-cardinality` finding rather than silence: silence on an unknown
+ * axis is precisely the ace#1670 failure, where the skill had no cardinality
+ * input at all and authored the scene anyway.
+ */
+export interface DatasetShape {
+  rows?: number;
+  periods?: number;
+  groups?: number;
+}
+
+/**
+ * Minimum cardinality per axis for the demonstration to be OBSERVABLE. Each is
+ * derived from what has to be visible in a captured frame, not picked to fit
+ * the one run that failed.
+ */
+export const MIN_CARDINALITY: Readonly<Record<CardinalityAxis, number>> = {
+  /**
+   * **12 rows for a filter / search / sort.**
+   *
+   * Principle: a filter demonstration is observable only if BOTH frames read
+   * as lists AND the difference between them registers without counting. So
+   * the after-state must still be a list (≥3 rows — two rows read as a pair,
+   * one reads as an empty state), and the filter must remove enough rows that
+   * the change is legible at a glance rather than a diff (~8 rows, roughly a
+   * third of a table's visible height at 1280x800, is the smallest drop a
+   * viewer registers as "the list got shorter"). 3 + 8 = 11, rounded to 12 —
+   * about one screenful of a dashboard table before it scrolls.
+   *
+   * The observed failure was 5, but 5 is not the rule: at 5 rows the maximum
+   * possible removal is 4 and the after-state is 1-2 lines, so it fails both
+   * halves at once. A 9-row cohort fails the second half alone and is just as
+   * unwatchable.
+   */
+  rows: 12,
+  /**
+   * **4 periods for a trend.**
+   *
+   * Principle: a trend claim is a claim about DIRECTION, and the narration
+   * always names a turn ("it was flat, then the coaching landed"). Two points
+   * are a line with no shape; three can show one change of direction but leave
+   * no baseline before it; four is the smallest series carrying a baseline,
+   * the turn, and a period after it — i.e. the smallest series where the claim
+   * is READ off the plot rather than asserted over it. Below 4, the honest
+   * scene is a single-value callout, not a trend.
+   */
+  periods: 4,
+  /**
+   * **3 groups for a comparison.**
+   *
+   * Principle: with two groups one is always above the other, so the ordering
+   * is the only possible outcome and carries no information about whether
+   * being behind is unusual. Three is the smallest set where a comparison
+   * shows a DISTRIBUTION — one group visibly off the pace of the others —
+   * which is what "this site needs attention" actually claims.
+   */
+  groups: 3,
+};
+
+/**
+ * Which axis each demonstration verb needs, and the vocabulary that names it.
+ *
+ * Derived from the scene the same way `checkSceneActions` derives its verbs —
+ * from the words in the declared action targets (any recorder prefix stripped)
+ * — plus the scene's own `title`, which is the author's name for the
+ * demonstration and often the only readable place the verb appears when the
+ * control is an opaque id like `testid:f1`.
+ *
+ * The vocabulary is deliberately TIGHT. A word that also occurs as ordinary
+ * spec syntax or dashboard chrome must not be in it: `top` is a `scroll`
+ * target, `weekly` is half the labs template names (`llo_weekly_review`), and
+ * either would fire this check on scenes that demonstrate nothing of the kind.
+ * Missing a demonstration costs one un-flagged scene; inventing one costs the
+ * author's trust in every flag after it.
+ */
+const DEMONSTRATION_VERBS: ReadonlyArray<{
+  axis: CardinalityAxis;
+  verb: string;
+  pattern: RegExp;
+}> = [
+  {
+    axis: 'rows',
+    verb: 'filter / search / sort',
+    pattern: /\b(filter|filters|filtered|filtering|search|searches|searched|sort|sorts|sorted|narrow|narrows|narrowed|refine|refines|refined|shortlist)\b/i,
+  },
+  {
+    axis: 'periods',
+    verb: 'trend',
+    pattern: /\b(trend|trends|trending|trajectory|timeline|progression|over time|week[- ]over[- ]week|month[- ]over[- ]month|recovery curve)\b/i,
+  },
+  {
+    axis: 'groups',
+    verb: 'comparison',
+    pattern: /\b(compare|compares|compared|comparison|versus|vs|benchmark|benchmarks|leaderboard|ranking|rankings|side[- ]by[- ]side)\b/i,
+  },
+];
+
+/**
+ * The generator's `record_counts`, read honestly.
+ *
+ * `synthetic_generate_from_manifest` returns e.g.
+ * `{opportunity: 1, user_visits: 276, user_data: 5, completed_works: 0,
+ *   completed_module: 0}`. Only ONE of those keys is an entity population a
+ * dashboard enumerates one row per: `user_data` (the worker cohort — the five
+ * workers of ace#1670). `user_visits` is the FACT table those rows aggregate,
+ * `completed_works` / `completed_module` are progress counters, and
+ * `opportunity` is the container. So:
+ *
+ * - `rows` is answerable, and defaults to `user_data`.
+ * - `periods` and `groups` are **NOT answerable from `record_counts`** — the
+ *   response carries no dates and no grouping. They come from the generator
+ *   MANIFEST (`demo-data-setup_manifest.yaml`: the `timeline` week span, and
+ *   the number of opportunities / LLO cohorts), which `demo-data-setup`
+ *   resolves and persists alongside the counts. Pass them via `known`.
+ *
+ * `known` also overrides `rows` — a dashboard that enumerates visits rather
+ * than workers has 276 rows, not 5, and only the skill that authored the
+ * dashboard knows which population it lists.
+ */
+export function datasetShapeFromRecordCounts(
+  recordCounts: Record<string, number> | undefined,
+  known: DatasetShape = {},
+): DatasetShape {
+  const rows = recordCounts?.user_data;
+  const shape: DatasetShape = {};
+  if (typeof rows === 'number') shape.rows = rows;
+  for (const axis of ['rows', 'periods', 'groups'] as const) {
+    if (typeof known[axis] === 'number') shape[axis] = known[axis];
+  }
+  return shape;
+}
+
+/**
+ * Flag any scene whose demonstration needs more cardinality than the realized
+ * dataset has (ace#1670).
+ *
+ * **This FLAGS, it does not reject** — and the distinction is deliberate. The
+ * rule reads the data's shape but not the dashboard's rendering, so it cannot
+ * know for certain WHICH population a given surface enumerates; a scene over a
+ * 5-worker cohort may legitimately be filtering 276 visit rows. Refusing a
+ * legal spec on a heuristic that can be wrong about the population is the
+ * ace#1238 failure class — a guard predicting a rejection and blocking correct
+ * work. A flag costs the author one decision and moves the discovery from
+ * "four render iterations in" to "before the first frame". The skill's
+ * contract is that every flag is RESOLVED explicitly — the demonstration
+ * changes, the data is regenerated, or the author records which population the
+ * surface actually lists — never silently carried past.
+ */
+export function checkSceneCardinality(
+  scenes: DddScene[],
+  shape: DatasetShape | undefined,
+): SceneReport {
+  const findings: SceneFinding[] = [];
+
+  for (const s of scenes ?? []) {
+    const name = s.title ?? '(untitled)';
+    const words = [
+      s.title ?? '',
+      ...(s.actions ?? []).map((a) => targetText(a.target)),
+    ].join(' ');
+
+    for (const { axis, verb, pattern } of DEMONSTRATION_VERBS) {
+      if (!pattern.test(words)) continue;
+      const need = MIN_CARDINALITY[axis];
+      const have = shape?.[axis];
+
+      if (typeof have !== 'number') {
+        findings.push({
+          kind: 'unknown-cardinality',
+          scene: name,
+          detail:
+            `this scene demonstrates ${verb}, which is observable only with enough ${axis} — at least ` +
+            `${need} — and the realized dataset's shape carries no ${axis} count. A filter over 5 rows ` +
+            'and one over 500 are indistinguishable from the spec alone, which is how ace#1670 reached ' +
+            'the concept judge. Read the generator record_counts and manifest shape that demo-data-setup ' +
+            'persists under products.synthetic.source, and pass them before authoring this scene',
+        });
+        continue;
+      }
+
+      if (have < need) {
+        findings.push({
+          kind: 'insufficient-cardinality',
+          scene: name,
+          detail:
+            `this scene demonstrates ${verb}, which needs at least ${need} ${axis} to be observable, ` +
+            `and the realized dataset has ${have}. The before-frame and the after-frame differ by too ` +
+            'little to read as a demonstration, so the scene renders green and shows nothing — the ' +
+            'ace#1670 stop trigger. Two branches, both taken BEFORE authoring — pick a demonstration ' +
+            `this dashboard's data can carry, or go back and regenerate with a larger cohort. If this ` +
+            `surface actually enumerates a different population than the ${axis} count given, say which ` +
+            'and pass that count',
+        });
+      }
     }
   }
 

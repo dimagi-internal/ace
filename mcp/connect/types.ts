@@ -3,6 +3,8 @@
 // PR #1135 (2026-04-30): the automation endpoints that replaced the previous
 // HTML-form-driven authoring flow.
 
+import type { DashboardReadStatus } from './backends/html-scrape.js';
+
 export interface Program {
   id: string;                          // UUID (Connect's `program_id`)
   int_id?: number;                     // ConnectProd legacy integer id (`id` in the API response), when
@@ -56,6 +58,18 @@ export interface Opportunity {
   // scoping a sum to one program matches on this and must treat a non-unique
   // program name as unknown.
   program_name?: string;
+  /**
+   * Whether the DASHBOARD half of a `get_opportunity` read produced an answer
+   * (ace#1637). `total_budget`, `start_date`, `program_name` and the app-wire
+   * ids come only from that page, and each degrades to `undefined` when its
+   * card is absent — which made "not in a program / no budget stated"
+   * indistinguishable from "could not read the page". Only `'ok'` licenses
+   * reading those fields' absence as a fact about the opportunity. Set by
+   * `get_opportunity` (and therefore on every hydrated `list_opportunities`
+   * row); undefined on an unhydrated list row, where nothing was attempted.
+   * See `classifyDashboardRead` in `mcp/connect/backends/html-scrape.ts`.
+   */
+  dashboard_read?: DashboardReadStatus;
   name: string;
   short_description: string;
   description: string;

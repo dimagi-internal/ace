@@ -51,6 +51,38 @@ front half (how the labs-only opp + its data come to exist) differs.
 - `<demo-run>/7-synthetic/demo-data-setup_manifest.yaml` — the per-opp generator manifest sent to labs
 - `<demo-run>/7-synthetic/realized.json` — **the handoff**: a **FLAT** `${var}` map (DDD substitutes `${var}` verbatim — keep it flat, no nesting). One `<key>_par_url` per dashboard the demo builds, plus `primary_par_url` (the dashboard the walkthrough opens on) and any `<name>_url` drills. E.g. `{ "primary_par_url": ..., "program_admin_par_url": ..., "child_recovery_par_url": ..., "audit_good_url": ... }`
 - `<demo-run>/7-synthetic/demo-data-setup.md` — run summary (labs opp id, record counts, one par_url per dashboard, warnings)
+- `<demo-run>/7-synthetic/branch-scrub_report.yaml` — the step-2c ledger, so
+  the numbers survive the run rather than living in a claim (ace#1658):
+  ```yaml
+  derivation:
+    source: deliver-app            # or `none` (+ `reason:` — the denovo provider)
+    opportunity_id: <connect opp id>
+    questions_seen: <int>
+    gates_parsed: <int>
+    unparsed:                      # gates/bounds NOT audited — never silently dropped
+      - kind: relevant             # relevant | constraint
+        field: <leaf name>
+        path: /data/<group>/<question>
+        expression: "<verbatim>"
+        reason: "<why it could not be derived>"
+    additions:                     # hand-declared, merged via mergeDatasetSpecs
+      whole_currency_fields: []
+      cross_field_rules: []
+      unique_pairs: []
+  scrub:
+    applied: true                  # false = report only; say why in `note`
+    write_back: drive_update_file  # drive_update_file | synthetic_register | none
+    records: <int>
+    total_cleared: <int>
+    fields:
+      - field: <leaf name>
+        records_scrubbed: <int>
+        records_gate_missing: <int>
+    unresolved_fields: []
+  audit:                           # auditDataset AFTER the scrub
+    total: <int>
+    violations: [{kind, field, count}]
+  ```
 - `run_state.yaml.phases.synthetic-data-and-workflows.products.synthetic.source` — the seam contract, populated:
   ```yaml
   source:
@@ -58,6 +90,16 @@ front half (how the labs-only opp + its data come to exist) differs.
     labs_synthetic_opp_id: <int ≥ 10000>
     deliver_units: [{slug, name}]
     narrative_context_ref: <drive path to the manifest>
+    record_counts:                     # VERBATIM from synthetic_generate_from_manifest (ace#1670)
+      opportunity: 1
+      user_visits: 276
+      user_data: 5                     # the worker cohort — the row count a filter scene acts on
+      completed_works: 0
+      completed_module: 0
+    data_shape:                        # the three axes demo-narrative's cardinality check reads
+      rows: 5                          # entities the dashboards enumerate one line per
+      periods: 4                       # distinct time buckets the timeline spans (manifest weeks)
+      groups: 1                        # distinct comparison groups (LLOs / sites / opportunities)
     dashboards:                        # one per dashboard the Step-0 plan selected
       - key: program_admin             # → ${program_admin_par_url} in realized.json
         template: program_admin_report
@@ -77,6 +119,13 @@ front half (how the labs-only opp + its data come to exist) differs.
         par_url: <url>
     primary_dashboard: program_admin
     realized_vars_ref: 7-synthetic/realized.json
+    dataset_constraints:               # step 2c, counts not claims (ace#1658)
+      spec_source: deliver-app         # deliver-app | none
+      unparsed_expressions: <int>      # >0 means gates this run did not audit
+      off_branch_cleared: <int>        # branch scrub, 0 is a MEASURED zero
+      scrub_applied: true
+      violations: <int>
+      report_ref: 7-synthetic/branch-scrub_report.yaml
   ```
 - `run_state.yaml.phases.synthetic-data-and-workflows.steps.demo-data-setup.status: done` (+ `artifact` path)
 
@@ -161,6 +210,121 @@ front half (how the labs-only opp + its data come to exist) differs.
 
    Capture `labs_opp_id` + `deliver_units`.
 
+2b. **Capture the realized dataset's SHAPE, not just its URLs (ace#1670).**
+
+   Keep `synthetic_generate_from_manifest`'s `record_counts` VERBATIM — it is the
+   only place the generated cardinality is ever stated, and it is discarded today.
+   Then resolve the two axes `record_counts` cannot answer, from the manifest you
+   authored in step 1:
+
+   - `periods` — the number of distinct time buckets `timeline` spans (weeks
+     between `start_date` and the last generated week). `record_counts` carries no
+     dates.
+   - `groups` — the number of distinct groups a comparison could contrast (LLOs /
+     sites / opportunities in the set). `record_counts` carries no grouping.
+   - `rows` — defaults to `record_counts.user_data` (the worker cohort). Override
+     it if the dashboards you planned in step 0 enumerate a different population
+     (a visit-level table has `user_visits` rows, not `user_data` rows) — you are
+     the only one who knows which, and `demo-narrative` cannot re-derive it.
+
+   Write all of it into `source.record_counts` + `source.data_shape` (step 5).
+   Without it `demo-narrative` has no cardinality input at all and cannot tell a
+   filter over 5 rows from one over 500 — which is how
+   `bednet-check-2-visit/20260825-1310` authored a filter demonstration against a
+   five-worker cohort and burned four render iterations before the concept judge
+   caught it.
+
+2c. **Derive the constraint spec from the APP, scrub the off-branch values,
+    then audit — in that order (ace#1346, ace#1658).**
+
+    The generated set is the substrate every dashboard reads, so it is checked
+    and repaired here — **before** step 3 mints a single run, not after step 4
+    has built the URLs. (This step used to run as `4b`, after the dashboards
+    were already reading the fixture; it moved so the scrub can land first.)
+
+    1. **Derive the spec from the deliver app, don't assert it from prose.**
+       `mcp__connect-labs__get_opportunity_apps(<connect opp id>, 'deliver')`
+       → `specFromDeliverApp(appJson)` in `lib/dataset-constraints.ts`. It
+       reads every question's own `relevant` — plus any group-level `relevant`
+       above it — into `conditionalFields`, and every `Int`/`Long` question's
+       `constraint` into `integerFields` bounds.
+
+       **Never hand-declare `conditionalFields: []` off the PDD's prose.**
+       `bednet-check-2-visit/20260817-1720` did exactly that and recorded
+       check 9 `pass` on the justification "no conditional blocks", while
+       `get_opportunity_apps(2214, 'deliver')` returned
+       `"relevant": "/data/agree_again/consent_confirmed = 'yes'"` on two
+       fields verbatim. `20260825-1310` — same opp, same app, same generator —
+       declared them and measured **18 of 276** off-branch on each. The spec
+       decided the verdict, not the data (ace#1658).
+
+       - Hand-declared entries are **ADDITIONS**:
+         `mergeDatasetSpecs(derived.spec, additions)`. Currency fields,
+         cross-field rules, and PDD premises (`uniquePairs`, e.g. "1 CBF per
+         community") have no representation in the app JSON, so they still
+         come from the PDD — as additions on top of the derived spec, never as
+         a replacement for it.
+       - `derived.unparsed[]` is a RESULT, not debris. Each entry is a gate or
+         bound this run did **not** audit; hand-declare it as an addition, and
+         report what remains. `demo-data-setup-qa` check 9 fails on a
+         non-empty `unparsed[]` rather than passing quietly.
+       - Under the **`denovo`** provider there is no deliver app to read.
+         Record the reason verbatim (`noDeliverAppReason`) so the gate can
+         tell "nothing to derive from" apart from "nobody derived it".
+
+    2. **Scrub the off-branch values, then write the fixture back.**
+       `scrubOffBranchFields(records, spec.conditionalFields)` removes every
+       value the form's own `relevant` says cannot exist on that record's
+       branch, and returns a per-field report. It is idempotent and pure.
+
+       This is a declared, reproducible generator post-step — not hand-patching
+       records — and it is the ONLY remedy that exists. The labs manifest has
+       no conditional / relevant / branch primitive at all
+       (`connect_labs/labs/synthetic/generator/fixtures/manifest.py`:
+       `BeneficiaryCohort` carries `field_distributions`, `progression`,
+       `correlation`, `repeat_groups`, `longitudinal`; `FieldDistribution.null_rate`
+       is unconditional and `CorrelationSpec` cannot make a field ABSENT on a
+       branch), so a gated form always draws off-branch values (ace#1658).
+
+       Write the scrubbed `user_visits.json` back to the opp's fixture folder
+       (the `folder_id` `synthetic_generate_from_manifest` returned) with
+       `mcp__plugin_ace_ace-gdrive__drive_update_file`, **before step 3**. That
+       file IS what labs serves: `connect_labs/labs/synthetic/fixture_store.py`
+       loads `user_visits.json` from the registered Drive folder on every
+       labs-only opp read and caches it per `(opp_id, folder_id, endpoint_key)`
+       on FIRST read — so the safe window is now, while nothing has read the
+       opp yet.
+
+       - **If ACE's service account cannot write that folder** — the grant in
+         `skills/synthetic-data-generate/SKILL.md` step 3a asks for *Reader* —
+         copy the five fixture JSONs into an ACE-owned folder, apply the scrub
+         there, share it with the labs fixture service account, and re-point
+         the opp with `mcp__connect-labs__synthetic_register(opportunity_id,
+         gdrive_folder_id)`. The cache key includes `folder_id`, so a folder
+         change misses in every worker and re-pulls.
+       - **If neither write lands this run**, still run the scrub in memory,
+         write the report with `applied: false`, and carry the counts into the
+         summary and `run_state`. What is forbidden is narrowing the spec until
+         the count disappears.
+
+    3. **Audit what now stands, and report COUNTS not claims.**
+       `auditDataset(records, spec)` over the records as they now are. Put the
+       per-class counts in the summary. The labs manifest is a **distribution
+       language**: it draws every field independently, and integers are
+       enforced only where the HQ form schema types the question `Int` — so a
+       legal-looking set can be arithmetically impossible.
+       `spark-facilitator/20260813-2126` wrote *"0 constraint violations, all
+       hand-checked"* into `run_state.yaml` for a set with 251 fractional
+       people-counts, 242 fractional Kwacha amounts, 34 off-branch reasons, 22
+       did-not-happen meetings carrying full attendance blocks, and
+       facilitators roaming 190 distinct (facilitator, community) pairs against
+       a stated 1 CBF per community. A measured zero and an asserted zero read
+       the same in `run_state.yaml`; only one of them is true (ace#1346).
+
+    Products: `7-synthetic/branch-scrub_report.yaml` (the derivation +
+    scrub + audit ledger, schema in § Products) and the
+    `source.dataset_constraints` block written in step 5.
+
 3. **Author each planned dashboard dynamically.** Loop over the Step-0
    `dashboards[]`; for **each**, run the ADAPT-or-SCRATCH flow from
    `skills/synthetic-workflow-seed/SKILL.md § Process`:
@@ -210,6 +374,60 @@ front half (how the labs-only opp + its data come to exist) differs.
    reads of three different stores; the bindings were wrong. Downstream the
    DDD render+judge scored concept 2.0/5, user 1.0/5, arc 1.0/5.
 
+3b. **Lint every `render_code` against the deployed stylesheet BEFORE you
+   upload it (ace#1662). A non-resolving Tailwind utility is a pre-upload
+   FAILURE, not a silent no-op.**
+
+   labs purges its Tailwind bundle against its OWN Django templates. A
+   workflow's `render_code` lives in the labs DATABASE and is never scanned,
+   so any utility labs does not itself use is dropped from the shipped
+   bundle — and then degrades to the unstyled baseline rather than erroring:
+   a missing `bg-*` is transparent, a missing `text-*` is the inherited
+   near-black, a missing `border-*` is the default grey, a missing `h-*`
+   collapses the element to 0px. Nothing in the render, the page console, or
+   `demo-data-setup-qa` observes it — that gate checks the dashboard is a
+   live deep-link and paints content, not that it painted in the colours the
+   code asked for.
+
+   Run the check on the FULL post-edit source, before every
+   `workflow_update_render_code` / `workflow_patch_render_code`:
+
+   ```bash
+   ACE_ROOT="${CLAUDE_PLUGIN_ROOT:-$(python3 -c "import json,os; d=json.load(open(os.path.expanduser('~/.claude/plugins/installed_plugins.json'))); print(d['plugins']['ace@ace'][0]['installPath'])")}"
+   npx --prefix "$ACE_ROOT" tsx "$ACE_ROOT/scripts/check-render-code-utilities.ts" <render-code-path> --substitute
+   # exit 0 = every utility resolves · exit 1 = MISSING, do NOT upload
+   # exit 2 = could not read the stylesheet — fix that first; do NOT proceed
+   ```
+
+   - **Lint the whole source, never just the patch hunk.** On
+     `bednet-check-2-visit/20260825-1310`, three of the five misses on
+     workflow 5230 were PRE-EXISTING — not introduced by the edit that found
+     them. For a patch: `workflow_get` → apply locally → lint → upload.
+   - **On MISSING, substitute.** `--substitute` names the resolving
+     near-neighbours. The repair that shipped: `text-rose-700` →
+     `text-red-700`, `text-rose-800` → `text-red-800`, `border-rose-300` →
+     `border-red-300`, `bg-emerald-600` → `bg-emerald-500`,
+     `border-slate-300` → `border-gray-300` (card) / `border-slate-200`
+     (panels). `text-rose-700` styled `consent 89.7% · below the 90% floor`
+     — the only pay-affecting figure on that dashboard.
+   - **A geometric or arbitrary-value miss has no near-neighbour** — a
+     different value is a different design. Drop the class and set the
+     property inline: `className="relative h-28 w-full"` →
+     `className="relative w-full" style={{ height: 112 }}`; `min-w-[52px]` →
+     `style={{ minWidth: 52 }}`. The missing `h-28` on workflow 5227 left all
+     12 weekly bars at **0px** — a whole invisible chart panel, no error.
+   - **The purge is per-UTILITY, not per-family, and nothing mirrors.**
+     `text-slate-700` ships while `bg-slate-400` and `border-slate-400` do
+     not. Arbitrary values are not categorically blocked either
+     (`text-[11px]` ships, `min-w-[52px]` does not). The rule is the exact
+     string — never reason from a resolving sibling.
+   - **Leave every PRESENT utility alone.** Swapping a working class for
+     another working class is unforced churn.
+
+   Root cause tracked upstream as connect-labs#1294 (reject a non-resolving
+   utility at labs' `render_code` write boundary). This gate earns its keep
+   regardless: the available set drifts whenever labs changes its own UI.
+
 4. **Build a URL per dashboard — the run deep-link, scoped by OWNERSHIP.**
    `https://labs.connect.dimagi.com/labs/workflow/<def_id>/run/?run_id=<run_id>&<scope>`
    where `<scope>` is the dashboard's OWNING scope:
@@ -232,35 +450,6 @@ front half (how the labs-only opp + its data come to exist) differs.
    (supersedes the earlier `docs/learnings/2026-06-13` picker note; the fix is a real
    run_id, minted if needed).
 
-4b. **Audit the generated set against the PDD's data-quality constraints
-    (ace#1346).** Between generation and the dashboard build, read back
-    `user_visits.json` and run `auditDataset` from
-    `lib/dataset-constraints.ts`. Build the spec from the PDD's
-    "Data-quality constraints" table plus the payment rule:
-
-    - every field the form declares as a COUNT → `integerFields` with its
-      stated bounds;
-    - currency → `wholeCurrencyFields`;
-    - each conditional block → `conditionalFields` naming the branch that
-      asks it;
-    - declared cross-field rules (participation ≤ attendance per sex;
-      sub-counts inside their totals) → `crossFieldRules`;
-    - premises the PDD states as facts ("1 CBF per community") →
-      `uniquePairs`.
-
-    **Put the per-class COUNTS in the summary, not a claim.** The labs
-    manifest is a **distribution language**: it draws every field
-    independently, integers are enforced only where the HQ form schema types
-    the question `Int`, and conditional blocks are populated regardless of
-    branch. So a legal-looking set can be arithmetically impossible, and
-    `spark-facilitator/20260813-2126` wrote *"0 constraint violations, all
-    hand-checked"* into `run_state.yaml` for a set with 251 fractional
-    people-counts, 242 fractional Kwacha amounts, 34 off-branch reasons, 22
-    did-not-happen meetings carrying full attendance blocks, and facilitators
-    roaming 190 distinct (facilitator, community) pairs against a stated 1
-    CBF per community. A measured zero and an asserted zero read the same in
-    `run_state.yaml`; only one of them is true.
-
 5. **Emit the handoff + write back.**
 
    Write `realized.json` — the **flat** multi-var map (`{ primary_par_url,
@@ -271,6 +460,12 @@ front half (how the labs-only opp + its data come to exist) differs.
    `two-level`, which would drop sibling sub-keys; see CLAUDE.md gotcha). Set
    the `steps.demo-data-setup` block to `status: done` with the `realized.json`
    artifact path.
+
+   Write `branch-scrub_report.yaml` (step 2c) alongside it, and mirror its
+   headline numbers into `source.dataset_constraints`. **Surface them in the
+   summary `.md` too** — the off-branch count and any `unparsed[]` gate belong
+   in the run summary a reader actually opens, not only in a YAML the gate
+   reads (ace#1658).
 
 Then gate on `demo-data-setup-qa` before `demo-narrative` consumes the map.
 
@@ -459,6 +654,14 @@ nobody has enumerated yet. Run both — neither is a substitute for the other.
   which is 1-based by declaration (see `playbook/integrations/connect-labs.md
   § binary distribution` for the source + the live measurement, ace#1518).
   Out-of-window anomalies are silently skipped.
+
+## Change Log
+
+| Date | Change | Author |
+|------|--------|--------|
+| 2026-08-26 | Step 4b becomes step **2c** and grows two halves: the `DatasetSpec` is now DERIVED from the deliver app (`specFromDeliverApp`, hand-declared entries merged as ADDITIONS via `mergeDatasetSpecs`, `unparsed[]` reported), and a post-generation **branch scrub** (`scrubOffBranchFields`) removes the off-branch values the labs manifest has no primitive to avoid — written back to the fixture folder before any dashboard run is minted. It moved earlier in the process because the old position ran after the dashboards were already reading the fixture. New product `7-synthetic/branch-scrub_report.yaml` + `source.dataset_constraints`. ace#1658. | ACE team |
+| 2026-08-26 | Persist the realized dataset's SHAPE into the handoff — `source.record_counts` (verbatim from `synthetic_generate_from_manifest`) + `source.data_shape` (`rows` / `periods` / `groups`), plus step 2b resolving the two axes `record_counts` cannot answer. `demo-narrative` had no cardinality input at all, so it could not tell a filter over 5 rows from one over 500; on `bednet-check-2-visit/20260825-1310` that authored a filter demonstration over a five-worker cohort and ended the DDD loop `stopped_not_converged` at concept 3.0 after four render iterations. ace#1670. | ACE team |
+| 2026-08-26 | **Step 3b: utility-resolution gate before every `render_code` upload (ace#1662).** labs purges Tailwind against its own Django templates, so a utility used only in DB-stored `render_code` is dropped from the bundle and degrades silently to the unstyled baseline. `text-rose-700` styled `consent 89.7% · below the 90% floor` — the only pay-affecting figure on the LLO weekly-review dashboard — and rendered near-black for an unknown number of runs; a missing `h-28` left all 12 weekly bars at 0px. New pre-upload lint `scripts/check-render-code-utilities.ts` over `lib/tailwind-utility-resolution.ts`, with loud-failure semantics, substitution guidance, and the lint-the-whole-source rule (3 of 5 misses were pre-existing). Root cause tracked upstream as connect-labs#1294. | ACE team |
 
 ## Not in scope
 

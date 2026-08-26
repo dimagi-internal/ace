@@ -152,6 +152,30 @@ call — see the seed skill's alias-consistency guardrail.
      domain. Turmeric → market/vendor language; KMC → maternal-health
      iconography; vaccine focus group → immunization framing.
 
+   **Utility-resolution gate — lint the POST-PATCH source before you call
+   either write atom (ace#1662). A non-resolving Tailwind utility is a
+   pre-upload FAILURE, not a silent no-op.** labs purges its Tailwind bundle
+   against its own Django templates; `render_code` lives in the labs
+   database and is never scanned, so any utility labs does not itself use is
+   dropped from the bundle and degrades to the unstyled baseline — a
+   transparent `bg-*`, a near-black `text-*`, a 0px `h-*`, with no error
+   anywhere. Fetch the current source with `workflow_get`, apply the patch
+   locally, and lint the WHOLE file (a hunk cannot see a pre-existing miss,
+   and 3 of the 5 real misses were pre-existing):
+
+   ```bash
+   ACE_ROOT="${CLAUDE_PLUGIN_ROOT:-$(python3 -c "import json,os; d=json.load(open(os.path.expanduser('~/.claude/plugins/installed_plugins.json'))); print(d['plugins']['ace@ace'][0]['installPath'])")}"
+   npx --prefix "$ACE_ROOT" tsx "$ACE_ROOT/scripts/check-render-code-utilities.ts" <post-patch-source> --substitute
+   # exit 0 = clean · exit 1 = MISSING, do NOT upload · exit 2 = stylesheet unreadable
+   ```
+
+   Substitute what `--substitute` names (`text-rose-700` → `text-red-700`,
+   `bg-emerald-600` → `bg-emerald-500`, …); for a geometric or
+   arbitrary-value miss there is no near-neighbour — drop the class and set
+   the property with an inline `style` prop. Full rationale and the rest of
+   the rules: `skills/synthetic-workflow-seed/SKILL.md § Utility-resolution
+   gate`.
+
    For each patch, call:
 
    ```
@@ -307,3 +331,4 @@ as `dry-run-success`.
 | Date | Change | Author |
 |---|---|---|
 | 2026-05-06 | Initial Stage 3a skill — surgical render-code patches with L2-rewrite fallback. | ACE team (Plan B Stage 3) |
+| 2026-08-26 | **Utility-resolution gate before `workflow_patch_render_code` / `workflow_update_render_code` (ace#1662).** Lint the post-patch source with `scripts/check-render-code-utilities.ts`; a utility labs' own templates never use is purged from the shipped bundle and renders as the unstyled baseline with no error. | ACE team |
