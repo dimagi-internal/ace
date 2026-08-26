@@ -47,7 +47,7 @@ CCC-301).
    | **Widget URL resolves** | 25% | The handoff must carry the bot's **public chat URL** — `https://www.openchatstudio.com/a/<team_slug>/chatbots/<public_id>/start/`, built with `buildOcsPublicChatUrl` from `lib/ocs-public-chat-url.ts` — plus the `public_id` and a non-empty `embed_key` for the widget element. Probe it anonymously and require a **200**. **The probe MUST carry cookies through the redirect** (`curl -L -c jar -b jar`, or a Playwright context): `start_session_public` creates a session and 302s to `/s/<session_id>/chat/`, which is wrapped in `@verify_session_access_cookie`, so a cookieless fetch reads **404 on a perfectly working bot**. Verified live 2026-08-14 against `connect-ace` / `f92d26f3-…`: no jar → 302 then 404; with jar → 200. URL-shape-correct but genuinely unreachable = ≤6 ([PLATFORM]). URL-shape-broken, or the retired `/chatbots/embed/<public_id>/` path (a 410 stub since OCS #3540, 2026-08-03) = ≤3. **Do NOT deduct for the absence of an embed page** — there isn't one, and the handoff naming the `start/` route instead is correct, not a defect (ace#1021). |
    | **Connect opp link** | 20% | widget-handoff.md must reference the Connect opportunity URL the LLO needs to paste INTO. Mismatch with run_state.yaml's `connect_opportunity.url` = 4-point deduction. Missing = ≤4. |
    | **Operator instructions clarity** | 30% | The handoff must tell a non-technical LLO (a) where to paste (Connect opp config tab, specific field name), (b) what to paste (the widget URL or just the embed_key, depending on Connect's UI), and (c) how to verify (chat-test prompt). Each missing element = 2-point deduction. |
-   | **Credential hygiene** | 25% | embed_key is opp-specific, NOT a global API key. Surface a [WARN] if the handoff includes any global secret (OCS_TEAM_SLUG, OCS_GOLDEN_TEMPLATE_ID, etc.) — those should never appear in an LLO-facing artifact. |
+   | **Credential hygiene** | 25% | `embed_key` is opp-specific (an OCS bot-level value), NOT a global API key — its presence is expected and is never a finding. The guard protects against exactly one thing: a **credential that grants access beyond this single opportunity** appearing in an LLO-facing artifact — `OCS_API_TOKEN`, `OCS_PASSWORD`, `OCS_GOLDEN_TEMPLATE_ID`, `LABS_MCP_TOKEN`, or any HQ / Connect credential. Surface a `[WARN]` per such value; a leak is the auto-fail below. **`team_slug` and `public_id` are public-by-construction and are NEVER a hygiene finding.** The anonymous chat route is team-scoped, so the URL `widget_url_resolves` REQUIRES (row above) necessarily contains the team slug — deducting for it would fail a correct handoff on the strength of the dimension that mandates it (ace#1680). |
 
    **Deduction rules:**
    - Any single dimension ≤3 → suite verdict `fail`.
@@ -59,13 +59,16 @@ CCC-301).
    - `partial` — overall ≥ 7.0 but the widget HTTP probe failed at
      grading time. Cap 8.5; `live_state_verified: false`.
    - `warn` — overall ≥ 5.0 < 7.0 OR inflation cap binds.
-   - `fail` — overall < 5.0 OR any dimension ≤ 3 OR a global secret
-     leaked into the handoff (auto-fail; security guard).
+   - `fail` — overall < 5.0 OR any dimension ≤ 3 OR a credential that
+     grants access beyond this opportunity leaked into the handoff
+     (auto-fail; security guard). `team_slug` and `public_id` are not
+     credentials — see the `credential_hygiene` row.
    - `incomplete` — widget-handoff.md missing.
 
 4. **Severity tiers:**
    - `[BLOCKER]` for any dimension ≤ 3, missing Connect opp link, or
-     credential leak (a global secret in an LLO-facing doc).
+     credential leak (a cross-opportunity credential in an LLO-facing
+     doc). Never for `team_slug` / `public_id`.
    - `[BLOCKER]` if overall < 7.0.
    - `[WARN]` per missing operator-instruction element.
    - `[PLATFORM]` for the OCS public chat route returning 5xx during
@@ -121,7 +124,7 @@ CCC-301).
      - severity: PLATFORM
        message: "Widget paste-in is HITL until CCC-301 (Connect's update_opportunity API for widget-config). LLO must manually paste; rubric grades staging not paste-in."
      - severity: INFO
-       message: "embed_key is opp-specific (OCS bot-level), not a global secret. Safe to surface in LLO-facing doc."
+       message: "embed_key is opp-specific (OCS bot-level), not a cross-opportunity credential. Safe to surface in LLO-facing doc. team_slug/public_id are public-by-construction (they are in the mandated chat URL)."
 
    gate:
      threshold: 7.5
@@ -141,7 +144,8 @@ Calibration target:
 The 3 calibration runs should include:
 1. A clean handoff (canonical pass).
 2. A handoff missing the Connect opp link (drives BLOCKER).
-3. A handoff with a leaked global secret (drives auto-fail).
+3. A handoff with a leaked cross-opportunity credential — e.g.
+   `OCS_API_TOKEN` (drives auto-fail).
 
 ## Archetypes
 
@@ -172,5 +176,6 @@ focus-group / multi-stage opps.
 
 | Date | Change | Author |
 |------|--------|--------|
+| 2026-08-26 | **`credential_hygiene` no longer contradicts `widget_url_resolves` (ace#1680).** The dimension listed `OCS_TEAM_SLUG` as a "global secret" whose presence is an auto-fail security guard, while `widget_url_resolves` REQUIRES `https://www.openchatstudio.com/a/<team_slug>/chatbots/<public_id>/start/` — a team-scoped route, so the slug is structurally unavoidable in the one artifact the rubric mandates. A correct handoff was therefore reachable, on a literal reading, as a `fail` on a security guard; whether it failed depended on which way the judge leaned. The guard now names what it actually protects — a credential granting access beyond this opportunity (`OCS_API_TOKEN`, `OCS_PASSWORD`, `OCS_GOLDEN_TEMPLATE_ID`, `LABS_MCP_TOKEN`, HQ/Connect creds) — and states that `team_slug` / `public_id` are public-by-construction and never a finding. Weights unchanged. *Enforced:* `test/skills/credential-hygiene-vs-widget-url.test.ts`. | ACE team |
 | 2026-08-14 | **`widget_url_resolves` probes the route that exists (ace#1021).** The dimension gated 25% of the score on fetching an OCS "widget endpoint", while `ocs-agent-setup` already recorded that `/chatbots/embed/<public_id>/` is a 404 — so a CORRECT handoff scored as badly as a broken one. Both skills were wrong about the platform: the anonymous route is team-scoped, `/a/<team_slug>/chatbots/<public_id>/start/` (`apps/chatbots/urls.py:80` mounted under `config/urls.py:88`), and it works. The embed flow really was deleted (OCS #3540, 2026-08-03). The probe now targets the real URL and MUST carry cookies through the 302 — `@verify_session_access_cookie` on the chat view makes a cookieless fetch read 404 on a working bot, which is the false negative that produced this issue. | ACE team |
 | 2026-04-29 | Initial version. 4 dimensions: widget_url_resolves (0.25), connect_opp_link (0.20), operator_instructions_clarity (0.30 — heaviest because LLOs are non-technical), credential_hygiene (0.25 — security guard with auto-fail on global-secret leak). Provisional calibration. Absorbs turmeric run_time_followups item 10 (HITL widget paste-in until CCC-301). | ACE team (0.10.29) |
