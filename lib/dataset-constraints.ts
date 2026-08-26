@@ -623,19 +623,58 @@ export function scrubOffBranchFields<T extends Container>(
 ): { records: T[]; report: ScrubReport } {
   const scrubbed: T[] = JSON.parse(JSON.stringify(records ?? []));
   const fields: ScrubFieldReport[] = [];
-  const unresolvedFields: string[] = [];
   let totalCleared = 0;
+
+  // Resolution is tracked per FIELD over the CONJUNCTION of that field's gates
+  // (ace#1695) — the scrub-side half of ace#1693. `specFromDeliverApp` emits one
+  // spec per gate, so asking "did I find this field somewhere" once per SPEC
+  // reports a field as unresolved whenever a SINGLE one of its gates matched,
+  // even though the field is only ever asked when they ALL match.
+  //
+  // Measured on deliver app 28464041b4d54511af2989f4349fce30 v14 (opp 2219):
+  // the pilot window is the Goal Setting subphase, so `phase` is '1' on every
+  // record by design and `step_phase_2/3/4` + `current_step_id_phase_2/3/4` are
+  // never asked and correctly absent. Per-spec, all seven landed in
+  // `unresolvedFields` (several twice, one entry per gate) and
+  // `demo-data-setup-qa` check 9 failed — with no remedy short of putting a
+  // community into an FCAP phase the PDD says it is not in, or under-declaring
+  // the spec, which is the failure ace#1658 exists to prevent.
+  //
+  // A field whose gates never all match has nothing to scrub. The nesting
+  // mismatch this check is FOR — the branch occurred, yet the field is nowhere —
+  // still reports.
+  const everResolved = new Set<string>();
+  const everFullyOnBranch = new Set<string>();
+  const gatesByField = new Map<string, ConditionalFieldSpec[]>();
+  for (const spec of conditionalFields) {
+    const group = gatesByField.get(spec.field);
+    if (group) group.push(spec);
+    else gatesByField.set(spec.field, [spec]);
+  }
+  for (const [field, gates] of gatesByField) {
+    for (const record of scrubbed) {
+      const index = leafPaths(record);
+      const allOnBranch = gates.every((g) => {
+        const ref = resolveField(index, g.requiredWhen.field, g.requiredWhen.path);
+        return ref !== null && ref[0][ref[1]] === g.requiredWhen.equals;
+      });
+      if (allOnBranch) everFullyOnBranch.add(field);
+      if (resolveField(index, field, gates[0].path)) everResolved.add(field);
+      if (everFullyOnBranch.has(field) && everResolved.has(field)) break;
+    }
+  }
+  const unresolvedFields = [...gatesByField.keys()].filter(
+    (field) => everFullyOnBranch.has(field) && !everResolved.has(field),
+  );
 
   for (const spec of conditionalFields) {
     let recordsScrubbed = 0;
     let recordsGateMissing = 0;
-    let resolvedAnywhere = false;
 
     for (const record of scrubbed) {
       const index = leafPaths(record);
       const gateRef = resolveField(index, spec.requiredWhen.field, spec.requiredWhen.path);
       const fieldRef = resolveField(index, spec.field, spec.path);
-      if (fieldRef) resolvedAnywhere = true;
       if (!gateRef) {
         recordsGateMissing += 1;
         continue;
@@ -649,7 +688,6 @@ export function scrubOffBranchFields<T extends Container>(
       recordsScrubbed += 1;
     }
 
-    if (!resolvedAnywhere) unresolvedFields.push(spec.field);
     totalCleared += recordsScrubbed;
     fields.push({ field: spec.field, path: spec.path, recordsScrubbed, recordsGateMissing });
   }
