@@ -95,6 +95,45 @@ describe('auditDataset (#1346)', () => {
     expect(r.violations.map((v) => v.kind)).toContain('conditional-missing');
   });
 
+  // ── ace#1693: an AND of gates, evaluated as an AND ────────────────────
+  //
+  // `specFromDeliverApp` emits one spec per gate, so a question under a group
+  // `relevant` AND its own `relevant` yields two entries. Checking
+  // `conditional-missing` per gate made that field unsatisfiable in both
+  // directions. The gates below are the two this run's deliver app
+  // (28464041b4d54511af2989f4349fce30 v14, opp 2219) declares for
+  // /data/consent_and_photograph/meeting_photo, verbatim.
+  const PHOTO_SPEC = {
+    conditionalFields: [
+      { field: 'meeting_photo', requiredWhen: { field: 'meeting_conducted', equals: 'yes' } },
+      { field: 'meeting_photo', requiredWhen: { field: 'consent_given', equals: 'yes' } },
+    ],
+  };
+
+  it('does not demand a multi-gated field when only ONE of its gates holds (#1693)', () => {
+    // The meeting happened; the meeting DECLINED the photograph. The form skips
+    // meeting_photo — this is the only legal record shape for that case.
+    const r = auditDataset([{ meeting_conducted: 'yes', consent_given: 'no' }], PHOTO_SPEC);
+    expect(r.violations.map((v) => v.kind)).not.toContain('conditional-missing');
+    expect(r.ok).toBe(true);
+  });
+
+  it('still flags a multi-gated field populated off ANY of its gates (#1693)', () => {
+    const r = auditDataset(
+      [{ meeting_conducted: 'yes', consent_given: 'no', meeting_photo: 'p.jpg' }],
+      PHOTO_SPEC,
+    );
+    expect(r.violations.map((v) => v.kind)).toContain('conditional-off-branch');
+  });
+
+  it('still demands a multi-gated field when EVERY gate holds (#1693)', () => {
+    const r = auditDataset([{ meeting_conducted: 'yes', consent_given: 'yes' }], PHOTO_SPEC);
+    const missing = r.violations.find((v) => v.kind === 'conditional-missing');
+    expect(missing).toBeDefined();
+    expect(missing!.count).toBe(1);
+    expect(missing!.detail).toContain('meeting_conducted = "yes" and consent_given = "yes"');
+  });
+
   it('catches a cross-field rule violation', () => {
     const r = auditDataset([{ ...CLEAN[0], members_with_disability: 99, male_attendance: 5 }], SPEC);
     expect(r.violations.map((v) => v.kind)).toContain('cross-field');
