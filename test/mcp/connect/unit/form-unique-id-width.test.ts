@@ -35,6 +35,12 @@ function uniqueIdFields(): { field: string; decl: string; line: number }[] {
   });
 }
 
+// The behaviour block below is a PIN, not a preventer: it exercises the shared
+// constant this change introduces, so it is green against the pre-fix tree too.
+// The preventers are the WIRING blocks after it — replayed against
+// `origin/main`'s source, 9 of this file's assertions go red, and the ones that
+// stay green are exactly `module_unique_id` and `parseDraftAppModuleUids`,
+// which were already correct. That two-of-three split IS the defect.
 describe('the shipped uid pattern accepts both widths and nothing else', () => {
   it('accepts the pre-upload 32-hex form uid', () => {
     expect(HQ_UNIQUE_ID_RE.test(UID_32)).toBe(true);

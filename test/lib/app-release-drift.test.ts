@@ -6,6 +6,17 @@
  * 3a`. It lives in lib/ so the rule is executable rather than prose: the
  * failure being prevented is a release that reports success while shipping
  * content the operator already fixed.
+ *
+ * ## Red/green honesty
+ *
+ * `classifyAppDrift` is new in this change, so these are the executable SPEC
+ * of the new decision rather than assertions that were red against the pre-fix
+ * tree (the pre-fix tree had no decision to be red about — it went straight to
+ * `commcare_make_build`). Their preventer value is forward-looking: the two
+ * deliberate asymmetries below — counts can never earn the skip, unresolved
+ * signals default to re-upload — cannot be quietly relaxed without this file
+ * going red. The pre-fix reds are in
+ * `test/skills/app-release-drift-check.test.ts`.
  */
 import { describe, it, expect } from 'vitest';
 import { classifyAppDrift, formatDriftDecision } from '../../lib/app-release-drift.js';

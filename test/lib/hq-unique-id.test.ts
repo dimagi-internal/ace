@@ -12,6 +12,17 @@
  * The pattern has to stay a REAL constraint: the failure it guards against is
  * an `m0-f0` index or a truncated id reaching a URL path, where HQ answers
  * with a confusing 404 instead of a validation error.
+ *
+ * ## Red/green honesty
+ *
+ * These assertions are a PIN on the shape of the shared pattern, NOT a
+ * preventer that was red against the pre-fix tree: the constant they exercise
+ * is introduced by this same change, so replaying them against `origin/main`'s
+ * source proves nothing about the defect. What they do buy is the reverse
+ * direction — the pattern cannot be silently re-narrowed to 32-only, nor
+ * loosened to "any hex", without this file going red. The assertions that were
+ * actually red on the pre-fix tree live in
+ * `test/mcp/connect/unit/form-unique-id-width.test.ts`.
  */
 import { describe, it, expect } from 'vitest';
 import { HQ_UNIQUE_ID_RE, HQ_UNIQUE_ID_HINT, isHqUniqueId, hqUniqueIdWidth } from '../../lib/hq-unique-id.js';

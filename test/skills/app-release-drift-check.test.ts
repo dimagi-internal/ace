@@ -71,13 +71,20 @@ describe('app-release checks for Nova↔HQ-draft drift BEFORE it builds', () => 
 });
 
 describe('the drift branch carries all THREE actions, in order', () => {
+  // Lazy, and empty rather than throwing, when the step is missing: a dropped
+  // Step 3a must surface as N specific failing assertions, not one collection
+  // error that says "no tests".
   const step = (() => {
     const m = /^3a\.\s+\*\*/m.exec(proc);
-    if (!m) throw new Error('app-release has no Step 3a');
+    if (!m) return '';
     const after = proc.slice(m.index);
     const next = /^4\.\s+\*\*/m.exec(after);
     return next ? after.slice(0, next.index) : after;
   })();
+
+  it('Step 3a exists at all', () => {
+    expect(step, 'app-release has no `3a.` step in its Process (ace#1643)').not.toBe('');
+  });
 
   it('names the re-upload', () => {
     expect(step).toMatch(/upload_to_hq|upload_app_to_hq/);
@@ -96,11 +103,15 @@ describe('the drift branch carries all THREE actions, in order', () => {
   /** The numbered sub-list under the "on drift" branch — the triple itself. */
   const triple = (() => {
     const m = /^\s*3\.\s+\*\*On `action: 'reupload-reapply-settings-then-build'`/m.exec(step);
-    if (!m) throw new Error('Step 3a has no "on drift" branch');
+    if (!m) return '';
     const after = step.slice(m.index);
     const next = /^\s*4\.\s+\*\*On `action: 'build-directly'`/m.exec(after);
     return next ? after.slice(0, next.index) : after;
   })();
+
+  it('the on-drift branch exists', () => {
+    expect(triple, 'Step 3a has no `On action: reupload-...` branch').not.toBe('');
+  });
 
   it('orders the triple upload → re-apply → build, and nothing between', () => {
     const up = triple.search(/upload_to_hq|upload_app_to_hq/);
