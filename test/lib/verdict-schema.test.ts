@@ -149,3 +149,74 @@ describe('verdict schema', () => {
     expect(r.ok, JSON.stringify(r.errors)).toBe(true);
   });
 });
+
+describe('checks[] — the advisory unable-disclosure channel (ace#1634)', () => {
+  it('accepts a verdict with no checks[] at all — the field is optional', () => {
+    const r = validateVerdict(validVerdict);
+    expect(r.ok).toBe(true);
+    expect(r.warnings).toEqual([]);
+  });
+
+  it('accepts a well-formed checks[] and warns about nothing', () => {
+    const r = validateVerdict({
+      ...validVerdict,
+      checks: [
+        { name: 'scoring-arithmetic', status: 'unable', reason: 'no item-score binds matched' },
+        { name: 'assessment-retry-leak', status: 'checked' },
+      ],
+    });
+    expect(r.ok).toBe(true);
+    expect(r.warnings).toEqual([]);
+  });
+
+  it('WARNS — does not reject — an unable check with no reason', () => {
+    // A warning, not an error: a verdict that discloses an unrun check
+    // without saying why is still strictly better than one that says
+    // nothing, and rejecting it would push authors back to omitting it.
+    const r = validateVerdict({
+      ...validVerdict,
+      checks: [{ name: 'scoring-arithmetic', status: 'unable' }],
+    });
+    expect(r.ok).toBe(true);
+    expect(r.errors).toEqual([]);
+    expect(r.warnings).toHaveLength(1);
+    expect(r.warnings[0]).toMatch(/scoring-arithmetic/);
+    expect(r.warnings[0]).toMatch(/say WHY/i);
+  });
+
+  it('warns on a whitespace-only reason too', () => {
+    const r = validateVerdict({
+      ...validVerdict,
+      checks: [{ name: 'entity-id-grain', status: 'unable', reason: '   ' }],
+    });
+    expect(r.warnings).toHaveLength(1);
+  });
+
+  it('does not warn about a checked entry that carries no reason', () => {
+    const r = validateVerdict({
+      ...validVerdict,
+      checks: [{ name: 'entity-id-grain', status: 'checked' }],
+    });
+    expect(r.warnings).toEqual([]);
+  });
+
+  it('rejects a checks[] entry with an unknown status', () => {
+    const r = validateVerdict({
+      ...validVerdict,
+      checks: [{ name: 'x', status: 'skipped' }],
+    });
+    expect(r.ok).toBe(false);
+    expect(r.errors.join(' ')).toMatch(/checks\.0\.status/);
+  });
+
+  it('rejects a nameless check — an anonymous "something did not run" is unactionable', () => {
+    const r = validateVerdict({ ...validVerdict, checks: [{ name: '', status: 'unable' }] });
+    expect(r.ok).toBe(false);
+  });
+
+  it('does NOT add `unable` to the top-level verdict tier', () => {
+    // One un-runnable check does not make a whole verdict un-runnable, and
+    // `incomplete` already covers the whole-artifact case.
+    expect(validateVerdict({ ...validVerdict, verdict: 'unable' }).ok).toBe(false);
+  });
+});

@@ -574,7 +574,49 @@ auto_surfaced:                 # optional — inputs to the gate brief
 gate:                          # optional — only if this eval gates a phase
   threshold: 0.0-10.0
   disposition: approve | reject | iterate
+
+checks:                        # optional — structural helpers this rubric ran
+  - name: scoring-arithmetic
+    status: checked
+  - name: assessment-retry-leak
+    status: unable
+    reason: >-
+      the form carries no score-gated result labels, so there was nothing to
+      inspect — see lib/check-outcome.ts
 ```
+
+**`checks[]` — a check that did not run must never score as one that passed.**
+
+Several structural helpers under `lib/` return `CheckOutcome` — a
+discriminated union whose `unable` branch has **no `ok` field at all**
+(`lib/check-outcome.ts`). `unable` means *the check did not run*, and it is
+**not a pass**: nothing was verified.
+
+A rubric that runs such a helper:
+
+1. **MUST list it in `checks[]`**, with `status: unable` and the helper's own
+   `reason` copied verbatim; and
+2. **MUST NOT let a dimension it could not evaluate score as if it had.**
+   Score the dimension `null` (its weight renormalizes away), or drop the
+   verdict to `incomplete` when the un-runnable check is load-bearing for the
+   whole artifact. Do not award a mid-band score to stand in for "unknown" —
+   an invented number is indistinguishable from a measured one.
+
+This channel is **advisory**: nothing can force an LLM-authored verdict to
+write the field, and `validateVerdict` only WARNS when an `unable` entry has
+no `reason`. The strong rails are the union itself and the source scan in
+`test/lib/check-outcome-contract.test.ts`.
+
+Why it exists — ace#1634, on `bednet-check-2-visit/20260825-1310`:
+`checkScoringArithmetic` returned `checked: false, ok: true` for **both** Learn
+scoring forms, the gating assessment included, because its item-score regex was
+depth-anchored while Nova nests fields in section containers. The scoring gate
+covered nothing and reported fine, and the verdict had nowhere to say so. It
+was the fourth instance of that class (#1332 → #1538 → #1576 → #1634).
+
+`unable` is deliberately NOT a value of the top-level `verdict:` field. One
+un-runnable check does not make a whole verdict un-runnable, and `incomplete`
+already covers the whole-artifact case.
 
 **Verdict tier semantics:**
 - `pass` / `warn` / `fail` — graded artifact, defects (or absence) sized by

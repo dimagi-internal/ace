@@ -31,6 +31,7 @@
 import { describe, it, expect } from 'vitest';
 import { checkScoringArithmetic, formatScoringReport } from '../../lib/scoring-arithmetic.js';
 
+import { assertChecked, assertUnable } from '../../lib/check-outcome.js';
 /** A well-formed 3-item percentage-scored quiz. */
 const GOOD = `<?xml version="1.0"?>
 <h:html xmlns:h="http://www.w3.org/1999/xhtml" xmlns="http://www.w3.org/2002/xforms">
@@ -48,7 +49,7 @@ const withUserScore = (calc: string) =>
 describe('checkScoringArithmetic (#1035)', () => {
   it('passes a correct 3-item percentage quiz', () => {
     const r = checkScoringArithmetic(GOOD);
-    expect(r.checked).toBe(true);
+    assertChecked(r);
     expect(r.ok).toBe(true);
     expect(r.itemScores).toEqual(['/data/q1_score', '/data/q2_score', '/data/q3_score']);
   });
@@ -57,6 +58,7 @@ describe('checkScoringArithmetic (#1035)', () => {
     const r = checkScoringArithmetic(
       withUserScore('(/data/q1_score + /data/q2_score) * 100 div 3'),
     );
+    assertChecked(r);
     expect(r.ok).toBe(false);
     expect(r.findings.map((f) => f.kind)).toContain('missing-term');
     expect(r.findings.find((f) => f.kind === 'missing-term')!.detail).toMatch(/q3_score/);
@@ -66,6 +68,7 @@ describe('checkScoringArithmetic (#1035)', () => {
     const r = checkScoringArithmetic(
       withUserScore('(/data/q1_score + /data/q2_score + /data/q3_score) * 100 div 4'),
     );
+    assertChecked(r);
     expect(r.ok).toBe(false);
     expect(r.findings.map((f) => f.kind)).toContain('denominator-mismatch');
     expect(r.findings.find((f) => f.kind === 'denominator-mismatch')!.detail).toMatch(/3 scored item/);
@@ -75,6 +78,7 @@ describe('checkScoringArithmetic (#1035)', () => {
     const r = checkScoringArithmetic(
       withUserScore('(/data/q1_score + /data/q2_score + /data/q3_score + /data/q9_score) * 100 div 3'),
     );
+    assertChecked(r);
     expect(r.ok).toBe(false);
     expect(r.findings.map((f) => f.kind)).toContain('extra-term');
   });
@@ -83,6 +87,7 @@ describe('checkScoringArithmetic (#1035)', () => {
     const r = checkScoringArithmetic(
       GOOD.replace(`if(/data/q2 = 'c', 1, 0)`, `if(/data/q1 = 'c', 1, 0)`),
     );
+    assertChecked(r);
     expect(r.ok).toBe(false);
     expect(r.findings.map((f) => f.kind)).toContain('self-reference-missing');
   });
@@ -91,22 +96,39 @@ describe('checkScoringArithmetic (#1035)', () => {
     const r = checkScoringArithmetic(
       GOOD.replace(`if(/data/q2 = 'c', 1, 0)`, `if(/data/q2 = 'c', 0, 0)`),
     );
+    assertChecked(r);
     expect(r.ok).toBe(false);
     expect(r.findings.map((f) => f.kind)).toContain('unreachable-max');
   });
 
-  it('is NOT APPLICABLE on a form with no scoring, rather than passing it', () => {
+  it('is UNABLE, not a pass, on a form with no scoring — with a reason and a loud report', () => {
     const r = checkScoringArithmetic('<h:html xmlns:h="http://www.w3.org/1999/xhtml"><h:head/></h:html>');
-    expect(r.checked).toBe(false);
-    expect(r.ok).toBe(true);
-    expect(formatScoringReport(r)).toMatch(/not applicable/i);
+    // The pre-#1677 shape returned `{ checked: false, ok: true }` here, and a
+    // caller reading `.ok` got `true` from a check that never looked. On
+    // `bednet-check-2-visit/20260825-1310` a depth-anchored ITEM_SCORE regex
+    // sent BOTH real Learn scoring forms — the gating assessment included —
+    // down this exact path (ace#1634). There is now no `ok` here to misread.
+    expect(r.status).toBe('unable');
+    assertUnable(r);
+    expect(r.reason).toMatch(/item-score node/i);
+    // A reason that does not point at the matcher is how three prior
+    // instances of this class were signed off as "not applicable".
+    expect(r.reason).toMatch(/ITEM_SCORE is the bug/);
+    const text = formatScoringReport(r);
+    expect(text).toMatch(/UNABLE TO CHECK/);
+    expect(text).toMatch(/NOT a pass/);
+    // No green-looking word anywhere: "clean" is what the checked-and-fine
+    // branch says, and "not applicable" is the benign phrasing three prior
+    // instances of this class were signed off under.
+    expect(text).not.toMatch(/\bclean\b/i);
+    expect(text).not.toMatch(/not applicable/i);
   });
 
   it('reports BLIND rather than clean when items exist but user_score does not', () => {
     const r = checkScoringArithmetic(
       GOOD.replace(/<bind nodeset="\/data\/user_score"[^>]*\/>/, ''),
     );
-    expect(r.checked).toBe(true);
+    assertChecked(r);
     expect(r.ok).toBe(false);
     expect(r.findings.map((f) => f.kind)).toContain('no-rollup');
   });
@@ -115,6 +137,7 @@ describe('checkScoringArithmetic (#1035)', () => {
     const r = checkScoringArithmetic(
       withUserScore('/data/q1_score + /data/q2_score + /data/q3_score'),
     );
+    assertChecked(r);
     expect(r.findings.map((f) => f.kind)).not.toContain('denominator-mismatch');
   });
 
@@ -145,7 +168,7 @@ describe('checkScoringArithmetic (#1035)', () => {
 
   it('CHECKS a non-q-prefixed pre-test instead of reporting not-applicable (#1538)', () => {
     const r = checkScoringArithmetic(PRETEST);
-    expect(r.checked).toBe(true);
+    assertChecked(r);
     expect(r.ok).toBe(true);
     expect(r.itemScores).toEqual([
       '/data/p1_score',
@@ -162,13 +185,14 @@ describe('checkScoringArithmetic (#1035)', () => {
         '<bind nodeset="/data/p2_score" calculate="if(/data/p1 = \'a\', 1, 0)"/>',
       ),
     );
-    expect(r.checked).toBe(true);
+    assertChecked(r);
     expect(r.ok).toBe(false);
     expect(r.findings.map((f) => f.kind)).toContain('self-reference-missing');
   });
 
   it('does not mistake /data/user_score itself for an item score (#1538)', () => {
     const r = checkScoringArithmetic(PRETEST);
+    assertChecked(r);
     expect(r.itemScores).not.toContain('/data/user_score');
   });
 
@@ -194,7 +218,7 @@ describe('checkScoringArithmetic (#1035)', () => {
     const r = checkScoringArithmetic(SECTIONED);
     // The whole defect: this reported `checked: false` — which app-release-qa
     // defines as "not applicable, NOT a pass" — so the gate covered nothing.
-    expect(r.checked).toBe(true);
+    assertChecked(r);
     expect(r.itemScores).toHaveLength(6);
     expect(r.itemScores).toContain('/data/check_result/q1_score');
   });
@@ -203,6 +227,7 @@ describe('checkScoringArithmetic (#1035)', () => {
     // The score node and its question are NOT siblings here, so a full-path
     // derivation flags all six correct items. Coupled to the depth fix.
     const r = checkScoringArithmetic(SECTIONED);
+    assertChecked(r);
     expect(r.findings).toEqual([]);
     expect(r.ok).toBe(true);
   });
@@ -214,18 +239,20 @@ describe('checkScoringArithmetic (#1035)', () => {
         `calculate="if(/data/check_q1/q1 = 'ans2', 1, 0)"`,
       ),
     );
-    expect(r.checked).toBe(true);
+    assertChecked(r);
     expect(r.ok).toBe(false);
     expect(r.findings.map((f) => f.kind)).toContain('self-reference-missing');
   });
 
   it('still CATCHES a denominator mismatch on a sectioned form (#1634)', () => {
     const r = checkScoringArithmetic(SECTIONED.replace('* 100 div 6', '* 100 div 5'));
+    assertChecked(r);
     expect(r.findings.map((f) => f.kind)).toContain('denominator-mismatch');
   });
 
   it('names every finding in the formatted report', () => {
     const r = checkScoringArithmetic(withUserScore('(/data/q1_score) * 100 div 3'));
+    assertChecked(r);
     const out = formatScoringReport(r);
     expect(out).toMatch(/q2_score/);
     expect(out).toMatch(/q3_score/);

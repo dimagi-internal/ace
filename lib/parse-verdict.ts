@@ -26,6 +26,7 @@ export function parseVerdictYaml(source: string): ParsedVerdictResult {
     return {
       ok: false,
       errors: [`yaml parse: ${(e as Error).message}`],
+      warnings: [],
       parseError: (e as Error).message,
     };
   }
