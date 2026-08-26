@@ -25,6 +25,7 @@ auto-fix protocol, static-vs-LLM rules).
 | `demo-data-setup` | `<demo-run>/7-synthetic/realized.json` | the handoff under check |
 | `demo-data-setup` | `run_state.yaml…products.synthetic.source` | provider + labs opp id + deliver units |
 | `demo-data-setup` | `<demo-run>/7-synthetic/demo-data-setup_manifest.yaml` | timeline pin + flagged-worker check |
+| `demo-data-setup` | `<demo-run>/7-synthetic/branch-scrub_report.yaml` | check 9: the spec derivation (incl. `unparsed[]`), the branch-scrub ledger, and the post-scrub audit |
 
 ## Products
 
@@ -45,7 +46,7 @@ auto-fix protocol, static-vs-LLM rules).
 
 | 8 | `interactive_run_is_live` | static | Using the payload check 7 already fetched: the dashboard whose `role` is interactive (`review-action` / `review` / `decision`) MUST have `instance.status != completed`, and every OTHER dashboard MUST have `instance.status == completed`. Importable: `checkInteractiveRunsLive` in `checks.ts`. | a completed run renders "This run is completed… Decisions are read-only" with the status control disabled, so the decision the narrative demonstrates cannot be performed on camera — skip `workflow_save_snapshot` for the interactive dashboard only. The reverse half matters too: a non-interactive run left `in_progress` has no snapshot, so its `par_url` is not a stable deep-link. A payload with no `instance.status` is reported, not failed (#1162) |
 
-| 9 | `dataset_obeys_pdd_constraints` | static | Reads back the generated `user_visits.json` and runs `auditDataset` (`lib/dataset-constraints.ts`) against the spec built from the PDD's data-quality constraint table — integer counts inside bounds, whole currency, conditional blocks only on the branch that asks them, declared cross-field rules, and premises the PDD states as facts ("1 CBF per community"). Any violation class fails. | the labs manifest is a DISTRIBUTION language and draws every field independently, so this is generation-time noise, not a narrative problem — regenerate with the constraint applied at the manifest, do not hand-patch records. This gate exists because a run wrote "0 constraint violations, all hand-checked" into run_state for a set with 251 fractional people-counts, 242 fractional Kwacha amounts, 34 off-branch reasons and 22 did-not-happen meetings carrying 41 attendees — and THIS SKILL PASSED, because it checked that dashboard URLs were live deep-links, not that the records were legal (#1346). Report the per-class counts so "0" is measured |
+| 9 | `dataset_obeys_pdd_constraints` | static | Runs `checkDatasetObeysPddConstraints` (`checks.ts`) over three inputs the producer's step 2c writes: the **derivation** (`specFromDeliverApp(get_opportunity_apps(<opp>, 'deliver'))` — the spec is DERIVED from the app's own `relevant` / `constraint` expressions, and hand-declared currency / cross-field / `uniquePairs` entries are ADDITIONS merged with `mergeDatasetSpecs`, never a replacement), the **branch-scrub report** (`scrubOffBranchFields`), and `auditDataset` over the records as they now stand. Fails on: a clean audit with no derivation behind it and no stated reason; a deliver app that returned 0 questions; any `unparsed[]` gate or bound (an expression the derivation could not read is a gate this run did not audit — a reported finding, never a silent pass); a scrub field that could not be located; and any violation class. | **Re-run the branch scrub — do NOT narrow the spec.** `scrubOffBranchFields(records, spec.conditionalFields)` from `lib/dataset-constraints.ts`, then write the scrubbed `user_visits.json` back to the opp's fixture folder before any dashboard run is minted, and carry the per-field counts into the run summary. There is **no manifest-side remedy**: `BeneficiaryCohort` in `connect_labs/labs/synthetic/generator/fixtures/manifest.py` has no conditional / relevant / branch primitive (`null_rate` is unconditional; `CorrelationSpec` cannot make a field absent on a branch), so the pre-#1658 hint ("regenerate with the constraint applied at the manifest") named a knob that does not exist and left under-declaring the spec or hand-patching records as the only routes to green. For an `unparsed[]` entry, hand-declare that gate as an ADDITION and re-run. This gate exists because a run wrote "0 constraint violations, all hand-checked" into run_state for a set with 251 fractional people-counts, 242 fractional Kwacha amounts, 34 off-branch reasons and 22 did-not-happen meetings carrying 41 attendees — and THIS SKILL PASSED (#1346) — and because `bednet-check-2-visit/20260817-1720` then passed check 9 with `conditionalFields: []` on an app whose two observation fields are both gated on consent, which the next run of the same opp measured at 18 of 276 each (#1658). Report the per-class counts so "0" is measured |
 
 | 10 | `dashboard_bindings_are_wired` | static | For each authored workflow, runs `checkDashboardBindings` (`lib/dashboard-bindings.ts`) over its definition: no pipeline schema still extracting `form.meta.*` (the stock template paths the synthetic generator never writes), `snapshot_inputs.pipelines` covering every alias in `pipeline_sources`, and render code that actually READS a declared pipeline rather than a denormalized `worker.visit_count` the generator never back-fills. | ADAPT means RE-POINT — re-point the new pipeline's schema at the same real form paths the scorecard pipeline already resolves, declare the snapshot aliases, and bind the render to the pipeline. Live: workflow 5069 hit all three at once and rendered `VISITS 0` beside `visits: 835` on data that summed correctly (#1160). Complements check 7, which catches the same class from the rendered payload; this one catches it from the DEFINITION, before a run is even minted |
 
@@ -84,3 +85,34 @@ so the producer needs no new plumbing, and the stability loss is confined to the
 one dashboard whose entire point is that a stakeholder acts on it. Check 8 is
 two-sided so the opposite sloppiness — every run left `in_progress`, silently
 giving up snapshot stability on links a stakeholder keeps — fails too.
+
+## Why check 9 derives its spec instead of accepting one (#1658)
+
+`auditDataset` is only as good as the `DatasetSpec` handed to it, and the spec
+used to be built by reading the PDD's prose. Under-declare one entry and the
+gate reports a **measured** zero over a spec narrowed to exclude the finding —
+#1346's failure mode displaced one level up, into the spec instead of the count.
+
+Measured, same opp / same app / same generator:
+`bednet-check-2-visit/20260817-1720` recorded check 9 `pass` justified as "no
+counts, no currency, no conditional blocks", while
+`get_opportunity_apps(2214, 'deliver')` returned
+`"relevant": "/data/agree_again/consent_confirmed = 'yes'"` on both observation
+fields verbatim. `20260825-1310` declared them honestly and measured **18 of
+276** off-branch on each — the same 18 records. The difference between `pass`
+and `fail` was the spec, not the data.
+
+So the derivation is mechanical (`specFromDeliverApp`), and this check refuses
+the two shapes that would restore the old behaviour: a clean audit with no
+derivation behind it, and an `unparsed[]` expression treated as absence. The
+second half of #1658 is why the auto-fix changed: the old hint demanded a
+manifest-side constraint that connect-labs does not implement, so an honest run
+on any gated form failed for a cause it could not remedy — and the only way to
+green was to narrow the spec. The remedy is now the branch scrub, which is a
+declared, reproducible, idempotent generator post-step.
+
+## Change Log
+
+| Date | Change | Author |
+|------|--------|--------|
+| 2026-08-26 | Check 9 promoted to an importable `checkDatasetObeysPddConstraints` in `checks.ts`: the spec is derived from the deliver app (hand-declared entries are ADDITIONS), an unparsed `relevant` / `constraint` is a reported finding rather than a silent pass, a clean audit with no derivation behind it fails, and the auto-fix hint points at `scrubOffBranchFields` instead of a manifest constraint that does not exist. ace#1658. | ACE team |

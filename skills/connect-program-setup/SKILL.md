@@ -171,6 +171,35 @@ alone makes the artifact land outside `4-connect` and fail
       by `EXPECTED_OPP_BUDGET × 10` on *every* run of *every* opp, forever,
       on the live LLO-facing program Step 3a reconciles against the PDD.
 
+      **First, split the rows on `dashboard_read` (ace#1637).** Every
+      hydrated row carries it. `total_budget` and `program_name` are read
+      off the opportunity DASHBOARD, and each degrades to `undefined`
+      when its card is absent — so until this marker existed, "in no
+      program / states no budget" and "we could not read the page" were
+      the same bytes. On `bednet-check-2-visit/20260825-1310`, **16 of 81
+      hydrated `ai-demo-space` rows** came back with the list-page key
+      set only (no `program_name`, no `total_budget`, no `start_date`, no
+      app ids), two of them prior runs of the very program being sized.
+
+      - `dashboard_read: 'ok'` — the page rendered and its infocards
+        parsed. A missing `program_name` on such a row is a FACT: the opp
+        is in no program, so **exclude it from Σ and do not let it make Σ
+        unknown**. A missing `total_budget` on such a row is likewise a
+        stated zero-or-absent budget, not a read failure.
+      - anything else (`no_cards`, `not_a_dashboard`, `not_fetched`) —
+        the dashboard-sourced fields are UNREAD. Such a row can be
+        neither assigned to nor excluded from the program. Count them as
+        `unreadable_rows` and carry that count into the branch below;
+        **never treat an unread field as an absent one.**
+
+      Report the split verbatim in the program notes — `Σ over <k> rows;
+      <n> excluded (no program, dashboard_read ok); <u> unreadable`.
+      Upstream residual, unfixed and NOT ours to guess at: Connect
+      returns nothing for those `<u>` rows and `active` is correlated but
+      demonstrably not causal (5 inactive rows DO carry the fields), so
+      the cause is still open — ace#1637 makes the distinction visible,
+      it does not explain it.
+
       **Σ is UNKNOWN — not partial — in four cases. Check each before
       trusting it:**
       - the listing itself was incomplete: the atom returns a `listing`
@@ -184,8 +213,12 @@ alone makes the artifact land outside `4-connect` and fail
       - a kept row carries no `total_budget` (the dashboard's "Max Budget"
         card did not parse — this is how the field silently disappears if
         Connect restyles the page);
-      - a row carries no `program_name`, so it can be neither assigned to
-        nor excluded from this program;
+      - a row with `dashboard_read` other than `'ok'` — its
+        `program_name` and `total_budget` were not read, so it can be
+        neither assigned to nor excluded from this program. **A row with
+        `dashboard_read: 'ok'` and no `program_name` does NOT make Σ
+        unknown** — it is definitively outside this program and is simply
+        excluded (ace#1637);
       - more than one program in the org shares `program.name` (check the
         Step 2 `connect_list_programs` result) — the scoping is by NAME,
         so a duplicate name makes it ambiguous.
@@ -197,11 +230,32 @@ alone makes the artifact land outside `4-connect` and fail
         this step rarely re-fires, and a no-op when headroom is already
         ample. `EXPECTED_OPP_BUDGET` = the PDD's per-opp budget (default
         the program's own per-opp figure).
-      - **Σ unknown:** assume the worst case (the ceiling is fully
-        consumed) and raise unconditionally to `program.budget +
-        EXPECTED_OPP_BUDGET × 10` rather than computing a headroom from
-        partial data — a wrong Σ is what makes this check worse than no
-        check.
+      - **Σ unknown:** raise to a computed TARGET, and only if the
+        ceiling is actually below it. **Never `program.budget + …`**
+        (ace#1637): a raise expressed relative to the current ceiling is
+        not idempotent, so it compounds on every run of every opp on the
+        shared program, forever, purely because a read failed. That is
+        exactly what happened on `bednet-check-2-visit/20260825-1310`,
+        which lifted `Bednet Check Multi-Stage Study — 2026` from 19,400
+        to 64,400 against a KNOWN consumption of 4,062.
+
+        Compute the worst case from what you actually know:
+
+        ```
+        target = knownΣ                                  # rows summed with dashboard_read: 'ok'
+               + unreadable_rows × EXPECTED_OPP_BUDGET   # assume each unread row consumes a full opp
+               + EXPECTED_OPP_BUDGET × 3                 # the same headroom the Σ-known branch keeps
+        ```
+
+        Raise only when `program.budget < target`, and then to `target`
+        exactly. This is monotonic (it never shrinks a ceiling), it is
+        idempotent (a second run with the same rows computes the same
+        target and no-ops), and it bounds the ceiling by the number of
+        opps that could plausibly exist rather than by how many times
+        this step has run. If `listing.complete !== true` — the one case
+        where you do not know how many rows exist at all — fall back to
+        `program.budget + EXPECTED_OPP_BUDGET × 10` and say so, because
+        there is genuinely no bound to compute.
 
       Log the before/after budget in the program notes (Step 5) **and
       which branch fired** — `Σ = <n> over <k> opps` or `Σ unknown
@@ -302,6 +356,7 @@ downstream coherence:
 
 | Date | Change | Author |
 |------|--------|--------|
+| 2026-08-26 | **Step 4a can tell an ABSENT field from an UNREAD one, and the Σ-unknown raise is idempotent (ace#1637 — same class as #1550/#1590, third mechanism).** `connect_get_opportunity` now returns `dashboard_read` (`ok` / `no_cards` / `not_a_dashboard` / `not_fetched`, from `classifyDashboardRead` in `mcp/connect/backends/html-scrape.ts`). `total_budget` / `program_name` / `start_date` come only off the opportunity dashboard and each degrades to `undefined` when its card is absent, so "in no program" and "could not read the page" were the same bytes; 16 of 81 hydrated `ai-demo-space` rows on `bednet-check-2-visit/20260825-1310` were the second kind, two of them prior runs of the program being sized. A row with `dashboard_read: 'ok'` and no `program_name` is now EXCLUDED rather than making Σ unknown; only a genuinely unread row does. And the Σ-unknown branch no longer raises relative to the current ceiling — `program.budget + EXPECTED_OPP_BUDGET × 10` is not idempotent, so it compounded every run and took that program from 19,400 to 64,400 against a known consumption of 4,062. It now computes `knownΣ + unreadable_rows × EXPECTED_OPP_BUDGET + EXPECTED_OPP_BUDGET × 3` and raises only if the ceiling is below it. The relative raise survives only where no bound is computable (`listing.complete !== true`). Upstream residual left open and stated: why those 16 rows render no cards is still unknown — `active` is correlated but not causal. *Enforced:* `test/mcp/connect/unit/dashboard-read-honesty.test.ts`. | ACE team |
 | 2026-04-28 | Replace HITL workaround with `connect_*_program` atoms (ace-connect 0.8.1) | ACE team |
 | 2026-04-30 | Switch `connect_create_program` to `POST /api/programs/` (commcare-connect PR #1135). `delivery_type` now accepts the slug; `country` is the human country name. (0.10.47) | ACE team |
 | 2026-07-30 | Step 3a: reconcile reused program content (description/budget/dates) against the current run's PDD via `lib/program-reconcile.ts` — update or `[WARN]` per diverging field (jjackson/ace#1078). Note substring-match + hydration semantics of `connect_list_programs` (jjackson/ace#1089). | ACE team |

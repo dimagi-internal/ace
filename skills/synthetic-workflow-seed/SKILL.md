@@ -130,6 +130,66 @@ Either way: confirm the three strings match before you ship the
 workflow — a blank-KPI render passes all create/run calls and only
 surfaces in the saved-run screenshot.
 
+**Utility-resolution gate — lint `render_code` BEFORE every upload
+(ace#1662). A non-resolving Tailwind utility is a pre-upload FAILURE, not a
+silent no-op.** labs purges its Tailwind bundle against its OWN Django
+templates. A workflow's `render_code` lives in the labs DATABASE and is
+never scanned, so any utility labs does not itself use in a template is
+dropped from the shipped bundle — and then degrades to the unstyled
+baseline rather than erroring: a missing `bg-*` is transparent, a missing
+`text-*` is the inherited near-black, a missing `border-*` is the default
+grey, a missing `h-*` collapses the element to 0px. Nothing in the render,
+the page console, or any ACE QA gate observes it.
+
+Run the check on the FULL post-edit source, before
+`workflow_update_render_code` / `workflow_patch_render_code`:
+
+```bash
+ACE_ROOT="${CLAUDE_PLUGIN_ROOT:-$(python3 -c "import json,os; d=json.load(open(os.path.expanduser('~/.claude/plugins/installed_plugins.json'))); print(d['plugins']['ace@ace'][0]['installPath'])")}"
+npx --prefix "$ACE_ROOT" tsx "$ACE_ROOT/scripts/check-render-code-utilities.ts" <render-code-path> --substitute
+# exit 0 = every utility resolves · exit 1 = MISSING, do NOT upload
+# exit 2 = could not read the stylesheet — fix that first; do NOT proceed
+```
+
+Rules, each earned on `bednet-check-2-visit/20260825-1310`:
+
+- **Lint the whole source, never just the patch hunk.** Three of the five
+  misses on workflow 5230 were PRE-EXISTING, not introduced by the edit
+  that found them. For a `workflow_patch_render_code`, fetch the current
+  source with `workflow_get`, apply the patch locally, lint THAT, then
+  upload.
+- **On MISSING, substitute — do not upload and hope.** `--substitute`
+  names the resolving near-neighbours. The repair that shipped:
+  `text-rose-700` → `text-red-700`, `text-rose-800` → `text-red-800`,
+  `border-rose-300` → `border-red-300`, `bg-emerald-600` →
+  `bg-emerald-500`, `border-slate-300` → `border-gray-300` (card) /
+  `border-slate-200` (panels).
+- **For a geometric or arbitrary-value miss there is no near-neighbour** —
+  a different value is a different design. Drop the class and set the
+  property inline: `className="relative h-28 w-full"` →
+  `className="relative w-full" style={{ height: 112 }}`; `min-w-[52px]` →
+  `style={{ minWidth: 52 }}`. On workflow 5227 the missing `h-28` left all
+  12 weekly bars rendering at **0px** — an entire invisible chart panel,
+  with no error anywhere.
+- **The purge is per-UTILITY, not per-family, and there is no mirroring.**
+  `text-slate-700` ships while `bg-slate-400` and `border-slate-400` do
+  not; `border-*` and `text-*` do not follow `bg-*`. A resolving sibling
+  shade or sibling prefix tells you nothing — never reason from one.
+  Arbitrary values are not categorically blocked either (`text-[11px]`
+  ships, `min-w-[52px]` does not): the rule is the exact string.
+- **Do not substitute a working class for another working class.** Leave
+  every utility the check reports PRESENT alone; an unforced edit is churn.
+- **A one-time sweep is not a fix.** The available set is a function of
+  labs' own templates and drifts whenever labs changes its UI — silently,
+  and in the direction of breaking dashboards nobody is looking at. Run the
+  check every time you write `render_code`.
+
+The root-cause fix lives in labs (connect-labs#1294 — reject a
+non-resolving utility at the `render_code` write boundary). This gate earns
+its keep regardless: a client that validates at authoring time finds out
+now; a client that trusts the bundle finds out when a funder looks at a
+blank chart.
+
 2. **Create the LLO weekly review workflow — via the path decided above.**
 
    **ADAPT branch** (a template fits):
@@ -747,4 +807,4 @@ labs PR at first ship; that gap closed in 0.13.64 once labs shipped
 | 2026-05-28 | **Adapt-or-author build path.** Added the Build-path decision step (examine `list_templates` → ADAPT closest template or BUILD FROM SCRATCH via `workflow_create`), ADAPT/SCRATCH branches on steps 2 + 7, the fetch-`workflow_authoring_guide`-before-scratch rule, and the alias-consistency guardrail (pipeline alias == render key == `snapshot_inputs` key — the blank-KPI failure from `bednet-spot-check/20260528-0556`). Unblocked by connect-labs#300 (`workflow_create` + `workflow_authoring_guide`). Also resolves the stale `program_admin_audit` template_key — the live key is `program_admin_report`, and the examine step now reads live keys. | ACE team |
 | 2026-06-13 | Step 9 summary now emits **Render deep-links** (`/labs/workflow/<id>/run/?run_id=<run_id>&opportunity_id=<opp>`) for each saved run, so downstream consumers (`synthetic-summary`, `synthetic-workflow-polish-eval` capture, `synthetic-walkthrough-spec`) link the polished dashboard, not the run picker. The bare `/workflow/<id>/?opportunity_id=` URL renders the picker — the completed render needs a `run_id`. See `docs/learnings/2026-06-13-labs-workflow-run-deeplink.md` (jjackson/ace#769). | ACE team |
 | 2026-06-15 | **Render deep-link URL corrected (#788).** The emitted form was `…/run/<run_id>/?opportunity_id=` — `run_id` as a PATH segment, which matches no labs route (`workflow/urls.py` has only `<def>/run/` reading `?run_id=` and `run/<run_id>/`), so headless capture got Resolver404. Fixed to the query-param form `…/run/?run_id=<run_id>&opportunity_id=` across this skill + `synthetic-summary` / `synthetic-workflow-polish-eval` / `synthetic-walkthrough-spec` + the learning doc. Confirmed from labs source: `WorkflowRunView` reads `run_id` via `request.GET`, and `validate_context_access` passes `opportunity_id` through even on empty `organization_data` (so org_data was never the blocker). | ACE team |
-
+| 2026-08-26 | **Utility-resolution gate before every `render_code` upload (ace#1662).** labs purges Tailwind against its own Django templates, so any utility used only in DB-stored `render_code` is dropped from the bundle and degrades silently to the unstyled baseline. `text-rose-700` styled `consent 89.7% · below the 90% floor` — the only pay-affecting figure on the LLO weekly-review dashboard — and rendered near-black for an unknown number of runs; a missing `h-28` left all 12 weekly bars at 0px on workflow 5227. Added the pre-upload lint (`scripts/check-render-code-utilities.ts`, over `lib/tailwind-utility-resolution.ts`) with loud-failure semantics, the substitution guidance, and the lint-the-whole-source rule (3 of 5 misses were pre-existing). Root cause tracked upstream as connect-labs#1294. | ACE team |

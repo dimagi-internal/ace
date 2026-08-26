@@ -23,8 +23,10 @@ can read its form schema and surface deliver units to the opportunity.
 
   **Frontmatter contract (ace#1439).** `app-release-eval § both_apps_released`
   reads these keys, so they are declared here rather than left to whatever the
-  run happened to write. `is_released` lives HERE and not in the deploy
-  summary's `releases:` block:
+  run happened to write. This file is the **sole owner of released build
+  state** — `is_released`, `build_id` and `version` live HERE and nowhere
+  else, and every reader (`app-release-eval`, `app-release-qa`,
+  `llo-launch`'s app-verdict-freshness gate) reads them from here:
 
   ```yaml
   apps:
@@ -387,14 +389,7 @@ procedure below to rediscover.
    per type, but cannot detect slug collisions. Treat that path as a
    degraded build (operator has not pulled the projection-aware MCP).
 
-7. **Update `3-commcare/app-deploy_summary.md`** with a `releases:` block:
-   ```yaml
-   releases:
-     learn_app:  { build_id: <id>, version: <n>, released_at: <iso>, connect_markers: <count> }
-     deliver_app: { build_id: <id>, version: <n>, released_at: <iso>, connect_markers: <count> }
-   ```
-
-8. **Trigger Connect's deliver-unit sync.** Connect caches per-opp
+7. **Trigger Connect's deliver-unit sync.** Connect caches per-opp
    deliver units; after a release, the next opp create or wizard step
    will pick up the new schema. If an opp ALREADY exists (re-running
    this skill mid-cycle), tell the operator to either re-run
@@ -410,7 +405,7 @@ procedure below to rediscover.
    discover it, GET the wizard page and read the `hx-post` attribute on
    the Sync Deliver Units button.
 
-9. **Verify Connect can see the release.**
+8. **Verify Connect can see the release.**
    Optional but recommended sanity check before Phase 4 starts:
 
    - GET `/a/<connect_org>/opportunity/init/` (Connect side, via ace-connect MCP context)

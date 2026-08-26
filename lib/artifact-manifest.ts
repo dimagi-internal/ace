@@ -1069,6 +1069,16 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
       'The generation contract for the synthetic dataset: pinned timeline anchor, FLW personas, outcome/field model keyed on the real deliver-app form paths, and the realised totals. Under the `ace-run` provider this is derived from the run\'s own PDD + built apps, not from a free-text brief.',
   },
   {
+    path: '7-synthetic/branch-scrub_report.yaml',
+    producedBy: 'demo-data-setup',
+    role: 'qa-result',
+    consumedBy: ['demo-data-setup-qa'],
+    phase: 'synthetic-data-and-workflows',
+    required: false,
+    description:
+      "Step 2c's ledger for the dataset's own legality: the DatasetSpec derived from the deliver app (every question's `relevant` / `constraint`), every expression the derivation could NOT read (`unparsed[]` — a gate this run did not audit), the branch scrub that removed the off-branch values the labs manifest has no primitive to avoid, and `auditDataset` over the records as they now stand. Optional because the `denovo` provider has no deliver app to derive from; when it is absent, `demo-data-setup-qa` check 9 requires a stated reason rather than accepting a hand-declared spec (ace#1658).",
+  },
+  {
     path: '7-synthetic/demo-data-setup-qa_result.yaml',
     producedBy: 'demo-data-setup-qa',
     role: 'qa-result',
