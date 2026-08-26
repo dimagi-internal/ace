@@ -638,3 +638,179 @@ export function compareMaxScore(input: {
     perIndicator,
   };
 }
+
+// ---------------------------------------------------------------------------
+// Source resolution — and the difference between "nothing to check" and
+// "the thing I must check is unreachable" (ace#1648)
+// ---------------------------------------------------------------------------
+
+/**
+ * A candidate source file for a `[FIXED]` instrument, as addressed by the run's
+ * frozen `inputs-manifest.yaml`.
+ */
+export interface InstrumentSourceCandidate {
+  file_id: string;
+  name: string;
+  mime_type?: string;
+  /** The manifest-recorded folder the candidate was found in, when it came from a subfolder. */
+  folder_id?: string;
+}
+
+export type InstrumentSourceDisposition = 'proceed' | 'skipped' | 'halt';
+
+export type InstrumentSourceReasonKind =
+  /** The PDD declares no `[FIXED]` instrument — there is genuinely nothing to check. */
+  | 'no-fixed-instrument'
+  /** Resolved directly from a manifest `inputs[]` entry. */
+  | 'resolved-from-inputs'
+  /** Resolved by walking a manifest-recorded subfolder `folder_id`, one level. */
+  | 'resolved-from-subfolder'
+  /** `[FIXED]`, and the manifest names no source anywhere ACE is allowed to look. */
+  | 'unresolvable'
+  /** `[FIXED]`, and more than one candidate matched — picking one would be a guess. */
+  | 'ambiguous';
+
+export interface InstrumentSourceResolution {
+  disposition: InstrumentSourceDisposition;
+  reason: InstrumentSourceReasonKind;
+  /** The resolved source, when `disposition === 'proceed'`. */
+  source: InstrumentSourceCandidate | null;
+  /** Every candidate considered — populated on `ambiguous` so the halt can name them. */
+  candidates: InstrumentSourceCandidate[];
+  /** Human-readable explanation, safe to print verbatim in a halt or a memo. */
+  detail: string;
+  /** The exact `instrument_constants:` memo line Step 4k must record (ace#1648). */
+  memo: string;
+}
+
+/**
+ * Decide what Step 4k does about its source instrument.
+ *
+ * Why this is a function and not two lines of prose (ace#1648). Step 4k's
+ * trigger ANDed two conditions into ONE silent skip: "the PDD marks an
+ * instrument `[FIXED]`" AND "`inputs-manifest.yaml` carries a source file for
+ * it". So `no [FIXED] instrument on this opp` and `the [FIXED] instrument's
+ * source is unreachable` produced the SAME outcome — a clean skip and a green
+ * phase. The first is correct. The second means the run shipped a digitised
+ * scorecard that nothing ever compared against its published source, which is
+ * precisely the `hh-poverty-targeting/20260819-1435` failure (9 of 17 point
+ * values wrong, 101 lookup values invented) that 4k exists to prevent.
+ *
+ * **A skip that disables a correctness check is worse than one that degrades
+ * an output, because the run still says green.** So the two are split here:
+ * no `[FIXED]` instrument skips; a `[FIXED]` instrument that cannot be
+ * resolved HALTS.
+ *
+ * The second half of #1648 is why `subfolderCandidates` exists at all.
+ * The manifest's `inputs[]` is direct child FILES only (orchestrator Step 5c),
+ * deliberately — it is the frozen evidence set Phase 1 synthesizes from. So
+ * when the published instrument bundle is a SUBFOLDER of `inputs/` — the
+ * natural shape for a vendor download — the workbook is never in `inputs[]`
+ * and 4k took the skip branch every time. Callers may now walk
+ * the manifest's recorded `subfolders_not_listed[].folder_id` ONE LEVEL with
+ * `drive_list_folder` and pass what they find here. Walking a recorded id is
+ * not path guessing; composing a path from a name still is, and is still
+ * forbidden.
+ *
+ * Pure: the caller does the Drive reads, this decides.
+ */
+export function resolveInstrumentSource(input: {
+  /** Does the PDD mark an instrument `[FIXED]`? */
+  fixedInstrument: boolean;
+  /** The matching `inputs[]` entry, or `null` when the manifest names none. */
+  manifestEntry?: InstrumentSourceCandidate | null;
+  /**
+   * Candidates found by walking manifest-recorded subfolder ids one level.
+   * Omit or leave empty when the manifest records no subfolders, or when the
+   * walk found nothing that matches the instrument.
+   */
+  subfolderCandidates?: readonly InstrumentSourceCandidate[];
+  /**
+   * Did the manifest record any subfolder ids at all? Distinguishes "the walk
+   * found nothing" from "this manifest predates the subfolder-id contract", so
+   * the halt can name the right repair.
+   */
+  manifestRecordsSubfolders?: boolean;
+  /** Instrument name from the PDD, used only to make messages nameable. */
+  instrumentName?: string;
+}): InstrumentSourceResolution {
+  const named = input.instrumentName ? `\`${input.instrumentName}\`` : 'the [FIXED] instrument';
+  const subfolderCandidates = [...(input.subfolderCandidates ?? [])];
+
+  if (!input.fixedInstrument) {
+    const detail = 'the PDD declares no [FIXED] instrument, so there are no fixed constants to check';
+    return {
+      disposition: 'skipped',
+      reason: 'no-fixed-instrument',
+      source: null,
+      candidates: [],
+      detail,
+      memo: `instrument_constants: skipped — ${detail}`,
+    };
+  }
+
+  if (input.manifestEntry) {
+    const detail =
+      `resolved ${named} from inputs-manifest.yaml inputs[] ` +
+      `(${input.manifestEntry.name}, file_id ${input.manifestEntry.file_id})`;
+    return {
+      disposition: 'proceed',
+      reason: 'resolved-from-inputs',
+      source: input.manifestEntry,
+      candidates: [input.manifestEntry],
+      detail,
+      memo: `instrument_constants: checked — ${detail}`,
+    };
+  }
+
+  if (subfolderCandidates.length === 1) {
+    const hit = subfolderCandidates[0];
+    const detail =
+      `resolved ${named} by walking a manifest-recorded subfolder id one level ` +
+      `(${hit.name}, file_id ${hit.file_id}${hit.folder_id ? `, in folder ${hit.folder_id}` : ''})`;
+    return {
+      disposition: 'proceed',
+      reason: 'resolved-from-subfolder',
+      source: hit,
+      candidates: subfolderCandidates,
+      detail,
+      memo: `instrument_constants: checked — ${detail}`,
+    };
+  }
+
+  if (subfolderCandidates.length > 1) {
+    const listed = subfolderCandidates.map((c) => `${c.name} (${c.file_id})`).join(', ');
+    const detail =
+      `HALT: ${named} is [FIXED], and more than one manifest-recorded candidate matched — ${listed}. ` +
+      'Picking one would be a guess. Narrow the match, or record the intended source in inputs[].';
+    return {
+      disposition: 'halt',
+      reason: 'ambiguous',
+      source: null,
+      candidates: subfolderCandidates,
+      detail,
+      memo: `instrument_constants: HALT — ${detail}`,
+    };
+  }
+
+  const walkNote =
+    input.manifestRecordsSubfolders === false
+      ? 'the manifest records no subfolder ids, so there was nowhere further to look — ' +
+        'regenerate it against orchestrator Step 5c, which records each direct-child ' +
+        'subfolder\'s folder_id and name'
+      : 'neither inputs[] nor a one-level walk of the manifest-recorded subfolder ids named it';
+  const detail =
+    `HALT: ${named} is [FIXED] but its source could not be resolved — ${walkNote}. ` +
+    'Shipping a digitised instrument that nothing compared against its published source is the ' +
+    'ace#1527 failure; do NOT skip, do NOT substitute the PDD prose or the Nova brief, and do ' +
+    'NOT compose a path by name. Publish the source into inputs/ (or into a subfolder the ' +
+    'manifest records) and re-run.';
+  return {
+    disposition: 'halt',
+    reason: 'unresolvable',
+    source: null,
+    candidates: [],
+    detail,
+    memo: `instrument_constants: HALT — ${detail}`,
+  };
+}
