@@ -110,8 +110,12 @@ ace@dimagi-ai.com
   scan and click.
 - **Subject line on the first line, prefixed `Subject:`** so Phase 9
   can extract.
-- **Word count: 200-400.** Longer emails get skimmed and key links
-  missed; shorter feels dismissive.
+- **Word count: 200-350 (excluding URLs).** Longer emails get skimmed
+  and key links missed; shorter feels dismissive. This band is the
+  eval's, not an independent judgement — `training-onboarding-email-eval`
+  scores `length_discipline` 10 only inside 80–350, so 200–350 is the
+  intersection of "not dismissive" and "scores clean". Do not restate it
+  as a wider band here; the eval is authoritative (ace#1673).
 - **Exactly ONE primary call to action, and it carries a deadline, a
   time estimate, and a real link.** Everything else is a follow-on, not
   a competing ask — a four-item numbered "getting started" list reads as
@@ -135,7 +139,7 @@ ace@dimagi-ai.com
 4. **Self-check before write.** Verify:
    - Subject line is present and ≤ 78 chars
    - Every URL is a real URL (no `<...>` placeholders, no `TODO`)
-   - Word count 200-400
+   - Word count 200-350, excluding URLs
    - All three sibling docs are linked
    - Widget URL is the actual `widget_url` from
      `ocs-setup/widget-handoff.md`
@@ -162,7 +166,7 @@ ace@dimagi-ai.com
      `LLO_NAME`/`LLO_FIRST_NAME`/`LLO_ORG` tokens used
    - **URL hygiene:** all 4 URLs (opp + 3 docs + widget) are real
      URLs, not placeholders
-   - **Word budget:** 200-400 words
+   - **Word budget:** 200-350 words, excluding URLs
    - **Audience fit:** professional but warm; no jargon-heavy
      phrasing
    - **Call to action:** grade all four of —
@@ -260,6 +264,19 @@ agent now dispatches each child directly.
 
 ## Change Log
 
+- v3 (0.13.1000): Tighten the word band **200-400 → 200-350 (excluding
+  URLs)** in all three places it is stated (§ Format rules, Process step 4,
+  Process step 6). The producer authorised a band its own eval penalised:
+  `training-onboarding-email-eval` scored `length_discipline` (0.05) 10 only
+  inside 80–350, and `clarity` (0.30) capped at 6 at ≥ 350 — so an email in
+  the upper half of the producer's own band lost **0.35 of total weight** for
+  complying. Measured on hh-poverty-targeting/20260824-1404: a 390-word email
+  scored clarity 6.5 and length_discipline 6.0, ~0.5 of overall 8.375 being
+  the divergence rather than the artifact. Same class as ace#1654 (a producer
+  graded on an axis it cannot see) and resolved the same way — the eval is
+  authoritative, the producer moves. The eval side dropped `clarity`'s
+  length anchors so length is scored in exactly one dimension. Closes
+  ace#1673; enforced by `test/skills/onboarding-email-word-band.test.ts`.
 - v2 (0.13.99x): Add the **call to action** criterion to the Step 6
   self-eval, and split the format template's four-item "Getting started"
   list into one primary ask plus follow-ons. Closes ace#1654 — the
