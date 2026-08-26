@@ -37,6 +37,7 @@ import { MobileClient } from './mobile/client.js';
 import { ALLOWED_STEP_KEYS } from './mobile/backends/maestro.js';
 import {
   resolveSelectorsInYaml,
+  loadSelectorTypes,
   isStaticRecipesDirOverride,
   INSTALLED_STATIC_RECIPES_DIR,
   STATIC_RECIPES_DIR_ENV,
@@ -344,8 +345,9 @@ server.tool(
   'mobile_validate_recipe',
   {
     yaml: z.string().describe(`Maestro YAML body to validate. Standard ACE-recipe shape: appId frontmatter + \`---\` separator + step list. Validates step-key allowlist (${[...ALLOWED_STEP_KEYS].join(', ')}) and structural integrity (\`---\` separator present, appId in frontmatter, every step is a single-key object). Use this AFTER an ACE skill (running as a Claude Code session) writes Maestro YAML inline using its own LLM context — the mobile MCP does not bundle an LLM client, so YAML generation is the calling agent's responsibility, not this server's.`),
+    apkVersion: z.string().default('2.63.2').describe('Connect APK version whose selector map the map-aware lint rules read (mcp/mobile/selectors/connect-<apkVersion>.yaml). Only used to type-check value-position `${SELECTOR:name}` placements; if the map is missing, that one rule abstains and every other check still runs.'),
   },
-  async ({ yaml }) => {
+  async ({ yaml, apkVersion }) => {
     // Static lint pass FIRST. Catches known-broken structural shapes
     // (e.g. inputText-scalar-with-sibling-option) with a precise
     // rule-named error before delegating to the Maestro parser, which
@@ -355,7 +357,16 @@ server.tool(
     // comment-unaware parser. A bare `'` here starts a phantom string
     // and makes every subsequent atom invisible to docs/atom-schemas.md.
     const { lintRecipeText } = await import('./mobile/recipe-lint.js');
-    const lint = lintRecipeText(yaml);
+    // Map-aware rules need the ACTIVE selector map. A missing/unparseable map
+    // must never turn a lint pass into a hard failure — the rule abstains and
+    // every text-only rule still runs.
+    let selectorTypes: Record<string, 'id' | 'text' | 'point'> | undefined;
+    try {
+      selectorTypes = loadSelectorTypes(apkVersion);
+    } catch {
+      selectorTypes = undefined;
+    }
+    const lint = lintRecipeText(yaml, { selectorTypes });
     if (!lint.ok) {
       const first = lint.violations[0];
       const msg = `recipe lint failed [${first.rule}] line ${first.line}: ${first.detail}. Remediation: ${first.remediation}`;

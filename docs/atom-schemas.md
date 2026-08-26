@@ -1542,6 +1542,7 @@ _no parameters_
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `yaml` | `z.string` | **required** | Maestro YAML body to validate. Standard ACE-recipe shape: appId frontmatter + `---` separator + step list. Validates step-key allowlist (${[...ALLOWED_STEP_KEYS].join(', ')}) and structural integrity (`---` separator present, appId in frontmatter, every step is a single-key object). Use this AFTER an ACE skill (running as a Claude Code session) writes Maestro YAML inline using its own LLM context — the mobile MCP does not bundle an LLM client, so YAML generation is the calling agent's responsibility, not this server's. |
+| `apkVersion` | `z.string` | optional | Connect APK version whose selector map the map-aware lint rules read (mcp/mobile/selectors/connect-<apkVersion>.yaml). Only used to type-check value-position `${SELECTOR:name}` placements; if the map is missing, that one rule abstains and every other check still runs. |
 
 ### `mobile_resolve_selectors`
 

@@ -1,5 +1,7 @@
 import { describe, it, expect } from 'vitest';
+import { readdirSync, readFileSync } from 'node:fs';
 import { lintRecipeText } from '../../../mcp/mobile/recipe-lint.js';
+import { loadSelectorTypes } from '../../../mcp/mobile/recipe-resolver.js';
 
 // Static, parse-free lint pass on Maestro recipe YAML text. Catches the
 // known-broken structural shapes that produce unhelpful parser errors at
@@ -538,5 +540,189 @@ describe('rule: repeat-palette-invocation-without-discriminator (ace#1651)', () 
       '',
     ].join('\n');
     expect(lintRecipeText(yaml).violations.filter((v) => v.rule === RULE)).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// dimagi-internal/ace#1690 — `${SELECTOR:...}` PLACEMENT rules.
+//
+// Both defects below shipped to a device on spark-facilitator/20260820-0817
+// Phase 6 with `lintRecipeText` returning `ok: true`. They are pure static
+// checks over the recipe text (plus, for the type rule, the active selector
+// map) — the ground truth is the resolver's own substitution contract and
+// YAML's grammar, not a device.
+// ---------------------------------------------------------------------------
+
+describe('lintRecipeText — selector-inline-key-position (ace#1690)', () => {
+  const RULE = 'selector-inline-key-position';
+
+  it('flags a bare ${SELECTOR:...} used INLINE after a step key', () => {
+    // Resolves to `- tapOn: text: "RECORD LOCATION"`, which Maestro rejects
+    // with `mapping values are not allowed here`. This case FAILS against
+    // the pre-#1690 linter (it returned ok: true).
+    const yaml = [
+      'appId: org.commcare.dalvik',
+      '---',
+      '- tapOn: ${SELECTOR:geopoint-record-location}',
+      '',
+    ].join('\n');
+    const { ok, violations } = lintRecipeText(yaml);
+    expect(ok).toBe(false);
+    const hits = violations.filter((v) => v.rule === RULE);
+    expect(hits).toHaveLength(1);
+    expect(hits[0].line).toBe(3);
+    expect(hits[0].detail).toMatch(/INLINE/);
+    expect(hits[0].remediation).toMatch(/own line/i);
+  });
+
+  it('NEGATIVE CONTROL — a bare ${SELECTOR:...} alone on its own line is valid', () => {
+    // The canonical key-position form, used by every static palette
+    // (e.g. form-advance.yaml:67). Must never be flagged.
+    const yaml = [
+      'appId: org.commcare.dalvik',
+      '---',
+      '- tapOn:',
+      '    ${SELECTOR:form-nav-next}',
+      '',
+    ].join('\n');
+    expect(lintRecipeText(yaml).violations.filter((v) => v.rule === RULE)).toEqual([]);
+  });
+
+  it('NEGATIVE CONTROL — a value-position "${SELECTOR:...}" inline is valid', () => {
+    // Quoted, so the `:` lives inside a string: raw-YAML-valid even beside
+    // sibling matcher keys. This is the form jjackson/ace#650 introduced.
+    const yaml = [
+      'appId: org.commcare.dalvik',
+      '---',
+      '- tapOn:',
+      '    id: "${SELECTOR:opp-list-resume-button}"',
+      '    below:',
+      '      text: ${OPP_NAME}',
+      '',
+    ].join('\n');
+    expect(lintRecipeText(yaml).violations.filter((v) => v.rule === RULE)).toEqual([]);
+  });
+
+  it('NEGATIVE CONTROL — placeholders inside comments are prose, not code', () => {
+    const yaml = [
+      'appId: org.commcare.dalvik',
+      '---',
+      '# Anchored via ${SELECTOR:deliver-suite-menu} and',
+      '#   ${SELECTOR:deliver-home-job-card}.',
+      '- tapOn:',
+      '    ${SELECTOR:deliver-suite-menu}    # display-mode-agnostic',
+      '',
+    ].join('\n');
+    expect(lintRecipeText(yaml).violations.filter((v) => v.rule === RULE)).toEqual([]);
+  });
+
+  it('flags an inline bare placeholder under a matcher key too', () => {
+    // `text: ${SELECTOR:x}` resolves to `text: text: "..."` — same defect.
+    const yaml = [
+      'appId: org.commcare.dalvik',
+      '---',
+      '- assertVisible:',
+      '    text: ${SELECTOR:form-nav-next}',
+      '',
+    ].join('\n');
+    const hits = lintRecipeText(yaml).violations.filter((v) => v.rule === RULE);
+    expect(hits).toHaveLength(1);
+    expect(hits[0].line).toBe(4);
+  });
+});
+
+describe('lintRecipeText — selector-value-position-type-mismatch (ace#1690)', () => {
+  const RULE = 'selector-value-position-type-mismatch';
+  // Mirrors connect-2.63.2.yaml: camera-take-photo is `type: text`.
+  const selectorTypes = {
+    'camera-take-photo': 'text',
+    'form-nav-next': 'id',
+  } as const;
+
+  it('flags a value-position selector written under the WRONG matcher key', () => {
+    // Resolves to `id: "TAKE PICTURE"` — valid YAML, permanently unmatchable.
+    // FAILS against the pre-#1690 linter (it returned ok: true).
+    const yaml = [
+      'appId: org.commcare.dalvik',
+      '---',
+      '- tapOn:',
+      '    id: "${SELECTOR:camera-take-photo}"',
+      '',
+    ].join('\n');
+    const { ok, violations } = lintRecipeText(yaml, { selectorTypes });
+    expect(ok).toBe(false);
+    const hits = violations.filter((v) => v.rule === RULE);
+    expect(hits).toHaveLength(1);
+    expect(hits[0].line).toBe(4);
+    expect(hits[0].detail).toMatch(/type: text/);
+    expect(hits[0].remediation).toMatch(/text: "\$\{SELECTOR:camera-take-photo\}"/);
+  });
+
+  it('NEGATIVE CONTROL — the SAME line under the key the map declares is valid', () => {
+    const yaml = [
+      'appId: org.commcare.dalvik',
+      '---',
+      '- tapOn:',
+      '    text: "${SELECTOR:camera-take-photo}"',
+      '- tapOn:',
+      '    id: "${SELECTOR:form-nav-next}"',
+      '',
+    ].join('\n');
+    expect(lintRecipeText(yaml, { selectorTypes }).violations.filter((v) => v.rule === RULE)).toEqual([]);
+  });
+
+  it('abstains entirely when no selector map is injected', () => {
+    const yaml = [
+      'appId: org.commcare.dalvik',
+      '---',
+      '- tapOn:',
+      '    id: "${SELECTOR:camera-take-photo}"',
+      '',
+    ].join('\n');
+    expect(lintRecipeText(yaml).violations.filter((v) => v.rule === RULE)).toEqual([]);
+  });
+
+  it('abstains on a name the map does not know — that is the resolver report', () => {
+    const yaml = [
+      'appId: org.commcare.dalvik',
+      '---',
+      '- tapOn:',
+      '    id: "${SELECTOR:does-not-exist}"',
+      '',
+    ].join('\n');
+    expect(lintRecipeText(yaml, { selectorTypes }).violations.filter((v) => v.rule === RULE)).toEqual([]);
+  });
+
+  it('abstains under keys the selector map has no opinion about', () => {
+    const yaml = [
+      'appId: org.commcare.dalvik',
+      '---',
+      '- tapOn:',
+      '    text: "Submit"',
+      '    childOf: "${SELECTOR:camera-take-photo}"',
+      '',
+    ].join('\n');
+    expect(lintRecipeText(yaml, { selectorTypes }).violations.filter((v) => v.rule === RULE)).toEqual([]);
+  });
+});
+
+describe('lintRecipeText — ace#1690 rules do not fire on the shipped palette', () => {
+  it('every static recipe lints clean under BOTH new rules', () => {
+    // The false-positive guard. A new detection that rejects a recipe which
+    // is actually fine would halt a future Phase 6 on a good walk — strictly
+    // worse than the defect being fixed.
+    const NEW = new Set(['selector-inline-key-position', 'selector-value-position-type-mismatch']);
+    const dir = new URL('../../../mcp/mobile/recipes/static/', import.meta.url);
+    const selectorTypes = loadSelectorTypes('2.63.2');
+    const files = readdirSync(dir).filter((f) => f.endsWith('.yaml'));
+    expect(files.length).toBeGreaterThan(10);
+    const offenders: string[] = [];
+    for (const f of files) {
+      const body = readFileSync(new URL(f, dir), 'utf8');
+      for (const v of lintRecipeText(body, { selectorTypes }).violations) {
+        if (NEW.has(v.rule)) offenders.push(`${f}:${v.line} [${v.rule}]`);
+      }
+    }
+    expect(offenders).toEqual([]);
   });
 });
