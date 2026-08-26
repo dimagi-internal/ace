@@ -24,11 +24,12 @@ This file specifies Phase 3 of the ACE lifecycle: build and
 deploy the CommCare-side apps.
 
 **This file is read and executed inline by the top-level Claude Code
-session — it is NOT dispatched as a subagent.** Step 1 invokes
+session — it is not dispatched as a subagent.** Step 1 invokes
 `/nova:autobuild`, which itself dispatches `nova:nova-architect-autonomous`
-via the `Agent` tool. `Agent` is only available at level 0; running
-Phase 3 as a subagent would put Nova's dispatch at level 2 and fail.
-See `agents/ace-orchestrator.md` § Agent Topology. The frontmatter is
+via the `Agent` tool. Running inline keeps that dispatch at level 1 rather
+than spending a level on Phase 3 itself. (Subagent nesting is allowed as of
+Claude Code v2.1.219 — to a budget, not freely; see `CLAUDE.md § Agent
+topology` and `lib/agent-depth.ts`.) The frontmatter is
 retained for tooling that introspects agent metadata, not because Phase
 2 is itself dispatched.
 

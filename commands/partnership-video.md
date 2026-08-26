@@ -11,9 +11,9 @@ Research a prospect organization and produce a partnership video + pitch deck.
 **Read `agents/partnership-video.md` and follow it as a procedure document from this
 (top-level) Claude Code session. Do **not** dispatch `Agent(partnership-video)` — it is
 a procedure doc, not a subagent, and it dispatches `Agent` itself (deep-research,
-canopy walkthrough, Nova for micro-demo mocks), which is only available at level 0.
-Running it as a subagent would put those dispatches at level 2 and break every one
-of them.**
+canopy walkthrough, Nova for micro-demo mocks). Running it inline at level 0 is what
+keeps those chains inside the dispatch-depth budget — `Agent(nova:autobuild)` alone
+costs two levels. See `CLAUDE.md § Agent topology`.**
 
 ## Two-phase workflow
 

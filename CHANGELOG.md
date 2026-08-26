@@ -5,6 +5,24 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.13.927 — 2026-08-26
+
+**The "Agent is level-0 only" invariant was retired — subagent nesting is allowed, to a budget.**
+
+ACE's single architectural rule (`CLAUDE.md § Agent topology`) was: *anything that calls `Agent` must run at level 0, because the `Agent` tool is unavailable to subagents.* That was true when it was written and is no longer true. Claude Code shipped subagent nesting in v2.1.172 (depth 5, un-tunable), defaulted it back to 1 in v2.1.217, and settled on **3** in v2.1.219, configurable via `CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH`. Eleven live docs asserted the retired rule, and `test/agents/agent-topology.test.ts` enforced it in CI — so the repo would have failed a refactor that is now legal.
+
+The rule is replaced by a **depth budget**, declared and computed rather than remembered:
+
+- **`lib/agent-depth.ts`** — the dispatch graph as data: each node's form (`inline` costs no depth, `subagent` costs one), what it dispatches, and why it has the form it does. Computes every root-to-leaf chain and the deepest one. ACE's deepest chain is `ace-orchestrator → synthetic-data-and-workflows → canopy:ddd → canopy:visual-judge` at **depth 2, budget 3**.
+- **`test/lib/agent-depth.test.ts`** — fails CI if a chain outgrows the budget, if an `Agent(...)` target is written in the repo without being counted, or if an `inline` node stops justifying its inline-ness (it dispatches nothing, so it spends top-level context for free).
+- **`test/agents/agent-topology.test.ts`** — the absolute ban on `Agent(` inside a subagent doc is replaced by "every dispatch a subagent doc makes is accounted for in the depth graph." The structural checks it also carried (procedure docs declare themselves; orchestrator `Dispatch:` lines match each doc's form) are unchanged.
+
+**Why this needs a guard when the old binary didn't:** the failure mode inverted. A too-deep dispatch used to error — loud, and how the Nova migration regression surfaced. Now Claude Code *withholds* the `Agent` tool at the limit and the subagent at the floor does the work itself and returns one summary. Nothing errors. `ddd-concept-eval` dispatches `canopy:visual-judge` as a deliberately fresh subagent per scene (its rubric docks every dimension by 1 if that independence isn't real), so a collapsed fan-out still emits a full set of verdicts — correlated, optimistic, and invisible in every artifact ACE writes. Same shape as the self-graded evals in dimagi-internal/ace#1203.
+
+**Drift fixed on the way through:** the topology table listed `sweep` as a subagent invoked via `Agent(sweep)`. It never was — `commands/sweep.md` executes it inline and `agents/sweep.md` § Notes says "the procedure doc is the only thing that calls `Agent`." The table and the code had disagreed silently; the graph now fences it.
+
+**Not done here:** the inline nodes remain inline. Lifting `ace-orchestrator` into a real subagent is now legal (it takes the deepest chain to exactly 3) and would buy context isolation for a 10-phase run, but it leaves zero headroom — that is a separate, measured change.
+
 ## 0.13.679 — 2026-07-28
 
 **ACE now reads its secrets from its own `Agent-Ace` 1Password vault (fleet per-agent vault split).**

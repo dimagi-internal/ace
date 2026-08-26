@@ -12,7 +12,7 @@ The architectural rule and full topology table live in `CLAUDE.md § Agent topol
 
 - **The rule:** anything that calls `Agent` runs at level 0. `ace-orchestrator`, `commcare-setup` (Phase 3, `/nova:autobuild`) and `synthetic-data-and-workflows` (Phase 7, `Agent(canopy:ddd)`) are procedure docs read and executed inline by the top-level session because they dispatch further work; the other eight agents (`idea-to-design`, `scenarios-and-acceptance`, `connect-setup`, `ocs-setup`, `qa-and-training`, `solicitation-management`, `execution-manager`, `closeout`, `ocs-tester`) are subagents dispatched via `Agent(...)` from level 0. Enforced by `test/agents/agent-topology.test.ts` — a subagent doc containing an `Agent(` dispatch fails CI, because the dispatch would be silently unreachable (that is what stalled Phase 7 in `spark-facilitator/20260813-2126`).
 - **Invocation in the procedure below:** "dispatch the X agent" means a top-level `Agent(X)` call (subagent rows in the CLAUDE.md table) or "read `agents/X.md` and execute it inline" (procedure-doc rows).
-- **Why the rule:** the `Agent` tool is unavailable to subagents; a node that nests further work cannot itself be a subagent. There are never two levels of `Agent` dispatch.
+- **Why the forms differ:** an inline procedure doc runs in its caller's context and costs no dispatch depth, so the work it nests starts a level higher. Subagent nesting IS allowed (Claude Code v2.1.219+, default 3 levels) — the constraint is a budget, not a ban, and past the budget the `Agent` tool is silently withheld rather than erroring. `lib/agent-depth.ts` declares the graph and `test/lib/agent-depth.test.ts` holds the number.
 
 ## Your State
 

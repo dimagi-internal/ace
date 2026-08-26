@@ -1,31 +1,40 @@
 /**
- * ACE's one architectural rule, enforced instead of remembered.
+ * ACE's dispatch topology, enforced instead of remembered.
  *
- * `CLAUDE.md § Agent topology`: **anything that calls `Agent` must run at level 0**
- * (the top-level Claude Code session). The `Agent` tool is unavailable to
- * subagents, so a node that needs to dispatch further work cannot itself be a
- * subagent — it must be a PROCEDURE DOC that the orchestrator reads and executes
- * inline. Both forms live under `agents/`; only the wiring differs.
+ * ## The incident this exists for
  *
- * The rule was prose, and prose does not fail. `agents/synthetic-data-and-workflows.md`
- * (Phase 7) was wired as a subagent and its Step 3 said "…or `Agent(canopy:ddd)`
- * for the full converge → video → upload loop." That branch was structurally
- * unreachable, so the only executable path was a single render+judge pass with no
- * loop, no convergence rule and no stopping rule. Run
- * `spark-facilitator/20260813-2126` then hand-drove four iterations across ~2M
- * subagent tokens and stopped only because a human said to.
+ * `agents/synthetic-data-and-workflows.md` (Phase 7) was wired as a subagent and
+ * its Step 3 said "…or `Agent(canopy:ddd)` for the full converge → video → upload
+ * loop." Under the Claude Code of the time that branch was structurally
+ * unreachable — subagents had no `Agent` tool — so the only executable path was a
+ * single render+judge pass with no loop, no convergence rule and no stopping rule.
+ * Run `spark-facilitator/20260813-2126` then hand-drove four iterations across
+ * ~2M subagent tokens and stopped only because a human said to. Nothing caught it.
  *
- * Nothing caught it. This does.
+ * ## Why this file changed shape (2026-08-26)
  *
- * The discriminator is deliberately a plain string match, not a heuristic: a
- * procedure doc declares itself in its H1 ("(Procedure Document)" / "(procedure
- * doc)"), and a subagent doc may not contain the literal token `Agent(` anywhere —
- * not even in prose describing what it does NOT do. A rule with no exceptions is
- * one nobody has to interpret.
+ * The original guard encoded the rule as an absolute: *a subagent doc may not
+ * contain the literal token `Agent(` anywhere.* That rule is no longer true.
+ * Claude Code allows subagent nesting to a configurable depth (default 3 since
+ * v2.1.219), so a subagent CAN dispatch — provided its chain fits the budget.
+ * Kept as-is, this file would have failed CI on a refactor that is now legal, and
+ * a green test asserting a retracted rule is worse than no test.
+ *
+ * The protection is preserved, not dropped, by moving the load-bearing question
+ * from "does this doc contain `Agent(`?" to "is every dispatch this doc makes
+ * ACCOUNTED FOR in the depth arithmetic?" — which is `lib/agent-depth.ts`, guarded
+ * by `test/lib/agent-depth.test.ts`. An unreachable branch is still caught; it is
+ * now caught by the number rather than by the taboo.
+ *
+ * What stays here: the structural checks that are about INVOCATION rather than
+ * depth — a procedure doc must declare itself so an orchestrator scanning it knows
+ * how to invoke it, and the orchestrator's `Dispatch:` lines must match each doc's
+ * actual form. Those were never about the nesting rule and are still correct.
  */
 import { describe, it, expect } from 'vitest';
 import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
+import { DISPATCH_GRAPH } from '../../lib/agent-depth.js';
 
 const AGENTS_DIR = join(__dirname, '..', '..', 'agents');
 
@@ -72,26 +81,31 @@ describe('agent topology — Agent dispatch requires level 0', () => {
     expect(stale, 'stale exemption — remove it').toEqual([]);
   });
 
-  it('no SUBAGENT doc contains an Agent( dispatch', () => {
+  it('accounts for every Agent( dispatch a subagent doc makes', () => {
+    // Superseded the old absolute ban (see the header). A subagent may dispatch
+    // now; what it may not do is dispatch something the depth arithmetic has
+    // never heard of, because that is how a chain silently outgrows the budget
+    // and a fan-out collapses without erroring.
+    const declared = new Map(DISPATCH_GRAPH.map((n) => [n.name, n]));
+
     const violations = docs
       .filter((d) => !d.isProcedureDoc && AGENT_DISPATCH.test(d.text))
-      .map((d) => {
-        const lines = d.text
-          .split('\n')
-          .map((line, i) => ({ line, n: i + 1 }))
-          .filter(({ line }) => AGENT_DISPATCH.test(line))
-          .map(({ line, n }) => `      ${d.file}:${n}  ${line.trim()}`)
-          .join('\n');
-        return `  ${d.file} is a subagent but dispatches Agent(:\n${lines}`;
+      .flatMap((d) => {
+        const node = declared.get(d.file.replace(/\.md$/, ''));
+        const targets = [...d.text.matchAll(/\bAgent\(([a-z0-9:_-]+)\)/g)].map((m) => m[1]);
+        const undeclared = [...new Set(targets)].filter(
+          (t) => !(node?.dispatches as readonly string[] | undefined)?.includes(t),
+        );
+        return undeclared.length === 0
+          ? []
+          : [`  ${d.file} dispatches ${undeclared.join(', ')} — not in its DISPATCH_GRAPH entry`];
       });
 
     expect(
       violations,
-      `The Agent tool is unavailable to subagents (CLAUDE.md § Agent topology), so these\n` +
-        `dispatches are unreachable — the branch silently never runs.\n` +
-        `Either promote the doc to a level-0 procedure doc (add "(Procedure Document)" to\n` +
-        `its H1 + a level-0 note, and change the orchestrator's Dispatch: line to read it\n` +
-        `inline), or remove the dispatch. Do not leave it as prose.\n\n` +
+      'A dispatch that lib/agent-depth.ts does not know about is not counted against\n' +
+        'CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH. Add it to the node\'s `dispatches` (and\n' +
+        'check the resulting depth), or remove it.\n\n' +
         violations.join('\n'),
     ).toEqual([]);
   });
@@ -109,13 +123,20 @@ describe('agent topology — Agent dispatch requires level 0', () => {
     ).toEqual([]);
   });
 
-  it('phase 7 is a procedure doc (it dispatches the canopy DDD loop)', () => {
+  it('phase 7 form matches lib/agent-depth.ts', () => {
+    // Phase 7 dispatches the canopy DDD loop, which fans out per-scene judges of
+    // its own — the deepest chain ACE has. It is inline today because that keeps
+    // the chain at depth 2. Whether it MUST stay inline is now an arithmetic
+    // question, so assert agreement with the graph rather than a fixed answer.
     const phase7 = docs.find((d) => d.file === 'synthetic-data-and-workflows.md');
     expect(phase7, 'agents/synthetic-data-and-workflows.md is missing').toBeDefined();
+    const declared = DISPATCH_GRAPH.find((n) => n.name === 'synthetic-data-and-workflows');
+    expect(declared, 'phase 7 is missing from DISPATCH_GRAPH').toBeDefined();
     expect(
       phase7!.isProcedureDoc,
-      'Phase 7 dispatches Agent(canopy:ddd) for render+converge, so it cannot be a subagent.',
-    ).toBe(true);
+      `lib/agent-depth.ts declares phase 7 as '${declared!.form}' but the doc says otherwise. ` +
+        'The graph and the doc must agree — the depth budget is computed from the graph.',
+    ).toBe(declared!.form === 'inline');
   });
 
   it('the orchestrator dispatches every procedure-doc phase INLINE, never by Agent()', () => {

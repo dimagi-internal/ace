@@ -154,10 +154,12 @@ See `agents/ace-orchestrator.md` for full detail.
    from this (top-level) Claude Code session. Do **not** dispatch
    `Agent(ace-orchestrator)` — the orchestrator is a procedure doc, not
    a subagent (see `CLAUDE.md` § Agent topology). The reason this
-   matters: the orchestrator dispatches per-phase agents and (for
-   Phase 3) the Nova architect, all of which require the `Agent` tool.
-   `Agent` is only available at level 0; running the orchestrator as a
-   subagent would put it at level 1 and break every dispatch.
+   matters: running it inline keeps the whole pipeline at level 0, which
+   is what leaves depth headroom for the chains it starts — Phase 7's
+   `canopy:ddd` loop and its per-scene judges are the deepest, and they
+   fit with one level to spare only because the phases above them are
+   free. Dispatching the orchestrator as a subagent is legal now but
+   spends that headroom; `lib/agent-depth.ts` has the arithmetic.
 
    Inputs to thread through:
    - Slug
