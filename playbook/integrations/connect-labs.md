@@ -191,11 +191,65 @@ retry tax.
 - **Each `field_distributions` value needs an explicit `distribution`
   discriminator.** Pydantic's tagged-union dispatch is keyed on a
   `distribution: <name>` field on each value. Dropping it produces
-  the cryptic `unable to discriminate` error. The union is exactly
-  three variants (source: `commcare_connect/labs/synthetic/generator/fixtures/manifest.py`):
-  `normal` (`mean` + `stddev`), `uniform` (`low` + `high`), and
-  `binary` (`rate`). `categorical` / `uniform_int` are NOT valid and
-  are rejected at the labs boundary.
+  the cryptic `unable to discriminate` error. The union is **exactly
+  four variants** — source, read 2026-08-26 at
+  `dimagi-internal/connect-labs@main:connect_labs/labs/synthetic/generator/fixtures/manifest.py`:
+
+  ```python
+  FieldDistribution = Annotated[
+      NormalDistribution | UniformDistribution | BinaryDistribution | CategoricalDistribution,
+      Field(discriminator="distribution"),
+  ]
+  ```
+
+  | tag | required params | notes |
+  |-----|-----------------|-------|
+  | `normal` | `mean`, `stddev` (>= 0) | optional `lo` / `hi` clamp the draw to plausible bounds |
+  | `uniform` | `low`, `high` (`high >= low`) | |
+  | `binary` | `rate` (0-1) | draws **`1` / `0`**, not strings. `period_rates: {<week_index>: <rate>}` varies it per week |
+  | `categorical` | `values: {<value>: <share>}` | draws the KEY verbatim; shares need not sum to 1 (normalized at draw time), each must be >= 0 and the sum > 0 |
+
+  All four also accept the shared optionals `transform: <str>` and
+  `null_rate` (0-1). `uniform_int` is still NOT a variant.
+
+  **`categorical` is the right choice for any `select1` / coded field**,
+  because it round-trips the app's REAL encoding. A yes/no question whose
+  released XForm carries `<bind constraint=". = 'yes' or . = 'no'"/>` must be
+  authored as:
+
+  ```yaml
+  field_distributions:
+    form.net_check.slept_under_net:
+      distribution: "categorical"
+      values: { 'yes': 0.66, 'no': 0.34 }
+  ```
+
+  Encoding it as `binary` instead writes floats `1.0` / `0.0` into
+  `form_json`, so a pipeline authored against PRODUCTION data (keying on
+  `'yes'`) does not work unchanged against the fixture, and vice versa — it
+  forces `avg` + `transform: float` workarounds. `categorical` also works
+  inside an `flw_personas[].field_overrides` block.
+
+  **Prior claim corrected (ace#1656).** This bullet used to say the union was
+  "exactly three variants" and that `categorical` was "rejected at the labs
+  boundary". That was true when written (2026-06-09, ace#734/#737);
+  `CategoricalDistribution` landed upstream ten days later, between
+  connect-labs `53e7dbd` (2026-06-13, absent) and `e323ac0` (2026-06-19,
+  present — PR #655 "High-fidelity synthetic generator"), and the doc was
+  never re-checked. Live confirmation on
+  `bednet-check-2-visit/20260825-1310` Phase 7 (labs-only opp 10046, fixture
+  folder `1QtJa0Cwg1jBPTJQ29z7iAiDPRkyH4ibK`):
+  `synthetic_generate_from_manifest` accepted `categorical`, generated 276
+  `user_visits`, round-tripped the literal strings `'yes'` / `'no'` at the
+  app's own nesting, and `pipeline_preview` returned `fields_all_null: []`.
+  The `20260817-1720` run of the same opp believed the stale claim, encoded
+  three yes/no fields as floats, and had to disclose the divergence in its own
+  dataset audit.
+
+  Note the **package rename**: upstream moved `commcare_connect/` →
+  `connect_labs/` on 2026-07-01 (connect-labs PR #797). Citations elsewhere
+  in ACE that still say `commcare_connect/labs/...` point at a path that no
+  longer exists.
 - **`binary` distribution: the param is `rate` (0-1), NOT `p_yes`.**
   `{ field: "slept_under_net", distribution: "binary", rate: 0.7 }` draws
   1 at 70%. To vary the rate per week — the week-scoped-anomaly

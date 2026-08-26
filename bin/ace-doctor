@@ -2287,8 +2287,52 @@ elif [ -f "$HOME/.ace/env.sh" ]; then
 else
   warn "nova_shell_env: NOVA_API_KEY not in shell env and ~/.ace/env.sh missing" "run /ace:setup --force-env  (writes ~/.ace/env.sh and appends source line to $NOVA_RC_FILE)"
 fi
+# A user-scope `nova:` entry is NOT automatically stale cruft — that heuristic
+# predates voidcraft-labs/nova-plugin#52 and became actively harmful
+# (dimagi-internal/ace#1629). Claude Code 2.1.238 changed what env the
+# interactive-session MCP connect path passes to `headersHelper`; Nova's helper
+# is env-var dependent (`if [ -n "$NOVA_API_KEY" ] ... else printf '{}'`), so it
+# silently emits `{}` and sends NO Authorization header. Measured on
+# spark-facilitator/20260820-0817: 2.1.237 = 32/32 sessions sent a header,
+# 2.1.238+ = 0/53, with a same-session control on 2.1.243 showing canopy's
+# helper (reads a FILE) at hdr=1 while nova's (reads an ENV VAR) sat at hdr=0.
+#
+# The ONLY working fix today is a user-scope server carrying a STATIC header,
+# which bypasses the helper entirely:
+#   claude mcp add --transport http --scope user nova https://mcp.commcare.app/mcp \
+#     --header 'Authorization: Bearer <PAT>'
+#
+# So the presence of a static `Authorization` header is exactly what separates
+# the #52 workaround from genuine pre-1.1.0 cruft. Blanket-WARNing told the
+# operator to delete the only credential path that works and restart — which
+# returns them to the needs-auth/wrong-principal loop that cost that run three
+# sessions. A doctor must not be able to talk an operator out of the only
+# configuration that works.
+#
+# The classification is a tested pure function
+# (scripts/classify-nova-user-scope-override.mjs), not a regex buried here.
+# The header value is a live PAT, so `claude mcp get` is PIPED into it on stdin
+# — never argv (visible in `ps`), never a shell variable, and the classifier
+# prints only `workaround` / `stale`, never an input line.
 if command -v claude >/dev/null 2>&1 && claude mcp list 2>/dev/null | grep -qE '^nova:[[:space:]]'; then
-  warn "nova_shell_env: stale user-scope nova: MCP override detected (pre-1.1.0 setup)" "the override shadows the Nova plugin's PAT-aware MCP entry. Run: claude mcp remove nova --scope user  (then restart Claude Code)"
+  NOVA_OVERRIDE_CLASS="$(claude mcp get nova 2>/dev/null \
+    | node "$ROOT/scripts/classify-nova-user-scope-override.mjs" 2>/dev/null || true)"
+  case "$NOVA_OVERRIDE_CLASS" in
+    workaround)
+      info "nova_shell_env: user-scope nova: MCP override carries a static Authorization header — this is the voidcraft-labs/nova-plugin#52 workaround, NOT stale cruft. Leave it in place; remove it only once #52 ships a file-based or static-header helper (dimagi-internal/ace#1629)."
+      ;;
+    stale)
+      warn "nova_shell_env: stale user-scope nova: MCP override detected — no static Authorization header (pre-1.1.0 setup)" "the override shadows the Nova plugin's PAT-aware MCP entry AND carries no credential of its own. Run: claude mcp remove nova --scope user  (then restart Claude Code). If you meant to install the nova-plugin#52 workaround, re-add it WITH --header 'Authorization: Bearer <PAT>'"
+      ;;
+    *)
+      # Classification could not run (node missing, `claude mcp get` shape
+      # changed). Say so — do NOT fall back to the removal prescription. The
+      # whole point of ace#1629 is that the removal advice is destructive when
+      # the entry IS the working credential path, so an unclassified entry must
+      # never inherit it by default.
+      warn "nova_shell_env: user-scope nova: MCP override present but could not be classified" "inspect it yourself with: claude mcp get nova  — if it carries a static 'Authorization: Bearer …' header it is the nova-plugin#52 workaround and MUST BE LEFT ALONE. Do not remove it on the strength of this warning"
+      ;;
+  esac
 fi
 
 # 7c. nova_needs_auth_cache — verify Claude Code is not caching

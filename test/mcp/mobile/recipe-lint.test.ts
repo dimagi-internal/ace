@@ -430,7 +430,11 @@ describe('rule: repeat-palette-invocation-without-discriminator (ace#1651)', () 
     ].join('\n');
   }
 
-  it('passes a SINGLE invocation that binds no WALK_LABEL (discriminator stays optional)', () => {
+  it('does not fire on a SINGLE invocation — this rule is about REPEATS', () => {
+    // Scoping check for THIS rule only. A single unbound invocation is still
+    // a defect, just a different one: ace#1668 showed it writes the literal
+    // `undefined` into every frame name, and `runFlow-unbound-screenshot-name`
+    // is the rule that catches it (asserted immediately below).
     const yaml = [
       'appId: org.commcare.dalvik',
       '---',
@@ -442,6 +446,44 @@ describe('rule: repeat-palette-invocation-without-discriminator (ace#1651)', () 
     ].join('\n');
     const result = lintRecipeText(yaml);
     expect(result.violations.filter((v) => v.rule === RULE)).toEqual([]);
+  });
+
+  it('a single unbound invocation IS caught — by runFlow-unbound-screenshot-name (ace#1668)', () => {
+    // #1651 declared WALK_LABEL optional on the premise that an unbound one
+    // substitutes to the empty string. It does not — Maestro renders it as
+    // the literal `undefined`, and hh-poverty-targeting/20260824-1404 shipped
+    // `deliver-form-walk-form-listundefined.png` +3 as a result. A subflow
+    // `env:` default is not the fix either (it would clobber both legs,
+    // ace#1033), so the binding is REQUIRED at every call site.
+    const yaml = [
+      'appId: org.commcare.dalvik',
+      '---',
+      '- runFlow:',
+      '    file: deliver-form-walk.yaml',
+      '    env:',
+      '      MODULE_NAME: "Register household"',
+      '',
+    ].join('\n');
+    const hits = lintRecipeText(yaml).violations.filter(
+      (v) => v.rule === 'runFlow-unbound-screenshot-name',
+    );
+    expect(hits).toHaveLength(1);
+    expect(hits[0].detail).toContain('WALK_LABEL');
+    expect(lintRecipeText(yaml).ok).toBe(false);
+  });
+
+  it('accepts a single invocation that binds one slug', () => {
+    const yaml = [
+      'appId: org.commcare.dalvik',
+      '---',
+      '- runFlow:',
+      '    file: deliver-form-walk.yaml',
+      '    env:',
+      '      MODULE_NAME: "Register household"',
+      '      WALK_LABEL: "-deliver"',
+      '',
+    ].join('\n');
+    expect(lintRecipeText(yaml).ok).toBe(true);
   });
 
   it('flags a second invocation that binds no WALK_LABEL', () => {

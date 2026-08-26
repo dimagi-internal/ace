@@ -99,9 +99,9 @@ paraphrase the schema here — read the model / schema and validate.
      act/capture. Crossing to a different dashboard = a new scene WITH its
      `${<key>_par_url}`.
 
-3b. **Check every scene's ACTIONS before validating (ace#1379, #1380, #1365).**
+3b. **Check every scene's ACTIONS before validating (ace#1379, #1380, #1660).**
    Run `checkSceneActions` from `lib/ddd-scene-actions.ts` over `scenes[]`.
-   Four ways a scene reports `ok: true` while demonstrating nothing — all
+   Three ways a scene reports `ok: true` while demonstrating nothing — all
    found on ONE run, spark-facilitator/20260813-2126:
 
    - **`ambiguous-text-target`** — target the CONTROL, never the words. A
@@ -127,18 +127,35 @@ paraphrase the schema here — read the model / schema and validate.
      `restore:` block — and note it must run before **every** render **and
      before every frame-fit pass**, because the verifier replays these same
      actions and so consumes the precondition for the render after it.
-   - **`scroll-under-fixed-header`** — the labs shell has a **~72px fixed top
-     bar**, and `scroll_into_view_if_needed` lands the artifact's top edge
-     underneath it. Pass `offset: 96`, or scroll to `bottom`. Seven
-     independent judges rediscovered this in different words
-     (`motion_friction` 2 on 7 of 12 scenes, concept eval **2/5 fail**); the
-     only two scenes scoring 4 are the two that scroll to `bottom`, where no
-     fixed header can occlude anything.
+
+   The gate check is a WORD COUNT, so it only runs on `text:`/bare targets.
+   A control-selector gate (`testid:` / `css:` / `aria:` / `role:`) is left
+   alone — you have already named one element, and counting the words in its
+   id cannot say whether it is post-state-only (ace#1660).
+
+   **Retracted (ace#1660): there is no `scroll-under-fixed-header` check, and
+   `scroll_to` needs no offset.** A fourth check used to flag every `scroll_to`
+   without `offset: 96`. Both halves were wrong against canopy 0.2.423 and it
+   is deleted — **do not re-add it, and never write `offset:` on an action**:
+
+   - canopy's `ScrollToAction` declares only `kind` + `target`, and
+     `_ActionBase` sets `extra="forbid"`, so `offset:` makes the spec FAIL
+     validation (`Extra inputs are not permitted`). Following the old
+     remediation turned a passing spec into one canopy refuses.
+   - The premise was stale anyway. `recorder.py::scroll_to` chases
+     `scroll_into_view_if_needed` with an explicit centring scroll
+     (`window.scrollTo({top: y + scrollY - innerHeight / 2})`), so the element
+     lands at the vertical CENTRE — no fixed bar reaches it. That was #1365's
+     own fix, closed 2026-08-14.
+
+   If a scene genuinely needs different framing, the only levers canopy accepts
+   are `scroll` (whose `value` takes `top` / `bottom` / a pixel offset) and a
+   per-scene `viewport`.
 
    These are the halves decidable from the SPEC. The runtime halves —
    resolving an ambiguous target to the interactive node, comparing a gate
-   against the captured before-frame, replaying restores, offsetting the
-   scroll — belong in canopy's walkthrough runner and are tracked upstream.
+   against the captured before-frame, replaying restores — belong in
+   canopy's walkthrough runner and are tracked upstream.
 
 4. **Validate — the gate.** Resolve canopy's runtime from its installed
    plugin, then run the validator from there (pass the artifact paths as

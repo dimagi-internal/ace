@@ -352,7 +352,9 @@ describe('checkBeneficiaryCohortsWellFormed (jjackson/ace#713)', () => {
     expect(r.auto_fix_hint).toBeTruthy();
   });
 
-  test('FAILS a field_distributions entry with a non-{normal,uniform,binary} tag (the categorical escape)', () => {
+  test('FAILS a field_distributions entry whose discriminator key is `type:` not `distribution:`', () => {
+    // The original escape (jjackson/ace#713) was the WRONG KEY, not the
+    // categorical tag — pydantic's tagged-union dispatch reads `distribution:`.
     const m = VALID_MANIFEST.replace(
       /beneficiary_cohorts:[\s\S]*?size: 50/m,
       `beneficiary_cohorts:
@@ -366,6 +368,90 @@ describe('checkBeneficiaryCohortsWellFormed (jjackson/ace#713)', () => {
     const r = checkBeneficiaryCohortsWellFormed(m);
     expect(r.pass).toBe(false);
     expect(r.detail).toMatch(/field_distributions/i);
+  });
+
+  test('FAILS a field_distributions entry with a tag outside the union (uniform_int)', () => {
+    const m = VALID_MANIFEST.replace(
+      /beneficiary_cohorts:[\s\S]*?size: 50/m,
+      `beneficiary_cohorts:
+  - id: "primary"
+    size: 50
+    field_distributions:
+      shop_count:
+        distribution: "uniform_int"
+        low: 5
+        high: 12`,
+    );
+    const r = checkBeneficiaryCohortsWellFormed(m);
+    expect(r.pass).toBe(false);
+    expect(r.detail).toMatch(/field_distributions/i);
+  });
+
+  // ── jjackson/ace#1656 ──────────────────────────────────────────────────────
+  // `categorical` IS a legitimate upstream variant. The playbook and this
+  // check both claimed it was "rejected at the labs boundary"; that was true
+  // when written (2026-06-09) and went stale when connect-labs PR #655
+  // (2026-06-19) added `CategoricalDistribution` to the union. Live-confirmed
+  // accepted on bednet-check-2-visit/20260825-1310 (labs-only opp 10046): 276
+  // user_visits generated, string values 'yes'/'no' round-tripped verbatim.
+  // Source, read 2026-08-26 at
+  // dimagi-internal/connect-labs@main:connect_labs/labs/synthetic/generator/fixtures/manifest.py:
+  //   FieldDistribution = Annotated[
+  //       NormalDistribution | UniformDistribution | BinaryDistribution | CategoricalDistribution,
+  //       Field(discriminator="distribution"),
+  //   ]
+  // These tests exist so the allowed set cannot silently narrow back to three.
+  test("`categorical` is in the allowed distribution set (ace#1656 — must not narrow again)", () => {
+    const m = VALID_MANIFEST.replace(
+      /beneficiary_cohorts:[\s\S]*?size: 50/m,
+      `beneficiary_cohorts:
+  - id: "primary"
+    size: 50
+    field_distributions:
+      slept_under_net:
+        distribution: "categorical"
+        values: { 'yes': 0.66, 'no': 0.34 }`,
+    );
+    const r = checkBeneficiaryCohortsWellFormed(m);
+    expect(r.pass).toBe(true);
+    expect(r.detail).toMatch(/well-formed/i);
+  });
+
+  test('PASSES the exact categorical manifest the live labs generator accepted (opp 10046)', () => {
+    const m = VALID_MANIFEST.replace(
+      /beneficiary_cohorts:[\s\S]*?size: 50/m,
+      `beneficiary_cohorts:
+  - id: "primary"
+    size: 50
+    field_distributions:
+      form.agree_again.consent_confirmed:
+        distribution: "categorical"
+        values: { 'yes': 0.93, 'no': 0.07 }
+      form.net_check.slept_under_net:
+        distribution: "categorical"
+        values: { 'yes': 0.66, 'no': 0.34 }
+      form.net_check.net_visibly_hanging:
+        distribution: "binary"
+        rate: 0.58`,
+    );
+    const r = checkBeneficiaryCohortsWellFormed(m);
+    expect(r.pass).toBe(true);
+  });
+
+  test('FAILS a categorical entry with an empty `values` map (upstream requires >= 1)', () => {
+    const m = VALID_MANIFEST.replace(
+      /beneficiary_cohorts:[\s\S]*?size: 50/m,
+      `beneficiary_cohorts:
+  - id: "primary"
+    size: 50
+    field_distributions:
+      slept_under_net:
+        distribution: "categorical"
+        values: {}`,
+    );
+    const r = checkBeneficiaryCohortsWellFormed(m);
+    expect(r.pass).toBe(false);
+    expect(r.detail).toMatch(/value/i);
   });
 
   test('FAILS a list-shape field_distributions (jjackson/ace#806)', () => {

@@ -42,8 +42,9 @@ export interface LintResult {
 }
 
 /**
- * Palette subflows that name a screenshot from a caller-supplied env var,
- * and the env keys every call site MUST bind.
+ * Palette subflows whose screenshot names depend on a caller-supplied env var
+ * — either the whole name or a discriminating suffix — and the env keys every
+ * call site MUST bind.
  *
  * WHY A CALL SITE, NOT A DEFAULT (dimagi-internal/ace#1033).
  *
@@ -87,6 +88,28 @@ export const PALETTE_REQUIRED_SCREENSHOT_ENV: Record<string, readonly string[]> 
   'form-submit.yaml': ['SCREENSHOT_NAME_PRE_SUBMIT', 'SCREENSHOT_NAME_POST_SUBMIT'],
   'content-form-finish.yaml': ['SCREENSHOT_NAME'],
   'content-form-finish-to-suite.yaml': ['SCREENSHOT_NAME'],
+  // ace#1668. `WALK_LABEL` is a SUFFIX on otherwise-fixed capture names rather
+  // than the whole name, but it lands here for exactly the same reason and
+  // must be enforced the same way. The ace#1651 fix that introduced it
+  // declared it OPTIONAL, on the stated premise that "unbound, Maestro
+  // substitutes the empty string". It does not — the premise above
+  // ("Maestro renders the unset placeholder as the literal string
+  // `undefined`") applies to every unbound var, this one included, and the
+  // very next run wrote `deliver-form-walk-form-listundefined.png` +3
+  // (hh-poverty-targeting/20260824-1404). A subflow `env:` default cannot fix
+  // it either — per the precedence rule above it would clobber BOTH legs to
+  // the same value and re-create the #1651 overwrite. Required at the call
+  // site is the only shape that works.
+  'deliver-form-walk.yaml': ['WALK_LABEL'],
+};
+
+/**
+ * Per-key remediation example. Most required keys ARE the whole frame name;
+ * `WALK_LABEL` is a suffix, so the generic `"journey-<leg>-<step>"` example
+ * would teach the wrong shape (ace#1668).
+ */
+const SCREENSHOT_ENV_EXAMPLE: Record<string, string> = {
+  WALK_LABEL: '"-<leg>"    # e.g. "-register" / "-followup"; a lone leg still binds one',
 };
 
 /**
@@ -423,7 +446,7 @@ function findUnboundScreenshotNames(yaml: string): LintViolation[] {
         `bind every required key in this runFlow's own \`env:\` block with a per-call-site name, e.g.\n- runFlow:\n    file: ${filename}\n    env:\n${PALETTE_REQUIRED_SCREENSHOT_ENV[
           filename
         ]
-          .map((k) => `      ${k}: "journey-<leg>-<step>"`)
+          .map((k) => `      ${k}: ${SCREENSHOT_ENV_EXAMPLE[k] ?? '"journey-<leg>-<step>"'}`)
           .join('\n')}\n(required: ${required})`,
     });
   };

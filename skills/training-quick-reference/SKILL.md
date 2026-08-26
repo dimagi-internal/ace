@@ -21,10 +21,9 @@ of other training skills.
 
 | Source | Artifact | Used for |
 |---|---|---|
-| Phase 1 | `ACE/<opp>/runs/<run-id>/1-design/idea-to-pdd.md` | per-visit step list, daily caps, key safety rules |
+| Phase 1 | `ACE/<opp>/runs/<run-id>/1-design/idea-to-pdd.md` | per-visit step list, daily caps, key safety rules, support contact + GRM escalation route |
 | Phase 3 | `ACE/<opp>/runs/<run-id>/3-commcare/pdd-to-deliver-app_summary.md` | exact required-field list (so the ref says what the form actually asks) |
 | Phase 4 (`run_state.yaml`) | `connect.opportunity` + `connect.payment_units` | max-per-day numbers |
-| Phase 5 | `ACE/<opp>/runs/<run-id>/5-ocs/ocs-setup_widget-handoff.md` (`widget_url`) | OCS widget URL printed at the bottom |
 
 ## Output
 
@@ -62,8 +61,8 @@ N. **Submit**
 - <verification trigger>: complete partial, flag in notes
 
 ## Need help?
-Open the chat widget: <widget_url>
-LLO contact: <name from connect-setup/opportunity.md>
+Call your LLO coordinator: <name from connect-setup/opportunity.md>
+To raise it formally: **GRM** in the app menu
 ```
 
 ## Format rules
@@ -102,7 +101,9 @@ LLO contact: <name from connect-setup/opportunity.md>
      list
    - Every "Layer-A signal" maps to an Evidence-Model rule in PDD
    - Every escalation trigger from PDD § Escalation is referenced
-   - The widget URL renders as a real URL, not a placeholder
+   - The "Need help?" block names a real person plus the GRM menu — no
+     `openchatstudio.com` host, `public_id`, or `embed_key` (see
+     § Support channel below)
 
 6. **Write** to `ACE/<opp>/runs/<run-id>/6-qa-and-training/training-quick-reference.md`
    **as a NATIVE Google Doc via `drive_create_doc_from_markdown`** — NOT

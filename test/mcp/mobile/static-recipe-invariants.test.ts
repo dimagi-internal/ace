@@ -5,6 +5,7 @@ import { parse as parseYaml } from 'yaml';
 import { resolveSelectorsInYaml } from '../../../mcp/mobile/recipe-resolver.js';
 import {
   lintRecipeText,
+  PALETTE_INVOCATION_DISCRIMINATOR,
   PALETTE_REQUIRED_SCREENSHOT_ENV,
 } from '../../../mcp/mobile/recipe-lint.js';
 
@@ -635,10 +636,17 @@ describe('screenshot-name binding contract (dimagi-internal/ace#1033)', () => {
     // env, or an existing one stops, the map must move with it — otherwise
     // the gate silently stops covering a file, which is exactly how #852
     // recurred through form-advance.yaml.
+    //
+    // ace#1668: a registered per-invocation DISCRIMINATOR counts too. It is a
+    // suffix rather than the whole name, but it is unbound-able in exactly the
+    // same way, and an unbound one renders as the literal `undefined` — which
+    // is what shipped when #1651 declared it optional.
     const derived: Record<string, string[]> = {};
     for (const filename of paletteFiles) {
       const refs = screenshotNameRefs(readFileSync(`${STATIC_DIR}${filename}`, 'utf8'));
-      if (refs.length > 0) derived[filename] = refs;
+      const discriminator = PALETTE_INVOCATION_DISCRIMINATOR[filename];
+      const keys = [...new Set([...refs, ...(discriminator ? [discriminator] : [])])].sort();
+      if (keys.length > 0) derived[filename] = keys;
     }
     const declared = Object.fromEntries(
       Object.entries(PALETTE_REQUIRED_SCREENSHOT_ENV).map(([k, v]) => [k, [...v].sort()]),
@@ -667,6 +675,19 @@ describe('screenshot-name binding contract (dimagi-internal/ace#1033)', () => {
         uncommented,
         `${filename}: front-matter must not set a SCREENSHOT_NAME* env default — a subflow env: block OVERRIDES caller-passed runFlow env in Maestro 2.5.1, so this silently defeats per-call-site naming (ace#1033)`,
       ).not.toMatch(/^\s*SCREENSHOT_NAME[A-Z0-9_]*\s*:/m);
+
+      // ace#1668 — the same trap, one step further out. The obvious reading of
+      // "an unbound ${WALK_LABEL} renders as `undefined`" is "give it an
+      // `env:` default", and that fix is WRONG for the same measured reason:
+      // the subflow block would clobber BOTH legs to the same value and
+      // re-create the #1651 overwrite the discriminator exists to prevent.
+      const discriminator = PALETTE_INVOCATION_DISCRIMINATOR[filename];
+      if (discriminator) {
+        expect(
+          uncommented,
+          `${filename}: front-matter must not set a ${discriminator} env default — a subflow env: block OVERRIDES caller-passed runFlow env (ace#1033), so a default would force every invocation to the SAME discriminator and silently restore the ace#1651 frame overwrite`,
+        ).not.toMatch(new RegExp(`^\\s*${discriminator}\\s*:`, 'm'));
+      }
     }
   });
 
@@ -1812,10 +1833,25 @@ describe('deliver-form-walk per-invocation frame names (dimagi-internal/ace#1651
       .map((m) => m[1] ?? m[2] ?? m[3]);
   }
 
-  /** Maestro substitutes an UNBOUND `${VAR}` with the empty string — the same
-   * semantics this palette's MODULE_NAME/FORM_NAME guards already rely on. */
+  /**
+   * Maestro's REAL interpolation semantics: `${...}` is evaluated by a JS
+   * engine, so an UNBOUND variable is the JS value `undefined` and
+   * stringifies to the literal text `undefined` — NOT the empty string.
+   *
+   * This helper used to hardcode `?? ''`, i.e. it ASSERTED the assumption the
+   * #1651 fix was built on instead of testing it. That is precisely why a
+   * verified-looking fix shipped a live defect (ace#1668): every test below
+   * agreed with the recipe because both were wrong in the same way. The
+   * `undefined` here is corroborated twice over — by the frames on disk from
+   * hh-poverty-targeting/20260824-1404, and by the independent Maestro-source
+   * reading already recorded in `PALETTE_REQUIRED_SCREENSHOT_ENV`'s header.
+   */
+  const MAESTRO_UNBOUND = 'undefined';
   function expand(template: string, env: Record<string, string>): string {
-    return template.replace(/\$\{([A-Z0-9_]+)\}/g, (_m, k: string) => env[k] ?? '');
+    return template.replace(
+      /\$\{([A-Z0-9_]+)\}/g,
+      (_m, k: string) => env[k] ?? MAESTRO_UNBOUND,
+    );
   }
 
   const templates = screenshotTemplates(raw);
@@ -1856,16 +1892,68 @@ describe('deliver-form-walk per-invocation frame names (dimagi-internal/ace#1651
     for (const name of legA) expect(legB).not.toContain(name);
   });
 
-  it('is byte-identical to the pre-#1651 names when WALK_LABEL is unbound', () => {
-    // Back-compat: an existing single-invocation caller binds nothing and must
-    // keep the exact names its manifests and training decks already reference.
-    const legacy = templates.map((t) => expand(t, { MODULE_NAME: 'Register household' }));
-    expect(legacy).toEqual([
-      'deliver-form-walk-module-list',
-      'deliver-form-walk-module-row-Register household',
-      'deliver-form-walk-form-list',
-      'deliver-form-walk-form-question',
+  it('an UNBOUND WALK_LABEL writes the literal string `undefined` (ace#1668)', () => {
+    // THE REGRESSION TEST THAT WAS MISSING. #1651 shipped on the claim that an
+    // unbound `${WALK_LABEL}` substitutes to the empty string, so a
+    // single-invocation caller could keep binding nothing. The claim was
+    // false, and nothing in the suite could tell — the only unbound case
+    // tested went through an `expand()` helper that hardcoded that same
+    // assumption. The next run's Deliver leg then wrote
+    // `deliver-form-walk-form-listundefined.png` and three siblings
+    // (hh-poverty-targeting/20260824-1404).
+    //
+    // This pins the real behaviour, so the ONLY way to get clean names is the
+    // one the palette now mandates: bind it at every call site.
+    const unbound = templates.map((t) => expand(t, { MODULE_NAME: 'Household poverty survey' }));
+    expect(unbound).toEqual([
+      'deliver-form-walk-module-listundefined',
+      'deliver-form-walk-module-row-Household poverty surveyundefined',
+      'deliver-form-walk-form-listundefined',
+      'deliver-form-walk-form-questionundefined',
     ]);
+  });
+
+  it('is registered as a REQUIRED call-site binding, so unbound cannot ship', () => {
+    // The consequence of the test above. An optional discriminator whose
+    // unbound value is garbage is not optional — it is unenforced. The
+    // palette-wide drift test pins the registry against the recipe; this pins
+    // the specific entry that closes ace#1668.
+    expect(PALETTE_INVOCATION_DISCRIMINATOR['deliver-form-walk.yaml']).toBe('WALK_LABEL');
+    expect(PALETTE_REQUIRED_SCREENSHOT_ENV['deliver-form-walk.yaml']).toContain('WALK_LABEL');
+  });
+
+  it('every registered discriminator is also REQUIRED at the call site', () => {
+    // Class-level preventer, not an instance fix. `PALETTE_INVOCATION_DISCRIMINATOR`
+    // members are unbound-able env vars that land inside `takeScreenshot`
+    // names; every one of them therefore renders as `undefined` when omitted,
+    // and none of them can be defaulted in the subflow (ace#1033 precedence).
+    // Registering a new discriminator without also requiring it at the call
+    // site re-opens ace#1668 for the next palette.
+    for (const [filename, key] of Object.entries(PALETTE_INVOCATION_DISCRIMINATOR)) {
+      expect(
+        PALETTE_REQUIRED_SCREENSHOT_ENV[filename] ?? [],
+        `${filename}: \`${key}\` is a per-invocation discriminator but is not required at the call site — an omitted one interpolates to the literal \`undefined\` (ace#1668)`,
+      ).toContain(key);
+    }
+  });
+
+  it('a SINGLE-invocation caller gets clean names by binding one slug', () => {
+    // The replacement for the retired "byte-identical when unbound" claim.
+    // Nothing downstream pins the pre-#1651 literals (no skill, lib, manifest
+    // schema or test outside this palette references them), so the contract
+    // that matters is "no `undefined` in any frame name", and one bound slug
+    // delivers it. The lint requires a NON-EMPTY binding, so `""` is not the
+    // documented escape hatch — a slug is.
+    const single = templates.map((t) =>
+      expand(t, { MODULE_NAME: 'Household poverty survey', WALK_LABEL: '-deliver' }),
+    );
+    expect(single).toEqual([
+      'deliver-form-walk-module-list-deliver',
+      'deliver-form-walk-module-row-Household poverty survey-deliver',
+      'deliver-form-walk-form-list-deliver',
+      'deliver-form-walk-form-question-deliver',
+    ]);
+    for (const name of single) expect(name).not.toContain('undefined');
   });
 
   it('a bound WALK_LABEL never introduces a path separator into a frame name', () => {
