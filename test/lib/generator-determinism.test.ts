@@ -284,3 +284,74 @@ describe('the skill carries the contract (ace#1388)', () => {
     expect(skill).toContain('lib/generator-determinism.ts');
   });
 });
+
+// ── ace#1697: prose is not code ────────────────────────────────────────
+//
+// The `hash-builtin-derivation` scan stripped `#` comments but not string
+// literals, so a generator whose module docstring says "no builtin hash()
+// anywhere" was flagged for the sentence documenting its own compliance —
+// the lint firing on its own documentation. Found on
+// spark-facilitator/20260820-0817 Phase 7, whose only executable digest call
+// is hashlib.blake2b.
+describe('string-awareness (#1697)', () => {
+  it('does not flag hash() inside a docstring', () => {
+    const src = [
+      'import hashlib',
+      '"""Generator.',
+      '',
+      'DETERMINISM: no builtin `hash()` anywhere -- stable_hash is blake2b.',
+      '"""',
+      '',
+      'def stable_hash(x):',
+      '    """Builtin hash() of a str is randomised per process (PEP 456)."""',
+      '    return int.from_bytes(hashlib.blake2b(repr(x).encode(), digest_size=8).digest(), "big")',
+    ].join('\n');
+    const r = checkGeneratorDeterminism(src);
+    expect(r.findings.filter((f) => f.kind === 'hash-builtin-derivation')).toEqual([]);
+  });
+
+  it('still flags an EXECUTABLE hash() on the line after a docstring that mentions it', () => {
+    const src = [
+      'def f(user, week):',
+      '    """Never derive a persisted value from builtin hash()."""',
+      '    return hash((user, week)) % 100',
+    ].join('\n');
+    const r = checkGeneratorDeterminism(src);
+    const hits = r.findings.filter((f) => f.kind === 'hash-builtin-derivation');
+    expect(hits.length).toBe(1);
+    expect(hits[0].line).toBe(3);
+  });
+
+  it('does not flag a set literal written inside a docstring', () => {
+    const src = [
+      'def f(rng, d):',
+      '    """Iterating {"a", "b"} while drawing is the ace#1388 defect."""',
+      '    return [rng.random() for k in sorted(d)]',
+    ].join('\n');
+    expect(
+      checkGeneratorDeterminism(src).findings.filter(
+        (f) => f.kind === 'unsorted-iteration-with-draw',
+      ),
+    ).toEqual([]);
+  });
+
+  it('keeps line numbers intact when a docstring precedes the offending line', () => {
+    const src = [
+      'import random',              // 1
+      '"""Module doc.',             // 2
+      '',                           // 3
+      'Iterating a set while drawing is the ace#1388 defect.',  // 4
+      '"""',                        // 5
+      'rng = random.Random(7)',     // 6
+      's = {"a", "b"}',             // 7
+      'for k in s:',                // 8
+      '    y = rng.random()',       // 9
+    ].join('\n');
+    const hits = checkGeneratorDeterminism(src).findings.filter(
+      (f) => f.kind === 'unsorted-iteration-with-draw',
+    );
+    // The set literal on line 7 still parses (only TRIPLE quotes are masked),
+    // and the draw is still reported at its real line 9.
+    expect(hits.map((f) => f.line)).toEqual([9]);
+  });
+});

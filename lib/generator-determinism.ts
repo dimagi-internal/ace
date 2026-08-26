@@ -223,8 +223,70 @@ function isHashOrdered(expr: string, setNames: Set<string>): boolean {
  */
 const HASH_BUILTIN_RE = /(?<![\w.])hash\s*\(/;
 
+/**
+ * Blank out every triple-quoted block, line by line, so a DOCSTRING is never
+ * scanned as code (ace#1697).
+ *
+ * `split('#')[0]` strips a comment but not a docstring, so a generator whose
+ * module docstring says "no builtin `hash()` anywhere" was flagged for the
+ * sentence that documents its compliance — the lint firing on its own
+ * documentation, which trains an author to delete the documentation. Same
+ * class as the `scripts/dump-atom-schemas.ts` comment-unawareness in
+ * CLAUDE.md § Gotchas.
+ *
+ * Scoped to triple quotes on purpose. Masking every string literal would blank
+ * the quotes inside a set literal (`{"a", "b"}`) and break the set-iteration
+ * scan, and an ordinary one-line literal is not where prose about determinism
+ * gets written. Characters are replaced with spaces rather than removed, so
+ * every reported line number and indentation level is unchanged.
+ */
+export function stripPythonDocstrings(lines: string[]): string[] {
+  const out: string[] = [];
+  const TRIPLES = ['"""', "'''"];
+  const blank = (n: number) => ' '.repeat(Math.max(0, n));
+  let fence: string | null = null;
+  for (const raw of lines) {
+    if (fence) {
+      const end = raw.indexOf(fence);
+      if (end === -1) {
+        out.push(blank(raw.length));
+        continue;
+      }
+      out.push(blank(end + fence.length) + raw.slice(end + fence.length));
+      fence = null;
+      continue;
+    }
+    let masked = '';
+    let i = 0;
+    while (i < raw.length) {
+      const triple = TRIPLES.find((t) => raw.startsWith(t, i));
+      if (triple) {
+        const close = raw.indexOf(triple, i + 3);
+        if (close === -1) {
+          masked += blank(raw.length - i);
+          fence = triple;
+          i = raw.length;
+          break;
+        }
+        masked += blank(close + 3 - i);
+        i = close + 3;
+        continue;
+      }
+      if (raw[i] === '#') {
+        masked += raw.slice(i);
+        break;
+      }
+      masked += raw[i];
+      i += 1;
+    }
+    out.push(masked);
+  }
+  return out;
+}
+
 export function checkGeneratorDeterminism(source: string): DeterminismReport {
-  const lines = source.split('\n');
+  // Scan CODE only: prose inside a docstring or a string literal is not code.
+  const lines = stripPythonDocstrings(source.split('\n'));
   const findings: DeterminismFinding[] = [];
   const { setNames, rngNames } = collectBindings(lines);
 
