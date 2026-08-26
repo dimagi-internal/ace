@@ -172,6 +172,97 @@ describe('checkParUrlPayloadPopulated — look at what the page renders (#1161)'
  * in_progress, which silently gives up snapshot stability on links a
  * stakeholder keeps.
  */
+// ── ace#1701: check 7 could not run against a real payload ─────────────
+//
+// It read `instance.snapshot.pipelines` as an array of {alias, rows}. labs
+// writes a DICT keyed by alias (connect_labs/workflow/templates/__init__.py:
+// `out["pipelines"] = {alias: pipelines[alias] ...}`), so the function threw
+// `pipelines is not iterable` on every completed run and the
+// snapshot-missing-pipelines branch was unreachable besides (a dict has no
+// .length, and `undefined === 0` is false). Live payload: run 5258 /
+// definition 5253 / opp 10048, spark-facilitator/20260820-0817.
+describe('checkParUrlPayloadPopulated — real payload shapes (#1701)', () => {
+  it('reads the DICT snapshot shape labs actually writes', () => {
+    const r = checkParUrlPayloadPopulated({
+      definition: { pipeline_sources: { flw_kpis: 5065 } },
+      instance: {
+        status: 'completed',
+        snapshot: {
+          pipelines: {
+            flw_kpis: { rows: [{ completed_visits: 128 }, { completed_visits: 131 }] },
+          },
+        },
+      },
+    });
+    expect(r.pass).toBe(true);
+  });
+
+  it('still fails the DICT shape when a bound field is dead for every row', () => {
+    const r = checkParUrlPayloadPopulated({
+      definition: { pipeline_sources: { flw_kpis: 5065 } },
+      instance: {
+        status: 'completed',
+        snapshot: { pipelines: { flw_kpis: { rows: [{ visit_count: 0 }, { visit_count: 0 }] } } },
+      },
+    });
+    expect(r.findings.map((f) => f.kind)).toContain('field-all-null');
+    expect(r.findings[0].alias).toBe('flw_kpis');
+  });
+
+  it('fires snapshot-missing-pipelines on an EMPTY dict, not just an empty array', () => {
+    const r = checkParUrlPayloadPopulated({
+      definition: { pipeline_sources: { flw_kpis: 5065 } },
+      instance: { status: 'completed', snapshot: { pipelines: {} } },
+    });
+    expect(r.findings.map((f) => f.kind)).toContain('snapshot-missing-pipelines');
+  });
+
+  it('reads pipeline_sources in the ARRAY shape the run page serves', () => {
+    const r = checkParUrlPayloadPopulated({
+      definition: { pipeline_sources: [{ alias: 'children', pipeline_id: 5251 }] },
+      instance: { status: 'completed', snapshot: { pipelines: {} } },
+    });
+    const f = r.findings.find((x) => x.kind === 'snapshot-missing-pipelines');
+    expect(f?.detail).toContain('children');
+  });
+
+  it('does not flag labs BUILT-IN row columns the terminal stage never fills', () => {
+    // An entity-stage row carries `id`/`status`/`flagged`/`visit_date` and the
+    // *_visits counters as nulls by construction — 15 such findings fired on a
+    // healthy run whose pipeline_preview reported fields_all_null: [].
+    const r = checkParUrlPayloadPopulated({
+      definition: { pipeline_sources: { children: 5251 } },
+      instance: {
+        status: 'completed',
+        snapshot: {
+          pipelines: {
+            children: { rows: [
+              { id: null, status: null, flagged: null, visit_date: null, total_visits: 0,
+                approved_visits: null, community_uid: 'FCAP-C01', meetings_held: 14 },
+              { id: null, status: null, flagged: null, visit_date: null, total_visits: 0,
+                approved_visits: null, community_uid: 'FCAP-C02', meetings_held: 13 },
+            ] },
+          },
+        },
+      },
+    });
+    expect(r.pass).toBe(true);
+  });
+
+  it('judges a live in_progress run from supplied pipeline rows, not from a snapshot it cannot have', () => {
+    // The review-action dashboard's run stays in_progress by design (#1162),
+    // so demanding a snapshot made checks 7 and 8 contradict each other.
+    const payload = {
+      definition: { pipeline_sources: { flw_kpis: 5255 } },
+      instance: { status: 'in_progress' },
+    };
+    expect(checkParUrlPayloadPopulated(payload, { flw_kpis: { rows: [{ meetings_held: 14 }] } }).pass).toBe(true);
+    const blind = checkParUrlPayloadPopulated(payload);
+    expect(blind.pass).toBe(false);
+    expect(blind.findings.map((f) => f.kind)).toContain('live-pipelines-unavailable');
+  });
+});
+
 describe('checkInteractiveRunsLive (#1162)', () => {
   const live = { instance: { status: 'in_progress' } };
   const done = { instance: { status: 'completed' } };
