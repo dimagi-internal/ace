@@ -99,6 +99,41 @@ describe('handleGenerateInputsManifest', () => {
     expect(r.files[1].input_key).toBe('cohort-design-notes');
   });
 
+  // ace#1648 — Step 5c now MANDATES recording each direct-child subfolder's
+  // {folder_id, name} under `subfolders_not_listed:`, because
+  // `pdd-to-deliver-app` Step 4k resolves the `[FIXED]` source instrument from
+  // the manifest and a vendor bundle is naturally a subfolder. That contract is
+  // only satisfiable because this atom returns subfolders alongside files,
+  // carrying the Drive folder mime type — Step 5c was dropping them, not the
+  // atom. Pinned so a future "the inputs manifest should only list files"
+  // cleanup cannot make the workbook unaddressable again.
+  it('returns direct-child SUBFOLDERS alongside files, so Step 5c can record their ids (ace#1648)', async () => {
+    const FOLDER_MIME = 'application/vnd.google-apps.folder';
+    const drive = fakeDrive([
+      [
+        {
+          id: '1yHIe99FfKl-tTaRlgNsweuNfruXE-gJf',
+          name: 'INSTRUMENT — Nigeria PPI 2020 (official, extracted verbatim).md',
+          mimeType: 'text/markdown',
+        },
+        {
+          id: '1b4f1tXT1YYyROelmt761oUX7XOsAqtut',
+          name: 'official-nigeria-ppi-2020 (povertyindex.org)',
+          mimeType: FOLDER_MIME,
+        },
+      ],
+    ]);
+    const r = await handleGenerateInputsManifest({ folderId: 'folder-1' }, drive);
+    const subfolders = r.files.filter((f) => f.mime_type === FOLDER_MIME);
+    expect(
+      subfolders,
+      'A subfolder of inputs/ must stay addressable from the manifest — dropping it is ' +
+        'how the [FIXED] instrument workbook became unresolvable and Step 4k silently skipped.',
+    ).toHaveLength(1);
+    expect(subfolders[0].file_id).toBe('1b4f1tXT1YYyROelmt761oUX7XOsAqtut');
+    expect(subfolders[0].name).toBe('official-nigeria-ppi-2020 (povertyindex.org)');
+  });
+
   it('escapes single quotes in folderId for the q clause', async () => {
     const drive = fakeDrive([[]]);
     await handleGenerateInputsManifest({ folderId: "id'with'quotes" }, drive);

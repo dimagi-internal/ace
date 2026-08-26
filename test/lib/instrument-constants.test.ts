@@ -21,6 +21,7 @@ import {
   diffScoringConstants,
   compareMaxScore,
   parseSharedStrings,
+  resolveInstrumentSource,
 } from '../../lib/instrument-constants.js';
 
 // ---------------------------------------------------------------------------
@@ -370,5 +371,110 @@ describe('compareMaxScore', () => {
     expect(result.sourceMax).toBe(15);
     expect(result.builtMax).toBe(10);
     expect(result.perIndicator.find((i) => i.indicator === 'b')?.builtMax).toBe(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// dimagi-internal/ace#1648 — the skip that disabled the check
+// ---------------------------------------------------------------------------
+//
+// Step 4k's trigger ANDed two conditions into ONE silent skip: the PDD marks
+// an instrument `[FIXED]`, AND `inputs-manifest.yaml` carries a source file
+// for it. So "no [FIXED] instrument on this opp" and "the [FIXED] instrument's
+// source is unreachable" produced the same outcome — a clean skip and a green
+// phase — and because the manifest's `inputs[]` records direct child FILES
+// only, a vendor bundle sitting in a SUBFOLDER of `inputs/` always took the
+// second branch. On `hh-poverty-targeting/20260824-1404` the workbook was in
+// `official-nigeria-ppi-2020 (povertyindex.org)/`, none of the five `inputs[]`
+// entries was it, and a 4k run following its documented path checks nothing.
+//
+// A skip that disables a correctness check is worse than one that degrades an
+// output, because the run still says green.
+
+describe('resolveInstrumentSource (ace#1648)', () => {
+  const workbook = {
+    file_id: '1JdkrvaFTGq_jJ2g7gAnpyvcbUL05Eish',
+    name: 'nigeria-ppi-2020-scorecard-and-lookup-table.xlsx',
+    mime_type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  };
+
+  it('HALTS — never skips — for a [FIXED] instrument with no manifest entry', () => {
+    const result = resolveInstrumentSource({ fixedInstrument: true, manifestEntry: null });
+    expect(result.disposition).toBe('halt');
+    expect(result.disposition).not.toBe('skipped');
+    expect(result.reason).toBe('unresolvable');
+    expect(result.source).toBeNull();
+    expect(result.memo).toMatch(/HALT/);
+  });
+
+  it('still HALTS when the subfolder walk ran and found nothing', () => {
+    const result = resolveInstrumentSource({
+      fixedInstrument: true,
+      manifestEntry: null,
+      subfolderCandidates: [],
+      manifestRecordsSubfolders: true,
+      instrumentName: 'Nigeria PPI 2020',
+    });
+    expect(result.disposition).toBe('halt');
+    expect(result.detail).toContain('Nigeria PPI 2020');
+  });
+
+  it('names the manifest repair when the manifest recorded no subfolder ids', () => {
+    const result = resolveInstrumentSource({
+      fixedInstrument: true,
+      manifestEntry: null,
+      manifestRecordsSubfolders: false,
+    });
+    expect(result.disposition).toBe('halt');
+    expect(result.detail).toMatch(/Step 5c/);
+  });
+
+  it('skips silently — and only here — when the PDD declares no [FIXED] instrument', () => {
+    const result = resolveInstrumentSource({ fixedInstrument: false, manifestEntry: null });
+    expect(result.disposition).toBe('skipped');
+    expect(result.reason).toBe('no-fixed-instrument');
+    expect(result.memo).toMatch(/^instrument_constants: skipped — /);
+  });
+
+  it('proceeds from a direct inputs[] entry', () => {
+    const result = resolveInstrumentSource({ fixedInstrument: true, manifestEntry: workbook });
+    expect(result.disposition).toBe('proceed');
+    expect(result.reason).toBe('resolved-from-inputs');
+    expect(result.source?.file_id).toBe(workbook.file_id);
+  });
+
+  it('proceeds from a manifest-recorded subfolder — the shape #1648 could not reach', () => {
+    const result = resolveInstrumentSource({
+      fixedInstrument: true,
+      manifestEntry: null,
+      manifestRecordsSubfolders: true,
+      subfolderCandidates: [
+        { ...workbook, folder_id: '1b4f1tXT1YYyROelmt761oUX7XOsAqtut' },
+      ],
+    });
+    expect(result.disposition).toBe('proceed');
+    expect(result.reason).toBe('resolved-from-subfolder');
+    expect(result.source?.file_id).toBe(workbook.file_id);
+    expect(result.source?.folder_id).toBe('1b4f1tXT1YYyROelmt761oUX7XOsAqtut');
+  });
+
+  it('HALTS rather than guessing when two candidates match', () => {
+    const result = resolveInstrumentSource({
+      fixedInstrument: true,
+      manifestEntry: null,
+      manifestRecordsSubfolders: true,
+      subfolderCandidates: [
+        { ...workbook, folder_id: 'f1' },
+        {
+          file_id: '1AmdDRLylHYaCFuM-wRXUjr6dPRUyRrTj',
+          name: 'nigeria-ppi-2020-data-analysis-tool.xlsx',
+          folder_id: 'f1',
+        },
+      ],
+    });
+    expect(result.disposition).toBe('halt');
+    expect(result.reason).toBe('ambiguous');
+    expect(result.candidates).toHaveLength(2);
+    expect(result.detail).toContain('nigeria-ppi-2020-data-analysis-tool.xlsx');
   });
 });

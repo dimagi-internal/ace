@@ -990,27 +990,53 @@ in `inputs/` (the manifest), not to pick one canonical PDD file.
      `lib/opp-root-files.ts` in the same PR, or Step 5b will migrate it
      and the skill will stop finding it on the next run. Per-RUN state
      belongs under `runs/<run-id>/`.
-   - **5c. Capture the manifest.** List `<opp>/inputs/` via
-     `drive_list_folder`. For each direct child file (skip subfolders),
-     capture `{file_id, name, mime_type}`. Write the result as
+   - **5c. Capture the manifest — files AND the ids of the subfolders you
+     did not descend into.** List `<opp>/inputs/` via `drive_list_folder`.
+     For each direct child FILE, capture `{file_id, name, mime_type}` under
+     `inputs:`. For each direct child SUBFOLDER, capture
+     `{folder_id, name}` under `subfolders_not_listed:` — **mandatory, not
+     optional** (ace#1648). Also record `source_folder_id`, the `inputs/`
+     folder's own id. No extra call is needed for the subfolders:
+     `generate_inputs_manifest` already returns them in `files[]` carrying
+     `mime_type: application/vnd.google-apps.folder` — it is this step that
+     used to drop them on the floor. Write the result as
      `runs/<runId>/inputs-manifest.yaml` via `drive_create_file`:
 
      ```yaml
      opportunity: <opp>
      run_id: <runId>
      captured_at: <ISO timestamp>
+     source_folder_id: <inputs-folder-id>
      inputs:
        - file_id: <id>
          name: <name>
          mime_type: <mime>
        - ...
+     subfolders_not_listed:        # ALWAYS present; `[]` when there are none
+       - folder_id: <id>
+         name: <name>
+       - ...
      ```
+
+     **Why the folder ids are mandatory.** `inputs[]` stays direct-child
+     FILES only — its job is to freeze the evidence set Phase 1 synthesizes
+     from, and widening it would change what counts as evidence. But a
+     published instrument bundle is naturally a SUBFOLDER of `inputs/` (a
+     vendor download), and `pdd-to-deliver-app` Step 4k resolves the
+     `[FIXED]` source instrument FROM THIS MANIFEST. With no folder id
+     recorded, that workbook is unaddressable, 4k used to skip silently, and
+     the run reported green having verified no constants at all — the
+     `hh-poverty-targeting` failure class (9 of 17 scorecard point values
+     wrong, 101 lookup values invented). Recording the id lets 4k walk it one
+     level; it is NOT permission to compose a path by name.
 
    - **5d. Halt only if still empty.** If after auto-create + migration
      `<opp>/inputs/` contains zero direct child files, halt with the
      fallback message in § Fallback below. Subfolders inside `inputs/`
      don't count as files; if every direct child is a subfolder the
-     manifest is empty and the same fallback fires.
+     manifest's `inputs[]` is empty and the same fallback fires — their ids
+     are still recorded under `subfolders_not_listed` per 5c, but a manifest
+     with no evidence files is not a Phase-1 seed.
 
    Phase agents materialize their own `<N>-<phase>/` folders when
    they run (see § Per-Phase Folder Lifecycle); the orchestrator does
@@ -1150,7 +1176,11 @@ Phase 1 must state, for each pre-existing open question, whether this run
 **resolves / carries forward / contradicts** it — and a contradiction is loud
 (surface it at the Phase 1→2 pause, not only in the file). Do NOT widen
 `generate_inputs_manifest` to include opp-root files: the manifest's job is to
-freeze `inputs/`, and overloading it blurs per-opp vs per-run state.
+freeze `inputs/`, and overloading it blurs per-opp vs per-run state. (Step 5c's
+`subfolders_not_listed` is not a widening of this kind: it records the ids of
+folders INSIDE `inputs/` that `inputs[]` deliberately does not list, so a
+downstream step can address them. `inputs[]` — the evidence set Phase 1
+synthesizes from — stays direct child files only.)
 
 **Two bounds on that inline (dimagi-internal/ace#1487).** The #1201 read above
 was unconditional and unscoped, and the durable ledger is append-only, so it

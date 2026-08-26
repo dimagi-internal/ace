@@ -17,7 +17,7 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
 | Source | Artifact | Used for |
 |---|---|---|
 | Phase 1 | `1-design/idea-to-pdd.md` | source PDD; archetype + Deliver App Specification + delivery unit drive the Nova brief |
-| Run root | `runs/<run-id>/inputs-manifest.yaml` | the resolver from a PDD-named `[FIXED]` source instrument to the `file_id` of its published file in `inputs/`. Step 4k reads that file — the workbook/PDF itself, never the brief — to check every scoring constant against the source (ace#1527). Absent, or no entry matching the instrument → 4k skips and says so. |
+| Run root | `runs/<run-id>/inputs-manifest.yaml` | the resolver from a PDD-named `[FIXED]` source instrument to the `file_id` of its published file in `inputs/`. Step 4k reads that file — the workbook/PDF itself, never the brief — to check every scoring constant against the source (ace#1527). `inputs[]` lists direct child FILES only, so when the published bundle is a SUBFOLDER of `inputs/` 4k walks the manifest's own recorded `subfolders_not_listed[].folder_id` one level to find it (ace#1648). No `[FIXED]` instrument → 4k skips and says so; a `[FIXED]` instrument whose source cannot be resolved → 4k **HALTS**, never skips. |
 
 ## Products
 
@@ -1355,19 +1355,65 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
     digitising a scorecard and its lookup tables only UNMODIFIED, so this is a
     compliance question as well as a quality one.)
 
-    1. **Trigger.** This step fires iff BOTH hold: the PDD marks an instrument
-       `[FIXED]`, AND `runs/<run-id>/inputs-manifest.yaml` carries a source file
-       for it. If no instrument is `[FIXED]`, or the manifest names no source
-       file for the one that is, **skip cleanly and say so in the memo**
-       (`instrument_constants: skipped — <reason>`). Do not compose a path, do
-       not go looking in `inputs/` by name, and do not substitute the PDD's
-       prose restatement of the table for the file. A `[FIXED]` instrument whose
-       source file is absent from the manifest is a Phase-1 gap: record it as a
-       residual naming the file that would close it.
+    1. **Trigger — two conditions, two DIFFERENT outcomes (ace#1648).** The
+       trigger used to AND "the PDD marks an instrument `[FIXED]`" with "the
+       manifest carries a source file for it" into ONE silent skip, so
+       *nothing to check* and *the thing I must check is unreachable* were
+       indistinguishable and both reported green. **A skip that disables a
+       correctness check is worse than one that degrades an output, because
+       the run still says green.** Split them:
 
-    2. **Resolve from the MANIFEST and fetch the bytes.** Read
-       `inputs-manifest.yaml`, match the entry for the instrument the PDD names,
-       and fetch by its `file_id`:
+       - **No instrument is `[FIXED]`** → **skip cleanly** and say so in the
+         memo (`instrument_constants: skipped — <reason>`). Legitimate.
+       - **A `[FIXED]` instrument whose source resolves** (step 2) → run the
+         check.
+       - **A `[FIXED]` instrument whose source does NOT resolve** → **HALT.**
+         Never a skip. Print the resolution detail, record a `[BLOCKER]`-grade
+         residual naming the file that would close it (a Phase-1 gap), and do
+         NOT write the success summary. Shipping a digitised scorecard that
+         nothing ever compared against its published source — while reporting
+         a clean phase — is exactly the ace#1527 failure this step exists to
+         prevent.
+
+       In every branch: do not substitute the PDD's prose restatement of the
+       table or the Nova brief for the file, and **do not compose a path by
+       name**.
+
+    2. **Resolve from the MANIFEST — `inputs[]` first, then the folder ids the
+       manifest itself records, ONE LEVEL (ace#1648) — then fetch the bytes.**
+       Read `inputs-manifest.yaml` and match the entry for the instrument the
+       PDD names. If no `inputs[]` entry matches, walk the manifest's own
+       recorded folder ids — each `subfolders_not_listed[].folder_id`, plus
+       `source_folder_id` when present — with
+       `drive_list_folder({folderId})`, **one level deep, never recursively**,
+       and match there. The manifest's `inputs[]` is direct child FILES only
+       (orchestrator Step 5c) — that is deliberate, since `inputs[]` is the
+       frozen evidence set Phase 1 synthesizes from — so a vendor bundle
+       published as a SUBFOLDER of `inputs/`, the natural shape for a vendor
+       download, is never in `inputs[]`, and 4k took the skip branch every
+       time it was.
+       Walking an id the manifest ITSELF recorded is not guessing; composing a
+       path from a name still is, and is still forbidden. Exactly one match →
+       proceed; more than one → HALT rather than pick; zero → HALT per step 1.
+
+       Classify the outcome with the helper rather than by eye — it owns the
+       skip-vs-halt split, so the branch cannot silently revert:
+
+       ```ts
+       import { resolveInstrumentSource } from '../../lib/instrument-constants';
+       const resolution = resolveInstrumentSource({
+         fixedInstrument,              // does the PDD mark an instrument [FIXED]?
+         manifestEntry,                // matching inputs[] entry, or null
+         subfolderCandidates,          // matches from the one-level walk
+         manifestRecordsSubfolders,    // did the manifest record any folder ids?
+         instrumentName,
+       });
+       // 'skipped' -> write resolution.memo and move on
+       // 'halt'    -> print resolution.detail and STOP (no success summary)
+       // 'proceed' -> resolution.source.file_id is the source
+       ```
+
+       Then fetch by `file_id`:
 
        ```ts
        drive_download_binary({ fileId, writeToPath: '<scratch>/<name>.xlsx' })
@@ -1449,8 +1495,11 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
        is what the licence permits, and any "improvement", including a tidier
        rounding, is out of scope for this build.
 
-    (No `[FIXED]` instrument, or no source file in the manifest → skip cleanly.
-    A skip is a legitimate outcome; a SILENT skip is not — the memo says which.)
+    (No `[FIXED]` instrument → skip cleanly; the memo says so. A `[FIXED]`
+    instrument whose source cannot be resolved — not in `inputs[]`, and not
+    found by the one-level walk of the manifest's recorded folder ids — is a
+    **HALT**, never a skip (ace#1648). A skip is a legitimate outcome only in
+    the first case; a SILENT skip is never one.)
 
 4l. **Entity state-taxonomy fidelity (ace#1564) — runs at LEVEL 0.** When the
     followed entity carries states the app must NAME, those names are the
@@ -1591,7 +1640,8 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
      diffed against the SOURCE file from `inputs-manifest.yaml` (not the brief,
      not the PDD's restatement) on a `trusted` extraction, with zero mismatches
      and a clamp that can still fire (Step 4k)? If the step skipped, does the
-     memo say why?
+     memo say why — and was the reason "no instrument is `[FIXED]`"? An
+     unresolvable `[FIXED]` source is a HALT, not a skip (ace#1648).
 
 7. **Write the summary** to
    `ACE/<opp-name>/runs/<run-id>/3-commcare/pdd-to-deliver-app_summary.md` with required
@@ -1610,8 +1660,9 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
                             # table + value column + label column it needs.
                             # Empty list is the expected value.
    instrument_constants:    # Step 4k (ace#1527). Omit the block ONLY when no
-                            # instrument is [FIXED]; when it skipped for any
-                            # other reason record `skipped: <reason>` here.
+                            # instrument is [FIXED]. There is no other skip
+                            # reason: an unresolvable [FIXED] source HALTS the
+                            # step rather than recording a skip (ace#1648).
      source_file_id: <file_id from inputs-manifest.yaml>
      rows_checked: <n>      # rows actually diffed against the source
      mismatches: 0          # anything above 0 means Step 4k halted
@@ -1836,6 +1887,7 @@ Each row this skill writes uses `phase: 3-commcare` and
 
 | Date | Change | Author |
 |------|--------|--------|
+| 2026-08-26 | **Step 4k's skip is split, and its source is resolvable through the manifest's own folder ids (ace#1648).** 4k's trigger ANDed "the PDD marks an instrument `[FIXED]`" with "`inputs-manifest.yaml` carries a source file for it" into ONE silent skip, so *nothing to check* and *the thing I must check is unreachable* were indistinguishable and both reported green. They were not equally rare: `inputs[]` records direct child FILES only, so a published instrument bundle sitting in a SUBFOLDER of `inputs/` — the natural shape for a vendor download — always took the second branch. On `hh-poverty-targeting/20260824-1404` the workbook sat in `official-nigeria-ppi-2020 (povertyindex.org)/` and none of the five `inputs[]` entries was it, so a 4k run following its documented path checks nothing. **A skip that disables a correctness check is worse than one that degrades an output, because the run still says green.** Two changes: step 2 may now resolve through ids the manifest ALREADY records (`subfolders_not_listed[].folder_id`, `source_folder_id`) by walking them ONE level with `drive_list_folder` — walking a recorded id is not guessing, composing a path by name still is and is still forbidden — and orchestrator Step 5c now MANDATES recording those ids. Step 1's trigger is split: no `[FIXED]` instrument → skip cleanly; a `[FIXED]` instrument whose source does not resolve → **HALT**, never a skip. The decision is delegated to `resolveInstrumentSource` in `lib/instrument-constants.ts` so it is unit-tested rather than prose-only. *Enforced:* `test/skills/instrument-source-resolution.test.ts` (5 assertions red against the pre-fix text), `test/lib/instrument-constants.test.ts`, `test/mcp/gdrive/generate-inputs-manifest.test.ts`. | ACE team |
 | 2026-08-24 | **Step 4f gains a partner-register halt (ace#1621).** 4f's halt was scoped to payment correctness — a still-degraded select halts only when it `feeds_entity_id` on a PAYABLE deliver unit — so a field that fails neither test recorded an `option_source_gaps` entry and proceeded. That is right for a genuinely unknowable set and wrong for a register that EXISTS: on `spark-facilitator/20260820-0817` the meeting-activity repeat shipped 11 ACE-authored placeholders identical on all 24 FCAP steps while Spark's own 78-activity register sat in the run's `inputs/`, and the recorded gap deferred the catch to an operator reading the residual days later. When the PDD declares `<field> from <tag> [source: …] [filtered by …]`, an inline invented option list is now a **HALT** whatever the payability status, and is never dischargeable as a named gap; both inline rungs of the step-5 escape ladder are withdrawn for such a field. Mechanical via `lib/option-register.ts` (`parseRegisterDeclaration` + `diffOptionRegister`), sourcing rows from the partner's `.ccz` fixture XML in preference to a prose guide because a production CCZ carries the REAL value codes the partner's M&E joins on. Where ACE cannot finish — Nova has no lookup-table create atom and its row-import route is browser-session-only — the terminal behaviour is extract → emit `renderRegisterCsv` + table spec → halt naming the two operator steps. Paired with `_app-component-library § partner-option-register` and the eval's `option_register_fidelity` hard-gate. *Enforced:* `test/lib/option-register.test.ts`. | ACE team |
 | 2026-08-23 | **New Step 4l — entity state-taxonomy fidelity (ace#1564).** The followed entity's state model lived only as PROSE in the PDD's § Entity Lifecycle, and nothing in Step 3's brief-composition checklist asked for it — while `longitudinal-visits` REQUIRES a case list showing state, so the architect must name every state and invents the set when the brief carries none. On `spark-facilitator/20260820-0817` the PDD's `1 = Planning (steps 1–14)` … `4 = Transition (steps 23–24)`, sourced from Spark's own published FCAP guide sitting in the run's `inputs/`, shipped as four invented labels over a different partition, with all 24 step names invented too. Learn then teaches one mapping while Deliver offers another, and the invented words reach real workers and the partner. Step 3 now emits `_app-component-library § entity-state-taxonomy` (always for this archetype) and parses `program_parameters.entity_state_taxonomy` with `parseStateTaxonomy` BEFORE briefing — `declared: false` or non-empty `problems` is a **HALT** with a Phase-1 finding, never a licence to invent; where the row names a source document the brief is composed from THAT file out of `inputs/`. 4l then diffs the built option set with `diffStateTaxonomy`: any invented, dropped, relabelled or re-partitioned state is a **HALT with a bounded 3-iteration repair loop**, not a warn. Deliberately ships NO canonical vocabulary — hard-coding one would impose ACE's words on every partner, the mirror image of the defect. Paired with the eval's `entity_state_fidelity` hard-gate. *Enforced:* `test/lib/entity-state-taxonomy.test.ts` + `test/skills/entity-state-taxonomy-component.test.ts` + `test/skills/deliver-l0-loop-integrity.test.ts`. **The language layer moved 4l → 4m** in the same change: it must stay LAST of the 4x steps because every English-editing step has to precede it, and 4l's repair loop calls `edit_field` on option labels — running it after the layer would demote those translations to `out-of-date`. Pointers updated in `_app-component-library § app-language-layer`, both `-eval` change logs, and `test/skills/app-language-layer.test.ts`. | ACE team |
 | 2026-08-20 | **New Step 4k — fixed-instrument constant fidelity (ace#1527).** Nothing on this path opened the `[FIXED]` source instrument in `inputs/` and diffed it, so on `hh-poverty-targeting/20260819-1435` the digitised Nigeria PPI 2020 shipped with **9 of 17 point values wrong and all 101 poverty-likelihood values invented** — and every gate passed it, because each one is structurally blind to a constant's VALUE (`validate_app` checks structure, the eval grades against a narrative PDD, `app-release-qa` checks counts and install-time behaviour, and the architect transcribes from a model-authored brief). 4k resolves the source file from `inputs-manifest.yaml`, fetches it with `drive_download_binary` + `writeToPath`, and runs `lib/instrument-constants.ts`: `assertExtractionTrusted` FIRST (endpoints + strict monotonicity + row count — the first repair-round extraction produced `score 4 -> 79.0` from an undecoded `t="s"` shared-string index), then `diffScoringConstants` and `compareMaxScore` over the built literals read via `get_field`. Any mismatch, or a `clampDead` verdict, is a **HALT with a bounded 3-iteration repair loop**, not a warn — a built max of 96 against an official 102 made the PDD's `min(ppi_score, 100)` clamp dead code, which is how the instrument stayed internally consistent with its own wrong numbers. Paired with `_app-component-library § fixed-instrument-transcription` and the eval's `fixed_instrument_fidelity` hard-gate. *Enforced:* `test/lib/instrument-constants.test.ts` + `test/skills/deliver-l0-loop-integrity.test.ts`. | ACE team |
