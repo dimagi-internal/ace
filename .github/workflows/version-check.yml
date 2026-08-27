@@ -53,7 +53,7 @@ jobs:
 
       - name: Check ALL version files agree with VERSION
         run: |
-          # FOUR files carry the same version and must move together. They are
+          # FIVE files carry the same version and must move together. They are
           # the exact set `scripts/version-bump.sh` writes — that script is the
           # sanctioned way to bump, and this gate is what catches a hand-edit
           # that skipped it.
@@ -100,6 +100,21 @@ jobs:
                 : (m.plugins || []).map(p => p.version).filter(Boolean);
               const uniq = [...new Set(vs)];
               console.log(uniq.length === 1 ? uniq[0] : JSON.stringify(vs));
+            ")"
+
+          # FIVE files, not four. package-lock.json carries the version twice
+          # (top level and packages[""]) and was not in this gate until
+          # 0.13.10xx — by which point it read 0.13.935 against a VERSION of
+          # 0.13.1045, 110 releases behind. Nothing failed, because `npm ci`
+          # installs from the `packages` tree and never compares the root
+          # version to package.json. That is precisely why it drifted: an
+          # unchecked version file is invisible until the day it matters, which
+          # is the ace#987 lesson this gate exists for.
+          check "package-lock.json" \
+            "$(node -e "
+              const l = require('./package-lock.json');
+              const vs = [...new Set([l.version, l.packages?.['']?.version].filter(Boolean))];
+              console.log(vs.length === 1 ? vs[0] : JSON.stringify(vs));
             ")"
 
           if [ "$fail" -ne 0 ]; then
