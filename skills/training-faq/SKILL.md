@@ -108,10 +108,61 @@ which rule triggered, what to do>
 
 4. **Add LLO-operations Q's from PDD § Escalation + run_state.yaml verification flags.**
 
+4b. **Consent coverage — REQUIRED, and not an archetype question (ace#1687).**
+
+   If the PDD declares a consent protocol, the FAQ **must** answer for it.
+   This is a floor, not a preference: emit **at least two `[FLW]` entries** —
+   one on *what the worker says* (that a consent script exists, that it is read
+   aloud before anything is recorded, and where in the app it appears) and one
+   on *what the worker does when consent is refused or withdrawn* (which
+   outcome to record, what still gets submitted, and that it is not a failure
+   on their part).
+
+   **Trigger — do not re-derive it.** Consent coverage is required whenever
+   `_app-component-library.md § consent-script-floor` fires. Read that
+   component's trigger clauses and apply them verbatim; they are deliberately
+   wide and evaluated INDEPENDENTLY, and **a PDD that never uses the word
+   "consent" can still fire them** (a photograph of identifiable people is
+   enough). Grep the PDD for the protocol rather than assuming its shape: the
+   script may live in a consent field's `hint` or `label`, a read-aloud `label`
+   node, or a Learn-app passage.
+
+   **Why this is a required item and not left to chance.** Consent used to
+   reach the FAQ only through the `focus-group` branch of step 5's category
+   set. Every `atomic-visit` and `multi-stage` opp therefore depended on a
+   consent question happening to survive the seeding in steps 2–4 — and on
+   `hh-poverty-targeting/20260824-1404` none did. `grep -in consent` over the
+   published FAQ returned **zero hits** across 11,822 characters, on a PDD that
+   mentions consent 35 times, mandates a six-element read-aloud script in
+   § 7.5, and makes refusal one of three non-payable visit outcomes. The
+   independent `training-faq-eval` caught it; nothing in this skill did. The
+   worker-facing document that exists to answer "what do I do when they say
+   no" said nothing about it.
+
+   **What the answers must be consistent with.** The script itself is a
+   BUILD-TIME artifact with a six-element floor — (a) purpose · (b) voluntary ·
+   (c) may stop · (d) confidential · (e) where the data goes / who sees it ·
+   (f) whether participation guarantees a benefit. Do not restate the elements
+   as FAQ prose and do not invent script wording: quote the deployed script's
+   own text where an answer needs it, and otherwise point the reader at it.
+   Element (c) is the one that drives worker behaviour mid-visit — a household
+   may withdraw *after* being asked — so the refusal/withdrawal entry must say
+   what the app expects in that case, matching the consent-gated relevance the
+   build applied (`_app-component-library.md § consent-script-floor`,
+   `consent-branch-completeness`).
+
+   If the trigger genuinely does not fire, say so explicitly in the verdict's
+   notes rather than silently omitting the topic.
+
 5. **Categorize into 4 sections, archetype-aware.**
 
    For `atomic-visit` / `multi-stage` (default): Vendor/Subject
-   Interaction, App/Device, Payment & Verification, Logistics.
+   Interaction, App/Device, Payment & Verification, Logistics. **Step 4b's
+   consent entries belong under Vendor/Subject Interaction** — the category
+   set changes where consent is filed, never whether it is covered. Only the
+   `focus-group` set names consent in its own title, and reading that as "the
+   other archetypes don't need it" is exactly the misread that shipped a
+   consent-free FAQ.
 
    For `focus-group`: swap the category set to match the FGD operational
    model (out-of-band gdoc + minimal in-app attestation):
@@ -136,6 +187,17 @@ which rule triggered, what to do>
    - Every payment / verification number quoted matches `run_state.yaml`
    - At least 4 Q's seeded from `test-prompts.md`
    - At least 2 Q's seeded from `pdd-to-app-journeys.md` edge cases
+   - **Consent (step 4b): run `grep -in consent` over the drafted body and
+     read the hits.** If `consent-script-floor` fires, at least two `[FLW]`
+     entries must cover the script and the refusal/withdrawal path, and a
+     zero-hit grep is a hard stop — do not write. Checking by recollection is
+     what failed: the skill "knew" consent mattered and the published document
+     contained the word zero times.
+   - **Every unanswered `test-prompts.md` prompt on a topic the PDD treats as
+     a worker-facing control is accounted for**, either by an FAQ entry or by
+     a named reason in the verdict notes. The consent miss also left an
+     upstream test prompt about the consent script unanswered, and nothing
+     noticed because nothing was looking.
 
 8. **Write** to `ACE/<opp>/runs/<run-id>/6-qa-and-training/training-faq.md`
    **as a NATIVE Google Doc via `drive_create_doc_from_markdown`** — NOT
@@ -150,9 +212,39 @@ which rule triggered, what to do>
    overwritten IN PLACE, so the fileId — and any sharing already applied to it —
    survives. (dimagi-internal/ace#1338; sibling of the PDD fix, ace#1061.)
 
-9. **Self-evaluate (LLM-as-Judge).** Four criteria:
+   **Then persist the source markdown — the same string, written twice.**
+   Immediately after the render, write the EXACT bytes you just passed to
+   `drive_create_doc_from_markdown` to
+   `ACE/<opp>/runs/<run-id>/6-qa-and-training/training-faq.source.md` via
+   `drive_create_file` with `mimeType: 'text/markdown'`. **NOT
+   `drive_create_doc_from_markdown`** — rendering the source copy converts it
+   to a Doc as well and destroys the very bytes this step exists to preserve,
+   which reproduces the defect while looking like the fix.
+
+   Why it is not optional: the renderer CONSUMES its input. Once the Doc
+   exists the markdown you composed exists nowhere, and the `.md` in the
+   published name is display text, not a file — `drive_list_folder` over a
+   finished run returns every one of these as
+   `application/vnd.google-apps.document` with no sibling markdown. That is
+   what leaves `run-surface-audit`'s `DOC-FIDELITY-UNVERIFIED` — the only
+   check that compares what was PUBLISHED against what was WRITTEN, and the
+   only one that could have caught a guide silently losing 44 screenshots and
+   224 words with every other check green (ace#1418) — permanently
+   unresolvable, because its `--doc-source` remediation has nothing real to
+   point at. One extra call turns a blocking gate from decorative into
+   operable. (ace#1687 half 2; declared `sourcePersisted` in
+   `lib/artifact-manifest.ts`, enforced by
+   `test/lib/source-persisted-artifacts.test.ts`.)
+
+9. **Self-evaluate (LLM-as-Judge).** Five criteria:
    - **Coverage:** every PDD escalation trigger + every Layer-A
      verification rule has at least one FAQ entry
+   - **Consent coverage (BLOCKER when `consent-script-floor` fires):**
+     the script and the refusal/withdrawal path each have at least one
+     `[FLW]` entry, and the answers are consistent with the deployed
+     script rather than invented. Grade it against the published body,
+     not the draft in your head. Absent → `passed: false`; if the
+     trigger does not fire, record that judgement and why.
    - **Tag fidelity:** every Q has `[LLO]` or `[FLW]`
    - **Answer authority:** answers cite real config / real numbers,
      not generic guidance
@@ -226,3 +318,5 @@ the composed markdown before writing and rewrite any finding.
 
 - v1 (0.10.84): Initial skill. Owns `training-faq.md` only.
 - 2026-05-15: Replace the one-line "Participant Interaction" focus-group note in Step 5 with a full archetype-branched 4-category set: Facilitation & Consent / Attestation Form & Layer A / Gdoc Writing & Layer B / Payment & Logistics. Atomic-visit / multi-stage keep the default Vendor-Subject-Interaction / App-Device / Payment-Verification / Logistics categories. Prompted by `malaria-itn-fgd/20260514-2352` Phase 6 observation.
+- 2026-08-26: **Consent coverage becomes a required item, keyed on the PDD rather than on the archetype (ace#1687).** Consent previously reached this FAQ only through step 5's `focus-group` category set ("Facilitation & Consent"); every `atomic-visit` / `multi-stage` opp depended on a consent question happening to survive the seeding in steps 2–4. On `hh-poverty-targeting/20260824-1404` none did — `grep -in consent` over the published document returned zero hits across 11,822 characters, on an `atomic-visit` PDD that mentions consent 35 times, mandates a six-element read-aloud script in § 7.5, and makes refusal one of three non-payable visit outcomes; an upstream test prompt about the script went unanswered too. The independent `training-faq-eval` found it; nothing in this skill did. New step 4b requires at least two `[FLW]` entries (the script, and the refusal/withdrawal path) whenever `_app-component-library.md § consent-script-floor` fires — the same trigger the build and the Deliver-app eval already share, cited rather than restated, so a PDD that never says "consent" still fires it. Step 5 now states that the category set changes where consent is filed, not whether it is covered; step 7 makes it a grep-and-read check rather than a recollection; step 9 adds a BLOCKER dimension. Graded symmetrically by `training-faq-eval § consent_coverage`. *Enforced:* `test/skills/training-faq-consent-coverage.test.ts`.
+- 2026-08-26: **Persist the composed markdown as `training-faq.source.md` (ace#1687 half 2).** `drive_create_doc_from_markdown` consumes its input, so after step 8 the markdown existed nowhere and `run-surface-audit`'s `DOC-FIDELITY-UNVERIFIED` — the only check comparing PUBLISHED against WRITTEN — could only ever report UNVERIFIED, leaving a blocking gate permanently unresolvable. Step 8 now writes the same string a second time via `drive_create_file` at `text/markdown`. Declared `sourcePersisted` in `lib/artifact-manifest.ts`; *enforced:* `test/lib/source-persisted-artifacts.test.ts`.
