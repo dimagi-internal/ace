@@ -32,7 +32,9 @@ import {
   isStaticRecipesDirOverride,
   INSTALLED_STATIC_RECIPES_DIR,
   STATIC_RECIPES_DIR_ENV,
+  loadSelectorTypes,
 } from './recipe-resolver.js';
+import { lintRecipeText } from './recipe-lint.js';
 import { validateRecipeFreshness } from '../../lib/recipe-provenance.js';
 import { resolveBackend, preflightMobileBackend } from './backend-toggle.js';
 import type {
@@ -1688,6 +1690,62 @@ export class MobileClient {
       // Recipe path unreadable or selector map missing — let the
       // downstream `prepareRecipeForMaestro` surface those with its
       // own error path. Don't mask a more useful error message.
+    }
+
+    // Pre-flight: LINT the recipe we are about to dispatch.
+    //
+    // `mobile_validate_recipe` runs this exact linter, and
+    // `skills/app-test-cases` has instructed callers to run it since
+    // 2026-06. That is prose, and prose relies on the caller choosing to
+    // comply. On `spark-facilitator/20260820-0817` Phase 3 shipped a
+    // `journey-deliver.yaml` carrying three violations the linter would
+    // have named for free; nothing ran it, so the defects reached the
+    // device and cost real dispatches to diagnose (ace#1690 gap 1).
+    //
+    // Linting HERE makes it structurally impossible for an unlinted
+    // recipe to reach a device: the rule moves from something a skill
+    // must remember into the boundary every dispatch already crosses.
+    // Class-level preventer, per `CLAUDE.md § Conventions`.
+    //
+    // Verified safe to make a hard failure: all 22 recipes in the
+    // shipped static palette lint clean against the live
+    // `connect-2.63.2` map, so this rejects generated-recipe defects
+    // without touching the palette. A lint failure is loud on purpose —
+    // walking a recipe known to be malformed is what this replaces.
+    {
+      let recipeText: string | undefined;
+      try {
+        recipeText = fs.readFileSync(recipePath, 'utf8');
+      } catch {
+        // Unreadable path — `prepareRecipeForMaestro` owns that error.
+        recipeText = undefined;
+      }
+      if (recipeText !== undefined) {
+        // A missing or unparseable selector map must never turn a lint
+        // pass into a hard failure: the map-aware rule abstains and
+        // every text-only rule still runs. Same contract as
+        // `mobile_validate_recipe`.
+        let selectorTypes: Record<string, 'id' | 'text' | 'point'> | undefined;
+        try {
+          selectorTypes = loadSelectorTypes(apkVersion);
+        } catch {
+          selectorTypes = undefined;
+        }
+        const lint = lintRecipeText(recipeText, { selectorTypes });
+        if (!lint.ok) {
+          const first = lint.violations[0];
+          throw new MobileError(
+            'RECIPE_LINT_FAILED',
+            `recipe lint failed for ${recipePath} ` +
+              `[${first.rule}] line ${first.line}: ${first.detail}` +
+              (lint.violations.length > 1
+                ? ` (+${lint.violations.length - 1} more violation(s))`
+                : ''),
+            first.remediation,
+            { recipe_path: recipePath, violations: lint.violations },
+          );
+        }
+      }
     }
 
     // Auto-inject ACE_E2E_* env vars from process.env (PIN, PHONE,

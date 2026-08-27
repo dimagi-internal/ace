@@ -543,7 +543,12 @@ between major form sections):
   `mobile_resolve_selectors` against the current APK selector map
   before validating (see Step 3.4 below — selector-resolution is a
   fail-loud gate, not just a substitution pass)
-- Validate via `mobile_validate_recipe` before writing
+- Validate via `mobile_validate_recipe` before writing.
+  *Enforced:* since ace#1690, `mobile_run_recipe` runs the same linter on
+  every recipe it dispatches and refuses a failing one with
+  `RECIPE_LINT_FAILED`. Calling `mobile_validate_recipe` first is still
+  right — it fails in one cheap static call instead of at device dispatch —
+  but skipping it no longer lets a malformed recipe reach a device
 
 #### The accepted step-key dialect (ace#1008)
 

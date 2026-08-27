@@ -71,7 +71,11 @@ type LockHolder = {
  * Resolves once `LOCK_WRITTEN <pid>` is printed; rejects on early exit
  * or timeout.
  */
-function spawnLockHolder(adbPort: number, emuPort: number, timeoutMs = 15_000): Promise<LockHolder> {
+// 15s was too tight: the child is a cold `npx --yes tsx` start, and under
+// a full parallel `npm test` (350+ files) it intermittently missed the
+// window — a load artifact, not a protocol failure. The suite passes 3/3
+// in isolation; only the full-suite run flaked.
+function spawnLockHolder(adbPort: number, emuPort: number, timeoutMs = 60_000): Promise<LockHolder> {
   const code = `
     const lockModUrl = ${JSON.stringify('file://' + SESSION_LOCK_TS)};
     import(lockModUrl).then((m) => {
