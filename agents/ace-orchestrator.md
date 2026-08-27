@@ -1595,9 +1595,24 @@ Three rules make this safe to run inside a live `/ace:run`:
 
    | Action | Takes effect on | Who can run it |
    |---|---|---|
-   | `/ace:update` | disk + registry; **subsequent `Skill()` loads** resolve to the new `installPath` | the orchestrator |
+   | `/ace:update` | disk + registry only — **new sessions**, and reads off disk. Skills already bound in THIS session keep resolving to the pre-update `installPath` | the orchestrator |
    | `/reload-plugins` | skills, agents, commands, hooks already bound | the operator |
    | full Claude restart | **MCP subprocesses** — nothing else respawns them | the operator |
+
+   **`/ace:update` does not change which skill code this session executes.**
+   Every skill this session loads after an update still comes off the
+   pre-update `installPath`. Measured on `spark-facilitator/20260820-0817` —
+   an update at a phase boundary moved installed 0.13.1003 → 0.13.1008, and
+   the very next skill load printed `Base directory for this skill:
+   …/cache/ace/ace/0.13.1003/skills/demo-data-setup`, then stayed on 1003 for
+   the rest of the session. Only `/reload-plugins` rebinds skills, and per row
+   2 that is the **operator's** command — the orchestrator cannot run it
+   (ace#1729).
+
+   So the update is real for the registry, real for the next session, and
+   **inert for the phases still to run in this one**. Never report an update
+   as having changed what the remaining phases execute; see § Plugin currency
+   at the boundary for what to do about it.
 
    When the update reports `MCP_CHANGED: yes`, the remaining phases still run
    on the OLD MCP code until the operator restarts. Say so explicitly rather
@@ -1670,7 +1685,7 @@ node -e "const d=JSON.parse(require('fs').readFileSync(process.env.HOME+'/.claud
 ps -eo ppid,command | awk -v c="$PPID" '$1==c' | grep -o "ace/ace/0\.[0-9.]*" | sort -u   # live MCP children
 ```
 
-Three outcomes, and they are NOT the same:
+Four outcomes, and they are NOT the same:
 
 - **installed == live MCP == origin/main** → current; say nothing.
 - **installed < origin/main** → run `/ace:update` here, per rule 3 above.
@@ -1678,6 +1693,59 @@ Three outcomes, and they are NOT the same:
   `/ace:update` does NOT fix this and `/reload-plugins` does NOT respawn
   them. Report the gap, name the changed `mcp/` files, and let the operator
   decide whether to restart now or at run end.
+- **an update was taken in THIS session** → the remaining phases still
+  execute the OLD skills. This one is new, it is the easiest to miss, and it
+  is not covered by any of the three above. See § Bound skills after a
+  mid-run update, immediately below.
+
+### Bound skills after a mid-run update
+
+`/ace:update` writes disk + registry; it does **not** rebind `Skill()` in
+this session (§ Self-heal sweep currency table, ace#1729). So the moment the
+boundary takes an update, the phases still to run are executing skill code
+from the version this session **started** on, and saying nothing about that
+is what made it invisible for months.
+
+The orchestrator has **no** runtime handle on `Skill()` resolution — the
+resolved path appears only inside `Skill()` tool output, and only where the
+orchestrator itself invokes a skill. So this is not a check on the binding.
+It IS a deterministic check on the consequence that matters, because both
+install trees are on disk:
+
+```bash
+BOUND=<the version this session STARTED on — from `bin/ace-doctor --preflight` at run start,
+       or `cat ~/.ace/just-upgraded-from` if this session took exactly one update>
+INSTALLED=$(node -e "const d=JSON.parse(require('fs').readFileSync(process.env.HOME+'/.claude/plugins/installed_plugins.json','utf8'));console.log(d.plugins['ace@ace'][0].version)")
+diff -rq ~/.claude/plugins/cache/ace/ace/$BOUND/skills \
+         ~/.claude/plugins/cache/ace/ace/$INSTALLED/skills 2>/dev/null
+```
+
+`BOUND` is the session-start version, NOT a `ps` reading — anchor it on what
+pre-flight recorded and on the updates this orchestrator itself ran. (`ps`
+is the wrong anchor here: children younger than their session, on a newer
+`installPath`, have been observed after a `/reload-plugins`, so the `$PPID`
+version set can misdescribe the live surface — the open question ace#1684
+left on the record.) `BOUND` changes only when the **operator** runs
+`/reload-plugins`; when they confirm they have, re-anchor it to `INSTALLED`.
+
+Then act on the diff — do not just print it:
+
+- **No changed files** → say "remaining phases unaffected" in one line.
+- **Changed files, none owned by a PENDING phase** → record in the run notes
+  that the remaining phases run on `$BOUND` skill code, and continue. Name
+  the changed files anyway; a later phase may pick one up.
+- **Changed files owned by a PENDING phase** → **halt and ask the operator
+  for `/reload-plugins`.** Name the phase, the skill, and what changed. This
+  is the case that nearly published a broken public artifact: on
+  `spark-facilitator/20260820-0817` the bound `skills/solicitation-create`
+  differed from installed, and the bound copy would have published a
+  partner-facing solicitation page stating that work starts ~2 weeks before
+  applications close (ace#1685). The fixed skill was on disk and would not
+  have run.
+
+Silence is the failure mode. Whichever branch fires, the run notes must say
+which version the remaining phases' skills are actually on — never imply the
+update changed them.
 
 **A stale MCP child is worse than stale compiled code for recipes.**
 CLAUDE.md says `mcp/mobile/recipes/*.yaml` are re-read from disk per call —
