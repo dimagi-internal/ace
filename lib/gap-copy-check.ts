@@ -1,11 +1,19 @@
 /**
- * Check a demo's DASHBOARD COPY against its why-brief's declared gaps.
+ * Check a demo's AUTHORED PROSE against its why-brief's declared gaps.
  *
  * A DDD `why_brief.yaml` declares typed `gaps[]` — the things the build cannot
  * support. `demo-narrative` gates the NARRATIVE against them. Nothing gated the
  * dashboard's own on-screen prose, so a demo could render a page asserting
  * exactly what its gap list said was unsupported, and every instance had to be
  * caught by a DDD judge reading pixels after a full render (ace#1750).
+ *
+ * Two string sources, one matcher. Dashboard `render_code` needs its prose
+ * EXTRACTED from JSX; the narrative artifacts (`why_brief.spine[]`, the spec's
+ * `scenes[]`) are already prose and are matched directly. Both were needed:
+ * the same run's brief asserted a disposition is recorded "with its reason"
+ * while its OWN gap declared no such field exists — a document contradicting
+ * the limit it itself declared, and structurally invisible while `sources` was
+ * a list of render_code files (ace#1759).
  *
  * Measured on hh-poverty-targeting/20260827-0323: four instances in one run,
  * across two dashboards, and in ALL FOUR the narration was clean and the UI copy
@@ -23,6 +31,47 @@ export interface GapLike {
   id: string;
   type: 'RESEARCH' | 'CAPABILITY' | 'DECISION' | string;
   detail: string;
+  proposed_action?: string;
+}
+
+/**
+ * One authored surface to scan.
+ *
+ * Exactly one of `code` (render_code, prose is extracted) or `text` (already
+ * prose — a spine claim, a scene's concept_claim) is supplied.
+ */
+export interface GapCopySource {
+  /** Label reported on every finding, e.g. `why_brief:spine[x].claim`. */
+  name: string;
+  /** Authored render_code. Prose is extracted from it. */
+  code?: string;
+  /** Already-prose. Matched directly, reported at line 1. */
+  text?: string;
+  /**
+   * The gap this string BELONGS to, exempt from matching against itself.
+   *
+   * A gap necessarily names its own subject — `detail` and `proposed_action`
+   * exist to state the limit — so without this every gap flags itself and the
+   * report is all noise. Only SELF-matching is exempt: one gap's prose naming
+   * ANOTHER gap's subject is still reported, which is the case worth seeing.
+   */
+  exemptGapId?: string;
+}
+
+/** The subset of a canopy `why_brief.yaml` this check reads. */
+export interface WhyBriefLike {
+  spine?: { id?: string; claim?: string; rationale?: string }[];
+  gaps?: GapLike[];
+}
+
+/** The subset of a canopy unified spec this check reads. */
+export interface UnifiedSpecLike {
+  scenes?: {
+    id?: string;
+    concept_claim?: string;
+    show?: string;
+    narrative?: string;
+  }[];
 }
 
 export interface GapCopyFinding {
@@ -146,14 +195,51 @@ export function extractProseLines(source: string): { line: number; text: string 
 }
 
 /**
- * Flag dashboard copy that repeats the subject of a declared gap.
+ * Build the narrative half of `sources` from the artifacts as parsed.
  *
- * `sources` is one entry per authored surface — `{name, code}` where `code` is
- * the render_code as it will be uploaded.
+ * Every entry is already prose, so it goes to the matcher directly — no
+ * `extractProseLines` step, which exists only to dig copy out of JSX.
+ */
+export function narrativeSources(
+  brief?: WhyBriefLike | null,
+  spec?: UnifiedSpecLike | null,
+): GapCopySource[] {
+  const out: GapCopySource[] = [];
+  const push = (name: string, text: unknown, exemptGapId?: string) => {
+    if (typeof text !== 'string' || !text.trim()) return;
+    out.push(exemptGapId ? { name, text, exemptGapId } : { name, text });
+  };
+
+  (brief?.spine ?? []).forEach((item, i) => {
+    const id = item?.id ?? String(i + 1);
+    push(`why_brief:spine[${id}].claim`, item?.claim);
+    push(`why_brief:spine[${id}].rationale`, item?.rationale);
+  });
+
+  for (const gap of brief?.gaps ?? []) {
+    push(`why_brief:gaps[${gap.id}].detail`, gap.detail, gap.id);
+    push(`why_brief:gaps[${gap.id}].proposed_action`, gap.proposed_action, gap.id);
+  }
+
+  (spec?.scenes ?? []).forEach((scene, i) => {
+    const id = scene?.id ?? String(i + 1);
+    push(`unified_spec:scenes[${id}].concept_claim`, scene?.concept_claim);
+    push(`unified_spec:scenes[${id}].show`, scene?.show);
+    push(`unified_spec:scenes[${id}].narrative`, scene?.narrative);
+  });
+
+  return out;
+}
+
+/**
+ * Flag authored prose that repeats the subject of a declared gap.
+ *
+ * `sources` is one entry per authored surface: `{name, code}` for a dashboard's
+ * render_code, `{name, text}` for a narrative string (see `narrativeSources`).
  */
 export function checkGapCopy(
   gaps: GapLike[],
-  sources: { name: string; code: string }[],
+  sources: GapCopySource[],
 ): GapCopyReport {
   const termsByGap: Record<string, string[]> = {};
   const findings: GapCopyFinding[] = [];
@@ -169,8 +255,12 @@ export function checkGapCopy(
   for (const gap of constraining) termsByGap[gap.id] = deriveGapTerms(gap);
 
   for (const src of sources) {
-    const prose = extractProseLines(src.code);
+    const prose =
+      src.code !== undefined
+        ? extractProseLines(src.code)
+        : [{ line: 1, text: (src.text ?? '').replace(/\s+/g, ' ').trim() }];
     for (const gap of constraining) {
+      if (gap.id === src.exemptGapId) continue;
       for (const term of termsByGap[gap.id]) {
         for (const { line, text } of prose) {
           if (!new RegExp(`\\b${term}s?\\b`, 'i').test(text)) continue;

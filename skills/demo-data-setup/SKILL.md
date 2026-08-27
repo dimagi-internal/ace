@@ -479,18 +479,34 @@ front half (how the labs-only opp + its data come to exist) differs.
    utility at labs' `render_code` write boundary). This gate earns its keep
    regardless: the available set drifts whenever labs changes its own UI.
 
-3c. **Check the dashboard's COPY against the why-brief's declared gaps
-   (ace#1750).** A `why_brief.yaml` declares typed `gaps[]` — what the build
-   cannot support. `demo-narrative` gates the NARRATIVE against them and nothing
-   gated the dashboard's own on-screen prose, so a demo can render a page
-   asserting exactly what its gap list says is unsupported.
+3c. **Check every authored string — dashboard copy AND the narrative
+   artifacts — against the why-brief's declared gaps (ace#1750, ace#1759).** A
+   `why_brief.yaml` declares typed `gaps[]` — what the build cannot support.
+   `demo-narrative` gates the NARRATIVE against them and nothing gated the
+   dashboard's own on-screen prose, so a demo can render a page asserting
+   exactly what its gap list says is unsupported. The brief and the spec can
+   do it too: on the same run the brief's own `decisions-are-recorded` spine
+   item asserted the disposition is recorded *"with its reason"* while the gap
+   two screens down declared there is no durable register and no reason field.
 
-   Run `checkGapCopy(gaps, sources)` from `lib/gap-copy-check.ts` over each
-   authored `render_code` before uploading it, where `sources` is
-   `[{name, code}]` per dashboard. It derives each CAPABILITY/DECISION gap's
-   subject terms (the words the author used in BOTH the gap `id` and its
-   `detail`, minus generic product vocabulary) and reports every prose line that
-   repeats one.
+   Run `checkGapCopy(gaps, sources)` from `lib/gap-copy-check.ts` before
+   uploading anything, where `sources` is:
+   - `{name, code}` per dashboard — the `render_code` as it will be uploaded.
+     Prose is extracted from the JSX.
+   - `...narrativeSources(whyBrief, unifiedSpec)` — the already-prose fields,
+     each labelled by where it came from
+     (`why_brief:spine[decisions-are-recorded].claim`,
+     `unified_spec:scenes[<id>].concept_claim`). It reads
+     `why_brief.spine[].{claim, rationale}`, `why_brief.gaps[].{detail,
+     proposed_action}`, and `unified_spec.scenes[].{concept_claim, show,
+     narrative}`.
+
+   It derives each CAPABILITY/DECISION gap's subject terms (the words the author
+   used in BOTH the gap `id` and its `detail`, minus generic product vocabulary)
+   and reports every prose line that repeats one. **A gap's own `detail` and
+   `proposed_action` are exempt from its own terms** — a gap necessarily names
+   its own subject, so without that carve-out every gap flags itself. One gap's
+   prose naming ANOTHER gap's subject is still reported.
 
    **It FLAGS, it does not reject** — it cannot know which phrasings are
    load-bearing, and refusing legal copy on a keyword match would be the
@@ -508,9 +524,15 @@ front half (how the labs-only opp + its data come to exist) differs.
    only a judge reading rendered pixels caught them, after a full render.
 
    **Known limitation, stated so it is not mistaken for coverage:** this matches
-   subject-term repetition, not semantic equivalence. A coverage claim phrased
+   subject-term repetition, not semantic equivalence. Two shapes still slip, both
+   observed on that run's iteration-2 judge pass. A coverage claim phrased
    without the gap's own nouns — "that is what makes census saturation auditable"
-   — is NOT caught. The check narrows the class; it does not close it.
+   — is NOT caught. Neither is an INVERTED claim: scene 4's payoff line said low
+   variance → fabrication where the page says fabrication → low variance, the
+   converse, and exactly what the `detection-rates-are-not-evidenced` RESEARCH
+   gap calls unevidenced. Both sentences carry the same nouns in the same
+   proportions, so no term match can separate them. The check narrows the class;
+   it does not close it, and the post-render judge is still the backstop.
 
 4. **Build a URL per dashboard — the run deep-link, scoped by OWNERSHIP.**
    `https://labs.connect.dimagi.com/labs/workflow/<def_id>/run/?run_id=<run_id>&<scope>`
@@ -886,6 +908,7 @@ nobody has enumerated yet. Run both — neither is a substitute for the other.
 
 | Date | Change | Author |
 |------|--------|--------|
+| 2026-08-27 | **Step 3c also reads the NARRATIVE artifacts, not just dashboard `render_code` (ace#1759).** The same run's why-brief contradicted a gap it itself declared — `decisions-are-recorded` asserts the disposition is recorded "with its reason" while `adjudication-log-is-run-state-not-a-register` declares no durable register and no reason field. Only a post-render judge caught it, on iteration 2. `checkGapCopy`'s `sources` now takes already-prose entries alongside render_code, and `narrativeSources()` builds them from `why_brief.spine[].{claim, rationale}`, `why_brief.gaps[].{detail, proposed_action}` and `unified_spec.scenes[].{concept_claim, show, narrative}`, each labelled by origin. A gap is exempt from its OWN detail/proposed_action. Still report-only; still term matching, so an inverted claim (scene 4's low-variance→fabrication converse) is not caught. | ACE team |
 | 2026-08-27 | **Step 3c: check dashboard COPY against the why-brief's declared gaps (ace#1750).** The narrative was gated against `gaps[]` and the dashboard prose was not, so `hh-poverty-targeting/20260827-0323` shipped four on-screen assertions of exactly what its own gap list declared unsupported — across two dashboards, one contradicting the same page's leave-one-out definition two lines above it. In all four the narration was clean and the UI copy was the offender, so every instance had to be caught by a post-render LLM judge. New `checkGapCopy` in `lib/gap-copy-check.ts`, report-only. Catches subject-term repetition, not semantic equivalence — a coverage claim phrased without the gap's nouns still slips. | ACE team |
 | 2026-08-27 | **Step 5b: the archived manifest must be the same bytes that were sent, and must round-trip parse (ace#1737).** `hh-poverty-targeting/20260824-1404` published a `demo-data-setup_manifest.yaml` that does not parse as YAML — flow mappings were column-aligned, so the longest key got zero spaces before its `{`. Generation had succeeded, so the archived copy was a SECOND emission rather than a capture of the wire payload; the break surfaced only when the next run tried to fork it. Drive was ruled out by direct probe (the pathological shape round-trips byte-for-byte). Fix: author once to a local file, send that, upload that file's bytes, then read back and `yaml.safe_load`. | ACE team |
 | 2026-08-26 | **`period_end` is exclusive — derive it as `timeline.end_date + 1 day` (ace#1683).** A run window is half-open (`visit_date >= date_from AND visit_date < date_to`, `query_builder._date_window_where`), and the natural authoring move — pass the manifest's own `timeline.start_date`/`end_date` — drops the fixture's entire final day from any snapshotted dashboard while its live sibling keeps it. Measured on `hh-poverty-targeting/20260824-1404` (labs opp 10047): snapshot run 5245 `total=2186`, live run 5249 `total=2237`, fixture `2237`, re-mint at `period_end 2026-08-31` → `2237`, exact. Nothing failed; every existing check passed. Also documented: period scoping bites only on the SNAPSHOT path, and omitting the bounds defaults to `[today, today)`, a zero-width window. New backstop: `demo-data-setup-qa` check 11. | ACE team |

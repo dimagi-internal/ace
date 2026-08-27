@@ -3,6 +3,7 @@ import {
   checkGapCopy,
   deriveGapTerms,
   extractProseLines,
+  narrativeSources,
   type GapLike,
 } from '../../lib/gap-copy-check';
 
@@ -113,5 +114,150 @@ describe('checkGapCopy', () => {
   it('reports its own derivation so an author can see why a line was flagged', () => {
     const r = checkGapCopy(GAPS, [{ name: 'x', code: '<p>nothing to see here at all</p>' }]);
     expect(r.termsByGap['area-register-does-not-exist']).toEqual(['area', 'register']);
+  });
+});
+
+/**
+ * The real ace#1759 instance from hh-poverty-targeting/20260827-0323, abridged
+ * but verbatim in the parts that matter: the brief declares that the decision
+ * is run state with no durable register, and its own spine item then asserts
+ * the disposition is recorded WITH ITS REASON — a field its own gap says does
+ * not exist.
+ */
+const BRIEF = {
+  spine: [
+    {
+      id: 'decisions-are-recorded',
+      claim:
+        'Recording each disposition with its reason is what makes these thresholds ' +
+        'tunable on evidence rather than on impression.',
+      rationale:
+        'A flag that is reviewed and forgotten teaches nobody anything. The design is ' +
+        'explicit that the adjudication log is the validation harness for the whole ' +
+        'verification layer.',
+    },
+    {
+      id: 'review-stays-human',
+      claim: 'Every signal prompts a human to look and none of them rejects a visit.',
+    },
+  ],
+  gaps: [
+    {
+      id: 'adjudication-log-is-run-state-not-a-register',
+      type: 'CAPABILITY',
+      detail:
+        "The decision is written to the workflow run's state. That is not the durable, " +
+        'queryable adjudication log the design describes as the validation harness.',
+      proposed_action:
+        'Promote the disposition to a first-class record keyed on (worker, flag, week) ' +
+        'with its reason, so a later analysis can ask what share were upheld.',
+    },
+  ],
+};
+
+const SPEC = {
+  scenes: [
+    {
+      id: 'the-decision-is-the-artefact',
+      show: 'The per-worker decision control on the analysis page.',
+      concept_claim:
+        'The disposition lands in the adjudication log with its reason, so the ' +
+        'thresholds can be tuned on evidence later.',
+    },
+    {
+      id: 'the-week-looks-fine',
+      show: 'The weekly operations overview for the whole cohort.',
+      concept_claim:
+        'Recording vacant and refused doors is what lets a supervisor tell a thin ' +
+        'settlement from a thin surveyor.',
+    },
+  ],
+};
+
+describe('narrativeSources', () => {
+  it('labels each string by the artifact field it came from', () => {
+    const names = narrativeSources(BRIEF, SPEC).map((s) => s.name);
+    expect(names).toContain('why_brief:spine[decisions-are-recorded].claim');
+    expect(names).toContain('why_brief:spine[decisions-are-recorded].rationale');
+    expect(names).toContain(
+      'unified_spec:scenes[the-decision-is-the-artefact].concept_claim',
+    );
+    // Absent fields produce no entry rather than an empty one.
+    expect(names).not.toContain('why_brief:spine[review-stays-human].rationale');
+  });
+
+  it('marks a gap\'s own prose exempt from its own terms', () => {
+    const gapSources = narrativeSources(BRIEF, null).filter((s) =>
+      s.name.startsWith('why_brief:gaps['),
+    );
+    expect(gapSources).toHaveLength(2);
+    for (const s of gapSources) {
+      expect(s.exemptGapId).toBe('adjudication-log-is-run-state-not-a-register');
+    }
+  });
+
+  it('tolerates a missing brief or spec', () => {
+    expect(narrativeSources()).toEqual([]);
+    expect(narrativeSources({}, {})).toEqual([]);
+  });
+});
+
+describe('checkGapCopy over the narrative artifacts', () => {
+  it('flags the brief contradicting the gap the brief itself declared', () => {
+    // The real ace#1759 instance. `decisions-are-recorded` asserts the reason is
+    // recorded; `adjudication-log-is-run-state-not-a-register` says the durable
+    // register that would hold it does not exist.
+    const r = checkGapCopy(BRIEF.gaps as GapLike[], narrativeSources(BRIEF, null));
+    expect(r.ok).toBe(false);
+    const hit = r.findings.find((f) =>
+      f.source.startsWith('why_brief:spine[decisions-are-recorded]'),
+    );
+    expect(hit).toBeDefined();
+    expect(hit!.gapId).toBe('adjudication-log-is-run-state-not-a-register');
+    expect(hit!.term).toBe('adjudication');
+  });
+
+  it('flags a scene concept_claim that asserts what the gap forbids', () => {
+    const r = checkGapCopy(BRIEF.gaps as GapLike[], narrativeSources(null, SPEC));
+    expect(
+      r.findings.map((f) => f.source),
+    ).toContain('unified_spec:scenes[the-decision-is-the-artefact].concept_claim');
+    // A scene that stays inside what the build supports is left alone.
+    expect(
+      r.findings.some((f) => f.source.includes('scenes[the-week-looks-fine]')),
+    ).toBe(false);
+  });
+
+  it('does not flag a gap against ITSELF', () => {
+    // Every gap names its own subject — `detail` and `proposed_action` exist to
+    // state the limit. Without the carve-out this fires on every gap authored.
+    const r = checkGapCopy(BRIEF.gaps as GapLike[], narrativeSources(BRIEF, SPEC));
+    expect(r.findings.some((f) => f.source.startsWith('why_brief:gaps['))).toBe(false);
+
+    // The carve-out is load-bearing: the same string without it DOES match.
+    const unexempt = checkGapCopy(BRIEF.gaps as GapLike[], [
+      { name: 'gap-detail', text: BRIEF.gaps[0].detail },
+    ]);
+    expect(unexempt.findings).toHaveLength(1);
+  });
+
+  it('reports a prose source at line 1 with its text intact', () => {
+    const r = checkGapCopy(BRIEF.gaps as GapLike[], [
+      { name: 'why_brief:spine[x].claim', text: '  the adjudication log\n  holds the reason  ' },
+    ]);
+    expect(r.findings).toHaveLength(1);
+    expect(r.findings[0].line).toBe(1);
+    expect(r.findings[0].text).toBe('the adjudication log holds the reason');
+  });
+
+  it('still reads render_code alongside narrative sources in one call', () => {
+    const r = checkGapCopy(BRIEF.gaps as GapLike[], [
+      ...narrativeSources(BRIEF, null),
+      { name: 'analysis', code: '<p>Written to the adjudication log with its reason.</p>' },
+    ]);
+    expect(r.findings.map((f) => f.source)).toContain('analysis');
+    expect(r.findings.map((f) => f.source)).toContain(
+      'why_brief:spine[decisions-are-recorded].rationale',
+    );
   });
 });
