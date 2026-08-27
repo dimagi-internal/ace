@@ -768,9 +768,14 @@ in `inputs/` (the manifest), not to pick one canonical PDD file.
    - If exactly one existing opp is a confident match (case/punctuation
      variant, abbreviation, reordering, substring, etc.), use it and
      proceed without prompting.
-   - If multiple plausible candidates exist, surface them with
-     `AskUserQuestion` plus an "Other — create `<requested>` as a new
-     opp" option.
+   - If multiple plausible candidates exist, **pick the
+     most-recently-touched one** (by `inputs/` mtime) and record the
+     choice plus the rejected candidates in the run's decisions log. Do
+     not prompt. This is the same tiebreak zero-arg `/ace:run` already
+     uses (`commands/run.md § Smart-default UX`), so ambiguity resolves
+     the same way whether or not a slug was passed. Reuse beats a second
+     rule: an operator who meant the other opp forks the run, which is
+     cheaper than a blocked run.
    - If no existing opp is a plausible match, create the new folder
      without prompting (genuinely new opp).
 
@@ -1234,7 +1239,7 @@ whose rows have already run together.
 
 **Products:** PDD (`1-design/idea-to-pdd.md`) — the formal design doc; Work Order (`1-design/pdd-to-work-order.gdoc`) — contractual draft derived from PDD + decisions.yaml. Both are required outputs of Phase 1; the work order chain (Steps 2, 2.4, 2.5 in `agents/idea-to-design.md`) runs after the PDD chain.
 
-**Gate:** pause-on-`idea-to-pdd`. In review mode, the PDD-approval gate is the natural human checkpoint at the Phase 1→2 boundary.
+**Gate:** checkpoint-on-`idea-to-pdd` — `[BLOCKER]`s are recorded to the decisions log and the run continues (`default`/`auto`). In `review` mode this is the natural human checkpoint at the Phase 1→2 boundary.
 
 ### Phase 2: Scenarios & Acceptance Planning
 
@@ -1258,7 +1263,7 @@ whose rows have already run together.
 
 **Products:** Learn app, Deliver app, deployed apps on CCHQ, test results (`3-commcare/app-test-cases.yaml` + `app-test-cases/J*.yaml`). (Training materials moved to Phase 6 (`qa-and-training`) in 0.9.0.)
 
-**Gate:** pause-on-`app-deploy`.
+**Gate:** checkpoint-on-`app-deploy` — recorded, non-blocking in `default`/`auto`; pauses in `review`.
 
 **Notes:** Phase 3 became a subagent in 0.13.1018. It had been an inline procedure doc solely because Claude Code withheld `Agent` from subagents, which would have made its `/nova:autobuild` dispatch unreachable; nesting has been allowed since v2.1.219 and the chain fits at depth 2. Dispatching it recovers a fresh context window for the heaviest phase in the run — but a subagent inherits nothing, so **Inputs** above must be complete at handoff. See `CLAUDE.md § Agent topology`.
 
@@ -1284,7 +1289,7 @@ whose rows have already run together.
 
 **Products:** per-opp OCS chatbot cloned from the golden template with opp-specific RAG collection; quick smoke qa+eval passed; deep pre-launch qa+eval passed against opp-specific test prompts; embed credentials ready for Connect (`5-ocs/ocs-agent-setup.md`).
 
-**Gate:** pause-on-`ocs-chatbot-eval --quick`.
+**Gate:** checkpoint-on-`ocs-chatbot-eval --quick` — recorded, non-blocking in `default`/`auto`; pauses in `review`.
 
 **Notes:** Each quality gate is a qa→eval pair — `ocs-chatbot-qa` captures a transcript, `ocs-chatbot-eval` grades it. Ends with a human-in-the-loop step to paste the widget credentials into the Connect opportunity until `update_opportunity` lands (CCC-301). After Phase 5 completes, the orchestrator refreshes `current/` shortcuts (see § Per-Phase Folder Lifecycle in reference).
 
@@ -1342,7 +1347,7 @@ whose rows have already run together.
 
 **Products:** the awarded LLO onboarded (Connect program-level invite + ACE onboarding email with widget link); UAT completed; opportunity activated (go-live); ongoing monitoring active.
 
-**Gate:** **always pauses before** `llo-onboarding` (first 1-1 email to awardee), `llo-uat` send (UAT instructions), and `llo-launch` (opp activation in Connect) — these are unconditional in all modes.
+**Gate:** specification only — Phase 9 is not live (`agents/execution-manager.md` halts before any step). When enabled, the `llo-onboarding` / `llo-uat` / `llo-launch` external-comms gates need a mechanism that is not `AskUserQuestion`, which is withheld from subagents. See § Pause Points in reference.
 
 **Notes:** Phase 9 is the first 1-1 LLO contact in the lifecycle. Recurring skills (`timeline-monitor`, `flw-data-review`, `ocs-chatbot-qa-monitor`, `ocs-chatbot-eval-monitor`) run on schedule during the active opportunity. `llo-launch` requires fresh deep verdicts (Phase 6 `/ace:qa-deep` output).
 
@@ -1358,7 +1363,7 @@ whose rows have already run together.
 
 **Products:** Invoices pulled; Jira payment ticket created; LLO feedback collected; learnings summarized; cycle graded.
 
-**Gate:** **always pauses before** `opp-closeout` (Jira payment ticket creation) — unconditional in all modes.
+**Gate:** specification only — unreachable while Phase 9 is not live. When enabled, the `opp-closeout` Jira payment ticket needs the same non-prompt mechanism as the Phase 9 gates.
 
 **Notes:** Triggered by end-date, not by phase chaining — Phase 10 does NOT run automatically as part of `/ace:run` continuation from Phase 9. The closeout agent owns the trigger condition. The terminal verdict for Phase 10 is `closed` (terminal-phase synonym for `pass` — see § Phase Write-Back Contract in reference for the full enum).
 
