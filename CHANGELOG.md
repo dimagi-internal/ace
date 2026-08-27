@@ -5,6 +5,19 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.13.1020 — 2026-08-26
+
+**A reviewer's ruling now binds to the next run even when that run renames the question.**
+
+v5 gave a human ruling somewhere to live. This makes it actually carry. `decision-overrides.yaml` matched saved rulings on the decision-row `id` only — and run-minted ids are not stable. Measured across 22 runs of `spark-facilitator` + `hh-poverty-targeting`: one reviewer's **9 comments** were raised under **22 different ids**. Comment `[g]` alone appeared as `consent-script-content`, `consent-script-contents` and `consent-script-elements` — differing by a pluralization. Comment `[a]` was split across five ids. That is why 31 rows carried a `feedback_ref` and the override file had never bound a single reviewer decision on either opp.
+
+- **`feedback_ref` is now a second binding key** on `DecisionOverrideRow`. `id` still wins when it matches; otherwise the ruling binds to any row carrying the same `feedback_ref` — the reviewer's own comment, which is stable across rewordings.
+- **A feedback_ref match does NOT overwrite `ai-default`.** An id match is row-to-row (same option vocabulary, the saved value drops in cleanly). A feedback_ref match is question-to-question across differently-worded rows, so the saved string belongs to the *old* row's wording. Instead the row is stamped `status: human-decided` with `decided_by` / `decided_at` and the reviewer's rationale, keeping the run's own phrasing of the answer. It says the true thing — a named person settled this — without putting words in the run's mouth.
+- **An unattributed match is refused, not stamped.** `human-decided` is an attribution claim; asserting one without knowing which human is the exact failure the field exists to fix. Reported in `rulingsSkippedUnattributed`.
+- `decisions_append_rows` reports `rulingsApplied` and `rulingsSkippedUnattributed` alongside `overridesApplied`, so a silently-dropped ruling becomes visible instead of invisible.
+
+9 new tests including the real three-id `[g]` case and the five-id `[a]` split. Full suite 5303 passed.
+
 ## 0.13.1019 — 2026-08-26
 
 **Eight live sentences still called Phase 3 an inline procedure doc — and a guard so prose stops drifting from the declared form.**
