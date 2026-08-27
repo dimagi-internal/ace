@@ -1,6 +1,6 @@
 {
   "name": "ace",
-  "version": "0.13.1056",
+  "version": "0.13.1057",
   "description": "AI Connect Engine — orchestrates the ACE lifecycle from idea through app building, Connect setup, LLO management, and closeout",
   "author": {
     "name": "Jonathan Jackson",
