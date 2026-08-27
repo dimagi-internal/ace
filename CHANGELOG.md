@@ -5,6 +5,20 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.13.1027 — 2026-08-26
+
+**The manifest declared only half the OCS↔training cycle — which is why it read as a fixable ordering bug.**
+
+`lib/artifact-manifest.ts` is ACE's dataflow graph, and it was missing three edges: `5-ocs/ocs-setup_widget-handoff.md` is read by `training-llo-guide`, `training-onboarding-email` and `training-deck-generate` for the `widget_url` — the "where to ask questions" link in the guides — and none of them were declared as consumers. `agents/qa-and-training.md` says so in prose ("the training skills depend on the OCS chatbot URL"); the manifest disagreed.
+
+The consequence was a wrong diagnosis, not a wrong runtime. With only `qa-and-training → ocs` declared, the relationship looked like a **one-way ordering mistake** — the kind a reorder fixes. It is a **cycle**: the chatbot's knowledge base wants the training docs, and the training docs want the chatbot's link. Reordering the two phases doesn't fix it, it just breaks the other direction and leaves every guide with a dead link.
+
+New `test/lib/artifact-cycles.test.ts` detects phase-level cycles and requires each to be declared **with the cut that makes it safe**. An undeclared cycle fails CI. Producers spanning several phases (the orchestrator, `external`) are excluded, since a cross-phase edge through them is an aggregation artifact rather than a dependency.
+
+It immediately found a second, previously unnamed cycle — **`commcare ↔ connect`** — which turns out to be cut *correctly*, and is the model the OCS one should have followed. `app-release-eval` (Phase 3) can confirm deliver-unit enumeration against Phase 4's live Connect state, but that input is marked "optional, later passes only" and the dimension has a first-class evidence path that is always available without Phase 4 (the `?latest=release` CCZ projection, the literal artifact Connect's Sync Deliver Units consumes). ace#1010 spells it out: do not return `unverifiable` just because Phase 4 hasn't run.
+
+Same structure, opposite outcome. The OCS cycle had a tolerant read, no alternative evidence path, and no second pass — so a missing input silently degraded the product. The Connect cycle has an acknowledged optional upgrade over an always-available primary. That difference is the whole distinction between a cut cycle and a latent defect, and it is now written down where the next cycle will be judged against it.
+
 ## 0.13.1025 — 2026-08-26
 
 **Correction: a `[BLOCKER]` halts the run again. 0.13.1021 was wrong.**
