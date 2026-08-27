@@ -1062,7 +1062,49 @@ in `inputs/` (the manifest), not to pick one canonical PDD file.
      `run_id: <runId>` — recorded so a transcript reader can identify
      the run from run_state.yaml alone.
 
-7. **Ensure `<opp>/opp.yaml` exists.** Read it (`drive_read_file`); if
+7. **Ingest the prior run, and close it out.** A new run does NOT start
+   from nothing and does NOT start from everything. Both halves matter and
+   neither happens by itself.
+
+   - **7a. Inherit.** Call `ingestPriorRun` from
+     `lib/decisions-ingest.ts` with the **immediately-prior run's**
+     `decisions.yaml` plus the accumulated `human-decided` set. What
+     carries is weighted by WHERE a decision came from, never by how
+     recent it is: `human-decided` **binds**, `ai-default` is **advisory**
+     and freely re-decidable, `superseded` does not travel. Read **one
+     run back**, never the full history — that is the anti-cruft rule,
+     and it is why the operator had to hand-reset an opp's
+     `open-questions.md` on 2026-08-19 after six runs of ACE's own
+     reasoning had piled up.
+
+     Before writing any decision row, check it with
+     `conflictsWithRuling`. A non-null result means this run is about to
+     overwrite something a human settled: honour it, or record the change
+     as an explicit revision naming the person to re-escalate to. The
+     check matches on `id` AND `feedback_ref`, because a run that renames
+     the question would otherwise walk straight past the ruling — one
+     reviewer's 9 comments were raised under 22 different ids.
+
+   - **7b. Close out the run this one replaces.** A run that was killed
+     mid-phase never executes again, so it cannot write its own epitaph —
+     and abandonment is the MAJORITY path, not an edge case. Starting a
+     fresh run is the evidence the old one died. Write `outcome` onto the
+     PRIOR run's `run_state.yaml` (`lib/run-record.ts`): `state`,
+     `determined_by: next-run`, `closed_by: <this run id>`, and the
+     `cause`/`cause_class` if you know it. When you cannot say, use
+     `inferOutcome` — it needs no cooperation from the dead session.
+
+     Also write this run's `lineage` (`supersedes` / `forked_from` plus a
+     one-line `reason`). ACE has been recording that reason as prose for
+     months — `hh-poverty-targeting/20260728-0705`'s notes open with
+     "WHY A FRESH RUN, NOT A RESUME OF 20260727-1406:" and then explain it
+     correctly. `lineage.reason` is where that sentence belongs.
+
+   Both are cheap and both are load-bearing: without 7a a reviewer's
+   ruling is re-derived from scratch every run, and without 7b the run
+   history is a row of anonymous stopping points.
+
+8. **Ensure `<opp>/opp.yaml` exists.** Read it (`drive_read_file`); if
    missing, create with:
 
    ```yaml
@@ -1098,7 +1140,7 @@ in `inputs/` (the manifest), not to pick one canonical PDD file.
    Do NOT shell out to `npx tsx -e "..."` against `lib/run-readme.ts`
    — the `render_run_readme` atom exists specifically to remove that dance.
 
-8. **Log the run setup explicitly.** Emit a log line in this exact form
+9. **Log the run setup explicitly.** Emit a log line in this exact form
    so transcript readers and ace-web's ingest can pick it up:
 
    ```
@@ -1108,7 +1150,7 @@ in `inputs/` (the manifest), not to pick one canonical PDD file.
      manifest=<opp>/runs/<runId>/inputs-manifest.yaml
    ```
 
-9. **Begin Phase 1.**
+10. **Begin Phase 1.**
 
 ### Fallback — `inputs/` is still empty after auto-create + migration
 

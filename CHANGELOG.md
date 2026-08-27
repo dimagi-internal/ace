@@ -5,6 +5,21 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.13.1056 — 2026-08-27
+
+**The decisions ingest is now actually invoked at run-init, not just documented.**
+
+`lib/decisions-ingest.ts` and `lib/run-record.ts` shipped with full test coverage and **nothing calling them** — described in `orchestrator-reference.md` but absent from the run-init procedure the dispatched agent actually follows. ACE has been burned by exactly this before: per the reference's own Decisions-log clause, *"Documented catalogs without a matching per-step bullet produced silent zero-write failures across Phase 2–9 (jjackson/ace#399); the catalog alone is not load-bearing."*
+
+New run-init **Step 7**, in two halves:
+
+- **7a Inherit** — `ingestPriorRun` against the immediately-prior run plus the accumulated `human-decided` set. `human-decided` binds, `ai-default` advises and stays freely re-decidable, `superseded` does not travel. **One run back, never the full history** — the anti-cruft rule the operator had to apply by hand on 2026-08-19 after six runs of ACE's own reasoning piled up. Every row is checked with `conflictsWithRuling` before writing, matching on `id` **and** `feedback_ref` so a renamed question cannot walk past a human's decision.
+- **7b Close out** — a run killed mid-phase never executes again and cannot write its own epitaph, and abandonment is the majority path. The successor writes the prior run's `outcome` (`determined_by: next-run`), falling back to `inferOutcome`, plus this run's `lineage.reason` — the sentence ACE has been writing as prose for months.
+
+`test/agents/ingest-wired-at-run-init.test.ts` fails if the step is dropped, the carry rule is softened, or the numbering breaks.
+
+Full suite 5563 passed.
+
 ## 0.13.1050 — 2026-08-27
 
 **`/ace:doctor` reported "all four sources agree" while CI checked five.**
