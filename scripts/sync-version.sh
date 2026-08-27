@@ -52,10 +52,39 @@ _sed_i "s/\"version\": \"[^\"]*\"/\"version\": \"$VERSION\"/" "$REPO_ROOT/.claud
 # .claude-plugin/marketplace.json — two "version" fields
 _sed_i "s/\"version\": \"[^\"]*\"/\"version\": \"$VERSION\"/g" "$REPO_ROOT/.claude-plugin/marketplace.json"
 
+# package-lock.json — the top-level "version" and packages[""]."version", and
+# ONLY those two. A `sed` like the ones above would rewrite every dependency's
+# version in the file, so this is a structured edit via node.
+#
+# This file was missed until 0.13.10xx and had drifted to 0.13.935 while every
+# other file read 0.13.1045 — 110 releases behind, silently. Nothing failed:
+# `npm ci` installs from the `packages` tree and does not compare the root
+# `version` to package.json, and `npm ls` does not either. So it is cosmetic
+# TODAY. It is included because the whole point of the four-file gate in
+# version-check.yml is that a version file drifting unnoticed is how ace#987
+# happened, and "this one doesn't matter yet" is the same reasoning that let
+# plugin.json sit one version back for four PRs.
+if [[ -f "$REPO_ROOT/package-lock.json" ]]; then
+  _check_no_conflict_markers "$REPO_ROOT/package-lock.json"
+  node -e '
+    const fs = require("fs");
+    const path = process.argv[1], version = process.argv[2];
+    const raw = fs.readFileSync(path, "utf8");
+    const lock = JSON.parse(raw);
+    lock.version = version;
+    if (lock.packages && lock.packages[""]) lock.packages[""].version = version;
+    // npm writes 2-space indent + trailing newline; this round-trips
+    // byte-identically, so the diff is exactly the two version lines.
+    const out = JSON.stringify(lock, null, 2) + "\n";
+    if (out !== raw) fs.writeFileSync(path, out);
+  ' "$REPO_ROOT/package-lock.json" "$VERSION"
+fi
+
 # Stage the updated files so the commit includes them
 git add \
   "$REPO_ROOT/package.json" \
   "$REPO_ROOT/.claude-plugin/plugin.json" \
   "$REPO_ROOT/.claude-plugin/marketplace.json"
+[[ -f "$REPO_ROOT/package-lock.json" ]] && git add "$REPO_ROOT/package-lock.json"
 
 echo "Synced version → $VERSION"

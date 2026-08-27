@@ -5,6 +5,19 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.13.1047 — 2026-08-27
+
+**`package-lock.json` carries the version too, and had drifted 110 releases behind without anything noticing.**
+
+`scripts/sync-version.sh` propagated VERSION into three JSON files. There are four: `package-lock.json` holds the version twice — top level and `packages[""]` — and was never in the set. On 2026-08-27 it read **0.13.935** while every other file read **0.13.1045**.
+
+Nothing failed, and that is the point. `npm ci` installs from the `packages` tree and never compares the root `version` to `package.json`; `npm ls` does not either. So the drift was invisible, indefinitely, by construction — which is exactly the shape of ace#987, where four consecutive PRs hand-bumped VERSION alone while `plugin.json` sat behind and `/ace:update` failed its own verification with a message that read like a corrupt install. The reasoning that let this one sit ("it doesn't break anything today") is the same reasoning that gate exists to overrule.
+
+- **`sync-version.sh` now writes it**, via a structured `node` edit rather than a `sed` — the pattern the other three files use would rewrite every dependency's version in the file. Verified `JSON.stringify(lock, null, 2) + "\n"` round-trips the file byte-identically, so the diff is exactly the two version lines and no dependency churn.
+- **`version-check.yml` now checks five files, not four**, reporting a mismatch array when the lockfile's two copies disagree with each other. Negative-tested in both directions.
+
+This release is its own proof: the bump above ran through the normal ship path and moved the lockfile with everything else.
+
 ## 0.13.1046 — 2026-08-27
 
 **URGENT REVERT — 0.13.1042 made `scripts/version-bump.sh` a no-op while the gate that demands a bump was still live. Nothing could merge.**
