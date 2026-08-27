@@ -594,11 +594,26 @@ VER_FILE="$(tr -d '[:space:]' < "$ROOT/VERSION" 2>/dev/null || echo missing)"
 VER_PLUGIN="$(node -e "console.log(require('$ROOT/.claude-plugin/plugin.json').version);" 2>/dev/null || echo missing)"
 VER_MARKET="$(node -e "console.log(require('$ROOT/.claude-plugin/marketplace.json').plugins[0].version);" 2>/dev/null || echo missing)"
 VER_PKG="$(node -e "console.log(require('$ROOT/package.json').version);" 2>/dev/null || echo missing)"
+# package-lock.json is the FIFTH version file — it carries the version twice
+# (top level and packages[""]). It sat outside every check until 0.13.1047, by
+# which point it read 0.13.935 against a VERSION of 0.13.1045: 110 releases of
+# drift nothing detected, because `npm ci` installs from the `packages` tree and
+# never compares the root version to package.json. 0.13.1047 added it to
+# sync-version.sh and to version-check.yml — and not here, so doctor reported
+# "all four agree" while CI checked five, and would have passed the very drift
+# that had just been found. A checker that has quietly stopped covering one of
+# the things it names is the failure this whole file exists to prevent.
+VER_LOCK="$(node -e "
+  const l = require('$ROOT/package-lock.json');
+  const vs = [...new Set([l.version, l.packages?.['']?.version].filter(Boolean))];
+  console.log(vs.length === 1 ? vs[0] : vs.join(','));
+" 2>/dev/null || echo missing)"
 
-if [ "$VER_FILE" = "$VER_PLUGIN" ] && [ "$VER_PLUGIN" = "$VER_MARKET" ] && [ "$VER_MARKET" = "$VER_PKG" ]; then
-  pass "version_consistency: all four sources agree on $VER_FILE"
+if [ "$VER_FILE" = "$VER_PLUGIN" ] && [ "$VER_PLUGIN" = "$VER_MARKET" ] \
+  && [ "$VER_MARKET" = "$VER_PKG" ] && [ "$VER_PKG" = "$VER_LOCK" ]; then
+  pass "version_consistency: all five sources agree on $VER_FILE"
 else
-  warn "version_consistency: VERSION=$VER_FILE plugin.json=$VER_PLUGIN marketplace.json=$VER_MARKET package.json=$VER_PKG" "bump all four in a single commit when releasing"
+  warn "version_consistency: VERSION=$VER_FILE plugin.json=$VER_PLUGIN marketplace.json=$VER_MARKET package.json=$VER_PKG package-lock.json=$VER_LOCK" "run scripts/sync-version.sh — it writes all five from VERSION"
 fi
 
 # --- Running session vs installed registry ---
