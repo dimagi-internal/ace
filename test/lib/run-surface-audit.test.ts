@@ -39,8 +39,10 @@ import {
   collectUrls,
   isBlocking,
   labelMatchesPhaseTag,
+  resolveDocSource,
   summarise,
   type DocProbe,
+  type DocSourceMap,
   type Finding,
   type ProbedLink,
   type RenderReport,
@@ -700,6 +702,98 @@ describe('defect 12 — content that did not survive publication', () => {
 
   it('says nothing when the run captured no screenshots at all', () => {
     expect(auditGuideScreenshots({ phases: { 'qa-and-training': { products: {} } } }, [])).toEqual([]);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════
+// ace#1687 — a partial `--doc-source` map must NARROW the check, never
+// erase it. Measured live on hh-poverty-targeting/20260824-1404: three
+// audits minutes apart, the two with no map listed 6 and 8 unsourced
+// documents, and the one carrying a map with ONE entry dropped
+// DOC-FIDELITY-UNVERIFIED entirely.
+// ═══════════════════════════════════════════════════════════════════
+
+describe('ace#1687 — a partial --doc-source map narrows the check, it does not erase it', () => {
+  const DOCS = [
+    { label: 'design.docs[0].url', url: 'https://docs.google.com/document/d/PDDPDDPDDPDD/edit' },
+    { label: 'design.docs[1].url', url: 'https://docs.google.com/document/d/WORKORDERWOR/edit' },
+    { label: 'training.docs[0].url', url: 'https://docs.google.com/document/d/FLWGUIDEFLWG/edit' },
+    { label: 'training.docs[1].url', url: 'https://docs.google.com/document/d/LLOGUIDELLOG/edit' },
+    { label: 'training.docs[2].url', url: 'https://docs.google.com/document/d/FAQFAQFAQFAQ/edit' },
+    { label: 'open_questions.url', url: 'https://docs.google.com/document/d/OPENQUESTION/edit' },
+  ];
+  const PROSE = 'some published prose here';
+
+  /** Exactly what the CLI does per probed link, with the map it was handed. */
+  function unverifiedDocs(map: DocSourceMap | null): string[] {
+    const probes: DocProbe[] = DOCS.map((d) => ({
+      label: d.label,
+      url: d.url,
+      text: PROSE,
+      imageCount: 0,
+      sourceMarkdown: resolveDocSource(map, d.url),
+    }));
+    const f = auditDocFidelity(probes).filter((x) => x.code === 'DOC-FIDELITY-UNVERIFIED');
+    return f.length ? f[0].where.split(', ') : [];
+  }
+
+  it('lists every document when no map is supplied at all', () => {
+    expect(unverifiedDocs(null)).toEqual(DOCS.map((d) => d.label));
+  });
+
+  it('still lists the five absent documents when the map carries one entry', () => {
+    // The bug: `docSources[url] ?? null` collapsed "absent" into "the author
+    // asserted no source", so ONE entry silenced the other five and the
+    // finding vanished from a run that was about to be shared externally.
+    const unverified = unverifiedDocs({
+      'https://docs.google.com/document/d/OPENQUESTION/edit': `# open questions\n${PROSE}`,
+    });
+    expect(unverified).not.toEqual([]);
+    expect(unverified).toEqual([
+      'design.docs[0].url',
+      'design.docs[1].url',
+      'training.docs[0].url',
+      'training.docs[1].url',
+      'training.docs[2].url',
+    ]);
+    // …and the one document that WAS sourced is no longer named.
+    expect(unverified).not.toContain('open_questions.url');
+  });
+
+  it('stands the check down only for a url given an EXPLICIT null sentinel', () => {
+    const unverified = unverifiedDocs({
+      'https://docs.google.com/document/d/OPENQUESTION/edit': null,
+      'https://docs.google.com/document/d/FAQFAQFAQFAQ/edit': `# faq\n${PROSE}`,
+    });
+    expect(unverified).toEqual([
+      'design.docs[0].url',
+      'design.docs[1].url',
+      'training.docs[0].url',
+      'training.docs[1].url',
+    ]);
+  });
+
+  it('distinguishes the three states directly', () => {
+    const map: DocSourceMap = { 'https://docs.google.com/document/d/AAAAAAAAAAAA/edit': '# a' };
+    // no map at all → nothing attempted
+    expect(resolveDocSource(null, 'https://docs.google.com/document/d/AAAAAAAAAAAA/edit')).toBeUndefined();
+    // absent from a supplied map → nothing attempted FOR THIS URL (not "no source")
+    expect(resolveDocSource(map, 'https://docs.google.com/document/d/BBBBBBBBBBBB/edit')).toBeUndefined();
+    // present with null → the deliberate "no source exists" sentinel
+    expect(resolveDocSource({ 'https://docs.google.com/document/d/BBBBBBBBBBBB/edit': null }, 'https://docs.google.com/document/d/BBBBBBBBBBBB/edit')).toBeNull();
+    // present with markdown → verify against it
+    expect(resolveDocSource(map, 'https://docs.google.com/document/d/AAAAAAAAAAAA/edit')).toBe('# a');
+  });
+
+  it('matches map keys on doc identity, not URL spelling', () => {
+    const map: DocSourceMap = { 'https://docs.google.com/document/d/AAAAAAAAAAAA/edit?usp=drivesdk': '# a' };
+    expect(resolveDocSource(map, 'https://docs.google.com/document/d/AAAAAAAAAAAA/edit')).toBe('# a');
+  });
+
+  it('leaves a document unverified when its map key matches nothing (a typo fails LOUD)', () => {
+    expect(unverifiedDocs({ 'https://docs.google.com/document/d/TYPOTYPOTYPO/edit': '# oops' })).toEqual(
+      DOCS.map((d) => d.label),
+    );
   });
 });
 

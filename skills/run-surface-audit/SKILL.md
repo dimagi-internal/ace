@@ -135,6 +135,27 @@ as a broken link does:
 Treating any of these as fine **is** the bug. If you genuinely cannot get an
 input this session, say so explicitly in the report — do not certify around it.
 
+### `--doc-source` is a map you may supply PARTIALLY
+
+`/tmp/doc-sources.json` maps each published doc url to the markdown it was
+published from. Supply whatever you can recover; a partial map **narrows**
+`DOC-FIDELITY-UNVERIFIED` to the documents still missing a source. It never
+switches the check off — a url you leave out is unverified, and says so.
+
+To stand the check down for a document that genuinely has **no** source
+artifact, give that url an explicit `null`. That is a deliberate, per-url
+claim; silence never means it.
+
+```json
+{
+  "https://docs.google.com/document/d/<flw-guide>/edit": "# FLW guide\n...",
+  "https://docs.google.com/document/d/<open-questions>/edit": null
+}
+```
+
+(Before ace#1687 a partial map made the finding vanish for every url absent
+from it — one entry silenced five documents on a live run.)
+
 ## Report
 
 State, in this order:
