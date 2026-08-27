@@ -93,8 +93,10 @@ improvements ship once (a canopy PR) instead of N backports.
   ask: did I repeat work by hand that SHOULD be a skill (or an issue)?
 - **Close-out (core Step 4) ACE shape:** mark fully-handled threads read via
   `bin/ace-mark-read <threadId> …` — NOT threads still awaiting a human decision. Summary covers:
-  **Board** (drained / not configured) · **Inbox** (per thread: sender, tier, routed run, proposed
-  action, approved & done, parked; noise counts by class) · **Open threads by age** (all open
+  **Board** (drained / not configured) · **Inbox** (per thread: sender, **recipient position —
+  `to` or `cc`**, tier, routed run, proposed action, approved & done, parked; noise counts by
+  class). List cc'd-no-action threads explicitly, so deliberate silence is distinguishable from a
+  thread that was missed · **Open threads by age** (all open
   correspond-tier threads, days-since-last-inbound; >5 days = explicit escalation to the run's
   operator, repeated every turn until resolved) · **Runs advanced** · **Blocked/awaiting** ·
   **Issues filed / skills changed**.

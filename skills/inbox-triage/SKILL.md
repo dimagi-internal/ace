@@ -53,6 +53,39 @@ of which ~97% were notifications — and the noise buried a real LLO counterpart
 Anything not in the table — i.e. anything that reads as direct communication — gets full per-thread treatment. **Drain ALL pages** — Gmail search
 paginates at 50; loop until zero unread, or old human threads hide behind the noise.
 
+## Recipient position: To means you, Cc means you were kept informed (Jon, 2026-08-26)
+
+Apply this with the noise table, BEFORE per-thread reasoning. It is about who a message is
+*for*, which the noise table does not capture: a thread can be unmistakably direct human
+communication and still not be addressed to ACE.
+
+Read `to` and `cc` from the **structured** thread read (`canopy email read`) — a raw text view
+hides `Cc:` entirely, which is exactly the field this rule turns on.
+
+- **ACE in `to`** → ACE is an intended recipient. Normal treatment: route it, decide one action,
+  reply if a reply is warranted.
+- **ACE only in `cc`** → **default to NO ACTION.** The intended recipients are the people in
+  `to`; ACE was kept informed. Read it, extract anything durable (a decision, a state change, a
+  fact a later turn will need), mark it read, and name it in the close-out as *cc'd, no action*.
+  Do **not** reply, and do **not** start work off it.
+
+**The override, and it matters:** a cc'd message that *explicitly addresses ACE in the body* —
+"ACE, when you read this…", "ACE please…" — is direct communication and gets acted on. Position
+sets the default; an explicit address overrides it. Anything less explicit than being named is not
+an override: being mentioned in the third person ("ACE built this"), or a request that merely
+happens to be adjacent to work ACE did, both stay no-action.
+
+**When both apply, the body wins for the part that names ACE and the default holds for the rest.**
+The rule's own origin is the case: Jon wrote to Neal and Matt with ACE cc'd, and the body said
+*"don't take any action on this project in particular, but do spin up a new way that you read
+e-mail…"* — one instruction addressed to ACE (act) sitting beside guidance addressed to Neal
+(do not act). Reading only the header would have missed the instruction; reading only the body
+would have picked up Neal's half.
+
+Why this is a default rather than a filter: the failure it prevents is ACE answering, or starting
+work from, a conversation between two other people that it was merely shown. That is more
+expensive than silence — it puts an agent's voice into a thread where nobody asked for it.
+
 ## Process
 
 ### 1. Pull the queue (read-only, safe)
