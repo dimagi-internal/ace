@@ -1063,9 +1063,9 @@ operator experience than auto-stub + warning.
 
 | Checkpoint | Phase | `default` | `review` | `auto` |
 |------|-------|-----------|----------|--------|
-| After `idea-to-pdd` | 1 | **record + continue** | always pause | **record + continue** |
-| After `app-deploy` | 3 | **record + continue** | always pause | **record + continue** |
-| After `ocs-chatbot-eval --quick` | 5 | **record + continue** | always pause | **record + continue** |
+| After `idea-to-pdd` | 1 | **halt on `[BLOCKER]`** (no prompt) | always pause | **halt on `[BLOCKER]`** (no prompt) |
+| After `app-deploy` | 3 | **halt on `[BLOCKER]`** (no prompt) | always pause | **halt on `[BLOCKER]`** (no prompt) |
+| After `ocs-chatbot-eval --quick` | 5 | **halt on `[BLOCKER]`** (no prompt) | always pause | **halt on `[BLOCKER]`** (no prompt) |
 | After `llo-invite` | 8 | never pause (passive solicitation invites) | always pause | never pause |
 | **Phase 8→9 boundary** | 8→9 | **terminus, not a prompt** — the run ends | terminus | terminus |
 | Before `llo-onboarding` | 9 | *unreachable — Phase 9 not live* | — | — |
@@ -1073,16 +1073,22 @@ operator experience than auto-stub + warning.
 | Before `llo-launch` | 9 | *unreachable — Phase 9 not live* | — | — |
 | Before `opp-closeout` | 10 | *unreachable — behind Phase 9* | — | — |
 
-**`default` and `auto` never block on a question (0.13.1020).** ACE makes its best
-effort and keeps going; a `[BLOCKER]` is *recorded*, not asked about. This is the
-same stance the decisions log already takes — see `lib/decisions-schema.ts` v5:
-*"ACE still emits its best estimate and keeps going either way; nothing blocks and
-there is no escalation path."* The three former blocker-pauses were the last places
-that contradicted it.
+**Two different things, and only one of them is banned (0.13.1023).**
 
-Note what this does and does not change. It changes only the FAILURE path: those
-three checkpoints fired `iff [BLOCKER]`, so a healthy run never reached them and
-still doesn't. What used to halt now lands in the run record instead.
+- **Asking a human a question and waiting** — ACE never does this in `default` or
+  `auto`. Where it used to prompt, it decides, records the decision, and proceeds.
+- **Halting because something is broken** — ACE absolutely still does this. A
+  `[BLOCKER]` stops the run.
+
+An earlier revision (0.13.1021) collapsed the two and made blockers
+*record-and-continue*. That was wrong, and wrong in the most expensive direction:
+it meant a run could reach the end with a known-broken artifact behind it, so
+"the run finished" stopped being evidence that anything worked. **Reaching the end
+of a run must mean everything worked.** That is the property being protected here.
+
+So: on `[BLOCKER]`, write `phases.<phase>.status: blocked` with the reason and the
+verdict paths, and **halt** — without asking anyone anything. The halt is
+autonomous. A stopped run is a signal, not a question.
 
 **`review` mode is unchanged and still pauses at every checkpoint.** It exists so an
 operator can opt into a human checkpoint per phase; that is a deliberate request, not
@@ -1103,12 +1109,11 @@ external-comms pause points."*
    - **Artifact under review:** path + one-line description (pulled from the producer's primary artifact).
    - **What to check:** auto-derived from any QA `failures[]` and eval auto-surfaced concerns.
    - **Severity surface:** any `[BLOCKER]` / `[WARN]` / `[INFO]` from the verdicts (eval has these explicitly; QA failures are always `[BLOCKER]`-equivalent).
-3. **In `default` and `auto`: records and continues.** Append a decisions-log row
-   for each `[BLOCKER]` (`status: ai-default`, `evidence_basis: inferred`, the
-   verdict path as `source`) capturing what was flagged and that the run proceeded,
-   then carry on to the next phase. The row is the audit trail: it survives the run,
-   renders into the decisions doc, and is correctable later without re-running
-   anything. Do NOT prompt, and do NOT halt.
+3. **In `default` and `auto`: halts, without prompting.** If any `[BLOCKER]` is
+   present, write `phases.<phase>.status: blocked` with a one-line reason and the
+   contributing verdict paths, and stop the run there. Do NOT ask a question — the
+   operator reads the state, not a modal. If there is no `[BLOCKER]`, continue
+   silently; `[WARN]` and `[INFO]` never halt.
 4. **In `review` only: presents via `AskUserQuestion`** with four options:
    - **Approve** — continue.
    - **Reject** — halt the run; log admin's reason in `comms-log/`.
