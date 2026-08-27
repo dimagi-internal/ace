@@ -813,10 +813,24 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     path: '5-ocs/ocs-setup_widget-handoff.md',
     producedBy: 'ocs-setup',
     role: 'widget-handoff',
-    consumedBy: ['llo-onboarding', 'ocs-widget-handoff-eval'],
+    consumedBy: [
+      'llo-onboarding',
+      'ocs-widget-handoff-eval',
+      // Phase 6 reads widget_url for the "where to ask questions" link. These
+      // three edges were missing until 0.13.1026, which mattered: without them
+      // the declared graph showed only qa-and-training -> ocs (the training docs
+      // feeding the RAG collection), so the OCS/training relationship read as a
+      // one-way ORDERING mistake that a reorder could fix. It is a CYCLE, and a
+      // reorder just breaks the other direction — the guides get a dead
+      // "ask questions here" link. See DECLARED_CYCLES in
+      // test/lib/artifact-cycles.test.ts.
+      'training-llo-guide',
+      'training-onboarding-email',
+      'training-deck-generate',
+    ],
     phase: 'ocs',
     required: true,
-    description: 'Operator-facing handoff doc: creds + paste instructions for the Connect opportunity widget (until update_opportunity API lands)',
+    description: 'Operator-facing handoff doc: creds + paste instructions for the Connect opportunity widget (until update_opportunity API lands). Also the source of widget_url for the Phase 6 training docs.',
   },
   {
     path: '5-ocs/ocs-chatbot-qa_transcript-quick.md',
