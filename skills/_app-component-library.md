@@ -58,6 +58,8 @@ authored from the PDD per run):
 
 | Component | App | Trigger | Enforced by (eval dimension) |
 |---|---|---|---|
+| [`choice-label-rendering`](#choice-label-rendering) | Deliver + Learn | Always, whenever a choice label is authored | `lib/choice-label-integrity.ts § checkMarkdownEatenLabels` (ace#1689) |
+| [`case-list-enum-fidelity`](#case-list-enum-fidelity) | Deliver | A case-list column renders a property through an id-mapping enum a form also writes | `lib/choice-label-integrity.ts § checkCaseListEnumDrift` (ace#1688) |
 | [`gps-accuracy-capture`](#gps-accuracy-capture) | Deliver | PDD Evidence Model specifies a GPS arrival/location radius or accuracy tolerance (observability only — a hard gate is unbuildable, ace#1006) | `pdd-to-deliver-app-eval § Capture fitness` |
 | [`init-safe-calculates`](#init-safe-calculates) | Deliver (cross-cutting) | Any hidden calc parses a capture-later value (`selected-at`/`substr`/`regex`/`number`) | `app-release-qa` (`commcare-cli play`) |
 | [`data-quality-constraints`](#data-quality-constraints) | Deliver | Always, for any data-capture instrument | `pdd-to-deliver-app-eval § Data-quality validation` |
@@ -1903,6 +1905,67 @@ is briefed from the same declared taxonomy, so Learn/Deliver agreement is
 transitive — two builds that each match the PDD cannot contradict each other.
 
 ---
+
+## Label-fidelity components (added 2026-08-26)
+
+Both came from `spark-facilitator/20260820-0817` Phase 6, and they share a root
+cause: **the label the field worker actually reads stopped matching the label
+ACE authored, and nothing downstream could tell.** The app is complete,
+internally consistent, and passes every structural gate in both cases. Only a
+direct comparison sees it. *Enforced:* `lib/choice-label-integrity.ts` +
+`test/lib/choice-label-integrity.test.ts`.
+
+### choice-label-rendering
+
+- **App:** Deliver and Learn — any `select1` / `select` choice list.
+- **Trigger:** always, whenever a choice label is authored.
+- **Parameters:** none.
+- **Enforced by:** `checkMarkdownEatenLabels` (`lib/choice-label-integrity.ts`).
+- **Origin:** ace#1689. Nova emits every choice label with a
+  `form="markdown"` twin and CommCare prefers it. `1. Planning` at the start of
+  a line **is** a markdown ordered-list item, so the renderer consumes the
+  `1. ` marker and the radio button reads `Planning`. Live ui-dump from the
+  run: the four authored FCAP phases rendered as `Planning`,
+  `Implementation`, `Second Round Planning and Implementation`, `Transition` —
+  every number gone. Cost one full Deliver-leg dispatch, diagnosed only by
+  reading the failure ui-dump.
+
+**Brief paragraph (verbatim):**
+
+> REQUIRED — Choice labels are rendered as MARKDOWN. A label that begins with a
+> markdown block marker loses that marker on-device: `1. Planning` displays as
+> `Planning`, `- Yes` as `Yes`, `# Total` as `Total`. Never start a choice
+> label with `N. `, `N) `, `- `, `* `, `+ `, `# ` or `> `. When a number
+> carries meaning, put it somewhere markdown will not eat it — `Phase 1:
+> Planning` or `1 - Planning`, not `1. Planning`. This is not cosmetic: any
+> Maestro recipe, screenshot assertion or training material that matches the
+> authored text can never match what the device shows.
+
+### case-list-enum-fidelity
+
+- **App:** Deliver.
+- **Trigger:** always, when a case-list column renders a property through an
+  id-mapping enum that a form also writes.
+- **Parameters:** the property id, the writing form's choice list.
+- **Enforced by:** `checkCaseListEnumDrift` (`lib/choice-label-integrity.ts`).
+- **Origin:** ace#1688, on released Deliver CCZ
+  `bf4898f5d80b456eb4525fc4e2d9ced9`. The `fcap_community` tile rendered
+  `phase` and `current_step_id` through id-mapping enums carrying a
+  **completely different taxonomy** from the one the meeting form offered:
+  stored `1` read as `1. Introduction` on the tile and `1. Planning` in the
+  form. The FLW reads one taxonomy before the visit and picks from another
+  during it.
+
+**Brief paragraph (verbatim):**
+
+> REQUIRED — A case-list id-mapping enum MUST be derived from the choice list
+> of the form that writes the property, never authored independently. The form
+> is the authority: it is what the worker picks from, and it defines what the
+> stored value means. Before configuring a case list, read the writing form's
+> choice list and map value-for-value. An enum value the form cannot produce is
+> dead; a form value the enum lacks renders as a raw code on the tile; and a
+> value that exists in both with different labels is the worst case, because
+> both surfaces look correct in isolation.
 
 ## Change log
 
