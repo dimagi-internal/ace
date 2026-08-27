@@ -650,6 +650,77 @@ deleted). Each line is a behaviour ACE would otherwise have guessed at.
    record (`origin: ai`) plus a real downstream review — not the state name.
    Do not tell an LLO that unreviewed translations are "not live yet."
 
+## The media channel — shipped by 2026-06-03, adopted 2026-08-27
+
+Nova attaches images, audio, and video to an app **in the blueprint**. This
+closed ACE's own feature request `voidcraft-labs/nova-plugin#8` on
+**2026-06-03**, and ACE did not notice for nearly three months — the workaround
+skill kept asserting "Nova has no schema for it" while the schema was live. If
+you are reading this because something in ACE claims a Nova gap, check the
+upstream issue before believing it.
+
+### The tools
+
+| Tool | Attaches to |
+|---|---|
+| `upload_media_asset` | — (project-scoped library; returns the `asset_id` every attach call needs) |
+| `list_media_assets` | — (enumerate the library) |
+| `remove_media_asset` | — (refuses while any app still references it) |
+| `attach_field_media` | a field's `label` / `hint` / `help` / `validate_msg` slot |
+| `attach_option_media` | one option of a select field — picture-choice questions |
+| `set_menu_media` | a module or form tile: icon + audio label |
+| `set_app_logo` | the app logo |
+
+`create_module`'s case-list columns also take an `image-map` kind that maps a
+case-property value to an `assetId`.
+
+### Contract facts — observed live 2026-08-27, not inferred
+
+Probed end-to-end on a throwaway app uploaded to `connect-ace-prod`, built, and
+downloaded back as a released CCZ:
+
+- **It reaches the device.** The attached PNG landed in the CCZ at
+  `commcare/<sha256>.png`, with `<value form="image">jr://file/commcare/<sha256>.png</value>`
+  in the form XML and a matching `media_suite.xml` resource. `compile_app`'s
+  schema states this too ("when the app has media, a base64-encoded zip bundle
+  … so the media round-trips"), and `upload_app_to_hq` carries it.
+- **Nova content-addresses the filename.** The CCZ name is the asset's SHA-256,
+  not the uploaded filename — so identical bytes attached in two places bundle
+  once and are referenced twice. Do not expect your filename to survive, and do
+  not build anything that parses it.
+- **Built-in icon slugs are real assets.** `set_menu_media` accepts 34 module
+  topic slugs (`maternal_health`, `newborn_care`, …) and 14 form action slugs
+  (`register`, `counsel`, …) with **no upload at all**; Nova materialises them
+  as bundled PNGs referenced from `app_strings.txt` as `modules.m0.icon` /
+  `forms.m0f0.icon`. The two tiers are NOT interchangeable — a form slug on a
+  module tile is rejected.
+- **Media is orthogonal to translations.** Attaching and then clearing media on
+  a field whose Spanish translation was already set left that translation at
+  `needs-review` with its value intact. Nova's `sourceFingerprint` covers the
+  TEXT only. So unlike editing an English string — which demotes its
+  translation to `out-of-date` — media has **no translate-LAST hazard**, and
+  the media pass may run either side of the language layer.
+- **Uploads dedupe on content.** Re-uploading identical bytes returns the same
+  `asset_id` with `deduplicated: true`, so a re-run is free.
+- **Slots are per field kind.** A `label` field has only `label`; asking for
+  `hint` on one is refused, and Nova names the field and lists its real slots.
+  Every attach call commits as a **whole batch** — one bad row attaches nothing.
+
+### Never call `upload_media_asset` as an MCP tool
+
+It takes the file as inline base64, and base64 tokenizes at roughly **one token
+per character** — a 60 KB image is ~80k tokens as a tool-call argument, and a
+46 KB payload measured at 45k tokens (enough to hit the read cap) on
+2026-08-27. A dozen images would exhaust a phase.
+
+Nova's MCP is a plain HTTP JSON-RPC endpoint, so ACE makes the same call
+server-side: `scripts/run-nova-media-upload.ts` reads the bytes off disk,
+encodes them there, POSTs `tools/call`, and prints one line of JSON. This is
+the `_path` companion pattern from `docs/learnings/2026-05-12-boundary-probe-registry.md`,
+reached by proxy because Nova's schema is upstream and not ours to extend.
+
+ACE's consumer is `skills/app-media-coverage` (Phase 3 Step 1.7).
+
 ## The 2026-07-31 uuid-addressing migration (read this before writing a Nova call)
 
 Nova redeployed mid-run at ~15:45Z on 2026-07-31 and moved its **entire**

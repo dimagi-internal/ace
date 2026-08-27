@@ -351,7 +351,7 @@ Generate the Learn (training) app from the PDD using the Nova plugin
        in the Nova brief**. Nova's authoring surface exposes no
        menu-display-format control at all: `update_app` sets only the display
        name, `create_module` / `update_module` carry no display-format field,
-       `set_menu_media` sets icons and audio labels, and `set_case_list_tile`
+       `set_menu_media` sets icons and audio labels (Menu ICONS are a different thing and ACE does apply them — `app-media-coverage` at Phase 3 Step 1.7, via this same `set_menu_media`, using Nova's built-in topic/action icon slugs.), and `set_case_list_tile`
        lays out a case LIST — unrelated, and inapplicable to case-less Learn
        modules. The component is real and enforced, just not here: it is
        applied POST-BUILD by `app-hq-settings` (Phase 3 Step 2.65) via

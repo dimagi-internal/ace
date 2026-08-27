@@ -11,6 +11,7 @@ skills:
   - { name: pdd-to-learn-app,        has_judge: true,  eval_skill: pdd-to-learn-app-eval }
   - { name: pdd-to-deliver-app,      has_judge: true,  eval_skill: pdd-to-deliver-app-eval }
   - { name: app-connect-coverage,    has_judge: false }
+  - { name: app-media-coverage,      has_judge: false }
   - { name: app-deploy,              has_judge: false }
   - { name: app-test-cases,          has_judge: false }
   - { name: app-hq-settings,         has_judge: false }
@@ -491,6 +492,41 @@ Invoke the `app-connect-coverage` skill **once per app** (Learn, Deliver).
     `<learn:deliver>` / `<learn:module>` element counts. Log the
     coverage skip into `run_state.yaml`, write a stub coverage
     report, and proceed to Step 2.
+
+### Step 1.7: Media coverage (images on the apps)
+Invoke the `app-media-coverage` skill **once per app** (Learn, Deliver), or
+once with `--app=both`.
+
+- Input: `nova_app_id` per app; `ACE/<opp>/inputs/media/` if the opp supplies
+  one; `pdd.md` for the Application Context.
+- Output: images and built-in menu icons attached **in the Nova blueprint** —
+  field labels, select options, module and form tiles — plus
+  `3-commcare/app-media-coverage_plan-<app>.yaml` and a dated report.
+- **Why before deploy:** media lives in the blueprint, and Step 2's upload is
+  what carries it to HQ. Nova's `compile_app` bundles linked assets and writes
+  the matching `<image>` itext itself (verified live 2026-08-27 — the asset
+  landed in the released CCZ at `commcare/<sha256>.png`). Attaching after the
+  upload would mean patching form XML on HQ, which is what the retired
+  `app-multimedia-coverage` did and why every Nova rebuild used to lose it.
+- **Why after Step 1.5:** it binds to specific fields and select options, so
+  the forms must be final. Connect-marker auto-fix rewrites forms; binding
+  before it would waste the work.
+- **Ordering against the language layer is a non-issue.** Media attaches to a
+  message slot without touching the text, and Nova's translation
+  `sourceFingerprint` covers text only — verified live 2026-08-27, attaching
+  and clearing media left an existing Spanish translation intact at
+  `needs-review`. Unlike translation, media has no translate-LAST hazard.
+- **Failure modes:**
+  - **No `inputs/media/` folder:** normal and expected. The skill still applies
+    built-in menu icons and generates where a question earns a picture.
+  - **Generation unavailable** (Content Generator down or `--no-generate`):
+    **do NOT halt Phase 3.** Supplied files and built-in icons still apply;
+    the report records what was skipped. Images are an enhancement to the
+    worker experience, not a Connect precondition — nothing downstream gates
+    on them.
+  - **A Nova attach batch is rejected:** Nova names the offending row and
+    changes nothing. Fix that row and re-send the batch. If it cannot be
+    fixed, drop the row and continue — see above.
 
 ### Step 2: Deploy Apps
 Invoke the `app-deploy` skill.

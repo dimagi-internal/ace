@@ -1,15 +1,10 @@
 ---
 name: share-run-access
 description: >
-  Grant a set of people (typically everyone on a project thread) the access they need to
-  work on an ACE run — across all surfaces the run-summary links: ace-web workbench + labs
-  dashboards, the Connect opportunity, the CommCare HQ apps, and the OCS chatbot. ACE
-  opportunities are CO-CREATED with partners, so the default grant on a run's own documents is
-  EDITOR for named collaborators, not read-only. The public run-summary page itself is public,
-  but its ACE-authored deliverable docs are NOT shared by default — this skill shares them and
-  covers the platform-gated surfaces. Repeatable,
-  idempotent, and approval-gated on every outbound invite. Invoked ad-hoc (a human asks "give
-  Sophie and Sarvesh access") or as a standing step when a project thread gains participants.
+  Grant named people the access they need to work on an ACE run, across every surface the
+  run-summary links: ace-web + labs dashboards, the Connect opportunity, the CommCare HQ apps,
+  and the OCS chatbot. Editor by default (runs are co-created). Idempotent; approval-gated on
+  every outbound invite.
 disable-model-invocation: false
 ---
 
