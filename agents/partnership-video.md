@@ -554,20 +554,25 @@ explainer video.
 
 ## How `Agent` / `Skill` dispatches work from this procedure
 
-This procedure runs inline at level 0, which makes the following dispatches
-legal:
+This procedure runs inline at level 0, so its dispatches leave from level 0.
+Only one of the four costs a level — the distinction matters, and this list got
+it wrong until 0.13.1038:
 
-- `Skill(deep-research)` — invoked inside `partnership-research`; fans
-  out web searches and synthesizes a cited report. Internal Agent
-  dispatches are legal because the outer session is at level 0.
+- `Skill(deep-research)` — invoked inside `partnership-research`; fans out web
+  searches and synthesizes a cited report. A **Skill runs inline in its
+  invoker and costs no depth**; any `Agent` fan-out it does of its own leaves
+  from this procedure's level.
 - `Skill(canopy:walkthrough)` — invoked inside `partnership-microdemo` for
-  mock filming when no reusable clip exists.
-- `Agent(nova:autobuild)` — invoked inside `partnership-microdemo` to build
-  a Nova app stub when a tailored mock is needed.
-- `Skill(canopy:walkthrough-share)` — invoked inside `partnership-publish`
-  to publish the assembled package to canopy-web.
+  mock filming when no reusable clip exists. Inline; costs nothing.
+- `Agent(nova:autobuild)` — invoked inside `partnership-microdemo` to build a
+  Nova app stub when a tailored mock is needed. **The only depth cost here,
+  and it is two levels, not one:** `nova:autobuild` is dispatched as a
+  subagent and then dispatches the architect.
+- `Skill(canopy:walkthrough-share)` — invoked inside `partnership-publish` to
+  publish the assembled package to canopy-web. Inline; costs nothing.
 
-All four descend a level from wherever this procedure runs, and
-`Agent(nova:autobuild)` descends two. Running inline at level 0 is what keeps
-them inside the depth budget (`CLAUDE.md § Agent topology`) — and is why you
-must never write `Agent(partnership-video)`.
+The paragraph that stood here said "all four descend a level," which is true of
+exactly one of them. Running inline at level 0 is what keeps the `nova:autobuild`
+chain inside the depth budget (`CLAUDE.md § Agent topology`; `lib/agent-depth.ts`
+holds the arithmetic) — and is why you must never write
+`Agent(partnership-video)`.

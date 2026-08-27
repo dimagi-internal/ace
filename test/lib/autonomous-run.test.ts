@@ -66,8 +66,16 @@ describe('autonomous run — never asks', () => {
     const rows = checkpointRows();
     expect(rows.length, 'checkpoint table not found — did it move?').toBeGreaterThan(4);
     const prompting = rows.filter(([, , , dflt, , auto]) => {
+      // The em-dash exemption used to be `|—|` anywhere in the cell, which was
+      // added for the `| — |` unreachable-phase rows and let any cell through
+      // that happened to contain one: `pause — operator confirms` would have
+      // passed. Now only a cell that IS an em dash (the not-applicable marker)
+      // is exempt.
+      const notApplicable = (v: string) => v.trim() === '—' || v.trim() === '';
       const bad = (v: string) =>
-        /\bpause\b/i.test(v) && !/never pause|unreachable|terminus|no prompt|—/i.test(v);
+        !notApplicable(v) &&
+        /\bpause\b/i.test(v) &&
+        !/never pause|unreachable|terminus|no prompt/i.test(v);
       return bad(dflt) || bad(auto);
     });
     expect(
@@ -87,9 +95,12 @@ describe('autonomous run — always halts on a blocker', () => {
     );
     expect(rows.length, 'the three [BLOCKER] checkpoints were not found').toBe(3);
 
-    const notHalting = rows.filter(([, point, , dflt, , auto]) => {
-      const halts = (v: string) => /\bhalts?\b/i.test(v);
-      return !halts(dflt) || !halts(auto) ? point : false;
+    const notHalting = rows.filter(([, , , dflt, , auto]) => {
+      // `/\bhalts?\b/` alone is satisfied by "never halts" — the exact
+      // sentence this test exists to reject. Require an affirmative halt and
+      // reject a negated one.
+      const halts = (v: string) => /\bhalts?\b/i.test(v) && !/\b(?:never|not|no)\s+halts?\b/i.test(v);
+      return !halts(dflt) || !halts(auto);
     });
     expect(
       notHalting.map((r) => `  ${r[1]}: default="${r[3]}" auto="${r[5]}"`),

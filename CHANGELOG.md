@@ -5,6 +5,24 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.13.1040 — 2026-08-27
+
+**The depth guard checked ACE against ACE, and never against the machine.**
+
+`test/lib/agent-depth.test.ts` compares ACE's declared dispatch graph to ACE's own `MAX_SUBAGENT_SPAWN_DEPTH` constant. Both are committed here, so it is green on every machine — including one whose runtime supplies less than ACE needs. That is the only side that can actually break, and it breaks silently: at the limit Claude Code withholds the `Agent` tool and the subagent at the floor does the delegated work itself.
+
+Two things make it live rather than theoretical. `CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH` is normally **unset**, and Claude Code then resolves the value from a remote feature flag — the default moved three times in 2026 (5 → 1 → 3), so it is not a constant and is not necessarily the same for two people on one team. And since 0.13.1018 ACE needs depth 2 on **two** chains: Phase 7's per-scene judges collapse quietly, and Phase 3 never reaches the Nova architect at all and builds the apps itself.
+
+- **`scripts/doctor-agent-depth.ts`** reports what ACE needs, what is pinned, and which chains starve at a given budget. `bin/ace-doctor` runs it: PASS when pinned high enough, WARN when unpinned (with the `settings.json` line to paste), FAIL when pinned below — naming the chains that collapse. `formatChains()` finally has the consumer its doc comment claimed since 0.13.1005.
+
+**Six sweep edges were undeclared.** `agents/sweep.md` names its per-system skills in a TABLE, not as `Agent(x)` literals, so the repo scan could not see `sweep-drive`, `sweep-ocs`, `sweep-hq`, `sweep-labs`, `sweep-opp-runs`, `sweep-ace-web`. All leaves, so the depth number never moved — but "the declared graph is silent about six real edges" is exactly the defect 0.13.1026 fixed on the artifact manifest, and a future non-leaf there would have been invisible to the budget.
+
+**The scanner missed `commands/` entirely** — where a top-level dispatch is actually *instructed*. It read the things the entry points call and not the entry points. It was also lowercase-only, which makes Claude Code's own `Agent(Explore)` / `Agent(Plan)` invisible rather than flagged. Both fixed, with an assertion that the `commands/` walk is not silently a no-op.
+
+**`agents/partnership-video.md` said "all four descend a level"; exactly one does.** Three of the four are `Skill(...)`, which run inline in their invoker and cost nothing. Only `Agent(nova:autobuild)` costs — and it costs two levels, not one. The graph's `why` said something similarly loose about `deep-research`.
+
+**Two escapes narrowed in `test/lib/autonomous-run.test.ts`.** The no-pause check exempted any cell containing an em dash (added for the `| — |` unreachable rows), so `pause — operator confirms` would have passed; now only a cell that *is* an em dash is exempt. And `halts()` was a bare `/\bhalts?\b/`, satisfied by the words "never halts" — the exact sentence the test rejects. Both negative-tested.
+
 ## 0.13.1039 — 2026-08-27
 
 **The split that removed the OCS↔training cycle reintroduced the defect it was fixing, one artifact over.**
