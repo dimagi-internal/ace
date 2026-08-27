@@ -120,6 +120,33 @@ describe('gog_auth probes the success shape, not an error denylist (#1338)', () 
     }
   });
 
+  it('does not treat canopy preflight exit code as the Gmail verdict (ace#1741)', () => {
+    const body = src();
+    // `canopy email preflight` reports more than the mailbox and exits
+    // non-zero for advisories that leave it perfectly usable — most often
+    // "installed canopy engine lags the marketplace clone". Reading that
+    // aggregate code as the Gmail leg declared a WORKING mailbox dead,
+    // turn-blocking, while printing `OK: gog Gmail ready` as its evidence.
+    //
+    // On a non-zero exit the probe must settle it with the direct capability
+    // check, not by parsing canopy prose.
+    expect(body).toMatch(/GOG_PREFLIGHT_RC=\$\?/);
+    expect(body).toMatch(/_gog_probe gmail gmail labels list/);
+    // The old shape — bare `$?` straight into the gmail verdict — must be gone.
+    expect(body).not.toMatch(/if \[ \$\? -eq 0 \]; then GOG_OK="\$GOG_OK gmail"/);
+  });
+
+  it('keeps a non-Gmail preflight advisory NON-blocking (ace#1741)', () => {
+    const body = src();
+    // The advisory must still be reported — losing it would be the opposite
+    // over-correction — but it must not be turn-blocking, because the mailbox
+    // works.
+    expect(body).toMatch(/gog_preflight_advisory/);
+    const line = body.split('\n').find((l) => l.includes('gog_preflight_advisory:'));
+    expect(line, 'advisory line not found').toBeTruthy();
+    expect(line!, 'the advisory must use warn, never warn_turn').not.toMatch(/warn_turn/);
+  });
+
   it('classifies a --json probe by whether it parses as JSON', () => {
     expect(src()).toMatch(/_gog_json_ok\(\)/);
   });

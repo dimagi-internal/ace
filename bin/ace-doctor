@@ -2212,8 +2212,31 @@ else
     # the canopy CLI is absent (7a3 warns about that separately).
     if command -v canopy >/dev/null 2>&1; then
       GOG_PREFLIGHT="$( { if [ -n "$GOG_TO_BIN" ]; then "$GOG_TO_BIN" 25 canopy email preflight --repo "$ROOT"; else canopy email preflight --repo "$ROOT"; fi; } 2>&1 )"
-      # shellcheck disable=SC2181
-      if [ $? -eq 0 ]; then GOG_OK="$GOG_OK gmail"; else GOG_MISSING="$GOG_MISSING gmail"; fi
+      GOG_PREFLIGHT_RC=$?
+      if [ "$GOG_PREFLIGHT_RC" -eq 0 ]; then
+        GOG_OK="$GOG_OK gmail"
+      else
+        # ace#1741. A non-zero exit here is NOT a Gmail verdict. `canopy email
+        # preflight` reports more than the mailbox and exits non-zero for
+        # advisories that leave it perfectly usable — most commonly "installed
+        # canopy engine vX lags the marketplace clone vY", which fires often
+        # because canopy ships fast. Treating the aggregate code as the Gmail
+        # leg declared a working mailbox dead, TURN-BLOCKING, while printing
+        # `OK: gog Gmail ready` as its own evidence.
+        #
+        # Settle it with the direct capability check rather than by parsing
+        # canopy prose — a real call is the authority, and parsing its wording
+        # would re-derive the coupling #1338 removed. If Gmail answers, the
+        # non-zero exit belonged to something else: carry it as a separate,
+        # NON-blocking advisory instead of losing it.
+        _gog_probe gmail gmail labels list --account "$GMAIL_ACCT" --client "$GMAIL_CLIENT_VAL" --json
+        if printf '%s' "$GOG_MISSING" | grep -qw gmail; then
+          : # Gmail really is broken — the preflight text is the right remedy.
+        else
+          GOG_PREFLIGHT_ADVISORY="$(printf '%s' "$GOG_PREFLIGHT" | grep -E '^(FIX|WARN|ERROR)' | head -2 | tr '\n' ' ')"
+          [ -n "$GOG_PREFLIGHT_ADVISORY" ] || GOG_PREFLIGHT_ADVISORY="exit $GOG_PREFLIGHT_RC with no FIX line"
+        fi
+      fi
     else
       _gog_probe gmail  gmail labels list --account "$GMAIL_ACCT" --client "$GMAIL_CLIENT_VAL" --json
     fi
@@ -2223,8 +2246,11 @@ else
     GOG_MISSING="$(printf '%s' "$GOG_MISSING" | sed 's/^ //')"
     if [ -z "$GOG_MISSING" ]; then
       pass "gog_auth: $GMAIL_ACCT (client=$GMAIL_CLIENT_VAL) — live scopes OK for gmail+calendar+drive; docs/slides/sheets/forms covered by the same --services login"
+      if [ -n "$GOG_PREFLIGHT_ADVISORY" ]; then
+        warn "gog_preflight_advisory: Gmail answers, but canopy email preflight still exited non-zero — $GOG_PREFLIGHT_ADVISORY" "not a mailbox problem (ace#1741); action it on its own terms"
+      fi
     elif printf '%s' "$GOG_MISSING" | grep -qw gmail; then
-      warn_turn "gog_auth: GOG token for $GMAIL_ACCT (client=$GMAIL_CLIENT_VAL) cannot call Gmail — email send/read will fail${GOG_PREFLIGHT:+ — canopy preflight said: $(printf '%s' "$GOG_PREFLIGHT" | head -1)}" "re-authorize the full service set: $GOG_LOGIN_HINT"
+      warn_turn "gog_auth: GOG token for $GMAIL_ACCT (client=$GMAIL_CLIENT_VAL) cannot call Gmail — email send/read will fail${GOG_PREFLIGHT:+ — canopy preflight said: $(printf '%s' "$GOG_PREFLIGHT" | grep -E '^(FIX|ERROR|WARN)' | head -1 || printf '%s' "$GOG_PREFLIGHT" | head -1)}" "re-authorize the full service set: $GOG_LOGIN_HINT"
     else
       warn "gog_auth: GOG token for $GMAIL_ACCT is too narrow — missing scopes: $GOG_MISSING (live OK: $GOG_OK). Drive/Calendar/Docs/Slides/Sheets/Forms ops will 403" "re-authorize for full access: $GOG_LOGIN_HINT"
     fi
