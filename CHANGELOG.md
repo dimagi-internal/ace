@@ -5,6 +5,26 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.13.1042 — 2026-08-27
+
+**Step 1 of moving the version bump off the PR and onto the merge. Inert on purpose.**
+
+Five files change on every ACE PR for no reason anyone chose: `VERSION`, `package.json`, `plugin.json`, `marketplace.json` and `CHANGELOG.md`. At this repo's merge rate that means **every pair of concurrent PRs conflicts by construction**. One 2026-08-27 session took six version collisions in a day and spent a real fraction of itself on the disarm → rebase → force-push → re-arm recovery, then added a seventh failure mode on top by trusting the worktree instead of `HEAD` after a rebase that applied cleanly.
+
+The version is a DERIVED value. Deriving it after the merge satisfies ace#1593's invariant — no two trees on `main` under one version — by **construction** rather than by inspection, and deletes the conflict, because a PR stops touching the files.
+
+**What ships here:**
+
+- `scripts/version-bump.sh --ci` — plain patch+1 off the local VERSION with no origin fetch (the workflow runs *on* main; fetching there would race the push that triggered it). It also stamps a `## Unreleased` CHANGELOG heading with the new version and date, because a PR cannot know its own number once the number is decided post-merge. A hand-written version heading is left exactly as-is.
+- `scripts/version-bump.sh --force` — the old behaviour verbatim, for a deliberate minor/major.
+- `.github/workflows/auto-version-bump.yml` — **`workflow_dispatch` only.** It does not run on merge yet.
+
+**Why it is inert.** hal's `main`, where this pattern has run since 2026-07, has no branch protection. ACE's has required status checks with `enforce_admins: true`, and every commit in its history is a PR merge — this repo has never taken a direct push to `main`. Whether `github-actions[bot]` can push the bump commit is an open question that only a real attempt answers, and getting it wrong is expensive in the SILENT direction: a rejected push plus an already-relaxed `check-version-unique.ts` puts two trees under one version with nothing checking.
+
+So: run it by hand, watch the push step, and only then ship step 2 (the `push: [main]` trigger, the no-op default, the relaxed gate, the rewritten ship loop). If the push is rejected, the remedy is a repo-settings change — a ruleset with `github-actions` as a bypass actor for `main` — which is the repo owner's call, not something to work around in a workflow.
+
+Nothing about how a PR ships changes in this release.
+
 ## 0.13.1041 — 2026-08-27
 
 **The conflict-marker guard could not run when it was needed most.**
