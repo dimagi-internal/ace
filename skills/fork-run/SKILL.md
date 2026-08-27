@@ -42,10 +42,11 @@ dispatch the phase subagent directly against the existing run
 
 ## Verified contract
 
-Verified against ace-web `origin/main` @ `5478629` (ace-web#698, 2026-07-27):
-`apps/api/api.py:155`, `apps/opps/api.py:1259`, `apps/opps/schemas.py`
-(`OppForkIn`), `apps/opps/opp_forker.py`, `apps/opps/skills.py`
-(`resolve_fork_point`).
+Verified against ace-web `origin/main` @ ace-web#736 (2026-08-27):
+`apps/api/api.py:155`, `apps/opps/api.py` (`fork_opp_endpoint`,
+`fork_status`, `_write_fork_progress`), `apps/opps/schemas.py`
+(`OppForkIn`, `ForkProgress`), `apps/opps/opp_forker.py`,
+`apps/opps/skills.py` (`resolve_fork_point`).
 
 **Route** — workspace-scoped. The router mounts at `/w/{workspace_slug}/opps`:
 
@@ -102,8 +103,43 @@ trust this table):
 **Response** — `OppForkOut`: `{slug, run_id, working_session_slug}`. Note the
 field is `run_id`, not `new_run_id`.
 
-**Progress** — forks are async; poll `GET /api/w/<ws>/opps/<slug>/fork/status`
-(`ForkStatus`: `unknown | counting | copying | finalizing | done | error`).
+**The POST BLOCKS for the whole Drive copy.** This is the single most
+important thing on this page, and this doc said the opposite ("forks are
+async") until ace-web#734. There is one Drive `copy_file` per artifact at
+~150 ms, so a six-phase fork runs for **minutes** and can outlive a client
+or proxy read timeout. Always pass `--max-time`, and treat a timeout as
+"still running", never as "didn't start".
+
+**Never retry a POST that didn't come back.** A retry mints a *second* run
+and copies everything again. Recover the run-id from the status poll
+instead (below) — that is what it is for.
+
+**Progress** — poll `GET /api/w/<ws>/opps/<slug>/fork/status`, optionally
+with `?source_run_id=<id>`; omit it and you get whichever fork of this opp
+reported most recently, which is what you want when your POST timed out and
+you have no run-id. Response is `ForkProgress`:
+
+| field | notes |
+|---|---|
+| `status` | `unknown \| counting \| copying \| finalizing \| done \| error` |
+| `new_run_id` | **populated from the moment the run folder exists**, not just on `done` — this is your recovery handle |
+| `new_slug` | the opp slug (unchanged; a fork stays within its opp) |
+| `files_copied` / `files_total` | counts, not `copied` / `total` |
+| `progress` | 0.0–1.0 |
+| `error` | set with `status: error` |
+
+`status: unknown` means genuinely nothing has reported — no fork started, or
+its 10-minute cache entry expired. It is **not** what an in-flight fork
+looks like. (Before ace-web#736 it was the only thing this endpoint could
+ever say, on any fork: the forker emitted field names the strict response
+model rejected. If you see `unknown` throughout a fork you can watch
+happening in Drive, you are on an ace-web older than #736.)
+
+**An interrupted fork is still a run.** ace-web writes `run_state.yaml`
+before the first artifact is copied, so a fork that dies mid-copy leaves a
+resumable-but-incomplete run: `/ace:run <opp>/<run-id>` picks it up and
+re-derives what is missing. Don't hand-author state, and don't assume a
+partial fork is garbage.
 
 ## Env vars
 
@@ -149,13 +185,42 @@ Both env vars are pre-flighted by `/ace:doctor` `[Auth liveness]`.
       + (if $skill == "" then {} else {fork_at_skill: $skill} end)
       + (if $src   == "" then {} else {source_run_id: $src} end)
       + (if $fb    == "" then {} else {feedback: $fb} end)')
-   resp=$(curl -sS -w '\n%{http_code}' -X POST "$url" \
+   # --max-time bounds the wait; the POST blocks for the whole copy, so
+   # pick generously (600s) and treat exit 28 as "still running".
+   resp=$(curl -sS --max-time 600 -w '\n%{http_code}' -X POST "$url" \
      -H "Authorization: Bearer $ACE_WEB_PAT_TOKEN" \
      -H "Content-Type: application/json" \
      -d "$body")
+   curl_rc=$?
    http_code=$(printf '%s\n' "$resp" | tail -1)
    payload=$(printf '%s\n' "$resp" | sed '$d')
    ```
+
+   **If `curl_rc` is 28 (timed out) — or you got no response at all — do
+   NOT re-run this step.** Go to step 4b.
+
+4b. **Recover a timed-out POST.** The fork is almost certainly still
+   running or already finished; you just lost the response. Poll for the
+   run-id rather than minting a second run:
+
+   ```bash
+   surl="${ACE_WEB_BASE_URL%/}/api/w/${workspace_slug}/opps/${opp_slug}/fork/status"
+   for _ in $(seq 1 60); do
+     st=$(curl -sS --max-time 30 -H "Authorization: Bearer $ACE_WEB_PAT_TOKEN" "$surl")
+     printf '%s\n' "$st" | jq -r '"\(.status) \(.files_copied // 0)/\(.files_total // 0) \(.new_run_id // "-")"'
+     case $(printf '%s\n' "$st" | jq -r .status) in
+       done|error) break ;;
+     esac
+     sleep 10
+   done
+   ```
+
+   Read `new_run_id` off any payload once the run folder exists. On
+   `error`, that run folder is still resumable (it has a `run_state.yaml`)
+   — report the `error` string and the run-id, and let the operator choose
+   between `/ace:run <opp>/<run_id>` and trashing it. If the poll says
+   `unknown` for a full minute, and only then, is "nothing started" a safe
+   conclusion.
 
 5. **Branch on status.** Errors are problem+json; the machine-readable code is
    in **`detail`** (`title` is prose, `status` is the HTTP code):
@@ -173,6 +238,7 @@ Both env vars are pre-flighted by `/ace:doctor` `[Auth liveness]`.
    | 422 | `extra_forbidden` in `extras.errors[].type` | you sent a field the schema doesn't have |
    | 401/403 | — | PAT invalid/revoked → `/ace:ace-web-pat-mint` |
    | HTML body | — | **wrong route.** An unrouted path falls through to the SPA catch-all and returns a bare HTML 404, not JSON. Check `/api/w/<ws>/opps/...`. |
+   | *no response* | — | **not an error.** The POST blocks; you timed out, the fork didn't. Go to step 4b — never re-POST. |
 
 6. **Report.**
 
@@ -221,6 +287,40 @@ the map while the road was out.
 this file offers resolves in the agent registry. It does **not** yet assert the
 route exists — that's the half that actually broke here, and it wants a contract
 check (POST an invalid body, assert a JSON 4xx rather than the SPA's HTML 404).
+
+## History — the second failure, 2026-08-27 (ace-web#734)
+
+The untested half broke again, and this file's "forks are async" line was
+part of why it hurt. A phase-level fork of `hh-poverty-targeting` copied all
+six phase folders, then stalled before writing `run_state.yaml` — so the
+result was a folder, not a run. Three compounding defects on the ace-web
+side, all fixed in ace-web#736:
+
+1. **`run_state.yaml` was written last.** It is what makes a folder a run
+   (`/ace:run` derives execution order from `phases.*.status`), so a stall
+   in the tail wasted the whole copy. It is now written *first*, before any
+   artifact — which is why an interrupted fork is now resumable.
+2. **`fork/status` could never report.** `ForkProgress` is a strict model;
+   the forker emitted `copied` / `total` / `opp_slug` against its
+   `files_copied` / `files_total` / `new_slug`. Not one payload could
+   validate, on any fork, ever. Seven polls across five minutes all said
+   `unknown` while folders were visibly landing in Drive.
+3. **The poll's cache key didn't match the writer's** when
+   `?source_run_id=` was omitted — precisely the caller recovering from a
+   hung POST, who has no run-id to poll with.
+
+**What this file got wrong:** it said forks are async. They are not; the
+POST blocks for the whole copy. Combined with (2), an agent following this
+doc saw a hung POST and an inert poll and had every reason to retry —
+which mints a second partial fork. Documenting the blocking contract, the
+`--max-time` bound, and the never-retry rule is the ace-side half of the
+fix.
+
+**Lesson for this file specifically:** "verified against ace-web source"
+covered the request shape and the error codes, but not the *timing* or the
+*response* contract of the companion endpoint. When a skill documents an
+async-looking pair (start + poll), verify the poll actually returns
+something a caller can act on — not just that the route exists.
 
 ## Related
 
