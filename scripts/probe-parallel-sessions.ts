@@ -29,6 +29,12 @@
  *     npx tsx scripts/probe-parallel-sessions.ts --with-listeners # bind TCP stand-in daemons
  *     npx tsx scripts/probe-parallel-sessions.ts --cleanup-only   # reap any leftover state
  *
+ * `--cleanup-only` reaps EVERY session lock on the machine, not just this
+ * probe's — including locks held by other live ACE sessions, which frees
+ * their adb/emulator ports for reallocation underneath them. It therefore
+ * refuses unless you add `--yes` (or set ACE_PROBE_REAP_ALL=1), printing
+ * what it would destroy instead. ace#1704.
+ *
  * Combine flags: `--n=5 --kill-one --with-listeners` is the full
  * end-to-end scenario.
  *
@@ -75,6 +81,14 @@ const FLAG_N = Number.parseInt(flag('n', '3') ?? '3', 10);
 const FLAG_KILL_ONE = argv.includes('--kill-one');
 const FLAG_WITH_LISTENERS = argv.includes('--with-listeners');
 const FLAG_CLEANUP_ONLY = argv.includes('--cleanup-only');
+// `--cleanup-only` calls reapStaleSessions({ all: true }), which deletes
+// EVERY lock in the shared dir — including locks held by other live ACE
+// sessions, whose adb/emulator port reservations then become reallocatable
+// out from under them. Same blast radius as `ace-mobile-reap --all`, but
+// the flag NAME reads like "just tidy up after this probe", which is how
+// it gets run on a shared machine by mistake. Require the operator to say
+// so explicitly. ace#1704.
+const FLAG_YES = argv.includes('--yes') || process.env.ACE_PROBE_REAP_ALL === '1';
 
 // Subprocess registry — every child we spawn is recorded here so we
 // can clean up unconditionally in finally.
@@ -199,10 +213,16 @@ async function spawnAllocator(label: string, withListeners: boolean): Promise<St
 }
 
 /**
- * Read every lock file from ~/.ace/sessions/ and parse it.
+ * Read every lock file from the session-lock dir and parse it.
  */
 function listSessionLocks(): Array<{ filename: string; lock: any; alive: boolean }> {
-  const dir = path.join(os.homedir(), '.ace', 'sessions');
+  // Same resolution as sessionLockDir() in mcp/mobile/session-lock.ts,
+  // including the ACE_SESSION_LOCK_DIR seam (ace#1704) — otherwise this
+  // report describes a different directory than the code it is probing.
+  const override = process.env.ACE_SESSION_LOCK_DIR;
+  const dir = override && override.trim()
+    ? override
+    : path.join(os.homedir(), '.ace', 'sessions');
   if (!fs.existsSync(dir)) return [];
   return fs
     .readdirSync(dir)
@@ -305,10 +325,32 @@ async function main() {
   });
 
   if (FLAG_CLEANUP_ONLY) {
+    const locks = listSessionLocks();
+    const live = locks.filter((l) => l.alive);
+    if (!FLAG_YES) {
+      phase('cleanup-only-refused', {
+        reason:
+          'reapStaleSessions({ all: true }) deletes EVERY session lock on this machine, ' +
+          'including locks held by other live ACE sessions. Their adb/emulator port ' +
+          'reservations become reallocatable and a concurrent run can collide.',
+        locks_that_would_be_destroyed: locks.map((l) => l.filename),
+        live_sessions_that_would_lose_their_reservation: live.map((l) => ({
+          filename: l.filename,
+          mcp_pid: l.lock?.mcp_pid,
+          adb_port: l.lock?.adb_port,
+          emulator_port: l.lock?.emulator_port,
+        })),
+        rerun_with: 'npx tsx scripts/probe-parallel-sessions.ts --cleanup-only --yes',
+        or_set: 'ACE_PROBE_REAP_ALL=1',
+        safer_alternative:
+          'ace-mobile-reap (no --all) reaps only locks whose owning pid is dead.',
+      });
+      process.exit(2);
+    }
     // Run the reaper directly via the production module
     const { reapStaleSessions } = await import('file://' + SESSION_LOCK_TS);
     const reap = reapStaleSessions({ all: true });
-    phase('cleanup-only-reap', reap);
+    phase('cleanup-only-reap', { ...reap, live_sessions_destroyed: live.length });
     return;
   }
 
