@@ -479,6 +479,39 @@ front half (how the labs-only opp + its data come to exist) differs.
    utility at labs' `render_code` write boundary). This gate earns its keep
    regardless: the available set drifts whenever labs changes its own UI.
 
+3c. **Check the dashboard's COPY against the why-brief's declared gaps
+   (ace#1750).** A `why_brief.yaml` declares typed `gaps[]` — what the build
+   cannot support. `demo-narrative` gates the NARRATIVE against them and nothing
+   gated the dashboard's own on-screen prose, so a demo can render a page
+   asserting exactly what its gap list says is unsupported.
+
+   Run `checkGapCopy(gaps, sources)` from `lib/gap-copy-check.ts` over each
+   authored `render_code` before uploading it, where `sources` is
+   `[{name, code}]` per dashboard. It derives each CAPABILITY/DECISION gap's
+   subject terms (the words the author used in BOTH the gap `id` and its
+   `detail`, minus generic product vocabulary) and reports every prose line that
+   repeats one.
+
+   **It FLAGS, it does not reject** — it cannot know which phrasings are
+   load-bearing, and refusing legal copy on a keyword match would be the
+   ace#1238 guard-predicts-a-rejection failure. Resolve each finding: reword the
+   copy, or record why the line is legitimate.
+
+   Measured on `hh-poverty-targeting/20260827-0323`, whose why-brief declared
+   `area-register-does-not-exist` (`area_ref` present on **0 of 2,237** records)
+   and `adjudication-log-is-run-state-not-a-register`. Four instances shipped
+   into two dashboards — "outside the normal range **for this area**",
+   "colleagues working **comparable areas**", "**area** composition drives it",
+   "written to the **adjudication log with its reason**" — and one of them
+   contradicted the same page's own leave-one-out definition two lines above it.
+   **In every case the narration was clean and the UI copy was the offender**, so
+   only a judge reading rendered pixels caught them, after a full render.
+
+   **Known limitation, stated so it is not mistaken for coverage:** this matches
+   subject-term repetition, not semantic equivalence. A coverage claim phrased
+   without the gap's own nouns — "that is what makes census saturation auditable"
+   — is NOT caught. The check narrows the class; it does not close it.
+
 4. **Build a URL per dashboard — the run deep-link, scoped by OWNERSHIP.**
    `https://labs.connect.dimagi.com/labs/workflow/<def_id>/run/?run_id=<run_id>&<scope>`
    where `<scope>` is the dashboard's OWNING scope:
@@ -853,6 +886,7 @@ nobody has enumerated yet. Run both — neither is a substitute for the other.
 
 | Date | Change | Author |
 |------|--------|--------|
+| 2026-08-27 | **Step 3c: check dashboard COPY against the why-brief's declared gaps (ace#1750).** The narrative was gated against `gaps[]` and the dashboard prose was not, so `hh-poverty-targeting/20260827-0323` shipped four on-screen assertions of exactly what its own gap list declared unsupported — across two dashboards, one contradicting the same page's leave-one-out definition two lines above it. In all four the narration was clean and the UI copy was the offender, so every instance had to be caught by a post-render LLM judge. New `checkGapCopy` in `lib/gap-copy-check.ts`, report-only. Catches subject-term repetition, not semantic equivalence — a coverage claim phrased without the gap's nouns still slips. | ACE team |
 | 2026-08-27 | **Step 5b: the archived manifest must be the same bytes that were sent, and must round-trip parse (ace#1737).** `hh-poverty-targeting/20260824-1404` published a `demo-data-setup_manifest.yaml` that does not parse as YAML — flow mappings were column-aligned, so the longest key got zero spaces before its `{`. Generation had succeeded, so the archived copy was a SECOND emission rather than a capture of the wire payload; the break surfaced only when the next run tried to fork it. Drive was ruled out by direct probe (the pathological shape round-trips byte-for-byte). Fix: author once to a local file, send that, upload that file's bytes, then read back and `yaml.safe_load`. | ACE team |
 | 2026-08-26 | **`period_end` is exclusive — derive it as `timeline.end_date + 1 day` (ace#1683).** A run window is half-open (`visit_date >= date_from AND visit_date < date_to`, `query_builder._date_window_where`), and the natural authoring move — pass the manifest's own `timeline.start_date`/`end_date` — drops the fixture's entire final day from any snapshotted dashboard while its live sibling keeps it. Measured on `hh-poverty-targeting/20260824-1404` (labs opp 10047): snapshot run 5245 `total=2186`, live run 5249 `total=2237`, fixture `2237`, re-mint at `period_end 2026-08-31` → `2237`, exact. Nothing failed; every existing check passed. Also documented: period scoping bites only on the SNAPSHOT path, and omitting the bounds defaults to `[today, today)`, a zero-width window. New backstop: `demo-data-setup-qa` check 11. | ACE team |
 | 2026-08-26 | **Step 1c (ace-run): giving the demo something to detect is now a REQUIRED authoring step, derived from the PDD's own declared controls.** `hh-poverty-targeting/20260824-1404` shipped `anomalies: []` and no per-persona divergence, so the cohort had no signal in it — completion 64–77%, PPI ~34, 15 undifferentiated workers in the queue, one decision against an empty adjudication log — and the DDD loop ended `stopped_not_converged` at concept 2.0/5 on `use_case_soundness` ("the scenario does not exercise the feature it demonstrates"). Four obligations (enumerate the PDD's controls verbatim → instantiate ≥1 → cite the clause → state what a reviewer would SEE), an explicit ban on inventing a pattern the design does not declare, an honest `detectable_signal: none` escape, and the two manifest mechanics (1-based anomaly weeks with `week: 0` a silent no-op; `coaching_arcs: []` to the atom) that void the step by a different route. | ACE team |
