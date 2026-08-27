@@ -43,11 +43,6 @@ export const TARGET_LONGEST_EDGE = 800;
 const RESIZERS = ['sips', 'magick', 'convert', 'ffmpeg'] as const;
 export type Resizer = (typeof RESIZERS)[number];
 
-/** Exact base64 length for a byte count, padding included. */
-export function base64Length(bytes: number): number {
-  return Math.ceil(bytes / 3) * 4;
-}
-
 export type PreparationPlan =
   | { action: 'pass_through' }
   | { action: 'resize'; longestEdge: number; reason: string }

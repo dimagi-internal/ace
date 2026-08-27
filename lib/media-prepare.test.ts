@@ -2,21 +2,12 @@ import { describe, it, expect } from 'vitest';
 import {
   ASSET_BUDGET_BYTES,
   TARGET_LONGEST_EDGE,
-  base64Length,
   planPreparation,
   pickResizer,
   resizeArgv,
   jpegArgv,
   jpegQualityToFfmpegScale,
 } from './media-prepare.js';
-
-describe('base64Length', () => {
-  it('computes the exact encoded length, padding included', () => {
-    expect(base64Length(3)).toBe(4);
-    expect(base64Length(1)).toBe(4);
-    expect(base64Length(1_200_000)).toBe(1_600_000);
-  });
-});
 
 describe('planPreparation', () => {
   it('passes through a file already inside the asset budget', () => {
