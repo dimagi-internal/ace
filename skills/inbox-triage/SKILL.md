@@ -92,7 +92,8 @@ the shape of the turn.
   d. **Decide the intent and propose exactly ONE action** (reply quality follows canopy
      `docs/agent-operating-model.md § 1b` — the fleet checklist; adopted by reference, jjackson/ace#828):
      - **Reply** — draft in ACE's voice (see `persona.md`: warm and concrete to external LLO
-       counterparts, no Dimagi-internal jargon, always self-identifying as ACE). Run `agent-turn-review`
+       counterparts, no Dimagi-internal jargon, always self-identifying as ACE). Apply
+       `skills/agent-turn-review` INLINE (A/B/C/D, read the file — do not dispatch it as a Skill)
        against the sender's asks first. Per §1b: **deliverables/attachments are gdocs, the draft is
        shown inline** (never a local .txt the human must open, never a wall of pasted text);
        **verify recipients from the structured thread read** — a raw dump hides `Cc:` and silently
@@ -234,4 +235,6 @@ counts by class, and the open-thread age list. Feed this into the turn's combine
 ## Related skills
 - `turn` — the orchestrator; this is its Step 3
 - `email-communicator` — Gmail I/O + the comms-log `thread_id` contract
-- `agent-turn-review` — pre-send audit for every reply (invokes the fleet-wide `canopy:agent-turn-review`; supersedes `self-review`)
+- `agent-turn-review` — pre-send audit for every reply. Read `skills/agent-turn-review/SKILL.md`
+  top to bottom and apply its A/B/C/D checklist INLINE; never dispatch it (or
+  `canopy:agent-turn-review`) via the `Skill` tool, which drops §D. Supersedes `self-review`.
