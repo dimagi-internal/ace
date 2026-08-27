@@ -1,5 +1,5 @@
 /**
- * Phase 6 must refresh the OCS knowledge base after writing the training docs.
+ * Phase 6 must populate the OCS knowledge base after writing the training docs.
  *
  * ## The defect this guards
  *
@@ -22,13 +22,24 @@
  * documents to answer. Nothing in any artifact ACE writes says the collection is
  * short four files.
  *
- * ## Why the guard is here and not in the frontmatter
+ * ## The fix, and why the shape changed twice
  *
- * The natural place to record "Phase 6 runs this" is `qa-and-training.md`'s
- * `skills:` list — but that list declares which producers a phase OWNS, and
- * `ocs-agent-setup` is owned by Phase 5. Listing it in both makes it owned
- * twice, which `test/agents/coherence.test.ts` rejects, correctly. Phase 6
- * invokes it; it does not produce it. So the invocation is asserted directly.
+ * First pass (0.13.1022) added `ocs-agent-setup --reindex`, invoked by Phase 6 —
+ * a corrective second pass over a step Phase 5 owned. That worked, but left the
+ * cycle in the graph and left Phase 5 still reading `6-qa-and-training/*`
+ * tolerantly, which is the pattern that caused the defect.
+ *
+ * Second pass (0.13.1028) split `ocs-agent-setup` at its real dependency seam
+ * instead. Creating and publishing the bot needs Phase 1/3/4; populating its
+ * knowledge base needs Phase 6. Those are two jobs, and bundling them is what
+ * made the ordering unsatisfiable. Now Phase 5 consumes nothing from Phase 6 —
+ * the failure is not expressible there — and Phase 6 OWNS `ocs-knowledge-refresh`,
+ * so it claims it in frontmatter like any other producer.
+ *
+ * The general lesson, recorded because it generalises: when a cycle exists only
+ * because one node bundles two jobs with different inputs, prefer splitting the
+ * node over cutting the loop. Cutting leaves a corrective pass; splitting leaves
+ * a plain DAG.
  */
 
 import { describe, it, expect } from 'vitest';
@@ -47,16 +58,17 @@ function workflow(doc: string): string {
 
 describe('OCS knowledge base is refreshed after Phase 6 writes the training docs', () => {
   const phase6 = readFileSync(join(ROOT, 'agents/qa-and-training.md'), 'utf8');
-  const ocsSkill = readFileSync(join(ROOT, 'skills/ocs-agent-setup/SKILL.md'), 'utf8');
+  const refresh  = readFileSync(join(ROOT, 'skills/ocs-knowledge-refresh/SKILL.md'), 'utf8');
+  const phase5   = readFileSync(join(ROOT, 'skills/ocs-agent-setup/SKILL.md'), 'utf8');
 
-  it('Phase 6 invokes ocs-agent-setup --reindex', () => {
+  it('Phase 6 invokes ocs-knowledge-refresh', () => {
     // Scoped to Workflow: the frontmatter carries a NOTE mentioning
     // `ocs-agent-setup --reindex` (explaining why it is not in `skills:`), and an
     // unscoped match is satisfied by that comment alone. Deleting the real
     // invocation then left this assertion green — found by negative-testing it.
     expect(
-      /ocs-agent-setup\s+--reindex/.test(workflow(phase6)),
-      'agents/qa-and-training.md must invoke `ocs-agent-setup --reindex`. Without it the\n' +
+      /ocs-knowledge-refresh/.test(workflow(phase6)),
+      'agents/qa-and-training.md must invoke `ocs-knowledge-refresh`. Without it the\n' +
         "per-opp chatbot's RAG collection never sees the four training documents this\n" +
         'phase produces, and the failure is silent — see this file’s header.',
     ).toBe(true);
@@ -73,8 +85,8 @@ describe('OCS knowledge base is refreshed after Phase 6 writes the training docs
     const wf = workflow(phase6);
     expect(wf.length, 'Workflow section not found — did the headings move?').toBeGreaterThan(500);
 
-    const reindexAt = wf.search(/ocs-agent-setup\s+--reindex/);
-    expect(reindexAt, '--reindex must be invoked inside the Workflow section').toBeGreaterThan(-1);
+    const reindexAt = wf.search(/ocs-knowledge-refresh/);
+    expect(reindexAt, 'ocs-knowledge-refresh must be invoked inside the Workflow section').toBeGreaterThan(-1);
     const lastDoc = Math.max(
       wf.lastIndexOf('training-onboarding-email'),
       wf.lastIndexOf('training-quick-reference'),
@@ -82,23 +94,34 @@ describe('OCS knowledge base is refreshed after Phase 6 writes the training docs
     );
     expect(
       reindexAt,
-      'the --reindex invocation must come after the training-doc producers in the workflow',
+      'the refresh must come after the training-doc producers in the workflow',
     ).toBeGreaterThan(lastDoc);
   });
 
-  it('ocs-agent-setup implements the --reindex mode', () => {
-    expect(/`--reindex`/.test(ocsSkill), 'skills/ocs-agent-setup must document --reindex').toBe(
-      true,
-    );
+  it('ocs-knowledge-refresh names the training docs as its RAG inputs', () => {
+    for (const doc of ['training-llo-guide', 'training-flw-guide', 'training-faq',
+                       'training-quick-reference']) {
+      expect(refresh.includes(doc), `ocs-knowledge-refresh must consume ${doc}`).toBe(true);
+    }
     expect(
-      /--reindex.*flag set/s.test(ocsSkill),
-      'Step 0 must branch on the --reindex flag, or the mode is documentation only',
+      /ocs_upload_collection_files/.test(refresh) && /ocs_wait_for_collection_indexing/.test(refresh),
+      'the refresh must actually upload and wait for indexing, not just describe it',
     ).toBe(true);
   });
 
-  it('still declares the training docs as RAG inputs', () => {
-    // If this stops being true the reindex is pointless; fail loudly rather than
-    // leave a step that re-uploads a set no longer containing the guides.
-    expect(/6-qa-and-training/.test(ocsSkill)).toBe(true);
+  it('Phase 5 no longer reads Phase 6 artifacts', () => {
+    // The split is the fix. If Phase 5 starts consuming 6-qa-and-training again,
+    // the cycle is back and so is the tolerant read that hid the defect.
+    // The History table is exempt — it records that this used to be true.
+    const body = phase5.slice(0, phase5.indexOf('| 2026-'));
+    const offenders = body
+      .split('\n')
+      .map((l, i) => [l, i + 1] as const)
+      .filter(([l]) => /runs\/<run-id>\/6-qa-and-training|6-qa-and-training\/\*/.test(l))
+      .filter(([l]) => !/does \*\*not\*\*|used to|no longer|before Phase 6 has run/.test(l));
+    expect(
+      offenders.map(([l, n]) => `  ocs-agent-setup:${n}  ${l.trim().slice(0, 100)}`),
+      'Phase 5 must not consume Phase 6 artifacts — that is the cycle this split removed.',
+    ).toEqual([]);
   });
 });
