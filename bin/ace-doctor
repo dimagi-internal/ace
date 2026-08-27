@@ -854,6 +854,29 @@ else
   warn "auto_update: hooks/hooks.json missing" "restore hooks/hooks.json at the plugin root"
 fi
 
+# --- Agent dispatch depth (the half CI cannot see) ---
+#
+# test/lib/agent-depth.test.ts checks ACE's declared graph against ACE's own
+# MAX_SUBAGENT_SPAWN_DEPTH constant — both committed here, so it is green on
+# every machine including one that supplies less than ACE needs. The runtime
+# value is usually UNSET and resolved by a remote Claude Code default that
+# moved three times in 2026 (5 -> 1 -> 3). Past the budget nothing errors: the
+# Agent tool is withheld and the leaf does the work itself. Phase 7's per-scene
+# judges collapse into one context and still emit full verdicts; Phase 3 never
+# reaches the Nova architect and builds the apps itself.
+if [ -f "$ROOT/lib/agent-depth.ts" ]; then
+  DEPTH_OUT="$(cd "$ROOT" && npx tsx scripts/doctor-agent-depth.ts 2>/dev/null)"
+  DEPTH_STATUS="$(printf '%s' "$DEPTH_OUT" | sed -n '1s/|.*//p')"
+  DEPTH_MSG="$(printf '%s' "$DEPTH_OUT" | sed -n '1s/^[A-Z]*|//p')"
+  DEPTH_FIX="$(printf '%s\n' "$DEPTH_OUT" | sed -n 's/^FIX|//p')"
+  case "$DEPTH_STATUS" in
+    PASS) pass "agent_dispatch_depth: $DEPTH_MSG" ;;
+    WARN) warn "agent_dispatch_depth: $DEPTH_MSG" "$DEPTH_FIX" ;;
+    FAIL) fail "agent_dispatch_depth: $DEPTH_MSG" "$DEPTH_FIX" ;;
+    *)    warn "agent_dispatch_depth: could not compute (tsx failed?)" "cd $ROOT && npx tsx scripts/doctor-agent-depth.ts" ;;
+  esac
+fi
+
 # --- Sibling plugin installs (Phase 2 dependency only) ---
 # (ace-web is a sibling repo for browser-harness work but is NOT a runtime
 # dependency of the plugin — intentionally not checked here.)

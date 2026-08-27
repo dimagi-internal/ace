@@ -42,27 +42,48 @@ const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..
  */
 const NON_DISPATCH_MENTIONS: Record<string, string> = {
   'partnership-video':
-    'agents/partnership-video.md tells the reader never to write Agent(partnership-video) — it is a procedure doc.',
+    'agents/partnership-video.md and commands/partnership-video.md tell the reader never to write Agent(partnership-video) — it is a procedure doc.',
+  // NOTE: this map is consulted only for targets NOT in DISPATCH_GRAPH — the
+  // `declared.has(target)` check runs first. `ace-orchestrator` and `demo` are
+  // declared nodes, so their "never write Agent(this)" lines in commands/ need
+  // no entry here; adding one would be inert. Only genuinely undeclared names
+  // belong below.
+  X: 'agents/orchestrator-reference.md uses Agent(X) as a placeholder for "a top-level Agent call", not a real target.',
 };
 
-/** Every `Agent(<target>)` literal written in agents/ and skills/. */
+/**
+ * Every `Agent(<target>)` literal written in agents/, skills/ and commands/.
+ *
+ * `commands/` was added in 0.13.1038. It is where a top-level dispatch is
+ * actually INSTRUCTED — `commands/run.md` is what tells a session which agents
+ * to launch — so leaving it out meant the scan skipped the entry points and
+ * read only the things they call.
+ *
+ * The target class is case-insensitive for the same reason: Claude Code's own
+ * agent types include `Explore` and `Plan`, and a lowercase-only pattern makes
+ * `Agent(Explore)` invisible to the budget rather than flagged.
+ */
 function dispatchTargetsInRepo(): Map<string, string[]> {
   const found = new Map<string, string[]>();
   const files: string[] = [];
 
-  const agentsDir = path.join(REPO_ROOT, 'agents');
-  for (const f of fs.readdirSync(agentsDir)) {
-    if (f.endsWith('.md')) files.push(path.join(agentsDir, f));
+  for (const dir of ['agents', 'commands']) {
+    const abs = path.join(REPO_ROOT, dir);
+    if (!fs.existsSync(abs)) continue;
+    for (const f of fs.readdirSync(abs)) {
+      if (f.endsWith('.md')) files.push(path.join(abs, f));
+    }
   }
   const skillsDir = path.join(REPO_ROOT, 'skills');
   for (const e of fs.readdirSync(skillsDir, { withFileTypes: true })) {
     const p = path.join(skillsDir, e.name, 'SKILL.md');
     if (e.isDirectory() && fs.existsSync(p)) files.push(p);
+    if (!e.isDirectory() && e.name.endsWith('.md')) files.push(path.join(skillsDir, e.name));
   }
 
   for (const file of files) {
     const text = fs.readFileSync(file, 'utf8');
-    for (const m of text.matchAll(/\bAgent\(([a-z0-9:_-]+)\)/g)) {
+    for (const m of text.matchAll(/\bAgent\(([A-Za-z0-9:_-]+)\)/g)) {
       const target = m[1];
       const rel = path.relative(REPO_ROOT, file);
       found.set(target, [...(found.get(target) ?? []), rel]);
@@ -113,9 +134,19 @@ describe('agent dispatch graph', () => {
     // the exact shape of a guard that reports success without having looked.
     expect(
       inRepo.size,
-      'scanned agents/ and skills/ and found no Agent(...) dispatches at all — ' +
-        'the scanner is broken, not the repo',
+      'scanned agents/, skills/ and commands/ and found no Agent(...) dispatches ' +
+        'at all — the scanner is broken, not the repo',
     ).toBeGreaterThan(0);
+
+    // commands/ joined the scan in 0.13.1038. If the walk silently stops
+    // covering it, this assertion is the only thing that says so — the
+    // unaccounted-targets check below would just go quiet.
+    const scannedCommands = [...inRepo.values()].flat().some((f) => f.startsWith('commands/'));
+    expect(
+      scannedCommands,
+      'no Agent(...) literal found under commands/ — commands/run.md and ' +
+        'commands/demo.md both carry one, so the directory walk is broken',
+    ).toBe(true);
 
     const unaccounted: string[] = [];
     for (const [target, files] of inRepo) {

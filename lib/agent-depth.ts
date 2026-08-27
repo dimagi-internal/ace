@@ -144,16 +144,37 @@ export const DISPATCH_GRAPH: readonly DispatchNode[] = [
     owner: 'ace',
     dispatches: ['nova:autobuild'],
     why:
-      'partnership-research runs deep-research subagents and partnership-microdemo ' +
-      'dispatches Agent(nova:autobuild) for a tailored mock. Note that this goes ' +
-      'through the autobuild SKILL as a subagent, which then dispatches the ' +
-      'architect — two levels, not one.',
+      'The ONLY Agent dispatch this procedure makes: partnership-microdemo calls ' +
+      'Agent(nova:autobuild) for a tailored mock. Its three siblings — ' +
+      'Skill(deep-research), Skill(canopy:walkthrough), ' +
+      'Skill(canopy:walkthrough-share) — are SKILLS and run inline in their ' +
+      'invoker, costing nothing (agents/partnership-video.md § How Agent / Skill ' +
+      'dispatches work). Any Agent fan-out deep-research does of its own leaves ' +
+      'from this level and is not enumerated here. nova:autobuild is the ' +
+      'expensive one: it goes through the autobuild SKILL as a subagent, which ' +
+      'then dispatches the architect — two levels, not one.',
   },
   {
     name: 'sweep',
     form: 'inline',
     owner: 'ace',
-    dispatches: ['sweep-live-set', 'sweep-connect'],
+    // All eight, not the two written as `Agent(x)` literals. agents/sweep.md
+    // names the per-system skills in a TABLE (`| ocs | sweep-ocs |`), so the
+    // repo scan cannot see them: six edges were undeclared from 0.13.1005 to
+    // 0.13.1038. They are all leaves, so the depth number never moved — but
+    // "the declared graph is silent about six real edges" is the exact defect
+    // 0.13.1026 fixed on the artifact manifest, and a future non-leaf here
+    // would have been invisible to the budget.
+    dispatches: [
+      'sweep-live-set',
+      'sweep-drive',
+      'sweep-connect',
+      'sweep-ocs',
+      'sweep-hq',
+      'sweep-labs',
+      'sweep-opp-runs',
+      'sweep-ace-web',
+    ],
     why:
       'agents/sweep.md § Notes: "the procedure doc is the only thing that calls ' +
       'Agent"; commands/sweep.md executes it inline. CLAUDE.md listed it as a ' +
@@ -176,7 +197,13 @@ export const DISPATCH_GRAPH: readonly DispatchNode[] = [
     dispatches: [],
     why: 'A skill dispatched as a subagent by agents/sweep.md; leaf by design.',
   },
+  { name: 'sweep-drive', form: 'subagent', owner: 'ace', dispatches: [] },
   { name: 'sweep-connect', form: 'subagent', owner: 'ace', dispatches: [] },
+  { name: 'sweep-ocs', form: 'subagent', owner: 'ace', dispatches: [] },
+  { name: 'sweep-hq', form: 'subagent', owner: 'ace', dispatches: [] },
+  { name: 'sweep-labs', form: 'subagent', owner: 'ace', dispatches: [] },
+  { name: 'sweep-opp-runs', form: 'subagent', owner: 'ace', dispatches: [] },
+  { name: 'sweep-ace-web', form: 'subagent', owner: 'ace', dispatches: [] },
   {
     name: 'ace-fix-and-ship',
     form: 'subagent',
