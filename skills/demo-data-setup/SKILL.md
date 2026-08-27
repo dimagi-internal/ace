@@ -342,6 +342,57 @@ front half (how the labs-only opp + its data come to exist) differs.
    they are the difference between a populated dashboard and a blank one. Capture
    each dashboard's `<def_id>` + saved `<run_id>`.
 
+   **`period_end` is an EXCLUSIVE bound — pass `timeline.end_date + 1 day`, never
+   `timeline.end_date` itself (ace#1683).**
+
+   A run's window is half-open. `_date_window_where` in
+   `connect_labs/labs/analysis/backends/sql/query_builder.py` emits
+   `visit_date >= '{date_from}' AND visit_date < '{date_to}'`, and its own
+   docstring says why: *"The window is half-open — `>= date_from AND < date_to` —
+   so back-to-back periods (week N ending == week N+1 starting) do not
+   double-count the boundary day."* Correct for consecutive weekly slices, and a
+   trap for a whole-timeline window: the natural authoring move is to pass the
+   manifest's own `timeline.start_date` / `timeline.end_date`, and a fixture whose
+   last `visit_date` IS `timeline.end_date` then loses its entire final day.
+
+   So, when minting a run that a `workflow_save_snapshot` will freeze:
+
+   ```
+   period_start = <manifest timeline.start_date>          # inclusive, as authored
+   period_end   = <manifest timeline.end_date + 1 day>    # EXCLUSIVE — add the day
+   ```
+
+   The manifest already carries `timeline.end_date`, so this is derived, not
+   guessed. State the derivation (`period_end = end_date + 1d`) in the run summary
+   so the next reader does not "correct" it back.
+
+   Two things that make this silent rather than self-announcing:
+
+   - **The scoping only bites on the SNAPSHOT path.** `period_scoped` is consulted
+     in `WorkflowDataAccess.get_snapshot_pipeline_data`
+     (`connect_labs/workflow/data_access.py`, *"re-aggregated to that half-open
+     `[period_start, period_end)` visit-date window"*), so an `in_progress` run
+     reads the all-time cache and shows the full fixture. A snapshotted dashboard
+     and its live sibling over one dataset therefore disagree while both report
+     `status: completed`/`in_progress` cleanly and both render. Measured on
+     `hh-poverty-targeting/20260824-1404` (labs opp 10047), from each page's own
+     `#workflow-data`: run 5245 snapshot (`period_end 2026-08-30`) `total=2186
+     completed=1563 non_payable=623`; run 5249 live `total=2237 completed=1592`;
+     the Drive fixture `total=2237 completed=1592 non_payable=645`; re-minted as
+     run 5250 with `period_end 2026-08-31` → `2237 / 1592 / 645`, exact match.
+     Same definition, same pipeline, same fixture — only `period_end` moved.
+   - **Omitting the period is NOT "no window", it is an EMPTY one.**
+     `connect_labs/mcp/tools/workflow_create_run.py` does
+     `period_start = period_start or today` / `period_end = period_end or today`,
+     so an unqualified `workflow_create_run(definition_id, opportunity_id)` mints
+     `[today, today)` — zero-width. Harmless while the run is live (no scoping),
+     and zero rows the moment a `period_scoped` pipeline is snapshotted. Always
+     pass both bounds explicitly for a run you intend to snapshot.
+
+   `demo-data-setup-qa` check 11 (`cross_dashboard_totals_agree`) is the
+   backstop — it compares the shared visit total across every dashboard on one
+   `labs_opp_id`, which is the only signal that surfaced this without an LLM judge.
+
    **Nutrition note:** `program_admin_report` / `chc_nutrition_analysis` /
    `sam_followup` are checked-in templates — ADAPT via
    `workflow_create_from_template`, never build render_code from scratch.
@@ -442,8 +493,10 @@ front half (how the labs-only opp + its data come to exist) differs.
    The `run_id` source still depends on `shape`:
    - **run-shaped** → the saved run_id (env-ensure realized map or `workflow_save_snapshot`).
    - **action-shaped** → mint one with
-     `mcp__connect-labs__workflow_create_run(definition_id, opportunity_id)` and use
-     the returned `run_id`.
+     `mcp__connect-labs__workflow_create_run(definition_id, opportunity_id,
+     period_start, period_end)` and use the returned `run_id` — with the same
+     exclusive-`period_end` derivation as step 3 (`timeline.end_date + 1 day`).
+     Omitting the bounds defaults BOTH to today, i.e. a zero-width window.
    Two traps, both verified to BOUNCE: `/workflow/<def>/run/?<scope>` with **no**
    `run_id` → the workflow *list*; `/workflow/<def>/?<scope>` (no `/run/`) → the
    *definition* page. Only `/run/?run_id=<id>&<scope>` renders the dashboard
@@ -511,7 +564,9 @@ profile; use `denovo` for that program until it has real delivery data.
 
 The Phase 7 convergence provider — the data source is the **current `/ace:run`'s
 Phase-4 Connect opportunity** and its PDD/app structure, not a brief or a real
-external opp. Same spine as denovo; only the manifest's provenance changes.
+external opp. Same spine as denovo; the manifest's provenance changes, and step
+**1c is a REQUIRED authoring step this provider adds** — a denovo brief states its
+own headline anomaly, a PDD does not hand you one.
 
 1a. **Resolve the run's opp + app structure.** Read the run's
    `phases.connect-setup.products.connect.opportunity` (`connect_int_id`, apps) and
@@ -520,8 +575,92 @@ external opp. Same spine as denovo; only the manifest's provenance changes.
 1b. **Author the manifest from the PDD/apps** (the story-coherent per-opp manifest
    that today's `synthetic-narrative-plan` + `synthetic-data-generate` produce) —
    keyed on the real deliver-app form paths so the dashboards read real fields.
+
+1c. **REQUIRED — give the demo something to detect, derived from the PDD's own
+   declared evidence model.**
+
+   A demo of detection needs something to detect. A manifest that ships
+   `anomalies: []` and one undifferentiated `accuracy_distribution` across every
+   persona produces a cohort with no signal in it, and then every dashboard is
+   honest and every scene is inert. That is not a rendering problem the DDD loop
+   can fix downstream — it is an authoring omission, and the loop's
+   `use_case_soundness` finding is *"the scenario does not exercise the feature it
+   demonstrates."* Measured on `hh-poverty-targeting/20260824-1404`: the ace-run
+   manifest carried `anomalies: []` and no per-persona overrides; completion rates
+   clustered 64–77%, mean PPI scores clustered ~34, the review queue ranked 15
+   undifferentiated workers, and the payoff decision landed against an empty
+   adjudication log. Phase 7 terminated `stopped_not_converged` at concept 2.0/5.
+
+   Four obligations. All four are REQUIRED; **which** control you pick is yours.
+
+   1. **Enumerate the PDD's declared controls, verbatim.** Read the PDD's
+      verification / fraud / data-quality section and list every automated flag,
+      threshold, and review rule it names, quoting each. This list is the ONLY
+      menu you may author from.
+   2. **Instantiate at least one of them in the manifest** as an `anomalies[]`
+      entry and/or a per-persona divergence (`field_distributions` /
+      `period_rates` / `accuracy_distribution` that separates the carrier from
+      its peers). One well-formed signal a reviewer can actually find beats
+      three vague ones.
+   3. **Cite the clause each signal derives from** — a `# derived from PDD §N:
+      "<quote>"` comment on the manifest entry, echoed in the run summary. An
+      uncited anomaly is an invented one.
+   4. **Make the carrier distinguishable.** State, before generating, what a
+      reviewer would SEE that separates the carrier from the cohort (which
+      column, which dashboard, roughly what magnitude). If the answer is "it
+      would look like everyone else", the signal is not authored yet. A cohort
+      whose metrics all cluster inside one band ranks fifteen workers nobody can
+      choose between — which is what the measured run shipped.
+
+   **Never invent a fraud pattern the design does not describe.** A demo that
+   fabricates a detection story is worse than a boring one: it shows a funder a
+   capability the program did not specify and cannot operate. If the PDD genuinely
+   declares no verification controls, record
+   `detectable_signal: none (PDD declares no verification rules)` with the quote
+   that proves it, say so in the run summary, and let `demo-narrative` author a
+   story that does not claim detection — do not fill the gap with a plausible
+   invention.
+
+   **Worked example (`hh-poverty-targeting`, the run this step exists because
+   of).** Its PDD §6 "Verification and fraud rules" is `[FIXED]` and names five
+   automated flags, including verbatim: *"Response patterns: flagged (not
+   auto-rejected) if an FLW's score distribution is a statistical outlier vs.
+   peers — e.g., implausibly uniform answers or a spike just below/above an
+   eligibility threshold."* Two authorable signals fall straight out of it, both
+   derived rather than invented:
+   - **band-boundary clustering** — the instrument's own point table
+     (`inputs/INSTRUMENT — Nigeria PPI 2020`, indicator 2 "How many members are
+     there in the household?", response "A. 3 or less" = **31 points**, the
+     largest single-answer jump in the scorecard) makes that one answer the
+     obvious place a score gets pushed over a line. One persona's household-size
+     responses skew to the 31-point band far harder than its peers'.
+   - **response-pattern uniformity** — one persona's score distribution is
+     implausibly tight versus the cohort spread.
+
+   Both are the PDD's own words turned into distributions; neither adds a
+   mechanism the design does not already claim to detect.
+
+   **Two manifest mechanics that silently void this whole step** — get them
+   wrong and you ship `anomalies: []` by a different route:
+   - `anomalies[].week` / `weeks[]` are **1-based** on this path
+     (`synthetic_generate_from_manifest`), matched against
+     `VisitSlot.week_index`; **`week: 0` is falsy in `_anomalies_at` and matches
+     nothing at all.** (The 0-based reading belongs to the `realize-env` audit
+     ensurer, which this provider does not use.) `coaching_arcs[].week_triggered`
+     and `field_distributions[].period_rates` keys are 1-based. See § Gotchas for
+     the source lines.
+   - Put the signal on a week the demo's dashboards actually render — a completed
+     week, inside `timeline`. Out-of-window anomalies are skipped in silence.
+   - `coaching_arcs` still ships EMPTY to the atom (step 2a below).
+
 2a. **Generate into the run's labs SyntheticOpportunity** — `synthetic_create_labs_only`
    (or reuse the run's existing labs opp) + `synthetic_generate_from_manifest`.
+   **Send `coaching_arcs: []`** — keep the authored arcs in the saved manifest as
+   the source-of-truth narrative, but the in-generate Task-create path 500s at
+   `POST /export/labs_record/` and a single entry aborts the ENTIRE generation, so
+   no visits land either (jjackson/ace#594; the strip is spelled out in
+   `skills/synthetic-data-generate/SKILL.md § Process` step 3). Arcs are created
+   separately and reliably via `task_create_synthetic`.
 
 Then Step 0 (template selection) and steps 3–5 (author dashboards, mint runs,
 build `/run/?run_id=` URLs, emit the realized map) are EXACTLY the denovo spine,
@@ -646,19 +785,44 @@ nobody has enumerated yet. Run both — neither is a substitute for the other.
   The rollup drill selector needs one fully-resolved cluster (the "good" drill)
   and one still-open cluster in a *different* opp — otherwise `good_*`/
   `incomplete_*` vars are omitted.
-- [ ] **Anomaly weeks are 0-based (audits); coaching-arc weeks are 1-based
-  (tasks); `field_distributions[].period_rates` keys are 1-based
-  (`period_rates: {2: …}` = the SECOND week).** All three live in the same
-  manifest, so state the base rather than inferring it from a neighbour —
-  `period_rates` is keyed on the generator's own `VisitSlot.week_index`,
-  which is 1-based by declaration (see `playbook/integrations/connect-labs.md
-  § binary distribution` for the source + the live measurement, ace#1518).
-  Out-of-window anomalies are silently skipped.
+- [ ] **`period_end` is EXCLUSIVE (`visit_date < period_end`).** A run window is
+  half-open, so a `period_end` equal to the manifest's `timeline.end_date` drops
+  every record dated on it. Pass `timeline.end_date + 1 day`. Nothing fails:
+  both runs report cleanly and both pages render — a snapshotted dashboard just
+  silently disagrees with its live sibling over the same fixture. Omitting the
+  bounds is worse, not safer: they default to `[today, today)`. Full mechanism,
+  source quotes and the measured numbers in step 3 (ace#1683).
+- [ ] **Anomaly weeks are read on TWO different bases by two different
+  consumers — state which path you are on.** `coaching_arcs[].week_triggered`
+  is 1-based (`PositiveInt`, `_week_start()` does `(week - 1) * 7` in
+  `generator/fixtures/tasks.py`) and `field_distributions[].period_rates` keys
+  are 1-based (`period_rates: {2: …}` = the SECOND week) on every path. But
+  `anomalies[].week` / `weeks[]` are:
+  - **1-based** under `synthetic_generate_from_manifest` (the `from-manifest`
+    path, and the only path the `ace-run` provider uses). `_anomalies_at` in
+    `generator/fixtures/engine.py` tests `if a.week and a.week == week_index`
+    against `VisitSlot.week_index`, which `expand_visit_schedule` builds as
+    `for week in range(1, timeline.weeks + 1)` — 1-based by declaration, same
+    counter `period_rates` uses. Note the `if a.week` guard: **`week: 0` is
+    falsy and matches NOTHING**, so a 0-based anomaly on the first week is a
+    silent no-op, not an off-by-one.
+  - **0-based** under `synthetic_env_ensure`'s audit ensurer (the
+    `realize-env` path). `ensure/ensurers/run_audits.py` indexes the resolved
+    week list directly — `if week_idx < 0 or week_idx >= len(weeks): continue`
+    then `monday_iso = weeks[week_idx]`.
+
+  Out-of-window anomalies are silently skipped on both paths, so a wrong base
+  costs a demo its entire detectable signal with no error anywhere. See
+  `playbook/integrations/connect-labs.md § binary distribution` for
+  `period_rates`' source + live measurement (ace#1518).
 
 ## Change Log
 
 | Date | Change | Author |
 |------|--------|--------|
+| 2026-08-26 | **`period_end` is exclusive — derive it as `timeline.end_date + 1 day` (ace#1683).** A run window is half-open (`visit_date >= date_from AND visit_date < date_to`, `query_builder._date_window_where`), and the natural authoring move — pass the manifest's own `timeline.start_date`/`end_date` — drops the fixture's entire final day from any snapshotted dashboard while its live sibling keeps it. Measured on `hh-poverty-targeting/20260824-1404` (labs opp 10047): snapshot run 5245 `total=2186`, live run 5249 `total=2237`, fixture `2237`, re-mint at `period_end 2026-08-31` → `2237`, exact. Nothing failed; every existing check passed. Also documented: period scoping bites only on the SNAPSHOT path, and omitting the bounds defaults to `[today, today)`, a zero-width window. New backstop: `demo-data-setup-qa` check 11. | ACE team |
+| 2026-08-26 | **Step 1c (ace-run): giving the demo something to detect is now a REQUIRED authoring step, derived from the PDD's own declared controls.** `hh-poverty-targeting/20260824-1404` shipped `anomalies: []` and no per-persona divergence, so the cohort had no signal in it — completion 64–77%, PPI ~34, 15 undifferentiated workers in the queue, one decision against an empty adjudication log — and the DDD loop ended `stopped_not_converged` at concept 2.0/5 on `use_case_soundness` ("the scenario does not exercise the feature it demonstrates"). Four obligations (enumerate the PDD's controls verbatim → instantiate ≥1 → cite the clause → state what a reviewer would SEE), an explicit ban on inventing a pattern the design does not declare, an honest `detectable_signal: none` escape, and the two manifest mechanics (1-based anomaly weeks with `week: 0` a silent no-op; `coaching_arcs: []` to the atom) that void the step by a different route. | ACE team |
+| 2026-08-26 | Gotcha rewritten: `anomalies[].week` is read on **two different bases by two different consumers** — 1-based under `synthetic_generate_from_manifest` (`_anomalies_at` vs `VisitSlot.week_index`, and `if a.week` makes `week: 0` match nothing), 0-based under `synthetic_env_ensure`'s `run_audits` ensurer (direct index into the week list). The previous single-sentence "anomaly weeks are 0-based (audits)" was true only of the path the `ace-run` provider never takes. | ACE team |
 | 2026-08-26 | Step 4b becomes step **2c** and grows two halves: the `DatasetSpec` is now DERIVED from the deliver app (`specFromDeliverApp`, hand-declared entries merged as ADDITIONS via `mergeDatasetSpecs`, `unparsed[]` reported), and a post-generation **branch scrub** (`scrubOffBranchFields`) removes the off-branch values the labs manifest has no primitive to avoid — written back to the fixture folder before any dashboard run is minted. It moved earlier in the process because the old position ran after the dashboards were already reading the fixture. New product `7-synthetic/branch-scrub_report.yaml` + `source.dataset_constraints`. ace#1658. | ACE team |
 | 2026-08-26 | Persist the realized dataset's SHAPE into the handoff — `source.record_counts` (verbatim from `synthetic_generate_from_manifest`) + `source.data_shape` (`rows` / `periods` / `groups`), plus step 2b resolving the two axes `record_counts` cannot answer. `demo-narrative` had no cardinality input at all, so it could not tell a filter over 5 rows from one over 500; on `bednet-check-2-visit/20260825-1310` that authored a filter demonstration over a five-worker cohort and ended the DDD loop `stopped_not_converged` at concept 3.0 after four render iterations. ace#1670. | ACE team |
 | 2026-08-26 | **Step 3b: utility-resolution gate before every `render_code` upload (ace#1662).** labs purges Tailwind against its own Django templates, so a utility used only in DB-stored `render_code` is dropped from the bundle and degrades silently to the unstyled baseline. `text-rose-700` styled `consent 89.7% · below the 90% floor` — the only pay-affecting figure on the LLO weekly-review dashboard — and rendered near-black for an unknown number of runs; a missing `h-28` left all 12 weekly bars at 0px. New pre-upload lint `scripts/check-render-code-utilities.ts` over `lib/tailwind-utility-resolution.ts`, with loud-failure semantics, substitution guidance, and the lint-the-whole-source rule (3 of 5 misses were pre-existing). Root cause tracked upstream as connect-labs#1294. | ACE team |

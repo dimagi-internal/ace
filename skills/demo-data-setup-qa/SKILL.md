@@ -24,7 +24,7 @@ auto-fix protocol, static-vs-LLM rules).
 |---|---|---|
 | `demo-data-setup` | `<demo-run>/7-synthetic/realized.json` | the handoff under check |
 | `demo-data-setup` | `run_state.yaml…products.synthetic.source` | provider + labs opp id + deliver units |
-| `demo-data-setup` | `<demo-run>/7-synthetic/demo-data-setup_manifest.yaml` | timeline pin + flagged-worker check |
+| `demo-data-setup` | `<demo-run>/7-synthetic/demo-data-setup_manifest.yaml` | timeline pin + flagged-worker check; `timeline.end_date` feeds check 11's `opts.timelineEndDate` |
 | `demo-data-setup` | `<demo-run>/7-synthetic/branch-scrub_report.yaml` | check 9: the spec derivation (incl. `unparsed[]`), the branch-scrub ledger, and the post-scrub audit |
 
 ## Products
@@ -49,6 +49,8 @@ auto-fix protocol, static-vs-LLM rules).
 | 9 | `dataset_obeys_pdd_constraints` | static | Runs `checkDatasetObeysPddConstraints` (`checks.ts`) over three inputs the producer's step 2c writes: the **derivation** (`specFromDeliverApp(get_opportunity_apps(<opp>, 'deliver'))` — the spec is DERIVED from the app's own `relevant` / `constraint` expressions, and hand-declared currency / cross-field / `uniquePairs` entries are ADDITIONS merged with `mergeDatasetSpecs`, never a replacement), the **branch-scrub report** (`scrubOffBranchFields`), and `auditDataset` over the records as they now stand. Fails on: a clean audit with no derivation behind it and no stated reason; a deliver app that returned 0 questions; any `unparsed[]` gate or bound (an expression the derivation could not read is a gate this run did not audit — a reported finding, never a silent pass); a scrub field that could not be located; and any violation class. | **Re-run the branch scrub — do NOT narrow the spec.** `scrubOffBranchFields(records, spec.conditionalFields)` from `lib/dataset-constraints.ts`, then write the scrubbed `user_visits.json` back to the opp's fixture folder before any dashboard run is minted, and carry the per-field counts into the run summary. There is **no manifest-side remedy**: `BeneficiaryCohort` in `connect_labs/labs/synthetic/generator/fixtures/manifest.py` has no conditional / relevant / branch primitive (`null_rate` is unconditional; `CorrelationSpec` cannot make a field absent on a branch), so the pre-#1658 hint ("regenerate with the constraint applied at the manifest") named a knob that does not exist and left under-declaring the spec or hand-patching records as the only routes to green. For an `unparsed[]` entry, hand-declare that gate as an ADDITION and re-run. This gate exists because a run wrote "0 constraint violations, all hand-checked" into run_state for a set with 251 fractional people-counts, 242 fractional Kwacha amounts, 34 off-branch reasons and 22 did-not-happen meetings carrying 41 attendees — and THIS SKILL PASSED (#1346) — and because `bednet-check-2-visit/20260817-1720` then passed check 9 with `conditionalFields: []` on an app whose two observation fields are both gated on consent, which the next run of the same opp measured at 18 of 276 each (#1658). Report the per-class counts so "0" is measured |
 
 | 10 | `dashboard_bindings_are_wired` | static | For each authored workflow, runs `checkDashboardBindings` (`lib/dashboard-bindings.ts`) over its definition: no pipeline schema still extracting `form.meta.*` (the stock template paths the synthetic generator never writes), `snapshot_inputs.pipelines` covering every alias in `pipeline_sources`, and render code that actually READS a declared pipeline rather than a denormalized `worker.visit_count` the generator never back-fills. | ADAPT means RE-POINT — re-point the new pipeline's schema at the same real form paths the scorecard pipeline already resolves, declare the snapshot aliases, and bind the render to the pipeline. Live: workflow 5069 hit all three at once and rendered `VISITS 0` beside `visits: 835` on data that summed correctly (#1160). Complements check 7, which catches the same class from the rendered payload; this one catches it from the DEFINITION, before a run is even minted |
+
+| 11 | `cross_dashboard_totals_agree` | static | **Cross-dashboard consistency.** Using the payloads check 7 already fetched: when two or more dashboards read the same `labs_opp_id`, their shared visit total must AGREE. `deriveVisitTotal` takes `sum(total_visits)` from an aggregated pipeline's rows, else the row count of a visit-level pipeline. Program-scoped rollups are excluded (a cross-opp rollup aggregates a different population); a dashboard that deliberately renders a sub-window declares `period_scope: 'partial'` in `source.dashboards[]` and is excluded by name; a dashboard with no visit-shaped rows is reported not-judged, never failed. Pass the manifest's `timeline.end_date` as `opts.timelineEndDate` and a disagreeing dashboard whose `period_end` is at or before it gets the off-by-one named. Importable: `checkCrossDashboardConsistency` in `checks.ts`. | **`period_end` is EXCLUSIVE.** Re-mint the snapshotted run with `period_end = timeline.end_date + 1 day` and repoint its `par_url`. `_date_window_where` (`connect_labs/labs/analysis/backends/sql/query_builder.py`) emits `visit_date >= date_from AND visit_date < date_to`, so a `period_end` equal to the fixture's last `visit_date` drops that whole day — while a live, never-snapshotted sibling is never period-scoped and keeps it. If the two dashboards are MEANT to show different windows, declare `period_scope: 'partial'` on the narrower one rather than tolerating the gap silently |
 
 All checks are static (<100ms), no LLM. Binary verdict: any BLOCKER fail →
 `fail`; else `pass`.
@@ -111,9 +113,54 @@ on any gated form failed for a cause it could not remedy — and the only way to
 green was to narrow the spec. The remedy is now the branch scrub, which is a
 declared, reproducible, idempotent generator post-step.
 
+## Why check 11 exists — one dataset, two totals, ten passing checks (#1683)
+
+Checks 1–10 each inspect ONE dashboard: its URL, its payload, its bindings, its
+run status, the dataset behind it. None of them can see a *disagreement*, because
+a disagreement is not a property of any single dashboard — and a disagreement is
+the one defect that makes a rendered page **misleading** rather than broken. A
+broken page announces itself; a page that renders confidently and states
+something untrue does not.
+
+`hh-poverty-targeting/20260824-1404` built two dashboards over one synthetic
+fixture (labs opp 10047) and they disagreed on 13 of 14 workers. From each page's
+own `#workflow-data`:
+
+```
+run 5245 snapshot (period_end 2026-08-30) : total=2186 completed=1563 non_payable=623
+run 5249 live                             : total=2237 completed=1592
+fixture on Drive                          : total=2237 completed=1592 non_payable=645
+run 5250 snapshot (period_end 2026-08-31) : total=2237 completed=1592 non_payable=645
+```
+
+Everything passed. Both runs reported their status cleanly, both pages rendered,
+`fields_all_null` was empty, and this gate returned green — check 7 asks whether
+bound fields are populated, not whether two dashboards over one dataset agree.
+The only thing that noticed was the DDD **concept judge**, reading the numbers
+off rendered frames and finding they contradicted the narrative's own figures
+(the why-brief cites 1,592/645/2,237; the page rendered 1,563/623/2,186). That is
+an expensive detector, and it fires only after a render.
+
+The cause is a half-open window. `_date_window_where` in
+`connect_labs/labs/analysis/backends/sql/query_builder.py` emits `visit_date >=
+date_from AND visit_date < date_to` — correct for back-to-back weekly periods,
+which is what its docstring justifies, and a trap for a whole-timeline window,
+because the natural authoring move is to pass the manifest's own
+`timeline.start_date` / `timeline.end_date`. Period scoping applies only on the
+snapshot path (`get_snapshot_pipeline_data`, *"re-aggregated to that half-open
+`[period_start, period_end)` visit-date window"*), so the live sibling keeps the
+final day and the snapshot loses it. The producer-side fix is
+`demo-data-setup` § Process step 3 (`period_end = timeline.end_date + 1 day`);
+this check is the backstop that does not depend on anyone remembering it.
+
+It is deliberately a check about AGREEMENT, not about any absolute number: it
+needs no fixture, no manifest and no expected total — only two payloads claiming
+to describe the same opportunity. And it is cheap: check 7 already fetched both.
+
 ## Change Log
 
 | Date | Change | Author |
 |------|--------|--------|
+| 2026-08-26 | **New check 11 `cross_dashboard_totals_agree` (ace#1683)** — the first check that compares dashboards to EACH OTHER rather than inspecting one at a time. Two dashboards over labs opp 10047 disagreed by 51 visits / 29 completed because the snapshotted run's `period_end` equalled the fixture's last `visit_date` and the bound is exclusive; all ten existing checks passed and only the DDD concept judge caught it, after the render. `checkCrossDashboardConsistency` + `deriveVisitTotal` in `checks.ts`, operating on the payloads check 7 already fetches. Excludes program-scoped rollups by construction and honours an explicit `period_scope: 'partial'` declaration, so an intended sub-window is declared rather than silently tolerated. | ACE team |
 | 2026-08-26 | Check 7 made runnable against a real payload (ace#1701). It read `instance.snapshot.pipelines` as an array of `{alias, rows}` while labs writes a dict keyed by alias, so it threw `pipelines is not iterable` on every completed run — and the `snapshot-missing-pipelines` branch was unreachable besides. Two further defects found once it could execute: it flagged labs' built-in row columns (null by `terminal_stage`, not by a wrong path — 15 findings on a healthy run) and it demanded a snapshot from the `in_progress` interactive run that check 8 requires, so 7 and 8 could not both pass. Now: both snapshot shapes read, built-ins excluded, and a non-completed run judged from supplied live pipeline rows with a `live-pipelines-unavailable` finding when they are absent. | ACE team |
 | 2026-08-26 | Check 9 promoted to an importable `checkDatasetObeysPddConstraints` in `checks.ts`: the spec is derived from the deliver app (hand-declared entries are ADDITIONS), an unparsed `relevant` / `constraint` is a reported finding rather than a silent pass, a clean audit with no derivation behind it fails, and the auto-fix hint points at `scrubOffBranchFields` instead of a manifest constraint that does not exist. ace#1658. | ACE team |
