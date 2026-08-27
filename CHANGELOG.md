@@ -5,6 +5,25 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.13.1046 — 2026-08-27
+
+**URGENT REVERT — 0.13.1042 made `scripts/version-bump.sh` a no-op while the gate that demands a bump was still live. Nothing could merge.**
+
+0.13.1042 shipped the auto-bump workflow deliberately inert and, by mistake, also shipped the *step 2* change to `version-bump.sh`: a bare invocation became a no-op that told the caller bumps were automatic now. They are not. 0.13.1043 measured that `github-actions[bot]` cannot push to a protected `main` (GH006 — required status check `clean-install` is expected), so no post-merge bump ever happens.
+
+The two halves are a **pair**, and only one moved:
+
+- a bare `scripts/version-bump.sh` — line 1 of the ship loop in `skills/shipping` — did nothing
+- `scripts/check-version-unique.ts` still failed any PR whose VERSION `origin/main` already carried, and it runs inside `clean-install`, `main`'s **one required check**
+
+So the normal ship loop produced a PR with an unchanged VERSION and a red required check. Any agent following it was blocked. (The PRs that landed in between were not, only because they happened to use `--rebase-first` or `--force`, both of which still bumped.)
+
+**Reverted.** A bare run bumps again. `--ci` and `--force` stay — `--force` is the deliberate minor/major path and `--ci` is what the still-inert workflow would call if the branch-protection question is ever answered.
+
+**Guarded, from both sides.** `test/lib/version-bump.test.ts` now asserts that a bare run bumps *and* that `check-version-unique.ts` has not been relaxed, each failure message naming the other half. Negative-tested by reintroducing the no-op, which fails the first. Relaxing either alone now fails CI; they can only move together, which is what should have been true on 0.13.1042.
+
+**The transferable lesson:** a script that a *cached older copy* of the ship loop still invokes cannot change behaviour ahead of the thing meant to replace it. Splitting the rollout was right; the split leaked one file.
+
 ## 0.13.1045 — 2026-08-27
 
 **Measured: `github-actions[bot]` cannot push to ACE's `main`, so post-merge version bumping is blocked on a repo-settings decision.**

@@ -200,4 +200,49 @@ describe('scripts/version-bump.sh', () => {
       /^## 0\.10\.99 — 2026-01-02$/m,
     );
   });
+
+  it('a BARE run bumps, for as long as the PR gate requires a bump', () => {
+    // This pairing broke for real on 2026-08-27 (0.13.1042 -> 0.13.1046).
+    //
+    // A bare `scripts/version-bump.sh` is line 1 of the ship loop in
+    // skills/shipping. It was made a no-op on the assumption that the
+    // post-merge auto-bump was about to take over — and the auto-bump could
+    // NOT take over, because github-actions[bot] cannot push to a protected
+    // main (GH006). Meanwhile check-version-unique.ts, which runs inside
+    // clean-install (main's ONE required check), still fails a PR whose
+    // VERSION origin/main already has.
+    //
+    // No-op bump + gate demanding a bump = nothing in the repo can merge. The
+    // two are a pair, and neither may move without the other. That is what
+    // this test holds; it is not about the arithmetic.
+    fixtureDir = makeFixtureRepo('0.10.14');
+    execFileSync('./scripts/version-bump.sh', { cwd: fixtureDir, encoding: 'utf8' });
+    expect(
+      fs.readFileSync(path.join(fixtureDir, 'VERSION'), 'utf8').trim(),
+      'A bare run must BUMP while check-version-unique.ts requires it. If you are\n' +
+        'making it a no-op again, the post-merge auto-bump must be LIVE and the gate\n' +
+        'relaxed in the SAME change — verify the bot can actually push to main first\n' +
+        '(see .github/workflows/auto-version-bump.yml, which records that it cannot).',
+    ).toBe('0.10.15');
+  });
+
+  it('check-version-unique.ts still requires the PR to advance VERSION', () => {
+    // The other half of the pair, asserted from the gate's side so that
+    // relaxing it without reviving the bump also fails here.
+    const gate = fs.readFileSync(
+      path.join(__dirname, '..', '..', 'scripts', 'check-version-unique.ts'),
+      'utf8',
+    );
+    expect(
+      gate,
+      'the PR arm must still compare against origin/main and fail on equal/behind',
+    ).toMatch(/checkVersionAdvances/);
+    expect(
+      /touchesVersion/.test(gate),
+      'check-version-unique.ts has been relaxed to skip PRs that do not touch\n' +
+        'VERSION. That is only safe once the post-merge auto-bump is LIVE — and as\n' +
+        'of 0.13.1046 it is not (it cannot push to a protected main). If you have\n' +
+        'fixed that, delete this assertion and the bare-run one above together.',
+    ).toBe(false);
+  });
 });
