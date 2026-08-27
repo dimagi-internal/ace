@@ -497,16 +497,23 @@ front half (how the labs-only opp + its data come to exist) differs.
      each labelled by where it came from
      (`why_brief:spine[decisions-are-recorded].claim`,
      `unified_spec:scenes[<id>].concept_claim`). It reads
-     `why_brief.spine[].{claim, rationale}`, `why_brief.gaps[].{detail,
-     proposed_action}`, and `unified_spec.scenes[].{concept_claim, show,
-     narrative}`.
+     `why_brief.spine[].{claim, rationale}` and
+     `unified_spec.scenes[].{concept_claim, show, narrative}`. **`gaps[]` is
+     deliberately not a source** — it is the one section whose job is to discuss
+     unsupported things, and a `proposed_action` routinely names another gap's
+     subject while proposing the fix, so scanning it makes the honest gap list
+     the report's own worst source of findings (ace#1762).
 
-   It derives each CAPABILITY/DECISION gap's subject terms (the words the author
-   used in BOTH the gap `id` and its `detail`, minus generic product vocabulary)
-   and reports every prose line that repeats one. **A gap's own `detail` and
-   `proposed_action` are exempt from its own terms** — a gap necessarily names
-   its own subject, so without that carve-out every gap flags itself. One gap's
-   prose naming ANOTHER gap's subject is still reported.
+   It derives each **CAPABILITY** gap's subject terms (the words the author used
+   in BOTH the gap `id` and its `detail`, minus generic product vocabulary) and
+   reports every prose line that repeats one. **RESEARCH and DECISION gaps do not
+   constrain what a surface may name** — they forbid a *qualified* claim, not the
+   subject: RESEARCH ("we don't know the real rate") forbids a quantified claim,
+   DECISION ("the threshold values are unchosen") forbids asserting a value.
+   Telling "named it" from "asserted the qualified thing" is a judgement no
+   keyword match should make, and on the run below every DECISION hit was the
+   gap's own proposed remedy ("recording the disposition is what makes a
+   threshold tunable").
 
    **It FLAGS, it does not reject** — it cannot know which phrasings are
    load-bearing, and refusing legal copy on a keyword match would be the
@@ -908,6 +915,7 @@ nobody has enumerated yet. Run both — neither is a substitute for the other.
 
 | Date | Change | Author |
 |------|--------|--------|
+| 2026-08-27 | **Step 3c narrowed to CAPABILITY gaps, and gap prose is no longer scanned (ace#1762).** Measured against the real artifacts rather than its fixtures, the narrative pass ran at ~44% precision: 9 findings on `hh-poverty-targeting/20260827-0323`, of which 3 were a DECISION gap firing on claims that merely NAME thresholds (its own proposed remedy, not a contradiction) and 1 was one gap's `proposed_action` naming another gap's subject. Both are subtractions: `constraining` is now CAPABILITY only — the RESEARCH carve-out's reasoning covers DECISION verbatim, since both forbid a *qualified* claim and no keyword match can tell that from naming the subject — and `narrativeSources()` no longer emits `why_brief.gaps[]` at all, replacing the narrower self-exemption (`exemptGapId` removed as dead). Measured after: 9 → 5 findings over 4 distinct strings, all genuine `area` / `adjudication` CAPABILITY hits. Precision is the whole asset for a report-only check — a gate that cries wolf is how the real misses get waved through (ace#1744). | ACE team |
 | 2026-08-27 | **Step 3c also reads the NARRATIVE artifacts, not just dashboard `render_code` (ace#1759).** The same run's why-brief contradicted a gap it itself declared — `decisions-are-recorded` asserts the disposition is recorded "with its reason" while `adjudication-log-is-run-state-not-a-register` declares no durable register and no reason field. Only a post-render judge caught it, on iteration 2. `checkGapCopy`'s `sources` now takes already-prose entries alongside render_code, and `narrativeSources()` builds them from `why_brief.spine[].{claim, rationale}`, `why_brief.gaps[].{detail, proposed_action}` and `unified_spec.scenes[].{concept_claim, show, narrative}`, each labelled by origin. A gap is exempt from its OWN detail/proposed_action. Still report-only; still term matching, so an inverted claim (scene 4's low-variance→fabrication converse) is not caught. | ACE team |
 | 2026-08-27 | **Step 3c: check dashboard COPY against the why-brief's declared gaps (ace#1750).** The narrative was gated against `gaps[]` and the dashboard prose was not, so `hh-poverty-targeting/20260827-0323` shipped four on-screen assertions of exactly what its own gap list declared unsupported — across two dashboards, one contradicting the same page's leave-one-out definition two lines above it. In all four the narration was clean and the UI copy was the offender, so every instance had to be caught by a post-render LLM judge. New `checkGapCopy` in `lib/gap-copy-check.ts`, report-only. Catches subject-term repetition, not semantic equivalence — a coverage claim phrased without the gap's nouns still slips. | ACE team |
 | 2026-08-27 | **Step 5b: the archived manifest must be the same bytes that were sent, and must round-trip parse (ace#1737).** `hh-poverty-targeting/20260824-1404` published a `demo-data-setup_manifest.yaml` that does not parse as YAML — flow mappings were column-aligned, so the longest key got zero spaces before its `{`. Generation had succeeded, so the archived copy was a SECOND emission rather than a capture of the wire payload; the break surfaced only when the next run tried to fork it. Drive was ruled out by direct probe (the pathological shape round-trips byte-for-byte). Fix: author once to a local file, send that, upload that file's bytes, then read back and `yaml.safe_load`. | ACE team |
