@@ -5,7 +5,7 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
-## 0.13.1020 — 2026-08-26
+## 0.13.1021 — 2026-08-26
 
 **A reviewer's ruling now binds to the next run even when that run renames the question.**
 
@@ -17,6 +17,23 @@ v5 gave a human ruling somewhere to live. This makes it actually carry. `decisio
 - `decisions_append_rows` reports `rulingsApplied` and `rulingsSkippedUnattributed` alongside `overridesApplied`, so a silently-dropped ruling becomes visible instead of invisible.
 
 9 new tests including the real three-id `[g]` case and the five-id `[a]` split. Full suite 5303 passed.
+
+## 0.13.1020 — 2026-08-26
+
+**`default` and `auto` runs never block on a question — ACE records and continues.**
+
+Stated by ACE's owner: *"nothing should ever ask a question as a blocking operation as part of ACE. Given the nature of how ACE is supposed to work, it should be making its best effort."* `lib/decisions-schema.ts` v5 already encoded exactly this — *"ACE still emits its best estimate and keeps going either way; nothing blocks and there is no escalation path"* — so this finishes a direction the codebase was already going rather than starting a new one.
+
+Four sites converted:
+
+- **The three `[BLOCKER]` checkpoints** (after `idea-to-pdd`, `app-deploy`, `ocs-chatbot-eval --quick`) now append a decisions-log row per blocker (`status: ai-default`, `evidence_basis: inferred`, verdict path as `source`) and continue. **This changes only the failure path** — those checkpoints fired `iff [BLOCKER]`, so a healthy run never reached them and still doesn't.
+- **Opp selection at run start** no longer prompts when a slug has multiple plausible folder matches. It picks the most-recently-touched candidate and records the choice plus the rejected ones — the same tiebreak zero-arg `/ace:run` already uses (`commands/run.md § Smart-default UX`), so ambiguity resolves identically whether or not a slug was passed.
+
+**`review` mode is unchanged** and still pauses at every checkpoint. An operator opting into a per-phase human checkpoint is a request, not ACE volunteering a question. It is now the only mode requiring the orchestrator at level 0, since `AskUserQuestion` is withheld from every subagent — a constraint to weigh before the orchestrator is ever dispatched.
+
+**Phase 9/10 gate rows are relabelled specification, not behavior.** They were listed as unconditional "always pause" in all modes, which read as live safety and is not: `agents/execution-manager.md` halts before any step while Phase 9 is off, so those four rows have never been reachable. When Phase 9 is enabled they cannot be `AskUserQuestion` prompts if the phase is a subagent — that is the concrete meaning of its enablement checklist's *"re-validate the external-comms pause points."*
+
+New `test/lib/non-blocking-run.test.ts` guards the shape: every orchestrator `AskUserQuestion` must be scoped to `review`, and no checkpoint row may pause a `default` or `auto` run. Both assertions verified to fail on a reintroduced blocking checkpoint and an ungated prompt.
 
 ## 0.13.1019 — 2026-08-26
 

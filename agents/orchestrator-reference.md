@@ -1023,19 +1023,40 @@ operator experience than auto-stub + warning.
 
 **Pause points and per-mode behavior:**
 
-| Pause point | Phase | `default` | `review` | `auto` |
+| Checkpoint | Phase | `default` | `review` | `auto` |
 |------|-------|-----------|----------|--------|
-| After `idea-to-pdd` | 1 | pause iff any `[BLOCKER]` from QA or eval | always pause | never pause* |
-| After `app-deploy` | 3 | pause iff any `[BLOCKER]` | always pause | never pause* |
-| After `ocs-chatbot-eval --quick` | 5 | pause iff any `[BLOCKER]` | always pause | never pause* |
-| After `llo-invite` | 8 | never pause (passive solicitation invites) | always pause | never pause* |
-| **Phase 8→9 boundary** | 8→9 | **always pause** (waits for `selected_llo`) | always pause | always pause |
-| Before `llo-onboarding` | 9 | always pause (first 1-1 email to awardee) | always pause | always pause |
-| Before `llo-uat` send | 9 | always pause (UAT instructions to awardee) | always pause | always pause |
-| Before `llo-launch` | 9 | always pause (opp activation in Connect) | always pause | always pause |
-| Before `opp-closeout` | 10 | always pause (Jira payment ticket) | always pause | always pause |
+| After `idea-to-pdd` | 1 | **record + continue** | always pause | **record + continue** |
+| After `app-deploy` | 3 | **record + continue** | always pause | **record + continue** |
+| After `ocs-chatbot-eval --quick` | 5 | **record + continue** | always pause | **record + continue** |
+| After `llo-invite` | 8 | never pause (passive solicitation invites) | always pause | never pause |
+| **Phase 8→9 boundary** | 8→9 | **terminus, not a prompt** — the run ends | terminus | terminus |
+| Before `llo-onboarding` | 9 | *unreachable — Phase 9 not live* | — | — |
+| Before `llo-uat` send | 9 | *unreachable — Phase 9 not live* | — | — |
+| Before `llo-launch` | 9 | *unreachable — Phase 9 not live* | — | — |
+| Before `opp-closeout` | 10 | *unreachable — behind Phase 9* | — | — |
 
-\*`auto` still pauses on `[BLOCKER]` — admins opted into auto mode for speed, not to ship known-broken work. The Phase 8→9 boundary + Phase 9 external-comms + Phase 10 closeout pauses are unconditional in all modes because they affect external parties.
+**`default` and `auto` never block on a question (0.13.1020).** ACE makes its best
+effort and keeps going; a `[BLOCKER]` is *recorded*, not asked about. This is the
+same stance the decisions log already takes — see `lib/decisions-schema.ts` v5:
+*"ACE still emits its best estimate and keeps going either way; nothing blocks and
+there is no escalation path."* The three former blocker-pauses were the last places
+that contradicted it.
+
+Note what this does and does not change. It changes only the FAILURE path: those
+three checkpoints fired `iff [BLOCKER]`, so a healthy run never reached them and
+still doesn't. What used to halt now lands in the run record instead.
+
+**`review` mode is unchanged and still pauses at every checkpoint.** It exists so an
+operator can opt into a human checkpoint per phase; that is a deliberate request, not
+ACE volunteering a question. It is the one mode that requires the orchestrator to run
+at level 0, because `AskUserQuestion` is withheld from every subagent — worth knowing
+before the orchestrator is ever dispatched (`CLAUDE.md § Agent topology`).
+
+**Phase 9 / 10 rows are specification, not behavior.** `agents/execution-manager.md`
+halts before any step while Phase 9 is not live. When it is enabled, those
+external-comms gates cannot be `AskUserQuestion` prompts if the phase is a subagent —
+that is the live meaning of the enablement checklist's *"re-validate the
+external-comms pause points."*
 
 **Synthesizing a pause-time summary.** At each pause, the orchestrator:
 
@@ -1044,7 +1065,13 @@ operator experience than auto-stub + warning.
    - **Artifact under review:** path + one-line description (pulled from the producer's primary artifact).
    - **What to check:** auto-derived from any QA `failures[]` and eval auto-surfaced concerns.
    - **Severity surface:** any `[BLOCKER]` / `[WARN]` / `[INFO]` from the verdicts (eval has these explicitly; QA failures are always `[BLOCKER]`-equivalent).
-3. Presents via `AskUserQuestion` with four options:
+3. **In `default` and `auto`: records and continues.** Append a decisions-log row
+   for each `[BLOCKER]` (`status: ai-default`, `evidence_basis: inferred`, the
+   verdict path as `source`) capturing what was flagged and that the run proceeded,
+   then carry on to the next phase. The row is the audit trail: it survives the run,
+   renders into the decisions doc, and is correctable later without re-running
+   anything. Do NOT prompt, and do NOT halt.
+4. **In `review` only: presents via `AskUserQuestion`** with four options:
    - **Approve** — continue.
    - **Reject** — halt the run; log admin's reason in `comms-log/`.
    - **Iterate** — re-dispatch the upstream skill with the surfaced concerns as input (equivalent to a manual auto-fix loop).
