@@ -158,11 +158,26 @@ export function checkMarkdownEatenLabels(
 export interface EnumDriftFinding {
   value: string;
   /** Label the case list (the tile the FLW reads before the visit) shows. */
-  caseListLabel: string | null;
+  caseListLabel: string;
   /** Label the form's own choice list offers for the same stored value. */
   formLabel: string | null;
-  kind: 'label-mismatch' | 'missing-from-form' | 'missing-from-case-list';
+  kind: 'label-mismatch' | 'missing-from-form';
   remediation: string;
+}
+
+/**
+ * What `checkCaseListEnumDrift` reports ALONGSIDE its findings.
+ *
+ * `unlabelledInCaseList` is deliberately NOT a finding. The rule is SUBSET,
+ * not equality: a case list may legitimately render fewer entries than the
+ * form offers — a tile that labels only the phases the pilot window covers is
+ * a design decision, not drift. Demanding equality would fire on every such
+ * app, and a check that cries wolf gets ignored, which is worse than the
+ * defect. It is surfaced because the tile renders the raw stored code for
+ * these values, which is worth SEEING without being worth FAILING.
+ */
+export interface EnumDriftExtras {
+  unlabelledInCaseList: string[];
 }
 
 /**
@@ -171,6 +186,13 @@ export interface EnumDriftFinding {
  *
  * The form is the authority: it is what the FLW picks from, and what the stored
  * value means. A case-list enum that disagrees is stale or invented.
+ *
+ * **The rule is SUBSET, not equality.** Every entry the case list DOES render
+ * must agree with the form; the case list need not render every entry the form
+ * offers. Equality would fail a tile that deliberately labels only the phases
+ * a pilot window covers, and a check with false positives is one people learn
+ * to skip. Values the form can store but the tile has no label for come back
+ * as `unlabelledInCaseList` — visible, not fatal.
  */
 export function checkCaseListEnumDrift(input: {
   /** Property being rendered, e.g. `phase` — used in messages only. */
@@ -179,7 +201,7 @@ export function checkCaseListEnumDrift(input: {
   caseListEnums: Record<string, string>;
   /** value -> label, from the form's `select1` choice list. */
   formChoices: Record<string, string>;
-}): CheckOutcome<EnumDriftFinding> {
+}): CheckOutcome<EnumDriftFinding, EnumDriftExtras> {
   const { property, caseListEnums, formChoices } = input;
   if (Object.keys(caseListEnums).length === 0) {
     return unable(`case list declares no id-mapping enum for "${property}" to compare`);
@@ -192,11 +214,10 @@ export function checkCaseListEnumDrift(input: {
   }
 
   const findings: EnumDriftFinding[] = [];
-  const values = new Set([...Object.keys(caseListEnums), ...Object.keys(formChoices)]);
-  for (const value of [...values].sort()) {
-    const caseListLabel = caseListEnums[value] ?? null;
+  for (const value of Object.keys(caseListEnums).sort()) {
+    const caseListLabel = caseListEnums[value];
     const formLabel = formChoices[value] ?? null;
-    if (caseListLabel !== null && formLabel === null) {
+    if (formLabel === null) {
       findings.push({
         value,
         caseListLabel,
@@ -206,16 +227,6 @@ export function checkCaseListEnumDrift(input: {
           `The case list renders "${value}" as "${caseListLabel}", but the form ` +
           `offers no such value for "${property}" — so no FLW can ever produce it. ` +
           `Either the enum is stale or the form lost an option.`,
-      });
-    } else if (caseListLabel === null && formLabel !== null) {
-      findings.push({
-        value,
-        caseListLabel,
-        formLabel,
-        kind: 'missing-from-case-list',
-        remediation:
-          `The form can store "${value}" ("${formLabel}") but the case list has no ` +
-          `label for it, so the tile will render the raw code for "${property}".`,
       });
     } else if (caseListLabel !== formLabel) {
       findings.push({
@@ -231,5 +242,8 @@ export function checkCaseListEnumDrift(input: {
       });
     }
   }
-  return checked(findings.length === 0, findings);
+  const unlabelledInCaseList = Object.keys(formChoices)
+    .filter((v) => !(v in caseListEnums))
+    .sort();
+  return { ...checked(findings.length === 0, findings), unlabelledInCaseList };
 }

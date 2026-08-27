@@ -1,0 +1,81 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<h:html xmlns:h="http://www.w3.org/1999/xhtml" xmlns="http://www.w3.org/2002/xforms" xmlns:jr="http://openrosa.org/javarosa">
+  <h:head>
+    <model>
+      <itext>
+        <translation lang="en" default="">
+          <text id="phase-opt0-label">
+            <value>1. Planning</value>
+            <value form="markdown">1. Planning</value>
+          </text>
+          <text id="phase-opt1-label">
+            <value>2. Implementation</value>
+            <value form="markdown">2. Implementation</value>
+          </text>
+          <text id="phase-opt2-label">
+            <value>3. Second Round Planning and Implementation</value>
+            <value form="markdown">3. Second Round Planning and Implementation</value>
+          </text>
+          <text id="phase-opt3-label">
+            <value>4. Transition</value>
+            <value form="markdown">4. Transition</value>
+          </text>
+          <text id="phase-label">
+            <value>Which FCAP phase is this community in now?</value>
+          </text>
+          <text id="current_step_id-opt0-label">
+            <value>1. Our Partnership</value>
+            <value form="markdown">1. Our Partnership</value>
+          </text>
+          <text id="current_step_id-opt1-label">
+            <value>2. Community Dynamics, Governance and Leadership</value>
+            <value form="markdown">2. Community Dynamics, Governance and Leadership</value>
+          </text>
+          <text id="current_step_id-opt2-label">
+            <value>3. Understanding the Present – Situational Analysis</value>
+            <value form="markdown">3. Understanding the Present – Situational Analysis</value>
+          </text>
+          <text id="current_step_id-label">
+            <value>Which step did you facilitate?</value>
+          </text>
+        </translation>
+      </itext>
+    </model>
+  </h:head>
+  <h:body>
+    <select1 ref="/data/phase">
+      <label ref="jr:itext('phase-label')"/>
+      <item>
+        <label ref="jr:itext('phase-opt0-label')"/>
+        <value>nova_text_0000000001</value>
+      </item>
+      <item>
+        <label ref="jr:itext('phase-opt1-label')"/>
+        <value>nova_text_0000000002</value>
+      </item>
+      <item>
+        <label ref="jr:itext('phase-opt2-label')"/>
+        <value>nova_text_0000000003</value>
+      </item>
+      <item>
+        <label ref="jr:itext('phase-opt3-label')"/>
+        <value>nova_text_0000000004</value>
+      </item>
+    </select1>
+    <select1 ref="/data/current_step_id">
+      <label ref="jr:itext('current_step_id-label')"/>
+      <item>
+        <label ref="jr:itext('current_step_id-opt0-label')"/>
+        <value>nova_text_0000000011</value>
+      </item>
+      <item>
+        <label ref="jr:itext('current_step_id-opt1-label')"/>
+        <value>nova_text_0000000012</value>
+      </item>
+      <item>
+        <label ref="jr:itext('current_step_id-opt2-label')"/>
+        <value>nova_text_0000000013</value>
+      </item>
+    </select1>
+  </h:body>
+</h:html>

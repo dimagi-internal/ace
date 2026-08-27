@@ -59,7 +59,7 @@ authored from the PDD per run):
 | Component | App | Trigger | Enforced by (eval dimension) |
 |---|---|---|---|
 | [`choice-label-rendering`](#choice-label-rendering) | Deliver + Learn | Always, whenever a choice label is authored | `lib/choice-label-integrity.ts § checkMarkdownEatenLabels` (ace#1689) |
-| [`case-list-enum-fidelity`](#case-list-enum-fidelity) | Deliver | A case-list column renders a property through an id-mapping enum a form also writes | `lib/choice-label-integrity.ts § checkCaseListEnumDrift` (ace#1688) |
+| [`case-list-enum-fidelity`](#case-list-enum-fidelity) | Deliver | A case-list column renders a property through an id-mapping enum a form also writes | `lib/choice-label-integrity.ts § checkCaseListEnumDrift`, gated over the CCZ by `lib/ccz-enum-fidelity.ts` at `app-release-qa § Step 4` (ace#1688) |
 | [`gps-accuracy-capture`](#gps-accuracy-capture) | Deliver | PDD Evidence Model specifies a GPS arrival/location radius or accuracy tolerance (observability only — a hard gate is unbuildable, ace#1006) | `pdd-to-deliver-app-eval § Capture fitness` |
 | [`init-safe-calculates`](#init-safe-calculates) | Deliver (cross-cutting) | Any hidden calc parses a capture-later value (`selected-at`/`substr`/`regex`/`number`) | `app-release-qa` (`commcare-cli play`) |
 | [`data-quality-constraints`](#data-quality-constraints) | Deliver | Always, for any data-capture instrument | `pdd-to-deliver-app-eval § Data-quality validation` |
@@ -1947,7 +1947,13 @@ direct comparison sees it. *Enforced:* `lib/choice-label-integrity.ts` +
 - **Trigger:** always, when a case-list column renders a property through an
   id-mapping enum that a form also writes.
 - **Parameters:** the property id, the writing form's choice list.
-- **Enforced by:** `checkCaseListEnumDrift` (`lib/choice-label-integrity.ts`).
+- **Enforced by:** `checkCaseListEnumDrift` (`lib/choice-label-integrity.ts`),
+  run over the released CCZ by `checkCczCaseListEnumFidelity`
+  (`lib/ccz-enum-fidelity.ts`) at `app-release-qa § Step 4` check 3, where
+  drift is a `[BLOCKER]` `case-list-enum-drift`. The rule is **subset**: every
+  value the tile labels must agree with the form; the tile may label fewer.
+  *Enforced:* `test/lib/ccz-enum-fidelity.test.ts`, whose negative control is
+  the ace#1688 drift itself and must FAIL.
 - **Origin:** ace#1688, on released Deliver CCZ
   `bf4898f5d80b456eb4525fc4e2d9ced9`. The `fcap_community` tile rendered
   `phase` and `current_step_id` through id-mapping enums carrying a
@@ -1963,9 +1969,10 @@ direct comparison sees it. *Enforced:* `lib/choice-label-integrity.ts` +
 > is the authority: it is what the worker picks from, and it defines what the
 > stored value means. Before configuring a case list, read the writing form's
 > choice list and map value-for-value. An enum value the form cannot produce is
-> dead; a form value the enum lacks renders as a raw code on the tile; and a
-> value that exists in both with different labels is the worst case, because
-> both surfaces look correct in isolation.
+> dead; and a value that exists in both with different labels is the worst
+> case, because both surfaces look correct in isolation. Labelling only SOME of
+> the form's values is allowed — the tile then shows the raw code for the rest —
+> so the rule is subset, not equality.
 
 ## Change log
 

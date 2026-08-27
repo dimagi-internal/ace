@@ -1,0 +1,94 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<suite version="3" descriptor="Suite File">
+  <detail id="m0_case_short">
+    <title>
+      <text>
+        <locale id="cchq.case"/>
+      </text>
+    </title>
+    <field>
+      <header>
+        <text>
+          <locale id="m0.case_short.case_case_name_1.header"/>
+        </text>
+      </header>
+      <template>
+        <text>
+          <xpath function="case_name"/>
+        </text>
+      </template>
+      <sort type="string" order="1" direction="ascending">
+        <text>
+          <xpath function="case_name"/>
+        </text>
+      </sort>
+    </field>
+    <field>
+      <header>
+        <text>
+          <locale id="m0.case_short.case_slept_under_bednet_2.header"/>
+        </text>
+      </header>
+      <template>
+        <text>
+          <xpath function="replace(join(' ', if(selected(slept_under_bednet, 'yes'), $kyes, ''), if(selected(slept_under_bednet, 'no'), $kno, '')), '\s+', ' ')">
+            <variable name="kno">
+              <locale id="m0.case_short.case_slept_under_bednet_2.enum.kno"/>
+            </variable>
+            <variable name="kyes">
+              <locale id="m0.case_short.case_slept_under_bednet_2.enum.kyes"/>
+            </variable>
+          </xpath>
+        </text>
+      </template>
+      <sort type="string">
+        <text>
+          <xpath function="if(selected(slept_under_bednet, 'yes'), 0, if(selected(slept_under_bednet, 'no'), 1, ''))"/>
+        </text>
+      </sort>
+    </field>
+    <select_text>
+      <text>
+        <locale id="m0_select_text"/>
+      </text>
+    </select_text>
+  </detail>
+  <detail id="m0_case_long">
+    <title>
+      <text>
+        <locale id="cchq.case"/>
+      </text>
+    </title>
+    <field>
+      <header>
+        <text>
+          <locale id="m0.case_long.case_case_name_1.header"/>
+        </text>
+      </header>
+      <template>
+        <text>
+          <xpath function="case_name"/>
+        </text>
+      </template>
+    </field>
+    <field>
+      <header>
+        <text>
+          <locale id="m0.case_long.case_slept_under_bednet_2.header"/>
+        </text>
+      </header>
+      <template>
+        <text>
+          <xpath function="replace(join(' ', if(selected(slept_under_bednet, 'yes'), $kyes, ''), if(selected(slept_under_bednet, 'no'), $kno, '')), '\s+', ' ')">
+            <variable name="kno">
+              <locale id="m0.case_long.case_slept_under_bednet_2.enum.kno"/>
+            </variable>
+            <variable name="kyes">
+              <locale id="m0.case_long.case_slept_under_bednet_2.enum.kyes"/>
+            </variable>
+          </xpath>
+        </text>
+      </template>
+    </field>
+  </detail>
+</suite>
