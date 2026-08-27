@@ -328,15 +328,34 @@ blank chart.
    #   distinct_count                        -> count_distinct
    # Disclose every translation in the run summary (the
    # aggregation_mapping_honesty eval dimension expects it).
-   fields = [
-     {
-       "name": kpi.kpi,
-       "path": kpi.field_path,
-       "aggregation": translate_kpi_aggregation(kpi.aggregation),  # -> pipeline allow-list above
-     }
-     for kpi in manifest.kpi_config
-   ]
+   #
+   # NUMERIC AGGREGATIONS MUST CARRY transform: "float" (ace#1675).
+   # Fields are extracted with the JSONB *text* operator
+   # (form_json->'form'->>'x'), so the column is text unless cast. Once
+   # grouping_key is set:
+   #   avg / sum -> hard error "function avg(text) does not exist"  (loud)
+   #   min / max -> SUCCEED with the lexicographic text extreme      (silent + WRONG)
+   # Measured live on form.ppi_score: max read "9" untransformed vs a true
+   # numeric max of 75, because "9" > "75" as strings. Nothing errors and
+   # nothing is null, so fields_all_null does NOT catch it. Full contract:
+   # playbook/integrations/connect-labs.md § numeric aggregations.
+   NUMERIC_AGGS = {"avg", "sum", "min", "max"}
+
+   def build_field(kpi):
+       agg = translate_kpi_aggregation(kpi.aggregation)  # -> pipeline allow-list above
+       field = {"name": kpi.kpi, "path": kpi.field_path, "aggregation": agg}
+       if agg in NUMERIC_AGGS:
+           field["transform"] = "float"
+       return field
+
+   fields = [build_field(kpi) for kpi in manifest.kpi_config]
    ```
+
+   **Then assert the cast held.** After the schema save, check the
+   `pipeline_preview` rows: every `avg`/`sum`/`min`/`max` column must come
+   back as a JSON *number*, not a quoted string. A quoted value (`"9"`)
+   means the transform was dropped and the column is a text comparison —
+   the silent-wrong-answer case above.
 
    Then call:
 
