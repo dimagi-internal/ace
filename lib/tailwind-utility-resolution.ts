@@ -366,8 +366,57 @@ export function extractUtilityTokens(source: string): ExtractedToken[] {
    * `cond ? 'text-rose-700' : ''` and `var cardBorder = 'border-slate-300'`
    * are the shapes ace#1662 exists to catch.
    */
+  /**
+   * CSS property names whose VALUES are CSS keywords, never class names.
+   *
+   * A string literal sitting as the value of one of these keys is inline
+   * styling — `alignItems: 'flex-end'` — and can never be a Tailwind class, so
+   * linting it is a false positive that BLOCKS a correct upload. `flex-end` is
+   * the canonical case: it is a valid `align-items` value and Tailwind spells
+   * the equivalent utility `items-end`, so it can never resolve against any
+   * stylesheet and the check can never pass on it. The tool's own remedy for a
+   * miss — "use an inline style prop" — is already what such code does
+   * (ace#1744).
+   *
+   * This is deliberately a CLOSED list of CSS property names rather than "any
+   * camelCase key before a colon". `className` and `tone` are also object keys
+   * that hold utilities (`{ className: 'text-red-700' }`,
+   * `tone={p.bad ? 'text-red-700' : 'text-gray-800'}`), and those must keep
+   * being linted — they are the ace#1662 shapes. Same reasoning as
+   * NON_CLASS_ATTRS above: name the exceptions, never the general shape.
+   */
+  const CSS_KEYWORD_PROPS = new Set([
+    'alignItems', 'alignSelf', 'alignContent', 'justifyContent', 'justifyItems',
+    'justifySelf', 'flexDirection', 'flexWrap', 'display', 'position', 'float',
+    'clear', 'overflow', 'overflowX', 'overflowY', 'textAlign', 'textTransform',
+    'textDecoration', 'verticalAlign', 'whiteSpace', 'wordBreak', 'overflowWrap',
+    'visibility', 'cursor', 'pointerEvents', 'boxSizing', 'objectFit',
+    'backgroundRepeat', 'backgroundSize', 'backgroundPosition', 'borderStyle',
+    'fontStyle', 'fontWeight', 'fontVariantNumeric', 'listStyleType',
+    'resize', 'userSelect', 'writingMode', 'tableLayout', 'captionSide',
+    'mixBlendMode', 'isolation', 'objectPosition', 'transformOrigin',
+  ]);
+
+  /**
+   * Is the string opening at `q` the value of an inline-style CSS property?
+   * Matches the object-property shape `<cssProp>: '<value>'`, which is how
+   * every inline style in render_code is written.
+   */
+  const isCssKeywordValue = (q: number): boolean => {
+    let j = q - 1;
+    while (j >= 0 && /\s/.test(source[j])) j--;
+    if (j < 0 || source[j] !== ':') return false;
+    j--;
+    while (j >= 0 && /\s/.test(source[j])) j--;
+    const end = j + 1;
+    while (j >= 0 && /[A-Za-z]/.test(source[j])) j--;
+    const name = source.slice(j + 1, end);
+    return CSS_KEYWORD_PROPS.has(name);
+  };
+
   const originFor = (q: number): ExtractedToken['origin'] => {
     if (isClassAttribute(q)) return 'class-attribute';
+    if (isCssKeywordValue(q)) return 'attribute-value';
     // JSX attribute shape only: <name>="..." with no space around the `=`.
     let j = q - 1;
     while (j >= 0 && /[{(]/.test(source[j])) j--;
