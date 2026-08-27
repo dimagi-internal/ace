@@ -905,6 +905,44 @@ writes. The orchestrator stub-fills + warns post-phase if a phase
 wrote zero rows AND the calibration set for that phase has any
 required rows. Schema and YAML helpers live in `lib/decisions-schema.ts`.
 
+**Run-init ingest — what a new run inherits (added 2026-08-27).** A new
+run does NOT share a ledger with its predecessor; `decisions.yaml` stays
+per-run. At run-init the orchestrator calls
+`lib/decisions-ingest.ts::ingestPriorRun` with the **immediately-prior
+run only**, plus the accumulated `human-decided` set. What it inherits is
+weighted by WHERE the decision came from, never by how recent it is:
+
+| prior status | carries as | meaning |
+|---|---|---|
+| `human-decided` | **binding** | a person ruled; honour it or record an explicit revision |
+| `ai-default` | advisory | ACE chose; this run may freely decide better |
+| `overridden` | advisory | an operator override of a run-control gate, not a durable design ruling |
+| `superseded` | does not travel | history in the run that had it |
+
+**AI defaults deliberately do NOT bind.** `duplicate-detection-key`
+genuinely improved across runs — a naive fixed 15 m radius became a
+ranked accuracy-weighted proximity queue — and a binding ledger would
+have frozen the worse version. Prior AI decisions are evidence, not
+authority.
+
+**Read ONE run back, never the full history.** That is the anti-cruft
+rule and it is not hypothetical: on 2026-08-19 the operator manually
+reset `hh-poverty-targeting/open-questions.md` to "human-authored
+decisions and human-owned open questions only", deleting everything ACE
+had raised or re-derived across the previous six runs, so that run would
+"derive its own findings from inputs/ rather than inheriting six runs of
+prior ACE reasoning". `ingestPriorRun` is that rule executed
+automatically. An AI default that stops being re-derived falls out on its
+own — no expiry logic, no pruning job.
+
+Before writing a row, check it against the inheritance with
+`conflictsWithRuling`. A non-null result means the run is about to
+overwrite something a human settled: honour it, or write the change as an
+explicit revision naming the person to re-escalate to. The check matches
+on `id` AND on `feedback_ref`, because a run that renames the question
+would otherwise walk straight past the ruling — measured, one reviewer's
+9 comments were raised under 22 different ids.
+
 **Reviewer decision-overrides bind automatically (added 2026-07-25,
 ace#933).** ace-web's Phases tab → Decisions panel lets a reviewer save
 overrides to `ACE/<opp>/inputs/decision-overrides.yaml` without
