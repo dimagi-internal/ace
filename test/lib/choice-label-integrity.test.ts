@@ -114,7 +114,12 @@ describe('checkCaseListEnumDrift (ace#1688)', () => {
     expect(res.findings[0].remediation).toContain('1. Planning');
   });
 
-  it('separates a value the form cannot produce from one the tile cannot render', () => {
+  it('flags a value the form cannot produce, but NOT one the tile omits', () => {
+    // The rule is SUBSET, not equality. `9` is a real defect — the tile renders
+    // a phase no FLW can ever store. `2` is not: a case list may legitimately
+    // label fewer values than the form offers (a tile scoped to the pilot
+    // window), and failing that would fire on real apps. It is still SURFACED,
+    // via `unlabelledInCaseList`, because the tile shows the raw code for it.
     const res = checkCaseListEnumDrift({
       property: 'phase',
       caseListEnums: { '1': 'Planning', '9': 'Retired phase' },
@@ -124,7 +129,20 @@ describe('checkCaseListEnumDrift (ace#1688)', () => {
     if (res.status !== 'checked') return;
     const kinds = Object.fromEntries(res.findings.map((f) => [f.value, f.kind]));
     expect(kinds['9']).toBe('missing-from-form');
-    expect(kinds['2']).toBe('missing-from-case-list');
+    expect(res.findings.map((f) => f.value)).toEqual(['9']);
+    expect(res.unlabelledInCaseList).toEqual(['2']);
+  });
+
+  it('passes a proper subset outright', () => {
+    const res = checkCaseListEnumDrift({
+      property: 'phase',
+      caseListEnums: { '1': 'Planning' },
+      formChoices: { '1': 'Planning', '2': 'Implementation' },
+    });
+    expect(res.status).toBe('checked');
+    if (res.status !== 'checked') return;
+    expect(res.ok).toBe(true);
+    expect(res.unlabelledInCaseList).toEqual(['2']);
   });
 
   it('passes when the two agree', () => {

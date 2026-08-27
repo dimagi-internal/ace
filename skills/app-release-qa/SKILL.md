@@ -213,10 +213,12 @@ Mismatch → halt with `deliver-marker-missing` (with the form path +
 which marker is absent). The same namespace re-check applies before
 halting.
 
-**Case reachability + case-transaction presence (dimagi-internal/ace#977).**
-Two assertions over artifacts this step already holds — the unzipped CCZ's
-`suite.xml` and the form XMLs. Both are pure functions in
-`lib/commcare-cli-validate.ts`; no live Nova build, no device, no Connect.
+**Case reachability, case-transaction presence, and case-list enum fidelity
+(dimagi-internal/ace#977, #1688).** Three assertions over artifacts this step
+already holds — the unzipped CCZ's `suite.xml`, `<lang>/app_strings.txt`, and
+the form XMLs. All are pure functions (`lib/commcare-cli-validate.ts` for the
+first two, `lib/ccz-enum-fidelity.ts` for the third); no live Nova build, no
+device, no Connect.
 
 1. **`findUnreachableCaseLists(suiteXml)` → `case-list-unreachable`.**
    Returns one finding per entry that configures `detail` blocks it can never
@@ -268,6 +270,50 @@ Two assertions over artifacts this step already holds — the unzipped CCZ's
    declared binding, no drops. It is a regression preventer, and it exists
    because the alternative — periodically re-grepping a build by hand — is what
    left ace#977 undecidable across three separate investigations for a month.
+
+3. **`checkCczCaseListEnumFidelity({suiteXml, appStrings, forms})` →
+   `[BLOCKER]` `case-list-enum-drift` (dimagi-internal/ace#1688).** For every
+   id-mapping case-list column whose case property a form `select1` also
+   writes, the column's `value → label` map MUST be a **subset** of that
+   select's. Pure and structural over artifacts this step already holds — the
+   unzipped `suite.xml`, `<lang>/app_strings.txt`, and the form XMLs. No
+   device, no live Nova, no Connect.
+
+   ```ts
+   import {
+     checkCczCaseListEnumFidelity,
+     describeCczEnumFidelity,
+   } from '../../lib/ccz-enum-fidelity';
+   const res = checkCczCaseListEnumFidelity({ suiteXml, appStrings, forms });
+   ```
+
+   Branch on `res.status` — `unable` is **not** a pass (`lib/check-outcome.ts`).
+   Record its `reason` in the verdict's `checks[]` and treat the enums as
+   UNEVALUATED. On `checked` + `!ok`, halt with `[BLOCKER]`
+   `case-list-enum-drift` and emit `describeCczEnumFidelity(res.findings)` —
+   one line per drifted value, naming both labels and the authoring form.
+   On success record `columnsCompared` / `valuesCompared`, so the memo says
+   what was compared rather than only that it passed.
+
+   **Why a BLOCKER and not a warn.** On `spark-facilitator/20260820-0817` the
+   `fcap_community` tile rendered `phase` and `current_step_id` through enums
+   carrying an ACE-**invented** FCAP taxonomy while the meeting form offered
+   Spark's real one, so stored `1` read as `1. Introduction` before the visit
+   and `1. Planning` during it — off by one, on the surface the Learn app
+   explicitly teaches the worker to read (`m3_start`, and quiz `q9`'s
+   scored-correct answer). Both surfaces are well-formed in isolation, which is
+   why nothing else catches it: this gate is the only place the two are
+   compared. **Remediation points at `pdd-to-deliver-app` Step 4l**, which
+   repairs the form's option labels and must also derive the case-list enum
+   from that same itemset — not at the enum in front of you.
+
+   **Subset, not equality** — a tile may legitimately label fewer values than
+   the form offers (one scoped to a pilot window). Those come back as
+   `res.unlabelledInCaseList`: report them, never halt on them. Demanding
+   equality would fire on healthy apps, and a gate that cries wolf gets
+   skipped. *Enforced:* `test/lib/ccz-enum-fidelity.test.ts` — the negative
+   control is the drift above and must FAIL; the positive control is a real
+   released CCZ and must pass.
 
 **Why `play` cannot substitute for either.** `play verdict: 'skipped'` /
 `empty-case-list` only fires when a case-list screen is actually *pushed*.
@@ -947,6 +993,15 @@ defects.
   `pdd-to-{learn,deliver}-app` re-build flipping the
   entity_id substitution per
   `docs/learnings/2026-05-25-entity-id-misdiagnosis.md`.
+- `case-list-enum-drift` — an id-mapping case-list column renders a case
+  property through a different taxonomy than the form `select1` that writes
+  it, so the worker reads one vocabulary off the tile before the visit and
+  picks from another during it (dimagi-internal/ace#1688). `[BLOCKER]`: both
+  surfaces are well-formed in isolation, and this gate is the only place they
+  are compared. Operator fix: re-run `pdd-to-deliver-app` — its Step 4l must
+  derive the case-list enum from the SAME itemset it repairs the form's option
+  labels from — then re-release and re-run `app-release-qa`. Do not hand-edit
+  the enum: an instance fix leaves the next build free to reinvent it.
 - `cli-validator-unavailable` — `commcare-cli.jar` not on the operator's
   machine (resolved jar path returned `input_error: jar_not_found`). This
   is `[WARN]`, not `[BLOCKER]` — Steps 3–4 still gate structural defects;

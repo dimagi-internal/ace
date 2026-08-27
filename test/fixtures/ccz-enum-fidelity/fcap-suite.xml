@@ -1,0 +1,135 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<suite version="3" descriptor="Suite File">
+  <detail id="m0_case_short">
+    <title>
+      <text>
+        <locale id="cchq.case"/>
+      </text>
+    </title>
+    <field>
+      <header>
+        <text>
+          <locale id="m0.case_short.case_case_name_1.header"/>
+        </text>
+      </header>
+      <template>
+        <text>
+          <xpath function="case_name"/>
+        </text>
+      </template>
+    </field>
+    <field>
+      <header>
+        <text>
+          <locale id="m0.case_short.case_phase_2.header"/>
+        </text>
+      </header>
+      <template>
+        <text>
+          <xpath function="replace(join(' ', if(selected(phase, 'nova_text_0000000001'), $knova_text_0000000001, ''), if(selected(phase, 'nova_text_0000000002'), $knova_text_0000000002, ''), if(selected(phase, 'nova_text_0000000003'), $knova_text_0000000003, ''), if(selected(phase, 'nova_text_0000000004'), $knova_text_0000000004, '')), '\s+', ' ')">
+            <variable name="knova_text_0000000001">
+              <locale id="m0.case_short.case_phase_2.enum.knova_text_0000000001"/>
+            </variable>
+            <variable name="knova_text_0000000002">
+              <locale id="m0.case_short.case_phase_2.enum.knova_text_0000000002"/>
+            </variable>
+            <variable name="knova_text_0000000003">
+              <locale id="m0.case_short.case_phase_2.enum.knova_text_0000000003"/>
+            </variable>
+            <variable name="knova_text_0000000004">
+              <locale id="m0.case_short.case_phase_2.enum.knova_text_0000000004"/>
+            </variable>
+          </xpath>
+        </text>
+      </template>
+    </field>
+    <field>
+      <header>
+        <text>
+          <locale id="m0.case_short.case_current_step_id_3.header"/>
+        </text>
+      </header>
+      <template>
+        <text>
+          <xpath function="replace(join(' ', if(selected(current_step_id, 'nova_text_0000000011'), $knova_text_0000000011, ''), if(selected(current_step_id, 'nova_text_0000000012'), $knova_text_0000000012, ''), if(selected(current_step_id, 'nova_text_0000000013'), $knova_text_0000000013, '')), '\s+', ' ')">
+            <variable name="knova_text_0000000011">
+              <locale id="m0.case_short.case_current_step_id_3.enum.knova_text_0000000011"/>
+            </variable>
+            <variable name="knova_text_0000000012">
+              <locale id="m0.case_short.case_current_step_id_3.enum.knova_text_0000000012"/>
+            </variable>
+            <variable name="knova_text_0000000013">
+              <locale id="m0.case_short.case_current_step_id_3.enum.knova_text_0000000013"/>
+            </variable>
+          </xpath>
+        </text>
+      </template>
+    </field>
+  </detail>
+  <detail id="m0_case_long">
+    <title>
+      <text>
+        <locale id="cchq.case"/>
+      </text>
+    </title>
+    <field>
+      <header>
+        <text>
+          <locale id="m0.case_long.case_case_name_1.header"/>
+        </text>
+      </header>
+      <template>
+        <text>
+          <xpath function="case_name"/>
+        </text>
+      </template>
+    </field>
+    <field>
+      <header>
+        <text>
+          <locale id="m0.case_long.case_phase_2.header"/>
+        </text>
+      </header>
+      <template>
+        <text>
+          <xpath function="replace(join(' ', if(selected(phase, 'nova_text_0000000001'), $knova_text_0000000001, ''), if(selected(phase, 'nova_text_0000000002'), $knova_text_0000000002, ''), if(selected(phase, 'nova_text_0000000003'), $knova_text_0000000003, ''), if(selected(phase, 'nova_text_0000000004'), $knova_text_0000000004, '')), '\s+', ' ')">
+            <variable name="knova_text_0000000001">
+              <locale id="m0.case_long.case_phase_2.enum.knova_text_0000000001"/>
+            </variable>
+            <variable name="knova_text_0000000002">
+              <locale id="m0.case_long.case_phase_2.enum.knova_text_0000000002"/>
+            </variable>
+            <variable name="knova_text_0000000003">
+              <locale id="m0.case_long.case_phase_2.enum.knova_text_0000000003"/>
+            </variable>
+            <variable name="knova_text_0000000004">
+              <locale id="m0.case_long.case_phase_2.enum.knova_text_0000000004"/>
+            </variable>
+          </xpath>
+        </text>
+      </template>
+    </field>
+    <field>
+      <header>
+        <text>
+          <locale id="m0.case_long.case_current_step_id_3.header"/>
+        </text>
+      </header>
+      <template>
+        <text>
+          <xpath function="replace(join(' ', if(selected(current_step_id, 'nova_text_0000000011'), $knova_text_0000000011, ''), if(selected(current_step_id, 'nova_text_0000000012'), $knova_text_0000000012, ''), if(selected(current_step_id, 'nova_text_0000000013'), $knova_text_0000000013, '')), '\s+', ' ')">
+            <variable name="knova_text_0000000011">
+              <locale id="m0.case_long.case_current_step_id_3.enum.knova_text_0000000011"/>
+            </variable>
+            <variable name="knova_text_0000000012">
+              <locale id="m0.case_long.case_current_step_id_3.enum.knova_text_0000000012"/>
+            </variable>
+            <variable name="knova_text_0000000013">
+              <locale id="m0.case_long.case_current_step_id_3.enum.knova_text_0000000013"/>
+            </variable>
+          </xpath>
+        </text>
+      </template>
+    </field>
+  </detail>
+</suite>

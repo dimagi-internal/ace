@@ -1584,6 +1584,58 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
        `none — declared inline in the PDD`), the number of states and steps
        compared, and the finding count (`0` on success).
 
+    7. **Propagate the corrected taxonomy to the CASE-LIST ENUMS
+       (dimagi-internal/ace#1688).** Steps 3–4 repair the FORM's option labels
+       via `edit_field`. They do not touch the case-list columns — and this
+       step's own trigger (step 1) names a *case-list column* as a surface the
+       taxonomy reaches. That gap is the whole of ace#1688: on
+       `spark-facilitator/20260820-0817` the Phase-3 correction landed on the
+       form itemsets and never on the enums, so the `fcap_community` tile kept
+       rendering the earlier INVENTED taxonomy while the form offered Spark's
+       real one. Stored `1` read as `1. Introduction` before the visit and
+       `1. Planning` during it.
+
+       **ACE does not author these enums — the architect does.** The case-list
+       tool family (`add_case_list_columns`, `update_case_list_column`,
+       `configure_case_list`) carries a `kind: 'id-mapping'` column whose
+       `mapping: [{value, label}]` is supplied by whoever calls it, and the
+       autonomous architect calls it while building the picker. So the enum is
+       composed from the architect's reading of the brief, independently of the
+       itemset, and nothing reconciles the two. These atoms are available at
+       **level 0** (Step 4d already uses the family), which is why the
+       reconciliation belongs here rather than in an upstream issue.
+
+       1. For each state-bearing select repaired above, read the module's case
+          list — `get_module({app_id, moduleUuid})` off the Step-4a addressing
+          map — and select every column with `kind: 'id-mapping'` whose `field`
+          is a case property that select writes.
+       2. **Derive, do not compare-then-guess.** Build the mapping from the
+          form's itemset: one `{value, label}` per option, using the option's
+          own value and its repaired label. Keep the column's existing `field`,
+          `header`, `sort` and visibility; replace only `mapping`. Where the
+          tile deliberately shows a SUBSET of the options, keep that subset —
+          the rule is subset, not equality — but every entry it does keep must
+          come from the itemset.
+       3. `update_case_list_column({app_id, moduleUuid, columnUuid, column})`
+          with the full column body (the uuid carries over; never supply one).
+       4. Re-fetch via `get_module` and re-assert value-for-value against the
+          itemset. **Bounded loop, max 3 iterations**, same shape as 3–4. Still
+          disagreeing after the third → structured failure naming each column
+          and the values that differ; do NOT write the success summary.
+       5. Record in the memo: columns rewritten, values per column, and the
+          form each was derived from.
+
+       **Never reconcile the other way.** The itemset is the authority — it is
+       what the worker picks from and what the stored value means. Editing the
+       form's labels to match a stale enum re-introduces the invented
+       vocabulary this step exists to remove.
+
+       *Enforced downstream:* `app-release-qa § Step 4` check 3 runs
+       `checkCczCaseListEnumFidelity` over the released CCZ and halts with
+       `[BLOCKER]` `case-list-enum-drift` if any of this was missed — that gate
+       is what makes this step falsifiable rather than aspirational
+       (`lib/ccz-enum-fidelity.ts`, `test/lib/ccz-enum-fidelity.test.ts`).
+
 4m. **Language layer — runs at LEVEL 0, LAST of the 4x steps (ace#1556).**
     Applies only when the PDD names a working language other than English;
     otherwise skip and say so in the summary.
@@ -1890,6 +1942,7 @@ Each row this skill writes uses `phase: 3-commcare` and
 
 | Date | Change | Author |
 |------|--------|--------|
+| 2026-08-27 | **Step 4l gains sub-step 7 — the corrected taxonomy propagates to the CASE-LIST ENUMS (ace#1688).** 4l steps 3-4 repair the FORM's option labels via `edit_field` and stop there, while 4l's own trigger (step 1) names a *case-list column* as a surface the taxonomy reaches. On `spark-facilitator/20260820-0817` the Phase-3 FCAP correction landed on the form itemsets and never on the enums, so the `fcap_community` tile rendered the earlier ACE-invented taxonomy while the form offered Spark's real one — stored `1` read as `1. Introduction` before the visit and `1. Planning` during it, off by one on the surface the Learn app explicitly teaches the worker to read (`m3_start`, quiz `q9`). **ACE does not author these enums — the autonomous architect does**, via `add_case_list_columns` / `configure_case_list`'s `kind: 'id-mapping'` column, whose `mapping` the caller supplies; it composes them from the brief independently of the itemset and nothing reconciles the two. Those atoms ARE available at level 0 (Step 4d already uses the family), so the reconciliation lands here rather than as an upstream Nova issue: derive `mapping` from the itemset, `update_case_list_column`, re-assert, bounded 3-iteration loop. A SUBSET is allowed (a tile may deliberately label fewer options); reconciling the other way is forbidden — the itemset is the authority. Paired with the downstream gate that makes it falsifiable rather than aspirational: `app-release-qa § Step 4` check 3 halts with `[BLOCKER]` `case-list-enum-drift`. *Enforced:* `lib/ccz-enum-fidelity.ts` + `test/lib/ccz-enum-fidelity.test.ts`, whose negative control is the shipped drift itself and must FAIL. | ACE team |
 | 2026-08-26 | **Step 4k's skip is split, and its source is resolvable through the manifest's own folder ids (ace#1648).** 4k's trigger ANDed "the PDD marks an instrument `[FIXED]`" with "`inputs-manifest.yaml` carries a source file for it" into ONE silent skip, so *nothing to check* and *the thing I must check is unreachable* were indistinguishable and both reported green. They were not equally rare: `inputs[]` records direct child FILES only, so a published instrument bundle sitting in a SUBFOLDER of `inputs/` — the natural shape for a vendor download — always took the second branch. On `hh-poverty-targeting/20260824-1404` the workbook sat in `official-nigeria-ppi-2020 (povertyindex.org)/` and none of the five `inputs[]` entries was it, so a 4k run following its documented path checks nothing. **A skip that disables a correctness check is worse than one that degrades an output, because the run still says green.** Two changes: step 2 may now resolve through ids the manifest ALREADY records (`subfolders_not_listed[].folder_id`, `source_folder_id`) by walking them ONE level with `drive_list_folder` — walking a recorded id is not guessing, composing a path by name still is and is still forbidden — and orchestrator Step 5c now MANDATES recording those ids. Step 1's trigger is split: no `[FIXED]` instrument → skip cleanly; a `[FIXED]` instrument whose source does not resolve → **HALT**, never a skip. The decision is delegated to `resolveInstrumentSource` in `lib/instrument-constants.ts` so it is unit-tested rather than prose-only. *Enforced:* `test/skills/instrument-source-resolution.test.ts` (5 assertions red against the pre-fix text), `test/lib/instrument-constants.test.ts`, `test/mcp/gdrive/generate-inputs-manifest.test.ts`. | ACE team |
 | 2026-08-24 | **Step 4f gains a partner-register halt (ace#1621).** 4f's halt was scoped to payment correctness — a still-degraded select halts only when it `feeds_entity_id` on a PAYABLE deliver unit — so a field that fails neither test recorded an `option_source_gaps` entry and proceeded. That is right for a genuinely unknowable set and wrong for a register that EXISTS: on `spark-facilitator/20260820-0817` the meeting-activity repeat shipped 11 ACE-authored placeholders identical on all 24 FCAP steps while Spark's own 78-activity register sat in the run's `inputs/`, and the recorded gap deferred the catch to an operator reading the residual days later. When the PDD declares `<field> from <tag> [source: …] [filtered by …]`, an inline invented option list is now a **HALT** whatever the payability status, and is never dischargeable as a named gap; both inline rungs of the step-5 escape ladder are withdrawn for such a field. Mechanical via `lib/option-register.ts` (`parseRegisterDeclaration` + `diffOptionRegister`), sourcing rows from the partner's `.ccz` fixture XML in preference to a prose guide because a production CCZ carries the REAL value codes the partner's M&E joins on. Where ACE cannot finish — Nova has no lookup-table create atom and its row-import route is browser-session-only — the terminal behaviour is extract → emit `renderRegisterCsv` + table spec → halt naming the two operator steps. Paired with `_app-component-library § partner-option-register` and the eval's `option_register_fidelity` hard-gate. *Enforced:* `test/lib/option-register.test.ts`. | ACE team |
 | 2026-08-23 | **New Step 4l — entity state-taxonomy fidelity (ace#1564).** The followed entity's state model lived only as PROSE in the PDD's § Entity Lifecycle, and nothing in Step 3's brief-composition checklist asked for it — while `longitudinal-visits` REQUIRES a case list showing state, so the architect must name every state and invents the set when the brief carries none. On `spark-facilitator/20260820-0817` the PDD's `1 = Planning (steps 1–14)` … `4 = Transition (steps 23–24)`, sourced from Spark's own published FCAP guide sitting in the run's `inputs/`, shipped as four invented labels over a different partition, with all 24 step names invented too. Learn then teaches one mapping while Deliver offers another, and the invented words reach real workers and the partner. Step 3 now emits `_app-component-library § entity-state-taxonomy` (always for this archetype) and parses `program_parameters.entity_state_taxonomy` with `parseStateTaxonomy` BEFORE briefing — `declared: false` or non-empty `problems` is a **HALT** with a Phase-1 finding, never a licence to invent; where the row names a source document the brief is composed from THAT file out of `inputs/`. 4l then diffs the built option set with `diffStateTaxonomy`: any invented, dropped, relabelled or re-partitioned state is a **HALT with a bounded 3-iteration repair loop**, not a warn. Deliberately ships NO canonical vocabulary — hard-coding one would impose ACE's words on every partner, the mirror image of the defect. Paired with the eval's `entity_state_fidelity` hard-gate. *Enforced:* `test/lib/entity-state-taxonomy.test.ts` + `test/skills/entity-state-taxonomy-component.test.ts` + `test/skills/deliver-l0-loop-integrity.test.ts`. **The language layer moved 4l → 4m** in the same change: it must stay LAST of the 4x steps because every English-editing step has to precede it, and 4l's repair loop calls `edit_field` on option labels — running it after the layer would demote those translations to `out-of-date`. Pointers updated in `_app-component-library § app-language-layer`, both `-eval` change logs, and `test/skills/app-language-layer.test.ts`. | ACE team |

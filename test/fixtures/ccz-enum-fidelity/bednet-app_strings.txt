@@ -1,0 +1,8 @@
+m0.case_long.case_case_name_1.header=Visit
+m0.case_long.case_slept_under_bednet_2.enum.kno=No
+m0.case_long.case_slept_under_bednet_2.enum.kyes=Yes
+m0.case_long.case_slept_under_bednet_2.header=Slept under bednet
+m0.case_short.case_case_name_1.header=Visit
+m0.case_short.case_slept_under_bednet_2.enum.kno=No
+m0.case_short.case_slept_under_bednet_2.enum.kyes=Yes
+m0.case_short.case_slept_under_bednet_2.header=Slept under bednet
