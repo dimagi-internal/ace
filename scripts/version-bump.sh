@@ -1,26 +1,24 @@
 #!/usr/bin/env bash
 # version-bump.sh — bump VERSION across the four files that carry it.
 #
-# ## A PR DOES NOT RUN THIS ANY MORE (since 0.13.10xx)
+# ## A bare run BUMPS. It is the first line of the ship loop.
 #
-# `.github/workflows/auto-version-bump.yml` bumps on every merge to `main`, so
-# a PR must NOT touch VERSION / package.json / plugin.json / marketplace.json.
-# Bare invocation is therefore a NO-OP that says so and exits 0 — deliberately,
-# so an agent following a cached older copy of `skills/shipping` still works and
-# gets told why rather than silently reintroducing the conflict.
+# 0.13.1042 made a bare invocation a no-op, on the assumption that the post-merge
+# auto-bump was about to take over. It could not: `github-actions[bot]` cannot
+# push to a protected `main` (run 33072248319, GH006 — required status check
+# "clean-install" is expected). Meanwhile `check-version-unique.ts` still
+# REQUIRES every PR to advance VERSION, and it runs inside `clean-install`, the
+# one required check. A no-op bump plus a gate that demands a bump is a repo
+# where nothing can merge.
 #
-#   --ci      the post-merge bump, run by the workflow on `main`. Plain
-#             patch+1 off the local VERSION; no origin fetch (it IS origin).
-#   --force   a deliberate manual bump — a minor/major, or a hotfix that must
-#             carry its own version. Rare. The old behaviour verbatim.
+# So the no-op is reverted and the status quo restored: every PR bumps, this
+# script does it, and the gate enforces it. `--ci` and `--force` stay — they are
+# harmless and `--ci` is what the (still inert) workflow would call if the
+# settings question is ever answered.
 #
-# Why the change: the plugin cache is keyed by version, so two trees under one
-# version means the second is unreachable by /ace:update (ace#1593). That was
-# defended by a CHECK that every PR had bumped; the check was right and the cost
-# was five files conflicting on every pair of concurrent PRs. Bumping after the
-# merge satisfies the same invariant by construction. See the workflow header.
+# The lesson worth keeping: a script that a cached older copy of the ship loop
+# still invokes cannot change behaviour ahead of the thing that replaces it.
 #
-# (Original description, still accurate for --force:)
 # Atomically bump VERSION across worktrees.
 #
 # Mirrors `canopy version bump`: fetches origin/main, picks
@@ -68,49 +66,6 @@ done
 
 REPO_ROOT="$(git rev-parse --show-toplevel)"
 VERSION_FILE="$REPO_ROOT/VERSION"
-
-# The no-op gate. A bare run used to be the first line of the ship loop; it is
-# now the wrong thing to do, and the loudest place to say so is here rather than
-# in a doc the caller may not have re-read.
-if [ "$CI_MODE" = "0" ] && [ "$FORCE" = "0" ] && [ "$DRY_RUN" = "0" ] && [ "$REBASE_FIRST" = "0" ]; then
-  cat >&2 <<'MSG'
-version-bump: no-op — version bumps are AUTOMATIC on merge since 0.13.10xx.
-
-  .github/workflows/auto-version-bump.yml bumps VERSION, package.json,
-  plugin.json and marketplace.json on every push to main. A PR must NOT
-  touch them: doing so puts all four back into every concurrent PR's
-  conflict set, which is the tax this replaced (six collisions in one day,
-  2026-08-27).
-
-  Just commit and open the PR. Nothing else to do.
-
-  If you genuinely need a deliberate bump (a minor/major, or a hotfix that
-  must carry its own version), re-run with --force.
-MSG
-  # Exit 0, not 1: a cached older `skills/shipping` still opens with this
-  # command, and failing there would break shipping for anyone who has not
-  # picked up the new plugin version yet.
-  exit 0
-fi
-
-# --rebase-first is still useful (rebasing onto a moved main), but it must not
-# bump any more — the version files are main's now.
-if [ "$REBASE_FIRST" = "1" ] && [ "$FORCE" = "0" ]; then
-  REBASE_ONLY=1
-else
-  REBASE_ONLY=0
-fi
-
-# Version files that have deterministic rebase conflicts when parallel
-# worktrees bump in parallel. --rebase-first auto-resolves these with
-# --ours, then re-runs the bump (so the new version is computed against
-# the freshly-rebased origin/main).
-VERSION_FILES=(
-  "VERSION"
-  "package.json"
-  ".claude-plugin/plugin.json"
-  ".claude-plugin/marketplace.json"
-)
 
 if [ "$REBASE_FIRST" = "1" ]; then
   echo "version-bump: --rebase-first set; fetching + rebasing onto origin/main"
