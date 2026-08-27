@@ -1,34 +1,34 @@
 #!/usr/bin/env npx tsx
 /**
- * Make one media file safe to hand to Nova's `upload_media_asset`, and emit
- * its base64.
+ * Bound one media file to what belongs on a frontline worker's phone.
  *
- * `upload_media_asset` takes inline base64 and has no path companion (Nova is
- * upstream — see `lib/media-prepare.ts` for why), so every byte crosses a
- * model tool call. This wrapper bounds that payload: an oversized image is
- * downscaled to a device-appropriate size, oversized audio/video is refused
- * by name, and the caller is handed base64 that will actually fit.
+ * An oversized image is downscaled to 800px on its longest edge, and falls
+ * back to JPEG (stepping the quality down) when a photograph is still over
+ * budget. Oversized audio/video is refused by name rather than transcoded,
+ * because re-encoding it is a judgement about content.
+ *
+ * **This script never emits file bytes.** It reports a PATH and the metadata
+ * about it; `scripts/run-nova-media-upload.ts` is what reads those bytes and
+ * uploads them, server-side, so nothing binary ever crosses a model tool call.
+ * It used to write a base64 sidecar and offer a `--print-base64` flag — both
+ * were left over from before the upload proxy existed, and the flag was a
+ * footgun (base64 tokenizes at ~1 token/char, so printing a 60 KB image would
+ * have cost ~80k tokens). Do not reintroduce either.
  *
  * Usage:
- *   npx tsx scripts/run-media-prepare.ts <input> [--out-dir <dir>] [--b64-out <path>]
- *                                        [--budget-bytes <n>] [--print-base64]
+ *   npx tsx scripts/run-media-prepare.ts <input> [--out-dir <dir>] [--budget-bytes <n>]
  *
  * Output (stdout): one JSON line —
- *   { path, mime_type, kind, action, bytes, base64_bytes, base64_path?, base64?, note }
+ *   { path, mime_type, kind, action, bytes, note }
  *
- * By default the base64 is written next to the prepared file rather than
- * printed, so a caller that only needs the metadata pays nothing for it.
- * Pass `--print-base64` to inline it.
- *
- * Exit codes: 0 prepared, 1 usage/IO error, 2 refused (too large to carry).
+ * Exit codes: 0 prepared, 1 usage/IO error, 2 refused (cannot reach budget).
  */
 
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, statSync } from 'node:fs';
 import { basename, extname, join } from 'node:path';
 import {
   ASSET_BUDGET_BYTES,
-  base64Length,
   pickResizer,
   planPreparation,
   resizeArgv,
@@ -80,8 +80,7 @@ function which(tool: string): boolean {
 const argv = process.argv.slice(2);
 if (argv.length === 0 || argv[0] === '--help' || argv[0] === '-h') {
   process.stderr.write(
-    'usage: run-media-prepare.ts <input> [--out-dir <dir>] [--b64-out <path>] ' +
-      '[--budget-bytes <n>] [--print-base64]\n',
+    'usage: run-media-prepare.ts <input> [--out-dir <dir>] [--budget-bytes <n>]\n',
   );
   process.exit(argv.length === 0 ? 1 : 0);
 }
@@ -182,26 +181,13 @@ if (plan.action === 'resize') {
   }
 }
 
-const finalBytes = statSync(finalPath).size;
-const b64 = readFileSync(finalPath).toString('base64');
-
-const result: Record<string, unknown> = {
+const result = {
   path: finalPath,
   mime_type: finalMime,
   kind: typed.kind,
   action: plan.action,
-  bytes: finalBytes,
-  base64_bytes: base64Length(finalBytes),
+  bytes: statSync(finalPath).size,
   note,
 };
-
-if (argv.includes('--print-base64')) {
-  result.base64 = b64;
-} else {
-  const b64Path = flag(argv, '--b64-out') ?? `${finalPath}.b64`;
-  mkdirSync(join(b64Path, '..'), { recursive: true });
-  writeFileSync(b64Path, b64);
-  result.base64_path = b64Path;
-}
 
 process.stdout.write(`${JSON.stringify(result)}\n`);
