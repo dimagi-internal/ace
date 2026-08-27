@@ -55,6 +55,14 @@ export interface ComposeResult {
    * already-present are never counted here.
    */
   overridesApplied: string[];
+  /** Rows stamped `human-decided` because a saved ruling matched their
+   * `feedback_ref` rather than their id. Reported separately so a run can see
+   * that a reviewer's decision reached a row it had renamed. */
+  rulingsApplied: string[];
+  /** feedback_refs that matched but carried no `decided_by`/`decided_at`, so
+   * the attribution claim was refused. Surfaced rather than swallowed — a
+   * silently-dropped reviewer ruling is the exact failure this closes. */
+  rulingsSkippedUnattributed: string[];
 }
 
 export type DecisionsWriteCode =
@@ -167,7 +175,9 @@ export function composeAppendedLog(args: ComposeArgs): ComposeResult {
   const existingIds = new Set(log.decisions.map((d) => d.id));
   const skipped: string[] = [];
   const overridesApplied: string[] = [];
+  const rulingsApplied: string[] = [];
   const appliedIds = new Set(overridden.applied);
+  const rulingIds = new Set(overridden.appliedByFeedbackRef);
   let added = 0;
   for (const row of overridden.rows) {
     if (existingIds.has(row.id)) {
@@ -177,6 +187,7 @@ export function composeAppendedLog(args: ComposeArgs): ComposeResult {
     log.decisions.push(row);
     existingIds.add(row.id);
     if (appliedIds.has(row.id)) overridesApplied.push(row.id);
+    if (rulingIds.has(row.id)) rulingsApplied.push(row.id);
     added++;
   }
 
@@ -232,7 +243,16 @@ export function composeAppendedLog(args: ComposeArgs): ComposeResult {
   }
 
   const content = yaml.stringify(log, { lineWidth: 0, aliasDuplicateObjects: false });
-  return { content, warnings, added, skipped, total: log.decisions.length, overridesApplied };
+  return {
+    content,
+    warnings,
+    added,
+    skipped,
+    total: log.decisions.length,
+    overridesApplied,
+    rulingsApplied,
+    rulingsSkippedUnattributed: overridden.skippedUnattributed,
+  };
 }
 
 interface LoadArgs {

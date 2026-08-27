@@ -213,6 +213,8 @@ describe('handleAppendRows', () => {
       revisionVersion: '1',
       created: true,
       overridesApplied: [],
+      rulingsApplied: [],
+      rulingsSkippedUnattributed: [],
     });
     expect(fake.files.create).toHaveBeenCalledTimes(1);
     expect(fake.files.update).not.toHaveBeenCalled();
@@ -306,6 +308,8 @@ describe('handleAppendRows', () => {
       total: 2,
       created: false,
       overridesApplied: [],
+      rulingsApplied: [],
+      rulingsSkippedUnattributed: [],
     });
     expect(fake.files.update).not.toHaveBeenCalled();
     expect(fake.files.create).not.toHaveBeenCalled();

@@ -93,6 +93,21 @@ export const DecisionOverrideRowSchema = z.object({
         "appended to the row's `options` if missing (strict-write invariant, ace#526).",
     ),
   override_reasoning: z.string().min(1).optional(),
+  // --- Bind by the REVIEW ITEM, not just the row id (v5 decisions) --------
+  // A reviewer rules on a QUESTION; the run mints an id for it. Those ids are
+  // not stable: across 22 runs of two opps, one reviewer's 9 comments were
+  // raised under 22 DIFFERENT ids — [g] alone appeared as
+  // `consent-script-content`, `consent-script-contents` and
+  // `consent-script-elements`, differing by a pluralization. Binding on `id`
+  // alone therefore CANNOT carry a review ruling to the next run, which is
+  // why `decision-overrides.yaml` had never bound a single reviewer decision.
+  // `feedback_ref` is the stable key: it names the reviewer's own comment.
+  feedback_ref: z
+    .string()
+    .regex(/^[a-z0-9]+(-[a-z0-9]+)*\/[a-z0-9]+(-[a-z0-9]+)*$/, {
+      message: "feedback_ref must be `<record-slug>/<item-id>` (e.g. `20260727-sophie-feintuch/c`)",
+    })
+    .optional(),
   // Provenance snapshots from the source run — informational, never matched.
   phase: z.string().optional(),
   question: z.string().optional(),
@@ -182,8 +197,21 @@ export function parseDecisionOverridesYaml(input: string): DecisionOverridesFile
 export interface ApplyOverridesResult {
   /** Transformed rows (same order as input; untouched rows pass through by reference). */
   rows: DecisionRow[];
-  /** ids of rows an override actually bound to, in input-row order. */
+  /** ids of rows an override bound to BY ID — a value replacement. */
   applied: string[];
+  /**
+   * ids of rows bound BY `feedback_ref` — the same reviewer ruling reaching a
+   * row the run minted under a different id. These are stamped
+   * `status: human-decided` and keep the run's own phrasing of the value; see
+   * `applyDecisionOverrides` for why the value is deliberately not replaced.
+   */
+  appliedByFeedbackRef: string[];
+  /**
+   * feedback_refs that matched a row but could not be stamped because the
+   * override carries no `decided_by` / `decided_at`. `human-decided` is an
+   * attribution claim — refusing to make it anonymously is the point.
+   */
+  skippedUnattributed: string[];
 }
 
 /**
@@ -202,37 +230,103 @@ export interface ApplyOverridesResult {
  *   drops those on save (revert = absence), so one showing up means nothing
  *   to bind.
  *
- * Overrides whose `id` no input row carries are ignored (opp-level file,
- * cumulative across runs — unmatched ids are expected).
+ * Overrides whose `id` no input row carries fall back to matching on
+ * `feedback_ref` — see below. Ones that match neither are ignored (opp-level
+ * file, cumulative across runs — unmatched entries are expected).
+ *
+ * ## Why there are two match keys
+ *
+ * `id` is the precise key and wins when it matches. But run-minted ids are
+ * NOT stable: measured across 22 runs of spark-facilitator and
+ * hh-poverty-targeting, one reviewer's 9 comments were raised under 22
+ * different ids, three of them for a single comment. So id-only binding
+ * silently drops a reviewer's ruling the moment the next run words the
+ * question differently — which is exactly what happened: 31 rows carried a
+ * `feedback_ref` and not one ever reached `decision-overrides.yaml`.
+ *
+ * ## Why a feedback_ref match does NOT replace the value
+ *
+ * An id match is row-to-row: same question, same option vocabulary, so the
+ * saved value drops in cleanly. A feedback_ref match is question-to-question
+ * across differently-worded rows — the saved string belongs to the OLD row's
+ * vocabulary ("Adds data destination and no selection guarantee") and the new
+ * row phrases the same answer its own way ("Six elements including data
+ * destination..."). Forcing the old string in would assert a value the run
+ * never reasoned about.
+ *
+ * So a feedback_ref match stamps `status: human-decided` with the reviewer's
+ * attribution and carries their rationale, while leaving `ai-default` as the
+ * run wrote it. That says the true thing — a named person settled this
+ * question, here is what they said — without putting words in the run's
+ * mouth. `human-decided` also forbids `override`, so the two paths stay
+ * cleanly separable downstream.
  */
 export function applyDecisionOverrides(
   rows: DecisionRow[],
   overrides: DecisionOverrideRow[],
 ): ApplyOverridesResult {
   const byId = new Map<string, DecisionOverrideRow>();
-  for (const o of overrides) byId.set(o.id, o);
+  const byFeedbackRef = new Map<string, DecisionOverrideRow>();
+  for (const o of overrides) {
+    byId.set(o.id, o);
+    // Last writer wins per ref, matching the id map's semantics. The file is
+    // cumulative, so a later review session supersedes an earlier one.
+    if (o.feedback_ref !== undefined) byFeedbackRef.set(o.feedback_ref, o);
+  }
 
   const applied: string[] = [];
+  const appliedByFeedbackRef: string[] = [];
+  const skippedUnattributed: string[] = [];
+
   const out = rows.map((row) => {
+    // --- 1. Exact id match: the reviewer's value replaces the AI's. --------
     const o = byId.get(row.id);
-    if (!o) return row;
-    if (o.override === row["ai-default"] && o.override_reasoning === undefined) {
+    if (o) {
+      if (o.override === row["ai-default"] && o.override_reasoning === undefined) {
+        return row;
+      }
+      applied.push(row.id);
+      const next: DecisionRow = {
+        ...row,
+        options: row.options.includes(o.override)
+          ? row.options
+          : [...row.options, o.override],
+        override: o.override,
+        status: "overridden",
+      };
+      if (o.override_reasoning !== undefined) {
+        next.override_reasoning = o.override_reasoning;
+      }
+      return next;
+    }
+
+    // --- 2. Same review item, different row id: carry the RULING, not the
+    //        string. See the note above.
+    if (row.feedback_ref === undefined) return row;
+    const f = byFeedbackRef.get(row.feedback_ref);
+    if (!f) return row;
+
+    // `human-decided` is an attribution claim. v5's validator requires
+    // decided_by + decided_at, and asserting a human ruled without being able
+    // to say WHICH human is exactly the failure this whole field exists to
+    // fix — so refuse rather than stamp it anonymously.
+    if (f.decided_by === undefined || f.decided_at === undefined) {
+      skippedUnattributed.push(row.feedback_ref);
       return row;
     }
-    applied.push(row.id);
+
+    appliedByFeedbackRef.push(row.id);
     const next: DecisionRow = {
       ...row,
-      options: row.options.includes(o.override)
-        ? row.options
-        : [...row.options, o.override],
-      override: o.override,
-      status: "overridden",
+      status: "human-decided",
+      decided_by: f.decided_by,
+      decided_at: f.decided_at,
     };
-    if (o.override_reasoning !== undefined) {
-      next.override_reasoning = o.override_reasoning;
+    if (f.override_reasoning !== undefined) {
+      next.override_reasoning = f.override_reasoning;
     }
     return next;
   });
 
-  return { rows: out, applied };
+  return { rows: out, applied, appliedByFeedbackRef, skippedUnattributed };
 }
