@@ -5,6 +5,20 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.13.1041 — 2026-08-27
+
+**The conflict-marker guard could not run when it was needed most.**
+
+0.13.1029 added `test/lib/no-conflict-markers.test.ts` after two incidents in one day: #1714 merged with unresolved markers in `CHANGELOG.md`, and the fix for it committed markers into `package.json`. The second is the one that matters here — markers in `package.json` broke **vitest itself**, so the suite exited 1 with no summary line, which reads like infrastructure noise rather than a failure and cost two more commands before it was chased.
+
+A guard that lives inside the suite cannot fire when the markers land in a file the suite needs to start: `package.json`, `vitest.config.ts`, `tsconfig.json`. `npm ci` catches the first of those and nothing catches the other two.
+
+- **`scripts/check-conflict-markers.sh`** — the same check, needing nothing but `git` and `grep`, so it cannot be broken by the thing it checks for. Line-start-anchored canonical markers, tracked files only, binaries skipped, and a scanner-sanity floor so an empty scan fails instead of passing. Names the file and the line.
+- **`clean-install.yml` runs it FIRST**, before `npm ci`. Markers in `package.json` now produce "CHANGELOG.md:8084: <<<<<<< HEAD" instead of a JSON parse error three steps later.
+- **`npm run check:conflicts`** for the same check by hand.
+
+Both halves cross-guard each other: the test now asserts the script exists, is executable, is exposed as an npm script, and is ordered before `npm ci` in the workflow — because if the shell half is quietly dropped, this file's coverage silently halves and nothing says so.
+
 ## 0.13.1040 — 2026-08-27
 
 **The depth guard checked ACE against ACE, and never against the machine.**

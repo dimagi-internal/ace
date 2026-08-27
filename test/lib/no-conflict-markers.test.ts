@@ -23,6 +23,15 @@
  * relies on remembering to run it on *every* conflicted file rather than the one
  * you hand-edited. This is the enforcement.
  *
+ * ## And it is only half of it
+ *
+ * This test cannot run when the markers land in a file the SUITE needs —
+ * `package.json`, `vitest.config.ts`, `tsconfig.json`. That is not academic: it
+ * is incident #2 above verbatim. So the same check also exists as
+ * `scripts/check-conflict-markers.sh`, wired into `clean-install.yml` BEFORE
+ * `npm ci` and needing nothing but git and grep. Keep both, and keep them
+ * agreeing — if you change the marker set or the scoping here, change it there.
+ *
  * ## Scope
  *
  * Tracked files only, and the markers must be at the start of a line in the
@@ -87,5 +96,37 @@ describe('no unresolved conflict markers', () => {
         'just the one you hand-edited (skills/shipping § Step 2).\n\n' +
         offenders.join('\n'),
     ).toEqual([]);
+  });
+});
+
+describe('the standalone guard exists and is wired', () => {
+  // The vitest half cannot fire when markers break the suite's own inputs —
+  // which is exactly what happened on 2026-08-26 with package.json. If the
+  // shell half is deleted or unwired, this file's coverage silently halves.
+  it('scripts/check-conflict-markers.sh is present and executable', () => {
+    const p = path.join(REPO_ROOT, 'scripts/check-conflict-markers.sh');
+    expect(fs.existsSync(p), 'the shell half of this guard is missing').toBe(true);
+    // eslint-disable-next-line no-bitwise
+    expect(fs.statSync(p).mode & 0o111, 'must be executable').toBeGreaterThan(0);
+  });
+
+  it('CI runs it before npm ci', () => {
+    const wf = fs.readFileSync(path.join(REPO_ROOT, '.github/workflows/clean-install.yml'), 'utf8');
+    const guardAt = wf.indexOf('npm run check:conflicts');
+    const npmCiAt = wf.indexOf('run: npm ci');
+    expect(guardAt, 'clean-install.yml must run `npm run check:conflicts`').toBeGreaterThan(-1);
+    expect(npmCiAt, '`npm ci` step not found — did the workflow change shape?').toBeGreaterThan(-1);
+    expect(
+      guardAt,
+      'the marker guard must run BEFORE `npm ci`. After it, markers in\n' +
+        'package.json fail the job as a JSON parse error instead of naming the\n' +
+        'file and line — which is the failure mode that cost two commands on\n' +
+        '2026-08-26.',
+    ).toBeLessThan(npmCiAt);
+  });
+
+  it('package.json exposes it as a script', () => {
+    const pkg = JSON.parse(fs.readFileSync(path.join(REPO_ROOT, 'package.json'), 'utf8'));
+    expect(pkg.scripts?.['check:conflicts'], 'npm run check:conflicts must exist').toBeTruthy();
   });
 });

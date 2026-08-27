@@ -1,6 +1,6 @@
 {
   "name": "ace",
-  "version": "0.13.1040",
+  "version": "0.13.1041",
   "engines": {
     "node": ">=22"
   },
@@ -8,6 +8,7 @@
   "type": "module",
   "scripts": {
     "test": "vitest run",
+    "check:conflicts": "bash scripts/check-conflict-markers.sh",
     "test:watch": "vitest",
     "test:integration": "OCS_INTEGRATION=${OCS_INTEGRATION:-0} MOBILE_INTEGRATION=${MOBILE_INTEGRATION:-0} vitest run",
     "test:skills": "vitest run test/skills",

@@ -27,6 +27,16 @@ jobs:
           node-version: '22'
           cache: 'npm'
 
+      # BEFORE npm ci, on purpose. Markers in package.json make `npm ci` fail
+      # with a JSON parse error, and markers in vitest.config.ts make the suite
+      # exit 1 with no summary — both read as infrastructure noise rather than
+      # "someone committed a conflict". This step names the file and the line.
+      # Needs nothing but git and grep, so it cannot be broken by the thing it
+      # is checking for. test/lib/no-conflict-markers.test.ts is the same check
+      # inside the suite; this is the half that survives a broken suite.
+      - name: No unresolved conflict markers
+        run: npm run check:conflicts
+
       # `npm ci` wipes node_modules and installs strictly from package-lock.json.
       # `npm ls` then fails non-zero if the installed tree has any package that
       # is missing, extraneous, or invalid versus the declared dependencies in
