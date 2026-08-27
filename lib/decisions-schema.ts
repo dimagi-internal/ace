@@ -1,6 +1,8 @@
 import { z } from "zod";
 import yaml from "yaml";
 
+import { checkVocabulary } from "./decision-vocabularies.js";
+
 /**
  * Canonical schema version for the decisions log.
  *
@@ -210,6 +212,19 @@ export const DecisionRowSchema = z
           "(e.g. 'Exploration App § Visit structure: one instrument' / 'Exploration App § Open-Q4: households visited twice'). " +
           "Required (>= 2 entries) when `evidence_basis: conflicting`; omit otherwise. Put the resolution rationale in `reasoning`.",
       ),
+    params: z
+      .record(z.unknown())
+      .optional()
+      .describe(
+        "Specifics an enum cannot hold, kept OUT of the compared value. `named: [FOCCAD]` for " +
+          "candidate-llo-roster, `caveat: 'pending Nigerian data-protection confirmation'` for " +
+          "wo-data-storage-region, `key_fields: [...]` for duplicate-detection-key. " +
+          "Testing an enum-only design against 22 real runs is what surfaced this: wo-ethics-scope " +
+          "had 17 phrasings of ONE answer, but two carried a real caveat an enum would have deleted, " +
+          "and candidate-llo-roster's phrasings hid WHICH org was named. `ai-default` is the part " +
+          "that gets compared, diffed and overridden; `params` is the part that would otherwise be " +
+          "smuggled into it as prose.",
+      ),
     feedback_ref: z
       .string()
       .regex(/^[a-z0-9]+(-[a-z0-9]+)*\/[a-z0-9]+(-[a-z0-9]+)*$/, {
@@ -310,6 +325,16 @@ export const DecisionRowStrictSchema = DecisionRowSchema.superRefine(
           `(${JSON.stringify(row.options)}), exact-match. Put the human's rationale in \`override_reasoning\`, not in \`override\`.`,
         path: ["override"],
       });
+    }
+    // v5.1: a catalogued decision must draw its options from the declared
+    // vocabulary. An override binds by exact string match, and the option set
+    // was being regenerated 9-11 times across 10-12 runs — so a saved
+    // reviewer decision could not match even in principle.
+    {
+      const v = checkVocabulary(row);
+      for (const issue of v.issues) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, message: issue, path: ["options"] });
+      }
     }
     // v5: every new row must declare whether the value is ACE's to set or
     // arrives later from outside. This does NOT gate the run — ACE fills its

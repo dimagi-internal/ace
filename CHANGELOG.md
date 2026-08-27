@@ -5,7 +5,8 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
-## 0.13.1022 — 2026-08-26
+<<<<<<< HEAD
+## 0.13.1024 — 2026-08-26
 
 **Every opportunity's chatbot shipped without its training material. Fixed.**
 
@@ -22,6 +23,23 @@ The bot an LLO supervisor actually talks to was missing precisely the four docum
 - The state file gains `last_reindexed_at` — its *absence* on a run whose Phase 6 completed means the chatbot never saw the training docs.
 
 **Ownership note.** `ocs-agent-setup` is deliberately NOT added to Phase 6's `skills:` frontmatter. That list declares which producers a phase OWNS, and Phase 5 owns this one; claiming it twice is rejected by `test/agents/coherence.test.ts`, correctly. Phase 6 invokes it. The invocation is guarded by `test/skills/ocs-reindex-after-training.test.ts` instead, which asserts it exists, runs *after* the training-doc producers, and that the mode is actually implemented rather than only documented.
+=======
+## 0.13.1022 — 2026-08-27
+
+**The decisions ledger can now carry a decision forward, and a run can now say how it ended.**
+
+Four modules, all derived from measurements over the 22 real runs of `spark-facilitator` + `hh-poverty-targeting`.
+
+**`lib/decision-vocabularies.ts` — anchored option sets.** An override binds by exact string match against `options`, and the option set was being regenerated almost every run: `budget-plausibility` had 11 distinct sets in 12 runs, `candidate-llo-roster` 11 in 12. Distinct option sets and distinct answers tracked each other almost exactly. The counter-example proves the mechanism — `archetype-selection` has 2 sets across 12 runs and is the only decision on either opp with a stable answer. Nine recurring decisions are now anchored; the strict write schema rejects an invented member. Anchoring does **not** freeze a decision: `archetype-selection` on spark did change (`atomic-visit` → `longitudinal-visits` at `20260817-1610`) and a fixed vocabulary is exactly what makes that read as a change rather than as noise.
+
+**`params` on a decision row.** Testing an enum-only design against the real data killed it: `wo-ethics-scope` had 17 phrasings of ONE answer, but two carried a real caveat an enum would delete, and `candidate-llo-roster`'s phrasings hid WHICH org was named. So the comparable value and the specifics are split — `ai-default` is what gets diffed and overridden, `params` holds `named`, `caveat`, `key_fields`.
+
+**`lib/decisions-ingest.ts` — the asymmetric carry.** `human-decided` binds; `ai-default` advises and stays freely re-decidable; `superseded` does not travel. AI defaults deliberately do not bind — `duplicate-detection-key` genuinely improved across runs and a binding ledger would have frozen the worse version. Reads **one run back**, which is the anti-cruft rule: on 2026-08-19 the operator hand-reset an opp's `open-questions.md` to human-authored items only, deleting six runs of accumulated ACE reasoning. `conflictsWithRuling` matches on `id` **and** `feedback_ref`, so a run that renames the question cannot walk past a human's decision.
+
+**`lib/run-record.ts` — `outcome`, `lineage`, typed `blockers`.** Outcome was recorded on 1 of 22 runs, lineage typed on 2 (though 8 described one in prose), and blockers were spread across **12 different key names**. A dead run cannot write its own epitaph, so `outcome` is written by the run that replaces it and falls back to `inferOutcome` — nothing here depends on a graceful exit, because abandonment is the majority path. Blockers carry a resolvable `ref` (`github:`/`drive:`/`gmail:`/`run:`) and a required `as_of`: of 176 issues cited across those runs, **166 (98%) are already closed**, so a journal claim rendered as current state is wrong on nearly every load.
+
+48 new tests. Full suite 5353 passed.
+>>>>>>> 3a4c14bb (feat(decisions): anchored vocabularies, params, run-init ingest, and the run record)
 
 ## 0.13.1021 — 2026-08-26
 

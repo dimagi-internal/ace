@@ -26,6 +26,7 @@
  */
 
 import { parseTriggeredBy } from './triggering-thread.js';
+import { parseBlockers, parseLineage, parseOutcome } from './run-record.js';
 
 export type ValidationSeverity = 'error' | 'warning';
 
@@ -387,6 +388,25 @@ export function validateRunState(parsed: unknown): ValidationResult {
     const t = parseTriggeredBy((parsed as Record<string, unknown>).triggered_by);
     for (const issue of t.issues) {
       pushError(errors, 'triggered_by', issue, 'a well-formed triggered_by block', (parsed as any).triggered_by);
+    }
+  }
+
+  // Run-level record (outcome / lineage / blockers). All optional — every run
+  // predating them is still valid — but validated when present, because a
+  // malformed outcome is worse than an absent one: a cross-run view renders it
+  // as fact. See lib/run-record.ts for why each exists.
+  {
+    const o = parseOutcome((parsed as Record<string, unknown>).outcome);
+    for (const issue of o.issues) {
+      pushError(errors, 'outcome', issue, 'a well-formed outcome block', (parsed as any).outcome);
+    }
+    const l = parseLineage((parsed as Record<string, unknown>).lineage);
+    for (const issue of l.issues) {
+      pushError(errors, 'lineage', issue, 'a well-formed lineage block', (parsed as any).lineage);
+    }
+    const b = parseBlockers((parsed as Record<string, unknown>).blockers);
+    for (const issue of b.issues) {
+      pushError(errors, 'blockers', issue, 'a list of typed blocker entries', (parsed as any).blockers);
     }
   }
 
