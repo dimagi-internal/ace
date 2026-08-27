@@ -10,17 +10,19 @@ import {
   ORPHAN_SCAFFOLD_PATTERN,
   lockPathForPid,
   isPidAlive,
-  SESSION_LOCK_DIR,
+  sessionLockDir,
   type SessionLock,
 } from '../../../mcp/mobile/session-lock.js';
 
-// These tests redirect SESSION_LOCK_DIR to a tempdir by mocking the
-// HOME env var BEFORE importing the module. But session-lock.ts
-// computes SESSION_LOCK_DIR at import time, so we can't redirect it
-// after the fact. Instead we test against the real SESSION_LOCK_DIR
-// using a uniquely-suffixed test PID range that won't collide with
-// any real process IDs (PIDs cap at ~32k or ~99999 on common
-// systems; we use 9_000_001+ which is well above).
+// These tests run against an ISOLATED lock dir, redirected per-test via
+// ACE_SESSION_LOCK_DIR. sessionLockDir() resolves at call time, so the
+// override actually takes effect — the previous import-time `const`
+// made isolation impossible, so `npm test` operated on the real shared
+// ~/.ace/sessions and one case reaped every live session's lock on the
+// machine (ace#1704).
+//
+// The high fake-PID range is kept as belt-and-braces, not as the
+// isolation mechanism.
 
 const FAKE_PID_BASE = 9_000_001;
 let writtenLocks: string[] = [];
@@ -36,9 +38,15 @@ function fakeLock(pidOffset: number, opts: Partial<SessionLock> = {}): SessionLo
   };
 }
 
+let tmpLockDir: string;
+let savedLockDir: string | undefined;
+
 describe('session-lock', () => {
   beforeEach(() => {
     writtenLocks = [];
+    savedLockDir = process.env.ACE_SESSION_LOCK_DIR;
+    tmpLockDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ace-session-locks-'));
+    process.env.ACE_SESSION_LOCK_DIR = tmpLockDir;
   });
 
   afterEach(() => {
@@ -51,6 +59,13 @@ describe('session-lock', () => {
       }
     }
     writtenLocks = [];
+    if (savedLockDir === undefined) delete process.env.ACE_SESSION_LOCK_DIR;
+    else process.env.ACE_SESSION_LOCK_DIR = savedLockDir;
+    try {
+      fs.rmSync(tmpLockDir, { recursive: true, force: true });
+    } catch {
+      /* ignore */
+    }
   });
 
   it('isPidAlive returns true for our own PID', () => {
@@ -94,7 +109,7 @@ describe('session-lock', () => {
     writtenLocks.push(lockPathForPid(stale.mcp_pid));
     // End-state assertion only — `result.reaped_locks` is racy under
     // parallel vitest execution because session-lock-e2e.test.ts also
-    // walks SESSION_LOCK_DIR. Whichever reapStaleSessions call runs
+    // walks sessionLockDir(). Whichever reapStaleSessions call runs
     // first wins the reaped_locks attribution; the structural
     // invariant is "the dead lock is gone after the sweep" regardless.
     reapStaleSessions();
@@ -120,14 +135,14 @@ describe('session-lock', () => {
   });
 
   it('reapStaleSessions removes corrupt lock files', () => {
-    fs.mkdirSync(SESSION_LOCK_DIR, { recursive: true });
-    const corruptPath = path.join(SESSION_LOCK_DIR, `${FAKE_PID_BASE + 99}.lock.json`);
+    fs.mkdirSync(sessionLockDir(), { recursive: true });
+    const corruptPath = path.join(sessionLockDir(), `${FAKE_PID_BASE + 99}.lock.json`);
     fs.writeFileSync(corruptPath, 'not-valid-json{{{', 'utf8');
     writtenLocks.push(corruptPath);
     // End-state assertion only — `result.reaped_locks` is racy under
     // parallel vitest execution because a sibling test file (e.g.
     // session-lock-e2e.test.ts) also calls reapStaleSessions which
-    // walks the same SESSION_LOCK_DIR. The invariant we care about
+    // walks the same sessionLockDir(). The invariant we care about
     // is "the corrupt file is gone after the sweep", regardless of
     // which `reapStaleSessions` call did the removal.
     reapStaleSessions();
@@ -166,7 +181,7 @@ describe('session-lock', () => {
     it('handles corrupt lock file gracefully', async () => {
       const { cleanupSessionDaemons } = await import('../../../mcp/mobile/session-lock.js');
       const corruptPath = lockPathForPid(FAKE_PID_BASE + 89);
-      fs.mkdirSync(SESSION_LOCK_DIR, { recursive: true });
+      fs.mkdirSync(sessionLockDir(), { recursive: true });
       fs.writeFileSync(corruptPath, 'not-json{', 'utf8');
       writtenLocks.push(corruptPath);
       const result = cleanupSessionDaemons(FAKE_PID_BASE + 89);
@@ -192,18 +207,45 @@ describe('session-lock', () => {
   });
 
   it('reapStaleSessions returns empty result when no lock dir exists', () => {
-    // Deliberately not creating SESSION_LOCK_DIR. The implementation
-    // checks fs.existsSync — should early-return.
-    const tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), 'ace-lock-test-'));
-    const savedHome = process.env.HOME;
+    // Point at a path that does not exist. Now that sessionLockDir()
+    // resolves at call time, this redirect actually takes effect — the
+    // old HOME-based version asserted a pass it could not cause.
+    const missing = path.join(tmpLockDir, 'does-not-exist');
+    process.env.ACE_SESSION_LOCK_DIR = missing;
+    expect(fs.existsSync(missing)).toBe(false);
+    const result = reapStaleSessions();
+    expect(result.errors).toEqual([]);
+    expect(result.reaped_locks).toEqual([]);
+  });
+
+  it('sessionLockDir honours ACE_SESSION_LOCK_DIR at call time', () => {
+    // The regression guard for ace#1704. If this ever reverts to an
+    // import-time constant, the override stops working and `npm test`
+    // silently goes back to reaping other live sessions' locks.
+    const a = path.join(tmpLockDir, 'a');
+    const b = path.join(tmpLockDir, 'b');
+    process.env.ACE_SESSION_LOCK_DIR = a;
+    expect(sessionLockDir()).toBe(a);
+    process.env.ACE_SESSION_LOCK_DIR = b;
+    expect(sessionLockDir()).toBe(b);
+  });
+
+  it('reapStaleSessions({all:true}) never touches the real ~/.ace/sessions', () => {
+    // The exact destructive case from ace#1704, pinned: with the
+    // override in force, an all:true reap must confine itself to the
+    // temp dir. A sentinel in the real dir must survive.
+    const realDir = path.join(os.homedir(), '.ace', 'sessions');
+    fs.mkdirSync(realDir, { recursive: true });
+    const sentinel = path.join(realDir, `${FAKE_PID_BASE + 777}.lock.json`);
+    fs.writeFileSync(sentinel, JSON.stringify(fakeLock(777)), 'utf8');
     try {
-      // We can't actually move SESSION_LOCK_DIR (computed at import
-      // time), so this test just ensures the no-locks path works.
-      const result = reapStaleSessions();
-      expect(result.errors).toEqual([]);
+      const live = fakeLock(4, { mcp_pid: process.pid });
+      acquireSessionLock(live);
+      writtenLocks.push(lockPathForPid(live.mcp_pid));
+      reapStaleSessions({ all: true });
+      expect(fs.existsSync(sentinel)).toBe(true);
     } finally {
-      process.env.HOME = savedHome;
-      fs.rmSync(tmpHome, { recursive: true, force: true });
+      fs.rmSync(sentinel, { force: true });
     }
   });
 

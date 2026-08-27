@@ -28,18 +28,18 @@
  * killed. The test driver always kills its subprocesses in `finally`
  * blocks so this is robust against test failures.
  */
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, beforeAll, afterAll } from 'vitest';
 import { spawn, type ChildProcessByStdio } from 'node:child_process';
 import { Readable } from 'node:stream';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+import * as os from 'node:os';
 import {
   acquireSessionLock,
   lockPathForPid,
   reapStaleSessions,
   reapOrphanScaffolds,
   ORPHAN_SCAFFOLD_PATTERN,
-  SESSION_LOCK_DIR,
   isPidAlive,
 } from '../../../mcp/mobile/session-lock.js';
 
@@ -183,6 +183,27 @@ function teardownLockHolder(holder: LockHolder | null): void {
 // Skipped under CI; runs locally, which is where the parallel-session
 // protocol actually needs proving. (ace: vitest added to CI 2026-07-25.)
 describe.skipIf(process.env.CI)('session-lock E2E (multi-process parallel-session protocol)', () => {
+  // Isolate from the real ~/.ace/sessions. Spawned lock-holders inherit
+  // process.env, so the override reaches them too. Without this, an E2E
+  // run reaps other live ACE sessions' locks on the same machine
+  // (ace#1704).
+  let e2eTmpLockDir: string;
+  let e2eSavedLockDir: string | undefined;
+  beforeAll(() => {
+    e2eSavedLockDir = process.env.ACE_SESSION_LOCK_DIR;
+    e2eTmpLockDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ace-session-locks-e2e-'));
+    process.env.ACE_SESSION_LOCK_DIR = e2eTmpLockDir;
+  });
+  afterAll(() => {
+    if (e2eSavedLockDir === undefined) delete process.env.ACE_SESSION_LOCK_DIR;
+    else process.env.ACE_SESSION_LOCK_DIR = e2eSavedLockDir;
+    try {
+      fs.rmSync(e2eTmpLockDir, { recursive: true, force: true });
+    } catch {
+      /* ignore */
+    }
+  });
+
   let a: LockHolder | null = null;
   let b: LockHolder | null = null;
 
