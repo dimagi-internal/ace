@@ -78,6 +78,44 @@ Read the output and tell the user:
 3. For each **FAIL**, quote the line verbatim and tell the user the exact command from the `fix:` hint.
 4. For each **WARN**, list them briefly. These are non-blocking.
 5. If everything passes, suggest the next step: `/ace:status` to see opportunities, or `/ace:run` (zero-arg — smart defaults auto-pick a PDD from Drive) to kick off a fresh opp. Add `--dry-run` for a safe first try.
+6. **If any config / 1Password drift surfaced** (`env_drift`, `unused_env_keys`, an unresolved `op://` ref, a `.env.tpl` render failure, a key present in one place and not the other), do NOT narrate the diagnosis — emit the single verdict block below instead.
+
+## Config / 1Password drift — ONE verdict block, never a running commentary
+
+**This section governs ANY config/1Password drift diagnosis, including one produced ad hoc in
+conversation without running `/ace:doctor` at all.** Do the whole investigation silently, then
+present ONE block. Never think out loud across several messages, never post a hypothesis you then
+revise, and never leave the human to work out which of `.env.tpl`, the installed `.env`, and the
+1Password `Agent-Ace` vault is actually wrong — that is the question, and answering it is the
+deliverable.
+
+```
+CONFIG VERDICT
+Source of truth: <which surface is authoritative for the key(s) in question — 1Password vault
+                 `Agent-Ace` for every key declared in `.env.tpl`; `.env.tpl` for WHICH keys must
+                 exist; the installed `${CLAUDE_PLUGIN_DATA}/.env` for what this machine actually
+                 has; local-only keys (`ACE_WEB_PAT_TOKEN`) are authoritative on the machine.>
+What drifted:    <the specific key(s), and which surface disagrees with which — "X is declared in
+                 .env.tpl but absent from the installed .env", "Y resolves to an unresolved op://
+                 ref", "Z is in .env but no longer declared anywhere". One line each.>
+Recommendation:  <the single command to run, and what it will and will not do — e.g.
+                 `/ace:setup --force-env` re-injects from 1Password AND preserves local-only
+                 secrets; a raw `op inject -o <plugin-data>/.env` drops them. Name the restart if
+                 one is needed: an MCP subprocess spawned before an .env write holds the old
+                 values for its whole life — run setup FIRST, restart Claude Code AFTER.>
+Needs a human:   <yes/no — a value that must be rotated or created IN 1Password is a human action;
+                 say exactly which field in which item. "no" if the recommendation is runnable
+                 as-is.>
+```
+
+Rules for the block:
+- **One block, once.** If a first read was wrong, correct it inside the block before sending — do
+  not ship the wrong verdict and then a correction.
+- **Never guess which surface is authoritative.** If you have not read the 1Password item, say so
+  in `Source of truth` rather than asserting; an unverified claim about the vault sends the human
+  to change the wrong thing.
+- The block replaces the per-line WARN narration for these checks; keep the raw `bin/ace-doctor`
+  lines below it for reference, not above it.
 
 ## Rules
 

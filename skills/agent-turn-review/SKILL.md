@@ -1,23 +1,75 @@
 ---
 name: agent-turn-review
 description: >
-  ACE's pre-send review — invokes the fleet-wide `canopy:agent-turn-review` discipline,
-  then adds ACE's specifics. Run before EVERY outbound reply / deliverable / PR.
+  ACE's pre-send review — ONE inline pass through §A–§F (canopy's fleet body, READ from disk,
+  plus ACE's §F). Never dispatched as a Skill. Run before EVERY outbound reply / deliverable /
+  PR / turn-closing report.
 ---
 
 # Agent turn review (ACE)
 
-Run before every outbound action (the thing that gets dropped under load). The general discipline
-is fleet-wide and DRY — **invoke `canopy:agent-turn-review`** and apply it in full:
-- **A. Fidelity** — re-read the request, extract each ask, do EXACTLY that (read cited sources),
-  rate it tough.
-- **B. Grounded commitments** — every "I'll do X" needs a concrete, executable mechanism; a vague
-  "sync with / coordinate with / loop in <person>" is vapor — convert it to a runnable check or a
-  draft-then-ask message, or cut it.
-- **C. Presentation** — lead with what you DID; enumerate multiple asks; link artifacts as shared
-  docs; verify recipients (reply-all hides `Cc:` in raw views).
+Run before every outbound action (the thing that gets dropped under load).
 
-## ACE-specifics
+> ## Do NOT call the `Skill` tool for this review
+>
+> Not on `canopy:agent-turn-review`, not on `agent-turn-review` bare. Dispatching a skill hands
+> back the fleet body and reads as "the review ran" — at which point everything in **§F** below,
+> where ACE's send-path rules live (read-backs, capability-denial probes, the call ban,
+> `bin/ace-email`), never gets applied. The fleet file contains no ACE rules at all: `grep -c
+> 'bin/ace-email\|ace@dimagi-ai.com'` over it returns 0 (checked against canopy 0.2.441,
+> 2026-08-27).
+>
+> **The review is ONE pass through §A–§F, applied inline by you.** §A–§E are canopy's; §F is
+> ACE's; there is no boundary between them at review time. A pass that stopped at §E is not a
+> review.
+
+## Step 1 — READ the fleet body from disk (don't dispatch it)
+
+```bash
+sed -n '1,220p' "$(ls -d ~/.claude/plugins/cache/canopy/canopy/*/skills/agent-turn-review/SKILL.md | sort -V | tail -1)"
+```
+
+Read it, don't skim it — it is the source of §A–§E and it changes; ACE deliberately does not
+copy it here, so this file cannot go stale against it. As of canopy 0.2.441 the sections are:
+
+| § | Fleet section | What it catches |
+|---|---------------|-----------------|
+| A | Fidelity | the draft doesn't do what was actually asked |
+| B | Grounded commitments | "I'll do X" / "I did X" with no executable mechanism or no verification |
+| C | Presentation | buried verdict; §7a no-op turns and §7b problem-found turns must LEAD with the decision |
+| D | Revision check | edit-introduced defects + repetition, re-run on EVERY revision |
+| E | Counterpart framing | auditing the counterpart's own numbers; asserted-not-sourced facts |
+
+Note canopy's closing "Adopting it in an agent" section still tells agents to write *"invoke
+`canopy:agent-turn-review`"* — that instruction is the origin of this whole failure mode and ACE
+deliberately does not follow it. Raised upstream; do not restore that wording here.
+
+## Step 2 — apply §A–§E to the draft
+
+Inline, in order, against the actual body you are about to send.
+
+## Step 3 — apply §F below
+
+Same pass, same draft. Not an appendix, not a follow-up.
+
+## F. ACE specifics — the same pass, continued
+- **A turn-closing report opens with the DECISION or the next step the human has to act on.**
+  Canopy §C/7a covers the turn that concluded NO-OP and §7b the turn that FOUND a problem; this is
+  the third shape they leave open — the turn that did real work and then buries the answer under
+  how the session got there. **Environment and tooling housekeeping — plugin versions, MCP
+  restarts, auth re-logins, worktree state, which command failed and what you tried next — goes
+  BELOW the decision, or is cut entirely.** It is context for how you got the answer, not the
+  answer; and it is disproportionately what an ACE turn accumulates, so it disproportionately
+  gets written first. If a housekeeping item genuinely requires the human to act (a restart they
+  must perform), that IS a decision — state it as one, at the top, in one line. Then answer,
+  explicitly and every time, the two questions that otherwise get dropped: **are there open
+  issues needing a decision, and is the session safe to continue as-is?** (Origin: Jon,
+  2026-08-26/27 — two corrections on this exact shape in one window: *"stop talking about
+  caffient it doesn't matter, what should we do next?"* and *"Do we have issues that need to be
+  closed out? I can't tell based on what you said. And are we ready to continue or do I need to
+  restart the session?"* Seven of eight human corrections that window were tagged `confusion`
+  rather than direction. Fleet-general → candidate for promotion into `canopy:agent-turn-review`
+  §C, alongside 7a/7b.)
 - **Every claim about EXTERNAL SYSTEM STATE must be read back before the send — no exceptions.**
   Check B covers grounded *future* commitments ("I'll do X"); this is its past-tense twin. Any
   sentence asserting the world is now in some state — *"access is set up"*, *"you'll see a pending

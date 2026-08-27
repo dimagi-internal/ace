@@ -84,9 +84,12 @@ improvements ship once (a canopy PR) instead of N backports.
 - **ACE's state layer is Drive, never local:** where the core says "record `thread_id` in your
   state layer", that's the routed run's comms-log (`email-communicator` step 7) — the routing key
   inbox-triage matches inbound threads against. Turn state = comms-logs + `run_state.yaml`.
-- **Pre-send review = `skills/agent-turn-review`** (supersedes the old `self-review`; ACE's
-  `-qa`/`-eval` skills grade artifacts — this is the brief-fidelity counterpart for
-  correspondence).
+- **Pre-send review = `skills/agent-turn-review`, applied INLINE** — read that file top to bottom
+  and run its A/B/C/D checklist yourself. Do NOT dispatch it (or `canopy:agent-turn-review`) via
+  the `Skill` tool: that runs the fleet body alone and drops ACE's §D send-path rules. It also
+  governs this turn's CLOSING REPORT (§C: open with the decision, not the housekeeping).
+  Supersedes the old `self-review`; ACE's `-qa`/`-eval` skills grade artifacts — this is the
+  brief-fidelity counterpart for correspondence.
 - **Skill self-check (core Step 3), ACE addition:** ACE's standing issues-as-you-go convention
   applies inside turns — a confirmed defect or improvement gets a GitHub issue filed the moment
   it's confirmed (`gh issue create`, no `-R`); don't defer to turn end, don't fix silently. Also
