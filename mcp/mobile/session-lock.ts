@@ -53,7 +53,22 @@ import * as path from 'node:path';
 import * as os from 'node:os';
 import { execSync } from 'node:child_process';
 
-export const SESSION_LOCK_DIR = path.join(os.homedir(), '.ace', 'sessions');
+/**
+ * Directory holding per-session mobile locks.
+ *
+ * Resolved at CALL time, not import time. A module-level `const` here
+ * froze the path at first import, which made `process.env.HOME`
+ * overrides silently ineffective — so `npm test` operated on the real
+ * shared `~/.ace/sessions` and one case reaped every live session's
+ * lock on the machine. ace#1704.
+ *
+ * `ACE_SESSION_LOCK_DIR` is the isolation seam tests use.
+ */
+export function sessionLockDir(): string {
+  const override = process.env.ACE_SESSION_LOCK_DIR;
+  if (override && override.trim()) return override;
+  return path.join(os.homedir(), '.ace', 'sessions');
+}
 
 export interface SessionLock {
   mcp_pid: number;
@@ -65,20 +80,20 @@ export interface SessionLock {
 
 /**
  * Path on disk for a given mcp_pid's lock file. Caller is responsible
- * for ensuring SESSION_LOCK_DIR exists (acquireSessionLock does this).
+ * for ensuring sessionLockDir() exists (acquireSessionLock does this).
  */
 export function lockPathForPid(mcpPid: number): string {
-  return path.join(SESSION_LOCK_DIR, `${mcpPid}.lock.json`);
+  return path.join(sessionLockDir(), `${mcpPid}.lock.json`);
 }
 
 /**
  * Write our session's lock file. Idempotent — re-writes on every call
  * so the lock reflects the latest port allocation if it changed
  * mid-session (it shouldn't, but the schema is tiny). Creates
- * SESSION_LOCK_DIR if missing.
+ * sessionLockDir() if missing.
  */
 export function acquireSessionLock(lock: SessionLock): void {
-  fs.mkdirSync(SESSION_LOCK_DIR, { recursive: true });
+  fs.mkdirSync(sessionLockDir(), { recursive: true });
   fs.writeFileSync(lockPathForPid(lock.mcp_pid), JSON.stringify(lock, null, 2) + '\n', 'utf8');
 }
 
@@ -380,17 +395,17 @@ export function classifyLocklessListeners(
 function liveLockedPorts(): { adb: Set<number>; emulator: Set<number> } {
   const adb = new Set<number>();
   const emulator = new Set<number>();
-  if (!fs.existsSync(SESSION_LOCK_DIR)) return { adb, emulator };
+  if (!fs.existsSync(sessionLockDir())) return { adb, emulator };
   let entries: string[];
   try {
-    entries = fs.readdirSync(SESSION_LOCK_DIR).filter((f) => f.endsWith('.lock.json'));
+    entries = fs.readdirSync(sessionLockDir()).filter((f) => f.endsWith('.lock.json'));
   } catch {
     return { adb, emulator };
   }
   for (const entry of entries) {
     try {
       const lock = JSON.parse(
-        fs.readFileSync(path.join(SESSION_LOCK_DIR, entry), 'utf8'),
+        fs.readFileSync(path.join(sessionLockDir(), entry), 'utf8'),
       ) as SessionLock;
       if (!isPidAlive(lock.mcp_pid)) continue;
       if (Number.isFinite(lock.adb_port)) adb.add(lock.adb_port);
@@ -585,7 +600,7 @@ export const ORPHAN_SCAFFOLD_PATTERN = /session-lock\.ts[\s\S]*setInterval/;
  * via lsof references even after the lock file is gone.
  *
  * The standard `reapStaleSessions` is blind to lock-less orphans — it
- * only walks `SESSION_LOCK_DIR`. This function pattern-matches the
+ * only walks `sessionLockDir()`. This function pattern-matches the
  * scaffold's command line and SIGKILLs the orphans.
  *
  * Detection signature (intersection):
@@ -709,11 +724,11 @@ export function getReservedPorts(): { adb: Set<number>; emulator: Set<number> } 
 
   const adb = new Set<number>();
   const emulator = new Set<number>();
-  if (!fs.existsSync(SESSION_LOCK_DIR)) return { adb, emulator };
-  for (const entry of fs.readdirSync(SESSION_LOCK_DIR)) {
+  if (!fs.existsSync(sessionLockDir())) return { adb, emulator };
+  for (const entry of fs.readdirSync(sessionLockDir())) {
     if (!entry.endsWith('.lock.json')) continue;
     try {
-      const lock = JSON.parse(fs.readFileSync(path.join(SESSION_LOCK_DIR, entry), 'utf8')) as SessionLock;
+      const lock = JSON.parse(fs.readFileSync(path.join(sessionLockDir(), entry), 'utf8')) as SessionLock;
       if (Number.isFinite(lock.adb_port)) adb.add(lock.adb_port);
       if (Number.isFinite(lock.emulator_port)) {
         emulator.add(lock.emulator_port);
@@ -785,7 +800,9 @@ export function cleanupSessionDaemons(mcpPid: number): {
   return result;
 }
 
-const ALLOCATOR_MUTEX_PATH = path.join(SESSION_LOCK_DIR, '.allocator.lock');
+function allocatorMutexPath(): string {
+  return path.join(sessionLockDir(), '.allocator.lock');
+}
 const ALLOCATOR_MUTEX_TIMEOUT_MS = 30_000;
 const ALLOCATOR_MUTEX_POLL_MS = 50;
 
@@ -813,13 +830,13 @@ const ALLOCATOR_MUTEX_POLL_MS = 50;
  * never re-enters).
  */
 export async function withAllocatorMutex<T>(fn: () => Promise<T>): Promise<T> {
-  fs.mkdirSync(SESSION_LOCK_DIR, { recursive: true });
+  fs.mkdirSync(sessionLockDir(), { recursive: true });
 
   const deadline = Date.now() + ALLOCATOR_MUTEX_TIMEOUT_MS;
   while (true) {
     try {
       // O_EXCL: atomic create-if-not-exists. Throws EEXIST if held.
-      const fd = fs.openSync(ALLOCATOR_MUTEX_PATH, 'wx');
+      const fd = fs.openSync(allocatorMutexPath(), 'wx');
       try {
         fs.writeSync(fd, JSON.stringify({ pid: process.pid, ts: Date.now() }));
       } finally {
@@ -830,7 +847,7 @@ export async function withAllocatorMutex<T>(fn: () => Promise<T>): Promise<T> {
         return await fn();
       } finally {
         try {
-          fs.unlinkSync(ALLOCATOR_MUTEX_PATH);
+          fs.unlinkSync(allocatorMutexPath());
         } catch {
           /* already gone — fine */
         }
@@ -840,7 +857,7 @@ export async function withAllocatorMutex<T>(fn: () => Promise<T>): Promise<T> {
       // Mutex held by someone else. Inspect.
       let holderPid: number | null = null;
       try {
-        const held = JSON.parse(fs.readFileSync(ALLOCATOR_MUTEX_PATH, 'utf8'));
+        const held = JSON.parse(fs.readFileSync(allocatorMutexPath(), 'utf8'));
         if (Number.isFinite(held?.pid)) holderPid = held.pid;
       } catch {
         /* corrupt — treat as no holder */
@@ -848,7 +865,7 @@ export async function withAllocatorMutex<T>(fn: () => Promise<T>): Promise<T> {
       if (holderPid !== null && !isPidAlive(holderPid)) {
         // Dead holder. Clear and retry.
         try {
-          fs.unlinkSync(ALLOCATOR_MUTEX_PATH);
+          fs.unlinkSync(allocatorMutexPath());
         } catch {
           /* race with another reaper — fine */
         }
@@ -857,7 +874,7 @@ export async function withAllocatorMutex<T>(fn: () => Promise<T>): Promise<T> {
       if (Date.now() >= deadline) {
         throw new Error(
           `withAllocatorMutex: timeout after ${ALLOCATOR_MUTEX_TIMEOUT_MS}ms ` +
-            `waiting for ${ALLOCATOR_MUTEX_PATH} held by pid ${holderPid ?? '?'}`,
+            `waiting for ${allocatorMutexPath()} held by pid ${holderPid ?? '?'}`,
         );
       }
       await new Promise((r) => setTimeout(r, ALLOCATOR_MUTEX_POLL_MS));
@@ -866,7 +883,7 @@ export async function withAllocatorMutex<T>(fn: () => Promise<T>): Promise<T> {
 }
 
 /**
- * Walk SESSION_LOCK_DIR and reap any lock whose owning mcp_pid is
+ * Walk sessionLockDir() and reap any lock whose owning mcp_pid is
  * dead. For each stale lock: look up live PIDs on its adb_port and
  * emulator_port via lsof, SIGKILL them, then remove the lock file.
  *
@@ -920,18 +937,18 @@ export function reapStaleSessions(opts: { all?: boolean; lockless?: boolean } = 
     return result;
   };
 
-  if (!fs.existsSync(SESSION_LOCK_DIR)) return finish();
+  if (!fs.existsSync(sessionLockDir())) return finish();
 
   let entries: string[];
   try {
-    entries = fs.readdirSync(SESSION_LOCK_DIR).filter((f) => f.endsWith('.lock.json'));
+    entries = fs.readdirSync(sessionLockDir()).filter((f) => f.endsWith('.lock.json'));
   } catch (e: any) {
-    result.errors.push({ lock: SESSION_LOCK_DIR, error: `readdir failed: ${e?.message ?? e}` });
+    result.errors.push({ lock: sessionLockDir(), error: `readdir failed: ${e?.message ?? e}` });
     return finish();
   }
 
   for (const entry of entries) {
-    const fullPath = path.join(SESSION_LOCK_DIR, entry);
+    const fullPath = path.join(sessionLockDir(), entry);
     let lock: SessionLock;
     try {
       lock = JSON.parse(fs.readFileSync(fullPath, 'utf8')) as SessionLock;
