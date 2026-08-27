@@ -520,6 +520,39 @@ front half (how the labs-only opp + its data come to exist) differs.
    in the run summary a reader actually opens, not only in a YAML the gate
    reads (ace#1658).
 
+5b. **Archive the manifest as the SAME BYTES you sent, then round-trip parse it
+   (ace#1737).** The archived `demo-data-setup_manifest.yaml` is the run's
+   source-of-truth narrative artifact and the input a later fork replays. It is
+   only either of those if it is the manifest that actually ran and it loads.
+
+   - **Author once, to a local file.** Send that file's contents to
+     `synthetic_generate_from_manifest`, and publish that identical string as the
+     artifact (`drive_create_file` a placeholder, then
+     `drive_update_file({localFilePath})` — which uploads the bytes off disk
+     rather than through a second emission). Do NOT type the manifest a second
+     time for the archive.
+   - **Then read it back and parse it.** `drive_read_file` → `yaml.safe_load`, and
+     re-validate against the labs `Manifest` model if a connect-labs checkout is
+     reachable. Fail the step if it does not parse.
+
+   Why: on `hh-poverty-targeting/20260824-1404` the archived manifest **did not
+   parse at all** — the flow mappings were column-aligned, so the single longest
+   key (`…ppi_q6_sachet_water`) got zero spaces between its `:` and its `{`, and
+   YAML requires whitespace there. The generation itself had succeeded (2,237
+   visits), which is the tell: the string the atom received and the string that
+   reached Drive were two different emissions of "the same" YAML. Nothing failed
+   — the run was green, `demo-data-setup-qa` passed (it checks dashboards, not the
+   manifest), and the break only surfaced when the next run tried to fork it.
+
+   Drive is not the culprit and re-testing it is wasted effort: a round-trip probe
+   of the exact pathological shape (`key:{ z: 3 }`) through
+   `drive_create_file` → `drive_read_file` returns it byte-for-byte. The defect
+   enters at authoring, on the second emission.
+
+   Cheap and worth it beyond this class: the same round-trip check immediately
+   caught an unrelated real break in a step-2c report on
+   `20260827-0323` — a leading `>` line that YAML reads as a root block scalar.
+
 Then gate on `demo-data-setup-qa` before `demo-narrative` consumes the map.
 
 ## Process (clone)
@@ -820,6 +853,7 @@ nobody has enumerated yet. Run both — neither is a substitute for the other.
 
 | Date | Change | Author |
 |------|--------|--------|
+| 2026-08-27 | **Step 5b: the archived manifest must be the same bytes that were sent, and must round-trip parse (ace#1737).** `hh-poverty-targeting/20260824-1404` published a `demo-data-setup_manifest.yaml` that does not parse as YAML — flow mappings were column-aligned, so the longest key got zero spaces before its `{`. Generation had succeeded, so the archived copy was a SECOND emission rather than a capture of the wire payload; the break surfaced only when the next run tried to fork it. Drive was ruled out by direct probe (the pathological shape round-trips byte-for-byte). Fix: author once to a local file, send that, upload that file's bytes, then read back and `yaml.safe_load`. | ACE team |
 | 2026-08-26 | **`period_end` is exclusive — derive it as `timeline.end_date + 1 day` (ace#1683).** A run window is half-open (`visit_date >= date_from AND visit_date < date_to`, `query_builder._date_window_where`), and the natural authoring move — pass the manifest's own `timeline.start_date`/`end_date` — drops the fixture's entire final day from any snapshotted dashboard while its live sibling keeps it. Measured on `hh-poverty-targeting/20260824-1404` (labs opp 10047): snapshot run 5245 `total=2186`, live run 5249 `total=2237`, fixture `2237`, re-mint at `period_end 2026-08-31` → `2237`, exact. Nothing failed; every existing check passed. Also documented: period scoping bites only on the SNAPSHOT path, and omitting the bounds defaults to `[today, today)`, a zero-width window. New backstop: `demo-data-setup-qa` check 11. | ACE team |
 | 2026-08-26 | **Step 1c (ace-run): giving the demo something to detect is now a REQUIRED authoring step, derived from the PDD's own declared controls.** `hh-poverty-targeting/20260824-1404` shipped `anomalies: []` and no per-persona divergence, so the cohort had no signal in it — completion 64–77%, PPI ~34, 15 undifferentiated workers in the queue, one decision against an empty adjudication log — and the DDD loop ended `stopped_not_converged` at concept 2.0/5 on `use_case_soundness` ("the scenario does not exercise the feature it demonstrates"). Four obligations (enumerate the PDD's controls verbatim → instantiate ≥1 → cite the clause → state what a reviewer would SEE), an explicit ban on inventing a pattern the design does not declare, an honest `detectable_signal: none` escape, and the two manifest mechanics (1-based anomaly weeks with `week: 0` a silent no-op; `coaching_arcs: []` to the atom) that void the step by a different route. | ACE team |
 | 2026-08-26 | Gotcha rewritten: `anomalies[].week` is read on **two different bases by two different consumers** — 1-based under `synthetic_generate_from_manifest` (`_anomalies_at` vs `VisitSlot.week_index`, and `if a.week` makes `week: 0` match nothing), 0-based under `synthetic_env_ensure`'s `run_audits` ensurer (direct index into the week list). The previous single-sentence "anomaly weeks are 0-based (audits)" was true only of the path the `ace-run` provider never takes. | ACE team |

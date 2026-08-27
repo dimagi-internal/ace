@@ -345,3 +345,46 @@ describe('renderResolutionReport', () => {
     expect(out).not.toContain('MISSING');
   });
 });
+
+describe('inline-style CSS values are not linted as utilities (ace#1744)', () => {
+  const inlineStyle = `
+    const Spark = () => (
+      <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between' }}>
+        <span style={{ whiteSpace: 'nowrap', textAlign: 'right' }} />
+      </div>
+    );
+  `;
+
+  it('does not flag a CSS keyword sitting as an inline-style value', () => {
+    const excluded = extractUtilityTokens(inlineStyle)
+      .filter((t) => t.origin === 'attribute-value')
+      .map((t) => t.token);
+    // `flex-end` is a valid align-items value and is NEVER a Tailwind class
+    // (Tailwind spells it `items-end`), so it can never resolve and the check
+    // could never pass on it — a permanent false block on correct code.
+    expect(excluded).toContain('flex-end');
+    expect(excluded).toContain('space-between');
+  });
+
+  it('a render_code built entirely from inline styles resolves clean', () => {
+    const report = classifyUtilities(inlineStyle, DEPLOYED_CSS);
+    expect(report.missing).toEqual([]);
+  });
+
+  it('still lints every shape ace#1662 exists to catch', () => {
+    // The exclusion is a CLOSED list of CSS property names, so object keys that
+    // really do carry utilities keep being checked.
+    const src = `
+      var cardBorder = 'border-slate-300';
+      const t = { className: 'text-rose-700' };
+      const u = cond ? 'text-rose-700' : 'text-gray-800';
+      const v = <div className={'mt-0.5 text-sm ' + (props.tone || 'text-gray-800')} />;
+    `;
+    const linted = extractUtilityTokens(src)
+      .filter((t) => t.origin !== 'attribute-value')
+      .map((t) => t.token);
+    expect(linted).toContain('border-slate-300');
+    expect(linted).toContain('text-rose-700');
+    expect(linted).toContain('mt-0.5');
+  });
+});
