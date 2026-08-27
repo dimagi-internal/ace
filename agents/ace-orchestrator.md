@@ -1239,7 +1239,7 @@ whose rows have already run together.
 
 **Products:** PDD (`1-design/idea-to-pdd.md`) — the formal design doc; Work Order (`1-design/pdd-to-work-order.gdoc`) — contractual draft derived from PDD + decisions.yaml. Both are required outputs of Phase 1; the work order chain (Steps 2, 2.4, 2.5 in `agents/idea-to-design.md`) runs after the PDD chain.
 
-**Gate:** checkpoint-on-`idea-to-pdd` — `[BLOCKER]`s are recorded to the decisions log and the run continues (`default`/`auto`). In `review` mode this is the natural human checkpoint at the Phase 1→2 boundary.
+**Gate:** checkpoint-on-`idea-to-pdd` — a `[BLOCKER]` halts the run with `status: blocked` and no prompt (`default`/`auto`). In `review` mode this is the natural human checkpoint at the Phase 1→2 boundary.
 
 ### Phase 2: Scenarios & Acceptance Planning
 
@@ -1263,7 +1263,7 @@ whose rows have already run together.
 
 **Products:** Learn app, Deliver app, deployed apps on CCHQ, test results (`3-commcare/app-test-cases.yaml` + `app-test-cases/J*.yaml`). (Training materials moved to Phase 6 (`qa-and-training`) in 0.9.0.)
 
-**Gate:** checkpoint-on-`app-deploy` — recorded, non-blocking in `default`/`auto`; pauses in `review`.
+**Gate:** checkpoint-on-`app-deploy` — a `[BLOCKER]` halts with `status: blocked`, no prompt, in `default`/`auto`; pauses in `review`.
 
 **Notes:** Phase 3 became a subagent in 0.13.1018. It had been an inline procedure doc solely because Claude Code withheld `Agent` from subagents, which would have made its `/nova:autobuild` dispatch unreachable; nesting has been allowed since v2.1.219 and the chain fits at depth 2. Dispatching it recovers a fresh context window for the heaviest phase in the run — but a subagent inherits nothing, so **Inputs** above must be complete at handoff. See `CLAUDE.md § Agent topology`.
 
@@ -1289,7 +1289,7 @@ whose rows have already run together.
 
 **Products:** per-opp OCS chatbot cloned from the golden template with opp-specific RAG collection; quick smoke qa+eval passed; deep pre-launch qa+eval passed against opp-specific test prompts; embed credentials ready for Connect (`5-ocs/ocs-agent-setup.md`).
 
-**Gate:** checkpoint-on-`ocs-chatbot-eval --quick` — recorded, non-blocking in `default`/`auto`; pauses in `review`.
+**Gate:** checkpoint-on-`ocs-chatbot-eval --quick` — a `[BLOCKER]` halts with `status: blocked`, no prompt, in `default`/`auto`; pauses in `review`.
 
 **Notes:** Each quality gate is a qa→eval pair — `ocs-chatbot-qa` captures a transcript, `ocs-chatbot-eval` grades it. Ends with a human-in-the-loop step to paste the widget credentials into the Connect opportunity until `update_opportunity` lands (CCC-301). After Phase 5 completes, the orchestrator refreshes `current/` shortcuts (see § Per-Phase Folder Lifecycle in reference).
 
