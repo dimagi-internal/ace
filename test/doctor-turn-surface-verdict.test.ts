@@ -36,7 +36,9 @@ describe('ace-doctor turn-surface verdict (#1189)', () => {
     // be turn-blocking; a plain warn is what produced the false HEALTHY.
     const mustBeTurnBlocking = [
       /warn_turn "gog_auth: GOG CLI not installed/,
-      /warn_turn "gog_auth: ACE_GMAIL_ACCOUNT/,
+      // Renamed with the identity retirement: the missing thing is now a
+      // config/agent.json field, not an env var (ace#1147 follow-up).
+      /warn_turn "gog_auth: config\/agent\.json email or gog_client not set/,
       /warn_turn "gog_auth: no stored GOG credentials/,
       // Wording widened in ace#1338 to carry canopy preflight's own message.
       /warn_turn "gog_auth: GOG token for \$GMAIL_ACCT[^"]*cannot call Gmail/,
@@ -122,10 +124,20 @@ describe('gog_auth probes the success shape, not an error denylist (#1338)', () 
     expect(src()).toMatch(/_gog_json_ok\(\)/);
   });
 
-  it('surfaces the gmail_config vs gog_auth client mismatch', () => {
-    // Same run printed `client=ace` (from .env ACE_GMAIL_CLIENT) and
-    // `client=canopy` (from config/agent.json), both PASS, with nothing
-    // reconciling them — the #1147 residual.
-    expect(src()).toMatch(/gmail_client_mismatch/);
+  it('reads the gog identity from config/agent.json, never from .env', () => {
+    // The mismatch this used to assert on is now unrepresentable: `.env.tpl`
+    // no longer declares the identity keys, so there is one source, not two.
+    // What must hold is that every probe reads THAT one.
+    expect(src()).toMatch(/agent_json_field\(\)/);
+    expect(src()).toMatch(/GMAIL_ACCT="\$\(agent_json_field email\)"/);
+    expect(src()).toMatch(/GMAIL_CLIENT="\$\(agent_json_field gog_client\)"/);
+    // and that no probe falls back to the retired env vars
+    expect(src()).not.toMatch(/get_env ACE_GMAIL_CLIENT\)"\s*$/m);
+  });
+
+  it('still flags a retired identity key left behind in an installed .env', () => {
+    // Nothing reads it any more, so it is not a failure — but a stale
+    // `ACE_GMAIL_CLIENT=ace` line will mislead the next person who greps.
+    expect(src()).toMatch(/gmail_identity_residual/);
   });
 });

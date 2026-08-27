@@ -245,7 +245,8 @@ if [ "$PREFLIGHT" = "1" ]; then
   OCS_BASE_URL="$(pf_get_env OCS_BASE_URL)"
   OCS_TEAM_SLUG="$(pf_get_env OCS_TEAM_SLUG)"
   OCS_GTID="$(pf_get_env OCS_GOLDEN_TEMPLATE_ID)"
-  ACE_GMAIL_ACCOUNT="$(pf_get_env ACE_GMAIL_ACCOUNT)"
+  # agent.json is the single source for identity (ace#1147); .env no longer carries it.
+  ACE_GMAIL_ACCOUNT="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("email",""))' "$ROOT/config/agent.json" 2>/dev/null)"
 
   # selector_map_currency — static structural check; mirrors the named
   # probe in the human-readable block below. Reads ACE_CONNECT_APK_VERSION
@@ -998,11 +999,24 @@ get_env() {
   esac
 }
 
+# Single reader for config/agent.json — the authoritative source for the gog
+# identity (mailbox `email` + shared fleet `gog_client`). Deliberately has no
+# .env fallback: a fallback that can only ever be staler than the primary is a
+# second source of truth, and that is exactly how ace#1147 happened.
+agent_json_field() {
+  python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get(sys.argv[2],""))' \
+    "$ROOT/config/agent.json" "$1" 2>/dev/null
+}
+
 if [ -n "$ENV_FILE" ]; then
   OCS_BASE="$(get_env OCS_BASE_URL)"
   OCS_TEAM="$(get_env OCS_TEAM_SLUG)"
   OCS_GTID="$(get_env OCS_GOLDEN_TEMPLATE_ID)"
-  GMAIL_ACCT="$(get_env ACE_GMAIL_ACCOUNT)"
+  # Identity comes from config/agent.json ONLY (ace#1147/#1338). It used to be
+  # read from .env, where 1Password injected `gmail_client=ace` against
+  # agent.json's `canopy` — two probes in the same run printed different
+  # clients, both PASS. `.env.tpl` no longer declares either key.
+  GMAIL_ACCT="$(agent_json_field email)"
   DRIVE_ROOT="$(get_env ACE_DRIVE_ROOT_FOLDER_ID)"
   SHARED_COLL="$(get_env OCS_SHARED_COLLECTION_ID)"
   LLM_PROV="$(get_env OCS_LLM_PROVIDER_ID)"
@@ -1274,13 +1288,12 @@ if [ -n "$ENV_FILE" ]; then
     fi
   fi
 
-  GMAIL_CLIENT="$(get_env ACE_GMAIL_CLIENT)"
+  GMAIL_CLIENT="$(agent_json_field gog_client)"
   if [ -n "$GMAIL_ACCT" ] && [ -n "$GMAIL_CLIENT" ]; then
-    pass "gmail_config: ACE_GMAIL_ACCOUNT=$GMAIL_ACCT client=$GMAIL_CLIENT"
-  elif [ -n "$GMAIL_ACCT" ]; then
-    warn "gmail_config: ACE_GMAIL_CLIENT not set (ACE_GMAIL_ACCOUNT=$GMAIL_ACCT present)" "GOG needs BOTH account + client — re-inject .env via 1Password (/ace:setup --force-env)"
+    pass "gmail_config: account=$GMAIL_ACCT client=$GMAIL_CLIENT (from config/agent.json)"
   else
-    warn "gmail_config: ACE_GMAIL_ACCOUNT not set" "re-inject .env via 1Password"
+    MISSING_ID="$([ -z "$GMAIL_ACCT" ] && printf 'email '; [ -z "$GMAIL_CLIENT" ] && printf 'gog_client')"
+    warn "gmail_config: config/agent.json is missing $MISSING_ID" "edit config/agent.json — it is the single source of truth for the gog identity; there is deliberately no .env fallback (ace#1147)"
   fi
 
   # Catch-all: any future .env.tpl addition that the installed .env hasn't
@@ -2151,13 +2164,12 @@ fi
 # the shared `canopy` client, while a genuinely broken email path went unprobed.
 # See jjackson/ace#1147.
 GOG_SERVICES="gmail,calendar,drive,docs,slides,sheets,forms"
-GMAIL_CLIENT_VAL="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("gog_client",""))' "$ROOT/config/agent.json" 2>/dev/null)"
-[ -n "$GMAIL_CLIENT_VAL" ] || GMAIL_CLIENT_VAL="$(get_env ACE_GMAIL_CLIENT)"
-GOG_LOGIN_HINT="brew install steipete/tap/gogcli && gog login ${GMAIL_ACCT:-<ACE_GMAIL_ACCOUNT>} --client ${GMAIL_CLIENT_VAL:-<ACE_GMAIL_CLIENT>} --services $GOG_SERVICES --force-consent"
+GMAIL_CLIENT_VAL="$(agent_json_field gog_client)"
+GOG_LOGIN_HINT="brew install steipete/tap/gogcli && gog login ${GMAIL_ACCT:-<agent.json email>} --client ${GMAIL_CLIENT_VAL:-<agent.json gog_client>} --services $GOG_SERVICES --force-consent"
 if ! command -v gog >/dev/null 2>&1; then
   warn_turn "gog_auth: GOG CLI not installed — email-communicator (Phase 8 invites, training emails) + Google user-identity ops unavailable" "$GOG_LOGIN_HINT"
 elif [ -z "$GMAIL_ACCT" ] || [ -z "$GMAIL_CLIENT_VAL" ]; then
-  warn_turn "gog_auth: ACE_GMAIL_ACCOUNT or ACE_GMAIL_CLIENT not set — cannot select GOG credentials" "see gmail_config above; re-inject .env, then: $GOG_LOGIN_HINT"
+  warn_turn "gog_auth: config/agent.json email or gog_client not set — cannot select GOG credentials" "see gmail_config above; fix config/agent.json, then: $GOG_LOGIN_HINT"
 else
   GOG_TO_BIN="$(command -v timeout 2>/dev/null || command -v gtimeout 2>/dev/null)"
   _gog() { if [ -n "$GOG_TO_BIN" ]; then "$GOG_TO_BIN" 25 gog "$@" 2>&1; else gog "$@" 2>&1; fi; }
@@ -2219,20 +2231,28 @@ else
   fi
 fi
 
-# 7a2b. gmail_client_mismatch — `gmail_config` reads ACE_GMAIL_CLIENT out of
-# .env while `gog_auth` reads config/agent.json's `gog_client`, and until
-# ace#1338 nothing compared them. On the machine that filed that issue they
-# printed `client=ace` and `client=canopy` in the SAME run, both PASS: the
-# .env value is a #1147 residual that resolves to a client with no
-# credentials file, so every call under it fails with a remedy
-# (`gog login --client ace`) that is an interactive browser OAuth a headless
-# turn cannot run. Two probes disagreeing about which client is authoritative
-# is a config defect even when the authoritative one works.
-GMAIL_CLIENT_ENV="$(get_env ACE_GMAIL_CLIENT)"
-if [ -n "$GMAIL_CLIENT_ENV" ] && [ -n "$GMAIL_CLIENT_VAL" ] && [ "$GMAIL_CLIENT_ENV" != "$GMAIL_CLIENT_VAL" ]; then
-  warn "gmail_client_mismatch: .env ACE_GMAIL_CLIENT=$GMAIL_CLIENT_ENV but config/agent.json gog_client=$GMAIL_CLIENT_VAL — agent.json is authoritative, so the .env value is a stale residual that will send any caller reading it to a client with no credentials" "clear the vault field (Agent-Ace) then: /ace:setup --force-env"
+# 7a2b. gmail_identity_residual — the gog identity now lives ONLY in
+# config/agent.json. `.env.tpl` no longer declares ACE_GMAIL_ACCOUNT /
+# ACE_GMAIL_CLIENT, and bin/ace-setup lists them as RETIRED_KEYS so a re-inject
+# drops rather than preserves them.
+#
+# This probe replaces `gmail_client_mismatch`, which compared the two sources.
+# Comparing them is no longer meaningful — there is only one — but an installed
+# .env written BEFORE the retirement still carries the residual, and on this
+# machine that residual was `ACE_GMAIL_CLIENT=ace` against agent.json's
+# `canopy`. Nothing reads it any more, so it is not a failure; it is a stale
+# line that will mislead the next person who greps for it. Flag it until a
+# re-inject clears it. ace#1147, #1338.
+GMAIL_ENV_RESIDUAL=""
+for _k in ACE_GMAIL_ACCOUNT ACE_GMAIL_CLIENT; do
+  if [ -n "$(get_env "$_k")" ]; then
+    GMAIL_ENV_RESIDUAL="$GMAIL_ENV_RESIDUAL $_k"
+  fi
+done
+if [ -n "$GMAIL_ENV_RESIDUAL" ]; then
+  warn "gmail_identity_residual:$GMAIL_ENV_RESIDUAL still present in .env — retired keys, no longer read by anything (config/agent.json is the single source of truth)" "harmless but misleading; clear with /ace:setup --force-env (bin/ace-setup drops retired keys), and delete the gmail_account/gmail_client fields from the 1Password Agent-Ace item"
 elif [ -n "$GMAIL_CLIENT_VAL" ]; then
-  pass "gmail_client_mismatch: .env and config/agent.json agree on client=$GMAIL_CLIENT_VAL"
+  pass "gmail_identity_residual: no retired identity keys in .env; client=$GMAIL_CLIENT_VAL from config/agent.json"
 fi
 
 # 7a3. canopy_email_engine — bin/ace-email + bin/ace-mark-read are thin shims
