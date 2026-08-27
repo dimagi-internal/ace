@@ -73,9 +73,11 @@ import {
   classifyLink,
   collectUrls,
   isAceDeliverable,
+  resolveDocSource,
   sortFindings,
   summarise,
   type DocProbe,
+  type DocSourceMap,
   type Finding,
   type Memberships,
   type ProbedLink,
@@ -317,16 +319,18 @@ async function main(): Promise<number> {
   findings.push(...auditCompleteness(payload, runState));
 
   // ── E. Document fidelity ───────────────────────────────────────
-  const docSources: Record<string, string> = a.docSource
-    ? (JSON.parse(readFileSync(a.docSource, 'utf8')) as Record<string, string>)
-    : {};
+  // `null` means the flag was never passed. A url ABSENT from a map that WAS
+  // passed stays `undefined` (unverified), not `null` — see resolveDocSource.
+  const docSources: DocSourceMap | null = a.docSource
+    ? (JSON.parse(readFileSync(a.docSource, 'utf8')) as DocSourceMap)
+    : null;
   const docProbes: DocProbe[] = [];
   for (const l of probed) {
     if (!isAceDeliverable(l.url)) continue;
     if (l.cls !== 'OK') continue; // a private doc is already a `broken` finding
     const { text, images, why } = await fetchDocText(l.url);
     if (text === null && why.startsWith('not a Google Doc')) continue; // Slides/Sheets
-    const src = a.docSource ? (docSources[l.url] ?? null) : undefined;
+    const src = resolveDocSource(docSources, l.url);
     docProbes.push({ label: l.label, url: l.url, text, imageCount: images, sourceMarkdown: src, unreadableReason: why || undefined });
   }
   findings.push(...auditDocFidelity(docProbes));

@@ -982,6 +982,50 @@ export function canonicalDocUrl(url: string): string {
 // ── Phase E: document fidelity ─────────────────────────────────────
 
 /**
+ * A `--doc-source` map: published-doc url → the markdown it was published
+ * from, or an EXPLICIT `null` meaning "the author asserts no source artifact
+ * exists for this one."
+ */
+export type DocSourceMap = Record<string, string | null>;
+
+/**
+ * Resolve one document's source markdown out of a supplied `--doc-source` map.
+ *
+ * There are THREE states here and collapsing the last two is what ace#1687
+ * was. Measured live on `hh-poverty-targeting/20260824-1404`: three audits
+ * minutes apart, the two with no map listed 6 and 8 unsourced documents, and
+ * the one carrying a map with a SINGLE entry dropped `DOC-FIDELITY-UNVERIFIED`
+ * entirely. Supplying a source for one document switched the check off for the
+ * other five.
+ *
+ * - map not supplied at all        → `undefined` — nothing was attempted.
+ * - url ABSENT from a supplied map → `undefined` — nothing was attempted *for
+ *   this url*. A partial map must NARROW the finding, never erase it; supplying
+ *   the sources you can recover is the natural thing to do and must not buy a
+ *   green surface with the check turned off.
+ * - url PRESENT with `null`        → `null` — the sentinel. The author has
+ *   deliberately declared no source exists, so the check stands down for this
+ *   url alone. That claim is written by hand, one url at a time; it is never
+ *   inferred from silence.
+ *
+ * Keys match on canonical doc identity, so a map keyed by the spelling Drive
+ * hands back (`…/edit?usp=drivesdk`) still matches the spelling the payload
+ * carries. A key that matches nothing simply leaves its document unverified —
+ * loudly, which is the safe direction.
+ */
+export function resolveDocSource(
+  map: DocSourceMap | null | undefined,
+  url: string,
+): string | null | undefined {
+  if (!map) return undefined;
+  const want = canonicalDocUrl(url);
+  for (const [key, value] of Object.entries(map)) {
+    if (canonicalDocUrl(key) === want) return value;
+  }
+  return undefined;
+}
+
+/**
  * Markers that a Google Doc is showing the reader raw markdown rather than
  * rendered prose (defect 11: documents rendered as literal `##`, `**`, and YAML
  * frontmatter because they were uploaded as `text/plain`).
@@ -1013,7 +1057,13 @@ export interface DocProbe {
   text: string | null;
   /** Number of `<img` tags in the HTML export, or null if not fetched. */
   imageCount: number | null;
-  /** Source markdown this doc was published FROM, when the caller supplies it. */
+  /**
+   * Source markdown this doc was published FROM.
+   *
+   * `undefined` = nothing was supplied for this doc, so fidelity is UNVERIFIED
+   * and says so. `null` = the caller deliberately asserted there is no source
+   * artifact. Never conflate the two — see `resolveDocSource` (ace#1687).
+   */
   sourceMarkdown?: string | null;
   /** Why `text` is null, when it is — reported verbatim rather than guessed at. */
   unreadableReason?: string;
@@ -1133,7 +1183,12 @@ export function auditDocFidelity(probes: DocProbe[]): Finding[] {
         `compared what was PUBLISHED against what was WRITTEN. Content the Drive importer drops ` +
         `is invisible to every other check here — one guide lost 44 screenshots and 224 words ` +
         `with every content check green`,
-      fix: 'pass --doc-source <json> mapping each url to the markdown it was published from (drive_read_file on the source artifact), or record explicitly that fidelity was not verified',
+      fix:
+        'pass --doc-source <json> mapping each url to the markdown it was published from ' +
+        '(drive_read_file on the source artifact). A PARTIAL map is fine and narrows this ' +
+        'finding to whatever is still missing — it does not switch the check off. To stand the ' +
+        'check down for a document that genuinely has no source artifact, give that url an ' +
+        'explicit null (`{"<url>": null}`); silence never means that',
       defect: '12 (a guide silently lost 44 screenshots and 224 words)',
     });
   }
