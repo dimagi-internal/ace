@@ -711,9 +711,11 @@ explicitly halts the run), the resume mechanism is:
   that was previously inlined or skipped.
 
 Phase agents 3–9 are subagents (each gets a fresh context window per
-dispatch); the only inline constraint is Phase 3 (`commcare-setup`),
-which dispatches Nova at level-0. That constraint is structural, not
-context-cost-driven.
+dispatch), Phase 3 (`commcare-setup`) included as of 0.13.1018 — it had
+been inline only because subagents could not reach Nova, and that
+constraint is gone. The remaining inline node in the run is Phase 7
+(`synthetic-data-and-workflows`), which keeps the `canopy:ddd` →
+`canopy:visual-judge` chain inside the depth budget.
 
 (The context-exhaustion shortcut anti-pattern lives in
 § Anti-patterns and discipline → Procedure discipline.)

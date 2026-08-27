@@ -10,7 +10,7 @@ If you're executing `/ace:run`, read `agents/ace-orchestrator.md` first. Come he
 
 The architectural rule and full topology table live in `CLAUDE.md § Agent topology` (the canonical source — every session loads it). Summary for the orchestrator's purposes:
 
-- **The forms:** `ace-orchestrator` and `synthetic-data-and-workflows` (Phase 7, `Agent(canopy:ddd)`) are procedure docs read and executed inline by the top-level session; `commcare-setup` (Phase 3) joined the subagents in 0.13.1018 once nesting made its `/nova:autobuild` dispatch reachable. The other eight agents (`idea-to-design`, `scenarios-and-acceptance`, `connect-setup`, `ocs-setup`, `qa-and-training`, `solicitation-management`, `execution-manager`, `closeout`, `ocs-tester`) are subagents dispatched via `Agent(...)` from level 0. Enforced by `test/agents/agent-topology.test.ts` — a subagent doc containing an `Agent(` dispatch fails CI, because the dispatch would be silently unreachable (that is what stalled Phase 7 in `spark-facilitator/20260813-2126`).
+- **The forms:** `ace-orchestrator` and `synthetic-data-and-workflows` (Phase 7, `Agent(canopy:ddd)`) are procedure docs read and executed inline by the top-level session; `commcare-setup` (Phase 3) joined the subagents in 0.13.1018 once nesting made its `/nova:autobuild` dispatch reachable. The other eight agents (`idea-to-design`, `scenarios-and-acceptance`, `connect-setup`, `ocs-setup`, `qa-and-training`, `solicitation-management`, `execution-manager`, `closeout`, `ocs-tester`) are subagents dispatched via `Agent(...)` from level 0. Enforced by `test/agents/agent-topology.test.ts` + `test/lib/agent-depth.test.ts` — a subagent doc may dispatch, but every dispatch must be declared in `lib/agent-depth.ts` and the resulting chain must fit `CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH`. (Until 0.13.1005 the rule was an absolute ban, because subagents had no `Agent` tool at all — that is what stalled Phase 7 in `spark-facilitator/20260813-2126`.)
 - **Invocation in the procedure below:** "dispatch the X agent" means a top-level `Agent(X)` call (subagent rows in the CLAUDE.md table) or "read `agents/X.md` and execute it inline" (procedure-doc rows).
 - **Why the forms differ:** an inline procedure doc runs in its caller's context and costs no dispatch depth, so the work it nests starts a level higher. Subagent nesting IS allowed (Claude Code v2.1.219+, default 3 levels) — the constraint is a budget, not a ban, and past the budget the `Agent` tool is silently withheld rather than erroring. `lib/agent-depth.ts` declares the graph and `test/lib/agent-depth.test.ts` holds the number.
 
@@ -301,7 +301,7 @@ run's `README.md` index after the phase completes.
 
 Before dispatching each phase agent (`Agent(idea-to-design)`,
 `Agent(scenarios-and-acceptance)`,
-`commcare-setup` and `synthetic-data-and-workflows` (inline procedure docs — same rule applies),
+`synthetic-data-and-workflows` (inline procedure doc — same rule applies),
 `Agent(connect-setup)`, `Agent(ocs-setup)`, `Agent(qa-and-training)`,
 `Agent(solicitation-management)`, `Agent(execution-manager)`,
 `Agent(closeout)`), the orchestrator MUST:
@@ -391,7 +391,7 @@ durable fix is structural: **every** phase agent carries the Step 0 block,
 so a new phase or a refactor can't silently drop it. Agents that carry it:
 `idea-to-design`, `scenarios-and-acceptance`, `connect-setup`, `ocs-setup`,
 `qa-and-training`, `synthetic-data-and-workflows`, `solicitation-management`
-(and `commcare-setup`'s inline procedure writes into `3-commcare/`). If you
+(and `commcare-setup` writes into `3-commcare/`). If you
 add a phase agent, add its Step 0.
 
 ### Current/ shortcut refresh (Phase 4 + Phase 5 completion)
@@ -964,7 +964,7 @@ backstop — even if the phase agent's prose says "I updated state",
 verify that the bytes landed.
 
 After each `Agent(<phase>)` dispatch (subagent) or each
-inline procedure-doc completion (commcare-setup):
+phase-subagent completion (commcare-setup):
 
 1. `drive_read_file(<run_state.yaml fileId>)`.
 2. Check `phases.<phase>.status`. Expected: `done` (or `partial` when a
@@ -1307,7 +1307,7 @@ Phase 6's `app-screenshot-capture` reads. Phase 6 halted at pre-flight
 with `incomplete`, no AVD time burned but five training docs rendered
 without screenshots and had to be re-run.
 
-The Phase 3 procedure doc (commcare-setup) is the highest-risk surface
+Phase 3 (commcare-setup) was the highest-risk surface
 because it executes inline at level-0 — there's no subagent boundary
 between "the orchestrator decides what to do" and "the skill produces
 the artifact." When in doubt, dispatch.
@@ -1472,7 +1472,7 @@ wholesale and would clobber every other phase's entry under
 
 ### Don't skip per-step `-eval` dispatch
 
-Phase 3 (`commcare-setup`) executes inline at level 0. After each
+Phase 3 (`commcare-setup`) is a subagent as of 0.13.1018 and dispatches its own evals. After each
 producer skill (`pdd-to-learn-app`, `pdd-to-deliver-app`,
 `app-release`), the procedure doc says to dispatch the matching
 `-eval` skill — these are not optional. The inline execution surface
