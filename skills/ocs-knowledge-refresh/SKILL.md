@@ -63,7 +63,19 @@ A first-class step, not a corrective second pass. `ocs-agent-setup --reindex`
 - `runs/<run-id>/6-qa-and-training/ocs-knowledge-refresh.md` — which documents
   were uploaded, the resulting collection file count, and the published
   `version_number`.
-- Updates `5-ocs/ocs-agent-setup.md` with `last_reindexed_at`.
+- Updates `5-ocs/ocs-agent-setup.md` with `last_reindexed_at` and the refreshed
+  `version_number`.
+
+  **This is a cross-phase write, and it is deliberate.** `ocs-agent-setup` is
+  the declared producer of that file; a Phase 6 skill appending two fields to it
+  is the one place this skill reaches outside its own phase. It is a *write*,
+  not a read, so it creates no `qa-and-training -> ocs` dependency and no cycle
+  — `lib/artifact-manifest.ts` models producers and consumers, and has no way to
+  express it, which is why it is stated here instead. The fields live with the
+  chatbot's other identifiers because that is where an operator looks for
+  chatbot state, and `ocs-agent-setup § Products` declares both as optional
+  fields written from Phase 6. If this ever becomes a read as well, it is a
+  cycle again — split it before it does.
 
 ## Process
 
@@ -76,6 +88,30 @@ Read `5-ocs/ocs-agent-setup.md`.
   that is Phase 5's job and doing it here would produce a bot with no
   widget-handoff and no smoke gate.
 - **Present.** Take `experiment_id`, `collection_id`, `pipeline_id`.
+
+**Then check `last_reindexed_at` before uploading anything — this skill is
+re-run.** Phase 6 is retried, `/ace:step ocs-knowledge-refresh` is a supported
+manual entry point, `/ace:iterate` targets phases 3+4+6 by default, and a fork
+replays the tail of a run. `ocs_upload_collection_files` **appends**; it does
+not replace. Uploading the same four documents into the same collection a
+second time leaves duplicates in the index — worse retrieval, a second 5–10
+minute indexing wait, and a file count that no longer means what the product
+artifact says it means.
+
+- **`last_reindexed_at` absent** → first pass. Continue.
+- **`last_reindexed_at` present, and every training document is older than it**
+  (compare Drive `modifiedTime`) → **no-op.** Record `status: skipped` with
+  `reason: already-current` and the existing `version_number`. Do not re-upload
+  and do not re-index.
+- **`last_reindexed_at` present but a training document is NEWER** → the
+  documents changed after the last refresh, so the collection is stale.
+  **Delete the previously-uploaded training files from the collection first**
+  (`ocs_download_file` is not needed; list the collection and remove the four
+  by filename), then continue from Step 1. Appending on top of the old copies
+  is the failure this branch exists to prevent.
+
+`ocs-agent-setup § Step 0` short-circuits the same way on a re-run; this skill
+did not until 0.13.1037.
 
 Then read the four training documents. **Do not tolerate a missing one
 silently** — that is the failure this skill exists to end. Record each missing

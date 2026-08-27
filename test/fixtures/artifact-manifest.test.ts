@@ -110,6 +110,11 @@ describe('ACE-Test-001 fixture', () => {
       // verdicts and the onboarding email are not).
       '6-qa-and-training/app-screenshot-capture_verdict-shallow.yaml',
       '6-qa-and-training/app-screenshot-capture_verdict.yaml',
+      // 0.13.1037: the knowledge-refresh record flipped to required:true. Its
+      // own manifest description says its absence means the chatbot never got
+      // the training documents — so leaving it optional meant the one check
+      // that signals the defect could never fire.
+      '6-qa-and-training/ocs-knowledge-refresh.md',
       // PR-517: Phase 6 training-* `-eval` verdicts flipped to required:true.
       '6-qa-and-training/training-deck-generate-eval_verdict.yaml',
       '6-qa-and-training/training-faq-eval_verdict.yaml',

@@ -37,11 +37,8 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import * as fs from 'node:fs';
-import * as path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { ARTIFACT_MANIFEST } from '../../lib/artifact-manifest.js';
 
-const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 
 /**
  * Known cycles, keyed by their phase pair, with the cut that makes them safe.
@@ -64,65 +61,67 @@ const DECLARED_CYCLES: Record<string, string> = {
     'acknowledged optional upgrade. Same structure, opposite outcome.',
 };
 
-interface Entry {
-  producedBy: string;
-  consumers: string[];
-  phase: string;
+/**
+ * Phase-level edges between single-phase producers.
+ *
+ * Read from the TYPED export rather than re-parsed out of the file's text. The
+ * first version of this test regex-scraped `lib/artifact-manifest.ts` with a
+ * lazy multi-line pattern that could slurp across entry boundaries and invent
+ * an edge — an odd way to guard a graph whose whole problem was saying things
+ * that were not true. `ARTIFACT_MANIFEST` is exported and typed; use it.
+ *
+ * Producers spanning several phases (`external`, `ace-orchestrator`) are
+ * dropped: a cross-phase edge through them is an artifact of the aggregation,
+ * not a real dependency.
+ */
+function phaseEdges(): Set<string> {
+  const producerPhases = new Map<string, Set<string>>();
+  for (const e of ARTIFACT_MANIFEST) {
+    if (!producerPhases.has(e.producedBy)) producerPhases.set(e.producedBy, new Set());
+    producerPhases.get(e.producedBy)!.add(e.phase);
+  }
+  const singlePhase = new Map(
+    [...producerPhases]
+      .filter(([n, ps]) => ps.size === 1 && n !== 'external' && n !== 'ace-orchestrator')
+      .map(([n, ps]) => [n, [...ps][0]] as const),
+  );
+
+  const edges = new Set<string>();
+  for (const e of ARTIFACT_MANIFEST) {
+    if (!singlePhase.has(e.producedBy)) continue;
+    for (const c of e.consumedBy) {
+      const cp = singlePhase.get(c);
+      if (cp && cp !== e.phase) edges.add(`${e.phase}->${cp}`);
+    }
+  }
+  return edges;
 }
 
-function parseManifest(): Entry[] {
-  const src = fs.readFileSync(path.join(REPO_ROOT, 'lib/artifact-manifest.ts'), 'utf8');
-  const body = src.slice(src.indexOf('DISPATCH') >= 0 ? 0 : 0);
-  const re =
-    /\{\s*path:\s*'([^']+)',[\s\S]*?producedBy:\s*'([^']+)',[\s\S]*?consumedBy:\s*\[([\s\S]*?)\],[\s\S]*?phase:\s*'([^']+)'/g;
-  const out: Entry[] = [];
-  let m: RegExpExecArray | null;
-  while ((m = re.exec(body))) {
-    const consumers = [...m[3].matchAll(/'([^']+)'/g)].map((x) => x[1]);
-    out.push({ producedBy: m[2], consumers, phase: m[4] });
+/** Every phase pair with edges in BOTH directions, keyed `a<->b` (sorted). */
+function cycles(): Set<string> {
+  const edges = phaseEdges();
+  const out = new Set<string>();
+  for (const edge of edges) {
+    const [a, b] = edge.split('->');
+    if (edges.has(`${b}->${a}`)) out.add([a, b].sort().join('<->'));
   }
   return out;
 }
 
 describe('artifact dataflow cycles', () => {
-  const entries = parseManifest();
-
   it('parses the manifest', () => {
-    expect(entries.length, 'no manifest entries parsed — did the shape change?').toBeGreaterThan(
+    expect(ARTIFACT_MANIFEST.length, 'manifest is empty — nothing is being checked').toBeGreaterThan(
       100,
     );
+    // An empty edge set passes the cycle assertion while checking nothing.
+    expect(
+      phaseEdges().size,
+      'no cross-phase edges derived — the phase/producer aggregation is broken, not the repo',
+    ).toBeGreaterThan(5);
   });
 
   it('declares every phase-level cycle, with its cut', () => {
-    // Map each producer to the phase(s) it produces in. Producers that span
-    // several phases (the orchestrator, `external`) are dropped: a cross-phase
-    // edge through them is an artifact of the aggregation, not a real dependency.
-    const producerPhases = new Map<string, Set<string>>();
-    for (const e of entries) {
-      if (!producerPhases.has(e.producedBy)) producerPhases.set(e.producedBy, new Set());
-      producerPhases.get(e.producedBy)!.add(e.phase);
-    }
-    const singlePhase = new Map(
-      [...producerPhases].filter(([n, ps]) => ps.size === 1 && n !== 'external' && n !== 'ace-orchestrator')
-        .map(([n, ps]) => [n, [...ps][0]]),
-    );
-
-    const edges = new Set<string>();
-    for (const e of entries) {
-      if (!singlePhase.has(e.producedBy)) continue;
-      for (const c of e.consumers) {
-        const cp = singlePhase.get(c);
-        if (cp && cp !== e.phase) edges.add(`${e.phase}->${cp}`);
-      }
-    }
-
-    const cycles = new Set<string>();
-    for (const edge of edges) {
-      const [a, b] = edge.split('->');
-      if (edges.has(`${b}->${a}`)) cycles.add([a, b].sort().join('<->'));
-    }
-
-    const undeclared = [...cycles].filter((c) => !(c in DECLARED_CYCLES));
+    const undeclared = [...cycles()].filter((c) => !(c in DECLARED_CYCLES));
     expect(
       undeclared,
       'Undeclared cycle(s) in the artifact dataflow. A cycle cannot be fixed by\n' +
@@ -134,15 +133,21 @@ describe('artifact dataflow cycles', () => {
   });
 
   it('keeps DECLARED_CYCLES honest — every declared cycle still exists', () => {
-    // A stale entry here would silently license a future cycle between the same
-    // two phases. If the cycle is genuinely gone, delete the entry.
-    const src = fs.readFileSync(path.join(REPO_ROOT, 'lib/artifact-manifest.ts'), 'utf8');
-    for (const key of Object.keys(DECLARED_CYCLES)) {
-      const [a, b] = key.split('<->');
-      expect(
-        src.includes(`phase: '${a}'`) && src.includes(`phase: '${b}'`),
-        `DECLARED_CYCLES names phases ${a}/${b}, but the manifest has no such phases`,
-      ).toBe(true);
-    }
+    // This assertion used to check only that the two PHASE NAMES appeared
+    // somewhere in the manifest file, which is always true — so it passed for
+    // a cycle that no longer existed, which is precisely the thing it warns
+    // about one line up. 0.13.1028 deleted `ocs<->qa-and-training` by hand
+    // after splitting `ocs-agent-setup`; had it not, nothing here would have
+    // said so. It now recomputes.
+    const live = cycles();
+    const stale = Object.keys(DECLARED_CYCLES).filter((k) => !live.has(k));
+    expect(
+      stale,
+      'DECLARED_CYCLES names cycles that no longer exist in the manifest. A stale\n' +
+        'entry silently licenses a FUTURE cycle between the same two phases — the\n' +
+        'undeclared-cycle check above would wave it through. If the cycle is gone,\n' +
+        'delete the entry (and say so in the CHANGELOG — removing one is good news).\n\n  ' +
+        stale.join('\n  '),
+    ).toEqual([]);
   });
 });

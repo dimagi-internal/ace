@@ -804,7 +804,22 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
   {
     path: '5-ocs/ocs-agent-setup.md',
     producedBy: 'ocs-agent-setup',
-    consumedBy: ['ocs-chatbot-qa', 'ocs-chatbot-eval', 'llo-onboarding', 'timeline-monitor', 'flw-data-review'],
+    consumedBy: [
+      'ocs-chatbot-qa',
+      'ocs-chatbot-eval',
+      'llo-onboarding',
+      'timeline-monitor',
+      'flw-data-review',
+      // Phase 6's `ocs-knowledge-refresh` reads experiment_id / collection_id /
+      // pipeline_id from here — its own Inputs table says so, and Step 0 halts
+      // without them. The edge was missing from 0.13.1028 (the ocs-agent-setup
+      // split) until 0.13.1037: the same undeclared-dependency class that
+      // 0.13.1026 had just fixed three edges of, reintroduced by the fix.
+      // Declaring it is safe — it is a forward 5→6 edge, not the other half of
+      // a cycle. The cycle the split removed was `qa-and-training -> ocs`, and
+      // no `ocs`-phase producer consumes a Phase 6 artifact any more.
+      'ocs-knowledge-refresh',
+    ],
     phase: 'ocs',
     required: true,
     description: 'OCS chatbot config: experiment_id, public_id, embed_key, collection_id',
@@ -1063,7 +1078,17 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     producedBy: 'ocs-knowledge-refresh',
     consumedBy: ['opp-eval'],
     phase: 'qa-and-training',
-    required: false,
+    // `required: true` since 0.13.1037. It was optional, while its own
+    // description said its absence means the chatbot never got the training
+    // documents — so `verify_phase_artifacts` could not flag the exact thing
+    // the artifact exists to signal. The original defect WAS a step nobody
+    // ran; the skill's own [BLOCKER] on zero-uploaded only fires once the
+    // skill has started. A skipped Phase 5 is not an exception: the skill
+    // still writes this file with `status: skipped` and the reason.
+    required: true,
+    // Same carve-out as its sibling training artifacts: an app-QA-only run
+    // has no Phase 5 chatbot to refresh (ace#1069).
+    notRequiredInModes: ['app-QA-only'],
     description: "Record of the Phase 6 knowledge-base refresh: which training documents were uploaded into the chatbot's RAG collection, the resulting file count, and the published version_number. Absent on a completed Phase 6 means the chatbot never received the training documents.",
   },
   {

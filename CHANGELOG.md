@@ -5,6 +5,22 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.13.1039 — 2026-08-27
+
+**The split that removed the OCS↔training cycle reintroduced the defect it was fixing, one artifact over.**
+
+0.13.1026 added three missing `consumedBy` edges to `lib/artifact-manifest.ts` because a graph missing half a cycle looks like a solvable ordering bug. 0.13.1028 then split `ocs-agent-setup` into `ocs-agent-setup` + `ocs-knowledge-refresh` — and did not declare that `ocs-knowledge-refresh` **reads** `5-ocs/ocs-agent-setup.md`, which its own Inputs table names and its Step 0 halts without. Same undeclared-dependency class, two days later. Declared now; it is a forward 5→6 edge, so no cycle returns.
+
+**`6-qa-and-training/ocs-knowledge-refresh.md` was `required: false` while its own description said its absence means the chatbot never got the training documents.** So `verify_phase_artifacts` could not flag the one thing the artifact exists to signal. Now `required: true` with the same `app-QA-only` carve-out its sibling training artifacts carry. This matters because the original defect *was* a step nobody ran — the skill's `[BLOCKER]` on zero-uploaded only fires once the skill has started.
+
+**`test/lib/artifact-cycles.test.ts`'s honesty check was a no-op.** It promised *"every declared cycle still exists"* and warned that a stale entry "would silently license a future cycle" — then asserted only that the two phase NAMES appear somewhere in the manifest, which is always true. Keeping `ocs<->qa-and-training` in `DECLARED_CYCLES` after 0.13.1028 removed the cycle would have passed. It now recomputes the cycle set; negative-tested both ways (a stale entry fails; a reintroduced `ocs -> qa-and-training` edge is reported as undeclared).
+
+The same file also stopped regex-scraping `lib/artifact-manifest.ts` out of its own source text — a lazy multi-line pattern that could slurp across entry boundaries and invent an edge, which is an odd way to guard a graph whose whole problem was saying untrue things. `ARTIFACT_MANIFEST` is exported and typed; it is imported. (`src.slice(src.indexOf('DISPATCH') >= 0 ? 0 : 0)` — both branches `0` — went with it.)
+
+**`ocs-knowledge-refresh` had no re-run contract, and `ocs_upload_collection_files` APPENDS.** Phase 6 is retried, `/ace:step` is a supported manual entry, `/ace:iterate` targets phases 3+4+6 by default, and a fork replays the tail of a run — so "runs twice" is the normal case. A second pass left two copies of every training document in the RAG index, spent the 5–10 minute indexing wait again, and made the product artifact's file count mean something other than what it says. Step 0 now branches three ways: absent → first pass; present and every document older → no-op with `status: skipped`; present but a document NEWER → remove the previous copies first, because appending on top of stale ones is what this branch exists to prevent. `ocs-agent-setup § Step 0` has short-circuited on a re-run since long before; this skill did not.
+
+**The cross-phase write is now stated where the manifest cannot express it.** `ocs-knowledge-refresh` appends `last_reindexed_at` + `version_number` to `5-ocs/ocs-agent-setup.md`, whose declared producer is `ocs-agent-setup`. It is a write, not a read, so it creates no dependency and no cycle — but the manifest models producers and consumers only, so it had no way to say so. Recorded in the skill instead, with the line that matters: if it ever becomes a read as well, it is a cycle again.
+
 ## 0.13.1036 — 2026-08-27
 
 **"level 0" in the Phase 3 chain never meant a dispatch depth — and Phase 3 stopped being at level 0 nine PRs ago.**

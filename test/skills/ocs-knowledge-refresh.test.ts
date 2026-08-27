@@ -56,16 +56,26 @@ function workflow(doc: string): string {
   return doc.slice(start, end);
 }
 
+/** `ocs-knowledge-refresh`'s Step 0 only — the preconditions + re-run branch. */
+function step0(doc: string): string {
+  const start = doc.indexOf('### Step 0:');
+  const end = doc.indexOf('### Step 1:');
+  if (start < 0 || end < 0 || end <= start) return '';
+  return doc.slice(start, end);
+}
+
 describe('OCS knowledge base is refreshed after Phase 6 writes the training docs', () => {
   const phase6 = readFileSync(join(ROOT, 'agents/qa-and-training.md'), 'utf8');
   const refresh  = readFileSync(join(ROOT, 'skills/ocs-knowledge-refresh/SKILL.md'), 'utf8');
   const phase5   = readFileSync(join(ROOT, 'skills/ocs-agent-setup/SKILL.md'), 'utf8');
 
   it('Phase 6 invokes ocs-knowledge-refresh', () => {
-    // Scoped to Workflow: the frontmatter carries a NOTE mentioning
-    // `ocs-agent-setup --reindex` (explaining why it is not in `skills:`), and an
-    // unscoped match is satisfied by that comment alone. Deleting the real
-    // invocation then left this assertion green — found by negative-testing it.
+    // Scoped to Workflow. When this was written the frontmatter carried a NOTE
+    // mentioning `ocs-agent-setup --reindex`, and an unscoped match was satisfied
+    // by that comment alone — deleting the real invocation left the assertion
+    // green, found by negative-testing it. 0.13.1028 put the skill in `skills:`
+    // and dropped the note, so the frontmatter now names it legitimately: the
+    // scoping is still what makes this assertion mean "invoked", not "mentioned".
     expect(
       /ocs-knowledge-refresh/.test(workflow(phase6)),
       'agents/qa-and-training.md must invoke `ocs-knowledge-refresh`. Without it the\n' +
@@ -78,10 +88,10 @@ describe('OCS knowledge base is refreshed after Phase 6 writes the training docs
     // Re-indexing before the docs are written is the bug, not the fix.
     //
     // Scoped to the Workflow section on purpose: an unscoped search finds the
-    // frontmatter note explaining why this skill is not in the `skills:` list,
-    // which sits at the top of the file and would make the ordering assertion
-    // pass or fail for reasons unrelated to the actual step order. (Caught by
-    // this test failing on its own first run — `expected 1233 to be > 37216`.)
+    // `skills:` frontmatter row at the top of the file, which would make the
+    // ordering assertion pass or fail for reasons unrelated to the actual step
+    // order. (Caught by this test failing on its own first run — `expected 1233
+    // to be > 37216`.)
     const wf = workflow(phase6);
     expect(wf.length, 'Workflow section not found — did the headings move?').toBeGreaterThan(500);
 
@@ -123,5 +133,34 @@ describe('OCS knowledge base is refreshed after Phase 6 writes the training docs
       offenders.map(([l, n]) => `  ocs-agent-setup:${n}  ${l.trim().slice(0, 100)}`),
       'Phase 5 must not consume Phase 6 artifacts — that is the cycle this split removed.',
     ).toEqual([]);
+  });
+
+  it('short-circuits on a re-run instead of appending duplicates', () => {
+    // ocs_upload_collection_files APPENDS. Phase 6 is retried, /ace:step is a
+    // supported manual entry, /ace:iterate targets 3+4+6, and a fork replays the
+    // tail — so "runs twice" is the normal case, not the edge case. Without a
+    // short-circuit the second pass leaves two copies of every training document
+    // in the index and spends the 5-10 minute wait again.
+    expect(
+      /last_reindexed_at/.test(step0(refresh)),
+      'Step 0 must read `last_reindexed_at` BEFORE uploading — it is the only\n' +
+        'record of whether this collection already has the documents.',
+    ).toBe(true);
+    expect(
+      /append/i.test(refresh),
+      'the skill must say that upload APPENDS — that is the whole reason a re-run\n' +
+        'is not free, and the reason the branch below exists',
+    ).toBe(true);
+    // Three outcomes, not two: absent, current, and stale-because-a-doc-moved.
+    // Collapsing the third into "already done" is how a corrected training doc
+    // never reaches the bot.
+    for (const branch of ['already-current', 'NEWER']) {
+      expect(
+        refresh.includes(branch),
+        `Step 0 must handle the '${branch}' case: a document edited after the last\n` +
+          'refresh means the collection is stale, and appending on top of the old\n' +
+          'copies is worse than not refreshing at all.',
+      ).toBe(true);
+    }
   });
 });
