@@ -1165,7 +1165,9 @@ skills:
   - { name: partnership-publish,    has_judge: false }
 ---
 ```
-Body must include, verbatim in spirit, the inline-at-level-0 disclaimer (copy the wording from `agents/commcare-setup.md`): this file is read and executed inline by the top-level session because it dispatches `Agent` (deep-research, canopy walkthrough, Nova); running it as a subagent would push those dispatches to level 2 and fail.
+Body must include, verbatim in spirit, the inline-execution disclaimer (copy the wording from `agents/partnership-video.md`): this file is read and executed inline by the top-level session because it dispatches `Agent` (deep-research, canopy walkthrough, Nova), and running inline is what keeps those chains inside the dispatch-depth budget.
+
+> **Superseded wording (2026-08-27).** This step originally said to copy the *inline-at-level-0* disclaimer from `agents/commcare-setup.md` — "running it as a subagent would push those dispatches to level 2 and fail." That rule was retired in 0.13.1005: subagent nesting is legal (Claude Code v2.1.219+) to a budget, and `commcare-setup` itself became a subagent in 0.13.1018, so it is no longer the file to copy from. Do not reintroduce the old sentence — see `CLAUDE.md § Agent topology`.
 
 Then the two-phase procedure:
 - **Propose phase** (default invocation): Profile → `partnership-research` (+qa+eval) → `partnership-angles` (+eval) → present the 3 angles to the operator and STOP. (Pause point.)

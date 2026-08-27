@@ -37,8 +37,13 @@ the PDD → app → Connect lifecycle.
 2. **Execute the demo procedure inline at top-level.** Read `agents/demo.md` and
    follow it as a procedure document from this (top-level) session. Do **NOT**
    dispatch `Agent(demo)` — it is a procedure doc, not a subagent (`CLAUDE.md §
-   Agent topology`): it dispatches the `canopy:ddd` agent and the DDD render
-   loop, which need the `Agent` tool, available only at level 0.
+   Agent topology`): it dispatches the `canopy:ddd` agent, whose render loop fans
+   out per-scene judges of its own. Running `demo` inline costs no dispatch depth,
+   which is what keeps that chain inside the budget. (Nesting is legal as of
+   Claude Code v2.1.219 — this line said "available only at level 0" until
+   0.13.1032, the retired rule. Past the budget the `Agent` tool is withheld
+   silently, so the loop degrades instead of failing; `lib/agent-depth.ts` has the
+   arithmetic.)
 
    Thread through: `source`, `brief`, `name`, `pinMonday`, `render`.
 

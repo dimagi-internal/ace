@@ -5,6 +5,29 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.13.1036 — 2026-08-27
+
+**"level 0" in the Phase 3 chain never meant a dispatch depth — and Phase 3 stopped being at level 0 nine PRs ago.**
+
+`commcare-setup` became a subagent in 0.13.1018. Twenty-two sentences across `agents/commcare-setup.md`, `skills/pdd-to-learn-app`, `skills/pdd-to-deliver-app` and `skills/_app-component-library.md` still said "level 0" — including a halt message ACE is instructed to emit **verbatim** to the operator (*"Nova MCP did not bind at level 0 this session"*), which now named a level the phase does not run at.
+
+The term was never about depth. It meant **"ACE's own Nova MCP surface, as opposed to the autonomous architect's"** — which agent holds the connection, not how deep it sits. Re-spelled **`ACE-direct`** throughout, so the distinction survives the next form change. The term is defined once, next to its first use in `_app-component-library.md § app-language-layer`.
+
+**The remedy in Step 0b survives the move, and now says why.** A subagent is launched *in the same Claude Code process* and shares its session and MCP connections, so a Nova bind that failed at session start is inherited by every subagent beneath it: re-dispatching Phase 3 gets the same dead connection and only a process restart re-establishes it. That was asserted from level-0 behaviour and never re-derived after 0.13.1018; it is now stated as the reason rather than the level.
+
+**Two live docs still asserted the retired pre-v2.1.219 ban.** `agents/synthetic-data-and-workflows.md` — Phase 7's own doc, the node the whole depth argument hinges on — and `commands/demo.md` both said the `Agent` tool is "available only at level 0". The 0.13.1005 sweep listed eleven such docs and fixed nine. Both now state the real constraint (a budget, silently withheld past it) instead of a ban. `docs/superpowers/plans/2026-06-06-partnership-video.md` told future authors to copy the retired wording verbatim; marked superseded.
+
+**Two new guards, because a hand sweep missed these three times running:**
+
+- **retired invariant** — no live doc may assert that the `Agent` tool is unavailable to subagents. Scoped to the `Agent` tool on purpose: `AskUserQuestion` genuinely *is* withheld from every subagent, and an unscoped pattern flags that live, correct sentence.
+- **depth-coded prose in a subagent's own files** — for every node declared `subagent` in `lib/agent-depth.ts`, neither `agents/<name>.md` nor any `skills/<s>/SKILL.md` named in its `skills:` frontmatter may claim it runs at level 0. Scoping to the agent doc alone would have caught 7 of the 22; the staleness lived in the skills.
+
+Both exempt explicit past-tense framing, which is how a live doc is supposed to describe history.
+
+**Also fixed:** `agents/orchestrator-reference.md` called the subagent list "the other eight agents" while listing nine, and had not counted `commcare-setup` since 0.13.1018. It is ten.
+
+**Checked and NOT a regression:** `_app-component-library.md`'s 2026-08-12 row carries a directive to *skip* the `discriminating-assessment-items` cold-read probe "if the skill is ever dispatched as a subagent" — which Phase 3 now is. That probe was retired on 2026-08-13; `pdd-to-learn-app § 4d` is a tombstone and nothing live reads the directive.
+
 ## 0.13.1031 — 2026-08-26
 
 **CI now fails on an unresolved merge-conflict marker in any tracked file.**

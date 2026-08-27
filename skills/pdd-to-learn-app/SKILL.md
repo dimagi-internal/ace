@@ -330,7 +330,7 @@ Generate the Learn (training) app from the PDD using the Nova plugin
      - `app-language-layer` (Learn variant) — trigger: PDD names a
        working language other than English. The brief tells the
        architect to build the app in **English ONLY** and to call no
-       language atom. **ACE owns the language layer**, at LEVEL 0, in
+       language atom. **ACE owns the language layer**, ACE-direct, in
        Step 4e below — after every English-editing step has finished.
        That split is the fix for ace#1556: the architect's operating
        prompt forbids it saving self-generated target text, so a brief
@@ -342,7 +342,7 @@ Generate the Learn (training) app from the PDD using the Nova plugin
        2026-08-17, PR #1463, superseding ace#968/#1391; ownership split
        2026-08-23, ace#1556 — see
        `_app-component-library.md § app-language-layer` for the proven
-       contract and the level-0 recipe.) Graded by
+       contract and the ACE-direct recipe.) Graded by
        `language_conformance`.
      - `learn-app-naming` — always. App name must contain "Learn app".
      - `end-of-form-previous` — always, every form. End of Form Navigation
@@ -524,7 +524,7 @@ Generate the Learn (training) app from the PDD using the Nova plugin
     loop, post-Nova.
 
 4b. **Learn-marker compile pre-check (catch a missing app-level Connect
-    type before deploy) — runs at LEVEL 0.** Mirror of
+    type before deploy) — runs ACE-DIRECT.** Mirror of
     `pdd-to-deliver-app` § 4e. The autonomous architect
     (`Agent(nova:nova-architect-autonomous)`) can land a Learn app with
     **no app-level Connect mode** even though every form already carries
@@ -544,8 +544,8 @@ Generate the Learn (training) app from the PDD using the Nova plugin
     2. **Assert the header reads `Connect type: learn`.** Do NOT rely on
        the per-form `[Connect enabled]` flag — it is a false positive for
        compile (see above).
-    3. On a miss, heal at LEVEL 0 with **`configure_connect`**, which is
-       available to the level-0 session that executes this skill.
+    3. On a miss, heal ACE-direct with **`configure_connect`**, which is
+       available to the ACE session that executes this skill.
        `update_app` no longer carries `connect_type` — it was removed in
        Nova's 2026-07-31 redeploy (jjackson/ace#1133); `configure_connect`
        replaced it and sets the app-level mode AND every form's Connect
@@ -612,7 +612,7 @@ Generate the Learn (training) app from the PDD using the Nova plugin
     jjackson/ace#1133.)
 
 4c. **Conditional-result-label pre-check (catch the unconditional pass
-    message before deploy) — runs at LEVEL 0.** This is the structural
+    message before deploy) — runs ACE-DIRECT.** This is the structural
     preventer for the exact gap `pdd-to-learn-app-eval § assessment_gating`
     hard-fails on: a quiz with an **unconditional** "Well done!" result
     label that fires regardless of score. The brief above (the
@@ -663,8 +663,8 @@ Generate the Learn (training) app from the PDD using the Nova plugin
        happened live, because the brief was hand-composed at L0 and the
        `assessment-gate` component paragraph was never inserted.
 
-    3. On a miss, heal at LEVEL 0 (`edit_field` / `add_fields` are
-       available to the level-0 session that executes this skill):
+    3. On a miss, heal ACE-direct (`edit_field` / `add_fields` are
+       available to the ACE session that executes this skill):
        `edit_field({app_id, moduleUuid, formUuid, fieldUuid, updates})`
        to add a pass condition to the existing pass label, and
        `add_fields({app_id, moduleUuid, formUuid, fields})` to append a
@@ -778,11 +778,11 @@ Generate the Learn (training) app from the PDD using the Nova plugin
     and it returns `repairs[]` naming the specific items to re-key (see
     § Repair mode below). Do not reinstate a persona probe here without
     reading ace#1206 first.
-4e. **Language layer — runs at LEVEL 0, LAST of the 4x steps (ace#1556).**
+4e. **Language layer — runs ACE-DIRECT, LAST of the 4x steps (ace#1556).**
     Applies only when the PDD names a working language other than English;
     otherwise skip and say so in the summary.
 
-    **Why level 0 and not the architect.** The architect's operating prompt
+    **Why ACE-direct and not the architect.** The architect's operating prompt
     (nova plugin `1.26.0`/`1.27.0`, `skills/autobuild/SKILL.md`) says *"Never
     treat your own language fluency as a substitute or bulk-translate
     self-generated text through `update_translations`. Only save target text
@@ -795,7 +795,7 @@ Generate the Learn (training) app from the PDD using the Nova plugin
     English-editing step (4a–4d, and any `repairs[]` pass) is already done, so
     nothing can demote a translation to `out-of-date` behind you.
 
-    Execute `_app-component-library.md § app-language-layer` **ACE's level-0
+    Execute `_app-component-library.md § app-language-layer` **ACE's ACE-direct
     recipe** verbatim — `get_languages` → `add_language(copyFrom: 'en')` →
     page `get_translatable_content` and author real values via
     `update_translations` (≤50 units/call, echoing each just-read
@@ -885,7 +885,7 @@ When invoked with a `repairs[]` list:
    `#form/<id>` — a bare id persists as raw text with no error and silently
    breaks the scoring chain (ace#1119). **If the app carries a working
    language, every repaired string's translation is now `out-of-date` and
-   falls back to English** — re-run § Step 4e (the LEVEL-0 language layer;
+   falls back to English** — re-run § Step 4e (the ACE-direct language layer;
    never the architect, ace#1556) for the repaired units and re-confirm
    `out-of-date` is 0 before hand-off.
 3. **Read back the scoring chain.** After any pass that rewrites options or
