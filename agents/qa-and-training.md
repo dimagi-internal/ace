@@ -19,14 +19,7 @@ skills:
   - { name: training-deck-generate,    has_judge: true, eval_skill: training-deck-generate-eval }
   - { name: training-deck-render,      has_judge: false }
   - { name: training-onboarding-email, has_judge: true, eval_skill: training-onboarding-email-eval }
-# Note: Step 2d invokes `ocs-agent-setup --reindex` as the phase's last
-# action, but it is deliberately NOT listed above. That list declares which
-# producers a phase OWNS, and `ocs-agent-setup` is owned by Phase 5
-# (`ocs-setup`) — claiming it here would make it owned twice, which
-# `test/agents/coherence.test.ts` correctly rejects. Phase 6 invokes it; it
-# does not produce it. The invocation is guarded by
-# `test/skills/ocs-reindex-after-training.test.ts` instead.
-#
+  - { name: ocs-knowledge-refresh,     has_judge: false } # LAST — puts this phase's docs into the Phase 5 chatbot's RAG collection
 # Note: `training-materials` umbrella was removed in 0.10.87. The
 # Phase 6 agent dispatches each per-artifact skill directly; the
 # umbrella's only remaining role (verdict aggregation) is now opp-eval's
@@ -524,26 +517,25 @@ Halt the phase on any non-pass eval verdict.
 
 **2d. Sequential — refresh the OCS knowledge base (LAST step of the phase):**
 
-- Invoke `ocs-agent-setup --reindex`.
+- Invoke `ocs-knowledge-refresh` → `6-qa-and-training/ocs-knowledge-refresh.md`.
 
-**Why this is Phase 6's job and not Phase 5's.** The per-opp chatbot's RAG
-collection is built in Phase 5, and `lib/artifact-manifest.ts` declares
-`ocs-agent-setup` a consumer of four documents this phase produces — the LLO
-guide, the FLW guide, the FAQ, and the quick-reference. Phase 5 runs first, so
-on a fresh `/ace:run` those four files do not exist when the collection is
-indexed. Until 0.13.1021 nothing re-indexed afterwards, so **every opportunity's
-chatbot shipped without the training material its users ask about.**
+**Why Phase 6 owns this.** The per-opp chatbot's RAG collection should contain
+the four training documents this phase produces — the LLO guide, the FLW guide,
+the FAQ, the quick-reference. Those are Phase 6 products, so the step that
+uploads them belongs to Phase 6, and this phase legitimately claims the skill in
+its frontmatter.
 
-It failed silently, which is why it survived: the Phase 5 reads are tolerant of
-missing files (2026-05-15), the collection indexes cleanly either way, and the
-Phase 5 `--quick` gate asks three *universal* Connect questions that need none of
-those documents. Every check was green.
+It used to belong to Phase 5, which runs first and therefore read
+`6-qa-and-training/*` before it existed. That read was made tolerant of missing
+files, so nothing errored and nothing re-uploaded them: **every opportunity's
+chatbot shipped without the documents its users ask about.** Splitting the work
+at its real seam — Phase 5 creates and publishes the bot, Phase 6 populates its
+knowledge base — removes the cycle instead of working around it.
 
-**Skip conditions.** If Phase 5 was skipped or produced no state file, `--reindex`
-is a no-op and says so — do not treat that as a phase failure. If the four
-training documents are missing because their producers failed, record it and
-continue (the run is already carrying those verdicts); a stale collection is a
-worse outcome than a noisy one, but neither blocks.
+**Skip conditions.** If Phase 5 produced no state file, `ocs-knowledge-refresh`
+is a no-op and says so — not a phase failure. If a training document is missing
+because its producer failed, the refresh uploads the rest and **names the
+missing ones**; it never skips silently, which is the whole point.
 
 ## Verdict-gate rule for `-eval` skills
 

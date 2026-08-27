@@ -5,6 +5,30 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.13.1029 — 2026-08-26
+
+**The OCS↔training cycle is gone — not cut, removed. `ocs-agent-setup` was two jobs wearing one name.**
+
+0.13.1022 closed the cycle with a corrective second pass (`ocs-agent-setup --reindex`). It worked, but left two things behind: the cycle was still in the declared graph, and Phase 5 still read `6-qa-and-training/*` tolerantly — the exact pattern that hid the defect for months.
+
+The cycle existed because one skill bundled two jobs with different inputs:
+
+| Half | Needs | Available in |
+|---|---|---|
+| create + publish the bot → emits `widget_url` | PDD, app summaries, opp details | Phase 5 |
+| populate the knowledge base | the four training documents | Phase 6 |
+
+Phase 6's guides embed `widget_url`; Phase 5's collection wants Phase 6's documents. Bundled and run in Phase 5, that is unsatisfiable. Split at the seam, it is a plain DAG.
+
+- New **`ocs-knowledge-refresh`**, owned by Phase 6 — uploads the training documents, waits for indexing, republishes, writes `6-qa-and-training/ocs-knowledge-refresh.md` and stamps `last_reindexed_at`. It **names any missing document** rather than tolerating absence, which is the specific behaviour whose lack caused the original defect.
+- **`ocs-agent-setup` consumes nothing from Phase 6.** The four manifest edges are repointed; the tolerant read and the `--reindex` mode are removed. The failure is no longer expressible there.
+- Phase 6 now legitimately claims the skill in its frontmatter, because it owns the producer — `coherence.test.ts` accepts it where it rejected the double-claim before.
+- The `ocs<->qa-and-training` entry is **deleted from `DECLARED_CYCLES`** and the detector still passes: the cycle is genuinely gone, not suppressed.
+
+**The general rule, recorded in the test:** when a cycle exists only because one node bundles two jobs with different inputs, prefer **splitting the node** over cutting the loop. Cutting leaves a corrective pass; splitting leaves a DAG.
+
+Registry rows added for the new producer (`_qa-decisions`, `_eval-decisions`) — both NO QA / NO eval, with reasons: its product artifact is the structural check, and the transport has no judgment to grade between the upstream `training-*-eval` skills and the downstream `ocs-chatbot-eval --deep`.
+
 ## 0.13.1027 — 2026-08-26
 
 **The manifest declared only half the OCS↔training cycle — which is why it read as a fixable ordering bug.**

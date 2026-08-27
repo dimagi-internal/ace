@@ -24,7 +24,6 @@ no inline self-eval.
 | Source | Artifact | Used for |
 |---|---|---|
 | Phase 1 | `1-design/idea-to-pdd.md` | RAG content + system prompt framing |
-| Phase 6 | `runs/<run-id>/6-qa-and-training/` (per-artifact training docs) | RAG content (LLO/FLW guides, FAQ, quick-reference) |
 | Phase 3 | `runs/<run-id>/3-commcare/` (app summaries) | RAG content (app structure for the chatbot to answer "where do I find X" questions) |
 | Phase 4 | `4-connect/connect-opp-setup.md` | opp framing for system prompt |
 
@@ -54,38 +53,20 @@ as a prior-run artifact, never as this run's.
   (Step 5), and the 5–10 minute re-index (Step 6). Use this when the
   RAG content didn't change but the prompt needs a tweak — the typical
   outcome of a `--quick` quality fail.
-- **`--reindex`** (refresh the knowledge base after Phase 6 writes the
-  training docs). The mirror image of `--prompt-patch`: reuses the
-  existing chatbot, collection, and prompt, and re-uploads the RAG
-  source set so the four `6-qa-and-training/` documents actually land
-  in it. Skips clone (Step 3) and prompt recomposition (Step 7).
-  **Dispatched by Phase 6 as its last step** — see § Why `--reindex`
-  exists below. Costs the 5–10 minute indexing wait, which is the
-  price of the bot knowing its own training material.
 
-### Why `--reindex` exists (read before removing it)
+### The knowledge base is populated in Phase 6, not here
 
-Step 1 lists `6-qa-and-training/` as RAG content, and
-`lib/artifact-manifest.ts` declares this skill a consumer of all four
-training documents. **But Phase 5 runs before Phase 6, so on a fresh
-`/ace:run` those files do not exist yet.** The 2026-05-15 fix made the
-reads *tolerant of missing files* — which stopped the crash and left
-the real problem: nothing ever re-indexed once Phase 6 wrote them.
+This skill creates and publishes the chatbot and emits `widget_url`. It does
+**not** put the Phase 6 training documents into the RAG collection — that is
+`ocs-knowledge-refresh`, dispatched as the last step of `qa-and-training`.
 
-The consequence shipped on every opportunity. The per-opp chatbot — the
-one an LLO supervisor actually talks to — was indexed without the LLO
-guide, the FLW guide, the FAQ, and the quick-reference card, i.e.
-precisely the four documents their questions are about. It failed
-silently: the tolerant read passes, the collection indexes cleanly, and
-the Phase 5 `--quick` gate asks three *universal* Connect questions
-(claim opp, sync data, get paid) that need none of those documents to
-answer. Every check was green.
-
-This is a backward edge in a forward pipeline — Phase 5 consuming a
-Phase 6 product. The three honest resolutions were reorder, close the
-cycle, or stop declaring the dependency. `--reindex` closes the cycle,
-because the collection is the only stale thing and re-indexing it is
-cheap next to rebuilding the phase order.
+The split is deliberate and load-bearing. Bundling both halves here required
+reading `6-qa-and-training/*` from Phase 5, before Phase 6 has run. That read
+was made *tolerant of missing files* on 2026-05-15, which stopped the crash and
+left the defect: nothing re-uploaded them afterwards, so **every opportunity's
+chatbot shipped without the four documents its users ask about**, silently, for
+months. Phase 5 now consumes nothing from Phase 6 at all, so the failure is not
+expressible here. See `skills/ocs-knowledge-refresh/SKILL.md`.
 
 ## Sequencing contract — dependent OCS calls run STRICTLY serially (jjackson/ace#585)
 
@@ -121,15 +102,6 @@ round-trip gate in Step 11.5 below.
      (`ocs_set_chatbot_pipeline` with the new prompt and the existing
      collection list) → Step 9 (publish) → Step 10 (retrieve embed) →
      Step 11 (overwrite state file with the new `version_number`).
-   - **State file present, `--reindex` flag set.** Reuse the existing
-     `experiment_id`, `collection_id`, and `pipeline_id`, and the
-     prompt as-is. Re-run Step 5 (upload the RAG source set, now
-     including `6-qa-and-training/*`) → Step 6 (wait for indexing) →
-     Step 9 (publish) → Step 10 (retrieve embed) → Step 11 (overwrite
-     the state file, setting `last_reindexed_at`). Skip Steps 3, 4 and
-     7. If the state file is ABSENT, `--reindex` is a no-op with a
-     loud note: there is no bot to refresh, and Phase 5 either did not
-     run or failed — say so rather than silently doing a fresh setup.
    - **State file present, no flag.** The chatbot is already
      configured; just refresh embed credentials. Skip to Step 10. Do
      NOT call `ocs_list_chatbots`, do NOT re-clone — the state file is
@@ -145,7 +117,6 @@ round-trip gate in Step 11.5 below.
 
 1. **Read opportunity context from GDrive:**
    - PDD: `ACE/<opp-name>/runs/<run-id>/1-design/idea-to-pdd.md`
-   - Training materials: `ACE/<opp-name>/runs/<run-id>/6-qa-and-training/`
    - Opportunity details: `ACE/<opp-name>/runs/<run-id>/4-connect/connect-opp-setup.md`
    - App summaries: `ACE/<opp-name>/runs/<run-id>/3-commcare/`
 
@@ -315,11 +286,6 @@ round-trip gate in Step 11.5 below.
      returns base64 at ~1.33x the file size and is refused above ~30 KB.
      (Both params landed in dimagi-internal/ace#1027 / #1177; before that this
      step named a recipe the atoms could not express.)
-   - `runs/<run-id>/6-qa-and-training/*` — per-artifact training docs
-     (LLO/FLW guides, FAQ, quick-reference). Phase 6 may not have run
-     yet when this skill runs in `/ace:run` flow — skip missing files
-     silently rather than halting; Phase 6's `--prompt-patch` re-run
-     picks them up after the fact.
    - `runs/<run-id>/3-commcare/*` — app structure summaries
 
    **The generated contacts file (`00-program-contacts.md`) — ace#1665.**
@@ -504,7 +470,7 @@ round-trip gate in Step 11.5 below.
     - Capture `{public_id, embed_key}`
 
 11. **Write state file:** `ACE/<opp-name>/runs/<run-id>/5-ocs/ocs-agent-setup.md`
-    - Fields: `experiment_id`, `public_id`, `embed_key`, `collection_id`, `pipeline_id`, `version_number`, `created_at`, optional `last_prompt_patched_at` (set by `--prompt-patch` re-runs), optional `last_reindexed_at` (set by `--reindex` re-runs; its ABSENCE on a run whose Phase 6 completed means the chatbot never saw the training docs)
+    - Fields: `experiment_id`, `public_id`, `embed_key`, `collection_id`, `pipeline_id`, `version_number`, `created_at`, optional `last_prompt_patched_at` (set by `--prompt-patch` re-runs), optional `last_reindexed_at` + refreshed `version_number` (written by `ocs-knowledge-refresh` in Phase 6; ABSENCE on a run whose Phase 6 completed means the chatbot never received the training docs)
     - This file is the source of truth for idempotency — Step 0 reads it before any OCS call
 
 11.5. **Hard embed round-trip gate (mandatory — runs before the

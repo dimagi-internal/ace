@@ -984,7 +984,7 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
   {
     path: '6-qa-and-training/training-llo-guide.md',
     producedBy: 'training-llo-guide',
-    consumedBy: ['llo-onboarding', 'ocs-agent-setup', 'training-onboarding-email'],
+    consumedBy: ['llo-onboarding', 'ocs-knowledge-refresh', 'training-onboarding-email'],
     phase: 'qa-and-training',
     required: true,
     // Step-2 training artifact: its producer consumes the OCS chatbot URL, so
@@ -1010,7 +1010,7 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
   {
     path: '6-qa-and-training/training-flw-guide.md',
     producedBy: 'training-flw-guide',
-    consumedBy: ['llo-onboarding', 'ocs-agent-setup', 'training-onboarding-email'],
+    consumedBy: ['llo-onboarding', 'ocs-knowledge-refresh', 'training-onboarding-email'],
     phase: 'qa-and-training',
     required: true,
     // Step-2 training artifact: its producer consumes the OCS chatbot URL, so
@@ -1036,7 +1036,7 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
   {
     path: '6-qa-and-training/training-quick-reference.md',
     producedBy: 'training-quick-reference',
-    consumedBy: ['llo-onboarding', 'ocs-agent-setup', 'training-onboarding-email'],
+    consumedBy: ['llo-onboarding', 'ocs-knowledge-refresh', 'training-onboarding-email'],
     phase: 'qa-and-training',
     required: true,
     // Step-2 training artifact: its producer consumes the OCS chatbot URL, so
@@ -1059,9 +1059,17 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     description: 'Verbatim markdown `training-quick-reference.md` was composed from, stored as a plain text/markdown file for the DOC-FIDELITY-UNVERIFIED diff (ace#1687). Optional by contract.',
   },
   {
+    path: '6-qa-and-training/ocs-knowledge-refresh.md',
+    producedBy: 'ocs-knowledge-refresh',
+    consumedBy: ['opp-eval'],
+    phase: 'qa-and-training',
+    required: false,
+    description: "Record of the Phase 6 knowledge-base refresh: which training documents were uploaded into the chatbot's RAG collection, the resulting file count, and the published version_number. Absent on a completed Phase 6 means the chatbot never received the training documents.",
+  },
+  {
     path: '6-qa-and-training/training-faq.md',
     producedBy: 'training-faq',
-    consumedBy: ['llo-onboarding', 'ocs-agent-setup'],
+    consumedBy: ['llo-onboarding', 'ocs-knowledge-refresh'],
     phase: 'qa-and-training',
     required: true,
     // Step-2 training artifact: its producer consumes the OCS chatbot URL, so

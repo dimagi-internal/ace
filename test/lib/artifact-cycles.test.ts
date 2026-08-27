@@ -17,9 +17,14 @@
  *    breaks. It has to be CUT — run one side, then the other, then close the
  *    loop — or the node has to be split along its real dependency seam.
  *
- * ACE has exactly one, between Phase 5 (OCS) and Phase 6 (training), and it was
- * mis-diagnosed as the first kind for months **because the manifest only
- * declared half of it.** The `qa-and-training -> ocs` direction was there (the
+ * ACE HAD one between Phase 5 (OCS) and Phase 6 (training), mis-diagnosed as the
+ * first kind for months **because the manifest only declared half of it.** It is
+ * gone as of 0.13.1028 — not cut, REMOVED, by splitting `ocs-agent-setup` at its
+ * real dependency seam: Phase 5 creates and publishes the bot, Phase 6's
+ * `ocs-knowledge-refresh` populates its knowledge base. That is the better
+ * resolution when a cycle exists only because one node bundles two jobs with
+ * different inputs. Cutting a cycle leaves a corrective second pass; splitting
+ * the node leaves a plain DAG. Prefer the split when the seam is real. The `qa-and-training -> ocs` direction was there (the
  * training docs feed the chatbot's RAG collection); the `ocs -> qa-and-training`
  * direction was not (the guides embed the chatbot's widget_url), even though
  * `agents/qa-and-training.md` says so in prose. A graph missing half a cycle
@@ -43,14 +48,6 @@ const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..
  * Adding an entry is a design decision — say how the loop is closed.
  */
 const DECLARED_CYCLES: Record<string, string> = {
-  'ocs<->qa-and-training':
-    'Phase 5 publishes the chatbot and emits widget_url, which the Phase 6 guides ' +
-    'link to; Phase 6 writes the training docs, which belong in the chatbot\'s RAG ' +
-    'collection. CUT: Phase 5 creates and publishes, Phase 6 writes the docs, then ' +
-    'Phase 6 Step 2d re-runs `ocs-agent-setup --reindex` to close the loop. ' +
-    'Reordering the two phases is NOT a fix — it leaves every guide with a dead ' +
-    '"ask questions here" link.',
-
   'commcare<->connect':
     'Phase 3 deploys the apps, which Phase 4 needs to wire deliver units; ' +
     "`app-release-eval` (Phase 3) can additionally confirm enumeration against " +
