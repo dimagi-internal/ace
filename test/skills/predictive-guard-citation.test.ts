@@ -85,7 +85,6 @@ const BASELINE: Record<string, number> = {
   'skills/_qa-decisions.md': 1,
   'skills/app-connect-coverage/SKILL.md': 1,
   'skills/app-deploy/SKILL.md': 1,
-  'skills/app-multimedia-coverage/SKILL.md': 1,
   'skills/idea-to-pdd/SKILL.md': 1,
   'skills/ocs-agent-setup/SKILL.md': 1,
   'skills/ocs-chatbot-eval/SKILL.md': 1,
