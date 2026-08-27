@@ -5,6 +5,18 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.13.1031 — 2026-08-26
+
+**CI now fails on an unresolved merge-conflict marker in any tracked file.**
+
+This class shipped to `main` twice on 2026-08-26. #1714 merged with markers in `CHANGELOG.md`, and every later branch inherited them on rebase. Then markers went into `package.json` while that was being fixed, because one file was checked and the others were not — and `vitest` could not parse `package.json`, so the suite exited 1 with **no summary line**, which reads like noise rather than failure.
+
+Neither was caught, because `clean-install` only breaks when markers land in a file the build actually parses. Markdown is invisible to it — and Markdown is where they are most likely, since `CHANGELOG.md` conflicts on essentially every concurrent PR in this repo.
+
+`skills/shipping` already prescribes `grep -c '<<<<<<<' <file>` before committing. That is prose, and it depends on remembering to run it on *every* conflicted file rather than the one you hand-edited. `test/lib/no-conflict-markers.test.ts` is the enforcement: tracked files only, canonical markers anchored to line start (so prose discussing them — including the shipping skill and the test's own header — is not flagged), binaries skipped, and an empty-scan guard so a broken scanner fails instead of passing.
+
+Verified against both incidents: it fires on markers in `docs/agent-history.md`, and #1714's `CHANGELOG.md` at `049f50b2` carries exactly the marker it would have caught.
+
 ## 0.13.1029 — 2026-08-26
 
 **The OCS↔training cycle is gone — not cut, removed. `ocs-agent-setup` was two jobs wearing one name.**
