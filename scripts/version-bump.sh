@@ -67,6 +67,27 @@ done
 REPO_ROOT="$(git rev-parse --show-toplevel)"
 VERSION_FILE="$REPO_ROOT/VERSION"
 
+# Version files that have deterministic rebase conflicts when parallel
+# worktrees bump in parallel. --rebase-first auto-resolves these with --ours,
+# then re-runs the bump (so the new version is computed against the freshly
+# rebased origin/main) and folds it into the rebased tip.
+#
+# Deleted by accident in 0.13.1046 and restored in 0.13.10xx. `set -u` turned
+# every one of the four references below into an unbound-variable error, which
+# meant --rebase-first stopped `git add`-ing the bump AND stopped running the
+# guard that exists to catch exactly that (jjackson/ace#578). The recovery
+# command in skills/shipping produced a branch whose code was new and whose
+# VERSION still matched main's — silently, because the loud half died too.
+#
+# package-lock.json is deliberately NOT here: sync-version.sh rewrites it from
+# VERSION rather than merging it, so it does not take a rebase conflict.
+VERSION_FILES=(
+  "VERSION"
+  "package.json"
+  ".claude-plugin/plugin.json"
+  ".claude-plugin/marketplace.json"
+)
+
 if [ "$REBASE_FIRST" = "1" ]; then
   echo "version-bump: --rebase-first set; fetching + rebasing onto origin/main"
   git fetch origin main --quiet
