@@ -18,20 +18,35 @@ skills:
   - { name: app-release-qa,       has_judge: false }
 ---
 
-# CommCare Setup (Phase 3 Procedure Document)
+# CommCare Setup (Phase 3)
 
 This file specifies Phase 3 of the ACE lifecycle: build and
 deploy the CommCare-side apps.
 
-**This file is read and executed inline by the top-level Claude Code
-session — it is not dispatched as a subagent.** Step 1 invokes
-`/nova:autobuild`, which itself dispatches `nova:nova-architect-autonomous`
-via the `Agent` tool. Running inline keeps that dispatch at level 1 rather
-than spending a level on Phase 3 itself. (Subagent nesting is allowed as of
-Claude Code v2.1.219 — to a budget, not freely; see `CLAUDE.md § Agent
-topology` and `lib/agent-depth.ts`.) The frontmatter is
-retained for tooling that introspects agent metadata, not because Phase
-2 is itself dispatched.
+**This is a subagent — the orchestrator dispatches it with
+`Agent(commcare-setup)`.** It was an inline procedure doc until 0.13.1018,
+for one reason that has since expired: Step 1 invokes `/nova:autobuild`,
+which dispatches `nova:nova-architect-autonomous` via the `Agent` tool, and
+Claude Code used to withhold `Agent` from every subagent — so a subagent
+Phase 3 could not reach Nova at all. Nesting has been allowed since
+v2.1.219, and this chain (`ace-orchestrator → commcare-setup →
+nova:nova-architect-autonomous`) sits at depth 2 against a budget of 3. See
+`CLAUDE.md § Agent topology`; `lib/agent-depth.ts` holds the arithmetic and
+`test/lib/agent-depth.test.ts` fails CI if it stops fitting.
+
+**What this buys, and what it costs you as the author of this file.** Phase 3
+now runs in its own context window instead of consuming the orchestrator's.
+That is the point — the orchestrator carries a ten-phase run, and this phase
+was the heaviest thing in it. The cost is that a subagent starts *fresh*: it
+does not see the orchestrator's conversation, the files it read, or the
+skills it invoked. Everything this phase needs must arrive in the dispatch
+message (see `agents/ace-orchestrator.md § Phase 3` → **Inputs**), and
+everything it produces must be written to Drive and `run_state.yaml` rather
+than left in context for a later phase to pick up.
+
+**The Phase 3→4 gate is unaffected.** This file writes per-skill verdicts;
+the orchestrator reads them at the phase boundary and synthesizes any pause
+there, at level 0. Nothing in this file prompts a human.
 
 ## Workflow
 

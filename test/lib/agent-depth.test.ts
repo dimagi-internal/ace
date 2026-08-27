@@ -189,8 +189,7 @@ describe('depth budget', () => {
     }).toEqual({
       maxDepth: 2,
       budget: 3,
-      deepestChain:
-        'ace-orchestrator → synthetic-data-and-workflows → canopy:ddd → canopy:visual-judge',
+      deepestChain: 'ace-orchestrator → commcare-setup → nova:nova-architect-autonomous',
     });
   });
 });

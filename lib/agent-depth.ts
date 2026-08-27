@@ -104,10 +104,15 @@ export const DISPATCH_GRAPH: readonly DispatchNode[] = [
   { name: 'scenarios-and-acceptance', form: 'subagent', owner: 'ace', dispatches: [] },
   {
     name: 'commcare-setup',
-    form: 'inline',
+    form: 'subagent',
     owner: 'ace',
     dispatches: ['nova:nova-architect-autonomous'],
-    why: 'Step 1 invokes /nova:autobuild, which dispatches the Nova architect subagent.',
+    why:
+      'Was inline until 0.13.1018, solely because Claude Code withheld Agent from ' +
+      'subagents and Step 1 dispatches nova:nova-architect-autonomous via ' +
+      '/nova:autobuild. Nesting is allowed now and the chain lands at depth 2, so ' +
+      'the phase gets its own context window back — it was the heaviest thing in ' +
+      "the orchestrator's.",
   },
   { name: 'connect-setup', form: 'subagent', owner: 'ace', dispatches: [] },
   { name: 'ocs-setup', form: 'subagent', owner: 'ace', dispatches: [] },

@@ -91,11 +91,16 @@ describe('agent topology — Agent dispatch requires level 0', () => {
     const violations = docs
       .filter((d) => !d.isProcedureDoc && AGENT_DISPATCH.test(d.text))
       .flatMap((d) => {
-        const node = declared.get(d.file.replace(/\.md$/, ''));
+        const self = d.file.replace(/\.md$/, '');
+        const node = declared.get(self);
         const targets = [...d.text.matchAll(/\bAgent\(([a-z0-9:_-]+)\)/g)].map((m) => m[1]);
-        const undeclared = [...new Set(targets)].filter(
-          (t) => !(node?.dispatches as readonly string[] | undefined)?.includes(t),
-        );
+        const undeclared = [...new Set(targets)]
+          // A doc naming its OWN invocation form ("dispatch me with Agent(me)") is
+          // documentation, not a dispatch it makes. Every subagent doc should say this.
+          // Self-dispatch is separately impossible: chainsFrom() refuses to re-enter a
+          // node already on the path, so a real cycle here cannot hide behind this.
+          .filter((t) => t !== self)
+          .filter((t) => !(node?.dispatches as readonly string[] | undefined)?.includes(t));
         return undeclared.length === 0
           ? []
           : [`  ${d.file} dispatches ${undeclared.join(', ')} — not in its DISPATCH_GRAPH entry`];
