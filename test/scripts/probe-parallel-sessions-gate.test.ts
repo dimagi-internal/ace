@@ -22,15 +22,28 @@
  */
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { execFile } from 'node:child_process';
+import { createRequire } from 'node:module';
 import * as fs from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { promisify } from 'node:util';
 
 const execFileAsync = promisify(execFile);
 const REPO_ROOT = join(__dirname, '..', '..');
 const PROBE = join(REPO_ROOT, 'scripts', 'probe-parallel-sessions.ts');
-const TSX = join(REPO_ROOT, 'node_modules', '.bin', 'tsx');
+
+/**
+ * Resolve tsx through node's own module resolution, NOT as
+ * `<REPO_ROOT>/node_modules/.bin/tsx` (ace#1730).
+ *
+ * ACE is worked from emdash git worktrees, where dependencies are installed
+ * once at the checkout root and there is no `node_modules` under the
+ * worktree. The hardcoded path therefore ENOENTs in every worktree while
+ * passing in CI, whose `npm ci` runs at the repo root — so the failure is
+ * invisible to `clean-install` and fires for every agent running `npm test`
+ * locally.
+ */
+const TSX = join(dirname(createRequire(__filename).resolve('tsx/package.json')), 'dist', 'cli.mjs');
 
 let lockDir: string;
 let lockFile: string;
@@ -44,6 +57,12 @@ async function runProbe(args: string[]) {
     });
     return { code: 0, stdout };
   } catch (e: any) {
+    // A SPAWN failure sets `code` to a string (`'ENOENT'`); a real exit sets
+    // it to a number. Conflating them reported the missing binary as a wrong
+    // exit code, which reads like a behaviour change in the probe (ace#1730).
+    if (typeof e?.code === 'string') {
+      throw new Error(`could not run the probe via tsx (${e.code}): ${TSX}`);
+    }
     return { code: e.code ?? 1, stdout: e.stdout ?? '' };
   }
 }
