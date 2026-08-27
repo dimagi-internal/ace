@@ -1,0 +1,101 @@
+name: Auto version bump
+
+# Bump the PATCH version on every merge to `main`, so a PR never has to.
+#
+# ## Why
+#
+# The plugin cache is keyed by version, so two trees under one version means the
+# second is on `main` and unreachable by `/ace:update` at the same time
+# (ace#1593). Until 0.13.10xx that invariant was defended by a CHECK — every PR
+# hand-bumped four files and `check-version-unique.ts` rejected a PR whose
+# VERSION `main` already had.
+#
+# The check was correct and the cost was the problem. VERSION, package.json,
+# plugin.json and marketplace.json all change on every PR, and CHANGELOG.md does
+# too, so at this repo's merge rate (~9-40 merges/day) every pair of concurrent
+# PRs conflicts on five files by construction. One 2026-08-27 session hit SIX
+# version collisions in a day and burned a real fraction of itself on the
+# disarm -> rebase -> force-push -> re-arm recovery, then added a seventh failure
+# mode on top by trusting the worktree instead of HEAD after a clean rebase.
+#
+# Bumping AFTER the merge satisfies the same invariant by CONSTRUCTION rather
+# than by inspection: every merge is followed by exactly one bump, serialized by
+# the concurrency group, so no two trees can ever share a version on `main`.
+# It also deletes the conflict, because a PR no longer touches the files.
+#
+# Ported from the hal agent repo, which has run this since 2026-07.
+#
+# ## Why this lands in two steps, and why the trigger is `workflow_dispatch`
+#
+# hal's `main` has NO branch protection. ACE's has required status checks
+# (`clean-install`) with `enforce_admins: true`, and every commit in its history
+# is a PR merge — this repo has never taken a direct push to `main`. So whether
+# `github-actions[bot]` can push the bump commit at all is an OPEN QUESTION that
+# only a real attempt answers.
+#
+# Getting it wrong is expensive in the silent direction: if the push is rejected
+# while `check-version-unique.ts` has already been relaxed to let non-bumping
+# PRs through, two trees land under one version and the second is unreachable by
+# `/ace:update` — ace#1593 again, and worse, because nothing would be checking.
+#
+# So this PR ships the workflow INERT. Run it by hand
+# (`gh workflow run "Auto version bump"`), watch the push step, and only then
+# ship the second PR, which:
+#   - adds `push: { branches: [main] }` here,
+#   - makes a bare `scripts/version-bump.sh` a no-op,
+#   - relaxes `check-version-unique.ts` for a PR that does not touch VERSION,
+#   - rewrites the ship loop in `skills/shipping`.
+#
+# If the push IS rejected, the remedy is a repo-settings change (a ruleset with
+# `github-actions` as a bypass actor for `main`) — a decision for the repo owner,
+# not something to work around here.
+#
+# ## Reverting
+#
+# If this misbehaves: delete this file and restore the `pull_request` arm of
+# `scripts/check-version-unique.ts` (it still implements both modes). PRs go
+# back to running `scripts/version-bump.sh --force`. Nothing else depends on it.
+
+# MANUAL ONLY in this PR, on purpose. See "Why this lands in two steps" below.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+# Serialized, never cancelled. Two bumps racing would both read the same VERSION
+# and write the same next value — reintroducing the collision this exists to end.
+concurrency:
+  group: auto-version-bump
+  cancel-in-progress: false
+
+jobs:
+  bump:
+    # Skip this workflow's own commit. Belt-and-suspenders: a push made with the
+    # default GITHUB_TOKEN does not retrigger workflows anyway.
+    if: ${{ !contains(github.event.head_commit.message, '[skip bump]') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Bump patch version across all four files
+        run: bash scripts/version-bump.sh --ci
+
+      - name: Commit and push
+        run: |
+          if git diff --quiet; then
+            echo "No version change to commit."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add VERSION package.json .claude-plugin/plugin.json .claude-plugin/marketplace.json CHANGELOG.md
+          git commit -m "chore: bump to $(cat VERSION) [skip bump]"
+          git push origin HEAD:main

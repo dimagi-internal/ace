@@ -93,6 +93,9 @@ function readAllVersions(dir: string): Record<string, string> {
 }
 
 describe('scripts/version-bump.sh', () => {
+  // These exercise --force / --ci, which is where the bump arithmetic lives now.
+  // A BARE invocation is a deliberate no-op since the post-merge auto-bump
+  // landed — asserted separately below rather than by omission.
   let fixtureDir = '';
 
   afterEach(() => {
@@ -104,7 +107,7 @@ describe('scripts/version-bump.sh', () => {
 
   it('computes patch+1 from local VERSION when origin is unreachable', () => {
     fixtureDir = makeFixtureRepo('0.10.14');
-    const out = execFileSync('./scripts/version-bump.sh', {
+    const out = execFileSync('./scripts/version-bump.sh', ['--force'], {
       cwd: fixtureDir,
       encoding: 'utf8',
     });
@@ -120,7 +123,7 @@ describe('scripts/version-bump.sh', () => {
   it('handles double-digit minor and patch correctly (semver, not lex)', () => {
     // Lex sort would put 0.10.9 > 0.10.10. Verify we don't get bitten.
     fixtureDir = makeFixtureRepo('0.10.9');
-    const out = execFileSync('./scripts/version-bump.sh', {
+    const out = execFileSync('./scripts/version-bump.sh', ['--force'], {
       cwd: fixtureDir,
       encoding: 'utf8',
     });
@@ -147,11 +150,54 @@ describe('scripts/version-bump.sh', () => {
     fixtureDir = makeFixtureRepo('0.10.14');
     fs.writeFileSync(path.join(fixtureDir, 'VERSION'), 'not-a-version\n');
     expect(() =>
-      execFileSync('./scripts/version-bump.sh', {
+      execFileSync('./scripts/version-bump.sh', ['--force'], {
         cwd: fixtureDir,
         encoding: 'utf8',
         stdio: 'pipe',
       })
     ).toThrow();
+  });
+
+  it('--ci bumps without consulting origin', () => {
+    // The workflow runs ON main, so local IS origin; fetching there would race
+    // the very push that triggered the run.
+    fixtureDir = makeFixtureRepo('0.10.14');
+    const out = execFileSync('./scripts/version-bump.sh', ['--ci'], {
+      cwd: fixtureDir,
+      encoding: 'utf8',
+    });
+    expect(out.trim().split('\n').pop()).toBe('0.10.15');
+    expect(fs.readFileSync(path.join(fixtureDir, 'VERSION'), 'utf8').trim()).toBe('0.10.15');
+  });
+
+  it('--ci stamps a `## Unreleased` CHANGELOG heading with the new version', () => {
+    // A PR cannot know its own number any more, so it writes under Unreleased
+    // and the bump commit resolves it. Without this the heading would sit at
+    // "Unreleased" forever and the changelog would stop being a version history.
+    fixtureDir = makeFixtureRepo('0.10.14');
+    fs.writeFileSync(
+      path.join(fixtureDir, 'CHANGELOG.md'),
+      '# Changelog\n\n## Unreleased\n\nsomething shipped\n\n## 0.10.14 — 2026-01-01\n',
+    );
+    execFileSync('./scripts/version-bump.sh', ['--ci'], { cwd: fixtureDir, encoding: 'utf8' });
+    const log = fs.readFileSync(path.join(fixtureDir, 'CHANGELOG.md'), 'utf8');
+    expect(log, 'the Unreleased heading must become the new version').toMatch(
+      /^## 0\.10\.15 — \d{4}-\d{2}-\d{2}$/m,
+    );
+    expect(log, 'no Unreleased heading may survive the stamp').not.toMatch(/^## Unreleased/m);
+    expect(log, 'the entry body must be untouched').toMatch(/something shipped/);
+    expect(log, 'older entries must be untouched').toMatch(/^## 0\.10\.14 — 2026-01-01$/m);
+  });
+
+  it('--ci leaves a hand-written version heading alone', () => {
+    fixtureDir = makeFixtureRepo('0.10.14');
+    fs.writeFileSync(
+      path.join(fixtureDir, 'CHANGELOG.md'),
+      '# Changelog\n\n## 0.10.99 — 2026-01-02\n\nhand-written\n',
+    );
+    execFileSync('./scripts/version-bump.sh', ['--ci'], { cwd: fixtureDir, encoding: 'utf8' });
+    expect(fs.readFileSync(path.join(fixtureDir, 'CHANGELOG.md'), 'utf8')).toMatch(
+      /^## 0\.10\.99 — 2026-01-02$/m,
+    );
   });
 });

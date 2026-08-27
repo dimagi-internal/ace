@@ -1,5 +1,27 @@
 #!/usr/bin/env bash
-# version-bump.sh — atomically bump VERSION across worktrees.
+# version-bump.sh — bump VERSION across the four files that carry it.
+#
+# ## A PR DOES NOT RUN THIS ANY MORE (since 0.13.10xx)
+#
+# `.github/workflows/auto-version-bump.yml` bumps on every merge to `main`, so
+# a PR must NOT touch VERSION / package.json / plugin.json / marketplace.json.
+# Bare invocation is therefore a NO-OP that says so and exits 0 — deliberately,
+# so an agent following a cached older copy of `skills/shipping` still works and
+# gets told why rather than silently reintroducing the conflict.
+#
+#   --ci      the post-merge bump, run by the workflow on `main`. Plain
+#             patch+1 off the local VERSION; no origin fetch (it IS origin).
+#   --force   a deliberate manual bump — a minor/major, or a hotfix that must
+#             carry its own version. Rare. The old behaviour verbatim.
+#
+# Why the change: the plugin cache is keyed by version, so two trees under one
+# version means the second is unreachable by /ace:update (ace#1593). That was
+# defended by a CHECK that every PR had bumped; the check was right and the cost
+# was five files conflicting on every pair of concurrent PRs. Bumping after the
+# merge satisfies the same invariant by construction. See the workflow header.
+#
+# (Original description, still accurate for --force:)
+# Atomically bump VERSION across worktrees.
 #
 # Mirrors `canopy version bump`: fetches origin/main, picks
 # `max(local, origin/main) + patch+1`, writes VERSION, then delegates to
@@ -27,10 +49,14 @@ set -euo pipefail
 
 DRY_RUN=0
 REBASE_FIRST=0
+CI_MODE=0
+FORCE=0
 while [ $# -gt 0 ]; do
   case "$1" in
     --dry-run) DRY_RUN=1 ;;
     --rebase-first) REBASE_FIRST=1 ;;
+    --ci) CI_MODE=1 ;;
+    --force) FORCE=1 ;;
     -h|--help)
       sed -n '2,24p' "$0" | sed 's/^# \{0,1\}//'
       exit 0
@@ -42,6 +68,38 @@ done
 
 REPO_ROOT="$(git rev-parse --show-toplevel)"
 VERSION_FILE="$REPO_ROOT/VERSION"
+
+# The no-op gate. A bare run used to be the first line of the ship loop; it is
+# now the wrong thing to do, and the loudest place to say so is here rather than
+# in a doc the caller may not have re-read.
+if [ "$CI_MODE" = "0" ] && [ "$FORCE" = "0" ] && [ "$DRY_RUN" = "0" ] && [ "$REBASE_FIRST" = "0" ]; then
+  cat >&2 <<'MSG'
+version-bump: no-op — version bumps are AUTOMATIC on merge since 0.13.10xx.
+
+  .github/workflows/auto-version-bump.yml bumps VERSION, package.json,
+  plugin.json and marketplace.json on every push to main. A PR must NOT
+  touch them: doing so puts all four back into every concurrent PR's
+  conflict set, which is the tax this replaced (six collisions in one day,
+  2026-08-27).
+
+  Just commit and open the PR. Nothing else to do.
+
+  If you genuinely need a deliberate bump (a minor/major, or a hotfix that
+  must carry its own version), re-run with --force.
+MSG
+  # Exit 0, not 1: a cached older `skills/shipping` still opens with this
+  # command, and failing there would break shipping for anyone who has not
+  # picked up the new plugin version yet.
+  exit 0
+fi
+
+# --rebase-first is still useful (rebasing onto a moved main), but it must not
+# bump any more — the version files are main's now.
+if [ "$REBASE_FIRST" = "1" ] && [ "$FORCE" = "0" ]; then
+  REBASE_ONLY=1
+else
+  REBASE_ONLY=0
+fi
 
 # Version files that have deterministic rebase conflicts when parallel
 # worktrees bump in parallel. --rebase-first auto-resolves these with
@@ -112,8 +170,10 @@ if ! _is_semver "$LOCAL_VERSION"; then
 fi
 
 # Best-effort fetch — never fail the bump if the network is down.
+# Skipped in --ci: the workflow runs ON main, so local IS origin, and fetching
+# would race the very push that triggered it.
 ORIGIN_VERSION=""
-if git fetch origin main --quiet 2>/dev/null; then
+if [ "$CI_MODE" = "0" ] && git fetch origin main --quiet 2>/dev/null; then
   if ORIGIN_RAW="$(git show origin/main:VERSION 2>/dev/null)"; then
     ORIGIN_RAW="$(echo "$ORIGIN_RAW" | tr -d '[:space:]')"
     if _is_semver "$ORIGIN_RAW"; then
@@ -158,6 +218,25 @@ fi
 # with `set -e` so any propagation error surfaces immediately.
 echo "$NEXT" > "$VERSION_FILE"
 "$REPO_ROOT/scripts/sync-version.sh" >/dev/null
+
+# --ci also stamps the CHANGELOG. Authors write under `## Unreleased` because a
+# PR cannot know its own number any more — the number is decided here, ~30s
+# after the merge. Without this the heading would sit at "Unreleased" forever
+# and the changelog would stop being a version history.
+#
+# Only ever rewrites a heading that is literally `## Unreleased`; if a PR
+# hand-wrote a version heading, it is left exactly as-is.
+if [ "$CI_MODE" = "1" ] && [ -f "$REPO_ROOT/CHANGELOG.md" ]; then
+  TODAY="$(date -u +%Y-%m-%d)"
+  if grep -qE '^## Unreleased' "$REPO_ROOT/CHANGELOG.md"; then
+    if [ "$(uname)" = "Darwin" ]; then
+      sed -i '' "s/^## Unreleased.*$/## ${NEXT} — ${TODAY}/" "$REPO_ROOT/CHANGELOG.md"
+    else
+      sed -i "s/^## Unreleased.*$/## ${NEXT} — ${TODAY}/" "$REPO_ROOT/CHANGELOG.md"
+    fi
+    echo "  stamped: CHANGELOG.md '## Unreleased' -> '## ${NEXT} — ${TODAY}'"
+  fi
+fi
 
 # In --rebase-first mode the rebased tip carries origin/main's (old) version,
 # because the version-file conflicts were auto-resolved with --ours (which, in a
