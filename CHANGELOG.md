@@ -5,7 +5,7 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
-## 0.14.0 — 2026-08-26
+## 0.13.1020 — 2026-08-26
 
 **A reviewer's ruling now binds to the next run even when that run renames the question.**
 
