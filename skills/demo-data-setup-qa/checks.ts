@@ -116,6 +116,13 @@ export interface WorkflowPayload {
   instance?: {
     status?: string;
     /**
+     * The run's half-open `[period_start, period_end)` visit-date window, both
+     * exposed on the `instance` prop (verified live 2026-08-14). Read only to
+     * EXPLAIN a cross-dashboard disagreement (ace#1683) — never to excuse one.
+     */
+    period_start?: string;
+    period_end?: string;
+    /**
      * `pipelines` arrives in EITHER shape (ace#1701):
      *   - a dict keyed by alias — what labs actually writes today
      *     (`connect_labs/workflow/templates/__init__.py`:
@@ -468,4 +475,223 @@ export function checkDatasetObeysPddConstraints(input: DatasetConstraintCheckInp
   }
 
   return { pass: false, detail: problems.join('; '), auto_fix_hint: hints.join(' ') };
+}
+
+// ── #1683: two dashboards over ONE dataset must report the same total ──
+
+/**
+ * Check 11 (`cross_dashboard_totals_agree`) as a pure function.
+ *
+ * Nothing failed. Both runs reported `status` cleanly, both pages rendered,
+ * `fields_all_null` was empty, and every check 1–10 passed — because each of
+ * them inspects ONE dashboard at a time. The only thing that noticed was the
+ * DDD concept judge reading rendered numbers off the frames and finding they
+ * contradicted the narrative's own figures. That is the expensive way to catch
+ * an arithmetic disagreement, and it catches it only after the render.
+ *
+ * Measured on `hh-poverty-targeting/20260824-1404` (labs opp 10047), from each
+ * page's own `#workflow-data` payload:
+ *
+ *     run 5245  snapshot  (period_end 2026-08-30)  total=2186  completed=1563
+ *     run 5249  live                               total=2237  completed=1592
+ *     fixture   on Drive                           total=2237  completed=1592
+ *     run 5250  snapshot  (period_end 2026-08-31)  total=2237  completed=1592
+ *
+ * Cause: a run window is half-open — `_date_window_where` in
+ * `connect_labs/labs/analysis/backends/sql/query_builder.py` emits
+ * `visit_date >= date_from AND visit_date < date_to` — so a `period_end` equal
+ * to the fixture's last `visit_date` silently drops that whole day. The live
+ * sibling has no snapshot, is therefore never period-scoped, and keeps it.
+ *
+ * The check is deliberately about AGREEMENT, not about any absolute number: it
+ * needs no fixture, no manifest and no expected total, only two payloads that
+ * claim to describe the same opportunity.
+ */
+
+/** A dashboard as check 11 sees it: the plan entry plus its fetched payload. */
+export interface CrossDashboardInput {
+  dashboard: DashboardRef & {
+    /** Overrides the id parsed out of `par_url`. */
+    labs_opp_id?: number | string;
+    /**
+     * Set to `'partial'` to declare that this dashboard deliberately renders a
+     * SUB-WINDOW of the dataset (a single week of a multi-week timeline, say).
+     * Such a dashboard is excluded from the comparison and named in the detail,
+     * so an intentional design choice is stated rather than silently tolerated.
+     */
+    period_scope?: string;
+  };
+  payload: WorkflowPayload;
+  /** Live rows for an `in_progress` run, exactly as check 7 takes them. */
+  livePipelines?: SnapshotPipeline[] | Record<string, SnapshotPipeline>;
+}
+
+export interface VisitTotal {
+  total: number;
+  /** How it was derived, for the failure message. */
+  basis: string;
+}
+
+/**
+ * The one aggregate every visit-shaped dashboard can be asked for.
+ *
+ * Two derivations, in order, both over rows check 7 already has:
+ *  - an AGGREGATED (per-worker) pipeline carries labs' built-in `total_visits`
+ *    counter per row → sum it;
+ *  - a VISIT-LEVEL pipeline is one row per visit → count the rows.
+ *
+ * Returns `null` when neither shape is present. A dashboard that cannot state a
+ * visit total is reported as not-judged, never failed: a gate that fails on what
+ * it cannot see is the always-fires class (ace#1026).
+ */
+export function deriveVisitTotal(
+  payload: WorkflowPayload,
+  livePipelines?: SnapshotPipeline[] | Record<string, SnapshotPipeline>,
+): VisitTotal | null {
+  const completed = payload?.instance?.status === 'completed';
+  const pipelines = completed
+    ? normalizeSnapshotPipelines(payload?.instance?.snapshot?.pipelines)
+    : normalizeSnapshotPipelines(
+        livePipelines ?? (payload as { pipeline_data?: Record<string, SnapshotPipeline> })?.pipeline_data,
+      );
+
+  for (const p of pipelines) {
+    const rows = p.rows ?? [];
+    if (rows.length === 0) continue;
+    if (rows.some((r) => typeof r.total_visits === 'number')) {
+      const total = rows.reduce((acc, r) => acc + (typeof r.total_visits === 'number' ? r.total_visits : 0), 0);
+      return { total, basis: `sum(total_visits) over ${rows.length} row(s) of '${p.alias ?? 'pipeline'}'` };
+    }
+  }
+
+  for (const p of pipelines) {
+    const rows = p.rows ?? [];
+    if (rows.length === 0) continue;
+    if (rows.some((r) => r.visit_date !== undefined)) {
+      return { total: rows.length, basis: `row count of visit-level pipeline '${p.alias ?? 'pipeline'}'` };
+    }
+  }
+
+  return null;
+}
+
+/** `&opportunity_id=<id>` out of a par_url; null for a program-scoped rollup. */
+function oppScopeOf(input: CrossDashboardInput): string | null {
+  if (input.dashboard.labs_opp_id !== undefined && input.dashboard.labs_opp_id !== null) {
+    return String(input.dashboard.labs_opp_id);
+  }
+  const m = /[?&]opportunity_id=(\d+)/.exec(input.dashboard.par_url ?? '');
+  return m ? m[1] : null;
+}
+
+function windowOf(payload: WorkflowPayload): string {
+  const s = payload?.instance?.period_start;
+  const e = payload?.instance?.period_end;
+  if (!s && !e) return 'no period declared';
+  return `[${s ?? '-inf'}, ${e ?? '+inf'})`;
+}
+
+/**
+ * Every dashboard reading one `labs_opp_id` must report the same visit total.
+ *
+ * Program-scoped rollups are excluded by construction: a cross-opp rollup
+ * aggregates a different population, so its total is not comparable to a
+ * single-opp dashboard's, and comparing them would be the always-fires class.
+ *
+ * @param opts.timelineEndDate the manifest's `timeline.end_date`. When supplied,
+ *   a disagreeing dashboard whose `period_end` is at or before it gets the
+ *   off-by-one named explicitly — that is the cause every time so far, and the
+ *   fix is `period_end = timeline.end_date + 1 day` (ace#1683).
+ */
+export function checkCrossDashboardConsistency(
+  inputs: CrossDashboardInput[],
+  opts?: { timelineEndDate?: string },
+): QACheckResult {
+  const groups = new Map<string, CrossDashboardInput[]>();
+  const excluded: string[] = [];
+  const notJudged: string[] = [];
+
+  for (const input of inputs) {
+    if ((input.dashboard.period_scope ?? '').trim().toLowerCase() === 'partial') {
+      excluded.push(`${input.dashboard.key} (declared period_scope: partial)`);
+      continue;
+    }
+    const opp = oppScopeOf(input);
+    if (opp === null) {
+      excluded.push(`${input.dashboard.key} (program-scoped rollup — different population)`);
+      continue;
+    }
+    const bucket = groups.get(opp);
+    if (bucket) bucket.push(input);
+    else groups.set(opp, [input]);
+  }
+
+  const problems: string[] = [];
+  let comparedGroups = 0;
+
+  for (const [opp, members] of groups) {
+    if (members.length < 2) continue;
+    const totals: Array<{ input: CrossDashboardInput; total: VisitTotal }> = [];
+    for (const m of members) {
+      const t = deriveVisitTotal(m.payload, m.livePipelines);
+      if (t === null) notJudged.push(`${m.dashboard.key} (no visit-shaped pipeline rows)`);
+      else totals.push({ input: m, total: t });
+    }
+    if (totals.length < 2) continue;
+    comparedGroups += 1;
+
+    const distinct = new Set(totals.map((t) => t.total.total));
+    if (distinct.size === 1) continue;
+
+    const lines = totals.map(
+      (t) =>
+        `${t.input.dashboard.key}=${t.total.total} (${t.total.basis}; window ${windowOf(t.input.payload)}, ` +
+        `run ${t.input.payload?.instance?.status ?? 'status unknown'})`,
+    );
+
+    const end = opts?.timelineEndDate;
+    const suspects = end
+      ? totals
+          .filter((t) => {
+            const pe = t.input.payload?.instance?.period_end;
+            return !!pe && pe.slice(0, 10) <= end.slice(0, 10);
+          })
+          .map((t) => t.input.dashboard.key)
+      : [];
+
+    problems.push(
+      `opportunity ${opp}: dashboards over ONE dataset report different visit totals — ${lines.join(', ')}` +
+        (suspects.length
+          ? `. ${suspects.join(', ')} carry a period_end at or before timeline.end_date ` +
+            `(${end}), and period_end is EXCLUSIVE — that drops the final day`
+          : ''),
+    );
+  }
+
+  const notes =
+    (excluded.length ? ` (excluded: ${excluded.join(', ')})` : '') +
+    (notJudged.length ? ` (not judged: ${notJudged.join(', ')})` : '');
+
+  if (problems.length === 0) {
+    return {
+      pass: true,
+      detail: comparedGroups
+        ? `visit totals agree across every dashboard in ${comparedGroups} shared-opportunity group(s)${notes}`
+        : `no two comparable dashboards share an opportunity — nothing to cross-check${notes}`,
+    };
+  }
+
+  return {
+    pass: false,
+    detail: problems.join('; ') + notes,
+    auto_fix_hint:
+      'A run window is half-open: query_builder._date_window_where emits ' +
+      '`visit_date >= date_from AND visit_date < date_to`, so a period_end equal to the fixture\'s last ' +
+      'visit_date silently drops that whole day, while a live (never-snapshotted) sibling keeps it. ' +
+      'Re-mint the snapshotted run with period_end = timeline.end_date + 1 day and repoint the par_url — ' +
+      'on hh-poverty-targeting/20260824-1404 that turned 2186 into 2237, matching the fixture exactly. ' +
+      'If two dashboards are MEANT to show different windows, mark the narrower one ' +
+      '`period_scope: \'partial\'` in source.dashboards[] so the intent is declared rather than assumed ' +
+      '(dimagi-internal/ace#1683).',
+  };
 }

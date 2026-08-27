@@ -24,8 +24,11 @@ import {
   checkParUrlScope,
   checkParUrlPayloadPopulated,
   checkInteractiveRunsLive,
+  checkCrossDashboardConsistency,
+  deriveVisitTotal,
   formatPayloadReport,
 } from '../../../skills/demo-data-setup-qa/checks';
+import type { WorkflowPayload } from '../../../skills/demo-data-setup-qa/checks';
 
 describe('checkParUrlScope — ownership decides the scope param (#1037)', () => {
   const base = 'https://labs.connect.dimagi.com/labs/workflow/5040/run/?run_id=5048';
@@ -420,5 +423,175 @@ describe('checkDatasetObeysPddConstraints (#1658)', () => {
     // conditional primitive, so a hint that demands one is unsatisfiable.
     expect(r.auto_fix_hint).not.toMatch(/regenerate with the constraint applied at the manifest/i);
     expect(r.auto_fix_hint).toMatch(/no manifest-side remedy/i);
+  });
+});
+
+/**
+ * dimagi-internal/ace#1683 — the exclusive `period_end`.
+ *
+ * Two dashboards over labs opp 10047 reported different totals for the same
+ * workers because the snapshotted run's `period_end` equalled the fixture's last
+ * `visit_date`, and the window is half-open (`visit_date < date_to`). Every
+ * check 1–10 passed: each inspects ONE dashboard, and a disagreement is not a
+ * property of any single dashboard. Only the DDD concept judge caught it, off
+ * rendered frames, after the render.
+ *
+ * Numbers below are the measured ones from each page's own `#workflow-data`.
+ */
+describe('checkCrossDashboardConsistency — one dataset, one total (#1683)', () => {
+  const OPP = 10047;
+  const url = (def: number, run: number) =>
+    `https://labs.connect.dimagi.com/labs/workflow/${def}/run/?run_id=${run}&opportunity_id=${OPP}`;
+
+  /** A completed snapshot whose aggregated rows sum to `total`. */
+  const snapshot = (total: number, periodEnd: string): WorkflowPayload => ({
+    definition: { pipeline_sources: { scorecard: 1 } },
+    instance: {
+      status: 'completed',
+      period_start: '2026-07-20',
+      period_end: periodEnd,
+      snapshot: { pipelines: { scorecard: { rows: [{ username: 'a', total_visits: total }] } } },
+    },
+  });
+
+  /** A live in_progress run — never period-scoped, so it keeps the final day. */
+  const liveRows = (total: number) => ({ scorecard: { rows: [{ username: 'a', total_visits: total }] } });
+  const live: WorkflowPayload = {
+    definition: { pipeline_sources: { scorecard: 1 } },
+    instance: { status: 'in_progress' },
+  };
+
+  it('FAILS on the measured disagreement and names the exclusive-bound cause', () => {
+    const r = checkCrossDashboardConsistency(
+      [
+        {
+          dashboard: { key: 'llo_review', template: 'llo_weekly_review', par_url: url(5243, 5245) },
+          payload: snapshot(2186, '2026-08-30'),
+        },
+        {
+          dashboard: { key: 'flw_review', template: 'flw_weekly_review', par_url: url(5247, 5249), role: 'review-action' },
+          payload: live,
+          livePipelines: liveRows(2237),
+        },
+      ],
+      { timelineEndDate: '2026-08-30' },
+    );
+    expect(r.pass).toBe(false);
+    expect(r.detail).toMatch(/llo_review=2186/);
+    expect(r.detail).toMatch(/flw_review=2237/);
+    expect(r.detail).toMatch(/period_end is EXCLUSIVE/);
+    // The off-by-one must be pinned on the dashboard that actually carries it.
+    expect(r.detail).toMatch(/llo_review carry a period_end at or before/);
+    expect(r.auto_fix_hint).toMatch(/timeline\.end_date \+ 1 day/);
+  });
+
+  it('PASSES once period_end is pushed one day out — run 5250, the exact fix', () => {
+    const r = checkCrossDashboardConsistency(
+      [
+        {
+          dashboard: { key: 'llo_review', template: 'llo_weekly_review', par_url: url(5243, 5250) },
+          payload: snapshot(2237, '2026-08-31'),
+        },
+        {
+          dashboard: { key: 'flw_review', template: 'flw_weekly_review', par_url: url(5247, 5249) },
+          payload: live,
+          livePipelines: liveRows(2237),
+        },
+      ],
+      { timelineEndDate: '2026-08-30' },
+    );
+    expect(r.pass).toBe(true);
+    expect(r.detail).toMatch(/agree/);
+  });
+
+  it('still fails without timelineEndDate — the disagreement stands on its own', () => {
+    const r = checkCrossDashboardConsistency([
+      {
+        dashboard: { key: 'a', template: 'llo_weekly_review', par_url: url(1, 1) },
+        payload: snapshot(2186, '2026-08-30'),
+      },
+      {
+        dashboard: { key: 'b', template: 'llo_weekly_review', par_url: url(2, 2) },
+        payload: snapshot(2237, '2026-08-31'),
+      },
+    ]);
+    expect(r.pass).toBe(false);
+    expect(r.detail).toMatch(/different visit totals/);
+    expect(r.detail).not.toMatch(/EXCLUSIVE/);
+  });
+
+  it('counts rows for a visit-level pipeline, and compares it against an aggregated sibling', () => {
+    const visitLevel: WorkflowPayload = {
+      definition: { pipeline_sources: { visits: 2 } },
+      instance: {
+        status: 'completed',
+        snapshot: {
+          pipelines: {
+            visits: { rows: [{ visit_date: '2026-08-29' }, { visit_date: '2026-08-30' }] },
+          },
+        },
+      },
+    };
+    expect(deriveVisitTotal(visitLevel)).toEqual({
+      total: 2,
+      basis: "row count of visit-level pipeline 'visits'",
+    });
+    const r = checkCrossDashboardConsistency([
+      { dashboard: { key: 'agg', template: 'llo_weekly_review', par_url: url(1, 1) }, payload: snapshot(2, '2026-08-31') },
+      { dashboard: { key: 'visits', template: 'llo_weekly_review', par_url: url(2, 2) }, payload: visitLevel },
+    ]);
+    expect(r.pass).toBe(true);
+  });
+
+  it('EXCLUDES a program-scoped rollup — a cross-opp total is a different population', () => {
+    const r = checkCrossDashboardConsistency([
+      {
+        dashboard: {
+          key: 'par',
+          template: 'program_admin_report',
+          par_url: 'https://labs.connect.dimagi.com/labs/workflow/1/run/?run_id=1&program_id=10037',
+        },
+        payload: snapshot(9999, '2026-08-31'),
+      },
+      { dashboard: { key: 'llo', template: 'llo_weekly_review', par_url: url(2, 2) }, payload: snapshot(2237, '2026-08-31') },
+    ]);
+    expect(r.pass).toBe(true);
+    expect(r.detail).toMatch(/excluded: par \(program-scoped rollup/);
+  });
+
+  it('honours a DECLARED partial window, so an intended sub-window is stated not tolerated', () => {
+    const r = checkCrossDashboardConsistency([
+      {
+        dashboard: { key: 'week1', template: 'llo_weekly_review', par_url: url(1, 1), period_scope: 'partial' },
+        payload: snapshot(500, '2026-07-27'),
+      },
+      { dashboard: { key: 'full', template: 'llo_weekly_review', par_url: url(2, 2) }, payload: snapshot(2237, '2026-08-31') },
+    ]);
+    expect(r.pass).toBe(true);
+    expect(r.detail).toMatch(/excluded: week1 \(declared period_scope: partial\)/);
+  });
+
+  it('REPORTS a dashboard with no visit-shaped rows rather than failing on it (#1026)', () => {
+    const empty: WorkflowPayload = {
+      definition: { pipeline_sources: { odd: 3 } },
+      instance: { status: 'completed', snapshot: { pipelines: { odd: { rows: [{ note: 'x' }] } } } },
+    };
+    expect(deriveVisitTotal(empty)).toBeNull();
+    const r = checkCrossDashboardConsistency([
+      { dashboard: { key: 'a', template: 'llo_weekly_review', par_url: url(1, 1) }, payload: snapshot(2237, '2026-08-31') },
+      { dashboard: { key: 'b', template: 'llo_weekly_review', par_url: url(2, 2) }, payload: empty },
+    ]);
+    expect(r.pass).toBe(true);
+    expect(r.detail).toMatch(/not judged: b \(no visit-shaped pipeline rows\)/);
+  });
+
+  it('is a no-op when no two dashboards share an opportunity', () => {
+    const other = 'https://labs.connect.dimagi.com/labs/workflow/9/run/?run_id=9&opportunity_id=10099';
+    const r = checkCrossDashboardConsistency([
+      { dashboard: { key: 'a', template: 'llo_weekly_review', par_url: url(1, 1) }, payload: snapshot(2186, '2026-08-30') },
+      { dashboard: { key: 'b', template: 'llo_weekly_review', par_url: other }, payload: snapshot(2237, '2026-08-31') },
+    ]);
+    expect(r.pass).toBe(true);
+    expect(r.detail).toMatch(/nothing to cross-check/);
   });
 });
