@@ -54,6 +54,38 @@ as a prior-run artifact, never as this run's.
   (Step 5), and the 5–10 minute re-index (Step 6). Use this when the
   RAG content didn't change but the prompt needs a tweak — the typical
   outcome of a `--quick` quality fail.
+- **`--reindex`** (refresh the knowledge base after Phase 6 writes the
+  training docs). The mirror image of `--prompt-patch`: reuses the
+  existing chatbot, collection, and prompt, and re-uploads the RAG
+  source set so the four `6-qa-and-training/` documents actually land
+  in it. Skips clone (Step 3) and prompt recomposition (Step 7).
+  **Dispatched by Phase 6 as its last step** — see § Why `--reindex`
+  exists below. Costs the 5–10 minute indexing wait, which is the
+  price of the bot knowing its own training material.
+
+### Why `--reindex` exists (read before removing it)
+
+Step 1 lists `6-qa-and-training/` as RAG content, and
+`lib/artifact-manifest.ts` declares this skill a consumer of all four
+training documents. **But Phase 5 runs before Phase 6, so on a fresh
+`/ace:run` those files do not exist yet.** The 2026-05-15 fix made the
+reads *tolerant of missing files* — which stopped the crash and left
+the real problem: nothing ever re-indexed once Phase 6 wrote them.
+
+The consequence shipped on every opportunity. The per-opp chatbot — the
+one an LLO supervisor actually talks to — was indexed without the LLO
+guide, the FLW guide, the FAQ, and the quick-reference card, i.e.
+precisely the four documents their questions are about. It failed
+silently: the tolerant read passes, the collection indexes cleanly, and
+the Phase 5 `--quick` gate asks three *universal* Connect questions
+(claim opp, sync data, get paid) that need none of those documents to
+answer. Every check was green.
+
+This is a backward edge in a forward pipeline — Phase 5 consuming a
+Phase 6 product. The three honest resolutions were reorder, close the
+cycle, or stop declaring the dependency. `--reindex` closes the cycle,
+because the collection is the only stale thing and re-indexing it is
+cheap next to rebuilding the phase order.
 
 ## Sequencing contract — dependent OCS calls run STRICTLY serially (jjackson/ace#585)
 
@@ -89,6 +121,15 @@ round-trip gate in Step 11.5 below.
      (`ocs_set_chatbot_pipeline` with the new prompt and the existing
      collection list) → Step 9 (publish) → Step 10 (retrieve embed) →
      Step 11 (overwrite state file with the new `version_number`).
+   - **State file present, `--reindex` flag set.** Reuse the existing
+     `experiment_id`, `collection_id`, and `pipeline_id`, and the
+     prompt as-is. Re-run Step 5 (upload the RAG source set, now
+     including `6-qa-and-training/*`) → Step 6 (wait for indexing) →
+     Step 9 (publish) → Step 10 (retrieve embed) → Step 11 (overwrite
+     the state file, setting `last_reindexed_at`). Skip Steps 3, 4 and
+     7. If the state file is ABSENT, `--reindex` is a no-op with a
+     loud note: there is no bot to refresh, and Phase 5 either did not
+     run or failed — say so rather than silently doing a fresh setup.
    - **State file present, no flag.** The chatbot is already
      configured; just refresh embed credentials. Skip to Step 10. Do
      NOT call `ocs_list_chatbots`, do NOT re-clone — the state file is
@@ -463,7 +504,7 @@ round-trip gate in Step 11.5 below.
     - Capture `{public_id, embed_key}`
 
 11. **Write state file:** `ACE/<opp-name>/runs/<run-id>/5-ocs/ocs-agent-setup.md`
-    - Fields: `experiment_id`, `public_id`, `embed_key`, `collection_id`, `pipeline_id`, `version_number`, `created_at`, optional `last_prompt_patched_at` (set by `--prompt-patch` re-runs)
+    - Fields: `experiment_id`, `public_id`, `embed_key`, `collection_id`, `pipeline_id`, `version_number`, `created_at`, optional `last_prompt_patched_at` (set by `--prompt-patch` re-runs), optional `last_reindexed_at` (set by `--reindex` re-runs; its ABSENCE on a run whose Phase 6 completed means the chatbot never saw the training docs)
     - This file is the source of truth for idempotency — Step 0 reads it before any OCS call
 
 11.5. **Hard embed round-trip gate (mandatory — runs before the

@@ -5,6 +5,24 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.13.1022 — 2026-08-26
+
+**Every opportunity's chatbot shipped without its training material. Fixed.**
+
+`lib/artifact-manifest.ts` declares `ocs-agent-setup` a consumer of four documents Phase 6 produces — the LLO guide, the FLW guide, the FAQ, and the quick-reference card. `ocs-agent-setup` runs in **Phase 5**. Phase 5 runs before Phase 6. So on a fresh `/ace:run` the chatbot's RAG collection was indexed before those four files existed, and **nothing ever re-indexed it**.
+
+The bot an LLO supervisor actually talks to was missing precisely the four documents their questions are about.
+
+**Why it survived fifteen months of green runs.** The backward edge was noticed on 2026-05-15 and resolved by making the Phase 5 reads *tolerant of missing files* — which fixed the crash and left the defect. After that, every check passed: the tolerant read succeeds, the collection indexes cleanly, and the Phase 5 `--quick` gate asks three *universal* Connect questions (claim opp, sync data, get paid) that need none of those documents to answer. No artifact ACE writes says the collection is short four files.
+
+**The fix — close the cycle, don't reorder the pipeline:**
+
+- New **`ocs-agent-setup --reindex`** mode, the mirror image of `--prompt-patch`: reuses the existing chatbot, collection, and prompt, and re-uploads the RAG source set so the training docs land. Skips clone and prompt recomposition; costs the 5–10 min indexing wait. A no-op with a loud note when no Phase 5 state file exists.
+- **Phase 6 Step 2d** invokes it as the phase's last action, after every training doc is written.
+- The state file gains `last_reindexed_at` — its *absence* on a run whose Phase 6 completed means the chatbot never saw the training docs.
+
+**Ownership note.** `ocs-agent-setup` is deliberately NOT added to Phase 6's `skills:` frontmatter. That list declares which producers a phase OWNS, and Phase 5 owns this one; claiming it twice is rejected by `test/agents/coherence.test.ts`, correctly. Phase 6 invokes it. The invocation is guarded by `test/skills/ocs-reindex-after-training.test.ts` instead, which asserts it exists, runs *after* the training-doc producers, and that the mode is actually implemented rather than only documented.
+
 ## 0.13.1021 — 2026-08-26
 
 **A reviewer's ruling now binds to the next run even when that run renames the question.**

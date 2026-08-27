@@ -19,6 +19,14 @@ skills:
   - { name: training-deck-generate,    has_judge: true, eval_skill: training-deck-generate-eval }
   - { name: training-deck-render,      has_judge: false }
   - { name: training-onboarding-email, has_judge: true, eval_skill: training-onboarding-email-eval }
+# Note: Step 2d invokes `ocs-agent-setup --reindex` as the phase's last
+# action, but it is deliberately NOT listed above. That list declares which
+# producers a phase OWNS, and `ocs-agent-setup` is owned by Phase 5
+# (`ocs-setup`) — claiming it here would make it owned twice, which
+# `test/agents/coherence.test.ts` correctly rejects. Phase 6 invokes it; it
+# does not produce it. The invocation is guarded by
+# `test/skills/ocs-reindex-after-training.test.ts` instead.
+#
 # Note: `training-materials` umbrella was removed in 0.10.87. The
 # Phase 6 agent dispatches each per-artifact skill directly; the
 # umbrella's only remaining role (verdict aggregation) is now opp-eval's
@@ -513,6 +521,29 @@ Halt the phase on any non-pass eval verdict.
   quick-reference.
 - Immediately after, dispatch `training-onboarding-email-eval` →
   `training-onboarding-email-eval_verdict.yaml`.
+
+**2d. Sequential — refresh the OCS knowledge base (LAST step of the phase):**
+
+- Invoke `ocs-agent-setup --reindex`.
+
+**Why this is Phase 6's job and not Phase 5's.** The per-opp chatbot's RAG
+collection is built in Phase 5, and `lib/artifact-manifest.ts` declares
+`ocs-agent-setup` a consumer of four documents this phase produces — the LLO
+guide, the FLW guide, the FAQ, and the quick-reference. Phase 5 runs first, so
+on a fresh `/ace:run` those four files do not exist when the collection is
+indexed. Until 0.13.1021 nothing re-indexed afterwards, so **every opportunity's
+chatbot shipped without the training material its users ask about.**
+
+It failed silently, which is why it survived: the Phase 5 reads are tolerant of
+missing files (2026-05-15), the collection indexes cleanly either way, and the
+Phase 5 `--quick` gate asks three *universal* Connect questions that need none of
+those documents. Every check was green.
+
+**Skip conditions.** If Phase 5 was skipped or produced no state file, `--reindex`
+is a no-op and says so — do not treat that as a phase failure. If the four
+training documents are missing because their producers failed, record it and
+continue (the run is already carrying those verdicts); a stale collection is a
+worse outcome than a noisy one, but neither blocks.
 
 ## Verdict-gate rule for `-eval` skills
 
