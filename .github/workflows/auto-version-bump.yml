@@ -46,9 +46,46 @@ name: Auto version bump
 #   - relaxes `check-version-unique.ts` for a PR that does not touch VERSION,
 #   - rewrites the ship loop in `skills/shipping`.
 #
-# If the push IS rejected, the remedy is a repo-settings change (a ruleset with
-# `github-actions` as a bypass actor for `main`) — a decision for the repo owner,
-# not something to work around here.
+# ## MEASURED 2026-08-27: the push IS rejected. This workflow cannot work as-is.
+#
+# Run 33072248319 (`workflow_dispatch` on main, VERSION 0.13.1042 -> 0.13.1043).
+# The bump computed and committed fine; the push was declined:
+#
+#     remote: error: GH006: Protected branch update failed for refs/heads/main.
+#     remote: - Required status check "clean-install" is expected.
+#      ! [remote rejected]   HEAD -> main (protected branch hook declined)
+#
+# Classic branch protection applies required status checks to DIRECT PUSHES, not
+# only to PR merges, and `enforce_admins: true` means no token is exempt — an
+# admin PAT is refused identically. There is no in-workflow workaround: the new
+# commit cannot have passed `clean-install` before it exists.
+#
+# **This workflow stays `workflow_dispatch` and stays unused until someone
+# decides the settings question.** It is left in the tree rather than deleted
+# because it works — the only missing piece is permission, and re-deriving all
+# of the above from scratch would cost more than the file does.
+#
+# ### The decision, for whoever picks it up
+#
+# The unblocking change is a repository RULESET on `main` listing
+# `github-actions` as a bypass actor, alongside the existing classic protection.
+# That is narrower than the alternatives: dropping `clean-install` from required
+# checks removes the gate for everyone, and `enforce_admins: false` + an admin
+# PAT re-opens direct pushes to every admin. It is still a real loosening — one
+# actor can put a commit on `main` that `clean-install` never saw — so it is the
+# repo owner's call, not a workaround to slip into a workflow.
+#
+# What it would buy, measured: five files (`VERSION`, `package.json`,
+# `plugin.json`, `marketplace.json`, `CHANGELOG.md`) stop changing on every PR,
+# which is the entire reason concurrent ACE PRs conflict. Six version collisions
+# in one day (2026-08-27) is the number to weigh against it.
+#
+# ### If the answer is no
+#
+# Delete this file and `--ci` (keep `--force`). The status quo — every PR bumps,
+# `check-version-unique.ts` enforces it, `--rebase-first` recovers the collision
+# — is coherent and defends ace#1593 correctly. It just costs the recovery dance
+# at this repo's merge rate.
 #
 # ## Reverting
 #

@@ -5,6 +5,28 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.13.1045 — 2026-08-27
+
+**Measured: `github-actions[bot]` cannot push to ACE's `main`, so post-merge version bumping is blocked on a repo-settings decision.**
+
+0.13.1042 shipped the auto-bump workflow deliberately inert, because hal's `main` (where the pattern runs today) has no branch protection while ACE's has required status checks with `enforce_admins: true`. Run 33072248319 answers it:
+
+```
+remote: error: GH006: Protected branch update failed for refs/heads/main.
+remote: - Required status check "clean-install" is expected.
+ ! [remote rejected]   HEAD -> main (protected branch hook declined)
+```
+
+The bump computed and committed correctly; only the push was declined. Classic branch protection applies required status checks to **direct pushes**, not only to PR merges, and `enforce_admins: true` exempts no token — an admin PAT is refused identically. There is no in-workflow workaround, because the new commit cannot have passed `clean-install` before it exists.
+
+**Step 2 is therefore NOT shipping.** The relaxed `check-version-unique.ts`, the no-op `version-bump.sh`, and the rewritten ship loop all stay unwritten — shipping them against a bump that cannot land would put two trees under one version on every merge, with nothing checking. That is ace#1593 again, silently, and worse than the tax it was meant to remove.
+
+The workflow stays in the tree, `workflow_dispatch`-only, carrying the measured result and the decision in its header: the unblocking change is a repository **ruleset** on `main` listing `github-actions` as a bypass actor. That is narrower than dropping `clean-install` from required checks (removes the gate for everyone) or `enforce_admins: false` (re-opens direct pushes to every admin), but it is still a real loosening — one actor could put a commit on `main` that `clean-install` never saw. Repo owner's call.
+
+What it would buy: five files stop changing on every PR, which is the entire reason concurrent ACE PRs conflict. Six version collisions in one day is the number to weigh against it.
+
+If the answer is no: delete the workflow and `--ci`, keep `--force`. The status quo defends ace#1593 correctly — it just costs the recovery dance at this merge rate.
+
 ## 0.13.1042 — 2026-08-27
 
 **Step 1 of moving the version bump off the PR and onto the merge. Inert on purpose.**
