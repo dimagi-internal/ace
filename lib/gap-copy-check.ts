@@ -47,15 +47,6 @@ export interface GapCopySource {
   code?: string;
   /** Already-prose. Matched directly, reported at line 1. */
   text?: string;
-  /**
-   * The gap this string BELONGS to, exempt from matching against itself.
-   *
-   * A gap necessarily names its own subject — `detail` and `proposed_action`
-   * exist to state the limit — so without this every gap flags itself and the
-   * report is all noise. Only SELF-matching is exempt: one gap's prose naming
-   * ANOTHER gap's subject is still reported, which is the case worth seeing.
-   */
-  exemptGapId?: string;
 }
 
 /** The subset of a canopy `why_brief.yaml` this check reads. */
@@ -205,9 +196,9 @@ export function narrativeSources(
   spec?: UnifiedSpecLike | null,
 ): GapCopySource[] {
   const out: GapCopySource[] = [];
-  const push = (name: string, text: unknown, exemptGapId?: string) => {
+  const push = (name: string, text: unknown) => {
     if (typeof text !== 'string' || !text.trim()) return;
-    out.push(exemptGapId ? { name, text, exemptGapId } : { name, text });
+    out.push({ name, text });
   };
 
   (brief?.spine ?? []).forEach((item, i) => {
@@ -216,10 +207,14 @@ export function narrativeSources(
     push(`why_brief:spine[${id}].rationale`, item?.rationale);
   });
 
-  for (const gap of brief?.gaps ?? []) {
-    push(`why_brief:gaps[${gap.id}].detail`, gap.detail, gap.id);
-    push(`why_brief:gaps[${gap.id}].proposed_action`, gap.proposed_action, gap.id);
-  }
+  // `gaps[]` is deliberately NOT a source. It is the one section of the document
+  // whose job is to discuss unsupported things — its `detail` states a limit and
+  // its `proposed_action` proposes the fix, and a remedy routinely names another
+  // gap's subject on the way ("report the rates from the first cycle's
+  // adjudication log"). Scanning it makes the honest gap list the report's own
+  // worst source of findings. An earlier revision exempted a gap only from
+  // ITSELF; on hh-poverty-targeting/20260827-0323 that still produced a
+  // cross-gap hit with nothing for an author to fix (ace#1762).
 
   (spec?.scenes ?? []).forEach((scene, i) => {
     const id = scene?.id ?? String(i + 1);
@@ -244,13 +239,22 @@ export function checkGapCopy(
   const termsByGap: Record<string, string[]> = {};
   const findings: GapCopyFinding[] = [];
 
-  // Only capability/decision gaps constrain what a surface may ASSERT. A
-  // RESEARCH gap ("we don't know the real-world rate") does not forbid the page
-  // from naming the thing — it forbids a quantified claim about it, which is a
-  // judgement no keyword match should make.
-  const constraining = gaps.filter(
-    (g) => g.type === 'CAPABILITY' || g.type === 'DECISION',
-  );
+  // Only a CAPABILITY gap constrains what a surface may ASSERT — the thing it
+  // names does not exist, so any prose about it is a claim the build cannot
+  // back. The other two types forbid a QUALIFIED claim rather than the subject
+  // itself, and separating "named it" from "asserted the qualified thing" is a
+  // judgement no keyword match should make. Two instances of that one rule:
+  //
+  //   RESEARCH ("we don't know the real-world rate") does not forbid the page
+  //   naming the thing — it forbids a quantified claim about it.
+  //
+  //   DECISION ("the threshold VALUES are unchosen") does not forbid naming
+  //   thresholds — it forbids asserting a specific value ("the threshold is
+  //   2x"). Measured on hh-poverty-targeting/20260827-0323, every DECISION hit
+  //   was of the shape "recording the disposition is what makes a threshold
+  //   tunable" — not merely compatible with the gap but its own proposed
+  //   remedy, and 3 of the 9 findings on that run (ace#1762).
+  const constraining = gaps.filter((g) => g.type === 'CAPABILITY');
 
   for (const gap of constraining) termsByGap[gap.id] = deriveGapTerms(gap);
 
@@ -260,7 +264,6 @@ export function checkGapCopy(
         ? extractProseLines(src.code)
         : [{ line: 1, text: (src.text ?? '').replace(/\s+/g, ' ').trim() }];
     for (const gap of constraining) {
-      if (gap.id === src.exemptGapId) continue;
       for (const term of termsByGap[gap.id]) {
         for (const { line, text } of prose) {
           if (!new RegExp(`\\b${term}s?\\b`, 'i').test(text)) continue;

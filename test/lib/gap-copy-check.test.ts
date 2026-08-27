@@ -32,6 +32,18 @@ const GAPS: GapLike[] = [
   },
 ];
 
+/** The DECISION gap from the same run, abridged. Its subject term is `threshold`. */
+const DECISION_GAP: GapLike = {
+  id: 'threshold-values-need-a-decision',
+  type: 'DECISION',
+  detail:
+    'The two thresholds the analysis page fires on were chosen for this demo. The ' +
+    'programme design names the controls but sets no numbers for them.',
+  proposed_action:
+    'Review the flag list with the programme manager and set both thresholds from ' +
+    'that distribution before any flag is shown to a supervisor.',
+};
+
 describe('deriveGapTerms', () => {
   it('takes the subject words the author used in BOTH the id and the detail', () => {
     expect(deriveGapTerms(GAPS[0])).toEqual(['area', 'register']);
@@ -111,6 +123,18 @@ describe('checkGapCopy', () => {
     expect(r.findings.map((f) => f.gapId)).not.toContain('detection-rates-are-not-evidenced');
   });
 
+  it('does not constrain on a DECISION gap either', () => {
+    // Same rule, second instance (ace#1762). A DECISION gap says the VALUES are
+    // unchosen; it does not forbid naming thresholds. This copy is the gap's own
+    // proposed remedy — set the numbers from evidence — not a contradiction of
+    // it, and separating the two is a judgement no keyword match should make.
+    const code =
+      '<p>Recording the disposition is what makes a flag threshold tunable on evidence later.</p>';
+    const r = checkGapCopy([...GAPS, DECISION_GAP], [{ name: 'analysis', code }]);
+    expect(r.findings.map((f) => f.gapId)).not.toContain('threshold-values-need-a-decision');
+    expect(r.termsByGap['threshold-values-need-a-decision']).toBeUndefined();
+  });
+
   it('reports its own derivation so an author can see why a line was flagged', () => {
     const r = checkGapCopy(GAPS, [{ name: 'x', code: '<p>nothing to see here at all</p>' }]);
     expect(r.termsByGap['area-register-does-not-exist']).toEqual(['area', 'register']);
@@ -186,14 +210,11 @@ describe('narrativeSources', () => {
     expect(names).not.toContain('why_brief:spine[review-stays-human].rationale');
   });
 
-  it('marks a gap\'s own prose exempt from its own terms', () => {
-    const gapSources = narrativeSources(BRIEF, null).filter((s) =>
-      s.name.startsWith('why_brief:gaps['),
-    );
-    expect(gapSources).toHaveLength(2);
-    for (const s of gapSources) {
-      expect(s.exemptGapId).toBe('adjudication-log-is-run-state-not-a-register');
-    }
+  it('does not emit gap prose as a source at all', () => {
+    // `gaps[]` is the section whose JOB is to discuss unsupported things, so it
+    // is not scanned — against its own gap or any other (ace#1762).
+    const names = narrativeSources(BRIEF, SPEC).map((s) => s.name);
+    expect(names.some((n) => n.startsWith('why_brief:gaps['))).toBe(false);
   });
 
   it('tolerates a missing brief or spec', () => {
@@ -228,17 +249,40 @@ describe('checkGapCopy over the narrative artifacts', () => {
     ).toBe(false);
   });
 
-  it('does not flag a gap against ITSELF', () => {
+  it('does not flag gap prose against ANY gap, its own or another\'s', () => {
     // Every gap names its own subject — `detail` and `proposed_action` exist to
-    // state the limit. Without the carve-out this fires on every gap authored.
-    const r = checkGapCopy(BRIEF.gaps as GapLike[], narrativeSources(BRIEF, SPEC));
+    // state the limit — and a proposed remedy routinely names ANOTHER gap's
+    // subject on the way. The real ace#1762 instance is below: a RESEARCH gap
+    // proposing to report rates "from the first cycle's adjudication log",
+    // which the CAPABILITY gap says is run state and not a register. Nothing an
+    // author can act on, and it is the whole gap list's failure mode.
+    const brief = {
+      spine: BRIEF.spine,
+      gaps: [
+        ...BRIEF.gaps,
+        {
+          id: 'detection-rates-are-not-evidenced',
+          type: 'RESEARCH',
+          detail: 'This dataset is synthetic and its outlier was seeded.',
+          proposed_action:
+            "Report sensitivity and false-positive rates from the first real cycle's " +
+            'adjudication log, and state them alongside these checks.',
+        },
+      ],
+    };
+    const r = checkGapCopy(brief.gaps as GapLike[], narrativeSources(brief, SPEC));
     expect(r.findings.some((f) => f.source.startsWith('why_brief:gaps['))).toBe(false);
 
-    // The carve-out is load-bearing: the same string without it DOES match.
-    const unexempt = checkGapCopy(BRIEF.gaps as GapLike[], [
-      { name: 'gap-detail', text: BRIEF.gaps[0].detail },
+    // The omission is load-bearing, not a term that happens not to match: the
+    // same two strings passed in as ordinary sources DO both match.
+    const scanned = checkGapCopy(brief.gaps as GapLike[], [
+      { name: 'gap-detail', text: brief.gaps[0].detail },
+      { name: 'other-gap-action', text: brief.gaps[1].proposed_action },
     ]);
-    expect(unexempt.findings).toHaveLength(1);
+    expect(scanned.findings.map((f) => f.source).sort()).toEqual([
+      'gap-detail',
+      'other-gap-action',
+    ]);
   });
 
   it('reports a prose source at line 1 with its text intact', () => {
