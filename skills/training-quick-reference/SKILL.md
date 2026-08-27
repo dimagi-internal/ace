@@ -89,7 +89,12 @@ To raise it formally: **GRM** in the app menu
    numbered list mirrors the PDD's per-visit flow. For `focus-group`,
    the section reframes as "Every session" with the session-stage
    list. For `multi-stage`, two parallel lists or a single list with
-   stage markers.
+   stage markers. For `longitudinal-visits`, one list per visit type
+   with the visit trigger stated up front ("First visit" / "Follow-up,
+   due N days after the last") — the FLW's question is *which* visit
+   this is, not just what to do. Any archetype not named here falls
+   back to the `atomic-visit` shape; never leave the card unwritten
+   because the archetype was unrecognised (ace#1691).
 
 4. **Draft the card.** Stay under 250 words. Use imperative voice
    throughout.

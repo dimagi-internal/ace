@@ -457,7 +457,9 @@ contract.
    as the starting set; merge in PDD overrides per the dedup rule
    above):
 
-   For `atomic-visit` / `multi-stage`:
+   For every archetype except `focus-group` (`atomic-visit`,
+   `multi-stage`, `longitudinal-visits`, …) — the CHW-deployment
+   vocabulary is the default; only `focus-group` swaps it out (ace#1691):
    1. Describe your prior experience deploying CHW programs in this archetype.
    2. How will you recruit and train FLWs for this scope?
    3. What is your timeline for fielding once awarded?

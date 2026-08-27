@@ -67,10 +67,17 @@ populate). Read the PDD's `archetype:` at phase start. If `focus-group`:
    `skip_reason: focus-group-no-op`.
 3. Return cleanly. Phase 8 starts.
 
-Do NOT run the pipeline below for `focus-group`. For `atomic-visit` / `multi-stage`,
-proceed. See `docs/superpowers/specs/2026-05-15-focus-group-archetype-redefinition.md`.
+Do NOT run the pipeline below for `focus-group`. **For every other archetype —
+`atomic-visit`, `multi-stage`, `longitudinal-visits`, and any archetype added
+later — proceed.** The gate names the one exception rather than enumerating the
+archetypes that pass, because an enumeration silently omits new archetypes: this
+doc listed only `atomic-visit` / `multi-stage` while `longitudinal-visits` was
+live, so that archetype hit neither branch and the phase's behaviour was
+undefined (ace#1691). Adding an archetype stays purely additive, per
+`CLAUDE.md § Conventions`. See
+`docs/superpowers/specs/2026-05-15-focus-group-archetype-redefinition.md`.
 
-## Workflow (atomic-visit / multi-stage only)
+## Workflow (every archetype except focus-group)
 
 ### Step 0: Phase folder setup (FIRST)
 
