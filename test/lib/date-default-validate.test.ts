@@ -183,3 +183,43 @@ describe('formatDateDefaultValidateReport', () => {
     expect(s).toContain('cannot statically verify');
   });
 });
+
+// ═══════════════════════════════════════════════════════════════════
+// POSITIVE control, seeded by the negative-control ratchet
+// (test/skills/negative-control-ratchet.test.ts).
+//
+// Every existing case here asserts a violation, except one that feeds a form
+// with NO date fields — which returns `dateFieldsChecked: 0`. Per
+// `lib/check-outcome.ts`, "did not look" is not "looked and it was fine", so
+// that case cannot stand as the positive control: a rule that flagged EVERY
+// required date field would have passed the whole suite, and `app-test-cases`
+// would halt Phase 3 on forms whose widget default is perfectly legal.
+// ═══════════════════════════════════════════════════════════════════
+
+describe('checkDateDefaultValidate — a satisfiable form must come back clean', () => {
+  it('POSITIVE — required dates the widget default really does satisfy', () => {
+    const report = checkDateDefaultValidate([
+      { id: 'date_of_meeting', kind: 'date', required: true, validate: '. <= today()' },
+      { id: 'reschedule_date', kind: 'date', required: true, validate: '. >= today()' },
+      // Required date with no constraint at all: any default satisfies.
+      { id: 'recruitment_date', kind: 'date', required: true },
+    ]);
+    expect(report.violations).toEqual([]);
+    // …and it actually LOOKED at all three, rather than passing by matching
+    // nothing — the ace#1634 regex-blindness shape.
+    expect(report.dateFieldsChecked).toBe(3);
+  });
+
+  it('POSITIVE — a bounded window that INCLUDES today is legal, not a violation', () => {
+    // The edge the over-tight version gets wrong. `. >= today() and . <= date(today() + 30)`
+    // is the same shape as the field ace#1081 flagged, differing only in
+    // whether the lower bound is strict — and only the strict one traps the
+    // walk. A check that flagged both would be relaxed until it flagged
+    // neither.
+    const report = checkDateDefaultValidate([
+      { id: 'next_meeting_date', kind: 'date', required: true, validate: '. >= today() and . <= date(today() + 30)' },
+    ]);
+    expect(report.violations).toEqual([]);
+    expect(report.dateFieldsChecked).toBe(1);
+  });
+});

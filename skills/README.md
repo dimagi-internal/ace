@@ -658,6 +658,107 @@ the source of truth if this prose drifts.
   per-skill `-eval` skills gain rubrics and start writing verdicts,
   opp-eval automatically picks them up.
 
+## Negative controls — a check must be able to fail
+
+A **negative control** is a test that feeds a check a KNOWN-BAD input and
+asserts the check reports FAILURE.
+
+It is not "a test that the check runs", and it is not a positive case. Every
+check also needs at least one **positive control** — a legitimately-clean
+input that comes back clean — because a check hard-wired to fail satisfies
+every negative control ever written while gating nothing.
+
+*Enforced:* `test/skills/negative-control-ratchet.test.ts` (a ratchet: a new
+uncovered check fails CI; the known-uncovered set is a ledger to pay down).
+The scanner is `lib/negative-control-coverage.ts`.
+
+### Why
+
+A check that reports success while being structurally incapable of reporting
+failure is worse than no check, because it launders confidence: a green gate
+reads as evidence, and evidence is the one thing it could never produce.
+
+Measured over ONE run (`spark-facilitator/20260820-0817`, 2026-08-26/27): 15
+issues filed, **10 of them defects in gates, linters or evals** rather than in
+the product. Three were `blocks-e2e`:
+
+| Issue | Why the check could not fail |
+|---|---|
+| ace#1693 | `auditDataset` read an AND of gates as INDEPENDENT, so any multi-gated field violated in both directions at once — 12 of 59 derived fields were unsatisfiable by construction, and check 9 could never pass on a nested-`relevant` form |
+| ace#1695 | `scrubOffBranchFields` reported a legitimately-never-asked field as unresolved, so an honest dataset failed a check it could not satisfy |
+| ace#1701 | Check 7 threw `TypeError: pipelines is not iterable` on every real payload — labs writes `snapshot.pipelines` as a dict keyed by alias and the check iterated it as an array. Its `snapshot-missing-pipelines` branch was unreachable besides: a dict has no `.length`, and `undefined === 0` is false |
+| ace#1679 | `ocs-chatbot-qa`'s wrong-embed-key negative control was documented as HTTP 403 and the endpoint answers 401 — and an ABSENT key was accepted (201). Written from that prose, the control could never fire |
+
+Phase 7's data gate had never once run to a genuine pass. Nobody knew, because
+every one of those checks was green on every input it was ever given, and each
+was found by a human reading a report that looked fine.
+
+### Writing one
+
+1. **Derive the bad input from the DEFECT, or from the contract the check
+   claims to enforce — never by reading the implementation back.** A control
+   derived from the code tests that the code does what the code does, and
+   passes for the same wrong reason the check fails. Where a check is a repair,
+   the strongest control is the input from the issue's own reproducer: it is
+   known to have gotten through, and you can prove it by checking out the
+   parent commit and watching the control go red.
+2. **Assert the specific finding, not just "not clean."** `expect(codes(findings)).toEqual(['DECISION-PHASE-LABEL-DRIFT'])` says which rule fired; `expect(findings.length > 0)` passes when an unrelated rule fires for an unrelated reason.
+3. **Add a positive control that is not vacuous.** "No date fields at all, so nothing was checked" is a *not-applicable*, and per `lib/check-outcome.ts` that is not a pass. The positive control must feed input the check genuinely inspects and assert it comes back clean — and assert the count it inspected, so a check that matched nothing cannot pass by looking at nothing (the ace#1634 regex-blindness shape).
+4. **Where the rule is a subset or threshold relation, cover a valid EDGE case passing.** An over-tight check produces false positives, which get "fixed" by loosening until the check is vacuous again. `. >= today() and . <= date(today() + 30)` must pass while the strict-lower-bound sibling fails; a `REACHABLE` link tagged `public` must pass alongside an `OK` one.
+5. **Prove the control can go red.** Before you ship it, break the check — neuter it to report nothing, or wire it to always fire — and watch your control fail. If it stays green, it is not a control.
+
+### Verdict shape
+
+The rail can only judge a check whose verdict is legible, so return one of:
+
+- `QACheckResult` (`{ pass, detail, auto_fix_hint }`) — every `skills/<name>-qa/checks.ts` check.
+- `CheckOutcome<F>` (`lib/check-outcome.ts`) — when "could not check" must be distinguishable from "checked and fine".
+- A report interface carrying a `violations` / `findings` array, or a bare `Finding[]`.
+
+A check that invents its own vocabulary (`{ satisfiable }`, `{ stale }`,
+`{ feasible }`) lands in the ratchet's tier 2: pinned by name, not judged,
+because `stale: true` is a failure while `satisfiable: true` is a pass and no
+syntactic rule tells them apart. Four such checks exist and each is
+hand-verified as covered; a new one needs a ledger entry saying why a uniform
+shape does not fit.
+
+### Scope — where this applies, and where it does not
+
+**In scope: deterministic structural checks.** Every `check*` / `audit*`
+exported from a `skills/<name>-qa/checks.ts` or from `lib/`. That is the whole
+enumeration rule — a new gate is enrolled by being named like every other
+gate, so there is no registry to go stale.
+
+**Out of scope: `-eval` skills.** They are LLM-as-judge rubrics in markdown
+with no deterministic input→verdict function to feed a bad input to, and
+forcing them into this harness would produce a test of the prompt's wording
+rather than of the judgement. Their analogue is rubric calibration against a
+ground-truth catalogue — `skills/eval-calibration/SKILL.md`, whose
+detection-rate metric asks the same question ("would this have caught the
+known issue?") in the form judgement admits.
+
+**Also out of scope: `classify*` helpers.** A classifier's failure mode is
+"assigns the wrong class", not "cannot report failure", so an ordinary unit
+test already binds it. Check-shaped exceptions opt in by name —
+`classifyUtilities` is one, because ace#1699 was precisely a false-firing of
+it.
+
+### Two ways a check fails to be a check
+
+1. **Not falsifiable** — invoked, but cannot report failure on a bad input.
+   Everything in the table above.
+2. **Not reachable** — perfectly falsifiable, and nothing calls it.
+   `lib/choice-label-integrity.ts` exports two checks with real tests whose
+   only references outside the module are prose saying "Enforced by:"
+   (ace#1688/#1689).
+
+Same root cause — the invariant lives in prose rather than in a hook — but
+different fixes, so the ledger names which. Note the limit of the measurement:
+most ACE checks are invoked by an agent following a `SKILL.md` step rather
+than by a TypeScript call, so the scan counts markdown references too. An
+empty result is therefore strong evidence a check is dead; a non-empty one is
+weak evidence it is live.
+
 ## A guard that predicts another system's rejection must cite a reproducer
 
 If a step refuses to act because some *other* system would reject the

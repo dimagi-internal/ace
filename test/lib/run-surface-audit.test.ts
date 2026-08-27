@@ -28,6 +28,7 @@ import {
   auditWalkthroughParity,
   auditConfidentiality,
   auditContract,
+  auditDecisionRows,
   auditDocFidelity,
   auditGuideScreenshots,
   auditLinks,
@@ -812,5 +813,106 @@ describe('severity', () => {
     expect(canonicalDocUrl('https://docs.google.com/document/d/ABC123ABC123/edit?usp=drivesdk')).toBe(
       canonicalDocUrl('https://docs.google.com/document/d/ABC123ABC123/edit'),
     );
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════
+// auditDecisionRows — seeded by the negative-control ratchet
+// (test/skills/negative-control-ratchet.test.ts).
+//
+// This rule shipped with NO test of any kind. It is reached only through
+// `auditRunSurface`, whose own tests exercise payloads with `decisions: null`,
+// so every branch below had never executed against a decisions payload — the
+// rule could not have reported a defect, and nobody would have known.
+//
+// The inputs are derived from the rule's stated contract (a row must carry
+// `phase_raw` AND `phase_label`, and the label must be derivable from the raw
+// tag's TAIL rather than from its ordinal — defect 8), not from reading its
+// branches back.
+// ═══════════════════════════════════════════════════════════════════
+
+describe('auditDecisionRows — provenance per decision (defect 8 / 10)', () => {
+  const row = (over: Record<string, unknown> = {}) => ({
+    id: 'wo-payment-schedule',
+    phase: 'solicitation-management',
+    phase_raw: '8-solicitation-management',
+    phase_label: 'Solicitation Management',
+    phase_ordinal: 8,
+    skill: 'pdd-to-work-order',
+    question: 'What is the payment schedule?',
+    ai_default: '40/40/20',
+    status: 'ai-default',
+    evidence_basis: 'PDD § Budget',
+    ...over,
+  });
+
+  it('NEGATIVE — flags a label derived from the ORDINAL, which is the whole defect', () => {
+    // Re-order the pipeline and an ordinal-derived label publishes a decision
+    // under a phase it has nothing to do with. The evidence the auditor can
+    // see is that the label shares no word with the tag.
+    const findings = auditDecisionRows({ rows: [row({ phase_label: 'Phase 4' })] });
+    expect(codes(findings)).toEqual(['DECISION-PHASE-LABEL-DRIFT']);
+    expect(findings[0].where).toContain('wo-payment-schedule');
+    expect(findings[0].fix).toBeTruthy();
+  });
+
+  it('NEGATIVE — flags a row that drops the provenance keys entirely', () => {
+    const findings = auditDecisionRows({ rows: [{ id: 'wo-term' }] });
+    expect(codes(findings)).toEqual(['CONTRACT-KEY-DRIFT']);
+    expect(findings[0].detail).toContain('phase_label');
+  });
+
+  it('POSITIVE — a label derived from the tag TAIL is clean', () => {
+    expect(auditDecisionRows({ rows: [row()] })).toEqual([]);
+  });
+
+  it('POSITIVE — a label that merely ABBREVIATES the tag is still clean', () => {
+    // The contract is "derivable from the tag", not "string-equal to it".
+    // An over-tight version of this rule would fire on every real label and
+    // get loosened until it fired on nothing — which is how a gate becomes
+    // vacuous. One legitimate near-miss has to pass.
+    expect(auditDecisionRows({ rows: [row({ phase_label: 'Solicitation' })] })).toEqual([]);
+    expect(
+      auditDecisionRows({ rows: [row({ phase_raw: '6-qa-and-training', phase_label: 'QA and Training' })] }),
+    ).toEqual([]);
+  });
+
+  it('POSITIVE — is inert on a run that recorded no decisions', () => {
+    expect(auditDecisionRows(null)).toEqual([]);
+    expect(auditDecisionRows({ rows: [] })).toEqual([]);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════
+// auditLinks — POSITIVE control, seeded by the negative-control ratchet.
+//
+// Every auditLinks test asserted a finding. Nothing asserted that a healthy
+// link set produces NONE — so a rule hard-wired to flag would have passed the
+// whole suite. That is the always-fires class (ace#1026), and on this surface
+// it is expensive in the opposite direction: `summarise().safeToShare` goes
+// false, and a run that is genuinely fine cannot be handed to a partner.
+// ═══════════════════════════════════════════════════════════════════
+
+describe('auditLinks — a healthy link set must certify clean', () => {
+  it('POSITIVE — public-and-open, plus a gated link that SAYS it is gated', () => {
+    expect(
+      auditLinks([
+        probed(),
+        probed({
+          label: 'apps[0].hq_url',
+          url: 'https://www.commcarehq.org/a/dom/apps/view/x/',
+          declaredAccess: 'admin',
+          cls: 'MEMBER-GATED',
+          status: 302,
+        }),
+      ]),
+    ).toEqual([]);
+  });
+
+  it('POSITIVE — REACHABLE, not just OK, honours a `public` tag', () => {
+    // The contract is what an outsider experiences: the link opens. A rule
+    // that accepted only the `OK` classification would flag an honest public
+    // link and get relaxed until it flagged nothing.
+    expect(auditLinks([probed({ declaredAccess: 'public', cls: 'REACHABLE', status: 200 })])).toEqual([]);
   });
 });
