@@ -245,4 +245,58 @@ describe('scripts/version-bump.sh', () => {
         'fixed that, delete this assertion and the bare-run one above together.',
     ).toBe(false);
   });
+
+  it('--rebase-first folds the bump into the rebased tip (HEAD, not just the worktree)', () => {
+    // 0.13.1046 deleted the VERSION_FILES array declaration. `set -u` turned
+    // every reference into an unbound-variable error, so --rebase-first stopped
+    // `git add`-ing the bump AND stopped running the guard that exists to catch
+    // exactly that (jjackson/ace#578). The result: a branch whose code is new
+    // and whose VERSION still equals main's — the failure mode the plugin cache
+    // turns into "merged and unreachable by /ace:update".
+    //
+    // `bash -n` passes on that bug; only running the path finds it. So this
+    // test runs it, against a real origin, and asserts on HEAD rather than the
+    // working tree — checking the worktree is what hid it the first time.
+    fixtureDir = makeFixtureRepo('0.10.14');
+
+    // Give the fixture a real `origin` with a `main` to rebase onto.
+    const remote = fs.mkdtempSync(path.join(os.tmpdir(), 'ace-version-remote-'));
+    execSync('git init -q --bare', { cwd: remote });
+    execSync(`git remote add origin ${remote}`, { cwd: fixtureDir });
+    execSync('git branch -M main', { cwd: fixtureDir });
+    execSync('git push -q origin main', { cwd: fixtureDir });
+
+    // A feature commit on a branch, so the rebase has something to replay.
+    execSync('git checkout -q -b feature', { cwd: fixtureDir });
+    fs.writeFileSync(path.join(fixtureDir, 'feature.txt'), 'work\n');
+    execSync('git add -A && git commit -q -m feature', { cwd: fixtureDir });
+
+    const out = execFileSync('./scripts/version-bump.sh', ['--rebase-first'], {
+      cwd: fixtureDir,
+      encoding: 'utf8',
+    });
+    expect(out, 'no unbound-variable or other shell error').not.toMatch(/unbound variable/);
+
+    // HEAD, not the worktree. This is the assertion that matters.
+    const headVersion = execSync('git show HEAD:VERSION', {
+      cwd: fixtureDir,
+      encoding: 'utf8',
+    }).trim();
+    expect(
+      headVersion,
+      'the bump must be COMMITTED by --rebase-first. If it is only in the working\n' +
+        'tree, the branch pushes with main\'s version and the change lands\n' +
+        'unreachable by /ace:update (jjackson/ace#578).',
+    ).toBe('0.10.15');
+
+    // And every version file must be clean afterwards — the state the in-script
+    // guard asserts, verified here independently of it.
+    const dirty = execSync(
+      'git status --porcelain -- VERSION package.json .claude-plugin/',
+      { cwd: fixtureDir, encoding: 'utf8' },
+    ).trim();
+    expect(dirty, `version files still dirty after --rebase-first:\n${dirty}`).toBe('');
+
+    fs.rmSync(remote, { recursive: true, force: true });
+  });
 });

@@ -5,6 +5,21 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.13.1049 — 2026-08-27
+
+**`--rebase-first` stopped committing the bump, and the guard that exists to catch that died in the same edit.**
+
+0.13.1046's revert deleted the `VERSION_FILES` array declaration. `set -u` turned all four references into `VERSION_FILES[@]: unbound variable`, inside `--rebase-first` only — so:
+
+- the post-rebase `git add` of the version files never ran, and
+- the guard right after it, which fails loudly when the version files are still dirty after the amend, never ran either
+
+The result is `jjackson/ace#578` restored in full: the documented collision recovery in `skills/shipping` produced a branch whose **code was new and whose VERSION still matched `main`'s**, silently, because the loud half was disabled by the same line. Reproduced on this branch before the fix — worktree `0.13.1049`, `HEAD` `0.13.1048`. The plugin cache is keyed by version, so a branch like that merges and is unreachable by `/ace:update` at the same time.
+
+**Guarded by actually running the path.** `bash -n` passes on an unbound variable, so the new test in `test/lib/version-bump.test.ts` builds a fixture repo with a real bare `origin`, puts a feature commit on a branch, runs `--rebase-first`, and asserts on **`git show HEAD:VERSION`** — not the working tree, because reading the working tree is precisely what hid this. Negative-tested by deleting the declaration again; it fails with the original error.
+
+The declaration now carries why it exists and why `package-lock.json` is deliberately not in it (`sync-version.sh` rewrites that file from VERSION rather than merging it, so it never takes a rebase conflict).
+
 ## 0.13.1047 — 2026-08-27
 
 **`package-lock.json` carries the version too, and had drifted 110 releases behind without anything noticing.**
