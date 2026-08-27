@@ -1,0 +1,42 @@
+Probe — Open Design Questions
+Bold lead paragraph. Some italic text with code and a link.
+
+
+________________
+
+
+Settled — do not re-open
+#
+	Question
+	Resolution
+	A
+	Which index?
+	Nigeria PPI, 2020
+	
+
+________________
+
+
+Open
+#
+	PDD ref
+	Question
+	Status
+	1
+	Q2
+	Targeting vs. monitoring instrument. Same card?
+	open
+	3
+	Q1
+	Dedup radius vs. GPS accuracy. How wide?
+	open
+	
+
+* id: rate-band-source question: What is the authoritative source? owner: operator
+
+
+________________
+
+
+Archive
+* id: deliver-app-photo-capture resolved_at: 2026-08-17T14:02:00Z resolution_note: settled; camera-only applied.

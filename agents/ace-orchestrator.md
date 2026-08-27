@@ -1213,6 +1213,21 @@ ever disagrees with it.
 Each branch's `reason` string is written to be pasted straight into the Phase
 1→2 pause summary.
 
+**How to READ it — the export shape is load-bearing.** The durable ledger is a
+human-facing prose doc, published as a **converted** Google Doc
+(`drive_create_doc_from_markdown` — a `run-surface-audit` flagged the
+un-converted form as `DOC-LITERAL-MARKDOWN`, raw `##` and pipe tables shown to
+the reader). Read it with **`drive_read_file(..., exportAs: 'text/markdown')`**,
+the same way the PDD is re-read. `drive_read_file`'s DEFAULT `text/plain`
+export of a converted doc **strips the `##` markers** (`## Open` arrives as a
+bare `Open`) and flattens every pipe table to one cell per line, so the section
+stops resolving and the question rows run together — measured against a
+converted probe doc, 2026-08-26. Pass the read through `extractOpenSection`
+(`lib/open-questions-inline.ts`): it returns the `## Open` section with
+`## Archive` structurally excluded, and on a heading-stripped read it returns
+`needs-markdown-export` and names the remedy rather than guessing at a section
+whose rows have already run together.
+
 **Atoms / skills used (orchestrator-visible only):** `Agent(idea-to-design)`.
 
 **Products:** PDD (`1-design/idea-to-pdd.md`) — the formal design doc; Work Order (`1-design/pdd-to-work-order.gdoc`) — contractual draft derived from PDD + decisions.yaml. Both are required outputs of Phase 1; the work order chain (Steps 2, 2.4, 2.5 in `agents/idea-to-design.md`) runs after the PDD chain.

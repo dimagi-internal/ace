@@ -55,6 +55,14 @@ orchestrator from the per-skill QA + eval verdicts on the fly. -->
    runs already raised — and, in some rows, ANSWERS a prior run verified.
    Before adding a question of your own, check whether it is already there.
 
+   **Read it with `exportAs: 'text/markdown'`** — it is a converted gdoc (see
+   § The durable open-questions doc), and `drive_read_file`'s default
+   `text/plain` export strips the `##` markers and flattens its tables to one
+   cell per line, so `## Open` stops resolving and the question rows run
+   together. Take the section from `extractOpenSection`
+   (`lib/open-questions-inline.ts`), which excludes `## Archive`
+   structurally and refuses a heading-stripped read instead of guessing at it.
+
    **Read the reviewer's COMMENTS on the prior run's PDD** — `drive_list_comments`
    on that PDD's `file_id`. ACE publishes the PDD as a Google Doc so reviewers can
    comment on it; those comments are review input exactly like an `inputs/` document.
@@ -886,6 +894,13 @@ Rules:
 - **Contradictions stay in `## Open`.** A run that contradicts a recorded
   answer does not archive it — it records the contradiction on the live row
   and surfaces it loudly (§ Process step 1).
+- **It is published CONVERTED, and therefore read back as markdown.** Write it
+  with `drive_create_doc_from_markdown` so Drive renders real headings and real
+  tables — a `run-surface-audit` flags a doc that shows the reader raw `##` and
+  pipe characters as `DOC-LITERAL-MARKDOWN`. The matching read is
+  `drive_read_file(..., exportAs: 'text/markdown')` plus `extractOpenSection`:
+  the default `text/plain` export of a converted doc has no `##` markers and no
+  table rows, so it cannot be parsed for `## Open` at all.
 
 This mirrors the `archive:` convention `run_state.yaml`'s `open_questions:`
 list already follows — see `agents/orchestrator-reference.md § Cruft
@@ -1370,7 +1385,7 @@ The PDD has two or more sequenced stages with different archetypes. Treat the ba
 **Required for multi-stage PDDs:** an explicit **Stage Gate** subsection between every pair of stages, stating exactly what must be true at the end of stage N to proceed to stage N+1 (with go / no-go / iterate criteria).
 
 ## MCP Tools Used
-- Google Drive: `drive_read_file` (pass `exportAs: 'text/markdown'` when re-reading the PDD — it is a rendered gdoc, and the default plain-text export drops the `#` heading markers), `drive_create_doc_from_markdown` (the PDD and `open-questions.md` — human-facing prose; write `open-questions.md` in the two-section `## Open` / `## Archive` shape from § The durable open-questions doc, moving resolved rows into `## Archive` rather than annotating them in place — ace#1487), `drive_create_file` (machine-parsed YAML only), `drive_update_file`, `drive_download_binary` (binary/`.ccz`/`.xlsx` inputs)
+- Google Drive: `drive_read_file` (pass `exportAs: 'text/markdown'` when re-reading the PDD **or `open-questions.md`** — both are rendered gdocs, and the default plain-text export drops the `#` heading markers and flattens pipe tables to one cell per line), `drive_create_doc_from_markdown` (the PDD and `open-questions.md` — human-facing prose; write `open-questions.md` in the two-section `## Open` / `## Archive` shape from § The durable open-questions doc, moving resolved rows into `## Archive` rather than annotating them in place — ace#1487), `drive_create_file` (machine-parsed YAML only), `drive_update_file`, `drive_download_binary` (binary/`.ccz`/`.xlsx` inputs)
 - Google Sheets: `sheets_list_tabs`, `sheets_batch_read` (Google-Sheet inputs)
 - Google Forms: `get_google_form_definition` (Google-Form inputs)
 
