@@ -151,6 +151,30 @@ For LLO operators overseeing FLW deployment of this opportunity.
    overwritten IN PLACE, so the fileId — and any sharing already applied to it —
    survives. (dimagi-internal/ace#1338; sibling of the PDD fix, ace#1061.)
 
+   **Then persist the source markdown — the same string, written twice.**
+   Immediately after the render, write the EXACT bytes you just passed to
+   `drive_create_doc_from_markdown` to
+   `ACE/<opp>/runs/<run-id>/6-qa-and-training/training-llo-guide.source.md` via
+   `drive_create_file` with `mimeType: 'text/markdown'`. **NOT
+   `drive_create_doc_from_markdown`** — rendering the source copy converts it
+   to a Doc as well and destroys the very bytes this step exists to preserve,
+   which reproduces the defect while looking like the fix.
+
+   Why it is not optional: the renderer CONSUMES its input. Once the Doc
+   exists the markdown you composed exists nowhere, and the `.md` in the
+   published name is display text, not a file — `drive_list_folder` over a
+   finished run returns every one of these as
+   `application/vnd.google-apps.document` with no sibling markdown. That is
+   what leaves `run-surface-audit`'s `DOC-FIDELITY-UNVERIFIED` — the only
+   check that compares what was PUBLISHED against what was WRITTEN, and the
+   only one that could have caught a guide silently losing 44 screenshots and
+   224 words with every other check green (ace#1418) — permanently
+   unresolvable, because its `--doc-source` remediation has nothing real to
+   point at. One extra call turns a blocking gate from decorative into
+   operable. (ace#1687 half 2; declared `sourcePersisted` in
+   `lib/artifact-manifest.ts`, enforced by
+   `test/lib/source-persisted-artifacts.test.ts`.)
+
 7b. **Embed the screenshots into the rendered doc.** Step 7 publishes prose
    and citations; this is what puts the pictures on the page. Required —
    `training-llo-guide.md` is `illustrated: true`.

@@ -156,6 +156,43 @@ claim; silence never means it.
 (Before ace#1687 a partial map made the finding vanish for every url absent
 from it — one entry silenced five documents on a live run.)
 
+**Where to GET the markdown (ace#1687 half 2).** The six documents composed
+as markdown persist their exact source next to the published Doc as a sibling
+`<name>.source.md` — a real `text/markdown` file, so `drive_read_file`
+returns the bytes the Doc was built from. **Look for the file rather than
+reasoning from a version:** its presence in the run folder is the fact, and
+`drive_list_folder` already tells you.
+
+| Published Doc | Source to read |
+|---|---|
+| `1-design/idea-to-pdd.md` | `1-design/idea-to-pdd.source.md` |
+| `6-qa-and-training/training-{faq,flw-guide,llo-guide,quick-reference,onboarding-email}.md` | the matching `…​.source.md` |
+
+Build the map by reading each `.source.md` and keying it on the published
+doc's url. Two documents deliberately have no source and take the explicit
+`null` sentinel rather than a guess:
+
+- **`open-questions.md`** — an opp-level LIVING doc reviewers hand-edit in
+  place, so published-vs-source divergence is legitimate.
+- **`1-design/pdd-to-work-order.gdoc`** — built by `docs_copy_template`
+  (`drive.files.copy` + `replaceAllText`), Doc to Doc with **no markdown
+  importer on the path**, so the content-dropping class this check guards
+  cannot occur and no composed markdown exists. Its analogous preventer is
+  the surviving-`{{` token scan in `skills/pdd-to-work-order` step 5.
+
+**On a run predating this fix the `.source.md` files simply are not there** —
+the markdown was consumed at publish time and is unrecoverable. `UNVERIFIED`
+is the correct and only honest result for those documents; do NOT reconstruct
+a "source" by re-exporting the published Doc, which would compare the document
+to itself and report a green that means nothing. An absent source file is also
+not the `null` sentinel: `null` claims no source will ever exist, which is true
+only for the two documents named above.
+
+Registered in `lib/artifact-manifest.ts` (`sourcePersisted`, plus the
+`.source.md` companion entries, all `required: false` so older runs do not
+retroactively fail); enforced by
+`test/lib/source-persisted-artifacts.test.ts`.
+
 ## Report
 
 State, in this order:

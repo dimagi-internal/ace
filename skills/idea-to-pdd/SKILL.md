@@ -631,6 +631,33 @@ raise the conflict.
    six days apart (9 anchored comments → zero). `idea-to-pdd-qa` check 7
    (`pdd_is_native_google_doc`) is the structural backstop. **FIRST resolve-or-create the phase subfolder** — `drive_create_folder({name: '1-design', parentFolderId: <runFolderId>, findOrCreate: true})` — and use the returned id as `parentFolderId` for this write **and** for the QA + eval verdicts and the phase summary. Do NOT pass the run-folder id directly as the write parent: that lands the artifact flat at the run root and fails the Phase boundary's `verify_phase_artifacts` (it walks `1-design/`; jjackson/ace#623). `decisions.yaml` is the exception — it stays at the run-folder root. Include the stress-test rubric results as a `## Stress Test Results` appendix at the bottom of the PDD, so downstream skills (and humans) can see what was caught and what was waived.
 
+6b. **Persist the PDD's source markdown — the same string, written twice.**
+   Immediately after step 6's render, write the EXACT bytes you passed to
+   `drive_create_doc_from_markdown` to `1-design/idea-to-pdd.source.md` via
+   `drive_create_file` with `mimeType: 'text/markdown'` (same
+   `parentFolderId` as step 6). **NOT `drive_create_doc_from_markdown`** —
+   rendering the source copy converts it to a Doc as well and destroys the
+   very bytes this step exists to preserve, which reproduces the defect while
+   looking like the fix.
+
+   Why it is not optional: the renderer CONSUMES its input. Once the Doc
+   exists the markdown you composed exists nowhere, and the `.md` in
+   `idea-to-pdd.md` is display text, not a file — `drive_list_folder` over a
+   finished run's `1-design/` returns it as
+   `application/vnd.google-apps.document` with no sibling markdown. That
+   leaves `run-surface-audit`'s `DOC-FIDELITY-UNVERIFIED` — the only check
+   that compares what was PUBLISHED against what was WRITTEN, and the only one
+   that could have caught a document silently losing content with every other
+   check green (ace#1418) — permanently unresolvable, because its
+   `--doc-source` remediation has nothing real to point at. One extra call
+   turns a blocking gate from decorative into operable.
+
+   This is a plain companion file, not a second deliverable: it is never
+   shared, never linked, and never read by a human. Do NOT share it
+   anyone-with-link. (ace#1687 half 2; declared `sourcePersisted` in
+   `lib/artifact-manifest.ts`, enforced by
+   `test/lib/source-persisted-artifacts.test.ts`.)
+
 <!-- 0.13.116: gate-brief write step removed. The orchestrator composes a
 pause-time summary from this skill's QA verdict (idea-to-pdd-qa) +
 eval verdict (idea-to-pdd-eval) at the Phase 1→3 Pause Point. -->

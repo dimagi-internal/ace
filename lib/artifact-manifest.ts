@@ -199,8 +199,84 @@ export interface ArtifactEntry {
    * name the share step).
    */
   recipientFacing?: true;
+  /**
+   * True when this artifact's producer must ALSO persist the markdown it
+   * composed, as a sibling `<name>.source.md` (see `sourceMarkdownPathFor`).
+   *
+   * Implies `rendered` — and that is the whole point. `drive_create_doc_from_markdown`
+   * CONSUMES its input: what lands in Drive is a native Google Doc, and the
+   * markdown that produced it exists nowhere afterwards. The `.md` on
+   * `training-faq.md` is part of the display NAME, not a separate file. Verified
+   * live on `hh-poverty-targeting/20260824-1404`, where `drive_list_folder` over
+   * `6-qa-and-training/` returns all five training documents as
+   * `application/vnd.google-apps.document` and no sibling markdown of any kind.
+   *
+   * Load-bearing, not bookkeeping: `DOC-FIDELITY-UNVERIFIED` in
+   * `lib/run-surface-audit.ts` compares what was PUBLISHED against what was
+   * WRITTEN, and it is the only check that can catch the regression it was
+   * built for — a guide that lost 44 screenshots and 224 words with every
+   * other check green (ace#1418). Its remediation is to pass `--doc-source`
+   * mapping each url to its source markdown. With nothing persisted there is
+   * no such artifact to point at, so a BLOCKING finding is permanently
+   * unresolvable and the regression it guards stays unguarded (ace#1687,
+   * half 2).
+   *
+   * **The source file must be written with `drive_create_file` at
+   * `mimeType: 'text/markdown'` — NEVER `drive_create_doc_from_markdown`.**
+   * Rendering the source copy would convert it to a Doc too and destroy the
+   * exact bytes the comparison needs, which is the defect rather than the fix.
+   * Both writes take the SAME string: render it for humans, store it verbatim
+   * for the auditor.
+   *
+   * NOT for every rendered artifact. Two deliberate exclusions, for different
+   * reasons — read them before "fixing" either:
+   *
+   *   - `open-questions.md` is an opp-level LIVING document that reviewers
+   *     hand-edit in place across runs. Published-vs-source divergence there
+   *     is expected and correct, so a fidelity diff would report legitimate
+   *     human edits as defects.
+   *   - `1-design/pdd-to-work-order.gdoc` has **no composed markdown to
+   *     persist, and no importer that could drop anything.** It is built by
+   *     `docs_copy_template`, which is `drive.files.copy` of a Google Doc
+   *     template plus a `replaceAllText` batch (`mcp/google-drive-server.ts`)
+   *     — Doc to Doc, start to finish. The regression `DOC-FIDELITY-UNVERIFIED`
+   *     exists to catch is the markdown IMPORTER silently dropping content;
+   *     with no import step that class cannot occur, and the drift that CAN
+   *     occur there (template tokens the skill never replaced) already has its
+   *     own preventer — the surviving-`{{` scan in
+   *     `skills/pdd-to-work-order/SKILL.md` step 5. Writing it a `.source.md`
+   *     would hand the auditor a file to diff that the document was never
+   *     produced from: a green comparison that means nothing. If the audit
+   *     should report this doc as NOT-APPLICABLE rather than UNVERIFIED, that
+   *     belongs in the auditor, not here (ace#1687 half 1).
+   *
+   * Flag only ACE-authored deliverables composed AS MARKDOWN, published once
+   * per run through the importer, and not expected to be edited afterwards.
+   *
+   * Enforced by `test/lib/source-persisted-artifacts.test.ts`: the flagged set
+   * is pinned, every flagged entry is `rendered`, every producer names the
+   * persist step and the plain-file atom, and the registered `.source.md`
+   * companion entries match the flagged set exactly (so the flag and the
+   * registry cannot drift). Companions are `required: false` by contract —
+   * making them required would retroactively fail every run that completed
+   * before this shipped.
+   */
+  sourcePersisted?: true;
   /** Human-readable purpose */
   description: string;
+}
+
+/**
+ * The sibling path a `sourcePersisted` artifact's composed markdown is stored
+ * at: the published document's path with its extension replaced by
+ * `.source.md`.
+ *
+ * Single source of truth for the convention, so the manifest entries, the
+ * ratchet test, and any tooling that builds a `--doc-source` map all derive it
+ * rather than re-spelling it.
+ */
+export function sourceMarkdownPathFor(publishedPath: string): string {
+  return publishedPath.replace(/\.[^./]+$/, '') + '.source.md';
 }
 
 // ── Phase identity (single source of truth) ────────────────────────
@@ -383,7 +459,19 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     phase: 'design',
     required: true,
     rendered: true,
+    sourcePersisted: true,
     description: 'Program Design Document with archetype, Evidence Model, Solicitation block, and stress-test appendix (the canonical pdd.md, renamed to match its producer)',
+  },
+  {
+    path: '1-design/idea-to-pdd.source.md',
+    producedBy: 'idea-to-pdd',
+    consumedBy: ['run-surface-audit'],
+    phase: 'design',
+    // Never required: making it so would retroactively fail every run that
+    // completed before ace#1687 shipped. verify_phase_artifacts counts it
+    // under optional_present_count.
+    required: false,
+    description: 'Verbatim markdown `idea-to-pdd.md` was composed from, stored as a plain text/markdown file so `run-surface-audit`\'s DOC-FIDELITY-UNVERIFIED check has a real source to diff the published Doc against (ace#1687). Optional by contract: runs that completed before this shipped have none.',
   },
   {
     path: '1-design/idea-to-pdd-qa_result.yaml',
@@ -889,9 +977,21 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     // it cannot exist when Phase 5 was skipped (ace#1069).
     notRequiredInModes: ['app-QA-only'],
     rendered: true,
+    sourcePersisted: true,
     illustrated: true,
     recipientFacing: true,
     description: 'LLO Manager guide for overseeing FLW deployment',
+  },
+  {
+    path: '6-qa-and-training/training-llo-guide.source.md',
+    producedBy: 'training-llo-guide',
+    consumedBy: ['run-surface-audit'],
+    phase: 'qa-and-training',
+    // Never required: making it so would retroactively fail every run that
+    // completed before ace#1687 shipped. verify_phase_artifacts counts it
+    // under optional_present_count.
+    required: false,
+    description: 'Verbatim markdown `training-llo-guide.md` was composed from, stored as a plain text/markdown file for the DOC-FIDELITY-UNVERIFIED diff (ace#1687). Optional by contract.',
   },
   {
     path: '6-qa-and-training/training-flw-guide.md',
@@ -903,9 +1003,21 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     // it cannot exist when Phase 5 was skipped (ace#1069).
     notRequiredInModes: ['app-QA-only'],
     rendered: true,
+    sourcePersisted: true,
     illustrated: true,
     recipientFacing: true,
     description: 'Step-by-step FLW training guide for app usage and protocols',
+  },
+  {
+    path: '6-qa-and-training/training-flw-guide.source.md',
+    producedBy: 'training-flw-guide',
+    consumedBy: ['run-surface-audit'],
+    phase: 'qa-and-training',
+    // Never required: making it so would retroactively fail every run that
+    // completed before ace#1687 shipped. verify_phase_artifacts counts it
+    // under optional_present_count.
+    required: false,
+    description: 'Verbatim markdown `training-flw-guide.md` was composed from, stored as a plain text/markdown file for the DOC-FIDELITY-UNVERIFIED diff (ace#1687). The illustrated guide that lost 44 screenshots and 224 words is the regression this makes checkable. Optional by contract.',
   },
   {
     path: '6-qa-and-training/training-quick-reference.md',
@@ -917,8 +1029,20 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     // it cannot exist when Phase 5 was skipped (ace#1069).
     notRequiredInModes: ['app-QA-only'],
     rendered: true,
+    sourcePersisted: true,
     recipientFacing: true,
     description: 'One-page laminated pocket card for FLWs in the field',
+  },
+  {
+    path: '6-qa-and-training/training-quick-reference.source.md',
+    producedBy: 'training-quick-reference',
+    consumedBy: ['run-surface-audit'],
+    phase: 'qa-and-training',
+    // Never required: making it so would retroactively fail every run that
+    // completed before ace#1687 shipped. verify_phase_artifacts counts it
+    // under optional_present_count.
+    required: false,
+    description: 'Verbatim markdown `training-quick-reference.md` was composed from, stored as a plain text/markdown file for the DOC-FIDELITY-UNVERIFIED diff (ace#1687). Optional by contract.',
   },
   {
     path: '6-qa-and-training/training-faq.md',
@@ -930,8 +1054,20 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     // it cannot exist when Phase 5 was skipped (ace#1069).
     notRequiredInModes: ['app-QA-only'],
     rendered: true,
+    sourcePersisted: true,
     recipientFacing: true,
     description: 'Frequently asked questions for LLOs and FLWs',
+  },
+  {
+    path: '6-qa-and-training/training-faq.source.md',
+    producedBy: 'training-faq',
+    consumedBy: ['run-surface-audit'],
+    phase: 'qa-and-training',
+    // Never required: making it so would retroactively fail every run that
+    // completed before ace#1687 shipped. verify_phase_artifacts counts it
+    // under optional_present_count.
+    required: false,
+    description: 'Verbatim markdown `training-faq.md` was composed from, stored as a plain text/markdown file for the DOC-FIDELITY-UNVERIFIED diff (ace#1687). Optional by contract.',
   },
   {
     path: '6-qa-and-training/training-onboarding-email.md',
@@ -943,8 +1079,20 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     // it cannot exist when Phase 5 was skipped (ace#1069).
     notRequiredInModes: ['app-QA-only'],
     rendered: true,
+    sourcePersisted: true,
     recipientFacing: true,
     description: 'LLO onboarding email template authored in Phase 6 and sent by Phase 9 (execution-manager) llo-onboarding, with {{LLO_NAME}}/{{LLO_FIRST_NAME}}/{{LLO_ORG}} tokens',
+  },
+  {
+    path: '6-qa-and-training/training-onboarding-email.source.md',
+    producedBy: 'training-onboarding-email',
+    consumedBy: ['run-surface-audit'],
+    phase: 'qa-and-training',
+    // Never required: making it so would retroactively fail every run that
+    // completed before ace#1687 shipped. verify_phase_artifacts counts it
+    // under optional_present_count.
+    required: false,
+    description: 'Verbatim markdown `training-onboarding-email.md` was composed from, stored as a plain text/markdown file for the DOC-FIDELITY-UNVERIFIED diff (ace#1687). Optional by contract.',
   },
   {
     path: '6-qa-and-training/training-deck-spec.yaml',
