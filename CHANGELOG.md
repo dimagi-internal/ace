@@ -5,6 +5,24 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.13.1018 — 2026-08-26
+
+**Phase 3 (`commcare-setup`) is a real subagent — the first of the inline procedure docs to come back.**
+
+Phase 3 ran inline at level 0 for exactly one reason: Step 1 invokes `/nova:autobuild`, which dispatches `nova:nova-architect-autonomous` via the `Agent` tool, and Claude Code withheld `Agent` from every subagent — so a subagent Phase 3 could not reach Nova at all. That constraint was retired in 0.13.1005 (nesting allowed to a budget since Claude Code v2.1.219). The workaround outlived it.
+
+`ace-orchestrator` now dispatches `Agent(commcare-setup)`. The chain `ace-orchestrator → commcare-setup → nova:nova-architect-autonomous` lands at **depth 2** against a budget of 3 — no config change needed, one level of headroom kept.
+
+**What it buys:** Phase 3 gets its own context window. It was the heaviest thing in the orchestrator's context, and the orchestrator carries a ten-phase run — `agents/ace-orchestrator.md` named Phase 3 "the highest-risk surface" for producer skills being skipped under context-budget pressure, and `lib/session-handoff.ts` exists because context lost at session boundaries was the single largest waste class across 24 reviewed sessions.
+
+**What it costs:** a subagent inherits nothing — not the orchestrator's conversation, files read, or skills invoked. Everything Phase 3 needs must arrive in the dispatch message, and everything it produces must reach Drive and `run_state.yaml` rather than sit in context for a later phase. Both are now stated in `agents/commcare-setup.md`.
+
+**The Phase 3→4 gate is unaffected.** Phase 3 writes per-skill verdicts; the orchestrator reads them at the phase boundary and synthesizes any pause there, at level 0. Nothing inside Phase 3 prompts a human, so nothing depended on it being inline.
+
+Standing orchestrator rules that assumed inline execution were re-anchored rather than deleted — the `-eval`-per-producer rule now notes the orchestrator sees only written verdicts and cannot backfill a skipped one.
+
+`test/agents/agent-topology.test.ts` gained a self-reference exclusion: a subagent doc naming its own invocation form (`Agent(commcare-setup)`) is documentation, not a dispatch it makes. Real self-dispatch stays impossible — `chainsFrom()` refuses to re-enter a node already on the path.
+
 ## 0.13.1005 — 2026-08-26
 
 **The "Agent is level-0 only" invariant was retired — subagent nesting is allowed, to a budget.**

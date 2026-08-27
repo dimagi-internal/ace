@@ -22,7 +22,7 @@ spawn subagents, `CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH` sets the limit, and
 | `ace-orchestrator` | inline | the 10 phase nodes | `/ace:run` reads it and executes inline |
 | `idea-to-design` (P1) | subagent | — | `Agent(idea-to-design)` |
 | `scenarios-and-acceptance` (P2) | subagent | — | `Agent(scenarios-and-acceptance)` |
-| `commcare-setup` (P3) | inline | `nova:nova-architect-autonomous` via `/nova:autobuild` | orchestrator reads it inline |
+| `commcare-setup` (P3) | subagent | `nova:nova-architect-autonomous` via `/nova:autobuild` | `Agent(commcare-setup)` |
 | `connect-setup` (P4) | subagent | — | `Agent(connect-setup)` |
 | `ocs-setup` (P5) | subagent | — | `Agent(ocs-setup)` |
 | `qa-and-training` (P6) | subagent | — | `Agent(qa-and-training)` |
