@@ -84,9 +84,25 @@ OCS_EMBEDDING_MODEL_ID=op://Agent-Ace/ACE - Open Chat Studio/Config/embedding_mo
 OCS_SHARED_COLLECTION_ID=op://Agent-Ace/ACE - Open Chat Studio/Config/shared_collection_id
 
 # ── Gmail (GOG CLI) ─────────────────────────────────────────────────
-
-ACE_GMAIL_ACCOUNT=op://Agent-Ace/ACE - Open Chat Studio/Config/gmail_account
-ACE_GMAIL_CLIENT=op://Agent-Ace/ACE - Open Chat Studio/Config/gmail_client
+#
+# INTENTIONALLY EMPTY. The gog identity is NOT configuration this file owns.
+#
+# `ACE_GMAIL_ACCOUNT` / `ACE_GMAIL_CLIENT` used to be injected here from
+# 1Password, which made a second source of truth for a fact `config/agent.json`
+# already states (`email`, `gog_client`) — and it drifted: the vault held
+# `gmail_client=ace` against agent.json's `canopy`, so every probe or command
+# reading the env var pointed at a client with NO credentials file, whose
+# printed remedy (`gog login --client ace`) is an interactive browser OAuth a
+# headless turn cannot run (jjackson/ace#1147, #1338).
+#
+# Neither value is a secret: a mailbox address and an OAuth CLIENT NAME are not
+# credentials. The actual client_id/client_secret live in gog's own credentials
+# file, which `--client canopy` selects. So they belong in version control,
+# reviewable, next to the rest of the agent's identity — not in a vault.
+#
+# Add nothing here. `lib/gog-identity.ts` reads agent.json and throws a typed
+# error if it is missing; `test/lib/env-tpl-identity.test.ts` fails if an
+# identity key is reintroduced.
 
 # ── Solicitations ───────────────────────────────────────────────────
 

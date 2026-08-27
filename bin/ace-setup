@@ -354,8 +354,25 @@ $LINT_BAD"
       TPL_KEYS_PRE="$(grep -E '^[[:space:]]*[A-Z_][A-Z0-9_]*=' "$ENV_TPL" | sed -E 's/^[[:space:]]*([A-Z_][A-Z0-9_]*)=.*/\1/' | sort -u)"
       ENV_KEYS_PRE="$(grep -E '^[[:space:]]*[A-Z_][A-Z0-9_]*=' "$ENV_OUT" | sed -E 's/^[[:space:]]*([A-Z_][A-Z0-9_]*)=.*/\1/' | sort -u)"
       EXTRA_KEYS="$(comm -23 <(printf '%s\n' "$ENV_KEYS_PRE") <(printf '%s\n' "$TPL_KEYS_PRE"))"
+      # Keys deliberately RETIRED from .env.tpl. The preservation above keys off
+      # "in .env but not in .env.tpl", which is exactly what a retired key looks
+      # like — so without this list, deleting a key from the template would
+      # IMMORTALISE its last value in the local-only block instead of removing
+      # it. That is the opposite of the intent and is silent.
+      #
+      # ACE_GMAIL_ACCOUNT / ACE_GMAIL_CLIENT: the gog identity now lives solely
+      # in config/agent.json. The vault held gmail_client=ace against
+      # agent.json's canopy, and no credentials-ace.json is ever provisioned
+      # (ace#1147, #1338).
+      RETIRED_KEYS="ACE_GMAIL_ACCOUNT ACE_GMAIL_CLIENT"
       while IFS= read -r key; do
         [ -z "$key" ] && continue
+        case " $RETIRED_KEYS " in
+          *" $key "*)
+            echo "INFO env: dropping retired key $key (now sourced from config/agent.json)"
+            continue
+            ;;
+        esac
         line="$(grep -E "^[[:space:]]*${key}=" "$ENV_OUT" | head -1)"
         if [ -n "$line" ]; then
           LOCAL_SECRETS="${LOCAL_SECRETS}${line}
@@ -659,16 +676,24 @@ fi
 # as /ace:ocs-login and /ace:connect-login). /ace:doctor's gog_auth probe then
 # live-checks scope coverage.
 GOG_SERVICES="gmail,calendar,drive,docs,slides,sheets,forms"
-GMAIL_ACCT_VAL="$(grep -E '^ACE_GMAIL_ACCOUNT=' "$ENV_OUT" 2>/dev/null | head -1 | cut -d= -f2- | sed -e 's/^[[:space:]"'\'']*//' -e 's/[[:space:]"'\'']*$//')"
-GMAIL_CLIENT_VAL="$(grep -E '^ACE_GMAIL_CLIENT=' "$ENV_OUT" 2>/dev/null | head -1 | cut -d= -f2- | sed -e 's/^[[:space:]"'\'']*//' -e 's/[[:space:]"'\'']*$//')"
+# Identity comes from config/agent.json, NOT from .env — those keys are retired
+# (see RETIRED_KEYS above, ace#1147). Reading .env here would have made this
+# block print "re-run /ace:setup --force-env to inject them" forever, a remedy
+# that can never work once the template stops declaring them.
+_agent_field() {
+  python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get(sys.argv[2],""))' \
+    "$ROOT/config/agent.json" "$1" 2>/dev/null
+}
+GMAIL_ACCT_VAL="$(_agent_field email)"
+GMAIL_CLIENT_VAL="$(_agent_field gog_client)"
 if ! command -v gog >/dev/null 2>&1 && command -v brew >/dev/null 2>&1; then
   echo "INFO gog: installing GOG CLI (brew install steipete/tap/gogcli)..."
   brew install steipete/tap/gogcli 2>&1 | tail -3
 fi
 if ! command -v gog >/dev/null 2>&1; then
-  warn "gog: GOG CLI not installed (brew unavailable or install failed)" "install manually: brew install steipete/tap/gogcli — then authorize: gog login ${GMAIL_ACCT_VAL:-<ACE_GMAIL_ACCOUNT>} --client ${GMAIL_CLIENT_VAL:-<ACE_GMAIL_CLIENT>} --services $GOG_SERVICES --force-consent"
+  warn "gog: GOG CLI not installed (brew unavailable or install failed)" "install manually: brew install steipete/tap/gogcli — then authorize: gog login ${GMAIL_ACCT_VAL:-<agent.json email>} --client ${GMAIL_CLIENT_VAL:-<agent.json gog_client>} --services $GOG_SERVICES --force-consent"
 elif [ -z "$GMAIL_ACCT_VAL" ] || [ -z "$GMAIL_CLIENT_VAL" ]; then
-  warn "gog: ACE_GMAIL_ACCOUNT / ACE_GMAIL_CLIENT not found in $ENV_OUT" "re-run /ace:setup --force-env to inject them, then authorize gog"
+  warn "gog: email / gog_client not set in $ROOT/config/agent.json" "that file is the single source of truth for the gog identity (ace#1147) — set both fields, then authorize gog"
 else
   GOG_LOGIN_CMD="gog login $GMAIL_ACCT_VAL --client $GMAIL_CLIENT_VAL --services $GOG_SERVICES --force-consent"
   if gog auth status --account "$GMAIL_ACCT_VAL" --client "$GMAIL_CLIENT_VAL" --json 2>/dev/null | grep -q '"credentials_exists": true'; then

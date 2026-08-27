@@ -5,14 +5,20 @@
  * (`canopy`), reused by every agent's mailbox. The per-agent identity is the
  * ACCOUNT (`email` / `--account`), never the client.
  *
- * The `$ACE_GMAIL_CLIENT` env var is a legacy fallback ONLY. It resolves to `ace`
- * from 1Password on machines whose vault entry predates the fleet client split,
- * and no `credentials-ace.json` is ever provisioned — so every gog call fails with
- * "OAuth client credentials missing" and prints a remedy (`gog login --client ace`)
- * that is an interactive browser OAuth a headless turn cannot run.
+ * There are NO env-var fallbacks. `$ACE_GMAIL_ACCOUNT` / `$ACE_GMAIL_CLIENT` were
+ * removed here and from `.env.tpl` together: the vault supplied `gmail_client=ace`
+ * against agent.json's `canopy`, no `credentials-ace.json` is ever provisioned, and
+ * so every call reading the env var failed with "OAuth client credentials missing"
+ * and a remedy (`gog login --client ace`) that is an interactive browser OAuth a
+ * headless turn cannot run. A fallback that can only ever be staler than the
+ * primary is a second source of truth, not resilience.
  *
- * jjackson/ace#1147 cleared the env residual for the EMAIL path; this helper is
- * what keeps every OTHER gog caller (Drive reads, etc.) from re-deriving the bug.
+ * Neither value is a secret — a mailbox address and an OAuth CLIENT NAME are not
+ * credentials; the real client_id/secret live in gog's own credentials file that
+ * `--client canopy` selects. So identity lives in version control, not a vault.
+ *
+ * jjackson/ace#1147 / #1338. This helper is what keeps every gog caller (email,
+ * Drive reads, doctor probes) resolving one identity.
  */
 import fs from 'fs';
 import path from 'path';
@@ -33,8 +39,8 @@ export interface ResolveGogIdentityOptions {
  * Returns the account + client to pass to `gog --account <a> --client <c>`.
  *
  * Precedence:
- *   account: config/agent.json `email`  →  $ACE_GMAIL_ACCOUNT
- *   client:  config/agent.json `gog_client`  →  $ACE_GMAIL_CLIENT
+ *   account: config/agent.json `email`      (no fallback — ace#1147)
+ *   client:  config/agent.json `gog_client` (no fallback — ace#1147)
  *
  * Throws a typed, actionable error when neither source yields a value.
  */
@@ -47,16 +53,24 @@ export function resolveGogIdentity({ repoRoot, env = process.env }: ResolveGogId
     // Missing/unparseable agent.json falls through to the env fallbacks below.
   }
 
-  const account = agentConfig.email || env.ACE_GMAIL_ACCOUNT;
-  const client = agentConfig.gog_client || env.ACE_GMAIL_CLIENT;
+  // agent.json is the ONLY source. The `$ACE_GMAIL_ACCOUNT` /
+  // `$ACE_GMAIL_CLIENT` fallbacks were removed in ace#1147's follow-up: a
+  // fallback that can only ever supply a STALER value than the primary is not
+  // resilience, it is a second source of truth waiting to drift — and it did,
+  // to a client with no credentials file. Both are gone from `.env.tpl`, so a
+  // fallback here could now only read a residual on one machine and silently
+  // diverge from every other. Missing config throws instead.
+  const account = agentConfig.email;
+  const client = agentConfig.gog_client;
 
   if (!account || !client) {
-    const missing = [!account && 'account', !client && 'client'].filter(Boolean).join(' + ');
+    const missing = [!account && 'email', !client && 'gog_client'].filter(Boolean).join(' + ');
     throw new Error(
-      `Cannot resolve the gog OAuth identity (${missing}). ` +
-        `Expected \`email\` and \`gog_client\` in ${configPath} ` +
-        `(gog_client is the SHARED fleet client, normally "canopy"). ` +
-        `Legacy fallbacks $ACE_GMAIL_ACCOUNT / $ACE_GMAIL_CLIENT are also unset.`,
+      `Cannot resolve the gog OAuth identity (missing ${missing}). ` +
+        `Set it in ${configPath} — that file is the single source of truth ` +
+        `(gog_client is the SHARED fleet client, normally "canopy"; the ` +
+        `per-agent identity is \`email\`, applied via --account). ` +
+        `There are deliberately no env-var fallbacks (ace#1147).`,
     );
   }
 
