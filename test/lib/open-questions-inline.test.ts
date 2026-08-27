@@ -28,6 +28,8 @@ import path from 'node:path';
 import {
   OPEN_QUESTIONS_INLINE_CAP_CHARS,
   classifyOpenQuestionsInline,
+  extractOpenSection,
+  unescapeDriveMarkdown,
   type OpenQuestionsInlineMode,
 } from '../../lib/open-questions-inline.js';
 
@@ -190,5 +192,157 @@ describe('the executing prose states both bounds (#1487)', () => {
     );
     expect(entry, 'manifest entry').toContain('## Archive');
     expect(entry, 'manifest entry').toContain('never inlined');
+  });
+});
+
+/**
+ * The durable ledger is published as a CONVERTED Google Doc (Drive turns the
+ * markdown into real headings and real tables) — `drive_create_doc_from_markdown`
+ * is what `skills/idea-to-pdd` is told to write it with, and a `run-surface-audit`
+ * of `hh-poverty-targeting/20260824-1404` flagged the un-converted file as
+ * `DOC-LITERAL-MARKDOWN`: the reader saw raw `##`, `**`, and pipe tables.
+ *
+ * Converting changes what the READ gives back, and Phase 1 reads this file. The
+ * fixtures below are not invented shapes — they are the VERBATIM bytes Drive
+ * returned for a converted probe doc on 2026-08-26 (a structural mirror of that
+ * ledger, created with `drive_create_doc_from_markdown` and trashed after):
+ *
+ *   test/fixtures/open-questions/converted-gdoc.text-plain.txt      (default export)
+ *   test/fixtures/open-questions/converted-gdoc.text-markdown.md    (exportAs markdown)
+ *   test/fixtures/open-questions/literal-markdown-gdoc.text-plain.txt (pre-conversion)
+ *
+ * The load-bearing finding: on a converted doc the DEFAULT `text/plain` export
+ * strips the `##` markers (`## Open` → `Open`) and flattens every pipe table to
+ * one cell per line. The section does not merely lose styling — it stops
+ * resolving, and a reader that guessed at the bare `Open` line would inline a
+ * ledger whose question rows have run together, with nothing to say so.
+ */
+describe('reading the durable ledger back from a CONVERTED gdoc', () => {
+  const fixture = (name: string) =>
+    fs.readFileSync(
+      path.join(process.cwd(), 'test/fixtures/open-questions', name),
+      'utf8',
+    );
+
+  const CONVERTED_PLAIN = 'converted-gdoc.text-plain.txt';
+  const CONVERTED_MARKDOWN = 'converted-gdoc.text-markdown.md';
+  const LITERAL_PLAIN = 'literal-markdown-gdoc.text-plain.txt';
+
+  it('the converted doc read as text/markdown still resolves ## Open', () => {
+    const outcome = extractOpenSection(fixture(CONVERTED_MARKDOWN));
+    expect(outcome.status).toBe('ok');
+    if (outcome.status !== 'ok') return;
+
+    expect(outcome.section.startsWith('## Open'), 'section starts at the heading').toBe(true);
+    // The pipe table survives conversion as a pipe table — rows stay rows.
+    expect(outcome.section).toContain('| 1 | Q2 |');
+    expect(outcome.section).toContain('| 3 | Q1 |');
+    expect(outcome.section).toContain('rate-band-source');
+  });
+
+  it('## Archive never rides along, nor does the section above ## Open', () => {
+    for (const name of [CONVERTED_MARKDOWN, LITERAL_PLAIN]) {
+      const outcome = extractOpenSection(fixture(name));
+      expect(outcome.status, name).toBe('ok');
+      if (outcome.status !== 'ok') continue;
+      // ## Archive is closed history: never read back, never inlined (#1487).
+      expect(outcome.section, name).not.toContain('deliver-app-photo-capture');
+      expect(outcome.section, name).not.toContain('## Archive');
+      // ...and the ## Settled section ABOVE it is not swept in either.
+      expect(outcome.section, name).not.toContain('Nigeria PPI, 2020');
+    }
+  });
+
+  it('Drive markdown-export escaping is undone, so a row reads as it was written', () => {
+    const raw = fixture(CONVERTED_MARKDOWN);
+    // Ground truth: Drive escapes markdown-significant characters on export.
+    expect(raw, 'the exporter really does escape').toContain('\\#');
+    expect(raw).toContain('resolved\\_at');
+
+    const outcome = extractOpenSection(raw);
+    expect(outcome.status).toBe('ok');
+    if (outcome.status !== 'ok') return;
+    expect(outcome.section, 'escaping is undone').not.toContain('\\#');
+    expect(outcome.section).toContain('| # | PDD ref |');
+  });
+
+  it('the DEFAULT text/plain export of a converted doc is REFUSED, not guessed at', () => {
+    const raw = fixture(CONVERTED_PLAIN);
+    // Ground truth: conversion strips the markers and flattens the table.
+    expect(raw, 'no ## markers survive the plain-text export').not.toContain('## Open');
+    expect(raw, 'the heading text is all that is left').toMatch(/^Open$/m);
+
+    const outcome = extractOpenSection(raw);
+    expect(outcome.status).toBe('needs-markdown-export');
+    if (outcome.status !== 'needs-markdown-export') return;
+    expect(outcome.reason, 'the remedy is named').toContain("exportAs: 'text/markdown'");
+    // The whole point: no section is returned. A mangled ledger must not reach Phase 1.
+    expect(outcome).not.toHaveProperty('section');
+  });
+
+  it('the pre-conversion shape (literal markdown in a gdoc) still resolves', () => {
+    // The conversion must not be a one-way door: a ledger that has not been
+    // republished yet keeps working exactly as it did.
+    const outcome = extractOpenSection(fixture(LITERAL_PLAIN));
+    expect(outcome.status).toBe('ok');
+    if (outcome.status !== 'ok') return;
+    expect(outcome.section).toContain('| 1 | Q2 |');
+    expect(outcome.section).toContain('rate-band-source');
+  });
+
+  it('CRLF line endings (which Drive returns) do not defeat the match', () => {
+    const outcome = extractOpenSection('# T\r\n\r\n## Open\r\n\r\n- row\r\n\r\n## Archive\r\n\r\n- gone\r\n');
+    expect(outcome.status).toBe('ok');
+    if (outcome.status !== 'ok') return;
+    expect(outcome.section).toBe('## Open\n\n- row');
+  });
+
+  it('a ### subheading inside ## Open does not end the section', () => {
+    const outcome = extractOpenSection(
+      ['## Open', '', '### Blocked on the operator', '', '- row', '', '## Archive', '', '- gone'].join('\n'),
+    );
+    expect(outcome.status).toBe('ok');
+    if (outcome.status !== 'ok') return;
+    expect(outcome.section).toContain('### Blocked on the operator');
+    expect(outcome.section).not.toContain('gone');
+  });
+
+  it('a markdown-shaped doc with no ## Open section reports absent', () => {
+    const outcome = extractOpenSection('# Open Questions\n\n## Archive\n\n- gone\n');
+    expect(outcome.status).toBe('absent');
+    if (outcome.status !== 'absent') return;
+    expect(outcome.reason).toContain('## Open');
+  });
+
+  it('an empty read is absent, not a markdown-export prompt', () => {
+    expect(extractOpenSection('').status).toBe('absent');
+    expect(extractOpenSection('   \n\n').status).toBe('absent');
+  });
+
+  it('unescapeDriveMarkdown only touches backslash-escaped punctuation', () => {
+    expect(unescapeDriveMarkdown('resolved\\_at \\# \\| \\- \\.')).toBe('resolved_at # | - .');
+    expect(unescapeDriveMarkdown('C:\\path and 50\\% of it')).toBe('C:\\path and 50\\% of it');
+  });
+});
+
+describe('the executing prose states the export contract (DOC-LITERAL-MARKDOWN)', () => {
+  const read = (rel: string) => fs.readFileSync(path.join(process.cwd(), rel), 'utf8');
+
+  it('the orchestrator Phase 1 block names the markdown export and the extractor', () => {
+    const doc = read('agents/ace-orchestrator.md');
+    const phase1 = doc.slice(
+      doc.indexOf('### Phase 1: Idea to Design'),
+      doc.indexOf('### Phase 2:', doc.indexOf('### Phase 1: Idea to Design')),
+    );
+    // The durable ledger is a CONVERTED gdoc: the default text/plain export
+    // strips `##` and flattens its tables, so the read must name the format.
+    expect(phase1, 'Phase 1 must name the export format').toContain("exportAs: 'text/markdown'");
+    expect(phase1, 'Phase 1 must name the extractor').toContain('extractOpenSection');
+  });
+
+  it('idea-to-pdd names the markdown export where it reads the ledger back', () => {
+    const skill = read('skills/idea-to-pdd/SKILL.md');
+    expect(skill, 'the skill must name the export format').toContain("exportAs: 'text/markdown'");
+    expect(skill, 'the skill must name the extractor').toContain('extractOpenSection');
   });
 });
