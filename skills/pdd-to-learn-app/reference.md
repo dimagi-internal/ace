@@ -136,6 +136,12 @@ Case Management UI if you already have a case block in your form"). Phase
 app install." Removal criteria: drop when voidcraft-labs/nova-plugin#7
 ships (no wrappers → no patcher → no drift class) OR when
 `commcare_patch_xform` gains Vellum-cache invalidation.
+**#7 closed COMPLETED 2026-05-22 — the first branch is MET, so this
+constraint is a retirement candidate** (surfaced by
+`scripts/probe-upstream-asks.ts`, ace#1764). Not retired yet: that needs a
+live build proving the wrapper-strip drift class is actually gone, and the
+"no `<case>` in Learn forms" guidance may hold on Connect-contract grounds
+either way — Connect's Learn contract is form-only. Verify before deleting.
 
 ### Deployability (fitness) components
 
