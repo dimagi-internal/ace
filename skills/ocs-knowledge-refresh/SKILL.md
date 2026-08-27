@@ -65,6 +65,10 @@ A first-class step, not a corrective second pass. `ocs-agent-setup --reindex`
   `version_number`.
 - Updates `5-ocs/ocs-agent-setup.md` with `last_reindexed_at` and the refreshed
   `version_number`.
+- Writes `phases.ocs-setup.products.ocs_chatbot.knowledge_sources` (plus
+  `last_reindexed_at` and the refreshed `version_number`) to `run_state.yaml`.
+  **This skill is the only producer of `knowledge_sources`** — ace-web's public
+  run-summary page is the consumer. See Step 4.
 
   **This is a cross-phase write, and it is deliberate.** `ocs-agent-setup` is
   the declared producer of that file; a Phase 6 skill appending two fields to it
@@ -154,6 +158,51 @@ Write the product artifact, and update `5-ocs/ocs-agent-setup.md` with
 
 **`last_reindexed_at` is the operator's check.** Its absence on a run whose
 Phase 6 completed means the chatbot never received the training documents.
+
+Then write **`knowledge_sources`** into
+`run_state.yaml` → `phases.ocs-setup.products.ocs_chatbot` — a list of short
+human-readable phrases naming what the bot was actually given:
+
+```
+update_yaml_file(run_state_file_id, merge: 'deep',
+  validateAs: {kind: 'phase-products', phase: 'ocs-setup'},
+  patch: {phases: {'ocs-setup': {products: {ocs_chatbot: {
+    version_number: <new>,
+    last_reindexed_at: <iso>,
+    knowledge_sources: [
+      'the design doc',
+      'the training pack (LLO manager guide, FLW training guide, FAQ, and quick reference card)',
+      'the Learn and Deliver app guides',
+      ...
+    ]}}}}})
+```
+
+**This is the only producer of that field, and it is load-bearing.** ace-web's
+public run-summary page reads it (`apps/opps/summary.py :: _knowledge_sources`,
+accepting `knowledge_sources` / `knowledge` / `indexed_sources`) and renders
+*"Ask questions about this opportunity. It was given &lt;list&gt;."* Until
+ace-web#740 that sentence was a **hard-coded** claim — *"Trained on the design
+doc, training pack, and app guides"* — derived from nothing, and on
+`spark-facilitator/20260820-0817` it was false: the collection held 16 files
+and **none** of the training pack. ace-web made it data precisely because this
+skill makes the claim true for some runs and leaves it false for others, and a
+constant string cannot tell them apart.
+
+So the field is not decoration — it is the evidence for a claim an external
+partner reads. Omit it and the page correctly falls back to saying nothing
+about what the bot knows, which is honest but throws away the whole point of
+having run the refresh. Write it in the same call that records
+`last_reindexed_at`.
+
+**Phrases, not filenames.** They are rendered into an English sentence for a
+reader with no ACE context, so `'the training pack (LLO manager guide, FLW
+training guide, FAQ, and quick reference card)'` reads correctly where
+`'19-training-quick-reference.md'` does not. Group related files; keep the list
+to ~5 entries. Describe only what is **actually indexed** — a document you
+skipped (see Step 0) must not appear here.
+
+*Enforced:* `ocs_chatbot` is `.passthrough()` in `lib/phase-products-schema.ts`,
+so `validateAs` accepts the field rather than rejecting it as drift.
 
 ## Verdict
 
