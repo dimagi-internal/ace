@@ -280,13 +280,73 @@ retry tax.
   20260608-0711 45%-vs-requested-70% symptom (jjackson/ace#737). Source:
   `BinaryDistribution` in `.../generator/fixtures/manifest.py`.
 
-- **`aggregation` enum is `count | mean | validated_rate |
-  non_null_rate`.** No `count_where_eq` (the natural author-side
-  expression). To filter-then-count, define a derived `field` with
-  the filter applied at field-distribution time and aggregate that
-  with `count`. The generator pushes the filter into the distribution
-  layer rather than the aggregation layer on purpose — keeps
-  aggregation-rule cardinality bounded.
+- **The PIPELINE `aggregation` allow-list is exactly these ten:**
+  `avg`, `count`, `count_distinct`, `count_unique`, `first`, `last`,
+  `list`, `max`, `min`, `sum`. Anything else is rejected at
+  `pipeline_update_schema` / `pipeline_preview` with the allow-list
+  echoed back — `Unknown aggregation '<x>' on field '<name>'. Valid:
+  [...]`. Verified live on `labs.connect.dimagi.com` 2026-08-26 (opp
+  10047, pipeline 5242) and pinned by
+  `scripts/probe-labs-pipeline-aggregations.ts`.
+
+  **Do not confuse this with the MANIFEST's `kpi_config[].aggregation`,
+  which is a different layer** with its own generator-side vocabulary
+  (`validated_rate`, `non_null_rate`, `distinct_count`). Those are legal
+  in a manifest and illegal in a pipeline schema; the translation table
+  lives in `skills/synthetic-workflow-seed/SKILL.md` § step 4. Note the
+  live pipeline token is `count_distinct`, NOT `distinct_count`.
+
+  *Prior claim corrected (ace#1675).* This bullet used to say the enum
+  was `count | mean | validated_rate | non_null_rate`. Only `count` of
+  those four is real: `mean` is spelled `avg`, and `validated_rate` /
+  `non_null_rate` are manifest-side tokens that were never pipeline
+  aggregations. ace#749 fixed the same drift in
+  `skills/synthetic-workflow-seed/SKILL.md` on 2026-06-12; this copy was
+  not in its scope and carried the stale vocabulary for another two and
+  a half months.
+
+  No `count_where_eq` (the natural author-side expression) — to
+  filter-then-count, keep `aggregation: "count"` and add
+  `filter_path` + `filter_value` to the field (see the shared-path
+  guardrail in `skills/synthetic-workflow-seed/SKILL.md`), or define a
+  derived `field` with the filter applied at field-distribution time.
+  The generator pushes the filter into the distribution layer rather
+  than the aggregation layer on purpose — keeps aggregation-rule
+  cardinality bounded.
+
+- **Numeric aggregations REQUIRE `transform: "float"` on the field — and
+  two of them fail SILENTLY without it.** The pipeline extracts form
+  values with the JSONB text operator (`form_json->'form'->>'ppi_score'`),
+  so every field arrives as **text** unless a transform casts it. What
+  happens next depends on the aggregation:
+
+  | aggregation | without `transform: "float"` | severity |
+  |---|---|---|
+  | `avg`, `sum` | hard error: `function avg(text) does not exist` (+ a `HINT` about explicit casts) | **loud** — you cannot ship it |
+  | `min`, `max` | **succeeds, returning the lexicographic text extreme** | **silent + wrong** |
+  | `count`, `count_distinct`, `count_unique`, `first`, `last`, `list` | fine — no numeric comparison happens | n/a |
+
+  So the field must be written:
+
+  ```yaml
+  { name: "avg_ppi_score", path: "form.ppi_score",
+    aggregation: "avg", transform: "float" }
+  ```
+
+  The `min`/`max` row is the one that costs money. Measured live
+  (same opp/pipeline as above, `form.ppi_score`): worker `aisha_lawal`
+  returned `max: "9"` untransformed versus `max: 75` with
+  `transform: "float"` — `"9" > "75"` as *strings*. Untransformed
+  `min` on another worker read `"10"` where the true numeric min was
+  `2`. Nothing errors, nothing is null, so `fields_all_null` does not
+  catch it and a demo happily displays the wrong headline number.
+
+  **The failure only appears once the schema actually aggregates.** It is
+  gated on `grouping_key` being set: with no `grouping_key` the preview
+  emits no `AVG(...)`/`MAX(...)` at all, extracts the raw text per row,
+  and returns `"30"` with `isError: false`. That is why an ungrouped
+  smoke preview is not evidence the field is correct — re-preview with
+  the real `grouping_key` before believing a numeric column.
 
 ### Practical authoring sequence
 
