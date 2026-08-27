@@ -5,6 +5,18 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.13.1019 — 2026-08-26
+
+**Eight live sentences still called Phase 3 an inline procedure doc — and a guard so prose stops drifting from the declared form.**
+
+0.13.1018 made `commcare-setup` a subagent. Two hand-written grep sweeps still left eight live sentences describing it as inline, including `CLAUDE.md`'s own layout line, which every session loads. The sweeps missed them because each was phrased differently — "inline procedure docs", "'s inline procedure", "executes inline at level 0", "the Phase 3 procedure doc" — and a pattern written from three examples does not match the fourth.
+
+Fixed all eight, plus a stale description in `orchestrator-reference.md` of the *old* CI rule (it still said a subagent doc containing `Agent(` fails CI; that became an accounted-for check in 0.13.1005).
+
+New `test/lib/agent-form-prose.test.ts` inverts the approach: rather than enumerate phrasings, enumerate the NODES — already declared in `lib/agent-depth.ts` — and flag any live doc putting a form-denoting phrase next to a declared subagent's name. Past-tense phrasing ("was inline until…") is the sanctioned way to describe history in a live doc; `CHANGELOG`, plans, specs and dated table rows are exempt.
+
+Calibration is recorded in the test because it was not obvious: the bare word "inline" is overloaded here ("Inputs (inline at handoff)", "inline QA") and produced 11 hits, 10 false. An earlier heuristic — skip any line that also names an inline node — was wrong in the expensive direction: it suppressed `two procedure docs (ace-orchestrator, commcare-setup)`, a list containing one inline node and one that had moved out, which is exactly the shape the test exists to catch. Replayed against the real staleness it scored 1/3. An explicit two-entry allowlist for the `sweep`/`sweep-live-set` name collision scores **6/6**, with the two it cannot catch named in the docstring — it is a net, not a proof.
+
 ## 0.13.1018 — 2026-08-26
 
 **Phase 3 (`commcare-setup`) is a real subagent — the first of the inline procedure docs to come back.**
