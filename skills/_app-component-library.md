@@ -703,10 +703,17 @@ time; do not skip it because the app "looks right" structurally.
 **The six atoms** — `get_languages`, `get_translatable_content`, `add_language`,
 `update_language`, `remove_language`, `update_translations` — are on
 `nova-architect-autonomous`'s allowed-tool list AND on ACE's own Nova MCP
-surface at level 0. Read their live schemas from Nova's `tools/list`; do not
+surface. Read their live schemas from Nova's `tools/list`; do not
 paraphrase them into a skill.
 
-**WHO authors the translations: ACE at level 0, never the architect
+> **"ACE-direct"** means a call ACE makes on its own Nova MCP surface, as
+> opposed to one the autonomous architect makes inside `/nova:autobuild`.
+> This was spelled "level 0" until 0.13.1032, which was never what it meant —
+> and stopped being true when Phase 3 (`commcare-setup`) became a subagent in
+> 0.13.1018. The distinction is about WHICH agent holds the connection, not
+> about dispatch depth, so it is spelled that way now.
+
+**WHO authors the translations: ACE-direct, never the architect
 (ace#1556).** This is the load-bearing correction of 2026-08-23, and it is a
 mechanism fix, not a reversal of Jon's 2026-08-17 decision — that decision
 ("translations are authored by ACE") is exactly what the old wiring failed to
@@ -740,7 +747,7 @@ Nova's platform contract already anticipates this: writes from ACE are
 auto-tagged `origin: "ai"` and land `needs-review`, so provenance stays honest
 by construction and nothing is marked reviewed on anyone's behalf.
 
-| | Architect (inside `/nova:autobuild`) | ACE (level 0, after the build returns) |
+| | Architect (inside `/nova:autobuild`) | ACE (direct, after the build returns) |
 |---|---|---|
 | English source content | **owns it** — every string, final | reads it |
 | `add_language` / `update_translations` | **never calls them** | **owns them** |
@@ -760,19 +767,19 @@ by construction and nothing is marked reviewed on anyone's behalf.
 | A `prose` unit rejects a bare string — `"requires a prose value."` | Labels/hints/help take `{parts:[{kind:'text',text:…}]}`; app/module/form names take a bare string |
 | ACE's writes are auto-tagged `origin: "ai"` | Provenance is recorded for you. Never claim a human review you did not do |
 
-**Build order — the load-bearing rule.** Steps 2–4 are ACE's, run at level 0
-after `/nova:autobuild` returns AND after every level-0 English repair step in
+**Build order — the load-bearing rule.** Steps 2–4 are ACE's, run ACE-direct
+after `/nova:autobuild` returns AND after every ACE-direct English repair step in
 the build skill has finished. Nothing may edit an English string after step 3.
 
 1. **Architect:** build the **entire** app in English. Every string, final.
    The architect adds NO language and calls NO language atom.
-2. **ACE, level 0:** only once the English is settled and the app has passed
+2. **ACE-direct:** only once the English is settled and the app has passed
    its build checks, add the language:
    `add_language(code: <CODE>, copyFrom: 'en')`.
-3. **ACE, level 0:** page `get_translatable_content(language: <CODE>)` to
+3. **ACE-direct:** page `get_translatable_content(language: <CODE>)` to
    completion and author real `<LANGUAGE>` values through
    `update_translations`, echoing each unit's current `sourceFingerprint`.
-4. **ACE, level 0:** re-read `get_languages`. **`out-of-date` must be 0 at
+4. **ACE-direct:** re-read `get_languages`. **`out-of-date` must be 0 at
    hand-off.** A non-zero count means the English moved after step 3:
    re-translate those units rather than shipping them.
 
@@ -812,7 +819,7 @@ translations are ACE-authored (`origin: ai`) and carry `needs-review` until a
 speaker of `<LANGUAGE>` reviews them — a normal ACE review obligation, exactly
 like the English copy, not a special gate.
 
-**ACE's level-0 recipe (steps 2–4 above).** Run it in the build skill after
+**ACE's ACE-direct recipe (steps 2–4 above).** Run it in the build skill after
 every English-editing step has completed, immediately before the summary is
 written. `pdd-to-learn-app § 4e` and `pdd-to-deliver-app § 4m` are the two
 homes; both are thin wrappers over this recipe.
@@ -1204,7 +1211,7 @@ verified against the *deployed* CCZ, not just the Nova blueprint.
 - **Parameters:** none — the thresholds live in `lib/screen-shape.ts`
   (`SCREEN_INPUT_WARN` = 6, `SCREEN_INPUT_MAX` = 8) so the brief, the build
   check and the eval cannot drift apart.
-- **Enforced by:** `pdd-to-deliver-app § Step 4g` (mechanical, level-0, runs
+- **Enforced by:** `pdd-to-deliver-app § Step 4g` (mechanical, ACE-direct, runs
   on the already-fetched blueprint BEFORE deploy) and
   `pdd-to-deliver-app-eval § field_answerability`.
 - **Origin:** dimagi-internal/ace — hh-poverty-targeting/20260812-2034.
@@ -1743,7 +1750,7 @@ the effective bar. One repair round, then re-grade.
 
 **Skill-side half (not the architect's job).** The brief is model-authored, so
 the architect transcribing it faithfully proves nothing about whether the brief
-matches the source. `pdd-to-deliver-app § Step 4k` closes that loop at LEVEL 0:
+matches the source. `pdd-to-deliver-app § Step 4k` closes that loop ACE-DIRECT:
 it fetches the source file by `file_id` from `inputs-manifest.yaml`, clears the
 extraction with `assertExtractionTrusted` before trusting a single value, then
 runs `diffScoringConstants` + `compareMaxScore` against the literals read back

@@ -518,7 +518,7 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
        degradation: the architect must call `get_lookup_tables` and bind the
        option set with `set_field_options_source` (lookup- or inline-backed)
        rather than falling through to `kind: text`, and any degradation that
-       does happen must be named in the build memo. Verified at level 0 by
+       does happen must be named in the build memo. Verified ACE-direct by
        Step 4f (ace#1136).
      - `section-timestamps` — PDD success metrics reference visit-time / a
        cost model.
@@ -527,7 +527,7 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
      - `app-language-layer` — PDD names a working language other than
        English (Deliver variant). The brief tells the architect to build
        the app in **English ONLY** and to call no language atom. **ACE
-       owns the language layer**, at LEVEL 0, in Step 4l below — after
+       owns the language layer**, ACE-direct, in Step 4l below — after
        every English-editing step has finished. That split is the fix
        for ace#1556: the architect's operating prompt forbids it saving
        self-generated target text, so a brief that asked it to author
@@ -538,7 +538,7 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
        (Standing decision 2026-08-17, PR #1463, superseding
        ace#968/#1391; ownership split 2026-08-23, ace#1556 — see
        `_app-component-library.md § app-language-layer` for the proven
-       contract and the level-0 recipe.) Graded by
+       contract and the ACE-direct recipe.) Graded by
        `language_conformance`.
      - `deliver-app-naming` — always. App name must contain "Deliver app".
      - `live-photo-capture` — any image/photo capture question, but **do NOT
@@ -606,7 +606,7 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
        design — this is **not** a one-question-per-screen rule — but group by a
        shared rule (one recall period, one answer source), split when that rule
        changes, never nest a `repeat` inside a group, and keep a long read-aloud
-       passage on the screen carrying the answer it governs. Verified at level 0
+       passage on the screen carrying the answer it governs. Verified ACE-direct
        by Step 4g.
      - `consent-script-floor` — **always-on for capture of identifiable
        people, on exactly the same condition as `live-photo-capture`: any
@@ -639,7 +639,7 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
      - `fixed-instrument-transcription` — the app digitises a `[FIXED]`
        published instrument whose source file the run's
        `inputs-manifest.yaml` names. Transcribe every constant exactly;
-       verified at level 0 by Step 4k (ace#1527).
+       verified ACE-direct by Step 4k (ace#1527).
      - `entity-state-taxonomy` — **always for `archetype:
        longitudinal-visits`**, and for any archetype whose PDD declares a
        phase / stage / status vocabulary the worker sees. Carry the PDD's
@@ -652,7 +652,7 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
        `lib/entity-state-taxonomy.ts` BEFORE composing the brief:
        `declared: false`, or a non-empty `problems`, is a **HALT** with a
        Phase-1 finding, never a licence to invent a vocabulary. Verified
-       at level 0 by Step 4l (ace#1564).
+       ACE-direct by Step 4l (ace#1564).
 
      Do NOT inline-paraphrase these — reference the library so the build
      and `pdd-to-deliver-app-eval` stay symmetric. Skip a component whose
@@ -827,7 +827,7 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
        summary. (Single-form atomic-visit apps with no case-update form
        have nothing to check — skip cleanly.)
 
-4d. **Case-list column heal — runs at LEVEL 0 (deterministic preventer
+4d. **Case-list column heal — runs ACE-DIRECT (deterministic preventer
     for the autonomous-architect allowlist gap).** A case-CREATE module
     whose `caseListConfig.columns` is empty (`case_list_config: null`)
     fails Nova's `validate_app` with a single error against that module.
@@ -843,12 +843,12 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
     `case_name` to a visible field — none of which auto-seeds the
     default column — and report it cannot reach validate-clean.
 
-    These case-list-config atoms ARE available to the level-0 Claude
+    These case-list-config atoms ARE available to the ACE session
     Code session that executes this skill, so the heal is a
     deterministic L0 operation: run it here, after the autonomous build
     returns, rather than asking the architect to do something its tools
     can't.
-    > For why this step lives at level 0 (not the architect brief) + the upstream allowlist gap (jjackson/ace#632), see reference.md § Step 4d level-0 heal.
+    > For why this step lives ACE-direct (not the architect brief) + the upstream allowlist gap (jjackson/ace#632), see reference.md § Step 4d ACE-direct heal.
 
     Cheap; runs on the already-fetched blueprint. Same bounded-loop
     shape as 4a/4b/4c.
@@ -906,7 +906,7 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
     a case.
 
 4e. **Deliver-marker compile pre-check (catch a missing app-level Connect
-    type before deploy) — runs at LEVEL 0.** Mirror of
+    type before deploy) — runs ACE-DIRECT.** Mirror of
     `pdd-to-learn-app` § 4b. The autonomous architect
     (`Agent(nova:nova-architect-autonomous)`) can land a Deliver app with
     **no app-level Connect mode** even though every form already carries
@@ -925,8 +925,8 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
     2. **Assert the header reads `Connect type: deliver`.** Do NOT rely
        on the per-form `[Connect enabled]` flag — it is a false positive
        for compile (see above, and Step 3's marker-mechanism bullet).
-    3. On a miss, heal at LEVEL 0 with **`configure_connect`**, which is
-       available to the level-0 session that executes this skill.
+    3. On a miss, heal ACE-direct with **`configure_connect`**, which is
+       available to the ACE session that executes this skill.
        `update_app` no longer carries `connect_type` — it was removed in
        Nova's 2026-07-31 redeploy (dimagi-internal/ace#1133);
        `configure_connect` replaced it and sets the app-level mode AND
@@ -996,7 +996,7 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
 
 4f. **Option-source pre-check (PDD-declared selects must not ship as free
     text).** The structural preventer for ace#1136. `structured-capture` puts
-    the rule in the architect brief; this step is the level-0 safety net for
+    the rule in the architect brief; this step is the ACE-direct safety net for
     when the architect had no option list in front of it and fell through to
     `kind: text` anyway — the exact failure mode of
     `spark-facilitator/20260731-0656`, where four of five PDD-declared
@@ -1217,7 +1217,7 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
     if the curriculum visibly DOES teach one, the phrase matchers are the bug.
 
 4i. **Fake-preload check (a hidden `caseWrite` field can never hold the case
-    value) — runs at LEVEL 0.** The structural preventer for ace#1224. Because
+    value) — runs ACE-DIRECT.** The structural preventer for ace#1224. Because
     a followup form cannot read its own case on this Nova instance (§ `entity_id`
     case-UPDATE rule), architects reach for a shape that *looks* like a preload
     and is not: a hidden field with `caseWrite` set whose value comes from a
@@ -1287,7 +1287,7 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
 
     (Apps with no hidden `caseWrite` fields skip cleanly at step 1.)
 
-4j. **Payability-discriminator backstop (ace#1489) — runs at LEVEL 0.** The
+4j. **Payability-discriminator backstop (ace#1489) — runs ACE-DIRECT.** The
     `entity_id` payability rule lives in Step 3's Nova brief, which is
     *architect prose*: nothing downstream of the build re-checks that the key
     the architect actually shipped honours it. So an identity-only key on a
@@ -1341,7 +1341,7 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
     (Forms with no non-payable branch skip cleanly — `deviates:false`, and the
     pinned grain stands.)
 
-4k. **Fixed-instrument constant fidelity (ace#1527) — runs at LEVEL 0.** When
+4k. **Fixed-instrument constant fidelity (ace#1527) — runs ACE-DIRECT.** When
     the PDD marks an instrument `[FIXED]`, its questions AND its arithmetic are
     fixed by a published document that ACE only *digitises*. Every other gate on
     this path is structurally blind to a constant's VALUE: `validate_app`
@@ -1504,7 +1504,7 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
     **HALT**, never a skip (ace#1648). A skip is a legitimate outcome only in
     the first case; a SILENT skip is never one.)
 
-4l. **Entity state-taxonomy fidelity (ace#1564) — runs at LEVEL 0.** When the
+4l. **Entity state-taxonomy fidelity (ace#1564) — runs ACE-DIRECT.** When the
     followed entity carries states the app must NAME, those names are the
     partner's own process vocabulary and ACE only transcribes them. Step 3
     hands the architect the taxonomy as PROSE, and the architect needs the
@@ -1602,7 +1602,7 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
        autonomous architect calls it while building the picker. So the enum is
        composed from the architect's reading of the brief, independently of the
        itemset, and nothing reconciles the two. These atoms are available at
-       **level 0** (Step 4d already uses the family), which is why the
+       **ACE-direct** (Step 4d already uses the family), which is why the
        reconciliation belongs here rather than in an upstream issue.
 
        1. For each state-bearing select repaired above, read the module's case
@@ -1636,11 +1636,11 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
        is what makes this step falsifiable rather than aspirational
        (`lib/ccz-enum-fidelity.ts`, `test/lib/ccz-enum-fidelity.test.ts`).
 
-4m. **Language layer — runs at LEVEL 0, LAST of the 4x steps (ace#1556).**
+4m. **Language layer — runs ACE-DIRECT, LAST of the 4x steps (ace#1556).**
     Applies only when the PDD names a working language other than English;
     otherwise skip and say so in the summary.
 
-    **Why level 0 and not the architect.** The architect's operating prompt
+    **Why ACE-direct and not the architect.** The architect's operating prompt
     (nova plugin `1.26.0`/`1.27.0`, `skills/autobuild/SKILL.md`) says *"Never
     treat your own language fluency as a substitute or bulk-translate
     self-generated text through `update_translations`. Only save target text
@@ -1653,7 +1653,7 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
     English-editing step (4a–4k) is already done, so nothing can demote a
     translation to `out-of-date` behind you.
 
-    Execute `_app-component-library.md § app-language-layer` **ACE's level-0
+    Execute `_app-component-library.md § app-language-layer` **ACE's ACE-direct
     recipe** verbatim — `get_languages` → `add_language(copyFrom: 'en')` →
     page `get_translatable_content` and author real values via
     `update_translations` (≤50 units/call, echoing each just-read
@@ -1758,7 +1758,7 @@ follow-up form(s) against a case list — with three requirements the
    `_app-component-library.md § entity-state-taxonomy` (always, for this
    archetype), carry the PDD's declared taxonomy into the brief verbatim,
    and HALT rather than invent when the PDD declares none. Verified at
-   level 0 by Step 4l (ace#1564).
+   ACE-direct by Step 4l (ace#1564).
 2. **Follow-up forms preload the case state the predicate reads.** Any
    longitudinal fact Layer A depends on must be *on the submitted form*
    to be enforceable downstream — Connect's form-field rules see the
@@ -1883,7 +1883,7 @@ form, Stage 2 = atomic household-visit form).
 - **Google Drive MCP:** `drive_read_file`, `drive_create_file`
 - **Nova plugin slash commands:** `/nova:autobuild`, `/nova:show`,
   `/nova:list`, `/nova:edit`
-- **Nova MCP tools called directly at level 0** (Steps 4a–4h): `get_app`,
+- **Nova MCP tools ACE calls directly** (Steps 4a–4h): `get_app`,
   `get_module`, `get_form`, `search_blueprint` (semantic id → uuids in one
   call), `add_case_list_columns`, `edit_field`, `configure_connect`,
   `update_form`, `get_lookup_tables`, `set_field_options_source`. Nova is
@@ -1942,7 +1942,7 @@ Each row this skill writes uses `phase: 3-commcare` and
 
 | Date | Change | Author |
 |------|--------|--------|
-| 2026-08-27 | **Step 4l gains sub-step 7 — the corrected taxonomy propagates to the CASE-LIST ENUMS (ace#1688).** 4l steps 3-4 repair the FORM's option labels via `edit_field` and stop there, while 4l's own trigger (step 1) names a *case-list column* as a surface the taxonomy reaches. On `spark-facilitator/20260820-0817` the Phase-3 FCAP correction landed on the form itemsets and never on the enums, so the `fcap_community` tile rendered the earlier ACE-invented taxonomy while the form offered Spark's real one — stored `1` read as `1. Introduction` before the visit and `1. Planning` during it, off by one on the surface the Learn app explicitly teaches the worker to read (`m3_start`, quiz `q9`). **ACE does not author these enums — the autonomous architect does**, via `add_case_list_columns` / `configure_case_list`'s `kind: 'id-mapping'` column, whose `mapping` the caller supplies; it composes them from the brief independently of the itemset and nothing reconciles the two. Those atoms ARE available at level 0 (Step 4d already uses the family), so the reconciliation lands here rather than as an upstream Nova issue: derive `mapping` from the itemset, `update_case_list_column`, re-assert, bounded 3-iteration loop. A SUBSET is allowed (a tile may deliberately label fewer options); reconciling the other way is forbidden — the itemset is the authority. Paired with the downstream gate that makes it falsifiable rather than aspirational: `app-release-qa § Step 4` check 3 halts with `[BLOCKER]` `case-list-enum-drift`. *Enforced:* `lib/ccz-enum-fidelity.ts` + `test/lib/ccz-enum-fidelity.test.ts`, whose negative control is the shipped drift itself and must FAIL. | ACE team |
+| 2026-08-27 | **Step 4l gains sub-step 7 — the corrected taxonomy propagates to the CASE-LIST ENUMS (ace#1688).** 4l steps 3-4 repair the FORM's option labels via `edit_field` and stop there, while 4l's own trigger (step 1) names a *case-list column* as a surface the taxonomy reaches. On `spark-facilitator/20260820-0817` the Phase-3 FCAP correction landed on the form itemsets and never on the enums, so the `fcap_community` tile rendered the earlier ACE-invented taxonomy while the form offered Spark's real one — stored `1` read as `1. Introduction` before the visit and `1. Planning` during it, off by one on the surface the Learn app explicitly teaches the worker to read (`m3_start`, quiz `q9`). **ACE does not author these enums — the autonomous architect does**, via `add_case_list_columns` / `configure_case_list`'s `kind: 'id-mapping'` column, whose `mapping` the caller supplies; it composes them from the brief independently of the itemset and nothing reconciles the two. Those atoms ARE available ACE-direct (Step 4d already uses the family), so the reconciliation lands here rather than as an upstream Nova issue: derive `mapping` from the itemset, `update_case_list_column`, re-assert, bounded 3-iteration loop. A SUBSET is allowed (a tile may deliberately label fewer options); reconciling the other way is forbidden — the itemset is the authority. Paired with the downstream gate that makes it falsifiable rather than aspirational: `app-release-qa § Step 4` check 3 halts with `[BLOCKER]` `case-list-enum-drift`. *Enforced:* `lib/ccz-enum-fidelity.ts` + `test/lib/ccz-enum-fidelity.test.ts`, whose negative control is the shipped drift itself and must FAIL. | ACE team |
 | 2026-08-26 | **Step 4k's skip is split, and its source is resolvable through the manifest's own folder ids (ace#1648).** 4k's trigger ANDed "the PDD marks an instrument `[FIXED]`" with "`inputs-manifest.yaml` carries a source file for it" into ONE silent skip, so *nothing to check* and *the thing I must check is unreachable* were indistinguishable and both reported green. They were not equally rare: `inputs[]` records direct child FILES only, so a published instrument bundle sitting in a SUBFOLDER of `inputs/` — the natural shape for a vendor download — always took the second branch. On `hh-poverty-targeting/20260824-1404` the workbook sat in `official-nigeria-ppi-2020 (povertyindex.org)/` and none of the five `inputs[]` entries was it, so a 4k run following its documented path checks nothing. **A skip that disables a correctness check is worse than one that degrades an output, because the run still says green.** Two changes: step 2 may now resolve through ids the manifest ALREADY records (`subfolders_not_listed[].folder_id`, `source_folder_id`) by walking them ONE level with `drive_list_folder` — walking a recorded id is not guessing, composing a path by name still is and is still forbidden — and orchestrator Step 5c now MANDATES recording those ids. Step 1's trigger is split: no `[FIXED]` instrument → skip cleanly; a `[FIXED]` instrument whose source does not resolve → **HALT**, never a skip. The decision is delegated to `resolveInstrumentSource` in `lib/instrument-constants.ts` so it is unit-tested rather than prose-only. *Enforced:* `test/skills/instrument-source-resolution.test.ts` (5 assertions red against the pre-fix text), `test/lib/instrument-constants.test.ts`, `test/mcp/gdrive/generate-inputs-manifest.test.ts`. | ACE team |
 | 2026-08-24 | **Step 4f gains a partner-register halt (ace#1621).** 4f's halt was scoped to payment correctness — a still-degraded select halts only when it `feeds_entity_id` on a PAYABLE deliver unit — so a field that fails neither test recorded an `option_source_gaps` entry and proceeded. That is right for a genuinely unknowable set and wrong for a register that EXISTS: on `spark-facilitator/20260820-0817` the meeting-activity repeat shipped 11 ACE-authored placeholders identical on all 24 FCAP steps while Spark's own 78-activity register sat in the run's `inputs/`, and the recorded gap deferred the catch to an operator reading the residual days later. When the PDD declares `<field> from <tag> [source: …] [filtered by …]`, an inline invented option list is now a **HALT** whatever the payability status, and is never dischargeable as a named gap; both inline rungs of the step-5 escape ladder are withdrawn for such a field. Mechanical via `lib/option-register.ts` (`parseRegisterDeclaration` + `diffOptionRegister`), sourcing rows from the partner's `.ccz` fixture XML in preference to a prose guide because a production CCZ carries the REAL value codes the partner's M&E joins on. Where ACE cannot finish — Nova has no lookup-table create atom and its row-import route is browser-session-only — the terminal behaviour is extract → emit `renderRegisterCsv` + table spec → halt naming the two operator steps. Paired with `_app-component-library § partner-option-register` and the eval's `option_register_fidelity` hard-gate. *Enforced:* `test/lib/option-register.test.ts`. | ACE team |
 | 2026-08-23 | **New Step 4l — entity state-taxonomy fidelity (ace#1564).** The followed entity's state model lived only as PROSE in the PDD's § Entity Lifecycle, and nothing in Step 3's brief-composition checklist asked for it — while `longitudinal-visits` REQUIRES a case list showing state, so the architect must name every state and invents the set when the brief carries none. On `spark-facilitator/20260820-0817` the PDD's `1 = Planning (steps 1–14)` … `4 = Transition (steps 23–24)`, sourced from Spark's own published FCAP guide sitting in the run's `inputs/`, shipped as four invented labels over a different partition, with all 24 step names invented too. Learn then teaches one mapping while Deliver offers another, and the invented words reach real workers and the partner. Step 3 now emits `_app-component-library § entity-state-taxonomy` (always for this archetype) and parses `program_parameters.entity_state_taxonomy` with `parseStateTaxonomy` BEFORE briefing — `declared: false` or non-empty `problems` is a **HALT** with a Phase-1 finding, never a licence to invent; where the row names a source document the brief is composed from THAT file out of `inputs/`. 4l then diffs the built option set with `diffStateTaxonomy`: any invented, dropped, relabelled or re-partitioned state is a **HALT with a bounded 3-iteration repair loop**, not a warn. Deliberately ships NO canonical vocabulary — hard-coding one would impose ACE's words on every partner, the mirror image of the defect. Paired with the eval's `entity_state_fidelity` hard-gate. *Enforced:* `test/lib/entity-state-taxonomy.test.ts` + `test/skills/entity-state-taxonomy-component.test.ts` + `test/skills/deliver-l0-loop-integrity.test.ts`. **The language layer moved 4l → 4m** in the same change: it must stay LAST of the 4x steps because every English-editing step has to precede it, and 4l's repair loop calls `edit_field` on option labels — running it after the layer would demote those translations to `out-of-date`. Pointers updated in `_app-component-library § app-language-layer`, both `-eval` change logs, and `test/skills/app-language-layer.test.ts`. | ACE team |

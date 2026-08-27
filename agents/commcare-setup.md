@@ -221,29 +221,39 @@ rationale and the one-`curl` confirmation that separates a bad credential
 a principal this session is not talking to. Rebuilding orphans the run's two
 Nova apps, re-burns two architect dispatches, and leaves the run's recorded
 `nova_app_id`s pointing at the originals — which is a worse end state than
-the halt. Verify the principal first; `App not found` from a level-0 Nova
+the halt. Verify the principal first; `App not found` from an ACE-direct Nova
 read on an app THIS run built is a binding symptom until proven otherwise.
 
 
-**This call is ALSO the level-0 Nova-binding check — actually make it;
-do not skip it or hand-wave it as "the architect subagent will
-re-probe."** If the Nova tools won't load at level 0 at all (a
-`ToolSearch` for a Nova tool name returns nothing, or `get_hq_connection`
-errors as tool-unavailable rather than returning a `configured` payload),
-the main session's Nova MCP connection failed at startup — a transient
-where the plugin MCP times out at session start and Claude Code does NOT
-retry it mid-session (and `/reload-plugins` does not respawn it). **HALT
-immediately** with: "Nova MCP did not bind at level 0 this session — quit
-and reopen Claude Code (a full restart, not just `/reload-plugins`), then
-resume `/ace:run <opp>/<run-id>`." Do NOT proceed into Step 1 on the
-assumption that the architect subagent's own connection covers Phase 3:
-the architect *builds* work (each dispatch opens its own connection), but
-the level-0-direct steps — `app-deploy`'s `/nova:upload_to_hq`, the
-`pdd-to-*-app-eval` `get_app` reads, and `app-connect-coverage` — all
-need the level-0 connection and are unrunnable without it. Catching this
-at second 0 instead of mid-phase (~25 min in, after both apps are built)
-is the whole point of Step 0. See jjackson/ace#659
-(bednet-spot-check 20260601-1252).
+**This call is ALSO the Nova-binding check — actually make it; do not skip
+it or hand-wave it as "the architect subagent will re-probe."** If the Nova
+tools won't load here at all (a `ToolSearch` for a Nova tool name returns
+nothing, or `get_hq_connection` errors as tool-unavailable rather than
+returning a `configured` payload), the Claude Code process's Nova MCP
+connection failed at startup — a transient where the plugin MCP times out at
+session start and Claude Code does NOT retry it mid-session (and
+`/reload-plugins` does not respawn it). **HALT immediately** with: "Nova MCP
+did not bind in this Claude Code session — quit and reopen Claude Code (a
+full restart, not just `/reload-plugins`), then resume
+`/ace:run <opp>/<run-id>`." Do NOT proceed into Step 1 on the assumption that
+the architect subagent's own connection covers Phase 3: the architect
+*builds* work (each dispatch opens its own connection), but the ACE-direct
+steps — `app-deploy`'s `/nova:upload_to_hq`, the `pdd-to-*-app-eval`
+`get_app` reads, and `app-connect-coverage` — all need **this** phase's own
+Nova surface and are unrunnable without it. Catching this at second 0 instead
+of mid-phase (~25 min in, after both apps are built) is the whole point of
+Step 0. See jjackson/ace#659 (bednet-spot-check 20260601-1252).
+
+**Why the remedy is still a full restart now that Phase 3 is a subagent.**
+This step said "level 0" until 0.13.1032, written when Phase 3 ran inline in
+the top-level session. It became a subagent in 0.13.1018 and the wording did
+not move — which mattered, because the halt message named a level this phase
+no longer runs at and the remedy was derived from level-0 behaviour. It
+survives the move: a subagent is launched **in the same Claude Code process**
+and shares its session and MCP connections, so a bind that failed at session
+start is inherited by every subagent underneath it. Re-dispatching Phase 3
+gets the same dead connection; only a process restart re-establishes it. The
+depth-coded spelling was the error, not the instruction.
 
 #### Step 0c: Probe Nova build-tool liveness (form-creation path)
 
@@ -295,7 +305,7 @@ Run an **addressed read round-trip against a real owned app**:
 `code: "unrecognized_keys"` naming `moduleUuid`; an
 `expected string, received undefined` on a `*Uuid` path; or `-32602 … not
 found`. Halt message: *"Nova's addressing model does not match what ACE sends
-(uuid-addressed reads rejected at level 0). This is an upstream contract
+(uuid-addressed reads rejected on ACE’s own Nova surface). This is an upstream contract
 change, not a stale subprocess — run the Nova contract probe to get the exact
 drift, then migrate the affected skills before resuming."*
 
@@ -321,7 +331,7 @@ older revision of this step named `generate_scaffold`; don't probe with it.)
 
 On `-32602 … not found`, a server schema-mismatch, or any "tool advertised but
 uncallable" result, **HALT immediately** with the same remediation as the
-Step-0b binding failure: *"Nova build tools did not bind at level 0 this
+Step-0b binding failure: *"Nova build tools did not bind in this Claude Code
 session (stale MCP subprocess — schema/tool drift). Quit and reopen Claude Code
 (a full restart, not just `/reload-plugins`, which does NOT respawn MCP
 subprocesses — see CLAUDE.md § MCP changes need a full Claude restart), then

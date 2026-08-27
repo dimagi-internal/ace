@@ -171,7 +171,7 @@ describe('app-language-layer (PR #1463, superseding ace#968/#1391, 2026-08-17)',
   /** Collapse markdown wrapping (newlines + blockquote markers) to single spaces. */
   const unwrap = (t: string) => t.replace(/\n>?\s*/g, ' ').replace(/\s+/g, ' ');
 
-  it('the component assigns translation authoring to ACE at level 0, not the architect', () => {
+  it('the component assigns translation authoring to ACE, not the architect', () => {
     const body = componentBody();
     const flat = unwrap(body);
     expect(body, 'must cite the issue the split was filed under').toMatch(/ace#1556/);
@@ -180,14 +180,19 @@ describe('app-language-layer (PR #1463, superseding ace#968/#1391, 2026-08-17)',
       'must quote the architect-prompt clause that forbids it authoring translations — ' +
         'a paraphrase is what let the conflict survive three days',
     ).toMatch(/Only save target text supplied by the user/);
-    expect(body, 'must name ACE as the author, at level 0').toMatch(
-      /ACE at level 0|level 0, never the architect|ACE.{0,40}level.0/i,
+    // "ACE-direct" replaced the depth-coded "level 0" spelling in 0.13.1032:
+    // the distinction was always about WHICH agent holds the Nova connection,
+    // never about dispatch depth, and it stopped being true when Phase 3 became
+    // a subagent in 0.13.1018. Both spellings accepted so the history in this
+    // file's own dated rows still matches.
+    expect(body, 'must name ACE as the author, on its own Nova surface').toMatch(
+      /ACE-direct, never the architect|ACE at level 0|level 0, never the architect/i,
     );
     // The recipe has to live somewhere runnable, not as an aspiration.
-    expect(body, 'must carry a level-0 recipe naming the two skill homes').toMatch(
+    expect(body, 'must carry an ACE-direct recipe naming the two skill homes').toMatch(
       /pdd-to-learn-app § 4e/,
     );
-    expect(body, 'must carry a level-0 recipe naming the two skill homes').toMatch(
+    expect(body, 'must carry an ACE-direct recipe naming the two skill homes').toMatch(
       /pdd-to-deliver-app § 4m/,
     );
   });
@@ -208,19 +213,26 @@ describe('app-language-layer (PR #1463, superseding ace#968/#1391, 2026-08-17)',
     }
   });
 
-  it('both build skills own the language layer at level 0, after the English is final', () => {
+  it('both build skills own the language layer ACE-direct, after the English is final', () => {
     // translate-LAST is now STRUCTURAL: the architect's turn is over before the
-    // language exists. The step must therefore exist, run at level 0, and gate.
+    // language exists. The step must therefore exist, run ACE-direct, and gate.
     const steps = { 'pdd-to-learn-app': '4e', 'pdd-to-deliver-app': '4m' } as const;
     for (const parts of BUILD_SKILLS) {
       const skill = parts[1] as keyof typeof steps;
       const body = read(...parts);
-      expect(body, `${skill}: must carry the level-0 language step`).toMatch(
+      expect(body, `${skill}: must carry the ACE-direct language step`).toMatch(
         new RegExp(`^${steps[skill]}\\. \\*\\*Language layer`, 'm'),
       );
-      expect(body, `${skill}: the language step must run at LEVEL 0`).toMatch(
-        /Language layer — runs at LEVEL 0/,
+      // ACE-DIRECT, not "at LEVEL 0" — see the note above. The assertion is
+      // that the step declares ACE (not the architect) as the caller at all;
+      // it must not re-acquire a depth-coded spelling.
+      expect(body, `${skill}: the language step must declare itself ACE-direct`).toMatch(
+        /Language layer — runs ACE-DIRECT/,
       );
+      expect(
+        body,
+        `${skill}: the language step must not go back to the depth-coded spelling`,
+      ).not.toMatch(/Language layer — runs at LEVEL 0/);
       expect(body, `${skill}: must cite the issue`).toMatch(/ace#1556/);
       expect(body, `${skill}: must gate on out-of-date`).toMatch(/out-of-date/);
       // The emit-checklist entry must NOT still tell the architect to author.
