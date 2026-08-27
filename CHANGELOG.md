@@ -5,6 +5,16 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.13.1050 — 2026-08-27
+
+**`/ace:doctor` reported "all four sources agree" while CI checked five.**
+
+0.13.1047 added `package-lock.json` to `scripts/sync-version.sh` and to `version-check.yml`'s agreement gate, and did not add it to `bin/ace-doctor`, which keeps its own copy of that check. So the local health check and CI disagreed about how many version files exist — and doctor would have returned **PASS** on precisely the drift that had just been found after going unnoticed for 110 releases.
+
+Doctor now checks all five, reads both of the lockfile's version fields, and reports them comma-joined when they disagree with each other. Its remedy line points at `scripts/sync-version.sh` (which writes all five) instead of the old "bump all four in a single commit".
+
+Small, and the same shape as two other things fixed today: an artifact whose absence signals a defect marked `required: false`, and a guard whose loud half was deleted alongside the code it guarded. A check that has quietly stopped covering one of the things it names reports success without having looked.
+
 ## 0.13.1049 — 2026-08-27
 
 **`--rebase-first` stopped committing the bump, and the guard that exists to catch that died in the same edit.**
