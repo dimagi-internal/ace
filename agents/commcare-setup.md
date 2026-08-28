@@ -363,6 +363,15 @@ shape varies by archetype — read `skills/pdd-to-learn-app/SKILL.md
 
 - **`atomic-visit` / `multi-stage`** — full Learn app (training
   curriculum); typically 10-15 min Nova build.
+- **`longitudinal-visits`** — full Learn app like `atomic-visit`, plus
+  the three things an FLW working a case list has to be taught that a
+  fresh-sample FLW does not: working the case list (finding an entity,
+  reading its tile to see which visit is due, what to do when it's
+  missing), the visit sequence (which visits, in what order, at what
+  cadence, on-track vs. behind), and payability-against-history
+  (whether repeating an activity on the same entity pays). Skips the
+  `atomic-visit` walkthrough parts that assume a fresh subject each
+  time unless the PDD declares them.
 - **`focus-group`** — minimal sentinel Learn app (1 module, 1 form,
   ~7 fields, both Connect markers, doubles as an in-app readiness
   gate). Typically 1-2 min Nova build. The sentinel satisfies
