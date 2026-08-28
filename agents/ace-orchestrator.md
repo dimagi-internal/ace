@@ -97,13 +97,36 @@ already in it. (Live auth liveness is *not* included — orchestrator
 pre-flight trusts the cached session and lets phase atoms surface
 auth failures at point-of-use.)
 
-**Three blocks the preflight DOES emit — halt before Phase 1 if any is
-`fail`:** `selector_map_currency`, `nova_needs_auth_cache`, and
-`ocs_generation`. The first two are no-network static checks for
-halt-classes unrecoverable in-session. On `fail`: surface the block's
-`remediation`, run the cache-clear node one-liner the full `/ace:doctor`
-prints, and tell the operator to Cmd-Q + reopen, then resume. (Rationale
-+ jjackson/ace#582: see orchestrator-reference.md § Pre-flight rationale.)
+**Four blocks the preflight DOES emit — halt before Phase 1 if any is
+`fail`:** `selector_map_currency`, `nova_needs_auth_cache`,
+`nova_header_readiness`, and `ocs_generation`. The first three are
+no-network static checks for halt-classes unrecoverable in-session. On
+`fail`: surface the block's `remediation`, run the cache-clear node one-liner
+the full `/ace:doctor` prints, and tell the operator to Cmd-Q + reopen, then
+resume. (Rationale + jjackson/ace#582: see orchestrator-reference.md
+§ Pre-flight rationale.)
+
+**`nova_header_readiness` OUTRANKS `nova_needs_auth_cache` — read it first,
+and when it says `fail`, ignore the cache block's remedy entirely.** They look
+like the same finding and prescribe opposite things. The cache block's
+remediation terminates at `/mcp` → *Clear authentication*; in the
+`helper-will-emit-empty` state that instruction is a **no-op by construction**
+— it removes the OAuth token, but with no key reaching the helper there is no
+credential to fall back to, so the session re-prompts OAuth and re-caches the
+entry. The operator restarts into the identical state, forever. Measured
+2026-08-28 on user `acedimagi` (Claude Code 2.1.250): many restarts, no
+progress, while a direct `curl` with the same PAT returned
+`get_hq_connection -> configured:true`.
+
+The block is self-healing: it installs (or re-points, after a key rotation) the
+`voidcraft-labs/nova-plugin#52` static-header override and reports
+`healed: true`. **It still reports `fail`, and that is correct** — MCP
+subprocesses bind at session start, so the fix cannot take effect until a full
+restart. Surface the remediation, write a handoff (§ Pre-flight Step 1), and
+tell the operator to Cmd-Q + reopen. Do NOT send them to `/mcp`: `Authenticate`
+mints an OAuth token that lacks `nova.hq.read`, which is how this class hides.
+A `skip` here means the process env could not be read — never treat it as a
+pass.
 
 `ocs_generation` is different in two ways and must not be lumped in with
 them. It is the ONE **live** probe in preflight — it asks OCS to generate

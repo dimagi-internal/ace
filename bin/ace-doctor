@@ -408,6 +408,38 @@ if [ "$PREFLIGHT" = "1" ]; then
     fi
   fi
 
+  # nova_header_readiness — will the Nova MCP actually GET an Authorization
+  # header in this session? A HALT class, and the one that supersedes the
+  # cache/Clear-authentication remedy above whenever it reports `fail`.
+  #
+  # Every prior Nova probe answered a different question and reported the
+  # answer to this one: `nova_shell_env` tested the DOCTOR's own env (which is
+  # rc-initialised and therefore always has the key), and
+  # `nova_needs_auth_cache` tests a cache file plus key PRESENCE. Both reported
+  # green on 2026-08-28 while nova was completely unauthenticated, because
+  # Claude Code 2.1.238+ stopped passing that env to `headersHelper` and nova's
+  # helper is env-var dependent (ace#1629, voidcraft-labs/nova-plugin#52).
+  #
+  # `--heal` is deliberate and matches the auto-clear precedent one block up:
+  # when the probe PROVES no header will be sent and a valid PAT is on disk,
+  # there is nothing for a human to decide. It also RE-ASSERTS the override on
+  # every run — it was found missing on two machines that had been working —
+  # and re-points it after a key rotation, which a static header cannot follow
+  # on its own. Status stays `fail` after a successful heal: MCP subprocesses
+  # bind at session start, so the restart remains mandatory.
+  PF_NOVA_HDR_YAML="$(cd "$ROOT" && npx tsx scripts/doctor-nova-header.ts --format=yaml --heal 2>/dev/null || true)"
+  if [ -z "$PF_NOVA_HDR_YAML" ]; then
+    PF_NOVA_HDR_YAML="nova_header_readiness:
+  status: skip
+  reason: env-unreadable
+  claude_pid: null
+  env_readable: false
+  static_override: false
+  healed: false
+  detail: \"probe produced no output (run /ace:update)\"
+  remediation: \"\""
+  fi
+
   # ocs_generation — the ONE live probe in preflight (dimagi-internal/ace#1516).
   #
   # Asks OCS to generate a single token through the golden template's widget
@@ -501,6 +533,7 @@ nova_needs_auth_cache:
   nova_api_key: ${PF_NOVA_KEY_PRESENT}
   cleared: ${PF_NOVA_CACHE_CLEARED}
   remediation: "${PF_NOVA_CACHE_REMEDIATION}"
+${PF_NOVA_HDR_YAML}
 ${PF_OCS_GEN_YAML}
 EOF
 
@@ -2359,7 +2392,15 @@ if [ -n "$NOVA_RC_FILE" ] && [ -f "$NOVA_RC_FILE" ] && grep -qF "# >>> ACE manag
 fi
 
 if [ -n "${NOVA_API_KEY:-}" ]; then
-  pass "nova_shell_env: NOVA_API_KEY present in shell env (Nova plugin headersHelper will authenticate)"
+  # NOTE the narrowed claim. This used to read "(Nova plugin headersHelper will
+  # authenticate)" — a conclusion about the CLAUDE CODE process drawn from the
+  # DOCTOR's own env. bin/ace-doctor runs under a shell initialised from the
+  # user's rc files (~/.zshenv sources ~/.ace/env.sh), so this branch is taken
+  # on every machine that ran /ace:setup, including ones where nova cannot
+  # authenticate at all. It reported PASS throughout the 2026-08-28 incident.
+  # The authenticate/does-not-authenticate verdict now belongs to
+  # nova_header_readiness, which reads the claude process env directly.
+  pass "nova_shell_env: NOVA_API_KEY present in the doctor's shell env (prerequisite only — see nova_header_readiness for whether Nova will actually receive a header)"
 elif [ -z "$NOVA_KEY_VAL" ]; then
   warn "nova_shell_env: skipped — NOVA_API_KEY not set in ACE .env either" "see nova_env warning above"
 elif [ "$NOVA_MARKER_PRESENT" = "1" ]; then
@@ -2417,6 +2458,19 @@ if command -v claude >/dev/null 2>&1 && claude mcp list 2>/dev/null | grep -qE '
       warn "nova_shell_env: user-scope nova: MCP override present but could not be classified" "inspect it yourself with: claude mcp get nova  — if it carries a static 'Authorization: Bearer …' header it is the nova-plugin#52 workaround and MUST BE LEFT ALONE. Do not remove it on the strength of this warning"
       ;;
   esac
+fi
+
+# 7b-ii. nova_header_readiness — the verdict nova_shell_env above cannot give.
+# Reads the CLAUDE CODE process env (not the doctor's) and answers whether an
+# Authorization header will actually be sent; self-heals by installing /
+# re-pointing the nova-plugin#52 static-header override. Full rationale in
+# scripts/doctor-nova-header.ts and lib/nova-header-readiness.ts.
+if [ -f "$ROOT/scripts/doctor-nova-header.ts" ]; then
+  NOVA_HDR_LINES="$(cd "$ROOT" && npx tsx scripts/doctor-nova-header.ts --format=lines --heal 2>/dev/null || true)"
+  # Printed verbatim: the script already emits the exact PASS/INFO/WARN shape
+  # pass()/warn() produce, so the end-of-run summary (which greps ^PASS/^WARN)
+  # counts it without any bookkeeping here.
+  [ -n "$NOVA_HDR_LINES" ] && printf '%s\n' "$NOVA_HDR_LINES"
 fi
 
 # 7c. nova_needs_auth_cache — verify Claude Code is not caching
