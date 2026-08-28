@@ -50,6 +50,30 @@
  * requires an ORDERING fact: either the run states outright that it made no
  * Nova edit after `app-deploy` (`novaEditedSinceDeploy: false`), or the two
  * timestamps parse and the Nova app was last edited at or before the deploy.
+ *
+ * ## Field counts vs form counts — one has a confound, the other doesn't
+ * (dimagi-internal/ace#1789)
+ *
+ * `commcare_make_build` versions the CCHQ draft; `run-form-walk --draft-only`
+ * reads THAT draft. It never emits `kind: hidden` fields. Nova's `get_app`
+ * does. Every ACE app carries hidden fields (`user_score`, `qN_score`,
+ * `case_name`, `entity_key`, `entity_label`, …), so a caller who feeds the
+ * classifier a raw Nova field-count total gets a mismatch on essentially
+ * every run — see `novaVisibleFieldCount` below for the boundary fix.
+ *
+ * Live repro (`bednet-check-2-visit/20260828-0629`): Learn 44 (Nova, raw) vs
+ * 32 (HQ draft); Deliver 17 vs 14. Excluding hidden fields both matched
+ * exactly, and both apps had `novaEditedSinceDeploy: false`.
+ *
+ * Form counts have no equivalent confound — a hidden field never creates a
+ * new form — so a form-count mismatch stays a hard, unconditional drift
+ * signal. A field-count mismatch does not: it is downgraded to corroboration
+ * whenever a direct ORDERING fact (`novaEditedSinceDeploy: false`, or
+ * timestamps proving the Nova edit was at or before the deploy) is present.
+ * An ordering-clear fact is first-party knowledge; an unnormalized field
+ * count is not, and must not be able to override it. When no ordering fact
+ * resolves the question, a field-count mismatch still falls back to the
+ * conservative default (drift) — the boundary rename does not weaken that.
  */
 
 /** What `app-release` should do before `commcare_make_build`, per app. */
@@ -85,10 +109,17 @@ export interface AppDriftInputs {
   novaFormCount?: number | null;
   /** Form count on the HQ draft (`run-form-walk --draft-only`). */
   hqDraftFormCount?: number | null;
-  /** Field count across all forms on the Nova blueprint. */
-  novaFieldCount?: number | null;
-  /** Field count across all forms on the HQ draft (`--with-fields`). */
-  hqDraftFieldCount?: number | null;
+  /**
+   * Field count across all forms on the Nova blueprint, EXCLUDING `kind:
+   * hidden` fields (`user_score`, `qN_score`, `case_name`, `entity_key`,
+   * `entity_label`, …). The HQ draft walk never emits hidden fields, so a
+   * raw `get_app` total is not the same basis and will disagree on
+   * essentially every ACE app (dimagi-internal/ace#1789). Filter before
+   * passing this in — don't pass the raw Nova total.
+   */
+  novaVisibleFieldCount?: number | null;
+  /** Field count across all forms on the HQ draft (`--with-fields`). Already visible-only — the draft walk has no hidden fields to exclude. */
+  hqDraftVisibleFieldCount?: number | null;
 }
 
 export interface AppDriftDecision {
@@ -146,7 +177,7 @@ function parseTime(value?: string | null): number | null {
 export function classifyAppDrift(inputs: AppDriftInputs): AppDriftDecision {
   const app = inputs.app;
   const formCounts = compareCounts(inputs.novaFormCount, inputs.hqDraftFormCount);
-  const fieldCounts = compareCounts(inputs.novaFieldCount, inputs.hqDraftFieldCount);
+  const fieldCounts = compareCounts(inputs.novaVisibleFieldCount, inputs.hqDraftVisibleFieldCount);
 
   const editedSince =
     typeof inputs.novaEditedSinceDeploy === 'boolean' ? inputs.novaEditedSinceDeploy : null;
@@ -158,28 +189,47 @@ export function classifyAppDrift(inputs: AppDriftInputs): AppDriftDecision {
     ? (novaEditedAt as number) > (deployedAt as number)
     : null;
 
-  const reasons: string[] = [];
+  // A direct ORDERING fact — first-party knowledge, not an inferred count —
+  // clears the skip. Computed up front because it also decides whether a
+  // field-count mismatch is allowed to force drift below (ace#1789).
+  const orderingClear = editedSince === false || novaEditedAfterDeploy === false;
 
-  // ── Positive drift signals ─────────────────────────────────────────
+  const reasons: string[] = [];
+  let hardDrift = false;
+
+  // ── Hard positive drift signals — never overridable ────────────────
   if (editedSince === true) {
     reasons.push(
       `${app}: the run edited the Nova app after app-deploy — the HQ draft predates those edits.`,
     );
+    hardDrift = true;
   }
   if (novaEditedAfterDeploy === true) {
     reasons.push(
       `${app}: Nova blueprint last edited ${inputs.novaEditedAt}, after the draft was uploaded at ${inputs.deployedAt}.`,
     );
+    hardDrift = true;
   }
   if (formCounts.mismatch) {
+    // Forms have no hidden-field-shaped confound — a hidden field never
+    // creates a new form — so this stays unconditional.
     reasons.push(
       `${app}: form count differs — Nova ${formCounts.nova}, HQ draft ${formCounts.hq}.`,
     );
+    hardDrift = true;
   }
-  if (fieldCounts.mismatch) {
+
+  // ── Field-count mismatch — a SOFT signal (ace#1789) ─────────────────
+  // Nova's visible-field count and the HQ draft's are only the same basis if
+  // the caller actually excluded `kind: hidden` fields on the Nova side. A
+  // mismatch here can never PROVE drift the way a form-count mismatch can,
+  // so it forces drift only when no ordering fact has already settled the
+  // question; once ordering is clear, it is downgraded to corroboration.
+  if (fieldCounts.mismatch && !orderingClear) {
     reasons.push(
       `${app}: field count differs — Nova ${fieldCounts.nova}, HQ draft ${fieldCounts.hq}.`,
     );
+    hardDrift = true;
   }
 
   const signals = {
@@ -190,7 +240,7 @@ export function classifyAppDrift(inputs: AppDriftInputs): AppDriftDecision {
     fieldCounts,
   };
 
-  if (reasons.length > 0) {
+  if (hardDrift) {
     return {
       app,
       drift: true,
@@ -201,12 +251,10 @@ export function classifyAppDrift(inputs: AppDriftInputs): AppDriftDecision {
     };
   }
 
-  // ── No positive signal. Can the skip be EARNED? ────────────────────
+  // ── No hard positive signal. Can the skip be EARNED? ────────────────
   // Only an ordering fact clears it. Matching counts are corroboration and
   // nothing more: two of the three drifting edits in the ace#1643 repro moved
   // no count at all.
-  const orderingClear = editedSince === false || novaEditedAfterDeploy === false;
-
   if (orderingClear) {
     const basis =
       editedSince === false
@@ -214,7 +262,14 @@ export function classifyAppDrift(inputs: AppDriftInputs): AppDriftDecision {
         : `Nova last edited ${inputs.novaEditedAt}, at or before the ${inputs.deployedAt} upload`;
     const corroboration = [
       formCounts.comparable ? `form counts agree (${formCounts.nova})` : null,
-      fieldCounts.comparable ? `field counts agree (${fieldCounts.nova})` : null,
+      fieldCounts.comparable && !fieldCounts.mismatch
+        ? `field counts agree (${fieldCounts.nova})`
+        : null,
+      fieldCounts.mismatch
+        ? `field counts differ (Nova ${fieldCounts.nova}, HQ draft ${fieldCounts.hq}) but that is ` +
+          `not treated as drift — Nova's raw count includes hidden fields the HQ draft walk ` +
+          `never emits (ace#1789)`
+        : null,
     ].filter(Boolean);
     reasons.push(
       `${app}: no drift — ${basis}` +
