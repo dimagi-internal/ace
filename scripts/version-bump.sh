@@ -79,13 +79,26 @@ VERSION_FILE="$REPO_ROOT/VERSION"
 # command in skills/shipping produced a branch whose code was new and whose
 # VERSION still matched main's — silently, because the loud half died too.
 #
-# package-lock.json is deliberately NOT here: sync-version.sh rewrites it from
-# VERSION rather than merging it, so it does not take a rebase conflict.
+# package-lock.json IS here, and the reasoning that once excluded it was
+# backwards (dimagi-internal/ace#1778). It used to read "sync-version.sh rewrites
+# it from VERSION rather than merging it, so it does not take a rebase conflict"
+# — but being rewritten from VERSION is precisely what MAKES it conflict: two
+# parallel branches rewrite the same two lines to different values, the identical
+# mechanism as the other four. It is tracked, carries "version" at the top level
+# and at packages[""], sync-version.sh rewrites and `git add`s it, and it changes
+# in every bump commit. So a real parallel collision conflicted in FIVE files
+# while this list covered four, the all-conflicts-are-version-files test below
+# failed, and --rebase-first aborted on the exact scenario it exists to handle.
+#
+# --ours is safe here for the same reason as the other four: sync-version.sh
+# rewrites it from the recomputed VERSION immediately afterward, and it touches
+# only the two top-level version keys, never dependency versions.
 VERSION_FILES=(
   "VERSION"
   "package.json"
   ".claude-plugin/plugin.json"
   ".claude-plugin/marketplace.json"
+  "package-lock.json"
 )
 
 if [ "$REBASE_FIRST" = "1" ]; then
@@ -222,7 +235,12 @@ fi
 # (jjackson/ace#578). Fold the bump into the rebased tip so it's part of the push.
 if [ "$REBASE_FIRST" = "1" ]; then
   for vf in "${VERSION_FILES[@]}"; do
-    git add -- "$vf"
+    # Guard on existence: VERSION_FILES now includes package-lock.json, which is
+    # optional (sync-version.sh guards it the same way). Under `set -e` an
+    # unguarded `git add` on a missing path exits 128 and kills the bump.
+    if [ -e "$REPO_ROOT/$vf" ]; then
+      git add -- "$vf"
+    fi
   done
   GIT_EDITOR=true git commit --amend --no-edit >/dev/null
   # Guard: after committing, the version files MUST be clean. If they're still
