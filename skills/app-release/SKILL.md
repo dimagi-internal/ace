@@ -142,8 +142,9 @@ procedure below to rediscover.
        |---|---|
        | `deployedAt` | `3-commcare/app-deploy_summary.md` frontmatter `uploaded_at` |
        | `novaEditedSinceDeploy` | THIS RUN's own knowledge — did any step dispatch `/nova:edit`, an eval-driven repair, or a Step 4a build-rejection fix on this app AFTER `app-deploy`? `true` / `false`; leave unset if genuinely unknown |
-       | `novaFormCount` / `novaFieldCount` | `get_app({app_id: <nova_app_id>})` — one call per app |
-       | `hqDraftFormCount` / `hqDraftFieldCount` | `run-form-walk.ts <hq_domain> <hq_app_id> --draft-only --with-fields --out-scratch` (same invocation `app-hq-settings § Step 2` documents; check `fields_available: true` before trusting the field count) |
+       | `novaFormCount` | `get_app({app_id: <nova_app_id>})` — one call per app |
+       | `novaVisibleFieldCount` | Same `get_app` response, but **sum only fields where `kind !== 'hidden'`**. The HQ draft walk (next row) never emits hidden fields (`user_score`, `qN_score`, `case_name`, `entity_key`, `entity_label`, …), which every ACE app has, so passing the raw Nova total here mismatches on essentially every run (ace#1789) |
+       | `hqDraftFormCount` / `hqDraftVisibleFieldCount` | `run-form-walk.ts <hq_domain> <hq_app_id> --draft-only --with-fields --out-scratch` (same invocation `app-hq-settings § Step 2` documents; check `fields_available: true` before trusting the field count) — already visible-only, nothing to exclude on this side |
        | `novaEditedAt` | optional — pass only if the Nova surface actually exposes a last-edited timestamp. Do NOT invent one; an omitted signal is handled, a guessed one is not |
 
     2. **Classify** with `classifyAppDrift` from `lib/app-release-drift.ts`
@@ -163,6 +164,14 @@ procedure below to rediscover.
        - **Unresolved signals default to `drift: true`** (with
          `conclusive: false`). A needless re-upload costs one idempotent
          call; a skipped one ships the wrong app and reports success.
+       - **A field-count mismatch is a SOFT signal; a form-count mismatch
+         is not (ace#1789).** A hidden field never creates a new form, so a
+         form-count mismatch always forces drift. A field-count mismatch
+         can be a basis artifact (see `novaVisibleFieldCount` above), so
+         once an ORDERING fact is clear it is downgraded to corroboration
+         rather than forcing drift — it still forces drift when no
+         ordering fact resolves the question, matching the conservative
+         default above.
 
     3. **On `action: 'reupload-reapply-settings-then-build'` — an ordered
        TRIPLE, and the middle item is the one a naive fix omits:**

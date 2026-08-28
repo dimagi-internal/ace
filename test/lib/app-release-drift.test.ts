@@ -29,8 +29,8 @@ describe('drift → re-upload, re-apply settings, then build', () => {
       app: 'deliver',
       deployedAt: DEPLOYED,
       novaEditedSinceDeploy: true,
-      novaFieldCount: 50,
-      hqDraftFieldCount: 48,
+      novaVisibleFieldCount: 50,
+      hqDraftVisibleFieldCount: 48,
     });
     expect(d.drift).toBe(true);
     expect(d.action).toBe('reupload-reapply-settings-then-build');
@@ -41,8 +41,8 @@ describe('drift → re-upload, re-apply settings, then build', () => {
   it('a field-count mismatch alone is enough', () => {
     const d = classifyAppDrift({
       app: 'deliver',
-      novaFieldCount: 50,
-      hqDraftFieldCount: 48,
+      novaVisibleFieldCount: 50,
+      hqDraftVisibleFieldCount: 48,
     });
     expect(d.drift).toBe(true);
     expect(d.action).toBe('reupload-reapply-settings-then-build');
@@ -80,8 +80,8 @@ describe('drift → re-upload, re-apply settings, then build', () => {
       novaEditedSinceDeploy: true,
       novaFormCount: 3,
       hqDraftFormCount: 2,
-      novaFieldCount: 50,
-      hqDraftFieldCount: 48,
+      novaVisibleFieldCount: 50,
+      hqDraftVisibleFieldCount: 48,
     });
     expect(d.reasons).toHaveLength(4);
   });
@@ -95,8 +95,8 @@ describe('no drift → build directly', () => {
       novaEditedAt: '2026-08-24T22:58:00Z',
       novaFormCount: 6,
       hqDraftFormCount: 6,
-      novaFieldCount: 31,
-      hqDraftFieldCount: 31,
+      novaVisibleFieldCount: 31,
+      hqDraftVisibleFieldCount: 31,
     });
     expect(d.drift).toBe(false);
     expect(d.action).toBe('build-directly');
@@ -109,8 +109,8 @@ describe('no drift → build directly', () => {
       app: 'learn',
       deployedAt: DEPLOYED,
       novaEditedSinceDeploy: false,
-      novaFieldCount: 31,
-      hqDraftFieldCount: 31,
+      novaVisibleFieldCount: 31,
+      hqDraftVisibleFieldCount: 31,
     });
     expect(d.drift).toBe(false);
     expect(d.action).toBe('build-directly');
@@ -137,12 +137,74 @@ describe('matching counts NEVER earn the skip on their own', () => {
       app: 'deliver',
       novaFormCount: 3,
       hqDraftFormCount: 3,
-      novaFieldCount: 50,
-      hqDraftFieldCount: 50,
+      novaVisibleFieldCount: 50,
+      hqDraftVisibleFieldCount: 50,
     });
     expect(d.drift).toBe(true);
     expect(d.conclusive).toBe(false);
     expect(d.action).toBe('reupload-reapply-settings-then-build');
+  });
+});
+
+describe('a hidden-inflated field count does not defeat an ordering-clear signal (ace#1789)', () => {
+  // Live repro: bednet-check-2-visit/20260828-0629. Nova `get_app` counts
+  // hidden fields (`user_score`, `qN_score`, `case_name`, `entity_key`, …);
+  // the HQ draft walk never emits them. Raw Nova totals were Learn 44 /
+  // Deliver 17 against HQ drafts of 32 / 14 — a mismatch on essentially
+  // every ACE app — while both apps had `novaEditedSinceDeploy: false`.
+  // Before this fix, ANY count mismatch forced `drift: true` before the
+  // ordering fact was ever consulted, so the one signal that was supposed to
+  // earn `build-directly` was unreachable.
+  it('the run explicitly made no Nova edit since deploy: field mismatch is corroboration only', () => {
+    const d = classifyAppDrift({
+      app: 'learn',
+      deployedAt: DEPLOYED,
+      novaEditedSinceDeploy: false,
+      // Raw, hidden-inflated Nova count vs. the HQ draft walk's count —
+      // exactly the ace#1789 repro numbers.
+      novaVisibleFieldCount: 44,
+      hqDraftVisibleFieldCount: 32,
+    });
+    expect(d.drift).toBe(false);
+    expect(d.action).toBe('build-directly');
+    expect(d.conclusive).toBe(true);
+    expect(d.reasons.join(' ')).toMatch(/no drift/);
+    expect(d.reasons.join(' ')).toMatch(/not treated as drift/);
+  });
+
+  it('an ordering timestamp proving the edit was at/before deploy has the same effect', () => {
+    const d = classifyAppDrift({
+      app: 'deliver',
+      deployedAt: DEPLOYED,
+      novaEditedAt: '2026-08-24T22:58:00Z',
+      novaVisibleFieldCount: 17,
+      hqDraftVisibleFieldCount: 14,
+    });
+    expect(d.drift).toBe(false);
+    expect(d.action).toBe('build-directly');
+  });
+
+  it('a form-count mismatch is NOT downgraded the same way — forms have no hidden-field confound', () => {
+    const d = classifyAppDrift({
+      app: 'learn',
+      novaEditedSinceDeploy: false,
+      novaFormCount: 7,
+      hqDraftFormCount: 6,
+    });
+    expect(d.drift).toBe(true);
+    expect(d.reasons.join(' ')).toMatch(/form count differs/);
+  });
+
+  it('a genuine field mismatch with NO ordering clearance still yields drift: true — the conservative default is not weakened', () => {
+    const d = classifyAppDrift({
+      app: 'deliver',
+      novaVisibleFieldCount: 50,
+      hqDraftVisibleFieldCount: 48,
+    });
+    expect(d.drift).toBe(true);
+    expect(d.action).toBe('reupload-reapply-settings-then-build');
+    expect(d.conclusive).toBe(true);
+    expect(d.reasons.join(' ')).toMatch(/field count differs — Nova 50, HQ draft 48/);
   });
 });
 
@@ -173,7 +235,7 @@ describe('unresolved signals default to re-upload, and say they defaulted', () =
   });
 
   it('one comparable count pair is not an ordering fact either', () => {
-    const d = classifyAppDrift({ app: 'learn', novaFieldCount: 31, hqDraftFieldCount: 31 });
+    const d = classifyAppDrift({ app: 'learn', novaVisibleFieldCount: 31, hqDraftVisibleFieldCount: 31 });
     expect(d.conclusive).toBe(false);
     expect(d.drift).toBe(true);
   });
@@ -184,7 +246,7 @@ describe('the decision is auditable', () => {
     for (const inputs of [
       { app: 'a' },
       { app: 'b', novaEditedSinceDeploy: false, deployedAt: DEPLOYED },
-      { app: 'c', novaFieldCount: 1, hqDraftFieldCount: 2 },
+      { app: 'c', novaVisibleFieldCount: 1, hqDraftVisibleFieldCount: 2 },
     ]) {
       expect(classifyAppDrift(inputs).reasons.length).toBeGreaterThan(0);
     }
@@ -193,8 +255,8 @@ describe('the decision is auditable', () => {
   it('records every comparison it was able to make', () => {
     const d = classifyAppDrift({
       app: 'deliver',
-      novaFieldCount: 50,
-      hqDraftFieldCount: 48,
+      novaVisibleFieldCount: 50,
+      hqDraftVisibleFieldCount: 48,
       novaFormCount: 3,
     });
     expect(d.signals.fieldCounts).toEqual({ nova: 50, hq: 48, comparable: true, mismatch: true });
