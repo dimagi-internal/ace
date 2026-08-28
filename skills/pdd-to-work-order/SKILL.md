@@ -41,12 +41,14 @@ Take the approved PDD and decisions.yaml and produce a contractual Work Order dr
    - (b) If inferable from PDD body (Timeline → period of performance; Success Metrics + Budget → NTE; etc.), use the inference and emit a new `wo-*` row capturing it.
    - (c) If genuinely unknowable (partner name absent, WO# unknown, MSA date unknown), insert a bracketed placeholder like `[Partner Name]` in the gdoc and emit a `wo-*` row with `status: open` + `notes` telling the human what to fill in.
 
+     **The bracket convention does not compose inside a whole-cell field.** It brackets one unknown *field*, so composing it out of parts — `[Start date on contract execution] to [Start + 10 weeks]` — reads naturally from "start + end dates" and is a guaranteed QA failure: `period_of_performance_complete` parses the ENTIRE cell and accepts only `/^\[[^\]]+\]$/` (one pair of brackets, no interior `]`). See § Whole-cell fields.
+
    Common `wo-*` rows to emit when load-bearing:
 
    | ID | Question | Map to surface |
    |---|---|---|
    | `wo-number` | Sequence number for this WO under the MSA | Header (placeholder if unknown) |
-   | `wo-period-of-performance` | Start + end dates | Header + Timeline section |
+   | `wo-period-of-performance` | Start + end dates, **as ONE cell value**: either `2026-05-22 to 2026-07-31` (ISO) / `May 22, 2026 to July 31, 2026` (prose), or a SINGLE bracketed placeholder spanning the whole cell, e.g. `[Start and end dates set on contract execution]`. Never two bracketed spans joined by "to" — `[Start date on contract execution] to [Start + 10 weeks]` is rejected by `pdd-to-work-order-qa § period_of_performance_complete` (see § Whole-cell fields below) | Header + Timeline section |
    | `wo-total-not-to-exceed-usd` | Total NTE budget cap | Payment Terms section |
    | `wo-payment-schedule-split` | Milestone payment percentages (e.g., 40/60) | Payment Schedule sub-table |
    | `wo-mobilization-advance-pct` | Mobilization advance % of cap | Payment Schedule row 1 |
@@ -89,7 +91,7 @@ Take the approved PDD and decisions.yaml and produce a contractual Work Order dr
 
    `value_set_by` is **not** an escalation path and does not gate anything. ACE still picks a value, still writes it as `ai-default`, and the run still proceeds — exactly as before. The flag exists so a downstream phase does not cite a projection as a settled commitment, and so a later run re-deriving it differently reads as expected rather than as drift. Measured across 22 runs of two opps, `wo-period-of-performance`, `wo-total-not-to-exceed-usd` and `payment-rate` produced a different confident-looking answer on nearly every run, and the first hh-poverty run had originally recorded them correctly as *"Deferred to deployment (Annex B); negotiated via solicitation response"* — inside the `ai-default` string, where nothing could read it.
 
-   When a load-bearing field is genuinely unknowable (partner name absent, WO# unknown), insert a bracketed placeholder like `[Partner Name]` in the gdoc and pass the placeholder as `ai-default` (e.g. `"ai-default": "[Partner Name]"`) plus a `reasoning` line telling the human what to fill in. `status` is still `"ai-default"` — `"open"` is not a valid status, and `value_set_by: "external"` is how you say "someone else sets this," not a status. A placeholder default is `evidence_basis: "inferred"` unless a source actually states it.
+   When a load-bearing field is genuinely unknowable (partner name absent, WO# unknown), insert a bracketed placeholder like `[Partner Name]` — ONE pair of brackets spanning the whole value, never a composition of several (§ Whole-cell fields) — in the gdoc and pass the placeholder as `ai-default` (e.g. `"ai-default": "[Partner Name]"`) plus a `reasoning` line telling the human what to fill in. `status` is still `"ai-default"` — `"open"` is not a valid status, and `value_set_by: "external"` is how you say "someone else sets this," not a status. A placeholder default is `evidence_basis: "inferred"` unless a source actually states it.
 
    Canonical worked fixture with `wo-*` rows: `test/skills/pdd-to-work-order-qa/fixtures/good-decisions.yaml`.
 
@@ -174,6 +176,26 @@ Take the approved PDD and decisions.yaml and produce a contractual Work Order dr
 
 7. **Invoke `decisions-render`** so the human-readable `decisions.gdoc` refreshes with the new `wo-*` rows.
 
+## Whole-cell fields
+
+A handful of work-order fields are validated by a QA checker that parses the **entire cell value**, not
+a substring of it. For those fields the step-3(c) / step-4 bracket convention — bracket the unknown
+*field* — cannot be composed out of parts: two bracketed spans joined by `to` leave an interior `]`
+and the anchored regex rejects the whole value.
+
+| Field | Checker | Accepted whole-cell forms |
+|---|---|---|
+| `wo-period-of-performance` (Period of Performance) | `pdd-to-work-order-qa § period_of_performance_complete` (`checkPeriodOfPerformanceComplete`) | ISO `2026-05-22 to 2026-07-31`; prose `May 22, 2026 to July 31, 2026`; or ONE bracketed span covering the whole cell — `[TBD]`, `[Start and end dates set on contract execution]` |
+
+Rejected, and it is the natural reading of "start + end dates" plus the bracket convention:
+`[Start date on contract execution] to [Start + 10 weeks]`. Write the placeholder once, around the
+whole cell, instead.
+
+This is the writer-side half of dimagi-internal/ace#1092 (which fixed the checker's `auto_fix_hint`);
+see dimagi-internal/ace#1781. A pre-award work order — no partner selected, so no anchor date — takes
+the placeholder path on the normal Phase 1 path, not an edge case. `test/skills/pdd-to-work-order-producer-qa-agreement.test.ts`
+fails CI if this table drifts from the checkers.
+
 ## Archetypes
 
 ### `atomic-visit` (default)
@@ -219,5 +241,6 @@ When `--dry-run` is active:
 
 | Date | Change | Author |
 |------|--------|--------|
+| 2026-08-28 | Add § Whole-cell fields + spell out the one-cell Period of Performance form on the `wo-period-of-performance` row and both bracket-convention statements — the producer previously pointed at a form its own QA deterministically rejects (dimagi-internal/ace#1781, writer-side mirror of #1092) | ACE team |
 | 2026-05-21 | Add `references/writing-style.md` + `references/style-guide.md`, adapted from `sarvesh-tewari/ace-skills-stewari`; wire writing-style.md into step 1 + prose-token synthesis | ACE team |
 | 2026-05-21 | Drop bold-span rule from prose-token synthesis preamble + add explicit "do not emit markdown bold" warning (template uses plain-text replaceAllText; no bold finalizer yet). Track docs-finalize-bold post-processor as backlog. | ACE team |
