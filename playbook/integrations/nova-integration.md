@@ -154,10 +154,29 @@ Five blockers landed and were cleared between 2026-04-27 and
   the same process env, so they read the same `NOVA_API_KEY` and
   authenticate as the same identity as level-0.
 
-- **A stored OAuth credential OUTRANKS the `headersHelper` PAT, so
+- **No `Authorization` header reaches Nova on Claude Code 2.1.238+, so
   #11 and #13 are only conditionally cleared
   (voidcraft-labs/nova-plugin#52, open, hit live 2026-08-23/24 on
-  `spark-facilitator/20260820-0817`).** Both mechanisms write the same
+  `spark-facilitator/20260820-0817`).**
+
+  > **MECHANISM CORRECTED 2026-08-25 — read this before the narrative below.**
+  > This entry originally attributed the failure to *a stored OAuth credential
+  > outranking the `headersHelper` PAT*. That was **DISPROVED** by the client
+  > logs in nova-plugin#52's third correction: `Successfully retrieved 0
+  > headers from headersHelper` followed by `No access token in storage` —
+  > there was no stored token to outrank anything. The real cause is that
+  > Claude Code **2.1.238** changed what environment `headersHelper` receives
+  > at interactive-session connect time; nova's helper reads `$NOVA_API_KEY`
+  > from that env and takes its `else printf '{}'` branch, so no header is
+  > sent and the client correctly begins an OAuth cascade. **0 of 53 sessions
+  > on 2.1.238+ ever sent a header** (32/32 did on 2.1.237). canopy's helper,
+  > which reads a token *file*, is unaffected in the same sessions — that is
+  > the control.
+  >
+  > Everything the narrative below says about *symptoms* still holds; what it
+  > says about the *cause* and the `Clear authentication` remedy does not.
+  > The fix is the static-header override, installed automatically by
+  > `nova_header_readiness --heal` (`bin/ace-doctor`, ace#1769). Both mechanisms write the same
   `Authorization` header, and if Claude Code already holds an OAuth
   token for `mcp.commcare.app` that token wins — `NOVA_API_KEY` set or
   not. The session then answers **normally, about a different account**:
@@ -187,12 +206,23 @@ Five blockers landed and were cleared between 2026-04-27 and
      `nova_shell_env`, `nova_needs_auth_cache` all report green. The PAT
      is fine; it simply is not the credential in use.
 
-  **The fix is `/mcp` → nova → `Clear authentication`, then RESTART.**
-  Clearing drops the connection outright (all 101 tools disappear)
-  rather than falling back live, so the restart is what re-establishes
-  it — and with no stored token and `NOVA_API_KEY` set, the
-  `headersHelper` bearer is the only credential left. Do not
-  re-authenticate afterwards.
+  **The fix is the static-header override, then RESTART — NOT `/mcp` →
+  `Clear authentication`.** (Corrected 2026-08-25; see the banner at the top
+  of this entry. `Clear authentication` was the documented remedy for three
+  days and is a **no-op by construction** here: it removes an OAuth token but
+  restores no credential, so with no header the session immediately re-prompts
+  OAuth and the operator loops.) Run `/ace:doctor` — `nova_header_readiness`
+  installs and re-asserts the override — or by hand:
+
+  ```
+  claude mcp add --transport http --scope user nova https://mcp.commcare.app/mcp \
+    --header "Authorization: Bearer $NOVA_API_KEY"
+  ```
+
+  This bypasses the helper entirely, so the 2.1.238 env change cannot reach
+  it. Then Cmd-Q and reopen — MCP subprocesses only rebind at startup, which
+  is why the probe still reports `fail` after healing. Do not re-authenticate
+  afterwards.
 
   **Verify with two calls, never one.** `list_apps` alone is not enough:
   step 2 above passes it while still on OAuth.

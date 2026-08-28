@@ -202,12 +202,16 @@ On a miss, **HALT**: *"The Nova MCP bound a different principal than
 NOVA_API_KEY names — `list_apps` does not show this run's apps (`<learn-id>`,
 `<deliver-id>`). MCP auth binds at connection time, so this is unrecoverable
 in-session. A plain restart is NOT the remedy here — it has been tried and the
-wrong principal came back (dimagi-internal/ace#1614). The cause is a stored
-OAuth token outranking the `headersHelper` PAT (voidcraft-labs/nova-plugin#52).
-Run `/mcp`, select `nova`, choose **`Clear authentication`** — NOT
-`Authenticate`, which mints a fresh OAuth token and leaves you on the wrong
-credential — then quit and reopen Claude Code and resume
-`/ace:run <opp>/<run-id>`. Verify with BOTH `list_projects` (must be the PAT's
+wrong principal came back (dimagi-internal/ace#1614). The cause is that NO `Authorization` header is reaching Nova. Claude Code 2.1.238+ stopped
+passing its process env to nova's env-dependent `headersHelper`, which then
+emits `{}`, and the client falls back to OAuth — whose token lacks
+`nova.hq.read` (voidcraft-labs/nova-plugin#52).
+Run `/ace:doctor` — its `nova_header_readiness` probe installs the static-header
+override automatically — then quit and reopen Claude Code and resume
+`/ace:run <opp>/<run-id>`. Do **NOT** go to `/mcp`: `Clear authentication`
+removes an OAuth token but restores no credential, so with no header the session
+re-prompts OAuth immediately, and `Authenticate` mints a token without
+`nova.hq.read`. Verify with BOTH `list_projects` (must be the PAT's
 project) and `get_hq_connection` (must be `configured: true`); `list_apps`
 alone passes while still on OAuth."*
 
