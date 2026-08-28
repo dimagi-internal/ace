@@ -41,12 +41,14 @@ Take the approved PDD and decisions.yaml and produce a contractual Work Order dr
    - (b) If inferable from PDD body (Timeline → period of performance; Success Metrics + Budget → NTE; etc.), use the inference and emit a new `wo-*` row capturing it.
    - (c) If genuinely unknowable (partner name absent, WO# unknown, MSA date unknown), insert a bracketed placeholder like `[Partner Name]` in the gdoc and emit a `wo-*` row with `status: open` + `notes` telling the human what to fill in.
 
+     **The bracket convention does not COMPOSE inside a cell whose checker parses the whole cell.** It brackets the unknown *cell*, not each unknown part of it. A field that reads as two things — Period of Performance is "start + end dates" — still gets ONE pair of brackets covering the entire value: `[Start and end dates set on contract execution]`, not `[Start date on contract execution] to [Start + 10 weeks]`. `pdd-to-work-order-qa § period_of_performance_complete` accepts a whole-cell single-bracket span (`/^\[[^\]]+\]$/`) and deterministically rejects two spans joined by "to" — an interior `]` fails the regex. A work order drafted before a partner is selected is the normal Phase 1 case, so this is the common path, not an edge (ace#1781; mirror of ace#1092, which fixed the same trap on the reader side).
+
    Common `wo-*` rows to emit when load-bearing:
 
    | ID | Question | Map to surface |
    |---|---|---|
    | `wo-number` | Sequence number for this WO under the MSA | Header (placeholder if unknown) |
-   | `wo-period-of-performance` | Start + end dates | Header + Timeline section |
+   | `wo-period-of-performance` | Start + end dates, **as ONE cell value**: either `YYYY-MM-DD to YYYY-MM-DD` / `Mon DD, YYYY to Mon DD, YYYY`, or a SINGLE bracketed placeholder spanning the whole cell (e.g. `[Start and end dates set on contract execution]`) — never two bracketed spans joined by "to", which `pdd-to-work-order-qa § period_of_performance_complete` rejects | Header + Timeline section |
    | `wo-total-not-to-exceed-usd` | Total NTE budget cap | Payment Terms section |
    | `wo-payment-schedule-split` | Milestone payment percentages (e.g., 40/60) | Payment Schedule sub-table |
    | `wo-mobilization-advance-pct` | Mobilization advance % of cap | Payment Schedule row 1 |
@@ -89,7 +91,7 @@ Take the approved PDD and decisions.yaml and produce a contractual Work Order dr
 
    `value_set_by` is **not** an escalation path and does not gate anything. ACE still picks a value, still writes it as `ai-default`, and the run still proceeds — exactly as before. The flag exists so a downstream phase does not cite a projection as a settled commitment, and so a later run re-deriving it differently reads as expected rather than as drift. Measured across 22 runs of two opps, `wo-period-of-performance`, `wo-total-not-to-exceed-usd` and `payment-rate` produced a different confident-looking answer on nearly every run, and the first hh-poverty run had originally recorded them correctly as *"Deferred to deployment (Annex B); negotiated via solicitation response"* — inside the `ai-default` string, where nothing could read it.
 
-   When a load-bearing field is genuinely unknowable (partner name absent, WO# unknown), insert a bracketed placeholder like `[Partner Name]` in the gdoc and pass the placeholder as `ai-default` (e.g. `"ai-default": "[Partner Name]"`) plus a `reasoning` line telling the human what to fill in. `status` is still `"ai-default"` — `"open"` is not a valid status, and `value_set_by: "external"` is how you say "someone else sets this," not a status. A placeholder default is `evidence_basis: "inferred"` unless a source actually states it.
+   When a load-bearing field is genuinely unknowable (partner name absent, WO# unknown), insert a bracketed placeholder like `[Partner Name]` in the gdoc and pass the placeholder as `ai-default` (e.g. `"ai-default": "[Partner Name]"`) plus a `reasoning` line telling the human what to fill in. `status` is still `"ai-default"` — `"open"` is not a valid status, and `value_set_by: "external"` is how you say "someone else sets this," not a status. A placeholder default is `evidence_basis: "inferred"` unless a source actually states it. **One pair of brackets per cell** — see step 3(c): a multi-part field like `wo-period-of-performance` gets a single span covering the whole value (`"[Start and end dates set on contract execution]"`), never per-part spans joined by "to".
 
    Canonical worked fixture with `wo-*` rows: `test/skills/pdd-to-work-order-qa/fixtures/good-decisions.yaml`.
 
