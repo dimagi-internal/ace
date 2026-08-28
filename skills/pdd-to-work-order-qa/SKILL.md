@@ -79,6 +79,18 @@ The static check functions live at `skills/pdd-to-work-order-qa/checks.ts` as im
    ```
 
 5. **Invoke the check runner** that imports `checks.ts § CHECKS` and runs each against `{workOrderText, decisionsYamlText, archetype}`. Output: a `QACheckResult[]` aligned with the `CHECKS` array.
+   ```bash
+   ACE_ROOT="${CLAUDE_PLUGIN_ROOT:-$(python3 -c "import json,os; d=json.load(open(os.path.expanduser('~/.claude/plugins/installed_plugins.json'))); print(d['plugins']['ace@ace'][0]['installPath'])")}"
+   npx --prefix "$ACE_ROOT" tsx "$ACE_ROOT/scripts/qa-run.ts" --skill pdd-to-work-order-qa --artifact "$TMP_WO" --target "<opp-name>/<run-id>" --capture-path "1-design/pdd-to-work-order.gdoc" --decisions "$TMP_DEC" --archetype "<archetype from step 3>" --include-passed
+   ```
+
+   **All four of `--target`, `--capture-path`, `--decisions` and `--archetype`
+   matter here.** The first two are hard-required — omit either and `qa-run.ts`
+   exits with `missing required --target` having run zero checks
+   (dimagi-internal/ace#1775). `--decisions` and `--archetype` are optional to
+   the runner but load-bearing for THIS skill: its checks read `ctx.decisionsYaml`
+   for the `wo-*` decision rows and `ctx.archetype` for the archetype-fit checks,
+   so dropping them silently degrades real checks into unevaluable ones.
 
 6. **Compose and write the verdict YAML** to `1-design/pdd-to-work-order-qa_result.yaml` per the QA verdict schema (`lib/qa-types.ts`). `verdict: pass` iff every check passes; `verdict: fail` with `failures[]` array otherwise (each entry: `{check, detail, auto_fix_hint}`). `verdict: incomplete` if a check could not be evaluated (e.g., decisions.yaml unreadable).
 
