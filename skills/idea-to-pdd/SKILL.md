@@ -315,6 +315,25 @@ orchestrator from the per-skill QA + eval verdicts on the fly. -->
    - **Success Metrics** — how to measure if the intervention worked
    - **Evidence Model** — Layer A / B / C verification plan (see `## Evidence Model` in `templates/pdd-template.md`)
    - **Timeline** — expected duration of the opportunity
+   - **Program Parameters** — the typed handoff table. A `| Key | Value |` table
+     of every decision THIS document makes that a LATER phase must apply
+     verbatim and that cannot be applied in the artifact this phase produces:
+     `learn_passing_score`, `assessment_items`, `payment_rate_min` /
+     `payment_rate_max` / `payment_rate_currency` / `payment_rate_unit`,
+     `daily_cap_per_flw`, `total_cap_per_flw`, `flw_count_min` /
+     `flw_count_max`, `expected_reach_min` / `expected_reach_max`,
+     `entity_id_grain`, `entity_state_taxonomy`, `cap_rationale`. Take the
+     canonical key vocabulary and the per-key guidance from `## Program
+     Parameters` in `templates/pdd-template.md` — snake_case keys, unknown keys
+     allowed, omit a row only when this PDD genuinely does not decide it.
+     Prose elsewhere in the PDD is **not** a handoff: a later phase has to
+     notice it, and when it does not the value silently falls back to a skill
+     default. **Machine-checked** — a missing section fails
+     `idea-to-pdd-qa § all_required_sections_present` and a missing or
+     incoherent table fails `§ program_parameters_coherent`, both blockers.
+     Step 7.5 writes the SAME values again as the `program_parameters` block in
+     `run_state.yaml`; author this table first and transcribe it there, so the
+     body and the state block cannot diverge.
 
 4a. **Spec for deployability, not just topic presence.** `[ai-iteration: 2026-05-29]` The downstream
     build skills faithfully transcribe the PDD, and the app evals now
@@ -681,6 +700,11 @@ eval verdict (idea-to-pdd-eval) at the Phase 1→3 Pause Point. -->
      handoff: a later phase has to notice it, and when it doesn't the value
      silently falls back to a skill default. Emit every key you can
      determine; omit one only when the PDD genuinely does not decide it.
+
+     These are the SAME decisions the PDD body's `## Program Parameters`
+     table carries (step 4). Author that table first and transcribe it here —
+     the body table is what `idea-to-pdd-qa` reads, this block is what
+     downstream phases read, and the two must agree.
 
      | Key | Applied by | Failure if it defaults instead |
      |---|---|---|
