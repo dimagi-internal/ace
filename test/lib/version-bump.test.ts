@@ -299,4 +299,133 @@ describe('scripts/version-bump.sh', () => {
 
     fs.rmSync(remote, { recursive: true, force: true });
   });
+
+  it('--rebase-first auto-resolves a package-lock.json conflict instead of aborting (ace#1778)', () => {
+    // package-lock.json was deliberately EXCLUDED from VERSION_FILES on the
+    // premise that "sync-version.sh rewrites it from VERSION rather than
+    // merging it, so it does not take a rebase conflict." That reasoning is
+    // backwards: being rewritten from VERSION is precisely what makes it
+    // conflict, since two parallel branches rewrite the same two lines to
+    // different values — the identical mechanism as the other four files.
+    //
+    // So a REAL parallel collision conflicted in five files while the allowlist
+    // covered four, the all-conflicts-are-version-files test failed, and
+    // --rebase-first aborted on the exact scenario it exists to handle. That is
+    // the documented version-collision recipe in CLAUDE.md, so the flag failed
+    // at its only job. Observed shipping ace#1777.
+    //
+    // This test forces the five-file conflict and asserts the rebase completes.
+    fixtureDir = makeFixtureRepo('0.10.14');
+
+    const lockPath = path.join(fixtureDir, 'package-lock.json');
+    const setAll = (v: string) => {
+      fs.writeFileSync(path.join(fixtureDir, 'VERSION'), `${v}\n`);
+      fs.writeFileSync(
+        path.join(fixtureDir, 'package.json'),
+        JSON.stringify({ name: 'fake', version: v }, null, 2) + '\n'
+      );
+      fs.writeFileSync(
+        path.join(fixtureDir, '.claude-plugin', 'plugin.json'),
+        JSON.stringify({ name: 'fake', version: v, description: 'x' }, null, 2) + '\n'
+      );
+      fs.writeFileSync(
+        path.join(fixtureDir, '.claude-plugin', 'marketplace.json'),
+        JSON.stringify(
+          {
+            name: 'fake',
+            metadata: { version: v },
+            plugins: [{ name: 'fake', source: './', version: v }],
+          },
+          null,
+          2
+        ) + '\n'
+      );
+      fs.writeFileSync(
+        lockPath,
+        JSON.stringify(
+          {
+            name: 'fake',
+            version: v,
+            lockfileVersion: 3,
+            packages: { '': { name: 'fake', version: v } },
+          },
+          null,
+          2
+        ) + '\n'
+      );
+    };
+
+    // Seed the lockfile into the base commit so both sides can diverge on it.
+    setAll('0.10.14');
+    execSync('git add -A && git commit -q -m lockfile', { cwd: fixtureDir });
+
+    const remote = fs.mkdtempSync(path.join(os.tmpdir(), 'ace-version-remote-'));
+    execSync('git init -q --bare', { cwd: remote });
+    execSync(`git remote add origin ${remote}`, { cwd: fixtureDir });
+    execSync('git branch -M main', { cwd: fixtureDir });
+    execSync('git push -q origin main', { cwd: fixtureDir });
+
+    // Our branch bumps to 0.10.50 and carries a real code change.
+    execSync('git checkout -q -b feature', { cwd: fixtureDir });
+    setAll('0.10.50');
+    fs.writeFileSync(path.join(fixtureDir, 'feature.txt'), 'work\n');
+    execSync('git add -A && git commit -q -m feature', { cwd: fixtureDir });
+
+    // Meanwhile another worktree bumped main to 0.10.99 — the parallel bump.
+    execSync('git checkout -q main', { cwd: fixtureDir });
+    setAll('0.10.99');
+    execSync('git add -A && git commit -q -m "parallel bump"', { cwd: fixtureDir });
+    execSync('git push -q origin main', { cwd: fixtureDir });
+    execSync('git checkout -q feature', { cwd: fixtureDir });
+
+    let out = '';
+    try {
+      out = execFileSync('./scripts/version-bump.sh', ['--rebase-first'], {
+        cwd: fixtureDir,
+        encoding: 'utf8',
+        stdio: ['ignore', 'pipe', 'pipe'],
+      });
+    } catch (err: any) {
+      const stderr = String(err?.stderr ?? '');
+      throw new Error(
+        '--rebase-first aborted on a parallel bump instead of auto-resolving.\n' +
+          'If stderr names package-lock.json as a conflict "outside version files",\n' +
+          'it is missing from VERSION_FILES in scripts/version-bump.sh (ace#1778).\n' +
+          `stderr:\n${stderr}`
+      );
+    }
+
+    expect(out, 'no unbound-variable or other shell error').not.toMatch(/unbound variable/);
+
+    // The rebase must have landed, keeping our feature commit.
+    const files = execSync('git show --pretty= --name-only HEAD~1..HEAD || true', {
+      cwd: fixtureDir,
+      encoding: 'utf8',
+    });
+    expect(files, 'the feature commit must survive the rebase').toContain('feature.txt');
+
+    // Every version file agrees at HEAD, lockfile included — the point of the fix.
+    const headVersion = execSync('git show HEAD:VERSION', {
+      cwd: fixtureDir,
+      encoding: 'utf8',
+    }).trim();
+    const headLock = JSON.parse(
+      execSync('git show HEAD:package-lock.json', { cwd: fixtureDir, encoding: 'utf8' })
+    );
+    expect(headLock.version, 'package-lock top-level version must match VERSION').toBe(
+      headVersion
+    );
+    expect(
+      headLock.packages[''].version,
+      'package-lock packages[""] version must match VERSION'
+    ).toBe(headVersion);
+
+    // And it must have advanced past main's parallel bump, not re-used it.
+    expect(
+      headVersion.startsWith('0.10.') && Number(headVersion.split('.')[2]) > 99,
+      `expected a version above main's 0.10.99, got ${headVersion}`
+    ).toBe(true);
+
+    fs.rmSync(remote, { recursive: true, force: true });
+  });
 });
