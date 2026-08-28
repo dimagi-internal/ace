@@ -28,10 +28,8 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, test } from 'vitest';
-import {
-  checkPeriodOfPerformanceComplete,
-  type QACheckResult,
-} from '../../skills/pdd-to-work-order-qa/checks';
+import type { QACheckResult } from '../../lib/qa-types';
+import { checkPeriodOfPerformanceComplete } from '../../skills/pdd-to-work-order-qa/checks';
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const PRODUCER = readFileSync(
