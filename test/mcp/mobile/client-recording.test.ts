@@ -12,6 +12,18 @@ import type { AvdInfo, RecipeRunResult, VideoArtifact } from '../../../mcp/mobil
 // production code path instead of the refusal.
 process.env.ACE_SCREENSHOT_ROOT = os.tmpdir();
 
+// Every client in this file is built with `cloud: null` — these suites are
+// about the LOCAL recorder/spool path. Backend selection reads
+// ACE_MOBILE_BACKEND, and vitest reuses a worker process across test files, so
+// a sibling mobile suite that sets it to 'cloud' leaks in whenever the
+// scheduler happens to pair them: `requireCloud()` then throws
+// CLOUD_NOT_CONFIGURED and every test here fails. The siblings all save and
+// restore it correctly, which is exactly why this was invisible — it depends
+// on file ordering, not on any one test misbehaving, so merely adding an
+// unrelated test file elsewhere in the repo can surface it. Pin it here so
+// this file's result does not depend on who it shares a worker with.
+process.env.ACE_MOBILE_BACKEND = 'local';
+
 
 
 
