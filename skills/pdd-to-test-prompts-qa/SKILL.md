@@ -46,8 +46,14 @@ The static check functions live at `skills/pdd-to-test-prompts-qa/checks.ts` as 
 3. **Run all checks** via the generic CLI runner:
    ```bash
    ACE_ROOT="${CLAUDE_PLUGIN_ROOT:-$(python3 -c "import json,os; d=json.load(open(os.path.expanduser('~/.claude/plugins/installed_plugins.json'))); print(d['plugins']['ace@ace'][0]['installPath'])")}"
-   npx --prefix "$ACE_ROOT" tsx "$ACE_ROOT/scripts/qa-run.ts" --skill pdd-to-test-prompts-qa --artifact "$TMP" ...
+   npx --prefix "$ACE_ROOT" tsx "$ACE_ROOT/scripts/qa-run.ts" --skill pdd-to-test-prompts-qa --artifact "$TMP" --target "<opp-name>/<run-id>" --capture-path "2-scenarios/pdd-to-test-prompts.md" --include-passed
    ```
+
+   **`--target` and `--capture-path` are REQUIRED.** `qa-run.ts` exits with
+   `missing required --target` and runs zero checks if either is omitted — the
+   trailing `...` that used to stand in for them here was not runnable
+   (dimagi-internal/ace#1775). `--include-passed` is optional but recommended:
+   the passed[] list is what the QA result YAML reports on a clean run.
 4. **Write the QA result** to Drive at `2-scenarios/pdd-to-test-prompts-qa_result.yaml`.
 5. **Return the verdict** — pass | fail | incomplete. On fail, orchestrator attempts auto-fix and re-runs; halts after bounded retries.
 
