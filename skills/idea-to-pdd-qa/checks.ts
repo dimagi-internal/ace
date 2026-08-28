@@ -16,7 +16,7 @@
 import type { QACheck, QACheckContext, QACheckResult } from '../../lib/qa-types';
 import { normalizeDriveExport } from '../../lib/drive-export';
 
-const REQUIRED_SECTIONS = [
+export const REQUIRED_SECTIONS = [
   'Archetype',
   'Problem Statement',
   'Intervention Design',
@@ -56,7 +56,7 @@ const SECTION_PURPOSES: Record<(typeof REQUIRED_SECTIONS)[number], string> = {
   'Success Metrics': 'how to measure if the intervention worked — populated table with Metric / Target / Method / Layer columns',
   'Evidence Model': 'Layer A (delivery proof), Layer B (content proof), Layer C (cross-delivery quality) verification plan',
   'Timeline': 'expected duration of the opportunity, key milestones',
-  'Program Parameters': 'a `| key | value |` table of the PDD decisions a LATER phase must apply verbatim (learn_passing_score, payment_rate_*, caps, entity_id_grain) — see checkProgramParametersCoherent for the key vocabulary and the coherence rules',
+  'Program Parameters': 'a `| key | value |` table of the PDD decisions a LATER phase must apply verbatim (learn_passing_score, payment_rate_*, caps, entity_id_grain) — the canonical key vocabulary and per-key guidance is `## Program Parameters` in templates/pdd-template.md; see checkProgramParametersCoherent for the coherence rules',
 };
 
 const VALID_ARCHETYPES = ['atomic-visit', 'longitudinal-visits', 'focus-group', 'multi-stage'] as const;
