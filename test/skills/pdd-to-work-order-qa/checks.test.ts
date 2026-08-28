@@ -223,13 +223,94 @@ describe('checkArchetypeAppropriateScope', () => {
     expect(checkArchetypeAppropriateScope(wo, 'longitudinal-visits').pass).toBe(true);
   });
 
-  test('still requires visit + evidence phrasing, not just a longitudinal word', () => {
+  test('still requires visit phrasing, not just a longitudinal word', () => {
     const wo = LONGITUDINAL_SCOPE(
       'The Subcontractor shall track each household case through its phases and report monthly.',
     );
     const r = checkArchetypeAppropriateScope(wo, 'longitudinal-visits');
     expect(r.pass).toBe(false);
-    expect(r.detail).toMatch(/photo or GPS/i);
+    expect(r.detail).toMatch(/visit/i);
+  });
+
+  // ── evidence mechanism is NOT an archetype property (ace#1771) ────
+  //
+  // The check used to require /photo|gps/ for both visit archetypes. The
+  // regex had no polarity, so it failed in both directions on the SAME
+  // document — verified live against bednet-check-2-visit/20260828-0629,
+  // whose § 2 mentions photo/GPS exactly once, inside "The partner will
+  // not:".
+  //
+  // (a) FALSE PASS — an exclusion satisfied the requirement, so QA
+  //     asserted the contract carried photo/GPS evidence while the
+  //     contract prohibited it.
+  // (b) FALSE FAIL — delete that one exclusion bullet (a legitimate
+  //     drafting choice) and the same contract FAILED, with an
+  //     auto_fix_hint telling the producer to add photo/GPS language to a
+  //     programme whose PDD puts photo/GPS out of scope. That is a checker
+  //     instructing a producer to contradict its own design document.
+  //
+  // Both are now non-findings: the archetype check tests SHAPE only.
+
+  const EXCLUSION_ONLY_SCOPE =
+    'The Subcontractor shall complete one follow-up visit against each registered household case, ' +
+    'recording the consent re-affirmation answer at the visit.\n\nThe partner will not:\n\n' +
+    '* Collect photographs, GPS coordinates, or any biometric identifier.';
+
+  test('(a) the verdict does not depend on an exclusion-bullet photo/GPS mention', () => {
+    // The discriminator for the false PASS: the only difference between
+    // these two documents is a prohibition bullet. A polarity-free
+    // /photo|gps/ test reads that prohibition as satisfaction, so the two
+    // verdicts diverge (pass vs fail) on a difference that changes nothing
+    // about the archetype. They must now be identical.
+    const withExclusion = LONGITUDINAL_SCOPE(EXCLUSION_ONLY_SCOPE);
+    const withoutExclusion = LONGITUDINAL_SCOPE(
+      EXCLUSION_ONLY_SCOPE.replace(/\n\nThe partner will not:[\s\S]*$/, ''),
+    );
+    expect(withExclusion).toMatch(/photographs/i);
+    expect(withoutExclusion).not.toMatch(/photo|gps/i);
+
+    const a = checkArchetypeAppropriateScope(withExclusion, 'longitudinal-visits');
+    const b = checkArchetypeAppropriateScope(withoutExclusion, 'longitudinal-visits');
+    expect(a).toEqual(b);
+    expect(a.pass).toBe(true);
+    // And the passing verdict must not cite photo/GPS as the reason.
+    expect(JSON.stringify(a)).not.toMatch(/photo|gps/i);
+  });
+
+  test('(b) a photo-free programme passes, and is never told to add photo/GPS', () => {
+    // Same scope with the exclusion bullet removed: a visit-shaped,
+    // consent-attested programme that simply never mentions photo or GPS.
+    const photoFree = EXCLUSION_ONLY_SCOPE.replace(
+      /\n\nThe partner will not:[\s\S]*$/,
+      '',
+    );
+    expect(photoFree).not.toMatch(/photo|gps/i);
+    const r = checkArchetypeAppropriateScope(LONGITUDINAL_SCOPE(photoFree), 'longitudinal-visits');
+    expect(r.pass).toBe(true);
+    expect(r.auto_fix_hint ?? '').not.toMatch(/Missing markers.*photo/i);
+  });
+
+  test('(b) atomic-visit likewise passes a photo-free scope', () => {
+    const wo = LONGITUDINAL_SCOPE(
+      'The Subcontractor shall complete one household visit per registered household, recording the ' +
+      'consent answer and the two bednet-use observations at the visit.',
+    );
+    expect(wo).not.toMatch(/photo|gps/i);
+    expect(checkArchetypeAppropriateScope(wo, 'atomic-visit').pass).toBe(true);
+  });
+
+  test('the auto_fix_hint never instructs a producer to add photo/GPS evidence', () => {
+    // A scope that genuinely fails (no visit-shaped unit at all) must not
+    // recover by being told to bolt on an evidence mechanism the PDD may
+    // put out of scope.
+    const wo = LONGITUDINAL_SCOPE(
+      'The Subcontractor shall track each household case through its phases and report monthly.',
+    );
+    const r = checkArchetypeAppropriateScope(wo, 'longitudinal-visits');
+    expect(r.pass).toBe(false);
+    expect(r.auto_fix_hint).toBeTruthy();
+    expect(r.auto_fix_hint!).not.toMatch(/needs .*photo\/GPS/i);
+    expect(r.detail!).not.toMatch(/missing.*photo or GPS/i);
   });
 
   test('names all four archetypes when the value is unknown', () => {

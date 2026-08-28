@@ -297,11 +297,26 @@ export function checkSignatureBlocksPresent(raw: string): QACheckResult {
  * Check 7: Scope of Work language matches the declared archetype.
  *
  * Branches on the `archetype` argument:
- *   - atomic-visit:        requires /per[- ]visit/ AND /photo|gps/
+ *   - atomic-visit:        requires visit phrasing as the unit of work
  *   - longitudinal-visits: requires visit phrasing AND a longitudinal marker
  *                          (the entity being followed, or its sequence/phase)
  *   - focus-group:         requires /per[- ]session|attestation/ AND /gdoc|google doc/
  *   - multi-stage:         requires /stage\s*\d|per stage/
+ *
+ * This check tests ARCHETYPE SHAPE ONLY. It deliberately says nothing about
+ * the evidence mechanism (photo, GPS, consent attestation, case state,
+ * observation). Photo/GPS is one possible Layer A mechanism, not a property
+ * of any archetype — a perfectly valid visit-shaped programme can exclude it,
+ * and bednet-check-2-visit does, at source. A bare `/photo|gps/` test was
+ * required here until ace#1771 and failed in both directions: it has no
+ * polarity, so it PASSED a contract whose only § 2 mention of photo/GPS was
+ * an exclusion bullet ("The partner will not: Collect photographs, GPS
+ * coordinates..."), and it would have FAILED the same contract had that
+ * exclusion simply been omitted — then told the producer, via auto_fix_hint,
+ * to add photo/GPS language contradicting its own PDD. Evidence-mechanism
+ * coverage, if ever wanted, belongs in a separate check driven by what the
+ * PDD's Evidence Model Layer A actually declares, with polarity, not
+ * assumed from the archetype.
  *
  * Pass `null`/`undefined` to skip the check entirely (returns pass with a note).
  */
@@ -322,7 +337,6 @@ export function checkArchetypeAppropriateScope(
     // the absence of session/attestation/gdoc language, not from a single
     // canonical phrase.
     if (!/\bvisit(?:s|-|\b)/i.test(scope)) missing.push('"visit" phrasing as the unit of work');
-    if (!/photo|gps/i.test(scope)) missing.push('photo or GPS evidence');
   } else if (archetype === 'longitudinal-visits') {
     // Same visit-shaped unit as atomic-visit — the paid thing is still one
     // visit producing one record. What must ALSO be present is evidence the
@@ -332,7 +346,6 @@ export function checkArchetypeAppropriateScope(
     // PDD and the contract, which is exactly how ace#1462 happened: the PDD
     // prose was longitudinal-aware and the payment predicate was not.
     if (!/\bvisit(?:s|-|\b)/i.test(scope)) missing.push('"visit" phrasing as the unit of work');
-    if (!/photo|gps/i.test(scope)) missing.push('photo or GPS evidence');
     if (!/\b(case|cases|household|community|participant|enrol|enroll|register|registered|cohort|longitudinal|over time|follow[- ]?up|repeat|phase|sequence|milestone|visit\s*\d)\b/i.test(scope)) {
       missing.push('a longitudinal marker (the followed entity, or its phase/sequence/follow-up cadence)');
     }
@@ -356,9 +369,10 @@ export function checkArchetypeAppropriateScope(
     auto_fix_hint:
       `rewrite § 2 Scope of Work to match the ${archetype} archetype's expected language. ` +
       `Missing markers: ${missing.join(', ')}. ` +
-      `atomic-visit needs "per visit" + photo/GPS; longitudinal-visits needs those PLUS the followed entity ` +
-      `(case/household/community) or its phase/sequence; focus-group needs "per session"/attestation + gdoc; ` +
-      `multi-stage needs stage references.`,
+      `atomic-visit needs visit phrasing as the unit of work; longitudinal-visits needs that PLUS the followed ` +
+      `entity (case/household/community) or its phase/sequence; focus-group needs "per session"/attestation + gdoc; ` +
+      `multi-stage needs stage references. Do NOT add evidence-mechanism language (photo, GPS) to satisfy this ` +
+      `check — the archetype does not determine the evidence model, and the PDD may put those out of scope.`,
   };
 }
 
