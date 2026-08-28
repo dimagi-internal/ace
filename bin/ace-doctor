@@ -377,9 +377,12 @@ if [ "$PREFLIGHT" = "1" ]; then
         # in-session, so the restart stays mandatory — this makes ONE restart
         # sufficient FOR THE STALE-CACHE CLASS ONLY. See ace#1579.
         #
-        # It is NOT sufficient when a stored expired OAuth credential is
-        # outranking the headersHelper PAT: there the fresh session rewrites the
-        # entry itself, so no number of restarts helps. Measured on
+        # It is NOT sufficient when no Authorization header is reaching Nova
+        # (Claude Code 2.1.238+ drops NOVA_API_KEY from the env headersHelper
+        # sees): there the fresh session rewrites the entry itself, so no number
+        # of restarts helps. The stored-OAuth-precedence reading below was
+        # DISPROVED upstream 2026-08-25 -- see nova_header_readiness, which
+        # outranks this block. Measured on
         # hh-poverty-targeting/20260824-1404 — cleared at 20:13, session started
         # 20:43:35 (so it WAS that restart), nova re-cached at 20:45:15 ~100s in,
         # then cleared and back a second time with no restart between, while a
@@ -394,9 +397,9 @@ if [ "$PREFLIGHT" = "1" ]; then
         fi
         if [ "$PF_NOVA_CACHE_CLEAR_RESULT" = "cleared" ]; then
           PF_NOVA_CACHE_CLEARED=true
-          PF_NOVA_CACHE_REMEDIATION="plugin:nova:nova was stuck in needs-auth cache despite valid NOVA_API_KEY; the stale entry has been CLEARED automatically. FIRST occurrence: Cmd-Q + reopen Claude Code, then re-run your command (MCP subprocesses only rebind on a full restart). If you have ALREADY restarted once since the last clear and nova still exposes only authenticate/complete_authentication, the cache is NOT the cause: a stored OAuth credential is outranking the headersHelper PAT (dimagi-internal/ace#1614, voidcraft-labs/nova-plugin#52). Run /mcp, select nova, choose 'Clear authentication' -- NOT 'Authenticate', which mints a fresh OAuth token and leaves the session on the wrong credential without nova.hq.read -- THEN Cmd-Q + reopen."
+          PF_NOVA_CACHE_REMEDIATION="plugin:nova:nova was stuck in needs-auth cache despite valid NOVA_API_KEY; the stale entry has been CLEARED automatically. FIRST occurrence: Cmd-Q + reopen Claude Code, then re-run your command (MCP subprocesses only rebind on a full restart). If you have ALREADY restarted once since the last clear and nova still exposes only authenticate/complete_authentication, the cache is NOT the cause: NO Authorization header is reaching Nova. Claude Code 2.1.238+ stopped passing its process env to nova's env-dependent headersHelper, which emits {} -- the client then falls back to OAuth, whose token lacks nova.hq.read (voidcraft-labs/nova-plugin#52; the earlier stored-OAuth-precedence explanation was DISPROVED 2026-08-25 by logs showing 'No access token in storage'). Read the nova_header_readiness block, which OUTRANKS this one and installs the static-header override automatically, THEN Cmd-Q + reopen. Do NOT go to /mcp: 'Clear authentication' removes an OAuth token but restores no credential, so the session re-prompts OAuth immediately, and 'Authenticate' mints a token without nova.hq.read."
         else
-          PF_NOVA_CACHE_REMEDIATION="plugin:nova:nova stuck in needs-auth cache despite valid NOVA_API_KEY; auto-clear did not apply ($PF_NOVA_CACHE_CLEAR_RESULT). Clear it from $PF_NOVA_CACHE_FILE then Cmd-Q + reopen Claude Code (run /ace:doctor for the exact node one-liner). If you have ALREADY restarted once since the last clear and nova still exposes only authenticate/complete_authentication, the cache is NOT the cause: a stored OAuth credential is outranking the headersHelper PAT (dimagi-internal/ace#1614, voidcraft-labs/nova-plugin#52). Run /mcp, select nova, choose 'Clear authentication' -- NOT 'Authenticate', which mints a fresh OAuth token and leaves the session on the wrong credential without nova.hq.read -- THEN Cmd-Q + reopen."
+          PF_NOVA_CACHE_REMEDIATION="plugin:nova:nova stuck in needs-auth cache despite valid NOVA_API_KEY; auto-clear did not apply ($PF_NOVA_CACHE_CLEAR_RESULT). Clear it from $PF_NOVA_CACHE_FILE then Cmd-Q + reopen Claude Code (run /ace:doctor for the exact node one-liner). If you have ALREADY restarted once since the last clear and nova still exposes only authenticate/complete_authentication, the cache is NOT the cause: NO Authorization header is reaching Nova. Claude Code 2.1.238+ stopped passing its process env to nova's env-dependent headersHelper, which emits {} -- the client then falls back to OAuth, whose token lacks nova.hq.read (voidcraft-labs/nova-plugin#52; the earlier stored-OAuth-precedence explanation was DISPROVED 2026-08-25 by logs showing 'No access token in storage'). Read the nova_header_readiness block, which OUTRANKS this one and installs the static-header override automatically, THEN Cmd-Q + reopen. Do NOT go to /mcp: 'Clear authentication' removes an OAuth token but restores no credential, so the session re-prompts OAuth immediately, and 'Authenticate' mints a token without nova.hq.read."
         fi
       else
         PF_NOVA_CACHE_STATUS=warn
@@ -2524,10 +2527,14 @@ else
 
        IF YOU HAVE ALREADY RESTARTED once since the last clear and nova still exposes
        only \`authenticate\`, the cache is NOT the cause and a further restart will loop:
-       a stored OAuth credential is outranking the headersHelper PAT.
-         1. /mcp -> nova -> 'Clear authentication'  (NOT 'Authenticate' — that mints a
-            fresh OAuth token and leaves the session on the wrong credential, without
-            nova.hq.read, so Phase 3 dies later at upload_app_to_hq instead)
+       no Authorization header is reaching Nova (Claude Code 2.1.238+ drops NOVA_API_KEY
+       from the env headersHelper sees, so it emits {} and the client falls back to OAuth).
+       The stored-OAuth-precedence reading was DISPROVED upstream 2026-08-25.
+         1. read the nova_header_readiness block above — it OUTRANKS this one and
+            installs the static-header override automatically. Do NOT go to /mcp:
+            'Clear authentication' restores no credential (no-op by construction here)
+            and 'Authenticate' mints a token without nova.hq.read, so Phase 3 dies
+            later at upload_app_to_hq instead
          2. Cmd-Q Claude Code and reopen
          3. verify BOTH: list_projects returns the PAT's project, AND
             get_hq_connection returns configured:true  (list_apps alone is NOT enough)

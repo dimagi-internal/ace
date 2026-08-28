@@ -324,11 +324,14 @@ in-session:
 > `~/.ace/env.sh`: if that returns this run's apps, the key is correct and
 > only the binding is wrong. **A plain restart is NOT sufficient for the
 > principal case — it has been tried and it did not clear
-> (dimagi-internal/ace#1614).** The cause is a stored OAuth token
-> outranking the `headersHelper` PAT (voidcraft-labs/nova-plugin#52). Run
-> `/mcp`, select `nova`, choose **`Clear authentication`** — NOT
-> `Authenticate` — then **quit and reopen Claude Code**, and resume
-> `/ace:run <opp>/<run-id>`.
+> (dimagi-internal/ace#1614).** The cause is that NO `Authorization` header
+> is reaching Nova: Claude Code 2.1.238+ stopped passing its process env to
+> nova's env-dependent `headersHelper`, which emits `{}`, and the client falls
+> back to OAuth — whose token lacks `nova.hq.read`
+> (voidcraft-labs/nova-plugin#52). Run `/ace:doctor`: its
+> `nova_header_readiness` probe installs the static-header override
+> automatically. Then **quit and reopen Claude Code**, and resume
+> `/ace:run <opp>/<run-id>`. Do **NOT** go to `/mcp` — see below.
 >
 > Verify with TWO calls before resuming: `list_projects` must return the
 > PAT's project, and `get_hq_connection` must return `configured: true`.
@@ -336,15 +339,20 @@ in-session:
 > account fixes the identity while leaving you on OAuth, where
 > `get_hq_connection` still answers `scope_missing: nova.hq.read`.
 
-**`Clear authentication`, never `Authenticate`.** They sit next to each
-other in the same `/mcp` menu and the wrong one reports success, which is
-why this needs saying. `Authenticate` mints a *new* OAuth token — so if you
-sign in as the right account the principal assertion above starts passing
-and the run proceeds while still on the wrong credential, missing
-`nova.hq.read`, and Phase 3 dies later at `upload_app_to_hq` instead. Only
-`Clear authentication` removes the token and lets the PAT bind. It drops the
-Nova connection outright rather than falling back live, which is why the
-restart is part of the remedy rather than an alternative to it.
+**Neither `/mcp` menu item is the lever — this was corrected upstream on
+2026-08-25 and ACE's prose lagged it by three days.** `Authenticate` mints a
+*new* OAuth token, so signing in as the right account makes the principal
+assertion above start passing while the run proceeds on a credential missing
+`nova.hq.read`, and Phase 3 dies later at `upload_app_to_hq` instead. But
+`Clear authentication` is not the fix either: it removes an OAuth token and
+restores **no** credential, so when no header is being sent the session simply
+re-prompts OAuth and lands in the identical state. The earlier explanation —
+*a stored OAuth credential outranks the `headersHelper` PAT* — was
+**DISPROVED** by client logs showing `No access token in storage` alongside
+`Successfully retrieved 0 headers from headersHelper` (nova-plugin#52, third
+correction). There was never a stored token to outrank anything. The lever is
+the **static-header override**, which `nova_header_readiness --heal` installs;
+the restart is what binds it, since MCP subprocesses only rebind at startup.
 
 **Do not collapse the two failures into one remedy.** A *bind miss* (the
 server never attached) IS cleared by quitting and reopening Claude Code — that
@@ -355,10 +363,13 @@ the second halt came from a claude process started **after** the first halt
 and bound exactly the same wrong principal. Prescribing a restart there sends
 the operator around a loop that produces no new information and costs a
 session each lap. `nova` is a `type: http` server whose `headersHelper` reads
-`$NOVA_API_KEY` from Claude Code's own process env; when the key is verifiably
-present there (`ps -Eww -p <claude-pid>`) and a direct `curl` with it returns
-the right apps, what is left is the connection's stored OAuth credential,
-which only `Clear authentication` removes. Do NOT probe the macOS Keychain to
+`$NOVA_API_KEY` from Claude Code's own process env — and on 2.1.238+ that env
+does not carry it. Read the premise the right way round: `ps -Eww -p
+<claude-pid> | tr ' ' '\n' | grep -c '^NOVA_API_KEY='` returning **0** (with
+`grep -cE '^[A-Z_]+='` as the readability control) is the diagnosis, not a
+contradiction of it — the helper emitted `{}` and no header was ever sent,
+even though a direct `curl` with the same key returns the right apps. That is
+`nova_header_readiness`'s whole question, and its `--heal` is the remedy. Do NOT probe the macOS Keychain to
 confirm that — `security(1)` hangs forever on a GUI prompt in a
 non-interactive shell.
 
