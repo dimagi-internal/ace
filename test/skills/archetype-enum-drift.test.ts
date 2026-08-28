@@ -55,6 +55,7 @@ describe('archetype enumerations track VALID_ARCHETYPES', () => {
     ['skills/idea-to-pdd-eval/SKILL.md', '§ Archetypes — the per-archetype sub-checks under archetype_coherence'],
     ['skills/pdd-to-work-order-qa/SKILL.md', 'the check-7 row describing per-archetype scope'],
     ['skills/pdd-to-work-order/SKILL.md', '§ Archetypes — the branch the producer follows'],
+    ['agents/commcare-setup.md', 'the per-archetype Learn-app shape the Phase 3 agent dispatches on'],
   ])('%s names every archetype (%s)', (rel, _why) => {
     const text = read(rel);
     const missing = ARCHETYPES.filter((a) => !text.includes(a));
