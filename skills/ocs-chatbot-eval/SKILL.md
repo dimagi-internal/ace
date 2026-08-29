@@ -2,7 +2,7 @@
 name: ocs-chatbot-eval
 description: >
   LLM-as-Judge grader for OCS chatbot transcripts. Modes: --quick (1-dim
-  smoke), --deep / --monitor (5-dim calibrated; emits gate brief).
+  smoke), --deep / --monitor (5-dim calibrated).
 disable-model-invocation: false
 ---
 
@@ -48,13 +48,12 @@ with `5-ocs/ocs-agent-setup.md`). If the instrument — or any artifact
 this skill declares as a ground-truth input above — is present, emit
 `[WARN] deep verdict measured against a contaminated collection: the
 test-prompts instrument is indexed in collection <id>` in
-`auto_surfaced`, and say so in the gate brief. Never let a contaminated
+`auto_surfaced`. Never let a contaminated
 deep verdict pass silently as clean evidence.
 
 ## Products
 
 - `5-ocs/ocs-chatbot-eval_verdict-<mode>.yaml` — verdict YAML per `_eval-template.md § Verdict YAML contract`
-- `5-ocs/ocs-chatbot-eval_gate-brief-<mode>.md` (`--deep` only) — Phase 5→6 gate brief
 - `9-execution-manager/ocs-chatbot-eval_verdict-monitor.yaml` — recurring monitor verdict (when `--monitor`)
 
 ## Modes
@@ -74,8 +73,8 @@ producer wrote to.
 
 | Mode | Transcript source | Rubric | Gate | Writes |
 |---|---|---|---|---|
-| `--quick` | `5-ocs/ocs-chatbot-qa_transcript-quick.md` | 1 dimension (`overall_quality_0_to_3`) | every prompt ≥ 2/3; retry signal otherwise | stdout summary + `5-ocs/ocs-chatbot-eval_verdict-quick.yaml` + `5-ocs/ocs-chatbot-eval_gate-brief-quick.md` |
-| `--deep` | `5-ocs/ocs-chatbot-qa_transcript-deep.md` | 5 dimensions (full rubric below) | overall ≥ 7 AND zero Fail verdicts | `5-ocs/ocs-chatbot-eval_verdict-deep.yaml` + `5-ocs/ocs-chatbot-eval_report-deep.md` + `5-ocs/ocs-chatbot-eval_gate-brief-deep.md` |
+| `--quick` | `5-ocs/ocs-chatbot-qa_transcript-quick.md` | 1 dimension (`overall_quality_0_to_3`) | every prompt ≥ 2/3; retry signal otherwise | stdout summary + `5-ocs/ocs-chatbot-eval_verdict-quick.yaml` |
+| `--deep` | `5-ocs/ocs-chatbot-qa_transcript-deep.md` | 5 dimensions (full rubric below) | overall ≥ 7 AND zero Fail verdicts | `5-ocs/ocs-chatbot-eval_verdict-deep.yaml` + `5-ocs/ocs-chatbot-eval_report-deep.md` |
 | `--monitor` | `9-execution-manager/ocs-chatbot-qa_transcript-monitor.md` | 5 dimensions (full rubric below) | none — trend only | `9-execution-manager/ocs-chatbot-eval_verdict-monitor.yaml` + `9-execution-manager/ocs-chatbot-eval_report-monitor.md` + append to `9-execution-manager/ocs-chatbot-eval_trend.md` |
 
 If no mode is passed, default to `--quick`.
@@ -414,12 +413,17 @@ reference — its contents describe what the orchestrator now synthesizes
 from the verdict YAMLs. -->
 
 
-## Gate Brief
+## Gate Brief — reference only, NOT an artifact this skill writes
 
-*Applies to `--quick` (Phase 5 gate, post-Task-6) and `--deep`
-(post-`/ace:qa-deep`).* Summarizes the verdict so the admin can decide
-whether the bot is ready to advance without reading the full transcript.
-`--monitor` does not produce a gate brief.
+**This skill writes no gate-brief file.** The write step was removed in
+0.13.116 (see the comment above Step 7) and `lib/artifact-manifest.ts`
+registers no gate-brief artifact. What follows describes the *content* the
+orchestrator synthesizes at a Pause Point directly from this skill's verdict
+YAMLs — it is a specification of that summary, not a set of write
+instructions. Do not emit these as files.
+
+*Applies to `--quick` (Phase 5 gate) and `--deep` (post-`/ace:qa-deep`).*
+`--monitor` produces no such summary.
 
 ### Deep mode gate brief shape
 
@@ -521,3 +525,4 @@ When `--dry-run` is active:
 | 2026-05-04 | **`--quick` now writes a gate brief.** `--quick` mode emits `gate-briefs/ocs-chatbot-eval-quick.md` so the orchestrator's Phase 5→6 gate lookup resolves (post-Task-6 contract). Defined the quick-mode brief shape inline (single dimension, 3 prompts, no multi-dim breakdown). `--monitor` still does not produce a gate brief. Final-review followup to the shallow/deep QA split. | ACE team |
 | 2026-05-05 | **Path-scheme migration.** All read/write paths repointed to `runs/<run-id>/<phase>/ocs-chatbot-eval_*-<mode>.<ext>` per the manifest (`5-ocs/` for `--quick`/`--deep`; `9-execution-manager/` for `--monitor`). Retires the opp-level `qa-captures/` / `verdicts/` / `eval-reports/` / `gate-briefs/` directories. Updated: Modes table, Step 1 transcript locator + golden-template fallback path, Step 4 verdict output, Step 6 report output, Step 7 trend path, Step 8 gate-brief output, Gate Brief artifact-under-review for both modes, the deep + quick verdict YAML examples (`capture_path` field), and the worked Quick example. No behavior change beyond paths. | ACE team |
 | 2026-05-05 | **Rubric prose extracted.** The 5-dimension table cells were ~600 words each, packing per-dimension criteria with hard deductions, multi-tier caps, capture-method branches, and suite-level rules into single rows. The dimension table now carries a one-line summary plus a pointer to a new `## Rubric Rules` section that breaks each dimension into labeled subsections (Correctness, Source usage with `openai-compat` / `widget` branches, Refusal correctness with tiered cap table, Tone, Tagging) plus a Suite level subsection (Inflation guard, Pre/post-cap reporting). Same grading semantics — every existing rule, deduction, and cap is preserved verbatim under its own heading. Rationale: LLM judges miss rules buried in dense prose; labeled subsections give the rubric visible structure. | ACE team |
+| 2026-08-29 | **Stop declaring gate-brief artifacts the skill does not write (dimagi-internal/ace#1805).** 0.13.116 removed the gate-brief write step and `lib/artifact-manifest.ts` registers none, but the frontmatter description, the `## Products` list and BOTH `## Modes` rows still named `ocs-chatbot-eval_gate-brief-<mode>.md` as an output — and contradicted each other, Products saying `--deep` only while the Modes table had `--quick` emitting one too. Sibling producers (`idea-to-pdd`, `llo-launch`, `app-deploy`) had their tables cleaned in the same 0.13.116 pass; this file got the explanatory comment and not the cleanup, so an agent reading the Modes table wrote an orphan file into `5-ocs/` that nothing reads. Removed the declarations and retitled the retained `## Gate Brief` section to state plainly that it specifies the summary the orchestrator synthesizes from the verdict YAMLs rather than a file to emit. Found during Phase 5 of `hh-poverty-targeting/20260828-0702`. | ACE team |
