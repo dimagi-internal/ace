@@ -56,8 +56,32 @@ const ADDRESSED_TO_READER =
 /** The embed path ace#1303 live-probed as a 404 — looks like a URL, is not one. */
 const EMBED_404_RE = /openchatstudio\.com\/chatbots\/embed\/[0-9a-f-]{36}/i;
 
-/** An OCS host with no path, or only a bare `/`. */
-const BARE_HOST_RE = /https?:\/\/(?:www\.)?openchatstudio\.com(?![\w/])\/?/i;
+/**
+ * The OCS host, wherever it appears and whatever follows it.
+ *
+ * This rule is deliberately UNCONDITIONAL and PATH-AGNOSTIC (ace#1850). It used
+ * to read `openchatstudio\.com(?![\w/])\/?` — a negative lookahead requiring
+ * that NOTHING follow the host — and to additionally require
+ * `ADDRESSED_TO_READER` on the same line. Both halves inverted the coverage:
+ *
+ *   - Every real per-opp URL has a path (`/a/<team>/chatbots/<uuid>/start/`), so
+ *     the lookahead meant the rule could only ever fire on a bare host carrying
+ *     no credentials — the harmless form — and never on the credential-bearing
+ *     form it exists to stop.
+ *   - A markdown support link is conventionally a heading plus the bare URL on
+ *     its own line, which puts the addressing word on the PREVIOUS line. So the
+ *     most common layout matched nothing at all and the guard returned
+ *     `ok: true` on the exact artifact it was built to block.
+ *
+ * `skills/_training-template.md § Support channel` states the contract with no
+ * addressing condition: presence of the host in a worker-facing artifact IS the
+ * violation. The scheme is optional because a schemeless `openchatstudio.com/...`
+ * is the same disclosure.
+ *
+ * `ADDRESSED_TO_READER` is retained for `bare-uuid` ONLY, where the ace#1026
+ * precision concern is real — see that rule below.
+ */
+const OCS_HOST_RE = /(?:https?:\/\/)?(?:www\.)?openchatstudio\.com(?:\/\S*)?/i;
 
 export function checkWorkerFacingSupportChannel(markdown: string): SupportChannelReport {
   const findings: SupportChannelFinding[] = [];
@@ -65,6 +89,7 @@ export function checkWorkerFacingSupportChannel(markdown: string): SupportChanne
 
   lines.forEach((text, i) => {
     const line = i + 1;
+    /** Consumed by the `bare-uuid` rule ONLY — see ADDRESSED_TO_READER. */
     const addressed = ADDRESSED_TO_READER.test(text);
 
     const embed = EMBED_404_RE.exec(text);
@@ -73,8 +98,9 @@ export function checkWorkerFacingSupportChannel(markdown: string): SupportChanne
       return; // one finding per line is enough to send the author back to it
     }
 
-    const host = BARE_HOST_RE.exec(text);
-    if (host && addressed) {
+    // Unconditional: NOT gated on `addressed` (ace#1850).
+    const host = OCS_HOST_RE.exec(text);
+    if (host) {
       findings.push({ kind: 'unresolvable-ocs-host', line, match: host[0], text: text.trim() });
       return;
     }
