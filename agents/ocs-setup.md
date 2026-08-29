@@ -80,16 +80,28 @@ Invoke `ocs-chatbot-qa --quick`, then `ocs-chatbot-eval --quick`.
   Phase 9 activation.
 - Depends on: Step 1
 
-### Step 3: Stage credentials for Connect
-Present `{public_id, embed_key}` and instruct the operator to paste them into
-the Connect opportunity's widget configuration.
+### Step 3: Stage the chatbot for the LLO
+Lead with the **public chat URL** — the route that works today and needs no
+configuration hop. Hold `{public_id, embed_key}` for the embed that becomes
+possible when CCC-301 ships.
 - Input: `ocs-agent-config.md` from Step 1
-- Output: `ACE/<opp-name>/runs/<run-id>/5-ocs/ocs-setup_widget-handoff.md` with the creds,
-  target Connect URL, and exact paste instructions
+- Output: `ACE/<opp-name>/runs/<run-id>/5-ocs/ocs-setup_widget-handoff.md` with the
+  public chat URL, the credentials, the Connect opportunity this bot is bound to
+  (an identity reference, so a reader can tell which run's bot they hold), and a
+  chat-test prompt whose answer is opp-specific
 
-**Why manual:** the Connect `update_opportunity` API is unbuilt (tracked under
-CCC-301). When it ships, this step becomes a single API call. Until then,
-`## Current Workaround` applies.
+**Do NOT instruct anyone to paste the credentials into a Connect field.** There
+is no per-opportunity widget field: `connect_update_opportunity` carries no
+widget parameter and `mcp/connect/` has no widget or embed surface at all, and
+`training-faq`, `training-quick-reference`, `training-flw-guide` and
+`_training-template` all say so verbatim. An instruction naming a Connect
+help-widget field group sends a reader hunting for a UI element this repo
+elsewhere states is absent — that shipped on
+`hh-poverty-targeting/20260828-0702` and is ace#1811.
+
+**Why there is no API call:** Connect's `update_opportunity` has no widget-config
+parameter (tracked under CCC-301). When it ships, this step becomes a single API
+call and the credentials above become the payload.
 
 ### Step 4: Widget-handoff eval
 Unless `--no-evals` was passed, invoke the `ocs-widget-handoff-eval` skill.
