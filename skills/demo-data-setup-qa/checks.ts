@@ -371,15 +371,22 @@ export function checkInteractiveRunsLive(pairs: DashboardPayloadPair[]): QACheck
  *    no derivation behind it: a `derivation` of `null` is only legal with a
  *    stated reason (the `denovo` provider has no deliver app to read).
  *
- * 2. **The old auto-fix was impossible.** "Regenerate with the constraint
- *    applied at the manifest" names a knob the labs generator does not have —
- *    `BeneficiaryCohort` in
- *    `connect_labs/labs/synthetic/generator/fixtures/manifest.py` carries no
- *    conditional / relevant / branch primitive, and `FieldDistribution.null_rate`
- *    is unconditional. So a gated form could only reach green by narrowing the
- *    spec or hand-patching records. The hint now points at
- *    `scrubOffBranchFields` — a declared, reproducible, idempotent generator
- *    post-step.
+ * 2. **The old auto-fix was impossible on this path.** "Regenerate with the
+ *    constraint applied at the manifest" reached for a knob that, at the time,
+ *    did not exist. It exists now: `BeneficiaryCohort.relevance_groups`
+ *    (`connect-labs#1331`, merged 2026-08-27). The remedy is unchanged anyway,
+ *    because the primitive is INERT for the runs this check guards — relevance
+ *    is applied only to questions present in the HQ `FormSchema`
+ *    (`fixtures/fields.py:417-422`), and the trailing orphan-write loop is gated
+ *    by a set computed ONCE at `fields.py:484`, before it runs. A labs-only opp
+ *    has no Connect `app_structure`, so `FormSchema.questions` is empty
+ *    (`schema_loader.parse_form_schema_from_app_json`), every declared path is an
+ *    orphan, and the controller is not in the record when line 484 evaluates the
+ *    gate. Measured on `bednet-check-2-visit/20260828-0629`: the producer
+ *    DECLARED `relevance_groups` and the generator still emitted 36 off-branch
+ *    values (ace#1833). So the hint points at `scrubOffBranchFields` — a
+ *    declared, reproducible, idempotent generator post-step — and says to
+ *    declare `relevance_groups` on a schema-backed opp, where it does work.
  *
  * An unparsed `relevant` is a FINDING, not a silent pass: an expression the
  * derivation could not read is a gate this check cannot prove was audited.
@@ -402,8 +409,13 @@ const SCRUB_HINT =
   'Re-run the branch scrub, do not narrow the spec: scrubOffBranchFields(records, spec.conditionalFields) ' +
   'from lib/dataset-constraints.ts, then write the scrubbed user_visits.json back to the opp\'s fixture ' +
   'folder BEFORE any dashboard run is minted, and record the per-field counts in the run summary. There is ' +
-  'no manifest-side remedy: the labs generator has no conditional/relevant primitive, so a gated form ' +
-  'always draws off-branch values (dimagi-internal/ace#1658).';
+  'no manifest-side remedy ON THIS PATH: BeneficiaryCohort.relevance_groups DOES exist ' +
+  '(dimagi-internal/connect-labs#1331, merged 2026-08-27), but relevance is only applied to questions ' +
+  'present in the HQ FormSchema. A labs-only opp has no Connect app_structure, so that schema is empty, ' +
+  'every declared path is orphan-written, and the orphan gate is computed once BEFORE the orphan loop ' +
+  '(fixtures/fields.py:484) from a record that does not yet hold the controller \u2014 so it can never fire. ' +
+  'Declaring relevance_groups here is inert: a run that declared it still emitted 36 off-branch values. ' +
+  'Do declare it on a schema-backed opp, where it works (dimagi-internal/ace#1658, #1833).';
 
 export function checkDatasetObeysPddConstraints(input: DatasetConstraintCheckInput): QACheckResult {
   const problems: string[] = [];

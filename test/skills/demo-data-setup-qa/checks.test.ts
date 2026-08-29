@@ -329,9 +329,11 @@ describe('checkInteractiveRunsLive (#1162)', () => {
  *    them and measured 18 of 276 off-branch on each. The spec — not the data
  *    — decided the verdict, so the spec must be derived, and a run with no
  *    derivation behind it must not pass.
- *  - The auto-fix hint sent the author to a manifest knob that does not exist
- *    (`BeneficiaryCohort` has no conditional/relevant primitive), making the
- *    check unpassable for any gated form. The hint now names the scrub.
+ *  - The auto-fix hint sent the author to a manifest knob that did not exist
+ *    at the time, making the check unpassable for any gated form. The hint now
+ *    names the scrub. `BeneficiaryCohort.relevance_groups` shipped later
+ *    (connect-labs#1331, 2026-08-27) and is inert on this path — see ace#1833
+ *    and `upstream-absence-claims.test.ts`.
  */
 import { checkDatasetObeysPddConstraints } from '../../../skills/demo-data-setup-qa/checks';
 import type { ConstraintReport } from '../../../lib/dataset-constraints';

@@ -272,16 +272,26 @@ export function formatConstraintReport(r: ConstraintReport): string {
 // narrowing is the whole defect.
 //
 // The second half: the fix the old auto-fix hint demanded ("regenerate with
-// the constraint applied at the manifest") does not exist. connect-labs
-// `connect_labs/labs/synthetic/generator/fixtures/manifest.py` gives
-// `BeneficiaryCohort` `field_distributions` / `progression` / `correlation` /
-// `repeat_groups` / `longitudinal` and no conditional / relevant / branch
-// primitive of any kind; `FieldDistribution.null_rate` is unconditional and
-// `CorrelationSpec` can make two fields co-vary but cannot make one ABSENT on
-// a branch. So a gated form could never pass, and the only routes to green
-// were under-declaring the spec or hand-patching records. `scrubOffBranchFields`
-// is the third: a declared, reproducible, idempotent post-generation step
-// driven by the app's own `relevant` expressions.
+// the constraint applied at the manifest") named a knob that did not exist at
+// the time. It exists now — `BeneficiaryCohort.relevance_groups`
+// (`connect_labs/labs/synthetic/generator/fixtures/manifest.py:300`), shipped in
+// dimagi-internal/connect-labs#1331, merged 2026-08-27 — and it is INERT on the
+// path this module guards, so the conclusion is unchanged and only the reason
+// moves. Relevance is applied per question inside the loop over the HQ
+// `FormSchema` (`fixtures/fields.py:417-422`), but the trailing orphan-write
+// loop is gated by a set computed ONCE at `fields.py:484`, before it runs, out
+// of the record built so far. A labs-only opportunity has no Connect
+// `app_structure`, so `parse_form_schema_from_app_json` returns
+// `FormSchema(questions=[])`, every declared path is an orphan, and the
+// controller is absent from the record when line 484 evaluates the gate — it
+// can never fire. Measured: `bednet-check-2-visit/20260828-0629` DECLARED
+// `relevance_groups` and still emitted 36 off-branch values (ace#1833).
+// `FieldDistribution.null_rate` is unconditional and `CorrelationSpec` can make
+// two fields co-vary but cannot make one ABSENT on a branch, so neither
+// substitutes. `scrubOffBranchFields` remains the remedy on this path: a
+// declared, reproducible, idempotent post-generation step driven by the app's
+// own `relevant` expressions. On a schema-backed opp `relevance_groups` does
+// work — declare it there too, and still scrub.
 // ────────────────────────────────────────────────────────────────────
 
 /**

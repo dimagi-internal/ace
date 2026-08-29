@@ -278,13 +278,29 @@ front half (how the labs-only opp + its data come to exist) differs.
        branch, and returns a per-field report. It is idempotent and pure.
 
        This is a declared, reproducible generator post-step — not hand-patching
-       records — and it is the ONLY remedy that exists. The labs manifest has
-       no conditional / relevant / branch primitive at all
-       (`connect_labs/labs/synthetic/generator/fixtures/manifest.py`:
-       `BeneficiaryCohort` carries `field_distributions`, `progression`,
-       `correlation`, `repeat_groups`, `longitudinal`; `FieldDistribution.null_rate`
-       is unconditional and `CorrelationSpec` cannot make a field ABSENT on a
-       branch), so a gated form always draws off-branch values (ace#1658).
+       records — and on this path it is the only remedy that works.
+
+       **The manifest DOES carry a relevance primitive; it is inert here.**
+       `BeneficiaryCohort.relevance_groups: dict[str, RelevanceRule]`
+       (`connect_labs/labs/synthetic/generator/fixtures/manifest.py:300`) shipped
+       in `dimagi-internal/connect-labs#1331`, merged 2026-08-27. Declare it —
+       but do not expect it to do anything on a labs-only opp, and never let it
+       stand in for the scrub. Relevance is applied only to questions present in
+       the HQ `FormSchema`: the schema loop consults the gate per question
+       (`fixtures/fields.py:417-422`), but the trailing orphan-write loop is
+       gated by a set computed **once, before it runs** (`fields.py:484`), out of
+       the record built so far. A labs-only opportunity has no Connect
+       `app_structure`, so `parse_form_schema_from_app_json` returns
+       `FormSchema(questions=[])`, every declared path is orphan-written, and the
+       controller is not in the record when line 484 evaluates the gate — it can
+       never fire. Measured on `bednet-check-2-visit/20260828-0629` (labs opp
+       10052): `relevance_groups` was declared and the generator still emitted
+       **36** off-branch values, which the scrub then cleared (ace#1833).
+       `FieldDistribution.null_rate` is unconditional and `CorrelationSpec` can
+       make two fields co-vary but cannot make one ABSENT on a branch, so neither
+       substitutes either. On a schema-backed opp (`clone`, or an `ace-run` opp
+       whose deliver app resolves) `relevance_groups` does work — declare it
+       there, and still scrub (ace#1658).
 
        Write the scrubbed `user_visits.json` back to the opp's fixture folder
        (the `folder_id` `synthetic_generate_from_manifest` returned) with
