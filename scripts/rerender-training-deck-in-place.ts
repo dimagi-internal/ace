@@ -44,6 +44,7 @@ import {
   parseTrainingSpec,
   resolveManifest,
   buildSlidesRequestsV2,
+  extractDriveFileId,
   STENCILS,
   type StencilKey,
   type TrainingDeckSpec,
@@ -243,11 +244,24 @@ async function main() {
   }
 
   // -- pre-flight: anyone-with-link on every manifest fileId ---------------
-  const allIds = [
+  // Manifest VALUES are URLs (`https://drive.google.com/uc?export=view&id=<ID>`),
+  // not ids — passing one straight to permissions.create as `fileId` 404s on
+  // every entry and the catch below swallows it, so the step reported success
+  // while sharing nothing (ace#1825). Extract the id first, and say so loudly
+  // when a value yields none.
+  const values = [
     ...Object.values(spec.manifest.common ?? {}),
     ...Object.values(spec.manifest.opp ?? {}),
-  ].map((v) => String(v).replace(/^drive:/, ''));
-  for (const id of allIds) {
+    ...Object.values(spec.manifest.template ?? {}),
+  ].map(String);
+  const allIds: string[] = [];
+  for (const value of values) {
+    const id = extractDriveFileId(value);
+    if (!id) {
+      console.log(`share skip (no drive id in manifest value): ${value}`);
+      continue;
+    }
+    allIds.push(id);
     try {
       await drive.permissions.create({
         fileId: id,
@@ -255,10 +269,10 @@ async function main() {
         requestBody: { role: 'reader', type: 'anyone' },
       });
     } catch (e: any) {
-      console.log(`share skip (${id}): ${String(e?.message).slice(0, 60)}`);
+      console.log(`share skip (${id}): ${String(e?.message).slice(0, 80)}`);
     }
   }
-  console.log(`pre-flight sharing done (${allIds.length} ids)`);
+  console.log(`pre-flight sharing done (${allIds.length} of ${values.length} manifest values)`);
 
   // -- read current deck ----------------------------------------------------
   const before = await slides.presentations.get({ presentationId: cli.deck, fields: GET_FIELDS });

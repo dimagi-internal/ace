@@ -407,6 +407,37 @@ export interface ResolvedManifest {
 }
 
 /**
+ * Extract the bare Drive fileId from any of the shapes a manifest value or
+ * a slide `image` can legitimately carry: a bare id, a `drive:<id>` alias
+ * value, or a Drive URL (`…/uc?export=view&id=<id>`, `…/file/d/<id>/view`,
+ * `…/open?id=<id>`). Returns `null` when the input is not a Drive
+ * reference at all (e.g. an external https image URL).
+ *
+ * Exists because a caller that needs the ID — not the URL — kept
+ * re-deriving it by hand and getting it wrong. `rerender-training-deck-in-place`
+ * passed the whole `uc?export=view&id=<id>` URL to `drive.permissions.create`
+ * as `fileId`, so every anyone-with-link pre-flight call 404'd, was swallowed
+ * by its catch, and the step still printed "sharing done". It shared nothing
+ * for every deck it ever ran on. That was invisible only because
+ * `app-screenshot-capture` already shares its captures — an unshared manifest
+ * entry would have rendered as a blank image with no error anywhere.
+ * (dimagi-internal/ace#1825)
+ */
+export function extractDriveFileId(value: string): string | null {
+  const v = String(value).trim().replace(/^drive:/, '');
+  if (!v) return null;
+  if (/(?:drive|docs)\.google\.com/.test(v)) {
+    // Same two shapes normalizeDriveImageUrl recognises, in the same order.
+    const m =
+      v.match(/\/file\/d\/([a-zA-Z0-9_-]+)/) ?? v.match(/[?&]id=([a-zA-Z0-9_-]+)/);
+    return m ? m[1] : null;
+  }
+  // A bare id: Drive ids are url-safe base64-ish and have no scheme or slash.
+  if (/^[a-zA-Z0-9_-]+$/.test(v)) return v;
+  return null;
+}
+
+/**
  * Normalize any Google Drive image URL to the embeddable
  * `uc?export=view&id=<id>` form that the Slides API's `createImage`
  * accepts. Non-Drive URLs pass through unchanged.
