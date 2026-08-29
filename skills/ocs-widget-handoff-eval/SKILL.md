@@ -8,12 +8,17 @@ disable-model-invocation: false
 
 # OCS Widget Handoff Eval
 
-The OCS widget is staged at the end of Phase 5 (`ocs-setup`) for the LLO
-to paste into Connect's opportunity-config UI in Phase 9 (`llo-onboarding`).
-Until CCC-301 ships an `update_opportunity` API for widget-config, this
-hop is HITL. This rubric grades the staging artifact (`ocs-setup/widget-handoff.md`)
-to make sure the operator has everything they need: a real widget URL, a
-real embed key, and the right opportunity-binding instructions.
+The OCS chatbot is staged at the end of Phase 5 (`ocs-setup`) so the LLO can
+reach it. **Connect has no per-opportunity widget field today (CCC-301), so
+there is nothing to paste it into** — `connect_update_opportunity` carries no
+widget parameter and `mcp/connect/` contains no widget or embed surface at all.
+The route that works right now is the bot's **public chat URL**, which needs no
+configuration hop.
+
+This rubric grades the staging artifact (`ocs-setup/widget-handoff.md`) on
+whether it gives the operator what they can actually use today: a live public
+chat URL, the credentials held for when CCC-301 ships, the opportunity this bot
+is bound to, and a way to verify they are talking to the right bot.
 
 See `skills/_eval-template.md` for shared contracts. Authored 0.10.29 to
 absorb turmeric run_time_followups item 10 (HITL widget paste-in until
@@ -45,8 +50,8 @@ CCC-301).
    | Dimension | Weight | Criteria |
    |---|---|---|
    | **Widget URL resolves** | 25% | The handoff must carry the bot's **public chat URL** — `https://www.openchatstudio.com/a/<team_slug>/chatbots/<public_id>/start/`, built with `buildOcsPublicChatUrl` from `lib/ocs-public-chat-url.ts` — plus the `public_id` and a non-empty `embed_key` for the widget element. Probe it anonymously and require a **200**. **The probe MUST carry cookies through the redirect** (`curl -L -c jar -b jar`, or a Playwright context): `start_session_public` creates a session and 302s to `/s/<session_id>/chat/`, which is wrapped in `@verify_session_access_cookie`, so a cookieless fetch reads **404 on a perfectly working bot**. Verified live 2026-08-14 against `connect-ace` / `f92d26f3-…`: no jar → 302 then 404; with jar → 200. URL-shape-correct but genuinely unreachable = ≤6 ([PLATFORM]). **A `503` carrying OCS's maintenance page is `[PLATFORM]`, never a handoff defect** — `start_session_public` returns it when the team's `platform=WEB` `ExperimentChannel` is disabled (OCS #4230), a team-wide admin kill-switch that takes down every ACE per-opp chat URL at once and says nothing about this artifact. Score the URL on its shape and note the cause; do not deduct (ace#1812). URL-shape-broken, or the retired `/chatbots/embed/<public_id>/` path (a 410 stub since OCS #3540, 2026-08-03) = ≤3. **Do NOT deduct for the absence of an embed page** — there isn't one, and the handoff naming the `start/` route instead is correct, not a defect (ace#1021). |
-   | **Connect opp link** | 20% | widget-handoff.md must reference the Connect opportunity URL the LLO needs to paste INTO. Mismatch with run_state.yaml's `connect_opportunity.url` = 4-point deduction. Missing = ≤4. |
-   | **Operator instructions clarity** | 30% | The handoff must tell a non-technical LLO (a) where to paste (Connect opp config tab, specific field name), (b) what to paste (the widget URL or just the embed_key, depending on Connect's UI), and (c) how to verify (chat-test prompt). Each missing element = 2-point deduction. |
+   | **Connect opp binding** | 20% | widget-handoff.md must name the Connect opportunity this chatbot is bound to, so a reader can tell which opp's bot they hold — an opp typically has several runs' bots and they look alike. This is an IDENTITY reference, **not a paste target**: there is no per-opportunity widget field to paste into (see the header). Mismatch with run_state.yaml's `connect_opportunity.url` = 4-point deduction. Missing = ≤4. |
+   | **Operator instructions clarity** | 30% | The handoff must tell a non-technical reader (a) **what to do today** — share the public chat URL, which requires no configuration step — (b) how to verify they have the right bot (a chat-test prompt whose answer is opp-specific), and (c) what the `public_id` / `embed_key` are for, namely the embed that becomes possible when CCC-301 ships. Each missing element = 2-point deduction. **Requiring a Connect paste-in is an AUTO-FAIL for this dimension, not a bonus** (≤3): an instruction to find a "support chatbot / help widget field group" sends a reader hunting for a UI element that does not exist, and four sibling skills — `training-faq`, `training-quick-reference`, `training-flw-guide`, `_training-template` — state so verbatim. A handoff that says plainly *no paste-in is possible yet* is CORRECT and scores full marks (ace#1811). |
    | **Credential hygiene** | 25% | `embed_key` is opp-specific (an OCS bot-level value), NOT a global API key — its presence is expected and is never a finding. The guard protects against exactly one thing: a **credential that grants access beyond this single opportunity** appearing in an LLO-facing artifact — `OCS_API_TOKEN`, `OCS_PASSWORD`, `OCS_GOLDEN_TEMPLATE_ID`, `LABS_MCP_TOKEN`, or any HQ / Connect credential. Surface a `[WARN]` per such value; a leak is the auto-fail below. **`team_slug` and `public_id` are public-by-construction and are NEVER a hygiene finding.** The anonymous chat route is team-scoped, so the URL `widget_url_resolves` REQUIRES (row above) necessarily contains the team slug — deducting for it would fail a correct handoff on the strength of the dimension that mandates it (ace#1680). |
 
    **Deduction rules:**
@@ -81,7 +86,7 @@ CCC-301).
      entry per verdict; ties to CCC-301.
    - `[DRIFT]` per widget-handoff claim ↔ live ocs_get_chatbot or
      run_state.yaml disagreement.
-   - `[INFO]` for "widget URL fetched OK; LLO can paste."
+   - `[INFO]` for "public chat URL fetched OK; the LLO can be sent the link as-is."
    - `[INFO-SKIPPED]` for the live HTTP probe when offline-mode is requested.
 
 5. **Write the verdict YAML** to
@@ -106,7 +111,7 @@ CCC-301).
 
    dimensions:
      widget_url_resolves:           { score: 9.0,  weight: 0.25 }
-     connect_opp_link:              { score: 9.5,  weight: 0.20 }
+     connect_opp_binding:           { score: 9.5,  weight: 0.20 }
      operator_instructions_clarity: { score: 8.0,  weight: 0.30 }
      credential_hygiene:            { score: 9.5,  weight: 0.25 }
 
@@ -115,14 +120,14 @@ CCC-301).
        score: 9.0
        verdict: pass
        note: "Includes public_id 1fcddd08-...; embed_key wDwe70vquTL...; HTTP probe returned 200."
-     - ref: "Connect opp link"
+     - ref: "Connect opp binding"
        score: 9.5
        verdict: pass
-       note: "Matches run_state.yaml connect_opportunity.url for 249ad8fe-...; 'paste into Configuration → Chatbot Widget' instruction present."
+       note: "Names the bound opportunity and matches run_state.yaml connect_opportunity.url for 249ad8fe-...; carries it as an identity reference and correctly states no paste-in target exists yet."
 
    auto_surfaced:
      - severity: PLATFORM
-       message: "Widget paste-in is HITL until CCC-301 (Connect's update_opportunity API for widget-config). LLO must manually paste; rubric grades staging not paste-in."
+       message: "No Connect paste-in exists yet: connect_update_opportunity carries no widget parameter (CCC-301), so the public chat URL is the working route. Rubric grades staging, not a paste-in."
      - severity: INFO
        message: "embed_key is opp-specific (OCS bot-level), not a cross-opportunity credential. Safe to surface in LLO-facing doc. team_slug/public_id are public-by-construction (they are in the mandated chat URL)."
 
@@ -176,6 +181,7 @@ focus-group / multi-stage opps.
 
 | Date | Change | Author |
 |------|--------|--------|
+| 2026-08-29 | **The rubric required an operator instruction that does not exist, and thereby caused the defect it should have caught (ace#1811).** `operator_instructions_clarity` (30%) mandated telling the LLO "where to paste (Connect opp config tab, specific field name)", and the "Connect opp link" dimension called the opportunity URL the one the LLO "needs to paste INTO". There is no such field: `connect_update_opportunity` carries no widget parameter and `mcp/connect/` contains no widget or embed surface at all, while four sibling skills state "Connect has no per-opp widget field" verbatim. A handoff that told the truth therefore LOST points, and the one that shipped on `hh-poverty-targeting/20260828-0702` sent an operator hunting for a UI element three files in the same repo say is absent. Same shape as the #1680 and #1021 rows below — a rubric demanding something the platform does not have — except this one propagated into an LLO-facing artifact. The dimension now grades what the reader can actually do today (share the public chat URL, verify the bot, hold the credentials for CCC-301) and makes requiring a paste-in an auto-fail. *Enforced:* `test/skills/widget-handoff-no-phantom-paste-target.test.ts`. | ACE team |
 | 2026-08-29 | **`widget_url_resolves` can now fail for a reason that is not the handoff's fault (ace#1812).** OCS #4230 added a team-wide admin kill-switch: if the team's `platform=WEB` `ExperimentChannel` is disabled, `start_session_public` returns a **503** maintenance page for EVERY bot on the team. The rubric required a 200 and had no vocabulary for this, so a correct handoff would have been scored as a broken one during any OCS maintenance window — the same shape as the #1680 and #1021 rows below. The dimension now names a 503 maintenance page as `[PLATFORM]` (which does not count against the score) rather than a handoff defect. Weights unchanged. | ACE team |
 | 2026-08-26 | **`credential_hygiene` no longer contradicts `widget_url_resolves` (ace#1680).** The dimension listed `OCS_TEAM_SLUG` as a "global secret" whose presence is an auto-fail security guard, while `widget_url_resolves` REQUIRES `https://www.openchatstudio.com/a/<team_slug>/chatbots/<public_id>/start/` — a team-scoped route, so the slug is structurally unavoidable in the one artifact the rubric mandates. A correct handoff was therefore reachable, on a literal reading, as a `fail` on a security guard; whether it failed depended on which way the judge leaned. The guard now names what it actually protects — a credential granting access beyond this opportunity (`OCS_API_TOKEN`, `OCS_PASSWORD`, `OCS_GOLDEN_TEMPLATE_ID`, `LABS_MCP_TOKEN`, HQ/Connect creds) — and states that `team_slug` / `public_id` are public-by-construction and never a finding. Weights unchanged. *Enforced:* `test/skills/credential-hygiene-vs-widget-url.test.ts`. | ACE team |
 | 2026-08-14 | **`widget_url_resolves` probes the route that exists (ace#1021).** The dimension gated 25% of the score on fetching an OCS "widget endpoint", while `ocs-agent-setup` already recorded that `/chatbots/embed/<public_id>/` is a 404 — so a CORRECT handoff scored as badly as a broken one. Both skills were wrong about the platform: the anonymous route is team-scoped, `/a/<team_slug>/chatbots/<public_id>/start/` (`apps/chatbots/urls.py:80` mounted under `config/urls.py:88`), and it works. The embed flow really was deleted (OCS #3540, 2026-08-03). The probe now targets the real URL and MUST carry cookies through the 302 — `@verify_session_access_cookie` on the chat view makes a cookieless fetch read 404 on a working bot, which is the false negative that produced this issue. | ACE team |
