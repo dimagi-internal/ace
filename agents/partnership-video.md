@@ -222,8 +222,7 @@ render) and stop at a human decision gate.
      capability-fit memo
 
    The skill internally dispatches `Skill(deep-research)` (a fan-out
-   web research skill). Because this procedure runs at level 0, that
-   dispatch is legal.
+   web research skill), which runs inline in its invoker.
 
 2. After `partnership-research` completes, dispatch
    `Skill(partnership-research-qa)` for structural checks.
@@ -359,7 +358,7 @@ lightweight mock only when nothing fits.
      reusable clip matching the angle's `product` beat + `primary_capability`
    - On a good match: records the clip ref with `source: reuse` provenance
    - On no match: builds a lightweight mock — a Nova app stub via
-     `/nova:autobuild` (level-0 Agent dispatch, legal here) filmed via
+     `/nova:autobuild` (an Agent dispatch; see the depth note above) filmed via
      `Skill(canopy:walkthrough)` + record_video, OR a Connect-styled
      clickable mock filmed headless via gstack browse
 
@@ -445,8 +444,8 @@ canopy-web. Requires explicit operator approval before any external send.
    - Presents the package to the operator for explicit approval
      (brand-safety gate — see Guardrails below)
    - On approval: publishes to canopy-web via `Skill(canopy:walkthrough-share)`,
-     which is dispatched from this level-0 procedure (legal). Captures
-     the navigable package URL.
+     which runs inline in this procedure. Captures the navigable
+     package URL.
    - Writes the final URLs into `package.yaml` under `canopy_web.*`
 
    `partnership-publish` has `has_judge: false` — publishing is a

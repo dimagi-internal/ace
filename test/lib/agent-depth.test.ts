@@ -218,9 +218,11 @@ describe('depth budget', () => {
       budget: MAX_SUBAGENT_SPAWN_DEPTH,
       deepestChain: deepest.path.join(' → '),
     }).toEqual({
-      maxDepth: 2,
-      budget: 3,
-      deepestChain: 'ace-orchestrator → commcare-setup → nova:nova-architect-autonomous',
+      maxDepth: 3,
+      budget: 5,
+      deepestChain:
+        'ace-orchestrator → synthetic-data-and-workflows → canopy:ddd → ' +
+        'gstack:design-fixer → gstack:review-followup',
     });
   });
 });

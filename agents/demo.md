@@ -12,9 +12,10 @@ model: inherit
 
 This file is **read and executed inline by the top-level Claude Code session —
 it is NOT dispatched as a subagent.** It dispatches the `canopy:ddd` agent and
-invokes the DDD render loop, both of which need the `Agent` tool, available only
-at level 0 (see `CLAUDE.md § Agent topology`). The frontmatter is retained for
-tooling introspection.
+invokes the DDD render loop, whose per-scene judges and specialist fixers fan out
+below it; running this file inline costs no depth and keeps that chain well
+inside the budget (see `CLAUDE.md § Agent topology`). The frontmatter is retained
+for tooling introspection.
 
 ## You are running a demo
 

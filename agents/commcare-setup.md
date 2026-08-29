@@ -25,15 +25,11 @@ This file specifies Phase 3 of the ACE lifecycle: build and
 deploy the CommCare-side apps.
 
 **This is a subagent — the orchestrator dispatches it with
-`Agent(commcare-setup)`.** It was an inline procedure doc until 0.13.1018,
-for one reason that has since expired: Step 1 invokes `/nova:autobuild`,
-which dispatches `nova:nova-architect-autonomous` via the `Agent` tool, and
-Claude Code used to withhold `Agent` from every subagent — so a subagent
-Phase 3 could not reach Nova at all. Nesting has been allowed since
-v2.1.219, and this chain (`ace-orchestrator → commcare-setup →
-nova:nova-architect-autonomous`) sits at depth 2 against a budget of 3. See
-`CLAUDE.md § Agent topology`; `lib/agent-depth.ts` holds the arithmetic and
-`test/lib/agent-depth.test.ts` fails CI if it stops fitting.
+`Agent(commcare-setup)`.** Step 1 invokes `/nova:autobuild`, which dispatches
+`nova:nova-architect-autonomous` via the `Agent` tool, so this chain
+(`ace-orchestrator → commcare-setup → nova:nova-architect-autonomous`) sits at
+depth 2. See `CLAUDE.md § Agent topology`; `lib/agent-depth.ts` holds the
+arithmetic and `test/lib/agent-depth.test.ts` fails CI if it stops fitting.
 
 **What this buys, and what it costs you as the author of this file.** Phase 3
 now runs in its own context window instead of consuming the orchestrator's.
@@ -249,16 +245,11 @@ Nova surface and are unrunnable without it. Catching this at second 0 instead
 of mid-phase (~25 min in, after both apps are built) is the whole point of
 Step 0. See jjackson/ace#659 (bednet-spot-check 20260601-1252).
 
-**Why the remedy is still a full restart now that Phase 3 is a subagent.**
-This step said "level 0" until 0.13.1032, written when Phase 3 ran inline in
-the top-level session. It became a subagent in 0.13.1018 and the wording did
-not move — which mattered, because the halt message named a level this phase
-no longer runs at and the remedy was derived from level-0 behaviour. It
-survives the move: a subagent is launched **in the same Claude Code process**
-and shares its session and MCP connections, so a bind that failed at session
-start is inherited by every subagent underneath it. Re-dispatching Phase 3
-gets the same dead connection; only a process restart re-establishes it. The
-depth-coded spelling was the error, not the instruction.
+**Why the remedy is a full restart, not a re-dispatch.** A subagent is launched
+**in the same Claude Code process** and shares its session and MCP connections,
+so a bind that failed at session start is inherited by every subagent underneath
+it. Re-dispatching Phase 3 gets the same dead connection; only a process restart
+re-establishes it.
 
 #### Step 0c: Probe Nova build-tool liveness (form-creation path)
 

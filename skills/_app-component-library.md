@@ -708,10 +708,8 @@ paraphrase them into a skill.
 
 > **"ACE-direct"** means a call ACE makes on its own Nova MCP surface, as
 > opposed to one the autonomous architect makes inside `/nova:autobuild`.
-> This was spelled "level 0" until 0.13.1032, which was never what it meant —
-> and stopped being true when Phase 3 (`commcare-setup`) became a subagent in
-> 0.13.1018. The distinction is about WHICH agent holds the connection, not
-> about dispatch depth, so it is spelled that way now.
+> The distinction is about WHICH agent holds the connection, not about
+> dispatch depth.
 
 **WHO authors the translations: ACE-direct, never the architect
 (ace#1556).** This is the load-bearing correction of 2026-08-23, and it is a

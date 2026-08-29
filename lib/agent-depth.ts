@@ -1,39 +1,30 @@
 /**
  * ACE's `Agent` dispatch graph, and the depth budget it has to fit inside.
  *
- * ## Why this file exists
+ * ## The rule
  *
- * For most of 2026 Claude Code forbade subagent nesting outright: the `Agent`
- * tool was withheld from every subagent, so any node that needed to dispatch
- * further work had to run inline in the top-level session. ACE was built around
- * that rule — `ace-orchestrator`, `commcare-setup`, `synthetic-data-and-workflows`,
- * `sweep`, `demo`, `partnership-video` and `iterate-loop` are all "procedure docs
- * executed inline" for exactly one reason: each of them dispatches `Agent`.
+ * A subagent may dispatch subagents. How far a chain may descend below the main
+ * conversation is set by `CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH`, and
+ * `CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS` (default 20) caps simultaneous fan-out.
+ * Nothing in ACE needs to be inline in order to dispatch.
  *
- * That rule is gone. Nesting landed in Claude Code v2.1.172 (depth 5, un-tunable),
- * was defaulted back to 1 in v2.1.217, and settled at **3** in v2.1.219. So the
- * binary invariant ACE encoded ("never two levels of `Agent` dispatch") has been
- * replaced by a **budget**: a chain may descend `CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH`
- * levels below the main conversation, and the value is configurable.
+ * ## Why the graph is still declared and machine-checked
  *
- * ## Why a budget needs a guard and a binary didn't
+ * Because exceeding the budget does not error. At the limit Claude Code
+ * *withholds* the `Agent` tool, and the subagent at the floor does the delegated
+ * work itself and returns one summary. That degradation is invisible in every
+ * artifact ACE writes.
  *
- * The old rule failed LOUDLY — a level-2 `Agent` call errored, which is how the
- * Nova migration incident got noticed. The new one fails QUIETLY: at the depth
- * limit Claude Code *withholds* the `Agent` tool, and the subagent at the floor
- * "does its delegated work itself and returns one summary."
+ * It is expensive where ACE fans out for independence rather than for speed.
+ * `ddd-concept-eval` dispatches `canopy:visual-judge` as a deliberately *fresh*
+ * subagent per scene — its rubric docks every dimension by 1 if that independence
+ * isn't real — so a collapsed fan-out still emits a full set of verdicts, just
+ * correlated and optimistic.
  *
- * For ACE that degradation is invisible and expensive. `ddd-concept-eval`
- * deliberately dispatches `canopy:visual-judge` as a *fresh* subagent per scene —
- * its own SKILL.md applies a −1 penalty to every dimension if that independence
- * isn't real. Push that dispatch past the cap and the judging silently collapses
- * into one context grading every scene in sequence: slower, correlated, and still
- * reporting healthy verdicts. Same failure class as the self-graded evals in
- * dimagi-internal/ace#1203 — a two-phase check quietly folded into one.
- *
- * So: the topology is declared here, and `test/lib/agent-depth.test.ts` asserts
+ * So the topology is declared here and `test/lib/agent-depth.test.ts` asserts
  * (a) the declaration matches the `Agent(...)` dispatches actually written in the
- * repo, and (b) no chain exceeds the budget.
+ * repo, and (b) no chain exceeds the budget. `scripts/doctor-agent-depth.ts`
+ * checks the other half — what the machine actually supplies.
  *
  * ## Depth accounting
  *
@@ -47,15 +38,15 @@
  */
 
 /**
- * Levels of subagent nesting available below the main conversation.
+ * Levels of subagent nesting ACE requires the runtime to supply.
  *
- * 3 is Claude Code's default (v2.1.219+) and what ACE runs on today. Raising it
- * is a real option — `CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH` in `settings.json` —
- * but it must be a deliberate, pinned decision rather than an inherited default,
- * because the default has changed three times in 2026 and a machine that supplies
- * less than ACE needs degrades silently rather than erroring.
+ * Pin it explicitly — `{"env": {"CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH": "5"}}` in
+ * `~/.claude/settings.json` — rather than inheriting a default. Unset, the value
+ * comes from a remote feature flag that is not guaranteed to be the same for two
+ * people on one team, and a machine that supplies less than ACE needs degrades
+ * silently. 5 leaves real headroom over the deepest chain the graph computes.
  */
-export const MAX_SUBAGENT_SPAWN_DEPTH = 3;
+export const MAX_SUBAGENT_SPAWN_DEPTH = 5;
 
 export type NodeForm = 'inline' | 'subagent';
 
@@ -95,10 +86,10 @@ export const DISPATCH_GRAPH: readonly DispatchNode[] = [
       'closeout',
     ],
     why:
-      'Inline keeps the whole pipeline at level 0, which is what leaves room for ' +
-      'the Phase 7 chain (synthetic → canopy:ddd → canopy:visual-judge) to reach ' +
-      'depth 2 inside a budget of 3. Making the orchestrator a subagent pushes that ' +
-      'chain to depth 4 and silently disables the per-scene judges.',
+      'Inline because `review` mode pauses at every phase checkpoint with ' +
+      '`AskUserQuestion`, which IS withheld from every subagent — a dispatched ' +
+      'orchestrator could not reach the operator and would fall through to ' +
+      'executing. Depth is not the reason; the budget has room for it.',
   },
   { name: 'idea-to-design', form: 'subagent', owner: 'ace', dispatches: [] },
   { name: 'scenarios-and-acceptance', form: 'subagent', owner: 'ace', dispatches: [] },
@@ -108,11 +99,8 @@ export const DISPATCH_GRAPH: readonly DispatchNode[] = [
     owner: 'ace',
     dispatches: ['nova:nova-architect-autonomous'],
     why:
-      'Was inline until 0.13.1018, solely because Claude Code withheld Agent from ' +
-      'subagents and Step 1 dispatches nova:nova-architect-autonomous via ' +
-      '/nova:autobuild. Nesting is allowed now and the chain lands at depth 2, so ' +
-      'the phase gets its own context window back — it was the heaviest thing in ' +
-      "the orchestrator's.",
+      'Step 1 reaches the Nova architect through /nova:autobuild. A subagent so ' +
+      'the heaviest phase in the pipeline gets its own context window.',
   },
   { name: 'connect-setup', form: 'subagent', owner: 'ace', dispatches: [] },
   { name: 'ocs-setup', form: 'subagent', owner: 'ace', dispatches: [] },
@@ -158,13 +146,9 @@ export const DISPATCH_GRAPH: readonly DispatchNode[] = [
     name: 'sweep',
     form: 'inline',
     owner: 'ace',
-    // All eight, not the two written as `Agent(x)` literals. agents/sweep.md
-    // names the per-system skills in a TABLE (`| ocs | sweep-ocs |`), so the
-    // repo scan cannot see them: six edges were undeclared from 0.13.1005 to
-    // 0.13.1038. They are all leaves, so the depth number never moved — but
-    // "the declared graph is silent about six real edges" is the exact defect
-    // 0.13.1026 fixed on the artifact manifest, and a future non-leaf here
-    // would have been invisible to the budget.
+    // All eight. agents/sweep.md names the per-system skills in a TABLE
+    // (`| ocs | sweep-ocs |`), which the repo scan cannot see, so they are
+    // declared here by hand.
     dispatches: [
       'sweep-live-set',
       'sweep-drive',
@@ -176,9 +160,9 @@ export const DISPATCH_GRAPH: readonly DispatchNode[] = [
       'sweep-ace-web',
     ],
     why:
-      'agents/sweep.md § Notes: "the procedure doc is the only thing that calls ' +
-      'Agent"; commands/sweep.md executes it inline. CLAUDE.md listed it as a ' +
-      'subagent until 2026-08-26 — a drift this graph now fences.',
+      'Inline because it owns the per-system approval gate: `AskUserQuestion` is ' +
+      'withheld from subagents, so a dispatched sweep could not ask before ' +
+      'deleting. commands/sweep.md executes it inline.',
   },
   {
     name: 'iterate-loop',
@@ -234,13 +218,26 @@ export const DISPATCH_GRAPH: readonly DispatchNode[] = [
     name: 'canopy:ddd',
     form: 'subagent',
     owner: 'external',
-    dispatches: ['canopy:visual-judge'],
+    dispatches: ['canopy:visual-judge', 'gstack:design-fixer'],
     why:
       'ddd-concept-eval runs inline inside the DDD loop and dispatches ' +
-      'canopy:visual-judge once per scene. The DDD agent also spawns investigation ' +
-      'and specialist-fixer subagents, all at the same level as visual-judge.',
+      'canopy:visual-judge once per scene. The loop also routes PRODUCT findings ' +
+      'to specialist fixers and spawns investigation subagents for RESEARCH gaps, ' +
+      'all at the same level as visual-judge.',
   },
   { name: 'canopy:visual-judge', form: 'subagent', owner: 'external', dispatches: [] },
+  {
+    name: 'gstack:design-fixer',
+    form: 'subagent',
+    owner: 'external',
+    dispatches: ['gstack:review-followup'],
+    why:
+      'canopy agents/ddd.md routes PRODUCT findings to /design-review, /review ' +
+      'and /qa "via the Agent tool". /review dispatches one more subagent of its ' +
+      'own when activated. So the fixer branch — not the per-scene judges — is ' +
+      'the deepest chain any ACE entry point starts.',
+  },
+  { name: 'gstack:review-followup', form: 'subagent', owner: 'external', dispatches: [] },
 ];
 
 /**

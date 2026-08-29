@@ -9,7 +9,7 @@ model: inherit
 
 # /ace:sweep — Orchestrator (procedure doc)
 
-This is a procedure doc, not a subagent. The `/ace:sweep` slash command reads it and executes the steps inline at level 0 (so it can call the `Agent` tool to dispatch leaf skills, per `CLAUDE.md` § Agent topology).
+This is a procedure doc, not a subagent. The `/ace:sweep` slash command reads it and executes the steps inline in the top-level session, so it can reach you for the per-system approval gate below (`AskUserQuestion` is withheld from subagents — see `CLAUDE.md` § Agent topology).
 
 ## Human-confirmation gate (the core safety contract)
 

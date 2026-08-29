@@ -61,7 +61,7 @@ Copy this block into a `.claude/pm/runs/<date>-<opp>-loop.md` log when you start
 - **`/canopy:improve` (no `-lens`) is too broad.** It sweeps all recent sessions across all projects. For this playbook always use `/canopy:improve-lens` with explicit `--project`.
 - **Don't fire perf lens before Phase 1 finishes.** The session log is too thin to surface meaningful patterns. Wait for the first gate.
 - **`judge` lens has `auto_merge.enabled: true` for anchor-tightening.** Review the lens descriptor before approving — auto-merge means it ships without your eyes on the diff. Set the flag false in `.canopy/lenses/judge.yaml` for this run if you want manual review.
-- **Lens runners are Agents at level 0.** They can't dispatch further Agents. If you find yourself wanting a lens to itself dispatch work, that's a sign the lens descriptor is wrong, not that you need recursion.
+- **Keep lens runners flat.** A lens runner *can* dispatch further Agents, but if you find yourself wanting one to, that's usually a sign the lens descriptor is wrong rather than that you need recursion.
 
 ## Cross-references
 

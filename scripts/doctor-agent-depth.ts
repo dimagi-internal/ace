@@ -13,12 +13,11 @@
  * Two things make that a live risk rather than a theoretical one:
  *
  *   1. `CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH` is usually UNSET, and Claude Code
- *      then resolves the value from a remote feature flag (default 3). It has
- *      moved three times in 2026 — 5, then 1, then 3 — so "the default" is not a
- *      constant and is not necessarily the same for two people on the same team.
- *   2. Since 0.13.1018 ACE needs depth 2 on TWO chains, not one. Phase 7's
- *      per-scene judges collapse quietly; Phase 3's Nova architect dispatch does
- *      not happen at all, and Phase 3 builds the apps itself.
+ *      then resolves it from a remote feature flag — so it is not guaranteed to
+ *      be the same for two people on one team.
+ *   2. ACE needs depth on several chains at once. Phase 7's per-scene judges and
+ *      its DDD specialist fixers collapse quietly; Phase 3 never reaches the Nova
+ *      architect and builds the apps itself.
  *
  * So: report what ACE needs, what is pinned, and the gap. Emitted by
  * `bin/ace-doctor`; `--format=yaml` for `--preflight`.
@@ -58,9 +57,9 @@ if (parsed !== undefined && Number.isFinite(parsed)) {
   // value is decided elsewhere and can change without anyone touching this repo.
   status = required > 3 ? 'fail' : 'warn';
   message =
-    `unset — resolved by Claude Code's remote default (3 today; was 5, then 1, ` +
-    `earlier in 2026). ACE needs ${required}. Pin it so the budget is a decision ` +
-    `rather than an inheritance.`;
+    `unset — resolved by Claude Code's remote feature flag, which is not ` +
+    `guaranteed to match across a team. ACE needs ${required}. Pin it so the ` +
+    `budget is a decision rather than an inheritance.`;
 }
 
 if (yaml) {

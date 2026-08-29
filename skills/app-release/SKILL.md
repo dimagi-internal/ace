@@ -324,9 +324,8 @@ procedure below to rediscover.
 
     **Dispatch-depth note.** `/nova:edit` runs the Nova architect via
     `Agent`, which costs a level of dispatch depth. `app-release` is
-    invoked from Phase 3 (`commcare-setup`), a subagent as of 0.13.1018,
-    so the architect lands at depth 2 against a budget of 3 — one level
-    of headroom. Moving `app-release` under more layers pushes it down;
+    invoked from Phase 3 (`commcare-setup`), a subagent, so the architect
+    lands at depth 2. Moving `app-release` under more layers pushes it down;
     past the budget the `Agent` tool is withheld and the loop degrades
     silently instead of failing. `test/lib/agent-depth.test.ts` holds
     the number. Keep the
