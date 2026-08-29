@@ -57,20 +57,25 @@ export interface Blueprint {
  * Learn apps actually instruct and whose absence costs a worker real effort in
  * the field. A taught step with no entry here is not guessed at.
  */
+// ace#1793 — every verb here is matched in its INFLECTED forms too. The bare
+// stems missed the ordinary way a curriculum writes ("Every visit captures a
+// location", "all three get a location fix"), which silently downgraded the
+// whole check to `unable`. `location fix` / `gps fix` also match on their own:
+// the noun phrase names the evidence action without needing a verb at all.
 const EVIDENCE_ACTIONS: { action: string; phrases: RegExp; kinds: string[] }[] = [
   {
     action: 'photograph',
-    phrases: /\b(take|capture|snap)\b[^.]{0,40}\bphotograph|\bphotograph\b[^.]{0,20}\bof\b|\btake\b[^.]{0,20}\bphoto\b/i,
+    phrases: /\b(tak(?:e|es|en|ing)|captur(?:e|es|ed|ing)|snap(?:s|ped|ping)?)\b[^.]{0,40}\bphotograph|\bphotograph\b[^.]{0,20}\bof\b|\b(tak(?:e|es|en|ing)|captur(?:e|es|ed|ing))\b[^.]{0,20}\bphoto\b/i,
     kinds: ['image', 'photo'],
   },
   {
     action: 'GPS fix',
-    phrases: /\b(capture|record|take)\b[^.]{0,30}\b(gps|location|coordinates)\b/i,
+    phrases: /\b(captur(?:e|es|ed|ing)|record(?:s|ed|ing)?|tak(?:e|es|en|ing)|get(?:s|ting)?)\b[^.]{0,30}\b(gps|location|coordinates)\b|\b(gps|location)\s+fix\b/i,
     kinds: ['geopoint', 'gps'],
   },
   {
     action: 'audio recording',
-    phrases: /\b(record)\b[^.]{0,30}\b(audio|voice|recording)\b/i,
+    phrases: /\b(record(?:s|ed|ing)?)\b[^.]{0,30}\b(audio|voice|recording)\b/i,
     kinds: ['audio'],
   },
 ];
@@ -81,8 +86,14 @@ const EVIDENCE_ACTIONS: { action: string; phrases: RegExp; kinds: string[] }[] =
  * Deliver form must honour on all branches, and flagging it would make this the
  * always-fires class.
  */
+// Widened for ace#1793. The bare, sentence-initial form ("Every visit captures
+// a location") carries no preposition, and the count in "all <n>" is a property
+// of the programme — this one has THREE non-payable outcomes, not four — so
+// neither is a linguistic variant worth failing on. Both near-missed phrasings
+// already in the list, which is the signature of this module's recurring bug
+// class (ace#1332, #1538, #1576, #1634): the matcher, not the curriculum.
 const UNCONDITIONAL_MARKERS =
-  /\b(you still do all of this|at every visit|on every visit|including empty|every household|always|all four)\b/i;
+  /\b(you still do all of this|(?:at |on )?(?:every|each) (?:visit|household|door|outcome)|including empty|always|all (?:two|three|four|five|six))\b/i;
 
 export type TaughtFindingReason = 'absent' | 'gated';
 

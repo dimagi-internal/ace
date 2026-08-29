@@ -141,6 +141,91 @@ describe('checkTaughtStepsCollectable (#1259)', () => {
     expect(text).not.toMatch(/not applicable/i);
   });
 
+  // ace#1793 — the fifth instance of this module's own recurring failure mode:
+  // the curriculum DID teach an unconditional evidence step and the matcher,
+  // not the curriculum, was the reason nothing was checked. Live on
+  // hh-poverty-targeting/20260828-0702, Nova Learn app
+  // f7c9ea59-c38e-489f-83ef-e5d772299443, Module 3 field `m3_gps_why`.
+  //
+  // Both misses were near-neighbours of phrasings already in the list: bare
+  // sentence-initial "Every visit" (the list had only "at/on every visit"),
+  // and "all three" (the list had "all four" — but the count is a property of
+  // the programme, which here has three non-payable outcomes).
+  //
+  // These three strings are the negative-control corpus. Before the widening
+  // every one returned status 'unable'; each must now be CHECKED.
+  it('matches the unconditional GPS step taught on hh-poverty-targeting (ace#1793)', () => {
+    const taughtTexts = [
+      'Every visit captures a location, including the ones that pay nothing.',
+      'So: vacant dwelling, no eligible respondent, refusal - all three get a '
+        + 'location fix before you leave the address. Capture it while you are standing there.',
+      'Each visit gets a location fix, including the ones that pay nothing.',
+    ];
+
+    for (const label of taughtTexts) {
+      const learn = {
+        modules: [
+          { module_name: 'Module 3 - What makes a visit payable', forms: [{
+            form_name: 'What makes a visit payable',
+            fields: [{ id: 'm3_gps_why', kind: 'label', label }],
+          }] },
+        ],
+      };
+      // An ungated geopoint: the Deliver app CAN record it on every branch, so
+      // the check should run and come back ok — never 'unable'.
+      const deliver = {
+        modules: [
+          { module_name: 'Household Visit', forms: [{
+            form_name: 'Household Poverty Targeting Visit',
+            fields: [
+              { id: 'gps', kind: 'geopoint', required: true },
+              { id: 'consent', kind: 'single_select', required: true },
+            ],
+          }] },
+        ],
+      };
+      const report = checkTaughtStepsCollectable(learn, deliver);
+      expect(report.status, `should have checked: ${label.slice(0, 48)}`).toBe('checked');
+      assertChecked(report);
+      expect(report.ok).toBe(true);
+    }
+  });
+
+  it('still flags a taught GPS step the Deliver form gates away (ace#1793)', () => {
+    // The widening must not turn the check into a rubber stamp: same taught
+    // text, but the geopoint now sits behind the consent gate, so a vacant
+    // door records no location and the finding must fire.
+    const learn = {
+      modules: [
+        { module_name: 'Module 3 - What makes a visit payable', forms: [{
+          form_name: 'What makes a visit payable',
+          fields: [{
+            id: 'm3_gps_why',
+            kind: 'label',
+            label: 'Every visit captures a location, including the ones that pay nothing.',
+          }],
+        }] },
+      ],
+    };
+    const gatedDeliver = {
+      modules: [
+        { module_name: 'Household Visit', forms: [{
+          form_name: 'Household Poverty Targeting Visit',
+          fields: [{
+            id: 'gps',
+            kind: 'geopoint',
+            required: true,
+            relevant: "consent = 'yes'",
+          }],
+        }] },
+      ],
+    };
+    const report = checkTaughtStepsCollectable(learn, gatedDeliver);
+    expect(report.status).toBe('checked');
+    assertChecked(report);
+    expect(report.ok).toBe(false);
+  });
+
   it('reports enough for a human to adjudicate which artifact is wrong', () => {
     // The check deliberately does NOT decide whether Learn over-teaches or
     // Deliver under-collects — both were PDD-conformant here. It surfaces the
