@@ -407,7 +407,59 @@ may sit above/below the fold. Read `nova_get_form` and check for
 walk**:
 
 1. `takeScreenshot` on entering the screen.
-2. Per select child: `scrollUntilVisible` the option, then `tapOn` it.
+2. Per select child: `scrollUntilVisible` the question, then `tapOn` its
+   option anchored `below:` that question label. **`centerElement` is
+   chosen BY POSITION, not set uniformly** (ace#1814):
+
+   | Position in the group | `centerElement` | Why |
+   |---|---|---|
+   | Any question except the last | `false` | It is already on screen when its turn comes. Centering it displaces the NEXT question below the fold, so that question's lookup enters a *search* phase — and one search step clears the remaining (short) group content, landing past the target. `scrollUntilVisible` only scrolls DOWN, so it can never recover. |
+   | The **last** question | `true` | Nothing follows it to overshoot past, and centering is what lifts its answer options above the fold. Left `false`, the label stops flush at the pane bottom with its options below it and the `tapOn` dies `selector-not-found`. |
+
+   ```yaml
+   # every question EXCEPT the last one in the group
+   - scrollUntilVisible:
+       element:
+         text: "[\\s\\S]*<question label>[\\s\\S]*"
+       direction: DOWN
+       speed: 15
+       timeout: 20000
+       visibilityPercentage: 30
+       centerElement: false
+   - tapOn:
+       text: "<literal option label>"
+       below:
+         text: "[\\s\\S]*<same question label>[\\s\\S]*"
+
+   # the LAST question in the group — centerElement flips to true
+   - scrollUntilVisible:
+       element:
+         text: "[\\s\\S]*<last question label>[\\s\\S]*"
+       direction: DOWN
+       speed: 15
+       timeout: 20000
+       visibilityPercentage: 30
+       centerElement: true
+   - tapOn:
+       text: "<literal option label>"
+       below:
+         text: "[\\s\\S]*<same last question label>[\\s\\S]*"
+   ```
+
+   **Uniformly `true` breaks at question 2; uniformly `false` breaks at
+   the last one.** Both halves are device-proven on
+   `hh-poverty-targeting/20260828-0702` (2026-08-29, `emulator-5554`,
+   dispatch `1788015366397-zbmkn0`), on TWO independent field-list groups
+   in the same passing walk: `consumption` (BREAD / EGGS / MILK `false`,
+   SACHET WATER `true`) and `assets` (sofa / FAN `false`, IRON `true`).
+   The walk completed all 29 chunks, submitted, and synced a registered
+   visit.
+
+   **`speed` and `visibilityPercentage` are NOT the lever here** — that
+   was the first hypothesis on ace#1814 and it was disproved on-device:
+   re-running the overshoot at `speed: 15` / `visibilityPercentage: 30`
+   with `centerElement: true` throughout failed at the identical step
+   with an identical dump. Do not re-propose tuning them for this class.
 3. Per label-less EditText child: **`below:` anchored on the question
    label is NOT reliable and is inert whenever the question has a hint
    (ace#1299).** The calibrated layout order is
