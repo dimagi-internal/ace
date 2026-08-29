@@ -363,7 +363,7 @@ export function probeRecipeSanity(inputs: ProbeInputs): SanityVerdict {
       failures.push({
         class: 'unguarded-option-tap-below-long-label',
         detail: `recipe ${recipe.name} taps option "${unguarded.matcher}" at line ${unguarded.line} with no preceding scrollUntilVisible — it shares the Nova group "${unguarded.groupId}" (a CommCare field-list, so ONE screen) with a ${unguarded.labelChars}-character label, which pushes the options below the fold`,
-        remediation: `guard the tap with a scrollUntilVisible for the same option text before it (centerElement: true), per skills/app-test-cases § group-field-list walk. An unnecessary guard is a runtime no-op, so applying it is always safe; a missing one is selector-not-found on a live device`,
+        remediation: `guard the tap with a scrollUntilVisible for the same question label before it, per skills/app-test-cases § group-field-list walk item 2 — and set centerElement BY POSITION: false for every question in the group except the last, true ONLY for the last (ace#1814; uniformly true overshoots question 2, uniformly false strands the last question's options below the fold). An unnecessary guard is a runtime no-op, so applying it is always safe; a missing one is selector-not-found on a live device`,
         recipe: recipe.name,
         parameter: 'unguarded-option-tap',
         value: unguarded.matcher,
