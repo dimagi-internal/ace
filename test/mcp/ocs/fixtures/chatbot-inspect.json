@@ -13,8 +13,7 @@
     "voice_response_behaviour": "never",
     "echo_transcript": false,
     "debug_mode_enabled": false,
-    "file_uploads_enabled": false,
-    "participant_allowlist": []
+    "file_uploads_enabled": false
   },
   "consent_form": null,
   "voice": null,

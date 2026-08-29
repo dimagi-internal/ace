@@ -542,11 +542,21 @@ round-trip gate in Step 11.5 below.
       wrapped in `@verify_session_access_cookie` — a cookieless `curl`
       reads **404 on a perfectly working bot**. Use `curl -L -c jar -b
       jar` or a browser context.
-    - **It requires the PUBLISHED version to be public.**
-      `start_session_public` resolves the published version and checks
-      `is_public`, which is `len(participant_allowlist) == 0`. ACE bots
-      leave the allowlist empty, so Step 9's publish is what turns this
-      URL on.
+    - **Publishing does NOT turn this URL on.** `start_session_public`
+      resolves `resolve_published_or_working`, so an unpublished bot
+      serves its working version here rather than 404ing. Publishing
+      decides WHICH version answers, not whether the URL is live.
+    - **The team's WEB channel must be enabled** — the one real gate,
+      and the one live failure mode. `start_session_public` calls
+      `_disabled_web_channel_response` before rendering the consent
+      form (OCS #4230); if the team's `platform=WEB`
+      `ExperimentChannel` has `enabled=False`, the URL returns the
+      **503 maintenance page**, not a 404. It is a team-wide admin
+      kill-switch, so flipping it takes down **every ACE per-opp chat
+      URL at once** — `connect-ace` has such a channel
+      (`connect-ace-web-channel`). If a handoff URL that used to work
+      starts serving a maintenance page, check this before suspecting
+      the bot (ace#1812).
 
     The old `/chatbots/embed/<public_id>/` path is genuinely gone — a
     410 stub since OCS #3540 (2026-08-03) — so do not emit it.
@@ -622,6 +632,7 @@ Each row this skill writes uses `phase: 5-ocs` and
 
 | Date | Change | Author |
 |------|--------|--------|
+| 2026-08-29 | **The public-chat-URL gate this skill documented no longer exists upstream (ace#1812).** Step 10 said the URL "requires the PUBLISHED version to be public", `is_public` being `len(participant_allowlist) == 0`. OCS deleted both in #4275 (ADR-0057, merged 2026-08-26) — `gh search code --repo dimagi/open-chat-studio "is_public"` now returns zero hits repo-wide, while the same search for `participant_allowlist` returns 4 files, so the empty result is a real absence rather than an unindexed repo. `start_session_public` resolves `resolve_published_or_working`, so publishing is NOT a gate and an unpublished bot no longer 404s here. Replaced with the gate that IS live: the team's `platform=WEB` `ExperimentChannel` being enabled (#4230), which returns a **503** maintenance page and is a team-wide kill-switch taking down every ACE per-opp chat URL at once. Direction of the stale claim was benign — the removed gate only ever loosened access — which is why it survived three months undetected; the cost was that a future outage would have been triaged against a mechanism that is gone. *Enforced:* `test/skills/ocs-public-chat-gate-docs.test.ts`. | ACE team |
 | 2026-05-05 | **Two idempotency improvements.** (1) New Step 0 reads the local state file (`runs/<run-id>/5-ocs/ocs-agent-setup.md`) before any OCS call — saves ~1s on a normal re-run and avoids the silent-pipeline-walk on `--prompt-patch` re-runs. (2) New `--prompt-patch` mode reuses the existing chatbot/collection/files, skipping clone + create-collection + upload + 5–10 min indexing wait, and just recomposes the prompt → calls `ocs_set_chatbot_pipeline` → publishes. This is the canonical Phase 5 retry path after `ocs-chatbot-eval --quick` flags a prompt issue (the previous skill prose said the agent should "retry prompt-patch" but no such mode existed — re-runs walked the full pipeline). | ACE team |
 | 2026-05-08 | Add `## Decisions Log` section: 3 anchor rows (system-prompt-baseline, rag-collection-scope, test-prompt-count) + bar-criterion reference. Pairs with decisions-log PR #4 (Phase 3-10 writes). | ACE team (decisions-log PR #4) |
 | 2026-05-15 | Add `2-scenarios/pdd-to-test-prompts.md` to the canonical KB recipe (Step 5); add archetype-aware "primary vs supplementary surface" line to the system-prompt composition checklist (Step 7) — for `focus-group`, the chatbot is the primary facilitator training + post-session writing surface. Make `6-qa-and-training/*` reads tolerant of missing files (Phase 6 may not have run yet in `/ace:run` flow). Prompted by `malaria-itn-fgd/20260514-2352` Phase 5 agent observations. | ACE team |

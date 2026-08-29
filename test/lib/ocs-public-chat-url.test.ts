@@ -30,11 +30,15 @@
  * (curl without `-c/-b`) reads as 404 on a perfectly working bot. Any
  * liveness check must carry cookies through the redirect.
  *
- * Two gates the URL depends on, both from source:
- *   - `start_session_public` resolves the PUBLISHED version and requires
- *     `experiment_version.is_public` (apps/experiments/views/experiment.py:262)
- *   - `is_public` is `len(participant_allowlist) == 0`
- *     (apps/experiments/models.py:998)
+ * One gate the URL depends on, from source (re-verified 2026-08-29, ace#1812):
+ *   - the team's WEB channel must be enabled. `start_session_public` calls
+ *     `_disabled_web_channel_response` first (OCS #4230,
+ *     apps/experiments/views/experiment.py:263-274) and a disabled channel
+ *     returns the 503 maintenance page for every bot on the team.
+ *
+ * Publishing is NOT a gate: the view resolves `resolve_published_or_working`,
+ * so an unpublished bot serves its working version. The allowlist gate this
+ * comment used to describe was deleted upstream in #4275 (ADR-0057).
  */
 import { describe, it, expect } from 'vitest';
 import { buildOcsPublicChatUrl } from '../../lib/ocs-public-chat-url.js';

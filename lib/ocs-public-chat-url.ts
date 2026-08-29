@@ -40,14 +40,34 @@
  * it. Any liveness check MUST carry cookies through the redirect — a plain
  * `curl -sI` is exactly the false negative that produced this issue.
  *
- * ## Two gates the URL depends on
+ * ## The gate the URL depends on
  *
- * - `start_session_public` resolves the PUBLISHED version and requires
- *   `experiment_version.is_public` (`apps/experiments/views/experiment.py:262`),
- *   so an unpublished bot 404s here whatever its working copy says.
- * - `is_public` is `len(participant_allowlist) == 0`
- *   (`apps/experiments/models.py:998`). ACE bots leave the allowlist empty,
- *   which is what makes them public.
+ * There is exactly one, and it is NOT about publishing. Re-verified against
+ * upstream `main` on 2026-08-29 (ace#1812):
+ *
+ * - **The team's WEB channel must be enabled.** `start_session_public` calls
+ *   `_disabled_web_channel_response(request)` before rendering the consent
+ *   form; if the team has an `ExperimentChannel` with `platform=WEB` and
+ *   `enabled=False`, every chat URL for that team returns the maintenance
+ *   page — **HTTP 503**, not a 404 — with the channel's `disabled_message`.
+ *   Added by OCS #4230 (`apps/experiments/views/experiment.py:263-274`;
+ *   `is_disabled` is `not self.enabled`, `apps/channels/models.py:342-344`).
+ *   This is a team-wide admin kill-switch, so one toggle takes down the chat
+ *   URL of EVERY ACE per-opp bot at once. `connect-ace` has such a channel
+ *   (`connect-ace-web-channel`). A channel row that does not exist yet cannot
+ *   be disabled, so its absence is not a refusal.
+ *
+ * **Publishing is NOT a gate.** The view resolves
+ * `resolve_published_or_working(experiment)`, so an UNPUBLISHED bot serves its
+ * working version here rather than 404ing. Publishing still decides WHICH
+ * version answers; it does not decide whether the URL is on.
+ *
+ * Historical note, so nobody "restores" the old text: this comment used to
+ * describe two publish-time allowlist gates. OCS deleted both in #4275
+ * (ADR-0057, merged 2026-08-26); the symbols they named now return zero hits
+ * repo-wide upstream. The stale claim was benign in direction — that gate only
+ * ever loosened access — but it is what a future reader would have triaged a
+ * real outage against. See ace#1812 for the retired names and the evidence.
  *
  * NOTE: this is the OCS half only. Connect genuinely has no per-opportunity
  * widget field to paste anything into — `#1021`'s second finding, which stands:

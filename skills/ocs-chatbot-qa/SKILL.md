@@ -265,11 +265,13 @@ Skills — No Fake Background Tasks`). Concrete budget:
    an **entirely ABSENT `X-Embed-Key` header returns 201 and starts a
    session**, so the control demonstrates that a *wrong* key is
    rejected, not that a key is *required*. That is consistent with
-   `start_session_public` being a genuine anonymous surface for a
-   published bot with an empty `participant_allowlist` — do not read a
-   stronger guarantee into it than the endpoint offers, and do not file
-   the 201 as a defect. Measured on `spark-facilitator/20260820-0817`
-   (dimagi-internal/ace#1679).
+   `start_session_public` being a genuine anonymous surface: the view
+   resolves published-or-working and gates only on the team's WEB
+   channel being enabled (OCS #4230) — do not read a stronger guarantee
+   into it than the endpoint offers, and do not file the 201 as a
+   defect. Measured on `spark-facilitator/20260820-0817`
+   (dimagi-internal/ace#1679); explanation corrected after OCS #4275
+   deleted the allowlist gate this bullet used to cite (ace#1812).
 
    The send is **queued, not answered**: an `HTTP == 200` assertion on
    `/message/` discards three accepted sends and reports `0/3` structural
@@ -551,6 +553,7 @@ When `--dry-run` is active:
 
 | Date | Change | Author |
 |------|--------|--------|
+| 2026-08-29 | **Corrected the EXPLANATION under the missing-`X-Embed-Key` observation (ace#1812).** The measured status codes are unchanged and still correct; only the mechanism cited for them was stale. Step 5 explained the anonymous 201 as "consistent with `start_session_public` being a genuine anonymous surface for a published bot with an empty `participant_allowlist`" — OCS deleted `is_public` and the allowlist gate in #4275 (ADR-0057, 2026-08-26). The endpoint is still a genuine anonymous surface, for a different reason: it resolves published-or-working and gates only on the team's WEB channel being enabled (#4230). Keeping a right observation attached to a deleted mechanism is what makes a future reader mis-triage it. *Enforced:* `test/skills/ocs-public-chat-gate-docs.test.ts`. | ACE team |
 | 2026-05-05 | **Path-scheme migration.** Transcripts now write to `runs/<run-id>/5-ocs/ocs-chatbot-qa_transcript-<mode>.md` (or `9-execution-manager/...` for `--monitor`), per the manifest. The opp-level `qa-captures/` directory is retired; the only surviving use of the dated `qa-captures/` form is the golden-template no-opp fallback (`ACE/golden-template/qa-captures/<dated>.md`). Resume-from-partial check (Step 3) re-pointed at the new path. No behavior change beyond paths. | ACE team |
 | 2026-05-05 | **`--quick` switched to single-shot write.** Buffer entries in memory and call `drive_create_file` once at suite end (Step 7). Reduces Drive RTTs on `--quick` from N+1 (read+write per prompt + metadata) to 1. The incremental CAS-write strategy still applies on `--deep`/`--monitor` where 15–30 min suite runtimes make resume-from-partial worth the cost. Step 3 resume-from-partial is a `--deep`/`--monitor`-only step now (`--quick`'s 270s cap is short enough that re-running is cheaper than the resume bookkeeping). | ACE team |
 | 2026-05-15 | Extend `--quick` suite with archetype-specific prompts for `focus-group` (1–2 from `pdd-to-test-prompts.md` `gdoc-writing-guidance` + `facilitation-technique` categories) since the 3 universal Connect-domain prompts primarily exercise shared-collection retrieval and would pass even if the opp-specific collection was mis-loaded. Wall-clock cap scales to 360s/450s for focus-group. Atomic-visit / multi-stage stay at the 3-prompt / 270s baseline. Prompted by `malaria-itn-fgd/20260514-2352` Phase 5 observation. | ACE team |
