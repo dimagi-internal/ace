@@ -46,6 +46,7 @@ export type SanityFailureClass =
   | 'unguarded-option-tap-below-long-label'
   | 'input-anchor-skips-hint'
   | 'input-focus-scroll-is-guarded'
+  | 'input-without-erase'
   | 'deliver-smoke-rewalks-learn';
 
 /** Non-blocking caveat classes. A warning NEVER flips `ok` — it names a
@@ -429,6 +430,47 @@ export function probeRecipeSanity(inputs: ProbeInputs): SanityVerdict {
         recipe: recipe.name,
         parameter: 'input-focus-scroll',
         value: guardedFocus.anchor,
+      });
+    }
+
+    // 6.9 input-without-erase → an `inputText` step with no `eraseText`
+    // immediately before it. Maestro's `inputText` APPENDS at the cursor;
+    // it does not replace the field's contents. So any field that already
+    // carries a value — a Nova casedb preload (ace#1809), an XForm
+    // default, a stray character from an earlier mis-aimed tap — gets the
+    // recipe's value CONCATENATED onto the existing one.
+    //
+    // Live: spark-facilitator/20260828-0703 Phase 6 (ACE 0.13.1080, APK
+    // 2.63.2). The recipe typed `40` into `hh_represented_at_the_meeting`;
+    // the field ended up holding `140`; the form's cross-field constraint
+    // ("no more than the number of households recorded for this
+    // community", 80 at enrolment) correctly refused to advance, and the
+    // leg then died two screens later on a Participation scroll — which
+    // reads as a selector fault and is not one. Re-running the identical
+    // leg with `eraseText` before each of the 6 `inputText` calls passed
+    // end-to-end (Connect returned {delivered: 1, approved: 1,
+    // rejected: 0}). ace#1844.
+    //
+    // The corruption is SILENT wherever it does not happen to trip a
+    // constraint — the leg reports `pass` having submitted wrong data —
+    // which is why this is a static check and not something the runtime
+    // classifier could ever catch.
+    //
+    // Pure recipe shape, like `input-focus-scroll-is-guarded`: it needs
+    // no Nova field data, so it runs UNCONDITIONALLY and is never gated
+    // behind `fields` / `hint_data_supplied`. And unlike its siblings
+    // there is no false-positive tax to pay for: a redundant `eraseText`
+    // on an already-empty field is a runtime no-op, so the remediation is
+    // always safe to apply.
+    const noErase = findInputWithoutErase(recipe.text);
+    if (noErase) {
+      failures.push({
+        class: 'input-without-erase',
+        detail: `recipe ${recipe.name} issues an inputText at line ${noErase.line} (${noErase.value}) with no eraseText immediately before it — Maestro's inputText APPENDS at the cursor rather than replacing, so a field carrying a Nova casedb preload, an XForm default, or a stray character receives the two values concatenated (live: spark-facilitator/20260828-0703 typed "40" into hh_represented_at_the_meeting and submitted "140", tripping the form's cross-field constraint; the corruption is SILENT wherever it does not happen to trip one)`,
+        remediation: `emit "- eraseText" before every "- inputText" (a redundant erase on an empty field is a runtime no-op, so it is always safe); re-author via /ace:step app-test-cases <opp>/<run-id> (ace#1844)`,
+        recipe: recipe.name,
+        parameter: 'input-erase',
+        value: noErase.value,
       });
     }
 
@@ -1741,8 +1783,14 @@ function findInputFocusSteps(yaml: string): InputFocusStep[] {
     if (!/^\s*-\s+tapOn:/.test(items[i].text)) continue;
     const below = extractKeyBlock(items[i].text, 'below');
     if (!below) continue;
+    // An `eraseText` may sit between the focus tap and the text — that is
+    // the sanctioned shape since ace#1844 (inputText appends, so every
+    // input is erased first), and it is still the focus idiom. Nothing
+    // else is tolerated between them.
     const next = items[i + 1];
-    if (!next || !/^\s*-\s+inputText:/.test(next.text)) continue;
+    if (!next) continue;
+    const textStep = /^\s*-\s+eraseText\b/.test(next.text) ? items[i + 2] : next;
+    if (!textStep || !/^\s*-\s+inputText:/.test(textStep.text)) continue;
     const anchorSpecs = stepTextMatcherSpecs(below);
     if (!anchorSpecs.length) continue;
     out.push({ line: items[i].startLine, stepIndex: i, anchorSpecs });
@@ -1792,6 +1840,53 @@ function findInputAnchorSkipsHint(
       if (!hasHint(field)) continue;
       return { line: step.line, fieldId: field.id, anchor: spec.text, hint: field.hint! };
     }
+  }
+  return null;
+}
+
+/**
+ * An `inputText` step with no `eraseText` immediately before it
+ * (ace#1844).
+ *
+ * Maestro's `inputText` APPENDS at the cursor. A field holding a Nova
+ * casedb preload, an XForm default, or a stray character therefore ends
+ * up with both values concatenated, and the leg either dies somewhere
+ * downstream of a cross-field constraint (reading as a selector fault) or
+ * — worse — reports `pass` on wrong data.
+ *
+ * Deliberately the WIDEST of this file's checks, and it can afford to be:
+ * every other class here pays the #858 false-positive tax (a wrong flag
+ * halts Phase 3 in an `incomplete` re-author loop whose remediation is a
+ * no-op), but a redundant `eraseText` on an already-empty field is a
+ * runtime no-op, so "flag it" is never the expensive answer. It reads raw
+ * lines rather than only top-level steps so an `inputText` nested inside a
+ * `runFlow: commands:` block is covered too; "immediately before" means
+ * the previous SIBLING step at the same indent, which is where a
+ * `- eraseText` has to be to apply to this input.
+ *
+ * An `inputText` that opens its block has no preceding sibling and IS
+ * flagged — CommCare autofocuses the first input of a field-list, and a
+ * preloaded first field is exactly the live ace#1844 case.
+ */
+function findInputWithoutErase(yaml: string): { line: number; value: string } | null {
+  const lines = yaml.split('\n');
+  for (let i = 0; i < lines.length; i++) {
+    const m = lines[i].match(/^(\s*)-\s+inputText:(.*)$/);
+    if (!m) continue;
+    const indent = m[1].length;
+    let prev: string | null = null;
+    for (let j = i - 1; j >= 0; j--) {
+      const line = lines[j];
+      if (line.trim() === '' || /^\s*#/.test(line)) continue;
+      const lead = line.match(/^(\s*)/)![1].length;
+      // Deeper than us → a continuation of an earlier sibling; keep going.
+      if (lead > indent) continue;
+      // Same indent AND a step dash → the previous sibling step.
+      if (lead === indent && /^\s*-\s/.test(line)) prev = line;
+      break;
+    }
+    if (prev && /^\s*-\s+eraseText\b/.test(prev)) continue;
+    return { line: i + 1, value: m[2].trim() };
   }
   return null;
 }

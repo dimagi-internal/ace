@@ -514,6 +514,7 @@ walk**:
    - tapOn:
        below:
          text: "[\\s\\S]*<same anchor>[\\s\\S]*"
+   - eraseText
    - inputText: "<value>"
    - hideKeyboard
    ```
@@ -571,6 +572,20 @@ Two matcher traps on that screen:
   around the centring scroll for a `tapOn: below:` + `inputText` pair.
   This one needs no Nova data; it is the guarded-vs-unconditional
   discriminator below, made non-optional.
+
+**Every `- inputText` is immediately preceded by `- eraseText`** — on a
+field-list, a standalone question, anywhere. Maestro's `inputText`
+*appends at the cursor*; it does not replace, so a field already carrying
+a Nova casedb preload, an XForm default, or a stray character receives the
+two values concatenated. Live: `spark-facilitator/20260828-0703` typed
+`40` into `hh_represented_at_the_meeting`, submitted `140`, and the form's
+cross-field constraint refused to advance — the leg then died two screens
+later on an unrelated scroll, reading as a selector fault it was not. And
+wherever it does *not* happen to trip a constraint the corruption is
+SILENT: the leg reports `pass` on wrong data. A redundant erase on an
+empty field is a runtime no-op, so there is never a reason to omit it.
+Enforced statically as `input-without-erase` (ace#1844) — needs no Nova
+data, so it runs on every recipe.
 
 **Anchor every shared option label.** The probe attributes a step to a
 group by the strings the step selects on, and a bare `tapOn: text: "Yes"`
@@ -1437,8 +1452,8 @@ For each form-walk segment of a recipe:
    input needs the calibrated focus sequence of § Step 3 item 3:
    unconditional centring scroll at `speed: 30` on the element
    immediately above the `EditText` (its `hint` when it has one, else the
-   question label), then `tapOn: below: <that anchor>`, then `inputText`,
-   then `hideKeyboard` (ace#1299).
+   question label), then `tapOn: below: <that anchor>`, then `eraseText`,
+   then `inputText`, then `hideKeyboard` (ace#1299, ace#1844).
 4.5. For `kind: geopoint` required fields, do **NOT** `inputText` a
    `"lat lon alt accuracy"` string. A native CommCare geopoint is a
    **Capture-button widget** that reads the device GPS — not a free-text
@@ -1772,6 +1787,7 @@ already maps the producer to `3-commcare/` (see
 
 | Date | Change | Author |
 |------|--------|--------|
+| 2026-08-29 | **Every emitted `- inputText` must be immediately preceded by `- eraseText` (closes dimagi-internal/ace#1844).** Maestro's `inputText` appends at the cursor rather than replacing, so any field carrying a Nova casedb preload (ace#1809), an XForm default, or a stray character received the recipe's value concatenated onto the existing one. Live on `spark-facilitator/20260828-0703` Phase 6 (ACE 0.13.1080, APK 2.63.2): the recipe typed `40` into `hh_represented_at_the_meeting`, the field held `140`, the form's cross-field constraint correctly refused to advance, and the leg died two screens later on a Participation scroll — reading as a selector fault it was not. Re-running the identical leg with `eraseText` inserted before each of the 6 `inputText` calls passed end-to-end (`{delivered: 1, approved: 1, rejected: 0}`). The dangerous half is that wherever the concatenation does NOT trip a constraint the corruption is silent and the leg reports `pass` on wrong data. *Enforced:* `recipe-sanity-probe`'s new `input-without-erase` — pure recipe shape, so unlike its field-gated siblings it runs unconditionally, and unlike them it carries no false-positive tax (a redundant erase on an empty field is a runtime no-op). `findInputFocusSteps` now sees through the interposed `eraseText`, so the ace#1554 checks don't go silently dead on recipes authored under the new rule. | ACE team |
 | 2026-08-25 | **Learn suite re-entry is selected PER FORM, not per app, and the call is guarded (closes dimagi-internal/ace#1633).** § Suite re-entry between modules picked the finalize/re-entry pair from a single per-APP reading of `post_submit`, but where a `previous` finalize lands is a property of the OWNING MODULE: CommCare auto-skips a module's one-row form list when the module holds exactly one form whose name differs from the module name, so `previous` lands on the suite ROOT there and on the form LIST everywhere else. One app can be both shapes at once — `bednet-check-2-visit/20260825-1310` (module "Baseline check": one form "What you know now"; module "Spot-check training": two forms; all `post_submit: previous`) — and the per-app table then prescribes an unconditional `back` that walks OUT of the suite after module 1, hanging the walk before module 2 (the #1071 signature, #897 consequence). The section now states the per-form rule with both module shapes spelled out, and every composition of `learn-suite-reentry-from-module.yaml` is guarded POSITIVELY on the next module's suite row (the workaround that run shipped), which is correct under either landing. The 2x2 stays as the choice of WHICH recipe; the finalize half is landing-agnostic because `content-form-finish-to-suite.yaml` exits on the `learn-suite-menu` alternation. *Enforced:* `test/skills/learn-suite-reentry-guarded.test.ts`. | ACE team |
 | 2026-08-23 | **§ Multi-screen content forms now branches on `post_submit` (closes dimagi-internal/ace#1566 — the finalize half of the #1071 class).** The section prescribed `content-form-finish.yaml` unconditionally for every content form while § Suite re-entry between modules already branched, so a multi-module Learn app whose forms are `post_submit: previous` (Nova's default) got a finalize recipe whose bounded advance loop and terminal assert are both keyed on the home-grid `learn-home-start-tile` — a surface that never renders when the finalize lands on the module's own form list. Live: bednet-check-2-visit/20260820-0832 (2 modules, 5 forms, all `previous`). Finalize + re-entry are now stated as one 2x2 (multi/`module` → `content-form-finish` + `learn-suite-reentry`; multi/`previous` → `content-form-finish-to-suite` + `learn-suite-reentry-from-module`; single-module → `content-form-finish-to-suite`, no re-entry). Enforced by `test/mcp/mobile/static-recipe-invariants.test.ts § home-anchored finalize is post_submit-gated`. | ACE team |
 | 2026-05-04 | Initial version. Phase 3 producer for app-test-cases.yaml; binds pdd-to-app-journeys.md to Nova-built structure with Maestro recipe stubs. Successor to qa-plan (retired in same release). | ACE team |
