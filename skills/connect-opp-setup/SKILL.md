@@ -88,23 +88,51 @@ alone makes the artifact land outside `4-connect` and fail
       `connect-setup/llo-invite_invitations.md` doesn't exist either.
       If `connect_send_llo_invite` / `connect_accept_program_application`
       reports the application already exists or is already accepted,
-      **that IS the skip signal** — capture the id it names and
-      continue. Branch on the call result, never on a read-back flag.
+      **that IS the skip signal** — log it and continue. Branch on the
+      call result, never on a read-back flag.
+
+      **The skip response carries no id — do not go looking for one.**
+      Connect's rejection body is `{error: 'validation_error', fields:
+      {organization: ['Organization already has an application for this
+      program.']}}` and names no `application_id` anywhere (observed on
+      `hh-poverty-targeting/20260828-0702`, ace#1800). That is fine: the
+      create derives the application server-side from
+      `(target_organization_slug, program_id)`, so nothing downstream
+      needs the id on this path. Note also that this error does NOT
+      distinguish `INVITED`/`APPLIED` from `ACCEPTED` — if the existing
+      application is merely pending, `connect_create_opportunity` is what
+      fails, loudly, with `Organization must have an accepted application
+      for this program.` Let that be the check; do not infer acceptance
+      from the skip alone.
    3. The round-trip:
 
       ```
-      mcp__plugin_ace_ace-connect__connect_send_llo_invite(
-        organization_slug,
+      mcp__plugin_ace_ace-connect__connect_send_llo_invite({
+        organization_slug,                      // PM-side org running the program
         program_id,
-        target_organization_slug: organization_slug,  // same org
-      )
-      mcp__plugin_ace_ace-connect__connect_accept_program_application(
-        target_organization_slug: organization_slug,
-        program_application_id: <returned>,
-      )
+        organization: organization_slug,        // the org being invited — SAME org here
+      })
+      mcp__plugin_ace_ace-connect__connect_accept_program_application({
+        organization_slug,
+        program_id,                             // REQUIRED — the accept is program-scoped
+        application_id: <returned>,             // ProgramApplication UUID from the invite response
+      })
       ```
 
-      Capture `program_application_id` from the create response;
+      **Do not paraphrase these signatures — the parameter names above are
+      the atoms' real ones, per `docs/atom-schemas.md`.** Every name in
+      this block was wrong until ace#1800: `connect_send_llo_invite` takes
+      `organization` (not `target_organization_slug`), and
+      `connect_accept_program_application` takes
+      `organization_slug` / `program_id` / `application_id` (not
+      `target_organization_slug` / `program_application_id`, and it had
+      dropped `program_id`, which is required). The wrong block was
+      invisible because it only executes on the FIRST Phase 4 run of a
+      program in a fresh PM org — every later run short-circuits on
+      "Organization already has an application for this program" and never
+      reaches the accept call.
+
+      Capture `application_id` from the invite response;
       `create_opportunity` may want it as a conditionally-required
       input depending on Connect's contract evolution. (The original
       `POST /api/programs/<id>/opportunities/` derives it server-side
