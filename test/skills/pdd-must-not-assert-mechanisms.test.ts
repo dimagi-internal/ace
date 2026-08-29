@@ -92,27 +92,55 @@ describe('mechanisms a PDD must not assert (ace#1213)', () => {
     expect(aBody, 'question-bank randomization must NOT be in Table A').not.toMatch(/ace#1121/);
   });
 
-  it('Table A carries the followup-form case-read closure (ace#1180/#1224/#1232)', () => {
-    // Three separately-proven closures, rediscovered one per run as each
-    // workaround was reached for in turn: `case-ref` parts rejected app-wide
-    // (#1180), `caseWrite` write-only (#1224), and a visible case-bound field
-    // emitting no preload (#1232, proven against a compiled CCZ). The row is
-    // what stops a fourth guess.
+  it('the followup-form case-read row is RETIRED, not asserted as live (ace#1798)', () => {
+    // This row USED to assert three separately-proven closures. The first of
+    // them — `case-ref` parts rejected app-wide — was fixed upstream:
+    // voidcraft-labs/commcare-nova#458 closed COMPLETED 2026-08-15 and ace#1180
+    // closed 2026-08-13. ace#1558 corrected CLAUDE.md and did not reach this
+    // file, so the library went on telling builds that a follow-up form cannot
+    // read its own case.
+    //
+    // That is not a cosmetic staleness. The row's old sanctioned alternative
+    // was to key `entity_id` on worker identity + encounter date — i.e.
+    // `concat(username, today())` — which is the `atomic-visit` grain. Handed
+    // to a `longitudinal-visits` build it silently degrades the design into
+    // "any visit counts". On spark-facilitator the PDD names that exact grain
+    // as a previously-measured failure on that opportunity, so the stale row
+    // steered the build straight back into a known regression.
+    //
+    // This test used to pin the stale premise in place. It now pins the fix.
     const section = extractSection(librarySource(), SECTION);
     const rows = tableRows(extractSection(section, TABLE_A, 3));
     const row = rows.find((cells) => /case propert/i.test(cells[0] ?? ''));
 
-    expect(row, 'Table A must carry a "reading a case property into a followup form" row').toBeDefined();
+    expect(row, 'the case-read row must still exist as history').toBeDefined();
     const [mechanism, why, alternative, origin] = row!;
-    expect(mechanism).toMatch(/followup form/i);
-    for (const issue of ['1180', '1224', '1232']) {
-      expect(why, `the row must name the surface closed by ace#${issue}`).toMatch(
+
+    expect(mechanism, 'the row must be marked retired').toMatch(/retired/i);
+    expect(why, 'the row must say it is history, not a live constraint').toMatch(
+      /history, not a live constraint/i,
+    );
+    expect(why, 'the row must name the upstream fix that retired it').toMatch(
+      /voidcraft-labs\/commcare-nova#458/,
+    );
+
+    // The narrower facts that DID survive: `caseWrite` is a write destination,
+    // and a visible case-bound field emits no preload. Keep them, so the next
+    // run does not reach for either as a pseudo-preload.
+    for (const issue of ['1224', '1232']) {
+      expect(why, `the row must keep the surviving fact from ace#${issue}`).toMatch(
         new RegExp(`ace#${issue}|#${issue}`),
       );
     }
-    expect(alternative, 'the row must name the sanctioned alternative').toMatch(
-      /user-ref|re-ask|select/i,
-    );
+
+    // The sanctioned alternative is now the restored mechanism itself, and the
+    // row must warn off the grain that made the staleness expensive.
+    expect(alternative, 'the row must point at case-ref').toMatch(/case-ref/i);
+    expect(
+      alternative,
+      'the row must warn against the atomic-visit fallback grain',
+    ).toMatch(/concat\(username, today\(\)\)/);
+
     expect(origin).toMatch(/ace#\d+/);
   });
 
