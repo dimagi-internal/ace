@@ -1,4 +1,4 @@
-import type { BrowserContext } from 'playwright';
+import type { BrowserContext, Page } from 'playwright';
 import { ConnectLoginFailedError } from '../errors.js';
 
 export interface HqOAuthLoginOptions {
@@ -27,9 +27,55 @@ export interface HqOAuthLoginOptions {
  *   4. (a only) Fill input[name="auth-username"] + input[name="auth-password"]
  *      and click `button:has-text("Sign In"):visible` (Knockout-driven: page
  *      has multiple <button type="submit">; only one is visible at a time)
- *   5. (a or b) Click input[name="allow"] on the OAuth consent prompt
+ *   5. (a or b) On the OAuth consent prompt, choose the project spaces to
+ *      grant (see `grantAllProjectSpaces`), then click input[name="allow"]
  *   6. Final landing: /a/<org>/opportunity/
  */
+
+/**
+ * Grant every project space on CommCare HQ's OAuth consent prompt.
+ *
+ * HQ added a project-space step to that prompt: a Select2 multi-select
+ * (`#id_domains`) listing the account's project spaces, with the Authorize
+ * button bound to `:disabled="selectedDomains.length === 0"`. **Nothing is
+ * selected by default**, so the previous flow clicked a disabled button, the
+ * page never navigated, and the wait expired — surfacing as a bare
+ * `oauth-consent` failure that looked like bad credentials.
+ *
+ * All of them, every time, deliberately. This token is used across whichever
+ * project spaces an opportunity happens to live in, and a subset chosen here
+ * does not fail loudly: it comes back much later as a 403 or a silently empty
+ * list from an API that was never granted the space it needed.
+ */
+async function grantAllProjectSpaces(page: Page): Promise<void> {
+  const domains = page.locator('#id_domains');
+  if ((await domains.count()) === 0) {
+    return; // No project-space step on this deployment — nothing to grant.
+  }
+
+  // "Select all" is the button the page provides, and clicking it keeps
+  // Alpine's `selectedDomains` in step, which is what un-disables Authorize.
+  // It is hidden (`x-show="domainCount > 1"`) for a single-project account.
+  const selectAll = page.locator('button:has-text("Select all")').first();
+  if ((await selectAll.count()) > 0 && (await selectAll.isVisible())) {
+    await selectAll.click();
+  } else {
+    // Select2 hides the real <select> (aria-hidden, tabindex=-1), so setting
+    // options through Playwright would not fire the event Alpine listens on.
+    // Set them and announce it the way the Select2 binding would.
+    await domains.evaluate((el) => {
+      const select = el as HTMLSelectElement;
+      for (const option of Array.from(select.options)) option.selected = true;
+      const detail = Array.from(select.selectedOptions).map((o) => o.value);
+      select.dispatchEvent(new Event('change', { bubbles: true }));
+      select.dispatchEvent(new CustomEvent('select2change', { detail, bubbles: true }));
+    });
+  }
+
+  // Authorize stays disabled until the selection lands; waiting on that is
+  // what makes this deterministic rather than a race with Alpine's re-render.
+  await page.locator('input[name="allow"]:not([disabled])').waitFor({ timeout: 10_000 });
+}
 export async function hqOAuthLogin(opts: HqOAuthLoginOptions): Promise<void> {
   const page = await opts.context.newPage();
   try {
@@ -100,6 +146,7 @@ export async function hqOAuthLogin(opts: HqOAuthLoginOptions): Promise<void> {
 
     // (a continued, or b) Handle the OAuth consent prompt if still on it.
     if (isHqAuthorize(new URL(page.url()))) {
+      await grantAllProjectSpaces(page);
       const approve = page.locator('input[name="allow"], button:has-text("Authorize"), button:has-text("Allow")').first();
       try {
         await Promise.all([
