@@ -22,6 +22,24 @@
  *     sidecar, so videos uploaded from the spool to `videos/_device/` arrive
  *     UNSTAMPED even though the originals are stamped.
  */
+// These suites are about the LOCAL recorder / spool path. Backend selection
+// reads ACE_MOBILE_BACKEND, and vitest reuses a worker process across test
+// files, so a sibling mobile suite that sets it to 'cloud' leaks in whenever
+// the scheduler happens to pair them: `requireCloud()` then throws
+// CLOUD_NOT_CONFIGURED and the assertion below about the ORIGINAL recipe error
+// fails with 'cloud backend selected but not configured' instead — a message
+// pointing nowhere near the real cause. The siblings all save and restore the
+// var correctly, so no single test misbehaves; the exposure is that a file
+// READING it is unpinned, which makes the result depend on file ordering.
+// `client-recording.test.ts` already carries this same pin for the same reason;
+// this is the second copy. Deterministic reproducer for what the pin prevents —
+// delete the line below and run:
+//     ACE_MOBILE_BACKEND=cloud npx vitest run test/mcp/mobile/recording-polish.test.ts
+// which fails with exactly the observed message; with the line, it passes.
+// See ace#1803, which also asks whether a shared setup file should replace a
+// third manual copy.
+process.env.ACE_MOBILE_BACKEND = 'local';
+
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
