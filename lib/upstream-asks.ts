@@ -102,6 +102,15 @@ const LIVE_CONSTRAINT_MARKERS: RegExp[] = [
   /\bremoval\s+criteria\b/i,
   /\bcannot\b/i,
   /\bunable\s+to\b/i,
+  // Vocabulary Table A actually uses to assert a permanent platform closure.
+  // Without these the highest-value rows in the repo match no live marker at all.
+  /\bare\s+rejected\b/i,
+  /\bis\s+rejected\b/i,
+  /\bwrite-only\b/i,
+  /\bnot\s+requestable\b/i,
+  /\bno\s+path\b/i,
+  /\bclosed\s+at\s+the\s+platform\s+surface\b/i,
+  /\bclosed\s+on\s+all\s+\w+\s+surfaces\b/i,
 ];
 
 /**
@@ -113,7 +122,17 @@ const LIVE_CONSTRAINT_MARKERS: RegExp[] = [
 const HISTORICAL_MARKERS: RegExp[] = [
   /\bfixed\b/i,
   /\bshipped\b/i,
-  /\bclosed\b/i,
+  // NOT a bare /\bclosed\b/ — ACE's docs use "closed" for two opposite things.
+  // `_app-component-library.md` Table A is titled "closed at the platform surface"
+  // and its rows open "Closed on all three surfaces", where closed means the
+  // CONSTRAINT is permanent, i.e. maximally live. A bare marker suppressed every
+  // row in the one table this probe most needs to read (ace#1798). Match only
+  // phrasing that says the ISSUE closed.
+  /\bclosed\s+(?:as\s+)?(?:completed|not[-\s]planned)\b/i,
+  /\bclosed\s+(?:on\s+)?\d{4}-\d{2}-\d{2}/i,
+  /\b(?:issue|bug|ticket|upstream|request|it|which|that)\s+closed\b/i,
+  /\b(?:now|since|already|was|has)\s+closed\b/i,
+  /\bclosed\s+upstream\b/i,
   /\bresolved\b/i,
   /\bsuperseded\b/i,
   /\bretired\b/i,
