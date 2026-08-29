@@ -2030,6 +2030,10 @@ function inputWalk(
     '- tapOn:',
     '    below:',
     `      text: "${anchor}"`,
+    // eraseText between the focus tap and the text is the sanctioned
+    // shape since ace#1844 — inputText appends, so every input is erased
+    // first. The focus-idiom checks must still see through it.
+    '- eraseText',
     '- inputText: "0991234567"',
     '- hideKeyboard',
   ];
@@ -2265,11 +2269,132 @@ describe('probeRecipeSanity — failure class: input-focus-scroll-is-guarded (ac
   });
 });
 
+describe('probeRecipeSanity — failure class: input-without-erase (ace#1844)', () => {
+  it('flags an inputText with no eraseText immediately before it', () => {
+    const body = [
+      '- tapOn:',
+      '    below:',
+      `      text: "${HINT_ANCHOR}"`,
+      '- inputText: "40"',
+    ].join('\n');
+    const verdict = probeRecipeSanity({
+      recipes: [recipeBody('journey-deliver.yaml', body)],
+      novaApps: [HINTED_DELIVER_APP],
+      connectOpp: LIVE_OPP,
+    });
+    const f = verdict.failures.find((x) => x.class === 'input-without-erase');
+    expect(f).toBeDefined();
+    expect(f!.recipe).toBe('journey-deliver.yaml');
+    expect(f!.detail).toMatch(/APPENDS/);
+    expect(f!.remediation).toMatch(/eraseText/);
+    expect(f!.remediation).toMatch(/app-test-cases/);
+    expect(verdict.ok).toBe(false);
+  });
+
+  it('does NOT flag a properly paired eraseText + inputText — non-vacuity control', () => {
+    const body = [
+      '- tapOn:',
+      '    below:',
+      `      text: "${HINT_ANCHOR}"`,
+      '- eraseText',
+      '- inputText: "40"',
+    ].join('\n');
+    const verdict = probeRecipeSanity({
+      recipes: [recipeBody('journey-deliver.yaml', body)],
+      novaApps: [HINTED_DELIVER_APP],
+      connectOpp: LIVE_OPP,
+    });
+    expect(verdict.failures.find((x) => x.class === 'input-without-erase')).toBeUndefined();
+  });
+
+  it('fires with NO fields supplied — the defect is pure recipe shape, never field-gated', () => {
+    // HEALTHY_DELIVER_APP carries no `fields[]`, so every field-gated
+    // check in this file is inert for these inputs. This one must not be.
+    const verdict = probeRecipeSanity({
+      recipes: [recipeBody('journey-deliver.yaml', '- inputText: "40"')],
+      novaApps: [HEALTHY_DELIVER_APP],
+      connectOpp: LIVE_OPP,
+    });
+    expect(verdict.observed.field_data_supplied).toBe(false);
+    expect(verdict.failures.find((x) => x.class === 'input-without-erase')).toBeDefined();
+  });
+
+  it('accepts the counted form `- eraseText: 12`', () => {
+    const body = ['- eraseText: 12', '- inputText: "40"'].join('\n');
+    const verdict = probeRecipeSanity({
+      recipes: [recipeBody('journey-deliver.yaml', body)],
+      novaApps: [HEALTHY_DELIVER_APP],
+      connectOpp: LIVE_OPP,
+    });
+    expect(verdict.failures.find((x) => x.class === 'input-without-erase')).toBeUndefined();
+  });
+
+  it('flags an eraseText separated from its inputText by another step', () => {
+    // "Immediately preceded" is literal: an erase that fires before some
+    // other interaction is no guarantee the field is still empty.
+    const body = ['- eraseText', '- hideKeyboard', '- inputText: "40"'].join('\n');
+    const verdict = probeRecipeSanity({
+      recipes: [recipeBody('journey-deliver.yaml', body)],
+      novaApps: [HEALTHY_DELIVER_APP],
+      connectOpp: LIVE_OPP,
+    });
+    expect(verdict.failures.find((x) => x.class === 'input-without-erase')).toBeDefined();
+  });
+
+  it('flags an unerased inputText NESTED inside a runFlow commands block', () => {
+    const body = [
+      '- runFlow:',
+      '    when:',
+      '      visible:',
+      '        text: "Households represented"',
+      '    commands:',
+      '      - inputText: "40"',
+    ].join('\n');
+    const verdict = probeRecipeSanity({
+      recipes: [recipeBody('journey-deliver.yaml', body)],
+      novaApps: [HEALTHY_DELIVER_APP],
+      connectOpp: LIVE_OPP,
+    });
+    expect(verdict.failures.find((x) => x.class === 'input-without-erase')).toBeDefined();
+  });
+
+  it('does NOT flag a paired erase nested inside a runFlow commands block', () => {
+    const body = [
+      '- runFlow:',
+      '    commands:',
+      '      - eraseText',
+      '      - inputText: "40"',
+    ].join('\n');
+    const verdict = probeRecipeSanity({
+      recipes: [recipeBody('journey-deliver.yaml', body)],
+      novaApps: [HEALTHY_DELIVER_APP],
+      connectOpp: LIVE_OPP,
+    });
+    expect(verdict.failures.find((x) => x.class === 'input-without-erase')).toBeUndefined();
+  });
+
+  it('still sees the focus idiom through the interposed eraseText', () => {
+    // The ace#1844 shape is tapOn: below: -> eraseText -> inputText. If
+    // findInputFocusSteps stopped recognising that as the focus idiom,
+    // both ace#1554 checks would go silently dead on every recipe
+    // authored under the new rule.
+    const verdict = probeRecipeSanity({
+      recipes: [recipeBody('journey-deliver.yaml', inputWalk(LABEL_ANCHOR))],
+      novaApps: [HINTED_DELIVER_APP],
+      connectOpp: LIVE_OPP,
+    });
+    expect(inputWalk(LABEL_ANCHOR)).toContain('- eraseText');
+    expect(verdict.failures.find((x) => x.class === 'input-anchor-skips-hint')).toBeDefined();
+    expect(verdict.failures.find((x) => x.class === 'input-without-erase')).toBeUndefined();
+  });
+});
+
 describe('probeRecipeSanity — ace#1554 healthy field-list walk stays clean', () => {
   it('passes the full SKILL.md-sanctioned single-screen walk', () => {
     // Autofocused first input (bare inputText), then hint-anchored
     // unconditional scroll + below-tap for the second, then ONE advance.
     const body = [
+      '- eraseText',
       '- inputText: "Thandiwe Banda"',
       '- hideKeyboard',
       inputWalk(HINT_ANCHOR),
