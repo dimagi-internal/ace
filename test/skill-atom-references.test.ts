@@ -79,9 +79,6 @@ const ATOM_PREFIXES = [
  * issue or fix the skill.
  */
 const ALLOWLIST = new Set([
-  // ---- MCP server names (a server, not one of its atoms) ----
-  'connect_labs',            // the Connect Labs remote MCP server (labs.connect.dimagi.com/mcp/) — target-geographies calls its targeting_* tools, which live outside ACE's registry
-
   // ---- Field names / payload keys (not atoms) ----
   'connect_opportunity_id',  // bookkeeping field in run_state.yaml + opp.yaml
   'connect_user_id',         // ConnectID user pk on a UserInvite row — a products.connect.ace_test_user field (ace#1286), not an atom
