@@ -1,14 +1,9 @@
 ---
 name: run-surface-audit
 description: >
-  Audit the EXTERNAL REVIEW SURFACE of a run — the public run-summary page an
-  outside partner is sent to — before sharing it with anyone. Probes anonymously
-  (no cookies, no service account): every link by class, the payload's own shape
-  contract, confidentiality boundaries, every artifact the run actually
-  produced, each published document's rendering and completeness, and the
-  rendered page itself in a headless browser. Distinguishes BROKEN (a reviewer
-  hits a wall) from MISLEADING (the page states something untrue) from
-  IMPROVEMENT. Run it before handing anyone a run-summary URL.
+  Audit a run's public run-summary page anonymously before anyone outside is sent
+  it, sorting findings into broken, misleading and improvement. Use before
+  handing anyone a run-summary URL.
 ---
 
 # Run-surface audit — what an outsider actually gets
