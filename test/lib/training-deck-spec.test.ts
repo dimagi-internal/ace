@@ -10,6 +10,7 @@ import {
   SlideSpecSchema,
   resolveManifest,
   normalizeDriveImageUrl,
+  extractDriveFileId,
   computeVisualCoverage,
   resolveModuleRefs,
   STENCILS,
@@ -1511,5 +1512,56 @@ describe('stencil/builder placeholder parity (#1503)', () => {
 
   it('every stencil key has a declared placeholder set', () => {
     expect(Object.keys(STENCIL_PLACEHOLDERS).sort()).toEqual(Object.keys(STENCILS).sort());
+  });
+});
+
+describe('extractDriveFileId (#1825)', () => {
+  const ID = '1kWp6BrGhEPl4hDbB7OGKrcAOnsYoOcfP';
+
+  // The shape `training-deck-generate` ACTUALLY writes into manifest.opp /
+  // manifest.common. This is the one the in-place re-render's anyone-with-link
+  // pre-flight was passing wholesale to drive.permissions.create as `fileId`,
+  // 404-ing on every entry and swallowing it, so it shared nothing for every
+  // deck it ever ran on.
+  it('extracts the id from the uc?export=view manifest URL form', () => {
+    expect(extractDriveFileId(`https://drive.google.com/uc?export=view&id=${ID}`)).toBe(ID);
+    expect(extractDriveFileId(`https://drive.google.com/uc?export=download&id=${ID}`)).toBe(ID);
+    expect(extractDriveFileId(`https://drive.google.com/uc?id=${ID}`)).toBe(ID);
+    expect(extractDriveFileId(`https://drive.google.com/open?id=${ID}`)).toBe(ID);
+  });
+
+  it('extracts the id from the /file/d/ share URL form', () => {
+    expect(extractDriveFileId(`https://drive.google.com/file/d/${ID}/view?usp=drivesdk`)).toBe(ID);
+    expect(extractDriveFileId(`https://drive.google.com/file/d/${ID}/edit`)).toBe(ID);
+  });
+
+  it('accepts the drive:<id> alias-value form and a bare id', () => {
+    expect(extractDriveFileId(`drive:${ID}`)).toBe(ID);
+    expect(extractDriveFileId(ID)).toBe(ID);
+    expect(extractDriveFileId(`  ${ID}  `)).toBe(ID);
+  });
+
+  it('returns null rather than a bogus id for non-Drive and unrecognized input', () => {
+    expect(extractDriveFileId('https://example.com/a.png')).toBeNull();
+    expect(extractDriveFileId('https://drive.google.com/drive/folders/')).toBeNull();
+    expect(extractDriveFileId('')).toBeNull();
+  });
+
+  it('never returns the URL it was handed — the whole defect in one assertion', () => {
+    const url = `https://drive.google.com/uc?export=view&id=${ID}`;
+    expect(extractDriveFileId(url)).not.toBe(url);
+    expect(extractDriveFileId(url)).not.toContain('http');
+  });
+
+  it('agrees with normalizeDriveImageUrl on every shape it recognises', () => {
+    for (const shape of [
+      `https://drive.google.com/uc?export=view&id=${ID}`,
+      `https://drive.google.com/file/d/${ID}/view`,
+      `https://drive.google.com/open?id=${ID}`,
+    ]) {
+      expect(normalizeDriveImageUrl(shape)).toBe(
+        `https://drive.google.com/uc?export=view&id=${extractDriveFileId(shape)}`,
+      );
+    }
   });
 });
