@@ -14,6 +14,8 @@ import {
   HttpError,
   OcsError,
   PipelineShapeError,
+  WidgetChannelDisabledError,
+  WidgetChannelStateUnreadableError,
 } from '../errors.js';
 import {
   findUnsupportedCollectionFiles,
@@ -81,6 +83,85 @@ export function extractEmbeddedWidgetChannelId(html: string, experimentId: numbe
     return Number(m[1]);
   }
   return undefined;
+}
+
+/**
+ * The three answers a channel-state read-back can give. `unreadable` is a
+ * distinct verdict rather than a silent `enabled`, because a parse that stops
+ * matching is evidence of the very upstream change that would break the write
+ * too (ace#1813 — see WidgetChannelStateUnreadableError).
+ */
+export type ChannelEnabledReadback =
+  | { verdict: 'enabled' }
+  | { verdict: 'disabled' }
+  | { verdict: 'unreadable'; detail: string };
+
+/** Parse one `<input ...>` tag's attributes. Bare attributes map to `true`. */
+function parseTagAttributes(tag: string): Map<string, string | true> {
+  const attrs = new Map<string, string | true>();
+  const inner = tag.replace(/^<\s*[a-zA-Z][-\w]*/, '').replace(/\/?>$/, '');
+  const attrRe = /([:@a-zA-Z_][-.:\w]*)\s*(?:=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'>]+)))?/g;
+  for (const m of inner.matchAll(attrRe)) {
+    const value = m[2] ?? m[3] ?? m[4];
+    attrs.set(m[1].toLowerCase(), value === undefined ? true : value);
+  }
+  return attrs;
+}
+
+/**
+ * Read a channel's `enabled` state out of its edit-dialog HTML.
+ *
+ * This is the authoritative read-back for ace#1492 / ace#1813. The edit-dialog
+ * is a Django UpdateView (`ChannelEditDialogView`, `apps/channels/views.py`)
+ * whose form is built from a fresh `get_object()` — so the checkbox it renders
+ * reflects the DATABASE, not whatever we just POSTed. That is what makes it a
+ * real Write -> Read -> Compare rather than trusting the POST status.
+ *
+ * The rendered shape comes from `ChannelForm.Meta.fields` (which includes
+ * `enabled` since OCS #4202) through OCS's own override of
+ * `templates/django/forms/widgets/input.html`:
+ *
+ *   <input class="checkbox " type="checkbox" name="enabled"
+ *          x-model.boolean="channelEnabled" id="id_enabled" checked>
+ *
+ * Django's `attrs.html` emits `checked` as a BARE attribute when the value is
+ * True and omits it entirely when False, so presence/absence of `checked` is
+ * the signal. Values are accepted too (`checked="checked"`) — HTML boolean
+ * attributes are true by presence.
+ *
+ * `ocs_inspect_chatbot` cannot answer this question: the upstream v2 serializer
+ * (`apps/api/v2/inspect/serializers.py` `ChannelSerializer.Meta.fields`) omits
+ * both `enabled` and `disabled_message`. Verified against upstream main
+ * 19bf02f9 on 2026-08-29; if that changes, prefer the REST read and delete this.
+ */
+export function classifyChannelEnabled(dialogHtml: string): ChannelEnabledReadback {
+  const namedEnabled = (dialogHtml.match(/<input\b[^>]*>/gi) ?? [])
+    .map(parseTagAttributes)
+    .filter((attrs) => attrs.get('name') === 'enabled');
+
+  if (namedEnabled.length === 0) {
+    return {
+      verdict: 'unreadable',
+      detail:
+        'the edit-dialog HTML contains no <input name="enabled"> — upstream may have renamed ' +
+        'the field, dropped it from ChannelForm.Meta.fields, or swapped its widget.',
+    };
+  }
+
+  const checkboxes = namedEnabled.filter((attrs) => attrs.get('type') === 'checkbox');
+  if (checkboxes.length === 0) {
+    const types = namedEnabled.map((a) => String(a.get('type') ?? '(none)')).join(', ');
+    return {
+      verdict: 'unreadable',
+      detail:
+        `an <input name="enabled"> exists but is not type="checkbox" (saw: ${types}), so the ` +
+        'presence-of-`checked` reading does not apply — upstream changed the widget.',
+    };
+  }
+
+  return checkboxes.some((attrs) => attrs.has('checked'))
+    ? { verdict: 'enabled' }
+    : { verdict: 'disabled' };
 }
 
 /**
@@ -1110,6 +1191,59 @@ export class PlaywrightBackend {
     if (!res.ok && res.status !== 302) {
       throw await httpErrorFor(res, path);
     }
+
+    // Write -> Read -> Compare -> halt loud. The POST status above is NOT proof
+    // the channel is enabled: `enabled` is a Django checkbox, and the failure
+    // mode this guards (ace#1492) posts a perfectly successful 200 while
+    // creating a DISABLED channel. ace#1813.
+    await this.assertWidgetChannelEnabled(experimentId);
+  }
+
+  /**
+   * Prove, against a fresh authoritative read, that the widget channel we just
+   * created is `enabled`. ace#1813.
+   *
+   * Two hops, both already exercised by `getChatbotEmbedInfo`:
+   *   1. GET /a/<team>/chatbots/<eid>/  -> the embedded_widget channel's id,
+   *      from the hx-get URL on its button
+   *      (templates/chatbots/components/channel_buttons.html)
+   *   2. GET /channels/<team>/chatbots/<eid>/channels/<cid>/edit-dialog/
+   *      -> the `enabled` checkbox, rendered from a fresh DB read by
+   *      `ChannelEditDialogView` (a Django UpdateView)
+   *
+   * Deliberately NOT done by opening the door (a POST /api/chat/start/ probe):
+   * at clone time the chatbot has no published version and no staged embed key,
+   * so a 403/404 there is ambiguous, `_channel_disabled_response` is only one of
+   * several 403 sources, and the probe would mint a real participant + session
+   * on every run. The structural read is causally specific and side-effect-free.
+   *
+   * Also NOT done via `ocs_inspect_chatbot`: its upstream serializer omits
+   * `enabled` entirely (ace#1813 premise; upstream main 19bf02f9, 2026-08-29).
+   */
+  private async assertWidgetChannelEnabled(experimentId: number): Promise<void> {
+    const homePath = `/a/${this.opts.teamSlug}/chatbots/${experimentId}/`;
+    const homeRes = await this.opts.request('GET', homePath);
+    if (!homeRes.ok || !homeRes.text) throw await httpErrorFor(homeRes, homePath);
+    const channelId = extractEmbeddedWidgetChannelId(await homeRes.text(), experimentId);
+    if (channelId === undefined) {
+      throw new WidgetChannelStateUnreadableError(
+        experimentId,
+        undefined,
+        'the chatbot home page lists no embedded_widget channel button, even though the ' +
+          'create POST reported success.',
+      );
+    }
+
+    const dialogPath = `/channels/${this.opts.teamSlug}/chatbots/${experimentId}/channels/${channelId}/edit-dialog/`;
+    const dialogRes = await this.opts.request('GET', dialogPath);
+    if (!dialogRes.ok || !dialogRes.text) throw await httpErrorFor(dialogRes, dialogPath);
+
+    const readback = classifyChannelEnabled(await dialogRes.text());
+    if (readback.verdict === 'enabled') return;
+    if (readback.verdict === 'disabled') {
+      throw new WidgetChannelDisabledError(experimentId, channelId);
+    }
+    throw new WidgetChannelStateUnreadableError(experimentId, channelId, readback.detail);
   }
 
   async publishChatbotVersion(args: { experiment_id: number; description: string }) {

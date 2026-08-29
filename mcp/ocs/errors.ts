@@ -204,3 +204,87 @@ export class StaleOcsSubprocessError extends OcsError {
     );
   }
 }
+
+/**
+ * The widget-channel create POST reported success, but a fresh authoritative
+ * read of the channel's edit-dialog says the channel is `enabled=False` — i.e.
+ * it was born disabled.
+ *
+ * ace#1813, the detector for the ace#1492 class.
+ *
+ * ace#1492: OCS PR #4202 (merged 2026-08-17) added `enabled` to
+ * `ChannelForm.Meta.fields`. It is a Django BooleanField rendered as a
+ * checkbox, and a checkbox ABSENT from POST data resolves to `False` — the
+ * model's `default=True` no longer applies once the ModelForm owns the field.
+ * ACE's POST predates that PR, so for two days every channel ACE created was
+ * born disabled and `ChannelDisabledStage` dropped every inbound message. The
+ * fix (commit 04ae0e47, 2026-08-18) sends `enabled: 'on'`.
+ *
+ * Why a read-back and not just the write: that literal is one string in a
+ * hand-built form POST, and #4202 already demonstrated that upstream can add a
+ * second required boolean to the same `Meta.fields` without warning. A rename
+ * or a further addition silently reintroduces the class, and OCS PR #4230
+ * (merged 2026-08-20) then turns it into a hard door: `_channel_disabled_response()`
+ * in `apps/api/views/chat.py` returns `403 {"error": "This chatbot is currently
+ * unavailable."}` from `chat_start_session` BEFORE participant creation, so
+ * Phase 5 chatbot QA cannot open a session at all. `is_disabled` is
+ * `not self.enabled` (`apps/channels/models.py:342-344`).
+ *
+ * Not detectable via `ocs_inspect_chatbot`: the upstream v2 inspect serializer
+ * (`apps/api/v2/inspect/serializers.py` `ChannelSerializer.Meta.fields`) omits
+ * both `enabled` and `disabled_message`, so the REST read cannot see this.
+ */
+export class WidgetChannelDisabledError extends OcsError {
+  constructor(public experimentId: number, public channelId: number) {
+    super(
+      `Widget channel ${channelId} on experiment ${experimentId} was created DISABLED ` +
+        `(enabled=False). The create POST returned success, but the channel edit-dialog ` +
+        `read-back shows the \`enabled\` checkbox unchecked. This is the ace#1492 class: ` +
+        `upstream OCS #4202 made \`enabled\` a ModelForm field, and an omitted Django ` +
+        `checkbox posts as False. Since OCS #4230, a disabled channel makes ` +
+        `POST /api/chat/start/ return 403 "This chatbot is currently unavailable.", so ` +
+        `Phase 5 chatbot QA cannot open a session. Check that ACE's widget-channel POST ` +
+        `body in mcp/ocs/backends/playwright.ts still names every boolean field in ` +
+        `upstream \`ChannelForm.Meta.fields\` — #4202 added one once already. Re-enable the ` +
+        `channel in the OCS UI to unblock the run; fix the POST body to stop it recurring.`,
+    );
+  }
+}
+
+/**
+ * The widget channel was created, but ACE could not READ BACK its `enabled`
+ * state — the chatbot home page lists no embedded_widget channel, or the
+ * edit-dialog no longer renders a recognisable `enabled` checkbox.
+ *
+ * Loud on purpose (ace#1813). An unreadable state is treated as a FAILED write
+ * rather than a passing one, because the two causes coincide: the same upstream
+ * rename that makes the checkbox unfindable in the edit-dialog also makes
+ * ACE's `enabled: 'on'` POST key wrong, which means the channel really is
+ * disabled. Reporting "verified" here would recreate exactly the silent class
+ * this read-back exists to end.
+ *
+ * Remedy: re-derive both the POST body and this parse from the CURRENT upstream
+ * templates via `skills/upstream-regression-triage` — `apps/channels/forms.py`
+ * (`ChannelForm.Meta.fields`) and `templates/django/forms/widgets/input.html`.
+ */
+export class WidgetChannelStateUnreadableError extends OcsError {
+  constructor(
+    public experimentId: number,
+    public channelId: number | undefined,
+    public detail: string,
+  ) {
+    super(
+      `Could not read back the \`enabled\` state of the widget channel just created on ` +
+        `experiment ${experimentId}${channelId === undefined ? '' : ` (channel ${channelId})`}: ${detail} ` +
+        `Treating this as a FAILED write, not a pass: the upstream change that hides the ` +
+        `checkbox from this parse is the same one that would make ACE's \`enabled: 'on'\` ` +
+        `POST key wrong (ace#1492 / OCS #4202), and since OCS #4230 a disabled channel ` +
+        `403s POST /api/chat/start/ before Phase 5 QA can open a session. Re-derive the ` +
+        `POST body and this parse from the current upstream templates ` +
+        `(apps/channels/forms.py ChannelForm.Meta.fields, ` +
+        `templates/django/forms/widgets/input.html) via skills/upstream-regression-triage. ` +
+        `ocs_inspect_chatbot cannot substitute — its ChannelSerializer omits \`enabled\` ` +
+        `(ace#1813).`,
+    );
+  }
+}

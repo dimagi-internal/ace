@@ -11,9 +11,14 @@ import {
   extractExperimentIdFromLocation,
   parseChatbotTable,
   assertCollectionPromptInvariant,
+  classifyChannelEnabled,
 } from '../../../mcp/ocs/backends/playwright.js';
 import type { RequestFn } from '../../../mcp/ocs/backends/pipeline-patch.js';
-import { VersionBadgeUnreadableError } from '../../../mcp/ocs/errors.js';
+import {
+  VersionBadgeUnreadableError,
+  WidgetChannelDisabledError,
+  WidgetChannelStateUnreadableError,
+} from '../../../mcp/ocs/errors.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -78,6 +83,51 @@ const EDIT_HTML_WITH_PIPELINE_ID = `
   </script>
 </body></html>
 `;
+
+// ── Channel edit-dialog fixtures (ace#1813) ──────────────────────────
+//
+// Transcribed from the real upstream render path, not invented:
+//   templates/chatbots/partials/channel_dialog.html
+//     -> {% render_form_fields form %}   (apps/web/templatetags/form_tags.py)
+//       -> templates/web/form/checkbox.html
+//         -> templates/django/forms/widgets/input.html   (OCS's own override)
+//
+// `ChannelForm.Meta.fields` carries `enabled` + `disabled_message` since OCS
+// #4202, and `ChannelForm.__init__` hangs Alpine's `x-model.boolean` off the
+// checkbox and stamps `x-data={"channelEnabled": <db value>}` on the wrapper.
+// Django's attrs.html emits `checked` as a BARE attribute for True and omits it
+// entirely for False — that presence/absence IS the signal.
+function channelEditDialogHtml(opts: { enabled: boolean }): string {
+  return `
+<dialog class="modal" open>
+  <div class="modal-box">
+    <h3 class="font-bold text-lg">Edit Embedded Widget Channel</h3>
+    <form method="post" hx-post="/channels/dimagi/chatbots/99/channels/333/edit-dialog/">
+      <input type="hidden" name="csrfmiddlewaretoken" value="csrf-xyz">
+      ${opts.enabled ? '' : `<div role="alert" class="alert alert-warning">
+        <span>This channel is disabled. Incoming messages are not processed and users receive no reply.</span>
+      </div>`}
+      <div x-data="{&quot;channelEnabled&quot;: ${opts.enabled}}">
+        <input class="input w-full " type="text" name="name" value="ACE - Malaria Pilot" id="id_name">
+        <input type="hidden" name="platform" value="embedded_widget" id="id_platform">
+        <input class="checkbox " type="checkbox" name="enabled" x-model.boolean="channelEnabled" id="id_enabled"${opts.enabled ? ' checked' : ''}>
+        <textarea name="disabled_message" rows="3" id="id_disabled_message" x-show="!channelEnabled"></textarea>
+      </div>
+      <input type="text" id="widget_token" value="tok_abcdefghijklmnop" readonly>
+    </form>
+  </div>
+</dialog>
+`;
+}
+
+const CHANNEL_DIALOG_ENABLED = channelEditDialogHtml({ enabled: true });
+const CHANNEL_DIALOG_DISABLED = channelEditDialogHtml({ enabled: false });
+
+/** The shape ace#1813 is really guarding: upstream renames or drops the field. */
+const CHANNEL_DIALOG_NO_ENABLED_FIELD = CHANNEL_DIALOG_ENABLED.replace(
+  'name="enabled"',
+  'name="is_active"',
+);
 
 const EDIT_DIALOG_HTML_WITH_TOKEN = `
 <html><body>
@@ -278,6 +328,10 @@ describe('PlaywrightBackend.cloneChatbot', () => {
         });
         return { ok: true, status: 200, text: async () => '', json: async () => ({}) };
       }
+      // ace#1813 read-back: the channel edit-dialog, from a fresh DB read.
+      if (method === 'GET' && url === '/channels/dimagi/chatbots/99/channels/333/edit-dialog/') {
+        return { ok: true, status: 200, text: async () => CHANNEL_DIALOG_ENABLED, json: async () => ({}) };
+      }
       throw new Error(`unexpected ${method} ${url}`);
     };
 
@@ -289,12 +343,15 @@ describe('PlaywrightBackend.cloneChatbot', () => {
       public_id: '00000000-0000-4000-8000-000000000099',
       pipeline_id: 77,
     });
-    // Verify the full 4-call sequence
+    // Verify the full call sequence. The trailing two GETs are the ace#1813
+    // read-back — the create POST's own 200 is not accepted as proof.
     expect(calls.map((c) => `${c.method} ${c.url}`)).toEqual([
       'POST /a/dimagi/chatbots/5/copy/',
       'GET /a/dimagi/chatbots/99/',
       'GET /a/dimagi/chatbots/99/edit/',
       'POST /channels/dimagi/chatbots/99/channels/create-dialog/embedded_widget/',
+      'GET /a/dimagi/chatbots/99/',
+      'GET /channels/dimagi/chatbots/99/channels/333/edit-dialog/',
     ]);
   });
 
@@ -342,6 +399,9 @@ describe('PlaywrightBackend.cloneChatbot', () => {
         channelBody = body as Record<string, unknown>;
         return { ok: true, status: 200, text: async () => '', json: async () => ({}) };
       }
+      if (method === 'GET' && url.endsWith('/channels/333/edit-dialog/')) {
+        return { ok: true, status: 200, text: async () => CHANNEL_DIALOG_ENABLED, json: async () => ({}) };
+      }
       throw new Error(`unexpected ${method} ${url}`);
     };
 
@@ -386,6 +446,143 @@ describe('PlaywrightBackend.cloneChatbot', () => {
     await expect(
       backend.cloneChatbot({ template_id: 5, new_name: 'x' })
     ).rejects.toThrow(/Could not parse experiment_id/);
+  });
+});
+
+// ── Widget-channel enabled read-back (ace#1813) ──────────────────────
+
+describe('classifyChannelEnabled', () => {
+  it('reads a checked box as enabled', () => {
+    expect(classifyChannelEnabled(CHANNEL_DIALOG_ENABLED)).toEqual({ verdict: 'enabled' });
+  });
+
+  it('reads an unchecked box as disabled — the ace#1492 signature', () => {
+    expect(classifyChannelEnabled(CHANNEL_DIALOG_DISABLED)).toEqual({ verdict: 'disabled' });
+  });
+
+  it('accepts checked="checked" — HTML boolean attributes are true by presence', () => {
+    const html = CHANNEL_DIALOG_ENABLED.replace(' checked>', ' checked="checked">');
+    expect(classifyChannelEnabled(html)).toEqual({ verdict: 'enabled' });
+  });
+
+  /**
+   * The whole point of the three-valued verdict. A renamed or dropped field is
+   * NOT "enabled" — it is the exact upstream change (#4202 did it once) that
+   * would also make ACE's `enabled: 'on'` POST key wrong, i.e. evidence the
+   * channel is probably disabled. Collapsing this into `enabled` would rebuild
+   * the silent failure the read-back exists to end.
+   */
+  it('reports unreadable — not enabled — when no input is named `enabled`', () => {
+    const out = classifyChannelEnabled(CHANNEL_DIALOG_NO_ENABLED_FIELD);
+    expect(out.verdict).toBe('unreadable');
+    expect(out).toHaveProperty('detail', expect.stringContaining('no <input name="enabled">'));
+  });
+
+  it('reports unreadable when `enabled` is no longer a checkbox', () => {
+    const html = CHANNEL_DIALOG_ENABLED.replace(
+      '<input class="checkbox " type="checkbox" name="enabled" x-model.boolean="channelEnabled" id="id_enabled" checked>',
+      '<input type="hidden" name="enabled" value="True" id="id_enabled">',
+    );
+    expect(classifyChannelEnabled(html).verdict).toBe('unreadable');
+  });
+
+  /**
+   * Attribute VALUES must not be mistaken for the bare `checked` attribute —
+   * a false positive here would report a disabled channel as enabled, which is
+   * strictly worse than no detector at all.
+   */
+  it('does not treat the word "checked" inside an attribute value as the attribute', () => {
+    const html = CHANNEL_DIALOG_DISABLED.replace(
+      'x-model.boolean="channelEnabled"',
+      'x-bind:class="isChecked ? \'checked box\' : \'\'" data-checked="no"',
+    );
+    expect(classifyChannelEnabled(html)).toEqual({ verdict: 'disabled' });
+  });
+});
+
+describe('PlaywrightBackend widget-channel read-back', () => {
+  /**
+   * ace#1813. Before this, `createEmbeddedWidgetChannel` returned on the create
+   * POST's own 200 and nothing in ACE ever read `enabled` back. That is the
+   * defect: a channel born disabled (the ace#1492 class, upstream OCS #4202)
+   * produces a perfectly successful POST, and since OCS #4230 only surfaces
+   * later as a 403 from POST /api/chat/start/ once Phase 5 QA tries to open a
+   * session. `ocs_inspect_chatbot` cannot see it either — its upstream
+   * ChannelSerializer omits `enabled`.
+   *
+   * NEGATIVE CONTROL: run this test against the pre-fix backend (the create
+   * method ending at the POST status check) and it PASSES the clone with no
+   * error — no GET of the edit-dialog is even issued.
+   */
+  function cloneRequestFake(dialogHtml: string | null): RequestFn {
+    return async (method, url) => {
+      if (method === 'POST' && url === '/a/dimagi/chatbots/5/copy/') {
+        return {
+          ok: false,
+          status: 302,
+          headers: { location: '/a/dimagi/chatbots/99/' },
+          text: async () => '',
+          json: async () => ({}),
+        };
+      }
+      if (method === 'GET' && url === '/a/dimagi/chatbots/99/') {
+        return {
+          ok: true,
+          status: 200,
+          // `null` simulates a home page with no embedded_widget channel button.
+          text: async () =>
+            dialogHtml === null
+              ? HOME_HTML_WITH_WIDGET.replace('fa-embedded_widget', 'fa-telegram')
+              : HOME_HTML_WITH_WIDGET,
+          json: async () => ({}),
+        };
+      }
+      if (method === 'GET' && url === '/a/dimagi/chatbots/99/edit/') {
+        return { ok: true, status: 200, text: async () => EDIT_HTML_WITH_PIPELINE_ID, json: async () => ({}) };
+      }
+      if (method === 'POST' && url.includes('create-dialog/embedded_widget/')) {
+        return { ok: true, status: 200, text: async () => '', json: async () => ({}) };
+      }
+      if (method === 'GET' && url === '/channels/dimagi/chatbots/99/channels/333/edit-dialog/') {
+        return { ok: true, status: 200, text: async () => dialogHtml ?? '', json: async () => ({}) };
+      }
+      throw new Error(`unexpected ${method} ${url}`);
+    };
+  }
+
+  it('halts loud when the created channel reads back DISABLED', async () => {
+    const backend = makeBackend(cloneRequestFake(CHANNEL_DIALOG_DISABLED));
+    await expect(
+      backend.cloneChatbot({ template_id: 5, new_name: 'ACE - Malaria Pilot' }),
+    ).rejects.toThrow(WidgetChannelDisabledError);
+  });
+
+  it('names the upstream reproducers in the disabled error, not just the symptom', async () => {
+    const backend = makeBackend(cloneRequestFake(CHANNEL_DIALOG_DISABLED));
+    await expect(
+      backend.cloneChatbot({ template_id: 5, new_name: 'ACE - Malaria Pilot' }),
+    ).rejects.toThrow(/ace#1492.*#4202[\s\S]*#4230/);
+  });
+
+  it('halts loud — not silently passes — when the enabled field cannot be found', async () => {
+    const backend = makeBackend(cloneRequestFake(CHANNEL_DIALOG_NO_ENABLED_FIELD));
+    await expect(
+      backend.cloneChatbot({ template_id: 5, new_name: 'ACE - Malaria Pilot' }),
+    ).rejects.toThrow(WidgetChannelStateUnreadableError);
+  });
+
+  it('halts loud when the home page lists no embedded_widget channel after the create POST', async () => {
+    const backend = makeBackend(cloneRequestFake(null));
+    await expect(
+      backend.cloneChatbot({ template_id: 5, new_name: 'ACE - Malaria Pilot' }),
+    ).rejects.toThrow(/lists no embedded_widget channel button/);
+  });
+
+  it('passes silently when the channel reads back enabled', async () => {
+    const backend = makeBackend(cloneRequestFake(CHANNEL_DIALOG_ENABLED));
+    await expect(
+      backend.cloneChatbot({ template_id: 5, new_name: 'ACE - Malaria Pilot' }),
+    ).resolves.toMatchObject({ experiment_id: 99 });
   });
 });
 
