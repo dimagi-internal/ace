@@ -41,6 +41,7 @@ import {
   isBlocking,
   labelMatchesPhaseTag,
   resolveDocSource,
+  stripMarkdownSyntax,
   summarise,
   type DocProbe,
   type DocSourceMap,
@@ -703,6 +704,76 @@ describe('defect 12 — content that did not survive publication', () => {
 
   it('says nothing when the run captured no screenshots at all', () => {
     expect(auditGuideScreenshots({ phases: { 'qa-and-training': { products: {} } } }, [])).toEqual([]);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════
+// ace#1838 — GFM table DELIMITERS are not words. `stripMarkdownSyntax`
+// handled headings, links, images and emphasis but not tables, so every
+// `|` and every `|---|---|` separator counted as a source word while the
+// published Google Doc renders a real table with no delimiters at all.
+// Past the 5% band that makes auditDocFidelity emit DOC-CONTENT-LOSS —
+// MISLEADING tier, share-blocking — against a document that lost nothing.
+// Measured on hh-poverty-targeting/20260828-0702: the PDD was reported as
+// having dropped 524 of 8183 words; a token diff of source-vs-published
+// after normalising pipes away differed by exactly the published export's
+// UTF-8 BOM. Every ACE PDD carries tables, so this fired on ~every run.
+// ═══════════════════════════════════════════════════════════════════
+
+describe('ace#1838 — table delimiters must not count as source words', () => {
+  const TABLE = [
+    '# Payment',
+    '',
+    '| Unit | Amount | When |',
+    '|---|---|---|',
+    '| Verified survey | 1 USD | per household |',
+    '| Daily cap | 25 | per worker |',
+    '',
+  ].join('\n');
+
+  it('drops pipes and separator rows but keeps every cell word', () => {
+    const out = stripMarkdownSyntax(TABLE);
+    expect(out).not.toContain('|');
+    for (const cell of ['Unit', 'Amount', 'When', 'Verified', 'survey', '1', 'USD', 'household', 'Daily', 'cap', '25', 'worker']) {
+      expect(out.split(/\s+/)).toContain(cell);
+    }
+  });
+
+  it('does not let the separator-row pattern swallow the following line', () => {
+    // `[-:|\s]*` with the `m` flag would eat the newline and take the next
+    // row with it — the same footgun already recorded on the literal-markdown
+    // patterns. The class must be `[ \t]`.
+    expect(stripMarkdownSyntax('|---|---|\nSurvivor line')).toContain('Survivor line');
+  });
+
+  it('does not fire DOC-CONTENT-LOSS on a table that converted cleanly', () => {
+    // What the published Doc actually contains: the same words, no delimiters.
+    const published = 'Payment Unit Amount When Verified survey 1 USD per household Daily cap 25 per worker';
+    const findings = auditDocFidelity([
+      {
+        label: 'design.docs[0].url',
+        url: 'https://docs.google.com/document/d/AAAAAAAAAAAA/edit',
+        text: published,
+        imageCount: 0,
+        sourceMarkdown: TABLE,
+      },
+    ]);
+    expect(findings.filter((f) => f.code === 'DOC-CONTENT-LOSS')).toEqual([]);
+  });
+
+  it('STILL fires when the importer really dropped the table', () => {
+    // The check must narrow, never switch off: cell CONTENTS are still counted
+    // on the source side, so a dropped table is still caught.
+    const findings = auditDocFidelity([
+      {
+        label: 'design.docs[0].url',
+        url: 'https://docs.google.com/document/d/AAAAAAAAAAAA/edit',
+        text: 'Payment',
+        imageCount: 0,
+        sourceMarkdown: TABLE,
+      },
+    ]);
+    expect(findings.map((f) => f.code)).toContain('DOC-CONTENT-LOSS');
   });
 });
 

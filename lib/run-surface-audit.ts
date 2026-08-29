@@ -1272,13 +1272,41 @@ function screenshotsCaptured(runState: unknown): { count: number | null; evidenc
   };
 }
 
-/** Rough plain-text of markdown, for comparable word counts. */
+/**
+ * Rough plain-text of markdown, for comparable word counts.
+ *
+ * NOTE the GFM-table handling, which is load-bearing and was missing until
+ * ace#1838. A pipe-delimited row survives `split(/\s+/)` as its DELIMITERS:
+ * `| Deliver unit | 1 USD |` contributes three `|` tokens and `|---|---|`
+ * contributes one more, none of which exist in the published Google Doc — it
+ * renders a real table. That inflates the SOURCE count only, and once the
+ * inflation crosses the 5% band in `auditDocFidelity` the auditor reports
+ * DOC-CONTENT-LOSS — a MISLEADING-tier, share-blocking finding — against a
+ * document that lost nothing. Measured on hh-poverty-targeting/20260828-0702:
+ * the PDD scored 8183 source words vs 7659 published and was reported as
+ * having dropped 524; normalising the pipes away gave 7642 vs 7659 and a
+ * token-by-token diff of the two showed exactly one difference, the published
+ * export's UTF-8 BOM. Every ACE PDD carries payment-unit and verification
+ * tables, so this fired on essentially every run.
+ *
+ * Only DELIMITERS are removed, never cell contents — a table the importer
+ * genuinely dropped still shows up, because its cell words are still counted
+ * on the source side and still absent from the published text.
+ */
 export function stripMarkdownSyntax(md: string): string {
   return md
     .replace(/^---[\s\S]*?^---\s*$/m, '')
     .replace(/!\[[^\]]*\]\([^)]*\)/g, '')
     .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')
     .replace(/^#{1,6}\s+/gm, '')
+    // GFM table separator rows: a line made only of `|`, `-`, `:` and spaces,
+    // carrying at least one pipe. The class is `[ \t]`, NOT `\s` — with `\s`
+    // and the `m` flag the quantifier eats the NEWLINE and swallows whatever
+    // follows, which is the same footgun already recorded on
+    // LITERAL_MARKDOWN_PATTERNS above.
+    .replace(/^[ \t]*\|[-:| \t]*$/gm, '')
+    // Remaining cell delimiters. A space, not '', so `a|b` stays two words.
+    .replace(/\|/g, ' ')
     .replace(/[*_`>]/g, '');
 }
 
