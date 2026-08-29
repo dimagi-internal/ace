@@ -1277,6 +1277,40 @@ shallow smoke verdict to
 `6-qa-and-training/app-screenshot-capture_verdict-shallow.yaml`. Both
 shapes conform to `lib/verdict-schema.ts` so `opp-eval` can aggregate.
 
+**REQUIRED before either file is written — and again after ANY re-run
+that changes a leg's status (dimagi-internal/ace#1830).** Both verdicts
+must agree with the manifest's `journeys[].status`. Run the pure helper
+over the manifest you just wrote in Step 6 and each verdict you are
+about to write:
+
+```ts
+import { checkVerdictManifestAgreement, formatAgreementFindings }
+  from '../../lib/verdict-manifest-agreement';
+const report = checkVerdictManifestAgreement(manifest, verdict);
+```
+
+`report.ok === false` means the two files describe different runs.
+**Do not write the verdict until every disagreement is resolved** —
+resolve it by re-scoring, never by editing the manifest to match a
+verdict. The three kinds:
+
+| kind | means | what to do |
+|---|---|---|
+| `stale-verdict` | the leg PASSES in the manifest but the verdict grades it failed/ungradeable | the leg was recovered after this verdict was written — **re-run the Step 7 smoke judge over the recovered captures** and rewrite `per_item`, `overall_score` and `verdict`. Preserve the prior state in a `correction:` / `superseded_per_item:` block; do not erase it. |
+| `unsupported-pass` | the leg did NOT pass in the manifest but the verdict grades it `pass` | the Step 5 hard rule (jjackson/ace#756) — that leg has no screenshots, so nothing was graded. Score it `fail`/`incomplete` with the recipe failure inline. |
+| `unreported-leg` | the verdict grades other legs but is silent on this one | add the missing `per_item` entry; a mean computed over one leg is not a two-leg verdict. |
+
+**This applies to BOTH verdict files, every time.** The class this
+closes: on `hh-poverty-targeting/20260828-0702` a recovered Deliver leg
+rewrote the manifest and the structural verdict, and the shallow verdict
+was left behind for five hours still carrying a `[BLOCKER]` reading *"no
+Deliver screenshots exist for this run"* — while `opp-eval` aggregates
+verdict files by directory discovery and Phase 9's `llo-launch` reads
+them, so the run misreported itself to every downstream consumer in the
+direction that keeps a healthy run gated. The contract was being
+honoured by hand on one file and not the other. *Enforced:*
+`test/lib/verdict-manifest-agreement.test.ts`.
+
 **Structural verdict** (`6-qa-and-training/app-screenshot-capture_verdict.yaml`):
 
 ```yaml
@@ -1480,6 +1514,7 @@ Notes:
 
 | Date | Change | Author |
 |---|---|---|
+| 2026-08-29 | **Step 9 required check: the verdicts must agree with the manifest's `journeys[].status` (dimagi-internal/ace#1830).** Both verdict files are now gated on `checkVerdictManifestAgreement` (`lib/verdict-manifest-agreement.ts`) before they are written, and again after any re-run that changes a leg's status. It names three kinds — `stale-verdict` (manifest passes, verdict says failed/ungradeable: the ace#1830 recovery direction), `unsupported-pass` (manifest failed, verdict says pass: the Step 5 hard rule, jjackson/ace#756, which this skill has asserted in prose since 2026-06-12 with nothing enforcing it), and `unreported-leg`. Surfaced by hh-poverty-targeting/20260828-0702, where a Deliver leg recovered at 15:02Z rewrote the manifest and the structural verdict while `app-screenshot-capture_verdict-shallow.yaml` sat at `3.0 / fail` for five hours still carrying a `[BLOCKER]` reading "no Deliver screenshots exist for this run" — `opp-eval` aggregates verdict files by directory discovery and Phase 9's `llo-launch` reads them, so the run misreported itself to every downstream consumer in the direction that keeps a healthy run gated. The guard keys on data that already exists on both sides rather than on a new staleness stamp, because a stamp needs every writer to remember it — the same by-hand honouring that failed here. *Enforced:* `test/lib/verdict-manifest-agreement.test.ts`, calibrated against both real states of that run (the 14:10Z stale file as the positive control, the 19:30Z re-graded 2.5/pass as the negative). | ACE team |
 | 2026-07-31 | **Step 5 output-dir contract: one run-scoped ROOT, MCP-namespaced per dispatch (dimagi-internal/ace#1130).** Pass the SAME `screenshotDir` root to every `mobile_run_recipe` call in the phase; the MCP writes each dispatch into `<root>/<recipeId>/` and confines #756's start-of-run wipe to that subdir, so the Deliver leg can no longer destroy the Learn leg's finished captures. Read artifacts back from `result.screenshotsDir` / `result.screenshots[].path` (never a glob over the root) and upload per dispatch as it returns. Step 5.5's hash command, Step 6.5's atlas-drift invocation (recursive — point it at the root), and the `00-postlearn-landing.xml` local-copy location updated to match. Surfaced by bednet-spot-check/20260731-1353, where a PASSING Learn leg's screenshots + video were wiped by the Deliver dispatch and could not be re-captured (Learn completion is one-way per test user + opportunity, #568/#570). | ACE team |
 | 2026-07-13 | **Step 5.5 distinctness check (dimagi-internal/ace#866).** After each journey's captures land and before the manifest is assembled, hash every PNG in the journey (`md5 -q` / `shasum`); any byte-identical pair means two "steps" observed the same frame. The FIRST step stays canonical; later duplicates are marked `duplicate_of: <first-step>` in the manifest (not listed as distinct captures) and logged in the verdict's `auto_surfaced` list. Matching row added to the Step 5 recipe-error table. Surfaced by hh-poverty-targeting/20260702-1456, where two byte-identical pairs shipped as distinct steps and deck slides claimed distinct moments over duplicate frames. | ACE team |
 | 2026-06-12 | **Step 5 hard rule: screenshots only from a `status: pass` execution in THIS run (jjackson/ace#756).** A `status != pass` `mobile_run_recipe` result for a required journey means that leg has NO screenshots — record the leg `fail` with the recipe failure inline; never source leftover PNGs (no "replay cache" exists); the shallow verdict must not be `pass` if any required journey's recipe failed. Pairs with the MCP-side fix: `mobile_run_recipe` now wipes the screenshot dir at execution start so stale PNGs are structurally absent. Surfaced by bednet-spot-check run 20260612-1220, where a failed deliver leg shipped prior-run PNGs under a confabulated "runner replay cache" note. | ACE team |
