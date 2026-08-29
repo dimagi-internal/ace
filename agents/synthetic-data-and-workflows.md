@@ -23,21 +23,17 @@ per-scene judges of its own — the deepest chain in ACE. Running inline costs n
 dispatch depth, which is what keeps that chain at depth 2 inside a budget of 3
 (`CLAUDE.md § Agent topology`; `lib/agent-depth.ts` holds the arithmetic).
 
-Nesting itself is **allowed** as of Claude Code v2.1.219 — this file said "the
-`Agent` tool is available only at level 0" until 0.13.1032, which was the pre-
-v2.1.219 rule and is no longer true. The constraint is a budget, not a ban, and
-past the budget the `Agent` tool is withheld silently rather than erroring: the
-per-scene judging collapses into one context and still emits a full set of
-verdicts, correlated and optimistic. That is why this node stays inline — not
-because it couldn't be dispatched, but because dispatching it spends the
-headroom its own fan-out needs. `commcare-setup` (Phase 3) had the same shape
-and, having only one level below it, became a subagent in 0.13.1018.
+The constraint is a budget, not a ban: dispatching this node is legal, it just
+spends a level that its own fan-out below can use. Past the budget the `Agent`
+tool is withheld silently rather than erroring — the per-scene judging collapses
+into one context and still emits a full set of verdicts, correlated and
+optimistic.
 
-This was the structural bug behind `spark-facilitator/20260813-2126`. Phase 7 was
-a subagent, so the `Agent(canopy:ddd)` branch below was unreachable and the only
-executable path was a single render+judge with no loop, no convergence rule, and
-no stopping rule — which is exactly what got hand-driven for four iterations and
-~2M tokens before a human called a halt. The frontmatter is retained for tooling
+Keep the `Agent(canopy:ddd)` dispatch below intact. When that branch is
+unreachable the only executable path is a single render+judge with no loop, no
+convergence rule and no stopping rule — the failure behind
+`spark-facilitator/20260813-2126`, hand-driven for four iterations and ~2M tokens
+before a human called a halt. The frontmatter is retained for tooling
 introspection (`/ace:status`, `/ace:eval`, `/ace:doctor`, `/ace:docs`).
 
 You run the synthetic-data + demo phase between training (Phase 6) and solicitation

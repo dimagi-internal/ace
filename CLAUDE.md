@@ -4,18 +4,15 @@ ACE (AI Connect Engine) is a Claude Code plugin that orchestrates the ACE lifecy
 
 ## Agent topology
 
-ACE's nodes come in two forms, and the difference is what they cost in **dispatch
-depth**: an `inline` procedure doc is read and executed in its caller's context
-(costs nothing, but inflates that context), while a `subagent` is dispatched via
-`Agent(...)` and descends one level. Both live under `agents/`.
-
-**This used to be a binary rule and is now a budget.** For most of 2026 Claude Code
-withheld the `Agent` tool from every subagent, so anything that dispatched further
-work *had* to run at level 0 — that is why the orchestrator and six other nodes are
-procedure docs. Nesting landed in **v2.1.172** (depth 5, un-tunable), was defaulted
-back to 1 in **v2.1.217**, and settled at **3** in **v2.1.219**. Subagents can now
-spawn subagents, `CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH` sets the limit, and
+**A subagent may dispatch subagents.** `CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH` sets
+how far a chain may descend below the main conversation;
 `CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS` (default 20) caps simultaneous fan-out.
+**Nothing in ACE has to be inline in order to dispatch** — pick the form for
+context, not for permission.
+
+ACE's nodes come in two forms, both under `agents/`. An `inline` procedure doc is
+read and executed in its caller's context: it costs no depth but inflates that
+context. A `subagent` is dispatched via `Agent(...)` and descends one level.
 
 | Node | Form | Dispatches | Invoked how |
 |------|------|-----------|-------------|
@@ -36,38 +33,34 @@ spawn subagents, `CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH` sets the limit, and
 | `iterate-loop` | inline | one fix+ship subagent | `/ace:iterate` reads it inline |
 | `ocs-tester` | subagent | — | `Agent(ocs-tester)` ad-hoc |
 
-> `sweep` was listed here as a subagent until 2026-08-26. It never was one —
-> `commands/sweep.md` executes it inline and `agents/sweep.md` § Notes says "the
-> procedure doc is the only thing that calls `Agent`." The table and the code had
-> drifted, which is why the topology is now machine-checked.
+**Required depth: 3. Pin the budget to 5.** The deepest chain is
+`ace-orchestrator → synthetic-data-and-workflows → canopy:ddd → gstack:design-fixer
+→ gstack:review-followup` — canopy's DDD loop routes PRODUCT findings to
+`/design-review`, `/review` and `/qa` via the `Agent` tool, and `/review` dispatches
+one more subagent of its own. Put
+`{"env": {"CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH": "5"}}` in `~/.claude/settings.json`
+and restart. Unset, the value comes from a remote feature flag that is not
+guaranteed to match across a team; `/ace:doctor`'s `agent_dispatch_depth` probe
+reports what this machine actually supplies.
 
-**Current depth: 2, budget: 3.** The deepest chain is
-`ace-orchestrator → synthetic-data-and-workflows → canopy:ddd → canopy:visual-judge`;
-the two inline hops cost nothing, so the DDD loop sits at level 1 and its per-scene
-judges at level 2. `lib/agent-depth.ts` declares the graph and computes this;
+**Why the graph is still machine-checked: exceeding the budget does not error.**
+At the limit Claude Code *withholds* the `Agent` tool and the subagent at the floor
+does the delegated work itself and returns one summary. Where ACE fans out for
+independence rather than speed, that is silently wrong rather than slow —
+`ddd-concept-eval` dispatches `canopy:visual-judge` as a deliberately fresh
+subagent per scene, and its rubric docks every dimension by 1 if that independence
+isn't real, so a collapsed fan-out still emits a full set of verdicts, just
+correlated and optimistic. `lib/agent-depth.ts` declares the graph;
 `test/lib/agent-depth.test.ts` fails CI if a chain outgrows the budget, if an
 `Agent(...)` target appears in the repo without being counted, or if an inline node
 stops justifying its inline-ness.
 
-**Read the depth number before restructuring, and note the failure mode inverted.**
-The old rule failed loudly — a level-2 dispatch errored, which is how the Nova
-migration regression surfaced. Now, at the limit, Claude Code *withholds* the
-`Agent` tool and the subagent at the floor does the delegated work itself and
-returns one summary. Nothing errors. `ddd-concept-eval` dispatches
-`canopy:visual-judge` as a deliberately *fresh* subagent per scene — its rubric
-docks every dimension by 1 if that independence isn't real — so a collapsed
-fan-out still emits a full set of verdicts, just correlated and optimistic. Same
-shape as the self-graded evals in dimagi-internal/ace#1203, and invisible in every
-artifact ACE writes.
-
-So: the inline nodes are no longer *required* to be inline. Lifting
-`ace-orchestrator` into a real subagent is now legal (it would take the deepest
-chain to exactly 3) and buys real context isolation for a 10-phase run. It also
-leaves **zero headroom** — one more nesting level anywhere below it degrades
-silently. Before doing it, check whether the DDD specialist fixers
-(`/design-review`, `/review`, `/qa`) dispatch anything of their own, and pin
-`CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH` explicitly in `settings.json` rather than
-inheriting a default that has moved three times this year.
+**The inline nodes are inline for the human gate, not for depth.**
+`AskUserQuestion` *is* withheld from every subagent — that constraint is live.
+`ace-orchestrator` (`review` mode pauses at every phase checkpoint) and `sweep`
+(per-system delete approval) must therefore reach the operator from level 0; a
+dispatched copy would fall through to executing. Changing either one's form is a
+change to the approval model, not a depth optimization.
 
 ## Phases (current pipeline)
 

@@ -57,8 +57,8 @@ prose, this list owns the scannable "what the rule says."
 ### Procedure discipline
 
 - **Don't "summarize and continue" to dodge context exhaustion.** The inline-artifact contract breaks if the next phase's PDD is paraphrased. Trust the 1M-context window; if the harness signals real exhaustion, write back `phases.<current>.status: done` (or `error`) and resume via `/ace:run <opp>/<run-id>` in a fresh session. Bug class: paraphrased upstream input silently changing downstream skill behavior. See [reference § Don't summarize and continue](orchestrator-reference.md#dont-summarize-and-continue).
-- **Don't skip producer skills to shortcut to consumers.** "Invoke X" / "Dispatch X" means `Skill(<name>)`. Never compose a producer's outputs inline from upstream artifacts, even under context-budget pressure. Phase 3 was the highest-risk surface while it ran inline at level 0 under the orchestrator's context pressure; it is a subagent with its own context as of 0.13.1018, which removes the pressure but not the rule. Bug class: multi-file output contracts silently broken at producer; halt surfaces phases later (turmeric run 20260509-0455 → Phase 6 halt + 5 training docs re-run). See [reference § Skill Invocation Discipline](orchestrator-reference.md#skill-invocation-discipline).
-- **Don't skip per-step `-eval` dispatch.** Phase 3 (`commcare-setup`) dispatches its own `-eval` after each producer skill; it runs as a subagent as of 0.13.1018, so the orchestrator sees only the written verdicts and cannot backfill a skipped one. Phase Write-Back Contract refuses `verdict: pass` when any `has_judge: true` skill has `steps.<skill>-eval.status: deferred`. Bug class: phase verdict landing without LLM-as-Judge content-quality signal (malaria-itn-app/20260523-0750: 7/7 producers, 0/3 evals, shipped `pass`). See [reference § Don't skip per-step -eval dispatch](orchestrator-reference.md#dont-skip-per-step--eval-dispatch).
+- **Don't skip producer skills to shortcut to consumers.** "Invoke X" / "Dispatch X" means `Skill(<name>)`. Never compose a producer's outputs inline from upstream artifacts, even under context-budget pressure. Phase 3 is a subagent with its own context window, which removes the context pressure but not the rule. Bug class: multi-file output contracts silently broken at producer; halt surfaces phases later (turmeric run 20260509-0455 → Phase 6 halt + 5 training docs re-run). See [reference § Skill Invocation Discipline](orchestrator-reference.md#skill-invocation-discipline).
+- **Don't skip per-step `-eval` dispatch.** Phase 3 (`commcare-setup`) dispatches its own `-eval` after each producer skill; it runs as a subagent, so the orchestrator sees only the written verdicts and cannot backfill a skipped one. Phase Write-Back Contract refuses `verdict: pass` when any `has_judge: true` skill has `steps.<skill>-eval.status: deferred`. Bug class: phase verdict landing without LLM-as-Judge content-quality signal (malaria-itn-app/20260523-0750: 7/7 producers, 0/3 evals, shipped `pass`). See [reference § Don't skip per-step -eval dispatch](orchestrator-reference.md#dont-skip-per-step--eval-dispatch).
 - **Don't add operator-confirmation prompts on populated opps.** "Do you want to overwrite live state?" gates are off-spec — push reuse-vs-rebuild decisions into phase-agent skill logic. Full contract: § Modes — default, review, auto. Bug class: orchestrator-level prompts hiding skill bugs. See [reference § Don't add operator-confirmation on populated opps](orchestrator-reference.md#dont-add-operator-confirmation-on-populated-opps).
 - **Don't authorize Phase 6 soft-fail in the dispatch prompt.** AVD/Maestro auto-heal lives inside `mobile_ensure_avd_running`; if it exhausts, halt with `[BLOCKER]` pointing at `/ace:mobile-bootstrap` — not "proceed with placeholder screenshots and log `[WARN]`." The phase agent rejects this override since 0.13.165, but dispatcher authors should not write it in the first place. Bug class: placeholder screenshots quietly shipping (leep run 20260511-0507). See [reference § Don't authorize Phase 6 soft-fail in the dispatch prompt](orchestrator-reference.md#dont-authorize-phase-6-soft-fail-in-the-dispatch-prompt).
 - **On phase retry, pass the prior failed verdict's Drive `fileId` inline — do NOT paraphrase.** The retry agent reads the verdict directly from Drive; the dispatch prompt cites the fileId rather than summarizing the failure. Bug class: subagent re-discovers the same gap from scratch each cycle (leep Phase 6 retry #5 paraphrased `phase5-block.md`). See [reference § On phase retry, pass the verdict fileId inline](orchestrator-reference.md#on-phase-retry-pass-the-verdict-fileid-inline).
@@ -745,11 +745,9 @@ explicitly halts the run), the resume mechanism is:
   that was previously inlined or skipped.
 
 Phase agents 3–9 are subagents (each gets a fresh context window per
-dispatch), Phase 3 (`commcare-setup`) included as of 0.13.1018 — it had
-been inline only because subagents could not reach Nova, and that
-constraint is gone. The remaining inline node in the run is Phase 7
-(`synthetic-data-and-workflows`), which keeps the `canopy:ddd` →
-`canopy:visual-judge` chain inside the depth budget.
+dispatch). The one inline node left in a run is Phase 7
+(`synthetic-data-and-workflows`), which keeps the `canopy:ddd` fan-out —
+per-scene judges and specialist fixers — comfortably inside the depth budget.
 
 (The context-exhaustion shortcut anti-pattern lives in
 § Anti-patterns and discipline → Procedure discipline.)
@@ -1341,7 +1339,7 @@ whose rows have already run together.
 
 **Gate:** checkpoint-on-`app-deploy` — a `[BLOCKER]` halts with `status: blocked`, no prompt, in `default`/`auto`; pauses in `review`.
 
-**Notes:** Phase 3 became a subagent in 0.13.1018. It had been an inline procedure doc solely because Claude Code withheld `Agent` from subagents, which would have made its `/nova:autobuild` dispatch unreachable; nesting has been allowed since v2.1.219 and the chain fits at depth 2. Dispatching it recovers a fresh context window for the heaviest phase in the run — but a subagent inherits nothing, so **Inputs** above must be complete at handoff. See `CLAUDE.md § Agent topology`.
+**Notes:** Phase 3 is a subagent, which gives the heaviest phase in the run its own context window — but a subagent inherits nothing, so **Inputs** above must be complete at handoff. See `CLAUDE.md § Agent topology`.
 
 ### Phase 4: Connect Setup
 

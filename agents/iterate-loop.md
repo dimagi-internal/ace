@@ -3,13 +3,13 @@ name: iterate-loop
 description: >
   Client-side ACE iteration control. Observes first-class seeded runs,
   judges clean/dirty, maintains an N-in-a-row streak, and autonomously
-  fixes+ships+refreshes on dirty. Runs at level 0 (dispatches Agent).
+  fixes+ships+refreshes on dirty. Executed inline by /ace:iterate.
 model: inherit
 ---
 
 # iterate-loop (Procedure Document)
 
-Level-0 procedure executed inline by `/ace:iterate`. **Not dispatched as a
+Procedure doc executed inline by `/ace:iterate`. **Not dispatched as a
 subagent** — it dispatches `Agent` for the fix+ship cycle, and running inline
 keeps that dispatch at level 1 with the full depth budget behind it (see
 `CLAUDE.md § Agent topology`; the budget is computed in `lib/agent-depth.ts`).

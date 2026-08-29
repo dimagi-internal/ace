@@ -10,9 +10,9 @@ If you're executing `/ace:run`, read `agents/ace-orchestrator.md` first. Come he
 
 The architectural rule and full topology table live in `CLAUDE.md § Agent topology` (the canonical source — every session loads it). Summary for the orchestrator's purposes:
 
-- **The forms:** `ace-orchestrator` and `synthetic-data-and-workflows` (Phase 7, `Agent(canopy:ddd)`) are procedure docs read and executed inline by the top-level session; `commcare-setup` (Phase 3) joined the subagents in 0.13.1018 once nesting made its `/nova:autobuild` dispatch reachable. The other ten agents (`idea-to-design`, `scenarios-and-acceptance`, `commcare-setup`, `connect-setup`, `ocs-setup`, `qa-and-training`, `solicitation-management`, `execution-manager`, `closeout`, `ocs-tester`) are subagents dispatched via `Agent(...)` from level 0. Enforced by `test/agents/agent-topology.test.ts` + `test/lib/agent-depth.test.ts` — a subagent doc may dispatch, but every dispatch must be declared in `lib/agent-depth.ts` and the resulting chain must fit `CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH`. (Until 0.13.1005 the rule was an absolute ban, because subagents had no `Agent` tool at all — that is what stalled Phase 7 in `spark-facilitator/20260813-2126`.)
+- **The forms:** `ace-orchestrator` and `synthetic-data-and-workflows` (Phase 7, `Agent(canopy:ddd)`) are procedure docs read and executed inline by the top-level session; The other ten agents (`idea-to-design`, `scenarios-and-acceptance`, `commcare-setup`, `connect-setup`, `ocs-setup`, `qa-and-training`, `solicitation-management`, `execution-manager`, `closeout`, `ocs-tester`) are subagents dispatched via `Agent(...)` from level 0. Enforced by `test/agents/agent-topology.test.ts` + `test/lib/agent-depth.test.ts` — a subagent doc may dispatch, but every dispatch must be declared in `lib/agent-depth.ts` and the resulting chain must fit `CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH`.
 - **Invocation in the procedure below:** "dispatch the X agent" means a top-level `Agent(X)` call (subagent rows in the CLAUDE.md table) or "read `agents/X.md` and execute it inline" (procedure-doc rows).
-- **Why the forms differ:** an inline procedure doc runs in its caller's context and costs no dispatch depth, so the work it nests starts a level higher. Subagent nesting IS allowed (Claude Code v2.1.219+, default 3 levels) — the constraint is a budget, not a ban, and past the budget the `Agent` tool is silently withheld rather than erroring. `lib/agent-depth.ts` declares the graph and `test/lib/agent-depth.test.ts` holds the number.
+- **Why the forms differ:** a subagent may dispatch subagents, so form is a choice about context and about the human gate, not about permission. An inline procedure doc runs in its caller's context and costs no dispatch depth, so the work it nests starts a level higher; the two inline nodes in a run are inline because they own `AskUserQuestion` gates, which are withheld from subagents. Past the depth budget the `Agent` tool is silently withheld rather than erroring. `lib/agent-depth.ts` declares the graph and `test/lib/agent-depth.test.ts` holds the number.
 
 ## Your State
 
@@ -1542,7 +1542,7 @@ wholesale and would clobber every other phase's entry under
 
 ### Don't skip per-step `-eval` dispatch
 
-Phase 3 (`commcare-setup`) is a subagent as of 0.13.1018 and dispatches its own evals. After each
+Phase 3 (`commcare-setup`) is a subagent and dispatches its own evals. After each
 producer skill (`pdd-to-learn-app`, `pdd-to-deliver-app`,
 `app-release`), the procedure doc says to dispatch the matching
 `-eval` skill — these are not optional. The inline execution surface

@@ -88,7 +88,7 @@ even when the phase resumes mid-way. Restore, don't adapt (CLAUDE.md § Phase
 preconditions are restored, not adapted). The class was measured on Phase 3's
 twin gate: dimagi-internal/ace#1604.
 
-- [ ] **The `ace-mobile` MCP is bound at level 0 this session — CHECK
+- [ ] **The `ace-mobile` MCP is bound in this Claude Code process — CHECK
       THIS FIRST, before any AVD probe.** Every mobile step below calls an
       `ace-mobile` atom (`mobile_ensure_avd_running`,
       `mobile_capture_ui_dump`, `mobile_resolve_selectors`, …). If the MCP
@@ -104,7 +104,7 @@ twin gate: dimagi-internal/ace#1604.
       or attempt the call and distinguish tool-unavailable from a typed
       AVD error). If no `ace-mobile` atom resolves, **HALT IMMEDIATELY**
       (before the AVD checks below) with: "the ace-mobile MCP did not bind
-      at level 0 this session — run `/ace:mobile-bootstrap` if mobile was
+      in this Claude Code process — run `/ace:mobile-bootstrap` if mobile was
       never set up on this machine, then quit and reopen Claude Code (a
       full restart, not `/reload-plugins`), then resume `/ace:run
       <opp>/<run-id>`." Catching it here costs one `ToolSearch`; missing it
@@ -665,7 +665,7 @@ Phase 6 has no named gate (`/ace:qa-deep` is the actual quality gate, run separa
 
 ## Topology note
 
-This is a subagent dispatched from level 0 by `ace-orchestrator`. It runs
+This is a subagent dispatched by `ace-orchestrator`. It runs
 its skills inline using their respective MCP tools (`ace-mobile`,
 `ace-gdrive`). It does NOT dispatch any further subagents.
 
