@@ -63,14 +63,21 @@ paraphrase the schema here — read the model / schema and validate.
    acts on, and the axis it needs is not always the axis the dataset is big on.
    Read `source.data_shape` (and `source.record_counts` behind it), then hold
    every demonstration you are considering against these minimums — from
-   `MIN_CARDINALITY` in `lib/ddd-scene-actions.ts`, where each is derived with
-   its reasoning:
+   `MIN_CARDINALITY` + `DETECTION_MIN_ROWS` in `lib/ddd-scene-actions.ts`, where
+   each is derived with its reasoning:
 
    | Demonstration | Axis it needs | Minimum | Why |
    |---|---|---|---|
    | filter / search / sort | `rows` | **12** | the after-state must still read as a list (≥3 rows) AND the drop must register at a glance (~8 rows) |
    | trend | `periods` | **4** | a baseline, the turn the narration names, and a period after it — below that the claim is asserted over the plot, not read off it |
    | comparison | `groups` | **3** | with two groups one is always above the other, so the ordering carries no information about whether being behind is unusual |
+   | detection / flagging | `rows` | **24** | a detection claims *unaided scanning is not viable*; a cohort that fits in one screenful (12 rows, the filter floor's own anchor) is scannable by definition, so the comparison has to span two — ace#1841 |
+
+   Filter and detection share the `rows` axis and do **not** share a floor — a
+   12-row cohort is enough to filter and not enough to detect. The check reads
+   each scene's `title`, action targets, `show`, `concept_claim` and
+   `features[]`, so it sees a demonstration you name only in prose (ace#1841);
+   it also names the axis that DOES have room, which is usually the fix.
 
    **When the data cannot carry the demonstration there are exactly two
    branches, and both are taken HERE, not after a render:** pick a different
@@ -268,4 +275,5 @@ paraphrase the schema here — read the model / schema and validate.
 
 | Date | Change | Author |
 |------|--------|--------|
+| 2026-08-29 | Add a FOURTH demonstration verb — **detection / flagging**, on the `rows` axis with its own higher floor of **24** (`DETECTION_MIN_ROWS`, two screenfuls of the 12-row anchor the filter floor already uses): a filter claims narrowing is meaningful, a detection claims unaided scanning is not viable, and the second is false the moment the cohort fits in one look. `checkSceneCardinality` also now reads a scene's `show`, `concept_claim` and `features[]` alongside its title and action targets — measured on the failing spec, the detection vocabulary appears 20+ times and in not one title, so the verb alone would have matched nothing. The finding names the axis with room, because that is the action. `hh-poverty-targeting/20260828-0702` authored a detection demo over a seven-worker cohort; the gate returned ok with zero findings and the concept judge said post-render that a manager could find the outlier by eye, ending the loop `stopped_not_converged` at concept 2.0 after four iterations. ace#1841. | ACE team |
 | 2026-08-26 | Add the dataset's cardinality as an INPUT (`source.record_counts` + `source.data_shape`) and a pre-authoring shape check (Step 2b) with a per-verb minimum — `rows` 12 for filter/search/sort, `periods` 4 for a trend, `groups` 3 for a comparison — enforced by `checkSceneCardinality` in `lib/ddd-scene-actions.ts` at Step 3b. Flags rather than rejects (the rule reads the data's shape but not the dashboard's rendering, so it cannot be certain which population a surface enumerates — ace#1238), but every flag must be resolved. `bednet-check-2-visit/20260825-1310` authored a filter demonstration over a five-worker cohort; every existing gate reported green and the concept judge caught it four render iterations later, ending the loop `stopped_not_converged` at concept 3.0. ace#1670. | ACE team |
