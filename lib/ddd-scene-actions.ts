@@ -96,6 +96,43 @@
  * one week is a trend demo with nothing to plot, on the same dataset where a
  * worker filter has nothing to filter.
  *
+ * ## #1841 — the demonstration was DETECTION, and the rule could not see it
+ *
+ * ace#1670's sibling, one verb over. On hh-poverty-targeting/20260828-0702 the
+ * premise of the whole demo was *"the platform's automated flag finds the
+ * worker you would otherwise miss"* — over a **seven-worker** cohort.
+ * `checkSceneCardinality` returned ok with zero findings, `checkSceneActions`
+ * was clean, and the concept judge then said post-render exactly what a
+ * cardinality rule says pre-render:
+ *
+ * > the demo is 7 workers on one screen, where a manager can find sigma 7.1 by
+ * > eye — so automated flagging is never shown doing work a person couldn't do
+ *
+ * `stopped_not_converged`, concept 2.0/5, four render iterations. #1670's cost
+ * profile exactly.
+ *
+ * Two things were missing, and BOTH were load-bearing:
+ *
+ * 1. **No detection verb.** `DEMONSTRATION_VERBS` knew filter/trend/comparison
+ *    and nothing else, so a flag-finds-the-outlier scene matched no pattern.
+ * 2. **The text surface was too narrow to carry the verb even once it existed.**
+ *    The check read `title` plus action targets only. Measured against that
+ *    run's spec (`7-synthetic/hh-poverty-targeting-answer-quality.yaml`, Drive
+ *    1ZDKLQFHBGX9s3Xp9FmjyHzlRPecwwv50lEbUDuZ08TA): the detection vocabulary
+ *    appears **20+ times and in not one title** — it lives in `show`,
+ *    `concept_claim`, and `features[].description` / `.verify`, which are where
+ *    an author states what a surface renders. So the check now reads those too.
+ *    They are real canopy `Scene` fields (`models.py`), not invented ones.
+ *
+ * The same measurement corrected the vocabulary. The issue proposed
+ * `flag|outlier|anomaly|detect|surfaces|catches|spots|misses`; in that spec
+ * `flagged` appears only in top-level `capabilities`/`getting_started` and
+ * `detectable` only inside a provenance slug — **zero per-scene hits**. The
+ * word the run actually used is `mark` (marks / marked / marking / marker), 20
+ * of the 20-odd hits. A pattern without it would have shipped green and caught
+ * nothing, which is why the vocabulary is read off the artifact rather than
+ * guessed (CLAUDE.md § close the loop to the source of truth).
+ *
  * ## Scope
  *
  * The RUNTIME halves belong in canopy's walkthrough runner — resolving an
@@ -110,11 +147,27 @@ export interface SceneAction {
   target?: string;
 }
 
+export interface SceneFeature {
+  description?: string;
+  verify?: string;
+}
+
 export interface DddScene {
   title?: string;
   actions?: SceneAction[];
   /** Off-camera actions restoring this scene's precondition (#1380). */
   restore?: SceneAction[];
+  /**
+   * The author's own prose about what this scene DEMONSTRATES — canopy `Scene`
+   * fields, all three (`show`, `concept_claim`, `features`) declared in
+   * `runtime/scripts/narrative/models.py`. `checkSceneCardinality` reads them
+   * because a title frequently does not name the demonstration at all: across
+   * the eight scenes of hh-poverty-targeting/20260828-0702 the detection
+   * vocabulary appears 20+ times and in NOT ONE title (ace#1841).
+   */
+  show?: string;
+  concept_claim?: string;
+  features?: SceneFeature[];
 }
 
 export type SceneFindingKind =
@@ -324,6 +377,37 @@ export const MIN_CARDINALITY: Readonly<Record<CardinalityAxis, number>> = {
 };
 
 /**
+ * **24 rows for a detection demonstration** — the one verb whose floor is NOT
+ * its axis default (ace#1841).
+ *
+ * Filter and detection both act on `rows`, and they need different amounts of
+ * it, because they are claims of different strength:
+ *
+ * - A filter claims **narrowing is meaningful** — the after-state still reads
+ *   as a list and the drop registers at a glance. `MIN_CARDINALITY.rows` = 12.
+ * - A detection claims **unaided scanning is not viable** — that the flag finds
+ *   a worker a supervisor would otherwise miss. That is a claim about a human's
+ *   working memory, and it is FALSE the moment the whole cohort fits in one
+ *   look. At n=7 the judge found the outlier by eye and said so.
+ *
+ * The anchor is the one this module already fixed rather than a new estimate:
+ * the `rows: 12` derivation calls 12 "about one screenful of a dashboard table
+ * before it scrolls" at 1280x800. A cohort that fits in one screenful is
+ * scannable by definition — you hold it all at once. For the comparison to
+ * require scroll-and-compare across a fold, the cohort has to span more than
+ * one look, so the floor is **two screenfuls: 2 x 12 = 24.**
+ *
+ * That derivation is only as good as the 12 it rests on, and neither number is
+ * measured — no one has sat a reviewer in front of a 23-row table and timed
+ * them. It is a stated, falsifiable estimate: if a detection demo at 24 rows
+ * still reads as eyeballable to a judge, this number is wrong and the fix is to
+ * raise BOTH constants, since they share an anchor. (ace#1841 estimated 25
+ * independently, from the same screenful reasoning — close enough to be worth
+ * recording, not close enough to matter.)
+ */
+export const DETECTION_MIN_ROWS = 24;
+
+/**
  * Which axis each demonstration verb needs, and the vocabulary that names it.
  *
  * Derived from the scene the same way `checkSceneActions` derives its verbs —
@@ -343,11 +427,52 @@ const DEMONSTRATION_VERBS: ReadonlyArray<{
   axis: CardinalityAxis;
   verb: string;
   pattern: RegExp;
+  /**
+   * Floor for THIS verb, when the axis default is not the right bar. Two verbs
+   * can act on the same axis and need different amounts of it — see
+   * `DETECTION_MIN_ROWS` (ace#1841). Omitted = `MIN_CARDINALITY[axis]`.
+   */
+  min?: number;
+  /**
+   * How the scene fails when the floor is not met, in this verb's own terms.
+   * A filter fails because the two frames look alike; a detection fails because
+   * the reader beats the flag to the answer. Omitted = the before/after-frame
+   * wording, which is what the original three verbs describe.
+   */
+  whyItFails?: string;
 }> = [
   {
     axis: 'rows',
     verb: 'filter / search / sort',
     pattern: /\b(filter|filters|filtered|filtering|search|searches|searched|sort|sorts|sorted|narrow|narrows|narrowed|refine|refines|refined|shortlist)\b/i,
+  },
+  {
+    /**
+     * Detection acts on `rows` like a filter, but claims something stronger —
+     * that the cohort is too large to scan — so it carries its own, higher
+     * floor. ace#1841.
+     *
+     * The vocabulary is READ OFF the run that failed, not guessed. In
+     * hh-poverty-targeting/20260828-0702's spec the words carrying the
+     * detection premise are `mark` / `marks` / `marked` / `marking` / `marker`
+     * (20 of ~22 hits) and `surfaced`; `flagged` occurs only in the top-level
+     * `capabilities` block and `detectable` only inside a provenance slug, so
+     * the issue's proposed pattern alone would have matched ZERO scenes.
+     *
+     * Deliberately OUT, on the module's own tight-vocabulary rule: bare `mark`
+     * (matches the given name Mark), `missing` (`missing data` is dashboard
+     * chrome), `mark-up`/`benchmark` (word boundaries already exclude them),
+     * and `signal` / `unusual` / `stands out`, which are ordinary narrative
+     * prose long before they are demonstrations.
+     */
+    axis: 'rows',
+    verb: 'detection / flagging',
+    min: DETECTION_MIN_ROWS,
+    whyItFails:
+      'The whole cohort fits in one look, so a reviewer finds the flagged row by eye before the ' +
+      'flag does — the demonstration renders green and never shows the platform doing work a ' +
+      'person could not',
+    pattern: /\b(flag|flags|flagged|flagging|outlier|outliers|anomaly|anomalies|anomalous|detect|detects|detected|detection|detectable|surfaces|surfaced|catches|spots|misses|missed|miss|marks|marked|marking|marker|markers)\b/i,
   },
   {
     axis: 'periods',
@@ -397,6 +522,61 @@ export function datasetShapeFromRecordCounts(
 }
 
 /**
+ * Every word in a scene that could name its demonstration.
+ *
+ * The `title` and the action targets (any recorder prefix stripped) were the
+ * whole surface until ace#1841, and they were not enough: an author names the
+ * demonstration wherever it reads best, and across the eight scenes of
+ * hh-poverty-targeting/20260828-0702 that was never the title. `show`,
+ * `concept_claim` and `features[]` are the author's declarations of what the
+ * surface renders — and all three are real canopy `Scene` fields, so reading
+ * them invents no syntax (the ace#1519 hazard).
+ *
+ * This widening applies to EVERY verb, not just detection. An asymmetric
+ * surface — this verb reads prose, that one does not — is a bug generator, and
+ * a `show:` that says "the roster sorted by coverage" describes a sort demo
+ * whichever field it sits in. Measured on the same spec: the filter / trend /
+ * comparison vocabularies occur ZERO times anywhere in it, so the widening
+ * added no finding there. That is one artifact, not a proof; the residual is
+ * that prose is looser than a title and a verb word can appear in it
+ * incidentally. The check FLAGS rather than rejects, which is the posture that
+ * makes that residual affordable.
+ */
+function sceneWords(s: DddScene): string {
+  return [
+    s.title ?? '',
+    ...(s.actions ?? []).map((a) => targetText(a.target)),
+    s.show ?? '',
+    s.concept_claim ?? '',
+    ...(s.features ?? []).flatMap((f) => [f.description ?? '', f.verify ?? '']),
+  ].join(' ');
+}
+
+/**
+ * Name the axis the author should reach for instead — because "pick a
+ * different demonstration" is only actionable if you know which one the data
+ * can carry (ace#1841). On the hh-poverty-targeting cohort that is six weeks,
+ * not seven workers.
+ *
+ * Written WITHOUT a colon after the axis name on purpose. Every remediation
+ * this module emits is audited against canopy's own vocabulary, and `periods:`
+ * would read as a spec key canopy rejects — the ace#1660 failure class, pinned
+ * by `describe('remediation vocabulary')`.
+ */
+function axisWithRoom(shape: DatasetShape | undefined, failing: CardinalityAxis): string {
+  const roomy = (['rows', 'periods', 'groups'] as const)
+    .filter((a) => a !== failing)
+    .filter((a) => typeof shape?.[a] === 'number' && (shape[a] as number) >= MIN_CARDINALITY[a])
+    .map((a) => `${a} (${shape![a]})`);
+
+  return roomy.length
+    ? `The axis with room on this dataset is ${roomy.join(', and ')} — a demonstration on that ` +
+        'axis needs no regeneration'
+    : 'No other axis in the handoff has room either, so a different demonstration will not rescue ' +
+        'this dataset — regenerate, or pass the counts for the axes the handoff is missing';
+}
+
+/**
  * Flag any scene whose demonstration needs more cardinality than the realized
  * dataset has (ace#1670).
  *
@@ -420,14 +600,11 @@ export function checkSceneCardinality(
 
   for (const s of scenes ?? []) {
     const name = s.title ?? '(untitled)';
-    const words = [
-      s.title ?? '',
-      ...(s.actions ?? []).map((a) => targetText(a.target)),
-    ].join(' ');
+    const words = sceneWords(s);
 
-    for (const { axis, verb, pattern } of DEMONSTRATION_VERBS) {
+    for (const { axis, verb, pattern, min, whyItFails } of DEMONSTRATION_VERBS) {
       if (!pattern.test(words)) continue;
-      const need = MIN_CARDINALITY[axis];
+      const need = min ?? MIN_CARDINALITY[axis];
       const have = shape?.[axis];
 
       if (typeof have !== 'number') {
@@ -450,12 +627,16 @@ export function checkSceneCardinality(
           scene: name,
           detail:
             `this scene demonstrates ${verb}, which needs at least ${need} ${axis} to be observable, ` +
-            `and the realized dataset has ${have}. The before-frame and the after-frame differ by too ` +
-            'little to read as a demonstration, so the scene renders green and shows nothing — the ' +
-            'ace#1670 stop trigger. Two branches, both taken BEFORE authoring — pick a demonstration ' +
-            `this dashboard's data can carry, or go back and regenerate with a larger cohort. If this ` +
-            `surface actually enumerates a different population than the ${axis} count given, say which ` +
-            'and pass that count',
+            `and the realized dataset has ${have}. ` +
+            (whyItFails ??
+              'The before-frame and the after-frame differ by too little to read as a ' +
+                'demonstration, so the scene renders green and shows nothing') +
+            '. That is how ace#1670 and ace#1841 both ended stopped_not_converged, four render ' +
+            'iterations after the two numbers that decided it were already known. Two branches, ' +
+            'both taken BEFORE authoring — pick a demonstration ' +
+            `this dashboard's data can carry, or go back and regenerate with a larger cohort. ` +
+            `${axisWithRoom(shape, axis)}. If this surface actually enumerates a different population ` +
+            `than the ${axis} count given, say which and pass that count`,
         });
       }
     }

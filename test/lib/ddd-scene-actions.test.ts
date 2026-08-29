@@ -63,6 +63,7 @@ import {
   checkSceneCardinality,
   datasetShapeFromRecordCounts,
   MIN_CARDINALITY,
+  DETECTION_MIN_ROWS,
 } from '../../lib/ddd-scene-actions.js';
 
 const scene = (over: Record<string, unknown> = {}) => ({
@@ -368,6 +369,10 @@ describe('remediation vocabulary is expressible in canopy (#1660, #1519)', () =>
       ...checkSceneCardinality([{ title: 'filter the roster' }], { rows: 5 }).findings,
       ...checkSceneCardinality([{ title: 'the trend over time' }], undefined).findings,
       ...checkSceneCardinality([{ title: 'compare the sites' }], { groups: 2 }).findings,
+      // ace#1841's finding names the axis with ROOM — `periods (6)`, written
+      // with parentheses rather than `periods:` precisely so it cannot read as
+      // a spec key canopy would reject. This is the assertion that keeps it so.
+      ...checkSceneCardinality([{ title: 'flag the outliers' }], { rows: 7, periods: 6 }).findings,
     ];
     expect(cardinality.length).toBeGreaterThan(0);
     for (const f of cardinality) {
@@ -534,8 +539,12 @@ describe('checkSceneCardinality (#1670)', () => {
     expect(f, JSON.stringify(r.findings)).toBeTruthy();
     expect(f.detail).toMatch(/periods/);
     expect(f.detail).toContain(String(MIN_CARDINALITY.periods));
-    // And the generous row count did NOT excuse it.
-    expect(r.findings.filter((x) => /rows/.test(x.detail))).toHaveLength(0);
+    // And the generous row count neither excused it nor produced a finding of
+    // its own. (The detail DOES now name `rows` — as the axis with room, which
+    // is the actionable half of the remediation, ace#1841 — so the assertion is
+    // on the CLAIM, not on the substring.)
+    expect(r.findings).toHaveLength(1);
+    expect(f.detail).not.toMatch(/needs at least \d+ rows/);
   });
 
   it('passes a trend once the series is long enough to show a turn', () => {
@@ -621,5 +630,169 @@ describe('checkSceneCardinality (#1670)', () => {
 
   it('is inert on an empty scene list', () => {
     expect(checkSceneCardinality([], undefined).ok).toBe(true);
+  });
+});
+
+/* ─────────────────── #1841 — detection is a fourth verb ─────────────────── */
+
+describe('checkSceneCardinality (#1841 — detection)', () => {
+  // VERBATIM from hh-poverty-targeting/20260828-0702's spec,
+  // 7-synthetic/hh-poverty-targeting-answer-quality.yaml (Drive
+  // 1ZDKLQFHBGX9s3Xp9FmjyHzlRPecwwv50lEbUDuZ08TA), the run that ended
+  // stopped_not_converged at concept 2.0/5 over four iterations.
+  //
+  // Note where the detection vocabulary IS and IS NOT. Neither title contains
+  // one; the words sit in `show`, `concept_claim` and `features[]`. That is why
+  // the fix is a wider text surface as well as a new verb — a detection pattern
+  // over title+targets alone would have matched ZERO of this spec's 8 scenes.
+  const detectionScene = {
+    title: 'One worker outside the expected range',
+    show:
+      "The per-worker table, where the non-payable share column marks the one worker sitting " +
+      "outside the design's 20-35% band and every other worker sits inside it.",
+    concept_claim:
+      'An expected range prompts a supervisor to look without rewarding a worker who ' +
+      'under-records a refusal.',
+    features: [
+      {
+        description:
+          "A per-worker non-payable share column computed as refused plus vacant plus " +
+          "no-respondent over that worker's own total doors, rendered against the design's " +
+          'stated 20-35% expected range, marking a worker outside it as outside the expected ' +
+          'range rather than as underperforming, with no completion-rate threshold anywhere ' +
+          'on the page.',
+        verify:
+          'A worker whose non-payable share falls outside 0.20 to 0.35 renders the ' +
+          'outside-the-expected-range marker and its share value in the warning colour, and no ' +
+          'row anywhere on the page renders a review or underperforming marker derived from a ' +
+          'completion rate.',
+      },
+    ],
+    actions: [{ kind: 'scroll_to', target: 'css:table' }],
+  };
+
+  // Same run, the scene whose whole point is that the operations page shows
+  // NOTHING — no detection, no filter, no trend. It is the discrimination test:
+  // a rule that fires here fires on every scene in the spec.
+  const nonDemonstrationScene = {
+    title: 'Every column here is a count or an average',
+    show:
+      'The full width of the operations table — outcome counts, mean PPI score, mean poverty ' +
+      'likelihood, mean household size, mean fix accuracy — with the two workers this ' +
+      'narrative is about sitting unremarkably in the middle of it.',
+    concept_claim:
+      'A completed share and a mean score cannot separate a worker who asked the questions ' +
+      'from one who did not.',
+    features: [
+      {
+        description:
+          'One row per field worker carrying the completed share with an inline bar, the three ' +
+          'non-payable outcome counts, the non-payable share, mean PPI score out of the 102 ' +
+          "attainable, mean poverty likelihood as a percentage from the instrument's own " +
+          'lookup table, and mean fix accuracy in metres.',
+        verify:
+          "Every worker row renders a numeric mean PPI score and a completed share equal to " +
+          "that row's own completed count over its own doors count.",
+      },
+    ],
+    actions: [{ kind: 'scroll', target: undefined }],
+  };
+
+  // The run's realized shape: six funded workers plus one, over a six-week window.
+  const HH_SHAPE = { rows: 7, periods: 6 };
+
+  it('is invisible to the checks that already exist', () => {
+    expect(checkSceneActions([detectionScene]).ok).toBe(true);
+  });
+
+  // POSITIVE CONTROL — the whole point of the issue.
+  it('fires on the hh-poverty-targeting detection demo over 7 workers', () => {
+    const r = checkSceneCardinality([detectionScene], HH_SHAPE);
+    expect(r.ok, JSON.stringify(r.findings)).toBe(false);
+
+    const f = r.findings.find((x) => x.kind === 'insufficient-cardinality')!;
+    expect(f, JSON.stringify(r.findings)).toBeTruthy();
+    expect(f.scene).toBe('One worker outside the expected range');
+    expect(f.detail).toContain('detection');
+    expect(f.detail).toContain(String(DETECTION_MIN_ROWS));
+    expect(f.detail).toContain('7');
+    // It must name the ALTERNATIVE AXIS, because that is the action the author
+    // takes: on this dataset the axis with room is six weeks, not seven workers.
+    expect(f.detail, 'names the axis with room').toMatch(/periods \(6\)/);
+  });
+
+  // ...and it would NOT have fired before the text surface was widened: the
+  // title carries no detection word at all.
+  it('finds the verb in the prose, not the title', () => {
+    const titleOnly = { title: detectionScene.title, actions: detectionScene.actions };
+    expect(checkSceneCardinality([titleOnly], HH_SHAPE).ok).toBe(true);
+  });
+
+  // NEGATIVE CONTROL — a gate that fires on every detection scene is worse than
+  // no gate (ace#1026). At a cohort where flagging genuinely earns its keep,
+  // the SAME scene must stay clean.
+  it('stays clean on the same detection demo over a cohort that needs the flag', () => {
+    const r = checkSceneCardinality([detectionScene], { rows: 60, periods: 6, groups: 4 });
+    expect(r.ok, JSON.stringify(r.findings)).toBe(true);
+  });
+
+  it('is clean exactly at the floor and flags one row below it', () => {
+    const at = { rows: DETECTION_MIN_ROWS, periods: 6 };
+    const below = { rows: DETECTION_MIN_ROWS - 1, periods: 6 };
+    expect(checkSceneCardinality([detectionScene], at).ok).toBe(true);
+    expect(checkSceneCardinality([detectionScene], below).ok).toBe(false);
+  });
+
+  // The two floors are independent, on the same axis. A 12-row cohort is enough
+  // to filter and not enough to detect — which is the whole reason detection
+  // needed its own number rather than reusing MIN_CARDINALITY.rows.
+  it('keeps detection strictly above the filter floor on the same axis', () => {
+    expect(DETECTION_MIN_ROWS).toBeGreaterThan(MIN_CARDINALITY.rows);
+
+    const twelve = { rows: MIN_CARDINALITY.rows, periods: 6, groups: 4 };
+    const filterScene12 = { title: 'narrow the roster to who needs a look' };
+    expect(
+      checkSceneCardinality([filterScene12], twelve).ok,
+      'the filter floor must not have moved',
+    ).toBe(true);
+    expect(checkSceneCardinality([detectionScene], twelve).ok).toBe(false);
+  });
+
+  // Discrimination: the scene from the same spec that demonstrates nothing must
+  // stay clean at the same cohort size the detection scenes fail at.
+  it('is inert on the same run’s non-demonstration scene', () => {
+    const r = checkSceneCardinality([nonDemonstrationScene], HH_SHAPE);
+    expect(r.ok, JSON.stringify(r.findings)).toBe(true);
+  });
+
+  // Widening the surface must not have turned prose into demonstrations for the
+  // ORIGINAL three verbs. Measured on the failing spec: filter / trend /
+  // comparison vocabulary occurs ZERO times in all 14.5 KB of it.
+  it('does not read ordinary scene prose as a filter, trend, or comparison', () => {
+    for (const s of [detectionScene, nonDemonstrationScene]) {
+      const r = checkSceneCardinality([s], { rows: 60, periods: 1, groups: 1 });
+      expect(r.ok, `${s.title} -> ${JSON.stringify(r.findings)}`).toBe(true);
+    }
+  });
+
+  // The tight-vocabulary rule the module states for the other three verbs
+  // applies here too: a word that is ordinary prose or dashboard chrome must
+  // not fire the check. `mark` bare is a given name; `missing` is chrome.
+  it('does not fire on words left out of the detection vocabulary on purpose', () => {
+    for (const s of [
+      { title: 'a scene', show: 'Mark opens the roster and reads the week.' },
+      { title: 'a scene', show: 'Rows with missing data render an em dash.' },
+      { title: 'a scene', show: 'The benchmark column sits beside the mean.', concept_claim: '' },
+      { title: 'a scene', concept_claim: 'A landmark week for the cohort.' },
+    ]) {
+      const r = checkSceneCardinality([s], { rows: 7, periods: 6, groups: 4 });
+      expect(r.ok, `${s.show ?? s.concept_claim} -> ${JSON.stringify(r.findings)}`).toBe(true);
+    }
+  });
+
+  it('says so when no other axis has room either', () => {
+    const r = checkSceneCardinality([detectionScene], { rows: 7, periods: 1, groups: 1 });
+    const f = r.findings.find((x) => x.kind === 'insufficient-cardinality')!;
+    expect(f.detail).toMatch(/No other axis in the handoff has room/);
   });
 });
