@@ -502,6 +502,45 @@ describe('connect-resume-opp.yaml', () => {
     );
   });
 
+  // Regression guard for dimagi-internal/ace#1848. The guarded back-nav budget
+  // was 3, calibrated against POST-LEARN landings only (Learn suite = 2 backs,
+  // Learn home = 1). A DELIVER-SIDE re-entry — a retry of the Deliver leg, or
+  // any resumed run where the device is already inside the Deliver app — is
+  // deeper: measured on spark-facilitator/20260828-0703 (APK 2.63.2), three
+  // guarded backs left the device on the Deliver app's own module grid
+  // (`grid_menu_grid`), and two FURTHER backs reached the jobs list. The
+  // recipe then failed at its very first assert.
+  //
+  // The count and the guard are asserted together on purpose: the count is
+  // only safe BECAUSE every back is wrapped in `notVisible: home-jobs-list`,
+  // which self-terminates the sequence the instant the jobs list appears and
+  // means the recipe never presses back FROM the jobs list (the one surface
+  // where back exits CommCare to the launcher, per #1032). An UNGUARDED back
+  // is the real regression — it would make the extra depth overshoot.
+  it('walks back 5 guarded levels, deep enough for a Deliver-side re-entry (ace#1848)', () => {
+    const backFlows = collectGuardedBackFlows(parseSteps(yaml));
+    expect(
+      backFlows.length,
+      'connect-resume-opp.yaml must carry exactly 5 guarded `pressKey: back` steps — ' +
+        'the deepest measured landing (Deliver app home / module grid) needs 5, ' +
+        'while Learn home (1) and Learn suite (2) self-terminate early (ace#1848).',
+    ).toBe(5);
+  });
+
+  it('guards every back on notVisible home-jobs-list, so the extra depth cannot overshoot', () => {
+    const backFlows = collectGuardedBackFlows(parseSteps(yaml));
+    const unguarded = backFlows.filter((f) => !f.guardedOnJobsList);
+    expect(
+      unguarded.length,
+      'every `pressKey: back` in connect-resume-opp.yaml must sit inside a runFlow ' +
+        'guarded on `when: notVisible: id: <home-jobs-list>` — the guard is what makes ' +
+        'the 5-back floor safe (an unguarded back would pop past the jobs list and ' +
+        'exit CommCare to the launcher, #1032).',
+    ).toBe(0);
+    // Non-vacuity: the collector must actually be finding backs to guard.
+    expect(backFlows.length).toBeGreaterThan(0);
+  });
+
   it('fails loud if the CTA tap did not leave the jobs list (no silent wrong-opp resume)', () => {
     // #591: a correct CTA tap navigates off connect_fragment_jobs_list.
     // The recipe must assert we left the list so a no-op / wrong-surface
@@ -978,6 +1017,47 @@ function parseSteps(yamlText: string): PaletteStep[] {
   const body = yamlText.slice(yamlText.indexOf('\n', sepIdx) + 1);
   const parsed = parseYaml(body);
   return Array.isArray(parsed) ? (parsed as PaletteStep[]) : [];
+}
+
+/**
+ * Every `pressKey: back` in a recipe, paired with whether it sits inside a
+ * `runFlow` whose `when:` clause is `notVisible` the jobs-list container.
+ * A bare top-level back (no enclosing guarded runFlow) is reported as
+ * `guardedOnJobsList: false` — which is exactly the regression the
+ * connect-resume-opp back-budget invariant is guarding against (ace#1848).
+ *
+ * Reads the RESOLVED yaml, so the guard is compared against the real
+ * selector value rather than the `${SELECTOR:...}` token.
+ */
+const JOBS_LIST_ID = selectorMap('2.63.0').selectors['home-jobs-list'].value;
+
+function collectGuardedBackFlows(
+  steps: PaletteStep[],
+): { guardedOnJobsList: boolean }[] {
+  const out: { guardedOnJobsList: boolean }[] = [];
+
+  const walk = (nodes: unknown, guarded: boolean): void => {
+    if (!Array.isArray(nodes)) return;
+    for (const step of nodes) {
+      if (!step || typeof step !== 'object') continue;
+      for (const [key, value] of Object.entries(step as Record<string, unknown>)) {
+        if (key === 'pressKey' && value === 'back') {
+          out.push({ guardedOnJobsList: guarded });
+          continue;
+        }
+        if (key === 'runFlow' && value && typeof value === 'object') {
+          const flow = value as Record<string, unknown>;
+          const when = flow.when as Record<string, unknown> | undefined;
+          const notVisible = when?.notVisible as Record<string, unknown> | undefined;
+          const guardsJobsList = notVisible?.id === JOBS_LIST_ID;
+          walk(flow.commands, guarded || guardsJobsList);
+        }
+      }
+    }
+  };
+
+  walk(steps, false);
+  return out;
 }
 
 /**

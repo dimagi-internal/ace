@@ -108,18 +108,69 @@ appId: org.commcare.dalvik
 # Unrolled + guarded rather than `repeat:` — Maestro `repeat` is not in
 # ALLOWED_STEP_KEYS (see content-form-finish.yaml). EVERY back is guarded
 # on `notVisible: home-jobs-list`, so the sequence self-terminates the
-# instant the jobs list appears and cannot overshoot into the "BACK #3
-# exits CommCare" state that #1032 warns about. Bound of 3 covers the
-# two known landings (Learn suite = 2 backs, Learn home = 1) with one
-# spare; anything deeper falls through to the assert below and fails
-# loud with a named anchor.
+# instant the jobs list appears and cannot overshoot into the "a back
+# press exits CommCare" state that #1032 warns about.
+#
+# --- BACK BUDGET CALIBRATION — three measured landings ------------------
+# The bound is 5, and it is a FLOOR sized by the DEEPEST measured landing,
+# not an exact figure. Each row below was observed on-device:
+#
+#   Learn home   -> 1 back   (#711 / #1032, APK 2.63.0 + 2.63.2)
+#   Learn suite  -> 2 backs  (#1032, bednet-spot-check/20260728-2222,
+#                             APK 2.63.2; dumps pathA-nav-probe-{1,2})
+#   Deliver app home / module grid
+#                -> 5 backs  (ace#1848, spark-facilitator/20260828-0703,
+#                             APK 2.63.2)
+#
+# The Deliver-side landing is what raised the bound from 3 to 5. It is
+# reached on any DELIVER-LEG RE-ENTRY — a retry after a Deliver failure,
+# or a resumed run where the device is already inside the Deliver app
+# (`StandardHomeActivity`) rather than on Connect's jobs list. Measured
+# transcript (ace#1848): three guarded backs left the device on the
+# Deliver app's OWN module grid — `grid_menu_grid`, rows "Enrol a
+# community" / "Record a community meeting", action bar "Spark FCAP
+# Facilitator Deliver app" — and two further backs (MenuActivity, then
+# DispatchActivity) reached `connect_fragment_jobs_list`.
+#
+# WHY EXTRA BACKS CANNOT OVERSHOOT: every step is guarded on
+# `notVisible: home-jobs-list`, so the sequence stops the instant the
+# jobs list renders and the recipe NEVER presses back FROM the jobs list
+# — which is the one surface where a back press exits CommCare to the
+# launcher (see the #711 note below). The added steps are therefore inert
+# no-ops on the two shorter Learn landings. Empirically confirmed on the
+# ace#1848 walk: five backs from the Deliver app reached the jobs list
+# WITHOUT exiting CommCare. A landing deeper than 5 still falls through
+# to the assert below and fails loud with a named anchor rather than
+# silently walking into the launcher.
+#
+# *Enforced:* `test/mcp/mobile/static-recipe-invariants.test.ts` pins the
+# count at 5 AND pins every one of them to the `notVisible home-jobs-list`
+# guard — the guard is what makes the count safe, so an unguarded back is
+# the real regression.
 #
 # NOTE on the #711 comment above: it claims a bare `pressKey: back` exits
 # CommCare to the Android launcher. That is the behaviour from the jobs
 # list itself, which the guard now prevents us ever pressing from — it is
-# NOT the behaviour from the Learn suite or Learn home, per the #1032
-# capture. If a future landing surface does exit early, the final assert
-# names it rather than silently walking into the launcher.
+# NOT the behaviour from the Learn suite, the Learn home, or the Deliver
+# app home, per the #1032 and ace#1848 captures. If a future landing
+# surface does exit early, the final assert names it rather than silently
+# walking into the launcher.
+- runFlow:
+    when:
+      notVisible:
+        id: "${SELECTOR:home-jobs-list}"
+    commands:
+      - pressKey: back
+      - waitForAnimationToEnd:
+          timeout: 3000
+- runFlow:
+    when:
+      notVisible:
+        id: "${SELECTOR:home-jobs-list}"
+    commands:
+      - pressKey: back
+      - waitForAnimationToEnd:
+          timeout: 3000
 - runFlow:
     when:
       notVisible:
