@@ -68,7 +68,7 @@ function loadAgentDocs(): AgentDoc[] {
     });
 }
 
-describe('agent topology — Agent dispatch requires level 0', () => {
+describe('agent topology — declared form matches the docs', () => {
   const docs = loadAgentDocs();
 
   it('finds agent docs to check', () => {
@@ -123,16 +123,17 @@ describe('agent topology — Agent dispatch requires level 0', () => {
 
     expect(
       missing,
-      'A procedure doc must state in its body that it runs inline at level 0 — the H1 ' +
-        'alone is not read by an orchestrator scanning for how to invoke it.',
+      'A procedure doc must state in its body that it is executed inline rather ' +
+        'than dispatched — the H1 alone is not read by an orchestrator scanning ' +
+        'for how to invoke it.',
     ).toEqual([]);
   });
 
   it('phase 7 form matches lib/agent-depth.ts', () => {
-    // Phase 7 dispatches the canopy DDD loop, which fans out per-scene judges of
-    // its own — the deepest chain ACE has. It is inline today because that keeps
-    // the chain at depth 2. Whether it MUST stay inline is now an arithmetic
-    // question, so assert agreement with the graph rather than a fixed answer.
+    // Phase 7 dispatches the canopy DDD loop, which fans out per-scene judges
+    // and specialist fixers of its own — the deepest chain ACE has. Whether it
+    // stays inline is an arithmetic question plus a context one, so assert
+    // agreement with the graph rather than a fixed answer.
     const phase7 = docs.find((d) => d.file === 'synthetic-data-and-workflows.md');
     expect(phase7, 'agents/synthetic-data-and-workflows.md is missing').toBeDefined();
     const declared = DISPATCH_GRAPH.find((n) => n.name === 'synthetic-data-and-workflows');
