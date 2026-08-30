@@ -308,8 +308,34 @@ front half (how the labs-only opp + its data come to exist) differs.
        file IS what labs serves: `connect_labs/labs/synthetic/fixture_store.py`
        loads `user_visits.json` from the registered Drive folder on every
        labs-only opp read and caches it per `(opp_id, folder_id, endpoint_key)`
-       on FIRST read — so the safe window is now, while nothing has read the
-       opp yet.
+       on FIRST read.
+
+       **Then DROP that cache — the write-back is invisible until you do
+       (ace#1860).** There is no safe window to write inside: the
+       `synthetic_generate_from_manifest` call PRIMES the fixture cache as part
+       of generating, so it is already populated when the atom returns, and an
+       in-place edit changes a file nobody re-reads. One call fixes it:
+
+       ```
+       mcp__connect-labs__synthetic_reload_fixtures(opportunity_id: <labs_opp_id>)
+       ```
+
+       It drops the fixture store across every worker process plus the raw and
+       computed analysis rows a pipeline reads, and it REPORTS what it dropped —
+       `{invalidated: {registry, fixture_store, sql_cache: {raw, computed_visit,
+       computed_flw, computed_entity}}, visit_count}` — so "the scrub landed" is
+       observed rather than assumed. Re-run `pipeline_preview` after it and
+       confirm the numbers match the scrubbed fixture.
+
+       Skipping it fails SILENTLY and green: on
+       `spark-facilitator/20260828-0703` the first `pipeline_preview` after a
+       correctly-written scrub still returned `records: 0` (a field the scrub
+       adds), `avg_attendance: null`, and `community_meetings` counting the
+       not-held records — the exact off-branch value the scrub had already
+       removed on Drive. Nothing errored, and no gate could see it: check 9
+       audits the producer's LOCAL scrubbed copy, and checks 7 and 11 pass
+       because both dashboards read the same stale cache and therefore agree
+       with each other.
 
        - **If ACE's service account cannot write that folder** — the grant in
          `skills/synthetic-data-generate/SKILL.md` step 3a asks for *Reader* —
@@ -317,7 +343,9 @@ front half (how the labs-only opp + its data come to exist) differs.
          there, share it with the labs fixture service account, and re-point
          the opp with `mcp__connect-labs__synthetic_register(opportunity_id,
          gdrive_folder_id)`. The cache key includes `folder_id`, so a folder
-         change misses in every worker and re-pulls.
+         change misses in every worker and re-pulls. This is the heavier path,
+         and it is for a PERMISSIONS failure only — when ACE can write the
+         folder, `synthetic_reload_fixtures` above is the one-call remedy.
        - **If neither write lands this run**, still run the scrub in memory,
          write the report with `applied: false`, and carry the counts into the
          summary and `run_state`. What is forbidden is narrowing the spec until
