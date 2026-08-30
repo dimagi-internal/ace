@@ -1547,7 +1547,12 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     role: 'published',
     consumedBy: ['solicitation-monitor', 'solicitation-review', 'solicitation-create-eval', 'llo-invite'],
     phase: 'solicitation-management',
-    required: false,
+    // required: the ONLY local record of the published rubric. `solicitation-review`
+    // (the human-gated award path) and `solicitation-create-eval` (itself a required
+    // artifact) both read it. As `required: false` the Phase 8 fence returned ok on a
+    // run that published to labs but never wrote the snapshot, and the miss surfaced
+    // days later at `/ace:step solicitation-review`. dimagi-internal/ace#1865.
+    required: true,
     description: 'Snapshot of the published solicitation: solicitation_id, public_url, manage_url, deadline, criteria. Read by every downstream Phase 7 skill and by llo-invite for the URL to email.',
   },
   {
