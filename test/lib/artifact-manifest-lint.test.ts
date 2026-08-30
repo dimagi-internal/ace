@@ -392,3 +392,92 @@ describe('manifest descriptions cite the current phase ordinal (#1308)', () => {
     ).toEqual([]);
   });
 });
+
+/**
+ * dimagi-internal/ace#1865 — a REQUIRED artifact must not depend on an OPTIONAL one.
+ *
+ * `solicitation-create_published.md` was `required: false` while being `consumedBy` four
+ * skills, one of which (`solicitation-create-eval`) produces a `required: true` artifact
+ * of its own. The Phase 8 boundary fence therefore returned ok on a run that published a
+ * live solicitation to labs but never wrote the local snapshot carrying the rubric — and
+ * the miss would only surface days later at the human-gated `/ace:step
+ * solicitation-review`, with responses already in hand.
+ *
+ * The class: if a REQUIRED artifact's producer reads some other artifact, the fence can
+ * pass while that required artifact's own input is silently absent.
+ *
+ * THIS IS A RATCHET, not a clean invariant. The 20 entries below already had this shape
+ * when the rule was written and are NOT asserted to be correct — each is either
+ * legitimately optional (opp-level state, recurring per-date files, deep-eval verdicts
+ * that only exist after an out-of-band `/ace:qa-deep`, records that exist only after an
+ * award) or a latent ace#1865-class defect that nobody has triaged yet. The rule's job is
+ * to stop NEW ones being added. When you review one, either flip it to `required: true`
+ * or delete it from this ledger with a one-line note saying why it is genuinely optional.
+ */
+const KNOWN_OPTIONAL_INPUTS_TO_REQUIRED = new Set([
+  'opp.yaml',
+  'decisions.yaml',
+  'decisions.gdoc',
+  'inputs-manifest.yaml',
+  'open-questions.md',
+  'eval-calibration/known-issues.md',
+  '1-design/idea-to-pdd-qa_result.yaml',
+  '1-design/pdd-to-work-order-qa_result.yaml',
+  '1-design/pdd-to-work-order.gdoc',
+  '2-research/partnership-research-qa_result.yaml',
+  '2-scenarios/pdd-to-test-prompts-qa_result.yaml',
+  '3-commcare/recipes/journey-deliver.yaml',
+  '6-qa-and-training/app-screenshot-capture_manifest.yaml',
+  '6-qa-and-training/app-ux-eval_verdict-deep.yaml',
+  '7-synthetic/<narrative-slug>.yaml',
+  '7-synthetic/branch-scrub_report.yaml',
+  '8-solicitation-management/solicitation-create_draft.md',
+  '8-solicitation-management/solicitation-review_award-record.md',
+  '9-execution-manager/flw-data-review/YYYY-MM-DD.md',
+  '9-execution-manager/timeline-monitor/YYYY-MM-DD.md',
+]);
+
+describe('required artifacts do not depend on optional ones (ace#1865)', () => {
+  const producersOfRequired = new Set(
+    ARTIFACT_MANIFEST.filter((a) => a.required).map((a) => a.producedBy),
+  );
+
+  const offenders = ARTIFACT_MANIFEST.filter(
+    (a) => !a.required && (a.consumedBy ?? []).some((c) => producersOfRequired.has(c)),
+  );
+
+  it('introduces no NEW optional artifact feeding a required one', () => {
+    const added = offenders
+      .filter((a) => !KNOWN_OPTIONAL_INPUTS_TO_REQUIRED.has(a.path))
+      .map((a) => {
+        const via = (a.consumedBy ?? []).filter((c) => producersOfRequired.has(c));
+        return `${a.path} is required:false but feeds required artifact(s) via ${via.join(', ')}`;
+      });
+
+    expect(
+      added,
+      `New ace#1865-class entries. Either mark the artifact required:true, or add it to ` +
+        `KNOWN_OPTIONAL_INPUTS_TO_REQUIRED with a note on why it is genuinely optional:\n` +
+        added.join('\n'),
+    ).toEqual([]);
+  });
+
+  it('keeps the grandfathered ledger honest — no stale entries', () => {
+    const offenderPaths = new Set(offenders.map((a) => a.path));
+    const stale = [...KNOWN_OPTIONAL_INPUTS_TO_REQUIRED].filter((p) => !offenderPaths.has(p));
+
+    expect(
+      stale,
+      `These are listed as grandfathered but no longer have the ace#1865 shape ` +
+        `(fixed, or the artifact was removed). Delete them from the ledger:\n${stale.join('\n')}`,
+    ).toEqual([]);
+  });
+
+  it('the Phase 8 published-solicitation snapshot is required (the ace#1865 instance)', () => {
+    const published = ARTIFACT_MANIFEST.find(
+      (a) => a.path === '8-solicitation-management/solicitation-create_published.md',
+    );
+    expect(published, 'manifest entry missing').toBeDefined();
+    expect(published!.required).toBe(true);
+  });
+});
