@@ -81,6 +81,21 @@ export async function hqOAuthLogin(opts: HqOAuthLoginOptions): Promise<void> {
   try {
     await page.goto(`${opts.baseUrl}/accounts/login/`);
 
+    // Already-authenticated fast path. Connect REDIRECTS /accounts/login/ away
+    // when the context already carries a live `sessionid` — so the OAuth button
+    // is legitimately absent and there is nothing to log in to. Treat that as
+    // success: the postcondition of this function is "the context holds a valid
+    // Connect session", which is already true.
+    //
+    // Without this, a context with a live Connect cookie but an EXPIRED labs
+    // cookie (the common case — labs sessions expire far sooner) threw
+    // "OAuth button not found ... template may have changed", which reads as
+    // upstream drift and is not. It blocked every walkthrough render whose
+    // labs session had aged out while its Connect session had not.
+    if (!new URL(page.url()).pathname.startsWith('/accounts/login')) {
+      return;
+    }
+
     const oauthButton = await page.$('button:has-text("Login with CommCareHQ")');
     if (!oauthButton) {
       throw new Error(
