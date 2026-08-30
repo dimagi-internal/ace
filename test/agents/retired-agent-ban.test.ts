@@ -41,7 +41,21 @@ const RETIRED_BAN = [
   /\b`?Agent`? tool is (?:unavailable|not available) to (?:every )?(?:sub)?agents?\b/i,
   /\bsubagents? (?:can(?:no|')?t|cannot) (?:call|use|reach) the `?Agent`? tool\b/i,
   /\bnever two levels of (?:`?Agent`?|dispatch)\b/i,
+  // The commonest historical phrasing, and the one this repo actually used:
+  // "Claude Code used to withhold `Agent` from every subagent". Categorical —
+  // note it requires "from ... subagents", which the TRUE depth-limited
+  // statement ("at the limit Claude Code withholds the Agent tool, and the
+  // subagent at the floor does the work itself") does not say. DEPTH_QUALIFIED
+  // below is a second belt for that.
+  /\bwith(?:hold|holds|held|holding)\b[^.]*\bAgent\b[^.]*\bfrom (?:every |all |each )?(?:sub)?agents?\b/i,
 ];
+
+/**
+ * Withholding `Agent` AT THE DEPTH LIMIT is true and current. Only the
+ * unconditional claim is retired, so a sentence that names the budget is fine.
+ */
+const DEPTH_QUALIFIED =
+  /\b(?:at the (?:limit|budget|cap)|past the budget|beyond the budget|depth (?:limit|budget)|MAX_SUBAGENT_SPAWN_DEPTH)\b/i;
 
 function walk(dir: string): string[] {
   const out: string[] = [];
@@ -89,6 +103,8 @@ describe('the retired "Agent is level-0 only" ban', () => {
         for (const sentence of flat.split(/(?<=[.!?])\s+/)) {
           // AskUserQuestion IS withheld from subagents — live and correct.
           if (/AskUserQuestion/i.test(sentence)) continue;
+          // Withholding at the depth limit is current behaviour, not the ban.
+          if (DEPTH_QUALIFIED.test(sentence)) continue;
           if (RETIRED_BAN.some((re) => re.test(sentence))) {
             violations.push(`${rel}:~${line}  ${sentence.trim().slice(0, 120)}`);
           }
