@@ -50,8 +50,8 @@ read the answer without overclaiming.
    high and selects places *above* the threshold. A **coverage** measure
    (sanitation, ORS, immunisation, ITN use, effective treatment) is worse when
    low, selects *below*, and the fundable quantity is the **unreached count**,
-   not the rate. Most of the 26 targetable indicators are coverage measures —
-   never assume. Units are not interchangeable either: mortality is per 1,000
+   not the rate. More than half of the 29 targetable indicators are coverage
+   measures — never assume. Units are not interchangeable either: mortality is per 1,000
    live births, so 8% is a threshold of 80, while 50% sanitation is 50.
 3. **Check which methods can answer it.** `targeting_indicators` lists per-method
    country counts. IGME publishes mortality only; MAP's surfaces answer malaria
@@ -89,15 +89,20 @@ read the answer without overclaiming.
 
 ## What has counts, and why it matters
 
-Almost every indicator here is a rate, and a rate cannot answer "how many cases
-would we be treating" — the per-case cost basis is refused rather than faked.
+Most indicators here are rates, and a rate cannot answer "how many cases would we
+be treating" — the per-case cost basis is refused rather than faked. Four
+families escape that, and they are what to reach for when a programme has to be
+*sized* rather than merely located:
 
-Malaria is the exception. The Malaria Atlas Project surfaces carry clinical cases
-and deaths as **counts**, on every boundary at every level, annual to 2024. That
-makes `malaria_cases`, `malaria_deaths` and `antimalarial_effective` (whose
-denominator is a case count, so its unreached figure is *untreated cases*) the
-indicators to reach for when a treatment programme has to be sized rather than
-merely located.
+| Count | From | Answers |
+|---|---|---|
+| `malaria_cases`, `malaria_deaths` | MAP 5 km surfaces, annual to 2024 | how much disease, per year |
+| `antimalarial_effective_gap` | cases x (1 - effective treatment) | **untreated cases** — its denominator is a case count, not a population |
+| `pop_beyond_2h` | Weiss et al. travel time x WorldPop | people further than two hours' walk from care |
+| `pop_rural` | DEGURBA x WorldPop | rural population, by the UN-comparable definition |
+
+Continental figures, for scale: 241.9M malaria cases and 116.9M of them
+untreated; 242.9M people beyond two hours' walk; 745.2M rural.
 
 ## What this cannot answer
 
@@ -134,3 +139,4 @@ current version rather than this file's.
 |------|--------|--------|
 | 2026-08-29 | Initial version — burden/coverage families, honesty fields, village and DEGURBA limits | ACE team |
 | 2026-08-29 | Split defence and deliverables into sibling skills; research-note read is now step 1; 26 indicators; MAP counts | ACE team |
+| 2026-08-29 | 29 indicators; countable families now include access (`pop_beyond_2h`) and settlement (`pop_rural`), not malaria alone | ACE team |

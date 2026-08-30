@@ -19,10 +19,10 @@ Answers the question that starts a proposal: **where should this go, how many
 people is that, and what would reaching them cost?** — and then does the harder
 half, which is making the answer survive somebody who wants it to be wrong.
 
-The arithmetic lives in the Connect Labs `targeting_*` MCP tools: 26 targetable
+The arithmetic lives in the Connect Labs `targeting_*` MCP tools: 29 targetable
 indicators across 55 African countries, at national, region and district level,
-with population, births, case counts and cost scenarios. This agent is the
-judgement around those tools.
+with population, births, disease burden, physical access to care, rural share,
+case counts and cost scenarios. This agent is the judgement around those tools.
 
 ## When to use
 
@@ -92,3 +92,4 @@ something better has since been published.
 | Date | Change | Author |
 |------|--------|--------|
 | 2026-08-29 | Initial version — four-skill agent over the Connect Labs targeting MCP | ACE team |
+| 2026-08-29 | 29 indicators; access and settlement joined malaria as families carrying counts | ACE team |
