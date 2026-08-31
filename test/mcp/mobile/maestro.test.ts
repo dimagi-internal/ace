@@ -42,7 +42,7 @@ describe('MaestroBackend.runRecipe', () => {
     fs.writeFileSync(recipePath, 'appId: x\n');
 
     const shell = fakeShell({
-      [`maestro test --no-ansi -e PHONE=+74260000001 -e PIN=123456 --output ${tmp} ${recipePath}`]: {
+      [`maestro test --no-ansi -e PHONE=+74260000001 -e PIN=123456 --test-output-dir ${tmp}/.maestro-out --output ${tmp} ${recipePath}`]: {
         stdout: 'OK\n', code: 0,
       },
     });
@@ -61,7 +61,7 @@ describe('MaestroBackend.runRecipe', () => {
     fs.writeFileSync(recipePath, 'appId: x\n');
 
     const shell = fakeShell({
-      [`maestro --host=localhost --port=5559 test --no-ansi --output ${tmp} ${recipePath}`]: {
+      [`maestro --host=localhost --port=5559 test --no-ansi --test-output-dir ${tmp}/.maestro-out --output ${tmp} ${recipePath}`]: {
         stdout: 'OK\n', code: 0,
       },
     });
@@ -76,7 +76,7 @@ describe('MaestroBackend.runRecipe', () => {
     fs.writeFileSync(recipePath, 'appId: x\n');
 
     const shell = fakeShell({
-      [`maestro test --no-ansi --output ${tmp} ${recipePath}`]: {
+      [`maestro test --no-ansi --test-output-dir ${tmp}/.maestro-out --output ${tmp} ${recipePath}`]: {
         stdout: '', stderr: 'TIMEOUT', code: 1,
       },
     });
@@ -466,7 +466,7 @@ describe('MaestroBackend.runRecipe — nested screenshots (ace#1236)', () => {
     const recipePath = path.join(tmp, 'flow.yaml');
     fs.writeFileSync(recipePath, 'appId: x\n');
     const shell = fakeShell({
-      [`maestro test --no-ansi --output ${tmp} ${recipePath}`]: { stdout: 'OK\n', code: 0 },
+      [`maestro test --no-ansi --test-output-dir ${tmp}/.maestro-out --output ${tmp} ${recipePath}`]: { stdout: 'OK\n', code: 0 },
     });
     const backend = new MaestroBackend({ shell });
     const r = await backend.runRecipe(recipePath, {}, tmp);
@@ -497,7 +497,7 @@ describe('MaestroBackend.runRecipe — nested screenshots (ace#1236)', () => {
     const recipePath = path.join(tmp, 'flow.yaml');
     fs.writeFileSync(recipePath, 'appId: x\n');
     const shell = fakeShell({
-      [`maestro test --no-ansi --output ${tmp} ${recipePath}`]: { stdout: 'OK\n', code: 0 },
+      [`maestro test --no-ansi --test-output-dir ${tmp}/.maestro-out --output ${tmp} ${recipePath}`]: { stdout: 'OK\n', code: 0 },
     });
     const backend = new MaestroBackend({ shell });
     const r = await backend.runRecipe(recipePath, {}, tmp);
@@ -514,7 +514,7 @@ describe('MaestroBackend.runRecipe — nested screenshots (ace#1236)', () => {
     const recipePath = path.join(tmp, 'flow.yaml');
     fs.writeFileSync(recipePath, 'appId: x\n');
     const shell = fakeShell({
-      [`maestro test --no-ansi --output ${tmp} ${recipePath}`]: { stdout: 'OK\n', code: 0 },
+      [`maestro test --no-ansi --test-output-dir ${tmp}/.maestro-out --output ${tmp} ${recipePath}`]: { stdout: 'OK\n', code: 0 },
     });
     const backend = new MaestroBackend({ shell });
     const r = await backend.runRecipe(recipePath, {}, tmp);
