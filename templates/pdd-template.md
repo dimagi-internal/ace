@@ -207,6 +207,11 @@ tuple, out-of-band.
 | **C — Cross-delivery quality** | [What patterns across deliveries indicate the dataset is useful?] | [Theme variance across segments, outlier detection, saturation, etc.] | [AI synthesis or analyst review — or "N/A — single delivery"] |
 
 ## Timeline
+- **State where the clock starts.** If the rows below begin at
+  solicitation-open (the normal shape for a solicited engagement), say so —
+  `solicitation-create` must subtract the pre-award rows before deriving
+  `expected_end_date`, and an unlabelled total is ambiguous between
+  "from solicitation-open" and "from award" (dimagi-internal/ace#1858).
 - Start date: [date]
 - End date: [date]
 - Key milestones:
