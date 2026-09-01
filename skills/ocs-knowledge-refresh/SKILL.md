@@ -128,7 +128,22 @@ missing is recoverable; a silent one is not.
 `ocs_upload_collection_files({ collection_id, files: [...] })` with the training
 documents that exist.
 
-Two constraints carry over from `ocs-agent-setup § Step 5` and are not
+Download each document with `drive_read_file({exportAs: 'text/markdown',
+writeToPath: <abs tmp path>})` into ONE directory, then — before any upload
+call — run the strip pass over that directory:
+
+```bash
+ACE_ROOT="${CLAUDE_PLUGIN_ROOT:-$(python3 -c "import json,os; d=json.load(open(os.path.expanduser('~/.claude/plugins/installed_plugins.json'))); print(d['plugins']['ace@ace'][0]['installPath'])")}"
+npx --prefix "$ACE_ROOT" tsx "$ACE_ROOT/scripts/strip-inline-data-uris.ts" <download-dir>
+```
+
+It rewrites in place and prints one JSON line of per-file
+`{bytes_before, bytes_after, payloads_stripped}`. **Record those numbers in the
+product artifact.** A non-zero exit means a payload survived a shape the
+stripper does not know about — do NOT upload; report it on
+dimagi-internal/ace#1827 with the file.
+
+Three constraints carry over from `ocs-agent-setup § Step 5` and are not
 restated in full here — read them there:
 
 - **Spreadsheets cannot be indexed** (`is_index: true` collections use the
@@ -136,6 +151,18 @@ restated in full here — read them there:
 - **Never index `2-scenarios/pdd-to-test-prompts.md`** — it carries the deep-QA
   answer key, and indexing it makes the eval grade the bot on documents
   containing its own expected answers.
+- **Never index a base64 payload.** `exportAs: 'text/markdown'` inlines every
+  embedded image as a `data:` URI, so an illustrated guide arrives at 8–28x its
+  prose size and that bulk becomes indexed retrieval content. On
+  `bednet-check-2-visit/20260828-0629` the four-document pack was **91% base64
+  by volume** and the FLW guide alone was 264,538 bytes carrying ~9 KB of prose
+  (16 screenshots). Nothing failed — the upload succeeded and indexing reported
+  `ready: true, pending: 0` — the chunks just competed with real prose for the
+  bot's `max_results` retrieval slots. `scripts/strip-inline-data-uris.ts` above
+  is the fix; it is mandatory, not advisory. The images are not lost: they live
+  in the published Google Doc the reader opens, which is also what
+  `training-*-eval` counts (`docs_get` → `inlineObjects`), so stripping the
+  uploaded copy costs nothing downstream.
 
 ### Step 2: Wait for indexing
 
