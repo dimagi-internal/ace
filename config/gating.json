@@ -20,6 +20,11 @@
       "tool": "Bash",
       "pattern": "op\\s+inject\\b[\\s\\S]*?(?:-o|--out-file|>)[=\\s]*\\S*(?:CLAUDE_PLUGIN_DATA|plugins/data/ace)\\S*\\.env",
       "message": "BLOCKED: raw `op inject` writing to <plugin-data>/.env overwrites the whole file and DROPS local-only secrets (ACE_WEB_PAT_TOKEN and any key not in .env.tpl). Use `/ace:setup --force-env` (= `bash \"$CLAUDE_PLUGIN_ROOT/bin/ace-setup\" --force-env`), which snapshots the `# --- ACE local-only secrets ---` block and re-appends it after the inject. (This rail catches `-o`, `--out-file`, and `>` redirect forms; a raw inject to a NON-plugin-data path, e.g. a dev-worktree ./.env, is not blocked.)"
+    },
+    {
+      "tool": "Bash",
+      "pattern": "gh\\s+(?:issue|pr)\\s+(?:create|comment|edit)\\b[\\s\\S]{0,300}?(?:--body-file[=\\s]+|(?<![\\w-])-F[=\\s]+)['\\\"]?(?:/private)?/tmp/(?!claude-\\d)",
+      "message": "BLOCKED: `--body-file` pointing at the SHARED tmp root. /tmp is readable and writable by every session, every worktree and every macOS account on this host (two accounts run ACE concurrently here — ace#1821 measured nine live ace-mobile MCPs on one and one on the other), so a predictable path like /tmp/issue_body.md may already hold SOMEONE ELSE's file. If your own write to it is denied or simply never happens, gh reads the stale file and publishes it. That is ace#1818: it shipped with the right title and 3,876 characters of a different session's content, including another operator's absolute worktree path, into a dimagi-internal tracker — silently, because the write failed loudly and the create succeeded. Write the body to THIS session's scratchpad instead (the directory named in your system prompt, /private/tmp/claude-<uid>/<project>/<session-uuid>/scratchpad/...), which no other session can collide with; --body-file from there is explicitly allowed. A repo-relative or home-directory path is fine too. (Rail is narrow by design: only gh issue/pr create|comment|edit, only the --body-file/-F argument, only under the shared tmp root.)"
     }
   ],
   "approve": []
