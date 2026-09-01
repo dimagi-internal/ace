@@ -85,10 +85,12 @@ the first 4 strongly-calibrated rubrics.
      guidance.
 
 4. **Write the verdict YAML** to
-   `ACE/<opp-name>/runs/<run-id>/10-closeout/cycle-grade-eval_verdict.yaml`. The filename uses the
-   **producer** skill name (`cycle-grade`), NOT this skill's name —
-   see `agents/ace-orchestrator.md § Per-Step Eval Hook` for the
-   naming rule:
+   `ACE/<opp-name>/runs/<run-id>/10-closeout/cycle-grade-eval_verdict.yaml`. The filename uses
+   **this eval skill's** name (`cycle-grade-eval`), not the bare producer
+   name (`cycle-grade`) — per the 0.12.0 Option-α rule an `-eval` skill
+   keeps `-eval` in its verdict filename; see
+   `agents/ace-orchestrator.md § Per-Step Eval Hook` for the naming
+   rule:
 
    ```yaml
    skill: cycle-grade-eval

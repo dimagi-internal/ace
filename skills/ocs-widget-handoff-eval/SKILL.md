@@ -91,11 +91,14 @@ CCC-301).
 
 5. **Write the verdict YAML** to
    `ACE/<opp-name>/runs/<run-id>/5-ocs/ocs-widget-handoff-eval_verdict.yaml`. The filename uses
-   the **producer** skill name (`ocs-agent-setup` — the skill that
-   produces `ocs-setup/widget-handoff.md` as one of its outputs), NOT
-   this skill's name — see `agents/ace-orchestrator.md § Per-Step
-   Eval Hook` for the naming rule. Body conforms to
-   `lib/verdict-schema.ts`.
+   **this eval skill's** name (`ocs-widget-handoff-eval`), not the
+   producer's (`ocs-agent-setup` — the skill that produces
+   `ocs-setup/widget-handoff.md` as one of its outputs): per the 0.12.0
+   Option-α rule an `-eval` skill keeps `-eval` in its verdict filename,
+   and the Workbench rolls the score up to the producer row via the
+   `eval_skill:` pairing in the phase agent's frontmatter, not by
+   parsing the filename — see `agents/ace-orchestrator.md § Per-Step
+   Eval Hook`. Body conforms to `lib/verdict-schema.ts`.
 
    ```yaml
    skill: ocs-widget-handoff-eval

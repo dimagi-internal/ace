@@ -46,7 +46,7 @@ sibling, `skills/_eval-template.md` for shared contracts, and
 
 ## Products
 
-- `4-connect/connect-opp-setup-eval_verdict.yaml` — verdict YAML per `_eval-template.md § Verdict YAML contract`. Filename uses the **producer** skill name (`connect-opp-setup`).
+- `4-connect/connect-opp-setup-eval_verdict.yaml` — verdict YAML per `_eval-template.md § Verdict YAML contract`. Filename uses **this eval skill's** name (`connect-opp-setup-eval`), not the bare producer name — per the 0.12.0 Option-α rule in `agents/ace-orchestrator.md § Per-Step Eval Hook`.
 
 ## Process
 

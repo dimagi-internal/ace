@@ -52,7 +52,7 @@ flag that gets caught early scores higher than one caught late.
 
 4. **Write the verdict YAML** to
    `ACE/<opp-name>/runs/<run-id>/9-execution-manager/flw-data-review-eval_verdict-monitor.yaml`. The filename
-   uses the **producer** skill name (`flw-data-review`) plus the
+   uses **this eval skill's** name (`flw-data-review-eval`) plus the
    `-monitor` mode suffix (which the Workbench strips when attributing
    the score) — see `agents/ace-orchestrator.md § Per-Step Eval Hook`
    for the naming rule. Each recurring run overwrites the prior

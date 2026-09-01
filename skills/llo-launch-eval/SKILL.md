@@ -70,10 +70,12 @@ the first 4 strongly-calibrated rubrics.
      guidance.
 
 4. **Write the verdict YAML** to
-   `ACE/<opp-name>/runs/<run-id>/9-execution-manager/llo-launch-eval_verdict.yaml`. The filename uses the
-   **producer** skill name (`llo-launch`), NOT this skill's name —
-   see `agents/ace-orchestrator.md § Per-Step Eval Hook` for the
-   naming rule:
+   `ACE/<opp-name>/runs/<run-id>/9-execution-manager/llo-launch-eval_verdict.yaml`. The filename uses
+   **this eval skill's** name (`llo-launch-eval`), not the bare producer
+   name (`llo-launch`) — per the 0.12.0 Option-α rule an `-eval` skill
+   keeps `-eval` in its verdict filename; see
+   `agents/ace-orchestrator.md § Per-Step Eval Hook` for the naming
+   rule:
 
    ```yaml
    skill: llo-launch-eval
