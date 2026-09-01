@@ -1471,14 +1471,29 @@ For each form-walk segment of a recipe:
    coordinates (**longitude first**; AVD backend only — unsupported on
    the cloud emulator backend); see
    `playbook/integrations/mobile-integration.md`, (b) tap
-   `${SELECTOR:geopoint-record-location}` — the widget's button renders
-   text **"RECORD LOCATION"** (live-calibrated 2026-07-13 on
-   hh-poverty-targeting/20260702-1456, dimagi-internal/ace#861; the
-   Button carries no resource-id, and the earlier "Capture Location"
-   guess does not exist on-device), (c) the tap **auto-captures** when a
+   `${SELECTOR:geopoint-record-location}` — the widget's button ships
+   **TWO labels**, and the mapped selector is the alternation
+   `(RECORD|REPLACE) LOCATION` that accepts both. It renders
+   **"RECORD LOCATION"** when the field is EMPTY (live-calibrated
+   2026-07-13 on hh-poverty-targeting/20260702-1456,
+   dimagi-internal/ace#861) and **"REPLACE LOCATION"** when it ALREADY
+   HOLDS A VALUE (live-captured 2026-09-01 on
+   spark-facilitator/20260828-0703, dimagi-internal/ace#1879). The
+   second label is not an edge case: a case-bound geopoint on a followup
+   form is implicitly preloaded from the previous visit
+   (dimagi-internal/ace#1809), so **every walk after the first against
+   the same case meets REPLACE, not RECORD**. Never re-hardcode the
+   single-label string — always go through the selector map, or the
+   recipe passes on walk 1 and dies on walk 2. (The Button carries no
+   resource-id, and the earlier "Capture Location" guess does not exist
+   on-device.) (c) The tap **auto-captures** when a
    mock fix is pre-seeded — wait for the Latitude/Longitude/Altitude/
    Accuracy readout to render under the button (no separate capture
-   dialog). If a FUTURE APK version changes the widget, re-calibrate
+   dialog). On the REPLACE branch that readout, and the
+   "Location accuracy is good." label, are ALREADY on screen before the
+   tap — carried over from the previous visit — so do not treat their
+   presence as proof this walk captured a fresh fix. If a FUTURE APK
+   version changes the widget, re-calibrate
    against a live dump of that build (per "close the loop to the source
    of truth") — never transcribe from a sibling build (that's exactly how
    the #593/#686 "GPS is a plain text field" misdiagnosis propagated).
