@@ -56,6 +56,11 @@
  * `broken` and `misleading` block sharing. `improvement` reports only.
  */
 
+import {
+  checkArchetypeConsistency,
+  type ArchetypeCheckRow,
+} from './decisions-archetype-consistency.js';
+
 // ── Finding model ──────────────────────────────────────────────────
 
 export type AuditSeverity = 'broken' | 'misleading' | 'improvement';
@@ -453,7 +458,64 @@ export function auditDecisionRows(decisions: unknown): Finding[] {
       });
     }
   });
+
+  out.push(...auditArchetypeContradiction(rows));
   return out;
+}
+
+/**
+ * Two archetypes for one run, published side by side (ace#1859).
+ *
+ * `bednet-check-2-visit/20260828-0629` shipped Phase 1's `archetype-selection`
+ * saying `longitudinal-visits` and Phase 3's `test-archetype-coverage` saying
+ * `atomic-visit` — with `evidence_basis: stated`, citing a document whose own
+ * line 7 reads `Archetype: longitudinal-visits`. Both rendered on the anonymous
+ * Decisions tab, so an outside reader was shown a self-contradicting record of
+ * what kind of programme this is. Every structural check was green, because
+ * only the archetype NAME was wrong — the row's coverage conclusion and both
+ * smoke bindings were correct, so nothing downstream broke and nothing
+ * downstream complained.
+ *
+ * Textbook `misleading`: nothing is unreachable, the page just states
+ * something untrue. It blocks sharing, which is the point — the damage was
+ * that an outsider read it.
+ *
+ * The comparison itself lives in `lib/decisions-archetype-consistency.ts`,
+ * which documents at length what is compared (the effective value) and what is
+ * deliberately NOT (`options`, `reasoning`) — naming an alternative in order
+ * to reject it is what a good decision row is FOR, and an over-broad version
+ * of this rule fires on correct rows.
+ */
+export function auditArchetypeContradiction(rows: readonly unknown[]): Finding[] {
+  const checkRows: ArchetypeCheckRow[] = [];
+  for (const row of rows) {
+    if (!row || typeof row !== 'object') continue;
+    const r = row as Record<string, unknown>;
+    if (typeof r.id !== 'string') continue;
+    const effective =
+      typeof r.override === 'string' && r.override ? r.override : String(r.ai_default ?? '');
+    const params = (r.params ?? null) as Record<string, unknown> | null;
+    checkRows.push({
+      id: r.id,
+      value: effective,
+      paramsArchetype:
+        params && typeof params.archetype === 'string' ? params.archetype : undefined,
+      evidenceBasis: typeof r.evidence_basis === 'string' ? r.evidence_basis : undefined,
+    });
+  }
+
+  return checkArchetypeConsistency(checkRows).findings.map((c) => ({
+    code: 'DECISION-ARCHETYPE-CONTRADICTION',
+    severity: 'misleading' as const,
+    where: `decisions.rows (${c.id}).${c.field}`,
+    detail: c.detail,
+    fix:
+      `reconcile \`${c.id}\` with the run's declared archetype (\`${c.declared}\`) — correct the ` +
+      `row's value in decisions.yaml, or, if it really is resolving disagreeing sources, declare ` +
+      `\`evidence_basis: conflicting\` with \`conflict_signals\`. Do not "fix" it by editing ` +
+      `\`archetype-selection\` unless that row is the one that is wrong.`,
+    defect: 'ace#1859 (two archetypes for one run on the public Decisions tab)',
+  }));
 }
 
 const STOPWORDS = new Set(['and', 'to', 'the', 'of', 'a', 'setup', 'management', 'review']);
