@@ -196,6 +196,28 @@ export const SURFACE_CONTRACT: Readonly<Record<string, SectionContract>> = {
   solicitation: { kind: 'object', keys: ['url', 'deadline', 'status', 'access'], linkKeys: ['url'] },
   launch: { kind: 'object', keys: [] },
   cycle_grade: { kind: 'object', keys: [] },
+  // The `/ace:qa-deep` verdicts, or `null` when that gate never ran — which is
+  // the common case, since deep QA is out-of-band and not part of `/ace:run`.
+  // Shipped by ace-web#746 (merged 2026-09-01) and caught here the same day by
+  // CONTRACT-UNKNOWN-SECTION, which is the check working as designed: ace-web
+  // grew a section and this auditor had never looked at it.
+  // Shape, from ace-web `summary.py :: _read_deep_qa` / `_deep_qa_stage`:
+  //   null, or { stages: [ { stage, label, ran, ran_at, gate, verdict, score,
+  //   threshold, counts{total,pass,warn,fail}, dimensions[], findings[],
+  //   items[], freshness[], is_stale } ] }
+  // `keys: []` matches the other nullable sections above (launch, cycle_grade,
+  // opp_eval, selected_llo): the per-stage shape is recorded here rather than
+  // declared, because a declared key on a null section reads as missing.
+  deep_qa: {
+    kind: 'object',
+    keys: [],
+    itemKeys: [
+      'stage', 'label', 'ran', 'ran_at', 'gate', 'verdict', 'score',
+      'threshold', 'counts', 'dimensions', 'findings', 'items',
+      'freshness', 'is_stale',
+    ],
+    note: 'deep-QA gate verdicts; null when /ace:qa-deep never ran for this run',
+  },
   opp_eval: { kind: 'object', keys: [] },
   learnings: { kind: 'object', keys: [], linkKeys: ['url'] },
   open_questions: {

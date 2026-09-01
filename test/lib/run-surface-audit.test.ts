@@ -80,6 +80,10 @@ function healthyPayload(over: Record<string, unknown> = {}): Record<string, unkn
     launch: null,
     cycle_grade: null,
     opp_eval: null,
+    // Null unless `/ace:qa-deep` ran — it is out-of-band, so null is the
+    // common case (ace-web#746). Present here because the contract requires
+    // every section: an ABSENT key is the finding, a null value is not.
+    deep_qa: null,
     learnings: null,
     open_questions: null,
     stage: { label: 'solicitation', pending_sections: [] },
