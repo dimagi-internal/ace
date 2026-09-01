@@ -62,6 +62,89 @@ import { readProvenanceSidecar } from '../../../lib/screenshot-provenance.js';
 import { classifyMaestroFailure } from '../../../lib/maestro-failure-class.js';
 
 /**
+ * Subdirectory of a run's `screenshotDir` that Maestro's own `--test-output-dir`
+ * tree is pinned to. Dot-prefixed so it reads as scaffolding, and skipped
+ * explicitly by `collectScreenshots` so a failed harvest degrades to "no
+ * screenshots" rather than to garbage `stepName`s.
+ */
+export const MAESTRO_OUTPUT_SUBDIR = '.maestro-out';
+
+export function maestroOutputDir(screenshotDir: string): string {
+  return path.join(screenshotDir, MAESTRO_OUTPUT_SUBDIR);
+}
+
+/**
+ * Flatten Maestro's `<test-output-dir>/<timestamp>/<flow>/takeScreenshot/<name>.png`
+ * tree into `<screenshotDir>/<name>.png`, then remove the scaffolding.
+ *
+ * Why flatten rather than let `collectScreenshots` walk the nesting: that walker
+ * derives `stepName` from the path RELATIVE to `screenshotDir`, joining segments
+ * with `-`. Left nested, every frame would be named
+ * `.maestro-out-2026-08-31_181657-probe-takeScreenshot-probe-frame` instead of
+ * `probe-frame` — and the manifest, the training skills and the atlas-drift
+ * probe all key on the plain step name. So the nesting has to be undone before
+ * collection, not tolerated by it.
+ *
+ * Returns the number of frames harvested. Best-effort by contract: a caller
+ * must never fail a recipe because harvesting did, since the recipe itself may
+ * legitimately have produced no frames.
+ */
+export function harvestMaestroScreenshots(screenshotDir: string): number {
+  const root = maestroOutputDir(screenshotDir);
+  if (!fs.existsSync(root)) return 0;
+
+  const found: string[] = [];
+  const walk = (current: string, depth: number): void => {
+    if (depth > 8) return;
+    let entries: fs.Dirent[];
+    try {
+      entries = fs.readdirSync(current, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const entry of entries) {
+      const full = path.join(current, entry.name);
+      if (entry.isDirectory()) walk(full, depth + 1);
+      else if (entry.isFile() && entry.name.endsWith('.png')) found.push(full);
+    }
+  };
+  walk(root, 0);
+
+  let harvested = 0;
+  for (const src of found) {
+    const dest = path.join(screenshotDir, path.basename(src));
+    try {
+      // A chunked run invokes maestro once per chunk into the SAME
+      // `--test-output-dir`, so each chunk adds a new `<timestamp>/` sibling.
+      // Harvesting after every chunk keeps basenames unique in practice; if a
+      // name does repeat, last-writer-wins matches the pre-existing
+      // same-name-overwrites behaviour of writing straight into the dir.
+      fs.renameSync(src, dest);
+      harvested += 1;
+    } catch {
+      try {
+        fs.copyFileSync(src, dest);
+        harvested += 1;
+      } catch {
+        /* leave it; the scaffold cleanup below will not remove an unharvested file */
+      }
+    }
+  }
+
+  // Drop the scaffolding so `collectScreenshots` sees a flat dir. Guarded: if
+  // anything was left behind, keep the tree for forensics rather than deleting
+  // evidence.
+  if (harvested === found.length) {
+    try {
+      fs.rmSync(root, { recursive: true, force: true });
+    } catch {
+      /* non-fatal */
+    }
+  }
+  return harvested;
+}
+
+/**
  * Maestro step keys `mobile_validate_recipe` accepts in an agent-authored
  * recipe.
  *
@@ -196,8 +279,22 @@ export class MaestroBackend {
     const budget = resolveChunkTimeout({ stepCount: ctx.stepCount });
     const timeoutMs = budget.timeoutMs;
     try {
-      return await this.shell('maestro', args, { timeoutMs, cwd: screenshotDir });
+      const r = await this.shell('maestro', args, { timeoutMs, cwd: screenshotDir });
+      // Flatten Maestro's own output tree into `screenshotDir` before the
+      // caller collects. Done HERE because this is the single choke point every
+      // invocation shares (`runRecipe`, and both branches of
+      // `runRecipeWithDumps`), so one call covers all three.
+      harvestMaestroScreenshots(screenshotDir);
+      return r;
     } catch (e) {
+      // Harvest on the failure path too: a chunk that failed part-way still
+      // wrote every frame up to the failing step, and those are exactly the
+      // forensics a reader needs. Must not mask the original error.
+      try {
+        harvestMaestroScreenshots(screenshotDir);
+      } catch {
+        /* non-fatal */
+      }
       if ((e as { code?: string })?.code === 'SHELL_TIMEOUT') {
         throw new MobileError(
           'MAESTRO_STALL',
@@ -293,6 +390,32 @@ export class MaestroBackend {
     // Resolve recipePath to absolute BEFORE the cwd-change; Maestro
     // resolves it relative to the new cwd otherwise.
     const absoluteRecipePath = path.isAbsolute(recipePath) ? recipePath : path.resolve(recipePath);
+    // PIN MAESTRO'S OWN TEST-OUTPUT TREE INSIDE OUR SCREENSHOT DIR.
+    //
+    // `takeScreenshot: "name"` does NOT write to `./name.png` in the process
+    // CWD on Maestro 2.7.0 — it writes to
+    // `<test-output-dir>/<timestamp>/<flow>/takeScreenshot/<name>.png`,
+    // defaulting to `~/.maestro/tests/`. So the `cwd: screenshotDir` contract
+    // documented in `runRecipe` silently stopped working: every
+    // `takeScreenshot` logs COMPLETED, `collectScreenshots(screenshotDir)`
+    // finds nothing, and the run STILL reports `status: pass` with
+    // `screenshots: []`. That shipped a Phase 6 dispatch with zero walkthrough
+    // screenshots and a green recipe status on both legs
+    // (turmeric-market-study/20260828-1108, both Learn and Deliver).
+    //
+    // Reproduced minimally on 2.7.0 with a two-step recipe (`launchApp` +
+    // `takeScreenshot`) and cwd set to the output dir: 0 PNGs in cwd, 1 PNG at
+    // `~/.maestro/tests/<ts>/probe/takeScreenshot/probe-frame.png`.
+    //
+    // Pinning `--test-output-dir` under `screenshotDir` puts that tree in a dir
+    // we own, so `harvestMaestroScreenshots` can flatten it into the shape
+    // `collectScreenshots` expects. `cwd: screenshotDir` is kept as well: it is
+    // harmless, and remains correct for any build honouring the old behaviour.
+    //
+    // NOT `--flatten-debug-output`: measured on 2.7.0, combining it with
+    // `--test-output-dir` yields ZERO PNGs anywhere under the given dir (it
+    // re-routes into the debug-output tree). Dead end — do not re-try it.
+    args.push('--test-output-dir', maestroOutputDir(screenshotDir));
     args.push('--output', screenshotDir, absoluteRecipePath);
     return args;
   }
@@ -1060,6 +1183,13 @@ export class MaestroBackend {
       if (depth > 8) return;
       for (const entry of fs.readdirSync(current, { withFileTypes: true })) {
         const full = path.join(current, entry.name);
+        // Never descend into Maestro's own output scaffold. `harvestMaestroScreenshots`
+        // normally empties and removes it before we get here; if it could not
+        // (permissions, a partial harvest), skipping is the safe degradation —
+        // reporting zero screenshots is honest, whereas walking the nesting
+        // would emit frames named `.maestro-out-<ts>-<flow>-takeScreenshot-<name>`
+        // and every downstream consumer keys on the plain step name.
+        if (entry.isDirectory() && entry.name === MAESTRO_OUTPUT_SUBDIR) continue;
         if (entry.isDirectory()) walk(full, depth + 1);
         else if (entry.isFile() && entry.name.endsWith('.png')) pngs.push(full);
       }
