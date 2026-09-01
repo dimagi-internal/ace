@@ -140,6 +140,17 @@ export const SURFACE_CONTRACT: Readonly<Record<string, SectionContract>> = {
     itemKeys: ['kind', 'name', 'hq_url', 'access'],
     linkKeys: ['hq_url'],
   },
+  // The producing phase's own verdict on `apps` — `null` when Phase 3
+  // finished clean. Added with ace#1867 / ace-web#744, where a `partial`
+  // Phase 3 rendered identically to a clean one: the run recorded
+  // `status: partial` and a FAILED `entity_state_fidelity` gate (the
+  // PAYMENT-KEY gate) and the COMMCARE APPS section carried no status at
+  // all, so the page's only vocabulary was "done" vs "not started yet".
+  // No links — this section is words about the apps above.
+  build: {
+    kind: 'object',
+    keys: ['status', 'verdict', 'note', 'failing_checks', 'carried_blockers'],
+  },
   connect: { kind: 'object', keys: ['opportunity'], linkKeys: ['url'] },
   training: {
     kind: 'object',
@@ -167,6 +178,20 @@ export const SURFACE_CONTRACT: Readonly<Record<string, SectionContract>> = {
     linkKeys: ['url'],
     reviewerFacing: true,
   },
+  // What `dashboards` and `walkthroughs` above are showing numbers OF.
+  // Phase 7 GENERATES its dataset and the page never said so: on
+  // spark-facilitator/20260828-0703 two dashboards charted 223 invented
+  // visit records attributed to 12 invented facilitators, with named
+  // personas and three planted anomalies, and an outsider read every one
+  // of them as an observation (ace#1867). `null` when the run generated
+  // nothing — a run with no synthetic data must not be labelled either.
+  synthetic: {
+    kind: 'object',
+    keys: [
+      'is_synthetic', 'provider', 'labs_opp_id', 'visits',
+      'completed_works', 'cohort_size', 'cohort_population',
+    ],
+  },
   selected_llo: { kind: 'object', keys: [] },
   solicitation: { kind: 'object', keys: ['url', 'deadline', 'status', 'access'], linkKeys: ['url'] },
   launch: { kind: 'object', keys: [] },
@@ -178,6 +203,12 @@ export const SURFACE_CONTRACT: Readonly<Record<string, SectionContract>> = {
     // `items`. NOT `questions`. This is the cautionary tale in the module
     // header, encoded: an auditor that counted `questions` reported 0 forever.
     keys: ['url', 'access', 'items'],
+    // The row shape, frozen too. `title` is here because it was EMPTY on
+    // 27 of 28 rows of spark-facilitator/20260828-0703 and every one
+    // rendered as a run-on `id: … question: …` blob; `blocking` because
+    // the ledger always carried when a question is needed by and the page
+    // discarded it (ace#1867). A key-name drift here renders as absence.
+    itemKeys: ['title', 'detail', 'owner', 'answered_in', 'blocking'],
     linkKeys: ['url'],
   },
   stage: { kind: 'scalar', keys: ['label', 'pending_sections'] },
@@ -907,6 +938,96 @@ export function auditWalkthroughParity(payload: unknown, phases: unknown): Findi
   ];
 }
 
+/** Phase statuses / verdicts that mean "this phase finished clean". */
+const CLEAN_PHASE_STATUSES = new Set(['done', 'complete', 'completed', 'pass', 'passed']);
+const FAILING_STEP_VERDICTS = new Set(['fail', 'failed', 'halt', 'blocked', 'reject']);
+
+/**
+ * Did the run generate its data, and does the page SAY so?
+ *
+ * Phase 7 invents facilitators, visits, anomalies and a coaching task. On
+ * `spark-facilitator/20260828-0703` the run recorded `provider: ace-run`,
+ * `labs_synthetic_opp_id: 10054`, `user_visits: 223`, `user_data: 12` and
+ * `completed_works: 0` — 223 invented records attributed to 12 invented
+ * facilitators — and the DASHBOARDS section carried no qualifier at all, so an
+ * outsider read every named persona and every planted anomaly as an
+ * observation of a real programme (ace#1867).
+ *
+ * Sibling of `auditWalkthroughParity`: a page that is silent about the
+ * provenance of a number is not neutral about it, it is asserting the number is
+ * what it appears to be.
+ */
+export function auditSyntheticLabelling(payload: unknown, phases: unknown): Finding[] {
+  const source = getPath(phases, 'synthetic-data-and-workflows.products.synthetic.source');
+  if (!source || typeof source !== 'object') return [];
+  const counts = getPath(source, 'record_counts');
+  const visits = typeof getPath(counts, 'user_visits') === 'number'
+    ? (getPath(counts, 'user_visits') as number)
+    : null;
+  const labelled = getPath(payload, 'synthetic.is_synthetic') === true;
+  if (labelled) return [];
+  return [
+    {
+      code: 'SYNTHETIC-UNLABELLED',
+      severity: 'misleading',
+      where: 'synthetic',
+      detail:
+        `the run GENERATED its dataset${visits === null ? '' : ` (${visits} records)`} and the page ` +
+        'carries no `synthetic` label, so the dashboards and the demo present invented ' +
+        'facilitators, visits and anomalies as observations of a real programme',
+      fix:
+        'surface `products.synthetic.source` through ace-web `_read_synthetic` and render the ' +
+        'label on the dashboards and walkthrough sections — from the run\'s own counts, never hardcoded',
+      defect: '(ace#1867) 223 generated records and 12 invented facilitators shown unqualified',
+    },
+  ];
+}
+
+/**
+ * Did a phase finish anything but clean, and does the page SAY so?
+ *
+ * `spark-facilitator/20260828-0703` wrote `status: partial`, `verdict:
+ * partial-deliver-eval-blocked-on-phase1-gap` and `pdd-to-deliver-app-eval →
+ * fail` on the `entity_state_fidelity` hard gate — payment-key fidelity — and
+ * the COMMCARE APPS section showed both apps with no status at all. The page
+ * was indistinguishable from a clean run, so the reader had no way even to ask
+ * about something the page did not admit existed (ace-web#744).
+ */
+export function auditBuildStatusParity(payload: unknown, phases: unknown): Finding[] {
+  const phase = getPath(phases, 'commcare-setup');
+  if (!phase || typeof phase !== 'object') return [];
+  const status = String(getPath(phase, 'status') ?? '').trim().toLowerCase();
+  const steps = getPath(phase, 'steps');
+  const failingSteps = steps && typeof steps === 'object'
+    ? Object.entries(steps as Record<string, unknown>)
+        .filter(([, step]) =>
+          FAILING_STEP_VERDICTS.has(
+            String(getPath(step, 'verdict') ?? '').trim().toLowerCase(),
+          ))
+        .map(([name]) => name)
+    : [];
+  const unclean = (status !== '' && !CLEAN_PHASE_STATUSES.has(status)) || failingSteps.length > 0;
+  if (!unclean) return [];
+  if (getPath(payload, 'build') != null) return [];
+  return [
+    {
+      code: 'BUILD-STATUS-HIDDEN',
+      severity: 'misleading',
+      where: 'build',
+      detail:
+        `Phase 3 finished \`${status || 'not-clean'}\`` +
+        (failingSteps.length > 0 ? ` with ${failingSteps.join(', ')} failing` : '') +
+        ', and the page carries no `build` block — so the apps render exactly as they would on a ' +
+        'clean run and the reader cannot tell the two apart',
+      fix:
+        'surface `phases.commcare-setup.{status, verdict, status_note, steps}` (and ' +
+        '`blocker_dispositions`) through ace-web `_read_build`, rendered with the same honest ' +
+        'vocabulary the Phase 7 walkthrough already uses for a non-converged score',
+      defect: '(ace-web#744) a partial run rendered identically to a clean one',
+    },
+  ];
+}
+
 /**
  * Compare the page against `run_state.yaml`: did the run PRODUCE something the
  * page never shows?
@@ -934,6 +1055,8 @@ export function auditCompleteness(payload: unknown, runState: unknown | null): F
   const out: Finding[] = [];
   const phases = getPath(runState, 'phases');
   out.push(...auditWalkthroughParity(payload, phases));
+  out.push(...auditSyntheticLabelling(payload, phases));
+  out.push(...auditBuildStatusParity(payload, phases));
   const onPage = new Set(
     collectUrls(payload, 'https://labs.connect.dimagi.com/ace/')
       .map((u) => canonicalDocUrl(u.url)),
