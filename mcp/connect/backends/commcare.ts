@@ -1756,12 +1756,24 @@ export class CommCareBackend {
    * the new app's id, since the redirect Location isn't a reliably parseable
    * contract across HQ versions.
    *
-   * NOT YET LIVE-VALIDATED against a real domain — probe this against a
-   * disposable test domain pair before relying on it (see CLAUDE.md's
-   * "close the loop to the source of truth" convention). If the request
-   * shape is wrong, expect either a 200 (form re-render, surfaced as an
-   * error with the HTML) or a redirect to an error page that won't contain
-   * the new app.
+   * LIVE-VALIDATED 2026-09-01 on `connect-ace-prod` for the SAME-DOMAIN,
+   * `linked: false` case: two copies (a Learn and a Deliver app), both then
+   * built and released. That configuration is HQ's plain "Copy Application"
+   * and is the non-destructive way to mint a fresh `cc_app_id` — see the atom
+   * description in mcp/connect-server.ts for why it is preferred over
+   * delete + re-upload. The `linked: true` cross-domain path (Connect
+   * Interviews) is still unproven; probe that separately.
+   *
+   * If the request shape is ever wrong, expect either a 200 (form re-render,
+   * surfaced as an error with the HTML) or a redirect to an error page that
+   * won't contain the new app.
+   *
+   * TIMEOUT SEMANTICS, learned the hard way: the `listApps` recovery below is
+   * a SECOND request, and on a domain with a few hundred apps it regularly
+   * exceeds the 30s Playwright timeout. The caller then sees a timeout for a
+   * copy that ALREADY SUCCEEDED. A blind retry creates a second app with the
+   * same name and breaks the name-based id recovery for both. Callers must
+   * re-list before retrying.
    */
   async createLinkedAppCopy(args: CreateLinkedAppCopyArgs): Promise<{ id: string; name: string }> {
     return this.runWithSessionRetry(async (request) => {

@@ -364,11 +364,43 @@ Two hard rules:
 
 If a *fresh* Learn-walk screenshot set is specifically required (e.g. the
 prior completion produced no usable captures), that needs a **fresh
-opportunity** — start a new `/ace:run` (new opp → fresh
-`OpportunityAccess`). Do NOT re-mint a Phase-4 opp on the *same released
-Deliver app* to get there: Connect shares one `DeliverUnit` across opps
-on the same `cc_app_id`, so the fresh opp can't get a payment unit
-(#573) — a fresh run (new apps → new `cc_app_id`) is the clean path.
+opportunity** — and therefore a fresh Deliver `cc_app_id`. Do NOT re-mint a
+Phase-4 opp on the *same released Deliver app*: Connect shares one
+`DeliverUnit` across opps on the same `cc_app_id`, so the fresh opp can't get a
+payment unit (#573).
+
+**Cheapest correct route — copy the apps, do not delete them.** A full new
+`/ace:run` works but rebuilds everything, and the soft-delete route
+(`commcare_delete_app` → `refresh_deployment` → `upload_app_to_hq`) breaks the
+app links of whatever opportunity is currently live on those apps. Instead:
+
+```
+commcare_linked_app_copy({ upstream_domain: D, downstream_domain: D,   // SAME domain
+                           upstream_app_id: <existing>, name: <UNIQUE>,
+                           linked: false })
+commcare_make_build  ->  commcare_release_build
+```
+
+then create a capture-only opportunity against the copies. Live-validated
+2026-09-01 on turmeric-market-study/20260828-1108. Three reasons it wins:
+
+- **Nothing is destroyed.** The prior opp stays demoable and keeps its OCS
+  TaskType, so Phase 5 does not regress.
+- **It sidesteps ace#1643.** A document copy preserves `appearance="acquire"`
+  and per-module `display_style`, so the `app-hq-settings` re-apply is not
+  needed. Verified in the built CCZ *and* on-device.
+- Fresh `cc_app_id` ⇒ new `CommCareApp` row ⇒ the posted `passing_score` is
+  honoured rather than silently inherited, and the new `DeliverUnit`s are
+  unbound so the payment unit attaches.
+
+Two traps, both live: the `name` must be UNIQUE in the domain (the new id is
+recovered by re-listing and matching on name), and a **timeout on that recovery
+re-list does NOT mean the copy failed** — re-list before retrying or you create
+a duplicate.
+
+**Name the capture opp so its run-id token is unique** (see § OPP_RUN_ID
+matcher below) — if the superseded opp is still active and its name shares the
+token, the tile anchor matches two tiles.
 
 This branch is the structural fix, and the claim-prefix landing screen IS
 the signal — the walk cannot mis-enter once all three surfaces above are
@@ -525,9 +557,31 @@ prefix, lands on the tile's first line — short and never clipped by the
 tile's name-wrap. The claim/resume recipes anchor their tile match on it
 as `text: ".*${OPP_RUN_ID}.*"` (Maestro `text:` is a full-match regex;
 the `.*` wrappers substring-match the run-id within the longer tile
-label). Pass `${OPP_RUN_ID}` **verbatim** from `run_state.yaml.run_id`.
-This is what makes finding this run's opp among the test user's
-accumulated invites deterministic.
+label). Normally you pass `${OPP_RUN_ID}` **verbatim** from
+`run_state.yaml.run_id`. This is what makes finding this run's opp among the
+test user's accumulated invites deterministic.
+
+**But "unique per run" is an assumption about NAMES, not about run-ids, and it
+can be false.** The anchor is a regex SUBSTRING match, so it matches EVERY
+still-visible tile whose name contains the token. Two ways that happens:
+
+1. **A capture-only opp created for a re-shoot** (see Step 2.7). If you name it
+   with the same run-id as the run it belongs to, and the superseded opp is
+   still `active` and still invited to the test user, `.*<run_id>.*` matches
+   both tiles and the walk is non-deterministic. Live on
+   turmeric-market-study/20260828-1108: opp `d5959a5c` stayed active carrying
+   `20260828-1108`, so the capture opp was named `20260901-1352 · …` and
+   **`OPP_RUN_ID=20260901-1352` was passed at dispatch instead of the run_id.**
+2. **A run-id that is a prefix of another.** There is no such collision in the
+   `YYYYMMDD-HHMM` format today, but a hand-authored or truncated token can
+   reintroduce one.
+
+So: `OPP_RUN_ID` is *the token that uniquely identifies the tile you want*,
+which is usually — not always — `run_state.run_id`. Whenever you point capture
+at an opp other than the run's primary one, pass that opp's own token and
+record it in the manifest as `opp_run_id_matcher` so the choice is auditable.
+Before dispatching, sanity-check that no OTHER active opp invited to the test
+user shares the token.
 
 **OPP_NAME — context only (no longer the matcher).** Phase 4 also writes
 the exact tile name Connect renders into
@@ -1054,12 +1108,29 @@ transition, or the transition screen doesn't exist on this opp (e.g.
 Connect hands off directly into an installed app, so the intermediate
 Connect screen never renders). Handling:
 
-- Keep the FIRST step (recipe order) as the canonical capture.
+**Do not hand-apply the rule — call `assignCanonicalDuplicates` from
+`lib/capture-manifest.ts`.** Pass every frame as `{step, md5, takenAt}`; it
+returns the same frames with `duplicate_of` filled in. Then:
+
 - Mark each later duplicate in the manifest with
-  `duplicate_of: <first-step-name>` instead of listing it as a distinct
+  `duplicate_of: <canonical-step-name>` instead of listing it as a distinct
   capture.
 - Log every duplicate pair in the structural verdict's `auto_surfaced`
   list (severity: WARN, naming both step names + the shared hash).
+
+The rule it applies is recipe order — the first frame to observe a state owns
+it — **except that an auto-named frame always yields to a meaningfully-named
+twin, however much earlier it was taken.** Maestro names an unnamed chunk
+boundary `step-<index>-<command>-<args>`, and those land in the harvest
+alongside real `takeScreenshot` output. On
+turmeric-market-study/20260828-1108 `step-010-assertCondition-org.commcare.dalvikid_vi`
+was byte-identical to `deliver-launch-download-gate` and led it by **0.28s**, so
+first-in-recipe-order alone made the opaque string canonical — and downstream
+prose cites the canonical step's NAME, so the training deck would have captioned
+a slide with it. That exception is exactly the kind of thing that has to be
+re-derived by hand every run if it lives only in prose here; it was missed once
+and caught on re-read. It is now pinned by
+`test/lib/capture-manifest.test.ts`.
 
 **Never present two identical frames as different moments.** Downstream
 consumers (`training-deck-generate`, `training-flw-guide`) treat a
