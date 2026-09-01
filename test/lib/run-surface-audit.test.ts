@@ -26,6 +26,8 @@ import {
   ACCEPTED_PUBLIC_SECRETS,
   auditCompleteness,
   auditWalkthroughParity,
+  auditSyntheticLabelling,
+  auditBuildStatusParity,
   auditConfidentiality,
   auditContract,
   auditDecisionRows,
@@ -65,11 +67,14 @@ function healthyPayload(over: Record<string, unknown> = {}): Record<string, unkn
     },
     design: { docs: [{ title: 'PDD', url: 'https://docs.google.com/document/d/PDDPDDPDDPDD/edit', access: 'public' }] },
     apps: [],
+    // Null on a clean run — the honest default for both of these.
+    build: null,
     connect: null,
     training: null,
     assistant: null,
     walkthroughs: [],
     dashboards: [],
+    synthetic: null,
     selected_llo: null,
     solicitation: null,
     launch: null,
@@ -985,5 +990,93 @@ describe('auditLinks — a healthy link set must certify clean', () => {
     // that accepted only the `OK` classification would flag an honest public
     // link and get relaxed until it flagged nothing.
     expect(auditLinks([probed({ declaredAccess: 'public', cls: 'REACHABLE', status: 200 })])).toEqual([]);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════
+// The two MISLEADING findings from the anonymous audit of
+// spark-facilitator/20260828-0703 that were invisible to every check
+// here, because the page simply said NOTHING (ace#1867, ace-web#744).
+// Silence about provenance is not neutrality — it is an assertion.
+// ═══════════════════════════════════════════════════════════════════
+
+const SYNTHETIC_PHASES = {
+  'synthetic-data-and-workflows': {
+    products: {
+      synthetic: {
+        source: {
+          provider: 'ace-run',
+          labs_synthetic_opp_id: 10054,
+          record_counts: { user_visits: 223, user_data: 12, completed_works: 0 },
+        },
+      },
+    },
+  },
+};
+
+describe('generated data must be labelled as generated', () => {
+  it('BLOCKS when the run generated a dataset and the page does not say so', () => {
+    const findings = auditSyntheticLabelling({ synthetic: null }, SYNTHETIC_PHASES);
+    expect(codes(findings)).toContain('SYNTHETIC-UNLABELLED');
+    expect(findings.every(isBlocking)).toBe(true);
+    // The count is named, so the finding is arguable rather than assertive.
+    expect(findings[0].detail).toContain('223');
+  });
+
+  it('is silent once the page carries the label', () => {
+    const findings = auditSyntheticLabelling(
+      { synthetic: { is_synthetic: true, visits: 223 } },
+      SYNTHETIC_PHASES,
+    );
+    expect(findings).toEqual([]);
+  });
+
+  it('does not label a run that generated nothing', () => {
+    // The same lie pointed the other way. No synthetic block, no finding.
+    expect(auditSyntheticLabelling({ synthetic: null }, {})).toEqual([]);
+  });
+});
+
+describe('a partial build must not render as a clean one', () => {
+  const partial = {
+    'commcare-setup': {
+      status: 'partial',
+      verdict: 'partial-deliver-eval-blocked-on-phase1-gap',
+      steps: {
+        'pdd-to-learn-app': { verdict: 'pass' },
+        'pdd-to-deliver-app-eval': { verdict: 'fail' },
+      },
+    },
+  };
+
+  it('BLOCKS when Phase 3 is partial and the page carries no build block', () => {
+    const findings = auditBuildStatusParity({ build: null }, partial);
+    expect(codes(findings)).toContain('BUILD-STATUS-HIDDEN');
+    expect(findings.every(isBlocking)).toBe(true);
+    expect(findings[0].detail).toContain('pdd-to-deliver-app-eval');
+  });
+
+  it('is silent once the page carries the build block', () => {
+    const findings = auditBuildStatusParity(
+      { build: { status: 'partial', failing_checks: [] } },
+      partial,
+    );
+    expect(findings).toEqual([]);
+  });
+
+  it('BLOCKS on a failing STEP even when the phase calls itself done', () => {
+    // The phase status is written by the phase about itself; a failed hard
+    // gate is not something it gets to round up.
+    const findings = auditBuildStatusParity({ build: null }, {
+      'commcare-setup': { status: 'done', steps: { 'x-eval': { verdict: 'fail' } } },
+    });
+    expect(codes(findings)).toContain('BUILD-STATUS-HIDDEN');
+  });
+
+  it('says nothing about a genuinely clean phase', () => {
+    expect(auditBuildStatusParity({ build: null }, {
+      'commcare-setup': { status: 'done', verdict: 'pass', steps: { a: { verdict: 'pass' } } },
+    })).toEqual([]);
+    expect(auditBuildStatusParity({ build: null }, {})).toEqual([]);
   });
 });
