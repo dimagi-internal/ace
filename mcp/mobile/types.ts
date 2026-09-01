@@ -260,6 +260,20 @@ export interface RunRecipeOptions {
 export interface RecipeRunResult {
   status: 'pass' | 'fail';
   exitCode: number;
+  /**
+   * Non-fatal faults observed around this run that did NOT decide the
+   * verdict. Added for ace#1822: a Maestro session-teardown exception raised
+   * after the last step completed is real information about the host, but it
+   * is not a statement about whether the walk ran — so it is reported here
+   * beside a `pass` rather than converting one into a `fail`. Also carries a
+   * cold-boot heal failure that the envelope declined to let discard an
+   * attempt's artifacts.
+   *
+   * `exitCode` is NEVER rewritten to hide such a fault: a warning-carrying
+   * `pass` can legitimately have a non-zero exit code, and that asymmetry is
+   * the audit trail.
+   */
+  warnings?: string[];
   stdout: string;
   stderr: string;
   screenshotsDir: string;
@@ -473,4 +487,30 @@ export interface MaestroDriverProbeResult {
   adbPort: number | null;
   portKind: 'emulator-adbd-direct-tcp' | null;
   driverPackages: { app: boolean; test: boolean; queryOk: boolean } | null;
+}
+
+
+/**
+ * What a THROWN `mobile_run_recipe` dispatch nonetheless produced
+ * (dimagi-internal/ace#1822).
+ *
+ * `client.runRecipe` attaches this to the error it rethrows, and the
+ * `mobile_run_recipe` atom surfaces it in the error payload. The throw
+ * remains a throw — this exists so that a dispatch which did real,
+ * UNREPEATABLE work (a one-way Learn leg, #568/#570) cannot report as if it
+ * did none.
+ *
+ * `screenshots[].takenAt` is the specific field this rescues: the Deliver
+ * duration-floor gate in `skills/app-screenshot-capture` Step 5 computes
+ * `walk_elapsed_seconds` from it, and a thrown dispatch had no route to it
+ * at all.
+ */
+export interface ThrownRecipePartial {
+  status: 'error';
+  screenshotsDir: string;
+  screenshots: ScreenshotEntry[];
+  videos: VideoArtifact[];
+  recipeId: string;
+  dispatchId: string;
+  deviceSerial?: string;
 }

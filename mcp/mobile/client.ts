@@ -12,7 +12,7 @@ import {
   CloudBackend,
   type CloudDiagnostics,
 } from './backends/cloud.js';
-import { MaestroBackend } from './backends/maestro.js';
+import { MaestroBackend, collectScreenshotsFromDir } from './backends/maestro.js';
 import {
   AvdBootError,
   DeviceUserStateError,
@@ -42,7 +42,7 @@ import type {
   SnapshotResult, DeviceUserStateClass, DeviceStateHealLog, LocalBootstrapConfig,
   TestUserCredentials, EnsureAvdRunningOptions,
   VideoArtifact, LocalDiagnostics, DeviceProbeFailures, RunRecipeOptions,
-  MaestroDriverProbeResult,
+  MaestroDriverProbeResult, ThrownRecipePartial,
 } from './types.js';
 import { logInfo } from './logging.js';
 import {
@@ -2110,6 +2110,42 @@ export class MobileClient {
         }
       } catch (ve) {
         logInfo(`runRecipe: failed to stamp/spool videos on thrown failure for ${recipeId}: ${String(ve)}`);
+      }
+      // A DISPATCH THAT DID REAL WORK MUST NEVER REPORT AS IF IT DID NONE
+      // (dimagi-internal/ace#1822).
+      //
+      // The throw is still the throw — this path is a genuine failure and
+      // callers that catch it keep catching it. What changes is that the
+      // artifacts stop being invisible. Before this, a thrown dispatch lost
+      // `screenshots[]` (and with it every `takenAt`, which the Deliver
+      // duration-floor gate in `skills/app-screenshot-capture` Step 5
+      // computes `walk_elapsed_seconds` from), `videos[]`, and even the
+      // directory they landed in — so 35 real frames from a completed,
+      // ONE-WAY Learn leg were unreachable through the result, and the
+      // skill's "screenshots come ONLY from a `status: pass` execution in
+      // THIS run" rule discarded them.
+      //
+      // Attached, not returned: widening `RecipeRunResult.status` to
+      // `'error'` would change the contract for every caller of a passing
+      // run. `mobile_run_recipe` reads this off the error and surfaces it in
+      // the atom payload, which is where a skill can actually see it.
+      try {
+        const partial: ThrownRecipePartial = {
+          status: 'error',
+          screenshotsDir: runDir,
+          screenshots: collectScreenshotsFromDir(runDir),
+          videos,
+          recipeId,
+          dispatchId,
+          deviceSerial: lastDeviceSerial,
+        };
+        (e as { partialResult?: ThrownRecipePartial }).partialResult = partial;
+        logInfo(
+          `runRecipe: thrown failure for ${recipeId} — ${partial.screenshots.length} screenshot(s) + ` +
+            `${videos.length} video(s) preserved in ${runDir} and attached to the error`,
+        );
+      } catch (pe) {
+        logInfo(`runRecipe: could not attach partial result on thrown failure for ${recipeId}: ${String(pe)}`);
       }
       throw e;
     }

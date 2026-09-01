@@ -100,7 +100,19 @@ export async function runRecipeWithDriverHeal(
         opts.log?.(
           `driver-heal: transport throw on attempt ${attempt + 1} (${errMsg(e)}) — cold-boot heal + retry`,
         );
-        await opts.heal();
+        // A heal that throws must not REPLACE the fault we were healing
+        // from (ace#1822). The original error is what the operator needs;
+        // the heal failure is a second, separate fact. Pre-fix, the heal's
+        // error propagated and the run's actual cause vanished — on
+        // bednet-check-2-visit/20260828-0629 what reached the caller was
+        // `register_test_user part A failed: ...`, an error from the COLD
+        // BOOT, for a Learn walk that had already submitted.
+        try {
+          await opts.heal();
+        } catch (healErr) {
+          attachHealFailure(e, healErr);
+          throw e;
+        }
         continue;
       }
       throw e;
@@ -113,10 +125,52 @@ export async function runRecipeWithDriverHeal(
         `driver-heal: failureClass=driver on attempt ${attempt + 1} ` +
           `(${result.failure?.stderrExcerpt ?? ''}) — cold-boot heal + retry`,
       );
-      await opts.heal();
+      // A HEAL FAILURE MUST NEVER DISCARD THE ATTEMPT'S OWN RESULT (ace#1822).
+      //
+      // This `await` was unguarded, and that is the single most expensive
+      // line on this path. `result` at this point carries the dispatch's
+      // screenshots, videos, screenshotsDir and step log — the record of
+      // work that, for a Learn leg, is ONE-WAY and cannot be redone
+      // (#568/#570; #573 rules out a mid-run opportunity re-mint). A throw
+      // from `heal()` replaced all of it with a cold-boot error, so a
+      // dispatch that did real, unrepeatable work reported as if it had
+      // done none.
+      //
+      // Returning the result is strictly more informative than throwing:
+      // the caller still sees `status: 'fail'` and the driver
+      // classification, AND can read what was captured.
+      try {
+        await opts.heal();
+      } catch (healErr) {
+        opts.log?.(
+          `driver-heal: cold-boot heal FAILED after attempt ${attempt + 1} (${errMsg(healErr)}) — ` +
+            `returning that attempt's own result rather than discarding its artifacts`,
+        );
+        result.warnings = [
+          ...(result.warnings ?? []),
+          `cold-boot heal failed after a driver-class failure, so no retry ran: ${errMsg(healErr)}. ` +
+            `This result is attempt ${attempt + 1}'s own — its screenshots, videos and step log are real (ace#1822).`,
+        ];
+        return result;
+      }
       continue;
     }
 
     return result;
   }
+}
+
+/**
+ * Record a heal failure on the original error without replacing it.
+ *
+ * Two facts, and the original is the one that explains the run. Attaching
+ * rather than throwing keeps `isTransientNetworkError` classification, typed
+ * `code`s, and any `failureForensics` a caller already hung off `e`.
+ */
+function attachHealFailure(original: unknown, healErr: unknown): void {
+  if (!(original instanceof Error)) return;
+  (original as Error & { healFailure?: string }).healFailure = errMsg(healErr);
+  original.message =
+    `${original.message}\n[driver-heal] cold-boot heal also failed: ${errMsg(healErr)} ` +
+    `(reported alongside, not instead of, the original fault — ace#1822)`;
 }
