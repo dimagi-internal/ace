@@ -1337,7 +1337,16 @@ export class PlaywrightBackend {
     }
     const versionNumber = Math.max(...versionMatches);
 
-    return { version_number: versionNumber, task_id: 'none' };
+    // The badge is a rendered-markup read of a value the API reports directly,
+    // and it can lag the publish it is describing (ace#1828: still `Version 2`
+    // right after a publish that created version 3). The composite backend
+    // therefore treats this number as a FALLBACK and prefers the API's own
+    // answer — `public_id` rides along so that authoritative read costs no
+    // extra request. It is parsed from the same home-page HTML fetched above,
+    // and is undefined when `flag_chat_widget` is off (the tag it matches is
+    // behind that flag), in which case the composite resolves it from the
+    // chatbot list instead.
+    return { version_number: versionNumber, task_id: 'none', public_id: extractPublicId(html) };
   }
 
   /**

@@ -70,21 +70,27 @@ describe('CompositeBackend.publishChatbotVersion — badge-unreadable fallback (
 
     // 2, not 3. Returning 3 writes an off-by-one into run_state.yaml and later
     // breaks llo-launch's freshness equality check.
-    expect(out).toEqual({ version_number: 2, task_id: 'none' });
+    expect(out).toEqual({ version_number: 2, task_id: 'none', source: 'api' });
     expect(rest.getChatbot).toHaveBeenCalledWith({ public_id: 'pub-uuid' });
   });
 
-  it('does not call the API when the badge scrape succeeded', async () => {
-    const rest = { getChatbot: vi.fn() };
+  it('consults the API even when the badge scrape succeeded, and the API wins (#1828)', async () => {
+    // This used to assert the opposite — that a successful scrape short-
+    // circuited the API read. That WAS the #1828 defect: the badge can lag the
+    // publish it describes, and when it does, the stale number is returned
+    // under a field named `version_number` with nothing to flag it.
+    const rest = { getChatbot: vi.fn().mockResolvedValue(chatbotPayload) };
     const pw = {
-      publishChatbotVersion: vi.fn().mockResolvedValue({ version_number: 7, task_id: 'none' }),
+      publishChatbotVersion: vi
+        .fn()
+        .mockResolvedValue({ version_number: 7, task_id: 'none', public_id: 'pub-uuid' }),
     };
     const c = new CompositeBackend({ rest: rest as never, playwright: pw as never });
 
     const out = await c.publishChatbotVersion({ experiment_id: 99, description: 'x' });
 
-    expect(out).toEqual({ version_number: 7, task_id: 'none' });
-    expect(rest.getChatbot).not.toHaveBeenCalled();
+    expect(out).toEqual({ version_number: 2, task_id: 'none', source: 'api' });
+    expect(rest.getChatbot).toHaveBeenCalledWith({ public_id: 'pub-uuid' });
   });
 
   it('still fails loud when the API cannot answer either (#823 invariant)', async () => {
@@ -224,5 +230,110 @@ describe('CompositeBackend.getChatbot — experiment_id enrichment (#1028)', () 
     const out = await c.listChatbots({});
 
     expect(out.chatbots[0].experiment_id).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// dimagi-internal/ace#1828 — the publish return must be the POST-publish
+// version, not the pre-publish one
+// ---------------------------------------------------------------------------
+
+// Observed on bednet-check-2-visit/20260828-0629, Phase 6 ocs-knowledge-refresh:
+// the bot was at published default v2; the publish created v3; the atom
+// returned `{ version_number: 2, task_id: 'none' }`. The home-page `Version N`
+// badge scrape had not caught up, and the scrape was the answer. Both
+// ocs-agent-setup § Step 11 and ocs-knowledge-refresh § Step 4 write that
+// number into run_state.yaml, so durable state went one version behind a live
+// bot — quietly, because the recorded number is a real version that really
+// existed.
+describe('CompositeBackend.publishChatbotVersion — post-publish version (#1828)', () => {
+  // The live shape after the Phase 6 republish: published default 3, working
+  // counter 4, and a home page still rendering 2 as its highest badge.
+  const afterPublish = {
+    id: '8bbd91b4-7365-49aa-b44c-05643dab8ef8',
+    name: 'ACE bot',
+    version_number: 4, // working/next counter — must NOT be returned
+    versions: [
+      { version_number: 1, is_default_version: false },
+      { version_number: 2, is_default_version: false },
+      { version_number: 3, is_default_version: true, version_description: 'Phase 6 knowledge refresh' },
+    ],
+  };
+
+  it('returns the API-authoritative published version, not the stale badge scrape', async () => {
+    const rest = { getChatbot: vi.fn().mockResolvedValue(afterPublish) };
+    const pw = {
+      publishChatbotVersion: vi.fn().mockResolvedValue({
+        version_number: 2, // the PRE-publish number the badge scrape reads back
+        task_id: 'none',
+        public_id: afterPublish.id,
+      }),
+    };
+    const c = new CompositeBackend({ rest: rest as never, playwright: pw as never });
+
+    const out = await c.publishChatbotVersion({ experiment_id: 13027, description: 'refresh' });
+
+    expect(out.version_number).toBe(3);
+    expect(out.source).toBe('api');
+    expect(rest.getChatbot).toHaveBeenCalledWith({ public_id: afterPublish.id });
+  });
+
+  it('recovers the public_id from the chatbot list when the scrape did not carry one', async () => {
+    const rest = {
+      listChatbots: vi.fn().mockResolvedValue({
+        chatbots: [{ id: afterPublish.id, name: 'ACE bot', experiment_id: 13027 }],
+      }),
+      getChatbot: vi.fn().mockResolvedValue(afterPublish),
+    };
+    const pw = {
+      publishChatbotVersion: vi.fn().mockResolvedValue({ version_number: 2, task_id: 'none' }),
+    };
+    const c = new CompositeBackend({ rest: rest as never, playwright: pw as never });
+
+    const out = await c.publishChatbotVersion({ experiment_id: 13027, description: 'refresh' });
+
+    expect(out.version_number).toBe(3);
+    expect(rest.getChatbot).toHaveBeenCalledWith({ public_id: afterPublish.id });
+  });
+
+  it('falls back to the scraped badge — labelled as such — when the API cannot answer', async () => {
+    // The publish itself succeeded (the POST's 302 is handled inside the
+    // Playwright backend). Losing the API read is not a reason to fail an
+    // operation that demonstrably worked, but the caller must be able to tell
+    // a scraped number from an authoritative one, so `source` says which.
+    const rest = { getChatbot: vi.fn().mockRejectedValue(new Error('401 token expired')) };
+    const pw = {
+      publishChatbotVersion: vi
+        .fn()
+        .mockResolvedValue({ version_number: 2, task_id: 'none', public_id: afterPublish.id }),
+    };
+    const c = new CompositeBackend({ rest: rest as never, playwright: pw as never });
+
+    const out = await c.publishChatbotVersion({ experiment_id: 13027, description: 'refresh' });
+
+    expect(out).toEqual({ version_number: 2, task_id: 'none', source: 'home-page-badge' });
+  });
+
+  it('never returns the working counter when no version is flagged default', async () => {
+    // versions[] with no default is the one shape where the API cannot name a
+    // published version. Returning `version_number: 4` here is the off-by-one
+    // ace#891 already ruled out; fall back to the scrape instead.
+    const rest = {
+      getChatbot: vi.fn().mockResolvedValue({
+        ...afterPublish,
+        versions: [{ version_number: 1, is_default_version: false }],
+      }),
+    };
+    const pw = {
+      publishChatbotVersion: vi
+        .fn()
+        .mockResolvedValue({ version_number: 2, task_id: 'none', public_id: afterPublish.id }),
+    };
+    const c = new CompositeBackend({ rest: rest as never, playwright: pw as never });
+
+    const out = await c.publishChatbotVersion({ experiment_id: 13027, description: 'refresh' });
+
+    expect(out.version_number).toBe(2);
+    expect(out.source).toBe('home-page-badge');
   });
 });

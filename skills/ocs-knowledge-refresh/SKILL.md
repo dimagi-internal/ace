@@ -178,6 +178,23 @@ it returns.
 this republish exists so the new collection contents are live. Capture the new
 `version_number`.
 
+**That return is the POST-publish published default.** Before ace#1828 it was a
+page scrape that could lag the publish by one, and on
+`bednet-check-2-visit/20260828-0629` it did: the atom returned 2 for a publish
+that created 3, and this step's write-back would have put a stale version into
+`run_state.yaml`. The atom now reads it back from the API. Two things still
+worth knowing:
+
+- **`task_id: "none"` is not a signal.** It is present on a publish that did
+  real work. A return whose number looks unchanged is not evidence of a no-op —
+  do not republish to chase it.
+- **If `source` comes back `home-page-badge`,** the API read failed and the
+  number is the old scrape. Corroborate with
+  `ocs_inspect_chatbot({ public_id, version: 'default' })` → `version_number`
+  before writing it in Step 4. That call is also the independent authority in
+  general — but read it under `version: 'default'`, never the top-level
+  `version_number`, which is the working/next counter and runs ahead.
+
 ### Step 4: Write back
 
 Write the product artifact, and update `5-ocs/ocs-agent-setup.md` with
