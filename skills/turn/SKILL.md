@@ -34,7 +34,13 @@ improvements ship once (a canopy PR) instead of N backports.
   point defines. Design + counterpart model:
   `docs/superpowers/specs/2026-07-01-agent-operating-model-adoption.md`.
 - **Preflight (core Step 1) specifics:** `bin/ace-doctor --installed` — read the `[Auth liveness]`
-  block; each failure names its remediation command. **Read the `TURN-BLOCKING` list, not just the
+  block. **Start it in the BACKGROUND and gate the turn on the inbox read instead — the doctor is
+  slow AND silent.** It runs ~3-4 minutes (measured 3m39s, 2026-09-01) because it makes live HTTP
+  probes per MCP and walks Drive's opp layout, and it pipes through `tee`, so a foreground run
+  emits NOTHING until it exits — it just blows the harness 120s Bash timeout and gets backgrounded
+  anyway, minus the interim output. Launch it with `run_in_background`, run the inbox pull below
+  while it works, and read its verdict before you close. (`--no-live` skips the live probes if you
+  only need the static checks.) Each failure names its remediation command. **Read the `TURN-BLOCKING` list, not just the
   aggregate verdict** (dimagi-internal/ace#1189): a revoked Gmail refresh token leaves every inbound
   and outbound path dead while the old aggregate still printed `FAIL: 0 / HEALTHY — ACE works;
   warnings below are non-fatal`, because a Gmail-less machine legitimately still runs most of
