@@ -60,9 +60,9 @@ design (that is Phase 1).
 ## The three rules
 
 **Read the honesty fields before quoting a total.** Every selection returns
-`coverage`, `off_method_units` and `countries_unsupported`. They exist because a
+`coverage`, `inherited_units` and `countries_unsupported`. They exist because a
 model summarising a total cannot see the caveats a human reads off the page. A
-short `coverage` makes the figure a floor; a high `off_method_units` makes a
+short `coverage` makes the figure a floor; a high `inherited_units` makes a
 "subnational" answer a national one in disguise.
 
 **Lead with the weakest check.** A reviewer who finds the soft spot before you
@@ -93,3 +93,4 @@ something better has since been published.
 |------|--------|--------|
 | 2026-08-29 | Initial version — four-skill agent over the Connect Labs targeting MCP | ACE team |
 | 2026-08-29 | 29 indicators; access and settlement joined malaria as families carrying counts | ACE team |
+| 2026-09-01 | `off_method_units` became `inherited_units`; each indicator now names the sources that may answer it, so a method's label is literally true | ACE team |
