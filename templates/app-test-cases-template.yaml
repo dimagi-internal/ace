@@ -81,6 +81,17 @@ journeys:
       - app_boots
       - no_crash
       - submission_confirmed
+      # A criterion whose NAME claims a state transition (updated / changed /
+      # advanced / incremented / refreshed / moved / cleared / reset) must be
+      # verified by an assertion that could only hold AFTER the transition —
+      # never by presence of the row that holds the value (ace#1885). Either
+      # capture-then-compare in the recipe (copyTextFrom / evalScript before,
+      # assertTrue reading it after), or declare the expected NEW value here
+      # in the mapping form and assert that literal:
+      #   - name: case_state_updated_after_submit
+      #     expected_value: "01 Sep 2026"
+      # Gated by lib/transition-criteria.ts at Step 5 — see
+      # skills/app-test-cases/SKILL.md.
     pdd_time_budget_seconds: {{from PDD if specified, else null}}
 
   # Deep (non-smoke) journeys: listed in the catalog, but recipe is DEFERRED.
