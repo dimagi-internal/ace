@@ -262,16 +262,55 @@ server.tool(
   },
   async ({ recipePath, envVars, screenshotDir, avdName, captureAllBoundaries }) => {
     const resolvedAvd = avdName ?? process.env.ACE_AVD_NAME;
-    return {
-      content: [{
-        type: 'text',
-        text: JSON.stringify(
-          await client.runRecipe(recipePath, envVars, screenshotDir, resolvedAvd, { captureAllBoundaries }),
-          null,
-          2,
-        ),
-      }],
-    };
+    try {
+      return {
+        content: [{
+          type: 'text',
+          text: JSON.stringify(
+            await client.runRecipe(recipePath, envVars, screenshotDir, resolvedAvd, { captureAllBoundaries }),
+            null,
+            2,
+          ),
+        }],
+      };
+    } catch (e) {
+      // A DISPATCH THAT DID REAL WORK MUST NOT REPORT AS IF IT DID NONE
+      // (dimagi-internal/ace#1822). Still an error — `isError: true`, and the
+      // message is the original, untouched. What is added is the record of
+      // what the dispatch actually captured before it died, which a bare
+      // error string cannot carry.
+      //
+      // This matters most where the work is UNREPEATABLE. Learn completion is
+      // one-way per (test user, opportunity) (#568/#570), so a walk that
+      // submitted and then died at session teardown leaves frames that can
+      // never be produced again; without this the caller sees a string, the
+      // skill's "screenshots come ONLY from a `status: pass` execution in
+      // THIS run" rule discards the directory, and the obvious response —
+      // re-run the leg — is impossible.
+      const partial = (e as { partialResult?: unknown }).partialResult;
+      const forensics = (e as { failureForensics?: unknown }).failureForensics;
+      return {
+        content: [{
+          type: 'text',
+          text: JSON.stringify(
+            {
+              status: 'error',
+              message: e instanceof Error ? e.message : String(e),
+              code: (e as { code?: string }).code,
+              ...(partial && typeof partial === 'object' ? partial : {}),
+              failureForensics: forensics,
+              note:
+                'The dispatch THREW. Any screenshots/videos listed above were genuinely captured ' +
+                'before the failure and are on disk at screenshotsDir — do not assume the run ' +
+                'produced nothing (ace#1822).',
+            },
+            null,
+            2,
+          ),
+        }],
+        isError: true,
+      };
+    }
   },
 );
 

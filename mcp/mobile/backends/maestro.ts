@@ -7,6 +7,7 @@ import type { ShellFn } from './avd.js';
 import { defaultShell } from './avd.js';
 import { splitRecipeAtScreenshots } from '../recipe-splitter.js';
 import { resolveChunkTimeout, countRecipeSteps } from '../../../lib/maestro-chunk-timeout.js';
+import { classifyTeardownFailure, teardownWarning } from '../../../lib/maestro-teardown.js';
 
 /**
  * Step count for a recipe on disk, or `undefined` when it cannot be read.
@@ -236,20 +237,16 @@ export class MaestroBackend {
       stepCount: safeCountSteps(recipePath),
     });
     const screenshots = this.collectScreenshots(screenshotDir);
-    const failure = classifyMaestroFailure({
-      stderr: r.stderr,
-      stdout: r.stdout,
-      exitCode: r.exitCode,
-    });
-    return {
-      status: r.exitCode === 0 ? 'pass' : 'fail',
+    return finalizeRecipeResult({
       exitCode: r.exitCode,
       stdout: r.stdout,
       stderr: r.stderr,
       screenshotsDir: screenshotDir,
       screenshots,
-      failure,
-    };
+      // Single invocation: there is no chunk after this one, so a
+      // teardown-only fault means the whole recipe ran.
+      walkCompleted: true,
+    });
   }
 
   /**
@@ -476,20 +473,15 @@ export class MaestroBackend {
         stepCount: countRecipeSteps(body),
       });
       const screenshots = this.collectScreenshots(screenshotDir);
-      const failure = classifyMaestroFailure({
-        stderr: r.stderr,
-        stdout: r.stdout,
-        exitCode: r.exitCode,
-      });
-      return {
-        status: r.exitCode === 0 ? 'pass' : 'fail',
+      return finalizeRecipeResult({
         exitCode: r.exitCode,
         stdout: r.stdout,
         stderr: r.stderr,
         screenshotsDir: screenshotDir,
         screenshots,
-        failure,
-      };
+        // Collapsed to one chunk, so this invocation IS the whole recipe.
+        walkCompleted: true,
+      });
     }
 
     // Per-chunk recipes go in a sibling tempdir so the screenshot dir
@@ -593,20 +585,29 @@ export class MaestroBackend {
     // aggregate — classifyMaestroFailure returns 'pass' for exitCode 0
     // regardless of excerpt content, so this only affects the (unused,
     // on success) stderrExcerpt field.
-    const failure = classifyMaestroFailure({
-      stderr: lastExitCode === 0 ? aggregatedStderr : failingChunkStderr,
-      stdout: lastExitCode === 0 ? aggregatedStdout : failingChunkStdout,
-      exitCode: lastExitCode,
-    });
-    return {
-      status: lastExitCode === 0 ? 'pass' : 'fail',
+    return finalizeRecipeResult({
       exitCode: lastExitCode,
       stdout: aggregatedStdout,
       stderr: aggregatedStderr,
       screenshotsDir: screenshotDir,
       screenshots,
-      failure,
-    };
+      // Classify from the FAILING CHUNK's own block, not the head of the
+      // full joined aggregate (see the comment on failingChunkStderr above).
+      classifyStdout: lastExitCode === 0 ? aggregatedStdout : failingChunkStdout,
+      classifyStderr: lastExitCode === 0 ? aggregatedStderr : failingChunkStderr,
+      // THE WALK ONLY COMPLETED IF EVERY CHUNK RAN (ace#1822).
+      //
+      // A session-teardown fault can only be raised after the chunk that
+      // raised it finished executing — but if that chunk was not the LAST
+      // one, every chunk after it never ran, so the recipe is genuinely
+      // incomplete and must stay a failure no matter how clean the teardown
+      // stack looks. This is exactly the 20260828-0629 shape: the FINISH
+      // press landed (Connect flipped `learn_complete`), and the two frames
+      // after it never happened. The artifacts on that dispatch are real and
+      // must survive — see `maestro-driver-retry.ts` and `client.runRecipe`
+      // — but the VERDICT is still `fail`.
+      walkCompleted: chunksCompleted >= chunks.length,
+    });
   }
 
   /**
@@ -1213,6 +1214,19 @@ export class MaestroBackend {
    * per-module disambiguation the label was interpolated for in the first
    * place. */
   private collectScreenshots(dir: string): ScreenshotEntry[] {
+    return collectScreenshotsFromDir(dir);
+  }
+}
+
+/**
+ * Module-level twin of `MaestroBackend.collectScreenshots`, so a caller that
+ * holds no backend instance can still enumerate what a dispatch wrote.
+ *
+ * `client.runRecipe` needs exactly that on its THROW path (ace#1822): the
+ * backend never returned a result there, so the frames it left on disk had no
+ * other route back to the caller.
+ */
+export function collectScreenshotsFromDir(dir: string): ScreenshotEntry[] {
     if (!fs.existsSync(dir)) return [];
 
     const pngs: string[] = [];
@@ -1283,4 +1297,71 @@ export class MaestroBackend {
         return entry;
       });
   }
+
+
+/**
+ * Build a `RecipeRunResult` from one Maestro outcome, letting a
+ * session-teardown fault be a WARNING rather than the verdict (ace#1822).
+ *
+ * `exitCode` is passed through untouched — a `pass` carrying a non-zero exit
+ * code is the audit trail, not a bug. Only `status` and `failure` describe
+ * the WALK, which is the question every caller is actually asking.
+ *
+ * `walkCompleted` is the caller's assertion that every step of the recipe
+ * was reached. It is false when a chunked run stopped part-way, and in that
+ * case a teardown stack cannot rescue the verdict — the frames after the
+ * failing chunk genuinely never ran.
+ */
+export function finalizeRecipeResult(args: {
+  exitCode: number;
+  stdout: string;
+  stderr: string;
+  screenshotsDir: string;
+  screenshots: ScreenshotEntry[];
+  walkCompleted: boolean;
+  classifyStdout?: string;
+  classifyStderr?: string;
+}): RecipeRunResult {
+  const classifyStdout = args.classifyStdout ?? args.stdout;
+  const classifyStderr = args.classifyStderr ?? args.stderr;
+  const teardown =
+    args.walkCompleted && args.exitCode !== 0
+      ? classifyTeardownFailure({
+          stdout: classifyStdout,
+          stderr: classifyStderr,
+          exitCode: args.exitCode,
+        })
+      : { teardownOnly: false as const };
+
+  if (teardown.teardownOnly) {
+    return {
+      // The walk ran to the end. `exitCode` stays non-zero on purpose.
+      status: 'pass',
+      exitCode: args.exitCode,
+      stdout: args.stdout,
+      stderr: args.stderr,
+      screenshotsDir: args.screenshotsDir,
+      screenshots: args.screenshots,
+      failure: classifyMaestroFailure({
+        stdout: classifyStdout,
+        stderr: classifyStderr,
+        exitCode: 0,
+      }),
+      warnings: [teardownWarning(teardown.excerpt)],
+    };
+  }
+
+  return {
+    status: args.exitCode === 0 ? 'pass' : 'fail',
+    exitCode: args.exitCode,
+    stdout: args.stdout,
+    stderr: args.stderr,
+    screenshotsDir: args.screenshotsDir,
+    screenshots: args.screenshots,
+    failure: classifyMaestroFailure({
+      stdout: classifyStdout,
+      stderr: classifyStderr,
+      exitCode: args.exitCode,
+    }),
+  };
 }

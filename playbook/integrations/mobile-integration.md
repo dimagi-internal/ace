@@ -453,6 +453,20 @@ When extending recipes or building atlas coverage for a new APK version:
 
 **Anti-pattern:** screencap + Read PNG + dump + grep after every single tap. PNG reads are expensive in tokens. Almost every CommCare/PersonalID selector is resource-id-driven; uiautomator XML has all the info. Reserve screenshots for genuinely visual states (camera UI, where AOSP elements lack resource-ids).
 
+## A teardown exception is not a verdict, and a failure never discards artifacts (ace#1822)
+
+Maestro closes its session on a shutdown thread. When that close throws — `Broken pipe` out of `AdbWriter.writeClose` -> `AndroidDriver.close` -> `MaestroSession.close` — the JVM exits non-zero even though every step already ran. `Broken pipe` is a `driver` pattern, so pre-#1822 that read as a driver death, which is the ONE class the heal-and-retry envelope acts on.
+
+Two things now hold:
+
+1. **A teardown-only fault on a walk that reached the end is a `warnings[]` entry on a `pass`, not a `fail`.** `lib/maestro-teardown.ts` decides this and is deliberately conservative — it requires a non-main-thread banner AND teardown frames AND the absence of any in-walk failure evidence (`Element not found`, `Assertion is false`, `[Failed]`, `UNAVAILABLE`, `Not able to reach the gRPC server`, a step timeout, a parse error…). A chunked run that stopped part-way is `walkCompleted: false` and stays a failure no matter how clean the stack looks — the chunks after the failing one genuinely never ran. `exitCode` is never rewritten, so a warning-carrying `pass` with a non-zero exit is the audit trail.
+
+2. **A failed dispatch still hands back what it captured.** `runRecipeWithDriverHeal` no longer lets a throwing `heal()` discard the attempt's result, and `client.runRecipe` attaches a `partialResult` (`screenshots` with `takenAt`, `videos`, `screenshotsDir`, `recipeId`, `dispatchId`) to the error it rethrows; `mobile_run_recipe` surfaces that in the `isError: true` payload.
+
+**Why this class is worth a section.** Learn completion is one-way per `(test user, opportunity)` (#568/#570) and #573 rules out a mid-run opportunity re-mint. So a walk that genuinely completed and is reported as failed cannot be re-run, and the two obvious responses are both dead ends — a false failure there costs a whole fresh `/ace:run`. On `bednet-check-2-visit/20260828-0629` the Learn leg submitted (Connect flipped `learn_complete: true`, 35 non-zero PNGs landed, zero `*-FAILURE.*` forensics were written), the teardown stack triggered a cold-boot heal, the heal's own registration failed, and the unguarded `await opts.heal()` replaced all of it with `register_test_user part A failed: …` — an error from the cold boot, for a walk that had already done its unrepeatable work.
+
+**Reading the result:** `status` and `failure.failureClass` describe the WALK. `exitCode` describes the PROCESS. `warnings[]` is where a fault that did not decide the verdict goes. When they disagree, that is the design, not a bug.
+
 ## Failure forensics — read them on any recipe failure
 
 This is the canonical reference for the screenshot-on-error capture; the per-skill notes point here so the contract lives in one place.
