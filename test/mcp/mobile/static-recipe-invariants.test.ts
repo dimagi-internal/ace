@@ -2049,3 +2049,123 @@ describe('deliver-form-walk per-invocation frame names (dimagi-internal/ace#1651
     }
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────
+// CLASS-LEVEL PREVENTER — a widget-state-dependent LABEL anchor must cover
+// EVERY state the widget actually ships
+//
+// dimagi-internal/ace#1879. `geopoint-record-location` was live-calibrated
+// (#861) against an EMPTY geopoint field, where CommCare labels the capture
+// button `RECORD LOCATION`. When the field already holds a value the SAME
+// button reads `REPLACE LOCATION` — and a case-bound geopoint on a followup
+// form is implicitly preloaded from the previous visit (ace#1809), so that
+// is the normal state on every repeat visit to a longitudinal entity.
+//
+// Measured on spark-facilitator/20260828-0703 (2026-09-01, CommCare 2.63.2 /
+// ACE_Pixel_API_34), journey `journey-deliver-followup-preload` — the 2nd
+// meeting on case "Chilanga":
+//
+//   Scrolling DOWN until "RECORD LOCATION" is visible ... FAILED
+//   No visible element found: "RECORD LOCATION"
+//
+// while the failure ui-dump carried
+// `text="REPLACE LOCATION" class="android.widget.Button" ...
+//  bounds="[49,1814][1031,1940]"` with no taps performed.
+//
+// Same shape as ace#1127 (menu containers anchored on one of two display
+// modes), and the fix is the same: an alternation, which Maestro accepts
+// because it matches `text:` as a regex. Widening is strictly non-narrowing
+// — the RECORD branch matches exactly as it did before.
+//
+// This is the UNIT-TEST side of the CLAUDE.md device-truth split: the
+// on-device truth (that the second label exists, and that the alternation
+// taps it) was established live and is recorded in the row's `purpose:`;
+// what is asserted here is that the map's value keeps covering both, which
+// is deterministic string matching.
+
+describe('geopoint capture-button anchors cover BOTH widget states (ace#1879)', () => {
+  const selectorMapFiles = readdirSync(SELECTORS_DIR).filter((n) => n.endsWith('.yaml'));
+
+  /** Every label CommCare has been OBSERVED to render on the geopoint capture button. */
+  const KNOWN_GEOPOINT_LABELS = [
+    'RECORD LOCATION', // empty field — live-calibrated 2026-07-13 (#861)
+    'REPLACE LOCATION', // field already holds a value — live-captured 2026-09-01 (#1879)
+  ];
+
+  const GEOPOINT_ROW = 'geopoint-record-location';
+
+  it('the runtime-default map (2.63.2) still carries the geopoint row', () => {
+    // Guards the trivially-green failure mode: a renamed/deleted row would
+    // make every assertion below vacuous.
+    const map = selectorMap('2.63.2');
+    expect(
+      map.selectors[GEOPOINT_ROW],
+      `connect-2.63.2.yaml must define ${GEOPOINT_ROW} — every generated Deliver journey ` +
+        'with a required geopoint field taps it (skills/app-test-cases § 4.5).',
+    ).toBeDefined();
+  });
+
+  it.each(selectorMapFiles)(
+    '%s: the geopoint capture-button matcher accepts every observed widget label',
+    (filename) => {
+      const map = parseYaml(readFileSync(`${SELECTORS_DIR}${filename}`, 'utf8')) as {
+        selectors?: Record<string, { type?: string; value?: string }>;
+      };
+      const entry = map.selectors?.[GEOPOINT_ROW];
+      // Not every APK map carries the row (2.62.0 predates #861). Nothing to
+      // assert where the row does not exist.
+      if (!entry) return;
+
+      expect(
+        entry.type,
+        `${filename}: ${GEOPOINT_ROW} must stay a text matcher — the Button carries no ` +
+          'resource-id, so a label alternation is the only anchor available.',
+      ).toBe('text');
+
+      // Maestro matches `text:` as a regex and requires a FULL match, so
+      // assert the way Maestro would rather than by substring.
+      const re = new RegExp(`^(?:${entry.value ?? ''})$`);
+      const missing = KNOWN_GEOPOINT_LABELS.filter((label) => !re.test(label));
+
+      expect(
+        missing,
+        `${filename}: ${GEOPOINT_ROW} = ${JSON.stringify(entry.value)} does not match ` +
+          `[${missing.join(', ')}]. CommCare relabels the SAME button depending on whether ` +
+          'the geopoint field already holds a value, and a case-bound geopoint on a followup ' +
+          'form arrives preloaded from the previous visit (ace#1809) — so a single-label ' +
+          'anchor passes on the first walk against a case and kills every walk after it ' +
+          '(ace#1879). Use an alternation, e.g. "(RECORD|REPLACE) LOCATION".',
+      ).toEqual([]);
+    },
+  );
+
+  it.each(selectorMapFiles)(
+    '%s: the geopoint matcher has not been widened into a catch-all',
+    (filename) => {
+      const map = parseYaml(readFileSync(`${SELECTORS_DIR}${filename}`, 'utf8')) as {
+        selectors?: Record<string, { value?: string }>;
+      };
+      const entry = map.selectors?.[GEOPOINT_ROW];
+      if (!entry) return;
+
+      // The cheap way to satisfy the assertion above would be `.*`, which
+      // would tap the first button on the screen. Pin the negative side:
+      // unrelated on-screen labels from the same Evidence surface must NOT
+      // match. (All four were present in the #1879 failure ui-dump.)
+      const re = new RegExp(`^(?:${entry.value ?? ''})$`);
+      const mustNotMatch = [
+        'Capture the location of the meeting',
+        'Location accuracy is good.',
+        'TAKE PICTURE',
+        'Community meeting record',
+      ];
+      const overmatched = mustNotMatch.filter((label) => re.test(label));
+      expect(
+        overmatched,
+        `${filename}: ${GEOPOINT_ROW} = ${JSON.stringify(entry.value)} also matches ` +
+          `[${overmatched.join(', ')}] — the anchor must name the button's labels, not ` +
+          'everything on the Evidence screen.',
+      ).toEqual([]);
+    },
+  );
+});

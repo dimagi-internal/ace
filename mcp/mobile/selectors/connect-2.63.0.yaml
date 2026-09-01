@@ -370,8 +370,8 @@ selectors:
   # recipe-authoring rule.
   geopoint-record-location:
     type: text
-    value: "RECORD LOCATION"
-    purpose: "Native CommCare geopoint widget's capture button ('RECORD LOCATION', android.widget.Button, no resource-id on the button). Precondition: mock fix seeded via mobile_set_location (longitude first; AVD-only) — then a single tap auto-captures and the Latitude/Longitude/Altitude/Accuracy readout renders below the button. Live-calibrated 2026-07-13, hh-poverty-targeting/20260702-1456 (#861)."
+    value: "(RECORD|REPLACE) LOCATION"
+    purpose: "Native CommCare geopoint widget's capture button (android.widget.Button, no resource-id on the button). The widget ships TWO labels and the matcher must accept both: **RECORD LOCATION** when the field is empty, and **REPLACE LOCATION** when it already holds a value — which is the normal state on any repeat visit to a longitudinal entity, because a case-bound geopoint is implicitly preloaded from the previous visit (dimagi-internal/ace#1809). Maestro matches `text:` as a regex, so the alternation is a strictly non-narrowing widening of the original single-label row. Precondition: mock fix seeded via mobile_set_location (longitude first; AVD-only) — then a single tap auto-captures and the Latitude/Longitude/Altitude/Accuracy readout renders below the button; on the REPLACE branch that readout (and 'Location accuracy is good.') is ALREADY rendered before the tap. RECORD branch live-calibrated 2026-07-13, hh-poverty-targeting/20260702-1456 (#861); REPLACE branch live-captured 2026-09-01 on spark-facilitator/20260828-0703 (CommCare 2.63.2, ACE_Pixel_API_34) and the alternation re-validated on-device across journeys deliver-followup-preload, deliver-repeat-step, deliver-invalid-input (REPLACE) and deliver-registration (RECORD) — dimagi-internal/ace#1879."
 
   # ── Post-claim Learn-app surfaces (atlas-verified 2026-05-14) ──────
   # These selectors were calibrated against ACE_Pixel_API_34_PS on the
