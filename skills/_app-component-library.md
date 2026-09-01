@@ -89,6 +89,7 @@ authored from the PDD per run):
 | [`fixed-instrument-transcription`](#fixed-instrument-transcription) | Deliver | The Deliver app digitises a `[FIXED]` published instrument whose source file is in `inputs/` (scorecard, eligibility matrix, dosing table, fee schedule) | `pdd-to-deliver-app-eval § fixed_instrument_fidelity` (hard-gate); `pdd-to-deliver-app § Step 4k` (mechanical, `lib/instrument-constants.ts`) |
 | [`entity-state-taxonomy`](#entity-state-taxonomy) | Learn + Deliver | The followed entity carries STATES the app must name — always for `archetype: longitudinal-visits`, and for any archetype whose PDD declares a phase / stage / status vocabulary the worker sees | `pdd-to-deliver-app-eval § entity_state_fidelity` (hard-gate); `pdd-to-deliver-app § Step 4l` (mechanical, `lib/entity-state-taxonomy.ts`) |
 | [`partner-option-register`](#partner-option-register) | Deliver | The PDD sources a field's options from a NAMED PARTNER REGISTER the partner already maintains (activity register, commodity list, cadre list, facility roster) | `pdd-to-deliver-app-eval § option_register_fidelity` (hard-gate); `pdd-to-deliver-app § Step 4f` register halt (mechanical, `lib/option-register.ts`) |
+| [`no-starter-module`](#no-starter-module) | Learn + Deliver | Always | `app-release-qa § Step 4` starter-module check (mechanical, `lib/starter-module.ts`) |
 
 ---
 
@@ -1968,6 +1969,35 @@ is briefed from the same declared taxonomy, so Learn/Deliver agreement is
 transitive — two builds that each match the PDD cannot contradict each other.
 
 ---
+
+### no-starter-module
+
+- **App:** Learn + Deliver
+- **Trigger:** always.
+- **Enforced by:** `app-release-qa § Step 4` — the starter-module check
+  (`auditReleasedModules` from `lib/starter-module.ts`). A surviving seed is a
+  `starter-module-present` halt.
+
+**Why this exists.** `create_app` seeds every new Nova app with a placeholder
+module: a top-level menu **"Survey"** holding one form **"Survey"** holding one
+text field **`question_1`** labelled "Question 1". Nothing in ACE ever told the
+architect to remove it, so removal depended on whether the architect happened to
+notice — and on `bednet-check-2-visit/20260828-0629` the Deliver app shipped
+carrying it while the Learn app, briefed from the same template in the same
+phase, removed it unprompted. On a Deliver app that is worse than cosmetic: an
+FLW tapping that menu lands in a dead form that writes nothing and is not a
+payable unit.
+
+**Brief paragraph (verbatim):**
+
+> REQUIRED — No starter module: the finished app must contain ONLY the modules
+> the brief specifies. Nova's `create_app` seeds a canonical starter module — a
+> top-level menu named "Survey" containing one form named "Survey" containing a
+> single text field `question_1` labelled "Question 1". DELETE that module and
+> its placeholder form before you report the build complete, and say in your
+> report whether it was present and removed. Do not repurpose it into a real
+> module: build the brief's modules explicitly and remove the seed.
+
 
 ## Label-fidelity components (added 2026-08-26)
 

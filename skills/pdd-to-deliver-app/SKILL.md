@@ -541,6 +541,15 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
        contract and the ACE-direct recipe.) Graded by
        `language_conformance`.
      - `deliver-app-naming` — always. App name must contain "Deliver app".
+     - `no-starter-module` — always (Learn + Deliver). Nova's `create_app`
+       seeds a placeholder module (top-level menu "Survey" → form "Survey" →
+       one text field `question_1` labelled "Question 1"). Emit the component
+       so the brief tells the architect to DELETE it, and to report whether it
+       was present. Removal is currently architect discretion, and discretion
+       is what varies run to run: on `bednet-check-2-visit/20260828-0629` the
+       Deliver app shipped with the seed while the Learn app, briefed from the
+       same template in the same phase, removed it unprompted. Enforced at
+       release by `app-release-qa § Step 4` (ace#1787).
      - `live-photo-capture` — any image/photo capture question, but **do NOT
        put it in the Nova brief**. Nova's authoring surface has no appearance
        control: an `image` field's slots are `id` / `kind` / `label` / `hint` /

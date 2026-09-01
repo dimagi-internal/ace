@@ -49,6 +49,7 @@ the verdict YAML.
 - Read `3-commcare/app-deploy_summary.md` → extract Learn HQ app id + Deliver HQ app id.
 - Read `3-commcare/app-release_summary.md` → extract Learn released build id + Deliver released build id.
 - Read both Nova blueprints via `get_app({app_id: <nova_id>})` for cross-reference. (The Nova app ids are referenced in the deploy summary as `nova_app_id`.)
+- Read `3-commcare/pdd-to-learn-app_summary.md` + `3-commcare/pdd-to-deliver-app_summary.md` → extract each app's DECLARED module names. This is the only artifact that says what the brief asked for; the Nova blueprint says what was built, and the difference is what Step 4's module-identity check exists to see. A summary that names no modules is not a halt — Step 4 records `declared_structure: unavailable` and relies on the starter-module signature alone.
 
 If any of these inputs are missing, halt with a structured error
 naming the missing artifact + the upstream skill that should have
@@ -94,6 +95,73 @@ For each app, compute:
 **Form count.** Count of XForm XMLs in the zip vs. count from Nova
 `get_app` blueprint. Mismatch → halt with `form-count-mismatch`
 (`expected N, got M`).
+
+**Module identity — the starter module (dimagi-internal/ace#1787).**
+
+> **Form count equality cannot catch this one, and that is not a near miss —
+> it is structural.** Nova's `create_app` seeds every new app with a
+> placeholder module: a top-level menu **"Survey"** holding one form
+> **"Survey"** holding one text field **`question_1`** labelled "Question 1".
+> That module is present in the released CCZ *and* in the Nova blueprint, so
+> the two totals above are **equal on both sides** and the count check passes
+> on a dirty app by construction. The Connect-marker checks below are keyed on
+> forms that DECLARE `connect.*` blocks, and the starter form declares none,
+> so it is invisible there too. **A count is blind to an extra module whose
+> count matches; only a name/identity comparison can see it.**
+>
+> Live on `bednet-check-2-visit/20260828-0629`: the Deliver app reached
+> release carrying the seed with every Phase 3 gate green. On a Deliver app
+> that is worse than cosmetic — an FLW tapping that menu lands in a dead form
+> that writes nothing and is not a payable unit.
+
+Build the released module list (module name → its forms → each form's fields,
+from `suite.xml` + the parsed XForms, cross-checked against the `get_app`
+blueprint), read the declared module names out of
+`3-commcare/pdd-to-<learn|deliver>-app_summary.md`, and **classify with
+`auditReleasedModules` from `lib/starter-module.ts`** — a pure function,
+unit-tested in `test/lib/starter-module.test.ts`, so the decision is not left
+to prose:
+
+```
+npx tsx -e "import {auditReleasedModules} from './lib/starter-module.js'; \
+  console.log(JSON.stringify(auditReleasedModules({released, declared}), null, 2))"
+```
+
+It returns a `CheckOutcome` (`lib/check-outcome.ts`), so **`status: 'unable'`
+is not a pass** — narrow on `status` before reading `ok`:
+
+| Outcome | Meaning | Do |
+|---|---|---|
+| `status: 'unable'` | No module list was built — the check inspected nothing | Halt. This is a caller bug, not a clean app; a released CommCare app always has modules |
+| `ok: true` | Ran, found nothing | Continue |
+| any finding with `tier: 'blocker'` | The seed survived, or the app carries a module the brief never declared | Halt with **`starter-module-present`**, naming every offending module and form |
+| findings, all `tier: 'suspect'` | Named like the seed, content drifted | Record in the verdict and continue |
+
+Four properties of the classifier are deliberate and must not be "simplified"
+away:
+
+- **The signature is the seeded FIELD, not the module name.** "No module named
+  Survey" is defeated by one rename and false-fails a PDD that legitimately
+  specifies a survey module. `question_1` / "Question 1" is a Nova placeholder;
+  no PDD-derived brief names a field for its own ordinal. So the BLOCKER tier
+  keys on a module holding exactly one form holding exactly one placeholder
+  field, and ignores names entirely.
+- **A name-only match is `suspect`, not `blocker`.** Module "Survey" → form
+  "Survey" with real fields is reported for a human and does not halt. A gate
+  that halts a clean run earns its own deletion.
+- **A missing declared-module list SKIPS the undeclared half, it does not
+  fail it.** The signature check still runs, and the verdict records
+  `declared_structure: unavailable` so a clean result cannot hide a comparison
+  that never happened.
+- **An empty module list is `unable`, never `ok`.** "Found no starter module"
+  read off a check that inspected nothing is the blind-gate class this repo has
+  paid for four times (ace#1332 → #1538 → #1576 → #1634).
+
+The halt is a BLOCKER, not a `[WARN]`: the whole finding behind ace#1787 is
+that every structural gate reported green while a dead menu shipped, and a
+non-blocking note reproduces exactly that. Record the classifier's output under
+`starter_module` in the per-app verdict block in every branch, including
+`unable`.
 
 > **Match Connect markers by NAMESPACE, never by a `<learn:` prefix.**
 > Nova emits these markers as **default-namespace** elements — there is
@@ -875,6 +943,17 @@ per_app:
     form_count_blueprint: <int>
     form_count_ccz: <int>
     form_count_match: true | false
+    starter_module:                       # ace#1787 — auditReleasedModules()
+      status: checked | unable            # `unable` is NOT a pass
+      reason: <str>                       # unable branch only
+      ok: true | false                    # checked branch only
+      declared_structure: compared | unavailable
+      findings:                           # checked branch only
+        - kind: starter-module | undeclared-module
+          tier: blocker | suspect
+          module: <str>
+          form: <str>                     # starter-module findings only
+          reason: <str>
     learn_module_markers:
       blueprint_count: <int>
       ccz_count: <int>
@@ -908,6 +987,17 @@ per_app:
     form_count_blueprint: <int>
     form_count_ccz: <int>
     form_count_match: true | false
+    starter_module:                       # ace#1787 — auditReleasedModules()
+      status: checked | unable            # `unable` is NOT a pass
+      reason: <str>                       # unable branch only
+      ok: true | false                    # checked branch only
+      declared_structure: compared | unavailable
+      findings:                           # checked branch only
+        - kind: starter-module | undeclared-module
+          tier: blocker | suspect
+          module: <str>
+          form: <str>                     # starter-module findings only
+          reason: <str>
     deliver_unit_markers:
       blueprint_count: <int>
       ccz_count: <int>
@@ -973,6 +1063,16 @@ defects.
   emitted invalid XML. Halt; re-run `pdd-to-{learn,deliver}-app`.
 - `form-count-mismatch` — Nova said N forms, CCZ has M. Likely Nova
   partial-persistence on form creation. Re-run the build.
+- `starter-module-present` — Nova's canonical starter module (menu
+  "Survey" → form "Survey" → one text field `question_1` labelled
+  "Question 1") survived to release, or the app carries a module the
+  build summary never declared. Form-count equality cannot see this —
+  the module is in the blueprint and the CCZ alike — which is why the
+  check is identity-based (`lib/starter-module.ts`). Operator action:
+  remove the module in Nova, re-run `app-deploy` → `app-hq-settings`
+  → `app-release`, then re-run this gate. On a Deliver app treat it as
+  blocking: an FLW tapping that menu lands in a dead form that writes
+  nothing and is not a payable unit. (ace#1787)
 - `cli-validate-parser-error` — `commcare-cli.jar validate` (the
   parser-class pre-screen) surfaced an `XFormParseException` /
   `InvalidStructureException` / `InvalidResourceException` /
