@@ -62,6 +62,22 @@ function fakeMaestroAndAvd(opts: {
   return { avd, maestro };
 }
 
+
+/**
+ * `listPackages` fake modelling a device where the CommCare install
+ * SUCCEEDS: absent on the pre-install read, present on every read after.
+ *
+ * Since ace#1818 `runLocalBootstrap` VERIFIES the install instead of
+ * assuming it, so a fake that answers `[]` forever no longer models
+ * "CommCare wasn't installed yet" — it models "the install silently
+ * failed", which is a different test (and has its own coverage in
+ * test/mcp/mobile/maestro-driver-install-gate.test.ts).
+ */
+function listPackagesInstallSucceeds() {
+  let calls = 0;
+  return vi.fn(async () => (calls++ === 0 ? [] : ['org.commcare.dalvik']));
+}
+
 describe('MobileClient.registerTestUser', () => {
   it('runs to-otp then from-otp recipes and returns success', async () => {
     const { avd, maestro } = fakeMaestroAndAvd({ registerToOtp: 'pass', registerFromOtp: 'pass', otp: '123456' });
@@ -1191,7 +1207,18 @@ describe('MobileClient cloud-only diagnostic atoms', () => {
 });
 
 describe('MobileClient.assertMaestroDriverHealthy', () => {
-  function makeClient(probeReturns: Array<{ healthy: boolean; reason?: string }>, repairActions: string[] = ['force-stop', 'uninstall']) {
+  // Stage 0 (ace#1818) asks `pm list packages` before it trusts a liveness
+  // probe. Unless a test says otherwise these fakes report the driver
+  // PRESENT, which is the state every one of them describes:
+  // installed-but-wedged. The one genuinely-fresh-AVD case overrides it.
+  const DRIVER_PRESENT = { app: true, test: true, queryOk: true };
+  const DRIVER_ABSENT = { app: false, test: false, queryOk: true };
+
+  function makeClient(
+    probeReturns: Array<{ healthy: boolean; reason?: string }>,
+    repairActions: string[] = ['force-stop', 'uninstall'],
+    driverPackages: { app: boolean; test: boolean; queryOk: boolean } = DRIVER_PRESENT,
+  ) {
     const probeCalls: number[] = [];
     const avd = {
       ensureAvdRunning: vi.fn(),
@@ -1208,6 +1235,7 @@ describe('MobileClient.assertMaestroDriverHealthy', () => {
       // Default: pretend driver was already installed. Tests that exercise
       // the fresh-install path override this on the returned `maestro`.
       ensureDriverInstalled: vi.fn(async () => ['already-installed']),
+      driverPackagesInstalled: vi.fn(async () => driverPackages),
     } as any;
     return { client: new MobileClient({ avd, maestro }), probeCalls, maestro };
   }
@@ -1250,17 +1278,22 @@ describe('MobileClient.assertMaestroDriverHealthy', () => {
   // installs it → re-probe with the extended timeout passes → repair
   // never runs.
   it('installs driver and recovers without repair on a fresh AVD (Stage 1.5 wins)', async () => {
-    const { client, probeCalls, maestro } = makeClient([
-      { healthy: false, reason: 'UNAVAILABLE: io exception' },
-      { healthy: true }, // post-install re-probe
-    ]);
+    // Packages genuinely absent. Since ace#1818 Stage 0 reads that from
+    // `pm list packages` and skips the 20s stage-1 liveness probe, which
+    // could not have succeeded anyway — so the only probe here is the
+    // post-install one.
+    const { client, probeCalls, maestro } = makeClient(
+      [{ healthy: true }], // post-install re-probe
+      ['force-stop', 'uninstall'],
+      DRIVER_ABSENT,
+    );
     maestro.ensureDriverInstalled = vi.fn().mockResolvedValue([
       'pm-ready', 'apks-resolved', 'installed:app', 'installed:test', 'verified',
     ]);
     await expect(client.assertMaestroDriverHealthy('emulator-5554')).resolves.toBeUndefined();
     expect(maestro.ensureDriverInstalled).toHaveBeenCalledWith('emulator-5554');
     expect(maestro.repairDriver).not.toHaveBeenCalled();
-    expect(probeCalls).toEqual([20_000, 90_000]); // post-install probe gets full budget
+    expect(probeCalls).toEqual([90_000]); // post-install probe gets full budget
   });
 
   // When the driver is already installed (wedged-but-installed — the
@@ -1384,6 +1417,7 @@ describe('MobileClient.ensureAvdRunning', () => {
     } as any;
     const maestro = {
       probeDriver: vi.fn().mockResolvedValue({ healthy: true }),
+      driverPackagesInstalled: vi.fn().mockResolvedValue({ app: true, test: true, queryOk: true }),
       repairDriver: vi.fn(),
       runRecipe: vi.fn().mockResolvedValue({
         status: 'pass', exitCode: 0, stdout: '', stderr: '', screenshotsDir: '/tmp/', screenshots: [],
@@ -1421,6 +1455,7 @@ describe('MobileClient.ensureAvdRunning', () => {
       // path that the original test was written against (Stage 1.5 short-
       // circuits, Stage 2 runs).
       ensureDriverInstalled: vi.fn().mockResolvedValue(['already-installed']),
+      driverPackagesInstalled: vi.fn().mockResolvedValue({ app: true, test: true, queryOk: true }),
     } as any;
     const client = new MobileClient({ avd, maestro });
     await expect(client.ensureAvdRunning('AVD')).rejects.toThrow(/Maestro driver.*unhealthy after recovery/);
@@ -1712,6 +1747,7 @@ describe('MobileClient.restoreDeviceUserState (post-2026-05-14: always-bootstrap
   function makeMaestro() {
     return {
       probeDriver: vi.fn().mockResolvedValue({ healthy: true }),
+      driverPackagesInstalled: vi.fn().mockResolvedValue({ app: true, test: true, queryOk: true }),
       repairDriver: vi.fn(),
       runRecipe: vi.fn().mockResolvedValue({
         status: 'pass', exitCode: 0, stdout: '', stderr: '', screenshotsDir: '/tmp/', screenshots: [],
@@ -1754,11 +1790,12 @@ describe('MobileClient.restoreDeviceUserState (post-2026-05-14: always-bootstrap
     });
     const avd = makeBootstrapAvd();
     // First listPackages call (start of bootstrap): APK NOT installed.
-    // Second listPackages call (post-bootstrap probe): APK present.
+    // Second call (ace#1818 post-install verification) and third
+    // (post-bootstrap probe): APK present, i.e. the install landed.
     avd.listPackages = vi
       .fn()
       .mockResolvedValueOnce([])
-      .mockResolvedValueOnce(['org.commcare.dalvik']);
+      .mockResolvedValue(['org.commcare.dalvik']);
     const maestro = makeMaestro();
     const client = new MobileClient({
       avd, maestro, fetchImpl,
@@ -2073,6 +2110,7 @@ describe('restoreDeviceUserState: bootstrapConfig-absent error names specific mi
     } as any;
     const maestro = {
       probeDriver: vi.fn().mockResolvedValue({ healthy: true }),
+      driverPackagesInstalled: vi.fn().mockResolvedValue({ app: true, test: true, queryOk: true }),
       repairDriver: vi.fn(),
     } as any;
     // Default ctor reads env — so bootstrapConfig will be null because
@@ -2097,6 +2135,7 @@ describe('restoreDeviceUserState: bootstrapConfig-absent error names specific mi
     } as any;
     const maestro = {
       probeDriver: vi.fn().mockResolvedValue({ healthy: true }),
+      driverPackagesInstalled: vi.fn().mockResolvedValue({ app: true, test: true, queryOk: true }),
       repairDriver: vi.fn(),
     } as any;
     // All env vars populated → bootstrapConfigFromEnv would succeed, but
@@ -2400,7 +2439,7 @@ describe('ensureCommCareApkCached: integrity-checked cache', () => {
       status: 200,
       arrayBuffer: async () => bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength),
     });
-    const avd = { listPackages: vi.fn().mockResolvedValue([]), installApk: vi.fn() } as any;
+    const avd = { listPackages: listPackagesInstallSucceeds(), installApk: vi.fn() } as any;
     const maestro = {} as any;
     const client = new MobileClient({
       avd,
@@ -2453,7 +2492,7 @@ describe('ensureCommCareApkCached: integrity-checked cache', () => {
       status: 200,
       arrayBuffer: async () => bytes.buffer,
     });
-    const avd = { listPackages: vi.fn().mockResolvedValue([]) } as any;
+    const avd = { listPackages: listPackagesInstallSucceeds() } as any;
     const maestro = {} as any;
     const client = new MobileClient({
       avd,
@@ -2490,7 +2529,7 @@ describe('ensureCommCareApkCached: integrity-checked cache', () => {
       status: 200,
       arrayBuffer: async () => bytes.buffer,
     });
-    const avd = { listPackages: vi.fn().mockResolvedValue([]) } as any;
+    const avd = { listPackages: listPackagesInstallSucceeds() } as any;
     const maestro = {} as any;
     const client = new MobileClient({
       avd,
@@ -2531,7 +2570,7 @@ describe('ensureCommCareApkCached: integrity-checked cache', () => {
       arrayBuffer: async () =>
         freshBytes.buffer.slice(freshBytes.byteOffset, freshBytes.byteOffset + freshBytes.byteLength),
     });
-    const avd = { listPackages: vi.fn().mockResolvedValue([]) } as any;
+    const avd = { listPackages: listPackagesInstallSucceeds() } as any;
     const maestro = {} as any;
     const client = new MobileClient({
       avd,
@@ -2582,7 +2621,7 @@ describe('ensureCommCareApkCached: integrity-checked cache', () => {
       /* fine */
     }
     const fetchImpl = vi.fn(); // must NOT be called — adopt path
-    const avd = { listPackages: vi.fn().mockResolvedValue([]) } as any;
+    const avd = { listPackages: listPackagesInstallSucceeds() } as any;
     const maestro = {} as any;
     const client = new MobileClient({
       avd,
@@ -2641,7 +2680,7 @@ describe('ensureCommCareApkCached: integrity-checked cache', () => {
       }
       return { ok: false, status: 404, statusText: 'Not Found', arrayBuffer: async () => new ArrayBuffer(0) };
     });
-    const avd = { listPackages: vi.fn().mockResolvedValue([]), installApk: vi.fn() } as any;
+    const avd = { listPackages: listPackagesInstallSucceeds(), installApk: vi.fn() } as any;
     const maestro = {} as any;
     const client = new MobileClient({
       avd,
@@ -2686,7 +2725,7 @@ describe('ensureCommCareApkCached: integrity-checked cache', () => {
       }
       return { ok: false, status: 404, statusText: 'Not Found', arrayBuffer: async () => new ArrayBuffer(0) };
     });
-    const avd = { listPackages: vi.fn().mockResolvedValue([]), installApk: vi.fn() } as any;
+    const avd = { listPackages: listPackagesInstallSucceeds(), installApk: vi.fn() } as any;
     const maestro = {} as any;
     const client = new MobileClient({
       avd,
@@ -2728,7 +2767,7 @@ describe('ensureCommCareApkCached: integrity-checked cache', () => {
       statusText: 'Not Found',
       arrayBuffer: async () => new ArrayBuffer(0),
     });
-    const avd = { listPackages: vi.fn().mockResolvedValue([]) } as any;
+    const avd = { listPackages: listPackagesInstallSucceeds() } as any;
     const maestro = {} as any;
     const client = new MobileClient({
       avd,
@@ -2802,7 +2841,7 @@ describe('runLocalBootstrap: no snapshot save (cold-boot model)', () => {
       // ace#1357 fix 3: registerTestUser now proves the device answers.
       probeDeviceReachable: vi.fn().mockResolvedValue({ reachable: true }),
       findRunningAvd: vi.fn().mockResolvedValue(readyAvd),
-      listPackages: vi.fn().mockResolvedValue([]),
+      listPackages: listPackagesInstallSucceeds(),
       getFocusedActivity: vi.fn(),
       captureUiDump: vi.fn().mockResolvedValue({ xml: '', elements: [] }),
       readCrashLogcat: vi.fn().mockResolvedValue(''),
@@ -2828,6 +2867,7 @@ describe('runLocalBootstrap: no snapshot save (cold-boot model)', () => {
     } as any;
     const maestro = {
       probeDriver: vi.fn().mockResolvedValue({ healthy: true }),
+      driverPackagesInstalled: vi.fn().mockResolvedValue({ app: true, test: true, queryOk: true }),
       repairDriver: vi.fn(),
       runRecipe: vi.fn().mockResolvedValue({
         status: 'pass',

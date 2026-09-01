@@ -922,17 +922,55 @@ export class MaestroBackend {
    * short-circuiting on stale state.
    */
   private async isPackageInstalled(serial: string, pkg: string): Promise<boolean> {
+    return (await this.queryPackageInstalled(serial, pkg)) === true;
+  }
+
+  /**
+   * Tri-state package presence query: `true` (present), `false`
+   * (successfully queried and absent), `null` (the query itself failed).
+   *
+   * The third state is load-bearing and is the ace#1155 invariant applied
+   * here: *a failed query is not a negative answer.* `isPackageInstalled`
+   * collapses `null` to `false`, which is the right call for the
+   * install path (install-when-unsure is idempotent) and the WRONG call
+   * for any caller that would turn absence into a health verdict or a
+   * destructive repair.
+   */
+  private async queryPackageInstalled(serial: string, pkg: string): Promise<boolean | null> {
     const r = await this.shell(
       'adb',
       ['-s', serial, 'shell', 'pm', 'list', 'packages', pkg],
       { timeoutMs: 8_000 },
-    ).catch(() => ({ stdout: '', stderr: '', exitCode: 1 }));
-    if (r.exitCode !== 0) return false;
+    ).catch(() => null);
+    if (r === null || r.exitCode !== 0) return null;
     const lines = (r.stdout || '')
       .split('\n')
       .map((l) => l.trim().replace(/^package:/, ''))
       .filter((l) => l.length > 0);
     return lines.includes(pkg);
+  }
+
+  /**
+   * Are BOTH halves of the Maestro on-device driver installed on `serial`?
+   *
+   * ~50ms of `pm list packages`, and it is what turns "the driver is
+   * healthy" from a guess into an observation (dimagi-internal/ace#1818).
+   * `probeDriver` alone cannot answer this: it asks `maestro hierarchy`
+   * over a DIRECT-TCP channel keyed on a host port, so a zero exit proves
+   * "some device answered on that port", not "THIS serial has the driver".
+   *
+   * `queryOk: false` means the package query could not be answered — the
+   * caller must NOT read that as absence (ace#1155).
+   */
+  async driverPackagesInstalled(
+    serial: string,
+  ): Promise<{ app: boolean; test: boolean; queryOk: boolean }> {
+    const app = await this.queryPackageInstalled(serial, 'dev.mobile.maestro');
+    const test = await this.queryPackageInstalled(serial, 'dev.mobile.maestro.test');
+    if (app === null || test === null) {
+      return { app: app === true, test: test === true, queryOk: false };
+    }
+    return { app, test, queryOk: true };
   }
 
   /**
