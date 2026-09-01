@@ -640,7 +640,17 @@ raise the conflict.
 
 6. **Write the PDD** to `1-design/idea-to-pdd.md` **as a NATIVE Google Doc via
    `drive_create_doc_from_markdown`** — NOT `drive_create_file` with a `text/*`
-   mimeType (dimagi-internal/ace#1061). The PDD is the only artifact in this
+   mimeType (dimagi-internal/ace#1061).
+
+   **Compose the markdown to a LOCAL FILE first, then pass
+   `localFilePath` — do not emit the document inline (ace#1780).** Write the
+   composed markdown to an absolute scratch path, then call
+   `drive_create_doc_from_markdown({name, localFilePath, parentFolderId})`.
+   The server reads the bytes off disk, so the call costs ~zero context
+   regardless of document size; a PDD emitted inline costs roughly one output
+   token per four characters, and this document is written TWICE (step 6b).
+   The inline `markdown` param still works and is fine for something small.
+ The PDD is the only artifact in this
    pipeline whose purpose is to be *argued with* by a human: the entire
    feedback → ledger → next-run loop starts with a domain expert leaving
    ANCHORED comments on it. A `text/markdown` upload renders in Drive's
@@ -650,14 +660,25 @@ raise the conflict.
    six days apart (9 anchored comments → zero). `idea-to-pdd-qa` check 7
    (`pdd_is_native_google_doc`) is the structural backstop. **FIRST resolve-or-create the phase subfolder** — `drive_create_folder({name: '1-design', parentFolderId: <runFolderId>, findOrCreate: true})` — and use the returned id as `parentFolderId` for this write **and** for the QA + eval verdicts and the phase summary. Do NOT pass the run-folder id directly as the write parent: that lands the artifact flat at the run root and fails the Phase boundary's `verify_phase_artifacts` (it walks `1-design/`; jjackson/ace#623). `decisions.yaml` is the exception — it stays at the run-folder root. Include the stress-test rubric results as a `## Stress Test Results` appendix at the bottom of the PDD, so downstream skills (and humans) can see what was caught and what was waived.
 
-6b. **Persist the PDD's source markdown — the same string, written twice.**
-   Immediately after step 6's render, write the EXACT bytes you passed to
-   `drive_create_doc_from_markdown` to `1-design/idea-to-pdd.source.md` via
-   `drive_create_file` with `mimeType: 'text/markdown'` (same
-   `parentFolderId` as step 6). **NOT `drive_create_doc_from_markdown`** —
-   rendering the source copy converts it to a Doc as well and destroys the
-   very bytes this step exists to preserve, which reproduces the defect while
-   looking like the fix.
+6b. **Persist the PDD's source markdown — the SAME LOCAL FILE, written
+   twice.** Immediately after step 6's render, write the EXACT bytes to
+   `1-design/idea-to-pdd.source.md` via `drive_create_file` with
+   `mimeType: 'text/markdown'` (same `parentFolderId` as step 6).
+   **NOT `drive_create_doc_from_markdown`** — rendering the source copy
+   converts it to a Doc as well and destroys the very bytes this step exists
+   to preserve, which reproduces the defect while looking like the fix.
+
+   **Pass `localFilePath` pointing at the SAME file step 6 used
+   (ace#1780).** That is what makes this step's premise true rather than
+   aspirational. The premise is byte-identity — it is what gives
+   `run-surface-audit`'s `DOC-FIDELITY-UNVERIFIED` check something real to
+   compare — and re-emitting the document inline a second time means the
+   agent types it out twice, independently, with **nothing verifying the two
+   emissions match**. A dropped paragraph in the second emission produces a
+   source companion that silently disagrees with the published doc, which is
+   exactly the class the check exists to catch, reintroduced in the check's
+   own input. Two calls against one local file make the copies identical by
+   construction instead of by diligence.
 
    Why it is not optional: the renderer CONSUMES its input. Once the Doc
    exists the markdown you composed exists nowhere, and the `.md` in
@@ -1473,3 +1494,4 @@ When `--dry-run` is active:
 | 2026-07-28 | **A stated GPS accuracy tolerance may no longer be asserted as enforced (ace#1006).** Step 4a's capture-fidelity bullet used to say "spec accuracy-gated GPS (preferred + minimum accuracy, capture-gate)". No such gate is buildable — Nova rejects `validate` on `kind: geopoint`, and Connect's verification-flags form no longer renders `gps` / `gps_radius_meters` (ace#1013). Since the PDD's Evidence Model sentence flows verbatim into the Work Order, an enforced-sounding tolerance puts a promise ACE cannot keep into a contractual document. The bullet now requires accuracy-AWARE phrasing (captured + submitted + advisory + down-weighted in dedup) and forbids "rejected" / "must be ≤ X to submit" / "the app enforces" / "Connect enforces"; a genuine need for a hard gate is raised as an open question instead. | ACE team |
 | 2026-08-02 | **A per-row qualifier and an aggregate over the same repeat must agree (ace#1123).** Step 4a's data-quality bullet now forbids pairing a per-row confirmation/eligibility question with an unfiltered `count()`/`sum()` over the same nodeset — the aggregate MUST carry the qualifier in its predicate. `hh-poverty-targeting` v2.1 specified a roster membership confirmation on screen 5 AND `count(/data/roster)` in the data-quality table; the build followed the table, asked the required question on every row, and ignored the answer. Household size is 31 of 102 attainable PPI points across a sharp band boundary, so one wrongly-retained member moved the score 21 points. Same family as ace#995 (dead `now()`) and ace#1006 (unenforceable GPS gate): a control that reads as configured everywhere and does nothing in the built app. | ACE team |
 | 2026-08-02 | **Worked assessment items emitted by the PDD must be labelled ILLUSTRATIVE (ace#1120).** Step 4a's assessment-enforcement bullet now requires any worked example to be marked as illustrative of the required shape, never as mandated bank content — a PDD specifies the assessment blueprint; a specific quiz item is build content. All three of `hh-poverty-targeting` v2.1's worked items were guessed cold by both independent blind probes, and worked items anchor the tone of the ~21 items Phase 3 authors. Paired with the matching builder-side rule in `skills/pdd-to-learn-app/SKILL.md` (hardening or discarding a PDD example is PDD-compliant, not a deviation). | ACE team |
+| 2026-09-01 | Steps 6 + 6b: compose the PDD to a LOCAL FILE and pass `localFilePath` to BOTH writes rather than emitting the document inline twice. The rendered gdoc and its `.source.md` companion are now byte-identical BY CONSTRUCTION — step 6b's premise, and `run-surface-audit`'s DOC-FIDELITY check with it, previously rested on the agent re-typing a ~52 KB document identically with nothing verifying it (dimagi-internal/ace#1780). | ACE team |

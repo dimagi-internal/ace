@@ -45,30 +45,69 @@ export function resolveUpdateFileContent(args: {
   content?: string;
   localFilePath?: string;
 }): string {
-  const { content, localFilePath } = args;
-  if (content !== undefined && localFilePath !== undefined) {
+  return resolveInlineOrLocalFile({
+    atom: 'drive_update_file',
+    inlineParam: 'content',
+    inline: args.content,
+    localFilePath: args.localFilePath,
+    inlineCeiling: UPDATE_FILE_INLINE_CEILING,
+  });
+}
+
+/**
+ * The general form of "exactly one of an inline payload or a local file
+ * path", shared by every text-payload write atom in the plugin.
+ *
+ * Extracted from `resolveUpdateFileContent` (dimagi-internal/ace#1780) so the
+ * gdrive CREATE atoms can offer the same handle their sibling
+ * `drive_update_file` and `drive_upload_binary` already do, under the SAME
+ * param name. `localFilePath` is the established write-side name family; a
+ * third name for the same idea (`fromPath`, `sourcePath`, …) makes the
+ * pairing unguessable, which is its own defect.
+ *
+ * `inlineCeiling` is OPTIONAL and deliberately unset for the create atoms.
+ * The handle is purely additive — no existing caller changes behaviour — but
+ * a refusal changes the contract for every existing caller, and a threshold
+ * chosen wrong breaks skills that work today. Adding one is tracked
+ * separately so the number can be picked against measured payload sizes
+ * rather than guessed.
+ *
+ * @throws AtomArgUsageError when the caller violates the contract.
+ */
+export function resolveInlineOrLocalFile(args: {
+  /** Atom name, used in every error message. */
+  atom: string;
+  /** The name of this atom's inline param (`content`, `markdown`, …). */
+  inlineParam: string;
+  inline?: string;
+  localFilePath?: string;
+  /** When set, an inline payload longer than this is refused. */
+  inlineCeiling?: number;
+}): string {
+  const { atom, inlineParam, inline, localFilePath, inlineCeiling } = args;
+  if (inline !== undefined && localFilePath !== undefined) {
     throw new AtomArgUsageError(
-      'drive_update_file: pass exactly one of content or localFilePath, not both',
+      `${atom}: pass exactly one of ${inlineParam} or localFilePath, not both`,
     );
   }
-  if (content === undefined && localFilePath === undefined) {
+  if (inline === undefined && localFilePath === undefined) {
     throw new AtomArgUsageError(
-      'drive_update_file: must supply one of content or localFilePath',
+      `${atom}: must supply one of ${inlineParam} or localFilePath`,
     );
   }
   if (localFilePath !== undefined) {
     // ace#1110 F2: an arbitrary local read reaching a Drive file.
-    assertNotCredentialPath(localFilePath, { atom: 'drive_update_file' });
+    assertNotCredentialPath(localFilePath, { atom });
     return readFileSync(localFilePath, 'utf-8');
   }
-  if (content!.length > UPDATE_FILE_INLINE_CEILING) {
+  if (inlineCeiling !== undefined && inline!.length > inlineCeiling) {
     throw new AtomArgUsageError(
-      `oversized_inline_content: content is ${content!.length} chars (ceiling ${UPDATE_FILE_INLINE_CEILING}). ` +
+      `oversized_inline_content: ${inlineParam} is ${inline!.length} chars (ceiling ${inlineCeiling}). ` +
         `Write it to a local file and pass localFilePath instead — the server reads the bytes off disk, ` +
         `so the update costs ~zero context regardless of file size.`,
     );
   }
-  return content!;
+  return inline!;
 }
 
 /**

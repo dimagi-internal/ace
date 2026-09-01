@@ -22,7 +22,7 @@ import { Readable } from 'stream';
 import { fileURLToPath } from 'url';
 import YAML from 'yaml';
 import { resolvePluginDataDir, logPluginDataDirDiag } from '../lib/plugin-data-dir.js';
-import { resolveUpdateFileContent } from '../lib/atom-payload-resolver.js';
+import { resolveUpdateFileContent, resolveInlineOrLocalFile } from '../lib/atom-payload-resolver.js';
 import { resolveGogIdentity } from '../lib/gog-identity.js';
 import {
   validateRunState,
@@ -752,16 +752,21 @@ server.tool(
 // 11. Create a file in Google Drive
 server.tool(
   'drive_create_file',
-  'Create a new Google Doc in Drive with the given name and content, inside the given parent folder. By default, find-or-update: if a same-name file already exists under the parent (non-trashed), its content is replaced with `content` and its id is returned — no duplicate is created. Pass `findOrCreate:false` to force a new sibling. Body is uploaded as `text/plain; charset=utf-8` so non-ASCII text (em-dashes, accents, smart quotes) round-trips correctly. The parent MUST be a folder on a Shared Drive — Service Accounts have zero My-Drive quota, so files created in My Drive fail with a misleading "user storage quota exceeded" error. Used by ACE skills (idea-to-pdd, pdd-to-learn-app, etc.) to write artifacts to opportunity folders.',
+  'Create a new Google Doc in Drive with the given name and content, inside the given parent folder. Content comes from exactly ONE of `content` (inline) or `localFilePath` (the server reads the utf-8 bytes off disk, so the write costs ~zero context regardless of file size — mirrors `drive_update_file` and `drive_upload_binary`, which take the same param under the same name). Prefer `localFilePath` for anything large, and REQUIRED in spirit for a companion write that must be byte-identical to another call\'s payload: point BOTH calls at the same local file and the two copies are identical by construction rather than by diligence (ace#1780 — `idea-to-pdd` steps 6/6b write a ~52 KB PDD twice with nothing verifying the two emissions match). By default, find-or-update: if a same-name file already exists under the parent (non-trashed), its content is replaced with `content` and its id is returned — no duplicate is created. Pass `findOrCreate:false` to force a new sibling. Body is uploaded as `text/plain; charset=utf-8` so non-ASCII text (em-dashes, accents, smart quotes) round-trips correctly. The parent MUST be a folder on a Shared Drive — Service Accounts have zero My-Drive quota, so files created in My Drive fail with a misleading "user storage quota exceeded" error. Used by ACE skills (idea-to-pdd, pdd-to-learn-app, etc.) to write artifacts to opportunity folders.',
   {
     name: z.string().describe('Name for the new file'),
-    content: z.string().describe('Text content for the file'),
+    content: z.string().optional().describe('Text content for the file, inline. Provide either this OR localFilePath, not both.'),
+    localFilePath: z.string().optional().describe('Absolute path to a local file whose utf-8 content becomes the file content. Reads directly from disk — avoids passing the whole document through the context window. Provide either this OR content, not both. Mirrors drive_update_file\'s and drive_upload_binary\'s param of the same name.'),
     parentFolderId: z.string().min(1).describe('Required. Parent folder ID — MUST be a folder on a Shared Drive (the MCP verifies this before writing).'),
     findOrCreate: z.boolean().optional().describe('When true (default), reuse an existing same-name file under the parent and overwrite its content; otherwise always create a new sibling. Default: true. Set to false only when you specifically want a separate sibling each call.'),
   },
-  async ({ name: fileName, content: fileContent, parentFolderId, findOrCreate }) => {
+  async ({ name: fileName, content: fileContent, localFilePath, parentFolderId, findOrCreate }) => {
     try {
-      const r = await handleCreateFile({ name: fileName, content: fileContent, parentFolderId, findOrCreate }, drive);
+      const resolved = resolveInlineOrLocalFile({
+        atom: 'drive_create_file', inlineParam: 'content',
+        inline: fileContent, localFilePath,
+      });
+      const r = await handleCreateFile({ name: fileName, content: resolved, parentFolderId, findOrCreate }, drive);
       return result(r);
     } catch (e: any) {
       return error(e.message);
@@ -772,16 +777,21 @@ server.tool(
 // 11a. Create a new Google Doc from markdown content, using Drive's native conversion
 server.tool(
   'drive_create_doc_from_markdown',
-  'Create a new Google Doc by uploading markdown content and letting Drive natively convert it to a styled Google Doc. Drive interprets `# `/`## `/`### ` as Heading 1/2/3 (so the Docs outline sidebar works), `**bold**` and `*italic*` as native runs, `[text](url)` as hyperlinks, `-`/`*` lists as native bullets, fenced ``` blocks as monospace, and pipe tables as native tables. Use this instead of `drive_create_file` whenever you want a rendered gdoc — `drive_create_file` uploads as `text/plain` and the markdown markers remain literal characters. Same find-or-create semantics: by default reuses any same-name file under the parent (default true). The parent MUST live on a Shared Drive — same Service Account quota constraint as `drive_create_file`.',
+  'Create a new Google Doc by uploading markdown content and letting Drive natively convert it to a styled Google Doc. Drive interprets `# `/`## `/`### ` as Heading 1/2/3 (so the Docs outline sidebar works), `**bold**` and `*italic*` as native runs, `[text](url)` as hyperlinks, `-`/`*` lists as native bullets, fenced ``` blocks as monospace, and pipe tables as native tables. Use this instead of `drive_create_file` whenever you want a rendered gdoc — `drive_create_file` uploads as `text/plain` and the markdown markers remain literal characters. Same find-or-create semantics: by default reuses any same-name file under the parent (default true). The parent MUST live on a Shared Drive — same Service Account quota constraint as `drive_create_file`.\n\nThe body comes from exactly ONE of `markdown` (inline) or `localFilePath` (the server reads the utf-8 bytes off disk, so the write costs ~zero context regardless of document size — mirrors `drive_update_file` and `drive_upload_binary`, which take the same param under the same name). Prefer `localFilePath` for anything large: a ~52 KB PDD emitted inline costs ~13k output tokens, and `idea-to-pdd` steps 6/6b require that document to be written TWICE — once rendered here and once as a `.source.md` companion via `drive_create_file` — with nothing verifying the two emissions match (ace#1780). Point both calls at the SAME local file and byte-identity is a property of the calls rather than of the author\'s diligence, which is what makes `run-surface-audit`\'s DOC-FIDELITY check meaningful.',
   {
     name: z.string().describe('Name for the new Google Doc'),
-    markdown: z.string().describe('Markdown body. Drive converts: # → H1, ## → H2, ### → H3, **bold**, *italic*, [text](url), -/* lists, ```code```, | tables |. Smart quotes / em-dashes / accents round-trip cleanly via UTF-8.'),
+    markdown: z.string().optional().describe('Markdown body, inline. Drive converts: # → H1, ## → H2, ### → H3, **bold**, *italic*, [text](url), -/* lists, ```code```, | tables |. Smart quotes / em-dashes / accents round-trip cleanly via UTF-8. Provide either this OR localFilePath, not both.'),
+    localFilePath: z.string().optional().describe('Absolute path to a local file whose utf-8 markdown becomes the document body. Reads directly from disk — avoids passing the whole document through the context window. Provide either this OR markdown, not both. Mirrors drive_update_file\'s and drive_upload_binary\'s param of the same name. Pair it with drive_create_file\'s localFilePath pointing at the SAME file to make a rendered doc and its .source.md companion byte-identical by construction (ace#1780).'),
     parentFolderId: z.string().min(1).describe('Required. Parent folder ID — MUST be a folder on a Shared Drive.'),
     findOrCreate: z.boolean().optional().describe('When true (default), reuse an existing same-name file under the parent and overwrite its content; otherwise always create a new sibling. Default: true.'),
   },
-  async ({ name: fileName, markdown, parentFolderId, findOrCreate }) => {
+  async ({ name: fileName, markdown, localFilePath, parentFolderId, findOrCreate }) => {
     try {
-      const r = await handleCreateDocFromMarkdown({ name: fileName, markdown, parentFolderId, findOrCreate }, drive);
+      const resolved = resolveInlineOrLocalFile({
+        atom: 'drive_create_doc_from_markdown', inlineParam: 'markdown',
+        inline: markdown, localFilePath,
+      });
+      const r = await handleCreateDocFromMarkdown({ name: fileName, markdown: resolved, parentFolderId, findOrCreate }, drive);
       return result(r);
     } catch (e: any) {
       return error(e.message);
