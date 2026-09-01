@@ -54,15 +54,28 @@ missing the key it reads all **block**. It never reports a silent zero.
 
 ## Process
 
-### 1. Gather the two inputs that turn "unverified" into "verified"
+### 1. Gather the inputs that turn "unverified" into "verified"
 
-Both are blocking when absent, deliberately — see § Unverified blocks.
+All are blocking when absent, deliberately — see § Unverified blocks.
 
 ```
 # The run's own record of what it produced.
 resolve_opp_path(slug) → opp_root_id
 drive_list_folder(runs_id) → the run folder
 drive_read_file(<run_state.yaml file id>, writeToPath="/tmp/<run>-run_state.yaml")
+
+# The run FOLDER's contents. Not the same input, and not redundant:
+# `/ace:qa-deep` deliberately writes NOTHING into run_state.yaml (so a
+# later `/ace:run` resume is unaffected), so the two deep-QA verdict
+# FILES are the only record that the deep gate ran. run_state cannot
+# answer it, at all.
+drive_list_folder(<run folder id>)                 # → 5-ocs, 6-qa-and-training, …
+drive_list_folder(<5-ocs folder id>)
+drive_list_folder(<6-qa-and-training folder id>)
+# Write the run-relative paths as a JSON array to /tmp/<run>-files.json, e.g.
+#   ["run_state.yaml", "decisions.yaml",
+#    "5-ocs/ocs-chatbot-eval_verdict-deep.yaml",
+#    "6-qa-and-training/app-ux-eval_verdict-deep.yaml"]
 ```
 
 If you are preparing the page **for named people**, also get the membership
@@ -77,6 +90,7 @@ ACE_ROOT="${CLAUDE_PLUGIN_ROOT:-$(python3 -c "import json,os; d=json.load(open(o
 npx --prefix "$ACE_ROOT" tsx "$ACE_ROOT/scripts/audit-run-surface.ts" <opp-slug> <run-id> \
   --render \
   --run-state /tmp/<run>-run_state.yaml \
+  --run-files /tmp/<run>-files.json \
   [--reviewer sophie@example.org ...] [--memberships /tmp/memberships.json] \
   [--doc-source /tmp/doc-sources.json] \
   [--workspace dimagi-team] [--base https://labs.connect.dimagi.com/ace] [--json]
@@ -99,6 +113,8 @@ Every finding names its own fix. The common ones:
 | `LINK-ACCESS-MISLABELLED` | the page says `public`, an outsider gets a gate | either share it or correct the tag. The page is telling the reader something untrue |
 | `LINK-UNTAGGED` | a link with no `access` tag | tag it in ace-web so the page can say why it cannot be opened. Untagged, it reads as broken rather than deliberate |
 | `MISSING-ARTIFACT` | the run made it; the page does not link it | surface it in ace-web, or say on the page why it is withheld |
+| `DEEP-QA-HIDDEN` | `/ace:qa-deep` ran and the page does not say what it found | surface the verdicts through ace-web `_read_deep_qa`. Phase 9 `llo-launch` refuses activation on a missing or stale deep verdict, so a silent page and a never-tested run read identically |
+| `DEEP-QA-SCORE-WITHOUT-GATE` | a deep-QA score on the page with no gate beside it | carry `gate.disposition` and the Fail count, and lead with the gate. `spark-facilitator/20260828-0703` scored **8.03** against a **7.0** bar and its gate was **`iterate`** anyway — `--deep` needs zero Fails and two answers fabricated safety-adjacent procedure. A bare number reads as a pass |
 | `DOC-LITERAL-MARKDOWN` | the reader is looking at raw `##` and `**` | republish via `drive_create_doc_from_markdown` (Drive **converts**) rather than uploading the `.md` as `text/plain` |
 | `DOC-SCREENSHOTS-ABSENT` | a step-by-step guide published with zero images while the run captured screenshots | Render, **then embed**: `scripts/embed-doc-screenshots.ts` (`insertInlineImage` via `docs_batch_update`). The importer drops `![alt](drive:<id>)` outright, and sizes a real https src at its natural 1080x2400 — hence the second step |
 | `CONF-SECRET-EXPOSED` | a secret-shaped value on the anonymous payload | stop serving it, or add it to `ACCEPTED_PUBLIC_SECRETS` **with the reasoning that makes it safe** — and mirror that in ace-web's `test_public_surface_contract.py` |
@@ -117,7 +133,7 @@ QA gates eval — do not run eval on a surface that is still `NOT SAFE TO SHARE`
 
 ## Unverified blocks — "we did not check" is not "it is fine"
 
-Four checks refuse to certify without their inputs, and each one blocks exactly
+Five checks refuse to certify without their inputs, and each one blocks exactly
 as a broken link does:
 
 | Blocking finding | Why it is not a warning |
@@ -126,6 +142,7 @@ as a broken link does:
 | `RENDER-UNVERIFIED` | four defects are invisible to a payload check. They shipped |
 | `MEMBER-UNVERIFIED` / `REVIEWERS-UNDECLARED` | the probe is anonymous; anonymous reachability only proves a link works for SOMEBODY. A signed-in non-member gets a flat 404 — indistinguishable from "this run does not exist" — and reports it to us as a broken link (ace#913, ace#916, ace#1060) |
 | `DOC-FIDELITY-UNVERIFIED` | nothing compared what was PUBLISHED against what was WRITTEN. One guide lost 44 screenshots and 224 words with every content check green |
+| `DEEP-QA-UNVERIFIED` | without a run-FOLDER listing nothing can tell "the deep gate was never run" from "it ran, said `reject`, and the page hid it". `run_state.yaml` cannot answer this one — `/ace:qa-deep` writes no pointer into it by design — so `--run-state` does not substitute |
 
 Treating any of these as fine **is** the bug. If you genuinely cannot get an
 input this session, say so explicitly in the report — do not certify around it.
@@ -234,6 +251,9 @@ Say these out loud in the report rather than implying coverage.
 
 - `resolve_opp_path`, `drive_list_folder`, `drive_read_file` — to fetch the
   run's `run_state.yaml` (and any source markdown for `--doc-source`).
+  `drive_list_folder` does double duty: it also produces the run-folder
+  listing `--run-files` needs, which is a SEPARATE fact from `run_state`
+  — the deep-QA verdicts leave no trace there.
 - `drive_set_anyone_with_link` — to fix a `LINK-PRIVATE-DELIVERABLE`.
 
 Everything else is read-only anonymous HTTP plus a headless browser
