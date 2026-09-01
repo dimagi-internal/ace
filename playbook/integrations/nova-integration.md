@@ -809,7 +809,15 @@ the whole point of this section.
   `search_blueprint`; do not try to parse `get_app`.
 - **Writes are revision-guarded.** Every mutating lookup call requires
   `expectedTableRevision`, and the response carries `definitionRevision` /
-  `rowsRevision` / `tableRevision` separately.
+  `rowsRevision` / `tableRevision` separately. Read the revision back from the
+  create response — do not assume `'1'`, or `remove_lookup_table` fails.
+- **Tables belong to the PROJECT and OUTLIVE the app.** `get_lookup_tables({app_id})`
+  lists the tables of the app's *Project*, so a table created against an app
+  survives `delete_app` and keeps its tag. Tags are unique per Project —
+  re-using one returns `{"code":"tag_taken"}`. Anything that creates a table
+  must remove the TABLE, not just the app; a leaked tag makes the next attempt
+  fail in a way that reads exactly like an upstream regression. (It did, here,
+  for about ten minutes.)
 
 ### What this means for ACE, exactly
 

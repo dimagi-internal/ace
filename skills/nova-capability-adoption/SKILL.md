@@ -100,6 +100,14 @@ outranks the PAT and answers *normally, about a different account* — see
 silently ran as someone else is worse than no probe.
 `scripts/probe-nova-fixtures.ts` has a working helper to copy.
 
+**Leave no state behind, and re-run the probe twice before trusting it.**
+Nova objects are not all app-scoped — a lookup table lives on the *Project* and
+survives `delete_app`, keeping its unique tag. A probe that cleans up only the
+app therefore passes once and fails ever after with an error that reads exactly
+like an upstream regression. Clean up every object you created, surface a
+cleanup failure loudly rather than swallowing it, and make the second run prove
+the first one tidied up.
+
 Record every behaviour you had to discover rather than infer. Those become the
 **Contract facts** block, and they are the highest-value output of this skill —
 each line is a call the next reader does not have to burn.
@@ -130,8 +138,8 @@ git ls-files -z skills lib agents docs playbook commands scripts templates \
 
 Three things to know:
 
-- **Claims wrap across lines.** `Nova has no MCP atom\nthat creates a lookup
-  table` defeats a single-line grep. Read the surrounding block; do not trust
+- **Claims wrap across lines.** A sentence like `Nova has no MCP atom\nthat
+  creates a <thing>` defeats a single-line grep. Read the surrounding block; do not trust
   the grep count alone.
 - **Look for the workaround, not just the sentence.** The expensive cruft is a
   library that exists *because of* the gap (`lib/option-register.ts`'s CSV

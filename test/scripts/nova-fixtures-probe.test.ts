@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { classifyFixtureProbe, remedyFor } from '../../scripts/probe-nova-fixtures.ts';
+import { classifyFixtureProbe, remedyFor } from '../../scripts/probe-nova-fixtures.js';
 
 /**
  * The probe's network half is gated behind NOVA_API_KEY; its verdict logic is

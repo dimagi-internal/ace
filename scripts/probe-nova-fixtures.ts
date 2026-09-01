@@ -5,9 +5,9 @@
  *
  * Nova shipped a full Project-data-table (fixture) authoring surface —
  * `create_lookup_table` and friends. Three ACE files said the opposite
- * ("Nova has **no MCP atom that creates a lookup table**"), and
+ * (a now-retired claim that no such create atom existed), and
  * `lib/option-register.ts` + `pdd-to-deliver-app § Step 4f` built a
- * CSV-emit-and-HALT workaround on that claim. This is the media-channel
+ * CSV-emit-and-HALT workaround on it. This is the media-channel
  * class (`voidcraft-labs/nova-plugin#8`, granted and unnoticed for three
  * months) repeating.
  *
@@ -15,8 +15,8 @@
  * the table half works and the BINDING half is inert — `set_field_options_source`
  * and `add_fields optionsSource` both refuse a `kind: 'lookup'` source with
  * "its Project lookup definitions are unavailable", on a fresh app and a
- * fresh table, every time. So the halt STAYS and only its stated reason
- * changes. That distinction is the whole point of this file: it is the
+ * fresh table, every time (`voidcraft-labs/commcare-nova#545`). So the halt
+ * STAYS and only its stated reason changes. That distinction is the whole point of this file: it is the
  * tripwire that says when the halt may finally be retired.
  *
  * Run it when: a Nova release lands, `probe-nova-contract.ts` reports a new
@@ -39,7 +39,7 @@
  *      (`skills/upstream-regression-triage`).
  *   1  usage / transport / auth error. Says nothing about the capability.
  */
-import { NOVA_MCP_URL, resolveNovaApiKey } from './probe-nova-contract.ts';
+import { NOVA_MCP_URL, resolveNovaApiKey } from './probe-nova-contract.js';
 
 /** What the probe observed. Pure data, so the classifier is unit-testable. */
 export interface FixtureProbeResult {
@@ -137,12 +137,17 @@ export async function probeNovaFixtures(
   });
   const appId: string = app.app_id;
   const { module_uuid: moduleUuid, form_uuid: formUuid } = app.starter;
+  let createdTableId: string | undefined;
+  let createdTableRevision: string | undefined;
 
   try {
+    // Tags are unique per PROJECT and the table OUTLIVES the app, so a fixed
+    // tag makes the second run fail with `tag_taken` — which reads exactly
+    // like a regression. Unique per run, and removed in the finally below.
     const table = await callNovaTool(apiKey, 'create_lookup_table', {
       app_id: appId,
       name: 'ACE fixture probe',
-      tag: 'ace_fixture_probe',
+      tag: `ace_fixture_probe_${Date.now().toString(36)}`,
       columns: [
         { key: 'v', wireName: 'value', label: 'Value', dataType: 'text' },
         { key: 'l', wireName: 'label', label: 'Label', dataType: 'text' },
@@ -154,8 +159,20 @@ export async function probeNovaFixtures(
     });
 
     const tableId: string | undefined = table?.tableId;
+    createdTableId = tableId;
+    // Read the revision back; do not assume '1'. A guessed revision makes the
+    // cleanup below fail silently and leak a Project-scoped tag forever.
+    createdTableRevision = table?.revisions?.tableRevision;
     const canCreateTable = Boolean(tableId) && Array.isArray(table?.rows) && table.rows.length === 2;
-    if (!canCreateTable) return { canCreateTable: false, canBindSelect: false, appId, tableId };
+    if (!canCreateTable) {
+      return {
+        canCreateTable: false,
+        canBindSelect: false,
+        bindError: table?.error ? `create failed: ${table.error}` : undefined,
+        appId,
+        tableId,
+      };
+    }
 
     const [valueColumnId, labelColumnId] = table.columns.map((c: any) => c.columnId);
     const bound = await callNovaTool(apiKey, 'add_fields', {
@@ -177,6 +194,23 @@ export async function probeNovaFixtures(
     return { canCreateTable, canBindSelect: !bindError, bindError, appId, tableId };
   } finally {
     if (!opts.keep) {
+      // Order matters, and so does doing this at all: the table lives on the
+      // PROJECT, so deleting the app leaves it — and its tag — behind forever.
+      if (createdTableId) {
+        const removed = await callNovaTool(apiKey, 'remove_lookup_table', {
+          app_id: appId,
+          tableId: createdTableId,
+          expectedTableRevision: createdTableRevision ?? '1',
+        }).catch((e: Error) => ({ error: e.message }));
+        // Never swallow this. A silent leak means the NEXT run fails with
+        // `tag_taken`, which reads exactly like an upstream regression.
+        if (removed?.error) {
+          process.stderr.write(
+            `probe-nova-fixtures: WARNING — could not remove table ${createdTableId} ` +
+              `(${String(removed.error).slice(0, 160)}). Remove it by hand or the tag stays taken.\n`,
+          );
+        }
+      }
       await callNovaTool(apiKey, 'delete_app', { app_id: appId }).catch(() => undefined);
     }
   }
