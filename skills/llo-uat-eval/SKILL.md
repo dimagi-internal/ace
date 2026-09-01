@@ -32,7 +32,7 @@ which grades the activation step that follows. See
 
 ## Products
 
-- `9-execution-manager/llo-uat-eval_verdict.yaml` — verdict YAML per `_eval-template.md § Verdict YAML contract`. Filename uses the **producer** skill name (`llo-uat`).
+- `9-execution-manager/llo-uat-eval_verdict.yaml` — verdict YAML per `_eval-template.md § Verdict YAML contract`. Filename uses **this eval skill's** name (`llo-uat-eval`), not the bare producer name — per the 0.12.0 Option-α rule in `agents/ace-orchestrator.md § Per-Step Eval Hook`.
 
 ## Process
 
