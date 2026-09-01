@@ -1717,6 +1717,55 @@ and the orchestrator had to `drive_move_file` it into `3-commcare/`.
   - A `verdict: 'unverifiable'` row → `[WARN]` naming the field and the
     reason; confirm by hand that today satisfies the expression before
     shipping the recipe. Never treat unverifiable as a pass.
+- **Transition criteria must assert a DELTA, not presence
+  (dimagi-internal/ace#1885).** A criterion whose *name* claims a state
+  transition — `updated`, `changed`, `advanced`, `incremented`,
+  `decremented`, `refreshed`, `moved`, `cleared`, `reset`, `increased`,
+  `decreased` — MUST be verified by an assertion that could only hold
+  AFTER the transition. An assertion that would pass identically before
+  and after it is not a test of the transition: the test cannot fail for
+  the reason it exists. Canonical failure: on
+  `spark-facilitator/20260828-0703`, `journey-deliver-followup-preload`
+  declared `case_state_updated_after_submit` and the generated recipe
+  asserted it as `assertVisible: { text: "Chilanga.*", childOf: { id:
+  "${SELECTOR:case-list-container}" } }`. That proves the **row exists**.
+  Behind it sat a real `blocks-e2e` defect — three submitted-and-synced
+  meetings dated 01 Sep did not advance Chilanga's `last_meeting_date`
+  (stale at 08:40, 08:49 and 09:00) while the control case Nsanje Central
+  updated correctly in the same frame, and Connect reported
+  `delivered: 4`. **The harness went green;** only the screenshot judge
+  caught it, after the fact.
+
+  Exactly two shapes count as proof, and the check is mechanical:
+
+  1. **A captured-pair comparison.** A capture step (`copyTextFrom`, or
+     an `evalScript` that writes `output.*`) BEFORE the transition, and a
+     later `assertTrue`/`assertFalse` whose expression reads that
+     capture. This is the only shape that observes both sides.
+  2. **A declared expected NEW value.** Write the criterion as
+     `{ name: <criterion>, expected_value: <the new value> }` in
+     `structural_pass_criteria` and assert that literal in the recipe.
+     The literal must NOT also be a navigation target earlier in the
+     recipe — a string the recipe TAPPED to get here is on screen before
+     the transition too, so asserting it proves nothing.
+
+  **Run the gate before writing `app-test-cases.yaml`** (and again in
+  `/ace:qa-deep` when a deferred deep recipe is generated), feeding it
+  each journey's criteria plus its composed recipe steps in file order:
+
+  ```ts
+  import { checkTransitionCriteria, formatTransitionCriteriaReport }
+    from '../../lib/transition-criteria';
+  const report = checkTransitionCriteria(journeys);
+  ```
+
+  Every violation is a `[BLOCKER]` naming the journey, the criterion and
+  the assertions the recipe does carry (via
+  `formatTransitionCriteriaReport`). Fix the recipe — or, if the delta
+  genuinely cannot be observed on-device, RENAME the criterion to what it
+  actually checks (`case_row_present_after_submit`) and record the lost
+  coverage. Never leave a transition-named criterion standing on a
+  presence assertion; that is the ace#1885 silent green.
 - Every authored (smoke) recipe passes `mobile_validate_recipe`
 - Every authored (smoke) recipe's `mobile_resolve_selectors` pass returned
   `unresolved: []` (Step 3.4 gate; non-empty means the APK selector
@@ -1802,6 +1851,7 @@ already maps the producer to `3-commcare/` (see
 
 | Date | Change | Author |
 |------|--------|--------|
+| 2026-09-01 | **A transition criterion must assert a DELTA, not presence (dimagi-internal/ace#1885).** Step 5 gains a static gate: a criterion whose NAME claims a state transition (`updated`, `changed`, `advanced`, `incremented`, `refreshed`, `moved`, `cleared`, …) must be verified either by a captured-pair comparison (`copyTextFrom` / `evalScript` before, `assertTrue` reading it after) or by a declared `expected_value` the recipe asserts and never taps. Earned by `spark-facilitator/20260828-0703`, where `journey-deliver-followup-preload` declared `case_state_updated_after_submit` and asserted it as `assertVisible "Chilanga.*"` — proof the ROW EXISTS, not that the date moved — and went green over a real `blocks-e2e` defect (`last_meeting_date` stale across three synced meetings while a control case updated in the same frame). The test could not fail for the reason it existed. *Enforced:* `lib/transition-criteria.ts` + `test/lib/transition-criteria.test.ts`, whose calibration fixture is that exact criterion and assertion. | ACE team |
 | 2026-08-29 | **Every emitted `- inputText` must be immediately preceded by `- eraseText` (closes dimagi-internal/ace#1844).** Maestro's `inputText` appends at the cursor rather than replacing, so any field carrying a Nova casedb preload (ace#1809), an XForm default, or a stray character received the recipe's value concatenated onto the existing one. Live on `spark-facilitator/20260828-0703` Phase 6 (ACE 0.13.1080, APK 2.63.2): the recipe typed `40` into `hh_represented_at_the_meeting`, the field held `140`, the form's cross-field constraint correctly refused to advance, and the leg died two screens later on a Participation scroll — reading as a selector fault it was not. Re-running the identical leg with `eraseText` inserted before each of the 6 `inputText` calls passed end-to-end (`{delivered: 1, approved: 1, rejected: 0}`). The dangerous half is that wherever the concatenation does NOT trip a constraint the corruption is silent and the leg reports `pass` on wrong data. *Enforced:* `recipe-sanity-probe`'s new `input-without-erase` — pure recipe shape, so unlike its field-gated siblings it runs unconditionally, and unlike them it carries no false-positive tax (a redundant erase on an empty field is a runtime no-op). `findInputFocusSteps` now sees through the interposed `eraseText`, so the ace#1554 checks don't go silently dead on recipes authored under the new rule. | ACE team |
 | 2026-08-25 | **Learn suite re-entry is selected PER FORM, not per app, and the call is guarded (closes dimagi-internal/ace#1633).** § Suite re-entry between modules picked the finalize/re-entry pair from a single per-APP reading of `post_submit`, but where a `previous` finalize lands is a property of the OWNING MODULE: CommCare auto-skips a module's one-row form list when the module holds exactly one form whose name differs from the module name, so `previous` lands on the suite ROOT there and on the form LIST everywhere else. One app can be both shapes at once — `bednet-check-2-visit/20260825-1310` (module "Baseline check": one form "What you know now"; module "Spot-check training": two forms; all `post_submit: previous`) — and the per-app table then prescribes an unconditional `back` that walks OUT of the suite after module 1, hanging the walk before module 2 (the #1071 signature, #897 consequence). The section now states the per-form rule with both module shapes spelled out, and every composition of `learn-suite-reentry-from-module.yaml` is guarded POSITIVELY on the next module's suite row (the workaround that run shipped), which is correct under either landing. The 2x2 stays as the choice of WHICH recipe; the finalize half is landing-agnostic because `content-form-finish-to-suite.yaml` exits on the `learn-suite-menu` alternation. *Enforced:* `test/skills/learn-suite-reentry-guarded.test.ts`. | ACE team |
 | 2026-08-23 | **§ Multi-screen content forms now branches on `post_submit` (closes dimagi-internal/ace#1566 — the finalize half of the #1071 class).** The section prescribed `content-form-finish.yaml` unconditionally for every content form while § Suite re-entry between modules already branched, so a multi-module Learn app whose forms are `post_submit: previous` (Nova's default) got a finalize recipe whose bounded advance loop and terminal assert are both keyed on the home-grid `learn-home-start-tile` — a surface that never renders when the finalize lands on the module's own form list. Live: bednet-check-2-visit/20260820-0832 (2 modules, 5 forms, all `previous`). Finalize + re-entry are now stated as one 2x2 (multi/`module` → `content-form-finish` + `learn-suite-reentry`; multi/`previous` → `content-form-finish-to-suite` + `learn-suite-reentry-from-module`; single-module → `content-form-finish-to-suite`, no re-entry). Enforced by `test/mcp/mobile/static-recipe-invariants.test.ts § home-anchored finalize is post_submit-gated`. | ACE team |
