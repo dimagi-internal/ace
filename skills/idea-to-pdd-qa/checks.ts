@@ -15,6 +15,7 @@
 
 import type { QACheck, QACheckContext, QACheckResult } from '../../lib/qa-types';
 import { normalizeDriveExport } from '../../lib/drive-export';
+import { parseStateTaxonomy } from '../../lib/entity-state-taxonomy';
 
 export const REQUIRED_SECTIONS = [
   'Archetype',
@@ -160,24 +161,38 @@ export function checkAllRequiredSectionsPresent(raw: string): QACheckResult {
 }
 
 /**
- * Check 2: Archetype is declared (frontmatter or body) and value is in the valid enum.
+ * Extract the archetype a PDD declares, without judging it.
+ *
+ * Shared by `checkArchetypeDeclared` (which validates it against the enum)
+ * and by every archetype-CONDITIONAL check, so a PDD cannot read as one
+ * archetype to the validator and another to a gate. Returns the raw declared
+ * string — the caller decides whether an unrecognised value is its problem.
+ *
+ * Frontmatter WINS over the body form, matching the order below: a fixture or
+ * PDD carrying both must not read one way here and another way downstream.
  */
-export function checkArchetypeDeclared(raw: string): QACheckResult {
+export function extractArchetype(raw: string): string | undefined {
   const pdd = normalizeDriveExport(raw);
-  let archetype: string | undefined;
 
   // Frontmatter form: `archetype: <value>`
   const frontmatter = pdd.match(/^---\s*\n([\s\S]*?)\n---/);
   if (frontmatter) {
     const m = frontmatter[1].match(/^archetype:\s*(\S+)/m);
-    if (m) archetype = m[1];
+    if (m) return m[1];
   }
 
   // Body form: `**Archetype:** <value>` or `Archetype: <value>` near the top.
-  if (!archetype) {
-    const m = pdd.match(/Archetype[:\s]*\*{0,2}\s*(atomic-visit|longitudinal-visits|focus-group|multi-stage)\b/im);
-    if (m) archetype = m[1];
-  }
+  const m = pdd.match(/Archetype[:\s]*\*{0,2}\s*(atomic-visit|longitudinal-visits|focus-group|multi-stage)\b/im);
+  if (m) return m[1];
+
+  return undefined;
+}
+
+/**
+ * Check 2: Archetype is declared (frontmatter or body) and value is in the valid enum.
+ */
+export function checkArchetypeDeclared(raw: string): QACheckResult {
+  const archetype = extractArchetype(raw);
 
   if (!archetype) {
     return {
@@ -700,6 +715,96 @@ export function checkProgramParametersCoherent(raw: string): QACheckResult {
   return { pass: true, detail: `${params.size} program parameters, no contradictions` };
 }
 
+/**
+ * Check: a `longitudinal-visits` PDD carries a PARSEABLE
+ * `entity_state_taxonomy` row in § Program Parameters.
+ *
+ * Why this is a Phase-1 gate (dimagi-internal/ace#1783). ace#1564 moved the
+ * followed entity's state model out of § Entity Lifecycle prose and into a
+ * typed § Program Parameters row, and made its absence a **HALT** in Phase 3
+ * — `pdd-to-learn-app` and `pdd-to-deliver-app` both parse
+ * `program_parameters.entity_state_taxonomy` with `parseStateTaxonomy` before
+ * composing the Nova brief, and `declared: false` or a non-empty `problems`
+ * list stops the build rather than licensing the architect to invent the
+ * partner's own phase names. It did **not** add the matching Phase-1
+ * requirement, so a PDD with no row passed `idea-to-pdd-qa` and only died in
+ * Phase 3.
+ *
+ * On `bednet-check-2-visit/20260828-0629` that is exactly what happened: 9/9
+ * in Phase 1, then a `[BLOCKER]` at Phase 3 Step 1 — after two clean phases,
+ * at the most expensive point in the run — for a gap that is a one-line edit
+ * at authoring time. This check moves the failure to where the fix is cheap.
+ *
+ * Two deliberate design choices:
+ *
+ *  1. **Archetype-conditional, matching the halt's own trigger.** The Phase-3
+ *     component fires "always for `archetype: longitudinal-visits`" and only
+ *     there — an `atomic-visit` PDD has no followed entity to have states, so
+ *     requiring the row everywhere would be a new false gate.
+ *  2. **It reuses `parseStateTaxonomy`, the SAME parser Phase 3 halts on.**
+ *     Re-implementing "is it declared?" here is how the two skills disagreed
+ *     in the first place. Sharing the parser makes agreement structural: any
+ *     value that would HALT Phase 3 fails Phase 1, and nothing else does.
+ */
+export function checkEntityStateTaxonomyForLongitudinal(raw: string): QACheckResult {
+  const archetype = extractArchetype(raw);
+  if (archetype !== 'longitudinal-visits') {
+    return {
+      pass: true,
+      detail: `not applicable (archetype ${archetype ? `\`${archetype}\`` : 'not declared'})`,
+    };
+  }
+
+  const body = extractSection(normalizeDriveExport(raw), 'Program Parameters');
+  if (body === null) {
+    // A missing section is `program_parameters_coherent`'s failure to report;
+    // two checks failing on one cause reads as two defects.
+    return {
+      pass: true,
+      detail: 'not applicable (no § Program Parameters — see program_parameters_coherent)',
+    };
+  }
+
+  const params = parseProgramParameters(body);
+  const parsed = parseStateTaxonomy(params.get('entity_state_taxonomy'));
+
+  const REMEDIATION =
+    'Add an `| entity_state_taxonomy | ... |` row to § Program Parameters using the one-line grammar ' +
+    '`<value>=<label> (steps <a>-<b>); <value>=<label> ... [source: <doc>]` — e.g. ' +
+    '`| entity_state_taxonomy | 1=Planning (steps 1-14); 2=Delivery (steps 15-22); 3=Transition (steps 23-24) [source: FCAP Structure guide.pdf] |`. ' +
+    'The `(steps ...)` clause is optional per state and the trailing `[source: ...]` is optional for the taxonomy; ' +
+    "name a source document when the states come from one in the run's `inputs/`, and the build will brief from THAT file. " +
+    'Take the values, labels and partition from what the PDD already says in § Entity Lifecycle — this is a transcription, not a new decision. ' +
+    'Prose is not a handoff: Phase 3 reads only this row (`parseStateTaxonomy`), so without it `pdd-to-learn-app` and ' +
+    "`pdd-to-deliver-app` both HALT rather than invent the partner's own phase names (ace#1564, ace#1783).";
+
+  if (!parsed.declared) {
+    return {
+      pass: false,
+      detail:
+        'archetype is `longitudinal-visits` but § Program Parameters declares no parseable ' +
+        '`entity_state_taxonomy`; Phase 3 HALTs on exactly this (`declared: false`)',
+      auto_fix_hint: REMEDIATION,
+    };
+  }
+
+  if (parsed.problems.length > 0) {
+    return {
+      pass: false,
+      detail:
+        `archetype is \`longitudinal-visits\` and entity_state_taxonomy is malformed: ` +
+        `${parsed.problems.join('; ')} — Phase 3 HALTs on a non-empty \`problems\` list just as ` +
+        'it does on an absent row',
+      auto_fix_hint: REMEDIATION,
+    };
+  }
+
+  return {
+    pass: true,
+    detail: `entity_state_taxonomy declares ${parsed.states.length} state(s), parses clean`,
+  };
+}
+
 export const CHECKS: QACheck[] = [
   {
     id: 'pdd_is_native_google_doc',
@@ -750,6 +855,13 @@ export const CHECKS: QACheck[] = [
     description:
       'Declared payment unit is not finer than the entity_id grain that actually resolves payable units',
     run: checkPaymentUnitMatchesEntityGrain,
+  },
+  {
+    id: 'entity_state_taxonomy_declared_for_longitudinal',
+    type: 'static',
+    description:
+      'A longitudinal-visits PDD carries a parseable entity_state_taxonomy row in § Program Parameters — the row Phase 3 HALTs on',
+    run: checkEntityStateTaxonomyForLongitudinal,
   },
   {
     id: 'reviewer_comment_table_if_referenced',

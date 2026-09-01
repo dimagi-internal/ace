@@ -291,8 +291,8 @@ describe('checkReviewerCommentTableIfReferenced', () => {
 });
 
 describe('CHECKS array', () => {
-  test('exports nine checks in stable order', () => {
-    expect(CHECKS).toHaveLength(9);
+  test('exports ten checks in stable order', () => {
+    expect(CHECKS).toHaveLength(10);
     const ids = CHECKS.map((c) => c.id);
     expect(ids).toEqual([
       'pdd_is_native_google_doc',
@@ -303,6 +303,7 @@ describe('CHECKS array', () => {
       'evidence_model_layered',
       'program_parameters_coherent',
       'payment_unit_matches_entity_grain',
+      'entity_state_taxonomy_declared_for_longitudinal',
       'reviewer_comment_table_if_referenced',
     ]);
   });
@@ -634,6 +635,6 @@ describe('Drive markdown-export escaping (#1617)', () => {
         return `${c.id}=${r.pass}`;
       });
     expect(score(exported)).toEqual(score(numbered));
-    expect(score(exported).filter((s) => s.endsWith('=true'))).toHaveLength(9);
+    expect(score(exported).filter((s) => s.endsWith('=true'))).toHaveLength(10);
   });
 });
