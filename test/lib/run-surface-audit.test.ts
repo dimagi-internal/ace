@@ -35,6 +35,7 @@ import {
   auditDeepQaParity,
   auditConfidentiality,
   auditContract,
+  auditArchetypeContradiction,
   auditDecisionRows,
   auditDocFidelity,
   auditGuideScreenshots,
@@ -1237,5 +1238,183 @@ describe('a deep gate that ran must not render as one that did not', () => {
     const findings = auditContract(healthyPayload({ deep_qa: { stages: [] } }));
     expect(codes(findings)).not.toContain('CONTRACT-UNKNOWN-SECTION');
     expect(codes(findings)).not.toContain('CONTRACT-MISSING-SECTION');
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════
+// auditDecisionRows — archetype contradiction across rows (ace#1859).
+//
+// `bednet-check-2-visit/20260828-0629` published TWO archetypes for one run
+// on the anonymous Decisions tab: Phase 1 said `longitudinal-visits`, Phase 3
+// said `atomic-visit` with `evidence_basis: stated`, citing a document whose
+// line 7 reads `Archetype: longitudinal-visits`. `grep -n "atomic-visit"
+// run_state.yaml` returned nothing — the run's own record never contained the
+// string. Every structural check (classify_phase_writeback,
+// verify_phase_artifacts, verify_phase_products) was green.
+//
+// This is the `misleading` tier the module's header calls out: nothing was
+// unreachable, the page just said something untrue about what kind of
+// programme this is. It blocks sharing, which is the whole point — the damage
+// was that an outsider read it.
+// ═══════════════════════════════════════════════════════════════════
+
+describe('auditDecisionRows — archetype contradiction (ace#1859)', () => {
+  const arch = (over: Record<string, unknown> = {}) => ({
+    id: 'archetype-selection',
+    phase: 'design',
+    phase_raw: '1-design',
+    phase_label: 'Design',
+    phase_ordinal: 1,
+    skill: 'idea-to-pdd',
+    question: 'Which delivery archetype best fits the intervention?',
+    ai_default: 'longitudinal-visits',
+    status: 'ai-default',
+    evidence_basis: 'stated',
+    ...over,
+  });
+
+  const coverage = (over: Record<string, unknown> = {}) => ({
+    id: 'test-archetype-coverage',
+    phase: 'commcare',
+    phase_raw: '3-commcare',
+    phase_label: 'CommCare',
+    phase_ordinal: 3,
+    skill: 'app-test-cases',
+    question: 'Is every archetype covered by a smoke?',
+    ai_default: 'longitudinal-visits covered by both smokes',
+    status: 'ai-default',
+    evidence_basis: 'stated',
+    ...over,
+  });
+
+  it('NEGATIVE — flags the real ace#1859 row and blocks the share gate', () => {
+    const findings = auditDecisionRows({
+      rows: [arch(), coverage({ ai_default: 'atomic-visit covered by both smokes' })],
+    });
+    expect(codes(findings)).toEqual(['DECISION-ARCHETYPE-CONTRADICTION']);
+    expect(findings[0].severity).toBe('misleading');
+    expect(isBlocking(findings[0])).toBe(true);
+    expect(findings[0].where).toContain('test-archetype-coverage');
+    expect(findings[0].detail).toContain('atomic-visit');
+    expect(findings[0].detail).toContain('longitudinal-visits');
+    expect(findings[0].fix).toBeTruthy();
+  });
+
+  it('NEGATIVE — flags it whichever row is the odd one out', () => {
+    // The rule keys off the run's OWN archetype-selection row, so an
+    // atomic-visit run with a stray longitudinal-visits row is caught too —
+    // it is not hard-wired to one archetype.
+    const findings = auditDecisionRows({
+      rows: [arch({ ai_default: 'atomic-visit' }), coverage()],
+    });
+    expect(codes(findings)).toEqual(['DECISION-ARCHETYPE-CONTRADICTION']);
+    expect(findings[0].detail).toContain('atomic-visit');
+  });
+
+  it('POSITIVE — the corrected row is clean', () => {
+    expect(auditDecisionRows({ rows: [arch(), coverage()] })).toEqual([]);
+  });
+
+  it('POSITIVE — the declaring row alone is clean (its options ARE the vocabulary)', () => {
+    expect(auditDecisionRows({ rows: [arch()] })).toEqual([]);
+  });
+
+  it('POSITIVE — inert on a run that declared no archetype', () => {
+    // Most runs' summary payloads carry decisions long before Phase 1's row
+    // exists. Inventing a ground truth here would flag every row on the page.
+    expect(
+      auditDecisionRows({ rows: [coverage({ ai_default: 'atomic-visit covered by both smokes' })] }),
+    ).toEqual([]);
+  });
+
+  it('POSITIVE — a row that declares evidence_basis: conflicting is exempt', () => {
+    expect(
+      auditDecisionRows({
+        rows: [
+          arch(),
+          coverage({ ai_default: 'multi-stage covered by both smokes', evidence_basis: 'conflicting' }),
+        ],
+      }),
+    ).toEqual([]);
+  });
+
+  it('does not mask the provenance rules it sits beside', () => {
+    // A row can be BOTH mislabelled by ordinal and naming the wrong archetype;
+    // reporting only one of them would hide work from the reviewer.
+    const findings = auditDecisionRows({
+      rows: [
+        arch(),
+        coverage({ ai_default: 'atomic-visit covered by both smokes', phase_label: 'Phase 3' }),
+      ],
+    });
+    expect(codes(findings).sort()).toEqual(
+      ['DECISION-ARCHETYPE-CONTRADICTION', 'DECISION-PHASE-LABEL-DRIFT'].sort(),
+    );
+  });
+});
+
+// The rule reached DIRECTLY, not only through `auditDecisionRows`. The
+// negative-control ratchet (test/skills/negative-control-ratchet.test.ts)
+// requires every check surface to have both controls exercised on the surface
+// itself — reaching it only through a caller is how a check ends up never
+// having run against the input it exists to reject.
+describe('auditArchetypeContradiction — direct controls', () => {
+  const declaringRow = { id: 'archetype-selection', ai_default: 'longitudinal-visits' };
+
+  it('NEGATIVE — the real ace#1859 pair produces a blocking finding', () => {
+    const findings = auditArchetypeContradiction([
+      declaringRow,
+      { id: 'test-archetype-coverage', ai_default: 'atomic-visit covered by both smokes' },
+    ]);
+    expect(findings).toHaveLength(1);
+    expect(findings[0].code).toBe('DECISION-ARCHETYPE-CONTRADICTION');
+    expect(isBlocking(findings[0])).toBe(true);
+  });
+
+  it('NEGATIVE — reads params.archetype when the payload carries it', () => {
+    const findings = auditArchetypeContradiction([
+      declaringRow,
+      {
+        id: 'test-archetype-coverage',
+        ai_default: 'covered by both smokes',
+        params: { archetype: 'atomic-visit' },
+      },
+    ]);
+    expect(findings.map((f) => f.where)).toEqual([
+      'decisions.rows (test-archetype-coverage).params.archetype',
+    ]);
+  });
+
+  it('NEGATIVE — an OVERRIDE to the wrong archetype is what gets checked', () => {
+    const findings = auditArchetypeContradiction([
+      declaringRow,
+      { id: 'r', ai_default: 'longitudinal-visits', override: 'focus-group' },
+    ]);
+    expect(findings).toHaveLength(1);
+    expect(findings[0].detail).toContain('focus-group');
+  });
+
+  it('POSITIVE — a clean, agreeing set of rows produces nothing', () => {
+    expect(
+      auditArchetypeContradiction([
+        declaringRow,
+        { id: 'test-archetype-coverage', ai_default: 'longitudinal-visits covered by both smokes' },
+        { id: 'payment-unit-count', ai_default: 'one payment unit' },
+      ]),
+    ).toEqual([]);
+  });
+
+  it('POSITIVE — an override BACK to the declared archetype clears the row', () => {
+    expect(
+      auditArchetypeContradiction([
+        declaringRow,
+        { id: 'r', ai_default: 'atomic-visit', override: 'longitudinal-visits' },
+      ]),
+    ).toEqual([]);
+  });
+
+  it('POSITIVE — tolerates junk rows without throwing', () => {
+    expect(auditArchetypeContradiction([null, 'nope', {}, { id: 42 }])).toEqual([]);
+    expect(auditArchetypeContradiction([])).toEqual([]);
   });
 });
