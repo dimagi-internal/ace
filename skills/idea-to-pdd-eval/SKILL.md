@@ -33,7 +33,6 @@ calibration methodology.
 | Phase 1 source | `inputs-manifest.yaml` + each `file_id` in it | source idea pack (the full pack is what the PDD is graded against) |
 | Phase 1 producer | `1-design/idea-to-pdd.md` | the PDD under judgment |
 | Phase 1 producer | `decisions.yaml` (per-run decisions log) | `source_conflict_honesty` dimension — checks whether genuine source conflicts were tagged `evidence_basis: conflicting` with concrete `conflict_signals`, or silently resolved |
-| Phase 1 producer (optional) | `1-design/idea-to-pdd_gate-brief.md` | gate brief if present |
 
 ## Products
 
@@ -65,9 +64,6 @@ filename rule.
    - Decisions log: `ACE/<opp-name>/runs/<run-id>/decisions.yaml` (the
      per-run decisions log `idea-to-pdd` wrote; used by the
      `source_conflict_honesty` dimension).
-   - Optionally the gate brief if present:
-     `ACE/<opp-name>/runs/<run-id>/1-design/idea-to-pdd_gate-brief.md`.
-
    The "source idea" referenced throughout the rest of this skill is
    the union of the manifest's contents, treated as one synthesized
    seed.

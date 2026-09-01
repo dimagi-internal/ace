@@ -29,7 +29,6 @@ Writes (under `ACE/$1/runs/<run-id>/5-ocs/`):
 - ocs-chatbot-qa_transcript-deep.md
 - ocs-chatbot-eval_verdict-deep.yaml
 - ocs-chatbot-eval_report-deep.md
-- ocs-chatbot-eval_gate-brief-deep.md
 
 ### Stage B — Apps deep (skip if `--ocs-only`)
 
