@@ -11,9 +11,10 @@
 import { describe, it, expect } from 'vitest';
 import { mkdtempSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { tmpdir } from 'node:os';
+import { tmpdir, homedir } from 'node:os';
 import {
   resolveUpdateFileContent,
+  resolveInlineOrLocalFile,
   prepareWritePath,
   resolvePatchXformXml,
   resolveUploadMultimediaBytes,
@@ -310,5 +311,83 @@ describe('prepareWritePath (#1218 / #1247)', () => {
     // a relative path writes somewhere unexpected (same guard as
     // drive_read_file's writeToPath).
     expect(() => prepareWritePath('relative/a.ccz')).toThrow(/not_absolute/);
+  });
+});
+
+describe('resolveInlineOrLocalFile — the shared write-side handle (#1780)', () => {
+  it('refuses both inline and localFilePath, naming the atom and its inline param', () => {
+    expect(() =>
+      resolveInlineOrLocalFile({
+        atom: 'drive_create_doc_from_markdown', inlineParam: 'markdown',
+        inline: 'x', localFilePath: '/tmp/y.md',
+      }),
+    ).toThrow(/drive_create_doc_from_markdown: pass exactly one of markdown or localFilePath/);
+  });
+
+  it('refuses neither', () => {
+    expect(() =>
+      resolveInlineOrLocalFile({ atom: 'drive_create_file', inlineParam: 'content' }),
+    ).toThrow(/drive_create_file: must supply one of content or localFilePath/);
+  });
+
+  it('returns the inline payload unchanged when no ceiling is set', () => {
+    // The create atoms deliberately ship with NO ceiling (ace#1780): the
+    // handle is additive, a refusal is a contract change for every caller.
+    const big = 'x'.repeat(200_000);
+    expect(
+      resolveInlineOrLocalFile({ atom: 'drive_create_file', inlineParam: 'content', inline: big }),
+    ).toBe(big);
+  });
+
+  it('reads utf-8 off disk when localFilePath is given', () => {
+    const p = join(mkdtempSync(join(tmpdir(), 'ace-inline-')), 'pdd.md');
+    writeFileSync(p, '# PDD\n\nem—dash and “smart quotes”\n', 'utf-8');
+    expect(
+      resolveInlineOrLocalFile({ atom: 'drive_create_doc_from_markdown', inlineParam: 'markdown', localFilePath: p }),
+    ).toBe('# PDD\n\nem—dash and “smart quotes”\n');
+  });
+
+  it('gives BYTE-IDENTICAL results for two atoms reading the same file — the ace#1780 correctness half', () => {
+    // idea-to-pdd steps 6 + 6b write one document to two Drive files. Inline,
+    // that is two independent emissions with nothing verifying they match.
+    const p = join(mkdtempSync(join(tmpdir(), 'ace-inline-')), 'pdd.md');
+    const body = '# PDD\n\n' + 'paragraph\n'.repeat(5_000);
+    writeFileSync(p, body, 'utf-8');
+    const rendered = resolveInlineOrLocalFile({ atom: 'drive_create_doc_from_markdown', inlineParam: 'markdown', localFilePath: p });
+    const companion = resolveInlineOrLocalFile({ atom: 'drive_create_file', inlineParam: 'content', localFilePath: p });
+    expect(rendered).toBe(companion);
+    expect(rendered).toBe(body);
+  });
+
+  it('still refuses a credential path (ace#1110 F2), naming the calling atom', () => {
+    // Assert the GUARD's message, not merely "it threw" — an ENOENT from a
+    // path that happens not to exist would satisfy a bare .toThrow() and the
+    // test would pass with the guard deleted.
+    expect(() =>
+      resolveInlineOrLocalFile({
+        atom: 'drive_create_file', inlineParam: 'content',
+        localFilePath: join(homedir(), '.ssh', 'id_rsa'),
+      }),
+    ).toThrow(/drive_create_file: refusing to touch .* basename matches/);
+  });
+
+  it('refuses a credential path that EXISTS, so the guard is what rejects it', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'ace-inline-'));
+    const p = join(dir, '.env');
+    writeFileSync(p, 'ACE_HQ_PASSWORD=hunter2\n', 'utf-8');
+    expect(() =>
+      resolveInlineOrLocalFile({
+        atom: 'drive_create_doc_from_markdown', inlineParam: 'markdown', localFilePath: p,
+      }),
+    ).toThrow(/drive_create_doc_from_markdown: refusing to touch/);
+  });
+
+  it('honours an inlineCeiling when one IS supplied', () => {
+    expect(() =>
+      resolveInlineOrLocalFile({
+        atom: 'drive_update_file', inlineParam: 'content',
+        inline: 'x'.repeat(11), inlineCeiling: 10,
+      }),
+    ).toThrow(/oversized_inline_content.*localFilePath/s);
   });
 });
