@@ -34,7 +34,7 @@ keeps re-runs clean).
 | Mode | What it does | LLM cost | Writes |
 |---|---|---|---|
 | `--quick` | Structural-only: walk the artifact manifest for the opp's current phase, confirm every required (non-dated) artifact exists in the run folder. No verdict aggregation. | None | stdout summary + `10-closeout/opp-eval/opp-eval_scorecard-quick.md` |
-| `--deep` | Structural check **plus** aggregation: discover every `runs/<run-id>/<phase>/*_verdict*.yaml`, roll scores into skill-category dimensions, compute run-level verdict, emit per-skill narrative + improvement recommendations | LLM-as-Judge (recommendation drafting) | `10-closeout/opp-eval/opp-eval_scorecard-deep.md` (human) + `10-closeout/opp-eval/opp-eval_verdict-deep.yaml` (machine) + `10-closeout/opp-eval/opp-eval_gate-brief-deep.md` (uniform contract; does not gate a phase today) |
+| `--deep` | Structural check **plus** aggregation: discover every `runs/<run-id>/<phase>/*_verdict*.yaml`, roll scores into skill-category dimensions, compute run-level verdict, emit per-skill narrative + improvement recommendations | LLM-as-Judge (recommendation drafting) | `10-closeout/opp-eval/opp-eval_scorecard-deep.md` (human) + `10-closeout/opp-eval/opp-eval_verdict-deep.yaml` (machine) |
 | `--monitor` | Same as `--deep`, plus append a one-liner to `10-closeout/opp-eval/opp-eval_trend.md` | LLM-as-Judge | Same as `--deep` + trend append |
 
 If no mode is passed, default to `--quick`.
@@ -223,13 +223,12 @@ If no mode is passed, default to `--quick`.
     `ACE/<opp-name>/runs/<run-id>/10-closeout/opp-eval/opp-eval_scorecard-<mode>.md`.
     Shape documented in § Scorecard Output below.
 
-13. **Write the gate brief (uniform contract).** For `--deep` and
-    `--monitor`, emit `ACE/<opp-name>/runs/<run-id>/10-closeout/opp-eval/opp-eval_gate-brief-deep.md`
-    (same path used by both modes — latest wins) using the shape in
-    `agents/ace-orchestrator.md § Gate Brief Contract`. opp-eval does
-    **not** gate any phase today; the brief exists for contract
-    uniformity so future automation can consume it without a special
-    case. See § Gate Brief below.
+<!-- 0.13.116: gate-brief write step removed (step 13 was
+"Write the gate brief (uniform contract)"). The orchestrator composes
+pause-time summaries directly from verdict YAMLs, and
+`lib/artifact-manifest.ts` registers no gate-brief artifact. The
+`## Gate Brief` section below stays as a specification of that summary.
+Cleanup completed 2026-09-01, dimagi-internal/ace#1880. -->
 
 14. **In `--monitor` mode**, append a single-line entry to
     `ACE/<opp-name>/runs/<run-id>/10-closeout/opp-eval/opp-eval_trend.md`
@@ -447,16 +446,17 @@ Overall Score: X.X / 10 · Verdict: <pass | warn | fail>
 <Any [INFO] lines: missing PDD, malformed verdict YAMLs, skills without rubrics, thin coverage, etc.>
 ```
 
-## Gate Brief
+## Gate Brief — reference only, NOT an artifact this skill writes
 
-opp-eval does **not** gate any phase today. The brief is written for
-contract uniformity so future automation (or ad-hoc operator review)
-can consume it with the same reader used for the 5 real gate briefs.
+**This skill writes no gate-brief file.** The write step was removed in
+0.13.116 and `lib/artifact-manifest.ts` registers no gate-brief artifact.
+opp-eval does not gate any phase in any case. What follows specifies the
+*content* an operator (or future automation) should read out of this
+skill's scorecard + verdict YAML — it is not a set of write instructions.
+Do not emit it as a file.
 
-Location: `ACE/<opp-name>/runs/<run-id>/10-closeout/opp-eval/opp-eval_gate-brief-deep.md` (single path
-for both `--deep` and `--monitor`; latest invocation wins).
-
-Shape follows `agents/ace-orchestrator.md § Gate Brief Contract`:
+Source artifacts: `10-closeout/opp-eval/opp-eval_scorecard-<mode>.md` +
+`10-closeout/opp-eval/opp-eval_verdict-deep.yaml`.
 
 - **Artifact Under Review:** path to the scorecard at
   `ACE/<opp-name>/runs/<run-id>/10-closeout/opp-eval/opp-eval_scorecard-<mode>.md`;
@@ -492,10 +492,10 @@ Shape follows `agents/ace-orchestrator.md § Gate Brief Contract`:
 ## Mode Behavior
 
 - **Auto:** Walk the manifest, aggregate verdicts, write
-  scorecard + verdict + brief. No pause. Print stdout summary.
+  scorecard + verdict. No pause. Print stdout summary.
 - **Review:** Pause after aggregation to show the scorecard before
-  writing the final files. The gate brief is advisory either way —
-  there is no Approve/Reject prompt.
+  writing the final files. opp-eval is advisory either way — there is
+  no Approve/Reject prompt.
 
 ## Dry-Run Behavior
 

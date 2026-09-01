@@ -306,11 +306,11 @@ next_stage_kickoff_window}`
 
 **Important:** `llo-launch` may be invoked MULTIPLE times across a
 multi-stage opp's lifetime — once per stage transition. Each
-invocation re-emits a stage-specific gate brief + launch record. The
-gate brief path is the same
-(`runs/<run-id>/9-execution-manager/llo-launch_gate-brief.md`) —
-subsequent runs overwrite the prior file; prior launch records stay
-in `runs/<run-id>/9-execution-manager/llo-launch_record-stage-N.md` so
+invocation re-emits a stage-specific launch record. (0.13.116 removed
+the separate gate-brief artifact; the orchestrator composes the
+pause-time summary from this skill's verdict files instead.) Prior
+launch records stay in
+`runs/<run-id>/9-execution-manager/llo-launch_record-stage-N.md` so
 history is preserved. (The
 `runs/<run-id>/9-execution-manager/llo-launch_record.md` entry tracks
 the latest/current stage.)

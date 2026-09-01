@@ -36,8 +36,8 @@ and what should I improve?"
   - `--deep` — structural check **plus** aggregation: walk every phase
     folder under `runs/<run-id>/` collecting `*_verdict*.yaml`, compute
     category-level + run-level scores, draft improvement
-    recommendations. Writes scorecard, verdict YAML, and an advisory
-    gate brief into `8-closeout/opp-eval/`.
+    recommendations. Writes scorecard + verdict YAML into
+    `8-closeout/opp-eval/`.
   - `--monitor` — same as `--deep` plus append a one-liner to
     `8-closeout/opp-eval/opp-eval_trend.md` so drift is visible
     run-over-run.
@@ -90,8 +90,6 @@ All under `ACE/<opp-name>/runs/<run-id>/8-closeout/opp-eval/`:
 - `opp-eval_scorecard-<mode>.md` (human-readable)
 - `opp-eval_verdict-<mode>.yaml` (machine-readable; `--deep` /
   `--monitor` only)
-- `opp-eval_gate-brief-deep.md` (advisory; `--deep` / `--monitor`
-  only — does not gate a phase)
 - `opp-eval_trend.md` (append; `--monitor` only)
 
 ## Examples
@@ -104,7 +102,7 @@ All under `ACE/<opp-name>/runs/<run-id>/8-closeout/opp-eval/`:
 /ace:eval my-opp --mode deep
   → Walk runs/<run-id>/<phase>/*_verdict*.yaml, compute run-level
     score across 7 categories, draft recommendations. Writes
-    scorecard + verdict + gate brief under 8-closeout/opp-eval/.
+    scorecard + verdict under 8-closeout/opp-eval/.
 
 /ace:eval my-opp --mode monitor
   → Same as --deep plus append a trend row to

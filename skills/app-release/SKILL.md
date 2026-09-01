@@ -312,7 +312,7 @@ procedure below to rediscover.
 
     6. **On exhaustion (3 failed attempts),** surface the FINAL
        `BuildRejectedError` to the orchestrator as a `[BLOCKER]` in
-       `app-release_gate-brief.md` with: every iteration's
+       this skill's returned summary with: every iteration's
        `error_text`, every Nova edit dispatched, the final
        `hq_app_id`, the operator-facing remediation (manual CCHQ
        form-designer edit on the final orphan id, OR wait for Nova
@@ -367,8 +367,8 @@ procedure below to rediscover.
      → slug `module_6_stage_2_sample_prep_drying_bagging_shipment`
      (52 chars). See `docs/learnings/2026-05-12-boundary-probe-registry.md`.
 
-   On `collision_count > 0`, halt with `[BLOCKER]` in
-   `app-release_gate-brief.md`. The brief MUST name every
+   On `collision_count > 0`, halt with a `[BLOCKER]` in this skill's
+   returned summary to the orchestrator. The BLOCKER MUST name every
    `collisions.deliver_units[].slug` + the `kept` form + each `dropped`
    form so the operator can grep the source. Concrete remediation:
    re-build the affected app (typically Deliver) with **one form per
