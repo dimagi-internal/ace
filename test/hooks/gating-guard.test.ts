@@ -221,3 +221,80 @@ describe('gating_guard.py — search-before-create rail (issue-filing audit 2026
     expect(r.decision).toBeNull();
   });
 });
+
+/**
+ * Shared-/tmp `--body-file` rail (ace#1819).
+ *
+ * While filing ace#1818, a heredoc write to `/tmp/issue_body.md` and the
+ * `gh issue create` that consumed it ran in ONE Bash call. The write was
+ * denied by the sandbox, so the body was never written — but the path
+ * ALREADY EXISTED, holding a stale file left by an unrelated session on a
+ * DIFFERENT macOS account (`/private/tmp/claude-501/...-jjackson-...`). gh
+ * read that file and published it. ace#1818 shipped with the right title and
+ * 3,876 characters of a foreign session's content, including another
+ * operator's absolute worktree path, into a dimagi-internal tracker.
+ *
+ * Two properties make it worth a rail rather than a shrug:
+ *
+ *   1. It is SILENT. The write failed loudly; the create succeeded. Nothing
+ *      correlates the two, so the transcript reads as success.
+ *   2. It is a cross-session content-LEAK vector, and the precondition is
+ *      real and permanent on this host: two macOS accounts run ACE
+ *      concurrently (measured in ace#1821 — nine live `ace-mobile` MCPs on
+ *      one account, one on the other). Any file at a predictable shared-tmp
+ *      path, from any concurrent session, can be published this way.
+ *
+ * The generic form: **any `--body-file` argument pointing at a shared,
+ * predictable, non-session-scoped path can silently publish content the
+ * agent did not write.**
+ *
+ * The rail is scoped as narrowly as the defect: only `gh issue|pr` +
+ * create/comment/edit, only the `--body-file`/`-F` argument, and only when
+ * the path sits under the SHARED tmp root. Every session already gets a
+ * private scratchpad at `/private/tmp/claude-<uid>/<project>/<session-uuid>/`,
+ * which the rail must never touch — a rail that taxed legitimate scratchpad
+ * use would be worse than the defect (CLAUDE.md: rails stay NARROW).
+ */
+describe('gating_guard.py — shared-/tmp --body-file rail (ace#1819)', () => {
+  it.each([
+    // The exact ace#1818 defect.
+    ['the ace#1818 defect verbatim', 'gh issue create --title "x" --body-file /tmp/issue_body.md --label harness'],
+    ['/private/tmp spelling (same directory on macOS)', 'gh pr create --title x --body-file /private/tmp/pr_body.md'],
+    ['-F short form', 'gh issue comment 1818 -F /tmp/body.md'],
+    ['--body-file= equals form', 'gh issue create --body-file=/tmp/x.md --label harness'],
+    ['flags before the body-file', 'gh issue create -R dimagi-internal/ace --title t --body-file /tmp/b.md'],
+    ['line continuation', 'gh issue edit 1818 \\\n  --body-file /tmp/b.md'],
+    ['quoted path', 'gh issue create --title t --body-file "/tmp/issue body.md"'],
+    ['a nested but still shared tmp path', 'gh issue create --title t --body-file /tmp/ace/body.md'],
+    ['gh pr comment', 'gh pr comment 1773 -F /private/tmp/note.md'],
+  ])('DENIES a --body-file at a shared tmp path: %s', (_label, command) => {
+    const r = runGuard('Bash', { command });
+    expect(r.exitCode).toBe(2);
+    expect(r.stderr).toContain('scratchpad');
+  });
+
+  // The rail must cost the correct workflow nothing. The session scratchpad
+  // is the documented place for exactly this file, and it lives UNDER /tmp —
+  // so the discriminator is the `claude-<uid>/` segment, not the tmp prefix.
+  it.each([
+    [
+      'session scratchpad, /private/tmp spelling',
+      'gh issue create --title t --body-file /private/tmp/claude-502/-Users-acedimagi-emdash-worktrees-ace/943bfed9-e85c-4fa7-a048-8e8a7530ba36/scratchpad/body.md',
+    ],
+    [
+      'session scratchpad, /tmp spelling',
+      'gh issue comment 1776 -F /tmp/claude-502/-Users-acedimagi-emdash-worktrees-ace/943bfed9/scratchpad/comment.md',
+    ],
+    ['inline --body', 'gh issue create --title t --body "a real inline body" --label harness'],
+    ['a repo-relative file', 'gh issue create --title t --body-file ./pr-body.md'],
+    ['a home-directory file', 'gh pr create --title t --body-file ~/notes/pr-body.md'],
+    ['reading a tmp file with no gh publish', 'cat /tmp/issue_body.md'],
+    ['a plain listing', 'gh issue list --state open --limit 30'],
+    ['viewing an issue', 'gh issue view 1819 --json body'],
+    ['gh api is out of scope — -F there means --field', 'gh api repos/dimagi-internal/ace/issues -F body=@/tmp/x.md'],
+  ])('ALLOWS %s', (_label, command) => {
+    const r = runGuard('Bash', { command });
+    expect(r.exitCode).toBe(0);
+    expect(r.decision).toBeNull();
+  });
+});
