@@ -42,6 +42,7 @@ import type {
   SnapshotResult, DeviceUserStateClass, DeviceStateHealLog, LocalBootstrapConfig,
   TestUserCredentials, EnsureAvdRunningOptions,
   VideoArtifact, LocalDiagnostics, DeviceProbeFailures, RunRecipeOptions,
+  MaestroDriverProbeResult,
 } from './types.js';
 import { logInfo } from './logging.js';
 import {
@@ -1222,6 +1223,32 @@ export class MobileClient {
       logInfo(`local_bootstrap: CommCare ${apkVersion} not installed on ${avd.serial} — downloading + installing`);
       const apkPath = await this.ensureCommCareApkCached(apkVersion);
       await this.avd.installApk(avd.name, apkPath);
+      // VERIFY THE INSTALL, do not assume it (dimagi-internal/ace#1818).
+      //
+      // `installApk` reporting success is a record of a CALL, not of a
+      // state — the same distinction #1067 forced on the `registered`
+      // step below. On bednet-check-2-visit/20260828-0629 the bootstrap
+      // proceeded from here to Step 3's registration recipe against an
+      // AVD with ZERO third-party packages, and Maestro then burned the
+      // full 600s chunk budget driving an app that did not exist. The
+      // error named `connect-register-to-otp.yaml`, so triage went at the
+      // recipe's selectors — four wrong diagnoses before the truth.
+      //
+      // A ~200ms `pm list packages org.commcare.dalvik` is the whole
+      // difference between that and a typed error naming the cause.
+      // `listPackages` THROWS on an unanswerable query rather than
+      // returning an empty list (ace#1155), so an absence here is a real
+      // observation, not a failed read.
+      const afterInstall = await this.avd.listPackages(avd.name, 'org.commcare.dalvik');
+      if (!afterInstall.includes('org.commcare.dalvik')) {
+        throw new DeviceUserStateError('commcare-not-installed', [
+          `apk-install:reported-success(${apkVersion})`,
+          `verify:org.commcare.dalvik absent from \`pm list packages\` on ${avd.serial}`,
+          'Refusing to run a registration recipe against a device with no CommCare app — ' +
+            'that wedges Maestro for the full chunk budget and reports the RECIPE as the fault. ' +
+            'Check AVD disk space, then rerun /ace:mobile-bootstrap.',
+        ]);
+      }
       steps.push('apk-installed');
     } else {
       steps.push('apk-present');
@@ -1443,6 +1470,40 @@ export class MobileClient {
       return;
     }
     const attempts: string[] = [];
+
+    // Stage 0: is the driver even INSTALLED? ~50ms of `pm list packages`,
+    // and it is what stops Stage 1 from short-circuiting the whole install
+    // path on a device that has no driver at all (dimagi-internal/ace#1818).
+    //
+    // Why Stage 1 cannot answer this on its own: `probeDriver` runs
+    // `maestro --host=localhost --port=<adbPort> hierarchy`, i.e. the
+    // DIRECT-TCP dadb path keyed on a HOST port. A zero exit there proves
+    // "something answered on localhost:<port>", not "the driver is present
+    // on THIS serial" — and on a host running more than one emulator (two
+    // macOS accounts each running ACE is the live case, ace#1819) those are
+    // different claims. On bednet-check-2-visit/20260828-0629 the probe
+    // returned `healthy: true` while `pm list packages | grep -i maestro`
+    // was empty on the same serial minutes later; the early return skipped
+    // Stage 1.5's install, and the bootstrap then drove a registration
+    // recipe at a device with no gRPC server for the full 600s budget,
+    // reporting the RECIPE as the fault.
+    //
+    // ace#1155 applies: a FAILED query is not a negative answer. When the
+    // query cannot be answered (`queryOk: false`) we fall through to the
+    // old probe-first behaviour rather than manufacturing an absence.
+    const pkgs = await this.maestro.driverPackagesInstalled(serial);
+    attempts.push(
+      `packages-before:app=${pkgs.app},test=${pkgs.test}${pkgs.queryOk ? '' : ',query-failed'}`,
+    );
+    const knownAbsent = pkgs.queryOk && (!pkgs.app || !pkgs.test);
+    if (knownAbsent) {
+      logInfo(
+        `maestro_driver: driver packages absent on ${serial} ` +
+          `(dev.mobile.maestro=${pkgs.app}, dev.mobile.maestro.test=${pkgs.test}) — ` +
+          `skipping the stage 1 liveness probe and installing directly`,
+      );
+    }
+
     // Stage 1: cheap probe. 20s budget covers the Maestro v2.x CLI's
     // JVM cold-start (~10-12s steady-state on a healthy AVD), measured
     // on v2.3.0 / Java 17 — the v1.39 budget of 8s ran shorter than v2's
@@ -1452,7 +1513,9 @@ export class MobileClient {
     // at 8s, full uninstall+reinstall ran, then probe2 hit the post-tear-down
     // gRPC bind race and surfaced UNAVAILABLE). See
     // docs/learnings/2026-05-19-maestro-v2-probe-timeout.md.
-    let probe = await this.maestro.probeDriver(adbPort, 20_000);
+    let probe = knownAbsent
+      ? { healthy: false, reason: 'skipped — driver packages absent on this serial' }
+      : await this.maestro.probeDriver(adbPort, 20_000);
     if (probe.healthy) return;
     attempts.push(`probe1: ${probe.reason ?? 'unknown'}`);
     logInfo(`maestro_driver: stage 1 probe unhealthy on ${serial} — attempting install + repair`);
@@ -1515,13 +1578,66 @@ export class MobileClient {
    * given serial. Used by `ace-doctor` to gate the `mobile_infra` line
    * before `/ace:run` starts.
    */
-  async probeMaestroDriver(serial: string, timeoutMs: number = 8_000): Promise<{ healthy: boolean; reason?: string; adbPort: number | null }> {
+  async probeMaestroDriver(serial: string, timeoutMs: number = 8_000): Promise<MaestroDriverProbeResult> {
     const adbPort = AvdBackend.adbPortFromSerial(serial);
     if (adbPort === null) {
-      return { healthy: false, reason: 'serial is not an emulator-NNNN (real-device probe not supported)', adbPort: null };
+      return {
+        healthy: false,
+        reason: 'serial is not an emulator-NNNN (real-device probe not supported)',
+        adbPort: null,
+        portKind: null,
+        driverPackages: null,
+      };
+    }
+    // The port label, stated once so nobody has to re-derive it.
+    //
+    // `adbPort` is `adbPortFromSerial(serial)` — `emulator-5558` -> 5559 —
+    // which is the EMULATOR'S OWN adbd port, the one Maestro dials on the
+    // `Dadb.create(localhost, port)` direct-TCP path (see
+    // `MaestroBackend.buildMaestroArgs`). It is NOT the adb SERVER port
+    // that `mobile_diagnose` reports (allocated from 5037 upward by
+    // `port-allocator.ts`). Both numbers are correct and they are not the
+    // same kind of thing; seeing 5559 here next to 5040 there is expected,
+    // and reading it as a contradiction cost a triage on
+    // bednet-check-2-visit/20260828-0629. `portKind` makes the distinction
+    // machine-readable instead of folklore (ace#1818).
+    const portKind = 'emulator-adbd-direct-tcp' as const;
+
+    // Assert the driver is actually INSTALLED before letting a zero exit
+    // from `maestro hierarchy` stand in for health. ~50ms; turns
+    // `healthy` from a guess into an observation. See
+    // `assertMaestroDriverHealthy` Stage 0 for the full mechanism.
+    const packages = await this.maestro.driverPackagesInstalled(serial);
+    if (packages.queryOk && (!packages.app || !packages.test)) {
+      const absent = [
+        !packages.app ? 'dev.mobile.maestro' : null,
+        !packages.test ? 'dev.mobile.maestro.test' : null,
+      ]
+        .filter(Boolean)
+        .join(' + ');
+      return {
+        healthy: false,
+        reason: `Maestro driver not installed on ${serial}: ${absent} absent from \`pm list packages\`. Run \`mobile_ensure_avd_running\` (or /ace:mobile-bootstrap) to install it — a passing \`maestro hierarchy\` on this host cannot prove the driver is present on THIS serial.`,
+        adbPort,
+        portKind,
+        driverPackages: packages,
+      };
     }
     const r = await this.maestro.probeDriver(adbPort, timeoutMs);
-    return { ...r, adbPort };
+    if (!packages.queryOk) {
+      // ace#1155: an unanswerable query is not an absence. Report the
+      // liveness verdict, but say plainly that it is unverified.
+      return {
+        ...r,
+        reason: [r.reason, 'driver package query failed — health verdict is UNVERIFIED']
+          .filter(Boolean)
+          .join('; '),
+        adbPort,
+        portKind,
+        driverPackages: packages,
+      };
+    }
+    return { ...r, adbPort, portKind, driverPackages: packages };
   }
   stopAvd(name: string, opts: { force?: boolean } = {}): Promise<void> {
     if (this.useCloud) return this.requireCloud().stopAvd(name, opts);

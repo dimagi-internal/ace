@@ -317,6 +317,8 @@ server.tool(
             healthy,
             reason,
             adbPort: null,
+            portKind: null,
+            driverPackages: null,
             serial: diag.adb_devices[0]?.serial,
             backend: 'cloud',
           }, null, 2),
@@ -332,7 +334,7 @@ server.tool(
     const info = await client.avd.findRunningAvd(avdName);
     if (!info) {
       return {
-        content: [{ type: 'text', text: JSON.stringify({ healthy: false, reason: `AVD ${avdName} not booted (no emulator-NNNN serial in adb devices)`, adbPort: null }, null, 2) }],
+        content: [{ type: 'text', text: JSON.stringify({ healthy: false, reason: `AVD ${avdName} not booted (no emulator-NNNN serial in adb devices)`, adbPort: null, portKind: null, driverPackages: null }, null, 2) }],
         isError: false,
       };
     }
