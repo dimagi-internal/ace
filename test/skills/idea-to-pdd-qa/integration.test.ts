@@ -26,7 +26,7 @@ interface ExpectedQA {
 }
 
 describe('ACE-PDD-Pass-001 (synthetic clean PDD)', () => {
-  test('passes all 9 idea-to-pdd-qa checks', async () => {
+  test('passes all 10 idea-to-pdd-qa checks', async () => {
     const pdd = loadFixtureText('ACE-PDD-Pass-001', 'pdd.md');
     const result = await runChecks({
       skill: 'idea-to-pdd-qa',
@@ -39,8 +39,8 @@ describe('ACE-PDD-Pass-001 (synthetic clean PDD)', () => {
       context: { artifactMimeType: 'application/vnd.google-apps.document' },
     });
     expectQAPass(result);
-    expect(result.stats.checks_run).toBe(9);
-    expect(result.stats.checks_passed).toBe(9);
+    expect(result.stats.checks_run).toBe(10);
+    expect(result.stats.checks_passed).toBe(10);
     expect(result.skill).toBe('idea-to-pdd-qa');
   });
 });
@@ -93,5 +93,86 @@ describe('ACE-PDD-Bad-001 (adversarial fixture with intentional defects)', () =>
         `failure '${failure.check}' must have an actionable auto_fix_hint`,
       ).toBeTruthy();
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// dimagi-internal/ace#1783 — THE regression case, asserted at the level the
+// defect actually lived: the whole CHECKS sweep, not one function.
+//
+// `bednet-check-2-visit/20260828-0629` was a `longitudinal-visits` PDD with no
+// `entity_state_taxonomy` row. It scored 9/9 here and then took a `[BLOCKER]`
+// at Phase 3 Step 1, where `pdd-to-learn-app` / `pdd-to-deliver-app` parse
+// that row and HALT on `declared: false` (ace#1564). The bug was that this
+// sweep returned verdict `pass` — so that is what this test pins. It imports
+// nothing the fix introduced, which is what lets it run RED against the code
+// that shipped the blocker.
+// ---------------------------------------------------------------------------
+
+describe('ace#1783 — a longitudinal PDD with no entity_state_taxonomy', () => {
+  // The clean fixture, re-declared as the archetype whose Phase-3 component
+  // requires the row. Every other check still sees the same passing PDD, so a
+  // failure here can only be the taxonomy gap.
+  const asLongitudinal = () =>
+    // Both declaration sites — the fixture carries a YAML frontmatter
+    // `archetype:` row AND a body `**atomic-visit.**` line, and frontmatter
+    // WINS. Substituting only the visible body line leaves the PDD reading as
+    // atomic-visit and silently neuters this whole describe block.
+    loadFixtureText('ACE-PDD-Pass-001', 'pdd.md').replaceAll(
+      'atomic-visit',
+      'longitudinal-visits',
+    );
+
+  const sweep = () =>
+    runChecks({
+      skill: 'idea-to-pdd-qa',
+      target: 'ACE-PDD-Pass-001',
+      capture_path: '1-design/idea-to-pdd.md',
+      artifact: asLongitudinal(),
+      checks: CHECKS,
+      context: { artifactMimeType: 'application/vnd.google-apps.document' },
+    });
+
+  test('the archetype substitution actually took (guards the fixture)', () => {
+    expect(asLongitudinal()).toContain('longitudinal-visits');
+    expect(asLongitudinal()).not.toContain('atomic-visit');
+    expect(asLongitudinal()).not.toContain('entity_state_taxonomy');
+  });
+
+  test('FAILS Phase 1 instead of passing through to the Phase 3 halt', async () => {
+    const result = await sweep();
+    expectQAFailWithCheck(
+      result,
+      'entity_state_taxonomy_declared_for_longitudinal',
+      'longitudinal-visits',
+    );
+  });
+
+  test('the SAME PDD as atomic-visit still passes — the gate is conditional', async () => {
+    const result = await runChecks({
+      skill: 'idea-to-pdd-qa',
+      target: 'ACE-PDD-Pass-001',
+      capture_path: '1-design/idea-to-pdd.md',
+      artifact: loadFixtureText('ACE-PDD-Pass-001', 'pdd.md'),
+      checks: CHECKS,
+      context: { artifactMimeType: 'application/vnd.google-apps.document' },
+    });
+    expectQAPass(result);
+  });
+
+  test('adding the row clears it — the remediation is reachable', async () => {
+    const fixed = asLongitudinal().replace(
+      '| entity_id_grain |',
+      '| entity_state_taxonomy | 1=Registered (steps 1-2); 2=Followed up (steps 3-4); 3=Closed |\n| entity_id_grain |',
+    );
+    const result = await runChecks({
+      skill: 'idea-to-pdd-qa',
+      target: 'ACE-PDD-Pass-001',
+      capture_path: '1-design/idea-to-pdd.md',
+      artifact: fixed,
+      checks: CHECKS,
+      context: { artifactMimeType: 'application/vnd.google-apps.document' },
+    });
+    expectQAPass(result);
   });
 });
