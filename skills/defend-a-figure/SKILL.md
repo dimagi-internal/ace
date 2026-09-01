@@ -39,7 +39,7 @@ the document, and they are right to.
    a similar one. The cross-checks are computed against the selection's own
    rows, so a figure defended against a neighbouring query is undefended.
 2. **Read the honesty fields first.** `coverage` short of the total means the
-   figure is a floor and must be worded as one. A high `off_method_units` means
+   figure is a floor and must be worded as one. A high `inherited_units` means
    a national figure has been repeated across regions and the subnational
    framing is a fiction. `countries_unsupported` names who was left out.
 3. **Read the four computed cross-checks and rank them by how badly they read.**
@@ -111,3 +111,4 @@ and hands the reviewer the conservative figure before they ask.
 | Date | Change | Author |
 |------|--------|--------|
 | 2026-08-29 | Initial version — weakest-check-first rule, external validation step, method spread, three-paragraph pattern | ACE team |
+| 2026-09-01 | `off_method_units` became `inherited_units` | ACE team |

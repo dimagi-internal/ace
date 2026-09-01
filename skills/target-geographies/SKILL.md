@@ -61,11 +61,12 @@ read the answer without overclaiming.
    `iso_codes` when the question names countries.
 5. **Read the honesty fields before quoting any total.** `coverage` says how many
    selected units carry each count — short of the total means the figure is a
-   **floor, not a measurement**, and must be worded that way. `off_method_units`
-   counts units answered by a source the method does not declare, inherited from
-   a coarser unit; a high value means a national figure has been repeated across
-   regions. `countries_unsupported` names who was left out rather than answered
-   at another level.
+   **floor, not a measurement**, and must be worded that way. `inherited_units`
+   counts units whose rate was measured somewhere coarser — usually their
+   country — and applied here; a selection that is mostly inherited is a
+   national figure repeated across regions, not a subnational finding.
+   `countries_unsupported` names who was left out rather than answered at
+   another level.
 6. **Cost it with `targeting_scenario`** when money is in the question. A unit
    price is meaningless without a unit of measure, and the basis is a property of
    the programme: KMC per newborn, a bednet per child, a water connection per
@@ -140,3 +141,4 @@ current version rather than this file's.
 | 2026-08-29 | Initial version — burden/coverage families, honesty fields, village and DEGURBA limits | ACE team |
 | 2026-08-29 | Split defence and deliverables into sibling skills; research-note read is now step 1; 26 indicators; MAP counts | ACE team |
 | 2026-08-29 | 29 indicators; countable families now include access (`pop_beyond_2h`) and settlement (`pop_rural`), not malaria alone | ACE team |
+| 2026-09-01 | `off_method_units` became `inherited_units` — a source a method does not declare is no longer used at all, so what remains to report is how much was inherited | ACE team |
