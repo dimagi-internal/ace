@@ -174,3 +174,102 @@ describe('mobile_diagnose is no longer cloud-only (#961)', () => {
     ).not.toMatch(/ANDROID_ADB_SERVER_PORT=\d+/);
   });
 });
+
+// ═══════════════════════════════════════════════════════════════════
+// Cross-session AVD contention surfaced through diagnose (ace#1821).
+//
+// The tests above pin that diagnose reports the port and serial it actually
+// uses. That was necessary and NOT sufficient: on
+// `bednet-check-2-visit/20260828-0629` every one of those fields was correct
+// while nine live ace-mobile MCPs across two macOS accounts cold-booted one
+// shared AVD with `-wipe-data`. `adb_visible_count: 0` was true, and read as
+// a dead device through four wrong diagnoses.
+//
+// So the missing field is the only one that describes the HOST rather than
+// this session. The classification logic is unit-tested in
+// test/lib/mobile-contention.test.ts against a verbatim `ps` capture; these
+// tests pin the WIRING — that diagnose asks, that it asks with `ps` and not
+// the device, and that it stays read-only.
+// ═══════════════════════════════════════════════════════════════════
+
+/** Two chained rows = ONE logical MCP; `ps` prints the whole chain. */
+function psTable(rows: Array<{ user: string; pid: number; ppid: number; cmd: string }>): string {
+  return rows
+    .map((r) => `${r.user} ${r.pid} ${r.ppid} Tue Sep  1 13:26:23 2026 ${r.cmd}`)
+    .join('\n');
+}
+
+const MOBILE = (v = '0.13.1109') =>
+  `npm exec tsx /Users/u/.claude/plugins/cache/ace/ace/${v}/mcp/mobile-server.ts`;
+
+function makeShellWithPs(psOut: string) {
+  const { shell, calls } = makeShell();
+  const wrapped = vi.fn(async (cmd: string, args: string[]) => {
+    if (cmd === 'ps') {
+      calls.push({ cmd, args });
+      return { stdout: psOut, stderr: '', exitCode: 0, code: 0 };
+    }
+    return shell(cmd, args);
+  });
+  return { shell: wrapped, calls };
+}
+
+describe('AvdBackend.diagnose surfaces cross-session AVD contention (ace#1821)', () => {
+  it('NEGATIVE — names peers sharing the AVD, cross-account included', () => {
+    const ps = psTable([
+      { user: 'acedimagi', pid: 100, ppid: 1, cmd: MOBILE() },
+      { user: 'acedimagi', pid: 101, ppid: 100, cmd: MOBILE() },
+      { user: 'jjackson', pid: 200, ppid: 2, cmd: MOBILE('0.13.1053') },
+      { user: 'jjackson', pid: 201, ppid: 200, cmd: MOBILE('0.13.1053') },
+    ]);
+    const { shell } = makeShellWithPs(ps);
+    const backend = new AvdBackend({ shell, capabilities: CAPABILITY_MAP } as any);
+    return backend.diagnose().then((d: any) => {
+      expect(d.contention).not.toBeNull();
+      expect(d.contention.verdict).toBe('warn');
+      // Two logical MCPs from four ps rows — the 3x-overcount trap.
+      expect(d.contention.sessions).toHaveLength(2);
+      expect(d.contention.cross_account).toBe(true);
+      expect(d.contention.reason).toMatch(/ace#1821/);
+      expect(d.contention.known_avd_count).toBe(2); // from `emulator -list-avds`
+    });
+  });
+
+  it('POSITIVE — a lone session is not reported as contended', async () => {
+    const ps = psTable([
+      { user: 'acedimagi', pid: process.pid, ppid: 1, cmd: MOBILE() },
+    ]);
+    const { shell } = makeShellWithPs(ps);
+    const backend = new AvdBackend({ shell, capabilities: CAPABILITY_MAP } as any);
+    const d: any = await backend.diagnose();
+    expect(d.contention.verdict).toBe('pass');
+    expect(d.contention.other_mobile_sessions).toBe(0);
+  });
+
+  it('SKIPS, never warns, when the ps read fails — diagnose must not die diagnosing', async () => {
+    const { shell } = makeShell();
+    const wrapped = vi.fn(async (cmd: string, args: string[]) => {
+      if (cmd === 'ps') throw new Error('ps: command not found');
+      return shell(cmd, args);
+    });
+    const backend = new AvdBackend({ shell: wrapped, capabilities: CAPABILITY_MAP } as any);
+    const d: any = await backend.diagnose();
+    expect(d.contention.verdict).toBe('skip');
+    expect(d.contention.reason).toMatch(/not a claim that none exists/);
+    // The rest of the diagnostic still works — the whole point of best-effort.
+    expect(d.adb_server_port).toBe(Number(ADB_PORT));
+  });
+
+  it('stays READ-ONLY: asks ps, never adb-kill, emu kill, or the emulator binary', async () => {
+    const { shell, calls } = makeShellWithPs(psTable([
+      { user: 'acedimagi', pid: 100, ppid: 1, cmd: MOBILE() },
+    ]));
+    const backend = new AvdBackend({ shell, capabilities: CAPABILITY_MAP } as any);
+    await backend.diagnose();
+    expect(calls.some((c) => c.cmd === 'ps')).toBe(true);
+    const flat = calls.map((c) => `${c.cmd} ${c.args.join(' ')}`).join(' | ');
+    expect(flat).not.toMatch(/emu kill/);
+    expect(flat).not.toMatch(/-wipe-data/);
+    expect(flat).not.toMatch(/\bpkill\b|\bkill\b/);
+  });
+});
