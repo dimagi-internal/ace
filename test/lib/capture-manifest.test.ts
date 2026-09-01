@@ -25,6 +25,8 @@ import {
   canonicalCaptures,
   resolveCanonicalStep,
   findDuplicateCitations,
+  isAutoNamedCapture,
+  assignCanonicalDuplicates,
 } from '../../lib/capture-manifest.js';
 
 /** The live shape from the run in the issue (aliases + their canonicals). */
@@ -84,5 +86,99 @@ describe('capture-manifest consumer helpers (#1304)', () => {
     expect(canonicalCaptures(undefined)).toEqual([]);
     expect(canonicalCaptures({} as never)).toEqual([]);
     expect(findDuplicateCitations(undefined, ['a'])).toEqual([]);
+  });
+});
+
+describe('assignCanonicalDuplicates — the PRODUCER half', () => {
+  it('recognises Maestro auto-named boundary frames', () => {
+    expect(isAutoNamedCapture('step-010-assertCondition-org.commcare.dalvikid_vi')).toBe(true);
+    expect(isAutoNamedCapture('step-7-tapOn-Start')).toBe(true);
+    // Real capture names must never be mistaken for auto-named ones, including
+    // ones that merely contain the word or a digit run.
+    expect(isAutoNamedCapture('deliver-launch-download-gate')).toBe(false);
+    expect(isAutoNamedCapture('journey-learn-posttest-q9')).toBe(false);
+    expect(isAutoNamedCapture('learn-tap-module-after-Pre-test')).toBe(false);
+    expect(isAutoNamedCapture('step-by-step-intro')).toBe(false);
+  });
+
+  it('keeps the FIRST frame in recipe order when both names are meaningful', () => {
+    const out = assignCanonicalDuplicates([
+      { step: 'journey-deliver-submitted-confirmation', md5: 'aaa', takenAt: '2026-09-01T09:55:38Z' },
+      { step: 'deliver-sync-pre', md5: 'aaa', takenAt: '2026-09-01T09:55:56Z' },
+    ]);
+    const byStep = Object.fromEntries(out.map((f) => [f.step, f.duplicate_of]));
+    expect(byStep['journey-deliver-submitted-confirmation']).toBeUndefined();
+    expect(byStep['deliver-sync-pre']).toBe('journey-deliver-submitted-confirmation');
+  });
+
+  it('an auto-named frame YIELDS to a named twin even when it was taken first', () => {
+    // The exact regression from turmeric-market-study/20260828-1108: the
+    // auto-named frame led by 0.28s, so recipe order alone made an opaque
+    // string canonical and the deck would have captioned a slide with it.
+    const out = assignCanonicalDuplicates([
+      {
+        step: 'step-010-assertCondition-org.commcare.dalvikid_vi',
+        md5: 'bbb',
+        takenAt: '2026-09-01T09:48:57.990Z',
+      },
+      { step: 'deliver-launch-download-gate', md5: 'bbb', takenAt: '2026-09-01T09:48:58.271Z' },
+    ]);
+    const byStep = Object.fromEntries(out.map((f) => [f.step, f.duplicate_of]));
+    expect(byStep['deliver-launch-download-gate']).toBeUndefined();
+    expect(byStep['step-010-assertCondition-org.commcare.dalvikid_vi']).toBe(
+      'deliver-launch-download-gate',
+    );
+  });
+
+  it('leaves distinct frames alone and never invents a duplicate_of', () => {
+    const out = assignCanonicalDuplicates([
+      { step: 'a', md5: '1', takenAt: '2026-09-01T00:00:01Z' },
+      { step: 'b', md5: '2', takenAt: '2026-09-01T00:00:02Z' },
+      { step: 'c', md5: '3', takenAt: '2026-09-01T00:00:03Z' },
+    ]);
+    expect(out.every((f) => f.duplicate_of === undefined)).toBe(true);
+  });
+
+  it('marks every later member of a 3-way tie against ONE canonical', () => {
+    const out = assignCanonicalDuplicates([
+      { step: 'first', md5: 'z', takenAt: '2026-09-01T00:00:01Z' },
+      { step: 'second', md5: 'z', takenAt: '2026-09-01T00:00:02Z' },
+      { step: 'third', md5: 'z', takenAt: '2026-09-01T00:00:03Z' },
+    ]);
+    const byStep = Object.fromEntries(out.map((f) => [f.step, f.duplicate_of]));
+    expect(byStep['first']).toBeUndefined();
+    // Both point at the canonical directly, so resolveCanonicalStep needs no
+    // chain walk for producer-written manifests.
+    expect(byStep['second']).toBe('first');
+    expect(byStep['third']).toBe('first');
+  });
+
+  it('round-trips through the consumer helpers', () => {
+    const captures = assignCanonicalDuplicates([
+      { step: 'step-003-launchApp-org.commcare', md5: 'q', takenAt: '2026-09-01T00:00:01Z' },
+      { step: 'learn-launch-home-tiles', md5: 'q', takenAt: '2026-09-01T00:00:02Z' },
+      { step: 'journey-learn-final', md5: 'r', takenAt: '2026-09-01T00:00:03Z' },
+    ]);
+    const manifest = { captures };
+    expect(canonicalCaptures(manifest).map((c) => c.step).sort()).toEqual([
+      'journey-learn-final',
+      'learn-launch-home-tiles',
+    ]);
+    expect(resolveCanonicalStep(manifest, 'step-003-launchApp-org.commcare')).toBe(
+      'learn-launch-home-tiles',
+    );
+    expect(
+      findDuplicateCitations(manifest, ['step-003-launchApp-org.commcare', 'journey-learn-final']),
+    ).toEqual([{ step: 'step-003-launchApp-org.commcare', canonical: 'learn-launch-home-tiles' }]);
+  });
+
+  it('does not mutate the caller\'s array', () => {
+    const input = [
+      { step: 'b', md5: 'x', takenAt: '2026-09-01T00:00:02Z' },
+      { step: 'a', md5: 'x', takenAt: '2026-09-01T00:00:01Z' },
+    ];
+    const snapshot = JSON.stringify(input);
+    assignCanonicalDuplicates(input);
+    expect(JSON.stringify(input)).toBe(snapshot);
   });
 });

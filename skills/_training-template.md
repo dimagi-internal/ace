@@ -237,6 +237,37 @@ All consume cross-opp Connect screenshots from:
 (produced by the standalone `connect-baseline-screenshots` skill —
 NOT a Phase 6 dispatch).
 
+## Machine-parsed artifacts must not be written as Google Docs
+
+Every training skill's *MCP Tools Used* section says to write the verdict YAML
+with `drive_create_file` because it is "machine-parsed, must stay literal
+text". `drive_create_file` creates a **native Google Doc**, and a Doc does not
+store bytes — it stores a document model. Exporting one back mangles the YAML:
+**a single `\n` comes back as `\r\n\r\n\r\n`.** Observed on
+turmeric-market-study/20260828-1108, whose `app-screenshot-capture_manifest.yaml`
+read back with every line tripled. YAML tolerates blank lines, so this survives
+by luck rather than by contract — and it is silent, which is the dangerous part.
+
+**Write machine-parsed artifacts as real bytes:**
+
+```
+drive_upload_binary({ name: 'x_verdict.yaml', mimeType: 'text/yaml',
+                      parentFolderId: <phase folder>, localFilePath: <path> })
+```
+
+`drive_read_file` handles `text/*` and YAML/JSON variants natively, so nothing
+downstream changes, and the round-trip is byte-exact. `drive_upload_binary` also
+find-or-creates, so a corrected re-write replaces the bytes and keeps the id.
+
+Note `drive_create_file` has **no `mimeType` parameter** — you cannot ask it for
+plain text. That is why the instruction as written could not be satisfied, and
+why `drive_upload_binary` is the route. Applies to manifests, verdicts, specs
+and any `.yaml`/`.json` a later step parses. It does NOT apply to the prose
+deliverables themselves: those SHOULD be Docs
+(`drive_create_doc_from_markdown`), with the exact source bytes persisted
+alongside as `<name>.source.md` via `drive_upload_binary`
+(`mimeType: 'text/markdown'`).
+
 ## Verdict shape
 
 Same shape as eval skills — see

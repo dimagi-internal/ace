@@ -729,6 +729,32 @@ else
   fail "deps: node_modules missing or tsx not installed at $ROOT" "run /ace:setup (or 'npm install' in $ROOT)"
 fi
 
+# --- every DECLARED dependency is actually installed ---
+# "node_modules exists" is not the same as "node_modules is complete", and the
+# difference is not cosmetic. On 2026-09-01 a checkout was missing exactly one
+# declared package (@googleapis/forms, imported by lib/google-shim.ts). The
+# check above passed, and the symptom surfaced 28 test FILES failing to collect
+# with "Cannot find package" — on a branch that had touched none of them, which
+# reads as "this branch is broken" rather than "your install is stale". One
+# `npm install` fixed all 30. A partial install is a five-second check.
+if [ -d "$ROOT/node_modules" ] && [ -f "$ROOT/package.json" ]; then
+  missing_deps="$(node -e '
+    const fs = require("fs");
+    const path = require("path");
+    const root = process.argv[1];
+    const pkg = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8"));
+    const declared = Object.keys({ ...(pkg.dependencies || {}), ...(pkg.devDependencies || {}) });
+    const missing = declared.filter((d) => !fs.existsSync(path.join(root, "node_modules", d)));
+    process.stdout.write(missing.join(" "));
+  ' "$ROOT" 2>/dev/null)"
+  if [ -z "$missing_deps" ]; then
+    pass "deps_complete: every dependency declared in package.json is installed"
+  else
+    fail "deps_complete: declared but NOT installed: $missing_deps" \
+      "run 'npm install' in $ROOT — a partial node_modules makes unrelated test files fail to collect"
+  fi
+fi
+
 # --- Playwright Chromium browser binary ---
 # Every login/seeding flow that drives a browser (/ace:ocs-login,
 # /ace:connect-login, /ace:labs-login, /ace:labs-token-mint,

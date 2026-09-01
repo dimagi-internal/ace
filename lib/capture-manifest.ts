@@ -26,6 +26,23 @@ export interface CaptureEntry {
   [k: string]: unknown;
 }
 
+/**
+ * Frames Maestro named for us, e.g. `step-010-assertCondition-org.commcare.dalvikid_vi`.
+ *
+ * These arrive when a chunk boundary screenshots without a name of its own, so
+ * Maestro falls back to `step-<index>-<command>-<args>`. They are real pixels
+ * and worth keeping, but the string carries no human meaning — and a producer
+ * cites the CANONICAL step's name in learner-facing prose.
+ *
+ * Live on turmeric-market-study/20260828-1108: `step-010-assertCondition-…`
+ * was captured 0.28s BEFORE `deliver-launch-download-gate` and was
+ * byte-identical to it. First-in-recipe-order alone therefore made the opaque
+ * name canonical, and the training deck would have captioned a slide with it.
+ */
+export function isAutoNamedCapture(step: string): boolean {
+  return /^step-\d{1,4}-/.test(step);
+}
+
 export interface CaptureManifestLike {
   captures?: CaptureEntry[];
   [k: string]: unknown;
@@ -72,6 +89,55 @@ export function resolveCanonicalStep(
     cursor = next;
   }
   return cursor.step;
+}
+
+/** One captured frame, as the PRODUCER sees it before the manifest exists. */
+export interface RawFrame {
+  step: string;
+  /** Content hash. Byte-identical frames share it. */
+  md5: string;
+  /** ISO timestamp; recipe order. */
+  takenAt: string;
+  [k: string]: unknown;
+}
+
+/**
+ * Producer-side half of ace#866: decide WHICH of a set of byte-identical frames
+ * is canonical, and mark the rest `duplicate_of`.
+ *
+ * The rule is recipe order — the first frame to observe a state is the one that
+ * state belongs to — with ONE exception: an auto-named frame
+ * (`isAutoNamedCapture`) always yields to a meaningfully-named twin, however
+ * much earlier it was taken. Downstream prose cites the canonical step's name,
+ * and `step-010-assertCondition-org.commcare.dalvikid_vi` is not a caption.
+ *
+ * This exists because Step 5.5 previously stated the rule as prose — "keep the
+ * FIRST step in recipe order" — which is correct until it isn't, and the
+ * exception has to be re-derived by hand on every run. It was missed once and
+ * caught only on re-read.
+ */
+export function assignCanonicalDuplicates<T extends RawFrame>(
+  frames: readonly T[],
+): (T & { duplicate_of?: string })[] {
+  const ordered = [...frames].sort((a, b) => {
+    const autoA = isAutoNamedCapture(a.step);
+    const autoB = isAutoNamedCapture(b.step);
+    if (autoA !== autoB) return autoA ? 1 : -1; // named frames win outright
+    return a.takenAt < b.takenAt ? -1 : a.takenAt > b.takenAt ? 1 : 0;
+  });
+
+  const canonicalByHash = new Map<string, string>();
+  const out: (T & { duplicate_of?: string })[] = [];
+  for (const f of ordered) {
+    const prior = canonicalByHash.get(f.md5);
+    if (prior === undefined) {
+      canonicalByHash.set(f.md5, f.step);
+      out.push({ ...f });
+    } else {
+      out.push({ ...f, duplicate_of: prior });
+    }
+  }
+  return out;
 }
 
 export interface DuplicateCitation {
