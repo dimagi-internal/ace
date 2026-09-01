@@ -1,12 +1,8 @@
 ---
 name: narrative-iteration-review
 description: >
-  Orchestrate one iteration of a Connect DDD narrative on domain-expert feedback — the THIN,
-  ACE-specific layer over canopy's DDD framework. Pull the verbatim current narration from canopy,
-  draft the proposed next version from the expert's feedback, derive the connect-labs build
-  implications, and route the proposed version into canopy's DDD review surface. Versioning, the
-  review surface, and the narration-edit round-trip are canopy's job — do NOT reimplement them.
-  Use when iterating a Connect DDD narrative on expert feedback (e.g. RF Surveys / Sophie).
+  Iterate a Connect DDD narrative on domain-expert feedback — the thin ACE layer
+  over canopy's DDD framework. Use when expert feedback lands on a narrative.
 ---
 
 # Narrative iteration review (ACE-thin over canopy DDD)

@@ -751,6 +751,103 @@ reached by proxy because Nova's schema is upstream and not ours to extend.
 
 ACE's consumer is `skills/app-media-coverage` (Phase 3 Step 1.7).
 
+## The fixtures (Project data table) channel — shipped by 2026-09-01, HALF adopted
+
+Nova authors **Project data tables** — CommCare fixtures / lookup tables — in
+the blueprint, rows included. Confirmed live 2026-09-01: **110 tools**, up from
+95 on 2026-08-17 and 81 on 2026-08-14.
+
+**Read this section before believing anything in ACE about lookup tables.**
+Three ACE files carried a now-retired claim that no such create atom existed,
+and `lib/option-register.ts` + `pdd-to-deliver-app § Step 4f` built a
+CSV-emit-and-HALT workaround on it. The claim is false. The **halt is
+still correct**, for a different reason — read on, because that distinction is
+the whole point of this section.
+
+### The tools
+
+| Tool | Does |
+|---|---|
+| `create_lookup_table` | name + tag + columns **+ up to 5000 rows in one atomic write**; returns durable table/column/row UUIDs in input order |
+| `edit_lookup_columns` | add / rename / move / remove / retype columns; destructive ops keep reference guards |
+| `edit_lookup_rows` | add / update / move / remove rows, UUID-addressed cells |
+| `replace_lookup_rows` | swap the whole row set atomically; an empty list clears the table |
+| `update_lookup_table` | rename, or retag — **a tag change needs delete capability, because HQ treats a new tag as a different remote table** |
+| `remove_lookup_table` | refuses while any app or accepted design still references it |
+| `get_lookup_tables` / `get_lookup_table_rows` | paged snapshot reads (100 rows/page; a changed table refuses rather than mixing snapshots) |
+| `set_field_options_source` | binds a select to `{kind:'lookup', tableId, valueColumnId, labelColumnId, filter?}` — **see the block below** |
+
+### Contract facts — observed live 2026-09-01, not inferred
+
+- **The table half works, end to end.** One `create_lookup_table` call created
+  a 3-column, 2-row table and returned every id. No CSV, no browser session, no
+  operator.
+- **The binding half is INERT.** Binding a select to that table fails **every
+  time**, on both routes — `set_field_options_source` and `add_fields` with
+  `optionsSource: {kind:'lookup'}`:
+
+  > This lookup reference can't be checked right now because its Project lookup
+  > definitions are unavailable. Nothing was changed; wait for lookup data to
+  > reconnect, then retry.
+
+  **That message is wrong about being transient.** Reproduced over 6 retries at
+  5s, again minutes later, and again on a fresh app with a fresh table — while
+  `get_lookup_table_rows` read that same table perfectly throughout. Filed as
+  `voidcraft-labs/commcare-nova#545`. Do NOT write a retry loop against it; the
+  probe below is the correct instrument.
+- **Lookup ids are UUIDv7** (`…-7xxx-…`), unlike app/module/form/field uuids,
+  which match the general RFC pattern. A regex written for one rejects the other.
+- **A select cannot be created without an options source.** `add_fields` with
+  `kind: 'single_select'` and no `optionsSource` is refused outright — so there
+  is no window in which a select exists un-sourced. Inline sources work normally.
+- **Options are never a create-time key.** `options` on a field in
+  `create_module` / `create_form` is rejected as unrecognised; choices arrive
+  only through `optionsSource`. Labels are prose objects
+  (`{parts:[{kind:'text',text}]}`), never bare strings.
+- **`get_app` returns PROSE, not JSON** — a human-readable structure listing.
+  Take uuids from `create_app`'s `blueprint` / `starter`, or from
+  `search_blueprint`; do not try to parse `get_app`.
+- **Writes are revision-guarded.** Every mutating lookup call requires
+  `expectedTableRevision`, and the response carries `definitionRevision` /
+  `rowsRevision` / `tableRevision` separately.
+
+### What this means for ACE, exactly
+
+Two changes, and they pull in opposite directions — keep them straight:
+
+1. **ACE may now build and populate a partner's register itself.** The half of
+   `lib/option-register.ts` that existed because no create atom existed —
+   `renderRegisterCsv` plus a *"create the table, then import this CSV"*
+   operator instruction — is obsolete. The handoff drops from two manual steps
+   to one.
+2. **The `pdd-to-deliver-app § Step 4f` halt STAYS.** Not because the table
+   cannot be built, but because the built table cannot be *bound*. A build that
+   proceeded would ship an option list ACE invented into a partner's own
+   published process — the `no-inferred-backstory` failure, which has no
+   downstream symptom: the app is complete, internally consistent with its own
+   invention, and passes every structural gate.
+
+### The tripwire
+
+`scripts/probe-nova-fixtures.ts` is the instrument, not this prose. It creates
+a throwaway app, a table with rows, attempts the bind, and deletes the app:
+
+```
+npx tsx scripts/probe-nova-fixtures.ts        # exit 2 = current known state
+```
+
+| Exit | Verdict | Do |
+|---|---|---|
+| `0` | `both` | The bind landed. **Finish the adoption** (tracked as ace#1886): Step 4f creates, populates AND binds; retire the operator handoff and `renderRegisterCsv`; narrow the halt to the undeclared-register case |
+| `2` | `create-only` | Current state. Halt stays; the reason is the binding |
+| `3` | `none` | The create atom regressed → `skills/upstream-regression-triage` |
+
+Run it when a Nova release lands, when `probe-nova-contract.ts` reports a new
+tool count, or whenever anyone proposes automating the partner-register
+handoff. *Enforced:* `test/scripts/nova-fixtures-probe.test.ts` pins the
+verdict logic, and `test/docs/upstream-absence-claims.test.ts` keeps the
+retired "no create atom" claim from coming back.
+
 ## The 2026-07-31 uuid-addressing migration (read this before writing a Nova call)
 
 Nova redeployed mid-run at ~15:45Z on 2026-07-31 and moved its **entire**

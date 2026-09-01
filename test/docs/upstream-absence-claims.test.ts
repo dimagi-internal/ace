@@ -43,6 +43,22 @@ interface UpstreamPrimitive {
   readonly absenceClaims: readonly RegExp[];
   /** Every corrected site must cite this, so a deletion cannot pass for a fix. */
   readonly mustCite: RegExp;
+  /**
+   * Matches the way a file spells this primitive when discussing it. Distinct
+   * from `primitive`, which is the fully-qualified upstream name — a doc writes
+   * `relevance_groups`, not `BeneficiaryCohort.relevance_groups`.
+   *
+   * A RegExp rather than a substring because near-namesakes exist and mean
+   * different things: `commcare_create_lookup_table` is ACE's CommCare **HQ**
+   * atom, nothing to do with Nova's `create_lookup_table`. Anchor accordingly.
+   */
+  readonly mentions: RegExp;
+  /**
+   * Paths where `mentions` matches a NAMESAKE in another system, not this
+   * primitive. Exempt from the citation check only — the absence-claim scan
+   * still covers them, because a false claim is a false claim wherever it sits.
+   */
+  readonly namesakePaths?: RegExp;
 }
 
 const REGISTRY: readonly UpstreamPrimitive[] = [
@@ -57,6 +73,24 @@ const REGISTRY: readonly UpstreamPrimitive[] = [
       /\bno\s+conditional\s*\/\s*relevant\s+primitive/i,
     ],
     mustCite: /connect-labs#1331/i,
+    mentions: /\brelevance_groups\b/,
+  },
+  {
+    primitive: 'create_lookup_table',
+    declaredAt: "Nova MCP tools/list at https://mcp.commcare.app/mcp (110 tools)",
+    upstreamRef: 'voidcraft-labs/commcare-nova#545',
+    shipped: '2026-09-01 (confirmed; ship date upstream is earlier and unrecorded)',
+    absenceClaims: [
+      /\bno\s+MCP\s+atom\s+that\s+creates\s+a\s+lookup\s+table/i,
+      /\bno\s+lookup[-\s]table\s+create\s+atom/i,
+      /Nova\s+ha[sd]\s+no\s+(MCP\s+)?atom[^.]{0,40}lookup\s+table/i,
+    ],
+    mustCite: /commcare-nova#545/i,
+    mentions: /(?<![a-z_])create_lookup_table\b/,
+    // The Connect Interviews docs use the bare name for CommCare **HQ**'s
+    // lookup-table atom family (`commcare_create_lookup_table`), which is a
+    // different system and predates Nova's. They owe no Nova citation.
+    namesakePaths: /^docs\/connect-interviews\//,
   },
 ];
 
@@ -112,8 +146,10 @@ describe('upstream capabilities ACE must not claim are absent (ace#1833)', () =>
       });
 
       it('is cited by the sites that discuss it, so a deletion cannot pass for a correction', () => {
-        const mentions = trackedFiles().filter((f) =>
-          readFileSync(path.join(repoRoot, f), 'utf-8').includes('relevance_groups'),
+        const mentions = trackedFiles().filter(
+          (f) =>
+            !entry.namesakePaths?.test(f) &&
+            entry.mentions.test(readFileSync(path.join(repoRoot, f), 'utf-8')),
         );
 
         expect(mentions.length, `no ACE file mentions ${entry.primitive} — the correction is missing`).toBeGreaterThan(0);

@@ -425,15 +425,21 @@ function decodeXmlText(s: string): string {
 }
 
 /**
- * Render the register as the CSV Nova's row-import route accepts
- * (`text/csv`, `POST /api/projects/<id>/lookup/tables/<tableId>/import`).
+ * Render the register as CSV: the human-readable record of what was extracted,
+ * and the fallback when Nova's table authoring is unreachable.
  *
- * This exists because Nova has **no MCP atom that creates a lookup table**, and
- * its import route is browser-session-only (`enableSessionForAPIKeys: false` —
- * "API keys authenticate the MCP route only, never a browser session"). So
- * until that lands upstream, ACE's best terminal behaviour is to extract the
- * register, emit this CSV plus the table spec, and HALT with a two-step
- * operator handoff — never to ship placeholders.
+ * **This is no longer an import instruction.** It once was: no such atom
+ * existed, and the CSV import route was browser-session-only. Nova now ships `create_lookup_table`, which takes the
+ * columns AND up to 5000 rows in one atomic write, so ACE builds and populates
+ * the partner's register itself — verified live 2026-09-01, see
+ * `playbook/integrations/nova-integration.md § The fixtures (Project data
+ * table) channel`.
+ *
+ * The halt in `pdd-to-deliver-app § Step 4f` stays, for a different reason:
+ * BINDING a select to that table is refused every time
+ * (`voidcraft-labs/commcare-nova#545`), so a human still performs that one
+ * step. `scripts/probe-nova-fixtures.ts` is the tripwire — exit 0 means the
+ * bind landed and this function, along with the handoff, can go.
  */
 export function renderRegisterCsv(
   rows: RegisterRow[],
