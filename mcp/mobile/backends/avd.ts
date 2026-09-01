@@ -17,7 +17,8 @@ import { readProvisionedMarker, markerProvesFor } from '../avd-provisioned-marke
 import { checkAvdProvisioned } from '../avd-provisioning.js';
 import { findLatestBootLog, bootLogTail, fatalBootLine } from '../boot-log.js';
 import { checkAvdContention, clearStaleAvdLock } from '../avd-contention.js';
-import type { AvdInfo, ApkInfo, UiDumpResult, SnapshotResult, LocalDiagnostics } from '../types.js';
+import type { AvdInfo, ApkInfo, UiDumpResult, SnapshotResult, LocalDiagnostics, ContentionSummary } from '../types.js';
+import { classifyAvdContention, parsePsRows, type PsRow } from '../../../lib/mobile-contention.js';
 import { resolveAdbServerPort, resolveEmulatorPair, recordSessionLock, isTcpPortFree, occupiedConsolePortIsFatal } from '../port-allocator.js';
 import { withAllocatorMutex } from '../session-lock.js';
 
@@ -559,6 +560,7 @@ export class AvdBackend {
       avd_serial: null,
       known_avds: [],
       adb_error: null,
+      contention: null,
     };
 
     // `this.shell` is the port-injecting wrapper, so this `adb devices` is
@@ -596,7 +598,56 @@ export class AvdBackend {
       /* best-effort — `emulator` missing from PATH is its own doctor check */
     }
 
+    // Cross-session AVD contention (ace#1821). Every field above describes
+    // THIS session and can be perfectly correct while a peer is wiping the
+    // device underneath us — `adb_visible_count: 0` read as a dead device
+    // through four wrong diagnoses while nine ace-mobile MCPs shared one AVD.
+    //
+    // `ps` and nothing else: the peers span macOS ACCOUNTS, and both
+    // `~/.ace/sessions` (a per-$HOME path) and `pgrep -u <uid>` are
+    // structurally blind to the other account. Read-only, no adb, no device —
+    // `diagnose`'s contract forbids mutation.
+    diag.contention = await this.probeContention(diag.known_avds.length);
+
     return diag;
+  }
+
+  /**
+   * Read the host process table and classify AVD contention.
+   *
+   * Best-effort by design: a failed `ps` yields `verdict: 'skip'`, never a
+   * warn. Warning on an unanswerable question is how a check becomes noise;
+   * a `ps` that did not run is not evidence that nothing is contending.
+   *
+   * The logic is pure and lives in `lib/mobile-contention.ts`
+   * (`test/lib/mobile-contention.test.ts`, against a verbatim `ps` capture
+   * from the affected host). This half only collects.
+   */
+  private async probeContention(avdCount: number): Promise<ContentionSummary> {
+    let rows: PsRow[] = [];
+    try {
+      // Not `this.shell` — that injects the adb port and is for device calls.
+      // `-o etimes=` does not exist on BSD/macOS; `lstart` does.
+      const r = await this.rawShellFn('ps', ['-eo', 'user=,pid=,ppid=,lstart=,command=']);
+      rows = parsePsRows(r.stdout);
+    } catch {
+      /* falls through to the empty-table `skip` verdict below */
+    }
+    const c = classifyAvdContention(rows, { selfPid: process.pid, avdCount });
+    return {
+      other_mobile_sessions: c.otherSessionCount,
+      cross_account: c.crossAccount,
+      sessions: [...(c.self ? [c.self] : []), ...c.others].map((s) => ({
+        pid: s.pid,
+        user: s.user,
+        plugin_version: s.pluginVersion,
+        started_at: new Date(s.startedMs).toISOString(),
+        is_self: s.isSelf,
+      })),
+      known_avd_count: avdCount,
+      verdict: c.verdict,
+      reason: c.reason,
+    };
   }
 
   /**

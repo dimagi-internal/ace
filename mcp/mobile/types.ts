@@ -34,6 +34,37 @@ export interface LocalDiagnostics {
   known_avds: string[];
   /** Set instead of throwing when the adb probe itself failed. */
   adb_error: string | null;
+  /**
+   * Cross-session AVD contention (ace#1821). Null only on the cloud backend.
+   *
+   * Every OTHER field above describes THIS session and can be entirely correct
+   * while the device is being destroyed by a peer — that is exactly how
+   * `adb_visible_count: 0` read as a dead device through four wrong diagnoses
+   * on `bednet-check-2-visit/20260828-0629`, while nine live ace-mobile MCPs
+   * across two macOS accounts cold-booted one shared AVD with `-wipe-data`.
+   * This is the only field here that describes the HOST rather than us.
+   */
+  contention: ContentionSummary | null;
+}
+
+/** The host-level view: who else could be fighting us for the AVD. */
+export interface ContentionSummary {
+  other_mobile_sessions: number;
+  /** True when a peer runs under a DIFFERENT macOS account — invisible to any
+   * `~/.ace/sessions` lock or `pgrep -u <uid>` scan, and so to every other
+   * mechanism ACE has. */
+  cross_account: boolean;
+  sessions: Array<{
+    pid: number;
+    user: string;
+    plugin_version: string | null;
+    started_at: string;
+    is_self: boolean;
+  }>;
+  known_avd_count: number;
+  verdict: 'pass' | 'warn' | 'skip';
+  /** Names the cause and the remedy — a bare count is what misled the diagnoses. */
+  reason: string;
 }
 
 export interface AvdInfo {
