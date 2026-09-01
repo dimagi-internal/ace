@@ -38,45 +38,87 @@ export class CompositeBackend implements OcsClient {
   setChatbotTools = (a: Parameters<OcsClient['setChatbotTools']>[0]) => this.opts.playwright.setChatbotTools(a);
   setSourceMaterial = (a: Parameters<OcsClient['setSourceMaterial']>[0]) => this.opts.playwright.setSourceMaterial(a);
   /**
-   * Publish a chatbot version, then read its number back from whichever source
-   * can actually answer (dimagi-internal/ace#891).
+   * Publish a chatbot version, then read the POST-publish version back from
+   * the API — the system that owns the answer (ace#891, ace#1828).
    *
-   * The Playwright path scrapes a `Version N` badge off the chatbot home page.
-   * That scrape fails independently of the publish — the POST already returned
-   * its 302 several lines earlier — so a markup drift or a flaky home-page load
-   * used to hard-fail an operation that had demonstrably succeeded. Four runs
-   * hit it in three weeks, each one showing a correctly-published bot behind
-   * the error.
+   * The Playwright path scrapes a `Version N` badge off the chatbot home page
+   * after the POST. That scrape is a rendered-markup read of a value the API
+   * reports directly, and it has failed in both directions:
    *
-   * On that specific typed failure, ask the API instead. This moves the
-   * read-back from rendered markup to the upstream system's own answer, which
-   * is the direction CLAUDE.md points ("close the loop to the source of truth"
-   * and the HTTP-only preference for backends).
+   *  - **Absent** (#891/#1297): markup drift or a flaky home-page load made it
+   *    unreadable, hard-failing an operation that had demonstrably succeeded.
+   *    Four runs in three weeks, each showing a correctly-published bot behind
+   *    the error.
+   *  - **Stale** (#1828): worse, because it is silent. On
+   *    `bednet-check-2-visit/20260828-0629` the badge still read `Version 2`
+   *    after a publish that created version 3, so the atom returned the
+   *    PRE-publish number under a field named `version_number`. Both
+   *    `ocs-agent-setup` § Step 11 and `ocs-knowledge-refresh` § Step 4 write
+   *    that value into `run_state.yaml`, so durable state went one version
+   *    behind a live bot — and the recorded number is a real version that
+   *    really existed, so nothing looks malformed. It also invites the
+   *    opposite error: "published, version unchanged" reads as a no-op publish
+   *    and invites a republish chasing a number that was never going to move.
+   *
+   * So the API is now the PRIMARY read, not the fallback: after the publish
+   * succeeds, ask `GET /api/experiments/<public_id>/` which version is flagged
+   * default and return that. The badge scrape survives only as a labelled
+   * fallback for when the API cannot answer at all. `source` says which one
+   * answered, so a caller can never mistake a scraped number for an
+   * authoritative one. ("Close the loop to the source of truth", and the
+   * HTTP-only preference for backends.)
    *
    * #823's invariant is preserved, not weakened: never invent a version
-   * number. If the API cannot answer either, this still throws.
+   * number. With neither source able to answer, this still throws.
    */
-  publishChatbotVersion = async (a: Parameters<OcsClient['publishChatbotVersion']>[0]) => {
+  publishChatbotVersion = async (
+    a: Parameters<OcsClient['publishChatbotVersion']>[0],
+  ): Promise<{ version_number: number; task_id: string; source: 'api' | 'home-page-badge' }> => {
+    let scraped: { version_number: number; task_id: string; public_id?: string } | undefined;
+    let badgeFailure: VersionBadgeUnreadableError | undefined;
+
     try {
-      return await this.opts.playwright.publishChatbotVersion(a);
+      scraped = await this.opts.playwright.publishChatbotVersion(a);
     } catch (err) {
       if (!(err instanceof VersionBadgeUnreadableError)) throw err;
-
-      const publicId = err.publicId ?? (await this.publicIdForExperimentSilently(err.experimentId));
-      if (!publicId) throw err;
-
-      const chatbot = await this.opts.rest.getChatbot({ public_id: publicId });
-
-      // Deliberately NOT `chatbot.version_number` — that is the working/next
-      // counter (observed 3 while the published default was 2), so reading it
-      // here would write an off-by-one into run_state.yaml. The published
-      // version is the one flagged as default.
-      const published = chatbot.versions?.find((v) => v.is_default_version);
-      if (!published) throw err;
-
-      return { version_number: published.version_number, task_id: 'none' as const };
+      badgeFailure = err;
     }
+
+    // The publish itself has succeeded by this point either way — the POST's
+    // 302 is handled inside the Playwright backend, several lines before the
+    // read-back it may have failed on.
+    const publicId =
+      scraped?.public_id ??
+      badgeFailure?.publicId ??
+      (await this.publicIdForExperimentSilently(a.experiment_id));
+
+    const published = publicId ? await this.publishedVersionSilently(publicId) : undefined;
+    if (published !== undefined) {
+      return { version_number: published, task_id: 'none', source: 'api' };
+    }
+
+    // API unreachable, or it named no default version. Never fall through to
+    // the working counter — that is the ace#891 off-by-one.
+    if (badgeFailure) throw badgeFailure;
+    return { version_number: scraped!.version_number, task_id: scraped!.task_id, source: 'home-page-badge' };
   };
+
+  /**
+   * Best-effort "which version is PUBLISHED right now" from the API.
+   *
+   * Deliberately NOT `chatbot.version_number` — that is the working/next
+   * counter (observed 3 while the published default was 2, and 4 while it was
+   * 3), so reading it here would write an off-by-one into `run_state.yaml`.
+   * The published version is the one flagged as default.
+   */
+  private async publishedVersionSilently(publicId: string): Promise<number | undefined> {
+    try {
+      const chatbot = await this.opts.rest.getChatbot({ public_id: publicId });
+      return chatbot.versions?.find((v) => v.is_default_version)?.version_number;
+    } catch {
+      return undefined;
+    }
+  }
 
   /** Best-effort experiment_id -> public_id, for the ace#891 fallback. */
   private async publicIdForExperimentSilently(experimentId: number): Promise<string | undefined> {

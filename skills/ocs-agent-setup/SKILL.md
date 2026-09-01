@@ -532,6 +532,18 @@ round-trip gate in Step 11.5 below.
 
 9. **Publish a version:**
    - `ocs_publish_chatbot_version({ experiment_id, description: "Initial ACE version for <opp-name>" })`
+   - **Record the `version_number` it returns — that is the POST-publish
+     published default** (ace#1828 made the atom read it back from the API
+     instead of a page scrape that could lag the publish by one). Do **not**
+     substitute `ocs_inspect_chatbot`'s top-level `version_number`: that is the
+     working/next counter and runs ahead of the published one (observed 3 while
+     the published default was 2). If you need to corroborate independently,
+     the authoritative read is `ocs_inspect_chatbot({ public_id, version:
+     'default' })` → `version_number`.
+   - **`task_id: "none"` is not a signal.** It is present on a publish that did
+     real work, so it says nothing about whether anything happened. If `source`
+     comes back `home-page-badge`, the API read failed and the number is a
+     scrape that may be stale — corroborate before writing it in Step 11.
 
 10. **Retrieve embed credentials:**
     - `ocs_get_chatbot_embed_info({ experiment_id })`

@@ -166,10 +166,27 @@ export interface OcsClient {
     source_material_id: number | null;
   }): Promise<void>;
 
+  /**
+   * Publish a new default version.
+   *
+   * `version_number` is the version that is the DEFAULT (published) one AFTER
+   * this call — not the working/next counter, and not the number the bot
+   * carried before (ace#1828). `source` names which read answered: `api` is
+   * the upstream system's own answer; `home-page-badge` is a scrape of the
+   * rendered chatbot page, used only when the API could not answer, and known
+   * to lag the publish it describes. `public_id` is present on the Playwright
+   * backend's return so the composite can make the API read without a second
+   * lookup; it is not part of the atom's contract.
+   */
   publishChatbotVersion(args: {
     experiment_id: number;
     description: string;
-  }): Promise<{ version_number: number; task_id: string }>;
+  }): Promise<{
+    version_number: number;
+    task_id: string;
+    source?: 'api' | 'home-page-badge';
+    public_id?: string;
+  }>;
 
   /**
    * Invite a person to the OCS team, or reconcile an existing member's /

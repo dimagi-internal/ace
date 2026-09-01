@@ -504,7 +504,7 @@ server.tool(
 
 server.tool(
   'ocs_publish_chatbot_version',
-  'Publish a new default version of a chatbot.',
+  'Publish a new default version of a chatbot. Returns the version that is the DEFAULT (published) one AFTER this call — read back from the API, not the number the bot carried before it (ace#1828) and not the working/next counter (ace#891). `source` names which read answered: `api` (authoritative) or `home-page-badge` (a page scrape, used only when the API could not answer, and known to lag the publish it describes). `task_id` is always the string "none" — it is present on a publish that did real work, so it is not a signal that anything happened.',
   { experiment_id: z.number(), description: z.string() },
   async (args) => result(await composite.publishChatbotVersion(args)),
 );
