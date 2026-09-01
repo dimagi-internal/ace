@@ -370,6 +370,21 @@ If the resolver fails, `export JAVA_HOME=/path/to/jdk17` before launching Claude
 
 probe1 timeout budget is 20s in `mcp/mobile/client.ts` to accommodate Maestro v2's slower JVM cold-start. Don't tighten it — v1's faster startup is no longer the reference. See `docs/learnings/2026-05-19-maestro-v2-probe-timeout.md`.
 
+### Two different ports, both correct — read the label (ace#1818)
+
+`mobile_probe_maestro_driver` reports `adbPort`; `mobile_diagnose` reports `adb_server_port`. They are routinely different numbers and that is **not** a contradiction:
+
+| Field | What it is | Where it comes from |
+|---|---|---|
+| `mobile_probe_maestro_driver.adbPort` (`portKind: emulator-adbd-direct-tcp`) | the EMULATOR'S OWN adbd port — `emulator-5558` -> **5559** | `adbPortFromSerial(serial)`; Maestro dials it on the `Dadb.create(localhost, port)` direct-TCP path |
+| `mobile_diagnose.adb_server_port` | the adb **fork-server** port this session allocated | `port-allocator.ts`, walking upward from 5037 |
+
+Seeing `adbPort: 5559` next to `adb_server_port: 5040` is expected. Reading it as evidence the probe "isn't connecting through the port it reports" cost a triage on `bednet-check-2-visit/20260828-0629`.
+
+The real defect on that run was the other half: the probe answered `healthy: true` on a serial with **no `dev.mobile.maestro` installed**. `maestro hierarchy` runs over a HOST-keyed TCP port, so a zero exit proves "something answered on localhost:N", not "the driver is on this serial" — and this host runs two macOS accounts' emulators (ace#1819). The probe now asserts `pm list packages dev.mobile.maestro` first (~50ms), and `assertMaestroDriverHealthy` skips its stage-1 liveness probe entirely when the packages are known absent, so a false-healthy verdict can no longer short-circuit the driver install. `driverPackages.queryOk: false` means the query could not be answered — per ace#1155 that is **not** an absence, and the health verdict is flagged UNVERIFIED rather than forced to `false`.
+
+Also worth knowing: the cold boot is `-wipe-data`, so **the driver is removed on every boot** and must be re-installed per dispatch. `Not able to reach the gRPC server` on a fresh AVD is usually literal — there is no server, because the app hosting it is absent.
+
 ### Chunking follows `runFlow: file:` into the palette (ace#1570)
 
 `mobile_run_recipe` splits a recipe into chunks and runs each as its own `maestro test`, dumping the UI hierarchy XML in the quiet window between them (that window is the only place `uiautomator dump` can run — Maestro holds the service exclusively). Each chunk also gets its own watchdog budget.

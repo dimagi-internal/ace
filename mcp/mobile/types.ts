@@ -450,3 +450,27 @@ export interface SnapshotResult {
   saved: boolean;
   output: string;
 }
+
+/**
+ * Result of the read-only Maestro driver probe (`mobile_probe_maestro_driver`).
+ *
+ * `healthy` is an OBSERVATION, not a guess: it requires the driver packages
+ * to be present on this exact serial, not merely a zero exit from
+ * `maestro hierarchy` (dimagi-internal/ace#1818).
+ *
+ * `adbPort` is the EMULATOR'S OWN adbd port (`emulator-5558` -> 5559), the
+ * one Maestro dials on its direct-TCP path — NOT the adb SERVER port that
+ * `mobile_diagnose` reports. `portKind` names which of the two it is so the
+ * distinction never has to be re-derived from a serial.
+ *
+ * `driverPackages.queryOk === false` means the package query could not be
+ * answered; per ace#1155 that is NOT an absence, and the health verdict is
+ * flagged UNVERIFIED in `reason` rather than forced to `false`.
+ */
+export interface MaestroDriverProbeResult {
+  healthy: boolean;
+  reason?: string;
+  adbPort: number | null;
+  portKind: 'emulator-adbd-direct-tcp' | null;
+  driverPackages: { app: boolean; test: boolean; queryOk: boolean } | null;
+}
