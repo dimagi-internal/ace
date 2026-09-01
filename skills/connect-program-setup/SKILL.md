@@ -57,7 +57,19 @@ alone makes the artifact land outside `4-connect` and fail
    both known at this point); use the name only for ranking/display.
    Unfiltered rows carry `null` for delivery_type/budget/currency/
    country/dates — hydrate the shortlisted candidates via
-   `connect_get_program` before judging fit on those. (The `name` filter
+   `connect_get_program` before judging fit on those.
+
+   **Descriptions on unfiltered rows are CAPPED (ace#1799).** In a mature
+   org the full prose is most of the payload and overflows the tool-result
+   cap outright — measured on `ai-demo-space` 2026-09-01, 42 rows serialize
+   to 57,425 chars of which 43,239 (75.3%) are `description`, and the call
+   returned no usable data at all. A capped row is flagged
+   `description_truncated: true` and a `description_projection` block
+   reports the count. The domain signal you shortlist on is in the opening
+   sentences; when you need the whole thing, read it from
+   `connect_get_program` (which Step 3a does anyway). `write_to_path:
+   "/abs/path.json"` writes every full row to disk and returns a handle
+   instead — use it if you want to grep the whole org. (The `name` filter
    remains available as a case-insensitive substring match whose rows
    come back fully hydrated, jjackson/ace#1089 — fine for a targeted
    lookup, never for the reuse scan.)
@@ -145,12 +157,37 @@ alone makes the artifact land outside `4-connect` and fail
       `program.budget`.
    2. **Compute Σ(`total_budget`) over this program's opps** —
       obtainable again as of ace#1550, having been unobtainable on every
-      prior run. `connect_list_opportunities({ organization_slug,
-      hydrate: true })`, keep the rows whose `program_name` equals
-      `program.name`, and sum their `total_budget`. Both fields exist on
-      the HYDRATED row only: `connect_get_opportunity` reads them off the
-      opportunity dashboard (the edit form carries neither, and the
+      prior run. Call
+
+      ```
+      connect_list_opportunities({
+        organization_slug,
+        summarize_by_program: program.name,
+        duplicate_program_name: <true iff the Step 2 program list shows
+                                 two or more programs by this name>,
+      })
+      ```
+
+      which implies `hydrate`, does the whole classification server-side,
+      and returns `{listing, summary}` with **no rows** — `sigma_total_budget`,
+      `sigma_known`, `sigma_unknown_reasons[]`, `matched_rows`,
+      `matched_opportunity_ids`, `excluded_outside_program`,
+      `unreadable_rows`, `rows_missing_total_budget` and
+      `dashboard_read_counts`. Read `summary.sigma_known` and branch; the
+      four UNKNOWN conditions documented below are evaluated for you, and
+      `sigma_unknown_reasons` names the ones that fired, verbatim, for the
+      program notes.
+
+      **Do NOT ask for the rows and sum them yourself (ace#1799).** The
+      hydrated org-wide array measured 81,175 chars on `ai-demo-space`
+      2026-09-01 — over the tool-result cap, so it returns nothing usable
+      and the step degrades to the conservative Σ-unknown branch or to an
+      improvised out-of-band parse of the overflow file. Both fields exist
+      on the HYDRATED row only: `connect_get_opportunity` reads them off
+      the opportunity dashboard (the edit form carries neither, and the
       unhydrated list page carries nothing but id/name/short_description).
+      If you genuinely need to inspect rows, pass `write_to_path:
+      "/abs/path.json"` and grep the file — never pull them into context.
 
       This Σ is the same set Connect itself sums —
       `Opportunity.objects.filter(program=program).aggregate(Sum(
@@ -321,11 +358,11 @@ alone makes the artifact land outside `4-connect` and fail
 ## MCP Tools Used
 - Google Drive: `drive_read_file`, `drive_create_file` (always with `parentFolderId = phaseFolderId` — the `4-connect` folder ID, never a path string), `update_yaml_file` (write `opp.yaml.connect.program` block, `merge: 'shallow'`)
 - Connect (`ace-connect` MCP, 0.10.47+):
-  - `connect_list_programs` — discovery (`name` = case-insensitive substring; filtered rows hydrated)
+  - `connect_list_programs` — discovery (`name` = case-insensitive substring; filtered rows hydrated with FULL descriptions). Unfiltered rows carry capped descriptions flagged `description_truncated` (ace#1799); `full_descriptions: true` or `write_to_path` opt out
   - `connect_list_delivery_types` — resolve human name → slug/int FK if needed
   - `connect_create_program` — create (REST `POST /api/programs/`)
   - `connect_get_program` — verify after create; read live fields for reconcile (Step 3a) and `budget` for the headroom check (Step 4a)
-  - `connect_list_opportunities` — with `hydrate: true`, the ONLY source of the headroom Σ's two inputs (`total_budget`, `program_name` — both dashboard-read per row, ace#1550); the unhydrated list page carries neither (Step 4a). Returns a `listing` completeness block; `listing.complete !== true` makes Σ UNKNOWN (ace#1590)
+  - `connect_list_opportunities` — prefer `summarize_by_program`, which implies hydrate and returns the Σ classification instead of the rows (ace#1799); `write_to_path` writes the rows to disk. With `hydrate: true`, the ONLY source of the headroom Σ's two inputs (`total_budget`, `program_name` — both dashboard-read per row, ace#1550); the unhydrated list page carries neither (Step 4a). Returns a `listing` completeness block; `listing.complete !== true` makes Σ UNKNOWN (ace#1590)
   - `connect_update_program` — refresh stale description/dates on reuse (Step 3a); raise the program budget ceiling, idempotently when Σ is known and on the conservative assumption when it is not (Step 4a)
 
 ## Mode Behavior
@@ -363,3 +400,4 @@ downstream coherence:
 | 2026-08-21 | Step 4a: invert the branches — Σ(`total_budget`) is unobtainable on every Connect read surface, so the conservative raise is now the documented PRIMARY path and the `connect_list_opportunities({hydrate: true})` call is dropped (20 sequential edit-page fetches for zero fields). Computed-Σ kept as the restore-if path (dimagi-internal/ace#1550). | ACE team |
 | 2026-08-23 | Step 4a: a fourth UNKNOWN condition — `connect_list_opportunities` walked only Connect's first page (20 rows) with no signal more existed, so Σ could be computed over a fifth of the program and read as complete. The atom now paginates to exhaustion and returns a `listing` completeness block; Σ is UNKNOWN when `listing.complete !== true` (dimagi-internal/ace#1590). | ACE team |
 | 2026-08-21 | Step 4a: Σ is executable again — `connect_get_opportunity` now reads `total_budget` + `program_name` off the opportunity dashboard, so a hydrated list can be scoped to this program and summed (supersedes the row above, same day). Names the three UNKNOWN cases and requires the branch taken to be reported in the program notes (dimagi-internal/ace#1550). | ACE team |
+| 2026-09-01 | Steps 2 + 4a: both MANDATED org-wide list calls overflowed the tool-result cap in `ai-demo-space` and returned no usable data (measured 2026-09-01: programs 42 rows/57,425 chars, 75.3% description prose; opportunities hydrated 71 rows/81,175 chars). Step 4a now calls `connect_list_opportunities({summarize_by_program})`, which does the whole Σ classification server-side and returns a few hundred characters instead of the rows; Step 2's unfiltered rows come back with capped descriptions. `write_to_path` on both atoms is the escape hatch (dimagi-internal/ace#1799). | ACE team |

@@ -41,8 +41,14 @@ import {
   resolvePatchXformXml,
   resolveUploadMultimediaBytes,
   resolveEnvSubstitution,
+  prepareWritePath,
   ENV_ALLOW,
 } from '../lib/atom-payload-resolver.js';
+import {
+  projectProgramDescriptions,
+  summarizeOpportunitiesByProgram,
+  PROGRAM_LIST_DESCRIPTION_SNIPPET_CHARS,
+} from '../lib/connect-list-projection.js';
 import {
   commcareCliValidateCcz,
   commcareCliPlayCcz,
@@ -248,11 +254,45 @@ const server = new McpServer({ name: 'ace-connect', version: '0.1.0' });
 // ── Programs ──────────────────────────────────────────────────────
 
 server.tool('connect_list_programs',
+  'List the programs on an organization. `connect-program-setup` Step 2 calls this with NO `name` filter and scans the whole org (ace#1252), which in a mature org is far more prose than any consumer reads: measured on `ai-demo-space` 2026-09-01, 42 rows serialize to 57,425 chars and 43,239 of them (75.3%) are per-row `description` — enough to overflow the harness tool-result cap and return NO usable data at all (ace#1799).\n\nSo an UNHYDRATED row\'s `description` is capped at ' + PROGRAM_LIST_DESCRIPTION_SNIPPET_CHARS + ' chars by default and flagged `description_truncated: true`; a `description_projection` block reports how many rows were shortened. The reuse scan matches on domain + delivery type + archetype, whose signal is in the opening sentences, and Step 3a\'s content reconcile reads the FULL description from `connect_get_program` — not from here. Pass `full_descriptions: true` to opt out (and expect the cap), or `write_to_path` to get every field of every row on disk instead of in context.\n\nName-filtered rows are NEVER truncated: they come back hydrated through a per-row `connect_get_program` (ace#1089) and are the targeted-lookup path. Unfiltered rows carry null, never a typed zero, for delivery_type/budget/currency/country/start_date/end_date because the list page does not render them; hydrate via `connect_get_program`.',
   {
     organization_slug: z.string(),
-    name: z.string().optional().describe('Case-insensitive SUBSTRING filter on program name — a prefix of the full name matches. Name-filtered rows are hydrated to full program shape via a per-row get. Unfiltered rows carry null, never a typed zero, for delivery_type/budget/currency/country/start_date/end_date because the list page does not render them; hydrate via connect_get_program.'),
+    name: z.string().optional().describe('Case-insensitive SUBSTRING filter on program name — a prefix of the full name matches. Name-filtered rows are hydrated to full program shape via a per-row get, and are returned with FULL descriptions. Never use this for the Step 2 reuse scan — a name scan is structurally blind to a same-domain program under different words (ace#1252).'),
+    full_descriptions: z.boolean().optional().describe('Opt out of the default description cap and return every row\'s full prose. Only do this when a consumer genuinely reads whole descriptions off LIST rows — on a mature org this is what overflows the tool-result cap (ace#1799). Prefer `write_to_path`.'),
+    write_to_path: z.string().optional().describe('If set, write the full untruncated `programs` array as JSON to this absolute local path and return `programs_written_to` INSTEAD of `programs` — keeps the whole payload out of the model context regardless of org size. The `count` + `description_projection` block is still returned inline. Mirrors `commcare_download_ccz`\'s `write_to_path`. Missing parent directories are created.'),
   },
-  async (args) => runAtom(async () => (await client()).listPrograms(args))
+  // NB: `async (args)` + destructure, not `async ({…})` — the registration
+  // drift extractor in test/mcp/connect/registration-signature-drift.test.ts
+  // slices each tool's schema at the literal `async (args)`.
+  async (args) => runAtom(async () => {
+    const { organization_slug, name, full_descriptions, write_to_path } = args;
+    const { programs } = await (await client()).listPrograms({ organization_slug, name });
+    // A `name` filter hydrates every match through getProgram, and those full
+    // descriptions are what Step 3a reconciles against the PDD — truncating
+    // them would silently corrupt that comparison. So only the unfiltered
+    // (list-page) rows are ever projected.
+    const hydrated = name !== undefined;
+    if (write_to_path) {
+      const dest = prepareWritePath(write_to_path);
+      fs.writeFileSync(dest, JSON.stringify({ programs }, null, 2), 'utf8');
+      return { count: programs.length, programs_written_to: dest, hydrated };
+    }
+    if (hydrated || full_descriptions) return { programs, count: programs.length };
+    const projected = projectProgramDescriptions(programs);
+    return {
+      programs: projected.programs,
+      count: projected.programs.length,
+      description_projection: {
+        snippet_chars: projected.snippet_chars,
+        truncated_rows: projected.truncated_rows,
+        chars_removed: projected.chars_removed,
+        note:
+          'Unhydrated list rows only. A row marked `description_truncated: true` is NOT showing ' +
+          'its full description — read that from `connect_get_program`, or re-call with ' +
+          '`full_descriptions: true` / `write_to_path`.',
+      },
+    };
+  })
 );
 
 server.tool('connect_get_program',
@@ -309,9 +349,43 @@ server.tool('connect_list_opportunities',
     // another.
     program_id: z.string().optional().describe('REFUSED by the backend — the list endpoint has no program scope (ace#1022). Present only so the refusal explains itself; filter client-side.'),
     name: z.string().optional(),
-    hydrate: z.boolean().optional().describe('Fetch each row through getOpportunity so `active`, `is_test`, `total_budget` and `program_name` are real. REQUIRED by connect-program-setup Step 4a and connect-opp-setup Step 4; unreachable before ace#1448.'),
+    hydrate: z.boolean().optional().describe('Fetch each row through getOpportunity so `active`, `is_test`, `total_budget` and `program_name` are real. REQUIRED by connect-program-setup Step 4a and connect-opp-setup Step 4; unreachable before ace#1448. On a mature org the hydrated array overflows the tool-result cap (measured `ai-demo-space` 2026-09-01: 71 rows = 81,175 chars) — pair it with `summarize_by_program` or `write_to_path` (ace#1799).'),
+    summarize_by_program: z.string().optional().describe('Program NAME. Implies `hydrate`. Returns `{listing, summary}` and NO `opportunities` array — the whole of connect-program-setup Step 4a\'s computation done server-side: Σ(`total_budget`) over the rows definitively inside that program, plus `sigma_known` with verbatim `sigma_unknown_reasons`, the matched/excluded/unreadable split, and `dashboard_read_counts`. A few hundred characters instead of ~80 KB, and the ace#1637 ok/no_cards split becomes a first-class field rather than something each agent re-derives (differently). Pass `duplicate_program_name: true` when the Step 2 program list shows the org has more than one program by this name — Step 4a\'s fourth UNKNOWN condition, which no opportunity read surface can observe.'),
+    duplicate_program_name: z.boolean().optional().describe('`summarize_by_program` only. Set when the Step 2 `connect_list_programs` result shows two or more programs sharing this name; the scoping is by NAME, so that makes Σ UNKNOWN.'),
+    write_to_path: z.string().optional().describe('If set, write the full `opportunities` array as JSON to this absolute local path and return `opportunities_written_to` INSTEAD of `opportunities` — keeps the whole payload out of the model context regardless of org size. The `listing` completeness block (and `summary`, if requested) is still returned inline. Mirrors `commcare_download_ccz`\'s `write_to_path`. Missing parent directories are created.'),
   },
-  async (args) => runAtom(async () => (await client()).listOpportunities(args))
+  async (args) => runAtom(async () => {
+    const {
+      organization_slug, program_id, name, hydrate,
+      summarize_by_program, duplicate_program_name, write_to_path,
+    } = args;
+    // The Σ needs `total_budget` + `program_name`, both dashboard-read per
+    // row — so summarizing without hydrating would sum a column that is not
+    // there and report 0 as a fact. Imply it rather than refuse.
+    const wantHydrate = hydrate === true || summarize_by_program !== undefined;
+    const res = await (await client()).listOpportunities({
+      organization_slug, program_id, name, hydrate: wantHydrate,
+    });
+    const summary = summarize_by_program === undefined
+      ? undefined
+      : summarizeOpportunitiesByProgram(res.opportunities as Array<{
+          id: string; program_name?: string; total_budget?: number; dashboard_read?: string;
+        }>, {
+          programName: summarize_by_program,
+          listingComplete: res.listing.complete === true,
+          listingTruncatedReason: res.listing.truncated_reason,
+          duplicateProgramName: duplicate_program_name === true,
+        });
+    if (write_to_path) {
+      const dest = prepareWritePath(write_to_path);
+      fs.writeFileSync(dest, JSON.stringify({ opportunities: res.opportunities }, null, 2), 'utf8');
+      return { listing: res.listing, opportunities_written_to: dest, ...(summary ? { summary } : {}) };
+    }
+    // `summarize_by_program` is a REPLACEMENT for the rows, not an addition:
+    // returning both would leave the 80 KB payload in context and fix nothing.
+    if (summary) return { listing: res.listing, summary };
+    return res;
+  })
 );
 
 server.tool('connect_get_opportunity',

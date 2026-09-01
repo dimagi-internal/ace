@@ -448,10 +448,14 @@ Source: `mcp/connect-server.ts` — 61 atoms
 
 ### `connect_list_programs`
 
+List the programs on an organization. `connect-program-setup` Step 2 calls this with NO `name` filter and scans the whole org (ace#1252), which in a mature org is far more prose than any consumer reads: measured on `ai-demo-space` 2026-09-01, 42 rows serialize to 57,425 chars and 43,239 of them (75.3%) are per-row `description` — enough to overflow the harness tool-result cap and return NO usable data at all (ace#1799). So an UNHYDRATED row's `description` is capped at
+
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `organization_slug` | `z.string` | **required** | _—_ |
-| `name` | `z.string` | optional | Case-insensitive SUBSTRING filter on program name — a prefix of the full name matches. Name-filtered rows are hydrated to full program shape via a per-row get. Unfiltered rows carry null, never a typed zero, for delivery_type/budget/currency/country/start_date/end_date because the list page does not render them; hydrate via connect_get_program. |
+| `name` | `z.string` | optional | Case-insensitive SUBSTRING filter on program name — a prefix of the full name matches. Name-filtered rows are hydrated to full program shape via a per-row get, and are returned with FULL descriptions. Never use this for the Step 2 reuse scan — a name scan is structurally blind to a same-domain program under different words (ace#1252). |
+| `full_descriptions` | `z.boolean` | optional | Opt out of the default description cap and return every row's full prose. Only do this when a consumer genuinely reads whole descriptions off LIST rows — on a mature org this is what overflows the tool-result cap (ace#1799). Prefer `write_to_path`. |
+| `write_to_path` | `z.string` | optional | If set, write the full untruncated `programs` array as JSON to this absolute local path and return `programs_written_to` INSTEAD of `programs` — keeps the whole payload out of the model context regardless of org size. The `count` + `description_projection` block is still returned inline. Mirrors `commcare_download_ccz`'s `write_to_path`. Missing parent directories are created. |
 
 ### `connect_get_program`
 
@@ -501,7 +505,10 @@ List opportunities in an organization. Walks EVERY page of Connect's paginated l
 | `organization_slug` | `z.string` | **required** | _—_ |
 | `program_id` | `z.string` | optional | REFUSED by the backend — the list endpoint has no program scope (ace#1022). Present only so the refusal explains itself; filter client-side. |
 | `name` | `z.string` | optional | _—_ |
-| `hydrate` | `z.boolean` | optional | Fetch each row through getOpportunity so `active`, `is_test`, `total_budget` and `program_name` are real. REQUIRED by connect-program-setup Step 4a and connect-opp-setup Step 4; unreachable before ace#1448. |
+| `hydrate` | `z.boolean` | optional | Fetch each row through getOpportunity so `active`, `is_test`, `total_budget` and `program_name` are real. REQUIRED by connect-program-setup Step 4a and connect-opp-setup Step 4; unreachable before ace#1448. On a mature org the hydrated array overflows the tool-result cap (measured `ai-demo-space` 2026-09-01: 71 rows = 81,175 chars) — pair it with `summarize_by_program` or `write_to_path` (ace#1799). |
+| `summarize_by_program` | `z.string` | optional | Program NAME. Implies `hydrate`. Returns `{listing, summary}` and NO `opportunities` array — the whole of connect-program-setup Step 4a's computation done server-side: Σ(`total_budget`) over the rows definitively inside that program, plus `sigma_known` with verbatim `sigma_unknown_reasons`, the matched/excluded/unreadable split, and `dashboard_read_counts`. A few hundred characters instead of ~80 KB, and the ace#1637 ok/no_cards split becomes a first-class field rather than something each agent re-derives (differently). Pass `duplicate_program_name: true` when the Step 2 program list shows the org has more than one program by this name — Step 4a's fourth UNKNOWN condition, which no opportunity read surface can observe. |
+| `duplicate_program_name` | `z.boolean` | optional | `summarize_by_program` only. Set when the Step 2 `connect_list_programs` result shows two or more programs sharing this name; the scoping is by NAME, so that makes Σ UNKNOWN. |
+| `write_to_path` | `z.string` | optional | If set, write the full `opportunities` array as JSON to this absolute local path and return `opportunities_written_to` INSTEAD of `opportunities` — keeps the whole payload out of the model context regardless of org size. The `listing` completeness block (and `summary`, if requested) is still returned inline. Mirrors `commcare_download_ccz`'s `write_to_path`. Missing parent directories are created. |
 
 ### `connect_get_opportunity`
 
