@@ -22,12 +22,17 @@
 
 import { describe, expect, it } from 'vitest';
 
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
 import {
   ACCEPTED_PUBLIC_SECRETS,
   auditCompleteness,
   auditWalkthroughParity,
   auditSyntheticLabelling,
   auditBuildStatusParity,
+  auditDeepQaParity,
   auditConfidentiality,
   auditContract,
   auditDecisionRows,
@@ -67,8 +72,10 @@ function healthyPayload(over: Record<string, unknown> = {}): Record<string, unkn
     },
     design: { docs: [{ title: 'PDD', url: 'https://docs.google.com/document/d/PDDPDDPDDPDD/edit', access: 'public' }] },
     apps: [],
-    // Null on a clean run — the honest default for both of these.
+    // Null on a clean run — the honest default for these three.
     build: null,
+    // Null unless `/ace:qa-deep` actually ran, which is most runs.
+    deep_qa: null,
     connect: null,
     training: null,
     assistant: null,
@@ -1078,5 +1085,157 @@ describe('a partial build must not render as a clean one', () => {
       'commcare-setup': { status: 'done', verdict: 'pass', steps: { a: { verdict: 'pass' } } },
     })).toEqual([]);
     expect(auditBuildStatusParity({ build: null }, {})).toEqual([]);
+  });
+});
+
+
+// ═══════════════════════════════════════════════════════════════════
+// The deep-QA gate (ace-web#746). The third parity check, and the one
+// whose evidence is NOT in run_state.yaml: `/ace:qa-deep` deliberately
+// writes no pointer there, so the two verdict FILES in the run folder
+// are the only record it ran. A check modelled on its two siblings would
+// read `phases`, find nothing, and stay silent forever.
+// ═══════════════════════════════════════════════════════════════════
+
+const DEEP_FILES = [
+  'run_state.yaml',
+  'decisions.yaml',
+  '5-ocs/ocs-chatbot-eval_verdict-deep.yaml',
+  '6-qa-and-training/app-ux-eval_verdict-deep.yaml',
+];
+
+/** Stage A of spark-facilitator/20260828-0703 — 8.03, gate `iterate`. */
+function deepStage(over: Record<string, unknown> = {}) {
+  return {
+    stage: 'assistant',
+    label: 'Support assistant',
+    ran: true,
+    gate: 'iterate',
+    score: 8.03,
+    threshold: 7.0,
+    counts: { total: 68, pass: 58, warn: 8, fail: 2 },
+    ...over,
+  };
+}
+
+describe('a deep gate that ran must not render as one that did not', () => {
+  it('BLOCKS when no run-folder listing was supplied', () => {
+    const findings = auditDeepQaParity(healthyPayload(), null);
+    expect(codes(findings)).toContain('DEEP-QA-UNVERIFIED');
+    expect(findings.every(isBlocking)).toBe(true);
+    // Names why the usual evidence source cannot answer it.
+    expect(findings[0].detail).toContain('run_state.yaml');
+  });
+
+  it('BLOCKS when the run holds deep verdicts and the page has no section', () => {
+    const findings = auditDeepQaParity(healthyPayload(), DEEP_FILES);
+    expect(codes(findings)).toContain('DEEP-QA-HIDDEN');
+    expect(findings.every(isBlocking)).toBe(true);
+    // The finding names its own evidence, so it is arguable rather than
+    // assertive — the same bar the ace#1876 pair set.
+    expect(findings[0].detail).toContain('ocs-chatbot-eval_verdict-deep.yaml');
+  });
+
+  it('BLOCKS when a stage that ran is reported as not run', () => {
+    const findings = auditDeepQaParity(
+      healthyPayload({
+        deep_qa: {
+          stages: [
+            deepStage(),
+            { stage: 'apps', ran: false, gate: null, score: null },
+          ],
+        },
+      }),
+      DEEP_FILES,
+    );
+    expect(codes(findings)).toEqual(['DEEP-QA-HIDDEN']);
+    expect(findings[0].where).toBe('deep_qa.stages[stage=apps]');
+  });
+
+  it('BLOCKS a score carried with no gate — the defect the section exists for', () => {
+    // 8.03 clears the 7.0 bar and the gate is `iterate` anyway, because
+    // --deep requires zero Fails and two answers fabricated
+    // safety-adjacent procedure. A bare number reads as a pass.
+    const findings = auditDeepQaParity(
+      healthyPayload({
+        deep_qa: {
+          stages: [
+            deepStage({ gate: null }),
+            { stage: 'apps', ran: true, gate: 'reject', score: 5.7 },
+          ],
+        },
+      }),
+      DEEP_FILES,
+    );
+    expect(codes(findings)).toEqual(['DEEP-QA-SCORE-WITHOUT-GATE']);
+    expect(findings[0].detail).toContain('8.03');
+  });
+
+  it('is silent once the page carries both stages with their gates', () => {
+    const findings = auditDeepQaParity(
+      healthyPayload({
+        deep_qa: {
+          stages: [
+            deepStage(),
+            { stage: 'apps', ran: true, gate: 'reject', score: 5.7 },
+          ],
+        },
+      }),
+      DEEP_FILES,
+    );
+    expect(findings).toEqual([]);
+  });
+
+  it('says nothing about a run that never took the deep gate', () => {
+    // The same lie pointed the other way. No verdict files, no finding —
+    // and a page that stays silent is then correct.
+    expect(
+      auditDeepQaParity(healthyPayload(), ['run_state.yaml', 'decisions.yaml']),
+    ).toEqual([]);
+    expect(auditDeepQaParity(healthyPayload(), [])).toEqual([]);
+  });
+
+  it('reads only ONE stage as run when only one verdict exists', () => {
+    // `/ace:qa-deep --ocs-only` is a supported invocation, so a page
+    // reporting the app stage as not-run is CORRECT here — and must not
+    // be flagged.
+    const findings = auditDeepQaParity(
+      healthyPayload({
+        deep_qa: {
+          stages: [
+            deepStage(),
+            { stage: 'apps', ran: false, gate: null, score: null },
+          ],
+        },
+      }),
+      ['5-ocs/ocs-chatbot-eval_verdict-deep.yaml'],
+    );
+    expect(findings).toEqual([]);
+  });
+
+  it('is actually WIRED into the audit script, not just written', () => {
+    // The cheap guard against a correct function nobody calls. Unlike
+    // its two siblings, this one is not reachable through
+    // `auditCompleteness` — that early-returns when --run-state is
+    // absent, which would swallow a deep-QA finding --run-files could
+    // still have proved — so the wiring is one push in the script, and
+    // this is what holds it there.
+    const here = path.dirname(fileURLToPath(import.meta.url));
+    const script = readFileSync(
+      path.join(here, '../../scripts/audit-run-surface.ts'),
+      'utf8',
+    );
+    expect(script).toContain('auditDeepQaParity');
+    expect(script).toContain("case '--run-files':");
+    expect(script).toMatch(/findings\.push\(\.\.\.auditDeepQaParity\(/);
+  });
+
+  it('knows the deep_qa section, so it is not reported as unaudited', () => {
+    // The other half of the contract change: without the SURFACE_CONTRACT
+    // entry, every payload carrying the new section trips
+    // CONTRACT-UNKNOWN-SECTION instead.
+    const findings = auditContract(healthyPayload({ deep_qa: { stages: [] } }));
+    expect(codes(findings)).not.toContain('CONTRACT-UNKNOWN-SECTION');
+    expect(codes(findings)).not.toContain('CONTRACT-MISSING-SECTION');
   });
 });

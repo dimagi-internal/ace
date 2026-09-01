@@ -151,6 +151,14 @@ export const SURFACE_CONTRACT: Readonly<Record<string, SectionContract>> = {
     kind: 'object',
     keys: ['status', 'verdict', 'note', 'failing_checks', 'carried_blockers'],
   },
+  // The `/ace:qa-deep` gate's verdicts — `null` on every run that never
+  // took the deep gate. Added with ace-web#746. Its evidence is NOT in
+  // run_state.yaml (qa-deep deliberately writes no pointer there), so
+  // `auditDeepQaParity` reads a run-folder listing instead; this entry
+  // only pins the payload half. `stages` is the list key — a rename here
+  // renders as "the deep gate was never run", which is exactly the state
+  // Phase 9 llo-launch treats as disqualifying.
+  deep_qa: { kind: 'object', keys: ['stages'] },
   connect: { kind: 'object', keys: ['opportunity'], linkKeys: ['url'] },
   training: {
     kind: 'object',
@@ -1026,6 +1034,156 @@ export function auditBuildStatusParity(payload: unknown, phases: unknown): Findi
       defect: '(ace-web#744) a partial run rendered identically to a clean one',
     },
   ];
+}
+
+/**
+ * The two files `/ace:qa-deep` writes, and the payload stage each one is
+ * supposed to become. Matched on BASENAME: the caller supplies
+ * run-relative paths, but a listing that recursed differently must not
+ * make this check silently see nothing.
+ */
+const DEEP_QA_VERDICT_FILES: ReadonlyArray<{ file: string; stage: string; what: string }> = [
+  {
+    file: 'ocs-chatbot-eval_verdict-deep.yaml',
+    stage: 'assistant',
+    what: 'the assistant deep gate (Stage A)',
+  },
+  {
+    file: 'app-ux-eval_verdict-deep.yaml',
+    stage: 'apps',
+    what: 'the app-journey deep gate (Stage B)',
+  },
+];
+
+/**
+ * Did `/ace:qa-deep` run, and does the page SAY what it found?
+ *
+ * The third of the ace#1876 parity checks, and it exists for the same
+ * reason as the other two: **a page that says NOTHING has no key to
+ * drift on, so every contract-shaped check here is structurally blind to
+ * it.** Only a positive comparison against what the run actually
+ * produced can see an absence.
+ *
+ * This one is the hardest of the three to see, because the evidence is
+ * not in `run_state.yaml` at all. `commands/qa-deep.md` states, in as
+ * many words, that `/ace:qa-deep` "does not touch `run_state.yaml`, so
+ * `/ace:run` resume will pick up at whatever phase the run last halted
+ * at" — a deliberate and correct decision. The consequence is that the
+ * only record the deep gate ran is the two verdict FILES in the run
+ * folder, which is why this takes `runFiles` rather than `phases`. A
+ * version of this check modelled on its two siblings would read
+ * `phases`, find nothing, and return `[]` forever.
+ *
+ * Why it matters more than a missing section usually would: Phase 9
+ * `llo-launch` refuses activation when a deep verdict is missing OR
+ * stale (`skills/llo-launch/SKILL.md` step 4). So the deep gate is the
+ * last thing standing between a run and a live opportunity, and on
+ * `spark-facilitator/20260828-0703` it said `iterate` and `reject` while
+ * the page a partner reads said nothing at all.
+ *
+ * Three findings, all `misleading`:
+ *
+ * - `DEEP-QA-UNVERIFIED` — no listing supplied. "We did not check" is
+ *   not "it is fine"; same precedent as `COMPLETENESS-UNVERIFIED`.
+ * - `DEEP-QA-HIDDEN` — the run holds verdicts and the page carries no
+ *   section, or holds one and the page shows it as not-run.
+ * - `DEEP-QA-SCORE-WITHOUT-GATE` — the page carries a stage's SCORE and
+ *   no gate. That combination is the specific defect this section was
+ *   built to prevent: Stage A scored **8.03** against a **7.0** bar and
+ *   its gate was `iterate` anyway, because `--deep` requires zero Fail
+ *   entries and two prompts fabricated safety-adjacent operational
+ *   procedure. A number with nothing qualifying it reads as a pass.
+ */
+export function auditDeepQaParity(
+  payload: unknown,
+  runFiles: readonly string[] | null,
+): Finding[] {
+  if (runFiles === null || runFiles === undefined) {
+    return [
+      {
+        code: 'DEEP-QA-UNVERIFIED',
+        severity: 'misleading',
+        where: 'deep_qa',
+        detail:
+          'no run-folder listing was supplied, so nothing checked whether `/ace:qa-deep` ran. ' +
+          'Its verdicts leave NO trace in run_state.yaml by design, so this is the only way to ' +
+          'tell "the deep gate was never run" from "it ran, said `reject`, and the page hid it" ' +
+          '— and Phase 9 llo-launch refuses activation on a missing or stale deep verdict',
+        fix:
+          'pass --run-files <path> (a JSON array of run-relative paths from drive_list_folder on ' +
+          'the run folder and its phase subfolders), or state explicitly that the deep gate was ' +
+          'not verified',
+        defect: 'the sibling of COMPLETENESS-UNVERIFIED — silence is not clearance',
+      },
+    ];
+  }
+
+  const basenames = new Set(runFiles.map((p) => String(p).split('/').pop() ?? ''));
+  const held = DEEP_QA_VERDICT_FILES.filter((v) => basenames.has(v.file));
+  // The run never took the deep gate. A page that says nothing is then
+  // correct, and inventing a section for it would be the same lie
+  // pointed the other way.
+  if (held.length === 0) return [];
+
+  const out: Finding[] = [];
+  const section = getPath(payload, 'deep_qa');
+  if (section === null || section === undefined) {
+    return [
+      {
+        code: 'DEEP-QA-HIDDEN',
+        severity: 'misleading',
+        where: 'deep_qa',
+        detail:
+          `the run folder holds ${held.map((v) => `\`${v.file}\``).join(' and ')}, so ` +
+          `/ace:qa-deep RAN, and the page carries no deep-QA section — a reader cannot tell this ` +
+          'run from one that was never deep-tested, which is the state the launch step treats as ' +
+          'disqualifying',
+        fix:
+          'surface the verdicts through ace-web `_read_deep_qa` (read by PATH from the run folder ' +
+          '— /ace:qa-deep writes no pointer into run_state.yaml), leading with `gate` rather than ' +
+          '`overall_score`',
+        defect: '(ace-web#746) the deep gate said iterate/reject and the page said nothing',
+      },
+    ];
+  }
+
+  const stages = getPath(section, 'stages');
+  const rows = Array.isArray(stages) ? stages : [];
+  for (const v of held) {
+    const row = rows.find((r) => getPath(r, 'stage') === v.stage);
+    if (!row || getPath(row, 'ran') !== true) {
+      out.push({
+        code: 'DEEP-QA-HIDDEN',
+        severity: 'misleading',
+        where: `deep_qa.stages[stage=${v.stage}]`,
+        detail:
+          `the run folder holds \`${v.file}\`, so ${v.what} ran, and the page ` +
+          (row ? 'reports that stage as NOT run' : 'carries no entry for that stage') +
+          ' — which reads to a partner as "we never tested this"',
+        fix: `carry the verdict at \`${v.file}\` into the \`${v.stage}\` stage with \`ran: true\``,
+        defect: '(ace-web#746) a stage that ran must never render as one that did not',
+      });
+      continue;
+    }
+    if (getPath(row, 'score') != null && !getPath(row, 'gate')) {
+      out.push({
+        code: 'DEEP-QA-SCORE-WITHOUT-GATE',
+        severity: 'misleading',
+        where: `deep_qa.stages[stage=${v.stage}]`,
+        detail:
+          `the page carries a deep-QA score for ${v.what} and no gate. The two disagree in ` +
+          'practice — on spark-facilitator/20260828-0703 the assistant scored 8.03 against a 7.0 ' +
+          'bar and the gate was `iterate` anyway, because --deep requires zero Fail entries and ' +
+          'two answers fabricated safety-adjacent operational procedure — so a bare number reads ' +
+          'as a pass on a run that must not launch',
+        fix:
+          'carry `gate.disposition` (and the Fail count) alongside the score, and lead with the ' +
+          'gate; never derive an appearance of pass/fail from the number',
+        defect: '(ace-web#746) 8.03 beside a green tick on a run gated `iterate`',
+      });
+    }
+  }
+  return out;
 }
 
 /**

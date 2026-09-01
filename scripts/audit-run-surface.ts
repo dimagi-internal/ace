@@ -27,7 +27,9 @@
  *                   really was anonymous.
  *   D. COMPLETENESS what the run produced (`run_state.yaml`) vs what the page
  *                   shows. Unverified without `--run-state`, and unverified
- *                   BLOCKS.
+ *                   BLOCKS. Plus the deep-QA gate, whose evidence is the run
+ *                   FOLDER rather than run_state (`/ace:qa-deep` writes no
+ *                   pointer): unverified without `--run-files`, same rule.
  *   E. DOCS         each publicly-readable deliverable fetched and judged:
  *                   literal markdown on screen, and (with `--doc-source`)
  *                   content the Drive importer silently dropped.
@@ -63,6 +65,7 @@ import { fileURLToPath } from 'node:url';
 import {
   auditCompleteness,
   auditConfidentiality,
+  auditDeepQaParity,
   auditContract,
   auditDocFidelity,
   auditGuideScreenshots,
@@ -96,6 +99,7 @@ interface Args {
   reviewers: string[];
   memberships: string | null;
   runState: string | null;
+  runFiles: string | null;
   docSource: string | null;
 }
 
@@ -111,6 +115,7 @@ function parseArgs(argv: string[]): Args {
     reviewers: [],
     memberships: null,
     runState: null,
+    runFiles: null,
     docSource: null,
   };
   for (let i = 0; i < argv.length; i++) {
@@ -123,6 +128,7 @@ function parseArgs(argv: string[]): Args {
       case '--reviewer': args.reviewers.push(argv[++i]); break;
       case '--memberships': args.memberships = argv[++i]; break;
       case '--run-state': args.runState = argv[++i]; break;
+      case '--run-files': args.runFiles = argv[++i]; break;
       case '--doc-source': args.docSource = argv[++i]; break;
       default:
         if (a.startsWith('--')) throw new Error(`unknown flag ${a}`);
@@ -131,7 +137,7 @@ function parseArgs(argv: string[]): Args {
   }
   [args.slug, args.runId] = positional;
   if (!args.slug || !args.runId) {
-    throw new Error('usage: audit-run-surface.ts <opp-slug> <run-id> [--render] [--reviewer <email>] [--memberships <json>] [--run-state <yaml>] [--doc-source <json>]');
+    throw new Error('usage: audit-run-surface.ts <opp-slug> <run-id> [--render] [--reviewer <email>] [--memberships <json>] [--run-state <yaml>] [--run-files <json>] [--doc-source <json>]');
   }
   return args;
 }
@@ -317,6 +323,16 @@ async function main(): Promise<number> {
   // ── D. Completeness ────────────────────────────────────────────
   const runState = a.runState ? await readYaml(a.runState) : null;
   findings.push(...auditCompleteness(payload, runState));
+  // `/ace:qa-deep` writes NOTHING into run_state.yaml on purpose, so the
+  // deep gate is invisible to the completeness check above. Its evidence
+  // is the two verdict FILES in the run folder — hence a separate input,
+  // and a separate call rather than a hop through auditCompleteness
+  // (which early-returns when --run-state is absent, and would then
+  // swallow a deep-QA finding that --run-files could still have proved).
+  const runFiles: string[] | null = a.runFiles
+    ? (JSON.parse(readFileSync(a.runFiles, 'utf8')) as string[])
+    : null;
+  findings.push(...auditDeepQaParity(payload, runFiles));
 
   // ── E. Document fidelity ───────────────────────────────────────
   // `null` means the flag was never passed. A url ABSENT from a map that WAS
