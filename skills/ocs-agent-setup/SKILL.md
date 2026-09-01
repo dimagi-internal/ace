@@ -353,6 +353,10 @@ round-trip gate in Step 11.5 below.
    contact that is not listed here, say the programme has not published
    one and point to the ACE admin group.
 
+   Never name this page, this file, or any other knowledge-base file in
+   an answer. Give the address itself. The reader cannot open a file in
+   this knowledge base.
+
    | Role | Contact | Where this value comes from |
    |---|---|---|
    | ACE admin group — escalation of last resort | ace@dimagi-ai.com | `config/agent.json` → `email` |
@@ -408,18 +412,45 @@ round-trip gate in Step 11.5 below.
    - Summarize the intervention (from PDD)
    - **Tell the bot to escalate to the ACE admin group on specific
      triggers, and to take the address FROM `00-program-contacts.md` in
-     the opp collection — never from memory (ace#1665).** Do NOT restate
-     the address inline in this composed prompt. Retrieval is the anchor:
-     an address the prompt carries and the corpus does not is reproduced
-     from recall, which drifted three times on one 73-prompt deep run
-     (see § Step 5, "The generated contacts file"). The composed prompt
-     MUST instead say, as an obligation: *"Contacts for this opportunity
-     — the ACE admin group's escalation address and every named contact —
-     are in `00-program-contacts.md` in the opportunity knowledge base.
-     Quote them from that file verbatim. If a contact you need is not on
-     that page, say the programme has not published one and offer the ACE
-     admin group; never supply an address from general knowledge or vary
-     the spelling of one."*
+     the opp collection — never from memory (ace#1665) — and NEVER to
+     name that file, or any internal artifact, to a user
+     (dimagi-internal/ace#1891).** Do NOT restate the address inline in
+     this composed prompt. Retrieval is the anchor: an address the prompt
+     carries and the corpus does not is reproduced from recall, which
+     drifted three times on one 73-prompt deep run (see § Step 5, "The
+     generated contacts file").
+
+     **Retrieval source and user-facing answer are two different
+     things, and the first version of this instruction conflated them.**
+     Telling the bot to quote *from a named file* invites it to name the
+     file: across the 68-prompt deep run on
+     `spark-facilitator/20260828-0703` the bot routed escalation to
+     **the filename** in 7 entries (opp-20, opp-29, opp-42, opp-46,
+     opp-52, opp-57, cg-2) — telling a field supervisor to consult
+     `00-program-contacts.md`, which they cannot open — and in 2 of
+     those it emitted the wrong domain from recall while doing it ("the
+     contact is in `00-program-contacts.md`; if you do not have that
+     file to hand, use `ace@dimagi.com`"). The deep verdict's own words:
+     *"A supervisor cannot open a KB filename."*
+
+     **The file stays. The naming stops.** The fix is NOT to inline the
+     address in the prompt — that is precisely the recall path ace#1665
+     closed, and the same run still drifted to `ace@dimagi.com` on
+     opp-29 and opp-38 from prompt recall alone. Retrieval remains the
+     authority; the prompt gains a presentation obligation.
+
+     The composed prompt MUST say, as two obligations: *"Contacts for
+     this opportunity — the ACE admin group's escalation address and
+     every named contact — are in the opportunity knowledge base. Quote
+     them verbatim from there. If a contact you need is not published,
+     say the programme has not published one and offer the ACE admin
+     group; never supply an address from general knowledge or vary the
+     spelling of one."* and *"Give the reader the contact itself — the
+     actual address. NEVER name a file, document, collection, config key
+     or other internal artifact in an answer, and never tell the reader
+     to look one up: internal file names are retrieval plumbing and the
+     reader has no way to open them. If you cannot retrieve a contact,
+     say so plainly — do not substitute a file name for an answer."*
      The golden template's own inline address
      (`scripts/bootstrap-ocs-golden-template.ts`, the ace#1142
      anti-fabrication guard) stays as written — it is the cold-start
@@ -669,6 +700,7 @@ Each row this skill writes uses `phase: 5-ocs` and
 
 | Date | Change | Author |
 |------|--------|--------|
+| 2026-09-01 | **Never name the contacts FILE to a user (dimagi-internal/ace#1891).** Step 7 told the bot to quote contacts *from a named file*, which invites the model to name the file: across the 68-prompt deep run on `spark-facilitator/20260828-0703` the bot routed escalation to `00-program-contacts.md` in **7 entries** (opp-20, opp-29, opp-42, opp-46, opp-52, opp-57, cg-2) — a file a field supervisor cannot open — and in 2 of those emitted the wrong domain from recall while doing it. The generated file STAYS (ace#1665: an address the prompt carries and the corpus does not is reproduced from recall, and the same run still drifted to `ace@dimagi.com` on opp-29/opp-38 from prompt recall alone — inlining the address would be more of that, not less). What changes is presentation: the composed prompt now carries a second obligation — give the reader the contact ITSELF, never a file/document/collection/config name, and say so plainly when retrieval comes up empty rather than substituting a filename for an answer. The generated page's own preamble carries the same rule, so retrieval reinforces it. *Enforced on the eval side:* `lib/internal-artifact-leak.ts` + `test/lib/internal-artifact-leak.test.ts` cap any response naming an internal artifact at <=6, with the seven verbatim responses as the fixture. | ACE team |
 | 2026-08-29 | **The public-chat-URL gate this skill documented no longer exists upstream (ace#1812).** Step 10 said the URL "requires the PUBLISHED version to be public", `is_public` being `len(participant_allowlist) == 0`. OCS deleted both in #4275 (ADR-0057, merged 2026-08-26) — `gh search code --repo dimagi/open-chat-studio "is_public"` now returns zero hits repo-wide, while the same search for `participant_allowlist` returns 4 files, so the empty result is a real absence rather than an unindexed repo. `start_session_public` resolves `resolve_published_or_working`, so publishing is NOT a gate and an unpublished bot no longer 404s here. Replaced with the gate that IS live: the team's `platform=WEB` `ExperimentChannel` being enabled (#4230), which returns a **503** maintenance page and is a team-wide kill-switch taking down every ACE per-opp chat URL at once. Direction of the stale claim was benign — the removed gate only ever loosened access — which is why it survived three months undetected; the cost was that a future outage would have been triaged against a mechanism that is gone. *Enforced:* `test/skills/ocs-public-chat-gate-docs.test.ts`. | ACE team |
 | 2026-05-05 | **Two idempotency improvements.** (1) New Step 0 reads the local state file (`runs/<run-id>/5-ocs/ocs-agent-setup.md`) before any OCS call — saves ~1s on a normal re-run and avoids the silent-pipeline-walk on `--prompt-patch` re-runs. (2) New `--prompt-patch` mode reuses the existing chatbot/collection/files, skipping clone + create-collection + upload + 5–10 min indexing wait, and just recomposes the prompt → calls `ocs_set_chatbot_pipeline` → publishes. This is the canonical Phase 5 retry path after `ocs-chatbot-eval --quick` flags a prompt issue (the previous skill prose said the agent should "retry prompt-patch" but no such mode existed — re-runs walked the full pipeline). | ACE team |
 | 2026-05-08 | Add `## Decisions Log` section: 3 anchor rows (system-prompt-baseline, rag-collection-scope, test-prompt-count) + bar-criterion reference. Pairs with decisions-log PR #4 (Phase 3-10 writes). | ACE team (decisions-log PR #4) |
