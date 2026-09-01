@@ -328,19 +328,53 @@ never resolves. Full rule + the two-call read-back check in
 - **Enforced by:** `pdd-to-deliver-app-eval § Data-quality validation` — a
   capture instrument whose only constraints are a consent gate + one range caps
   the dimension at ≤3, with a 1.5-point deduction per whole missing constraint
-  class (unbounded counts / unformatted phone / uncapped free text).
+  class (unbounded counts / unformatted phone / uncapped free text /
+  **one-sided date bounds**), escalating to 2 points where a downstream
+  programme rule does arithmetic on the unbounded date.
 
 **Brief paragraph (verbatim):**
 
 > REQUIRED — Data-quality validation by default: every numeric count field MUST
 > carry a sensible bound `constraint` (e.g. household_size 1–<HH_MAX>);
 > cross-field counts MUST be constrained against their parent (e.g.
-> `under_5 <= household_size`); any phone field MUST carry a format regex (e.g.
-> `regex(., '^[0-9]{10,13}$')`); every free-text field MUST carry a character
-> limit; every credit-bearing field (photo, GPS, consent) MUST be `required`
-> with a `validate`. Do NOT ship a data-capture instrument whose only
-> constraints are the consent gate and one range — unbounded counts and
-> unformatted phones produce unusable field data.
+> `under_5 <= household_size`); **every DATE field MUST carry bounds on BOTH
+> sides** — an upper bound (typically `. <= today()` for a past event, or
+> `. >= today()` for a future one) AND a plausible bound on the open side,
+> derived from the programme's own window (its enrolment period, visit cadence,
+> or recall horizon) and stated in the build memo; any phone field MUST carry a
+> format regex (e.g. `regex(., '^[0-9]{10,13}$')`); every free-text field MUST
+> carry a character limit; every credit-bearing field (photo, GPS, consent) MUST
+> be `required` with a `validate`. Do NOT ship a data-capture instrument whose
+> only constraints are the consent gate and one range — unbounded counts and
+> unformatted phones produce unusable field data, and a one-sided date bound
+> lets a year typo pass and silently satisfy any downstream rule that does
+> arithmetic on the field.
+
+**Do NOT hard-code a window.** The plausible floor is programme-specific —
+derive it from the PDD's stated cadence and disclose the derivation; `today() - 90`
+is an illustration, not a default.
+
+**Why a one-sided date bound is not cosmetic (ace#1788).** Live on
+`bednet-check-2-visit/20260828-0629` (Deliver app `fd1eb8db-89c1-4626-accc-3a0123d7f522`):
+the PDD specified `bednet_given_date` as "Required; today or earlier", the build
+implemented exactly that — `validate: . <= today()`, no lower bound — and
+`data_quality_validation` scored it **8.5**. Correct against the PDD, and still
+wrong. That programme's rule R7 is *"leave at least three days between
+registration and follow-up"*, enforced post-hoc off this very field. A worker who
+types **2025**-08-14 instead of **2026**-08-14 — one keystroke, on a date most
+workers enter by hand — produces a value that:
+
+1. passes `. <= today()` (it is emphatically in the past),
+2. is written to the case and shown in the follow-up case list, and
+3. **trivially satisfies the three-day gap check**, because the gap now computes
+   as ~365 days.
+
+So the one integrity check standing behind R7 is silently defeated by a typo, and
+nothing in the app, the eval, or `app-release-qa` can see it. The same shape
+applies to any date-of-birth, date-of-last-visit or date-of-distribution field:
+an unbounded past is exactly as wrong as an unbounded count, and **more**
+dangerous when a downstream rule does date arithmetic on it — an unbounded count
+yields obviously-bad data, an unbounded date yields a check that reports green.
 
 ### case-write-back
 
