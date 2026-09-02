@@ -65,12 +65,45 @@ export function resolveUpdateFileContent(args: {
  * third name for the same idea (`fromPath`, `sourcePath`, …) makes the
  * pairing unguessable, which is its own defect.
  *
- * `inlineCeiling` is OPTIONAL and deliberately unset for the create atoms.
- * The handle is purely additive — no existing caller changes behaviour — but
- * a refusal changes the contract for every existing caller, and a threshold
- * chosen wrong breaks skills that work today. Adding one is tracked
- * separately so the number can be picked against measured payload sizes
- * rather than guessed.
+ * `inlineCeiling` is OPTIONAL and stays UNSET for the create atoms. That was
+ * provisional in ace#1780 ("tracked separately so the number can be picked
+ * against measured payload sizes rather than guessed"); it is now a MEASURED
+ * decision (ace#1907).
+ *
+ * Measured 2026-09-02 over ACE's live Drive corpus — 1,572 text artifacts
+ * across 20 opportunities and 49 run-scopes, each Google Doc exported to
+ * text/plain and counted (binaries excluded: those go via
+ * `drive_upload_binary`, not these atoms):
+ *
+ *   p50  5,448   p75 11,052   p90 20,222   p95 29,772   p99 60,671
+ *   max  224,003
+ *   > 40,000 chars: 55 artifacts (3.50%), 13 distinct filenames
+ *
+ * There is NO number that both bites and is safe, and that is the finding:
+ *
+ * - **40,000** (the `UPDATE_FILE_INLINE_CEILING` next door) sits BELOW the
+ *   measured p99 and would refuse a RECURRING write in six unconverted
+ *   producers — `ocs-chatbot-qa` (224 KB deep transcript), `decisions-render`
+ *   (63 KB, and it runs at every phase boundary), `pdd-to-test-prompts`
+ *   (60 KB), `training-deck-generate` (56 KB), `solicitation-create` (52 KB
+ *   draft + published), `pdd-to-deliver-app-eval` (45 KB) and
+ *   `app-screenshot-capture` (44 KB) — i.e. Phases 2, 3, 5, 6 and 8. It would
+ *   also have refused the ace#1780 repro PDD (51,951 chars) that produced the
+ *   issue in the first place.
+ * - **100,000** is nearly safe (one recurring producer exposed) but no longer
+ *   does the job: the PDD and the test prompts still go inline, so the cheap
+ *   path stays advisory for exactly the documents the issue was filed about.
+ *
+ * NOT exposed, despite being the largest files in the corpus: `run_state.yaml`
+ * (147 KB) and `decisions.yaml` (73 KB) are CREATED nearly empty here and
+ * grown by `update_yaml_file` / `decisions_append_rows`, neither of which
+ * routes through this resolver.
+ *
+ * So the ceiling is a SEQUENCED change, not a threshold argument: convert the
+ * six producers to `localFilePath` first (the ace#1780 template, already
+ * applied to `idea-to-pdd`), then 40,000 becomes shippable with a blast radius
+ * of zero. Sequenced work: ace#1918. Pinned by test/lib/create-atom-inline-ceiling.test.ts, which
+ * enumerates what each candidate ceiling would refuse.
  *
  * @throws AtomArgUsageError when the caller violates the contract.
  */

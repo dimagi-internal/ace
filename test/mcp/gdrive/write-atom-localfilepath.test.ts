@@ -76,10 +76,17 @@ describe.each(WRITE_ATOMS)('%s takes a path handle (ace#1780)', (tool) => {
     expect(src).toMatch(new RegExp(`atom: '${tool}'`));
   });
 
-  it('does NOT impose an inline size ceiling in this change', () => {
-    // Deliberate split (ace#1780): the handle is purely additive, a refusal
-    // changes the contract for every existing caller. Tracked separately so
-    // the threshold is chosen against measured payloads, not guessed.
+  it('does NOT impose an inline size ceiling', () => {
+    // Deliberate in ace#1780 (the handle is additive; a refusal changes the
+    // contract for every existing caller), and now a MEASURED decision
+    // (ace#1907): over 1,572 live text artifacts, 40,000 sits below the p99
+    // and would hard-fail a recurring write in six unconverted producers
+    // across Phases 2/3/5/6/8. The ceiling is sequenced behind converting
+    // them.
+    //
+    // If this assertion fails you are adding one — read
+    // test/lib/create-atom-inline-ceiling.test.ts first (and ace#1918): it enumerates
+    // exactly which producers each candidate number breaks.
     expect(src).not.toMatch(/inlineCeiling/);
   });
 
