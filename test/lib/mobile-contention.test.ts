@@ -20,9 +20,11 @@ import { fileURLToPath } from 'node:url';
 import {
   classifyAvdContention,
   isMobileServerCommand,
+  parseAvdHolders,
   parseMobileSessions,
   parsePsRows,
   pluginVersionFromCommand,
+  resolveAvdPoolFreedom,
   type PsRow,
 } from '../../lib/mobile-contention.js';
 
@@ -186,5 +188,118 @@ describe('classifyAvdContention', () => {
     expect(r.verdict).toBe('warn');
     expect(r.crossAccount).toBe(false);
     expect(r.reason).not.toMatch(/macOS accounts/);
+  });
+});
+
+/**
+ * ace#1909 — the AVD-holder half of the same `ps` substrate.
+ *
+ * Deliberately in this file rather than a new one: the whole point of reusing
+ * `parsePsRows` is that ACE has ONE contention signal, not two that can
+ * disagree, so both halves are pinned against the same parser.
+ */
+describe('parseAvdHolders (#1909)', () => {
+  const QEMU =
+    '/opt/homebrew/share/android-commandlinetools/emulator/qemu/darwin-aarch64/qemu-system-aarch64-headless';
+  const line = (pid: number, ppid: number, cmd: string, user = 'acedimagi') =>
+    `${user} ${pid} ${ppid} Tue Sep  1 09:56:11 2026 ${cmd}`;
+
+  it('finds the live -read-only holder measured on the affected host', () => {
+    const rows = parsePsRows(
+      line(29670, 1,
+        `${QEMU} -avd ACE_Pixel_API_34 -no-window -no-audio -wipe-data ` +
+        '-no-snapshot-load -no-snapshot-save -read-only -port 5554'),
+    );
+    const holders = parseAvdHolders(rows, 'ACE_Pixel_API_34');
+    expect(holders).toHaveLength(1);
+    expect(holders[0]).toMatchObject({ pid: 29670, readOnly: true, consolePort: 5554 });
+  });
+
+  it('matches the `@avd` shorthand an operator may launch by hand', () => {
+    const rows = parsePsRows(line(40001, 1, '/opt/homebrew/bin/emulator @ACE_Pixel_API_34 -port 5556'));
+    expect(parseAvdHolders(rows, 'ACE_Pixel_API_34').map((h) => h.pid)).toEqual([40001]);
+  });
+
+  it('reports a read-WRITE holder as such — that is the case the emulator itself rejects', () => {
+    const rows = parsePsRows(line(40100, 1, `${QEMU} -avd ACE_Pixel_API_34 -port 5560`));
+    expect(parseAvdHolders(rows, 'ACE_Pixel_API_34')[0].readOnly).toBe(false);
+  });
+
+  it('excludes OUR OWN emulator by allocated console port, not by pid', () => {
+    // The emulator is detached (ppid 1) and shares no pid with the MCP that
+    // spawned it, so pid comparison cannot find it. Without the port match a
+    // session reports its own device as a peer and switches away every dispatch.
+    const rows = parsePsRows(line(29670, 1, `${QEMU} -avd ACE_Pixel_API_34 -read-only -port 5554`));
+    expect(parseAvdHolders(rows, 'ACE_Pixel_API_34', { selfConsolePort: 5554 })).toEqual([]);
+    expect(parseAvdHolders(rows, 'ACE_Pixel_API_34', { selfConsolePort: 5558 })).toHaveLength(1);
+  });
+
+  it('counts a launcher + qemu chain ONCE, like the MCP-session dedup above', () => {
+    const rows = parsePsRows(
+      [
+        line(5000, 1, '/opt/homebrew/bin/emulator -avd ACE_Pixel_API_34 -read-only -port 5554'),
+        line(5001, 5000, `${QEMU} -avd ACE_Pixel_API_34 -read-only -port 5554`),
+      ].join('\n'),
+    );
+    expect(parseAvdHolders(rows, 'ACE_Pixel_API_34').map((h) => h.pid)).toEqual([5000]);
+  });
+
+  it('ignores a different AVD, and ignores non-emulator commands that mention one', () => {
+    const rows = parsePsRows(
+      [
+        line(6000, 1, `${QEMU} -avd ACE_Probe_API_34 -read-only -port 5554`),
+        line(6001, 1, 'grep -avd ACE_Pixel_API_34'),
+      ].join('\n'),
+    );
+    expect(parseAvdHolders(rows, 'ACE_Pixel_API_34')).toEqual([]);
+  });
+
+  it('sees a peer under a DIFFERENT macOS account — the case locks are blind to', () => {
+    const rows = parsePsRows(
+      line(7000, 1, `${QEMU} -avd ACE_Pixel_API_34 -read-only -port 5558`, 'jjackson'),
+    );
+    expect(parseAvdHolders(rows, 'ACE_Pixel_API_34')[0].user).toBe('jjackson');
+  });
+});
+
+describe('resolveAvdPoolFreedom (#1909 / ace#1821 risk finding)', () => {
+  it('prefers the unheld AVD when the pool has one — #1047 fix 2, finally reachable', () => {
+    const r = resolveAvdPoolFreedom([
+      { name: 'A', usable: true, held: true },
+      { name: 'B', usable: true, held: false },
+    ]);
+    expect(r).toEqual([
+      { name: 'A', free: false, shared: false },
+      { name: 'B', free: true, shared: false },
+    ]);
+  });
+
+  it('SHARES rather than dies when every usable AVD is held — the one-AVD host', () => {
+    // The whole judgment call. Refusing here would convert N-1 concurrent
+    // sessions from "limps to a partial walk" into "dies immediately", and
+    // Phase 6's one-way Learn precondition is burned either way.
+    const r = resolveAvdPoolFreedom([{ name: 'A', usable: true, held: true }]);
+    expect(r).toEqual([{ name: 'A', free: true, shared: true }]);
+  });
+
+  it('never frees an unusable entry, even when nothing else is available', () => {
+    const r = resolveAvdPoolFreedom([
+      { name: 'A', usable: false, held: true },
+      { name: 'B', usable: false, held: false },
+    ]);
+    expect(r.every((e) => !e.free && !e.shared)).toBe(true);
+  });
+
+  it('an unheld usable entry elsewhere still frees nothing that is unusable', () => {
+    const r = resolveAvdPoolFreedom([
+      { name: 'A', usable: false, held: false },
+      { name: 'B', usable: true, held: false },
+    ]);
+    expect(r.find((e) => e.name === 'A')!.free).toBe(false);
+    expect(r.find((e) => e.name === 'B')!.free).toBe(true);
+  });
+
+  it('is a no-op on an empty pool', () => {
+    expect(resolveAvdPoolFreedom([])).toEqual([]);
   });
 });

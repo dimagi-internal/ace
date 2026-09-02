@@ -18,7 +18,12 @@ import { checkAvdProvisioned } from '../avd-provisioning.js';
 import { findLatestBootLog, bootLogTail, fatalBootLine } from '../boot-log.js';
 import { checkAvdContention, clearStaleAvdLock } from '../avd-contention.js';
 import type { AvdInfo, ApkInfo, UiDumpResult, SnapshotResult, LocalDiagnostics, ContentionSummary } from '../types.js';
-import { classifyAvdContention, parsePsRows, type PsRow } from '../../../lib/mobile-contention.js';
+import {
+  classifyAvdContention,
+  parsePsRows,
+  resolveAvdPoolFreedom,
+  type PsRow,
+} from '../../../lib/mobile-contention.js';
 import { resolveAdbServerPort, resolveEmulatorPair, recordSessionLock, isTcpPortFree, occupiedConsolePortIsFatal } from '../port-allocator.js';
 import { withAllocatorMutex } from '../session-lock.js';
 
@@ -623,16 +628,24 @@ export class AvdBackend {
    * (`test/lib/mobile-contention.test.ts`, against a verbatim `ps` capture
    * from the affected host). This half only collects.
    */
-  private async probeContention(avdCount: number): Promise<ContentionSummary> {
-    let rows: PsRow[] = [];
+  /**
+   * One `ps` capture, shared by every contention question (ace#1821, ace#1909).
+   *
+   * Not `this.shell` — that injects the adb port and is for device calls.
+   * `-o etimes=` does not exist on BSD/macOS; `lstart` does. Best-effort: an
+   * empty table is reported by callers as "not assessed", never as "clear".
+   */
+  private async readPsRows(): Promise<PsRow[]> {
     try {
-      // Not `this.shell` — that injects the adb port and is for device calls.
-      // `-o etimes=` does not exist on BSD/macOS; `lstart` does.
       const r = await this.rawShellFn('ps', ['-eo', 'user=,pid=,ppid=,lstart=,command=']);
-      rows = parsePsRows(r.stdout);
+      return parsePsRows(r.stdout);
     } catch {
-      /* falls through to the empty-table `skip` verdict below */
+      return [];
     }
+  }
+
+  private async probeContention(avdCount: number): Promise<ContentionSummary> {
+    const rows = await this.readPsRows();
     const c = classifyAvdContention(rows, { selfPid: process.pid, avdCount });
     return {
       other_mobile_sessions: c.otherSessionCount,
@@ -715,14 +728,66 @@ export class AvdBackend {
     // re-grabs the shared AVD every cycle and starves every other session.
     const avdHomeForPool =
       process.env.ANDROID_AVD_HOME ?? path.join(os.homedir(), '.android', 'avd');
-    const pool: AvdPoolEntry[] = known.map((name) => {
+
+    // ace#1909: the lock file this check used to read is never written under
+    // `-read-only`, which ACE always passes, so the process table is the only
+    // surface that can see an ACE-launched holder. Captured ONCE and reused for
+    // every entry — one `ps` per heal, not one per AVD.
+    const psRows = await this.readPsRows();
+    const selfPorts = await this.getAllocatedPorts();
+
+    // Per-AVD facts first; the share-or-refuse decision is pure and lives in
+    // `lib/mobile-contention.ts#resolveAvdPoolFreedom`
+    // (`test/lib/mobile-contention.test.ts`).
+    const facts = known.map((name) => {
       const prov = checkAvdProvisioned(avdHomeForPool, name);
+      const cont =
+        prov.provisioned === false
+          ? null
+          : checkAvdContention(avdHomeForPool, name, {
+              selfPid: process.pid,
+              psRows,
+              selfEmulatorPort: selfPorts.emulatorConsolePort,
+            });
+      return { name, prov, cont };
+    });
+
+    const freedom = new Map(
+      resolveAvdPoolFreedom(
+        facts.map((f) => ({
+          name: f.name,
+          usable: f.prov.provisioned !== false && f.cont !== null && !f.cont.contended,
+          held: f.cont?.held ?? false,
+        })),
+      ).map((e) => [e.name, e]),
+    );
+
+    const pool: AvdPoolEntry[] = facts.map(({ name, prov, cont }) => {
       if (prov.provisioned === false) {
         return { name, free: false, reason: `de-provisioned (${prov.detail})` };
       }
-      const cont = checkAvdContention(avdHomeForPool, name, { selfPid: process.pid });
-      if (cont.contended) {
-        return { name, free: false, reason: `held by live pid ${cont.holderPid}` };
+      if (cont!.contended) {
+        return { name, free: false, reason: `held by live pid ${cont!.holderPid}` };
+      }
+      const f = freedom.get(name)!;
+      if (!f.free) {
+        return {
+          name,
+          free: false,
+          reason:
+            `shared with ${cont!.heldBy.length} live -read-only emulator(s) ` +
+            `(${cont!.heldBy.map((h) => h.pid).join(', ')}) — another AVD is free`,
+        };
+      }
+      if (f.shared) {
+        console.warn(
+          `[ace-mobile] ensureAvdRunning: every provisioned AVD on this host is already held by a ` +
+            `live -read-only emulator from another session (${name}: ` +
+            `${cont!.heldBy.map((h) => h.pid).join(', ')}). Proceeding anyway — -read-only permits ` +
+            'it — but this dispatch cold-boots with -wipe-data and WILL destroy the other session\'s ' +
+            "device state, and it may destroy this one's. Serialise Phase 6 runs on this host, or " +
+            'provision more AVDs (ace#1821, ace#1909).',
+        );
       }
       // Free, but only PROVEN entries are eligible as a fallback — see
       // avd-provisioned-marker.ts. The requested AVD does not need a marker,
@@ -730,6 +795,7 @@ export class AvdBackend {
       const marker = readProvisionedMarker(avdHomeForPool, name);
       return { name, free: true, proven: markerProvesFor(marker, process.env.ACE_SELECTOR_MAP) };
     });
+
     const selection = selectAvd(avdName, pool, { selfPid: process.pid });
     if (selection.switched) {
       console.warn(`[ace-mobile] ensureAvdRunning: ${selection.note}`);
@@ -758,12 +824,22 @@ export class AvdBackend {
     // failure then surfaces 60s later as `phase=adb-register` which reads as
     // a boot timeout. A STALE lock (holder gone) is cleared and the boot
     // proceeds; only a LIVE holder stops us.
-    const contention = checkAvdContention(avdHome, avdName, { selfPid: process.pid });
+    const contention = checkAvdContention(avdHome, avdName, {
+      selfPid: process.pid,
+      psRows,
+      selfEmulatorPort: selfPorts.emulatorConsolePort,
+    });
     if (contention.contended) {
       throw new AvdContendedError(avdName, contention.detail, {
         holder_pid: contention.holderPid,
         lock_path: contention.lockPath,
       });
+    }
+    // HELD but shareable: `-read-only` permits the second instance, and the
+    // pool step above already preferred a free AVD if one existed. Reaching
+    // here means there was none, so name the cost rather than kill the run.
+    if (contention.held) {
+      console.warn(`[ace-mobile] ensureAvdRunning: ${contention.detail}`);
     }
     if (contention.stale) {
       clearStaleAvdLock(avdHome, avdName, { selfPid: process.pid });
