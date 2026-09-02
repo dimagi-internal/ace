@@ -290,3 +290,156 @@ export function classifyAvdContention(
       'or provision more AVDs. See ace#1821.',
   };
 }
+
+/* ───────────────────────────────────────────────────────────────────────────
+ * WHO IS HOLDING ONE SPECIFIC AVD (ace#1909)
+ *
+ * The sibling question to the one above. `classifyAvdContention` asks "how
+ * many ace-mobile MCPs are live on this host"; this asks "which emulator
+ * processes are attached to AVD <name> right now".
+ *
+ * It has to be answered from the same substrate, and for the same reason. The
+ * pre-existing detector in `mcp/mobile/avd-contention.ts` answered it by
+ * reading `<avd>.avd/hardware-qemu.ini.lock` — a file ACE's own `-read-only`
+ * flag guarantees is ABSENT, because not taking the AVD lock is precisely HOW
+ * `-read-only` permits concurrent instances. So that read always threw and the
+ * detector always returned `free to boot`, against any ACE-launched emulator,
+ * since 2026-07-29. Measured on the affected host 2026-09-02 with qemu pid
+ * 29670 live on `ACE_Pixel_API_34`: only an EMPTY `multiinstance.lock` exists,
+ * carrying no holder pid, so lock presence alone cannot distinguish a live
+ * holder from a stale marker either.
+ *
+ * The process table can. Putting it here rather than in a second module is
+ * deliberate: two contention detectors that disagree would be worse than one
+ * dead one, so both read one `ps` capture through one parser.
+ * ─────────────────────────────────────────────────────────────────────────── */
+
+/** A live emulator process attached to an AVD, as read from the process table. */
+export interface AvdHolder {
+  pid: number;
+  ppid: number;
+  user: string;
+  /**
+   * True when the process was launched with `-read-only`. That flag exists SO
+   * THAT several instances may share one AVD, so a read-only holder is a fact
+   * to report, not a reason to refuse. A read-WRITE holder is different: the
+   * emulator itself rejects the second instance with `FATAL | Running multiple
+   * emulators with the same AVD is an experimental feature.`
+   */
+  readOnly: boolean;
+  /** The `-port <n>` the emulator console is on, or null when not in the argv. */
+  consolePort: number | null;
+  startedMs: number;
+}
+
+/**
+ * Emulator binaries, as they appear in the process table. macOS's launcher
+ * execs into qemu, so in practice one row per emulator — but `emulator` and
+ * `emulator64-*` are matched too, and chain roots are taken below, so a
+ * platform that keeps the launcher alive is counted once rather than twice.
+ */
+const EMULATOR_BINARY_RE = /(?:^|\/)(?:qemu-system-[\w-]+|emulator64-[\w-]+|emulator)(?:$|\s)/;
+
+/**
+ * Which AVD is this command line attached to? Both spellings the emulator
+ * accepts: `-avd <name>` (what ACE passes, `mcp/mobile/backends/avd.ts`) and
+ * the `@<name>` shorthand an operator may type by hand.
+ */
+export function avdNameFromCommand(command: string): string | null {
+  const tokens = command.split(/\s+/);
+  for (let i = 0; i < tokens.length; i++) {
+    if (tokens[i] === '-avd' && tokens[i + 1]) return tokens[i + 1];
+    if (/^@[\w.-]+$/.test(tokens[i]) && i > 0) return tokens[i].slice(1);
+  }
+  return null;
+}
+
+function consolePortFromCommand(command: string): number | null {
+  const tokens = command.split(/\s+/);
+  const i = tokens.indexOf('-port');
+  if (i === -1 || !tokens[i + 1]) return null;
+  const n = Number(tokens[i + 1]);
+  return Number.isInteger(n) && n > 0 ? n : null;
+}
+
+/**
+ * Every live emulator process holding `avdName`, deduplicated to chain roots.
+ *
+ * Pure: the caller supplies the `ps` capture. `selfConsolePort` is how a
+ * session excludes its OWN emulator — the one thing pid comparison cannot do,
+ * because the emulator is detached (`ppid` 1) and shares no pid with the MCP
+ * that spawned it. The console port is allocated per session
+ * (`mcp/mobile/port-allocator.ts`) and appears verbatim in the argv, so it is
+ * the only identifier that binds a running emulator back to its session.
+ */
+export function parseAvdHolders(
+  rows: readonly PsRow[],
+  avdName: string,
+  opts: { selfConsolePort?: number | null } = {},
+): AvdHolder[] {
+  const emulators = rows.filter(
+    (r) => EMULATOR_BINARY_RE.test(r.command) && avdNameFromCommand(r.command) === avdName,
+  );
+  const byPid = new Map(emulators.map((r) => [r.pid, r]));
+
+  return emulators
+    .filter((r) => !byPid.has(r.ppid)) // chain roots only — never count a launcher twice
+    .map((r) => ({
+      pid: r.pid,
+      ppid: r.ppid,
+      user: r.user,
+      readOnly: r.command.split(/\s+/).includes('-read-only'),
+      consolePort: consolePortFromCommand(r.command),
+      startedMs: r.startedMs,
+    }))
+    .filter(
+      (h) =>
+        opts.selfConsolePort == null ||
+        h.consolePort == null ||
+        h.consolePort !== opts.selfConsolePort,
+    )
+    .sort((a, b) => a.startedMs - b.startedMs || a.pid - b.pid);
+}
+
+/** One AVD's facts, before the share/refuse decision is applied. */
+export interface AvdCandidate {
+  name: string;
+  /** Provisioned, and not held by a read-WRITE emulator the emulator itself rejects. */
+  usable: boolean;
+  /** Held by one or more live `-read-only` emulators from other sessions. */
+  held: boolean;
+}
+
+export interface AvdFreedom {
+  name: string;
+  free: boolean;
+  /** True when this entry is free only because there was nothing unheld to take. */
+  shared: boolean;
+}
+
+/**
+ * Prefer an unheld AVD; fall back to a shared one rather than dying (ace#1909).
+ *
+ * This is ace#1821's risk finding made mechanical, and it is the reason this
+ * PR makes the contention check TRUTHFUL without making it BLOCK. On a host
+ * with one AVD — the common case, and the affected host — a contention check
+ * that refuses converts every peer session from "limps to a partial walk" into
+ * "dies immediately", while Phase 6's one-way Learn precondition is consumed
+ * either way. That trade is pure loss, so:
+ *
+ *   - if any usable AVD is unheld, held ones are NOT free (the caller switches
+ *     to the free one, which is #1047 fix 2 finally reachable);
+ *   - if every usable AVD is held, they are all free again and marked `shared`
+ *     so the caller can warn instead of throwing.
+ *
+ * A read-WRITE holder never reaches here as `usable` — the emulator rejects
+ * that second instance itself, so proceeding cannot help.
+ */
+export function resolveAvdPoolFreedom(candidates: readonly AvdCandidate[]): AvdFreedom[] {
+  const anyUnheld = candidates.some((c) => c.usable && !c.held);
+  return candidates.map((c) => ({
+    name: c.name,
+    free: c.usable && (!c.held || !anyUnheld),
+    shared: c.usable && c.held && !anyUnheld,
+  }));
+}
