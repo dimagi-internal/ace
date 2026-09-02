@@ -163,6 +163,38 @@ Take the approved PDD and decisions.yaml and produce a contractual Work Order dr
      - `{{partner_signatory_name}}`, `{{partner_signatory_title}}`, `{{partner_address}}` (left cell — Subcontractor)
      - Dimagi cell is hardcoded in the template (Lucina Tse, COO, Cambridge MA address) — no tokens for the right cell.
 
+5b. **Share it anyone-with-link, `commenter`, at creation (ace#1843).** On the
+   `fileId` `docs_copy_template` returned, before step 6:
+
+   ```
+   drive_set_anyone_with_link(fileId: <workOrderDocId>, role: 'commenter')
+   ```
+
+   **`commenter`, not `reader`** — this is a CONTRACTUAL draft, the document a
+   counterpart is most likely to mark up, and a Drive reader physically cannot
+   leave a comment (`skills/feedback-ledger`'s `channel: gdoc-comments`
+   assumes they can).
+
+   **At creation, not as a cleanup step, and not left to
+   `/ace:share-run-access`.** `docs_copy_template` creates UNSHARED and
+   nothing downstream tests reachability — the doc exists, the token-coverage
+   check above passes, `verify_phase_artifacts` finds it, and the recipient
+   still gets *You need access*. Measured on three independent runs in three
+   days (hh-poverty-targeting/20260828-0702, bednet-check-2-visit/20260828-0629,
+   spark-facilitator/20260828-0703): this document and the PDD 401'd
+   anonymously on all three, taking the run-summary page's entire `DESIGN`
+   section with them, while every Phase 6 training document — whose producers
+   already do this — was readable. The split tracks the producing skill.
+
+   Worse than a dead link: ace-web MEASURES the `access` tag of each Drive
+   link (`_read_design` → `LinkAccessReader.tag`), so a private Work Order
+   renders as **ADMIN ONLY** — the partner reads deliberate withholding rather
+   than an oversight.
+
+   (Declared `recipientFacing` + `shareRole: 'commenter'` in
+   `lib/artifact-manifest.ts`; enforced by
+   `test/lib/recipient-facing-artifacts.test.ts`.)
+
 6. **Write `run_state.yaml.phases.idea-to-design.products.work_order`** via `update_yaml_file` with `merge: 'deep'` (partial phase-child patch — `two-level` would replace the `design` block wholesale and clobber the sibling `products.pdd` written by `idea-to-pdd`, plus `status`/`steps`; #572/#587):
 
    ```yaml
@@ -203,7 +235,7 @@ Take the approved PDD and decisions.yaml and produce a contractual Work Order dr
 - Roles: per-stage RACI.
 
 ## MCP Tools Used
-- Google Drive: `drive_read_file`, `update_yaml_file`
+- Google Drive: `drive_read_file`, `update_yaml_file`, `drive_set_anyone_with_link` (`role: 'commenter'` — § Process step 5b; ace#1843)
 - Google Docs: `docs_copy_template`, `docs_finalize_bullets`
 
 ## Mode Behavior

@@ -698,6 +698,46 @@ raise the conflict.
    `lib/artifact-manifest.ts`, enforced by
    `test/lib/source-persisted-artifacts.test.ts`.)
 
+6c. **Share the PDD anyone-with-link, `commenter`, at creation (ace#1843).**
+   Immediately after step 6b, on the `fileId` step 6 returned:
+
+   ```
+   drive_set_anyone_with_link(fileId: <pddDocId>, role: 'commenter')
+   ```
+
+   Do the same for `open-questions.md` the moment you write it (§ The durable
+   open-questions doc) — same call, same role.
+
+   **`commenter`, not `reader`.** A Drive reader physically CANNOT leave a
+   comment, and the PDD is the one artifact in this pipeline whose purpose is
+   to be argued with: `skills/feedback-ledger`'s `channel: gdoc-comments` and
+   step 1's read-back of anchored reviewer comments both assume the reviewer
+   can write one. Sharing `reader` produces a link that opens and a review
+   loop that is structurally impossible.
+
+   **At creation, not as a cleanup step, and not left to
+   `/ace:share-run-access`.** `drive_create_doc_from_markdown` creates
+   UNSHARED, and nothing downstream tests reachability: the doc exists,
+   `verify_phase_artifacts` finds it, `classify_phase_writeback` is `ok`,
+   `validate_run_state` is clean, every content eval passes — and the
+   recipient gets *You need access*. Measured on three independent runs in
+   three days (hh-poverty-targeting/20260828-0702,
+   bednet-check-2-visit/20260828-0629, spark-facilitator/20260828-0703): the
+   PDD and Work Order 401 anonymously on all three while the six Phase 6
+   training documents, whose producers already do this, were readable on all
+   three. The split tracks the producing skill, not the run.
+
+   Second-order effect, which is why a dead link understates it: ace-web
+   MEASURES the `access` tag of each Drive link (`_read_design` →
+   `LinkAccessReader.tag`), so a private PDD renders as **ADMIN ONLY**. The
+   partner reads "we deliberately withheld the design" rather than "we forgot
+   to share it" — a true story about a wrong state. Sharing corrected the tag
+   with no ace-web change, which is what confirms the defect is producer-side.
+
+   (Declared `recipientFacing` + `shareRole: 'commenter'` in
+   `lib/artifact-manifest.ts`; enforced by
+   `test/lib/recipient-facing-artifacts.test.ts`.)
+
 <!-- 0.13.116: gate-brief write step removed. The orchestrator composes a
 pause-time summary from this skill's QA verdict (idea-to-pdd-qa) +
 eval verdict (idea-to-pdd-eval) at the Phase 1→3 Pause Point. -->
@@ -973,6 +1013,11 @@ Rules:
   `drive_read_file(..., exportAs: 'text/markdown')` plus `extractOpenSection`:
   the default `text/plain` export of a converted doc has no `##` markers and no
   table rows, so it cannot be parsed for `## Open` at all.
+- **It is shared anyone-with-link `commenter` at creation** —
+  `drive_set_anyone_with_link(fileId: <docId>, role: 'commenter')`, per
+  § Process step 6c. This ledger is where a human ANSWERS a deferred question,
+  so the reviewer has to be able to write on the row that asks it; a reader
+  cannot. It 401'd anonymously on all three ace#1843 runs.
 
 This mirrors the `archive:` convention `run_state.yaml`'s `open_questions:`
 list already follows — see `agents/orchestrator-reference.md § Cruft
@@ -1457,7 +1502,7 @@ The PDD has two or more sequenced stages with different archetypes. Treat the ba
 **Required for multi-stage PDDs:** an explicit **Stage Gate** subsection between every pair of stages, stating exactly what must be true at the end of stage N to proceed to stage N+1 (with go / no-go / iterate criteria).
 
 ## MCP Tools Used
-- Google Drive: `drive_read_file` (pass `exportAs: 'text/markdown'` when re-reading the PDD **or `open-questions.md`** — both are rendered gdocs, and the default plain-text export drops the `#` heading markers and flattens pipe tables to one cell per line), `drive_create_doc_from_markdown` (the PDD and `open-questions.md` — human-facing prose; write `open-questions.md` in the two-section `## Open` / `## Archive` shape from § The durable open-questions doc, moving resolved rows into `## Archive` rather than annotating them in place — ace#1487), `drive_create_file` (machine-parsed YAML only), `drive_update_file`, `drive_download_binary` (binary/`.ccz`/`.xlsx` inputs)
+- Google Drive: `drive_read_file` (pass `exportAs: 'text/markdown'` when re-reading the PDD **or `open-questions.md`** — both are rendered gdocs, and the default plain-text export drops the `#` heading markers and flattens pipe tables to one cell per line), `drive_create_doc_from_markdown` (the PDD and `open-questions.md` — human-facing prose; write `open-questions.md` in the two-section `## Open` / `## Archive` shape from § The durable open-questions doc, moving resolved rows into `## Archive` rather than annotating them in place — ace#1487), `drive_create_file` (machine-parsed YAML only), `drive_update_file`, `drive_download_binary` (binary/`.ccz`/`.xlsx` inputs), `drive_set_anyone_with_link` (the PDD and `open-questions.md`, `role: 'commenter'` — § Process step 6c; ace#1843)
 - Google Sheets: `sheets_list_tabs`, `sheets_batch_read` (Google-Sheet inputs)
 - Google Forms: `get_google_form_definition` (Google-Form inputs)
 

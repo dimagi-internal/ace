@@ -200,6 +200,30 @@ export interface ArtifactEntry {
    */
   recipientFacing?: true;
   /**
+   * The Drive role a `recipientFacing` artifact is shared with.
+   *
+   * Visibility is NOT a boolean, and getting the role wrong is its own defect
+   * class: a Drive **reader cannot comment**, and `skills/feedback-ledger`'s
+   * `channel: gdoc-comments` — the entire feedback → ledger → next-run loop —
+   * assumes the reviewer can leave an ANCHORED comment on the document.
+   * Sharing the PDD `reader` produces a link that opens and a review that is
+   * structurally impossible.
+   *
+   * `'commenter'` is therefore the default for anything a counterpart is asked
+   * to REVIEW (the PDD, the Work Order, the open-questions ledger, the five
+   * training deliverables). `'reader'` is for material a recipient only
+   * consumes.
+   *
+   * Absence of `recipientFacing` means INTERNAL, and that is a deliberate,
+   * legitimate state — not a gap to be filled. `5-ocs/ocs-setup_widget-handoff.md`
+   * carries an `embed_key` and is correctly private now that ace#1811
+   * established the public chatbot URL as the LLO route. A guard that flagged
+   * every unshared artifact would fire on it forever (ace#1026).
+   *
+   * Enforced by `test/lib/recipient-facing-artifacts.test.ts`.
+   */
+  shareRole?: 'reader' | 'commenter';
+  /**
    * True when this artifact's producer must ALSO persist the markdown it
    * composed, as a sibling `<name>.source.md` (see `sourceMarkdownPathFor`).
    *
@@ -412,6 +436,10 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     phase: 'design',
     required: false,
     rendered: true,
+    // 401 anonymously on all three ace#1843 runs. `commenter` so a reviewer can
+    // ANSWER a question on the row that asks it, rather than in a side channel.
+    recipientFacing: true,
+    shareRole: 'commenter',
     description: 'Per-opp deferred-question doc. Written by idea-to-pdd when stress-test grades partial/fail and a default reasonable-pick is taken; phase agents append unresolved questions here at end-of-run for human review (per the feedback_phase_open_questions user-memory item). Opp-level (NOT under runs/<run-id>/) so questions survive across runs until answered. NOT append-only: it carries exactly two sections, `## Open` (the live list — the only section ever read back or inlined at Phase 1 handoff) and `## Archive` (closed history, never read back and never inlined). Resolving a question MOVES its row from `## Open` to `## Archive` with resolved_at / resolved_by / resolution_note — it is never annotated in place, which is what let the ledger grow to 26,577 chars and leak inherited framing into a fixture opp\'s PDD (dimagi-internal/ace#1487). The read side is bounded by lib/open-questions-inline.ts: fixture opps (an iterate-state.yaml at the opp root) skip the inline entirely; everyone else gets `## Open` capped at OPEN_QUESTIONS_INLINE_CAP_CHARS. Shape contract: skills/idea-to-pdd/SKILL.md § The durable open-questions doc.',
   },
   {
@@ -460,6 +488,14 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     required: true,
     rendered: true,
     sourcePersisted: true,
+    // The single most-shared artifact ACE produces, and it reached the end of
+    // three complete runs readable by nobody (ace#1843: hh-poverty-targeting/
+    // 20260828-0702, bednet-check-2-visit/20260828-0629, spark-facilitator/
+    // 20260828-0703 — all 401 anonymously). `commenter`, not `reader`: the
+    // run-summary page's own ask is "review the decisions", and the
+    // feedback → ledger loop starts with anchored comments on this document.
+    recipientFacing: true,
+    shareRole: 'commenter',
     description: 'Program Design Document with archetype, Evidence Model, Solicitation block, and stress-test appendix (the canonical pdd.md, renamed to match its producer)',
   },
   {
@@ -492,6 +528,11 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     phase: 'design',
     required: false,
     rendered: true,
+    // The other half of the `DESIGN` section a partner is sent (ace#1843).
+    // `commenter` for the same reason as the PDD — this is the document a
+    // counterpart is most likely to mark up.
+    recipientFacing: true,
+    shareRole: 'commenter',
     description: 'Contractual Work Order draft derived from the PDD and decisions.yaml. Generic by default — Partner identity is a placeholder unless an LLO was supplied. Re-runs create pdd-to-work-order-2.gdoc, pdd-to-work-order-3.gdoc, etc.; products.work_order in run_state.yaml points at the latest. Parallel to Phase 8 solicitation, not a replacement. Spec: docs/superpowers/specs/2026-05-21-work-order-skill-design.md',
   },
   {
@@ -1044,6 +1085,7 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     sourcePersisted: true,
     illustrated: true,
     recipientFacing: true,
+    shareRole: 'commenter',
     description: 'LLO Manager guide for overseeing FLW deployment',
   },
   {
@@ -1070,6 +1112,7 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     sourcePersisted: true,
     illustrated: true,
     recipientFacing: true,
+    shareRole: 'commenter',
     description: 'Step-by-step FLW training guide for app usage and protocols',
   },
   {
@@ -1095,6 +1138,7 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     rendered: true,
     sourcePersisted: true,
     recipientFacing: true,
+    shareRole: 'commenter',
     description: 'One-page laminated pocket card for FLWs in the field',
   },
   {
@@ -1138,6 +1182,7 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     rendered: true,
     sourcePersisted: true,
     recipientFacing: true,
+    shareRole: 'commenter',
     description: 'Frequently asked questions for LLOs and FLWs',
   },
   {
@@ -1163,6 +1208,7 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     rendered: true,
     sourcePersisted: true,
     recipientFacing: true,
+    shareRole: 'commenter',
     description: 'LLO onboarding email template authored in Phase 6 and sent by Phase 9 (execution-manager) llo-onboarding, with {{LLO_NAME}}/{{LLO_FIRST_NAME}}/{{LLO_ORG}} tokens',
   },
   {
