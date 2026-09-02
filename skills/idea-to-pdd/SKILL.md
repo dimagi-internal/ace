@@ -425,6 +425,43 @@ orchestrator from the per-skill QA + eval verdicts on the fly. -->
     is in, say "ACE does not build this today" rather than "this is
     impossible."
 
+    **ALSO check the RETIRED rows — this check is bidirectional.** The rule
+    above guards a mechanism the PDD is about to *assert*. The inverse is not
+    covered by it and has now cost a run: **source material that states a
+    constraint, a fixture pin, or a "this is unreachable / not possible on
+    this instance" claim** which a mechanism decision then rests on. Check
+    that claim against `skills/_app-component-library.md` too — including its
+    **RETIRED / struck-through rows**, not only the live ones. A retired row
+    is history, so it will never trip the must-not-assert check above; the
+    source sentence leaning on it is exactly what goes unexamined.
+
+    If the premise is retired, the source-stated value still **stands for
+    this run** — source is authoritative and re-minting a fixture golden is
+    an operator act — but the PDD MUST do all three of:
+
+    - record it as a `conflicting` `decisions.yaml` row (§ Step 3a), citing
+      the retired row in `conflict_signals` next to the source's own
+      sentence;
+    - mark the pinned value as an **advisory mechanism** rather than a
+      requirement, per the requirement-vs-mechanism rule above, and state the
+      underlying **requirement** separately — so a later phase implementing
+      the now-available approach is a normal build choice, **not a
+      deviation**;
+    - raise the stale premise as an **open question** naming exactly what
+      needs re-minting.
+
+    Why this has to be said here: repo-side citations of a closed upstream
+    issue are already caught by `scripts/probe-upstream-asks.ts`, but it
+    walks repo directories only (`SCAN_DIRS` / `SCAN_FILES`) and cannot see
+    Drive-resident opp inputs — so a fixture brief goes stale with no signal
+    (ace#1924). Live case: on `bednet-check-2-visit/20260902-1555` the
+    brief's `entity_id` pin ("the household case id is unreachable — a
+    followup form cannot read its own case on this Nova instance") rests on
+    the `commcare-nova#458` closure that Table A **retired 2026-08-29**, and
+    the fallback it pins is precisely the `atomic-visit` grain that row's
+    sanctioned alternative warns silently degrades a `longitudinal-visits`
+    design.
+
     - **Capture fidelity.** If the Evidence Model implies a GPS/location
       radius, spec **accuracy-aware GPS** (a stated target accuracy, the
       accuracy value submitted on every visit, an on-screen advisory),
@@ -1540,3 +1577,4 @@ When `--dry-run` is active:
 | 2026-08-02 | **A per-row qualifier and an aggregate over the same repeat must agree (ace#1123).** Step 4a's data-quality bullet now forbids pairing a per-row confirmation/eligibility question with an unfiltered `count()`/`sum()` over the same nodeset — the aggregate MUST carry the qualifier in its predicate. `hh-poverty-targeting` v2.1 specified a roster membership confirmation on screen 5 AND `count(/data/roster)` in the data-quality table; the build followed the table, asked the required question on every row, and ignored the answer. Household size is 31 of 102 attainable PPI points across a sharp band boundary, so one wrongly-retained member moved the score 21 points. Same family as ace#995 (dead `now()`) and ace#1006 (unenforceable GPS gate): a control that reads as configured everywhere and does nothing in the built app. | ACE team |
 | 2026-08-02 | **Worked assessment items emitted by the PDD must be labelled ILLUSTRATIVE (ace#1120).** Step 4a's assessment-enforcement bullet now requires any worked example to be marked as illustrative of the required shape, never as mandated bank content — a PDD specifies the assessment blueprint; a specific quiz item is build content. All three of `hh-poverty-targeting` v2.1's worked items were guessed cold by both independent blind probes, and worked items anchor the tone of the ~21 items Phase 3 authors. Paired with the matching builder-side rule in `skills/pdd-to-learn-app/SKILL.md` (hardening or discarding a PDD example is PDD-compliant, not a deviation). | ACE team |
 | 2026-09-01 | Steps 6 + 6b: compose the PDD to a LOCAL FILE and pass `localFilePath` to BOTH writes rather than emitting the document inline twice. The rendered gdoc and its `.source.md` companion are now byte-identical BY CONSTRUCTION — step 6b's premise, and `run-surface-audit`'s DOC-FIDELITY check with it, previously rested on the agent re-typing a ~52 KB document identically with nothing verifying it (dimagi-internal/ace#1780). | ACE team |
+| 2026-09-02 | **Step 4a's must-not-assert check is now bidirectional — RETIRED rows count (ace#1924).** The check only ever ran forward: mechanisms the PDD was about to assert, against the LIVE rows of `_app-component-library.md § Mechanisms a PDD must not assert`. Nothing covered the inverse — a **source-stated** constraint or fixture pin whose justifying premise is a row since RETIRED. A retired row is history, so it never trips the forward check, and the source sentence leaning on it goes unexamined. Step 4a now requires checking such claims against the retired rows too, and when the premise is stale: keep the source-stated value binding for the run (source is authoritative; re-minting a fixture golden is an operator act) but record it as a `conflicting` decisions row citing the retired row, demote the pinned value to an **advisory mechanism** with the requirement stated separately (so a later phase using the now-available approach is not a deviation), and raise the re-mint as an open question. `scripts/probe-upstream-asks.ts` is the tripwire for this class repo-side but walks `SCAN_DIRS` / `SCAN_FILES` only, so it cannot see Drive-resident opp inputs — the fixture brief for `bednet-check-2-visit` pinned `entity_id` on the `commcare-nova#458` closure that Table A retired 2026-08-29, three days after the brief was last written, and went stale with no signal (run `20260902-1555`). The Drive-scanning half of ace#1924 remains open. | ACE team |
