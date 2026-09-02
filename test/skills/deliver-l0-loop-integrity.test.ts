@@ -141,6 +141,37 @@ describe('pdd-to-deliver-app Step 4 L0 verification loop', () => {
     expect(body).toMatch(/clampDead/);
   });
 
+  // ace#1823 — the same asymmetry again, on the DERIVED chain rather than the
+  // constants. `ppi_score` was guarded and `hh_size_band` was not, so the
+  // record looked right at the score level while 1,072 of 3,794 non-payable
+  // doors landed in the 31-point band by construction — on the exact field the
+  // band-boundary fraud control groups on. A `calculate` over an empty nodeset
+  // is valid XForm, so every structural gate passed it.
+  it('checks derived-chain guards via lib/derived-chain-guard (ace#1823)', () => {
+    const owning = stepLabels().filter((l) => stepBody(l).includes('checkDerivedChainGuards'));
+    expect(
+      owning.length,
+      'No Step-4 block calls checkDerivedChainGuards. A root-level calculate ' +
+        'over a `relevant`-gated subtree then submits a confident wrong value ' +
+        'on every visit that skipped it (ace#1823), and nothing downstream can ' +
+        'see it — validate_app checks structure, app-release-qa checks counts ' +
+        'and install-time behaviour, and the eval grades against a narrative ' +
+        'PDD. A prose mention elsewhere is NOT sufficient.',
+    ).toBeGreaterThan(0);
+
+    const body = owning.map(stepBody).join('\n');
+    expect(body).toContain('lib/derived-chain-guard');
+
+    // A finding may be cleared by justification — sometimes a zero over an
+    // empty nodeset IS right. The step must say so, or an architect facing a
+    // legitimate case has only "make the check pass" available.
+    expect(
+      body.toLowerCase(),
+      'Step 4n must offer a recorded justification as an alternative to a ' +
+        'guard, or it becomes an always-fires blocker on a correct form.',
+    ).toMatch(/justif/);
+  });
+
   it('names the Phase-4 verification predicate residual when the key is payability-scoped', () => {
     // ace#1434: the scoped key stops a non-payable submission consuming the
     // payable slot, but mints `<identity> - no` as its own countable entity.
