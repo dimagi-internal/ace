@@ -561,6 +561,13 @@ round-trip gate in Step 11.5 below.
 
 11. **Write state file:** `ACE/<opp-name>/runs/<run-id>/5-ocs/ocs-agent-setup.md`
     - Fields: `experiment_id`, `public_id`, `embed_key`, `collection_id`, `pipeline_id`, `version_number`, `created_at`, optional `last_prompt_patched_at` (set by `--prompt-patch` re-runs), optional `last_reindexed_at` + refreshed `version_number` (written by `ocs-knowledge-refresh` in Phase 6; ABSENCE on a run whose Phase 6 completed means the chatbot never received the training docs)
+    - Plus the two publication facts Step 11.5 verifies:
+      `published_version_number` (the DEFAULT version live on OCS) and
+      `published_version_source` (`api` | `home-page-badge`, from Step 9's
+      publish return). Write them AFTER Step 11.5 passes, from the values
+      it read. A gate that only passes or fails leaves nothing to audit
+      later; `version_number` alone cannot say whether it was ever the
+      published one (ace#1905).
     - This file is the source of truth for idempotency — Step 0 reads it before any OCS call
 
 11.5. **Hard embed round-trip gate (mandatory — runs before the
@@ -572,6 +579,60 @@ round-trip gate in Step 11.5 below.
     `public_id` does not resolve to a live chatbot via
     `ocs_inspect_chatbot({ public_id })` — **fail the phase loudly** with a
     typed error naming the mismatch; do NOT write `products.ocs_chatbot`.
+
+    **Then assert PUBLICATION, not only liveness (ace#1905).** Step 9
+    publishes and this gate is the only thing between that publish and durable
+    state, so a bot that is live but not published — or published at a version
+    other than the one Step 11 wrote — must not reach `run_state`. The field
+    that answers it is already on the payload this step reads
+    (`ChatbotInspect.is_published_version`, `mcp/ocs/types.ts:225`); the gate
+    simply never looked at it. Add one version-scoped read:
+
+    `ocs_inspect_chatbot({ public_id, version: 'default' })` → assert
+
+    1. **the call resolves at all.** `version: 'default'` names the live
+       default-published version; a bot with no published default cannot
+       answer it.
+    2. **`is_published_version === true`** on what it returns.
+    3. **its `version_number` equals the number Step 9 returned and Step 11
+       wrote** — but branch on Step 9's `source`, see below.
+
+    **Do NOT assert any of this against the un-versioned read.** With `version`
+    omitted, `ocs_inspect_chatbot` returns the WORKING/draft version, whose
+    `is_published_version` is `false` and `is_unreleased` is `true` on a
+    perfectly healthy published bot — that is the recorded shape in
+    `test/mcp/ocs/fixtures/chatbot-inspect.json`. Asserting there would fail
+    every good run. Its top-level `version_number` is likewise the working/next
+    counter and runs ahead of the published one (ace#891; observed 3 while the
+    published default was 2). Keep the un-versioned call as the liveness read
+    it already is, and answer publication from the `version: 'default'` read.
+
+    **The version-equality check is conditional on Step 9's `source`, and that
+    is not optional detail.** ace#1828 / PR #1895 made
+    `ocs_publish_chatbot_version` read the post-publish default back from the
+    API and report which read answered:
+
+    - `source: 'api'` — authoritative. A mismatch here means something moved
+      between Step 9 and Step 11.5. **Fail the phase loudly.**
+    - `source: 'home-page-badge'` — the API could not answer and the number is
+      a page scrape the atom's own contract calls *known to lag the publish it
+      describes*. The live `version: 'default'` read is the better authority:
+      **correct the recorded `version_number` to it, note the correction in the
+      state file, and continue.** Halting on a disagreement with a read ACE
+      already documents as lagging would convert a known-weak signal into a
+      Phase 5 deadlock — the `app-hq-settings` failure shape (ace#1238), where
+      a predicted rejection blocked every run.
+
+    Before #1895 this equality check was not merely missing but *unavailable*:
+    the publish atom returned the PRE-publish number, so the comparison would
+    have been false on every healthy run. #1895 is what makes it cheap and
+    meaningful now.
+
+    **Not claimed here:** no silently-failing publish that passes this gate has
+    been observed, and none is asserted to be reachable — the publish atom does
+    throw on the form-re-render path. The reason to close this is narrower and
+    sufficient: the gate exists to make Phase 5's durable state trustworthy,
+    and it was one field short of the property it guarantees.
 
     **Use `ocs_inspect_chatbot`, not `ocs_get_chatbot`, as the liveness read.**
     When REST carries no integer id, `ocs_get_chatbot` resolves one by scraping
