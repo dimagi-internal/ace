@@ -1657,6 +1657,81 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
        is what makes this step falsifiable rather than aspirational
        (`lib/ccz-enum-fidelity.ts`, `test/lib/ccz-enum-fidelity.test.ts`).
 
+4n. **Derived-chain guard check (a value computed from a subtree the visit
+    never entered) — runs ACE-DIRECT (ace#1823).** Placed immediately before
+    4m so every STRUCTURAL check still lands ahead of the language layer,
+    which stays LAST. A repair here edits `relevant` / `calculate`
+    expressions and never label text, so it cannot demote a translation.
+
+    **The defect.** A form gates a group on consent and then computes derived
+    values at form ROOT, where no `relevant` applies. On a vacant / refused /
+    no-eligible-respondent visit the group is skipped, `count()` over the empty
+    nodeset returns **0**, and the form submits a complete, confident, wrong
+    record. Live on `hh-poverty-targeting` (HQ app
+    `ce668763ad6c4b48ac5f4cd4502f3f8c`, released build), read straight out of
+    `deliver-latest-release.ccz` → `modules-0/forms-0.xml`:
+
+    ```
+    /data/roster        relevant="/data/consent_screen/consent = 'yes'"   <- gated
+    /data/member_count  = count(/data/roster/is_member[. = 'yes'])        <- NOT guarded
+    /data/hh_size_band  = if(/data/member_count <= 3, 'le3', …)           <- NOT guarded
+    /data/size_points   = if(/data/hh_size_band = 'le3', 31, …)           <- NOT guarded
+    /data/ppi_score     = if(/data/visit_outcome = 'completed', <sum>, '') <- guarded
+    ```
+
+    So `member_count = 0`, `hh_size_band = 'le3'`, `size_points = 31` on every
+    non-payable door. `ppi_score` is correctly blank, which is exactly why this
+    survives: **nothing looks wrong at the score level.** The corruption is one
+    layer down, in the band — and the band is the field a band-boundary fraud
+    control groups on (PDD § Evidence Model, Layer C). On that run it is
+    **1,072 non-payable doors of 3,794** (28%) landing in the 31-point band by
+    construction. A worker with more vacant doors looks like a worker
+    clustering at the boundary; the signal and the artefact are
+    indistinguishable.
+
+    Every gate is blind to it. A `calculate` over an empty nodeset is valid
+    XForm, so `validate_app` passes, `app-release-qa` passes (it checks counts
+    and install-time behaviour), the app installs, plays and submits, and the
+    eval grades against a narrative PDD. Phase 7 blanked the chain in the
+    synthetic fixture and declared the deviation — a fixture-side workaround.
+    The app still ships this way, so a real deployment would too.
+
+    ```ts
+    import { checkDerivedChainGuards, formatDerivedChainReport }
+      from '../../lib/derived-chain-guard';
+    const report = checkDerivedChainGuards(rootFields);   // from Step 4a's get_form
+    ```
+
+    **Two guard shapes count, because the app that motivated this used the
+    second:** the field carries its own `relevant`, OR its `calculate` is a
+    conditional whose CONDITION reads a field outside the gated subtree (the
+    `ppi_score` shape). A conditional whose condition reads only tainted fields
+    is **not** a guard — `if(member_count <= 3, 'le3', …)` looks defensive and
+    faithfully converts a phantom 0 into a phantom band. Taint therefore
+    PROPAGATES: guarding the leaf is not enough and guarding the final score is
+    not enough. Every node between the gated subtree and the submitted record
+    has to be able to say what its value means on a visit that never happened.
+
+    1. Run the check on the root field list already fetched in Step 4a.
+    2. **For each finding, apply the SAME guard the payable path already
+       uses** — normally the visit-outcome discriminator (`relevant:
+       "/data/visit_outcome = 'completed'"`, or the inline `if(...)` shape if
+       the chain already uses one). Re-run to confirm `findings.length === 0`.
+       Bounded at 3 iterations like 4a–4g.
+    3. **A finding may be CLEARED BY JUSTIFICATION instead**, and this is a
+       real case, not an escape hatch: sometimes a zero over an empty nodeset
+       is exactly right ("units delivered on a refused visit: 0"). The check
+       does not claim otherwise. It claims the form has to SAY so — record one
+       sentence per cleared finding in the build memo naming the field and why
+       its value is meaningful on a skipped visit. Silence is not a
+       justification.
+    4. Record `formatDerivedChainReport(...)` in the build memo either way.
+
+    (Forms with no `relevant`-gated container skip cleanly — `gatedSources` is
+    empty and there is nothing to find. *Enforced:*
+    `test/lib/derived-chain-guard.test.ts` +
+    `test/skills/deliver-l0-loop-integrity.test.ts`.)
+
 4m. **Language layer — runs ACE-DIRECT, LAST of the 4x steps (ace#1556).**
     Applies only when the PDD names a working language other than English;
     otherwise skip and say so in the summary.
@@ -1963,6 +2038,7 @@ Each row this skill writes uses `phase: 3-commcare` and
 
 | Date | Change | Author |
 |------|--------|--------|
+| 2026-09-02 | **New Step 4n — derived-chain guard check (ace#1823).** The released `hh-poverty-targeting` Deliver form guards ONE node of its derived PPI chain and leaves twelve unguarded at form root. `/data/roster` is gated on consent, so on a vacant / refused / no-eligible-respondent visit `count()` over the empty nodeset returns 0 and the form submits `member_count = 0`, `hh_size_band = 'le3'`, `size_points = 31` — the 31-point band, by construction, on **1,072 non-payable doors of 3,794** (28%), on the exact field the PDD's Layer-C band-boundary fraud control groups on. `ppi_score` IS guarded (`if(visit_outcome = 'completed', …)`), which is why it survived: nothing looks wrong at the score level and the corruption sits one layer down. A `calculate` over an empty nodeset is valid XForm, so `validate_app`, `app-release-qa`, install, play and submit all pass. Phase 7 blanked the chain in the fixture and declared the deviation — the app still ships this way, so a real deployment would too. 4n runs `lib/derived-chain-guard.ts` over the Step-4a field list: taint PROPAGATES along the chain (guarding the leaf or the final score is not enough), and a conditional whose TEST reads only tainted fields is not a guard — `if(member_count <= 3, 'le3', …)` is the corruption wearing an `if()`. A finding clears by applying the payable path's own discriminator OR by a recorded justification, because a zero over an empty nodeset is sometimes exactly right; what the check forbids is silence. Placed before 4m so every structural check stays ahead of the language layer. *Enforced:* `test/lib/derived-chain-guard.test.ts` (negative control: a naive detector that ignores the inline-guard shape fails 3 assertions, incl. flagging the correct `ppi_score`) + `test/skills/deliver-l0-loop-integrity.test.ts`. | ACE team |
 | 2026-08-27 | **Step 4l gains sub-step 7 — the corrected taxonomy propagates to the CASE-LIST ENUMS (ace#1688).** 4l steps 3-4 repair the FORM's option labels via `edit_field` and stop there, while 4l's own trigger (step 1) names a *case-list column* as a surface the taxonomy reaches. On `spark-facilitator/20260820-0817` the Phase-3 FCAP correction landed on the form itemsets and never on the enums, so the `fcap_community` tile rendered the earlier ACE-invented taxonomy while the form offered Spark's real one — stored `1` read as `1. Introduction` before the visit and `1. Planning` during it, off by one on the surface the Learn app explicitly teaches the worker to read (`m3_start`, quiz `q9`). **ACE does not author these enums — the autonomous architect does**, via `add_case_list_columns` / `configure_case_list`'s `kind: 'id-mapping'` column, whose `mapping` the caller supplies; it composes them from the brief independently of the itemset and nothing reconciles the two. Those atoms ARE available ACE-direct (Step 4d already uses the family), so the reconciliation lands here rather than as an upstream Nova issue: derive `mapping` from the itemset, `update_case_list_column`, re-assert, bounded 3-iteration loop. A SUBSET is allowed (a tile may deliberately label fewer options); reconciling the other way is forbidden — the itemset is the authority. Paired with the downstream gate that makes it falsifiable rather than aspirational: `app-release-qa § Step 4` check 3 halts with `[BLOCKER]` `case-list-enum-drift`. *Enforced:* `lib/ccz-enum-fidelity.ts` + `test/lib/ccz-enum-fidelity.test.ts`, whose negative control is the shipped drift itself and must FAIL. | ACE team |
 | 2026-08-26 | **Step 4k's skip is split, and its source is resolvable through the manifest's own folder ids (ace#1648).** 4k's trigger ANDed "the PDD marks an instrument `[FIXED]`" with "`inputs-manifest.yaml` carries a source file for it" into ONE silent skip, so *nothing to check* and *the thing I must check is unreachable* were indistinguishable and both reported green. They were not equally rare: `inputs[]` records direct child FILES only, so a published instrument bundle sitting in a SUBFOLDER of `inputs/` — the natural shape for a vendor download — always took the second branch. On `hh-poverty-targeting/20260824-1404` the workbook sat in `official-nigeria-ppi-2020 (povertyindex.org)/` and none of the five `inputs[]` entries was it, so a 4k run following its documented path checks nothing. **A skip that disables a correctness check is worse than one that degrades an output, because the run still says green.** Two changes: step 2 may now resolve through ids the manifest ALREADY records (`subfolders_not_listed[].folder_id`, `source_folder_id`) by walking them ONE level with `drive_list_folder` — walking a recorded id is not guessing, composing a path by name still is and is still forbidden — and orchestrator Step 5c now MANDATES recording those ids. Step 1's trigger is split: no `[FIXED]` instrument → skip cleanly; a `[FIXED]` instrument whose source does not resolve → **HALT**, never a skip. The decision is delegated to `resolveInstrumentSource` in `lib/instrument-constants.ts` so it is unit-tested rather than prose-only. *Enforced:* `test/skills/instrument-source-resolution.test.ts` (5 assertions red against the pre-fix text), `test/lib/instrument-constants.test.ts`, `test/mcp/gdrive/generate-inputs-manifest.test.ts`. | ACE team |
 | 2026-08-24 | **Step 4f gains a partner-register halt (ace#1621).** 4f's halt was scoped to payment correctness — a still-degraded select halts only when it `feeds_entity_id` on a PAYABLE deliver unit — so a field that fails neither test recorded an `option_source_gaps` entry and proceeded. That is right for a genuinely unknowable set and wrong for a register that EXISTS: on `spark-facilitator/20260820-0817` the meeting-activity repeat shipped 11 ACE-authored placeholders identical on all 24 FCAP steps while Spark's own 78-activity register sat in the run's `inputs/`, and the recorded gap deferred the catch to an operator reading the residual days later. When the PDD declares `<field> from <tag> [source: …] [filtered by …]`, an inline invented option list is now a **HALT** whatever the payability status, and is never dischargeable as a named gap; both inline rungs of the step-5 escape ladder are withdrawn for such a field. Mechanical via `lib/option-register.ts` (`parseRegisterDeclaration` + `diffOptionRegister`), sourcing rows from the partner's `.ccz` fixture XML in preference to a prose guide because a production CCZ carries the REAL value codes the partner's M&E joins on. Where ACE cannot finish, the terminal behaviour is extract → build the table → halt naming the remaining operator step. *(The reason recorded here on 2026-08-24 — a missing create atom — was SUPERSEDED 2026-09-01: `create_lookup_table` ships columns and rows atomically. The halt survives because the BINDING is refused, `voidcraft-labs/commcare-nova#545`.)* Paired with `_app-component-library § partner-option-register` and the eval's `option_register_fidelity` hard-gate. *Enforced:* `test/lib/option-register.test.ts`. | ACE team |
