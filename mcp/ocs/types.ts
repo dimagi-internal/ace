@@ -24,10 +24,14 @@ export interface Experiment {
    */
   version_number?: number;
   /**
-   * Version history. Present on the detail endpoint; the published one is the
-   * entry with `is_default_version: true`. Added in ace#891 — the data was
-   * already flowing through `rest.getChatbot`'s spread at runtime, it just was
-   * not declared here.
+   * Version history. Returned by BOTH the detail endpoint and the LIST
+   * endpoint (measured 2026-09-02 — all 50 rows of `/api/experiments/`'s
+   * default page carried it); the published one is the entry with
+   * `is_default_version: true`. Added in ace#891 — the data was already
+   * flowing through `rest.getChatbot`'s spread at runtime, it just was not
+   * declared here. `ocs_list_chatbots` PROJECTS this away by default
+   * (ace#1901): on a mature team it is 85.9% of the list payload and nothing
+   * in ACE reads a description off a LIST row.
    */
   versions?: Array<{
     version_number: number;

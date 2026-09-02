@@ -147,7 +147,17 @@ round-trip gate in Step 11.5 below.
    cleanup atom), while making a *different* run's bot correctly
    not-a-match.
 
-   - Call `ocs_list_chatbots` and filter by `name == "ACE - <opp-name> (<run-id>)"`
+   - Call `ocs_list_chatbots` and filter by `name == "ACE - <opp-name> (<run-id>)"`.
+     The match needs `name`, `id` and `experiment_id` only, all of which the
+     default (projected) row carries. As of ace#1901 the row does NOT carry
+     `versions[]` — it carries `versions_summary`
+     ({`count`, `published_version_number`}) instead, because on a mature team
+     the full array overflowed the tool-result cap and the DEFAULT page
+     returned nothing usable. `versions_summary.published_version_number` is
+     the ace#891-correct published version; the row's own `version_number` is
+     the WORKING counter and must not be written to the state file as
+     "published". Anything else about versions comes from the
+     `ocs_get_chatbot` call the next bullet already makes.
    - If found, **read the integer `experiment_id` from the matched entry** (returned alongside the UUID `id` as of 0.5.19), reconstruct the state file from `ocs_get_chatbot` to populate `collection_id` / `pipeline_id`, and skip to step 11. Do NOT clone — re-cloning leaves the prior bot orphaned in OCS, which has no MCP-side cleanup atom. The previous (pre-0.5.19) skill version had to clone a `-resume` variant because the integer id wasn't reachable from list results; that footgun is closed.
    - **Prior-run bots are NOT a match and MUST NOT be resumed.** If the
      list contains other `ACE - <opp-name>…` entries (bare, or carrying a

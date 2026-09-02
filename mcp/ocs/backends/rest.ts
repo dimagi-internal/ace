@@ -143,8 +143,23 @@ export class RestBackend {
     // closes the idempotency gap: a skill that lists bots by name can then
     // reconfigure an existing bot directly, instead of cloning a duplicate
     // because the int id was unreachable.
+    // `versions[]` IS returned by the LIST endpoint, not only by the detail
+    // endpoint — measured on team `connect-ace` 2026-09-02, all 50 rows of the
+    // default page carried it, and it accounted for 85.9% of the payload
+    // (ace#1901). It reached callers through the spread below while going
+    // undeclared here, which is why nothing typed ever accounted for its cost.
     const body = (await this.request('GET', `/api/experiments/?${qs}`, undefined, token)) as {
-      results: Array<{ id: string; name: string; url?: string; version_number?: number }>;
+      results: Array<{
+        id: string;
+        name: string;
+        url?: string;
+        version_number?: number;
+        versions?: Array<{
+          version_number: number;
+          is_default_version: boolean;
+          version_description?: string;
+        }>;
+      }>;
       next: string | null;
     };
     const chatbots = body.results.map((r) => ({
