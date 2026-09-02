@@ -1,0 +1,144 @@
+# Connect opportunity spec — input to /ace:connect-opp-create.
+#
+# Validated by lib/connect-opp-spec.ts BEFORE any network call. The validator
+# knows the spec's shape; it does not know the program budget ceiling, whether
+# the target org's ProgramApplication is ACCEPTED, or whether the HQ apps are
+# released. Those are live facts and the real call is their authority.
+#
+# NEVER put an HQ API key in this file. The skill passes ${ACE_HQ_API_KEY} in
+# the app payloads and the MCP substitutes it from $CLAUDE_PLUGIN_DATA/.env.
+
+# --- Identity ---------------------------------------------------------------
+
+# PM-side Connect org that runs the program.
+organization_slug: ai-demo-space
+
+# An EXISTING program UUID. This skill does not create programs — a program
+# carries durable identity (org, delivery type, currency, country) that
+# outlives any one opportunity. Use connect-program-setup or
+# connect_create_program once, then point many specs at it.
+# Find one: connect_list_programs({organization_slug, name: "<substring>"})
+program_id: ""
+
+# Display name. For is_test: true this MUST lead with a run-id prefix —
+# "YYYYMMDD-HHMM · <display>", U+00B7 MIDDLE DOT separator — because Phase 6's
+# mobile tile matchers anchor on it and the MCP boundary rejects the name
+# without it (ace#755). Real, human-facing opportunities use is_test: false and
+# any name.
+name: ""
+
+# HARD 50-char ceiling, enforced server-side. Connect truncates silently and
+# slug-keyed lookups then 404. Mobile-app-facing.
+short_description: ""
+
+# The long form. ≤250 chars recommended: Connect has been seen to 500
+# intermittently on long descriptions (jjackson/ace#106 finding 7). Advisory,
+# not a hard bar — the threshold was never pinned.
+description: ""
+
+# The LLO org that will hold the opportunity.
+#   omitted / same as organization_slug -> self-managed. The accepted-application
+#     requirement is NOT waived, it relocates to the PM org, so the skill runs
+#     the invite+accept round-trip unconditionally.
+#   a different org -> that LLO accepts out-of-band; the skill skips the round-trip.
+target_organization_slug:
+
+# true marks this as an engineering exercise rather than a production rollout,
+# and turns on the run-id name prefix rule. Server default is true.
+is_test: false
+
+# --- Window -----------------------------------------------------------------
+# Must fit inside the program's own window.
+
+start_date: ""          # YYYY-MM-DD
+end_date: ""            # YYYY-MM-DD
+
+# --- Apps -------------------------------------------------------------------
+# Bare 32-char hex HQ app ids for apps that are ALREADY built and released.
+#
+# App wiring is WRITE-ONCE: connect_update_opportunity covers only name /
+# short_description / description / end_date / is_test, so a wrong id here means
+# deleting the opportunity in the Connect web UI and starting over.
+#
+# Each opportunity needs its OWN pair. Sharing a released Deliver app across
+# opportunities makes payment units impossible (Connect keys DeliverUnit on the
+# app, not the opportunity — ace#573); sharing a Learn app silently discards the
+# passing_score below (ace#1350). Mint fresh ids with commcare_linked_app_copy:
+#   master -> child, linked: true   (needs a linked-domain pair + Pro Edition)
+#   same domain, linked: false      (HQ's plain "Copy Application")
+
+learn_app:
+  cc_domain: connect-ace-prod
+  cc_app_id: ""
+  description: ""                         # REQUIRED — Connect's form marks it *
+  hq_server_url: https://www.commcarehq.org
+
+deliver_app:
+  cc_domain: connect-ace-prod
+  cc_app_id: ""                           # MUST differ from learn_app.cc_app_id
+  hq_server_url: https://www.commcarehq.org
+
+# The Learn gate, 0-100. Settable ONLY at create — Nova exposes no
+# passing_score slot, so this is the one place it is established, and getting it
+# wrong is silent (the app builds, the worker sees a result screen, only the
+# gate differs). Decide it; don't default it.
+passing_score: 80
+
+# --- Money ------------------------------------------------------------------
+# amount, org_amount, max_total and total_budget are ALL integers in the SAME
+# whole currency unit. There are no cents in the wire model and the serializer
+# refuses floats. Posting 150 for $1.50 reads to Connect as $150 per visit.
+
+total_budget: 0
+
+# How many FLWs the budget must fund, for smoke headroom. Connect computes
+# number_of_users = total_budget / Σ(max_total × (amount + org_amount)); below 1
+# it under-allocates create_claim_limits and no FLW can claim at all.
+fund_users: 3
+
+# At least one is required: /activate/ validates one exists, so an opportunity
+# with none can never be activated and never accepts invites.
+payment_units:
+  - name: "Per verified visit"
+    description: "One completed household visit"
+    amount: 2
+    org_amount: 0
+    max_total: 100
+    max_daily: 5
+
+# --- Optional ---------------------------------------------------------------
+
+# Omit entirely unless you need server-side verification. Only three surfaces
+# still exist on Connect's form: form_field_rules, the submission-time window,
+# and per-deliver-unit duration_minutes. gps / duplicate / catchment_areas /
+# gps_radius_meters / check_attachments have no input on the page and the atom
+# now refuses them rather than returning ok: true for a control it never set
+# (ace#1013).
+#
+# question_path is a JSONPath into the HQ form-JSON doc, NOT an XForm XPath:
+# /data/group/q is written form.group.q. Read the node names out of the RELEASED
+# CCZ, never from prose — a rule matching no node enforces nothing while
+# reporting success (ace#1301). `name` is capped at 25 chars and a longer one
+# silently fails the whole formset.
+#
+# verification_flags:
+#   form_field_rules:
+#     - name: "Visit completed"           # ≤25 chars
+#       question_path: "form.visit.completed"
+#       question_value: "yes"             # the STORED value, not the label
+#       deliver_unit_id: "<deliver unit server_id>"
+#   form_submission_start: "06:00:00"
+#   form_submission_end: "20:00:00"
+
+# FLW pre-invites, E.164. Include ${ACE_E2E_PHONE} if this opportunity will be
+# driven on the emulator. A successful invite is also the only real proof that
+# activation landed — the scraped `active` flag cannot tell a real /activate/
+# from a no-op (ace#624).
+invite_phone_numbers: []
+
+# Written by `--clone`. Records the SOURCE opportunity's app ids so the
+# validator can refuse a spec that points the new opportunity back at them.
+# clone_from:
+#   opportunity_id: ""
+#   source_learn_app_id: ""
+#   source_deliver_app_id: ""

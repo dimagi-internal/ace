@@ -5,6 +5,24 @@ All notable changes to the ACE plugin will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the plugin follows [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## Unreleased
+
+**Standalone Connect opportunity creation and cloning — `/ace:connect-opp-create`.**
+
+Phase 4 (`connect-setup`) can create a Connect opportunity, but only from a PDD, a Phase-3 deploy summary and a `run_state.yaml`, writing verdicts and phase-products back to Drive. That coupling is derivation and bookkeeping, not logic: the Connect-side sequence underneath is ~10 atom calls over ~15 values.
+
+This ships that sequence as a standalone flow.
+
+- **`skills/connect-opp-create`** (slash-command only) — create → payment units → activate → invite, plus the two-stage read-back Phase 4 learned the hard way (a never-activated opportunity renders only the edit-form half of `connect_get_opportunity`, so `start_date` / `total_budget` / both `cc_app_id`s are unreadable until after `/activate/` — ace#1647). No PDD, no run state, no Drive. Writes one local YAML.
+- **`--clone <opp>`** hydrates a spec from a live opportunity and **stops**, deliberately leaving the app ids blank. Hydrate and create are two commands because the useful half of a clone is the prose and the shape, and the half you must re-mint is the wiring; a single-shot clone would have to guess at the blanks. The spec also records what is *not* recoverable: payment-unit `amount` / `max_total` (ace#1642), the program UUID (no read surface carries it), and verification flags (no read atom exists — only `set`).
+- **`lib/connect-opp-spec.ts`** — pure spec validator, run before any network call. Returns every issue at once rather than throwing on the first, because `connect_create_opportunity` registers HQApiKey records and synchronously fetches app names from HQ, so a create/fix/create loop is not free.
+- **The clone traps are code, not prose.** Reusing the source opportunity's Deliver app makes payment units impossible (Connect keys `DeliverUnit` on the released app, there is no delete atom, and an opp with no payment unit can never activate — ace#573); reusing its Learn app silently discards the posted `passing_score` (`get_or_create` with `update_existing=False` on a row keyed by app, not opportunity — ace#1350). Both are invisible until late and neither is recoverable in place, so the validator blocks them outright. Fresh ids come from `commcare_linked_app_copy`, live-validated 2026-09-01 on `connect-ace-prod` — master→child with `linked: true`, or same-domain `linked: false` for HQ's plain "Copy Application", which preserves the `appearance="acquire"` and `display_style` settings a Nova re-upload wipes (ace#1643).
+- **`templates/connect-opp-spec.yaml`** — annotated template carrying the constraints inline (the 50-char `short_description` cap, whole-currency integers, the write-once app wiring, the `is_test` run-id name prefix).
+- `test/lib/connect-opp-spec.test.ts` pins each rule against the shape that motivated it, and pins the two rules re-derived in `lib/` — the run-id prefix and the funds-≥1-FLW formula — equal to their `mcp/connect/` originals, since the repo convention forbids `lib/` importing `mcp/` and a silent copy is the drift class ACE keeps paying for.
+
+Scope left out, so it can be widened: the skill takes an existing `program_id` and does not create programs, and the validator checks the spec's shape rather than live facts (the program ceiling, application state, whether the apps are released) — those belong to the real call.
+
+
 ## 0.13.1056 — 2026-08-27
 
 **The decisions ingest is now actually invoked at run-init, not just documented.**
