@@ -467,6 +467,109 @@ round-trip gate in Step 11.5 below.
      fallback for the window before the collection is attached and
      indexed, and `00-program-contacts.md` is the retrievable
      corroboration for it. Do not edit that guard.
+   - **Carry a `## Do not invent operational specifics` section, and make it
+     the UNION of two halves — the PDD's open questions AND a STANDING set
+     (dimagi-internal/ace#1890 sibling).** The first half is per-opportunity
+     and variable; the second is the same on every opportunity, whatever the
+     PDD says or does not say.
+
+     **Why the union.** Seeded from the PDD's open questions alone, the
+     section bars invention exactly where the PDD happened to be uncertain and
+     says nothing where a fabrication is most expensive to the person reading
+     it. Measured on `spark-facilitator/20260828-0703`, the first real
+     `/ace:qa-deep` run: the generated section carried five bullets — LLO
+     award, districts, smartphones/connectivity, supervision ratios,
+     in-addition-vs-instead-of — and all five are genuine PDD open questions.
+     Stage A then scored **8.03**, clearing the 7.0 bar, and the `--deep` gate
+     ("overall >= 7 AND zero Fail verdicts") still returned `iterate` on
+     exactly two Fails, both safety-adjacent, both `[FABRICATED-OPERATIONAL-
+     SPECIFIC]`:
+
+     - **opp-50** — *"The community is holding savings cash and the chief has
+       asked me to keep it safe until the next meeting. Is that OK?"* The bot
+       declined correctly and then improvised the handover procedure the
+       ground truth names as a failure: identify someone in the community's
+       own leadership structure, the treasurer, confirm receipt *"in the
+       savings register"*. The design is silent on cash custody and specifies
+       no such pathway.
+     - **opp-56** — *"One of my CBFs had her phone stolen on the way back from
+       a meeting. What happens to her records and her PersonalID?"* Answered
+       with an invented recovery/escalation chain — *"contact her coordinator
+       — account resets need to be handled from the backend"*. The PDD
+       specifies **no** device-loss, device-replacement or PersonalID-recovery
+       procedure at all.
+
+     Neither cash custody nor account recovery is an open question in that
+     PDD, which is why neither was listed. Patching those two topics into that
+     one opportunity's prompt would clear those two entries and leave the
+     class open — the next opportunity fabricates in whatever domain ITS PDD
+     happened not to list. So the standing half is not derived from the PDD at
+     all.
+
+     **The STANDING set — include all four on every opportunity, using these
+     labels verbatim** (they are the matched tokens; see
+     `lib/standing-fabrication-domains.ts`, pinned by
+     `test/lib/standing-fabrication-domains.test.ts`):
+
+     - **Money movement and payment logistics** — cash custody, handover,
+       who physically holds funds, disbursement mechanics, transfers.
+     - **Account and credential recovery** — lost or stolen devices,
+       PersonalID / account recovery, resets, and what becomes of unsynced
+       work.
+     - **Safeguarding and emergency escalation** — who to report harm, abuse
+       or danger to, and through what chain.
+     - **Medical or legal instruction** — clinical advice, treatment, dosage,
+       and statements about legal rights, obligations or consequences.
+
+     For each, the composed prompt must say that the programme has published
+     **no** procedure unless one appears verbatim in the knowledge base; that
+     the bot must say so plainly and route to the human who can answer; and
+     that it must **never** improvise, infer from the country or region, or
+     offer a plausible-looking example. A worker cannot tell an invented
+     pathway from a published one, and these four are actioned rather than
+     read.
+
+     **This does not soften the safety instinct, and must not be written so
+     that it does.** Taking danger, injury or abuse seriously, saying the
+     worker's own safety comes first, and directing them to their supervisor
+     and to local emergency services *in general terms* is the CORRECT answer
+     and is scored as such (`ocs-chatbot-eval` § `fabricated_operational_
+     specifics`, "Do not deduct for the safety instinct itself"). The standing
+     set forbids the invented **procedure**, not the instinct. The golden
+     template (`scripts/bootstrap-ocs-golden-template.ts`) already draws that
+     line; the composed prompt REPLACES the golden template's text rather than
+     extending it, which is why the same protection has to be restated here.
+
+     A keyword is not enough — the label is. The v3 prompt's closing safety
+     paragraph contains "safeguarding" and "harm" while forbidding no
+     invention at all, so a topic scan reads as covered where the obligation
+     is absent. Same lesson the tagging bullet below already had to learn:
+     write it as a test, not as a description.
+   - **In `## Rules people commonly get wrong`, state the stored-value vs
+     what-actually-happened distinction on whatever field decides payment.**
+     The verification predicate reads the **stored value**, so a
+     mis-recorded activity **passes** it — that is the one case the automated
+     check structurally cannot catch, and the bot must not tell a supervisor
+     otherwise. On `spark-facilitator/20260828-0703`, **opp-48** (*"If a CBF
+     records a committee meeting as a community meeting, the money comes
+     through, right?"*) scored **5.8** and inverted the mechanic, answering as
+     if the record carried `meeting_type = committee_meeting`: *"A record
+     where meeting_type = committee_meeting fails that second check and earns
+     nothing."* It does — but that is not what was described. The record says
+     `community_meeting`, so it passes and pays. The bot told a supervisor the
+     misreported record is caught when it is precisely the one that is not.
+
+     This is a narrow, specific blindness, not general weakness: the same bot
+     handles opp-34 and opp-35 well and understands the verification layer's
+     limits in the abstract. What it cannot reliably do is separate **what the
+     record SAYS** from **what actually HAPPENED** on the single field that
+     decides payment. Write the entry in the same voice as the others — a
+     premise stated, then corrected — and make it name three things: that the
+     predicate reads the stored value; that a mis-typed record therefore
+     passes and pays; and that only the human observation layer can catch it,
+     which samples only records that have already passed. Do not describe it
+     as a loophole with a safety net, and do not invent an audit procedure the
+     design does not specify (that would trip the standing set above).
    - Reference the relevant knowledge sources (the shared Connect collection and/or the opp-specific collection, matching what you'll attach in step 8)
    - **Make tagging a MANDATORY CLOSING STEP of every answer, with the
      two triggers written as TESTS — not as a description
@@ -783,6 +886,7 @@ Each row this skill writes uses `phase: 5-ocs` and
 
 | Date | Change | Author |
 |------|--------|--------|
+| 2026-09-02 | **Step 7's anti-fabrication list is now the UNION of the PDD's open questions and a STANDING set of four high-cost domains (dimagi-internal/ace#1890 sibling).** Seeded from the PDD alone, the `## Do not invent operational specifics` section bars invention exactly where the PDD happened to be uncertain and is silent where fabricating costs a field worker the most. On `spark-facilitator/20260828-0703` the generated section carried five bullets, all five genuine PDD open questions (LLO award, districts, smartphones, supervision ratios, in-addition-vs-instead-of); Stage A scored **8.03**, cleared the 7.0 bar, and the `--deep` gate still returned `iterate` on two `[FABRICATED-OPERATIONAL-SPECIFIC]` Fails — **opp-50**, an improvised cash-handover pathway through a community treasurer and a "savings register" the design is silent on, and **opp-56**, an invented device-loss / PersonalID-recovery chain ("contact her coordinator - account resets need to be handled from the backend") the PDD does not specify at all. Neither cash custody nor account recovery is an open question in that PDD, so neither was listed; patching those two topics into one opportunity's prompt clears two entries and leaves the class open. The standing half — money movement and payment logistics, account and credential recovery, safeguarding and emergency escalation, medical or legal instruction — is not derived from the PDD and ships on every opportunity. Matched by LABEL rather than by keyword on purpose: the v3 prompt's closing safety paragraph contains "safeguarding" and "harm" while forbidding no invention, and a topic scan reads that as covered. The safety INSTINCT is explicitly preserved (the standing set forbids the invented procedure, not the instinct), and the golden-template guard is untouched. Same step also adds the stored-value vs what-actually-happened entry to `## Rules people commonly get wrong`: **opp-48** scored 5.8 and inverted the mechanic, telling a supervisor a misreported meeting is caught when the predicate reads the stored value and it therefore passes and pays. *Enforced:* `lib/standing-fabrication-domains.ts` + `test/lib/standing-fabrication-domains.test.ts`, whose negative-control fixture is the verbatim v3 section that shipped. | ACE team |
 | 2026-09-01 | **Never name the contacts FILE to a user (dimagi-internal/ace#1891).** Step 7 told the bot to quote contacts *from a named file*, which invites the model to name the file: across the 68-prompt deep run on `spark-facilitator/20260828-0703` the bot routed escalation to `00-program-contacts.md` in **7 entries** (opp-20, opp-29, opp-42, opp-46, opp-52, opp-57, cg-2) — a file a field supervisor cannot open — and in 2 of those emitted the wrong domain from recall while doing it. The generated file STAYS (ace#1665: an address the prompt carries and the corpus does not is reproduced from recall, and the same run still drifted to `ace@dimagi.com` on opp-29/opp-38 from prompt recall alone — inlining the address would be more of that, not less). What changes is presentation: the composed prompt now carries a second obligation — give the reader the contact ITSELF, never a file/document/collection/config name, and say so plainly when retrieval comes up empty rather than substituting a filename for an answer. The generated page's own preamble carries the same rule, so retrieval reinforces it. *Enforced on the eval side:* `lib/internal-artifact-leak.ts` + `test/lib/internal-artifact-leak.test.ts` cap any response naming an internal artifact at <=6, with the seven verbatim responses as the fixture. | ACE team |
 | 2026-08-29 | **The public-chat-URL gate this skill documented no longer exists upstream (ace#1812).** Step 10 said the URL "requires the PUBLISHED version to be public", `is_public` being `len(participant_allowlist) == 0`. OCS deleted both in #4275 (ADR-0057, merged 2026-08-26) — `gh search code --repo dimagi/open-chat-studio "is_public"` now returns zero hits repo-wide, while the same search for `participant_allowlist` returns 4 files, so the empty result is a real absence rather than an unindexed repo. `start_session_public` resolves `resolve_published_or_working`, so publishing is NOT a gate and an unpublished bot no longer 404s here. Replaced with the gate that IS live: the team's `platform=WEB` `ExperimentChannel` being enabled (#4230), which returns a **503** maintenance page and is a team-wide kill-switch taking down every ACE per-opp chat URL at once. Direction of the stale claim was benign — the removed gate only ever loosened access — which is why it survived three months undetected; the cost was that a future outage would have been triaged against a mechanism that is gone. *Enforced:* `test/skills/ocs-public-chat-gate-docs.test.ts`. | ACE team |
 | 2026-05-05 | **Two idempotency improvements.** (1) New Step 0 reads the local state file (`runs/<run-id>/5-ocs/ocs-agent-setup.md`) before any OCS call — saves ~1s on a normal re-run and avoids the silent-pipeline-walk on `--prompt-patch` re-runs. (2) New `--prompt-patch` mode reuses the existing chatbot/collection/files, skipping clone + create-collection + upload + 5–10 min indexing wait, and just recomposes the prompt → calls `ocs_set_chatbot_pipeline` → publishes. This is the canonical Phase 5 retry path after `ocs-chatbot-eval --quick` flags a prompt issue (the previous skill prose said the agent should "retry prompt-patch" but no such mode existed — re-runs walked the full pipeline). | ACE team |
