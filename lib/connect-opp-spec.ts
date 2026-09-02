@@ -20,7 +20,7 @@
 // BOTH the whole-unit check and the funds->=1-FLW floor. That floor is the most
 // valuable rule here, so "not checked, rendered as no issue" is the one
 // outcome this file must never produce. It is the same lesson the skill quotes
-// at Step 4 for Connect's own read-backs (ace#1647): an absent value is
+// in the skill for Connect's own read-backs (ace#1647): an absent value is
 // unknown, never agreement.
 //
 // ## Scope, stated so it can be widened
@@ -40,13 +40,15 @@
 import {
   OPP_NAME_RUN_ID_PREFIX_RE,
   SHORT_DESCRIPTION_MAX,
+  FORM_FIELD_RULE_NAME_MAX,
   HQ_BASE_URLS,
-  minBudgetForOneUser,
-  numberOfUsers,
-  fundsAtLeastOneUser,
+  evaluateCapacity,
+  type CapacityPaymentUnit,
 } from './connect-opp-invariants.js';
 
-export { OPP_NAME_RUN_ID_PREFIX_RE, SHORT_DESCRIPTION_MAX, minBudgetForOneUser };
+// Re-exported only because the tests and the template check import them from
+// here alongside the validator; `lib/connect-opp-invariants.ts` is the source.
+export { OPP_NAME_RUN_ID_PREFIX_RE, SHORT_DESCRIPTION_MAX, FORM_FIELD_RULE_NAME_MAX };
 
 /** One payment unit, in the shape `connect_create_payment_units` takes. */
 export interface OppSpecPaymentUnit {
@@ -133,11 +135,39 @@ export interface SpecIssue {
   message: string;
 }
 
-/** Values mirror `KNOWN_HQ_BASE_URLS` in `mcp/connect/hq-clusters.ts`. */
-export const KNOWN_HQ_BASE_URLS = Object.values(HQ_BASE_URLS);
+/**
+ * WHEN the spec is being checked. Some rules are unanswerable before the
+ * opportunity exists, and grading them `error` at the wrong moment deadlocks
+ * the documented happy path.
+ *
+ * `required_deliver_units` is the case that forced this: the ids are
+ * `deliver_unit.server_id`s that Connect mints as part of the create
+ * response, so a freshly-copied template CANNOT supply them — yet the gate
+ * says "nothing is created until this exits 0". The first revision graded it
+ * `error` at both phases, so copy-the-template-and-run-the-gate was an
+ * immediate red with only two ways out: invent ids that Connect then rejects
+ * as "Invalid Data", or walk past a blocking error. The second is the real
+ * damage: an operator who learns to ignore a red spec gate has lost the funding
+ * floor and every other rule in it too.
+ *
+ * - `pre-create` — the spec gate before `connect_create_opportunity`.
+ *   Deliver-unit ids may legitimately be absent; their absence is a `warn`.
+ * - `pre-payment-units` — after the create response is in hand, before
+ *   `connect_create_payment_units`. Now the ids exist, so absence is an
+ *   `error`.
+ */
+export type SpecPhase = 'pre-create' | 'pre-payment-units';
 
-/** Cap on `form_field_rules[].name`. Enforced in `mcp/connect-server.ts`. */
-export const FORM_FIELD_RULE_NAME_MAX = 25;
+/**
+ * The WELL-KNOWN HQ clusters. `mcp/connect/hq-clusters.ts` re-exports this
+ * same object, so there is no copy to drift.
+ *
+ * Note this is not the full set an install accepts: a deployment may configure
+ * additional clusters via `ACE_HQ_<SERVER>_BASE_URL`, which only the MCP can
+ * see. That is why an unrecognised host is a `warn` here and an `error` at the
+ * boundary, where the configured registry is available.
+ */
+export const KNOWN_HQ_BASE_URLS = Object.values(HQ_BASE_URLS);
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const HQ_APP_ID_RE = /^[0-9a-f]{32}$/i;
@@ -145,8 +175,16 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d:[0-5]\d$/;
 /** E.164: leading +, then 1-15 digits. */
 const E164_RE = /^\+[1-9]\d{1,14}$/;
-/** A `${VAR}` placeholder the MCP substitutes from env -- never a literal. */
-const ENV_PLACEHOLDER_RE = /^\$\{[A-Za-z_][A-Za-z0-9_]*\}$/;
+/**
+ * A `${VAR}` placeholder the MCP substitutes from env -- never a literal.
+ *
+ * UPPERCASE only, matching `resolveEnvSubstitution`'s own `[A-Z_][A-Z0-9_]*`
+ * in `lib/atom-payload-resolver.ts`. A lowercase `${ace_hq_api_key}` is not
+ * expanded there, so treating it as a valid placeholder here would wave
+ * through a literal `${ace_hq_api_key}` string and reproduce the misleading
+ * "Failed to fetch apps from CommCare HQ" the substitution exists to prevent.
+ */
+const ENV_PLACEHOLDER_RE = /^\$\{[A-Z_][A-Z0-9_]*\}$/;
 
 /**
  * Field names that must never carry a literal value in a spec file. A spec is
@@ -154,10 +192,42 @@ const ENV_PLACEHOLDER_RE = /^\$\{[A-Za-z_][A-Za-z0-9_]*\}$/;
  * "don't put a key here" cannot be prose. It is also the path the system
  * silently REWARDS: `resolveEnvSubstitution` returns early on any string with
  * no `$` in it, so an inlined key is forwarded verbatim and the create works.
+ *
+ * Deliberately NOT fully anchored. The env var is `ACE_HQ_API_KEY` and the
+ * cluster field is `apiKey`, so an operator transcribing either writes
+ * `hq_api_key` at least as readily as `api_key` -- and an anchored pattern
+ * scored that as an unknown key, i.e. a non-blocking warning whose value was
+ * never scanned.
  */
-const SECRET_FIELD_RE = /^(api_?key|password|passwd|secret|token|plaintext_password)$/i;
+const SECRET_FIELD_RE =
+  /(^|_)(api_?keys?|passw(or)?ds?|secrets?|tokens?|credentials?|private_key)$/i;
 
 const DEFAULT_FUND_USERS = 3;
+/** Upper bound so the remediation figure can't render as `Infinity`. */
+const FUND_USERS_MAX = 10_000;
+/** Longest value echoed back in an issue message. */
+const ECHO_MAX = 60;
+
+/** Truncate a value before it goes into an operator-facing message. */
+function clip(s: string): string {
+  return s.length <= ECHO_MAX ? s : `${s.slice(0, ECHO_MAX)}...(${s.length} chars)`;
+}
+
+/**
+ * Mask a phone number: keep the country prefix and the last two digits.
+ * These are real subscriber numbers and the issue text lands in transcripts,
+ * so the validator says which entry is wrong without republishing it.
+ */
+function maskPhone(s: string): string {
+  const digits = s.replace(/\D/g, '');
+  if (digits.length < 5) return '***';
+  return `${s.trimStart().slice(0, 3)}...${digits.slice(-2)}`;
+}
+
+/** Strip `user:pass@` before echoing a URL. */
+function redactUrl(s: string): string {
+  return clip(s.replace(/\/\/[^/@\s]*@/, '//[redacted]@'));
+}
 
 /** Keys the spec format defines. Anything else is probably a typo. */
 const KNOWN_TOP_LEVEL_KEYS = new Set([
@@ -208,10 +278,15 @@ function str(issues: SpecIssue[], field: string, value: unknown): string | undef
 
 function describeType(v: unknown): string {
   if (v === null) return 'null';
+  if (v === undefined) return 'nothing';
+  // Objects and arrays short-circuit BEFORE JSON.stringify, deliberately: a
+  // YAML anchor cycle would make it throw, and this runs inside a validator
+  // whose contract is to report rather than throw.
   if (Array.isArray(v)) return 'a list';
   if (typeof v === 'number' && Number.isNaN(v)) return 'NaN';
   if (typeof v === 'object') return 'a mapping';
-  return `a ${typeof v} (${JSON.stringify(v)})`;
+  if (typeof v === 'symbol') return 'a symbol';
+  return `a ${typeof v} (${clip(JSON.stringify(v) ?? String(v))})`;
 }
 
 /**
@@ -294,14 +369,69 @@ function checkSecrets(issues: SpecIssue[], spec: Bag): void {
   }
 }
 
+/** Keys of each known sub-block, so a nested typo is caught too. */
+const KNOWN_NESTED_KEYS: Record<string, Set<string>> = {
+  learn_app: new Set(['cc_domain', 'cc_app_id', 'hq_server_url', 'description', 'api_key']),
+  deliver_app: new Set(['cc_domain', 'cc_app_id', 'hq_server_url', 'description', 'api_key']),
+  clone_from: new Set(['opportunity_id', 'source_learn_app_id', 'source_deliver_app_id']),
+  verification_flags: new Set([
+    'form_field_rules', 'form_submission_start', 'form_submission_end',
+  ]),
+};
+
+/** Edit distance <= 2, so we can name the key the operator probably meant. */
+function closestKey(key: string, known: Iterable<string>): string | undefined {
+  let best: string | undefined;
+  let bestD = 3;
+  for (const k of known) {
+    const d = editDistance(key.toLowerCase(), k.toLowerCase());
+    if (d < bestD) { bestD = d; best = k; }
+  }
+  return best;
+}
+
+function editDistance(a: string, b: string): number {
+  const prev = Array.from({ length: b.length + 1 }, (_, j) => j);
+  for (let i = 1; i <= a.length; i += 1) {
+    let diag = prev[0];
+    prev[0] = i;
+    for (let j = 1; j <= b.length; j += 1) {
+      const tmp = prev[j];
+      prev[j] = Math.min(
+        prev[j] + 1,
+        prev[j - 1] + 1,
+        diag + (a[i - 1] === b[j - 1] ? 0 : 1),
+      );
+      diag = tmp;
+    }
+  }
+  return prev[b.length];
+}
+
+function reportUnknown(issues: SpecIssue[], path: string, key: string, known: Set<string>): void {
+  const guess = closestKey(key, known);
+  push(issues, 'warn', 'unknown_key', path,
+    `\`${path}\` is not part of the spec format and is ignored` +
+    (guess ? `. Did you mean \`${guess}\`?` : '.') +
+    ' A misspelled key silently takes its default.');
+}
+
 function checkUnknownKeys(issues: SpecIssue[], spec: Bag): void {
   for (const key of Object.keys(spec)) {
     if (KNOWN_TOP_LEVEL_KEYS.has(key)) continue;
-    if (SECRET_FIELD_RE.test(key)) continue; // already reported, with better advice
-    push(issues, 'warn', 'unknown_key', key,
-      `\`${key}\` is not part of the spec format and is ignored. If you meant one of ` +
-      `${[...KNOWN_TOP_LEVEL_KEYS].join(', ')}, fix the spelling -- a misspelled key ` +
-      'silently takes its default.');
+    if (SECRET_FIELD_RE.test(key)) continue; // reported by checkSecrets, with better advice
+    reportUnknown(issues, key, key, KNOWN_TOP_LEVEL_KEYS);
+  }
+  // One level in as well: `learn_app.cc_domian` and
+  // `verification_flags.form_submision_start` were both silent.
+  for (const [block, known] of Object.entries(KNOWN_NESTED_KEYS)) {
+    const child = spec[block];
+    if (!isBag(child)) continue;
+    for (const key of Object.keys(child)) {
+      if (known.has(key)) continue;
+      if (SECRET_FIELD_RE.test(key)) continue;
+      reportUnknown(issues, `${block}.${key}`, key, known);
+    }
   }
 }
 
@@ -314,7 +444,7 @@ function checkIdentity(issues: SpecIssue[], spec: Bag): void {
   if (programId && !UUID_RE.test(programId.trim())) {
     push(issues, 'warn', 'program_id_shape', 'program_id',
       `\`program_id\` ("${programId}") is not UUID-shaped. Connect programs are addressed by ` +
-      'UUID; an integer or a slug here will 404 at Step 1.');
+      'UUID; an integer or a slug here will 404 when the program is resolved.');
   }
 
   const shortDesc = typeof spec.short_description === 'string' ? spec.short_description : undefined;
@@ -340,6 +470,17 @@ function checkIdentity(issues: SpecIssue[], spec: Bag): void {
   if (spec.is_test !== undefined && typeof spec.is_test !== 'boolean') {
     push(issues, 'error', 'wrong_type', 'is_test',
       `\`is_test\` must be true or false, got ${describeType(spec.is_test)}.`);
+  }
+  if (spec.is_test === undefined) {
+    // Omitting it is not neutral: Connect defaults `is_test` to TRUE
+    // server-side, while `assertRunIdNamePrefix` no-ops on `undefined`. So an
+    // omitted key creates a TEST opportunity whose name has no run-id prefix,
+    // which is the ace#755 tile-matching break with none of its guards.
+    push(issues, 'warn', 'is_test_unset', 'is_test',
+      '`is_test` is not set. Connect defaults it to TRUE server-side, so this creates a test ' +
+      'opportunity -- and the run-id name-prefix rule, which only applies to test ' +
+      'opportunities, is not checked because the key is absent. Set it explicitly: `false` for ' +
+      'a real opportunity, `true` plus a "YYYYMMDD-HHMM · " name prefix for a dogfood run.');
   }
   // The MCP boundary rejects this before any network call (ace#755); surfacing
   // it here only saves a round-trip -- it is not a second opinion.
@@ -397,10 +538,14 @@ function checkApps(issues: SpecIssue[], spec: Bag): void {
       if (id !== undefined) {
         ids[side] = normId(id);
         if (!HQ_APP_ID_RE.test(id.trim())) {
-          push(issues, 'warn', 'app_id_shape', `${side}.cc_app_id`,
-            `\`${side}.cc_app_id\` should be a bare 32-char hex HQ app id -- got "${id}". ` +
-            'A build id or a URL fragment here wires the opportunity to nothing, and app ' +
-            'wiring is write-once at create.');
+          // Blocking, not advisory: HQ app ids are Couch doc ids and are
+          // always 32 hex, so there is no legitimate non-matching value --
+          // and the consequence is the one thing this flow cannot undo.
+          push(issues, 'error', 'app_id_shape', `${side}.cc_app_id`,
+            `\`${side}.cc_app_id\` must be a bare 32-char hex HQ app id -- got "${id}". ` +
+            'A build id or a URL fragment wires the opportunity to nothing, and app wiring is ' +
+            'write-once at create: the only repair is deleting the opportunity in the Connect ' +
+            'web UI and starting over.');
         }
       }
     }
@@ -410,19 +555,32 @@ function checkApps(issues: SpecIssue[], spec: Bag): void {
     if (side === 'learn_app') req(issues, 'learn_app.description', app.description);
 
     // The atom requires hq_server_url (`z.string().url()`), so omitting it
-    // fails at Step 4 -- the create/fix loop this validator exists to avoid.
+    // fails at the create -- the create/fix loop this validator exists to avoid.
     if (req(issues, `${side}.hq_server_url`, app.hq_server_url)) {
       const url = str(issues, `${side}.hq_server_url`, app.hq_server_url);
       if (url !== undefined && !KNOWN_HQ_BASE_URLS.includes(url)) {
-        // An allowlist, not a formatting rule: this URL travels to Connect
-        // alongside the resolved 40-char HQ API key, and Connect fetches from
-        // it server-side, so an arbitrary host is an exfiltration path that
-        // surfaces only as "Failed to fetch apps from CommCare HQ".
-        push(issues, 'error', 'unknown_hq_host', `${side}.hq_server_url`,
-          `\`${side}.hq_server_url\` is "${url}", which is not a known CommCare HQ cluster ` +
-          `(${KNOWN_HQ_BASE_URLS.join(', ')}). This URL travels to Connect alongside the ` +
-          'resolved HQ API key and Connect fetches from it server-side, so an unrecognised ' +
-          'host is a credential-exfiltration path.');
+        // A WARN, not an error, and the reason matters.
+        //
+        // What is known: this URL is forwarded to Connect in the same payload
+        // as the resolved 40-char HQ API key, and on the Playwright path
+        // Connect maps it to an FK from its OWN server list and rejects
+        // anything not on it (`resolveHqServer`, backends/playwright.ts). The
+        // REST path forwards it verbatim; what Connect does with it there is
+        // NOT something this repo can show, so no claim is made about it.
+        //
+        // What this check is therefore for: a typo or a config mismatch --
+        // naming a cluster whose API key is not the one being sent. It is
+        // defence in depth, so the MCP boundary makes it an ERROR against the
+        // CONFIGURED cluster registry, which is the only layer that can see
+        // an install's `ACE_HQ_<SERVER>_BASE_URL` blocks. A hard error here
+        // would reject a legitimately configured staging cluster this pure
+        // helper cannot know about.
+        push(issues, 'warn', 'unknown_hq_host', `${side}.hq_server_url`,
+          `\`${side}.hq_server_url\` is "${redactUrl(url)}", which is not one of the well-known ` +
+          `CommCare HQ clusters (${KNOWN_HQ_BASE_URLS.join(', ')}). That is legitimate only if ` +
+          'your install configures it via ACE_HQ_<SERVER>_BASE_URL; otherwise the API key being ' +
+          'sent belongs to a different server than this URL names. The MCP boundary checks this ' +
+          'against the configured registry and will reject an unconfigured host.');
       }
     }
   }
@@ -445,7 +603,88 @@ function checkLearnGate(issues: SpecIssue[], spec: Bag): void {
   }
 }
 
-function checkMoney(issues: SpecIssue[], spec: Bag): void {
+/**
+ * Deliver-unit wiring for one payment unit: the ace#843 non-empty gate
+ * (phase-dependent), id types, and the two set rules Connect enforces.
+ */
+function checkDeliverUnits(
+  issues: SpecIssue[],
+  raw: Bag,
+  at: string,
+  phase: SpecPhase,
+  duToUnits: Map<number, Set<string>>,
+): void {
+  const required = raw.required_deliver_units;
+  const field = `${at}.required_deliver_units`;
+
+  // The consequence, stated once and reused by both phases: an empty list
+  // yields a payment unit that fails the opportunity's is_setup_complete,
+  // blocks FLW invites and the device walk, and makes accrual report 0
+  // completed works regardless of visit count (jjackson/ace#843, confirmed
+  // live on hh-poverty-targeting/20260702-1456: 498 visits, 0 completed
+  // works).
+  const why =
+    'An empty list yields a payment unit that fails the opportunity\'s is_setup_complete, ' +
+    'blocks FLW invites and the device walk, and makes accrual report 0 completed works ' +
+    'regardless of visit count (jjackson/ace#843: 498 visits, 0 completed works). The ids are ' +
+    '`deliver_app.deliver_units[].server_id` from the create response -- NOT `id`, which is a ' +
+    'per-opp display index the server rejects as "Invalid Data".';
+
+  if (!Array.isArray(required) || required.length === 0) {
+    if (phase === 'pre-create') {
+      push(issues, 'warn', 'deliver_units_pending', field,
+        `\`${field}\` is empty. That is expected before the opportunity exists -- Connect mints ` +
+        `the server_ids in the create response -- but it MUST be filled in before payment units ` +
+        `are created, and re-validated with phase 'pre-payment-units'. ${why}`);
+    } else {
+      push(issues, 'error', 'no_required_deliver_units', field,
+        `\`${field}\` must be a non-empty list of deliver-unit server_ids by now: the create ` +
+        `response is in hand, so the ids exist. ${why}`);
+    }
+    return;
+  }
+
+  const optional = raw.optional_deliver_units;
+  if (optional !== undefined && optional !== null && !Array.isArray(optional)) {
+    // Coercing this to [] silently disabled the both-lists rule below.
+    push(issues, 'error', 'wrong_type', `${at}.optional_deliver_units`,
+      `\`${at}.optional_deliver_units\` must be a list, got ${describeType(optional)}.`);
+  }
+  const optionalIds = Array.isArray(optional) ? optional : [];
+  optionalIds.forEach((du, j) => {
+    if (typeof du !== 'number' || !Number.isInteger(du)) {
+      push(issues, 'error', 'bad_deliver_unit_id', `${at}.optional_deliver_units[${j}]`,
+        `Deliver-unit ids must be integer server_ids -- got ${describeType(du)}.`);
+    }
+  });
+
+  const seenInThisUnit = new Set<number>();
+  required.forEach((du, j) => {
+    if (typeof du !== 'number' || !Number.isInteger(du)) {
+      push(issues, 'error', 'bad_deliver_unit_id', `${field}[${j}]`,
+        `Deliver-unit ids must be integer server_ids -- got ${describeType(du)}.`);
+      return;
+    }
+    if (seenInThisUnit.has(du)) {
+      // Its own code: reporting this as cross-unit reuse sent the operator
+      // looking for a second payment unit that does not exist.
+      push(issues, 'error', 'duplicate_deliver_unit', field,
+        `Deliver unit ${du} is listed twice in \`${field}\`.`);
+      return;
+    }
+    seenInThisUnit.add(du);
+    if (optionalIds.includes(du)) {
+      push(issues, 'error', 'deliver_unit_in_both_lists', `${at}.optional_deliver_units`,
+        `Deliver unit ${du} appears in both \`required\` and \`optional\` on ${at}. ` +
+        'Connect rejects the whole batch.');
+    }
+    const units = duToUnits.get(du) ?? new Set<string>();
+    units.add(at);
+    duToUnits.set(du, units);
+  });
+}
+
+function checkMoney(issues: SpecIssue[], spec: Bag, phase: SpecPhase): void {
   req(issues, 'total_budget', spec.total_budget);
   const totalBudget = money(issues, 'total_budget', spec.total_budget);
 
@@ -453,10 +692,11 @@ function checkMoney(issues: SpecIssue[], spec: Bag): void {
   let fundUsers = DEFAULT_FUND_USERS;
   if (fundUsersRaw !== undefined && fundUsersRaw !== null) {
     const n = num(issues, 'fund_users', fundUsersRaw);
-    if (n !== undefined && (!Number.isInteger(n) || n < 1)) {
+    if (n !== undefined && (!Number.isInteger(n) || n < 1 || n > FUND_USERS_MAX)) {
       push(issues, 'error', 'bad_fund_users', 'fund_users',
-        `\`fund_users\` must be a positive integer -- got ${n}. It multiplies the remediation ` +
-        'figure in the budget message, so a zero or negative value renders nonsense advice.');
+        `\`fund_users\` must be an integer in 1..${FUND_USERS_MAX} -- got ${n}. It multiplies ` +
+        'the budget figure this validator recommends, so a zero, negative or unbounded value ' +
+        'turns that recommendation into nonsense.');
     } else if (n !== undefined) {
       fundUsers = n;
     }
@@ -485,8 +725,8 @@ function checkMoney(issues: SpecIssue[], spec: Bag): void {
     return;
   }
 
-  const units: OppSpecPaymentUnit[] = [];
-  const duToUnits = new Map<number, string[]>();
+  const units: CapacityPaymentUnit[] = [];
+  const duToUnits = new Map<number, Set<string>>();
 
   rawUnits.forEach((raw, i) => {
     const at = `payment_units[${i}]`;
@@ -498,15 +738,30 @@ function checkMoney(issues: SpecIssue[], spec: Bag): void {
     if (req(issues, `${at}.name`, raw.name)) str(issues, `${at}.name`, raw.name);
     req(issues, `${at}.amount`, raw.amount);
     req(issues, `${at}.max_total`, raw.max_total);
+    // `max_daily` is required by the atom (`z.coerce.number().int().min(1)`,
+    // not optional) and the --clone path leaves it blank by construction, so
+    // omitting the check here guarantees a failure at the payment-unit step,
+    // i.e. AFTER the write-once create.
+    req(issues, `${at}.max_daily`, raw.max_daily);
     const amount = money(issues, `${at}.amount`, raw.amount);
+    const orgAmountGiven = raw.org_amount !== undefined && raw.org_amount !== null;
     const orgAmount = money(issues, `${at}.org_amount`, raw.org_amount);
     const maxTotal = money(issues, `${at}.max_total`, raw.max_total);
-    money(issues, `${at}.max_daily`, raw.max_daily);
+    const maxDaily = money(issues, `${at}.max_daily`, raw.max_daily);
 
-    if (maxTotal === 0) {
-      push(issues, 'warn', 'zero_max_total', `${at}.max_total`,
-        `\`${at}.max_total\` is 0, so this payment unit permits zero visits and contributes ` +
-        'nothing to the capacity calculation. Probably not what you meant.');
+    // Floors that match the atom's own `.min(1)`, so a spec that passes here
+    // is not rejected by Zod a step later.
+    for (const [f, v] of [['max_total', maxTotal], ['max_daily', maxDaily]] as const) {
+      if (v !== undefined && v < 1) {
+        push(issues, 'error', 'below_minimum', `${at}.${f}`,
+          `\`${at}.${f}\` is ${v}; the atom requires at least 1. A unit permitting zero visits ` +
+          'also zeroes the capacity calculation, which turns the funding floor off entirely.');
+      }
+    }
+    if (maxDaily !== undefined && maxTotal !== undefined && maxDaily > maxTotal) {
+      push(issues, 'warn', 'max_daily_exceeds_total', `${at}.max_daily`,
+        `\`${at}.max_daily\` (${maxDaily}) exceeds \`max_total\` (${maxTotal}), so the daily cap ` +
+        'can never bind.');
     }
 
     // The hard pre-create gate. An empty required_deliver_units (a) fails the
@@ -518,77 +773,58 @@ function checkMoney(issues: SpecIssue[], spec: Bag): void {
     // hh-poverty-targeting/20260702-1456: a PU existed with
     // required_deliver_units: [] and produced 498 visits, 0 completed works
     // (jjackson/ace#843).
-    const required = raw.required_deliver_units;
-    if (!Array.isArray(required) || required.length === 0) {
-      push(issues, 'error', 'no_required_deliver_units', `${at}.required_deliver_units`,
-        `\`${at}.required_deliver_units\` must be a non-empty list of deliver-unit ` +
-        '`server_id`s -- this is a hard pre-create gate, not a nicety. An empty list creates a ' +
-        "payment unit that fails the opportunity's is_setup_complete, blocks FLW invites and " +
-        'the device walk, and makes accrual report 0 completed works regardless of visit ' +
-        'count (jjackson/ace#843: 498 visits, 0 completed works). Take the ids from the Step 4 ' +
-        'create response\'s `deliver_app.deliver_units[].server_id` -- NOT `id`, which is a ' +
-        'per-opp display index the server rejects as "Invalid Data".');
-    } else {
-      const optional = Array.isArray(raw.optional_deliver_units) ? raw.optional_deliver_units : [];
-      for (const du of required) {
-        if (typeof du !== 'number' || !Number.isInteger(du)) {
-          push(issues, 'error', 'bad_deliver_unit_id', `${at}.required_deliver_units`,
-            `\`${at}.required_deliver_units\` entries must be integer server_ids -- got ` +
-            `${describeType(du)}.`);
-          continue;
-        }
-        if (optional.includes(du)) {
-          push(issues, 'error', 'deliver_unit_in_both_lists', `${at}.optional_deliver_units`,
-            `Deliver unit ${du} appears in both \`required\` and \`optional\` on ${at}. ` +
-            'Connect rejects the whole batch.');
-        }
-        const seen = duToUnits.get(du) ?? [];
-        seen.push(at);
-        duToUnits.set(du, seen);
-      }
-    }
+    checkDeliverUnits(issues, raw, at, phase, duToUnits);
 
-    if (amount !== undefined && maxTotal !== undefined) {
+    // `org_amount` is a contributing figure in the capacity formula, so a
+    // unit whose org_amount did not parse must NOT enter the calculation --
+    // treating its `undefined` as 0 produced a "thin headroom" warning on a
+    // spec that was 100x underfunded.
+    if (amount !== undefined && maxTotal !== undefined && !(orgAmountGiven && orgAmount === undefined)) {
       units.push({
         name: typeof raw.name === 'string' ? raw.name : '',
         amount,
         org_amount: orgAmount,
         max_total: maxTotal,
-        required_deliver_units: [],
       });
     }
   });
 
   for (const [du, at] of duToUnits) {
-    if (at.length < 2) continue;
+    if (at.size < 2) continue;
     push(issues, 'error', 'deliver_unit_reused_across_units', 'payment_units',
-      `Deliver unit ${du} is required by more than one payment unit (${at.join(', ')}) in the ` +
-      'same request. Connect rejects the whole batch.');
+      `Deliver unit ${du} is required by more than one payment unit ` +
+      `(${[...at].join(', ')}) in the same request. Connect rejects the whole batch.`);
   }
 
-  // The capacity floor. Only computable when every contributing figure parsed;
-  // when one did not, the `not_a_number` issue above is already blocking, so we
-  // are not letting anything through silently.
+  // The capacity floor, decided by the shared helper so this and the MCP
+  // boundary cannot disagree. Computable only when every contributing figure
+  // parsed; when one did not, a `not_a_number` issue is already blocking, so
+  // skipping here lets nothing through silently.
   if (units.length !== rawUnits.length || totalBudget === undefined) return;
 
-  const minOne = minBudgetForOneUser(units);
-  if (minOne === 0) return; // a free opportunity funds anyone
-  if (!fundsAtLeastOneUser(totalBudget, units)) {
-    const users = numberOfUsers(totalBudget, units);
+  const cap = evaluateCapacity(totalBudget, units);
+  if (cap.skip === 'negative-cost') {
+    push(issues, 'error', 'negative_unit_cost', 'payment_units',
+      `The payment units sum to a NEGATIVE cost per user (${cap.min}). That is a sign slip, not ` +
+      'a free opportunity, and it would read as infinitely fundable.');
+    return;
+  }
+  if (cap.ok === null) return; // free, or already reported as unparseable
+
+  if (cap.ok === false) {
     push(issues, 'error', 'opportunity_underfunded', 'total_budget',
-      `total_budget ${totalBudget} funds ${users.toFixed(4)} FLW (< 1). Connect computes ` +
+      `total_budget ${totalBudget} funds ${cap.users.toFixed(4)} FLW (< 1). Connect computes ` +
       'number_of_users = total_budget / SUM(max_total * (amount + org_amount)) = ' +
-      `${totalBudget} / ${minOne}; below 1 it under-allocates create_claim_limits and no FLW ` +
-      `can claim. Raise total_budget to at least ${minOne * fundUsers} ` +
+      `${totalBudget} / ${cap.min}; below 1 it under-allocates create_claim_limits and no FLW ` +
+      `can claim. Raise total_budget to at least ${cap.min * fundUsers} ` +
       `(x${fundUsers} headroom), or lower max_total. If you passed cents you inflated the ` +
       'per-user cost 100x -- pass whole units.');
     return;
   }
-  const users = numberOfUsers(totalBudget, units);
-  if (users < fundUsers) {
+  if (cap.users < fundUsers) {
     push(issues, 'warn', 'thin_headroom', 'total_budget',
-      `total_budget funds ${users.toFixed(2)} FLW; \`fund_users\` asks for ${fundUsers}. ` +
-      `Raise to ${minOne * fundUsers} for headroom.`);
+      `total_budget funds ${cap.users.toFixed(2)} FLW; \`fund_users\` asks for ${fundUsers}. ` +
+      `Raise to ${cap.min * fundUsers} for headroom.`);
   }
 }
 
@@ -608,10 +844,11 @@ function checkInvites(issues: SpecIssue[], spec: Bag): void {
     }
     if (ENV_PLACEHOLDER_RE.test(phone) || E164_RE.test(phone)) return;
     push(issues, 'error', 'bad_invite_phone', at,
-      `"${phone}" is not E.164 (leading +, then 1-15 digits) and not a \`\${VAR}\` placeholder. ` +
-      'connect_send_flw_invite returns {status: "queued"} regardless, and `queued` is not proof ' +
-      'the invite landed (ace#824) -- so a malformed number fails silently and the worker ' +
-      'simply never gets an invite.');
+      `"${maskPhone(phone)}" is not E.164 (leading +, then 1-15 digits) and not a ` +
+      '`${VAR}` placeholder. connect_send_flw_invite returns {status: "queued"} regardless, and ' +
+      '`queued` is not proof the invite landed (ace#824) -- so a malformed number fails silently ' +
+      'and the worker simply never gets an invite. (Masked here: a near-miss is still a real ' +
+      "subscriber's number and this text lands in transcripts.)");
   });
 }
 
@@ -643,6 +880,18 @@ function checkVerificationFlags(issues: SpecIssue[], spec: Bag): void {
     if (!isBag(raw)) {
       push(issues, 'error', 'wrong_type', at, `\`${at}\` must be a mapping.`);
       return;
+    }
+    // All three are required by the atom; only question_value was checked.
+    req(issues, `${at}.name`, raw.name);
+    req(issues, `${at}.question_path`, raw.question_path);
+    req(issues, `${at}.question_value`, raw.question_value);
+    str(issues, `${at}.question_value`, raw.question_value);
+    if (req(issues, `${at}.deliver_unit_id`, raw.deliver_unit_id)) {
+      const du = num(issues, `${at}.deliver_unit_id`, raw.deliver_unit_id);
+      if (du !== undefined && (!Number.isInteger(du) || du < 1)) {
+        push(issues, 'error', 'bad_deliver_unit_id', `${at}.deliver_unit_id`,
+          `\`${at}.deliver_unit_id\` must be a positive integer server_id -- got ${du}.`);
+      }
     }
     const name = str(issues, `${at}.name`, raw.name);
     if (name !== undefined && name.length > FORM_FIELD_RULE_NAME_MAX) {
@@ -722,7 +971,7 @@ function checkClone(issues: SpecIssue[], spec: Bag): void {
   // The guard above can only fire on provenance the operator supplied, and
   // provenance is an editable field -- so its absence is worth saying out
   // loud rather than passing clean. The live check (comparing against the
-  // apps other opportunities on this program already use) belongs at Step 1,
+  // apps other opportunities on this program already use) belongs to the live program check,
   // which has the hydrated listing; this validator cannot see it.
   const missing = (['source_learn_app_id', 'source_deliver_app_id'] as const)
     .filter((k) => typeof clone[k] !== 'string' || clone[k] === '');
@@ -731,7 +980,7 @@ function checkClone(issues: SpecIssue[], spec: Bag): void {
       `\`clone_from\` omits ${missing.join(' and ')}, so the app-reuse check cannot run for ` +
       'that side. Those two traps (ace#573, ace#1350) are the reason the clone path mints ' +
       'fresh apps; without the source ids nothing here can tell whether it did. Re-hydrate ' +
-      'with `--clone`, or verify at Step 1 against the apps this program already uses.');
+      'with `--clone`, or verify at § Resolve the program against the apps this program already uses.');
   }
 }
 
@@ -744,7 +993,10 @@ function checkClone(issues: SpecIssue[], spec: Bag): void {
  * Returns every issue found; the caller creates nothing while any
  * `severity: 'error'` remains.
  */
-export function validateConnectOppSpec(raw: unknown): SpecIssue[] {
+export function validateConnectOppSpec(
+  raw: unknown,
+  phase: SpecPhase = 'pre-create',
+): SpecIssue[] {
   const issues: SpecIssue[] = [];
   if (!isBag(raw)) {
     push(issues, 'error', 'spec_not_a_mapping', '',
@@ -757,7 +1009,7 @@ export function validateConnectOppSpec(raw: unknown): SpecIssue[] {
   checkWindow(issues, raw);
   checkApps(issues, raw);
   checkLearnGate(issues, raw);
-  checkMoney(issues, raw);
+  checkMoney(issues, raw, phase);
   checkInvites(issues, raw);
   checkVerificationFlags(issues, raw);
   checkClone(issues, raw);

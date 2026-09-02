@@ -44,6 +44,12 @@ export const OPP_NAME_RUN_ID_PREFIX_RE = /^\d{8}-\d{4} · /u;
  */
 export const SHORT_DESCRIPTION_MAX = 50;
 
+/**
+ * Cap on `form_field_rules[].name`. A longer name fails the WHOLE formset
+ * rather than just its own rule.
+ */
+export const FORM_FIELD_RULE_NAME_MAX = 25;
+
 /** A payment unit, reduced to the fields the capacity formula reads. */
 export interface CapacityPaymentUnit {
   name?: string;
@@ -104,6 +110,48 @@ export function fundsAtLeastOneUser(
   const users = numberOfUsers(total_budget, paymentUnits);
   if (Number.isNaN(users)) return false;
   return users >= 1;
+}
+
+/** Why a capacity evaluation did not produce a verdict. */
+export type CapacitySkip = 'no-units' | 'unknown-cost' | 'free' | 'negative-cost';
+
+export interface CapacityVerdict {
+  /** Σ(max_total × (amount + org_amount)); `NaN` when any input is non-finite. */
+  min: number;
+  /** total_budget / min; `NaN` when unknown, `Infinity` when free. */
+  users: number;
+  /** `true` = funds ≥1 FLW, `false` = does not, `null` = no verdict. */
+  ok: boolean | null;
+  /** Set iff `ok` is null. */
+  skip?: CapacitySkip;
+}
+
+/**
+ * The whole capacity DECISION in one place, so the MCP boundary and the spec
+ * validator cannot disagree about it — only about how they render it.
+ *
+ * Moving the two formulas into `lib/` left the three-step policy around them
+ * written out twice; this is the rest of that extraction.
+ */
+export function evaluateCapacity(
+  total_budget: number,
+  paymentUnits: CapacityPaymentUnit[],
+): CapacityVerdict {
+  if (paymentUnits.length === 0) {
+    return { min: 0, users: Infinity, ok: null, skip: 'no-units' };
+  }
+  const min = minBudgetForOneUser(paymentUnits);
+  if (Number.isNaN(min) || typeof total_budget !== 'number' || !Number.isFinite(total_budget)) {
+    return { min, users: NaN, ok: null, skip: 'unknown-cost' };
+  }
+  // A NEGATIVE cost is a sign slip, not a free opportunity. Folding it into
+  // the `min <= 0` branch made it read as infinitely fundable and sail past
+  // the guard; it gets its own answer so a caller can say so.
+  if (min < 0) return { min, users: NaN, ok: null, skip: 'negative-cost' };
+  if (min === 0) return { min, users: Infinity, ok: null, skip: 'free' };
+
+  const users = total_budget / min;
+  return { min, users, ok: users >= 1 };
 }
 
 /** The CommCare HQ clusters ACE talks to. Values mirror `KNOWN_HQ_BASE_URLS`. */

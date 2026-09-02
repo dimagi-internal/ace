@@ -38,6 +38,7 @@ import {
   SHORT_DESCRIPTION_MAX,
   type ConnectOppSpec,
   type OppSpecPaymentUnit,
+  type SpecPhase,
 } from '../../lib/connect-opp-spec.js';
 import {
   numberOfUsers,
@@ -75,15 +76,23 @@ function healthySpec(): ConnectOppSpec {
       hq_server_url: 'https://www.commcarehq.org',
     },
     payment_units: [
-      { name: 'Per verified visit', amount: 2, max_total: 100, required_deliver_units: [6617] },
+      {
+        name: 'Per verified visit',
+        amount: 2,
+        max_total: 100,
+        max_daily: 5,
+        required_deliver_units: [6617],
+      },
     ],
     fund_users: 3,
   };
 }
 
-const codes = (s: unknown) => validateConnectOppSpec(s).map((i) => i.code);
+const codes = (s: unknown, phase?: SpecPhase) =>
+  validateConnectOppSpec(s, phase).map((i) => i.code);
 /** Asserts the spec is REJECTED, not merely commented on. */
-const blocks = (s: unknown) => hasBlockingIssue(validateConnectOppSpec(s));
+const blocks = (s: unknown, phase?: SpecPhase) =>
+  hasBlockingIssue(validateConnectOppSpec(s, phase));
 
 describe('healthy baseline', () => {
   it('accepts a complete spec with no issues at all', () => {
@@ -234,45 +243,109 @@ describe('server-enforced limits', () => {
   });
 });
 
-describe('required_deliver_units is a hard pre-create gate', () => {
-  it('blocks a payment unit with an empty list', () => {
-    const s = healthySpec();
-    s.payment_units = [{ name: 'x', amount: 2, max_total: 100, required_deliver_units: [] }];
-    expect(codes(s)).toContain('no_required_deliver_units');
-    expect(blocks(s)).toBe(true);
-  });
-
-  it('blocks a payment unit that omits the key entirely', () => {
+describe('required_deliver_units is phase-dependent', () => {
+  /** A spec whose deliver-unit ids are not yet known. */
+  const pending = () => {
     const s = healthySpec();
     s.payment_units = [
-      { name: 'x', amount: 2, max_total: 100 } as unknown as OppSpecPaymentUnit,
+      { name: 'x', amount: 2, max_total: 100, max_daily: 5, required_deliver_units: [] },
     ];
-    expect(codes(s)).toContain('no_required_deliver_units');
+    return s;
+  };
+
+  it('WARNS pre-create — the ids only exist in the create response', () => {
+    // The rule that deadlocked the documented happy path when it was a
+    // blocking error at both phases: a freshly-copied template cannot supply
+    // ids Connect has not minted yet.
+    const issues = validateConnectOppSpec(pending(), 'pre-create');
+    expect(issues.map((i) => i.code)).toContain('deliver_units_pending');
+    expect(hasBlockingIssue(issues)).toBe(false);
+  });
+
+  it('BLOCKS pre-payment-units — by then the ids exist', () => {
+    const issues = validateConnectOppSpec(pending(), 'pre-payment-units');
+    expect(issues.map((i) => i.code)).toContain('no_required_deliver_units');
+    expect(hasBlockingIssue(issues)).toBe(true);
+  });
+
+  it('defaults to pre-create, the phase that cannot block on this', () => {
+    // A caller that forgets the argument must get the permissive phase, or
+    // the deadlock returns by omission.
+    expect(codes(pending())).toContain('deliver_units_pending');
+  });
+
+  it('treats an omitted key the same as an empty list', () => {
+    const s = healthySpec();
+    s.payment_units = [
+      { name: 'x', amount: 2, max_total: 100, max_daily: 5 } as unknown as OppSpecPaymentUnit,
+    ];
+    expect(codes(s, 'pre-payment-units')).toContain('no_required_deliver_units');
+  });
+
+  it('accepts a filled-in list at both phases', () => {
+    for (const phase of ['pre-create', 'pre-payment-units'] as const) {
+      expect(validateConnectOppSpec(healthySpec(), phase), phase).toEqual([]);
+    }
   });
 
   it('blocks a DU that is in both required and optional on one unit', () => {
     const s = healthySpec();
     s.payment_units = [{
-      name: 'x', amount: 2, max_total: 100,
+      name: 'x', amount: 2, max_total: 100, max_daily: 5,
       required_deliver_units: [7], optional_deliver_units: [7],
     }];
     expect(codes(s)).toContain('deliver_unit_in_both_lists');
   });
 
+  it('does not silently coerce a malformed optional list', () => {
+    // Coercing to [] disabled the both-lists rule with no issue reported.
+    const s = healthySpec();
+    s.payment_units = [{
+      name: 'x', amount: 2, max_total: 100, max_daily: 5,
+      required_deliver_units: [7],
+      optional_deliver_units: 'nope' as unknown as number[],
+    }];
+    expect(codes(s)).toContain('wrong_type');
+    expect(blocks(s)).toBe(true);
+  });
+
+  it('type-checks optional deliver-unit ids too', () => {
+    const s = healthySpec();
+    s.payment_units = [{
+      name: 'x', amount: 2, max_total: 100, max_daily: 5,
+      required_deliver_units: [7],
+      optional_deliver_units: ['abc'] as unknown as number[],
+    }];
+    expect(codes(s)).toContain('bad_deliver_unit_id');
+  });
+
   it('blocks the same DU required by two units in one request', () => {
     const s = healthySpec();
     s.payment_units = [
-      { name: 'a', amount: 1, max_total: 10, required_deliver_units: [7] },
-      { name: 'b', amount: 1, max_total: 10, required_deliver_units: [7] },
+      { name: 'a', amount: 1, max_total: 10, max_daily: 1, required_deliver_units: [7] },
+      { name: 'b', amount: 1, max_total: 10, max_daily: 1, required_deliver_units: [7] },
     ];
     expect(codes(s)).toContain('deliver_unit_reused_across_units');
+  });
+
+  it('names an intra-unit duplicate as such, not as cross-unit reuse', () => {
+    // The old message read "required by more than one payment unit
+    // (payment_units[0], payment_units[0])", sending the operator looking for
+    // a second unit that does not exist.
+    const s = healthySpec();
+    s.payment_units = [
+      { name: 'a', amount: 1, max_total: 10, max_daily: 1, required_deliver_units: [7, 7] },
+    ];
+    const found = codes(s);
+    expect(found).toContain('duplicate_deliver_unit');
+    expect(found).not.toContain('deliver_unit_reused_across_units');
   });
 
   it('allows two units requiring different DUs', () => {
     const s = healthySpec();
     s.payment_units = [
-      { name: 'a', amount: 1, max_total: 10, required_deliver_units: [7] },
-      { name: 'b', amount: 1, max_total: 10, required_deliver_units: [8] },
+      { name: 'a', amount: 1, max_total: 10, max_daily: 1, required_deliver_units: [7] },
+      { name: 'b', amount: 1, max_total: 10, max_daily: 1, required_deliver_units: [8] },
     ];
     expect(codes(s)).not.toContain('deliver_unit_reused_across_units');
   });
@@ -327,12 +400,45 @@ describe('currency is whole units, never cents', () => {
     }
   });
 
-  it('warns on a payment unit that permits zero visits', () => {
+  it('BLOCKS max_total or max_daily below 1, matching the atom', () => {
+    // Not a warning: a unit permitting zero visits also zeroes the capacity
+    // sum, which turns the funding floor off entirely — so a typo here
+    // disabled the most valuable rule in the file. The atom requires .min(1).
+    for (const f of ['max_total', 'max_daily'] as const) {
+      const s = healthySpec();
+      s.payment_units = [{
+        name: 'x', amount: 2, max_total: 100, max_daily: 5,
+        required_deliver_units: [1],
+        [f]: 0,
+      } as unknown as OppSpecPaymentUnit];
+      expect(codes(s), f).toContain('below_minimum');
+      expect(blocks(s), f).toBe(true);
+    }
+  });
+
+  it('requires max_daily, which the clone path leaves blank by construction', () => {
     const s = healthySpec();
-    s.payment_units = [
-      { name: 'x', amount: 2, max_total: 0, required_deliver_units: [1] },
-    ];
-    expect(codes(s)).toContain('zero_max_total');
+    delete s.payment_units![0].max_daily;
+    // Missing it fails at the payment-unit step, i.e. AFTER the write-once
+    // create — exactly the loop this gate exists to avoid.
+    expect(codes(s)).toContain('missing_required_field');
+  });
+
+  it('warns when max_daily can never bind', () => {
+    const s = healthySpec();
+    s.payment_units![0].max_daily = 500;
+    expect(codes(s)).toContain('max_daily_exceeds_total');
+  });
+
+  it('blocks a negative unit cost rather than reading it as free', () => {
+    const s = healthySpec();
+    s.payment_units = [{
+      name: 'x', amount: -5, org_amount: 0, max_total: 100, max_daily: 5,
+      required_deliver_units: [1],
+    }];
+    // `negative_currency` fires first on the field; the point is that nothing
+    // reports this spec as fundable.
+    expect(blocks(s)).toBe(true);
   });
 });
 
@@ -370,6 +476,109 @@ describe('the is_test name prefix', () => {
         mcpRejects = true;
       }
       expect(libRejects, name).toBe(mcpRejects);
+    }
+  });
+});
+
+describe('rules added after round-2 review', () => {
+  it('BLOCKS a malformed cc_app_id — the one thing the flow cannot undo', () => {
+    // Was a warn, so a URL fragment exited 0 and the create proceeded, wiring
+    // the opportunity to nothing with no repair short of deleting it.
+    const s = healthySpec();
+    s.deliver_app!.cc_app_id = 'https://www.commcarehq.org/a/dom/apps/view/abc/';
+    expect(codes(s)).toContain('app_id_shape');
+    expect(blocks(s)).toBe(true);
+  });
+
+  it('warns when is_test is omitted, because the server defaults it TRUE', () => {
+    // An omitted key creates a TEST opportunity whose name skips the run-id
+    // prefix rule — the ace#755 break with none of its guards.
+    const s = healthySpec();
+    delete s.is_test;
+    const issues = validateConnectOppSpec(s);
+    expect(issues.map((i) => i.code)).toContain('is_test_unset');
+    expect(hasBlockingIssue(issues)).toBe(false);
+  });
+
+  it('catches a nested typo, not just a top-level one', () => {
+    for (const [block, key] of [
+      ['learn_app', 'cc_domian'],
+      ['verification_flags', 'form_submision_start'],
+      ['clone_from', 'oportunity_id'],
+    ] as const) {
+      const s = healthySpec() as Record<string, unknown>;
+      s[block] = { ...(s[block] as object ?? {}), [key]: 'x' };
+      const found = validateConnectOppSpec(s).filter((i) => i.code === 'unknown_key');
+      expect(found.map((i) => i.field), `${block}.${key}`).toContain(`${block}.${key}`);
+    }
+  });
+
+  it('names the key the operator probably meant', () => {
+    const s = { ...healthySpec(), fund_uesrs: 5 };
+    const issue = validateConnectOppSpec(s).find((i) => i.code === 'unknown_key');
+    expect(issue?.message).toContain('fund_users');
+  });
+
+  it('requires every field the atom requires on a form_field_rule', () => {
+    for (const missing of ['name', 'question_path', 'question_value', 'deliver_unit_id']) {
+      const rule: Record<string, unknown> = {
+        name: 'ok', question_path: 'form.a.b', question_value: 'yes', deliver_unit_id: 1,
+      };
+      delete rule[missing];
+      const s = healthySpec();
+      s.verification_flags = { form_field_rules: [rule as never] };
+      expect(codes(s), missing).toContain('missing_required_field');
+    }
+  });
+
+  it('rejects a fractional deliver_unit_id on a rule', () => {
+    const s = healthySpec();
+    s.verification_flags = {
+      form_field_rules: [{
+        name: 'ok', question_path: 'form.a.b', question_value: 'yes', deliver_unit_id: 3.5,
+      }],
+    };
+    expect(codes(s)).toContain('bad_deliver_unit_id');
+  });
+
+  it('bounds fund_users so the budget it recommends stays finite', () => {
+    const s = { ...healthySpec(), total_budget: 1, fund_users: 1e308 };
+    const issues = validateConnectOppSpec(s);
+    expect(issues.map((i) => i.code)).toContain('bad_fund_users');
+    // The rejected value must not reach the recommendation: the underfunded
+    // message falls back to the default multiplier, not 1e308.
+    const underfunded = issues.find((i) => i.code === 'opportunity_underfunded');
+    expect(underfunded?.message).toContain('at least 600');
+    expect(underfunded?.message).not.toMatch(/Infinity|e\+\d/);
+  });
+
+  it('masks a phone number rather than republishing it', () => {
+    const s = { ...healthySpec(), invite_phone_numbers: ['0742 600 0001'] };
+    const rendered = formatSpecIssues(validateConnectOppSpec(s));
+    expect(rendered).not.toContain('0742 600 0001');
+    expect(rendered).toContain('bad_invite_phone');
+  });
+
+  it('truncates a long value before echoing it into a message', () => {
+    const s = { ...healthySpec(), total_budget: 'x'.repeat(5000) };
+    const rendered = formatSpecIssues(validateConnectOppSpec(s));
+    expect(rendered).toMatch(/\.\.\.\(\d+ chars\)/);
+    expect(rendered.length).toBeLessThan(3000);
+  });
+
+  it('rejects a lowercase ${var}, which the resolver would not expand', () => {
+    // Accepting it waved through a literal "${ace_hq_api_key}" to Connect.
+    const s = healthySpec() as ConnectOppSpec & { learn_app: Record<string, unknown> };
+    s.learn_app.api_key = '${ace_hq_api_key}';
+    expect(codes(s)).toContain('inlined_secret');
+  });
+
+  it('catches a secret under a prefixed field name', () => {
+    // `hq_api_key` is the natural transcription of ACE_HQ_API_KEY and used to
+    // score only as an unknown key, whose value was never scanned.
+    for (const key of ['hq_api_key', 'access_token', 'client_secret', 'private_key']) {
+      const s = { ...healthySpec(), [key]: 'f'.repeat(40) };
+      expect(codes(s), key).toContain('inlined_secret');
     }
   });
 });
@@ -426,14 +635,27 @@ describe('hq_server_url is required and allowlisted', () => {
     }
   });
 
-  it('blocks an unrecognised host - the exfiltration path', () => {
+  it('WARNS on an unrecognised host, because the boundary is the gate', () => {
+    // A hard error here would reject a legitimately configured staging or
+    // regional cluster, which this pure helper cannot see (only the MCP knows
+    // the install's ACE_HQ_<SERVER>_BASE_URL blocks). The MCP boundary makes
+    // it an error against the configured registry.
     const s = healthySpec();
     s.learn_app!.hq_server_url = 'https://commcarehq.evil.example';
-    expect(codes(s)).toContain('unknown_hq_host');
-    expect(blocks(s)).toBe(true);
+    const issues = validateConnectOppSpec(s);
+    expect(issues.map((i) => i.code)).toContain('unknown_hq_host');
+    expect(hasBlockingIssue(issues)).toBe(false);
   });
 
-  it('blocks look-alikes a substring check would pass', () => {
+  it('redacts userinfo before echoing the URL back', () => {
+    const s = healthySpec();
+    s.learn_app!.hq_server_url = 'https://user:sekrit@evil.example';
+    const rendered = formatSpecIssues(validateConnectOppSpec(s));
+    expect(rendered).not.toContain('sekrit');
+    expect(rendered).toContain('[redacted]');
+  });
+
+  it('flags look-alikes a substring check would pass', () => {
     for (const url of [
       'https://www.commcarehq.org.evil.example',
       'http://www.commcarehq.org',
@@ -635,10 +857,27 @@ describe('the shipped template matches the validator', () => {
     // adds a spec field to one and not the other.
     const got = new Set(validateConnectOppSpec(template).map((i) => i.code));
     expect([...got].sort()).toEqual([
+      'deliver_units_pending',       // warn: ids only exist after the create
       'missing_required_field',      // program_id, name, descriptions, dates, app ids
-      'no_required_deliver_units',   // filled in between Step 5 and Step 6
       'opportunity_underfunded',     // total_budget: 0
     ].sort());
+  });
+
+  it('declares every key the validator knows, so neither side drifts alone', () => {
+    // The pin above is one-directional: adding a key to the template without
+    // the validator fails it, but the reverse would not. This closes that.
+    const declared = new Set(Object.keys(template as Record<string, unknown>));
+    const unknownToTemplate = validateConnectOppSpec(
+      Object.fromEntries([...declared].map((k) => [k, (template as Record<string, unknown>)[k]])),
+    ).filter((i) => i.code === 'unknown_key');
+    expect(unknownToTemplate).toEqual([]);
+    // Every REQUIRED key must appear in the template, or an operator copying
+    // it cannot produce a valid spec at all.
+    for (const k of ['organization_slug', 'program_id', 'name', 'short_description',
+      'description', 'start_date', 'end_date', 'total_budget', 'passing_score',
+      'learn_app', 'deliver_app', 'payment_units']) {
+      expect(declared, `template is missing required key ${k}`).toContain(k);
+    }
   });
 
   it('ships no secret and no unknown HQ host', () => {

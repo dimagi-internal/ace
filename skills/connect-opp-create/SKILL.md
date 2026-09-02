@@ -41,9 +41,11 @@ always a second, explicit invocation against a spec file - see § Clone.
 
 ## Inputs
 
-One YAML file. **`templates/connect-opp-spec.yaml` is the format** - copy it
-and read its comments; they carry every field-level constraint and are the
-single copy of them. Required keys, in brief:
+One YAML file. **`templates/connect-opp-spec.yaml` is the authoritative
+format** - copy it and read its comments, which carry the field-level
+constraints in full. The table below is an index, not a second definition;
+where the two disagree, the template and `lib/connect-opp-spec.ts` win.
+Required keys:
 
 | Key | Notes |
 |---|---|
@@ -94,7 +96,7 @@ opportunity in an ACE run, copy the block into that run's
 
    **Do not inline this as `npx tsx -e`.** That is what it was, and it failed
    OPEN - `tsx -e` has no module path, so the import could not resolve and the
-   multi-line form exited 0 having printed nothing. Step 1 says "halt on any
+   multi-line form exited 0 having printed nothing. the spec gate says "halt on any
    error", so silence read as "no issues" in front of the one irreversible
    step in the flow.
 
@@ -129,12 +131,51 @@ opportunity in an ACE run, copy the block into that run's
    an absolute target rather than `program.budget + N`, and how to read
    `sigma_unknown_reasons`.
 
-   **Also check what apps this program's opportunities already use.** The
-   validator cannot see this and it is the live half of the clone trap in
-   Step 4: if the hydrated rows show your `deliver_app.cc_app_id` already wired
-   to another opportunity on this program, Step 6 will not be able to create a
-   payment unit. Scope the hydrated listing to this program and compare both
-   `cc_app_id`s before continuing.
+   **Then pull the rows, because two live checks need them** — the Σ call
+   above deliberately returns none:
+
+   ```
+   connect_list_opportunities({
+     organization_slug,
+     hydrate: true,
+     write_to_path: "/abs/path/opps.json",   // rows overflow the result cap
+   })
+   ```
+
+   Filter to this program on `program_name` (no read surface carries the
+   program UUID), then:
+
+   **(a) App reuse — the live half of the clone trap.** If any row on this
+   program already uses your `deliver_app.cc_app_id`, § Mint fresh HQ app
+   copies has not been done and § Create the payment units will fail:
+   Connect keys `DeliverUnit` on the released app, so the second opportunity
+   cannot create a payment unit at all (ace#573). Same check for
+   `learn_app.cc_app_id`, which silently shares the Learn gate (ace#1350).
+   **State what this check cannot see:** `cc_app_id` is read off the
+   opportunity dashboard, which is empty until an opportunity is activated
+   (ace#1647) — so an INACTIVE sibling's app ids are unreadable, while the
+   `DeliverUnit` trap applies regardless of that sibling's state. A clean
+   result here is "no active sibling uses these apps", not "no sibling does".
+
+   **(b) Single-active-opp.** Connect enforces one active managed opportunity
+   per accepted `ProgramApplication`. Creating a new one where a prior opp is
+   `active=true` under the same application **silently deactivates the prior
+   one** — observed on the `LEEP Paint Surveillance` opp, which flipped from
+   active to inactive with no warning (`connect-opp-setup § Step 4`). This
+   flow is *more* exposed than Phase 4: its whole purpose is another
+   opportunity on an existing program, and its default is `is_test: false`,
+   so the opportunity that gets switched off is a real one. Nothing
+   downstream would notice — Step § Activate reads back the new opportunity,
+   not the old one.
+
+   For each active row on this program, emit:
+
+   ```
+   [WARN] Creating "<new-name>" will deactivate active opp "<old-name>"
+          (id=<uuid>) — same program, same accepted application.
+   ```
+
+   and **stop for explicit confirmation**. Do not proceed on an assumed yes.
 
 3. **Program-application pre-flight.**
 
@@ -159,13 +200,13 @@ opportunity in an ACE run, copy the block into that run's
    "Already has an application" IS the skip signal - log and continue. The skip
    body carries no `application_id` and does not need one; the create derives
    the application server-side. It also does not distinguish INVITED from
-   ACCEPTED, so let Step 4 be that check rather than inferring acceptance here
+   ACCEPTED, so let § Create the opportunity be that check rather than inferring acceptance here
    (ace#1800; full account in `connect-opp-setup § Step 3a`).
 
 4. **Mint fresh HQ app copies, unless both apps are already exclusively this
    opportunity's.**
 
-   Step 2 told you whether they are. If either is in use, or you are cloning:
+   § Resolve the program told you whether they are. If either is in use, or you are cloning:
 
    ```
    commcare_linked_app_copy({
@@ -196,7 +237,24 @@ opportunity in an ACE run, copy the block into that run's
    failed**, so re-list before retrying or you create a duplicate and break
    name-based recovery.
 
-   Write the new ids into the spec and re-run Step 1 before continuing.
+   **Then check the released CCZ's slug lengths before creating anything.**
+   Connect derives `LearnModule.slug` and `DeliverUnit.slug` from the CCZ into
+   `SlugField()` columns capped at 50; an overflow is an uncaught
+   `StringDataRightTruncation` — an HTTP 500 with an empty body and a full
+   rollback — at the one irreversible step in this flow. Phase 4 never meets
+   this because Phase 3's `app-release` asserts `oversized_slugs` is empty
+   before releasing; this flow releases its own copies, so it must do the same:
+
+   ```
+   commcare_download_ccz({ domain, app_id, write_to_path: "/abs/path/app.ccz" })
+   ```
+
+   and confirm no module or form name exceeds `SLUG_LENGTH_LIMIT` (50,
+   `mcp/connect/backends/commcare.ts`). Rename in HQ and re-release rather
+   than discovering it as a bodyless 500.
+
+   Write the new ids into the spec and re-run § Validate the spec before
+   continuing.
 
 5. **Create the opportunity.**
 
@@ -227,11 +285,15 @@ opportunity in an ACE run, copy the block into that run's
    PaymentUnit and none exists yet; `true` fails AND rolls the whole create
    back, leaving no `opportunity_id` and an orphan inactive opp (ace#584).
 
-   Capture from the response: `id` (UUID), `int_id` (ConnectProd's integer id,
-   which labs and `/a/<org>/opportunity/<int>/` URLs key off), the resolved app
-   names, and `deliver_app.deliver_units` - **each unit's `server_id` is what
-   Step 6 needs.** Don't call `connect_list_deliver_units`; the create response
-   already carries the list.
+   Capture from the response: `id` (UUID), `int_id` (ConnectProd's legacy
+   integer id, which the labs/synthetic surfaces address opportunities by),
+   the resolved app names, and `deliver_app.deliver_units` - **each unit's
+   `server_id` is what § Create the payment units needs.** Don't call
+   `connect_list_deliver_units`; the create response already carries the list.
+
+   Record both ids and link with the UUID form,
+   `<CONNECT_BASE_URL>/a/<org>/opportunity/<uuid>/` - that is the admin page an
+   operator opens. `int_id` is a handoff key for labs, not the deep link.
 
    **App wiring is write-once.** `connect_update_opportunity` covers only
    `name` / `short_description` / `description` / `end_date` / `is_test`. A
@@ -247,26 +309,37 @@ opportunity in an ACE run, copy the block into that run's
    A never-activated opportunity renders only the **edit-form half** of that
    read. Compare `name`, `short_description`, `description`, `end_date`,
    `is_test` here. `start_date`, `total_budget` and both `cc_app_id`s come off
-   the dashboard, which is empty until activation - **defer them to Step 8**
+   the dashboard, which is empty until activation - **defer them to § Activate**
    and record them as `unreadable-at-this-point`, never as a match. An absent
    field is unknown, not agreement (ace#1647).
 
 6. **Create the payment units.**
 
+   First write the `server_id`s from the create response into the spec's
+   `required_deliver_units` and **re-run the gate at the second phase**:
+
+   ```bash
+   npx tsx "${CLAUDE_PLUGIN_ROOT:-.}/scripts/validate-connect-opp-spec.ts" "<spec.yaml>" \
+     --phase pre-payment-units
+   ```
+
+   The first run could only warn about those ids — Connect had not minted them
+   yet. This run blocks on them. Halt on exit 1.
+
    ```
    connect_create_payment_units({
      organization_slug, opportunity_id,
-     total_budget,                      // the SAME integer sent at Step 5
+     total_budget,                      // the SAME integer sent at create
      payment_units: [ {
        name, description, amount, org_amount, max_total, max_daily,
-       required_deliver_units,          // server_ids from Step 5's response
+       required_deliver_units,          // server_ids from the create response
        optional_deliver_units,
      } ],
    })
    ```
 
    **Every unit MUST carry at least one `required_deliver_units` id - a hard
-   pre-create gate, not a nicety.** Pass `du.server_id` from the Step 5 create
+   pre-create gate, not a nicety.** Pass `du.server_id` from the create
    response, never `du.id` (a per-opp display index the server rejects as
    "Invalid Data"). An empty list yields a payment unit that fails the
    opportunity's `is_setup_complete`, blocks `connect_send_flw_invite` and any
@@ -282,7 +355,7 @@ opportunity in an ACE run, copy the block into that run's
    `total_budget` - the MCP recomputes
    `number_of_users = total_budget / Σ(max_total × (amount + org_amount))` over
    the integers actually being sent and refuses an underfunded opportunity
-   before creating any unit (ace#729). Step 1 checks the spec; this checks the
+   before creating any unit (ace#729). the spec gate checks the spec; this checks the
    wire.
 
    Verify from the **create response**, and assert `required_deliver_units` is
@@ -344,7 +417,7 @@ opportunity in an ACE run, copy the block into that run's
    `lib/passing-score-readback.ts`. If you apply
    `connect_set_learn_passing_score`, note it moves the gate for EVERY
    opportunity in the org wired to that Learn app - record
-   `previous_passing_score` from its response. Step 4's fresh app ids are what
+   `previous_passing_score` from its response. § Mint fresh HQ app copies' fresh app ids are what
    normally keep you out of this.
 
 9. **Invites (optional), with a read-back.**
@@ -360,7 +433,7 @@ opportunity in an ACE run, copy the block into that run's
    exists to catch.
 
    `invite_users/` hard-rejects a non-active opportunity, so a successful
-   invite is also the only real proof Step 8's transition landed - the scraped
+   invite is also the only real proof § Activate's transition landed - the scraped
    `active` flag cannot distinguish a real activation from a no-op (ace#624).
    With no one to invite, verify activation another way rather than skipping
    the question.
@@ -428,10 +501,10 @@ papering over it:
 | name, descriptions, dates, budget | `connect_get_opportunity` | filled, marked `# from source` |
 | `program_id` | not on any read surface - reads carry `program_name` only | **blank**, program name in a comment |
 | payment unit `amount` / `max_total` / `max_daily` | not readable (ace#1642) | **blank**, names only |
-| `required_deliver_units` | not readable, and the ids differ per opportunity anyway | **blank** - fill from Step 5's response |
+| `required_deliver_units` | not readable, and the ids differ per opportunity anyway | **blank** - fill from the create response |
 | `passing_score` | `connect_get_learn_passing_score` | filled |
 | verification flags | **no read atom exists** - only `set` | **blank**, `# NOT RECOVERABLE` |
-| `learn_app.cc_app_id` / `deliver_app.cc_app_id` | source ids recorded under `clone_from` | **blank** - mint fresh at Step 4 |
+| `learn_app.cc_app_id` / `deliver_app.cc_app_id` | source ids recorded under `clone_from` | **blank** - mint fresh app copies |
 
 The app ids are blank on purpose, and the validator blocks a spec that fills
 them back in with the source's:
@@ -444,7 +517,7 @@ them back in with the source's:
   the new opportunity silently inherits the source's gate (ace#1350).
 
 That guard runs off `clone_from`'s recorded source ids, which an operator can
-delete - so it warns when they are missing, and **Step 2's live check against
+delete - so it warns when they are missing, and **§ Resolve the program's live check against
 the program's other opportunities is the one that covers a hand-written spec.**
 Both are needed; neither alone is sufficient.
 
@@ -469,7 +542,7 @@ dogfood run.
 it does not mean "no org" - the REST backend sends the PM org as the holder, and
 the accepted-application requirement moves there with it (ace#1251). Connect
 also rejects an explicit null with "organization: This field is required"
-(ace#700). Step 3 covers all three cases.
+(ace#700). § Program-application pre-flight covers all three cases.
 
 ## The Learn gate
 
@@ -513,15 +586,15 @@ opportunity rules still apply.
 ## Mode Behavior
 
 - **Auto / default:** validate, report the plan, create.
-- **Review:** present the Step 5 create payload and the Step 6 batch for
+- **Review:** present the the create payload and the the payment-unit batch for
   approval before calling either.
 
 ## Dry-Run Behavior
 
 When `--dry-run` is active:
 
-- Run Step 1 and the read-only calls in Steps 2-3.
-- Print the exact Step 5 create payload and Step 6 batch, with `api_key`
+- Run the spec gate and the read-only calls in § Resolve the program and § Program-application pre-flight.
+- Print the exact the create payload and the payment-unit batch, with `api_key`
   rendered as `${ACE_HQ_API_KEY}` rather than resolved.
 - Call **no** mutation atom: no `connect_create_*`, no
   `connect_update_program`, no `connect_activate_opportunity`, no
@@ -534,4 +607,4 @@ When `--dry-run` is active:
 
 | Date | Change | Author |
 |------|--------|--------|
-| 2026-09-01 | Initial. Phase 4's Connect-side sequence, spec-driven and decoupled from PDD / run_state / Drive. Clone path built on `commcare_linked_app_copy` (live-validated 2026-09-01), with the source-app-reuse traps (ace#573, ace#1350) blocked in `lib/connect-opp-spec.ts` and re-checked live at Step 2 rather than described in prose. | ACE team |
+| 2026-09-01 | Initial. Phase 4's Connect-side sequence, spec-driven and decoupled from PDD / run_state / Drive. Clone path built on `commcare_linked_app_copy` (live-validated 2026-09-01), with the source-app-reuse traps (ace#573, ace#1350) blocked in `lib/connect-opp-spec.ts` and re-checked live at § Resolve the program rather than described in prose. | ACE team |

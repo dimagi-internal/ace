@@ -1,34 +1,7 @@
 ---
 description: Create or clone a Connect opportunity from a spec YAML — standalone, no ACE run
 argument-hint: <spec.yaml> | --clone <opp-url-or-uuid> [--out <spec.yaml>] [--dry-run]
-allowed-tools:
-  - Read
-  - Write
-  - Edit
-  - Bash
-  - AskUserQuestion
-  - mcp__plugin_ace_ace-connect__connect_list_programs
-  - mcp__plugin_ace_ace-connect__connect_get_program
-  - mcp__plugin_ace_ace-connect__connect_update_program
-  - mcp__plugin_ace_ace-connect__connect_list_opportunities
-  - mcp__plugin_ace_ace-connect__connect_get_opportunity
-  - mcp__plugin_ace_ace-connect__connect_create_opportunity
-  - mcp__plugin_ace_ace-connect__connect_activate_opportunity
-  - mcp__plugin_ace_ace-connect__connect_send_llo_invite
-  - mcp__plugin_ace_ace-connect__connect_accept_program_application
-  - mcp__plugin_ace_ace-connect__connect_create_payment_units
-  - mcp__plugin_ace_ace-connect__connect_list_payment_units
-  - mcp__plugin_ace_ace-connect__connect_set_verification_flags
-  - mcp__plugin_ace_ace-connect__connect_get_learn_passing_score
-  - mcp__plugin_ace_ace-connect__connect_set_learn_passing_score
-  - mcp__plugin_ace_ace-connect__connect_send_flw_invite
-  - mcp__plugin_ace_ace-connect__connect_list_flw_invites
-  - mcp__plugin_ace_ace-connect__commcare_linked_app_copy
-  - mcp__plugin_ace_ace-connect__commcare_link_domains
-  - mcp__plugin_ace_ace-connect__commcare_make_build
-  - mcp__plugin_ace_ace-connect__commcare_release_build
-  - mcp__plugin_ace_ace-connect__commcare_list_apps
-  - mcp__plugin_ace_ace-connect__commcare_download_ccz
+allowed-tools: [Read, Write, Edit, Bash, AskUserQuestion, mcp__plugin_ace_ace-connect__connect_list_programs, mcp__plugin_ace_ace-connect__connect_get_program, mcp__plugin_ace_ace-connect__connect_update_program, mcp__plugin_ace_ace-connect__connect_list_opportunities, mcp__plugin_ace_ace-connect__connect_get_opportunity, mcp__plugin_ace_ace-connect__connect_create_opportunity, mcp__plugin_ace_ace-connect__connect_activate_opportunity, mcp__plugin_ace_ace-connect__connect_send_llo_invite, mcp__plugin_ace_ace-connect__connect_accept_program_application, mcp__plugin_ace_ace-connect__connect_create_payment_units, mcp__plugin_ace_ace-connect__connect_list_payment_units, mcp__plugin_ace_ace-connect__connect_set_verification_flags, mcp__plugin_ace_ace-connect__connect_get_learn_passing_score, mcp__plugin_ace_ace-connect__connect_set_learn_passing_score, mcp__plugin_ace_ace-connect__connect_send_flw_invite, mcp__plugin_ace_ace-connect__connect_list_flw_invites, mcp__plugin_ace_ace-connect__commcare_linked_app_copy, mcp__plugin_ace_ace-connect__commcare_link_domains, mcp__plugin_ace_ace-connect__commcare_make_build, mcp__plugin_ace_ace-connect__commcare_release_build, mcp__plugin_ace_ace-connect__commcare_list_apps, mcp__plugin_ace_ace-connect__commcare_download_ccz]
 ---
 
 # /ace:connect-opp-create
@@ -60,10 +33,16 @@ reusing a source opportunity's Deliver app makes payment units impossible
 `passing_score` (ace#1350), so the clone path always mints fresh app copies via
 `commcare_linked_app_copy`. Creating is a second, explicit invocation.
 
-Start from `templates/connect-opp-spec.yaml`. Validate before creating:
+Start from `templates/connect-opp-spec.yaml`. **Nothing is created until the
+gate exits 0** — exit 1 (blocking issues) and exit 2 (unreadable/unparseable
+spec) both mean halt, not proceed:
 
 ```
 npx tsx "${CLAUDE_PLUGIN_ROOT:-.}/scripts/validate-connect-opp-spec.ts" "<spec.yaml>"
 ```
+
+Run it again with `--phase pre-payment-units` once the create response is in
+hand: `required_deliver_units` can only be a warning before Connect mints the
+deliver-unit ids, and must be blocking after.
 
 See `skills/connect-opp-create/SKILL.md` for the full per-step process.

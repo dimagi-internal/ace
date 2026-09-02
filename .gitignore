@@ -64,3 +64,13 @@ mcp/mobile/recipes/static/J[0-9]*[a-z].yaml
 # scripts/check-summary-links.py, which regenerates it)
 __pycache__/
 *.pyc
+
+# /ace:connect-opp-create working files. The spec names a live Connect program
+# and HQ apps; the run record carries FLW PHONE NUMBERS in cleartext (the API
+# key is elided, the numbers cannot be — they are the payload). Both land in
+# whatever directory the operator ran from, which is often a checkout, so
+# `git add .` would pick them up.
+*-connect-opp-spec.yaml
+*-opp-spec.yaml
+*-created.yaml
+dry-run-connect-opp-create.md

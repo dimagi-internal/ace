@@ -30,7 +30,11 @@ import { RestBackend } from './connect/backends/rest.js';
 import { PlaywrightBackend } from './connect/backends/playwright.js';
 import { CommCareBackend, BuildRejectedError } from './connect/backends/commcare.js';
 import { ApiKeyHqSession } from './connect/backends/apikey-hq-session.js';
-import { buildHqClusterRegistry, inferServerFromBaseUrl } from './connect/hq-clusters.js';
+import {
+  buildHqClusterRegistry,
+  inferServerFromBaseUrl,
+  configuredHqBaseUrls,
+} from './connect/hq-clusters.js';
 import { preflightLearnAppUser } from './connect/backends/commcare-preflight.js';
 import { CompositeBackend } from './connect/backends/composite.js';
 import { PlaywrightSession } from './connect/auth/playwright-session.js';
@@ -394,8 +398,30 @@ server.tool('connect_get_opportunity',
   async (args) => runAtom(async () => (await client()).getOpportunity(args))
 );
 
+/**
+ * HQ base URLs this install accepts on an inbound payload. Derived from the
+ * cluster registry, so a configured staging/regional cluster is allowed and an
+ * arbitrary host is not.
+ */
+const ALLOWED_HQ_BASE_URLS = configuredHqBaseUrls(hqClusters);
+
 const HqAppZ = z.object({
-  hq_server_url: z.string().url().describe('HQ instance URL (e.g. https://www.commcarehq.org)'),
+  hq_server_url: z.string().url()
+    // `hq_server_url` travels to Connect in the SAME payload as the resolved
+    // 40-char HQ API key (see the `resolveEnvSubstitution` call below) and
+    // Connect fetches from it server-side. An arbitrary host therefore turns a
+    // create into credential exfiltration by way of Connect, and it surfaces
+    // to the operator only as "Failed to fetch apps from CommCare HQ".
+    // `lib/connect-opp-spec.ts` warns about this too, but a spec validator is
+    // advisory and skippable -- this is the gate.
+    .refine((u) => ALLOWED_HQ_BASE_URLS.includes(u), {
+      message:
+        `must be an HQ cluster this install is configured for (${ALLOWED_HQ_BASE_URLS.join(', ')}). ` +
+        'This URL is sent to Connect alongside the resolved HQ API key and Connect fetches from ' +
+        'it server-side, so an unrecognised host is a credential-exfiltration path. To add a ' +
+        'cluster, configure ACE_HQ_<SERVER>_BASE_URL in the plugin .env.',
+    })
+    .describe('HQ instance URL (e.g. https://www.commcarehq.org). Allowlisted to configured clusters.'),
   api_key: z.string().describe(
     'Raw 40-char HQ API key. Connect creates an HQApiKey record on first use. ' +
       'Accepts `${VAR}` syntax to substitute from the MCP server\'s env (e.g. ' +

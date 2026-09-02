@@ -130,7 +130,7 @@ payment_units:
     # is_setup_complete, blocks FLW invites and the Phase 6 device walk, and
     # makes accrual report 0 completed works no matter how many visits exist
     # (ace#843: 498 visits, 0 completed works). Because the ids only exist
-    # after the opportunity is created, fill this in between Step 4 and Step 5
+    # after the opportunity is created, fill this in between the create and the payment units
     # rather than up front.
     required_deliver_units: []
     # optional_deliver_units: []

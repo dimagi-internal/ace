@@ -36,12 +36,17 @@ export interface HqClusterConfig {
   domain?: string;
 }
 
-/** Well-known cluster → base URL, used when a block omits its base URL. */
-export const KNOWN_HQ_BASE_URLS: Record<string, string> = {
-  us: 'https://www.commcarehq.org',
-  eu: 'https://eu.commcarehq.org',
-  india: 'https://india.commcarehq.org',
-};
+/**
+ * Well-known cluster → base URL, used when a block omits its base URL.
+ *
+ * Canonical in `lib/connect-opp-invariants.ts` so the standalone spec
+ * validator checks the same set; re-exported here because that is where
+ * callers have always imported it from. NOT the full allowlist — a deployment
+ * may configure additional clusters via `ACE_HQ_<SERVER>_BASE_URL`, so use
+ * `configuredHqBaseUrls(registry)` when you need "hosts this install accepts."
+ */
+export { HQ_BASE_URLS as KNOWN_HQ_BASE_URLS } from '../../lib/connect-opp-invariants.js';
+import { HQ_BASE_URLS as KNOWN_HQ_BASE_URLS } from '../../lib/connect-opp-invariants.js';
 
 /** Infer the cluster short-name from a CommCare HQ base URL. */
 export function inferServerFromBaseUrl(baseUrl: string | undefined): HqServer {
@@ -71,6 +76,28 @@ export interface HqClusterRegistry {
   get(server?: HqServer): HqClusterConfig;
   /** All configured server short-names, in insertion order. */
   servers(): HqServer[];
+}
+
+/**
+ * Every HQ base URL this install legitimately talks to: the well-known
+ * clusters plus whatever `ACE_HQ_<SERVER>_BASE_URL` blocks are configured.
+ *
+ * This is the allowlist for `hq_server_url` on an inbound atom payload.
+ * That field travels to Connect alongside the RESOLVED 40-char HQ API key and
+ * Connect fetches from it server-side, so an arbitrary host turns a create
+ * into credential exfiltration by way of Connect -- surfacing to the operator
+ * as nothing more than "Failed to fetch apps from CommCare HQ".
+ *
+ * It must be derived rather than hardcoded: a deployment may configure a
+ * staging or regional cluster, and a fixed three-URL list would reject it.
+ */
+export function configuredHqBaseUrls(registry: HqClusterRegistry): string[] {
+  const urls = new Set<string>(Object.values(KNOWN_HQ_BASE_URLS));
+  for (const server of registry.servers()) {
+    const url = registry.clusters.get(server)?.baseUrl;
+    if (url) urls.add(url);
+  }
+  return [...urls];
 }
 
 const PER_CLUSTER_KEY = /^ACE_HQ_([A-Z0-9]+)_(BASE_URL|USERNAME|PASSWORD|API_KEY|DOMAIN)$/;
