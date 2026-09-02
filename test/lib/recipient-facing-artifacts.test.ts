@@ -39,7 +39,7 @@ function producerSource(producedBy: string): string | null {
 
 describe('recipient-facing artifacts are shared at creation (ace#902)', () => {
   it('the flag is actually used — an empty ratchet proves nothing', () => {
-    expect(recipientFacing.length).toBeGreaterThanOrEqual(5);
+    expect(recipientFacing.length).toBeGreaterThanOrEqual(8);
   });
 
   it.each(recipientFacing.map((a) => [a.path, a.producedBy] as const))(
@@ -56,6 +56,73 @@ describe('recipient-facing artifacts are shared at creation (ace#902)', () => {
       ).toBe(true);
     },
   );
+});
+
+describe('the ROLE is declared, and the producer names it (ace#1843)', () => {
+  it('every recipient-facing artifact declares a shareRole', () => {
+    // Visibility is not a boolean. A Drive READER cannot comment, and
+    // skills/feedback-ledger's `channel: gdoc-comments` — the whole
+    // feedback -> ledger -> next-run loop — assumes the reviewer can leave an
+    // anchored comment. Sharing the PDD `reader` yields a link that opens and
+    // a review that is structurally impossible.
+    const missing = recipientFacing.filter((a) => !a.shareRole);
+    expect(missing.map((a) => a.path)).toEqual([]);
+  });
+
+  it.each(
+    recipientFacing
+      .filter((a) => a.shareRole === 'commenter')
+      .map((a) => [a.path, a.producedBy] as const),
+  )('%s — producer %s names role: commenter', (artifactPath, producedBy) => {
+    const src = producerSource(producedBy)!;
+    const namesRole = /role:\s*'commenter'/.test(src);
+    expect(
+      namesRole,
+      `${artifactPath} declares shareRole 'commenter' but ${producedBy} never ` +
+        `writes role: 'commenter'. Shared as a reader it opens and cannot be ` +
+        `commented on, so the gdoc-comments feedback channel silently has no ` +
+        `input while every link check reads green.`,
+    ).toBe(true);
+  });
+});
+
+describe('the three ace#1843 deliverables are covered', () => {
+  // Positive control. On hh-poverty-targeting/20260828-0702,
+  // bednet-check-2-visit/20260828-0629 and spark-facilitator/20260828-0703 —
+  // three independent runs in three days — these 401'd anonymously, taking the
+  // run-summary page's entire DESIGN section with them. ace-web MEASURES the
+  // access tag, so the page rendered them ADMIN ONLY: a true story about a
+  // wrong state.
+  it.each([
+    '1-design/idea-to-pdd.md',
+    '1-design/pdd-to-work-order.gdoc',
+    'open-questions.md',
+  ])('%s is recipient-facing', (p) => {
+    const entry = ARTIFACT_MANIFEST.find((a) => a.path === p);
+    expect(entry, `no manifest entry for ${p}`).toBeTruthy();
+    expect(entry!.recipientFacing).toBe(true);
+  });
+});
+
+describe('internal stays expressible — the negative control (ace#1026)', () => {
+  it('the OCS widget handoff is NOT recipient-facing', () => {
+    // It carries an `embed_key`. It is correctly private now that ace#1811
+    // established the public chatbot URL as the LLO route. A guard that flags
+    // every unshared artifact fires on this one forever, which is what makes
+    // it an always-fires blocker rather than a preventer. Absence of the flag
+    // is a deliberate state, not a gap.
+    const handoff = ARTIFACT_MANIFEST.find(
+      (a) => a.path === '5-ocs/ocs-setup_widget-handoff.md',
+    );
+    expect(handoff, 'widget-handoff entry vanished from the manifest').toBeTruthy();
+    expect(handoff!.recipientFacing).toBeUndefined();
+    expect(handoff!.shareRole).toBeUndefined();
+  });
+
+  it('no artifact carries shareRole without recipientFacing', () => {
+    const orphaned = ARTIFACT_MANIFEST.filter((a) => a.shareRole && !a.recipientFacing);
+    expect(orphaned.map((a) => a.path)).toEqual([]);
+  });
 });
 
 describe('the flag means what it says', () => {
