@@ -194,7 +194,15 @@ screenshot-blocked run cannot lose it.
      divider slides between them. Order:
      1. Opportunity overview (1-2 content slides)
      2. `section` divider titled `"Learn"`
-     3. One `content` slide per Learn module (Learn-app preview)
+     3. One `content` slide per Learn module (Learn-app preview),
+        titled with the app's module name **verbatim** — same rule as
+        the `practice` module below, and for the same reason (ace#1829).
+        **A body list of the suite's sections is numbered by the app's
+        own labels, never by list position.** Slide 14 of
+        `hh-poverty-targeting/20260828-0702` printed `4. What makes a
+        visit payable` directly beside the suite-root screenshot
+        labelling that same item "Module 3" — the contradiction sat on
+        one slide, next to its own evidence.
      4. "Who you will visit" (1 content slide)
      5. `section` divider titled `"Deliver"`
      6. **C2 REQUIRED:** one `walkthrough` slide per Deliver form.
@@ -210,9 +218,35 @@ screenshot-blocked run cannot lose it.
      11. Safety and ethics (1 content slide, cross-pillar)
    - **`practice`** module (C2 — REQUIRED per-opp content): emit one
      `exercise` slide per Learn module (enumerated from the Learn app
-     summary). Title `"Complete Learn Module N: <module-name>"`, body
-     names the key concept + assessment threshold. Plus 1 form-practice
-     slide + 1 role-play slide.
+     summary). Title `"Complete: <module-label>"` where `<module-label>`
+     is the Learn app's module name **verbatim** — body names the key
+     concept + assessment threshold. Plus 1 form-practice slide + 1
+     role-play slide.
+
+     **NEVER synthesise an ordinal (ace#1829).** The app's module names
+     already carry their own numbers, so a number you derive from a
+     slide's position in this list can only ever disagree with them. On
+     `hh-poverty-targeting/20260828-0702` this section counted the
+     unnumbered `Pre-Assessment` tile as Module 1 and shifted every real
+     module up by one, while the reference section four modules earlier
+     printed the app's names correctly — two incompatible numberings in
+     one deck:
+
+     ```
+     app  : Pre-Assessment | Module 1 - Administering… | Module 2 - Consent… | Module 3 - What makes a visit payable | …
+     deck : Module 1: Pre-Assessment | Module 2: Administering… | Module 3: Consent… | Module 4: What Makes a Visit Payable | …
+     ```
+
+     These are TIMED hands-on instructions ("Complete Learn Module 4:
+     What Makes a Visit Payable", 20 min). A first-day FLW follows the
+     slide, opens the app, finds no Module 4 by that name — it is
+     Module 3 — and stalls inside a timed block. This is the population
+     `content_substance` exists to protect.
+
+     The authoritative labels are available two ways on every run and
+     they agree: `3-commcare/pdd-to-learn-app_summary.md`, and the
+     capture manifest's `learn-tap-module-after-<name>.png` step names.
+     Copy from those; do not count.
    - **`evaluation`** module: checklist slide from PDD acceptance
      criteria, timeline-to-go-live slide, "what happens next" framing
    - **`resources`** module: include `_common/resources.yaml`, replace
@@ -300,6 +334,40 @@ screenshot-blocked run cannot lose it.
       exactly equal to N-1 (acceptable to collapse a single-form case).
       Catches the failure mode where the generator emits one
       "Module 1" slide regardless of the opp's actual Learn structure.
+    - **Module-label fidelity (C2 — HARD GATE, ace#1829):** every
+      module label the deck shows a worker must match the deployed
+      Learn app. Run it; do not eyeball it:
+
+      ```ts
+      import { checkDeckModuleLabels, formatDeckLabelReport }
+        from '../../lib/deck-module-labels';
+      const report = checkDeckModuleLabels(allSlides, learnModuleLabels);
+      ```
+
+      `learnModuleLabels` is the Learn app's module list, **in app
+      order, verbatim, including unnumbered entries** like
+      `Pre-Assessment` — their presence is exactly what caused the
+      off-by-one, so dropping them from the input hides the defect from
+      the check. Source it from
+      `3-commcare/pdd-to-learn-app_summary.md`, cross-checked against
+      the capture manifest's `learn-tap-module-after-<name>.png` step
+      names.
+
+      **FAIL on any finding**, and fix by lifting the app's label rather
+      than by renumbering to taste. The three shapes it catches:
+      `module-number-mismatch` (the deck's number for a module differs
+      from the app's — including an ordinal list item with no "Module"
+      keyword, the slide-14 shape), `module-number-not-in-app` (the deck
+      sends a worker to a module that does not exist), and
+      `module-name-not-in-app` (the deck names a module the app does not
+      ship). Record `formatDeckLabelReport(...)` in the verdict either
+      way.
+
+      Note this is the check the SLIDE-COUNT check above cannot be:
+      counting slides confirms the practice section has one entry per
+      module, and the shipped deck passed that while every one of those
+      entries carried the wrong number. A count never reads a label.
+
     - **4-pillar section dividers:** `your-opportunity` module contains
       exactly 4 `section`-layout slides with titles `"Learn"`,
       `"Deliver"`, `"Verify"`, `"Pay"` (in that order, single-word
@@ -395,6 +463,7 @@ The self-eval criterion must assert duplicate handling explicitly.
 
 ## Change Log
 
+- 2026-09-02: **Module labels are lifted from the Learn app, never renumbered (ace#1829).** The deck numbered the Learn suite TWO incompatible ways at once: slides 16-19 printed the app's names correctly while slides 34-39 renumbered from list position, counting the unnumbered `Pre-Assessment` tile as Module 1 and shifting every real module up by one. Slide 14 carried the contradiction beside its own evidence — an ordinal list item `4. What makes a visit payable` next to the suite-root screenshot labelling it "Module 3". Slides 34-39 are TIMED hands-on blocks, so a first-day FLW follows "Complete Learn Module 4: What Makes a Visit Payable", opens the app, finds Module 3 under that name and stalls. The step-11 slide-COUNT check could never catch it: counting confirms one practice slide per module, and the shipped deck passed that with every one of those slides carrying a wrong number — a count never reads a label. Three changes: the practice title template drops its synthesised `N` for the app's label verbatim; the `your-opportunity` Learn-preview rule says the same thing explicitly (it was only accidentally right, having no template at all); and step 11 gains a HARD GATE running `lib/deck-module-labels.ts`, whose input must include the UNNUMBERED app entries because their presence is the whole cause. *Enforced:* `test/lib/deck-module-labels.test.ts` (negative control: a position-counting detector — the bug's own logic — fails 9 of 13, inverting both controls) + `test/skills/training-deck-module-numbering.test.ts` (all 6 red against the pre-fix skill text).
 - v1: Initial skill. Replaces `training-deck-outline`. Produces
   `training-deck-spec.yaml` via template bundle + generation prompt.
   Archetype-aware with `atomic-visit` as the only shipped template.
