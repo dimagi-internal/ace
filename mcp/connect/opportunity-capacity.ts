@@ -22,30 +22,22 @@
 // opportunity. A dollars-vs-cents MIX (the observed bug) surfaces here as
 // number_of_users < 1 and is rejected.
 import { ConnectError } from './errors.js';
+import {
+  minBudgetForOneUser,
+  numberOfUsers,
+  fundsAtLeastOneUser,
+} from '../../lib/connect-opp-invariants.js';
 
-export interface CapacityPaymentUnit {
-  name?: string;
-  amount: number;
-  org_amount?: number;
-  max_total: number;
-}
-
-/** Σ over payment units of `max_total × (amount + org_amount)` — the budget
- *  needed to fund exactly one FLW at the configured payment-unit maxima. */
-export function minBudgetForOneUser(paymentUnits: CapacityPaymentUnit[]): number {
-  return paymentUnits.reduce(
-    (sum, pu) => sum + pu.max_total * (pu.amount + (pu.org_amount ?? 0)),
-    0,
-  );
-}
-
-/** Connect's managed-opp capacity formula. Returns Infinity for a zero-cost
- *  (free) opportunity so the caller's `< 1` check is a no-op there. */
-export function numberOfUsers(total_budget: number, paymentUnits: CapacityPaymentUnit[]): number {
-  const min = minBudgetForOneUser(paymentUnits);
-  if (min <= 0) return Infinity;
-  return total_budget / min;
-}
+// The formula itself is canonical in `lib/connect-opp-invariants.ts` so the
+// standalone spec validator enforces the SAME arithmetic. Re-exported here
+// because that is where callers have always imported it from.
+//
+// The move also fixed a fail-open both copies shared: `users < 1` is `false`
+// for `NaN`, so a non-numeric `amount` or `total_budget` sailed through the
+// guard. `fundsAtLeastOneUser` treats non-finite as a failure.
+export type { CapacityPaymentUnit } from '../../lib/connect-opp-invariants.js';
+export { minBudgetForOneUser, numberOfUsers } from '../../lib/connect-opp-invariants.js';
+import type { CapacityPaymentUnit } from '../../lib/connect-opp-invariants.js';
 
 export class OpportunityUnderfundedError extends ConnectError {
   retryable = false;
@@ -98,9 +90,11 @@ export function assertFundsAtLeastOneUser(
 ): void {
   if (paymentUnits.length === 0) return;
   const min = minBudgetForOneUser(paymentUnits);
-  if (min <= 0) return;
-  const users = total_budget / min;
-  if (users < 1) {
+  // A zero-cost opportunity funds anyone; a NON-FINITE min means we could not
+  // compute the cost at all and must NOT be read as zero-cost.
+  if (min === 0) return;
+  const users = numberOfUsers(total_budget, paymentUnits);
+  if (!fundsAtLeastOneUser(total_budget, paymentUnits)) {
     const breakdown = paymentUnits.map((pu) => ({
       name: pu.name ?? '',
       max_total: pu.max_total,

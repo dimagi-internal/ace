@@ -136,6 +136,12 @@ export const SURFACE_NAME = /^(check|audit)[A-Z]/;
  */
 export const EXTRA_SURFACES: readonly { file: string; fn: string }[] = [
   { file: 'lib/tailwind-utility-resolution.ts', fn: 'classifyUtilities' },
+  // A deterministic structural gate returning findings, in front of an
+  // irreversible Connect create. Its first revision failed OPEN on several
+  // inputs (a quoted `total_budget: "900"` produced zero issues), which is the
+  // exact failure a negative control catches and an ordinary unit test does
+  // not: every positive case still passed.
+  { file: 'lib/connect-opp-spec.ts', fn: 'validateConnectOppSpec' },
 ];
 
 // ── Verdict-shape-specific assertion signals ───────────────────────────────

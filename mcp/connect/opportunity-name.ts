@@ -27,8 +27,14 @@ import { ConnectError } from './errors.js';
  * Run-id front prefix: `YYYYMMDD-HHMM ` + U+00B7 middot + ` ` (e.g.
  * `"20260609-0909 · Bednet Spot-Check"`). The separator is the MIDDLE DOT
  * (U+00B7), not a hyphen or ASCII period.
+ *
+ * Canonical definition lives in `lib/connect-opp-invariants.ts` so the
+ * standalone spec validator (`lib/connect-opp-spec.ts`) enforces the SAME
+ * regex rather than a copy pinned by a test. Re-exported here because this is
+ * where callers have always imported it from.
  */
-export const OPP_NAME_RUN_ID_PREFIX_RE = /^\d{8}-\d{4} · /u;
+export { OPP_NAME_RUN_ID_PREFIX_RE } from '../../lib/connect-opp-invariants.js';
+import { OPP_NAME_RUN_ID_PREFIX_RE } from '../../lib/connect-opp-invariants.js';
 
 export class InvalidOppNamePrefixError extends ConnectError {
   retryable = false;
