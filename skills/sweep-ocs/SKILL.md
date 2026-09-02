@@ -52,9 +52,16 @@ No dedup at the file or vector layer means uploading the same PDD into 19 per-op
    - Add `OCS_GOLDEN_TEMPLATE_ID` to `liveSet.identifiers.ocsChatbotIds` so the golden template chatbot is never an orphan candidate.
    - Add `OCS_SHARED_COLLECTION_ID` to `liveSet.identifiers.ocsCollectionIds` so the shared collection is never an orphan candidate.
 3. **List OCS inventory** using existing atoms:
-   - `ocs_list_chatbots` (paginate as needed)
+   - `ocs_list_chatbots` (paginate as needed). **List rows no longer carry
+     `versions[]`** — as of ace#1901 the atom returns a two-field
+     `versions_summary` ({`count`, `published_version_number`}) in its place,
+     because on `connect-ace` the full array was 85.9% of a default page that
+     already overflowed the tool-result cap (measured 2026-09-02: 50 rows /
+     87,009 chars, of which `versions` was 74,733). `page_size` does not help —
+     it shrinks a page, and the problem is the row. Version DESCRIPTIONS are
+     read per-chatbot in step 3 below, or in bulk via `write_to_path`.
    - `ocs_list_sessions` (filter to `OCS_TEAM_SLUG`; last 90 days by default).
-   - For each chatbot, derive its pipeline_id via `ocs_get_chatbot_pipeline_id({ experiment_id })` (added 0.13.277 — scrapes the pipeline-builder HTML; cached). Per-opp collection ids come from the chatbot's most-recent published version description (e.g. "shared Connect collection 350 + new per-run collection 418"); cross-check against the pipeline's LLM node params via the pipeline-builder page if the description is thin.
+   - For each chatbot, derive its pipeline_id via `ocs_get_chatbot_pipeline_id({ experiment_id })` (added 0.13.277 — scrapes the pipeline-builder HTML; cached). Per-opp collection ids come from the chatbot's most-recent published version description (e.g. "shared Connect collection 350 + new per-run collection 418") — **read that description with `ocs_get_chatbot({ public_id })`, which still returns the full `versions[]`, and do it only for the chatbots that step 4's diff marked as orphan candidates.** Do not reach for it on the list row: `ocs_list_chatbots` projects `versions[]` away by default (ace#1901), and reading descriptions for every bot on the team is exactly the cost that broke the atom — the orphan set is a small fraction of it. (If you genuinely want every description at once, `ocs_list_chatbots({ write_to_path: '<abs path>' })` writes the unprojected rows to disk and returns only `chatbots_written_to`, so the payload never enters context.) Cross-check against the pipeline's LLM node params via the pipeline-builder page if the description is thin.
 4. **Diff** each item's id against the live-set:
    - chatbots → `liveSet.identifiers.ocsChatbotIds` (now includes golden template).
    - sessions → `liveSet.identifiers.ocsSessionIds`.

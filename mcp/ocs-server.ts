@@ -61,6 +61,11 @@ import {
   assertNotGoldenTemplateCollection,
   assertNotGoldenTemplatePipeline,
 } from '../lib/destructive-guards.js';
+import { prepareWritePath } from '../lib/atom-payload-resolver.js';
+import {
+  projectChatbotVersions,
+  CHATBOT_VERSIONS_PROJECTION_NOTE,
+} from '../lib/ocs-list-projection.js';
 
 const baseUrl = loadBaseUrl();
 const teamSlug = process.env.OCS_TEAM_SLUG ?? 'dimagi';
@@ -561,7 +566,7 @@ server.tool(
 
 server.tool(
   'ocs_list_chatbots',
-  'List chatbots on the OCS team. Each entry includes both `id` (UUID public_id, used by ocs_get_chatbot/ocs_send_test_message) AND `experiment_id` (integer, used by every authoring atom: ocs_set_chatbot_system_prompt, ocs_attach_knowledge, ocs_publish_chatbot_version, etc.). Use this to find an existing bot by name and reconfigure it idempotently — no need to clone if it already exists. Optional `team_slug` targets a non-default team — when supplied the server resolves the matching `OCS_API_TOKEN_<SLUG>` env token; `experiment_id` enrichment via Playwright is skipped for non-default teams (the Playwright session is bound to the default team only).',
+  'List chatbots on the OCS team. Each entry includes both `id` (UUID public_id, used by ocs_get_chatbot/ocs_send_test_message) AND `experiment_id` (integer, used by every authoring atom: ocs_set_chatbot_system_prompt, ocs_attach_knowledge, ocs_publish_chatbot_version, etc.). Use this to find an existing bot by name and reconfigure it idempotently — no need to clone if it already exists. Optional `team_slug` targets a non-default team — when supplied the server resolves the matching `OCS_API_TOKEN_<SLUG>` env token; `experiment_id` enrichment via Playwright is skipped for non-default teams (the Playwright session is bound to the default team only).\n\nBy DEFAULT each row\'s `versions[]` array is replaced by a two-field `versions_summary` ({count, published_version_number}). Measured on team `connect-ace` 2026-09-02, the default page is 50 rows / 87,009 chars (85.0 KB) and `versions[]` is 74,733 of them — 85.9% — which overflows the harness tool-result cap, so the DEFAULT call returned nothing usable (ace#1901). `page_size`/`next_cursor` do not mitigate that: they shrink a PAGE, and the problem is the ROW. Read a version\'s `version_description` from `ocs_get_chatbot({public_id})`; pass `full_versions: true` to opt out (and expect the cap), or `write_to_path` to get every field of every row on disk instead of in context.\n\n`versions_summary.published_version_number` is the entry flagged `is_default_version` — the ace#891-correct read of "what is published". The row\'s own `version_number` is the WORKING counter and is off by one whenever a draft is open.',
   {
     cursor: z.string().optional(),
     page_size: z.number().optional(),
@@ -569,8 +574,41 @@ server.tool(
       .string()
       .optional()
       .describe('Optional team slug to read from (e.g. "Vaccine_Coach"). Omit to use OCS_TEAM_SLUG.'),
+    full_versions: z
+      .boolean()
+      .optional()
+      .describe('Opt out of the default versions projection and return every row\'s full `versions[]`, `version_description` prose included. On a mature team this is what overflows the tool-result cap (ace#1901). Prefer `ocs_get_chatbot` for one bot, or `write_to_path` for all of them.'),
+    write_to_path: z
+      .string()
+      .optional()
+      .describe('If set, write the full unprojected `chatbots` array as JSON to this absolute local path and return `chatbots_written_to` INSTEAD of `chatbots` — keeps the whole payload out of the model context regardless of how many bots the team carries. `count` and `next_cursor` are still returned inline. Mirrors `commcare_download_ccz`\'s `write_to_path` and the `connect_list_*` handles added in ace#1799. Missing parent directories are created.'),
   },
-  async (args) => result(await composite.listChatbots(args)),
+  async (args) => {
+    const { cursor, page_size, team_slug, full_versions, write_to_path } = args;
+    const out = await composite.listChatbots({ cursor, page_size, team_slug });
+    if (write_to_path) {
+      const dest = prepareWritePath(write_to_path);
+      fsSync.writeFileSync(dest, JSON.stringify({ chatbots: out.chatbots }, null, 2), 'utf8');
+      return result({
+        count: out.chatbots.length,
+        chatbots_written_to: dest,
+        next_cursor: out.next_cursor,
+      });
+    }
+    if (full_versions) return result(out);
+    const projected = projectChatbotVersions(out.chatbots);
+    return result({
+      chatbots: projected.chatbots,
+      count: projected.chatbots.length,
+      next_cursor: out.next_cursor,
+      versions_projection: {
+        projected_rows: projected.projected_rows,
+        version_entries_dropped: projected.version_entries_dropped,
+        chars_removed: projected.chars_removed,
+        note: CHATBOT_VERSIONS_PROJECTION_NOTE,
+      },
+    });
+  },
 );
 
 server.tool(
