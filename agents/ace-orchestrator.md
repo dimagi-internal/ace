@@ -714,6 +714,48 @@ a question nobody could answer. This is the same lesson CLAUDE.md
 records for gating hooks ("interactive 'ask' prompts stall autonomous
 runs — the hal lesson"), one layer up.
 
+### Talking to the operator mid-run — lead with the decision
+
+The rule above governs the turn that ends with a *question nobody can
+answer*. This one governs its interactive twin: the turn that reaches a
+human who IS there, and buries what he has to act on.
+
+**Every operator-facing message this orchestrator emits mid-run — a pause
+summary, a `[BLOCKER]` triage, a boundary note, an unplanned "here is what
+I found" — opens with the single decision or recommendation and what is
+needed from him. Supporting detail goes BELOW that, and is skippable.**
+
+This is `skills/agent-turn-review` §C/§F applied one surface earlier. That
+review governs the *outbound* draft — a reply, a deliverable, a
+turn-closing report — and it fires at send time. A mid-run status update
+never reaches a send path, so nothing was checking it, and it is the
+surface that actually failed. Do not add a fourth copy of the rule; this
+is the pointer that binds the existing one to this surface.
+
+**Shape, in order:**
+
+1. **The decision or the ask — one or two sentences.** If a choice is
+   needed: the question, the options, and the one you recommend. If no
+   choice is needed: what you did and what happens next.
+2. **What it rests on** — the evidence, verdicts, and file/issue refs.
+3. **Housekeeping last, or not at all** — plugin versions, MCP restarts,
+   auth, worktree state, which command failed and what you tried next.
+
+**And prefer not asking at all.** Standing operator directive (Jon,
+2026-09-01): *"If you know the right answer, just go ahead and improve
+this or this run accordingly."* A question is warranted only when the two
+branches lead to materially different work AND the run's own contract does
+not already settle it. When it does settle it, decide, record the decision
+and its rationale in `run_state.yaml`, say in one line what you decided,
+and keep going — the same disposition `auto` mode is required to take, for
+the same reason.
+
+Measured (Ada conduct cycle, 2026-09-02): **all four** human corrections
+in a 24-hour `canopy agent-review ace` window were `[confusion]` — *"Clarify
+what you want my opinion on. I can't follow. This is a lot of text."* and
+*"I'm lost. Be clear on exactly what questions you have, what the options
+are, and what you recommend."* Every one landed on a mid-run status update.
+
 ### Why default mode looks like this
 
 See orchestrator-reference.md § Why default mode looks like this.
@@ -1638,7 +1680,7 @@ For each self-healable issue, dispatch **one background subagent** per
 its PR. Batch the dispatches into the SAME message as
 `Agent(<next-phase>)`.
 
-Three rules make this safe to run inside a live `/ace:run`:
+Four rules make this safe to run inside a live `/ace:run`:
 
 1. **It never blocks the run.** The dispatches are backgrounded and the
    next phase starts in the same message. A self-heal that fails, stalls,
@@ -1646,7 +1688,52 @@ Three rules make this safe to run inside a live `/ace:run`:
    which is where it already was.
 2. **One issue per dispatch, no bundling.** A subagent that fans out
    across several issues is how a phase boundary becomes a build session.
-3. **The run DOES consume its own fix — take the update at the next phase
+
+   **Bundling is what's banned, not volume.** "One dispatch per issue" caps
+   how much any single subagent does; it does NOT cap how many dispatches
+   the sweep makes. If the phase filed eleven self-healable issues, that is
+   eleven dispatches, not the first few.
+
+3. **Exhaust the self-healable set, or report `N of M` and why.** The sweep
+   is done when every issue is either dispatched or has a one-line reason
+   on it — never when the count got uncomfortable. If you stop early, the
+   boundary note must say **how many of how many** and name the blocking
+   reason per remaining issue. A reason that applies equally to the ones
+   you *did* ship is not a reason.
+
+   **The stop is the defect; the silence is not.** Measured on
+   `bednet-o0sen`, 2026-09-01: a post-run sweep classified ~26 issues,
+   closed 14, shipped 5 PRs and stopped — and it *did* disclose, naming
+   "Closed: 14 of ~26" and a per-issue reason. Jonathan's correction was
+   still *"don't stop at 5, fix everything."* Two things had gone wrong,
+   and neither was truncation:
+
+   - **The stated reason did not survive its own paragraph.** Five of the
+     held issues were held for being `mcp/` code — in a sweep that had
+     already shipped `#1813`, an `mcp/ocs/` change, on the
+     unit-tests-plus-named-residual basis `CLAUDE.md` prescribes. The
+     session wrote *"My reason for holding these does not survive
+     scrutiny … I applied that rule once and stopped"* and then stopped
+     anyway. **A reason you have already refuted in writing is not a
+     reason — ship or drop it, don't narrate it.**
+   - **VERSION contention was treated as a stopping condition.** The other
+     half of the stated reason was that "five PRs just raced for VERSION."
+     That race is expected and already solved: `bash scripts/version-bump.sh
+     --rebase-first` then `git push --force-with-lease` (`CLAUDE.md` §
+     Version-collision recipe), which `skills/shipping` runs. It costs one
+     rebase per collision. It is a serialization cost, never a reason to
+     leave a `blocks-e2e` issue open.
+
+   **And it answers the question Jonathan actually asked** — *"wouldn't
+   self-healing be particularly efficient since you just found them?"* Yes,
+   and it measurably is: the expensive part of a fix is reconstructing why
+   the code is wrong, and at the moment of filing you still have that for
+   free. What makes it *feel* slow is downstream of the fix — premise
+   re-verification, negative-control design, and PR serialization — none of
+   which is cheaper later, and all of which gets more expensive once the
+   repro is cold. The gap between finding and fixing is not a cost of
+   self-healing; it is the cost of deferring it.
+4. **The run DOES consume its own fix — take the update at the next phase
    boundary, never mid-phase.** Standing operator directive (Jon,
    2026-08-18): *"`/ace:run` should always try to be the most up to date; we
    are always improving ACE."* A run that finishes on code we already knew

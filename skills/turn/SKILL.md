@@ -96,16 +96,32 @@ improvements ship once (a canopy PR) instead of N backports.
   governs this turn's CLOSING REPORT (§C: open with the decision, not the housekeeping).
   Supersedes the old `self-review`; ACE's `-qa`/`-eval` skills grade artifacts — this is the
   brief-fidelity counterpart for correspondence.
-- **Skill self-check (core Step 3), ACE addition:** ACE's standing issues-as-you-go convention
-  applies inside turns — a confirmed defect or improvement gets a GitHub issue filed the moment
-  it's confirmed (`gh issue create`, no `-R`); don't defer to turn end, don't fix silently. Also
-  ask: did I repeat work by hand that SHOULD be a skill (or an issue)?
+- **Skill self-check (core Step 3) is a CHECKPOINT, not a reminder.** ACE's standing
+  issues-as-you-go convention applies inside turns — a confirmed defect or improvement gets a
+  GitHub issue filed the moment it's confirmed (`gh issue create`, no `-R`); don't defer to turn
+  end, don't fix silently. Also ask: did I repeat work by hand that SHOULD be a skill (or an
+  issue)?
+
+  **Mechanism — do this, don't just intend it.** At turn START, before the inbox pull, add a
+  `TodoWrite` item literally named **`skill-self-check`**. It stays `pending` for the whole turn.
+  The close-out (below) may not be written while it is still `pending`: mark it `completed` only
+  after you have actually asked both questions above, and report the outcome on the
+  **Issues filed / skills changed** line — `skill-self-check: none` is a valid outcome, an
+  ABSENT line is not.
+
+  *Why the ceremony:* this step was prose, and prose lost. `canopy agent-review ace` recorded
+  `checklist_gap: skill-self-check` for the 2026-09-02 window — the step was skipped and the turn
+  still closed green, so nothing surfaced it. That is exactly what `CLAUDE.md` predicts of an
+  unenforced invariant ("prose relies on the model choosing to comply, which fails under load").
+  A todo is the cheapest thing here that is *visible when absent*: skipping it now costs a missing
+  line in the close-out instead of costing nothing at all.
 - **Close-out (core Step 4) ACE shape:** mark fully-handled threads read via
   `bin/ace-mark-read <threadId> …` — NOT threads still awaiting a human decision. Summary covers:
   **Board** (drained / not configured) · **Inbox** (per thread: sender, tier, routed run, proposed
   action, approved & done, parked; noise counts by class) · **Open threads by age** (all open
   correspond-tier threads, days-since-last-inbound; >5 days = explicit escalation to the run's
   operator, repeated every turn until resolved) · **Runs advanced** · **Blocked/awaiting** ·
-  **Issues filed / skills changed**.
+  **Issues filed / skills changed** (this line is REQUIRED and carries the `skill-self-check`
+  outcome — see the checkpoint above; omitting it is the failure that checkpoint exists to catch).
 - **Gating note:** ACE's hook is plugin-level (fires in every session with ACE installed), so
   `config/gating.json` rails stay NARROW and identity-scoped — see its `_doc` before adding rails.
