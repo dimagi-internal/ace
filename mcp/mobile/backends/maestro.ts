@@ -10,6 +10,10 @@ import { defaultShell } from './avd.js';
 import { splitRecipeAtScreenshots } from '../recipe-splitter.js';
 import { resolveChunkTimeout, countRecipeSteps } from '../../../lib/maestro-chunk-timeout.js';
 import { classifyTeardownFailure, teardownWarning } from '../../../lib/maestro-teardown.js';
+import {
+  RESCUED_PREFIX,
+  harvestMaestroDebugScreenshots,
+} from '../maestro-debug-harvest.js';
 
 /**
  * Step count for a recipe on disk, or `undefined` when it cannot be read.
@@ -277,6 +281,9 @@ export class MaestroBackend {
   ) {
     const budget = resolveChunkTimeout({ stepCount: ctx.stepCount });
     const timeoutMs = budget.timeoutMs;
+    // Bound the rescue to THIS invocation so a previous dispatch's debug
+    // bundle can never be pulled into this dispatch's dir (#756 freshness).
+    const startedAt = Date.now();
     try {
       const r = await this.shell('maestro', args, { timeoutMs, cwd: screenshotDir });
       // Flatten Maestro's own output tree into `screenshotDir` before the
@@ -284,6 +291,15 @@ export class MaestroBackend {
       // invocation shares (`runRecipe`, and both branches of
       // `runRecipeWithDumps`), so one call covers all three.
       harvestMaestroScreenshots(screenshotDir);
+      // Then, on a non-zero exit, ALSO rescue anything stranded in Maestro's
+      // debug bundle. These are two different sources, not two attempts at one:
+      // the harvest above takes what Maestro wrote to its `--test-output-dir`
+      // takeScreenshot tree (#1869), while the rescue takes what a chunk that
+      // died mid-flight left in the debug bundle. A chunk can fail without
+      // stalling (driver death, failed assertion) and strand captures exactly
+      // the way a stall does — the catch block below already runs both for the
+      // same reason.
+      if (r.exitCode !== 0) this.rescueStrandedCaptures(screenshotDir, startedAt);
       return r;
     } catch (e) {
       // Harvest on the failure path too: a chunk that failed part-way still
@@ -295,6 +311,12 @@ export class MaestroBackend {
         /* non-fatal */
       }
       if ((e as { code?: string })?.code === 'SHELL_TIMEOUT') {
+        // Rescue BEFORE throwing. The stall is the case where rescue matters
+        // most: the walk was making real progress when the watchdog killed
+        // it, and because the stall THROWS, no `RecipeRunResult` is ever
+        // built — so `collectScreenshots` never runs and every capture the
+        // dispatch earned would otherwise be reported as nothing at all.
+        const rescue = this.rescueStrandedCaptures(screenshotDir, startedAt);
         throw new MobileError(
           'MAESTRO_STALL',
           `maestro wedged (no exit within ${Math.round(timeoutMs / 1000)}s, budget basis ` +
@@ -302,11 +324,19 @@ export class MaestroBackend {
             `${ctx.chunksCompleted + 1}/${ctx.chunksTotal} of ${path.basename(ctx.recipePath)}` +
             (ctx.lastCompletedScreenshot
               ? ` — last completed step ended at screenshot "${ctx.lastCompletedScreenshot}"`
-              : ' — no chunk had completed yet'),
-          'Inspect ~/.maestro/tests/<latest>/maestro.log and the forensics in the screenshot dir. ' +
+              : ' — no chunk had completed yet') +
+            (rescue && (rescue.rescued.length > 0 || rescue.logPath)
+              ? ` — rescued ${rescue.rescued.length} stranded capture(s)` +
+                `${rescue.logPath ? ' + maestro.log' : ''} into the screenshot dir`
+              : ''),
+          (rescue?.logPath
+            ? `Read the rescued log at ${rescue.logPath} (its last COMMAND line is where the walk died). `
+            : 'Inspect ~/.maestro/tests/<latest>/maestro.log and the forensics in the screenshot dir. ') +
             'Do NOT assume the walk failed: on-device progress up to the stall is real ' +
             '(verify server-side, e.g. connect_get_learn_progress) — a stalled dispatch after ' +
-            'the productive work has completed is the ace#1164 signature.',
+            'the productive work has completed is the ace#1164 signature. ' +
+            `Rescued files are prefixed "${RESCUED_PREFIX}" — they are evidence, not a passing ` +
+            'journey set (#756).',
           {
             recipe: ctx.recipePath,
             chunks_completed: ctx.chunksCompleted,
@@ -316,10 +346,28 @@ export class MaestroBackend {
             timeout_basis: budget.basis,
             step_count: budget.stepCount,
             screenshot_dir: screenshotDir,
+            rescued_screenshots: rescue?.rescued ?? [],
+            rescued_log: rescue?.logPath ?? null,
           },
         );
       }
       throw e;
+    }
+  }
+
+  /**
+   * Copy anything Maestro left in its own debug bundle into the dispatch dir.
+   *
+   * Best-effort by construction: never throws, and its return value is only
+   * ever used to enrich a message. A rescue must not be able to change a
+   * dispatch's verdict or mask the failure that triggered it.
+   */
+  private rescueStrandedCaptures(screenshotDir: string, since: number) {
+    try {
+      return harvestMaestroDebugScreenshots({ screenshotDir, since, log: logInfo });
+    } catch (e) {
+      logInfo(`rescueStrandedCaptures: non-fatal rescue failure: ${String(e)}`);
+      return undefined;
     }
   }
 

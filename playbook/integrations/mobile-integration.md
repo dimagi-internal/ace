@@ -81,6 +81,24 @@ Related hardening: if the top recipe's own directory holds sibling YAMLs that th
 
 **Alternative (the previously-undocumented workaround):** drive the repo's own `MobileClient` under `npx tsx` from the checkout, so `import.meta.url` resolves to the repo palette. Still valid, and useful when you want to bypass the MCP layer entirely — but it doesn't exercise the atom path, so prefer the env var when what you're validating is a Phase 6 leg.
 
+## Stalled-dispatch capture rescue
+
+A `maestro test` chunk runs under a wall-clock ceiling sized by `lib/maestro-chunk-timeout.ts` — floor 10 min, `PER_STEP_MS` per step, capped, overridable with `ACE_MOBILE_CHUNK_TIMEOUT_MS` ([ace#1570](https://github.com/dimagi-internal/ace/issues/1570)). When it expires, [ace#1164](https://github.com/dimagi-internal/ace/issues/1164) throws a typed `MobileError('MAESTRO_STALL')` naming how far the dispatch got, and `runRecipeWithDriverHeal` keys on the code so a wedge never triggers a silent full-journey replay.
+
+Those two fix the *budget* and the *diagnosis*. Neither recovers the **captures** of a walk that does stall — and because the stall THROWS, no `RecipeRunResult` is built, so `collectScreenshots` never runs and every PNG the dispatch earned is reported as nothing at all. Live twice: turmeric-market-study/20260807-1903 (57 real PNGs stranded, `screenshots_shipped: 0`) and hh-poverty-targeting/20260819-1435 (59).
+
+`mcp/mobile/maestro-debug-harvest.ts` closes that. On a stall **or** any non-zero chunk exit, PNGs Maestro wrote into its own debug bundle (`~/.maestro/tests/<ts>/<flow>/takeScreenshot/`, honouring `MAESTRO_CLI_HOME`) are copied into the dispatch dir along with `maestro.log`, and the thrown error's `diagnostics` carries `rescued_screenshots[]` + `rescued_log`.
+
+Bounded on both sides so [#756](https://github.com/jjackson/ace/issues/756) freshness holds:
+
+- only bundle dirs touched at/after **this** invocation started are eligible, so a previous dispatch's bundle can never be pulled in;
+- every rescued file is renamed `rescued--<flow>--<name>.png`, so it can never be mistaken for a step capture the recipe actually completed;
+- an existing same-named PNG in the dispatch dir is never overwritten, and zero-byte files are skipped.
+
+**Rescued captures are evidence, not a pass.** `status` stays `fail` / the stall still throws, and #756 still forbids presenting them as one clean journey set.
+
+Triage tip: read `rescued--maestro.log` first — its last `COMMAND` line is where the walk actually died. `journey-*-FAILURE.xml` is dumped *after* the app returns to the Connect jobs list, so it reads like a claim/resume stall regardless of the real cause.
+
 ## Dispatch-scoped output dirs
 
 `screenshotDir` is a run-scoped **root**, not the literal output directory. Each `mobile_run_recipe` dispatch owns `<screenshotDir>/<recipeId>/` — PNGs, ui-dump XMLs, `*-FAILURE.*` forensics, provenance sidecars, mp4s — and the start-of-run wipe ([#756](https://github.com/jjackson/ace/issues/756)) targets **only** that subdirectory. Read artifacts back from the returned `screenshotsDir` / `screenshots[].path`; a glob over the root spans every recipe the phase ran.
