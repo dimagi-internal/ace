@@ -182,8 +182,12 @@ To raise it formally: **GRM** in the app menu
 - `ace-gdrive`: `drive_set_anyone_with_link` — share the deliverable (ace#902).
 
 - `ace-gdrive`: `drive_read_file`, `drive_create_doc_from_markdown` (the card —
-  human-facing prose, must render), `drive_create_file` (the verdict YAML —
-  machine-parsed, must stay literal text)
+  human-facing prose, must render), `drive_upload_binary` with `mimeType:
+  'text/yaml'` (the verdict YAML — machine-parsed, so it must be stored as REAL
+  BYTES; `drive_create_file` makes a Google Doc, whose export turns every `\n`
+  into `\r\n\r\n\r\n`, and it has no mimeType parameter — see
+  `skills/_training-template.md § Machine-parsed artifacts must not be written as
+  Google Docs`)
 
 ## Mode Behavior
 

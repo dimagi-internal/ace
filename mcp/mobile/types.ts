@@ -427,6 +427,23 @@ export interface ScreenshotEntry {
   /** Byte size of the sibling .xml dump when `uiDumpPath` is set. */
   uiDumpBytes?: number;
   /**
+   * MD5 of the PNG bytes. Always set by `collectScreenshotsFromDir`.
+   *
+   * Exists so the DISTINCTNESS question — "is this a new moment?" — is
+   * answered by the harness rather than by whoever writes the manifest.
+   */
+  md5?: string;
+  /**
+   * Set iff this frame is byte-identical to an earlier one; names the
+   * canonical `stepName` whose moment it actually shows.
+   *
+   * A consumer must never present a frame carrying this as a distinct moment
+   * (ace#866/#1304). The harness picks the canonical twin — see
+   * `markDuplicateFrames` — because the rule has an exception that is
+   * reliably missed when applied by hand.
+   */
+  duplicateOf?: string;
+  /**
    * Per-dispatch provenance read from `<path>.meta.json` sidecar. Set
    * by `MobileClient.runRecipe` after the backend returns. Consumers
    * (UX eval, stale-carryover detection) compare `dispatch_id` against

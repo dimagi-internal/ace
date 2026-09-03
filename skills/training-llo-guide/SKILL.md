@@ -239,8 +239,12 @@ For LLO operators overseeing FLW deployment of this opportunity.
 - `ace-gdrive`: `drive_read_file`, `drive_create_doc_from_markdown` (the guide —
   human-facing prose, must render), `docs_batch_update` (step 7b — the
   `insertInlineImage` requests that put the screenshots on the page; driven by
-  `scripts/embed-doc-screenshots.ts`), `drive_create_file` (the verdict YAML —
-  machine-parsed, must stay literal text), `drive_list_folder`
+  `scripts/embed-doc-screenshots.ts`), `drive_upload_binary` with `mimeType:
+  'text/yaml'` (the verdict YAML — machine-parsed, so it must be stored as REAL
+  BYTES; `drive_create_file` makes a Google Doc, whose export turns every `\n`
+  into `\r\n\r\n\r\n`, and it has no mimeType parameter — see
+  `skills/_training-template.md § Machine-parsed artifacts must not be written as
+  Google Docs`), `drive_list_folder`
 
 ## Mode Behavior
 

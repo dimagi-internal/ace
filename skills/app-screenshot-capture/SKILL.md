@@ -1142,6 +1142,56 @@ hh-poverty-targeting/20260702-1456, where `connect-resume-opp-tile` ≡
 then claimed distinct moments over duplicate frames
 (dimagi-internal/ace#866).
 
+### Step 5.6: Pixel review — OPEN the claim-bearing frames and record what they show
+
+**Every check up to here treats a screenshot as an id.** The manifest proves a
+frame exists, is distinct, and resolves. None of that says what is IN the
+picture, and a caption can only ever contradict the picture.
+
+Measured on turmeric-market-study/20260828-1108: an FLW guide and a 50-slide
+deck passed schema validation, 100% file_id resolution, zero duplicate
+citations, visual coverage 1.00 and 49 inline images verified against an
+anonymous reader — and **two of the first four frames anyone opened did not
+show what the prose said.** `journey-learn-posttest-result` was captioned "your
+certification result" in both artifacts and is actually the lesson menu with a
+transient "1 form sent to server!" toast: no score anywhere on it. The recipe
+had submitted straight past the pass/fail label, so no frame of the score
+existed at all — while the released CCZ proved the app renders one. Right
+claim, wrong picture, every gate green.
+
+**So: open the frames, and write down what you see.**
+
+You do not have to open all of them. Open, at minimum:
+
+- every **terminal / outcome** frame — results, confirmations, "you passed",
+  post-submit landings. Prose wants to assert over these most, and they are the
+  most likely to actually be a menu with a toast.
+- every frame a downstream artifact will make a **negative or design claim**
+  about ("there is no gallery option", "the cap is shown here").
+- the **first screen a worker sees** (job card / opp detail). It renders
+  operator-authored text — the opportunity `description` is worker-visible — so
+  run scaffolding leaks onto it. On the run above the job card read
+  "…a capture vehicle for Phase 6 walkthrough screenshots", and both artifacts
+  cited that frame.
+
+For each opened frame add a one-line `shows:` to its manifest entry — what is
+actually on screen, not the step name restated:
+
+```yaml
+  - step_name: journey-learn-posttest-result
+    file_id: …
+    shows: "Post-test lesson tile with a '1 form sent to server!' toast. NO score."
+```
+
+`shows` is the only field in the manifest that is evidence rather than
+bookkeeping, and consumers gate on it: `framesCitedWithoutShows`
+(`lib/capture-manifest.ts`) returns every step an artifact cites without one.
+A producer either records a `shows` or drops the claim.
+
+**If a frame you need does not exist, say so and fix the recipe** — do not
+promote a nearby frame into the role. The fix for the case above is a
+`takeScreenshot` between the last answer tap and FINISH in `journey-learn.yaml`.
+
 ### Step 5.7: Upload session videos + sweep the device-video spool
 
 Since 0.13.700 every local `mobile_run_recipe` call records an mp4 of the
