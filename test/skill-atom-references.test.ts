@@ -79,14 +79,6 @@ const ATOM_PREFIXES = [
  * issue or fix the skill.
  */
 const ALLOWLIST = new Set([
-  // ---- Named precisely BECAUSE it does not exist ----
-  // `ocs-knowledge-refresh` Step 0 names this to tell the reader WHICH atom is
-  // missing, and therefore why its delete-then-reupload branch cannot be
-  // followed as written. Naming the absent capability is the point. If it is
-  // ever built, register it and delete this line — the skill text becomes
-  // executable again at that moment.
-  'ocs_list_collection_files',
-
   // ---- Field names / payload keys (not atoms) ----
   'connect_opportunity_id',  // bookkeeping field in run_state.yaml + opp.yaml
   'connect_user_id',         // ConnectID user pk on a UserInvite row — a products.connect.ace_test_user field (ace#1286), not an atom

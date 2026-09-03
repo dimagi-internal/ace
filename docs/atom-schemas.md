@@ -1107,7 +1107,7 @@ Set up a linked-project-spaces relationship: upstream (master) → downstream. R
 
 ## ace-ocs
 
-Source: `mcp/ocs-server.ts` — 35 atoms
+Source: `mcp/ocs-server.ts` — 37 atoms
 
 ### `ocs_clone_chatbot`
 
@@ -1324,6 +1324,23 @@ Delete a collection (calls Collection.archive() server-side — sets is_archived
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `collection_id` | `z.number` | **required** | _—_ |
+
+### `ocs_list_collection_files`
+
+List the files in a Collection with their NAMES, so a caller can see what is actually indexed instead of inferring it from an upload log. Returns `{collection_id, files: [{collection_file_id, file_id, name}]}`, paginated over the whole listing (it serves 10 rows a page and says nothing about the rest — ace#1016). READ-ONLY. TWO ID SPACES, AND THEY DO NOT OVERLAP — this is the trap the atom exists to close: `collection_file_id` is the `collection_file_<N>` DOM row id, which is what `ocs_upload_collection_files` returns and what `ocs_wait_for_collection_indexing` polls; `file_id` is the pk in the row's own delete URL and the ONLY id `ocs_remove_collection_file` accepts. Measured live on collection 568: the two sets were 42083…42466 and 62981…63412 with ZERO overlap, and a mismatch between two ACE artifacts recording different spaces had previously been written off as one of them being imprecise. Routes through Playwright to /a/<team>/documents/collections/<cid>/files/ (no REST equivalent).
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `collection_id` | `z.number` | **required** | Collection pk to list (e.g. the `collection_id` from ocs_create_collection, or the one recorded in 5-ocs/ocs-agent-setup.md). |
+
+### `ocs_remove_collection_file`
+
+Remove ONE file from a Collection, leaving the collection and every other file intact. `file_id` MUST be the `file_id` from `ocs_list_collection_files` — NOT the `collection_file_id` that `ocs_upload_collection_files` returns; they are different id spaces (see that atom), and passing the wrong one targets an unrelated row or 404s. This is the atom whose absence made `ocs-knowledge-refresh` § Step 0 unfollowable: that step says to delete the previously-uploaded training files before re-uploading, because `ocs_upload_collection_files` APPENDS, and the only removal atom used to be `ocs_delete_collection` — which destroys the whole collection and its pipeline wiring, so it was never a substitute. Use this to replace a CHANGED document: remove the stale copy, upload the new one, re-index. Routes through Playwright to the row's own `hx-post /a/<team>/documents/collections/<cid>/files/<pk>/delete` affordance, i.e. exactly what the OCS UI does; 200/204/302 all mean removed. CRITICAL: this does NOT re-index. After removing and re-uploading, call `ocs_wait_for_collection_indexing` and publish a new chatbot version, or the bot keeps serving the old embeddings.
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `collection_id` | `z.number` | **required** | Collection pk the file belongs to. |
+| `file_id` | `z.number` | **required** | The `file_id` from ocs_list_collection_files — NOT the `collection_file_id` that ocs_upload_collection_files returns. They are separate id spaces with zero overlap (measured: 42083…42466 vs 62981…63412 on the same ten files), so reusing an upload return value here targets an unrelated row or 404s. |
 
 ### `ocs_list_chatbots`
 

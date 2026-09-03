@@ -82,12 +82,21 @@ describe('screenshot citation contract — content, not just identity', () => {
  * the problem rather than the skill that *owns* it.
  */
 describe('blocker-owning skills carry the guidance', () => {
-  it('ocs-knowledge-refresh does not prescribe a per-file delete that has no atom', () => {
+  it('ocs-knowledge-refresh names the real removal atoms and both id spaces', () => {
     const s = read(path.join(SKILLS, 'ocs-knowledge-refresh', 'SKILL.md'));
     expect(s).not.toContain('remove the four\n  by filename');
-    expect(s).toContain('There is no atom');
-    // The workable alternative has to be named, or the branch is just a dead end.
-    expect(s.toLowerCase()).toContain('correction sheet');
+    // The atoms exist as of 0.13.1145 — the branch must point at them.
+    expect(s).toContain('ocs_list_collection_files');
+    expect(s).toContain('ocs_remove_collection_file');
+    // The two-id-space trap is the whole reason this is easy to get wrong.
+    expect(s).toContain('collection_file_id');
+    expect(s).toContain('do not overlap');
+    // Removal does not re-index; forgetting that leaves the bot on old embeddings.
+    expect(s.toLowerCase()).toContain('re-index');
+    // The fallback for a document you cannot regenerate must survive.
+    // Whitespace-tolerant: these docs are hard-wrapped, so the phrase can
+    // straddle a line break ("**correction\n  sheet**").
+    expect(s.toLowerCase()).toMatch(/correction\s+sheet/);
   });
 
   it('connect-opp-setup warns that `description` is worker-visible', () => {
