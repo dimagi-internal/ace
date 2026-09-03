@@ -232,6 +232,23 @@ alone makes the artifact land outside `4-connect` and fail
      #106 finding 7). Stash the full PDD intervention prose in the
      opp's Drive summary doc and link to it from the headline. When
      the server-side length cap is widened safely, drop this guidance.
+
+     **`description` is WORKER-VISIBLE — it renders in full on the job
+     card, the first screen an FLW sees.** It is not a bookkeeping field
+     and it is not internal. Write it for the worker deciding whether to
+     accept the job. Never put run ids, phase names, capture bookkeeping
+     or any other build-time scaffolding in it.
+
+     Live on turmeric-market-study/20260828-1108: a capture opportunity's
+     `description` ended "…This opportunity is a capture vehicle for
+     Phase 6 walkthrough screenshots on run 20260828-1108." It rendered
+     legibly on the job card, the job card was captured as a walkthrough
+     screenshot, and that frame was then cited by BOTH the FLW training
+     guide and the training deck — internal scaffolding one review away
+     from reaching trainees. **A screenshot cannot be retro-fixed:**
+     correcting the field does not correct frames that already show it,
+     and re-shooting the job card needs an unclaimed opportunity. Get it
+     right at create time.
    - `target_organization_slug`: LLO org slug (must be ACCEPTED — see step 3)
    - `start_date` / `end_date`: opportunity dates (YYYY-MM-DD; must fit
      inside the program window)

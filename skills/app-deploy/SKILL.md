@@ -209,6 +209,46 @@ orchestrator from per-skill QA + eval verdicts. -->
    `remote_app_missing`, and the next upload creates a fresh one, superseding
    the dead link.
 
+   ### If you need a FRESH `cc_app_id`, COPY the app — do not delete it
+
+   Uploading in place is the right default, but a second opportunity on the same
+   released Deliver app cannot get a payment unit: `DeliverUnit.payment_unit` is
+   a single FK, so one DeliverUnit backs exactly one PaymentUnit ever (ace#573).
+   The route previously documented for this — soft-delete the HQ app so the next
+   upload hits `remote_app_missing` — works, but it is **destructive**: it breaks
+   the app links of whatever opportunity is currently live on those apps, and on
+   a run carrying a per-opp OCS TaskType it takes that down too.
+
+   **Copy instead. Same domain, unlinked:**
+
+   ```
+   commcare_linked_app_copy({ upstream_domain: <ACE_HQ_DOMAIN>,
+                              downstream_domain: <ACE_HQ_DOMAIN>,   // SAME
+                              upstream_app_id: <existing hq app id>,
+                              name: <UNIQUE name>, linked: false })
+   commcare_make_build  ->  commcare_release_build
+   ```
+
+   That configuration is HQ's plain "Copy Application"; the linked-domain-pair +
+   Pro Edition (`LITE_RELEASE_MANAGEMENT`) requirement binds only `linked: true`.
+   Live-validated 2026-09-01 on `connect-ace-prod` — one Learn and one Deliver
+   copy, both built and released. Three reasons it beats delete-and-re-upload:
+
+   - **Nothing is destroyed.** The prior opportunity keeps working apps, and any
+     per-opp OCS TaskType survives.
+   - **It sidesteps ace#1643.** A document copy PRESERVES `appearance="acquire"`
+     and per-module `display_style` — the two settings a Nova re-upload wipes —
+     so the `app-hq-settings` re-apply becomes unnecessary. Verified in the built
+     CCZ *and* on-device (`assertNotVisible "CHOOSE IMAGE"` still passed).
+   - Fresh `cc_app_id` ⇒ new `CommCareApp` row ⇒ the posted `passing_score` is
+     honoured instead of silently inherited, and the new DeliverUnits are
+     unbound so a payment unit attaches.
+
+   Two traps, both hit live: the `name` must be **unique** in the domain (the new
+   id is recovered by re-listing and matching on name), and **a timeout on that
+   recovery re-list does NOT mean the POST failed** — re-list before retrying, or
+   you create a duplicate and break name-based recovery for both copies.
+
    So: for each id in `deployment.left_behind`, call
 
    ```

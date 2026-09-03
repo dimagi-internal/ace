@@ -74,3 +74,46 @@ describe('screenshot citation contract — content, not just identity', () => {
     expect(tpl).toContain('findDuplicateCitations');
   });
 });
+
+/**
+ * The four skills that own a blocker this run actually hit. Each carried
+ * guidance that was wrong, absent, or unfollowable at the time, and each was
+ * missed on the first fix pass because the fix went into the skill that *found*
+ * the problem rather than the skill that *owns* it.
+ */
+describe('blocker-owning skills carry the guidance', () => {
+  it('ocs-knowledge-refresh does not prescribe a per-file delete that has no atom', () => {
+    const s = read(path.join(SKILLS, 'ocs-knowledge-refresh', 'SKILL.md'));
+    expect(s).not.toContain('remove the four\n  by filename');
+    expect(s).toContain('There is no atom');
+    // The workable alternative has to be named, or the branch is just a dead end.
+    expect(s.toLowerCase()).toContain('correction sheet');
+  });
+
+  it('connect-opp-setup warns that `description` is worker-visible', () => {
+    const s = read(path.join(SKILLS, 'connect-opp-setup', 'SKILL.md'));
+    expect(s).toContain('WORKER-VISIBLE');
+    expect(s).toContain('job card');
+    // The reason it matters — a screenshot cannot be retro-fixed — is the part
+    // that makes it a create-time rule rather than a cleanup item.
+    expect(s).toContain('cannot be retro-fixed');
+  });
+
+  it('app-deploy offers the non-destructive copy route for a fresh cc_app_id', () => {
+    const s = read(path.join(SKILLS, 'app-deploy', 'SKILL.md'));
+    expect(s).toContain('commcare_linked_app_copy');
+    expect(s).toContain('linked: false');
+    // Both live traps must survive edits — each cost real time.
+    expect(s).toContain('unique');
+    expect(s).toContain('does NOT mean the POST failed');
+  });
+
+  it('training-deck-generate requires content-backing, not just identity checks', () => {
+    const s = read(path.join(SKILLS, 'training-deck-generate', 'SKILL.md'));
+    expect(s).toContain('framesCitedWithoutShows');
+    // It already had ace#867's "do not caption falsely"; the new rule is the
+    // checkable one. Both must be present.
+    expect(s).toContain('the pixels visibly');
+    expect(s).toContain('shows:');
+  });
+});
