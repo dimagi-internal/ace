@@ -102,6 +102,26 @@ appId: org.commcare.dalvik
       visible:
         ${SELECTOR:form-nav-finish}
     commands:
+      # Capture the result label BEFORE pressing FINISH. This screen is the
+      # ONLY place a score-gated quiz shows the learner their percentage and
+      # whether they certified, and FINISH replaces it — so a walk that goes
+      # straight to the tap leaves NO frame of the score anywhere.
+      #
+      # turmeric-market-study/20260828-1108 shipped exactly that: an FLW guide
+      # and a 50-slide deck both captioned the POST_SUBMIT frame as "your
+      # certification result", when that frame is the lesson menu with a
+      # "1 form sent to server!" toast. The released CCZ carries the labels
+      # ("You passed ... scored <user_score> percent" / "You need 80 percent to
+      # certify ... try again"), so the app does show it — the recipe never
+      # looked.
+      #
+      # The name derives from ${SCREENSHOT_NAME_PRE_SUBMIT} rather than taking
+      # a placeholder of its own, deliberately: PRE_SUBMIT is already REQUIRED
+      # at every call site and enforced by the `runFlow-unbound-screenshot-name`
+      # lint rule, so this cannot render as literal `undefined` (the ace#852
+      # defect this file's header documents) and cannot collide when one
+      # dispatch walks two score-gated forms.
+      - takeScreenshot: "${SCREENSHOT_NAME_PRE_SUBMIT}-result"
       - tapOn:
           ${SELECTOR:form-nav-finish}
       - extendedWaitUntil:

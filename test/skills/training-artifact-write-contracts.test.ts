@@ -58,6 +58,27 @@ describe('screenshot citation contract — content, not just identity', () => {
     expect(tpl).toContain('shows:');
   });
 
+  /**
+   * The lesson this repo keeps re-learning: a helper nothing calls is not a
+   * fix. `assignCanonicalDuplicates` shipped in #1877 with only its own tests
+   * as callers; `framesCitedWithoutShows` shipped in #1927 the same way. The
+   * fence is the answer BECAUSE it takes the published artifact instead of a
+   * caller-assembled list — so these assert it stays wired into the skills
+   * that must run it, not merely that it exists.
+   */
+  it('the shared template requires the published-artifact FENCE, not just the helper', () => {
+    const tpl = read(path.join(SKILLS, '_training-template.md'));
+    expect(tpl).toContain('verify_caption_backing');
+    expect(tpl).toContain('publishedFileId');
+    // It must be stated as blocking, or it degrades into another advisory.
+    expect(tpl.toLowerCase()).toMatch(/blocker|required step/);
+  });
+
+  it('training-deck-generate runs the fence over what it published', () => {
+    const s2 = read(path.join(SKILLS, 'training-deck-generate', 'SKILL.md'));
+    expect(s2).toContain('verify_caption_backing');
+  });
+
   it('app-screenshot-capture instructs the producer to OPEN frames and record shows', () => {
     const skill = read(path.join(SKILLS, 'app-screenshot-capture', 'SKILL.md'));
     expect(skill).toContain('Pixel review');
