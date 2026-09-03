@@ -27,6 +27,7 @@ import {
   findDuplicateCitations,
   isAutoNamedCapture,
   assignCanonicalDuplicates,
+  framesCitedWithoutShows,
 } from '../../lib/capture-manifest.js';
 
 /** The live shape from the run in the issue (aliases + their canonicals). */
@@ -180,5 +181,60 @@ describe('assignCanonicalDuplicates — the PRODUCER half', () => {
     const snapshot = JSON.stringify(input);
     assignCanonicalDuplicates(input);
     expect(JSON.stringify(input)).toBe(snapshot);
+  });
+});
+
+describe('framesCitedWithoutShows — the content check nothing else does', () => {
+  const M = {
+    captures: [
+      { step: 'looked-at', file_id: 'f1', shows: 'Deliver home with Daily Visits 1/200.' },
+      { step: 'never-opened', file_id: 'f2' },
+      { step: 'blank-shows', file_id: 'f3', shows: '   ' },
+      { step: 'alias', file_id: 'f4', duplicate_of: 'looked-at' },
+    ],
+  };
+
+  it('names cited frames that nobody recorded a description for', () => {
+    expect(framesCitedWithoutShows(M, ['looked-at', 'never-opened'])).toEqual(['never-opened']);
+  });
+
+  it('treats a whitespace-only shows as absent — a blank is not a look', () => {
+    expect(framesCitedWithoutShows(M, ['blank-shows'])).toEqual(['blank-shows']);
+  });
+
+  it('is silent on frames the artifact does not cite', () => {
+    expect(framesCitedWithoutShows(M, ['looked-at'])).toEqual([]);
+  });
+
+  it('does not double-report an unknown step — that is a different defect', () => {
+    expect(framesCitedWithoutShows(M, ['no-such-step'])).toEqual([]);
+  });
+
+  it('still flags an alias with no shows, because a caption over it makes a claim too', () => {
+    expect(framesCitedWithoutShows(M, ['alias'])).toEqual(['alias']);
+  });
+
+  it('is inert on a malformed/absent manifest', () => {
+    expect(framesCitedWithoutShows(undefined, ['a'])).toEqual([]);
+    expect(framesCitedWithoutShows({} as never, ['a'])).toEqual([]);
+  });
+
+  it('THE INCIDENT: a frame that resolves, is distinct, and is still undescribed', () => {
+    // journey-learn-posttest-result passed every structural check and showed
+    // no score. Existence and distinctness say nothing about content.
+    const incident = {
+      captures: [{ step: 'journey-learn-posttest-result', file_id: 'real-id' }],
+    };
+    expect(canonicalCaptures(incident).map((c) => c.step)).toEqual([
+      'journey-learn-posttest-result',
+    ]);
+    expect(findDuplicateCitations(incident, ['journey-learn-posttest-result'])).toEqual([]);
+    expect(resolveCanonicalStep(incident, 'journey-learn-posttest-result')).toBe(
+      'journey-learn-posttest-result',
+    );
+    // ...and only this one objects.
+    expect(framesCitedWithoutShows(incident, ['journey-learn-posttest-result'])).toEqual([
+      'journey-learn-posttest-result',
+    ]);
   });
 });

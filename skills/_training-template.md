@@ -109,6 +109,34 @@ the fact (ace#1304, the consumer half of ace#866). Any `image_hygiene`-style
 self-eval criterion must assert duplicate handling explicitly, or it will keep
 scoring 10 on this defect.
 
+### And CONTENT is a third property, which neither of the above touches
+
+Existence, distinctness and resolvability all answer *"which file is this?"*.
+None answers *"what is in the picture?"* — and that is the only question a
+caption can get wrong.
+
+```ts
+import { framesCitedWithoutShows } from '../../lib/capture-manifest';
+const unbacked = framesCitedWithoutShows(manifest, citedSteps);
+```
+
+`framesCitedWithoutShows` returns every step this artifact cites that carries no
+`shows:` — the one-line record of what someone saw when they OPENED the frame
+(written by `app-screenshot-capture` § Step 5.6). **Where your prose asserts
+what a screen shows, the frame must carry a `shows:` and your caption must
+agree with it.** Cite freely; assert only over frames someone looked at.
+
+Measured on turmeric-market-study/20260828-1108: an FLW guide and a 50-slide
+deck passed schema validation, 100% file_id resolution, zero duplicate
+citations, visual coverage 1.00 and 49 anonymously-verified inline images —
+and both captioned `journey-learn-posttest-result` as the certification result.
+It is the lesson menu with a "1 form sent to server!" toast; there is no score
+on it, and no frame of the score existed at all. Every gate was green. Two of
+the first four frames opened were wrong.
+
+An `image_hygiene` criterion that does not assert content-backing will score 10
+on this defect exactly the way the duplicate-handling one did.
+
 ## Illustrated guides — render, THEN embed (dimagi-internal/ace#1418)
 
 Applies to the artifacts flagged `illustrated: true` in

@@ -23,6 +23,16 @@ export interface CaptureEntry {
   file_id?: string;
   /** Present iff this frame is byte-identical to an earlier capture. */
   duplicate_of?: string;
+  /**
+   * One line describing what is ACTUALLY ON the frame, written by someone who
+   * opened it. Not the step name restated.
+   *
+   * This is the only field in the manifest that is evidence rather than
+   * bookkeeping. Everything else — file_id, md5, duplicate_of — answers "which
+   * file is this?"; `shows` answers "what is in the picture?", and only the
+   * second question can contradict a caption.
+   */
+  shows?: string;
   [k: string]: unknown;
 }
 
@@ -136,6 +146,43 @@ export function assignCanonicalDuplicates<T extends RawFrame>(
     } else {
       out.push({ ...f, duplicate_of: prior });
     }
+  }
+  return out;
+}
+
+/**
+ * Cited frames that carry no `shows` — i.e. the artifact is describing a screen
+ * nobody looked at.
+ *
+ * Why this exists, stated plainly because the failure is counter-intuitive:
+ * on turmeric-market-study/20260828-1108 an FLW guide and a 50-slide deck
+ * passed EVERY structural gate — schema valid, 100% of cited file_ids
+ * resolving, zero duplicate citations, visual coverage 1.00, 49 inline images
+ * verified against an anonymous reader — and two of the first four frames
+ * anyone opened did not show what the prose said. The certification "result"
+ * frame was the lesson menu with a "1 form sent to server!" toast: no score
+ * anywhere on it. Every check passed because **every check treats a screenshot
+ * as an id.** Existence, distinctness and resolvability were all asserted;
+ * CONTENT never was, and content is the only thing a caption can contradict.
+ *
+ * The rule this enforces: you may cite a frame freely, but the moment your
+ * prose ASSERTS what is on it, someone has to have opened it. `shows` is that
+ * someone's one-line record. A producer runs this over the steps it cites and
+ * either records a `shows` or drops the claim.
+ */
+export function framesCitedWithoutShows(
+  manifest: CaptureManifestLike | undefined | null,
+  citedSteps: readonly string[],
+): string[] {
+  const all = entries(manifest);
+  const out: string[] = [];
+  for (const step of citedSteps) {
+    const found = all.find((c) => c.step === step);
+    // An unknown step is a different defect (ace#913) and is reported by
+    // resolveCanonicalStep; do not double-report it here.
+    if (!found) continue;
+    const shows = typeof found.shows === 'string' ? found.shows.trim() : '';
+    if (!shows) out.push(step);
   }
   return out;
 }

@@ -1,7 +1,9 @@
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
+import { createHash } from 'node:crypto';
 import { execSync } from 'node:child_process';
+import { assignCanonicalDuplicates } from '../../../lib/capture-manifest.js';
 import { MobileError, RecipeValidationError } from '../errors.js';
 import type { ShellFn } from './avd.js';
 import { defaultShell } from './avd.js';
@@ -1226,6 +1228,45 @@ export class MaestroBackend {
  * backend never returned a result there, so the frames it left on disk had no
  * other route back to the caller.
  */
+/**
+ * Stamp `md5` on every frame and `duplicateOf` on every byte-identical repeat.
+ *
+ * The canonical choice is delegated to `assignCanonicalDuplicates` in
+ * `lib/capture-manifest.ts` so there is exactly ONE implementation of the rule
+ * — recipe order, except that a Maestro auto-named boundary frame
+ * (`step-<index>-<command>-<args>`) yields to a meaningfully-named twin however
+ * much earlier it was taken. Downstream prose cites the canonical step's NAME,
+ * so `step-010-assertCondition-org.commcare.dalvikid_vi` winning is a caption
+ * defect, not a cosmetic one.
+ *
+ * Frames whose bytes cannot be read are returned unannotated rather than
+ * throwing: a capture run must not fail because one PNG was unreadable, and an
+ * absent `md5` is honestly "unknown", which no consumer treats as "distinct".
+ */
+export function markDuplicateFrames(entries: ScreenshotEntry[]): ScreenshotEntry[] {
+  const hashed = entries.map((e) => {
+    try {
+      return { ...e, md5: createHash('md5').update(fs.readFileSync(e.path)).digest('hex') };
+    } catch {
+      return { ...e };
+    }
+  });
+
+  const assignable = hashed.filter((e): e is typeof e & { md5: string } => Boolean(e.md5));
+  const decided = assignCanonicalDuplicates(
+    assignable.map((e) => ({ step: e.stepName, md5: e.md5, takenAt: e.takenAt })),
+  );
+  const duplicateOfByStep = new Map<string, string>();
+  for (const d of decided) {
+    if (d.duplicate_of) duplicateOfByStep.set(d.step, d.duplicate_of);
+  }
+
+  return hashed.map((e) => {
+    const dup = duplicateOfByStep.get(e.stepName);
+    return dup === undefined ? e : { ...e, duplicateOf: dup };
+  });
+}
+
 export function collectScreenshotsFromDir(dir: string): ScreenshotEntry[] {
     if (!fs.existsSync(dir)) return [];
 
@@ -1248,7 +1289,7 @@ export function collectScreenshotsFromDir(dir: string): ScreenshotEntry[] {
     };
     walk(dir, 0);
 
-    return pngs
+    const entries: ScreenshotEntry[] = pngs
       .sort()
       .map((full) => {
         const stat = fs.statSync(full);
@@ -1296,6 +1337,13 @@ export function collectScreenshotsFromDir(dir: string): ScreenshotEntry[] {
         if (prov) entry.provenance = prov;
         return entry;
       });
+
+    // Hash + duplicate-mark BEFORE returning. Every capture path funnels
+    // through here, so annotating at this choke point means a manifest author
+    // COPIES the canonical decision instead of re-deriving it (ace#866's
+    // producer half). Doing it by hand is what missed the auto-named-frame
+    // exception on turmeric-market-study/20260828-1108.
+    return markDuplicateFrames(entries);
   }
 
 
