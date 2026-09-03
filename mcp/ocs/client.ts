@@ -276,6 +276,29 @@ export interface OcsClient {
    */
   deleteCollection(args: { collection_id: number }): Promise<{ deleted: number }>;
 
+  /**
+   * A collection's files with their names and BOTH id spaces. Read-only.
+   *
+   * `collection_file_id` is what `uploadCollectionFiles` returns and
+   * `waitForCollectionIndexing` polls; `file_id` is what
+   * `removeCollectionFile` needs. They do not overlap.
+   */
+  listCollectionFiles(args: { collection_id: number }): Promise<{
+    collection_id: number;
+    files: { collection_file_id: number | null; file_id: number; name: string }[];
+  }>;
+
+  /**
+   * Remove ONE file from a collection. Takes the `file_id` from
+   * `listCollectionFiles`, never the `collection_file_id` from an upload.
+   * Does NOT re-index — re-upload, wait, and publish a version after.
+   */
+  removeCollectionFile(args: { collection_id: number; file_id: number }): Promise<{
+    removed: number;
+    collection_id: number;
+    file_id: number;
+  }>;
+
   // ── Observation atoms ────────────────────────────────────────────
 
   listChatbots(args?: {

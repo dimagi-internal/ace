@@ -137,6 +137,10 @@ export class CompositeBackend implements OcsClient {
   });
   deletePipeline = (a: Parameters<OcsClient['deletePipeline']>[0]) => this.opts.playwright.deletePipeline(a);
   deleteCollection = (a: Parameters<OcsClient['deleteCollection']>[0]) => this.opts.playwright.deleteCollection(a);
+  listCollectionFiles = (a: Parameters<OcsClient['listCollectionFiles']>[0]) =>
+    this.opts.playwright.listCollectionFiles(a);
+  removeCollectionFile = (a: Parameters<OcsClient['removeCollectionFile']>[0]) =>
+    this.opts.playwright.removeCollectionFile(a);
 
   // ── Observation (REST today) ─────────────────────────────────────
 

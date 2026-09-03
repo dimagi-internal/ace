@@ -1694,6 +1694,127 @@ export class PlaywrightBackend {
    * retrieval. Per-opp collections created fresh by Phase 5 are NOT shared
    * and are safe to delete.
    */
+  /**
+   * List a collection's files with their NAMES and both id spaces.
+   *
+   * There are two, they do not overlap, and confusing them is the trap this
+   * method exists to close:
+   *
+   *  - `collection_file_id` — the `collection_file_<N>` DOM row id. This is
+   *    what `uploadCollectionFiles` returns and what `waitForCollectionIndexing`
+   *    polls. On collection 568 these were 42083…42466.
+   *  - `file_id` — the pk in the row's own delete URL, and the ONLY id
+   *    `removeCollectionFile` accepts. On the same collection these were
+   *    62981…63412. Zero overlap with the above.
+   *
+   * Measured live 2026-09-03: Phase 5's `ocs-agent-setup.md` had recorded the
+   * `file_id` space while `ocs-knowledge-refresh`'s product artifact recorded
+   * the `collection_file_id` space, and the discrepancy was written off as one
+   * document being imprecise. It was not — they are two different identifiers
+   * for the same ten files.
+   *
+   * Paginated for the same reason as `scrapeCollectionFileIds`: the listing
+   * serves 10 rows a page and says nothing about the rest (ace#1016).
+   */
+  async listCollectionFiles(args: { collection_id: number }): Promise<{
+    collection_id: number;
+    files: { collection_file_id: number | null; file_id: number; name: string }[];
+  }> {
+    const basePath = `/a/${this.opts.teamSlug}/documents/collections/${args.collection_id}/files/`;
+    const byFileId = new Map<
+      number,
+      { collection_file_id: number | null; file_id: number; name: string }
+    >();
+    const MAX_PAGES = 200;
+    for (let page = 1; page <= MAX_PAGES; page++) {
+      const listPath = page === 1 ? basePath : `${basePath}?page=${page}`;
+      const listRes = await this.opts.request('GET', listPath);
+      if (!listRes.ok || !listRes.text) {
+        if (page > 1 && listRes.status === 404) break;
+        throw await httpErrorFor(listRes, listPath);
+      }
+      const html = await listRes.text();
+      const before = byFileId.size;
+
+      // JOIN on the id rather than scanning nearby markup. The name lives in
+      // its own anchor, `<a href="/a/<team>/files/file/<file_id>/">NAME</a>`,
+      // so keying both sides on `file_id` is exact.
+      //
+      // Proximity parsing was tried first and got it WRONG: taking the last
+      // filename-shaped token before the delete URL matched the size badge
+      // (`<div class="badge">0.01 MB</div>`) and returned "0.0" as every
+      // file's name. Caught on a throwaway collection before this shipped.
+      const nameByFileId = new Map<number, string>();
+      for (const n of html.matchAll(
+        /href="\/a\/[^"]*\/files\/file\/(\d+)\/"[^>]*>\s*([^<]+?)\s*<\/a>/g,
+      )) {
+        nameByFileId.set(Number(n[1]), n[2]);
+      }
+
+      // The delete affordance and the `collection_file_<N>` row id sit on the
+      // SAME form element (`hx-post=".../<file_id>/delete"` +
+      // `hx-target="#collection_file_<cf_id>"`), which is what makes the two
+      // id spaces recoverable together instead of guessed apart.
+      for (const m of html.matchAll(
+        /hx-post="[^"]*\/files\/(\d+)\/delete"[\s\S]{0,300}?hx-target="#collection_file_(\d+)"/g,
+      )) {
+        const fileId = Number(m[1]);
+        if (byFileId.has(fileId)) continue;
+        byFileId.set(fileId, {
+          collection_file_id: Number(m[2]),
+          file_id: fileId,
+          name: nameByFileId.get(fileId) ?? '',
+        });
+      }
+
+      // Fallback for a template that drops `hx-target`: still surface the file,
+      // with a null cf id, rather than silently omitting a row a caller may
+      // need to remove.
+      for (const m of html.matchAll(/hx-post="[^"]*\/files\/(\d+)\/delete"/g)) {
+        const fileId = Number(m[1]);
+        if (byFileId.has(fileId)) continue;
+        byFileId.set(fileId, {
+          collection_file_id: null,
+          file_id: fileId,
+          name: nameByFileId.get(fileId) ?? '',
+        });
+      }
+
+      if (byFileId.size === before) break;
+    }
+    return { collection_id: args.collection_id, files: [...byFileId.values()] };
+  }
+
+  /**
+   * Remove ONE file from a collection, leaving the collection and every other
+   * file intact.
+   *
+   * `file_id` is the `file_id` from `listCollectionFiles` — NOT the
+   * `collection_file_id` that `uploadCollectionFiles` returns. Passing the
+   * wrong one targets an unrelated row or 404s; see `listCollectionFiles`.
+   *
+   * Routes to the row's own `hx-post .../files/<pk>/delete` affordance, so this
+   * is exactly what the OCS UI does. Compare `deleteCollection`, which destroys
+   * the WHOLE collection and its pipeline wiring — that was never a substitute
+   * for this, and treating it as one is why `ocs-knowledge-refresh` Step 0 sat
+   * unfollowable.
+   */
+  async removeCollectionFile(args: {
+    collection_id: number;
+    file_id: number;
+  }): Promise<{ removed: number; collection_id: number; file_id: number }> {
+    const path =
+      `/a/${this.opts.teamSlug}/documents/collections/${args.collection_id}` +
+      `/files/${args.file_id}/delete`;
+    const res = await this.opts.request('POST', path, undefined, { followRedirects: false });
+    // htmx endpoints answer 200 with a replacement fragment; a plain Django
+    // view answers 302 back to the listing. Both mean it is gone.
+    if (res.status === 200 || res.status === 204 || res.status === 302) {
+      return { removed: 1, collection_id: args.collection_id, file_id: args.file_id };
+    }
+    throw await httpErrorFor(res, path);
+  }
+
   async deleteCollection(args: { collection_id: number }): Promise<{ deleted: number }> {
     const path = `/a/${this.opts.teamSlug}/documents/collection/${args.collection_id}/delete/`;
     const res = await this.opts.request(

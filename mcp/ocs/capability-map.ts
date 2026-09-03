@@ -27,6 +27,8 @@ export type Capability =
   | 'get_chatbot_pipeline_id'
   | 'delete_pipeline'
   | 'delete_collection'
+  | 'list_collection_files'
+  | 'remove_collection_file'
   | 'add_team_member'
   // Observation (14)
   | 'list_chatbots'
@@ -66,6 +68,8 @@ export const CAPABILITY_MAP: Record<Capability, CapabilityRoute> = {
   get_chatbot_pipeline_id:      { backend: 'PLAYWRIGHT', restTarget: 'GET /api/experiments/{id}/ (pipeline_id field not yet exposed in REST schema)' },
   delete_pipeline:              { backend: 'PLAYWRIGHT', restTarget: 'DELETE /api/pipelines/{id}/ (not yet shipped)' },
   delete_collection:            { backend: 'PLAYWRIGHT', restTarget: 'DELETE /api/collections/{id}/ (not yet shipped)' },
+  list_collection_files:        { backend: 'PLAYWRIGHT', restTarget: 'GET /api/collections/{id}/files/ (not yet shipped)' },
+  remove_collection_file:       { backend: 'PLAYWRIGHT', restTarget: 'DELETE /api/collections/{id}/files/{pk}/ (not yet shipped)' },
   add_team_member:              { backend: 'PLAYWRIGHT', restTarget: 'POST /a/{team}/team/invite/ (no REST equivalent — CSRF-protected InvitationForm + htmx; membership groups via /a/{team}/team/members/{id}/)' },
 
   // Observation
