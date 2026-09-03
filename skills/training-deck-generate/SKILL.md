@@ -174,7 +174,12 @@ screenshot-blocked run cannot lose it.
    - **Captions must describe the surface actually shown** — a CommCare
      screen must not be captioned as a Connect screen (or vice versa).
    - **A slide that ASSERTS what a screen shows needs a frame someone
-     OPENED.** Run `framesCitedWithoutShows(manifest, citedSteps)`
+     OPENED.** After writing the spec, run `verify_caption_backing`
+     against it (see `skills/_training-template.md`) — it reads the
+     PUBLISHED artifact and fails on any cited frame nobody described, so
+     there is no list to curate. A non-empty `findings` is a BLOCKER: fix
+     the caption or drop the image. As a cheap pre-write check you can
+     also call `framesCitedWithoutShows(manifest, citedSteps)`
      (`lib/capture-manifest.ts`): it returns every step this deck cites
      that carries no `shows:` — the one-line record of what is actually
      on the frame, written by `app-screenshot-capture` § Step 5.6. Where

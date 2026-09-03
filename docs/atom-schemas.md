@@ -12,7 +12,7 @@ For the deterministic atom-rename / remove drift check, see `test/skill-atom-ref
 
 ## ace-gdrive
 
-Source: `mcp/google-drive-server.ts` — 45 atoms
+Source: `mcp/google-drive-server.ts` — 46 atoms
 
 ### `sheets_list_tabs`
 
@@ -423,6 +423,16 @@ Boundary-fence check that a phase's `phases.<phase>.products` block matches the 
 |-------|------|----------|-------------|
 | `fileId` | `z.string` | **required** | The Google Drive fileId of run_state.yaml. |
 | `phase` | `z.string` | **required** | The phase whose products block to verify (e.g. "connect-setup", "qa-and-training"). |
+
+### `verify_caption_backing`
+
+Boundary fence: does a PUBLISHED artifact only assert over screenshots someone actually looked at? Reads the published document (Doc or text) AND the capture manifest from Drive, extracts every Drive fileId the document cites, and returns `{ok, cited_total, cited_distinct, backed, findings}`. A finding is `no-shows` (the frame is cited but no one recorded what it shows), `duplicate-cited` (an alias frame presented as its own moment), or `unknown-id` (an id the manifest does not contain). WHY THIS EXISTS AND WHAT IT CATCHES THAT NOTHING ELSE DOES: every other screenshot check answers "which file is this?" — alias detection, duplicate citation, fileId resolution. None answers "what is IN the picture?", and that is the only question a caption can get wrong. On turmeric-market-study/20260828-1108 an FLW guide and a 50-slide deck passed schema validation, 100% fileId resolution, zero duplicate citations, visual coverage 1.00 and 49 anonymously-verified inline images, and BOTH captioned a frame as the certification result that is actually the lesson menu with a "1 form sent to server!" toast — no score on it, and no frame of the score existed at all. It takes the PUBLISHED document rather than a caller-supplied list of citations precisely so there is nothing to curate: whatever a reader can see is what gets checked. Pass `poolFileIds` for shared `_common/connect-screenshots` frames and committed deck artwork, which are not the run's work product and legitimately have no `shows`. A document citing NO frames is `ok` — text-only asserts nothing over a screen, and failing it would push producers toward decorative citations. Populate `shows:` in `app-screenshot-capture` § Step 5.6.
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `publishedFileId` | `z.string` | **required** | Drive fileId of the PUBLISHED artifact (the rendered Doc, or the deck spec YAML). Not the source markdown — the point is to check what shipped. |
+| `manifestFileId` | `z.string` | **required** | Drive fileId of app-screenshot-capture_manifest.yaml for the run. |
+| `poolFileIds` | `z.array` | **required** | _—_ |
 
 ### `verify_phase_artifacts`
 

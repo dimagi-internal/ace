@@ -100,7 +100,7 @@ const SERVERS: Record<string, ServerSpec> = {
   },
   'google-drive': {
     file: 'mcp/google-drive-server.ts',
-    expectedCount: 45, // +2: drive_list_comments + drive_reply_to_comment (comment read/close loop — ace#1563)
+    expectedCount: 46, // +1: verify_caption_backing (published-artifact caption fence)
     // gdrive bridges five Google APIs — one prefix per surface plus a
     // small set of cross-surface helpers (manifest generator, forms
     // reader, OAuth-personal Drive read, YAML patch helper, opp-path
@@ -122,6 +122,7 @@ const SERVERS: Record<string, ServerSpec> = {
       'classify_phase_writeback',
       'verify_phase_artifacts',
       'verify_phase_products',
+      'verify_caption_backing',
       'render_run_readme',
       'render_decisions_log',
     ],

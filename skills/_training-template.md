@@ -115,10 +115,35 @@ Existence, distinctness and resolvability all answer *"which file is this?"*.
 None answers *"what is in the picture?"* — and that is the only question a
 caption can get wrong.
 
+**Run `verify_caption_backing` after publishing. This is a required step, not
+advice.**
+
+```
+verify_caption_backing({
+  publishedFileId: <the rendered Doc / deck spec you just wrote>,
+  manifestFileId:  <6-qa-and-training/app-screenshot-capture_manifest.yaml>,
+  poolFileIds:     [<shared _common frames + template artwork>],
+})
+```
+
+It reads the PUBLISHED artifact, extracts every Drive fileId a reader can see,
+and fails on `no-shows` (cited but nobody recorded what it shows),
+`duplicate-cited` (an alias presented as its own moment) or `unknown-id`. **A
+non-empty `findings` is a blocker: fix the caption or drop the image — do not
+record it as a WARN and ship.**
+
+It takes the published document rather than a list you assemble, on purpose.
+The first attempt at this check was a helper you called with your own list of
+citations:
+
 ```ts
 import { framesCitedWithoutShows } from '../../lib/capture-manifest';
-const unbacked = framesCitedWithoutShows(manifest, citedSteps);
+const unbacked = framesCitedWithoutShows(manifest, citedSteps);   // still useful pre-write
 ```
+
+That is two chances to skip it — forget the call, or hand it a curated list —
+and its only callers were its own tests. Keep using it as a cheap pre-write
+check if you like, but `verify_caption_backing` is the one that decides.
 
 `framesCitedWithoutShows` returns every step this artifact cites that carries no
 `shows:` — the one-line record of what someone saw when they OPENED the frame

@@ -47,6 +47,7 @@ import {
   type PhaseStatus,
 } from '../lib/run-readme.js';
 import { validatePhaseProductsFragment, classifyPhaseProducts } from '../lib/phase-products-schema.js';
+import { classifyCaptionBacking } from '../lib/caption-backing.js';
 import { assertDimagiOwnerRecipient } from '../lib/destructive-guards.js';
 import {
   runDecisionsRender,
@@ -3348,6 +3349,44 @@ server.tool(
       const text = read.content ?? '';
       const parsed = text.trim() ? YAML.parse(text) : null;
       return result(classifyPhaseProducts(parsed, phase));
+    } catch (e: any) {
+      return error(e.message);
+    }
+  },
+);
+
+server.tool(
+  'verify_caption_backing',
+  "Boundary fence: does a PUBLISHED artifact only assert over screenshots someone actually looked at? Reads the published document (Doc or text) AND the capture manifest from Drive, extracts every Drive fileId the document cites, and returns `{ok, cited_total, cited_distinct, backed, findings}`. A finding is `no-shows` (the frame is cited but no one recorded what it shows), `duplicate-cited` (an alias frame presented as its own moment), or `unknown-id` (an id the manifest does not contain). WHY THIS EXISTS AND WHAT IT CATCHES THAT NOTHING ELSE DOES: every other screenshot check answers \"which file is this?\" — alias detection, duplicate citation, fileId resolution. None answers \"what is IN the picture?\", and that is the only question a caption can get wrong. On turmeric-market-study/20260828-1108 an FLW guide and a 50-slide deck passed schema validation, 100% fileId resolution, zero duplicate citations, visual coverage 1.00 and 49 anonymously-verified inline images, and BOTH captioned a frame as the certification result that is actually the lesson menu with a \"1 form sent to server!\" toast — no score on it, and no frame of the score existed at all. It takes the PUBLISHED document rather than a caller-supplied list of citations precisely so there is nothing to curate: whatever a reader can see is what gets checked. Pass `poolFileIds` for shared `_common/connect-screenshots` frames and committed deck artwork, which are not the run's work product and legitimately have no `shows`. A document citing NO frames is `ok` — text-only asserts nothing over a screen, and failing it would push producers toward decorative citations. Populate `shows:` in `app-screenshot-capture` § Step 5.6.",
+  {
+    publishedFileId: z
+      .string()
+      .describe(
+        'Drive fileId of the PUBLISHED artifact (the rendered Doc, or the deck spec YAML). Not the source markdown — the point is to check what shipped.',
+      ),
+    manifestFileId: z
+      .string()
+      .describe('Drive fileId of app-screenshot-capture_manifest.yaml for the run.'),
+    poolFileIds: z
+      .array(z.string())
+      .optional()
+      .describe(
+        'fileIds legitimately outside the per-opp manifest (shared common-pool frames, committed deck-template artwork). These are counted as backed.',
+      ),
+  },
+  async ({ publishedFileId, manifestFileId, poolFileIds }) => {
+    try {
+      const pub = await handleReadFile({ fileId: publishedFileId }, drive);
+      const man = await handleReadFile({ fileId: manifestFileId }, drive);
+      const manifestText = man.content ?? '';
+      const manifest = manifestText.trim() ? YAML.parse(manifestText) : null;
+      return result(
+        classifyCaptionBacking({
+          published: pub.content ?? '',
+          manifest,
+          poolFileIds,
+        }),
+      );
     } catch (e: any) {
       return error(e.message);
     }
