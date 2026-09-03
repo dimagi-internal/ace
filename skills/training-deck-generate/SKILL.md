@@ -173,6 +173,30 @@ screenshot-blocked run cannot lose it.
      asserting the design intent.
    - **Captions must describe the surface actually shown** — a CommCare
      screen must not be captioned as a Connect screen (or vice versa).
+   - **A slide that ASSERTS what a screen shows needs a frame someone
+     OPENED.** Run `framesCitedWithoutShows(manifest, citedSteps)`
+     (`lib/capture-manifest.ts`): it returns every step this deck cites
+     that carries no `shows:` — the one-line record of what is actually
+     on the frame, written by `app-screenshot-capture` § Step 5.6. Where
+     a slide body or caption makes a claim, the frame must carry a
+     `shows:` and the claim must agree with it. Otherwise use `content`
+     layout and keep the claim in prose.
+
+     The rules above are about not WRITING a false caption; this one is
+     about not being ABLE to. On turmeric-market-study/20260828-1108 this
+     deck captioned a `walkthrough` slide "Your score appears as soon as
+     you submit the quiz" over `journey-learn-posttest-result` — which is
+     the lesson menu with a "1 form sent to server!" toast. No score on
+     it, and no frame of the score existed at all, because the recipe
+     submits straight past the pass/fail label. **Every structural gate
+     passed**: schema valid, 100% of file_ids resolving, zero duplicate
+     citations, visual coverage 1.00. Those all answer "which file is
+     this?"; none answers "what is in the picture?", which is the only
+     thing a caption can contradict. That slide is now `content` layout —
+     honestly text-only rather than dishonestly illustrated.
+
+     **If the frame you need does not exist, say so and fix the recipe.**
+     Do not promote a nearby frame into the role.
 
 6. **Read common modules.** Load shared module fragments from
    `templates/training-deck/_common/`:

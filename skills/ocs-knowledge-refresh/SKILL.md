@@ -108,11 +108,39 @@ artifact says it means.
   `reason: already-current` and the existing `version_number`. Do not re-upload
   and do not re-index.
 - **`last_reindexed_at` present but a training document is NEWER** → the
-  documents changed after the last refresh, so the collection is stale.
-  **Delete the previously-uploaded training files from the collection first**
-  (`ocs_download_file` is not needed; list the collection and remove the four
-  by filename), then continue from Step 1. Appending on top of the old copies
-  is the failure this branch exists to prevent.
+  documents changed after the last refresh, so the collection is stale. See
+  the sub-cases below, because **the obvious remedy does not exist.**
+
+**You cannot delete individual files from a collection. There is no atom.**
+This branch used to say "list the collection and remove the four by filename".
+Neither operation exists: there is no `ocs_list_collection_files` and no
+per-file remove. `ocs_delete_collection` destroys the WHOLE collection — every
+other indexed document and the pipeline wiring with it — so it is not the tool
+for this. Verified 2026-09-03. If those atoms are added later, restore the
+delete-first behaviour; it remains the ideal.
+
+Until then, split by what actually changed:
+
+- **A document never uploaded before is NEW** → just upload it. No prior copy
+  exists, so appending duplicates nothing. This is the common case — a document
+  that was MISSING last pass and exists now.
+- **A document that WAS uploaded and has since changed** → you cannot replace
+  it. Upload an authored **correction sheet** instead: a short dated document
+  declaring itself authoritative over conflicting statements in the older ones,
+  naming what changed and which identifiers are retired. Phase 5 already uses
+  this pattern in these collections (`current-design-and-changes-<date>.md`),
+  and it is what both refresh passes on turmeric-market-study/20260828-1108
+  actually shipped. Record in the product artifact that the stale copy is still
+  indexed, and why.
+
+**Check `last_reindexed_at` against reality before trusting it.** It is written
+by hand and has been wrong: on the run above it read `11:58Z` while the pass it
+described actually completed around `12:12Z`. Two documents modified in between
+therefore looked NEWER than the refresh that had already indexed them, and a
+naive `modifiedTime` comparison would have demanded exactly the
+delete-then-reupload this branch cannot perform. When the timestamp is close to
+the documents' `modifiedTime`, prefer the per-document question — "was THIS
+file ever uploaded?" — over the aggregate one.
 
 `ocs-agent-setup § Step 0` short-circuits the same way on a re-run; this skill
 did not until 0.13.1037.
