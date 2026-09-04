@@ -56,7 +56,11 @@ paginates at 50; loop until zero unread, or old human threads hide behind the no
 ## Process
 
 ### 1. Pull the queue (read-only, safe)
-Via `email-communicator` (search): `in:inbox is:unread`. If none, report "inbox clear" and stop.
+Via `email-communicator` (search): `in:inbox is:unread`. **If none, report "inbox clear" and go
+STRAIGHT TO §4 — do NOT end the turn here.** An empty unread queue is not an idle turn: §4 exists
+to catch threads where the ball is on ACE, which by definition generate no new inbound, so a quiet
+inbox is exactly when it must run. Ending the turn at this line is how a counterpart waits 42 days
+(ace#1931; the same shape as the HENIKE case §4 was written for).
 Apply the noise table, then present the remaining queue (sender, subject, date) so the human sees
 the shape of the turn.
 
@@ -152,6 +156,9 @@ decision. (Reading via the API does not clear the unread flag. In zsh, pipe ids 
 unquoted `$IDS` does not word-split.)
 
 ### 4. Open-thread aging (standing state, every turn — jjackson/ace#818)
+**Runs on every turn REGARDLESS of what §1 found, including a turn that reported "inbox clear."**
+This section reads inbox *state*, not inbox *events*, so it is never skipped for want of unread
+mail — see §1's routing note.
 An unanswered external counterpart is **state, not an event** — a turn that only triages new mail
 lets an open thread age silently between turns (HENIKE waited 23 days). Every turn:
 - List ALL open correspond-tier threads (awaiting ACE or awaiting a decision) with **age in days**
