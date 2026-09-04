@@ -3,10 +3,11 @@ import { defineConfig } from 'vitest/config';
 export default defineConfig({
   test: {
     include: ['test/**/*.test.ts', 'lib/**/*.test.ts'],
-    // Redirects ~/.ace/sessions to a per-worker tempdir so `npm test`
-    // can never reap or pollute another live session's mobile locks.
-    // ace#1704.
-    setupFiles: ['test/setup/isolate-session-locks.ts'],
+    // Redirects the real ~/.ace state — session locks AND the
+    // mobile-backend toggle file — to a per-worker tempdir, so `npm test`
+    // can never reap or pollute another live session's state, and workers
+    // cannot contaminate each other through it. ace#1704 / #1883 / #1797.
+    setupFiles: ['test/setup/isolate-ace-home-state.ts'],
     exclude: ['test/eval/**'],
     // Integration tests gated by env var; default excludes them
     env: {

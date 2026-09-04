@@ -369,13 +369,19 @@ describe('MobileClient.runRecipe recording', () => {
       avd: fakeAvd() as never,
     });
     // Force the cloud branch the same way the existing cloud tests do.
+    // Save and RESTORE — a bare `delete` here dropped the module-scope
+    // 'local' pin set at the top of this file for the rest of the worker's
+    // life, which is what let the shared ~/.ace/mobile-backend file
+    // resolve 'cloud' into whatever mobile file ran next. ace#1797.
+    const prev = process.env.ACE_MOBILE_BACKEND;
     process.env.ACE_MOBILE_BACKEND = 'cloud';
     try {
       const result = await client.runRecipe(recipePath, {}, dir, 'cc-baseline');
       expect(rec.start).not.toHaveBeenCalled();
       expect(result.videos).toBeUndefined();
     } finally {
-      delete process.env.ACE_MOBILE_BACKEND;
+      if (prev === undefined) delete process.env.ACE_MOBILE_BACKEND;
+      else process.env.ACE_MOBILE_BACKEND = prev;
     }
   });
 });

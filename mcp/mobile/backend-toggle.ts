@@ -32,7 +32,34 @@ export interface ResolvedBackend {
   ppid: number;
 }
 
-const STATE_DIR = path.join(os.homedir(), '.ace');
+/**
+ * Directory holding the per-session backend state file.
+ *
+ * Resolved at CALL time, not import time, and behind an env seam — the
+ * same shape as `sessionLockDir()` in ./session-lock.ts, and for the
+ * same reason (ace#1704). A module-level `const` froze the path at
+ * first import, so there was no way for a test worker to be given its
+ * own directory.
+ *
+ * Why that mattered: `resolveBackend()` keys the state file on
+ * `process.ppid`, which inside a vitest worker is the vitest MAIN
+ * process — identical in every worker. So `~/.ace/mobile-backend.<pid>`
+ * was ONE REAL FILE in the developer's home directory that every worker
+ * read, wrote and deleted concurrently. Observed directly: worker pid
+ * 19783 running backend-toggle.test.ts wrote `cloud` into it while
+ * worker pid 19255 running client.test.ts read `cloud` back out of it
+ * 12 times, and client.test.ts's own `clearSessionBackend()` deleted
+ * the file mid-assertion from the other side. That is the single source
+ * behind both ace#1883 and ace#1797.
+ *
+ * `ACE_MOBILE_STATE_DIR` is the isolation seam tests use; it is set to
+ * a per-worker tempdir by test/setup/isolate-ace-home-state.ts.
+ */
+export function mobileStateDir(): string {
+  const override = process.env.ACE_MOBILE_STATE_DIR;
+  if (override && override.trim()) return override;
+  return path.join(os.homedir(), '.ace');
+}
 
 /**
  * Resolve the active backend for *this* MCP-server process. Reads the
@@ -41,7 +68,7 @@ const STATE_DIR = path.join(os.homedir(), '.ace');
  */
 export function resolveBackend(): ResolvedBackend {
   const ppid = process.ppid;
-  const sessionFile = path.join(STATE_DIR, `mobile-backend.${ppid}`);
+  const sessionFile = path.join(mobileStateDir(), `mobile-backend.${ppid}`);
 
   const envRaw = (process.env.ACE_MOBILE_BACKEND || '').trim().toLowerCase();
   if (envRaw === 'cloud' || envRaw === 'local') {
@@ -69,8 +96,9 @@ export function setSessionBackend(backend: MobileBackend, ppid: number = process
   if (backend !== 'cloud' && backend !== 'local') {
     throw new Error(`invalid backend: ${backend} (expected 'cloud' or 'local')`);
   }
-  fs.mkdirSync(STATE_DIR, { recursive: true });
-  const file = path.join(STATE_DIR, `mobile-backend.${ppid}`);
+  const dir = mobileStateDir();
+  fs.mkdirSync(dir, { recursive: true });
+  const file = path.join(dir, `mobile-backend.${ppid}`);
   fs.writeFileSync(file, `${backend}\n`, 'utf8');
   return file;
 }
@@ -146,7 +174,7 @@ export function preflightMobileBackend(args: {
 
 /** Remove the per-session toggle (resets to default). */
 export function clearSessionBackend(ppid: number = process.ppid): void {
-  const file = path.join(STATE_DIR, `mobile-backend.${ppid}`);
+  const file = path.join(mobileStateDir(), `mobile-backend.${ppid}`);
   try {
     fs.unlinkSync(file);
   } catch {
