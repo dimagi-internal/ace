@@ -2348,14 +2348,19 @@ describe('classifyDeviceUserState: scoped regexes reject deeply-nested false pos
 
 describe('registerTestUser: tempdir lifecycle', () => {
   it('cleans up the temp registration dir on success', async () => {
-    const tmpRoot = os.tmpdir();
+    // Scoped to a dir only this test writes to. Diffing the GLOBAL
+    // os.tmpdir() made the assertion depend on whether anything else on
+    // the machine happened to register a user in the same window —
+    // another live ACE session, another vitest worker, a second suite.
+    // Measured 8 failures across 8 runs with one concurrent writer. ace#1942.
+    const tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'ace-regtmp-test-'));
     const before = new Set(fs.readdirSync(tmpRoot).filter((f) => f.startsWith('ace-mobile-reg-')));
     const { avd, maestro } = fakeMaestroAndAvd({
       registerToOtp: 'pass',
       registerFromOtp: 'pass',
       otp: '123456',
     });
-    const client = new MobileClient({ avd, maestro, staticRecipesDir: REAL_STATIC_DIR });
+    const client = new MobileClient({ avd, maestro, staticRecipesDir: REAL_STATIC_DIR, regTmpRoot: tmpRoot });
     await client.registerTestUser({
       avdName: 'AVD',
       phone: '+74260000001',
@@ -2371,15 +2376,44 @@ describe('registerTestUser: tempdir lifecycle', () => {
     expect(created).toEqual([]);
   });
 
+  it('creates its scratch dir under regTmpRoot, never the global os.tmpdir()', () => {
+    // The invariant behind ace#1942: the assertions above are only
+    // meaningful if the client actually honours the seam. Without it they
+    // silently go back to diffing a directory the whole machine writes to,
+    // and start failing on other people's work rather than on this code.
+    const scoped = fs.mkdtempSync(path.join(os.tmpdir(), 'ace-regtmp-seam-'));
+    try {
+      const { avd, maestro } = fakeMaestroAndAvd({
+        registerToOtp: 'pass',
+        registerFromOtp: 'pass',
+        otp: '123456',
+      });
+      const client = new MobileClient({
+        avd,
+        maestro,
+        staticRecipesDir: REAL_STATIC_DIR,
+        regTmpRoot: scoped,
+      });
+      expect(client.regTmpRoot).toBe(scoped);
+      expect(client.regTmpRoot).not.toBe(os.tmpdir());
+
+      // Omitted -> production default is still the global tmpdir.
+      const dflt = new MobileClient({ avd, maestro, staticRecipesDir: REAL_STATIC_DIR });
+      expect(dflt.regTmpRoot).toBe(os.tmpdir());
+    } finally {
+      fs.rmSync(scoped, { recursive: true, force: true });
+    }
+  });
+
   it('keeps the temp registration dir on failure for post-mortem', async () => {
-    const tmpRoot = os.tmpdir();
+    const tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'ace-regtmp-test-'));
     const before = new Set(fs.readdirSync(tmpRoot).filter((f) => f.startsWith('ace-mobile-reg-')));
     const { avd, maestro } = fakeMaestroAndAvd({
       registerToOtp: 'fail', // part A fails — registration throws
       registerFromOtp: 'pass',
       otp: '123456',
     });
-    const client = new MobileClient({ avd, maestro, staticRecipesDir: REAL_STATIC_DIR });
+    const client = new MobileClient({ avd, maestro, staticRecipesDir: REAL_STATIC_DIR, regTmpRoot: tmpRoot });
     await expect(
       client.registerTestUser({
         avdName: 'AVD',

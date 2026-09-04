@@ -124,6 +124,18 @@ export interface MobileClientOpts {
    */
   staticRecipesDir?: string;
   /**
+   * Root under which `registerTestUser` creates its scratch
+   * `ace-mobile-reg-<rand>` directory. Defaults to `os.tmpdir()`.
+   *
+   * This exists so the tempdir-lifecycle tests can assert on a directory
+   * only they write to. They used to diff the GLOBAL `os.tmpdir()` for
+   * `ace-mobile-reg-*` and assert the delta was empty, which any
+   * concurrent registration — another live ACE session, another vitest
+   * worker — falsified. Same class as the `~/.ace` sharing in ace#1883.
+   * ace#1942.
+   */
+  regTmpRoot?: string;
+  /**
    * Optional override for the tier-2 (auto-bootstrap) recovery in
    * `restoreDeviceUserState`. When provided, used as-is. When omitted
    * (the production default), the constructor calls
@@ -674,6 +686,8 @@ export class MobileClient {
   readonly avd: AvdBackend;
   readonly maestro: MaestroBackend;
   readonly staticRecipesDir: string;
+  /** Root for `registerTestUser` scratch dirs. See MobileClientOpts.regTmpRoot (ace#1942). */
+  readonly regTmpRoot: string;
   /**
    * Cloud backend handle. Always pre-constructed when ACE_WEB env is
    * available so a mid-session toggle to cloud routes immediately. Null
@@ -704,6 +718,7 @@ export class MobileClient {
     this.avd = opts.avd ?? new AvdBackend();
     this.maestro = opts.maestro ?? new MaestroBackend();
     this.staticRecipesDir = opts.staticRecipesDir ?? resolveStaticRecipesDir();
+    this.regTmpRoot = opts.regTmpRoot ?? os.tmpdir();
     // `bootstrapConfig: null` (explicit) disables auto-bootstrap;
     // `undefined` (omitted) reads from env; non-null override wins.
     this.bootstrapConfig =
@@ -2449,7 +2464,7 @@ export class MobileClient {
     }
 
     const adbPort = AvdBackend.adbPortFromSerial(avd.serial) ?? undefined;
-    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'ace-mobile-reg-'));
+    const tmp = fs.mkdtempSync(path.join(this.regTmpRoot, 'ace-mobile-reg-'));
 
     // Resolve `${SELECTOR:...}` placeholders BEFORE handing the recipes to
     // Maestro — the same prep `runRecipe` and `cloudRegisterTestUser` run.
