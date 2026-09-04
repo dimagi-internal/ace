@@ -242,7 +242,28 @@ if [ "$REBASE_FIRST" = "1" ]; then
       git add -- "$vf"
     fi
   done
-  GIT_EDITOR=true git commit --amend --no-edit >/dev/null
+  # WHICH commit the bump lands in is not the same question as WHETHER it
+  # landed, and until ace#1852 only the second was asked. `git commit --amend`
+  # assumes the rebased tip is one of YOUR commits. When the branch has ZERO
+  # unmerged commits — its previous PR already merged and you are starting fresh
+  # work on the same branch name — the rebased tip IS `origin/main`'s own commit,
+  # and the amend rewrites it: HEAD becomes a new-sha copy of someone else's
+  # merge commit, carrying your bump, under their authorship. Silently: the
+  # script printed its success line and exited 0. Observed on emdash/spark-iyg5w
+  # while shipping ace#1851.
+  #
+  # So: if HEAD is contained in origin/main, there is nothing of ours to fold
+  # into. Commit the bump as its OWN commit rather than rewriting upstream
+  # history. The bump still lands (jjackson/ace#578's invariant holds), it just
+  # lands somewhere honest.
+  UPSTREAM_TIP="$(git rev-parse --verify --quiet origin/main || true)"
+  if [ -n "$UPSTREAM_TIP" ] && git merge-base --is-ancestor HEAD "$UPSTREAM_TIP" 2>/dev/null; then
+    echo "version-bump: branch has no unmerged commits — HEAD is origin/main's own tip."
+    echo "  Committing the bump as a NEW commit rather than amending upstream history (ace#1852)."
+    git commit -q -m "chore: bump version to $NEXT"
+  else
+    GIT_EDITOR=true git commit --amend --no-edit >/dev/null
+  fi
   # Guard: after committing, the version files MUST be clean. If they're still
   # dirty the bump didn't make it into the commit — fail loudly rather than let
   # a no-bump branch get pushed.
@@ -253,7 +274,7 @@ if [ "$REBASE_FIRST" = "1" ]; then
     echo "  the bump was NOT committed; do not push." >&2
     exit 1
   fi
-  echo "version-bump: folded bump into rebased tip (amended); version files committed"
+  echo "version-bump: bump committed onto the rebased tip; version files committed"
 fi
 
 echo "Bumped to v$NEXT"
