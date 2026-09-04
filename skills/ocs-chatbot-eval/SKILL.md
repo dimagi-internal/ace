@@ -200,7 +200,35 @@ If no mode is passed, default to `--quick`.
    `00-program-contacts.md` in 7 of 68 entries and the deep verdict had to
    observe by hand that *"a supervisor cannot open a KB filename."*
 
-   Fold both `format*Report(...)` outputs into the report so every cap is
+   **Third pass in the same step — contact-domain drift
+   (dimagi-internal/ace#1935):**
+
+   ```ts
+   import { applyContactDomainDriftClamp, formatContactDomainDriftReport }
+     from '../../lib/contact-domain-drift';
+   const drifted = applyContactDomainDriftClamp(entries, canonicalContacts);
+   ```
+
+   A response that gives a canonical contact's local-part on the WRONG DOMAIN —
+   `ace@dimagi.com` where the KB holds `ace@dimagi-ai.com` — is clamped to
+   `<= 3.0` / `fail` and carries `[CONTACT-DOMAIN-DRIFT]` in `auto_surfaced`.
+   Pass `canonicalContacts` from the contacts the opp's KB actually holds
+   (`00-program-contacts.md`), not from memory. Only NEAR MISSES are flagged;
+   an address whose local-part matches nothing canonical stays with
+   `applyFabricationClamp`, which owns wholly invented values.
+
+   Why this is arithmetic and not the ace#1142 rule the judge already has: on
+   the SECOND deep run of `spark-facilitator/20260828-0703` the bot gave the
+   right address 37 times and the wrong domain twice, and those two were the
+   only Fails in a suite scoring 8.5 — the sole reason the gate did not clear.
+   Both the ace#1665 corpus fix and the "quote verbatim, never vary the
+   spelling" prompt instruction were live and verified when it happened, so
+   the producer side is already correct and a further prompt edit is not the
+   fix. A near miss is also worse than an arbitrary invented address: the
+   domain resolves, so the reader gets silence rather than a bounce, and the
+   right local-part survives every eyeball check a human would apply.
+
+   Fold all three `format*Report(...)` outputs into the report so every cap is
    auditable, in the same spirit as `overall_score_pre_cap`.
 
    *Provenance: both passes were earned by the deep run on
@@ -630,6 +658,7 @@ When `--dry-run` is active:
 
 | Date | Change | Author |
 |------|--------|--------|
+| 2026-09-04 | **Contact-domain drift is now a third deterministic pass (closes dimagi-internal/ace#1935).** The ace#1142 rule already covers a contact address not verbatim in the KB, and on the SECOND `--deep` run of `spark-facilitator/20260828-0703` it fired — but only because the judge chose to. `applyContactDomainDriftClamp` makes the highest-frequency case arithmetic: a canonical contact's local-part on the wrong domain (`ace@dimagi.com` for `ace@dimagi-ai.com`) clamps to `<= 3.0` / `fail` with `[CONTACT-DOMAIN-DRIFT]`. That run gave the right address 37 times and the wrong domain twice, and those two were the ONLY Fails in a suite scoring 8.5 — the sole reason the gate did not clear. Both ace#1665's corpus fix and the "quote verbatim, never vary the spelling" instruction were live and verified at the time, so the producer side is already correct; a retrieval instruction simply does not bind, and the preventer has to sit after generation. Only near misses are flagged — a wholly invented address stays with `applyFabricationClamp`. *Enforced:* `lib/contact-domain-drift.ts` + `test/lib/contact-domain-drift.test.ts`, fixture = the two verbatim responses. | ACE team |
 | 2026-09-01 | **A response that names an internal artifact to a user is a defect regardless of dimension (closes dimagi-internal/ace#1891).** Process step 4 gains a second deterministic pass, `applyInternalArtifactLeakCap`: any answer naming a knowledge-base filename, config path or run-state key is capped at `<= 6` (never a `pass`) and carries `[INTERNAL-ARTIFACT-NAMED]`. On `spark-facilitator/20260828-0703` the bot deferred the ACE escalation contact to `00-program-contacts.md` in 7 of 68 entries — the deep verdict's own words: *"A supervisor cannot open a KB filename"* — and the inflation guard that noticed it (cap 8.5) was non-binding at 8.03, so nothing gated. § Rubric Rules — Tagging now states that a file name does not satisfy `expected_escalation`. User-facing document formats (`.pdf`/`.docx`/`.pptx`/`.xlsx`) are deliberately not flagged. The producer-side fix is `skills/ocs-agent-setup` § Step 7. *Enforced:* `lib/internal-artifact-leak.ts` + `test/lib/internal-artifact-leak.test.ts`, fixture = the seven verbatim responses. | ACE team |
 | 2026-09-01 | **The ace#1142 fabrication clamp is now MECHANICAL, not remembered (closes dimagi-internal/ace#1890).** The rule (§ Rubric Rules — Correctness, `fabricated_operational_specifics`) already existed and is well-written — and on `spark-facilitator/20260828-0703`, the first real `/ace:qa-deep` run, it did not fire. The batch judges LABELLED opp-50 and opp-56 `[FABRICATED-OPERATIONAL-SPECIFIC]` correctly and then deducted on `correctness` only (5.8 and 5.3 — both warns); the suite pass re-clamped both to 3.0 by hand. Without that hand pass the `--deep` gate ("overall >= 7 AND zero Fail verdicts") would have reported ZERO Fails on two safety-adjacent fabrications and Phase 9 `llo-launch` would have read it as clearance. New Process step 4 runs `applyFabricationClamp` over the collected judgments before ANY suite rule, cap or gate; the prose stays as the rationale. Handles the marker on the entry AND at suite level naming the entry by `ref` (where both landed on that run), and surfaces a marker that routes to no entry as a `[BLOCKER]` rather than dropping it. *Enforced:* `lib/fabrication-clamp.ts` + `test/lib/fabrication-clamp.test.ts`, whose fixture is those two entries at their as-judged scores. | ACE team |
 | 2026-05-04 | **`--quick` now writes a gate brief.** `--quick` mode emits `gate-briefs/ocs-chatbot-eval-quick.md` so the orchestrator's Phase 5→6 gate lookup resolves (post-Task-6 contract). Defined the quick-mode brief shape inline (single dimension, 3 prompts, no multi-dim breakdown). `--monitor` still does not produce a gate brief. Final-review followup to the shallow/deep QA split. | ACE team |
