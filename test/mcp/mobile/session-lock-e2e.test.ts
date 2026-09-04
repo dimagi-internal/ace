@@ -339,7 +339,11 @@ describe.skipIf(process.env.CI)('session-lock E2E (multi-process parallel-sessio
     daemonProc.unref();
     let daemonPid = -1;
     await new Promise<void>((resolve, reject) => {
-      const timer = setTimeout(() => reject(new Error('daemon never reported LISTENING')), 10_000);
+      // 60s to match spawnLockHolder's own bound above. A 10s wait for a
+      // spawned node daemon to print LISTENING measures how busy the box is,
+      // not whether the code works — it fired 1 of 6 runs under a saturated
+      // machine after the vitest-level timeout was raised. ace#1912.
+      const timer = setTimeout(() => reject(new Error('daemon never reported LISTENING')), 60_000);
       daemonProc.stdout?.on('data', (chunk) => {
         const m = String(chunk).match(/DAEMON_LISTENING (\d+)/);
         if (m) {
