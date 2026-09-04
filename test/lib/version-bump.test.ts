@@ -428,4 +428,94 @@ describe('scripts/version-bump.sh', () => {
 
     fs.rmSync(remote, { recursive: true, force: true });
   });
+
+  it('--rebase-first never REWRITES origin/main\'s own tip when the branch has no unmerged commits (ace#1852)', () => {
+    // The amend added by jjackson/ace#578 asks "did the bump land?" and never
+    // "which commit did it land IN?". It assumes the rebased tip is one of
+    // YOUR commits. When the branch has ZERO unmerged commits — its previous
+    // PR already merged and you are starting fresh work on the same branch
+    // name — the rebased tip IS origin/main's own commit, so the amend
+    // rewrites it. HEAD becomes a new-sha copy of somebody else's merge
+    // commit, carrying your bump, under their authorship, and the script
+    // prints its success line and exits 0.
+    //
+    // Observed live on emdash/spark-iyg5w while shipping ace#1851. The
+    // assertion that catches it is ANCESTRY, not cleanliness: the upstream tip
+    // must still be reachable from HEAD afterwards.
+    fixtureDir = makeFixtureRepo('0.10.14');
+
+    const remote = fs.mkdtempSync(path.join(os.tmpdir(), 'ace-version-remote-'));
+    execSync('git init -q --bare', { cwd: remote });
+    execSync(`git remote add origin ${remote}`, { cwd: fixtureDir });
+    execSync('git branch -M main', { cwd: fixtureDir });
+    execSync('git push -q origin main', { cwd: fixtureDir });
+
+    // Put SOMEBODY ELSE's merge commit on origin/main — the thing that must
+    // not be rewritten.
+    execSync('git checkout -q -b other', { cwd: fixtureDir });
+    fs.writeFileSync(path.join(fixtureDir, 'their.txt'), 'their work\n');
+    execSync('git add -A', { cwd: fixtureDir });
+    execSync('git commit -q -m "their work"', {
+      cwd: fixtureDir,
+      env: { ...process.env, GIT_AUTHOR_NAME: 'Someone Else', GIT_AUTHOR_EMAIL: 'other@example.com' },
+    });
+    execSync('git checkout -q main', { cwd: fixtureDir });
+    execSync('git merge -q --no-ff other -m "Merge pull request #1849 from dimagi-internal/other"', {
+      cwd: fixtureDir,
+      env: { ...process.env, GIT_AUTHOR_NAME: 'Someone Else', GIT_AUTHOR_EMAIL: 'other@example.com' },
+    });
+    execSync('git push -q origin main', { cwd: fixtureDir });
+    execSync('git branch -q -D other', { cwd: fixtureDir });
+
+    // The branch under test: sitting exactly on main, zero unmerged commits,
+    // with uncommitted working-tree edits — the state the ship loop hits when
+    // a previous PR on this branch name has merged.
+    execSync('git checkout -q -B feature main', { cwd: fixtureDir });
+    fs.writeFileSync(path.join(fixtureDir, 'mywork.txt'), 'my edit\n');
+
+    const upstreamTip = execSync('git rev-parse origin/main', {
+      cwd: fixtureDir,
+      encoding: 'utf8',
+    }).trim();
+
+    execFileSync('./scripts/version-bump.sh', ['--rebase-first'], {
+      cwd: fixtureDir,
+      encoding: 'utf8',
+    });
+
+    // THE assertion. Before ace#1852's fix, HEAD was a rewritten copy of
+    // `upstreamTip` with a different sha, and this is false.
+    const isAncestor = (() => {
+      try {
+        execSync(`git merge-base --is-ancestor ${upstreamTip} HEAD`, { cwd: fixtureDir });
+        return true;
+      } catch {
+        return false;
+      }
+    })();
+    const headSubject = execSync("git log -1 --format=%s HEAD", {
+      cwd: fixtureDir,
+      encoding: 'utf8',
+    }).trim();
+    expect(
+      isAncestor,
+      "--rebase-first REWROTE origin/main's own tip. HEAD is now a new-sha copy of\n" +
+        `an upstream commit (subject: ${headSubject}) instead of a commit of ours.\n` +
+        'Guard the amend on ancestry — see scripts/version-bump.sh (ace#1852).',
+    ).toBe(true);
+
+    // And the bump must still have landed in HEAD (ace#578's invariant).
+    expect(
+      execSync('git show HEAD:VERSION', { cwd: fixtureDir, encoding: 'utf8' }).trim(),
+      'the bump must still be committed, just in a commit of our own',
+    ).toBe('0.10.15');
+
+    const dirty = execSync(
+      'git status --porcelain -- VERSION package.json .claude-plugin/',
+      { cwd: fixtureDir, encoding: 'utf8' },
+    ).trim();
+    expect(dirty, `version files still dirty:\n${dirty}`).toBe('');
+
+    fs.rmSync(remote, { recursive: true, force: true });
+  });
 });
