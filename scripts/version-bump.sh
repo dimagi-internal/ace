@@ -41,6 +41,15 @@
 #   scripts/version-bump.sh --rebase-first  # rebase onto origin/main (auto-resolving
 #                                           # the 4 version files via --ours), then bump
 #
+# Env:
+#   ACE_VERSION_CLAIMS  unset  -> ask GitHub which versions OPEN PRs have already
+#                                 claimed, and bump past those too (see § Claimed
+#                                 versions below)
+#                       <list> -> use exactly these space/newline-separated versions
+#                                 as the claim set; skip the GitHub scan (tests, and
+#                                 anyone scripting the bump)
+#                       none   -> no claim awareness at all; pre-ace#1914 behaviour
+#
 # Output: prints the new version on the last line of stdout.
 
 set -euo pipefail
@@ -189,6 +198,88 @@ _max_version() {
 }
 
 BASE="$(_max_version "$LOCAL_VERSION" "$ORIGIN_VERSION")"
+
+# ## Claimed versions (ace#1914)
+#
+# `max(local, origin/main) + 1` is computed at COMMIT time, and a sibling
+# worktree's bump is invisible until its PR MERGES. So two branches that bump in
+# the same window pick the SAME number, the first merges, and the second's
+# `clean-install` fails with "VERSION <n> is ALREADY on origin/main".
+#
+# Measured on the 60 clean-install runs ending 2026-09-04: 12 failures (20% red),
+# 11 of them VERSION contention, and **9 of those 11 were literally this** —
+# `ALREADY on origin/main`, twice with two branches on the same number
+# (0.13.1115 x2, 0.13.1122 x2). Only 1 was a stale branch (`BEHIND`).
+#
+# A competing branch's claim IS visible before it merges: the ship loop pushes
+# before it opens the PR, so the number it took is readable off the open PR's
+# head. Reading it here removes the duplicate-number case, which is the case
+# nine failures in ten actually were.
+#
+# Best-effort by construction: no `gh`, no network, no permission, a malformed
+# answer — any of those and we fall through to exactly the pre-ace#1914
+# behaviour. This must never be able to FAIL a bump; it can only ever raise the
+# floor.
+_claim_is_sane() {
+  # A claim only counts if it is plausibly the same release line as BASE and
+  # within a small distance of it. Without this one typo'd 0.99.0 on some open
+  # PR would poison every bump in the repo until that PR closed.
+  local c="$1" b="$2"
+  _is_semver "$c" || return 1
+  IFS='.' read -r c1 c2 c3 <<<"$c"
+  IFS='.' read -r b1 b2 b3 <<<"$b"
+  [ "$c1" = "$b1" ] || return 1
+  [ "$c2" = "$b2" ] || return 1
+  [ "$c3" -gt "$b3" ] || return 0   # at or below BASE: harmless, max() ignores it
+  [ $((c3 - b3)) -le 500 ]
+}
+
+_scan_open_pr_claims() {
+  # No remote -> no GitHub -> no claims. Checked first so a fixture or an
+  # offline clone never pays for a `gh` round-trip that can only fail.
+  git remote get-url origin >/dev/null 2>&1 || return 0
+  command -v gh >/dev/null 2>&1 || return 0
+  local slug
+  slug="$(gh repo view --json nameWithOwner -q .nameWithOwner 2>/dev/null || true)"
+  [ -n "$slug" ] || return 0
+  local oids
+  oids="$(gh pr list --repo "$slug" --state open --limit 50 \
+            --json headRefOid -q '.[].headRefOid' 2>/dev/null || true)"
+  [ -n "$oids" ] || return 0
+  local oid v
+  while IFS= read -r oid; do
+    [ -n "$oid" ] || continue
+    v="$(gh api "repos/$slug/contents/VERSION?ref=$oid" \
+           -H "Accept: application/vnd.github.raw" 2>/dev/null | tr -d '[:space:]' || true)"
+    [ -n "$v" ] && echo "$v"
+  done <<<"$oids"
+}
+
+CLAIMS_RAW=""
+CLAIMS_SOURCE="none"
+# --ci runs ON main, where "open PRs" is not a meaningful question and the extra
+# round-trips would only slow the post-merge job. Everywhere else, including
+# --dry-run, resolve claims so the number printed is the number you would get.
+if [ "$CI_MODE" = "0" ]; then
+  case "${ACE_VERSION_CLAIMS-}" in
+    none) CLAIMS_SOURCE="disabled" ;;
+    "")   CLAIMS_RAW="$(_scan_open_pr_claims || true)"; CLAIMS_SOURCE="open-prs" ;;
+    *)    CLAIMS_RAW="${ACE_VERSION_CLAIMS}"; CLAIMS_SOURCE="ACE_VERSION_CLAIMS" ;;
+  esac
+fi
+
+CLAIMED_MAX=""
+if [ -n "$CLAIMS_RAW" ]; then
+  for c in $CLAIMS_RAW; do
+    if _claim_is_sane "$c" "$BASE"; then
+      CLAIMED_MAX="$(_max_version "$c" "$CLAIMED_MAX")"
+    fi
+  done
+fi
+if [ -n "$CLAIMED_MAX" ]; then
+  BASE="$(_max_version "$BASE" "$CLAIMED_MAX")"
+fi
+
 IFS='.' read -r MAJOR MINOR PATCH <<<"$BASE"
 NEXT="${MAJOR}.${MINOR}.$((PATCH + 1))"
 
@@ -197,6 +288,9 @@ ORIGIN_DISPLAY="${ORIGIN_VERSION:-(unreachable)}"
 if [ "$DRY_RUN" = "1" ]; then
   echo "would bump to v$NEXT"
   echo "  local=v$LOCAL_VERSION  origin/main=v$ORIGIN_DISPLAY"
+  if [ -n "$CLAIMED_MAX" ]; then
+    echo "  highest version claimed by an open PR=v$CLAIMED_MAX (source: $CLAIMS_SOURCE)"
+  fi
   echo "$NEXT"
   exit 0
 fi
@@ -279,6 +373,9 @@ fi
 
 echo "Bumped to v$NEXT"
 echo "  was: local=v$LOCAL_VERSION  origin/main=v$ORIGIN_DISPLAY"
+if [ -n "$CLAIMED_MAX" ]; then
+  echo "  bumped past v$CLAIMED_MAX, already claimed by an open PR ($CLAIMS_SOURCE) — ace#1914"
+fi
 echo "  wrote: $VERSION_FILE"
 echo "  wrote: $REPO_ROOT/package.json"
 echo "  wrote: $REPO_ROOT/.claude-plugin/plugin.json"
