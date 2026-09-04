@@ -222,6 +222,83 @@ describe('scripts/version-bump.sh', () => {
     expect(out.trim().split('\n').pop()).toBe('0.10.21');
   });
 
+  // The two tests below drive the LIVE scan path (`gh pr list` -> each head's
+  // VERSION) rather than the ACE_VERSION_CLAIMS seam, via a stub `gh` on PATH.
+  // The seam tests prove the arithmetic; these prove the thing that actually
+  // runs in a real ship.
+
+  function stubGh(dir: string, rows: Array<{ branch: string; oid: string; version: string }>): string {
+    const binDir = path.join(dir, 'stub-bin');
+    fs.mkdirSync(binDir, { recursive: true });
+    const list = rows.map((r) => `${r.branch}\\t${r.oid}`).join('\\n');
+    const cases = rows
+      .map((r) => `    *${r.oid}*) echo "${r.version}"; exit 0;;`)
+      .join('\n');
+    fs.writeFileSync(
+      path.join(binDir, 'gh'),
+      [
+        '#!/usr/bin/env bash',
+        'if [ "$1" = "repo" ] && [ "$2" = "view" ]; then echo "fake/repo"; exit 0; fi',
+        `if [ "$1" = "pr" ] && [ "$2" = "list" ]; then printf '${list}\\n'; exit 0; fi`,
+        'if [ "$1" = "api" ]; then',
+        '  case "$*" in',
+        cases,
+        '  esac',
+        '  exit 1',
+        'fi',
+        'exit 1',
+        '',
+      ].join('\n'),
+      { mode: 0o755 },
+    );
+    return binDir;
+  }
+
+  it('reads claims off OPEN PRs through gh, not just the env seam (ace#1914)', () => {
+    fixtureDir = makeFixtureRepo('0.10.14');
+    // A remote must exist — no remote means no GitHub, and the scan short-circuits.
+    execSync('git remote add origin https://github.com/fake/repo.git', { cwd: fixtureDir });
+    execSync('git checkout -q -b mine', { cwd: fixtureDir });
+    const binDir = stubGh(fixtureDir, [
+      { branch: 'other', oid: 'oid-other', version: '0.10.20' },
+    ]);
+    const out = execFileSync('./scripts/version-bump.sh', ['--dry-run'], {
+      cwd: fixtureDir,
+      encoding: 'utf8',
+      env: { ...process.env, PATH: `${binDir}:${process.env.PATH}`, ACE_VERSION_CLAIMS: '' },
+    });
+    expect(out).toMatch(/claimed by an open PR=v0\.10\.20 \(source: open-prs\)/);
+    expect(out.trim().split('\n').pop()).toBe('0.10.21');
+  });
+
+  it('does NOT count its OWN open PR as a competing claim', () => {
+    // Counting it inflates the bump by one on every --rebase-first recovery of
+    // the same PR. Observed 2026-09-04 shipping ace#1776: origin/main was
+    // 0.13.1151, PR #1938's own head already read 0.13.1152, and the recovery
+    // "bumped past v0.13.1152, already claimed by an open PR" to 0.13.1153 —
+    // then would have gone to 1154, 1155, … on each further rebase.
+    fixtureDir = makeFixtureRepo('0.10.14');
+    execSync('git remote add origin https://github.com/fake/repo.git', { cwd: fixtureDir });
+    execSync('git checkout -q -b mine', { cwd: fixtureDir });
+    const binDir = stubGh(fixtureDir, [
+      { branch: 'mine', oid: 'oid-mine', version: '0.10.99' },
+      { branch: 'other', oid: 'oid-other', version: '0.10.20' },
+    ]);
+    const out = execFileSync('./scripts/version-bump.sh', ['--dry-run'], {
+      cwd: fixtureDir,
+      encoding: 'utf8',
+      env: { ...process.env, PATH: `${binDir}:${process.env.PATH}`, ACE_VERSION_CLAIMS: '' },
+    });
+    expect(
+      out.trim().split('\n').pop(),
+      'our own branch claimed 0.10.99; counting it would give 0.10.100 and burn a\n' +
+        'version on every rebase of the same PR.',
+    ).toBe('0.10.21');
+    expect(out, 'the reported claim must be the OTHER PR, not ours').toMatch(
+      /claimed by an open PR=v0\.10\.20/,
+    );
+  });
+
   it('--dry-run prints next version but does not mutate any file', () => {
     fixtureDir = makeFixtureRepo('0.10.14');
     const before = readAllVersions(fixtureDir);

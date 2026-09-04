@@ -242,17 +242,30 @@ _scan_open_pr_claims() {
   local slug
   slug="$(gh repo view --json nameWithOwner -q .nameWithOwner 2>/dev/null || true)"
   [ -n "$slug" ] || return 0
-  local oids
-  oids="$(gh pr list --repo "$slug" --state open --limit 50 \
-            --json headRefOid -q '.[].headRefOid' 2>/dev/null || true)"
-  [ -n "$oids" ] || return 0
-  local oid v
-  while IFS= read -r oid; do
+  # OUR OWN open PR is not a competitor, and counting it inflates the bump by one
+  # on every recovery. Observed 2026-09-04 shipping ace#1776: origin/main was
+  # 0.13.1151 and PR #1938's own head already read 0.13.1152, so
+  # `--rebase-first` "bumped past v0.13.1152, already claimed by an open PR" and
+  # produced 0.13.1153 — correct-but-wasteful once, and +1 more on every
+  # subsequent rebase of the same PR. Exclude the PR whose head branch is the
+  # branch we are standing on.
+  local self_branch
+  self_branch="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || true)"
+  local rows
+  rows="$(gh pr list --repo "$slug" --state open --limit 50 \
+            --json headRefName,headRefOid \
+            -q '.[] | "\(.headRefName)\t\(.headRefOid)"' 2>/dev/null || true)"
+  [ -n "$rows" ] || return 0
+  local name oid v
+  while IFS="$(printf '\t')" read -r name oid; do
     [ -n "$oid" ] || continue
+    if [ -n "$self_branch" ] && [ "$name" = "$self_branch" ]; then
+      continue
+    fi
     v="$(gh api "repos/$slug/contents/VERSION?ref=$oid" \
            -H "Accept: application/vnd.github.raw" 2>/dev/null | tr -d '[:space:]' || true)"
     [ -n "$v" ] && echo "$v"
-  done <<<"$oids"
+  done <<<"$rows"
 }
 
 CLAIMS_RAW=""
