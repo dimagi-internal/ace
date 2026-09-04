@@ -97,8 +97,17 @@ jobs:
       # /ace:update at the same time, with every version file reading correct.
       # Measured 2026-08-24: 4 of ~20 PRs in one sweep collided; 3 needed a
       # follow-up bump purely to become reachable.
+      # PR_NUMBER + GH_TOKEN are what the SECOND assertion in that script needs
+      # (ace#1776): unique against origin/main is not unique against the other
+      # PRs that are also about to merge, and `main` has strict=false so this
+      # check is never re-run at merge time. Without these two env vars the
+      # claim half no-ops SILENTLY — which is why test/lib/version-uniqueness
+      # asserts this wiring rather than trusting it.
       - name: VERSION advances past origin/main
         if: github.event_name == 'pull_request'
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: npx tsx scripts/check-version-unique.ts
 
       # Post-merge backstop. Cannot block anything - it runs after the merge -

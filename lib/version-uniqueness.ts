@@ -128,3 +128,105 @@ export function checkVersionAdvances(
     baseline,
   };
 }
+
+/**
+ * ## The other half of ace#1593: unique AT CHECK TIME is not unique AT MERGE TIME.
+ *
+ * `checkVersionAdvances` reads `origin/main` LIVE, which closed the half where a
+ * PR bumps to a version main ALREADY has. It cannot close the half where the
+ * version becomes non-unique AFTER the check ran, because branch protection on
+ * `main` has `required_status_checks.strict = false` (verified 2026-09-04) — the
+ * check is evaluated once, against main as it was, and never re-evaluated at
+ * merge time.
+ *
+ * Two PRs off one base both bump to N, both go green while N is genuinely
+ * unique, and then BOTH merge. There is no git conflict to catch it: the two
+ * VERSION files have IDENTICAL content, so GitHub reports `mergeable=MERGEABLE
+ * mergeState=CLEAN` and auto-merge lands the second one.
+ *
+ * Measured on the 40 first-parent merges ending 2026-09-04 — three duplicate
+ * pairs, all AFTER ace#1593 closed, all within a minute of each other:
+ *
+ *   0.13.1114  #1898  2026-09-01T14:29:23   |  0.13.1134  #1916  2026-09-02T13:06:40
+ *   0.13.1114  #1899  2026-09-01T14:29:12   |  0.13.1134  #1915  2026-09-02T13:05:44
+ *   0.13.1103  #1874  2026-09-01T06:54:00   |
+ *   0.13.1103  #1873  2026-09-01T06:49:12   |
+ *
+ * In every one of those pairs BOTH PRs were open at once. So the property that
+ * separates them is available at check time after all — not from `main`, but
+ * from the other OPEN PRs. This asserts it.
+ *
+ * ## Why the tiebreak is the PR NUMBER
+ *
+ * If both PRs simply failed on seeing each other, two concurrent checks would
+ * BOTH go red and neither could proceed without a human. Rejecting only when the
+ * colliding claim belongs to an OLDER (lower-numbered) PR makes the resolution
+ * deterministic and one-sided: the PR that opened first keeps the number, the
+ * later one rebases. Exactly one of any pair is asked to move.
+ *
+ * ## What it still does NOT cover
+ *
+ * A PR that opens AFTER this check has already run green is invisible to it, and
+ * if that PR merges first this one is stale-green — the residual that only
+ * `strict = true` or a merge queue removes. The `--post-merge` arm remains the
+ * backstop for that, turning an escaped race into an immediately red `main`.
+ */
+export interface OpenPrClaim {
+  /** PR number — the tiebreak. Lower means opened earlier. */
+  number: number;
+  /** The VERSION at that PR's head, as read from the repository. */
+  version: string;
+}
+
+export function checkVersionUnclaimed(
+  candidateRaw: string,
+  selfPrNumber: number,
+  claims: OpenPrClaim[],
+): VersionCheckResult {
+  const candidateText = (candidateRaw ?? '').trim();
+  const candidate = parseSemVer(candidateText);
+
+  if (!candidate) {
+    return {
+      comparison: 'unparseable',
+      ok: false,
+      message: `VERSION is not valid semver — branch read ${JSON.stringify(candidateRaw)}.`,
+    };
+  }
+
+  // Only OLDER PRs can take the number off us. Ourselves and anything opened
+  // later are not a reason to move.
+  const colliding = claims
+    .filter((c) => Number.isFinite(c.number) && c.number !== selfPrNumber && c.number < selfPrNumber)
+    .filter((c) => {
+      const v = parseSemVer(c.version);
+      return v !== null && compareSemVer(v, candidate) === 0;
+    })
+    .sort((a, b) => a.number - b.number);
+
+  if (colliding.length === 0) {
+    return {
+      comparison: 'ahead',
+      ok: true,
+      message: `VERSION ${candidateText} is not claimed by any older open PR (${claims.length} checked).`,
+      candidate,
+    };
+  }
+
+  const names = colliding.map((c) => `#${c.number}`).join(', ');
+  return {
+    comparison: 'equal',
+    ok: false,
+    message:
+      `VERSION ${candidateText} is ALREADY CLAIMED by an older open PR (${names}). ` +
+      'Nothing will conflict — two identical VERSION files merge cleanly — so if both go ' +
+      'green both will merge and the second tree lands unreachable by /ace:update ' +
+      '(ace#1593, ace#1776).\n' +
+      'The older PR keeps the number; this one moves:\n' +
+      '    gh pr merge <N> --disable-auto        # stop auto-merge racing the rebase\n' +
+      '    bash scripts/version-bump.sh --rebase-first\n' +
+      '    git push --force-with-lease\n' +
+      '    gh pr merge <N> --auto --merge        # re-arm only after the new VERSION is pushed',
+    candidate,
+  };
+}
