@@ -131,6 +131,97 @@ describe('scripts/version-bump.sh', () => {
     expect(last).toBe('0.10.10');
   });
 
+  // ── ace#1914: claim awareness ──────────────────────────────────────────────
+  //
+  // `max(local, origin/main) + 1` is computed at COMMIT time and a sibling
+  // worktree's bump is invisible until its PR MERGES, so two branches bumping
+  // in the same window pick the SAME number. Measured on the 60 clean-install
+  // runs ending 2026-09-04: 12 failures, 11 of them VERSION contention, and 9
+  // of those 11 were exactly this — `VERSION <n> is ALREADY on origin/main`,
+  // twice with two branches literally on one number (0.13.1115 x2,
+  // 0.13.1122 x2).
+  //
+  // These drive the claim set through ACE_VERSION_CLAIMS so they are hermetic;
+  // the live path (`gh pr list` -> each head's VERSION) resolves the same list
+  // and folds it in at the same point.
+
+  it('bumps PAST a version an open PR has already claimed (ace#1914)', () => {
+    fixtureDir = makeFixtureRepo('0.10.14');
+    const out = execFileSync('./scripts/version-bump.sh', ['--force'], {
+      cwd: fixtureDir,
+      encoding: 'utf8',
+      env: { ...process.env, ACE_VERSION_CLAIMS: '0.10.15' },
+    });
+    expect(
+      out.trim().split('\n').pop(),
+      'a sibling worktree already claimed 0.10.15; picking it again is the\n' +
+        'collision that fails clean-install with "ALREADY on origin/main".',
+    ).toBe('0.10.16');
+    expect(fs.readFileSync(path.join(fixtureDir, 'VERSION'), 'utf8').trim()).toBe('0.10.16');
+  });
+
+  it('takes the HIGHEST claim, not the first or the last', () => {
+    fixtureDir = makeFixtureRepo('0.10.14');
+    const out = execFileSync('./scripts/version-bump.sh', ['--force'], {
+      cwd: fixtureDir,
+      encoding: 'utf8',
+      env: { ...process.env, ACE_VERSION_CLAIMS: '0.10.31 0.10.15 0.10.9' },
+    });
+    // Semver-aware, not lexical: 0.10.31 beats 0.10.9.
+    expect(out.trim().split('\n').pop()).toBe('0.10.32');
+  });
+
+  it('ignores an implausible claim, so one typo cannot poison every later bump', () => {
+    // Without a sanity bound, a single mistyped VERSION on any open PR would
+    // drag the whole repo's numbering with it until that PR closed.
+    for (const bad of ['9.9.9', '0.11.0', '0.10.99999', 'not-a-version', '']) {
+      fixtureDir = makeFixtureRepo('0.10.14');
+      const out = execFileSync('./scripts/version-bump.sh', ['--force'], {
+        cwd: fixtureDir,
+        encoding: 'utf8',
+        env: { ...process.env, ACE_VERSION_CLAIMS: bad },
+      });
+      expect(out.trim().split('\n').pop(), `claim ${JSON.stringify(bad)} was honoured`).toBe(
+        '0.10.15',
+      );
+      fs.rmSync(fixtureDir, { recursive: true, force: true });
+      fixtureDir = '';
+    }
+  });
+
+  it('ACE_VERSION_CLAIMS=none restores the pre-ace#1914 arithmetic exactly', () => {
+    fixtureDir = makeFixtureRepo('0.10.14');
+    const out = execFileSync('./scripts/version-bump.sh', ['--force'], {
+      cwd: fixtureDir,
+      encoding: 'utf8',
+      env: { ...process.env, ACE_VERSION_CLAIMS: 'none' },
+    });
+    expect(out.trim().split('\n').pop()).toBe('0.10.15');
+  });
+
+  it('--ci ignores claims — it runs ON main, where open PRs are not its question', () => {
+    fixtureDir = makeFixtureRepo('0.10.14');
+    const out = execFileSync('./scripts/version-bump.sh', ['--ci'], {
+      cwd: fixtureDir,
+      encoding: 'utf8',
+      env: { ...process.env, ACE_VERSION_CLAIMS: '0.10.50' },
+    });
+    expect(out.trim().split('\n').pop()).toBe('0.10.15');
+  });
+
+  it('--dry-run reports the claim it bumped past', () => {
+    fixtureDir = makeFixtureRepo('0.10.14');
+    const out = execFileSync('./scripts/version-bump.sh', ['--dry-run'], {
+      cwd: fixtureDir,
+      encoding: 'utf8',
+      env: { ...process.env, ACE_VERSION_CLAIMS: '0.10.20' },
+    });
+    expect(out, 'the operator must be able to see WHY the number jumped').toMatch(
+      /claimed by an open PR=v0\.10\.20/,
+    );
+    expect(out.trim().split('\n').pop()).toBe('0.10.21');
+  });
+
   it('--dry-run prints next version but does not mutate any file', () => {
     fixtureDir = makeFixtureRepo('0.10.14');
     const before = readAllVersions(fixtureDir);
