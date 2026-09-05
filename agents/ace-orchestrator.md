@@ -1553,13 +1553,29 @@ Turn N+1:  ONE message — all 6 tool calls in parallel:
                   `mode:fragment` (in-flight → shape only), `mode:skipped`
                   (phase has no products contract). Takes the run_state phase
                   name (like classify_phase_writeback), NOT the manifest key.
-             5. TaskUpdate marking <phase> completed, next phase in_progress
-             6. Skill(decisions-render) — idempotent
+             5. validate_run_state(fileId=<run_state.yaml>)
+                — returns {valid, errors[], warnings[]}. Covers the FOURTH half
+                  of the gate: the RUN-LEVEL record (`lineage`, `outcome`,
+                  `blockers`), which the other three structurally cannot see.
+                  classify_phase_writeback reads `phases.<phase>` only, and the
+                  two verifiers read Drive files and one products block — so
+                  before ace#2002 a malformed top-level key passed every fence
+                  in the run and surfaced in the cross-run view as fact, which
+                  `lib/run-record.ts` calls out as worse than an absent one.
+             6. TaskUpdate marking <phase> completed, next phase in_progress
+             7. Skill(decisions-render) — idempotent
            Optional one-line text summary in the same message.
 Turn N+2:  Branch on classify_phase_writeback AND verify_phase_artifacts
-           AND verify_phase_products:
+           AND verify_phase_products AND validate_run_state:
              - classify='ok' AND verify.ok=true AND products.ok=true
+               AND run_state.valid=true
                  → proceed to Turn N+3
+             - run_state.valid=false → do NOT re-dispatch the phase. No phase
+               agent owns the run-level record, so a retry cannot fix it and
+               would re-run the phase for nothing. Patch the named paths
+               directly via update_yaml_file and re-validate; halt with a
+               [BLOCKER] quoting errors[] only if the patch does not clear
+               them. Warnings never gate.
              - verify.ok=false (one or more required artifacts missing)
                  → for each entry in verify.missing, silent-dispatch its
                    producedBy via Skill(<producedBy>) with the standard
@@ -1924,7 +1940,7 @@ propagated verbatim into the Phase 4 dispatch; and five static mobile
 recipes changed under a device walk already in flight.
 
 **Forbidden boundary improvisations.** Aside from the currency check above,
-the boundary fence's 6 tool calls listed earlier are the COMPLETE set. Do
+the boundary fence's 7 tool calls listed earlier are the COMPLETE set. Do
 NOT also:
 
 - Call `render_run_readme` or write `README.md`. `verify_phase_artifacts`

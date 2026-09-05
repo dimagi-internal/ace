@@ -67,6 +67,43 @@ describe("parseLineage", () => {
     expect(r.value?.reason).toMatch(/two live defects/);
   });
 
+  // ace#2002 — a FIRST run supersedes nothing and is forked from nothing, and
+  // had no legal way to say so: null failed the type check, omitting both
+  // failed the check above, and omitting `lineage` entirely discarded the
+  // `reason` that ace-orchestrator.md step 7b exists to capture. The only
+  // encoding left was `supersedes: ""` — gaming the validator with a
+  // meaningless string. Measured on poverty-graduation/20260905-0924, whose
+  // run_state was invalid from run-init through Phase 1 while every boundary
+  // fence returned green.
+  it("accepts an explicit null ancestry — the first-run encoding", () => {
+    const r = parseLineage({
+      supersedes: null,
+      forked_from: null,
+      reason: "First run of this opp — exercises the componentized ingest path",
+    });
+    expect(r.ok).toBe(true);
+    expect(r.issues).toEqual([]);
+  });
+
+  it("still rejects a reason with no ancestry statement at all", () => {
+    // null is a STATEMENT ("considered, none"); absence is not. The test above
+    // this block pins the same rule and must keep passing.
+    const r = parseLineage({ reason: "first run" });
+    expect(r.ok).toBe(false);
+  });
+
+  it("rejects a fork phase whose fork is explicitly null", () => {
+    const r = parseLineage({ supersedes: null, forked_from: null, forked_at_phase: "commcare-setup" });
+    expect(r.ok).toBe(false);
+    expect(r.issues.join()).toMatch(/only meaningful with/);
+  });
+
+  it("rejects a non-string, non-null ancestry", () => {
+    const r = parseLineage({ supersedes: 42, forked_from: null });
+    expect(r.ok).toBe(false);
+    expect(r.issues.join()).toMatch(/must be a string or null/);
+  });
+
   it("rejects a fork phase with no fork", () => {
     const r = parseLineage({ supersedes: "x", forked_at_phase: "commcare-setup" });
     expect(r.ok).toBe(false);
