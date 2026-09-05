@@ -4,6 +4,9 @@ import {
   validatePhaseProductsComplete,
   classifyPhaseProducts,
 } from '../../lib/phase-products-schema.js';
+import { classifyComponentSet, type ComponentSet } from '../../lib/component-set.js';
+import { assessProgrammeReadiness } from '../../lib/programme-overview.js';
+import { buildComponentProducts } from '../../lib/component-products.js';
 
 const DOC = {
   file_id: '1abcDEF',
@@ -174,5 +177,94 @@ describe('classifyPhaseProducts — app-QA-only mode (ace#1069)', () => {
   it('does NOT relax on an unrecognized mode string', () => {
     const r = classifyPhaseProducts(appQaOnlyRun({ mode: 'app-qa-only' }), 'qa-and-training');
     expect(r.ok).toBe(false);
+  });
+});
+
+// ace#1996 — DesignProducts is `.strict()`, so a key it does not name is
+// REJECTED, not ignored. `skills/idea-to-pdd` and `lib/component-products.ts`
+// both mandate five componentized keys that the schema did not carry, so on
+// `poverty-graduation/20260905-0924` — the first live componentized run —
+// the mandated handoff could not be written at all. The run smuggled the
+// component set through `products.pdd` (`.passthrough()`) plus a side file,
+// and `verify_phase_products` still returned `ok:true`, because a contract
+// that cannot be written is indistinguishable from one that was not.
+//
+// Validating the BUILDER'S OWN OUTPUT is what makes that class impossible:
+// the two files can no longer drift without this going red.
+describe('componentDesignProductsMatchSchema — DesignProducts accepts what Phase 1 builds (ace#1996)', () => {
+  const set: ComponentSet = classifyComponentSet([
+    {
+      file_id: 'f2',
+      name: 'targeting.gdoc',
+      text: 'Program Design Document (PDD): Household Poverty Targeting Survey\nVersion: 1.0 · Component: 2 of the graduation component set',
+    },
+    {
+      file_id: 'f4',
+      name: 'enrollment.gdoc',
+      text: 'Program Design Document (PDD): Enrollment\nVersion: 0.1 · Component: 4 of the graduation component set',
+    },
+    {
+      file_id: 'fL',
+      name: 'learn.gdoc',
+      text: 'Program Design Document (PDD): Learn (Program Training and Certification)\nVersion: 0.4 · Scope: program-level (cross-component)',
+    },
+  ]);
+
+  const readiness = assessProgrammeReadiness(set, [
+    { component_id: '2', text: 'Standalone.' },
+    { component_id: '4', text: 'Enrollment confirms against Component 2, and needs Component 3.' },
+  ]);
+
+  const built = buildComponentProducts(set, readiness);
+
+  it('is a componentized set with an absent-reference obligation to carry', () => {
+    // Guards the fixture, so a green result below cannot come from an empty one.
+    expect(built.mode).toBe('componentized');
+    expect(built.components.map((c) => c.component_id)).toEqual(['2', '4']);
+    expect(built.program_level).toHaveLength(1);
+    expect(built.unresolved_references).toEqual([{ from: '4', to: '3' }]);
+    expect(built.overview_obligations.some((o) => o.code === 'resolve-absent-reference')).toBe(true);
+  });
+
+  it('validates as a complete idea-to-design products block, alongside pdd', () => {
+    const res = validatePhaseProductsComplete('idea-to-design', {
+      pdd: { title: 'Programme Overview', file_id: '1overview' },
+      ...built,
+    });
+    expect(res.issues).toEqual([]);
+    expect(res.valid).toBe(true);
+  });
+
+  it('reaches the boundary fence green through classifyPhaseProducts', () => {
+    const res = classifyPhaseProducts(
+      {
+        phases: {
+          'idea-to-design': {
+            status: 'done',
+            products: { pdd: { title: 'Programme Overview', file_id: '1overview' }, ...built },
+          },
+        },
+      },
+      'idea-to-design',
+    );
+    expect(res.issues).toEqual([]);
+    expect(res.ok).toBe(true);
+  });
+
+  it('still rejects a key no schema names — the strictness this restores is real', () => {
+    const res = validatePhaseProductsComplete('idea-to-design', {
+      pdd: { title: 'Programme Overview', file_id: '1overview' },
+      ...built,
+      componnts: built.components, // typo'd key must not pass silently
+    });
+    expect(res.valid).toBe(false);
+  });
+
+  it('leaves the synthesized path untouched — every componentized key is optional', () => {
+    const res = validatePhaseProductsComplete('idea-to-design', {
+      pdd: { title: 'A single synthesized PDD', file_id: '1pdd' },
+    });
+    expect(res.issues).toEqual([]);
+    expect(res.valid).toBe(true);
   });
 });
