@@ -48,6 +48,14 @@ interface Args {
   /** Optional: archetype value passed through as ctx.archetype. */
   archetype?: string;
   /**
+   * Optional: path to the run's PDD body, whose text becomes ctx.pddText.
+   * Read by checks that must compare an artifact against a value the PDD is
+   * authoritative for — e.g. `pdd-to-work-order-qa`'s
+   * `payment_unit_matches_entity_grain`, which reads the PDD's
+   * `entity_id_grain` row (dimagi-internal/ace#1946).
+   */
+  pdd?: string;
+  /**
    * Optional: the artifact's Drive mimeType, passed through as
    * ctx.artifactMimeType. Required by format checks that cannot be answered
    * from the bytes — an exported Google Doc and a markdown upload are
@@ -85,6 +93,9 @@ function parseArgs(argv: string[]): Args {
       case '--archetype':
         args.archetype = argv[++i];
         break;
+      case '--pdd':
+        args.pdd = argv[++i];
+        break;
       case '-h':
       case '--help':
         printUsage();
@@ -107,7 +118,7 @@ function parseArgs(argv: string[]): Args {
 
 function printUsage(): void {
   process.stderr.write(
-    'usage: qa-run.ts --skill <skill> --artifact <path> --target <id> --capture-path <relative> [--include-passed] [--decisions <path>] [--archetype <value>]\n',
+    'usage: qa-run.ts --skill <skill> --artifact <path> --target <id> --capture-path <relative> [--include-passed] [--decisions <path>] [--archetype <value>] [--pdd <path>]\n',
   );
 }
 
@@ -151,6 +162,14 @@ async function main(): Promise<void> {
   }
   if (args.archetype !== undefined) {
     context.archetype = args.archetype;
+  }
+  if (args.pdd !== undefined) {
+    try {
+      context.pddText = readFileSync(args.pdd, 'utf-8');
+    } catch (err) {
+      process.stderr.write(`failed to read pdd at '${args.pdd}': ${(err as Error).message}\n`);
+      process.exit(1);
+    }
   }
   if (args.artifact_mime_type !== undefined) {
     context.artifactMimeType = args.artifact_mime_type;

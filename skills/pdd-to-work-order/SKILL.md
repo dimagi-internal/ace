@@ -116,13 +116,50 @@ Take the approved PDD and decisions.yaml and produce a contractual Work Order dr
      - `{{geographic_coverage_body}}` (from PDD Target Population; `[Geographic Coverage — Partner to propose]` if not specified)
      - `{{primary_deliverable_body}}` (from PDD Success Metrics)
      - `{{verified_unit_closing}}` (the "Verification will be performed via..." closing paragraph after the verified-unit bullets)
-     - `{{payment_unit_closing}}` — § 6.2's closing sentence, **archetype-branched**:
-       - `atomic-visit` → "Dimagi will pay only for verified units at the per-visit rate proposed in the partner's solicitation response."
-       - `longitudinal-visits` → same per-visit rate sentence, extended so the repeat is unambiguous: "…at the per-visit rate proposed in the partner's solicitation response, for each verified visit in the follow-up sequence."
-       - `focus-group` → "…at the per-session rate proposed in the partner's solicitation response."
-       - `multi-stage` → name the stage that is payable, per the PDD's payable-stage declaration.
+     - `{{payment_unit_closing}}` — § 6.2's closing sentence. **The rate unit
+       comes from the PDD's grain, NOT from the archetype.**
 
-       **Pick ONE.** Until ace#1004 this sentence was hardcoded in the template as
+       **Read the PDD's § Program Parameters first** and take `entity_id_grain`
+       (and `payment_rate_unit`, when present). Connect resolves payable units
+       by `entity_id`, so the grain — not the archetype, not the shape of the
+       field work — decides what a partner is being quoted a price *per*. Write
+       the sentence in the grain's units:
+
+       - Grain resolves ONE payable unit **per visit** → "Dimagi will pay only
+         for verified units at the per-visit rate proposed in the partner's
+         solicitation response." On `longitudinal-visits`, extend it so the
+         repeat is unambiguous: "…for each verified visit in the follow-up
+         sequence."
+       - Grain is **day-scoped** (e.g. `entity_id_grain` = *worker username +
+         encounter date*) → the payable unit is a worker-DAY, so quote a
+         per-day rate: "…at the per-day rate proposed in the partner's
+         solicitation response, for each verified follow-up day." Never a
+         per-visit rate — several same-day visits by one worker collapse into
+         ONE payable unit.
+       - Grain resolves **per session** (typical of `focus-group`) → "…at the
+         per-session rate proposed in the partner's solicitation response."
+       - `multi-stage` → name the stage that is payable, per the PDD's
+         payable-stage declaration, in that stage's own grain.
+
+       **Pick ONE, and make § 6 internally consistent with it** — the caps and
+       the not-to-exceed total must be stated in the same units as the rate.
+
+       **Why this is grain-driven and not archetype-driven.** On
+       bednet-check-2-visit/20260902-1555, `entity_id` was source-pinned to
+       worker identity + encounter date, so the payable unit was a worker-day.
+       `idea-to-pdd-qa § payment_unit_matches_entity_grain` (ace#1420) caught the
+       per-visit quote in the PDD and the money was correctly re-derived per
+       worker-day — and then this step, read literally as an archetype branch,
+       put the per-visit sentence back into the **Work Order**, the document
+       that actually gets signed. The rendered § 6.2 said both "at the per-visit
+       rate" and "the payable unit under this Work Order is a worker-day, not an
+       individual visit"; the overstatement was up to 6x. `pdd-to-work-order-qa`
+       returned 9/9 with the contradiction present, because it had no
+       counterpart to the PDD-side check.
+       *Enforced:* `pdd-to-work-order-qa § payment_unit_matches_entity_grain`
+       (ace#1946), which shares `lib/payment-grain.ts` with the PDD-side check.
+
+       Until ace#1004 this sentence was hardcoded in the template as
        "…at the per-visit (or per-session, per archetype) rate…", and the
        parenthetical — an instruction to the renderer — rendered verbatim into a
        signed contract, telling a partner their payment unit depends on an
@@ -213,13 +250,13 @@ Take the approved PDD and decisions.yaml and produce a contractual Work Order dr
 ### `atomic-visit` (default)
 - Scope: per-visit data capture with photo + GPS standardization.
 - Verification: photo + GPS Layer A on the deliver-app form.
-- Payment unit: per visit (rate from existing `payment-rate` decision).
+- Payment unit: per visit (rate from existing `payment-rate` decision) — **iff the PDD's `entity_id_grain` resolves one payable unit per visit.** The archetype describes the field work, not the payment grain; when the grain is coarser (e.g. worker + encounter date), quote the rate in the grain's units instead. See § Process step 5 `{{payment_unit_closing}}` (ace#1946).
 - Roles: Dimagi configures app + verification audit; Partner recruits FLWs, runs field ops, transports samples (if applicable).
 
 ### `longitudinal-visits`
 - Scope: per-visit data capture against a **followed entity over time** — the same visit-shaped unit as `atomic-visit`, but the Scope of Work must name what is being followed (the case / household / participant / cohort) and its cadence (phase, sequence, follow-up interval, or `visit 1..n`). A scope that reads identically to an atomic-visit one has lost the longitudinal half between the PDD and the contract — the ace#1462 failure, where the PDD prose was longitudinal-aware and the payment predicate was not.
 - Verification: photo + GPS Layer A on the deliver-app form, as `atomic-visit`; PLUS the visit's position in the sequence must be recoverable from the submitted record, since that is what makes a repeat visit payable rather than a duplicate.
-- Payment unit: per visit (rate from existing `payment-rate` decision). Each qualifying visit in the sequence is separately payable — state this explicitly, because "per visit" against a followed entity otherwise reads as one payment per entity.
+- Payment unit: per visit (rate from existing `payment-rate` decision) — **iff the PDD's `entity_id_grain` resolves one payable unit per visit.** Where it does, each qualifying visit in the sequence is separately payable — state this explicitly, because "per visit" against a followed entity otherwise reads as one payment per entity. Where the grain is day-scoped, several same-day follow-ups are ONE payable unit and the rate must be quoted per day (ace#1946).
 - Roles: as `atomic-visit`, plus Partner owns the follow-up schedule and re-contact of enrolled entities.
 
 ### `focus-group`

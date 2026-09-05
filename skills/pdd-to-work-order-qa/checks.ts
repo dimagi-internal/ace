@@ -15,6 +15,7 @@
  */
 import type { QACheck, QACheckContext, QACheckResult } from '../../lib/qa-types';
 import { normalizeDriveExport } from '../../lib/drive-export';
+import { classifyGrainRelation, readProgramParameter } from '../../lib/payment-grain';
 
 /**
  * The 11 required headings in a complete work order. Matched against
@@ -564,6 +565,140 @@ function extractNumberedSection(wo: string, number: string): string | null {
  *   - `decisionsYaml: string` — the decisions.yaml file contents (for check 2)
  *   - `archetype: string` — the PDD-declared archetype (for check 7)
  */
+/**
+ * Check 10: the rate unit the Work Order quotes is not finer than the
+ * `entity_id` grain that actually resolves payable units (ace#1946).
+ *
+ * The PDD-side counterpart is `idea-to-pdd-qa § payment_unit_matches_entity_grain`
+ * (ace#1420) and the comparison logic is shared via `lib/payment-grain.ts`, so
+ * the two documents cannot disagree about what a payable unit is.
+ *
+ * Why the PDD-side check is not enough: it gates the PDD, and the error can
+ * re-enter one step downstream in the document that actually gets SIGNED.
+ * That is exactly what happened on bednet-check-2-visit/20260902-1555 —
+ * `idea-to-pdd-qa` caught the per-visit/per-worker-day mismatch, the PDD was
+ * corrected, and then `pdd-to-work-order`'s own archetype template put the
+ * per-visit sentence back into § 6.2 while this QA returned 9/9. It was caught
+ * only by a downstream eval dimension reading the paragraph. On that opp the
+ * overstatement was up to 6x.
+ *
+ * Grain sources, in order:
+ *   1. `ctx.entityIdGrain` — an explicitly supplied grain string.
+ *   2. `ctx.pddText` — the PDD body's `| entity_id_grain | ... |` row
+ *      (the skill passes it via `--pdd`).
+ *   3. The Work Order's OWN payable-unit declaration, when it carries one.
+ *      This is the self-contradiction case and needs no context at all: the
+ *      rendered § 6.2 on that run said both "at the per-visit rate" and "the
+ *      payable unit under this Work Order is a worker-day, not an individual
+ *      visit".
+ *
+ * Skips silently (pass) when no grain is available from any source — an
+ * undecided grain is not in scope, per the binary-QA convention.
+ */
+export function checkPaymentUnitMatchesEntityGrain(
+  raw: string,
+  ctx?: QACheckContext,
+): QACheckResult {
+  const wo = normalizeDriveExport(raw);
+
+  const rate = extractQuotedRateUnit(wo);
+  if (rate === null) {
+    return { pass: true, detail: 'no "per-<unit> rate" phrasing found in the work order — not applicable' };
+  }
+
+  const grain = resolveEntityIdGrain(wo, ctx);
+  if (grain === null) {
+    return {
+      pass: true,
+      detail:
+        `work order quotes a "${rate}" rate, but no entity_id_grain is available ` +
+        `(pass the PDD body via --pdd, or ctx.entityIdGrain) — not applicable`,
+    };
+  }
+
+  const relation = classifyGrainRelation(rate, grain.value);
+  if (relation.kind !== 'mismatch') {
+    return {
+      pass: true,
+      detail: `work-order rate unit ("${rate}") is consistent with entity_id_grain ("${grain.value}", from ${grain.source})`,
+    };
+  }
+
+  return {
+    pass: false,
+    detail:
+      `the work order quotes a per-${relation.unitEvent} rate ("${rate}") but the payable unit is ` +
+      `day-scoped ("${grain.value}", from ${grain.source}): Connect resolves payable units by ` +
+      `entity_id, so several same-day ${relation.unitEvent}s by one worker collapse into ONE payable ` +
+      `unit. This is a contractual document — the partner has been quoted a price per ` +
+      `${relation.unitEvent} for something Connect will not pay per ${relation.unitEvent}.`,
+    auto_fix_hint:
+      `Re-derive § 6 Payment Terms against the GRAIN, not the archetype. Quote the rate per the ` +
+      `payable unit the opportunity actually resolves (e.g. "…at the per-day rate proposed in the ` +
+      `partner's solicitation response, for each verified follow-up day"), with the band multiplied ` +
+      `by the expected ${relation.unitEvent}s per worker-day, and restate any caps and the ` +
+      `not-to-exceed total in those same units. Do NOT take the sentence from the archetype: ` +
+      `\`pdd-to-work-order\` § Process step 5 derives \`{{payment_unit_closing}}\` from the PDD's ` +
+      `\`entity_id_grain\` / \`payment_rate_unit\`, because the archetype does not determine the ` +
+      `grain — the opportunity does (ace#1946, ace#1420).`,
+  };
+}
+
+/**
+ * Pull the unit out of the Work Order's quoted rate — the "<unit>" in
+ * "at the per-<unit> rate". Matches the § 6 Payment Terms body when it can be
+ * isolated, else the whole document.
+ *
+ * Returns the FIRST per-event unit found if there is one (a mixed multi-stage
+ * work order should be judged on the finest unit it quotes), else the first
+ * unit found at all.
+ */
+function extractQuotedRateUnit(wo: string): string | null {
+  const body = extractNumberedSection(wo, '6') ?? wo;
+  // `per-visit rate`, `per visit rate`, `per verified follow-up day rate`.
+  const re = /\bper[-\s]((?:[A-Za-z][A-Za-z-]*)(?:\s+[A-Za-z][A-Za-z-]*){0,3}?)\s+rates?\b/gi;
+  const units: string[] = [];
+  for (const m of body.matchAll(re)) units.push(`per-${m[1].trim().toLowerCase()}`);
+  if (units.length === 0) return null;
+  for (const u of units) {
+    if (classifyGrainRelation(u, 'day').kind === 'mismatch') return u;
+  }
+  return units[0];
+}
+
+/**
+ * Resolve the `entity_id` grain from context, or from the work order's own
+ * payable-unit declaration.
+ *
+ * The self-declaration branch is deliberately narrow: it reads only a sentence
+ * naming the "payable unit" / "payment unit", and only accepts a day term used
+ * as the unit NOUN (`a worker-day`, `each calendar day`, `per day`). Without
+ * that shape a settlement window ("within 30 days of invoice receipt") in the
+ * same sentence would read as a day-scoped grain and fail a sound contract.
+ */
+function resolveEntityIdGrain(
+  wo: string,
+  ctx?: QACheckContext,
+): { value: string; source: string } | null {
+  const explicit = (ctx?.entityIdGrain as string | undefined)?.trim();
+  if (explicit) return { value: explicit, source: 'ctx.entityIdGrain' };
+
+  const pddText = (ctx?.pddText as string | undefined) ?? '';
+  const fromPdd = readProgramParameter(pddText, 'entity_id_grain');
+  if (fromPdd) return { value: fromPdd, source: 'PDD § Program Parameters' };
+
+  // Collapse soft line-wraps first: a rendered paragraph is one SENTENCE but
+  // several lines, so a newline is not a boundary here — the period is.
+  const flat = wo.replace(/\s+/g, ' ');
+  for (const m of flat.matchAll(/(?:payable|payment)\s+unit\b[^.]{0,200}/gi)) {
+    const sentence = m[0];
+    if (/\b(?:a|an|the|per|each|one)\s+(?:[A-Za-z]+[-\s])?(?:day|date)\b/i.test(sentence)) {
+      return { value: sentence.trim(), source: 'the work order’s own payable-unit declaration' };
+    }
+  }
+  return null;
+}
+
 export const CHECKS: QACheck[] = [
   {
     id: 'all_required_sections_present',
@@ -622,5 +757,13 @@ export const CHECKS: QACheck[] = [
     type: 'static',
     description: 'No leaked `<<...>>` scaffolding markers or unfilled `{{...}}` template tokens from intermediate generation',
     run: (wo: string) => checkNoScaffoldingMarkers(wo),
+  },
+  {
+    id: 'payment_unit_matches_entity_grain',
+    type: 'static',
+    description:
+      'The rate unit quoted in \u00a7 6 Payment Terms is not finer than the entity_id grain that ' +
+      'actually resolves payable units (dimagi-internal/ace#1946; PDD-side counterpart ace#1420)',
+    run: (wo: string, ctx?: QACheckContext) => checkPaymentUnitMatchesEntityGrain(wo, ctx),
   },
 ];

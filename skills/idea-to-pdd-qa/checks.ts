@@ -14,6 +14,7 @@
  */
 
 import type { QACheck, QACheckContext, QACheckResult } from '../../lib/qa-types';
+import { classifyGrainRelation } from '../../lib/payment-grain';
 import { normalizeDriveExport } from '../../lib/drive-export';
 import { parseStateTaxonomy } from '../../lib/entity-state-taxonomy';
 
@@ -567,21 +568,10 @@ function numParam(params: Map<string, string>, key: string): number | null {
  * multiplies every money number in three downstream documents.
  */
 
-/** Terms that make a grain (or a rate unit) day-scoped. */
-const DAY_TERMS = ['date', 'day', 'daily', 'calendar day', 'per day'];
-/** Terms that make a rate unit per-event — finer than a day. */
-const EVENT_TERMS = [
-  'visit', 'session', 'form', 'submission', 'encounter', 'meeting',
-  'interview', 'record', 'delivery', 'assessment', 'screening',
-];
-
-function mentions(haystack: string, needles: readonly string[]): string | null {
-  const h = haystack.toLowerCase();
-  for (const n of needles) {
-    if (new RegExp(`\\b${n.replace(/ /g, '\\s+')}s?\\b`).test(h)) return n;
-  }
-  return null;
-}
+// The term lists and the comparison itself live in `lib/payment-grain.ts`
+// because the identical invariant now gates the WORK ORDER too — catching it
+// only in the PDD is how it re-entered the signed document one step
+// downstream (ace#1946). One implementation, two callers.
 
 export function checkPaymentUnitMatchesEntityGrain(raw: string): QACheckResult {
   const body = extractSection(normalizeDriveExport(raw), 'Program Parameters');
@@ -597,16 +587,16 @@ export function checkPaymentUnitMatchesEntityGrain(raw: string): QACheckResult {
     return { pass: true, detail: 'payment_rate_unit and/or entity_id_grain not declared — not applicable' };
   }
 
+  const relation = classifyGrainRelation(unit, grain);
+
   // If the rate unit is ITSELF day-scoped ("per verified follow-up day"),
   // it already matches a day grain no matter what else it names.
-  const unitDay = mentions(unit, DAY_TERMS);
-  if (unitDay) {
+  if (relation.kind === 'unit-day-scoped') {
     return { pass: true, detail: `payment_rate_unit is day-scoped ("${unit}"), consistent with grain "${grain}"` };
   }
 
-  const grainDay = mentions(grain, DAY_TERMS);
-  const unitEvent = mentions(unit, EVENT_TERMS);
-  if (grainDay && unitEvent) {
+  if (relation.kind === 'mismatch') {
+    const { unitEvent } = relation;
     return {
       pass: false,
       detail:
