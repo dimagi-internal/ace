@@ -27,6 +27,8 @@
  * without a device, while the probes are already covered by their own suites.
  */
 
+import { poolRemediation } from '../../lib/avd-pool-report.js';
+
 export class AvdPoolExhaustedError extends Error {
   readonly requested: string;
   readonly pool: readonly AvdPoolEntry[];
@@ -46,10 +48,7 @@ export class AvdPoolExhaustedError extends Error {
       `No free provisioned AVD. Requested '${requested}'.\n${lines}\n\n` +
         `Every AVD is either held by a live session or missing its system images. ` +
         `Add one to the pool so concurrent sessions stop starving each other:\n\n` +
-        `  avdmanager create avd -n ${requested}_b \\\n` +
-        `    -k "system-images;android-34;google_apis;arm64-v8a" -d pixel_7\n\n` +
-        `then copy the tuned config.ini from ${requested}.avd (disk size, RAM, ` +
-        `GPU mode) so the clone boots with the same profile.`,
+        `${poolRemediation(requested)}`,
     );
     this.name = 'AvdPoolExhaustedError';
     this.requested = requested;

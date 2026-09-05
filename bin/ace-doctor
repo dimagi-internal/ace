@@ -2832,6 +2832,40 @@ else
 fi
 unset MOBILE_ISSUES _MOBILE_MAESTRO _MOBILE_AVD_NAME _MOBILE_EMULATOR_BIN _MOBILE_PW_DIR _MOBILE_MISSING_ENV _candidate _v _val
 
+# --- avd_pool (ace#1821) ---
+# mobile_infra above asks "does the ONE configured AVD exist" — by design, and
+# that is exactly the blind spot. ACE has per-session AVD allocation
+# (`selectAvd`, `mcp/mobile/avd-allocator.ts`), cross-account holder detection
+# and self-written provisioning markers, and ALL of it is inert when only one
+# AVD is provisioned-and-proven: the fallback branch can never execute, so a
+# working allocator over a pool of one is indistinguishable from no allocator.
+# Nothing errors, which is why the pool decayed 2 -> 1 by attrition unnoticed
+# (the registration recipe still cites ACE_Pixel_API_34_PS, long gone).
+#
+# Decision logic is pure in lib/avd-pool-report.ts (unit-tested); the collector
+# owns the emulator/ps/filesystem reads and BORROWS every predicate rather than
+# re-deriving one. Emits SKIP (not WARN) when the AVD list is unreadable.
+if [ -f "$ROOT/scripts/doctor-avd-pool.ts" ]; then
+  AVD_POOL_OUT="$(cd "$ROOT" && npx tsx scripts/doctor-avd-pool.ts 2>/dev/null || true)"
+  # The probe emits a verdict line followed by indented per-AVD detail; the
+  # detail lines are carried onto the verdict so `warn` shows the whole pool.
+  AVD_POOL_HEAD="$(printf '%s\n' "$AVD_POOL_OUT" | head -1)"
+  # Drop the probe's own "fix:" header — useful when the script is run
+  # standalone, duplicated once `warn` prints its own.
+  AVD_POOL_REST="$(printf '%s\n' "$AVD_POOL_OUT" | tail -n +2 | grep -v '^  fix: add a second AVD to the pool')"
+  case "$AVD_POOL_HEAD" in
+    WARN*)
+      warn "$(printf '%s' "$AVD_POOL_HEAD" | sed 's/^WARN //')" \
+           "$(printf 'add a second provisioned AVD so concurrent Phase 6 sessions stop sharing one device.\n%s' "$AVD_POOL_REST")"
+      ;;
+    PASS*)
+      pass "$(printf '%s' "$AVD_POOL_HEAD" | sed 's/^PASS //')"
+      ;;
+    *) : ;;  # SKIP / empty — nothing answerable, stay quiet
+  esac
+  unset AVD_POOL_OUT AVD_POOL_HEAD AVD_POOL_REST
+fi
+
 # --- selector_map_currency ---
 # Phase 5 (`qa-and-training`) Maestro recipes reference logical selector
 # names via `${SELECTOR:<logical-name>}` placeholders. At resolve time
@@ -3101,7 +3135,13 @@ if [ -n "$EMULATOR_BIN" ] && "$EMULATOR_BIN" -list-avds 2>/dev/null | grep -q "^
     echo "  AVD:                    ${AVD_NAME}    available (not booted)    OK"
   fi
 else
-  echo "  AVD:                    ${AVD_NAME}    MISSING — create via Android Studio or 'avdmanager create avd -n ${AVD_NAME} -k \"system-images;android-34;google_apis;arm64-v8a\" -d pixel_7'"
+  # No system-image tag is named here on purpose: the repo's own evidence says
+  # the choice does not matter (playbook/integrations/mobile-integration.md
+  # § Face-capture — "the lever is runtime GMS toggle, not AVD image
+  # selection"; commands/mobile-bootstrap.md — "Either image works"). This line
+  # used to hard-code `google_apis` while every AVD ACE actually runs on is
+  # `google_apis_playstore`, so it read as a requirement it was never based on.
+  echo "  AVD:                    ${AVD_NAME}    MISSING — create via Android Studio, or 'avdmanager create avd -n ${AVD_NAME} -d pixel_7 -k \"system-images;android-34;<tag>;arm64-v8a\"' where <tag> is google_apis or google_apis_playstore (either works — face capture is bypassed by a runtime 'pm disable-user com.google.android.gms', not by the image)"
 fi
 
 PLAYWRIGHT_DIR="${ACE_PLAYWRIGHT_USER_DATA_DIR:-${HOME}/.ace/playwright-userdata}"
