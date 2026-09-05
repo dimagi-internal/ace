@@ -85,6 +85,49 @@ Writes:
   training-material regeneration.
 - No FLW invites, no LLO emails.
 
+## Stage C — route the findings (ALWAYS; this is not optional)
+
+Writing the verdicts is not finishing. A deep run emits findings across
+FOUR different owners, and until they are separated the operator is the
+router:
+
+| Owner | Means | Fix path | Whose call |
+|---|---|---|---|
+| `HARNESS` | ACE's recipe / selector / skill is wrong | self-heal PR | nobody — ship it |
+| `INSTRUMENT` | the ground truth or suite is wrong | self-heal PR | nobody — ship it |
+| `PRODUCT` | the built app is wrong | Phase 3 rework | **operator** |
+| `PROMPT` | the bot's system prompt is wrong | Phase 5 re-publish | **operator** |
+
+```ts
+import { triageFindings, buildDecisionSet, formatDecisionBrief }
+  from '../lib/qa-deep-triage';
+const set = buildDecisionSet(triageFindings(findings));
+```
+
+1. **Self-heal `HARNESS` + `INSTRUMENT` now**, per CLAUDE.md § self-heal —
+   they are ACE's own code and need no decision. Ship each via
+   `skills/shipping`. Report them as *filed + fixed (PR #n)*, not as
+   findings for the operator to read.
+2. **Emit `formatDecisionBrief(...)`** as the reply. One decision per
+   operator-owned area — `rework or accept?` — never a finding list.
+3. **Never act on an unclassified finding.** `needsTriage` is surfaced and
+   left alone.
+
+**Why this is a step and not a nicety.** On
+`spark-facilitator/20260828-0703` the app verdict opened with
+
+> `BLOCKER` — The community case's durable state does not advance on a
+> real meeting. … This is the whole premise of the longitudinal-visits
+> archetype.
+
+which was ACE's own recipe re-filing a preloaded date (ace#1982). **Two of
+that verdict's five BLOCKERs were ACE bugs presented as product defects**,
+and the run's `reject` disposition rested partly on them. Fifteen findings
+went to the operator unsorted; routing them took six rounds of conversation
+and three wrong guesses. That is the cost this step removes.
+
+*Enforced:* `lib/qa-deep-triage.ts` + `test/lib/qa-deep-triage.test.ts`.
+
 ## After completion
 
 Both verdicts land at the run-scoped paths above
@@ -92,6 +135,9 @@ Both verdicts land at the run-scoped paths above
 `6-qa-and-training/app-ux-eval_verdict-deep.yaml`). The Phase 9
 `llo-launch` gate reads them and refuses activation if either is
 missing or stale.
+
+The operator's output is the Stage C decision brief — not the verdict
+files. The files are the audit trail.
 
 If you ran this and want to proceed to go-live, re-enter Phase 9 via
 /ace:step llo-launch $1. /ace:qa-deep only writes verdicts and
