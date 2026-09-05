@@ -896,7 +896,7 @@ rows meet it; the catalog is a teaching device that improves over time.
 
 | ID | Question | Map to surface |
 |---|---|---|
-| `solicitation-type` | EOI vs RFP vs custom? | `solicitation-create-eval`; affects who applies and at what fidelity |
+| `solicitation-type` | Which solicitation kind? **Options:** `EOI` · `RFP` · `custom` | `solicitation-create-eval`; affects who applies and at what fidelity |
 | `response-deadline` | Days from publish to deadline (default 14)? | `solicitation-create` schema; gates Phase 8→9 timing |
 | `response-template-choice` | Stock template vs opp-custom response form? | `solicitation-create` content; downstream `solicitation-review` rubric input |
 
