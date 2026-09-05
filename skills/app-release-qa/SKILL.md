@@ -5,8 +5,10 @@ description: >
   Learn + Deliver CCZs. Downloads each CCZ via commcare_download_ccz,
   parses the zip + suite.xml + form XMLs, verifies form counts +
   Connect-marker presence match the Nova blueprint, then runs
-  commcare-cli `validate` + `play` as install-time runtime gates.
-  AVD-free, Connect-free — purely CCHQ-side. Halts loud on mismatch.
+  commcare-cli `validate` + `play` as install-time runtime gates, and
+  compares each CCZ's minimum CommCare version against the APK Phase 6
+  will run. AVD-free, Connect-free — purely CCHQ-side. Halts loud on
+  mismatch.
 disable-model-invocation: false
 ---
 
@@ -960,6 +962,94 @@ reproducer, see reference.md § Runtime install validation.
 ACE_COMMCARE_CLI_JAR=/absolute/path/to/commcare-cli.jar`. Java 17+
 required. `/ace:doctor` reports jar presence + cached version.
 
+### Step 4.6: Minimum CommCare version vs the pinned APK (dimagi-internal/ace#1997)
+
+Step 4.5's `validate` + `play` run a **JVM runtime with no
+minimum-version gate**, so they cannot see the one property that
+decides whether any ACE-provisioned device can open the CCZ at all: the
+minimum CommCare version stamped into `profile.ccpr` at the zip root.
+
+```xml
+<profile version="10" requiredMajor="2" requiredMinor="64"
+         requiredMinimal="0" uniqueid="cb980f9c…" name="… Learn app"/>
+```
+
+`requiredMinimal` is the **patch** component — that profile requires
+`2.64.0`, not a four-part version. HQ/Nova stamps HQ's *current* release
+into it at build time, so it moves whenever HQ ships and nothing in ACE
+chooses it. ACE's mobile stack meanwhile **pins** the CommCare APK
+(`ACE_CONNECT_APK_VERSION`, else `DEFAULT_APK_VERSION` in
+`mcp/mobile/client.ts`) because each APK version needs a calibrated
+selector map. When the CCZ's minimum exceeds the pinned APK, CommCare
+renders a version-gate screen instead of launching the app and Phase 6's
+device walk dies at the Connect→CommCare app-launch handoff — after an
+AVD boot, a PersonalID login and a claim, and under the misleading
+`claim-START-HANDOFF-WEDGED-issue629` label. Phase 3 is the last point
+at which the app can still be rebuilt against a lower target.
+
+Read `profile.ccpr` out of each unzipped CCZ (Step 3 already holds it)
+and classify with **`checkCczMinVersion` from `lib/ccz-min-version.ts`**
+— a pure function, unit-tested in `test/lib/ccz-min-version.test.ts`, so
+the version arithmetic is not left to prose:
+
+```ts
+import { checkCczMinVersion } from '../../lib/ccz-min-version';
+const res = checkCczMinVersion({
+  app: 'learn',                     // or 'deliver'
+  profileXml,                       // text of profile.ccpr from the CCZ root
+  apkVersion,                       // ACE_CONNECT_APK_VERSION, else DEFAULT_APK_VERSION
+  selectorMapVersions,              // versions with a map on disk — see below
+  devicePhasePlanned: true,         // false ONLY when this run has no device leg
+});
+```
+
+It returns a `CheckOutcome` (`lib/check-outcome.ts`), so **`status: 'unable'`
+is not a pass** — narrow on `status` before reading anything else. On
+`unable` the comparison never ran (unreadable `profile.ccpr`, or a pin that is
+not a version triple): emit `res.reason` as a `[WARN]` and record the check as
+UNEVALUATED, never as clean.
+
+Resolve the two runtime inputs rather than hardcoding them:
+
+```bash
+# the APK Phase 6 will actually run
+grep -m1 '^ACE_CONNECT_APK_VERSION=' "${CLAUDE_PLUGIN_DATA}/.env" 2>/dev/null \
+  || grep -m1 "DEFAULT_APK_VERSION = " mcp/mobile/client.ts
+# versions with a calibrated selector map
+ls mcp/mobile/selectors/ | sed -n 's/^connect-\(.*\)\.yaml$/\1/p'
+```
+
+**Severity is conditional, and that is the point.** The condition is
+true on *every* run today, so a flat `[BLOCKER]` would trade one Phase-6
+failure for a Phase-3 failure on every `/ace:run` — earlier and cheaper,
+but blocking every run behind a remedy no operator can apply mid-run,
+which is how a gate gets switched off. A flat `[WARN]` on an
+always-true condition is a line everyone learns to scroll past. So the
+severity the helper returns keys on whether a remedy is actually
+**reachable**:
+
+| Outcome | State | Do |
+|---|---|---|
+| `status: 'unable'` | `profile.ccpr` absent/malformed, or the pin is not a version triple | `[WARN]` `ccz-profile-unreadable` / `apk-version-unreadable`, emitting `res.reason`. A check that could not run is never a silent pass |
+| `checked`, `severity: 'ok'` | required ≤ pinned | Record and continue |
+| `checked`, `severity: 'blocker'` | required > pinned **and** a calibrated selector map already covers the required version | **Halt** `[BLOCKER]` `ccz-min-version-gate`. The remedy is in-run: repin `ACE_CONNECT_APK_VERSION` to `res.satisfyingSelectorMap` |
+| `checked`, `severity: 'warn'` | required > pinned, **no** map covers it | `[WARN]` `ccz-min-version-gate`, do NOT halt. The remedy is a new APK plus a live-calibrated selector map — human-owned, out of reach mid-run. Continue, and treat every Phase 6 device result from this run as **unobtained**, not as a pass |
+| `checked`, `severity: 'info'` | required > pinned but this run walks no device | `[INFO]`. Nothing breaks here; recorded so the mismatch stays legible |
+
+`res.findings[0].message` already names the CCZ's required version, the
+pinned APK version, and the exact consequence; `res.findings[0].remedy`
+names the fix. Emit both verbatim into `auto_surfaced_concerns` rather
+than paraphrasing — a message that omits either version cannot be acted
+on from the log alone. Note `severity: 'info'` still carries
+`ok: false`: the mismatch is real, it just breaks nothing on a run with
+no device leg.
+
+**Class: static parsing + version comparison, not device truth.** Nothing
+here is sent to, or matched against, a device — no selector string, no
+tap coordinate, no recipe step order. Both inputs are text Phase 3
+already holds. Per CLAUDE.md § *"The trigger is the CLAIM, not the
+directory"*, unit tests are complete evidence for this check.
+
 ### Step 5: Write verdict
 
 Write `3-commcare/app-release-qa_result.yaml`. Shape:
@@ -1017,6 +1107,17 @@ per_app:
         failing_binding: </data/...> # when verdict=fail
         unresolved_xpath: <xpath>    # when verdict=fail
         parser_message: <exception:msg>
+    min_commcare_version:                 # ace#1997 — checkCczMinVersion()
+      status: checked | unable            # `unable` is NOT a pass
+      reason: <str>                       # unable branch only
+      required: <str>                     # e.g. "2.64.0", from profile.ccpr
+      apk_pinned: <str>                   # ACE_CONNECT_APK_VERSION / DEFAULT_APK_VERSION
+      severity: ok | info | warn | blocker # checked branch only
+      satisfying_selector_map: <str|null>  # lowest map >= required, if any
+      findings:                           # checked + !ok only
+        - kind: ccz-min-version-gate
+          message: <str>                  # verbatim — names both versions
+          remedy: <str>                   # verbatim
   deliver:
     hq_app_id: <id>
     build_id: <id>
@@ -1056,6 +1157,14 @@ per_app:
         failing_binding: <optional>
         unresolved_xpath: <optional>
         parser_message: <optional>
+    min_commcare_version:                 # ace#1997 — same shape as learn, above
+      status: checked | unable
+      reason: <str>
+      required: <str>
+      apk_pinned: <str>
+      severity: ok | info | warn | blocker
+      satisfying_selector_map: <str|null>
+      findings: [...]
 # Per-app blocks additionally carry (both apps; see Step 4):
 #   time_estimates:        pass | { modules_checked, violations: [...] }   # Learn app only
 #   camera_only_uploads:   pass | not-required-by-pdd | [<offending upload refs>]
@@ -1140,6 +1249,26 @@ defects.
   derive the case-list enum from the SAME itemset it repairs the form's option
   labels from — then re-release and re-run `app-release-qa`. Do not hand-edit
   the enum: an instance fix leaves the next build free to reinvent it.
+- `ccz-min-version-gate` — the released CCZ's `profile.ccpr` declares a
+  minimum CommCare (`requiredMajor.requiredMinor.requiredMinimal`) ABOVE the
+  APK Phase 6 will run, so CommCare shows a version-gate screen instead of
+  launching the app and the device walk dies at the Connect→CommCare
+  app-launch handoff (dimagi-internal/ace#1997). Step 4.5's `validate` +
+  `play` cannot see this — the JVM runtime has no minimum-version gate — so
+  this is the only Phase 3 surface where it is observable, and Phase 3 is the
+  last point at which the app can be rebuilt against a lower target.
+  **Severity is conditional** (Step 4.6): `[BLOCKER]` when a calibrated
+  selector map already covers the required version (the remedy is in-run —
+  repin `ACE_CONNECT_APK_VERSION`), `[WARN]` when none does (the remedy is a
+  new APK plus a live-calibrated selector map, which is human-owned and out of
+  reach mid-run; halting there would block every `/ace:run` behind work no
+  operator can do, and a gate like that gets switched off). On the WARN branch
+  the run continues, but every Phase 6 device result from it is **unobtained**,
+  not a pass.
+- `ccz-profile-unreadable` / `apk-version-unreadable` — `[WARN]`. The
+  version-gate comparison could not be made: `profile.ccpr` was absent or
+  malformed, or `ACE_CONNECT_APK_VERSION` is not a `MAJOR.MINOR.PATCH` triple.
+  A check that could not run is recorded as such, never as a pass.
 - `cli-validator-unavailable` — `commcare-cli.jar` not on the operator's
   machine (resolved jar path returned `input_error: jar_not_found`). This
   is `[WARN]`, not `[BLOCKER]` — Steps 3–4 still gate structural defects;
