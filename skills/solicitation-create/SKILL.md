@@ -36,6 +36,25 @@ them. Two operational facts make multiple open solicitations correct:
    operator-cleaned-up via `connect-labs delete_solicitation` or the
    labs UI when picking a release-candidate run.
 
+**Nor is an approaching deadline with zero responses.** The same
+doctrine, in the shape a TURN meets it rather than a run: a published
+solicitation carries a real `application_deadline` and a real response
+count, and an agent reading `deadline in N days, 0 responses` off the
+labs API will reach for "this lapses unless someone acts" and escalate
+it to a human. Do not. Zero responses is the CORRECT and expected state
+— Phase 8 is publish-only by default and deliberately emails no
+candidate LLOs (`llo-invite` is a no-op without an explicit operator
+opt-in), so nobody has been invited and nothing is waiting. A lapsed
+run-scoped solicitation costs nothing; it was an audit trail, not a
+procurement. Surface it ONLY if an operator has already opted into
+inviting candidates for that specific run. (Origin: 2026-09-04/05 — a
+turn raised solicitation 17609's "deadline 12 Sep, zero responses" as a
+decision needing a human three times across two days on
+`hh-poverty-targeting`, a test opp. Jon: *"stop talking about the
+solicitation, this is all just test work and its fine."* The doctrine
+below already said these are audit trails; what was missing was that the
+deadline and the response count are audit-trail fields too.)
+
 If you (the agent reading this skill) notice multiple open
 solicitations on the same Connect program and feel the urge to
 "deduplicate" or "warn-and-prompt," resist. It's not a footgun; it's
