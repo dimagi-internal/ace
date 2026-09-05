@@ -54,6 +54,112 @@
                   }
                 },
                 "additionalProperties": true
+              },
+              "mode": {
+                "type": "string",
+                "enum": [
+                  "synthesized",
+                  "componentized"
+                ]
+              },
+              "components": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "component_id": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "title": {
+                      "type": "string"
+                    },
+                    "pdd_file_id": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "required": [
+                    "component_id",
+                    "title",
+                    "pdd_file_id"
+                  ],
+                  "additionalProperties": true
+                }
+              },
+              "program_level": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "title": {
+                      "type": "string"
+                    },
+                    "file_id": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "required": [
+                    "title",
+                    "file_id"
+                  ],
+                  "additionalProperties": true
+                }
+              },
+              "overview_obligations": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "string",
+                      "enum": [
+                        "declare-selection",
+                        "declare-case-model",
+                        "declare-composition",
+                        "resolve-absent-reference",
+                        "declare-downstream-use"
+                      ]
+                    },
+                    "components": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "question": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "code",
+                    "components",
+                    "question"
+                  ],
+                  "additionalProperties": true
+                }
+              },
+              "unresolved_references": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "from": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "to": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "required": [
+                    "from",
+                    "to"
+                  ],
+                  "additionalProperties": true
+                }
               }
             },
             "additionalProperties": false
@@ -116,6 +222,112 @@
                   }
                 },
                 "additionalProperties": true
+              },
+              "mode": {
+                "type": "string",
+                "enum": [
+                  "synthesized",
+                  "componentized"
+                ]
+              },
+              "components": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "component_id": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "title": {
+                      "type": "string"
+                    },
+                    "pdd_file_id": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "required": [
+                    "component_id",
+                    "title",
+                    "pdd_file_id"
+                  ],
+                  "additionalProperties": true
+                }
+              },
+              "program_level": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "title": {
+                      "type": "string"
+                    },
+                    "file_id": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "required": [
+                    "title",
+                    "file_id"
+                  ],
+                  "additionalProperties": true
+                }
+              },
+              "overview_obligations": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "string",
+                      "enum": [
+                        "declare-selection",
+                        "declare-case-model",
+                        "declare-composition",
+                        "resolve-absent-reference",
+                        "declare-downstream-use"
+                      ]
+                    },
+                    "components": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "question": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "code",
+                    "components",
+                    "question"
+                  ],
+                  "additionalProperties": true
+                }
+              },
+              "unresolved_references": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "from": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "to": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  },
+                  "required": [
+                    "from",
+                    "to"
+                  ],
+                  "additionalProperties": true
+                }
               }
             },
             "additionalProperties": false

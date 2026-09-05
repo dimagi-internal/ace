@@ -80,6 +80,69 @@ const DesignProducts = z
       })
       .passthrough()
       .optional(),
+    // Componentized programmes (Stage 1, ace#1996). A run whose `inputs/` hold
+    // an authored component set writes these ALONGSIDE `pdd` — which stays
+    // populated and points at the programme OVERVIEW, per
+    // `docs/superpowers/specs/2026-09-05-multi-component-programmes.md`.
+    //
+    // All five are optional, so the synthesized path — every opp before
+    // `poverty-graduation` — is untouched. They are declared here because
+    // `.strict()` REJECTS keys it does not name: without them the contract
+    // that `skills/idea-to-pdd` and `lib/component-products.ts` both mandate
+    // could not be written at all, and the first live componentized run had to
+    // smuggle the component handoff through `pdd` (which is `.passthrough()`)
+    // and a side file. `componentDesignProductsMatchSchema` in
+    // `test/lib/phase-products-schema.test.ts` pins these against
+    // `buildComponentProducts`'s real output so the two cannot drift again.
+    mode: z.enum(['synthesized', 'componentized']).optional(),
+    components: z
+      .array(
+        z
+          .object({
+            component_id: z.string().min(1),
+            title: z.string(),
+            pdd_file_id: z.string().min(1),
+          })
+          .passthrough(),
+      )
+      .optional(),
+    program_level: z
+      .array(
+        z
+          .object({
+            title: z.string(),
+            file_id: z.string().min(1),
+          })
+          .passthrough(),
+      )
+      .optional(),
+    overview_obligations: z
+      .array(
+        z
+          .object({
+            code: z.enum([
+              'declare-selection',
+              'declare-case-model',
+              'declare-composition',
+              'resolve-absent-reference',
+              'declare-downstream-use',
+            ]),
+            components: z.array(z.string()),
+            question: z.string(),
+          })
+          .passthrough(),
+      )
+      .optional(),
+    unresolved_references: z
+      .array(
+        z
+          .object({
+            from: z.string().min(1),
+            to: z.string().min(1),
+          })
+          .passthrough(),
+      )
+      .optional(),
   })
   .strict();
 
