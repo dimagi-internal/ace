@@ -1,8 +1,8 @@
 {
-  "_doc": "canopy-web fleet-workspace identity for ACE (read by `canopy agent-publish` / `canopy agent ...`). Workspace integration is best-effort and config-gated \u2014 its absence never blocks a turn; nothing here prejudges the ace-web vs canopy-web question (see docs/superpowers/specs/2026-07-01-agent-operating-model-adoption.md).",
+  "_doc": "canopy-web fleet-workspace identity for ACE (read by `canopy agent-publish` / `canopy agent ...`). Workspace integration is best-effort and config-gated — its absence never blocks a turn; nothing here prejudges the ace-web vs canopy-web question (see docs/superpowers/specs/2026-07-01-agent-operating-model-adoption.md).",
   "slug": "ace",
   "name": "ACE",
-  "description": "AI Connect Engine \u2014 runs the full CommCare Connect opportunity lifecycle (design \u2192 apps \u2192 QA \u2192 solicitation \u2192 LLO execution \u2192 closeout). Flagship agent on the canopy operating model: pipeline runs via /ace:run, counterpart-facing turns via /ace:turn.",
+  "description": "AI Connect Engine — runs the full CommCare Connect opportunity lifecycle (design → apps → QA → solicitation → LLO execution → closeout). Flagship agent on the canopy operating model: pipeline runs via /ace:run, counterpart-facing turns via /ace:turn.",
   "email": "ace@dimagi-ai.com",
   "_gog_client_doc": "The SHARED fleet OAuth client (client_id + client_secret), reused by every agent's mailbox — same value as eva/hal/ada. The per-agent, never-shared identity is `email`: identity bleed means acting as another agent's mailbox, and that is governed by --account, NOT by the client. Do NOT set this to `ace`: no credentials-ace.json is provisioned, so `canopy email` / bin/ace-email fail outright and the printed remedy (`gog login --client ace`) is an interactive browser OAuth a headless turn cannot run. See jjackson/ace#1147.",
   "gog_client": "canopy",
@@ -16,7 +16,16 @@
     "sheets",
     "forms"
   ],
-  "provisioning": ".env.tpl + op inject (1Password AI-Agents; see /ace:setup) \u2014 no canopy provision manifest",
+  "_required_plugins_doc": "Plugins a box must install before ACE can run a turn, in the contract runner/ec2/required_plugins.py parses and `canopy agent doctor`'s check_required_plugins reads. Nova is not optional: Phase 3 (commcare-setup) dispatches nova:nova-architect-autonomous via /nova:autobuild, so without it every /ace:run halts at the app build. The 2026-09-05 cloud rebuild reported 'Nova plugin not installed' as a WARN precisely because nothing declared it here.",
+  "required_plugins": [
+    {
+      "name": "nova",
+      "marketplace": "voidcraft-labs/nova-marketplace",
+      "marketplace_name": "nova-marketplace",
+      "note": "Phase 3 app build (/nova:autobuild); needs NOVA_API_KEY from .env"
+    }
+  ],
+  "provisioning": ".env.tpl + op inject (1Password AI-Agents; see /ace:setup) — no canopy provision manifest",
   "repo": "dimagi-internal/ace",
   "avatar": ""
 }

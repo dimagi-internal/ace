@@ -1,0 +1,233 @@
+# ACE's declarative runtime — what a box needs to run an ACE turn, anywhere.
+#
+# Read by the canopy reconciler (Agent Runtime Registry): it resolves the secret
+# REFERENCES below from the env's store (1Password: Agent-Ace, then Canopy-Shared),
+# ensures the plugins/tools, injects the env, runs the preflight, then runs the turn.
+# NEVER contains a secret value — only reference names + where each value lands.
+#
+# Sibling of echo/runtime.yaml, written 2026-09-05 after a from-scratch cloud
+# rebuild showed the box provisioning ACE from hardcoded guesses rather than from
+# anything ACE declares. Spec: canopy-web
+# docs/superpowers/specs/2026-07-20-agent-runtime-registry-design.md
+#
+# NOTE ON DUPLICATION, deliberate: `required_plugins` also lives in
+# config/agent.json, because THAT is the contract bootstrap_agents.sh and
+# `canopy agent doctor` actually read today. This file is the declarative target;
+# until the reconciler consumes it, agent.json is the live one. They must agree —
+# and the drift between two declarations is exactly what cost a mailbox on
+# 2026-09-05 (see the gog_client note below).
+
+version: 1
+
+# ACE runs headless on the cloud runner for /ace:run and /ace:turn. Phase 6 (device
+# walks) and DDD video capture are LAPTOP-ONLY in practice — the cloud box has no
+# Android emulator and is not fast enough for video — so "any" is correct here and
+# the placement decision belongs to routing, not to this file.
+engine: any
+
+plugins:
+  - name: canopy
+    source: https://github.com/dimagi-internal/canopy        # canopy@canopy marketplace
+  - name: ace
+    source: https://github.com/dimagi-internal/ace           # this repo (ace@ace)
+  - name: nova
+    source: https://github.com/voidcraft-labs/nova-marketplace  # nova@nova-marketplace
+    # NOT optional: Phase 3 (commcare-setup) dispatches
+    # nova:nova-architect-autonomous via /nova:autobuild. Without it every
+    # /ace:run halts at the app build.
+
+tools:
+  - name: claude
+  - name: gog
+  - name: git
+  - name: op
+  - name: node        # the five MCP servers run straight from TypeScript via `npx tsx`
+  - name: java        # commcare-cli.jar — app-release-qa's install-time CCZ gate
+    optional: true
+  - name: adb         # Phase 6 device walks; laptop-only, absent on the cloud box
+    optional: true
+  - name: maestro
+    optional: true
+
+# TRUE literals only — values that do not vary by environment. Everything that
+# varies (base urls, template ids, domains) is a reference under `secrets:`, even
+# when it is not sensitive, because the reconciler resolves it per environment.
+env:
+  ACE_GMAIL_ACCOUNT: ace@dimagi-ai.com
+
+  # The gog OAuth client. `canopy` — the SHARED fleet client, same as ada/eva/hal.
+  #
+  # READ THIS BEFORE CHANGING IT. On 2026-09-05 a cloud rebuild provisioned ACE
+  # under a client named `ace`; ACE's own config/agent.json warns against exactly
+  # that ("no credentials-ace.json is provisioned, so canopy email / bin/ace-email
+  # fail outright" — jjackson/ace#1147). The box had a credentials-ace.json anyway
+  # and a token minted 2026-05-01 under that client, which no longer authenticates
+  # at all. So ACE's mailbox is dead until op://Agent-Ace/gog-token is RE-MINTED
+  # under the `canopy` client.
+  #
+  # The general rule, learned the same day by breaking echo's mailbox with it: a
+  # token is minted FOR a client and works only with that client. This field is
+  # ACE's intent; the token in 1Password is the fact. They converge only when the
+  # item is minted to match. Do not "fix" a mismatch by editing this line.
+  ACE_GMAIL_CLIENT: canopy
+
+# The Claude/AI credential is deliberately NOT here. It is a RUNNER-level login
+# owned by the runner environment and shared across every agent + every user who
+# fires a turn — the runner daemon injects CLAUDE_CODE_OAUTH_TOKEN when it launches
+# claude. The agent brings its identity, not its AI subscription.
+
+secrets:
+  # --- Agent identity -----------------------------------------------------
+  - name: canopy-pat                   # pairs the runner + posts turns as ACE (required)
+    env: CANOPY_WEB_PAT
+
+  # --- ACE's Google identity ----------------------------------------------
+  - name: gog-oauth-client            # the SHARED canopy OAuth app (Canopy-Shared)
+    path: ~/.config/gogcli/credentials-canopy.json
+    optional: true
+  - name: gog-token                   # ACE's long-lived gog refresh token
+    optional: true
+  - name: gws-sa-key                  # Drive/Docs/Slides/Sheets service account (ace-gdrive MCP)
+    path: ${CLAUDE_PLUGIN_DATA}/gws-sa-key.json
+
+  # --- CommCare HQ (app build + release; two clusters) --------------------
+  - name: ace-hq-base-url
+    env: ACE_HQ_BASE_URL
+  - name: ace-hq-domain
+    env: ACE_HQ_DOMAIN
+  - name: ace-hq-username
+    env: ACE_HQ_USERNAME
+  - name: ace-hq-password
+    env: ACE_HQ_PASSWORD
+  - name: ace-hq-api-key
+    env: ACE_HQ_API_KEY
+  - name: ace-hq-eu-base-url
+    env: ACE_HQ_EU_BASE_URL
+    optional: true
+  - name: ace-hq-eu-domain
+    env: ACE_HQ_EU_DOMAIN
+    optional: true
+  - name: ace-hq-eu-username
+    env: ACE_HQ_EU_USERNAME
+    optional: true
+  - name: ace-hq-eu-password
+    env: ACE_HQ_EU_PASSWORD
+    optional: true
+  - name: ace-hq-eu-api-key
+    env: ACE_HQ_EU_API_KEY
+    optional: true
+
+  # --- Connect + Connect-Labs --------------------------------------------
+  - name: connect-base-url
+    env: CONNECT_BASE_URL
+  - name: labs-mcp-token             # connect-labs MCP (Bearer, per-user PAT)
+    env: LABS_MCP_TOKEN
+
+  # --- Open Chat Studio (Phase 5) ----------------------------------------
+  - name: ocs-base-url
+    env: OCS_BASE_URL
+  - name: ocs-username
+    env: OCS_USERNAME
+  - name: ocs-password
+    env: OCS_PASSWORD
+  - name: ocs-api-token
+    env: OCS_API_TOKEN
+  - name: ocs-team-slug
+    env: OCS_TEAM_SLUG
+  - name: ocs-golden-template-id
+    env: OCS_GOLDEN_TEMPLATE_ID
+  - name: ocs-shared-collection-id
+    env: OCS_SHARED_COLLECTION_ID
+  - name: ocs-llm-provider-id
+    env: OCS_LLM_PROVIDER_ID
+  - name: ocs-embedding-model-id
+    env: OCS_EMBEDDING_MODEL_ID
+  - name: ocs-api-token-vaccine-coach
+    env: OCS_API_TOKEN_VACCINE_COACH
+    optional: true
+
+  # --- Nova (Phase 3 app build) ------------------------------------------
+  - name: nova-api-key
+    env: NOVA_API_KEY
+
+  # --- Drive layout + templates: not sensitive, but they vary per env -----
+  - name: ace-drive-root-folder-id
+    env: ACE_DRIVE_ROOT_FOLDER_ID
+  - name: ace-training-deck-template-id
+    env: ACE_TRAINING_DECK_TEMPLATE_ID
+    optional: true
+  - name: ace-partnership-deck-template-id
+    env: ACE_PARTNERSHIP_DECK_TEMPLATE_ID
+    optional: true
+  - name: work-order-template-id
+    env: WORK_ORDER_TEMPLATE_ID
+    optional: true
+
+  # --- ace-web (the run surface other people use) ------------------------
+  - name: ace-web-base-url
+    env: ACE_WEB_BASE_URL
+  - name: ace-web-workspace
+    env: ACE_WEB_WORKSPACE
+  - name: ace-web-pat-token          # PER-HUMAN, minted via /ace:ace-web-pat-mint.
+    env: ACE_WEB_PAT_TOKEN           # Not in .env.tpl; bin/ace-setup preserves it
+    optional: true                   # across `op inject`. See CLAUDE.md § Auth model.
+
+  # --- Media generation (partnership video, DDD) -------------------------
+  - name: elevenlabs-api-key
+    env: ELEVENLABS_API_KEY
+    optional: true
+  - name: content-generator-url
+    env: CONTENT_GENERATOR_URL
+    optional: true
+  - name: content-generator-api-key
+    env: CONTENT_GENERATOR_API_KEY
+    optional: true
+
+  # --- Mobile (Phase 6 device walks) — laptop-only -----------------------
+  - name: ace-avd-name
+    env: ACE_AVD_NAME
+    optional: true
+  - name: ace-connect-apk-version
+    env: ACE_CONNECT_APK_VERSION
+    optional: true
+  # The Connect demo user the device walk signs in as. Rotated in 1Password when a
+  # phone's OpportunityAccess tiles accumulate (/ace:sweep connect does not clear
+  # them) — see the demo-user rotation note in CLAUDE.md. All optional: a headless
+  # box never runs Phase 6.
+  - name: ace-e2e-phone
+    env: ACE_E2E_PHONE
+    optional: true
+  - name: ace-e2e-phone-local
+    env: ACE_E2E_PHONE_LOCAL
+    optional: true
+  - name: ace-e2e-country-code
+    env: ACE_E2E_COUNTRY_CODE
+    optional: true
+  - name: ace-e2e-name
+    env: ACE_E2E_NAME
+    optional: true
+  - name: ace-e2e-pin
+    env: ACE_E2E_PIN
+    optional: true
+  - name: ace-e2e-backup-code
+    env: ACE_E2E_BACKUP_CODE
+    optional: true
+
+# Deliberately NOT here, and not a gap:
+#   - ~/.ace/*.json (OCS + Connect Playwright session cookies). Per-machine by
+#     design — they are bound to a TLS fingerprint and CSRF rotation, so copying
+#     them between boxes is worse than re-login (CLAUDE.md § Auth model). The
+#     backends auto-relogin from OCS_USERNAME/PASSWORD and ACE_HQ_USERNAME/PASSWORD
+#     above, which is why those are required rather than optional.
+
+preflight:
+  - name: claude-present
+    run: claude --version
+  - name: canopy-pat-present
+    run: 'test -n "$CANOPY_WEB_PAT" && echo ok'
+    expect: ok
+  # The real gate. bin/ace-doctor runs the full liveness sweep (Drive SA, HQ,
+  # Nova, OCS, Connect, connect-labs, MCP registration) and exits non-zero only on
+  # FAIL, so WARNs on a headless box (no AVD, no Java) do not block a turn.
+  - name: ace-doctor
+    run: bin/ace-doctor
