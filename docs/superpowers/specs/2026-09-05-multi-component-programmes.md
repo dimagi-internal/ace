@@ -83,12 +83,64 @@ Both were open questions on this thread, both settled by throwaway builds this w
   offline workers on one group overwrite rather than add) is a **design input for Stage 3**,
   not a platform defect.
 
+## Amendment, 2026-09-05 — components are a LIBRARY, opps are the programmes
+
+Jon, after the first draft:
+
+> *"you should design it thinking we are going to have several opps that re-use as
+> possible but will be turning on and off different components depending on that
+> specific pov grad program."*
+
+This answers open question 2 below, and more sharply than it was asked. A *model* is
+not a per-run or a per-opp field on a single programme — **each opp IS a povgrad
+programme**, and what is shared across them is the component set itself.
+
+So the shape is two-layer:
+
+- **A component library**, authored once and reused: the framework plus one PDD per
+  component. It does NOT belong inside any one opp's `inputs/`, which is where this
+  spec's first draft would have put it.
+- **An opp = one programme = a selection from that library**, plus per-component
+  variants. Component 7 built for a Kaduna-shaped programme and for a
+  classic-graduation-shaped one are the same component with different settings, not
+  two components.
+
+Consequences for the staging above:
+
+1. **Stage 1 changes location, not mechanism.** Ingest still replaces synthesis, but
+   the component set is resolved from the shared library and the opp records *which
+   components it selected*. Building Stage 1 against one opp's `inputs/` would have to
+   be undone at the second programme.
+2. **`ACE/_common/` is the natural home** for the library — it already exists at the
+   ACE root for exactly this class of cross-opp material.
+3. **Shortcuts are load-bearing, not a convenience.** `poverty-graduation/inputs/`
+   already holds Drive shortcuts to the live component documents rather than copies
+   (verified 2026-09-05: `drive_read_file` on a shortcut returns the target's content
+   and revision). That is what lets N programmes share one component set and all stay
+   current — the mechanism the library needs, reached before the requirement was
+   stated.
+4. **Selection needs a default, not a blocking question.** The first programme does not
+   have to declare a model: Stage 2's rule — build a module for every component that
+   *has* a PDD — is a well-defined default. Selection becomes a real input at the
+   SECOND programme, which is when to ask for it rather than now.
+
+**The author already designed for this.** The Learn PDD's framing note: *"a given model
+shows the foundations module and the modules for the components it turns on, and hides
+the rest, the same on/off logic as the Deliver side."* The gap is ACE's, not the
+design's.
+
+**Scope discipline, same conversation:** *"We are in a weird state a bit as we're still
+just trying to get ACE to fundamentally work."* Build Stages 1–2 and the library
+resolution. Do NOT build the full model/variant matrix, per-component overrides, or a
+selection UI yet — a default plus a recorded selection is enough until a second
+programme exists to disagree with it.
+
 ## Open, and genuinely the human's call
 
 1. **Stage 1 only, or Stages 1–2 before the first build?** Stage 1 unblocks a build; Stage 2 is
    what makes that build test what Sophie actually asked about. Recommendation: 1–2.
-2. **Is a "model" per-run or per-opp?** Per-opp matches "one programme, several deployments";
-   per-run matches ACE's run independence. Not obvious, and it decides where `model` lives.
+2. ~~Is a "model" per-run or per-opp?~~ **ANSWERED** — see the amendment above. Neither: each
+   opp is a programme, and the component set is a shared library above them.
 3. **Does the targeting survey stay a component of this programme** (assumed yes — the
    framework lists it as Component 2), or remain the separate deliverable it is today in
    `hh-poverty-targeting`?
