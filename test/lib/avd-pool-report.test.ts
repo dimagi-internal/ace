@@ -14,7 +14,6 @@ import { describe, it, expect } from 'vitest';
 
 import {
   classifyAvdPool,
-  nextPoolAvdName,
   poolRemediation,
   MIN_ELIGIBLE_POOL,
   type AvdPoolFacts,
@@ -184,44 +183,34 @@ describe('classifyAvdPool — edges', () => {
   });
 });
 
-describe('remediation — the instruction must be runnable, and must not guess', () => {
-  it('suggests a name that is not already taken', () => {
-    expect(nextPoolAvdName('ACE_Pixel_API_34', [])).toBe('ACE_Pixel_API_34_b');
-    // `_b` already exists on the affected host — advising it again is not runnable.
-    expect(nextPoolAvdName('ACE_Pixel_API_34', ['ACE_Pixel_API_34_b'])).toBe('ACE_Pixel_API_34_c');
-    expect(
-      nextPoolAvdName('ACE_Pixel_API_34', ['ACE_Pixel_API_34_b', 'ACE_Pixel_API_34_c']),
-    ).toBe('ACE_Pixel_API_34_d');
+describe('remediation — delegates to one source, and names no system image', () => {
+  it('points at /ace:mobile-bootstrap --pool N, not a hand-rolled avdmanager line', () => {
+    // ace#1989 shipped the planner: it derives -k from the reference AVD's own
+    // image.sysdir.1, names members off one shared alphabet, and copies the
+    // tuned config. Restating any of that here would be a second set of
+    // instructions free to drift from the first.
+    const text = poolRemediation('ACE_Pixel_API_34');
+    expect(text).toContain(`/ace:mobile-bootstrap --pool ${MIN_ELIGIBLE_POOL}`);
+    expect(text).not.toMatch(/avdmanager create avd/);
   });
 
-  it('does NOT hard-code a system-image tag', () => {
-    const text = poolRemediation('ACE_Pixel_API_34', []);
-    // The old message named `google_apis` as though it were required, while
-    // every AVD ACE runs on is `google_apis_playstore`. The repo's own
-    // evidence (mobile-integration.md § Face-capture, mobile-bootstrap.md,
-    // CHANGELOG § auto-shutter) says the choice is immaterial — so the fix is
-    // to stop naming one, not to name the other.
-    expect(text).toContain('system-images;android-34;<tag>;arm64-v8a');
-    expect(text).not.toMatch(/system-images;android-34;google_apis(_playstore)?;/);
-  });
-
-  it('records that either image works, and names the real lever', () => {
-    const text = poolRemediation('ACE_Pixel_API_34', []);
-    expect(text).toMatch(/Either google_apis or google_apis_playstore works/);
-    expect(text).toMatch(/pm disable-user com\.google\.android\.gms/);
-  });
-
-  it('tells the operator to read the tag off the AVD they already have', () => {
-    const text = poolRemediation('ACE_Pixel_API_34', []);
-    expect(text).toMatch(/grep .*tag\\?\.id.*ACE_Pixel_API_34\.avd\/config\.ini/);
+  it('names NO system-image tag anywhere', () => {
+    // The original text hard-coded `google_apis` as though it were required,
+    // while every AVD ACE runs on is `google_apis_playstore`. The fix is not
+    // the other tag: mobile-integration.md § Face-capture, mobile-bootstrap.md
+    // and CHANGELOG's auto-shutter finding all say the choice is immaterial —
+    // the lever is a runtime `pm disable-user com.google.android.gms`.
+    const text = poolRemediation('ACE_Pixel_API_34');
+    expect(text).not.toMatch(/google_apis/);
+    expect(text).not.toMatch(/system-images/);
   });
 
   it('says creating the AVD is not sufficient — it must be booted to be proven', () => {
     // The whole defect class: `_b` was created and left unbooted, so the pool
     // still had one eligible member while looking like two.
-    const text = poolRemediation('ACE_Pixel_API_34', []);
-    expect(text).toMatch(/Creating the AVD is NOT/);
-    expect(text).toMatch(/registerTestUser writes/);
+    const text = poolRemediation('ACE_Pixel_API_34');
+    expect(text).toMatch(/registerTestUser has written its provisioning marker/);
+    expect(text).toMatch(/never booted still leaves the pool at its current size/);
   });
 
   it('is what AvdPoolExhaustedError prints — one source, not two copies', async () => {
@@ -229,7 +218,7 @@ describe('remediation — the instruction must be runnable, and must not guess',
     const err = new AvdPoolExhaustedError('ACE_Pixel_API_34', [
       { name: 'ACE_Pixel_API_34', free: false, reason: 'held' },
     ]);
-    expect(err.message).toContain(poolRemediation('ACE_Pixel_API_34', ['ACE_Pixel_API_34']));
+    expect(err.message).toContain(poolRemediation('ACE_Pixel_API_34'));
     expect(err.message).not.toMatch(/system-images;android-34;google_apis;/);
   });
 });

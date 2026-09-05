@@ -48,10 +48,7 @@ export class AvdPoolExhaustedError extends Error {
       `No free provisioned AVD. Requested '${requested}'.\n${lines}\n\n` +
         `Every AVD is either held by a live session or missing its system images. ` +
         `Add one to the pool so concurrent sessions stop starving each other:\n\n` +
-        `${poolRemediation(
-          requested,
-          pool.map((e) => e.name),
-        )}`,
+        `${poolRemediation(requested)}`,
     );
     this.name = 'AvdPoolExhaustedError';
     this.requested = requested;

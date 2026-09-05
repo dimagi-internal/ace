@@ -135,14 +135,10 @@ describe('doctor-avd-pool collector — wiring', () => {
     }
   });
 
-  it('never names a hard-coded system image in the remediation', () => {
+  it('routes remediation to /ace:mobile-bootstrap --pool, naming no image tag', () => {
     const out = run('ACE_Pixel_API_34\nACE_Pixel_API_34_b');
-    expect(out).toContain('system-images;android-34;<tag>;arm64-v8a');
-    expect(out).not.toMatch(/system-images;android-34;google_apis(_playstore)?;/);
-  });
-
-  it('suggests a name that does not collide with an existing AVD', () => {
-    const out = run('ACE_Pixel_API_34\nACE_Pixel_API_34_b');
-    expect(out).toMatch(/avdmanager create avd -n ACE_Pixel_API_34_c/);
+    expect(out).toContain('/ace:mobile-bootstrap --pool 2');
+    expect(out).not.toMatch(/google_apis/);
+    expect(out).not.toMatch(/avdmanager create avd/);
   });
 });

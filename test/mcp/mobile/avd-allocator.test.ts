@@ -73,9 +73,8 @@ describe('exhaustion is actionable, not just a refusal', () => {
     expect(exhausted).toThrow(/ACE_Pixel_API_34_PS: de-provisioned/);
   });
 
-  it('gives the exact command to widen the pool', () => {
-    // Ran live 2026-08-14 to rebuild ACE_Pixel_API_34 after it lost its images.
-    expect(exhausted).toThrow(/avdmanager create avd -n ACE_Pixel_API_34_b/);
+  it('gives the operator a way to widen the pool', () => {
+    expect(exhausted).toThrow(/\/ace:mobile-bootstrap --pool 2/);
   });
 
   it('does not hard-code a system-image tag (ace#1821)', () => {
@@ -92,13 +91,14 @@ describe('exhaustion is actionable, not just a refusal', () => {
     // auto-shutter finding (both images return SUCCESS from
     // isGooglePlayServicesAvailable; `pm disable-user` is the real lever).
     // So the message names neither and says both work.
-    expect(exhausted).toThrow(/system-images;android-34;<tag>;arm64-v8a/);
-    expect(exhausted).not.toThrow(/system-images;android-34;google_apis(_playstore)?;/);
-    expect(exhausted).toThrow(/Either google_apis or google_apis_playstore works/);
+    expect(exhausted).not.toThrow(/google_apis/);
+    expect(exhausted).not.toThrow(/system-images/);
   });
 
-  it('says to copy the tuned config, since a stock clone boots differently', () => {
-    expect(exhausted).toThrow(/config\.ini/);
+  it('says the tuned config is carried over, since a stock clone boots differently', () => {
+    // Still asserted, now satisfied by delegation: --pool copies the tuned
+    // config from the proven member rather than the operator doing it by hand.
+    expect(exhausted).toThrow(/copies the tuned config from the\s+proven member/);
   });
 
   it('is explicit when there are no AVDs at all', () => {
