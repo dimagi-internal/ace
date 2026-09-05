@@ -37,6 +37,14 @@
  *     lookup at reap time is the simplest source of truth.
  *   - `avd_name` — for operator-readable debugging output.
  *   - `started_at` — ISO timestamp, also for debugging.
+ *   - `opp_slug` + `run_id` — WHICH OPPORTUNITY this session is driving,
+ *     when it has been told (ace#1821, visibility half). Optional and
+ *     absent by default: a session that was never told its opp writes a
+ *     byte-identical lock to the pre-#1821 one. These are not used by the
+ *     reaper — a lock is stale iff its pid is dead, and that must not
+ *     depend on anything an operator can mistype. They exist so a SECOND
+ *     session on the same opp can be NAMED (`lib/session-opp-collision.ts`),
+ *     which is a warning and deliberately never a refusal.
  *
  * **Where the locks live.** `~/.ace/sessions/<mcp-pid>.lock.json`. One
  * file per session. Naming by mcp_pid is unique per-session as long as
@@ -52,6 +60,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as os from 'node:os';
 import { execSync } from 'node:child_process';
+import { mergeSessionLockContext } from '../../lib/session-opp-collision.js';
 
 /**
  * Directory holding per-session mobile locks.
@@ -76,6 +85,10 @@ export interface SessionLock {
   adb_port: number;
   emulator_port: number;
   avd_name?: string;
+  /** The opportunity this session is driving, when it has been told. */
+  opp_slug?: string;
+  /** The run within that opportunity. Never used without `opp_slug`. */
+  run_id?: string;
 }
 
 /**
@@ -95,6 +108,74 @@ export function lockPathForPid(mcpPid: number): string {
 export function acquireSessionLock(lock: SessionLock): void {
   fs.mkdirSync(sessionLockDir(), { recursive: true });
   fs.writeFileSync(lockPathForPid(lock.mcp_pid), JSON.stringify(lock, null, 2) + '\n', 'utf8');
+}
+
+/**
+ * Every lock on this host whose owning pid is still ALIVE.
+ *
+ * The read half of the opp-collision warning (ace#1821). Deliberately separate
+ * from `liveLockedPorts()`, which projects the same files down to ports for the
+ * reaper: this returns whole locks because the warning names the other
+ * session's run and AVD, and a projection would have to be widened every time
+ * the message gains a field.
+ *
+ * Best-effort throughout. A missing directory, an unreadable file or a corrupt
+ * lock yields fewer rows, never a throw — the caller is printing a warning, and
+ * failing a boot because a stale JSON file could not be parsed would be a far
+ * worse outcome than an incomplete warning.
+ *
+ * **This can only ever see the invoking account's locks.** `sessionLockDir()`
+ * is `~/.ace/sessions`, a per-`$HOME` path; on the two-account host ace#1821
+ * measured, the other account's locks are unreadable, not merely unread. So an
+ * empty result is not evidence that nothing else is running.
+ */
+export function listLiveSessionLocks(): SessionLock[] {
+  const dir = sessionLockDir();
+  if (!fs.existsSync(dir)) return [];
+  let entries: string[];
+  try {
+    entries = fs.readdirSync(dir).filter((f) => f.endsWith('.lock.json'));
+  } catch {
+    return [];
+  }
+  const out: SessionLock[] = [];
+  for (const entry of entries) {
+    try {
+      const lock = JSON.parse(fs.readFileSync(path.join(dir, entry), 'utf8')) as SessionLock;
+      if (typeof lock?.mcp_pid !== 'number') continue;
+      if (!isPidAlive(lock.mcp_pid)) continue;
+      out.push(lock);
+    } catch {
+      /* corrupt or vanished mid-read — the stale-lock pass removes it */
+    }
+  }
+  return out.sort((a, b) => a.mcp_pid - b.mcp_pid);
+}
+
+/**
+ * Merge opp/run/AVD context into an EXISTING lock.
+ *
+ * Read-modify-write rather than a fresh `acquireSessionLock`, because the ports
+ * in that file are what the reaper matches against `lsof` — rewriting the lock
+ * from a caller that does not know them would strand real daemons. If no lock
+ * exists yet this is a NO-OP: a portless lock would be worse than no lock.
+ *
+ * Best-effort; returns whether it wrote. Never throws.
+ */
+export function updateSessionLockContext(
+  mcpPid: number,
+  patch: { opp_slug?: string; run_id?: string; avd_name?: string },
+): boolean {
+  const p = lockPathForPid(mcpPid);
+  try {
+    const existing = JSON.parse(fs.readFileSync(p, 'utf8')) as SessionLock;
+    if (typeof existing?.mcp_pid !== 'number') return false;
+    const next = mergeSessionLockContext(existing, patch);
+    fs.writeFileSync(p, JSON.stringify(next, null, 2) + '\n', 'utf8');
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 /**

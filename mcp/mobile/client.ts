@@ -59,6 +59,12 @@ import {
   writeProvenanceSidecar,
 } from '../../lib/screenshot-provenance.js';
 import {
+  describeOppCollision,
+  detectOppCollisions,
+  resolveSessionOppContext,
+} from '../../lib/session-opp-collision.js';
+import { listLiveSessionLocks, updateSessionLockContext } from './session-lock.js';
+import {
   recorderConfigFromEnv,
   startRecording,
   stopRecording,
@@ -822,6 +828,38 @@ export class MobileClient {
       logInfo(`ensure_avd_running: ${preflight.note}`);
     }
 
+    // ace#1821, visibility half. Two sessions on ONE OPPORTUNITY is a different
+    // resource conflict from two sessions on one AVD, and it gets a different
+    // answer. The device conflict is a hard failure the session cannot survive,
+    // so `AvdContendedError` throws. This one is a choice the operator is
+    // entitled to make — their words: "that's an error I can live with since it
+    // would be my own fault" — so it WARNS and proceeds, always. A refusal here
+    // would block a deliberate act on evidence that is structurally incomplete:
+    // `~/.ace/sessions` is per-$HOME, so a second macOS account's sessions are
+    // unreadable (which is why `lib/mobile-contention.ts` reads `ps` instead),
+    // and `ps` cannot see an opp slug. Absence of a collision is not evidence
+    // of absence, and you must not gate on evidence that can only under-report.
+    //
+    // Named, not merely counted: pid + run + AVD is enough to find the other
+    // window. Runs before the boot so the operator sees it while there is still
+    // time to stop.
+    const oppCtx = resolveSessionOppContext(
+      { opp_slug: opts?.oppSlug, run_id: opts?.runId },
+      process.env,
+    );
+    if (oppCtx.opp_slug) {
+      try {
+        const collisions = detectOppCollisions(
+          { mcp_pid: process.pid, opp_slug: oppCtx.opp_slug },
+          listLiveSessionLocks(),
+        );
+        const msg = describeOppCollision(oppCtx.opp_slug, collisions);
+        if (msg) console.warn(`[ace-mobile] ensure_avd_running: ${msg}`);
+      } catch {
+        /* the warning is best-effort — it must never be able to fail a boot */
+      }
+    }
+
     if (this.useCloud) {
       // Per-run test-user overrides are LOCAL-ONLY (dimagi-internal/ace#1289).
       // The cloud backend registers inside the AMI from its own baked recipes,
@@ -873,6 +911,18 @@ export class MobileClient {
     for (let attempt = 1; attempt <= MAX_FUNNEL_ATTEMPTS; attempt++) {
       try {
         const info = await this.avd.ensureAvdRunning(name);
+        // Stamp the lock with what we now know (ace#1821). Deliberately AFTER
+        // the boot, and a merge rather than a rewrite: the ports in that file
+        // are what the reaper matches against `lsof`, and re-recording the lock
+        // from here — which does not know them — would strand real daemons.
+        //
+        // `info.name`, not `name`: `selectAvd` may have switched us onto a
+        // different pool member, and the lock should say which device is
+        // actually held. That also fills in `avd_name`, which has been in the
+        // SessionLock schema and printed by `bin/ace-mobile-reap` since it
+        // landed, and has never once been written — the only `recordSessionLock`
+        // call site omits it, so every lock on every host reads `avd=?`.
+        updateSessionLockContext(process.pid, { ...oppCtx, avd_name: info.name });
         await this.assertMaestroDriverHealthy(info.serial);
         const deviceUserState = await this.restoreDeviceUserState(info, opts);
         return { ...info, heal: { deviceUserState } };

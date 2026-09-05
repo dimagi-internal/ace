@@ -22,6 +22,7 @@
  */
 import * as net from 'node:net';
 import { acquireSessionLock, getReservedPorts, type SessionLock } from './session-lock.js';
+import { resolveSessionOppContext } from '../../lib/session-opp-collision.js';
 
 export const DEFAULT_ADB_PORT = 5037;
 export const DEFAULT_EMULATOR_CONSOLE_PORT = 5554;
@@ -227,18 +228,32 @@ export function occupiedConsolePortIsFatal(consolePortEnv: string | undefined): 
  * calls will SIGKILL processes on these ports if our PID dies.
  *
  * Idempotent — safe to call repeatedly with the same args.
+ *
+ * `oppSlug` / `runId` are the ace#1821 visibility fields. They are resolved
+ * from the environment at this point (`ACE_OPP_SLUG` / `ACE_RUN_ID`) because
+ * this write happens at port-allocation time, before any caller has told us
+ * which opportunity is in play; `updateSessionLockContext` fills them in
+ * later from the `mobile_ensure_avd_running` call argument, which is the
+ * reliable path. With neither set, the lock is byte-identical to today's.
  */
 export function recordSessionLock(args: {
   adbPort: number;
   emulatorPort: number;
   avdName?: string;
+  oppSlug?: string;
+  runId?: string;
 }): void {
+  const ctx = resolveSessionOppContext(
+    { opp_slug: args.oppSlug, run_id: args.runId },
+    process.env,
+  );
   const lock: SessionLock = {
     mcp_pid: process.pid,
     started_at: new Date().toISOString(),
     adb_port: args.adbPort,
     emulator_port: args.emulatorPort,
     avd_name: args.avdName,
+    ...ctx,
   };
   acquireSessionLock(lock);
 }

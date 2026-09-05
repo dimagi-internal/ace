@@ -1515,6 +1515,8 @@ Source: `mcp/mobile-server.ts` — 18 atoms
 | `pin` | `z.string` | optional | Device PIN. Not a per-user secret in the demo range — normally omitted so ACE_E2E_PIN is used. |
 | `backupCode` | `z.string` | optional | PersonalID backup code. Normally omitted so ACE_E2E_BACKUP_CODE is used. |
 | `name` | `z.string` | optional | Display name written during registration; naming it after the run id makes the Connect workers table readable. |
+| `oppSlug` | `z.string` | optional | Opportunity slug this session is driving (ace#1821). Recorded in the session lock; if another live session on this host names the same opp, a WARNING naming its pid, run and AVD is printed. Never a refusal — two sessions on one opp is a legitimate operator choice, and only same-account sessions are visible at all. Falls back to ACE_OPP_SLUG. |
+| `runId` | `z.string` | optional | Run id within that opportunity, recorded in the same session lock and named in the collision warning. Only meaningful alongside oppSlug. Falls back to ACE_RUN_ID. |
 
 ### `mobile_stop_avd`
 
