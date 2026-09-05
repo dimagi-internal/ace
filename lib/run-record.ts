@@ -174,13 +174,38 @@ export function parseLineage(raw: unknown): ParseResult<RunLineage> {
   if (raw === undefined || raw === null) return { ok: true, issues: [] };
   if (!isObj(raw)) return { ok: false, issues: ['lineage must be a mapping when present'] };
   const issues: string[] = [];
-  for (const k of ['supersedes', 'forked_from', 'forked_at_phase', 'reason']) {
+  // `null` is ACCEPTED for the two ancestry pointers and means "explicitly
+  // nothing", which is not the same as `undefined` ("not considered"). A FIRST
+  // run supersedes nothing and is forked from nothing, and before ace#2002
+  // there was no legal way for it to say so: `null` failed the type check,
+  // omitting both failed the at-least-one check, and omitting `lineage`
+  // entirely silently discarded the `reason` that
+  // `ace-orchestrator.md § Starting a New Opportunity` step 7b exists to
+  // capture. The only encoding left was `supersedes: ''`, i.e. gaming the
+  // validator with a meaningless string. Measured on
+  // poverty-graduation/20260905-0924, whose run_state was invalid from
+  // run-init through Phase 1 for exactly this reason.
+  for (const k of ['forked_at_phase', 'reason']) {
     if (raw[k] !== undefined && typeof raw[k] !== 'string') issues.push(`lineage.${k} must be a string`);
   }
-  if (raw.supersedes === undefined && raw.forked_from === undefined) {
-    issues.push('lineage must name at least one of `supersedes` or `forked_from`');
+  for (const k of ['supersedes', 'forked_from']) {
+    if (raw[k] !== undefined && raw[k] !== null && typeof raw[k] !== 'string') {
+      issues.push(`lineage.${k} must be a string or null`);
+    }
   }
-  if (raw.forked_at_phase !== undefined && raw.forked_from === undefined) {
+  // Ancestry must still be STATED — a lineage carrying only a `reason` claims
+  // nothing about where the run came from, and that stays an error. What
+  // changed is that `null` is a statement: "considered, and there is none".
+  // So `{reason}` alone fails exactly as before, while
+  // `{supersedes: null, forked_from: null, reason}` — the natural first-run
+  // encoding — now passes.
+  if (raw.supersedes === undefined && raw.forked_from === undefined) {
+    issues.push(
+      'lineage must name at least one of `supersedes` or `forked_from` ' +
+        '(a first run states both as null)',
+    );
+  }
+  if (raw.forked_at_phase !== undefined && (raw.forked_from === undefined || raw.forked_from === null)) {
     issues.push('lineage.forked_at_phase is only meaningful with `forked_from`');
   }
   return issues.length ? { ok: false, issues } : { ok: true, value: raw as unknown as RunLineage, issues: [] };
