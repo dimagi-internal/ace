@@ -16,12 +16,51 @@ Generate the Learn (training) app from the PDD using the Nova plugin
 | Source | Artifact | Used for |
 |---|---|---|
 | Phase 1 | `1-design/idea-to-pdd.md` | source PDD; archetype + Learn App Specification drive the Nova brief |
+| Phase 1 (componentized only) | `run_state.…idea-to-design.products.components[]` + `.program_level[]` | the component set and the program-level Learn PDD — see Step 0 |
 
 ## Products
 
 - `3-commcare/pdd-to-learn-app_summary.md` — Learn-app structure summary (modules, forms, fields, `nova_app_id`)
+- `3-commcare/pdd-to-learn-app_build-memo.md` (componentized only) — the gap list Learn PDD §6(5) requires
 
 ## Process
+
+0. **Componentized programme? Plan the modules before briefing Nova.**
+
+   If `products.mode` is `componentized` (set by Phase 1's Step 0 — see
+   `skills/idea-to-pdd`), the Learn app is **not** built from one PDD. It is
+   foundations plus one module per component, and the two sets below are NOT
+   the same set:
+
+   ```
+   planLearnModules({ components, activeComponentIds, frameworkComponentIds, referencedAbsentIds })
+   // lib/learn-module-plan.ts
+   ```
+
+   - **BUILT** — a module for every component that HAS a PDD, all present in
+     the one app.
+   - **SHOWN** — foundations plus only the modules for this model's active
+     components; the rest are built and gated off.
+
+   `built ⊇ shown`. For a first programme they are equal, which is exactly why
+   collapsing them is tempting — and how a later programme silently loses the
+   gating and ships every module to every worker. Brief Nova from `modules[]`,
+   and carry `shown` into the gating; scope both assessments to
+   `questionBankScope`, never to the built set. *An FLW is tested on what they
+   will actually deliver, not on hidden modules* (Learn PDD §4).
+
+   Read each module's content requirements from that component's OWN PDD
+   (`modules[].pdd_file_id`), not from the programme overview — the overview
+   composes, it does not restate.
+
+   **Write `buildMemoNotes` into the build memo, including the gaps.** Learn
+   PDD §6(5) requires naming every framework component skipped for having no
+   PDD. When the framework's inventory is unavailable the plan says so
+   explicitly rather than reporting none — do not quietly drop that line, and
+   do not substitute a parsed guess at the component list.
+
+   If `products.mode` is `synthesized` or absent, ignore this step entirely and
+   continue at Step 1. That is every opp before `poverty-graduation`.
 
 1. **Read the PDD** from `ACE/<opp-name>/runs/<run-id>/1-design/idea-to-pdd.md` via Google Drive MCP.
 
