@@ -423,6 +423,12 @@ const KNOWN_OPTIONAL_INPUTS_TO_REQUIRED = new Set([
   // rather than emit `mode: componentized` with no components, which is the
   // failure this lint is really guarding against.
   '1-design/component-set.yaml',
+  // Same shape, one phase later: the componentized Learn build memo exists only
+  // when Phase 1 took the ingest path, so `required: true` would fail every
+  // single-PDD opp. The condition it really carries — "name the gaps, and say
+  // so when the inventory is unavailable rather than reporting none" — is
+  // enforced in lib/learn-module-plan.ts, not by this boolean.
+  '3-commcare/pdd-to-learn-app_build-memo.md',
   'opp.yaml',
   'decisions.yaml',
   'decisions.gdoc',

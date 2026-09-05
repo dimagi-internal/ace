@@ -430,6 +430,14 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     description: 'Opp-level identity (display_name, slug, tags, created_at, created_by) PLUS the durable Connect program reference at `connect.program.{id, url, connect_int_id}` — written by connect-program-setup on first create; reused across every run of the opp. Every other piece of evolving state (Connect opportunity, OCS chatbot, solicitation, selected_llo, synthetic) is per-run and lives only in the producing run\'s run_state.yaml.phases.<phase>.products.*. Each run is independent — no run reads from or writes to another run\'s run_state.yaml. Older opps may still carry stale `solicitation`/`selected_llo`/`synthetic`/`connect.opportunity`/`ocs_chatbot` blocks here from earlier dual-write iterations — no longer read or written; operator-cleaned-up when picking a release-candidate run. (Earlier shapes also carried `last_run_id` and a `runs:` array; both were dropped because no consumer reads them — ace-web enumerates runs by listing the filesystem under runs/.)',
   },
   {
+    path: '3-commcare/pdd-to-learn-app_build-memo.md',
+    producedBy: 'pdd-to-learn-app',
+    consumedBy: ['ace-orchestrator'],
+    phase: 'commcare',
+    required: false,
+    description: 'Build memo for a COMPONENTIZED Learn app — written only on that path. Carries the gaps Learn PDD §6(5) requires: every framework component skipped for having no PDD, components referenced by others but absent from this programme, and any module built-but-hidden for this model. When the framework\'s component inventory is unavailable the memo says so explicitly rather than reporting no gaps — see lib/learn-module-plan.ts, which refuses to parse the framework\'s prose component table for the same reason component-set.ts refuses to read a filename as a component identity.',
+  },
+  {
     path: '1-design/component-set.yaml',
     producedBy: 'idea-to-pdd',
     consumedBy: ['ace-orchestrator', 'pdd-to-learn-app', 'pdd-to-deliver-app'],
