@@ -20,6 +20,7 @@ import {
   checkArchetypeAppropriateScope,
   checkNoScaffoldingMarkers,
   checkNoRendererInstructions,
+  checkPaymentUnitMatchesEntityGrain,
   normalizeDriveExport,
   CHECKS,
 } from '../../../skills/pdd-to-work-order-qa/checks';
@@ -407,8 +408,8 @@ describe('checkNoScaffoldingMarkers', () => {
 });
 
 describe('CHECKS array', () => {
-  test('exports nine checks in canonical order', () => {
-    expect(CHECKS).toHaveLength(9);
+  test('exports ten checks in canonical order', () => {
+    expect(CHECKS).toHaveLength(10);
     const ids = CHECKS.map((c) => c.id);
     expect(ids).toEqual([
       'all_required_sections_present',
@@ -420,6 +421,7 @@ describe('CHECKS array', () => {
       'archetype_appropriate_scope',
       'no_renderer_instructions',
       'no_scaffolding_markers',
+      'payment_unit_matches_entity_grain',
     ]);
   });
 });
@@ -690,5 +692,122 @@ describe('export-format independence (ace#1609)', () => {
     );
     expect(r.pass).toBe(false);
     expect(r.detail).toMatch(/Dimagi/i);
+  });
+});
+
+// ─── payment_unit_matches_entity_grain (dimagi-internal/ace#1946) ────
+// The PDD-side counterpart is `idea-to-pdd-qa § payment_unit_matches_entity_grain`
+// (ace#1420). That check gates the PDD; nothing gated the Work Order, so the
+// producer skill's own archetype template could — and did — put the per-visit
+// wording back into the document that actually gets signed, and this QA
+// returned 9/9 with the contradiction present
+// (bednet-check-2-visit/20260902-1555).
+
+// A § 6.2 closing sentence quoting a per-VISIT rate. Verbatim shape of the
+// defect as rendered on that run.
+const WO_PER_VISIT_RATE = `
+## 6. Payment Terms
+
+### 6.2 Payment Schedule
+
+Dimagi will pay only for verified units at the per-visit rate proposed in the
+partner's solicitation response.
+`;
+
+// The same sentence re-derived per worker-day, as it was corrected in-run.
+const WO_PER_DAY_RATE = `
+## 6. Payment Terms
+
+### 6.2 Payment Schedule
+
+Dimagi will pay only for verified units at the per-day rate proposed in the
+partner's solicitation response, for each verified follow-up day.
+`;
+
+// A PDD whose § Program Parameters pins entity_id to worker + encounter date,
+// so Connect resolves ONE payable unit per worker-day.
+const PDD_DAY_GRAIN = `
+## Program Parameters
+
+| Key | Value |
+|---|---|
+| payment_rate_min | 2.00 |
+| payment_rate_max | 4.00 |
+| entity_id_grain | worker username + encounter date |
+`;
+
+// A PDD whose entity_id resolves one payable unit per visit.
+const PDD_VISIT_GRAIN = `
+## Program Parameters
+
+| Key | Value |
+|---|---|
+| entity_id_grain | one entity per household visit |
+`;
+
+describe('checkPaymentUnitMatchesEntityGrain (work order)', () => {
+  test('FAILS a per-visit rate sentence against a per-worker-day entity_id_grain', () => {
+    const r = checkPaymentUnitMatchesEntityGrain(WO_PER_VISIT_RATE, {
+      pddText: PDD_DAY_GRAIN,
+    });
+    expect(r.pass).toBe(false);
+    expect(r.detail).toMatch(/visit/i);
+    expect(r.detail).toMatch(/day/i);
+    expect(r.auto_fix_hint).toBeTruthy();
+  });
+
+  test('passes once the rate sentence is re-derived per worker-day', () => {
+    const r = checkPaymentUnitMatchesEntityGrain(WO_PER_DAY_RATE, {
+      pddText: PDD_DAY_GRAIN,
+    });
+    expect(r.pass).toBe(true);
+  });
+
+  test('passes a per-visit rate when the grain really is per-visit', () => {
+    const r = checkPaymentUnitMatchesEntityGrain(WO_PER_VISIT_RATE, {
+      pddText: PDD_VISIT_GRAIN,
+    });
+    expect(r.pass).toBe(true);
+  });
+
+  test('accepts an explicit ctx.entityIdGrain without a PDD body', () => {
+    const r = checkPaymentUnitMatchesEntityGrain(WO_PER_VISIT_RATE, {
+      entityIdGrain: 'worker username + encounter date',
+    });
+    expect(r.pass).toBe(false);
+  });
+
+  test('catches the contradiction from the work order alone, with no PDD context', () => {
+    // The rendered § 6.2 carried BOTH statements. No --pdd needed to see it.
+    const selfContradicting = `${WO_PER_VISIT_RATE}
+For the avoidance of doubt, the payable unit under this Work Order is a
+worker-day, not an individual visit.
+`;
+    const r = checkPaymentUnitMatchesEntityGrain(selfContradicting);
+    expect(r.pass).toBe(false);
+  });
+
+  test('skips silently when no grain is available anywhere', () => {
+    const r = checkPaymentUnitMatchesEntityGrain(WO_PER_VISIT_RATE);
+    expect(r.pass).toBe(true);
+    expect(r.detail).toMatch(/not applicable|no entity_id_grain/i);
+  });
+
+  test('does not read an invoice payment window as a day-scoped grain', () => {
+    const wo = `${WO_PER_VISIT_RATE}
+Dimagi will settle each approved payable unit within 30 days of invoice receipt.
+`;
+    const r = checkPaymentUnitMatchesEntityGrain(wo);
+    expect(r.pass).toBe(true);
+  });
+
+  test('passes the good fixture (no rate-unit/grain conflict)', () => {
+    const r = checkPaymentUnitMatchesEntityGrain(GOOD_WO, { pddText: PDD_VISIT_GRAIN });
+    expect(r.pass).toBe(true);
+  });
+
+  test('passes the real gdoc plain-text export', () => {
+    const r = checkPaymentUnitMatchesEntityGrain(GDOC_WO_PLAIN, { pddText: PDD_VISIT_GRAIN });
+    expect(r.pass).toBe(true);
   });
 });
