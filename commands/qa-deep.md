@@ -9,7 +9,44 @@ allowed-tools: [Read, Write, Edit, Bash, Glob, Grep, Agent, AskUserQuestion, mcp
 Triggers a full LLM-as-Judge quality assessment of an opportunity that
 already has a successful /ace:run behind it.
 
+## Step 0 — choose the run (MANDATORY, before anything else)
+
+Every path below is `runs/<run-id>/...`. **`<run-id>` is not "the newest
+folder."** Resolve it with `selectQaDeepRun` and nothing else:
+
+```ts
+import { selectQaDeepRun } from '../lib/qa-deep-run-selection';
+// candidates = every folder under ACE/$1/runs/ + its parsed run_state.yaml
+const pick = selectQaDeepRun(candidates, stage); // 'ocs' | 'apps' | 'both'
+if (!pick.ok) { /* print pick.refusal verbatim and HALT */ }
+const runId = pick.run_id;
+```
+
+The operator may pin a run explicitly (`/ace:qa-deep <opp> <run-id>`); when
+they do, still run `assessQaDeepRun` on it and surface the reasons if it is
+disqualified — pinning overrides the choice, not the warning.
+
+**Do NOT use `resolve_current_run_id` here.** It returns the
+lexicographically-largest FOLDER name, which is a correct answer to a
+different question. On `hh-poverty-targeting` (2026-09-05) it returned
+`20260901-1932` — a Phase-7-only validation fork (`forked_from:
+20260828-0702`, six phases at `verdict: seeded`, 8/9/10 `skipped` with
+`skip_reason: "Validation fork -- Phase 7 only."`). Stage B reads
+`3-commcare/app-test-cases.yaml` and `commcare-setup.products.apps`, both
+of which that fork carries, so the apps half would have run to completion
+and written `app-ux-eval_verdict-deep.yaml` into it. Phase 9 `llo-launch`
+reads that verdict as its go-live gate and cannot tell the difference: the
+gate does not fail, it PASSES on evidence about a different run.
+
+`selectQaDeepRun` refuses rather than falling back. Print `pick.refusal`
+and stop — never grade an unknown run.
+
+*Enforced:* `lib/qa-deep-run-selection.ts` +
+`test/lib/qa-deep-run-selection.test.ts` (ace#1950).
+
 ## Inputs read from Drive (`ACE/$1/`)
+
+All `<run-id>` below is the one Step 0 selected.
 
 - `inputs/pdd.md`, `runs/<run-id>/2-scenarios/pdd-to-test-prompts.md` (OCS deep ground truth)
 - `runs/<run-id>/2-scenarios/pdd-to-app-journeys.md`, `runs/<run-id>/3-commcare/app-test-cases.yaml` (app deep ground truth)
@@ -21,6 +58,14 @@ already has a successful /ace:run behind it.
 Run the following dispatches in this order:
 
 ### Stage A — OCS deep (skip if `--apps-only`)
+
+Pass the Step 0 `runId` AND the run's
+`phases.ocs-setup.products.ocs_chatbot.experiment_id` down to the qa skill.
+`ocs-chatbot-qa` asserts the bot it resolved is the bot that run built
+(`assertRunOwnsChatbot`) and refuses otherwise — without that, its
+three-branch resolution chain can grade another run's chatbot, or the
+pristine golden template, and `llo-launch` reads the result as clearance
+(ace#1950).
 
 1. Dispatch `ocs-chatbot-qa --deep` for $1
 2. Dispatch `ocs-chatbot-eval --deep` for $1

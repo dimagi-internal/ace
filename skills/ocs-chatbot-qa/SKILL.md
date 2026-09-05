@@ -80,8 +80,49 @@ Skills — No Fake Background Tasks`). Concrete budget:
      get `public_id` + `embed_key`
    - Otherwise, if `opp_name` is provided, read
      `ACE/<opp-name>/runs/<run-id>/5-ocs/ocs-agent-setup.md`
-   - Otherwise, use `$OCS_GOLDEN_TEMPLATE_ID` from the env
+   - Otherwise **halt** (see the ownership assertion below) — there is no
+     third branch for a graded suite
    - The `embed_key` and `public_id` are needed for the anonymous chat API
+
+   **Then assert the bot belongs to the run being graded — MANDATORY on
+   `--deep` and `--monitor`, before the liveness probe.** Read the run's
+   `run_state.yaml` and compare:
+
+   ```ts
+   import { assertRunOwnsChatbot } from '../../lib/qa-deep-run-selection';
+   const own = assertRunOwnsChatbot(runState, resolvedExperimentId);
+   if (!own.ok) { /* print own.refusal verbatim and HALT */ }
+   ```
+
+   The check is `resolvedExperimentId ===
+   phases.ocs-setup.products.ocs_chatbot.experiment_id`. If that key is
+   absent, the run built no chatbot of its own and the suite halts — it
+   does not "use whatever we found."
+
+   **Why the chain needed this, and why branch 3 is gone.** None of the
+   three branches asserted ownership, so a graded verdict could describe a
+   bot this run never built. Both wrong branches were observed on
+   `hh-poverty-targeting/20260901-1932`, a Phase-7-only fork, 2026-09-05:
+
+   - **Branch 2** fired on a *copied* `5-ocs/ocs-agent-setup.md` inherited
+     from the source run. It resolved chatbot 13029 and the suite ran to
+     completion — grading the right bot into the **wrong run folder**, with
+     no warning.
+   - **Branch 3** was the silent floor: with no readable
+     `ocs-agent-setup.md`, the suite graded `$OCS_GOLDEN_TEMPLATE_ID` — the
+     pristine template — and reported its score as the opportunity's.
+
+   Phase 9 `llo-launch` reads the deep verdict as its go-live gate, so
+   either path lets that gate **pass** on evidence about something else.
+   That is why a loud halt is correct here and a fallback is not.
+
+   `$OCS_GOLDEN_TEMPLATE_ID` keeps its one legitimate use — the
+   **diagnostic** control in the Step 5 trace-triage block, where
+   "target fails / golden passes" is real signal. That is a probe, never
+   the subject of a graded suite.
+
+   *Enforced:* `lib/qa-deep-run-selection.ts` +
+   `test/lib/qa-deep-run-selection.test.ts` (ace#1950).
 
    **Env-source note.** ACE env vars (`OCS_GOLDEN_TEMPLATE_ID`,
    `OCS_TEAM_SLUG`, `OCS_SHARED_COLLECTION_ID`,
@@ -563,3 +604,4 @@ When `--dry-run` is active:
 | 2026-08-18 | **Step 5.9 no longer assumes a trace pointer exists (ace#1492).** A generation failing before any message is persisted has no `messages[].metadata.trace_info`, so `describeSessionTrace` returns `''` and the mandated "open the trace" instruction dead-ends. Documented the golden-template control as the fallback diagnostic, with an explicit warning that a *passing* golden **inverts** the #743 heuristic: #743 taught "golden fails too, so it is key-scope", and a reader who only remembers that reads a passing golden as "platform is fine, must be my config" and bisects a configuration that is provably identical to a working one. Observed on `bednet-check-2-visit/20260817-1720`. | ACE team |
 | 2026-08-25 | **Step 5 session scope is mode-dependent — `--deep`/`--monitor` open a FRESH session per prompt (dimagi-internal/ace#1645).** The step opened one anonymous session and looped every prompt through it, which is fine for `--quick` (3 prompts) and wrong for a 51-prompt deep suite: the golden template runs `history_mode: summarize`, `history_type: global`, `max_history_length: 10`, so a single session feeds a rolling summary of unrelated prior answers into every later prompt — while `ocs-chatbot-eval` grades each entry independently. The carryover biases the deep score UPWARD (an answer inherits a fact retrieval never earned), and that verdict gates Phase 9 `llo-launch` activation. Fresh-session-per-prompt costs ~1s per prompt: measured 1162s/1800s at 51/51 on `bednet-check-2-visit/20260825-1310`. Declared multi-turn prompts stay on the preceding session. Transcript entries now carry `Session id:` so a reader can tell which regime a capture ran under. | ACE team |
 | 2026-08-26 | **The wrong-embed-key negative control is 401, not 403 — and a MISSING header is not rejected at all (dimagi-internal/ace#1679).** The status table shipped by the #1298 row above told authors to expect **403** on a wrong `X-Embed-Key`; live it returns **401 `{"detail":"Invalid widget embed key"}`**. That is the #1298 class from the other side: a harness written from this prose asserting `== 403` reads a healthy 401 rejection as "the negative control did not fire" — i.e. as *the embed key is not being checked* — manufacturing the exact false alarm the table was added to prevent. Step 5 now says assert a **4xx range**, for the same reason the send asserts a 2xx range. The second correction matters more: omitting `X-Embed-Key` **entirely** returns **201** and starts a session, so the control only ever proved that a *wrong* key is rejected, never that a key is *required*. That is plausibly by design — `start_session_public` is a genuine anonymous surface for a published bot with an empty `participant_allowlist` — but the doc previously let a reader infer a stronger guarantee than the endpoint offers, and a future reader could just as easily have filed the 201 as a security defect. `mcp/ocs/backends/rest.ts` needed no change: it branches on `!res.ok` and was already correct for both codes. Matching bullet corrected in `playbook/integrations/ocs-integration.md`. Observed on `spark-facilitator/20260820-0817` Phase 5. | ACE team |
+| 2026-09-05 | **Step 1 now ASSERTS the resolved bot belongs to the run being graded, and the `$OCS_GOLDEN_TEMPLATE_ID` fallback is gone from the resolution chain (dimagi-internal/ace#1950).** The three-branch chain (`experiment_id` → the run folder's `ocs-agent-setup.md` → the golden template) never checked ownership at any branch, so a graded deep verdict could describe a bot this run never built — and `llo-launch` reads that verdict as go-live clearance. Both wrong branches were observed on `hh-poverty-targeting/20260901-1932`, a Phase-7-only fork: branch 2 fired on a COPIED `ocs-agent-setup.md` and graded the source run's chatbot 13029 into the fork's folder with no warning; with no readable copy, branch 3 would have graded the pristine golden template and reported its score as the opportunity's. Step 1 now calls `assertRunOwnsChatbot(runState, resolvedExperimentId)` against `phases.ocs-setup.products.ocs_chatbot.experiment_id` and halts on mismatch or on a run with no chatbot of its own. The golden template keeps its one legitimate use — the Step 5 trace-triage DIAGNOSTIC control, where "target fails / golden passes" is real signal. *Enforced:* `lib/qa-deep-run-selection.ts` + `test/lib/qa-deep-run-selection.test.ts`. | ACE team |
