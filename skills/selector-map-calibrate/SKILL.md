@@ -23,6 +23,14 @@ calibration report. They share the live device and overlap on which surfaces
 they drive, but their success criteria are different. (The `selector_map_currency`
 doctor probe's remediation points HERE, not at the screenshot skill.)
 
+**Calibrating a map is one step of a bigger transition.** When a NEW Connect
+APK is becoming ACE's default, run `connect-apk-upgrade` — it verifies the
+release resolves to a downloadable asset, delegates the calibration below,
+proves every static recipe still navigates, flips every version pin atomically,
+orders the `.env` refresh before the Claude restart, and carries a verification
+checklist + a rollback. This skill on its own calibrates a map; it does not
+change what version the runtime loads.
+
 ## Why this skill exists — the convergence problem
 
 When the AMI bumps the Connect APK (e.g. 2.62.0 → 2.63.0), the convention is to
