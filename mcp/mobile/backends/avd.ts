@@ -20,12 +20,14 @@ import { checkAvdContention, clearStaleAvdLock } from '../avd-contention.js';
 import type { AvdInfo, ApkInfo, UiDumpResult, SnapshotResult, LocalDiagnostics, ContentionSummary } from '../types.js';
 import {
   classifyAvdContention,
+  parseEmulatorProcesses,
   parsePsRows,
   resolveAvdPoolFreedom,
   type PsRow,
 } from '../../../lib/mobile-contention.js';
+import { scopeOrphanQemuKills } from '../../../lib/avd-orphan-scope.js';
 import { resolveAdbServerPort, resolveEmulatorPair, recordSessionLock, isTcpPortFree, occupiedConsolePortIsFatal } from '../port-allocator.js';
-import { withAllocatorMutex } from '../session-lock.js';
+import { listLiveSessionLocks, withAllocatorMutex } from '../session-lock.js';
 
 // Per-phase budgets for the post-spawn three-phase boot wait.
 //
@@ -1066,10 +1068,12 @@ export class AvdBackend {
     //
     // Step 1: orphan qemu sweep (must run first).
     //
-    // Get all qemu-system PIDs. `pgrep -af` would give us the command-
-    // line too, but we don't need it for the kill decision — the
-    // adb-devices cross-reference is the authoritative signal. On
-    // Windows we no-op (pgrep doesn't exist, and ACE mobile dev is
+    // Get all qemu-system PIDs. `pgrep` supplies only the CANDIDATE set;
+    // the kill decision is made below by attributing each candidate to a
+    // live session lock via its console port (ace#1821). The command lines
+    // come from the shared `ps` capture rather than `pgrep -af`, so both
+    // contention questions read one parser (`lib/mobile-contention.ts`).
+    // On Windows we no-op (pgrep doesn't exist, and ACE mobile dev is
     // Mac/Linux-only in practice).
     let orphansKilled = 0;
     if (process.platform !== 'win32') {
@@ -1100,47 +1104,74 @@ export class AvdBackend {
           : [];
 
         if (qemuPids.length > 0) {
-          // Live-tracked qemu emulators have an entry in `adb devices`.
-          // Anything else is orphan state. We don't try to map specific
-          // PIDs to specific console ports here — if `adb devices` is
-          // empty (which is the wedged state we're trying to recover
-          // from), every qemu PID is by definition an orphan.
-          const devices = await this.shell('adb', ['devices']).catch(() => null);
-          const liveSerials = devices
-            ? devices.stdout
-                .split('\n')
-                .slice(1)
-                .map((line) => line.split('\t')[0].trim())
-                .filter((s) => s.startsWith('emulator-'))
-            : [];
-          const liveCount = liveSerials.length;
+          // ATTRIBUTION, NOT COUNTING (ace#1821).
+          //
+          // This branch used to ask `adb devices` how many emulators were
+          // visible and treat a zero as proof that every qemu pid was an
+          // orphan ("if `adb devices` is empty ... every qemu PID is by
+          // definition an orphan"). That inference holds on a single-session
+          // host and is FALSE whenever a peer session exists: each session
+          // gets its OWN adb server (`mcp/mobile/port-allocator.ts`), and a
+          // freshly-allocated server has scanned nothing at dispatch start —
+          // so it legitimately reports zero devices while peers' emulators
+          // are alive on their own servers. The sweep then SIGKILLed them.
+          // That is ace#1821's symptom verbatim, and no threshold repairs it,
+          // so the inference is deleted rather than tuned: `adb devices` no
+          // longer takes part in this decision at all.
+          //
+          // Instead each candidate is attributed to a session by console
+          // port — the only identifier that binds a detached emulator back to
+          // the session that spawned it (`-port` at :917-919 below,
+          // `SessionLock.emulator_port` in `mcp/mobile/session-lock.ts`).
+          // A candidate dies only when nothing ALIVE claims it.
+          //
+          // The attempt-10 reproducer still works: `listLiveSessionLocks`
+          // drops locks whose `mcp_pid` is dead, so a crashed session's
+          // emulator is claimed by nobody and is still killed.
+          //
+          // The decision is pure and lives in `lib/avd-orphan-scope.ts`
+          // (`test/lib/avd-orphan-scope.test.ts`, which pins BOTH controls:
+          // the pre-fix logic killing a live peer, and the post-fix logic
+          // sparing it while still reaping the true orphan). This half only
+          // collects and kills.
+          const psRows = await this.readPsRows();
+          const liveClaims = listLiveSessionLocks().map((l) => ({
+            mcpPid: l.mcp_pid,
+            consolePort: l.emulator_port,
+            avdName: l.avd_name,
+            oppSlug: l.opp_slug,
+          }));
+          // Best-effort: an unresolvable port must not block the sweep, and
+          // `getAllocatedPorts` is lazy, so a failure here simply means we
+          // have no self-port to exclude — the lock we wrote covers us too.
+          const selfConsolePort = await this.getAllocatedPorts()
+            .then((p) => p.emulatorConsolePort)
+            .catch(() => null);
 
-          if (liveCount === 0) {
-            // Wedged-daemon state: kill every qemu PID we found. This
-            // is the explicit malaria-itn-fgd attempt-10 reproducer.
-            for (const pid of qemuPids) {
+          const scope = scopeOrphanQemuKills({
+            qemuPids,
+            processes: parseEmulatorProcesses(psRows),
+            liveClaims,
+            selfConsolePort,
+          });
+
+          for (const v of scope.verdicts) {
+            if (!v.kill) {
+              // Spares are logged too. A sweep that only narrates its kills
+              // cannot be audited for the kills it should NOT have made,
+              // which is how this defect survived: nothing in the log said
+              // whose emulator had just been destroyed.
               // eslint-disable-next-line no-console
-              console.warn(`[ace-mobile] sweepStaleEmulatorState: killing orphan qemu pid=${pid} (no adb devices visible)`);
-              try { process.kill(pid, 'SIGKILL'); orphansKilled++; } catch { /* already gone */ }
+              console.warn(
+                `[ace-mobile] sweepStaleEmulatorState: sparing qemu pid=${v.pid} (${v.reason}) — ${v.detail}`,
+              );
+              continue;
             }
-          } else if (qemuPids.length > liveCount) {
-            // Some qemu PIDs aren't matched by adb devices — these are
-            // orphans (a live qemu always has an adb-devices entry once
-            // the daemon has scanned the port range). If pgrep shows N
-            // PIDs and adb sees M < N devices, (N - M) PIDs are
-            // orphans. Kill the excess (lowest-PID first — most likely
-            // to be the older orphans). Tightened from PR #349's
-            // `qemuPids.length >= liveCount + 2` guard: that conservative
-            // threshold meant a 2-orphan + 1-stale-adb-entry state
-            // (the attempt-12 signature) was BELOW the kill threshold
-            // and got passed through to the adb-restart step with the
-            // orphans still alive — which is exactly the bug.
-            const excess = qemuPids.slice(0, qemuPids.length - liveCount);
-            for (const pid of excess) {
-              // eslint-disable-next-line no-console
-              console.warn(`[ace-mobile] sweepStaleEmulatorState: killing likely-orphan qemu pid=${pid} (${qemuPids.length} qemu PIDs, ${liveCount} adb devices)`);
-              try { process.kill(pid, 'SIGKILL'); orphansKilled++; } catch { /* already gone */ }
-            }
+            // eslint-disable-next-line no-console
+            console.warn(
+              `[ace-mobile] sweepStaleEmulatorState: killing orphan qemu pid=${v.pid} (${v.reason}) — ${v.detail}`,
+            );
+            try { process.kill(v.pid, 'SIGKILL'); orphansKilled++; } catch { /* already gone */ }
           }
         }
       } catch {
@@ -1201,14 +1232,15 @@ export class AvdBackend {
       if (!free) {
         // Same-user orphan rescue: before declaring this a foreign-user
         // squatter, see if it's actually OUR OWN orphan qemu whose
-        // session lock has been cleaned. Step 1's lock-file-driven sweep
-        // is blind to this case — when graceful MCP shutdown removed
-        // the lock but the SIGKILL on qemu raced or timed out, OR when
-        // a prior failed `ensureAvdRunning` attempt spawned qemu and
-        // threw before recording a lock, the qemu becomes an orphan
-        // with no lock pointer. Step 1's qemu==adb-devices heuristic
-        // also misses it when the orphan IS registered to our
-        // adb-server (count match → no kill).
+        // session lock has been cleaned. Step 1 can still miss this case
+        // even now that it attributes by console port: when a prior failed
+        // `ensureAvdRunning` attempt spawned qemu and threw BEFORE recording
+        // a lock, the qemu is unattributable and Step 1 deliberately spares
+        // it (see `lib/avd-orphan-scope.ts` — sparing a true orphan is the
+        // cheap error, killing a live peer is the expensive one). This step
+        // is the narrower second pass that can still reap it, because a
+        // port-specific `lsof` hit is positive evidence of ownership rather
+        // than the absence of evidence Step 1 had to work from.
         //
         // lsof permission semantics make this rescue safe across users:
         // on macOS, `lsof -nP -iTCP:<port> -sTCP:LISTEN -t` only

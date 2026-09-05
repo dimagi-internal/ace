@@ -21,7 +21,15 @@ import {
 import type { AvdHolder } from '../../lib/mobile-contention.js';
 
 function holder(pid: number): AvdHolder {
-  return { pid, ppid: 1, user: 'acedimagi', readOnly: true, consolePort: 5554, startedMs: 0 };
+  return {
+    pid,
+    ppid: 1,
+    user: 'acedimagi',
+    readOnly: true,
+    consolePort: 5554,
+    avdName: 'ACE_Pixel_API_34',
+    startedMs: 0,
+  };
 }
 
 /** Provisioned + marker recorded + marker valid for the map in force. */
