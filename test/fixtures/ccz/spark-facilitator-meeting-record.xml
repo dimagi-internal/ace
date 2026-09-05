@@ -1,0 +1,1997 @@
+<h:html xmlns:h="http://www.w3.org/1999/xhtml" xmlns:orx="http://openrosa.org/jr/xforms" xmlns="http://www.w3.org/2002/xforms" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:jr="http://openrosa.org/javarosa" xmlns:vellum="http://commcarehq.org/xforms/vellum">
+  <h:head>
+    <h:title>Community meeting record</h:title>
+    <model>
+      <instance>
+        <data xmlns="http://openrosa.org/formdesigner/cb6fcd7f4f375d6f" xmlns:jrm="http://dev.commcarehq.org/jr/xforms" uiVersion="1" version="3" name="community_meeting_record">
+          <meeting_date>
+            <date_of_meeting/>
+          </meeting_date>
+          <meeting_held>
+            <meeting_conducted/>
+          </meeting_held>
+          <meeting_not_held>
+            <reason_not_conducted/>
+            <reason_other/>
+            <expected_meeting_date/>
+            <reschedule_date/>
+          </meeting_not_held>
+          <meeting_type_screen>
+            <meeting_type/>
+          </meeting_type_screen>
+          <fcap_step>
+            <step/>
+            <activity_completed/>
+          </fcap_step>
+          <attendance>
+            <hh_represented_at_the_meeting/>
+            <male_attendance/>
+            <female_attendance/>
+            <members_with_disability/>
+          </attendance>
+          <participation>
+            <male_participants/>
+            <female_participants/>
+          </participation>
+          <other_attendees>
+            <male_leader_attendence/>
+            <female_leader_attendence/>
+            <SparkTrainer_attendance/>
+            <SEDO_attendance/>
+          </other_attendees>
+          <meeting_quality>
+            <meeting_on_time/>
+            <why_did_the_meeting_start_late/>
+            <why_did_the_meeting_start_late_other/>
+            <meeting_conflict/>
+            <conflict_details/>
+            <conflict_resolved/>
+          </meeting_quality>
+          <savings>
+            <currently_saving/>
+          </savings>
+          <savings_details>
+            <hh_saving/>
+            <males_saving/>
+            <females_saving/>
+            <amt_savings/>
+            <savings_use/>
+            <savings_use_other/>
+          </savings_details>
+          <evidence>
+            <consent_script/>
+            <photo_consent_announced/>
+            <attach_a_photo_for_the_meeting/>
+            <meeting_gps/>
+            <gps_accuracy_m/>
+            <lat/>
+            <lon/>
+            <meeting_gps_accuracy_good/>
+            <meeting_gps_accuracy_usable/>
+            <meeting_gps_accuracy_imprecise/>
+          </evidence>
+          <next_meeting>
+            <next_meeting_date/>
+          </next_meeting>
+          <meeting_summary>
+            <Total_Attendance/>
+            <Total_participation/>
+            <Percentage_Participation/>
+            <cumulative_savings/>
+            <meeting_index/>
+            <meetings_on_current_step/>
+            <pilot_fcap_step/>
+            <last_meeting_date/>
+          </meeting_summary>
+          <record_a_community_meeting>
+            <deliver xmlns="http://commcareconnect.com/data/v1/learn" id="record_a_community_meeting">
+              <name>Community meeting</name>
+              <entity_id/>
+              <entity_name/>
+            </deliver>
+          </record_a_community_meeting>
+          <case xmlns="http://commcarehq.org/case/transaction/v2" case_id="" date_modified="" user_id="">
+            <update>
+              <Percentage_Participation/>
+              <SEDO_attendance/>
+              <SparkTrainer_attendance/>
+              <Total_Attendance/>
+              <Total_Participation/>
+              <activity_completed/>
+              <amt_savings/>
+              <conflict_details/>
+              <conflict_resolved/>
+              <cumulative_savings/>
+              <currently_saving/>
+              <date_of_meeting/>
+              <expected_meeting_date/>
+              <female_attendance/>
+              <female_leader_attendence/>
+              <female_participants/>
+              <females_saving/>
+              <hh_represented_at_the_meeting/>
+              <hh_saving/>
+              <last_meeting_date/>
+              <male_attendance/>
+              <male_leader_attendence/>
+              <male_participants/>
+              <males_saving/>
+              <meeting_conducted/>
+              <meeting_conflict/>
+              <meeting_gps/>
+              <meeting_on_time/>
+              <meeting_type/>
+              <meetings_on_current_step/>
+              <members_with_disability/>
+              <next_meeting_date/>
+              <photo_consent_announced/>
+              <pilot_fcap_step/>
+              <reason_not_conducted/>
+              <reason_other/>
+              <reschedule_date/>
+              <savings_use/>
+              <savings_use_other/>
+              <step/>
+              <why_did_the_meeting_start_late/>
+              <why_did_the_meeting_start_late_other/>
+            </update>
+          </case>
+          <orx:meta xmlns:cc="http://commcarehq.org/xforms">
+            <orx:deviceID/>
+            <orx:timeStart/>
+            <orx:timeEnd/>
+            <orx:username/>
+            <orx:userID/>
+            <orx:instanceID/>
+            <cc:appVersion/>
+            <orx:drift/>
+            <cc:location/>
+          </orx:meta>
+        </data>
+      </instance>
+      <instance src="jr://instance/casedb" id="casedb"/>
+      <instance src="jr://instance/session" id="commcaresession"/>
+      <bind nodeset="/data/meeting_date/date_of_meeting" type="xsd:date" required="true()" constraint=". &lt;= today()" jr:constraintMsg="jr:itext('meeting_date-date_of_meeting-constraintMsg')"/>
+      <bind nodeset="/data/meeting_held/meeting_conducted" type="xsd:string" required="true()"/>
+      <bind nodeset="/data/meeting_not_held" relevant="/data/meeting_held/meeting_conducted = 'no'"/>
+      <bind nodeset="/data/meeting_not_held/reason_not_conducted" type="xsd:string" required="true()"/>
+      <bind nodeset="/data/meeting_not_held/reason_other" type="xsd:string" constraint="string-length(.) &lt;= 200" jr:constraintMsg="jr:itext('meeting_not_held-reason_other-constraintMsg')" relevant="/data/meeting_not_held/reason_not_conducted = 'other'"/>
+      <bind nodeset="/data/meeting_not_held/expected_meeting_date" type="xsd:date"/>
+      <bind nodeset="/data/meeting_not_held/reschedule_date" type="xsd:date" constraint=". &gt;= /data/meeting_date/date_of_meeting" jr:constraintMsg="jr:itext('meeting_not_held-reschedule_date-constraintMsg')"/>
+      <bind nodeset="/data/meeting_type_screen" relevant="/data/meeting_held/meeting_conducted = 'yes'"/>
+      <bind nodeset="/data/meeting_type_screen/meeting_type" type="xsd:string" required="true()"/>
+      <bind nodeset="/data/fcap_step" relevant="/data/meeting_held/meeting_conducted = 'yes'"/>
+      <bind nodeset="/data/fcap_step/step" type="xsd:string" required="true()"/>
+      <bind nodeset="/data/fcap_step/activity_completed" type="xsd:string"/>
+      <bind nodeset="/data/attendance" relevant="/data/meeting_held/meeting_conducted = 'yes'"/>
+      <bind nodeset="/data/attendance/hh_represented_at_the_meeting" type="xsd:int" required="true()" constraint=". &gt;= 0 and (instance('casedb')/casedb/case[@case_id = instance('commcaresession')/session/data/case_id]/household_count = '' or . &lt;= number(instance('casedb')/casedb/case[@case_id = instance('commcaresession')/session/data/case_id]/household_count))" jr:constraintMsg="jr:itext('attendance-hh_represented_at_the_meeting-constraintMsg')"/>
+      <bind nodeset="/data/attendance/male_attendance" type="xsd:int" required="true()" constraint=". &gt;= 0 and . &lt;= 500" jr:constraintMsg="jr:itext('attendance-female_attendance-constraintMsg')"/>
+      <bind nodeset="/data/attendance/female_attendance" type="xsd:int" required="true()" constraint=". &gt;= 0 and . &lt;= 500" jr:constraintMsg="jr:itext('attendance-female_attendance-constraintMsg')"/>
+      <bind nodeset="/data/attendance/members_with_disability" type="xsd:int" constraint=". &gt;= 0 and . &lt;= (if(/data/attendance/male_attendance = '', 0, number(/data/attendance/male_attendance)) + if(/data/attendance/female_attendance = '', 0, number(/data/attendance/female_attendance)))" jr:constraintMsg="jr:itext('attendance-members_with_disability-constraintMsg')"/>
+      <bind nodeset="/data/participation" relevant="/data/meeting_held/meeting_conducted = 'yes'"/>
+      <bind nodeset="/data/participation/male_participants" type="xsd:int" required="true()" constraint=". &gt;= 0 and . &lt;= if(/data/attendance/male_attendance = '', 0, number(/data/attendance/male_attendance))" jr:constraintMsg="jr:itext('participation-male_participants-constraintMsg')"/>
+      <bind nodeset="/data/participation/female_participants" type="xsd:int" required="true()" constraint=". &gt;= 0 and . &lt;= if(/data/attendance/female_attendance = '', 0, number(/data/attendance/female_attendance))" jr:constraintMsg="jr:itext('participation-female_participants-constraintMsg')"/>
+      <bind nodeset="/data/other_attendees" relevant="/data/meeting_held/meeting_conducted = 'yes'"/>
+      <bind nodeset="/data/other_attendees/male_leader_attendence" type="xsd:int" constraint=". &gt;= 0 and . &lt;= 200" jr:constraintMsg="jr:itext('other_attendees-female_leader_attendence-constraintMsg')"/>
+      <bind nodeset="/data/other_attendees/female_leader_attendence" type="xsd:int" constraint=". &gt;= 0 and . &lt;= 200" jr:constraintMsg="jr:itext('other_attendees-female_leader_attendence-constraintMsg')"/>
+      <bind nodeset="/data/other_attendees/SparkTrainer_attendance" type="xsd:string"/>
+      <bind nodeset="/data/other_attendees/SEDO_attendance" type="xsd:string"/>
+      <bind nodeset="/data/meeting_quality" relevant="/data/meeting_held/meeting_conducted = 'yes'"/>
+      <bind nodeset="/data/meeting_quality/meeting_on_time" type="xsd:string"/>
+      <bind nodeset="/data/meeting_quality/why_did_the_meeting_start_late" type="xsd:string" relevant="/data/meeting_quality/meeting_on_time = 'no'"/>
+      <bind nodeset="/data/meeting_quality/why_did_the_meeting_start_late_other" type="xsd:string" constraint="string-length(.) &lt;= 200" jr:constraintMsg="jr:itext('meeting_not_held-reason_other-constraintMsg')" relevant="/data/meeting_quality/why_did_the_meeting_start_late = 'other'"/>
+      <bind nodeset="/data/meeting_quality/meeting_conflict" type="xsd:string"/>
+      <bind nodeset="/data/meeting_quality/conflict_details" type="xsd:string" constraint="string-length(.) &lt;= 300" jr:constraintMsg="jr:itext('meeting_quality-conflict_details-constraintMsg')" relevant="/data/meeting_quality/meeting_conflict = 'yes'"/>
+      <bind nodeset="/data/meeting_quality/conflict_resolved" type="xsd:string" relevant="/data/meeting_quality/meeting_conflict = 'yes'"/>
+      <bind nodeset="/data/savings" relevant="/data/meeting_held/meeting_conducted = 'yes' and (/data/fcap_step/step = 'step_5' or /data/fcap_step/step = 'step_6' or /data/fcap_step/step = 'step_7')"/>
+      <bind nodeset="/data/savings/currently_saving" type="xsd:string" required="true()"/>
+      <bind nodeset="/data/savings_details" relevant="/data/meeting_held/meeting_conducted = 'yes' and (/data/fcap_step/step = 'step_5' or /data/fcap_step/step = 'step_6' or /data/fcap_step/step = 'step_7') and /data/savings/currently_saving = 'yes'"/>
+      <bind nodeset="/data/savings_details/hh_saving" type="xsd:int" constraint=". &gt;= 0 and . &lt;= if(/data/attendance/hh_represented_at_the_meeting = '', 0, number(/data/attendance/hh_represented_at_the_meeting))" jr:constraintMsg="jr:itext('savings_details-hh_saving-constraintMsg')"/>
+      <bind nodeset="/data/savings_details/males_saving" type="xsd:int" constraint=". &gt;= 0 and . &lt;= 5000" jr:constraintMsg="jr:itext('savings_details-females_saving-constraintMsg')"/>
+      <bind nodeset="/data/savings_details/females_saving" type="xsd:int" constraint=". &gt;= 0 and . &lt;= 5000" jr:constraintMsg="jr:itext('savings_details-females_saving-constraintMsg')"/>
+      <bind nodeset="/data/savings_details/amt_savings" type="xsd:decimal" constraint=". &gt;= 0 and . &lt;= 100000000" jr:constraintMsg="jr:itext('savings_details-amt_savings-constraintMsg')"/>
+      <bind nodeset="/data/savings_details/savings_use" type="xsd:string"/>
+      <bind nodeset="/data/savings_details/savings_use_other" type="xsd:string" constraint="string-length(.) &lt;= 200" jr:constraintMsg="jr:itext('meeting_not_held-reason_other-constraintMsg')" relevant="/data/savings_details/savings_use = 'other'"/>
+      <bind nodeset="/data/evidence" relevant="/data/meeting_held/meeting_conducted = 'yes'"/>
+      <bind nodeset="/data/evidence/consent_script"/>
+      <bind nodeset="/data/evidence/photo_consent_announced" type="xsd:string" required="true()"/>
+      <bind nodeset="/data/evidence/attach_a_photo_for_the_meeting" type="binary" required="true()"/>
+      <bind nodeset="/data/evidence/meeting_gps" type="geopoint" required="true()"/>
+      <bind nodeset="/data/evidence/gps_accuracy_m" type="xsd:string" calculate="if(/data/evidence/meeting_gps = '', -1, number(selected-at(/data/evidence/meeting_gps, 3)))"/>
+      <bind nodeset="/data/evidence/lat" type="xsd:string" calculate="if(/data/evidence/meeting_gps = '', '', selected-at(/data/evidence/meeting_gps, 0))"/>
+      <bind nodeset="/data/evidence/lon" type="xsd:string" calculate="if(/data/evidence/meeting_gps = '', '', selected-at(/data/evidence/meeting_gps, 1))"/>
+      <bind nodeset="/data/evidence/meeting_gps_accuracy_good" relevant="(/data/evidence/gps_accuracy_m &gt;= 0 and /data/evidence/gps_accuracy_m &lt;= 15)"/>
+      <bind nodeset="/data/evidence/meeting_gps_accuracy_usable" relevant="(/data/evidence/gps_accuracy_m &gt; 15 and /data/evidence/gps_accuracy_m &lt;= 50)"/>
+      <bind nodeset="/data/evidence/meeting_gps_accuracy_imprecise" relevant="(/data/evidence/gps_accuracy_m &gt; 50)"/>
+      <bind nodeset="/data/next_meeting" relevant="/data/meeting_held/meeting_conducted = 'yes'"/>
+      <bind nodeset="/data/next_meeting/next_meeting_date" type="xsd:date" constraint=". &gt;= /data/meeting_date/date_of_meeting" jr:constraintMsg="jr:itext('next_meeting-next_meeting_date-constraintMsg')"/>
+      <bind nodeset="/data/meeting_summary/Total_Attendance" type="xsd:string" calculate="if(/data/attendance/male_attendance = '', 0, number(/data/attendance/male_attendance)) + if(/data/attendance/female_attendance = '', 0, number(/data/attendance/female_attendance))"/>
+      <bind nodeset="/data/meeting_summary/Total_participation" type="xsd:string" calculate="if(/data/participation/male_participants = '', 0, number(/data/participation/male_participants)) + if(/data/participation/female_participants = '', 0, number(/data/participation/female_participants))"/>
+      <bind nodeset="/data/meeting_summary/Percentage_Participation" type="xsd:string" calculate="if(/data/meeting_summary/Total_Attendance = 0, 0, round(/data/meeting_summary/Total_participation * 100 div /data/meeting_summary/Total_Attendance))"/>
+      <bind nodeset="/data/meeting_summary/cumulative_savings" type="xsd:string" calculate="if(instance('casedb')/casedb/case[@case_id = instance('commcaresession')/session/data/case_id]/cumulative_savings = '', 0, number(instance('casedb')/casedb/case[@case_id = instance('commcaresession')/session/data/case_id]/cumulative_savings)) + if(/data/savings_details/amt_savings = '', 0, number(/data/savings_details/amt_savings))"/>
+      <bind nodeset="/data/meeting_summary/meeting_index" type="xsd:string" calculate="if(/data/fcap_step/step = '', '', if(/data/meeting_held/meeting_conducted = 'yes' and /data/meeting_type_screen/meeting_type = 'community_meeting', if(/data/fcap_step/step = instance('casedb')/casedb/case[@case_id = instance('commcaresession')/session/data/case_id]/pilot_fcap_step, min(if(instance('casedb')/casedb/case[@case_id = instance('commcaresession')/session/data/case_id]/meetings_on_current_step = '', 0, number(instance('casedb')/casedb/case[@case_id = instance('commcaresession')/session/data/case_id]/meetings_on_current_step)) + 1, 3), 1), if(/data/fcap_step/step = instance('casedb')/casedb/case[@case_id = instance('commcaresession')/session/data/case_id]/pilot_fcap_step, if(instance('casedb')/casedb/case[@case_id = instance('commcaresession')/session/data/case_id]/meetings_on_current_step = '', 0, number(instance('casedb')/casedb/case[@case_id = instance('commcaresession')/session/data/case_id]/meetings_on_current_step)), 0)))"/>
+      <bind nodeset="/data/meeting_summary/meetings_on_current_step" type="xsd:string" calculate="if(/data/meeting_summary/meeting_index = '', if(instance('casedb')/casedb/case[@case_id = instance('commcaresession')/session/data/case_id]/meetings_on_current_step = '', 0, number(instance('casedb')/casedb/case[@case_id = instance('commcaresession')/session/data/case_id]/meetings_on_current_step)), /data/meeting_summary/meeting_index)"/>
+      <bind nodeset="/data/meeting_summary/pilot_fcap_step" type="xsd:string" calculate="if(/data/fcap_step/step = '', instance('casedb')/casedb/case[@case_id = instance('commcaresession')/session/data/case_id]/pilot_fcap_step, /data/fcap_step/step)"/>
+      <bind nodeset="/data/meeting_summary/last_meeting_date" type="xsd:string" calculate="/data/meeting_date/date_of_meeting"/>
+      <bind nodeset="/data/record_a_community_meeting"/>
+      <bind nodeset="/data/record_a_community_meeting/deliver/entity_id" calculate="concat(instance('casedb')/casedb/case[@case_id = instance('commcaresession')/session/data/case_id]/@case_id, '-', /data/fcap_step/step, '-', /data/meeting_summary/meeting_index, '-', /data/meeting_type_screen/meeting_type)"/>
+      <bind nodeset="/data/record_a_community_meeting/deliver/entity_name" calculate="concat(instance('casedb')/casedb/case[@case_id = instance('commcaresession')/session/data/case_id]/case_name, ' - ', /data/fcap_step/step)"/>
+      <itext>
+        <translation lang="en" default="">
+          <text id="meeting_date-label">
+            <value>Meeting date</value>
+            <value form="markdown">Meeting date</value>
+          </text>
+          <text id="meeting_date-date_of_meeting-label">
+            <value>What date was this meeting?</value>
+            <value form="markdown">What date was this meeting?</value>
+          </text>
+          <text id="meeting_date-date_of_meeting-constraintMsg">
+            <value>The meeting date cannot be in the future.</value>
+            <value form="markdown">The meeting date cannot be in the future.</value>
+          </text>
+          <text id="meeting_held-label">
+            <value>Did the meeting happen?</value>
+            <value form="markdown">Did the meeting happen?</value>
+          </text>
+          <text id="meeting_held-meeting_conducted-label">
+            <value>Did the meeting take place?</value>
+            <value form="markdown">Did the meeting take place?</value>
+          </text>
+          <text id="meeting_not_held-label">
+            <value>Why the meeting did not happen</value>
+            <value form="markdown">Why the meeting did not happen</value>
+          </text>
+          <text id="meeting_not_held-reason_not_conducted-label">
+            <value>Why did it not happen?</value>
+            <value form="markdown">Why did it not happen?</value>
+          </text>
+          <text id="meeting_not_held-reason_not_conducted-opt0-label">
+            <value>Rain or bad weather</value>
+            <value form="markdown">Rain or bad weather</value>
+          </text>
+          <text id="meeting_not_held-reason_not_conducted-opt1-label">
+            <value>Funeral in the community</value>
+            <value form="markdown">Funeral in the community</value>
+          </text>
+          <text id="meeting_not_held-reason_not_conducted-opt2-label">
+            <value>Another community event on the same day</value>
+            <value form="markdown">Another community event on the same day</value>
+          </text>
+          <text id="meeting_not_held-reason_not_conducted-opt3-label">
+            <value>Too few people came</value>
+            <value form="markdown">Too few people came</value>
+          </text>
+          <text id="meeting_not_held-reason_not_conducted-opt4-label">
+            <value>Community leader was not available</value>
+            <value form="markdown">Community leader was not available</value>
+          </text>
+          <text id="meeting_not_held-reason_not_conducted-opt5-label">
+            <value>Facilitator could not travel</value>
+            <value form="markdown">Facilitator could not travel</value>
+          </text>
+          <text id="meeting_not_held-reason_not_conducted-opt6-label">
+            <value>Safety or security concern</value>
+            <value form="markdown">Safety or security concern</value>
+          </text>
+          <text id="meeting_not_held-reason_not_conducted-opt7-label">
+            <value>Other reason</value>
+            <value form="markdown">Other reason</value>
+          </text>
+          <text id="meeting_not_held-reason_other-label">
+            <value>Describe the reason</value>
+            <value form="markdown">Describe the reason</value>
+          </text>
+          <text id="meeting_not_held-reason_other-constraintMsg">
+            <value>Keep this to 200 characters or fewer.</value>
+            <value form="markdown">Keep this to 200 characters or fewer.</value>
+          </text>
+          <text id="meeting_not_held-expected_meeting_date-label">
+            <value>What date was the meeting expected?</value>
+            <value form="markdown">What date was the meeting expected?</value>
+          </text>
+          <text id="meeting_not_held-reschedule_date-label">
+            <value>What new date did you agree with the community?</value>
+            <value form="markdown">What new date did you agree with the community?</value>
+          </text>
+          <text id="meeting_not_held-reschedule_date-constraintMsg">
+            <value>The new date must be on or after the date of this record.</value>
+            <value form="markdown">The new date must be on or after the date of this record.</value>
+          </text>
+          <text id="meeting_type_screen-label">
+            <value>Type of meeting</value>
+            <value form="markdown">Type of meeting</value>
+          </text>
+          <text id="meeting_type_screen-meeting_type-label">
+            <value>What kind of meeting was it?</value>
+            <value form="markdown">What kind of meeting was it?</value>
+          </text>
+          <text id="meeting_type_screen-meeting_type-hint">
+            <value>Record both kinds. Only a community meeting is payable.</value>
+            <value form="markdown">Record both kinds. Only a community meeting is payable.</value>
+          </text>
+          <text id="meeting_type_screen-meeting_type-opt0-label">
+            <value>Community meeting</value>
+            <value form="markdown">Community meeting</value>
+          </text>
+          <text id="meeting_type_screen-meeting_type-opt1-label">
+            <value>Committee meeting</value>
+            <value form="markdown">Committee meeting</value>
+          </text>
+          <text id="fcap_step-label">
+            <value>FCAP step</value>
+            <value form="markdown">FCAP step</value>
+          </text>
+          <text id="fcap_step-step-label">
+            <value>Which FCAP step did this meeting cover?</value>
+            <value form="markdown">Which FCAP step did this meeting cover?</value>
+          </text>
+          <text id="fcap_step-step-opt0-label">
+            <value>Step 1: Our Partnership</value>
+            <value form="markdown">Step 1: Our Partnership</value>
+          </text>
+          <text id="fcap_step-step-opt1-label">
+            <value>Step 2: Community Dynamics, Governance and Leadership</value>
+            <value form="markdown">Step 2: Community Dynamics, Governance and Leadership</value>
+          </text>
+          <text id="fcap_step-step-opt2-label">
+            <value>Step 3: Understanding the Present - Situational Analysis</value>
+            <value form="markdown">Step 3: Understanding the Present - Situational Analysis</value>
+          </text>
+          <text id="fcap_step-step-opt3-label">
+            <value>Step 4: Getting to the Future - Microgrant Pathway and Goals</value>
+            <value form="markdown">Step 4: Getting to the Future - Microgrant Pathway and Goals</value>
+          </text>
+          <text id="fcap_step-step-opt4-label">
+            <value>Step 5: Initiative Pathway and Savings</value>
+            <value form="markdown">Step 5: Initiative Pathway and Savings</value>
+          </text>
+          <text id="fcap_step-step-opt5-label">
+            <value>Step 6: Advocacy Pathway</value>
+            <value form="markdown">Step 6: Advocacy Pathway</value>
+          </text>
+          <text id="fcap_step-step-opt6-label">
+            <value>Step 7: Vision</value>
+            <value form="markdown">Step 7: Vision</value>
+          </text>
+          <text id="fcap_step-activity_completed-label">
+            <value>Was the activity for this step completed?</value>
+            <value form="markdown">Was the activity for this step completed?</value>
+          </text>
+          <text id="attendance-label">
+            <value>Attendance</value>
+            <value form="markdown">Attendance</value>
+          </text>
+          <text id="attendance-hh_represented_at_the_meeting-label">
+            <value>How many households were represented?</value>
+            <value form="markdown">How many households were represented?</value>
+          </text>
+          <text id="attendance-hh_represented_at_the_meeting-constraintMsg">
+            <value>Enter 0 or more, and no more than the number of households recorded for this community.</value>
+            <value form="markdown">Enter 0 or more, and no more than the number of households recorded for this community.</value>
+          </text>
+          <text id="attendance-male_attendance-label">
+            <value>How many men attended?</value>
+            <value form="markdown">How many men attended?</value>
+          </text>
+          <text id="attendance-female_attendance-label">
+            <value>How many women attended?</value>
+            <value form="markdown">How many women attended?</value>
+          </text>
+          <text id="attendance-female_attendance-constraintMsg">
+            <value>Enter 0 or more. A meeting is about 64 people on average, so please check a figure in the hundreds before you continue.</value>
+            <value form="markdown">Enter 0 or more. A meeting is about 64 people on average, so please check a figure in the hundreds before you continue.</value>
+          </text>
+          <text id="attendance-members_with_disability-label">
+            <value>How many of them have a disability?</value>
+            <value form="markdown">How many of them have a disability?</value>
+          </text>
+          <text id="attendance-members_with_disability-hint">
+            <value>These people are already counted in the male and female attendance figures. This is a subset, not an addition.</value>
+            <value form="markdown">These people are already counted in the male and female attendance figures. This is a subset, not an addition.</value>
+          </text>
+          <text id="attendance-members_with_disability-constraintMsg">
+            <value>These people are already counted in attendance, so this cannot be more than the men plus the women who came.</value>
+            <value form="markdown">These people are already counted in attendance, so this cannot be more than the men plus the women who came.</value>
+          </text>
+          <text id="participation-label">
+            <value>Participation</value>
+            <value form="markdown">Participation</value>
+            <value form="image">jr://file/commcare/f7befe7eeeed8dbe5e00f391125e6c0c83a64643c301f0df9abb36532844a366.jpg</value>
+          </text>
+          <text id="participation-male_participants-label">
+            <value>How many men spoke or took part?</value>
+            <value form="markdown">How many men spoke or took part?</value>
+          </text>
+          <text id="participation-male_participants-constraintMsg">
+            <value>The men who spoke cannot outnumber the men who came.</value>
+            <value form="markdown">The men who spoke cannot outnumber the men who came.</value>
+          </text>
+          <text id="participation-female_participants-label">
+            <value>How many women spoke or took part?</value>
+            <value form="markdown">How many women spoke or took part?</value>
+          </text>
+          <text id="participation-female_participants-constraintMsg">
+            <value>The women who spoke cannot outnumber the women who came.</value>
+            <value form="markdown">The women who spoke cannot outnumber the women who came.</value>
+          </text>
+          <text id="other_attendees-label">
+            <value>Who else attended</value>
+            <value form="markdown">Who else attended</value>
+          </text>
+          <text id="other_attendees-male_leader_attendence-label">
+            <value>How many male leaders attended?</value>
+            <value form="markdown">How many male leaders attended?</value>
+          </text>
+          <text id="other_attendees-female_leader_attendence-label">
+            <value>How many female leaders attended?</value>
+            <value form="markdown">How many female leaders attended?</value>
+          </text>
+          <text id="other_attendees-female_leader_attendence-constraintMsg">
+            <value>Enter a number between 0 and 200.</value>
+            <value form="markdown">Enter a number between 0 and 200.</value>
+          </text>
+          <text id="other_attendees-SparkTrainer_attendance-label">
+            <value>Did a Spark Trainer attend?</value>
+            <value form="markdown">Did a Spark Trainer attend?</value>
+          </text>
+          <text id="other_attendees-SEDO_attendance-label">
+            <value>Did a SEDO attend?</value>
+            <value form="markdown">Did a SEDO attend?</value>
+          </text>
+          <text id="meeting_quality-label">
+            <value>How the meeting went</value>
+            <value form="markdown">How the meeting went</value>
+          </text>
+          <text id="meeting_quality-meeting_on_time-label">
+            <value>Did the meeting start on time?</value>
+            <value form="markdown">Did the meeting start on time?</value>
+          </text>
+          <text id="meeting_quality-why_did_the_meeting_start_late-label">
+            <value>Why did it start late?</value>
+            <value form="markdown">Why did it start late?</value>
+          </text>
+          <text id="meeting_quality-why_did_the_meeting_start_late-opt0-label">
+            <value>Waiting for participants to arrive</value>
+            <value form="markdown">Waiting for participants to arrive</value>
+          </text>
+          <text id="meeting_quality-why_did_the_meeting_start_late-opt1-label">
+            <value>Waiting for community leaders</value>
+            <value form="markdown">Waiting for community leaders</value>
+          </text>
+          <text id="meeting_quality-why_did_the_meeting_start_late-opt2-label">
+            <value>Rain delayed the start</value>
+            <value form="markdown">Rain delayed the start</value>
+          </text>
+          <text id="meeting_quality-why_did_the_meeting_start_late-opt3-label">
+            <value>Facilitator arrived late</value>
+            <value form="markdown">Facilitator arrived late</value>
+          </text>
+          <text id="meeting_quality-why_did_the_meeting_start_late-opt4-label">
+            <value>Venue was not ready</value>
+            <value form="markdown">Venue was not ready</value>
+          </text>
+          <text id="meeting_quality-why_did_the_meeting_start_late_other-label">
+            <value>Describe why it started late</value>
+            <value form="markdown">Describe why it started late</value>
+          </text>
+          <text id="meeting_quality-meeting_conflict-label">
+            <value>Was there a disagreement during the meeting?</value>
+            <value form="markdown">Was there a disagreement during the meeting?</value>
+          </text>
+          <text id="meeting_quality-conflict_details-label">
+            <value>What was the disagreement about?</value>
+            <value form="markdown">What was the disagreement about?</value>
+          </text>
+          <text id="meeting_quality-conflict_details-constraintMsg">
+            <value>Keep this to 300 characters or fewer.</value>
+            <value form="markdown">Keep this to 300 characters or fewer.</value>
+          </text>
+          <text id="meeting_quality-conflict_resolved-label">
+            <value>Was it resolved before the meeting ended?</value>
+            <value form="markdown">Was it resolved before the meeting ended?</value>
+          </text>
+          <text id="savings-label">
+            <value>Savings</value>
+            <value form="markdown">Savings</value>
+          </text>
+          <text id="savings-currently_saving-label">
+            <value>Is the community currently saving?</value>
+            <value form="markdown">Is the community currently saving?</value>
+          </text>
+          <text id="savings_details-label">
+            <value>Savings details</value>
+            <value form="markdown">Savings details</value>
+          </text>
+          <text id="savings_details-hh_saving-label">
+            <value>How many households are saving?</value>
+            <value form="markdown">How many households are saving?</value>
+          </text>
+          <text id="savings_details-hh_saving-constraintMsg">
+            <value>Households saving cannot be more than the households represented at the meeting.</value>
+            <value form="markdown">Households saving cannot be more than the households represented at the meeting.</value>
+          </text>
+          <text id="savings_details-males_saving-label">
+            <value>How many men are saving?</value>
+            <value form="markdown">How many men are saving?</value>
+          </text>
+          <text id="savings_details-females_saving-label">
+            <value>How many women are saving?</value>
+            <value form="markdown">How many women are saving?</value>
+          </text>
+          <text id="savings_details-females_saving-constraintMsg">
+            <value>Enter a number between 0 and 5000.</value>
+            <value form="markdown">Enter a number between 0 and 5000.</value>
+          </text>
+          <text id="savings_details-amt_savings-label">
+            <value>How much has been saved since the last meeting?</value>
+            <value form="markdown">How much has been saved since the last meeting?</value>
+          </text>
+          <text id="savings_details-amt_savings-hint">
+            <value>Malawian Kwacha</value>
+            <value form="markdown">Malawian Kwacha</value>
+          </text>
+          <text id="savings_details-amt_savings-constraintMsg">
+            <value>Enter an amount between 0 and 100000000 Kwacha.</value>
+            <value form="markdown">Enter an amount between 0 and 100000000 Kwacha.</value>
+          </text>
+          <text id="savings_details-savings_use-label">
+            <value>What are the savings used for?</value>
+            <value form="markdown">What are the savings used for?</value>
+          </text>
+          <text id="savings_details-savings_use-opt0-label">
+            <value>Farming inputs</value>
+            <value form="markdown">Farming inputs</value>
+          </text>
+          <text id="savings_details-savings_use-opt1-label">
+            <value>Small business</value>
+            <value form="markdown">Small business</value>
+          </text>
+          <text id="savings_details-savings_use-opt2-label">
+            <value>School costs</value>
+            <value form="markdown">School costs</value>
+          </text>
+          <text id="savings_details-savings_use-opt3-label">
+            <value>Health costs</value>
+            <value form="markdown">Health costs</value>
+          </text>
+          <text id="savings_details-savings_use-opt4-label">
+            <value>Food</value>
+            <value form="markdown">Food</value>
+          </text>
+          <text id="savings_details-savings_use-opt5-label">
+            <value>Emergency needs</value>
+            <value form="markdown">Emergency needs</value>
+          </text>
+          <text id="savings_details-savings_use-opt6-label">
+            <value>Other use</value>
+            <value form="markdown">Other use</value>
+          </text>
+          <text id="savings_details-savings_use_other-label">
+            <value>Describe the other use</value>
+            <value form="markdown">Describe the other use</value>
+          </text>
+          <text id="evidence-label">
+            <value>Evidence</value>
+            <value form="markdown">Evidence</value>
+          </text>
+          <text id="evidence-consent_script-label">
+            <value>**Read this out to the meeting before you take the photograph.**
+
+We are going to take one photograph of this meeting. It shows that the meeting took place.
+
+Taking part is voluntary. If you do not want to be in the photograph, you may step out of it at any time, including after I have asked. You do not have to give a reason, and nothing is held against you.
+
+The photograph and this meeting record are kept confidential. We write down only how many people came and how many took part. We do not write down anyone's name, so no answer here is attached to a person.
+
+The photograph and this record do not stay with me. They go to Spark MicroGrants and to the organisation running this pilot, who use them to check that this meeting happened so that I can be paid for running it. A sample of meetings is also reviewed by a Partner Trainer.
+
+Being in the photograph, or coming to this meeting, does not promise anyone anything. It does not entitle anyone to a microgrant or to be chosen for anything. If you step out of the photograph, you lose nothing you would otherwise get.</value>
+            <value form="markdown">**Read this out to the meeting before you take the photograph.**
+
+We are going to take one photograph of this meeting. It shows that the meeting took place.
+
+Taking part is voluntary. If you do not want to be in the photograph, you may step out of it at any time, including after I have asked. You do not have to give a reason, and nothing is held against you.
+
+The photograph and this meeting record are kept confidential. We write down only how many people came and how many took part. We do not write down anyone's name, so no answer here is attached to a person.
+
+The photograph and this record do not stay with me. They go to Spark MicroGrants and to the organisation running this pilot, who use them to check that this meeting happened so that I can be paid for running it. A sample of meetings is also reviewed by a Partner Trainer.
+
+Being in the photograph, or coming to this meeting, does not promise anyone anything. It does not entitle anyone to a microgrant or to be chosen for anything. If you step out of the photograph, you lose nothing you would otherwise get.</value>
+          </text>
+          <text id="evidence-photo_consent_announced-label">
+            <value>Did you read this out to the meeting before taking the photograph?</value>
+            <value form="markdown">Did you read this out to the meeting before taking the photograph?</value>
+          </text>
+          <text id="evidence-photo_consent_announced-opt0-label">
+            <value>Yes</value>
+            <value form="markdown">Yes</value>
+          </text>
+          <text id="evidence-photo_consent_announced-opt1-label">
+            <value>No</value>
+            <value form="markdown">No</value>
+          </text>
+          <text id="evidence-attach_a_photo_for_the_meeting-label">
+            <value>Attach a photograph of the meeting</value>
+            <value form="markdown">Attach a photograph of the meeting</value>
+            <value form="image">jr://file/commcare/ddba654c2ece65a9e1dba302c8c47ac4728d5e3ef7210333b3db69a65ea56f95.jpg</value>
+          </text>
+          <text id="evidence-attach_a_photo_for_the_meeting-hint">
+            <value>The photograph must show the gathering itself, taken at the meeting.</value>
+            <value form="markdown">The photograph must show the gathering itself, taken at the meeting.</value>
+          </text>
+          <text id="evidence-meeting_gps-label">
+            <value>Capture the location of the meeting</value>
+            <value form="markdown">Capture the location of the meeting</value>
+          </text>
+          <text id="evidence-meeting_gps-hint">
+            <value>Target accuracy 50 m. Stand where the meeting is taking place and wait for the reading to settle before you save it.</value>
+            <value form="markdown">Target accuracy 50 m. Stand where the meeting is taking place and wait for the reading to settle before you save it.</value>
+          </text>
+          <text id="evidence-meeting_gps_accuracy_good-label">
+            <value>Location accuracy is good.</value>
+            <value form="markdown">Location accuracy is good.</value>
+          </text>
+          <text id="evidence-meeting_gps_accuracy_usable-label">
+            <value>Location accuracy is usable but not precise. If you can, wait a moment and capture the location again.</value>
+            <value form="markdown">Location accuracy is usable but not precise. If you can, wait a moment and capture the location again.</value>
+            <value form="image">jr://file/commcare/f8a9609e8b32cc094737b9e5f2ab24bdfd53b0328da1ae0aa6af10e3bfcfd669.jpg</value>
+          </text>
+          <text id="evidence-meeting_gps_accuracy_imprecise-label">
+            <value>Location accuracy is worse than 50 m, so this reading is imprecise. You may continue and submit either way.</value>
+            <value form="markdown">Location accuracy is worse than 50 m, so this reading is imprecise. You may continue and submit either way.</value>
+            <value form="image">jr://file/commcare/f8a9609e8b32cc094737b9e5f2ab24bdfd53b0328da1ae0aa6af10e3bfcfd669.jpg</value>
+          </text>
+          <text id="next_meeting-label">
+            <value>Next meeting</value>
+            <value form="markdown">Next meeting</value>
+          </text>
+          <text id="next_meeting-next_meeting_date-label">
+            <value>When is the next meeting?</value>
+            <value form="markdown">When is the next meeting?</value>
+          </text>
+          <text id="next_meeting-next_meeting_date-constraintMsg">
+            <value>The next meeting must be on or after the date of this meeting.</value>
+            <value form="markdown">The next meeting must be on or after the date of this meeting.</value>
+          </text>
+        </translation>
+        <translation lang="nya">
+          <text id="meeting_date-label">
+            <value>Tsiku la msonkhano</value>
+            <value form="markdown">Tsiku la msonkhano</value>
+          </text>
+          <text id="meeting_date-date_of_meeting-label">
+            <value>Kodi msonkhanowu unachitika tsiku liti?</value>
+            <value form="markdown">Kodi msonkhanowu unachitika tsiku liti?</value>
+          </text>
+          <text id="meeting_date-date_of_meeting-constraintMsg">
+            <value>Tsiku la msonkhano silingakhale la mtsogolo.</value>
+            <value form="markdown">Tsiku la msonkhano silingakhale la mtsogolo.</value>
+          </text>
+          <text id="meeting_held-label">
+            <value>Kodi msonkhano unachitika?</value>
+            <value form="markdown">Kodi msonkhano unachitika?</value>
+          </text>
+          <text id="meeting_held-meeting_conducted-label">
+            <value>Kodi msonkhanowu unachitikadi?</value>
+            <value form="markdown">Kodi msonkhanowu unachitikadi?</value>
+          </text>
+          <text id="meeting_not_held-label">
+            <value>Chifukwa chomwe msonkhano sunachitikire</value>
+            <value form="markdown">Chifukwa chomwe msonkhano sunachitikire</value>
+          </text>
+          <text id="meeting_not_held-reason_not_conducted-label">
+            <value>Kodi sunachitike chifukwa chiyani?</value>
+            <value form="markdown">Kodi sunachitike chifukwa chiyani?</value>
+          </text>
+          <text id="meeting_not_held-reason_not_conducted-opt0-label">
+            <value>Mvula kapena nyengo yoipa</value>
+            <value form="markdown">Mvula kapena nyengo yoipa</value>
+          </text>
+          <text id="meeting_not_held-reason_not_conducted-opt1-label">
+            <value>Maliro m'mudzi</value>
+            <value form="markdown">Maliro m'mudzi</value>
+          </text>
+          <text id="meeting_not_held-reason_not_conducted-opt2-label">
+            <value>Mwambo wina wa m'mudzi tsiku lomwelo</value>
+            <value form="markdown">Mwambo wina wa m'mudzi tsiku lomwelo</value>
+          </text>
+          <text id="meeting_not_held-reason_not_conducted-opt3-label">
+            <value>Anthu ochepa kwambiri ndi omwe anabwera</value>
+            <value form="markdown">Anthu ochepa kwambiri ndi omwe anabwera</value>
+          </text>
+          <text id="meeting_not_held-reason_not_conducted-opt4-label">
+            <value>Mtsogoleri wa mudzi sanapezeke</value>
+            <value form="markdown">Mtsogoleri wa mudzi sanapezeke</value>
+          </text>
+          <text id="meeting_not_held-reason_not_conducted-opt5-label">
+            <value>Wothandizira sanathe kuyenda</value>
+            <value form="markdown">Wothandizira sanathe kuyenda</value>
+          </text>
+          <text id="meeting_not_held-reason_not_conducted-opt6-label">
+            <value>Nkhawa ya chitetezo</value>
+            <value form="markdown">Nkhawa ya chitetezo</value>
+          </text>
+          <text id="meeting_not_held-reason_not_conducted-opt7-label">
+            <value>Chifukwa china</value>
+            <value form="markdown">Chifukwa china</value>
+          </text>
+          <text id="meeting_not_held-reason_other-label">
+            <value>Fotokozani chifukwacho</value>
+            <value form="markdown">Fotokozani chifukwacho</value>
+          </text>
+          <text id="meeting_not_held-reason_other-constraintMsg">
+            <value>Ichi chisapitirire zilembo 200.</value>
+            <value form="markdown">Ichi chisapitirire zilembo 200.</value>
+          </text>
+          <text id="meeting_not_held-expected_meeting_date-label">
+            <value>Kodi msonkhano unayembekezeredwa tsiku liti?</value>
+            <value form="markdown">Kodi msonkhano unayembekezeredwa tsiku liti?</value>
+          </text>
+          <text id="meeting_not_held-reschedule_date-label">
+            <value>Kodi mwagwirizana ndi mudzi tsiku latsopano liti?</value>
+            <value form="markdown">Kodi mwagwirizana ndi mudzi tsiku latsopano liti?</value>
+          </text>
+          <text id="meeting_not_held-reschedule_date-constraintMsg">
+            <value>Tsiku latsopano likhale la tsiku la kaundula uyu kapena pambuyo pake.</value>
+            <value form="markdown">Tsiku latsopano likhale la tsiku la kaundula uyu kapena pambuyo pake.</value>
+          </text>
+          <text id="meeting_type_screen-label">
+            <value>Mtundu wa msonkhano</value>
+            <value form="markdown">Mtundu wa msonkhano</value>
+          </text>
+          <text id="meeting_type_screen-meeting_type-label">
+            <value>Kodi unali msonkhano wamtundu wanji?</value>
+            <value form="markdown">Kodi unali msonkhano wamtundu wanji?</value>
+          </text>
+          <text id="meeting_type_screen-meeting_type-hint">
+            <value>Lembani mitundu yonse iwiri. Msonkhano wa mudzi wonse wokha ndi umene umalipiridwa.</value>
+            <value form="markdown">Lembani mitundu yonse iwiri. Msonkhano wa mudzi wonse wokha ndi umene umalipiridwa.</value>
+          </text>
+          <text id="meeting_type_screen-meeting_type-opt0-label">
+            <value>Msonkhano wa mudzi wonse</value>
+            <value form="markdown">Msonkhano wa mudzi wonse</value>
+          </text>
+          <text id="meeting_type_screen-meeting_type-opt1-label">
+            <value>Msonkhano wa komiti</value>
+            <value form="markdown">Msonkhano wa komiti</value>
+          </text>
+          <text id="fcap_step-label">
+            <value>Sitepe ya FCAP</value>
+            <value form="markdown">Sitepe ya FCAP</value>
+          </text>
+          <text id="fcap_step-step-label">
+            <value>Kodi msonkhanowu unakhudza sitepe iti ya FCAP?</value>
+            <value form="markdown">Kodi msonkhanowu unakhudza sitepe iti ya FCAP?</value>
+          </text>
+          <text id="fcap_step-step-opt0-label">
+            <value>Sitepe 1: Mgwirizano Wathu</value>
+            <value form="markdown">Sitepe 1: Mgwirizano Wathu</value>
+          </text>
+          <text id="fcap_step-step-opt1-label">
+            <value>Sitepe 2: Makhalidwe a Mudzi, Kayendetsedwe ndi Utsogoleri</value>
+            <value form="markdown">Sitepe 2: Makhalidwe a Mudzi, Kayendetsedwe ndi Utsogoleri</value>
+          </text>
+          <text id="fcap_step-step-opt2-label">
+            <value>Sitepe 3: Kumvetsa Zimene Zilipo Panopa - Kusanthula Mkhalidwe</value>
+            <value form="markdown">Sitepe 3: Kumvetsa Zimene Zilipo Panopa - Kusanthula Mkhalidwe</value>
+          </text>
+          <text id="fcap_step-step-opt3-label">
+            <value>Sitepe 4: Kupita Kutsogolo - Njira ya Microgrant ndi Zolinga</value>
+            <value form="markdown">Sitepe 4: Kupita Kutsogolo - Njira ya Microgrant ndi Zolinga</value>
+          </text>
+          <text id="fcap_step-step-opt4-label">
+            <value>Sitepe 5: Njira ya Ntchito Yathu ndi Kusunga Ndalama</value>
+            <value form="markdown">Sitepe 5: Njira ya Ntchito Yathu ndi Kusunga Ndalama</value>
+          </text>
+          <text id="fcap_step-step-opt5-label">
+            <value>Sitepe 6: Njira Yolimbikitsira Zofuna za Mudzi</value>
+            <value form="markdown">Sitepe 6: Njira Yolimbikitsira Zofuna za Mudzi</value>
+          </text>
+          <text id="fcap_step-step-opt6-label">
+            <value>Sitepe 7: Masomphenya</value>
+            <value form="markdown">Sitepe 7: Masomphenya</value>
+          </text>
+          <text id="fcap_step-activity_completed-label">
+            <value>Kodi ntchito ya sitepe iyi inamalizidwa?</value>
+            <value form="markdown">Kodi ntchito ya sitepe iyi inamalizidwa?</value>
+          </text>
+          <text id="attendance-label">
+            <value>Kupezeka pa msonkhano</value>
+            <value form="markdown">Kupezeka pa msonkhano</value>
+          </text>
+          <text id="attendance-hh_represented_at_the_meeting-label">
+            <value>Kodi mabanja angati anaimiridwa?</value>
+            <value form="markdown">Kodi mabanja angati anaimiridwa?</value>
+          </text>
+          <text id="attendance-hh_represented_at_the_meeting-constraintMsg">
+            <value>Lembani 0 kapena kupitirira, koma osapitirira chiwerengero cha mabanja olembedwa a mudzi uwu.</value>
+            <value form="markdown">Lembani 0 kapena kupitirira, koma osapitirira chiwerengero cha mabanja olembedwa a mudzi uwu.</value>
+          </text>
+          <text id="attendance-male_attendance-label">
+            <value>Kodi amuna angati anabwera?</value>
+            <value form="markdown">Kodi amuna angati anabwera?</value>
+          </text>
+          <text id="attendance-female_attendance-label">
+            <value>Kodi akazi angati anabwera?</value>
+            <value form="markdown">Kodi akazi angati anabwera?</value>
+          </text>
+          <text id="attendance-female_attendance-constraintMsg">
+            <value>Lembani 0 kapena kupitirira. Msonkhano umakhala ndi anthu pafupifupi 64, choncho onaninso nambala ya mazana musanapitirize.</value>
+            <value form="markdown">Lembani 0 kapena kupitirira. Msonkhano umakhala ndi anthu pafupifupi 64, choncho onaninso nambala ya mazana musanapitirize.</value>
+          </text>
+          <text id="attendance-members_with_disability-label">
+            <value>Kodi mwa iwo, ndi angati ali ndi ulumali?</value>
+            <value form="markdown">Kodi mwa iwo, ndi angati ali ndi ulumali?</value>
+          </text>
+          <text id="attendance-members_with_disability-hint">
+            <value>Anthu awa awerengedwa kale mu chiwerengero cha amuna ndi akazi omwe anabwera. Awa ndi gawo la iwo, osati owonjezera.</value>
+            <value form="markdown">Anthu awa awerengedwa kale mu chiwerengero cha amuna ndi akazi omwe anabwera. Awa ndi gawo la iwo, osati owonjezera.</value>
+          </text>
+          <text id="attendance-members_with_disability-constraintMsg">
+            <value>Anthu awa awerengedwa kale pa omwe anabwera, choncho nambalayi singapitirire amuna kuphatikiza akazi omwe anabwera.</value>
+            <value form="markdown">Anthu awa awerengedwa kale pa omwe anabwera, choncho nambalayi singapitirire amuna kuphatikiza akazi omwe anabwera.</value>
+          </text>
+          <text id="participation-label">
+            <value>Kutenga nawo mbali</value>
+            <value form="markdown">Kutenga nawo mbali</value>
+            <value form="image">jr://file/commcare/f7befe7eeeed8dbe5e00f391125e6c0c83a64643c301f0df9abb36532844a366.jpg</value>
+          </text>
+          <text id="participation-male_participants-label">
+            <value>Kodi amuna angati anayankhula kapena kutenga nawo mbali?</value>
+            <value form="markdown">Kodi amuna angati anayankhula kapena kutenga nawo mbali?</value>
+          </text>
+          <text id="participation-male_participants-constraintMsg">
+            <value>Amuna omwe anayankhula sangaposere amuna omwe anabwera.</value>
+            <value form="markdown">Amuna omwe anayankhula sangaposere amuna omwe anabwera.</value>
+          </text>
+          <text id="participation-female_participants-label">
+            <value>Kodi akazi angati anayankhula kapena kutenga nawo mbali?</value>
+            <value form="markdown">Kodi akazi angati anayankhula kapena kutenga nawo mbali?</value>
+          </text>
+          <text id="participation-female_participants-constraintMsg">
+            <value>Akazi omwe anayankhula sangaposere akazi omwe anabwera.</value>
+            <value form="markdown">Akazi omwe anayankhula sangaposere akazi omwe anabwera.</value>
+          </text>
+          <text id="other_attendees-label">
+            <value>Ena omwe anabwera</value>
+            <value form="markdown">Ena omwe anabwera</value>
+          </text>
+          <text id="other_attendees-male_leader_attendence-label">
+            <value>Kodi atsogoleri achimuna angati anabwera?</value>
+            <value form="markdown">Kodi atsogoleri achimuna angati anabwera?</value>
+          </text>
+          <text id="other_attendees-female_leader_attendence-label">
+            <value>Kodi atsogoleri achikazi angati anabwera?</value>
+            <value form="markdown">Kodi atsogoleri achikazi angati anabwera?</value>
+          </text>
+          <text id="other_attendees-female_leader_attendence-constraintMsg">
+            <value>Lembani nambala pakati pa 0 ndi 200.</value>
+            <value form="markdown">Lembani nambala pakati pa 0 ndi 200.</value>
+          </text>
+          <text id="other_attendees-SparkTrainer_attendance-label">
+            <value>Kodi Spark Trainer anabwera?</value>
+            <value form="markdown">Kodi Spark Trainer anabwera?</value>
+          </text>
+          <text id="other_attendees-SEDO_attendance-label">
+            <value>Kodi SEDO anabwera?</value>
+            <value form="markdown">Kodi SEDO anabwera?</value>
+          </text>
+          <text id="meeting_quality-label">
+            <value>Momwe msonkhano unayendera</value>
+            <value form="markdown">Momwe msonkhano unayendera</value>
+          </text>
+          <text id="meeting_quality-meeting_on_time-label">
+            <value>Kodi msonkhano unayamba pa nthawi yake?</value>
+            <value form="markdown">Kodi msonkhano unayamba pa nthawi yake?</value>
+          </text>
+          <text id="meeting_quality-why_did_the_meeting_start_late-label">
+            <value>Kodi unayamba mochedwa chifukwa chiyani?</value>
+            <value form="markdown">Kodi unayamba mochedwa chifukwa chiyani?</value>
+          </text>
+          <text id="meeting_quality-why_did_the_meeting_start_late-opt0-label">
+            <value>Kudikira anthu kuti afike</value>
+            <value form="markdown">Kudikira anthu kuti afike</value>
+          </text>
+          <text id="meeting_quality-why_did_the_meeting_start_late-opt1-label">
+            <value>Kudikira atsogoleri a mudzi</value>
+            <value form="markdown">Kudikira atsogoleri a mudzi</value>
+          </text>
+          <text id="meeting_quality-why_did_the_meeting_start_late-opt2-label">
+            <value>Mvula inachedwetsa kuyamba</value>
+            <value form="markdown">Mvula inachedwetsa kuyamba</value>
+          </text>
+          <text id="meeting_quality-why_did_the_meeting_start_late-opt3-label">
+            <value>Wothandizira anafika mochedwa</value>
+            <value form="markdown">Wothandizira anafika mochedwa</value>
+          </text>
+          <text id="meeting_quality-why_did_the_meeting_start_late-opt4-label">
+            <value>Malo a msonkhano sanali okonzeka</value>
+            <value form="markdown">Malo a msonkhano sanali okonzeka</value>
+          </text>
+          <text id="meeting_quality-why_did_the_meeting_start_late_other-label">
+            <value>Fotokozani chifukwa chomwe unayambira mochedwa</value>
+            <value form="markdown">Fotokozani chifukwa chomwe unayambira mochedwa</value>
+          </text>
+          <text id="meeting_quality-meeting_conflict-label">
+            <value>Kodi panali kusagwirizana pa msonkhano?</value>
+            <value form="markdown">Kodi panali kusagwirizana pa msonkhano?</value>
+          </text>
+          <text id="meeting_quality-conflict_details-label">
+            <value>Kodi kusagwirizanako kunali pa chiyani?</value>
+            <value form="markdown">Kodi kusagwirizanako kunali pa chiyani?</value>
+          </text>
+          <text id="meeting_quality-conflict_details-constraintMsg">
+            <value>Ichi chisapitirire zilembo 300.</value>
+            <value form="markdown">Ichi chisapitirire zilembo 300.</value>
+          </text>
+          <text id="meeting_quality-conflict_resolved-label">
+            <value>Kodi kunathetsedwa msonkhano usanathe?</value>
+            <value form="markdown">Kodi kunathetsedwa msonkhano usanathe?</value>
+          </text>
+          <text id="savings-label">
+            <value>Kusunga ndalama</value>
+            <value form="markdown">Kusunga ndalama</value>
+          </text>
+          <text id="savings-currently_saving-label">
+            <value>Kodi mudzi ukusunga ndalama panopa?</value>
+            <value form="markdown">Kodi mudzi ukusunga ndalama panopa?</value>
+          </text>
+          <text id="savings_details-label">
+            <value>Zambiri za kusunga ndalama</value>
+            <value form="markdown">Zambiri za kusunga ndalama</value>
+          </text>
+          <text id="savings_details-hh_saving-label">
+            <value>Kodi mabanja angati akusunga ndalama?</value>
+            <value form="markdown">Kodi mabanja angati akusunga ndalama?</value>
+          </text>
+          <text id="savings_details-hh_saving-constraintMsg">
+            <value>Mabanja osunga ndalama sangapitirire mabanja oimiridwa pa msonkhano.</value>
+            <value form="markdown">Mabanja osunga ndalama sangapitirire mabanja oimiridwa pa msonkhano.</value>
+          </text>
+          <text id="savings_details-males_saving-label">
+            <value>Kodi amuna angati akusunga ndalama?</value>
+            <value form="markdown">Kodi amuna angati akusunga ndalama?</value>
+          </text>
+          <text id="savings_details-females_saving-label">
+            <value>Kodi akazi angati akusunga ndalama?</value>
+            <value form="markdown">Kodi akazi angati akusunga ndalama?</value>
+          </text>
+          <text id="savings_details-females_saving-constraintMsg">
+            <value>Lembani nambala pakati pa 0 ndi 5000.</value>
+            <value form="markdown">Lembani nambala pakati pa 0 ndi 5000.</value>
+          </text>
+          <text id="savings_details-amt_savings-label">
+            <value>Kodi ndalama zingati zasungidwa kuchokera pa msonkhano watha?</value>
+            <value form="markdown">Kodi ndalama zingati zasungidwa kuchokera pa msonkhano watha?</value>
+          </text>
+          <text id="savings_details-amt_savings-hint">
+            <value>Kwacha ya ku Malawi</value>
+            <value form="markdown">Kwacha ya ku Malawi</value>
+          </text>
+          <text id="savings_details-amt_savings-constraintMsg">
+            <value>Lembani ndalama pakati pa 0 ndi 100000000 Kwacha.</value>
+            <value form="markdown">Lembani ndalama pakati pa 0 ndi 100000000 Kwacha.</value>
+          </text>
+          <text id="savings_details-savings_use-label">
+            <value>Kodi ndalama zosungidwazo zimagwiritsidwa ntchito yanji?</value>
+            <value form="markdown">Kodi ndalama zosungidwazo zimagwiritsidwa ntchito yanji?</value>
+          </text>
+          <text id="savings_details-savings_use-opt0-label">
+            <value>Zofunikira paulimi</value>
+            <value form="markdown">Zofunikira paulimi</value>
+          </text>
+          <text id="savings_details-savings_use-opt1-label">
+            <value>Bizinesi yaing'ono</value>
+            <value form="markdown">Bizinesi yaing'ono</value>
+          </text>
+          <text id="savings_details-savings_use-opt2-label">
+            <value>Ndalama za sukulu</value>
+            <value form="markdown">Ndalama za sukulu</value>
+          </text>
+          <text id="savings_details-savings_use-opt3-label">
+            <value>Ndalama za chithandizo chaumoyo</value>
+            <value form="markdown">Ndalama za chithandizo chaumoyo</value>
+          </text>
+          <text id="savings_details-savings_use-opt4-label">
+            <value>Chakudya</value>
+            <value form="markdown">Chakudya</value>
+          </text>
+          <text id="savings_details-savings_use-opt5-label">
+            <value>Zosowa zadzidzidzi</value>
+            <value form="markdown">Zosowa zadzidzidzi</value>
+          </text>
+          <text id="savings_details-savings_use-opt6-label">
+            <value>Ntchito ina</value>
+            <value form="markdown">Ntchito ina</value>
+          </text>
+          <text id="savings_details-savings_use_other-label">
+            <value>Fotokozani ntchito inayo</value>
+            <value form="markdown">Fotokozani ntchito inayo</value>
+          </text>
+          <text id="evidence-label">
+            <value>Umboni</value>
+            <value form="markdown">Umboni</value>
+          </text>
+          <text id="evidence-consent_script-label">
+            <value>**Werengani izi mokweza kwa anthu a pa msonkhano musanajambule chithunzi.**
+
+Tijambula chithunzi chimodzi cha msonkhano uwu. Chithunzichi chikusonyeza kuti msonkhano unachitikadi.
+
+Kukhala mu chithunzichi ndi kwaufulu. Ngati simukufuna kukhala mu chithunzichi, mukhoza kuchokamo nthawi ina iliyonse, ngakhale nditakufunsani kale. Simuyenera kupereka chifukwa, ndipo palibe choipa chomwe chidzakuchitikireni chifukwa cha zimenezo.
+
+Chithunzichi ndi kaundula wa msonkhanowu ndi zachinsinsi. Timalemba chabe kuchuluka kwa anthu amene anabwera ndi amene anatenga nawo mbali. Sitilemba dzina la munthu aliyense, choncho palibe yankho la pano lomwe limamangiriridwa kwa munthu.
+
+Chithunzichi ndi kaundulayu sizikhala ndi ine. Zimapita ku Spark MicroGrants ndi ku bungwe limene likuyendetsa pulojekiti yoyeserayi, ndipo iwo amazigwiritsa ntchito kuonetsetsa kuti msonkhano uwu unachitikadi, kuti ine ndilipidwe chifukwa cha kuuyendetsa. Misonkhano ina imayang'aniridwanso ndi Partner Trainer.
+
+Kukhala mu chithunzichi, kapena kubwera ku msonkhano uwu, sikulonjeza munthu aliyense kanthu kalikonse. Sikupatsa munthu aliyense ufulu wolandira microgrant kapena kusankhidwa pa chinthu chilichonse. Ngati muchokamo mu chithunzichi, palibe chomwe mutaya chimene mukanalandira.</value>
+            <value form="markdown">**Werengani izi mokweza kwa anthu a pa msonkhano musanajambule chithunzi.**
+
+Tijambula chithunzi chimodzi cha msonkhano uwu. Chithunzichi chikusonyeza kuti msonkhano unachitikadi.
+
+Kukhala mu chithunzichi ndi kwaufulu. Ngati simukufuna kukhala mu chithunzichi, mukhoza kuchokamo nthawi ina iliyonse, ngakhale nditakufunsani kale. Simuyenera kupereka chifukwa, ndipo palibe choipa chomwe chidzakuchitikireni chifukwa cha zimenezo.
+
+Chithunzichi ndi kaundula wa msonkhanowu ndi zachinsinsi. Timalemba chabe kuchuluka kwa anthu amene anabwera ndi amene anatenga nawo mbali. Sitilemba dzina la munthu aliyense, choncho palibe yankho la pano lomwe limamangiriridwa kwa munthu.
+
+Chithunzichi ndi kaundulayu sizikhala ndi ine. Zimapita ku Spark MicroGrants ndi ku bungwe limene likuyendetsa pulojekiti yoyeserayi, ndipo iwo amazigwiritsa ntchito kuonetsetsa kuti msonkhano uwu unachitikadi, kuti ine ndilipidwe chifukwa cha kuuyendetsa. Misonkhano ina imayang'aniridwanso ndi Partner Trainer.
+
+Kukhala mu chithunzichi, kapena kubwera ku msonkhano uwu, sikulonjeza munthu aliyense kanthu kalikonse. Sikupatsa munthu aliyense ufulu wolandira microgrant kapena kusankhidwa pa chinthu chilichonse. Ngati muchokamo mu chithunzichi, palibe chomwe mutaya chimene mukanalandira.</value>
+          </text>
+          <text id="evidence-photo_consent_announced-label">
+            <value>Kodi munawerenga izi kwa anthu a pa msonkhano musanajambule chithunzi?</value>
+            <value form="markdown">Kodi munawerenga izi kwa anthu a pa msonkhano musanajambule chithunzi?</value>
+          </text>
+          <text id="evidence-photo_consent_announced-opt0-label">
+            <value>Inde</value>
+            <value form="markdown">Inde</value>
+          </text>
+          <text id="evidence-photo_consent_announced-opt1-label">
+            <value>Ayi</value>
+            <value form="markdown">Ayi</value>
+          </text>
+          <text id="evidence-attach_a_photo_for_the_meeting-label">
+            <value>Ikani chithunzi cha msonkhano</value>
+            <value form="markdown">Ikani chithunzi cha msonkhano</value>
+            <value form="image">jr://file/commcare/ddba654c2ece65a9e1dba302c8c47ac4728d5e3ef7210333b3db69a65ea56f95.jpg</value>
+          </text>
+          <text id="evidence-attach_a_photo_for_the_meeting-hint">
+            <value>Chithunzicho chiyenera kuonetsa msonkhano wenimweni, chojambulidwa pa msonkhanopo.</value>
+            <value form="markdown">Chithunzicho chiyenera kuonetsa msonkhano wenimweni, chojambulidwa pa msonkhanopo.</value>
+          </text>
+          <text id="evidence-meeting_gps-label">
+            <value>Tengani malo amene msonkhano ukuchitikira</value>
+            <value form="markdown">Tengani malo amene msonkhano ukuchitikira</value>
+          </text>
+          <text id="evidence-meeting_gps-hint">
+            <value>Cholinga ndi kulondola kwa mamita 50. Imani pomwe msonkhano ukuchitikira ndipo dikirani kuti nambala ikhazikike musanaisunge.</value>
+            <value form="markdown">Cholinga ndi kulondola kwa mamita 50. Imani pomwe msonkhano ukuchitikira ndipo dikirani kuti nambala ikhazikike musanaisunge.</value>
+          </text>
+          <text id="evidence-meeting_gps_accuracy_good-label">
+            <value>Kulondola kwa malo n'kwabwino.</value>
+            <value form="markdown">Kulondola kwa malo n'kwabwino.</value>
+          </text>
+          <text id="evidence-meeting_gps_accuracy_usable-label">
+            <value>Kulondola kwa malo n'kokwanira koma sikolondola bwino. Ngati mungathe, dikirani pang'ono ndipo tengeraninso malowo.</value>
+            <value form="markdown">Kulondola kwa malo n'kokwanira koma sikolondola bwino. Ngati mungathe, dikirani pang'ono ndipo tengeraninso malowo.</value>
+            <value form="image">jr://file/commcare/f8a9609e8b32cc094737b9e5f2ab24bdfd53b0328da1ae0aa6af10e3bfcfd669.jpg</value>
+          </text>
+          <text id="evidence-meeting_gps_accuracy_imprecise-label">
+            <value>Kulondola kwa malo kwapitirira mamita 50, choncho nambala iyi si yolondola. Mungapitirizebe ndi kutumiza mulimonse.</value>
+            <value form="markdown">Kulondola kwa malo kwapitirira mamita 50, choncho nambala iyi si yolondola. Mungapitirizebe ndi kutumiza mulimonse.</value>
+            <value form="image">jr://file/commcare/f8a9609e8b32cc094737b9e5f2ab24bdfd53b0328da1ae0aa6af10e3bfcfd669.jpg</value>
+          </text>
+          <text id="next_meeting-label">
+            <value>Msonkhano wotsatira</value>
+            <value form="markdown">Msonkhano wotsatira</value>
+          </text>
+          <text id="next_meeting-next_meeting_date-label">
+            <value>Kodi msonkhano wotsatira uli liti?</value>
+            <value form="markdown">Kodi msonkhano wotsatira uli liti?</value>
+          </text>
+          <text id="next_meeting-next_meeting_date-constraintMsg">
+            <value>Msonkhano wotsatira ukhale pa tsiku la msonkhano uno kapena pambuyo pake.</value>
+            <value form="markdown">Msonkhano wotsatira ukhale pa tsiku la msonkhano uno kapena pambuyo pake.</value>
+          </text>
+        </translation>
+        <translation lang="tum">
+          <text id="meeting_date-label">
+            <value>Zuŵa la ungano</value>
+            <value form="markdown">Zuŵa la ungano</value>
+          </text>
+          <text id="meeting_date-date_of_meeting-label">
+            <value>Kasi ungano uwu ukachitika zuŵa wuli?</value>
+            <value form="markdown">Kasi ungano uwu ukachitika zuŵa wuli?</value>
+          </text>
+          <text id="meeting_date-date_of_meeting-constraintMsg">
+            <value>Zuŵa la ungano lingaŵa la kunthazi yayi.</value>
+            <value form="markdown">Zuŵa la ungano lingaŵa la kunthazi yayi.</value>
+          </text>
+          <text id="meeting_held-label">
+            <value>Kasi ungano ukachitika?</value>
+            <value form="markdown">Kasi ungano ukachitika?</value>
+          </text>
+          <text id="meeting_held-meeting_conducted-label">
+            <value>Kasi ungano uwu ukachitikadi?</value>
+            <value form="markdown">Kasi ungano uwu ukachitikadi?</value>
+          </text>
+          <text id="meeting_not_held-label">
+            <value>Chifukwa icho ungano ukachitikira yayi</value>
+            <value form="markdown">Chifukwa icho ungano ukachitikira yayi</value>
+          </text>
+          <text id="meeting_not_held-reason_not_conducted-label">
+            <value>Kasi ukachitika yayi chifukwa wuli?</value>
+            <value form="markdown">Kasi ukachitika yayi chifukwa wuli?</value>
+          </text>
+          <text id="meeting_not_held-reason_not_conducted-opt0-label">
+            <value>Vula panji nyengo yiheni</value>
+            <value form="markdown">Vula panji nyengo yiheni</value>
+          </text>
+          <text id="meeting_not_held-reason_not_conducted-opt1-label">
+            <value>Malilo mu muzi</value>
+            <value form="markdown">Malilo mu muzi</value>
+          </text>
+          <text id="meeting_not_held-reason_not_conducted-opt2-label">
+            <value>Chochitiko chinyake cha mu muzi pa zuŵa lenelo</value>
+            <value form="markdown">Chochitiko chinyake cha mu muzi pa zuŵa lenelo</value>
+          </text>
+          <text id="meeting_not_held-reason_not_conducted-opt3-label">
+            <value>Ŵanthu ŵachoko chomene ndiwo ŵakiza</value>
+            <value form="markdown">Ŵanthu ŵachoko chomene ndiwo ŵakiza</value>
+          </text>
+          <text id="meeting_not_held-reason_not_conducted-opt4-label">
+            <value>Mulongozgi wa muzi wakasangika yayi</value>
+            <value form="markdown">Mulongozgi wa muzi wakasangika yayi</value>
+          </text>
+          <text id="meeting_not_held-reason_not_conducted-opt5-label">
+            <value>Muwovwiri wakatondeka kwenda</value>
+            <value form="markdown">Muwovwiri wakatondeka kwenda</value>
+          </text>
+          <text id="meeting_not_held-reason_not_conducted-opt6-label">
+            <value>Suzgo la chivikiliro</value>
+            <value form="markdown">Suzgo la chivikiliro</value>
+          </text>
+          <text id="meeting_not_held-reason_not_conducted-opt7-label">
+            <value>Chifukwa chinyake</value>
+            <value form="markdown">Chifukwa chinyake</value>
+          </text>
+          <text id="meeting_not_held-reason_other-label">
+            <value>Longosolani chifukwa chake</value>
+            <value form="markdown">Longosolani chifukwa chake</value>
+          </text>
+          <text id="meeting_not_held-reason_other-constraintMsg">
+            <value>Ichi chingajumphenge malembo 200 yayi.</value>
+            <value form="markdown">Ichi chingajumphenge malembo 200 yayi.</value>
+          </text>
+          <text id="meeting_not_held-expected_meeting_date-label">
+            <value>Kasi ungano ukalindilirikanga zuŵa wuli?</value>
+            <value form="markdown">Kasi ungano ukalindilirikanga zuŵa wuli?</value>
+          </text>
+          <text id="meeting_not_held-reschedule_date-label">
+            <value>Kasi mwakolerana na muzi zuŵa liphya wuli?</value>
+            <value form="markdown">Kasi mwakolerana na muzi zuŵa liphya wuli?</value>
+          </text>
+          <text id="meeting_not_held-reschedule_date-constraintMsg">
+            <value>Zuŵa liphya liŵe la zuŵa la kalembero aka panji panyuma pake.</value>
+            <value form="markdown">Zuŵa liphya liŵe la zuŵa la kalembero aka panji panyuma pake.</value>
+          </text>
+          <text id="meeting_type_screen-label">
+            <value>Mtundu wa ungano</value>
+            <value form="markdown">Mtundu wa ungano</value>
+          </text>
+          <text id="meeting_type_screen-meeting_type-label">
+            <value>Kasi ukaŵa ungano wa mtundu wuli?</value>
+            <value form="markdown">Kasi ukaŵa ungano wa mtundu wuli?</value>
+          </text>
+          <text id="meeting_type_screen-meeting_type-hint">
+            <value>Lembani mitundu yose yiŵiri. Ungano wa muzi wose pera ndiwo ukulipilika.</value>
+            <value form="markdown">Lembani mitundu yose yiŵiri. Ungano wa muzi wose pera ndiwo ukulipilika.</value>
+          </text>
+          <text id="meeting_type_screen-meeting_type-opt0-label">
+            <value>Ungano wa muzi wose</value>
+            <value form="markdown">Ungano wa muzi wose</value>
+          </text>
+          <text id="meeting_type_screen-meeting_type-opt1-label">
+            <value>Ungano wa komiti</value>
+            <value form="markdown">Ungano wa komiti</value>
+          </text>
+          <text id="fcap_step-label">
+            <value>Sitepe ya FCAP</value>
+            <value form="markdown">Sitepe ya FCAP</value>
+          </text>
+          <text id="fcap_step-step-label">
+            <value>Kasi ungano uwu ukakhwaska sitepe wuli wa FCAP?</value>
+            <value form="markdown">Kasi ungano uwu ukakhwaska sitepe wuli wa FCAP?</value>
+          </text>
+          <text id="fcap_step-step-opt0-label">
+            <value>Sitepe 1: Kukolerana Kwithu</value>
+            <value form="markdown">Sitepe 1: Kukolerana Kwithu</value>
+          </text>
+          <text id="fcap_step-step-opt1-label">
+            <value>Sitepe 2: Nkharo za Muzi, Kwendeskera na Ulongozgi</value>
+            <value form="markdown">Sitepe 2: Nkharo za Muzi, Kwendeskera na Ulongozgi</value>
+          </text>
+          <text id="fcap_step-step-opt2-label">
+            <value>Sitepe 3: Kupulikiska Ivyo Vilipo Sono - Kusanda Mikhaliro</value>
+            <value form="markdown">Sitepe 3: Kupulikiska Ivyo Vilipo Sono - Kusanda Mikhaliro</value>
+          </text>
+          <text id="fcap_step-step-opt3-label">
+            <value>Sitepe 4: Kuluta Kunthazi - Nthowa ya Microgrant na Vilato</value>
+            <value form="markdown">Sitepe 4: Kuluta Kunthazi - Nthowa ya Microgrant na Vilato</value>
+          </text>
+          <text id="fcap_step-step-opt4-label">
+            <value>Sitepe 5: Nthowa ya Ntchito Yithu na Kusunga Ndalama</value>
+            <value form="markdown">Sitepe 5: Nthowa ya Ntchito Yithu na Kusunga Ndalama</value>
+          </text>
+          <text id="fcap_step-step-opt5-label">
+            <value>Sitepe 6: Nthowa Yakuyimilira Vyakukhumba vya Muzi</value>
+            <value form="markdown">Sitepe 6: Nthowa Yakuyimilira Vyakukhumba vya Muzi</value>
+          </text>
+          <text id="fcap_step-step-opt6-label">
+            <value>Sitepe 7: Kawonero ka Munthazi</value>
+            <value form="markdown">Sitepe 7: Kawonero ka Munthazi</value>
+          </text>
+          <text id="fcap_step-activity_completed-label">
+            <value>Kasi ntchito ya sitepe iyi yikamalizgika?</value>
+            <value form="markdown">Kasi ntchito ya sitepe iyi yikamalizgika?</value>
+          </text>
+          <text id="attendance-label">
+            <value>Kwiza ku ungano</value>
+            <value form="markdown">Kwiza ku ungano</value>
+          </text>
+          <text id="attendance-hh_represented_at_the_meeting-label">
+            <value>Kasi nyumba zilinga zikimilirika?</value>
+            <value form="markdown">Kasi nyumba zilinga zikimilirika?</value>
+          </text>
+          <text id="attendance-hh_represented_at_the_meeting-constraintMsg">
+            <value>Lembani 0 panji kujumphapo, kweni chingajumphenge unandi wa nyumba izo zalembeka mu muzi uwu yayi.</value>
+            <value form="markdown">Lembani 0 panji kujumphapo, kweni chingajumphenge unandi wa nyumba izo zalembeka mu muzi uwu yayi.</value>
+          </text>
+          <text id="attendance-male_attendance-label">
+            <value>Kasi ŵanalume ŵalinga ŵakiza?</value>
+            <value form="markdown">Kasi ŵanalume ŵalinga ŵakiza?</value>
+          </text>
+          <text id="attendance-female_attendance-label">
+            <value>Kasi ŵanakazi ŵalinga ŵakiza?</value>
+            <value form="markdown">Kasi ŵanakazi ŵalinga ŵakiza?</value>
+          </text>
+          <text id="attendance-female_attendance-constraintMsg">
+            <value>Lembani 0 panji kujumphapo. Ungano ukuŵa na ŵanthu pafupifupi 64, ntheura wonaniso nambara ya mahandiredi pambere mundalutilire.</value>
+            <value form="markdown">Lembani 0 panji kujumphapo. Ungano ukuŵa na ŵanthu pafupifupi 64, ntheura wonaniso nambara ya mahandiredi pambere mundalutilire.</value>
+          </text>
+          <text id="attendance-members_with_disability-label">
+            <value>Kasi mwa aŵo, mbalinga ŵali na chilema?</value>
+            <value form="markdown">Kasi mwa aŵo, mbalinga ŵali na chilema?</value>
+          </text>
+          <text id="attendance-members_with_disability-hint">
+            <value>Ŵanthu aŵa ŵaŵerengeka kale mu unandi wa ŵanalume na ŵanakazi awo ŵakiza. Aŵa mbagaŵa yawo, ntchakusazgirapo yayi.</value>
+            <value form="markdown">Ŵanthu aŵa ŵaŵerengeka kale mu unandi wa ŵanalume na ŵanakazi awo ŵakiza. Aŵa mbagaŵa yawo, ntchakusazgirapo yayi.</value>
+          </text>
+          <text id="attendance-members_with_disability-constraintMsg">
+            <value>Ŵanthu aŵa ŵaŵerengeka kale pa awo ŵakiza, ntheura nambara iyi yingajumpha ŵanalume kusazgirapo ŵanakazi awo ŵakiza yayi.</value>
+            <value form="markdown">Ŵanthu aŵa ŵaŵerengeka kale pa awo ŵakiza, ntheura nambara iyi yingajumpha ŵanalume kusazgirapo ŵanakazi awo ŵakiza yayi.</value>
+          </text>
+          <text id="participation-label">
+            <value>Kutorapo lwande</value>
+            <value form="markdown">Kutorapo lwande</value>
+            <value form="image">jr://file/commcare/f7befe7eeeed8dbe5e00f391125e6c0c83a64643c301f0df9abb36532844a366.jpg</value>
+          </text>
+          <text id="participation-male_participants-label">
+            <value>Kasi ŵanalume ŵalinga ŵakayowoya panji kutorapo lwande?</value>
+            <value form="markdown">Kasi ŵanalume ŵalinga ŵakayowoya panji kutorapo lwande?</value>
+          </text>
+          <text id="participation-male_participants-constraintMsg">
+            <value>Ŵanalume awo ŵakayowoya ŵangajumpha ŵanalume awo ŵakiza yayi.</value>
+            <value form="markdown">Ŵanalume awo ŵakayowoya ŵangajumpha ŵanalume awo ŵakiza yayi.</value>
+          </text>
+          <text id="participation-female_participants-label">
+            <value>Kasi ŵanakazi ŵalinga ŵakayowoya panji kutorapo lwande?</value>
+            <value form="markdown">Kasi ŵanakazi ŵalinga ŵakayowoya panji kutorapo lwande?</value>
+          </text>
+          <text id="participation-female_participants-constraintMsg">
+            <value>Ŵanakazi awo ŵakayowoya ŵangajumpha ŵanakazi awo ŵakiza yayi.</value>
+            <value form="markdown">Ŵanakazi awo ŵakayowoya ŵangajumpha ŵanakazi awo ŵakiza yayi.</value>
+          </text>
+          <text id="other_attendees-label">
+            <value>Ŵanyake awo ŵakiza</value>
+            <value form="markdown">Ŵanyake awo ŵakiza</value>
+          </text>
+          <text id="other_attendees-male_leader_attendence-label">
+            <value>Kasi ŵalongozgi ŵanalume ŵalinga ŵakiza?</value>
+            <value form="markdown">Kasi ŵalongozgi ŵanalume ŵalinga ŵakiza?</value>
+          </text>
+          <text id="other_attendees-female_leader_attendence-label">
+            <value>Kasi ŵalongozgi ŵanakazi ŵalinga ŵakiza?</value>
+            <value form="markdown">Kasi ŵalongozgi ŵanakazi ŵalinga ŵakiza?</value>
+          </text>
+          <text id="other_attendees-female_leader_attendence-constraintMsg">
+            <value>Lembani nambara pakati pa 0 na 200.</value>
+            <value form="markdown">Lembani nambara pakati pa 0 na 200.</value>
+          </text>
+          <text id="other_attendees-SparkTrainer_attendance-label">
+            <value>Kasi Spark Trainer wakiza?</value>
+            <value form="markdown">Kasi Spark Trainer wakiza?</value>
+          </text>
+          <text id="other_attendees-SEDO_attendance-label">
+            <value>Kasi SEDO wakiza?</value>
+            <value form="markdown">Kasi SEDO wakiza?</value>
+          </text>
+          <text id="meeting_quality-label">
+            <value>Umo ungano ukendera</value>
+            <value form="markdown">Umo ungano ukendera</value>
+          </text>
+          <text id="meeting_quality-meeting_on_time-label">
+            <value>Kasi ungano ukamba pa nyengo yake?</value>
+            <value form="markdown">Kasi ungano ukamba pa nyengo yake?</value>
+          </text>
+          <text id="meeting_quality-why_did_the_meeting_start_late-label">
+            <value>Kasi ukamba mwakuchedwa chifukwa wuli?</value>
+            <value form="markdown">Kasi ukamba mwakuchedwa chifukwa wuli?</value>
+          </text>
+          <text id="meeting_quality-why_did_the_meeting_start_late-opt0-label">
+            <value>Kulindilira ŵanthu kuti ŵize</value>
+            <value form="markdown">Kulindilira ŵanthu kuti ŵize</value>
+          </text>
+          <text id="meeting_quality-why_did_the_meeting_start_late-opt1-label">
+            <value>Kulindilira ŵalongozgi ŵa muzi</value>
+            <value form="markdown">Kulindilira ŵalongozgi ŵa muzi</value>
+          </text>
+          <text id="meeting_quality-why_did_the_meeting_start_late-opt2-label">
+            <value>Vula yikachedweska kwamba</value>
+            <value form="markdown">Vula yikachedweska kwamba</value>
+          </text>
+          <text id="meeting_quality-why_did_the_meeting_start_late-opt3-label">
+            <value>Muwovwiri wakiza mwakuchedwa</value>
+            <value form="markdown">Muwovwiri wakiza mwakuchedwa</value>
+          </text>
+          <text id="meeting_quality-why_did_the_meeting_start_late-opt4-label">
+            <value>Malo gha ungano ghakaŵa ghakunozgeka yayi</value>
+            <value form="markdown">Malo gha ungano ghakaŵa ghakunozgeka yayi</value>
+          </text>
+          <text id="meeting_quality-why_did_the_meeting_start_late_other-label">
+            <value>Longosolani chifukwa icho ukambira mwakuchedwa</value>
+            <value form="markdown">Longosolani chifukwa icho ukambira mwakuchedwa</value>
+          </text>
+          <text id="meeting_quality-meeting_conflict-label">
+            <value>Kasi pakaŵa kususkana pa ungano?</value>
+            <value form="markdown">Kasi pakaŵa kususkana pa ungano?</value>
+          </text>
+          <text id="meeting_quality-conflict_details-label">
+            <value>Kasi kususkana kukaŵa pa vichi?</value>
+            <value form="markdown">Kasi kususkana kukaŵa pa vichi?</value>
+          </text>
+          <text id="meeting_quality-conflict_details-constraintMsg">
+            <value>Ichi chingajumphenge malembo 300 yayi.</value>
+            <value form="markdown">Ichi chingajumphenge malembo 300 yayi.</value>
+          </text>
+          <text id="meeting_quality-conflict_resolved-label">
+            <value>Kasi kukamazgika pambere ungano undamale?</value>
+            <value form="markdown">Kasi kukamazgika pambere ungano undamale?</value>
+          </text>
+          <text id="savings-label">
+            <value>Kusunga ndalama</value>
+            <value form="markdown">Kusunga ndalama</value>
+          </text>
+          <text id="savings-currently_saving-label">
+            <value>Kasi muzi ukusunga ndalama sono?</value>
+            <value form="markdown">Kasi muzi ukusunga ndalama sono?</value>
+          </text>
+          <text id="savings_details-label">
+            <value>Vinandi vya kusunga ndalama</value>
+            <value form="markdown">Vinandi vya kusunga ndalama</value>
+          </text>
+          <text id="savings_details-hh_saving-label">
+            <value>Kasi nyumba zilinga zikusunga ndalama?</value>
+            <value form="markdown">Kasi nyumba zilinga zikusunga ndalama?</value>
+          </text>
+          <text id="savings_details-hh_saving-constraintMsg">
+            <value>Nyumba izo zikusunga ndalama zingajumpha nyumba izo zikimilirika pa ungano yayi.</value>
+            <value form="markdown">Nyumba izo zikusunga ndalama zingajumpha nyumba izo zikimilirika pa ungano yayi.</value>
+          </text>
+          <text id="savings_details-males_saving-label">
+            <value>Kasi ŵanalume ŵalinga ŵakusunga ndalama?</value>
+            <value form="markdown">Kasi ŵanalume ŵalinga ŵakusunga ndalama?</value>
+          </text>
+          <text id="savings_details-females_saving-label">
+            <value>Kasi ŵanakazi ŵalinga ŵakusunga ndalama?</value>
+            <value form="markdown">Kasi ŵanakazi ŵalinga ŵakusunga ndalama?</value>
+          </text>
+          <text id="savings_details-females_saving-constraintMsg">
+            <value>Lembani nambara pakati pa 0 na 5000.</value>
+            <value form="markdown">Lembani nambara pakati pa 0 na 5000.</value>
+          </text>
+          <text id="savings_details-amt_savings-label">
+            <value>Kasi ndalama zilinga zasungika kufuma pa ungano wakumaliro?</value>
+            <value form="markdown">Kasi ndalama zilinga zasungika kufuma pa ungano wakumaliro?</value>
+          </text>
+          <text id="savings_details-amt_savings-hint">
+            <value>Kwacha ya ku Malawi</value>
+            <value form="markdown">Kwacha ya ku Malawi</value>
+          </text>
+          <text id="savings_details-amt_savings-constraintMsg">
+            <value>Lembani ndalama pakati pa 0 na 100000000 Kwacha.</value>
+            <value form="markdown">Lembani ndalama pakati pa 0 na 100000000 Kwacha.</value>
+          </text>
+          <text id="savings_details-savings_use-label">
+            <value>Kasi ndalama zakusungika zikugwiritsika ntchito wuli?</value>
+            <value form="markdown">Kasi ndalama zakusungika zikugwiritsika ntchito wuli?</value>
+          </text>
+          <text id="savings_details-savings_use-opt0-label">
+            <value>Vyakukhumbikwa pa ulimi</value>
+            <value form="markdown">Vyakukhumbikwa pa ulimi</value>
+          </text>
+          <text id="savings_details-savings_use-opt1-label">
+            <value>Malonda ghachoko</value>
+            <value form="markdown">Malonda ghachoko</value>
+          </text>
+          <text id="savings_details-savings_use-opt2-label">
+            <value>Ndalama za sukulu</value>
+            <value form="markdown">Ndalama za sukulu</value>
+          </text>
+          <text id="savings_details-savings_use-opt3-label">
+            <value>Ndalama za uchizi</value>
+            <value form="markdown">Ndalama za uchizi</value>
+          </text>
+          <text id="savings_details-savings_use-opt4-label">
+            <value>Chakurya</value>
+            <value form="markdown">Chakurya</value>
+          </text>
+          <text id="savings_details-savings_use-opt5-label">
+            <value>Vyakukhumbikwa vya mwaluŵiro</value>
+            <value form="markdown">Vyakukhumbikwa vya mwaluŵiro</value>
+          </text>
+          <text id="savings_details-savings_use-opt6-label">
+            <value>Ntchito yinyake</value>
+            <value form="markdown">Ntchito yinyake</value>
+          </text>
+          <text id="savings_details-savings_use_other-label">
+            <value>Longosolani ntchito yinyake iyo</value>
+            <value form="markdown">Longosolani ntchito yinyake iyo</value>
+          </text>
+          <text id="evidence-label">
+            <value>Ukaboni</value>
+            <value form="markdown">Ukaboni</value>
+          </text>
+          <text id="evidence-consent_script-label">
+            <value>**Ŵazgani ivi mwakukwezga ku ŵanthu ŵa pa ungano pambere mundatore chithuzi.**
+
+Titorenge chithuzi chimoza cha ungano uwu. Chithuzi ichi chikulongora kuti ungano ukachitikadi.
+
+Kuŵa mu chithuzi ichi ntchakukhumba kwinu, palije kuchichizgika. Usange mukukhumba yayi kuŵa mu chithuzi, mungafumamo nyengo yiliyose, nanga para nafumba kale. Mukwenera kupeleka chifukwa yayi, ndipo palije chiheni icho chichitikenge kwa imwe chifukwa cha ichi.
+
+Chithuzi ichi na kalembero ka ungano uwu ni vyachisisi. Tikulemba pera unandi wa ŵanthu awo ŵakiza na awo ŵakatorapo lwande. Tikulemba zina la munthu waliyose yayi, ntheura palije zgoro la pano ilo likukakikira ku munthu.
+
+Chithuzi ichi na kalembero aka vikukhala na ine yayi. Vikuluta ku Spark MicroGrants na ku wupu uwo ukwendeska purojekiti yakuyezga iyi, ndipo aŵo ŵakuvigwiritsira ntchito kuwona usange ungano uwu ukachitikadi, mwakuti ine nilipike chifukwa cha kwendeska ungano uwu. Mingano yinyake yikuwoneskeka so na Partner Trainer.
+
+Kuŵa mu chithuzi ichi, panji kwiza ku ungano uwu, kukulayizga munthu waliyose kanthu yayi. Kukupeleka wanangwa ku munthu waliyose wa kupokera microgrant panji kusankhika pa kantu kaliyose yayi. Usange mufumamo mu chithuzi, palije icho mukutaya icho mphanyi mukapokera.</value>
+            <value form="markdown">**Ŵazgani ivi mwakukwezga ku ŵanthu ŵa pa ungano pambere mundatore chithuzi.**
+
+Titorenge chithuzi chimoza cha ungano uwu. Chithuzi ichi chikulongora kuti ungano ukachitikadi.
+
+Kuŵa mu chithuzi ichi ntchakukhumba kwinu, palije kuchichizgika. Usange mukukhumba yayi kuŵa mu chithuzi, mungafumamo nyengo yiliyose, nanga para nafumba kale. Mukwenera kupeleka chifukwa yayi, ndipo palije chiheni icho chichitikenge kwa imwe chifukwa cha ichi.
+
+Chithuzi ichi na kalembero ka ungano uwu ni vyachisisi. Tikulemba pera unandi wa ŵanthu awo ŵakiza na awo ŵakatorapo lwande. Tikulemba zina la munthu waliyose yayi, ntheura palije zgoro la pano ilo likukakikira ku munthu.
+
+Chithuzi ichi na kalembero aka vikukhala na ine yayi. Vikuluta ku Spark MicroGrants na ku wupu uwo ukwendeska purojekiti yakuyezga iyi, ndipo aŵo ŵakuvigwiritsira ntchito kuwona usange ungano uwu ukachitikadi, mwakuti ine nilipike chifukwa cha kwendeska ungano uwu. Mingano yinyake yikuwoneskeka so na Partner Trainer.
+
+Kuŵa mu chithuzi ichi, panji kwiza ku ungano uwu, kukulayizga munthu waliyose kanthu yayi. Kukupeleka wanangwa ku munthu waliyose wa kupokera microgrant panji kusankhika pa kantu kaliyose yayi. Usange mufumamo mu chithuzi, palije icho mukutaya icho mphanyi mukapokera.</value>
+          </text>
+          <text id="evidence-photo_consent_announced-label">
+            <value>Kasi mukaŵazga ivi ku ŵanthu ŵa pa ungano pambere mundatore chithuzi?</value>
+            <value form="markdown">Kasi mukaŵazga ivi ku ŵanthu ŵa pa ungano pambere mundatore chithuzi?</value>
+          </text>
+          <text id="evidence-photo_consent_announced-opt0-label">
+            <value>Enya</value>
+            <value form="markdown">Enya</value>
+          </text>
+          <text id="evidence-photo_consent_announced-opt1-label">
+            <value>Yayi</value>
+            <value form="markdown">Yayi</value>
+          </text>
+          <text id="evidence-attach_a_photo_for_the_meeting-label">
+            <value>Sazgirani chithuzi cha ungano</value>
+            <value form="markdown">Sazgirani chithuzi cha ungano</value>
+            <value form="image">jr://file/commcare/ddba654c2ece65a9e1dba302c8c47ac4728d5e3ef7210333b3db69a65ea56f95.jpg</value>
+          </text>
+          <text id="evidence-attach_a_photo_for_the_meeting-hint">
+            <value>Chithuzi chikwenera kulongora ungano wenecho, chakutorekera pa ungano wenewo.</value>
+            <value form="markdown">Chithuzi chikwenera kulongora ungano wenecho, chakutorekera pa ungano wenewo.</value>
+          </text>
+          <text id="evidence-meeting_gps-label">
+            <value>Torani malo agho ungano ukuchitikira</value>
+            <value form="markdown">Torani malo agho ungano ukuchitikira</value>
+          </text>
+          <text id="evidence-meeting_gps-hint">
+            <value>Chilato ntchakuti kulongoka kuŵe mamita 50. Imani apo ungano ukuchitikira ndipo lindilirani kuti nambara yikhazikike pambere mundayisunge.</value>
+            <value form="markdown">Chilato ntchakuti kulongoka kuŵe mamita 50. Imani apo ungano ukuchitikira ndipo lindilirani kuti nambara yikhazikike pambere mundayisunge.</value>
+          </text>
+          <text id="evidence-meeting_gps_accuracy_good-label">
+            <value>Kulongoka kwa malo ntchiwemi.</value>
+            <value form="markdown">Kulongoka kwa malo ntchiwemi.</value>
+          </text>
+          <text id="evidence-meeting_gps_accuracy_usable-label">
+            <value>Kulongoka kwa malo nkwakukwana kweni kuli makora chomene yayi. Usange mungafiska, lindilirani pachoko ndipo torani malo ghara so.</value>
+            <value form="markdown">Kulongoka kwa malo nkwakukwana kweni kuli makora chomene yayi. Usange mungafiska, lindilirani pachoko ndipo torani malo ghara so.</value>
+            <value form="image">jr://file/commcare/f8a9609e8b32cc094737b9e5f2ab24bdfd53b0328da1ae0aa6af10e3bfcfd669.jpg</value>
+          </text>
+          <text id="evidence-meeting_gps_accuracy_imprecise-label">
+            <value>Kulongoka kwa malo kwajumpha mamita 50, ntheura nambara iyi njakulongoka yayi. Mungalutilira na kutuma mose.</value>
+            <value form="markdown">Kulongoka kwa malo kwajumpha mamita 50, ntheura nambara iyi njakulongoka yayi. Mungalutilira na kutuma mose.</value>
+            <value form="image">jr://file/commcare/f8a9609e8b32cc094737b9e5f2ab24bdfd53b0328da1ae0aa6af10e3bfcfd669.jpg</value>
+          </text>
+          <text id="next_meeting-label">
+            <value>Ungano wakulondezgapo</value>
+            <value form="markdown">Ungano wakulondezgapo</value>
+          </text>
+          <text id="next_meeting-next_meeting_date-label">
+            <value>Kasi ungano wakulondezgapo uŵenge zuŵa wuli?</value>
+            <value form="markdown">Kasi ungano wakulondezgapo uŵenge zuŵa wuli?</value>
+          </text>
+          <text id="next_meeting-next_meeting_date-constraintMsg">
+            <value>Ungano wakulondezgapo uŵe pa zuŵa la ungano uwu panji panyuma pake.</value>
+            <value form="markdown">Ungano wakulondezgapo uŵe pa zuŵa la ungano uwu panji panyuma pake.</value>
+          </text>
+        </translation>
+      </itext>
+      <bind nodeset="/data/case/@date_modified" type="xsd:dateTime" calculate="/data/meta/timeEnd"/>
+      <bind nodeset="/data/case/@user_id" calculate="/data/meta/userID"/>
+      <bind nodeset="/data/case/@case_id" calculate="instance('commcaresession')/session/data/case_id"/>
+      <bind nodeset="/data/case/update/Percentage_Participation" calculate="/data/meeting_summary/Percentage_Participation" relevant="count(/data/meeting_summary/Percentage_Participation) &gt; 0"/>
+      <bind nodeset="/data/case/update/SEDO_attendance" calculate="/data/other_attendees/SEDO_attendance" relevant="count(/data/other_attendees/SEDO_attendance) &gt; 0"/>
+      <bind nodeset="/data/case/update/SparkTrainer_attendance" calculate="/data/other_attendees/SparkTrainer_attendance" relevant="count(/data/other_attendees/SparkTrainer_attendance) &gt; 0"/>
+      <bind nodeset="/data/case/update/Total_Attendance" calculate="/data/meeting_summary/Total_Attendance" relevant="count(/data/meeting_summary/Total_Attendance) &gt; 0"/>
+      <bind nodeset="/data/case/update/Total_Participation" calculate="/data/meeting_summary/Total_participation" relevant="count(/data/meeting_summary/Total_participation) &gt; 0"/>
+      <bind nodeset="/data/case/update/activity_completed" calculate="/data/fcap_step/activity_completed" relevant="count(/data/fcap_step/activity_completed) &gt; 0"/>
+      <bind nodeset="/data/case/update/amt_savings" calculate="/data/savings_details/amt_savings" relevant="count(/data/savings_details/amt_savings) &gt; 0"/>
+      <bind nodeset="/data/case/update/conflict_details" calculate="/data/meeting_quality/conflict_details" relevant="count(/data/meeting_quality/conflict_details) &gt; 0"/>
+      <bind nodeset="/data/case/update/conflict_resolved" calculate="/data/meeting_quality/conflict_resolved" relevant="count(/data/meeting_quality/conflict_resolved) &gt; 0"/>
+      <bind nodeset="/data/case/update/cumulative_savings" calculate="/data/meeting_summary/cumulative_savings" relevant="count(/data/meeting_summary/cumulative_savings) &gt; 0"/>
+      <bind nodeset="/data/case/update/currently_saving" calculate="/data/savings/currently_saving" relevant="count(/data/savings/currently_saving) &gt; 0"/>
+      <bind nodeset="/data/case/update/date_of_meeting" calculate="/data/meeting_date/date_of_meeting" relevant="count(/data/meeting_date/date_of_meeting) &gt; 0"/>
+      <bind nodeset="/data/case/update/expected_meeting_date" calculate="/data/meeting_not_held/expected_meeting_date" relevant="count(/data/meeting_not_held/expected_meeting_date) &gt; 0"/>
+      <bind nodeset="/data/case/update/female_attendance" calculate="/data/attendance/female_attendance" relevant="count(/data/attendance/female_attendance) &gt; 0"/>
+      <bind nodeset="/data/case/update/female_leader_attendence" calculate="/data/other_attendees/female_leader_attendence" relevant="count(/data/other_attendees/female_leader_attendence) &gt; 0"/>
+      <bind nodeset="/data/case/update/female_participants" calculate="/data/participation/female_participants" relevant="count(/data/participation/female_participants) &gt; 0"/>
+      <bind nodeset="/data/case/update/females_saving" calculate="/data/savings_details/females_saving" relevant="count(/data/savings_details/females_saving) &gt; 0"/>
+      <bind nodeset="/data/case/update/hh_represented_at_the_meeting" calculate="/data/attendance/hh_represented_at_the_meeting" relevant="count(/data/attendance/hh_represented_at_the_meeting) &gt; 0"/>
+      <bind nodeset="/data/case/update/hh_saving" calculate="/data/savings_details/hh_saving" relevant="count(/data/savings_details/hh_saving) &gt; 0"/>
+      <bind nodeset="/data/case/update/last_meeting_date" calculate="/data/meeting_summary/last_meeting_date" relevant="count(/data/meeting_summary/last_meeting_date) &gt; 0"/>
+      <bind nodeset="/data/case/update/male_attendance" calculate="/data/attendance/male_attendance" relevant="count(/data/attendance/male_attendance) &gt; 0"/>
+      <bind nodeset="/data/case/update/male_leader_attendence" calculate="/data/other_attendees/male_leader_attendence" relevant="count(/data/other_attendees/male_leader_attendence) &gt; 0"/>
+      <bind nodeset="/data/case/update/male_participants" calculate="/data/participation/male_participants" relevant="count(/data/participation/male_participants) &gt; 0"/>
+      <bind nodeset="/data/case/update/males_saving" calculate="/data/savings_details/males_saving" relevant="count(/data/savings_details/males_saving) &gt; 0"/>
+      <bind nodeset="/data/case/update/meeting_conducted" calculate="/data/meeting_held/meeting_conducted" relevant="count(/data/meeting_held/meeting_conducted) &gt; 0"/>
+      <bind nodeset="/data/case/update/meeting_conflict" calculate="/data/meeting_quality/meeting_conflict" relevant="count(/data/meeting_quality/meeting_conflict) &gt; 0"/>
+      <bind nodeset="/data/case/update/meeting_gps" calculate="/data/evidence/meeting_gps" relevant="count(/data/evidence/meeting_gps) &gt; 0"/>
+      <bind nodeset="/data/case/update/meeting_on_time" calculate="/data/meeting_quality/meeting_on_time" relevant="count(/data/meeting_quality/meeting_on_time) &gt; 0"/>
+      <bind nodeset="/data/case/update/meeting_type" calculate="/data/meeting_type_screen/meeting_type" relevant="count(/data/meeting_type_screen/meeting_type) &gt; 0"/>
+      <bind nodeset="/data/case/update/meetings_on_current_step" calculate="/data/meeting_summary/meetings_on_current_step" relevant="count(/data/meeting_summary/meetings_on_current_step) &gt; 0"/>
+      <bind nodeset="/data/case/update/members_with_disability" calculate="/data/attendance/members_with_disability" relevant="count(/data/attendance/members_with_disability) &gt; 0"/>
+      <bind nodeset="/data/case/update/next_meeting_date" calculate="/data/next_meeting/next_meeting_date" relevant="count(/data/next_meeting/next_meeting_date) &gt; 0"/>
+      <bind nodeset="/data/case/update/photo_consent_announced" calculate="/data/evidence/photo_consent_announced" relevant="count(/data/evidence/photo_consent_announced) &gt; 0"/>
+      <bind nodeset="/data/case/update/pilot_fcap_step" calculate="/data/meeting_summary/pilot_fcap_step" relevant="count(/data/meeting_summary/pilot_fcap_step) &gt; 0"/>
+      <bind nodeset="/data/case/update/reason_not_conducted" calculate="/data/meeting_not_held/reason_not_conducted" relevant="count(/data/meeting_not_held/reason_not_conducted) &gt; 0"/>
+      <bind nodeset="/data/case/update/reason_other" calculate="/data/meeting_not_held/reason_other" relevant="count(/data/meeting_not_held/reason_other) &gt; 0"/>
+      <bind nodeset="/data/case/update/reschedule_date" calculate="/data/meeting_not_held/reschedule_date" relevant="count(/data/meeting_not_held/reschedule_date) &gt; 0"/>
+      <bind nodeset="/data/case/update/savings_use" calculate="/data/savings_details/savings_use" relevant="count(/data/savings_details/savings_use) &gt; 0"/>
+      <bind nodeset="/data/case/update/savings_use_other" calculate="/data/savings_details/savings_use_other" relevant="count(/data/savings_details/savings_use_other) &gt; 0"/>
+      <bind nodeset="/data/case/update/step" calculate="/data/fcap_step/step" relevant="count(/data/fcap_step/step) &gt; 0"/>
+      <bind nodeset="/data/case/update/why_did_the_meeting_start_late" calculate="/data/meeting_quality/why_did_the_meeting_start_late" relevant="count(/data/meeting_quality/why_did_the_meeting_start_late) &gt; 0"/>
+      <bind nodeset="/data/case/update/why_did_the_meeting_start_late_other" calculate="/data/meeting_quality/why_did_the_meeting_start_late_other" relevant="count(/data/meeting_quality/why_did_the_meeting_start_late_other) &gt; 0"/>
+      <setvalue ref="/data/meeting_date/date_of_meeting" value="instance('casedb')/casedb/case[@case_id=instance('commcaresession')/session/data/case_id]/date_of_meeting" event="xforms-ready"/>
+      <setvalue ref="/data/meeting_held/meeting_conducted" value="instance('casedb')/casedb/case[@case_id=instance('commcaresession')/session/data/case_id]/meeting_conducted" event="xforms-ready"/>
+      <setvalue ref="/data/meeting_not_held/reason_not_conducted" value="instance('casedb')/casedb/case[@case_id=instance('commcaresession')/session/data/case_id]/reason_not_conducted" event="xforms-ready"/>
+      <setvalue ref="/data/meeting_not_held/reason_other" value="instance('casedb')/casedb/case[@case_id=instance('commcaresession')/session/data/case_id]/reason_other" event="xforms-ready"/>
+      <setvalue ref="/data/meeting_not_held/expected_meeting_date" value="instance('casedb')/casedb/case[@case_id=instance('commcaresession')/session/data/case_id]/expected_meeting_date" event="xforms-ready"/>
+      <setvalue ref="/data/meeting_not_held/reschedule_date" value="instance('casedb')/casedb/case[@case_id=instance('commcaresession')/session/data/case_id]/reschedule_date" event="xforms-ready"/>
+      <setvalue ref="/data/meeting_type_screen/meeting_type" value="instance('casedb')/casedb/case[@case_id=instance('commcaresession')/session/data/case_id]/meeting_type" event="xforms-ready"/>
+      <setvalue ref="/data/fcap_step/step" value="instance('casedb')/casedb/case[@case_id=instance('commcaresession')/session/data/case_id]/step" event="xforms-ready"/>
+      <setvalue ref="/data/fcap_step/activity_completed" value="instance('casedb')/casedb/case[@case_id=instance('commcaresession')/session/data/case_id]/activity_completed" event="xforms-ready"/>
+      <setvalue ref="/data/attendance/hh_represented_at_the_meeting" value="instance('casedb')/casedb/case[@case_id=instance('commcaresession')/session/data/case_id]/hh_represented_at_the_meeting" event="xforms-ready"/>
+      <setvalue ref="/data/attendance/male_attendance" value="instance('casedb')/casedb/case[@case_id=instance('commcaresession')/session/data/case_id]/male_attendance" event="xforms-ready"/>
+      <setvalue ref="/data/attendance/female_attendance" value="instance('casedb')/casedb/case[@case_id=instance('commcaresession')/session/data/case_id]/female_attendance" event="xforms-ready"/>
+      <setvalue ref="/data/attendance/members_with_disability" value="instance('casedb')/casedb/case[@case_id=instance('commcaresession')/session/data/case_id]/members_with_disability" event="xforms-ready"/>
+      <setvalue ref="/data/participation/male_participants" value="instance('casedb')/casedb/case[@case_id=instance('commcaresession')/session/data/case_id]/male_participants" event="xforms-ready"/>
+      <setvalue ref="/data/participation/female_participants" value="instance('casedb')/casedb/case[@case_id=instance('commcaresession')/session/data/case_id]/female_participants" event="xforms-ready"/>
+      <setvalue ref="/data/other_attendees/male_leader_attendence" value="instance('casedb')/casedb/case[@case_id=instance('commcaresession')/session/data/case_id]/male_leader_attendence" event="xforms-ready"/>
+      <setvalue ref="/data/other_attendees/female_leader_attendence" value="instance('casedb')/casedb/case[@case_id=instance('commcaresession')/session/data/case_id]/female_leader_attendence" event="xforms-ready"/>
+      <setvalue ref="/data/other_attendees/SparkTrainer_attendance" value="instance('casedb')/casedb/case[@case_id=instance('commcaresession')/session/data/case_id]/SparkTrainer_attendance" event="xforms-ready"/>
+      <setvalue ref="/data/other_attendees/SEDO_attendance" value="instance('casedb')/casedb/case[@case_id=instance('commcaresession')/session/data/case_id]/SEDO_attendance" event="xforms-ready"/>
+      <setvalue ref="/data/meeting_quality/meeting_on_time" value="instance('casedb')/casedb/case[@case_id=instance('commcaresession')/session/data/case_id]/meeting_on_time" event="xforms-ready"/>
+      <setvalue ref="/data/meeting_quality/why_did_the_meeting_start_late" value="instance('casedb')/casedb/case[@case_id=instance('commcaresession')/session/data/case_id]/why_did_the_meeting_start_late" event="xforms-ready"/>
+      <setvalue ref="/data/meeting_quality/why_did_the_meeting_start_late_other" value="instance('casedb')/casedb/case[@case_id=instance('commcaresession')/session/data/case_id]/why_did_the_meeting_start_late_other" event="xforms-ready"/>
+      <setvalue ref="/data/meeting_quality/meeting_conflict" value="instance('casedb')/casedb/case[@case_id=instance('commcaresession')/session/data/case_id]/meeting_conflict" event="xforms-ready"/>
+      <setvalue ref="/data/meeting_quality/conflict_details" value="instance('casedb')/casedb/case[@case_id=instance('commcaresession')/session/data/case_id]/conflict_details" event="xforms-ready"/>
+      <setvalue ref="/data/meeting_quality/conflict_resolved" value="instance('casedb')/casedb/case[@case_id=instance('commcaresession')/session/data/case_id]/conflict_resolved" event="xforms-ready"/>
+      <setvalue ref="/data/savings/currently_saving" value="instance('casedb')/casedb/case[@case_id=instance('commcaresession')/session/data/case_id]/currently_saving" event="xforms-ready"/>
+      <setvalue ref="/data/savings_details/hh_saving" value="instance('casedb')/casedb/case[@case_id=instance('commcaresession')/session/data/case_id]/hh_saving" event="xforms-ready"/>
+      <setvalue ref="/data/savings_details/males_saving" value="instance('casedb')/casedb/case[@case_id=instance('commcaresession')/session/data/case_id]/males_saving" event="xforms-ready"/>
+      <setvalue ref="/data/savings_details/females_saving" value="instance('casedb')/casedb/case[@case_id=instance('commcaresession')/session/data/case_id]/females_saving" event="xforms-ready"/>
+      <setvalue ref="/data/savings_details/amt_savings" value="instance('casedb')/casedb/case[@case_id=instance('commcaresession')/session/data/case_id]/amt_savings" event="xforms-ready"/>
+      <setvalue ref="/data/savings_details/savings_use" value="instance('casedb')/casedb/case[@case_id=instance('commcaresession')/session/data/case_id]/savings_use" event="xforms-ready"/>
+      <setvalue ref="/data/savings_details/savings_use_other" value="instance('casedb')/casedb/case[@case_id=instance('commcaresession')/session/data/case_id]/savings_use_other" event="xforms-ready"/>
+      <setvalue ref="/data/evidence/photo_consent_announced" value="instance('casedb')/casedb/case[@case_id=instance('commcaresession')/session/data/case_id]/photo_consent_announced" event="xforms-ready"/>
+      <setvalue ref="/data/evidence/meeting_gps" value="instance('casedb')/casedb/case[@case_id=instance('commcaresession')/session/data/case_id]/meeting_gps" event="xforms-ready"/>
+      <setvalue ref="/data/next_meeting/next_meeting_date" value="instance('casedb')/casedb/case[@case_id=instance('commcaresession')/session/data/case_id]/next_meeting_date" event="xforms-ready"/>
+      <setvalue ref="/data/meeting_summary/Total_Attendance" value="instance('casedb')/casedb/case[@case_id=instance('commcaresession')/session/data/case_id]/Total_Attendance" event="xforms-ready"/>
+      <setvalue ref="/data/meeting_summary/Total_participation" value="instance('casedb')/casedb/case[@case_id=instance('commcaresession')/session/data/case_id]/Total_Participation" event="xforms-ready"/>
+      <setvalue ref="/data/meeting_summary/Percentage_Participation" value="instance('casedb')/casedb/case[@case_id=instance('commcaresession')/session/data/case_id]/Percentage_Participation" event="xforms-ready"/>
+      <setvalue ref="/data/meeting_summary/cumulative_savings" value="instance('casedb')/casedb/case[@case_id=instance('commcaresession')/session/data/case_id]/cumulative_savings" event="xforms-ready"/>
+      <setvalue ref="/data/meeting_summary/meetings_on_current_step" value="instance('casedb')/casedb/case[@case_id=instance('commcaresession')/session/data/case_id]/meetings_on_current_step" event="xforms-ready"/>
+      <setvalue ref="/data/meeting_summary/pilot_fcap_step" value="instance('casedb')/casedb/case[@case_id=instance('commcaresession')/session/data/case_id]/pilot_fcap_step" event="xforms-ready"/>
+      <setvalue ref="/data/meeting_summary/last_meeting_date" value="instance('casedb')/casedb/case[@case_id=instance('commcaresession')/session/data/case_id]/last_meeting_date" event="xforms-ready"/>
+      <setvalue ref="/data/meta/deviceID" value="instance('commcaresession')/session/context/deviceid" event="xforms-ready"/>
+      <setvalue ref="/data/meta/timeStart" value="now()" event="xforms-ready"/>
+      <bind nodeset="/data/meta/timeStart" type="xsd:dateTime"/>
+      <setvalue ref="/data/meta/timeEnd" value="now()" event="xforms-revalidate"/>
+      <bind nodeset="/data/meta/timeEnd" type="xsd:dateTime"/>
+      <setvalue ref="/data/meta/username" value="instance('commcaresession')/session/context/username" event="xforms-ready"/>
+      <setvalue ref="/data/meta/userID" value="instance('commcaresession')/session/context/userid" event="xforms-ready"/>
+      <setvalue ref="/data/meta/instanceID" value="uuid()" event="xforms-ready"/>
+      <setvalue ref="/data/meta/appVersion" value="instance('commcaresession')/session/context/appversion" event="xforms-ready"/>
+      <setvalue ref="/data/meta/drift" value="if(count(instance('commcaresession')/session/context/drift) = 1, instance('commcaresession')/session/context/drift, '')" event="xforms-revalidate"/>
+      <orx:pollsensor event="xforms-ready" ref="/data/meta/location"/>
+      <bind nodeset="/data/meta/location" type="geopoint"/>
+    </model>
+    <vellum:hashtags>{"#case/household_count":"instance('casedb')/casedb/case[@case_id = instance('commcaresession')/session/data/case_id]/household_count","#case/cumulative_savings":"instance('casedb')/casedb/case[@case_id = instance('commcaresession')/session/data/case_id]/cumulative_savings","#case/pilot_fcap_step":"instance('casedb')/casedb/case[@case_id = instance('commcaresession')/session/data/case_id]/pilot_fcap_step","#case/meetings_on_current_step":"instance('casedb')/casedb/case[@case_id = instance('commcaresession')/session/data/case_id]/meetings_on_current_step"}</vellum:hashtags>
+    <vellum:hashtagTransforms>{"prefixes":{"#case/":"instance('casedb')/casedb/case[@case_id = instance('commcaresession')/session/data/case_id]/"}}</vellum:hashtagTransforms>
+  </h:head>
+  <h:body>
+    <group ref="/data/meeting_date" appearance="field-list">
+      <label ref="jr:itext('meeting_date-label')"/>
+      <input ref="/data/meeting_date/date_of_meeting">
+        <label ref="jr:itext('meeting_date-date_of_meeting-label')"/>
+      </input>
+    </group>
+    <group ref="/data/meeting_held" appearance="field-list">
+      <label ref="jr:itext('meeting_held-label')"/>
+      <select1 ref="/data/meeting_held/meeting_conducted">
+        <label ref="jr:itext('meeting_held-meeting_conducted-label')"/>
+        <item>
+          <label ref="jr:itext('evidence-photo_consent_announced-opt0-label')"/>
+          <value>yes</value>
+        </item>
+        <item>
+          <label ref="jr:itext('evidence-photo_consent_announced-opt1-label')"/>
+          <value>no</value>
+        </item>
+      </select1>
+    </group>
+    <group ref="/data/meeting_not_held" appearance="field-list">
+      <label ref="jr:itext('meeting_not_held-label')"/>
+      <select1 ref="/data/meeting_not_held/reason_not_conducted">
+        <label ref="jr:itext('meeting_not_held-reason_not_conducted-label')"/>
+        <item>
+          <label ref="jr:itext('meeting_not_held-reason_not_conducted-opt0-label')"/>
+          <value>rain_or_weather</value>
+        </item>
+        <item>
+          <label ref="jr:itext('meeting_not_held-reason_not_conducted-opt1-label')"/>
+          <value>funeral</value>
+        </item>
+        <item>
+          <label ref="jr:itext('meeting_not_held-reason_not_conducted-opt2-label')"/>
+          <value>community_event</value>
+        </item>
+        <item>
+          <label ref="jr:itext('meeting_not_held-reason_not_conducted-opt3-label')"/>
+          <value>low_turnout</value>
+        </item>
+        <item>
+          <label ref="jr:itext('meeting_not_held-reason_not_conducted-opt4-label')"/>
+          <value>leader_unavailable</value>
+        </item>
+        <item>
+          <label ref="jr:itext('meeting_not_held-reason_not_conducted-opt5-label')"/>
+          <value>facilitator_unavailable</value>
+        </item>
+        <item>
+          <label ref="jr:itext('meeting_not_held-reason_not_conducted-opt6-label')"/>
+          <value>security</value>
+        </item>
+        <item>
+          <label ref="jr:itext('meeting_not_held-reason_not_conducted-opt7-label')"/>
+          <value>other</value>
+        </item>
+      </select1>
+      <input ref="/data/meeting_not_held/reason_other">
+        <label ref="jr:itext('meeting_not_held-reason_other-label')"/>
+      </input>
+      <input ref="/data/meeting_not_held/expected_meeting_date">
+        <label ref="jr:itext('meeting_not_held-expected_meeting_date-label')"/>
+      </input>
+      <input ref="/data/meeting_not_held/reschedule_date">
+        <label ref="jr:itext('meeting_not_held-reschedule_date-label')"/>
+      </input>
+    </group>
+    <group ref="/data/meeting_type_screen" appearance="field-list">
+      <label ref="jr:itext('meeting_type_screen-label')"/>
+      <select1 ref="/data/meeting_type_screen/meeting_type">
+        <label ref="jr:itext('meeting_type_screen-meeting_type-label')"/>
+        <hint ref="jr:itext('meeting_type_screen-meeting_type-hint')"/>
+        <item>
+          <label ref="jr:itext('meeting_type_screen-meeting_type-opt0-label')"/>
+          <value>community_meeting</value>
+        </item>
+        <item>
+          <label ref="jr:itext('meeting_type_screen-meeting_type-opt1-label')"/>
+          <value>committee_meeting</value>
+        </item>
+      </select1>
+    </group>
+    <group ref="/data/fcap_step" appearance="field-list">
+      <label ref="jr:itext('fcap_step-label')"/>
+      <select1 ref="/data/fcap_step/step">
+        <label ref="jr:itext('fcap_step-step-label')"/>
+        <item>
+          <label ref="jr:itext('fcap_step-step-opt0-label')"/>
+          <value>step_1</value>
+        </item>
+        <item>
+          <label ref="jr:itext('fcap_step-step-opt1-label')"/>
+          <value>step_2</value>
+        </item>
+        <item>
+          <label ref="jr:itext('fcap_step-step-opt2-label')"/>
+          <value>step_3</value>
+        </item>
+        <item>
+          <label ref="jr:itext('fcap_step-step-opt3-label')"/>
+          <value>step_4</value>
+        </item>
+        <item>
+          <label ref="jr:itext('fcap_step-step-opt4-label')"/>
+          <value>step_5</value>
+        </item>
+        <item>
+          <label ref="jr:itext('fcap_step-step-opt5-label')"/>
+          <value>step_6</value>
+        </item>
+        <item>
+          <label ref="jr:itext('fcap_step-step-opt6-label')"/>
+          <value>step_7</value>
+        </item>
+      </select1>
+      <select1 ref="/data/fcap_step/activity_completed">
+        <label ref="jr:itext('fcap_step-activity_completed-label')"/>
+        <item>
+          <label ref="jr:itext('evidence-photo_consent_announced-opt0-label')"/>
+          <value>yes</value>
+        </item>
+        <item>
+          <label ref="jr:itext('evidence-photo_consent_announced-opt1-label')"/>
+          <value>no</value>
+        </item>
+      </select1>
+    </group>
+    <group ref="/data/attendance" appearance="field-list">
+      <label ref="jr:itext('attendance-label')"/>
+      <input ref="/data/attendance/hh_represented_at_the_meeting">
+        <label ref="jr:itext('attendance-hh_represented_at_the_meeting-label')"/>
+      </input>
+      <input ref="/data/attendance/male_attendance">
+        <label ref="jr:itext('attendance-male_attendance-label')"/>
+      </input>
+      <input ref="/data/attendance/female_attendance">
+        <label ref="jr:itext('attendance-female_attendance-label')"/>
+      </input>
+      <input ref="/data/attendance/members_with_disability">
+        <label ref="jr:itext('attendance-members_with_disability-label')"/>
+        <hint ref="jr:itext('attendance-members_with_disability-hint')"/>
+      </input>
+    </group>
+    <group ref="/data/participation" appearance="field-list">
+      <label ref="jr:itext('participation-label')"/>
+      <input ref="/data/participation/male_participants">
+        <label ref="jr:itext('participation-male_participants-label')"/>
+      </input>
+      <input ref="/data/participation/female_participants">
+        <label ref="jr:itext('participation-female_participants-label')"/>
+      </input>
+    </group>
+    <group ref="/data/other_attendees" appearance="field-list">
+      <label ref="jr:itext('other_attendees-label')"/>
+      <input ref="/data/other_attendees/male_leader_attendence">
+        <label ref="jr:itext('other_attendees-male_leader_attendence-label')"/>
+      </input>
+      <input ref="/data/other_attendees/female_leader_attendence">
+        <label ref="jr:itext('other_attendees-female_leader_attendence-label')"/>
+      </input>
+      <select1 ref="/data/other_attendees/SparkTrainer_attendance">
+        <label ref="jr:itext('other_attendees-SparkTrainer_attendance-label')"/>
+        <item>
+          <label ref="jr:itext('evidence-photo_consent_announced-opt0-label')"/>
+          <value>yes</value>
+        </item>
+        <item>
+          <label ref="jr:itext('evidence-photo_consent_announced-opt1-label')"/>
+          <value>no</value>
+        </item>
+      </select1>
+      <select1 ref="/data/other_attendees/SEDO_attendance">
+        <label ref="jr:itext('other_attendees-SEDO_attendance-label')"/>
+        <item>
+          <label ref="jr:itext('evidence-photo_consent_announced-opt0-label')"/>
+          <value>yes</value>
+        </item>
+        <item>
+          <label ref="jr:itext('evidence-photo_consent_announced-opt1-label')"/>
+          <value>no</value>
+        </item>
+      </select1>
+    </group>
+    <group ref="/data/meeting_quality" appearance="field-list">
+      <label ref="jr:itext('meeting_quality-label')"/>
+      <select1 ref="/data/meeting_quality/meeting_on_time">
+        <label ref="jr:itext('meeting_quality-meeting_on_time-label')"/>
+        <item>
+          <label ref="jr:itext('evidence-photo_consent_announced-opt0-label')"/>
+          <value>yes</value>
+        </item>
+        <item>
+          <label ref="jr:itext('evidence-photo_consent_announced-opt1-label')"/>
+          <value>no</value>
+        </item>
+      </select1>
+      <select1 ref="/data/meeting_quality/why_did_the_meeting_start_late">
+        <label ref="jr:itext('meeting_quality-why_did_the_meeting_start_late-label')"/>
+        <item>
+          <label ref="jr:itext('meeting_quality-why_did_the_meeting_start_late-opt0-label')"/>
+          <value>waiting_for_participants</value>
+        </item>
+        <item>
+          <label ref="jr:itext('meeting_quality-why_did_the_meeting_start_late-opt1-label')"/>
+          <value>waiting_for_leaders</value>
+        </item>
+        <item>
+          <label ref="jr:itext('meeting_quality-why_did_the_meeting_start_late-opt2-label')"/>
+          <value>rain</value>
+        </item>
+        <item>
+          <label ref="jr:itext('meeting_quality-why_did_the_meeting_start_late-opt3-label')"/>
+          <value>facilitator_late</value>
+        </item>
+        <item>
+          <label ref="jr:itext('meeting_quality-why_did_the_meeting_start_late-opt4-label')"/>
+          <value>venue_not_ready</value>
+        </item>
+        <item>
+          <label ref="jr:itext('meeting_not_held-reason_not_conducted-opt7-label')"/>
+          <value>other</value>
+        </item>
+      </select1>
+      <input ref="/data/meeting_quality/why_did_the_meeting_start_late_other">
+        <label ref="jr:itext('meeting_quality-why_did_the_meeting_start_late_other-label')"/>
+      </input>
+      <select1 ref="/data/meeting_quality/meeting_conflict">
+        <label ref="jr:itext('meeting_quality-meeting_conflict-label')"/>
+        <item>
+          <label ref="jr:itext('evidence-photo_consent_announced-opt0-label')"/>
+          <value>yes</value>
+        </item>
+        <item>
+          <label ref="jr:itext('evidence-photo_consent_announced-opt1-label')"/>
+          <value>no</value>
+        </item>
+      </select1>
+      <input ref="/data/meeting_quality/conflict_details">
+        <label ref="jr:itext('meeting_quality-conflict_details-label')"/>
+      </input>
+      <select1 ref="/data/meeting_quality/conflict_resolved">
+        <label ref="jr:itext('meeting_quality-conflict_resolved-label')"/>
+        <item>
+          <label ref="jr:itext('evidence-photo_consent_announced-opt0-label')"/>
+          <value>yes</value>
+        </item>
+        <item>
+          <label ref="jr:itext('evidence-photo_consent_announced-opt1-label')"/>
+          <value>no</value>
+        </item>
+      </select1>
+    </group>
+    <group ref="/data/savings" appearance="field-list">
+      <label ref="jr:itext('savings-label')"/>
+      <select1 ref="/data/savings/currently_saving">
+        <label ref="jr:itext('savings-currently_saving-label')"/>
+        <item>
+          <label ref="jr:itext('evidence-photo_consent_announced-opt0-label')"/>
+          <value>yes</value>
+        </item>
+        <item>
+          <label ref="jr:itext('evidence-photo_consent_announced-opt1-label')"/>
+          <value>no</value>
+        </item>
+      </select1>
+    </group>
+    <group ref="/data/savings_details" appearance="field-list">
+      <label ref="jr:itext('savings_details-label')"/>
+      <input ref="/data/savings_details/hh_saving">
+        <label ref="jr:itext('savings_details-hh_saving-label')"/>
+      </input>
+      <input ref="/data/savings_details/males_saving">
+        <label ref="jr:itext('savings_details-males_saving-label')"/>
+      </input>
+      <input ref="/data/savings_details/females_saving">
+        <label ref="jr:itext('savings_details-females_saving-label')"/>
+      </input>
+      <input ref="/data/savings_details/amt_savings">
+        <label ref="jr:itext('savings_details-amt_savings-label')"/>
+        <hint ref="jr:itext('savings_details-amt_savings-hint')"/>
+      </input>
+      <select1 ref="/data/savings_details/savings_use">
+        <label ref="jr:itext('savings_details-savings_use-label')"/>
+        <item>
+          <label ref="jr:itext('savings_details-savings_use-opt0-label')"/>
+          <value>farming_inputs</value>
+        </item>
+        <item>
+          <label ref="jr:itext('savings_details-savings_use-opt1-label')"/>
+          <value>small_business</value>
+        </item>
+        <item>
+          <label ref="jr:itext('savings_details-savings_use-opt2-label')"/>
+          <value>school_costs</value>
+        </item>
+        <item>
+          <label ref="jr:itext('savings_details-savings_use-opt3-label')"/>
+          <value>health_costs</value>
+        </item>
+        <item>
+          <label ref="jr:itext('savings_details-savings_use-opt4-label')"/>
+          <value>food</value>
+        </item>
+        <item>
+          <label ref="jr:itext('savings_details-savings_use-opt5-label')"/>
+          <value>emergency</value>
+        </item>
+        <item>
+          <label ref="jr:itext('savings_details-savings_use-opt6-label')"/>
+          <value>other</value>
+        </item>
+      </select1>
+      <input ref="/data/savings_details/savings_use_other">
+        <label ref="jr:itext('savings_details-savings_use_other-label')"/>
+      </input>
+    </group>
+    <group ref="/data/evidence" appearance="field-list">
+      <label ref="jr:itext('evidence-label')"/>
+      <trigger ref="/data/evidence/consent_script" appearance="minimal">
+        <label ref="jr:itext('evidence-consent_script-label')"/>
+      </trigger>
+      <select1 ref="/data/evidence/photo_consent_announced">
+        <label ref="jr:itext('evidence-photo_consent_announced-label')"/>
+        <item>
+          <label ref="jr:itext('evidence-photo_consent_announced-opt0-label')"/>
+          <value>yes</value>
+        </item>
+        <item>
+          <label ref="jr:itext('evidence-photo_consent_announced-opt1-label')"/>
+          <value>no</value>
+        </item>
+      </select1>
+      <upload ref="/data/evidence/attach_a_photo_for_the_meeting" mediatype="image/*" appearance="acquire">
+        <label ref="jr:itext('evidence-attach_a_photo_for_the_meeting-label')"/>
+        <hint ref="jr:itext('evidence-attach_a_photo_for_the_meeting-hint')"/>
+      </upload>
+      <input ref="/data/evidence/meeting_gps">
+        <label ref="jr:itext('evidence-meeting_gps-label')"/>
+        <hint ref="jr:itext('evidence-meeting_gps-hint')"/>
+      </input>
+      <trigger ref="/data/evidence/meeting_gps_accuracy_good" appearance="minimal">
+        <label ref="jr:itext('evidence-meeting_gps_accuracy_good-label')"/>
+      </trigger>
+      <trigger ref="/data/evidence/meeting_gps_accuracy_usable" appearance="minimal">
+        <label ref="jr:itext('evidence-meeting_gps_accuracy_usable-label')"/>
+      </trigger>
+      <trigger ref="/data/evidence/meeting_gps_accuracy_imprecise" appearance="minimal">
+        <label ref="jr:itext('evidence-meeting_gps_accuracy_imprecise-label')"/>
+      </trigger>
+    </group>
+    <group ref="/data/next_meeting" appearance="field-list">
+      <label ref="jr:itext('next_meeting-label')"/>
+      <input ref="/data/next_meeting/next_meeting_date">
+        <label ref="jr:itext('next_meeting-next_meeting_date-label')"/>
+      </input>
+    </group>
+    <group ref="/data/meeting_summary"/>
+  </h:body>
+</h:html>

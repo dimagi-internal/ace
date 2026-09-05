@@ -475,6 +475,42 @@ app-release-qa"). Record per-app under `camera_only_uploads` in the
 verdict. When the PDD does NOT demand camera-only capture, skip the
 check and record `camera_only_uploads: not-required-by-pdd`.
 
+**Casedb preload on a visible question — always, the Deliver app
+(dimagi-internal/ace#2006).** A per-encounter form asks a question because
+the answer is specific to THIS encounter. If Nova also emits a casedb
+`<setvalue event="xforms-ready">` for that same node, the worker meets the
+previous encounter's answer already filled in, and a worker who taps Next
+through the form re-files it verbatim — every value internally consistent,
+so no constraint fires and nothing warns.
+
+```ts
+import { auditCasedbPreloads, formatPreloadAudit }
+  from '../../lib/casedb-preload-audit';
+const audit = auditCasedbPreloads(formXml, declaredCarryForward);
+```
+
+Any violation → halt with `[BLOCKER]` `casedb-preload-on-visible-question`,
+emitting `formatPreloadAudit(...)`. Record per-app under `casedb_preloads`.
+
+**This is not hypothetical and it is not rare.** The released Deliver CCZ of
+`spark-facilitator/20260828-0703` carries one for **35 of its 36 answerable
+questions** — every field except the photo upload, and including
+`meeting_conducted` and `meeting_type`, the two fields Connect's payability
+predicate reads. That one mechanism is the root cause of FOUR separate
+BLOCKERs in that run's deep app-UX verdict, none of which named it: the
+case's "last meeting" never advancing (the date preloaded, and
+`last_meeting_date` is calculated from it), the geopoint self-certifying,
+attendance and participation arriving pre-filled, and a not-held meeting
+advancing the case. Three were investigated as independent product defects
+and one was investigated three times as a case-write bug that never existed.
+
+Note this check exists because the OPPOSITE was believed and written down:
+`pdd-to-deliver-app` carried "a visible case-bound field does NOT emit a
+preload either — proven against a compiled CCZ (ace#1232)". That was true
+when measured and is false now. The lesson worth keeping is that a refuted
+claim is not refuted forever, which is exactly why this is a check against
+the artifact rather than a sentence in a skill.
+
 **Grid menu display — always, both apps (dimagi-internal/ace#1009).**
 `app-hq-settings` sets `display_style = 'grid'` on every module of both
 apps and then declares this skill its downstream backstop. Until ace#1009
@@ -1024,6 +1060,8 @@ per_app:
 #   time_estimates:        pass | { modules_checked, violations: [...] }   # Learn app only
 #   camera_only_uploads:   pass | not-required-by-pdd | [<offending upload refs>]
 #   geopoint_binds:        pass | [<offending field paths>]
+#   casedb_preloads:       pass | [<visible question refs answered from the case>]
+#                          # BLOCKER-gated (ace#2006); Deliver app
 #   constraint_locality:   pass | { constraints_checked, violations: [...] }
 #   relevance_reachability: { relevances_checked, wholly_unreachable: [...], partial: [...] }
 #                          # derived from violations[].whollyUnreachable (ace#1539);
