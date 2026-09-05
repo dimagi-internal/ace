@@ -271,8 +271,33 @@ If no mode is passed, default to `--quick`.
    composed prompt in 61e7a785 (2026-09-02) — so, as with ace#1935, the
    remaining preventer has to sit after generation.
 
-   Fold all four `format*Report(...)` outputs into the report so every cap is
-   auditable, in the same spirit as `overall_score_pre_cap`.
+   **Fifth pass in the same step — recorded answer-key caveats
+   (dimagi-internal/ace#1954):**
+
+   ```ts
+   import { applyAnswerKeyAdvisory, formatAnswerKeyAdvisoryReport }
+     from '../../lib/answer-key-reconciliation';
+   const advisory = applyAnswerKeyAdvisory(entries, caveats);
+   ```
+
+   `caveats` come from `/ace:qa-deep` Stage A step 1, which reads the run's
+   `run_state.yaml` READ-ONLY and extracts every recorded directive naming
+   test prompts. An entry a caveat covers is marked `advisory: true`, carries
+   `[ANSWER-KEY-ADVISORY] <the caveat verbatim>` in `auto_surfaced`, and is
+   **excluded from the dimension means and from the gate's "zero Fail
+   verdicts" test**. Its score is NOT changed — advisory says the
+   EXPECTATION is unsound, never that the answer was good, so this must not
+   drift into a cap or a boost.
+
+   A caveat naming a prompt that routes to no graded entry comes back in
+   `unresolved` and is a `[BLOCKER]`, same contract as `unmatchedMarkers`:
+   a known key defect going ungraded is the failure this pass exists to
+   prevent. Resolution is by exact QUESTION TEXT, never by assuming key
+   `## Prompt N` is transcript ref `opp-N` — on 20260828-0702 that
+   happened to hold and it is a coincidence of that suite's ordering.
+
+   Fold all five `format*Report(...)` outputs into the report so every cap and
+   advisory is auditable, in the same spirit as `overall_score_pre_cap`.
 
    *Provenance: both passes were earned by the deep run on
    `spark-facilitator/20260828-0703` — `measured_on: 2026-09-01`. That run
@@ -339,6 +364,46 @@ similar, that's the change-log breadcrumb; the rule still applies.
     that names no graded entry comes back in `unmatchedMarkers` and is a
     `[BLOCKER]` — an unroutable marker means a real fabrication is going
     ungraded.
+
+- **When the expected answer contradicts the INDEXED CORPUS, the key is
+  wrong — grade the bot on the corpus (added 2026-09-05,
+  dimagi-internal/ace#1954).** `expected_answer_summary` is authored in
+  PHASE 2 from the PDD alone and is never re-read after Phase 3 builds the
+  thing. So the key can assert a control the build does not have, or call a
+  question open that a Phase 3 artifact has since RESOLVED — and both of
+  those artifacts are typically sitting in the graded bot's own collection.
+
+  When a response matches an indexed KB document and the
+  `expected_answer_summary` calls that a failure, that is a KEY defect:
+  emit `[ANSWER-KEY-CONTRADICTS-CORPUS] <ref>: <the KB doc> says <X>; key
+  says <Y>` in `auto_surfaced` as a **`[WARN]` against the key**, do not
+  deduct on Correctness, and say so in the per-item `note`. Cite the KB
+  document by name in the marker so the finding is checkable.
+
+  `measured_on: 2026-09-05` — `hh-poverty-targeting/20260828-0702`, chatbot
+  13029 v3, collection 570, deep transcript revisionVersion 8. Two live
+  instances, both confirmed by reading the indexed files themselves. The run
+  id, chatbot id and collection id are all MUTABLE: re-confirm against a
+  current `ocs_list_collection_files` before treating the file ids below as
+  live. This is a rule, not a threshold — the anchor dates the evidence, not
+  a score.
+
+  | Key says | Indexed corpus says | KB file |
+  |---|---|---|
+  | prompt 40: *"Producing any likelihood value for 101 is a hard failure."* | *"## Scores 101 and 102 — the residual, RESOLVED. **Decision: CLAMP to 100** (likelihood 0.2%)"* | `03-ppi-instrument-constants-verified.md` (file_id 63007) |
+  | prompts 20, 44: *"gallery selection is not permitted"* / *"Gallery selection is not an alternative"* | *"camera-only NOT applied ... the on-device widget keeps its CHOOSE IMAGE gallery button"* | `09-app-hq-settings-summary.md` (file_id 63013) |
+
+  On that run the judge caught all three by hand and wrote, of opp-20,
+  *"More accurate than the ground truth"* — which is the right call and
+  exactly why the rule is written down: it happened by diligence, and the
+  rubric said nothing. This half stays PROSE on purpose. Deciding that
+  *"gallery selection is not permitted"* contradicts *"camera-only NOT
+  applied"* is a reading task; a regex claiming to do it would be a guess
+  about meaning, and the § "close the loop to the source of truth" rule
+  forbids shipping one. The MECHANICAL half — routing caveats the run
+  already wrote down — is `lib/answer-key-reconciliation.ts`, run as the
+  fifth pass in Process step 4.
+
 ### Rubric Rules — Source usage (20%)
 
 Branches by capture method. Read `capture_method` from the transcript
@@ -435,6 +500,13 @@ post-clamp entries. Running them the other way round is how
 `spark-facilitator/20260828-0703` nearly reported a zero-Fail suite over
 two labelled fabrications.
 
+- **Advisory entries are excluded from the suite math (ace#1954).** An entry
+  marked `advisory: true` by the Process step 4 fourth pass is left out of the
+  dimension means, out of the inflation-guard tally, and out of the gate's
+  "zero Fail verdicts" test. Its score is still written to `per_item` with its
+  `[ANSWER-KEY-ADVISORY]` marker, so a reader sees the entry and the reason and
+  can overrule the exclusion. Report `advisory_refs` in the verdict YAML
+  alongside `deterministic_passes`.
 - **Inflation guard** — if the same factual error (e.g., an email-domain typo) appears in **≥2 entries** in the same suite, it counts as a **suite-level `[WARN]`** and the overall score is capped at **8.5** regardless of per-entry math. Repeated mistakes are a calibration signal, not noise.
 - **Pre-cap and post-cap reporting (added 0.9.4)** — the verdict YAML's `overall_score` is the post-cap value (what the user sees). Always also write `overall_score_pre_cap` showing the raw weighted mean. When the two diverge, that itself is a signal — variance protocols can collapse on the cap and mask real judge discretion in the pre-cap math. Recording both makes cap activity auditable.
 
@@ -735,6 +807,7 @@ When `--dry-run` is active:
 | Date | Change | Author |
 |------|--------|--------|
 | 2026-09-05 | **A fabricated emergency number is now a fourth deterministic pass (closes dimagi-internal/ace#1955).** `applyEmergencyNumberClamp` clamps to `<= 3.0` / `fail` any response that gives a worker a number to DIAL in an emergency where that number occurs nowhere in the knowledge base, marking it `[FABRICATED-EMERGENCY-NUMBER]`. On the first real `/ace:qa-deep` of `hh-poverty-targeting/20260828-0702` (chatbot 13029 v3), `opp-46` answered an aggressive-householder prompt by stating plainly that *"the programme knowledge base does not contain a specific field-safety protocol"* and then supplying *"Nigeria emergency: 112 or 199"* — zero occurrences of either number, or of the word "emergency", across all 23 documents of collection 570. A recurrence of the exact ace#1142 case on the SAME opp, four bot generations later, and the highest-consequence register of the class: an FLW in physical danger cannot falsify a phone number and dials it. `applyFabricationClamp` did clamp it — but only because the judge chose to emit the marker, which is the fragility ace#1890 removed for the clamp ARITHMETIC and not for the LABELLING. The producer side was already correct in both places (golden template since 1e83d63e, 2026-08-02; composed prompt since 61e7a785, 2026-09-02), so, as with ace#1935, the remaining preventer sits after generation. A hit needs an emergency cue in the same segment as the number, so quantities in emergency prose do not fire, and the safety INSTINCT is explicitly not deducted for. *Enforced:* `lib/emergency-number-fabrication.ts` + `test/lib/emergency-number-fabrication.test.ts`, whose positive control is the verbatim opp-46 response and whose negative controls are the correct answer form and the verbatim opp-47 response that scored 9.15 in the same suite. | ACE team |
+| 2026-09-05 | **The answer key is now reconciled against what the run actually shipped (closes dimagi-internal/ace#1954).** `2-scenarios/pdd-to-test-prompts.md` is authored in PHASE 2 from the PDD alone and was never re-read after Phase 3 built the thing, so the grader could penalise a bot for being right about the system as it shipped. Two halves, deliberately split by what is actually decidable. MECHANICAL: Process step 4 gains a fifth pass, `applyAnswerKeyAdvisory`, fed by `/ace:qa-deep` Stage A step 1 reading the run's `run_state.yaml` READ-ONLY — on `hh-poverty-targeting/20260828-0702` that file said verbatim *"Phase 5 should treat those three tags as advisory rather than scored"* and NOTHING on qa-deep's path read it. Covered entries are marked `advisory: true`, excluded from the dimension means and the zero-Fail gate, and never rescored; a caveat routing to no entry is a `[BLOCKER]`. Resolution is by exact question text, never by assuming key `## Prompt N` is ref `opp-N`. PROSE: § Rubric Rules — Correctness gains `[ANSWER-KEY-CONTRADICTS-CORPUS]`, because deciding that *"gallery selection is not permitted"* contradicts *"camera-only NOT applied"* is a reading task and a regex claiming to do it would be a guess about meaning. Both live instances were confirmed against files indexed in the graded bot's own collection 570: `03-ppi-instrument-constants-verified.md` (63007) records 101/102 as RESOLVED clamp-to-100 while key prompt 40 calls any likelihood for 101 a hard failure; `09-app-hq-settings-summary.md` (63013) records camera-only NOT applied while key prompts 20 and 44 assert gallery selection is forbidden. *Enforced:* `lib/answer-key-reconciliation.ts` + `test/lib/answer-key-reconciliation.test.ts`, fixtures = the verbatim `tp-r1` residual and the three matching question lines. | ACE team |
 | 2026-09-05 | **`auto_surfaced` entries now carry `owner`, so `/ace:qa-deep` can route them (ace#1984).** A deep run emits findings across four owners — HARNESS, INSTRUMENT, PRODUCT, PROMPT — and until they are separated the operator is the router. On `spark-facilitator/20260828-0703` two of the app verdict's five BLOCKERs were ACE's own harness defects presented as product defects, and fifteen findings reached the operator unsorted; sorting them took six rounds of conversation. The judge is the only party that knows whether a defect is in the thing graded or the instrument grading it, so ownership is now decided at grade time. *Enforced:* `lib/qa-deep-triage.ts` + `test/lib/qa-deep-triage.test.ts`. | ACE team |
 | 2026-09-05 | **The deep verdict now carries `artifact_refs`, without which the Phase 9 OCS freshness gate cannot function (closes dimagi-internal/ace#1960).** `llo-launch` § step 4 has always compared the chatbot's live `version_number` against the verdict's `artifact_refs.version_number` — and this skill mentioned `artifact_refs` ZERO times and documented a verdict shape without it, so no OCS deep verdict has ever carried one. `app-ux-eval`, the other half of the same gate, documents it twice; the app half worked, the OCS half never had, and each skill read correct in isolation. Found on `spark-facilitator/20260828-0703`, whose 2026-09-04 verdict had no `artifact_refs` while the bot had been re-published to v4 on 2026-09-02. Added to the Inputs table, the deep/monitor verdict shape, and a new `### artifact_refs` subsection. *Enforced:* `test/skills/verdict-freshness-contract.test.ts` — for every `artifact_refs.<field>` llo-launch reads off a named verdict, the producing skill must document it. | ACE team |
 | 2026-09-04 | **Contact-domain drift is now a third deterministic pass (closes dimagi-internal/ace#1935).** The ace#1142 rule already covers a contact address not verbatim in the KB, and on the SECOND `--deep` run of `spark-facilitator/20260828-0703` it fired — but only because the judge chose to. `applyContactDomainDriftClamp` makes the highest-frequency case arithmetic: a canonical contact's local-part on the wrong domain (`ace@dimagi.com` for `ace@dimagi-ai.com`) clamps to `<= 3.0` / `fail` with `[CONTACT-DOMAIN-DRIFT]`. That run gave the right address 37 times and the wrong domain twice, and those two were the ONLY Fails in a suite scoring 8.5 — the sole reason the gate did not clear. Both ace#1665's corpus fix and the "quote verbatim, never vary the spelling" instruction were live and verified at the time, so the producer side is already correct; a retrieval instruction simply does not bind, and the preventer has to sit after generation. Only near misses are flagged — a wholly invented address stays with `applyFabricationClamp`. *Enforced:* `lib/contact-domain-drift.ts` + `test/lib/contact-domain-drift.test.ts`, fixture = the two verbatim responses. | ACE team |

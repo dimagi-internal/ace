@@ -67,8 +67,34 @@ three-branch resolution chain can grade another run's chatbot, or the
 pristine golden template, and `llo-launch` reads the result as clearance
 (ace#1950).
 
-1. Dispatch `ocs-chatbot-qa --deep` for $1
-2. Dispatch `ocs-chatbot-eval --deep` for $1
+1. **Reconcile the answer key against what the run actually shipped
+   (dimagi-internal/ace#1954).** `2-scenarios/pdd-to-test-prompts.md` is
+   authored in Phase 2 from the PDD alone; Phases 3–6 then resolve things
+   it still calls open and fail to build things it asserts as built. A
+   caveat the run already found, understood and WROTE DOWN must reach the
+   grader:
+
+   ```ts
+   import { reconcileAnswerKey, formatAnswerKeyAdvisoryReport }
+     from '../lib/answer-key-reconciliation';
+   // Step 0 already parsed this run's run_state.yaml — reuse it, don't re-read.
+   const advisory = reconcileAnswerKey(judgedEntries, runStateText, answerKeyText);
+   ```
+
+   Hand `advisory.caveats` to `ocs-chatbot-eval` so its Process step 4
+   marks the covered entries. A non-empty `advisory.unresolved` is a
+   `[BLOCKER]` — a recorded key defect that routes to no graded entry is
+   going ungraded; stop and name the prompt.
+
+   On `hh-poverty-targeting/20260828-0702` the run's `run_state.yaml`
+   said, verbatim: *"Phase 5 should treat those three tags as advisory
+   rather than scored."* Nothing on this command's path read it.
+
+   This is a READ and it stays a read — Stage A still writes nothing to
+   `run_state.yaml`.
+
+2. Dispatch `ocs-chatbot-qa --deep` for $1
+3. Dispatch `ocs-chatbot-eval --deep` for $1, passing `advisory.caveats`
 
 Writes (under `ACE/$1/runs/<run-id>/5-ocs/`):
 - ocs-chatbot-qa_transcript-deep.md
@@ -186,7 +212,8 @@ files. The files are the audit trail.
 
 If you ran this and want to proceed to go-live, re-enter Phase 9 via
 /ace:step llo-launch $1. /ace:qa-deep only writes verdicts and
-screenshots — it does not touch `run_state.yaml`, so `/ace:run` resume
+screenshots — it READS `run_state.yaml` (Step 0 run selection, and Stage A
+step 1 answer-key reconciliation) but never writes it, so `/ace:run` resume
 will pick up at whatever phase the run last halted at.
 
 ### Future enhancements
