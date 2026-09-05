@@ -342,9 +342,19 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
      >   like a preload and is not one: it holds the literal and then
      >   writes that literal back, wiping the case property (ace#1224).
      >   Step 4h below halts on this shape.
-     > - **A visible case-bound field does NOT emit a preload either.**
-     >   Proven against a compiled CCZ: the bind is there, the value
-     >   never is (ace#1232).
+     > - **~~A visible case-bound field does NOT emit a preload
+     >   either.~~ FALSE AS OF 2026-08-29 — Nova emits one for
+     >   essentially every field (ace#2006).** ace#1232 proved the
+     >   negative against a CCZ compiled at the time; the released
+     >   Deliver CCZ of `spark-facilitator/20260828-0703` contains
+     >   `<setvalue … value="instance('casedb')/…" event="xforms-ready"/>`
+     >   for **35 of its 36 answerable questions** — every one except the
+     >   photo upload. Do not rely on this bullet's original claim in
+     >   either direction: **assume a visible case-bound field DOES
+     >   preload, and check the compiled CCZ.**
+     >   *Enforced:* `lib/casedb-preload-audit.ts`, run by
+     >   `app-release-qa` § Step 2.9, fails the build on any visible
+     >   question answered from the case.
      >
      > (One shape HAS been observed working — a hidden field populated by
      > a casedb `<setvalue event="xforms-ready">` that Nova emitted on its
