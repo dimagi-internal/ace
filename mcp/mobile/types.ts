@@ -263,6 +263,15 @@ export interface TestUserCredentials {
  */
 export interface EnsureAvdRunningOptions {
   testUser?: Partial<TestUserCredentials>;
+  /**
+   * Which opportunity this session is driving (ace#1821, visibility half).
+   * Recorded in the session lock and used to WARN — never to refuse — when
+   * another live session on this host names the same opp. Optional; omitted,
+   * nothing changes.
+   */
+  oppSlug?: string;
+  /** The run within that opportunity. Only meaningful alongside `oppSlug`. */
+  runId?: string;
 }
 
 export interface ApkInfo {

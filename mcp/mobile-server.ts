@@ -138,12 +138,21 @@ server.tool(
         'Optional per-run test-user credential override (ace#1289). Omit for the env-derived ' +
           'ACE_E2E_* user (the default). Local AVD backend only.',
       ),
+    oppSlug: z.string().optional().describe('Opportunity slug this session is driving (ace#1821). Recorded in the session lock; if another live session on this host names the same opp, a WARNING naming its pid, run and AVD is printed. Never a refusal — two sessions on one opp is a legitimate operator choice, and only same-account sessions are visible at all. Falls back to ACE_OPP_SLUG.'),
+    runId: z.string().optional().describe('Run id within that opportunity, recorded in the same session lock and named in the collision warning. Only meaningful alongside oppSlug. Falls back to ACE_RUN_ID.'),
   },
-  async ({ avdName, testUser }) => ({
+  async ({ avdName, testUser, oppSlug, runId }) => ({
     content: [
       {
         type: 'text',
-        text: JSON.stringify(await client.ensureAvdRunning(avdName, testUser ? { testUser } : undefined), null, 2),
+        text: JSON.stringify(
+          await client.ensureAvdRunning(
+            avdName,
+            testUser || oppSlug || runId ? { testUser, oppSlug, runId } : undefined,
+          ),
+          null,
+          2,
+        ),
       },
     ],
   }),
