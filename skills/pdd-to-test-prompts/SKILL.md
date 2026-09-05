@@ -22,6 +22,42 @@ right after `idea-to-pdd`.
 
 - `2-scenarios/pdd-to-test-prompts.md` — opp-specific test suite consumed by `ocs-chatbot-qa --deep` (Phase 5) and `ocs-chatbot-eval --deep` (gate)
 
+## This artifact is FROZEN AT PHASE 2 — declare what can invalidate it
+
+This suite is authored from the PDD alone, before anything is built. Phase 3
+then **resolves** questions this key still calls open, and **fails to build**
+controls this key asserts as present. Nothing re-reads the key afterwards, so
+without a declared dependency list a stale expectation grades a correct bot as
+wrong (dimagi-internal/ace#1954).
+
+**Invalidation inputs — the Phase 3+ artifacts that can falsify an expected
+answer.** Every one of these is normally indexed in the graded bot's own RAG
+collection, so the bot can be right about the shipped system while the key is
+wrong about it:
+
+| Artifact | Invalidates an expectation when it records |
+|---|---|
+| `3-commcare/ppi-instrument-constants-verified.md` (or the run's equivalent instrument-constants file) | a constant, ceiling, clamp or lookup boundary **RESOLVED** that the key still treats as an open question the bot must refuse |
+| `3-commcare/app-hq-settings_summary.md` | a control **NOT APPLIED** that the key asserts as enforced (camera-only capture, grid menu display) |
+| `3-commcare/app-release-qa_result.yaml` | a released-CCZ structural fact contradicting an asserted app behaviour |
+| `4-connect/connect-opp-setup*` products | a verification flag, payment unit or passing score differing from the key's assumption |
+| the run's `run_state.yaml` `phases.*.residuals[]` / notes | an explicit directive about how a prompt should be scored |
+
+**Write the residual, don't fix the key silently.** When authoring a prompt
+whose correct answer depends on something Phase 3 has not built yet, record a
+residual on the phase naming the prompt numbers and the directive, e.g.
+verbatim from `hh-poverty-targeting/20260828-0702`:
+
+> `tp-r1: [product-feedback] over-tagged on test prompts 11, 22, 40 — ...
+> Phase 5 should treat those three tags as advisory rather than scored.`
+
+That string is now machine-read: `lib/answer-key-reconciliation.ts` extracts
+it, resolves the prompt numbers to transcript refs by exact question text, and
+`/ace:qa-deep` Stage A step 0 hands it to the grader. Phrase the directive with
+one of `advisory` / `not scored` / `do not score` so the extractor recognises
+it — a residual that merely mentions a prompt is deliberately NOT treated as a
+grading directive.
+
 ## Process
 
 1. **Read inputs from GDrive:**
@@ -286,6 +322,7 @@ When `--dry-run` is active:
 
 | Date | Change | Author |
 |------|--------|--------|
+| 2026-09-05 | **Declared the Phase-3 invalidation inputs for this frozen answer key (closes dimagi-internal/ace#1954).** New `## This artifact is FROZEN AT PHASE 2` section names the artifacts that can falsify an expected answer after Phase 2 has shipped it, and states the residual grammar the new machine reader recognises. Earned on `hh-poverty-targeting/20260828-0702`: key prompt 40 called any likelihood for score 101 *"a hard failure"* while `03-ppi-instrument-constants-verified.md` — indexed in the graded bot's own collection 570 — recorded 101/102 RESOLVED as clamp-to-100; key prompts 20 and 44 asserted gallery selection is not permitted while `09-app-hq-settings-summary.md`, also indexed, recorded camera-only NOT applied. *Enforced:* `lib/answer-key-reconciliation.ts` + `test/lib/answer-key-reconciliation.test.ts`. | ACE team |
 | 2026-04-19 | Added `## Archetypes` section branching on PDD archetype. `focus-group` gets session/recruitment/consent/question-guide/facilitation/output/audio categories; atomic-visit retains visit-flow/eligibility/GPS/duplicate categories; multi-stage mixes per-stage with an added stage-gate category. Motivated by cosmetics-fgd-pilot recon (2026-04-19) where the atomic-visit-only category list forced manual remapping | ACE team (qa/eval iteration loop) |
 | 2026-04-20 | Expand `multi-stage` archetype: clarify per-stage archetype dispatch, add intervention-continuity cross-stage category, flag missing Stage Gate as `[WARN]` | ACE team (skills review) |
 | 2026-05-15 | Recharacterize `focus-group` category list for the attestation-form-only shape (PRs #305, #306): `Output spec` → `Gdoc writing guidance` (the chatbot helps facilitators write the gdoc per PDD Output Spec); `Audio and evidence` → `Attestation form` (no audio in CommCare; 5-field form questions). `Facilitation technique` line drops the Learn-app reference (no Learn app for focus-group; OCS chatbot is the primary training surface). Prompted by `malaria-itn-fgd/20260514-2352` re-run where the Phase 2 agent surfaced these as small-tweak friction. | ACE team |
