@@ -298,3 +298,120 @@ describe('gating_guard.py — shared-/tmp --body-file rail (ace#1819)', () => {
     expect(r.decision).toBeNull();
   });
 });
+
+/**
+ * The 2026-09-05 RECURRENCE (ace#1819, reopened).
+ *
+ * The rail above shipped 2026-09-01 (PR #1902) and the class recurred four
+ * days later anyway. PR #1989's published body carries its own correction
+ * note: "the first published body was a different session's content."
+ *
+ * The transcript says exactly how, and it is not a regex-width problem — it
+ * is the rail's own failure mode. The agent issued ONE Bash call holding a
+ * heredoc write to `/tmp/pr1-body.md` and, 142 lines later, the
+ * `gh pr create --body-file /tmp/pr1-body.md` that consumed it. The rail
+ * denied the whole call. Denying a compound write-then-publish kills the
+ * WRITE and leaves the stale file exactly where it was — so the rail did not
+ * prevent the defect, it armed it. The recovery then published the four-day-
+ * old file through a path the rail could not see:
+ *
+ *   SCRATCH=/private/tmp/claude-502/.../scratchpad && cp /tmp/pr1-body.md "$SCRATCH/pr1-body.md" \
+ *     && wc -c "$SCRATCH/pr1-body.md" && gh pr create ... --body-file "$SCRATCH/pr1-body.md"
+ *
+ * `wc -c` printed 4912 — byte-for-byte the stale /tmp/pr1-body.md written on
+ * 2026-09-01 by an unrelated session. The `--body-file` argument pointed at
+ * the scratchpad, so the rail read it as the CORRECT shape.
+ *
+ * Hence two changes, both measured below:
+ *
+ *   1. FAIL TOWARD A WRITTEN FILE. A command that writes a shared-tmp path is
+ *      exempt — it authors its own body microseconds before reading it, and
+ *      blocking it is what strands a stale file for the next command to
+ *      publish. (Prefer the scratchpad; the rail no longer punishes not
+ *      preferring it, because the punishment was worse than the crime.)
+ *   2. BAN THE LAUNDERING. A shared-tmp path anywhere in a command that also
+ *      publishes through --body-file/-F is denied — cp, mv, cat-redirect, or
+ *      a variable — unless (1) exempts it. This also retires the old
+ *      `[\s\S]{0,300}` distance bound, which a long --title walked straight
+ *      past (measured: allowed before this change, denied after).
+ *
+ * Known accepted cost: the rail matches command TEXT, so a Bash heredoc whose
+ * payload quotes one of these invocations (this file, or a doc about the
+ * rail) is denied too. Author those with the Write tool — the rail is scoped
+ * to Bash.
+ */
+describe('gating_guard.py — the 2026-09-05 recurrence (ace#1819 reopened)', () => {
+  const SCRATCH =
+    '/private/tmp/claude-502/-Users-acedimagi-emdash-worktrees-ace-c89535f9/333124ed-9d80-49f3-9c9b-325475d7aab2/scratchpad';
+  const SHARED = '/tmp/pr1-body.md';
+
+  // POSITIVE CONTROLS — every one of these was ALLOWED by the shipped rail,
+  // and every one publishes a file the command did not write.
+  it.each([
+    [
+      'the PR #1989 launder verbatim: cp a stale shared-tmp file into the scratchpad, publish from a variable',
+      `SCRATCH=${SCRATCH} && cp ${SHARED} "$SCRATCH/pr1-body.md" && wc -c "$SCRATCH/pr1-body.md" && ` +
+        'gh pr create -R dimagi-internal/ace --head feat/avd-pool-bootstrap ' +
+        '--title "feat(mobile-bootstrap): --pool N puts a second AVD in the pool (ace#1821)" ' +
+        '--body-file "$SCRATCH/pr1-body.md"',
+    ],
+    [
+      'launder via cat redirect',
+      `cat /tmp/pr-body.md > ${SCRATCH}/b.md && gh issue create --title t --body-file ${SCRATCH}/b.md`,
+    ],
+    [
+      'launder via mv',
+      `mv /tmp/pr2-body.md ${SCRATCH}/b.md && gh pr edit 1989 --body-file ${SCRATCH}/b.md`,
+    ],
+    [
+      'the shared-tmp path held in a shell variable',
+      'B=/tmp/pr-body.md && gh pr create --title t --body-file "$B"',
+    ],
+    [
+      'a --title long enough to walk past the old 300-char distance bound',
+      'gh pr create -R dimagi-internal/ace --head feat/x ' +
+        `--title "feat(mobile-bootstrap): ${'x'.repeat(320)}" --body-file /tmp/pr-body.md`,
+    ],
+  ])('DENIES %s', (_label, command) => {
+    const r = runGuard('Bash', { command });
+    expect(r.exitCode).toBe(2);
+    expect(r.stderr).toContain('scratchpad');
+  });
+
+  // NEGATIVE CONTROLS — the rail must fail TOWARD a written file. The first
+  // two were DENIED by the shipped rail, and that denial is precisely what
+  // left the stale file in place for the launder above to publish.
+  it.each([
+    [
+      'the compound heredoc-write-then-create the rail used to block (the #1989 shape)',
+      `cat > ${SHARED} <<'EOF'\n## What this fixes\nbody text\nEOF\n` +
+        'gh pr create -R dimagi-internal/ace --head feat/x ' +
+        '--title "feat(mobile-bootstrap): --pool N puts a second AVD in the pool (ace#1821)" ' +
+        `--body-file ${SHARED} 2>&1 | tail -3`,
+    ],
+    [
+      'the same shape written with tee',
+      'echo hi | tee /tmp/pr-body.md >/dev/null && gh pr create --title t --body-file /tmp/pr-body.md',
+    ],
+    [
+      'a write-then-create wholly inside the scratchpad (the shape we actually want)',
+      `cat > ${SCRATCH}/pr1-body.md <<'EOF'\nbody\nEOF\ngh pr create --title t --body-file ${SCRATCH}/pr1-body.md`,
+    ],
+    [
+      'copying WITHIN the scratchpad then publishing',
+      `cp ${SCRATCH}/a.md ${SCRATCH}/b.md && gh pr create --title t --body-file ${SCRATCH}/b.md`,
+    ],
+    ['a pure write to a shared-tmp path with no gh publish at all', `cat > ${SHARED} <<'EOF'\nbody\nEOF`],
+  ])('ALLOWS %s', (_label, command) => {
+    const r = runGuard('Bash', { command });
+    expect(r.exitCode).toBe(0);
+    expect(r.decision).toBeNull();
+  });
+
+  // Non-inertness: the rail is still doing work, not passing everything.
+  it('is not inert — the original ace#1818 shape is still denied', () => {
+    const r = runGuard('Bash', { command: 'gh pr create --title t --body-file /tmp/pr-body.md' });
+    expect(r.exitCode).toBe(2);
+    expect(r.stderr).toContain('scratchpad');
+  });
+});
