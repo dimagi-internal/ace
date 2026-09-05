@@ -699,6 +699,67 @@ function resolveEntityIdGrain(
   return null;
 }
 
+/**
+ * Check 11: a committed advance percentage against an UNRESOLVED not-to-exceed
+ * must say that nothing is payable until the cap is fixed (ace#2007).
+ *
+ * `checkTotalNtePresent` deliberately accepts `USD [TBD]` — a work order drafted
+ * before a partner is selected is the normal Phase 1 case, and the cap is set by
+ * the solicitation. What is NOT normal is pairing that placeholder with a
+ * milestone table that reads as a commitment: "40% mobilization advance", amount
+ * cell "[Amount derived from the agreed cap]". A percentage of an undefined base
+ * is not a signable commitment, and on poverty-graduation/20260905-0924 the
+ * `commercial_realism` judge scored it strike 1 of 3 and called it sufficient on
+ * its own to make the draft unsignable.
+ *
+ * The fix is NOT to remove the split — a 40/60 structure pending a cap is an
+ * ordinary pre-award shape, and `checkPaymentScheduleSumsTo100` requires the
+ * percentages to remain readable. It is to make the contingency EXPLICIT in the
+ * document, which costs one sentence and no legal drafting.
+ *
+ * Scope note: this deliberately does NOT police termination / liability / IP /
+ * governing-law clauses. Those are absent from the work-order body by design —
+ * it is annexed to an MSA (`templates/work-order-template.md:147`), which is
+ * where they live. ace#1481 asserted otherwise and was closed NOT_PLANNED with
+ * the premise disproved; do not re-add that check.
+ */
+export function checkAdvanceContingentWhenCapUnresolved(raw: string): QACheckResult {
+  const wo = normalizeDriveExport(raw);
+  const nte = extractNumberedSection(wo, '6.1');
+  const schedule = extractNumberedSection(wo, '6.2');
+  // Either section missing is already reported by its own check; do not
+  // double-report it here.
+  if (nte === null || schedule === null) return { pass: true };
+
+  // Is the cap a real number, or a bracketed placeholder? `checkTotalNtePresent`
+  // has already established one of the two forms follows `USD`.
+  const capResolved = /USD\s+\d/.test(nte);
+  if (capResolved) return { pass: true };
+
+  // Cap is unresolved. Does the schedule state that nothing is owed yet?
+  const contingencyStated =
+    /no (?:payment|amount|sum)[^.\n]{0,80}(?:due|owed|payable)/i.test(schedule) ||
+    /(?:not|no)[^.\n]{0,40}(?:payable|due|owed)[^.\n]{0,80}until[^.\n]{0,80}cap/i.test(schedule) ||
+    /indicative[^.\n]{0,120}(?:until|pending|upon)/i.test(schedule) ||
+    /percentages?[^.\n]{0,120}(?:structural|indicative|not a commitment)/i.test(schedule);
+
+  if (contingencyStated) return { pass: true };
+
+  return {
+    pass: false,
+    detail:
+      '\u00a7 6.1 states the not-to-exceed as a placeholder rather than a number, but \u00a7 6.2 ' +
+      'presents the milestone percentages as a commitment with no statement that nothing is ' +
+      'payable until the cap is fixed. A percentage of an undefined base is not a signable ' +
+      'commitment.',
+    auto_fix_hint:
+      'keep the percentage split (it is an ordinary pre-award structure and payment_schedule_sums_to_100 ' +
+      'requires it), and add one sentence to \u00a7 6.2 such as: "These percentages are indicative of the ' +
+      'agreed split only. No amount is payable under this schedule until the total not-to-exceed in ' +
+      '\u00a7 6.1 is fixed at contract execution."',
+  };
+}
+
 export const CHECKS: QACheck[] = [
   {
     id: 'all_required_sections_present',
@@ -757,6 +818,14 @@ export const CHECKS: QACheck[] = [
     type: 'static',
     description: 'No leaked `<<...>>` scaffolding markers or unfilled `{{...}}` template tokens from intermediate generation',
     run: (wo: string) => checkNoScaffoldingMarkers(wo),
+  },
+  {
+    id: 'advance_contingent_when_cap_unresolved',
+    type: 'static',
+    description:
+      'A milestone percentage stated against an unresolved \u00a7 6.1 cap must say that nothing is ' +
+      'payable until the cap is fixed (dimagi-internal/ace#2007)',
+    run: (wo: string) => checkAdvanceContingentWhenCapUnresolved(wo),
   },
   {
     id: 'payment_unit_matches_entity_grain',
