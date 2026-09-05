@@ -9,6 +9,17 @@ Run this **once per workstation** before the `qa-and-training` phase can capture
 
 This command is idempotent — re-run any time you suspect drift.
 
+## Usage
+
+```
+/ace:mobile-bootstrap              # one AVD (default, unchanged behaviour)
+/ace:mobile-bootstrap --pool 2     # ensure TWO provisioned AVDs exist
+/ace:mobile-bootstrap --pool 3     # …three, etc.
+```
+
+`--pool N` is what lets concurrent ACE sessions stop destroying each other's
+Phase 6 walks (ace#1821) — see step 3.
+
 ## Supported platforms
 
 ACE mobile emulation has been live-validated on **macOS Apple Silicon** (the
@@ -97,7 +108,9 @@ true one-shot debugging artifacts go to `./tmp/ace-debug/`.
      then re-check `java -version`. If Java still fails or auto-install errored,
      surface the stderr and stop with the platform table's manual command.
 
-3. **Confirm `${ACE_AVD_NAME}` (default `ACE_Pixel_API_34`) exists.**
+3. **Confirm the AVD pool exists (`--pool N`, default 1).**
+
+   **Default (`N = 1`) — confirm `${ACE_AVD_NAME}` (default `ACE_Pixel_API_34`) exists.**
    - Run: `emulator -list-avds`
    - If not present: print this guidance and stop —
      ```
@@ -117,6 +130,75 @@ true one-shot debugging artifacts go to `./tmp/ace-debug/`.
      auto-shutter behavior. The actual face-capture bypass is a runtime
      `pm disable-user com.google.android.gms` call (handled by
      `mobile_ensure_avd_running` in 0.10.21+). Either image works.
+
+   ---
+
+   **`--pool N` — ensure N provisioned AVDs exist.**
+
+   Why this mode exists (ace#1821): ACE already allocates an AVD *name* per
+   session (`selectAvd`, `mcp/mobile/avd-allocator.ts`), detects cross-session
+   contention (`lib/mobile-contention.ts`), and records a provisioning marker
+   on a successful `mobile_register_test_user`. That fan-out has never fired,
+   because **the pool has one member** — `selectAvd`'s fallback needs another
+   entry that is `free && proven`, and on every ACE workstation
+   `emulator -list-avds` prints exactly one AVD. N concurrent sessions then
+   cold-boot the same device with `-wipe-data` and destroy each other's Phase 6
+   walks. This mode is what puts a second (third, …) member in the pool.
+
+   Pool members are named `${ACE_AVD_NAME}`, `${ACE_AVD_NAME}_b`,
+   `${ACE_AVD_NAME}_c`, … The base name is member 1 and is never renamed —
+   every existing machine's marker, snapshot and `.env` point at it.
+
+   **Default is `N = 1`, so a machine that doesn't pass `--pool` is unchanged.**
+
+   1. **Plan.** Run the planner — it reports which members are missing, the
+      exact `avdmanager create` command for each, and any tuned-config drift on
+      members that already exist:
+      ```bash
+      ACE_ROOT="${CLAUDE_PLUGIN_ROOT:-$(python3 -c "import json,os; d=json.load(open(os.path.expanduser('~/.claude/plugins/installed_plugins.json'))); print(d['plugins']['ace@ace'][0]['installPath'])")}"
+      npx --prefix "$ACE_ROOT" tsx "$ACE_ROOT/scripts/plan-avd-pool.ts" --size N
+      ```
+      If `missing` is empty and there is no config drift, the pool is already
+      right — skip to step 4 (boot) only for members listed as `unproven`.
+
+   2. **Create each missing member.** Run the `avdmanager create avd` command
+      the planner printed, verbatim. It derives `-k` from the reference AVD's
+      own `image.sysdir.1`, so the clone lands on the same system image rather
+      than whatever is newest in the SDK.
+
+   3. **Copy the tuned config.** Re-run the planner with `--apply-config`:
+      ```bash
+      npx --prefix "$ACE_ROOT" tsx "$ACE_ROOT/scripts/plan-avd-pool.ts" --size N --apply-config
+      ```
+      This lifts RAM, data-partition size, GPU mode, heap, camera, keyboard and
+      LCD keys **from the proven member**, never from a hardcoded table — retune
+      the reference AVD and the next `--pool` run propagates it. Identity keys
+      (`AvdId`, `path`, `avd.ini.displayname`, `image.sysdir.*`) are never
+      copied. Idempotent: applying twice is a fixed point.
+
+   4. **For each member that is missing or `unproven`, run steps 4–9 below
+      against it**, substituting its name for `${ACE_AVD_NAME}` in the tool
+      args — boot (`mobile_ensure_avd_running`), install the CommCare APK
+      (`mobile_install_apk`), then register (`mobile_register_test_user`).
+
+      Note what you do **not** have to do by hand: `mobile_ensure_avd_running`
+      already patches `hw.camera.front=emulated`, runs
+      `pm disable-user --user 0 com.google.android.gms` and grants
+      `android.permission.CAMERA` as part of `runPostBootPrep` (0.10.23+).
+      Don't reimplement those.
+
+   5. **Provisioning is self-certifying — do not write a marker.**
+      `registerTestUser` writes `.ace-provisioned.json` in its `finally`
+      (`mcp/mobile/client.ts` → `mcp/mobile/avd-provisioned-marker.ts`), which
+      is the only evidence `selectAvd` accepts for a fallback. Re-run the
+      planner afterwards; a member that still shows under `unproven` did not
+      complete registration, and the fix is to re-run step 4 for it, never to
+      write the marker by hand.
+
+   **Registration order matters.** Register the members **one at a time**, not
+   in parallel — the `${ACE_E2E_PHONE}` test user and the Connect invite it
+   depends on are single machine-wide resources, and two concurrent
+   registrations race for them.
 
 4. **Boot the AVD using `mobile_ensure_avd_running`.**
    - Tool: `mcp__ace_mobile__mobile_ensure_avd_running`
