@@ -44,6 +44,19 @@ describe('scripts/land-pr.sh', () => {
     expect(rearm).toBeGreaterThan(push);
   });
 
+  // ace#2004 (OPEN) — the initial arm is still missing; this pins the half that
+  // shipped, namely that giving up says WHY. "OPEN CLEAN" is unactionable;
+  // "OPEN CLEAN auto-merge=false" names the cause outright.
+  it('names auto-merge state when it gives up, so the cause is actionable', () => {
+    expect(CODE).toMatch(/gave up after[\s\S]*autoMergeRequest/);
+  });
+
+  it('records why the initial arm cannot simply be hoisted', () => {
+    // Load-bearing prose: the obvious fix breaks the wrong-worktree guard.
+    expect(SCRIPT).toMatch(/ace#2004/);
+    expect(SCRIPT).toMatch(/ancestry guard|not an ancestor/);
+  });
+
   it('treats a non-version conflict as a human matter, not another retry', () => {
     expect(SCRIPT).toMatch(/non-version file conflicts/);
     expect(SCRIPT).toMatch(/exit 2/);
