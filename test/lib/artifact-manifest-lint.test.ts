@@ -415,6 +415,14 @@ describe('manifest descriptions cite the current phase ordinal (#1308)', () => {
  * or delete it from this ledger with a one-line note saying why it is genuinely optional.
  */
 const KNOWN_OPTIONAL_INPUTS_TO_REQUIRED = new Set([
+  // Exists ONLY on the componentized path — written when the input set declares
+  // components (`Component: <n> of …`), absent on every single-PDD opp ACE has
+  // ever run. `required: true` would fail all of them. The manifest carries one
+  // boolean and cannot express "required iff componentized", so the condition
+  // lives in lib/component-products.ts instead: buildComponentProducts throws
+  // rather than emit `mode: componentized` with no components, which is the
+  // failure this lint is really guarding against.
+  '1-design/component-set.yaml',
   'opp.yaml',
   'decisions.yaml',
   'decisions.gdoc',
