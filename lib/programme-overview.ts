@@ -93,9 +93,19 @@ export interface ComponentBody {
 /**
  * A prose reference: `Component 5b`, `Component 9`.
  *
- * The negative lookahead on `:` is load-bearing — it excludes the document's
- * OWN declaration line (`Component: 4 of the graduation component set`), which
- * would otherwise make every component reference itself.
+ * **`\s+` is the guard, and it is load-bearing.** A declaration line reads
+ * `Component: 4 of the graduation component set`, and `\s+` cannot match the
+ * `:`, so the document's OWN declaration never registers as a reference.
+ * (An earlier version of this comment credited a "negative lookahead on `:`".
+ * There is no lookahead here and never was — naming a mechanism the pattern
+ * does not have is what makes relaxing the quantifier look safe.)
+ *
+ * Do NOT loosen it to `\s*` or `\s*:?\s*` to tolerate a stray space. The
+ * self-reference drop in `findCrossReferences` does not save you: it only
+ * suppresses `from === to`, so a declaration line naming any OTHER id would
+ * still register. `test/lib/programme-overview.test.ts` pins exactly that
+ * case — the sibling test using a declaration whose id equals the body's own
+ * passes under both spellings and cannot detect the difference.
  */
 const PROSE_REF_RE = /\bComponent\s+(\d+[a-z]?)\b/gi;
 
