@@ -32,10 +32,16 @@
 //
 // ## Why filename matching is deliberately NOT a fallback
 //
-// It is the fragility this whole approach exists to avoid, and there is a live
-// example: the targeting PDD carried into `poverty-graduation` is named
-// "PDD - Targeting Survey (Component 2) — …" and declares NOTHING, because it
-// was authored before the convention existed. Matching on the filename would
+// It is the fragility this whole approach exists to avoid, and there was a
+// live example: the targeting PDD carried into `poverty-graduation` is named
+// "PDD - Targeting Survey (Component 2) — …" and, when this module was
+// written, declared NOTHING — it was authored before the convention existed.
+// Its author closed the gap with a one-line edit on 2026-09-05 (it now carries
+// `· Component: 2 of the graduation component set`), which is precisely the
+// outcome an `undeclared-pdd` finding is for: a loud gap that costs its author
+// one line. Had ACE matched on the filename instead, the guess would have been
+// silently right here and there would have been nothing to close. Matching on
+// the filename would
 // silently promote a guess (made by whoever named the file) into the component
 // identity every later phase builds on. So an undeclared PDD is reported as
 // `undeclared-pdd` and the caller is told the exact line to add. A loud gap

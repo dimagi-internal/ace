@@ -63,6 +63,19 @@ describe('findCrossReferences — real relationships', () => {
     expect(refs).toEqual([]);
   });
 
+  it('excludes a colon-form declaration line naming a DIFFERENT component', () => {
+    // The sibling test above cannot detect the mechanism it is named for: its
+    // declaration names the body's own id, so the self-reference drop satisfies
+    // it whether or not the regex excludes `Component:`. Measured 2026-09-05 —
+    // relaxing PROSE_REF_RE to /\bComponent\s*:?\s*(\d+[a-z]?)\b/gi leaves all
+    // 11 tests in this file green. This one goes red, because `from !== to`.
+    const refs = findCrossReferences(
+      [{ component_id: '4', text: 'Version: 0.1 · Component: 6 of the graduation component set' }],
+      ['4', '6'],
+    );
+    expect(refs).toEqual([]);
+  });
+
   it('drops self-references, which carry no information', () => {
     const refs = findCrossReferences(
       [{ component_id: '5', text: 'See Component 5 above. Also Component 6.' }],
