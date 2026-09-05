@@ -620,6 +620,23 @@ a select, say so in the build memo next to the `entity_id` you shipped.
 > follow-up of the day was a refusal can STILL be blocked — the #969 failure
 > one layer down. So name the required Phase-4 predicate in the residual list,
 > and fail loud if the PDD names a predicate no Phase 4 step applies.
+> REQUIRED WITH THE KEY — the DISPLAY NAME must distinguish what the key
+> distinguishes. `entity_id` is what Connect dedups on; `entity_name` is what
+> the WORKER reads on their completed-work and invoice views, and nothing
+> above constrains it — so a build that scopes the key and derives the label
+> from the identity fields alone (the default construction in
+> `pdd-to-deliver-app`) mints two entities on one worker-day that are
+> byte-identical on screen: one approved, one rejected by the Phase-4
+> predicate, with nothing on either row saying which encounter it was or why
+> one failed. So whenever the discriminator enters `entity_id`, `entity_name`
+> MUST also distinguish the non-payable branch — carrying the same
+> discriminator, or any other answered field that differs across it. The exact
+> display string is the author's call: this is a distinguish-and-disclose
+> requirement, **not a mandated format**. If no available field can
+> distinguish them, do NOT ship indistinguishable names silently — say so in
+> the build memo next to the key you shipped, exactly as for a key that cannot
+> be scoped. (ace#1958, observed on `bednet-check-2-visit/20260902-1555`:
+> `entity_key` carried `consent_confirmed`, `entity_label` did not.)
 > SCOPE: this closes the slot-consumption mode only. A non-payable record still
 > mints a CompletedWork on its own key until Layer A verification rejects it —
 > the `deliver_unit` marker carries no relevance condition, which is upstream
