@@ -15,6 +15,28 @@
  * These run against a throwaway local bare repo with a stubbed `gh` — no
  * network, no GitHub. This is shell/git plumbing, so a hermetic integration
  * test is complete evidence; there is no device truth here.
+ *
+ * ## Why every spawnSync below carries an explicit timeout
+ *
+ * `spawnSync` blocks the vitest worker synchronously, so vitest's own
+ * `testTimeout` cannot interrupt it — the pool waits for the child no matter
+ * what the config says. And the child here is `land-pr.sh`, whose poll loop
+ * sleeps `POLL_SECONDS` (20s) × `POLLS_PER_ATTEMPT` (15) = **300s per
+ * attempt**. So the moment the `gh` stub stops matching what the script asks
+ * for, a case that should fail in under a second instead pins a worker for
+ * five minutes. That is latent, not active: the stub matches today and the
+ * file runs in ~2.3s. It becomes active on the next edit to the stub.
+ *
+ * `SPAWN_TIMEOUT_MS` is sized against that 300s budget, not against the happy
+ * path: 45s is 2.25× the FIRST `sleep 20` (the smallest unit of hang the
+ * script can produce), which leaves generous headroom for a saturated box —
+ * ace#1912 measured subprocess-heavy files blowing 5s assertions under the
+ * 414-file parallel load `clean-install` actually runs — while still catching
+ * a real hang at a seventh of the time it would otherwise cost. A timeout
+ * longer than the hang it is meant to catch would be decoration.
+ *
+ * The last case in this file exercises that timeout against a deliberately
+ * hung script, so the guard is observed rather than assumed.
  */
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { spawnSync } from 'node:child_process';
@@ -29,6 +51,9 @@ const REPO_ROOT = path.resolve(
 );
 const LAND_PR = path.join(REPO_ROOT, 'scripts/land-pr.sh');
 
+/** See "Why every spawnSync below carries an explicit timeout" above. */
+const SPAWN_TIMEOUT_MS = 45_000;
+
 const PR_BRANCH = 'fix/1966-longitudinal-program-naming';
 const LOCAL_BRANCH = 'ship/1967-rebase';
 
@@ -40,6 +65,7 @@ function sh(cmd: string, args: string[], cwd: string, env?: NodeJS.ProcessEnv) {
     cwd,
     encoding: 'utf-8',
     env: { ...process.env, ...env },
+    timeout: SPAWN_TIMEOUT_MS,
   });
   if (r.status !== 0) {
     throw new Error(
@@ -139,7 +165,7 @@ exit 0
   return { work, stub };
 }
 
-function runLandPr(work: string, stub: string) {
+function runLandPr(work: string, stub: string, timeoutMs = SPAWN_TIMEOUT_MS) {
   return spawnSync('bash', ['scripts/land-pr.sh', '1967', '1'], {
     cwd: work,
     encoding: 'utf-8',
@@ -149,6 +175,7 @@ function runLandPr(work: string, stub: string) {
       GH_STUB_DIR: stub,
       ACE_REPO: 'dimagi-internal/ace',
     },
+    timeout: timeoutMs,
   });
 }
 
@@ -219,5 +246,32 @@ describe('land-pr.sh push target', () => {
     expect(remoteBranches()).toEqual([PR_BRANCH, 'main']);
     // It must bail BEFORE disarming auto-merge — nothing was touched.
     expect(fs.existsSync(path.join(stub, 'merge.log'))).toBe(false);
+  });
+
+  // The guard on this file's own guard. Every case above passes whether or not
+  // `timeout` is honoured, because none of them hangs — so on its own the
+  // option is an unverified claim about the harness. This case makes the
+  // script hang on purpose and asserts the kill.
+  it('honours the spawn timeout: a hung land-pr.sh is killed, not waited out', () => {
+    const work = path.join(root, 'work');
+    const stub = path.join(root, 'stub');
+
+    // CLEAN skips the rebase branch entirely and drops the script straight into
+    // its poll loop, where it sleeps 20s × 15 = 300s before returning. Nothing
+    // in vitest can interrupt that — `spawnSync` holds the worker.
+    fs.writeFileSync(path.join(stub, 'mergeable'), 'CLEAN\n');
+
+    const t0 = Date.now();
+    const r = runLandPr(work, stub, 3_000);
+    const elapsed = Date.now() - t0;
+
+    // Reached the poll loop — i.e. it really was sleeping, not failing early
+    // for some unrelated reason.
+    expect(r.stdout).toMatch(/state=OPEN mergeable=CLEAN/);
+    expect((r.error as NodeJS.ErrnoException | undefined)?.code).toBe('ETIMEDOUT');
+    expect(r.signal).toBe('SIGTERM');
+    // Aborted mid-sleep: it did not even ride out ONE 20s poll interval, let
+    // alone the 300s the script would otherwise have taken.
+    expect(elapsed).toBeLessThan(20_000);
   });
 });
