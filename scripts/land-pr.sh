@@ -97,6 +97,16 @@ mergeability() { gh pr view "$PR" -R "$REPO" --json mergeStateStatus --jq .merge
 head_ref() { gh pr view "$PR" -R "$REPO" --json headRefName --jq .headRefName 2>/dev/null; }
 head_oid() { gh pr view "$PR" -R "$REPO" --json headRefOid --jq .headRefOid 2>/dev/null; }
 
+# NOTE (ace#2004, OPEN): the only `--auto --merge` below lives inside the
+# DIRTY branch, so a PR that is CLEAN on first read is polled to exhaustion for
+# a merge nothing performs. The initial arm CANNOT simply be hoisted here: the
+# ancestry guard ("refusing to land ... not an ancestor of this checkout") also
+# lives inside that branch, and test/scripts/land-pr-refspec.test.ts pins that
+# a wrong-worktree invocation "must bail BEFORE disarming auto-merge — nothing
+# was touched". Arming first would merge a PR this checkout was never proven to
+# own. The fix is to hoist the GUARD too, and to make the test stub's `--auto`
+# mergeability-aware (today it merges unconditionally, which real GitHub does
+# not). See ace#2004.
 for attempt in $(seq 1 "$MAX"); do
   s="$(state)"
   case "$s" in
@@ -157,5 +167,7 @@ for attempt in $(seq 1 "$MAX"); do
   done
 done
 
-echo "gave up after $MAX attempts: $(gh pr view "$PR" -R "$REPO" --json state,mergeStateStatus --jq '.state+" "+.mergeStateStatus')"
+# Report whether auto-merge was actually armed. "OPEN CLEAN" gives the reader
+# nothing to act on; "OPEN CLEAN auto-merge=false" names the cause (ace#2004).
+echo "gave up after $MAX attempts: $(gh pr view "$PR" -R "$REPO" --json state,mergeStateStatus,autoMergeRequest --jq '.state+" "+.mergeStateStatus+" auto-merge="+(.autoMergeRequest != null | tostring)')"
 exit 3
