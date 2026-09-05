@@ -394,38 +394,146 @@ describeDevice('AvdBackend.ensureAvdRunning', () => {
     expect(listAvdsIdx).toBeGreaterThan(startSrvIdx);
   });
 
-  it('sweepStaleEmulatorState: kills orphan qemu PIDs when adb sees no devices', async () => {
+  // ───────────────────────────────────────────────────────────────────────
+  // ace#1821 — the sweep attributes each qemu to a session instead of
+  // inferring orphanhood from an empty `adb devices`.
+  //
+  // These three tests used to script `adb devices` and assert on the
+  // resulting kill. That inference is gone (see `lib/avd-orphan-scope.ts`):
+  // this session's adb server is freshly allocated and has scanned nothing,
+  // so its device count says nothing about a PEER session's emulator. The
+  // scenarios below therefore script `ps` and the session-lock directory —
+  // the two surfaces the decision actually reads — and the pure decision
+  // itself is pinned with both controls in
+  // `test/lib/avd-orphan-scope.test.ts`.
+  // ───────────────────────────────────────────────────────────────────────
+
+  /** A `ps -eo user=,pid=,ppid=,lstart=,command=` row for a detached emulator. */
+  function qemuRow(pid: number, consolePort: number, avd = 'ACE_Pixel_API_34'): string {
+    return (
+      `acedimagi ${pid} 1 Fri Sep  5 08:12:03 2026 ` +
+      `/Users/acedimagi/Library/Android/sdk/emulator/qemu/darwin-aarch64/qemu-system-aarch64 ` +
+      `-avd ${avd} -read-only -port ${consolePort} -no-snapshot-load`
+    );
+  }
+
+  /**
+   * A sweep harness with the two real inputs under test control: an empty
+   * (or seeded) session-lock dir, and a pinned self console port so the
+   * allocator does not probe into the fixture's port range.
+   */
+  function withSweepEnv<T>(fn: (lockDir: string) => Promise<T>): Promise<T> {
+    const lockDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ace-sweep-locks-'));
+    const prevLockDir = process.env.ACE_SESSION_LOCK_DIR;
+    const prevEmuPort = process.env.ACE_MOBILE_EMULATOR_PORT;
+    process.env.ACE_SESSION_LOCK_DIR = lockDir;
+    process.env.ACE_MOBILE_EMULATOR_PORT = '5600'; // far from the fixture ports
+    return fn(lockDir).finally(() => {
+      if (prevLockDir === undefined) delete process.env.ACE_SESSION_LOCK_DIR;
+      else process.env.ACE_SESSION_LOCK_DIR = prevLockDir;
+      if (prevEmuPort === undefined) delete process.env.ACE_MOBILE_EMULATOR_PORT;
+      else process.env.ACE_MOBILE_EMULATOR_PORT = prevEmuPort;
+    });
+  }
+
+  it('sweepStaleEmulatorState: kills qemu PIDs no live session claims (attempt-10)', async () => {
     if (process.platform === 'win32') return; // skipped on win32 by design
-    const killed: number[] = [];
-    const realKill = process.kill;
-    // Stub process.kill so we can observe orphan kills without actually
-    // signaling random PIDs on the test machine.
-    (process as { kill: typeof process.kill }).kill = ((pid: number, _sig?: string | number) => {
-      killed.push(pid);
-      return true;
-    }) as typeof process.kill;
-    try {
-      const shell = vi.fn(async (cmd: string, args: string[]) => {
-        const key = `${cmd} ${args.join(' ')}`;
-        if (key.startsWith('pgrep') && key.includes('qemu-system')) {
-          // Two orphan qemu PIDs (the attempt-10 reproducer signature).
-          return { stdout: '90001\n90002\n', stderr: '', exitCode: 0 };
-        }
-        if (key === 'adb devices') {
-          return { stdout: 'List of devices attached\n', stderr: '', exitCode: 0 };
-        }
-        if (key === 'emulator -list-avds') {
-          return { stdout: 'Other_AVD\n', stderr: '', exitCode: 0 };
-        }
-        return { stdout: '', stderr: '', exitCode: 0 };
-      });
-      const backend = new AvdBackend({ shell });
-      await expect(backend.ensureAvdRunning('ACE_Pixel_API_34')).rejects.toBeInstanceOf(AvdBootError);
-      expect(killed).toContain(90001);
-      expect(killed).toContain(90002);
-    } finally {
-      (process as { kill: typeof process.kill }).kill = realKill;
-    }
+    await withSweepEnv(async () => {
+      const killed: number[] = [];
+      const realKill = process.kill;
+      // Stub process.kill so we can observe orphan kills without actually
+      // signaling random PIDs on the test machine.
+      (process as { kill: typeof process.kill }).kill = ((pid: number, _sig?: string | number) => {
+        killed.push(pid);
+        return true;
+      }) as typeof process.kill;
+      try {
+        const shell = vi.fn(async (cmd: string, args: string[]) => {
+          const key = `${cmd} ${args.join(' ')}`;
+          if (key.startsWith('pgrep') && key.includes('qemu-system')) {
+            // Two orphan qemu PIDs (the attempt-10 reproducer signature).
+            return { stdout: '90001\n90002\n', stderr: '', exitCode: 0 };
+          }
+          if (cmd === 'ps' && args[0] === '-eo') {
+            return {
+              stdout: `${qemuRow(90001, 5554)}\n${qemuRow(90002, 5556)}\n`,
+              stderr: '',
+              exitCode: 0,
+            };
+          }
+          if (key === 'emulator -list-avds') {
+            return { stdout: 'Other_AVD\n', stderr: '', exitCode: 0 };
+          }
+          return { stdout: '', stderr: '', exitCode: 0 };
+        });
+        const backend = new AvdBackend({ shell, skipCrossUserPortCheck: true });
+        await expect(backend.ensureAvdRunning('ACE_Pixel_API_34')).rejects.toBeInstanceOf(
+          AvdBootError,
+        );
+        // The lock dir is empty — every owning session is gone, so both are
+        // true orphans and the original recovery still fires.
+        expect(killed).toContain(90001);
+        expect(killed).toContain(90002);
+      } finally {
+        (process as { kill: typeof process.kill }).kill = realKill;
+      }
+    });
+  });
+
+  it('sweepStaleEmulatorState: NEVER kills a qemu a live session lock claims (ace#1821)', async () => {
+    if (process.platform === 'win32') return;
+    // THE REGRESSION GUARD. Before this fix the sweep killed every peer
+    // session's emulator at dispatch start, because a freshly-allocated adb
+    // server reports zero devices and the code read that as proof of
+    // orphanhood. Here pid 90001 belongs to a LIVE session (a lock whose
+    // mcp_pid is this test process, which is trivially alive) and pid 90002
+    // belongs to nobody. Exactly one must die.
+    await withSweepEnv(async (lockDir) => {
+      fs.writeFileSync(
+        path.join(lockDir, `${process.pid}.lock.json`),
+        JSON.stringify({
+          mcp_pid: process.pid, // alive by construction
+          started_at: new Date().toISOString(),
+          adb_port: 5038,
+          emulator_port: 5554,
+          avd_name: 'ACE_Pixel_API_34',
+          opp_slug: 'bednet-check-2-visit',
+        }),
+      );
+      const killed: number[] = [];
+      const realKill = process.kill;
+      (process as { kill: typeof process.kill }).kill = ((pid: number, _sig?: string | number) => {
+        killed.push(pid);
+        return true;
+      }) as typeof process.kill;
+      try {
+        const shell = vi.fn(async (cmd: string, args: string[]) => {
+          const key = `${cmd} ${args.join(' ')}`;
+          if (key.startsWith('pgrep') && key.includes('qemu-system')) {
+            return { stdout: '90001\n90002\n', stderr: '', exitCode: 0 };
+          }
+          if (cmd === 'ps' && args[0] === '-eo') {
+            return {
+              stdout: `${qemuRow(90001, 5554)}\n${qemuRow(90002, 5556)}\n`,
+              stderr: '',
+              exitCode: 0,
+            };
+          }
+          if (key === 'emulator -list-avds') {
+            return { stdout: 'Other_AVD\n', stderr: '', exitCode: 0 };
+          }
+          return { stdout: '', stderr: '', exitCode: 0 };
+        });
+        const backend = new AvdBackend({ shell, skipCrossUserPortCheck: true });
+        await expect(backend.ensureAvdRunning('ACE_Pixel_API_34')).rejects.toBeInstanceOf(
+          AvdBootError,
+        );
+        expect(killed, "the live peer's emulator must survive").not.toContain(90001);
+        expect(killed, 'the unclaimed orphan must still be reaped').toContain(90002);
+      } finally {
+        (process as { kill: typeof process.kill }).kill = realKill;
+      }
+    });
   });
 
   it('sweepStaleEmulatorState: orphan-qemu kill runs BEFORE adb kill-server with a socket-release wait between', async () => {
@@ -454,6 +562,7 @@ describeDevice('AvdBackend.ensureAvdRunning', () => {
       return true;
     }) as typeof process.kill;
     try {
+      await withSweepEnv(async () => {
       const shell = vi.fn(async (cmd: string, args: string[]) => {
         const key = `${cmd} ${args.join(' ')}`;
         events.push({ name: key, t: Date.now() - start });
@@ -461,8 +570,14 @@ describeDevice('AvdBackend.ensureAvdRunning', () => {
           // Two orphan qemu PIDs (matches attempt-12 signature).
           return { stdout: '90011\n90012\n', stderr: '', exitCode: 0 };
         }
-        if (key === 'adb devices') {
-          return { stdout: 'List of devices attached\n', stderr: '', exitCode: 0 };
+        if (cmd === 'ps' && args[0] === '-eo') {
+          // Attributable, and claimed by nobody — so both are killed and
+          // the ordering assertions below have kills to order.
+          return {
+            stdout: `${qemuRow(90011, 5554)}\n${qemuRow(90012, 5556)}\n`,
+            stderr: '',
+            exitCode: 0,
+          };
         }
         if (key === 'emulator -list-avds') {
           // Unknown AVD short-circuits the rest of the boot path —
@@ -471,8 +586,9 @@ describeDevice('AvdBackend.ensureAvdRunning', () => {
         }
         return { stdout: '', stderr: '', exitCode: 0 };
       });
-      const backend = new AvdBackend({ shell });
+      const backend = new AvdBackend({ shell, skipCrossUserPortCheck: true });
       await expect(backend.ensureAvdRunning('ACE_Pixel_API_34')).rejects.toBeInstanceOf(AvdBootError);
+      });
 
       const firstOrphanKill = events.findIndex((e) => e.name.startsWith('process.kill('));
       const adbKillSrv = events.findIndex((e) => e.name === 'adb kill-server');
@@ -501,51 +617,65 @@ describeDevice('AvdBackend.ensureAvdRunning', () => {
     }
   });
 
-  it('sweepStaleEmulatorState: kills orphan qemu PIDs when adb sees only a partial subset (no +2 threshold)', async () => {
+  it('sweepStaleEmulatorState: the kill decision never consults `adb devices` (ace#1821)', async () => {
     if (process.platform === 'win32') return;
-    // Regression guard against re-introducing PR #349's conservative
-    // `qemuPids.length >= liveCount + 2` guard. Attempt-12 signature:
-    // 2 orphan qemu PIDs + 1 stale adb-devices entry → length 2,
-    // liveCount 1 → 2 >= 1+2 is FALSE → no kill fires, orphans
-    // survive into the next ensureAvdRunning. Loosened to
-    // `qemuPids.length > liveCount`: with N > M, (N-M) PIDs are
-    // orphan and must be killed.
-    const killed: number[] = [];
-    const realKill = process.kill;
-    (process as { kill: typeof process.kill }).kill = ((pid: number, _sig?: string | number) => {
-      killed.push(pid);
-      return true;
-    }) as typeof process.kill;
-    try {
-      const shell = vi.fn(async (cmd: string, args: string[]) => {
-        const key = `${cmd} ${args.join(' ')}`;
-        if (key.startsWith('pgrep') && key.includes('qemu-system')) {
-          return { stdout: '90021\n90022\n', stderr: '', exitCode: 0 };
-        }
-        if (key === 'adb devices') {
-          // One legitimate-looking adb device entry; 2 qemu PIDs.
-          // PR #349 +2 guard wouldn't fire here — confirming the
-          // loosened guard fires the kill for the orphan.
-          return {
-            stdout: 'List of devices attached\nemulator-5554\tdevice\n',
-            stderr: '',
-            exitCode: 0,
-          };
-        }
-        if (key === 'emulator -list-avds') {
-          return { stdout: 'Other_AVD\n', stderr: '', exitCode: 0 };
-        }
-        return { stdout: '', stderr: '', exitCode: 0 };
-      });
-      const backend = new AvdBackend({ shell });
-      await expect(backend.ensureAvdRunning('ACE_Pixel_API_34')).rejects.toBeInstanceOf(AvdBootError);
-      // (qemu length 2) - (live count 1) = 1 expected orphan kill.
-      expect(killed.length).toBeGreaterThanOrEqual(1);
-      // Killed the lowest PID first (the older, more-likely-orphan).
-      expect(killed[0]).toBe(90021);
-    } finally {
-      (process as { kill: typeof process.kill }).kill = realKill;
-    }
+    // This replaces the old "+2 threshold" guard, whose whole subject —
+    // `qemuPids.length` vs an adb device count — was the defect. Both
+    // branches read a number from THIS session's adb server and drew a
+    // conclusion about processes owned by OTHER sessions. The guard that
+    // matters now is that the number is never consulted at all: with an
+    // `adb devices` reply that the old code would have read as "1 live, so
+    // 1 of these 2 is excess", the outcome must be decided purely by
+    // attribution — here, no locks at all, so BOTH die, and neither the
+    // count nor the lowest-pid-first slice plays any part.
+    await withSweepEnv(async () => {
+      const killed: number[] = [];
+      const realKill = process.kill;
+      (process as { kill: typeof process.kill }).kill = ((pid: number, _sig?: string | number) => {
+        killed.push(pid);
+        return true;
+      }) as typeof process.kill;
+      try {
+        let adbDevicesCalls = 0;
+        const shell = vi.fn(async (cmd: string, args: string[]) => {
+          const key = `${cmd} ${args.join(' ')}`;
+          if (key.startsWith('pgrep') && key.includes('qemu-system')) {
+            return { stdout: '90021\n90022\n', stderr: '', exitCode: 0 };
+          }
+          if (key === 'adb devices') {
+            adbDevicesCalls++;
+            return {
+              stdout: 'List of devices attached\nemulator-5554\tdevice\n',
+              stderr: '',
+              exitCode: 0,
+            };
+          }
+          if (cmd === 'ps' && args[0] === '-eo') {
+            return {
+              stdout: `${qemuRow(90021, 5554)}\n${qemuRow(90022, 5556)}\n`,
+              stderr: '',
+              exitCode: 0,
+            };
+          }
+          if (key === 'emulator -list-avds') {
+            return { stdout: 'Other_AVD\n', stderr: '', exitCode: 0 };
+          }
+          return { stdout: '', stderr: '', exitCode: 0 };
+        });
+        const backend = new AvdBackend({ shell, skipCrossUserPortCheck: true });
+        await expect(backend.ensureAvdRunning('ACE_Pixel_API_34')).rejects.toBeInstanceOf(
+          AvdBootError,
+        );
+        // Nothing claims either pid, so the "1 live device" reply changes
+        // nothing: both are orphans and both die.
+        expect(killed).toContain(90021);
+        expect(killed).toContain(90022);
+        // And the sweep never asked.
+        expect(adbDevicesCalls, 'the sweep must not query `adb devices`').toBe(0);
+      } finally {
+        (process as { kill: typeof process.kill }).kill = realKill;
+      }
+    });
   });
 
   it('sweepStaleEmulatorState: tolerates pgrep/kill failures (best-effort)', async () => {

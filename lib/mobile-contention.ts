@@ -329,6 +329,8 @@ export interface AvdHolder {
   readOnly: boolean;
   /** The `-port <n>` the emulator console is on, or null when not in the argv. */
   consolePort: number | null;
+  /** The AVD this process is attached to, or null when not in the argv. */
+  avdName: string | null;
   startedMs: number;
 }
 
@@ -377,9 +379,31 @@ export function parseAvdHolders(
   avdName: string,
   opts: { selfConsolePort?: number | null } = {},
 ): AvdHolder[] {
-  const emulators = rows.filter(
-    (r) => EMULATOR_BINARY_RE.test(r.command) && avdNameFromCommand(r.command) === avdName,
-  );
+  return parseEmulatorProcesses(rows)
+    .filter((h) => h.avdName === avdName)
+    .filter(
+      (h) =>
+        opts.selfConsolePort == null ||
+        h.consolePort == null ||
+        h.consolePort !== opts.selfConsolePort,
+    );
+}
+
+/**
+ * Every live emulator process on the host, whatever AVD it is attached to,
+ * deduplicated to chain roots.
+ *
+ * `parseAvdHolders` is this, filtered by AVD name — the question "who holds
+ * AVD X". The orphan sweep (`lib/avd-orphan-scope.ts`) asks a different
+ * question, "who owns qemu pid N", and must not presuppose an AVD name, so it
+ * reads the unfiltered list. Both go through THIS parser: two process-table
+ * detectors that could disagree would be worse than one, which is the same
+ * reasoning that put `parseAvdHolders` in this module rather than a second one.
+ *
+ * Pure: the caller supplies the `ps` capture.
+ */
+export function parseEmulatorProcesses(rows: readonly PsRow[]): AvdHolder[] {
+  const emulators = rows.filter((r) => EMULATOR_BINARY_RE.test(r.command));
   const byPid = new Map(emulators.map((r) => [r.pid, r]));
 
   return emulators
@@ -390,14 +414,9 @@ export function parseAvdHolders(
       user: r.user,
       readOnly: r.command.split(/\s+/).includes('-read-only'),
       consolePort: consolePortFromCommand(r.command),
+      avdName: avdNameFromCommand(r.command),
       startedMs: r.startedMs,
     }))
-    .filter(
-      (h) =>
-        opts.selfConsolePort == null ||
-        h.consolePort == null ||
-        h.consolePort !== opts.selfConsolePort,
-    )
     .sort((a, b) => a.startedMs - b.startedMs || a.pid - b.pid);
 }
 
