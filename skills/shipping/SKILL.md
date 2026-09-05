@@ -73,6 +73,17 @@ everything between arming and merging is waiting.
   Then re-enter the wait. `--rebase-first` aborts cleanly if a non-version file conflicts — those
   need human review.
 
+  **ONE pass often loses the race — use `scripts/land-pr.sh <pr>` rather than doing this by
+  hand.** The block above is correct and incomplete: it assumes that by the time you have
+  rebased, `main` has not moved again. Measured 2026-09-05 on PR #1962, `main` merged at 06:45,
+  06:47, 06:57, 07:13, 07:14, 07:19 and 07:21 — every 2-4 minutes, several sibling sessions
+  shipping at once — while a rebase plus `clean-install` takes 1-3 minutes. That PR returned to
+  DIRTY twice; four PRs in one session hit it. The script is this recipe in a bounded retry loop,
+  and it keeps the disarm/re-arm ordering above, which a hand-rolled loop forgot on the first
+  attempt (it landed anyway, purely because CI had not yet greened the pre-rebase head — luck,
+  not method). *Enforced:* `test/scripts/land-pr.test.ts` ratchets the disarm-before-rebase
+  order. It still does not excuse you from reading the merge state yourself afterwards.
+
   **Why the disarm step is load-bearing.** Auto-merge stays armed while you rebase, and
   `clean-install` (the only REQUIRED check) can go green on the **pre-rebase head** first. The
   merge then wins the race and your `--force-with-lease` is a no-op against an already-merged
