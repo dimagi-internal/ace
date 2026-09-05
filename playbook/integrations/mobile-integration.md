@@ -14,7 +14,7 @@ See the design spec: `docs/superpowers/specs/2026-04-28-ace-mobile-emulation-des
 npm run mcp:mobile
 ```
 
-Auto-registers via `.claude-plugin/plugin.json` `mcpServers` when the plugin is installed. Required environment: `.env.tpl` `ACE_E2E_*` variables (test phone, PIN, name), `ACE_AVD_NAME`, and `ACE_CONNECT_APK_VERSION` (default 2.63.0).
+Auto-registers via `.claude-plugin/plugin.json` `mcpServers` when the plugin is installed. Required environment: `.env.tpl` `ACE_E2E_*` variables (test phone, PIN, name), `ACE_AVD_NAME`, and `ACE_CONNECT_APK_VERSION` (default 2.63.2).
 
 ## Capability map
 
@@ -471,6 +471,29 @@ When extending recipes or building atlas coverage for a new APK version:
 
 **Anti-pattern:** screencap + Read PNG + dump + grep after every single tap. PNG reads are expensive in tokens. Almost every CommCare/PersonalID selector is resource-id-driven; uiautomator XML has all the info. Reserve screenshots for genuinely visual states (camera UI, where AOSP elements lack resource-ids).
 
+## Upgrading the pinned APK version
+
+The discovery loop above is what you run *inside* an upgrade. The upgrade
+itself — verify the release resolves to a downloadable asset, seed and
+**calibrate** a new map, prove every static recipe still navigates, flip every
+version pin atomically, activate in the right order, verify, and roll back if
+the new version is bad — is `skills/connect-apk-upgrade/SKILL.md`.
+
+Three things that only bite during a transition, and are therefore easy to
+rediscover the expensive way:
+
+- **The release asset has been renamed three times** (`app-commcare-release.apk`
+  → `commcare-<v>-release.apk` → `commcare-<v>.apk`). `mcp/mobile/client.ts`
+  probes all three, newest-first. Verify the target release resolves to a real
+  asset BEFORE editing any pin — and note a GitHub **draft** release has none.
+- **The version is pinned in more than one place.** `lib/apk-pin-sites.ts`
+  discovers every site and `test/lib/apk-pin-sites.test.ts` fails if one exists
+  that the skill's checklist does not name — so "I forgot a knob" is CI-visible
+  rather than a device-walk surprise.
+- **`/ace:setup --force-env` FIRST, full Claude restart AFTER.** `/ace:update`
+  never touches the installed `.env`, and every MCP server reads it at module
+  load. The reverse order silently keeps the stale pin (ace#880).
+
 ## A teardown exception is not a verdict, and a failure never discards artifacts (ace#1822)
 
 Maestro closes its session on a shutdown thread. When that close throws — `Broken pipe` out of `AdbWriter.writeClose` -> `AndroidDriver.close` -> `MaestroSession.close` — the JVM exits non-zero even though every step already ran. `Broken pipe` is a `driver` pattern, so pre-#1822 that read as a driver death, which is the ONE class the heal-and-retry envelope acts on.
@@ -512,6 +535,7 @@ Both files land in the failing dispatch's own output dir (`<screenshotDir>/<reci
 - `docs/learnings/2026-05-19-maestro-v2-probe-timeout.md` — read the trace before agreeing with the diagnosis
 - `docs/learnings/2026-05-25-recipe-static-preventer-suite.md` — shift-left principle for recipe lint
 - `docs/learnings/2026-05-25-bednet-smoke-phase6-install-rejection.md` — `commcare_validate_ccz` install gate + session-rescan governance rule
+- `skills/connect-apk-upgrade/SKILL.md` — the end-to-end APK version bump (release check → calibrate → pin flip → activate → verify → rollback)
 - `commands/mobile-bootstrap.md` — operator-facing one-time setup
 - `docs/superpowers/specs/2026-04-28-ace-mobile-emulation-design.md` — design rationale
 - `docs/atom-schemas.md` — canonical Zod-schema catalog (regenerate via `npx tsx scripts/dump-atom-schemas.ts`)

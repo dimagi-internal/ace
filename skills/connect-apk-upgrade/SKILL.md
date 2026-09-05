@@ -1,0 +1,422 @@
+---
+name: connect-apk-upgrade
+description: >
+  Upgrade the pinned Connect/CommCare APK end to end — release check,
+  calibrate, flip every pin, activate, verify, roll back.
+  Use when a new APK becomes ACE's default.
+disable-model-invocation: true
+---
+
+# Connect APK Upgrade
+
+Move ACE's pinned CommCare Android APK from one version to the next — the whole
+transition, not just the constant. Manual, cross-opp, once per APK version.
+
+**Why this skill exists.** Jonathan, 2026-09-05: *"We need to have a clear
+process ACE does to bump and then make sure everything still works as expected
+in the new version — we had a lot of gotchas last time we upgraded because I
+didn't do an explicit update-version step."* The bump itself is one line. What
+was missing was (a) an explicit enumeration of every place a version is pinned,
+(b) proof the new version still navigates on a device, and (c) a checklist that
+answers *"does everything still work"* afterwards. That is what this owns.
+
+**This skill is a thin orchestrator.** It does not reimplement calibration
+(`selector-map-calibrate`), reactive selector repair (`selector-map-heal`), or
+version comparison (`lib/ccz-min-version.ts`). It sequences them and adds the
+pin-flip + activation + verification they all omit.
+
+## Inputs
+
+| Source | Artifact | Used for |
+|---|---|---|
+| Operator | Target APK version (e.g. `2.64.0`) | everything downstream |
+| Live | `github.com/dimagi/commcare-android` releases | does the release exist, and does an asset resolve |
+| Static | `lib/apk-pin-sites.ts` (via its test) | the machine-discovered pin-site list |
+| Static | `mcp/mobile/selectors/connect-<old>.yaml` | the map the new one is seeded from |
+| Tool | `bin/ace-doctor` `selector_map_currency` | BEFORE/AFTER state |
+
+## Products
+
+- `mcp/mobile/selectors/connect-<new>.yaml` — a **live-calibrated** map (produced by `selector-map-calibrate`, not transcribed).
+- `docs/mobile-calibration/connect-<new>-<date>.md` — the calibration report.
+- `docs/mobile-atlas/connect-<new>.md` — the surface atlas for the new version.
+- Every pin site flipped in ONE commit (§ Step 5).
+- `docs/mobile-calibration/connect-<new>-upgrade-verification.md` — the § Verification checklist, filled in.
+
+## Preconditions (restore, don't adapt)
+
+Per CLAUDE.md § Phase preconditions are restored, not adapted:
+
+1. **No `/ace:run` is in flight on this machine.** This skill runs
+   `/ace:setup --force-env` and forces a full Claude Code restart — both of
+   which a live run owns. Ask; do not probe-and-guess.
+2. **A device is reachable and is yours to wipe.** `mobile_ensure_avd_running`
+   cold-boots with `-wipe-data` every dispatch, so it kills whatever is
+   running. **AVD contention is real** — as of 2026-09-05 `mobile_diagnose`
+   reported 11 other live `ace-mobile` MCPs sharing 2 AVDs across 2 macOS
+   accounts. **Serialise the calibration**, and read a dead-looking device as
+   *probably a peer's*, not as broken.
+3. **Never assume the adb port.** It is ALLOCATED (`mcp/mobile/port-allocator.ts`
+   walks upward from 5037; 5038 was live on 2026-09-05). Ask `mobile_diagnose`
+   for the port + serial. **Never probe with bare `adb`** — it starts a daemon
+   on any port it is pointed at, so a port scan manufactures the servers it then
+   reports. To find listeners by hand:
+   `lsof -nP -iTCP -sTCP:LISTEN | awk '$1 ~ /^adb/ {print $9}'`.
+4. **A Learn-NOT-complete opportunity** for the Learn-dependent states. Learn
+   completion is one-way per `(test user, opportunity)` and is server-side — a
+   device wipe does NOT reset it (jjackson/ace#568). Consuming one to "diagnose"
+   costs a fresh `/ace:run`.
+
+## Process
+
+### Step 0 — Record the BEFORE state
+
+Do this first; the rollback and the verification both diff against it.
+
+```bash
+bin/ace-doctor            # capture the whole selector_map_currency block
+```
+
+Record `apk_version`, `pin`, `code_default`, `newest_map`, `rows_verified`,
+`rows_unverified`, `unresolved_selectors`. Then record the live device's
+version, so "what we were on" is a measurement rather than a memory:
+
+```bash
+# serial + adb port come from mobile_diagnose — do NOT assume 5037
+adb -s <serial> shell dumpsys package org.commcare.dalvik | grep versionName
+```
+
+### Step 1 — Prove the release resolves to a downloadable asset
+
+**Before editing any pin.** Dimagi has renamed the release asset at least three
+times, and `mcp/mobile/client.ts` probes the three known conventions in order:
+
+| APK | Asset name |
+|---|---|
+| 2.62.0 | `app-commcare-release.apk` |
+| 2.63.0 / 2.63.1 | `commcare-<v>-release.apk` |
+| 2.63.2+ | `commcare-<v>.apk` |
+
+The 2.63.2 form was missing from that probe list until 2026-07-25, so pinning a
+**published** release failed with `APK_DOWNLOAD_FAILED`. A pin whose asset does
+not resolve is indistinguishable from a network fault at the point it bites.
+
+```bash
+gh release view "commcare_<new>" -R dimagi/commcare-android \
+  --json isDraft,isPrerelease,assets \
+  --jq '{isDraft, isPrerelease, assets: [.assets[].name]}'
+```
+
+Halt unless ALL of:
+
+- the tag exists (a 404 here is the whole finding — do not proceed),
+- `isDraft` is `false` — **a draft release has no assets.** `mcp/mobile-server.ts`
+  records `2.63.3` as exactly this: a GitHub draft. Pin PUBLISHED releases only,
+- at least one asset name matches one of the three conventions above.
+
+If the asset matches NONE of them, Dimagi renamed it a fourth time: add the new
+form to the `candidateUrls` list in `mcp/mobile/client.ts` (newest-convention
+first) **in this PR**, with a test, before continuing.
+
+### Step 2 — Seed the new map and calibrate it against a live device
+
+1. Copy `mcp/mobile/selectors/connect-<old>.yaml` →
+   `connect-<new>.yaml`, set its `apk_version:` to `<new>`, and mark every row
+   `unverified: true`.
+
+   **The copy is a SCAFFOLD, never a shipped answer.** The 2.63.0 map was
+   copied unverified from 2.62.0 and shipped as a permanent placeholder; the
+   drift was only found when a device walk burned wall-clock
+   (jjackson/ace#591/#593). CLAUDE.md § close the loop to the source of truth:
+   selector values are **device truth**. Do not transcribe from a sibling
+   version, and do not back-copy a newly calibrated row into an older map to
+   make a test pass.
+
+2. **Run `selector-map-calibrate` against `<new>`.** It owns Steps 0–7: the
+   cold-boot, the 10-state walk, the ui-dump harvest, `scripts/probe-atlas-drift.ts`,
+   the map reconciliation, the recipe migration off raw resource-ids, and the
+   on-device re-run. Do not reimplement any of it here.
+
+   Serialise it (§ Preconditions 2). Its Step 6 — re-running each migrated
+   recipe on-device — is the non-negotiable one.
+
+3. Its product is `docs/mobile-calibration/connect-<new>-<date>.md`. If it
+   records residual gaps, they are carried into § Verification, not dropped.
+
+### Step 2b — Cover the version-upgrade prompt (dimagi-internal/ace#1998)
+
+**This screen appears exactly during a version transition, which is why it is
+this skill's job and not calibration's.** When CommCare's minimum exceeds the
+installed APK it interposes a soft gate instead of launching the app, and there
+is no selector coverage for it. Live ui-dump, APK 2.63.2:
+
+```
+org.commcare.dalvik:id/prompt_title
+  "The application requires CommCare version 2.64.0. You are currently running 2.63.2."
+org.commcare.dalvik:id/action_button    "UPDATE COMMCARE VIA THE PLAY STORE"
+org.commcare.dalvik:id/do_later_button  "I'LL UPDATE LATER"     <-- dismisses it
+```
+
+Today the claim recipe falls through to its `nsv_home_screen` assertion and
+captures the failure under `claim-START-HANDOFF-WEDGED-issue629` — a label for
+a **different** class (#629 is the INERT `btn_start` handoff, where the launch
+never fired; here the launch worked and CommCare deliberately gated it).
+
+During an upgrade, add:
+
+1. Rows in `connect-<new>.yaml`: `commcare-version-prompt-title`,
+   `commcare-version-update-later` (`.../do_later_button`),
+   `commcare-version-update-now` (`.../action_button`).
+2. A guarded `runFlow when visible: <version-prompt-title>` that taps
+   `do_later_button`, in `connect-claim-opp.yaml`, `learn-launch.yaml` and
+   `deliver-launch.yaml`, ahead of the `nsv_home_screen` assertion.
+3. Its own capture label, so the two causes are never conflated again.
+
+**Validate the branch on-device in this session** — it changes what is *matched
+against* the device, so it is device-truth by CLAUDE.md's classification test.
+Stage it via `ACE_MOBILE_STATIC_RECIPES_DIR=<repo>/mcp/mobile/recipes/static`
+plus a full Claude Code restart (`playbook/integrations/mobile-integration.md
+§ Validating a palette fix pre-merge`) — a palette staged *next to* the recipe
+is shadowed by the palette dir and silently unused. If you cannot reach a
+device, merge with the residual **named in the PR** (CLAUDE.md § the device gate
+is a PREFERENCE), and say exactly what would falsify it.
+
+Note this is a **mitigation**. The root cause of the gate is the CCZ-vs-APK
+mismatch in dimagi-internal/ace#1997.
+
+### Step 3 — Prove every static recipe still navigates
+
+Calibration re-runs the recipes it *migrated*. An upgrade must clear all of
+them, because a recipe that touched no migrated row can still break on a
+surface the new APK reshaped.
+
+For every file in `mcp/mobile/recipes/static/`:
+
+1. `mobile_validate_recipe` with `apkVersion: <new>` — lint must stay clean
+   (watch `runFlow-guard-scope-mismatch`).
+2. `mobile_resolve_selectors` with `apkVersion: <new>` — no unresolved
+   `${SELECTOR:...}` placeholders.
+3. **Run it on-device** as part of at least one full journey (registration →
+   claim → Learn → Deliver). A statically-resolved recipe that was never re-run
+   is still a guess about whether the recipe *acts* correctly — substitution
+   into nested `below:` / `when:` positions has bitten us (jjackson/ace#663).
+
+Record per recipe: `validated` / `resolved` / `ran-on-device` / `not-reached
+(reason)`. "Not reached" is an honest residual; a silent omission is not.
+
+### Step 4 — Add the atlas entry
+
+Write `docs/mobile-atlas/connect-<new>.md` from the calibration walk's dumps.
+`test/mcp/mobile/static-palette-health.test.ts` keys the expected atlas filename
+off `DEFAULT_APK_VERSION`, so Step 5 goes red without it — by design.
+
+### Step 5 — Flip every pin, atomically, in one commit
+
+**Enumerate from a live scan, never from memory.** `lib/apk-pin-sites.ts`
+discovers the sites; `test/lib/apk-pin-sites.test.ts` fails if a site exists
+that this checklist does not name, and fails if any `pin` disagrees with any
+other. That test is the reason this list cannot rot — a fourth pin site in a
+new syntax trips its `suspect` scan.
+
+```bash
+npx vitest run test/lib/apk-pin-sites.test.ts   # the enumeration, machine-checked
+```
+
+**`pin` — MUST all flip together:**
+
+| Site | Form |
+|---|---|
+| `mcp/mobile/client.ts` | `export const DEFAULT_APK_VERSION = '<v>'` |
+| `mcp/mobile-server.ts` | `apkVersion: z.string().default('<v>')` — **twice** (`mobile_validate_recipe`, `mobile_resolve_selectors`) |
+| `mcp/mobile/recipe-resolver.ts` | `prepareRecipeForMaestro`'s `apkVersion` default parameter |
+| `scripts/probe-atlas-drift.ts` | `process.env.ACE_CONNECT_APK_VERSION \|\| '<v>'` |
+| `.env.tpl` | `ACE_CONNECT_APK_VERSION=<v>` |
+
+**`doc-claim` — prose that asserts what the default IS; flips or it lies:**
+
+| Site | Claim |
+|---|---|
+| `CLAUDE.md` | `(default APK <v>)` in the `ace-mobile` bullet |
+| `playbook/integrations/mobile-integration.md` | `ACE_CONNECT_APK_VERSION` `(default <v>)` |
+
+**`doc-example` — review, may legitimately lag** (illustrative manifest
+snippets whose real value is read from the device at capture time):
+`skills/connect-baseline-screenshots/SKILL.md`,
+`skills/common-screenshot-capture/SKILL.md`.
+
+**Version-keyed artifact FAMILIES — an upgrade ADDS a member, never rewrites
+one:** `mcp/mobile/selectors/` (`connect-<v>.yaml`, each declaring its own
+`apk_version:`), `docs/mobile-atlas/` (`connect-<v>.md`).
+
+**Also declared, and deliberately valueless:** `runtime.yaml` declares
+`ace-connect-apk-version` → `ACE_CONNECT_APK_VERSION` as `optional: true` and
+carries **no version literal**. Nothing to flip; named here so its absence from
+the flip list is a decision rather than an oversight.
+
+**Never sed the whole repo.** `2.63.2` → `2.64.0` across the tree rewrites the
+historical maps, the atlas for older versions, and every CHANGELOG entry.
+
+### Step 6 — Ship
+
+`npm test` + `npx tsc --noEmit` green, then follow `skills/shipping`
+(bump → PR → arm auto-merge → **wait** → verify it landed). VERSION collisions
+are expected — `bash scripts/version-bump.sh --rebase-first` then
+`git push --force-with-lease`.
+
+State the evidence class in the PR body: which parts are device-validated
+(selector map, the #1998 branch, the recipe runs) and which are static (the pin
+flip, the pin-site test).
+
+### Step 7 — Activate, in this order
+
+The order is the whole point, and reversing it fails silently.
+
+1. **`/ace:setup --force-env`** — `/ace:update` does **not** touch the installed
+   `.env`, so the machine stays pinned to the old version until this runs. Never
+   a raw `op inject` (it drops local-only keys like `ACE_WEB_PAT_TOKEN`); a
+   `config/gating.json` deny rail blocks that form.
+2. **Then quit and reopen Claude Code — a full process restart.** Every MCP
+   server calls `dotenvConfig()` at module top level and consumes the result at
+   import, so a subprocess spawned *before* the `.env` write holds the old value
+   for its whole life (ace#880: the connect MCP came up at 21:17:09, `.env` was
+   written at 21:17:54, and the registry read the stale value with a correct
+   parser). `/reload-plugins` reloads skills/agents/commands/hooks and does
+   **not** respawn MCP subprocesses.
+3. **Confirm the running subprocess, not the version files.** `VERSION` and
+   `installed_plugins.json` are on-disk facts a live session can have rewritten
+   *after* spawning its children:
+
+   ```bash
+   ps -eo ppid,command | awk -v c="$PPID" '$1==c' | grep -o "0\.13\.[0-9]*"
+   cat ~/.claude/plugins/cache/ace/ace/<dir-from-above>/VERSION
+   ```
+
+   The directory NAME can lie (it comes from `plugin.json`, the contents from
+   the marketplace clone's HEAD); the `VERSION` file inside it is authoritative.
+
+4. **Recipes do not hot-patch their way out of this.** `mcp/mobile/recipes/*.yaml`
+   are re-read per call — but from **the version directory the subprocess was
+   LAUNCHED from**, not the newest on disk. Patching the newest cache dir after
+   an update does nothing, with no symptom. Measured: a device walk ran against
+   recipes 15 versions stale, five of them changed (ace#1500).
+
+### Step 8 — Verify (§ Verification checklist)
+
+Run the checklist below and write it to
+`docs/mobile-calibration/connect-<new>-upgrade-verification.md`. This is the
+half the operator says was missing: the artifact that answers *"does everything
+still work in the new version."*
+
+## Verification checklist
+
+Each line names what it ASSERTS, so a green tick is a claim someone can check.
+
+**A. The pin actually took**
+
+| # | Assert | How |
+|---|---|---|
+| A1 | `bin/ace-doctor` `selector_map_currency` is `pass`, and `pin` == `code_default` == `newest_map` == `<new>` | `bin/ace-doctor` |
+| A2 | `rows_unverified: 0`, or the residual names exactly which rows and why | doctor block |
+| A3 | `unresolved_selectors: []` | doctor block |
+| A4 | `env_freshness` names no stale pid | doctor block |
+| A5 | The live MCP subprocess runs the merged version | the `$PPID` + inner-`VERSION` read in Step 7.3 |
+| A6 | The device actually runs `<new>` | `dumpsys package org.commcare.dalvik \| grep versionName` |
+| A7 | Every `pin` site agrees and no unclassified pin site exists | `npx vitest run test/lib/apk-pin-sites.test.ts` |
+
+**B. The device still works**
+
+| # | Assert | How |
+|---|---|---|
+| B1 | A cold boot reaches the precondition (registered demo user at Connect home) | `mobile_ensure_avd_running` |
+| B2 | The APK downloads — the asset convention resolved | no `APK_DOWNLOAD_FAILED` in the boot log |
+| B3 | Registration incl. the camera/photo surface completes | the cold-boot registration recipes |
+| B4 | Claim → Learn → Deliver walks end-to-end on one journey | `mobile_run_recipe` per Step 3 |
+| B5 | Every static recipe is `validated` + `resolved` + `ran-on-device` or has a named reason | Step 3's per-recipe table |
+| B6 | The version-upgrade prompt is dismissed by its own branch, not by falling through to a mislabelled failure | Step 2b, on-device |
+
+**C. The rest of ACE still agrees with the new pin**
+
+| # | Assert | How |
+|---|---|---|
+| C1 | `npm test` green | `npm test` |
+| C2 | `npx tsc --noEmit` clean | `npx tsc --noEmit` |
+| C3 | The atlas for `<new>` exists (the palette-health ratchet keys on it) | `docs/mobile-atlas/connect-<new>.md` |
+| C4 | **`app-release-qa`'s CCZ min-version check changed disposition** — see below | re-read `lib/ccz-min-version.ts`'s severity table |
+| C5 | The calibration report's residual gaps are carried forward, not dropped | `docs/mobile-calibration/connect-<new>-<date>.md` |
+
+**C4 in full, because completing this skill CHANGES another check's behaviour.**
+`lib/ccz-min-version.ts` compares a released CCZ's `profile.ccpr` minimum
+against the pinned APK, and its severity keys on whether a remedy is *reachable*:
+
+- `required <= pinned` → `ok`.
+- `required > pinned`, **a selector map covering `required` exists** → `blocker`.
+- `required > pinned`, **no such map** → `warn`.
+
+So the moment this skill lands `connect-<new>.yaml`, every run whose CCZ requires
+`<= <new>` flips `ok`, and any run still requiring MORE than the pin flips
+`warn` → **`blocker`**, because repinning is now something an operator can
+actually do. That is intended: the check gets sharper as coverage lands. Say so
+in the PR, and expect Phase 3 to start halting on mismatches it previously only
+warned about.
+
+## Rollback — if the new version is bad
+
+The upgrade is designed to be reversible because the old map is never deleted.
+
+1. **Stop before blaming the APK.** Read `failureForensics.screenshotPath` +
+   `.uiDumpPath` on any recipe failure first
+   (`playbook/integrations/mobile-integration.md § Failure forensics`); a
+   `-FAILURE.xml` element tree distinguishes "wrong selector" from "wrong
+   screen" in one step. And if something that WORKED now fails, run
+   `upstream-regression-triage` before concluding the APK is at fault.
+2. **Fast, machine-local revert (no PR):** set
+   `ACE_CONNECT_APK_VERSION=<old>` in the installed `.env`, then **restart
+   Claude Code** (Step 7 order applies in reverse too). The old map is still on
+   disk, so this is a complete rollback of runtime behaviour. Expect
+   `selector_map_currency` to report `fail` with *"pin is stale (behind code
+   default)"* — that is the pin doing its job, and it is the signal that a repo
+   rollback is still owed.
+3. **Repo revert:** revert the Step 5 commit (all pins move back together —
+   which is why they shipped together). **Keep `connect-<new>.yaml` and the
+   atlas**: they are live-measured evidence and cost a device walk. Deleting
+   them throws away the only calibration you have and re-enters the
+   transcribed-map class the next time someone tries.
+4. **File what you learned** against `dimagi-internal/ace` with the run/repro,
+   labelled `blocks-e2e` if a run cannot complete. Search first, in its own
+   Bash call. Self-heal it if the fix is bounded.
+
+## Related skills
+
+- `selector-map-calibrate` — the live-device state walk this skill delegates Step 2 to. Systematic, per-APK-version, manual.
+- `selector-map-heal` — narrow, reactive, additive-only repair from ONE failure dump. Not an upgrade path; it never flips a pin.
+- `upstream-regression-triage` — when a path that worked now fails and ACE's own code is unchanged.
+- `shipping` — the bump → PR → wait → merge → verify mechanics for Step 6.
+
+## Failure modes
+
+- **Pinning a version whose asset does not resolve.** `APK_DOWNLOAD_FAILED` on a
+  published release, because Dimagi renamed the asset again (the 2.63.2 case).
+  Step 1 is the guard; a GitHub **draft** release (2.63.3) has no assets at all.
+- **Transcribing the map from the sibling version.** The 2.63.0 placeholder
+  problem (#591/#593). The copy is a scaffold; calibration is the answer.
+- **Flipping some pins and not others.** `mobile_resolve_selectors` then reads a
+  different map than the runtime loads, and the disagreement is invisible until
+  a device walk. Step 5 + `test/lib/apk-pin-sites.test.ts` are the guard.
+- **Comparing versions as strings.** `'2.64.0' < '2.9.0'` and `'2.63.10' <
+  '2.63.9'`. Use `compareVersionTriples` from `lib/ccz-min-version.ts`; never
+  write a third comparator.
+- **Restarting before `/ace:setup --force-env`.** The MCP children re-read the
+  OLD `.env`, and nothing surfaces it except `env_freshness` (ace#880).
+- **Hot-patching the newest plugin-cache dir.** A live subprocess re-reads
+  recipes from the directory it was LAUNCHED from; the patch is faithfully
+  ignored (ace#1500).
+- **Consuming the Learn precondition to "diagnose".** One-way per
+  `(test user, opportunity)`; the only restore is a fresh `/ace:run` (#568).
+- **Treating a peer's AVD as a dead device.** Many concurrent `ace-mobile` MCPs
+  share few AVDs; the adb port is allocated, not fixed. Ask `mobile_diagnose`.
+
+## Change log
+
+| Date | Change | Author |
+|------|--------|--------|
+| 2026-09-05 | Initial version. Authored because the previous APK upgrade had no explicit update-version step, so pin sites were missed and nothing verified the new version end-to-end. Orchestrates `selector-map-calibrate`; adds the pin flip, the ace#1998 version-prompt coverage, the activation ORDER, the verification checklist, and rollback. Pin-site enumeration is machine-discovered by `lib/apk-pin-sites.ts` + `test/lib/apk-pin-sites.test.ts`, so this checklist cannot silently rot. | ACE team |
