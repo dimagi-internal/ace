@@ -36,7 +36,7 @@ Adding a new video template requires only `meta` + `intent` + `skeleton` +
 | `program_slug` | yes | — | Slug for the new video program. Must match `[a-z0-9][a-z0-9-]{0,63}`. |
 | `workspace_slug` | no | `dimagi-team` | ace-web workspace to write into. |
 | `gdrive_folder_id` | no | — | Drive folder holding the program's media. When set, enumerates it and populates `manifest:` + clip refs. |
-| `base_url` | no | `$ACE_WEB_BASE` or `https://labs.connect.dimagi.com/ace` | ace-web base URL. |
+| `base_url` | no | `$ACE_WEB_BASE_URL` or `https://labs.connect.dimagi.com/ace` | ace-web base URL. |
 | `no_post` | no | false | When set, print the filled spec to stdout instead of POSTing (useful for eval or manual inspection). |
 | `ACE_WEB_PAT_TOKEN` | yes (env) | — | Per-human Bearer token; mint via `/ace:ace-web-pat-mint`. |
 
@@ -359,7 +359,7 @@ set -euo pipefail
   echo "ACE_WEB_PAT_TOKEN not set; run /ace:ace-web-pat-mint"; exit 2;
 }
 
-BASE_URL="${BASE_URL:-${ACE_WEB_BASE:-https://labs.connect.dimagi.com/ace}}"
+BASE_URL="${BASE_URL:-${ACE_WEB_BASE_URL:-https://labs.connect.dimagi.com/ace}}"
 BASE_URL="${BASE_URL%/}"
 WORKSPACE_SLUG="${WORKSPACE_SLUG:-dimagi-team}"
 

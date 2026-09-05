@@ -18,7 +18,7 @@ Source one or more short (~20-30s) proof clips that credibly show the picked ang
 | `partnership-angles` | `ACE/partnerships/<slug>/runs/<run-id>/angles.yaml` | Selected angle's `product` beat intent and `primary_capability` |
 | Phase 1 profile | `ACE/partnerships/<slug>/prospect.yaml` | Program type, sector, target geography — drives media-library query |
 | Operator selection | `run_state.yaml.phases.angles.products.selected_angle` | Which angle was picked (set by the orchestrator at the gate) |
-| Env | `ACE_WEB_PAT_TOKEN`, `ACE_WEB_BASE`, `WORKSPACE_SLUG` (default `dimagi-team`) | ace-web media library auth + base URL + workspace |
+| Env | `ACE_WEB_PAT_TOKEN`, `ACE_WEB_BASE_URL`, `WORKSPACE_SLUG` (default `dimagi-team`) | ace-web media library auth + base URL + workspace |
 
 ## Products
 
@@ -45,10 +45,10 @@ Source one or more short (~20-30s) proof clips that credibly show the picked ang
    ```bash
    curl -sS \
      -H "Authorization: Bearer $ACE_WEB_PAT_TOKEN" \
-     "$ACE_WEB_BASE/api/w/$WORKSPACE_SLUG/videos/library/video"
+     "$ACE_WEB_BASE_URL/api/w/$WORKSPACE_SLUG/videos/library/video"
    ```
 
-   (`$ACE_WEB_BASE` defaults to `https://labs.connect.dimagi.com/ace`; `$WORKSPACE_SLUG` defaults to `dimagi-team`.)
+   (`$ACE_WEB_BASE_URL` defaults to `https://labs.connect.dimagi.com/ace`; `$WORKSPACE_SLUG` defaults to `dimagi-team`.)
 
    Scan the returned entries for a clip that matches the clip specification: same program type (Learn/Deliver/Verify/Pay), same capability shown, similar sector. A clip is a **good match** when:
    - Its `capability_tags` or `description` overlaps the `primary_capability` of the picked angle.

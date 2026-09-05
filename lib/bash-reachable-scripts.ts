@@ -72,15 +72,9 @@ export const EXTRA_GUARDED_VARS: Record<string, string> = {
   NOVA_MCP_URL: 'non-default Nova host, read from .env when present',
   // Same shape for connect-labs.
   LABS_BASE_URL: 'non-default connect-labs host, read from .env when present',
-  // The shell-override spelling of the ace-web host, documented in
-  // `commands/ace-web-pat-mint.md` and read by `scripts/ace-web-pat-mint.ts`
-  // plus several skills. `.env.tpl` declares the same host as
-  // `ACE_WEB_BASE_URL`, so the two names never meet and a machine provisioned
-  // by `/ace:setup` supplies neither to those Bash paths — they always take the
-  // hardcoded default. That drift is a named residual of ace#1964, out of its
-  // scope because reconciling the names changes default semantics. Guarded here
-  // so the script is at least held to loading `.env` at all.
-  ACE_WEB_BASE: 'ace-web host, the shell-override spelling of ACE_WEB_BASE_URL',
+  // ace#1969 closed the `ACE_WEB_BASE` residual this list used to carry: every
+  // reader now uses the declared `ACE_WEB_BASE_URL`, which `.env.tpl` supplies,
+  // so it needs no entry here. `RETIRED_ENV_SPELLINGS` below keeps it retired.
   // The Google SA key path. ACE installs the key beside `.env` in plugin data,
   // and every Drive-touching script honours an override from the environment.
   GOOGLE_APPLICATION_CREDENTIALS: 'Google SA key path override',
@@ -266,4 +260,127 @@ export function discoverBashReachableScripts(repoRoot: string): ScriptFinding[] 
     });
   }
   return findings;
+}
+
+// ---------------------------------------------------------------------------
+// ace#1969 — the spelling-drift guard
+// ---------------------------------------------------------------------------
+//
+// The ratchet above asks "does this script load `.env` at all?". It cannot ask
+// the next question, and that question is where the ace-web host actually
+// broke: a reader can load `.env` perfectly and still read a name `.env` never
+// sets. `.env.tpl` declared the host as `ACE_WEB_BASE_URL`; the script, two
+// commands and six skills read `ACE_WEB_BASE`; `skills/sweep-ace-web` read a
+// third name, `ACE_WEB_URL`. None of the three met, so every one of those paths
+// fell through to a hardcoded `https://labs.connect.dimagi.com/ace` no matter
+// what `/ace:setup --force-env` had provisioned — silently, because the default
+// is a real reachable host. Point ACE at a staging ace-web and the MCP/doctor
+// half follows while the script/skill half does not.
+//
+// The guard is therefore: every `ACE_WEB_*` name a runnable or instructing
+// surface uses must be DECLARED in `.env.tpl`. Anchoring to the template rather
+// than to a list means the fix cannot rot — a fourth spelling fails CI the day
+// it lands, and legitimising one is a one-line template edit that also makes it
+// visible to the ratchet above and to `/ace:setup`.
+//
+// `declaredEnvNames` deliberately accepts a COMMENTED `# KEY=` line, unlike
+// `parseEnvTemplateKeys` above. The two ask different questions: the ratchet
+// needs the keys `.env` will actually carry a value for, while this guard needs
+// the names the contract acknowledges. `ACE_WEB_PAT_TOKEN` ships commented
+// because it is minted per-machine, and it is no less declared for that.
+
+/**
+ * Names retired in favour of a spelling `.env.tpl` declares.
+ *
+ * A retired name is not merely unused — it must not be silently IGNORED
+ * either. `ACE_WEB_BASE=http://localhost:8000` was the documented way to aim
+ * the PAT minter at a local ace-web, so a rename that drops it on the floor
+ * recreates the same wrong-host mint from the other direction. `refusedBy`
+ * names the one file allowed to still read the retired name, because reading
+ * it in order to REFUSE it is the opposite of the defect. That is a positive
+ * obligation, not an exemption: `test/lib/bash-reachable-scripts.test.ts`
+ * asserts the named file actually carries the refusal, so deleting it fails CI.
+ */
+export const RETIRED_ENV_SPELLINGS: Record<
+  string,
+  { replacement: string; refusedBy?: string }
+> = {
+  ACE_WEB_BASE: {
+    replacement: 'ACE_WEB_BASE_URL',
+    refusedBy: 'scripts/ace-web-pat-mint.ts',
+  },
+  // Only ever read by `skills/sweep-ace-web`, i.e. prose an agent executes —
+  // there is no process to refuse in, so it simply has no reader left.
+  ACE_WEB_URL: { replacement: 'ACE_WEB_BASE_URL' },
+};
+
+/** The env roots this guard scans: surfaces that run, or instruct an agent. */
+export const SPELLING_SCAN_ROOTS = ['scripts', 'skills', 'commands', 'agents', 'bin', 'mcp', 'lib'];
+
+/**
+ * Every `KEY=` name `.env.tpl` acknowledges, commented lines included.
+ * See the note above on why this differs from `parseEnvTemplateKeys`.
+ */
+export function declaredEnvNames(tplSource: string): Set<string> {
+  const names = new Set<string>();
+  for (const line of tplSource.split('\n')) {
+    const m = /^#?\s*([A-Z][A-Z0-9_]*)=/.exec(line);
+    if (m) names.add(m[1]);
+  }
+  return names;
+}
+
+/**
+ * Env-var names a non-TypeScript source references: `$NAME`, `${NAME…}` (any
+ * expansion form) and `NAME=` assignments, which is how a shell override is
+ * both documented and used.
+ *
+ * Regex is the right tool here and does not walk back the AST rule above: that
+ * rule exists because a hand-rolled scanner mis-read TypeScript's comment,
+ * string and regex-literal grammar. Markdown and shell have no such grammar to
+ * get wrong, and every `.ts` file still goes through the parser below.
+ */
+export function shellEnvNames(source: string): Set<string> {
+  const names = new Set<string>();
+  for (const m of source.matchAll(/\$\{?([A-Z][A-Z0-9_]*)/g)) names.add(m[1]);
+  for (const m of source.matchAll(/\b([A-Z][A-Z0-9_]*)=/g)) names.add(m[1]);
+  return names;
+}
+
+export interface SpellingUse {
+  /** Repo-relative path of the file using the name. */
+  file: string;
+  /** The undeclared variable name. */
+  variable: string;
+}
+
+/**
+ * Scan `SPELLING_SCAN_ROOTS` for uses of `<prefix>*` env names that `.env.tpl`
+ * does not declare. `.ts` files go through the TypeScript parser so a name that
+ * merely appears in prose or a diagnostic string does not count as a read;
+ * everything else is scanned as shell/markdown.
+ */
+export function findUndeclaredEnvSpellings(repoRoot: string, prefix: string): SpellingUse[] {
+  const declared = declaredEnvNames(fs.readFileSync(path.join(repoRoot, '.env.tpl'), 'utf8'));
+  const uses: SpellingUse[] = [];
+
+  for (const root of SPELLING_SCAN_ROOTS) {
+    for (const file of walk(path.join(repoRoot, root))) {
+      const rel = path.relative(repoRoot, file);
+      const source = fs.readFileSync(file, 'utf8');
+      if (!source.includes(prefix)) continue;
+
+      const names = file.endsWith('.ts')
+        ? new Set(analyzeScriptSource(rel, source).envReads.map((r) => r.variable))
+        : shellEnvNames(source);
+
+      for (const name of [...names].sort()) {
+        if (!name.startsWith(prefix)) continue;
+        if (declared.has(name)) continue;
+        if (RETIRED_ENV_SPELLINGS[name]?.refusedBy === rel) continue;
+        uses.push({ file: rel, variable: name });
+      }
+    }
+  }
+  return uses;
 }

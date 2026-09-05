@@ -75,7 +75,7 @@ checks pick the new rules up automatically.
      you know the file id, **or**
    - Through ace-web's API:
      `curl -fsS -H "Authorization: Bearer $ACE_WEB_PAT_TOKEN" \\
-       "$ACE_WEB_BASE/api/w/<workspace>/videos/programs/<slug>/runs/<run-id>" \\
+       "$ACE_WEB_BASE_URL/api/w/<workspace>/videos/programs/<slug>/runs/<run-id>" \\
        | jq -r '.yaml_path'`
      gives you the Drive path; pair with `drive_read_file` once the
      Drive file id is in hand.

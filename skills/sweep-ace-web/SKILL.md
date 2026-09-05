@@ -21,7 +21,7 @@ into wiping all visible sessions; opp-orphan filtering is not its job.
 
 ## Inputs
 
-- `ACE_WEB_URL` — env var; deployed ace-web base URL (no trailing slash).
+- `ACE_WEB_BASE_URL` — env var; deployed ace-web base URL (no trailing slash).
   Defaults to `https://labs.connect.dimagi.com/ace` to match
   `--ace-web-url` elsewhere in the plugin.
 - `ACE_WEB_PAT_TOKEN` — env var; per-human Personal Access Token minted via
@@ -54,11 +54,11 @@ ignore it.
 1. **Verify preconditions.**
    - `ACE_WEB_PAT_TOKEN` set; if missing, stop and instruct the operator to
      run `/ace:ace-web-pat-mint`.
-   - `ACE_WEB_URL` resolved (env var or default). Strip any trailing slash.
+   - `ACE_WEB_BASE_URL` resolved (env var or default). Strip any trailing slash.
    - `sweepFolder` provided by the orchestrator. If absent, abort — the
      skill must not invent its own.
 
-2. **GET `<ACE_WEB_URL>/api/sessions/sweep`** with
+2. **GET `<ACE_WEB_BASE_URL>/api/sessions/sweep`** with
    `-H "Authorization: Bearer $ACE_WEB_PAT_TOKEN"`. Expect 200. Response shape:
 
    ```yaml
@@ -109,7 +109,7 @@ Runs only when the orchestrator re-dispatches with `mode: execute` +
 `approvedIds` (the session ids the human approved in chat — typically all,
 but honor a subset if that's what was approved).
 
-5. **POST `<ACE_WEB_URL>/api/sessions/sweep/delete`** with
+5. **POST `<ACE_WEB_BASE_URL>/api/sessions/sweep/delete`** with
    `-H "Content-Type: application/json"`,
    `-H "Authorization: Bearer $ACE_WEB_PAT_TOKEN"`, and
    `{"session_ids": [<approvedIds>...]}` as the body. Expect 200. Response shape:
@@ -136,7 +136,7 @@ but honor a subset if that's what was approved).
 
 ```bash
 [ -n "$ACE_WEB_PAT_TOKEN" ] || { echo "ACE_WEB_PAT_TOKEN not set; run /ace:ace-web-pat-mint"; exit 2; }
-BASE_URL="${ACE_WEB_URL:-https://labs.connect.dimagi.com/ace}"
+BASE_URL="${ACE_WEB_BASE_URL:-https://labs.connect.dimagi.com/ace}"
 BASE_URL="${BASE_URL%/}"
 
 # Scratch response files: `mktemp`, never a fixed /tmp literal (ace#1046) —

@@ -2670,14 +2670,14 @@ info "mobile_auth: ace-mobile is local — see connect_auth above for Connect-si
 # ace-web is broken. Only runs when ACE_WEB_BASE_URL + PAT are both
 # set — otherwise skipped silently (the env-presence is already
 # tracked above by ace_web_pat_token).
-ACE_WEB_BASE="$(get_env ACE_WEB_BASE_URL)"
-if [ -n "$PAT_TOKEN" ] && [ -n "$ACE_WEB_BASE" ]; then
+CLOUD_WEB_BASE="$(get_env ACE_WEB_BASE_URL)"
+if [ -n "$PAT_TOKEN" ] && [ -n "$CLOUD_WEB_BASE" ]; then
   # Strip trailing slash to mirror cloud.ts normalisation.
-  ACE_WEB_BASE="${ACE_WEB_BASE%/}"
+  CLOUD_WEB_BASE="${CLOUD_WEB_BASE%/}"
   CLOUD_EMU_BODY="$(mktemp -t ace-doctor-cloud-emu.XXXXXX)"
   CLOUD_EMU_CODE="$(curl_auth "Authorization: Bearer $PAT_TOKEN" \
 -sS -o "$CLOUD_EMU_BODY" -w '%{http_code}' --max-time 8 \
-    "$ACE_WEB_BASE/api/mobile/diagnose" 2>/dev/null || echo "000")"
+    "$CLOUD_WEB_BASE/api/mobile/diagnose" 2>/dev/null || echo "000")"
   case "$CLOUD_EMU_CODE" in
     2*)
       # Parse the envelope to surface the most actionable signal.
@@ -2701,7 +2701,7 @@ except Exception as e:
 " 2>/dev/null)"
       case "$CLOUD_EMU_SUMMARY" in
         adb=0*|parse_err*)
-          warn "cloud_emu: $ACE_WEB_BASE/api/mobile/diagnose → HTTP $CLOUD_EMU_CODE but emulator unhealthy ($CLOUD_EMU_SUMMARY)" "the emulator may have crashed or the runner unit failed — call /api/mobile/restart-runner to cold-boot cleanly, or wait for ensure-running's auto-recovery on next run"
+          warn "cloud_emu: $CLOUD_WEB_BASE/api/mobile/diagnose → HTTP $CLOUD_EMU_CODE but emulator unhealthy ($CLOUD_EMU_SUMMARY)" "the emulator may have crashed or the runner unit failed — call /api/mobile/restart-runner to cold-boot cleanly, or wait for ensure-running's auto-recovery on next run"
           ;;
         ec2_stopped)
           info "cloud_emu: ec2 instance is stopped — ensure-running will start it on first call (~5 min cold-boot)"
@@ -2715,13 +2715,13 @@ except Exception as e:
       warn "cloud_emu: HTTP $CLOUD_EMU_CODE — PAT invalid or revoked" "re-mint via /ace:ace-web-pat-mint and re-inject .env"
       ;;
     404)
-      warn "cloud_emu: HTTP 404 — ACE_WEB_BASE_URL ($ACE_WEB_BASE) does not expose /api/mobile/diagnose; ace-web may be older than #312" "deploy a newer ace-web or unset ACE_WEB_BASE_URL"
+      warn "cloud_emu: HTTP 404 — ACE_WEB_BASE_URL ($CLOUD_WEB_BASE) does not expose /api/mobile/diagnose; ace-web may be older than #312" "deploy a newer ace-web or unset ACE_WEB_BASE_URL"
       ;;
     000)
-      warn "cloud_emu: cannot reach $ACE_WEB_BASE (network/DNS/timeout)" "check VPN/proxy and ACE_WEB_BASE_URL"
+      warn "cloud_emu: cannot reach $CLOUD_WEB_BASE (network/DNS/timeout)" "check VPN/proxy and ACE_WEB_BASE_URL"
       ;;
     *)
-      warn "cloud_emu: GET $ACE_WEB_BASE/api/mobile/diagnose → HTTP $CLOUD_EMU_CODE" "inspect ace-web logs; if persists, ace-web may be down"
+      warn "cloud_emu: GET $CLOUD_WEB_BASE/api/mobile/diagnose → HTTP $CLOUD_EMU_CODE" "inspect ace-web logs; if persists, ace-web may be down"
       ;;
   esac
   rm -f "$CLOUD_EMU_BODY"

@@ -19,7 +19,7 @@ Fill the ace-web `partnership-pitch` video template with the run's produce-phase
 | `partnership-microdemo` | `ACE/partnerships/<slug>/runs/<run-id>/micro-demo/provenance.yaml` | Clip entries with `is_demo_clip`, `file_id`, `caption` |
 | `partnership-research` | `ACE/partnerships/<slug>/research/deep-research.md` | Problem/impact stat cards with citations |
 | `run_state.yaml` | `phases.angles.products.selected_angle` | Which angle is active |
-| Env | `ACE_WEB_PAT_TOKEN`, `ACE_WEB_BASE`, `WORKSPACE_SLUG` (default `dimagi-team`) | ace-web auth + base URL + workspace |
+| Env | `ACE_WEB_PAT_TOKEN`, `ACE_WEB_BASE_URL`, `WORKSPACE_SLUG` (default `dimagi-team`) | ace-web auth + base URL + workspace |
 
 ## Products
 
@@ -36,7 +36,7 @@ Fill the ace-web `partnership-pitch` video template with the run's produce-phase
    Read and capture:
    - `phases.angles.products.selected_angle` — the active angle id.
    - `ACE_WEB_PAT_TOKEN` env var. If unset, halt with: "ACE_WEB_PAT_TOKEN not set; run `/ace:ace-web-pat-mint` and retry."
-   - `BASE_URL="${ACE_WEB_BASE:-https://labs.connect.dimagi.com/ace}"` (strip trailing slash).
+   - `BASE_URL="${ACE_WEB_BASE_URL:-https://labs.connect.dimagi.com/ace}"` (strip trailing slash).
    - `WORKSPACE_SLUG="${WORKSPACE_SLUG:-dimagi-team}"`.
 
 2. **Fetch the template bundle from ace-web.**
@@ -245,7 +245,7 @@ Fill the ace-web `partnership-pitch` video template with the run's produce-phase
 | Variable | Default | Notes |
 |---|---|---|
 | `ACE_WEB_PAT_TOKEN` | (required) | Per-human Bearer token; mint via `/ace:ace-web-pat-mint` |
-| `ACE_WEB_BASE` | `https://labs.connect.dimagi.com/ace` | ace-web base URL (strip trailing slash) |
+| `ACE_WEB_BASE_URL` | `https://labs.connect.dimagi.com/ace` | ace-web base URL (strip trailing slash) |
 | `WORKSPACE_SLUG` | `dimagi-team` | ace-web workspace slug |
 
 ## MCP Tools Used

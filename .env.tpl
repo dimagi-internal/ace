@@ -338,6 +338,20 @@ ACE_WEB_BASE_URL=https://labs.connect.dimagi.com/ace
 # (jjackson/ace — run-summary-url-not-first-class gap).
 ACE_WEB_WORKSPACE=dimagi-team
 
+# ── ace-web local checkout (optional, per-machine) ─────────────────
+# Filesystem path to an ace-web working copy — NOT a host. Only
+# `/ace:video-render-local` reads it, to find the vendored renderer at
+# `video-production/connect-videos`. Left commented because the default
+# (`~/emdash-projects/ace-web`) is right on a standard machine and there
+# is no 1Password value to inject.
+#
+# Declared here rather than left implicit: an ACE_* variable absent from
+# this template is invisible to /ace:setup, to the ace#1964 env-loading
+# ratchet, and to the ace#1969 spelling guard — which is precisely how
+# ACE_WEB_BASE went unnoticed against ACE_WEB_BASE_URL.
+#
+# ACE_WEB_ROOT=~/emdash-projects/ace-web
+
 # ── ace-web session upload (OFF by default — opt in deliberately) ──
 #
 # When set to `1`, /ace:run uploads its Claude session transcript to
