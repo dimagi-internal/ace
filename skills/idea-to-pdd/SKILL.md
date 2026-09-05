@@ -29,7 +29,80 @@ orchestrator from the per-skill QA + eval verdicts on the fly. -->
 - `ACE/<opp-name>/runs/<run-id>/decisions.yaml` — structured per-run decisions log (always emitted; see `## Decisions Log Convention` below)
 - `run_state.yaml.phases.idea-to-design.products.pdd` — `{title, description, file_id}` typed handoff for downstream readers (ace-web summary, future skills) so they don't need to parse the PDD body. This skill is the sole writer. (Pre-2026-05-26: `phases.design.products.pdd` — moved under the actual phase block to satisfy `lib/run-state-validator.ts` which requires every top-level `phases.*` key to be a phase block with `status`; see bednet-spot-check Phase 1 finding.)
 
+### Componentized programmes — two more products
+
+Written **only** when the input set declares components (see Step 0 below);
+absent on the single-PDD path, which is every opp before `poverty-graduation`.
+
+- `1-design/component-set.yaml` — the machine-readable component handoff.
+- `run_state.yaml.phases.idea-to-design.products` — gains `mode`, `components[]`,
+  `program_level[]`, `overview_obligations[]` and `unresolved_references[]`.
+  Shape and guards: `lib/component-products.ts`.
+
+**`products.pdd` is still written, and still required.** It points at the
+programme OVERVIEW rather than at a synthesized design: which components are
+on, the shared case-and-state model, how they compose, and what each downstream
+phase should read per component. 17 places read `products.pdd` directly, so a
+componentized run does not null it — and an overview that is only a pointer at
+the components is not enough, because a build needs enough to execute:
+
+> *"we must have enough information to execute everything downstream from the
+> initial inputs or we can't really proceed anyways meaningfully. So the
+> programme overview doc needs to explain how to use the components."*
+> — Jon, 2026-09-05
+
 ## Process
+
+0. **Classify the input set FIRST — synthesize or ingest?**
+
+   Everything below Step 1 assumes ACE authors one design from raw material.
+   That is the right assumption when the human brings raw material, and the
+   wrong one when they bring a design that is already N designs. Deciding which
+   is the first thing this skill does, and it is DERIVED from the documents,
+   never configured:
+
+   ```
+   classifyComponentSet(inputs)   // lib/component-set.ts
+   designModeFor(set)             // lib/component-products.ts
+   ```
+
+   A document declares itself a component on the metadata line under its title
+   — `· Component: 4 of the graduation component set` — or declares
+   `· Scope: program-level (cross-component)`. **The convention is the AUTHOR'S;
+   ACE reads it and mints nothing.** A filename is NOT evidence: a PDD named
+   "… (Component 2)" that declares nothing is reported `undeclared-pdd`, with
+   the exact line to add, because promoting whoever named the file into the
+   component identity is a guess every later phase then builds on.
+
+   - `mode: 'synthesized'` (no component declared) → **continue at Step 1
+     unchanged.** This is the existing path and nothing about it moves.
+   - `mode: 'componentized'` → **do not synthesize the component PDDs into one
+     document.** Follow Step 0a instead, then rejoin at Step 2 for the
+     stress-test, which applies to the overview.
+
+0a. **Ingest, don't synthesize.**
+
+   1. `assessProgrammeReadiness(set, bodies)` (`lib/programme-overview.ts`) —
+      returns the obligations the overview must answer, derived from the set
+      itself, including one per component that leans on a component this
+      programme does not carry. Those are not defects: a programme is a
+      SELECTION, and leaving a component out is a legitimate choice. But each
+      is a question the build cannot answer alone, and if the overview is
+      silent some later phase invents an answer.
+   2. Author the **programme overview** as `1-design/idea-to-pdd.md`, answering
+      every obligation. It composes; it does not restate. A component's own
+      forms, payment grain and training requirements stay in that component's
+      PDD, which downstream reads by `components[].pdd_file_id`.
+   3. `buildComponentProducts(set, readiness)` (`lib/component-products.ts`) →
+      write to `products`. It THROWS on `componentized` with zero components
+      rather than hand downstream a run that looks componentized and builds
+      nothing.
+   4. Write `1-design/component-set.yaml` from the same object.
+   5. Report every `undeclared-pdd` finding in the phase summary. Do NOT guess
+      the id, and do NOT drop the document silently — an undeclared PDD is a
+      one-line fix for its author and an invisible hole in the build otherwise.
+
+   Design: `docs/superpowers/specs/2026-09-05-multi-component-programmes.md`.
 
 1. **Read source material** for the PDD.
 
