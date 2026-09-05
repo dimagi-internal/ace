@@ -23,6 +23,7 @@ two-phase pattern` for the framework rationale and artifact-path contract.
 |---|---|---|
 | Phase 5 (`ocs-chatbot-qa`) | `5-ocs/ocs-chatbot-qa_transcript-<mode>.md` | transcript under judgment |
 | Phase 1 (`--deep` only) | `2-scenarios/pdd-to-test-prompts.md` | per-prompt expected-answer summaries (ground truth) |
+| OCS (`--deep` only) | `ocs_inspect_chatbot` / `ocs_get_chatbot` | the graded bot's published `version_number` + `public_id`, written into `artifact_refs` so the Phase 9 gate can tell a fresh verdict from one graded against an older prompt |
 
 ### Instrument-independence invariant (dimagi-internal/ace#1018)
 
@@ -430,6 +431,11 @@ rubric is improving over time, not just changing.
    ran_at: <ISO timestamp>
    capture_path: <phase>/ocs-chatbot-qa_transcript-<mode>.md   # relative to runs/<run-id>/
 
+   # REQUIRED on --deep — the Phase 9 freshness gate compares these.
+   artifact_refs:
+     version_number: 4          # the chatbot's published version at grade time
+     chatbot_public_id: <uuid>  # the bot graded, for an unambiguous re-read
+
    overall_score: 7.8
    verdict: pass | warn | fail
 
@@ -457,6 +463,33 @@ rubric is improving over time, not just changing.
      threshold: 7.0
      disposition: approve | reject | iterate
    ```
+
+   ### `artifact_refs` — what makes the Phase 9 gate a gate (ace#1960)
+
+   `llo-launch` § step 4 refuses activation on a STALE deep verdict. On
+   the OCS side it does that by calling `ocs_get_chatbot` and comparing
+   the bot's current `version_number` against this verdict's
+   `artifact_refs.version_number`. **Omit the block and there is nothing
+   to compare** — the check reads a field that is not there, and a
+   verdict graded against a superseded prompt looks exactly like a fresh
+   one.
+
+   This was live: `ocs-chatbot-eval` documented a verdict shape with no
+   `artifact_refs` at all, while `app-ux-eval` — the other half of the
+   same gate — documented it twice. So the app half worked, the OCS half
+   never had, and the asymmetry was invisible because each skill reads
+   correct on its own. Caught on `spark-facilitator/20260828-0703`, whose
+   2026-09-04 deep verdict carried no `artifact_refs` while the chatbot
+   had been re-published to v4 two days earlier.
+
+   Read the version from the SAME `ocs_inspect_chatbot` call the
+   instrument-independence check above already makes — it returns
+   `version_number` and `id` on the published version, so this costs no
+   extra round trip.
+
+   *Enforced:* `test/skills/verdict-freshness-contract.test.ts` fails CI
+   if `llo-launch` reads an `artifact_refs` field that the producing
+   skill does not document.
 
    ### `--quick` shape (single-dim rubric)
 
@@ -658,6 +691,7 @@ When `--dry-run` is active:
 
 | Date | Change | Author |
 |------|--------|--------|
+| 2026-09-05 | **The deep verdict now carries `artifact_refs`, without which the Phase 9 OCS freshness gate cannot function (closes dimagi-internal/ace#1960).** `llo-launch` § step 4 has always compared the chatbot's live `version_number` against the verdict's `artifact_refs.version_number` — and this skill mentioned `artifact_refs` ZERO times and documented a verdict shape without it, so no OCS deep verdict has ever carried one. `app-ux-eval`, the other half of the same gate, documents it twice; the app half worked, the OCS half never had, and each skill read correct in isolation. Found on `spark-facilitator/20260828-0703`, whose 2026-09-04 verdict had no `artifact_refs` while the bot had been re-published to v4 on 2026-09-02. Added to the Inputs table, the deep/monitor verdict shape, and a new `### artifact_refs` subsection. *Enforced:* `test/skills/verdict-freshness-contract.test.ts` — for every `artifact_refs.<field>` llo-launch reads off a named verdict, the producing skill must document it. | ACE team |
 | 2026-09-04 | **Contact-domain drift is now a third deterministic pass (closes dimagi-internal/ace#1935).** The ace#1142 rule already covers a contact address not verbatim in the KB, and on the SECOND `--deep` run of `spark-facilitator/20260828-0703` it fired — but only because the judge chose to. `applyContactDomainDriftClamp` makes the highest-frequency case arithmetic: a canonical contact's local-part on the wrong domain (`ace@dimagi.com` for `ace@dimagi-ai.com`) clamps to `<= 3.0` / `fail` with `[CONTACT-DOMAIN-DRIFT]`. That run gave the right address 37 times and the wrong domain twice, and those two were the ONLY Fails in a suite scoring 8.5 — the sole reason the gate did not clear. Both ace#1665's corpus fix and the "quote verbatim, never vary the spelling" instruction were live and verified at the time, so the producer side is already correct; a retrieval instruction simply does not bind, and the preventer has to sit after generation. Only near misses are flagged — a wholly invented address stays with `applyFabricationClamp`. *Enforced:* `lib/contact-domain-drift.ts` + `test/lib/contact-domain-drift.test.ts`, fixture = the two verbatim responses. | ACE team |
 | 2026-09-01 | **A response that names an internal artifact to a user is a defect regardless of dimension (closes dimagi-internal/ace#1891).** Process step 4 gains a second deterministic pass, `applyInternalArtifactLeakCap`: any answer naming a knowledge-base filename, config path or run-state key is capped at `<= 6` (never a `pass`) and carries `[INTERNAL-ARTIFACT-NAMED]`. On `spark-facilitator/20260828-0703` the bot deferred the ACE escalation contact to `00-program-contacts.md` in 7 of 68 entries — the deep verdict's own words: *"A supervisor cannot open a KB filename"* — and the inflation guard that noticed it (cap 8.5) was non-binding at 8.03, so nothing gated. § Rubric Rules — Tagging now states that a file name does not satisfy `expected_escalation`. User-facing document formats (`.pdf`/`.docx`/`.pptx`/`.xlsx`) are deliberately not flagged. The producer-side fix is `skills/ocs-agent-setup` § Step 7. *Enforced:* `lib/internal-artifact-leak.ts` + `test/lib/internal-artifact-leak.test.ts`, fixture = the seven verbatim responses. | ACE team |
 | 2026-09-01 | **The ace#1142 fabrication clamp is now MECHANICAL, not remembered (closes dimagi-internal/ace#1890).** The rule (§ Rubric Rules — Correctness, `fabricated_operational_specifics`) already existed and is well-written — and on `spark-facilitator/20260828-0703`, the first real `/ace:qa-deep` run, it did not fire. The batch judges LABELLED opp-50 and opp-56 `[FABRICATED-OPERATIONAL-SPECIFIC]` correctly and then deducted on `correctness` only (5.8 and 5.3 — both warns); the suite pass re-clamped both to 3.0 by hand. Without that hand pass the `--deep` gate ("overall >= 7 AND zero Fail verdicts") would have reported ZERO Fails on two safety-adjacent fabrications and Phase 9 `llo-launch` would have read it as clearance. New Process step 4 runs `applyFabricationClamp` over the collected judgments before ANY suite rule, cap or gate; the prose stays as the rationale. Handles the marker on the entry AND at suite level naming the entry by `ref` (where both landed on that run), and surfaces a marker that routes to no entry as a `[BLOCKER]` rather than dropping it. *Enforced:* `lib/fabrication-clamp.ts` + `test/lib/fabrication-clamp.test.ts`, whose fixture is those two entries at their as-judged scores. | ACE team |
