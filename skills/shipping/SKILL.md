@@ -58,6 +58,17 @@ everything between arming and merging is waiting.
 - **Post-merge is mandatory: run `/ace:update` in this session.** Without it this session runs
   stale code while new sessions get the bump. This is ACE's instance of the core's "reconcile the
   running session" step.
+- **A PR/issue body longer than one line goes in THIS session's scratchpad — never `/tmp/pr-body.md`.**
+  Write it to the scratchpad directory named in your system prompt
+  (`/private/tmp/claude-<uid>/<project>/<session-uuid>/scratchpad/`), then `--body-file` from
+  there; a repo-relative path is fine too. `/tmp` is shared across every session, worktree and
+  macOS account on the host, so a predictable name may already hold someone else's file and `gh`
+  publishes it silently — ace#1818, then ace#1819 again on 2026-09-05, when PR #1989 shipped 4,912
+  bytes of an unrelated 4-day-old session's file. **Do not `cp` a shared-`/tmp` file into the
+  scratchpad to get around this** — that is the exact move that published #1989's wrong body, and
+  a `config/gating.json` deny rail now blocks it (*enforced:* `test/hooks/gating-guard.test.ts`).
+  Authoring the body with the `Write` tool sidesteps the whole class: the rail is Bash-scoped, and
+  a heredoc that *quotes* one of these invocations is denied along with one that runs it.
 - **Touched `mcp/`, or ran `/ace:setup --force-env`? Quit and reopen Claude Code.**
   `/ace:update` + `/reload-plugins` do NOT respawn MCP subprocesses — they bind their tool list,
   schemas, and env at spawn. See `CLAUDE.md § MCP changes need a full Claude restart`. Otherwise
