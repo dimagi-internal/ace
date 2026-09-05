@@ -82,7 +82,10 @@ everything between arming and merging is waiting.
   and it keeps the disarm/re-arm ordering above, which a hand-rolled loop forgot on the first
   attempt (it landed anyway, purely because CI had not yet greened the pre-rebase head — luck,
   not method). *Enforced:* `test/scripts/land-pr.test.ts` ratchets the disarm-before-rebase
-  order. It still does not excuse you from reading the merge state yourself afterwards.
+  order; `test/scripts/land-pr-refspec.test.ts` ratchets that the push targets the PR's
+  `headRefName` rather than the local branch name (ace#1974 — a bare `HEAD` refspec pushed a
+  stray branch and exited 0, so the script re-armed a PR it had not updated). It still does not
+  excuse you from reading the merge state yourself afterwards.
 
   **Why the disarm step is load-bearing.** Auto-merge stays armed while you rebase, and
   `clean-install` (the only REQUIRED check) can go green on the **pre-rebase head** first. The
