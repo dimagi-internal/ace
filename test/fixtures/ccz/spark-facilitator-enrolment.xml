@@ -1,0 +1,583 @@
+<h:html xmlns:h="http://www.w3.org/1999/xhtml" xmlns:orx="http://openrosa.org/jr/xforms" xmlns="http://www.w3.org/2002/xforms" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:jr="http://openrosa.org/javarosa" xmlns:vellum="http://commcarehq.org/xforms/vellum">
+  <h:head>
+    <h:title>Community enrolment</h:title>
+    <model>
+      <instance>
+        <data xmlns="http://openrosa.org/formdesigner/6785c9f8a9ba4d25" xmlns:jrm="http://dev.commcarehq.org/jr/xforms" uiVersion="1" version="3" name="community_enrolment">
+          <community_identity>
+            <village_name/>
+            <group_village/>
+            <traditional_authority/>
+            <district/>
+            <community_unique_identifier/>
+            <partner/>
+          </community_identity>
+          <households>
+            <household_count/>
+          </households>
+          <community_location>
+            <gps_coordinates_of_the_community/>
+            <gps_accuracy_m/>
+            <lat/>
+            <lon/>
+            <gps_accuracy_good/>
+            <gps_accuracy_usable/>
+            <gps_accuracy_imprecise/>
+          </community_location>
+          <starting_step>
+            <starting_fcap_step/>
+            <meetings_on_current_step/>
+          </starting_step>
+          <enrol_a_community_community_enrolment>
+            <task xmlns="http://commcareconnect.com/data/v1/learn" id="enrol_a_community_community_enrolment">
+              <name>Enrol a community</name>
+              <description>Open the record for an FCAP community before its meetings can be recorded. Filed once per community and not paid.</description>
+            </task>
+          </enrol_a_community_community_enrolment>
+          <case xmlns="http://commcarehq.org/case/transaction/v2" case_id="" date_modified="" user_id="">
+            <create>
+              <case_name/>
+              <owner_id/>
+              <case_type>village</case_type>
+            </create>
+            <update>
+              <community_unique_identifier/>
+              <district/>
+              <gps_coordinates_of_the_community/>
+              <group_village/>
+              <household_count/>
+              <meetings_on_current_step/>
+              <partner/>
+              <pilot_fcap_step/>
+              <traditional_authority/>
+            </update>
+          </case>
+          <orx:meta xmlns:cc="http://commcarehq.org/xforms">
+            <orx:deviceID/>
+            <orx:timeStart/>
+            <orx:timeEnd/>
+            <orx:username/>
+            <orx:userID/>
+            <orx:instanceID/>
+            <cc:appVersion/>
+            <orx:drift/>
+            <cc:location/>
+          </orx:meta>
+        </data>
+      </instance>
+      <instance id="commcaresession" src="jr://instance/session"/>
+      <bind nodeset="/data/community_identity/village_name" type="xsd:string" required="true()" constraint="string-length(.) &lt;= 80" jr:constraintMsg="jr:itext('community_identity-village_name-constraintMsg')"/>
+      <bind nodeset="/data/community_identity/group_village" type="xsd:string" constraint="string-length(.) &lt;= 80" jr:constraintMsg="jr:itext('community_identity-district-constraintMsg')"/>
+      <bind nodeset="/data/community_identity/traditional_authority" type="xsd:string" constraint="string-length(.) &lt;= 80" jr:constraintMsg="jr:itext('community_identity-district-constraintMsg')"/>
+      <bind nodeset="/data/community_identity/district" type="xsd:string" constraint="string-length(.) &lt;= 80" jr:constraintMsg="jr:itext('community_identity-district-constraintMsg')"/>
+      <bind nodeset="/data/community_identity/community_unique_identifier" type="xsd:string" required="true()" constraint="string-length(.) &lt;= 40" jr:constraintMsg="jr:itext('community_identity-community_unique_identifier-constraintMsg')"/>
+      <bind nodeset="/data/community_identity/partner" type="xsd:string" constraint="string-length(.) &lt;= 80" jr:constraintMsg="jr:itext('community_identity-district-constraintMsg')"/>
+      <bind nodeset="/data/households/household_count" type="xsd:int" required="true()" constraint=". &gt;= 1 and . &lt;= 2000" jr:constraintMsg="jr:itext('households-household_count-constraintMsg')"/>
+      <bind nodeset="/data/community_location/gps_coordinates_of_the_community" type="geopoint" required="true()"/>
+      <bind nodeset="/data/community_location/gps_accuracy_m" type="xsd:string" calculate="if(/data/community_location/gps_coordinates_of_the_community = '', -1, number(selected-at(/data/community_location/gps_coordinates_of_the_community, 3)))"/>
+      <bind nodeset="/data/community_location/lat" type="xsd:string" calculate="if(/data/community_location/gps_coordinates_of_the_community = '', '', selected-at(/data/community_location/gps_coordinates_of_the_community, 0))"/>
+      <bind nodeset="/data/community_location/lon" type="xsd:string" calculate="if(/data/community_location/gps_coordinates_of_the_community = '', '', selected-at(/data/community_location/gps_coordinates_of_the_community, 1))"/>
+      <bind nodeset="/data/community_location/gps_accuracy_good" relevant="(/data/community_location/gps_accuracy_m &gt;= 0 and /data/community_location/gps_accuracy_m &lt;= 15)"/>
+      <bind nodeset="/data/community_location/gps_accuracy_usable" relevant="(/data/community_location/gps_accuracy_m &gt; 15 and /data/community_location/gps_accuracy_m &lt;= 50)"/>
+      <bind nodeset="/data/community_location/gps_accuracy_imprecise" relevant="(/data/community_location/gps_accuracy_m &gt; 50)"/>
+      <bind nodeset="/data/starting_step/starting_fcap_step" type="xsd:string" required="true()"/>
+      <bind nodeset="/data/starting_step/meetings_on_current_step" type="xsd:string"/>
+      <bind nodeset="/data/enrol_a_community_community_enrolment"/>
+      <setvalue event="xforms-ready" ref="/data/starting_step/meetings_on_current_step" value="0"/>
+      <itext>
+        <translation lang="en" default="">
+          <text id="community_identity-label">
+            <value>Community identity</value>
+            <value form="markdown">Community identity</value>
+          </text>
+          <text id="community_identity-village_name-label">
+            <value>Community name</value>
+            <value form="markdown">Community name</value>
+          </text>
+          <text id="community_identity-village_name-constraintMsg">
+            <value>Keep the community name to 80 characters or fewer.</value>
+            <value form="markdown">Keep the community name to 80 characters or fewer.</value>
+          </text>
+          <text id="community_identity-group_village-label">
+            <value>Group village</value>
+            <value form="markdown">Group village</value>
+          </text>
+          <text id="community_identity-traditional_authority-label">
+            <value>Traditional authority</value>
+            <value form="markdown">Traditional authority</value>
+          </text>
+          <text id="community_identity-district-label">
+            <value>District</value>
+            <value form="markdown">District</value>
+          </text>
+          <text id="community_identity-district-constraintMsg">
+            <value>Keep this to 80 characters or fewer.</value>
+            <value form="markdown">Keep this to 80 characters or fewer.</value>
+          </text>
+          <text id="community_identity-community_unique_identifier-label">
+            <value>Community unique identifier</value>
+            <value form="markdown">Community unique identifier</value>
+          </text>
+          <text id="community_identity-community_unique_identifier-hint">
+            <value>The code this community already carries in Spark records.</value>
+            <value form="markdown">The code this community already carries in Spark records.</value>
+          </text>
+          <text id="community_identity-community_unique_identifier-constraintMsg">
+            <value>Keep the identifier to 40 characters or fewer.</value>
+            <value form="markdown">Keep the identifier to 40 characters or fewer.</value>
+          </text>
+          <text id="community_identity-partner-label">
+            <value>Partner</value>
+            <value form="markdown">Partner</value>
+          </text>
+          <text id="households-label">
+            <value>Households</value>
+            <value form="markdown">Households</value>
+          </text>
+          <text id="households-household_count-label">
+            <value>How many households are in this community?</value>
+            <value form="markdown">How many households are in this community?</value>
+          </text>
+          <text id="households-household_count-hint">
+            <value>This is the denominator for every attendance and savings percentage, so count carefully.</value>
+            <value form="markdown">This is the denominator for every attendance and savings percentage, so count carefully.</value>
+          </text>
+          <text id="households-household_count-constraintMsg">
+            <value>Enter a number between 1 and 2000.</value>
+            <value form="markdown">Enter a number between 1 and 2000.</value>
+          </text>
+          <text id="community_location-label">
+            <value>Community location</value>
+            <value form="markdown">Community location</value>
+          </text>
+          <text id="community_location-gps_coordinates_of_the_community-label">
+            <value>Capture the location of the community</value>
+            <value form="markdown">Capture the location of the community</value>
+          </text>
+          <text id="community_location-gps_coordinates_of_the_community-hint">
+            <value>Target accuracy 50 m. Stand outside in the open and wait for the reading to settle before you save it.</value>
+            <value form="markdown">Target accuracy 50 m. Stand outside in the open and wait for the reading to settle before you save it.</value>
+          </text>
+          <text id="community_location-gps_accuracy_good-label">
+            <value>Location accuracy is good.</value>
+            <value form="markdown">Location accuracy is good.</value>
+          </text>
+          <text id="community_location-gps_accuracy_usable-label">
+            <value>Location accuracy is usable but not precise. If you can, wait a moment and capture the location again.</value>
+            <value form="markdown">Location accuracy is usable but not precise. If you can, wait a moment and capture the location again.</value>
+            <value form="image">jr://file/commcare/f8a9609e8b32cc094737b9e5f2ab24bdfd53b0328da1ae0aa6af10e3bfcfd669.jpg</value>
+          </text>
+          <text id="community_location-gps_accuracy_imprecise-label">
+            <value>Location accuracy is worse than 50 m, so this reading is imprecise. You may continue and submit either way.</value>
+            <value form="markdown">Location accuracy is worse than 50 m, so this reading is imprecise. You may continue and submit either way.</value>
+            <value form="image">jr://file/commcare/f8a9609e8b32cc094737b9e5f2ab24bdfd53b0328da1ae0aa6af10e3bfcfd669.jpg</value>
+          </text>
+          <text id="starting_step-label">
+            <value>Starting step</value>
+            <value form="markdown">Starting step</value>
+          </text>
+          <text id="starting_step-starting_fcap_step-label">
+            <value>Which FCAP step is this community on?</value>
+            <value form="markdown">Which FCAP step is this community on?</value>
+          </text>
+          <text id="starting_step-starting_fcap_step-hint">
+            <value>The FCAP step this community is on today.</value>
+            <value form="markdown">The FCAP step this community is on today.</value>
+          </text>
+          <text id="starting_step-starting_fcap_step-opt0-label">
+            <value>Step 1: Our Partnership</value>
+            <value form="markdown">Step 1: Our Partnership</value>
+          </text>
+          <text id="starting_step-starting_fcap_step-opt1-label">
+            <value>Step 2: Community Dynamics, Governance and Leadership</value>
+            <value form="markdown">Step 2: Community Dynamics, Governance and Leadership</value>
+          </text>
+          <text id="starting_step-starting_fcap_step-opt2-label">
+            <value>Step 3: Understanding the Present - Situational Analysis</value>
+            <value form="markdown">Step 3: Understanding the Present - Situational Analysis</value>
+          </text>
+          <text id="starting_step-starting_fcap_step-opt3-label">
+            <value>Step 4: Getting to the Future - Microgrant Pathway and Goals</value>
+            <value form="markdown">Step 4: Getting to the Future - Microgrant Pathway and Goals</value>
+          </text>
+          <text id="starting_step-starting_fcap_step-opt4-label">
+            <value>Step 5: Initiative Pathway and Savings</value>
+            <value form="markdown">Step 5: Initiative Pathway and Savings</value>
+          </text>
+          <text id="starting_step-starting_fcap_step-opt5-label">
+            <value>Step 6: Advocacy Pathway</value>
+            <value form="markdown">Step 6: Advocacy Pathway</value>
+          </text>
+          <text id="starting_step-starting_fcap_step-opt6-label">
+            <value>Step 7: Vision</value>
+            <value form="markdown">Step 7: Vision</value>
+          </text>
+        </translation>
+        <translation lang="nya">
+          <text id="community_identity-label">
+            <value>Zizindikiro za mudzi</value>
+            <value form="markdown">Zizindikiro za mudzi</value>
+          </text>
+          <text id="community_identity-village_name-label">
+            <value>Dzina la mudzi</value>
+            <value form="markdown">Dzina la mudzi</value>
+          </text>
+          <text id="community_identity-village_name-constraintMsg">
+            <value>Dzina la mudzi lisapitirire zilembo 80.</value>
+            <value form="markdown">Dzina la mudzi lisapitirire zilembo 80.</value>
+          </text>
+          <text id="community_identity-group_village-label">
+            <value>Gulu la midzi (GVH)</value>
+            <value form="markdown">Gulu la midzi (GVH)</value>
+          </text>
+          <text id="community_identity-traditional_authority-label">
+            <value>Mfumu yaikulu (T/A)</value>
+            <value form="markdown">Mfumu yaikulu (T/A)</value>
+          </text>
+          <text id="community_identity-district-label">
+            <value>Boma</value>
+            <value form="markdown">Boma</value>
+          </text>
+          <text id="community_identity-district-constraintMsg">
+            <value>Ichi chisapitirire zilembo 80.</value>
+            <value form="markdown">Ichi chisapitirire zilembo 80.</value>
+          </text>
+          <text id="community_identity-community_unique_identifier-label">
+            <value>Nambala yodziwikira ya mudzi</value>
+            <value form="markdown">Nambala yodziwikira ya mudzi</value>
+          </text>
+          <text id="community_identity-community_unique_identifier-hint">
+            <value>Nambala imene mudzi uwu uli nayo kale m'makaundula a Spark.</value>
+            <value form="markdown">Nambala imene mudzi uwu uli nayo kale m'makaundula a Spark.</value>
+          </text>
+          <text id="community_identity-community_unique_identifier-constraintMsg">
+            <value>Nambalayi isapitirire zilembo 40.</value>
+            <value form="markdown">Nambalayi isapitirire zilembo 40.</value>
+          </text>
+          <text id="community_identity-partner-label">
+            <value>Bungwe logwira nawo ntchito</value>
+            <value form="markdown">Bungwe logwira nawo ntchito</value>
+          </text>
+          <text id="households-label">
+            <value>Mabanja</value>
+            <value form="markdown">Mabanja</value>
+          </text>
+          <text id="households-household_count-label">
+            <value>Kodi m'mudzi muno muli mabanja angati?</value>
+            <value form="markdown">Kodi m'mudzi muno muli mabanja angati?</value>
+          </text>
+          <text id="households-household_count-hint">
+            <value>Nambala iyi ndi maziko a chiwerengero cha peresenti ya omwe anabwera ndi cha kusunga ndalama, choncho werengani mosamala.</value>
+            <value form="markdown">Nambala iyi ndi maziko a chiwerengero cha peresenti ya omwe anabwera ndi cha kusunga ndalama, choncho werengani mosamala.</value>
+          </text>
+          <text id="households-household_count-constraintMsg">
+            <value>Lembani nambala pakati pa 1 ndi 2000.</value>
+            <value form="markdown">Lembani nambala pakati pa 1 ndi 2000.</value>
+          </text>
+          <text id="community_location-label">
+            <value>Malo a mudzi</value>
+            <value form="markdown">Malo a mudzi</value>
+          </text>
+          <text id="community_location-gps_coordinates_of_the_community-label">
+            <value>Tengani malo amene mudzi ulipo</value>
+            <value form="markdown">Tengani malo amene mudzi ulipo</value>
+          </text>
+          <text id="community_location-gps_coordinates_of_the_community-hint">
+            <value>Cholinga ndi kulondola kwa mamita 50. Imani panja pamalo otseguka ndipo dikirani kuti nambala ikhazikike musanaisunge.</value>
+            <value form="markdown">Cholinga ndi kulondola kwa mamita 50. Imani panja pamalo otseguka ndipo dikirani kuti nambala ikhazikike musanaisunge.</value>
+          </text>
+          <text id="community_location-gps_accuracy_good-label">
+            <value>Kulondola kwa malo n'kwabwino.</value>
+            <value form="markdown">Kulondola kwa malo n'kwabwino.</value>
+          </text>
+          <text id="community_location-gps_accuracy_usable-label">
+            <value>Kulondola kwa malo n'kokwanira koma sikolondola bwino. Ngati mungathe, dikirani pang'ono ndipo tengeraninso malowo.</value>
+            <value form="markdown">Kulondola kwa malo n'kokwanira koma sikolondola bwino. Ngati mungathe, dikirani pang'ono ndipo tengeraninso malowo.</value>
+            <value form="image">jr://file/commcare/f8a9609e8b32cc094737b9e5f2ab24bdfd53b0328da1ae0aa6af10e3bfcfd669.jpg</value>
+          </text>
+          <text id="community_location-gps_accuracy_imprecise-label">
+            <value>Kulondola kwa malo kwapitirira mamita 50, choncho nambala iyi si yolondola. Mungapitirizebe ndi kutumiza mulimonse.</value>
+            <value form="markdown">Kulondola kwa malo kwapitirira mamita 50, choncho nambala iyi si yolondola. Mungapitirizebe ndi kutumiza mulimonse.</value>
+            <value form="image">jr://file/commcare/f8a9609e8b32cc094737b9e5f2ab24bdfd53b0328da1ae0aa6af10e3bfcfd669.jpg</value>
+          </text>
+          <text id="starting_step-label">
+            <value>Sitepe yoyambira</value>
+            <value form="markdown">Sitepe yoyambira</value>
+          </text>
+          <text id="starting_step-starting_fcap_step-label">
+            <value>Kodi mudzi uwu uli pa sitepe iti ya FCAP?</value>
+            <value form="markdown">Kodi mudzi uwu uli pa sitepe iti ya FCAP?</value>
+          </text>
+          <text id="starting_step-starting_fcap_step-hint">
+            <value>Sitepe ya FCAP imene mudzi uwu uli nayo lero.</value>
+            <value form="markdown">Sitepe ya FCAP imene mudzi uwu uli nayo lero.</value>
+          </text>
+          <text id="starting_step-starting_fcap_step-opt0-label">
+            <value>Sitepe 1: Mgwirizano Wathu</value>
+            <value form="markdown">Sitepe 1: Mgwirizano Wathu</value>
+          </text>
+          <text id="starting_step-starting_fcap_step-opt1-label">
+            <value>Sitepe 2: Makhalidwe a Mudzi, Kayendetsedwe ndi Utsogoleri</value>
+            <value form="markdown">Sitepe 2: Makhalidwe a Mudzi, Kayendetsedwe ndi Utsogoleri</value>
+          </text>
+          <text id="starting_step-starting_fcap_step-opt2-label">
+            <value>Sitepe 3: Kumvetsa Zimene Zilipo Panopa - Kusanthula Mkhalidwe</value>
+            <value form="markdown">Sitepe 3: Kumvetsa Zimene Zilipo Panopa - Kusanthula Mkhalidwe</value>
+          </text>
+          <text id="starting_step-starting_fcap_step-opt3-label">
+            <value>Sitepe 4: Kupita Kutsogolo - Njira ya Microgrant ndi Zolinga</value>
+            <value form="markdown">Sitepe 4: Kupita Kutsogolo - Njira ya Microgrant ndi Zolinga</value>
+          </text>
+          <text id="starting_step-starting_fcap_step-opt4-label">
+            <value>Sitepe 5: Njira ya Ntchito Yathu ndi Kusunga Ndalama</value>
+            <value form="markdown">Sitepe 5: Njira ya Ntchito Yathu ndi Kusunga Ndalama</value>
+          </text>
+          <text id="starting_step-starting_fcap_step-opt5-label">
+            <value>Sitepe 6: Njira Yolimbikitsira Zofuna za Mudzi</value>
+            <value form="markdown">Sitepe 6: Njira Yolimbikitsira Zofuna za Mudzi</value>
+          </text>
+          <text id="starting_step-starting_fcap_step-opt6-label">
+            <value>Sitepe 7: Masomphenya</value>
+            <value form="markdown">Sitepe 7: Masomphenya</value>
+          </text>
+        </translation>
+        <translation lang="tum">
+          <text id="community_identity-label">
+            <value>Vimanyikwiro vya muzi</value>
+            <value form="markdown">Vimanyikwiro vya muzi</value>
+          </text>
+          <text id="community_identity-village_name-label">
+            <value>Zina la muzi</value>
+            <value form="markdown">Zina la muzi</value>
+          </text>
+          <text id="community_identity-village_name-constraintMsg">
+            <value>Zina la muzi lingajumphenge malembo 80 yayi.</value>
+            <value form="markdown">Zina la muzi lingajumphenge malembo 80 yayi.</value>
+          </text>
+          <text id="community_identity-group_village-label">
+            <value>Gulu la mizi (GVH)</value>
+            <value form="markdown">Gulu la mizi (GVH)</value>
+          </text>
+          <text id="community_identity-traditional_authority-label">
+            <value>Themba likuru (T/A)</value>
+            <value form="markdown">Themba likuru (T/A)</value>
+          </text>
+          <text id="community_identity-district-label">
+            <value>Boma</value>
+            <value form="markdown">Boma</value>
+          </text>
+          <text id="community_identity-district-constraintMsg">
+            <value>Ichi chingajumphenge malembo 80 yayi.</value>
+            <value form="markdown">Ichi chingajumphenge malembo 80 yayi.</value>
+          </text>
+          <text id="community_identity-community_unique_identifier-label">
+            <value>Nambara yakumanyikwira muzi</value>
+            <value form="markdown">Nambara yakumanyikwira muzi</value>
+          </text>
+          <text id="community_identity-community_unique_identifier-hint">
+            <value>Nambara iyo muzi uwu uli nayo kale mu vilembo vya Spark.</value>
+            <value form="markdown">Nambara iyo muzi uwu uli nayo kale mu vilembo vya Spark.</value>
+          </text>
+          <text id="community_identity-community_unique_identifier-constraintMsg">
+            <value>Nambara iyi yingajumphenge malembo 40 yayi.</value>
+            <value form="markdown">Nambara iyi yingajumphenge malembo 40 yayi.</value>
+          </text>
+          <text id="community_identity-partner-label">
+            <value>Wupu ukugwira nase ntchito</value>
+            <value form="markdown">Wupu ukugwira nase ntchito</value>
+          </text>
+          <text id="households-label">
+            <value>Nyumba</value>
+            <value form="markdown">Nyumba</value>
+          </text>
+          <text id="households-household_count-label">
+            <value>Kasi mu muzi uwu muli nyumba zilinga?</value>
+            <value form="markdown">Kasi mu muzi uwu muli nyumba zilinga?</value>
+          </text>
+          <text id="households-household_count-hint">
+            <value>Nambara iyi ndiyo maziko gha peresenti ya ŵanthu awo ŵakiza na ya kusunga ndalama, ntheura ŵerengani makora.</value>
+            <value form="markdown">Nambara iyi ndiyo maziko gha peresenti ya ŵanthu awo ŵakiza na ya kusunga ndalama, ntheura ŵerengani makora.</value>
+          </text>
+          <text id="households-household_count-constraintMsg">
+            <value>Lembani nambara pakati pa 1 na 2000.</value>
+            <value form="markdown">Lembani nambara pakati pa 1 na 2000.</value>
+          </text>
+          <text id="community_location-label">
+            <value>Malo gha muzi</value>
+            <value form="markdown">Malo gha muzi</value>
+          </text>
+          <text id="community_location-gps_coordinates_of_the_community-label">
+            <value>Torani malo agho muzi ulipo</value>
+            <value form="markdown">Torani malo agho muzi ulipo</value>
+          </text>
+          <text id="community_location-gps_coordinates_of_the_community-hint">
+            <value>Chilato ntchakuti kulongoka kuŵe mamita 50. Imani kuwaro pa malo ghakujulika ndipo lindilirani kuti nambara yikhazikike pambere mundayisunge.</value>
+            <value form="markdown">Chilato ntchakuti kulongoka kuŵe mamita 50. Imani kuwaro pa malo ghakujulika ndipo lindilirani kuti nambara yikhazikike pambere mundayisunge.</value>
+          </text>
+          <text id="community_location-gps_accuracy_good-label">
+            <value>Kulongoka kwa malo ntchiwemi.</value>
+            <value form="markdown">Kulongoka kwa malo ntchiwemi.</value>
+          </text>
+          <text id="community_location-gps_accuracy_usable-label">
+            <value>Kulongoka kwa malo nkwakukwana kweni kuli makora chomene yayi. Usange mungafiska, lindilirani pachoko ndipo torani malo ghara so.</value>
+            <value form="markdown">Kulongoka kwa malo nkwakukwana kweni kuli makora chomene yayi. Usange mungafiska, lindilirani pachoko ndipo torani malo ghara so.</value>
+            <value form="image">jr://file/commcare/f8a9609e8b32cc094737b9e5f2ab24bdfd53b0328da1ae0aa6af10e3bfcfd669.jpg</value>
+          </text>
+          <text id="community_location-gps_accuracy_imprecise-label">
+            <value>Kulongoka kwa malo kwajumpha mamita 50, ntheura nambara iyi njakulongoka yayi. Mungalutilira na kutuma mose.</value>
+            <value form="markdown">Kulongoka kwa malo kwajumpha mamita 50, ntheura nambara iyi njakulongoka yayi. Mungalutilira na kutuma mose.</value>
+            <value form="image">jr://file/commcare/f8a9609e8b32cc094737b9e5f2ab24bdfd53b0328da1ae0aa6af10e3bfcfd669.jpg</value>
+          </text>
+          <text id="starting_step-label">
+            <value>Sitepe yakwambira</value>
+            <value form="markdown">Sitepe yakwambira</value>
+          </text>
+          <text id="starting_step-starting_fcap_step-label">
+            <value>Kasi muzi uwu uli pa sitepe wuli wa FCAP?</value>
+            <value form="markdown">Kasi muzi uwu uli pa sitepe wuli wa FCAP?</value>
+          </text>
+          <text id="starting_step-starting_fcap_step-hint">
+            <value>Sitepe ya FCAP iyo muzi uwu uli nayo muhanya uno.</value>
+            <value form="markdown">Sitepe ya FCAP iyo muzi uwu uli nayo muhanya uno.</value>
+          </text>
+          <text id="starting_step-starting_fcap_step-opt0-label">
+            <value>Sitepe 1: Kukolerana Kwithu</value>
+            <value form="markdown">Sitepe 1: Kukolerana Kwithu</value>
+          </text>
+          <text id="starting_step-starting_fcap_step-opt1-label">
+            <value>Sitepe 2: Nkharo za Muzi, Kwendeskera na Ulongozgi</value>
+            <value form="markdown">Sitepe 2: Nkharo za Muzi, Kwendeskera na Ulongozgi</value>
+          </text>
+          <text id="starting_step-starting_fcap_step-opt2-label">
+            <value>Sitepe 3: Kupulikiska Ivyo Vilipo Sono - Kusanda Mikhaliro</value>
+            <value form="markdown">Sitepe 3: Kupulikiska Ivyo Vilipo Sono - Kusanda Mikhaliro</value>
+          </text>
+          <text id="starting_step-starting_fcap_step-opt3-label">
+            <value>Sitepe 4: Kuluta Kunthazi - Nthowa ya Microgrant na Vilato</value>
+            <value form="markdown">Sitepe 4: Kuluta Kunthazi - Nthowa ya Microgrant na Vilato</value>
+          </text>
+          <text id="starting_step-starting_fcap_step-opt4-label">
+            <value>Sitepe 5: Nthowa ya Ntchito Yithu na Kusunga Ndalama</value>
+            <value form="markdown">Sitepe 5: Nthowa ya Ntchito Yithu na Kusunga Ndalama</value>
+          </text>
+          <text id="starting_step-starting_fcap_step-opt5-label">
+            <value>Sitepe 6: Nthowa Yakuyimilira Vyakukhumba vya Muzi</value>
+            <value form="markdown">Sitepe 6: Nthowa Yakuyimilira Vyakukhumba vya Muzi</value>
+          </text>
+          <text id="starting_step-starting_fcap_step-opt6-label">
+            <value>Sitepe 7: Kawonero ka Munthazi</value>
+            <value form="markdown">Sitepe 7: Kawonero ka Munthazi</value>
+          </text>
+        </translation>
+      </itext>
+      <bind nodeset="/data/case/@date_modified" type="xsd:dateTime" calculate="/data/meta/timeEnd"/>
+      <bind nodeset="/data/case/@user_id" calculate="/data/meta/userID"/>
+      <setvalue ref="/data/case/@case_id" value="instance('commcaresession')/session/data/case_id_new_village_0" event="xforms-ready"/>
+      <bind nodeset="/data/case/create/case_name" calculate="/data/community_identity/village_name"/>
+      <bind nodeset="/data/case/create/owner_id" calculate="/data/meta/userID"/>
+      <bind nodeset="/data/case/update/community_unique_identifier" calculate="/data/community_identity/community_unique_identifier" relevant="count(/data/community_identity/community_unique_identifier) &gt; 0"/>
+      <bind nodeset="/data/case/update/district" calculate="/data/community_identity/district" relevant="count(/data/community_identity/district) &gt; 0"/>
+      <bind nodeset="/data/case/update/gps_coordinates_of_the_community" calculate="/data/community_location/gps_coordinates_of_the_community" relevant="count(/data/community_location/gps_coordinates_of_the_community) &gt; 0"/>
+      <bind nodeset="/data/case/update/group_village" calculate="/data/community_identity/group_village" relevant="count(/data/community_identity/group_village) &gt; 0"/>
+      <bind nodeset="/data/case/update/household_count" calculate="/data/households/household_count" relevant="count(/data/households/household_count) &gt; 0"/>
+      <bind nodeset="/data/case/update/meetings_on_current_step" calculate="/data/starting_step/meetings_on_current_step" relevant="count(/data/starting_step/meetings_on_current_step) &gt; 0"/>
+      <bind nodeset="/data/case/update/partner" calculate="/data/community_identity/partner" relevant="count(/data/community_identity/partner) &gt; 0"/>
+      <bind nodeset="/data/case/update/pilot_fcap_step" calculate="/data/starting_step/starting_fcap_step" relevant="count(/data/starting_step/starting_fcap_step) &gt; 0"/>
+      <bind nodeset="/data/case/update/traditional_authority" calculate="/data/community_identity/traditional_authority" relevant="count(/data/community_identity/traditional_authority) &gt; 0"/>
+      <setvalue ref="/data/meta/deviceID" value="instance('commcaresession')/session/context/deviceid" event="xforms-ready"/>
+      <setvalue ref="/data/meta/timeStart" value="now()" event="xforms-ready"/>
+      <bind nodeset="/data/meta/timeStart" type="xsd:dateTime"/>
+      <setvalue ref="/data/meta/timeEnd" value="now()" event="xforms-revalidate"/>
+      <bind nodeset="/data/meta/timeEnd" type="xsd:dateTime"/>
+      <setvalue ref="/data/meta/username" value="instance('commcaresession')/session/context/username" event="xforms-ready"/>
+      <setvalue ref="/data/meta/userID" value="instance('commcaresession')/session/context/userid" event="xforms-ready"/>
+      <setvalue ref="/data/meta/instanceID" value="uuid()" event="xforms-ready"/>
+      <setvalue ref="/data/meta/appVersion" value="instance('commcaresession')/session/context/appversion" event="xforms-ready"/>
+      <setvalue ref="/data/meta/drift" value="if(count(instance('commcaresession')/session/context/drift) = 1, instance('commcaresession')/session/context/drift, '')" event="xforms-revalidate"/>
+      <orx:pollsensor event="xforms-ready" ref="/data/meta/location"/>
+      <bind nodeset="/data/meta/location" type="geopoint"/>
+    </model>
+  </h:head>
+  <h:body>
+    <group ref="/data/community_identity" appearance="field-list">
+      <label ref="jr:itext('community_identity-label')"/>
+      <input ref="/data/community_identity/village_name">
+        <label ref="jr:itext('community_identity-village_name-label')"/>
+      </input>
+      <input ref="/data/community_identity/group_village">
+        <label ref="jr:itext('community_identity-group_village-label')"/>
+      </input>
+      <input ref="/data/community_identity/traditional_authority">
+        <label ref="jr:itext('community_identity-traditional_authority-label')"/>
+      </input>
+      <input ref="/data/community_identity/district">
+        <label ref="jr:itext('community_identity-district-label')"/>
+      </input>
+      <input ref="/data/community_identity/community_unique_identifier">
+        <label ref="jr:itext('community_identity-community_unique_identifier-label')"/>
+        <hint ref="jr:itext('community_identity-community_unique_identifier-hint')"/>
+      </input>
+      <input ref="/data/community_identity/partner">
+        <label ref="jr:itext('community_identity-partner-label')"/>
+      </input>
+    </group>
+    <group ref="/data/households" appearance="field-list">
+      <label ref="jr:itext('households-label')"/>
+      <input ref="/data/households/household_count">
+        <label ref="jr:itext('households-household_count-label')"/>
+        <hint ref="jr:itext('households-household_count-hint')"/>
+      </input>
+    </group>
+    <group ref="/data/community_location" appearance="field-list">
+      <label ref="jr:itext('community_location-label')"/>
+      <input ref="/data/community_location/gps_coordinates_of_the_community">
+        <label ref="jr:itext('community_location-gps_coordinates_of_the_community-label')"/>
+        <hint ref="jr:itext('community_location-gps_coordinates_of_the_community-hint')"/>
+      </input>
+      <trigger ref="/data/community_location/gps_accuracy_good" appearance="minimal">
+        <label ref="jr:itext('community_location-gps_accuracy_good-label')"/>
+      </trigger>
+      <trigger ref="/data/community_location/gps_accuracy_usable" appearance="minimal">
+        <label ref="jr:itext('community_location-gps_accuracy_usable-label')"/>
+      </trigger>
+      <trigger ref="/data/community_location/gps_accuracy_imprecise" appearance="minimal">
+        <label ref="jr:itext('community_location-gps_accuracy_imprecise-label')"/>
+      </trigger>
+    </group>
+    <group ref="/data/starting_step" appearance="field-list">
+      <label ref="jr:itext('starting_step-label')"/>
+      <select1 ref="/data/starting_step/starting_fcap_step">
+        <label ref="jr:itext('starting_step-starting_fcap_step-label')"/>
+        <hint ref="jr:itext('starting_step-starting_fcap_step-hint')"/>
+        <item>
+          <label ref="jr:itext('starting_step-starting_fcap_step-opt0-label')"/>
+          <value>step_1</value>
+        </item>
+        <item>
+          <label ref="jr:itext('starting_step-starting_fcap_step-opt1-label')"/>
+          <value>step_2</value>
+        </item>
+        <item>
+          <label ref="jr:itext('starting_step-starting_fcap_step-opt2-label')"/>
+          <value>step_3</value>
+        </item>
+        <item>
+          <label ref="jr:itext('starting_step-starting_fcap_step-opt3-label')"/>
+          <value>step_4</value>
+        </item>
+        <item>
+          <label ref="jr:itext('starting_step-starting_fcap_step-opt4-label')"/>
+          <value>step_5</value>
+        </item>
+        <item>
+          <label ref="jr:itext('starting_step-starting_fcap_step-opt5-label')"/>
+          <value>step_6</value>
+        </item>
+        <item>
+          <label ref="jr:itext('starting_step-starting_fcap_step-opt6-label')"/>
+          <value>step_7</value>
+        </item>
+      </select1>
+    </group>
+  </h:body>
+</h:html>
