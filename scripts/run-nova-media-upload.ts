@@ -22,8 +22,12 @@
  * registry, 2026-05-12), reached by proxy because Nova's schema is upstream
  * and not ours to extend.
  *
- * Requires `NOVA_API_KEY` in the environment — the same key the Nova plugin
- * uses (`source ~/.ace/env.sh`; see CLAUDE.md § Auth model).
+ * Requires `NOVA_API_KEY`. It is read from the plugin-data `.env` (loaded
+ * here — a Bash tool call inherits none of ACE's secrets; see
+ * `lib/load-plugin-env.ts` and ace#1957), or from the shell env when
+ * explicitly exported. `source ~/.ace/env.sh` also works for THIS key, but
+ * only because that file exports exactly this one variable — it is not a
+ * general remediation. See CLAUDE.md § Auth model.
  *
  * Usage:
  *   npx tsx scripts/run-nova-media-upload.ts <file> [--filename <name>]
@@ -35,6 +39,11 @@
 
 import { readFileSync, existsSync } from 'node:fs';
 import { basename, extname } from 'node:path';
+import { loadPluginEnv } from '../lib/load-plugin-env.js';
+
+// Before the first process.env read below — a Bash-invoked script inherits
+// none of ACE's secrets (ace#1957).
+const __env = loadPluginEnv(import.meta.url);
 
 const NOVA_MCP_URL = process.env.NOVA_MCP_URL ?? 'https://mcp.commcare.app/mcp';
 
@@ -92,7 +101,11 @@ async function main() {
 
   const apiKey = process.env.NOVA_API_KEY;
   if (!apiKey) {
-    die('NOVA_API_KEY is not set — run `source ~/.ace/env.sh` (CLAUDE.md § Auth model).');
+    die(
+      `NOVA_API_KEY is not set. Looked in ${__env.path} ` +
+        `(${__env.loaded ? 'read' : 'not readable'}). Refresh it with ` +
+        '`/ace:setup --force-env` (CLAUDE.md § Auth model).',
+    );
   }
 
   const ext = extname(file).toLowerCase();

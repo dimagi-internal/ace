@@ -283,9 +283,10 @@ with status and the counts above.
 | Unsupported input file (`.m4a`, `.svg`, …) | CommCare HQ cannot ingest it | Name it in the report with the re-encode instruction. Continue. |
 | `run-media-prepare.ts` exit 2 | Asset cannot reach the size budget | Skip that asset, name it, continue. Never attach an oversized file. |
 | No resizer installed | No sips/ImageMagick/ffmpeg | Only affects oversized files; small ones still attach. Name the remediation. |
-| `run-nova-media-upload.ts` exit 1 (401) | `NOVA_API_KEY` missing or stale | Halt — `source ~/.ace/env.sh`, then re-run. |
+| `run-nova-media-upload.ts` exit 1 (401) | `NOVA_API_KEY` missing or stale | Halt — refresh the plugin-data `.env` with `/ace:setup --force-env`, then re-run. The script loads that file itself; the error names the exact path it read. |
 | Nova rejects an attach batch | A wrong slot, tier-crossed icon, or stale UUID | Nothing was attached. Fix the named row, re-send the batch. |
 | Content Generator 5xx / auth | Service or key | One retry is built in; then halt generation. Supplied files and icons still apply. |
+| `run-content-generator.ts` exit 2, "Set CONTENT_GENERATOR_URL…" | The two keys are absent from the plugin-data `.env` | Refresh it with `/ace:setup --force-env`, then re-run. Do NOT `source ~/.ace/env.sh` — it exports `NOVA_API_KEY` and nothing else, so it cannot fix this (ace#1957). The error names the file it read. |
 | `--max-images` exceeded | More candidates than the guard allows | Halt before generating. Operator raises the cap or trims the plan. |
 
 ## MCP tools and scripts used
