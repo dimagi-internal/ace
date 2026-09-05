@@ -386,13 +386,44 @@ downstream coherence:
 - `focus-group`: prefer names like `"<Domain> FGD Pilot"` or
   `"<Domain> Qualitative Research"`. Description leads with discussion-
   group method.
+- `longitudinal-visits`: prefer names like `"<Domain> Follow-Up Study"`
+  or `"<Domain> Two-Visit Study"` — a name that signals a tracked entity
+  revisited on its own clock. Description leads with the entity and its
+  states (what is registered, what is revisited, what closes it).
+  **Do NOT name one `"<Domain> Multi-Stage Study"`.** The two archetypes
+  are routinely confused and the distinction is exactly what the name
+  should carry: `multi-stage` stages the PROGRAMME (one clock, a cohort
+  advancing together through a go/no-go gate, a Learn app + Deliver app
+  + payment unit per stage), while `longitudinal-visits` stages the
+  ENTITY (each case runs its own clock independently, and the programme
+  wants exactly one of each).
 - `multi-stage`: prefer names like `"<Domain> Multi-Stage Study"`.
   Description names each stage's protocol.
+
+**A name outlives the run that chose it.** `name` is a DURABLE field
+(`lib/program-reconcile.ts` § `DURABLE_PROGRAM_FIELDS`) because it is the
+cross-run reuse-lookup key, so Step 3a refreshes `description` / `budget` /
+dates against a later run's PDD but **never the name**. An archetype token
+baked into a name is therefore permanent: when a later run's PDD declares a
+different archetype, the description gets corrected and the name does not.
+Live case — program `efb8af66-…` reads `Bednet Check Multi-Stage Study —
+2026` while its own refreshed description says "deliberately NOT
+multi-stage" (ace#1966). Two consequences to work with, not around:
+1. **Prefer an archetype-NEUTRAL name when the archetype is at all
+   contested** in the PDD (a `## Archetype` section that argues against a
+   sibling archetype is the tell). `"<Domain> Follow-Up Study"` survives a
+   later reclassification; `"<Domain> Multi-Stage Study"` does not.
+2. **On reuse, if the live name's archetype token contradicts this run's
+   PDD archetype, say so** — one `[WARN]` line in the program notes and the
+   run summary, alongside Step 3a's own warnings. Do not rename the program
+   to fix it: the name is the reuse-lookup key and a silent rename has
+   cross-run consequences. Surface it and let an operator decide.
 
 ## Change Log
 
 | Date | Change | Author |
 |------|--------|--------|
+| 2026-09-05 | **§ Archetypes: add the missing `longitudinal-visits` row, and state that a name outlives the run that chose it (ace#1966).** The section covered `atomic-visit` / `focus-group` / `multi-stage` only — `grep -n "longitudinal" ` on this file returned zero hits — even though `connect-opp-setup` § Archetypes has covered `longitudinal-visits` for some time, so an archetype ACE fully supports at the opportunity layer was named by improvisation at the program layer. Compounding it, `name` is in `DURABLE_PROGRAM_FIELDS`, so Step 3a can refresh a program's description against a later PDD but never its name: `bednet-check-2-visit` reuses a program called `Bednet Check Multi-Stage Study — 2026` whose own ACE-refreshed description now says "deliberately NOT multi-stage", and the mislabel undermines Step 2's archetype-matched reuse scan. Guidance is to prefer archetype-neutral names when the archetype is contested and to `[WARN]` on a contradiction rather than autonomously rename a durable reuse key. The `lib/program-reconcile.ts` half stays open on ace#1966. | ACE team |
 | 2026-08-26 | **Step 4a can tell an ABSENT field from an UNREAD one, and the Σ-unknown raise is idempotent (ace#1637 — same class as #1550/#1590, third mechanism).** `connect_get_opportunity` now returns `dashboard_read` (`ok` / `no_cards` / `not_a_dashboard` / `not_fetched`, from `classifyDashboardRead` in `mcp/connect/backends/html-scrape.ts`). `total_budget` / `program_name` / `start_date` come only off the opportunity dashboard and each degrades to `undefined` when its card is absent, so "in no program" and "could not read the page" were the same bytes; 16 of 81 hydrated `ai-demo-space` rows on `bednet-check-2-visit/20260825-1310` were the second kind, two of them prior runs of the program being sized. A row with `dashboard_read: 'ok'` and no `program_name` is now EXCLUDED rather than making Σ unknown; only a genuinely unread row does. And the Σ-unknown branch no longer raises relative to the current ceiling — `program.budget + EXPECTED_OPP_BUDGET × 10` is not idempotent, so it compounded every run and took that program from 19,400 to 64,400 against a known consumption of 4,062. It now computes `knownΣ + unreadable_rows × EXPECTED_OPP_BUDGET + EXPECTED_OPP_BUDGET × 3` and raises only if the ceiling is below it. The relative raise survives only where no bound is computable (`listing.complete !== true`). Upstream residual left open and stated: why those 16 rows render no cards is still unknown — `active` is correlated but not causal. *Enforced:* `test/mcp/connect/unit/dashboard-read-honesty.test.ts`. | ACE team |
 | 2026-04-28 | Replace HITL workaround with `connect_*_program` atoms (ace-connect 0.8.1) | ACE team |
 | 2026-04-30 | Switch `connect_create_program` to `POST /api/programs/` (commcare-connect PR #1135). `delivery_type` now accepts the slug; `country` is the human country name. (0.10.47) | ACE team |
