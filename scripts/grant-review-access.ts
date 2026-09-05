@@ -112,6 +112,14 @@ import type { APIRequestContext } from 'playwright';
 import { PlaywrightSession as ConnectSession } from '../mcp/connect/auth/playwright-session.js';
 import { PlaywrightSession as OcsSession } from '../mcp/ocs/auth/playwright-session.js';
 
+import { loadPluginEnv } from '../lib/load-plugin-env.js';
+
+// ace#1964 — a script reached from a Bash tool call inherits NONE of ACE's
+// secrets, so it has to load `<plugin-data>/.env` itself. Module top, before
+// any credential read: ESM runs this body top-down, so "before main()" is
+// already too late for a read at module level.
+loadPluginEnv(import.meta.url);
+
 // ── env ────────────────────────────────────────────────────────────────────
 // Values live in the installed plugin-data .env (1Password-backed). Load them
 // the same way the probe scripts do rather than hardcoding anything.

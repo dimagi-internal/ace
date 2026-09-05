@@ -42,8 +42,8 @@
  */
 
 import { google } from '../lib/google-shim.js';
-import * as fs from 'node:fs';
 import { STENCILS, type StencilKey } from '../lib/training-deck-spec.js';
+import { loadPluginEnv } from '../lib/load-plugin-env.js';
 // Slide dimensions + brand palette + all 14 per-stencil text-box builders
 // live in lib/training-deck-stencil-geometry.ts — the single source of
 // stencil text-box geometry (shared with the in-place re-render script
@@ -159,6 +159,17 @@ const STENCIL_CONFIGS: Record<StencilKey, StencilConfig> = {
 // Config
 // ---------------------------------------------------------------------------
 
+// ace#1964 — a script reached from a Bash tool call inherits NONE of ACE's
+// secrets, so it has to load `<plugin-data>/.env` itself. Module top, before
+// any credential read: ESM runs this body top-down, so "before main()" is
+// already too late for a read at module level.
+//
+// This replaces a hand-rolled `loadEnvFile` that ran inside `main()` and
+// hardcoded `$HOME/.claude/plugins/data/ace-ace/.env`, ignoring an explicit
+// `CLAUDE_PLUGIN_DATA`. `KEY_FILE` below reads at module level, which the old
+// placement could never have covered.
+const PLUGIN_ENV = loadPluginEnv(import.meta.url);
+
 const KEY_FILE =
   process.env.GOOGLE_APPLICATION_CREDENTIALS ??
   `${process.env.HOME}/.claude/plugins/data/ace-ace/gws-sa-key.json`;
@@ -168,16 +179,6 @@ const TEMPLATE_NAME = 'ACE Training Deck Template (v5.8 — mask layout panels w
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-function loadEnvFile(envPath: string): void {
-  if (!fs.existsSync(envPath)) return;
-  for (const line of fs.readFileSync(envPath, 'utf8').split('\n')) {
-    const m = line.match(/^([A-Z_][A-Z0-9_]*)=(.*)$/);
-    if (m && !process.env[m[1]]) {
-      process.env[m[1]] = m[2].replace(/^['"]|['"]$/g, '');
-    }
-  }
-}
 
 async function findExistingTemplate(
   drive: ReturnType<typeof google.drive>,
@@ -220,10 +221,11 @@ async function batchUpdate(
 // ---------------------------------------------------------------------------
 
 async function main(): Promise<void> {
-  loadEnvFile(`${process.env.HOME}/.claude/plugins/data/ace-ace/.env`);
-
   if (!process.env.ACE_DRIVE_ROOT_FOLDER_ID) {
-    throw new Error('ACE_DRIVE_ROOT_FOLDER_ID is required (set via .env or shell env)');
+    throw new Error(
+      `ACE_DRIVE_ROOT_FOLDER_ID is required — not in the shell env and not in ` +
+        `${PLUGIN_ENV.path}. Run /ace:setup --force-env.`,
+    );
   }
   const parentFolderId = process.env.ACE_DRIVE_ROOT_FOLDER_ID;
 

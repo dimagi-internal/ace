@@ -33,6 +33,15 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as os from 'node:os';
+import { loadPluginEnv } from '../lib/load-plugin-env.js';
+
+// ace#1964 — a script reached from a Bash tool call inherits NONE of ACE's
+// secrets, so it has to load `<plugin-data>/.env` itself. Module top, before
+// any credential read: ESM runs this body top-down, so "before main()" is
+// already too late for a read at module level.
+// `NOVA_MCP_URL` below is read at module level, which is why the call sits
+// here and not inside `main()`.
+const PLUGIN_ENV = loadPluginEnv(import.meta.url);
 
 export const NOVA_MCP_URL = process.env.NOVA_MCP_URL ?? 'https://mcp.commcare.app/mcp';
 
@@ -329,7 +338,8 @@ async function main(): Promise<void> {
   const key = resolveNovaApiKey();
   if (!key) {
     console.error(
-      'NOVA_API_KEY not found (process env or plugin-data .env). Run /ace:setup --force-env.'
+      `NOVA_API_KEY not found (process env or ${PLUGIN_ENV.path}). ` +
+        'Run /ace:setup --force-env.'
     );
     process.exit(2);
   }

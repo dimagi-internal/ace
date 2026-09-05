@@ -56,18 +56,14 @@
 // `npx tsx` shell invocation does NOT — so the command block documented in
 // `skills/app-hq-settings § Step 2` failed verbatim as written, and reported
 // it as an unrelated issue-#108 uid halt ("falling back to suite.xml ... 0
-// forms") while the credentials were correctly provisioned all along. Same
-// idiom as the MCP servers (`mcp/connect-server.ts`).
-import { config as dotenvConfig } from 'dotenv';
-import { resolvePluginDataDir } from '../lib/plugin-data-dir.js';
-import * as nodePath from 'node:path';
+// forms") while the credentials were correctly provisioned all along.
+//
+// This predated `lib/load-plugin-env.ts` and carried the five lines inline;
+// ace#1964 folded it into the shared helper so there is one idiom across every
+// Bash-reachable script rather than two.
+import { loadPluginEnv } from '../lib/load-plugin-env.js';
 
-const __formWalkPluginDataDir = resolvePluginDataDir(import.meta.url);
-dotenvConfig({
-  path: __formWalkPluginDataDir
-    ? nodePath.join(__formWalkPluginDataDir, '.env')
-    : nodePath.join(process.cwd(), '.env'),
-});
+loadPluginEnv(import.meta.url);
 
 import { unzipSync, strFromU8 } from 'fflate';
 import { DOMParser } from '@xmldom/xmldom';

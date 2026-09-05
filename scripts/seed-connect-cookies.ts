@@ -18,22 +18,20 @@ import * as os from 'os';
 import * as path from 'path';
 import { chromium } from 'playwright';
 import { hqOAuthLogin } from '../mcp/connect/auth/hq-oauth-login.js';
+import { loadPluginEnv } from '../lib/load-plugin-env.js';
 
-function loadEnvFromPluginData(): void {
-  if (process.env.ACE_HQ_USERNAME && process.env.ACE_HQ_PASSWORD) return;
-  const envPath = path.join(os.homedir(), '.claude/plugins/data/ace-ace/.env');
-  if (!fs.existsSync(envPath)) return;
-  for (const line of fs.readFileSync(envPath, 'utf8').split('\n')) {
-    const m = line.match(/^([A-Z_][A-Z0-9_]*)=(.*)$/);
-    if (m && !(m[1] in process.env)) {
-      process.env[m[1]] = m[2].replace(/^"(.*)"$/, '$1');
-    }
-  }
-}
+// ace#1964 — a script reached from a Bash tool call inherits NONE of ACE's
+// secrets, so it has to load `<plugin-data>/.env` itself. Module top, before
+// any credential read: ESM runs this body top-down, so "before main()" is
+// already too late for a read at module level.
+//
+// This replaces a hand-rolled reader that hardcoded
+// `$HOME/.claude/plugins/data/ace-ace/.env` and so ignored an explicit
+// `CLAUDE_PLUGIN_DATA` override — one idiom, resolved the same way every
+// other Bash-reachable script resolves it.
+const PLUGIN_ENV = loadPluginEnv(import.meta.url);
 
 async function main() {
-  loadEnvFromPluginData();
-
   const baseUrl = process.env.CONNECT_BASE_URL ?? 'https://connect.dimagi.com';
   const userDataDir = process.env.USERDATA ?? path.join(os.homedir(), '.ace/playwright-userdata');
   const hqUsername = process.env.ACE_HQ_USERNAME;
@@ -41,8 +39,8 @@ async function main() {
 
   if (!hqUsername || !hqPassword) {
     console.error(
-      'ACE_HQ_USERNAME / ACE_HQ_PASSWORD must be set (in process.env or in ' +
-        '$HOME/.claude/plugins/data/ace-ace/.env). Did you run `/ace:setup`?',
+      `ACE_HQ_USERNAME / ACE_HQ_PASSWORD must be set (in process.env or in ` +
+        `${PLUGIN_ENV.path}). Run /ace:setup --force-env.`,
     );
     process.exit(2);
   }

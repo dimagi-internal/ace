@@ -44,12 +44,23 @@ import { PlaywrightBackend } from '../mcp/ocs/backends/playwright.js';
 import type { RequestFn, RequestResult } from '../mcp/ocs/backends/pipeline-patch.js';
 import { extractPublicId } from '../mcp/ocs/backends/playwright.js';
 
+import { loadPluginEnv } from '../lib/load-plugin-env.js';
+
+// ace#1964 — a script reached from a Bash tool call inherits NONE of ACE's
+// secrets, so it has to load `<plugin-data>/.env` itself. Module top, before
+// any credential read: ESM runs this body top-down, so "before main()" is
+// already too late for a read at module level.
+const PLUGIN_ENV = loadPluginEnv(import.meta.url);
+
 // ── Config ──────────────────────────────────────────────────────────
 
 const baseUrl = process.env.OCS_BASE_URL ?? 'https://www.openchatstudio.com';
 const teamSlug = process.env.OCS_TEAM_SLUG;
 if (!teamSlug) {
-  console.error('OCS_TEAM_SLUG is required (set it in your .env).');
+  console.error(
+    `OCS_TEAM_SLUG is required — not in the shell env and not in ` +
+      `${PLUGIN_ENV.path}. Run /ace:setup --force-env.`,
+  );
   process.exit(1);
 }
 const templateName = process.env.OCS_GOLDEN_TEMPLATE_NAME ?? 'ACE Golden Template';

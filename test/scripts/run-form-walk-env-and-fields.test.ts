@@ -21,23 +21,22 @@ const skill = readFileSync(join(REPO, 'skills/app-hq-settings/SKILL.md'), 'utf8'
 const code = script.split('\n').filter((l) => !/^\s*(\*|\/\/)/.test(l)).join('\n');
 
 describe('ace#993 — the script loads .env itself', () => {
-  it('calls dotenv', () => {
-    expect(code).toMatch(/dotenvConfig\(/);
+  // ace#1964 migrated this script off the five inline lines it carried since
+  // ace#993 and onto the shared `lib/load-plugin-env.ts`, so there is one
+  // idiom across every Bash-reachable script instead of two. The invariant is
+  // unchanged; only who implements it moved. The plugin-data resolution and
+  // the cwd fallback are now asserted once, against the helper, in
+  // `test/scripts/bash-reachable-env-loading.test.ts`.
+  it('calls the shared loader', () => {
+    expect(code).toMatch(/loadPluginEnv\(import\.meta\.url\)/);
   });
 
-  it('resolves the plugin-data dir rather than assuming a path', () => {
-    // An MCP subprocess gets .env injected by its bootstrap; a plain
-    // `npx tsx` invocation does not, and the installed script lives under
-    // the versioned plugin cache.
-    expect(code).toContain('resolvePluginDataDir(import.meta.url)');
-  });
-
-  it('falls back to cwd when not running from the installed plugin', () => {
-    expect(code).toMatch(/process\.cwd\(\)/);
+  it('no longer re-derives the path inline', () => {
+    expect(code).not.toMatch(/dotenvConfig\(/);
   });
 
   it('loads before any credential read, or the fix does nothing', () => {
-    const load = code.indexOf('dotenvConfig(');
+    const load = code.indexOf('loadPluginEnv(import.meta.url)');
     const firstCredRead = code.indexOf('process.env.ACE_HQ_USERNAME');
     expect(load).toBeGreaterThan(-1);
     expect(firstCredRead).toBeGreaterThan(load);
