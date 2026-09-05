@@ -49,6 +49,7 @@ import {
   markerPath,
 } from '../mcp/mobile/avd-provisioned-marker.js';
 import { checkAvdProvisioned } from '../mcp/mobile/avd-provisioning.js';
+import { resolveActiveSelectorMapId } from '../mcp/mobile/recipe-resolver.js';
 
 function avdHome(): string {
   return (
@@ -128,9 +129,11 @@ function main(): void {
     return {
       name,
       provisioned: checkAvdProvisioned(home, name).provisioned,
-      // Exactly the predicate `mcp/mobile/backends/avd.ts:796` applies when it
-      // decides whether an entry may be a fallback. Borrowed, not re-derived.
-      proven: markerProvesFor(marker, process.env.ACE_SELECTOR_MAP),
+      // Exactly the predicate `mcp/mobile/backends/avd.ts` applies when it
+      // decides whether an entry may be a fallback. Borrowed, not re-derived —
+      // including the selector-map identity, so a probe can never disagree with
+      // the runtime about which AVDs are eligible (ace#1993).
+      proven: markerProvesFor(marker, resolveActiveSelectorMapId()),
       markerPresent: existsSync(markerPath(home, name)),
       holders: parseAvdHolders(rows, name),
     };

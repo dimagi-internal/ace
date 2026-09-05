@@ -28,6 +28,7 @@ import {
   prepareRecipeForMaestro,
   injectAceEnvVars,
   getActiveSelectorMapMetadata,
+  resolveActiveSelectorMapId,
   resolveStaticRecipesDir,
   isStaticRecipesDirOverride,
   INSTALLED_STATIC_RECIPES_DIR,
@@ -2652,7 +2653,11 @@ export class MobileClient {
           process.env.ANDROID_AVD_HOME ?? path.join(os.homedir(), '.android', 'avd');
         writeProvisionedMarker(avdHome, args.avdName, {
           marked_at: new Date().toISOString(),
-          selector_map: process.env.ACE_SELECTOR_MAP,
+          // The map ACE actually loads, read from disk — not the never-set
+          // `ACE_SELECTOR_MAP` env var this used to record as `undefined`,
+          // which `JSON.stringify` then dropped, so the field never landed on
+          // a single marker on any host (ace#1993).
+          selector_map: resolveActiveSelectorMapId(),
         });
       }
       // The resolved-recipe temp dir is internal plumbing — always reap it,

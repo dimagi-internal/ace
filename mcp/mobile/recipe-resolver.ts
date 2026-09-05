@@ -163,6 +163,64 @@ export function getActiveSelectorMapMetadata(apkVersion: string): {
 }
 
 /**
+ * Newest selector map shipped in this install, by natural version order.
+ *
+ * `test/apk-pin-currency.test.ts` (#1156) pins `DEFAULT_APK_VERSION` to exactly
+ * this value on every PR, so "newest map on disk" and "the version the runtime
+ * defaults to" cannot diverge on `main`. Reading the directory rather than
+ * importing the constant is what keeps this module free of a cycle:
+ * `client.ts` owns `DEFAULT_APK_VERSION` and imports THIS file, and
+ * `backends/avd.ts` — which needs the same answer — sits underneath both.
+ *
+ * Returns undefined when the directory is unreadable or holds no map. Callers
+ * treat that as "cannot determine the active map", which fails closed.
+ */
+export function newestSelectorMapVersion(): string | undefined {
+  try {
+    const versions = fs
+      .readdirSync(SELECTORS_DIR)
+      .map((f) => /^connect-(.+)\.yaml$/.exec(f)?.[1])
+      .filter((v): v is string => Boolean(v))
+      .sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }));
+    return versions[versions.length - 1];
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Identity of the selector map IN FORCE right now — the fact ACE already owns,
+ * used instead of the `ACE_SELECTOR_MAP` env var that nothing ever set
+ * (ace#1993).
+ *
+ * Two properties earn the SHA over a bare version string:
+ *
+ *   1. It moves when the map's CONTENT moves, not only when the APK pin does.
+ *      The #591/#593 trap was selectors drifting under a device, and half the
+ *      real drift in this repo has been an edit to `connect-2.63.2.yaml` — a
+ *      version-only comparison is blind to every one of those.
+ *   2. `lib/recipe-provenance.ts` already gates recipes on exactly this pair
+ *      (`selector_map_sha` + `selector_map_apk_version`), so the provisioning
+ *      marker now speaks the vocabulary the rest of the mobile stack uses.
+ *
+ * Resolution mirrors `getConfiguredApkVersion`: the `ACE_CONNECT_APK_VERSION`
+ * pin wins, else the newest map on disk (see `newestSelectorMapVersion` for why
+ * that is the same value). Returns undefined when the map cannot be read at
+ * all — callers must treat that as "not proven", never as "assume good".
+ */
+export function resolveActiveSelectorMapId(): string | undefined {
+  const pinned = process.env.ACE_CONNECT_APK_VERSION;
+  const apkVersion = pinned && pinned.length > 0 ? pinned : newestSelectorMapVersion();
+  if (!apkVersion) return undefined;
+  try {
+    const meta = getActiveSelectorMapMetadata(apkVersion);
+    return `connect-${meta.apkVersion}@${meta.sha}`;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
  * Load the `logical-name -> declared type` view of the active selector map.
  *
  * This is the only piece of the map `recipe-lint.ts` needs: the

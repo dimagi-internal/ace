@@ -26,7 +26,14 @@ export const MARKER_FILENAME = '.ace-provisioned.json';
 export interface ProvisionedMarker {
   /** ISO timestamp of the bootstrap that proved this AVD. */
   marked_at: string;
-  /** Selector map in force at the time — a 2.62.0 device under a 2.63.2 map is the #591/#593 trap. */
+  /**
+   * Selector map in force at the time — a 2.62.0 device under a 2.63.2 map is
+   * the #591/#593 trap. Written as `connect-<apkVersion>@<sha12>` by
+   * `resolveActiveSelectorMapId()`; the SHA is what makes an EDIT to a map
+   * (the common case) count as drift, not just an APK bump. Optional only
+   * because markers written before ace#1993 do not carry it — and those are
+   * treated as not-proven, per `markerProvesFor`.
+   */
   selector_map?: string;
   /** CommCare package version observed on the device, when known. */
   commcare_version?: string;
@@ -71,14 +78,38 @@ export function writeProvisionedMarker(
 /**
  * A marker recorded under a DIFFERENT selector map is not proof for this run:
  * that is exactly the version-drift trap of #591/#593, where a 2.62.0 device
- * was driven by a 2.63.2 map. Unknown (an older marker with no map recorded) is
- * treated as not-proven rather than assumed-good.
+ * was driven by a 2.63.2 map.
+ *
+ * **Every branch fails closed, and that is a correction, not a preference
+ * (ace#1993).** This function used to return `true` whenever the caller passed
+ * no map — while both call sites read `process.env.ACE_SELECTOR_MAP`, a
+ * variable set nowhere in the repo, in `.env.tpl`, or in any installed `.env`.
+ * So the guard the header above describes never once executed its comparison,
+ * and the header's own promise ("unknown is treated as not-proven") was
+ * inverted in code: every marker on every host is unknown-map, and every one
+ * was assumed good. Callers now pass `resolveActiveSelectorMapId()`
+ * (`recipe-resolver.ts`), which reads the map ACE actually loads.
+ *
+ * The three ways to fail, all of them closed:
+ *   - no marker            → never provisioned. Not proven.
+ *   - no active map known  → we cannot say what this run will drive the device
+ *                            with, so we cannot say the marker matches it.
+ *   - marker has no map    → written before this field carried a value, or by a
+ *                            build that could not resolve one. Not proof.
+ *
+ * The cost of failing closed is bounded and self-healing: an unproven AVD is
+ * only ineligible as a FALLBACK (`AvdPoolEntry.proven` — the requested AVD
+ * never needs a marker), and the next successful `registerTestUser` on it
+ * writes a marker carrying the current map. The cost of failing OPEN is a run
+ * silently driven by the wrong selectors, which is the defect this whole module
+ * exists to prevent.
  */
 export function markerProvesFor(
   marker: ProvisionedMarker | null,
   selectorMap: string | undefined,
 ): boolean {
   if (!marker) return false;
-  if (!selectorMap) return true;
+  if (!selectorMap) return false;
+  if (!marker.selector_map) return false;
   return marker.selector_map === selectorMap;
 }
