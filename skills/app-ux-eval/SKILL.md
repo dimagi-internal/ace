@@ -149,6 +149,7 @@ per_item:                # per-journey verdicts; key is the journey id (a meanin
 
 auto_surfaced:
   - severity: BLOCKER | WARN | INFO
+    owner: HARNESS | INSTRUMENT | PRODUCT | PROMPT
     message: <one-line concern>
 
 gate:
