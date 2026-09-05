@@ -100,6 +100,22 @@ everything between arming and merging is waiting.
   report. An agent that trusts `state=MERGED` alone will report success and leave an unreachable
   fix on `main` (ace#1593).
 - **From a worktree, drop `--delete-branch`** — `main` is checked out elsewhere.
+- **Shipped into CANOPY? Reinstall the canopy CLI before your next email send.** Merging a
+  canopy PR bumps the marketplace clone's VERSION, and the send path is the **`uv`-installed
+  `canopy`**, not the plugin cache — so the moment your own bump lands, the installed engine
+  lags the clone and `canopy email send` refuses at send-time with an engine-staleness error.
+  A turn that ships a canopy fix and *then* tries to reply breaks its own send path, and the
+  error names versions rather than the merge that caused it, so it reads as unrelated:
+  ```bash
+  (cd ~/.claude/plugins/marketplaces/canopy && git pull) \
+    && uv tool install --reinstall ~/.claude/plugins/marketplaces/canopy
+  canopy --version    # must equal the clone's VERSION
+  ```
+  `/ace:doctor`'s `canopy_email_engine` probe reports the gap and prints this same command;
+  the point of the note is that shipping to canopy is what CREATES the gap, so do it after the
+  merge rather than discovering it at the send. (Measured this turn, 2026-09-05: the machine
+  started at CLI 0.2.471 vs clone 0.2.472 with the send already blocked; merging canopy#609
+  moved the clone to 0.2.473 and would have re-blocked it a second time.)
 - **Self-heal PRs additionally close their issue** referencing the PR, then re-run the blocked
   step (`CLAUDE.md § Self-heal a filed issue`).
 
