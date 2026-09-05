@@ -1693,7 +1693,33 @@ and the orchestrator had to `drive_move_file` it into `3-commcare/`.
   (dimagi-internal/ace#1081).** The date widget defaults to today and no
   calibrated date-widget selector exists, so a required `kind: date`
   field whose `validate` rejects today is un-walkable — and without this
-  gate that is discovered on the emulator in Phase 6, not here. For each
+  gate that is discovered on the emulator in Phase 6, not here.
+
+  **"Defaults to today" is TRUE ONLY ON A FIRST VISIT TO A CASE
+  (dimagi-internal/ace#1982).** A `kind: date` field that is ALSO a case
+  property is preloaded by Nova on a repeat visit, exactly like the
+  attendance, participation and geopoint fields the AS-FOUND screenshots
+  already capture — so it arrives holding the PREVIOUS visit's date, not
+  today's, and a recipe that "just advances past it" files the old date
+  as the new meeting's date. **On any journey that returns to an existing
+  case, a case-bound date field MUST be explicitly driven or explicitly
+  asserted; never advanced past on the default-is-today assumption.**
+
+  Live on `spark-facilitator/20260828-0703`. `journey-deliver-followup-preload`
+  carried the comment *"group `Meeting date` — default (today) satisfies
+  `. <= today()`. Not driven."* and advanced. Three meetings walked on
+  01 Sep each submitted `date_of_meeting = 2026-08-29` — the device clock
+  was correct (`timeEnd` = 01 Sep on all three), and `date_of_meeting` is
+  a case property carrying `2026-08-29`. `last_meeting_date` is
+  `calculate`d from `date_of_meeting`, so the case's "Last meeting"
+  column never advanced, and the deep app-UX verdict opened with a
+  BLOCKER reading *"the community case's durable state does not advance
+  on a real meeting"* — a defect in the harness reported as a defect in
+  the product.
+
+  The cost of the wrong attribution is the point: that BLOCKER drove a
+  `reject` disposition and two rounds of investigation into a case-write
+  path that was working correctly the whole time. For each
   form a smoke recipe walks (`forms_exercised`), feed the form's fields
   (from `get_form`: `id`, `kind`, `required`, `validate`) through the
   pure helper:
@@ -1851,6 +1877,7 @@ already maps the producer to `3-commcare/` (see
 
 | Date | Change | Author |
 |------|--------|--------|
+| 2026-09-05 | **A case-bound date field does NOT default to today on a repeat visit (closes dimagi-internal/ace#1982).** The Step 5 date-default gate's premise — "the date widget defaults to today" — holds only on a FIRST visit. Nova preloads a `kind: date` field that is also a case property, so on a follow-up journey it arrives holding the previous visit's date, and a recipe that advances past it files the old date as the new meeting's. Live on `spark-facilitator/20260828-0703`: `journey-deliver-followup-preload` declared the date "Not driven", and three meetings walked on 01 Sep each submitted `date_of_meeting = 2026-08-29` with a correct device clock. Because `last_meeting_date` is calculated from it, the case's Last-meeting column never moved and the deep app-UX verdict opened with a BLOCKER blaming the product's case-write path — which was working correctly throughout. A journey returning to an existing case must now drive or assert a case-bound date field explicitly. | ACE team |
 | 2026-09-01 | **A transition criterion must assert a DELTA, not presence (dimagi-internal/ace#1885).** Step 5 gains a static gate: a criterion whose NAME claims a state transition (`updated`, `changed`, `advanced`, `incremented`, `refreshed`, `moved`, `cleared`, …) must be verified either by a captured-pair comparison (`copyTextFrom` / `evalScript` before, `assertTrue` reading it after) or by a declared `expected_value` the recipe asserts and never taps. Earned by `spark-facilitator/20260828-0703`, where `journey-deliver-followup-preload` declared `case_state_updated_after_submit` and asserted it as `assertVisible "Chilanga.*"` — proof the ROW EXISTS, not that the date moved — and went green over a real `blocks-e2e` defect (`last_meeting_date` stale across three synced meetings while a control case updated in the same frame). The test could not fail for the reason it existed. *Enforced:* `lib/transition-criteria.ts` + `test/lib/transition-criteria.test.ts`, whose calibration fixture is that exact criterion and assertion. | ACE team |
 | 2026-08-29 | **Every emitted `- inputText` must be immediately preceded by `- eraseText` (closes dimagi-internal/ace#1844).** Maestro's `inputText` appends at the cursor rather than replacing, so any field carrying a Nova casedb preload (ace#1809), an XForm default, or a stray character received the recipe's value concatenated onto the existing one. Live on `spark-facilitator/20260828-0703` Phase 6 (ACE 0.13.1080, APK 2.63.2): the recipe typed `40` into `hh_represented_at_the_meeting`, the field held `140`, the form's cross-field constraint correctly refused to advance, and the leg died two screens later on a Participation scroll — reading as a selector fault it was not. Re-running the identical leg with `eraseText` inserted before each of the 6 `inputText` calls passed end-to-end (`{delivered: 1, approved: 1, rejected: 0}`). The dangerous half is that wherever the concatenation does NOT trip a constraint the corruption is silent and the leg reports `pass` on wrong data. *Enforced:* `recipe-sanity-probe`'s new `input-without-erase` — pure recipe shape, so unlike its field-gated siblings it runs unconditionally, and unlike them it carries no false-positive tax (a redundant erase on an empty field is a runtime no-op). `findInputFocusSteps` now sees through the interposed `eraseText`, so the ace#1554 checks don't go silently dead on recipes authored under the new rule. | ACE team |
 | 2026-08-25 | **Learn suite re-entry is selected PER FORM, not per app, and the call is guarded (closes dimagi-internal/ace#1633).** § Suite re-entry between modules picked the finalize/re-entry pair from a single per-APP reading of `post_submit`, but where a `previous` finalize lands is a property of the OWNING MODULE: CommCare auto-skips a module's one-row form list when the module holds exactly one form whose name differs from the module name, so `previous` lands on the suite ROOT there and on the form LIST everywhere else. One app can be both shapes at once — `bednet-check-2-visit/20260825-1310` (module "Baseline check": one form "What you know now"; module "Spot-check training": two forms; all `post_submit: previous`) — and the per-app table then prescribes an unconditional `back` that walks OUT of the suite after module 1, hanging the walk before module 2 (the #1071 signature, #897 consequence). The section now states the per-form rule with both module shapes spelled out, and every composition of `learn-suite-reentry-from-module.yaml` is guarded POSITIVELY on the next module's suite row (the workaround that run shipped), which is correct under either landing. The 2x2 stays as the choice of WHICH recipe; the finalize half is landing-agnostic because `content-form-finish-to-suite.yaml` exits on the `learn-suite-menu` alternation. *Enforced:* `test/skills/learn-suite-reentry-guarded.test.ts`. | ACE team |
