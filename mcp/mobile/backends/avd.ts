@@ -14,6 +14,7 @@ import {
 import { selectAvd, type AvdPoolEntry } from '../avd-allocator.js';
 import { classifyAdbEcho, REACHABILITY_TOKEN, type ReachabilityVerdict } from '../device-reachable.js';
 import { readProvisionedMarker, markerProvesFor } from '../avd-provisioned-marker.js';
+import { resolveActiveSelectorMapId } from '../recipe-resolver.js';
 import { checkAvdProvisioned } from '../avd-provisioning.js';
 import { findLatestBootLog, bootLogTail, fatalBootLine } from '../boot-log.js';
 import { checkAvdContention, clearStaleAvdLock } from '../avd-contention.js';
@@ -795,7 +796,7 @@ export class AvdBackend {
       // avd-provisioned-marker.ts. The requested AVD does not need a marker,
       // so nothing changes for a machine that has never recorded one.
       const marker = readProvisionedMarker(avdHomeForPool, name);
-      return { name, free: true, proven: markerProvesFor(marker, process.env.ACE_SELECTOR_MAP) };
+      return { name, free: true, proven: markerProvesFor(marker, resolveActiveSelectorMapId()) };
     });
 
     const selection = selectAvd(avdName, pool, { selfPid: process.pid });

@@ -45,7 +45,7 @@
  * means by it at the point it builds the pool (`:743` and `:796`):
  *
  *     checkAvdProvisioned(home, name).provisioned !== false
- *     && markerProvesFor(readProvisionedMarker(home, name), env.ACE_SELECTOR_MAP)
+ *     && markerProvesFor(readProvisionedMarker(home, name), resolveActiveSelectorMapId())
  *
  * The caller performs those reads and hands the results in. A probe that
  * computed its own idea of "usable" would be a SECOND opinion about the pool,
@@ -91,7 +91,7 @@ export interface AvdPoolFacts {
   name: string;
   /** `checkAvdProvisioned(...).provisioned` — `'unknown'` when unreadable. */
   provisioned: boolean | 'unknown';
-  /** `markerProvesFor(readProvisionedMarker(...), env.ACE_SELECTOR_MAP)`. */
+  /** `markerProvesFor(readProvisionedMarker(...), resolveActiveSelectorMapId())`. */
   proven: boolean;
   /** True when a marker file exists at all — separates the two ways to fail `proven`. */
   markerPresent: boolean;
