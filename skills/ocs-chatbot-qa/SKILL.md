@@ -468,6 +468,43 @@ Skills — No Fake Background Tasks`). Concrete budget:
         `[PLATFORM]` and grades body text instead). The point here is that it
         must be read from the right path, so an empty array is an observation
         rather than an artifact of looking in the wrong place.
+
+        **`message.tags` is the chatbot VERSION tag, not the semantic tags
+        (dimagi-internal/ace#1953).** It is in the field list above, it is
+        populated, and it does not contain what the name suggests. On
+        `hh-poverty-targeting/20260828-0702` it was `["v3"]` on **all 64
+        entries** — `ocs-agent-setup.md` records `version_number: 3` after
+        `ocs-knowledge-refresh`. The `[training-gap]` / `[product-feedback]` /
+        `[no tag]` markers are emitted INLINE IN THE RESPONSE BODY. Record the
+        raw field for provenance AND the parsed body tags, as two separate
+        transcript fields (Step 7).
+
+        **The widget also emits inline CITATION markup in the body
+        (dimagi-internal/ace#1952)** — 8 of those same 64 entries carried
+        file-id markers naming 13 distinct collection files, 12 of which
+        resolve against `ocs_list_collection_files(570)`. Harvest them here so
+        the eval does not have to re-parse prose.
+
+        **Use the shared parser for both — do not hand-roll a regex.**
+
+        ```ts
+        import { extractInlineCitations, extractInlineTags }
+          from '../../lib/widget-body-evidence';
+        const { ids } = extractInlineCitations(message.content);
+        const inlineTags = extractInlineTags(message.content);
+        ```
+
+        Six citation grammars and three tag spellings appeared in that one
+        suite from that one bot. A two-form citation regex over the same
+        transcript returns 2 entries where the true count is 8, and reports it
+        as an observation — which is the same defect as reading the wrong
+        field. `lib/widget-body-evidence.ts` is the single grammar; this skill
+        and `ocs-chatbot-eval` both read it so they cannot disagree.
+
+        These three fields are the same class arriving through three doors:
+        the doc names a field, the field exists, the field contains something
+        else, and reading it produces a result indistinguishable from a real
+        observation (ace#1298 → #1952 → #1953).
      5. **Run structural checks (Step 6) on this response inline.**
      6. **Persist the entry per the write strategy:**
         - `--quick`: append to in-memory buffer.
@@ -612,8 +649,10 @@ Skills — No Fake Background Tasks`). Concrete budget:
 
      <the bot's reply, verbatim>
 
-   - **Cited files:** [doc-42, doc-17]
-   - **Tags:** []
+   - **Cited files:** []                       # message.metadata.cited_files — empty on widget captures
+   - **Inline citations:** [63004, 63041]      # harvested from the body — extractInlineCitations()
+   - **Tags (structured):** ["v3"]             # message.tags — the CHATBOT VERSION tag, NOT semantic
+   - **Inline tags (parsed from body):** ["[product-feedback]"]   # extractInlineTags()
    - **Session id:** <the session_id this prompt ran under>   # REQUIRED — see Step 5 session scope
    - **Elapsed:** 4.3s
    - **Structural pass:** true
@@ -653,7 +692,10 @@ Skills — No Fake Background Tasks`). Concrete budget:
   suite itself** — it strips `cited_files`, `tags`, `session_id`, and
   `elapsed_ms` from its return shape, which makes the transcript
   structurally ungradable for the citation and tagging dimensions of
-  `ocs-chatbot-eval`. The suite uses raw widget HTTP.
+  `ocs-chatbot-eval`. The suite uses raw widget HTTP. (Note that on a
+  widget capture the *real* citation and tagging evidence is in the response
+  BODY, which this atom does return — but the body alone cannot carry
+  `session_id` or `elapsed_ms`, so the reason to avoid it stands.)
   - **Stale-subprocess fallback (jjackson/ace#761).** If the Step 2
     liveness probe fails with a typed `StaleOcsSubprocessError` (a 403
     `session_token_required` even though `/api/chat/start/` issued a
@@ -699,6 +741,7 @@ When `--dry-run` is active:
 
 | Date | Change | Author |
 |------|--------|--------|
+| 2026-09-05 | **Name what `message.tags` actually carries, and harvest the body evidence the transcript was dropping (closes dimagi-internal/ace#1953, supports #1952).** Step 5.4 already warned that `cited_files` is at `message.metadata.cited_files`; the same trap had two more doors on the same payload. `message.tags` is the CHATBOT VERSION tag — `["v3"]` on all 64 entries of `hh-poverty-targeting/20260828-0702` — and the semantic `[training-gap]` / `[product-feedback]` / `[no tag]` markers are emitted INLINE in the response body, as is file-id citation markup on 8 of those 64 entries. Step 7's transcript schema had one flat `Tags:` field, so a harness populating it from the documented path recorded the version label as the tagging evidence. The schema now carries four fields — `Cited files:` and `Tags (structured):` for provenance, `Inline citations:` and `Inline tags:` for grading — parsed with the shared `lib/widget-body-evidence.ts` so this skill and `ocs-chatbot-eval` cannot disagree about the grammar (six citation spellings and three tag spellings were live in that one suite). *Enforced:* `test/lib/widget-body-evidence.test.ts`. | ACE team |
 | 2026-08-29 | **Corrected the EXPLANATION under the missing-`X-Embed-Key` observation (ace#1812).** The measured status codes are unchanged and still correct; only the mechanism cited for them was stale. Step 5 explained the anonymous 201 as "consistent with `start_session_public` being a genuine anonymous surface for a published bot with an empty `participant_allowlist`" — OCS deleted `is_public` and the allowlist gate in #4275 (ADR-0057, 2026-08-26). The endpoint is still a genuine anonymous surface, for a different reason: it resolves published-or-working and gates only on the team's WEB channel being enabled (#4230). Keeping a right observation attached to a deleted mechanism is what makes a future reader mis-triage it. *Enforced:* `test/skills/ocs-public-chat-gate-docs.test.ts`. | ACE team |
 | 2026-05-05 | **Path-scheme migration.** Transcripts now write to `runs/<run-id>/5-ocs/ocs-chatbot-qa_transcript-<mode>.md` (or `9-execution-manager/...` for `--monitor`), per the manifest. The opp-level `qa-captures/` directory is retired; the only surviving use of the dated `qa-captures/` form is the golden-template no-opp fallback (`ACE/golden-template/qa-captures/<dated>.md`). Resume-from-partial check (Step 3) re-pointed at the new path. No behavior change beyond paths. | ACE team |
 | 2026-05-05 | **`--quick` switched to single-shot write.** Buffer entries in memory and call `drive_create_file` once at suite end (Step 7). Reduces Drive RTTs on `--quick` from N+1 (read+write per prompt + metadata) to 1. The incremental CAS-write strategy still applies on `--deep`/`--monitor` where 15–30 min suite runtimes make resume-from-partial worth the cost. Step 3 resume-from-partial is a `--deep`/`--monitor`-only step now (`--quick`'s 270s cap is short enough that re-running is cheaper than the resume bookkeeping). | ACE team |

@@ -106,7 +106,15 @@ If no mode is passed, default to `--quick`.
    - `expected_answer_summary` — ground-truth summary (opp-specific prompts)
      or declared expectation (smoke/edge-case prompts)
    - `expected_tags`, `expected_escalation`
-   - `response_content`, `cited_files`, `tags` — the captured bot reply
+   - `response_content` — the captured bot reply
+   - `cited_files` — `message.metadata.cited_files`; empty on every widget
+     capture, and that is expected (§ Rubric Rules — Source usage)
+   - `inline_citations` — file ids harvested from the BODY. The widget DOES
+     emit these; do not assume their absence (ace#1952)
+   - `tags` — `message.tags`, which carries the CHATBOT VERSION tag (`["v3"]`),
+     NOT semantic tags. Never grade Tagging off this field (ace#1953)
+   - `inline_tags` — the `[training-gap]` / `[product-feedback]` / `[no tag]`
+     markers parsed from the body. This is the Tagging dimension's evidence
    - `response_received` — structural flag from qa-side checks
    - `elapsed_ms`
 
@@ -422,16 +430,77 @@ The OpenAI-compatible endpoint exposes structured citations.
 
 #### When `capture_method = widget`
 
-The anonymous widget endpoint (what `ocs-chatbot-qa` uses today) does
-not return inline citation markup at all — the `cited_files` field is
-structurally always empty regardless of bot grounding.
+On the anonymous widget endpoint (what `ocs-chatbot-qa` uses today) the
+`cited_files` field is structurally always empty regardless of bot
+grounding. **That is where the structured channel ends — it is NOT where
+the evidence ends.** This branch used to say the widget "does not return
+inline citation markup at all", and that was false: the bot emits
+file-id markup INLINE IN THE BODY, and the rubric was instructing the
+judge to ignore evidence that exists (dimagi-internal/ace#1952).
 
+- **Inline citations — harvest them, do not assume they are absent.**
+  ```ts
+  import { extractInlineCitations } from '../../lib/widget-body-evidence';
+  const { ids } = extractInlineCitations(entry.response_content);
+  ```
+  `ocs-chatbot-qa` § Step 7 records these on the transcript as
+  `Inline citations:` so you normally read them rather than re-parse. Use
+  the shared parser, never a hand-rolled regex — see § Why one parser below.
+  - Ids present and they resolve to the right collection for the question's
+    domain → **grade Collection routing off them.** This is strictly better
+    evidence than "does the prose name a document": it is per-answer and
+    file-level.
+  - Ids present but pointing at the wrong collection → route as a normal
+    Collection-routing miss.
+  - **No ids → this is NOT a deduction.** The markup appears on a minority
+    of answers, so its absence says nothing about grounding. Fall through to
+    body-text grounding below.
 - **Body-text grounding** — does the response name source docs by title or paraphrase content the KB demonstrably contains?
   - Body cites named sources → no deduction.
   - Body asserts facts without naming any source → **-2 deduction**.
   - Body fabricates a source title not in the KB → **≤3** (clamped).
-- **DO NOT apply the empty-`cited_files` cap on widget captures.** Instead, emit `[PLATFORM] empty cited_files expected on widget capture; structured-citation grade not applicable` in `auto_surfaced` and grade on body text alone.
-- **Collection routing** — inferred from named sources where the body provides them; skip when the body cites nothing.
+- **DO NOT apply the empty-`cited_files` cap on widget captures.** Emit
+  `[PLATFORM] empty cited_files expected on widget capture; structured-citation
+  grade not applicable` in `auto_surfaced` — that field genuinely carries
+  nothing. Then grade on the harvested inline ids where present, and on body
+  text otherwise. The old wording had this line ending in "and grade on body
+  text alone", which is what discarded the inline evidence.
+- **Collection routing** — from harvested inline ids first; else inferred from
+  named sources where the body provides them; skip when the body offers neither.
+
+#### Why one parser and not a regex at the call site
+
+Format variance is the whole problem here, and it is worse than it looks.
+`measured_on: 2026-09-05` — `hh-poverty-targeting/20260828-0702`, chatbot
+13029 v3, collection 570, deep transcript revisionVersion 8 (all MUTABLE
+ids; re-confirm before relying on them). **Eight of 64 entries carried
+citation markup — 59 markers, 13 distinct file ids — in SIX different
+grammars from one bot in one suite:**
+
+```
+  12x  <CIT file-id>N</CIT>      16x  <CIT file-id=N />
+  12x  <CIT file-id="N" />        4x  <CIT file-id="N"/>
+   7x  <sup>N</sup>               8x  <sup>[N]</sup>
+```
+
+A two-form regex over that same transcript returns **2** entries, not 8 —
+and reports it as an observation. That is the same failure this whole
+change is about: a well-formed answer to the wrong question. So the
+grammar lives in `lib/widget-body-evidence.ts`, qa and eval both read it,
+and they cannot disagree. `test/lib/widget-body-evidence.test.ts` pins all
+six spellings verbatim plus the narrow-regex regression.
+
+#### Raw markup reaching the reader is a separate, reportable defect
+
+`<CIT file-id>63004</CIT>` renders as literal text in the widget — a field
+supervisor reading `cg-3` saw the file id inline. `detectLeakedCitationMarkup`
+flags these with `[LEAKED-CITATION-MARKUP]` in `auto_surfaced`.
+
+**It is REPORT-ONLY and must stay that way for now.** The defect is on the
+producer side and the harness has not yet asked the bot to stop, so deducting
+here would grade the bot down for the producer's behaviour. Tracked as
+dimagi-internal/ace#2018; flip it to a deduction in the same change that
+ships the producer fix, once a re-capture confirms the markup is gone.
 
 #### Why two branches (added 0.10.10)
 
@@ -469,6 +538,33 @@ redirect, or escalate.
 ### Rubric Rules — Tagging (15%)
 
 - `[training-gap]` for basic-confusion answers; `[product-feedback]` for bug reports; escalation to `ace@dimagi-ai.com` for out-of-scope.
+- **Read the tags from the BODY, never from `message.tags` (added
+  2026-09-05, dimagi-internal/ace#1953).** `message.tags` carries the
+  CHATBOT VERSION tag. On `hh-poverty-targeting/20260828-0702` it was
+  `["v3"]` on **all 64 entries** — including every entry that tagged
+  correctly and every entry that did not. A harness reading the documented
+  field grades 15% of the deep verdict against a version string: every
+  entry looks identically tagged, so the dimension is either a constant or
+  a uniform miss, and in both cases it stops discriminating while still
+  producing a number. Read the body instead and it discriminates fine.
+
+  ```ts
+  import { extractInlineTags, isVersionTagOnly } from '../../lib/widget-body-evidence';
+  const tags = extractInlineTags(entry.response_content);
+  ```
+
+  `ocs-chatbot-qa` § Step 7 records the parsed result as `Inline tags:`
+  next to the raw `Tags (structured):` field, so normally you read it
+  rather than re-parse. If a transcript offers only `Tags:` and
+  `isVersionTagOnly` returns true for it, that is NOT tag evidence — emit
+  `[PLATFORM] message.tags carries the chatbot version tag; semantic tags
+  read from the body` and grade off the body.
+
+  **Use the shared parser.** Three spellings appeared in one suite from one
+  bot — `[product-feedback]`, `` `[product-feedback]` `` and
+  `` [`product-feedback`] `` — and a naive `\[product-feedback\]` misses
+  the third; it did, on `cg-2`. `[no tag]` is a real emission (the bot
+  saying it considered tagging and declined), not an absence.
 - Match against `expected_tags` and `expected_escalation`.
 - **Defensible-additions rule (added 0.9.4)**:
 
@@ -806,6 +902,7 @@ When `--dry-run` is active:
 
 | Date | Change | Author |
 |------|--------|--------|
+| 2026-09-05 | **The widget's real grading evidence is in the BODY — two rubric dimensions were reading structured fields that carry something else (closes dimagi-internal/ace#1952 and #1953).** Filed separately, fixed together: one root cause, one parser. § Source usage's widget branch stated the widget *"does not return inline citation markup at all"*; it does — **8 of 64 entries** on `hh-poverty-targeting/20260828-0702` carried 59 markers naming 13 distinct file ids, 12 of which resolve live against `ocs_list_collection_files(570)`. Source usage is 20% of the deep score and was instructed to ignore evidence that exists. § Tagging said to match `expected_tags` against `message.tags` — which is the CHATBOT VERSION tag, `["v3"]` on all 64 entries including every one that tagged correctly; 15% of a gate feeding Phase 9 `llo-launch` graded against a version string, discriminating nothing while still producing a number. Both are ace#1298's class through a third and fourth door: the doc names a field, the field exists, the field contains something else, and reading it produces a result indistinguishable from a real observation. FORMAT VARIANCE IS THE FIX'S CORE, not a detail — **six** citation grammars and **three** tag spellings appeared in ONE suite from ONE bot, and the two-form regex #1952 itself published returns 2 entries where the true count is 8. So the grammar lives in ONE module both skills read. Raw markup reaching the reader is flagged `[LEAKED-CITATION-MARKUP]` but deliberately NOT deducted — that defect is producer-side (ace#2018) and grading it now would punish the bot for behaviour the harness has not asked it to stop. *Enforced:* `lib/widget-body-evidence.ts` + `test/lib/widget-body-evidence.test.ts`, fixtures = all six citation spellings and all three tag spellings verbatim, plus the narrow-regex regression and negative controls on prose that merely names a document. | ACE team |
 | 2026-09-05 | **A fabricated emergency number is now a fourth deterministic pass (closes dimagi-internal/ace#1955).** `applyEmergencyNumberClamp` clamps to `<= 3.0` / `fail` any response that gives a worker a number to DIAL in an emergency where that number occurs nowhere in the knowledge base, marking it `[FABRICATED-EMERGENCY-NUMBER]`. On the first real `/ace:qa-deep` of `hh-poverty-targeting/20260828-0702` (chatbot 13029 v3), `opp-46` answered an aggressive-householder prompt by stating plainly that *"the programme knowledge base does not contain a specific field-safety protocol"* and then supplying *"Nigeria emergency: 112 or 199"* — zero occurrences of either number, or of the word "emergency", across all 23 documents of collection 570. A recurrence of the exact ace#1142 case on the SAME opp, four bot generations later, and the highest-consequence register of the class: an FLW in physical danger cannot falsify a phone number and dials it. `applyFabricationClamp` did clamp it — but only because the judge chose to emit the marker, which is the fragility ace#1890 removed for the clamp ARITHMETIC and not for the LABELLING. The producer side was already correct in both places (golden template since 1e83d63e, 2026-08-02; composed prompt since 61e7a785, 2026-09-02), so, as with ace#1935, the remaining preventer sits after generation. A hit needs an emergency cue in the same segment as the number, so quantities in emergency prose do not fire, and the safety INSTINCT is explicitly not deducted for. *Enforced:* `lib/emergency-number-fabrication.ts` + `test/lib/emergency-number-fabrication.test.ts`, whose positive control is the verbatim opp-46 response and whose negative controls are the correct answer form and the verbatim opp-47 response that scored 9.15 in the same suite. | ACE team |
 | 2026-09-05 | **The answer key is now reconciled against what the run actually shipped (closes dimagi-internal/ace#1954).** `2-scenarios/pdd-to-test-prompts.md` is authored in PHASE 2 from the PDD alone and was never re-read after Phase 3 built the thing, so the grader could penalise a bot for being right about the system as it shipped. Two halves, deliberately split by what is actually decidable. MECHANICAL: Process step 4 gains a fifth pass, `applyAnswerKeyAdvisory`, fed by `/ace:qa-deep` Stage A step 1 reading the run's `run_state.yaml` READ-ONLY — on `hh-poverty-targeting/20260828-0702` that file said verbatim *"Phase 5 should treat those three tags as advisory rather than scored"* and NOTHING on qa-deep's path read it. Covered entries are marked `advisory: true`, excluded from the dimension means and the zero-Fail gate, and never rescored; a caveat routing to no entry is a `[BLOCKER]`. Resolution is by exact question text, never by assuming key `## Prompt N` is ref `opp-N`. PROSE: § Rubric Rules — Correctness gains `[ANSWER-KEY-CONTRADICTS-CORPUS]`, because deciding that *"gallery selection is not permitted"* contradicts *"camera-only NOT applied"* is a reading task and a regex claiming to do it would be a guess about meaning. Both live instances were confirmed against files indexed in the graded bot's own collection 570: `03-ppi-instrument-constants-verified.md` (63007) records 101/102 as RESOLVED clamp-to-100 while key prompt 40 calls any likelihood for 101 a hard failure; `09-app-hq-settings-summary.md` (63013) records camera-only NOT applied while key prompts 20 and 44 assert gallery selection is forbidden. *Enforced:* `lib/answer-key-reconciliation.ts` + `test/lib/answer-key-reconciliation.test.ts`, fixtures = the verbatim `tp-r1` residual and the three matching question lines. | ACE team |
 | 2026-09-05 | **`auto_surfaced` entries now carry `owner`, so `/ace:qa-deep` can route them (ace#1984).** A deep run emits findings across four owners — HARNESS, INSTRUMENT, PRODUCT, PROMPT — and until they are separated the operator is the router. On `spark-facilitator/20260828-0703` two of the app verdict's five BLOCKERs were ACE's own harness defects presented as product defects, and fifteen findings reached the operator unsorted; sorting them took six rounds of conversation. The judge is the only party that knows whether a defect is in the thing graded or the instrument grading it, so ownership is now decided at grade time. *Enforced:* `lib/qa-deep-triage.ts` + `test/lib/qa-deep-triage.test.ts`. | ACE team |
