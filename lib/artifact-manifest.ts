@@ -430,6 +430,14 @@ export const ARTIFACT_MANIFEST: readonly ArtifactEntry[] = [
     description: 'Opp-level identity (display_name, slug, tags, created_at, created_by) PLUS the durable Connect program reference at `connect.program.{id, url, connect_int_id}` — written by connect-program-setup on first create; reused across every run of the opp. Every other piece of evolving state (Connect opportunity, OCS chatbot, solicitation, selected_llo, synthetic) is per-run and lives only in the producing run\'s run_state.yaml.phases.<phase>.products.*. Each run is independent — no run reads from or writes to another run\'s run_state.yaml. Older opps may still carry stale `solicitation`/`selected_llo`/`synthetic`/`connect.opportunity`/`ocs_chatbot` blocks here from earlier dual-write iterations — no longer read or written; operator-cleaned-up when picking a release-candidate run. (Earlier shapes also carried `last_run_id` and a `runs:` array; both were dropped because no consumer reads them — ace-web enumerates runs by listing the filesystem under runs/.)',
   },
   {
+    path: '1-design/component-set.yaml',
+    producedBy: 'idea-to-pdd',
+    consumedBy: ['ace-orchestrator', 'pdd-to-learn-app', 'pdd-to-deliver-app'],
+    phase: 'design',
+    required: false,
+    description: 'Machine-readable component handoff for a COMPONENTIZED programme — written only when the input set declares components (`Component: <n> of …` on a PDD\'s metadata line), never on the single-PDD path. Carries each component\'s id, declared title and OWN pdd file id, the program-level PDDs (Learn), the obligations the programme overview must answer, and cross-component references this programme does not carry. Shape and guards: lib/component-products.ts (`buildComponentProducts` refuses `mode: componentized` with zero components); classification: lib/component-set.ts; obligations: lib/programme-overview.ts; design: docs/superpowers/specs/2026-09-05-multi-component-programmes.md. `products.pdd` stays populated alongside it and points at the programme OVERVIEW — 17 places read it directly, so a componentized run does not null it.',
+  },
+  {
     path: 'open-questions.md',
     producedBy: 'idea-to-pdd',
     consumedBy: ['ace-orchestrator'],
