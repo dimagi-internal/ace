@@ -78,6 +78,14 @@ import {
   renderResolutionReport,
 } from '../lib/tailwind-utility-resolution.js';
 
+import { loadPluginEnv } from '../lib/load-plugin-env.js';
+
+// ace#1964 — a script reached from a Bash tool call inherits NONE of ACE's
+// secrets, so it has to load `<plugin-data>/.env` itself. Module top, before
+// any credential read: ESM runs this body top-down, so "before main()" is
+// already too late for a read at module level.
+loadPluginEnv(import.meta.url);
+
 const DEFAULT_LABS_URL = process.env.LABS_BASE_URL || 'https://labs.connect.dimagi.com';
 
 interface Args {

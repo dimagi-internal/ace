@@ -25,6 +25,14 @@ import {
   type DriveEntry,
 } from '../lib/doctor-drive-layout.js';
 
+import { loadPluginEnv } from '../lib/load-plugin-env.js';
+
+// ace#1964 — a script reached from a Bash tool call inherits NONE of ACE's
+// secrets, so it has to load `<plugin-data>/.env` itself. Module top, before
+// any credential read: ESM runs this body top-down, so "before main()" is
+// already too late for a read at module level.
+loadPluginEnv(import.meta.url);
+
 const PROJECT_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const LEGACY_KEY_PATH = path.join(PROJECT_ROOT, '.gws-sa-key.json');
 const FOLDER_MIME = 'application/vnd.google-apps.folder';

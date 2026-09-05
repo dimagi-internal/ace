@@ -63,14 +63,19 @@
  * Default `organization_slug` is `ai-demo-space`.
  */
 import { chromium } from 'playwright';
-import fs from 'fs';
 import path from 'path';
+import { loadPluginEnv } from '../lib/load-plugin-env.js';
 
-const ENV_FILE = path.join(process.env.HOME!, '.claude/plugins/data/ace-ace/.env');
-for (const line of fs.readFileSync(ENV_FILE, 'utf-8').split('\n')) {
-  const m = line.match(/^([A-Z_]+)=(.*)/);
-  if (m && !process.env[m[1]]) process.env[m[1]] = m[2].replace(/^['"]|['"]$/g, '');
-}
+// ace#1964 — a script reached from a Bash tool call inherits NONE of ACE's
+// secrets, so it has to load `<plugin-data>/.env` itself. Module top, before
+// any credential read: ESM runs this body top-down, so "before main()" is
+// already too late for a read at module level.
+//
+// This replaces a hand-rolled reader that hardcoded
+// `$HOME/.claude/plugins/data/ace-ace/.env` (ignoring an explicit
+// `CLAUDE_PLUGIN_DATA`) and read it with an unguarded `readFileSync`, so a
+// machine without that exact file got a stack trace instead of a diagnosis.
+const PLUGIN_ENV = loadPluginEnv(import.meta.url);
 
 const connectBaseUrl = process.env.CONNECT_BASE_URL ?? 'https://connect.dimagi.com';
 const cchqBaseUrl = process.env.ACE_HQ_BASE_URL ?? 'https://www.commcarehq.org';
@@ -114,7 +119,10 @@ async function main() {
   const apiUser = process.env.ACE_HQ_USERNAME;
   const apiKey = process.env.ACE_HQ_API_KEY;
   if (!apiUser || !apiKey) {
-    console.error('\n[skipped] CCHQ checks need ACE_HQ_USERNAME/ACE_HQ_API_KEY in $CLAUDE_PLUGIN_DATA/.env.');
+    console.error(
+      `\n[skipped] CCHQ checks need ACE_HQ_USERNAME/ACE_HQ_API_KEY in ` +
+        `${PLUGIN_ENV.path}. Run /ace:setup --force-env.`,
+    );
     return;
   }
 
