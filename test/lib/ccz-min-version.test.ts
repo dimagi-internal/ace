@@ -48,6 +48,7 @@
  * in both directions so a lexicographic implementation cannot pass.
  */
 import { describe, it, expect } from 'vitest';
+import { assertChecked, assertUnable } from '../../lib/check-outcome.js';
 import {
   parseVersionTriple,
   compareVersionTriples,
@@ -153,45 +154,51 @@ describe('parseCczRequiredVersion', () => {
 
 describe('checkCczMinVersion', () => {
   it('does NOT fire when the CCZ requires at or below the pinned APK', () => {
-    const below = checkCczMinVersion({
+    const out = checkCczMinVersion({
       app: 'learn',
       profileXml: profileWith('2', '62', '0'),
       apkVersion: '2.63.2',
       selectorMapVersions: ['2.62.0', '2.63.0', '2.63.2'],
     });
-    expect(below.severity).toBe('ok');
-    expect(below.finding).toBeNull();
+    assertChecked(out);
+    expect(out.ok).toBe(true);
+    expect(out.severity).toBe('ok');
+    expect(out.findings).toEqual([]);
   });
 
   it('does NOT fire when the versions are exactly equal', () => {
-    const equal = checkCczMinVersion({
+    const out = checkCczMinVersion({
       app: 'learn',
       profileXml: profileWith('2', '63', '2'),
       apkVersion: '2.63.2',
       selectorMapVersions: ['2.63.2'],
     });
-    expect(equal.severity).toBe('ok');
-    expect(equal.finding).toBeNull();
+    assertChecked(out);
+    expect(out.ok).toBe(true);
+    expect(out.severity).toBe('ok');
+    expect(out.findings).toEqual([]);
   });
 
-  it('FIRES on the ace#1997 state, and names all three of required / pinned / remedy', () => {
+  it('FIRES on the ace#1997 state, and names required / pinned / consequence / remedy', () => {
     const out = checkCczMinVersion({
       app: 'learn',
       profileXml: REAL_PROFILE,
       apkVersion: '2.63.2',
       selectorMapVersions: ['2.62.0', '2.63.0', '2.63.2'],
     });
-    expect(out.severity).not.toBe('ok');
-    expect(out.finding).not.toBeNull();
-    expect(out.finding!.kind).toBe('ccz-min-version-gate');
-    expect(out.finding!.requiredVersion).toBe('2.64.0');
-    expect(out.finding!.apkVersion).toBe('2.63.2');
+    assertChecked(out);
+    expect(out.ok).toBe(false);
+    expect(out.findings).toHaveLength(1);
+    const f = out.findings[0];
+    expect(f.kind).toBe('ccz-min-version-gate');
+    expect(f.requiredVersion).toBe('2.64.0');
+    expect(f.apkVersion).toBe('2.63.2');
     // The message must carry both versions and the consequence, or an
     // operator reading only the log cannot act on it.
-    expect(out.finding!.message).toContain('2.64.0');
-    expect(out.finding!.message).toContain('2.63.2');
-    expect(out.finding!.message).toMatch(/app-launch handoff/i);
-    expect(out.finding!.remedy).toBeTruthy();
+    expect(f.message).toContain('2.64.0');
+    expect(f.message).toContain('2.63.2');
+    expect(f.message).toMatch(/app-launch handoff/i);
+    expect(f.remedy).toBeTruthy();
   });
 
   it('is a WARN, not a BLOCKER, when no selector map covers the required version', () => {
@@ -204,8 +211,10 @@ describe('checkCczMinVersion', () => {
       apkVersion: '2.63.2',
       selectorMapVersions: ['2.62.0', '2.63.0', '2.63.2'],
     });
+    assertChecked(out);
     expect(out.severity).toBe('warn');
-    expect(out.finding!.remedy).toMatch(/selector map/i);
+    expect(out.satisfyingSelectorMap).toBeNull();
+    expect(out.findings[0].remedy).toMatch(/selector map/i);
   });
 
   it('is a BLOCKER when a selector map DOES cover the required version', () => {
@@ -216,8 +225,10 @@ describe('checkCczMinVersion', () => {
       apkVersion: '2.63.2',
       selectorMapVersions: ['2.63.2', '2.64.0'],
     });
+    assertChecked(out);
     expect(out.severity).toBe('blocker');
-    expect(out.finding!.remedy).toMatch(/ACE_CONNECT_APK_VERSION/);
+    expect(out.satisfyingSelectorMap).toBe('2.64.0');
+    expect(out.findings[0].remedy).toMatch(/ACE_CONNECT_APK_VERSION/);
   });
 
   it('picks the map by NUMERIC order — 2.9.0 does not satisfy a 2.64.0 requirement', () => {
@@ -229,7 +240,21 @@ describe('checkCczMinVersion', () => {
       apkVersion: '2.63.2',
       selectorMapVersions: ['2.9.0'],
     });
+    assertChecked(out);
     expect(out.severity).toBe('warn');
+    expect(out.satisfyingSelectorMap).toBeNull();
+  });
+
+  it('picks the LOWEST satisfying map, not merely the first one listed', () => {
+    const out = checkCczMinVersion({
+      app: 'learn',
+      profileXml: REAL_PROFILE,
+      apkVersion: '2.63.2',
+      selectorMapVersions: ['2.66.0', '2.64.0', '2.9.0'],
+    });
+    assertChecked(out);
+    expect(out.severity).toBe('blocker');
+    expect(out.satisfyingSelectorMap).toBe('2.64.0');
   });
 
   it('degrades to INFO when the device phase will not run at all', () => {
@@ -240,11 +265,14 @@ describe('checkCczMinVersion', () => {
       selectorMapVersions: ['2.63.2', '2.64.0'],
       devicePhasePlanned: false,
     });
+    assertChecked(out);
     expect(out.severity).toBe('info');
-    expect(out.finding!.message).toMatch(/no device walk/i);
+    // Still `ok: false` — the mismatch is real, it just breaks nothing here.
+    expect(out.ok).toBe(false);
+    expect(out.findings[0].message).toMatch(/no device walk/i);
   });
 
-  it('WARNs — never crashes, never silently passes — on an absent or malformed profile', () => {
+  it('is `unable` — never a silent pass, never a crash — on an absent or malformed profile', () => {
     for (const bad of ['', 'not xml', `<profile version="10" uniqueid="x"/>`]) {
       const out = checkCczMinVersion({
         app: 'deliver',
@@ -252,20 +280,23 @@ describe('checkCczMinVersion', () => {
         apkVersion: '2.63.2',
         selectorMapVersions: ['2.63.2'],
       });
-      expect(out.severity, `profile ${JSON.stringify(bad).slice(0, 30)}`).toBe('warn');
-      expect(out.finding!.kind).toBe('ccz-profile-unreadable');
+      // `unable` carries no `ok` to misread — the whole point of CheckOutcome.
+      assertUnable(out);
+      expect(out.reason, `profile ${JSON.stringify(bad).slice(0, 30)}`).toMatch(/profile\.ccpr/);
+      expect(out.reason).toMatch(/did NOT\s+run/);
     }
   });
 
-  it('WARNs when the pinned APK version itself is unparseable', () => {
+  it('is `unable` when the pinned APK version itself is unparseable', () => {
     const out = checkCczMinVersion({
       app: 'learn',
       profileXml: REAL_PROFILE,
       apkVersion: 'latest',
       selectorMapVersions: ['2.63.2'],
     });
-    expect(out.severity).toBe('warn');
-    expect(out.finding!.kind).toBe('apk-version-unreadable');
+    assertUnable(out);
+    expect(out.reason).toMatch(/ACE_CONNECT_APK_VERSION/);
+    expect(out.reason).toContain('2.64.0');
   });
 
   it('never throws on any input shape', () => {
