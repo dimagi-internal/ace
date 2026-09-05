@@ -21,6 +21,7 @@ import {
   checkNoScaffoldingMarkers,
   checkNoRendererInstructions,
   checkPaymentUnitMatchesEntityGrain,
+  checkAdvanceContingentWhenCapUnresolved,
   normalizeDriveExport,
   CHECKS,
 } from '../../../skills/pdd-to-work-order-qa/checks';
@@ -408,8 +409,8 @@ describe('checkNoScaffoldingMarkers', () => {
 });
 
 describe('CHECKS array', () => {
-  test('exports ten checks in canonical order', () => {
-    expect(CHECKS).toHaveLength(10);
+  test('exports eleven checks in canonical order', () => {
+    expect(CHECKS).toHaveLength(11);
     const ids = CHECKS.map((c) => c.id);
     expect(ids).toEqual([
       'all_required_sections_present',
@@ -421,6 +422,7 @@ describe('CHECKS array', () => {
       'archetype_appropriate_scope',
       'no_renderer_instructions',
       'no_scaffolding_markers',
+      'advance_contingent_when_cap_unresolved',
       'payment_unit_matches_entity_grain',
     ]);
   });
@@ -809,5 +811,70 @@ Dimagi will settle each approved payable unit within 30 days of invoice receipt.
   test('passes the real gdoc plain-text export', () => {
     const r = checkPaymentUnitMatchesEntityGrain(GDOC_WO_PLAIN, { pddText: PDD_VISIT_GRAIN });
     expect(r.pass).toBe(true);
+  });
+});
+
+// ace#2007 — poverty-graduation/20260905-0924's work order paired a `USD [TBD]`
+// cap with a committed "40% mobilization advance". `commercial_realism` scored
+// that strike 1 of 3 and said it alone made the draft unsignable, but nothing
+// STRUCTURAL prevented the next render — the same gap ace#1481 noted about
+// template-resident defects being invisible to every mechanical check.
+describe('checkAdvanceContingentWhenCapUnresolved (ace#2007)', () => {
+  const schedule = (extra: string) => `
+### 6.1 Total Not-to-Exceed
+
+Dimagi's total financial commitment under this Work Order is USD [TBD], not-to-exceed.
+
+### 6.2 Payment Schedule
+
+| # | Milestone | % of Cap | Amount (USD) | Trigger | Timing |
+|---|---|---|---|---|---|
+| 1 | Mobilization advance | 40% | [Amount derived from the agreed cap] | Signature | On execution |
+| 2 | Final reconciliation | 60% | [Amount derived from the agreed cap] | Final verified unit | On acceptance |
+${extra}
+
+## 7. Roles and Responsibilities
+`;
+
+  test('fails a committed percentage against an unresolved cap', () => {
+    const r = checkAdvanceContingentWhenCapUnresolved(schedule(''));
+    expect(r.pass).toBe(false);
+    expect(r.detail).toMatch(/not a signable commitment/);
+    expect(r.auto_fix_hint).toMatch(/indicative/);
+  });
+
+  test('passes once the schedule says nothing is payable until the cap is fixed', () => {
+    const r = checkAdvanceContingentWhenCapUnresolved(
+      schedule(
+        '\nThese percentages are indicative of the agreed split only. No amount is payable ' +
+          'under this schedule until the total not-to-exceed in § 6.1 is fixed at contract execution.',
+      ),
+    );
+    expect(r.pass).toBe(true);
+  });
+
+  test('passes when the cap is a real number — the contingency sentence is then unnecessary', () => {
+    const withCap = schedule('').replace('USD [TBD]', 'USD 42500');
+    const r = checkAdvanceContingentWhenCapUnresolved(withCap);
+    expect(r.pass).toBe(true);
+  });
+
+  test('does not double-report a missing section another check already owns', () => {
+    expect(checkAdvanceContingentWhenCapUnresolved('## 7. Roles\n').pass).toBe(true);
+  });
+
+  test('does NOT police termination / liability / IP — those live in the annexed MSA', () => {
+    // ace#1481 asserted the opposite and was closed NOT_PLANNED with the premise
+    // disproved (the MSA annexation clause is at work-order-template.md:147).
+    // A clean document carrying none of those words must still pass.
+    const clean = schedule(
+      '\nNo amount is payable under this schedule until the cap in § 6.1 is fixed at execution.',
+    );
+    expect(/terminat|liabilit|indemnif|intellectual/i.test(clean)).toBe(false);
+    expect(checkAdvanceContingentWhenCapUnresolved(clean).pass).toBe(true);
+  });
+
+  test('is registered in CHECKS', () => {
+    expect(CHECKS.map((c) => c.id)).toContain('advance_contingent_when_cap_unresolved');
   });
 });
