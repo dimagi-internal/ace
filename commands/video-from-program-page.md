@@ -35,7 +35,7 @@ first draft MP4.
   `product.beats[]` asset refs. Omit and the spec ships with an empty
   manifest for the operator to hand-attach later.
 - `--base-url=<url>` — ace-web base URL. Defaults to
-  `$ACE_WEB_BASE` env var, else `https://labs.connect.dimagi.com/ace`.
+  `$ACE_WEB_BASE_URL` env var, else `https://labs.connect.dimagi.com/ace`.
 
 ## When to use
 

@@ -27,7 +27,7 @@ chat session ownership) trace back to the actual human.
 
 ## Prerequisites
 
-- A reachable ace-web at `$ACE_WEB_BASE` (default
+- A reachable ace-web at `$ACE_WEB_BASE_URL` (default
   `https://labs.connect.dimagi.com/ace`)
 - A signed-in browser session at that URL — or willingness to sign in
   when the browser tab opens
@@ -53,7 +53,7 @@ Pointed at a different ace-web (e.g. local dev):
 
 ```bash
 ACE_ROOT="${CLAUDE_PLUGIN_ROOT:-$(python3 -c "import json,os; d=json.load(open(os.path.expanduser('~/.claude/plugins/installed_plugins.json'))); print(d['plugins']['ace@ace'][0]['installPath'])")}"
-ACE_WEB_BASE=http://localhost:8000 npx --prefix "$ACE_ROOT" tsx "$ACE_ROOT/scripts/ace-web-pat-mint.ts"
+ACE_WEB_BASE_URL=http://localhost:8000 npx --prefix "$ACE_ROOT" tsx "$ACE_ROOT/scripts/ace-web-pat-mint.ts"
 ```
 
 ## What it does
@@ -61,7 +61,7 @@ ACE_WEB_BASE=http://localhost:8000 npx --prefix "$ACE_ROOT" tsx "$ACE_ROOT/scrip
 1. **Binds a free loopback port** (`socket(0)` on `127.0.0.1`).
 2. **Generates a state nonce** (32 bytes urlsafe, binds the listener
    to this specific mint invocation).
-3. **Opens your browser** to `${ACE_WEB_BASE}/auth/cli/authorize/?cb=
+3. **Opens your browser** to `${ACE_WEB_BASE_URL}/auth/cli/authorize/?cb=
    http://127.0.0.1:NNNN/cb&state=<nonce>&label=<label>`.
 4. **ace-web** (after `@login_required` bounce through OAuth if
    you're not already signed in) shows a one-click "Authorize CLI

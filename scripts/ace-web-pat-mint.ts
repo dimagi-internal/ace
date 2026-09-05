@@ -16,7 +16,7 @@
  *   1. Bind 127.0.0.1:RANDOM with a one-shot HTTP listener.
  *   2. Generate a state nonce (32 bytes urlsafe).
  *   3. Open the operator's browser to
- *        ${ACE_WEB_BASE}/auth/cli/authorize/
+ *        ${ACE_WEB_BASE_URL}/auth/cli/authorize/
  *          ?cb=http://127.0.0.1:NNNN/cb&state=<nonce>&label=<label>
  *   4. ace-web (after @login_required bounce if needed) shows a
  *      one-click "Authorize" page. On click, it mints a PersonalToken
@@ -29,7 +29,7 @@
  *     label  defaults to `<hostname>-YYYY-MM-DD`
  *
  * Env:
- *   ACE_WEB_BASE   default https://labs.connect.dimagi.com/ace
+ *   ACE_WEB_BASE_URL    default https://labs.connect.dimagi.com/ace
  *   CLAUDE_PLUGIN_DATA  required
  *
  * Exit codes:
@@ -38,6 +38,7 @@
  *   2 state mismatch — possible race with another mint invocation
  *   3 listener error or browser-open failure
  *   4 .env write error
+ *   5 retired ACE_WEB_BASE set to a different host than ACE_WEB_BASE_URL
  */
 
 import { createServer } from 'node:http';
@@ -56,7 +57,31 @@ import { loadPluginEnv } from '../lib/load-plugin-env.js';
 // already too late for a read at module level.
 loadPluginEnv(import.meta.url);
 
-const ACE_WEB_BASE = (process.env.ACE_WEB_BASE || 'https://labs.connect.dimagi.com/ace').replace(/\/$/, '');
+// ace#1969 — read the name `.env.tpl` declares. This used to read
+// `ACE_WEB_BASE`, which nothing provisions, so a machine pointed at a
+// non-production ace-web still minted (and wrote) a PAT for production with no
+// error, the hardcoded default being a real reachable host.
+//
+// The default stays: it is the same value `.env.tpl` declares, so it cannot
+// contradict a provisioned machine, only cover an un-provisioned one.
+// `test/lib/bash-reachable-scripts.test.ts` pins the two together.
+const ACE_WEB_BASE_URL = (
+  process.env.ACE_WEB_BASE_URL || 'https://labs.connect.dimagi.com/ace'
+).replace(/\/$/, '');
+
+// The retired spelling must not be silently ignored either: `ACE_WEB_BASE=...`
+// was the documented way to aim this at localhost, so honouring the rename by
+// dropping it on the floor would recreate the same wrong-host mint from the
+// other direction. Say so instead.
+const retiredBase = process.env.ACE_WEB_BASE?.replace(/\/$/, '');
+if (retiredBase && retiredBase !== ACE_WEB_BASE_URL) {
+  console.error(
+    `[mint] ACE_WEB_BASE is retired (ace#1969). It is set to ${retiredBase}, but this ` +
+      `script reads ACE_WEB_BASE_URL, currently ${ACE_WEB_BASE_URL} — minting would ` +
+      `target the wrong deployment. Re-run with ACE_WEB_BASE_URL=${retiredBase} instead.`,
+  );
+  process.exit(5);
+}
 const TIMEOUT_MS = 5 * 60 * 1000;
 const ENV_KEY = 'ACE_WEB_PAT_TOKEN';
 const MARKER_HEADER = '# --- ACE local-only secrets (preserved across op inject) ---';
@@ -131,7 +156,7 @@ p{color:#555;line-height:1.5}</style>
         return;
       }
       const cb = `http://127.0.0.1:${addr.port}/cb`;
-      const url = `${ACE_WEB_BASE}/auth/cli/authorize/?cb=${encodeURIComponent(cb)}&state=${state}&label=${encodeURIComponent(label)}`;
+      const url = `${ACE_WEB_BASE_URL}/auth/cli/authorize/?cb=${encodeURIComponent(cb)}&state=${state}&label=${encodeURIComponent(label)}`;
 
       console.error(`[1/3] listening on ${cb}`);
       console.error(`[2/3] open this URL in your browser to authorize:\n  ${url}`);
@@ -196,7 +221,7 @@ async function main(): Promise<number> {
     `${process.env.HOME}/.claude/plugins/data/ace-ace`;
   const envPath = `${claudePluginData}/.env`;
   const label = process.argv[2] || defaultLabel();
-  console.error(`[mint] label=${label} ace_web_base=${ACE_WEB_BASE}`);
+  console.error(`[mint] label=${label} ace_web_base_url=${ACE_WEB_BASE_URL}`);
 
   let token: string;
   try {

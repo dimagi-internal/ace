@@ -33,7 +33,7 @@ call `/ace:video-spec-generate` directly.
 | `workspace_slug` | no | `dimagi-team` | ace-web workspace to write into. |
 | `template_id` | no | `60s-campaign-overview` | Template override; default is always `60s-campaign-overview`. |
 | `gdrive_folder_id` | no | — | Drive folder for program media. Forwarded to video-spec-generate. |
-| `base_url` | no | `$ACE_WEB_BASE` or `https://labs.connect.dimagi.com/ace` | ace-web base URL. |
+| `base_url` | no | `$ACE_WEB_BASE_URL` or `https://labs.connect.dimagi.com/ace` | ace-web base URL. |
 | `ACE_WEB_PAT_TOKEN` | yes (env) | — | Per-human Bearer token; mint via `/ace:ace-web-pat-mint`. |
 
 ## Steps
