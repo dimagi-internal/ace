@@ -70,8 +70,10 @@ transition`.
 
    Status: empty (long-term solicitation flow — no PDD-named candidates).
 
-   The solicitation is publicly listed at <public_url>; orgs find it on
-   the labs portal.
+   The solicitation is listed at <public_url>, which requires a labs
+   login by design — it is not anonymously readable. With no PDD-named
+   candidates, no one can reach it: expect zero responses unless the
+   operator distributes it another way.
    ```
 
    Exit successfully.

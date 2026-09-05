@@ -81,8 +81,12 @@ Invoke the `llo-invite` skill.
   `phases.solicitation-management.products.solicitation.{public_url, deadline}`
   from the current run's `run_state.yaml`
 - Output: `solicitation/invitations.md` (per-recipient send log)
-- No-op when the PDD has no `Preferred LLOs` — the solicitation is
-  publicly listed at `public_url`; orgs find it via the labs portal.
+- No-op when the PDD has no `Preferred LLOs`. **Be honest about what
+  that means:** the solicitation is listed at `public_url`, but that URL
+  requires a labs login by design, so an org that has never heard of us
+  cannot find or read it. With no PDD-named candidates AND no invite,
+  a run reaches its deadline with zero possible responses. Say so in the
+  phase summary rather than reporting "published publicly".
 - Sends emails via `email-communicator`. No Connect API calls — those
   happen only for the awardee inside `llo-onboarding` (Phase 9).
 
