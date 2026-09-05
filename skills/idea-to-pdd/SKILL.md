@@ -1165,17 +1165,17 @@ to the opp; add others not listed when they meet the bar.
 
 | ID | Question | Map to surface |
 |---|---|---|
-| `archetype-selection` | Which delivery archetype best fits? | `archetype_coherence` (eval input) |
+| `archetype-selection` | Which delivery archetype best fits? **Options:** `atomic-visit` · `longitudinal-visits` · `focus-group` · `multi-stage` | `archetype_coherence` (eval input) |
 | `budget-plausibility` | Is the budget plausible for implied labor + AI infra? | `resource_realism` (eval input, PR #144) |
 | `named-downstream-consumer` | Pre-committed downstream consumer? | `demand_reality` (eval input, PR #144) |
-| `primary-metric-vs-goal` | Direct goal vs upstream proxy? | `mission_alignment` (eval input, PR #144) |
+| `primary-metric-vs-goal` | Does the primary metric measure the goal itself, or a proxy upstream of it? **Options:** `direct-goal` · `upstream-proxy` | `mission_alignment` (eval input, PR #144) |
 | `ai-fallback-design` | True validation harness or parallel sampling? | `fallback_validates_primary` (eval input, PR #144) |
 | `flw-count` | How many FLWs? | PDD `FLW Requirements` numeric |
 | `working-language` | Working language(s) + CommCare language code? Who reviews the translations? | PDD `Learn App Specification` |
-| `verification-layers` | Which evidence-model layers in scope? | PDD `Evidence Model` section |
-| `solicitation-type` | Solicitation type (EOI/RFP/custom)? | PDD `Solicitation` section |
-| `solicitation-deadline` | Solicitation deadline? | PDD `Solicitation` section |
-| `candidate-llo-roster` | Named candidates or public-only? | `LLO Preference` named entity |
+| `verification-layers` | Which evidence-model layers are in scope? Qualifiers ("Layer C partner-led", "largely unavailable") go in `params.caveat`, never in the value. **Options:** `A` · `A+B` · `A+B+C` | PDD `Evidence Model` section |
+| `solicitation-type` | Which solicitation kind? **Options:** `EOI` · `RFP` · `custom` | PDD `Solicitation` section |
+| `solicitation-deadline` | How long from publish to deadline? **Options:** `7-days` · `14-days` · `21-days` · `30-days` | PDD `Solicitation` section |
+| `candidate-llo-roster` | Named candidates, public listing, or both? WHICH orgs are named goes in `params.named`. **Options:** `public-only` · `named-plus-public` · `named-only` | `LLO Preference` named entity |
 
 **These base rows are `value_set_by: external` — always.** Their real value is
 fixed by a solicitation response, a contract, or deployment, never by ACE:
@@ -1196,7 +1196,7 @@ Everything else in the base table is `value_set_by: ace`.
 | `pilot-sample-size` | Pilot sample size for AI calibration? | `verifiability` rubric |
 | `ai-photo-threshold` | AI auto-accept confidence threshold? | `verifiability` rubric |
 | `gps-verification-radius` | Acceptable GPS radius (meters) for visit-at-location? | `verifiability` rubric |
-| `duplicate-detection-key` | What constitutes a duplicate? (vendor id, GPS bucket, household id) | PDD `Evidence Model` Layer A |
+| `duplicate-detection-key` | What constitutes a duplicate? The exact field list goes in `params.key_fields`. **Options:** `identifier-only` · `identifier-plus-gps-radius` · `identifier-plus-ranked-proximity` · `gps-only` | PDD `Evidence Model` Layer A |
 | `per-visit-daily-cap` | Daily / weekly cap per FLW? | PDD `FLW Requirements` numeric |
 
 **`longitudinal-visits` (additive):**
@@ -1245,16 +1245,53 @@ Everything else in the base table is `value_set_by: ace`.
 The bar criterion alone determines what rows belong in the log — the
 tables above are teaching templates that improve over time.
 
+**Rows above that carry an `**Options:**` annotation are CATALOGUED** in
+`lib/decision-vocabularies.ts`: that option set is closed, the atom
+rejects anything outside it, and the printed values are the declared
+vocabulary verbatim. Every other id in these tables is unconstrained —
+choose its options to fit the opp. See § Schema and write semantics §
+The vocabulary contract.
+
 ### Schema and write semantics
 
 Schema is defined in `lib/decisions-schema.ts` (`DecisionRowSchema` /
-`DecisionRowStrictSchema` / `DecisionsLogSchema`, v4). Do not
+`DecisionRowStrictSchema` / `DecisionsLogSchema`, v4), and the closed
+option sets for the recurring decisions in `lib/decision-vocabularies.ts`
+(`DECISION_VOCABULARIES` / `checkVocabulary`). Do not
 hand-construct YAML — call the `decisions_append_rows` MCP atom
 (ace-decisions server). The atom's input schema is
 `DecisionRowStrictSchema` (the strict write-boundary variant), so
 unknown / misspelled field names AND violations of the load-bearing
 invariants below are rejected at the call boundary before they touch
 Drive.
+
+**The vocabulary contract (load-bearing) — read this before writing any
+row.** `lib/decision-vocabularies.ts` anchors a handful of decision ids
+to a **closed option set**, and the atom enforces it:
+
+- **An id ABSENT from `DECISION_VOCABULARIES` is unconstrained.** The bar
+  criterion has to let a skill raise a row nobody anticipated, and that
+  must stay possible — invent the id, invent its options, write it.
+- **An id PRESENT in `DECISION_VOCABULARIES` MUST draw its `options` from
+  the declared set, verbatim.** A subset is fine (not every archetype
+  applies to every opp); a stray member is not. Wording, qualifiers and
+  specifics belong in `reasoning` or `params` — `params.caveat` for a
+  hedge ("pending Nigerian data-protection confirmation"),
+  `params.named` for the orgs behind `named-plus-public`,
+  `params.key_fields` for the field list behind a duplicate key.
+
+Grep `lib/decision-vocabularies.ts` for the current set rather than
+trusting a list pasted anywhere — that file is the authority, and the
+catalogue tables above print each catalogued id's vocabulary inline for
+exactly this reason. *Enforced:* `checkVocabulary` at the atom boundary,
+and `test/skills/decisions-vocabulary-drift.test.ts` on the docs.
+
+**The rejection is ATOMIC — one stray string costs the whole batch.**
+`decisions_append_rows` validates every row before writing any, so a
+31-row call with one prose option for `verification-layers` writes
+nothing and must be re-sent in full (~14k tokens, twice, on
+`poverty-graduation/20260905-0924`). Check the catalogued ids in your
+payload before you send it, not after (ace#1994).
 
 **`rows:` is the ATOM ARGUMENT, not the file's top-level key.** The
 `decisions_append_rows` call takes `rows: [...]` (the array of new rows
@@ -1378,7 +1415,14 @@ can self-correct on retry.
 The pattern is: pick the option whose text best fits the answer, copy
 that string verbatim into `ai-default`, and put the explanation in
 `reasoning`. If none of the options fits, the `options` set is wrong —
-add another option that matches what the AI is trying to say. Sibling
+add another option that matches what the AI is trying to say, **unless
+the id is catalogued in `lib/decision-vocabularies.ts`**. For a
+catalogued id the option set is closed and adding to it is exactly what
+gets the write rejected: pick the nearest declared member and put what
+you were trying to say in `reasoning` or `params` (see § Schema and
+write semantics § The vocabulary contract). If no declared member is
+even close, that is a signal the vocabulary is wrong — file it against
+ACE rather than routing around it in the payload. Sibling
 skills (`pdd-to-work-order`, `connect-opp-setup`, `ocs-agent-setup`,
 `synthetic-narrative-plan`, `solicitation-create`, `app-test-cases`,
 `pdd-to-deliver-app`) inherit this contract via this canonical doc —

@@ -53,8 +53,8 @@ Take the approved PDD and decisions.yaml and produce a contractual Work Order dr
    | `wo-payment-schedule-split` | Milestone payment percentages (e.g., 40/60) | Payment Schedule sub-table |
    | `wo-mobilization-advance-pct` | Mobilization advance % of cap | Payment Schedule row 1 |
    | `wo-reporting-cadence` | Frequency of progress reports (default: weekly) | Reporting sub-section |
-   | `wo-ethics-scope` | Operational-only vs patient-level | Ethics section |
-   | `wo-data-storage-region` | Server region for data storage (default: US) | Data Handling section |
+   | `wo-ethics-scope` | What kind of data does the work touch? **Options:** `operational-no-personal-data` · `operational-with-personal-data` · `patient-level-clinical` | Ethics section |
+   | `wo-data-storage-region` | Server region for data storage (default: `united-states`). A qualifier such as "provisional, pending confirmation" goes in `params.caveat`. **Options:** `united-states` · `european-union` · `in-country` | Data Handling section |
 
 4. **Append `wo-*` rows to `decisions.yaml`** via the `decisions_append_rows` MCP atom (ace-decisions server). Do not hand-construct YAML and do not use `update_yaml_file` for this file — the dedicated atom validates each row against `lib/decisions-schema.ts` v5 at the call boundary and is idempotent on re-runs.
 
