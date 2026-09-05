@@ -411,6 +411,42 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
      > is fixed AND a preload is re-verified against a live compiled CCZ —
      > not against the blueprint, which shows the bind either way.
 
+     > **Case-write DERIVED state only, never the raw answers
+     > (dimagi-internal/ace#2006).** Nova emits a casedb read-back
+     > `<setvalue event="xforms-ready">` for **every** property the form
+     > case-writes — measured 1:1 on the `spark-facilitator/20260828-0703`
+     > Deliver CCZ: 42 properties written, the same 42 read, zero
+     > asymmetry. **There is no write-only case binding from the
+     > authoring surface.** So case-writing a visible question is the
+     > same act as preloading it on the next visit.
+     >
+     > That build case-wrote all 35 answerable questions plus 7 derived
+     > summary fields, so a CBF returning to a community met the whole
+     > previous meeting pre-filled — including `meeting_conducted` and
+     > `meeting_type`, the two fields Connect reads to decide payment —
+     > and could re-file it by tapping Next and taking one new photo.
+     >
+     > **The split is clean, so take it.** Only the DERIVED fields are
+     > load-bearing downstream:
+     >
+     > - the case list renders `last_meeting_date` and `pilot_fcap_step`
+     > - the payment key reads `meetings_on_current_step`
+     > - rollups read `Total_Attendance` / `Total_Participation` /
+     >   `Percentage_Participation` / `cumulative_savings`
+     >
+     > All seven are hidden calculated nodes, so preloading them is
+     > harmless — nothing asks the worker to confirm them. The 35 raw
+     > answers were persisted for nothing: **M&E reads form submissions,
+     > not the case**, and the case detail never displayed them (the same
+     > verdict separately complained that neither payability field was
+     > reviewable after submit — they were on the case, just never shown).
+     >
+     > So: put `case_property_on` on the derived summary nodes and NOT on
+     > the questions. If a raw answer genuinely must live on the case,
+     > say why in the build memo and declare it as an allowed exception to
+     > `app-release-qa`'s `casedb_preloads` gate, so the trade is visible
+     > rather than accidental.
+
      **Payability-scoped keys** (any form where SOME submissions are not
      paid work):
 
