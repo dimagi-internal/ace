@@ -53,6 +53,12 @@ export interface IssueStatus {
   /** `completed` | `not planned`, when the host reports it. */
   reason?: string | null;
   title?: string;
+  /**
+   * Thread comments, when the probe fetched them. Only populated for OPEN
+   * issues ACE still cites as a live constraint — see `findCorrectedOpenAsks`
+   * below for why that gate comes before the fetch, not after.
+   */
+  comments?: IssueComment[];
 }
 
 export interface StaleAsk {
@@ -242,4 +248,193 @@ export function findStaleAsks(
       };
     })
     .sort((a, b) => a.slug.localeCompare(b.slug));
+}
+
+/* ------------------------------------------------------------------------ *
+ * Corrected-but-OPEN asks (ace#1792)
+ *
+ * The block above catches the CLOSED half: the request was granted, the state
+ * changed, and nothing prompted a re-read. Its sibling is silent in a way that
+ * is strictly worse — the request was NOT granted, the diagnosis was simply
+ * wrong, and the correction landed in a COMMENT while the issue stayed open.
+ * There is no machine-readable event at all.
+ *
+ * Canonical case: `voidcraft-labs/nova-plugin#52`. Its own author disproved the
+ * mechanism in the thread's third comment on 2026-08-25 ("Correcting my comment
+ * above — it is **not** stored-credential precedence"). ACE had written that
+ * mechanism into four operator-facing surfaces, each terminating at a remedy
+ * that is a no-op by construction, and kept prescribing it for three days. The
+ * issue is still OPEN today, so `findStaleAsks` above sees nothing.
+ *
+ * ## Why this tier is HEURISTIC and the CLOSED tier is not
+ *
+ * `state === 'CLOSED'` is a fact. "This comment retracts the mechanism" is a
+ * reading of prose, and a comment SPECULATING about a mechanism is not a
+ * correction. Three things keep that from becoming noise:
+ *
+ *   1. Gated on a live-constraint citation. An issue ACE's own docs already
+ *      describe as history is never considered, so the existing acknowledgement
+ *      suppression (see `classifyLine`) applies IDENTICALLY here — writing the
+ *      correction under the citation retires the finding, and the annotation is
+ *      visible in the diff.
+ *   2. Retraction-SHAPED markers, not topic words. `disprove`, `I had this
+ *      wrong`, `correcting my <earlier thing>` are things a person writes only
+ *      when withdrawing a claim.
+ *   3. A hedged line is dropped. "I cannot tell", "both fit the data", "might
+ *      be" are the vocabulary of an open question, not a retraction.
+ *
+ * The probe reports this tier separately and does NOT raise its exit code: a
+ * heuristic must never gate CI, and a probe that nags is a probe people turn
+ * off. The output prompts a human to re-read one thread. It decides nothing.
+ * ------------------------------------------------------------------------ */
+
+/** One comment on an upstream issue, as the probe fetches it. */
+export interface IssueComment {
+  author?: string;
+  body: string;
+  createdAt?: string;
+  url?: string;
+}
+
+/** A single retraction-shaped line, kept verbatim so a human can adjudicate. */
+export interface CorrectionSignal {
+  author?: string;
+  createdAt?: string;
+  url?: string;
+  /** The matching line, trimmed. Quoted in the report — never paraphrased. */
+  excerpt: string;
+}
+
+export interface CorrectedAsk {
+  slug: string;
+  title?: string;
+  signals: CorrectionSignal[];
+  /** Every live-constraint citation still standing in the repo. */
+  citations: UpstreamRef[];
+}
+
+/**
+ * Lines that WITHDRAW a claim.
+ *
+ * Deliberately shaped, not topical. The remedy filed on ace#1792 proposed the
+ * bare word list `correction | disproved | I had this wrong | superseded | not
+ * the cause`; run against the real thread it was derived from, three of those
+ * five behaved differently than filed:
+ *
+ *   - `correction` MISSES the actual retraction heading, which reads
+ *     "### Correcting my comment above".
+ *   - `disproved` MISSES "The client logs disprove that".
+ *   - `not the cause` fires on "The OAuth cascade is a *symptom*, not the
+ *     cause" — a line of ordinary diagnostic prose in a comment that happens
+ *     also to be a retraction. Any debugging thread eliminating a suspect
+ *     writes that sentence, so it is dropped here: it is a claim ABOUT a
+ *     mechanism, not a withdrawal of one.
+ */
+const CORRECTION_MARKERS: RegExp[] = [
+  // "Correcting my comment above", "Correction to this issue's evidence".
+  /\bcorrect(?:ing|ion|ions|ed)\b[^.\n]{0,40}\b(?:my|the|this|that|above|earlier|previous|prior|issue)\b/i,
+  /\bfinal correction\b/i,
+  /\bdisprov(?:e|es|ed|en|ing)\b/i,
+  /\bI (?:had|got) (?:this|that|it) wrong\b/i,
+  /\bI was wrong\b/i,
+  /\bwrong (?:mechanism|diagnosis|premise|attribution)\b/i,
+  /\bretract(?:s|ed|ing|ion)?\b/i,
+  /\bsupersed(?:e|es|ed|ing)\b/i,
+  /\bmis(?:diagnosed|attributed|read|identified)\b/i,
+  /\bthat (?:inference|reading|claim|assertion|explanation) does not hold\b/i,
+  /\b(?:this|that|it) (?:was|is) never (?:the|a) (?:cause|bug|mechanism|problem)\b/i,
+  /\bno longer (?:the|our|a) (?:cause|mechanism|explanation|premise)\b/i,
+];
+
+/**
+ * Lines that pose an open question rather than settle one. A correction marker
+ * on a hedged line is dropped.
+ *
+ * Kept to first-person uncertainty and modal hedging. "theory" and
+ * "hypothesis" are NOT here on purpose: retrospective retractions routinely
+ * open "this was filed on the theory that …" before demolishing it.
+ */
+const SPECULATION_MARKERS: RegExp[] = [
+  /\bI cannot tell\b/i,
+  /\bI can'?t tell\b/i,
+  /\bnot sure\b/i,
+  /\bunclear\b/i,
+  /\bunsure\b/i,
+  /\bmight\b/i,
+  /\bmay be\b/i,
+  /\bmaybe\b/i,
+  /\bperhaps\b/i,
+  /\bpossibly\b/i,
+  /\bI suspect\b/i,
+  /\bcould be\b/i,
+  /\bboth fit\b/i,
+  /\bif (?:it|this|that|the) .{0,30}\bturns out\b/i,
+  /\bwould (?:mean|imply|suggest)\b/i,
+  /\bwant(?:ed)? to (?:confirm|check|rule out)\b/i,
+];
+
+/**
+ * Every retraction-shaped line in one comment. Empty when the comment reads as
+ * ordinary progress, hedging, or a fresh report.
+ *
+ * Line-scoped on purpose: a hedge three paragraphs away must not suppress a
+ * flat retraction, and a flat retraction must not launder a hedge on its own
+ * line. The excerpt is what gets quoted, so it has to be the matching line.
+ */
+export function findCorrectionSignals(comment: IssueComment): CorrectionSignal[] {
+  const out: CorrectionSignal[] = [];
+  for (const raw of (comment.body ?? "").split("\n")) {
+    const line = raw.trim();
+    if (!line) continue;
+    if (SPECULATION_MARKERS.some((r) => r.test(line))) continue;
+    if (!CORRECTION_MARKERS.some((r) => r.test(line))) continue;
+    out.push({
+      author: comment.author,
+      createdAt: comment.createdAt,
+      url: comment.url,
+      excerpt: line.length > 200 ? `${line.slice(0, 197)}…` : line,
+    });
+  }
+  return out;
+}
+
+/**
+ * The advisory report: OPEN upstream issues ACE still cites as a live
+ * constraint, whose thread contains a retraction-shaped comment.
+ *
+ * An issue with no live-constraint citation is skipped even when its thread is
+ * one long retraction — the docs have already absorbed it, and re-reporting
+ * acknowledged work is how a probe teaches people to ignore it.
+ */
+export function findCorrectedOpenAsks(
+  refs: UpstreamRef[],
+  statuses: IssueStatus[],
+): CorrectedAsk[] {
+  const byslug = new Map(statuses.map((s) => [s.slug, s]));
+  const grouped = new Map<string, UpstreamRef[]>();
+
+  for (const ref of refs) {
+    if (!ref.claimsLiveConstraint) continue;
+    const status = byslug.get(ref.slug);
+    if (!status || status.state !== "OPEN") continue;
+    const list = grouped.get(ref.slug) ?? [];
+    list.push(ref);
+    grouped.set(ref.slug, list);
+  }
+
+  const out: CorrectedAsk[] = [];
+  for (const [slug, citations] of grouped) {
+    const s = byslug.get(slug)!;
+    const signals = (s.comments ?? []).flatMap(findCorrectionSignals);
+    if (signals.length === 0) continue;
+    out.push({
+      slug,
+      title: s.title,
+      signals,
+      citations: citations.sort((a, b) =>
+        a.file === b.file ? a.line - b.line : a.file.localeCompare(b.file),
+      ),
+    });
+  }
+  return out.sort((a, b) => a.slug.localeCompare(b.slug));
 }
