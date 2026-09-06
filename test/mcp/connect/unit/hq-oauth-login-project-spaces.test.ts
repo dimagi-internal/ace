@@ -241,8 +241,11 @@ describe('hqOAuthLogin — HQ project-space consent step (ace#1766)', () => {
 
     expect(state.clickedWhileDisabled).toBe(true);
     expect(page.url()).toBe(AUTHORIZE_URL); // never redirected
+    // String(u) rather than `new URL(u)`: Playwright's type says the callback
+    // receives a URL, the driver treats it as a string, and both are correct
+    // at runtime — the fake hands over the raw href.
     await expect(
-      page.waitForURL((u: string) => new URL(u).hostname === 'connect.dimagi.com'),
+      page.waitForURL((u) => String(u).includes('connect.dimagi.com')),
     ).rejects.toThrow(/Timeout/);
   });
 });
