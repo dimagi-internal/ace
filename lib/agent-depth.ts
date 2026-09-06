@@ -100,7 +100,11 @@ export const DISPATCH_GRAPH: readonly DispatchNode[] = [
     dispatches: ['nova:nova-architect-autonomous'],
     why:
       'Step 1 reaches the Nova architect through /nova:autobuild. A subagent so ' +
-      'the heaviest phase in the pipeline gets its own context window.',
+      'the heaviest phase in the pipeline gets its own context window. It stays ' +
+      'a subagent despite ace#2059: the stall watchdog does not run down while a ' +
+      'phase waits on a child dispatch (measured — 462-899s gaps awaiting the ' +
+      'architect, all survived), so a long Nova build is not a reason to flatten ' +
+      'this to inline. Recovery from a stall is lib/agent-termination.ts.',
   },
   { name: 'connect-setup', form: 'subagent', owner: 'ace', dispatches: [] },
   { name: 'ocs-setup', form: 'subagent', owner: 'ace', dispatches: [] },

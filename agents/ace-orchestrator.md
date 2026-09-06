@@ -587,8 +587,48 @@ message body is empty, whitespace-only, or literally `No response
 requested` (or a near-variant). Treat these the same as a `'missing'`
 classification.
 
-On silent failure, re-dispatch the SAME phase ONE more time with an
-explicit closing line appended to the `## Your task` block:
+**Before re-dispatching, read HOW the agent stopped — a watchdog-killed
+agent is still reachable, and re-dispatching one is what mints
+duplicates.** Re-dispatch was written for "the agent never started its
+workflow." Two other terminations look identical from `run_state.yaml`
+and are not that. The `<task-notification>` you already received carries
+the class; `lib/agent-termination.ts` declares it and
+`test/lib/agent-termination.test.ts` holds this table to it.
+
+| What you got | Class | Reachable? | Do |
+|---|---|---|---|
+| `<status>completed</status>` | `completed` | yes | nothing |
+| `<status>failed</status>` naming `stream watchdog` / `Agent stalled` / `no progress for <n>s` | `stream-watchdog` | **yes** | **`SendMessage` the same task-id — RESUME.** Do NOT re-dispatch |
+| No notification at all; a NEW session is picking the phase up | `session-exit` | **no** | Reconcile external state from the owning system, THEN decide |
+| `<status>failed</status>`, any other cause | `unknown` | yes | Reconcile, then decide |
+
+A `stream-watchdog` kill is resumable on the harness's own say-so — the
+note on every such notification reads *"The user can send it another
+message and resume it"*, and a `SendMessage` "resumes it from its
+transcript". Resuming keeps the build context, which is the whole reason
+`agents/commcare-setup.md` § Turn-0 halt detection forbids a fresh
+`/nova:autobuild` while an app for this run exists (ace#1504). A
+re-dispatch throws that context away and hands a fresh agent a clean-slate
+brief — which is exactly how `poverty-graduation/20260905-1345` produced
+the orphan Nova app in ace#2058.
+
+**Do not reach for the timeout.** It is
+`CLAUDE_ASYNC_AGENT_STALL_TIMEOUT_MS` (default `600000`), the harness's,
+settable only in `~/.claude/settings.json` `env` next to the
+`CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH` pin — and ACE deliberately leaves
+it alone. In the measured kill the watchdog was *right*: the agent had
+begun a turn it never finished (`stop_reason: null`, no content), so a
+longer leash buys only a later failure. **And it does not fire while a
+phase waits on a child.** Measured across four `ace:commcare-setup`
+transcripts (2026-08-28 … 2026-09-05), silent gaps of 462s, 557s, 570s,
+820s and 899s spent awaiting `Agent(nova:nova-architect-autonomous)` all
+survived, and one of those dispatches closed `Phase 3 — status: done`. So
+a phase that dispatches a long Nova build is NOT structurally unable to
+run as a background `Agent`, and Phase 3 stays a subagent (ace#2059).
+
+On silent failure whose class is **not** `stream-watchdog`, re-dispatch
+the SAME phase ONE more time with an explicit closing line appended to
+the `## Your task` block:
 
 ```
 **Required: produce the artifact(s) described in your agent definition
@@ -1413,7 +1453,7 @@ whose rows have already run together.
 
 **Gate:** checkpoint-on-`app-deploy` — a `[BLOCKER]` halts with `status: blocked`, no prompt, in `default`/`auto`; pauses in `review`.
 
-**Notes:** Phase 3 is a subagent, which gives the heaviest phase in the run its own context window — but a subagent inherits nothing, so **Inputs** above must be complete at handoff. See `CLAUDE.md § Agent topology`.
+**Notes:** Phase 3 is a subagent, which gives the heaviest phase in the run its own context window — but a subagent inherits nothing, so **Inputs** above must be complete at handoff. See `CLAUDE.md § Agent topology`. The stall watchdog does **not** run down while this phase waits on the Nova architect — measured, see § Auto-retry silent Agent dispatches — so a long Nova build is not a reason to flatten Phase 3 to inline (ace#2059).
 
 ### Phase 4: Connect Setup
 
