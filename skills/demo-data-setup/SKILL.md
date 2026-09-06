@@ -468,8 +468,16 @@ front half (how the labs-only opp + its data come to exist) differs.
    **ADAPT means RE-POINT — a template-instantiated pipeline is not wired
    until you change its schema (ace#1160).** Run
    `checkDashboardBindings` from `lib/dashboard-bindings.ts` over each
-   authored workflow before minting its run. Three things it decides, all
-   from the definition alone:
+   authored workflow before minting its run.
+
+   **Feed it the `workflow_get` response, not a hand-built object.** Its
+   `pipeline_sources` comes back as an ARRAY of
+   `{pipeline_id, alias, name, schema_summary}` — pass that through
+   unchanged. The fourth check below can only be decided from the
+   resolution metadata that array carries, and passing the stored
+   `{alias: id}` dict instead silently gives up on it (ace#1894).
+
+   Four things it decides:
 
    - **`stock-template-path`** — the pipeline still extracts `form.meta.*`.
      The synthetic generator writes the run's REAL Deliver-app form paths
@@ -484,6 +492,21 @@ front half (how the labs-only opp + its data come to exist) differs.
      must actually read the pipeline. Binding a denormalized
      `worker.visit_count` instead reads **0**, because the generator writes
      UserVisit fixtures without back-filling that counter.
+   - **`pipeline-unresolvable-in-scope`** (ace#1894) — the declared pipeline
+     id does not exist in this workflow's own scope. Pipelines are
+     **opportunity-scoped**, and `workflow_clone` copies `pipeline_sources`
+     verbatim while — by its own atom description — *"NOT clon[ing] linked
+     pipelines"*. So a cross-opp clone declares ids it cannot read, reports
+     success, and renders **empty with no error**. The signal is already in
+     the `workflow_get` response: an unresolvable source comes back
+     `name: null` with `schema_summary.field_count: 0`, because there was no
+     row to read them from. Fix by re-pointing the alias at a pipeline in
+     this scope, or authoring one here.
+
+     **So do not reach for `workflow_clone` to carry a repaired dashboard
+     into a new run's opp.** It is the obvious move on a forked or repeated
+     run and it produces a dead page. Instantiate from template here and
+     re-point, which is what this step already does.
 
    Live: `hh-poverty-targeting/20260730-2210` workflow 5069 hit all three at
    once. Every worker row showed **`VISITS 0`** beside a chip reading
