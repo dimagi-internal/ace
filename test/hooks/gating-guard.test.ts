@@ -276,10 +276,16 @@ describe('gating_guard.py — shared-/tmp --body-file rail (ace#1819)', () => {
   // The rail must cost the correct workflow nothing. The session scratchpad
   // is the documented place for exactly this file, and it lives UNDER /tmp —
   // so the discriminator is the `claude-<uid>/` segment, not the tmp prefix.
+  //
+  // The scratchpad filenames below carry a distinguishing slug because
+  // ace#2019 added a second rail over the BASENAME (see the last describe):
+  // the scratchpad is shared by every concurrent subagent, so a generic name
+  // there is its own defect. This rail is still the one under test — the
+  // names only stop the two rails from being conflated.
   it.each([
     [
       'session scratchpad, /private/tmp spelling',
-      'gh issue create --title t --body-file /private/tmp/claude-502/-Users-acedimagi-emdash-worktrees-ace/943bfed9-e85c-4fa7-a048-8e8a7530ba36/scratchpad/body.md',
+      'gh issue create --title t --body-file /private/tmp/claude-502/-Users-acedimagi-emdash-worktrees-ace/943bfed9-e85c-4fa7-a048-8e8a7530ba36/scratchpad/issue-1819-shared-tmp.md',
     ],
     [
       'session scratchpad, /tmp spelling',
@@ -344,6 +350,9 @@ describe('gating_guard.py — the 2026-09-05 recurrence (ace#1819 reopened)', ()
   const SCRATCH =
     '/private/tmp/claude-502/-Users-acedimagi-emdash-worktrees-ace-c89535f9/333124ed-9d80-49f3-9c9b-325475d7aab2/scratchpad';
   const SHARED = '/tmp/pr1-body.md';
+  // Same shared root, a name no other session invents — so the ace#2019
+  // basename rail stays out of this describe's negative controls.
+  const SHARED_UNIQUE = '/tmp/pr-body-1819-recurrence.md';
 
   // POSITIVE CONTROLS — every one of these was ALLOWED by the shipped rail,
   // and every one publishes a file the command did not write.
@@ -381,21 +390,30 @@ describe('gating_guard.py — the 2026-09-05 recurrence (ace#1819 reopened)', ()
   // NEGATIVE CONTROLS — the rail must fail TOWARD a written file. The first
   // two were DENIED by the shipped rail, and that denial is precisely what
   // left the stale file in place for the launder above to publish.
+  //
+  // ace#2019 UPDATE: these three now carry a slug in the filename. The
+  // fail-toward-a-written-file invariant they encode is unchanged and still
+  // under test here; what changed is that a GENERIC basename under a tmp root
+  // is independently denied by the ace#2019 rail (last describe), because the
+  // scratchpad is shared by concurrent subagents. Spelling these fixtures with
+  // `pr1-body.md` would test the other rail by accident, so they name a file
+  // no sibling can collide with — which is also what the skill now requires.
   it.each([
     [
       'the compound heredoc-write-then-create the rail used to block (the #1989 shape)',
-      `cat > ${SHARED} <<'EOF'\n## What this fixes\nbody text\nEOF\n` +
+      `cat > ${SHARED_UNIQUE} <<'EOF'\n## What this fixes\nbody text\nEOF\n` +
         'gh pr create -R dimagi-internal/ace --head feat/x ' +
         '--title "feat(mobile-bootstrap): --pool N puts a second AVD in the pool (ace#1821)" ' +
-        `--body-file ${SHARED} 2>&1 | tail -3`,
+        `--body-file ${SHARED_UNIQUE} 2>&1 | tail -3`,
     ],
     [
       'the same shape written with tee',
-      'echo hi | tee /tmp/pr-body.md >/dev/null && gh pr create --title t --body-file /tmp/pr-body.md',
+      `echo hi | tee ${SHARED_UNIQUE} >/dev/null && gh pr create --title t --body-file ${SHARED_UNIQUE}`,
     ],
     [
-      'a write-then-create wholly inside the scratchpad (the shape we actually want)',
-      `cat > ${SCRATCH}/pr1-body.md <<'EOF'\nbody\nEOF\ngh pr create --title t --body-file ${SCRATCH}/pr1-body.md`,
+      'a write-then-create wholly inside the scratchpad, at a collision-proof name (the shape we actually want)',
+      `cat > ${SCRATCH}/agent-1819/pr-body-1819-recurrence.md <<'EOF'\nbody\nEOF\n` +
+        `gh pr create --title t --body-file ${SCRATCH}/agent-1819/pr-body-1819-recurrence.md`,
     ],
     [
       'copying WITHIN the scratchpad then publishing',
@@ -413,5 +431,129 @@ describe('gating_guard.py — the 2026-09-05 recurrence (ace#1819 reopened)', ()
     const r = runGuard('Bash', { command: 'gh pr create --title t --body-file /tmp/pr-body.md' });
     expect(r.exitCode).toBe(2);
     expect(r.stderr).toContain('scratchpad');
+  });
+});
+
+/**
+ * ace#2019 — the EXEMPTED path is not safe either: the session scratchpad is
+ * shared by every concurrent subagent, so a generic basename collides there.
+ *
+ * The two rails above both end at the same remediation: "write it to THIS
+ * session's scratchpad." That advice is correct about `/tmp` and wrong about
+ * isolation. One directory is handed to every subagent of a session and it
+ * survives restarts. Measured on this host, 2026-09-06, in a scratchpad a
+ * fresh subagent was handed:
+ *
+ *   $ ls -la <scratchpad> | grep -iE ' (pr|issue|body)[-_]?[0-9]*(body)?[-_]?(body)?\.md$'
+ *   -rw-r--r--  8518  Sep 2 14:33  body589.md      -rw-r--r--  12976 Sep 5 13:46  pr1-body.md
+ *   -rw-r--r--  5744  Sep 2 14:35  issue587.md     -rw-r--r--   4726 Sep 4 15:24  pr1body.md
+ *   -rw-r--r--  11441 Sep 5 09:43  pr-body.md      -rw-r--r--  12847 Sep 5 14:12  pr2-body.md
+ *   … ten generic basenames, four sessions, five days, one directory.
+ *
+ * `pr1-body.md` is the file in the incident: written by the subagent shipping
+ * ace#1950 at 13:38 and overwritten by a SIBLING from the same dispatch batch
+ * at 13:46. The first agent had already published, so nothing landed wrong —
+ * the window was real and the ordering was luck.
+ *
+ * WHY THIS RAIL CANNOT REPEAT #2011's FAIL-TOWARD-DANGER SHAPE. #2011's
+ * measured harm was that denying a compound write-then-publish killed the
+ * write, left a stale file readable, and the recovery RELOCATED that stale
+ * file to a blessed path — which the path-keyed rail then read as correct.
+ * This rail is keyed on the BASENAME, and a basename travels with the file:
+ * `cp`/`mv`/`cat`-redirect of a generic file into a unique name still carries
+ * the generic name in the command text, so every single-command relocation is
+ * denied too (positive control below). A denial here can be satisfied ONLY by
+ * choosing a new name, and a new name has no stale predecessor by
+ * construction — the safe state is the only reachable one. The residual is
+ * the same one #2011 has: a launder split across two Bash calls is invisible
+ * to a hook that sees one command at a time.
+ *
+ * Known accepted cost, inherited: the rail matches command TEXT, so a heredoc
+ * whose payload QUOTES one of these invocations is denied along with one that
+ * runs it. This file and skills/shipping/SKILL.md were both authored with the
+ * `Write` tool for that reason; the rail is Bash-scoped.
+ */
+describe('gating_guard.py — generic body-file basenames in the shared scratchpad (ace#2019)', () => {
+  const SCRATCH =
+    '/private/tmp/claude-502/-Users-acedimagi-emdash-worktrees-ace-c89535f9/333124ed-9d80-49f3-9c9b-325475d7aab2/scratchpad';
+  const AGENT = `${SCRATCH}/agent-2019`;
+  const UNIQUE = `${AGENT}/pr-body-2019-basenames.md`;
+
+  // POSITIVE CONTROLS — every one of these was ALLOWED before this change.
+  // The first six are the exact basenames living in that directory today.
+  it.each([
+    ['pr-body.md, the canonical one', `gh pr create --title t --body-file ${SCRATCH}/pr-body.md`],
+    [
+      'pr1-body.md, the file actually overwritten on 2026-09-05',
+      `gh pr create -R dimagi-internal/ace --title t --body-file ${SCRATCH}/pr1-body.md`,
+    ],
+    ['pr2body.md, the no-dash sibling spelling', `gh pr create --title t --body-file ${SCRATCH}/pr2body.md`],
+    [
+      'issue587.md via gh issue create',
+      `gh issue create --title t --body-file ${SCRATCH}/issue587.md --label harness`,
+    ],
+    ['body589.md via gh issue comment -F', `gh issue comment 2019 -F ${SCRATCH}/body589.md`],
+    ['issue_body.md, the underscore spelling', `gh issue create --title t --body-file ${SCRATCH}/issue_body.md`],
+    [
+      'digits alone are not a distinguisher: pr-body-2019.md',
+      `gh pr create --title t --body-file ${SCRATCH}/pr-body-2019.md`,
+    ],
+    [
+      'a compound write-then-publish at a generic name — the write is what clobbers a SIBLING',
+      `cat > ${SCRATCH}/pr-body.md <<'EOF'\nbody\nEOF\ngh pr create --title t --body-file ${SCRATCH}/pr-body.md`,
+    ],
+    [
+      'RELOCATION: cp a generic scratchpad file to a unique name, then publish it',
+      `cp ${SCRATCH}/pr-body.md ${UNIQUE} && gh pr create --title t --body-file ${UNIQUE}`,
+    ],
+    [
+      'relocation via mv',
+      `mv ${SCRATCH}/pr1-body.md ${UNIQUE} && gh pr edit 2010 --body-file ${UNIQUE}`,
+    ],
+    [
+      'a --title long enough to walk past any distance bound',
+      `gh pr create --head feat/x --title "${'x'.repeat(320)}" --body-file ${SCRATCH}/pr-body.md`,
+    ],
+  ])('DENIES %s', (_label, command) => {
+    const r = runGuard('Bash', { command });
+    expect(r.exitCode).toBe(2);
+    // Attribution: it is THIS rail firing, not the shared-/tmp rail above.
+    expect(r.stderr).toContain('GENERIC basename');
+  });
+
+  // NEGATIVE CONTROLS — the contract has to stay cheap to obey, and the rail
+  // must not tax surfaces where the shared-directory hazard does not exist.
+  it.each([
+    ['the contract: an agent-scoped, issue-and-slug name', `gh pr create --title t --body-file ${UNIQUE}`],
+    [
+      'the contract, written and published in one breath',
+      `cat > ${UNIQUE} <<'EOF'\nbody\nEOF\ngh pr create --title t --body-file ${UNIQUE}`,
+    ],
+    [
+      'an issue body at a unique name',
+      `gh issue create --title t --body-file ${AGENT}/issue-2019-shared-scratchpad.md --label harness`,
+    ],
+    ['a scratchpad file that is simply not a generic body name', `gh issue comment 2019 -F ${SCRATCH}/comment.md`],
+    ['a repo-relative body file — a worktree checkout is per-agent', 'gh pr create --title t --body-file ./pr-body.md'],
+    ['inline --body', 'gh issue create --title t --body "a real inline body" --label harness'],
+    ['reading a generic scratchpad file with no gh publish', `cat ${SCRATCH}/pr-body.md`],
+    ['gh api -F is --field, not --body-file', `gh api repos/dimagi-internal/ace/issues -F body=@${SCRATCH}/pr-body.md`],
+    ['a plain listing', 'gh pr list --state open --limit 30'],
+  ])('ALLOWS %s', (_label, command) => {
+    const r = runGuard('Bash', { command });
+    expect(r.exitCode).toBe(0);
+    expect(r.decision).toBeNull();
+  });
+
+  // Non-inertness, stated as a differential: the ONLY difference between the
+  // denied command and the allowed one is the slug in the basename.
+  it('is not inert — the same publish flips on the basename alone', () => {
+    const generic = runGuard('Bash', { command: `gh pr create --title t --body-file ${SCRATCH}/pr-body.md` });
+    const slugged = runGuard('Bash', {
+      command: `gh pr create --title t --body-file ${SCRATCH}/pr-body-2019-basenames.md`,
+    });
+    expect(generic.exitCode).toBe(2);
+    expect(generic.stderr).toContain('GENERIC basename');
+    expect(slugged.exitCode).toBe(0);
   });
 });
