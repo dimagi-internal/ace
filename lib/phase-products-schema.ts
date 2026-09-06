@@ -276,6 +276,24 @@ const OcsProducts = z
         public_id: z.string().optional(),
         embed_key: z.string().optional(),
         admin_url: z.string().url().optional(),
+        /**
+         * The ANONYMOUS chat URL — the one surface of this run an outside
+         * reviewer can use without being granted anything (ace#1839).
+         *
+         * `admin_url` was the only URL in this block, so every reader that
+         * wanted "the chatbot link" got the OCS console, which redirects an
+         * outsider to `/accounts/login/`. The public route existed and worked
+         * the whole time; `lib/ocs-public-chat-url.ts` has built it since
+         * ace#1021 and `ocs-widget-handoff-eval` already gates on it. It was
+         * simply never written into typed state, so the readers downstream —
+         * ace-web's summary serializer among them — had nothing to render.
+         *
+         * Built with `buildOcsPublicChatUrl`, never hand-assembled: the route
+         * is team-scoped and the two ways to get it wrong (the retired
+         * `/chatbots/embed/<id>/` path, and probing `/chatbots/<id>/` at the
+         * root) both look like a dead bot rather than a bad URL.
+         */
+        public_url: z.string().url().optional(),
         experiment_id: z.union([z.string(), z.number()]).optional(),
         team_slug: z.string().optional(),
         collection_id: z.union([z.string(), z.number()]).optional(),
