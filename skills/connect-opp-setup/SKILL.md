@@ -157,7 +157,7 @@ alone makes the artifact land outside `4-connect` and fail
    inactive without warning when this skill recreated the opp.
 
    Before calling `create_opportunity`, list active opps for this
-   program and surface a `[WARN]` line in the gate brief if any
+   program and surface a `[WARN]` line in `auto_surfaced` if any
    exist:
 
    ```
@@ -180,13 +180,13 @@ alone makes the artifact land outside `4-connect` and fail
    through `get_opportunity`, which parses the real toggle off the edit
    form. Filter to this program yourself from the hydrated rows.
 
-   For each opp where `active=true`, write to the gate brief:
+   For each opp where `active=true`, surface in `auto_surfaced`:
    `[WARN] Creating opp "<new-name>" will deactivate prior active
    opp "<old-name>" (id=<old-uuid>) — same program, same accepted
    application. Confirm intent or close prior opps first.`
 
    The auto-mode default is to proceed (matches current Phase 9
-   gate-brief auto-approval). Review-mode pauses for explicit operator
+   pause-point auto-approval). Review-mode pauses for explicit operator
    confirmation. An idempotent-resume path that detects an existing
    matching opp and asks before recreating is tracked as future work.
 
@@ -479,7 +479,7 @@ alone makes the artifact land outside `4-connect` and fail
 
      On the `blocker` verdict, apply the returned repair —
      `connect_set_learn_passing_score(posted)` — then re-read. **Surface its
-     `caution` in the gate brief:** the score lives on the shared
+     `caution` in `auto_surfaced`:** the score lives on the shared
      `CommCareApp` row, so the repair moves the gate for **every**
      opportunity in the org wired to this HQ Learn app. Record the
      `previous_passing_score` the atom returns.
@@ -493,7 +493,7 @@ alone makes the artifact land outside `4-connect` and fail
 
    **Action on mismatch:**
    - `end_date` (or any DEFERRED field that did read, and disagreed) →
-     `[BLOCKER]` in the gate brief; log the diff to
+     `[BLOCKER]` in `auto_surfaced`; log the diff to
      `comms-log/observations.md` with both values; do NOT proceed to
      Step 5. The opp is in an unknown state — operator must inspect via
      the Connect web UI before continuing. (The deferred fields get the
@@ -842,7 +842,7 @@ alone makes the artifact land outside `4-connect` and fail
      If Step 7's invite rejects with that error, the activate didn't take
      — halt there with `[BLOCKER]`.
    - **On hard error from the activate call**, halt with `[BLOCKER]` and
-     surface the server error verbatim in the gate brief. The most
+     surface the server error verbatim in `auto_surfaced`. The most
      common cause is "no PaymentUnit" — Step 6's verify-after-create
      check should already have failed loudly; if we got here without
      one, the verify-after-create has a gap to file against.
@@ -864,7 +864,7 @@ alone makes the artifact land outside `4-connect` and fail
      - `total_budget` — numeric match
      - `learn_app.cc_app_id` — bare 32-char match
      - `deliver_app.cc_app_id` — bare 32-char match
-   - **On any disagreement → `[BLOCKER]`** in the gate brief; log both
+   - **On any disagreement → `[BLOCKER]`** in `auto_surfaced`; log both
      values to `comms-log/observations.md`; do NOT proceed to Step 7.
      A wrong `cc_app_id` means the opportunity is wired to the wrong
      CommCare app, which cascades silently through Phase 6's device walk
@@ -1422,5 +1422,6 @@ decisions_append_rows({
 | 2026-08-25 | **Step 4's verify-after-create no longer asserts four fields it cannot read; new Step 6.6 verifies them post-activation (dimagi-internal/ace#1647).** A never-activated opportunity renders only the edit-form half of `connect_get_opportunity`, so `start_date`, `total_budget`, `learn_app.cc_app_id` and `deliver_app.cc_app_id` were all absent at the moment Step 4 ran — four mandated comparisons passing vacuously on every run while the log read as verified. Same shape as ace#1449 (`passing_score` compared against a field the surface does not render). Step 4 now splits readable-here (`name`, `short_description`, `description`, `end_date`, `is_test`) from deferred, and requires an absent field to be recorded `unreadable-at-this-point` rather than counted as a match; Step 6.6 re-reads after `/activate/` and `[BLOCKER]`s on disagreement OR on continued absence. Verified live on `bednet-check-2-visit/20260825-1310` Phase 4 (same opp, same atom, either side of activation). Upstream half stays on #1637. | ACE team |
 | 2026-08-25 | **Step 6: `id` dropped from the `connect_list_payment_units` corroboration allowlist (dimagi-internal/ace#1642).** The listing's first column is the row `#`, so the PU that `connect_create_payment_units` returned as `id: 2495` reads back as `id: 1` — a per-opp display index, not the server PK, and passing it where a server id is required reproduces the `du.id` vs `du.server_id` rejection. Corroboration is now `payment_unit_uuid` / `name` only, with `payment_unit_uuid` named as the durable identifier. Atom description in `mcp/connect-server.ts` corrected to match. Observed on `bednet-check-2-visit/20260825-1310` Phase 4. | ACE team |
 | 2026-05-10 | State consolidation PR a: retire `connect-state.yaml`; emit a single `run_state.yaml.phases.connect-setup.products.connect` block at end of Step 10. Step 7 holds invite metadata in memory rather than writing immediately. (Initial implementation dual-wrote to `opp.yaml.connect`; corrected on 2026-05-11 — runs are now independent. `opp.yaml.connect.program` is durable cross-run state written by `connect-program-setup`; `opp.yaml.connect.opportunity` / `ace_test_user` are no longer written here.) See `docs/superpowers/specs/2026-05-10-state-consolidation.md`. | ACE team |
+| 2026-09-06 | **Stop routing concerns to a gate brief that does not exist (dimagi-internal/ace#1884).** 0.13.116 removed the per-skill gate-brief file class and the ace#1880 sweep removed the remaining `*.md` PATHS, but prose directives naming the gate brief as a DESTINATION survived in 15 files — a concern "surfaced in the gate brief" is surfaced nowhere. Repointed at the verdict YAML's `auto_surfaced` block, which is what the orchestrator actually renders the pause summary from. Gated by the new destination check in `test/skills/gate-brief-removal-complete.test.ts`. | ACE team |
 
 <!-- connect_int_id is read directly from the connect_create_opportunity response (ConnectProd integer id); the old post-create labs_context lookup was removed in the jjackson/ace#686 follow-up (the int was always in the create response). -->

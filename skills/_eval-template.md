@@ -140,6 +140,7 @@ See `skills/_eval-template.md § Dry-Run Behavior`.
 
 | Date | Change | Author |
 |---|---|---|
+| 2026-09-06 | **Stop routing concerns to a gate brief that does not exist (dimagi-internal/ace#1884).** 0.13.116 removed the per-skill gate-brief file class and the ace#1880 sweep removed the remaining `*.md` PATHS, but prose directives naming the gate brief as a DESTINATION survived in 15 files — a concern "surfaced in the gate brief" is surfaced nowhere. Repointed at the verdict YAML's `auto_surfaced` block, which is what the orchestrator actually renders the pause summary from. Gated by the new destination check in `test/skills/gate-brief-removal-complete.test.ts`. | ACE team |
 ```
 
 ## Verdict YAML contract
@@ -184,8 +185,9 @@ gate:
 
 ## Auto-surfaced severity rules
 
-Every eval emits auto-surfaced concerns into the gate brief using
-shared semantics:
+Every eval emits auto-surfaced concerns into its verdict YAML's
+`auto_surfaced` block — which the orchestrator renders into the phase
+pause summary — using shared semantics:
 
 - **`BLOCKER`** — gate fails. Surfaced when:
   - Any dimension scores ≤ 3.0
@@ -233,7 +235,7 @@ in addition to (not instead of) the stock block.
 - **Auto:** Grade, write verdict + report, return overall score and
   disposition.
 - **Review:** Pause after grading to let a human eyeball the verdict
-  before the gate brief propagates.
+  before the verdict propagates.
 ```
 
 ## Dry-Run Behavior (stock)

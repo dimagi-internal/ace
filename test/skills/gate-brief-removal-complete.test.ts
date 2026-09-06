@@ -44,16 +44,16 @@ const GATE_BRIEF_FILENAME_RE = /gate-brief[\w-]*(?:\[[^\]\n]*\])?\.md/;
  * an instruction. Mirrors `coherence.test.ts`'s `orchestrator-reference.md`
  * allowance.
  *
- * `skills/README.md` is the skill-AUTHOR contract, and it still documents
- * gate-brief as a live artifact class in its artifact-naming table, its
- * `## Gate Brief` section spec, and its author checklist — i.e. it is the
- * surface from which the class keeps regrowing. Rewriting that contract is a
- * judgment call about what replaces it, not a mechanical path fix, so it is
- * deliberately left to a follow-up rather than bundled into the ace#1880
- * sweep. Remove this entry when that lands; do NOT add new entries here to
- * make a failure go away.
+ * EMPTY as of ace#1884, and it should stay that way. It previously held
+ * `skills/README.md` — the skill-AUTHOR contract, and the surface the removed
+ * class kept regrowing from, since a new skill's author copies its
+ * `## Products` example, its artifact-naming table, and its author checklist
+ * verbatim. That is now rewritten, so the exemption is gone.
+ *
+ * Do NOT add entries here to make a failure go away. An allowlisted contract
+ * file is how three prior sweeps each left the next one work to do.
  */
-const ALLOWLIST = new Set<string>(['skills/README.md']);
+const ALLOWLIST = new Set<string>([]);
 
 /** Collect every `.md` under a directory, recursively, repo-relative. */
 function markdownFiles(dir: string): string[] {
@@ -96,7 +96,30 @@ function htmlCommentLines(src: string): Set<number> {
   return inside;
 }
 
-function violations(dirs: string[]): string[] {
+/**
+ * The PROSE half of the class (ace#1884). The filename regex above only sees
+ * `*gate-brief*.md`; it is blind to `surface a [WARN] in the gate brief`,
+ * `write to the gate brief:`, `halt with a [BLOCKER] in the gate brief` —
+ * which is what 15 files still said after the ace#1880 filename sweep called
+ * the removal complete. Those are live directives pointing an agent at a
+ * destination that does not exist, and they are how the class regrows without
+ * ever spelling a path.
+ *
+ * Deliberately narrow: it matches a PREPOSITION immediately before the term,
+ * i.e. the gate brief as a DESTINATION. Talking ABOUT the removal ("the
+ * producer no longer authors a separate gate-brief artifact", "0.13.116
+ * removed the gate-brief write step", a `## Gate Brief — reference only`
+ * heading) has no preposition and passes, as it should.
+ *
+ * Known scope limit: a bare noun mention with no preposition — `Eval surfaces
+ * (gate briefs, WARN/INFO)`, fixed by hand in this same PR — is NOT caught.
+ * Widening the regex to bare mentions would flag every retirement note in the
+ * tree, which is the opposite of useful. The destination form is the one that
+ * misdirects an agent mid-run, so that is what is gated.
+ */
+const GATE_BRIEF_DESTINATION_RE = /\b(?:in|into|to|from|for)\s+(?:the\s+|a\s+|an\s+)?gate[\s-]?brief(?:'s)?\b/i;
+
+function scan(dirs: string[], re: RegExp): string[] {
   const found: string[] = [];
   for (const dir of dirs) {
     for (const rel of markdownFiles(dir)) {
@@ -104,7 +127,7 @@ function violations(dirs: string[]): string[] {
       const src = fs.readFileSync(path.join(ROOT, rel), 'utf-8');
       const commented = htmlCommentLines(src);
       src.split('\n').forEach((line, i) => {
-        if (!GATE_BRIEF_FILENAME_RE.test(line)) return;
+        if (!re.test(line)) return;
         if (commented.has(i + 1)) return;
         if (isChangeLogRow(line)) return;
         found.push(`${rel}:${i + 1}: ${line.trim()}`);
@@ -112,6 +135,10 @@ function violations(dirs: string[]): string[] {
     }
   }
   return found;
+}
+
+function violations(dirs: string[]): string[] {
+  return scan(dirs, GATE_BRIEF_FILENAME_RE);
 }
 
 describe('0.13.116 gate-brief removal is complete (ace#1880, completing ace#1805)', () => {
@@ -149,6 +176,17 @@ describe('0.13.116 gate-brief removal is complete (ace#1880, completing ace#1805
     ).toEqual([]);
   });
 
+  it('no file under skills/ or commands/ names the gate brief as a DESTINATION', () => {
+    expect(
+      scan(['skills', 'commands'], GATE_BRIEF_DESTINATION_RE),
+      'a SKILL.md or command doc tells an agent to put something IN / INTO / TO a ' +
+        'gate brief. 0.13.116 removed that destination — the orchestrator synthesizes the ' +
+        'pause summary from the QA + eval verdict YAMLs, so a concern routed "to the gate ' +
+        'brief" is routed nowhere. Put it in the verdict YAML\'s `auto_surfaced` block ' +
+        'instead. Explaining the removal is fine and does not match this check (ace#1884).',
+    ).toEqual([]);
+  });
+
   it('the check can actually see a violation (negative control)', () => {
     // Guards the trivially-green failure mode: a regex that matches nothing
     // would pass all three assertions above forever.
@@ -163,5 +201,29 @@ describe('0.13.116 gate-brief removal is complete (ace#1880, completing ace#1805
     expect(
       htmlCommentLines('<!-- 0.13.116: legacy `x_gate-brief.md` removed. -->\nplain line\n').has(2),
     ).toBe(false);
+
+    // Destination check: POSITIVE controls — the real strings this PR removed.
+    for (const line of [
+      'program and surface a `[WARN]` line in the gate brief if any',
+      'For each opp where `active=true`, write to the gate brief:',
+      '**If any check fails, halt with a `[BLOCKER]` in the gate brief.**',
+      'Every eval emits auto-surfaced concerns into the gate brief using',
+      "captures this URL for the gate brief's `Decisions Log:` line.",
+    ]) {
+      expect(GATE_BRIEF_DESTINATION_RE.test(line), `should flag: ${line}`).toBe(true);
+    }
+
+    // Destination check: NEGATIVE controls — talking ABOUT the removal, which
+    // every retirement note in the tree does and which must keep passing.
+    for (const line of [
+      'The producer no longer authors a separate gate-brief artifact.',
+      '## Gate Brief — reference only, NOT an artifact this skill writes',
+      '0.13.116: gate-brief write step removed. The orchestrator composes',
+      '`lib/artifact-manifest.ts` registers no gate-brief artifact.',
+      '**This skill writes no gate-brief file.** The write step was removed in',
+      '### `## Gate Brief` — OPTIONAL, and never an artifact',
+    ]) {
+      expect(GATE_BRIEF_DESTINATION_RE.test(line), `should NOT flag: ${line}`).toBe(false);
+    }
   });
 });

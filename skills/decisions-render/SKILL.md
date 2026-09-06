@@ -51,12 +51,12 @@ write the result to `decisions.gdoc` at one stable URL.
      atom wraps; its `import.meta.url === ...` CLI branch is still intentionally
      unwired (it needs a live Drive client). Don't shell out to the script.
 
-3. **Confirm the gdoc URL** from the atom's `webViewLink` field. The orchestrator captures this URL for the gate brief's `Decisions Log:` line.
+3. **Confirm the gdoc URL** from the atom's `webViewLink` field. The orchestrator captures this URL for the pause summary's `Decisions Log:` line.
 
 ## Failure modes
 
 - **decisions.yaml is missing**: the script throws with the run folder ID; the orchestrator's Phase Write-Back Verifier should have already created an empty decisions.yaml before this skill runs. If it didn't, the skill halts and surfaces the missing-file error to the operator.
-- **Schema-invalid YAML**: the script throws with the dot-path of the offending field. The originating skill (whichever phase wrote the bad row) gets a hard fail; orchestrator surfaces in the gate brief's BLOCKER list.
+- **Schema-invalid YAML**: the script throws with the dot-path of the offending field. The originating skill (whichever phase wrote the bad row) gets a hard fail; orchestrator surfaces it in the pause summary's BLOCKER list.
 - **Docs API rate limit**: rare — the renderer makes one batch update per phase. Retry once after 30s; halt with actionable error if it fails again.
 
 ## MCP Tools Used
@@ -74,3 +74,4 @@ write the result to `decisions.gdoc` at one stable URL.
 |------|--------|--------|
 | 2026-05-08 | Initial skill — pairs with `lib/decisions-renderer.ts` and `scripts/decisions-render.ts`. Renders decisions.yaml as a prose Google Doc; idempotent; runs at end of every phase. | ACE team (decisions-log PR #2) |
 | 2026-05-31 | Canonical path is now the `render_decisions_log` MCP atom (wraps `runDecisionsRender` server-side) — one call with the run-folder file ID instead of hand-relaying ~65KB of `docs_batch_update` JSON per phase (jjackson/ace#574). | ACE team |
+| 2026-09-06 | **Stop routing concerns to a gate brief that does not exist (dimagi-internal/ace#1884).** 0.13.116 removed the per-skill gate-brief file class and the ace#1880 sweep removed the remaining `*.md` PATHS, but prose directives naming the gate brief as a DESTINATION survived in 15 files — a concern "surfaced in the gate brief" is surfaced nowhere. Repointed at the verdict YAML's `auto_surfaced` block, which is what the orchestrator actually renders the pause summary from. Gated by the new destination check in `test/skills/gate-brief-removal-complete.test.ts`. | ACE team |

@@ -133,6 +133,7 @@ See `skills/_qa-template.md § Mode Behavior`.
 
 | Date | Change | Author |
 |---|---|---|
+| 2026-09-06 | **Stop routing concerns to a gate brief that does not exist (dimagi-internal/ace#1884).** 0.13.116 removed the per-skill gate-brief file class and the ace#1880 sweep removed the remaining `*.md` PATHS, but prose directives naming the gate brief as a DESTINATION survived in 15 files — a concern "surfaced in the gate brief" is surfaced nowhere. Repointed at the verdict YAML's `auto_surfaced` block, which is what the orchestrator actually renders the pause summary from. Gated by the new destination check in `test/skills/gate-brief-removal-complete.test.ts`. | ACE team |
 ```
 
 ## QA result YAML contract
@@ -173,7 +174,7 @@ passed:
 
 **No score fields.** No `overall_score`, no `dimensions:`, no `weight:`. QA is binary. If you find yourself wanting to add a score, the check belongs in eval, not QA.
 
-**No `auto_surfaced` block.** QA failures ARE the surfaces; they go in `failures`. Eval surfaces (gate briefs, WARN/INFO) are a separate concern.
+**No `auto_surfaced` block.** QA failures ARE the surfaces; they go in `failures`. Eval surfaces (`auto_surfaced` BLOCKER/WARN/INFO) are a separate concern.
 
 ## Auto-fix protocol
 

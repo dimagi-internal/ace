@@ -54,7 +54,7 @@ human-confirmed flaw the rubric must detect:
 - **[adversarial gap]** Suite contains 0 `should-refuse` and 0
   `hallucination-probe` prompts. The bot's refusal discipline is
   literally unmeasured. Detection target: `[INFO] thin adversarial
-  coverage` in the gate brief.
+  coverage` in the verdict's `auto_surfaced` block.
 
 ## Deliver app build (app-summaries/deliver-app-summary.md)
 
@@ -94,8 +94,8 @@ Notes: <what the rubric got right / missed>
 ### Step 3 — Score the rubric on detection rate
 
 For each known issue in the catalogue, check whether the rubric's
-verdict YAML surfaced it (deduction, `auto_surfaced` entry, gate-brief
-flag, dimension cap). Compute:
+verdict YAML surfaced it (deduction, `auto_surfaced` entry,
+dimension cap). Compute:
 
 ```
 detection_rate = issues_flagged / total_known_issues
@@ -355,3 +355,4 @@ ground-truth set, captured in an auditable run-record.
 | 2026-05-05 | Refresh the OCS-transcript example header in the known-issues template to match the new run-scoped path scheme (`5-ocs/ocs-chatbot-qa_transcript-deep.md` instead of the dated `qa-captures/...`). Cosmetic; no methodology change. | ACE team |
 | 2026-08-13 | **Added Step 3c — anchors must be re-derivable without the live artifact (ace#1212).** Anchors were recorded as pointers (*"opp X / run Y, Nova app Z scored N"*), and all three of those are mutable: Nova apps get edited, runs get repaired by the `repairs[]` loop the rubrics themselves drive, and a ratio over a judge-built denominator moves when the next grader enumerates differently. Since an anchor IS the regression test for a rubric revision ("any revision must still score that bank ≤3"), a drifted anchor lets a rubric pass its own gate while having quietly broken. Measured on `pdd-to-learn-app-eval`'s positive control 2026-08-13: **three different recorded readings of the same app** — 0.78 (denominator 32) in the rubric, 0.767 in that run's own prior verdict, and 0.904 (denominator **52**) live post-repair. The app changed; the *enumeration* changed far more (10 counter-intuitive rules + 12 operations → 19 + 14 in two days), so the dominant error bar was never the artifact. New rule: every anchor carries `measured_on`, the evidence table the score was computed from (the denominator's ENTRIES, not just its size), an explicit mutability notice, and BOTH readings where the artifact has since moved — the delta is information, not noise to be tidied away. Added a durability ordering (frozen artifact copy > inline evidence table > live pointer) and a scope note separating **anchors** (load-bearing, dated) from **provenance** (change-log citations explaining where a rule came from — explicitly exempt, since dating those buries the anchors that matter). Added to the Step-6 stop conditions. *Enforced:* `test/skills/eval-calibration-anchors.test.ts` fails any anchor section in a `skills/*-eval/SKILL.md` that cites a run id or app UUID without `measured_on` — a visibility gate, not a semantics gate. | ACE team |
 | 2026-05-29 | **Added Step 3b (dimension coverage) — the ITN post-mortem fix.** Detection rate can't surface a *missing* dimension (a blind spot is never a known issue), which is how the app evals scored 9.6 on a hollow build. New step: enumerate the fitness axes separating conformant from deployable, confirm a dimension touches each, and calibrate against an expert reference (ITN `[Final]`) + a thin negative control (ITN ACE build `20260528-1607`) that MUST score below `pass`. Added to the Step-6 stop conditions. Per `docs/superpowers/specs/2026-05-29-eval-fitness-gap.md`. | ACE team |
+| 2026-09-06 | **Stop routing concerns to a gate brief that does not exist (dimagi-internal/ace#1884).** 0.13.116 removed the per-skill gate-brief file class and the ace#1880 sweep removed the remaining `*.md` PATHS, but prose directives naming the gate brief as a DESTINATION survived in 15 files — a concern "surfaced in the gate brief" is surfaced nowhere. Repointed at the verdict YAML's `auto_surfaced` block, which is what the orchestrator actually renders the pause summary from. Gated by the new destination check in `test/skills/gate-brief-removal-complete.test.ts`. | ACE team |

@@ -274,6 +274,7 @@ favor of one skill per artifact. The decomposition gives:
 | `training-deck-generate` | `training-deck-spec.yaml` | Phase 6 internal (input to deck-render) | Step 2 (parallel) |
 | `training-onboarding-email` | `training-onboarding-email.md` | Phase 9 (consumed at LLO onboarding) | Step 3 (sequential, after siblings) |
 | `training-deck-render` | Google Slides URL | LLO (presents to FLWs / records) | Step 4 (sequential, after deck-generate) |
+| 2026-09-06 | **Stop routing concerns to a gate brief that does not exist (dimagi-internal/ace#1884).** 0.13.116 removed the per-skill gate-brief file class and the ace#1880 sweep removed the remaining `*.md` PATHS, but prose directives naming the gate brief as a DESTINATION survived in 15 files — a concern "surfaced in the gate brief" is surfaced nowhere. Repointed at the verdict YAML's `auto_surfaced` block, which is what the orchestrator actually renders the pause summary from. Gated by the new destination check in `test/skills/gate-brief-removal-complete.test.ts`. | ACE team |
 
 `agents/qa-and-training.md` enforces the sequencing.
 
@@ -328,7 +329,7 @@ Same shape as eval skills — see
 
 The artifact-specific `dimensions` differ per skill (each has its own
 four-criterion self-eval) but the verdict envelope, severity rules,
-and gate-brief surface follow the shared contract.
+and `auto_surfaced` severity tiers follow the shared contract.
 
 ## When to update this template
 

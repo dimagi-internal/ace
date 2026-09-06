@@ -87,7 +87,7 @@ alone makes the artifact land outside `4-connect` and fail
    - If an existing program fits AND shares the archetype, note the
      program ID; run step 3a, then skip step 4.
    - If an existing program matches the domain but not the archetype,
-     flag the mismatch in the gate brief / program notes; default to
+     flag the mismatch in `auto_surfaced` / program notes; default to
      creating a new one unless the admin explicitly opts in.
    - If no match: proceed to step 4.
 
@@ -432,3 +432,4 @@ multi-stage" (ace#1966). Two consequences to work with, not around:
 | 2026-08-23 | Step 4a: a fourth UNKNOWN condition — `connect_list_opportunities` walked only Connect's first page (20 rows) with no signal more existed, so Σ could be computed over a fifth of the program and read as complete. The atom now paginates to exhaustion and returns a `listing` completeness block; Σ is UNKNOWN when `listing.complete !== true` (dimagi-internal/ace#1590). | ACE team |
 | 2026-08-21 | Step 4a: Σ is executable again — `connect_get_opportunity` now reads `total_budget` + `program_name` off the opportunity dashboard, so a hydrated list can be scoped to this program and summed (supersedes the row above, same day). Names the three UNKNOWN cases and requires the branch taken to be reported in the program notes (dimagi-internal/ace#1550). | ACE team |
 | 2026-09-01 | Steps 2 + 4a: both MANDATED org-wide list calls overflowed the tool-result cap in `ai-demo-space` and returned no usable data (measured 2026-09-01: programs 42 rows/57,425 chars, 75.3% description prose; opportunities hydrated 71 rows/81,175 chars). Step 4a now calls `connect_list_opportunities({summarize_by_program})`, which does the whole Σ classification server-side and returns a few hundred characters instead of the rows; Step 2's unfiltered rows come back with capped descriptions. `write_to_path` on both atoms is the escape hatch (dimagi-internal/ace#1799). | ACE team |
+| 2026-09-06 | **Stop routing concerns to a gate brief that does not exist (dimagi-internal/ace#1884).** 0.13.116 removed the per-skill gate-brief file class and the ace#1880 sweep removed the remaining `*.md` PATHS, but prose directives naming the gate brief as a DESTINATION survived in 15 files — a concern "surfaced in the gate brief" is surfaced nowhere. Repointed at the verdict YAML's `auto_surfaced` block, which is what the orchestrator actually renders the pause summary from. Gated by the new destination check in `test/skills/gate-brief-removal-complete.test.ts`. | ACE team |
