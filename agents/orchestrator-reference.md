@@ -1693,14 +1693,14 @@ of the incident above: the subagent's checkout, and the orchestrator's
 
 ### The dispatch prompt
 
-Tell the subagent to run `skills/shipping` and return its Step 5 ship
+Tell the subagent to run `skills/shipping` and return its Step 3 ship
 checkpoint. Don't re-list the steps — that narrows scope and silently
 skips skill-defined work (`CLAUDE.md`, dispatch-prompt discipline).
 
 ```
 ... (subagent does the fix + push + PR creation) ...
 
-Run skills/shipping end to end. Return its Step 5 ship checkpoint
+Run skills/shipping end to end. Return its Step 3 ship checkpoint
 verbatim, plus the fields below.
 ```
 
