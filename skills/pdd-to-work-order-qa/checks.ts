@@ -760,6 +760,137 @@ export function checkAdvanceContingentWhenCapUnresolved(raw: string): QACheckRes
   };
 }
 
+/**
+ * Check 12: a milestone schedule and a per-unit rate in the same § 6.2 must say
+ * how they relate (ace#2023, strike 1).
+ *
+ * These are two different payment models. A 40/60 milestone split pays against
+ * the cap; a per-verified-unit rate pays against delivery. Both are legitimate,
+ * and real contracts carry both — but only when one says whether the advance is
+ * RECOVERABLE against accrued units or is a separate stream. Silence there is
+ * what a contracts reviewer cannot sign, and neither
+ * `payment_schedule_sums_to_100` (which only sums percentages) nor
+ * `payment_unit_matches_entity_grain` (which compares the rate unit to the
+ * entity grain) can see it.
+ */
+export function checkPaymentModelsReconciled(raw: string): QACheckResult {
+  const wo = normalizeDriveExport(raw);
+  const schedule = extractNumberedSection(wo, '6.2');
+  if (schedule === null) return { pass: true }; // owned by payment_schedule_sums_to_100
+
+  const hasMilestones = /\d{1,3}\s*%/.test(schedule);
+  const hasPerUnit = /per[- ](?:verified[- ])?unit|per verified unit|rate per/i.test(schedule);
+  if (!hasMilestones || !hasPerUnit) return { pass: true }; // only one model — nothing to reconcile
+
+  const reconciled =
+    /recoverab|recouped|offset against|credited against|deducted from|drawn down|reconcile[sd]? against/i.test(
+      schedule,
+    );
+  if (reconciled) return { pass: true };
+
+  return {
+    pass: false,
+    detail:
+      '\u00a7 6.2 states BOTH a milestone percentage schedule and a per-unit rate without saying how ' +
+      'they relate \u2014 whether the advance is recoverable against accrued units or is a separate ' +
+      'stream. A reviewer cannot tell what is owed when both apply.',
+    auto_fix_hint:
+      'add one clause to \u00a7 6.2 stating the relationship, e.g. "The mobilization advance is ' +
+      'recoverable: verified units accrue against it until it is fully drawn down, after which units ' +
+      'are paid at the agreed rate." Keep both models; state the link.',
+  };
+}
+
+/**
+ * Check 13: a per-FLW cap the PDD DECLARES must reach the contract (ace#2023,
+ * strike 2).
+ *
+ * `daily_cap_per_flw` is an anti-skimming control. It only controls anything if
+ * the party bound by it can read it, and with a per-unit rate against an
+ * unresolved NTE it is the only volume bound the contract has.
+ *
+ * Reads the cap BY KEY from decisions.yaml. It does NOT infer a cap from any
+ * other numeric row: on poverty-graduation/20260905-1345 the eval judge read
+ * `expected_reach_min: 300` as a `total_cap_per_flw` that does not exist
+ * anywhere in the PDD, and struck the work order for omitting it. Absence of a
+ * declared cap is a PASS here — this check enforces transmission, never
+ * invention.
+ */
+export function checkDeclaredCapReachesContract(
+  raw: string,
+  ctx?: QACheckContext,
+): QACheckResult {
+  const decisions = (ctx?.decisionsYaml as string) ?? '';
+  // `daily_cap_per_flw: 25`, or the decisions-row form with the value on its
+  // own line beneath the id.
+  const m =
+    decisions.match(/daily_cap_per_flw["']?\s*:\s*["']?(\d+)/i) ??
+    decisions.match(/daily[-_]cap[-_]per[-_]flw[\s\S]{0,120}?["']?ai-default["']?\s*:\s*["']?(\d+)/i);
+  if (!m) return { pass: true }; // no declared cap — nothing to transmit
+
+  const cap = m[1];
+  const wo = normalizeDriveExport(raw);
+  const payment = extractNumberedSection(wo, '6');
+  const body = payment ?? wo;
+  if (new RegExp(`\\b${cap}\\b`).test(body)) return { pass: true };
+
+  return {
+    pass: false,
+    detail:
+      `the design declares a per-FLW daily cap of ${cap}, but it does not appear in \u00a7 6 Payment ` +
+      'Terms. A cap the paying party never states is not a control, and with a per-unit rate it is the ' +
+      'only volume bound the contract carries.',
+    auto_fix_hint:
+      `state the cap in \u00a7 6, e.g. "No more than ${cap} verified units per field worker per day are ` +
+      'payable." Transmit only caps the design actually declares \u2014 do NOT invent a programme-wide ' +
+      'total from a neighbouring figure such as expected reach (ace#2023).',
+  };
+}
+
+/**
+ * Check 14: a milestone that pays on "acceptance" must define acceptance
+ * (ace#2023, strike 3).
+ *
+ * The rubric's own named failure mode is "payment triggers that aren't tied to
+ * an objectively determinable event". "Acceptance of the final verified dataset"
+ * with no criteria, no window and no deemed-acceptance default is exactly that:
+ * the paying party can withhold indefinitely by not accepting.
+ */
+export function checkAcceptanceDefined(raw: string): QACheckResult {
+  const wo = normalizeDriveExport(raw);
+  const schedule = extractNumberedSection(wo, '6.2');
+  if (schedule === null) return { pass: true };
+
+  if (!/accept(?:ance|ed|s)?\b/i.test(schedule)) return { pass: true }; // no acceptance trigger to define
+
+  // The window must run from SUBMISSION/DELIVERY/RECEIPT, i.e. from the event
+  // that starts the acceptance clock. A window measured FROM acceptance is a
+  // payment term, not a definition of acceptance — "Within 30 days of
+  // acceptance" tells you when money moves once acceptance has happened, and
+  // says nothing about when or whether it happens. Measured on
+  // poverty-graduation/20260905-1345, whose milestone-2 timing cell reads
+  // exactly that and false-passed the first cut of this check.
+  const defined =
+    /deemed[- ]accept/i.test(wo) ||
+    /accept(?:ance)?\s+criteria/i.test(wo) ||
+    /within\s+\d+\s+(?:business\s+)?days?\s+(?:of|after|from)\s+(?:the\s+|each\s+|final\s+)*(?:submission|delivery|receipt|submitted|delivered)/i.test(
+      wo,
+    );
+  if (defined) return { pass: true };
+
+  return {
+    pass: false,
+    detail:
+      '\u00a7 6.2 pays on "acceptance" but the document defines no acceptance criteria, no review ' +
+      'window, and no deemed-acceptance default \u2014 so the trigger is not objectively determinable ' +
+      'and payment can be withheld indefinitely by not accepting.',
+    auto_fix_hint:
+      'define acceptance once and reference it: state a review window and a deemed-acceptance default, ' +
+      'e.g. "Dimagi will review within 15 business days of submission; absent written rejection ' +
+      'identifying the deficient units, the submission is deemed accepted."',
+  };
+}
+
 export const CHECKS: QACheck[] = [
   {
     id: 'all_required_sections_present',
@@ -826,6 +957,30 @@ export const CHECKS: QACheck[] = [
       'A milestone percentage stated against an unresolved \u00a7 6.1 cap must say that nothing is ' +
       'payable until the cap is fixed (dimagi-internal/ace#2007)',
     run: (wo: string) => checkAdvanceContingentWhenCapUnresolved(wo),
+  },
+  {
+    id: 'payment_models_reconciled',
+    type: 'static',
+    description:
+      'A milestone schedule and a per-unit rate in the same \u00a7 6.2 state how they relate ' +
+      '(dimagi-internal/ace#2023)',
+    run: (wo: string) => checkPaymentModelsReconciled(wo),
+  },
+  {
+    id: 'declared_cap_reaches_contract',
+    type: 'static',
+    description:
+      'A per-FLW daily cap the design DECLARES appears in \u00a7 6 Payment Terms; a cap the design ' +
+      'does not declare is never invented (dimagi-internal/ace#2023)',
+    run: (wo: string, ctx?: QACheckContext) => checkDeclaredCapReachesContract(wo, ctx),
+  },
+  {
+    id: 'acceptance_defined',
+    type: 'static',
+    description:
+      'A milestone paying on "acceptance" defines criteria, a review window, or a deemed-acceptance ' +
+      'default (dimagi-internal/ace#2023)',
+    run: (wo: string) => checkAcceptanceDefined(wo),
   },
   {
     id: 'payment_unit_matches_entity_grain',

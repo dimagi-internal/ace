@@ -61,6 +61,8 @@ Dimagi's total financial commitment under this Work Order is USD 2500, not-to-ex
 
 Dimagi will pay only for verified units.
 
+Dimagi will review each submission within 15 business days of submission; absent written rejection identifying the deficient units, the submission is deemed accepted.
+
 ## 7. Roles and Responsibilities
 
 | Activity | Partner | Dimagi |

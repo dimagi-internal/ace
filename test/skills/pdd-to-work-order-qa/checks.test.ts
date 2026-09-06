@@ -22,6 +22,9 @@ import {
   checkNoRendererInstructions,
   checkPaymentUnitMatchesEntityGrain,
   checkAdvanceContingentWhenCapUnresolved,
+  checkPaymentModelsReconciled,
+  checkDeclaredCapReachesContract,
+  checkAcceptanceDefined,
   normalizeDriveExport,
   CHECKS,
 } from '../../../skills/pdd-to-work-order-qa/checks';
@@ -409,8 +412,8 @@ describe('checkNoScaffoldingMarkers', () => {
 });
 
 describe('CHECKS array', () => {
-  test('exports eleven checks in canonical order', () => {
-    expect(CHECKS).toHaveLength(11);
+  test('exports fourteen checks in canonical order', () => {
+    expect(CHECKS).toHaveLength(14);
     const ids = CHECKS.map((c) => c.id);
     expect(ids).toEqual([
       'all_required_sections_present',
@@ -423,6 +426,9 @@ describe('CHECKS array', () => {
       'no_renderer_instructions',
       'no_scaffolding_markers',
       'advance_contingent_when_cap_unresolved',
+      'payment_models_reconciled',
+      'declared_cap_reaches_contract',
+      'acceptance_defined',
       'payment_unit_matches_entity_grain',
     ]);
   });
@@ -876,5 +882,113 @@ ${extra}
 
   test('is registered in CHECKS', () => {
     expect(CHECKS.map((c) => c.id)).toContain('advance_contingent_when_cap_unresolved');
+  });
+});
+
+// ace#2023 — the three commercial_realism strikes that survived ace#2007. All
+// three live in § 6 and none was visible to any mechanical check, which is the
+// same shape as ace#1004: a defect spanning sections rather than sitting in a
+// token.
+describe('checkPaymentModelsReconciled (ace#2023)', () => {
+  const both = `
+### 6.2 Payment Schedule
+
+| # | Milestone | % of Cap | Trigger |
+|---|---|---|---|
+| 1 | Mobilization advance | 40% | Execution |
+| 2 | Final reconciliation | 60% | Acceptance |
+
+Dimagi will pay only for verified units, at the per-verified-unit rate proposed in the response.
+
+## 7. Roles
+`;
+
+  test('fails when a milestone schedule and a per-unit rate sit unreconciled', () => {
+    const r = checkPaymentModelsReconciled(both);
+    expect(r.pass).toBe(false);
+    expect(r.detail).toMatch(/without saying how/);
+  });
+
+  test('passes once the advance is stated recoverable', () => {
+    const fixed = both.replace(
+      'Dimagi will pay only',
+      'The mobilization advance is recoverable: verified units accrue against it until drawn down. Dimagi will pay only',
+    );
+    expect(checkPaymentModelsReconciled(fixed).pass).toBe(true);
+  });
+
+  test('passes when only ONE model is present — nothing to reconcile', () => {
+    const milestonesOnly = both.replace(/Dimagi will pay only[^\n]*\n/, '');
+    expect(checkPaymentModelsReconciled(milestonesOnly).pass).toBe(true);
+  });
+});
+
+describe('checkDeclaredCapReachesContract (ace#2023)', () => {
+  const wo = `
+## 6. Payment Terms
+
+### 6.1 Total Not-to-Exceed
+
+USD [TBD], not-to-exceed.
+
+### 6.2 Payment Schedule
+
+| 1 | Advance | 40% | Execution |
+
+## 7. Roles
+`;
+
+  test('fails when the design declares a daily cap the contract never states', () => {
+    const r = checkDeclaredCapReachesContract(wo, { decisionsYaml: 'daily_cap_per_flw: 25\n' });
+    expect(r.pass).toBe(false);
+    expect(r.detail).toMatch(/daily cap of 25/);
+  });
+
+  test('passes once the cap is stated in § 6', () => {
+    const fixed = wo.replace('USD [TBD], not-to-exceed.', 'USD [TBD], not-to-exceed. No more than 25 verified units per field worker per day are payable.');
+    expect(checkDeclaredCapReachesContract(fixed, { decisionsYaml: 'daily_cap_per_flw: 25\n' }).pass).toBe(true);
+  });
+
+  // The half of strike 2 that was WRONG: the eval judge read `expected_reach_min:
+  // 300` as a `total_cap_per_flw` that exists nowhere in the PDD. This check
+  // enforces TRANSMISSION of a declared cap, never INVENTION of one.
+  test('never invents a cap from a neighbouring numeric row', () => {
+    const r = checkDeclaredCapReachesContract(wo, {
+      decisionsYaml: 'expected_reach_min: 300\nexpected_reach_max: 500\nflw_count_min: 8\n',
+    });
+    expect(r.pass).toBe(true);
+  });
+
+  test('passes when there is no decisions context at all', () => {
+    expect(checkDeclaredCapReachesContract(wo).pass).toBe(true);
+  });
+});
+
+describe('checkAcceptanceDefined (ace#2023)', () => {
+  const wo = `
+### 6.2 Payment Schedule
+
+| 2 | Final reconciliation | 60% | Acceptance of the final dataset | Within 30 days of acceptance |
+
+## 7. Roles
+`;
+
+  // "Within 30 days OF ACCEPTANCE" is a payment term, not a definition of
+  // acceptance. The first cut of this check treated any nearby day-count as a
+  // definition and false-passed the real poverty-graduation/20260905-1345
+  // document, which contains exactly that cell.
+  test('fails on a window measured FROM acceptance — that defines nothing', () => {
+    const r = checkAcceptanceDefined(wo);
+    expect(r.pass).toBe(false);
+    expect(r.detail).toMatch(/not objectively determinable/);
+  });
+
+  test('passes on a window measured from SUBMISSION plus a deemed default', () => {
+    const fixed = wo + '\nDimagi will review within 15 business days of submission; absent written rejection, the submission is deemed accepted.\n';
+    expect(checkAcceptanceDefined(fixed).pass).toBe(true);
+  });
+
+  test('passes when no milestone pays on acceptance', () => {
+    expect(checkAcceptanceDefined('### 6.2 Payment Schedule\n\n| 1 | Advance | 40% | On execution |\n\n## 7. Roles\n').pass).toBe(true);
   });
 });
