@@ -58,17 +58,40 @@ everything between arming and merging is waiting.
 - **Post-merge is mandatory: run `/ace:update` in this session.** Without it this session runs
   stale code while new sessions get the bump. This is ACE's instance of the core's "reconcile the
   running session" step.
-- **A PR/issue body longer than one line goes in THIS session's scratchpad — never `/tmp/pr-body.md`.**
-  Write it to the scratchpad directory named in your system prompt
-  (`/private/tmp/claude-<uid>/<project>/<session-uuid>/scratchpad/`), then `--body-file` from
-  there; a repo-relative path is fine too. `/tmp` is shared across every session, worktree and
-  macOS account on the host, so a predictable name may already hold someone else's file and `gh`
-  publishes it silently — ace#1818, then ace#1819 again on 2026-09-05, when PR #1989 shipped 4,912
-  bytes of an unrelated 4-day-old session's file. **Do not `cp` a shared-`/tmp` file into the
-  scratchpad to get around this** — that is the exact move that published #1989's wrong body, and
-  a `config/gating.json` deny rail now blocks it (*enforced:* `test/hooks/gating-guard.test.ts`).
-  Authoring the body with the `Write` tool sidesteps the whole class: the rail is Bash-scoped, and
+- **A PR/issue body longer than one line goes in a UNIQUELY-NAMED file in your OWN subdirectory of
+  this session's scratchpad. Both halves are load-bearing.**
+
+  ```
+  <scratchpad>/agent-<issue>/pr-body-<issue>-<slug>.md     e.g. .../agent-2019/pr-body-2019-basenames.md
+  <scratchpad>/agent-<issue>/issue-<issue>-<slug>.md
+  ```
+
+  *Never `/tmp/pr-body.md`* — `/tmp` is shared across every session, worktree and macOS account on
+  the host, so a predictable name may already hold someone else's file and `gh` publishes it
+  silently (ace#1818; then ace#1819 again on 2026-09-05, when PR #1989 shipped 4,912 bytes of an
+  unrelated 4-day-old session's file).
+
+  *And never a generic name in the scratchpad either* — **the scratchpad is not private.** Every
+  concurrent subagent of a session shares ONE directory and it survives restarts, so two agents in
+  one dispatch batch invent the same name and silently overwrite each other. Measured 2026-09-05
+  (ace#2019): a subagent's `<scratchpad>/pr1-body.md` was overwritten ~8 minutes later by a sibling
+  from the same batch; it had already published, so the ordering was luck. That directory today
+  holds ten generic basenames (`pr-body.md`, `pr1-body.md`, `pr1body.md`, `pr2-body.md`,
+  `issue587.md`, `body589.md`, …) from at least four sessions over five days. **Digits alone are not
+  a distinguisher** — `pr1-body.md` (a counter) and `pr-body-2019.md` (an issue number) are the same
+  shape to a sibling; add a word.
+
+  **Do not `cp`/`mv` an existing body file to a legal name** — not from shared `/tmp` (that is the
+  exact move that published #1989's wrong body) and not from a generic scratchpad name (whatever is
+  in it may be a sibling's body, not yours). Re-author it. Two `config/gating.json` deny rails
+  enforce both halves (*enforced:* `test/hooks/gating-guard.test.ts`).
+
+  Authoring the body with the `Write` tool sidesteps the whole class: the rails are Bash-scoped, and
   a heredoc that *quotes* one of these invocations is denied along with one that runs it.
+
+  **Read every published body back from GitHub before moving on** — `gh pr view <n> --json body`.
+  Both incidents were caught that way, and in #2010's case the read-back is the only reason we know
+  the right body shipped.
 - **Touched `mcp/`, or ran `/ace:setup --force-env`? Quit and reopen Claude Code.**
   `/ace:update` + `/reload-plugins` do NOT respawn MCP subprocesses — they bind their tool list,
   schemas, and env at spawn. See `CLAUDE.md § MCP changes need a full Claude restart`. Otherwise
