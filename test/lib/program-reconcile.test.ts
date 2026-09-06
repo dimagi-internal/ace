@@ -21,9 +21,9 @@ import {
 import { assertChecked, assertUnable, isPass } from '../../lib/check-outcome.js';
 
 const STALE_LIVE: LiveProgramFields = {
-  // ace#1966 — the real spark-facilitator program name, archetype-neutral, so
-  // the name check runs and passes. Without a name it would report UNABLE,
-  // which is deliberately not silent.
+  // ace#1966 — an archetype-neutral name (invented for this fixture; the live
+  // program's actual name was not read), so the name check RUNS and passes.
+  // Without a name it reports UNABLE, which is deliberately not silent.
   name: 'Spark Community Facilitator Programme',
   description:
     'CBFs facilitate monthly community meetings. Payment requires: GPS within 500m of the ' +
