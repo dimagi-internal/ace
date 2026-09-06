@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { classifyLine, extractRefs, ACK_WINDOW_LINES } from '../../lib/upstream-asks.js';
@@ -41,17 +42,68 @@ describe('classifyLine — Table A must not be suppressed by its own vocabulary'
   });
 });
 
+/**
+ * ace#2050. A bare `commcare-nova#458` does not match REF_RE (`owner/repo#n`),
+ * so the probe drops it silently — **invisible, not merely unflagged**. That is
+ * strictly worse than a misclassified citation, because no amount of
+ * classifier tuning can ever reach it.
+ *
+ * This is a RATCHET, not a clean bill of health. `GUARDED` is the set of files
+ * proven clean; the rest of the repo still carries owner-less refs and is a
+ * ledger to pay down (see the second test). Add files to `GUARDED` as they are
+ * normalised — never remove one.
+ *
+ * CLAUDE.md joined the set because it is where the cost was actually measured:
+ * it opened with "ONE open Nova upstream bug — commcare-nova#545" for four days
+ * after that issue closed COMPLETED, and `probe-upstream-asks.ts` — which exists
+ * precisely to catch a closed issue still cited as live — reported a clean repo,
+ * because both of that line's #545 citations were owner-less. ace#2050 was filed
+ * against `classifyLine`'s acknowledgement window; measured, `classifyLine` was
+ * never consulted for that line at all.
+ */
+const GUARDED = ['CLAUDE.md', 'skills/_app-component-library.md'] as const;
+
+/** Repos ACE cites without an owner often enough to be worth catching. */
+const BARE_REF =
+  /(^|[^/\w-])(commcare-nova|nova-plugin|nova-marketplace|commcare-connect|open-chat-studio)#(\d+)/g;
+
 describe('citations in scanned docs carry an owner prefix', () => {
-  // A bare `commcare-nova#458` does not match REF_RE (`owner/repo#n`), so the
-  // probe drops it silently — invisible, not merely unflagged.
-  it('_app-component-library.md has no owner-less upstream refs', () => {
-    const file = join(REPO, 'skills', '_app-component-library.md');
-    const content = readFileSync(file, 'utf8');
-    const bare = [...content.matchAll(/(^|[^/\w-])(commcare-nova|nova-plugin)#(\d+)/g)];
+  for (const rel of GUARDED) {
+    it(`${rel} has no owner-less upstream refs`, () => {
+      const content = readFileSync(join(REPO, rel), 'utf8');
+      const bare = [...content.matchAll(BARE_REF)];
+      expect(
+        bare.map((m) => `${m[2]}#${m[3]}`),
+        `owner-less upstream refs in ${rel} are INVISIBLE to probe-upstream-asks — ` +
+          'REF_RE requires owner/repo#n, so these are never classified at all. ' +
+          'Write the full slug (e.g. voidcraft-labs/commcare-nova#545).',
+      ).toEqual([]);
+    });
+  }
+
+  /**
+   * The ledger. Not a failure — a count that must not grow. Pinning it makes a
+   * new offender visible in a diff, and shrinking it is a one-line edit here.
+   */
+  it('the un-normalised backlog outside GUARDED does not grow (ace#2050)', () => {
+    const tracked = execFileSync(
+      'git',
+      ['ls-files', 'skills', 'lib', 'agents', 'docs', 'playbook', 'commands', 'scripts', 'templates'],
+      { cwd: REPO, encoding: 'utf8' },
+    )
+      .split('\n')
+      .filter((f) => /\.(md|ts)$/.test(f))
+      .filter((f) => !(GUARDED as readonly string[]).includes(f));
+
+    const offenders = tracked.filter((f) =>
+      new RegExp(BARE_REF.source).test(readFileSync(join(REPO, f), 'utf8')),
+    );
+
     expect(
-      bare.map((m) => `${m[2]}#${m[3]}`),
-      'owner-less upstream refs are invisible to probe-upstream-asks',
-    ).toEqual([]);
+      offenders.length,
+      `files with owner-less upstream refs (was 12 at ace#2050; add normalised files to ` +
+        `GUARDED and lower this number — never raise it):\n  ${offenders.join('\n  ')}`,
+    ).toBeLessThanOrEqual(12);
   });
 
   it('extractRefs sees the retired case-ref row citation', () => {
