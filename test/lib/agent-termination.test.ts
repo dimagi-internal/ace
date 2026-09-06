@@ -61,6 +61,7 @@ import {
 
 const ROOT = join(__dirname, '..', '..');
 const ORCHESTRATOR = readFileSync(join(ROOT, 'agents', 'ace-orchestrator.md'), 'utf8');
+const COMMCARE_SETUP = readFileSync(join(ROOT, 'agents', 'commcare-setup.md'), 'utf8');
 
 /** Verbatim from the parent session's transcript for `a0d9af9d1d0329451`. */
 const REAL_STALL_NOTIFICATION = `<task-notification>
@@ -219,5 +220,76 @@ describe('the orchestrator carries the termination branch, not just the re-dispa
     // remedy back, and that one is expensive to undo.
     expect(section).toMatch(/899s/);
     expect(section).toMatch(/ace#2059/);
+  });
+});
+
+/**
+ * The other end of the same defect (dimagi-internal/ace#2058).
+ *
+ * `agents/ace-orchestrator.md` had one recovery verb and reached for it when the
+ * agent was still resumable. `agents/commcare-setup.md` § Turn-0 halt detection
+ * had the opposite failure: its half-built-app branch (ace#1504) prescribes
+ * `SendMessage` resume, then "resume once more", then `/nova:edit` — a chain
+ * whose first two steps assume the architect is addressable.
+ *
+ * It is, when the architect is YOURS. It is not when a previous Phase-3 dispatch
+ * created the app and you are a fresh agent holding no task-id — the case that
+ * actually occurred. There the chain ends nowhere, and the only surviving step
+ * was `/nova:edit` against a 1-module survivor of an intended 7: a full build
+ * driven through an atom meant for bounded edits.
+ *
+ * So the shared mechanism, and the thing both docs must now say: **reachability
+ * is a property of the asker, not of the app.**
+ */
+function turnZeroSection(): string {
+  const start = COMMCARE_SETUP.indexOf('#### Turn-0 halt detection');
+  expect(start, 'the § Turn-0 halt detection block must exist').toBeGreaterThan(-1);
+  const end = COMMCARE_SETUP.indexOf('- Input: approved PDD', start);
+  expect(end, 'the § Turn-0 block must end before the Input/Output list').toBeGreaterThan(start);
+  return COMMCARE_SETUP.slice(start, end);
+}
+
+describe('commcare-setup Turn-0 branches on reachability, not on app existence', () => {
+  const section = turnZeroSection();
+
+  it('has a branch for an architect this agent did NOT dispatch', () => {
+    // Pre-fix the section had exactly two branches — "No app" and "App exists" —
+    // and the second one's recovery chain is unreachable in this case.
+    expect(section).toMatch(/NOT yours/);
+    expect(section).toMatch(/hold no task-id/i);
+    expect(section).toContain('ace#2058');
+  });
+
+  it('says plainly that SendMessage has no target there', () => {
+    expect(section).toMatch(/SendMessage[\s\S]{0,120}no target/);
+    expect(section).toMatch(/unreachable/i);
+  });
+
+  it('permits /nova:autobuild ONLY after delete_app, never bare', () => {
+    // The exception carved into ace#1504's "never reach for /nova:autobuild
+    // while an app for this run exists". Dropping the delete turns the rebuild
+    // back into the duplicate that rule forbids.
+    expect(section).toContain('delete_app');
+    expect(section).toMatch(/delete_app[\s\S]{0,160}\/nova:autobuild/);
+    expect(section).toMatch(/Deleting first/);
+  });
+
+  it('defaults to repair rather than rebuild', () => {
+    // The asymmetry is deliberate: repair orphans nothing and is recoverable,
+    // rebuild destroys real work and soft-deletes are not free.
+    expect(section).toMatch(/default to\s+\*\*\s*\n?\s*repair\*\*|\*\*default to\s*\n?\s*repair\*\*/i);
+    expect(section).toMatch(/soft/i);
+  });
+
+  it('warns that an empty Drive folder is not evidence, and names the authority', () => {
+    // The false brief that produced the orphan: "there is no partial work to
+    // reconcile: start clean." True of Drive, false of Nova.
+    expect(section).toMatch(/`list_apps` is the only\s*\n?\s*authority/);
+    expect(section).toMatch(/not evidence that nothing was built/);
+  });
+
+  it('cites the shared mechanism rather than re-deriving it', () => {
+    expect(section).toContain('lib/agent-termination.ts');
+    expect(section).toContain('ace#2059');
   });
 });
