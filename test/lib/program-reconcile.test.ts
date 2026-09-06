@@ -10,13 +10,21 @@
 import { describe, it, expect } from 'vitest';
 import {
   reconcileProgramWithPdd,
+  checkNameArchetype,
+  detectArchetypesInName,
+  ARCHETYPE_NAME_TOKENS,
   DURABLE_PROGRAM_FIELDS,
   REFRESHABLE_PROGRAM_FIELDS,
   type LiveProgramFields,
   type PddProgramFields,
 } from '../../lib/program-reconcile.js';
+import { assertChecked, assertUnable, isPass } from '../../lib/check-outcome.js';
 
 const STALE_LIVE: LiveProgramFields = {
+  // ace#1966 — an archetype-neutral name (invented for this fixture; the live
+  // program's actual name was not read), so the name check RUNS and passes.
+  // Without a name it reports UNABLE, which is deliberately not silent.
+  name: 'Spark Community Facilitator Programme',
   description:
     'CBFs facilitate monthly community meetings. Payment requires: GPS within 500m of the ' +
     'gps_reference at <=50m accuracy (deterministic Layer A gate), CBF passed the Learn ' +
@@ -27,6 +35,7 @@ const STALE_LIVE: LiveProgramFields = {
 };
 
 const CURRENT_PDD: PddProgramFields = {
+  archetype: 'atomic-visit',
   description:
     'CBFs facilitate weekly community meetings. Location is advisory only — no submission is ' +
     'rejected on location or accuracy, and neither the app nor Connect enforces a radius. Learn ' +
@@ -73,6 +82,7 @@ describe('reconcileProgramWithPdd — stale fixture', () => {
 
 describe('reconcileProgramWithPdd — matching fixture', () => {
   const matchingLive: LiveProgramFields = {
+    name: 'Spark Community Facilitator Programme',
     description: CURRENT_PDD.description!,
     budget: 12000,
     start_date: '2026-08-03',
@@ -119,5 +129,183 @@ describe('reconcileProgramWithPdd — edge semantics', () => {
     expect(DURABLE_PROGRAM_FIELDS).toContain('id');
     expect(DURABLE_PROGRAM_FIELDS).toContain('organization_slug');
     expect(DURABLE_PROGRAM_FIELDS).toContain('delivery_type');
+  });
+});
+//
+// ace#1966 — a program NAME can assert a superseded archetype forever.
+//
+// `bednet-check-2-visit/20260902-1555`: the durable program is named
+// "Bednet Check Multi-Stage Study — 2026" while the description ACE refreshed
+// on it in the same step says "Archetype: longitudinal-visits, and
+// deliberately NOT multi-stage". `name` is durable, so reconcile refreshed six
+// parameters and reported diffs: ['description'] — saying nothing about the
+// one field a reader sees first.
+//
+// The fix does NOT keep the name correct (that is a rename, and a rename is an
+// operator's call). It makes the name non-authoritative: the divergence is
+// reported in CODE, and nothing derives an archetype from a name.
+//
+describe('checkNameArchetype — what a program NAME asserts (ace#1966)', () => {
+  it('flags the live case: a multi-stage name under a longitudinal-visits PDD', () => {
+    const r = checkNameArchetype('Bednet Check Multi-Stage Study — 2026', 'longitudinal-visits');
+    assertChecked(r);
+    expect(r.ok).toBe(false);
+    expect(r.findings).toEqual([
+      {
+        name: 'Bednet Check Multi-Stage Study — 2026',
+        declared: 'longitudinal-visits',
+        asserted: ['multi-stage'],
+      },
+    ]);
+  });
+
+  it('passes when the name agrees with the PDD — and still reports what it read', () => {
+    const r = checkNameArchetype('Bednet Check Multi-Stage Study — 2026', 'multi-stage');
+    assertChecked(r);
+    expect(r.ok).toBe(true);
+    expect(r.findings).toEqual([]);
+    // Present on a PASS too: "the name agrees" and "the name says nothing" are
+    // different facts, and a reader of the program notes wants both.
+    expect(r.asserted).toEqual(['multi-stage']);
+  });
+
+  it('passes an archetype-NEUTRAL name — the recommended outcome — asserting nothing', () => {
+    // "<Domain> Survey" is the recommended atomic-visit name AND a word
+    // longitudinal programmes use freely. A detector that read it as an
+    // assertion would fire on names that assert nothing.
+    for (const [name, declared] of [
+      ['Bednet Check Survey — 2026', 'longitudinal-visits'],
+      ['Malaria Field Deployment', 'multi-stage'],
+      ['Household Poverty Targeting Survey', 'atomic-visit'],
+    ] as const) {
+      const r = checkNameArchetype(name, declared);
+      assertChecked(r);
+      expect(r.ok).toBe(true);
+      expect(r.asserted).toEqual([]);
+    }
+  });
+
+  it('reads the hyphenated, spaced and joined spellings humans actually write', () => {
+    for (const name of ['X Multi-Stage Study', 'X Multi Stage Study', 'X Multistage Study']) {
+      expect(detectArchetypesInName(name)).toEqual(['multi-stage']);
+    }
+  });
+
+  it('reads FGD and focus-group names as focus-group', () => {
+    expect(detectArchetypesInName('Vaccine Hesitancy Pilot (FGD) — Q2 2026')).toEqual(['focus-group']);
+    expect(detectArchetypesInName('Nutrition Focus Group Study')).toEqual(['focus-group']);
+  });
+
+  it('reads the longitudinal names the skill § Archetypes recommends', () => {
+    expect(detectArchetypesInName('Bednet Check Follow-Up Study')).toEqual(['longitudinal-visits']);
+    expect(detectArchetypesInName('Bednet Check Two-Visit Study')).toEqual(['longitudinal-visits']);
+  });
+
+  it('reports a self-contradictory name rather than picking one of its claims', () => {
+    const r = checkNameArchetype('Bednet Multi-Stage Follow-Up Study', 'longitudinal-visits');
+    assertChecked(r);
+    expect(r.ok).toBe(false);
+    expect(r.findings[0].asserted).toEqual(['multi-stage', 'longitudinal-visits']);
+  });
+
+  it('is UNABLE, not a pass, when either side is missing', () => {
+    // The state that used to be `null` alongside "the name is fine". Silence
+    // there is indistinguishable from a verified-clean name — the exact class
+    // lib/check-outcome.ts exists to close (ace#1332 -> #1538 -> #1576 -> #1634).
+    for (const r of [
+      checkNameArchetype(undefined, 'multi-stage'),
+      checkNameArchetype('X Multi-Stage Study', undefined),
+      checkNameArchetype('   ', 'multi-stage'),
+    ]) {
+      assertUnable(r);
+      expect(r.reason).not.toBe('');
+      expect(isPass(r)).toBe(false);
+    }
+  });
+
+  it('names WHICH side was missing, so the reason is actionable', () => {
+    const noName = checkNameArchetype(undefined, 'multi-stage');
+    assertUnable(noName);
+    expect(noName.reason).toContain('live.name');
+
+    const noArchetype = checkNameArchetype('X Multi-Stage Study', undefined);
+    assertUnable(noArchetype);
+    expect(noArchetype.reason).toContain('pdd.archetype');
+  });
+
+  it('gives atomic-visit no token at all — a neutral name must produce silence', () => {
+    expect(ARCHETYPE_NAME_TOKENS.map((t) => t.archetype)).not.toContain('atomic-visit');
+  });
+});
+
+describe('reconcileProgramWithPdd — the name check rides in warnings[] (ace#1966)', () => {
+  const inSyncLive: LiveProgramFields = {
+    name: 'Bednet Check Multi-Stage Study — 2026',
+    description: 'Archetype: longitudinal-visits, and deliberately NOT multi-stage.',
+    budget: 5000,
+    start_date: '2026-01-01',
+    end_date: '2026-12-31',
+  };
+  const inSyncPdd: PddProgramFields = {
+    description: 'Archetype: longitudinal-visits, and deliberately NOT multi-stage.',
+    budget: 5000,
+    start_date: '2026-01-01',
+    end_date: '2026-12-31',
+    archetype: 'longitudinal-visits',
+  };
+
+  it('warns about the name even when every REFRESHABLE field is in sync', () => {
+    // The trap. A caller that emits warnings only on the diverging branch
+    // drops exactly this case — the shape of the live defect: the run
+    // refreshed six parameters and reported nothing about the name.
+    const r = reconcileProgramWithPdd(inSyncLive, inSyncPdd);
+    expect(r.inSync).toBe(true);
+    expect(r.diffs).toEqual([]);
+    expect(r.warnings).toHaveLength(1);
+    expect(r.warnings[0]).toContain('[WARN]');
+    expect(r.warnings[0]).toContain('NAME asserts archetype multi-stage');
+    expect(r.warnings[0]).toContain('longitudinal-visits');
+  });
+
+  it('exposes the check as structured data, not only as prose', () => {
+    const r = reconcileProgramWithPdd(inSyncLive, inSyncPdd);
+    assertChecked(r.nameArchetype);
+    expect(r.nameArchetype.ok).toBe(false);
+    expect(r.nameArchetype.findings[0].declared).toBe('longitudinal-visits');
+  });
+
+  it('is silent about the name when it agrees with the PDD', () => {
+    const r = reconcileProgramWithPdd(inSyncLive, { ...inSyncPdd, archetype: 'multi-stage' });
+    expect(r.warnings).toEqual([]);
+    expect(isPass(r.nameArchetype)).toBe(true);
+  });
+
+  it('NEVER puts name in updateArgs — the reconciler reports, it does not rename', () => {
+    const r = reconcileProgramWithPdd({ ...inSyncLive, description: 'stale text' }, inSyncPdd);
+    expect(r.updateArgs).not.toHaveProperty('name');
+    expect(Object.keys(r.updateArgs)).toEqual(['description']);
+  });
+
+  it('leaves name out of the diffs — a durable field is not a refreshable divergence', () => {
+    const r = reconcileProgramWithPdd(inSyncLive, inSyncPdd);
+    expect(r.diffs.map((d) => d.field)).not.toContain('name');
+  });
+
+  it('says UNABLE TO CHECK — loudly, not silently — when the caller omits either input', () => {
+    const { name: _n, ...noName } = inSyncLive;
+    const r = reconcileProgramWithPdd(noName, inSyncPdd);
+    assertUnable(r.nameArchetype);
+    expect(r.warnings).toHaveLength(1);
+    expect(r.warnings[0]).toContain('UNABLE TO CHECK');
+    expect(r.warnings[0]).toContain('This is NOT a pass');
+  });
+
+  it('carries the name warning ALONGSIDE the per-field ones, never instead of them', () => {
+    const r = reconcileProgramWithPdd(
+      { ...inSyncLive, description: 'stale text', budget: 100 },
+      inSyncPdd,
+    );
+    expect(r.warnings).toHaveLength(3); // description, budget, name
+    expect(r.warnings.filter((w) => w.includes('NAME asserts archetype'))).toHaveLength(1);
   });
 });
