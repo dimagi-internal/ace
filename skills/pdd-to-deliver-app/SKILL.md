@@ -447,6 +447,39 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
      > `app-release-qa`'s `casedb_preloads` gate, so the trade is visible
      > rather than accidental.
 
+     > **To make an answer REVIEWABLE after submit, mirror it into a hidden
+     > field — do not case-write the question (dimagi-internal/ace#2006).**
+     > Dropping `case_property_on` from the questions costs the case detail
+     > its record of what the worker filed, and a worker who mis-tapped a
+     > payability field then has no way to notice before payday. That is a
+     > real requirement, and it does NOT require re-binding the question.
+     >
+     > Mirror it instead: a **hidden** field whose `calculate` reads the
+     > question, carrying the `case_property_on`. The mirror is case-written
+     > (so the case list and detail can render it) and it preloads (so does
+     > every hidden field) — and the preload is harmless precisely because
+     > nothing asks the worker to confirm a hidden field.
+     >
+     > **This is not a new pattern — the app already ships one.** In the
+     > `spark-facilitator/20260828-0703` Deliver CCZ:
+     >
+     > ```xml
+     > <bind nodeset="/data/meeting_summary/last_meeting_date"
+     >       calculate="/data/meeting_date/date_of_meeting"/>
+     > ```
+     >
+     > hidden, mirroring the `date_of_meeting` question, case-written to
+     > `village.last_meeting_date`, and rendered as the case list's "Last
+     > meeting" column. `Total_Attendance` and `meetings_on_current_step`
+     > are the same shape. Reuse it for any answer the design wants visible
+     > after submit — a payability field is the obvious candidate, since the
+     > worker cannot otherwise catch their own mis-tap.
+     >
+     > Name mirrors for what they are (`last_meeting_type`, not
+     > `meeting_type`), so the case property that holds "what was last
+     > recorded" is never confused with the question that asks "what
+     > happened this time".
+
      **Payability-scoped keys** (any form where SOME submissions are not
      paid work):
 
