@@ -633,3 +633,45 @@ selectors:
     value: "Start Delivering"
     unverified: true
     purpose: "Deliver-side entry from the post-Learn opp-detail; a recipe-named alias of opp-detail-start-delivering. UNREACHED on every APK version to date. If a walk ever confirms it, this row should collapse into a pure alias."
+
+  # ── CommCare version-upgrade prompt (ace#1998) ─────────────────
+  # ANSWER TO "can we reach it on 2.64.0?": NO, and that is the point.
+  # The prompt fires when a CCZ declares a minimum CommCare version above
+  # the installed one. The live text recorded on ace#1998 was literally
+  # "The application requires CommCare version 2.64.0. You are currently
+  # running 2.63.2." Installing 2.64.0 removes the very condition, so the
+  # screen has nothing to say and does not render.
+  #
+  # This was tested, not assumed. This walk resumed an opportunity on a
+  # freshly wiped device, CommCare downloaded and installed the Deliver
+  # CCZ from scratch, and StandardHomeActivity rendered with no prompt
+  # (37-after-resume.xml). None of the 24 dumps captured this session
+  # contains prompt_title or do_later_button:
+  #     $ grep -l "prompt_title\|do_later_button" \
+  #         docs/mobile-atlas/evidence/connect-2.64.0/*.xml
+  #     (no matches)
+  #
+  # The rows are carried anyway, flagged unverified, because the surface
+  # is not gone — it is dormant, and it will fire again the moment a CCZ
+  # requires 2.65.0. The ids are present in 2.64.0's resource table
+  # (grep -cx over the extracted id lists: 1 in both 2.63.2 and 2.64.0),
+  # so the values below are the right ones to defend against. What is NOT
+  # established is their on-screen bounds or label wording under 2.64.0.
+  # Whoever next sees a version gate should promote these off a real dump.
+  commcare-version-prompt-title:
+    type: id
+    value: "org.commcare.dalvik:id/prompt_title"
+    unverified: true
+    purpose: "Title of CommCare's version-upgrade prompt, e.g. 'The application requires CommCare version 2.64.0. You are currently running 2.63.2.' Live-captured on 2.63.2 (ace#1998, journey-learn-FAILURE.xml). NOT REACHABLE on a 2.64.0 device running a CCZ that requires 2.64.0 — the gate's precondition is exactly the version skew the pin bump removes. Use as the `when: visible` anchor for a guarded dismiss branch."
+
+  commcare-version-update-later:
+    type: id
+    value: "org.commcare.dalvik:id/do_later_button"
+    unverified: true
+    purpose: "\"I'LL UPDATE LATER\" — the SOFT dismiss that means a walk need not die on a version gate at all. Live-captured on 2.63.2 (ace#1998); not reachable on 2.64.0, see commcare-version-prompt-title. This is the button a guarded branch in connect-claim-opp.yaml / learn-launch.yaml / deliver-launch.yaml should tap before asserting nsv_home_screen."
+
+  commcare-version-update-now:
+    type: id
+    value: "org.commcare.dalvik:id/action_button"
+    unverified: true
+    purpose: "'UPDATE COMMCARE VIA THE PLAY STORE' — recorded as a NAMED ANTI-TARGET. An automated walk must never tap it: it leaves CommCare for the Play Store, which on an ACE AVD goes nowhere useful and strands the run off-app. Live-captured on 2.63.2 (ace#1998); not reachable on 2.64.0."
