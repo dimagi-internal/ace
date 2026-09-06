@@ -118,6 +118,8 @@ Dimagi's total financial commitment under this Work Order is USD 3,500, not-to-e
 
 Dimagi will pay only for verified units, at the per-verified-follow-up-day rate proposed in the partner's solicitation response. A verified unit is one calendar day on which a Frontline Worker submits at least one follow-up visit meeting every criterion in section 4.2. Payment is resolved per worker per day, so several follow-up visits completed by the same worker on the same day together constitute one payable unit. Each subsequent day on which that worker completes a qualifying follow-up visit is separately payable.
 
+Dimagi will review each submission within 15 business days of submission; absent written rejection identifying the deficient units, the submission is deemed accepted.
+
 ## **7\. Roles and Responsibilities**
 
 | Responsibility | Dimagi | Partner |
