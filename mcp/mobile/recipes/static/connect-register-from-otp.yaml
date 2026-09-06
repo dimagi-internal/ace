@@ -251,10 +251,26 @@ appId: org.commcare.dalvik
                 timeout: 2000
             - tapOn:
                 id: "${SELECTOR:personalid-backup-code-button}"
-            - extendedWaitUntil:
-                visible:
-                  id: "org.commcare.dalvik:id/take_photo_button"
-                timeout: 25000
+            # 2.64.0 (ace#2029) inserts the PersonalID EMAIL screen between
+            # CONTINUE and photo capture, so the photo screen is no longer
+            # the immediate next surface on the fresh-signup path either.
+            # An UNGUARDED wait here would hard-fail 25s before the
+            # top-level email block downstream ever gets a chance to run.
+            # Gate it on the email screen being ABSENT: on 2.63.2 that is
+            # always true and this behaves exactly as it did before; on
+            # 2.64.0 it steps aside and the email block handles the screen,
+            # after which the photo block's own `when: visible` gate fires.
+            - waitForAnimationToEnd:
+                timeout: 5000
+            - runFlow:
+                when:
+                  notVisible:
+                    id: "org.commcare.dalvik:id/personalid_email_skip_button"
+                commands:
+                  - extendedWaitUntil:
+                      visible:
+                        id: "org.commcare.dalvik:id/take_photo_button"
+                      timeout: 25000
       # RECOVERY (no Confirm widget): CONTINUE enables on Code alone; the flow
       # goes to the "Account Recovered" dialog (connect_message_button block
       # below), not photo.
@@ -298,6 +314,75 @@ appId: org.commcare.dalvik
       - hideKeyboard
       - tapOn:
           id: "${SELECTOR:personalid-backup-code-button}"
+
+# ── NEW IN 2.64.0: the PersonalID email step (dimagi-internal/ace#2029) ──
+#
+# 2.64.0 inserts an OPTIONAL "Add your email" screen between the
+# backup-code screen and whatever follows it — "Account Recovered" on the
+# recovery path, photo capture on a truly fresh signup. It is optional but
+# it does NOT go away on its own, and dismissing it takes TWO taps:
+# SKIP FOR NOW raises a "Skip email?" confirmation whose YES must then be
+# tapped. Without this block the recipe strands on the email screen, every
+# conditional below reports SKIPPED, and the terminal `rvJobList` assert
+# burns its full 60s budget before failing — which reads as a Connect-home
+# problem rather than a registration one. That is `blocks-e2e`: every
+# Phase 6 walk and every `mobile_ensure_avd_running` cold boot registers.
+#
+# GUARDED, NOT UNCONDITIONAL. All five ids of this screen are absent from
+# 2.63.2's resource table (`grep -cx` over the two extracted id lists:
+# 0 in 2.63.2, 1 in 2.64.0 for each), so on 2.63.2 the `when: visible`
+# check is false and the whole block skips — ONE recipe drives both APKs,
+# including a rollback to the old pin.
+#
+# WHY RAW IDS AND NOT `${SELECTOR:...}` HERE. A `${SELECTOR:}` placeholder
+# is resolved against `connect-<pin>.yaml` BEFORE Maestro ever sees the
+# recipe, and an unresolvable name makes `prepareRecipeForMaestro` THROW
+# on the top-level recipe. These rows exist only in connect-2.64.0.yaml —
+# back-copying them into connect-2.63.2.yaml would be a selector map
+# asserting a selector that provably is not in that APK. So on a rollback
+# to 2.63.2 the placeholder form would fail at RESOLVE time, before the
+# on-device guard could do its job. Raw ids degrade to "the guard is
+# false", which is the correct behaviour. Same reasoning, and the same
+# form, as the `take_photo_button` / `camera_shutter_button` /
+# `com.android.settings:id/lock_pin` branches elsewhere in this file.
+# The mirrored map rows are `personalid-email-skip` and
+# `personalid-email-skip-confirm-yes` in
+# mcp/mobile/selectors/connect-2.64.0.yaml — keep the values in step.
+#
+# DO NOT fill `email_text_value` and DO NOT tap
+# `personalid_email_continue_button`: an entered address forks into the
+# email-VERIFICATION leg (otp_code_view / personalid_email_verify_button
+# / personalid_email_resend_button), which ACE has never walked and the
+# map deliberately does not cover.
+# DO NOT tap NO on the confirmation — `personalid-email-skip-confirm-no`
+# is a recorded ANTI-TARGET: it returns to the email form and strands
+# exactly as if this block had never run.
+#
+# The confirmation's YES is matched by TEXT rather than by
+# `positive_button`: the two buttons are otherwise identical chrome, and
+# the text is the safer read. Live-verified 2026-09-06 on
+# ACE_Pixel_API_34 / CommCare 2.64.0 — see, under
+# docs/mobile-atlas/evidence/connect-2.64.0/,
+# 31-after-backup-code.xml (the email screen),
+# 32-after-email-skip.xml (the "Skip email?" dialog) and
+# 33-after-skip-confirm.xml ("Account Recovered").
+- waitForAnimationToEnd:
+    timeout: 5000
+- runFlow:
+    when:
+      visible:
+        id: "org.commcare.dalvik:id/personalid_email_skip_button"
+    commands:
+      - tapOn:
+          id: "org.commcare.dalvik:id/personalid_email_skip_button"
+      - extendedWaitUntil:
+          visible:
+            text: "YES"
+          timeout: 10000
+      - tapOn:
+          text: "YES"
+      - waitForAnimationToEnd:
+          timeout: 3000
 
 # "Account Recovered" success dialog (every recovery path lands here).
 - waitForAnimationToEnd:
