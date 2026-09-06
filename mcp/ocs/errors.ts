@@ -24,6 +24,36 @@ export class OcsLoginFailedError extends OcsError {
   }
 }
 
+/**
+ * Thrown when an authenticated HTML scrape lands on OCS's sign-in page instead
+ * of the page it asked for (ace#1767).
+ *
+ * OCS answers an unauthenticated GET with a 302 to
+ * `/accounts/login/?next=<path>`. Playwright's request API FOLLOWS that by
+ * default, so the caller sees `status 200, ok true` for a perfectly rendered
+ * sign-in form — and every downstream scrape then misses its selector and
+ * reports the miss as a *content* problem: "flag `flag_chat_widget` may be
+ * off", "lists no embedded_widget channel button". Both blame a feature flag
+ * or a broken clone for what is a dead cookie.
+ *
+ * The cost of that misattribution is not cosmetic. `bin/ace-doctor`'s
+ * `ocs_generation` preflight reported `status: fail, class: unknown` with the
+ * feature-flag message, and `fail` HALTS `/ace:run` before Phase 1 (ace#1516)
+ * while sending the operator at a provider key that was healthy the whole
+ * time. The response's FINAL URL is authoritative about this and costs
+ * nothing to read.
+ */
+export class OcsAuthRedirectError extends OcsError {
+  constructor(public path: string, public finalUrl: string) {
+    super(
+      `GET ${path} was redirected to the OCS sign-in page (${finalUrl}). ` +
+        'The session cookie is missing or expired, so this is an AUTHENTICATION ' +
+        'failure, not a missing feature flag or a malformed chatbot. ' +
+        'Re-establish the session (OCS_USERNAME/OCS_PASSWORD auto-relogin, or /ace:ocs-login).',
+    );
+  }
+}
+
 export class CsrfTokenMissingError extends OcsError {
   retryable = true;
   constructor() {

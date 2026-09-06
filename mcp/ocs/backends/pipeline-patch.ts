@@ -9,6 +9,14 @@ export interface RequestResult {
   text?: () => Promise<string>;
   /** Response headers as a flat dict. Used to read Location on 302 redirects. */
   headers?: Record<string, string>;
+  /**
+   * The response's FINAL url, after any redirects the transport followed.
+   * Load-bearing for auth detection: OCS answers an unauthenticated GET with a
+   * 302 to `/accounts/login/`, and Playwright follows it, so `ok`/`status`
+   * describe the sign-in page rather than the page requested (ace#1767). This
+   * is the only field that can tell them apart. Optional for older test fakes.
+   */
+  url?: string;
   json: () => Promise<unknown>;
 }
 
