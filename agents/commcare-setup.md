@@ -416,11 +416,17 @@ return string is missing or truncated, so a literal reading of step 2 says
 leaving a duplicate for `app-deploy` to choose between and an orphan for the
 sweep to find.
 
-So branch on whether an app exists, not on whether the agent returned cleanly:
+So branch on whether an app exists, not on whether the agent returned cleanly —
+and then on **who is asking**. Reachability is a property of the asker, not of
+the app: you can resume an architect only if *you* dispatched it and still hold
+its task-id. `lib/agent-termination.ts` carries the same distinction one level
+up, for the phase agent itself (dimagi-internal/ace#2059).
 
 - **No app** (`list_apps` shows nothing created in the window) → the rule
   above; re-dispatch, cap 3.
-- **App exists** → **RESUME the same agent** with `SendMessage` rather than
+- **App exists and the architect is YOURS** — you dispatched it from this
+  agent, so you hold its task-id → **RESUME the same agent** with
+  `SendMessage` rather than
   re-dispatching `/nova:autobuild`. It still holds the build context, so it
   resumes where it stopped instead of re-deriving the app from the brief.
 
@@ -436,7 +442,46 @@ So branch on whether an app exists, not on whether the agent returned cleanly:
 
   If the resumed agent also dies, resume once more, then fall back to a
   `/nova:edit` against the existing `app_id` naming the specific gaps. Never
-  reach for `/nova:autobuild` while an app for this run exists.
+  reach for `/nova:autobuild` while an app for this run exists and has not
+  been deleted.
+
+- **App exists and the architect is NOT yours** — a previous Phase-3 dispatch
+  created it and you are a fresh agent. You hold no task-id, so `SendMessage`
+  has no target: the two steps above are **unreachable**, not merely unlikely
+  to work, and a chain that ends "resume once more" ends nowhere
+  (dimagi-internal/ace#2058). Judge by what survived, and **default to
+  repair**:
+
+  - **Substantially complete** — the planned modules are present and the gaps
+    are nameable → `/nova:edit` against the existing `app_id`, naming them.
+    Repair orphans nothing, so it is the safe default; take it whenever the
+    call is close.
+  - **A stub** — so little survived that "the specific gaps" would be the whole
+    build, and `/nova:edit` would be driving a full build through an atom meant
+    for bounded edits. ace#2058's survivor was **1 module and 1 form of an
+    intended 7**; under about a quarter of the planned modules is a usable
+    line, not a law. → **`delete_app` the stub FIRST**, then `/nova:autobuild`
+    fresh, and record the deleted `app_id` in the phase summary.
+
+  **Deleting first is the whole reason this branch may reach for
+  `/nova:autobuild` at all** — it is what keeps "never orphan an app" true, and
+  skipping it produces exactly the duplicate ace#1504 forbids. Note that Nova's
+  `delete_app` is a *soft* delete ("filters from list surfaces; recoverable
+  within the returned window"), so the stub stops confusing `app-deploy` and
+  the sweep but is not gone. Operator note, not ACE-verified: a soft-deleted
+  app can keep its lookup tables pinned for roughly 30 days — one more reason
+  to prefer repair.
+
+**A killed Phase 3 can leave Nova state with NO Drive trace, so an empty run
+folder is not evidence that nothing was built** — `list_apps` is the only
+authority on that. On `poverty-graduation/20260905-1345`, `drive_list_folder`
+on `3-commcare/` returned `[]` and `phases.commcare-setup` was untouched
+`pending` while Nova already held `de612428-258f-4ed9-afa0-cd748e65ed84`. The
+follow-up dispatch was therefore briefed *"there is no partial work to
+reconcile: start clean"* — a statement that was true of Drive and false of
+Nova, and the orphan is still there. **Run `list_apps` before accepting any
+such claim, including one written into your own dispatch prompt by the
+orchestrator.**
 
 Live: `spark-facilitator/20260817-1610`, where the Learn build dropped
 mid-language-phase. On resume `get_app` showed all 8 forms at their intended
