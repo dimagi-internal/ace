@@ -43,15 +43,32 @@ merge, so read it rather than assuming the merge is stuck on it.
 ## The ACE ship loop
 
 ```bash
-bash scripts/version-bump.sh          # worktree-safe: max(local, origin/main) + 1
+git checkout -b <branch>
+BRANCH="$(git branch --show-current)"          # RECORD it — see the note below
+... make the edits ...
+bash scripts/version-bump.sh --expect-branch "$BRANCH"   # refuses if HEAD moved
 git add -A && git commit -m "<type>(<scope>): <what>"
-git push -u origin "$(git branch --show-current)"
+git push -u origin "$BRANCH"
 gh pr create --fill                   # origin is the ACE repo; no -R needed
 gh pr merge <N> --auto --merge        # arm it, then wait per the core's Step 1
 ```
 
 Arm auto-merge in the same breath as creating the PR — once armed there is no review gate, so
 everything between arming and merging is waiting.
+
+**Why the branch is recorded and re-asserted (ace#2001).** A dispatched subagent inherits its
+dispatcher's working directory, so a fix-and-ship agent launched without `isolation: "worktree"`
+runs this whole loop **inside the orchestrator's worktree, concurrently with the orchestrator**.
+Measured on `poverty-graduation/20260905-0924`: a Phase 1 subagent's `git checkout -b` at 09:48:13
+moved the branch under a live `/ace:run`, and the orchestrator's next commit at 10:08:16 landed on
+the subagent's branch — PRs #1995 and #1999 still carry the same head branch under unrelated
+titles. Nothing errored; both actors run `git add -A`, which cannot tell whose file it is staging,
+and only a happens-to-be-clean tree kept the two commits from swallowing each other. `git branch
+--show-current` + `--expect-branch` turns that into an `exit 4` **before** the `git add -A`, and
+catches both sides — the agent that checked out under someone and the one checked out from under.
+It is a backstop, not the fix: the fix is `isolation: "worktree"` on the dispatch
+(`agents/orchestrator-reference.md § Dispatch it into its OWN worktree`). *Enforced:*
+`test/agents/fix-and-ship-isolation.test.ts` + `test/scripts/version-bump-expect-branch.test.ts`.
 
 ## ACE-local notes (the ONLY hand-edited section — fleet-process changes go to canopy)
 

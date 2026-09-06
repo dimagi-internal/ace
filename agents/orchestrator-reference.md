@@ -1633,6 +1633,64 @@ the full 10-minute Bash timeout (`Exit code 143`) waiting on a PR that
 merges in ~70 seconds. Measured 2026-08-17; reproducer and the
 corrected backgrounded form are in `skills/shipping/SKILL.md § Step 2`.
 
+### Dispatch it into its OWN worktree — `isolation: "worktree"`
+
+**Every fix-and-ship dispatch MUST pass `isolation: "worktree"` to the
+`Agent` tool.** Not a preference: a dispatched subagent inherits the
+dispatcher's working directory, so without it the subagent runs
+`git checkout -b`, `git add -A` and `scripts/version-bump.sh` **inside
+the orchestrator's own worktree, concurrently with the orchestrator.**
+
+Measured on `poverty-graduation/20260905-0924` (ace#2001). The Phase 1
+subagent self-healed an issue and moved the branch out from under a live
+`/ace:run`:
+
+| Time | Actor | Event |
+|---|---|---|
+| 09:31:52 | orchestrator | commits its own fix on `emdash/ace-api-…` (→ PR #1988) |
+| **09:48:13** | **Phase 1 subagent** | `checkout: moving from emdash/ace-api-… to fix/decision-vocabularies-doc-and-test` |
+| 09:51:04 | Phase 1 subagent | `git add -A` + commit (→ PR #1995) |
+| 10:08:16 | orchestrator | commits its NEXT fix — silently onto the subagent's branch |
+
+Two PRs with unrelated titles still carry the same head branch, and both
+merged with correct content:
+
+```
+$ gh pr view 1995 --json number,headRefName --jq '"#\(.number) head=\(.headRefName)"'
+#1995 head=fix/decision-vocabularies-doc-and-test
+$ gh pr view 1999 --json number,headRefName --jq '"#\(.number) head=\(.headRefName)"'
+#1999 head=fix/decision-vocabularies-doc-and-test
+```
+
+**Nothing failed — that is the problem.** Both actors run `git add -A`,
+so across the 09:48→09:51 window either one would have swept the other's
+in-progress edits into its own commit. It didn't, only because the
+orchestrator's tree happened to be clean; nothing enforced that. On the
+same day, in a separate incident, a second agent dispatched into a shared
+tree found it missing 10 files present on recent `main` — committing there
+would have **deleted them from `main`**.
+
+And it scales in exactly the direction § Self-heal sweep rule 2 pushes:
+*"eleven self-healable issues is eleven dispatches, not the first few."*
+Eleven background subagents each running `git checkout -b` and
+`git add -A` in ONE worktree is a guaranteed collision, and every
+resulting corruption is silent — `git add -A` cannot tell whose file it
+is staging.
+
+`isolation: "worktree"` gives the subagent its own git worktree,
+auto-cleaned if unchanged, and the harness ENFORCES it: a worktree-isolated
+agent's `git` invocation that cannot be proven to stay inside its own
+worktree is refused outright rather than run. That is a stronger guarantee
+than any instruction, which is the reason to prefer the flag over prose
+telling the subagent to be careful.
+
+**The backstop, for any dispatch path that forgets the flag:** the ship
+loop records its branch and `scripts/version-bump.sh --expect-branch
+<name>` refuses to bump if the branch moved — before any `git add -A`.
+See `skills/shipping/SKILL.md § The ACE ship loop`. It catches BOTH sides
+of the incident above: the subagent's checkout, and the orchestrator's
+10:08 commit onto a branch it never chose.
+
 ### The dispatch prompt
 
 Tell the subagent to run `skills/shipping` and return its Step 5 ship

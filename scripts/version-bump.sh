@@ -40,6 +40,9 @@
 #   scripts/version-bump.sh --dry-run       # print the next version without writing
 #   scripts/version-bump.sh --rebase-first  # rebase onto origin/main (auto-resolving
 #                                           # the 4 version files via --ours), then bump
+#   scripts/version-bump.sh --expect-branch <name>
+#                                           # refuse (exit 4) unless HEAD is still on
+#                                           # <name>. See § Shared-worktree guard below.
 #
 # Env:
 #   ACE_VERSION_CLAIMS  unset  -> ask GitHub which versions OPEN PRs have already
@@ -58,12 +61,18 @@ DRY_RUN=0
 REBASE_FIRST=0
 CI_MODE=0
 FORCE=0
+EXPECT_BRANCH=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --dry-run) DRY_RUN=1 ;;
     --rebase-first) REBASE_FIRST=1 ;;
     --ci) CI_MODE=1 ;;
     --force) FORCE=1 ;;
+    --expect-branch)
+      shift
+      EXPECT_BRANCH="${1:-}"
+      [ -n "$EXPECT_BRANCH" ] || { echo "version-bump: --expect-branch needs a branch name" >&2; exit 2; }
+      ;;
     -h|--help)
       sed -n '2,24p' "$0" | sed 's/^# \{0,1\}//'
       exit 0
@@ -72,6 +81,38 @@ while [ $# -gt 0 ]; do
   esac
   shift
 done
+
+## Shared-worktree guard (ace#2001) — FIRST, before any git read or write.
+#
+# A dispatched subagent inherits its dispatcher's working directory. Without
+# `isolation: "worktree"` on the Agent call it runs `git checkout -b`,
+# `git add -A` and THIS SCRIPT inside the orchestrator's own worktree, at the
+# same time as the orchestrator. Measured on poverty-graduation/20260905-0924:
+# a Phase 1 subagent's checkout at 09:48:13 moved the branch under a live
+# `/ace:run`, and the orchestrator's next commit at 10:08:16 landed on the
+# subagent's branch — PRs #1995 and #1999 still share one head branch under
+# unrelated titles. Nothing errored, which is why it survived: both actors run
+# `git add -A`, which cannot tell whose file it is staging.
+#
+# The real fix is the isolation flag. This is the backstop for any dispatch
+# path that forgets it, and it is placed at the START of the ship loop's first
+# command so it fires BEFORE `git add -A` — the step that does the damage.
+# It catches both sides of that incident: the subagent that checked out under
+# someone, and the orchestrator that was checked out from under.
+#
+# Opt-in on purpose: a bare run behaves exactly as before, so no existing
+# caller (including `--rebase-first` from land-pr.sh, which has its own,
+# stronger ancestry guard) changes behaviour.
+if [ -n "$EXPECT_BRANCH" ]; then
+  CURRENT_BRANCH="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo '')"
+  if [ "$CURRENT_BRANCH" != "$EXPECT_BRANCH" ]; then
+    echo "version-bump: REFUSING to bump — branch is '$CURRENT_BRANCH', caller expected '$EXPECT_BRANCH'." >&2
+    echo "  Someone checked out under you, or you are in the wrong worktree (ace#2001)." >&2
+    echo "  Do NOT 'git add -A' here — it would stage another agent's in-progress edits." >&2
+    echo "  Dispatch fix-and-ship subagents with isolation: \"worktree\"." >&2
+    exit 4
+  fi
+fi
 
 REPO_ROOT="$(git rev-parse --show-toplevel)"
 VERSION_FILE="$REPO_ROOT/VERSION"
