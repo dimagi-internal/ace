@@ -62,14 +62,27 @@
  * AUTHORED to AUTHORED — the taxonomies must agree before rendering is even a
  * question.
  *
- * ## Pairing
+ * ## Pairing (ace#1808 — the question id is NOT the case property)
  *
- * A column and a choice list are paired when the case property the column
- * renders matches the last path segment of the select's `ref`. That is the
- * shape Nova emits (`/data/phase` writes case property `phase`). A column with
- * no such select is NOT a finding — plenty of id-mapping columns render
- * properties no form select writes — it is reported as unpaired so the report
- * says what was and was not compared.
+ * A column renders a CASE PROPERTY; a select is named by its QUESTION ID. The
+ * two are independent names, and a Nova app where they coincide is the
+ * coincidence, not the rule. So pairing reads the form's own `<case>`
+ * transaction binds first — `extractCaseWriteMap` — and falls back to the
+ * question-id tail only for a select with no bare-path case write.
+ *
+ * The original code paired on the question-id tail alone. On released Deliver
+ * build `b08533bdf26a48a295a362ff204fb88d` (spark-facilitator/20260828-0703)
+ * the enrolment form's question is `starting_fcap_step`, it writes
+ * `village.pilot_fcap_step`, and both case-list columns render
+ * `pilot_fcap_step` — so nothing paired, `columnsCompared` stayed 0, and this
+ * `[BLOCKER]`-severity gate reported `unable` on the exact app family it was
+ * written for. `unable` is correctly not a pass, so nothing shipped green; the
+ * failure was that the check silently did not run, reading as "not applicable
+ * here" rather than "I could not do my job."
+ *
+ * A column with no such select is still NOT a finding — plenty of id-mapping
+ * columns render properties no form select writes — it is reported as unpaired
+ * so the report says what was and was not compared.
  */
 import {
   type EnumDriftFinding,
@@ -91,8 +104,16 @@ export interface CaseListEnumColumn {
 export interface FormChoiceList {
   /** The form the select lives in, for the finding message. */
   formPath: string;
-  /** Last segment of the select's `ref` — the case property it writes. */
+  /** Last segment of the select's `ref` — the QUESTION id, not the case property. */
   property: string;
+  /**
+   * Case properties this select's answer is actually written to, read off the
+   * form's own `<case>` transaction binds (ace#1808). Authoritative where the
+   * question id and the case property differ, which is the normal case — a
+   * Nova question id matching its case property exactly is the coincidence,
+   * not the rule.
+   */
+  caseProperties: string[];
   /** Stored value -> the authored (non-markdown) label. */
   choices: Record<string, string>;
 }
@@ -212,14 +233,57 @@ function parseItext(formXml: string): Record<string, string> {
   return out;
 }
 
+/**
+ * `question node path -> case properties that node's answer is written to`,
+ * read off the form's own `<case>` transaction binds (ace#1808).
+ *
+ * Nova emits the case write as a bind on the case block, whose `calculate` is
+ * the question node. Recorded verbatim from released Deliver build
+ * `b08533bdf26a48a295a362ff204fb88d` (spark-facilitator/20260828-0703),
+ * `modules-0/forms-0.xml:485`:
+ *
+ * ```xml
+ * <bind nodeset="/data/case/update/pilot_fcap_step"
+ *       calculate="/data/starting_step/starting_fcap_step"
+ *       relevant="count(/data/starting_step/starting_fcap_step) &gt; 0"/>
+ * ```
+ *
+ * So the select whose `ref` is `/data/starting_step/starting_fcap_step` writes
+ * the case property `pilot_fcap_step`, and the case-list column renders
+ * `pilot_fcap_step`. Pairing on the question id alone found nothing.
+ *
+ * Only a **bare node path** calculate is mapped. An expression (`if(...)`,
+ * `concat(...)`) mentions several nodes and mapping it would be a guess; the
+ * name fallback still applies there. Every one of the 21 case-write binds in
+ * the two released forms of the repro app is a bare path.
+ */
+export function extractCaseWriteMap(formXml: string): Record<string, string[]> {
+  const out: Record<string, string[]> = {};
+  for (const bind of formXml.matchAll(/<bind\b([^>]*?)\/?>/g)) {
+    const attrs = bind[1];
+    const nodeset = /\bnodeset="([^"]*)"/.exec(attrs)?.[1];
+    const calculate = /\bcalculate="([^"]*)"/.exec(attrs)?.[1];
+    if (!nodeset || !calculate) continue;
+    const prop = /^\/data\/case\/(?:create|update)\/([^/]+)$/.exec(nodeset)?.[1];
+    if (!prop) continue;
+    const source = unescapeXml(calculate).trim();
+    if (!/^\/data\/[\w/-]+$/.test(source)) continue;
+    (out[source] ??= []).push(prop);
+  }
+  return out;
+}
+
 /** Pull every `select` / `select1` choice list out of one form XML. */
 export function extractFormChoiceLists(formXml: string, formPath: string): FormChoiceList[] {
   const itext = parseItext(formXml);
+  const caseWrites = extractCaseWriteMap(formXml);
   const lists: FormChoiceList[] = [];
   for (const sel of formXml.matchAll(
     /<(select1|select)\b[^>]*\bref="([^"]+)"[^>]*>([\s\S]*?)<\/\1>/g,
   )) {
-    const property = sel[2].split('/').filter(Boolean).pop() ?? sel[2];
+    const ref = sel[2];
+    const property = ref.split('/').filter(Boolean).pop() ?? ref;
+    const caseProperties = caseWrites[ref] ?? [];
     const choices: Record<string, string> = {};
     for (const item of sel[3].matchAll(/<item\b[^>]*>([\s\S]*?)<\/item>/g)) {
       const value = /<value\s*>([\s\S]*?)<\/value>/.exec(item[1]);
@@ -230,7 +294,8 @@ export function extractFormChoiceLists(formXml: string, formPath: string): FormC
       if (label === undefined) continue;
       choices[unescapeXml(value[1].trim())] = label;
     }
-    if (Object.keys(choices).length > 0) lists.push({ formPath, property, choices });
+    if (Object.keys(choices).length > 0)
+      lists.push({ formPath, property, caseProperties, choices });
   }
   return lists;
 }
@@ -262,11 +327,19 @@ export function checkCczCaseListEnumFidelity(input: {
     );
   }
 
+  // Two passes, and the ORDER is the ace#1808 fix. The case-write binds are the
+  // form's own declaration of which case property a select writes, so they win;
+  // the question-id tail is a fallback for a select with no case write (or one
+  // whose write is an expression rather than a bare node path).
+  const lists = input.forms.flatMap((f) => extractFormChoiceLists(f.xml, f.path));
   const byProperty = new Map<string, FormChoiceList>();
-  for (const form of input.forms) {
-    for (const list of extractFormChoiceLists(form.xml, form.path)) {
-      if (!byProperty.has(list.property)) byProperty.set(list.property, list);
+  for (const list of lists) {
+    for (const prop of list.caseProperties) {
+      if (!byProperty.has(prop)) byProperty.set(prop, list);
     }
+  }
+  for (const list of lists) {
+    if (!byProperty.has(list.property)) byProperty.set(list.property, list);
   }
 
   const findings: CczEnumFidelityFinding[] = [];
@@ -316,10 +389,17 @@ export function checkCczCaseListEnumFidelity(input: {
   }
 
   if (columnsCompared === 0) {
+    // State what was OBSERVED, not a conclusion about the app. The old wording
+    // asserted "no form select writes any of those properties" — a fact about
+    // the app that was never established, and was false on the very build that
+    // surfaced it (ace#1808).
     return unable(
-      `found ${columns.length} id-mapping case-list column(s) (${unpaired.join(', ')}) ` +
-        'but no form select writes any of those properties, so nothing could be ' +
-        'compared — if a select DOES write one of them, the pairing is the bug',
+      `pairing failed on all ${columns.length} id-mapping case-list column(s) ` +
+        `(${unpaired.join(', ')}): none matched a case property written by any of the ` +
+        `${lists.length} form choice list(s) in this CCZ, nor any of their question ids ` +
+        `(${lists.map((l) => l.property).join(', ') || 'none'}). Nothing was compared, so ` +
+        'this is NOT a pass — if a select does write one of these properties, the pairing ' +
+        'is the bug',
     );
   }
 
