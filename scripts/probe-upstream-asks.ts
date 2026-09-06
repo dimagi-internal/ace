@@ -16,18 +16,35 @@
  * `skills/upstream-regression-triage` covers the loud inverse ("what worked
  * now fails"). This probe covers the silent one.
  *
- * Report-only. It never edits a doc — deciding what to retire needs a human
- * reading the issue, and a closed-`not planned` issue often means the
- * constraint is MORE permanent, not less.
+ * ## Two tiers, and why the second one cannot raise the exit code
+ *
+ * The CLOSED check above is EXACT — a lifecycle state either changed or it did
+ * not. Its sibling case has no machine-readable event at all: the request was
+ * refused or unanswered, the diagnosis was simply WRONG, and the correction
+ * landed in a COMMENT while the issue stayed open (ace#1792;
+ * `voidcraft-labs/nova-plugin#52` is the canonical instance — mechanism
+ * retracted by its own author in comment 3 of 3, issue still open today, four
+ * ACE surfaces shipping the disproved remedy for three days).
+ *
+ * Reading a comment is a reading of prose, so that tier is HEURISTIC and is
+ * reported separately, below the definite findings, WITHOUT raising the exit
+ * code. Gating CI on a regex over someone's paragraph would make this probe a
+ * thing people disable, which costs more than the blind spot it closes.
+ *
+ * Report-only in both tiers. It never edits a doc — deciding what to retire
+ * needs a human reading the issue, and a closed-`not planned` issue often
+ * means the constraint is MORE permanent, not less.
  *
  * Usage:
- *   npx tsx scripts/probe-upstream-asks.ts [--json] [--all]
+ *   npx tsx scripts/probe-upstream-asks.ts [--json] [--all] [--no-comments]
  *
- *   --json  machine-readable output
- *   --all   list every tracked reference, not only the stale ones
+ *   --json         machine-readable output
+ *   --all          list every tracked reference, not only the stale ones
+ *   --no-comments  skip the heuristic corrected-but-open tier entirely
  *
- * Requires an authenticated `gh`. Exit codes: 0 nothing stale, 1 usage/tool
- * error, 2 stale citations found (so CI or a turn can gate on it).
+ * Requires an authenticated `gh`. Exit codes: 0 nothing stale (advisory
+ * findings included), 1 usage/tool error, 2 CLOSED-but-cited-as-live citations
+ * found (so CI or a turn can gate on the exact tier only).
  */
 
 import { execFileSync } from 'node:child_process';
@@ -36,8 +53,10 @@ import { join, relative, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   extractRefs,
+  findCorrectedOpenAsks,
   findStaleAsks,
   uniqueSlugs,
+  type IssueComment,
   type IssueStatus,
   type UpstreamRef,
 } from '../lib/upstream-asks.js';
@@ -110,9 +129,43 @@ function fetchStatus(slug: string): IssueStatus {
   }
 }
 
+/**
+ * Comments for ONE issue, as a second call.
+ *
+ * Deliberately not folded into `fetchStatus`'s field list. Comment bodies are
+ * the largest thing on an issue and the vast majority of tracked slugs never
+ * need them: only an OPEN issue that ACE STILL cites as a live constraint can
+ * produce a finding, which on a healthy repo is the empty set. Fetching them
+ * up front would pay for every slug to serve none of them.
+ *
+ * A failure here is not an error — the heuristic tier simply reports nothing
+ * for that slug, exactly as it did before this tier existed.
+ */
+function fetchComments(slug: string): IssueComment[] {
+  const [repo, num] = slug.split('#');
+  try {
+    const out = execFileSync(
+      'gh',
+      ['issue', 'view', num, '-R', repo, '--json', 'comments'],
+      { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] },
+    );
+    const d = JSON.parse(out) as {
+      comments?: { author?: { login?: string }; body?: string; createdAt?: string; url?: string }[];
+    };
+    return (d.comments ?? []).map((c) => ({
+      author: c.author?.login,
+      body: c.body ?? '',
+      createdAt: c.createdAt,
+      url: c.url,
+    }));
+  } catch {
+    return [];
+  }
+}
+
 const argv = process.argv.slice(2);
 if (argv.includes('--help') || argv.includes('-h')) {
-  process.stderr.write('usage: probe-upstream-asks.ts [--json] [--all]\n');
+  process.stderr.write('usage: probe-upstream-asks.ts [--json] [--all] [--no-comments]\n');
   process.exit(0);
 }
 
@@ -133,8 +186,24 @@ process.stderr.write(`Resolving ${slugs.length} upstream issue(s)…\n`);
 const statuses = slugs.map(fetchStatus);
 const stale = findStaleAsks(refs, statuses);
 
+// The heuristic tier. Only OPEN issues ACE still cites as a LIVE constraint can
+// produce a finding, so the gate runs before the fetch: on a repo whose docs
+// have already absorbed every correction this costs zero extra API calls.
+const corrected = (() => {
+  if (argv.includes('--no-comments')) return [];
+  const candidates = new Set(
+    refs.filter((r) => r.claimsLiveConstraint).map((r) => r.slug),
+  );
+  const withComments = statuses.map((s) =>
+    s.state === 'OPEN' && candidates.has(s.slug) ? { ...s, comments: fetchComments(s.slug) } : s,
+  );
+  return findCorrectedOpenAsks(refs, withComments);
+})();
+
 if (argv.includes('--json')) {
-  process.stdout.write(`${JSON.stringify({ stale, statuses, scanned: refs.length }, null, 2)}\n`);
+  process.stdout.write(
+    `${JSON.stringify({ stale, corrected, statuses, scanned: refs.length }, null, 2)}\n`,
+  );
   process.exit(stale.length > 0 ? 2 : 0);
 }
 
@@ -149,8 +218,40 @@ if (argv.includes('--all')) {
   }
 }
 
+/** The heuristic tier. Printed after the exact one; never changes the exit code. */
+function reportCorrected(): void {
+  if (corrected.length === 0) return;
+  process.stdout.write(
+    `\n${corrected.length} OPEN upstream issue(s) whose thread may have CORRECTED the cited\n` +
+      'mechanism (HEURISTIC — a human decides, and the exit code is unaffected):\n',
+  );
+  for (const c of corrected) {
+    process.stdout.write(`\n  ${c.slug} — still OPEN\n`);
+    if (c.title) process.stdout.write(`    ${c.title}\n`);
+    for (const sig of c.signals) {
+      const who = sig.author ? `@${sig.author}` : 'a commenter';
+      const when = sig.createdAt ? sig.createdAt.slice(0, 10) : 'unknown date';
+      process.stdout.write(`    retraction-shaped line — ${who}, ${when}\n`);
+      process.stdout.write(`      "${sig.excerpt}"\n`);
+      if (sig.url) process.stdout.write(`      ${sig.url}\n`);
+    }
+    process.stdout.write('    still cited as a live constraint at:\n');
+    for (const cite of c.citations) {
+      process.stdout.write(`      ${cite.file}:${cite.line}\n        ${cite.text.slice(0, 150)}\n`);
+    }
+  }
+  process.stdout.write(
+    '\nRead the thread, not this summary — the match is a regex over prose. If the\n' +
+      'correction is real, fix the doc; if it is not, or you have already absorbed it,\n' +
+      'say so in the citation (or within the following few lines) and this stops\n' +
+      'reporting — the same acknowledgement suppression the CLOSED tier uses, and it\n' +
+      'shows up in the diff so it cannot be done quietly.\n',
+  );
+}
+
 if (stale.length === 0) {
   process.stdout.write('\nNo stale upstream asks — every closed issue is cited as history.\n');
+  reportCorrected();
   process.exit(0);
 }
 
@@ -170,4 +271,5 @@ process.stdout.write(
     'can be retired; a `not planned` close means the constraint is permanent and the\n' +
     'doc should say so. This probe never edits anything.\n',
 );
+reportCorrected();
 process.exit(2);
