@@ -216,10 +216,18 @@ which rule triggered, what to do>
    Immediately after the render, write the EXACT bytes you just passed to
    `drive_create_doc_from_markdown` to
    `ACE/<opp>/runs/<run-id>/6-qa-and-training/training-faq.source.md` via
-   `drive_create_file` with `mimeType: 'text/markdown'`. **NOT
-   `drive_create_doc_from_markdown`** — rendering the source copy converts it
-   to a Doc as well and destroys the very bytes this step exists to preserve,
-   which reproduces the defect while looking like the fix.
+   `drive_upload_binary` with `mimeType: 'text/markdown'` — the same atom
+   `skills/_training-template.md` prescribes. **NOT
+   `drive_create_doc_from_markdown`**, which renders the source copy into a
+   Doc and destroys the very bytes this step exists to preserve; and **NOT
+   `drive_create_file`**, which does exactly the same thing while LOOKING like
+   the safe choice. `drive_create_file` always creates a Google Doc and has no
+   `mimeType` to change that — the key used to be dropped by its schema, so
+   this step produced a second rendered Doc and the DOC-FIDELITY check compared
+   one Doc against another built by the same importer (ace#1991). It now
+   refuses the key and names this call. `drive_upload_binary` uses Drive's
+   media-upload path, so the file lands as `text/markdown` and
+   `drive_read_file` returns it verbatim.
 
    Why it is not optional: the renderer CONSUMES its input. Once the Doc
    exists the markdown you composed exists nowhere, and the `.md` in the
@@ -323,4 +331,5 @@ the composed markdown before writing and rewrite any finding.
 - v1 (0.10.84): Initial skill. Owns `training-faq.md` only.
 - 2026-05-15: Replace the one-line "Participant Interaction" focus-group note in Step 5 with a full archetype-branched 4-category set: Facilitation & Consent / Attestation Form & Layer A / Gdoc Writing & Layer B / Payment & Logistics. Atomic-visit / multi-stage keep the default Vendor-Subject-Interaction / App-Device / Payment-Verification / Logistics categories. Prompted by `malaria-itn-fgd/20260514-2352` Phase 6 observation.
 - 2026-08-26: **Consent coverage becomes a required item, keyed on the PDD rather than on the archetype (ace#1687).** Consent previously reached this FAQ only through step 5's `focus-group` category set ("Facilitation & Consent"); every `atomic-visit` / `multi-stage` opp depended on a consent question happening to survive the seeding in steps 2–4. On `hh-poverty-targeting/20260824-1404` none did — `grep -in consent` over the published document returned zero hits across 11,822 characters, on an `atomic-visit` PDD that mentions consent 35 times, mandates a six-element read-aloud script in § 7.5, and makes refusal one of three non-payable visit outcomes; an upstream test prompt about the script went unanswered too. The independent `training-faq-eval` found it; nothing in this skill did. New step 4b requires at least two `[FLW]` entries (the script, and the refusal/withdrawal path) whenever `_app-component-library.md § consent-script-floor` fires — the same trigger the build and the Deliver-app eval already share, cited rather than restated, so a PDD that never says "consent" still fires it. Step 5 now states that the category set changes where consent is filed, not whether it is covered; step 7 makes it a grep-and-read check rather than a recollection; step 9 adds a BLOCKER dimension. Graded symmetrically by `training-faq-eval § consent_coverage`. *Enforced:* `test/skills/training-faq-consent-coverage.test.ts`.
-- 2026-08-26: **Persist the composed markdown as `training-faq.source.md` (ace#1687 half 2).** `drive_create_doc_from_markdown` consumes its input, so after step 8 the markdown existed nowhere and `run-surface-audit`'s `DOC-FIDELITY-UNVERIFIED` — the only check comparing PUBLISHED against WRITTEN — could only ever report UNVERIFIED, leaving a blocking gate permanently unresolvable. Step 8 now writes the same string a second time via `drive_create_file` at `text/markdown`. Declared `sourcePersisted` in `lib/artifact-manifest.ts`; *enforced:* `test/lib/source-persisted-artifacts.test.ts`.
+- 2026-08-26: **Persist the composed markdown as `training-faq.source.md` (ace#1687 half 2).** `drive_create_doc_from_markdown` consumes its input, so after step 8 the markdown existed nowhere and `run-surface-audit`'s `DOC-FIDELITY-UNVERIFIED` — the only check comparing PUBLISHED against WRITTEN — could only ever report UNVERIFIED, leaving a blocking gate permanently unresolvable. Step 8 now writes the same string a second time as a plain `text/markdown` file. (That entry originally named `drive_create_file`, which cannot do it — superseded by the 2026-09-06 entry below; ace#1991.) Declared `sourcePersisted` in `lib/artifact-manifest.ts`; *enforced:* `test/lib/source-persisted-artifacts.test.ts`.
+- 2026-09-06: **The `.source.md` companion goes through `drive_upload_binary`, not `drive_create_file` (ace#1991).** `drive_create_file` ALWAYS creates a Google Doc; it has no `mimeType` that changes that, and the key a caller passed to try was dropped by the MCP schema. So this step produced a SECOND rendered Doc and `run-surface-audit`'s `DOC-FIDELITY-UNVERIFIED` compared one Doc against another built by the same importer — passing structurally while unable to detect the content loss it exists to catch. Measured on `poverty-graduation/20260905-0924`: 57,178 bytes sent, 58,470 read back, every `#`/`**`/`>`/pipe-table marker gone. `skills/_training-template.md` had prescribed `drive_upload_binary` since 2026-09-01; the six producers had not followed it. `drive_create_file` now REFUSES a `mimeType` and names the `drive_upload_binary` call in the refusal. *Enforced:* `test/lib/source-persisted-artifacts.test.ts` (`PLAIN_WRITE_MARKERS` no longer accepts `drive_create_file`) + `test/mcp/gdrive/create-file-mimetype.test.ts`.

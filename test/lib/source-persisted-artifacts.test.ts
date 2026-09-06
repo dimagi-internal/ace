@@ -38,11 +38,34 @@ import { ARTIFACT_MANIFEST, sourceMarkdownPathFor } from '../../lib/artifact-man
 const REPO_ROOT = path.resolve(__dirname, '../..');
 
 /**
- * The plain-file write atoms. `drive_create_file` is the supported path;
- * `drive_update_file` is named because a producer may reasonably overwrite an
- * existing source file in place.
+ * The BYTE-PRESERVING write atoms.
+ *
+ * `drive_create_file` was named here until ace#1991 and it is the wrong atom:
+ * it ALWAYS creates a Google Doc. There is no mimeType that changes that, and
+ * the key a caller passed to try was dropped by the MCP schema — so all six
+ * flagged producers named it, this ratchet went green, and every `.source.md`
+ * in Drive was a SECOND rendered Doc. DOC-FIDELITY then compared one Doc
+ * against another built by the same importer: structurally passing, and unable
+ * to detect the content loss it exists to catch.
+ *
+ * `drive_upload_binary` uses Drive's media-upload path, so a `text/markdown`
+ * body lands as `text/markdown` and `drive_read_file` returns it verbatim via
+ * `alt=media` rather than as a Doc export. Despite the name it is the right
+ * atom for text whose bytes matter, and `skills/_training-template.md` has
+ * prescribed it for `.source.md` since 2026-09-01 — the producers had simply
+ * not followed their own template.
+ *
+ * `drive_update_file` stays: a producer may reasonably overwrite an existing
+ * source file in place, and that path does not re-import.
  */
-const PLAIN_WRITE_MARKERS = ['drive_create_file', 'drive_update_file'];
+const PLAIN_WRITE_MARKERS = ['drive_upload_binary', 'drive_update_file'];
+
+/**
+ * Atoms that ALWAYS convert to a Google Doc. Naming one as the way to persist
+ * a source copy reproduces the defect while looking like the fix — which is
+ * exactly what happened with `drive_create_file` (ace#1991).
+ */
+const RENDERING_WRITE_MARKERS = ['drive_create_doc_from_markdown', 'drive_create_file'];
 
 function producerDoc(producedBy: string): { file: string; text: string } | null {
   for (const candidate of [
@@ -144,8 +167,9 @@ describe('source-persisted artifacts must store their composed markdown', () => 
             offenders.join('\n  ') +
             `\n\nWithout it DOC-FIDELITY-UNVERIFIED can only ever report UNVERIFIED, so a ` +
             `BLOCKING gate is unresolvable and the regression it guards is unguarded. Write the ` +
-            `same string twice: drive_create_doc_from_markdown for the human, drive_create_file ` +
-            `(text/markdown) for the auditor.`
+            `same string twice: drive_create_doc_from_markdown for the human, drive_upload_binary ` +
+            `(mimeType: text/markdown) for the auditor — NOT drive_create_file, which renders ` +
+            `too (ace#1991).`
         : undefined,
     ).toEqual([]);
   });
@@ -161,11 +185,53 @@ describe('source-persisted artifacts must store their composed markdown', () => 
       if (!doc) continue;
       if (!PLAIN_WRITE_MARKERS.some((m) => doc.text.includes(m))) {
         offenders.push(
-          `${doc.file}: never names a plain-file write atom ` +
+          `${doc.file}: never names a byte-preserving write atom ` +
             `(one of: ${PLAIN_WRITE_MARKERS.join(', ')}) — the source copy must NOT be rendered`,
         );
       }
     }
     expect(offenders, offenders.join('\n  ') || undefined).toEqual([]);
+  });
+
+  it('no producer names a RENDERING atom as the way to write its .source.md (ace#1991)', () => {
+    // The sibling of the check above, and the one that was missing. Naming a
+    // byte-preserving atom SOMEWHERE in the document is satisfied by a
+    // producer that then instructs `drive_create_file` for the companion — and
+    // that is precisely what all six did. Read the sentence that mentions
+    // `.source.md`, and require that no converting atom appears in it.
+    const offenders: string[] = [];
+    for (const a of flagged) {
+      const doc = producerDoc(a.producedBy);
+      if (!doc) continue;
+      const lines = doc.text.split('\n');
+      for (const [i, line] of lines.entries()) {
+        if (!line.includes('.source.md')) continue;
+        // A wrapped instruction: the .source.md and the atom are routinely on
+        // adjacent lines, so read a small window rather than one line.
+        const window = lines.slice(Math.max(0, i - 3), i + 4).join(' ');
+        const rendering = RENDERING_WRITE_MARKERS.filter((m) => window.includes(m));
+        if (rendering.length === 0) continue;
+        // Naming the renderer is FINE and usually necessary — it is where the
+        // bytes came from, and "NOT drive_create_file" is the load-bearing
+        // warning. What is not fine is a window that names a converting atom
+        // and NO byte-preserving one, because then the converting atom is the
+        // only write on offer. That is the exact pre-ace#1991 state of all six
+        // producers, and it is what this predicate detects.
+        if (PLAIN_WRITE_MARKERS.some((m) => window.includes(m))) continue;
+        offenders.push(
+          `${doc.file}:${i + 1} writes a .source.md naming only ${rendering.join(' / ')}`,
+        );
+      }
+    }
+    expect(
+      offenders,
+      offenders.length
+        ? offenders.join('\n  ') +
+          `\n\ndrive_create_doc_from_markdown and drive_create_file BOTH always create a Google ` +
+          `Doc. A .source.md written through either is a second rendered Doc, and DOC-FIDELITY ` +
+          `then compares one Doc against another built by the same importer. Use ` +
+          `drive_upload_binary with mimeType: 'text/markdown' (ace#1991).`
+        : undefined,
+    ).toEqual([]);
   });
 });

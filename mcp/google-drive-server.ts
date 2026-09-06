@@ -753,16 +753,18 @@ server.tool(
 // 11. Create a file in Google Drive
 server.tool(
   'drive_create_file',
-  'Create a new Google Doc in Drive with the given name and content, inside the given parent folder. Content comes from exactly ONE of `content` (inline) or `localFilePath` (the server reads the utf-8 bytes off disk, so the write costs ~zero context regardless of file size — mirrors `drive_update_file` and `drive_upload_binary`, which take the same param under the same name). Prefer `localFilePath` above roughly **40,000 characters** \u2014 measured 2026-09-02 over the live Drive corpus (1,572 text artifacts, 20 opps, 49 runs; p95 = 29,772 chars, p99 = 60,671), 3.5% of what ACE writes clears that and those are its PRIMARY artifacts: the PDD (71 KB), test prompts (60 KB), the solicitation draft + published (52 KB), the training-deck spec (56 KB), the deep OCS transcript (224 KB). No ceiling is ENFORCED here and that is deliberate: a refusal at 40,000 would hard-fail six producers that work today, so it is sequenced behind converting them (ace#1907, ace#1780). Read the number as where inline stops being reasonable, not as a limit that will stop you. `localFilePath` is also REQUIRED in spirit for a companion write that must be byte-identical to another call\'s payload: point BOTH calls at the same local file and the two copies are identical by construction rather than by diligence (ace#1780 — `idea-to-pdd` steps 6/6b write a ~52 KB PDD twice with nothing verifying the two emissions match). By default, find-or-update: if a same-name file already exists under the parent (non-trashed), its content is replaced with `content` and its id is returned — no duplicate is created. Pass `findOrCreate:false` to force a new sibling. Body is uploaded as `text/plain; charset=utf-8` so non-ASCII text (em-dashes, accents, smart quotes) round-trips correctly. The parent MUST be a folder on a Shared Drive — Service Accounts have zero My-Drive quota, so files created in My Drive fail with a misleading "user storage quota exceeded" error. Used by ACE skills (idea-to-pdd, pdd-to-learn-app, etc.) to write artifacts to opportunity folders.',
+  'Create a new Google Doc in Drive with the given name and content, inside the given parent folder. Content comes from exactly ONE of `content` (inline) or `localFilePath` (the server reads the utf-8 bytes off disk, so the write costs ~zero context regardless of file size — mirrors `drive_update_file` and `drive_upload_binary`, which take the same param under the same name). Prefer `localFilePath` above roughly **40,000 characters** \u2014 measured 2026-09-02 over the live Drive corpus (1,572 text artifacts, 20 opps, 49 runs; p95 = 29,772 chars, p99 = 60,671), 3.5% of what ACE writes clears that and those are its PRIMARY artifacts: the PDD (71 KB), test prompts (60 KB), the solicitation draft + published (52 KB), the training-deck spec (56 KB), the deep OCS transcript (224 KB). No ceiling is ENFORCED here and that is deliberate: a refusal at 40,000 would hard-fail six producers that work today, so it is sequenced behind converting them (ace#1907, ace#1780). Read the number as where inline stops being reasonable, not as a limit that will stop you. `localFilePath` is also REQUIRED in spirit for a companion write that must be byte-identical to another call\'s payload: point BOTH calls at the same local file and the two copies are identical by construction rather than by diligence (ace#1780 — `idea-to-pdd` steps 6/6b write a ~52 KB PDD twice with nothing verifying the two emissions match). By default, find-or-update: if a same-name file already exists under the parent (non-trashed), its content is replaced with `content` and its id is returned — no duplicate is created. Pass `findOrCreate:false` to force a new sibling. **This atom ALWAYS creates a Google Doc, and it does not preserve bytes.** `text/plain; charset=utf-8` is the MEDIA type the body is decoded with on the way in (the charset hint is what makes em-dashes, accents and smart quotes decode correctly) — it is NOT the created file\'s type. The file lands as `application/vnd.google-apps.document`, so Drive\'s importer turns `#`, `**`, `>` and pipe tables into heading styles, bold runs and native tables, and a read-back returns styled text rather than the markdown you sent. That is fine for YAML and prose artifacts (readers export text and parse) and WRONG for any artifact whose purpose is byte preservation — a `.source.md` companion, most of all. For those use **`drive_upload_binary`** with `mimeType: "text/markdown"`, which uses Drive\'s media-upload path and lands the file as its native type. Passing `mimeType` here is REFUSED rather than silently ignored, and the refusal names that call (ace#1991). The parent MUST be a folder on a Shared Drive — Service Accounts have zero My-Drive quota, so files created in My Drive fail with a misleading "user storage quota exceeded" error. Used by ACE skills (idea-to-pdd, pdd-to-learn-app, etc.) to write artifacts to opportunity folders.',
   {
     name: z.string().describe('Name for the new file'),
     content: z.string().optional().describe('Text content for the file, inline. Provide either this OR localFilePath, not both.'),
     localFilePath: z.string().optional().describe('Absolute path to a local file whose utf-8 content becomes the file content. Reads directly from disk — avoids passing the whole document through the context window. Provide either this OR content, not both. Mirrors drive_update_file\'s and drive_upload_binary\'s param of the same name.'),
     parentFolderId: z.string().min(1).describe('Required. Parent folder ID — MUST be a folder on a Shared Drive (the MCP verifies this before writing).'),
     findOrCreate: z.boolean().optional().describe('When true (default), reuse an existing same-name file under the parent and overwrite its content; otherwise always create a new sibling. Default: true. Set to false only when you specifically want a separate sibling each call.'),
+    mimeType: z.string().optional().describe("Accepted ONLY as 'application/vnd.google-apps.document' (this atom's sole outcome). Any other value is REFUSED with the drive_upload_binary call that does what you meant. Declared solely so a mistaken `mimeType: 'text/markdown'` fails loudly instead of being dropped by the schema — six skills carried that unsatisfiable instruction and every one silently produced a second Google Doc (ace#1991)."),
   },
-  async ({ name: fileName, content: fileContent, localFilePath, parentFolderId, findOrCreate }) => {
+  async ({ name: fileName, content: fileContent, localFilePath, parentFolderId, findOrCreate, mimeType }) => {
     try {
+      assertCreateFileMimeType(mimeType, { name: fileName, parentFolderId, localFilePath });
       const resolved = resolveInlineOrLocalFile({
         atom: 'drive_create_file', inlineParam: 'content',
         inline: fileContent, localFilePath,
@@ -836,12 +838,12 @@ server.tool(
 // 11b. Upload a binary file (PNG, PDF, audio, etc.) to Google Drive
 server.tool(
   'drive_upload_binary',
-  'Upload a binary file (PNG, JPG, PDF, audio, video, etc.) to Google Drive inside the given parent folder. Accepts content via base64 string (contentBase64) OR a local file path (localFilePath) — use localFilePath for large files like videos to avoid passing megabytes through the context window. The MCP uses Drive\'s media-upload path with the supplied mime type, so the file lands as its native type (NOT auto-converted to a Google Doc — that\'s what `drive_create_file` is for). Pass `shareAnyoneWithLink: true` to atomically grant `role: reader` to `type: anyone` on the new file. By default, find-or-create: a same-name non-folder sibling under the parent has its BYTES REPLACED and keeps its id, so a corrected re-upload does not leave two files the name-matching `verify_phase_artifacts` fence would both count as present (dimagi-internal/ace#1324); pass `findOrCreate:false` to force a new sibling. The parent MUST be a folder on a Shared Drive.',
+  'Upload a file to Google Drive inside the given parent folder, landing it as its NATIVE type. Binaries (PNG, JPG, PDF, audio, video, CCZ) and — despite the name — **TEXT whose bytes must survive**: `text/markdown`, `text/csv`, `application/json`. This is the atom for every `*.source.md` companion, because `drive_create_file` always converts to a Google Doc and loses the markdown markers (ace#1991); `drive_read_file` reads a `text/*` file back verbatim via alt=media rather than as a Doc export, which is what makes `run-surface-audit`\'s DOC-FIDELITY comparison meaningful. Pair `localFilePath` here with `localFilePath` on the step-6 render, pointed at the SAME local file, and the published doc and its source companion are identical by construction (ace#1780). Accepts content via base64 string (contentBase64) OR a local file path (localFilePath) — use localFilePath for large files like videos to avoid passing megabytes through the context window. The MCP uses Drive\'s media-upload path with the supplied mime type, so the file lands as its native type (NOT auto-converted to a Google Doc — that\'s what `drive_create_file` is for). Pass `shareAnyoneWithLink: true` to atomically grant `role: reader` to `type: anyone` on the new file. By default, find-or-create: a same-name non-folder sibling under the parent has its BYTES REPLACED and keeps its id, so a corrected re-upload does not leave two files the name-matching `verify_phase_artifacts` fence would both count as present (dimagi-internal/ace#1324); pass `findOrCreate:false` to force a new sibling. The parent MUST be a folder on a Shared Drive.',
   {
     name: z.string().describe('Name for the new file (include the extension — e.g., "screen-01.png", not "screen-01")'),
     contentBase64: z.string().optional().describe('File content, base64-encoded. Provide either this OR localFilePath, not both.'),
     localFilePath: z.string().optional().describe('Absolute path to a local file to upload. Reads directly from disk — avoids passing large binaries through the context window. Provide either this OR contentBase64, not both.'),
-    mimeType: z.string().describe('MIME type of the binary content. Common ACE values: "image/png", "image/jpeg", "application/pdf", "audio/mpeg", "video/mp4", "application/zip" (CCZ).'),
+    mimeType: z.string().describe('MIME type the file LANDS AS. Common ACE values: "image/png", "image/jpeg", "application/pdf", "audio/mpeg", "video/mp4", "application/zip" (CCZ), and for byte-preserving text: "text/markdown", "text/csv", "application/json".'),
     parentFolderId: z.string().min(1).describe('Required. Parent folder ID — MUST be a folder on a Shared Drive (the MCP verifies this before writing).'),
     shareAnyoneWithLink: z.boolean().optional().describe('When true, after a successful upload set sharing to `role: reader, type: anyone` (anyone-with-link). Required for any PNG that downstream Slides `createImage` will fetch — Slides\' image-import service does not carry the SA\'s auth. Default: false.'),
     findOrCreate: z.boolean().optional().describe('When true (default), reuse an existing same-name non-folder file under the parent and REPLACE its bytes — the id and every already-shared URL survive. Otherwise always create a new sibling. Default: true. Set false only when you specifically want a separate sibling each call (e.g. timestamped captures that share a base name).'),
@@ -1960,6 +1962,61 @@ export async function handleUploadBinary(
   }
 
   return { id: fileId!, name: fileName, mimeType: outMime, size, webViewLink, sharing, reused: reused || undefined };
+}
+
+/**
+ * The one mimeType `drive_create_file` produces. Exported so the guard and its
+ * tests cannot drift from the value `handleCreateFile` actually posts.
+ */
+export const CREATE_FILE_MIME_TYPE = 'application/vnd.google-apps.document';
+
+/**
+ * Refuse a `mimeType` this atom cannot honour — loudly, and with the call that
+ * can (ace#1991).
+ *
+ * ## Why a REFUSAL and not a mode flag
+ *
+ * `skills/idea-to-pdd` § step 6b told its executor to write the PDD's source
+ * companion "via `drive_create_file` with `mimeType: 'text/markdown'` … NOT
+ * `drive_create_doc_from_markdown` — rendering the source copy converts it to
+ * a Doc as well and destroys the very bytes this step exists to preserve".
+ * Both halves were unsatisfiable: there was no `mimeType` parameter, so the
+ * MCP schema dropped the key, and `handleCreateFile` converts unconditionally.
+ * The instruction reached the exact outcome it forbade, through the atom it
+ * named as the safe one — and six sibling skills carried the same line.
+ *
+ * The obvious fix is to add the parameter and branch to a media upload for
+ * `text/*`. That is wrong, because `drive_upload_binary` ALREADY does exactly
+ * that — its own description says the file "lands as its native type (NOT
+ * auto-converted to a Google Doc — that's what `drive_create_file` is for)".
+ * Two atoms partition this space cleanly today; giving one of them a mode flag
+ * that makes it behave like the other collapses the partition and re-opens the
+ * confusion at a place where the failure is SILENT.
+ *
+ * So the atom keeps one outcome, and the mistake stops being silent: the
+ * parameter exists only to be refused, and the refusal is the documentation an
+ * agent actually reads — the one that arrives at the moment of the error.
+ */
+export function assertCreateFileMimeType(
+  mimeType: string | undefined,
+  ctx: { name: string; parentFolderId: string; localFilePath?: string },
+): void {
+  if (mimeType === undefined || mimeType === CREATE_FILE_MIME_TYPE) return;
+  const source = ctx.localFilePath
+    ? `localFilePath: '${ctx.localFilePath}'`
+    : 'localFilePath: \'/abs/path/to/the/file\'';
+  throw new Error(
+    `drive_create_file cannot create '${mimeType}' — it ALWAYS creates a Google Doc ` +
+    `(${CREATE_FILE_MIME_TYPE}), which converts markdown markers to Docs styling and does not ` +
+    `preserve bytes. Use drive_upload_binary, which uses Drive's media-upload path and lands the ` +
+    `file as its native type:\n\n` +
+    `  drive_upload_binary({ name: '${ctx.name}', ${source}, ` +
+    `mimeType: '${mimeType}', parentFolderId: '${ctx.parentFolderId}' })\n\n` +
+    `Same find-or-create semantics (a same-name sibling has its BYTES replaced and keeps its id), ` +
+    `and drive_read_file reads it back verbatim via alt=media rather than as a Doc export. ` +
+    `Despite the name, drive_upload_binary is the right atom for TEXT whose bytes matter — ` +
+    `text/markdown, text/csv, application/json (ace#1991).`,
+  );
 }
 
 /**

@@ -756,11 +756,29 @@ raise the conflict.
 
 6b. **Persist the PDD's source markdown — the SAME LOCAL FILE, written
    twice.** Immediately after step 6's render, write the EXACT bytes to
-   `1-design/idea-to-pdd.source.md` via `drive_create_file` with
-   `mimeType: 'text/markdown'` (same `parentFolderId` as step 6).
-   **NOT `drive_create_doc_from_markdown`** — rendering the source copy
-   converts it to a Doc as well and destroys the very bytes this step exists
-   to preserve, which reproduces the defect while looking like the fix.
+   `1-design/idea-to-pdd.source.md` via **`drive_upload_binary`** with
+   `mimeType: 'text/markdown'` (same `parentFolderId` as step 6) — the same
+   atom `skills/_training-template.md` prescribes for every `.source.md`
+   companion.
+
+   **NOT `drive_create_doc_from_markdown`**, which renders the source copy
+   into a Doc and destroys the very bytes this step exists to preserve. And
+   **NOT `drive_create_file`**, which does exactly the same thing while
+   LOOKING like the safe choice: it always creates a Google Doc, it has no
+   `mimeType` that changes that, and until ace#1991 the key was silently
+   dropped by its schema. This step therefore produced a SECOND rendered Doc,
+   and `run-surface-audit`'s DOC-FIDELITY check compared one Doc against
+   another built by the same importer — passing structurally while unable to
+   detect the loss it exists to catch. Measured on
+   `poverty-graduation/20260905-0924`: both writes pointed at the same local
+   file, both landed as `application/vnd.google-apps.document`, and the
+   round-trip was 58,470 bytes against 57,178 sent. `drive_create_file` now
+   REFUSES a `mimeType` and names this call in the refusal.
+
+   `drive_upload_binary` uses Drive's media-upload path, so the file lands as
+   `text/markdown` and `drive_read_file` returns it verbatim (`alt=media`,
+   not a Doc export). Despite its name it is the right atom for text whose
+   bytes matter.
 
    **Pass `localFilePath` pointing at the SAME file step 6 used
    (ace#1780).** That is what makes this step's premise true rather than
@@ -1679,3 +1697,4 @@ When `--dry-run` is active:
 | 2026-08-02 | **Worked assessment items emitted by the PDD must be labelled ILLUSTRATIVE (ace#1120).** Step 4a's assessment-enforcement bullet now requires any worked example to be marked as illustrative of the required shape, never as mandated bank content — a PDD specifies the assessment blueprint; a specific quiz item is build content. All three of `hh-poverty-targeting` v2.1's worked items were guessed cold by both independent blind probes, and worked items anchor the tone of the ~21 items Phase 3 authors. Paired with the matching builder-side rule in `skills/pdd-to-learn-app/SKILL.md` (hardening or discarding a PDD example is PDD-compliant, not a deviation). | ACE team |
 | 2026-09-01 | Steps 6 + 6b: compose the PDD to a LOCAL FILE and pass `localFilePath` to BOTH writes rather than emitting the document inline twice. The rendered gdoc and its `.source.md` companion are now byte-identical BY CONSTRUCTION — step 6b's premise, and `run-surface-audit`'s DOC-FIDELITY check with it, previously rested on the agent re-typing a ~52 KB document identically with nothing verifying it (dimagi-internal/ace#1780). | ACE team |
 | 2026-09-06 | **Stop routing concerns to a gate brief that does not exist (dimagi-internal/ace#1884).** 0.13.116 removed the per-skill gate-brief file class and the ace#1880 sweep removed the remaining `*.md` PATHS, but prose directives naming the gate brief as a DESTINATION survived in 15 files — a concern "surfaced in the gate brief" is surfaced nowhere. Repointed at the verdict YAML's `auto_surfaced` block, which is what the orchestrator actually renders the pause summary from. Gated by the new destination check in `test/skills/gate-brief-removal-complete.test.ts`. | ACE team |
+| 2026-09-06 | **Step 6b: the `.source.md` companion goes through `drive_upload_binary`, not `drive_create_file` (ace#1991).** Step 6b named `drive_create_file` with `mimeType: 'text/markdown'` and warned against the renderer for destroying the bytes — but `drive_create_file` ALWAYS creates a Google Doc, has no `mimeType`, and the key was dropped by the MCP schema. The instruction reached the exact outcome it forbade, through the atom it named as safe. Measured on `poverty-graduation/20260905-0924`: two calls, one local file, both files `application/vnd.google-apps.document`; 57,178 bytes sent, 58,470 read back, every markdown marker gone — so DOC-FIDELITY compared one Doc against another built by the same importer. `skills/_training-template.md` had prescribed `drive_upload_binary` since 2026-09-01. `drive_create_file` now REFUSES a `mimeType` and names the right call. *Enforced:* `test/lib/source-persisted-artifacts.test.ts` + `test/mcp/gdrive/create-file-mimetype.test.ts`. | ACE team |
