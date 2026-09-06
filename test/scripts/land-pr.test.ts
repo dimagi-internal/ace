@@ -44,17 +44,44 @@ describe('scripts/land-pr.sh', () => {
     expect(rearm).toBeGreaterThan(push);
   });
 
-  // ace#2004 (OPEN) — the initial arm is still missing; this pins the half that
-  // shipped, namely that giving up says WHY. "OPEN CLEAN" is unactionable;
-  // "OPEN CLEAN auto-merge=false" names the cause outright.
+  // "OPEN CLEAN" is unactionable; "OPEN CLEAN auto-merge=false" names the cause
+  // outright — which is how ace#2004 was diagnosed in the first place.
   it('names auto-merge state when it gives up, so the cause is actionable', () => {
     expect(CODE).toMatch(/gave up after[\s\S]*autoMergeRequest/);
   });
 
-  it('records why the initial arm cannot simply be hoisted', () => {
-    // Load-bearing prose: the obvious fix breaks the wrong-worktree guard.
-    expect(SCRIPT).toMatch(/ace#2004/);
-    expect(SCRIPT).toMatch(/ancestry guard|not an ancestor/);
+  //
+  // ace#2004. The behavioural cases live in `land-pr-refspec.test.ts`, which
+  // drives the real script against a stubbed `gh`. These three pin the SHAPE
+  // those cases depend on, because the shape is what a well-meaning edit
+  // silently breaks: the arm was nested inside `if [ "$m" = "DIRTY" ]` for
+  // three revisions and read as deliberate every time.
+  //
+  it('arms auto-merge exactly once, from a single unconditional call site', () => {
+    // Two call sites is how it regresses: one re-arm in the DIRTY branch, one
+    // "initial" arm elsewhere, and then only one of them gets the next fix.
+    const arms = CODE.match(/--auto --merge/g) ?? [];
+    expect(arms).toHaveLength(1);
+  });
+
+  it('arms AFTER proving this checkout owns the PR', () => {
+    // The reason the issue's one-line fix was not the fix. A bare arm hoisted
+    // above the loop would arm before the wrong-worktree guard, turning a
+    // refusal into a merge of someone else's PR.
+    const guard = CODE.indexOf('--is-ancestor');
+    const arm = CODE.indexOf('--auto --merge');
+    expect(guard).toBeGreaterThan(-1);
+    expect(arm).toBeGreaterThan(-1);
+    expect(guard).toBeLessThan(arm);
+  });
+
+  it('guards ancestry unconditionally, not only on the DIRTY path', () => {
+    // The guard must sit OUTSIDE the `if [ "$m" = "DIRTY" ]` block. While it
+    // was inside, a CLEAN PR was never checked for ownership at all.
+    const guard = CODE.indexOf('--is-ancestor');
+    const dirty = CODE.indexOf('"$m" = "DIRTY"');
+    expect(dirty).toBeGreaterThan(-1);
+    expect(guard).toBeLessThan(dirty);
   });
 
   it('treats a non-version conflict as a human matter, not another retry', () => {
