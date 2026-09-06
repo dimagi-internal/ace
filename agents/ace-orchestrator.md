@@ -1693,10 +1693,12 @@ ACE issue this phase filed**, classify it once:
 For each self-healable issue, dispatch **one background subagent** per
 § Fix-and-ship subagent template in `agents/orchestrator-reference.md`
 — it runs `skills/shipping` end to end and closes the issue referencing
-its PR. Batch the dispatches into the SAME message as
-`Agent(<next-phase>)`.
+its PR. **Every one of them is launched with `isolation: "worktree"`**
+(rule 5 below — this is the fan-out point, so it is where the flag either
+gets passed N times or gets forgotten N times). Batch the dispatches into
+the SAME message as `Agent(<next-phase>)`.
 
-Four rules make this safe to run inside a live `/ace:run`:
+Five rules make this safe to run inside a live `/ace:run`:
 
 1. **It never blocks the run.** The dispatches are backgrounded and the
    next phase starts in the same message. A self-heal that fails, stalls,
@@ -1796,6 +1798,27 @@ Four rules make this safe to run inside a live `/ace:run`:
    than implying the update fixed it, and write a handoff (§ Pre-flight Step
    1) before recommending the restart so the resumed session does not
    re-derive what this one established.
+
+5. **Every dispatch gets its OWN worktree — `isolation: "worktree"`, no
+   exceptions.** A dispatched subagent inherits the dispatcher's working
+   directory, so without the flag it runs `git checkout -b`, `git add -A`
+   and `scripts/version-bump.sh` **in the orchestrator's worktree, while
+   the orchestrator is using it**. On `poverty-graduation/20260905-0924` a
+   Phase 1 subagent moved the branch out from under a live `/ace:run` and
+   the orchestrator's next commit landed on the subagent's branch — PRs
+   #1995 and #1999 still share one head branch under unrelated titles.
+   Nothing failed, which is the problem: both actors run `git add -A`, and
+   in the 3-minute window between them either would have swept the other's
+   in-progress edits into its own commit.
+
+   **This rule is load-bearing precisely BECAUSE of rule 2.** Eleven
+   self-healable issues means eleven concurrent subagents; eleven of them
+   branching and staging in ONE shared worktree is a guaranteed collision,
+   and every corruption it produces is silent. `isolation: "worktree"` is
+   harness-enforced, so it holds where an instruction would not. Full
+   incident + the `--expect-branch` backstop for any path that forgets the
+   flag: `agents/orchestrator-reference.md § Dispatch it into its OWN
+   worktree`. ace#2001.
 
 **Attempting the fix is itself the premise check, and that is half the
 value.** Filing costs nothing and touches no artifact, so an unverified
