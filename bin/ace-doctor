@@ -357,6 +357,15 @@ if [ "$PREFLIGHT" = "1" ]; then
   PF_NOVA_CACHE_STATUS=pass
   PF_NOVA_CACHE_REMEDIATION=""
   PF_NOVA_CACHE_CLEARED=false
+  # ace#1769. Preflight already prints the handoff from the session that halted
+  # before this one; when that handoff names a Nova auth halt it is PROOF a
+  # restart has happened and did not work. Until this field existed the two
+  # blocks sat adjacent on one screen with nothing relating them, and the
+  # cheaper wrong branch ("FIRST occurrence: Cmd-Q + reopen") was the one
+  # listed first — so the operator did the restart the evidence beside it
+  # already refuted. `not-established` is the honest default: no handoff is not
+  # evidence of a first occurrence, only absence of evidence of a recurrence.
+  PF_NOVA_CACHE_RECURRENCE="not-established"
   if [ -f "$PF_NOVA_CACHE_FILE" ]; then
     PF_NOVA_CACHE_HAS="$(node -e "
       try {
@@ -400,6 +409,28 @@ if [ "$PREFLIGHT" = "1" ]; then
           PF_NOVA_CACHE_REMEDIATION="plugin:nova:nova was stuck in needs-auth cache despite valid NOVA_API_KEY; the stale entry has been CLEARED automatically. FIRST occurrence: Cmd-Q + reopen Claude Code, then re-run your command (MCP subprocesses only rebind on a full restart). If you have ALREADY restarted once since the last clear and nova still exposes only authenticate/complete_authentication, the cache is NOT the cause: NO Authorization header is reaching Nova. Claude Code 2.1.238+ stopped passing its process env to nova's env-dependent headersHelper, which emits {} -- the client then falls back to OAuth, whose token lacks nova.hq.read (voidcraft-labs/nova-plugin#52; the earlier stored-OAuth-precedence explanation was DISPROVED 2026-08-25 by logs showing 'No access token in storage'). Read the nova_header_readiness block, which OUTRANKS this one and installs the static-header override automatically, THEN Cmd-Q + reopen. Do NOT go to /mcp: 'Clear authentication' removes an OAuth token but restores no credential, so the session re-prompts OAuth immediately, and 'Authenticate' mints a token without nova.hq.read."
         else
           PF_NOVA_CACHE_REMEDIATION="plugin:nova:nova stuck in needs-auth cache despite valid NOVA_API_KEY; auto-clear did not apply ($PF_NOVA_CACHE_CLEAR_RESULT). Clear it from $PF_NOVA_CACHE_FILE then Cmd-Q + reopen Claude Code (run /ace:doctor for the exact node one-liner). If you have ALREADY restarted once since the last clear and nova still exposes only authenticate/complete_authentication, the cache is NOT the cause: NO Authorization header is reaching Nova. Claude Code 2.1.238+ stopped passing its process env to nova's env-dependent headersHelper, which emits {} -- the client then falls back to OAuth, whose token lacks nova.hq.read (voidcraft-labs/nova-plugin#52; the earlier stored-OAuth-precedence explanation was DISPROVED 2026-08-25 by logs showing 'No access token in storage'). Read the nova_header_readiness block, which OUTRANKS this one and installs the static-header override automatically, THEN Cmd-Q + reopen. Do NOT go to /mcp: 'Clear authentication' removes an OAuth token but restores no credential, so the session re-prompts OAuth immediately, and 'Authenticate' mints a token without nova.hq.read."
+        fi
+        # The correlation. Both strings above list BOTH branches and leave the
+        # choice to the reader; this asks lib/nova-cache-routing.ts whether the
+        # fresh handoff already settles it, and if so replaces them with the
+        # recurrence branch ALONE — the "FIRST occurrence" sentence is removed,
+        # not de-emphasised. Read-only w.r.t. the handoff (rendering below still
+        # prints it), and it is deliberately impossible for this to make things
+        # worse: no tsx, a non-zero exit, or an empty read all leave the shipped
+        # strings exactly as they were. A stale handoff is not evidence about
+        # THIS session, so the helper ignores it. ace#1769.
+        PF_TSX_BIN="$ROOT/node_modules/.bin/tsx"
+        if [ -x "$PF_TSX_BIN" ]; then
+          PF_NOVA_CACHE_ROUTE="$("$PF_TSX_BIN" "$ROOT/scripts/nova-cache-route.ts" \
+            --cleared "$PF_NOVA_CACHE_CLEARED" \
+            --cache-file "$PF_NOVA_CACHE_FILE" \
+            --clear-result "$PF_NOVA_CACHE_CLEAR_RESULT" 2>/dev/null)"
+          PF_NOVA_CACHE_ROUTE_REC="$(printf '%s\n' "$PF_NOVA_CACHE_ROUTE" | sed -n 's/^recurrence=//p')"
+          PF_NOVA_CACHE_ROUTE_REM="$(printf '%s\n' "$PF_NOVA_CACHE_ROUTE" | sed -n 's/^remediation=//p')"
+          if [ -n "$PF_NOVA_CACHE_ROUTE_REC" ] && [ -n "$PF_NOVA_CACHE_ROUTE_REM" ]; then
+            PF_NOVA_CACHE_RECURRENCE="$PF_NOVA_CACHE_ROUTE_REC"
+            PF_NOVA_CACHE_REMEDIATION="$PF_NOVA_CACHE_ROUTE_REM"
+          fi
         fi
       else
         PF_NOVA_CACHE_STATUS=warn
@@ -535,6 +566,7 @@ nova_needs_auth_cache:
   cache_key_present: ${PF_NOVA_CACHE_KEY_PRESENT}
   nova_api_key: ${PF_NOVA_KEY_PRESENT}
   cleared: ${PF_NOVA_CACHE_CLEARED}
+  recurrence: ${PF_NOVA_CACHE_RECURRENCE}
   remediation: "${PF_NOVA_CACHE_REMEDIATION}"
 ${PF_NOVA_HDR_YAML}
 ${PF_OCS_GEN_YAML}
@@ -2545,9 +2577,30 @@ else
       else
         NOVA_CACHE_CLEAR_RESULT="helper not present; run /ace:update"
       fi
+      # Same correlation as preflight (ace#1769). The preflight remedy SENDS the
+      # operator here, so leaving this copy un-routed just relocates the loop by
+      # one hop. The full doctor does not print the handoff, so instead of
+      # replacing the branches it states the verdict up front — the reader never
+      # sees the evidence here, only the conclusion drawn from it.
+      NOVA_CACHE_RECURRENCE_BANNER=""
+      DOC_TSX_BIN="$ROOT/node_modules/.bin/tsx"
+      if [ -x "$DOC_TSX_BIN" ]; then
+        NOVA_CACHE_ROUTE_REC="$("$DOC_TSX_BIN" "$ROOT/scripts/nova-cache-route.ts" \
+          --cleared "$( [ "$NOVA_CACHE_CLEAR_RESULT" = "cleared" ] && echo true || echo false )" \
+          --cache-file "$NOVA_NEEDS_AUTH_CACHE" \
+          --clear-result "$NOVA_CACHE_CLEAR_RESULT" 2>/dev/null \
+          | sed -n 's/^recurrence=//p')"
+        if [ "$NOVA_CACHE_ROUTE_REC" = "confirmed-by-handoff" ]; then
+          NOVA_CACHE_RECURRENCE_BANNER="RECURRENCE CONFIRMED — a fresh session handoff names a Nova auth halt, so a
+       restart has ALREADY been done since the last clear and did not work.
+       SKIP the FIRST-occurrence branch below and go straight to the
+       'IF YOU HAVE ALREADY RESTARTED' steps.
+"
+      fi
+      fi
       if [ "$NOVA_CACHE_CLEAR_RESULT" = "cleared" ]; then
         fail "nova_needs_auth_cache: plugin:nova:nova was cached as needs-auth despite valid NOVA_API_KEY" "the stale entry has been CLEARED automatically from $NOVA_NEEDS_AUTH_CACHE.
-       FIRST occurrence: Cmd-Q Claude Code and reopen — MCP subprocesses only rebind on a full restart.
+       ${NOVA_CACHE_RECURRENCE_BANNER}FIRST occurrence: Cmd-Q Claude Code and reopen — MCP subprocesses only rebind on a full restart.
        Symptom this fixes: only \`mcp__plugin_nova_nova__authenticate\` surfaces, real tools (\`list_apps\` etc.) are missing.
        Per Braxton's nova-plugin#11.
 

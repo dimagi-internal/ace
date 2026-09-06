@@ -106,6 +106,14 @@ the full `/ace:doctor` prints, and tell the operator to Cmd-Q + reopen, then
 resume. (Rationale + jjackson/ace#582: see orchestrator-reference.md
 § Pre-flight rationale.)
 
+**`nova_needs_auth_cache.recurrence: confirmed-by-handoff` means the restart
+has already been tried and failed — do not offer it again.** Preflight sets
+that field by correlating the block with the handoff printed below it; when it
+says `confirmed-by-handoff` the remediation carries the recurrence branch
+ALONE, so read it as written rather than re-deriving a branch from the two
+blocks. `not-established` is the absence of evidence, not evidence of a first
+occurrence. (ace#1769.)
+
 **`nova_header_readiness` OUTRANKS `nova_needs_auth_cache` — read it first,
 and when it says `fail`, ignore the cache block's remedy entirely.** They look
 like the same finding and prescribe opposite things. The cache block's
