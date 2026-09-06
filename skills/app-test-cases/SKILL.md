@@ -931,6 +931,26 @@ Unbound, Maestro renders the unset placeholder as the literal string
 `undefined`, so the frame lands as `undefined.png` — and two unbound shots in
 the same subflow overwrite each other. Both symptoms were observed live.
 
+**Name `SCREENSHOT_NAME_PRE_SUBMIT` for the LAST QUESTION, never for a result
+(dimagi-internal/ace#1853).** `form-submit.yaml` shoots that frame *before* the
+tap that advances, so it is always a question — and on a score-gated quiz it is
+the last item, not the score. Naming it `…-result` / `…-score` / `…-passed` is
+therefore always false, and false in the direction that misleads: anything
+reading the manifest by name captions it as the certification screen. It has
+gone wrong three times — `journey-learn-m6-assessment-result` on
+spark-facilitator/20260828-0703 (an ordinary assessment item),
+`journey-learn-gate-result` on hh-poverty-targeting/20260828-0702 (filed in the
+manifest between `…-gate-q9-answered` and `…-gate-submitted`), and once in this
+repo's own lint fixture.
+
+It is also now a collision. The score screen **is** captured: the score-gated
+FINISH branch derives it as `<PRE_SUBMIT>-result`. So binding PRE_SUBMIT to
+`…-assessment-result` puts the genuine outcome at `…-assessment-result-result`
+while the misleading name keeps the clean one. Use `…-last-item` (or any name
+describing the question), bind nothing extra for the score screen, and let the
+palette derive it. *Enforced:* the `pre-submit-screenshot-name-claims-outcome`
+rule in `mcp/mobile/recipe-lint.ts`, run by `mobile_validate_recipe`.
+
 Historical context: the single-screen
 over-step on bednet-spot-check run 20260528-0556 Phase 6 (a `form-advance` +
 `form-submit` over a one-screen "Introduction" form) is also subsumed —

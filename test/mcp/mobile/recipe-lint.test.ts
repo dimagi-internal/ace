@@ -310,6 +310,110 @@ describe('lintRecipeText — runFlow-guard-scope-mismatch', () => {
   });
 });
 
+describe('lintRecipeText — pre-submit-screenshot-name-claims-outcome (ace#1853)', () => {
+  // `SCREENSHOT_NAME_PRE_SUBMIT` is shot on the LAST QUESTION, before the tap
+  // that advances, so a name claiming it shows a result is always false — and
+  // false in the direction that misleads, because anything reading the
+  // manifest by name captions it as the certification screen.
+  //
+  // Observed as a real frame name on two independent runs:
+  //   spark-facilitator/20260828-0703 `journey-learn-m6-assessment-result`
+  //   hh-poverty-targeting/20260828-0702 `journey-learn-gate-result`, which
+  //   the run manifest files between `…-gate-q9-answered` and
+  //   `…-gate-submitted` — i.e. squarely the PRE_SUBMIT frame.
+
+  const head = ['appId: org.commcare.dalvik', '---'];
+  const call = (name: string) =>
+    [
+      ...head,
+      '- runFlow:',
+      '    file: form-submit.yaml',
+      '    env:',
+      `      SCREENSHOT_NAME_PRE_SUBMIT: "${name}"`,
+      '      SCREENSHOT_NAME_POST_SUBMIT: "journey-learn-gate-submitted"',
+      '',
+    ].join('\n');
+
+  it('flags the real hh-poverty-targeting name', () => {
+    const { ok, violations } = lintRecipeText(call('journey-learn-gate-result'));
+    expect(ok).toBe(false);
+    const v = violations.find((x) => x.rule === 'pre-submit-screenshot-name-claims-outcome');
+    expect(v).toBeDefined();
+    expect(v!.detail).toContain('LAST QUESTION');
+    expect(v!.line).toBe(3);
+  });
+
+  it('flags the real spark-facilitator name and suggests a truthful one', () => {
+    const { violations } = lintRecipeText(call('journey-learn-m6-assessment-result'));
+    const v = violations.find((x) => x.rule === 'pre-submit-screenshot-name-claims-outcome');
+    expect(v).toBeDefined();
+    expect(v!.remediation).toContain('journey-learn-m6-assessment-last-item');
+  });
+
+  it('names the collision with the honest frame the FINISH branch now captures', () => {
+    const { violations } = lintRecipeText(call('journey-learn-gate-result'));
+    const v = violations.find((x) => x.rule === 'pre-submit-screenshot-name-claims-outcome')!;
+    expect(v.detail).toContain('journey-learn-gate-result-result');
+  });
+
+  it.each(['score', 'passed', 'failed', 'certified', 'outcome', 'grade', 'results'])(
+    'flags the outcome-claiming segment %s',
+    (word) => {
+      const { violations } = lintRecipeText(call(`journey-learn-gate-${word}`));
+      expect(violations.some((v) => v.rule === 'pre-submit-screenshot-name-claims-outcome')).toBe(
+        true,
+      );
+    },
+  );
+
+  it('accepts a truthful pre-submit name', () => {
+    const { violations } = lintRecipeText(call('journey-learn-gate-last-item'));
+    expect(violations.some((v) => v.rule === 'pre-submit-screenshot-name-claims-outcome')).toBe(
+      false,
+    );
+  });
+
+  it('matches whole segments only — `resulting` is not a claim of a result', () => {
+    const { violations } = lintRecipeText(call('journey-learn-gate-resulting-action'));
+    expect(violations.some((v) => v.rule === 'pre-submit-screenshot-name-claims-outcome')).toBe(
+      false,
+    );
+  });
+
+  it('leaves POST_SUBMIT alone — that frame legitimately follows the outcome', () => {
+    const yaml = [
+      ...head,
+      '- runFlow:',
+      '    file: form-submit.yaml',
+      '    env:',
+      '      SCREENSHOT_NAME_PRE_SUBMIT: "journey-learn-gate-last-item"',
+      '      SCREENSHOT_NAME_POST_SUBMIT: "journey-learn-gate-result"',
+      '',
+    ].join('\n');
+    expect(
+      lintRecipeText(yaml).violations.some(
+        (v) => v.rule === 'pre-submit-screenshot-name-claims-outcome',
+      ),
+    ).toBe(false);
+  });
+
+  it('does not fire on a different palette that happens to use the word', () => {
+    const yaml = [
+      ...head,
+      '- runFlow:',
+      '    file: form-advance.yaml',
+      '    env:',
+      '      SCREENSHOT_NAME: "journey-learn-gate-result"',
+      '',
+    ].join('\n');
+    expect(
+      lintRecipeText(yaml).violations.some(
+        (v) => v.rule === 'pre-submit-screenshot-name-claims-outcome',
+      ),
+    ).toBe(false);
+  });
+});
+
 describe('lintRecipeText — runFlow-unbound-screenshot-name', () => {
   // dimagi-internal/ace#1033. A palette subflow that names its screenshot
   // from `${SCREENSHOT_NAME*}` carries NO env default (a subflow `env:` block
@@ -357,12 +461,19 @@ describe('lintRecipeText — runFlow-unbound-screenshot-name', () => {
   });
 
   it('does NOT flag a fully bound call site', () => {
+    // The PRE_SUBMIT name here was `journey-learn-result` until ace#1853.
+    // That is the misleading-name class this suite now also lints for — a
+    // pre-submit frame is the LAST QUESTION, never a result — and this fixture
+    // was a third instance of it, alongside the two live runs, sitting inside
+    // ACE's own tests. Renamed to a truthful one; the assertion is scoped to
+    // the rule under test so it keeps testing bindedness rather than doubling
+    // as an accidental gate on every other rule.
     const yaml = [
       ...head,
       '- runFlow:',
       '    file: form-submit.yaml',
       '    env:',
-      '      SCREENSHOT_NAME_PRE_SUBMIT: "journey-learn-result"',
+      '      SCREENSHOT_NAME_PRE_SUBMIT: "journey-learn-last-item"',
       '      SCREENSHOT_NAME_POST_SUBMIT: "journey-learn-submitted"',
       '- runFlow:',
       '    file: ./form-advance.yaml',
@@ -370,6 +481,9 @@ describe('lintRecipeText — runFlow-unbound-screenshot-name', () => {
       '      SCREENSHOT_NAME: "journey-learn-q1-answered"',
       '',
     ].join('\n');
+    expect(
+      lintRecipeText(yaml).violations.some((v) => v.rule === 'runFlow-unbound-screenshot-name'),
+    ).toBe(false);
     expect(lintRecipeText(yaml).ok).toBe(true);
   });
 
