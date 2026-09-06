@@ -125,7 +125,12 @@ function setup() {
   fs.copyFileSync(LAND_PR, path.join(scripts, 'land-pr.sh'));
   fs.writeFileSync(
     path.join(scripts, 'version-bump.sh'),
-    '#!/usr/bin/env bash\nset -e\necho 0.13.1002 > VERSION\ngit add VERSION scripts\ngit commit -qm rebased\n',
+    '#!/usr/bin/env bash\nset -e\necho 0.13.1002 > VERSION\n' +
+      'git add VERSION scripts\ngit commit -qm rebased\n' +
+      // A successful rebase resolves the collision, so the PR stops being
+      // DIRTY. Modelling that is what lets the mergeability-aware stub above
+      // still land the DIRTY cases below.
+      'echo CLEAN > "$GH_STUB_DIR/mergeable"\n',
     { mode: 0o755 },
   );
 
@@ -149,8 +154,17 @@ if [ "$2" = "view" ]; then
 fi
 if [ "$2" = "merge" ]; then
   echo "$*" >> "$d/merge.log"
-  # Re-arming auto-merge lands the PR; the poll loop then exits immediately.
-  case "$*" in *--auto*) echo MERGED > "$d/state" ;; esac
+  case "$*" in
+    *--disable-auto*) rm -f "$d/armed" ;;
+    *--auto*)
+      # Auto-merge ARMS. Real GitHub then merges only once the PR is
+      # mergeable -- it does NOT merge a BLOCKED or DIRTY PR on the spot.
+      # This stub used to merge unconditionally on any --auto, which is
+      # what made the MISSING INITIAL ARM invisible here (ace#2004).
+      touch "$d/armed"
+      [ "$(cat "$d/mergeable")" = "CLEAN" ] && echo MERGED > "$d/state"
+      ;;
+  esac
   exit 0
 fi
 exit 0
@@ -248,6 +262,74 @@ describe('land-pr.sh push target', () => {
     expect(fs.existsSync(path.join(stub, 'merge.log'))).toBe(false);
   });
 
+  //
+  // ace#2004 — the arm, on the path where nothing else arms.
+  //
+  // The script's only `--auto --merge` used to live inside `if [ "$m" = "DIRTY" ]`,
+  // so a PR that was CLEAN on the first read fell straight through to a poll
+  // loop having armed nothing, and waited `MAX × POLLS_PER_ATTEMPT` for a merge
+  // no one would perform. Measured on poverty-graduation/20260905-0924: #1988
+  // (DIRTY) and #1999 (BLOCKED→DIRTY) both landed because the DIRTY branch armed
+  // as a side effect; #2003, the one that was CLEAN, hung for >10 minutes against
+  // a repo whose create→merge is ~70s, and merged seconds after a manual arm.
+  //
+  // Note the shape: the failure is INVERSELY correlated with contention. A busy
+  // `main` hides it, and the quiet run is the one that hangs.
+  //
+  describe('the initial arm (ace#2004)', () => {
+    it('arms auto-merge when the PR is CLEAN on first read', () => {
+      const work = path.join(root, 'work');
+      const stub = path.join(root, 'stub');
+      fs.writeFileSync(path.join(stub, 'mergeable'), 'CLEAN\n');
+      const before = remoteSha(PR_BRANCH);
+
+      const r = runLandPr(work, stub);
+
+      expect(r.status, `stdout:\n${r.stdout}\nstderr:\n${r.stderr}`).toBe(0);
+      expect(r.stdout).toMatch(/MERGED/);
+
+      const log = fs.readFileSync(path.join(stub, 'merge.log'), 'utf-8');
+      expect(log).toMatch(/--auto/);
+      // Nothing to disarm and nothing to rebase: a CLEAN PR must not be
+      // force-pushed on its way to being armed.
+      expect(log).not.toMatch(/--disable-auto/);
+      expect(remoteSha(PR_BRANCH)).toBe(before);
+    });
+
+    it('arms a BLOCKED PR too — checks pending is not a reason to wait unarmed', () => {
+      // The #1999 shape. Auto-merge exists precisely to hold until checks pass,
+      // so BLOCKED is when arming matters most.
+      const work = path.join(root, 'work');
+      const stub = path.join(root, 'stub');
+      fs.writeFileSync(path.join(stub, 'mergeable'), 'BLOCKED\n');
+
+      runLandPr(work, stub, 3_000);
+
+      const log = fs.readFileSync(path.join(stub, 'merge.log'), 'utf-8');
+      expect(log).toMatch(/--auto/);
+      expect(fs.existsSync(path.join(stub, 'armed'))).toBe(true);
+    });
+
+    it('arms only AFTER the ancestry guard — never a PR this checkout does not own', () => {
+      // Why the one-line fix in the issue was not the fix. Hoisting a bare arm
+      // above the loop would arm before the wrong-worktree guard runs, so
+      // pointing the script at the wrong worktree would merge a stranger's PR
+      // instead of refusing. The guard had to be hoisted with it.
+      const work = path.join(root, 'work');
+      const stub = path.join(root, 'stub');
+      fs.writeFileSync(path.join(stub, 'mergeable'), 'CLEAN\n');
+      git(['checkout', '-qb', 'unrelated', 'origin/main'], work);
+
+      const r = runLandPr(work, stub);
+
+      expect(r.status).toBe(2);
+      expect(r.stdout).toMatch(/refusing to land/);
+      // The whole point: no arm, no disarm, no merge call of any kind.
+      expect(fs.existsSync(path.join(stub, 'merge.log'))).toBe(false);
+      expect(fs.existsSync(path.join(stub, 'armed'))).toBe(false);
+    });
+  });
+
   // The guard on this file's own guard. Every case above passes whether or not
   // `timeout` is honoured, because none of them hangs — so on its own the
   // option is an unverified claim about the harness. This case makes the
@@ -256,10 +338,15 @@ describe('land-pr.sh push target', () => {
     const work = path.join(root, 'work');
     const stub = path.join(root, 'stub');
 
-    // CLEAN skips the rebase branch entirely and drops the script straight into
-    // its poll loop, where it sleeps 20s × 15 = 300s before returning. Nothing
-    // in vitest can interrupt that — `spawnSync` holds the worker.
-    fs.writeFileSync(path.join(stub, 'mergeable'), 'CLEAN\n');
+    // BLOCKED skips the rebase branch and drops the script into its poll loop,
+    // where it sleeps 20s × 15 = 300s before returning. Nothing in vitest can
+    // interrupt that — `spawnSync` holds the worker.
+    //
+    // This case used to use CLEAN, which worked only because the script armed
+    // nothing on that path. Now that it does (ace#2004), a CLEAN PR merges and
+    // exits instead of hanging — so the hang has to be induced by a state
+    // auto-merge legitimately waits in, which is exactly what BLOCKED is.
+    fs.writeFileSync(path.join(stub, 'mergeable'), 'BLOCKED\n');
 
     const t0 = Date.now();
     const r = runLandPr(work, stub, 3_000);
@@ -267,7 +354,7 @@ describe('land-pr.sh push target', () => {
 
     // Reached the poll loop — i.e. it really was sleeping, not failing early
     // for some unrelated reason.
-    expect(r.stdout).toMatch(/state=OPEN mergeable=CLEAN/);
+    expect(r.stdout).toMatch(/state=OPEN mergeable=BLOCKED/);
     expect((r.error as NodeJS.ErrnoException | undefined)?.code).toBe('ETIMEDOUT');
     expect(r.signal).toBe('SIGTERM');
     // Aborted mid-sleep: it did not even ride out ONE 20s poll interval, let

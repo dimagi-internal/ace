@@ -97,16 +97,35 @@ mergeability() { gh pr view "$PR" -R "$REPO" --json mergeStateStatus --jq .merge
 head_ref() { gh pr view "$PR" -R "$REPO" --json headRefName --jq .headRefName 2>/dev/null; }
 head_oid() { gh pr view "$PR" -R "$REPO" --json headRefOid --jq .headRefOid 2>/dev/null; }
 
-# NOTE (ace#2004, OPEN): the only `--auto --merge` below lives inside the
-# DIRTY branch, so a PR that is CLEAN on first read is polled to exhaustion for
-# a merge nothing performs. The initial arm CANNOT simply be hoisted here: the
-# ancestry guard ("refusing to land ... not an ancestor of this checkout") also
-# lives inside that branch, and test/scripts/land-pr-refspec.test.ts pins that
-# a wrong-worktree invocation "must bail BEFORE disarming auto-merge — nothing
-# was touched". Arming first would merge a PR this checkout was never proven to
-# own. The fix is to hoist the GUARD too, and to make the test stub's `--auto`
-# mergeability-aware (today it merges unconditionally, which real GitHub does
-# not). See ace#2004.
+## Why the arm is unconditional, and why the guard had to move with it
+#
+# Until ace#2004 the only `--auto --merge` lived INSIDE the DIRTY branch, so it
+# fired purely as a side effect of losing a version race. A PR that was CLEAN on
+# the first read fell straight through to the poll loop having armed nothing,
+# and waited MAX x POLLS_PER_ATTEMPT for a merge no one would perform.
+#
+# The tell is that the failure is INVERSELY correlated with contention: a busy
+# `main` sends you down the DIRTY path and the script works, while the quiet run
+# — the one that needed no rebase at all — hangs. Measured on
+# poverty-graduation/20260905-0924: #1988 (DIRTY) and #1999 (BLOCKED then DIRTY)
+# both landed because the rebase armed them incidentally; #2003, the only one
+# CLEAN on arrival, sat >10 minutes against a repo whose create->merge is ~70s
+# and merged seconds after a manual `gh pr merge --auto`.
+#
+# The obvious one-line fix — hoist a bare arm above the loop — is wrong, and
+# wrong in a way that costs more than the bug. The ancestry guard lived in that
+# same DIRTY branch, so arming first would arm a PR this checkout has not been
+# proven to own: pointed at the wrong worktree the script would merge a
+# stranger's PR rather than refuse. (That guard was also, for the same reason,
+# never reached on a CLEAN PR at all.) So the GUARD is hoisted too, and runs
+# first, every attempt.
+#
+# Order below is therefore: guard -> (rebase and push, if DIRTY) -> arm -> poll.
+# ONE arm call site serves both roles — the initial arm on a clean run, and the
+# re-arm against the corrected VERSION after a rebase — and it sits after the
+# push either way, which is what "Why disarming is load-bearing" requires.
+# `gh pr merge --auto` is idempotent, so a caller that already armed per
+# `skills/shipping` loses nothing.
 for attempt in $(seq 1 "$MAX"); do
   s="$(state)"
   case "$s" in
@@ -117,23 +136,24 @@ for attempt in $(seq 1 "$MAX"); do
   m="$(mergeability)"
   echo "attempt $attempt/$MAX: state=$s mergeable=$m"
 
-  if [ "$m" = "DIRTY" ]; then
-    # Resolve the push target from the PR, never from local state — and prove
-    # this checkout is the PR's work before rewriting anything. See "The head
-    # branch is not the local branch" above.
-    ref="$(head_ref)"
-    oid="$(head_oid)"
-    if [ -z "$ref" ] || [ -z "$oid" ]; then
-      echo "  could not read headRefName/headRefOid for PR #$PR. Stopping."
-      exit 2
-    fi
-    if ! git merge-base --is-ancestor "$oid" HEAD 2>/dev/null; then
-      echo "  refusing to land PR #$PR: its head ($ref @ ${oid:0:7}) is not an"
-      echo "  ancestor of this checkout ($(git rev-parse --short HEAD 2>/dev/null))."
-      echo "  Wrong worktree, or someone pushed to the PR branch. Nothing changed."
-      exit 2
-    fi
+  # Resolve the push target from the PR, never from local state — and prove this
+  # checkout is the PR's work before touching auto-merge or rewriting anything.
+  # See "The head branch is not the local branch" above. Re-read every attempt:
+  # our own force-push moves the head.
+  ref="$(head_ref)"
+  oid="$(head_oid)"
+  if [ -z "$ref" ] || [ -z "$oid" ]; then
+    echo "  could not read headRefName/headRefOid for PR #$PR. Stopping."
+    exit 2
+  fi
+  if ! git merge-base --is-ancestor "$oid" HEAD 2>/dev/null; then
+    echo "  refusing to land PR #$PR: its head ($ref @ ${oid:0:7}) is not an"
+    echo "  ancestor of this checkout ($(git rev-parse --short HEAD 2>/dev/null))."
+    echo "  Wrong worktree, or someone pushed to the PR branch. Nothing changed."
+    exit 2
+  fi
 
+  if [ "$m" = "DIRTY" ]; then
     # DISARM FIRST — see "Why disarming is load-bearing" above. Without this the
     # rebase can be silently discarded by a merge that is already in flight.
     gh pr merge "$PR" -R "$REPO" --disable-auto >/dev/null 2>&1 || true
@@ -152,11 +172,13 @@ for attempt in $(seq 1 "$MAX"); do
       echo "  force-push to $ref rejected — the PR head moved under us. Stopping."
       exit 2
     fi
-
-    # RE-ARM only now, against the corrected VERSION.
-    gh pr merge "$PR" -R "$REPO" --auto --merge >/dev/null 2>&1 || true
-    echo "  pushed $ref, auto-merge re-armed"
+    echo "  pushed $ref"
   fi
+
+  # ARM — the initial arm on a clean run, the re-arm against the corrected
+  # VERSION after a rebase. Always after the guard, always after any push.
+  gh pr merge "$PR" -R "$REPO" --auto --merge >/dev/null 2>&1 || true
+  echo "  auto-merge armed"
 
   for _ in $(seq 1 "$POLLS_PER_ATTEMPT"); do
     s="$(state)"

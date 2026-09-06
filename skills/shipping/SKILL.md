@@ -121,6 +121,16 @@ everything between arming and merging is waiting.
   stray branch and exited 0, so the script re-armed a PR it had not updated). It still does not
   excuse you from reading the merge state yourself afterwards.
 
+  **The script arms auto-merge itself, and is safe to run whether or not you already did.**
+  Until ace#2004 its only `--auto --merge` sat inside the DIRTY branch, so it armed purely as a
+  side effect of losing a version race: a PR that was CLEAN on the first read got polled to
+  exhaustion for a merge nothing would perform. The failure was inversely correlated with
+  contention — a busy `main` hid it, the quiet run hung — which is why it survived three
+  revisions. Arm at PR-create time anyway (line above): it costs nothing, `gh pr merge --auto`
+  is idempotent, and it merges the PR the moment checks green even if you never reach the
+  script. *Enforced:* `land-pr.test.ts` pins one unconditional arm site ordered after the
+  ancestry guard; `land-pr-refspec.test.ts` drives a CLEAN-on-first-read PR end to end.
+
   **Why the disarm step is load-bearing.** Auto-merge stays armed while you rebase, and
   `clean-install` (the only REQUIRED check) can go green on the **pre-rebase head** first. The
   merge then wins the race and your `--force-with-lease` is a no-op against an already-merged
