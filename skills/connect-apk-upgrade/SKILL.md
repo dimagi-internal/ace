@@ -169,12 +169,21 @@ ids() { "$AAPT" dump resources "$1" \
           | awk '$1=="resource" && $3 ~ /^id\// {sub(/^id\//,"",$3); print $3}' \
           | sort -u; }
 
-ids "$TMPDIR/ace-mobile-apk-cache/commcare-<old>.apk" > /tmp/ids-old.txt
-ids "$TMPDIR/ace-mobile-apk-cache/commcare-<new>.apk" > /tmp/ids-new.txt
+# mktemp, never a predictable /tmp name — ace#1046: on a multi-user Mac the
+# write can EACCES while the follow-up read succeeds against another
+# account's stale file, and the diff is then plausible and wrong.
+OLD=$(mktemp "${TMPDIR:-/tmp}/ace-ids-XXXXXX.txt")
+NEW=$(mktemp "${TMPDIR:-/tmp}/ace-ids-XXXXXX.txt")
+ids "$TMPDIR/ace-mobile-apk-cache/commcare-<old>.apk" > "$OLD"
+ids "$TMPDIR/ace-mobile-apk-cache/commcare-<new>.apk" > "$NEW"
 
-comm -13 /tmp/ids-old.txt /tmp/ids-new.txt    # ADDED in <new>  <- the new surfaces
-comm -23 /tmp/ids-old.txt /tmp/ids-new.txt    # REMOVED in <new> <- what may break
+comm -13 "$OLD" "$NEW"    # ADDED in <new>   <- the new surfaces
+comm -23 "$OLD" "$NEW"    # REMOVED in <new> <- what may break
 ```
+
+Commit both lists next to the walk's ui-dumps (`docs/mobile-atlas/evidence/
+connect-<new>/resource-ids-<v>.txt`) — every "this id is 2.64.0-only" claim in
+the map cites them, and a claim whose evidence lives in `$TMPDIR` is not cited.
 
 (The APKs land in that cache the moment Step 2.0 downloads them; `client.ts`
 caches by version, so both are usually already there.)
@@ -227,9 +236,11 @@ downloads it (that also exercises Step 1's asset resolution end to end).
 
 **Re-enable Google Play Services first, and use the command that exists.**
 `mobile_ensure_avd_running` deliberately leaves GMS **disabled** so in-app
-face capture falls back to ManualMode. `PersonalIdActivity` then refuses to
+face capture falls back to ManualMode. `PersonalIdActivity` then declines to
 render, showing an *"Enable Google Play services"* AlertDialog with a single
 ENABLE button — which reads as broken registration rather than a device setting.
+**Observed, not predicted:** repro in the 2.64.0 walk, 2026-09-06, ace#1997 —
+`docs/mobile-calibration/connect-2.64.0-2026-09-06.md` finding 2.
 
 ```bash
 adb -s <serial> shell pm enable com.google.android.gms
