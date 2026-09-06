@@ -42,7 +42,7 @@
 # WHAT DID NOT CHANGE
 # -----------------------------------------------------------------------------
 # Static resource-table comparison of the two APKs (id lists committed at
-# tmp/ids-2.63.2.txt / tmp/ids-2.64.0.txt at the time of the walk;
+# docs/mobile-atlas/evidence/connect-2.64.0/resource-ids-{2.63.2,2.64.0}.txt at the time of the walk;
 # 1,418 -> 1,465 ids): NOT ONE id referenced by this map was renamed or
 # removed. The 2.63.2-only set is entirely DOTS/TB-treatment ids plus the
 # two profile renames named above. That is real APK-read evidence and it
