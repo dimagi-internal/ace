@@ -79,11 +79,31 @@ const REGISTRY: readonly UpstreamPrimitive[] = [
     primitive: 'create_lookup_table',
     declaredAt: "Nova MCP tools/list at https://mcp.commcare.app/mcp (110 tools)",
     upstreamRef: 'voidcraft-labs/commcare-nova#545',
-    shipped: '2026-09-01 (confirmed; ship date upstream is earlier and unrecorded)',
+    shipped: '2026-09-01 create atom; 2026-09-06 the BIND (commcare-nova#545 closed COMPLETED 2026-09-02)',
     absenceClaims: [
       /\bno\s+MCP\s+atom\s+that\s+creates\s+a\s+lookup\s+table/i,
       /\bno\s+lookup[-\s]table\s+create\s+atom/i,
       /Nova\s+ha[sd]\s+no\s+(MCP\s+)?atom[^.]{0,40}lookup\s+table/i,
+      // The SECOND retired claim (ace#1886). Stage one of this adoption
+      // (2026-09-01) correctly found the create atom live and the BINDING
+      // inert, and wrote that inertness into five files. commcare-nova#545
+      // closed COMPLETED 2026-09-02 and the bind was read back live on
+      // 2026-09-06, so those sentences are now false in the same way the
+      // "no create atom" ones were — and they are worse, because
+      // `_app-component-library` used the block to rank INLINE options above
+      // a real register, which is the ace#1621 invented-vocabulary defect.
+      //
+      // PRESENT TENSE ONLY, deliberately. The corrected files describe this
+      // history at length ("the bind WAS refused until 2026-09-02"), and a
+      // guard that cannot tell an assertion from a citation of one fires on
+      // its own fix — the trap `skills/nova-capability-adoption § Step 5`
+      // names. Tense is the discriminator: "is refused" asserts, "was
+      // refused" recounts.
+      /\bbinding\s+a\s+select[^.]{0,60}\bis\s+refused/i,
+      /\bcannot\s+bind\s+a\s+select\s+to\s+it\b/i,
+      /\bwhat\s+is\s+(?:still\s+)?not\s+autonomous\s+is\s+\*{0,2}binding/i,
+      /\bthe\s+binding\s+half\s+is\s+inert\b/i,
+      /\ba\s+lookup[-\s]backed\s+select\s+is\s+not\s+buildable\b/i,
     ],
     mustCite: /commcare-nova#545/i,
     mentions: /(?<![a-z_])create_lookup_table\b/,

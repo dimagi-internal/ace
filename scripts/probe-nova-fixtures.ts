@@ -12,15 +12,31 @@
  * months) repeating.
  *
  * But a `tools/list` entry is NOT a capability. Probed live on 2026-09-01:
- * the table half works and the BINDING half is inert — `set_field_options_source`
- * and `add_fields optionsSource` both refuse a `kind: 'lookup'` source with
+ * the table half worked and the BINDING half was inert — `set_field_options_source`
+ * and `add_fields optionsSource` both refused a `kind: 'lookup'` source with
  * "its Project lookup definitions are unavailable", on a fresh app and a
  * fresh table, every time (`voidcraft-labs/commcare-nova#545`). So the halt
- * STAYS and only its stated reason changes. That distinction is the whole point of this file: it is the
- * tripwire that says when the halt may finally be retired.
+ * stayed and only its stated reason changed.
+ *
+ * **That block lifted.** `voidcraft-labs/commcare-nova#545` closed COMPLETED
+ * on 2026-09-02, and this probe returned `both` on 2026-09-06. The Step 4f
+ * partner-register handoff is retired (ace#1886). The file keeps its job in the
+ * other direction: it is now the REGRESSION tripwire for a capability ACE
+ * depends on, not the adoption tripwire for one it lacks.
+ *
+ * ## Why the bind is checked by READ-BACK
+ *
+ * Until 2026-09-06 this probe scored the bind as "the write returned no
+ * error". That was never evidence. Observed live the same day: `add_fields`
+ * answers a correctly-bound lookup field with `"options": []` and no mention
+ * of the source at all, so the write response cannot distinguish a bind that
+ * landed from one that did not. The probe now calls `get_field` and checks the
+ * `optionsSource` that comes back, via `verifyLookupBind` in
+ * `lib/option-register.ts` — the same helper `pdd-to-deliver-app § Step 4f`
+ * uses, so the run and the probe agree on what "bound" means.
  *
  * Run it when: a Nova release lands, `probe-nova-contract.ts` reports a new
- * tool count, or anyone proposes automating the partner-register handoff.
+ * tool count, or a build reports a register bind it could not verify.
  *
  * Usage:
  *   npx tsx scripts/probe-nova-fixtures.ts [--json] [--keep]
@@ -32,21 +48,29 @@
  * caller's personal Project; writes nothing to CommCare HQ.
  *
  * Exit codes:
- *   0  BOTH halves work — the binding landed upstream. Retire the Step 4f
- *      operator handoff and delete `renderRegisterCsv` (see § Adopting below).
- *   2  create-only — current known state. Halt stays; reason is the binding.
- *   3  neither — the create atom regressed. Treat as an upstream regression
- *      (`skills/upstream-regression-triage`).
+ *   0  BOTH halves work — current expected state since 2026-09-06.
+ *   2  create-only — the bind regressed. Step 4f can no longer finish the
+ *      register autonomously; treat as an upstream regression.
+ *   3  neither — the create atom regressed too.
  *   1  usage / transport / auth error. Says nothing about the capability.
  */
 import { NOVA_MCP_URL, resolveNovaApiKey } from './probe-nova-contract.js';
+import { verifyLookupBind } from '../lib/option-register.js';
 
 /** What the probe observed. Pure data, so the classifier is unit-testable. */
 export interface FixtureProbeResult {
   /** `create_lookup_table` returned a tableId with its rows. */
   readonly canCreateTable: boolean;
-  /** A select accepted a `kind: 'lookup'` options source. */
+  /**
+   * A select is PROVABLY bound to that table: the write was accepted AND
+   * `get_field` read the lookup source back. Both halves are required — see
+   * the header on why the write response alone says nothing.
+   */
   readonly canBindSelect: boolean;
+  /** The write was accepted. On its own this is NOT a bind; see `canBindSelect`. */
+  readonly bindAccepted?: boolean;
+  /** Why the read-back did not confirm the bind, when it did not. */
+  readonly bindReadBackIssue?: string;
   /** Verbatim refusal from the binding attempt, when there was one. */
   readonly bindError?: string;
 }
@@ -71,15 +95,16 @@ export function remedyFor(v: FixtureVerdict): string {
   switch (v) {
     case 'both':
       return (
-        'ADOPT: the binding works. pdd-to-deliver-app § Step 4f may now create, ' +
-        'populate AND bind the partner register autonomously — retire the operator ' +
-        'handoff and renderRegisterCsv, and drop the halt to the undeclared-register case.'
+        'EXPECTED (since 2026-09-06): the binding works and reads back. ' +
+        'pdd-to-deliver-app § Step 4f creates, populates AND binds the partner register ' +
+        'autonomously; the halt is scoped to the undeclared-register case.'
       );
     case 'create-only':
       return (
-        'HALT STAYS (reason: the binding, not the create atom). ACE may create and ' +
-        'populate the table itself; a human still binds the field. Do NOT ship inline ' +
-        'placeholders for a declared register.'
+        'REGRESSION: the bind no longer lands. Step 4f cannot finish a declared register ' +
+        'autonomously, so it must HALT with the bind named as the remaining step rather than ' +
+        'ship inline placeholders. Run skills/upstream-regression-triage against ' +
+        'voidcraft-labs/commcare-nova; the prior occurrence is commcare-nova#545.'
       );
     case 'none':
       return (
@@ -139,6 +164,7 @@ export async function probeNovaFixtures(
   const { module_uuid: moduleUuid, form_uuid: formUuid } = app.starter;
   let createdTableId: string | undefined;
   let createdTableRevision: string | undefined;
+  let createdFieldUuid: string | undefined;
 
   try {
     // Tags are unique per PROJECT and the table OUTLIVES the app, so a fixed
@@ -175,6 +201,7 @@ export async function probeNovaFixtures(
     }
 
     const [valueColumnId, labelColumnId] = table.columns.map((c: any) => c.columnId);
+    const requested = { tableId, valueColumnId, labelColumnId };
     const bound = await callNovaTool(apiKey, 'add_fields', {
       app_id: appId,
       moduleUuid,
@@ -191,16 +218,66 @@ export async function probeNovaFixtures(
     });
 
     const bindError: string | undefined = bound?.error;
-    return { canCreateTable, canBindSelect: !bindError, bindError, appId, tableId };
+    const bindAccepted = !bindError;
+    createdFieldUuid = bound?.fields?.[0]?.uuid;
+
+    // The write says nothing useful — a correctly bound field comes back with
+    // `options: []`. Read the source back or claim nothing.
+    let readBack: any = null;
+    if (bindAccepted && createdFieldUuid) {
+      const got = await callNovaTool(apiKey, 'get_field', {
+        app_id: appId,
+        moduleUuid,
+        formUuid,
+        fieldUuid: createdFieldUuid,
+      }).catch(() => null);
+      readBack = got?.field?.optionsSource ?? null;
+    }
+    const check = verifyLookupBind({ requested, readBack });
+
+    return {
+      canCreateTable,
+      canBindSelect: bindAccepted && check.verified,
+      bindAccepted,
+      bindReadBackIssue: check.verified ? undefined : check.message,
+      bindError,
+      appId,
+      tableId,
+    };
   } finally {
     if (!opts.keep) {
-      // Order matters, and so does doing this at all: the table lives on the
+      // Order matters, and it is not the obvious order. The table lives on the
       // PROJECT, so deleting the app leaves it — and its tag — behind forever.
+      // But now that binding WORKS, the bound field is itself a reference, and
+      // `remove_lookup_table` refuses while any app holds one. Worse, a
+      // soft-deleted app still counts: `delete_app` returns
+      // `recoverable_until` ~30 days out, and removing the table afterwards
+      // fails `referenced` with `blockingApps:[{deleted:true}]` — from ANY
+      // app_id, while scoping the call to the deleted app's own id fails
+      // `not_found`. So there is no ordering of (delete app, remove table)
+      // that works once a field is bound; the reference must be dropped first.
+      // Measured 2026-09-06: this leaked three Project-scoped tables before it
+      // was understood, and they are stuck until the soft-deleted apps expire.
+      if (createdFieldUuid) {
+        await callNovaTool(apiKey, 'remove_field', {
+          app_id: appId,
+          moduleUuid,
+          formUuid,
+          fieldUuid: createdFieldUuid,
+        }).catch(() => undefined);
+      }
       if (createdTableId) {
+        // Removing the field bumps the table revision, so the one returned by
+        // `create_lookup_table` is stale by now and `expectedTableRevision`
+        // would be rejected. Re-read it rather than assuming.
+        const listed = await callNovaTool(apiKey, 'get_lookup_tables', { app_id: appId }).catch(
+          () => null,
+        );
+        const live = (listed?.tables ?? []).find((t: any) => t.id === createdTableId);
         const removed = await callNovaTool(apiKey, 'remove_lookup_table', {
           app_id: appId,
           tableId: createdTableId,
-          expectedTableRevision: createdTableRevision ?? '1',
+          expectedTableRevision: live?.tableRevision ?? createdTableRevision ?? '1',
         }).catch((e: Error) => ({ error: e.message }));
         // Never swallow this. A silent leak means the NEXT run fails with
         // `tag_taken`, which reads exactly like an upstream regression.
@@ -245,9 +322,20 @@ async function main(): Promise<void> {
   } else {
     process.stdout.write(`Nova ${NOVA_MCP_URL} — fixtures probe\n`);
     process.stdout.write(`  create_lookup_table (+rows) : ${observed.canCreateTable ? 'OK' : 'FAILED'}\n`);
-    process.stdout.write(`  bind select to that table   : ${observed.canBindSelect ? 'OK' : 'REFUSED'}\n`);
+    process.stdout.write(
+      `  bind select to that table   : ${
+        observed.canBindSelect ? 'OK (verified by get_field read-back)' : 'NOT PROVEN'
+      }\n`,
+    );
     if (observed.bindError) {
-      process.stdout.write(`    ↳ ${observed.bindError.replace(/\s+/g, ' ').slice(0, 200)}\n`);
+      process.stdout.write(`    ↳ refused: ${observed.bindError.replace(/\s+/g, ' ').slice(0, 200)}\n`);
+    }
+    // The dangerous middle state: the write was accepted and the field is not
+    // actually bound. Say so loudly — this is the shape a silent defect takes.
+    if (observed.bindAccepted && !observed.canBindSelect && observed.bindReadBackIssue) {
+      process.stdout.write(
+        `    ↳ write ACCEPTED but read-back did not confirm: ${observed.bindReadBackIssue}\n`,
+      );
     }
     if (keep) process.stdout.write(`  kept app: ${observed.appId}  table: ${observed.tableId}\n`);
     process.stdout.write(`\n${verdict.toUpperCase()} — ${remedy}\n`);

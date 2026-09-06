@@ -1133,8 +1133,9 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
          enumerating a set the architect composed, the Other rung by shipping a
          partial set as if it were the register — and "knowable from the PDD /
          inputs / a source `.ccz`" is precisely the case where the real values
-         exist and must be read rather than composed. Go to the register halt
-         in step 7.
+         exist and must be read rather than composed. Go to the register
+         procedure in step 7, which now **builds and binds** the register
+         rather than handing it to an operator (ace#1886).
     6. **Re-run steps 2–3. Bounded loop, max 3 iterations.**
     7. **Whatever survives is a NAMED gap, never a silent one.** Any field
        still on `degraded` after the third iteration MUST appear in the build
@@ -1174,28 +1175,62 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
        mint an identifier scheme the partner has never seen (the #1527
        "trust extraction first" rule, one layer over).
 
-       **Where ACE cannot finish the job, HALT with the handoff — never
-       placeholders.** ACE now builds the table itself: `create_lookup_table`
-       takes the columns AND the rows in one atomic write, so the register
-       lands in Nova with the partner's real value codes. What is still not
-       autonomous is **BINDING** the select to it — `set_field_options_source`
-       and `add_fields optionsSource` both refuse a `kind: 'lookup'` source
-       ("its Project lookup definitions are unavailable"), every time, on a
-       fresh app and a fresh table (`voidcraft-labs/commcare-nova#545`; the
-       "retry" wording in that message is wrong — do not loop on it).
+       **ACE now finishes the job — extract, create, populate, bind, and
+       PROVE the bind (ace#1886).** Both former blockers are gone.
+       `create_lookup_table` takes the columns AND the rows in one atomic
+       write, and binding a select to that table was accepted and read back
+       live on 2026-09-06 (`voidcraft-labs/commcare-nova#545` closed COMPLETED
+       2026-09-02). There is no operator handoff and no CSV. The terminal
+       behaviour is:
 
-       So the terminal behaviour is: extract the register, **create and
-       populate the table via `create_lookup_table`**, write the table id +
-       column ids and `renderRegisterCsv` output into the run folder as the
-       record, and halt naming the ONE remaining operator step — bind the field
-       to that table. Before assuming the bind is still blocked, run
-       `scripts/probe-nova-fixtures.ts` (via `$ACE_ROOT`): exit 2 is the state above,
-       exit 0 means the bind landed and this halt should be retired (contract +
-       tripwire table in `playbook/integrations/nova-integration.md § The
-       fixtures (Project data table) channel`). A select carrying invented values is strictly
-       worse than a halt, because it has no downstream symptom — the app is
-       complete and internally consistent with its own invention, and every
-       structural gate passes it (ace#1564's rationale, same class).
+       1. Extract the register (`parseFixtureRegister` over the partner's
+          `.ccz` fixture XML, per the paragraph above).
+       2. `create_lookup_table({app_id, name, tag, columns, rows})` — one call,
+          up to 5000 rows, returns durable table and column uuids in input
+          order. Use the tag the PDD declares.
+       3. Bind the field. On a field that is already a select,
+          `set_field_options_source({app_id, moduleUuid, formUuid, fieldUuid,
+          source: {kind:'lookup', tableId, valueColumnId, labelColumnId}})`.
+          On a field that shipped as `text`, `edit_field` with
+          `updates: {kind:'single_select', optionsSource: {...}}` converts and
+          binds in one call. **`set_field_options_source` refuses a `text`
+          field outright** (*"is not a single- or multiple-choice field"*), so
+          convert first — observed live 2026-09-06.
+       4. **Verify by READ-BACK, never by the write's response.** Call
+          `get_field` and pass `field.optionsSource` to `verifyLookupBind`
+          in `lib/option-register.ts`. This is not ceremony:
+          `add_fields` answers a *correctly bound* lookup field with
+          `"options": []` and no mention of the source, so its response can
+          neither confirm nor deny a bind. A `verified: false` of any code is a
+          HALT.
+       5. Record the table id, the column ids, and the `verifyLookupBind`
+          verdict in the build memo and in Step 7's summary. That verdict is
+          the run's evidence the register is live; without it the build is
+          asserting a bind it never observed.
+
+       **The halt is now scoped to the cases ACE genuinely cannot finish**, not
+       to the binding. It fires when:
+
+       - the PDD declares **no** register for a field whose options must come
+         from one (`declared: false`) — a Phase-1 gap, reported against
+         Phase 1; the build must never fill it;
+       - the declared source cannot be read from the run's frozen `inputs/`
+         (`source-unavailable`) — unverifiable is not the same as correct;
+       - `diffOptionRegister` / `diffRegisterRows` return any finding; or
+       - **`verifyLookupBind` does not verify.** Treat this as the regression
+         it is: run `scripts/probe-nova-fixtures.ts` (via `$ACE_ROOT`), which
+         exits 0 when the bind still works and 2 if it has regressed
+         upstream — then `skills/upstream-regression-triage`. Contract and
+         tripwire table in `playbook/integrations/nova-integration.md § The
+         fixtures (Project data table) channel`.
+
+       In every one of those cases, halt rather than degrade. A select
+       carrying invented values is strictly worse than a halt because it has no
+       downstream symptom — the app is complete and internally consistent with
+       its own invention, and every structural gate passes it (ace#1564's
+       rationale, same class). **An unverified bind is the same defect wearing
+       a better disguise:** the select renders empty to a field worker while
+       every ACE artifact says the register shipped.
 
        Why this is not covered by the payment halt: on
        `spark-facilitator/20260820-0817` the meeting-activity repeat shipped 11
@@ -1889,6 +1924,19 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
                             # that still shipped as free text, with the
                             # table + value column + label column it needs.
                             # Empty list is the expected value.
+   option_registers:        # Step 4f (ace#1886). One entry per PDD-declared
+                            # partner register ACE built and bound. Omit the
+                            # block only when the PDD declares no register.
+                            # The `verified` line is the run's EVIDENCE the
+                            # select is live — it comes from verifyLookupBind
+                            # over a get_field read-back, never from the
+                            # write's own response, which reports `options: []`
+                            # on a correctly bound field.
+     - field: <field id as the PDD names it>
+       tag: <lookup table tag the PDD declared>
+       table_id: <uuid returned by create_lookup_table>
+       rows: <n>            # rows written, from the partner's own source
+       verified: true       # verifyLookupBind code `ok`; anything else HALTED
    instrument_constants:    # Step 4k (ace#1527). Omit the block ONLY when no
                             # instrument is [FIXED]. There is no other skip
                             # reason: an unresolvable [FIXED] source HALTS the
@@ -2117,9 +2165,10 @@ Each row this skill writes uses `phase: 3-commcare` and
 
 | Date | Change | Author |
 |------|--------|--------|
+| 2026-09-06 | **Step 4f's partner-register handoff is RETIRED — ACE builds, binds and PROVES the register (ace#1886).** `voidcraft-labs/commcare-nova#545` closed COMPLETED 2026-09-02 and `scripts/probe-nova-fixtures.ts` returned `both` on 2026-09-06: a select accepts a `{kind:'lookup'}` options source and `get_field` reads it back. All three routes were confirmed live — `add_fields optionsSource`, `set_field_options_source` on an existing select, and `edit_field` converting a `text` field (`set_field_options_source` refuses a `text` field outright, so the conversion is not optional). So 4f now extracts, creates, populates AND binds, and `renderRegisterCsv` is deleted along with the operator step it existed for. **The halt is narrowed, not dropped:** it still fires on an undeclared register (Phase-1 gap), an unreadable declared source, any `diffOptionRegister` finding, and — new — a bind that does not VERIFY. That last one is the point. `add_fields` answers a correctly bound lookup field with `"options": []` and no mention of the source, so the write response cannot distinguish a landed bind from a missing one in either direction; only a `get_field` read-back can, via `verifyLookupBind`. An unverified bind is the ace#1621 defect wearing a better disguise — the select renders empty to a worker while every ACE artifact reports the register shipped. *Enforced:* `test/lib/option-register.test.ts` (`verifyLookupBind`, positive + four negative controls), `test/scripts/nova-fixtures-probe.test.ts`. | ACE team |
 | 2026-09-02 | **New Step 4n — derived-chain guard check (ace#1823).** The released `hh-poverty-targeting` Deliver form guards ONE node of its derived PPI chain and leaves twelve unguarded at form root. `/data/roster` is gated on consent, so on a vacant / refused / no-eligible-respondent visit `count()` over the empty nodeset returns 0 and the form submits `member_count = 0`, `hh_size_band = 'le3'`, `size_points = 31` — the 31-point band, by construction, on **1,072 non-payable doors of 3,794** (28%), on the exact field the PDD's Layer-C band-boundary fraud control groups on. `ppi_score` IS guarded (`if(visit_outcome = 'completed', …)`), which is why it survived: nothing looks wrong at the score level and the corruption sits one layer down. A `calculate` over an empty nodeset is valid XForm, so `validate_app`, `app-release-qa`, install, play and submit all pass. Phase 7 blanked the chain in the fixture and declared the deviation — the app still ships this way, so a real deployment would too. 4n runs `lib/derived-chain-guard.ts` over the Step-4a field list: taint PROPAGATES along the chain (guarding the leaf or the final score is not enough), and a conditional whose TEST reads only tainted fields is not a guard — `if(member_count <= 3, 'le3', …)` is the corruption wearing an `if()`. A finding clears by applying the payable path's own discriminator OR by a recorded justification, because a zero over an empty nodeset is sometimes exactly right; what the check forbids is silence. Placed before 4m so every structural check stays ahead of the language layer. *Enforced:* `test/lib/derived-chain-guard.test.ts` (negative control: a naive detector that ignores the inline-guard shape fails 3 assertions, incl. flagging the correct `ppi_score`) + `test/skills/deliver-l0-loop-integrity.test.ts`. | ACE team |
 | 2026-08-27 | **Step 4l gains sub-step 7 — the corrected taxonomy propagates to the CASE-LIST ENUMS (ace#1688).** 4l steps 3-4 repair the FORM's option labels via `edit_field` and stop there, while 4l's own trigger (step 1) names a *case-list column* as a surface the taxonomy reaches. On `spark-facilitator/20260820-0817` the Phase-3 FCAP correction landed on the form itemsets and never on the enums, so the `fcap_community` tile rendered the earlier ACE-invented taxonomy while the form offered Spark's real one — stored `1` read as `1. Introduction` before the visit and `1. Planning` during it, off by one on the surface the Learn app explicitly teaches the worker to read (`m3_start`, quiz `q9`). **ACE does not author these enums — the autonomous architect does**, via `add_case_list_columns` / `configure_case_list`'s `kind: 'id-mapping'` column, whose `mapping` the caller supplies; it composes them from the brief independently of the itemset and nothing reconciles the two. Those atoms ARE available ACE-direct (Step 4d already uses the family), so the reconciliation lands here rather than as an upstream Nova issue: derive `mapping` from the itemset, `update_case_list_column`, re-assert, bounded 3-iteration loop. A SUBSET is allowed (a tile may deliberately label fewer options); reconciling the other way is forbidden — the itemset is the authority. Paired with the downstream gate that makes it falsifiable rather than aspirational: `app-release-qa § Step 4` check 3 halts with `[BLOCKER]` `case-list-enum-drift`. *Enforced:* `lib/ccz-enum-fidelity.ts` + `test/lib/ccz-enum-fidelity.test.ts`, whose negative control is the shipped drift itself and must FAIL. | ACE team |
 | 2026-08-26 | **Step 4k's skip is split, and its source is resolvable through the manifest's own folder ids (ace#1648).** 4k's trigger ANDed "the PDD marks an instrument `[FIXED]`" with "`inputs-manifest.yaml` carries a source file for it" into ONE silent skip, so *nothing to check* and *the thing I must check is unreachable* were indistinguishable and both reported green. They were not equally rare: `inputs[]` records direct child FILES only, so a published instrument bundle sitting in a SUBFOLDER of `inputs/` — the natural shape for a vendor download — always took the second branch. On `hh-poverty-targeting/20260824-1404` the workbook sat in `official-nigeria-ppi-2020 (povertyindex.org)/` and none of the five `inputs[]` entries was it, so a 4k run following its documented path checks nothing. **A skip that disables a correctness check is worse than one that degrades an output, because the run still says green.** Two changes: step 2 may now resolve through ids the manifest ALREADY records (`subfolders_not_listed[].folder_id`, `source_folder_id`) by walking them ONE level with `drive_list_folder` — walking a recorded id is not guessing, composing a path by name still is and is still forbidden — and orchestrator Step 5c now MANDATES recording those ids. Step 1's trigger is split: no `[FIXED]` instrument → skip cleanly; a `[FIXED]` instrument whose source does not resolve → **HALT**, never a skip. The decision is delegated to `resolveInstrumentSource` in `lib/instrument-constants.ts` so it is unit-tested rather than prose-only. *Enforced:* `test/skills/instrument-source-resolution.test.ts` (5 assertions red against the pre-fix text), `test/lib/instrument-constants.test.ts`, `test/mcp/gdrive/generate-inputs-manifest.test.ts`. | ACE team |
-| 2026-08-24 | **Step 4f gains a partner-register halt (ace#1621).** 4f's halt was scoped to payment correctness — a still-degraded select halts only when it `feeds_entity_id` on a PAYABLE deliver unit — so a field that fails neither test recorded an `option_source_gaps` entry and proceeded. That is right for a genuinely unknowable set and wrong for a register that EXISTS: on `spark-facilitator/20260820-0817` the meeting-activity repeat shipped 11 ACE-authored placeholders identical on all 24 FCAP steps while Spark's own 78-activity register sat in the run's `inputs/`, and the recorded gap deferred the catch to an operator reading the residual days later. When the PDD declares `<field> from <tag> [source: …] [filtered by …]`, an inline invented option list is now a **HALT** whatever the payability status, and is never dischargeable as a named gap; both inline rungs of the step-5 escape ladder are withdrawn for such a field. Mechanical via `lib/option-register.ts` (`parseRegisterDeclaration` + `diffOptionRegister`), sourcing rows from the partner's `.ccz` fixture XML in preference to a prose guide because a production CCZ carries the REAL value codes the partner's M&E joins on. Where ACE cannot finish, the terminal behaviour is extract → build the table → halt naming the remaining operator step. *(The reason recorded here on 2026-08-24 — a missing create atom — was SUPERSEDED 2026-09-01: `create_lookup_table` ships columns and rows atomically. The halt survives because the BINDING is refused, `voidcraft-labs/commcare-nova#545`.)* Paired with `_app-component-library § partner-option-register` and the eval's `option_register_fidelity` hard-gate. *Enforced:* `test/lib/option-register.test.ts`. | ACE team |
+| 2026-08-24 | **Step 4f gains a partner-register halt (ace#1621).** 4f's halt was scoped to payment correctness — a still-degraded select halts only when it `feeds_entity_id` on a PAYABLE deliver unit — so a field that fails neither test recorded an `option_source_gaps` entry and proceeded. That is right for a genuinely unknowable set and wrong for a register that EXISTS: on `spark-facilitator/20260820-0817` the meeting-activity repeat shipped 11 ACE-authored placeholders identical on all 24 FCAP steps while Spark's own 78-activity register sat in the run's `inputs/`, and the recorded gap deferred the catch to an operator reading the residual days later. When the PDD declares `<field> from <tag> [source: …] [filtered by …]`, an inline invented option list is now a **HALT** whatever the payability status, and is never dischargeable as a named gap; both inline rungs of the step-5 escape ladder are withdrawn for such a field. Mechanical via `lib/option-register.ts` (`parseRegisterDeclaration` + `diffOptionRegister`), sourcing rows from the partner's `.ccz` fixture XML in preference to a prose guide because a production CCZ carries the REAL value codes the partner's M&E joins on. Where ACE cannot finish, the terminal behaviour is extract → build the table → halt naming the remaining operator step. *(Both reasons recorded for this halt have since been overtaken. The 2026-08-24 reason — a missing create atom — was superseded 2026-09-01, when `create_lookup_table` proved to ship columns and rows atomically. The 2026-09-01 replacement reason — a refused BINDING, `voidcraft-labs/commcare-nova#545` — was itself superseded on 2026-09-06, when that issue closed COMPLETED and the bind was accepted and read back live. Neither is a current constraint; see the 2026-09-06 row.)* Paired with `_app-component-library § partner-option-register` and the eval's `option_register_fidelity` hard-gate. *Enforced:* `test/lib/option-register.test.ts`. | ACE team |
 | 2026-08-23 | **New Step 4l — entity state-taxonomy fidelity (ace#1564).** The followed entity's state model lived only as PROSE in the PDD's § Entity Lifecycle, and nothing in Step 3's brief-composition checklist asked for it — while `longitudinal-visits` REQUIRES a case list showing state, so the architect must name every state and invents the set when the brief carries none. On `spark-facilitator/20260820-0817` the PDD's `1 = Planning (steps 1–14)` … `4 = Transition (steps 23–24)`, sourced from Spark's own published FCAP guide sitting in the run's `inputs/`, shipped as four invented labels over a different partition, with all 24 step names invented too. Learn then teaches one mapping while Deliver offers another, and the invented words reach real workers and the partner. Step 3 now emits `_app-component-library § entity-state-taxonomy` (always for this archetype) and parses `program_parameters.entity_state_taxonomy` with `parseStateTaxonomy` BEFORE briefing — `declared: false` or non-empty `problems` is a **HALT** with a Phase-1 finding, never a licence to invent; where the row names a source document the brief is composed from THAT file out of `inputs/`. 4l then diffs the built option set with `diffStateTaxonomy`: any invented, dropped, relabelled or re-partitioned state is a **HALT with a bounded 3-iteration repair loop**, not a warn. Deliberately ships NO canonical vocabulary — hard-coding one would impose ACE's words on every partner, the mirror image of the defect. Paired with the eval's `entity_state_fidelity` hard-gate. *Enforced:* `test/lib/entity-state-taxonomy.test.ts` + `test/skills/entity-state-taxonomy-component.test.ts` + `test/skills/deliver-l0-loop-integrity.test.ts`. **The language layer moved 4l → 4m** in the same change: it must stay LAST of the 4x steps because every English-editing step has to precede it, and 4l's repair loop calls `edit_field` on option labels — running it after the layer would demote those translations to `out-of-date`. Pointers updated in `_app-component-library § app-language-layer`, both `-eval` change logs, and `test/skills/app-language-layer.test.ts`. | ACE team |
 | 2026-08-20 | **New Step 4k — fixed-instrument constant fidelity (ace#1527).** Nothing on this path opened the `[FIXED]` source instrument in `inputs/` and diffed it, so on `hh-poverty-targeting/20260819-1435` the digitised Nigeria PPI 2020 shipped with **9 of 17 point values wrong and all 101 poverty-likelihood values invented** — and every gate passed it, because each one is structurally blind to a constant's VALUE (`validate_app` checks structure, the eval grades against a narrative PDD, `app-release-qa` checks counts and install-time behaviour, and the architect transcribes from a model-authored brief). 4k resolves the source file from `inputs-manifest.yaml`, fetches it with `drive_download_binary` + `writeToPath`, and runs `lib/instrument-constants.ts`: `assertExtractionTrusted` FIRST (endpoints + strict monotonicity + row count — the first repair-round extraction produced `score 4 -> 79.0` from an undecoded `t="s"` shared-string index), then `diffScoringConstants` and `compareMaxScore` over the built literals read via `get_field`. Any mismatch, or a `clampDead` verdict, is a **HALT with a bounded 3-iteration repair loop**, not a warn — a built max of 96 against an official 102 made the PDD's `min(ppi_score, 100)` clamp dead code, which is how the instrument stayed internally consistent with its own wrong numbers. Paired with `_app-component-library § fixed-instrument-transcription` and the eval's `fixed_instrument_fidelity` hard-gate. *Enforced:* `test/lib/instrument-constants.test.ts` + `test/skills/deliver-l0-loop-integrity.test.ts`. | ACE team |
