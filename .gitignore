@@ -64,3 +64,6 @@ mcp/mobile/recipes/static/J[0-9]*[a-z].yaml
 # scripts/check-summary-links.py, which regenerates it)
 __pycache__/
 *.pyc
+
+# scratch scratch dir used by ad-hoc calibration walks — never a deliverable
+tmp/

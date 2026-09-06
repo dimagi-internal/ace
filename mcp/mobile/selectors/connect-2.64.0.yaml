@@ -1,0 +1,681 @@
+# Connect APK 2.64.0 selector map
+#
+# CALIBRATED FROM A LIVE WALK on 2026-09-06 (dimagi-internal/ace#1997).
+# Device: ACE_Pixel_API_34 / emulator-5554, adb server port 5038.
+# APK confirmed ON THE DEVICE, not assumed:
+#     dumpsys package org.commcare.dalvik
+#       versionName=2.64.0  versionCode=490738   (2.63.2 was 488693)
+# and again from CommCare's own nav drawer: app_version = "v 2.64.0".
+#
+# THIS FILE IS NOT A COPY OF connect-2.63.2.yaml. Every row below is
+# either (a) resolved against a ui-dump captured in this walk and
+# committed under docs/mobile-atlas/evidence/connect-2.64.0/, and cites
+# that dump by filename, or (b) flagged `unverified: true` with the
+# reason its surface was not reached. 41 of the 83 rows inherited from
+# 2.63.2 were re-observed live; 42 were not, and are NOT laundered.
+# 5 rows are NEW (the PersonalID email step) and 3 more cover the
+# CommCare version-upgrade prompt (ace#1998), added after this header was
+# first written and flagged unverified — that surface is DORMANT on a
+# 2.64.0 device, because the prompt fires only on version skew.
+# TOTAL 91 rows: 46 verified, 45 unverified.
+#
+# WHAT ACTUALLY CHANGED IN 2.64.0
+# -----------------------------------------------------------------------------
+# 1. A NEW PersonalID EMAIL STEP, between the backup-code screen and
+#    whatever follows it (Account Recovered, or photo capture on a truly
+#    fresh signup). Optional, but it must be dismissed, and dismissing it
+#    takes TWO taps: SKIP FOR NOW then YES on a "Skip email?" confirm.
+#    New rows: personalid-email-input, personalid-email-skip,
+#    personalid-email-continue, personalid-email-skip-confirm-yes,
+#    personalid-email-skip-confirm-no.
+#    `connect-register-from-otp.yaml` has no handler for it and strands
+#    there on 2.64.0 — dimagi-internal/ace#2029.
+# 2. A PersonalID PROFILE section, and with it a rename in the nav-drawer
+#    header: image_user_profile -> user_image, manage_profile ->
+#    header_manage_profile. No row in this map referenced either name, so
+#    nothing here breaks; a future row must use the new ones.
+# 3. A rebuilt camera surface (camera_controls_container,
+#    camera_capture_instructions, camera_capture_mode_indicator,
+#    capture_button_label, capture_progress, rectangle_overlay,
+#    switch_camera_lens_button) — NOT walked this pass. The OLD
+#    take_photo_button / camera_shutter_button / save_photo_button ids all
+#    still exist in 2.64.0's resource table, so the registration
+#    photo-capture branch is not obviously broken, but it is not proven
+#    either. See the photo rows below.
+#
+# WHAT DID NOT CHANGE
+# -----------------------------------------------------------------------------
+# Static resource-table comparison of the two APKs (id lists committed at
+# docs/mobile-atlas/evidence/connect-2.64.0/resource-ids-{2.63.2,2.64.0}.txt at the time of the walk;
+# 1,418 -> 1,465 ids): NOT ONE id referenced by this map was renamed or
+# removed. The 2.63.2-only set is entirely DOTS/TB-treatment ids plus the
+# two profile renames named above. That is real APK-read evidence and it
+# is why the unverified rows below are carried rather than deleted — but
+# it establishes only that the IDS are stable, never that the FLOWS are.
+# The email step is the proof: no id in this map moved, and the
+# registration recipe still breaks.
+#
+# HOW 2.64.0 GOT ONTO THE DEVICE — read this before re-running.
+# `mobile_ensure_avd_running` installs the version named by
+# ACE_CONNECT_APK_VERSION in the INSTALLED .env, read by the live MCP
+# subprocess at ITS startup. Editing DEFAULT_APK_VERSION in this repo
+# does nothing to a device walk. This calibration installed 2.64.0 by
+# hand after the bootstrap had finished:
+#     adb uninstall org.commcare.dalvik
+#     adb install -r $TMPDIR/ace-mobile-apk-cache/commcare-2.64.0.apk
+# and had to `adb shell pm enable com.google.android.gms` as well —
+# the bootstrap leaves GMS disabled for face-capture ManualMode, and
+# PersonalIdActivity refuses to render without it.
+#
+# COVERAGE OF THIS WALK
+# -----------------------------------------------------------------------------
+# WALKED:     first-start, nav drawer, PersonalID phone entry, GMS
+#             phone-hint sheet, App Lock / Unlock Options, system unlock,
+#             demo-user snackbar, name entry, backup code (RECOVERY
+#             branch), the new email step + skip confirm, Account
+#             Recovered, post-registration setup, Connect jobs list,
+#             opportunity-detail bottom sheet, StandardHomeActivity,
+#             MenuActivity (GRID mode) at two levels, FormEntryActivity
+#             (select-one + free-text questions), Exit Form dialog.
+# NOT WALKED: fresh-signup backup-code create (confirm_code_view),
+#             registration photo capture, OTP entry, device-lock SETUP
+#             (the device already carried a PIN), unclaimed-opp cards,
+#             pre-claim opp detail, Learn assessment + result, the
+#             Deliver download gate, case list (EntitySelectActivity),
+#             in-form camera, geopoint, date picker, repeat junctures.
+#             Reaching most of those needs a fresh /ace:run opportunity;
+#             Learn completion is one-way per (test user, opportunity),
+#             so they cannot be harvested off a borrowed one.
+#
+# The conventions block, the INTENTIONALLY-ABSENT generic-positional
+# selector policy, and the `${SELECTOR:...}` substitution shape are all
+# unchanged from connect-2.63.2.yaml — read that file's header for them
+# rather than having them restated here and drift.
+
+apk_version: "2.64.0"
+captured_at: "2026-09-06"
+captured_against: "ACE_Pixel_API_34 / emulator-5554 running CommCare 2.64.0 (versionCode 490738), device-confirmed via dumpsys and via the in-app nav-drawer app_version. Live walk; evidence under docs/mobile-atlas/evidence/connect-2.64.0/."
+
+selectors:
+  # ── App shell ────────────────────────────────────────────────────
+  app-splash-message:
+    type: id
+    value: "org.commcare.dalvik:id/str_setup_message"
+    purpose: "CommCare splash / first-start message. Live-verified 2026-09-06 (2.64.0), 21-first-start.xml — text 'Welcome to CommCare!' on CommCareSetupActivity."
+
+  app-first-start-main:
+    type: id
+    value: "org.commcare.dalvik:id/screen_first_start_main"
+    purpose: "CommCare first-start screen with the nav drawer. Live-verified 2026-09-06 (2.64.0), 21-first-start.xml — PROMOTED: this row was `unverified: true` on 2.63.2 because a warm post-login boot never renders it. A clean 2.64.0 install renders it directly."
+
+  learn-home-screen:
+    type: id
+    value: "org.commcare.dalvik:id/nsv_home_screen"
+    purpose: "StandardHomeActivity ScrollView — the CommCare app home reached after an opp is claimed and its CCZ installed. Live-verified 2026-09-06 (2.64.0), 37-after-resume.xml, reached by tapping btn_resume on an In-Progress card."
+
+  nav-drawer-burger-point:
+    type: point
+    value: "73,209"
+    purpose: "Top-left nav-drawer toggle. Live-verified 2026-09-06 (2.64.0), 21-first-start.xml + 22-nav-drawer.xml: an id-less ImageButton at [0,136][147,283] whose centre is (73,209); tapping it opened the drawer and its content-desc flipped 'Open navigation drawer' -> 'Close navigation drawer'. Still coordinate-based because the button carries no resource-id — but note it DOES carry that content-desc, which is a viable id-free matcher if the resolution ever changes."
+
+  nav-drawer-sign-in:
+    type: id
+    value: "org.commcare.dalvik:id/nav_drawer_sign_in_button"
+    purpose: "Sign In / Register button in the nav drawer, visible when signed out. Live-verified 2026-09-06 (2.64.0), 22-nav-drawer.xml — text 'Sign In / Register', beside nav_drawer_signed_out_text 'You are not signed in to PersonalID'. Tapping it opened PersonalIdActivity."
+
+  nav-drawer-opportunities:
+    type: text
+    value: "Opportunities"
+    purpose: "Nav-drawer 'Opportunities' row — a list_title TextView inside nav_drawer_recycler. Live-verified 2026-09-06 (2.64.0), 34-post-registration-setup.xml: the drawer renders four parent_item_container rows, list_title = Opportunities / CommCare Apps / Messaging / Work History. Same text label as home-opportunities-tab; the distinct name documents the drawer-row intent."
+
+  # ── PersonalID / phone entry ────────────────────────────────────
+  personalid-country-code:
+    type: id
+    value: "org.commcare.dalvik:id/countryCode"
+    purpose: "Country-code field on the phone-entry screen. Live-verified 2026-09-06 (2.64.0), 23-personalid-phone-entry.xml. NOTE it renders as a plain EditText on 2.64.0 where the 2.63.2 note called it an AutoCompleteTextView; the id matcher is unaffected, but the GMS phone-hint sheet still fires on focus."
+
+  personalid-phone-input:
+    type: id
+    value: "org.commcare.dalvik:id/connect_primary_phone_input"
+    purpose: "Phone-number AutoCompleteTextView. Live-verified 2026-09-06 (2.64.0), 23-personalid-phone-entry.xml; filled to 4260000101 in 25-phone-filled.xml."
+
+  personalid-consent-check:
+    type: id
+    value: "org.commcare.dalvik:id/connect_consent_check"
+    purpose: "Consent checkbox below the phone field. Live-verified 2026-09-06 (2.64.0), 23-personalid-phone-entry.xml. personalid-phone-continue is enabled=false until this is ticked — confirmed by the enabled=false/true pair across 23- and 25-."
+
+  personalid-phone-continue:
+    type: id
+    value: "org.commcare.dalvik:id/personalid_phone_continue_button"
+    purpose: "CONTINUE on the phone-entry form. Live-verified 2026-09-06 (2.64.0), 25-phone-filled.xml. Tapping it with a +7426 number advanced to the App Lock screen within 3s — the demo-user OTP bypass is intact on 2.64.0."
+
+  personalid-name-input:
+    type: id
+    value: "org.commcare.dalvik:id/nameTextValue"
+    purpose: "Name field on the registration name-entry screen. Live-verified 2026-09-06 (2.64.0), 29-post-unlock-next.xml — hint 'Name', beside name_fragment_subtitle 'Please enter your name as it appears on your government-issued ID'."
+
+  personalid-pin-verify:
+    type: id
+    value: "org.commcare.dalvik:id/connect_verify_pin_button"
+    purpose: "The PIN option on the App Lock / Unlock Options screen. Live-verified 2026-09-06 (2.64.0), 26-app-lock-unlock-options.xml — its LABEL is 'AGREE & CONTINUE' (not 'Verify PIN'); the sibling is connect_verify_fingerprint_button 'CONFIGURE FINGERPRINT'. Tapping it raised the system unlock prompt. Note the screen is re-presented after the unlock returns, so the tap may be needed twice (28-after-unlock.xml)."
+
+  personalid-backup-code-input:
+    type: id
+    value: "org.commcare.dalvik:id/connect_backup_code_input"
+    unverified: true
+    purpose: "2.62.0-era SINGLE-FIELD backup-code entry. NOT OBSERVED on 2.64.0 — the recovery walk rendered the six-cell backup_code_view instead, exactly as on 2.63.x. The id still exists in 2.64.0's resource table. Retained only as the recipe's dead-but-harmless 2.62.0 branch; it should never match on a 2.64.0 device."
+
+  personalid-backup-code-repeat:
+    type: id
+    value: "org.commcare.dalvik:id/connect_backup_code_repeat_input"
+    unverified: true
+    purpose: "2.62.0-era backup-code-repeat field, removed from the UI in 2.62.0 per the recipe's own note. NOT OBSERVED on 2.64.0. Carried unchanged; do not author against it."
+
+  personalid-backup-code-button:
+    type: id
+    value: "org.commcare.dalvik:id/connect_backup_code_button"
+    purpose: "CONTINUE on the backup-code screen. Live-verified 2026-09-06 (2.64.0), 30-backup-code-create.xml — enabled=false on arrival, enabled=true once six digits land in backup_code_view. Tapping it advanced to the NEW email step, not to Account Recovered."
+
+  # ── PersonalID email step — NEW IN 2.64.0 ───────────────────────
+  # All five ids below are absent from 2.63.2's resource table and
+  # present in 2.64.0's (grep -cx over the extracted id lists: 0 vs 1
+  # for each). The nav graph names the transition outright —
+  # `action_personalid_backupcode_to_personalid_email` is likewise
+  # 2.64.0-only. Live-walked 2026-09-06; see ace#2029 for the recipe gap.
+  #
+  # The screen sits between the backup-code screen and whatever follows
+  # it. It is optional, but it will not go away on its own: SKIP FOR NOW
+  # raises a confirmation dialog that must be answered YES.
+  #
+  # A full email-VERIFICATION leg ships alongside it and is NOT mapped
+  # here because ACE only needs the skip path and the surface was never
+  # rendered: personalid_email_verification_fragment,
+  # personalid_email_verify_button, personalid_email_verify_error,
+  # personalid_email_resend_button, personalid_email_error,
+  # personalid_resend_countdown_text, otp_code_view. Two nav actions
+  # leave the email screen and two leave verification
+  # (action_personalid_email_to_personalid_{email_verification,message,
+  # photo_capture}, action_personalid_email_verification_to_personalid_
+  # {message,photo_capture}), so entering an address forks the flow.
+  # Do not author against that leg without walking it.
+
+  personalid-email-input:
+    type: id
+    value: "org.commcare.dalvik:id/email_text_value"
+    purpose: "Optional email EditText on the NEW 2.64.0 PersonalID email screen (hint 'Email address'). Live-verified 2026-09-06 (2.64.0), 31-after-backup-code.xml. Toolbar 'Email'; body 'Add your email (optional)' / 'Your email helps you recover your account if you lose access'. ACE does not fill it — entering an address routes into the unmapped email-verification leg."
+
+  personalid-email-skip:
+    type: id
+    value: "org.commcare.dalvik:id/personalid_email_skip_button"
+    purpose: "'SKIP FOR NOW' on the NEW 2.64.0 email screen, [13,1169][527,1326] on 1080x2400. Live-verified 2026-09-06 (2.64.0), 31-after-backup-code.xml. THIS TAP DOES NOT SKIP — it raises the 'Skip email?' confirm dialog (32-after-email-skip.xml). Must be followed by personalid-email-skip-confirm-yes."
+
+  personalid-email-continue:
+    type: id
+    value: "org.commcare.dalvik:id/personalid_email_continue_button"
+    purpose: "'CONTINUE' on the NEW 2.64.0 email screen, enabled=false until an address is entered. Live-verified 2026-09-06 (2.64.0), 31-after-backup-code.xml — observed disabled; NOT tapped, because doing so enters the unmapped email-verification leg. Recorded so a recipe can assert its presence and deliberately choose the skip path instead."
+
+  personalid-email-skip-confirm-yes:
+    type: text
+    value: "YES"
+    purpose: "The YES action on the 'Skip email?' confirmation, [758,1317][989,1454] on 1080x2400. Live-verified 2026-09-06 (2.64.0), 32-after-email-skip.xml. Matched by TEXT, not id: it renders as org.commcare.dalvik:id/positive_button, whose sibling negative_button 'NO' shares the same dialog — the ids are distinct here so an id matcher would also work, but the text is the safer read against a dialog whose two buttons are otherwise identical chrome. Tapping YES advanced straight to the 'Account Recovered' sheet."
+
+  personalid-email-skip-confirm-no:
+    type: text
+    value: "NO"
+    purpose: "The NO action on the 'Skip email?' confirmation ([493,1317][724,1454], id negative_button). Live-verified 2026-09-06 (2.64.0), 32-after-email-skip.xml. Recorded as a NAMED ANTI-TARGET: a recipe that taps the wrong half of this dialog returns to the email form and then strands exactly as if it had never tapped at all."
+
+  # ── Demo-user OTP bypass ────────────────────────────────────────
+  demo-snackbar-action:
+    type: id
+    value: "org.commcare.dalvik:id/snackbar_action"
+    purpose: "OK on the demo-user OTP-bypass snackbar (+7426 phones). Live-verified 2026-09-06 (2.64.0), 28-after-unlock.xml — snackbar_text reads \"I see you're a demo user, so we'll skip the OTP\", snackbar_action 'OK' at [922,2173][1048,2299]. On this walk the snackbar surfaced AFTER the system unlock, not immediately after CONTINUE, which is why a fixed post-CONTINUE wait can miss it entirely."
+
+  # ── Login / registration / learn-menu ───────────────────────────
+  personalid-login-button:
+    type: id
+    value: "org.commcare.dalvik:id/connect_login_button"
+    purpose: "PROMOTED off unverified. Live-verified 2026-09-06 (2.64.0), 34-post-registration-setup.xml — on the post-registration CommCareSetupActivity it renders as 'GO TO CONNECT MENU', above login_or and the two install tiles. Tapping it (after clearing the 'Unlock PersonalID' prompt) reached ConnectActivity / rvJobList. The 2.63.2 note calling it 'the Connect sign-in screen' understates it: this is the setup-screen entry point into Connect, and it is the only route from CommCareSetupActivity to the jobs list."
+
+  personalid-name-continue:
+    type: id
+    value: "org.commcare.dalvik:id/personalid_name_continue_button"
+    purpose: "CONTINUE on the registration name-entry screen. Live-verified 2026-09-06 (2.64.0), 29-post-unlock-next.xml — enabled=false until the name field is non-empty; tapped, and advanced to the backup-code screen."
+
+  personalid-confirm-code-view:
+    type: id
+    value: "org.commcare.dalvik:id/confirm_code_view"
+    unverified: true
+    purpose: "Confirm-code six-cell widget on the FRESH-SIGNUP create-backup-code screen. NOT OBSERVED on 2.64.0: the +7426 demo phone already had a server-side account (the bootstrap had registered it on 2.63.2 minutes earlier), so the walk took the RECOVERY branch, which renders backup_code_view alone. Confirmed absent from 30-backup-code-create.xml. The id exists in 2.64.0's resource table. Reaching this needs a phone with no server account — i.e. a demo-user rotation."
+
+  personalid-backup-code-view:
+    type: id
+    value: "org.commcare.dalvik:id/backup_code_view"
+    purpose: "Six-cell backup-code widget. Live-verified 2026-09-06 (2.64.0), 30-backup-code-create.xml — LinearLayout at [194,1299][922,1443] holding six anonymous single-char EditTexts. A point tap on cell 0, centre ~(254,1371), focuses it and inputText auto-advances across all six. Siblings on this surface: backup_code_layout, backup_code_visibility_toggle, recovery_code_tilte [sic, upstream typo], backup_code_subtitle."
+
+  personalid-message-button:
+    type: id
+    value: "org.commcare.dalvik:id/connect_message_button"
+    purpose: "OK on a registration message sheet. Live-verified 2026-09-06 (2.64.0), 33-after-skip-confirm.xml — the 'Account Recovered' design_bottom_sheet, with connect_message_title 'Account Recovered' and connect_message_message. Tapping it returned to CommCareSetupActivity."
+
+  learn-suite-menu:
+    type: id
+    value: "org.commcare.dalvik:id/(screen_suite_menu_list|grid_menu_grid)"
+    purpose: "MenuActivity suite-menu CONTAINER, DISPLAY-MODE-AGNOSTIC. Live-verified 2026-09-06 (2.64.0), 38-suite-menu.xml + 39-after-module-tap.xml — the GRID branch, grid_menu_grid, rendering row_img + row_txt, at two successive menu levels. The list branch screen_suite_menu_list was NOT rendered on this app (ACE sets grid display app-wide via app-hq-settings) and is carried from 2.63.2. DO NOT narrow this to one container: ace#1127. Enforced display-mode-complete by test/mcp/mobile/static-recipe-invariants.test.ts."
+
+  # ── Google Play Services phone-hint sheet ───────────────────────
+  gms-phone-hint-cancel:
+    type: id
+    value: "com.google.android.gms:id/cancel"
+    purpose: "Cancel on the GMS phone-hint bottom sheet that pops on phone/country-code field focus. Live-verified 2026-09-06 (2.64.0), 24-gms-phone-hint.xml — ImageView, content-desc 'Cancel', [954,1579][1017,1642], inside design_bottom_sheet titled 'Choose a phone number'. Still fires on 2.64.0."
+
+  # ── System unlock ───────────────────────────────────────────────
+  system-lockpassword:
+    type: id
+    value: "com.android.systemui:id/lockPassword"
+    purpose: "System biometric-prompt PIN entry. Live-verified 2026-09-06 (2.64.0), 27-after-agree-continue.xml — title 'Unlock PersonalID', subtitle 'Please unlock to continue'. Fires TWICE in a full walk on 2.64.0: once from AGREE & CONTINUE, and again on the GO TO CONNECT MENU transition."
+
+  system-pin-entry:
+    type: id
+    value: "com.android.settings:id/lock_pin"
+    unverified: true
+    purpose: "PIN option on the device-lock SETUP chooser. NOT OBSERVED on 2.64.0 — the device already carried a screen lock from the earlier bootstrap, so registration took branch B and went straight to the system unlock prompt. Reaching it needs an AVD whose userdata was wiped AND on which no prior registration set a lock."
+
+  system-password-entry:
+    type: id
+    value: "com.android.settings:id/password_entry"
+    unverified: true
+    purpose: "Password field on the device-lock setup screen. NOT OBSERVED on 2.64.0, same reason as system-pin-entry."
+
+  # ── Post-login Connect home ─────────────────────────────────────
+  home-new-opportunities:
+    type: text
+    value: "New Opportunities"
+    unverified: true
+    purpose: "Section header for UNCLAIMED opportunities on the Connect jobs list. NOT OBSERVED on 2.64.0 — the demo user's jobs list rendered only the 'In Progress' section (tv_section_header), because every opportunity it can see is already claimed. Reaching it needs a fresh opp invited to this test user and not yet claimed."
+
+  home-opportunities-tab:
+    type: text
+    value: "Opportunities"
+    unverified: true
+    purpose: "Bottom-nav 'Opportunities' tab. NOT OBSERVED AS A TAB on 2.64.0 — 35-connect-home-jobs.xml shows ConnectActivity rendering connect_fragment_jobs_list with NO bottom navigation bar at all; the only 'Opportunities' affordance seen this walk was the nav-drawer row (see nav-drawer-opportunities, which IS verified). Either the bottom nav was removed or it is conditional; this row is carried, not confirmed, and a recipe relying on a bottom-nav tab should be treated as suspect until someone walks it."
+
+  home-jobs-list:
+    type: id
+    value: "org.commcare.dalvik:id/connect_fragment_jobs_list"
+    purpose: "Post-login Connect home jobs-list fragment container. Live-verified 2026-09-06 (2.64.0), 35-connect-home-jobs.xml, inside nav_host_fragment_connect on ConnectActivity."
+
+  home-jobs-recycler:
+    type: id
+    value: "org.commcare.dalvik:id/rvJobList"
+    purpose: "RecyclerView of opportunity cards inside home-jobs-list — the terminal anchor connect-register-from-otp.yaml waits on. Live-verified 2026-09-06 (2.64.0), 35-connect-home-jobs.xml, holding multiple rootCardView tiles. The anchor is still correct on 2.64.0; what breaks the recipe is the email step upstream of it (ace#2029), not this wait."
+
+  home-toolbar-sync:
+    type: id
+    value: "org.commcare.dalvik:id/action_sync"
+    purpose: "Toolbar Sync action on the jobs-list surface. Live-verified 2026-09-06 (2.64.0), 35-connect-home-jobs.xml — Button, content-desc 'Sync', [953,146][1080,272]; its sibling action_bell (content-desc 'Notifications') is at [826,146][953,272]."
+
+  # ── Opportunity list / detail ───────────────────────────────────
+  opp-list-view-opportunity-button:
+    type: id
+    value: "org.commcare.dalvik:id/btn_view_opportunity"
+    unverified: true
+    purpose: "View Opportunity on an UNCLAIMED card. NOT OBSERVED on 2.64.0 — no unclaimed cards were on this device's jobs list; every card carried the In-Progress pair btn_resume + btn_view_info instead. Same precondition as home-new-opportunities."
+
+  opp-list-resume-button:
+    type: id
+    value: "org.commcare.dalvik:id/btn_resume"
+    purpose: "Resume on an In-Progress opportunity card. Live-verified 2026-09-06 (2.64.0), 35-connect-home-jobs.xml — Button text 'Resume'. Tapped: it installed the Deliver CCZ and landed on StandardHomeActivity (37-after-resume.xml)."
+
+  opp-list-view-info:
+    type: id
+    value: "org.commcare.dalvik:id/btn_view_info"
+    purpose: "View Info — the SECONDARY button on an In-Progress card. Live-verified 2026-09-06 (2.64.0), 35-connect-home-jobs.xml. Tapped: it opened the opportunity-detail design_bottom_sheet (36-opp-detail.xml)."
+
+  opp-detail-start:
+    type: id
+    value: "org.commcare.dalvik:id/btn_start"
+    unverified: true
+    purpose: "PRE-CLAIM 'Start' on the opp-detail page — fires POST /users/start_learn_app/. NOT OBSERVED on 2.64.0: every opportunity reachable from this test user is already claimed, so the pre-claim variant of opp-detail never rendered. The POST-claim detail sheet WAS walked (36-opp-detail.xml) and carries no btn_start, which is expected, not a regression."
+
+  opp-detail-learn-modules-teaser:
+    type: id
+    value: "org.commcare.dalvik:id/tv_learn_modules_list"
+    unverified: true
+    purpose: "Pre-claim Learn-Details preview TextView. NOT OBSERVED on 2.64.0, same precondition as opp-detail-start. Absent from the post-claim sheet, as expected."
+
+  # ── Photo capture (in-form) ────────────────────────────────────
+  # NONE of these were re-observed on 2.64.0 — no photo question was
+  # reached this walk. They are carried verbatim from 2.63.2, where they
+  # were live-calibrated (#593). Two facts bound the risk:
+  #   * the com.android.camera2 ids belong to the AOSP camera app, NOT to
+  #     CommCare, so a CommCare release cannot move them;
+  #   * 2.64.0 ships a REBUILT CommCare-side camera surface
+  #     (camera_controls_container, camera_capture_instructions,
+  #     camera_capture_mode_indicator, capture_button_label,
+  #     capture_progress, rectangle_overlay, switch_camera_lens_button —
+  #     all 2.64.0-only ids). That surface is PersonalID face-capture, not
+  #     the in-form ACTION_IMAGE_CAPTURE path, but nothing here proves the
+  #     two are unrelated. Walk a photo question before trusting these.
+  camera-take-photo:
+    type: text
+    value: "TAKE PICTURE"
+    unverified: true
+    purpose: "In-form image-capture entry button (text button, no resource-id; launches com.android.camera2 via ACTION_IMAGE_CAPTURE). Live-calibrated on 2.63.0 (#593); NOT re-observed on 2.64.0. Gallery alternative is 'CHOOSE IMAGE'."
+
+  camera-shutter-button:
+    type: id
+    value: "com.android.camera2:id/shutter_button"
+    unverified: true
+    purpose: "Shutter in the AOSP camera app. Live-calibrated on 2.63.0 (#593); NOT re-observed on 2.64.0. Belongs to com.android.camera2, so a CommCare bump cannot move it — but the surface was not walked."
+
+  camera-save-photo:
+    type: id
+    value: "com.android.camera2:id/done_button"
+    unverified: true
+    purpose: "Use-photo / Done on the camera intent-review tray. Live-calibrated on 2.63.0 (#593); NOT re-observed on 2.64.0."
+
+  camera-retake-photo:
+    type: id
+    value: "com.android.camera2:id/retake_button"
+    unverified: true
+    purpose: "Retake on the camera intent-review tray. Live-calibrated on 2.63.0 (#593); NOT re-observed on 2.64.0."
+
+  camera-cancel-photo:
+    type: id
+    value: "com.android.camera2:id/cancel_button"
+    unverified: true
+    purpose: "Cancel on the camera intent-review tray. Live-calibrated on 2.63.0 (#593); NOT re-observed on 2.64.0."
+
+  # ── Geopoint (GPS) ─────────────────────────────────────────────
+  geopoint-record-location:
+    type: text
+    value: "(RECORD|REPLACE) LOCATION"
+    unverified: true
+    purpose: "Native geopoint capture button (android.widget.Button, no resource-id). RECORD branch live-calibrated 2026-07-13 on 2.63.0 (#861); REPLACE branch live-captured 2026-09-01 on 2.63.2 (#1879). NOT re-observed on 2.64.0 — no geopoint question was reached. Precondition unchanged: seed a mock fix via mobile_set_location (LONGITUDE first; AVD backend only) before the tap."
+
+  # ── Learn / CommCare app home + form entry ─────────────────────
+  learn-home-start-tile:
+    type: text
+    value: "Start"
+    purpose: "The 'Start' tile on StandardHomeActivity. Live-verified 2026-09-06 (2.64.0), 37-after-resume.xml — card_text 'Start' inside home_card > card > card_image/card_text, at [16,1039][535,1545]. Tapped: it opened MenuActivity. The clickable node is the parent RelativeLayout `card`; Maestro walks up from the text match."
+
+  learn-home-sync-tile:
+    type: text
+    value: "Sync with Server"
+    purpose: "The 'Sync with Server' tile on StandardHomeActivity. Live-verified 2026-09-06 (2.64.0), 37-after-resume.xml — card_text 'Sync with Server' with card_subtext 'You last synced with the server: ...'. Present, not tapped."
+
+  learn-suite-row-by-name:
+    type: text
+    value: "${MODULE_NAME}"  # caller substitutes
+    purpose: "A menu row in MenuActivity. Live-verified 2026-09-06 (2.64.0), 38-suite-menu.xml + 39-after-module-tap.xml — the visible label lives on row_txt, which is NOT itself clickable; Maestro walks up to the clickable parent. Tapping the row 'Turmeric Vendor Survey' descended one menu level, then a second tap on the form row entered FormEntryActivity. Works identically in grid mode."
+
+  form-nav-next:
+    type: id
+    value: "org.commcare.dalvik:id/nav_btn_next"
+    purpose: "Right-edge advance ImageButton on FormEntryActivity (no text, id only). Live-verified 2026-09-06 (2.64.0), 40-form-entry.xml / 41-form-question-1.xml / 42-form-question-2.xml — [954,293][1059,419], inside nav_pane beside nav_prog_bar. Tapped twice, advancing intro -> select-one -> free-text."
+
+  form-nav-prev:
+    type: id
+    value: "org.commcare.dalvik:id/nav_btn_prev"
+    purpose: "Left-edge back ImageButton on FormEntryActivity. Live-verified 2026-09-06 (2.64.0), 40-form-entry.xml — present at [21,293][142,419]; not tapped."
+
+  form-nav-finish:
+    type: id
+    value: "org.commcare.dalvik:id/nav_btn_finish"
+    unverified: true
+    purpose: "FINISH on the last screen of a score-gated quiz finalize (#569). NOT OBSERVED on 2.64.0 — the walk exited the form early rather than consuming a visit on a borrowed opportunity. Carried from 2.63.2."
+
+  form-required-warning:
+    type: id
+    value: "org.commcare.dalvik:id/warning_root"
+    unverified: true
+    purpose: "Red 'Sorry, this response is required!' banner. NOT OBSERVED on 2.64.0 — every question this walk touched was answered before advancing, so the banner was never provoked."
+
+  form-question-input:
+    type: class
+    value: "android.widget.EditText"
+    purpose: "Free-text answer EditText in a CommCare form question. RE-CONFIRMED live 2026-09-06 (2.64.0), 42-form-question-2.xml: the answer EditText carries NO resource-id, no text and no content-desc — its only handles are its class and its bounds ([42,654][1038,790] on that screen), and it is focused=true with zero taps. Match by CLASS and position. The full calibrated sequence for reaching a NON-first input (scrollUntilVisible at speed 30, then tapOn below the field's HINT) is unchanged from 2.63.2 / ace#1299 and was not re-exercised."
+
+  form-question-input-order:
+    type: doc
+    value: "label TextView -> optional hint TextView -> EditText"
+    purpose: "NOT a selector — the layout order of a CommCare form question. RE-CONFIRMED live 2026-09-06 (2.64.0), 42-form-question-2.xml: TextView 'Which market is this?' [42,459][1038,533], TextView 'Type the name of the market as it is known locally.' [42,533][1038,654] (the HINT), then the anonymous EditText [42,654][1038,790]. This is exactly the shape ace#1299 recorded on 2.63.2, and it is why `below: <question label>` selects the hint and is inert."
+
+  form-choice-dialog-title:
+    type: id
+    value: "org.commcare.dalvik:id/dialog_title_text"
+    purpose: "Title of CommCare's generic CHOICE DIALOG — read it to decide which dialog you are on. Live-verified 2026-09-06 (2.64.0) TWICE, on two different dialogs: 43-form-exit-dialog.xml ('Exit Form?') and 32-after-email-skip.xml ('Skip email?'). The second is new in 2.64.0 and shows this component is now load-bearing during REGISTRATION as well as during form entry."
+
+  form-exit-dialog-button:
+    type: id
+    value: "org.commcare.dalvik:id/choice_dialog_panel"
+    purpose: "Buttons on the FORM-EXIT confirmation. Live-verified 2026-09-06 (2.64.0), 43-form-exit-dialog.xml — TWO buttons SHARING this one id with no numeric suffix, 'STAY IN FORM' [133,1167][947,1312] and 'EXIT WITHOUT SAVING' [133,1315][947,1458], inside choices_list_view. Because the id is ambiguous, disambiguate by TEXT. Tapped EXIT WITHOUT SAVING to leave the borrowed opportunity untouched."
+
+  form-repeat-juncture-button:
+    type: id
+    value: "org.commcare.dalvik:id/choice_dialog_panel_2"
+    unverified: true
+    purpose: "The ADD action on a repeat juncture ('ADD A NEW <LABEL>?'). Live-verified on 2.63.2 (ace#1007); NOT re-observed on 2.64.0 — no repeat was reached. Prefer the INDEX over the text; the label interpolates the repeat's own name."
+
+  form-repeat-juncture-skip:
+    type: id
+    value: "org.commcare.dalvik:id/choice_dialog_panel_3"
+    unverified: true
+    purpose: "'DO NOT ADD' on a repeat juncture — the way PAST a repeat. Live-verified on 2.63.2 (ace#1007); NOT re-observed on 2.64.0."
+
+  form-repeat-juncture-back:
+    type: id
+    value: "org.commcare.dalvik:id/choice_dialog_panel_1"
+    unverified: true
+    purpose: "'GO BACK' on a repeat juncture. Live-verified on 2.63.2 (ace#1007); NOT re-observed on 2.64.0."
+
+  form-date-picker:
+    type: class
+    value: "android.widget.DatePicker"
+    unverified: true
+    purpose: "Native inline date widget on a `kind: date` question, no resource-id. Live-verified on 2.63.2 (ace#1081/#1300); NOT re-observed on 2.64.0 — no date question was reached. The scroll-consumption hazard (a swipe originating inside its bounds spins the date instead of scrolling the page) is carried forward unretested; keep using lib/fieldlist-gestures.ts safeScrollOriginX."
+
+  form-date-picker-container:
+    type: id
+    value: "android:id/pickers"
+    unverified: true
+    purpose: "LinearLayout holding the three date NumberPicker columns. Live-verified on 2.63.2 (ace#1081); NOT re-observed on 2.64.0."
+
+  form-date-picker-column:
+    type: class
+    value: "android.widget.NumberPicker"
+    unverified: true
+    purpose: "One spinner column of the native date widget; scrollable=true, which is why it swallows a page swipe. Live-verified on 2.63.2 (ace#1081); NOT re-observed on 2.64.0."
+
+  form-date-picker-step-next:
+    type: doc
+    value: "the Button immediately BELOW each column's numberpicker_input"
+    unverified: true
+    purpose: "How to DRIVE the date picker one step at a time, with read-back from form-date-picker-input. Live-verified on 2.63.2 (ace#1081); NOT re-observed on 2.64.0. Bounds cited in the 2.63.2 map are 2.63.2 observations and must not be treated as 2.64.0 measurements."
+
+  form-date-picker-input:
+    type: id
+    value: "android:id/numberpicker_input"
+    unverified: true
+    purpose: "The EditText inside each date column holding the CURRENT value — the read-back to assert a date against. Live-verified on 2.63.2 (ace#1081); NOT re-observed on 2.64.0."
+
+  form-photo-capture:
+    type: text
+    value: "TAKE PICTURE"
+    unverified: true
+    purpose: "In-form image-capture entry button. Mirrors camera-take-photo; see that row's note about the rebuilt 2.64.0 camera surface. NOT re-observed on 2.64.0."
+
+  # ── Deliver-side surfaces ──────────────────────────────────────
+  deliver-opp-detail-view-button:
+    type: id
+    value: "org.commcare.dalvik:id/connect_learning_button"
+    unverified: true
+    purpose: "Primary action on the post-Learn-completion opp-detail ('VIEW OPPORTUNITY DETAILS' / 'DOWNLOAD LEARN APP'). Live-verified on 2.63.0 (2026-05-26); NOT re-observed on 2.64.0 — the walk resumed an opp whose Learn was already complete and whose Deliver CCZ downloaded without passing through this gate."
+
+  deliver-download-button:
+    type: id
+    value: "org.commcare.dalvik:id/connect_delivery_button"
+    unverified: true
+    purpose: "'DOWNLOAD' on the Download Delivery gate. Live-verified on 2.63.0 (2026-05-26); NOT re-observed on 2.64.0 — btn_resume went straight to the installed-app fast path."
+
+  deliver-details-title:
+    type: id
+    value: "org.commcare.dalvik:id/connect_delivery_title"
+    purpose: "'Delivery Details' heading. Live-verified 2026-09-06 (2.64.0), 36-opp-detail.xml — inside connect_delivery_details_container on the opportunity-detail bottom sheet, alongside connect_review 'Review the delivery details' and the four value rows connect_delivery_total_visits_text ('200 maximum Visits'), connect_delivery_days_text ('3 Days to complete'), connect_delivery_max_daily_text ('Maximum visits per day 20'), connect_delivery_budget_text ('Earn up to 1 USD for visit'). Sound as a structural 'am I on the delivery-details surface?' assertion; note it renders on the VIEW-INFO sheet as well as on the download gate, so it does not by itself say which one."
+
+  deliver-action-title:
+    type: id
+    value: "org.commcare.dalvik:id/connect_delivery_action_title"
+    unverified: true
+    purpose: "Action-card title 'Start Visit' on the Download Delivery gate. Live-verified on 2.63.0 (2026-05-26); NOT re-observed on 2.64.0 — absent from the view-info sheet, which is expected, since that sheet is not the gate."
+
+  deliver-action-details:
+    type: id
+    value: "org.commcare.dalvik:id/connect_delivery_action_details"
+    unverified: true
+    purpose: "Action-card details 'Download Delivery' on the Download Delivery gate. Live-verified on 2.63.0 (2026-05-26); NOT re-observed on 2.64.0, same reason as deliver-action-title."
+
+  deliver-certificate-container:
+    type: id
+    value: "org.commcare.dalvik:id/connect_learning_certificate_container"
+    unverified: true
+    purpose: "Certificate section on the post-Learn-pass opp-detail; a structural marker for 'Learn complete'. Live-verified on 2.63.0 (2026-05-26); NOT re-observed on 2.64.0."
+
+  deliver-home-job-card:
+    type: id
+    value: "org.commcare.dalvik:id/viewJobCard"
+    purpose: "Project card on StandardHomeActivity. Live-verified 2026-09-06 (2.64.0), 37-after-resume.xml — [37,320][1043,708], holding tv_job_title, tv_job_description, rdDeliveryTypeList and connect_job_end_date. NOT A LEARN-VS-DELIVER DIFFERENTIATOR (#893): it renders on both homes. Safe only as a 'we are on SOME StandardHomeActivity' anchor; use deliver-home-daily-visits to tell the two apart."
+
+  deliver-suite-menu:
+    type: id
+    value: "org.commcare.dalvik:id/(screen_suite_menu_list|grid_menu_grid)"
+    purpose: "Deliver-app MenuActivity suite-menu CONTAINER — the same generic containers as learn-suite-menu, display-mode-agnostic for the same reason (ace#1127). Live-verified 2026-09-06 (2.64.0), 38-suite-menu.xml + 39-after-module-tap.xml: this walk descended a DELIVER app's menu, so the grid branch is verified on the Deliver side specifically. The list branch is carried from 2.63.x."
+
+  deliver-home-daily-visits:
+    type: text
+    value: "Daily Visits"
+    purpose: "THE Learn-vs-Deliver differentiator on the StandardHomeActivity job card (#893). Live-verified 2026-09-06 (2.64.0), 37-after-resume.xml — and this capture UPGRADES the row's provenance: the 2.63.0 evidence was a PNG diff with no resource-id, whereas this is a ui-dump showing the row is org.commcare.dalvik:id/tv_primary_visit_title, inside rdDeliveryTypeList, beside tv_primary_visit_count ('0/20') and lp_primary_visit_progress. The text anchor still works; an id anchor is now available if the English-locale caveat ever bites. Caveat (b) is unchanged: presence depends on the opp declaring a daily max visit count."
+
+  deliver-home-job-title:
+    type: id
+    value: "org.commcare.dalvik:id/tv_job_title"
+    purpose: "Project name on the home project card. Live-verified 2026-09-06 (2.64.0), 37-after-resume.xml — text matched the opportunity's Connect display name."
+
+  deliver-home-job-description:
+    type: id
+    value: "org.commcare.dalvik:id/tv_job_description"
+    purpose: "Project description on the home project card. Live-verified 2026-09-06 (2.64.0), 37-after-resume.xml."
+
+  # ── Case list (EntitySelectActivity) ───────────────────────────
+  # NONE of the five rows below were re-observed on 2.64.0. The form this
+  # walk entered was a REGISTRATION form, not a followup, so CommCare
+  # never interposed a case list. All five were live-captured together on
+  # 2026-08-01 against 2.63.2 from one real followup case list; the ids
+  # are all still present in 2.64.0's resource table. The trap they
+  # encode is unchanged and still applies: the header strip and the data
+  # rows share the cell id `entity_view_text`, so always scope a row
+  # match to case-list-container.
+  case-list-container:
+    type: id
+    value: "org.commcare.dalvik:id/screen_entity_select_list"
+    unverified: true
+    purpose: "The case-list ListView on EntitySelectActivity. Live-captured on 2.63.2 (2026-08-01, ace#1138 Gap 2); NOT re-observed on 2.64.0 — no followup form was walked. The ONLY sound scope for a row tap. Its trailing SEARCH action_card is INSIDE the container, so scoping alone does not make a positional tap safe: match the row by case name."
+
+  case-list-header:
+    type: id
+    value: "org.commcare.dalvik:id/entity_select_header"
+    unverified: true
+    purpose: "Column-header strip above the case rows — a SIBLING of case-list-container, not a child, which is what makes `childOf: case-list-container` a sound exclusion. Named so it is addressable as an ANTI-TARGET. Live-captured on 2.63.2; NOT re-observed on 2.64.0."
+
+  case-list-detail-container:
+    type: id
+    value: "org.commcare.dalvik:id/entity_detail"
+    unverified: true
+    purpose: "The per-case DETAIL confirmation screen interposed between the row tap and the form when the module declares a case-list `details` block — which every ACE-built Deliver module does. Live-captured on 2.63.2; NOT re-observed on 2.64.0. Discovering this is why ace#1138 Gap 2 forbade transcribing a case-list recipe from a sibling APK."
+
+  case-list-detail-continue:
+    type: id
+    value: "org.commcare.dalvik:id/entity_select_button"
+    unverified: true
+    purpose: "CONTINUE on the case DETAIL confirmation — the step that actually enters the followup form. Live-captured on 2.63.2 at [0,283][1080,409], pinned directly UNDER THE TOOLBAR rather than at the bottom of the screen. NOT re-observed on 2.64.0."
+
+  case-list-row-cell:
+    type: id
+    value: "org.commcare.dalvik:id/entity_view_text"
+    unverified: true
+    purpose: "Per-column cell TextView inside a case-list row. Present in BOTH the header strip and every data row — never match it unscoped. The cell is not clickable; the clickable node is the row LinearLayout two levels up. Live-captured on 2.63.2; NOT re-observed on 2.64.0."
+
+  # ── Not reached on any APK version to date ─────────────────────
+  # These four were already unverified on 2.63.2 and remain so. They are
+  # not 2.64.0 regressions; they have simply never been walked.
+  opp-detail-start-delivering:
+    type: text
+    value: "Start Delivering"
+    unverified: true
+    purpose: "Start Delivering on the post-Learn-completion opp-detail. UNREACHED on 2.62.0, 2.63.x and 2.64.0."
+
+  form-submit:
+    type: text
+    value: "Submit"
+    unverified: true
+    purpose: "Generic Submit on a final form screen. Plain Learn AND plain Deliver forms both AUTO-FINALIZE via nav_btn_next on the last question, so this button's ABSENCE is EXPECTED, not a coverage gap. Kept as a defensive branch; recipes must check `form-submit visible?` and fall through to form-nav-next."
+
+  assessment-result-passed:
+    type: text
+    value: "Passed"
+    unverified: true
+    purpose: "Result indicator after a Learn Final Assessment scores at or above the passing threshold. UNREACHED on every APK version to date."
+
+  assessment-result-failed:
+    type: text
+    value: "Try Again"
+    unverified: true
+    purpose: "Retake button on a failed assessment. UNREACHED on every APK version to date."
+
+  deliver-start-button:
+    type: text
+    value: "Start Delivering"
+    unverified: true
+    purpose: "Deliver-side entry from the post-Learn opp-detail; a recipe-named alias of opp-detail-start-delivering. UNREACHED on every APK version to date. If a walk ever confirms it, this row should collapse into a pure alias."
+
+  # ── CommCare version-upgrade prompt (ace#1998) ─────────────────
+  # ANSWER TO "can we reach it on 2.64.0?": NO, and that is the point.
+  # The prompt fires when a CCZ declares a minimum CommCare version above
+  # the installed one. The live text recorded on ace#1998 was literally
+  # "The application requires CommCare version 2.64.0. You are currently
+  # running 2.63.2." Installing 2.64.0 removes the very condition, so the
+  # screen has nothing to say and does not render.
+  #
+  # This was tested, not assumed. This walk resumed an opportunity on a
+  # freshly wiped device, CommCare downloaded and installed the Deliver
+  # CCZ from scratch, and StandardHomeActivity rendered with no prompt
+  # (37-after-resume.xml). None of the 24 dumps captured this session
+  # contains prompt_title or do_later_button:
+  #     $ grep -l "prompt_title\|do_later_button" \
+  #         docs/mobile-atlas/evidence/connect-2.64.0/*.xml
+  #     (no matches)
+  #
+  # The rows are carried anyway, flagged unverified, because the surface
+  # is not gone — it is dormant, and it will fire again the moment a CCZ
+  # requires 2.65.0. The ids are present in 2.64.0's resource table
+  # (grep -cx over the extracted id lists: 1 in both 2.63.2 and 2.64.0),
+  # so the values below are the right ones to defend against. What is NOT
+  # established is their on-screen bounds or label wording under 2.64.0.
+  # Whoever next sees a version gate should promote these off a real dump.
+  commcare-version-prompt-title:
+    type: id
+    value: "org.commcare.dalvik:id/prompt_title"
+    unverified: true
+    purpose: "Title of CommCare's version-upgrade prompt, e.g. 'The application requires CommCare version 2.64.0. You are currently running 2.63.2.' Live-captured on 2.63.2 (ace#1998, journey-learn-FAILURE.xml). NOT REACHABLE on a 2.64.0 device running a CCZ that requires 2.64.0 — the gate's precondition is exactly the version skew the pin bump removes. Use as the `when: visible` anchor for a guarded dismiss branch."
+
+  commcare-version-update-later:
+    type: id
+    value: "org.commcare.dalvik:id/do_later_button"
+    unverified: true
+    purpose: "\"I'LL UPDATE LATER\" — the SOFT dismiss that means a walk need not die on a version gate at all. Live-captured on 2.63.2 (ace#1998); not reachable on 2.64.0, see commcare-version-prompt-title. This is the button a guarded branch in connect-claim-opp.yaml / learn-launch.yaml / deliver-launch.yaml should tap before asserting nsv_home_screen."
+
+  commcare-version-update-now:
+    type: id
+    value: "org.commcare.dalvik:id/action_button"
+    unverified: true
+    purpose: "'UPDATE COMMCARE VIA THE PLAY STORE' — recorded as a NAMED ANTI-TARGET. An automated walk must never tap it: it leaves CommCare for the Play Store, which on an ACE AVD goes nowhere useful and strands the run off-app. Live-captured on 2.63.2 (ace#1998); not reachable on 2.64.0."

@@ -256,18 +256,31 @@ export function mergeTestUserOverride(
  * The selector-map APK version that recipe resolution targets.
  *
  * Reads `ACE_CONNECT_APK_VERSION` (the same env var that pins the APK
- * download in `runLocalBootstrap`), falling back to `2.63.2` when unset
+ * download in `runLocalBootstrap`), falling back to `2.64.0` when unset
  * or empty so the default tracks the validated baseline. Bump the
  * default here in lockstep with the `.env.tpl` default when a new
- * selector baseline is verified and promoted.
+ * selector baseline is verified and promoted. `skills/connect-apk-upgrade`
+ * owns the whole transition; `lib/apk-pin-sites.ts` enumerates every other
+ * place the version is written down, so this constant never moves alone.
  *
- * 2.63.2 promoted 2026-07-25 after a live drift check on ACE_Pixel_API_34
- * (see the header of `selectors/connect-2.63.2.yaml`).
+ * 2.64.0's live calibration walk ran 2026-09-06 on ACE_Pixel_API_34 — see
+ * `selectors/connect-2.64.0.yaml`'s header and
+ * `docs/mobile-calibration/connect-2.64.0-2026-09-06.md`. (This paragraph
+ * originally dated the walk 2026-09-05 and cited a map file that did not yet
+ * exist; the constant was flipped a day before anything was walked.)
+ * 2.63.2 was promoted 2026-07-25 after a live drift check on the same AVD.
  *
- * NOTE: pin only releases that actually carry an `.apk` ASSET — which is a
- * strictly stronger test than "published", and the reason the older wording
- * here was unsafe. This comment used to say `commcare_2.63.3` was a GitHub
- * DRAFT; re-checked 2026-09-06, that is FALSE:
+ * The 2.64.0 map is 46/91 rows verified. Registration — including the NEW
+ * PersonalID email step (ace#2029) — IS device-validated end to end on a
+ * cold-booted 2.64.0 device; the remaining 45 rows need surfaces only a
+ * fresh `/ace:run` opportunity reaches, so claim-through-Deliver is not.
+ * See ace#1997, ace#2029, and the residuals in
+ * `docs/mobile-calibration/connect-2.64.0-upgrade-verification.md`.
+ *
+ * NOTE: pin only releases that actually carry an `.apk` ASSET — a strictly
+ * stronger test than "published", and the reason the older wording here was
+ * unsafe. This comment used to say `commcare_2.63.3` was a GitHub DRAFT;
+ * re-checked 2026-09-06, that is FALSE:
  *
  *   $ gh release view commcare_2.63.3 -R dimagi/commcare-android \
  *       --json isDraft,isPrerelease,assets
@@ -278,7 +291,7 @@ export function mergeTestUserOverride(
  * different reason. Anyone re-deriving the old claim from `isDraft` would
  * read `false` and pin it. Check for an `.apk` asset, not for `isDraft`.
  */
-export const DEFAULT_APK_VERSION = '2.63.2';
+export const DEFAULT_APK_VERSION = '2.64.0';
 export function getConfiguredApkVersion(): string {
   const v = process.env.ACE_CONNECT_APK_VERSION;
   return v && v.length > 0 ? v : DEFAULT_APK_VERSION;
@@ -1477,34 +1490,40 @@ export class MobileClient {
       // Not cached — fall through to download.
     }
 
-    // Dimagi has renamed the release asset repeatedly, and NOT monotonically
-    // — the naming is per-release, so it cannot be predicted from the version:
-    //   2.62.0          → `app-commcare-release.apk`
-    //   2.63.0 / 2.63.1 → `commcare-<v>-release.apk`
-    //   2.63.2          → `commcare-<v>.apk`      (the `-release` suffix dropped)
-    //   2.64.0          → `app-commcare-release.apk`   ← REVERTED to the 2.62.0 form
+    // Dimagi's release-asset name is NOT monotonic — it has churned back and
+    // forth, so there is no "2.63.2+" rule to extrapolate from. Observed live
+    // against the releases API:
     //
-    // That last row is why this list is a probe rather than a lookup. The
-    // comment here used to read "2.63.2+ → commcare-<v>.apk", which implied
-    // the newest convention always wins; measured 2026-09-06 against the live
-    // release, it does not:
+    //   2.62.0                   → `app-commcare-release.apk`
+    //   2.63.0 / 2.63.1          → `commcare-<v>-release.apk`
+    //   2.63.2                   → `commcare-<v>.apk`   (this form, exactly once)
+    //   2.63.4 / 2.63.5 / 2.64.0 → `app-commcare-release.apk`   ← REVERTED
+    //
+    // (2.63.3 ships no `.apk` at all — only `app-lts-release.aab` — so it is
+    // unpinnable regardless of naming.)
+    //
+    // An earlier version of this comment claimed `2.63.2+ → commcare-<v>.apk`.
+    // That was a rule induced from a single data point, and it was already
+    // false when written: the very next release reverted. Measured 2026-09-06
+    // against the live 2.64.0 release:
     //
     //   $ B=https://github.com/dimagi/commcare-android/releases/download/commcare_2.64.0
     //   $ curl -o /dev/null -w '%{http_code}' -L $B/commcare-2.64.0.apk          # 404
     //   $ curl -o /dev/null -w '%{http_code}' -L $B/commcare-2.64.0-release.apk  # 404
     //   $ curl -o /dev/null -w '%{http_code}' -L $B/app-commcare-release.apk     # 200
     //
-    // So 2.64.0 resolves only on the THIRD candidate. Probe every convention
-    // and fall back, so both older pins and future re-renames keep working
-    // without a code change. The 2.63.2 form was missing here until
-    // 2026-07-25, which made pinning 2.63.2 fail with APK_DOWNLOAD_FAILED
-    // even though the release was published — the same class, one rename
-    // earlier. Never shorten this list to "the current convention".
+    // PROBING is what makes the download work — every convention is tried and
+    // the list must never be shortened to "the current one". The ORDER is a
+    // cost optimisation only: it puts the form the newest releases actually
+    // use first, so the pinned version resolves on candidate 1 instead of
+    // burning two 404 round-trips per cold boot. `app-commcare-release.apk`
+    // leads because that is what 2.63.4, 2.63.5 and 2.64.0 all ship.
+    // Do not re-derive a rule here — read the asset list off the release.
     const baseUrl = `https://github.com/dimagi/commcare-android/releases/download/commcare_${version}`;
     const candidateUrls = [
+      `${baseUrl}/app-commcare-release.apk`,
       `${baseUrl}/commcare-${version}.apk`,
       `${baseUrl}/commcare-${version}-release.apk`,
-      `${baseUrl}/app-commcare-release.apk`,
     ];
     let res: Awaited<ReturnType<typeof this.fetchImpl>> | undefined;
     let lastUrl = candidateUrls[0];

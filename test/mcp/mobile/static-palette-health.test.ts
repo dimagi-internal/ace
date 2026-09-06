@@ -33,7 +33,7 @@ const STATIC_DIR = fileURLToPath(
 // were live-calibrated on 2.63.2 and, per § close the loop to the source of
 // truth, must NOT be back-copied into the 2.63.0 map to satisfy a test).
 // Keep this in step with the runtime default when the pin moves.
-const DEFAULT_APK = '2.63.2';
+const DEFAULT_APK = '2.64.0';
 
 const paletteFiles: string[] = readdirSync(STATIC_DIR).filter((n) => n.endsWith('.yaml'));
 

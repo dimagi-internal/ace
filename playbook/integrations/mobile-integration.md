@@ -14,7 +14,7 @@ See the design spec: `docs/superpowers/specs/2026-04-28-ace-mobile-emulation-des
 npm run mcp:mobile
 ```
 
-Auto-registers via `.claude-plugin/plugin.json` `mcpServers` when the plugin is installed. Required environment: `.env.tpl` `ACE_E2E_*` variables (test phone, PIN, name), `ACE_AVD_NAME`, and `ACE_CONNECT_APK_VERSION` (default 2.63.2).
+Auto-registers via `.claude-plugin/plugin.json` `mcpServers` when the plugin is installed. Required environment: `.env.tpl` `ACE_E2E_*` variables (test phone, PIN, name), `ACE_AVD_NAME`, and `ACE_CONNECT_APK_VERSION` (default 2.64.0).
 
 ## Capability map
 

@@ -262,9 +262,11 @@ appId: org.commcare.dalvik
 # Same second-budget mechanism as connect-claim-opp.yaml, but WITHOUT a
 # section anchor. This recipe's target is an In-Progress card in the FIRST
 # section, and NO verified selector exists for that section's header — grep
-# `mcp/mobile/selectors/connect-2.63.2.yaml` for `in.progress` /
-# `section_header` and the only hits are prose. Inventing the string would
-# be exactly the "guess at a value another system owns" CLAUDE.md forbids,
+# `mcp/mobile/selectors/connect-2.64.0.yaml` for `in.progress` /
+# `section_header` and the only hits are prose. (First run against
+# connect-2.63.2.yaml, now historical; it returned the same nothing, and
+# 2.64.0 introduced no id drift anywhere in this map.) Inventing the string
+# would be exactly the "guess at a value another system owns" CLAUDE.md forbids,
 # so this fallback is a single UP re-hunt on the run-id at the same
 # live-proven budget: it recovers the case where the DOWN scroll ran past
 # the tile or hit the list end, and nothing more.

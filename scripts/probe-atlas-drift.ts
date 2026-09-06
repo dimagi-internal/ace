@@ -82,7 +82,7 @@ loadPluginEnv(import.meta.url);
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const SELECTORS_DIR = path.join(REPO_ROOT, 'mcp/mobile/selectors');
-const DEFAULT_APK = process.env.ACE_CONNECT_APK_VERSION || '2.63.2';
+const DEFAULT_APK = process.env.ACE_CONNECT_APK_VERSION || '2.64.0';
 
 interface CliArgs {
   dumpDir: string;
