@@ -1390,12 +1390,22 @@ server.tool('commcare_upload_multimedia',
 //   returned source bytes — the SAME concurrency token that
 //   commcare_patch_xform's optional `sha1` arg expects. Canonical flow:
 //   get_form_source → mutate xform_xml → patch_xform(sha1=<token>).
+//
+// TWO DELIVERY MODES (ace#1795) — pick by what you intend to do with the bytes:
+//   - `write_to_path` (PREFERRED whenever the source is going back into
+//     patch_xform): writes the XForm to that absolute local path and returns
+//     `{xform_xml_written_to, total_length, sha1}` with NO content, so the read
+//     costs zero context regardless of form size. Pair it with patch_xform's
+//     `new_xform_xml_path` and the whole read-modify-write is path-to-path.
+//   - Default (no `write_to_path`): returns `xform_xml` inline, refused above
+//     40,000 characters with a typed `oversized_form_source` error.
 server.tool('commcare_get_form_source',
   {
     server: HQ_SERVER_FIELD,
     domain: z.string(),
     app_id: z.string(),
     form_unique_id: z.string().regex(HQ_UNIQUE_ID_RE, HQ_UNIQUE_ID_HINT),
+    write_to_path: z.string().optional().describe('If set, write the XForm XML to this absolute local path and return `xform_xml_written_to` INSTEAD of `xform_xml` — the source never enters the model context, at any form size. `sha1` (the `commcare_patch_xform` concurrency token) and `total_length` are still returned inline. PREFER THIS whenever the bytes are headed back into `commcare_patch_xform`: paired with that atom\'s `new_xform_xml_path` the round trip is path-to-path — `get_form_source(write_to_path=X)` then patch X on disk then `patch_xform(new_xform_xml_path=X)` — which costs zero context AND removes the transcription-fidelity risk of the model re-emitting ~30 KB of XML verbatim, where one mis-copied character corrupts a live form (ace#1795). The 40,000-char inline cap does not apply when this is set. Missing parent directories are created. Mirrors `commcare_download_ccz`\'s `write_to_path`.'),
   },
   async (args) => runAtom(async () => (await commcareClient(args.server)).getFormSource(args))
 );

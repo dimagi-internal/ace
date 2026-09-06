@@ -61,7 +61,11 @@ describe('ace#994 — a draft walk declares whether it collected fields', () => 
     // already uses against drafts in this very skill — not a new guess at
     // some draft-API endpoint.
     expect(code).toMatch(/getFormSource\(/);
-    expect(code).toMatch(/walkFormFields\(src\.xform_xml\)/);
+    // Read through the atom's disk handle, not inline (ace#1795): this walk is
+    // Node code, so the 40,000-char inline cap that protects MODEL context is
+    // pure downside here — a genuinely large form would be refused outright.
+    expect(code).toMatch(/write_to_path: dest/);
+    expect(code).toMatch(/walkFormFields\(readFileSync\(dest, 'utf-8'\)\)/);
   });
 
   it('advertises the flag in usage', () => {

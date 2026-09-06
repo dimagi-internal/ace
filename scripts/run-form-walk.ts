@@ -65,6 +65,7 @@ import { loadPluginEnv } from '../lib/load-plugin-env.js';
 
 loadPluginEnv(import.meta.url);
 
+import { readFileSync } from 'node:fs';
 import { unzipSync, strFromU8 } from 'fflate';
 import { DOMParser } from '@xmldom/xmldom';
 import { scratchPath, writeVerifiedJson } from '../lib/scratch-file.js';
@@ -832,12 +833,19 @@ async function main(): Promise<number> {
       await dsession.getContext();
       const dc = new CB({ baseUrl: cchqBaseUrl, session: dsession });
       for (const f of draftForms) {
-        const src = await dc.getFormSource({
+        // Read via `write_to_path`, not inline (ace#1795). Two reasons: this
+        // walk is Node code, so the 40,000-char inline cap that protects MODEL
+        // context is pure downside here — a genuinely large form would be
+        // refused; and the source never has to be held as a JS string returned
+        // through the atom boundary. The scratch file is per-process.
+        const dest = scratchPath(`form-source-${f.form_unique_id}.xml`);
+        await dc.getFormSource({
           domain: args.domain,
           app_id: args.app_id,
           form_unique_id: f.form_unique_id,
+          write_to_path: dest,
         });
-        f.fields = walkFormFields(src.xform_xml);
+        f.fields = walkFormFields(readFileSync(dest, 'utf-8'));
       }
     }
 

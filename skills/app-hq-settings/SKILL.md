@@ -262,38 +262,79 @@ never collected — treating it as "no image fields" is the ace#994 silent skip.
 
 For each Deliver form that the walk reports with ≥1 `kind: image` field:
 
-1. `commcare_get_form_source({ domain, app_id, form_unique_id })` →
-   `{ xform_xml, sha1 }`. Use the **draft** `form_unique_id` from the
-   walk.
-2. In `xform_xml`, for **every** image `<upload>` control (any
-   `<upload>` whose `mediatype` starts with `image/`), ensure it carries
-   `appearance="acquire"`:
-   - If the element already has `appearance` and its value contains
-     `acquire`, leave it unchanged (**idempotent — no-op**).
-   - If it has `appearance` without `acquire`, this is a conflicting
-     hint — halt the form and surface the existing value rather than
-     clobber a deliberate appearance (report path + `<upload ref>` +
-     observed value).
-   - Otherwise add `appearance="acquire"` to the `<upload>` start tag.
+**The whole round trip is PATH-TO-PATH. Never read the XForm into
+context.** Both halves take a local path — `commcare_get_form_source`'s
+`write_to_path` (ace#1795) and `commcare_patch_xform`'s
+`new_xform_xml_path` — and the edit in between is performed on disk by
+`scripts/run-xform-acquire.ts`. Doing it the inline way costs the whole
+form twice (~30 KB in, ~30 KB back out) and, worse, makes **you** the
+transport for bytes you must reproduce verbatim — a 101-value lookup
+string, read-aloud scripts carrying `&#x2014;`/`&apos;`, a literal
+`[ \t\r\n]+` inside a regex — where one mis-copied character corrupts a
+live form. That risk is exactly why Step 2.65 was skipped on
+`hh-poverty-targeting/20260828-0702`.
 
-   Mirror `scripts/run-xform-patch.ts`'s XML handling conventions
-   (in-place attribute edit on the parsed body element; write the mutated
-   XML into a scratch DIRECTORY created with
-   `D=$(mktemp -d "${TMPDIR:-/tmp}/ace-hq-acquire-XXXXXX")`, then use
-   `"$D/<field-id>.xml"` — never a fixed
-   `/tmp/ace-hq-acquire-<form_unique_id>.xml`, per ace#1046 above.
-   **Take the directory form literally: `mktemp -d`, not `mktemp` with a
-   suffix.** BSD/macOS `mktemp` only substitutes trailing `X`s, so the
-   plausible one-liner `mktemp "${TMPDIR:-/tmp}/ace-hq-acquire-XXXXXX.xml"`
-   substitutes NOTHING and creates the literal path
-   `.../ace-hq-acquire-XXXXXX.xml` — a fixed, cross-user-shared path, i.e.
-   exactly the ace#1046 hazard this sentence exists to prevent. It shipped
-   here as the prescribed remedy until ace#1539.)
+First, once per app, make a scratch DIRECTORY:
+
+```
+D=$(mktemp -d "${TMPDIR:-/tmp}/ace-hq-acquire-XXXXXX")
+```
+
+**Take the directory form literally: `mktemp -d`, not `mktemp` with a
+suffix.** BSD/macOS `mktemp` only substitutes trailing `X`s, so the
+plausible one-liner `mktemp "${TMPDIR:-/tmp}/ace-hq-acquire-XXXXXX.xml"`
+substitutes NOTHING and creates the literal path
+`.../ace-hq-acquire-XXXXXX.xml` — a fixed, cross-user-shared path, i.e.
+exactly the ace#1046 hazard this sentence exists to prevent. It shipped
+here as the prescribed remedy until ace#1539.
+
+Then, per form:
+
+1. `commcare_get_form_source({ domain, app_id, form_unique_id, write_to_path: "$D/<form_unique_id>.xml" })`
+   → `{ xform_xml_written_to, total_length, sha1 }`. Use the **draft**
+   `form_unique_id` from the walk. **Pass `write_to_path`** — the
+   response then carries no XML at all, so the source never enters your
+   context and cannot be mis-transcribed. (Omitting it returns the form
+   inline and is refused outright above 40,000 characters with
+   `oversized_form_source`.)
+
+2. Apply the attribute **on disk**:
+
+   ```bash
+   npx --prefix "$ACE_ROOT" tsx "$ACE_ROOT/scripts/run-xform-acquire.ts" \
+     "$D/<form_unique_id>.xml" -o "$D/<form_unique_id>.acquire.xml"
+   ```
+
+   (`$ACE_ROOT` is the plugin root resolved in Step 2 — reuse it, do not
+   re-derive it, and never invoke a bare relative `scripts/` path.)
+
+   It rewrites only the matched `<upload>` start tags and leaves every
+   other byte identical (`lib/xform-acquire.ts`, unit-tested in
+   `test/lib/xform-acquire.test.ts`). It implements exactly the three
+   cases this step has always specified, so you do not have to:
+
+   - appearance already **contains** `acquire` → left unchanged
+     (**idempotent — no-op**), reported under `alreadyAcquire`.
+   - appearance present but WITHOUT `acquire` → a conflicting hint. The
+     script **writes nothing and exits 3** with the `<upload ref>` +
+     observed value in its JSON summary. Halt the form and surface that
+     rather than clobber a deliberate appearance.
+   - no appearance → `appearance="acquire"` is added to the `<upload>`
+     start tag.
+
+   Non-image uploads (audio/video) are out of scope and untouched.
+
+   The summary is one JSON line on **stderr**
+   (`{patched, applied, alreadyAcquire, conflicts, nonImageUploads}`);
+   read `patched` and `applied` from it. Exit `0` = clean, `2` = the
+   input file was unreadable, `3` = conflicting appearance.
+
    The contract truth (verified 2026-07-13 against commcare-android:
    `QuestionWidget.ACQUIREFIELD = "acquire"`) is that the widget hides
    the gallery button when the appearance hint **contains** `acquire`;
    the canonical serialized form is
    `<upload ref="/data/<field>" mediatype="image/*" appearance="acquire">`.
+   That is the rule the script encodes.
 
    **Do NOT scan for a `<case>` block — the old pre-patch halt is
    DELETED (ace#1238).** This step used to refuse to patch any form whose
@@ -333,21 +374,27 @@ For each Deliver form that the walk reports with ≥1 `kind: image` field:
    the transition and treat the conflict as the signal, never a read-back
    flag standing in for it (CLAUDE.md § Conventions).
 
-   **Breadcrumb only, never blocking:** if the fetched `xform_xml`
-   carries a `<case>` element OUTSIDE `__nova_operations` (i.e. not the
-   standard Nova `vellum:role="SaveToCase"` shape), record an `[INFO]`
-   line in the Step 5 summary naming the form path — so if this class
-   ever does bite, the run that hit it left evidence. Do **not** halt, do
-   **not** skip the patch.
+   **Breadcrumb only, never blocking:** if the fetched form carries a
+   `<case>` element OUTSIDE `__nova_operations` (i.e. not the standard
+   Nova `vellum:role="SaveToCase"` shape), record an `[INFO]` line in the
+   Step 5 summary naming the form path — so if this class ever does bite,
+   the run that hit it left evidence. Do **not** halt, do **not** skip
+   the patch. **Check this on the FILE, not in context** — e.g.
+   `grep -c '<case ' "$D/<form_unique_id>.xml"` — the whole step is
+   path-to-path and a breadcrumb is not a reason to read 30 KB.
 
-3. `commcare_patch_xform({ domain, app_id, form_unique_id, new_xform_xml_path: <temp>, sha1: <from step 1> })`.
-   Pass the mutated XML via `new_xform_xml_path` (patched Deliver forms
-   are routinely 12K+ chars and blow past tool-call arg-size limits when
-   inlined). Pass the `sha1` from Step 1 as the concurrency token.
+3. `commcare_patch_xform({ domain, app_id, form_unique_id, new_xform_xml_path: "$D/<form_unique_id>.acquire.xml", sha1: <from step 1> })`.
+   Hand it the **same file the script just wrote** — never re-emit the
+   XML inline (patched Deliver forms are routinely 12K+ chars and blow
+   past tool-call arg-size limits, and re-typing them is the fidelity
+   risk this whole path exists to remove). Pass the `sha1` from Step 1 as
+   the concurrency token; it is still returned by the `write_to_path`
+   read.
 
-   If **no** `<upload>` needed changing (all already carried `acquire`),
-   skip the patch for that form and record it as `already-acquire`
-   (idempotent re-run).
+   If the script reported `patched: false` with an empty `conflicts` (no
+   `<upload>` needed changing — all already carried `acquire`), skip the
+   patch for that form and record it as `already-acquire` (idempotent
+   re-run).
 
 4. On `XformConflictError`, halt the form and surface the live sha1 (a
    concurrent edit happened between the read and the patch); the operator
@@ -583,18 +630,32 @@ the camera-only residual if one exists, annotating
 - **Google Drive:** `drive_read_file`, `drive_create_file`,
   `drive_update_file` (summary), `update_yaml_file` (residual resolution).
 - **ace-connect (CCHQ atoms):**
-  - `commcare_get_form_source({domain, app_id, form_unique_id}) →
-    {xform_xml, sha1}` — read the draft form's current XForm XML + the
-    sha1 concurrency token.
+  - `commcare_get_form_source({domain, app_id, form_unique_id,
+    write_to_path?}) → {xform_xml | xform_xml_written_to, total_length,
+    sha1}` — read the draft form's current XForm XML + the sha1
+    concurrency token. **Always pass `write_to_path` in this skill**
+    (ace#1795): the source goes to disk and the response carries no XML,
+    so Step 3's read-modify-write is path-to-path and costs zero context.
+    Read the current signature in `docs/atom-schemas.md`.
   - `commcare_patch_xform({domain, app_id, form_unique_id,
     new_xform_xml|new_xform_xml_path, sha1?})` — POST the mutated XForm
-    XML adding `appearance="acquire"`. Prefer `new_xform_xml_path` for
-    real forms (arg-size limits); pass exactly one of the two payload
-    args. Pass the `sha1` from `get_form_source` as the concurrency token.
+    XML adding `appearance="acquire"`. **Always `new_xform_xml_path`** —
+    the file `scripts/run-xform-acquire.ts` wrote, which is the other end
+    of the same path-to-path round trip; pass exactly one of the two
+    payload args. Pass the `sha1` from `get_form_source` as the
+    concurrency token.
   - `commcare_make_build({domain, app_id, comment?})` — Step 3.5's
     authority on whether the patched form actually trips the Case
     Management UI drift class. Read the current signature in
     `docs/atom-schemas.md`; do not paraphrase it here.
+
+- **Scripts (Bash, not MCP):**
+  - `"$ACE_ROOT/scripts/run-xform-acquire.ts" <form.xml> [-o <out.xml>]` — the Step-3
+    edit, performed ON DISK so the XForm never enters context. Wraps
+    `lib/xform-acquire.ts`; JSON summary on stderr; exit 3 on a
+    conflicting appearance hint.
+  - `"$ACE_ROOT/scripts/run-form-walk.ts"` — Step 2's draft uid + field
+    inventory.
   - `commcare_set_menu_display({domain, app_id, module_unique_id,
     display_style?}) → {status, app_version?}` — set a module's menu to
     grid (`display_style` defaults to `'grid'`). Draft-only; app-release
