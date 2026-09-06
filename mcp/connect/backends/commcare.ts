@@ -4,7 +4,7 @@ import type { APIRequestContext, APIResponse } from 'playwright';
 import { unzipSync, strFromU8 } from 'fflate';
 import { PlaywrightSession } from '../auth/playwright-session.js';
 import { SessionExpiredError, summarizeServerErrorBody } from '../errors.js';
-import { prepareWritePath } from '../../../lib/atom-payload-resolver.js';
+import { AtomArgUsageError, prepareWritePath } from '../../../lib/atom-payload-resolver.js';
 import {
   DEFAULT_HQ_ROLE,
   classifyHqInviteState,
@@ -696,11 +696,51 @@ export interface GetFormSourceArgs {
    * hh-poverty-targeting/20260824-1404, ace#1644). See `lib/hq-unique-id.ts`.
    */
   form_unique_id: string;
+  /**
+   * If set, write the form's XForm XML bytes to this absolute local path and
+   * return `xform_xml_written_to` INSTEAD of `xform_xml` — keeping the source
+   * out of the caller's model context entirely. `sha1` and `total_length` are
+   * still returned inline (they are the useful signals: the concurrency token
+   * and the size).
+   *
+   * This is the read-side mirror of `patchXform`'s `new_xform_xml_path`
+   * (ace#1795). Without it a one-attribute edit costs the WHOLE form twice —
+   * ~30 KB in on the read, ~30 KB back out on the write — and makes the model
+   * the transport for bytes it must reproduce verbatim, so a single
+   * mis-transcribed character corrupts a live form. With it the round trip is
+   * path-to-path and costs zero context:
+   *
+   *   getFormSource({ write_to_path: X }) -> patch X on disk -> patchXform({ new_xform_xml_path: X })
+   *
+   * Same spelling as `commcare_download_ccz`'s / `connect_list_programs`'s
+   * `write_to_path` (and the snake_case form of `drive_read_file`'s
+   * `writeToPath`) — deliberately not a third name for one idea.
+   */
+  write_to_path?: string;
 }
 
+/**
+ * Maximum characters `getFormSource` will return INLINE. Above this the read is
+ * refused with a typed `oversized_form_source` error naming `write_to_path`,
+ * mirroring `drive_read_file`'s `oversized_document` cap at the same 40,000
+ * characters. Without the refusal the expensive path stays silently available
+ * and the atom keeps getting used the costly way by habit (ace#1795).
+ */
+export const MAX_INLINE_FORM_SOURCE_CHARS = 40_000;
+
 export interface GetFormSourceResult {
-  /** The form's current XForm XML, verbatim, as returned by CCHQ. */
-  xform_xml: string;
+  /**
+   * The form's current XForm XML, verbatim, as returned by CCHQ. Omitted when
+   * the caller passed `write_to_path` (see `xform_xml_written_to`).
+   */
+  xform_xml?: string;
+  /**
+   * Absolute path the XForm XML bytes were written to, when the caller passed
+   * `write_to_path`. Mutually exclusive with `xform_xml`.
+   */
+  xform_xml_written_to?: string;
+  /** Byte length of the XForm source CCHQ returned. Always present. */
+  total_length: number;
   /**
    * Hex SHA-1 of the returned XForm source bytes. This is the SAME token
    * `patchXform`'s optional `sha1` concurrency arg expects: CCHQ's
@@ -2715,6 +2755,14 @@ export class CommCareBackend {
    *   1. getFormSource(...) → { xform_xml, sha1 }
    *   2. mutate xform_xml
    *   3. patchXform({ ..., new_xform_xml, sha1 })  // sha1 = the token from step 1
+   *
+   * PREFERRED for anything you intend to hand straight back to `patchXform`
+   * (ace#1795) — the path-to-path form, which never puts the source in the
+   * model's context and so cannot mis-transcribe it:
+   *
+   *   1. getFormSource({ ..., write_to_path: X }) → { xform_xml_written_to: X, total_length, sha1 }
+   *   2. mutate the file at X on disk
+   *   3. patchXform({ ..., new_xform_xml_path: X, sha1 })
    */
   async getFormSource(args: GetFormSourceArgs): Promise<GetFormSourceResult> {
     return this.runWithSessionRetry(async (request) => {
@@ -2736,8 +2784,36 @@ export class CommCareBackend {
       // CCHQ's own sha1 of the byte-identical form source.
       const buf = await res.body();
       const sha1 = createHash('sha1').update(buf).digest('hex');
+      const total_length = buf.byteLength;
+      // Disk-handle mode (ace#1795): persist the bytes, return the path. The
+      // inline cap deliberately does NOT apply here — a disk write cannot
+      // bloat the response.
+      if (args.write_to_path) {
+        // prepareWritePath: absolute-path guard + parent-dir creation, same
+        // helper commcare_download_ccz's write_to_path uses. app-hq-settings
+        // writes into a fresh `mktemp -d` scratch dir, so creating missing
+        // parents is the NORMAL case, not an edge one.
+        fs.writeFileSync(prepareWritePath(args.write_to_path, 'commcare_get_form_source'), buf);
+        return {
+          xform_xml_written_to: args.write_to_path,
+          total_length,
+          sha1,
+        };
+      }
+      const xform_xml = buf.toString('utf8');
+      if (xform_xml.length > MAX_INLINE_FORM_SOURCE_CHARS) {
+        throw new AtomArgUsageError(
+          `oversized_form_source: commcare_get_form_source cannot return ${xform_xml.length} ` +
+            `characters inline (cap ${MAX_INLINE_FORM_SOURCE_CHARS}). Pass ` +
+            `write_to_path="/absolute/path.xml" to write the source to disk and get back ` +
+            `{xform_xml_written_to, total_length, sha1} with no content — then patch the file ` +
+            `and hand the SAME path to commcare_patch_xform's new_xform_xml_path, so the whole ` +
+            `round trip costs zero context.`,
+        );
+      }
       return {
-        xform_xml: buf.toString('utf8'),
+        xform_xml,
+        total_length,
         sha1,
       };
     });

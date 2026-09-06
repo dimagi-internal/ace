@@ -159,9 +159,11 @@ export function resolveInlineOrLocalFile(args: {
  *
  * @throws AtomArgUsageError on a relative path.
  */
-export function prepareWritePath(p: string): string {
+export function prepareWritePath(p: string, atom = 'commcare_download_ccz'): string {
   // ace#1110 F4: an arbitrary OVERWRITE — clobber .zshrc, a git hook, or .env.
-  assertNotCredentialPath(p, { atom: 'commcare_download_ccz' });
+  // `atom` names the caller in the refusal; it defaults to the first caller
+  // so existing call sites keep their exact message.
+  assertNotCredentialPath(p, { atom });
   if (!isAbsolute(p)) {
     throw new AtomArgUsageError(
       `write_path_not_absolute: expected an absolute path (got "${p}"). ` +
