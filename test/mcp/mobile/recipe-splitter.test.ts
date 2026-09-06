@@ -204,9 +204,9 @@ describe('recipe-splitter — captureAllBoundaries', () => {
     // sixth top-level runFlow. It is NOT adjacent to another runFlow
     // (an `assertVisible` follows it), so no seam collapses and it
     // contributes a full `-pre`/`-post` pair rather than one window.
-    // deliver-launch.yaml: 5 top-level runFlows, one run of 3
-    // back-to-back (2 internal seams collapse) + 1 suppressed leading
-    // `-pre` → 1 existing takeScreenshot window + 7 runFlow windows = 8.
+    // deliver-launch.yaml: 6 top-level runFlows, one run of 4
+    // back-to-back (3 internal seams collapse) + 1 suppressed leading
+    // `-pre` → 1 existing takeScreenshot window + 8 runFlow windows = 9.
     //
     // deliver-launch dropped from 9 → 8 in ace#869, which removed the
     // already-installed-home branch runFlow (one fewer top-level runFlow,
@@ -214,6 +214,16 @@ describe('recipe-splitter — captureAllBoundaries', () => {
     // collapsed seam disappears with it). The default-path count is
     // unchanged at 1 — the removed shot was nested inside a runFlow and
     // was never its own window.
+    //
+    // Back to 9 in ace#1998, by the exact inverse of that move: the
+    // CommCare version-gate guard is a new top-level runFlow at the HEAD
+    // of the recipe, which re-lengthens the back-to-back run from 3 to 4
+    // (one more collapsed seam) and takes over the suppressed leading
+    // `-pre`. Net 2*6 - 3 - 1 = 8 runFlow windows, + 1 takeScreenshot = 9.
+    //
+    // connect-claim-opp stays at 12: ace#1998 added two runFlows there
+    // too, but both are NESTED inside the existing post-Start branch, and
+    // only TOP-LEVEL runFlows open windows.
     //
     // Verified by running, not by re-deriving the arithmetic — a prior
     // round of this task asserted 13/13, then a corrected 11/10, both of
@@ -227,7 +237,7 @@ describe('recipe-splitter — captureAllBoundaries', () => {
     expect(windows(readFileSync(new URL('connect-claim-opp.yaml', STATIC), 'utf8'), opts)).toBe(
       12,
     );
-    expect(windows(readFileSync(new URL('deliver-launch.yaml', STATIC), 'utf8'), opts)).toBe(8);
+    expect(windows(readFileSync(new URL('deliver-launch.yaml', STATIC), 'utf8'), opts)).toBe(9);
   });
 
   it('never emits a chunk with an empty flow section', () => {

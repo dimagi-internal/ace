@@ -1,8 +1,12 @@
 # Connect APK 2.63.2 selector map
 #
 # BASELINED FROM 2.63.0 on 2026-07-25 (dimagi-internal/ace, APK-currency sweep).
-# 2.63.2 is the latest PUBLISHED commcare-android release; 2.63.3 exists only
-# as a DRAFT (no assets, no published_at) and must NOT be pinned.
+# 2.63.2 was the newest pinnable commcare-android release when this map was
+# baselined. CORRECTION (2026-09-06): the line that stood here claimed 2.63.3
+# "exists only as a DRAFT (no assets)" — that is false. 2.63.3 is published,
+# but its only asset is an .aab, so it is still not pinnable, for a different
+# reason. 2.64.0 is now the newest release with a real .apk asset; see
+# skills/connect-apk-upgrade for the bump procedure. ace#1997/#1998.
 #
 # Live drift check performed on ACE_Pixel_API_34 after an in-place
 # `adb install -r` upgrade 2.63.0 -> 2.63.2 (app data preserved):
@@ -154,6 +158,42 @@ selectors:
     type: text
     value: "Opportunities"
     purpose: "Nav-drawer 'Opportunities' row (a list_title TextView inside nav_drawer_recycler). Live-characterized 2026-06-05 (2.63.0, jjackson/ace#711): from the CommCare Learn-app home (nsv_home_screen), opening the burger and tapping this row routes to Connect's jobs list (connect_fragment_jobs_list) — the #618 inter-leg handoff. Same text label as the bottom-nav home-opportunities-tab; distinct selector name documents the drawer-row intent."
+
+  # ── CommCare version-upgrade gate (ace#1998) ──────────────
+  #
+  # CommCare interposes this gate on app launch when the released CCZ's
+  # `profile.ccpr` requiredMajor/requiredMinor/requiredMinimal exceeds the
+  # running APK. It is NOT a Connect surface and NOT the #629 inert-handoff
+  # class: the btn_start handoff worked, the app launched, and CommCare
+  # deliberately refused to open the app.
+  #
+  # Recorded device evidence (CLAUDE.md § "Recorded device evidence IS
+  # device evidence"): captured from a live `mobile_capture_ui_dump` /
+  # `failureForensics.uiDumpPath` on APK 2.63.2 against a CCZ requiring
+  # 2.64.0 — bednet-check-2-visit/20260902-1555 Phase 6 Step 1,
+  # `6-qa-and-training/screenshots/journey-learn/journey-learn-FAILURE.xml`.
+  # `scripts/probe-atlas-drift.ts` classified that dump
+  # `classification: unmapped-surface, needs_tier2: true` — a genuine
+  # coverage gap, which these three rows close.
+  #
+  # The gate is version-INDEPENDENT: these resource-ids belong to
+  # CommCare's own upgrade-prompt layout, not to the version pair that
+  # triggered it, so the rows stay correct on any APK. What changes per APK
+  # is only WHICH CCZs trip it.
+  commcare-version-prompt-title:
+    type: id
+    value: "org.commcare.dalvik:id/prompt_title"
+    purpose: "Title of CommCare's version-upgrade gate, e.g. 'The application requires CommCare version 2.64.0. You are currently running 2.63.2.' Recorded from a live ui-dump on APK 2.63.2 (ace#1998). Use as the GUARD for the recognition branch and as the anchor that distinguishes this from the #629 inert-handoff wedge — the two present identically at the nsv_home_screen assertion, which is exactly how this was mislabelled."
+
+  commcare-version-update-later:
+    type: id
+    value: "org.commcare.dalvik:id/do_later_button"
+    purpose: "\"I'LL UPDATE LATER\" — the gate's dismiss action. Recorded from a live ui-dump on APK 2.63.2 (ace#1998). PRESENCE is recorded device evidence; what dismissing it then PERMITS is not — no ACE run has observed a post-dismiss state. The recipes deliberately do not tap it (see connect-claim-opp.yaml § the version-gate branch); the real remedy is repinning the APK (ace#1997)."
+
+  commcare-version-update-now:
+    type: id
+    value: "org.commcare.dalvik:id/action_button"
+    purpose: "\"UPDATE COMMCARE VIA THE PLAY STORE\" — the gate's primary action. Recorded from a live ui-dump on APK 2.63.2 (ace#1998). Never usable on ACE's AVD (no Play Store on the emulator image); mapped so the surface is fully described and a future dump diffs cleanly against the atlas."
 
   # ── PersonalID / phone entry ────────────────────────────────────
   personalid-country-code:

@@ -77,6 +77,28 @@
 
 appId: org.commcare.dalvik
 ---
+# ── CommCare version gate (ace#1998) ─────────────────────────────
+# If the released CCZ requires a newer CommCare than the pinned APK,
+# CommCare interposes an upgrade gate instead of opening the app, and
+# every wait below would instead expire generically (30s here) with no
+# clue which system refused. Recognise it FIRST and fail with its own
+# name. Root cause + remedy: ace#1997 (repin ACE_CONNECT_APK_VERSION).
+#
+# Recognise-only, by design — this deliberately does NOT tap
+# `commcare-version-update-later`. The button's existence is recorded
+# device evidence; what dismissing it PERMITS has never been observed,
+# and proceeding on a runtime the CCZ declares unsupported would mint
+# false-green Phase 6 screenshots and QA verdicts. See
+# connect-claim-opp.yaml § the version-gate branch for the full argument.
+- runFlow:
+    when:
+      visible:
+        id: "${SELECTOR:commcare-version-prompt-title}"
+    commands:
+      - takeScreenshot: "deliver-launch-BLOCKED-commcare-version-gate-issue1997"
+      - assertNotVisible:
+          id: "${SELECTOR:commcare-version-prompt-title}"
+
 
 # --- Already-installed fast path (#747) ----------------------------
 # Resume landed in the Deliver suite menu (prior dispatch consumed the
