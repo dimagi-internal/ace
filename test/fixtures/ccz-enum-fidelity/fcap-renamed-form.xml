@@ -1,0 +1,74 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<h:html xmlns:h="http://www.w3.org/1999/xhtml" xmlns="http://www.w3.org/2002/xforms" xmlns:jr="http://openrosa.org/javarosa">
+  <h:head>
+    <model>
+      <itext>
+        <translation lang="en" default="">
+          <text id="starting_step-starting_fcap_step-opt0-label">
+            <value>Step 1: Our Partnership</value>
+            <value form="markdown">Step 1: Our Partnership</value>
+          </text>
+          <text id="starting_step-starting_fcap_step-opt1-label">
+            <value>Step 2: Community Dynamics, Governance and Leadership</value>
+            <value form="markdown">Step 2: Community Dynamics, Governance and Leadership</value>
+          </text>
+          <text id="starting_step-starting_fcap_step-opt2-label">
+            <value>Step 3: Understanding the Present - Situational Analysis</value>
+            <value form="markdown">Step 3: Understanding the Present - Situational Analysis</value>
+          </text>
+          <text id="starting_step-starting_fcap_step-opt3-label">
+            <value>Step 4: Getting to the Future - Microgrant Pathway and Goals</value>
+            <value form="markdown">Step 4: Getting to the Future - Microgrant Pathway and Goals</value>
+          </text>
+          <text id="starting_step-starting_fcap_step-opt4-label">
+            <value>Step 5: Initiative Pathway and Savings</value>
+            <value form="markdown">Step 5: Initiative Pathway and Savings</value>
+          </text>
+          <text id="starting_step-starting_fcap_step-opt5-label">
+            <value>Step 6: Advocacy Pathway</value>
+            <value form="markdown">Step 6: Advocacy Pathway</value>
+          </text>
+          <text id="starting_step-starting_fcap_step-opt6-label">
+            <value>Step 7: Vision</value>
+            <value form="markdown">Step 7: Vision</value>
+          </text>
+        </translation>
+      </itext>
+      <bind nodeset="/data/case/update/pilot_fcap_step" calculate="/data/starting_step/starting_fcap_step" relevant="count(/data/starting_step/starting_fcap_step) &gt; 0"/>
+    </model>
+  </h:head>
+  <h:body>
+      <select1 ref="/data/starting_step/starting_fcap_step">
+        <label ref="jr:itext('starting_step-starting_fcap_step-label')"/>
+        <hint ref="jr:itext('starting_step-starting_fcap_step-hint')"/>
+        <item>
+          <label ref="jr:itext('starting_step-starting_fcap_step-opt0-label')"/>
+          <value>step_1</value>
+        </item>
+        <item>
+          <label ref="jr:itext('starting_step-starting_fcap_step-opt1-label')"/>
+          <value>step_2</value>
+        </item>
+        <item>
+          <label ref="jr:itext('starting_step-starting_fcap_step-opt2-label')"/>
+          <value>step_3</value>
+        </item>
+        <item>
+          <label ref="jr:itext('starting_step-starting_fcap_step-opt3-label')"/>
+          <value>step_4</value>
+        </item>
+        <item>
+          <label ref="jr:itext('starting_step-starting_fcap_step-opt4-label')"/>
+          <value>step_5</value>
+        </item>
+        <item>
+          <label ref="jr:itext('starting_step-starting_fcap_step-opt5-label')"/>
+          <value>step_6</value>
+        </item>
+        <item>
+          <label ref="jr:itext('starting_step-starting_fcap_step-opt6-label')"/>
+          <value>step_7</value>
+        </item>
+      </select1>
+  </h:body>
+</h:html>

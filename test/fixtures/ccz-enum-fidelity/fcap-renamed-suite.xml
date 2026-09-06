@@ -1,0 +1,104 @@
+<suite version="1">
+  <detail id="m1_case_short">
+    <title>
+      <text>
+        <locale id="cchq.case"/>
+      </text>
+    </title>
+    <field>
+      <header>
+        <text>
+          <locale id="m1.case_short.case_case_name_1.header"/>
+        </text>
+      </header>
+      <template>
+        <text>
+          <xpath function="case_name"/>
+        </text>
+      </template>
+    </field>
+    <field>
+      <header>
+        <text>
+          <locale id="m1.case_short.case_calculated_property_2.header"/>
+        </text>
+      </header>
+      <template>
+        <text>
+          <xpath function="replace(join(' ', if(selected(pilot_fcap_step, 'step_1'), $knova_text_0000000000, ''), if(selected(pilot_fcap_step, 'step_2'), $knova_text_0000000001, ''), if(selected(pilot_fcap_step, 'step_3'), $knova_text_0000000002, ''), if(selected(pilot_fcap_step, 'step_4'), $knova_text_0000000003, ''), if(selected(pilot_fcap_step, 'step_5'), $knova_text_0000000004, ''), if(selected(pilot_fcap_step, 'step_6'), $knova_text_0000000005, ''), if(selected(pilot_fcap_step, 'step_7'), $knova_text_0000000006, '')), '\s+', ' ')">
+            <variable name="knova_text_0000000000">
+              <locale id="m1.case_short.case_replace(join(' ', if(selected(pilot_fcap_step, 'step_1'), $nova_text_0000000000, ''), if(selected(pilot_fcap_step, 'step_2'), $nova_text_0000000001, ''), if(selected(pilot_fcap_step, 'step_3'), $nova_text_0000000002, ''), if(selected(pilot_fcap_step, 'step_4'), $nova_text_0000000003, ''), if(selected(pilot_fcap_step, 'step_5'), $nova_text_0000000004, ''), if(selected(pilot_fcap_step, 'step_6'), $nova_text_0000000005, ''), if(selected(pilot_fcap_step, 'step_7'), $nova_text_0000000006, '')), '\s+', ' ')_2.enum.knova_text_0000000000"/>
+            </variable>
+            <variable name="knova_text_0000000001">
+              <locale id="m1.case_short.case_replace(join(' ', if(selected(pilot_fcap_step, 'step_1'), $nova_text_0000000000, ''), if(selected(pilot_fcap_step, 'step_2'), $nova_text_0000000001, ''), if(selected(pilot_fcap_step, 'step_3'), $nova_text_0000000002, ''), if(selected(pilot_fcap_step, 'step_4'), $nova_text_0000000003, ''), if(selected(pilot_fcap_step, 'step_5'), $nova_text_0000000004, ''), if(selected(pilot_fcap_step, 'step_6'), $nova_text_0000000005, ''), if(selected(pilot_fcap_step, 'step_7'), $nova_text_0000000006, '')), '\s+', ' ')_2.enum.knova_text_0000000001"/>
+            </variable>
+            <variable name="knova_text_0000000002">
+              <locale id="m1.case_short.case_replace(join(' ', if(selected(pilot_fcap_step, 'step_1'), $nova_text_0000000000, ''), if(selected(pilot_fcap_step, 'step_2'), $nova_text_0000000001, ''), if(selected(pilot_fcap_step, 'step_3'), $nova_text_0000000002, ''), if(selected(pilot_fcap_step, 'step_4'), $nova_text_0000000003, ''), if(selected(pilot_fcap_step, 'step_5'), $nova_text_0000000004, ''), if(selected(pilot_fcap_step, 'step_6'), $nova_text_0000000005, ''), if(selected(pilot_fcap_step, 'step_7'), $nova_text_0000000006, '')), '\s+', ' ')_2.enum.knova_text_0000000002"/>
+            </variable>
+            <variable name="knova_text_0000000003">
+              <locale id="m1.case_short.case_replace(join(' ', if(selected(pilot_fcap_step, 'step_1'), $nova_text_0000000000, ''), if(selected(pilot_fcap_step, 'step_2'), $nova_text_0000000001, ''), if(selected(pilot_fcap_step, 'step_3'), $nova_text_0000000002, ''), if(selected(pilot_fcap_step, 'step_4'), $nova_text_0000000003, ''), if(selected(pilot_fcap_step, 'step_5'), $nova_text_0000000004, ''), if(selected(pilot_fcap_step, 'step_6'), $nova_text_0000000005, ''), if(selected(pilot_fcap_step, 'step_7'), $nova_text_0000000006, '')), '\s+', ' ')_2.enum.knova_text_0000000003"/>
+            </variable>
+            <variable name="knova_text_0000000004">
+              <locale id="m1.case_short.case_replace(join(' ', if(selected(pilot_fcap_step, 'step_1'), $nova_text_0000000000, ''), if(selected(pilot_fcap_step, 'step_2'), $nova_text_0000000001, ''), if(selected(pilot_fcap_step, 'step_3'), $nova_text_0000000002, ''), if(selected(pilot_fcap_step, 'step_4'), $nova_text_0000000003, ''), if(selected(pilot_fcap_step, 'step_5'), $nova_text_0000000004, ''), if(selected(pilot_fcap_step, 'step_6'), $nova_text_0000000005, ''), if(selected(pilot_fcap_step, 'step_7'), $nova_text_0000000006, '')), '\s+', ' ')_2.enum.knova_text_0000000004"/>
+            </variable>
+            <variable name="knova_text_0000000005">
+              <locale id="m1.case_short.case_replace(join(' ', if(selected(pilot_fcap_step, 'step_1'), $nova_text_0000000000, ''), if(selected(pilot_fcap_step, 'step_2'), $nova_text_0000000001, ''), if(selected(pilot_fcap_step, 'step_3'), $nova_text_0000000002, ''), if(selected(pilot_fcap_step, 'step_4'), $nova_text_0000000003, ''), if(selected(pilot_fcap_step, 'step_5'), $nova_text_0000000004, ''), if(selected(pilot_fcap_step, 'step_6'), $nova_text_0000000005, ''), if(selected(pilot_fcap_step, 'step_7'), $nova_text_0000000006, '')), '\s+', ' ')_2.enum.knova_text_0000000005"/>
+            </variable>
+            <variable name="knova_text_0000000006">
+              <locale id="m1.case_short.case_replace(join(' ', if(selected(pilot_fcap_step, 'step_1'), $nova_text_0000000000, ''), if(selected(pilot_fcap_step, 'step_2'), $nova_text_0000000001, ''), if(selected(pilot_fcap_step, 'step_3'), $nova_text_0000000002, ''), if(selected(pilot_fcap_step, 'step_4'), $nova_text_0000000003, ''), if(selected(pilot_fcap_step, 'step_5'), $nova_text_0000000004, ''), if(selected(pilot_fcap_step, 'step_6'), $nova_text_0000000005, ''), if(selected(pilot_fcap_step, 'step_7'), $nova_text_0000000006, '')), '\s+', ' ')_2.enum.knova_text_0000000006"/>
+            </variable>
+          </xpath>
+        </text>
+      </template>
+      <sort type="string">
+        <text>
+          <xpath function="replace(join(' ', if(selected(pilot_fcap_step, 'step_1'), $knova_text_0000000000, ''), if(selected(pilot_fcap_step, 'step_2'), $knova_text_0000000001, ''), if(selected(pilot_fcap_step, 'step_3'), $knova_text_0000000002, ''), if(selected(pilot_fcap_step, 'step_4'), $knova_text_0000000003, ''), if(selected(pilot_fcap_step, 'step_5'), $knova_text_0000000004, ''), if(selected(pilot_fcap_step, 'step_6'), $knova_text_0000000005, ''), if(selected(pilot_fcap_step, 'step_7'), $knova_text_0000000006, '')), '\s+', ' ')">
+            <variable name="knova_text_0000000000">
+              <locale id="m1.case_short.case_replace(join(' ', if(selected(pilot_fcap_step, 'step_1'), $nova_text_0000000000, ''), if(selected(pilot_fcap_step, 'step_2'), $nova_text_0000000001, ''), if(selected(pilot_fcap_step, 'step_3'), $nova_text_0000000002, ''), if(selected(pilot_fcap_step, 'step_4'), $nova_text_0000000003, ''), if(selected(pilot_fcap_step, 'step_5'), $nova_text_0000000004, ''), if(selected(pilot_fcap_step, 'step_6'), $nova_text_0000000005, ''), if(selected(pilot_fcap_step, 'step_7'), $nova_text_0000000006, '')), '\s+', ' ')_2.enum.knova_text_0000000000"/>
+            </variable>
+            <variable name="knova_text_0000000001">
+              <locale id="m1.case_short.case_replace(join(' ', if(selected(pilot_fcap_step, 'step_1'), $nova_text_0000000000, ''), if(selected(pilot_fcap_step, 'step_2'), $nova_text_0000000001, ''), if(selected(pilot_fcap_step, 'step_3'), $nova_text_0000000002, ''), if(selected(pilot_fcap_step, 'step_4'), $nova_text_0000000003, ''), if(selected(pilot_fcap_step, 'step_5'), $nova_text_0000000004, ''), if(selected(pilot_fcap_step, 'step_6'), $nova_text_0000000005, ''), if(selected(pilot_fcap_step, 'step_7'), $nova_text_0000000006, '')), '\s+', ' ')_2.enum.knova_text_0000000001"/>
+            </variable>
+            <variable name="knova_text_0000000002">
+              <locale id="m1.case_short.case_replace(join(' ', if(selected(pilot_fcap_step, 'step_1'), $nova_text_0000000000, ''), if(selected(pilot_fcap_step, 'step_2'), $nova_text_0000000001, ''), if(selected(pilot_fcap_step, 'step_3'), $nova_text_0000000002, ''), if(selected(pilot_fcap_step, 'step_4'), $nova_text_0000000003, ''), if(selected(pilot_fcap_step, 'step_5'), $nova_text_0000000004, ''), if(selected(pilot_fcap_step, 'step_6'), $nova_text_0000000005, ''), if(selected(pilot_fcap_step, 'step_7'), $nova_text_0000000006, '')), '\s+', ' ')_2.enum.knova_text_0000000002"/>
+            </variable>
+            <variable name="knova_text_0000000003">
+              <locale id="m1.case_short.case_replace(join(' ', if(selected(pilot_fcap_step, 'step_1'), $nova_text_0000000000, ''), if(selected(pilot_fcap_step, 'step_2'), $nova_text_0000000001, ''), if(selected(pilot_fcap_step, 'step_3'), $nova_text_0000000002, ''), if(selected(pilot_fcap_step, 'step_4'), $nova_text_0000000003, ''), if(selected(pilot_fcap_step, 'step_5'), $nova_text_0000000004, ''), if(selected(pilot_fcap_step, 'step_6'), $nova_text_0000000005, ''), if(selected(pilot_fcap_step, 'step_7'), $nova_text_0000000006, '')), '\s+', ' ')_2.enum.knova_text_0000000003"/>
+            </variable>
+            <variable name="knova_text_0000000004">
+              <locale id="m1.case_short.case_replace(join(' ', if(selected(pilot_fcap_step, 'step_1'), $nova_text_0000000000, ''), if(selected(pilot_fcap_step, 'step_2'), $nova_text_0000000001, ''), if(selected(pilot_fcap_step, 'step_3'), $nova_text_0000000002, ''), if(selected(pilot_fcap_step, 'step_4'), $nova_text_0000000003, ''), if(selected(pilot_fcap_step, 'step_5'), $nova_text_0000000004, ''), if(selected(pilot_fcap_step, 'step_6'), $nova_text_0000000005, ''), if(selected(pilot_fcap_step, 'step_7'), $nova_text_0000000006, '')), '\s+', ' ')_2.enum.knova_text_0000000004"/>
+            </variable>
+            <variable name="knova_text_0000000005">
+              <locale id="m1.case_short.case_replace(join(' ', if(selected(pilot_fcap_step, 'step_1'), $nova_text_0000000000, ''), if(selected(pilot_fcap_step, 'step_2'), $nova_text_0000000001, ''), if(selected(pilot_fcap_step, 'step_3'), $nova_text_0000000002, ''), if(selected(pilot_fcap_step, 'step_4'), $nova_text_0000000003, ''), if(selected(pilot_fcap_step, 'step_5'), $nova_text_0000000004, ''), if(selected(pilot_fcap_step, 'step_6'), $nova_text_0000000005, ''), if(selected(pilot_fcap_step, 'step_7'), $nova_text_0000000006, '')), '\s+', ' ')_2.enum.knova_text_0000000005"/>
+            </variable>
+            <variable name="knova_text_0000000006">
+              <locale id="m1.case_short.case_replace(join(' ', if(selected(pilot_fcap_step, 'step_1'), $nova_text_0000000000, ''), if(selected(pilot_fcap_step, 'step_2'), $nova_text_0000000001, ''), if(selected(pilot_fcap_step, 'step_3'), $nova_text_0000000002, ''), if(selected(pilot_fcap_step, 'step_4'), $nova_text_0000000003, ''), if(selected(pilot_fcap_step, 'step_5'), $nova_text_0000000004, ''), if(selected(pilot_fcap_step, 'step_6'), $nova_text_0000000005, ''), if(selected(pilot_fcap_step, 'step_7'), $nova_text_0000000006, '')), '\s+', ' ')_2.enum.knova_text_0000000006"/>
+            </variable>
+          </xpath>
+        </text>
+      </sort>
+    </field>
+    <field>
+      <header>
+        <text>
+          <locale id="m1.case_short.case_last_meeting_date_3.header"/>
+        </text>
+      </header>
+      <template>
+        <text>
+          <xpath function="if(last_meeting_date = '', '', format-date(date(last_meeting_date), '%d %b %Y'))"/>
+        </text>
+      </template>
+      <sort type="string" order="1" direction="ascending" blanks="">
+        <text>
+          <xpath function="last_meeting_date"/>
+        </text>
+      </sort>
+    </field>
+    <select_text>
+      <text>
+        <locale id="m1_select_text"/>
+      </text>
+    </select_text>
+  </detail>
+</suite>

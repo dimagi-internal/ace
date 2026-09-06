@@ -40,6 +40,15 @@
  * closed and the run that owns it, `spark-facilitator/20260820-0817`, is
  * mid-flight under another agent), so the recorded evidence in the issue is the
  * source. What is NOT claimed: that these bytes are that CCZ's bytes.
+ *
+ * `fcap-renamed-*` are VERBATIM (ace#1808) — sliced from released Deliver build
+ * `b08533bdf26a48a295a362ff204fb88d` (spark-facilitator/20260828-0703, HQ app
+ * `89881fa67ec74f21b95e37d41e39ba93`), re-downloaded in the session that fixed
+ * #1808 (`commcare_download_ccz` -> 200, 27,592 bytes). Note the huge
+ * `m1.case_short.case_replace(join(...))_2.enum.*` locale ids: those are real,
+ * CCHQ derives the key from the whole xpath, and they are kept unmodified
+ * precisely because a tidied fixture would not exercise `parseAppStrings`'s
+ * first-`=`-splits rule against what actually ships.
  */
 import { describe, it, expect } from 'vitest';
 import * as fs from 'node:fs';
@@ -51,6 +60,7 @@ import {
   parseAppStrings,
   extractCaseListEnums,
   extractFormChoiceLists,
+  extractCaseWriteMap,
   checkCczCaseListEnumFidelity,
   describeCczEnumFidelity,
 } from '../../lib/ccz-enum-fidelity.js';
@@ -277,8 +287,14 @@ describe('a blind check must not read as a pass', () => {
       forms: [{ path: 'modules-9/forms-0.xml', xml: '<h:html/>' }],
     });
     assertUnable(res);
-    expect(res.reason).toContain('no form select writes any of those properties');
+    // ace#1808: the reason states what was OBSERVED (pairing failed), not a
+    // conclusion about the app ("no form select writes any of those
+    // properties") that was never established — and was false on the build
+    // that surfaced it.
+    expect(res.reason).toContain('pairing failed on all 2');
+    expect(res.reason).toContain('NOT a pass');
     expect(res.reason).toContain('slept_under_bednet');
+    expect(res.reason).not.toContain('no form select writes any of those properties');
   });
 });
 
@@ -315,5 +331,146 @@ describe('the gate is WIRED, not just available', () => {
 
   it('treats `unable` as unevaluated, never as a pass', () => {
     expect(skill).toMatch(/`unable` is \*\*not\*\* a pass|unable.{0,40}not.{0,10}a pass/i);
+  });
+});
+
+/**
+ * ace#1808 — the gate silently did not RUN whenever the Nova question id
+ * differs from the case property it writes, which is the normal case.
+ *
+ * On released Deliver build `b08533bdf26a48a295a362ff204fb88d`
+ * (spark-facilitator/20260828-0703, HQ app 89881fa67ec74f21b95e37d41e39ba93)
+ * the enrolment form's question is `starting_fcap_step`, it writes
+ * `village.pilot_fcap_step`, and both case-list columns render
+ * `pilot_fcap_step`. Pairing on the question-id tail alone found nothing:
+ * `columnsCompared` stayed 0 and this `[BLOCKER]`-severity check reported
+ * `unable` on the exact app family it was written for.
+ *
+ * `unable` is correctly not a pass, so nothing shipped green — the failure is
+ * that a blind check reads as "not applicable here" rather than "I could not
+ * do my job."
+ *
+ * The three `fcap-renamed-*` fixtures are VERBATIM slices of that CCZ,
+ * re-downloaded this session (`commcare_download_ccz` -> 200, 27,592 bytes):
+ * `suite.xml`'s whole `m1_case_short` detail, the `app_strings.txt` lines its
+ * locale ids resolve to, and `modules-0/forms-0.xml`'s `<select1>` + its
+ * `<itext>` + the `/data/case/update/pilot_fcap_step` bind. Nothing is
+ * reconstructed.
+ */
+describe('the question id is not the case property (ace#1808)', () => {
+  const suiteXml = read('fcap-renamed-suite.xml');
+  const appStrings = read('fcap-renamed-app_strings.txt');
+  const formXml = read('fcap-renamed-form.xml');
+  const forms = [{ path: 'modules-0/forms-0.xml', xml: formXml }];
+
+  it('the fixture really does carry the rename — question id is NOT the case property', () => {
+    // If this ever stops holding, the rest of this block proves nothing.
+    expect(formXml).toContain('<select1 ref="/data/starting_step/starting_fcap_step">');
+    expect(formXml).toContain('nodeset="/data/case/update/pilot_fcap_step"');
+    expect(suiteXml).toContain("selected(pilot_fcap_step, 'step_1')");
+    expect(suiteXml).not.toContain('starting_fcap_step');
+  });
+
+  it('resolves the case property through the form case-update bind', () => {
+    expect(extractCaseWriteMap(formXml)).toEqual({
+      '/data/starting_step/starting_fcap_step': ['pilot_fcap_step'],
+    });
+    const [list] = extractFormChoiceLists(formXml, 'modules-0/forms-0.xml');
+    expect(list.property).toBe('starting_fcap_step'); // the QUESTION id
+    expect(list.caseProperties).toEqual(['pilot_fcap_step']); // the CASE property
+  });
+
+  it('THE GATE NOW RUNS: checked, not unable', () => {
+    const res = checkCczCaseListEnumFidelity({ suiteXml, appStrings, forms });
+    assertChecked(res);
+    expect(res.columnsCompared).toBe(1);
+    expect(res.valuesCompared).toBe(7);
+    expect(res.unpaired).toEqual([]);
+    // This build has zero drift — 7-for-7 identical, verified by hand in the
+    // issue. So the gate runs AND passes, which is the honest verdict.
+    expect(res.ok).toBe(true);
+  });
+
+  it('NEGATIVE CONTROL: a drifted label under the SAME rename still fails', () => {
+    // Change one tile label. The pairing must survive and the diff must bite —
+    // a gate that runs but cannot fail is the ace#1693/#1695/#1701 class.
+    const drifted = appStrings.replace(
+      '=Step 3: Understanding the Present - Situational Analysis',
+      '=Step 3: Situation Analysis',
+    );
+    expect(drifted).not.toBe(appStrings);
+    const res = checkCczCaseListEnumFidelity({ suiteXml, appStrings: drifted, forms });
+    assertChecked(res);
+    expect(res.ok).toBe(false);
+    expect(res.columnsCompared).toBe(1);
+    expect(res.findings).toHaveLength(1);
+    expect(res.findings[0].property).toBe('pilot_fcap_step');
+    expect(res.findings[0].value).toBe('step_3');
+    expect(describeCczEnumFidelity(res.findings)[0]).toMatch(/Situation Analysis/);
+  });
+
+  it('NEGATIVE CONTROL: a stored value the form cannot produce is still caught', () => {
+    // The tile still labels `step_1`; the form can only store `step_9`.
+    const res = checkCczCaseListEnumFidelity({
+      suiteXml,
+      appStrings,
+      forms: [
+        {
+          path: 'modules-0/forms-0.xml',
+          xml: formXml.replace('<value>step_1</value>', '<value>step_9</value>'),
+        },
+      ],
+    });
+    assertChecked(res);
+    expect(res.ok).toBe(false);
+    expect(res.findings.map((f) => f.kind)).toContain('missing-from-form');
+    expect(res.findings.find((f) => f.kind === 'missing-from-form')!.value).toBe('step_1');
+  });
+
+  it('the case-write mapping WINS over a coincidental question-id match', () => {
+    // Two selects: one whose question id happens to be `pilot_fcap_step` with
+    // the WRONG taxonomy, and the real one that writes the case property. The
+    // form's own declaration must decide, or the fix is a coin flip.
+    const decoy = `<?xml version='1.0'?>
+      <h:html xmlns:h="http://www.w3.org/1999/xhtml" xmlns="http://www.w3.org/2002/xforms" xmlns:jr="http://openrosa.org/javarosa">
+        <h:head><model><itext><translation lang="en" default="">
+          <text id="d0"><value>WRONG</value></text>
+        </translation></itext></model></h:head>
+        <h:body>
+          <select1 ref="/data/decoy/pilot_fcap_step">
+            <item><label ref="jr:itext('d0')"/><value>step_1</value></item>
+          </select1>
+        </h:body>
+      </h:html>`;
+    const res = checkCczCaseListEnumFidelity({
+      suiteXml,
+      appStrings,
+      // decoy FIRST, so a first-wins name map would pick it.
+      forms: [{ path: 'modules-9/forms-0.xml', xml: decoy }, ...forms],
+    });
+    assertChecked(res);
+    expect(res.ok).toBe(true);
+    expect(res.findings).toEqual([]);
+  });
+
+  it('an expression case-write is not mapped — a guess is worse than a fallback', () => {
+    const expr = formXml.replace(
+      'calculate="/data/starting_step/starting_fcap_step"',
+      'calculate="if(/data/a = 1, /data/starting_step/starting_fcap_step, /data/b)"',
+    );
+    expect(expr).not.toBe(formXml);
+    expect(extractCaseWriteMap(expr)).toEqual({});
+  });
+
+  it('the question-id fallback still works for a select with no case write', () => {
+    // bednet: `/data/slept_under_bednet` writes `slept_under_bednet`, and its
+    // form fixture carries no case block at all.
+    const res = checkCczCaseListEnumFidelity({
+      suiteXml: read('bednet-suite.xml'),
+      appStrings: read('bednet-app_strings.txt'),
+      forms: [{ path: 'modules-0/forms-0.xml', xml: read('bednet-form.xml') }],
+    });
+    assertChecked(res);
+    expect(res.columnsCompared).toBeGreaterThan(0);
   });
 });
