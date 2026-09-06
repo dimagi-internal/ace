@@ -447,7 +447,7 @@ its *content*:
 
 | Program field | Scope | Why |
 |---|---|---|
-| UUID (`id`), `organization_slug`, `delivery_type`, `currency`, `country`, `name` | **Durable per-opp** — never touched on reuse | Identity + reuse-lookup key; `connect_update_program` does not even accept delivery_type/currency/country |
+| UUID (`id`), `organization_slug`, `delivery_type`, `currency`, `country`, `name` | **Durable per-opp** — never touched on reuse | Identity; `connect_update_program` does not even accept delivery_type/currency/country. **`name` is NOT the reuse-lookup key** — connect-program-setup § Step 2 scans with no `name` filter and matches on delivery type + archetype (ace#1252). It is durable because renaming a live LLO-facing program is an operator's call, and it is NOT authoritative for the archetype: `reconcileProgramWithPdd` reports a name whose archetype token contradicts the PDD and never renames it (ace#1966) |
 | `description`, `budget`, `start_date`, `end_date` | **Refreshed per-run** — re-derived from the current run's PDD | Authored from the *creating* run's PDD; a later run's PDD can contradict the live, LLO-facing text (e.g. an enforced GPS gate the current PDD forbids). `connect-program-setup` § Step 3a reconciles via `lib/program-reconcile.ts` and updates (or `[WARN]`s per diverging field). Budget is a ceiling: Step 4a headroom keeps it *above* the PDD figure by design, so only live < PDD counts as divergence |
 
 **Per-run — under `ACE/<opp>/runs/<run-id>/`; copy or re-derive when

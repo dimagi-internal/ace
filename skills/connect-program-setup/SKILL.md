@@ -108,20 +108,41 @@ alone makes the artifact land outside `4-connect` and fail
       exactly: description/dates compare whitespace-normalized; budget
       diverges only when the live ceiling is *below* the PDD budget,
       since Step 4a deliberately raises it above for headroom).
-   3. If `inSync`: note "program content verified against this run's
-      PDD" in the program notes and continue.
-   4. If diverging AND updating is safe (the normal case at Phase 4 —
+      **Pass the live `name` and the PDD's `archetype`** — they cost
+      nothing and they are what powers step 3 below.
+   3. **Emit every line in `warnings[]` verbatim into the program notes
+      and the run summary — UNCONDITIONALLY, before branching on
+      anything (ace#1966).** `inSync` is about the four REFRESHABLE
+      fields only, so a program whose content this run has just brought
+      fully up to date reports `inSync: true` and can still carry a
+      `warnings[]` entry: `nameArchetype` fires when the durable NAME
+      asserts an archetype the PDD does not declare. Gating the emit on
+      `inSync` (or on the "unsafe to update" branch) drops exactly that
+      case, which is how `Bednet Check Multi-Stage Study — 2026` kept
+      advertising `multi-stage` on an LLO-facing surface while its own
+      refreshed description said "deliberately NOT multi-stage".
+      **Do not rename the program to resolve it.** The reconciler never
+      puts `name` in `updateArgs`, and it is right not to:
+      `connect_update_program` accepts `name`, so ACE *can* rename, but a
+      live LLO-facing program name is an operator's call. Surface it and
+      move on — nothing downstream reads an archetype off a name (Step 2
+      matches on delivery type + archetype, never the name), so a stale
+      token is a stale label, not a wrong input.
+   4. If `inSync`: note "program content verified against this run's
+      PDD" in the program notes and continue (having already done 3).
+   5. If diverging AND updating is safe (the normal case at Phase 4 —
       this run has not published a solicitation yet): apply the
       helper's `updateArgs` via `connect_update_program({
       organization_slug, program_id, ...updateArgs })` (it accepts
       exactly `name/description/budget/start_date/end_date`; never
-      send delivery_type/currency/country — durable). Log each
-      refreshed field (old → new) in the program notes.
-   5. If updating is unsafe (a live solicitation or external artifact
+      send delivery_type/currency/country — durable, and `updateArgs`
+      never contains `name`). Log each refreshed field (old → new) in
+      the program notes.
+   6. If updating is unsafe (a live solicitation or external artifact
       already references the current text, or review mode withheld
-      approval): emit the helper's `[WARN]` lines verbatim into the
-      program notes and the run summary — one per diverging field —
-      so the divergence lands somewhere visible instead of nowhere.
+      approval): the `[WARN]` lines from step 3 are the record — one per
+      diverging field, plus the name check — so the divergence lands
+      somewhere visible instead of nowhere.
 
 4. **Create the program** via `connect_create_program`:
    - `organization_slug`: `ai-demo-space` (or whichever PM-side org the
@@ -401,9 +422,10 @@ downstream coherence:
   Description names each stage's protocol.
 
 **A name outlives the run that chose it.** `name` is a DURABLE field
-(`lib/program-reconcile.ts` § `DURABLE_PROGRAM_FIELDS`) because it is the
-cross-run reuse-lookup key, so Step 3a refreshes `description` / `budget` /
-dates against a later run's PDD but **never the name**. An archetype token
+(`lib/program-reconcile.ts` § `DURABLE_PROGRAM_FIELDS`) — not because it is a
+lookup key (Step 2 explicitly is not one), but because renaming a live,
+LLO-facing program is an operator's call. So Step 3a refreshes `description` /
+`budget` / dates against a later run's PDD but **never the name**. An archetype token
 baked into a name is therefore permanent: when a later run's PDD declares a
 different archetype, the description gets corrected and the name does not.
 Live case — program `efb8af66-…` reads `Bednet Check Multi-Stage Study —
@@ -414,15 +436,22 @@ multi-stage" (ace#1966). Two consequences to work with, not around:
    sibling archetype is the tell). `"<Domain> Follow-Up Study"` survives a
    later reclassification; `"<Domain> Multi-Stage Study"` does not.
 2. **On reuse, if the live name's archetype token contradicts this run's
-   PDD archetype, say so** — one `[WARN]` line in the program notes and the
-   run summary, alongside Step 3a's own warnings. Do not rename the program
-   to fix it: the name is the reuse-lookup key and a silent rename has
-   cross-run consequences. Surface it and let an operator decide.
+   PDD archetype, say so.** This is no longer yours to remember: pass the
+   live `name` and the PDD `archetype` to `reconcileProgramWithPdd` and it
+   returns the `[WARN]` line in `warnings[]` (`nameArchetype`), which Step
+   3a.3 emits unconditionally. Do not rename the program to fix it — surface
+   it and let an operator decide. **And note the reason is NOT "the name is
+   the reuse-lookup key"**, which this file itself refutes at Step 2 (no
+   `name` filter; match on delivery type + archetype; ace#1252). A rename
+   would break no lookup. It is withheld because a live LLO-facing program
+   name is an operator's decision, and because nothing needs it to be
+   correct: the name is not authoritative for the archetype, the PDD is.
 
 ## Change Log
 
 | Date | Change | Author |
 |------|--------|--------|
+| 2026-09-06 | **The name is made NON-AUTHORITATIVE in code, not in prose (ace#1966, cause #2).** `reconcileProgramWithPdd` now takes the live `name` and the PDD `archetype` and returns `nameArchetype`, a `CheckOutcome` (`lib/check-outcome.ts`): a name whose archetype token contradicts this run's PDD produces a `[WARN]` in `warnings[]`, and a caller that passes neither gets a loud `UNABLE TO CHECK` rather than silence. Step 3a now emits `warnings[]` **unconditionally**, before branching — `inSync` covers only the four refreshable fields, so the live case (`Bednet Check Multi-Stage Study — 2026`, content fully refreshed, `inSync: true`) was dropped by every branch that existed. `name` still never enters `updateArgs`: the reconciler reports, it does not rename. Also corrects the module's own false rationale — `name` was documented as durable "because it is the cross-run reuse-lookup key", which Step 2 has contradicted since ace#1252 (no `name` filter; match on delivery type + archetype). | ACE team |
 | 2026-09-05 | **§ Archetypes: add the missing `longitudinal-visits` row, and state that a name outlives the run that chose it (ace#1966).** The section covered `atomic-visit` / `focus-group` / `multi-stage` only — `grep -n "longitudinal" ` on this file returned zero hits — even though `connect-opp-setup` § Archetypes has covered `longitudinal-visits` for some time, so an archetype ACE fully supports at the opportunity layer was named by improvisation at the program layer. Compounding it, `name` is in `DURABLE_PROGRAM_FIELDS`, so Step 3a can refresh a program's description against a later PDD but never its name: `bednet-check-2-visit` reuses a program called `Bednet Check Multi-Stage Study — 2026` whose own ACE-refreshed description now says "deliberately NOT multi-stage", and the mislabel undermines Step 2's archetype-matched reuse scan. Guidance is to prefer archetype-neutral names when the archetype is contested and to `[WARN]` on a contradiction rather than autonomously rename a durable reuse key. The `lib/program-reconcile.ts` half stays open on ace#1966. | ACE team |
 | 2026-08-26 | **Step 4a can tell an ABSENT field from an UNREAD one, and the Σ-unknown raise is idempotent (ace#1637 — same class as #1550/#1590, third mechanism).** `connect_get_opportunity` now returns `dashboard_read` (`ok` / `no_cards` / `not_a_dashboard` / `not_fetched`, from `classifyDashboardRead` in `mcp/connect/backends/html-scrape.ts`). `total_budget` / `program_name` / `start_date` come only off the opportunity dashboard and each degrades to `undefined` when its card is absent, so "in no program" and "could not read the page" were the same bytes; 16 of 81 hydrated `ai-demo-space` rows on `bednet-check-2-visit/20260825-1310` were the second kind, two of them prior runs of the program being sized. A row with `dashboard_read: 'ok'` and no `program_name` is now EXCLUDED rather than making Σ unknown; only a genuinely unread row does. And the Σ-unknown branch no longer raises relative to the current ceiling — `program.budget + EXPECTED_OPP_BUDGET × 10` is not idempotent, so it compounded every run and took that program from 19,400 to 64,400 against a known consumption of 4,062. It now computes `knownΣ + unreadable_rows × EXPECTED_OPP_BUDGET + EXPECTED_OPP_BUDGET × 3` and raises only if the ceiling is below it. The relative raise survives only where no bound is computable (`listing.complete !== true`). Upstream residual left open and stated: why those 16 rows render no cards is still unknown — `active` is correlated but not causal. *Enforced:* `test/mcp/connect/unit/dashboard-read-honesty.test.ts`. | ACE team |
 | 2026-04-28 | Replace HITL workaround with `connect_*_program` atoms (ace-connect 0.8.1) | ACE team |
