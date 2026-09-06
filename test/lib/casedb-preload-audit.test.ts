@@ -130,3 +130,82 @@ describe('formatPreloadAudit', () => {
     expect(out).toContain('drop the case binding');
   });
 });
+
+/**
+ * ── Attribute order (dimagi-internal/ace#1809) ──────────────────────────────
+ *
+ * Every fixture above is `ref`-first, so nothing above can see the gate's real
+ * rule. It was `<setvalue ref="…" value="…" event="…">` IN THAT ORDER — which
+ * produced the right number on the reported case while carrying a rule that
+ * silently drops any node serialized differently. On a `[BLOCKER]` gate a
+ * missed node is not a missed finding, it is a PASS.
+ *
+ * The event-first ordering is observed, not imagined: `HH_VISIT` below is the
+ * released Deliver CCZ of hh-poverty-targeting (HQ app
+ * ce668763ad6c4b48ac5f4cd4502f3f8c, project space connect-ace-prod, pulled
+ * 2026-09-06) and Nova wrote two of its eleven setvalues event-first.
+ */
+const HH_VISIT = readFileSync(join(FIXTURES, 'hh-poverty-targeting-visit.xml'), 'utf8');
+
+/** A visible question plus one preload, with the setvalue attributes ordered as given. */
+const formWith = (setvalue: string) =>
+  [
+    '<h:html><h:head><model><instance><data>',
+    '  <hh_size/>',
+    '</data></instance>',
+    setvalue,
+    '</model></h:head>',
+    '<h:body><input ref="/data/hh_size"><label>Household size</label></input></h:body>',
+    '</h:html>',
+  ].join('\n');
+
+const CASEDB =
+  "instance('casedb')/casedb/case[@case_id=instance('commcaresession')/session/data/case_id]/hh_size";
+
+describe('a preload is found whatever order its attributes are written in', () => {
+  // Nova's own ordering, taken verbatim from the live hh-poverty-targeting CCZ.
+  it('event-first — the ordering Nova actually emits', () => {
+    const xml = formWith('<setvalue event="xforms-ready" ref="/data/hh_size" value="' + CASEDB + '"/>');
+    expect(auditCasedbPreloads(xml).violations.map((v) => v.ref)).toEqual(['/data/hh_size']);
+  });
+
+  it('ref-first — HQ’s ordering, the one the first cut pinned', () => {
+    const xml = formWith('<setvalue ref="/data/hh_size" value="' + CASEDB + '" event="xforms-ready"/>');
+    expect(auditCasedbPreloads(xml).violations.map((v) => v.ref)).toEqual(['/data/hh_size']);
+  });
+
+  it('value-first', () => {
+    const xml = formWith('<setvalue value="' + CASEDB + '" ref="/data/hh_size" event="xforms-ready"/>');
+    expect(auditCasedbPreloads(xml).violations.map((v) => v.ref)).toEqual(['/data/hh_size']);
+  });
+
+  it('with no event at all — a casedb read into a question is the defect regardless', () => {
+    const xml = formWith('<setvalue ref="/data/hh_size" value="' + CASEDB + '"/>');
+    expect(auditCasedbPreloads(xml).violations.map((v) => v.ref)).toEqual(['/data/hh_size']);
+  });
+
+  it('and still ignores a non-casedb setvalue in any of those orders', () => {
+    for (const sv of [
+      '<setvalue event="xforms-ready" ref="/data/hh_size" value="today()"/>',
+      '<setvalue ref="/data/hh_size" value="today()" event="xforms-ready"/>',
+    ]) {
+      expect(auditCasedbPreloads(formWith(sv)).violations).toHaveLength(0);
+    }
+  });
+});
+
+describe('the live hh-poverty-targeting visit form — a second real app', () => {
+  it('really does carry event-first setvalues, which is why this matters', () => {
+    expect((HH_VISIT.match(/<setvalue\s+event=/g) ?? []).length).toBeGreaterThan(0);
+  });
+
+  it('passes the audit — it opens the case, so there is nothing to read back', () => {
+    const result = auditCasedbPreloads(HH_VISIT);
+    expect(result.preloads).toHaveLength(0);
+    expect(result.violations).toHaveLength(0);
+  });
+
+  it('still asks plenty of questions, so the pass is discrimination', () => {
+    expect(auditCasedbPreloads(HH_VISIT).visibleInputCount).toBeGreaterThan(15);
+  });
+});

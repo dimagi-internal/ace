@@ -1,0 +1,736 @@
+<h:html xmlns:h="http://www.w3.org/1999/xhtml" xmlns:orx="http://openrosa.org/jr/xforms" xmlns="http://www.w3.org/2002/xforms" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:jr="http://openrosa.org/javarosa" xmlns:vellum="http://commcarehq.org/xforms/vellum">
+  <h:head>
+    <h:title>Household Poverty Targeting Visit</h:title>
+    <model>
+      <instance>
+        <data xmlns="http://openrosa.org/formdesigner/360deabd2bfcbd8c" xmlns:jrm="http://dev.commcarehq.org/jr/xforms" uiVersion="1" version="3" name="household_poverty_targeting_visit">
+          <arrival>
+            <area_code/>
+            <gps/>
+            <gps_advisory_good/>
+            <gps_advisory_marginal/>
+            <gps_advisory_poor/>
+            <zone/>
+          </arrival>
+          <door>
+            <occupied/>
+          </door>
+          <respondent>
+            <eligible_respondent/>
+          </respondent>
+          <consent_screen>
+            <consent_script/>
+            <consent/>
+          </consent_screen>
+          <identity>
+            <respondent_name/>
+            <household_head_name/>
+            <phone/>
+          </identity>
+          <photo_screen>
+            <dwelling_photo/>
+          </photo_screen>
+          <gps_accuracy_m/>
+          <lat/>
+          <lon/>
+          <visit_started_at/>
+          <visit_ended_at/>
+          <visit_outcome/>
+          <visit_date/>
+          <entity_label/>
+          <roster_intro/>
+          <roster jr:template="">
+            <member_name/>
+            <is_member/>
+          </roster>
+          <roster_gate/>
+          <consumption>
+            <bread/>
+            <eggs/>
+            <milk/>
+            <sachet_water/>
+          </consumption>
+          <electricity_screen>
+            <electricity/>
+          </electricity_screen>
+          <assets>
+            <sofa/>
+            <fan/>
+            <iron/>
+          </assets>
+          <member_count/>
+          <hh_size_band/>
+          <zone_points/>
+          <size_points/>
+          <bread_points/>
+          <eggs_points/>
+          <milk_points/>
+          <water_points/>
+          <electricity_points/>
+          <sofa_points/>
+          <fan_points/>
+          <iron_points/>
+          <ppi_score/>
+          <ppi_score_clamped/>
+          <poverty_likelihood/>
+          <hh_head_key/>
+          <entity_key/>
+          <hh_ppi_visit>
+            <deliver xmlns="http://commcareconnect.com/data/v1/learn" id="hh_ppi_visit">
+              <name>Household poverty targeting visit</name>
+              <entity_id/>
+              <entity_name/>
+            </deliver>
+          </hh_ppi_visit>
+          <case xmlns="http://commcarehq.org/case/transaction/v2" case_id="" date_modified="" user_id="">
+            <create>
+              <case_name/>
+              <owner_id/>
+              <case_type>household_visit</case_type>
+            </create>
+            <update>
+              <area_code/>
+              <gps/>
+              <gps_accuracy_m/>
+              <household_head_name/>
+              <poverty_likelihood/>
+              <ppi_score_clamped/>
+              <visit_date/>
+              <visit_outcome/>
+            </update>
+          </case>
+          <orx:meta xmlns:cc="http://commcarehq.org/xforms">
+            <orx:deviceID/>
+            <orx:timeStart/>
+            <orx:timeEnd/>
+            <orx:username/>
+            <orx:userID/>
+            <orx:instanceID/>
+            <cc:appVersion/>
+            <orx:drift/>
+            <cc:location/>
+          </orx:meta>
+        </data>
+      </instance>
+      <instance src="jr://instance/casedb" id="casedb"/>
+      <instance src="jr://instance/session" id="commcaresession"/>
+      <bind nodeset="/data/arrival/area_code" type="xsd:string" required="true()" constraint="string-length(.) &lt;= 20" jr:constraintMsg="jr:itext('arrival-area_code-constraintMsg')"/>
+      <bind nodeset="/data/arrival/gps" type="geopoint" required="true()"/>
+      <bind nodeset="/data/arrival/gps_advisory_good" relevant="/data/gps_accuracy_m &gt;= 0 and /data/gps_accuracy_m &lt;= 15"/>
+      <bind nodeset="/data/arrival/gps_advisory_marginal" relevant="/data/gps_accuracy_m &gt; 15 and /data/gps_accuracy_m &lt;= 50"/>
+      <bind nodeset="/data/arrival/gps_advisory_poor" relevant="/data/gps_accuracy_m &gt; 50"/>
+      <bind nodeset="/data/arrival/zone" type="xsd:string" required="true()"/>
+      <bind nodeset="/data/door/occupied" type="xsd:string" required="true()"/>
+      <bind nodeset="/data/respondent" relevant="/data/door/occupied = 'yes'"/>
+      <bind nodeset="/data/respondent/eligible_respondent" type="xsd:string" required="true()"/>
+      <bind nodeset="/data/consent_screen" relevant="/data/respondent/eligible_respondent = 'yes'"/>
+      <bind nodeset="/data/consent_screen/consent_script"/>
+      <bind nodeset="/data/consent_screen/consent" type="xsd:string" required="true()"/>
+      <bind nodeset="/data/identity" relevant="/data/consent_screen/consent = 'yes'"/>
+      <bind nodeset="/data/identity/respondent_name" type="xsd:string" required="true()" constraint="string-length(.) &lt;= 100" jr:constraintMsg="jr:itext('identity-household_head_name-constraintMsg')"/>
+      <bind nodeset="/data/identity/household_head_name" type="xsd:string" required="true()" constraint="string-length(.) &lt;= 100" jr:constraintMsg="jr:itext('identity-household_head_name-constraintMsg')"/>
+      <bind nodeset="/data/identity/phone" type="xsd:string" constraint="regex(., '^[0-9]{10,13}$')" jr:constraintMsg="jr:itext('identity-phone-constraintMsg')"/>
+      <bind nodeset="/data/photo_screen" relevant="/data/consent_screen/consent = 'yes'"/>
+      <bind nodeset="/data/photo_screen/dwelling_photo" type="binary" required="true()"/>
+      <bind nodeset="/data/gps_accuracy_m" type="xsd:string" calculate="if(/data/arrival/gps = '', -1, number(selected-at(/data/arrival/gps, 3)))"/>
+      <bind nodeset="/data/lat" type="xsd:string" calculate="if(/data/arrival/gps = '', '', selected-at(/data/arrival/gps, 0))"/>
+      <bind nodeset="/data/lon" type="xsd:string" calculate="if(/data/arrival/gps = '', '', selected-at(/data/arrival/gps, 1))"/>
+      <bind nodeset="/data/visit_started_at" type="xsd:string"/>
+      <bind nodeset="/data/visit_ended_at" type="xsd:string" calculate="now()"/>
+      <bind nodeset="/data/visit_outcome" type="xsd:string" calculate="if(/data/door/occupied = 'no', 'vacant', if(/data/respondent/eligible_respondent = 'no', 'no_eligible_respondent', if(/data/consent_screen/consent = 'no', 'refused', 'completed')))"/>
+      <bind nodeset="/data/visit_date" type="xsd:string"/>
+      <bind nodeset="/data/entity_label" type="xsd:string" calculate="if(/data/visit_outcome = 'completed', concat('Household of ', /data/identity/household_head_name), concat('Visit outcome: ', /data/visit_outcome))" required="true()"/>
+      <bind nodeset="/data/roster_intro" relevant="/data/consent_screen/consent = 'yes'"/>
+      <bind nodeset="/data/roster" relevant="/data/consent_screen/consent = 'yes'"/>
+      <bind nodeset="/data/roster/member_name" type="xsd:string" required="true()" constraint="string-length(.) &lt;= 100" jr:constraintMsg="jr:itext('identity-household_head_name-constraintMsg')"/>
+      <bind nodeset="/data/roster/is_member" type="xsd:string" required="true()" constraint="count(/data/roster/member_name) &lt;= 30" jr:constraintMsg="jr:itext('roster-is_member-constraintMsg')"/>
+      <bind nodeset="/data/roster_gate" type="xsd:string" required="true()" constraint="count(/data/roster/is_member[. = 'yes']) &gt;= 1" jr:constraintMsg="jr:itext('roster_gate-constraintMsg')" relevant="/data/consent_screen/consent = 'yes'"/>
+      <bind nodeset="/data/consumption" relevant="/data/consent_screen/consent = 'yes'"/>
+      <bind nodeset="/data/consumption/bread" type="xsd:string" required="true()"/>
+      <bind nodeset="/data/consumption/eggs" type="xsd:string" required="true()"/>
+      <bind nodeset="/data/consumption/milk" type="xsd:string" required="true()"/>
+      <bind nodeset="/data/consumption/sachet_water" type="xsd:string" required="true()"/>
+      <bind nodeset="/data/electricity_screen" relevant="/data/consent_screen/consent = 'yes'"/>
+      <bind nodeset="/data/electricity_screen/electricity" type="xsd:string" required="true()"/>
+      <bind nodeset="/data/assets" relevant="/data/consent_screen/consent = 'yes'"/>
+      <bind nodeset="/data/assets/sofa" type="xsd:string" required="true()"/>
+      <bind nodeset="/data/assets/fan" type="xsd:string" required="true()"/>
+      <bind nodeset="/data/assets/iron" type="xsd:string" required="true()"/>
+      <bind nodeset="/data/member_count" type="xsd:string" calculate="count(/data/roster/is_member[. = 'yes'])"/>
+      <bind nodeset="/data/hh_size_band" type="xsd:string" calculate="if(/data/member_count &lt;= 3, 'le3', if(/data/member_count &lt;= 6, 'r4to6', 'gt6'))"/>
+      <bind nodeset="/data/zone_points" type="xsd:string" calculate="if(/data/arrival/zone = 'north_central', 10, if(/data/arrival/zone = 'north_east', 0, if(/data/arrival/zone = 'north_west', 2, if(/data/arrival/zone = 'south_east', 0, if(/data/arrival/zone = 'south_south', 10, if(/data/arrival/zone = 'south_west', 16, 0))))))"/>
+      <bind nodeset="/data/size_points" type="xsd:string" calculate="if(/data/hh_size_band = 'le3', 31, if(/data/hh_size_band = 'r4to6', 10, 0))"/>
+      <bind nodeset="/data/bread_points" type="xsd:string" calculate="if(/data/consumption/bread = 'yes', 9, 0)"/>
+      <bind nodeset="/data/eggs_points" type="xsd:string" calculate="if(/data/consumption/eggs = 'yes', 10, 0)"/>
+      <bind nodeset="/data/milk_points" type="xsd:string" calculate="if(/data/consumption/milk = 'yes', 6, 0)"/>
+      <bind nodeset="/data/water_points" type="xsd:string" calculate="if(/data/consumption/sachet_water = 'yes', 6, 0)"/>
+      <bind nodeset="/data/electricity_points" type="xsd:string" calculate="if(/data/electricity_screen/electricity = 'yes', 5, 0)"/>
+      <bind nodeset="/data/sofa_points" type="xsd:string" calculate="if(/data/assets/sofa = 'yes', 8, 0)"/>
+      <bind nodeset="/data/fan_points" type="xsd:string" calculate="if(/data/assets/fan = 'yes', 5, 0)"/>
+      <bind nodeset="/data/iron_points" type="xsd:string" calculate="if(/data/assets/iron = 'yes', 6, 0)"/>
+      <bind nodeset="/data/ppi_score" type="xsd:string" calculate="if(/data/visit_outcome = 'completed', /data/zone_points + /data/size_points + /data/bread_points + /data/eggs_points + /data/milk_points + /data/water_points + /data/electricity_points + /data/sofa_points + /data/fan_points + /data/iron_points, '')"/>
+      <bind nodeset="/data/ppi_score_clamped" type="xsd:string" calculate="if(/data/ppi_score = '', '', min(/data/ppi_score, 100))"/>
+      <bind nodeset="/data/poverty_likelihood" type="xsd:string" calculate="if(/data/ppi_score_clamped = '', '', number(selected-at('93.3 92.7 92.1 91.4 90.6 89.8 88.9 88.0 87.0 85.9 84.8 83.6 82.3 80.9 79.5 78.0 76.3 74.7 72.9 71.0 69.1 67.2 65.1 63.0 60.9 58.7 56.4 54.2 51.9 49.6 47.3 45.1 42.8 40.6 38.4 36.3 34.2 32.2 30.2 28.3 26.5 24.8 23.1 21.5 20.0 18.6 17.3 16.0 14.8 13.7 12.6 11.7 10.8 9.9 9.1 8.4 7.7 7.1 6.5 6.0 5.5 5.0 4.6 4.2 3.9 3.6 3.3 3.0 2.7 2.5 2.3 2.1 1.9 1.7 1.6 1.5 1.3 1.2 1.1 1.0 0.9 0.8 0.8 0.7 0.6 0.6 0.5 0.5 0.4 0.4 0.4 0.3 0.3 0.3 0.3 0.2 0.2 0.2 0.2 0.2 0.2', /data/ppi_score_clamped)))"/>
+      <bind nodeset="/data/hh_head_key" type="xsd:string" calculate="if(/data/identity/household_head_name = '', '', translate(replace(replace(/data/identity/household_head_name, '[ \t\r\n]+', ' '), '^ | $', ''), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ ', 'abcdefghijklmnopqrstuvwxyz-'))"/>
+      <bind nodeset="/data/entity_key" type="xsd:string" calculate="concat(instance('casedb')/casedb/case[@case_type='commcare-user'][hq_user_id=instance('commcaresession')/session/context/userid]/username, ' | ', /data/visit_outcome, ' | ', if(/data/visit_outcome = 'completed', /data/hh_head_key, /data/visit_started_at))"/>
+      <bind nodeset="/data/hh_ppi_visit"/>
+      <bind nodeset="/data/hh_ppi_visit/deliver/entity_id" calculate="/data/entity_key"/>
+      <bind nodeset="/data/hh_ppi_visit/deliver/entity_name" calculate="/data/entity_label"/>
+      <setvalue event="xforms-ready" ref="/data/visit_started_at" value="now()"/>
+      <setvalue event="xforms-ready" ref="/data/visit_date" value="today()"/>
+      <itext>
+        <translation lang="en" default="">
+          <text id="arrival-label">
+            <value>Arrival</value>
+            <value form="markdown">Arrival</value>
+          </text>
+          <text id="arrival-area_code-label">
+            <value>Which settlement area are you working in?</value>
+            <value form="markdown">Which settlement area are you working in?</value>
+          </text>
+          <text id="arrival-area_code-hint">
+            <value>Your assigned area code, as given to you by your supervisor.</value>
+            <value form="markdown">Your assigned area code, as given to you by your supervisor.</value>
+          </text>
+          <text id="arrival-area_code-constraintMsg">
+            <value>Use 20 characters or fewer.</value>
+            <value form="markdown">Use 20 characters or fewer.</value>
+          </text>
+          <text id="arrival-gps-label">
+            <value>Capture the location of this dwelling.</value>
+            <value form="markdown">Capture the location of this dwelling.</value>
+          </text>
+          <text id="arrival-gps-hint">
+            <value>Capture GPS at the door. Target accuracy 50 m or better — move to open sky and re-capture if the reading is worse.</value>
+            <value form="markdown">Capture GPS at the door. Target accuracy 50 m or better — move to open sky and re-capture if the reading is worse.</value>
+          </text>
+          <text id="arrival-gps_advisory_good-label">
+            <value>**Location reading is good.** The accuracy is 15 m or better. Carry on.</value>
+            <value form="markdown">**Location reading is good.** The accuracy is 15 m or better. Carry on.</value>
+          </text>
+          <text id="arrival-gps_advisory_marginal-label">
+            <value>**Location reading is usable.** The accuracy is between 15 m and 50 m. If you can, step into open sky and capture the location again.</value>
+            <value form="markdown">**Location reading is usable.** The accuracy is between 15 m and 50 m. If you can, step into open sky and capture the location again.</value>
+          </text>
+          <text id="arrival-gps_advisory_poor-label">
+            <value>**Location reading is imprecise.** The accuracy is worse than 50 m. Step into open sky and capture the location again if you can. You may continue and submit this visit either way.</value>
+            <value form="markdown">**Location reading is imprecise.** The accuracy is worse than 50 m. Step into open sky and capture the location again if you can. You may continue and submit this visit either way.</value>
+          </text>
+          <text id="arrival-zone-label">
+            <value>In which zone does the household live?</value>
+            <value form="markdown">In which zone does the household live?</value>
+          </text>
+          <text id="arrival-zone-help">
+            <value>Answer this yourself from where the household is. Do not ask the respondent.</value>
+            <value form="markdown">Answer this yourself from where the household is. Do not ask the respondent.</value>
+          </text>
+          <text id="arrival-zone-opt0-label">
+            <value>North Central</value>
+            <value form="markdown">North Central</value>
+          </text>
+          <text id="arrival-zone-opt1-label">
+            <value>North East</value>
+            <value form="markdown">North East</value>
+          </text>
+          <text id="arrival-zone-opt2-label">
+            <value>North West</value>
+            <value form="markdown">North West</value>
+          </text>
+          <text id="arrival-zone-opt3-label">
+            <value>South East</value>
+            <value form="markdown">South East</value>
+          </text>
+          <text id="arrival-zone-opt4-label">
+            <value>South South</value>
+            <value form="markdown">South South</value>
+          </text>
+          <text id="arrival-zone-opt5-label">
+            <value>South West</value>
+            <value form="markdown">South West</value>
+          </text>
+          <text id="door-label">
+            <value>At the door</value>
+            <value form="markdown">At the door</value>
+          </text>
+          <text id="door-occupied-label">
+            <value>Is this dwelling currently occupied?</value>
+            <value form="markdown">Is this dwelling currently occupied?</value>
+          </text>
+          <text id="respondent-label">
+            <value>Respondent</value>
+            <value form="markdown">Respondent</value>
+          </text>
+          <text id="respondent-eligible_respondent-label">
+            <value>Is the household head, or another adult member aged 18 or over who can answer for the household, available now?</value>
+            <value form="markdown">Is the household head, or another adult member aged 18 or over who can answer for the household, available now?</value>
+          </text>
+          <text id="consent_screen-label">
+            <value>Consent</value>
+            <value form="markdown">Consent</value>
+          </text>
+          <text id="consent_screen-consent_script-label">
+            <value>**Read this out loud to the household.**
+
+Good morning. My name is (say your own name) and I am working with Dimagi on a survey to understand the circumstances of households in this area.
+
+I would like to ask you some short questions about your household — who lives here, what the household has eaten in the last week, and some things the household may own. I will also take a photograph of the outside of your dwelling. It takes about ten minutes.
+
+Taking part is your choice. You may say no, and nothing will happen to you if you do.
+
+If you agree, you can still stop at any point, and you can skip any question you do not want to answer.
+
+Your answers are confidential. I will not show them to your neighbours or to any other household. Your name is stored only so that this household can be told apart from others, and it is not attached to any published report about the results.
+
+Your answers do not stay with me. They go to Dimagi and to the organisation running the graduation programme, and they will use them to decide which areas and which households the programme works with. A small sample of visits is also reviewed by a supervisor, who may see this household's answers.
+
+One thing I must be clear about: taking part does not mean you will be selected for the programme. That decision is made later, by other people, and most households I speak to will not be enrolled. I cannot promise you anything today, and if you say no you lose nothing you would otherwise have had.
+
+Do you agree to take part?</value>
+            <value form="markdown">**Read this out loud to the household.**
+
+Good morning. My name is (say your own name) and I am working with Dimagi on a survey to understand the circumstances of households in this area.
+
+I would like to ask you some short questions about your household — who lives here, what the household has eaten in the last week, and some things the household may own. I will also take a photograph of the outside of your dwelling. It takes about ten minutes.
+
+Taking part is your choice. You may say no, and nothing will happen to you if you do.
+
+If you agree, you can still stop at any point, and you can skip any question you do not want to answer.
+
+Your answers are confidential. I will not show them to your neighbours or to any other household. Your name is stored only so that this household can be told apart from others, and it is not attached to any published report about the results.
+
+Your answers do not stay with me. They go to Dimagi and to the organisation running the graduation programme, and they will use them to decide which areas and which households the programme works with. A small sample of visits is also reviewed by a supervisor, who may see this household's answers.
+
+One thing I must be clear about: taking part does not mean you will be selected for the programme. That decision is made later, by other people, and most households I speak to will not be enrolled. I cannot promise you anything today, and if you say no you lose nothing you would otherwise have had.
+
+Do you agree to take part?</value>
+          </text>
+          <text id="consent_screen-consent-label">
+            <value>Does this household agree to take part?</value>
+            <value form="markdown">Does this household agree to take part?</value>
+          </text>
+          <text id="identity-label">
+            <value>Who you are speaking to</value>
+            <value form="markdown">Who you are speaking to</value>
+          </text>
+          <text id="identity-respondent_name-label">
+            <value>Respondent's full name</value>
+            <value form="markdown">Respondent's full name</value>
+          </text>
+          <text id="identity-household_head_name-label">
+            <value>Household head's full name</value>
+            <value form="markdown">Household head's full name</value>
+          </text>
+          <text id="identity-household_head_name-constraintMsg">
+            <value>Use 100 characters or fewer.</value>
+            <value form="markdown">Use 100 characters or fewer.</value>
+          </text>
+          <text id="identity-phone-label">
+            <value>Respondent's phone number (optional)</value>
+            <value form="markdown">Respondent's phone number (optional)</value>
+          </text>
+          <text id="identity-phone-constraintMsg">
+            <value>Enter 10 to 13 digits, or leave this blank.</value>
+            <value form="markdown">Enter 10 to 13 digits, or leave this blank.</value>
+          </text>
+          <text id="photo_screen-label">
+            <value>Dwelling photo</value>
+            <value form="markdown">Dwelling photo</value>
+          </text>
+          <text id="photo_screen-dwelling_photo-label">
+            <value>Take a photograph of the outside of the dwelling.
+
+Photograph the dwelling exterior only. Do not photograph people.</value>
+            <value form="markdown">Take a photograph of the outside of the dwelling.
+
+Photograph the dwelling exterior only. Do not photograph people.</value>
+          </text>
+          <text id="roster_intro-label">
+            <value>**List every member of this household, one person per row.**
+
+Add one row for each person. Do not ask the household how many people live here — you decide that yourself, by applying the definition below to each person you are told about.
+
+A household is a group of people who usually sleep in the same dwelling and take their meals together, and who either have been part of the household for at least 6 of the 12 months preceding the interview, or are currently members. It can equally consist of persons temporarily absent but returning soon, such as students.</value>
+            <value form="markdown">**List every member of this household, one person per row.**
+
+Add one row for each person. Do not ask the household how many people live here — you decide that yourself, by applying the definition below to each person you are told about.
+
+A household is a group of people who usually sleep in the same dwelling and take their meals together, and who either have been part of the household for at least 6 of the 12 months preceding the interview, or are currently members. It can equally consist of persons temporarily absent but returning soon, such as students.</value>
+          </text>
+          <text id="roster-label">
+            <value>Household members</value>
+            <value form="markdown">Household members</value>
+          </text>
+          <text id="roster-member_name-label">
+            <value>Name of this person</value>
+            <value form="markdown">Name of this person</value>
+          </text>
+          <text id="roster-is_member-label">
+            <value>Is this person a household member by the definition above?</value>
+            <value form="markdown">Is this person a household member by the definition above?</value>
+          </text>
+          <text id="roster-is_member-help">
+            <value>A household is a group of people who usually sleep in the same dwelling and take their meals together, and who either have been part of the household for at least 6 of the 12 months preceding the interview, or are currently members. It can equally consist of persons temporarily absent but returning soon, such as students.</value>
+            <value form="markdown">A household is a group of people who usually sleep in the same dwelling and take their meals together, and who either have been part of the household for at least 6 of the 12 months preceding the interview, or are currently members. It can equally consist of persons temporarily absent but returning soon, such as students.</value>
+          </text>
+          <text id="roster-is_member-constraintMsg">
+            <value>You have listed 30 people. That is the maximum this form accepts.</value>
+            <value form="markdown">You have listed 30 people. That is the maximum this form accepts.</value>
+          </text>
+          <text id="roster_gate-label">
+            <value>Have you listed every member of this household?</value>
+            <value form="markdown">Have you listed every member of this household?</value>
+          </text>
+          <text id="roster_gate-constraintMsg">
+            <value>Add at least one person marked as a household member before you continue.</value>
+            <value form="markdown">Add at least one person marked as a household member before you continue.</value>
+          </text>
+          <text id="consumption-label">
+            <value>**Food and drink in the past 7 days**
+
+Past 7 days means the 7 days before today. If today is Wednesday, that runs from Wednesday morning a week ago to yesterday evening. Do not count meals or drinks consumed outside the household, unless they were prepared inside the household and taken out — a lunch carried to work counts.</value>
+            <value form="markdown">**Food and drink in the past 7 days**
+
+Past 7 days means the 7 days before today. If today is Wednesday, that runs from Wednesday morning a week ago to yesterday evening. Do not count meals or drinks consumed outside the household, unless they were prepared inside the household and taken out — a lunch carried to work counts.</value>
+          </text>
+          <text id="consumption-bread-label">
+            <value>Within the past 7 days, did any members of your household eat any BREAD within the household?</value>
+            <value form="markdown">Within the past 7 days, did any members of your household eat any BREAD within the household?</value>
+          </text>
+          <text id="consumption-eggs-label">
+            <value>Within the past 7 days, did any members of your household eat any EGGS within the household?</value>
+            <value form="markdown">Within the past 7 days, did any members of your household eat any EGGS within the household?</value>
+          </text>
+          <text id="consumption-milk-label">
+            <value>Within the past 7 days, did any members of your household drink any MILK within the household?</value>
+            <value form="markdown">Within the past 7 days, did any members of your household drink any MILK within the household?</value>
+          </text>
+          <text id="consumption-sachet_water-label">
+            <value>Within the past 7 days, did any members of your household drink any SACHET WATER within the household?</value>
+            <value form="markdown">Within the past 7 days, did any members of your household drink any SACHET WATER within the household?</value>
+          </text>
+          <text id="electricity_screen-label">
+            <value>Electricity</value>
+            <value form="markdown">Electricity</value>
+          </text>
+          <text id="electricity_screen-electricity-label">
+            <value>Over the past 30 days, did your household purchase or pay for any ELECTRICITY (including electricity vouchers)?</value>
+            <value form="markdown">Over the past 30 days, did your household purchase or pay for any ELECTRICITY (including electricity vouchers)?</value>
+          </text>
+          <text id="electricity_screen-electricity-help">
+            <value>Past 30 days means the month before today. If today is 20 August, that means anything bought or paid for from 20 July morning to 19 August evening.</value>
+            <value form="markdown">Past 30 days means the month before today. If today is 20 August, that means anything bought or paid for from 20 July morning to 19 August evening.</value>
+          </text>
+          <text id="assets-label">
+            <value>**Things the household owns**
+
+Count only items the household owns AND that are in good working condition.</value>
+            <value form="markdown">**Things the household owns**
+
+Count only items the household owns AND that are in good working condition.</value>
+          </text>
+          <text id="assets-sofa-label">
+            <value>Does your household own a sofa?</value>
+            <value form="markdown">Does your household own a sofa?</value>
+          </text>
+          <text id="assets-sofa-help">
+            <value>The official Interview Guidance defines this asset as a 3 or 4 piece sofa set. Count only items in good working condition.</value>
+            <value form="markdown">The official Interview Guidance defines this asset as a 3 or 4 piece sofa set. Count only items in good working condition.</value>
+          </text>
+          <text id="assets-fan-label">
+            <value>Does your household own an FAN?</value>
+            <value form="markdown">Does your household own an FAN?</value>
+          </text>
+          <text id="assets-fan-help">
+            <value>Count only items in good working condition.</value>
+            <value form="markdown">Count only items in good working condition.</value>
+          </text>
+          <text id="assets-fan-opt0-label">
+            <value>Yes</value>
+            <value form="markdown">Yes</value>
+          </text>
+          <text id="assets-fan-opt1-label">
+            <value>No</value>
+            <value form="markdown">No</value>
+          </text>
+          <text id="assets-iron-label">
+            <value>Does your household own an IRON?</value>
+            <value form="markdown">Does your household own an IRON?</value>
+          </text>
+        </translation>
+      </itext>
+      <bind nodeset="/data/case/@date_modified" type="xsd:dateTime" calculate="/data/meta/timeEnd"/>
+      <bind nodeset="/data/case/@user_id" calculate="/data/meta/userID"/>
+      <setvalue ref="/data/case/@case_id" value="instance('commcaresession')/session/data/case_id_new_household_visit_0" event="xforms-ready"/>
+      <bind nodeset="/data/case/create/case_name" calculate="/data/entity_label"/>
+      <bind nodeset="/data/case/create/owner_id" calculate="/data/meta/userID"/>
+      <bind nodeset="/data/case/update/area_code" calculate="/data/arrival/area_code" relevant="count(/data/arrival/area_code) &gt; 0"/>
+      <bind nodeset="/data/case/update/gps" calculate="/data/arrival/gps" relevant="count(/data/arrival/gps) &gt; 0"/>
+      <bind nodeset="/data/case/update/gps_accuracy_m" calculate="/data/gps_accuracy_m" relevant="count(/data/gps_accuracy_m) &gt; 0"/>
+      <bind nodeset="/data/case/update/household_head_name" calculate="/data/identity/household_head_name" relevant="count(/data/identity/household_head_name) &gt; 0"/>
+      <bind nodeset="/data/case/update/poverty_likelihood" calculate="/data/poverty_likelihood" relevant="count(/data/poverty_likelihood) &gt; 0"/>
+      <bind nodeset="/data/case/update/ppi_score_clamped" calculate="/data/ppi_score_clamped" relevant="count(/data/ppi_score_clamped) &gt; 0"/>
+      <bind nodeset="/data/case/update/visit_date" calculate="/data/visit_date" relevant="count(/data/visit_date) &gt; 0"/>
+      <bind nodeset="/data/case/update/visit_outcome" calculate="/data/visit_outcome" relevant="count(/data/visit_outcome) &gt; 0"/>
+      <setvalue ref="/data/meta/deviceID" value="instance('commcaresession')/session/context/deviceid" event="xforms-ready"/>
+      <setvalue ref="/data/meta/timeStart" value="now()" event="xforms-ready"/>
+      <bind nodeset="/data/meta/timeStart" type="xsd:dateTime"/>
+      <setvalue ref="/data/meta/timeEnd" value="now()" event="xforms-revalidate"/>
+      <bind nodeset="/data/meta/timeEnd" type="xsd:dateTime"/>
+      <setvalue ref="/data/meta/username" value="instance('commcaresession')/session/context/username" event="xforms-ready"/>
+      <setvalue ref="/data/meta/userID" value="instance('commcaresession')/session/context/userid" event="xforms-ready"/>
+      <setvalue ref="/data/meta/instanceID" value="uuid()" event="xforms-ready"/>
+      <setvalue ref="/data/meta/appVersion" value="instance('commcaresession')/session/context/appversion" event="xforms-ready"/>
+      <setvalue ref="/data/meta/drift" value="if(count(instance('commcaresession')/session/context/drift) = 1, instance('commcaresession')/session/context/drift, '')" event="xforms-revalidate"/>
+      <orx:pollsensor event="xforms-ready" ref="/data/meta/location"/>
+      <bind nodeset="/data/meta/location" type="geopoint"/>
+    </model>
+  </h:head>
+  <h:body>
+    <group ref="/data/arrival" appearance="field-list">
+      <label ref="jr:itext('arrival-label')"/>
+      <input ref="/data/arrival/area_code">
+        <label ref="jr:itext('arrival-area_code-label')"/>
+        <hint ref="jr:itext('arrival-area_code-hint')"/>
+      </input>
+      <input ref="/data/arrival/gps">
+        <label ref="jr:itext('arrival-gps-label')"/>
+        <hint ref="jr:itext('arrival-gps-hint')"/>
+      </input>
+      <trigger ref="/data/arrival/gps_advisory_good" appearance="minimal">
+        <label ref="jr:itext('arrival-gps_advisory_good-label')"/>
+      </trigger>
+      <trigger ref="/data/arrival/gps_advisory_marginal" appearance="minimal">
+        <label ref="jr:itext('arrival-gps_advisory_marginal-label')"/>
+      </trigger>
+      <trigger ref="/data/arrival/gps_advisory_poor" appearance="minimal">
+        <label ref="jr:itext('arrival-gps_advisory_poor-label')"/>
+      </trigger>
+      <select1 ref="/data/arrival/zone">
+        <label ref="jr:itext('arrival-zone-label')"/>
+        <help ref="jr:itext('arrival-zone-help')"/>
+        <item>
+          <label ref="jr:itext('arrival-zone-opt0-label')"/>
+          <value>north_central</value>
+        </item>
+        <item>
+          <label ref="jr:itext('arrival-zone-opt1-label')"/>
+          <value>north_east</value>
+        </item>
+        <item>
+          <label ref="jr:itext('arrival-zone-opt2-label')"/>
+          <value>north_west</value>
+        </item>
+        <item>
+          <label ref="jr:itext('arrival-zone-opt3-label')"/>
+          <value>south_east</value>
+        </item>
+        <item>
+          <label ref="jr:itext('arrival-zone-opt4-label')"/>
+          <value>south_south</value>
+        </item>
+        <item>
+          <label ref="jr:itext('arrival-zone-opt5-label')"/>
+          <value>south_west</value>
+        </item>
+      </select1>
+    </group>
+    <group ref="/data/door" appearance="field-list">
+      <label ref="jr:itext('door-label')"/>
+      <select1 ref="/data/door/occupied">
+        <label ref="jr:itext('door-occupied-label')"/>
+        <item>
+          <label ref="jr:itext('assets-fan-opt0-label')"/>
+          <value>yes</value>
+        </item>
+        <item>
+          <label ref="jr:itext('assets-fan-opt1-label')"/>
+          <value>no</value>
+        </item>
+      </select1>
+    </group>
+    <group ref="/data/respondent" appearance="field-list">
+      <label ref="jr:itext('respondent-label')"/>
+      <select1 ref="/data/respondent/eligible_respondent">
+        <label ref="jr:itext('respondent-eligible_respondent-label')"/>
+        <item>
+          <label ref="jr:itext('assets-fan-opt0-label')"/>
+          <value>yes</value>
+        </item>
+        <item>
+          <label ref="jr:itext('assets-fan-opt1-label')"/>
+          <value>no</value>
+        </item>
+      </select1>
+    </group>
+    <group ref="/data/consent_screen" appearance="field-list">
+      <label ref="jr:itext('consent_screen-label')"/>
+      <trigger ref="/data/consent_screen/consent_script" appearance="minimal">
+        <label ref="jr:itext('consent_screen-consent_script-label')"/>
+      </trigger>
+      <select1 ref="/data/consent_screen/consent">
+        <label ref="jr:itext('consent_screen-consent-label')"/>
+        <item>
+          <label ref="jr:itext('assets-fan-opt0-label')"/>
+          <value>yes</value>
+        </item>
+        <item>
+          <label ref="jr:itext('assets-fan-opt1-label')"/>
+          <value>no</value>
+        </item>
+      </select1>
+    </group>
+    <group ref="/data/identity" appearance="field-list">
+      <label ref="jr:itext('identity-label')"/>
+      <input ref="/data/identity/respondent_name">
+        <label ref="jr:itext('identity-respondent_name-label')"/>
+      </input>
+      <input ref="/data/identity/household_head_name">
+        <label ref="jr:itext('identity-household_head_name-label')"/>
+      </input>
+      <input ref="/data/identity/phone">
+        <label ref="jr:itext('identity-phone-label')"/>
+      </input>
+    </group>
+    <group ref="/data/photo_screen" appearance="field-list">
+      <label ref="jr:itext('photo_screen-label')"/>
+      <upload ref="/data/photo_screen/dwelling_photo" mediatype="image/*">
+        <label ref="jr:itext('photo_screen-dwelling_photo-label')"/>
+      </upload>
+    </group>
+    <trigger ref="/data/roster_intro" appearance="minimal">
+      <label ref="jr:itext('roster_intro-label')"/>
+    </trigger>
+    <group ref="/data/roster">
+      <label ref="jr:itext('roster-label')"/>
+      <repeat nodeset="/data/roster">
+        <input ref="/data/roster/member_name">
+          <label ref="jr:itext('roster-member_name-label')"/>
+        </input>
+        <select1 ref="/data/roster/is_member">
+          <label ref="jr:itext('roster-is_member-label')"/>
+          <help ref="jr:itext('roster-is_member-help')"/>
+          <item>
+            <label ref="jr:itext('assets-fan-opt0-label')"/>
+            <value>yes</value>
+          </item>
+          <item>
+            <label ref="jr:itext('assets-fan-opt1-label')"/>
+            <value>no</value>
+          </item>
+        </select1>
+      </repeat>
+    </group>
+    <select1 ref="/data/roster_gate">
+      <label ref="jr:itext('roster_gate-label')"/>
+      <item>
+        <label ref="jr:itext('assets-fan-opt0-label')"/>
+        <value>yes</value>
+      </item>
+      <item>
+        <label ref="jr:itext('assets-fan-opt1-label')"/>
+        <value>no</value>
+      </item>
+    </select1>
+    <group ref="/data/consumption" appearance="field-list">
+      <label ref="jr:itext('consumption-label')"/>
+      <select1 ref="/data/consumption/bread">
+        <label ref="jr:itext('consumption-bread-label')"/>
+        <item>
+          <label ref="jr:itext('assets-fan-opt0-label')"/>
+          <value>yes</value>
+        </item>
+        <item>
+          <label ref="jr:itext('assets-fan-opt1-label')"/>
+          <value>no</value>
+        </item>
+      </select1>
+      <select1 ref="/data/consumption/eggs">
+        <label ref="jr:itext('consumption-eggs-label')"/>
+        <item>
+          <label ref="jr:itext('assets-fan-opt0-label')"/>
+          <value>yes</value>
+        </item>
+        <item>
+          <label ref="jr:itext('assets-fan-opt1-label')"/>
+          <value>no</value>
+        </item>
+      </select1>
+      <select1 ref="/data/consumption/milk">
+        <label ref="jr:itext('consumption-milk-label')"/>
+        <item>
+          <label ref="jr:itext('assets-fan-opt0-label')"/>
+          <value>yes</value>
+        </item>
+        <item>
+          <label ref="jr:itext('assets-fan-opt1-label')"/>
+          <value>no</value>
+        </item>
+      </select1>
+      <select1 ref="/data/consumption/sachet_water">
+        <label ref="jr:itext('consumption-sachet_water-label')"/>
+        <item>
+          <label ref="jr:itext('assets-fan-opt0-label')"/>
+          <value>yes</value>
+        </item>
+        <item>
+          <label ref="jr:itext('assets-fan-opt1-label')"/>
+          <value>no</value>
+        </item>
+      </select1>
+    </group>
+    <group ref="/data/electricity_screen" appearance="field-list">
+      <label ref="jr:itext('electricity_screen-label')"/>
+      <select1 ref="/data/electricity_screen/electricity">
+        <label ref="jr:itext('electricity_screen-electricity-label')"/>
+        <help ref="jr:itext('electricity_screen-electricity-help')"/>
+        <item>
+          <label ref="jr:itext('assets-fan-opt0-label')"/>
+          <value>yes</value>
+        </item>
+        <item>
+          <label ref="jr:itext('assets-fan-opt1-label')"/>
+          <value>no</value>
+        </item>
+      </select1>
+    </group>
+    <group ref="/data/assets" appearance="field-list">
+      <label ref="jr:itext('assets-label')"/>
+      <select1 ref="/data/assets/sofa">
+        <label ref="jr:itext('assets-sofa-label')"/>
+        <help ref="jr:itext('assets-sofa-help')"/>
+        <item>
+          <label ref="jr:itext('assets-fan-opt0-label')"/>
+          <value>yes</value>
+        </item>
+        <item>
+          <label ref="jr:itext('assets-fan-opt1-label')"/>
+          <value>no</value>
+        </item>
+      </select1>
+      <select1 ref="/data/assets/fan">
+        <label ref="jr:itext('assets-fan-label')"/>
+        <help ref="jr:itext('assets-fan-help')"/>
+        <item>
+          <label ref="jr:itext('assets-fan-opt0-label')"/>
+          <value>yes</value>
+        </item>
+        <item>
+          <label ref="jr:itext('assets-fan-opt1-label')"/>
+          <value>no</value>
+        </item>
+      </select1>
+      <select1 ref="/data/assets/iron">
+        <label ref="jr:itext('assets-iron-label')"/>
+        <help ref="jr:itext('assets-fan-help')"/>
+        <item>
+          <label ref="jr:itext('assets-fan-opt0-label')"/>
+          <value>yes</value>
+        </item>
+        <item>
+          <label ref="jr:itext('assets-fan-opt1-label')"/>
+          <value>no</value>
+        </item>
+      </select1>
+    </group>
+  </h:body>
+</h:html>

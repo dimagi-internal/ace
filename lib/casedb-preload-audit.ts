@@ -71,8 +71,42 @@ export interface PreloadAuditResult {
   allowed: string[];
 }
 
-const SETVALUE_RE =
-  /<setvalue\s+ref="([^"]+)"\s+value="([^"]*)"\s+event="[^"]*"\s*\/?>/g;
+/**
+ * A `<setvalue>` node — ANY attribute order.
+ *
+ * This deliberately matches the NODE and pulls `ref` / `value` out of it by
+ * name, rather than pinning the attribute sequence. The first cut of this file
+ * required literally `ref="…" value="…" event="…"`, in that order, and that is
+ * a silent-PASS hazard on a `[BLOCKER]` gate: a `<setvalue>` written any other
+ * way is not "unmatched", it is INVISIBLE — the audit reports a clean form.
+ *
+ * The orderings are not hypothetical and not stable. Both appear in ACE's own
+ * released CCZs, in the SAME file:
+ *
+ *   HQ's form machinery (case block, meta block) emits ref-first:
+ *     <setvalue ref="/data/meta/userID" value="instance('commcaresession')…"
+ *               event="xforms-ready"/>
+ *
+ *   Nova's field defaults emit event-first:
+ *     <setvalue event="xforms-ready" ref="/data/visit_date" value="today()"/>
+ *
+ * Measured 2026-09-06 against two released Deliver CCZs pulled live from
+ * `connect-ace-prod`:
+ *   - hh-poverty-targeting (HQ app ce668763ad6c4b48ac5f4cd4502f3f8c):
+ *     11 `<setvalue>` nodes, 2 invisible to the ordered regex.
+ *   - spark-facilitator enrolment (HQ app 89881fa67ec74f21b95e37d41e39ba93,
+ *     modules-0/forms-0.xml): 10 nodes, 1 invisible.
+ * The meeting-record form that motivated this gate happened to be 50-for-50
+ * ref-first, which is why the ordered regex produced the right number on the
+ * reported case while carrying the wrong rule.
+ *
+ * Attribute order is a serialization detail of systems ACE does not own and
+ * does not hold constant, so the matcher must not depend on it. Widening can
+ * only ever surface MORE preloads, never invent one: a node still has to carry
+ * a casedb `value` and a ref that is a visible question to become a violation.
+ */
+const SETVALUE_NODE_RE = /<setvalue\b[^>]*\/?>/g;
+const ATTR_RE = (name: string) => new RegExp(`\\b${name}="([^"]*)"`);
 
 /**
  * Answerable questions in the body.
@@ -96,11 +130,22 @@ export function visibleInputRefs(formXml: string): Set<string> {
   return out;
 }
 
-/** Every `xforms-ready` setvalue that reads from casedb. */
+/**
+ * Every setvalue that reads from casedb, regardless of attribute order.
+ *
+ * `event` is NOT required. The ordered regex it replaced demanded one, which
+ * was a second silent-drop path for the same reason as the ordering: whether a
+ * casedb read is wired to `xforms-ready`, to `xforms-revalidate`, or to nothing
+ * at all, a visible question answered from the case is the same defect. The
+ * gate reports it and a human decides; it does not get to miss it on a
+ * technicality.
+ */
 export function casedbPreloads(formXml: string): { ref: string; property: string }[] {
   const out: { ref: string; property: string }[] = [];
-  for (const m of formXml.matchAll(SETVALUE_RE)) {
-    const [, ref, value] = m;
+  for (const node of formXml.match(SETVALUE_NODE_RE) ?? []) {
+    const ref = ATTR_RE('ref').exec(node)?.[1];
+    const value = ATTR_RE('value').exec(node)?.[1];
+    if (ref === undefined || value === undefined) continue;
     if (!CASEDB_VALUE_RE.test(value)) continue;
     const p = PROPERTY_RE.exec(value);
     out.push({ ref, property: p ? p[1] : '<unparsed>' });
