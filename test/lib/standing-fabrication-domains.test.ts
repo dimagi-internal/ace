@@ -189,3 +189,60 @@ describe('ocs-agent-setup § Step 7 mandates the standing set', () => {
     expect(agentSetup).toContain('lib/standing-fabrication-domains.ts');
   });
 });
+
+/**
+ * dimagi-internal/ace#2015 — the block above pins that the DOCUMENT lists the
+ * labels. It cannot see the prompt any given run composes, because that prompt
+ * is authored at run time by an agent reading the document and pushed straight
+ * to OCS. So on its own the invariant reduces to "the agent followed the
+ * checklist" — the prose-does-not-bind mode `61e7a785` was written to escape.
+ *
+ * What closes it is a gate with an exit code, wired between composition and
+ * publish. These assertions are the sibling of
+ * `test/lib/emergency-number-fabrication.test.ts` § "the skill wires the pass
+ * in — it is not dead code", and they are what stops the caller being quietly
+ * deleted again.
+ */
+describe('the skill wires the gate in — it is not dead code (ace#2015)', () => {
+  const scriptPath = `${ROOT}scripts/audit-composed-prompt.ts`;
+
+  it('the runtime caller exists and calls the audit', () => {
+    const script = readFileSync(scriptPath, 'utf8');
+    expect(script).toContain('auditComposedPrompt');
+    expect(script).toContain('formatStandingDomainReport');
+  });
+
+  it('ocs-agent-setup invokes that script', () => {
+    expect(agentSetup).toContain('scripts/audit-composed-prompt.ts');
+  });
+
+  it('the gate runs BEFORE the publish, not after', () => {
+    // Step 8's `ocs_set_chatbot_pipeline` is the only write that puts a prompt
+    // on the bot. A check ordered after it finds a live bot already serving
+    // the defective prompt.
+    const gate = agentSetup.indexOf('scripts/audit-composed-prompt.ts');
+    const publish = agentSetup.indexOf('ocs_set_chatbot_pipeline({ experiment_id, prompt,');
+    expect(gate, 'the audit invocation must be present').toBeGreaterThan(-1);
+    expect(publish, "Step 8's pipeline call must be present").toBeGreaterThan(-1);
+    expect(gate).toBeLessThan(publish);
+  });
+
+  it('the gate has halt semantics, not advisory ones', () => {
+    const step = agentSetup.slice(
+      agentSetup.indexOf('7.5.'),
+      agentSetup.indexOf('8. **Patch the chatbot'),
+    );
+    expect(step).toMatch(/do NOT call `ocs_set_chatbot_pipeline`/i);
+    expect(step).toMatch(/exits?\s+\*\*0\*\*|exits \*\*0\*\*|\*\*0\*\*/);
+  });
+
+  it('the `--prompt-patch` re-run path is not exempt from the gate', () => {
+    // Step 0's patch branch also reaches Step 8 through Step 7, so it can drop
+    // a standing domain exactly as a fresh compose can.
+    const step0 = agentSetup.slice(
+      agentSetup.indexOf('State file present, `--prompt-patch` flag set.'),
+      agentSetup.indexOf('State file present, no flag.'),
+    );
+    expect(step0).toContain('Step 7.5');
+  });
+});

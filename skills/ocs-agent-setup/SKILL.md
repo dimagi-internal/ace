@@ -98,10 +98,13 @@ round-trip gate in Step 11.5 below.
    - **State file absent.** Fresh setup. Continue to Step 1.
    - **State file present, `--prompt-patch` flag set.** Reuse the
      existing `experiment_id`, `collection_id`, and `pipeline_id`.
-     Skip to Step 7 (recompose prompt) → Step 8
-     (`ocs_set_chatbot_pipeline` with the new prompt and the existing
-     collection list) → Step 9 (publish) → Step 10 (retrieve embed) →
-     Step 11 (overwrite state file with the new `version_number`).
+     Skip to Step 7 (recompose prompt) → **Step 7.5 (standing-domain
+     gate — a `--prompt-patch` recomposes the prompt and therefore can
+     drop a standing domain exactly as a fresh compose can; it is not
+     exempt)** → Step 8 (`ocs_set_chatbot_pipeline` with the new prompt
+     and the existing collection list) → Step 9 (publish) → Step 10
+     (retrieve embed) → Step 11 (overwrite state file with the new
+     `version_number`).
    - **State file present, no flag.** The chatbot is already
      configured; just refresh embed credentials. Skip to Step 10. Do
      NOT call `ocs_list_chatbots`, do NOT re-clone — the state file is
@@ -612,6 +615,49 @@ round-trip gate in Step 11.5 below.
      `[product-feedback]` means real limitation reports go unrouted once
      LLOs are on the bot.
 
+7.5. **Standing-domain gate (mandatory; halts the phase —
+   dimagi-internal/ace#2015).** Write the composed prompt to a file and audit
+   it BEFORE Step 8 publishes it:
+
+   ```bash
+   ACE_ROOT="${CLAUDE_PLUGIN_ROOT:-$(python3 -c "import json,os; d=json.load(open(os.path.expanduser('~/.claude/plugins/installed_plugins.json'))); print(d['plugins']['ace@ace'][0]['installPath'])")}"
+   npx --prefix "$ACE_ROOT" tsx "$ACE_ROOT/scripts/audit-composed-prompt.ts" /tmp/<run>-composed-prompt.md
+   ```
+
+   The script calls `auditComposedPrompt` from
+   `lib/standing-fabrication-domains.ts` — the module whose labels Step 7
+   mandates — and exits **0** when the `## Do not invent operational
+   specifics` section carries all four standing domains, **1** when the
+   section or any domain is missing, **2** on a harness error (no file,
+   unreadable, empty — not a verdict either way; fix the invocation and
+   re-run).
+
+   **On exit 1, do NOT call `ocs_set_chatbot_pipeline`.** The report names
+   each missing domain and why inventing there is expensive. Add the
+   domain(s) to the section per Step 7, rewrite the file, and re-run the
+   audit until it exits 0. On exit 2, re-run; never proceed on an unread
+   verdict.
+
+   **Why here and not after the publish.** Step 8 is the only write that
+   puts a prompt on the bot, and BOTH entry paths reach it through Step 7 —
+   a fresh setup and a `--prompt-patch` re-run (Step 0). A check placed after
+   the publish would find a live bot already serving the defective prompt and
+   would depend on someone remembering to repair it; a check here costs one
+   rewrite and nothing has shipped. That ordering is the whole difference
+   between a gate and a report.
+
+   **Why an exit code and not a checklist bullet.** `61e7a785` shipped this
+   audit as the preventer for the ace#1142 fabrication class and nothing
+   called it, so what was actually enforced was "this document lists the four
+   labels" — not "the prompt this run composed carries them". `hh-poverty-
+   targeting` chatbot 13029 then shipped with neither the golden template's
+   emergency-number ban (the composed prompt REPLACES that text) nor a
+   standing replacement, and invented *"Nigeria emergency: 112 or 199"* on a
+   live deep run (opp-46; zero corpus hits for `112`, `199` or "emergency").
+   `ocs-chatbot-eval` runs five deterministic passes for exactly this reason
+   — well-written prose repeatedly failed to bind at judging time. This is the
+   same lesson on the producer side.
+
 8. **Patch the chatbot in one transactional call:**
    - Build the collection list:
      - `[$OCS_SHARED_COLLECTION_ID, collection_id]` if the env var is set (multi — prompt MUST have the variable per step 7)
@@ -886,6 +932,7 @@ Each row this skill writes uses `phase: 5-ocs` and
 
 | Date | Change | Author |
 |------|--------|--------|
+| 2026-09-06 | **New Step 7.5 — the standing-domain preventer now has a runtime caller with halt semantics (closes dimagi-internal/ace#2015).** `61e7a785` shipped `auditComposedPrompt()` as the preventer for the ace#1142 fabrication class and **nothing ever called it** — `grep -rn "auditComposedPrompt" bin/ scripts/ hooks/ commands/ agents/ mcp/` returned nothing, and the only caller in the repo was its own test. What that test could pin is that THIS DOCUMENT lists the four labels; it cannot see the prompt any given run composes, because that prompt is authored at run time by an agent reading this document and pushed straight to `ocs_set_chatbot_pipeline`. So the invariant reduced to "the agent followed the checklist" — the prose-does-not-bind mode 61e7a785 was written to escape, and the same one `ocs-chatbot-eval` has now answered five times with deterministic passes (ace#1646, #1890, #1891, #1935, #1955). The cost is on the record: `hh-poverty-targeting` chatbot 13029 shipped with the emergency-number ban in **neither** place — the composed prompt REPLACES the golden template's text rather than extending it, and its replacement was seeded from PDD open questions alone, which for that PDD name no emergency-number question — and invented *"Nigeria emergency: 112 or 199"* on opp-46 of a live deep run, zero corpus hits for `112`, `199` or "emergency" across all 23 documents of collection 570. Step 7.5 writes the composed prompt to a file and runs `scripts/audit-composed-prompt.ts` **between composition and publish**: exit 0 = all four domains present, exit 1 = do NOT call `ocs_set_chatbot_pipeline`, exit 2 = harness error and never a verdict either way. Placed before the publish because Step 8 is the only write that puts a prompt on the bot and BOTH entry paths reach it through Step 7 — a fresh setup and a `--prompt-patch` re-run, which Step 0 now states explicitly is not exempt. *Enforced:* `test/scripts/audit-composed-prompt.test.ts` spawns the real script for both controls (positive = the verbatim v3 section that shipped with zero standing domains → exit 1; negative = the same section carrying the union → exit 0; plus a non-inertness case asserting the two differ, and the ace#2015 fixture dropping only `Safeguarding and emergency escalation`), and `test/lib/standing-fabrication-domains.test.ts` § "the skill wires the gate in" pins the invocation, its ORDER relative to Step 8, its halt wording, and the `--prompt-patch` exemption. | ACE team |
 | 2026-09-02 | **Step 7's anti-fabrication list is now the UNION of the PDD's open questions and a STANDING set of four high-cost domains (dimagi-internal/ace#1890 sibling).** Seeded from the PDD alone, the `## Do not invent operational specifics` section bars invention exactly where the PDD happened to be uncertain and is silent where fabricating costs a field worker the most. On `spark-facilitator/20260828-0703` the generated section carried five bullets, all five genuine PDD open questions (LLO award, districts, smartphones, supervision ratios, in-addition-vs-instead-of); Stage A scored **8.03**, cleared the 7.0 bar, and the `--deep` gate still returned `iterate` on two `[FABRICATED-OPERATIONAL-SPECIFIC]` Fails — **opp-50**, an improvised cash-handover pathway through a community treasurer and a "savings register" the design is silent on, and **opp-56**, an invented device-loss / PersonalID-recovery chain ("contact her coordinator - account resets need to be handled from the backend") the PDD does not specify at all. Neither cash custody nor account recovery is an open question in that PDD, so neither was listed; patching those two topics into one opportunity's prompt clears two entries and leaves the class open. The standing half — money movement and payment logistics, account and credential recovery, safeguarding and emergency escalation, medical or legal instruction — is not derived from the PDD and ships on every opportunity. Matched by LABEL rather than by keyword on purpose: the v3 prompt's closing safety paragraph contains "safeguarding" and "harm" while forbidding no invention, and a topic scan reads that as covered. The safety INSTINCT is explicitly preserved (the standing set forbids the invented procedure, not the instinct), and the golden-template guard is untouched. Same step also adds the stored-value vs what-actually-happened entry to `## Rules people commonly get wrong`: **opp-48** scored 5.8 and inverted the mechanic, telling a supervisor a misreported meeting is caught when the predicate reads the stored value and it therefore passes and pays. *Enforced:* `lib/standing-fabrication-domains.ts` + `test/lib/standing-fabrication-domains.test.ts`, whose negative-control fixture is the verbatim v3 section that shipped. | ACE team |
 | 2026-09-01 | **Never name the contacts FILE to a user (dimagi-internal/ace#1891).** Step 7 told the bot to quote contacts *from a named file*, which invites the model to name the file: across the 68-prompt deep run on `spark-facilitator/20260828-0703` the bot routed escalation to `00-program-contacts.md` in **7 entries** (opp-20, opp-29, opp-42, opp-46, opp-52, opp-57, cg-2) — a file a field supervisor cannot open — and in 2 of those emitted the wrong domain from recall while doing it. The generated file STAYS (ace#1665: an address the prompt carries and the corpus does not is reproduced from recall, and the same run still drifted to `ace@dimagi.com` on opp-29/opp-38 from prompt recall alone — inlining the address would be more of that, not less). What changes is presentation: the composed prompt now carries a second obligation — give the reader the contact ITSELF, never a file/document/collection/config name, and say so plainly when retrieval comes up empty rather than substituting a filename for an answer. The generated page's own preamble carries the same rule, so retrieval reinforces it. *Enforced on the eval side:* `lib/internal-artifact-leak.ts` + `test/lib/internal-artifact-leak.test.ts` cap any response naming an internal artifact at <=6, with the seven verbatim responses as the fixture. | ACE team |
 | 2026-08-29 | **The public-chat-URL gate this skill documented no longer exists upstream (ace#1812).** Step 10 said the URL "requires the PUBLISHED version to be public", `is_public` being `len(participant_allowlist) == 0`. OCS deleted both in #4275 (ADR-0057, merged 2026-08-26) — `gh search code --repo dimagi/open-chat-studio "is_public"` now returns zero hits repo-wide, while the same search for `participant_allowlist` returns 4 files, so the empty result is a real absence rather than an unindexed repo. `start_session_public` resolves `resolve_published_or_working`, so publishing is NOT a gate and an unpublished bot no longer 404s here. Replaced with the gate that IS live: the team's `platform=WEB` `ExperimentChannel` being enabled (#4230), which returns a **503** maintenance page and is a team-wide kill-switch taking down every ACE per-opp chat URL at once. Direction of the stale claim was benign — the removed gate only ever loosened access — which is why it survived three months undetected; the cost was that a future outage would have been triaged against a mechanism that is gone. *Enforced:* `test/skills/ocs-public-chat-gate-docs.test.ts`. | ACE team |
