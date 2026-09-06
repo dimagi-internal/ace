@@ -1807,6 +1807,21 @@ issue dies on sight. If the fix attempt refutes the issue, **close it
 `--reason "not planned"` with the evidence** — that is a successful sweep,
 not a failed one.
 
+**But the premise is not the part that fails.** Across 2026-08-29..09-06
+the premise held on every self-healed issue and the *suggested fix* failed
+in four shapes — **wrong** (ace#2004), **under-scoped** (ace#2027),
+**no-op** (ace#1768), **stale** (ace#1766). So the sweep's dispatch is
+NOT "apply the fix in the issue": every dispatch carries
+`agents/orchestrator-reference.md § The filed remedy is a lead, not an
+instruction`, whose two checks (re-read the cited `file:line` against
+current `origin/main`; execute the remedy before adopting it) cover all
+four. **The sweep is the caller, so it enforces the return:** a dispatch
+that comes back without a `Remedy:` line — `as-filed` / `re-derived` /
+`refuted`, plus what was run — is an incomplete return, exactly like
+"auto-merge armed", and must be sent back rather than counted as shipped.
+`Remedy: refuted` closing the issue `not planned` counts as a completed
+dispatch. ace#1900.
+
 **Open-questions doc (run-end, once).** The summary page reads
 `open-questions.md` from the run-folder root by name (it's the lone
 section with no typed `products.*` pointer). After Phase 1 completes —

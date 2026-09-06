@@ -1646,9 +1646,57 @@ Run skills/shipping end to end. Return its Step 5 ship checkpoint
 verbatim, plus the fields below.
 ```
 
+### The filed remedy is a lead, not an instruction
+
+`CLAUDE.md § File ACE issues mid-run` rule 1 makes the filer verify the
+**premise**. Nothing makes anyone verify the **suggested fix**, and that
+is the half a fix-and-ship subagent inherits and acts on. Measured across
+2026-08-29..09-06, on issues whose premise was verified and correct, the
+remedy failed in four distinct shapes:
+
+| Shape | Case | What the filed remedy would have done |
+|---|---|---|
+| **wrong** | ace#2004 | hoist the auto-merge arm above the poll loop — which also hoists it above the ancestry guard in the same branch, so a run pointed at the wrong worktree **arms and merges a stranger's PR** instead of refusing. Strictly worse than the bug it fixed |
+| **under-scoped** | ace#2027 | edit two rubric branches in place, giving each its own copy of the provider test. The eval already had the provider in hand; one gate hoisted above both branches was correct |
+| **no-op** | ace#1768 | stop the doctor probe "scraping for a `public_id` the atom already returns" — the probe *already calls* the atom (`mcp/ocs/composite.ts:133`). Two of its three supporting observations were known artifacts, one documented 13 days before the issue was filed |
+| **stale** | ace#1766 | apply a driver fix that had shipped in `f423ce12` the day after filing. Only the regression test its own last line asked for was still real |
+
+A false PREMISE is cheap — one grep closes it. A false REMEDY costs a
+full fix-agent investigation (~200k tokens each in the 2026-09-01
+session) to discover, and if the subagent trusts it instead, it ships a
+no-op that closes the issue and leaves the defect live. ace#1900.
+
+**So: read the filed remedy as a lead, and run these two checks before
+adopting any of it.** Both are cheap, and between them they cover all
+four shapes:
+
+1. **Staleness / no-op — re-read the cited `file:line` against current
+   `origin/main`, not against the issue's quote.** `main` moves ~9×/day;
+   an issue filed yesterday may describe code that no longer exists.
+   `git show origin/main:<path> | sed -n '<n>,<m>p'`. If the cited code
+   already does the thing, or the fix already shipped, the issue is
+   **refuted** — close it `--reason "not planned"` citing the commit or
+   the line. That is a successful sweep, not a failed one
+   (`CLAUDE.md § Self-heal a filed issue`).
+2. **Wrong / under-scoped — execute the remedy before adopting it.** If it
+   is a matcher, run it against the real inputs and count the hits (ace#1827
+   proposed a regex that matched **0 of 16** real payloads). If it is an
+   edit, apply it and read what the surrounding code then requires — that
+   is what exposes a duplicated check (#2027) or a guard hoisted out of its
+   own precondition (#2004).
+
+Never merge on "the issue said so." The issue is the only party that has
+not run anything.
+
 ### Required fields in the subagent return
 
 - PR URL
+- **`Remedy:`** — one of `as-filed` / `re-derived` / `refuted`, plus one
+  line of evidence. `as-filed` requires naming what you **ran** to
+  confirm it (the re-read, the matcher's hit count, the applied diff) —
+  "it looked right" is not `as-filed`, it is an unrun remedy. A return
+  with no `Remedy:` line is incomplete in the same way "auto-merge armed"
+  is: the dispatcher cannot tell a verified fix from an inherited guess.
 - **Merge state** — `MERGED` / `OPEN` / `CLOSED`, read from
   `gh pr view --json state`, never inferred from auto-merge being armed
 - For MERGED: `mergedAt`
