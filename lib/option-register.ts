@@ -424,33 +424,137 @@ function decodeXmlText(s: string): string {
     .replace(/&amp;/g, '&');
 }
 
+/* ------------------------------------------------------------------------ *
+ * Proving a lookup bind actually landed (ace#1886)
+ *
+ * `renderRegisterCsv` used to live here: it rendered the register as CSV for a
+ * human to import by hand, because Nova had no create atom, and later because
+ * Nova refused to BIND a select to a table it had happily created. Both
+ * reasons are gone — the create atom shipped, and the bind was accepted and
+ * read back on 2026-09-06 (`voidcraft-labs/commcare-nova#545`, closed
+ * COMPLETED 2026-09-02). ACE now performs the whole job, so the CSV is a
+ * record of a handoff that no longer happens and the function is deleted.
+ *
+ * What replaces it is the opposite kind of code: not a way to hand work to a
+ * human, but a way to PROVE the work ACE now does autonomously actually
+ * happened.
+ *
+ * ## Why a read-back, and not the write's own response
+ *
+ * Observed live 2026-09-06 on a throwaway app: `add_fields` accepts a
+ * `{kind:'lookup'}` options source and answers
+ *
+ *   {"message":"Successfully added 1 field …","fields":[{"uuid":"…",
+ *    "id":"probe_pick","options":[]}]}
+ *
+ * — `options: []`, on a field that IS correctly bound. The write response
+ * reports the inline options (there are none, by construction) and says
+ * nothing about the lookup source. So the two obvious cheap checks are both
+ * wrong in opposite directions: trusting "no error" passes a bind that never
+ * landed, and reading `options` from the write response fails a bind that did.
+ * Only `get_field` shows the truth:
+ *
+ *   "optionsSource":{"kind":"lookup","tableId":"…","valueColumnId":"…",
+ *                    "labelColumnId":"…"}
+ *
+ * This is the whole reason the function exists. The failure it guards has no
+ * downstream symptom — a select with an unbound source renders empty to a
+ * field worker and passes every structural gate ACE runs, exactly like the
+ * invented-options defect the Step 4f halt was built for (ace#1621/#1564).
+ * ------------------------------------------------------------------------ */
+
+/** The lookup source a build ASKED Nova for. */
+export interface LookupBindRequest {
+  tableId: string;
+  valueColumnId: string;
+  labelColumnId: string;
+}
+
+/** `optionsSource` as `get_field` returns it. Every field optional: the point
+ *  is to survive a shape that is missing, partial, or a different kind. */
+export interface LookupBindReadBack {
+  kind?: string | null;
+  tableId?: string | null;
+  valueColumnId?: string | null;
+  labelColumnId?: string | null;
+}
+
+export interface BindVerification {
+  /** True only when the read-back proves the requested lookup source is live. */
+  verified: boolean;
+  /** Machine-readable class, so a caller can route rather than string-match. */
+  code:
+    | 'ok'
+    | 'no-read-back'
+    | 'not-a-lookup-source'
+    | 'wrong-table'
+    | 'wrong-columns';
+  /** Human-readable, quoted into the build memo. */
+  message: string;
+}
+
 /**
- * Render the register as CSV: the human-readable record of what was extracted,
- * and the fallback when Nova's table authoring is unreachable.
+ * Verify a lookup bind against what Nova reads back — never against the write.
  *
- * **This is no longer an import instruction.** It once was: no such atom
- * existed, and the CSV import route was browser-session-only. Nova now ships `create_lookup_table`, which takes the
- * columns AND up to 5000 rows in one atomic write, so ACE builds and populates
- * the partner's register itself — verified live 2026-09-01, see
- * `playbook/integrations/nova-integration.md § The fixtures (Project data
- * table) channel`.
- *
- * The halt in `pdd-to-deliver-app § Step 4f` stays, for a different reason:
- * BINDING a select to that table is refused every time
- * (`voidcraft-labs/commcare-nova#545`), so a human still performs that one
- * step. `scripts/probe-nova-fixtures.ts` is the tripwire — exit 0 means the
- * bind landed and this function, along with the handoff, can go.
+ * Pure. `readBack` is `get_field(...).field.optionsSource`; pass `null` when
+ * the read-back could not be performed at all, which is NOT a pass ("I could
+ * not check" and "it is correct" are different answers — the same rule
+ * `diffOptionRegister` applies to an unreadable register source).
  */
-export function renderRegisterCsv(
-  rows: RegisterRow[],
-  headers: { value: string; label: string; filterKey?: string },
-): string {
-  const cols = [headers.value, headers.label, ...(headers.filterKey ? [headers.filterKey] : [])];
-  const cell = (s: string) => (/[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s);
-  const lines = [cols.join(',')];
-  for (const r of rows) {
-    const vals = [r.value, r.label, ...(headers.filterKey ? [r.filterKey ?? ''] : [])];
-    lines.push(vals.map(cell).join(','));
+export function verifyLookupBind(input: {
+  requested: LookupBindRequest;
+  readBack: LookupBindReadBack | null | undefined;
+}): BindVerification {
+  const { requested, readBack } = input;
+
+  if (!readBack) {
+    return {
+      verified: false,
+      code: 'no-read-back',
+      message:
+        'no options source was read back for this field — an unverified bind is not a bind; ' +
+        'call get_field and pass its field.optionsSource',
+    };
   }
-  return `${lines.join('\n')}\n`;
+
+  if (readBack.kind !== 'lookup') {
+    return {
+      verified: false,
+      code: 'not-a-lookup-source',
+      message:
+        `field reads back with options source kind "${readBack.kind ?? 'absent'}", not "lookup" — ` +
+        'the bind did not land, whatever the write response said',
+    };
+  }
+
+  if (readBack.tableId !== requested.tableId) {
+    return {
+      verified: false,
+      code: 'wrong-table',
+      message:
+        `field is bound to lookup table "${readBack.tableId ?? 'absent'}", but the register was ` +
+        `created as "${requested.tableId}" — the select draws from the wrong table`,
+    };
+  }
+
+  if (
+    readBack.valueColumnId !== requested.valueColumnId ||
+    readBack.labelColumnId !== requested.labelColumnId
+  ) {
+    return {
+      verified: false,
+      code: 'wrong-columns',
+      message:
+        'field is bound to the right table through the wrong columns ' +
+        `(value "${readBack.valueColumnId ?? 'absent'}" vs "${requested.valueColumnId}", ` +
+        `label "${readBack.labelColumnId ?? 'absent'}" vs "${requested.labelColumnId}") — ` +
+        'workers would see the wrong codes or the wrong words',
+    };
+  }
+
+  return {
+    verified: true,
+    code: 'ok',
+    message: `field is bound to lookup table "${requested.tableId}" on the declared value/label columns`,
+  };
 }

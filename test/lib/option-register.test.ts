@@ -5,7 +5,7 @@ import {
   diffRegisterRows,
   parseFixtureRegister,
   parseRegisterDeclaration,
-  renderRegisterCsv,
+  verifyLookupBind,
   type BuiltOptionSource,
   type RegisterRow,
 } from '../../lib/option-register';
@@ -239,32 +239,69 @@ describe('parseFixtureRegister', () => {
   });
 });
 
-describe('renderRegisterCsv', () => {
-  it('emits a header plus one row per entry', () => {
-    const csv = renderRegisterCsv(REGISTER, {
-      value: 'activity_code',
-      label: 'activity_name',
-      filterKey: 'step',
+describe('verifyLookupBind', () => {
+  const requested = { tableId: 't-1', valueColumnId: 'c-val', labelColumnId: 'c-lab' };
+
+  /**
+   * ace#1886. The positive control. Observed live 2026-09-06: `get_field`
+   * returns exactly this shape for a select bound to a lookup table.
+   */
+  it('verifies a bind whose read-back matches what was requested', () => {
+    const v = verifyLookupBind({
+      requested,
+      readBack: { kind: 'lookup', tableId: 't-1', valueColumnId: 'c-val', labelColumnId: 'c-lab' },
     });
-    const lines = csv.trim().split('\n');
-    expect(lines[0]).toBe('activity_code,activity_name,step');
-    expect(lines).toHaveLength(4);
-    expect(lines[1]).toBe('a01,Review previous action points,3');
+    expect(v.verified).toBe(true);
+    expect(v.code).toBe('ok');
   });
 
-  it('quotes cells containing commas or quotes', () => {
-    const csv = renderRegisterCsv(
-      [{ value: 'a1', label: 'Plan, review and "agree"', filterKey: '1' }],
-      { value: 'activity_code', label: 'activity_name', filterKey: 'step' },
-    );
-    expect(csv).toContain('"Plan, review and ""agree"""');
+  /**
+   * The negative control that matters most. Until 2026-09-06 a bind was scored
+   * as "the write returned no error", and `add_fields` answers a correctly
+   * bound field with `options: []` and no source at all — so the write can
+   * neither confirm nor deny. A field that was never bound reads back with no
+   * options source, and that must NOT pass.
+   */
+  it('refuses a field that reads back with no options source at all', () => {
+    const v = verifyLookupBind({ requested, readBack: null });
+    expect(v.verified).toBe(false);
+    expect(v.code).toBe('no-read-back');
   });
 
-  it('omits the filter column for a flat register', () => {
-    const csv = renderRegisterCsv([{ value: 'a1', label: 'X', filterKey: null }], {
-      value: 'activity_code',
-      label: 'activity_name',
+  it('refuses a field that reads back as an INLINE source — the invented-options defect', () => {
+    const v = verifyLookupBind({ requested, readBack: { kind: 'inline' } });
+    expect(v.verified).toBe(false);
+    expect(v.code).toBe('not-a-lookup-source');
+  });
+
+  it('refuses a bind to a different table', () => {
+    const v = verifyLookupBind({
+      requested,
+      readBack: { kind: 'lookup', tableId: 't-OTHER', valueColumnId: 'c-val', labelColumnId: 'c-lab' },
     });
-    expect(csv.trim().split('\n')[0]).toBe('activity_code,activity_name');
+    expect(v.verified).toBe(false);
+    expect(v.code).toBe('wrong-table');
+  });
+
+  it('refuses the right table through the wrong columns — workers would see the wrong codes', () => {
+    for (const readBack of [
+      { kind: 'lookup', tableId: 't-1', valueColumnId: 'c-lab', labelColumnId: 'c-lab' },
+      { kind: 'lookup', tableId: 't-1', valueColumnId: 'c-val', labelColumnId: 'c-val' },
+    ]) {
+      const v = verifyLookupBind({ requested, readBack });
+      expect(v.verified, JSON.stringify(readBack)).toBe(false);
+      expect(v.code).toBe('wrong-columns');
+    }
+  });
+
+  it('never passes on a partial read-back', () => {
+    for (const readBack of [
+      {},
+      { kind: 'lookup' },
+      { kind: 'lookup', tableId: 't-1' },
+      { kind: 'lookup', tableId: 't-1', valueColumnId: 'c-val' },
+    ]) {
+      expect(verifyLookupBind({ requested, readBack }).verified, JSON.stringify(readBack)).toBe(false);
+    }
   });
 });

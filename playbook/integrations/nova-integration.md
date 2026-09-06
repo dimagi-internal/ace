@@ -751,18 +751,22 @@ reached by proxy because Nova's schema is upstream and not ours to extend.
 
 ACE's consumer is `skills/app-media-coverage` (Phase 3 Step 1.7).
 
-## The fixtures (Project data table) channel — shipped by 2026-09-01, HALF adopted
+## The fixtures (Project data table) channel — shipped by 2026-09-01, fully adopted 2026-09-06
 
 Nova authors **Project data tables** — CommCare fixtures / lookup tables — in
 the blueprint, rows included. Confirmed live 2026-09-01: **110 tools**, up from
 95 on 2026-08-17 and 81 on 2026-08-14.
 
 **Read this section before believing anything in ACE about lookup tables.**
-Three ACE files carried a now-retired claim that no such create atom existed,
-and `lib/option-register.ts` + `pdd-to-deliver-app § Step 4f` built a
-CSV-emit-and-HALT workaround on it. The claim is false. The **halt is
-still correct**, for a different reason — read on, because that distinction is
-the whole point of this section.
+This channel was adopted in two stages and the history matters, because each
+stage retired a different false claim. Stage one (2026-09-01): three ACE files
+claimed no create atom existed, and `lib/option-register.ts` +
+`pdd-to-deliver-app § Step 4f` had built a CSV-emit-and-HALT workaround on it.
+Stage two (2026-09-06): the BINDING, which stage one had found genuinely inert
+and left as a one-step operator handoff, now works — so the handoff and the CSV
+are both gone (ace#1886). What survives is a narrower halt and a new
+obligation: **prove the bind by read-back.** Read on, because that obligation
+is now the whole point of this section.
 
 ### The tools
 
@@ -782,19 +786,46 @@ the whole point of this section.
 - **The table half works, end to end.** One `create_lookup_table` call created
   a 3-column, 2-row table and returned every id. No CSV, no browser session, no
   operator.
-- **The binding half is INERT.** Binding a select to that table fails **every
-  time**, on both routes — `set_field_options_source` and `add_fields` with
-  `optionsSource: {kind:'lookup'}`:
+- **The binding half WORKS as of 2026-09-06** (`voidcraft-labs/commcare-nova#545`,
+  closed COMPLETED 2026-09-02). All three routes were confirmed live on a
+  throwaway app, each read back with `get_field`:
+  `add_fields` with `optionsSource: {kind:'lookup'}`; `set_field_options_source`
+  on an existing select; and `edit_field` with
+  `updates: {kind:'single_select', optionsSource:{...}}` converting a `text`
+  field. *(History, so nobody re-derives it: between roughly 2026-09-01 and the
+  closure this refused every time with "its Project lookup definitions are
+  unavailable … wait for lookup data to reconnect, then retry" — reproduced over
+  6 retries at 5s, minutes later, and on a fresh app with a fresh table. The
+  "retry" wording was misleading; the condition was permanent until fixed
+  upstream. Do not reintroduce a retry loop on that string.)*
+- **`set_field_options_source` refuses a `text` field** — *"…is not a single- or
+  multiple-choice field."* Convert with `edit_field` (`updates.kind` +
+  `updates.optionsSource` together) and the bind lands in the same call. On a
+  fresh build no `confirmConversion: true` was needed; the flag matters only
+  where saved case values would be set aside.
+- **The write response cannot tell you whether the bind landed — read it back.**
+  `add_fields` answers a *correctly bound* lookup field with
 
-  > This lookup reference can't be checked right now because its Project lookup
-  > definitions are unavailable. Nothing was changed; wait for lookup data to
-  > reconnect, then retry.
+  > {"message":"Successfully added 1 field …","fields":[{"uuid":"…","id":"probe_pick","options":[]}]}
 
-  **That message is wrong about being transient.** Reproduced over 6 retries at
-  5s, again minutes later, and again on a fresh app with a fresh table — while
-  `get_lookup_table_rows` read that same table perfectly throughout. Filed as
-  `voidcraft-labs/commcare-nova#545`. Do NOT write a retry loop against it; the
-  probe below is the correct instrument.
+  `options: []` on a field that IS bound, and no mention of the source at all.
+  So "no error" passes a bind that never landed, and reading `options` fails a
+  bind that did. Only `get_field` shows the truth
+  (`field.optionsSource.{kind,tableId,valueColumnId,labelColumnId}`). ACE
+  encodes this as `verifyLookupBind` in `lib/option-register.ts`, used by both
+  `pdd-to-deliver-app § Step 4f` and the probe below, so a run and its tripwire
+  agree on what "bound" means.
+- **A bound field pins its table, and a SOFT-DELETED app still pins it.** Once
+  a select references a table, `remove_lookup_table` returns
+  `{"code":"referenced","blockingApps":[…]}`. `delete_app` does not release it:
+  the app comes back `recoverable_until` ~30 days out and still appears in
+  `blockingApps` with `"deleted": true`, while scoping the removal to the
+  deleted app's own id fails `not_found`. **There is no ordering of (delete
+  app, remove table) that works** — the reference must be dropped first:
+  `remove_field` → re-read the table revision (removing the field BUMPS it, so
+  the revision from `create_lookup_table` is stale) → `remove_lookup_table` →
+  `delete_app`. Measured 2026-09-06, after this leaked three Project-scoped
+  tables whose tags are now taken until the soft-deleted apps expire.
 - **Lookup ids are UUIDv7** (`…-7xxx-…`), unlike app/module/form/field uuids,
   which match the general RFC pattern. A regex written for one rejects the other.
 - **A select cannot be created without an options source.** `add_fields` with
@@ -821,40 +852,53 @@ the whole point of this section.
 
 ### What this means for ACE, exactly
 
-Two changes, and they pull in opposite directions — keep them straight:
-
-1. **ACE may now build and populate a partner's register itself.** The half of
-   `lib/option-register.ts` that existed because no create atom existed —
-   `renderRegisterCsv` plus a *"create the table, then import this CSV"*
-   operator instruction — is obsolete. The handoff drops from two manual steps
-   to one.
-2. **The `pdd-to-deliver-app § Step 4f` halt STAYS.** Not because the table
-   cannot be built, but because the built table cannot be *bound*. A build that
-   proceeded would ship an option list ACE invented into a partner's own
-   published process — the `no-inferred-backstory` failure, which has no
-   downstream symptom: the app is complete, internally consistent with its own
-   invention, and passes every structural gate.
+1. **ACE builds, populates AND binds a partner's register itself.** There is no
+   operator handoff. `renderRegisterCsv` — which rendered the register as CSV
+   for a human to import, first because no create atom existed and then because
+   the bind was refused — is **deleted**; both of its reasons are gone.
+2. **A lookup-backed select is the PREFERRED rung, not the fallback.**
+   `_app-component-library § structured-capture` ordered its ladder
+   inline-first while the bind was blocked. That ordering is inverted back: a
+   register that exists as data must be built and bound, never retyped as an
+   inline list, because retyping substitutes ACE's transcription for the
+   partner's own value codes.
+3. **The `pdd-to-deliver-app § Step 4f` halt is NARROWED, not dropped.** It
+   still fires on an undeclared register (a Phase-1 gap), an unreadable
+   declared source, any `diffOptionRegister` finding, and — new — **a bind that
+   does not verify**. The original rationale is unchanged and still governs:
+   shipping an option list ACE invented into a partner's published process is a
+   `no-inferred-backstory` failure with no downstream symptom, since the app is
+   complete, internally consistent with its own invention, and passes every
+   structural gate. An unverified bind is that same defect wearing a better
+   disguise — the select renders empty to a worker while every ACE artifact
+   reports the register shipped.
 
 ### The tripwire
 
 `scripts/probe-nova-fixtures.ts` is the instrument, not this prose. It creates
-a throwaway app, a table with rows, attempts the bind, and deletes the app:
+a throwaway app and a table with rows, binds a select to it, **verifies the
+bind with a `get_field` read-back**, then unbinds and cleans up:
 
 ```
-npx tsx scripts/probe-nova-fixtures.ts        # exit 2 = current known state
+npx tsx scripts/probe-nova-fixtures.ts        # exit 0 = expected state
 ```
+
+Its direction reversed on 2026-09-06. It used to answer *"may we adopt this
+yet?"*; it now answers *"is a capability ACE depends on still there?"*
 
 | Exit | Verdict | Do |
 |---|---|---|
-| `0` | `both` | The bind landed. **Finish the adoption** (tracked as ace#1886): Step 4f creates, populates AND binds; retire the operator handoff and `renderRegisterCsv`; narrow the halt to the undeclared-register case |
-| `2` | `create-only` | Current state. Halt stays; the reason is the binding |
-| `3` | `none` | The create atom regressed → `skills/upstream-regression-triage` |
+| `0` | `both` | Expected. Step 4f creates, populates and binds autonomously |
+| `2` | `create-only` | **Regression** — the bind no longer lands. Step 4f must HALT on declared registers rather than degrade → `skills/upstream-regression-triage`; prior occurrence `commcare-nova#545` |
+| `3` | `none` | The create atom regressed too → `skills/upstream-regression-triage` |
 
 Run it when a Nova release lands, when `probe-nova-contract.ts` reports a new
-tool count, or whenever anyone proposes automating the partner-register
-handoff. *Enforced:* `test/scripts/nova-fixtures-probe.test.ts` pins the
-verdict logic, and `test/docs/upstream-absence-claims.test.ts` keeps the
-retired "no create atom" claim from coming back.
+tool count, or when a build reports a register bind it could not verify.
+*Enforced:* `test/scripts/nova-fixtures-probe.test.ts` pins the verdict logic
+(including that an ACCEPTED write with an unconfirmed read-back is not a bind),
+`test/lib/option-register.test.ts` pins `verifyLookupBind`, and
+`test/docs/upstream-absence-claims.test.ts` keeps both retired claims — "no
+create atom" and "the bind is refused" — from coming back.
 
 ## The 2026-07-31 uuid-addressing migration (read this before writing a Nova call)
 

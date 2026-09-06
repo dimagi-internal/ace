@@ -32,12 +32,20 @@ WORKS on ACE's own path, and keep those two answers separate — because the
 remedy depends on which one you got.
 
 This is not caution for its own sake. Run on 2026-09-01, this skill found that
-Nova's `create_lookup_table` works perfectly and that **binding** a select to
-the table it just created is refused every time. Adopting on the strength of
+Nova's `create_lookup_table` worked perfectly while binding a select to the
+table it had just created was refused every time. Adopting on the strength of
 the tool list would have retired a halt whose only job is to stop ACE shipping
 an invented option list into a partner's own published process — a defect with
 no downstream symptom, since the app is complete, internally consistent with
 its own invention, and passes every structural gate.
+
+*(That block has since lifted: `voidcraft-labs/commcare-nova#545` closed
+COMPLETED 2026-09-02 and the bind was adopted on 2026-09-06, ace#1886. The
+example is kept in the past tense because the LESSON is not about lookups —
+five ACE files had absorbed the inertness as fact, and one of them had re-ranked
+a build ladder around it. Do not read this paragraph as a live constraint; the
+current contract is in `playbook/integrations/nova-integration.md § The
+fixtures (Project data table) channel`.)*
 
 So: **correct the REASON; do not soften the REMEDY.** A primitive that exists
 can still be inert, and saying precisely which is the fix. The same sentence
@@ -108,6 +116,26 @@ like an upstream regression. Clean up every object you created, surface a
 cleanup failure loudly rather than swallowing it, and make the second run prove
 the first one tidied up.
 
+**Then re-derive the teardown when the capability actually LANDS — adopting it
+changes what cleanup requires (ace#1886).** This is the half the rule above
+missed, and it is not obvious: the object a probe creates while a capability is
+inert is *inert too*, so tearing it down is trivial. The moment the capability
+works, the probe starts creating a real, referenced object — and the teardown
+that was correct yesterday silently stops working. The fixtures probe hit this
+exactly. While the bind was refused, `remove_lookup_table` → `delete_app` was
+right; the day the bind landed, the bound field became a reference and the same
+sequence started leaking a Project-scoped table on **every green run**, warning
+about it in a line nobody reads because the probe exits 0. Worse, `delete_app`
+does not release the reference — a soft-deleted app still appears in
+`blockingApps` for ~30 days — so there is no ORDERING of the two calls that
+works; the reference itself has to be dropped first (`remove_field` → re-read
+the revision, which the removal bumps → `remove_lookup_table` → `delete_app`).
+
+So: when a probe flips from "blocked" to "works", **re-read its teardown against
+the new state before trusting the next run**, and assert the tidy-up rather than
+warning about it. A leak here is uniquely nasty because it manufactures the
+symptom of the thing the probe exists to detect.
+
 Record every behaviour you had to discover rather than infer. Those become the
 **Contract facts** block, and they are the highest-value output of this skill —
 each line is a call the next reader does not have to burn.
@@ -121,10 +149,22 @@ Then classify honestly:
 | Not there | Nothing shipped | Stop. Do not edit a single doc |
 
 **Beware a refusal that claims to be transient.** Nova's lookup-binding refusal
-says *"wait for lookup data to reconnect, then retry"* and never reconnects.
-Before believing such a message, retry with backoff, retry minutes later, and
-retry on a **fresh app with fresh objects**. If all three refuse, it is
-permanent and the misleading wording is itself worth reporting.
+said *"wait for lookup data to reconnect, then retry"* and never reconnected
+(until it was fixed upstream months later). Before believing such a message,
+retry with backoff, retry minutes later, and retry on a **fresh app with fresh
+objects**. If all three refuse, it is permanent *for now* and the misleading
+wording is itself worth reporting.
+
+**And beware the mirror image: an ACCEPTANCE that proves nothing.** A write that
+returns no error is not evidence the write took effect — read the object back
+and check the field you set. Nova's `add_fields` answers a *correctly bound*
+lookup field with `"options": []` and no mention of the source at all, so on
+that path "no error" would pass a bind that never happened AND reading the
+response's own `options` would fail one that did. The fixtures probe scored the
+bind this way for its whole life and would have certified a broken adoption
+(ace#1886). **Verify a capability by reading state back, never by the mutation's
+own response** — and put the check in a pure function the consumer shares, so
+the probe and the skill cannot drift on what success means.
 
 ### Step 3 — Inventory the cruft
 
@@ -254,4 +294,5 @@ strength of Step 1 alone.
 
 | Date | Change | Author |
 |---|---|---|
+| 2026-09-06 | **Step 2 gains two rules the first run needed and did not have (ace#1886).** Adopting the fixtures BIND four days after `voidcraft-labs/commcare-nova#545` closed exposed both. (1) *Verify by read-back, never by the mutation's response.* `scripts/probe-nova-fixtures.ts` had scored the bind as `!error` since it was written, and Nova answers a correctly-bound lookup field with `"options": []` — so that check could neither confirm nor deny, in either direction, and would have certified the adoption without ever observing a bind. (2) *Re-derive the teardown when a capability lands.* The skill already said to clean up and run twice, which the probe did; what it could not anticipate is that the object it creates stops being inert. Once the bind worked, the bound field became a reference, `remove_lookup_table` began failing `referenced` on every green run, and no ordering of it with `delete_app` helps because a SOFT-deleted app holds the reference for ~30 days. Three tables leaked before this was understood. Both rules generalise past Nova: a probe that stops tidying up manufactures the exact symptom it exists to detect. | ACE team |
 | 2026-09-01 | **Created, from the fixtures adoption.** Generalises the procedure run by hand three times — the i18n channel (2026-08-17), the media channel (2026-08-27, three months late), and fixtures (2026-09-01). The fixtures run is why Step 2 exists as a separate gate rather than a footnote to Step 1: `create_lookup_table` was live and complete, and binding a select to its output was refused every time (`voidcraft-labs/commcare-nova#545`), so a tool-list-only adoption would have retired `pdd-to-deliver-app § Step 4f`'s partner-register halt and shipped invented options into a partner's app. Step 5's ratchet and both of its traps come from adding the fixtures row: the citation check had hardcoded the previous entry's symbol, and `create_lookup_table` collides with ACE's unrelated HQ atom. | ACE team |
