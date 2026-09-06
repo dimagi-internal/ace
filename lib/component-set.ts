@@ -48,6 +48,25 @@
 // beats a confident guess — the same rule as § "close the loop to the source
 // of truth".
 //
+// ## The framework's component INVENTORY is read the same way
+//
+// `lib/learn-module-plan.ts` needs the framework's full component list to
+// satisfy Learn PDD §6(5) — "every framework component skipped for having no
+// PDD" — and for three days it had no producer anywhere in ACE, so the memo
+// reported three absent components on a programme missing nine (ace#2056).
+//
+// The reason it had none is real and is preserved here: the framework's
+// component table is PROSE, and parsing it is the same fragility as reading a
+// filename as an identity. So the inventory is not parsed — it is DECLARED, by
+// the same author, in the same place, with the same convention:
+//
+//   Components: 1, 2, 3, 4, 5, 5b, 6, 7, 8, 9, 10, 11, 12
+//
+// Declared → the gap list is exact. Undeclared → `inventory-undeclared`, a
+// finding that costs its author one line, and the consumer keeps its loud
+// `inventory-unavailable` degrade. A loud gap still beats a confident guess;
+// what changed is that the gap now names the fix instead of being permanent.
+//
 // Pure and content-only: the caller does the Drive reads and hands text in.
 //
 
@@ -77,7 +96,9 @@ export interface ComponentSetEntry {
 export type ComponentSetFindingCode =
   | 'undeclared-pdd'
   | 'duplicate-component-id'
-  | 'no-components';
+  | 'no-components'
+  | 'inventory-undeclared'
+  | 'inventory-conflict';
 
 export interface ComponentSetFinding {
   code: ComponentSetFindingCode;
@@ -95,6 +116,18 @@ export interface ComponentSet {
   programLevel: ComponentSetEntry[];
   supporting: ComponentSetEntry[];
   undeclared: ComponentSetEntry[];
+  /**
+   * The framework's FULL component inventory, verbatim ids, when a document in
+   * the set declares one (`Components: 1, 2, 5b, …`). Sorted and de-duplicated.
+   * Absent when nothing declares it, or when two documents declare different
+   * inventories — a union of two disagreeing authorities is a guess, and the
+   * consumer's loud degrade is the right answer to a guess.
+   *
+   * This is the SINGLE canonical name for the concept. It travels to
+   * `products.framework_component_ids` (`lib/component-products.ts`) and reaches
+   * `planLearnModules({ frameworkComponentIds })` unchanged.
+   */
+  frameworkComponentIds?: string[];
   findings: ComponentSetFinding[];
 }
 
@@ -116,6 +149,16 @@ const COMPONENT_RE = /\bComponent:\s*(\d+[a-z]?)\b/i;
 
 /** `Scope: program-level (cross-component)` */
 const PROGRAM_LEVEL_RE = /\bScope:\s*program-level\b/i;
+
+/**
+ * `Components: 1, 2, 3, 4, 5, 5b, 6, …` — the framework's full inventory.
+ *
+ * The first token must start with a DIGIT, so the framework's own prose
+ * ("Components vs models…", "Components: a menu of what a programme is built
+ * from") cannot be mistaken for a declaration. Plural, so it can never collide
+ * with `COMPONENT_RE`'s singular `Component: 4` identity line.
+ */
+const INVENTORY_RE = /\bComponents:\s*(\d+[a-z]?(?:\s*,\s*\d+[a-z]?)*)/i;
 
 /**
  * Read only the head of a document: the title and the metadata line beneath
@@ -158,6 +201,29 @@ function classifyOne(input: ComponentSetInput): ComponentSetEntry {
   }
 
   return { ...base, role: 'undeclared-pdd', declared_title };
+}
+
+/**
+ * Every inventory declaration in the set, with the document that made it.
+ *
+ * Scanned over ALL inputs rather than inside `classifyOne`, because the
+ * document that carries the inventory is the FRAMEWORK — which is not
+ * PDD-shaped and classifies as `supporting`, so `classifyOne` returns before
+ * it ever reads a metadata line.
+ */
+function declaredInventories(
+  inputs: ComponentSetInput[],
+): { name: string; ids: string[] }[] {
+  const out: { name: string; ids: string[] }[] = [];
+  for (const input of inputs) {
+    const match = INVENTORY_RE.exec(head(input.text).join('\n'));
+    if (!match) continue;
+    const ids = [
+      ...new Set(match[1].split(',').map((id) => id.trim().toLowerCase()).filter(Boolean)),
+    ].sort(compareComponentIds);
+    if (ids.length > 0) out.push({ name: input.name, ids });
+  }
+  return out;
 }
 
 /**
@@ -218,12 +284,50 @@ export function classifyComponentSet(inputs: ComponentSetInput[]): ComponentSet 
     });
   }
 
+  // The inventory only means anything on the componentized path; on the
+  // single-PDD path there is no framework and nothing to be missing from it.
+  let frameworkComponentIds: string[] | undefined;
+  if (components.length > 0) {
+    const declarations = declaredInventories(inputs);
+    const distinct = [...new Set(declarations.map((d) => d.ids.join(',')))];
+
+    if (distinct.length === 1) {
+      frameworkComponentIds = declarations[0].ids;
+    } else if (distinct.length > 1) {
+      findings.push({
+        code: 'inventory-conflict',
+        where: declarations.map((d) => d.name),
+        detail:
+          `${declarations.length} documents declare a component inventory and they disagree: ` +
+          `${declarations.map((d) => `${d.name} → ${d.ids.join(', ')}`).join('; ')}. ` +
+          'No inventory is carried, so the Learn build memo degrades to the evidence-based ' +
+          'gap list rather than picking one authority or unioning two.',
+        fix: 'Leave the inventory declared on exactly one document — the framework — and remove the others.',
+      });
+    } else {
+      findings.push({
+        code: 'inventory-undeclared',
+        where: [],
+        detail:
+          'No document declares the framework\'s full component inventory, so the Learn build ' +
+          'memo cannot name every component skipped for having no PDD (Learn PDD §6(5)) — it can ' +
+          'only name the ones another component happens to reference. The framework\'s component ' +
+          'table is prose; ACE will not parse it, for the same reason a filename is not evidence.',
+        fix:
+          'Add to the framework document\'s metadata line, within its first 4 lines: ' +
+          '`· Components: 1, 2, 3, 4, 5, 5b, 6, …` — every component in the set, including the ones ' +
+          'this programme does not carry.',
+      });
+    }
+  }
+
   return {
     ok: components.length > 0 && findings.every((f) => f.code !== 'no-components'),
     components,
     programLevel,
     supporting,
     undeclared,
+    ...(frameworkComponentIds ? { frameworkComponentIds } : {}),
     findings,
   };
 }

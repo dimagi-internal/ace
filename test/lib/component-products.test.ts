@@ -93,3 +93,44 @@ describe('buildComponentProducts', () => {
       .toThrow(/synthesized path/);
   });
 });
+
+//
+// ace#2056 — the framework inventory travels under ONE name.
+//
+// The concept had three names and no contract: `frameworkComponentIds` in the
+// consumer, a freehand `absent_components` in the run's own YAML (the
+// COMPLEMENT, not the inventory), and nothing typed in between. These pin the
+// single canonical spelling from classifier to products.
+//
+const frameworkWithInventory = {
+  file_id: 'file-fw',
+  name: 'Graduation Framework',
+  text:
+    'Poverty Graduation on Connect: Models and Components Framework\n' +
+    'Purpose: A map of the components · Components: 1, 2, 3, 4, 5, 5b, 6, 7, 8, 9, 10, 11, 12',
+};
+
+describe('buildComponentProducts — framework_component_ids (ace#2056)', () => {
+  it('carries the declared inventory into products under the canonical name', () => {
+    const set = classifyComponentSet([
+      frameworkWithInventory,
+      learn,
+      pdd('2', 'Household Poverty Targeting Survey'),
+      pdd('4', 'Enrollment'),
+      pdd('5', 'Productive Asset Transfer (In-Kind)'),
+      pdd('6', 'Recurring Consumption Support'),
+    ]);
+    const built = buildComponentProducts(set, assessProgrammeReadiness(set, BODIES));
+    expect(built.framework_component_ids).toEqual([
+      '1', '2', '3', '4', '5', '5b', '6', '7', '8', '9', '10', '11', '12',
+    ]);
+  });
+
+  it('OMITS the key entirely when nothing declares an inventory', () => {
+    // Not `[]` — an empty array reads as "the framework has no components",
+    // which `planLearnModules` would treat as "nothing was skipped". Absent is
+    // what makes its inventory-unavailable degrade fire.
+    const built = buildComponentProducts(SET, assessProgrammeReadiness(SET, BODIES));
+    expect('framework_component_ids' in built).toBe(false);
+  });
+});

@@ -143,6 +143,13 @@ const DesignProducts = z
           .passthrough(),
       )
       .optional(),
+    // The framework's full component inventory, when a document in the set
+    // declares one (`Components: 1, 2, 5b, …`). The single canonical name for
+    // the concept — `pdd-to-learn-app` reads THIS into
+    // `planLearnModules({ frameworkComponentIds })` and derives it from nothing
+    // else (ace#2056). Optional: undeclared is a legitimate state that the
+    // Learn build memo reports loudly rather than guessing around.
+    framework_component_ids: z.array(z.string().min(1)).optional(),
   })
   .strict();
 
