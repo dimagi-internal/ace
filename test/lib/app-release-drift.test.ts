@@ -19,7 +19,18 @@
  * `test/skills/app-release-drift-check.test.ts`.
  */
 import { describe, it, expect } from 'vitest';
-import { classifyAppDrift, formatDriftDecision } from '../../lib/app-release-drift.js';
+import { readFileSync } from 'node:fs';
+import { join, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import {
+  type NovaBlueprintField,
+  classifyAppDrift,
+  countNovaVisibleFields,
+  formatDriftDecision,
+} from '../../lib/app-release-drift.js';
+import { walkFormFields } from '../../scripts/run-form-walk.js';
+
+const CCZ_FIXTURES = join(dirname(fileURLToPath(import.meta.url)), '..', 'fixtures', 'ccz');
 
 const DEPLOYED = '2026-08-24T23:12:00Z';
 
@@ -276,5 +287,190 @@ describe('the decision is auditable', () => {
       classifyAppDrift({ app: 'learn', novaEditedSinceDeploy: false }),
     );
     expect(clean).toMatch(/^learn: NO DRIFT → build-directly\./);
+  });
+});
+
+/**
+ * ace#1807 — the residual off-by-one #1789 left behind, one level up from the
+ * leaf case it fixed.
+ *
+ * #1789 taught the contract to exclude `kind: hidden` LEAVES. A CONTAINER has
+ * its own asymmetry: `walkFormFields` skips the `<group>` element but recurses
+ * into it, so a group contributes a row **iff it emitted a `<label>` child**,
+ * while Nova's `get_app` counts every container regardless.
+ *
+ * ## The issue's stated mechanism was refuted, and this block pins the
+ * corrected rule
+ *
+ * #1807 read the delta as *"a group whose children are all hidden has no body
+ * element at all"*. The compiled artifact says otherwise —
+ * `test/fixtures/ccz/spark-facilitator-meeting-record.xml` (byte-identical to
+ * released Deliver build `b08533bdf26a48a295a362ff204fb88d`, re-downloaded and
+ * `shasum`-matched in the session that fixed this) carries all 14 groups in its
+ * body, `meeting_summary` included, as `<group ref="/data/meeting_summary"/>`.
+ * The element is emitted; only its LABEL is absent, because Nova's label for
+ * that group is the empty string. The two properties coincide on this one
+ * group and nowhere else in either app, so the correlation is not the cause.
+ *
+ * Excluding on "all descendants hidden" would be wrong in BOTH directions — it
+ * would drop a labelled all-hidden container that the walk does count, and keep
+ * an unlabelled container with visible children that the walk does not. Both
+ * shapes are asserted below.
+ *
+ * ## Both sides are measured, neither is asserted
+ *
+ * The HQ column is recomputed at test time by running the SAME `walkFormFields`
+ * the skill invokes over the vendored compiled forms. So this block cannot pass
+ * by two hand-copied numbers agreeing; the walker and this function have to
+ * agree, from a real Nova structure and real compiled XML respectively.
+ */
+describe('novaVisibleFieldCount excludes an UNLABELLED container (ace#1807)', () => {
+  const g = (label: string, ...children: NovaBlueprintField[]): NovaBlueprintField => ({
+    kind: 'group',
+    label,
+    children,
+  });
+  const f = (kind = 'text'): NovaBlueprintField => ({ kind });
+  const h = (): NovaBlueprintField => ({ kind: 'hidden' });
+  const many = (n: number, make: () => NovaBlueprintField) => Array.from({ length: n }, make);
+
+  /** Nova blueprint of "Community enrolment", from a live `get_app`. */
+  const ENROLMENT: NovaBlueprintField[] = [
+    g('Community identity', ...many(6, () => f())),
+    g('Households', f('int')),
+    g(
+      'Community location',
+      f('geopoint'),
+      h(),
+      h(),
+      h(),
+      f('label'),
+      f('label'),
+      f('label'),
+    ),
+    g('Starting step', f('single_select'), h()),
+  ];
+
+  /** Nova blueprint of "Community meeting record", from the same `get_app`. */
+  const MEETING: NovaBlueprintField[] = [
+    g('Meeting date', f('date')),
+    g('Did the meeting happen?', f('single_select')),
+    g('Why the meeting did not happen', ...many(4, () => f())),
+    g('Type of meeting', f('single_select')),
+    g('FCAP step', f('single_select'), f('single_select')),
+    g('Attendance', ...many(4, () => f('int'))),
+    g('Participation', ...many(2, () => f('int'))),
+    g('Who else attended', ...many(4, () => f())),
+    g('How the meeting went', ...many(6, () => f())),
+    g('Savings', f('single_select')),
+    g('Savings details', ...many(6, () => f())),
+    g(
+      'Evidence',
+      f('label'),
+      f('single_select'),
+      f('image'),
+      f('geopoint'),
+      h(),
+      h(),
+      h(),
+      f('label'),
+      f('label'),
+      f('label'),
+    ),
+    g('Next meeting', f('date')),
+    // The ace#1807 case: Nova label is "", eight children, all hidden.
+    g('', ...many(8, () => h())),
+  ];
+
+  /** Nova's own raw total, so the fixture is provably the right app. */
+  const rawCount = (fields: NovaBlueprintField[]): number =>
+    fields.reduce((n, x) => n + 1 + rawCount(x.children ?? []), 0);
+
+  it('the fixtures reproduce Nova get_app’s own raw totals (20 and 65)', () => {
+    // If these drift, the fixture is no longer this app and nothing below holds.
+    expect(rawCount(ENROLMENT)).toBe(20);
+    expect(rawCount(MEETING)).toBe(65);
+  });
+
+  it('CROSS-CHECK: matches what walkFormFields emits from the real compiled CCZ', () => {
+    const walk = (name: string) =>
+      walkFormFields(readFileSync(join(CCZ_FIXTURES, name), 'utf8')).length;
+    // Left side from the Nova blueprint, right side from the compiled XML.
+    // Neither number is written down twice.
+    expect(countNovaVisibleFields(ENROLMENT)).toBe(walk('spark-facilitator-enrolment.xml'));
+    expect(countNovaVisibleFields(MEETING)).toBe(walk('spark-facilitator-meeting-record.xml'));
+    // And the absolute values, so a change that moves BOTH sides is still loud.
+    expect(countNovaVisibleFields(ENROLMENT)).toBe(16);
+    expect(countNovaVisibleFields(MEETING)).toBe(53);
+  });
+
+  it('the whole delta is the unlabelled container, not the hidden leaves', () => {
+    // #1789's rule alone (hidden leaves only) gives 54 — the residual this
+    // issue is about. Recomputed here rather than quoted.
+    const hiddenOnlyRule = (fields: NovaBlueprintField[]): number =>
+      fields.reduce(
+        (n, x) =>
+          n +
+          (x.kind === 'hidden' ? 0 : 1) +
+          hiddenOnlyRule(x.children ?? []),
+        0,
+      );
+    expect(hiddenOnlyRule(MEETING)).toBe(54);
+    expect(countNovaVisibleFields(MEETING)).toBe(53);
+    // Enrolment has no unlabelled container, so the two rules agree there —
+    // which is why #1789 looked complete.
+    expect(hiddenOnlyRule(ENROLMENT)).toBe(16);
+    expect(countNovaVisibleFields(ENROLMENT)).toBe(16);
+  });
+
+  it('REFUTED SHAPE A: a LABELLED all-hidden container still counts', () => {
+    // The walk emits its <label>, so Nova must count it too. An
+    // "all descendants hidden" exclusion would drop it.
+    expect(countNovaVisibleFields([g('Scores', h(), h(), h())])).toBe(1);
+  });
+
+  it('REFUTED SHAPE B: an UNLABELLED container with visible children does not count', () => {
+    // No <label> emitted, so the walk sees only the children. An
+    // "all descendants hidden" exclusion would wrongly keep the container.
+    expect(countNovaVisibleFields([g('', f(), f())])).toBe(2);
+  });
+
+  it('a whitespace-only label is an absent label', () => {
+    expect(countNovaVisibleFields([g('   ', f())])).toBe(1);
+  });
+
+  it('nests: an unlabelled container inside a labelled one', () => {
+    expect(countNovaVisibleFields([g('Outer', f(), g('', h(), h()), g('Inner', f()))])).toBe(
+      1 /* Outer */ + 1 /* leaf */ + 0 /* unlabelled */ + 1 /* Inner */ + 1 /* its leaf */,
+    );
+  });
+
+  it('a labelled `repeat` counts like a labelled group', () => {
+    expect(countNovaVisibleFields([{ kind: 'repeat', label: 'Members', children: [f(), h()] }])).toBe(
+      2,
+    );
+  });
+
+  it('the corrected count reaches the ORDERING fact instead of forcing a re-upload', () => {
+    // The cost #1807 names: with the wrong basis the mismatch short-circuits
+    // to drift, and the re-upload reverts appearance="acquire" and per-module
+    // display_style (ace#1643), which app-release-qa Step 2.8 then BLOCKERs.
+    const d = classifyAppDrift({
+      app: 'deliver',
+      novaEditedSinceDeploy: false,
+      novaVisibleFieldCount: countNovaVisibleFields(MEETING),
+      hqDraftVisibleFieldCount: 53,
+    });
+    expect(d.drift).toBe(false);
+    expect(d.action).toBe('build-directly');
+  });
+
+  it('and a REAL field-count mismatch is still not silently forgiven', () => {
+    const d = classifyAppDrift({
+      app: 'deliver',
+      novaVisibleFieldCount: countNovaVisibleFields(MEETING),
+      hqDraftVisibleFieldCount: 51,
+    });
+    expect(d.drift).toBe(true);
   });
 });

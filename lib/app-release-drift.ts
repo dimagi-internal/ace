@@ -52,18 +52,21 @@
  * timestamps parse and the Nova app was last edited at or before the deploy.
  *
  * ## Field counts vs form counts — one has a confound, the other doesn't
- * (dimagi-internal/ace#1789)
+ * (dimagi-internal/ace#1789, ace#1807)
  *
  * `commcare_make_build` versions the CCHQ draft; `run-form-walk --draft-only`
- * reads THAT draft. It never emits `kind: hidden` fields. Nova's `get_app`
- * does. Every ACE app carries hidden fields (`user_score`, `qN_score`,
- * `case_name`, `entity_key`, `entity_label`, …), so a caller who feeds the
- * classifier a raw Nova field-count total gets a mismatch on essentially
- * every run — see `novaVisibleFieldCount` below for the boundary fix.
+ * reads THAT draft, and it counts on a DIFFERENT BASIS from Nova's `get_app`
+ * in two independent ways: it never emits `kind: hidden` fields (#1789), and a
+ * container contributes a row only if it rendered a label (#1807). A caller who
+ * feeds the classifier a raw Nova total — or one normalized only for hidden
+ * fields — gets a mismatch. `countNovaVisibleFields` is the boundary fix and
+ * carries the full derivation; do not re-derive the rule by hand.
  *
  * Live repro (`bednet-check-2-visit/20260828-0629`): Learn 44 (Nova, raw) vs
  * 32 (HQ draft); Deliver 17 vs 14. Excluding hidden fields both matched
- * exactly, and both apps had `novaEditedSinceDeploy: false`.
+ * exactly, and both apps had `novaEditedSinceDeploy: false`. Residual repro
+ * (`spark-facilitator/20260828-0703`): the meeting form still read 54 vs 53
+ * after the #1789 correction, the whole delta being one unlabelled container.
  *
  * Form counts have no equivalent confound — a hidden field never creates a
  * new form — so a form-count mismatch stays a hard, unconditional drift
@@ -110,12 +113,11 @@ export interface AppDriftInputs {
   /** Form count on the HQ draft (`run-form-walk --draft-only`). */
   hqDraftFormCount?: number | null;
   /**
-   * Field count across all forms on the Nova blueprint, EXCLUDING `kind:
-   * hidden` fields (`user_score`, `qN_score`, `case_name`, `entity_key`,
-   * `entity_label`, …). The HQ draft walk never emits hidden fields, so a
-   * raw `get_app` total is not the same basis and will disagree on
-   * essentially every ACE app (dimagi-internal/ace#1789). Filter before
-   * passing this in — don't pass the raw Nova total.
+   * Field count across all forms on the Nova blueprint, on the SAME BASIS the
+   * HQ draft walk uses. **Compute it with `countNovaVisibleFields` — do not do
+   * the arithmetic by hand and do not pass the raw `get_app` total.** Two
+   * separate normalizations are required and each was found the hard way
+   * (ace#1789, then ace#1807); the rule is stated on that function.
    */
   novaVisibleFieldCount?: number | null;
   /** Field count across all forms on the HQ draft (`--with-fields`). Already visible-only — the draft walk has no hidden fields to exclude. */
@@ -293,6 +295,104 @@ export function classifyAppDrift(inputs: AppDriftInputs): AppDriftDecision {
     reasons,
     signals,
   };
+}
+
+/**
+ * One field as Nova's blueprint carries it (`get_app` / `get_form`) — the same
+ * shape `lib/screen-shape.ts § ScreenField` reads.
+ */
+export interface NovaBlueprintField {
+  /** `group`, `repeat`, `single_select`, `label`, `hidden`, `text`, … */
+  kind: string;
+  /** Rendered label text. A container with an EMPTY label is the ace#1807 case. */
+  label?: string;
+  /** Children of a `group` / `repeat`. */
+  children?: NovaBlueprintField[];
+}
+
+/** Nova kinds that contain other fields rather than being one. */
+const CONTAINER_KINDS = new Set(['group', 'repeat']);
+
+/**
+ * `novaVisibleFieldCount` — Nova's blueprint counted on the basis the HQ draft
+ * walk actually produces, so `classifyAppDrift` compares like with like.
+ *
+ * **The rule: every non-`hidden` LEAF, plus every container that carries a
+ * NON-EMPTY label.**
+ *
+ * ## Why each half is here, and how each was measured
+ *
+ * `commcare_make_build` versions the CCHQ draft; `scripts/run-form-walk.ts
+ * --draft-only --with-fields` reads that draft. Its `walkFormFields` skips the
+ * `<group>` element itself but recurses into it, so a group contributes a row
+ * **iff it emitted a `<label>` child** — and it emits no hidden fields at all.
+ * Nova's `get_app` counts every field including hidden ones and every
+ * container regardless of label. Two different bases, two corrections:
+ *
+ * 1. **Hidden leaves (ace#1789).** Every ACE app carries them (`user_score`,
+ *    `qN_score`, `case_name`, `entity_key`, `entity_label`, …), so a raw Nova
+ *    total mismatches on essentially every run. Live repro
+ *    `bednet-check-2-visit/20260828-0629`: Learn 44 (raw) vs 32 (HQ draft),
+ *    Deliver 17 vs 14; excluding hidden leaves both matched exactly.
+ *
+ * 2. **Unlabelled containers (ace#1807).** A group whose label is empty
+ *    compiles to a self-closing `<group ref="…"/>` with no `<label>` child, so
+ *    the walk emits nothing while Nova still counts 1.
+ *
+ * ## ace#1807's stated mechanism was REFUTED, and this is the corrected rule
+ *
+ * The issue read the delta as *"a group whose children are all hidden has no
+ * body element at all"*. The compiled artifact says otherwise. Released Deliver
+ * build `b08533bdf26a48a295a362ff204fb88d` (spark-facilitator/20260828-0703),
+ * vendored verbatim at `test/fixtures/ccz/spark-facilitator-meeting-record.xml`:
+ *
+ * ```
+ * $ # every <group ref=...> in <h:body>
+ * group elements in body: 14      # all 14, meeting_summary INCLUDED
+ * ...
+ * '  </input>\n    </group>\n    <group ref="/data/meeting_summary"/>\n  </h:body>'
+ * ```
+ *
+ * The element is emitted. What is absent is its **label** — and it is absent
+ * because Nova's label for that group is the empty string, not because its
+ * eight children happen to be hidden. Those two properties merely coincide on
+ * this one group. Excluding on "all descendants hidden" would therefore be
+ * wrong in both directions: it would drop a LABELLED all-hidden container that
+ * the walk does count, and keep an UNLABELLED container with visible children
+ * that the walk does not.
+ *
+ * ## The arithmetic, both forms, both sides measured
+ *
+ * `walkFormFields` run on the two vendored compiled forms:
+ *
+ * ```
+ * modules-0/forms-0.xml: walkFormFields emits 16
+ * modules-1/forms-0.xml: walkFormFields emits 53
+ * ```
+ *
+ * and this function on the same app's Nova blueprint:
+ *
+ * | Form | Nova raw | hidden leaves | labelled containers | this fn | HQ walk |
+ * |---|---|---|---|---|---|
+ * | Community enrolment      | 20 | 4  | 4 of 4  | 16 | 16 |
+ * | Community meeting record | 65 | 11 | 13 of 14 | 53 | 53 |
+ *
+ * `test/lib/app-release-drift.test.ts` recomputes the right-hand column from
+ * those fixtures at test time rather than trusting these numbers.
+ */
+export function countNovaVisibleFields(fields: NovaBlueprintField[]): number {
+  let n = 0;
+  for (const f of fields) {
+    if (CONTAINER_KINDS.has(f.kind)) {
+      // A container is a row on the HQ side only if it rendered a label.
+      if ((f.label ?? '').trim() !== '') n += 1;
+      n += countNovaVisibleFields(f.children ?? []);
+      continue;
+    }
+    if (f.kind === 'hidden') continue;
+    n += 1;
+  }
+  return n;
 }
 
 /** One-line audit string for `app-release_summary.md`. */
