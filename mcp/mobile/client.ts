@@ -263,9 +263,19 @@ export function mergeTestUserOverride(
  * owns the whole transition; `lib/apk-pin-sites.ts` enumerates every other
  * place the version is written down, so this constant never moves alone.
  *
- * 2.64.0 promoted 2026-09-06 after a live calibration walk on
- * ACE_Pixel_API_34 (see the header of `selectors/connect-2.64.0.yaml`).
+ * 2.64.0's live calibration walk ran 2026-09-06 on ACE_Pixel_API_34 — see
+ * `selectors/connect-2.64.0.yaml`'s header and
+ * `docs/mobile-calibration/connect-2.64.0-2026-09-06.md`. (This paragraph
+ * originally dated the walk 2026-09-05 and cited a map file that did not yet
+ * exist; the constant was flipped a day before anything was walked.)
  * 2.63.2 was promoted 2026-07-25 after a live drift check on the same AVD.
+ *
+ * The 2.64.0 map is 46/91 rows verified. Registration — including the NEW
+ * PersonalID email step (ace#2029) — IS device-validated end to end on a
+ * cold-booted 2.64.0 device; the remaining 45 rows need surfaces only a
+ * fresh `/ace:run` opportunity reaches, so claim-through-Deliver is not.
+ * See ace#1997, ace#2029, and the residuals in
+ * `docs/mobile-calibration/connect-2.64.0-upgrade-verification.md`.
  *
  * NOTE: pin only releases that actually carry an `.apk` ASSET — a strictly
  * stronger test than "published", and the reason the older wording here was
