@@ -27,6 +27,7 @@ export interface LintViolation {
     | 'unknown-property-textRegex'
     | 'runFlow-guard-scope-mismatch'
     | 'runFlow-unbound-screenshot-name'
+    | 'pre-submit-screenshot-name-claims-outcome'
     | 'repeat-palette-invocation-without-discriminator'
     | 'selector-inline-key-position'
     | 'selector-value-position-type-mismatch';
@@ -312,6 +313,33 @@ export function lintRecipeText(yaml: string, options: LintOptions = {}): LintRes
   // takeScreenshot in the same subflow OVERWRITES the first, silently
   // collapsing a pre/post pair into one image. Both were observed live.
   for (const v of findUnboundScreenshotNames(yaml)) {
+    violations.push(v);
+  }
+
+  // Rule: pre-submit-screenshot-name-claims-outcome.
+  //
+  // `SCREENSHOT_NAME_PRE_SUBMIT` is, by construction, the frame taken while
+  // still ON THE LAST QUESTION — `form-submit.yaml` shoots it before the tap
+  // that advances. So a name claiming it shows a result/score/outcome is
+  // always false, and it is false in the one direction that matters: it reads
+  // as the certification screen, so anything consuming the manifest by name
+  // captions it as one (dimagi-internal/ace#1853).
+  //
+  // Observed twice, on two independent runs, both times as a PRE_SUBMIT frame
+  // named `…-result` that is an ordinary question:
+  //   - spark-facilitator/20260828-0703 — `journey-learn-m6-assessment-result`
+  //     is the 12th assessment ITEM (#1853's own evidence).
+  //   - hh-poverty-targeting/20260828-0702 — `journey-learn-gate-result` sits
+  //     in the manifest between `journey-learn-gate-q9-answered` and
+  //     `journey-learn-gate-submitted`, i.e. it is the PRE_SUBMIT frame.
+  //
+  // The score screen now IS captured (it lands at `<PRE_SUBMIT>-result`), but
+  // that made the collision worse, not better: bind PRE_SUBMIT to
+  // `…-assessment-result` and the genuine outcome frame becomes
+  // `…-assessment-result-result` while the misleading name keeps the clean one.
+  // Capturing the pixels and naming them are two defects; #1853 reported both
+  // and only the first was fixed.
+  for (const v of findMisleadingPreSubmitNames(yaml)) {
     violations.push(v);
   }
 
@@ -644,6 +672,108 @@ function findUnboundScreenshotNames(yaml: string): LintViolation[] {
     for (const pair of node.items) {
       visit(pair.value as Node);
     }
+  };
+
+  for (const doc of docs) {
+    if (doc.contents) visit(doc.contents as Node);
+  }
+  return out;
+}
+
+/**
+ * Words that claim a frame shows the OUTCOME of a form rather than a step in
+ * it. Matched as whole hyphen/underscore-delimited segments, so a legitimate
+ * `journey-learn-m6-resulting-action` or a form genuinely called "Score Card"
+ * is not caught by substring accident.
+ *
+ * Deliberately short. This is a naming rule for one specific frame, and the
+ * cost of a false positive is a confused author, so it names only the words
+ * that have actually been observed misleading a reader: `result`, `results`,
+ * `score`, `passed`, `failed`, `certified`, `outcome`, `grade`.
+ */
+const OUTCOME_CLAIMING_SEGMENTS = new Set([
+  'result',
+  'results',
+  'score',
+  'passed',
+  'failed',
+  'certified',
+  'outcome',
+  'grade',
+]);
+
+/**
+ * Flag a `SCREENSHOT_NAME_PRE_SUBMIT` binding whose name claims to show an
+ * outcome. That frame is taken on the last question, before the advancing tap,
+ * so the claim is structurally false (dimagi-internal/ace#1853).
+ *
+ * Authoring-time only: this reads the recipe text, never the device. Under
+ * CLAUDE.md's device-truth trigger it is the ace#1235 shape — nothing here
+ * changes what is sent to, or matched against, a device.
+ */
+function findMisleadingPreSubmitNames(yaml: string): LintViolation[] {
+  const out: LintViolation[] = [];
+  let docs: ReturnType<typeof parseAllDocuments>;
+  try {
+    docs = parseAllDocuments(yaml);
+  } catch {
+    return out;
+  }
+
+  const lineOf = (node: Node): number => {
+    const start = (node.range && node.range[0]) ?? 0;
+    return yaml.slice(0, start).split('\n').length;
+  };
+
+  const check = (host: Node, runFlow: unknown): void => {
+    if (!isMap(runFlow)) return;
+    const file = runFlow.get('file');
+    if (typeof file !== 'string') return;
+    if (flowBasename(file) !== 'form-submit.yaml') return;
+    const env = runFlow.get('env', true);
+    if (!isMap(env)) return;
+    const name = env.get('SCREENSHOT_NAME_PRE_SUBMIT');
+    if (typeof name !== 'string') return;
+
+    const offending = name
+      .split(/[-_]/)
+      .map((s) => s.toLowerCase())
+      .filter((s) => OUTCOME_CLAIMING_SEGMENTS.has(s));
+    if (offending.length === 0) return;
+
+    const line = lineOf(host);
+    const suggestion = name.replace(
+      /[-_](result|results|score|passed|failed|certified|outcome|grade)\b/gi,
+      '-last-item',
+    );
+    out.push({
+      rule: 'pre-submit-screenshot-name-claims-outcome',
+      line,
+      detail:
+        `runFlow into \`form-submit.yaml\` at line ${line} binds ` +
+        `\`SCREENSHOT_NAME_PRE_SUBMIT: ${name}\`, whose \`${offending[0]}\` segment claims ` +
+        `the frame shows an outcome. It cannot: that screenshot is taken while still on the ` +
+        `LAST QUESTION, before the tap that advances. On a score-gated quiz the real outcome ` +
+        `frame is the separate \`${name}-result\` capture inside the FINISH branch, so this ` +
+        `name both mis-describes its own frame and collides with the one that is honest ` +
+        `(dimagi-internal/ace#1853).`,
+      remediation:
+        `name the pre-submit frame for what it shows, e.g. ` +
+        `\`SCREENSHOT_NAME_PRE_SUBMIT: ${suggestion}\`. The score screen needs no binding of ` +
+        `its own — \`form-submit.yaml\` derives it as \`<PRE_SUBMIT>-result\` inside the ` +
+        `score-gated FINISH branch.`,
+    });
+  };
+
+  const visit = (node: Node | null): void => {
+    if (node == null) return;
+    if (isSeq(node)) {
+      for (const item of node.items) visit(item as Node);
+      return;
+    }
+    if (!isMap(node)) return;
+    if (node.has('runFlow')) check(node, node.get('runFlow', true) as unknown);
+    for (const pair of node.items) visit(pair.value as Node);
   };
 
   for (const doc of docs) {
