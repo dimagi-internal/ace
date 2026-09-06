@@ -23,10 +23,12 @@
 # list container alone. Never narrow it back to one container.
 #
 # The selector map is ground truth; the atlas below is narrative only.
-# Atlas reference: docs/mobile-atlas/connect-2.63.2.md § 5 — the Learn
-# StandardHomeActivity + suite/form-list MenuActivity are carried over there
-# from the 2.62.0 walk and NOT re-walked on 2.63.2; § 5 states exactly what
-# the 2.63.0 -> 2.63.2 drift check did and did not establish about them.
+# Atlas reference: docs/mobile-atlas/connect-2.64.0.md § 6 — StandardHomeActivity
+# and the grid MenuActivity WERE re-walked on 2.64.0 (evidence dumps 37-39),
+# with zero selector drift. The Learn ASSESSMENT and its result screen were
+# not, and remain uncovered there (R1).
+# The earlier docs/mobile-atlas/connect-2.63.2.md § 5 is now historical: it
+# carried this cluster from the 2.62.0 walk without re-walking it.
 appId: org.commcare.dalvik
 ---
 # ── CommCare version gate (ace#1998) ─────────────────────────────

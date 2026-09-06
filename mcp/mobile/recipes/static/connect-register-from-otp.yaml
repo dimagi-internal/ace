@@ -334,11 +334,11 @@ appId: org.commcare.dalvik
 # check is false and the whole block skips — ONE recipe drives both APKs,
 # including a rollback to the old pin.
 #
-# WHY RAW IDS AND NOT `${SELECTOR:...}` HERE. A `${SELECTOR:}` placeholder
-# is resolved against `connect-<pin>.yaml` BEFORE Maestro ever sees the
+# WHY RAW IDS AND NOT A SELECTOR PLACEHOLDER HERE. A placeholder is
+# resolved against `connect-<pin>.yaml` BEFORE Maestro ever sees the
 # recipe, and an unresolvable name makes `prepareRecipeForMaestro` THROW
 # on the top-level recipe. These rows exist only in connect-2.64.0.yaml —
-# back-copying them into connect-2.63.2.yaml would be a selector map
+# back-copying them into the historical connect-2.63.2.yaml would be a map
 # asserting a selector that provably is not in that APK. So on a rollback
 # to 2.63.2 the placeholder form would fail at RESOLVE time, before the
 # on-device guard could do its job. Raw ids degrade to "the guard is

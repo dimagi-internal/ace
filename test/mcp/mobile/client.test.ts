@@ -11,6 +11,7 @@ import {
   bootstrapConfigFromEnv,
   missingBootstrapEnvVars,
   getConfiguredApkVersion,
+  DEFAULT_APK_VERSION,
 } from '../../../mcp/mobile/client.js';
 import { setSessionBackend, clearSessionBackend } from '../../../mcp/mobile/backend-toggle.js';
 import { TEST_PHONE, TEST_PHONE_LOCAL } from '../../fixtures/test-phone.js';
@@ -2697,53 +2698,13 @@ describe('ensureCommCareApkCached: integrity-checked cache', () => {
   // (`app-commcare-release.apk`), 2.63.0/2.63.1 (`commcare-<v>-release.apk`),
   // and 2.63.2+ (`commcare-<v>.apk`). The downloader probes
   // newest-convention-first and falls back, so every pin keeps working.
-  it('downloads from the newest (2.63.2+) filename on first attempt', async () => {
+  // NAMING NOTE (2026-09-06, ace#1997): "newest" here means FIRST-PROBED, not
+  // newest-convention. `client.ts` probes `app-commcare-release.apk` first
+  // because that is what `commcare_2.64.0` actually ships — Dimagi reverted to
+  // the OLDEST asset name. The convention does not progress with the version
+  // and is not derivable from it; it is read off the release each time.
+  it('downloads from the first-probed filename (app-commcare-release.apk) on first attempt', async () => {
     const version = `test-new-name-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-    const apkPath = path.join(cacheDir, `commcare-${version}.apk`);
-    const shaPath = `${apkPath}.sha256`;
-    try { fs.unlinkSync(apkPath); } catch { /* fine */ }
-    try { fs.unlinkSync(shaPath); } catch { /* fine */ }
-    const bytes = fakeApkBuffer(version);
-    const fetchImpl = vi.fn().mockImplementation(async (url: string) => {
-      if (url.endsWith(`/commcare-${version}.apk`)) {
-        return {
-          ok: true,
-          status: 200,
-          arrayBuffer: async () => bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength),
-        };
-      }
-      return { ok: false, status: 404, statusText: 'Not Found', arrayBuffer: async () => new ArrayBuffer(0) };
-    });
-    const avd = { listPackages: listPackagesInstallSucceeds(), installApk: vi.fn() } as any;
-    const maestro = {} as any;
-    const client = new MobileClient({
-      avd,
-      maestro,
-      fetchImpl,
-      bootstrapConfig: {
-        apkVersion: version,
-        testUser: {
-          phone: TEST_PHONE,
-          phoneLocal: TEST_PHONE_LOCAL,
-          countryCode: '7',
-          pin: '1234',
-          backupCode: 'b',
-          name: 'n',
-        },
-      },
-    });
-    await expect(
-      client.runLocalBootstrap({ name: 'AVD', serial: 'emulator-5554', status: 'booted' } as any),
-    ).rejects.toThrow();
-    // One fetch — newest filename succeeded, no fallback needed.
-    expect(fetchImpl).toHaveBeenCalledTimes(1);
-    expect(fetchImpl).toHaveBeenCalledWith(expect.stringMatching(new RegExp(`/commcare-${version}\\.apk$`)));
-    expect(fs.existsSync(apkPath)).toBe(true);
-    try { fs.unlinkSync(apkPath); fs.unlinkSync(shaPath); } catch { /* leave */ }
-  });
-
-  it('falls back to the legacy filename when the new filename 404s', async () => {
-    const version = `test-fallback-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     const apkPath = path.join(cacheDir, `commcare-${version}.apk`);
     const shaPath = `${apkPath}.sha256`;
     try { fs.unlinkSync(apkPath); } catch { /* fine */ }
@@ -2780,13 +2741,61 @@ describe('ensureCommCareApkCached: integrity-checked cache', () => {
     await expect(
       client.runLocalBootstrap({ name: 'AVD', serial: 'emulator-5554', status: 'booted' } as any),
     ).rejects.toThrow();
-    // Two fetches — new filename 404'd, then old filename succeeded.
-    // Three candidates now: newest (`commcare-<v>.apk`), then the
-    // `-release` form, then the 2.62.0 legacy name that finally answers.
+    // One fetch — the first-probed filename succeeded, no fallback needed.
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+    expect(fetchImpl).toHaveBeenCalledWith(expect.stringMatching(/\/app-commcare-release\.apk$/));
+    expect(fs.existsSync(apkPath)).toBe(true);
+    try { fs.unlinkSync(apkPath); fs.unlinkSync(shaPath); } catch { /* leave */ }
+  });
+
+  it('falls back through the remaining conventions when the first-probed filename 404s', async () => {
+    const version = `test-fallback-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const apkPath = path.join(cacheDir, `commcare-${version}.apk`);
+    const shaPath = `${apkPath}.sha256`;
+    try { fs.unlinkSync(apkPath); } catch { /* fine */ }
+    try { fs.unlinkSync(shaPath); } catch { /* fine */ }
+    const bytes = fakeApkBuffer(version);
+    const fetchImpl = vi.fn().mockImplementation(async (url: string) => {
+      if (url.endsWith(`/commcare-${version}-release.apk`)) {
+        return {
+          ok: true,
+          status: 200,
+          arrayBuffer: async () => bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength),
+        };
+      }
+      return { ok: false, status: 404, statusText: 'Not Found', arrayBuffer: async () => new ArrayBuffer(0) };
+    });
+    const avd = { listPackages: listPackagesInstallSucceeds(), installApk: vi.fn() } as any;
+    const maestro = {} as any;
+    const client = new MobileClient({
+      avd,
+      maestro,
+      fetchImpl,
+      bootstrapConfig: {
+        apkVersion: version,
+        testUser: {
+          phone: TEST_PHONE,
+          phoneLocal: TEST_PHONE_LOCAL,
+          countryCode: '7',
+          pin: '1234',
+          backupCode: 'b',
+          name: 'n',
+        },
+      },
+    });
+    await expect(
+      client.runLocalBootstrap({ name: 'AVD', serial: 'emulator-5554', status: 'booted' } as any),
+    ).rejects.toThrow();
+    // Three fetches, in the order client.ts probes them: the 2.62.0/2.64.0
+    // name first, then `commcare-<v>.apk` (2.63.2), then the `-release` form
+    // (2.63.0/1) which answers here. Pinning the ORDER is the point — it is
+    // what stops someone "restoring" a newest-convention-first list on the
+    // assumption that asset naming marches forward. It does not: 2.64.0
+    // reverted to app-commcare-release.apk (ace#1997).
     expect(fetchImpl).toHaveBeenCalledTimes(3);
-    expect(fetchImpl).toHaveBeenNthCalledWith(1, expect.stringMatching(new RegExp(`/commcare-${version}\\.apk$`)));
-    expect(fetchImpl).toHaveBeenNthCalledWith(2, expect.stringMatching(new RegExp(`/commcare-${version}-release\\.apk$`)));
-    expect(fetchImpl).toHaveBeenNthCalledWith(3, expect.stringMatching(/\/app-commcare-release\.apk$/));
+    expect(fetchImpl).toHaveBeenNthCalledWith(1, expect.stringMatching(/\/app-commcare-release\.apk$/));
+    expect(fetchImpl).toHaveBeenNthCalledWith(2, expect.stringMatching(new RegExp(`/commcare-${version}\\.apk$`)));
+    expect(fetchImpl).toHaveBeenNthCalledWith(3, expect.stringMatching(new RegExp(`/commcare-${version}-release\\.apk$`)));
     expect(fs.existsSync(apkPath)).toBe(true);
     try { fs.unlinkSync(apkPath); fs.unlinkSync(shaPath); } catch { /* leave */ }
   });
@@ -2838,9 +2847,14 @@ describe('getConfiguredApkVersion: env-var with default', () => {
     else process.env.ACE_CONNECT_APK_VERSION = prev;
   });
 
-  it("returns '2.63.2' when env var is unset (current default)", () => {
+  // Asserted against DEFAULT_APK_VERSION rather than a literal: this pair
+  // hardcoded '2.63.2' and went red on the 2.64.0 bump while testing nothing
+  // the bump got wrong. `test/apk-pin-currency.test.ts` is what pins the
+  // constant's VALUE against .env.tpl and the newest map; this only has to
+  // pin that the getter falls back to it (ace#1997).
+  it('returns DEFAULT_APK_VERSION when env var is unset', () => {
     delete process.env.ACE_CONNECT_APK_VERSION;
-    expect(getConfiguredApkVersion()).toBe('2.63.2');
+    expect(getConfiguredApkVersion()).toBe(DEFAULT_APK_VERSION);
   });
 
   it('returns the env-var value when set', () => {
@@ -2848,9 +2862,9 @@ describe('getConfiguredApkVersion: env-var with default', () => {
     expect(getConfiguredApkVersion()).toBe('2.62.0');
   });
 
-  it('falls back to default when env var is empty string', () => {
+  it('falls back to DEFAULT_APK_VERSION when env var is empty string', () => {
     process.env.ACE_CONNECT_APK_VERSION = '';
-    expect(getConfiguredApkVersion()).toBe('2.63.2');
+    expect(getConfiguredApkVersion()).toBe(DEFAULT_APK_VERSION);
   });
 });
 
