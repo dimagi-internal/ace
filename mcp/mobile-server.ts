@@ -395,7 +395,7 @@ server.tool(
   'mobile_validate_recipe',
   {
     yaml: z.string().describe(`Maestro YAML body to validate. Standard ACE-recipe shape: appId frontmatter + \`---\` separator + step list. Validates step-key allowlist (${[...ALLOWED_STEP_KEYS].join(', ')}) and structural integrity (\`---\` separator present, appId in frontmatter, every step is a single-key object). Use this AFTER an ACE skill (running as a Claude Code session) writes Maestro YAML inline using its own LLM context — the mobile MCP does not bundle an LLM client, so YAML generation is the calling agent's responsibility, not this server's.`),
-    apkVersion: z.string().default('2.63.2').describe('Connect APK version whose selector map the map-aware lint rules read (mcp/mobile/selectors/connect-<apkVersion>.yaml). Only used to type-check value-position `${SELECTOR:name}` placements; if the map is missing, that one rule abstains and every other check still runs.'),
+    apkVersion: z.string().default('2.64.0').describe('Connect APK version whose selector map the map-aware lint rules read (mcp/mobile/selectors/connect-<apkVersion>.yaml). Only used to type-check value-position `${SELECTOR:name}` placements; if the map is missing, that one rule abstains and every other check still runs.'),
   },
   async ({ yaml, apkVersion }) => {
     // Static lint pass FIRST. Catches known-broken structural shapes
@@ -444,7 +444,7 @@ server.tool(
   'mobile_resolve_selectors',
   {
     yaml: z.string().describe('Maestro YAML body containing `${SELECTOR:logical-name}` placeholders to resolve.'),
-    apkVersion: z.string().default('2.63.2').describe('Connect APK version. Maps to mcp/mobile/selectors/connect-<apkVersion>.yaml. Defaults to 2.63.2 (live drift-checked 2026-07-25); bump when re-baselining against a new APK. Pin only releases carrying an .apk ASSET — a stronger test than "published": 2.63.3 IS published but ships only an .aab (verified 2026-09-06), and 2.64.0 reverted to the 2.62.0 asset name app-commcare-release.apk.'),
+    apkVersion: z.string().default('2.64.0').describe('Connect APK version. Maps to mcp/mobile/selectors/connect-<apkVersion>.yaml. Defaults to 2.64.0 (live-calibrated 2026-09-06, ace#1997). Pin only releases carrying an .apk ASSET — a stronger test than "published": 2.63.3 IS published but ships only an .aab (verified 2026-09-06), and 2.64.0 reverted to the 2.62.0 asset name app-commcare-release.apk.'),
   },
   async ({ yaml, apkVersion }) => {
     try {
