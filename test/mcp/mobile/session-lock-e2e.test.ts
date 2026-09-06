@@ -316,10 +316,26 @@ describe.skipIf(process.env.CI)('session-lock E2E (multi-process parallel-sessio
     // without spinning up the full MCP stdio protocol. Instead we
     // spawn a subprocess that calls cleanupSessionDaemons directly,
     // which is what the SIGTERM handler in mobile-server.ts does.
-    const TEST_PORT = 60100;
-
-    // Step 1: spawn a "daemon" — a detached subprocess that binds the
-    // test port and survives independent of any parent.
+    // Step 1: spawn a "daemon" — a detached subprocess that binds two
+    // EPHEMERAL ports and survives independent of any parent. The daemon
+    // picks the ports (`listen(0)`) and reports them back, so there is
+    // nothing to collide on and no probe-then-bind window.
+    //
+    // This used to hardcode 60100 (and 60101 as the emulator port). A
+    // fixed port is shared mutable state across every process on the box:
+    // two concurrent `npm test` runs raced for it, the loser's daemon died
+    // on EADDRINUSE and never printed LISTENING, and this test then sat
+    // until the vitest ceiling — failing at exactly 30004ms, a 6x
+    // overshoot that reads as a slow shutdown path and is nothing of the
+    // kind. Proved deterministically: hold 60100 from another process and
+    // this test fails at 30004ms every time; observed 2 of 20 suite runs
+    // under two concurrent full suites on main @ 0.13.1241. ace#1743.
+    //
+    // Owning BOTH ports also keeps cleanupSessionDaemons pointed only at
+    // this test's own process — it SIGKILLs every pid listening on
+    // adb_port AND emulator_port, and the old `TEST_PORT + 1` was an
+    // unowned port that could have belonged to anything on the machine
+    // (including a concurrent suite's own daemon).
     const daemonProc = spawn(
       'npx',
       [
@@ -328,9 +344,19 @@ describe.skipIf(process.env.CI)('session-lock E2E (multi-process parallel-sessio
         '-e',
         `
           import * as net from 'node:net';
-          const server = net.createServer().listen(${TEST_PORT}, '127.0.0.1', () => {
-            console.log('DAEMON_LISTENING ' + process.pid);
-          });
+          const a = net.createServer();
+          const b = net.createServer();
+          let up = 0;
+          const ready = () => {
+            if (++up === 2) {
+              console.log(
+                'DAEMON_LISTENING ' + process.pid + ' ' +
+                a.address().port + ' ' + b.address().port,
+              );
+            }
+          };
+          a.listen(0, '127.0.0.1', ready);
+          b.listen(0, '127.0.0.1', ready);
           setInterval(() => {}, 60_000);
         `,
       ],
@@ -338,21 +364,30 @@ describe.skipIf(process.env.CI)('session-lock E2E (multi-process parallel-sessio
     );
     daemonProc.unref();
     let daemonPid = -1;
+    let adbPort = -1;
+    let emulatorPort = -1;
     await new Promise<void>((resolve, reject) => {
       // 60s to match spawnLockHolder's own bound above. A 10s wait for a
       // spawned node daemon to print LISTENING measures how busy the box is,
       // not whether the code works — it fired 1 of 6 runs under a saturated
       // machine after the vitest-level timeout was raised. ace#1912.
       const timer = setTimeout(() => reject(new Error('daemon never reported LISTENING')), 60_000);
+      // Accumulate: the announcement line can arrive split across chunks.
+      let buf = '';
       daemonProc.stdout?.on('data', (chunk) => {
-        const m = String(chunk).match(/DAEMON_LISTENING (\d+)/);
+        buf += String(chunk);
+        const m = buf.match(/DAEMON_LISTENING (\d+) (\d+) (\d+)/);
         if (m) {
           clearTimeout(timer);
           daemonPid = Number.parseInt(m[1], 10);
+          adbPort = Number.parseInt(m[2], 10);
+          emulatorPort = Number.parseInt(m[3], 10);
           resolve();
         }
       });
     });
+    expect(adbPort).toBeGreaterThan(0);
+    expect(emulatorPort).toBeGreaterThan(0);
     expect(isPidAlive(daemonPid)).toBe(true);
     // Brief settle so lsof sees the listener — listen() resolves
     // before the kernel publishes the binding for cross-process
@@ -360,13 +395,15 @@ describe.skipIf(process.env.CI)('session-lock E2E (multi-process parallel-sessio
     await new Promise((r) => setTimeout(r, 100));
 
     try {
-      // Step 2: write a lock for ourselves pointing at the daemon's port
+      // Step 2: write a lock for ourselves pointing at the daemon's ports
       const FAKE_MCP_PID = process.pid; // use our pid so cleanup is self-targeted
       acquireSessionLock({
         mcp_pid: FAKE_MCP_PID,
         started_at: new Date().toISOString(),
-        adb_port: TEST_PORT,
-        emulator_port: TEST_PORT + 1, // unused, but lock requires it
+        adb_port: adbPort,
+        // Also the daemon's own — cleanup sweeps both ports, and this one
+        // must not name a listener we do not own.
+        emulator_port: emulatorPort,
         avd_name: 'sigterm-test',
       });
       expect(fs.existsSync(lockPathForPid(FAKE_MCP_PID))).toBe(true);
