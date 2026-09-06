@@ -160,6 +160,13 @@
                   ],
                   "additionalProperties": true
                 }
+              },
+              "framework_component_ids": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                }
               }
             },
             "additionalProperties": false
@@ -327,6 +334,13 @@
                     "to"
                   ],
                   "additionalProperties": true
+                }
+              },
+              "framework_component_ids": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1
                 }
               }
             },

@@ -37,6 +37,24 @@ Generate the Learn (training) app from the PDD using the Nova plugin
    // lib/learn-module-plan.ts
    ```
 
+   **Where each argument comes from — all four are read, none is composed:**
+
+   | Argument | Source |
+   |---|---|
+   | `components` | `products.components[]` |
+   | `activeComponentIds` | the model's selection; omit for the first-programme default |
+   | `frameworkComponentIds` | `products.framework_component_ids` — **and nothing else** |
+   | `referencedAbsentIds` | `products.unresolved_references[].to` |
+
+   `framework_component_ids` is absent when no document in the input set
+   declared the framework's inventory. That is a legitimate state: pass
+   `undefined` and let the plan emit its `inventory-unavailable` gap. **Do not
+   substitute anything for it** — not the framework document's prose component
+   table, not a `absent_components` list read out of `component-set.yaml`, not
+   a list you assemble from the components you can see. Phase 1 owns that value
+   (`skills/idea-to-pdd` § Step 0a.6); a value invented here is the parsed guess
+   the plan exists to refuse, and it reports as fact (ace#2056).
+
    - **BUILT** — a module for every component that HAS a PDD, all present in
      the one app.
    - **SHOWN** — foundations plus only the modules for this model's active

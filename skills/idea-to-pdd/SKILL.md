@@ -36,7 +36,9 @@ absent on the single-PDD path, which is every opp before `poverty-graduation`.
 
 - `1-design/component-set.yaml` — the machine-readable component handoff.
 - `run_state.yaml.phases.idea-to-design.products` — gains `mode`, `components[]`,
-  `program_level[]`, `overview_obligations[]` and `unresolved_references[]`.
+  `program_level[]`, `overview_obligations[]`, `unresolved_references[]` and
+  `framework_component_ids` (the framework's FULL component inventory, when a
+  document declares one — see Step 0a.6).
   Shape and guards: `lib/component-products.ts`.
 
 **`products.pdd` is still written, and still required.** It points at the
@@ -101,6 +103,25 @@ the components is not enough, because a build needs enough to execute:
    5. Report every `undeclared-pdd` finding in the phase summary. Do NOT guess
       the id, and do NOT drop the document silently — an undeclared PDD is a
       one-line fix for its author and an invisible hole in the build otherwise.
+   6. **`framework_component_ids` — carry it, never derive it.** When a document
+      in the set declares the framework's full inventory on its metadata line
+      (`· Components: 1, 2, 3, 4, 5, 5b, 6, …`), `classifyComponentSet` reads it
+      and `buildComponentProducts` writes it into `products` under that name. It
+      is the ONLY thing Phase 3 reads to satisfy Learn PDD §6(5) — "every
+      framework component skipped for having no PDD" (ace#2056).
+
+      Report an `inventory-undeclared` finding in the phase summary the same way
+      as `undeclared-pdd`: it is a one-line fix for its author and, left open,
+      the Learn build memo can only name the components another component
+      happens to reference — 3 of 9 on `poverty-graduation/20260905-1345`.
+
+      **Do NOT write the inventory yourself.** Not by reading the framework's
+      prose component table, not as a freehand `absent_components` list in
+      `component-set.yaml`, not by any other name. The three-way naming that
+      preceded this is exactly what left the field with no producer; a value you
+      composed here is a guess wearing a typed field's name, and the loud
+      `inventory-unavailable` degrade in the Learn memo is the correct outcome
+      until the author declares it.
 
    Design: `docs/superpowers/specs/2026-09-05-multi-component-programmes.md`.
 

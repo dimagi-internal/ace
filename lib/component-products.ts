@@ -66,6 +66,17 @@ export interface ComponentDesignProducts {
   overview_obligations: OverviewObligation[];
   /** `from` leans on `to`, which this programme does not carry. */
   unresolved_references: { from: string; to: string }[];
+  /**
+   * The framework's full component inventory, when the set declares one.
+   *
+   * The ONE canonical name for this concept in run state. `pdd-to-learn-app`
+   * passes it straight into `planLearnModules({ frameworkComponentIds })` and
+   * derives it from nothing else — not from a freehand `absent_components`
+   * list, not from parsing the framework's prose table. Omitted entirely when
+   * undeclared, so the consumer's `inventory-unavailable` degrade still fires
+   * and the memo says what it cannot list (ace#2056).
+   */
+  framework_component_ids?: string[];
 }
 
 export class ComponentProductsError extends Error {}
@@ -110,6 +121,9 @@ export function buildComponentProducts(
     })),
     overview_obligations: readiness.obligations,
     unresolved_references: readiness.unresolved.map(({ from, to }) => ({ from, to })),
+    ...(set.frameworkComponentIds
+      ? { framework_component_ids: set.frameworkComponentIds }
+      : {}),
   };
 }
 

@@ -144,3 +144,108 @@ describe('compareComponentIds', () => {
     expect(['6', '5b', '5', '4'].sort(compareComponentIds)).toEqual(['4', '5', '5b', '6']);
   });
 });
+
+//
+// ace#2056 — the framework's component INVENTORY.
+//
+// `planLearnModules` consumed `frameworkComponentIds` for three days with no
+// producer anywhere in ACE, so the Learn build memo named 3 absent components
+// on a programme missing 9. The producer is a DECLARATION read the same way
+// every other identity here is read — never a parse of the framework's prose
+// component table.
+//
+// The framework fixture above carries the real trap in its own third line:
+// "Components vs models. The components below are a menu."
+//
+
+const FRAMEWORK_WITH_INVENTORY = `Poverty Graduation on Connect: Models and Components Framework
+Purpose: A map of the components a graduation program is built from · Components: 1, 2, 3, 4, 5, 5b, 6, 7, 8, 9, 10, 11, 12
+Components vs models. The components below are a menu.`;
+
+describe('classifyComponentSet — the framework inventory (ace#2056)', () => {
+  it('carries the declared inventory verbatim, sorted, with 5b intact', () => {
+    const set = classifyComponentSet([
+      input('Graduation Framework', FRAMEWORK_WITH_INVENTORY),
+      input('PDD - Enrollment', ENROLLMENT),
+      input('PDD - Learn', LEARN),
+    ]);
+    expect(set.frameworkComponentIds).toEqual([
+      '1', '2', '3', '4', '5', '5b', '6', '7', '8', '9', '10', '11', '12',
+    ]);
+  });
+
+  it('raises no inventory finding once it is declared', () => {
+    const set = classifyComponentSet([
+      input('Graduation Framework', FRAMEWORK_WITH_INVENTORY),
+      input('PDD - Enrollment', ENROLLMENT),
+    ]);
+    expect(set.findings.map((f) => f.code)).not.toContain('inventory-undeclared');
+  });
+
+  it('refuses the framework PROSE component table — "Components vs models" is not a declaration', () => {
+    const set = classifyComponentSet(REAL_SET);
+    expect(set.frameworkComponentIds).toBeUndefined();
+  });
+
+  it('reports the undeclared inventory as a finding naming the one line that closes it', () => {
+    const set = classifyComponentSet(REAL_SET);
+    const finding = set.findings.find((f) => f.code === 'inventory-undeclared');
+    expect(finding).toBeDefined();
+    expect(finding!.fix).toContain('Components:');
+    // The gap the memo cannot fill without it, named in the finding itself.
+    expect(finding!.detail).toContain('6(5)');
+  });
+
+  it('does NOT block the set — an undeclared inventory is a loud gap, not a failure', () => {
+    expect(classifyComponentSet(REAL_SET).ok).toBe(true);
+  });
+
+  it('says nothing about an inventory on the single-PDD path', () => {
+    // Every opp before poverty-graduation. No framework, nothing to be missing from.
+    const set = classifyComponentSet([input('fw', FRAMEWORK), input('t', TARGETING)]);
+    expect(set.findings.map((f) => f.code)).not.toContain('inventory-undeclared');
+    expect(set.frameworkComponentIds).toBeUndefined();
+  });
+
+  it('never reads a singular Component: 4 identity line as an inventory', () => {
+    const set = classifyComponentSet([input('PDD - Enrollment', ENROLLMENT)]);
+    expect(set.frameworkComponentIds).toBeUndefined();
+  });
+
+  it('accepts two documents that declare the SAME inventory', () => {
+    const set = classifyComponentSet([
+      input('Graduation Framework', FRAMEWORK_WITH_INVENTORY),
+      input('Framework (copy)', FRAMEWORK_WITH_INVENTORY),
+      input('PDD - Enrollment', ENROLLMENT),
+    ]);
+    expect(set.frameworkComponentIds).toHaveLength(13);
+    expect(set.findings.map((f) => f.code)).not.toContain('inventory-conflict');
+  });
+
+  it('carries NO inventory when two documents disagree — a union of two authorities is a guess', () => {
+    const other = `Graduation Framework (2025 edition)
+Purpose: superseded · Components: 1, 2, 3`;
+    const set = classifyComponentSet([
+      input('Graduation Framework', FRAMEWORK_WITH_INVENTORY),
+      input('Graduation Framework 2025', other),
+      input('PDD - Enrollment', ENROLLMENT),
+    ]);
+    expect(set.frameworkComponentIds).toBeUndefined();
+    const finding = set.findings.find((f) => f.code === 'inventory-conflict');
+    expect(finding).toBeDefined();
+    expect(finding!.where).toEqual(['Graduation Framework', 'Graduation Framework 2025']);
+  });
+
+  it('ignores a declaration below the head — a cross-reference deep in prose is not identity', () => {
+    const buried = `Poverty Graduation on Connect: Models and Components Framework
+Purpose: A map.
+Components vs models.
+Line four.
+Components: 1, 2, 3`;
+    const set = classifyComponentSet([
+      input('Graduation Framework', buried),
+      input('PDD - Enrollment', ENROLLMENT),
+    ]);
+    expect(set.frameworkComponentIds).toBeUndefined();
+  });
+});

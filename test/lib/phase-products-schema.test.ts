@@ -194,6 +194,18 @@ describe('classifyPhaseProducts — app-QA-only mode (ace#1069)', () => {
 describe('componentDesignProductsMatchSchema — DesignProducts accepts what Phase 1 builds (ace#1996)', () => {
   const set: ComponentSet = classifyComponentSet([
     {
+      // ace#2056: the framework declares the FULL inventory, so
+      // `framework_component_ids` is actually present in `built` below — a
+      // fixture without it would validate the schema against a key that is
+      // never emitted, which is how a `.strict()` contract goes green on a
+      // handoff it would reject in production.
+      file_id: 'ffw',
+      name: 'framework.gdoc',
+      text:
+        'Poverty Graduation on Connect: Models and Components Framework\n' +
+        'Purpose: A map · Components: 1, 2, 3, 4, 5, 5b, 6',
+    },
+    {
       file_id: 'f2',
       name: 'targeting.gdoc',
       text: 'Program Design Document (PDD): Household Poverty Targeting Survey\nVersion: 1.0 · Component: 2 of the graduation component set',
@@ -224,6 +236,10 @@ describe('componentDesignProductsMatchSchema — DesignProducts accepts what Pha
     expect(built.program_level).toHaveLength(1);
     expect(built.unresolved_references).toEqual([{ from: '4', to: '3' }]);
     expect(built.overview_obligations.some((o) => o.code === 'resolve-absent-reference')).toBe(true);
+    // ace#2056 — the sixth componentized key. `.strict()` REJECTS a key it does
+    // not name, so this assertion is what makes the validation below a real
+    // test of `framework_component_ids` rather than of its absence.
+    expect(built.framework_component_ids).toEqual(['1', '2', '3', '4', '5', '5b', '6']);
   });
 
   it('validates as a complete idea-to-design products block, alongside pdd', () => {

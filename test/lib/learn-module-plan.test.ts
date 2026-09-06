@@ -1,5 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import { planLearnModules, type PlannedComponent } from '../../lib/learn-module-plan';
+import { classifyComponentSet, type ComponentSetInput } from '../../lib/component-set';
+import { buildComponentProducts } from '../../lib/component-products';
+import { assessProgrammeReadiness } from '../../lib/programme-overview';
 
 // The real poverty-graduation set: four components with PDDs.
 const COMPONENTS: PlannedComponent[] = [
@@ -112,5 +115,83 @@ describe('planLearnModules — ordering and edges', () => {
     const plan = planLearnModules({ components: [COMPONENTS[0]], frameworkComponentIds: ['2'] });
     expect(plan.modules).toHaveLength(1);
     expect(plan.gaps.some((g) => g.code === 'framework-component-without-pdd')).toBe(false);
+  });
+});
+
+//
+// ace#2056 — PRODUCER to CONSUMER, end to end.
+//
+// The gap this closes is not in either module: it is the wire between them.
+// `frameworkComponentIds` was consumed here and produced nowhere, so on
+// poverty-graduation/20260905-1345 the memo named 3 absent components on a
+// programme missing 9 — and the 3 were only the ones another component
+// happened to reference. These run the REAL chain, classifier to plan, so a
+// producer that silently stops producing is caught here rather than in a run.
+//
+describe('the framework inventory reaches planLearnModules from the documents (ace#2056)', () => {
+  const declaringFramework = {
+    file_id: 'ffw',
+    name: 'Graduation Framework',
+    text:
+      'Poverty Graduation on Connect: Models and Components Framework\n' +
+      'Purpose: A map · Components: 1, 2, 3, 4, 5, 5b, 6, 7, 8, 9, 10, 11, 12\n' +
+      'Components vs models. The components below are a menu.',
+  };
+  const silentFramework = {
+    file_id: 'ffw',
+    name: 'Graduation Framework',
+    text:
+      'Poverty Graduation on Connect: Models and Components Framework\n' +
+      'Purpose: A map of the components a graduation program is built from.\n' +
+      'Components vs models. The components below are a menu.',
+  };
+  const componentDoc = (id: string, title: string) => ({
+    file_id: `f${id}`,
+    name: `PDD - ${title}`,
+    text:
+      `Program Design Document (PDD): ${title}\n` +
+      `Version: 0.1 · Component: ${id} of the graduation component set`,
+  });
+  const authored = [
+    componentDoc('2', 'Household Poverty Targeting Survey'),
+    componentDoc('4', 'Enrollment'),
+    componentDoc('5', 'Productive Asset Transfer (In-Kind)'),
+    componentDoc('6', 'Recurring Consumption Support'),
+  ];
+
+  const planFrom = (docs: ComponentSetInput[]) => {
+    const set = classifyComponentSet(docs);
+    const products = buildComponentProducts(set, assessProgrammeReadiness(set, []));
+    return planLearnModules({
+      components: products.components.map((c) => ({
+        component_id: c.component_id,
+        title: c.title,
+        pdd_file_id: c.pdd_file_id,
+      })),
+      frameworkComponentIds: products.framework_component_ids,
+      referencedAbsentIds: REFERENCED_ABSENT,
+    });
+  };
+
+  it('names all NINE skipped components when the framework declares its inventory', () => {
+    const plan = planFrom([declaringFramework, ...authored]);
+    const gap = plan.gaps.find((g) => g.code === 'framework-component-without-pdd');
+    expect(gap?.components).toEqual(['1', '3', '5b', '7', '8', '9', '10', '11', '12']);
+    expect(plan.gaps.map((g) => g.code)).not.toContain('inventory-unavailable');
+  });
+
+  it('includes the CORE components a reference-only list loses — 7 and 8', () => {
+    const gap = planFrom([declaringFramework, ...authored]).gaps.find(
+      (g) => g.code === 'framework-component-without-pdd',
+    );
+    // 7 (Savings/VSLA) and 8 (Structured coaching) are named by no other
+    // component, so the evidence-based fallback cannot see them at all.
+    expect(gap?.components).toEqual(expect.arrayContaining(['7', '8']));
+  });
+
+  it('still degrades LOUDLY when the framework declares nothing — never silently to none', () => {
+    const plan = planFrom([silentFramework, ...authored]);
+    expect(plan.gaps.map((g) => g.code)).toContain('inventory-unavailable');
+    expect(plan.buildMemoNotes.join(' ')).toContain('not exhaustive');
   });
 });
