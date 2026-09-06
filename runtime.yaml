@@ -80,116 +80,155 @@ secrets:
   # --- Agent identity -----------------------------------------------------
   - name: canopy-pat                   # pairs the runner + posts turns as ACE (required)
     env: CANOPY_WEB_PAT
+    op: op://Agent-Ace/canopy-pat/credential
 
   # --- ACE's Google identity ----------------------------------------------
   - name: gog-oauth-client            # the SHARED canopy OAuth app (Canopy-Shared)
     path: ~/.config/gogcli/credentials-canopy.json
     optional: true
+    op: op://Canopy-Shared/gog-oauth-client/credential
   - name: gog-token                   # ACE's long-lived gog refresh token
     optional: true
+    op: op://Agent-Ace/gog-token/credential
   - name: gws-sa-key                  # Drive/Docs/Slides/Sheets service account (ace-gdrive MCP)
     path: ${CLAUDE_PLUGIN_DATA}/gws-sa-key.json
+    op: "op://Agent-Ace/ACE - Google Service Account/gws-sa.json"
 
   # --- CommCare HQ (app build + release; two clusters) --------------------
   - name: ace-hq-base-url
     env: ACE_HQ_BASE_URL
+    value: "https://www.commcarehq.org"
   - name: ace-hq-domain
     env: ACE_HQ_DOMAIN
+    op: "op://Agent-Ace/ACE - CommCareHQ/domain"
   - name: ace-hq-username
     env: ACE_HQ_USERNAME
+    op: "op://Agent-Ace/ACE - CommCareHQ/username"
   - name: ace-hq-password
     env: ACE_HQ_PASSWORD
+    op: "op://Agent-Ace/ACE - CommCareHQ/password"
   - name: ace-hq-api-key
     env: ACE_HQ_API_KEY
+    op: op://Agent-Ace/t4k5nbc2iamjnnengs2lbgd5ey/credential
   - name: ace-hq-eu-base-url
     env: ACE_HQ_EU_BASE_URL
     optional: true
+    value: "https://eu.commcarehq.org"
   - name: ace-hq-eu-domain
     env: ACE_HQ_EU_DOMAIN
     optional: true
+    value: connect-ace-prod
   - name: ace-hq-eu-username
     env: ACE_HQ_EU_USERNAME
     optional: true
+    op: "op://Agent-Ace/ACE - CommCareHQ EU/username"
   - name: ace-hq-eu-password
     env: ACE_HQ_EU_PASSWORD
     optional: true
+    op: "op://Agent-Ace/ACE - CommCareHQ EU/password"
   - name: ace-hq-eu-api-key
     env: ACE_HQ_EU_API_KEY
     optional: true
+    op: "op://Agent-Ace/ACE - CommCareHQ EU/api_key_all_domains"
 
   # --- Connect + Connect-Labs --------------------------------------------
   - name: connect-base-url
     env: CONNECT_BASE_URL
+    value: "https://connect.dimagi.com"
   - name: labs-mcp-token             # connect-labs MCP (Bearer, per-user PAT)
     env: LABS_MCP_TOKEN
+    op: "op://Agent-Ace/ACE - Connect Labs/mcp_token"
 
   # --- Open Chat Studio (Phase 5) ----------------------------------------
   - name: ocs-base-url
     env: OCS_BASE_URL
+    value: "https://www.openchatstudio.com"
   - name: ocs-username
     env: OCS_USERNAME
+    op: "op://Agent-Ace/ACE - Open Chat Studio/username"
   - name: ocs-password
     env: OCS_PASSWORD
+    op: "op://Agent-Ace/ACE - Open Chat Studio/password"
   - name: ocs-api-token
     env: OCS_API_TOKEN
+    op: op://Agent-Ace/hxgm3tn37wwmr2vpneoffjem5i/credential
   - name: ocs-team-slug
     env: OCS_TEAM_SLUG
+    op: "op://Agent-Ace/ACE - Open Chat Studio/Teams/team_slug"
   - name: ocs-golden-template-id
     env: OCS_GOLDEN_TEMPLATE_ID
+    op: "op://Agent-Ace/ACE - Open Chat Studio/Config/golden_template_id"
   - name: ocs-shared-collection-id
     env: OCS_SHARED_COLLECTION_ID
+    op: "op://Agent-Ace/ACE - Open Chat Studio/Config/shared_collection_id"
   - name: ocs-llm-provider-id
     env: OCS_LLM_PROVIDER_ID
+    op: "op://Agent-Ace/ACE - Open Chat Studio/Config/llm_provider_id"
   - name: ocs-embedding-model-id
     env: OCS_EMBEDDING_MODEL_ID
+    op: "op://Agent-Ace/ACE - Open Chat Studio/Config/embedding_model_id"
   - name: ocs-api-token-vaccine-coach
     env: OCS_API_TOKEN_VACCINE_COACH
     optional: true
+    op: op://Agent-Ace/bmds4rxalkubtqdzepwdsjon6u/credential
 
   # --- Nova (Phase 3 app build) ------------------------------------------
   - name: nova-api-key
     env: NOVA_API_KEY
+    op: "op://Agent-Ace/ACE - Nova/api_key"
 
   # --- Drive layout + templates: not sensitive, but they vary per env -----
   - name: ace-drive-root-folder-id
     env: ACE_DRIVE_ROOT_FOLDER_ID
+    value: 1HThsA_0Lr5p1OdI5r-aQ446HlNBaySLz
   - name: ace-training-deck-template-id
     env: ACE_TRAINING_DECK_TEMPLATE_ID
     optional: true
+    op: "op://Agent-Ace/ACE - Drive Templates/training_deck_template_id"
   - name: ace-partnership-deck-template-id
     env: ACE_PARTNERSHIP_DECK_TEMPLATE_ID
     optional: true
+    op: "op://Agent-Ace/ACE - Drive Templates/partnership_deck_template_id"
   - name: work-order-template-id
     env: WORK_ORDER_TEMPLATE_ID
     optional: true
+    op: "op://Agent-Ace/ACE - Drive Templates/work_order_template_id"
 
   # --- ace-web (the run surface other people use) ------------------------
   - name: ace-web-base-url
     env: ACE_WEB_BASE_URL
+    value: "https://labs.connect.dimagi.com/ace"
   - name: ace-web-workspace
     env: ACE_WEB_WORKSPACE
+    value: dimagi-team
   - name: ace-web-pat-token          # PER-HUMAN, minted via /ace:ace-web-pat-mint.
     env: ACE_WEB_PAT_TOKEN           # Not in .env.tpl; bin/ace-setup preserves it
     optional: true                   # across `op inject`. See CLAUDE.md § Auth model.
+    local_only: true
 
   # --- Media generation (partnership video, DDD) -------------------------
   - name: elevenlabs-api-key
     env: ELEVENLABS_API_KEY
     optional: true
+    op: "op://Agent-Ace/ACE - ElevenLabs API Key/credential"
   - name: content-generator-url
     env: CONTENT_GENERATOR_URL
     optional: true
+    op: "op://Agent-Ace/Content Generator API/hostname"
   - name: content-generator-api-key
     env: CONTENT_GENERATOR_API_KEY
     optional: true
+    op: "op://Agent-Ace/Content Generator API/credential"
 
   # --- Mobile (Phase 6 device walks) — laptop-only -----------------------
   - name: ace-avd-name
     env: ACE_AVD_NAME
     optional: true
+    value: ACE_Pixel_API_34
   - name: ace-connect-apk-version
     env: ACE_CONNECT_APK_VERSION
     optional: true
+    value: 2.64.0
   # The Connect demo user the device walk signs in as. Rotated in 1Password when a
   # phone's OpportunityAccess tiles accumulate (/ace:sweep connect does not clear
   # them) — see the demo-user rotation note in CLAUDE.md. All optional: a headless
@@ -197,21 +236,27 @@ secrets:
   - name: ace-e2e-phone
     env: ACE_E2E_PHONE
     optional: true
+    op: op://Agent-Ace/connect-test-user/phone
   - name: ace-e2e-phone-local
     env: ACE_E2E_PHONE_LOCAL
     optional: true
+    op: op://Agent-Ace/connect-test-user/phone-local
   - name: ace-e2e-country-code
     env: ACE_E2E_COUNTRY_CODE
     optional: true
+    op: op://Agent-Ace/connect-test-user/country-code
   - name: ace-e2e-name
     env: ACE_E2E_NAME
     optional: true
+    value: "ACE Test"
   - name: ace-e2e-pin
     env: ACE_E2E_PIN
     optional: true
+    op: op://Agent-Ace/connect-test-user/pin
   - name: ace-e2e-backup-code
     env: ACE_E2E_BACKUP_CODE
     optional: true
+    op: op://Agent-Ace/connect-test-user/backup-code
 
 # Deliberately NOT here, and not a gap:
 #   - ~/.ace/*.json (OCS + Connect Playwright session cookies). Per-machine by
