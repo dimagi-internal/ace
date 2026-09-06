@@ -338,3 +338,165 @@ selectors:
     value: "org.commcare.dalvik:id/tv_learn_modules_list"
     unverified: true
     purpose: "Pre-claim Learn-Details preview TextView. NOT OBSERVED on 2.64.0, same precondition as opp-detail-start. Absent from the post-claim sheet, as expected."
+
+  # ── Photo capture (in-form) ────────────────────────────────────
+  # NONE of these were re-observed on 2.64.0 — no photo question was
+  # reached this walk. They are carried verbatim from 2.63.2, where they
+  # were live-calibrated (#593). Two facts bound the risk:
+  #   * the com.android.camera2 ids belong to the AOSP camera app, NOT to
+  #     CommCare, so a CommCare release cannot move them;
+  #   * 2.64.0 ships a REBUILT CommCare-side camera surface
+  #     (camera_controls_container, camera_capture_instructions,
+  #     camera_capture_mode_indicator, capture_button_label,
+  #     capture_progress, rectangle_overlay, switch_camera_lens_button —
+  #     all 2.64.0-only ids). That surface is PersonalID face-capture, not
+  #     the in-form ACTION_IMAGE_CAPTURE path, but nothing here proves the
+  #     two are unrelated. Walk a photo question before trusting these.
+  camera-take-photo:
+    type: text
+    value: "TAKE PICTURE"
+    unverified: true
+    purpose: "In-form image-capture entry button (text button, no resource-id; launches com.android.camera2 via ACTION_IMAGE_CAPTURE). Live-calibrated on 2.63.0 (#593); NOT re-observed on 2.64.0. Gallery alternative is 'CHOOSE IMAGE'."
+
+  camera-shutter-button:
+    type: id
+    value: "com.android.camera2:id/shutter_button"
+    unverified: true
+    purpose: "Shutter in the AOSP camera app. Live-calibrated on 2.63.0 (#593); NOT re-observed on 2.64.0. Belongs to com.android.camera2, so a CommCare bump cannot move it — but the surface was not walked."
+
+  camera-save-photo:
+    type: id
+    value: "com.android.camera2:id/done_button"
+    unverified: true
+    purpose: "Use-photo / Done on the camera intent-review tray. Live-calibrated on 2.63.0 (#593); NOT re-observed on 2.64.0."
+
+  camera-retake-photo:
+    type: id
+    value: "com.android.camera2:id/retake_button"
+    unverified: true
+    purpose: "Retake on the camera intent-review tray. Live-calibrated on 2.63.0 (#593); NOT re-observed on 2.64.0."
+
+  camera-cancel-photo:
+    type: id
+    value: "com.android.camera2:id/cancel_button"
+    unverified: true
+    purpose: "Cancel on the camera intent-review tray. Live-calibrated on 2.63.0 (#593); NOT re-observed on 2.64.0."
+
+  # ── Geopoint (GPS) ─────────────────────────────────────────────
+  geopoint-record-location:
+    type: text
+    value: "(RECORD|REPLACE) LOCATION"
+    unverified: true
+    purpose: "Native geopoint capture button (android.widget.Button, no resource-id). RECORD branch live-calibrated 2026-07-13 on 2.63.0 (#861); REPLACE branch live-captured 2026-09-01 on 2.63.2 (#1879). NOT re-observed on 2.64.0 — no geopoint question was reached. Precondition unchanged: seed a mock fix via mobile_set_location (LONGITUDE first; AVD backend only) before the tap."
+
+  # ── Learn / CommCare app home + form entry ─────────────────────
+  learn-home-start-tile:
+    type: text
+    value: "Start"
+    purpose: "The 'Start' tile on StandardHomeActivity. Live-verified 2026-09-06 (2.64.0), 37-after-resume.xml — card_text 'Start' inside home_card > card > card_image/card_text, at [16,1039][535,1545]. Tapped: it opened MenuActivity. The clickable node is the parent RelativeLayout `card`; Maestro walks up from the text match."
+
+  learn-home-sync-tile:
+    type: text
+    value: "Sync with Server"
+    purpose: "The 'Sync with Server' tile on StandardHomeActivity. Live-verified 2026-09-06 (2.64.0), 37-after-resume.xml — card_text 'Sync with Server' with card_subtext 'You last synced with the server: ...'. Present, not tapped."
+
+  learn-suite-row-by-name:
+    type: text
+    value: "${MODULE_NAME}"  # caller substitutes
+    purpose: "A menu row in MenuActivity. Live-verified 2026-09-06 (2.64.0), 38-suite-menu.xml + 39-after-module-tap.xml — the visible label lives on row_txt, which is NOT itself clickable; Maestro walks up to the clickable parent. Tapping the row 'Turmeric Vendor Survey' descended one menu level, then a second tap on the form row entered FormEntryActivity. Works identically in grid mode."
+
+  form-nav-next:
+    type: id
+    value: "org.commcare.dalvik:id/nav_btn_next"
+    purpose: "Right-edge advance ImageButton on FormEntryActivity (no text, id only). Live-verified 2026-09-06 (2.64.0), 40-form-entry.xml / 41-form-question-1.xml / 42-form-question-2.xml — [954,293][1059,419], inside nav_pane beside nav_prog_bar. Tapped twice, advancing intro -> select-one -> free-text."
+
+  form-nav-prev:
+    type: id
+    value: "org.commcare.dalvik:id/nav_btn_prev"
+    purpose: "Left-edge back ImageButton on FormEntryActivity. Live-verified 2026-09-06 (2.64.0), 40-form-entry.xml — present at [21,293][142,419]; not tapped."
+
+  form-nav-finish:
+    type: id
+    value: "org.commcare.dalvik:id/nav_btn_finish"
+    unverified: true
+    purpose: "FINISH on the last screen of a score-gated quiz finalize (#569). NOT OBSERVED on 2.64.0 — the walk exited the form early rather than consuming a visit on a borrowed opportunity. Carried from 2.63.2."
+
+  form-required-warning:
+    type: id
+    value: "org.commcare.dalvik:id/warning_root"
+    unverified: true
+    purpose: "Red 'Sorry, this response is required!' banner. NOT OBSERVED on 2.64.0 — every question this walk touched was answered before advancing, so the banner was never provoked."
+
+  form-question-input:
+    type: class
+    value: "android.widget.EditText"
+    purpose: "Free-text answer EditText in a CommCare form question. RE-CONFIRMED live 2026-09-06 (2.64.0), 42-form-question-2.xml: the answer EditText carries NO resource-id, no text and no content-desc — its only handles are its class and its bounds ([42,654][1038,790] on that screen), and it is focused=true with zero taps. Match by CLASS and position. The full calibrated sequence for reaching a NON-first input (scrollUntilVisible at speed 30, then tapOn below the field's HINT) is unchanged from 2.63.2 / ace#1299 and was not re-exercised."
+
+  form-question-input-order:
+    type: doc
+    value: "label TextView -> optional hint TextView -> EditText"
+    purpose: "NOT a selector — the layout order of a CommCare form question. RE-CONFIRMED live 2026-09-06 (2.64.0), 42-form-question-2.xml: TextView 'Which market is this?' [42,459][1038,533], TextView 'Type the name of the market as it is known locally.' [42,533][1038,654] (the HINT), then the anonymous EditText [42,654][1038,790]. This is exactly the shape ace#1299 recorded on 2.63.2, and it is why `below: <question label>` selects the hint and is inert."
+
+  form-choice-dialog-title:
+    type: id
+    value: "org.commcare.dalvik:id/dialog_title_text"
+    purpose: "Title of CommCare's generic CHOICE DIALOG — read it to decide which dialog you are on. Live-verified 2026-09-06 (2.64.0) TWICE, on two different dialogs: 43-form-exit-dialog.xml ('Exit Form?') and 32-after-email-skip.xml ('Skip email?'). The second is new in 2.64.0 and shows this component is now load-bearing during REGISTRATION as well as during form entry."
+
+  form-exit-dialog-button:
+    type: id
+    value: "org.commcare.dalvik:id/choice_dialog_panel"
+    purpose: "Buttons on the FORM-EXIT confirmation. Live-verified 2026-09-06 (2.64.0), 43-form-exit-dialog.xml — TWO buttons SHARING this one id with no numeric suffix, 'STAY IN FORM' [133,1167][947,1312] and 'EXIT WITHOUT SAVING' [133,1315][947,1458], inside choices_list_view. Because the id is ambiguous, disambiguate by TEXT. Tapped EXIT WITHOUT SAVING to leave the borrowed opportunity untouched."
+
+  form-repeat-juncture-button:
+    type: id
+    value: "org.commcare.dalvik:id/choice_dialog_panel_2"
+    unverified: true
+    purpose: "The ADD action on a repeat juncture ('ADD A NEW <LABEL>?'). Live-verified on 2.63.2 (ace#1007); NOT re-observed on 2.64.0 — no repeat was reached. Prefer the INDEX over the text; the label interpolates the repeat's own name."
+
+  form-repeat-juncture-skip:
+    type: id
+    value: "org.commcare.dalvik:id/choice_dialog_panel_3"
+    unverified: true
+    purpose: "'DO NOT ADD' on a repeat juncture — the way PAST a repeat. Live-verified on 2.63.2 (ace#1007); NOT re-observed on 2.64.0."
+
+  form-repeat-juncture-back:
+    type: id
+    value: "org.commcare.dalvik:id/choice_dialog_panel_1"
+    unverified: true
+    purpose: "'GO BACK' on a repeat juncture. Live-verified on 2.63.2 (ace#1007); NOT re-observed on 2.64.0."
+
+  form-date-picker:
+    type: class
+    value: "android.widget.DatePicker"
+    unverified: true
+    purpose: "Native inline date widget on a `kind: date` question, no resource-id. Live-verified on 2.63.2 (ace#1081/#1300); NOT re-observed on 2.64.0 — no date question was reached. The scroll-consumption hazard (a swipe originating inside its bounds spins the date instead of scrolling the page) is carried forward unretested; keep using lib/fieldlist-gestures.ts safeScrollOriginX."
+
+  form-date-picker-container:
+    type: id
+    value: "android:id/pickers"
+    unverified: true
+    purpose: "LinearLayout holding the three date NumberPicker columns. Live-verified on 2.63.2 (ace#1081); NOT re-observed on 2.64.0."
+
+  form-date-picker-column:
+    type: class
+    value: "android.widget.NumberPicker"
+    unverified: true
+    purpose: "One spinner column of the native date widget; scrollable=true, which is why it swallows a page swipe. Live-verified on 2.63.2 (ace#1081); NOT re-observed on 2.64.0."
+
+  form-date-picker-step-next:
+    type: doc
+    value: "the Button immediately BELOW each column's numberpicker_input"
+    unverified: true
+    purpose: "How to DRIVE the date picker one step at a time, with read-back from form-date-picker-input. Live-verified on 2.63.2 (ace#1081); NOT re-observed on 2.64.0. Bounds cited in the 2.63.2 map are 2.63.2 observations and must not be treated as 2.64.0 measurements."
+
+  form-date-picker-input:
+    type: id
+    value: "android:id/numberpicker_input"
+    unverified: true
+    purpose: "The EditText inside each date column holding the CURRENT value — the read-back to assert a date against. Live-verified on 2.63.2 (ace#1081); NOT re-observed on 2.64.0."
+
+  form-photo-capture:
+    type: text
+    value: "TAKE PICTURE"
+    unverified: true
+    purpose: "In-form image-capture entry button. Mirrors camera-take-photo; see that row's note about the rebuilt 2.64.0 camera surface. NOT re-observed on 2.64.0."
