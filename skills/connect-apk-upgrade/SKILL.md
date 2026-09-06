@@ -151,6 +151,94 @@ If no asset matches any known convention, Dimagi renamed it again: add the new
 form to the `candidateUrls` list in `mcp/mobile/client.ts` **in this PR**, with
 a row in `OBSERVED_CONVENTIONS` in the test above, before continuing.
 
+### Step 1b — Diff the two APKs' RESOURCE TABLES, before any device time
+
+**This is the step that catches the class Step 2 is structurally blind to.**
+Everything downstream hunts changed *selectors*: a rename, a removal, a value
+that drifted. But an APK can rename nothing this map uses and still break every
+recipe — by ADDING A SCREEN. 2.64.0 is the proof. Zero id drift across the whole
+map, and registration still stranded, because a new PersonalID email step was
+inserted mid-flow (ace#2029). **"No id drift" is not "no flow drift."**
+
+Two `comm`s over the two resource tables name the change in one command, for
+free, before an emulator is booted:
+
+```bash
+AAPT=~/Library/Android/sdk/build-tools/35.0.0/aapt2   # any recent build-tools
+ids() { "$AAPT" dump resources "$1" \
+          | awk '$1=="resource" && $3 ~ /^id\// {sub(/^id\//,"",$3); print $3}' \
+          | sort -u; }
+
+ids "$TMPDIR/ace-mobile-apk-cache/commcare-<old>.apk" > /tmp/ids-old.txt
+ids "$TMPDIR/ace-mobile-apk-cache/commcare-<new>.apk" > /tmp/ids-new.txt
+
+comm -13 /tmp/ids-old.txt /tmp/ids-new.txt    # ADDED in <new>  <- the new surfaces
+comm -23 /tmp/ids-old.txt /tmp/ids-new.txt    # REMOVED in <new> <- what may break
+```
+
+(The APKs land in that cache the moment Step 2.0 downloads them; `client.ts`
+caches by version, so both are usually already there.)
+
+Read the ADDED set for **clusters**, not individuals. On 2.64.0 it named the
+whole change outright before anyone touched a device:
+
+```
+personalid_email_skip_button, personalid_email_continue_button, email_text_value,
+personalid_email_verify_button, personalid_email_resend_button, otp_code_view,
+action_personalid_backupcode_to_personalid_email      <- the nav graph says it too
+```
+
+`action_*` entries are Navigation-component destinations, so they hand you the
+transition *by name* — `backupcode -> email` is a flow change stated in the
+resource table.
+
+Then, for every cluster, ask the question the selector diff cannot: **does a
+recipe walk through where this was inserted?** Write the answer down. A new
+cluster on a surface no recipe visits is a note; one inserted mid-registration
+is `blocks-e2e`.
+
+Also diff the REMOVED set against the map you are about to seed — a row whose id
+is gone in `<new>` must not be carried over as if it still resolved.
+
+### Step 2.0 — Get the new APK ONTO the device, and verify it landed
+
+**Do this before Step 2, not after Step 5.** Nothing else in this skill installs
+the APK, and calibrating the old one is silent: the bootstrap reports success and
+the branch says `<new>` while the device runs `<old>`.
+
+The reason is the ordering trap Step 7 describes, seen from the other end.
+`mobile_ensure_avd_running` installs the version named by
+`ACE_CONNECT_APK_VERSION` **in the INSTALLED `.env`**, which the live MCP
+subprocess read **at its own startup**. Editing `DEFAULT_APK_VERSION` in the repo
+changes nothing about a device walk in this session. So swap it out of band:
+
+```bash
+# serial + adb port from mobile_diagnose — never assume 5037
+export ANDROID_ADB_SERVER_PORT=<port>
+adb -s <serial> uninstall org.commcare.dalvik
+adb -s <serial> install -r "$TMPDIR/ace-mobile-apk-cache/commcare-<new>.apk"
+
+# VERIFY — this line is part of the step, not a courtesy
+adb -s <serial> shell dumpsys package org.commcare.dalvik | grep versionName
+```
+
+If the cache has no `commcare-<new>.apk` yet, one `mobile_ensure_avd_running`
+downloads it (that also exercises Step 1's asset resolution end to end).
+
+**Re-enable Google Play Services first, and use the command that exists.**
+`mobile_ensure_avd_running` deliberately leaves GMS **disabled** so in-app
+face capture falls back to ManualMode. `PersonalIdActivity` then refuses to
+render, showing an *"Enable Google Play services"* AlertDialog with a single
+ENABLE button — which reads as broken registration rather than a device setting.
+
+```bash
+adb -s <serial> shell pm enable com.google.android.gms
+```
+
+`pm enable-user` **does not exist** (`Unknown command`); only `disable-user`
+does. The pair is asymmetric, and `mcp/mobile/backends/avd.ts` already uses it
+correctly — copy from there, not from muscle memory.
+
 ### Step 2 — Seed the new map and calibrate it against a live device
 
 1. Copy `mcp/mobile/selectors/connect-<old>.yaml` →
@@ -172,6 +260,14 @@ a row in `OBSERVED_CONVENTIONS` in the test above, before continuing.
 
    Serialise it (§ Preconditions 2). Its Step 6 — re-running each migrated
    recipe on-device — is the non-negotiable one.
+
+   **This delegation is UNEXERCISED as of 2026-09-06.** The 2.64.0 calibration
+   was hand-driven (`adb shell uiautomator dump` per surface) because a dump per
+   surface was what the harvest needed. `selector-map-calibrate` may well work;
+   nobody has shown that it does. Treat a failure inside it as a finding about
+   the delegation, file it, and fall back to the hand-driven loop rather than
+   abandoning the calibration — `docs/mobile-calibration/connect-2.64.0-2026-09-06.md`
+   is a worked example of the manual path and its output shape.
 
 3. Its product is `docs/mobile-calibration/connect-<new>-<date>.md`. If it
    records residual gaps, they are carried into § Verification, not dropped.
@@ -380,13 +476,28 @@ Each line names what it ASSERTS, so a green tick is a claim someone can check.
 | # | Assert | How |
 |---|---|---|
 | A1 | `bin/ace-doctor` `selector_map_currency` is `pass`, and `pin` == `code_default` == `newest_map` == `<new>` | `bin/ace-doctor` |
-| A2 | `rows_unverified: 0`, or the residual names exactly which rows and why | doctor block |
+| A2 | The residual names exactly which rows are `unverified` and why (`rows_unverified: 0` is the ideal, not the bar — see below) | doctor block |
 | A3 | `unresolved_selectors: []` | doctor block |
 | A4 | `env_freshness` names no stale pid | doctor block |
 | A5 | The live MCP subprocess runs the merged version | the `$PPID` + inner-`VERSION` read in Step 7.3 |
 | A6 | The device actually runs `<new>` | `dumpsys package org.commcare.dalvik \| grep versionName` |
 | A7 | Every `pin` site agrees and no unclassified pin site exists | `npx vitest run test/lib/apk-pin-sites.test.ts` |
 
+**A2 in full, because the strict reading is not reachable in one pass.** A
+calibration walk can only verify the surfaces it can REACH, and most of the
+unreached ones need a fresh `/ace:run` opportunity: Learn completion is one-way
+per `(test user, opportunity)` (#568), so the Learn assessment, the Deliver
+download gate and the case list cannot be harvested off a borrowed opp. The
+2.64.0 pass ended at 46 verified / 45 unverified for exactly that reason, and
+demanding zero would have meant either blocking the upgrade or laundering rows —
+the failure mode this skill exists to prevent.
+
+So the NAMED-RESIDUAL form is the bar, and `rows_unverified: 0` is the thing to
+converge toward on the next walk. `bin/ace-doctor` already agrees: its
+`selector_map_currency` probe PASSES with unverified rows and emits an `info`
+(`bin/ace-doctor:2964-2966`); only UNRESOLVED selectors warn. Nothing downstream
+requires zero. What is not optional is the naming — list the rows, and for each
+one the surface and why it was not reached.
 **B. The device still works**
 
 | # | Assert | How |
@@ -396,7 +507,31 @@ Each line names what it ASSERTS, so a green tick is a claim someone can check.
 | B3 | Registration incl. the camera/photo surface completes | the cold-boot registration recipes |
 | B4 | Claim → Learn → Deliver walks end-to-end on one journey | `mobile_run_recipe` per Step 3 |
 | B5 | Every static recipe is `validated` + `resolved` + `ran-on-device` or has a named reason | Step 3's per-recipe table |
-| B6 | The version-upgrade prompt is dismissed by its own branch, not by falling through to a mislabelled failure | Step 2b, on-device |
+| B6 | The version-upgrade prompt branch — **see the caveat below; usually NOT verifiable in this session** | Step 2b |
+
+**B6 in full: this one is structurally unverifiable during the very upgrade
+that fixes it.** The version-upgrade prompt fires only on version SKEW — the
+live 2.63.2 capture read *"The application requires CommCare version 2.64.0. You
+are currently running 2.63.2."* Installing `<new>` removes the precondition, so
+by the time you reach the checklist the screen cannot be made to appear. Tested,
+not assumed, on 2.64.0: a fresh CCZ install on a wiped device went straight to
+`StandardHomeActivity`, and
+
+```
+$ grep -l "prompt_title\|do_later_button" docs/mobile-atlas/evidence/connect-2.64.0/*.xml
+(no matches)
+```
+
+Two consequences, and Step 2b's "validate the branch on-device in this session"
+must be read against them:
+
+1. **Capture the rows from the OLD version's failure dump BEFORE the pins flip**
+   — that is the only window in which the surface exists. Do it in Step 0.
+2. **Then mark B6 `unverifiable-post-upgrade` and ship the dismissal branch as
+   DEFENCE for the next skew,** flagged `unverified` in the map. That is an
+   honest residual, not a skipped check. Re-manufacturing the skew (downgrading
+   the APK under a CCZ that requires the new one) to satisfy a tick costs a
+   device walk and proves something the next upgrade will re-prove for free.
 
 **C. The rest of ACE still agrees with the new pin**
 
@@ -465,6 +600,17 @@ The upgrade is designed to be reversible because the old map is never deleted.
   draft-only check would have waved it through.
 - **Transcribing the map from the sibling version.** The 2.63.0 placeholder
   problem (#591/#593). The copy is a scaffold; calibration is the answer.
+- **Reading "zero selector drift" as "nothing to do".** An APK that renames
+  nothing can still insert a whole SCREEN into a flow every recipe walks —
+  2.64.0's PersonalID email step (ace#2029) did exactly that, and it is invisible
+  to a selector-centric check by construction. Step 1b's resource-table `comm` is
+  the guard, and it costs one command.
+- **Calibrating the OLD APK.** Nothing but Step 2.0 installs the new one, and
+  `mobile_ensure_avd_running` installs whatever the INSTALLED `.env` says. The
+  bootstrap reports success either way; the branch says `<new>` and the device
+  runs `<old>`.
+- **Assuming the release asset name progresses.** It does not: 2.64.0 reverted to
+  2.62.0's `app-commcare-release.apk`. Read it off the release (Step 1).
 - **Flipping some pins and not others.** `mobile_resolve_selectors` then reads a
   different map than the runtime loads, and the disagreement is invisible until
   a device walk. Step 5 + `test/lib/apk-pin-sites.test.ts` are the guard.
@@ -485,5 +631,5 @@ The upgrade is designed to be reversible because the old map is never deleted.
 
 | Date | Change | Author |
 |------|--------|--------|
-| 2026-09-06 | First execution pass (ace#1997/#1998). Corrected three premise errors the skill would have propagated: the asset-convention table implied newest-wins (2.64.0 REVERTED to the 2.62.0 name — measured, now a 4th row + `test/mcp/mobile/apk-asset-conventions.test.ts`); Step 1 gated on `isDraft` (2.63.3 is published with an `.aab`-only asset, so the real test is "has an `.apk` asset"); and Step 2b prescribed TAPPING `do_later_button` (changed to recognise-and-fail — the button's existence is recorded evidence, what dismissing permits is not, and a dismissed gate risks false-green Phase 6 artifacts). Also split the `...issue629` capture so both causes cannot be reachable on one screen. | ACE team |
+| 2026-09-06 | First execution (2.64.0), and everything it produced. **Premise errors the skill would have propagated:** the asset-convention table implied newest-wins (2.64.0 REVERTED to the 2.62.0 name — measured, now a 4th row + `test/mcp/mobile/apk-asset-conventions.test.ts`); Step 1 gated on `isDraft` (2.63.3 is published with an `.aab`-only asset, so the real test is "has an `.apk` asset"); Step 2b prescribed TAPPING `do_later_button` (changed to recognise-and-fail — the button's existence is recorded evidence, what dismissing permits is not, and a dismissed gate risks false-green Phase 6 artifacts), and the `...issue629` capture was split so both causes cannot be reachable on one screen. **Steps the first execution found MISSING:** **Step 1b** (resource-table `comm` diff — the only step that can see an ADDED screen, which is what 2.64.0 actually shipped: zero id drift, one new registration surface, ace#2029) and **Step 2.0** (install the new APK on the device + verify, before calibrating — nothing else did, and `mobile_ensure_avd_running` installs whatever the INSTALLED `.env` says; includes the `pm enable` GMS note, since `pm enable-user` does not exist). **Checklist rows reframed:** **A2** (`rows_unverified: 0` is unreachable in one pass and not required by doctor — the named residual is the bar) and **B6** (structurally unverifiable during the upgrade that removes the version skew; capture it in the NEXT upgrade's Step 0). Recorded that the `selector-map-calibrate` delegation is still unexercised. Full review: `docs/mobile-calibration/connect-2.64.0-2026-09-06.md`; filled-in checklist: `docs/mobile-calibration/connect-2.64.0-upgrade-verification.md`. | ACE team |
 | 2026-09-05 | Initial version. Authored because the previous APK upgrade had no explicit update-version step, so pin sites were missed and nothing verified the new version end-to-end. Orchestrates `selector-map-calibrate`; adds the pin flip, the ace#1998 version-prompt coverage, the activation ORDER, the verification checklist, and rollback. Pin-site enumeration is machine-discovered by `lib/apk-pin-sites.ts` + `test/lib/apk-pin-sites.test.ts`, so this checklist cannot silently rot. | ACE team |
