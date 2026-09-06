@@ -43,10 +43,14 @@ import {
   auditRender,
   auditReviewerMembership,
   auditUnresolvedMemberGates,
+  applyRenderedGates,
   canonicalDocUrl,
   classifyLink,
   collectUrls,
+  GATE_TEXT_MAX_CHARS,
   isBlocking,
+  isFileDownloadUrl,
+  sameOriginGateCandidates,
   labelMatchesPhaseTag,
   resolveDocSource,
   stripMarkdownSyntax,
@@ -1416,5 +1420,213 @@ describe('auditArchetypeContradiction — direct controls', () => {
   it('POSITIVE — tolerates junk rows without throwing', () => {
     expect(auditArchetypeContradiction([null, 'nope', {}, { id: 42 }])).toEqual([]);
     expect(auditArchetypeContradiction([])).toEqual([]);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════
+// ace#1868 — a 200 whose BODY is a gate.
+//
+// `classifyLink` read the status line and the final URL after redirects, so
+// two whole shapes of "answered, then walled you" scored `OK`:
+//
+//   1. A CLIENT-SIDE gate. ace-web answers 200 at the requested URL and
+//      renders the sign-in prompt in the browser. Observed anonymously
+//      2026-09-06 on hh-poverty-targeting/20260828-0702's workbench link:
+//        curl  -> 200, no redirect, 443 bytes, visible text "ACE Web"
+//        audit -> {"cls": "OK"}
+//        render-> final /ace/auth/login/?next=…, text "ace-web Sign in with
+//                 your Connect account to continue. Sign in with Connect"
+//   2. An INTERSTITIAL. Drive answers 200 with HTML where a file was asked
+//      for. Observed the same day on ace#1831's forensics uploads:
+//        journey-deliver-FAILURE.xml -> 200, content-type text/html,
+//        <title>Google Drive - Virus scan warning</title>
+//
+// Every string in these tests is a transcript, not a construction.
+// ═══════════════════════════════════════════════════════════════════
+
+/** Verbatim: the anonymous render of the workbench link, 2026-09-06. */
+const ACE_WEB_GATE_TEXT = 'ace-web Sign in with your Connect account to continue. Sign in with Connect';
+const ACE_WEB_GATE_URL =
+  'https://labs.connect.dimagi.com/ace/auth/login/?next=%2Face%2Fw%2Fdimagi-team%2Fopps%2Fhh-poverty-targeting%2Fruns%2F20260828-0702';
+const WORKBENCH_URL = 'https://labs.connect.dimagi.com/ace/w/dimagi-team/opps/hh-poverty-targeting/runs/20260828-0702';
+/** Verbatim: the 443-byte SPA shell the same URL serves to a plain fetch. */
+const ACE_WEB_SHELL = '<!doctype html><html><head><title>ACE Web</title></head><body><div id="root"></div></body></html>';
+
+/** Verbatim: Drive's virus-scan interstitial, ace#1831's journey-deliver-FAILURE.xml. */
+const DRIVE_SCAN_HTML =
+  '<!DOCTYPE html><html><head><title>Google Drive - Virus scan warning</title></head><body>' +
+  "<p>Google Drive can't scan this file for viruses.</p>" +
+  '<p>This file is executable and may harm your computer.</p>journey-deliver-FAILURE.xml (19k)</body></html>';
+const DRIVE_DOWNLOAD_URL = 'https://drive.google.com/uc?export=download&id=1j2IOdN8yo9F0CHvFj7SifA7NY2mBwydo';
+
+describe('ace#1868 — a client-side sign-in wall must not score OK', () => {
+  it('REGRESSION — the exact call the auditor made on 20260828-0702 still says OK without body evidence', () => {
+    // This is the defect, pinned. The three-argument call has no way to know,
+    // and that is the point: the fix is that the caller now COLLECTS evidence,
+    // not that a URL test got cleverer.
+    expect(classifyLink(WORKBENCH_URL, 200, WORKBENCH_URL).cls).toBe('OK');
+  });
+
+  it('BLOCKS — rendered text that is nothing but a sign-in shell', () => {
+    const { cls, note } = classifyLink(WORKBENCH_URL, 200, WORKBENCH_URL, {
+      renderedText: ACE_WEB_GATE_TEXT,
+      renderedFinalUrl: WORKBENCH_URL,
+    });
+    expect(cls).toBe('SPA-GATED');
+    expect(note).toContain('Sign in with your Connect account');
+  });
+
+  it('BLOCKS — the browser navigated ITSELF to a login route', () => {
+    // Decisive on its own: no text pattern involved, so a copy change on the
+    // gate cannot make this stop firing.
+    expect(
+      classifyLink(WORKBENCH_URL, 200, WORKBENCH_URL, {
+        renderedText: 'anything at all',
+        renderedFinalUrl: ACE_WEB_GATE_URL,
+      }).cls,
+    ).toBe('SPA-GATED');
+  });
+
+  it('POSITIVE — the raw SPA shell alone is NOT enough to condemn a link', () => {
+    // The shell says nothing either way, and an auditor that guessed from it
+    // would flag every SPA route on the deployment. Silence stays silence.
+    expect(
+      classifyLink(WORKBENCH_URL, 200, WORKBENCH_URL, {
+        contentType: 'text/html; charset=utf-8',
+        body: ACE_WEB_SHELL,
+      }).cls,
+    ).toBe('OK');
+  });
+
+  it('POSITIVE — a real page that merely CONTAINS a sign-in affordance stays OK', () => {
+    // The summary page itself, rendered anonymously: thousands of characters
+    // of content. A length-free text rule would have flagged it, and a false
+    // positive is the same failure as a false negative.
+    const realPage = `Household Poverty Targeting Survey run 20260828-0702 In progress. ${'Frontline workers visit every household and administer the PPI scorecard verbatim. '.repeat(
+      8,
+    )} Sign in with Connect`;
+    expect(realPage.length).toBeGreaterThan(GATE_TEXT_MAX_CHARS);
+    expect(classifyLink(WORKBENCH_URL, 200, WORKBENCH_URL, { renderedText: realPage }).cls).toBe('OK');
+  });
+
+  it('a SPA-GATED link tagged `public` is the page telling the reader something untrue', () => {
+    const findings = auditLinks([
+      probed({ label: 'workbench.url', url: WORKBENCH_URL, declaredAccess: 'public', cls: 'SPA-GATED', status: 200 }),
+    ]);
+    expect(codes(findings)).toContain('LINK-ACCESS-MISLABELLED');
+  });
+
+  it('a SPA-GATED link tagged `admin` is HONEST — no finding', () => {
+    // The live case: the payload tags the workbench link `admin`, so the page
+    // is telling the truth and the reader is not misled. What changes is the
+    // COUNT LINE — it reads SPA-GATED, not OK.
+    expect(
+      auditLinks([
+        probed({ label: 'workbench.url', url: WORKBENCH_URL, declaredAccess: 'admin', cls: 'SPA-GATED', status: 200 }),
+      ]),
+    ).toEqual([]);
+  });
+});
+
+describe('ace#1868 — a download that answers with a web page (the ace#1831 corpus)', () => {
+  it('BLOCKS — Drive virus-scan interstitial on a file-download URL', () => {
+    const { cls, note } = classifyLink(DRIVE_DOWNLOAD_URL, 200, DRIVE_DOWNLOAD_URL, {
+      contentType: 'text/html; charset=utf-8',
+      body: DRIVE_SCAN_HTML,
+    });
+    expect(cls).toBe('INTERSTITIAL');
+    expect(note).toContain('Google Drive - Virus scan warning');
+  });
+
+  it('the interstitial is caught STRUCTURALLY — no pattern for this page is needed', () => {
+    // The rule is "a file-download URL answered text/html", so an interstitial
+    // nobody has seen yet is caught the same way. This body matches none of
+    // SIGNIN_TEXT and carries no recognisable title.
+    expect(
+      classifyLink(DRIVE_DOWNLOAD_URL, 200, DRIVE_DOWNLOAD_URL, {
+        contentType: 'text/html',
+        body: '<html><body>Something Drive has not shipped yet</body></html>',
+      }).cls,
+    ).toBe('INTERSTITIAL');
+  });
+
+  it('POSITIVE — the same URL serving actual bytes stays OK', () => {
+    // journey-learn.mp4, verified public and 32 MB of ftypisom the same day.
+    expect(
+      classifyLink('https://drive.google.com/uc?export=download&id=1nmQtzxTdJ0rtH-40wpKaDtRbcFQkrMXU', 200, '', {
+        contentType: 'video/mp4',
+        body: null,
+      }).cls,
+    ).toBe('OK');
+  });
+
+  it('POSITIVE — an HTML page that is SUPPOSED to be a page is not an interstitial', () => {
+    // A Google Doc is a web page; serving HTML is correct there. The rule is
+    // scoped to URL forms that promise the file's bytes.
+    expect(isFileDownloadUrl('https://docs.google.com/document/d/AAAAAAAAAAAA/edit')).toBe(false);
+    expect(
+      classifyLink('https://docs.google.com/document/d/AAAAAAAAAAAA/edit', 200, '', {
+        contentType: 'text/html; charset=utf-8',
+        body: '<html><body>A perfectly ordinary published document</body></html>',
+      }).cls,
+    ).toBe('OK');
+  });
+
+  it('an INTERSTITIAL is broken whatever the access tag says', () => {
+    // The tag governs WHO may open a link. This one opens for everybody and
+    // hands them the wrong thing, so both tags are equally broken.
+    for (const access of ['public', 'admin', null]) {
+      const findings = auditLinks([
+        probed({ label: 'videos[0].url', url: DRIVE_DOWNLOAD_URL, declaredAccess: access, cls: 'INTERSTITIAL', status: 200 }),
+      ]);
+      expect(codes(findings)).toContain('LINK-INTERSTITIAL');
+      expect(findings.filter((f) => f.code === 'LINK-INTERSTITIAL').every(isBlocking)).toBe(true);
+    }
+  });
+});
+
+describe('ace#1868 — the render pass is bounded, and silence never upgrades a link', () => {
+  const page = 'https://labs.connect.dimagi.com/ace/opps/dimagi-team/hh-poverty-targeting/runs/20260828-0702/summary';
+
+  it('candidates are same-origin AND currently passing — nothing else', () => {
+    const links = [
+      probed({ label: 'workbench.url', url: WORKBENCH_URL, cls: 'OK' }),
+      // cross-origin: a browser here buys nothing and Google throttles
+      probed({ label: 'design.docs[0].url', cls: 'OK' }),
+      // same-origin but already known gated: nothing left to learn
+      probed({ label: 'solicitation.url', url: 'https://labs.connect.dimagi.com/solicitations/17609/', cls: 'AUTH-GATED' }),
+      probed({ label: 'dashboards[0].url', url: 'https://labs.connect.dimagi.com/labs/workflow/5321/run/', cls: 'AUTH-GATED' }),
+    ];
+    expect(sameOriginGateCandidates(links, page)).toEqual([WORKBENCH_URL]);
+  });
+
+  it('a link with NO gate probe is left exactly as it was', () => {
+    const links = [probed({ label: 'workbench.url', url: WORKBENCH_URL, cls: 'OK' })];
+    expect(applyRenderedGates(links, [])).toEqual(links);
+    expect(applyRenderedGates(links, undefined)).toEqual(links);
+    // a probe for a DIFFERENT url must not touch this one
+    expect(
+      applyRenderedGates(links, [{ url: 'https://labs.connect.dimagi.com/ace/other', status: 200, finalUrl: ACE_WEB_GATE_URL, text: ACE_WEB_GATE_TEXT }])[0]
+        .cls,
+    ).toBe('OK');
+  });
+
+  it('END-TO-END — the live 20260828-0702 evidence turns the workbench link SPA-GATED', () => {
+    const links = [
+      probed({ label: 'workbench.url', url: WORKBENCH_URL, declaredAccess: 'admin', cls: 'OK', status: 200 }),
+      probed({ label: 'design.docs[0].url', cls: 'OK' }),
+    ];
+    const upgraded = applyRenderedGates(links, [
+      { url: WORKBENCH_URL, status: 200, finalUrl: ACE_WEB_GATE_URL, text: ACE_WEB_GATE_TEXT },
+    ]);
+    expect(upgraded.map((l) => l.cls)).toEqual(['SPA-GATED', 'OK']);
+  });
+
+  it('a render that found the page perfectly fine may not OVERTURN a harder truth', () => {
+    // Only ever tightens. A 401 the static probe already saw stands.
+    const gated = probed({ url: WORKBENCH_URL, cls: 'PRIVATE-DELIVERABLE', status: 401 });
+    expect(
+      applyRenderedGates([gated], [{ url: WORKBENCH_URL, status: 200, finalUrl: WORKBENCH_URL, text: 'a lovely page' }])[0].cls,
+    ).toBe('PRIVATE-DELIVERABLE');
   });
 });

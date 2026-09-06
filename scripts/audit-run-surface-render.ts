@@ -76,6 +76,9 @@ async function main(): Promise<void> {
   // to a regex guessing at the page's copy — a regex that guesses is how a
   // check ends up unable to see the thing it checks.
   const expectedPhaseLabels: string[] = process.argv[3] ? (JSON.parse(process.argv[3]) as string[]) : [];
+  // Same-origin links the static pass scored as passing. Opened in this same
+  // anonymous browser so a CLIENT-SIDE gate can be seen at all (ace#1868).
+  const gateCandidates: string[] = process.argv[4] ? (JSON.parse(process.argv[4]) as string[]) : [];
 
   const undetermined: string[] = [];
   const report: RenderReport = {
@@ -84,6 +87,7 @@ async function main(): Promise<void> {
     decisionEditCommitsOnPick: null,
     provenanceVisibleByDefault: null,
     writePaths: { comment: null, edit: null },
+    gateProbes: [],
     undetermined,
   };
 
@@ -155,6 +159,11 @@ async function main(): Promise<void> {
 
     // ── Write paths: reachable, without writing anything ───────────
     report.writePaths = await probeWritePaths(page, pageUrl, undetermined);
+
+    // ── Same-origin gate probes (ace#1868) ─────────────────────────
+    // Done LAST: it navigates the page away from the summary, so nothing that
+    // reads the summary may run after it.
+    report.gateProbes = await probeGates(page, gateCandidates, undetermined);
   } catch (e) {
     undetermined.push(`the browser probe failed part-way: ${String(e instanceof Error ? e.message : e)}`);
   } finally {
@@ -167,6 +176,54 @@ async function main(): Promise<void> {
 
 async function collectHrefs(page: import('playwright').Page): Promise<string[]> {
   return page.$$eval('a[href]', (as) => as.map((a) => (a as HTMLAnchorElement).href).filter(Boolean));
+}
+
+/** How many same-origin links are worth a full page load each. */
+const MAX_GATE_PROBES = 12;
+
+/**
+ * Open each candidate link ANONYMOUSLY and report what a reader actually sees
+ * (ace#1868).
+ *
+ * The defect this exists for: `classifyLink` decided "is this gated?" from the
+ * status line and the final URL after redirects, so an SPA that answers 200 at
+ * the SAME url and then renders a sign-in prompt client-side scored `OK`. On
+ * hh-poverty-targeting/20260828-0702 the workbench link fetched as 200 with a
+ * 443-byte shell reading "ACE Web"; rendered anonymously it reads
+ * "ace-web Sign in with your Connect account to continue. Sign in with Connect"
+ * and the browser has navigated itself to /ace/auth/login/?next=…
+ *
+ * Reports what it saw and nothing else — the CLASSIFYING is pure, in
+ * `lib/run-surface-audit.ts`, so it can be tested without a browser. A probe
+ * that errors is simply absent from the list, and an absent probe upgrades
+ * nothing: silence is never read as a pass.
+ */
+async function probeGates(
+  page: import('playwright').Page,
+  urls: string[],
+  undetermined: string[],
+): Promise<NonNullable<RenderReport['gateProbes']>> {
+  const out: NonNullable<RenderReport['gateProbes']> = [];
+  if (!urls.length) return out;
+  if (urls.length > MAX_GATE_PROBES) {
+    undetermined.push(
+      `${urls.length} same-origin links were candidates for a rendered gate check; only the first ` +
+        `${MAX_GATE_PROBES} were opened, so the rest were NOT judged for a client-side sign-in wall`,
+    );
+  }
+  for (const url of urls.slice(0, MAX_GATE_PROBES)) {
+    try {
+      const r = await page.goto(url, { waitUntil: 'networkidle', timeout: 60_000 });
+      const text = (await page.locator('body').innerText()).replace(/\s+/g, ' ').trim();
+      out.push({ url, status: r?.status() ?? null, finalUrl: page.url(), text: text.slice(0, 2000) });
+    } catch (e) {
+      undetermined.push(
+        `the rendered gate probe could not open ${url} (${String(e instanceof Error ? e.message : e).slice(0, 160)}) — ` +
+          'whether it is a client-side sign-in wall was NOT judged',
+      );
+    }
+  }
+  return out;
 }
 
 /**

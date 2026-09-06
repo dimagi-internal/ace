@@ -73,9 +73,11 @@ import {
   auditRender,
   auditReviewerMembership,
   auditUnresolvedMemberGates,
+  applyRenderedGates,
   classifyLink,
   collectUrls,
   isAceDeliverable,
+  sameOriginGateCandidates,
   resolveDocSource,
   sortFindings,
   summarise,
@@ -150,7 +152,10 @@ function parseArgs(argv: string[]): Args {
  *
  * Explicitly anonymous: no credentials, no cookie jar.
  */
-async function probe(url: string, timeoutMs = 20_000): Promise<{ status: number | null; finalUrl: string }> {
+async function probe(
+  url: string,
+  timeoutMs = 20_000,
+): Promise<{ status: number | null; finalUrl: string; contentType: string | null; body: string | null }> {
   const ctl = new AbortController();
   const t = setTimeout(() => ctl.abort(), timeoutMs);
   try {
@@ -160,12 +165,62 @@ async function probe(url: string, timeoutMs = 20_000): Promise<{ status: number 
       headers: { 'User-Agent': 'ace-run-surface-audit/1 (anonymous outsider probe)' },
       signal: ctl.signal,
     });
-    return { status: resp.status, finalUrl: resp.url || url };
+    const contentType = resp.headers.get('content-type');
+    // Read the body ONLY when the server said HTML (ace#1868). That is the
+    // whole cost control: an artifact link that answers `text/html` is either a
+    // page or the smoking gun, and both are small; a 32 MB mp4 answers
+    // `video/mp4` and is never read. Capped anyway, because a hostile or merely
+    // enormous HTML page must not be able to blow this process up.
+    let body: string | null = null;
+    if ((contentType ?? '').toLowerCase().startsWith('text/html')) {
+      body = (await readBounded(resp, MAX_BODY_BYTES)) ?? null;
+    } else {
+      await resp.body?.cancel().catch(() => {});
+    }
+    return { status: resp.status, finalUrl: resp.url || url, contentType, body };
   } catch (e) {
-    return { status: null, finalUrl: String((e as Error).message ?? e) };
+    return { status: null, finalUrl: String((e as Error).message ?? e), contentType: null, body: null };
   } finally {
     clearTimeout(t);
   }
+}
+
+/** Enough to hold any gate page's title and opening text, and no more. */
+const MAX_BODY_BYTES = 64 * 1024;
+
+async function readBounded(resp: Response, max: number): Promise<string | null> {
+  const reader = resp.body?.getReader();
+  if (!reader) {
+    try {
+      return (await resp.text()).slice(0, max);
+    } catch {
+      return null;
+    }
+  }
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (value) {
+        chunks.push(value);
+        total += value.byteLength;
+        if (total >= max) break;
+      }
+    }
+  } catch {
+    /* partial is still evidence */
+  } finally {
+    await reader.cancel().catch(() => {});
+  }
+  const merged = new Uint8Array(total);
+  let off = 0;
+  for (const c of chunks) {
+    merged.set(c, off);
+    off += c.byteLength;
+  }
+  return new TextDecoder('utf-8', { fatal: false }).decode(merged.slice(0, max));
 }
 
 /**
@@ -236,9 +291,9 @@ function phaseLabels(payload: unknown): string[] {
   return [...new Set(rows.map((r) => String(r?.phase_label ?? '')).filter(Boolean))];
 }
 
-function runRenderProbe(pageUrl: string, labels: string[]): RenderReport {
+function runRenderProbe(pageUrl: string, labels: string[], gateCandidates: string[] = []): RenderReport {
   const script = path.join(HERE, 'audit-run-surface-render.ts');
-  const res = spawnSync('npx', ['tsx', script, pageUrl, JSON.stringify(labels)], {
+  const res = spawnSync('npx', ['tsx', script, pageUrl, JSON.stringify(labels), JSON.stringify(gateCandidates)], {
     encoding: 'utf8',
     timeout: 180_000,
     env: process.env,
@@ -304,12 +359,24 @@ async function main(): Promise<number> {
   const collected = collectUrls(payload, pageUrl);
   const seen = new Set<string>();
   const unique = collected.filter((c) => (seen.has(c.url) ? false : (seen.add(c.url), true)));
-  const probed: ProbedLink[] = [];
+  let probed: ProbedLink[] = [];
   for (const c of unique) {
-    const { status, finalUrl } = await probe(c.url);
-    const { cls, note } = classifyLink(c.url, status, finalUrl);
+    const { status, finalUrl, contentType, body } = await probe(c.url);
+    const { cls, note } = classifyLink(c.url, status, finalUrl, { contentType, body });
     probed.push({ ...c, status, cls, note });
   }
+
+  // ── F(i). Render — run BEFORE the link findings ────────────────
+  // A client-side gate is invisible to every static signal (ace#1868): the SPA
+  // answers 200 at the requested URL and the body is a JS shell. The only
+  // authority is what a browser sees, so the browser pass has to happen before
+  // the link tier draws its conclusions, not after them.
+  let render: RenderReport | null = null;
+  if (a.render) {
+    render = runRenderProbe(pageUrl, phaseLabels(payload), sameOriginGateCandidates(probed, pageUrl));
+    probed = applyRenderedGates(probed, render.gateProbes);
+  }
+
   findings.push(...auditLinks(probed));
 
   let memberships: Memberships = {};
@@ -352,10 +419,9 @@ async function main(): Promise<number> {
   findings.push(...auditDocFidelity(docProbes));
   findings.push(...auditGuideScreenshots(runState, docProbes));
 
-  // ── F. Render ──────────────────────────────────────────────────
-  let render: RenderReport | null = null;
-  if (a.render) {
-    render = runRenderProbe(pageUrl, phaseLabels(payload));
+  // ── F(ii). Render findings ─────────────────────────────────────
+  // The probe itself already ran, above, because the link tier depends on it.
+  if (render) {
     findings.push(...auditRender(payload, render, pageUrl));
   } else {
     findings.push({
@@ -366,7 +432,9 @@ async function main(): Promise<number> {
         'the rendered page was not opened, so nothing checked what a reader actually SEES. Four ' +
         'of the twelve defects this audit exists for are invisible to a payload check: a section ' +
         'that says "Not created" while its data exists, the decision-edit affordance, provenance ' +
-        'hidden behind a collapsed disclosure, and documents that render as raw markdown',
+        'hidden behind a collapsed disclosure, and documents that render as raw markdown. Without ' +
+        'it, a same-origin CLIENT-SIDE sign-in wall also stays invisible: it answers 200 at the ' +
+        'requested URL and serves a JS shell, so every static signal reads it as open (ace#1868)',
       fix: 'pass --render (headless Chromium, anonymous context)',
     });
   }

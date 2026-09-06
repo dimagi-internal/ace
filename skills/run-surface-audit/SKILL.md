@@ -111,6 +111,7 @@ Every finding names its own fix. The common ones:
 | `LINK-PRIVATE-DELIVERABLE` | an ACE-authored Google Doc that is shared with nobody — the recipient hits "You need access" | `drive_set_anyone_with_link` on the file id (`role: 'commenter'` when they should be able to leave feedback), then re-audit for `OK 200` |
 | `LINK-BROKEN` | 404 / 5xx / DNS | fix the product URL or stop surfacing it. A **relative** link that 404s usually means a missing deployment path prefix — that is an ace-web serializer bug, not a data bug |
 | `LINK-ACCESS-MISLABELLED` | the page says `public`, an outsider gets a gate | either share it or correct the tag. The page is telling the reader something untrue |
+| `LINK-INTERSTITIAL` | a Drive **download** link answered `200` with a web page instead of the file's bytes — the reader gets Google's virus-scan or quota interstitial | share the file anyone-with-link **and** confirm by magic bytes, never by HTTP 200. Observed 2026-09-06 on two `.xml` forensics files that a status-only check had certified public (ace#1868 / ace#1831) |
 | `LINK-UNTAGGED` | a link with no `access` tag | tag it in ace-web so the page can say why it cannot be opened. Untagged, it reads as broken rather than deliberate |
 | `MISSING-ARTIFACT` | the run made it; the page does not link it | surface it in ace-web, or say on the page why it is withheld |
 | `DEEP-QA-HIDDEN` | `/ace:qa-deep` ran and the page does not say what it found | surface the verdicts through ace-web `_read_deep_qa`. Phase 9 `llo-launch` refuses activation on a missing or stale deep verdict, so a silent page and a never-tested run read identically |
@@ -139,7 +140,7 @@ as a broken link does:
 | Blocking finding | Why it is not a warning |
 |---|---|
 | `COMPLETENESS-UNVERIFIED` | without `run_state.yaml` nothing compares the page against what the run PRODUCED. The PDD and the Work Order were absent from the page entirely and nothing noticed, because "absent" and "the run hasn't got there yet" look identical |
-| `RENDER-UNVERIFIED` | four defects are invisible to a payload check. They shipped |
+| `RENDER-UNVERIFIED` | four defects are invisible to a payload check. They shipped. Without it a same-origin **client-side** sign-in wall also stays invisible: it answers `200` at the requested URL and serves a JS shell, so the status line, the final URL and the raw body all read as open. The workbench link on `hh-poverty-targeting/20260828-0702` fetched as `200` with 443 bytes reading "ACE Web" and rendered as "Sign in with your Connect account to continue" (ace#1868) |
 | `MEMBER-UNVERIFIED` / `REVIEWERS-UNDECLARED` | the probe is anonymous; anonymous reachability only proves a link works for SOMEBODY. A signed-in non-member gets a flat 404 — indistinguishable from "this run does not exist" — and reports it to us as a broken link (ace#913, ace#916, ace#1060) |
 | `DOC-FIDELITY-UNVERIFIED` | nothing compared what was PUBLISHED against what was WRITTEN. One guide lost 44 screenshots and 224 words with every content check green |
 | `DEEP-QA-UNVERIFIED` | without a run-FOLDER listing nothing can tell "the deep gate was never run" from "it ran, said `reject`, and the page hid it". `run_state.yaml` cannot answer this one — `/ace:qa-deep` writes no pointer into it by design — so `--run-state` does not substitute |

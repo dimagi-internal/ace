@@ -558,6 +558,8 @@ export function labelMatchesPhaseTag(phaseRaw: string, label: string): boolean {
 export type LinkClass =
   | 'OK'
   | 'AUTH-GATED'
+  | 'SPA-GATED'
+  | 'INTERSTITIAL'
   | 'MEMBER-GATED'
   | 'PRIVATE-DELIVERABLE'
   | 'REACHABLE'
@@ -609,6 +611,149 @@ export function looksLikeLogin(finalUrl: string): boolean {
 }
 
 /**
+ * Drive URL forms that promise the FILE'S BYTES rather than a web page.
+ *
+ * Load-bearing for the structural half of `classifyBody`: on these forms an
+ * HTML content-type at 200 means the reader got a PAGE where an artifact was
+ * promised, whatever the page happens to say. That is a fact about the
+ * response, not a guess about which of Drive's interstitials it is — so a
+ * quota wall, a "can't scan for viruses" warning, and any future interstitial
+ * Google ships are all caught by the same rule, with none of them predicted.
+ */
+export function isFileDownloadUrl(url: string): boolean {
+  try {
+    const u = new URL(url);
+    if (u.hostname.endsWith('drive.google.com') && u.pathname === '/uc') return true;
+    if (u.hostname.endsWith('drive.usercontent.google.com') && u.pathname === '/download') return true;
+    return false;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Sign-in shells observed VERBATIM on a gate, never guessed.
+ *
+ * Each entry names where it was seen; anything not observed is deliberately
+ * absent, because a pattern nobody has watched fire is the same guess this
+ * whole class of defect is made of.
+ */
+export const SIGNIN_TEXT: readonly (readonly [RegExp, string])[] = [
+  // ace-web's client-side gate, rendered anonymously 2026-09-06 on
+  // hh-poverty-targeting/20260828-0702's workbench link (ace#1868):
+  // "ace-web Sign in with your Connect account to continue. Sign in with Connect"
+  [/sign in with your [^.]{0,40}account to continue/i, 'ace-web client-side gate (ace#1868)'],
+  [/\bsign in with connect\b/i, 'ace-web client-side gate (ace#1868)'],
+  // Drive's own sign-in interstitial, quoted from the anonymous fetch recorded
+  // in ace#1831: `<title>Google Drive: Sign-in</title>`.
+  [/google drive: sign-?in/i, "Drive's sign-in interstitial (ace#1831)"],
+];
+
+/**
+ * The longest a page can be and still be nothing but a gate.
+ *
+ * A sign-in wall is a sentence and a button; the run-summary page is thousands
+ * of characters. Requiring the visible text to be SHORT is what stops a page
+ * that merely carries a "Sign in" affordance in its chrome from being read as a
+ * wall — a false positive is the same failure as a false negative (the lesson
+ * the /Phase \d+ ·/ provenance regex already taught this auditor).
+ */
+export const GATE_TEXT_MAX_CHARS = 400;
+
+/**
+ * Evidence about the RESPONSE BODY, as opposed to its status line and URL.
+ *
+ * All fields optional: a caller that supplies none gets exactly the pre-ace#1868
+ * behaviour, so every existing call site is unchanged.
+ */
+export interface BodyEvidence {
+  /** `Content-Type` of the anonymous fetch. */
+  contentType?: string | null;
+  /** A bounded prefix of the anonymous fetch's body (HTML responses only). */
+  body?: string | null;
+  /** `body.innerText` after a real browser rendered the URL anonymously. */
+  renderedText?: string | null;
+  /** Where the browser ENDED UP, including client-side navigation. */
+  renderedFinalUrl?: string | null;
+}
+
+/** Visible-ish text of an HTML document, for pattern matching only. */
+function htmlToText(html: string): string {
+  return html
+    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function htmlTitle(html: string): string | null {
+  const m = html.match(/<title>([^<]*)<\/title>/i);
+  return m ? m[1].trim() : null;
+}
+
+/**
+ * Judge a 200 by what its BODY actually is (ace#1868).
+ *
+ * `classifyLink` alone reads the status line and the final URL, so two whole
+ * gate shapes are structurally invisible to it:
+ *
+ *  1. **A client-side gate.** An SPA answers 200 at the requested URL and then
+ *     renders a sign-in prompt in the browser. No redirect, no login substring,
+ *     nothing for a URL test to see — `looksLikeLogin` is a *URL* test.
+ *  2. **An interstitial.** Drive answers 200 with HTML where a file was asked
+ *     for. The bytes the reader receives are a warning page, not the artifact.
+ *
+ * Both were scored `OK`. Deciding from the body is not a broader guess than
+ * deciding from the URL — it is the opposite: the body is the thing the reader
+ * actually receives, and the final URL is a proxy for it that these two shapes
+ * happen to defeat.
+ *
+ * Precedence: RENDERED evidence beats a raw fetch, because for an SPA the raw
+ * fetch is a 443-byte shell that says nothing either way.
+ */
+export function classifyBody(url: string, ev: BodyEvidence | undefined): { kind: 'interstitial' | 'signin' | null; evidence: string } {
+  if (!ev) return { kind: null, evidence: '' };
+
+  // 1. The browser navigated itself to a sign-in route. Decisive, and OBSERVED
+  //    rather than guessed: this is where a real anonymous render ended up.
+  if (ev.renderedFinalUrl && ev.renderedFinalUrl !== url && looksLikeLogin(ev.renderedFinalUrl)) {
+    return { kind: 'signin', evidence: `the rendered page navigated to ${ev.renderedFinalUrl.slice(0, 120)}` };
+  }
+
+  // 2. The rendered page is nothing but a sign-in shell.
+  const rendered = (ev.renderedText ?? '').replace(/\s+/g, ' ').trim();
+  if (rendered && rendered.length <= GATE_TEXT_MAX_CHARS) {
+    for (const [re, where] of SIGNIN_TEXT) {
+      if (re.test(rendered)) return { kind: 'signin', evidence: `the rendered page reads "${rendered.slice(0, 140)}" — ${where}` };
+    }
+  }
+
+  // 3. A file download that answered with a web page. Structural: no pattern.
+  const ct = (ev.contentType ?? '').toLowerCase();
+  if (isFileDownloadUrl(url) && ct.startsWith('text/html')) {
+    const title = ev.body ? htmlTitle(ev.body) : null;
+    const text = ev.body ? htmlToText(ev.body).slice(0, 160) : '';
+    return {
+      kind: 'interstitial',
+      evidence: `content-type ${ct.split(';')[0]} on a file-download URL` + (title ? ` — "${title}"` : text ? ` — "${text}"` : ''),
+    };
+  }
+
+  // 4. A raw body that is itself a sign-in shell (server-rendered gates that
+  //    do not redirect).
+  if (ev.body && ct.startsWith('text/html')) {
+    const text = htmlToText(ev.body);
+    const hay = `${htmlTitle(ev.body) ?? ''} ${text.slice(0, GATE_TEXT_MAX_CHARS)}`;
+    for (const [re, where] of SIGNIN_TEXT) {
+      if (re.test(hay)) return { kind: 'signin', evidence: `the body reads "${hay.trim().slice(0, 140)}" — ${where}` };
+    }
+  }
+
+  return { kind: null, evidence: '' };
+}
+
+/**
  * Pure classifier: (url, status, landing URL) → class + note.
  *
  * `PRIVATE-DELIVERABLE` is the class that makes defect 1 impossible. A private
@@ -619,7 +764,12 @@ export function looksLikeLogin(finalUrl: string): boolean {
  * `12 links · 0 BROKEN`, exit 0, while all eight reviewer-facing deliverables
  * 401'd.
  */
-export function classifyLink(url: string, code: number | null, finalUrl = ''): { cls: LinkClass; note: string } {
+export function classifyLink(
+  url: string,
+  code: number | null,
+  finalUrl = '',
+  evidence?: BodyEvidence,
+): { cls: LinkClass; note: string } {
   if (code === null) {
     return { cls: 'BROKEN', note: finalUrl ? `unreachable (${finalUrl})` : 'unreachable' };
   }
@@ -643,7 +793,24 @@ export function classifyLink(url: string, code: number | null, finalUrl = ''): {
   }
   if (code === 404 || code === 410) return { cls: 'BROKEN', note: 'not found' };
   if (code >= 500) return { cls: 'BROKEN', note: 'server error' };
-  if (code >= 200 && code < 400) return { cls: 'OK', note: '' };
+  if (code >= 200 && code < 400) {
+    // A 200 is not evidence of openability — it is evidence that something
+    // answered. What answered is in the body (ace#1868).
+    const b = classifyBody(url, evidence);
+    if (b.kind === 'interstitial') {
+      return {
+        cls: 'INTERSTITIAL',
+        note: `answered 200 with a web page where the file's bytes were promised: ${b.evidence}`,
+      };
+    }
+    if (b.kind === 'signin') {
+      return {
+        cls: 'SPA-GATED',
+        note: `answered 200 at the requested URL and then asked the reader to sign in: ${b.evidence}`,
+      };
+    }
+    return { cls: 'OK', note: '' };
+  }
   return { cls: 'REACHABLE', note: `HTTP ${code}` };
 }
 
@@ -712,6 +879,74 @@ export interface ProbedLink extends CollectedUrl {
 }
 
 /**
+ * Which links are worth paying a browser for (ace#1868).
+ *
+ * Bounded on both axes, deliberately:
+ *
+ *  - **Only links that currently PASS.** A link already classified as a gate,
+ *    a private deliverable or broken has nothing left to learn from a render;
+ *    the whole point is the ones that slipped through as `OK`.
+ *  - **Only links on the summary page's OWN origin.** A client-side gate is a
+ *    property of the app serving the page, and that app is identified by the
+ *    page URL rather than by a substring guess about its routes — which is the
+ *    guess ace#1868 asked not to repeat. It also keeps the cost at the "handful
+ *    of same-origin ace-web links" the issue budgeted for, instead of driving a
+ *    browser through eight Google Docs that Google would rather throttle.
+ */
+export function sameOriginGateCandidates(links: readonly ProbedLink[], pageUrl: string): string[] {
+  let origin: string;
+  try {
+    origin = new URL(pageUrl).origin;
+  } catch {
+    return [];
+  }
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const l of links) {
+    if (l.cls !== 'OK' && l.cls !== 'REACHABLE') continue;
+    let u: URL;
+    try {
+      u = new URL(l.url);
+    } catch {
+      continue;
+    }
+    if (u.origin !== origin) continue;
+    if (seen.has(l.url)) continue;
+    seen.add(l.url);
+    out.push(l.url);
+  }
+  return out;
+}
+
+/**
+ * Re-classify links in the light of what a real browser saw (ace#1868).
+ *
+ * Pure, so the upgrade is testable without a browser. A link with no matching
+ * gate probe is returned untouched — an unprobed link must never be quietly
+ * upgraded OR downgraded on evidence nobody collected.
+ */
+export function applyRenderedGates(
+  links: readonly ProbedLink[],
+  gateProbes: RenderReport['gateProbes'],
+): ProbedLink[] {
+  if (!gateProbes || !gateProbes.length) return [...links];
+  const byUrl = new Map(gateProbes.map((g) => [g.url, g]));
+  return links.map((l) => {
+    const g = byUrl.get(l.url);
+    if (!g) return l;
+    const { cls, note } = classifyLink(l.url, l.status, '', {
+      renderedText: g.text,
+      renderedFinalUrl: g.finalUrl,
+    });
+    // Only ever TIGHTEN. The raw probe may already have found a harder truth
+    // (a 401, a private deliverable); a render that merely loaded fine is not
+    // grounds to overturn it.
+    if (cls === 'SPA-GATED' || cls === 'INTERSTITIAL') return { ...l, cls, note };
+    return l;
+  });
+}
+
+/**
  * Turn probed links into findings.
  *
  * Beyond "is it reachable", this is where the page's CLAIMS are checked
@@ -745,6 +980,23 @@ export function auditLinks(links: ProbedLink[]): Finding[] {
         detail: `${l.url} — ${l.note}`,
         fix: "drive_set_anyone_with_link on the file_id (role 'commenter' when the reviewer should be able to leave feedback), then re-audit for OK 200",
         defect: '1 (all 8 reviewer-facing Drive deliverables were private while QA reported 12 links · 0 BROKEN)',
+      });
+      continue;
+    }
+    if (l.cls === 'INTERSTITIAL') {
+      // Broken regardless of the access tag: the tag governs WHO may open a
+      // link, and this link opens for everybody and hands them the wrong
+      // thing. Anyone who follows it gets HTML where an artifact was promised.
+      out.push({
+        code: 'LINK-INTERSTITIAL',
+        severity: 'broken',
+        where: l.label,
+        detail: `${l.url} — ${l.note}`,
+        fix:
+          'a Drive download link that answers with HTML is not serving the artifact — check the ' +
+          'file is shared anyone-with-link AND small enough to skip the scan warning, or publish a ' +
+          'link form that returns the bytes; verify by magic bytes, never by HTTP 200',
+        defect: '1868 (a 200 whose body is a gate scored OK)',
       });
       continue;
     }
@@ -1671,6 +1923,13 @@ export interface RenderReport {
   provenanceVisibleByDefault: boolean | null;
   /** Anonymous reachability of the two public write endpoints. */
   writePaths: { comment: number | null; edit: number | null };
+  /**
+   * Same-origin links the browser OPENED anonymously, with what it then saw
+   * (ace#1868). This is the only evidence that can settle a client-side gate:
+   * the raw fetch of an SPA route is a JS shell that says nothing either way.
+   * Absent (or empty) when `--render` was not passed.
+   */
+  gateProbes?: Array<{ url: string; status: number | null; finalUrl: string; text: string }>;
   /** Anything the probe could not determine, with why. */
   undetermined: string[];
 }
