@@ -166,6 +166,18 @@ everything between arming and merging is waiting.
 - **Self-heal PRs additionally close their issue** referencing the PR, then re-run the blocked
   step (`CLAUDE.md § Self-heal a filed issue`).
 
+  **And their ship checkpoint carries one extra line: `Remedy: as-filed | re-derived | refuted`,
+  plus what you RAN.** The issue's premise is verified by its filer; its *suggested fix* is
+  verified by nobody, and that is the half that fails — measured 2026-08-29..09-06 as **wrong**
+  (ace#2004: the proposed one-line hoist would have armed and merged a stranger's PR),
+  **under-scoped** (ace#2027), **no-op** (ace#1768), **stale** (ace#1766, fixed the day after
+  filing). Two checks cover all four, and both are cheap: re-read the cited `file:line` against
+  `git show origin/main:<path>` rather than the issue's quote, and *execute* the remedy — count a
+  proposed matcher's hits on real input, apply a proposed edit and read what the surrounding code
+  then needs. `as-filed` without a ran-command is not `as-filed`. Full contract + the four-shape
+  table: `agents/orchestrator-reference.md § The filed remedy is a lead, not an instruction`
+  (ace#1900). *Enforced:* `test/skills/remedy-verification-contract.test.ts`.
+
 ## MCP Tools Used
 
 None. `git` + `gh` only.
