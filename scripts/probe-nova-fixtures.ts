@@ -201,7 +201,13 @@ export async function probeNovaFixtures(
     }
 
     const [valueColumnId, labelColumnId] = table.columns.map((c: any) => c.columnId);
-    const requested = { tableId, valueColumnId, labelColumnId };
+    // `canCreateTable` above required a truthy tableId and returned early
+    // otherwise; TS cannot narrow across that return, so re-bind here.
+    const requested = {
+      tableId: tableId as string,
+      valueColumnId: valueColumnId as string,
+      labelColumnId: labelColumnId as string,
+    };
     const bound = await callNovaTool(apiKey, 'add_fields', {
       app_id: appId,
       moduleUuid,
