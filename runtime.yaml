@@ -228,7 +228,7 @@ secrets:
   - name: ace-connect-apk-version
     env: ACE_CONNECT_APK_VERSION
     optional: true
-    value: 2.63.2
+    value: 2.64.0
   # The Connect demo user the device walk signs in as. Rotated in 1Password when a
   # phone's OpportunityAccess tiles accumulate (/ace:sweep connect does not clear
   # them) — see the demo-user rotation note in CLAUDE.md. All optional: a headless
