@@ -61,6 +61,7 @@ import * as path from 'node:path';
 import * as os from 'node:os';
 import { execSync } from 'node:child_process';
 import { mergeSessionLockContext } from '../../lib/session-opp-collision.js';
+import { surveyBootClaims, type BootClaim } from '../../lib/avd-boot-claim.js';
 
 /**
  * Directory holding per-session mobile locks.
@@ -1071,4 +1072,135 @@ export function reapStaleSessions(opts: { all?: boolean; lockless?: boolean } = 
   }
 
   return finish();
+}
+
+// ───────────────────────────────────────────────────────────────────────────
+// Per-AVD BOOT CLAIMS (ace#1821, third mechanism)
+//
+// Filesystem plumbing only. Every decision — is a claim binding, is it
+// takeable, what happens when they are all taken — is pure and lives in
+// `lib/avd-boot-claim.ts`, which carries the design argument.
+//
+// This lives HERE rather than in `backends/avd.ts` so it reuses this module's
+// `sessionLockDir()` (with its `ACE_SESSION_LOCK_DIR` test seam, ace#1704) and
+// its `isPidAlive`, and sits beside `withAllocatorMutex`, whose O_EXCL
+// take-or-inspect shape it deliberately mirrors. A second copy of either would
+// be the "two detectors that can disagree" failure `lib/mobile-contention.ts`
+// warns about.
+// ───────────────────────────────────────────────────────────────────────────
+
+/**
+ * Claim files are `.avd-boot-<avd>.json`, one per AVD. The `.` prefix keeps
+ * them out of the `*.lock.json` glob the session reaper walks — a boot claim
+ * is NOT a session lock and must never be reaped by pid alone.
+ */
+function bootClaimPath(avdName: string): string {
+  // AVD names come from `emulator -list-avds`; sanitise anyway so a name can
+  // never escape the directory.
+  const safe = avdName.replace(/[^A-Za-z0-9._-]/g, '_');
+  return path.join(sessionLockDir(), `.avd-boot-${safe}.json`);
+}
+
+/** Every boot claim currently on disk. Corrupt files are skipped, not thrown. */
+export function readBootClaims(): BootClaim[] {
+  const dir = sessionLockDir();
+  if (!fs.existsSync(dir)) return [];
+  const out: BootClaim[] = [];
+  for (const entry of fs.readdirSync(dir)) {
+    if (!entry.startsWith('.avd-boot-') || !entry.endsWith('.json')) continue;
+    try {
+      const claim = JSON.parse(fs.readFileSync(path.join(dir, entry), 'utf8')) as BootClaim;
+      if (typeof claim?.avd_name === 'string' && Number.isFinite(claim?.mcp_pid)) {
+        out.push({ ...claim, claimed_at_ms: Number(claim.claimed_at_ms) || 0 });
+      }
+    } catch {
+      /* corrupt — the next takeover pass unlinks it */
+    }
+  }
+  return out;
+}
+
+/**
+ * Try to take the boot claim on `avdName` atomically.
+ *
+ * `O_EXCL` (`'wx'`) is the whole interlock: two sessions that both computed
+ * "this AVD is free" from the same `ps` snapshot cannot both succeed here.
+ * Returns the claim we now hold, or `null` when a peer got there first — the
+ * caller then re-runs selection with this AVD marked held, which is the
+ * fall-through tier.
+ */
+export function tryAcquireBootClaim(avdName: string): BootClaim | null {
+  fs.mkdirSync(sessionLockDir(), { recursive: true });
+  const claim: BootClaim = {
+    avd_name: avdName,
+    mcp_pid: process.pid,
+    claimed_at_ms: Date.now(),
+    claimed_at: new Date().toISOString(),
+  };
+  try {
+    const fd = fs.openSync(bootClaimPath(avdName), 'wx');
+    try {
+      fs.writeSync(fd, JSON.stringify(claim, null, 2) + '\n');
+    } finally {
+      fs.closeSync(fd);
+    }
+    return claim;
+  } catch (e: any) {
+    if (e?.code === 'EEXIST') return null;
+    // Any other filesystem failure must not block a boot — a missing claim
+    // degrades to today's unserialised behaviour, which is the status quo.
+    return claim;
+  }
+}
+
+/**
+ * Drop a claim we no longer need.
+ *
+ * `expectPid` guards the takeover race: after we unlink a stale claim and a
+ * peer re-creates it, our own later release must not delete THEIR claim.
+ * Pass `null` to unlink regardless of owner — the deliberate takeover the
+ * timeout path performs after waiting out a wedged claim, and the ONLY place
+ * that is allowed. Idempotent; safe on every exit path, including twice.
+ */
+export function releaseBootClaim(avdName: string, expectPid: number | null = process.pid): boolean {
+  const p = bootClaimPath(avdName);
+  try {
+    const claim = JSON.parse(fs.readFileSync(p, 'utf8')) as BootClaim;
+    if (expectPid !== null && Number.isFinite(claim?.mcp_pid) && claim.mcp_pid !== expectPid) {
+      return false;
+    }
+  } catch {
+    /* unreadable or already gone — fall through to the unlink attempt */
+  }
+  try {
+    fs.unlinkSync(p);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Read every claim, classify it, unlink the takeable ones, and return the set
+ * of AVDs a live peer is mid-boot on.
+ *
+ * The unlink happens here rather than in the caller so "classified takeable"
+ * and "actually removed" cannot drift apart between the two.
+ */
+export function surveyAndReapBootClaims(staleAfterMs: number): {
+  claimed: Set<string>;
+  reaped: BootClaim[];
+  classifications: ReturnType<typeof surveyBootClaims>['classifications'];
+} {
+  const survey = surveyBootClaims(readBootClaims(), {
+    now: Date.now(),
+    selfPid: process.pid,
+    isPidAlive,
+    staleAfterMs,
+  });
+  const reaped: BootClaim[] = [];
+  for (const claim of survey.takeover) {
+    if (releaseBootClaim(claim.avd_name, claim.mcp_pid)) reaped.push(claim);
+  }
+  return { claimed: survey.claimed, reaped, classifications: survey.classifications };
 }

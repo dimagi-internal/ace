@@ -27,8 +27,19 @@ import {
   type PsRow,
 } from '../../../lib/mobile-contention.js';
 import { scopeOrphanQemuKills } from '../../../lib/avd-orphan-scope.js';
+import {
+  applyBootClaims,
+  planExhaustedBootClaim,
+  type BootClaim,
+} from '../../../lib/avd-boot-claim.js';
 import { resolveAdbServerPort, resolveEmulatorPair, recordSessionLock, isTcpPortFree, occupiedConsolePortIsFatal } from '../port-allocator.js';
-import { listLiveSessionLocks, withAllocatorMutex } from '../session-lock.js';
+import {
+  listLiveSessionLocks,
+  withAllocatorMutex,
+  surveyAndReapBootClaims,
+  tryAcquireBootClaim,
+  releaseBootClaim,
+} from '../session-lock.js';
 
 // Per-phase budgets for the post-spawn three-phase boot wait.
 //
@@ -64,6 +75,26 @@ const AVD_PHASE_ADB_REGISTER_MS = envBootTimeoutMs() ?? 60_000;
 const AVD_PHASE_BOOT_COMPLETED_MS = envBootTimeoutMs() ?? 120_000;
 const AVD_PHASE_STORAGE_MOUNT_MS = 30_000;
 const AVD_PHASE_POLL_MS = 1_000;
+
+// Per-AVD boot-claim budget (ace#1821), as a MULTIPLE of this backend's own
+// adb-register budget rather than an independent constant.
+//
+// The claim is held from just before the AVD is mutated (config.ini camera
+// patch, `emu kill` of a prior instance, the `-wipe-data` spawn) until the
+// emulator registers with adb — at which point it IS in the process table and
+// the `ps`-based `held` signal takes over. So the longest a boot can
+// legitimately hold a claim is the adb-register wait plus the pre-spawn work,
+// which is what the 1.25x buys. Deriving it means an `AVD_BOOT_TIMEOUT_MS`
+// override — or a test's injected `bootWait` — moves the claim budget with it,
+// instead of a waiter blocking for 75s over a boot that gave up in 2s.
+//
+// It is deliberately NOT `ALLOCATOR_MUTEX_TIMEOUT_MS` (30s). That mutex
+// brackets a few milliseconds of TCP probing, so 30s there means "the holder
+// is broken"; a flat 30s here would mean "pre-empt a perfectly healthy
+// concurrent boot at the halfway mark", recreating the collision this closes.
+const BOOT_CLAIM_BUDGET_FACTOR = 1.25;
+/** 250ms, not the allocator mutex's 50ms — this wait is ~1500x longer. */
+const BOOT_CLAIM_POLL_MS = 250;
 
 /**
  * Where AVDs live on disk, per platform.
@@ -755,55 +786,157 @@ export class AvdBackend {
       return { name, prov, cont };
     });
 
-    const freedom = new Map(
-      resolveAvdPoolFreedom(
-        facts.map((f) => ({
-          name: f.name,
-          usable: f.prov.provisioned !== false && f.cont !== null && !f.cont.contended,
-          held: f.cont?.held ?? false,
-        })),
-      ).map((e) => [e.name, e]),
-    );
-
-    const pool: AvdPoolEntry[] = facts.map(({ name, prov, cont }) => {
-      if (prov.provisioned === false) {
-        return { name, free: false, reason: `de-provisioned (${prov.detail})` };
-      }
-      if (cont!.contended) {
-        return { name, free: false, reason: `held by live pid ${cont!.holderPid}` };
-      }
-      const f = freedom.get(name)!;
-      if (!f.free) {
-        return {
-          name,
-          free: false,
-          reason:
-            `shared with ${cont!.heldBy.length} live -read-only emulator(s) ` +
-            `(${cont!.heldBy.map((h) => h.pid).join(', ')}) — another AVD is free`,
-        };
-      }
-      if (f.shared) {
-        console.warn(
-          `[ace-mobile] ensureAvdRunning: every provisioned AVD on this host is already held by a ` +
-            `live -read-only emulator from another session (${name}: ` +
-            `${cont!.heldBy.map((h) => h.pid).join(', ')}). Proceeding anyway — -read-only permits ` +
-            'it — but this dispatch cold-boots with -wipe-data and WILL destroy the other session\'s ' +
-            "device state, and it may destroy this one's. Serialise Phase 6 runs on this host, or " +
-            'provision more AVDs (ace#1821, ace#1909).',
-        );
-      }
-      // Free, but only PROVEN entries are eligible as a fallback — see
-      // avd-provisioned-marker.ts. The requested AVD does not need a marker,
-      // so nothing changes for a machine that has never recorded one.
-      const marker = readProvisionedMarker(avdHomeForPool, name);
-      return { name, free: true, proven: markerProvesFor(marker, resolveActiveSelectorMapId()) };
-    });
-
-    const selection = selectAvd(avdName, pool, { selfPid: process.pid });
-    if (selection.switched) {
-      console.warn(`[ace-mobile] ensureAvdRunning: ${selection.note}`);
-      avdName = selection.name;
+    // ace#1821, third mechanism — SERIALISE THE BOOT, per AVD.
+    //
+    // `held` above comes from `ps`. A peer that has DECIDED to boot an AVD but
+    // has not yet spawned its qemu is in no process table, so two sessions
+    // probing in the same window both read `held: false` for the SAME AVD and
+    // both cold-boot it with `-wipe-data`. Scoping the orphan-kill (#2000)
+    // stopped the mutual SIGKILL; it added no mutual exclusion.
+    //
+    // A live boot claim is folded in as ONE MORE HOLDER — never as
+    // `usable: false` — so the existing `resolveAvdPoolFreedom` -> `selectAvd`
+    // pipeline does the falling-through, and `AvdPoolExhaustedError` stays
+    // exactly as reachable as it was. The argument for that shape, and the
+    // proof it cannot make the pool newly throw, is in `lib/avd-boot-claim.ts`.
+    const bootClaimBudgetMs = Math.round(this.bootWait.adbRegisterMs * BOOT_CLAIM_BUDGET_FACTOR);
+    const claimSurvey = surveyAndReapBootClaims(bootClaimBudgetMs);
+    for (const reaped of claimSurvey.reaped) {
+      console.warn(
+        `[ace-mobile] ensureAvdRunning: reaped a stale boot claim on '${reaped.avd_name}' ` +
+          `(pid ${reaped.mcp_pid}) — a stale claim must never wedge the fleet.`,
+      );
     }
+
+    const baseCandidates = facts.map((f) => ({
+      name: f.name,
+      usable: f.prov.provisioned !== false && f.cont !== null && !f.cont.contended,
+      held: f.cont?.held ?? false,
+    }));
+
+    // Warn at most once per AVD per dispatch — `buildPool` is re-run each time
+    // we lose a claim race, and a duplicated warning reads as a second event.
+    const sharedWarned = new Set<string>();
+
+    /** Re-runnable: losing a claim race re-selects with that AVD marked held. */
+    const buildPool = (claimed: ReadonlySet<string>): AvdPoolEntry[] => {
+      const freedom = new Map(
+        resolveAvdPoolFreedom(applyBootClaims(baseCandidates, claimed)).map((e) => [e.name, e]),
+      );
+      return facts.map(({ name, prov, cont }) => {
+        if (prov.provisioned === false) {
+          return { name, free: false, reason: `de-provisioned (${prov.detail})` };
+        }
+        if (cont!.contended) {
+          return { name, free: false, reason: `held by live pid ${cont!.holderPid}` };
+        }
+        const f = freedom.get(name)!;
+        if (!f.free) {
+          const holders = cont!.heldBy.map((h) => h.pid);
+          return {
+            name,
+            free: false,
+            reason: claimed.has(name)
+              ? `being cold-booted right now by a peer session (ace#1821 boot claim) — another AVD is free`
+              : `shared with ${holders.length} live -read-only emulator(s) ` +
+                `(${holders.join(', ')}) — another AVD is free`,
+          };
+        }
+        if (f.shared && !sharedWarned.has(name)) {
+          sharedWarned.add(name);
+          console.warn(
+            `[ace-mobile] ensureAvdRunning: every provisioned AVD on this host is already held by a ` +
+              `live -read-only emulator from another session (${name}: ` +
+              `${cont!.heldBy.map((h) => h.pid).join(', ')}). Proceeding anyway — -read-only permits ` +
+              'it — but this dispatch cold-boots with -wipe-data and WILL destroy the other session\'s ' +
+              "device state, and it may destroy this one's. Serialise Phase 6 runs on this host, or " +
+              'provision more AVDs (ace#1821, ace#1909).',
+          );
+        }
+        // Free, but only PROVEN entries are eligible as a fallback — see
+        // avd-provisioned-marker.ts. The requested AVD does not need a marker,
+        // so nothing changes for a machine that has never recorded one.
+        const marker = readProvisionedMarker(avdHomeForPool, name);
+        return { name, free: true, proven: markerProvesFor(marker, resolveActiveSelectorMapId()) };
+      });
+    };
+
+    // Tier 1 — FALL THROUGH. Try to claim the AVD selection lands on; on
+    // EEXIST a peer beat us to it between our `ps` read and our `open`, so mark
+    // it held and re-select. Bounded by the pool size: every iteration removes
+    // one AVD from consideration, so this cannot spin.
+    const requestedAvd = avdName;
+    const refused: string[] = [];
+    const claimedNow = new Set(claimSurvey.claimed);
+    let bootClaim: BootClaim | null = null;
+    let pool: AvdPoolEntry[] = buildPool(claimedNow);
+
+    for (let attempt = 0; attempt <= known.length; attempt++) {
+      const selection = selectAvd(avdName, pool, { selfPid: process.pid });
+      if (selection.switched) {
+        console.warn(`[ace-mobile] ensureAvdRunning: ${selection.note}`);
+        avdName = selection.name;
+      }
+      bootClaim = tryAcquireBootClaim(avdName);
+      if (bootClaim) break;
+
+      // Lost the race. Re-select without this AVD.
+      refused.push(avdName);
+      claimedNow.add(avdName);
+      console.warn(
+        `[ace-mobile] ensureAvdRunning: a peer session claimed '${avdName}' for its own cold-boot ` +
+          `between our process-table read and our claim; re-selecting (ace#1821).`,
+      );
+      avdName = requestedAvd;
+      pool = buildPool(claimedNow);
+      if (claimedNow.size >= known.length) break;
+    }
+
+    // Tier 2/3 — WAIT, THEN PROCEED. Every AVD we may take is mid-boot
+    // elsewhere. Waiting is strictly better than proceeding here because the
+    // thing we would collide with ENDS within the boot budget; and on timeout
+    // we boot anyway, because a refusing lock on a one-AVD host is pure loss
+    // (ace#1821, @jjackson 2026-09-01). Never throws — see
+    // `BootClaimTerminal.action`, a single-member union by design.
+    if (!bootClaim) {
+      const terminal = planExhaustedBootClaim({
+        requested: requestedAvd,
+        refused,
+        poolSize: known.length,
+        waitMs: bootClaimBudgetMs,
+      });
+      avdName = terminal.avd;
+      console.warn(`[ace-mobile] ensureAvdRunning: ${terminal.reason}`);
+      const deadline = Date.now() + terminal.waitMs;
+      while (Date.now() < deadline) {
+        await new Promise((r) => setTimeout(r, BOOT_CLAIM_POLL_MS));
+        // Reap first so a claim whose owner died mid-wait is taken, not waited on.
+        surveyAndReapBootClaims(bootClaimBudgetMs);
+        bootClaim = tryAcquireBootClaim(avdName);
+        if (bootClaim) break;
+      }
+      if (!bootClaim) {
+        console.warn(
+          `[ace-mobile] ensureAvdRunning: waited ${Math.round(terminal.waitMs / 1000)}s for the ` +
+            `'${avdName}' boot claim and it is still held. Taking it over and cold-booting anyway — ` +
+            `a wedged claim must never wedge Phase 6 (ace#1821).`,
+        );
+        releaseBootClaim(avdName, null); // null = unlink regardless of owner
+        // A third session can win the re-acquire in the microsecond between
+        // those two calls, leaving us with no claim. We boot anyway: that is
+        // precisely today's unserialised behaviour, so the worst case of this
+        // whole change is the status quo, never a new failure. The later
+        // `releaseBootClaim(avdName)` is owner-guarded, so it cannot delete
+        // the winner's claim.
+        bootClaim = tryAcquireBootClaim(avdName);
+      }
+    }
+    // NOTE — between here and the wait-phase try/catch below, an unexpected
+    // throw (an unreadable `config.ini`, a `spawn` failure) leaks the claim.
+    // The two throws we can predict release it explicitly; the rest are caught
+    // by the age-based takeover, which is exactly what that second staleness
+    // test exists for. A leaked claim delays a peer by one boot budget; it
+    // cannot wedge it.
 
     // Fail fast on a DE-PROVISIONED AVD (dimagi-internal/ace#1357). `-list-avds`
     // reports it happily — it reads config.ini — so the only thing that catches
@@ -814,6 +947,7 @@ export class AvdBackend {
       process.env.ANDROID_AVD_HOME ?? path.join(os.homedir(), '.android', 'avd');
     const provisioning = checkAvdProvisioned(avdHome, avdName);
     if (provisioning.provisioned === false) {
+      releaseBootClaim(avdName);
       throw new AvdNotProvisionedError(avdName, provisioning.detail, {
         avd_dir: provisioning.avdDir,
         images_found: provisioning.images,
@@ -833,6 +967,7 @@ export class AvdBackend {
       selfEmulatorPort: selfPorts.emulatorConsolePort,
     });
     if (contention.contended) {
+      releaseBootClaim(avdName);
       throw new AvdContendedError(avdName, contention.detail, {
         holder_pid: contention.holderPid,
         lock_path: contention.lockPath,
@@ -966,6 +1101,13 @@ export class AvdBackend {
     // might have already died on its own).
     try {
       await this.waitForAdbRegister(expectedSerial, start);
+      // The claim's job is done the moment the emulator is registered: it is
+      // now a real process with `-avd <name>` and `-port <n>` in its argv, so
+      // `parseAvdHolders` sees it and the `ps`-based `held` signal takes over.
+      // Holding past this point would turn a boot-scoped claim into a
+      // session-scoped one — an unbounded wait for peers, which is exactly the
+      // refusing lock ace#1821 ruled out. Release EARLY and on every path.
+      releaseBootClaim(avdName);
       await this.waitForBootCompleted(expectedSerial, start);
       await this.waitForStorageMount(expectedSerial, start);
 
@@ -993,6 +1135,12 @@ export class AvdBackend {
       await this.runPostBootPrep(found.serial);
       return { ...found, bootTimeMs: Date.now() - start };
     } catch (err) {
+      // Release the boot claim on the failure path too. `releaseBootClaim` is
+      // idempotent and owner-guarded, so the double-call with the success path
+      // above is safe and a peer's claim can never be deleted by it. Without
+      // this, a failed boot leaves a claim that peers wait out for the full
+      // budget before taking over — correct, but slow for no reason.
+      releaseBootClaim(avdName);
       // Kill the orphan qemu. Best-effort — adb emu kill may fail if
       // the device is still in `offline` state (the very case that
       // triggered our throw). Fall back to SIGKILL on the spawn pid.
