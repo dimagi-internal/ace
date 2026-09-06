@@ -240,12 +240,43 @@ Both env vars are pre-flighted by `/ace:doctor` `[Auth liveness]`.
    | HTML body | — | **wrong route.** An unrouted path falls through to the SPA catch-all and returns a bare HTML 404, not JSON. Check `/api/w/<ws>/opps/...`. |
    | *no response* | — | **not an error.** The POST blocks; you timed out, the fork didn't. Go to step 4b — never re-POST. |
 
-6. **Report.**
+6. **Check the typed handoffs the fork did NOT copy (ace#1888). Not optional.**
+   ace-web copies phase artifacts and phase STATUSES; it does **not** copy the
+   `products` block. A phase marked `done` with no `products` is asserting a
+   completion it cannot back — and every existing fence reads it green (see
+   § Known issues). So audit it here, where the fork just happened and the
+   source run is still in hand:
+
+   ```bash
+   # read costs zero context with writeToPath; then classify locally
+   ACE_ROOT="${CLAUDE_PLUGIN_ROOT:-$(python3 -c "import json,os; d=json.load(open(os.path.expanduser('~/.claude/plugins/installed_plugins.json'))); print(d['plugins']['ace@ace'][0]['installPath'])")}"
+   npx --prefix "$ACE_ROOT" tsx "$ACE_ROOT/scripts/check-products-gap.ts" \
+     /tmp/forked_run_state.yaml --label "<run_id>"
+   ```
+
+   (`/tmp/forked_run_state.yaml` comes from
+   `drive_read_file(fileId: <the new run's run_state.yaml>, writeToPath: ...)`.)
+
+   Exit 0 = clean. Exit 1 = **BLOCKING**: phases remain pending and at least one
+   upstream phase owes a handoff. Exit 2 with a `products-gap ADVISORY` status
+   = gaps exist but nothing is left to dispatch.
+
+   **On a non-zero exit, do not report the fork as ready.** Seed each named
+   phase's `products` block **verbatim from the source run** —
+   `update_yaml_file` with `merge: 'deep'`, one phase at a time — and record
+   what you did and where it came from in a top-level `seeded_products_note`.
+   Never re-derive a products value by hand: it is a record of what another
+   system did, and a plausible-looking substitute is the "close the loop to the
+   source of truth" failure (CLAUDE.md § Conventions). Then re-run the check
+   until it exits 0.
+
+7. **Report.**
 
    ```
    Forked ACE/<opp>/runs/<source_run_id>/ → runs/<run_id>/
    Fork point: <phase|skill> (earlier work copied; from here on re-runs)
    Mode: <mode>
+   Products handoffs: <clean | seeded N phase(s) from <source_run_id>>
    Workbench: <ACE_WEB_BASE_URL>/chat/<working_session_slug>
 
    Next: /ace:run <opp>/<run_id> to resume there.
@@ -253,9 +284,31 @@ Both env vars are pre-flighted by `/ace:doctor` `[Auth liveness]`.
 
 ## Known issues
 
-None currently open. *(This section read the same thing while the skill was
-100% broken — see § History. If you're relying on it, spot-check the contract
-against ace-web source instead.)*
+**The fork does not copy `products` blocks — ace#1888, OPEN, owned by
+ace-web.** A forked run's phases carry `status: done, verdict: seeded` and no
+typed handoff, so a downstream phase that dereferences one
+(`demo-data-setup(ace-run)` reads
+`phases.connect-setup.products.connect.opportunity.connect_int_id`) gets a
+confusing empty result rather than a clean halt.
+
+It is easy to miss because **every fence reads it green.**
+`verify_phase_artifacts` passes (the Drive files really were copied),
+`classify_phase_writeback` reads `ok` (the status block really is well-formed),
+and `verify_phase_products` returns `ok:true` on a *wholly absent* block for
+any phase with no entry in `REQUIRED_PRODUCT_KEYS` — measured on
+`hh-poverty-targeting/20260901-1932`: `idea-to-design` ok=true, `ocs-setup`
+ok=true, both with no `products` key at all.
+
+The real fix — carrying the block across the copy — is an **ace-web** change
+(`apps/opps/opp_forker.py`) and cannot be made from this repo. Step 6 above is
+ACE's half: it turns the silent gap into a loud, named one.
+*Enforced:* `lib/upstream-products-gap.ts` +
+`test/lib/upstream-products-gap.test.ts`, whose controls are transcribed from
+the forked run and its source.
+
+*(This section read "None currently open" while the skill was 100% broken —
+see § History. If you're relying on it, spot-check the contract against
+ace-web source instead.)*
 
 ## History — why this file is source-verified
 

@@ -1013,6 +1013,30 @@ in `inputs/` (the manifest), not to pick one canonical PDD file.
      > <M>, which is `skipped`/absent in this run's run_state. The run was
      > seeded with the wrong shape — re-seed including phase <M>.
 
+     **Products-presence check — the same fence for the TYPED handoff
+     (ace#1888).** The artifact check above covers Drive *files*. It says
+     nothing about `products`, and a forked or seeded run is exactly the run
+     whose statuses are copied and whose `products` blocks are not: on
+     `hh-poverty-targeting/20260901-1932`, `idea-to-design`, `ocs-setup` and
+     `qa-and-training` were all `status: done, verdict: seeded` with no
+     `products` key. `verify_phase_products` cannot catch that — it returns
+     `ok:true` on a wholly-absent block for any phase with no entry in
+     `REQUIRED_PRODUCT_KEYS`. So run the dedicated check once, over the whole
+     loaded run_state, **before dispatching the first `pending` phase**:
+
+     ```bash
+     ACE_ROOT="${CLAUDE_PLUGIN_ROOT:-$(python3 -c "import json,os; d=json.load(open(os.path.expanduser('~/.claude/plugins/installed_plugins.json'))); print(d['plugins']['ace@ace'][0]['installPath'])")}"
+     npx --prefix "$ACE_ROOT" tsx "$ACE_ROOT/scripts/check-products-gap.ts" \
+       <local-run_state.yaml> --label <run-id>
+     ```
+
+     Exit 0 → proceed. **Exit 1 (BLOCKING) → halt with the printed text.** Do
+     not dispatch over it and do not re-derive the missing values: seed each
+     named phase's block verbatim from the source run
+     (`skills/fork-run/SKILL.md` § Process step 6 owns the recipe), then
+     re-check. Exit 2 with an `ADVISORY` status is a completed run with a
+     historical gap — record it, don't halt.
+
    - **Fresh mode** — `runId` is null: generate
      `runId = generateRunId(new Date())` (= `YYYYMMDD-HHMM` local time).
      If `<opp>/runs/<runId>/` already exists, append `-2`, `-3`, … until
