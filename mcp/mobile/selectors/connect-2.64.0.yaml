@@ -171,3 +171,113 @@ selectors:
     type: id
     value: "org.commcare.dalvik:id/connect_backup_code_button"
     purpose: "CONTINUE on the backup-code screen. Live-verified 2026-09-06 (2.64.0), 30-backup-code-create.xml — enabled=false on arrival, enabled=true once six digits land in backup_code_view. Tapping it advanced to the NEW email step, not to Account Recovered."
+
+  # ── PersonalID email step — NEW IN 2.64.0 ───────────────────────
+  # All five ids below are absent from 2.63.2's resource table and
+  # present in 2.64.0's (grep -cx over the extracted id lists: 0 vs 1
+  # for each). The nav graph names the transition outright —
+  # `action_personalid_backupcode_to_personalid_email` is likewise
+  # 2.64.0-only. Live-walked 2026-09-06; see ace#2029 for the recipe gap.
+  #
+  # The screen sits between the backup-code screen and whatever follows
+  # it. It is optional, but it will not go away on its own: SKIP FOR NOW
+  # raises a confirmation dialog that must be answered YES.
+  #
+  # A full email-VERIFICATION leg ships alongside it and is NOT mapped
+  # here because ACE only needs the skip path and the surface was never
+  # rendered: personalid_email_verification_fragment,
+  # personalid_email_verify_button, personalid_email_verify_error,
+  # personalid_email_resend_button, personalid_email_error,
+  # personalid_resend_countdown_text, otp_code_view. Two nav actions
+  # leave the email screen and two leave verification
+  # (action_personalid_email_to_personalid_{email_verification,message,
+  # photo_capture}, action_personalid_email_verification_to_personalid_
+  # {message,photo_capture}), so entering an address forks the flow.
+  # Do not author against that leg without walking it.
+
+  personalid-email-input:
+    type: id
+    value: "org.commcare.dalvik:id/email_text_value"
+    purpose: "Optional email EditText on the NEW 2.64.0 PersonalID email screen (hint 'Email address'). Live-verified 2026-09-06 (2.64.0), 31-after-backup-code.xml. Toolbar 'Email'; body 'Add your email (optional)' / 'Your email helps you recover your account if you lose access'. ACE does not fill it — entering an address routes into the unmapped email-verification leg."
+
+  personalid-email-skip:
+    type: id
+    value: "org.commcare.dalvik:id/personalid_email_skip_button"
+    purpose: "'SKIP FOR NOW' on the NEW 2.64.0 email screen, [13,1169][527,1326] on 1080x2400. Live-verified 2026-09-06 (2.64.0), 31-after-backup-code.xml. THIS TAP DOES NOT SKIP — it raises the 'Skip email?' confirm dialog (32-after-email-skip.xml). Must be followed by personalid-email-skip-confirm-yes."
+
+  personalid-email-continue:
+    type: id
+    value: "org.commcare.dalvik:id/personalid_email_continue_button"
+    purpose: "'CONTINUE' on the NEW 2.64.0 email screen, enabled=false until an address is entered. Live-verified 2026-09-06 (2.64.0), 31-after-backup-code.xml — observed disabled; NOT tapped, because doing so enters the unmapped email-verification leg. Recorded so a recipe can assert its presence and deliberately choose the skip path instead."
+
+  personalid-email-skip-confirm-yes:
+    type: text
+    value: "YES"
+    purpose: "The YES action on the 'Skip email?' confirmation, [758,1317][989,1454] on 1080x2400. Live-verified 2026-09-06 (2.64.0), 32-after-email-skip.xml. Matched by TEXT, not id: it renders as org.commcare.dalvik:id/positive_button, whose sibling negative_button 'NO' shares the same dialog — the ids are distinct here so an id matcher would also work, but the text is the safer read against a dialog whose two buttons are otherwise identical chrome. Tapping YES advanced straight to the 'Account Recovered' sheet."
+
+  personalid-email-skip-confirm-no:
+    type: text
+    value: "NO"
+    purpose: "The NO action on the 'Skip email?' confirmation ([493,1317][724,1454], id negative_button). Live-verified 2026-09-06 (2.64.0), 32-after-email-skip.xml. Recorded as a NAMED ANTI-TARGET: a recipe that taps the wrong half of this dialog returns to the email form and then strands exactly as if it had never tapped at all."
+
+  # ── Demo-user OTP bypass ────────────────────────────────────────
+  demo-snackbar-action:
+    type: id
+    value: "org.commcare.dalvik:id/snackbar_action"
+    purpose: "OK on the demo-user OTP-bypass snackbar (+7426 phones). Live-verified 2026-09-06 (2.64.0), 28-after-unlock.xml — snackbar_text reads \"I see you're a demo user, so we'll skip the OTP\", snackbar_action 'OK' at [922,2173][1048,2299]. On this walk the snackbar surfaced AFTER the system unlock, not immediately after CONTINUE, which is why a fixed post-CONTINUE wait can miss it entirely."
+
+  # ── Login / registration / learn-menu ───────────────────────────
+  personalid-login-button:
+    type: id
+    value: "org.commcare.dalvik:id/connect_login_button"
+    purpose: "PROMOTED off unverified. Live-verified 2026-09-06 (2.64.0), 34-post-registration-setup.xml — on the post-registration CommCareSetupActivity it renders as 'GO TO CONNECT MENU', above login_or and the two install tiles. Tapping it (after clearing the 'Unlock PersonalID' prompt) reached ConnectActivity / rvJobList. The 2.63.2 note calling it 'the Connect sign-in screen' understates it: this is the setup-screen entry point into Connect, and it is the only route from CommCareSetupActivity to the jobs list."
+
+  personalid-name-continue:
+    type: id
+    value: "org.commcare.dalvik:id/personalid_name_continue_button"
+    purpose: "CONTINUE on the registration name-entry screen. Live-verified 2026-09-06 (2.64.0), 29-post-unlock-next.xml — enabled=false until the name field is non-empty; tapped, and advanced to the backup-code screen."
+
+  personalid-confirm-code-view:
+    type: id
+    value: "org.commcare.dalvik:id/confirm_code_view"
+    unverified: true
+    purpose: "Confirm-code six-cell widget on the FRESH-SIGNUP create-backup-code screen. NOT OBSERVED on 2.64.0: the +7426 demo phone already had a server-side account (the bootstrap had registered it on 2.63.2 minutes earlier), so the walk took the RECOVERY branch, which renders backup_code_view alone. Confirmed absent from 30-backup-code-create.xml. The id exists in 2.64.0's resource table. Reaching this needs a phone with no server account — i.e. a demo-user rotation."
+
+  personalid-backup-code-view:
+    type: id
+    value: "org.commcare.dalvik:id/backup_code_view"
+    purpose: "Six-cell backup-code widget. Live-verified 2026-09-06 (2.64.0), 30-backup-code-create.xml — LinearLayout at [194,1299][922,1443] holding six anonymous single-char EditTexts. A point tap on cell 0, centre ~(254,1371), focuses it and inputText auto-advances across all six. Siblings on this surface: backup_code_layout, backup_code_visibility_toggle, recovery_code_tilte [sic, upstream typo], backup_code_subtitle."
+
+  personalid-message-button:
+    type: id
+    value: "org.commcare.dalvik:id/connect_message_button"
+    purpose: "OK on a registration message sheet. Live-verified 2026-09-06 (2.64.0), 33-after-skip-confirm.xml — the 'Account Recovered' design_bottom_sheet, with connect_message_title 'Account Recovered' and connect_message_message. Tapping it returned to CommCareSetupActivity."
+
+  learn-suite-menu:
+    type: id
+    value: "org.commcare.dalvik:id/(screen_suite_menu_list|grid_menu_grid)"
+    purpose: "MenuActivity suite-menu CONTAINER, DISPLAY-MODE-AGNOSTIC. Live-verified 2026-09-06 (2.64.0), 38-suite-menu.xml + 39-after-module-tap.xml — the GRID branch, grid_menu_grid, rendering row_img + row_txt, at two successive menu levels. The list branch screen_suite_menu_list was NOT rendered on this app (ACE sets grid display app-wide via app-hq-settings) and is carried from 2.63.2. DO NOT narrow this to one container: ace#1127. Enforced display-mode-complete by test/mcp/mobile/static-recipe-invariants.test.ts."
+
+  # ── Google Play Services phone-hint sheet ───────────────────────
+  gms-phone-hint-cancel:
+    type: id
+    value: "com.google.android.gms:id/cancel"
+    purpose: "Cancel on the GMS phone-hint bottom sheet that pops on phone/country-code field focus. Live-verified 2026-09-06 (2.64.0), 24-gms-phone-hint.xml — ImageView, content-desc 'Cancel', [954,1579][1017,1642], inside design_bottom_sheet titled 'Choose a phone number'. Still fires on 2.64.0."
+
+  # ── System unlock ───────────────────────────────────────────────
+  system-lockpassword:
+    type: id
+    value: "com.android.systemui:id/lockPassword"
+    purpose: "System biometric-prompt PIN entry. Live-verified 2026-09-06 (2.64.0), 27-after-agree-continue.xml — title 'Unlock PersonalID', subtitle 'Please unlock to continue'. Fires TWICE in a full walk on 2.64.0: once from AGREE & CONTINUE, and again on the GO TO CONNECT MENU transition."
+
+  system-pin-entry:
+    type: id
+    value: "com.android.settings:id/lock_pin"
+    unverified: true
+    purpose: "PIN option on the device-lock SETUP chooser. NOT OBSERVED on 2.64.0 — the device already carried a screen lock from the earlier bootstrap, so registration took branch B and went straight to the system unlock prompt. Reaching it needs an AVD whose userdata was wiped AND on which no prior registration set a lock."
+
+  system-password-entry:
+    type: id
+    value: "com.android.settings:id/password_entry"
+    unverified: true
+    purpose: "Password field on the device-lock setup screen. NOT OBSERVED on 2.64.0, same reason as system-pin-entry."
