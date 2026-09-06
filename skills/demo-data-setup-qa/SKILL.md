@@ -25,6 +25,7 @@ auto-fix protocol, static-vs-LLM rules).
 | `demo-data-setup` | `<demo-run>/7-synthetic/realized.json` | the handoff under check |
 | `demo-data-setup` | `run_state.yaml…products.synthetic.source` | provider + labs opp id + deliver units |
 | `demo-data-setup` | `<demo-run>/7-synthetic/demo-data-setup_manifest.yaml` | timeline pin + flagged-worker check; `timeline.end_date` feeds check 11's `opts.timelineEndDate` |
+| live labs | `pipeline_get` + `pipeline_preview` per authored pipeline | check 12: the DECLARED field list, and a fresh extraction to judge it against |
 | `demo-data-setup` | `<demo-run>/7-synthetic/branch-scrub_report.yaml` | check 9: the spec derivation (incl. `unparsed[]`), the branch-scrub ledger, and the post-scrub audit |
 
 ## Products
@@ -51,6 +52,9 @@ auto-fix protocol, static-vs-LLM rules).
 | 10 | `dashboard_bindings_are_wired` | static | For each authored workflow, runs `checkDashboardBindings` (`lib/dashboard-bindings.ts`) over its definition: no pipeline schema still extracting `form.meta.*` (the stock template paths the synthetic generator never writes), `snapshot_inputs.pipelines` covering every alias in `pipeline_sources`, and render code that actually READS a declared pipeline rather than a denormalized `worker.visit_count` the generator never back-fills. | ADAPT means RE-POINT — re-point the new pipeline's schema at the same real form paths the scorecard pipeline already resolves, declare the snapshot aliases, and bind the render to the pipeline. Live: workflow 5069 hit all three at once and rendered `VISITS 0` beside `visits: 835` on data that summed correctly (#1160). Complements check 7, which catches the same class from the rendered payload; this one catches it from the DEFINITION, before a run is even minted |
 
 | 11 | `cross_dashboard_totals_agree` | static | **Cross-dashboard consistency.** Using the payloads check 7 already fetched: when two or more dashboards read the same `labs_opp_id`, their shared visit total must AGREE. `deriveVisitTotal` takes `sum(total_visits)` from an aggregated pipeline's rows, else the row count of a visit-level pipeline. Program-scoped rollups are excluded (a cross-opp rollup aggregates a different population); a dashboard that deliberately renders a sub-window declares `period_scope: 'partial'` in `source.dashboards[]` and is excluded by name; a dashboard with no visit-shaped rows is reported not-judged, never failed. Pass the manifest's `timeline.end_date` as `opts.timelineEndDate` and a disagreeing dashboard whose `period_end` is at or before it gets the off-by-one named. Importable: `checkCrossDashboardConsistency` in `checks.ts`. | **`period_end` is EXCLUSIVE.** Re-mint the snapshotted run with `period_end = timeline.end_date + 1 day` and repoint its `par_url`. `_date_window_where` (`connect_labs/labs/analysis/backends/sql/query_builder.py`) emits `visit_date >= date_from AND visit_date < date_to`, so a `period_end` equal to the fixture's last `visit_date` drops that whole day — while a live, never-snapshotted sibling is never period-scoped and keeps it. If the two dashboards are MEANT to show different windows, declare `period_scope: 'partial'` on the narrower one rather than tolerating the gap silently |
+
+
+| 12 | `authored_pipeline_fields_extract` | static | **Every field an authored pipeline DECLARES actually extracts something, judged from a FRESH preview.** For each pipeline the run authored (read the schema with `pipeline_get`, not the columns that came back), call `mcp__connect-labs__synthetic_reload_fixtures(<labs_opp_id>)` once, then `mcp__connect-labs__pipeline_preview(pipeline_id, opportunity_id, sample_size >= 10)`, and pass `{pipeline_id, declared: schema.fields, rows, from_cache: per_opp_metadata[<opp>].from_cache, fields_all_null}` to `checkPipelineFieldsExtract` (`lib/pipeline-field-extraction.ts`). Fails on: a preview served `from_cache: true` (warm rows are not evidence about the saved schema); a declared field no returned row carries; and a declared field that is null/zero for EVERY row with no `filter_path` to explain it. An all-zero **filtered** count is reported, not failed — a filter may legitimately match nothing. Zero-for-SOME-rows is data and is never flagged. The preview's own `fields_all_null` is folded in so this can never fall below labs' detector. | Re-point the named field at a path the fixture actually writes, `synthetic_reload_fixtures`, re-`pipeline_update_schema`, and re-preview until `from_cache: false` AND the column is non-dead on at least one row. **Do not delete the field to clear the check** — the render binds it, so a removed column is the same dead demo |
 
 All checks are static (<100ms), no LLM. Binary verdict: any BLOCKER fail →
 `fail`; else `pass`.
@@ -157,10 +161,64 @@ It is deliberately a check about AGREEMENT, not about any absolute number: it
 needs no fixture, no manifest and no expected total — only two payloads claiming
 to describe the same opportunity. And it is cheap: check 7 already fetched both.
 
+## Why check 12 exists — the payoff dies on the NEXT render (#1864)
+
+Check 7 asks whether a rendered dashboard's bound fields carry values. Check 12
+asks whether an authored pipeline's DECLARED fields extract. Those sound like
+the same question and are not, in three ways that all bit at once on
+`spark-facilitator/20260828-0703`.
+
+ACE authored pipeline 5414 with
+`{"name": "records", "path": "form.meeting_date.date_of_meeting", "aggregation":
+"count"}` on a fixture that carried no such path. An unmatched path is not an
+error in labs — it aggregates to `0`. `records` came back `0` for all 12
+facilitators, so `verifiedPct = pct(community, records)` rendered `—` on every
+row, `judged = records >= MIN_RECORDS` was false everywhere, and the below-floor
+filter matched **0 of 12**. The demo's entire payoff — narrow to the three under
+the floor, record a decision on one — was dead. `avg_attendance` and
+`avg_participation_pct` were null the same way.
+
+Everything passed: this gate 12/12, `recipe_preflight` (targets resolved; it
+does not read values), and all six visual judges. The only reason anyone found
+out is that preflight happened to re-run on a cold cache 40 minutes later and
+the `wait_for text:Showing 3 of 12 facilitators` failed.
+
+Three reasons no existing surface could see it:
+
+1. **labs' own `fields_all_null` is NULL-only.** Verified live 2026-09-06,
+   pipeline 5411 / opp 10054, `schema_override` pointing three fields at
+   `form.no_such_group.no_such_field`:
+
+   ```
+   rows            : records_bad_count 0, steps_bad_distinct 0, avg_bad null
+   fields_all_null : ["avg_bad"]
+   ```
+
+   `count` and `count_distinct` of nothing are `0`, not `null`. The upstream
+   detector misses exactly the field TYPE that gates a filter. Check 12 counts
+   zero as dead, which is the single line of judgement the whole issue turns on.
+
+2. **Check 7 enumerates from the RETURNED ROW COLUMNS** (`Object.keys(row)`), so
+   a declared field the engine never emitted at all is invisible to it. Check 12
+   enumerates from `pipeline_get(...).schema.fields`.
+
+3. **Check 7 reads a completed run's FROZEN SNAPSHOT.** A snapshot minted while
+   the values were good keeps rendering them after the binding rots — which is
+   the defect's title in one line. Live today: pipeline **5411** still declares
+   `records` on the broken `form.meeting_date.date_of_meeting`, and its dashboard
+   still renders, because it renders a snapshot. Check 12 previews every
+   pipeline the run authored, snapshot or not.
+
+The `from_cache` refusal is the fourth: #1864's first render read a warm cache
+and looked perfect. Rows that were not computed against the schema now saved are
+not evidence about it, and `synthetic_reload_fixtures` (ace#1860) makes a fresh
+one one call away — so a cached preview fails rather than passing.
+
 ## Change Log
 
 | Date | Change | Author |
 |------|--------|--------|
+| 2026-09-06 | **New check 12 `authored_pipeline_fields_extract` (ace#1864)** — the first check that judges an authored pipeline's DECLARED field list against a FRESH extraction, rather than a rendered payload's returned columns. Pipeline 5414 declared `records` on a path the fixture never wrote; `count` of nothing is `0`, so labs' null-only `fields_all_null` stayed silent, check 7 saw a warm-cached good snapshot, and the demo's below-floor filter matched 0 of 12 with every gate green. `checkPipelineFieldsExtract` in `lib/pipeline-field-extraction.ts` (+ `test/lib/pipeline-field-extraction.test.ts`), fed by one `pipeline_preview` per authored pipeline. Counts zero as dead, enumerates from the declaration, refuses a `from_cache: true` preview, and folds in `fields_all_null` so it can never fall below the upstream detector. | ACE team |
 | 2026-08-26 | **New check 11 `cross_dashboard_totals_agree` (ace#1683)** — the first check that compares dashboards to EACH OTHER rather than inspecting one at a time. Two dashboards over labs opp 10047 disagreed by 51 visits / 29 completed because the snapshotted run's `period_end` equalled the fixture's last `visit_date` and the bound is exclusive; all ten existing checks passed and only the DDD concept judge caught it, after the render. `checkCrossDashboardConsistency` + `deriveVisitTotal` in `checks.ts`, operating on the payloads check 7 already fetches. Excludes program-scoped rollups by construction and honours an explicit `period_scope: 'partial'` declaration, so an intended sub-window is declared rather than silently tolerated. | ACE team |
 | 2026-08-26 | Check 7 made runnable against a real payload (ace#1701). It read `instance.snapshot.pipelines` as an array of `{alias, rows}` while labs writes a dict keyed by alias, so it threw `pipelines is not iterable` on every completed run — and the `snapshot-missing-pipelines` branch was unreachable besides. Two further defects found once it could execute: it flagged labs' built-in row columns (null by `terminal_stage`, not by a wrong path — 15 findings on a healthy run) and it demanded a snapshot from the `in_progress` interactive run that check 8 requires, so 7 and 8 could not both pass. Now: both snapshot shapes read, built-ins excluded, and a non-completed run judged from supplied live pipeline rows with a `live-pipelines-unavailable` finding when they are absent. | ACE team |
 | 2026-08-26 | Check 9 promoted to an importable `checkDatasetObeysPddConstraints` in `checks.ts`: the spec is derived from the deliver app (hand-declared entries are ADDITIONS), an unparsed `relevant` / `constraint` is a reported finding rather than a silent pass, a clean audit with no derivation behind it fails, and the auto-fix hint points at `scrubOffBranchFields` instead of a manifest constraint that does not exist. ace#1658. | ACE team |

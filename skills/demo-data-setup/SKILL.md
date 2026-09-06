@@ -386,6 +386,30 @@ front half (how the labs-only opp + its data come to exist) differs.
    they are the difference between a populated dashboard and a blank one. Capture
    each dashboard's `<def_id>` + saved `<run_id>`.
 
+   **Prove every declared pipeline field extracts, before you mint a run
+   (ace#1864).** After each `pipeline_update_schema`, call
+   `mcp__connect-labs__synthetic_reload_fixtures(<labs_opp_id>)` and then
+   `mcp__connect-labs__pipeline_preview(pipeline_id, opportunity_id,
+   sample_size >= 10)`, and run the rows through `checkPipelineFieldsExtract`
+   (`lib/pipeline-field-extraction.ts`) against the schema you just saved.
+   Confirm `per_opp_metadata[<opp>].from_cache` is `false` first — a warm cache
+   is not evidence about the schema now saved, and on
+   `spark-facilitator/20260828-0703` the first render read one and looked
+   perfect while the same run recomputed 40 minutes later and returned zeros.
+
+   **Do not read the response's own `fields_all_null` as the answer.** It is
+   NULL-only, so `count` / `count_distinct` over zero matched records read as a
+   healthy `0` — precisely the field type that gates a demo's filter. Verified
+   live 2026-09-06 on pipeline 5411 / opp 10054 with a `schema_override`
+   pointing three fields at `form.no_such_group.no_such_field`: the rows came
+   back `records_bad_count: 0`, `steps_bad_distinct: 0`, `avg_bad: null`, and
+   `fields_all_null` named `["avg_bad"]` alone. That is the whole of #1864 —
+   pipeline 5414 declared `records` on `form.meeting_date.date_of_meeting`,
+   every facilitator counted `0`, `verifiedPct` rendered `—` on every row, and
+   the below-floor filter matched 0 of 12, killing the demo's payoff scene.
+   Fixing it is one `pipeline_update_schema` here; discovering it after the
+   render costs a whole iteration.
+
    **`period_end` is an EXCLUSIVE bound — pass `timeline.end_date + 1 day`, never
    `timeline.end_date` itself (ace#1683).**
 
