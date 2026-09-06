@@ -1,0 +1,173 @@
+# Connect APK 2.64.0 selector map
+#
+# CALIBRATED FROM A LIVE WALK on 2026-09-06 (dimagi-internal/ace#1997).
+# Device: ACE_Pixel_API_34 / emulator-5554, adb server port 5038.
+# APK confirmed ON THE DEVICE, not assumed:
+#     dumpsys package org.commcare.dalvik
+#       versionName=2.64.0  versionCode=490738   (2.63.2 was 488693)
+# and again from CommCare's own nav drawer: app_version = "v 2.64.0".
+#
+# THIS FILE IS NOT A COPY OF connect-2.63.2.yaml. Every row below is
+# either (a) resolved against a ui-dump captured in this walk and
+# committed under docs/mobile-atlas/evidence/connect-2.64.0/, and cites
+# that dump by filename, or (b) flagged `unverified: true` with the
+# reason its surface was not reached. 41 of the 83 rows inherited from
+# 2.63.2 were re-observed live; 42 were not, and are NOT laundered.
+# 5 rows are NEW (the PersonalID email step). Total 88.
+#
+# WHAT ACTUALLY CHANGED IN 2.64.0
+# -----------------------------------------------------------------------------
+# 1. A NEW PersonalID EMAIL STEP, between the backup-code screen and
+#    whatever follows it (Account Recovered, or photo capture on a truly
+#    fresh signup). Optional, but it must be dismissed, and dismissing it
+#    takes TWO taps: SKIP FOR NOW then YES on a "Skip email?" confirm.
+#    New rows: personalid-email-input, personalid-email-skip,
+#    personalid-email-continue, personalid-email-skip-confirm-yes,
+#    personalid-email-skip-confirm-no.
+#    `connect-register-from-otp.yaml` has no handler for it and strands
+#    there on 2.64.0 — dimagi-internal/ace#2029.
+# 2. A PersonalID PROFILE section, and with it a rename in the nav-drawer
+#    header: image_user_profile -> user_image, manage_profile ->
+#    header_manage_profile. No row in this map referenced either name, so
+#    nothing here breaks; a future row must use the new ones.
+# 3. A rebuilt camera surface (camera_controls_container,
+#    camera_capture_instructions, camera_capture_mode_indicator,
+#    capture_button_label, capture_progress, rectangle_overlay,
+#    switch_camera_lens_button) — NOT walked this pass. The OLD
+#    take_photo_button / camera_shutter_button / save_photo_button ids all
+#    still exist in 2.64.0's resource table, so the registration
+#    photo-capture branch is not obviously broken, but it is not proven
+#    either. See the photo rows below.
+#
+# WHAT DID NOT CHANGE
+# -----------------------------------------------------------------------------
+# Static resource-table comparison of the two APKs (id lists committed at
+# tmp/ids-2.63.2.txt / tmp/ids-2.64.0.txt at the time of the walk;
+# 1,418 -> 1,465 ids): NOT ONE id referenced by this map was renamed or
+# removed. The 2.63.2-only set is entirely DOTS/TB-treatment ids plus the
+# two profile renames named above. That is real APK-read evidence and it
+# is why the unverified rows below are carried rather than deleted — but
+# it establishes only that the IDS are stable, never that the FLOWS are.
+# The email step is the proof: no id in this map moved, and the
+# registration recipe still breaks.
+#
+# HOW 2.64.0 GOT ONTO THE DEVICE — read this before re-running.
+# `mobile_ensure_avd_running` installs the version named by
+# ACE_CONNECT_APK_VERSION in the INSTALLED .env, read by the live MCP
+# subprocess at ITS startup. Editing DEFAULT_APK_VERSION in this repo
+# does nothing to a device walk. This calibration installed 2.64.0 by
+# hand after the bootstrap had finished:
+#     adb uninstall org.commcare.dalvik
+#     adb install -r $TMPDIR/ace-mobile-apk-cache/commcare-2.64.0.apk
+# and had to `adb shell pm enable com.google.android.gms` as well —
+# the bootstrap leaves GMS disabled for face-capture ManualMode, and
+# PersonalIdActivity refuses to render without it.
+#
+# COVERAGE OF THIS WALK
+# -----------------------------------------------------------------------------
+# WALKED:     first-start, nav drawer, PersonalID phone entry, GMS
+#             phone-hint sheet, App Lock / Unlock Options, system unlock,
+#             demo-user snackbar, name entry, backup code (RECOVERY
+#             branch), the new email step + skip confirm, Account
+#             Recovered, post-registration setup, Connect jobs list,
+#             opportunity-detail bottom sheet, StandardHomeActivity,
+#             MenuActivity (GRID mode) at two levels, FormEntryActivity
+#             (select-one + free-text questions), Exit Form dialog.
+# NOT WALKED: fresh-signup backup-code create (confirm_code_view),
+#             registration photo capture, OTP entry, device-lock SETUP
+#             (the device already carried a PIN), unclaimed-opp cards,
+#             pre-claim opp detail, Learn assessment + result, the
+#             Deliver download gate, case list (EntitySelectActivity),
+#             in-form camera, geopoint, date picker, repeat junctures.
+#             Reaching most of those needs a fresh /ace:run opportunity;
+#             Learn completion is one-way per (test user, opportunity),
+#             so they cannot be harvested off a borrowed one.
+#
+# The conventions block, the INTENTIONALLY-ABSENT generic-positional
+# selector policy, and the `${SELECTOR:...}` substitution shape are all
+# unchanged from connect-2.63.2.yaml — read that file's header for them
+# rather than having them restated here and drift.
+
+apk_version: "2.64.0"
+captured_at: "2026-09-06"
+captured_against: "ACE_Pixel_API_34 / emulator-5554 running CommCare 2.64.0 (versionCode 490738), device-confirmed via dumpsys and via the in-app nav-drawer app_version. Live walk; evidence under docs/mobile-atlas/evidence/connect-2.64.0/."
+
+selectors:
+  # ── App shell ────────────────────────────────────────────────────
+  app-splash-message:
+    type: id
+    value: "org.commcare.dalvik:id/str_setup_message"
+    purpose: "CommCare splash / first-start message. Live-verified 2026-09-06 (2.64.0), 21-first-start.xml — text 'Welcome to CommCare!' on CommCareSetupActivity."
+
+  app-first-start-main:
+    type: id
+    value: "org.commcare.dalvik:id/screen_first_start_main"
+    purpose: "CommCare first-start screen with the nav drawer. Live-verified 2026-09-06 (2.64.0), 21-first-start.xml — PROMOTED: this row was `unverified: true` on 2.63.2 because a warm post-login boot never renders it. A clean 2.64.0 install renders it directly."
+
+  learn-home-screen:
+    type: id
+    value: "org.commcare.dalvik:id/nsv_home_screen"
+    purpose: "StandardHomeActivity ScrollView — the CommCare app home reached after an opp is claimed and its CCZ installed. Live-verified 2026-09-06 (2.64.0), 37-after-resume.xml, reached by tapping btn_resume on an In-Progress card."
+
+  nav-drawer-burger-point:
+    type: point
+    value: "73,209"
+    purpose: "Top-left nav-drawer toggle. Live-verified 2026-09-06 (2.64.0), 21-first-start.xml + 22-nav-drawer.xml: an id-less ImageButton at [0,136][147,283] whose centre is (73,209); tapping it opened the drawer and its content-desc flipped 'Open navigation drawer' -> 'Close navigation drawer'. Still coordinate-based because the button carries no resource-id — but note it DOES carry that content-desc, which is a viable id-free matcher if the resolution ever changes."
+
+  nav-drawer-sign-in:
+    type: id
+    value: "org.commcare.dalvik:id/nav_drawer_sign_in_button"
+    purpose: "Sign In / Register button in the nav drawer, visible when signed out. Live-verified 2026-09-06 (2.64.0), 22-nav-drawer.xml — text 'Sign In / Register', beside nav_drawer_signed_out_text 'You are not signed in to PersonalID'. Tapping it opened PersonalIdActivity."
+
+  nav-drawer-opportunities:
+    type: text
+    value: "Opportunities"
+    purpose: "Nav-drawer 'Opportunities' row — a list_title TextView inside nav_drawer_recycler. Live-verified 2026-09-06 (2.64.0), 34-post-registration-setup.xml: the drawer renders four parent_item_container rows, list_title = Opportunities / CommCare Apps / Messaging / Work History. Same text label as home-opportunities-tab; the distinct name documents the drawer-row intent."
+
+  # ── PersonalID / phone entry ────────────────────────────────────
+  personalid-country-code:
+    type: id
+    value: "org.commcare.dalvik:id/countryCode"
+    purpose: "Country-code field on the phone-entry screen. Live-verified 2026-09-06 (2.64.0), 23-personalid-phone-entry.xml. NOTE it renders as a plain EditText on 2.64.0 where the 2.63.2 note called it an AutoCompleteTextView; the id matcher is unaffected, but the GMS phone-hint sheet still fires on focus."
+
+  personalid-phone-input:
+    type: id
+    value: "org.commcare.dalvik:id/connect_primary_phone_input"
+    purpose: "Phone-number AutoCompleteTextView. Live-verified 2026-09-06 (2.64.0), 23-personalid-phone-entry.xml; filled to 4260000101 in 25-phone-filled.xml."
+
+  personalid-consent-check:
+    type: id
+    value: "org.commcare.dalvik:id/connect_consent_check"
+    purpose: "Consent checkbox below the phone field. Live-verified 2026-09-06 (2.64.0), 23-personalid-phone-entry.xml. personalid-phone-continue is enabled=false until this is ticked — confirmed by the enabled=false/true pair across 23- and 25-."
+
+  personalid-phone-continue:
+    type: id
+    value: "org.commcare.dalvik:id/personalid_phone_continue_button"
+    purpose: "CONTINUE on the phone-entry form. Live-verified 2026-09-06 (2.64.0), 25-phone-filled.xml. Tapping it with a +7426 number advanced to the App Lock screen within 3s — the demo-user OTP bypass is intact on 2.64.0."
+
+  personalid-name-input:
+    type: id
+    value: "org.commcare.dalvik:id/nameTextValue"
+    purpose: "Name field on the registration name-entry screen. Live-verified 2026-09-06 (2.64.0), 29-post-unlock-next.xml — hint 'Name', beside name_fragment_subtitle 'Please enter your name as it appears on your government-issued ID'."
+
+  personalid-pin-verify:
+    type: id
+    value: "org.commcare.dalvik:id/connect_verify_pin_button"
+    purpose: "The PIN option on the App Lock / Unlock Options screen. Live-verified 2026-09-06 (2.64.0), 26-app-lock-unlock-options.xml — its LABEL is 'AGREE & CONTINUE' (not 'Verify PIN'); the sibling is connect_verify_fingerprint_button 'CONFIGURE FINGERPRINT'. Tapping it raised the system unlock prompt. Note the screen is re-presented after the unlock returns, so the tap may be needed twice (28-after-unlock.xml)."
+
+  personalid-backup-code-input:
+    type: id
+    value: "org.commcare.dalvik:id/connect_backup_code_input"
+    unverified: true
+    purpose: "2.62.0-era SINGLE-FIELD backup-code entry. NOT OBSERVED on 2.64.0 — the recovery walk rendered the six-cell backup_code_view instead, exactly as on 2.63.x. The id still exists in 2.64.0's resource table. Retained only as the recipe's dead-but-harmless 2.62.0 branch; it should never match on a 2.64.0 device."
+
+  personalid-backup-code-repeat:
+    type: id
+    value: "org.commcare.dalvik:id/connect_backup_code_repeat_input"
+    unverified: true
+    purpose: "2.62.0-era backup-code-repeat field, removed from the UI in 2.62.0 per the recipe's own note. NOT OBSERVED on 2.64.0. Carried unchanged; do not author against it."
+
+  personalid-backup-code-button:
+    type: id
+    value: "org.commcare.dalvik:id/connect_backup_code_button"
+    purpose: "CONTINUE on the backup-code screen. Live-verified 2026-09-06 (2.64.0), 30-backup-code-create.xml — enabled=false on arrival, enabled=true once six digits land in backup_code_view. Tapping it advanced to the NEW email step, not to Account Recovered."
