@@ -258,3 +258,33 @@ $ git diff --stat 3cb37af5..HEAD -- '*.ts' '*.tpl' 'CLAUDE.md'
 | `client.test.ts` × 2 (`getConfiguredApkVersion`) | assert the OLD default `'2.63.2'` | ship pass |
 | `client.test.ts` × 2 (`ensureCommCareApkCached`) | assert the OLD `candidateUrls` ORDER. **The code is right and the tests are stale** — `d88036db` reordered the probe to try `app-commcare-release.apk` first, which is exactly what `commcare_2.64.0` ships (see finding 3 above). Update the tests to the new order; do not revert the code. | ship pass |
 | `static-palette-health` × 2 | `docs/mobile-atlas/connect-2.64.0.md` does not exist — the skill's Step 4 | ship pass, Step 4. **The 34 dumps for it are already committed under `docs/mobile-atlas/evidence/connect-2.64.0/`.** |
+
+## Palette resolution against the new map
+
+Static check over every `${SELECTOR:...}` reference in
+`mcp/mobile/recipes/**/*.yaml`:
+
+```
+43 distinct selectors referenced across the static palette
+UNRESOLVED against connect-2.64.0.yaml: none
+```
+
+**Zero unresolved placeholders** — the palette is structurally executable
+against 2.64.0. That is necessary, not sufficient: it proves every name has a
+matcher, never that the matcher finds anything on a 2.64.0 screen.
+
+14 of the 43 referenced selectors resolve to rows still flagged `unverified`:
+
+```
+case-list-container            case-list-detail-continue     case-list-header
+case-list-row-cell             deliver-certificate-container deliver-download-button
+deliver-opp-detail-view-button form-nav-finish               form-submit
+home-new-opportunities         opp-detail-start              opp-list-view-opportunity-button
+personalid-backup-code-input   personalid-confirm-code-view
+```
+
+That is the honest execution risk for a 2.64.0 Phase 6 walk, and it is the
+list a follow-up walk should aim to shorten. Two of them —
+`personalid-backup-code-input` and `form-submit` — are EXPECTED never to
+match (dead 2.62.0 branch, and a button plain forms do not have); the other
+twelve are real coverage gaps.
