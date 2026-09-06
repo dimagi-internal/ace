@@ -370,6 +370,34 @@ blank chart.
 
    On `VERSION_CONFLICT`, re-fetch via `pipeline_get` and retry once.
 
+   **Then assert EVERY declared field extracts (ace#1864).** The two asserts
+   above are narrow — one catches a dropped numeric cast, the next catches a
+   shared-path collision. Neither catches the plain case: a field whose `path`
+   simply does not exist in the fixture. Labs does not error on that; it
+   aggregates to `0`. So after the schema save, call
+   `mcp__connect-labs__synthetic_reload_fixtures(<labs_opp_id>)` and then
+   `pipeline_preview` (`sample_size` ≥ 10), and run the result through
+   `checkPipelineFieldsExtract` (`lib/pipeline-field-extraction.ts`) — which
+   enumerates from the schema you just saved, counts `0` as dead for the
+   counting and numeric aggregations, tolerates a zero on SOME rows, and treats
+   an all-zero **filtered** count as reported rather than fatal.
+
+   Two things it exists to stop you doing:
+
+   - **Reading `fields_all_null` as the answer.** It is NULL-only. Verified live
+     2026-09-06 (pipeline 5411 / opp 10054, `schema_override` on
+     `form.no_such_group.no_such_field`): rows came back `records_bad_count: 0`,
+     `steps_bad_distinct: 0`, `avg_bad: null` and `fields_all_null` named
+     `["avg_bad"]` alone. A `count` over zero matched records is indistinguishable
+     from a real zero to that detector — and a count is usually the field a
+     dashboard's filter and rate denominators are built on.
+   - **Accepting a warm preview.** Confirm `per_opp_metadata[<opp>].from_cache`
+     is `false`. On `spark-facilitator/20260828-0703` the first render read a
+     warm cache and looked perfect; the same run id recomputed 40 minutes later
+     and returned zeros for `records`, which nulled every rate and emptied the
+     below-floor filter (0 of 12) — the demo's payoff scene, dead, with every
+     gate green.
+
    **Shared-path guardrail (jjackson/ace#595).** Do NOT emit a bare
    `last`/`first`/`list` aggregation field on the **same `field_path`** as
    one or more `count` fields that carry a `filter_path`/`filter_value` on
