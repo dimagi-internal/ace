@@ -225,3 +225,36 @@ Two things the skill got right and should keep verbatim: the adb-port warning
 (port 5038, allocated — the `lsof` recipe is correct and the "never probe with
 bare `adb`" rule saved time), and the Step 7 activation ORDER, which correctly
 predicts the `.env`-before-restart trap that produced finding 1.
+
+## Test status on this branch — 9 red, all pre-existing, all the half-flipped pin
+
+`npx vitest run test/lib/apk-pin-sites.test.ts test/apk-pin-currency.test.ts test/mcp/mobile/`
+→ **9 failed / 1130 passed.** Every one is the deliberate consequence of
+`DEFAULT_APK_VERSION` having been flipped to `2.64.0` while the other pin sites
+still read `2.63.2`. That half-flip predates this walk; the remaining pins are
+the SHIP pass's job, not the harvest's.
+
+Verified against the tree as it stood before any commit in this session
+(`3cb37af5`):
+
+```
+$ git show 3cb37af5:mcp/mobile/client.ts | grep "DEFAULT_APK_VERSION = "
+export const DEFAULT_APK_VERSION = '2.64.0';
+$ git show 3cb37af5:.env.tpl | grep ACE_CONNECT_APK_VERSION
+ACE_CONNECT_APK_VERSION=2.63.2
+$ git show 3cb37af5:CLAUDE.md | grep -o "default APK 2\.[0-9.]*"
+default APK 2.63.2
+$ git ls-tree -r --name-only 3cb37af5 docs/mobile-atlas/ | grep -v evidence
+docs/mobile-atlas/connect-2.62.0.md
+docs/mobile-atlas/connect-2.63.2.md
+$ git diff --stat 3cb37af5..HEAD -- '*.ts' '*.tpl' 'CLAUDE.md'
+ mcp/mobile/client.ts | 10 ++++++++--       # a comment correction, nothing else
+```
+
+| Test | Why red | Whose job |
+|---|---|---|
+| `apk-pin-currency` × 2 | `.env.tpl` and `CLAUDE.md` still say `2.63.2` | ship pass, Step 5 |
+| `apk-pin-sites` × 1 | the same disagreement, machine-detected | ship pass, Step 5 |
+| `client.test.ts` × 2 (`getConfiguredApkVersion`) | assert the OLD default `'2.63.2'` | ship pass |
+| `client.test.ts` × 2 (`ensureCommCareApkCached`) | assert the OLD `candidateUrls` ORDER. **The code is right and the tests are stale** — `d88036db` reordered the probe to try `app-commcare-release.apk` first, which is exactly what `commcare_2.64.0` ships (see finding 3 above). Update the tests to the new order; do not revert the code. | ship pass |
+| `static-palette-health` × 2 | `docs/mobile-atlas/connect-2.64.0.md` does not exist — the skill's Step 4 | ship pass, Step 4. **The 34 dumps for it are already committed under `docs/mobile-atlas/evidence/connect-2.64.0/`.** |
