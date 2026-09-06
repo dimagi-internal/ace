@@ -1924,18 +1924,22 @@ plugin (`voidcraft-labs/nova-marketplace`, slash command
                             # that still shipped as free text, with the
                             # table + value column + label column it needs.
                             # Empty list is the expected value.
-   option_registers:        # Step 4f (ace#1886). One entry per PDD-declared
-                            # partner register ACE built and bound. Omit the
-                            # block only when the PDD declares no register.
-                            # The `verified` line is the run's EVIDENCE the
-                            # select is live — it comes from verifyLookupBind
-                            # over a get_field read-back, never from the
-                            # write's own response, which reports `options: []`
-                            # on a correctly bound field.
+   option_register:         # Step 4f. One entry per PDD-declared partner
+                            # register. Omit the block ONLY when the PDD
+                            # declares no register — an absent block on a
+                            # triggered field is a BLOCKER at the eval, since
+                            # "the check did not run" is indistinguishable from
+                            # "it was skipped because it would have failed".
+                            # `verified` (ace#1886) is the run's EVIDENCE the
+                            # select is actually live: it comes from
+                            # verifyLookupBind over a get_field read-back,
+                            # never from the write's own response, which
+                            # reports `options: []` on a correctly bound field.
      - field: <field id as the PDD names it>
        tag: <lookup table tag the PDD declared>
        table_id: <uuid returned by create_lookup_table>
        rows: <n>            # rows written, from the partner's own source
+       findings: 0          # diffOptionRegister + diffRegisterRows; >0 HALTED
        verified: true       # verifyLookupBind code `ok`; anything else HALTED
    instrument_constants:    # Step 4k (ace#1527). Omit the block ONLY when no
                             # instrument is [FIXED]. There is no other skip
