@@ -104,6 +104,89 @@ export function extractEntityIdComponents(xml: string): EntityIdComponents {
   return { resolved: true, components, raw: calc };
 }
 
+/**
+ * One `concat` argument, plus everything its own `calculate` chain reaches.
+ *
+ * ## Why this exists (dimagi-internal/ace#1810)
+ *
+ * A component the PDD declares need not appear LITERALLY in the `entity_id`
+ * calculate. Whenever the key term needs arithmetic — and a per-entity cap
+ * like `min(<meetings_on_current_step>, 3)` always does, because XForms has no
+ * inline place to put it — Nova computes it in a named hidden node and puts
+ * that NODE in the concat. Recorded verbatim from released Deliver build
+ * `b08533bdf26a48a295a362ff204fb88d` (spark-facilitator/20260828-0703):
+ *
+ * ```xml
+ * <bind nodeset="/data/record_a_community_meeting/deliver/entity_id"
+ *       calculate="concat(…/@case_id, '-', /data/fcap_step/step, '-',
+ *                         /data/meeting_summary/meeting_index, '-',
+ *                         /data/meeting_type_screen/meeting_type)"/>
+ * <bind nodeset="/data/meeting_summary/meeting_index"
+ *       calculate="… min(… /meetings_on_current_step … + 1, 3) …"/>
+ * ```
+ *
+ * The declared component `meetings_on_current_step` IS in the key — one node
+ * away. Before this expansion the plain substring test read it as absent and
+ * emitted `missing-declared-node`, a `[BLOCKER]` that hard-halts Phase 3 on a
+ * CORRECT build. That is the expensive direction: #1441 and #1808 make a check
+ * fail to run, this one made it refuse a build that obeyed the PDD.
+ *
+ * ## Expansion is ONLY for the declared-node test
+ *
+ * `ANSWER_LIKE` deliberately keeps running against the UNEXPANDED component
+ * list. An answer buried one `calculate` deep is still an answer in the grain,
+ * so expanding before that test would turn indirection into a laundering path
+ * for exactly the #969 over-correction this gate was written to catch.
+ */
+export interface ExpandedComponent {
+  /** The component exactly as it appears in the `concat`. */
+  component: string;
+  /** Intermediate nodes whose `calculate` was folded in, in expansion order. */
+  via: string[];
+  /** The component text plus every `calculate` it resolves through. */
+  text: string;
+}
+
+/** A `/data/...` node path, as it appears inside a `calculate`. */
+const DATA_PATH_RE = /\/data\/[A-Za-z_][\w-]*(?:\/[A-Za-z_][\w-]*)*/g;
+
+/**
+ * Bounded so a pathological blueprint cannot make the gate hang, and
+ * cycle-guarded because XForms does not forbid a `calculate` cycle at the
+ * text level even though the engine would reject it.
+ */
+const MAX_EXPANSION_DEPTH = 4;
+
+/**
+ * Fold each component's `calculate` chain into its text, so a declared node
+ * reached through an intermediate node is found. See `ExpandedComponent`.
+ */
+export function expandEntityIdComponents(
+  xml: string,
+  components: string[],
+): ExpandedComponent[] {
+  const byNodeset = new Map(bindsOf(xml).map((b) => [b.nodeset, b.calculate]));
+  return components.map((component) => {
+    const via: string[] = [];
+    const parts: string[] = [component];
+    const seen = new Set<string>();
+    const walk = (text: string, depth: number): void => {
+      if (depth >= MAX_EXPANSION_DEPTH) return;
+      for (const path of text.match(DATA_PATH_RE) ?? []) {
+        if (seen.has(path)) continue;
+        seen.add(path);
+        const calc = byNodeset.get(path);
+        if (calc === undefined) continue;
+        via.push(path);
+        parts.push(calc);
+        walk(calc, depth + 1);
+      }
+    };
+    walk(component, 0);
+    return { component, via, text: parts.join(' ') };
+  });
+}
+
 export type GrainFindingKind =
   /** A node the PDD declared as part of the key is absent from it. */
   | 'missing-declared-node'
@@ -125,6 +208,19 @@ export type GrainReport = CheckOutcome<
   GrainFinding,
   {
     components: string[];
+    /**
+     * Declared nodes that are in the key only THROUGH an intermediate node
+     * (ace#1810), as `<declared> via <node>[ -> <node>]`. Empty on a key whose
+     * declared components all appear literally.
+     *
+     * Not a finding — the component is present, so the gate passes. It is
+     * surfaced because presence is all this check can establish: an
+     * intermediate node carrying `min(x, 3)` and one carrying an UNCLAMPED
+     * running index produce a byte-identical composite. Phase 4's
+     * `connect-opp-setup § Archetypes -> longitudinal-visits` is where the
+     * clamp semantics get read off the intermediate node's own bind.
+     */
+    resolvedThroughIntermediate: string[];
     /** The operator-facing report line(s) for the `checked` branch. */
     detail: string;
   }
@@ -195,13 +291,24 @@ export function checkEntityIdGrain(
   const findings: GrainFinding[] = [];
   const flat = components.join(' ');
 
+  // ace#1810: a declared component may reach the key through an intermediate
+  // node. Expansion applies to THIS test only — see `ExpandedComponent`.
+  const expanded = declaredNodes.length > 0 ? expandEntityIdComponents(xml, components) : [];
+  const resolvedThroughIntermediate: string[] = [];
+
   for (const want of declaredNodes) {
-    if (!flat.includes(want)) {
-      findings.push({
-        kind: 'missing-declared-node',
-        detail: `the PDD's business key names ${want}, which the released entity_id does not reference`,
-      });
+    if (flat.includes(want)) continue;
+    const hop = expanded.find((e) => e.via.length > 0 && e.text.includes(want));
+    if (hop) {
+      resolvedThroughIntermediate.push(`${want} via ${hop.via.join(' -> ')}`);
+      continue;
     }
+    findings.push({
+      kind: 'missing-declared-node',
+      detail:
+        `the PDD's business key names ${want}, which the released entity_id does not reference — ` +
+        'neither literally nor through the calculate of any node it concatenates',
+    });
   }
 
   // The one component the ruling mandates, if any. Matched on the node's tail
@@ -247,17 +354,29 @@ export function checkEntityIdGrain(
     });
   }
 
+  // Named on both branches: the operator must see that a declared component is
+  // present only by indirection, whether or not something else failed.
+  const indirection = resolvedThroughIntermediate.map(
+    (r) =>
+      `  [resolved-through-intermediate] ${r} — presence is established, the ` +
+      "intermediate node's SEMANTICS are not (ace#1810)",
+  );
+
   if (findings.length === 0) {
     return {
       ...checked(true, findings),
       components,
-      detail: `entity-id-grain: clean — keyed on ${components.join(' + ')}`,
+      resolvedThroughIntermediate,
+      detail: [`entity-id-grain: clean — keyed on ${components.join(' + ')}`, ...indirection].join(
+        '\n',
+      ),
     };
   }
 
   return {
     ...checked(false, findings),
     components,
+    resolvedThroughIntermediate,
     detail: [
       `entity-id-grain: the released key is ${components.join(' + ')}, which is NOT the mandated grain.`,
       'Every legitimate same-day submission past the first collapses into one payable unit, so the',
@@ -265,6 +384,7 @@ export function checkEntityIdGrain(
       'Phase 4 cannot repair this — Connect consumes entity_id from the form and has no override',
       '(dimagi-internal/ace#1285).',
       ...findings.map((f) => `  [${f.kind}] ${f.detail}`),
+      ...indirection,
     ].join('\n'),
   };
 }

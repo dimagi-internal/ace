@@ -1275,10 +1275,29 @@ The PDD's `archetype:` field shapes verification + payment unit setup:
 - **`entity_id` is the load-bearing field for this archetype.** It must
   carry entity + sequence position, per the PDD's
   `payment-unit-entity-id` decision — e.g.
-  `concat(<case_id>, '-', <activity_code>)`. Two failure modes to check
-  before writing it: the case id **alone** pays each entity once, ever;
-  a `concat(username, today())`-style key silently reverts to
-  cross-sectional dedup and makes repeat activities payable.
+  `concat(<case_id>, '-', <activity_code>)`. **Resolve every component to
+  its own `calculate` bind in the released CCZ before writing the record
+  — a component is a NODE NAME, not a semantics.** Three failure modes to
+  check, and the third is invisible to a reader of the composite alone:
+    1. the case id **alone** pays each entity once, ever;
+    2. a `concat(username, today())`-style key silently reverts to
+       cross-sectional dedup and makes repeat activities payable;
+    3. **the sequence component is present but UNCLAMPED**, so the
+       per-entity cap the PDD mandates silently does not bind.
+  The record must state, per component, whether the PDD's sequence/clamp
+  semantics are actually implemented — not merely that the component is
+  present. On spark-facilitator/20260828-0703 the key read
+  `concat(<case>/@case_id, '-', /data/fcap_step/step, '-',
+  /data/meeting_summary/meeting_index, '-', <meeting_type>)`; the PDD's
+  third component is `min(<meetings_on_current_step>, 3)`, and the clamp
+  lives entirely inside `meeting_index`'s own bind. That app was correct —
+  but an UNCLAMPED `meeting_index` produces a byte-identical composite,
+  passes both failure modes above, and makes every 4th+ meeting per step
+  independently payable. Phase 6's `delivered >= 1` does not catch it
+  either; it takes a 4th meeting on one step to surface. Phase 3's
+  `entity-id-grain` now reports these as
+  `resolvedThroughIntermediate` — read that list and resolve each entry
+  (ace#1810).
 - **Soft flags** (Layer B/C): progression and sequence-integrity checks
   have no Connect toggle; log them in `opportunity.md` and leave them to
   `flw-data-review` in Phase 6.
