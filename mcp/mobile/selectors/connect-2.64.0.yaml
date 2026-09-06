@@ -13,7 +13,11 @@
 # that dump by filename, or (b) flagged `unverified: true` with the
 # reason its surface was not reached. 41 of the 83 rows inherited from
 # 2.63.2 were re-observed live; 42 were not, and are NOT laundered.
-# 5 rows are NEW (the PersonalID email step). Total 88.
+# 5 rows are NEW (the PersonalID email step) and 3 more cover the
+# CommCare version-upgrade prompt (ace#1998), added after this header was
+# first written and flagged unverified — that surface is DORMANT on a
+# 2.64.0 device, because the prompt fires only on version skew.
+# TOTAL 91 rows: 46 verified, 45 unverified.
 #
 # WHAT ACTUALLY CHANGED IN 2.64.0
 # -----------------------------------------------------------------------------
