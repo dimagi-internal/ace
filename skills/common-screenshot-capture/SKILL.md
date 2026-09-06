@@ -45,7 +45,7 @@ The check-in cadence is operator-judgment, not automated.
 |-------|--------|--------|---------------|
 | `commcare-welcome` | Live | `04-personal-id.yaml` (fresh-install state, no GO TO CONNECT MENU button) | ✓ 2026-05-24 |
 | `connect-home` | Live | `00-connect-home.yaml` | ✓ 2026-05-24 |
-| `sync-button` | Live | `03-sync-button.yaml` | ✓ 2026-05-24 |
+| `sync-button` | **QUARANTINED** | `03-sync-button.yaml` — defective, see below | ✗ byte-identical to `connect-home` (ace#1832) |
 | `claim-opp` | Live | `01-claim-opp.yaml` (requires OPP_NAME) | ✓ 2026-05-24 |
 | `learn-install` | Live | `02-learn-install.yaml` | ✓ 2026-05-24 |
 | `personal-id-start` | Live | `04-personal-id.yaml` (nav-drawer Sign In/Register) | ✓ 2026-05-24 |
@@ -55,6 +55,37 @@ The check-in cadence is operator-judgment, not automated.
 | `personal-id-photo` | **Template asset** | n/a — not this skill's job (ace#873) | n/a |
 | `personal-id-location` | **Template asset** | n/a — not this skill's job (ace#873) | n/a |
 | `personal-id-done` | **Template asset** | n/a — not this skill's job (ace#873) | n/a |
+
+**`sync-button` is QUARANTINED — its recipe cannot produce a distinct frame
+(ace#1832).** `03-sync-button.yaml` fires `takeScreenshot: "sync-button"`
+BEFORE its own `tapOn: action_sync`, from a pre-state its header declares
+identical to `00-connect-home.yaml`'s post-state. So the alias is a
+byte-identical copy of `connect-home`, by construction, on every capture —
+not a flake. Measured 2026-09-06, both Drive ids fetched unauthenticated:
+
+```
+connect-home 1nUv5Yw4Z4L3xyXCU9xYZvrQBk9cLZADC
+sync-button  1BqFXsUju_wFaIDYNsviTInBbOgGMzibp
+md5 4d1c205591270cc4638b439c3a9981ff   (both)
+242,393 bytes, 1080x2400, `cmp` reports no difference
+```
+
+Until the recipe is repaired **and re-validated on a device**, the pool
+publishes this alias as `source: fixture, placeholder: true` — a visible empty
+slot on any slide that cites it. That is deliberate: a deck citing
+`@sync-button` today would caption the Connect home screen as the sync
+control, and tell a field worker to look for a green check mark that is not in
+the picture. An empty slot is a smaller lie than a confident wrong one.
+
+It did not bite yet only because the `syncing` slide in
+`templates/training-deck/_common/platform-setup.yaml` is prose-only and cites
+no image — a fact about that one slide, not a property of the pool. The next
+slide to cite it inherits the defect.
+
+Repair is one recipe move (capture after the tap + settle wait) plus a device
+run to confirm the post-sync frame actually differs; the residual is that it
+may not, once the 5s wait has let any sync toast expire. See the banner in
+`mcp/mobile/recipes/baseline/03-sync-button.yaml`.
 
 **The PersonalID completion half left this roster (ace#873, operator decision
 2026-08-13).** It is no longer a capture target of any kind — not live, not a
@@ -310,6 +341,50 @@ For each alias in the Coverage table marked **Fixture**:
    manifest still records the gap so the deck-render skill emits a
    visible placeholder slot instead of failing silently.
 
+### Step 5.5: Pool distinctness gate (ace#1832)
+
+**Before the manifest is written, and before ANY alias is published as
+`source: live`.** The cross-opp sibling of `app-screenshot-capture` Step 5.5,
+with a different remedy — see below for why.
+
+1. Hash every asset headed for the pool, live and fixture alike, with ONE
+   digest for the whole pool:
+
+   ```bash
+   shasum -a 256 <poolDir>/*.png     # or: md5 -q <poolDir>/*.png
+   ```
+
+2. Pass every asset as `{ alias, digest, source }` to
+   **`classifyPoolDistinctness` in `lib/screenshot-pool-distinctness.ts`.**
+   Do not hand-roll the comparison — the helper carries the reasoning and the
+   test carries the controls.
+
+3. **`verdict: 'fail'` is a HARD FAIL of this step**, not a warn. For every
+   alias in `report.quarantine`:
+   - do NOT publish it as `source: live`;
+   - write it into the manifest as `source: fixture, placeholder: true` with
+     `note: "<alias> byte-identical to <other> — see ace#1832"`, so the deck
+     emits a visible empty slot;
+   - emit the matching `describePoolCollisions` line into `auto_surfaced`.
+
+4. **Then read the recipes and find which alias is lying.** The helper
+   deliberately elects no winner (a pool has no ordering that could justify
+   one), so this is the human/agent step. Every instance so far has had the
+   same recipe-shaped cause: a `takeScreenshot` placed before the action that
+   would make the surface distinct. Fix the recipe, re-capture, and only then
+   un-quarantine.
+
+**Why REJECT and not `duplicate_of`.** `app-screenshot-capture` marks a
+byte-identical journey frame `duplicate_of: <canonical-step>` and lets
+downstream cite the canonical one — correct there, because two steps genuinely
+observed one moment. A pool alias is a semantic promise, not a step:
+`@sync-button` means "a picture of the sync control". Redirecting it to the
+`connect-home` frame IS the defect (ace#866's class — "downstream slides
+claim things the duplicate can't show"; ace#1832 cited this as "#867's
+caption-contradicts-pixels class", but #867 is the camera-only build-memo
+residual, a different defect),
+not the fix. So the pool rejects; it never redirects.
+
 ### Step 6: Write `manifest.yaml`
 
 ```yaml
@@ -376,10 +451,10 @@ Current required aliases (16):
 
 ## Self-eval
 
-Four criteria. `verdict: pass` requires all four; `verdict: warn`
+Five criteria. `verdict: pass` requires all five; `verdict: warn`
 acceptable when only `gaps` flags fire (live recipe failures and
 missing fixtures); `verdict: fail` when live captures violated
-quality/sharing rules.
+quality/sharing/distinctness rules.
 
 1. **Coverage**: All 16 required aliases present in manifest (even if
    `source: fixture` with `placeholder: true`). **FAIL** if any missing.
@@ -392,6 +467,11 @@ quality/sharing rules.
 4. **Gaps** (warn-only): `source: fixture` entries with `placeholder:
    true` (no actual PNG committed yet). Warns the operator that a
    one-time manual capture is still needed for the deck to render fully.
+5. **Distinctness**: `classifyPoolDistinctness` (Step 5.5) returns
+   `verdict: 'pass'` — no two aliases resolve to the same bytes. **FAIL** on
+   any collision. Existence, size and sharing are all satisfied by a
+   duplicate; only this criterion can tell you an alias is showing someone
+   else's screen (ace#1832).
 
 Write verdict to `ACE/_common/connect-screenshots/<version>/verdict.yaml`:
 
@@ -484,3 +564,4 @@ auto_surfaced:
 |------|--------|--------|
 | 2026-05-23 | Initial version. Focused common-screenshot skill for training deck common modules, aligned to `platform-setup.yaml` alias contract. Complements `connect-baseline-screenshots` (broader baseline) and `app-screenshot-capture` (per-opp). | ACE team |
 | 2026-05-24 | **Live-recipe baseline shipped.** 5 navigation+sync recipes (00-connect-home, 01-claim-opp, 02-learn-install, 03-sync-button) + 1 PersonalID recipe (04-personal-id) drive 8 of 16 alias captures end-to-end. SKILL.md rewritten with explicit per-recipe orchestration, Step 0 `/ace:fork-run` integration for deterministic OPP_NAME pinning, GMS-enable prerequisite, lowered 30KB quality threshold (was 100KB) to admit the legitimately-small `learn-install` mid-flight capture, and per-alias `source: live|fixture` manifest schema with `placeholder: true` warn-only gap reporting. 8 fixture aliases (5 PersonalID unreachable + 3 Play Store auth-blocked) documented in templates/training-deck/_common/fixtures/README.md. (0.13.361) | ACE team |
+| 2026-09-06 | **Pool-distinctness gate + `sync-button` quarantined (dimagi-internal/ace#1832).** The pool published two aliases resolving to ONE image: `sync-button` was a byte-identical copy of `connect-home` (md5 `4d1c205591270cc4638b439c3a9981ff`, 242,393 bytes, 1080x2400, both fetched unauthenticated 2026-09-06 and `cmp`-identical). Not a flake — `03-sync-button.yaml` fires its `takeScreenshot` BEFORE its own `tapOn: action_sync`, from a pre-state its header declares identical to `00-connect-home.yaml`'s post-state, so it reproduces on every capture. The four existing self-eval criteria were all satisfied by the duplicate (it exists, it is >30KB, it is shared) — existence and distinctness are different properties. New Step 5.5 hashes every asset and gates on `classifyPoolDistinctness` (`lib/screenshot-pool-distinctness.ts`, hard FAIL, never a redirect — a pool alias is a semantic promise, so `duplicate_of` is the defect not the fix), new self-eval criterion 5, and `sync-button` marked QUARANTINED in the Coverage table until its recipe is repaired and re-validated on a device. | ACE team |

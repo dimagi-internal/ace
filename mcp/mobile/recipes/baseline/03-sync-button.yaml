@@ -1,6 +1,33 @@
 # Capture the Connect sync action — the sync icon in the toolbar and
 # its post-tap "sync complete" state.
 #
+# !!! DEFECTIVE AS WRITTEN — dimagi-internal/ace#1832. The alias it
+# !!! produces is a BYTE-IDENTICAL COPY of `connect-home`, and not by bad
+# !!! luck: `takeScreenshot: "sync-button"` below fires BEFORE the
+# !!! `tapOn: action_sync` that would change anything, from a pre-state
+# !!! this file's own header declares identical to `00-connect-home.yaml`'s
+# !!! post-state. So it captures the same settled screen every time.
+# !!!
+# !!! Measured 2026-09-06, both Drive ids fetched unauthenticated:
+# !!!   connect-home 1nUv5Yw4Z4L3xyXCU9xYZvrQBk9cLZADC
+# !!!   sync-button  1BqFXsUju_wFaIDYNsviTInBbOgGMzibp
+# !!!   md5 4d1c205591270cc4638b439c3a9981ff (both), 242,393 bytes,
+# !!!   1080x2400, `cmp` reports no difference.
+# !!!
+# !!! The alias is QUARANTINED in
+# !!! `skills/common-screenshot-capture/SKILL.md § Coverage table` — the
+# !!! pool must not publish it as `source: live`.
+# !!!
+# !!! REPAIR (needs a device, deliberately NOT done blind): move the
+# !!! `takeScreenshot` to AFTER the tap and the settle wait, so it shows a
+# !!! sync state rather than the home screen. That changes recipe step
+# !!! ORDER, which is device-truth per CLAUDE.md § close the loop — and the
+# !!! post-sync frame may STILL be near-identical once the 5s wait has let
+# !!! any toast expire, which is exactly the thing only a device can tell
+# !!! you. Validate on-device, confirm the new frame differs from
+# !!! `connect-home`, then un-quarantine the alias and flip the assertion
+# !!! in `test/lib/screenshot-pool-distinctness.test.ts`.
+#
 # Alias produced: sync-button
 # Used by: training-deck-template _common/platform-setup.yaml slide "syncing"
 #
