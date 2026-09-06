@@ -227,6 +227,10 @@ async function initPlaywright(): Promise<PlaywrightBackend> {
         ok: res.ok(),
         status: res.status(),
         headers: res.headers(),
+        // The FINAL url, after followed redirects. An unauthenticated GET lands
+        // on /accounts/login/ with status 200, and only this field says so
+        // (ace#1767). PlaywrightBackend refuses to scrape that page.
+        url: res.url(),
         text: async () => await res.text(),
         json: async () => await res.json(),
       };

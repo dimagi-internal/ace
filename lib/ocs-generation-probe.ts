@@ -224,6 +224,34 @@ export function shouldRetryGenerationProbe(
   return cls === 'timeout';
 }
 
+/** The verdict `bin/ace-doctor` reports for a probe outcome. */
+export type GenerationProbeStatus = 'pass' | 'fail' | 'skip';
+
+/**
+ * Map a probe class to the verdict the preflight reports — the HALT/no-halt
+ * decision, kept in this file alongside the retry table for the same reason
+ * (one place owns the class semantics).
+ *
+ * `fail` HALTS `/ace:run` before Phase 1 (ace#1516). `skip` explicitly does
+ * not: "A `skip` is not a halt; it means the check could not run"
+ * (`agents/ace-orchestrator.md` § Pre-flight Step 1).
+ *
+ * `no_session` is therefore `skip`, not `fail` (ace#1767). A dead or
+ * undelivered cookie is evidence about the PROBE, not about OCS generation —
+ * the script's own top-level catch already says exactly that ("the probe
+ * failed, which is not evidence that OCS did") and then the failure path
+ * contradicted it. The cost of getting this backwards is the most expensive
+ * shape there is: a false `fail` stops runs that should proceed, and its
+ * remediation sends the operator at an LLM provider key that is healthy.
+ *
+ * Every other non-ok class IS evidence about OCS, and still halts.
+ */
+export function probeStatusFor(cls: GenerationProbeClass): GenerationProbeStatus {
+  if (cls === 'ok') return 'pass';
+  if (cls === 'no_session') return 'skip';
+  return 'fail';
+}
+
 /**
  * Drive a probe round-trip under {@link shouldRetryGenerationProbe}. Pure
  * control flow — the caller supplies the I/O — so the retry behaviour is

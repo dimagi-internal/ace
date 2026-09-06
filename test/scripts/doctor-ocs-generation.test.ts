@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import {
   MAX_PROBE_ATTEMPTS,
+  probeStatusFor,
   runGenerationProbeWithRetry,
   shouldRetryGenerationProbe,
   type GenerationProbeClass,
@@ -99,12 +100,48 @@ describe('scripts/doctor-ocs-generation.ts is safe to run in a preflight', () =>
     expect(SCRIPT).toMatch(/process\.exit\(0\)/);
   });
 
-  it('guards a missing session file before launching chromium', () => {
+  it('guards an unrecoverable session before constructing the session', () => {
     const guard = SCRIPT.indexOf('no live probe possible');
-    const launch = SCRIPT.indexOf('chromium.launch');
+    const construct = SCRIPT.indexOf('new PlaywrightSession');
     expect(guard).toBeGreaterThan(-1);
-    expect(launch).toBeGreaterThan(-1);
-    expect(guard).toBeLessThan(launch);
+    expect(construct).toBeGreaterThan(-1);
+    expect(guard).toBeLessThan(construct);
+  });
+
+  // ── ace#1767: the ace#1338 class, caught structurally ────────────────────
+  //
+  // The probe reused CompositeBackend and PlaywrightBackend but hand-rolled
+  // the ONE part that owns auth: `chromium.newContext({ storageState })`.
+  // Playwright silently drops a cookie whose local `expires` stamp has passed,
+  // so the context went out anonymous against a server-side session that was
+  // still valid; OCS 302'd to /accounts/login/, the transport followed it, and
+  // `homeRes.ok` was true for the sign-in page. The scrape then reported a
+  // FEATURE FLAG problem, doctor reported `fail, class: unknown`, and `fail`
+  // halts /ace:run before Phase 1 (ace#1516).
+  //
+  // PlaywrightSession already owned both missing halves — an isAuthenticated()
+  // that probes with maxRedirects:0, and credential auto-relogin. These gates
+  // exist so the divergence cannot be reintroduced by someone reaching for a
+  // browser directly; prose asking for it has not been enough anywhere else.
+  it('never hand-rolls a browser context — auth belongs to PlaywrightSession', () => {
+    const code = SCRIPT.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+    expect(code).toContain('PlaywrightSession');
+    expect(code).not.toMatch(/chromium\.launch/);
+    expect(code).not.toMatch(/newContext\s*\(/);
+    expect(code).not.toMatch(/storageState/);
+  });
+
+  it('supplies the response’s final url so a followed 302 is detectable', () => {
+    // Without this the backend cannot tell OCS's sign-in page (200) from the
+    // page it asked for, which is the whole mechanism of ace#1767.
+    expect(SCRIPT).toContain('url: res.url()');
+  });
+
+  it('takes the halt/no-halt decision from the shared table, not a local literal', () => {
+    // Reporting `fail` for an auth failure is what halted the run. Keeping the
+    // mapping in lib/ keeps it unit-testable and single-sourced.
+    expect(SCRIPT).toContain('probeStatusFor');
+    expect(SCRIPT).not.toMatch(/status:\s*'fail'/);
   });
 
   it('never lets an env loader write to stdout — the yaml IS the preflight block', () => {
@@ -153,9 +190,14 @@ interface FakeResult {
   class: GenerationProbeClass;
 }
 
-/** Mirrors the script: every non-ok class reports `fail`. */
+/**
+ * Mirrors the script by CALLING the same mapping it calls, rather than
+ * restating it. The old local copy (`cls === 'ok' ? 'pass' : 'fail'`) went
+ * stale the moment `no_session` became a `skip` (ace#1767), and a stale mirror
+ * in a test is worse than none: it asserts the behaviour the fix removed.
+ */
 function resultFor(cls: GenerationProbeClass): FakeResult {
-  return { status: cls === 'ok' ? 'pass' : 'fail', class: cls };
+  return { status: probeStatusFor(cls), class: cls };
 }
 
 /** Drive the real retry loop over a scripted sequence of round-trip outcomes. */

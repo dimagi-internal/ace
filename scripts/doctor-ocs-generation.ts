@@ -18,6 +18,24 @@
  * is exactly the "don't locally reimplement what the shared engine already
  * provides" trap that produced ace#1338 — so we reuse the real backends.
  *
+ * That reuse was HALF DONE until ace#1767. The probe took `CompositeBackend`
+ * and `PlaywrightBackend` but hand-rolled the one part that owns AUTH — a bare
+ * `chromium.newContext({ storageState })`. Playwright silently DROPS a cookie
+ * whose local `expires` stamp has passed, so the context went out anonymous
+ * while the server-side session was still perfectly valid; OCS 302'd to
+ * `/accounts/login/`, the transport followed it, the scrape ran against the
+ * sign-in HTML, and the probe reported `status: fail, class: unknown` blaming
+ * `flag_chat_widget`. `fail` HALTS `/ace:run` before Phase 1 (ace#1516), so a
+ * healthy provider stopped a multi-hour run and sent the operator at a key
+ * that was fine.
+ *
+ * `PlaywrightSession` already owned both missing halves — an
+ * `isAuthenticated()` that probes with `maxRedirects: 0` (its comment says
+ * that is load-bearing precisely so the 302→login→200 chain cannot read as
+ * authenticated) and credential auto-relogin that re-persists the state. The
+ * MCP server has healed itself from this all along; only the probe diverged.
+ * So: no hand-rolled context here. Ever.
+ *
  * Exit status: ALWAYS 0. A probe that crashes must never take doctor down
  * (same convention as scripts/doctor-drive-layout.ts).
  */
@@ -30,6 +48,7 @@ import {
   classifyGenerationFailure,
   extractTracePointer,
   pickGenerationProviderId,
+  probeStatusFor,
   remediationFor,
   runGenerationProbeWithRetry,
   type GenerationProbeClass,
@@ -173,20 +192,39 @@ async function probe(): Promise<Result> {
   if (!gtid) return skip('OCS_GOLDEN_TEMPLATE_ID not set in .env');
   if (!token) return skip('OCS_API_TOKEN not set in .env');
 
-  const sessionFile = path.join(process.env.HOME || '', '.ace', `ocs-session-${team}.json`);
+  const { defaultStateDir } = await import('../mcp/lib/playwright-session.js');
+  const { PlaywrightSession } = await import('../mcp/ocs/auth/playwright-session.js');
+
+  const username = process.env.OCS_USERNAME;
+  const password = process.env.OCS_PASSWORD;
+  const sessionFile = path.join(defaultStateDir(), `ocs-session-${team}.json`);
   // Guard BEFORE launching chromium — a missing session is already reported by
   // ocs_auth, and paying a browser launch to re-report it is pure latency on
   // every /ace:run preflight.
-  if (!fs.existsSync(sessionFile)) {
-    return skip(`${sessionFile} missing — no live probe possible`);
+  //
+  // Only when there is nothing to recover WITH, though: with credentials set,
+  // PlaywrightSession logs in and writes the state, which is a heal rather
+  // than a wasted launch. Skipping there would decline to fix the very thing
+  // the operator is about to be told to fix by hand.
+  if (!fs.existsSync(sessionFile) && !(username && password)) {
+    return skip(`${sessionFile} missing and OCS_USERNAME/OCS_PASSWORD unset — no live probe possible`);
   }
 
-  const { chromium } = await import('playwright');
-  const browser = await chromium.launch({ headless: true });
+  const session = new PlaywrightSession({ baseUrl, teamSlug: team, username, password });
   try {
-    const ctx = await browser.newContext({ storageState: sessionFile });
+    let ctx;
+    try {
+      // Redirect-aware auth check + credential auto-relogin + re-persist. An
+      // expired-looking saved state heals here instead of going out anonymous.
+      ctx = await session.getContext();
+    } catch (e) {
+      // The session could not be established. That is not evidence that OCS
+      // generation is broken — it is evidence the probe could not run, which
+      // is what `skip` means. Reporting `fail` here halts the run (ace#1767).
+      return skip(`OCS session could not be established: ${String((e as Error)?.message ?? e)}`);
+    }
     const cookies = await ctx.cookies();
-    const csrf = cookies.find((c) => c.name === 'csrftoken')?.value ?? '';
+    const csrf = session.getCsrfToken();
 
     const { CompositeBackend } = await import('../mcp/ocs/backends/composite.js');
     const { RestBackend } = await import('../mcp/ocs/backends/rest.js');
@@ -210,6 +248,9 @@ async function probe(): Promise<Result> {
           ok: res.ok(),
           status: res.status(),
           headers: Object.fromEntries(Object.entries(res.headers())),
+          // Same field the ace-ocs MCP shim supplies: without it a followed
+          // 302 to /accounts/login/ is indistinguishable from the real page.
+          url: res.url(),
           text: async () => res.text(),
           json: async () => res.json(),
         };
@@ -263,7 +304,7 @@ async function probe(): Promise<Result> {
 
     return await runGenerationProbeWithRetry(roundTrip);
   } finally {
-    await browser.close().catch(() => {});
+    await session.close().catch(() => {});
   }
 }
 
@@ -295,7 +336,12 @@ async function failure(
   const trace = extractTracePointer(message);
   const providerId = await resolveProviderId(composite, publicId);
   return {
-    status: 'fail',
+    // The halt/no-halt decision lives in lib/ocs-generation-probe.ts so it is
+    // unit-testable without a live OCS. `no_session` reports `skip`, not
+    // `fail` — the second, independent guard on ace#1767: even if a future
+    // auth path regresses past PlaywrightSession, a dead cookie cannot halt a
+    // run that should proceed.
+    status: probeStatusFor(cls),
     class: cls,
     summary,
     providerId,

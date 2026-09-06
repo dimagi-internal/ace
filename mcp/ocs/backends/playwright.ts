@@ -6,7 +6,7 @@ import {
   sameGroups,
 } from '../../../lib/ocs-team-page.js';
 import { patchLlmNodeParams, validatePipeline, getLlmNodeParams, addPipelineNode, linkActionToNode, type PipelinePatchContext } from './pipeline-patch.js';
-import { PipelineValidationError, VersionBadgeUnreadableError } from '../errors.js';
+import { OcsAuthRedirectError, PipelineValidationError, VersionBadgeUnreadableError } from '../errors.js';
 import type { LlmNodeParams, ClonedChatbot } from '../types.js';
 import {
   ChatbotTableShapeError,
@@ -337,6 +337,26 @@ async function httpErrorFor(res: RequestResult, path: string): Promise<HttpError
     try { body = await res.text(); } catch { /* swallow */ }
   }
   return new HttpError(status, path, body);
+}
+
+/**
+ * Refuse to scrape OCS's sign-in page as if it were the page we asked for.
+ *
+ * OCS 302s an unauthenticated GET to `/accounts/login/?next=<path>`, and the
+ * Playwright request transport follows it — so `res.ok` is `true` and
+ * `res.status` is `200` for a fully-rendered sign-in form. Every selector then
+ * misses, and the miss is reported as a CONTENT problem ("flag
+ * `flag_chat_widget` may be off"), which is a different and much scarier claim
+ * than the true one. ace#1767: that message halted `/ace:run` before Phase 1
+ * and pointed the operator at an LLM provider key that was healthy throughout.
+ *
+ * The final URL is authoritative and free to read. Callers that are missing it
+ * (older test fakes supply no `url`) behave exactly as before.
+ */
+function assertNotSignInPage(res: RequestResult, path: string): void {
+  if (res.url && /\/accounts\/login\//.test(res.url)) {
+    throw new OcsAuthRedirectError(path, res.url);
+  }
 }
 
 export interface PlaywrightBackendOptions {
@@ -1223,6 +1243,9 @@ export class PlaywrightBackend {
   private async assertWidgetChannelEnabled(experimentId: number): Promise<void> {
     const homePath = `/a/${this.opts.teamSlug}/chatbots/${experimentId}/`;
     const homeRes = await this.opts.request('GET', homePath);
+    // Same page, same trap: unauthenticated, this would report the channel as
+    // absent ("lists no embedded_widget channel button") rather than as unread.
+    assertNotSignInPage(homeRes, homePath);
     if (!homeRes.ok || !homeRes.text) throw await httpErrorFor(homeRes, homePath);
     const channelId = extractEmbeddedWidgetChannelId(await homeRes.text(), experimentId);
     if (channelId === undefined) {
@@ -1587,6 +1610,9 @@ export class PlaywrightBackend {
   async getChatbotEmbedInfo(args: { experiment_id: number }) {
     const homePath = `/a/${this.opts.teamSlug}/chatbots/${args.experiment_id}/`;
     const homeRes = await this.opts.request('GET', homePath);
+    // BEFORE the scrape: an anonymous context lands here on the sign-in page
+    // with status 200, and `extractPublicId` then blames `flag_chat_widget`.
+    assertNotSignInPage(homeRes, homePath);
     if (!homeRes.ok || !homeRes.text) throw await httpErrorFor(homeRes, homePath);
     const homeHtml = await homeRes.text();
 
