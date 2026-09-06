@@ -45,8 +45,8 @@ orchestrator from per-skill QA + eval verdicts. -->
    default `https://www.commcarehq.org`) from the loaded environment.
    That's the HQ project space ACE uploads each app to. If
    `ACE_HQ_DOMAIN` is unset or empty, default to `connect-ace-prod` (the
-   canonical ACE project space) with an `[INFO]` note in the
-   gate brief — do not pause to ask. Only halt if the env loader
+   canonical ACE project space) with an `[INFO]` note in
+   `auto_surfaced` — do not pause to ask. Only halt if the env loader
    returned an explicit non-empty value that looks malformed.
 
    Nova's `/nova:upload_to_hq` takes the target project space as an
@@ -100,7 +100,7 @@ orchestrator from per-skill QA + eval verdicts. -->
 
    If the lint is skipped (e.g. Nova MCP unauthed at this point), log
    `app-deploy-xml-lint: skipped-nova-unauthed` in `run_state.yaml` and add
-   a `[WARN]` to the gate brief.
+   a `[WARN]` to `auto_surfaced`.
 
 3. **Upload Learn app.** Run (always pass the target project space as
    the trailing argument):
@@ -436,3 +436,4 @@ When `--dry-run` is active:
 | 2026-08-01 | **Migrated the Step 2.5 XML-escape lint's form load to uuid addressing (ace#1132).** It read "one call per `(moduleIndex, formIndex)`"; Nova's 2026-07-31 redeploy accepts no index param on any of its 63 tools, so the lint named an uncallable operation and would have skipped silently. Now `get_form({app_id, moduleUuid, formUuid})`, with the uuid map resolved from ONE `get_app({app_id})` per app (or off the build summary's `nova_uuids:` frontmatter). Enforced by `test/skills/nova-uuid-addressing.test.ts`. | ACE team |
 | 2026-08-13 | **Step 4.6 — clean up `deployment.left_behind` instead of only naming it.** HQ has no atomic app-update API, so every `upload_app_to_hq` mints a fresh application document; Nova returns the superseded id(s) in `deployment.left_behind`. Nova's own guidance stops at naming them, which is the right boundary for Nova (it will not delete a user's app) and the wrong one for ACE — the superseded draft is ours, seconds old, unreferenced, and leaving it behind means every re-upload silently adds an orphan for `/ace:sweep hq`. Observed on hh-poverty-targeting/20260812-2034, where a screen-split re-upload stranded `07f9b7c8…`. Now soft-deleted via `commcare_delete_app` (HQ's own reversible delete — restorable from the deleted-applications list, which is why it is safe automatically), with guard rails: only ids from THIS call's `left_behind`, never one read from an artifact, never the id just uploaded to; a failed delete is a `[WARN]` named in the summary for sweep to finish, never a halt. Adds `{learn,deliver}_superseded_hq_app_id` to the summary frontmatter and REQUIRES an explicit re-upload callout in the summary body whenever `left_behind` is non-empty — the new HQ id is what Phase 4 wires into the Connect opportunity at create time, and Connect's edit form does not expose those fields, so a stale id costs a delete-and-recreate. | ACE team |
 | 2026-08-18 | **Step 4.6 — HQ uploads UPDATE IN PLACE; the fresh-app-id premise is retired.** The 2026-08-13 entry above rested on "CCHQ has no atomic app-update API, so every `upload_app_to_hq` mints a fresh application document." That is no longer true, and the whole orphan-per-re-upload model went with it. Verified live against `connect-ace-prod` on 2026-08-18: Nova app `4dd0325b…` re-uploaded twice returned `hq_app_action: "updated"` both times, held `hq_app_id: c0d7027316bc46f8b4fdf4b47fd8d90b` constant, advanced `deployment.remote_revision` 6 → 8, and returned `left_behind: []` each time. So a mid-run re-upload no longer changes the id Phase 4 wires into the Connect opportunity, and no longer strands an orphan for `/ace:sweep hq`. The `left_behind` cleanup and its guard rails STAY — Nova still returns the field, and the id can still change via `remote_app_missing` (the linked HQ app was deleted there, so the next upload creates a fresh one). Adds `{learn,deliver}_hq_app_action` to the summary frontmatter; the loud callout now fires on an id that actually CHANGED (non-empty `left_behind`, or `hq_app_action: created` for an app already uploaded this run) rather than on every re-upload. | ACE team |
+| 2026-09-06 | **Stop routing concerns to a gate brief that does not exist (dimagi-internal/ace#1884).** 0.13.116 removed the per-skill gate-brief file class and the ace#1880 sweep removed the remaining `*.md` PATHS, but prose directives naming the gate brief as a DESTINATION survived in 15 files — a concern "surfaced in the gate brief" is surfaced nowhere. Repointed at the verdict YAML's `auto_surfaced` block, which is what the orchestrator actually renders the pause summary from. Gated by the new destination check in `test/skills/gate-brief-removal-complete.test.ts`. | ACE team |

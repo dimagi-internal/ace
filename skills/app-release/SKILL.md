@@ -262,7 +262,7 @@ procedure below to rediscover.
        the form whose name matches `form_name`. On ambiguity (two
        forms with the same name in different modules), use
        `menu_name` to disambiguate. If still ambiguous, halt the loop
-       and surface the ambiguity in the gate brief — operator decides.
+       and surface the ambiguity in `auto_surfaced` — operator decides.
 
     3. **Dispatch the Nova architect** via `/nova:edit <nova_app_id>`
        with a brief that names the form, the line/col, the parser
@@ -377,8 +377,8 @@ procedure below to rediscover.
    reliable way to get N unique slugs is N modules. See
    `feedback_connect_deliver_unit_per_module` memory for full mechanism.
 
-   On any `oversized_slugs.*` non-empty, halt with `[BLOCKER]` in the
-   gate brief. The brief MUST list each offender as
+   On any `oversized_slugs.*` non-empty, halt with a `[BLOCKER]` in
+   `auto_surfaced`. It MUST list each offender as
    `<type>: <slug> (<length> chars, in <first_seen_in>)`. Concrete
    remediation: rename the offending Nova module / deliver-unit to
    produce a shorter slug. Rule of thumb — keep `connect.learn_module.name`

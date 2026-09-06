@@ -726,7 +726,7 @@ rubric is improving over time, not just changing.
        note: "Correct steps, professional tone"
      - ...
 
-   auto_surfaced:              # inputs to the gate brief
+   auto_surfaced:              # inputs to the phase pause summary
      - severity: BLOCKER | WARN | INFO
        owner: HARNESS | INSTRUMENT | PRODUCT | PROMPT
        message: <one-line concern>
@@ -950,7 +950,7 @@ Approve — zero [BLOCKER]; shallow gate cleared.
 
 - **Auto:** Grade, write verdict + report, surface gate result
 - **Review:** Pause after judgment to let a human eyeball the verdict
-  before the gate brief propagates
+  before the verdict propagates
 
 ## Dry-Run Behavior
 
@@ -976,3 +976,4 @@ When `--dry-run` is active:
 | 2026-05-05 | **Path-scheme migration.** All read/write paths repointed to `runs/<run-id>/<phase>/ocs-chatbot-eval_*-<mode>.<ext>` per the manifest (`5-ocs/` for `--quick`/`--deep`; `9-execution-manager/` for `--monitor`). Retires the opp-level `qa-captures/` / `verdicts/` / `eval-reports/` / `gate-briefs/` directories. Updated: Modes table, Step 1 transcript locator + golden-template fallback path, Step 4 verdict output, Step 6 report output, Step 7 trend path, Step 8 gate-brief output, Gate Brief artifact-under-review for both modes, the deep + quick verdict YAML examples (`capture_path` field), and the worked Quick example. No behavior change beyond paths. | ACE team |
 | 2026-05-05 | **Rubric prose extracted.** The 5-dimension table cells were ~600 words each, packing per-dimension criteria with hard deductions, multi-tier caps, capture-method branches, and suite-level rules into single rows. The dimension table now carries a one-line summary plus a pointer to a new `## Rubric Rules` section that breaks each dimension into labeled subsections (Correctness, Source usage with `openai-compat` / `widget` branches, Refusal correctness with tiered cap table, Tone, Tagging) plus a Suite level subsection (Inflation guard, Pre/post-cap reporting). Same grading semantics — every existing rule, deduction, and cap is preserved verbatim under its own heading. Rationale: LLM judges miss rules buried in dense prose; labeled subsections give the rubric visible structure. | ACE team |
 | 2026-08-29 | **Stop declaring gate-brief artifacts the skill does not write (dimagi-internal/ace#1805).** 0.13.116 removed the gate-brief write step and `lib/artifact-manifest.ts` registers none, but the frontmatter description, the `## Products` list and BOTH `## Modes` rows still named `ocs-chatbot-eval_gate-brief-<mode>.md` as an output — and contradicted each other, Products saying `--deep` only while the Modes table had `--quick` emitting one too. Sibling producers (`idea-to-pdd`, `llo-launch`, `app-deploy`) had their tables cleaned in the same 0.13.116 pass; this file got the explanatory comment and not the cleanup, so an agent reading the Modes table wrote an orphan file into `5-ocs/` that nothing reads. Removed the declarations and retitled the retained `## Gate Brief` section to state plainly that it specifies the summary the orchestrator synthesizes from the verdict YAMLs rather than a file to emit. Found during Phase 5 of `hh-poverty-targeting/20260828-0702`. | ACE team |
+| 2026-09-06 | **Stop routing concerns to a gate brief that does not exist (dimagi-internal/ace#1884).** 0.13.116 removed the per-skill gate-brief file class and the ace#1880 sweep removed the remaining `*.md` PATHS, but prose directives naming the gate brief as a DESTINATION survived in 15 files — a concern "surfaced in the gate brief" is surfaced nowhere. Repointed at the verdict YAML's `auto_surfaced` block, which is what the orchestrator actually renders the pause summary from. Gated by the new destination check in `test/skills/gate-brief-removal-complete.test.ts`. | ACE team |

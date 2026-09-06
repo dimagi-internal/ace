@@ -215,7 +215,6 @@ defined under `## QA vs Eval — the two-phase pattern` below.
 
 - `<phase>/<skill>_summary.md` — primary artifact
 - `<phase>/<skill>_verdict[-<mode>].yaml` — verdict YAML (when self-evaluating)
-- `<phase>/<skill>_gate-brief[-<mode>].md` — gate brief (when this skill gates a phase)
 ```
 
 ### 4. `## Process`
@@ -349,19 +348,27 @@ Some skills self-evaluate their output before passing it downstream; dedicated `
 
 The rubric should be concrete enough to grade on — bullet points with grading anchors, or a numbered checklist with pass/fail conditions. See `skills/idea-to-pdd/SKILL.md` for the canonical example (the 5-question stress-test rubric with worked anchors from the example PDDs). See `skills/ocs-chatbot-eval/SKILL.md` for the 4-dimension weighted-score pattern that dedicated `-eval` skills follow.
 
-### `## Gate Brief` (when the skill ends a phase with a `<skill>_gate-brief[-<mode>].md` artifact)
+### `## Gate Brief` — OPTIONAL, and never an artifact
 
-Required for any skill that writes a gate brief at
-`runs/<run-id>/<phase>/<skill>_gate-brief[-<mode>].md` — the canonical
-artifact the orchestrator reads at a `--mode review` pause. Place this
-section **immediately after** `## LLM-as-Judge Rubric` (if present)
-and **immediately before** `## Archetypes` (if present) or `## MCP
-Tools Used` (if neither). Document the four fields the gate brief
-populates (Artifact Under Review, What to Check, Auto-Surfaced
-Concerns, Recommended Disposition) using the canonical shape from
-`agents/ace-orchestrator.md § Gate Brief Contract`.
+**There is no gate-brief artifact, and a new skill should not add this
+section.** 0.13.116 removed the per-skill gate-brief file class across
+every phase; `lib/artifact-manifest.ts` registers none. At a
+`--mode review` pause the orchestrator reads the per-skill QA verdict
+(`<phase>/<producer>-qa_result.yaml`) and eval verdict
+(`<phase>/<producer>-eval_verdict.yaml`) directly and synthesizes the
+pause summary on the fly — the verdicts ARE the source of truth. See
+`agents/orchestrator-reference.md § Pause Points`, whose **Why no
+separate gate-brief artifact** paragraph records the reasoning.
 
-The 5 gate-owning skills today are: `idea-to-pdd` (Phase 1→3), `app-deploy` (Phase 3→4), `ocs-chatbot-eval` (Phase 5→6), `llo-invite` (Phase 8 invite-list), `llo-launch` (Phase 9 launch). `opp-eval` also writes a Gate Brief section but its brief is advisory (does not gate any phase).
+Two skills (`ocs-chatbot-eval`, `opp-eval`) keep a section titled
+`## Gate Brief — reference only, NOT an artifact this skill writes`,
+which specifies the *content* of the summary the orchestrator renders
+from their verdict. That is a documentation convenience for two
+long-standing gates, not a pattern to copy: put the same information
+in `auto_surfaced` entries in the verdict YAML instead. Where the
+section does exist, it sits **immediately after** `## LLM-as-Judge
+Rubric` (if present) and **immediately before** `## Archetypes` (if
+present) or `## MCP Tools Used` (if neither).
 
 ### `## Current Workaround` (when the skill is blocked on un-built APIs)
 
@@ -393,7 +400,7 @@ Optional. Use it to enumerate named errors and recovery hints — the kind of th
 Every producer artifact is checked along two **orthogonal** axes. Both run on every artifact (separately or inline); QA gates eval.
 
 - **QA = structural correctness.** Binary pass/fail. Hard do-not-pass-go failures. Mostly static checks; LLM use is allowed but discouraged unless static can't capture the rule. Reference: `skills/_qa-template.md`. **Some producers explicitly opt out** of QA when downstream is LLM-driven and structural format gates nothing real — see `skills/_qa-template.md § When to skip QA`.
-- **Eval = quality judgment.** Soft 0-10 scores via LLM-as-Judge. Always uses LLM. Surfaces gate-brief BLOCKERs that halt phases, plus WARN/INFO advisory signals. Reference: `skills/_eval-template.md`.
+- **Eval = quality judgment.** Soft 0-10 scores via LLM-as-Judge. Always uses LLM. Surfaces `auto_surfaced` BLOCKERs that halt phases at the pause point, plus WARN/INFO advisory signals. Reference: `skills/_eval-template.md`.
 
 For per-skill status registries:
 - QA status (which producers have a `-qa` companion, which deliberately don't, which are pending) → see `skills/_qa-decisions.md`.
@@ -436,7 +443,7 @@ Eval applies LLM-as-Judge rubrics to grade *quality* dimensions, given QA has co
 - **Always** runs LLM-as-judge.
 - **Never** re-checks structural concerns QA already covered.
 - Produces 0-10 dimension scores + weighted overall.
-- Surfaces gate-brief BLOCKERs that halt phases (different from QA hard fails — these are quality concerns severe enough to stop, not structural failures).
+- Surfaces `auto_surfaced` BLOCKERs that halt phases at the pause point (different from QA hard fails — these are quality concerns severe enough to stop, not structural failures).
 - Soft signals (WARN/INFO) inform reviewers but don't auto-halt.
 - Can read upstream evals' verdicts as **context** when forming judgments, but should NOT have hardcoded cross-eval cap rules. Each eval stands on its own.
 
@@ -490,7 +497,6 @@ run-id to slot into — used only by `ocs-chatbot-qa` /
 | Structured machine-readable verdict | `<phase>/<producer>[-eval]_verdict[-<mode>].yaml` | `-eval` skill (or producer with inline self-eval) |
 | Human-readable eval report | `<phase>/<eval-skill>_report[-<mode>].md` | `-eval` skill |
 | Rolling monitor trend | `<phase>/<eval-skill>_trend.md` | `-eval` skill (`--monitor` mode only) |
-| Gate brief (if this eval gates a phase) | `<phase>/<skill>_gate-brief[-<mode>].md` | `-eval` skill |
 
 Paths are uniform across skills so the umbrella `opp-eval` aggregator
 can discover verdicts by walking phase folders without per-skill
@@ -516,7 +522,7 @@ filename. Concrete consequences:
 - The umbrella `opp-eval` writes into its own subfolder under
   `10-closeout/`:
   `10-closeout/opp-eval/opp-eval_verdict-deep.yaml` (and matching
-  scorecard / gate-brief / trend siblings) so re-runs and the
+  scorecard / trend siblings) so re-runs and the
   per-skill verdicts don't collide.
 
 **Wiring.** Per-step `-eval` skills run automatically in `/ace:run` —
@@ -558,7 +564,7 @@ per_item:                      # optional — one entry per judged thing
   # chatbot evals, `session_id:` for FGD evals). The canonical key is
   # `ref`; aggregators read by `ref` and ignore extras.
 
-auto_surfaced:                 # optional — inputs to the gate brief
+auto_surfaced:                 # optional — inputs to the phase pause summary
   - severity: BLOCKER | WARN | INFO | PLATFORM | DRIFT | INFO-SKIPPED
     message: <one-line>
   # BLOCKER, WARN, INFO are the rubric-deducting tiers (WARN counts toward
@@ -567,7 +573,7 @@ auto_surfaced:                 # optional — inputs to the gate brief
   # bypassed for missing input) are diagnostic-only — they document gaps
   # without penalizing skill quality. The producing skill drafts one entry
   # per surfaced concern during judgment. `opp-eval` concatenates these
-  # when aggregating verdicts into the run-level brief. If the producing
+  # when aggregating verdicts into the run-level summary. If the producing
   # skill has nothing to surface, omit this field (don't write an empty
   # list).
 
@@ -645,7 +651,8 @@ the source of truth if this prose drifts.
 - `skills/ocs-chatbot-qa/SKILL.md` + `skills/ocs-chatbot-eval/SKILL.md` —
   the reference qa/eval pair. The qa skill captures a chat transcript
   with structural checks; the eval skill grades across 4 weighted
-  dimensions and writes the Phase 5 gate brief.
+  dimensions; the orchestrator renders the Phase 5 pause summary from its
+  verdict.
 - `skills/idea-to-pdd/SKILL.md` — a skill with inline self-eval (no
   separate `-eval` skill). The 5-question stress-test rubric runs inside
   the skill as a self-check before writing the PDD.
@@ -883,7 +890,7 @@ Before committing a new SKILL.md, verify:
 - [ ] Process steps are numbered sequentially (`grep -nE '^[0-9]+\.' SKILL.md`)
 - [ ] If the skill is in the `*-eval` / `training-*` / `solicitation-*` family, the body references `skills/_eval-template.md` / `_training-template.md` / `_solicitation-template.md` for shared contracts instead of inlining them
 - [ ] If the skill branches on PDD archetype, `## Archetypes` is present with all 3 archetypes covered
-- [ ] If the skill writes a `<skill>_gate-brief[-<mode>].md` artifact (one of the 5 phase gates), `## Gate Brief` is present, placed after `## LLM-as-Judge Rubric` (if any) and before `## Archetypes`/`## MCP Tools Used`
+- [ ] The skill declares NO gate-brief artifact anywhere (frontmatter, `## Products`, `## Modes`, process steps) — 0.13.116 removed that class; the orchestrator synthesizes the pause summary from the QA + eval verdict YAMLs
 - [ ] If the skill consumes the PDD's Evidence Model, an explicit early process step reads it and errors if missing
 - [ ] If the skill has external side effects, `## Dry-Run Behavior` is present
 - [ ] If the skill is blocked on un-built APIs, `## Current Workaround` is present (and gets removed when the API ships)

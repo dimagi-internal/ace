@@ -2076,7 +2076,8 @@ scorecard and drafts improvement recommendations. It walks every
 phase folder under `ACE/<opp-name>/runs/<run-id>/` collecting
 `*_verdict*.yaml`, groups scores into 7 skill-category dimensions
 (design, commcare, connect, ocs, solicitation, operate, closeout), and
-writes a human scorecard + machine verdict + advisory gate brief.
+writes a human scorecard + machine verdict (advisory only — it gates
+no phase).
 
 opp-eval is **ad-hoc**, not part of the `--mode review` auto-pause
 flow. It does not gate any phase. It can be run anytime during or
