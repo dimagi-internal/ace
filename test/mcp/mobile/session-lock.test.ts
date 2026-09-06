@@ -234,9 +234,23 @@ describe('session-lock', () => {
     // The exact destructive case from ace#1704, pinned: with the
     // override in force, an all:true reap must confine itself to the
     // temp dir. A sentinel in the real dir must survive.
+    //
+    // The sentinel HAS to live in the real shared dir — that is the whole
+    // claim — so its name carries this process's pid. A fixed name is one
+    // path that every concurrent runner writes, asserts on, and then
+    // deletes in its own `finally`, and `~/.ace/sessions` is shared by
+    // every ACE session and every `npm test` on the box. Two suites raced
+    // exactly that way: the first `fs.rmSync`'d the sentinel while the
+    // second sat between its reap and its assertion, and the second went
+    // red on code it had not touched. Measured on main @ 0.13.1241: 9 of
+    // 20 suite runs under two concurrent full suites, and 4 of 5 pairs
+    // running this ONE file twice concurrently. ace#1743.
     const realDir = path.join(os.homedir(), '.ace', 'sessions');
     fs.mkdirSync(realDir, { recursive: true });
-    const sentinel = path.join(realDir, `${FAKE_PID_BASE + 777}.lock.json`);
+    const sentinel = path.join(realDir, `${FAKE_PID_BASE + 777}-${process.pid}.lock.json`);
+    // Structural guard: lose the per-process component and the collision
+    // comes straight back, silently and only under load.
+    expect(path.basename(sentinel)).toContain(String(process.pid));
     fs.writeFileSync(sentinel, JSON.stringify(fakeLock(777)), 'utf8');
     try {
       const live = fakeLock(4, { mcp_pid: process.pid });
@@ -292,7 +306,9 @@ describe('session-lock', () => {
       // import session-lock.ts. Both substrings are required.
       const unrelatedDaemon =
         'node tsx -e import * as net from "node:net"; ' +
-        'net.createServer().listen(60100); setInterval(() => {}, 60_000);';
+        // This is a fake `ps` command line fed to a regex, not a bind —
+        // nothing here opens a socket.
+        'net.createServer().listen(60100); setInterval(() => {}, 60_000);'; // hygiene:allow-fixed-port
       expect(ORPHAN_SCAFFOLD_PATTERN.test(unrelatedDaemon)).toBe(false);
     });
 
