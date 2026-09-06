@@ -453,6 +453,13 @@ Generate the Learn (training) app from the PDD using the Nova plugin
        **pre-release self-check** is mandatory and its per-item table
        (rule, module, operation, counter-intuitive?, independence,
        any-option-rejectable-on-sight) belongs in the build memo.
+     - **Randomise the correct-option POSITION independently per item, and
+       never rotate through the letters (ace#2061).** Tell the architect this
+       explicitly in the brief. "Spread across a/b/c/d" is not enough and is
+       what produced the defect: a balanced-but-CYCLIC key (`a,d,c,b`
+       repeating) is more predictable than randomness, not less, and clears an
+       80% gate at 90% for anyone who notices. *Enforced:*
+       `pdd-to-learn-app § 4c step 3b` + `lib/answer-key-pattern.ts`.
      - `instrument-grounded-examples` — the Learn app teaches
        administration of a fixed instrument. Every worked example and
        good/bad pair built from a REAL instrument item, preferring the
@@ -727,6 +734,30 @@ Generate the Learn (training) app from the PDD using the Nova plugin
        conditional pass+fail pair after the third attempt, halt with a
        clear `assessment-result-unconditional` failure and do NOT write
        the success summary.
+
+    3b. **Check the ANSWER KEY is not periodic (ace#2061).** Extract each
+       `qN_score`'s calculate literal — the value the score compares against IS
+       the answer key, since CommCare has no correct-option primitive — and run:
+
+       ```ts
+       checkAnswerKeyPattern({ key, passMark });   // lib/answer-key-pattern.ts
+       ```
+
+       It fails when ANY fixed periodic guess (period 1-6, every phase
+       alignment) reaches the pass mark. On a hit, re-key the offending items:
+       move the correct option's TEXT to a different position and update that
+       item's calculate to match. **Do NOT simply point the calculate at a
+       different letter** — that makes a wrong answer correct.
+
+       Measured on `poverty-graduation/20260905-1345`: a 32-item gate whose key
+       ran `c a d b` then `(a d c b)` seven times without deviation. Answering
+       that cycle cold scores **29/32 = 90%** against an 80% gate, so the Learn
+       gate certified a worker who had read nothing. **The letter distribution
+       was perfect — 8 each of a/b/c/d** — which is exactly why no frequency
+       check saw it and why this one reads the sequence instead. It is also a
+       different mechanism from ace#981 / ace#1014 / ace#1187, which are about
+       whether an item is guessable from its WORDING: every item on that build
+       had plausible distractors and tested a real taught rule.
 
     4. **Check what the pass label CLAIMS against what the bank tests
        (ace#1368).** Run `checkPassLabelScope` from
