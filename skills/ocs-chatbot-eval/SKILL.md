@@ -23,7 +23,7 @@ two-phase pattern` for the framework rationale and artifact-path contract.
 |---|---|---|
 | Phase 5 (`ocs-chatbot-qa`) | `5-ocs/ocs-chatbot-qa_transcript-<mode>.md` | transcript under judgment |
 | Phase 1 (`--deep` only) | `2-scenarios/pdd-to-test-prompts.md` | per-prompt expected-answer summaries (ground truth) |
-| OCS (`--deep` only) | `ocs_inspect_chatbot` / `ocs_get_chatbot` | the graded bot's published `version_number` + `public_id`, written into `artifact_refs` so the Phase 9 gate can tell a fresh verdict from one graded against an older prompt |
+| OCS (`--deep` only) | `ocs_inspect_chatbot` / `ocs_get_chatbot` | the graded bot's published `version_number` + `public_id`, written into `artifact_refs` so the Phase 9 gate can tell a fresh verdict from one graded against an older prompt; **and `pipeline.nodes[].llm.type`, the provider slug § Rubric Rules — Source usage gates the structured-citation cap on (ace#2027)** |
 
 ### Instrument-independence invariant (dimagi-internal/ace#1018)
 
@@ -107,8 +107,10 @@ If no mode is passed, default to `--quick`.
      or declared expectation (smoke/edge-case prompts)
    - `expected_tags`, `expected_escalation`
    - `response_content` — the captured bot reply
-   - `cited_files` — `message.metadata.cited_files`; empty on every widget
-     capture, and that is expected (§ Rubric Rules — Source usage)
+   - `cited_files` — `message.metadata.cited_files`; empty on EVERY channel
+     for an Anthropic-backed bot, because the provider's output parser never
+     populates it. Not a widget property — see § Rubric Rules — Source usage
+     (ace#2027)
    - `inline_citations` — file ids harvested from the BODY. The widget DOES
      emit these; do not assume their absence (ace#1952)
    - `tags` — `message.tags`, which carries the CHATBOT VERSION tag (`["v3"]`),
@@ -418,12 +420,64 @@ Branches by capture method. Read `capture_method` from the transcript
 header; default to `widget` if missing (legacy captures pre-0.10.10
 are widget-only).
 
+#### FIRST — the provider gate (applies to EVERY capture method)
+
+**Before either branch below, decide whether `cited_files` is populatable
+at all. It is a property of the PROVIDER, not of the channel (ace#2027).**
+
+```ts
+import { citedFilesCapApplies, citedFilesPlatformNote }
+  from '../../lib/cited-files-provider-support';
+
+// `llm.type` from ocs_inspect_chatbot → pipeline.nodes[].llm.type
+const provider = inspect.pipeline.nodes.find((n) => n.llm)?.llm?.type;
+if (!citedFilesCapApplies(provider)) {
+  autoSurfaced.push(citedFilesPlatformNote(provider)!);   // a [PLATFORM] line
+}
+```
+
+`cited_files` is filled by exactly one upstream code path —
+`LlmService._default_parser`, which calls `extract_file_ids_from_ocs_citations`
+(`open-chat-studio` `llm_service/main.py:112,144`). `AnthropicLlmService`
+overrides `get_output_parser` to `parse_output_for_anthropic` (`main.py:449`),
+which returns `LlmChatResponse(text=...)` on all five of its paths and never
+calls that function; `cited_files` defaults to an empty set. **So on an
+Anthropic-backed pipeline the field is empty by construction — on widget,
+`web`, `api` and `openai-compat` alike, and regardless of
+`generate_citations`.** Every ACE bot is Anthropic-backed today (verified
+2026-09-06 on chatbot 13029 v3: `type: "anthropic"`,
+`model: "claude-sonnet-4-6"`, `generate_citations: true`, three channels
+exposed, `cited_files` empty on all 64 deep entries).
+
+- **`citedFilesCapApplies(provider) === false`** (Anthropic, or a provider slug
+  the helper does not recognise) → **do NOT apply the empty-`cited_files` cap,
+  whatever the capture method.** Emit the `[PLATFORM]` note and grade Source
+  usage on harvested inline ids first, body text otherwise, exactly as the
+  widget branch below describes. `[PLATFORM]` does not count toward the
+  inflation guard.
+- **`citedFilesCapApplies(provider) === true`** (OpenAI, Azure, Gemini, …) →
+  the cap is live and meaningful; apply the branch below as written.
+- **Provider unreadable** (no `ocs_inspect_chatbot` call in this mode, or the
+  node carries no `llm`) → the helper returns `unknown` and the cap is
+  **withheld**. That asymmetry is deliberate: capping an unpopulatable field
+  false-fails the `--deep` gate Phase 9 `llo-launch` reads, while withholding
+  it merely leaves one signal ungraded — body-text grounding below still
+  deducts `-2` for unsourced assertions and clamps to `≤3` for a fabricated
+  source. The recoverable error wins.
+
+Never re-derive this classification inline. `lib/cited-files-provider-support.ts`
+carries the upstream line references and the slug map;
+`test/lib/cited-files-provider-support.test.ts` pins both controls.
+
 #### When `capture_method = openai-compat`
 
-The OpenAI-compatible endpoint exposes structured citations.
+The OpenAI-compatible endpoint exposes structured citations — **when the
+provider populates them. Run the provider gate above first.**
 
-- **Structured citations** — `cited_files` MUST be non-empty when `generate_citations: true` is set on the chatbot pipeline.
-- **Two-tier cap (added 0.9.4)**:
+- **Structured citations** — on a `citedFilesCapApplies === true` pipeline,
+  `cited_files` MUST be non-empty when `generate_citations: true` is set.
+- **Two-tier cap (added 0.9.4; provider-gated 0.13.x, ace#2027)** — applies
+  **only** when the provider gate returned `true`:
   - Empty `cited_files` + body text *does* name source docs by title → automatic **≤5 cap** (bot grounds correctly, but the structured field is broken — pipeline bug).
   - Empty `cited_files` + body text *also* lacks named sources → automatic **≤3 cap** (bot is making it up; structural fail).
 - **Collection routing** — when `cited_files` is populated, citations must point to the correct collection (shared Connect vs. opp-specific) for the question's domain.
@@ -431,8 +485,13 @@ The OpenAI-compatible endpoint exposes structured citations.
 #### When `capture_method = widget`
 
 On the anonymous widget endpoint (what `ocs-chatbot-qa` uses today) the
-`cited_files` field is structurally always empty regardless of bot
-grounding. **That is where the structured channel ends — it is NOT where
+`cited_files` field is empty for ACE's bots — **because of the provider, per
+the gate above, not because of the channel.** This branch used to attribute it
+to the widget, which is what scoped the exemption to one capture method and
+left the `openai-compat` cap live against a field no Anthropic-backed bot can
+fill (ace#2027).
+
+**That is where the structured channel ends — it is NOT where
 the evidence ends.** This branch used to say the widget "does not return
 inline citation markup at all", and that was false: the bot emits
 file-id markup INLINE IN THE BODY, and the rubric was instructing the
@@ -459,12 +518,14 @@ judge to ignore evidence that exists (dimagi-internal/ace#1952).
   - Body cites named sources → no deduction.
   - Body asserts facts without naming any source → **-2 deduction**.
   - Body fabricates a source title not in the KB → **≤3** (clamped).
-- **DO NOT apply the empty-`cited_files` cap on widget captures.** Emit
-  `[PLATFORM] empty cited_files expected on widget capture; structured-citation
-  grade not applicable` in `auto_surfaced` — that field genuinely carries
-  nothing. Then grade on the harvested inline ids where present, and on body
-  text otherwise. The old wording had this line ending in "and grade on body
-  text alone", which is what discarded the inline evidence.
+- **DO NOT apply the empty-`cited_files` cap** — per the provider gate above,
+  which on ACE's Anthropic-backed bots returns `false`. Emit the
+  `citedFilesPlatformNote(provider)` line in `auto_surfaced` rather than a
+  hand-written one: the note must name the provider mechanism, because the
+  earlier hand-written wording ("expected on widget capture") is the
+  misattribution ace#2027 fixed. Then grade on the harvested inline ids where
+  present, and on body text otherwise. An older wording ended this line with
+  "and grade on body text alone", which is what discarded the inline evidence.
 - **Collection routing** — from harvested inline ids first; else inferred from
   named sources where the body provides them; skip when the body offers neither.
 
@@ -907,6 +968,7 @@ When `--dry-run` is active:
 | 2026-09-05 | **The answer key is now reconciled against what the run actually shipped (closes dimagi-internal/ace#1954).** `2-scenarios/pdd-to-test-prompts.md` is authored in PHASE 2 from the PDD alone and was never re-read after Phase 3 built the thing, so the grader could penalise a bot for being right about the system as it shipped. Two halves, deliberately split by what is actually decidable. MECHANICAL: Process step 4 gains a fifth pass, `applyAnswerKeyAdvisory`, fed by `/ace:qa-deep` Stage A step 1 reading the run's `run_state.yaml` READ-ONLY — on `hh-poverty-targeting/20260828-0702` that file said verbatim *"Phase 5 should treat those three tags as advisory rather than scored"* and NOTHING on qa-deep's path read it. Covered entries are marked `advisory: true`, excluded from the dimension means and the zero-Fail gate, and never rescored; a caveat routing to no entry is a `[BLOCKER]`. Resolution is by exact question text, never by assuming key `## Prompt N` is ref `opp-N`. PROSE: § Rubric Rules — Correctness gains `[ANSWER-KEY-CONTRADICTS-CORPUS]`, because deciding that *"gallery selection is not permitted"* contradicts *"camera-only NOT applied"* is a reading task and a regex claiming to do it would be a guess about meaning. Both live instances were confirmed against files indexed in the graded bot's own collection 570: `03-ppi-instrument-constants-verified.md` (63007) records 101/102 as RESOLVED clamp-to-100 while key prompt 40 calls any likelihood for 101 a hard failure; `09-app-hq-settings-summary.md` (63013) records camera-only NOT applied while key prompts 20 and 44 assert gallery selection is forbidden. *Enforced:* `lib/answer-key-reconciliation.ts` + `test/lib/answer-key-reconciliation.test.ts`, fixtures = the verbatim `tp-r1` residual and the three matching question lines. | ACE team |
 | 2026-09-05 | **`auto_surfaced` entries now carry `owner`, so `/ace:qa-deep` can route them (ace#1984).** A deep run emits findings across four owners — HARNESS, INSTRUMENT, PRODUCT, PROMPT — and until they are separated the operator is the router. On `spark-facilitator/20260828-0703` two of the app verdict's five BLOCKERs were ACE's own harness defects presented as product defects, and fifteen findings reached the operator unsorted; sorting them took six rounds of conversation. The judge is the only party that knows whether a defect is in the thing graded or the instrument grading it, so ownership is now decided at grade time. *Enforced:* `lib/qa-deep-triage.ts` + `test/lib/qa-deep-triage.test.ts`. | ACE team |
 | 2026-09-05 | **The deep verdict now carries `artifact_refs`, without which the Phase 9 OCS freshness gate cannot function (closes dimagi-internal/ace#1960).** `llo-launch` § step 4 has always compared the chatbot's live `version_number` against the verdict's `artifact_refs.version_number` — and this skill mentioned `artifact_refs` ZERO times and documented a verdict shape without it, so no OCS deep verdict has ever carried one. `app-ux-eval`, the other half of the same gate, documents it twice; the app half worked, the OCS half never had, and each skill read correct in isolation. Found on `spark-facilitator/20260828-0703`, whose 2026-09-04 verdict had no `artifact_refs` while the bot had been re-published to v4 on 2026-09-02. Added to the Inputs table, the deep/monitor verdict shape, and a new `### artifact_refs` subsection. *Enforced:* `test/skills/verdict-freshness-contract.test.ts` — for every `artifact_refs.<field>` llo-launch reads off a named verdict, the producing skill must document it. | ACE team |
+| 2026-09-06 | **The empty-`cited_files` explanation blamed the CHANNEL; it is the PROVIDER (closes dimagi-internal/ace#2027).** This section explained an empty `cited_files` as a property of the anonymous widget endpoint, and scoped the cap exemption to `capture_method = widget` on that basis. Upstream, `cited_files` is populated by exactly one path — `LlmService._default_parser` -> `extract_file_ids_from_ocs_citations` (`open-chat-studio` `llm_service/main.py:112,144`) — and `AnthropicLlmService` overrides `get_output_parser` to `parse_output_for_anthropic` (`main.py:449`), which returns `LlmChatResponse(text=...)` on all five paths and never calls it. So the field is empty **by construction on every channel** for an Anthropic-backed bot, which is every ACE bot (verified live 2026-09-06 on chatbot 13029 v3: `type: "anthropic"`, `generate_citations: true`, `embedded_widget` + `web` + `api` all exposed). Left as it stood, switching `ocs-chatbot-qa` to the documented-and-supported `openai-compat` capture would have applied the automatic `<=5` / `<=3` cap to Source usage — 20% of the `--deep` verdict Phase 9 `llo-launch` reads — on a field no ACE bot can populate. Latent, never fired: the widget is the capture method in use, which is why this is `harness` and not `blocks-e2e`. The gate is now hoisted ABOVE both capture-method branches and keys off `llm.type`; an unrecognised provider withholds the cap too, because capping an unpopulatable field false-fails a launch gate while withholding it only leaves one signal ungraded (body-text grounding still deducts). **Unchanged: a provider that CAN populate the field still caps exactly as before.** This is the ace#1952/#1953 class through a fifth door — the doc names a field, the field exists, it is empty for a reason the doc gets wrong, and grading off that explanation is indistinguishable from a real observation. *Enforced:* `lib/cited-files-provider-support.ts` + `test/lib/cited-files-provider-support.test.ts` (positive control anthropic, negative control the other 10 upstream slugs, plus a rubric-consumption check so the helper cannot become dead code). | ACE team |
 | 2026-09-04 | **Contact-domain drift is now a third deterministic pass (closes dimagi-internal/ace#1935).** The ace#1142 rule already covers a contact address not verbatim in the KB, and on the SECOND `--deep` run of `spark-facilitator/20260828-0703` it fired — but only because the judge chose to. `applyContactDomainDriftClamp` makes the highest-frequency case arithmetic: a canonical contact's local-part on the wrong domain (`ace@dimagi.com` for `ace@dimagi-ai.com`) clamps to `<= 3.0` / `fail` with `[CONTACT-DOMAIN-DRIFT]`. That run gave the right address 37 times and the wrong domain twice, and those two were the ONLY Fails in a suite scoring 8.5 — the sole reason the gate did not clear. Both ace#1665's corpus fix and the "quote verbatim, never vary the spelling" instruction were live and verified at the time, so the producer side is already correct; a retrieval instruction simply does not bind, and the preventer has to sit after generation. Only near misses are flagged — a wholly invented address stays with `applyFabricationClamp`. *Enforced:* `lib/contact-domain-drift.ts` + `test/lib/contact-domain-drift.test.ts`, fixture = the two verbatim responses. | ACE team |
 | 2026-09-01 | **A response that names an internal artifact to a user is a defect regardless of dimension (closes dimagi-internal/ace#1891).** Process step 4 gains a second deterministic pass, `applyInternalArtifactLeakCap`: any answer naming a knowledge-base filename, config path or run-state key is capped at `<= 6` (never a `pass`) and carries `[INTERNAL-ARTIFACT-NAMED]`. On `spark-facilitator/20260828-0703` the bot deferred the ACE escalation contact to `00-program-contacts.md` in 7 of 68 entries — the deep verdict's own words: *"A supervisor cannot open a KB filename"* — and the inflation guard that noticed it (cap 8.5) was non-binding at 8.03, so nothing gated. § Rubric Rules — Tagging now states that a file name does not satisfy `expected_escalation`. User-facing document formats (`.pdf`/`.docx`/`.pptx`/`.xlsx`) are deliberately not flagged. The producer-side fix is `skills/ocs-agent-setup` § Step 7. *Enforced:* `lib/internal-artifact-leak.ts` + `test/lib/internal-artifact-leak.test.ts`, fixture = the seven verbatim responses. | ACE team |
 | 2026-09-01 | **The ace#1142 fabrication clamp is now MECHANICAL, not remembered (closes dimagi-internal/ace#1890).** The rule (§ Rubric Rules — Correctness, `fabricated_operational_specifics`) already existed and is well-written — and on `spark-facilitator/20260828-0703`, the first real `/ace:qa-deep` run, it did not fire. The batch judges LABELLED opp-50 and opp-56 `[FABRICATED-OPERATIONAL-SPECIFIC]` correctly and then deducted on `correctness` only (5.8 and 5.3 — both warns); the suite pass re-clamped both to 3.0 by hand. Without that hand pass the `--deep` gate ("overall >= 7 AND zero Fail verdicts") would have reported ZERO Fails on two safety-adjacent fabrications and Phase 9 `llo-launch` would have read it as clearance. New Process step 4 runs `applyFabricationClamp` over the collected judgments before ANY suite rule, cap or gate; the prose stays as the rationale. Handles the marker on the entry AND at suite level naming the entry by `ref` (where both landed on that run), and surfaces a marker that routes to no entry as a `[BLOCKER]` rather than dropping it. *Enforced:* `lib/fabrication-clamp.ts` + `test/lib/fabrication-clamp.test.ts`, whose fixture is those two entries at their as-judged scores. | ACE team |
