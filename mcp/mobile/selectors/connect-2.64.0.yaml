@@ -500,3 +500,136 @@ selectors:
     value: "TAKE PICTURE"
     unverified: true
     purpose: "In-form image-capture entry button. Mirrors camera-take-photo; see that row's note about the rebuilt 2.64.0 camera surface. NOT re-observed on 2.64.0."
+
+  # ── Deliver-side surfaces ──────────────────────────────────────
+  deliver-opp-detail-view-button:
+    type: id
+    value: "org.commcare.dalvik:id/connect_learning_button"
+    unverified: true
+    purpose: "Primary action on the post-Learn-completion opp-detail ('VIEW OPPORTUNITY DETAILS' / 'DOWNLOAD LEARN APP'). Live-verified on 2.63.0 (2026-05-26); NOT re-observed on 2.64.0 — the walk resumed an opp whose Learn was already complete and whose Deliver CCZ downloaded without passing through this gate."
+
+  deliver-download-button:
+    type: id
+    value: "org.commcare.dalvik:id/connect_delivery_button"
+    unverified: true
+    purpose: "'DOWNLOAD' on the Download Delivery gate. Live-verified on 2.63.0 (2026-05-26); NOT re-observed on 2.64.0 — btn_resume went straight to the installed-app fast path."
+
+  deliver-details-title:
+    type: id
+    value: "org.commcare.dalvik:id/connect_delivery_title"
+    purpose: "'Delivery Details' heading. Live-verified 2026-09-06 (2.64.0), 36-opp-detail.xml — inside connect_delivery_details_container on the opportunity-detail bottom sheet, alongside connect_review 'Review the delivery details' and the four value rows connect_delivery_total_visits_text ('200 maximum Visits'), connect_delivery_days_text ('3 Days to complete'), connect_delivery_max_daily_text ('Maximum visits per day 20'), connect_delivery_budget_text ('Earn up to 1 USD for visit'). Sound as a structural 'am I on the delivery-details surface?' assertion; note it renders on the VIEW-INFO sheet as well as on the download gate, so it does not by itself say which one."
+
+  deliver-action-title:
+    type: id
+    value: "org.commcare.dalvik:id/connect_delivery_action_title"
+    unverified: true
+    purpose: "Action-card title 'Start Visit' on the Download Delivery gate. Live-verified on 2.63.0 (2026-05-26); NOT re-observed on 2.64.0 — absent from the view-info sheet, which is expected, since that sheet is not the gate."
+
+  deliver-action-details:
+    type: id
+    value: "org.commcare.dalvik:id/connect_delivery_action_details"
+    unverified: true
+    purpose: "Action-card details 'Download Delivery' on the Download Delivery gate. Live-verified on 2.63.0 (2026-05-26); NOT re-observed on 2.64.0, same reason as deliver-action-title."
+
+  deliver-certificate-container:
+    type: id
+    value: "org.commcare.dalvik:id/connect_learning_certificate_container"
+    unverified: true
+    purpose: "Certificate section on the post-Learn-pass opp-detail; a structural marker for 'Learn complete'. Live-verified on 2.63.0 (2026-05-26); NOT re-observed on 2.64.0."
+
+  deliver-home-job-card:
+    type: id
+    value: "org.commcare.dalvik:id/viewJobCard"
+    purpose: "Project card on StandardHomeActivity. Live-verified 2026-09-06 (2.64.0), 37-after-resume.xml — [37,320][1043,708], holding tv_job_title, tv_job_description, rdDeliveryTypeList and connect_job_end_date. NOT A LEARN-VS-DELIVER DIFFERENTIATOR (#893): it renders on both homes. Safe only as a 'we are on SOME StandardHomeActivity' anchor; use deliver-home-daily-visits to tell the two apart."
+
+  deliver-suite-menu:
+    type: id
+    value: "org.commcare.dalvik:id/(screen_suite_menu_list|grid_menu_grid)"
+    purpose: "Deliver-app MenuActivity suite-menu CONTAINER — the same generic containers as learn-suite-menu, display-mode-agnostic for the same reason (ace#1127). Live-verified 2026-09-06 (2.64.0), 38-suite-menu.xml + 39-after-module-tap.xml: this walk descended a DELIVER app's menu, so the grid branch is verified on the Deliver side specifically. The list branch is carried from 2.63.x."
+
+  deliver-home-daily-visits:
+    type: text
+    value: "Daily Visits"
+    purpose: "THE Learn-vs-Deliver differentiator on the StandardHomeActivity job card (#893). Live-verified 2026-09-06 (2.64.0), 37-after-resume.xml — and this capture UPGRADES the row's provenance: the 2.63.0 evidence was a PNG diff with no resource-id, whereas this is a ui-dump showing the row is org.commcare.dalvik:id/tv_primary_visit_title, inside rdDeliveryTypeList, beside tv_primary_visit_count ('0/20') and lp_primary_visit_progress. The text anchor still works; an id anchor is now available if the English-locale caveat ever bites. Caveat (b) is unchanged: presence depends on the opp declaring a daily max visit count."
+
+  deliver-home-job-title:
+    type: id
+    value: "org.commcare.dalvik:id/tv_job_title"
+    purpose: "Project name on the home project card. Live-verified 2026-09-06 (2.64.0), 37-after-resume.xml — text matched the opportunity's Connect display name."
+
+  deliver-home-job-description:
+    type: id
+    value: "org.commcare.dalvik:id/tv_job_description"
+    purpose: "Project description on the home project card. Live-verified 2026-09-06 (2.64.0), 37-after-resume.xml."
+
+  # ── Case list (EntitySelectActivity) ───────────────────────────
+  # NONE of the five rows below were re-observed on 2.64.0. The form this
+  # walk entered was a REGISTRATION form, not a followup, so CommCare
+  # never interposed a case list. All five were live-captured together on
+  # 2026-08-01 against 2.63.2 from one real followup case list; the ids
+  # are all still present in 2.64.0's resource table. The trap they
+  # encode is unchanged and still applies: the header strip and the data
+  # rows share the cell id `entity_view_text`, so always scope a row
+  # match to case-list-container.
+  case-list-container:
+    type: id
+    value: "org.commcare.dalvik:id/screen_entity_select_list"
+    unverified: true
+    purpose: "The case-list ListView on EntitySelectActivity. Live-captured on 2.63.2 (2026-08-01, ace#1138 Gap 2); NOT re-observed on 2.64.0 — no followup form was walked. The ONLY sound scope for a row tap. Its trailing SEARCH action_card is INSIDE the container, so scoping alone does not make a positional tap safe: match the row by case name."
+
+  case-list-header:
+    type: id
+    value: "org.commcare.dalvik:id/entity_select_header"
+    unverified: true
+    purpose: "Column-header strip above the case rows — a SIBLING of case-list-container, not a child, which is what makes `childOf: case-list-container` a sound exclusion. Named so it is addressable as an ANTI-TARGET. Live-captured on 2.63.2; NOT re-observed on 2.64.0."
+
+  case-list-detail-container:
+    type: id
+    value: "org.commcare.dalvik:id/entity_detail"
+    unverified: true
+    purpose: "The per-case DETAIL confirmation screen interposed between the row tap and the form when the module declares a case-list `details` block — which every ACE-built Deliver module does. Live-captured on 2.63.2; NOT re-observed on 2.64.0. Discovering this is why ace#1138 Gap 2 forbade transcribing a case-list recipe from a sibling APK."
+
+  case-list-detail-continue:
+    type: id
+    value: "org.commcare.dalvik:id/entity_select_button"
+    unverified: true
+    purpose: "CONTINUE on the case DETAIL confirmation — the step that actually enters the followup form. Live-captured on 2.63.2 at [0,283][1080,409], pinned directly UNDER THE TOOLBAR rather than at the bottom of the screen. NOT re-observed on 2.64.0."
+
+  case-list-row-cell:
+    type: id
+    value: "org.commcare.dalvik:id/entity_view_text"
+    unverified: true
+    purpose: "Per-column cell TextView inside a case-list row. Present in BOTH the header strip and every data row — never match it unscoped. The cell is not clickable; the clickable node is the row LinearLayout two levels up. Live-captured on 2.63.2; NOT re-observed on 2.64.0."
+
+  # ── Not reached on any APK version to date ─────────────────────
+  # These four were already unverified on 2.63.2 and remain so. They are
+  # not 2.64.0 regressions; they have simply never been walked.
+  opp-detail-start-delivering:
+    type: text
+    value: "Start Delivering"
+    unverified: true
+    purpose: "Start Delivering on the post-Learn-completion opp-detail. UNREACHED on 2.62.0, 2.63.x and 2.64.0."
+
+  form-submit:
+    type: text
+    value: "Submit"
+    unverified: true
+    purpose: "Generic Submit on a final form screen. Plain Learn AND plain Deliver forms both AUTO-FINALIZE via nav_btn_next on the last question, so this button's ABSENCE is EXPECTED, not a coverage gap. Kept as a defensive branch; recipes must check `form-submit visible?` and fall through to form-nav-next."
+
+  assessment-result-passed:
+    type: text
+    value: "Passed"
+    unverified: true
+    purpose: "Result indicator after a Learn Final Assessment scores at or above the passing threshold. UNREACHED on every APK version to date."
+
+  assessment-result-failed:
+    type: text
+    value: "Try Again"
+    unverified: true
+    purpose: "Retake button on a failed assessment. UNREACHED on every APK version to date."
+
+  deliver-start-button:
+    type: text
+    value: "Start Delivering"
+    unverified: true
+    purpose: "Deliver-side entry from the post-Learn opp-detail; a recipe-named alias of opp-detail-start-delivering. UNREACHED on every APK version to date. If a walk ever confirms it, this row should collapse into a pure alias."
