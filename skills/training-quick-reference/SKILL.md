@@ -127,10 +127,18 @@ To raise it formally: **GRM** in the app menu
    Immediately after the render, write the EXACT bytes you just passed to
    `drive_create_doc_from_markdown` to
    `ACE/<opp>/runs/<run-id>/6-qa-and-training/training-quick-reference.source.md` via
-   `drive_create_file` with `mimeType: 'text/markdown'`. **NOT
-   `drive_create_doc_from_markdown`** — rendering the source copy converts it
-   to a Doc as well and destroys the very bytes this step exists to preserve,
-   which reproduces the defect while looking like the fix.
+   `drive_upload_binary` with `mimeType: 'text/markdown'` — the same atom
+   `skills/_training-template.md` prescribes. **NOT
+   `drive_create_doc_from_markdown`**, which renders the source copy into a
+   Doc and destroys the very bytes this step exists to preserve; and **NOT
+   `drive_create_file`**, which does exactly the same thing while LOOKING like
+   the safe choice. `drive_create_file` always creates a Google Doc and has no
+   `mimeType` to change that — the key used to be dropped by its schema, so
+   this step produced a second rendered Doc and the DOC-FIDELITY check compared
+   one Doc against another built by the same importer (ace#1991). It now
+   refuses the key and names this call. `drive_upload_binary` uses Drive's
+   media-upload path, so the file lands as `text/markdown` and
+   `drive_read_file` returns it verbatim.
 
    Why it is not optional: the renderer CONSUMES its input. Once the Doc
    exists the markdown you composed exists nowhere, and the `.md` in the
@@ -231,3 +239,4 @@ the composed markdown before writing and rewrite any finding.
 ## Change Log
 
 - v1 (0.10.84): Initial skill. Owns `training-quick-reference.md` only.
+- 2026-09-06: **The `.source.md` companion goes through `drive_upload_binary`, not `drive_create_file` (ace#1991).** `drive_create_file` ALWAYS creates a Google Doc; it has no `mimeType` that changes that, and the key a caller passed to try was dropped by the MCP schema. So this step produced a SECOND rendered Doc and `run-surface-audit`'s `DOC-FIDELITY-UNVERIFIED` compared one Doc against another built by the same importer — passing structurally while unable to detect the content loss it exists to catch. Measured on `poverty-graduation/20260905-0924`: 57,178 bytes sent, 58,470 read back, every `#`/`**`/`>`/pipe-table marker gone. `skills/_training-template.md` had prescribed `drive_upload_binary` since 2026-09-01; the six producers had not followed it. `drive_create_file` now REFUSES a `mimeType` and names the `drive_upload_binary` call in the refusal. *Enforced:* `test/lib/source-persisted-artifacts.test.ts` + `test/mcp/gdrive/create-file-mimetype.test.ts`.
