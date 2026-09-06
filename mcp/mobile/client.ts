@@ -262,9 +262,21 @@ export function mergeTestUserOverride(
  * selector baseline is verified and promoted.
  *
  * 2.63.2 promoted 2026-07-25 after a live drift check on ACE_Pixel_API_34
- * (see the header of `selectors/connect-2.63.2.yaml`). NOTE: pin only
- * PUBLISHED releases — at time of writing `commcare_2.63.3` exists as a
- * GitHub DRAFT with no assets, so pinning it fails the download outright.
+ * (see the header of `selectors/connect-2.63.2.yaml`).
+ *
+ * NOTE: pin only releases that actually carry an `.apk` ASSET — which is a
+ * strictly stronger test than "published", and the reason the older wording
+ * here was unsafe. This comment used to say `commcare_2.63.3` was a GitHub
+ * DRAFT; re-checked 2026-09-06, that is FALSE:
+ *
+ *   $ gh release view commcare_2.63.3 -R dimagi/commcare-android \
+ *       --json isDraft,isPrerelease,assets
+ *   {"isDraft":false,"isPrerelease":false,"assets":["app-lts-release.aab"]}
+ *
+ * It is published — but its only asset is an `.aab` (an Android App Bundle,
+ * which `adb install` cannot take), so pinning it still fails, for a
+ * different reason. Anyone re-deriving the old claim from `isDraft` would
+ * read `false` and pin it. Check for an `.apk` asset, not for `isDraft`.
  */
 export const DEFAULT_APK_VERSION = '2.63.2';
 export function getConfiguredApkVersion(): string {
@@ -1465,14 +1477,29 @@ export class MobileClient {
       // Not cached — fall through to download.
     }
 
-    // Dimagi has renamed the release asset at least three times:
-    //   2.62.0        → `app-commcare-release.apk`
-    //   2.63.0/2.63.1 → `commcare-<v>-release.apk`
-    //   2.63.2+       → `commcare-<v>.apk`        (the `-release` suffix dropped)
-    // Probe newest-convention-first and fall back, so both older pins and
-    // future re-renames keep working without a code change. The 2.63.2
-    // form was missing here until 2026-07-25, which made pinning 2.63.2
-    // fail with APK_DOWNLOAD_FAILED even though the release was published.
+    // Dimagi has renamed the release asset repeatedly, and NOT monotonically
+    // — the naming is per-release, so it cannot be predicted from the version:
+    //   2.62.0          → `app-commcare-release.apk`
+    //   2.63.0 / 2.63.1 → `commcare-<v>-release.apk`
+    //   2.63.2          → `commcare-<v>.apk`      (the `-release` suffix dropped)
+    //   2.64.0          → `app-commcare-release.apk`   ← REVERTED to the 2.62.0 form
+    //
+    // That last row is why this list is a probe rather than a lookup. The
+    // comment here used to read "2.63.2+ → commcare-<v>.apk", which implied
+    // the newest convention always wins; measured 2026-09-06 against the live
+    // release, it does not:
+    //
+    //   $ B=https://github.com/dimagi/commcare-android/releases/download/commcare_2.64.0
+    //   $ curl -o /dev/null -w '%{http_code}' -L $B/commcare-2.64.0.apk          # 404
+    //   $ curl -o /dev/null -w '%{http_code}' -L $B/commcare-2.64.0-release.apk  # 404
+    //   $ curl -o /dev/null -w '%{http_code}' -L $B/app-commcare-release.apk     # 200
+    //
+    // So 2.64.0 resolves only on the THIRD candidate. Probe every convention
+    // and fall back, so both older pins and future re-renames keep working
+    // without a code change. The 2.63.2 form was missing here until
+    // 2026-07-25, which made pinning 2.63.2 fail with APK_DOWNLOAD_FAILED
+    // even though the release was published — the same class, one rename
+    // earlier. Never shorten this list to "the current convention".
     const baseUrl = `https://github.com/dimagi/commcare-android/releases/download/commcare_${version}`;
     const candidateUrls = [
       `${baseUrl}/commcare-${version}.apk`,

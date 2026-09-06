@@ -95,7 +95,24 @@ times, and `mcp/mobile/client.ts` probes the three known conventions in order:
 |---|---|
 | 2.62.0 | `app-commcare-release.apk` |
 | 2.63.0 / 2.63.1 | `commcare-<v>-release.apk` |
-| 2.63.2+ | `commcare-<v>.apk` |
+| 2.63.2 | `commcare-<v>.apk` |
+| 2.64.0 | `app-commcare-release.apk` — **reverted to the 2.62.0 form** |
+
+**The naming is per-release and NON-MONOTONIC. Do not infer it from the
+version.** This table used to end `| 2.63.2+ | commcare-<v>.apk |`, which
+implied newest-convention-always-wins. Measured 2026-09-06, that is false —
+2.64.0 went back to the oldest form, and resolves only on the THIRD candidate:
+
+```bash
+B=https://github.com/dimagi/commcare-android/releases/download/commcare_2.64.0
+curl -o /dev/null -w '%{http_code}\n' -L $B/commcare-2.64.0.apk          # 404
+curl -o /dev/null -w '%{http_code}\n' -L $B/commcare-2.64.0-release.apk  # 404
+curl -o /dev/null -w '%{http_code}\n' -L $B/app-commcare-release.apk     # 200
+```
+
+So every convention stays in the probe list forever; a cleanup that drops
+"legacy" forms would break the CURRENT pin. *Enforced:*
+`test/mcp/mobile/apk-asset-conventions.test.ts`.
 
 The 2.63.2 form was missing from that probe list until 2026-07-25, so pinning a
 **published** release failed with `APK_DOWNLOAD_FAILED`. A pin whose asset does
@@ -110,13 +127,29 @@ gh release view "commcare_<new>" -R dimagi/commcare-android \
 Halt unless ALL of:
 
 - the tag exists (a 404 here is the whole finding — do not proceed),
-- `isDraft` is `false` — **a draft release has no assets.** `mcp/mobile-server.ts`
-  records `2.63.3` as exactly this: a GitHub draft. Pin PUBLISHED releases only,
-- at least one asset name matches one of the three conventions above.
+- **at least one asset name ends in `.apk`.** This is the real test, and it is
+  strictly stronger than "is it published".
+- at least one `.apk` asset matches one of the conventions above.
 
-If the asset matches NONE of them, Dimagi renamed it a fourth time: add the new
-form to the `candidateUrls` list in `mcp/mobile/client.ts` (newest-convention
-first) **in this PR**, with a test, before continuing.
+**Do NOT gate on `isDraft` alone.** This step used to say *"a draft release has
+no assets — `mcp/mobile-server.ts` records 2.63.3 as exactly this: a GitHub
+draft."* Re-checked 2026-09-06, that is **false**:
+
+```bash
+$ gh release view commcare_2.63.3 -R dimagi/commcare-android \
+    --json isDraft,isPrerelease,assets
+{"isDraft":false,"isPrerelease":false,"assets":["app-lts-release.aab"]}
+```
+
+2.63.3 is *published*; its only asset is an `.aab` (an App Bundle, which
+`adb install` cannot take). So it is still unpinnable — for a different reason
+than the one recorded. Anyone re-deriving the old rule would read
+`isDraft: false` and pin it. **The `.apk`-asset check catches both cases; the
+draft check catches neither reliably.**
+
+If no asset matches any known convention, Dimagi renamed it again: add the new
+form to the `candidateUrls` list in `mcp/mobile/client.ts` **in this PR**, with
+a row in `OBSERVED_CONVENTIONS` in the test above, before continuing.
 
 ### Step 2 — Seed the new map and calibrate it against a live device
 
@@ -167,19 +200,50 @@ During an upgrade, add:
 1. Rows in `connect-<new>.yaml`: `commcare-version-prompt-title`,
    `commcare-version-update-later` (`.../do_later_button`),
    `commcare-version-update-now` (`.../action_button`).
-2. A guarded `runFlow when visible: <version-prompt-title>` that taps
-   `do_later_button`, in `connect-claim-opp.yaml`, `learn-launch.yaml` and
-   `deliver-launch.yaml`, ahead of the `nsv_home_screen` assertion.
-3. Its own capture label, so the two causes are never conflated again.
+2. A guarded `runFlow when visible: <version-prompt-title>` in
+   `connect-claim-opp.yaml`, `learn-launch.yaml` and `deliver-launch.yaml`,
+   ahead of the `nsv_home_screen` assertion, that **captures under its own
+   label and fails** — see the next paragraph.
+3. Its own capture label, so the two causes are never conflated again. In
+   `connect-claim-opp.yaml` the `...issue629` capture must ALSO become guarded
+   on `notVisible: <version-prompt-title>`; adding the new branch without
+   excluding the old one leaves both reachable on the same screen.
 
-**Validate the branch on-device in this session** — it changes what is *matched
-against* the device, so it is device-truth by CLAUDE.md's classification test.
-Stage it via `ACE_MOBILE_STATIC_RECIPES_DIR=<repo>/mcp/mobile/recipes/static`
-plus a full Claude Code restart (`playbook/integrations/mobile-integration.md
-§ Validating a palette fix pre-merge`) — a palette staged *next to* the recipe
-is shadowed by the palette dir and silently unused. If you cannot reach a
-device, merge with the residual **named in the PR** (CLAUDE.md § the device gate
-is a PREFERENCE), and say exactly what would falsify it.
+**RECOGNISE the gate; do NOT dismiss it.** This step originally said the branch
+should *tap `do_later_button`*. Implemented 2026-09-06 (ace#1998) as
+recognise-and-fail instead, deliberately:
+
+- That `do_later_button` **exists** is recorded device evidence. What
+  dismissing it then **permits** is not — no ACE run has observed the
+  post-dismiss state. "The gate is soft, so a walk need not die here" is an
+  inference from the button's presence, not an observation, and encoding it
+  is the mirror image of the thing CLAUDE.md § *a guard that PREDICTS another
+  system's rejection must cite a reproducer* forbids.
+- If dismissing *does* let the walk proceed, it proceeds on a runtime the CCZ
+  itself declares unsupported — and Phase 6 then mints screenshots, QA
+  verdicts and a training deck from it. **False green is worse than a clean
+  halt.** That is the CLAUDE.md "correctness-skip" footgun: reading one
+  system's signal and declining to act on a transition a later step depends on.
+- The gate is the authoritative signal that the pin is wrong. Auto-dismissing
+  suppresses the single loudest correct message in the system.
+
+Revisit ONLY with an on-device observation of the post-dismiss state. Until
+then the remedy is the pin (ace#1997), and the value delivered here is that
+the failure is **named correctly** — which was the whole of ace#1998's
+complaint.
+
+**Evidence class for this step.** The selector VALUES are device truth (take
+them from a real ui-dump; the ace#1998 body carries one for 2.63.2). Which
+branch a guard selects and how a capture is NAMED are static structure — a
+unit test over the recipe YAML is complete evidence for those, and
+`test/mcp/mobile/version-gate-recognition.test.ts` is that test. If you extend
+this to *tap* anything, the tap is device truth again: stage it via
+`ACE_MOBILE_STATIC_RECIPES_DIR=<repo>/mcp/mobile/recipes/static` plus a full
+Claude Code restart (`playbook/integrations/mobile-integration.md § Validating
+a palette fix pre-merge`) — a palette staged *next to* the recipe is shadowed
+by the palette dir and silently unused. If you cannot reach a device, merge
+with the residual **named in the PR** (CLAUDE.md § the device gate is a
+PREFERENCE), and say exactly what would falsify it.
 
 Note this is a **mitigation**. The root cause of the gate is the CCZ-vs-APK
 mismatch in dimagi-internal/ace#1997.
@@ -396,7 +460,9 @@ The upgrade is designed to be reversible because the old map is never deleted.
 
 - **Pinning a version whose asset does not resolve.** `APK_DOWNLOAD_FAILED` on a
   published release, because Dimagi renamed the asset again (the 2.63.2 case).
-  Step 1 is the guard; a GitHub **draft** release (2.63.3) has no assets at all.
+  Step 1 is the guard, and it gates on an `.apk` ASSET, not on `isDraft` —
+  2.63.3 is published but ships only an `.aab` (verified 2026-09-06), so a
+  draft-only check would have waved it through.
 - **Transcribing the map from the sibling version.** The 2.63.0 placeholder
   problem (#591/#593). The copy is a scaffold; calibration is the answer.
 - **Flipping some pins and not others.** `mobile_resolve_selectors` then reads a
@@ -419,4 +485,5 @@ The upgrade is designed to be reversible because the old map is never deleted.
 
 | Date | Change | Author |
 |------|--------|--------|
+| 2026-09-06 | First execution pass (ace#1997/#1998). Corrected three premise errors the skill would have propagated: the asset-convention table implied newest-wins (2.64.0 REVERTED to the 2.62.0 name — measured, now a 4th row + `test/mcp/mobile/apk-asset-conventions.test.ts`); Step 1 gated on `isDraft` (2.63.3 is published with an `.aab`-only asset, so the real test is "has an `.apk` asset"); and Step 2b prescribed TAPPING `do_later_button` (changed to recognise-and-fail — the button's existence is recorded evidence, what dismissing permits is not, and a dismissed gate risks false-green Phase 6 artifacts). Also split the `...issue629` capture so both causes cannot be reachable on one screen. | ACE team |
 | 2026-09-05 | Initial version. Authored because the previous APK upgrade had no explicit update-version step, so pin sites were missed and nothing verified the new version end-to-end. Orchestrates `selector-map-calibrate`; adds the pin flip, the ace#1998 version-prompt coverage, the activation ORDER, the verification checklist, and rollback. Pin-site enumeration is machine-discovered by `lib/apk-pin-sites.ts` + `test/lib/apk-pin-sites.test.ts`, so this checklist cannot silently rot. | ACE team |

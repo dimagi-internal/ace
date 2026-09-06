@@ -540,12 +540,70 @@ appId: org.commcare.dalvik
             notVisible:
               id: "${SELECTOR:learn-home-screen}"
           commands:
-            - takeScreenshot: "claim-START-HANDOFF-WEDGED-issue629"
-            # Fails loudly now that the diagnostic is captured — the
-            # screenshot name + this assert pinpoint the inert btn_start
-            # handoff (jjackson/ace#629), not a slow download.
-            - assertVisible:
-                id: "${SELECTOR:learn-home-screen}"
+            #
+            # Split the two causes that present IDENTICALLY here (ace#1998).
+            #
+            # Reaching this point means only "no Learn home rendered". Two
+            # very different things produce that, and until ace#1998 both
+            # were captured as `...issue629`, which sent three triages at
+            # the wrong system:
+            #
+            #   (a) CommCare's VERSION GATE — the handoff worked, the app
+            #       launched, and CommCare refused to open a CCZ whose
+            #       profile.ccpr requires a newer runtime than the pinned
+            #       APK. Root cause ace#1997; remedy is repinning.
+            #   (b) The #629 INERT HANDOFF — btn_start never fired
+            #       POST /users/start_learn_app/, so nothing was ever
+            #       downloaded. Remedy is `connect_preflight_learn_app_user`.
+            #
+            # Probe (a) first: it is positively identifiable from a single
+            # resource-id, whereas (b) is only ever diagnosed by exclusion.
+            #
+            # WHY THIS RECOGNISES BUT DOES NOT DISMISS THE GATE.
+            # `commcare-version-update-later` ("I'LL UPDATE LATER") is
+            # mapped, and tapping it here would be one line. We deliberately
+            # do not:
+            #   1. That the button EXISTS is recorded device evidence. What
+            #      dismissing it then PERMITS is not — no ACE run has ever
+            #      observed the post-dismiss state. Encoding "the gate is
+            #      soft" would be a prediction about CommCare's behaviour
+            #      with no reproducer, which CLAUDE.md § "a guard that
+            #      PREDICTS another system's rejection must cite a
+            #      reproducer" forbids in the mirror case.
+            #   2. If dismissing DOES let the walk proceed, it proceeds on a
+            #      runtime the CCZ itself declares unsupported — and Phase 6
+            #      would then mint screenshots, QA verdicts and a training
+            #      deck from it. False green is strictly worse than a clean
+            #      halt; that is the CLAUDE.md "correctness-skip" footgun.
+            #   3. The gate is the authoritative signal that the pin is
+            #      wrong. Auto-dismissing suppresses the one loud, correct
+            #      message the system is sending.
+            # So: name it precisely, fail fast, and let ace#1997 fix the
+            # cause. Revisit only with an on-device observation of the
+            # post-dismiss state.
+            - runFlow:
+                when:
+                  visible:
+                    id: "${SELECTOR:commcare-version-prompt-title}"
+                commands:
+                  - takeScreenshot: "claim-BLOCKED-commcare-version-gate-issue1997"
+                  # Fails loudly with the gate still on screen. The
+                  # screenshot name + this assert name the CCZ-vs-APK
+                  # mismatch, NOT the #629 wedge.
+                  - assertNotVisible:
+                      id: "${SELECTOR:commcare-version-prompt-title}"
+            # Not the version gate → the genuine #629 signature.
+            - runFlow:
+                when:
+                  notVisible:
+                    id: "${SELECTOR:commcare-version-prompt-title}"
+                commands:
+                  - takeScreenshot: "claim-START-HANDOFF-WEDGED-issue629"
+                  # Fails loudly now that the diagnostic is captured — the
+                  # screenshot name + this assert pinpoint the inert btn_start
+                  # handoff (jjackson/ace#629), not a slow download.
+                  - assertVisible:
+                      id: "${SELECTOR:learn-home-screen}"
       #
       # Already-Learn-complete, Deliver-app-INSTALLED branch (#863).
       #
