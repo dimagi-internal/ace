@@ -60,6 +60,7 @@ import {
   checkArchetypeConsistency,
   type ArchetypeCheckRow,
 } from './decisions-archetype-consistency.js';
+import { buildOcsPublicChatUrl } from './ocs-public-chat-url.js';
 
 // ── Finding model ──────────────────────────────────────────────────
 
@@ -1498,6 +1499,130 @@ export function auditDeepQaParity(
     }
   }
   return out;
+}
+
+// ── The support assistant: an invitation the page cannot honour ────
+
+/**
+ * The anonymous chat URL derivable from the assistant block ALONE (ace#1839).
+ *
+ * The team slug is not served as its own field, but the admin URL is
+ * `/a/<team_slug>/chatbots/<experiment_id>/`, so it is right there in the
+ * payload every anonymous reader already receives — alongside `public_id`.
+ * Nothing is acquired here; the value is reconstructed from what the page is
+ * already serving. Returns `null` when it genuinely cannot be derived, which is
+ * a different finding from "derivable and withheld".
+ */
+export function derivePublicChatUrl(assistant: unknown): string | null {
+  if (!assistant || typeof assistant !== 'object') return null;
+  const a = assistant as Record<string, unknown>;
+  const publicId = typeof a.public_id === 'string' ? a.public_id : '';
+  const adminUrl = typeof a.ocs_url === 'string' ? a.ocs_url : '';
+  if (!publicId || !adminUrl) return null;
+  try {
+    const u = new URL(adminUrl);
+    const m = u.pathname.match(/^\/a\/([^/]+)\//);
+    if (!m) return null;
+    return buildOcsPublicChatUrl({ baseUrl: u.origin, teamSlug: m[1], publicId });
+  } catch {
+    return null;
+  }
+}
+
+/** Does this URL point at OCS's anonymous `start/` route rather than the console? */
+function isPublicChatUrl(url: string): boolean {
+  try {
+    return /\/chatbots\/[^/]+\/start\/?$/.test(new URL(url).pathname);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * The support assistant is the ONE thing a run produces that an outside
+ * reviewer can actually use without being granted anything — and the page
+ * offers them the console (ace#1839).
+ *
+ * Rendered anonymously, `hh-poverty-targeting/20260828-0702` reads:
+ *
+ *     SUPPORT ASSISTANT
+ *     Ask questions about this opportunity. It was given the program design
+ *     document, the training pack (…), the Learn and Deliver app structure
+ *     summaries, …
+ *     View in OCS                                              ADMIN ONLY
+ *
+ * and the one affordance under that invitation is:
+ *
+ *     $ curl -sIL https://www.openchatstudio.com/a/connect-ace/chatbots/13029/
+ *     200 -> https://www.openchatstudio.com/accounts/login/?next=/a/connect-ace/chatbots/13029/
+ *
+ * while the run's OWN anonymous chat surface answers 200 with a live chat page
+ * (11,755 bytes, cookie jar carried through the 302 — see
+ * `lib/ocs-public-chat-url.ts` for why a cookieless probe reads 404 on a
+ * working bot).
+ *
+ * ## Why this is a finding and not a product decision
+ *
+ * Whether an un-authed reader should be able to drive LLM spend on a per-opp
+ * bot is a REAL product call, and this check does not make it. What it refuses
+ * to certify is narrower and true either way: **the page invites the reader to
+ * do something and offers only a link they cannot open.** Both remedies clear
+ * it — surface the public URL, or stop inviting — and the finding names both.
+ *
+ * ## Why nothing caught it
+ *
+ * `auditCompleteness` keys on section PRESENCE, and the `assistant` section is
+ * present. `auditLinks` checks each link against its own `access` tag, and
+ * `admin` is an honest tag for the console. Every check was individually right;
+ * none of them was looking at the gap between the invitation and the affordance.
+ * That is this week's dominant class — a check that runs, answers reassuringly,
+ * and is structurally incapable of noticing the problem.
+ *
+ * Self-retiring: the moment the payload carries any URL on OCS's anonymous
+ * `start/` route, this returns nothing.
+ */
+export function auditAssistantAccess(payload: unknown): Finding[] {
+  if (!payload || typeof payload !== 'object') return [];
+  const assistant = (payload as Record<string, unknown>).assistant;
+  if (!assistant || typeof assistant !== 'object') return []; // absence is auditCompleteness's job
+  const a = assistant as Record<string, unknown>;
+
+  // Already fixed: a public chat route is on the page somewhere.
+  const urls = Object.entries(a)
+    .filter(([k, v]) => typeof v === 'string' && (k === 'url' || /(_url|_link)$/.test(k)))
+    .map(([, v]) => v as string);
+  if (urls.some(isPublicChatUrl)) return [];
+  if (!urls.length) return []; // nothing offered at all — MISSING-ARTIFACT's job
+
+  const declared = typeof a.access === 'string' ? a.access : null;
+  if (declared !== null && declared !== 'admin') return [];
+
+  const derived = derivePublicChatUrl(a);
+  return [
+    {
+      code: 'ASSISTANT-PUBLIC-URL-WITHHELD',
+      severity: 'misleading',
+      where: 'assistant',
+      detail:
+        `the page invites the reader to ask questions about this opportunity and the only link ` +
+        `under that invitation is ${urls[0]}, which is ${declared === 'admin' ? 'tagged `admin`' : 'the OCS console'} ` +
+        `and redirects an outsider to /accounts/login/. ` +
+        (derived
+          ? `The run stood up an anonymous chat surface and the page is ALREADY serving everything ` +
+            `needed to name it — ${derived} is derivable from \`public_id\` plus the team slug in ` +
+            `\`ocs_url\`. The support assistant is the one artifact of this run an outsider could ` +
+            `use without being granted anything, and it is the one being withheld`
+          : `and no anonymous chat URL is derivable from the payload, so the reader has no way to ` +
+            `accept the invitation at all`),
+      fix:
+        'either render the public chat link (`access: public`) beside the console link in ace-web ' +
+        '`apps/opps/summary.py`, or change the copy so the page stops inviting a reader to use ' +
+        'something it only shows to admins. Surfacing it is a PRODUCT call (an un-authed reader ' +
+        'drives LLM spend on the per-opp bot, and the widget is not rate-limited) — this finding ' +
+        'does not make that call, it refuses to certify a page that promises what it does not deliver',
+      defect: '1839',
+    },
+  ];
 }
 
 /**

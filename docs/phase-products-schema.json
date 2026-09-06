@@ -555,6 +555,10 @@
                     "type": "string",
                     "format": "uri"
                   },
+                  "public_url": {
+                    "type": "string",
+                    "format": "uri"
+                  },
                   "experiment_id": {
                     "type": [
                       "string",

@@ -44,7 +44,9 @@ import {
   auditReviewerMembership,
   auditUnresolvedMemberGates,
   applyRenderedGates,
+  auditAssistantAccess,
   canonicalDocUrl,
+  derivePublicChatUrl,
   classifyLink,
   collectUrls,
   GATE_TEXT_MAX_CHARS,
@@ -1628,5 +1630,114 @@ describe('ace#1868 — the render pass is bounded, and silence never upgrades a 
     expect(
       applyRenderedGates([gated], [{ url: WORKBENCH_URL, status: 200, finalUrl: WORKBENCH_URL, text: 'a lovely page' }])[0].cls,
     ).toBe('PRIVATE-DELIVERABLE');
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════
+// ace#1839 — the page invites the reader to ask questions and offers
+// only a link they cannot open.
+//
+// Rendered anonymously, hh-poverty-targeting/20260828-0702 reads
+// "SUPPORT ASSISTANT / Ask questions about this opportunity … /
+// View in OCS  ADMIN ONLY", and that link answers (2026-09-06):
+//
+//   $ curl -sIL https://www.openchatstudio.com/a/connect-ace/chatbots/13029/
+//   200 -> https://www.openchatstudio.com/accounts/login/?next=/a/connect-ace/chatbots/13029/
+//
+// while the run's own anonymous chat surface answers 200 with a live
+// chat page (11,755 bytes, cookie jar carried through the 302).
+//
+// Nothing caught it: auditCompleteness keys on section PRESENCE and the
+// section is present; auditLinks checks a link against its own access
+// tag and `admin` is honest for a console. Every check was right and
+// none was looking at the gap between the invitation and the affordance.
+// ═══════════════════════════════════════════════════════════════════
+
+/** Verbatim: the `assistant` block the live endpoint served on 2026-09-06. */
+const LIVE_ASSISTANT = {
+  ocs_url: 'https://www.openchatstudio.com/a/connect-ace/chatbots/13029/',
+  access: 'admin',
+  public_id: '2c8d5f93-8e4f-4fde-9bf8-650909255c30',
+  embed_key: 'BeEwldQML9Frnm43n8nR65KBt6BhsZMM',
+  knowledge_sources: ['the program design document'],
+};
+/** Verified 200 with a live chat page the same day. */
+const LIVE_PUBLIC_CHAT_URL =
+  'https://www.openchatstudio.com/a/connect-ace/chatbots/2c8d5f93-8e4f-4fde-9bf8-650909255c30/start/';
+
+describe('ace#1839 — an admin-only link under a public-sounding invitation', () => {
+  it('BLOCKS on the live payload, and names the URL the run already holds', () => {
+    const findings = auditAssistantAccess({ assistant: LIVE_ASSISTANT });
+    expect(codes(findings)).toEqual(['ASSISTANT-PUBLIC-URL-WITHHELD']);
+    expect(findings.every(isBlocking)).toBe(true);
+    expect(findings[0].detail).toContain(LIVE_PUBLIC_CHAT_URL);
+  });
+
+  it('the public URL is DERIVED from what the page already serves anonymously', () => {
+    // Nothing is acquired: `public_id` is on the payload and the team slug is
+    // in the admin URL's own path. That is the whole point — this is
+    // surfacing a value the run holds, not obtaining a new one.
+    expect(derivePublicChatUrl(LIVE_ASSISTANT)).toBe(LIVE_PUBLIC_CHAT_URL);
+  });
+
+  it('the finding leaves the exposure decision to the operator', () => {
+    // Whether an un-authed reader may drive LLM spend is a real product call
+    // and this check does not make it. Both remedies must be on the page.
+    const fix = auditAssistantAccess({ assistant: LIVE_ASSISTANT })[0].fix;
+    expect(fix).toMatch(/PRODUCT call/);
+    expect(fix).toMatch(/change the copy/);
+    expect(fix).toMatch(/access: public/);
+  });
+
+  it('SELF-RETIRING — a payload that carries the public route produces nothing', () => {
+    expect(
+      auditAssistantAccess({
+        assistant: { ...LIVE_ASSISTANT, public_url: LIVE_PUBLIC_CHAT_URL },
+      }),
+    ).toEqual([]);
+    // …including when the console link is still there and still tagged admin,
+    // which is the shape the issue actually proposes.
+    expect(
+      auditAssistantAccess({
+        assistant: { ...LIVE_ASSISTANT, chat_url: LIVE_PUBLIC_CHAT_URL, access: 'admin' },
+      }),
+    ).toEqual([]);
+  });
+
+  it('BLOCKS with a different reason when no public URL is derivable at all', () => {
+    // Then the reader has no way to accept the invitation, and the only
+    // remedy is the copy. The finding must not go quiet.
+    const findings = auditAssistantAccess({
+      assistant: { ocs_url: LIVE_ASSISTANT.ocs_url, access: 'admin' },
+    });
+    expect(codes(findings)).toEqual(['ASSISTANT-PUBLIC-URL-WITHHELD']);
+    expect(findings[0].detail).toContain('no anonymous chat URL is derivable');
+  });
+
+  it('POSITIVE — an absent or not-yet-reached assistant is not this finding', () => {
+    // "The run has not got there yet" is auditCompleteness's question, and a
+    // check that answered it here would fire on every early run.
+    expect(auditAssistantAccess({ assistant: null })).toEqual([]);
+    expect(auditAssistantAccess({})).toEqual([]);
+    expect(auditAssistantAccess(null)).toEqual([]);
+    expect(auditAssistantAccess({ assistant: { public_id: 'p' } })).toEqual([]); // no link offered
+  });
+
+  it('POSITIVE — a link the page does NOT call admin-only is not this finding', () => {
+    expect(auditAssistantAccess({ assistant: { ...LIVE_ASSISTANT, access: 'public' } })).toEqual([]);
+  });
+
+  it('derivePublicChatUrl refuses to guess rather than returning a wrong URL', () => {
+    expect(derivePublicChatUrl({ public_id: 'p' })).toBeNull(); // no admin url → no team slug
+    expect(derivePublicChatUrl({ ocs_url: LIVE_ASSISTANT.ocs_url })).toBeNull(); // no public_id
+    expect(derivePublicChatUrl({ ocs_url: 'https://www.openchatstudio.com/chatbots/13029/', public_id: 'p' })).toBeNull();
+    expect(derivePublicChatUrl({ ocs_url: 'not a url', public_id: 'p' })).toBeNull();
+    expect(derivePublicChatUrl(null)).toBeNull();
+  });
+
+  it('a non-production OCS host is honoured, not overwritten with the default', () => {
+    expect(
+      derivePublicChatUrl({ ocs_url: 'https://ocs.example.org/a/t/chatbots/1/', public_id: 'pid' }),
+    ).toBe('https://ocs.example.org/a/t/chatbots/pid/start/');
   });
 });

@@ -63,6 +63,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import {
+  auditAssistantAccess,
   auditCompleteness,
   auditConfidentiality,
   auditDeepQaParity,
@@ -386,6 +387,10 @@ async function main(): Promise<number> {
 
   // ── C. Confidentiality ─────────────────────────────────────────
   findings.push(...auditConfidentiality(payload, { anonymous: true }));
+
+  // The support assistant is the one artifact an outsider can use without
+  // being granted anything; the page offers them the admin console (ace#1839).
+  findings.push(...auditAssistantAccess(payload));
 
   // ── D. Completeness ────────────────────────────────────────────
   const runState = a.runState ? await readYaml(a.runState) : null;

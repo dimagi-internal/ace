@@ -811,6 +811,7 @@ round-trip gate in Step 11.5 below.
             embed_key: <from Step 10>
             team_slug: <OCS team slug — typically "connect-ace">
             admin_url: https://www.openchatstudio.com/a/<team_slug>/chatbots/<experiment_id>/
+            public_url: https://www.openchatstudio.com/a/<team_slug>/chatbots/<public_id>/start/
     ```
 
     Apply via `mcp__plugin_ace_ace-gdrive__update_yaml_file` with
@@ -821,17 +822,30 @@ round-trip gate in Step 11.5 below.
     chatbot home page (auth-gated; useful for ACE operators with OCS
     access).
 
-    **Also emit the PUBLIC chat URL** — build it with
-    `buildOcsPublicChatUrl` from `lib/ocs-public-chat-url.ts`:
+    **`public_url` is REQUIRED, and it goes in the block above — not
+    only in the handoff markdown.** Build it with
+    `buildOcsPublicChatUrl` from `lib/ocs-public-chat-url.ts`; never
+    hand-assemble it (the two ways to get the route wrong are below,
+    and both look like a dead bot rather than a bad URL):
 
     ```
     https://www.openchatstudio.com/a/<team_slug>/chatbots/<public_id>/start/
     ```
 
     This is a real anonymous surface and it works — verified live
-    2026-08-14 against `connect-ace`. It is what makes an ACE per-opp
-    chatbot reachable by anyone you send the link to, with no OCS
-    account. The route is TEAM-SCOPED (`apps/chatbots/urls.py:80`,
+    2026-08-14 against `connect-ace`, and again 2026-09-06 on
+    `hh-poverty-targeting/20260828-0702` (`200`, an 11,755-byte live
+    chat page). It is what makes an ACE per-opp chatbot reachable by
+    anyone you send the link to, with no OCS account.
+
+    Until ace#1839 the typed block carried `admin_url` ALONE, while this
+    paragraph said "also emit" without saying where. So every downstream
+    reader that wanted "the chatbot link" got the console — which
+    answers `200 -> /accounts/login/?next=…` for an outsider — and
+    ace-web's run-summary page ended up offering an anonymous reviewer
+    an admin-only link under a heading inviting them to ask questions.
+    The prose was right and the contract was silent; the contract is
+    what gets read. The route is TEAM-SCOPED (`apps/chatbots/urls.py:80`,
     mounted under `config/urls.py:88`'s `a/<slug:team_slug>/`), which is
     why probing `/chatbots/<public_id>/…` at the root 404s.
 
