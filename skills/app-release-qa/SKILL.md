@@ -625,7 +625,15 @@ here; an undisclosed deviation is still the builder's problem, not this gate's.
 
 Any remaining finding is a `[BLOCKER]` `entity-id-grain`:
 
-- `missing-declared-node` — the key omits a node the PDD names;
+- `missing-declared-node` — the key omits a node the PDD names, **neither
+  literally nor through the `calculate` of any node it concatenates**
+  (ace#1810). A declared component reached through an INTERMEDIATE node is
+  present, not missing: whenever the key term needs arithmetic — and a
+  per-entity cap like `min(<x>, 3)` always does — Nova computes it in a named
+  hidden node and puts that node in the `concat`. Before ace#1810 the plain
+  substring test read that as absent and hard-halted Phase 3 on a build that
+  obeyed the PDD (`spark-facilitator/20260828-0703`, Deliver build
+  `b08533bdf26a48a295a362ff204fb88d`);
 - `answer-in-grain` — a worker-chosen answer (consent, eligibility, outcome) is
   inside the dedup grain **and is not the mandated discriminator**. This is the
   ace#969 over-correction: moving a payability predicate INTO the key fixes slot
@@ -633,6 +641,15 @@ Any remaining finding is a `[BLOCKER]` `entity-id-grain`:
   (ace#1441); a SECOND answer field is not;
 - `no-entity-component` — fires **even with nothing declared**, because a key of
   worker + date + answers is worker-and-day scoped by construction.
+
+**`report.resolvedThroughIntermediate` is NOT a finding — carry it forward
+(ace#1810).** Each entry names a declared component that is in the key only
+through an intermediate node. Presence is all this gate can establish: an
+intermediate node carrying `min(x, 3)` and one carrying an UNCLAMPED running
+index produce a byte-identical composite. Copy the list into the verdict and
+into `3-commcare/app-release-qa_*.md` so Phase 4's `connect-opp-setup
+§ Archetypes -> longitudinal-visits` reads each entry's own bind and records
+whether the PDD's clamp semantics are implemented.
 
 `report.status === 'unable'` (no readable `entity_id`) means the check **did
 not run** — NOT a pass. Render it with `formatGrainReport(report)`, record it
