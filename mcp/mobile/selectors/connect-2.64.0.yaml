@@ -281,3 +281,60 @@ selectors:
     value: "com.android.settings:id/password_entry"
     unverified: true
     purpose: "Password field on the device-lock setup screen. NOT OBSERVED on 2.64.0, same reason as system-pin-entry."
+
+  # ── Post-login Connect home ─────────────────────────────────────
+  home-new-opportunities:
+    type: text
+    value: "New Opportunities"
+    unverified: true
+    purpose: "Section header for UNCLAIMED opportunities on the Connect jobs list. NOT OBSERVED on 2.64.0 — the demo user's jobs list rendered only the 'In Progress' section (tv_section_header), because every opportunity it can see is already claimed. Reaching it needs a fresh opp invited to this test user and not yet claimed."
+
+  home-opportunities-tab:
+    type: text
+    value: "Opportunities"
+    unverified: true
+    purpose: "Bottom-nav 'Opportunities' tab. NOT OBSERVED AS A TAB on 2.64.0 — 35-connect-home-jobs.xml shows ConnectActivity rendering connect_fragment_jobs_list with NO bottom navigation bar at all; the only 'Opportunities' affordance seen this walk was the nav-drawer row (see nav-drawer-opportunities, which IS verified). Either the bottom nav was removed or it is conditional; this row is carried, not confirmed, and a recipe relying on a bottom-nav tab should be treated as suspect until someone walks it."
+
+  home-jobs-list:
+    type: id
+    value: "org.commcare.dalvik:id/connect_fragment_jobs_list"
+    purpose: "Post-login Connect home jobs-list fragment container. Live-verified 2026-09-06 (2.64.0), 35-connect-home-jobs.xml, inside nav_host_fragment_connect on ConnectActivity."
+
+  home-jobs-recycler:
+    type: id
+    value: "org.commcare.dalvik:id/rvJobList"
+    purpose: "RecyclerView of opportunity cards inside home-jobs-list — the terminal anchor connect-register-from-otp.yaml waits on. Live-verified 2026-09-06 (2.64.0), 35-connect-home-jobs.xml, holding multiple rootCardView tiles. The anchor is still correct on 2.64.0; what breaks the recipe is the email step upstream of it (ace#2029), not this wait."
+
+  home-toolbar-sync:
+    type: id
+    value: "org.commcare.dalvik:id/action_sync"
+    purpose: "Toolbar Sync action on the jobs-list surface. Live-verified 2026-09-06 (2.64.0), 35-connect-home-jobs.xml — Button, content-desc 'Sync', [953,146][1080,272]; its sibling action_bell (content-desc 'Notifications') is at [826,146][953,272]."
+
+  # ── Opportunity list / detail ───────────────────────────────────
+  opp-list-view-opportunity-button:
+    type: id
+    value: "org.commcare.dalvik:id/btn_view_opportunity"
+    unverified: true
+    purpose: "View Opportunity on an UNCLAIMED card. NOT OBSERVED on 2.64.0 — no unclaimed cards were on this device's jobs list; every card carried the In-Progress pair btn_resume + btn_view_info instead. Same precondition as home-new-opportunities."
+
+  opp-list-resume-button:
+    type: id
+    value: "org.commcare.dalvik:id/btn_resume"
+    purpose: "Resume on an In-Progress opportunity card. Live-verified 2026-09-06 (2.64.0), 35-connect-home-jobs.xml — Button text 'Resume'. Tapped: it installed the Deliver CCZ and landed on StandardHomeActivity (37-after-resume.xml)."
+
+  opp-list-view-info:
+    type: id
+    value: "org.commcare.dalvik:id/btn_view_info"
+    purpose: "View Info — the SECONDARY button on an In-Progress card. Live-verified 2026-09-06 (2.64.0), 35-connect-home-jobs.xml. Tapped: it opened the opportunity-detail design_bottom_sheet (36-opp-detail.xml)."
+
+  opp-detail-start:
+    type: id
+    value: "org.commcare.dalvik:id/btn_start"
+    unverified: true
+    purpose: "PRE-CLAIM 'Start' on the opp-detail page — fires POST /users/start_learn_app/. NOT OBSERVED on 2.64.0: every opportunity reachable from this test user is already claimed, so the pre-claim variant of opp-detail never rendered. The POST-claim detail sheet WAS walked (36-opp-detail.xml) and carries no btn_start, which is expected, not a regression."
+
+  opp-detail-learn-modules-teaser:
+    type: id
+    value: "org.commcare.dalvik:id/tv_learn_modules_list"
+    unverified: true
+    purpose: "Pre-claim Learn-Details preview TextView. NOT OBSERVED on 2.64.0, same precondition as opp-detail-start. Absent from the post-claim sheet, as expected."
