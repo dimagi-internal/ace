@@ -1,0 +1,198 @@
+<h:html xmlns:h="http://www.w3.org/1999/xhtml" xmlns:orx="http://openrosa.org/jr/xforms" xmlns="http://www.w3.org/2002/xforms" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:jr="http://openrosa.org/javarosa" xmlns:vellum="http://commcarehq.org/xforms/vellum">
+  <h:head>
+    <h:title>Register Household</h:title>
+    <model>
+      <instance>
+        <data xmlns="http://openrosa.org/formdesigner/9c2c7e95102f359e" xmlns:jrm="http://dev.commcarehq.org/jr/xforms" uiVersion="1" version="5" name="register_household">
+          <consent_intro>
+            <consent_script/>
+            <consent_given/>
+          </consent_intro>
+          <household_details>
+            <hh_head_name/>
+            <bednet_given_date/>
+            <hh_size/>
+          </household_details>
+          <case_name_calc/>
+          <household_state/>
+          <case xmlns="http://commcarehq.org/case/transaction/v2" case_id="" date_modified="" user_id="">
+            <create>
+              <case_name/>
+              <owner_id/>
+              <case_type>household</case_type>
+            </create>
+            <update>
+              <bednet_given_date/>
+              <consent_given/>
+              <hh_head_name/>
+              <hh_size/>
+              <household_state/>
+            </update>
+          </case>
+          <orx:meta xmlns:cc="http://commcarehq.org/xforms">
+            <orx:deviceID/>
+            <orx:timeStart/>
+            <orx:timeEnd/>
+            <orx:username/>
+            <orx:userID/>
+            <orx:instanceID/>
+            <cc:appVersion/>
+            <orx:drift/>
+            <cc:location/>
+          </orx:meta>
+        </data>
+      </instance>
+      <instance id="commcaresession" src="jr://instance/session"/>
+      <bind nodeset="/data/consent_intro/consent_script"/>
+      <bind nodeset="/data/consent_intro/consent_given" type="xsd:string" required="true()" constraint=". = 'yes' or . = 'no'" jr:constraintMsg="jr:itext('consent_intro-consent_given-constraintMsg')"/>
+      <bind nodeset="/data/household_details" relevant="/data/consent_intro/consent_given = 'yes'"/>
+      <bind nodeset="/data/household_details/hh_head_name" type="xsd:string" required="true()" constraint="string-length(.) &gt;= 1 and string-length(.) &lt;= 80" jr:constraintMsg="jr:itext('household_details-hh_head_name-constraintMsg')"/>
+      <bind nodeset="/data/household_details/bednet_given_date" type="xsd:date" required="true()" constraint=". &lt;= today() and . &gt;= today() - 60" jr:constraintMsg="jr:itext('household_details-bednet_given_date-constraintMsg')"/>
+      <bind nodeset="/data/household_details/hh_size" type="xsd:int" required="true()" constraint=". &gt;= 1 and . &lt;= 30" jr:constraintMsg="jr:itext('household_details-hh_size-constraintMsg')"/>
+      <bind nodeset="/data/case_name_calc" type="xsd:string" calculate="if(/data/consent_intro/consent_given = 'yes', /data/household_details/hh_head_name, 'Consent declined at registration')" required="true()"/>
+      <bind nodeset="/data/household_state" type="xsd:string" calculate="if(/data/consent_intro/consent_given = 'yes', 'registered', 'declined')"/>
+      <itext>
+        <translation lang="en" default="">
+          <text id="consent_intro-label">
+            <value>Consent to take part</value>
+            <value form="markdown">Consent to take part</value>
+          </text>
+          <text id="consent_intro-consent_script-label">
+            <value>**Read this out loud to the household.**
+
+Hello. I am visiting homes that were given an insecticide-treated bednet, to ask a few short questions about the net and how it is being used. I will come back once more in a few days to look at the net with you. That is the whole reason I am here today.
+
+Taking part is your choice. You do not have to answer any of it.
+
+You can stop at any moment while we talk. You can also tell me afterwards, on any day, that you no longer want your answers used, and I will pass that on.
+
+What you tell me is kept private. I write down the name of the head of this household, how many people sleep here, and the date the net was given, so that a worker can find this same home again for the second visit. I do not write down anything about your health, and I do not share your answers with your neighbours or with anyone else in this village.
+
+Your answers do not stay on my phone. They go to the organisation running this bednet programme, and a supervisor there reads visit records to check that this visit really took place.
+
+Taking part does not bring you more nets, money, food, or any other help, and it does not put this household in line for anything. If you say no, you lose nothing you would otherwise get, including the net you already have.
+
+May I go ahead and ask the questions?</value>
+            <value form="markdown">**Read this out loud to the household.**
+
+Hello. I am visiting homes that were given an insecticide-treated bednet, to ask a few short questions about the net and how it is being used. I will come back once more in a few days to look at the net with you. That is the whole reason I am here today.
+
+Taking part is your choice. You do not have to answer any of it.
+
+You can stop at any moment while we talk. You can also tell me afterwards, on any day, that you no longer want your answers used, and I will pass that on.
+
+What you tell me is kept private. I write down the name of the head of this household, how many people sleep here, and the date the net was given, so that a worker can find this same home again for the second visit. I do not write down anything about your health, and I do not share your answers with your neighbours or with anyone else in this village.
+
+Your answers do not stay on my phone. They go to the organisation running this bednet programme, and a supervisor there reads visit records to check that this visit really took place.
+
+Taking part does not bring you more nets, money, food, or any other help, and it does not put this household in line for anything. If you say no, you lose nothing you would otherwise get, including the net you already have.
+
+May I go ahead and ask the questions?</value>
+          </text>
+          <text id="consent_intro-consent_given-label">
+            <value>Does the household agree to take part?</value>
+            <value form="markdown">Does the household agree to take part?</value>
+          </text>
+          <text id="consent_intro-consent_given-constraintMsg">
+            <value>Choose Yes or No on this screen to record the answer the household just gave you.</value>
+            <value form="markdown">Choose Yes or No on this screen to record the answer the household just gave you.</value>
+          </text>
+          <text id="consent_intro-consent_given-opt0-label">
+            <value>Yes</value>
+            <value form="markdown">Yes</value>
+          </text>
+          <text id="consent_intro-consent_given-opt1-label">
+            <value>No</value>
+            <value form="markdown">No</value>
+          </text>
+          <text id="household_details-label">
+            <value>About this household</value>
+            <value form="markdown">About this household</value>
+          </text>
+          <text id="household_details-hh_head_name-label">
+            <value>Name of the head of this household</value>
+            <value form="markdown">Name of the head of this household</value>
+          </text>
+          <text id="household_details-hh_head_name-constraintMsg">
+            <value>Type the name of the head of the household here, using 80 characters or fewer.</value>
+            <value form="markdown">Type the name of the head of the household here, using 80 characters or fewer.</value>
+          </text>
+          <text id="household_details-bednet_given_date-label">
+            <value>Date this household was given the bednet</value>
+            <value form="markdown">Date this household was given the bednet</value>
+          </text>
+          <text id="household_details-bednet_given_date-hint">
+            <value>The day the net was handed over, not today's date. Check the year before you move on.</value>
+            <value form="markdown">The day the net was handed over, not today's date. Check the year before you move on.</value>
+          </text>
+          <text id="household_details-bednet_given_date-constraintMsg">
+            <value>Enter a date that is today or earlier and no more than 60 days ago. Re-enter the date on this screen, checking the year.</value>
+            <value form="markdown">Enter a date that is today or earlier and no more than 60 days ago. Re-enter the date on this screen, checking the year.</value>
+          </text>
+          <text id="household_details-hh_size-label">
+            <value>How many people sleep in this household?</value>
+            <value form="markdown">How many people sleep in this household?</value>
+          </text>
+          <text id="household_details-hh_size-constraintMsg">
+            <value>Enter a whole number from 1 to 30 on this screen.</value>
+            <value form="markdown">Enter a whole number from 1 to 30 on this screen.</value>
+          </text>
+        </translation>
+      </itext>
+      <bind nodeset="/data/case/@date_modified" type="xsd:dateTime" calculate="/data/meta/timeEnd"/>
+      <bind nodeset="/data/case/@user_id" calculate="/data/meta/userID"/>
+      <setvalue ref="/data/case/@case_id" value="instance('commcaresession')/session/data/case_id_new_household_0" event="xforms-ready"/>
+      <bind nodeset="/data/case/create/case_name" calculate="/data/case_name_calc"/>
+      <bind nodeset="/data/case/create/owner_id" calculate="/data/meta/userID"/>
+      <bind nodeset="/data/case/update/bednet_given_date" calculate="/data/household_details/bednet_given_date" relevant="count(/data/household_details/bednet_given_date) &gt; 0"/>
+      <bind nodeset="/data/case/update/consent_given" calculate="/data/consent_intro/consent_given" relevant="count(/data/consent_intro/consent_given) &gt; 0"/>
+      <bind nodeset="/data/case/update/hh_head_name" calculate="/data/household_details/hh_head_name" relevant="count(/data/household_details/hh_head_name) &gt; 0"/>
+      <bind nodeset="/data/case/update/hh_size" calculate="/data/household_details/hh_size" relevant="count(/data/household_details/hh_size) &gt; 0"/>
+      <bind nodeset="/data/case/update/household_state" calculate="/data/household_state" relevant="count(/data/household_state) &gt; 0"/>
+      <setvalue ref="/data/meta/deviceID" value="instance('commcaresession')/session/context/deviceid" event="xforms-ready"/>
+      <setvalue ref="/data/meta/timeStart" value="now()" event="xforms-ready"/>
+      <bind nodeset="/data/meta/timeStart" type="xsd:dateTime"/>
+      <setvalue ref="/data/meta/timeEnd" value="now()" event="xforms-revalidate"/>
+      <bind nodeset="/data/meta/timeEnd" type="xsd:dateTime"/>
+      <setvalue ref="/data/meta/username" value="instance('commcaresession')/session/context/username" event="xforms-ready"/>
+      <setvalue ref="/data/meta/userID" value="instance('commcaresession')/session/context/userid" event="xforms-ready"/>
+      <setvalue ref="/data/meta/instanceID" value="uuid()" event="xforms-ready"/>
+      <setvalue ref="/data/meta/appVersion" value="instance('commcaresession')/session/context/appversion" event="xforms-ready"/>
+      <setvalue ref="/data/meta/drift" value="if(count(instance('commcaresession')/session/context/drift) = 1, instance('commcaresession')/session/context/drift, '')" event="xforms-revalidate"/>
+      <orx:pollsensor event="xforms-ready" ref="/data/meta/location"/>
+      <bind nodeset="/data/meta/location" type="geopoint"/>
+    </model>
+  </h:head>
+  <h:body>
+    <group ref="/data/consent_intro" appearance="field-list">
+      <label ref="jr:itext('consent_intro-label')"/>
+      <trigger ref="/data/consent_intro/consent_script" appearance="minimal">
+        <label ref="jr:itext('consent_intro-consent_script-label')"/>
+      </trigger>
+      <select1 ref="/data/consent_intro/consent_given">
+        <label ref="jr:itext('consent_intro-consent_given-label')"/>
+        <item>
+          <label ref="jr:itext('consent_intro-consent_given-opt0-label')"/>
+          <value>yes</value>
+        </item>
+        <item>
+          <label ref="jr:itext('consent_intro-consent_given-opt1-label')"/>
+          <value>no</value>
+        </item>
+      </select1>
+    </group>
+    <group ref="/data/household_details" appearance="field-list">
+      <label ref="jr:itext('household_details-label')"/>
+      <input ref="/data/household_details/hh_head_name">
+        <label ref="jr:itext('household_details-hh_head_name-label')"/>
+      </input>
+      <input ref="/data/household_details/bednet_given_date">
+        <label ref="jr:itext('household_details-bednet_given_date-label')"/>
+        <hint ref="jr:itext('household_details-bednet_given_date-hint')"/>
+      </input>
+      <input ref="/data/household_details/hh_size">
+        <label ref="jr:itext('household_details-hh_size-label')"/>
+      </input>
+    </group>
+  </h:body>
+</h:html>

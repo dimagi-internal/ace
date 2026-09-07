@@ -61,6 +61,7 @@ import {
   extractCaseListEnums,
   extractFormChoiceLists,
   extractCaseWriteMap,
+  extractCalculateWrittenValues,
   checkCczCaseListEnumFidelity,
   describeCczEnumFidelity,
 } from '../../lib/ccz-enum-fidelity.js';
@@ -472,5 +473,233 @@ describe('the question id is not the case property (ace#1808)', () => {
     });
     assertChecked(res);
     expect(res.columnsCompared).toBeGreaterThan(0);
+  });
+});
+
+/**
+ * ace#2188 — the gate could not run at all when the case property behind the
+ * column is written by a hidden `calculate` rather than by a select.
+ *
+ * #1808 taught the pairing to resolve case property -> writing QUESTION through
+ * the `<update>` bind. That resolution runs on this app and still finds
+ * nothing, because the thing at the end of the chain is not a question: it is
+ * a `calculate`, and `extractFormChoiceLists` only ever yields choice lists
+ * derived from `select1`/`select` controls. So `columnsCompared` stayed 0 and
+ * the `[BLOCKER]` check reported `unable` on an app whose case-list enum is
+ * exactly what it exists to police. `skills/_app-component-library`'s
+ * `entity-state-taxonomy` component produces precisely this shape — a state
+ * the worker never picks, fully determined by other answers — so it is a
+ * standard ACE Deliver output, not an exotic app.
+ *
+ * The four `hhstate-*` fixtures are the COMPLETE, UNMODIFIED files of released
+ * Deliver build `1fcc4b819ff74ccf96a7972b550e887f` (HQ app
+ * `0f4f2a464a294adebf62cd4ddb8cc940`, domain `connect-ace-prod`,
+ * bednet-check-2-visit/20260907-1126), re-downloaded in the session that fixed
+ * this (`commcare_download_ccz` -> 200, 11,182 bytes). Nothing is sliced and
+ * nothing is reconstructed.
+ *
+ * ## What is compared for a calculate, and what CANNOT be
+ *
+ * A select carries `value -> label`, so a column paired to one is diffed on
+ * both. A calculate carries VALUES ONLY — there is no second labelled surface
+ * in the CCZ to disagree with it — so a calculate-paired column is checked for
+ * value-set membership and nothing else. The issue's suggested negative
+ * control (relabel `checked` to "Closed and verified") is therefore NOT
+ * achievable and deliberately not asserted here: no artifact in the CCZ
+ * contradicts that label. Label fidelity for a state taxonomy is the PDD's
+ * authority and is gated at BUILD time by `pdd-to-deliver-app § Step 4l` /
+ * `pdd-to-deliver-app-eval § entity_state_fidelity` against
+ * `program_parameters.entity_state_taxonomy` (`lib/entity-state-taxonomy.ts`).
+ * The negative controls below are value-level, which is what this artifact can
+ * actually settle.
+ */
+describe('the writer is a hidden calculate, not a select (ace#2188)', () => {
+  const suiteXml = read('hhstate-suite.xml');
+  const appStrings = read('hhstate-app_strings.txt');
+  const REGISTER = 'modules-0/forms-0.xml';
+  const FOLLOWUP = 'modules-1/forms-0.xml';
+  const registerXml = read('hhstate-register-form.xml');
+  const followupXml = read('hhstate-followup-form.xml');
+  const forms = [
+    { path: REGISTER, xml: registerXml },
+    { path: FOLLOWUP, xml: followupXml },
+  ];
+
+  it('the fixture really carries the shape — two calculates write it, no select does', () => {
+    // If this stops holding, everything below proves nothing.
+    expect(registerXml).toContain(
+      '<bind nodeset="/data/household_state" type="xsd:string" ' +
+        "calculate=\"if(/data/consent_intro/consent_given = 'yes', 'registered', 'declined')\"/>",
+    );
+    expect(followupXml).toContain(
+      '<bind nodeset="/data/household_state" type="xsd:string" calculate="\'checked\'"/>',
+    );
+    for (const xml of [registerXml, followupXml]) {
+      expect(xml).toContain('nodeset="/data/case/update/household_state"');
+      // The property the tile renders is never a select's ref anywhere.
+      expect(xml).not.toMatch(/<select1[^>]*ref="[^"]*household_state"/);
+    }
+    expect(suiteXml).toContain("selected(household_state, 'registered')");
+  });
+
+  it('recovers the value set from an if() chain and from a bare literal', () => {
+    const fromRegister = extractCalculateWrittenValues(registerXml, REGISTER);
+    expect(fromRegister.writers).toEqual([
+      {
+        formPath: REGISTER,
+        property: 'household_state',
+        expression: "if(/data/consent_intro/consent_given = 'yes', 'registered', 'declined')",
+        values: ['declined', 'registered'],
+      },
+    ]);
+    const fromFollowup = extractCalculateWrittenValues(followupXml, FOLLOWUP);
+    expect(fromFollowup.writers).toEqual([
+      {
+        formPath: FOLLOWUP,
+        property: 'household_state',
+        expression: "'checked'",
+        values: ['checked'],
+      },
+    ]);
+  });
+
+  it('refuses to enumerate a calculate whose branch is another node', () => {
+    // The same real form writes `case_name` from
+    // `if(consent = 'yes', /data/household_details/hh_head_name, 'Consent declined…')`.
+    // One branch is a free-text answer, so the value set is NOT static and the
+    // right answer is to say so — not to enumerate the half that is literal.
+    // Nothing renders `case_name` through an id-mapping column here, so this
+    // costs the gate nothing; a guess would have cost it correctness.
+    const { opaque } = extractCalculateWrittenValues(registerXml, REGISTER);
+    expect(opaque.map((w) => w.property)).toEqual(['case_name']);
+    expect(opaque[0].reason).toContain('/data/household_details/hh_head_name');
+  });
+
+  it('THE GATE NOW RUNS: checked, not unable', () => {
+    const res = checkCczCaseListEnumFidelity({ suiteXml, appStrings, forms });
+    assertChecked(res);
+    expect(res.columnsCompared).toBe(2); // short + long detail
+    expect(res.valuesCompared).toBe(6); // 3 stored values x 2 details
+    expect(res.unpaired).toEqual([]);
+    expect(res.calculateWritten.household_state).toEqual([
+      'checked',
+      'declined',
+      'registered',
+    ]);
+    // This build has zero drift — 3-for-3, verified by hand in the issue. The
+    // gate runs AND passes, which is the honest verdict.
+    expect(res.ok).toBe(true);
+    expect(res.findings).toEqual([]);
+  });
+
+  it('unions the literals across forms — a per-form compare would false-fail', () => {
+    // `declined` is only ever written by Register Household and `checked` only
+    // by Follow-Up Visit. Hand the gate one form and the other form's value
+    // becomes unproducible — which is exactly the false failure the union
+    // avoids, and the reason it is asserted rather than assumed.
+    const registerOnly = checkCczCaseListEnumFidelity({
+      suiteXml,
+      appStrings,
+      forms: [{ path: REGISTER, xml: registerXml }],
+    });
+    assertChecked(registerOnly);
+    expect(registerOnly.ok).toBe(false);
+    expect(registerOnly.findings.map((f: CczEnumFidelityFinding) => f.value)).toEqual(['checked']);
+  });
+
+  it('NEGATIVE CONTROL: a tile value no calculate can write FAILS', () => {
+    // One byte of the real artifact: Follow-Up writes 'visited' instead of
+    // 'checked', so the tile's `checked` row is unreachable — the ace#1688
+    // defect class, on the calculate shape.
+    const mutated = followupXml.replace(
+      'calculate="\'checked\'"',
+      'calculate="\'visited\'"',
+    );
+    expect(mutated).not.toBe(followupXml);
+    const res = checkCczCaseListEnumFidelity({
+      suiteXml,
+      appStrings,
+      forms: [{ path: REGISTER, xml: registerXml }, { path: FOLLOWUP, xml: mutated }],
+    });
+    assertChecked(res);
+    expect(res.ok).toBe(false);
+    expect(res.columnsCompared).toBe(2);
+    expect(res.findings).toHaveLength(1);
+    const [finding] = res.findings;
+    expect(finding.value).toBe('checked');
+    expect(finding.kind).toBe('missing-from-form');
+    expect(finding.property).toBe('household_state');
+    expect(finding.detailIds).toEqual(['m0_case_short', 'm0_case_long']);
+    expect(finding.writer).toBe('calculate');
+    // No label is claimed for the form side — a calculate has none to offer.
+    expect(finding.formLabel).toBeNull();
+    expect(describeCczEnumFidelity(res.findings)[0]).toMatch(/Checked and closed/);
+    expect(describeCczEnumFidelity(res.findings)[0]).toMatch(/calculate/);
+    // And the unreachable value the calculate DOES write is surfaced, not fatal.
+    expect(res.unlabelledInCaseList.household_state).toEqual(['visited']);
+  });
+
+  it('SUBSET, not equality — a written value the tile does not label is not a failure', () => {
+    const trimmed = appStrings
+      .split('\n')
+      .filter((l) => !/\.enum\.knova_text_0000000002=/.test(l))
+      .join('\n');
+    expect(trimmed).not.toBe(appStrings);
+    const res = checkCczCaseListEnumFidelity({ suiteXml, appStrings: trimmed, forms });
+    assertChecked(res);
+    expect(res.ok, 'a proper subset is legitimate').toBe(true);
+    expect(res.unlabelledInCaseList.household_state).toEqual(['declined']);
+  });
+
+  it('an UNPARSEABLE calculate stays UNABLE, and says so precisely', () => {
+    // Enumerating a value set out of `concat(...)` would be a fabrication, and
+    // a fabricated comparison is worse than the hole this issue reports. The
+    // right outcome is a typed `unable` whose reason names the shape.
+    const opaque = (xml: string) => {
+      const out = xml.replace(
+        /(<bind nodeset="\/data\/household_state"[^>]*?)calculate="[^"]*"/,
+        '$1calculate="concat(/data/a, /data/b)"',
+      );
+      expect(out, 'the mutation must land on household_state').not.toBe(xml);
+      return out;
+    };
+    const res = checkCczCaseListEnumFidelity({
+      suiteXml,
+      appStrings,
+      forms: [
+        { path: REGISTER, xml: opaque(registerXml) },
+        { path: FOLLOWUP, xml: opaque(followupXml) },
+      ],
+    });
+    assertUnable(res);
+    expect(res.reason).toContain('NOT a pass');
+    expect(res.reason).toContain('household_state');
+    // Distinguishes "the writer is a calculate I could not enumerate" from
+    // "nothing writes it at all" — the two need different follow-ups.
+    expect(res.reason).toMatch(/calculate/);
+    expect(res.reason).toContain('concat(/data/a, /data/b)');
+  });
+
+  it('names NO WRITER as a different diagnosis from an unparseable one', () => {
+    const res = checkCczCaseListEnumFidelity({
+      suiteXml,
+      appStrings,
+      forms: [{ path: 'modules-9/forms-0.xml', xml: '<h:html/>' }],
+    });
+    assertUnable(res);
+    expect(res.reason).toMatch(/no form choice list and no enumerable case-write calculate/);
+    expect(res.reason).not.toContain('concat');
+  });
+
+  it('a chain ending at a question node is NOT claimed as a calculate writer', () => {
+    // `/data/case/update/x` -> `/data/x` -> no bind calculate = a plain
+    // question. Inventing a value set for it is the failure mode this guards.
+    const xml = `<?xml version='1.0'?>
+      <h:html xmlns:h="http://www.w3.org/1999/xhtml" xmlns="http://www.w3.org/2002/xforms">
+        <h:head><model>
+          <bind nodeset="/data/case/update/x" calculate="/data/x"/>
+        </model></h:head>
+      </h:html>`;
+    expect(extractCalculateWrittenValues(xml, 'm/f.xml')).toEqual({ writers: [], opaque: [] });
   });
 });

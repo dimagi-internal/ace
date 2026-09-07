@@ -385,6 +385,25 @@ device, no Connect.
    control is the drift above and must FAIL; the positive control is a real
    released CCZ and must pass.
 
+   **The writer is often a hidden `calculate`, not a select** (ace#2188). An
+   `entity-state-taxonomy` state (`skills/_app-component-library.md`) is one
+   the worker never picks — it is computed from other answers — so pairing
+   resolves the case-write bind through to the calculate that determines it and
+   recovers the value set from that expression's string literals, unioned
+   across every form (on the repro build `declined` is written only by
+   Register and `checked` only by Follow-Up, so a per-form compare would
+   false-fail both). Such a column is compared on VALUES ONLY: a calculate
+   carries no labels, so a wrong LABEL on a calculate-written enum is invisible
+   to this gate BY CONSTRUCTION. That is not a hole to paper over here — the
+   authority for a state taxonomy's words is the PDD's
+   `program_parameters.entity_state_taxonomy`, gated at build time by
+   `pdd-to-deliver-app § Step 4l` / `pdd-to-deliver-app-eval §
+   entity_state_fidelity`. Where the literals cannot be enumerated (a
+   `concat()`, a value copied from a free-text answer) the result stays
+   `unable` with a reason naming the expression — record it and treat the
+   column as UNEVALUATED. `res.calculateWritten` reports the value set that was
+   compared, per property, so the memo can show it.
+
 **Why `play` cannot substitute for either.** `play verdict: 'skipped'` /
 `empty-case-list` only fires when a case-list screen is actually *pushed*.
 With no entity datum, `play` walks straight to form entry and returns a clean
