@@ -244,6 +244,28 @@ alone makes the artifact land outside `4-connect` and fail
         is in no program, so **exclude it from Σ and do not let it make Σ
         unknown**. A missing `total_budget` on such a row is likewise a
         stated zero-or-absent budget, not a read failure.
+      - `dashboard_read: 'setup_incomplete'` — **Connect refuses to
+        render a dashboard for this opportunity at all** (ace#1637;
+        observed live 2026-09-06, 11 of 11 rows, repro below). Its setup was
+        never finished, so `OpportunityDashboard.get` 302s to the
+        payment-unit wizard instead (`is_setup_complete` = payment units
+        + `total_budget` + `start_date` + `end_date`, each payment unit
+        with `max_total`/`max_daily`). This is the ace#1637 cohort,
+        root-caused 2026-09-06: 11 of 11 such rows on `ai-demo-space`
+        returned `302 → …/payment_units/create` while 6 of 6 `ok` rows
+        returned 200. Still counts as unreadable for Σ — see the next
+        bullet — but say so by name, because it is the one unreadable
+        class that **will never resolve by retrying**, and because these
+        are almost entirely ACE's own abandoned half-built opportunities
+        from failed Phase 4 runs.
+
+        **Do NOT read it as budget 0.** `is_setup_complete` is false when
+        ANY of the four is missing, and `connect_create_opportunity` sets
+        a budget through the automation API without going near the form
+        that requires payment units — so the redirect does not prove the
+        budget is null. No Connect read surface states it either: the
+        edit form has no budget field and `/finalize/` redirects to the
+        same wizard (both verified live).
       - anything else (`no_cards`, `not_a_dashboard`, `not_fetched`) —
         the dashboard-sourced fields are UNREAD. Such a row can be
         neither assigned to nor excluded from the program. Count them as
@@ -251,12 +273,18 @@ alone makes the artifact land outside `4-connect` and fail
         **never treat an unread field as an absent one.**
 
       Report the split verbatim in the program notes — `Σ over <k> rows;
-      <n> excluded (no program, dashboard_read ok); <u> unreadable`.
-      Upstream residual, unfixed and NOT ours to guess at: Connect
-      returns nothing for those `<u>` rows and `active` is correlated but
-      demonstrably not causal (5 inactive rows DO carry the fields), so
-      the cause is still open — ace#1637 makes the distinction visible,
-      it does not explain it.
+      <n> excluded (no program, dashboard_read ok); <u> unreadable (<s>
+      setup_incomplete)`. The atom returns `setup_incomplete_rows` next
+      to `unreadable_rows` in the `summarize_by_program` summary, so this
+      is a read, not a re-derivation.
+
+      The residual this leaves is a COST, not a mystery: each
+      `setup_incomplete` row adds `EXPECTED_OPP_BUDGET` to the target
+      below on every program sized against that org, and finishing or
+      deleting the opportunity is the only thing that removes it.
+      (`active` being correlated-but-not-causal — 5 inactive rows DO
+      carry the fields — is explained by the same finding: an
+      opportunity can be deactivated after a complete setup.)
 
       **Σ is UNKNOWN — not partial — in four cases. Check each before
       trusting it:**
@@ -276,7 +304,9 @@ alone makes the artifact land outside `4-connect` and fail
         neither assigned to nor excluded from this program. **A row with
         `dashboard_read: 'ok'` and no `program_name` does NOT make Σ
         unknown** — it is definitively outside this program and is simply
-        excluded (ace#1637);
+        excluded (ace#1637). A `setup_incomplete` row DOES make Σ
+        unknown, and permanently: nothing in Connect will ever state its
+        budget;
       - more than one program in the org shares `program.name` (check the
         Step 2 `connect_list_programs` result) — the scoping is by NAME,
         so a duplicate name makes it ambiguous.
@@ -462,3 +492,4 @@ multi-stage" (ace#1966). Two consequences to work with, not around:
 | 2026-08-21 | Step 4a: Σ is executable again — `connect_get_opportunity` now reads `total_budget` + `program_name` off the opportunity dashboard, so a hydrated list can be scoped to this program and summed (supersedes the row above, same day). Names the three UNKNOWN cases and requires the branch taken to be reported in the program notes (dimagi-internal/ace#1550). | ACE team |
 | 2026-09-01 | Steps 2 + 4a: both MANDATED org-wide list calls overflowed the tool-result cap in `ai-demo-space` and returned no usable data (measured 2026-09-01: programs 42 rows/57,425 chars, 75.3% description prose; opportunities hydrated 71 rows/81,175 chars). Step 4a now calls `connect_list_opportunities({summarize_by_program})`, which does the whole Σ classification server-side and returns a few hundred characters instead of the rows; Step 2's unfiltered rows come back with capped descriptions. `write_to_path` on both atoms is the escape hatch (dimagi-internal/ace#1799). | ACE team |
 | 2026-09-06 | **Stop routing concerns to a gate brief that does not exist (dimagi-internal/ace#1884).** 0.13.116 removed the per-skill gate-brief file class and the ace#1880 sweep removed the remaining `*.md` PATHS, but prose directives naming the gate brief as a DESTINATION survived in 15 files — a concern "surfaced in the gate brief" is surfaced nowhere. Repointed at the verdict YAML's `auto_surfaced` block, which is what the orchestrator actually renders the pause summary from. Gated by the new destination check in `test/skills/gate-brief-removal-complete.test.ts`. | ACE team |
+| 2026-09-06 | **Root-caused ace#1637: the unreadable rows are opportunities Connect REFUSES to render a dashboard for, and they now say so (`dashboard_read: 'setup_incomplete'`).** `OpportunityDashboard.get` 302s any opportunity whose `is_setup_complete` is false (payment units + `total_budget` + `start_date` + `end_date`, each unit with `max_total`/`max_daily`) to the payment-unit wizard — and `ace-connect` FOLLOWED that redirect, so `parseOpportunityDashboard` was handed the wizard and `classifyDashboardRead` correctly reported `no_cards` about the wrong page. Measured live 2026-09-06 on `ai-demo-space`: 11 of 11 previously-`no_cards` rows returned `302 → …/payment_units/create` and 6 of 6 `ok` rows returned 200; 10 of the 11 have zero payment units. The detail fetch now uses `maxRedirects: 0` and the status + `Location` reach the classifier. Step 4a still counts these as unreadable and the arithmetic is unchanged — `is_setup_complete` is false when ANY of the four is missing and `connect_create_opportunity` sets a budget through the automation API without payment units, so inferring 0 would be a guess about a value Connect owns — but the count is reported separately as `setup_incomplete_rows`, because it is the one unreadable class retrying can never fix. `active` being correlated-but-not-causal is explained by the same finding. *Enforced:* `test/mcp/connect/unit/dashboard-read-honesty.test.ts` (incl. a pin on `maxRedirects: 0`) + `test/lib/connect-list-projection.test.ts`. | ACE team |

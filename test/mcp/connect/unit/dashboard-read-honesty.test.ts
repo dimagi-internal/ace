@@ -90,6 +90,69 @@ describe('classifyDashboardRead (ace#1637)', () => {
     expect(d.program_name).toBeUndefined();
   });
 
+  it('says setup_incomplete on the OBSERVED 302 to the payment-unit wizard', () => {
+    // The root cause, measured live 2026-09-06 against `ai-demo-space`:
+    //
+    //   $ GET /a/ai-demo-space/opportunity/388851ca-.../   (maxRedirects: 0)
+    //   388851ca-3d02-4c53-a359-a7bf8f8e9f06 status=302
+    //     location=/a/ai-demo-space/opportunity/388851ca-.../payment_units/create
+    //
+    // 11 of 11 rows the classifier used to call `no_cards` answered exactly
+    // this way; 6 of 6 `ok` rows answered 200 with no Location. Upstream:
+    // `OpportunityDashboard.get` → `if not self.object.is_setup_complete:
+    // return redirect("opportunity:add_payment_units", ...)`.
+    expect(
+      classifyDashboardRead('', {
+        status: 302,
+        location:
+          '/a/ai-demo-space/opportunity/388851ca-3d02-4c53-a359-a7bf8f8e9f06/payment_units/create',
+      }),
+    ).toBe('setup_incomplete');
+  });
+
+  it('is not fooled by a trailing slash or a query string on the Location', () => {
+    for (const loc of [
+      '/a/o/opportunity/x/payment_units/create/',
+      '/a/o/opportunity/x/payment_units/create?next=%2F',
+      'https://connect.dimagi.com/a/o/opportunity/x/payment_units/create',
+    ]) {
+      expect(classifyDashboardRead('', { status: 302, location: loc })).toBe('setup_incomplete');
+    }
+  });
+
+  it('does NOT claim setup_incomplete for some other redirect', () => {
+    // A session that has expired redirects to login. That is a transport fact
+    // and must stay `not_fetched` — claiming "this opportunity is unfinished"
+    // on the strength of an auth bounce would be the ace#1637 defect inverted.
+    expect(classifyDashboardRead('', { status: 302, location: '/accounts/login/?next=%2Fa%2Fo' }))
+      .toBe('not_fetched');
+    expect(classifyDashboardRead('', { status: 302 })).toBe('not_fetched');
+  });
+
+  it('a 200 dashboard is still ok even when the response block is supplied', () => {
+    expect(classifyDashboardRead(dashboardHtml, { status: 200 })).toBe('ok');
+  });
+
+  it('THE PRE-FIX MISREAD: following the redirect yields a no_cards verdict', () => {
+    // This is why the cause went unfound for two weeks. The fetch followed the
+    // 302, so the classifier was handed the payment-unit WIZARD — which has an
+    // <h1> (the Connect chrome) and <h6> step numbers with no <p> values, i.e.
+    // exactly the shape `no_cards` describes. Body reduced from the live
+    // capture (16,584 bytes) to the two elements the classifier reads.
+    const WIZARD_BODY = `
+<h1 class="text-lg text-brand-deep-purple font-medium">Connect</h1>
+<div class="steps"><h6>1</h6><h6>2</h6><h6>3</h6></div>`;
+    expect(classifyDashboardRead(WIZARD_BODY)).toBe('no_cards');
+    // …and with the status the caller now passes, the same bytes are named
+    // correctly. The bytes never distinguished these; the redirect always did.
+    expect(
+      classifyDashboardRead(WIZARD_BODY, {
+        status: 302,
+        location: '/a/ai-demo-space/opportunity/x/payment_units/create',
+      }),
+    ).toBe('setup_incomplete');
+  });
+
   it('says not_a_dashboard for a body that is not an opportunity page', () => {
     expect(classifyDashboardRead('<html><body>Server error</body></html>')).toBe('not_a_dashboard');
   });
@@ -114,6 +177,20 @@ describe('connect-program-setup § Step 4a consumes the marker (ace#1637)', () =
       'Step 4a must branch on `dashboard_read` — a missing `program_name` on a ' +
         'readable dashboard is a FACT (exclude the row) and on an unreadable one ' +
         'is an UNKNOWN (ace#1637).',
+    ).toBe(true);
+  });
+
+  it('names setup_incomplete and forbids inferring a zero budget from it', () => {
+    expect(
+      /setup_incomplete/.test(process),
+      'Step 4a must name the setup_incomplete class — it is the one unreadable ' +
+        'class that never resolves by retrying (ace#1637).',
+    ).toBe(true);
+    expect(
+      /Do NOT read it as budget 0|do not read it as budget 0/i.test(process),
+      'Step 4a must forbid inferring budget 0 from the redirect: is_setup_complete ' +
+        'is false when ANY of four fields is missing, and the automation API sets a ' +
+        'budget without payment units.',
     ).toBe(true);
   });
 
@@ -144,5 +221,35 @@ describe('connect-program-setup § Step 4a consumes the marker (ace#1637)', () =
   it('states the absolute target formula', () => {
     expect(/unreadable_rows\s*×\s*EXPECTED_OPP_BUDGET/.test(process)).toBe(true);
     expect(/program\.budget\s*<\s*target/.test(process)).toBe(true);
+  });
+});
+
+describe('the DETAIL fetch must not follow redirects (ace#1637 root cause)', () => {
+  const backend = readFileSync(
+    fileURLToPath(new URL('../../../../mcp/connect/backends/playwright.ts', import.meta.url)),
+    'utf8',
+  );
+  const getOpp = backend.slice(
+    backend.indexOf("getOpportunity: ConnectClient['getOpportunity']"),
+    backend.indexOf("createOpportunity", backend.indexOf("getOpportunity: ConnectClient['getOpportunity']")),
+  );
+
+  it('passes maxRedirects: 0 on the detail page', () => {
+    // Following the 302 is what hid the cause: Playwright's default is to
+    // follow, so the payment-unit wizard arrived in place of the dashboard and
+    // parsed as a dashboard-shaped page with no infocards. A refactor that
+    // drops this flag silently restores `no_cards` for the whole cohort, with
+    // every test above still green because they call the classifier directly.
+    expect(getOpp).toMatch(/this\.request\.get\(detailPath,\s*\{\s*maxRedirects:\s*0\s*\}\)/);
+  });
+
+  it('hands the classifier the status and Location it now needs', () => {
+    expect(getOpp).toMatch(/classifyDashboardRead\(detailHtmlText,\s*\{/);
+    expect(getOpp).toMatch(/status:\s*detailRes\.status\(\)/);
+    expect(getOpp).toMatch(/location:\s*detailRes\.headers\(\)\['location'\]/);
+  });
+
+  it('still only parses a body on a real 200', () => {
+    expect(getOpp).toMatch(/detailRes\.status\(\)\s*===\s*200\s*\?\s*await detailRes\.text\(\)/);
   });
 });

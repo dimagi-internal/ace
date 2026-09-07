@@ -631,9 +631,16 @@ export class PlaywrightBackend implements ConnectClient {
     // /init/ create form and the read-only detail page.
     const editPath = `/a/${organization_slug}/opportunity/${opportunity_id}/edit`;
     const detailPath = `/a/${organization_slug}/opportunity/${opportunity_id}/`;
+    // `maxRedirects: 0` on the DETAIL fetch is load-bearing, not tidiness
+    // (ace#1637). Connect answers an unfinalized opportunity's dashboard with
+    // `302 -> .../payment_units/create`; following it silently substituted the
+    // payment-unit wizard for the dashboard, and the wizard parses as a
+    // dashboard-shaped page with no infocards. The read then reported
+    // `no_cards` — a parse shortfall — for what is actually Connect declining
+    // to render a dashboard at all.
     const [editRes, detailRes] = await Promise.all([
       this.request.get(editPath),
-      this.request.get(detailPath),
+      this.request.get(detailPath, { maxRedirects: 0 }),
     ]);
 
     // ace#1461 — a pure READ must not require write tier. Upstream guards the
@@ -669,7 +676,17 @@ export class PlaywrightBackend implements ConnectClient {
     // page". 16 of 81 hydrated ai-demo-space rows came back with the
     // list-page key set only; Step 4a read that as absent and inflated a
     // live LLO-facing program ceiling by EXPECTED_OPP_BUDGET x 10 every run.
-    const dashboardRead = classifyDashboardRead(detailHtmlText);
+    //
+    // The WHY, left open by the original fix and settled 2026-09-06: every one
+    // of those rows is an opportunity whose setup was never finished, and
+    // Connect redirects its dashboard to the payment-unit wizard rather than
+    // rendering it (`OpportunityDashboard.get` -> `is_setup_complete`). They
+    // now report `setup_incomplete`, which is a fact about the opportunity
+    // rather than a shortfall of this read.
+    const dashboardRead = classifyDashboardRead(detailHtmlText, {
+      status: detailRes.status(),
+      location: detailRes.headers()['location'],
+    });
     const dash = editDenied ? detail : {};
 
     // The edit form's `active` checkbox is authoritative when we have it; the

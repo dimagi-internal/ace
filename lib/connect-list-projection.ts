@@ -104,6 +104,23 @@ export interface OpportunityProgramSummary {
    * field is never an absent one (ace#1637).
    */
   unreadable_rows: number;
+  /**
+   * The subset of `unreadable_rows` Connect refused to render a dashboard for
+   * because the opportunity's setup was never finished (`dashboard_read:
+   * 'setup_incomplete'`). Counted separately because it is the ONE unreadable
+   * class that will never resolve by retrying, and because it is almost
+   * entirely ACE's own abandoned half-built opportunities — 11 of 71 rows on
+   * `ai-demo-space` 2026-09-06, each costing EXPECTED_OPP_BUDGET of headroom
+   * on every program sized against that org, forever.
+   *
+   * It is NOT excluded from Σ. `is_setup_complete` is false when ANY of
+   * {payment units, total_budget, start_date, end_date} is missing, so the
+   * redirect does not prove `total_budget` is null — and ACE's own
+   * `connect_create_opportunity` sets a budget through the automation API,
+   * which does not go through the form that requires payment units. Inferring
+   * zero here would be a guess about a value Connect owns.
+   */
+  setup_incomplete_rows: number;
   /** Matched rows carrying no `total_budget`; each makes Σ unknown. */
   rows_missing_total_budget: number;
   /** The ace#1637 split, first-class rather than re-derived per agent. */
@@ -149,6 +166,7 @@ export function summarizeOpportunitiesByProgram(
   let sigma = 0;
   let excluded_outside_program = 0;
   let unreadable_rows = 0;
+  let setup_incomplete_rows = 0;
   let rows_missing_total_budget = 0;
 
   for (const o of opportunities) {
@@ -156,6 +174,7 @@ export function summarizeOpportunitiesByProgram(
     dashboard_read_counts[read] = (dashboard_read_counts[read] ?? 0) + 1;
     if (read !== 'ok') {
       unreadable_rows++;
+      if (read === 'setup_incomplete') setup_incomplete_rows++;
       continue;
     }
     if (o.program_name !== programName) {
@@ -182,7 +201,13 @@ export function summarizeOpportunitiesByProgram(
     sigma_unknown_reasons.push(
       `unreadable_rows: ${unreadable_rows} row(s) had dashboard_read other than 'ok', so their ` +
         `program_name and total_budget were never read and they can be neither assigned to nor ` +
-        `excluded from this program (ace#1637)`,
+        `excluded from this program (ace#1637)` +
+        (setup_incomplete_rows > 0
+          ? ` — ${setup_incomplete_rows} of them are setup_incomplete: Connect refuses to render a ` +
+            `dashboard for an opportunity whose setup was never finished and redirects to the ` +
+            `payment-unit wizard, so NO Connect read surface states their budget. Retrying cannot ` +
+            `fix these; finishing or deleting the opportunity can`
+          : ''),
     );
   }
   if (rows_missing_total_budget > 0) {
@@ -207,6 +232,7 @@ export function summarizeOpportunitiesByProgram(
     matched_opportunity_ids,
     excluded_outside_program,
     unreadable_rows,
+    setup_incomplete_rows,
     rows_missing_total_budget,
     dashboard_read_counts,
     total_rows: opportunities.length,
