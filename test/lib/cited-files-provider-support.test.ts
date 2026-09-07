@@ -170,3 +170,45 @@ describe('the rubric actually consumes this', () => {
     expect(SKILL).toMatch(/≤3|<=3/);
   });
 });
+
+describe('the qa skill agrees about the mechanism (ace#2037)', () => {
+  // `ocs-chatbot-qa` captures the evidence `ocs-chatbot-eval` grades. When the
+  // two files disagree about WHY `cited_files` is empty, the next reader of the
+  // capture skill learns the wrong cause — and the obvious "improvement" there
+  // (fail `structural_pass` when a non-`widget` capture has no citations)
+  // reintroduces exactly the ace#1298 false-gate class that ace#2027 closed.
+  const QA = readFileSync(
+    resolve(__dirname, '../../skills/ocs-chatbot-qa/SKILL.md'),
+    'utf8',
+  );
+
+  // Everything above the Change Log. History records what was believed at the
+  // time and must stay byte-intact; only the live instructions are ratcheted.
+  const LIVE = QA.split('\n## Change Log')[0];
+
+  it('no longer attributes the emptiness to the widget channel', () => {
+    // The two wordings the issue quoted, plus the transcript-schema comment
+    // that ace#2037 did not name and re-derivation found.
+    expect(LIVE).not.toMatch(/expected to be \*empty\* on widget captures/);
+    expect(LIVE).not.toMatch(/On `widget` captures this is routinely\s+empty by design/s);
+    expect(LIVE).not.toMatch(/cited_files — empty on widget captures/);
+  });
+
+  it('names the provider mechanism instead', () => {
+    expect(LIVE).toMatch(/parse_output_for_anthropic/);
+    expect(LIVE).toMatch(/extract_file_ids_from_ocs_citations/);
+    expect(LIVE).toMatch(/ace#2027/);
+  });
+
+  it('forbids the channel-conditional "improvement" and names the right gate', () => {
+    // The load-bearing half: without this, a later reader tightens the
+    // structural check on `capture_method` and false-fails `web`/`api`.
+    expect(LIVE).toMatch(/never on\s+`capture_method`/s);
+    expect(LIVE).toContain('cited-files-provider-support');
+  });
+
+  it('still does not fail structural_pass on an empty array', () => {
+    // Guard against over-correcting the other way while editing this prose.
+    expect(LIVE).toMatch(/do NOT fail `structural_pass`/);
+  });
+});
