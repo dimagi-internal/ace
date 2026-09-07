@@ -1666,8 +1666,26 @@ const LIVE_PUBLIC_CHAT_URL =
   'https://www.openchatstudio.com/a/connect-ace/chatbots/2c8d5f93-8e4f-4fde-9bf8-650909255c30/start/';
 
 describe('ace#1839 — an admin-only link under a public-sounding invitation', () => {
-  it('BLOCKS on the live payload, and names the URL the run already holds', () => {
-    const findings = auditAssistantAccess({ assistant: LIVE_ASSISTANT });
+  it('RESOLVED 2026-09-07 — the live payload no longer blocks, because the widget answers in place', () => {
+    // This assertion is INVERTED from what it was, and the old one was right at
+    // the time. When it was written the summary page offered an outsider nothing
+    // but an admin console. ace-web now mounts the bot as a corner widget from
+    // the `public_id` + `embed_key` on this very payload, so the reader can ask
+    // their question without leaving the page — which is the shape the owner
+    // asked for: anonymous LLM access yes, sending people elsewhere no
+    // (Jonathan, 2026-09-07).
+    expect(auditAssistantAccess({ assistant: LIVE_ASSISTANT })).toEqual([]);
+  });
+
+  it('still BLOCKS when the console really is the only affordance', () => {
+    // The case the check was written for is unchanged and must keep firing:
+    // an invitation with nothing behind it an outsider can use.
+    // `public_id` present, `embed_key` absent: the widget cannot mount, so the
+    // reader has nothing in place — but the anonymous URL is still derivable,
+    // which is the branch of the detail that names it. Stripping both fields
+    // would silence that branch and test less than it appears to.
+    const { embed_key: _e, ...noWidget } = LIVE_ASSISTANT;
+    const findings = auditAssistantAccess({ assistant: noWidget });
     expect(codes(findings)).toEqual(['ASSISTANT-PUBLIC-URL-WITHHELD']);
     expect(findings.every(isBlocking)).toBe(true);
     expect(findings[0].detail).toContain(LIVE_PUBLIC_CHAT_URL);
@@ -1680,13 +1698,19 @@ describe('ace#1839 — an admin-only link under a public-sounding invitation', (
     expect(derivePublicChatUrl(LIVE_ASSISTANT)).toBe(LIVE_PUBLIC_CHAT_URL);
   });
 
-  it('the finding leaves the exposure decision to the operator', () => {
-    // Whether an un-authed reader may drive LLM spend is a real product call
-    // and this check does not make it. Both remedies must be on the page.
-    const fix = auditAssistantAccess({ assistant: LIVE_ASSISTANT })[0].fix;
-    expect(fix).toMatch(/PRODUCT call/);
+  it('the fix now leads with the in-page widget, not an external link', () => {
+    // The exposure question this used to defer ("is it a PRODUCT call whether an
+    // un-authed reader may drive LLM spend?") was ANSWERED yes on 2026-09-07, so
+    // the finding no longer poses it. What it recommends changed with it: wire
+    // the widget so the reader answers in place. The external link survives as a
+    // fallback, not as the headline remedy.
+    const { public_id: _p, embed_key: _e, ...consoleOnly } = LIVE_ASSISTANT;
+    const fix = auditAssistantAccess({ assistant: consoleOnly })[0].fix;
+    expect(fix).toMatch(/embed_key/);
+    expect(fix).toMatch(/in place/);
     expect(fix).toMatch(/change the copy/);
     expect(fix).toMatch(/access: public/);
+    expect(fix).not.toMatch(/PRODUCT call/);
   });
 
   it('SELF-RETIRING — a payload that carries the public route produces nothing', () => {
@@ -1739,5 +1763,70 @@ describe('ace#1839 — an admin-only link under a public-sounding invitation', (
     expect(
       derivePublicChatUrl({ ocs_url: 'https://ocs.example.org/a/t/chatbots/1/', public_id: 'pid' }),
     ).toBe('https://ocs.example.org/a/t/chatbots/pid/start/');
+  });
+});
+
+/**
+ * ace#1839 resolved: the invitation is answered ON THE PAGE.
+ *
+ * ace-web mounts the per-opp bot as a corner widget from the `public_id` +
+ * `embed_key` this payload already carries, so an anonymous reader can ask their
+ * question without leaving the summary. That is the product decision, stated
+ * directly: anonymous LLM access is wanted, and "no need to send people
+ * elsewhere on the review surface" (Jonathan, 2026-09-07).
+ *
+ * Before this, the check's only silencer was an anonymous `start/` URL — so it
+ * fired on every run whose widget was working, and its recommended remedy was to
+ * add a second, external link beside it.
+ */
+describe('auditAssistantAccess: the embedded widget answers the invitation', () => {
+  const WIDGET_SERVED = {
+    assistant: {
+      ocs_url: 'https://www.openchatstudio.com/a/connect-ace/chatbots/13060/',
+      access: 'admin',
+      public_id: '8a7fafbc-b299-4add-8f2a-03ad8e220736',
+      embed_key: 'ue7m-rZvFlsaZsBX_4DDhOAyysK2MGh7',
+    },
+  };
+
+  it('is silent when embed credentials are served, even though the only link is admin', () => {
+    expect(auditAssistantAccess(WIDGET_SERVED)).toEqual([]);
+  });
+
+  it('still fires when the console is the ONLY affordance', () => {
+    const f = auditAssistantAccess({
+      assistant: {
+        ocs_url: 'https://www.openchatstudio.com/a/connect-ace/chatbots/13060/',
+        access: 'admin',
+      },
+    });
+    expect(f).toHaveLength(1);
+    expect(f[0].code).toBe('ASSISTANT-PUBLIC-URL-WITHHELD');
+  });
+
+  it('does not accept a half-populated credential pair', () => {
+    for (const partial of [
+      { public_id: 'x', embed_key: '' },
+      { public_id: '', embed_key: 'y' },
+      { public_id: 'x' },
+      { embed_key: 'y' },
+    ]) {
+      const f = auditAssistantAccess({
+        assistant: {
+          ocs_url: 'https://www.openchatstudio.com/a/connect-ace/chatbots/13060/',
+          access: 'admin',
+          ...partial,
+        },
+      });
+      expect(f).toHaveLength(1);
+    }
+  });
+
+  it('no longer recommends adding an external link as the first remedy', () => {
+    const f = auditAssistantAccess({
+      assistant: { ocs_url: 'https://www.openchatstudio.com/a/connect-ace/chatbots/13060/', access: 'admin' },
+    });
+    expect(f[0].fix).toMatch(/embed_key/);
+    expect(f[0].fix).toMatch(/in place/);
   });
 });
