@@ -929,7 +929,7 @@ Generate the Learn (training) app from the PDD using the Nova plugin
    # `/build/`, NOT the legacy `/apps/` route, which 404s (ace#1431).
    # Built by `novaAppUrl()` in `lib/nova-url.ts` — the single source.
    nova_app_url: https://commcare.app/build/<id-returned-by-autobuild>
-   archetype: <atomic-visit | focus-group | multi-stage>
+   archetype: <atomic-visit | longitudinal-visits | focus-group | multi-stage>
    # Addressing map — Nova is uuid-addressed (2026-07-31, ace#1132).
    # Persist what § 4a step 2 already read so downstream steps and the
    # -eval rubrics address by uuid without re-resolving. One lookup at

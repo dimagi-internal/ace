@@ -49,7 +49,7 @@ Produce a final grade and assessment of the complete ACE cycle.
            letter: <e.g. "A" | "A-" | "B+">
            overall_score: <weighted average from Step 2, 0-10>
            headline: <one-sentence narrative summary of the outcome>
-           archetype: <atomic-visit | focus-group | multi-stage>
+           archetype: <atomic-visit | longitudinal-visits | focus-group | multi-stage>
            scorecard_file_id: <Drive fileId of cycle-grade.md>
    ```
 

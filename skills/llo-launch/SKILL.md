@@ -195,7 +195,7 @@ Activate the opportunity and notify LLOs that they are live.
         products:
           launch:
             went_live_at: <ISO timestamp from Step 6 activation>
-            archetype: <atomic-visit | focus-group | multi-stage>
+            archetype: <atomic-visit | longitudinal-visits | focus-group | multi-stage>
             llo_org_slug: <from products.selected_llo.org_slug>
             llo_org_display_name: <from products.selected_llo.org_display_name>
             record_file_id: <Drive fileId of llo-launch_record.md>
