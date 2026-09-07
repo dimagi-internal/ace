@@ -196,3 +196,22 @@ export function classifyOppRootEntry(name: string): OppRootEntry | null {
 export function isAceOwnedOppRootEntry(name: string): boolean {
   return classifyOppRootEntry(name) !== null;
 }
+
+/**
+ * True when the opp root carries `/ace:iterate` campaign state — i.e. this opp
+ * is a REGRESSION FIXTURE, not a real programme.
+ *
+ * Extracted here (rather than re-derived per consumer) because two independent
+ * call sites now need the same signal, and re-enumerating ACE-owned opp-root
+ * names per incident IS the defect #1282/#1325 closed. Consumers:
+ *
+ *   - `lib/open-questions-inline.ts` — whether Phase 1 may inline the durable
+ *     ledger at all (dimagi-internal/ace#1487).
+ *   - `lib/viability-grading.ts` — whether `idea-to-pdd-eval` may score
+ *     `demand_reality` into the gating mean (dimagi-internal/ace#2128).
+ */
+export function isIterateFixtureOpp(oppRootNames: string[]): boolean {
+  return oppRootNames.some(
+    (name) => classifyOppRootEntry(name)?.label === 'iterate-state.yaml',
+  );
+}

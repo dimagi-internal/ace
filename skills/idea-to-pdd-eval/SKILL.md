@@ -149,6 +149,56 @@ filename rule.
      fallback_validates_primary:   { weight: 0.09 }
    ```
 
+5b. **Fixture opps: `demand_reality` is scored and reported, but does NOT
+   gate (dimagi-internal/ace#2128).**
+
+   Call `classifyViabilityGrading({ oppRootNames })` from
+   `lib/viability-grading.ts` — the same shape as ace#1487's
+   `classifyOpenQuestionsInline`, and the source of truth if this prose ever
+   disagrees with it. When the opp root carries `iterate-state.yaml` it
+   returns `mode: 'fixture-adjusted'` and `excludedFromGate:
+   ['demand_reality']`.
+
+   In that mode:
+
+   - **Still score `demand_reality`, still write it into `dimensions:` and
+     `per_item:` with its note.** It is excluded from the mean, not from the
+     verdict — a fixture brief that genuinely regressed on demand framing must
+     still be visible.
+   - Emit BOTH numbers: `overall_score` (gating, renormalized over the
+     remaining eight weights via `renormalizeWeights` — proportional, so the
+     surviving ratios are preserved) and `overall_score_all_dimensions` (the
+     raw nine-dimension mean). `computeViabilityScores` returns both.
+   - Record `viability_grading: { mode, excluded_from_gate, reason }` in the
+     verdict so the adjustment is auditable rather than silent.
+
+   **Why this exists — the dimension was BIMODAL, not merely harsh.** On a
+   fixture there is never a named downstream consumer of the *data*, and
+   `no-inferred-backstory` forbids inventing one, so the artifact cannot move
+   the score. But the rubric never said whether the `/ace:iterate` campaign
+   itself counts as the consumer, and judges split on it. Two runs of
+   `bednet-check-2-visit` twelve hours apart, on a byte-identical rubric row:
+
+   | Run | Score | Judge's reading |
+   |---|---|---|
+   | `20260814-0856` | **8.5** | "A named consumer with a documented, pre-committed action does exist and is sourced, not invented: ACE's /ace:iterate campaign… Honesty is credited here, not penalised." |
+   | `20260814-2019` | **4.0** | "The source names a consumer of the FIXTURE… but none of the data… **Not softened for a fixture: the rubric has no fixture branch.**" |
+
+   A 4.5-point swing at weight 0.22 is 0.99 of composite — wider than the
+   margin between every pass and fail this opp has recorded (its verdicts run
+   6.96–8.89). So the dimension was contributing noise, not signal, to 22% of
+   the gate **on the opp that IS the `/ace:iterate` regression baseline** — a
+   permanently-unstable eval there cannot detect the regression it exists to
+   detect. The second judge named this gap in its own verdict on 2026-08-14;
+   it went unread for three weeks.
+
+   **The exclusion is `demand_reality` ONLY.** `resource_realism` still gates
+   on a fixture: it is not structurally constant, and on `20260906-2228` it
+   scored 5.0 and caught a real defect (a worker-day payment grain at
+   `daily_cap: 1` paying USD 0.31–0.75 per completed visit). Excluding the
+   whole viability axis would discard exactly the finding that made this worth
+   fixing. *Enforced:* `test/lib/viability-grading.test.ts`.
+
 6. **Auto-surfaced concerns.** Severity rules per
    `skills/_eval-template.md § Auto-surfaced severity rules`. Skill-
    specific surfaces beyond the standard contract:
